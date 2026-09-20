@@ -55,7 +55,17 @@
  *
  * Module: `pipelineMimic(html, { styleSplit, rules }) → { html, meta, counts }`,
  * `formatCounts(counts)`, `bodyClasses(meta)`, `metaTags(meta)`, `normaliseForCompare(html)`,
- * `probeVerdicts(fixtureHtml, plainHtml)`, `contractStyleSplit(contractPath)`, `resolveStyleSplit(flag, root)`.
+ * `probeVerdicts(fixtureHtml, plainHtml)`, `contractStyleSplit(contractPath)`, `resolveStyleSplit(flag, root)`,
+ * `scanAutoBlocks(scriptsJsSource)`.
+ *
+ * Runtime scan (target-runtime.md § Auto-blocking hook — the D1 auto-blocks the project owns):
+ *   --runtime scripts/scripts.js [--contract stardust/runtime-contract.json] [--json]
+ *   Static regex scan, no execution: every helper `buildAutoBlocks()` calls with `main` becomes one
+ *   `{ fn, trigger }` row — `trigger` is the selectors the helper queries (`h1, picture`) or `—`. Rows
+ *   are written to the contract's `autoBlocks` key (other keys kept; file created when absent). A helper
+ *   that queries both `h1` and `picture` is flagged `guard: h1 and picture must share a section` (the
+ *   authored <h1> otherwise leaves its section on every page). No `buildAutoBlocks` → `autoBlocks: []`.
+ *   Exit 0 written · 1 cannot read the file.
  *
  * Probe (the D7 "fixture-verify"; re-measures the catalogue on THIS stack — reference/pipeline-facts.md § Probe):
  *   --probe --org <org> --repo <repo> --branch <ref>   PUT the probe fixture to a hidden DA path
@@ -559,6 +569,49 @@ function recordVerdicts(opts, fixtureHtml, plainHtml, origin) {
   return v.deviations.length || unexplained ? 3 : 0;
 }
 
+// ─────────────────────────────────────────────────────── runtime scan ──
+
+/** The body of `function <name>(` … matching-brace, or null. */
+function fnBody(src, name) {
+  const m = src.match(new RegExp(`(?:function\\s+${name}\\s*\\([^)]*\\)|(?:const|let|var)\\s+${name}\\s*=\\s*(?:async\\s*)?(?:\\([^)]*\\)|\\w+)\\s*=>)\\s*\\{`));
+  if (!m) return null;
+  let i = m.index + m[0].length; let depth = 1; const start = i;
+  for (; i < src.length && depth; i += 1) { if (src[i] === '{') depth += 1; else if (src[i] === '}') depth -= 1; }
+  return depth ? null : src.slice(start, i - 1);
+}
+
+/** Static inventory of the auto-blocks `buildAutoBlocks()` wires: [{ fn, trigger, guard? }]. */
+export function scanAutoBlocks(src) {
+  const body = fnBody(src, 'buildAutoBlocks');
+  if (body === null) return [];
+  const calls = [...new Set([...body.matchAll(/\b([A-Za-z_$][\w$]*)\s*\(\s*main\b/g)].map((m) => m[1]).filter((n) => n !== 'buildAutoBlocks'))];
+  return calls.map((fn) => {
+    const helper = fnBody(src, fn) || '';
+    const selectors = [...new Set([...helper.matchAll(/querySelector(?:All)?\(\s*(['"`])((?:(?!\1).)+)\1/g)].map((m) => m[2].trim()))];
+    const row = { fn, trigger: selectors.length ? selectors.join(', ') : '—' };
+    if (selectors.some((q) => /\bh1\b/.test(q)) && selectors.some((q) => /\bpicture\b|\bimg\b/.test(q))) row.guard = 'h1 and picture must share a section';
+    return row;
+  });
+}
+
+function runtimeScan(opts) {
+  let src;
+  try { src = readFileSync(opts.runtime, 'utf8'); } catch (e) { process.stderr.write(`cannot read ${opts.runtime}: ${e.message}\n`); return 1; }
+  const autoBlocks = scanAutoBlocks(src);
+  const file = opts.contract;
+  let contract = {};
+  if (existsSync(file)) { try { contract = JSON.parse(readFileSync(file, 'utf8')); } catch (e) { process.stderr.write(`${file} is not valid JSON (${e.message}) — fix it; nothing written\n`); return 1; } }
+  contract.autoBlocks = autoBlocks;
+  mkdirSync(path.dirname(file), { recursive: true });
+  writeFileSync(file, `${JSON.stringify(contract, null, 2)}\n`);
+  if (opts.json) process.stdout.write(`${JSON.stringify(autoBlocks, null, 2)}\n`);
+  else {
+    process.stdout.write(`runtime scan: ${autoBlocks.length} auto-block${autoBlocks.length === 1 ? '' : 's'} in ${opts.runtime} → ${file}#autoBlocks\n`);
+    for (const r of autoBlocks) process.stdout.write(`  ${r.fn}  trigger: ${r.trigger}${r.guard ? `  guard: ${r.guard}` : ''}\n`);
+  }
+  return 0;
+}
+
 async function probe(opts) {
   const fixtureHtml = readFileSync(path.join(opts.fixtureDir, 'pipeline-probe.html'), 'utf8');
   const noVerdict = (why) => { process.stderr.write(`WARN pipeline probe: no verdict — ${why}; ${opts.contract}#pipeline left as is, the catalogue defaults apply (exit 2)\n`); return 2; };
@@ -591,6 +644,7 @@ const USAGE = 'usage: node skills/deploy/scripts/pipeline-mimic.mjs <in.html> [-
   + '       node skills/deploy/scripts/pipeline-mimic.mjs --self-test\n'
   + '       node skills/deploy/scripts/pipeline-mimic.mjs --probe --org <org> --repo <repo> --branch <ref> [--contract stardust/runtime-contract.json] [--record] [--fixture-dir <dir>] [--token-env DA_TOKEN] [--json]\n'
   + '       node skills/deploy/scripts/pipeline-mimic.mjs --compare <plain.html> [--contract <path>] [--record] [--fixture-dir <dir>] [--json]\n'
+  + '       node skills/deploy/scripts/pipeline-mimic.mjs --runtime scripts/scripts.js [--contract <path>] [--json]   # → contract.autoBlocks [{fn, trigger}]\n'
   + `       rules: ${RULES.join(', ')}\n`
   + '       exit 0 ok · 1 usage / self-test failed · 2 probe no verdict · 3 recorded with deviations or an unexplained residual\n';
 
@@ -613,11 +667,16 @@ async function main(argv) {
     else if (a === '--record') opts.record = true;
     else if (a === '--fixture-dir') opts.fixtureDir = value(i++, a);
     else if (a === '--token-env') opts.tokenEnv = value(i++, a);
+    else if (a === '--runtime') opts.runtime = value(i++, a);
     else if (a.startsWith('--no-')) { const r = a.slice(5).replace(/-([a-z])/g, (_, ch) => ch.toUpperCase()); if (!RULES.includes(r)) { process.stderr.write(`unknown rule ${a}\n${USAGE}`); return 1; } opts.rules[r] = false; }
     else if (a.startsWith('--')) { process.stderr.write(`unknown option ${a}\n${USAGE}`); return 1; }
     else opts.files.push(a);
   }
   if (!['comma', 'first-only'].includes(opts.styleSplit)) { process.stderr.write(`--style-split must be comma or first-only\n`); return 1; }
+  if (opts.runtime) {
+    if (opts.probe || opts.compare) { process.stderr.write(`--runtime is its own mode\n${USAGE}`); return 1; }
+    return runtimeScan(opts);
+  }
   if (opts.probe || opts.compare) {
     if (opts.probe && opts.compare) { process.stderr.write(`--probe and --compare are exclusive\n${USAGE}`); return 1; }
     if (opts.probe && (!opts.org || !opts.repo || !opts.branch)) { process.stderr.write(`--probe needs --org, --repo and --branch\n${USAGE}`); return 1; }

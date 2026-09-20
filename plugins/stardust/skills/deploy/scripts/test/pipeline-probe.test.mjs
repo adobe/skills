@@ -16,7 +16,11 @@
  *     one WARN naming it — never a clean contract; the fixture pair records `residual 0`;
  *   - contractStyleSplit() reads the measured value (null when absent / unmeasured); resolveStyleSplit(): flag >
  *     `<root>/stardust/runtime-contract.json#pipeline` > comma, and build-harness prints
- *     `style-split first-only (runtime-contract.json#pipeline)` from such a contract; usage: --help 0, --probe without --org 1.
+ *     `style-split first-only (runtime-contract.json#pipeline)` from such a contract; usage: --help 0, --probe without --org 1;
+ *   - --runtime <scripts.js> (T21.2 autoBlocks scan): a boilerplate-shaped scripts.js whose buildAutoBlocks() calls
+ *     buildHeroBlock / buildEmbedBlocks / a helper defined nowhere → contract.autoBlocks = [{fn, trigger}] with the
+ *     hero flagged `guard: h1 and picture must share a section`, other contract keys kept; no buildAutoBlocks → [];
+ *     an unreadable file → exit 1; --runtime is exclusive with --probe/--compare.
  */
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
@@ -123,6 +127,36 @@ try {
     r = await run(['--probe', '--org', 'o', '--repo', 'r', '--branch', 'main', '--contract', contract], { DA_TOKEN: 'x', ...mock.env() });
     assert.equal(r.status, 2); assert.match(r.stderr, /\.plain\.html 404 after 3 reads/); assert.equal(mock.requests.filter((q) => q.method === 'GET').length, 3);
   } finally { await mock.close(); }
+
+  // --runtime: the static autoBlocks inventory target-runtime.md § Auto-blocking hook asks for
+  const scriptsJs = join(dir, 'scripts.js');
+  writeFileSync(scriptsJs, `import { buildBlock } from './aem.js';
+function buildHeroBlock(main) {
+  const h1 = main.querySelector('h1');
+  const picture = main.querySelector('picture');
+  if (h1 && picture) main.prepend(buildBlock('hero', { elems: [picture, h1] }));
+}
+const buildEmbedBlocks = (main) => {
+  main.querySelectorAll('a[href*="youtube.com"], a[href*="vimeo.com"]').forEach((a) => a.replaceWith(buildBlock('embed', a)));
+};
+function buildAutoBlocks(main) {
+  try { buildHeroBlock(main); buildEmbedBlocks(main); buildFragmentBlocks(main); } catch (error) { console.error('Auto Blocking failed', error); }
+}
+export function decorateMain(main) { buildAutoBlocks(main); }
+`);
+  r = await run(['--runtime', scriptsJs, '--contract', contract]);
+  assert.equal(r.status, 0, r.all);
+  assert.match(r.stdout, /^runtime scan: 3 auto-blocks in .*scripts\.js → .*runtime-contract\.json#autoBlocks$/m);
+  assert.match(r.stdout, /^ {2}buildHeroBlock {2}trigger: h1, picture {2}guard: h1 and picture must share a section$/m);
+  assert.match(r.stdout, /^ {2}buildEmbedBlocks {2}trigger: a\[href\*="youtube\.com"\], a\[href\*="vimeo\.com"\]$/m);
+  assert.match(r.stdout, /^ {2}buildFragmentBlocks {2}trigger: —$/m, 'a helper defined elsewhere is listed with no trigger, never dropped');
+  c = rc(); assert.equal(c.runtime, 'vanilla-eds', 'other keys kept'); assert.ok(c.pipeline && c.pipeline.probedAt, '#pipeline kept');
+  assert.deepEqual(c.autoBlocks, [{ fn: 'buildHeroBlock', trigger: 'h1, picture', guard: 'h1 and picture must share a section' }, { fn: 'buildEmbedBlocks', trigger: 'a[href*="youtube.com"], a[href*="vimeo.com"]' }, { fn: 'buildFragmentBlocks', trigger: '—' }]);
+  r = await run(['--runtime', scriptsJs, '--contract', contract, '--json']); assert.equal(r.status, 0); assert.equal(JSON.parse(r.stdout).length, 3);
+  writeFileSync(scriptsJs, 'export function decorateMain(main) { main.classList.add("x"); }\n');
+  r = await run(['--runtime', scriptsJs, '--contract', contract]); assert.equal(r.status, 0); assert.match(r.stdout, /0 auto-blocks/); assert.deepEqual(rc().autoBlocks, []);
+  assert.equal((await run(['--runtime', join(dir, 'missing.js'), '--contract', contract])).status, 1);
+  assert.equal((await run(['--runtime', scriptsJs, '--compare', mutated, '--contract', contract])).status, 1, '--runtime is its own mode');
 
   // usage
   assert.equal((await run(['--help'])).status, 0);

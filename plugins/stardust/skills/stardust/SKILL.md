@@ -50,9 +50,9 @@ delegate the actual design work to **impeccable**.
    frontmatter `metadata.impeccable` (`required` | `optional` | `none`;
    absent = `required`). `none` → skip this step and step 4, noting
    `impeccable: skipped` in the skill's first `status.jsonl` line.
-   Otherwise, once per session and never on the master's freeform-intent
-   route (there Phase 1 reasoning comes first; the probe runs when the
-   first impeccable command is about to execute), run
+   Otherwise, once per session and never on the freeform-intent route
+   (Phase 1 reasoning first; the probe runs when the first impeccable
+   command is about to execute), run
    `node <plugin>/skills/stardust/scripts/impeccable-version-check.mjs
    --probe` (`--local <dir>`): read-only; surface its line only for a
    newer version or `drift:`, never stop over it, and surface nothing
@@ -69,9 +69,8 @@ delegate the actual design work to **impeccable**.
    `optional` skills note `impeccable: absent` there and continue
    degraded.
 2. **Check the target-state files.** `PRODUCT.md` and `DESIGN.md` at the
-   project root are the *target* state; check whether they exist. Do not
-   run impeccable's context loader here — impeccable runs it itself on
-   every command.
+   project root are the *target* state; check they exist. Do not run
+   impeccable's context loader here — impeccable runs it on every command.
 3. **Read stardust's state.** `stardust/state.json` if present
    (`reference/state-machine.md`); note each page's lifecycle state.
 4. **Read impeccable's command registry** (skipped when the level is
@@ -103,15 +102,19 @@ delegate the actual design work to **impeccable**.
    the lookup in `reference/state-machine.md` § Credentials key, write
    `state.json.credentials`. Never declare a 401 blocker before it ran;
    `--token-env` consumers default to `credentials.siteTokenEnv`.
+9. **Origin** (step 8's asks) — `node skills/stardust/scripts/preflight-transports.mjs
+   --org <org> --repo <repo>`; `gh-repo absent` or `admin-read` 404 and no
+   `state.json.site.eds` → `../deploy/reference/site-bootstrap.md` now — one
+   question with the `target` default (hands-off: default-applied).
 
 ## Routing
 
 Route on the user's input:
 
-- **No argument.** Render the **state report** described in
+- **No argument.** Render the **state report** of
   `reference/state-machine.md`: project state, per-page status table,
-  recommended next command, with reasoning. Do not write anything.
-  The same applies to any **resume** (a new session on a project with
+  recommended next command, with reasoning. Write nothing. The same
+  for any **resume** (a new session on a project with
   `stardust/state.json`, "continue", "where are we", a memory-driven
   resume): state report first (it names the flow and the last gate
   numbers), then execute the last `status.jsonl` `next` **through its
@@ -120,10 +123,10 @@ Route on the user's input:
   before replacing its outputs (`reference/run-status.md` § Phase close).
 - **First word names a sub-skill.** Delegate to it, passing the
   remaining args. Sub-skills are named by bare skill name below; Claude
-  Code namespaces them as `stardust:<name>` (Skill tool), GitHub Copilot
-  and other flattening harnesses expose the bare `<name>`, and a harness
-  with no skill-invocation tool reads the sub-skill's `SKILL.md` and
-  follows it inline. Never confuse the stardust `extract` / `audit`
+  Code namespaces them as `stardust:<name>` (Skill tool), flattening
+  harnesses (GitHub Copilot and others) expose the bare `<name>`, and a
+  harness with no skill-invocation tool reads the sub-skill's `SKILL.md`
+  inline. Never confuse the stardust `extract` / `audit`
   skills with impeccable's same-named commands, always written
   `$impeccable <command>`. The master routes **all** sibling sub-skills:
 
@@ -149,8 +152,8 @@ Route on the user's input:
   - `uplift` skips the extract/direct/prototype chain: one URL in, three
     variants out (one cinematic), no further coordination.
 - **Migration to EDS — pick ONE of two flows, never mix them.** See
-  § Two migration flows before answering any "how do I migrate X"
-  question; the answer differs by whether the design is kept.
+  § Two migration flows before answering any "how do I migrate X" —
+  the answer differs by whether the design is kept.
 - **First word is anything else (a freeform phrase).** Treat it as a
   redesign intent: load `reference/intent-reasoning.md` and follow its
   procedure. **Do not execute any impeccable or stardust command before
@@ -160,8 +163,8 @@ Route on the user's input:
 ## Two migration flows — pick one, never mix
 
 On any ask to migrate a site to AEM Edge Delivery (or any clean front
-end), the FIRST question is whether the design is kept or changed; the
-answer selects the flow; the downstream chain is shared.
+end), the FIRST question is whether the design is kept or changed; it
+selects the flow; the downstream chain is shared.
 
 - **Redesign while migrating:** `extract` → `direct` → `prototype`, or
   in one step `prepare-migration` (the prep cascade with confirmation
@@ -172,15 +175,15 @@ answer selects the flow; the downstream chain is shared.
   gated archetype recreation replace `direct --prep` / `prototype
   --prep`). **Never run `prepare-migration` before or after `replica`.**
 - **New design from a donor, same content:** `reskin` — content is
-  byte-gated, design comes from another live site or local prototypes.
+  byte-gated, design from another live site or local prototypes.
 - **Both migration flows carry the dynamic surface by default.** The
   pre-import gate (`prepare-migration` 4.5 / `replica` Phase 2, `migrate`
   as the safety net) runs `dynamics` Phases 1–3 so every dynamic surface
   has a disposition before import; `rollout` D2 implements the
   reproducible rows, `qa` replays parity. Never for redesign-only work
-  (`uplift`, a bare `extract`). A chain that ends at `deploy` (one-page
+  (`uplift`, a bare `extract`). A chain ending at `deploy` (one-page
   pilot, no rollout) runs dynamics Phases 4–5 standalone before the pilot
-  is declared done (`../dynamics/SKILL.md` § When it runs).
+  is done (`../dynamics/SKILL.md` § When it runs).
 
 **Choosing the flow.** Read the ask before any sub-skill loads:
 
@@ -191,15 +194,14 @@ answer selects the flow; the downstream chain is shared.
 - **Redesign phrases select the redesign flow:** "redesign", "modernise",
   "refresh", "new look", "rethink" — anything that moves a design axis.
 - **Anything else** ("migrate X to EDS") asks the one keep-vs-redesign
-  question — the only question this section asks. Hands-off does not
+  question — this section's only question. Hands-off does not
   ask: a keep-design phrase selects `replica`, otherwise `redesign`,
   recorded as a named assumption in `direction.md`.
 
 Stamp the choice in `state.json` as `flow` / `flowChosenAt` / `flowSource`
 before delegating; the sub-skills' guards (no `flow` → refuse; wrong
-flow → refuse) and the explicit `--switch-flow`, which marks the old
-flow's pages stale, are defined in `reference/state-machine.md` § Flow
-keys.
+flow → refuse) and the explicit `--switch-flow` (marks the old flow's
+pages stale) are defined in `reference/state-machine.md` § Flow keys.
 
 **Planning aids belong to one flow.** Redesign: the `prepare-migration`
 plan and gates, the canon, module catalogs, "learn the template, then
@@ -253,8 +255,8 @@ Defaults (override only when the invocation says otherwise):
   its body, and before reading any file over 20 KB lists the headings
   and reads only the section the card names. Stall-prone instruments run
   under their shipped deadline (replica `gate.sh`, `pixel-compare
-  --timeout`), never an agent-authored `sleep N; kill` loop. Worker contract (briefs
-  point at it): `reference/fan-out.md` § Worker contract.
+  --timeout`), never an agent-authored `sleep N; kill` loop. Worker contract:
+  `reference/fan-out.md` § Worker contract.
 - **Image reads.** Numbers first, then `review-<label>.png` bands or a
   `sheet-NN.png` sheet (legend `.json`); never a stitched capture whole —
   `reference/context-hygiene.md` § Image reads.
@@ -267,11 +269,10 @@ Defaults (override only when the invocation says otherwise):
   (`<driver>.progress.json`, `skills/stardust/scripts/progress.mjs read
   <file>`; it ends with one `SUMMARY` line —
   `../deploy/da-deploy-protocol.md` § Delivery pipeline) — never under one
-  long `sleep`. Do independent work meanwhile;
-  otherwise check the progress file **at most every 4 minutes** (no blocking
-  wait on agent output); end the turn only
-  for waits over ~45 min or a user decision. Rationale, output caps and
-  harness levers: `reference/run-status.md` § Long-running steps.
+  long `sleep`. Do independent work meanwhile; else check the progress
+  file **at most every 4 minutes** (no blocking wait on agent output); end
+  the turn only for waits over ~45 min or a user decision. Rationale, caps
+  and harness levers: `reference/run-status.md` § Long-running steps.
 - **Context hygiene.** Class tables in the conversation, per-page rows
   in files, hand-off at phase boundaries — `reference/context-hygiene.md`
   § Runner reports and session hand-off.
@@ -284,15 +285,14 @@ Defaults (override only when the invocation says otherwise):
   may own it). Re-run Setup step 6 before the FIRST such commit — a
   tracked `.env` poisons every later push.
 - **Transports and privileged actions first; a denial is not a
-  blocker.** Probe every transport the plan uses in the first minutes and
-  run the register's privileged actions (repo, Code Sync, first push,
-  scratch preview) at Setup, never after migrate. On a denial ask exactly
-  once — approve or run `<command>`, else the run writes
-  `stardust/.work/ship.sh` (`../deploy/reference/ship-script.md`) —
-  append `event: "blocked"` with `owner: "<command>"` and continue on
-  unblocked work; state report, journal and turn-ending reply lead with
-  `Blocked on owner:` while open (`reference/harness-permissions.md`
-  § Privileged-action preflight).
+  blocker.** Setup steps 8–9 probe every transport the plan uses and run
+  the register's privileged actions (repo, Code Sync, first push, scratch
+  preview) — never after migrate. On a denial ask exactly once — approve
+  or run `<command>` — else write `stardust/.work/ship.sh`
+  (`../deploy/reference/ship-script.md`), append `event: "blocked"` with
+  `owner: "<command>"` and continue on unblocked work; state report,
+  journal and turn-ending reply lead with `Blocked on owner:` while open
+  (`reference/harness-permissions.md` § Privileged-action preflight).
 - **Plan inside the token window.** From `credentials.daExpiresAt` order
   token-bound work inside the window and ask for the refresh up front
   when the projection exceeds it; a missing or expired credential is the
@@ -326,7 +326,7 @@ files stay in `content/**`; `../rollout/reference/delivery-gates.md`
 ## The "open and reasoned" principle
 
 Stardust ships no closed `intent → commands` lookup; every freeform
-phrase is reasoned about in public:
+phrase is reasoned in public:
 
 1. Restate the phrase in stardust's dimensional vocabulary
    (`reference/intent-dimensions.md`).
@@ -343,7 +343,7 @@ phrase is reasoned about in public:
 Pages have lifecycle states (`extracted | directed | prototyped | approved |
 migrated`). When the direction changes after pages were prototyped or
 migrated, **mark them stale; do not auto-re-run** — the user opts in
-explicitly (`reference/state-machine.md`).
+(`reference/state-machine.md`).
 
 ## Artifacts you read and write
 
@@ -367,9 +367,8 @@ clone without `current/assets/` can do: `reference/artifact-map.md`
 ## Provenance
 
 Every artifact stardust writes opens with a provenance block (first line
-or first key): which sub-command wrote it, against which user input, what
-was synthesized vs. authored, which artifacts were read
-(`reference/artifact-map.md`).
+or first key): the sub-command, the user input, what was synthesized vs.
+authored, the artifacts read (`reference/artifact-map.md`).
 
 ## Journal rule
 
@@ -389,7 +388,7 @@ phase is recorded in `stardust/direction.md` as a **named deviation** —
 what it replaces, why the shipped instrument did not serve, where the
 replacement lives — and noted in the journal. Before writing one, list
 the shipped instruments (`ls skills/*/scripts`, or the project copy under
-`stardust/scripts/<skill>/`) and run the shipped one; write your own only
+`stardust/scripts/<skill>/`) and run it; write your own only
 when none exists, and ledger it here as a plugin gap. An unrecorded
 parallel pipeline is a defect — its fidelity numbers are never comparable
 to the gate's.
@@ -423,7 +422,7 @@ Per-sub-skill specifics: `extract/reference/playwright-recipe.md`,
 
 - Invent design opinions that contradict impeccable's hard rules.
 - Execute a redesign plan without showing it first (hands-off records it
-  in `stardust/direction.md` instead of waiting — § Hands-off mode).
+  in `stardust/direction.md` instead — § Hands-off mode).
 - Force a re-run on stale pages without explicit user opt-in.
 - Crawl beyond the user's confirmed page cap (an explicit `--pages` list is the confirmed scope — never dropped; the crawler warns rather than truncates).
 - Emit platform-specific output from `migrate` — EDS conversion and
@@ -434,20 +433,20 @@ Per-sub-skill specifics: `extract/reference/playwright-recipe.md`,
 - `reference/intent-dimensions.md` — the axes redesigns move along.
 - `reference/intent-reasoning.md` — the procedure for a freeform phrase.
 - `reference/intent-examples.md` — worked examples of the reasoning style.
-- `reference/impeccable-command-map.md` — when to reach for each impeccable command.
+- `reference/impeccable-command-map.md` — when to use each impeccable command.
 - `reference/state-machine.md` — page lifecycle, stale rules, state report, flow / credentials / hands-off keys, concurrency.
-- `reference/artifact-map.md` — every file stardust reads or writes: ownership, provenance shape, what is tracked.
+- `reference/artifact-map.md` — every file stardust reads or writes: ownership, provenance, tracking.
 - `reference/stardust.gitignore` — installed as `stardust/.gitignore` by Setup step 6.
 - `reference/divergence-toolkit.md` — anti-mediocrity device for `direct` and `prototype`.
-- `reference/token-contract.md` — the `:root` CSS custom-property contract every prototype and migrated page exposes.
+- `reference/token-contract.md` — the `:root` custom-property contract every prototype and migrated page exposes.
 - `reference/data-attributes.md` — the structural `data-*` vocabulary on sections.
 - `reference/journal-format.md` — `stardust/journal.md` entry format; the append-only narrative layer.
 - `reference/run-status.md` — the `stardust/status.jsonl` contract; `next`, the phase-close block, long-running steps.
 - `reference/fan-out.md` — the delegated-agent protocol: progress files, worker and coordinator contracts.
 - `reference/harness-quirks.md` — shell, runner, delivery, path, served-asset, local-QA and port rules.
 - `reference/context-hygiene.md` — what enters the conversation: image-read budget, class reports, ranged re-reads, hand-off.
-- `reference/learnings.md` — the per-run learnings ledger rollout's report phase writes and maintainers harvest.
-- `reference/decisions.md` — the plan-time decision register: default and owner-only rows, how the plan gate batches them.
+- `reference/learnings.md` — the per-run learnings ledger rollout writes and maintainers harvest.
+- `reference/decisions.md` — the plan-time decision register: default and owner-only rows, batched at the plan gate.
 - `reference/handoff-report.md` — the phase-close hand-off shape: gate table first, reporting KPI, before/after evidence.
 - `reference/harness-permissions.md` — the two command classes a permission layer sees, the Claude Code pre-approval generator, capability probes.
 
@@ -456,16 +455,15 @@ Per-sub-skill specifics: `extract/reference/playwright-recipe.md`,
 Owned by `prototype/`; cited by `direct` and `uplift` (register
 choice) and `migrate` (motion assets):
 
-- `../prototype/reference/motion-registers.md` — the five motion registers and the heuristic that maps PRODUCT.md personality traits to one.
+- `../prototype/reference/motion-registers.md` — the five motion registers and the heuristic mapping PRODUCT.md personality traits to one.
 - `../prototype/reference/motion-stack.md` — technology choice (Lenis + CSS keyframes + rAF + IntersectionObserver) and bundle policy.
 - `../prototype/reference/motion-attributes.md` — the `data-*` vocabulary the motion runtime consumes.
-- `../prototype/reference/motion-runtime.md` — the canonical inline runtime script of every cinematic prototype.
+- `../prototype/reference/motion-runtime.md` — the canonical inline runtime of every cinematic prototype.
 - `../prototype/reference/motion-validation.md` § Pass 6 — cinematic-mode validation gates.
 
 ### Uplift-feature references
 
-Owned by `uplift/`. Cited by master routing when delegating
-`$stardust uplift <URL>`:
+Owned by `uplift/`; cited when delegating `$stardust uplift <URL>`:
 
 - `../uplift/SKILL.md` — one-shot presales orchestrator: extract → 3-variant direction → prototype × 3 → summarize.
 - `../uplift/reference/what-if-candidates.md` — 8 worked trait-amplification candidates B and C select from in Phase 2b; § Extension rule admits evidence-shaped `derived` candidates.

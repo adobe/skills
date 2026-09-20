@@ -19,20 +19,22 @@
  * --post-publish HEADs every delivered page in its canonical form and every
  * folder root (a page delivered from <dir>/index.html) in BOTH slash forms,
  * following redirects, and prints the failing form. Exit 2 on any failure.
+ * --token-env <NAME>: the site token of a LOCKED delivery host (deploy lockdown.mjs →
+ * SITE_TOKEN_<SLUG>, state.json credentials.siteTokenEnv), sent to --base only, never printed.
  *
  * Usage:
  *   node skills/rollout/scripts/redirects.mjs [--tsv stardust/redirects.tsv] [--out stardust/rollout]
- *        [--html-variants] [--check] [--post-publish [--base <url>]]
+ *        [--html-variants] [--check] [--post-publish [--base <url>] [--token-env <NAME>]]
  * Exit: 0 ok · 1 usage/missing input · 2 shadowing Source or post-publish failure
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { readJSON, writeJSON, siteBase } from './lib.mjs';
+import { readJSON, writeJSON, siteBase, siteAuthHeader } from './lib.mjs';
 
 function arg(name, fallback) { const i = process.argv.indexOf(`--${name}`); return i !== -1 && process.argv[i + 1] && !process.argv[i + 1].startsWith('--') ? process.argv[i + 1] : fallback; }
 const has = (f) => process.argv.includes(`--${f}`);
 if (has('help')) {
-  console.log('Usage: node skills/rollout/scripts/redirects.mjs [--tsv <file>] [--out <rolloutDir>] [--html-variants] [--check] [--post-publish [--base <url>]]\n  exit 0 ok · 1 usage/missing input · 2 shadowing Source / post-publish failure');
+  console.log('Usage: node skills/rollout/scripts/redirects.mjs [--tsv <file>] [--out <rolloutDir>] [--html-variants] [--check] [--post-publish [--base <url>] [--token-env <NAME>]]\n  exit 0 ok · 1 usage/missing input · 2 shadowing Source / post-publish failure');
   process.exit(0);
 }
 const OUT = arg('out', 'stardust/rollout');
@@ -98,8 +100,9 @@ if (POST && !existsSync(TSV)) {
 if (POST) {
   const BASE = siteBase(config, arg('base', null));
   if (!BASE) { console.error('rollout redirects --post-publish: need --base <url> or rollout.json site.liveHost.'); process.exit(1); }
+  const AUTH = await siteAuthHeader(arg('token-env', null), 'rollout redirects'); // T12.2: a locked host, token by NAME to BASE only
   const head = async (url) => {
-    try { const r = await fetch(url, { method: 'HEAD', redirect: 'follow' }); return r.status; } catch { return 0; }
+    try { const r = await fetch(url, { method: 'HEAD', redirect: 'follow', headers: AUTH ? { authorization: AUTH } : {} }); return r.status; } catch { return 0; }
   };
   const probes = [];
   for (const p of pages) {

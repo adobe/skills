@@ -47,8 +47,8 @@ const INVENTORY = join(HERE, 'inventory.mjs');
 const SHARED = join(HERE, '..', '..', '..', 'evals', '_shared', 'fixture-post-migrate', 'stardust');
 const run = (args) => spawnSync(process.execPath, [VERIFY, ...args], { encoding: 'utf8' });
 // async variant for part B: the HTTP server lives in THIS process, so a blocking spawnSync would starve it
-const runAsync = (args) => new Promise((ok) => {
-  const c = spawn(process.execPath, [VERIFY, ...args]); let stdout = ''; let stderr = '';
+const runAsync = (args, env = {}) => new Promise((ok) => {
+  const c = spawn(process.execPath, [VERIFY, ...args], { env: { ...process.env, ...env } }); let stdout = ''; let stderr = '';
   c.stdout.on('data', (d) => { stdout += d; }); c.stderr.on('data', (d) => { stderr += d; });
   c.on('close', (status) => ok({ status, stdout, stderr }));
 });
@@ -250,6 +250,37 @@ const lines = (s) => s.split('\n').filter((l) => l.length);
   rmSync(T, { recursive: true, force: true });
 }
 
+// ---- D. locked delivery host (T12.2): the token rides by NAME to --base only ---------
+{
+  const SITE_TOKEN = 'sekrit-site-token-42';
+  const seen = [];
+  const srv = createServer((req, res) => {
+    seen.push({ method: req.method, url: req.url, auth: req.headers.authorization || '' });
+    if (req.headers.authorization !== `token ${SITE_TOKEN}`) { res.writeHead(401, { 'x-error': 'access-not-allowed' }); res.end(''); return; }
+    res.writeHead(200, { 'content-type': 'text/html' }); res.end('<html><body><main><h1>L</h1><a href="/b">b</a></main></body></html>');
+  });
+  await new Promise((ok) => srv.listen(0, '127.0.0.1', ok));
+  const BASE = `http://127.0.0.1:${srv.address().port}`;
+  const T = mkdtempSync(join(tmpdir(), 'verify-test-d-'));
+  const OUT = join(T, 'rollout');
+  const row = (slug, path, status) => ({ slug, path, title: slug, templateId: 't', source: { migratedHtml: null, metaJson: null, sourceHash: 'sha256:0' }, blocks: [], delivery: { status, deployedUrl: null, deployedAt: null, verifiedAt: null, error: null } });
+  const seed = () => { rmSync(OUT, { recursive: true, force: true }); mkdirSync(join(OUT, 'coverage'), { recursive: true }); writeFileSync(join(OUT, 'coverage', 'pages.json'), JSON.stringify({ pages: [row('l', '/locked', 'deployed'), row('b', '/b', 'deployed')] })); writeFileSync(join(OUT, 'rollout.json'), JSON.stringify({ site: { liveHost: 'https://main--x--y.aem.live/' }, lastRun: {} })); };
+  const status = (slug) => json(join(OUT, 'coverage', 'pages.json')).pages.find((p) => p.slug === slug).delivery;
+  seed();
+  let r = await runAsync(['--base', BASE, '--out', OUT]);
+  assert.equal(r.status, 1, 'anonymous against a locked host: every row fails (the governance state is visible, never silent)');
+  assert.match(status('l').error, /^HTTP 401 \(x-error: access-not-allowed\) — a locked site\? pass --token-env <credentials\.siteTokenEnv>$/, 'the reason names the remedy');
+  seed(); seen.length = 0;
+  r = await runAsync(['--base', BASE, '--out', OUT, '--token-env', 'SITE_TOKEN_X'], { SITE_TOKEN_X: SITE_TOKEN });
+  assert.equal(r.status, 0, `with the token by NAME the rows verify\n${r.stdout}${r.stderr}`);
+  assert.deepEqual([status('l').status, status('b').status], ['verified', 'verified']);
+  assert.ok(seen.length >= 2 && seen.every((q) => q.auth === `token ${SITE_TOKEN}`), 'every read to --base carried the token');
+  assert.doesNotMatch(r.stdout + r.stderr, /sekrit-site-token/, 'the value is never printed');
+  seed(); r = await runAsync(['--base', BASE, '--out', OUT, '--token-env', 'SITE_TOKEN_NOPE']);
+  assert.equal(r.status, 1); assert.match(r.stderr, /SITE_TOKEN_NOPE not found \(shell, \.\/\.env, ~\/\.claude\/\.env, ~\/\.env\) — the delivery host will be read anonymously/, 'an unresolvable name is one stderr note, then anonymous');
+  srv.close(); rmSync(T, { recursive: true, force: true });
+}
+
 // ---- siteBase: one helper, no https://https:// ------------------------------------
 assert.equal(siteBase({ site: { liveHost: 'https://main--x--y.aem.live/' } }), 'https://main--x--y.aem.live');
 assert.equal(siteBase({ site: { liveHost: 'main--x--y.aem.live' } }), 'https://main--x--y.aem.live');
@@ -257,4 +288,4 @@ assert.equal(siteBase({ site: { liveHost: 'http://main--x--y.aem.page' } }), 'ht
 assert.equal(siteBase({ site: { liveHost: 'main--x--y.aem.live' } }, 'http://127.0.0.1:9/'), 'http://127.0.0.1:9', '--base override wins verbatim (trailing slash stripped)');
 assert.equal(siteBase({}), null);
 
-console.log('verify.test: ok (runner-output contract on the shared fixture; --all guard, link classes, deployedPath, typed rows, --slug report dir, 429/503 retry → unverified/exit 2, project-copy layout, siteBase)');
+console.log('verify.test: ok (runner-output contract on the shared fixture; --all guard, link classes, deployedPath, typed rows, --slug report dir, 429/503 retry → unverified/exit 2, project-copy layout, locked host + --token-env, siteBase)');

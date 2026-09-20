@@ -10,7 +10,8 @@
  *     identity — never `valid · list: 404`, the site-bootstrap pointer printed); unreachable / 5xx → 1 (no verdict,
  *     `da: unreachable` in the block); an expired decode makes ZERO requests;
  *   - --need: remaining < need → 2;
- *   - --credentials: exact SITE_TOKEN slug match (LEDGERLINE vs LEDGERLINE_DEMO), schema keys, state.json merged
+ *   - --credentials: exact SITE_TOKEN slug match (LEDGERLINE vs LEDGERLINE_DEMO), schema keys incl. `daTarget`
+ *     (unchecked without a smoke, ok on 200, not-visible on 404 with exit 2, denied on 403), state.json merged
  *     (other keys kept, no token value inside), gh skipped / ok (mock GitHub) / expired;
  *   - usage: --help 0, unknown flag 1, --org without --repo 1.
  */
@@ -104,10 +105,16 @@ try {
   assert.deepEqual(siteTokenNamesIn({ cwd, home, env: {} }), ['SITE_TOKEN_LEDGERLINE', 'SITE_TOKEN_LEDGERLINE_DEMO', 'SITE_TOKEN_MERIDIAN_AIRWAYS']);
   r = await run(['--credentials', '--site', 'ledgerline', '--no-smoke', '--state', state]);
   assert.equal(r.status, 0, r.all);
-  assert.match(r.stdout, /credentials: da=ok daSource=repo-env daExpiresAt=\S+ siteTokenEnv=SITE_TOKEN_LEDGERLINE gh=skipped/);
+  assert.match(r.stdout, /credentials: da=ok daSource=repo-env daExpiresAt=\S+ daTarget=unchecked siteTokenEnv=SITE_TOKEN_LEDGERLINE gh=skipped/);
   let st = JSON.parse(readFileSync(state, 'utf8'));
   assert.equal(st.flow, 'replica', 'other keys kept');
-  assert.deepEqual(Object.keys(st.credentials).sort(), ['at', 'da', 'daExpiresAt', 'daSource', 'gh', 'siteTokenEnv']);
+  assert.deepEqual(Object.keys(st.credentials).sort(), ['at', 'da', 'daExpiresAt', 'daSource', 'daTarget', 'gh', 'siteTokenEnv']);
+  // daTarget says WHY step 8 refused when the token is fine: list 404 → not-visible (exit 2, da still ok); 200 → ok; 403 → denied
+  listStatus = 404; r = await run(['--credentials', '--site', 'ledgerline', '--org', 'o', '--repo', 'r', '--state', state]);
+  assert.equal(r.status, 2, r.all); assert.match(r.stdout, /credentials: da=ok daSource=repo-env daExpiresAt=\S+ daTarget=not-visible /); assert.equal(JSON.parse(readFileSync(state, 'utf8')).credentials.daTarget, 'not-visible');
+  listStatus = 200; r = await run(['--credentials', '--site', 'ledgerline', '--org', 'o', '--repo', 'r', '--state', state]); assert.equal(r.status, 0); assert.match(r.stdout, /daTarget=ok /);
+  listStatus = 403; r = await run(['--credentials', '--site', 'ledgerline', '--org', 'o', '--repo', 'r', '--state', state]); assert.equal(r.status, 2); assert.match(r.stdout, /da=expired .*daTarget=denied /);
+  listStatus = 200;
   assert.equal(st.credentials.siteTokenEnv, 'SITE_TOKEN_LEDGERLINE'); assert.doesNotMatch(readFileSync(state, 'utf8'), /aaa|bbb|ccc/);
   r = await run(['--credentials', '--site', 'ledgerline-demo', '--no-smoke', '--state', state]); assert.match(r.stdout, /siteTokenEnv=SITE_TOKEN_LEDGERLINE_DEMO/);
   r = await run(['--credentials', '--repo', 'ledger', '--org', 'o', '--no-smoke', '--state', state]);

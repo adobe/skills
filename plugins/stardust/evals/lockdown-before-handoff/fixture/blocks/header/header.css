@@ -1,0 +1,43 @@
+header .nav-wrapper {
+  background-color: var(--background-color);
+  width: 100%;
+  z-index: 2;
+  position: fixed;
+}
+
+header nav {
+  box-sizing: border-box;
+  display: grid;
+  grid-template:
+    'brand tools' var(--nav-height)
+    'sections sections' 1fr / auto 1fr;
+  align-items: center;
+  gap: 0 24px;
+  margin: auto;
+  max-width: 1248px;
+  height: var(--nav-height);
+  padding: 0 24px;
+  font-family: var(--body-font-family);
+}
+
+header nav .nav-brand {
+  grid-area: brand;
+  font-size: var(--heading-font-size-s);
+  font-weight: 700;
+  line-height: 1;
+}
+
+header nav .nav-sections {
+  grid-area: sections;
+  display: none;
+}
+
+header nav .nav-tools {
+  grid-area: tools;
+}
+
+@media (width >= 900px) {
+  header nav .nav-sections {
+    display: block;
+  }
+}

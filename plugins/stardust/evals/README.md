@@ -97,6 +97,7 @@ v2 evals without modification.
 | `runner-output-contract/`    | Batch reporting (`rollout` Phase E) | Runner-output contract on an offline full-site verify: ranked class table (class → count → worst example → file pointer) in the conversation, full per-page listing in `summary.json` + `summary.md` under `stardust/rollout/`, triage per class, hand-off names the summary files (rule: `context-hygiene.md` § Runner reports). |
 | `preflight-credentials/`     | Entry point (`deploy`)    | W1 pre-flight: token (present, unexpired, looked up through env → `.env` → `~/.claude/.env`), pushable code branch and scaffold are checked before any conversion work; one consolidated missing-prerequisite list with exact remediation; token value never printed; no push, no DA write, no fabricated token, no silent skip; `blocked` recorded in status.jsonl. |
 | `site-bootstrap-missing-origin/` | Entry point (`deploy`) | No EDS origin (no `fstab.yaml`, repo absent): the transport probe ran before any conversion work and reported the absent repo; `deploy/reference/site-bootstrap.md` was read before any `gh`/`curl` mutation; exactly one owner question carrying the `target` default; every remote-creating command printed before it ran; on the denial one `blocked` line whose `owner:` is the exact command, `Blocked on owner:` first in the reply, no variant retry, no fabricated preview URL, no DA `PUT`; no token value or env-file dump. |
+| `lockdown-before-handoff/` | Entry point (`rollout` Phase H) | Register row `lockdown: on` at the end of Phase G, no `DA_TOKEN`/`GH_PAT` on the runner: `deploy/scripts/lockdown.mjs` runs before any report text (never a hand-rolled `curl`/`gh repo edit`); its exit 2 is one `blocked` line whose `owner:` is the exact command, no `end` line; the hand-off ships with `Blocked on owner:` first and `site: open (blocked on owner)` as the gate table's last line; the row is never turned off; no token value, env dump or invented `SITE_TOKEN_*`; zero network. |
 | `preflight-credentials-expired/` | Entry point (`deploy`) | The instrument half of pre-flight: `da-token-check.mjs --credentials` runs before any conversion work and its verdict (exit 2, class-named refresh remedy) is the evidence; `state.json.credentials` written in the shipped shape (`da: expired`, `daSource: repo-env`, exact-match `siteTokenEnv`, `gh: skipped`); zero requests (decode proves expiry); one consolidated stop; no hand decode, no token value, no env dump. |
 | `phase-checkpoint-next-command/` | Phase close (`direct`) | Checkpoint block at phase end: completed files (all `ls`-verifiable) + a verified part + ONE verbatim next command + what a re-run would skip; journal `Next:` and `status.jsonl` `next` carry the same command; pages `extracted` → `directed` (rule: `run-status.md` § Phase close). |
 
@@ -193,7 +194,10 @@ whose harness cases skip when Playwright is unresolvable:
   first-token-only plain → exit 3 with `sectionMeta differ` / `first-only` (D7's
   fixture-verify), split tokens → `spaceStyle split`, a dropped ZWSP paragraph → `false`;
   an unexplained deviation (h1 text changed + an extra `<p>`, every rule `match`) → exit 3 with
-  `residual > 0` stored and one WARN — never a clean contract; `--probe` without a token → exit 2
+  `residual > 0` stored and one WARN — never a clean contract; `--runtime scripts/scripts.js` →
+  `contract.autoBlocks [{fn, trigger}]` from a static scan of the helpers `buildAutoBlocks()` calls
+  (the hero helper flagged `guard: h1 and picture must share a section`, other keys kept, no
+  `buildAutoBlocks` → `[]`, unreadable file → 1); `--probe` without a token → exit 2
   and the contract byte-identical; against the deploy-batch mock the request order is PUT →
   preview → GET → DELETE ×2 (never `/live/`), `--record` rewrites the fixture copy, preview 500 /
   plain 404 → exit 2; `contractStyleSplit()` / `resolveStyleSplit()` (flag > `#pipeline` > comma)
@@ -207,7 +211,35 @@ whose harness cases skip when Playwright is unresolvable:
   without `--files` is exit 1 "cannot list changed files" (never "nothing to lint"),
   `--syntax-only` prints the journal line and still runs syntax, only the files the run touched
   (changed + untracked) reach the tools, findings in them block (exit 2) while warnings pass,
-  `--fix` is forwarded.
+  `--fix` is forwarded; a crashed toolchain is never clean (an eslint shim exiting 2 on
+  `couldn't find the config … to extend from`, a stylelint shim exiting 78 on `No configuration
+  provided` → exit 2 `lint: unavailable (eslint exited 2 — …)`, a tool exiting 1 with an unmatched
+  message → one `exited 1 — <line>` finding), and a `--files` entry that does not exist is a
+  `not found` finding with a `syntax FAIL` row — never a TypeError, never handed to a tool.
+- `deploy/scripts/test/lockdown.test.mjs` — `lockdown.mjs` against one local server playing
+  admin (config / secrets / access) and both delivery hosts, plus a `gh` shim: `DA_TOKEN` missing or
+  a placeholder → exit 2 before any request; an env file that is not git-ignored → exit 2, zero
+  POSTs; config 404 / 401 → exit 2 "config not enabled", zero POSTs; the happy path (repo edit, one
+  `secrets.json` POST `{}`, `access/site.json` merged with the existing `allow` kept and `secretId`
+  appended, `SITE_TOKEN_<SLUG>` written to `.env` mode 600 with the value never printed,
+  `credentials.siteTokenEnv` merged, anonymous 401 / token 200 on both hosts → exit 0, last line
+  `SUMMARY lockdown …`); a live host answering 404 with the token still locked; anonymous 200 →
+  capped polls, exit 1; token rejected → 1; `gh` denied → exit 3 with `owner: gh repo edit …` and
+  the site half still locked; `--gh-mode print` → 3 without calling gh; `--no-repo`; the default
+  allow list from `git config user.email`; `--inventory` 8-column TSV (prefix filter, three
+  anonymous GETs per repo, no POST); `--help` lists every documented flag.
+- `stardust/scripts/test/preflight-transports.test.mjs` — `preflight-transports.mjs` with a
+  `gh` shim: repo 404 + org (or user) reachable → `gh-repo absent`, env.json `absent`, one
+  `No origin … bootstrap: deploy/reference/site-bootstrap.md` line, exit 0 (not a denial); repo +
+  owner 404 → unreachable / exit 1 without that line; repo 200 → ok; 403 → denied / exit 2 with
+  `Blocked on owner:`; the header enum names `absent`.
+- `rollout/scripts/site-auth.test.mjs` — the site-token plumbing on rollout's plain-fetch readers
+  against a locked local host: `lib.mjs siteAuthHeader()` (null without a name, `token …` by NAME,
+  an unresolvable name → one stderr note and anonymous), `redirects.mjs --post-publish` anonymous
+  → exit 2 / `--token-env` → exit 0 with every HEAD carrying the token, `media-reconcile.mjs` same-host
+  media `needs-credential` anonymously and `keep` with `--token-env` while an off-host URL never
+  receives the header; the value never on stdout/stderr. (`verify.test.mjs` part D pins the same
+  contract on `verify.mjs`: 401 rows name the `--token-env` remedy, the token verifies them.)
 - `deploy/scripts/test/code-sync-verify.test.mjs` — `code-sync-verify.mjs` against a temp
   git repo with a bare origin, a gzip origin and a fake admin: served == tree → 0 with one
   row per path and the `ok` record; a pushed change the origin serves stale → 124 (never 2)
@@ -223,7 +255,8 @@ whose harness cases skip when Playwright is unresolvable:
   `site-bootstrap.md`, never `valid · list: 404`; 5xx/network write `da: unreachable`),
   zero requests on a proven-expired token, `--need`, and the
   `--credentials` block (exact `SITE_TOKEN_<SLUG>` match — never a prefix — state
-  merge keeping other keys, GH_PAT probe ok / expired / skipped).
+  merge keeping other keys, GH_PAT probe ok / expired / skipped, `daTarget` unchecked /
+  ok / not-visible (404, exit 2 while `da` stays ok) / denied).
 - `doc-size.mjs` — byte caps on `SKILL.md` and `reference/*.md`, an
   `## Operator card` heading ahead of the procedure, the always-on total and
   the per-skill delta versus the last release tag; its temporary allowlist

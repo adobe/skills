@@ -59,32 +59,33 @@ page: `stardust deploy`.
 
 ## Setup
 
-1. Run the master skill's setup (`skills/stardust/SKILL.md` § Setup). **Flow
+1. Run the master's Setup (`skills/stardust/SKILL.md` § Setup). **Flow
    guard:** `stardust/state.json` without `flow` on a migration ask → do not
-   roll out; print the master's two-flow table and hand back to its routing
+   roll out; print the master's two-flow table, hand back to its routing
    (`skills/stardust/reference/state-machine.md` § Flow keys).
-2. Verify `stardust/migrated/` exists with at least one `*.html` page (full mode:
-   all pages; archetypes-only: the archetypes + a `state.json` with `type`
+2. Verify `stardust/migrated/` has at least one `*.html` page (full mode:
+   all pages; archetypes-only: the archetypes + `state.json` with `type`
    populated).
    **Gated-archetype precondition (`flow: replica`).** Run
    `node skills/replica/scripts/gate-ledger-lint.mjs --state stardust/state.json`,
    the reader of `stardust/replica/progress.json`
    (`skills/replica/reference/source-fidelity-gate.md` § Residual logging
-   format: every configured breakpoint under § Pass bar, or over the bar
-   only with named-class residuals carrying `artifacts[]` and `acceptedBy`;
-   a shape it cannot read is not a pass). Exit 2 lists each blocked type
-   with its archetype slug and the command to gate it (`$stardust replica
+   format: every configured breakpoint under § Pass bar, or over it only
+   with named-class residuals carrying `artifacts[]` and `acceptedBy`; an
+   unreadable shape is not a pass). Exit 2 lists each blocked type
+   with its archetype slug and the gating command (`$stardust replica
    <archetype>`): neither fan out its siblings nor `POST /live/` any of
    them; other types proceed. Hands-off never bypasses a blocked type (it
    may self-accept only the table's permanent classes as
    `hands-off-policy:<class>`); thresholds are the gate's.
 3. Verify the EDS/AEM target is ready exactly as `deploy` requires (project
-   scaffolding, `DA_TOKEN`, code branch pushable). `rollout` adds no new transport.
+   scaffolding, `DA_TOKEN`, code branch pushable); no origin → `../deploy/reference/site-bootstrap.md`
+   at Setup. `rollout` adds no new transport.
 4. If `state.json.handsOff` is true (`skills/stardust/SKILL.md` § Hands-off
-   mode), run full-auto: no per-phase pauses; every gate and verify step runs
-   unchanged. A wave close writes the journal entry, the `status.jsonl` `end`
-   line and the phase commit, then starts the next wave in the same turn — it
-   never ends the turn (master § Hands-off mode → Turn-end contract).
+   mode): full-auto, no per-phase pauses, every gate and verify step unchanged.
+   A wave close writes the journal entry, the `status.jsonl` `end` line and the
+   phase commit, then starts the next wave in the same turn — never ending it
+   (master § Hands-off mode → Turn-end contract).
 
 ## Procedure
 
@@ -97,10 +98,10 @@ node skills/rollout/scripts/inventory.mjs --site-url <source-url>
 
 Writes `coverage/pages.json` (one row per page: slug, delivered `path`,
 `templateId`, `blocks`, `sourceHash`, `delivery` status), `coverage/templates.json`
-(pages grouped by template), and `rollout.json` (target + DA config + `lastRun`).
+(pages by template), and `rollout.json` (target + DA config + `lastRun`).
 `--content <eds-root>/content` adds the chrome documents, fragments and sheets
-as typed rows (`delivery.type` fragment | index — kept across runs, on the
-roster for verify); `--redirects stardust/redirects.tsv` records the served
+as typed rows (`delivery.type` fragment | index — kept across runs, on verify's
+roster); `--redirects stardust/redirects.tsv` records the served
 path of a renamed page (`delivery.deployedPath`).
 
 **Archetypes-only mode** (`--state`): pages only in `state.json` are seeded
@@ -135,13 +136,13 @@ node skills/rollout/scripts/plan.mjs     # → plan.json + a readable conversion
 ### Phase B2 — Dynamic surface (PRE-IMPORT GATE — verify the inventory)
 
 **Before Phase C.** `stardust/dynamic-features.md` (from prepare-migration 4.5 or replica
-Phase 2) must exist with a disposition on every row; verify it against fresh evidence here —
+Phase 2) must exist with a disposition on every row; verify it against fresh evidence —
 `dynamics-detect.mjs --from-state … --reach stardust/current` and `dynamics-plan.mjs
 --target-origin <live host> --migrated stardust/migrated` (host-bound APIs, rows the capture
-already delivered). New evidence → new rows. Then `dynamics-plan.mjs --lint` (operator card) must
-exit 0 (every inventory row placed exactly once in the plan) before Phase C. The listings contract (per-type `<meta>` fields +
+already delivered). New evidence → new rows. Then `dynamics-plan.mjs --lint` (operator card) exits 0
+(every inventory row placed exactly once) before Phase C. The listings contract (per-type `<meta>` fields +
 `helix-query.yaml`) is emitted by Phase C's `deploy` brief per page: retrofitting metadata across
-published pages is a second migration. Missing inventory → run the stardust `dynamics` skill Phases 1–3 now.
+published pages is a second migration. Missing inventory → run the `dynamics` skill Phases 1–3 now.
 
 ### Phase C — Deliver the site (drive `deploy` per page, per the plan)
 
@@ -157,7 +158,7 @@ lint blocked are not in `plan.json`. For each page:
    `edsBlockName`. **The brief MUST carry the Experience Workspace
    editability contract** (`skills/deploy/reference/block-js-scaffold.md` § Experience Workspace editability contract, EW1–EW10): every converted block
    moves authored elements into wrappers and passes the
-   EW gate (`block-roundtrip --ew`) before it counts as delivered. Code-writing
+   EW gate (`block-roundtrip --ew`) before it is delivered. Code-writing
    waves commit only after `node skills/deploy/scripts/code-sync-verify.mjs --lint`
    exits 0 (`../deploy/da-deploy-protocol.md` § Code push gates).
 
@@ -294,7 +295,7 @@ Index-backed listings ship **document-first** (authored rows, index for non-text
 
 Language trees (`/fr/…`, `/en/…`) are parallel content trees that REUSE the same
 block library — only authored content and a little wiring change (language-routed
-chrome documents, per-language indexes and path-safety): `reference/multilingual.md`.
+chrome, per-language indexes, path-safety): `reference/multilingual.md`.
 
 ### Phase E — Full-site verify
 
@@ -396,15 +397,16 @@ staged findings flip to `fixed`.
 
 ### Phase H — Report
 
+Lockdown first (row `lockdown` on, after E–G): `lockdown.mjs --org <org> --repo <repo>`
+exit 0 — else `blocked` + `owner:` (`skills/deploy/reference/site-lockdown.md`).
 Hand-off shape: `skills/stardust/reference/handoff-report.md` — gate table first,
 source → target per page, report-check line last; review links open on the live
 host, the human logging in (`skills/deploy/da-deploy-protocol.md` § Site auth).
-Quote the vocabulary census in one line — `davids-model-lint.mjs content/ --json` → `census.styles.length` section styles, `census.blocks.length` blocks (the conversion log's locked vocabulary).
+Quote the vocabulary census in one line (`davids-model-lint.mjs content/ --json` → `census.styles.length` styles, `census.blocks.length` blocks).
 
-Include the dynamic parity table (`stardust/qa/dynamics-report.md`, from Phase D2)
-next to the delivery ledger: per feature its class, reach, status, owner decision
-and the replayed check — honest about what the site *does*, not only *shows*.
-`dynamics-check.mjs --origin <live host> --gate` must exit 0 before the report closes
+Include the dynamic parity table (`stardust/qa/dynamics-report.md`, Phase D2) next
+to the delivery ledger — per feature: class, reach, status, owner decision, replayed check.
+`dynamics-check.mjs --origin <live host> --gate` exits 0 before the report closes
 (exit 3 = `parity.json` missing or a `self` row still pending — `skills/dynamics/reference/parity-report.md`
 rule 8); hands-off sets unshipped `self` rows to `interim` with a one-line reason
 and a named owner decision, never `pending`. The report lists unplayable media by

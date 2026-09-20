@@ -18,7 +18,14 @@
  *   - scoping: after `git commit` of everything, changing only cards.js + cards.css passes exactly those
  *     two paths to the shims (untracked files count, untouched files never); --files overrides;
  *   - findings block: a changed `bad-cards.js` → exit 2 with the shim's error line; warnings-only (exit 0
- *     from the tool) pass; nothing to lint → exit 0; --json shape; --help 0.
+ *     from the tool) pass; nothing to lint → exit 0; --json shape; --help 0;
+ *   - a crashed toolchain is never clean (the reviewer-reproduced defect): an eslint shim exiting 2 with
+ *     `ESLint couldn't find the config "airbnb-base" to extend from` and a stylelint shim exiting 78 with
+ *     `Error: No configuration provided` → exit 2 `lint: unavailable (eslint exited 2 — …; stylelint exited
+ *     78 — …)`, never `file(s) clean`; a tool exiting 1 with an unmatched message → one `exited 1 — <line>`
+ *     finding, exit 2;
+ *   - a `--files` entry that does not exist (.js or .css) → `not found` finding, `syntax FAIL` row, exit 2,
+ *     the file never passed to a tool, no TypeError.
  */
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -45,6 +52,12 @@ const shim = (name, mode = 'ok') => {
   mkdirSync(dirname(p), { recursive: true });
   const body = mode === 'parser'
     ? `#!/bin/sh\necho "$0 $@" >> "${log}"\necho "Oops! Something went wrong! :(\\nESLint: 8.57.1\\nError: Failed to load parser '@babel/eslint-parser' declared in '.eslintrc.js': Cannot find module '@babel/core/package.json'" >&2\nexit 2\n`
+    : mode === 'noconfig-eslint'
+    ? `#!/bin/sh\necho "${name} $@" >> "${log}"\necho "\nOops! Something went wrong! :(\n\nESLint: 8.57.1\n\nESLint couldn't find the config \\"airbnb-base\\" to extend from. Please check that the name of the config is correct." >&2\nexit 2\n`
+    : mode === 'noconfig-stylelint'
+    ? `#!/bin/sh\necho "${name} $@" >> "${log}"\necho "Error: No configuration provided for $1" >&2\nexit 78\n`
+    : mode === 'odd-exit'
+    ? `#!/bin/sh\necho "${name} $@" >> "${log}"\necho "shim: something unexpected happened" >&2\nexit 1\n`
     : `#!/bin/sh\necho "${name} $@" >> "${log}"\nfor f in "$@"; do case "$f" in *bad*) echo "$f\\n  1:1  error  shim: file named bad  no-bad"; echo "✖ 1 problem (1 error, 0 warnings)"; exit 1;; *warn*) echo "$f\\n  1:1  warning  shim warning  no-warn"; echo "✖ 1 problem (0 errors, 1 warning)";; esac; done\nexit 0\n`;
   writeFileSync(p, body); chmodSync(p, 0o755);
 };
@@ -127,6 +140,30 @@ try {
   rmSync(log, { force: true }); r = run('--fix'); assert.equal(r.status, 0); assert.match(readFileSync(log, 'utf8'), /stylelint --fix blocks\/cards\/warn-cards\.css/);
   r = run('--json'); const j = JSON.parse(r.stdout.slice(r.stdout.indexOf('{'), r.stdout.lastIndexOf('}') + 1)); assert.deepEqual(Object.keys(j.files), ['blocks/cards/warn-cards.css']); assert.equal(j.unavailable, null);
   const lf = lintFiles(root, null); assert.deepEqual(lf, { js: [], css: ['blocks/cards/warn-cards.css'] });
+
+  // 5. a crashed toolchain is never clean — the two real failure shapes of a pruned node_modules
+  rmShims(); rmSync(log, { force: true });
+  shim('eslint', 'noconfig-eslint'); shim('stylelint', 'noconfig-stylelint');
+  r = run('--files', 'blocks/cards/cards.js,blocks/cards/cards.css');
+  assert.equal(r.status, 2, `crashed tools must be exit 2, never clean: ${r.stdout}${r.stderr}`);
+  assert.doesNotMatch(r.stdout, /file\(s\) clean/);
+  assert.match(r.stdout, /^lint: unavailable \(eslint exited 2 — ESLint couldn't find the config "airbnb-base" to extend from.*; stylelint exited 78 — Error: No configuration provided/m);
+  assert.match(r.stderr, /toolchain did not reach a verdict .* Unavailable is never clean \(exit 2\)/);
+  assert.match(r.stdout, /blocks\/cards\/cards\.js {2}syntax ok · eslint \?/, 'the row shows no verdict, not a pass');
+  r = run('--files', 'blocks/cards/cards.js,blocks/cards/cards.css', '--json'); assert.equal(r.status, 2); const jc = JSON.parse(r.stdout.slice(r.stdout.indexOf('{'), r.stdout.lastIndexOf('}') + 1)); assert.match(jc.unavailable, /eslint exited 2/);
+  // any other non-zero exit with no finding line is still a finding, never silence
+  rmShims(); shim('eslint', 'odd-exit'); shim('stylelint');
+  r = run('--files', 'blocks/cards/cards.js,blocks/cards/cards.css');
+  assert.equal(r.status, 2, r.stdout + r.stderr); assert.match(r.stdout, /✗ eslint: exited 1 — shim: something unexpected happened/); assert.doesNotMatch(r.stdout, /clean/);
+  // 6. a --files entry that does not exist: a finding, never a crash, never handed to a tool
+  rmShims(); rmSync(log, { force: true }); shim('eslint'); shim('stylelint');
+  r = run('--files', 'blocks/cards/cards.js,blocks/nope/nope.js,blocks/nope/nope.css');
+  assert.equal(r.status, 2, `missing files are findings: ${r.stdout}${r.stderr}`);
+  assert.doesNotMatch(r.stderr, /TypeError/);
+  assert.match(r.stdout, /blocks\/nope\/nope\.js {2}syntax FAIL/); assert.match(r.stdout, /blocks\/nope\/nope\.css {2}syntax FAIL/);
+  assert.match(r.stdout, /✗ blocks\/nope\/nope\.js: not found under /); assert.match(r.stdout, /✗ blocks\/nope\/nope\.css: not found under /);
+  assert.deepEqual(new Set(shimPaths('eslint')), new Set(['blocks/cards/cards.js']), 'the missing .js never reaches eslint');
+  assert.deepEqual(shimPaths('stylelint'), [], 'the missing .css never reaches stylelint (no css left → not invoked)');
 
   // usage
   assert.equal(run('--help').status, 0);

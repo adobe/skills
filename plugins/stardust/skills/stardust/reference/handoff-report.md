@@ -45,6 +45,11 @@ never the prose. One row per archetype (or page) per breakpoint:
   table; they are not re-measured silently and not presented as fresh.
 - "N/N verified" totals, when printed, come *after* the table and count
   only PASS rows in the published-origin regime.
+- The table's last line is the site's access state from the register row
+  `lockdown`: `site: locked (lockdown.mjs exit 0 <at>)` · `site: open (row
+  lockdown off — <reason>)` · `site: open (blocked on owner)` — the third
+  form means the hand-off leads with `Blocked on owner:` and carries the
+  printed `gh repo edit …` (`skills/deploy/reference/site-lockdown.md`).
 
 ---
 

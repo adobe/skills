@@ -11,11 +11,11 @@ metadata:
 
 ## Operator card
 
-Read this card, then the one section you are at — never the whole skill. Every `reference/` chapter opens with its own TOC; read one `##` at a time. No deploy script ships a deadline flag; long steps run in the background with a progress file (Step 7).
+Read this card, then the one section you are at — never the whole skill. Every `reference/` chapter opens with a TOC; read one `##` at a time. No deploy script ships a deadline flag; long steps run in the background with a progress file (Step 7).
 
 | # | Step | Command / artefact | Pass bar |
 |---|---|---|---|
-| 0 | Probes | `node -e "import('playwright').then(()=>process.exit(0))"`; read the target's `scripts/aem.js` + `scripts/scripts.js` → `stardust/runtime-contract.json`; `pipeline-mimic.mjs --probe --org <org> --repo <repo> --branch <branch>` → `#pipeline` (optional) | contract written before any code |
+| 0 | Probes | `node -e "import('playwright').then(()=>process.exit(0))"`; read the target's `scripts/aem.js` + `scripts/scripts.js` → `stardust/runtime-contract.json`; `pipeline-mimic.mjs --runtime scripts/scripts.js` → `#autoBlocks`; `--probe --org <org> --repo <repo> --branch <branch>` → `#pipeline` (optional) | contract written before any code |
 | 1 | Audit | pre-render JSX to `stardust/.work/prerender/`; `node skills/deploy/scripts/style-fingerprint.mjs "file://<abs>/<proto>.html"` | per-page section list + variation manifest |
 | 2 | Names + reuse | D1/D11 triage per section → `stardust/eds-conversion-log.md` | names locked in writing before any block code |
 | 2b | Schema + tier | `node skills/deploy/scripts/section-schema.mjs "<protoURL>" --out stardust/eds-schema/<page>.json` | schema + decode tier recorded per section |
@@ -44,25 +44,25 @@ Outputs: `blocks/<name>/<name>.{js,css}` · `content/**/*.html` (+ `nav.html`, `
 | 8 | `reference/block-js-scaffold.md` § 8. Block JS scaffold, § Experience Workspace editability contract, § Runtime order, § Decode rules; `da-deploy-protocol.md` § Code push gates before the commit |
 | 9 | `reference/content-page-scaffold.md` § 9. Content page scaffold; `reference/encode-contract.md` § Authoring shapes, § Pipeline-sensitive shapes, § Images |
 | QA | `reference/local-qa.md` § Gates, § Local-QA scope boundary; `reference/pipeline-facts.md` § Local emulation, § Probe |
-| D | `da-deploy-protocol.md` § Delivery pipeline, § Deploy (DA Source API + curl), § Two clocks; § DA_TOKEN lifecycle (`da-token-check.mjs`) before the first token read |
+| D | `da-deploy-protocol.md` § Delivery pipeline, § Deploy (DA Source API + curl), § Two clocks; § DA_TOKEN lifecycle (`da-token-check.mjs`) before the first token read; `reference/site-lockdown.md` before the hand-off |
 | 10 | `reference/deployed-reconcile.md` § The six reconcile checks, § Reading content-diff; `da-deploy-protocol.md` § Code push gates |
 | any failure | `reference/anti-patterns.md` (by group); `reference/checklist.md` before each DA push |
 
 ## When to use
 
 The user has:
-1. **Per-page styled HTML prototypes** — one file per page, each carrying its own CSS. Accept any of these shapes:
+1. **Per-page styled HTML prototypes** — one file per page with its own CSS, in any of these shapes:
    - **Single-file with inline `<style>`** and `:root` tokens + semantic `<section class="…">` — convert directly.
-   - **External per-page `.css`** (the `<style>` lives in a sibling stylesheet). Read the linked CSS as you would an inline `<style>`.
+   - **External per-page `.css`** (a sibling stylesheet) — read it as you would an inline `<style>`.
    - **`<x-dc>` document-content with everything inline-styled** — lift inline styles into a scoped block stylesheet.
-   - **React/JSX prototypes** (an HTML shell that mounts `.jsx` components at runtime). **Pre-render to static HTML first** (run it, or screenshot + read the JSX to reconstruct the DOM); you cannot decorate a shell that has no server-rendered `<main>`.
+   - **React/JSX prototypes** (a shell mounting `.jsx` at runtime): **pre-render to static HTML first** (run it, or screenshot + read the JSX); a shell with no server-rendered `<main>` cannot be decorated.
    Discover the prototype path (`stardust/prototypes/**`, `samples/<Name>/`); never hard-code it.
-2. An EDS project at the repo root — **vanilla `aem-boilerplate`** (`github.com/adobe/aem-boilerplate`): `scripts/aem.js` + `scripts/scripts.js`, `blocks/` with `header`/`footer`/`fragment`, `styles/styles.css` + `styles/fonts.css`, `head.html`. This is the ONLY runtime this skill targets — no runtime files are ever ported, vendored, or edited.
+2. An EDS project at the repo root — **vanilla `aem-boilerplate`** (`github.com/adobe/aem-boilerplate`): `scripts/aem.js` + `scripts/scripts.js`, `blocks/` with `header`/`footer`/`fragment`, `styles/styles.css` + `styles/fonts.css`, `head.html`. The ONLY runtime this skill targets — runtime files are never ported, vendored or edited.
 3. A goal to convert: prototypes → authorable EDS blocks + EDS content pages under `content/**`.
 
-Prototypes but no EDS origin (repo, `fstab.yaml`, Code Sync): `reference/site-bootstrap.md` at Setup — one question with the `target` default; the clone of the new repo is the scaffold. EDS but no prototypes: this skill doesn't apply.
+No EDS origin yet (repo, `fstab.yaml`, Code Sync): `reference/site-bootstrap.md` at Setup — one question, `target` default; the new repo's clone is the scaffold. EDS but no prototypes: this skill doesn't apply.
 
-**Flow guard (stardust projects).** When `stardust/state.json` exists but has no `flow` and the ask is a migration (a URL plus "migrate" / "to EDS" / "re-platform"), stop before Step 1: print the master skill's two-flow table (`skills/stardust/SKILL.md` § Two migration flows) and hand back to its routing, which stamps `flow` (`skills/stardust/reference/state-machine.md` § Flow keys). Hand-authored prototypes with no `state.json` are this skill's standalone use.
+**Flow guard (stardust projects).** `stardust/state.json` without `flow` on a migration ask (a URL plus "migrate" / "to EDS" / "re-platform"): stop before Step 1, print the master's two-flow table (`skills/stardust/SKILL.md` § Two migration flows) and hand back to its routing, which stamps `flow` (`skills/stardust/reference/state-machine.md` § Flow keys). Hand-authored prototypes with no `state.json` are the standalone use.
 
 ## Target runtime — vanilla aem-boilerplate (compressed)
 
@@ -99,11 +99,11 @@ When `emptySectionCollapse` is true, add `main .section:empty { display: none }`
 **One distinct visual PATTERN = one EDS block — and a section with NO pattern is NOT a block at all.** The content structure that lands in DA follows **David's Model** (`davids-model.md` — the 15 rules mapped to this skill's contracts; cited as `D#N`). Its first rule shapes everything here:
 
 - **D1 — blocks aren't ideal for authoring.** A block is a table an author must maintain. A section of plain prose — heading, paragraphs, an image, CTAs, with **no repeating units and no bespoke interactive structure** — is **DEFAULT CONTENT** in its own section, never wrapped in a block; its skin rides a minimal section-metadata `style` value (Step 3) and its semantics stay native `<h2>`/`<p>`/`<picture>`/`<a>`. Never wrap bare default content in a `text`/`heading`/`image` block (the D1 anti-pattern).
-- **Blocks are for structure default content can't express:** repeating units (cards, FAQ, logos, team), bespoke compositions (a countdown, a stat band, a cinematic hero) and interactive components — one distinct prototype pattern = one block. Don't abstract speculatively across prototypes unless sections are the same pattern — bespoke CSS can't be wrongly shared (`reference/anti-patterns.md` § Structure and decisions).
+- **Blocks are for structure default content can't express:** repeating units (cards, FAQ, logos, team), bespoke compositions (a countdown, a stat band, a cinematic hero) and interactive components — one distinct prototype pattern = one block. Don't abstract speculatively across prototypes unless sections share a pattern — bespoke CSS can't be wrongly shared (`reference/anti-patterns.md` § Structure and decisions).
 
 **The one deliberate exception — collapse SAME-PATTERN sections into one block + VARIANT classes.** When two or more sections share a content pattern (card grids, prose/CTA bands, quotes, accordions) and differ only in skin, emit ONE canonical block (`cards`, `text`, `quote`, `accordion`) with each section's look behind a variant class (`class="cards brands"`). The block JS stays generic (classify cells by content); only the CSS differs per variant. (D9.) Keep genuinely-unique sections bespoke; budget for variant CSS — some grids are count-specific.
 
-The prototype is the visual spec. The block exists to AUTHOR its content — **The ENCODE contract** below says what well-authored content looks like; `reference/anti-patterns.md` how a block defensively PARSES it.
+The prototype is the visual spec; the block AUTHORS its content — **The ENCODE contract** below says what well-authored content looks like, `reference/anti-patterns.md` how a block defensively PARSES it.
 
 ## Output you will produce
 
@@ -113,7 +113,7 @@ For a typical 5–10 page site:
 - **One EDS content page per prototype page.**
 - **Nav + footer documents** at `content/nav.html` and `content/footer.html` — authored content deployed like any page, fetched by the stock `header`/`footer` blocks (D12).
 - **Per-site `blocks/header` + `blocks/footer` CSS/JS** reproducing the prototype's chrome (Step 6).
-- **Updated `styles/styles.css`** with brand tokens lifted from the prototype's `:root`, a reset, the EDS section scaffold, a global button system (Step 5), and the styles for the few section-metadata `style` values default-content sections use. Nothing more.
+- **Updated `styles/styles.css`** with brand tokens lifted from the prototype's `:root`, a reset, the EDS section scaffold, a global button system (Step 5) and the few section-metadata `style` values default-content sections use. Nothing more.
 - **No shared utility modules, wave systems or motion library** — keep them inside the owning block.
 
 ## The ENCODE contract — ten bullets
@@ -177,19 +177,19 @@ Every page carries a `metadata` block — in the first content section, never al
 
 ## Local QA before deploy (no DA) — in brief
 
-`aem up --html-folder content` is not a preview. Build the harness (`node skills/deploy/scripts/build-harness.mjs content/<path>.html stardust/.work/harness/page.html`; it applies `pipeline-mimic.mjs`, counts printed per run) and open it through the dev server (`npx -y @adobe/aem-cli up --no-open`). The DA-write bar (`davids-model-lint` exit 0 + the whole-page round-trip gate clean: `block-roundtrip.mjs` with no `--blocks`, `--ew` on) is met → PUT + preview at once; then, on the harness as the fast pre-check and on the preview origin as the gate (thresholds unchanged): the edit-mode simulation (`ew-editability-probe.mjs --content content/<page>.html --simulate-editor --verbose`) shows no drift; an editability conversion of an already-shipped block proves pixel parity; the stock `qa-gate.mjs <harnessURL> --schema stardust/eds-schema/<page>.json` exits 0 — never hand-roll a probe (#101); its full-bleed pass is derived from block CSS, `--full-bleed` overrides. Scope boundary (#101): CLS, the advisory `content-diff` and per-page chrome overrides are verified on the DEPLOYED URL only, and the visual eyeball also happens on the deployed page (#23, #105). Capture at a real viewport with scrolling (#19), drive interactive blocks (#28), QA wide (#13). Before this step read `reference/local-qa.md` § Gates and § Local-QA scope boundary.
+`aem up --html-folder content` is not a preview. Build the harness (`node skills/deploy/scripts/build-harness.mjs content/<path>.html stardust/.work/harness/page.html`; applies `pipeline-mimic.mjs`, counts printed) and open it via the dev server (`npx -y @adobe/aem-cli up --no-open`). The DA-write bar (`davids-model-lint` exit 0 + the whole-page round-trip gate clean: `block-roundtrip.mjs` with no `--blocks`, `--ew` on) is met → PUT + preview at once; then, on the harness as pre-check and on the preview origin as the gate (thresholds unchanged): the edit-mode simulation (`ew-editability-probe.mjs --content content/<page>.html --simulate-editor --verbose`) shows no drift; an editability conversion of an already-shipped block proves pixel parity; the stock `qa-gate.mjs <harnessURL> --schema stardust/eds-schema/<page>.json` exits 0 — never hand-roll a probe (#101); full-bleed derives from block CSS, `--full-bleed` overrides. Scope boundary (#101): CLS, the advisory `content-diff`, per-page chrome overrides and the visual eyeball are verified on the DEPLOYED URL only (#23, #105). Capture at a real viewport with scrolling (#19), drive interactive blocks (#28), QA wide (#13). Before this step read `reference/local-qa.md` § Gates and § Local-QA scope boundary.
 
 ## Deploy (DA Source API, from a local agent)
 
-The stages (code push with forced Code Sync, `localize-links.mjs` over the WHOLE tree after every generator, `sanitise.js`, `PUT`, `POST /preview/` then `/live/`) and the per-page atomic contract (`davids-model-lint` exit 0 → PUT → preview → live → delivered `.plain.html` asserted → computed-style guard on the live URL, every visible image non-zero (#122) → AI-readability gate (#100) → only then the ledger flips to `deployed`) run through `node skills/deploy/scripts/deploy-batch.mjs --org <org> --repo <repo> --branch <branch> --content content` (#4); preview follows the DA-write bar, before any harness pixel iteration, and the first status line names the preview URL `deploy-batch.mjs` prints per page — publish is a separate `--publish` on PASS (D1/D16); a production-affecting action is its own command, never joined with edits or commits in one shell string. Token hygiene (#16) and the `DA_TOKEN` lifecycle (§ DA_TOKEN lifecycle: preflight, exit 3 on a mid-batch `401` → re-run `next`) are part of the contract. Two clocks — code first on the ref the user will look at, then content. Before this step read `da-deploy-protocol.md` § Delivery pipeline, § Deploy (DA Source API + curl) and § Two clocks.
+The stages (code push with forced Code Sync, `localize-links.mjs` over the WHOLE tree after every generator, `sanitise.js`, `PUT`, `POST /preview/` then `/live/`) and the per-page atomic contract (`davids-model-lint` exit 0 → PUT → preview → live → delivered `.plain.html` asserted → computed-style guard on the live URL, every visible image non-zero (#122) → AI-readability gate (#100) → only then the ledger flips to `deployed`) run through `node skills/deploy/scripts/deploy-batch.mjs --org <org> --repo <repo> --branch <branch> --content content` (#4); preview follows the DA-write bar, before any harness pixel iteration, and the first status line names the preview URL the driver prints per page — publish is a separate `--publish` on PASS (D1/D16); a production-affecting action is its own command, never joined with edits or commits in one shell string. Token hygiene (#16) and the `DA_TOKEN` lifecycle (§ DA_TOKEN lifecycle: preflight, exit 3 on a mid-batch `401` → re-run `next`) are part of the contract. Two clocks — code first on the ref the user will look at, then content. Before this step read `da-deploy-protocol.md` § Delivery pipeline, § Deploy (DA Source API + curl) and § Two clocks.
 
 ## Step 10 — Reconcile on the DEPLOYED URL (content-diff ADVISORY + eyeball + CLS)
 
-After deploy, reconcile each page against its prototype on the DEPLOYED URL only (#78, #101). The atomic contract ran the load-bearing automated gates; Step 10 adds six checks: the advisory `content-diff` structural summary (summary line first; per-node findings are leads to verify by eye), the deployed full-page eyeball at desktop + mobile (#23, #105 — the load-bearing visual check), the fetch-delayed CLS probe (#100), the chrome crop gate on the header and footer bands (`skills/replica/scripts/crop-compare.mjs`, diagnose with `chrome-parity.mjs` first, #115), the wide-viewport box check for frozen-vs-fluid widths (#116) and geometry-fix verification hygiene (#117). Also grep `blocks/` for fixed-asset URLs (#44). Gate only after `code-sync-verify.mjs --org <org> --repo <repo> --ref <branch>` exits 0 (every changed code path served == working tree; 124 = pending, 3 = push first — neither a gate result) and `served-check.mjs <page-url> --grep <marker> --wait 180` exits 0. Step 10 is per-page against the prototype; the site-wide sweep after rollout is the read-only `qa` skill. Before this step read `reference/deployed-reconcile.md` § The six reconcile checks and § Reading content-diff.
+After deploy, reconcile each page against its prototype on the DEPLOYED URL only (#78, #101); the atomic contract ran the automated gates, Step 10 adds six checks: the advisory `content-diff` structural summary (summary line first; per-node findings are leads to verify by eye), the deployed full-page eyeball at desktop + mobile (#23, #105 — the load-bearing check), the fetch-delayed CLS probe (#100), the chrome crop gate on the header and footer bands (`skills/replica/scripts/crop-compare.mjs`, diagnose with `chrome-parity.mjs` first, #115), the wide-viewport box check for frozen-vs-fluid widths (#116) and geometry-fix verification hygiene (#117). Also grep `blocks/` for fixed-asset URLs (#44). Gate only after `code-sync-verify.mjs --org <org> --repo <repo> --ref <branch>` exits 0 (every changed code path served == working tree; 124 = pending, 3 = push first — neither a gate result) and `served-check.mjs <page-url> --grep <marker> --wait 180` exits 0. Step 10 is per-page; the site-wide sweep after rollout is the read-only `qa` skill. Before this step read `reference/deployed-reconcile.md` § The six reconcile checks and § Reading content-diff.
 
 ## When you finish
 
-Update `stardust/eds-conversion-log.md` (create if absent): final block inventory, the locked vocabulary (`davids-model-lint --json` `census`), decisions locked, anti-patterns avoided, site-specific notes. Close with the hand-off shape in `../stardust/reference/handoff-report.md` § Gate table first.
+Update `stardust/eds-conversion-log.md` (create if absent): final block inventory, the locked vocabulary (`davids-model-lint --json` `census`), decisions locked, anti-patterns avoided, site-specific notes. **Lockdown** (row `lockdown` on): after the last anonymous gate, `lockdown.mjs --org <org> --repo <repo>` exit 0 — else `blocked` + `owner:`, no `end` (`reference/site-lockdown.md`). Close with the hand-off shape in `../stardust/reference/handoff-report.md` § Gate table first.
 
 ## References
 
@@ -214,6 +214,7 @@ Chapters (full text of the sections this core compresses — read by `##`, each 
 - `reference/pipeline-facts.md` — what the DA → EDS pipeline rewrites on delivery: fact, remedy, lint id; § Local emulation, § Probe.
 - `reference/ship-script.md` — the one-command ship script a hands-off run writes when a push or publish is denied: merge → push → explicit publish → post-ship gate → issue comment.
 - `reference/site-bootstrap.md` — no EDS origin yet: repo, `fstab.yaml`, Code Sync, seed + preview, `state.json.site.eds`.
+- `reference/site-lockdown.md` — private repo + site auth before the hand-off: `lockdown.mjs`, gate contract.
 
 Bundled contracts:
 

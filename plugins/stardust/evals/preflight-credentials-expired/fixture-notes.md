@@ -19,17 +19,19 @@ its `fixture-notes.md` for every part's origin) plus one file: `.env`.
 
 ## Keep absent on the runner host
 
-`DA_TOKEN` in the shell env, `~/.claude/.env` and `~/.env` — the resolution
-order is shell → `./.env` → `~/.claude/.env` → `~/.env`, so a host token
-would win over the fixture's and change the verdict. `env -u DA_TOKEN` and a
-temporary `HOME` are enough. No `.git` (see the parent fixture's notes).
+`DA_TOKEN` **and `GH_PAT`** in the shell env, `~/.claude/.env` and `~/.env` —
+the resolution order is shell → `./.env` → `~/.claude/.env` → `~/.env`, so a
+host token would win over the fixture's and change the verdict, and a host
+`GH_PAT` turns `gh: skipped` into `gh: ok|expired` (one GitHub request), which
+fails `credentials_key_written_from_output`. `env -u DA_TOKEN -u GH_PAT` and
+a temporary `HOME` are enough. No `.git` (see the parent fixture's notes).
 
 ## Expected instrument output (for the judge)
 
 ```
 node skills/deploy/scripts/da-token-check.mjs --credentials --site larkspur-mutual --state stardust/state.json
 DA_TOKEN: expired <N>h ago (source: repo-env) — refresh it in ./.env (log in at https://da.live) and re-run the same command
-credentials: da=expired daSource=repo-env daExpiresAt=2025-09-17T05:20:00.000Z siteTokenEnv=SITE_TOKEN_LARKSPUR_MUTUAL gh=skipped
+credentials: da=expired daSource=repo-env daExpiresAt=2025-09-17T05:20:00.000Z daTarget=unchecked siteTokenEnv=SITE_TOKEN_LARKSPUR_MUTUAL gh=skipped
 credentials → stardust/state.json
 exit 2
 ```

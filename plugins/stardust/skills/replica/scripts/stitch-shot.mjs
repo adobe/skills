@@ -212,7 +212,7 @@ if (!LIVE_SESSION) {
   console.error('stitch-shot error: live-session.mjs not found (looked in ../../diff/scripts/ and ../diff/). Copy the diff skill\'s scripts dir alongside this one (replica SKILL.md § Setup).');
   process.exit(1);
 }
-const { REAL_CHROME_UA, TIERS, isLiveHttpUrl, launchLadder, parseHeadedFlag, resolveStartTier, newLiveContext, gotoLive, sessionContextOptions, parseSolveWaitFlag, challengeInDom, captureSanity, dismissOverlays, installOverlayWatch, readOverlayWatch, parseBlockList } = await import(pathToFileURL(LIVE_SESSION).href);
+const { REAL_CHROME_UA, TIERS, isLiveHttpUrl, launchLadder, parseHeadedFlag, resolveStartTier, newLiveContext, gotoLive, sessionContextOptions, parseSolveWaitFlag, challengeInDom, captureSanity, dismissOverlays, installOverlayWatch, readOverlayWatch, parseBlockList, resolveSiteAuth } = await import(pathToFileURL(LIVE_SESSION).href);
 
 const HELP = `stitch-shot — scroll-and-stitch full-page screenshot (symmetric capture instrument)
 
@@ -241,6 +241,9 @@ Usage: node stitch-shot.mjs <url> <out.png> [options]
   --storage-state <file> | --fresh-state | --solve-wait <ms>  admitted-session reuse / clean start / interactive solve (live-session.mjs; --solve-wait implies a visible tier-3 window)
   --locale <tag>    pin Accept-Language + locale (e.g. en-GB) for geo determinism
   --ua <string>     user agent (default: real-Chrome desktop UA + standard headers)
+  --token-env <NAME> | --auth-header "token …"  site auth for a LOCKED delivery host (deploy lockdown.mjs writes
+                    SITE_TOKEN_<SLUG>): attached as an origin-scoped route header (live-session resolveSiteAuth) to
+                    .aem.page / .aem.live hosts ONLY — the live source side never receives it, so gate.sh may pass it to both calls
   --wait <ms>       initial post-load wait (default 1200; 3000 with --settle)
   --timeout <ms>    goto timeout (default 60000)
   --help            this text
@@ -259,7 +262,7 @@ export function parseArgs(argv) {
   const rest = argv.slice(2);
   if (rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
   const pos = [];
-  const opts = { width: 1440, vh: 900, settle: false, block: [], consent: null, consentMode: 'accept', dismiss: [], headed: false, locale: null, ua: REAL_CHROME_UA, wait: null, timeout: 60000, keepPinned: false, expectHeight: null, exclude: [], excludeLiveOnly: false, allowOverlay: false, allowConsent: false, hideDefaults: true, removeText: [], maskSel: [], maskIframes: false, maskImages: false };
+  const opts = { width: 1440, vh: 900, settle: false, block: [], consent: null, consentMode: 'accept', dismiss: [], headed: false, locale: null, ua: REAL_CHROME_UA, wait: null, timeout: 60000, keepPinned: false, expectHeight: null, exclude: [], excludeLiveOnly: false, allowOverlay: false, allowConsent: false, hideDefaults: true, removeText: [], maskSel: [], maskIframes: false, maskImages: false, tokenEnv: null, authHeader: null };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--width') { opts.width = Number(rest[i += 1]); }
@@ -291,6 +294,8 @@ export function parseArgs(argv) {
     else if (a === '--solve-wait') { opts.solveWaitMs = parseSolveWaitFlag(rest[i += 1]); opts.headed = 3; }
     else if (a === '--locale') { opts.locale = rest[i += 1]; }
     else if (a === '--ua') { opts.ua = rest[i += 1]; }
+    else if (a === '--token-env') { opts.tokenEnv = rest[i += 1]; }
+    else if (a === '--auth-header') { opts.authHeader = rest[i += 1]; }
     else if (a === '--wait') { opts.wait = Number(rest[i += 1]); }
     else if (a === '--timeout') { opts.timeout = Number(rest[i += 1]); }
     else if (a.startsWith('--')) { console.error(`unknown flag ${a}\n\n${HELP}`); process.exit(1); }
@@ -588,11 +593,17 @@ async function main() {
     // UA + standard headers + webdriver spoof on the context (live-session).
     // reducedMotion: 'reduce' — symmetric, and one less class of entrance
     // animation to freeze (crawl.mjs captures under the same preference).
+    // Site auth (T12.2): only when asked, only on a delivery host — the source side never sees the token.
+    const isDeliveryHost = /\.aem\.(page|live)$/i.test(new URL(url).hostname);
+    const siteAuth = (opts.tokenEnv || opts.authHeader) && isDeliveryHost ? resolveSiteAuth({ authHeader: opts.authHeader, tokenEnv: opts.tokenEnv }) : null;
+    if ((opts.tokenEnv || opts.authHeader) && !isDeliveryHost) console.log(`site auth not attached: ${new URL(url).hostname} is not a delivery host (.aem.page / .aem.live)`);
+    else if ((opts.tokenEnv || opts.authHeader) && !siteAuth) console.log(`site auth not attached: ${opts.tokenEnv || 'auth header'} does not resolve — reading anonymously (a locked host will answer 401)`);
     const ctx = await newLiveContext(browser, {
       ua: opts.ua, locale: opts.locale,
       viewport: { width: opts.width, height: opts.vh },
       reducedMotion: 'reduce',
       block: opts.block,
+      ...(siteAuth ? { authOrigin: new URL(url).origin, authHeader: siteAuth } : {}),
       ...sessionContextOptions(url, opts), // the run's admitted session, live side only
     });
     const page = await ctx.newPage();

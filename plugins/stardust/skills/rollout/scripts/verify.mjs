@@ -24,6 +24,10 @@
  *   --include-undelivered   with --all over HTTP: probe the undelivered rows too (the line
  *                      then reads `not delivered: N (probed — --include-undelivered)`)
  *   --slug <s>         that one row, whatever its status
+ *   --token-env <NAME> site token for a LOCKED delivery host (deploy lockdown.mjs writes
+ *                      SITE_TOKEN_<SLUG>; state.json credentials.siteTokenEnv names it): sent as
+ *                      `Authorization` to --base only, never printed. Without it a locked site is
+ *                      HTTP 401 on every row — a governance state, not a delivery regression.
  * The path fetched is `delivery.deployedPath` when set (update-coverage
  * --from-ledger / inventory --redirects), else `path`.
  *
@@ -73,7 +77,7 @@
  * line still prints in the same format. No progress file: the run is one HTTP pass.
  *
  * Usage: node skills/rollout/scripts/verify.mjs [--base <url> | --root <dir>] [--slug <s>]
- *          [--all [--include-undelivered]] [--out <rolloutDir>] [--report <dir>] [--verbose]
+ *          [--all [--include-undelivered]] [--out <rolloutDir>] [--report <dir>] [--verbose] [--token-env <NAME>]
  * Exit: 0 no row failed · 1 at least one row is `failed` (advisory classes never set
  *       it) · 2 usage (no base/root, coverage missing — run inventory.mjs first — or
  *       class-report.mjs not found next to this script) or a page left `unverified`
@@ -81,7 +85,7 @@
  */
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { readJSON, writeJSON, rollupTemplates, rollupConfig, siteBase, deliveredPathOf, isDelivered, artifactType, loadPageHTML } from './lib.mjs';
+import { readJSON, writeJSON, rollupTemplates, rollupConfig, siteBase, deliveredPathOf, isDelivered, artifactType, loadPageHTML, siteAuthHeader } from './lib.mjs';
 
 function arg(name, fallback) { const i = process.argv.indexOf(`--${name}`); return i !== -1 && process.argv[i + 1] && !process.argv[i + 1].startsWith('--') ? process.argv[i + 1] : fallback; }
 const has = (f) => process.argv.includes(`--${f}`);
@@ -120,6 +124,9 @@ if (!pagesDoc) { console.error('rollout verify: run inventory.mjs first.'); proc
 const pages = pagesDoc.pages || [];
 if (onlySlug && !pages.some((pg) => pg.slug === onlySlug)) { console.error(`rollout verify: no page with slug "${onlySlug}" in ${pagesPath}`); process.exit(2); } // a typo'd slug once wrote an empty summary and exited 0
 const BASE = siteBase(config, arg('base', null));
+// T12.2: a locked site (lockdown.mjs) answers 401 anonymously — the token rides to --base only, by NAME
+const AUTH = ROOT ? null : await siteAuthHeader(arg('token-env', null), 'rollout verify');
+const authFor = (url) => (AUTH && BASE && String(url).startsWith(BASE) ? { authorization: AUTH } : {});
 if (!ROOT && !BASE) { console.error('rollout verify: need --base <url> or --root <dir> (or set site.liveHost).'); process.exit(2); }
 const OUTSIDE_POLICY = (config.links && config.links.outsideInventory) === 'warn' ? 'warn' : 'fail';
 
@@ -133,7 +140,7 @@ const targetDelivered = (row) => (ROOT ? true : isDelivered(row));
 // A page delivered from <dir>/index.html — served on one slash form only, so both are probed.
 const isFolderRoot = (p) => p.path && p.path !== '/' && /\/index\.html$/.test((p.source && p.source.migratedHtml) || '');
 async function headStatus(url) {
-  try { const r = await fetch(url, { method: 'HEAD', redirect: 'follow' }); return r.status; } catch { return 0; }
+  try { const r = await fetch(url, { method: 'HEAD', redirect: 'follow', headers: authFor(url) }); return r.status; } catch { return 0; }
 }
 
 // 429/503 = the host is throttling, not failing: retry inline (Retry-After capped at 60 s,
@@ -144,7 +151,8 @@ async function fetchPage(p) {
   const url = `${BASE}${deliveredPathOf(p)}`;
   for (let attempt = 1; ; attempt += 1) {
     let res;
-    try { res = await fetch(url); } catch (e) { return { ok: false, reason: `fetch error: ${e.message}` }; }
+    try { res = await fetch(url, { headers: authFor(url) }); } catch (e) { return { ok: false, reason: `fetch error: ${e.message}` }; }
+    if (res.status === 401 && !AUTH) return { ok: false, reason: `HTTP 401${res.headers.get('x-error') ? ` (x-error: ${res.headers.get('x-error')})` : ''} — a locked site? pass --token-env <credentials.siteTokenEnv>` };
     if (res.status !== 429 && res.status !== 503) return res.ok ? { ok: true, body: await res.text() } : { ok: false, reason: `HTTP ${res.status}` };
     if (attempt === 3) return { ok: false, throttled: true, reason: `HTTP ${res.status} after 3 attempts — throttled, no verdict (re-run verify)` };
     const ra = Number(res.headers.get('retry-after'));

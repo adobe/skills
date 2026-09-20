@@ -44,6 +44,10 @@
  *   never applies to them; the boilerplate's `npm run lint` over `.` is the site's CI, not this gate.
  *   Without --files the list comes from git: a root that is not a work tree, has no commit yet, or
  *   whose listing fails is exit 1 "cannot list changed files — pass --files" — never "nothing to lint".
+ *   A tool that runs but reaches no verdict — eslint exit ≥ 2 (config it cannot load, internal error),
+ *   stylelint 78 / 64 — is `lint: unavailable (<tool> exited <n> — <first line>)`, exit 2, never clean;
+ *   any other non-zero exit without a finding line is one finding `exited <n> — <first line>`. A
+ *   --files entry that does not exist is a `not found` finding (syntax FAIL) and never reaches a tool.
  *
  * Exit codes (both modes; 124 = no verdict, never a FAIL — the run-capped convention):
  *   0    verify: every changed path served == tree (record status `ok`) · lint: clean / nothing to lint
@@ -285,14 +289,18 @@ function lint(a) {
   if (!all.length) { console.log('lint-changed: nothing to lint (no changed or untracked files under blocks/ scripts/ styles/)'); return 0; }
   const findings = [];
   const perFile = {};
-  for (const f of js) {
-    if (!existsSync(path.join(a.root, f))) { findings.push(`${f}: not found`); continue; }
+  // a --files entry that does not exist is a finding (a typo'd path or a deleted file), never a crash and never handed to a tool
+  const present = (f) => existsSync(path.join(a.root, f));
+  for (const f of all) if (!present(f)) { perFile[f] = { syntax: 'FAIL' }; findings.push(`${f}: not found under ${a.root}`); }
+  const jsPresent = js.filter(present);
+  const cssPresent = css.filter(present);
+  for (const f of jsPresent) {
     const err = syntaxCheck(a.root, f);
     perFile[f] = { syntax: err ? 'FAIL' : 'ok' };
     if (err) findings.push(`${f}: ${err}`);
   }
-  for (const f of css) perFile[f] = { syntax: '-' };
-  const tc = resolveToolchain(a.root, js.find((f) => existsSync(path.join(a.root, f))), { needJs: js.length > 0, needCss: css.length > 0 });
+  for (const f of cssPresent) perFile[f] = { syntax: '-' };
+  const tc = resolveToolchain(a.root, jsPresent[0], { needJs: js.length > 0, needCss: css.length > 0 });
   let unavailable = null;
   if (tc.missing.length) {
     unavailable = `lint: unavailable (${tc.missing.join(', ')} do not resolve from ${a.root}/node_modules/.bin${tc.parserNote ? ` — ${tc.parserNote}` : ''})`;
@@ -303,21 +311,38 @@ function lint(a) {
       return 2;
     }
   }
+  // A tool that did not run to a verdict is `unavailable`, never clean: eslint exits 2 on a config / internal
+  // error ("couldn't find the config … to extend from"), stylelint 78 on an invalid config and 64 on usage —
+  // the shapes a pruned node_modules produces. Any other non-zero exit with no finding line is reported verbatim.
+  const CRASH = { eslint: (st) => st >= 2, stylelint: (st) => st === 78 || st === 64 };
+  const crashed = [];
   const runTool = (tool, files, label) => {
     if (!tool || !files.length) return;
     const r = spawnSync(tool, [...(a.fix ? ['--fix'] : []), ...files], { cwd: a.root, encoding: 'utf8' });
     const out = `${r.stdout || ''}${r.stderr || ''}`;
+    const outLines = out.split('\n').map((l) => l.trim()).filter(Boolean);
+    // the reason line: the first line that names the failure (ESLint prints a decorative "Oops!" banner first), else the first line
+    const firstLine = outLines.find((l) => /error|couldn't|cannot|failed|not found|no configuration|missing|unknown/i.test(l)) || outLines[0] || (r.error ? r.error.message : 'no output');
+    if (r.error || r.status === null || CRASH[label](r.status)) { crashed.push(`${label} exited ${r.status ?? r.error?.code ?? 'signal'} — ${firstLine}`); for (const f of files) perFile[f][label] = '?'; return; }
     for (const f of files) perFile[f][label] = r.status === 0 ? 0 : '✗';
-    if (r.status !== 0) findings.push(...out.split('\n').filter((l) => /\berror\b|✖/.test(l)).slice(0, 40).map((l) => `${label}: ${l.trim()}`));
+    if (r.status === 0) return;
+    const matched = out.split('\n').filter((l) => /\berror\b|✖/.test(l)).slice(0, 40).map((l) => `${label}: ${l.trim()}`);
+    findings.push(...(matched.length ? matched : [`${label}: exited ${r.status} — ${firstLine}`]));
   };
   if (!unavailable) {
     // errors block; warnings pass (eslint exits 0 on warnings only, stylelint too)
-    runTool(tc.eslint, js, 'eslint');
-    runTool(tc.stylelint, css, 'stylelint');
+    runTool(tc.eslint, jsPresent, 'eslint');
+    runTool(tc.stylelint, cssPresent, 'stylelint');
+    if (crashed.length) unavailable = `lint: unavailable (${crashed.join('; ')})`;
   }
   for (const f of all) console.log(`${f}  syntax ${perFile[f].syntax}${'eslint' in perFile[f] ? ` · eslint ${perFile[f].eslint}` : ''}${'stylelint' in perFile[f] ? ` · stylelint ${perFile[f].stylelint}` : ''}`);
   if (unavailable) console.log(unavailable);
   if (a.json) console.log(JSON.stringify({ files: perFile, findings, unavailable }, null, 2));
+  if (crashed.length) {
+    for (const x of findings) console.log(`  ✗ ${x}`);
+    console.error(`lint-changed: ${unavailable} — the toolchain did not reach a verdict (a config it cannot load, a pruned node_modules): run \`npm ci --legacy-peer-deps\` in ${a.root} and re-run; --syntax-only only when the install was denied or is impossible. Unavailable is never clean (exit 2).`);
+    return 2;
+  }
   if (findings.length) {
     for (const x of findings) console.log(`  ✗ ${x}`);
     console.error(`lint-changed: ${findings.length} finding(s) in files this run touched — fix them in the same step (they are the run's, whatever line they sit on), then re-run (exit 2)`);

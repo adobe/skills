@@ -35,7 +35,17 @@ and resumable. The state file is `stardust/state.json`. It is written by
     "extractedAt": "<ISO timestamp>",
     "pageCap": 25,
     "totalDiscovered": 38,
-    "crawled": 25
+    "crawled": 25,
+    "eds": {
+      "org": "<org>",
+      "site": "sdt-<slug>",
+      "repoUrl": "https://github.com/<org>/sdt-<slug>",
+      "previewHost": "https://main--sdt-<slug>--<org>.aem.page",
+      "liveHost": "https://main--sdt-<slug>--<org>.aem.live",
+      "private": true,
+      "bootstrappedAt": "<ISO timestamp>",
+      "bootstrappedBy": "site-bootstrap | existing | <owner-named skill>"
+    }
   },
   "direction": {
     "resolvedAt": "<ISO timestamp>",
@@ -144,14 +154,19 @@ never a home path:
   "da": "ok | expired | missing | unreachable",
   "daExpiresAt": "2026-09-19T07:12:00Z",
   "daSource": "shell | repo-env | global-env | home-env",
+  "daTarget": "ok | not-visible | denied | unchecked",
   "siteTokenEnv": "SITE_TOKEN_<SITE>",
   "gh": "ok | expired | missing | skipped"
 }
 ```
 
-`siteTokenEnv` is the matched variable name (or absent); every
-`--token-env` consumer defaults to it. `gh` is `skipped` when neither the
-ask nor the environment involves repo creation or Code Sync.
+`daTarget` is what the one list call said about `--org/--repo`: `not-visible`
+(404 — wrong coordinates, or no site yet → `skills/deploy/reference/site-bootstrap.md`)
+is why step 8 refuses while `da` stays `ok`; `unchecked` without a smoke.
+`siteTokenEnv` is the matched variable name (or absent; `lockdown.mjs` writes
+it when it creates the site token); every `--token-env` consumer defaults to
+it. `gh` is `skipped` when neither the ask nor the environment involves repo
+creation or Code Sync.
 
 **Lookup.** `node skills/deploy/scripts/da-token-check.mjs --credentials
 --site <slug> --state stardust/state.json [--org <org> --repo <repo>]`

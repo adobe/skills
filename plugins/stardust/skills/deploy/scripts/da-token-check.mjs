@@ -21,10 +21,13 @@
  *                     (wrong coordinates or no site yet — reference/site-bootstrap.md) — exit 2 each.
  *   --need <h>        the batch ahead needs this many hours — fewer remaining is exit 2.
  *   --no-smoke        decode only (offline switch — not an override; expiry still exits 2).
- *   --credentials     emit the Credentials block {at, da, daExpiresAt, daSource, siteTokenEnv, gh};
- *                     `da` is ok | expired | missing | unreachable (the smoke gave no verdict)
- *                     and merge it into --state's `credentials` key (state.json is tracked:
- *                     names, statuses and source classes only).
+ *   --credentials     emit the Credentials block {at, da, daExpiresAt, daSource, daTarget, siteTokenEnv, gh};
+ *                     `da` is ok | expired | missing | unreachable (the smoke gave no verdict);
+ *                     `daTarget` is what the ONE list call said about --org/--repo — ok (200) |
+ *                     not-visible (404: wrong coordinates or no site yet → site-bootstrap.md) |
+ *                     denied (401/403) | unchecked (no smoke) — so state.json shows WHY Setup step 8
+ *                     refused when the token itself is fine. Merged into --state's `credentials`
+ *                     key (state.json is tracked: names, statuses and source classes only).
  *   --site <slug>     slug for the SITE_TOKEN_<SLUG> match — exact after normalisation
  *                     (uppercase, non-alphanumerics → `_`), never a prefix; default: --repo.
  *   --state <path>    state file to merge into (default stardust/state.json; an absent file is
@@ -161,7 +164,8 @@ export async function credentialsBlock(a, r, { cwd = process.cwd(), home, env } 
   let gh = 'skipped';
   if (pat) gh = await probeGh(pat.value);
   else if (a.gh) gh = 'missing';
-  return { at: new Date().toISOString(), da: r.da, daExpiresAt: r.daExpiresAt, daSource: r.daSource, siteTokenEnv, gh, ...(siteTokenEnv ? {} : { siteTokenWanted: want }) };
+  const daTarget = r.smoke === 'skipped' ? 'unchecked' : r.smoke === 200 ? 'ok' : r.smoke === 404 ? 'not-visible' : (r.smoke === 401 || r.smoke === 403) ? 'denied' : 'unchecked';
+  return { at: new Date().toISOString(), da: r.da, daExpiresAt: r.daExpiresAt, daSource: r.daSource, daTarget, siteTokenEnv, gh, ...(siteTokenEnv ? {} : { siteTokenWanted: want }) };
 }
 
 export function mergeState(file, block) {
@@ -188,7 +192,7 @@ export async function main(argv = process.argv.slice(2)) {
   else {
     for (const l of r.lines) console.log(l);
     if (block) {
-      console.log(`credentials: da=${block.da} daSource=${block.daSource} daExpiresAt=${block.daExpiresAt || '-'} siteTokenEnv=${block.siteTokenEnv || `none (looked for ${block.siteTokenWanted})`} gh=${block.gh}`);
+      console.log(`credentials: da=${block.da} daSource=${block.daSource} daExpiresAt=${block.daExpiresAt || '-'} daTarget=${block.daTarget} siteTokenEnv=${block.siteTokenEnv || `none (looked for ${block.siteTokenWanted})`} gh=${block.gh}`);
       console.log(merge.written ? `credentials → ${a.state}` : `credentials: ${merge.why}`);
     }
   }

@@ -24,10 +24,14 @@
  *
  * Usage:
  *   node skills/rollout/scripts/media-reconcile.mjs --file <html>
- *        --deploy-host <host> [--host-rewrite badhost=goodhost] [--json] [--apply]
+ *        --deploy-host <host> [--host-rewrite badhost=goodhost] [--token-env <NAME>] [--json] [--apply]
  *   --apply rewrites the file in place (rewrite → suggested URL, omit → remove <img>).
+ *   --token-env <NAME>: the site token of a LOCKED --deploy-host (deploy lockdown.mjs → SITE_TOKEN_<SLUG>);
+ *   sent only on probes whose host is --deploy-host, never printed — without it a same-host media URL
+ *   reads `needs-credential` for a governance state, not a missing rendition.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
+import { siteAuthHeader } from './lib.mjs';
 
 function arg(name, fb) { const i = process.argv.indexOf(`--${name}`); return i !== -1 && process.argv[i + 1] ? process.argv[i + 1] : fb; }
 const FILE = arg('file', null);
@@ -37,6 +41,7 @@ const APPLY = process.argv.includes('--apply');
 const rewrites = process.argv.filter((a, i) => process.argv[i - 1] === '--host-rewrite').map((s) => s.split('='));
 if (!FILE) { console.error('media-reconcile: need --file <html>'); process.exit(2); }
 let html = readFileSync(FILE, 'utf8');
+const AUTH = await siteAuthHeader(arg('token-env', null), 'media-reconcile'); // T12.2: delivery-host probes only
 
 /* collect image URLs: <img src>, srcset, inline style url(), <style> url() */
 function collect(h) {
@@ -59,7 +64,8 @@ function collectMedia(h) {
 const BROWSER_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
 async function probeMedia(u) {
   const ac = new AbortController(); const t = setTimeout(() => ac.abort(), 15000);
-  try { const r = await fetch(u, { signal: ac.signal, headers: { range: 'bytes=0-1023', 'user-agent': BROWSER_UA } }); return r.status; } catch { return 0; } finally { clearTimeout(t); }
+  const auth = AUTH && DEPLOY_HOST && originOf(u) === DEPLOY_HOST ? { authorization: AUTH } : {};
+  try { const r = await fetch(u, { signal: ac.signal, headers: { range: 'bytes=0-1023', 'user-agent': BROWSER_UA, ...auth } }); return r.status; } catch { return 0; } finally { clearTimeout(t); }
 }
 
 function repairUrl(u) {

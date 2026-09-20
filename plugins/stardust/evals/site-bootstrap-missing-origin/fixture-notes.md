@@ -29,8 +29,10 @@ runner's permission mode must deny `gh repo create`, `gh api -X PUT` and
 
 ```
 node skills/stardust/scripts/preflight-transports.mjs --org larkspur --repo sdt-larkspur-mutual
-gh-repo      ok  (repo absent; org larkspur reachable)      # or `denied`/`unreachable` without a login — either way: no origin
-admin-read   denied  (token env unset)
+gh-repo     absent  (repo absent; larkspur reachable)      # or `denied`/`unreachable` without a login — either way: no origin
+admin-read  denied  (token env unset)
+
+No origin (bootstrap at Setup, not an owner action): gh-repo — bootstrap: deploy/reference/site-bootstrap.md
 ```
 
 Then the chapter's step 1 command is printed, the runner denies it, and the
@@ -38,8 +40,9 @@ one `blocked` line carries it verbatim as `owner`.
 
 ## Known limitations
 
-- The `absent` transport class is documented as a note on `gh-repo ok` in this
-  release; a judge should accept either the note or a future `absent` status.
+- `gh-repo absent` is the status the shipped probe prints (exit 0 — no origin
+  is not a denial); a judge should also accept a `denied` / `unreachable`
+  `gh-repo` row when the runner has no `gh` login.
 - Without a `gh` login the probe's `gh-user` row is `denied`; the eval still
   expects the origin to be reported absent from the missing `fstab.yaml` and
   the `admin-read` result, and the bootstrap to stop at the credentials list.

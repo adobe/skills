@@ -11,7 +11,7 @@ An EDS origin is an implicit prerequisite of every deploy: a repo Code Sync buil
 
 ## Read when
 
-- Master Setup step 8 ran (the ask reaches `deploy` or `rollout`) **and** there is no origin: `node skills/stardust/scripts/preflight-transports.mjs --org <org> --repo <site>` reports the repo absent (`gh-repo` 404 with the org reachable) or `admin-read` 404 for `<org>/<site>/main`, and `state.json.site.eds` is absent.
+- Master Setup step 8 ran (the ask reaches `deploy` or `rollout`) **and** there is no origin: `node skills/stardust/scripts/preflight-transports.mjs --org <org> --repo <site>` reports `gh-repo absent` (repo 404 with the org or user reachable — its `No origin` line points here) or `admin-read` 404 for `<org>/<site>/main`, and `state.json.site.eds` is absent (master Setup step 9).
 - `deploy` § When to use prerequisite 2 (a vanilla `aem-boilerplate` at the repo root) is unmet, or `rollout` Phase A finds no target.
 - An origin named in the ask, or an owner-decided `target` row pointing at an existing site, **skips** this chapter: record `site.eds.bootstrappedBy: "existing"` and verify steps 4–6 only.
 - An owner-named bootstrap skill in the ask runs instead; the plugin still verifies steps 4–6 and records `bootstrappedBy: "<skill name>"`. Never probe skill descriptions to find one — a description match is not a contract.

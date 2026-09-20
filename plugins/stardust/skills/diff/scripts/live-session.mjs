@@ -296,13 +296,17 @@ export async function attachBlockRoute(context, substrings, { authOrigin = null 
 
 /**
  * Origin-scoped site auth (protected demo origins: access allow-list + site
- * secret). Resolve from `--auth-header "token …"` or `--token-env NAME`
- * (process.env, then a cwd `.env`; default SITE_TOKEN). Attach through a route
- * filter on ONE origin — never via extraHTTPHeaders: the secret would ride every
- * third-party request and their CORS checks would fail a credentialed request,
- * reporting a vendor error real users never see (recorded on a video vendor's
- * playback API inside a modal). Every origin-reading instrument (stitch-shot,
- * qa, rollout verify, dynamics-check) uses these two.
+ * secret — written by deploy's lockdown.mjs as SITE_TOKEN_<SLUG>, named in
+ * state.json credentials.siteTokenEnv). Resolve from `--auth-header "token …"`
+ * or `--token-env NAME` (process.env, then a cwd `.env`; default SITE_TOKEN).
+ * Attach through a route filter on ONE origin — never via extraHTTPHeaders: the
+ * secret would ride every third-party request and their CORS checks would fail
+ * a credentialed request, reporting a vendor error real users never see
+ * (recorded on a video vendor's playback API inside a modal). The Playwright
+ * readers (stitch-shot, qa, dynamics-check) use these two; the plain-fetch
+ * readers (deploy served-check / code-sync-verify / deploy-batch, rollout
+ * verify / redirects / media-reconcile) take `--token-env` through
+ * deploy/scripts/lib.mjs resolveToken and send it to the target host only.
  */
 export function resolveSiteAuth({ authHeader, tokenEnv } = {}) {
   const idx = (k) => process.argv.indexOf(`--${k}`);
