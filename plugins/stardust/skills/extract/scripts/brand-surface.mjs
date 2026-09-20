@@ -460,7 +460,7 @@ function readLift(dir) {
   if (!dir) return null;
   if (!existsSync(dir) || !statSync(dir).isDirectory()) throw new UsageError(`--lift ${dir} is not a directory`);
   const files = []; const fontFaces = [];
-  (function walk(d) { for (const e of readdirSync(d)) { const p = path.join(d, e); if (statSync(p).isDirectory()) walk(p); else files.push(p); } })(dir);
+  (function walk(d) { for (const e of readdirSync(d).sort()) { const p = path.join(d, e); if (statSync(p).isDirectory()) walk(p); else files.push(p); } })(dir); // sorted: readArtifacts / type.files order must not depend on the filesystem
   for (const f of files.filter((x) => x.endsWith('.json'))) { const j = readJson(f); for (const arr of [j && j.fontFaces, j && j.fonts]) if (Array.isArray(arr)) for (const face of arr) if (face && face.family) fontFaces.push(face); }
   return { dir, files, fontFaces };
 }
