@@ -31,7 +31,10 @@
  *   node skills/replica/scripts/layout-cluster.mjs --cover <id>=<gatedId> --reason <text> [--root stardust]
  *     --root <dir>         project stardust dir (default stardust): state.json,
  *                          current/pages/*.html, replica/progress.json
- *     --type <t>           page type to cluster (default: every type in state.json)
+ *     --type <t>           page type to cluster (default: every type in state.json);
+ *                          replaces only that type's entry in layout-clusters.json
+ *                          (other types and their coveredBy survive); a type with
+ *                          no pages exits 1 and writes nothing
  *     --min-cluster <n>    T — a cluster with ≥ n pages needs its own gated
  *                          exemplar (default max(5, 2 % of the type), printed)
  *     --k <edits>          merge signatures within this many section edits
@@ -265,6 +268,20 @@ export function applyCover(clusterFile, { id, gatedId, reason, handsOff = false,
 }
 
 /**
+ * Merge one run's report into the previous cluster file: a `--type <t>` run
+ * replaces only that type's entry; every other type (and its coveredBy
+ * records) survives. Order: previous types first (replaced in place), new
+ * types appended. No previous file → the report as is.
+ */
+export function mergeReport(previous, report) {
+  const prevTypes = Array.isArray(previous?.types) ? previous.types : [];
+  const fresh = new Map((report.types || []).map((t) => [t.type, t]));
+  const types = prevTypes.map((t) => (fresh.has(t.type) ? fresh.get(t.type) : t));
+  for (const t of report.types || []) if (!prevTypes.some((p) => p.type === t.type)) types.push(t);
+  return { ...report, types };
+}
+
+/**
  * layout-clusters.json (+ its sibling state.json) → { archetype, siblings } URLs:
  * archetype = the archetype cluster's exemplar; siblings = every other cluster's
  * exemplar (clusters ≥ T only — tail pages are the seeded sample's business).
@@ -386,8 +403,10 @@ async function main() {
   }
 
   const pages = Array.isArray(state.pages) ? state.pages : Object.entries(state.pages || {}).map(([slug, p]) => ({ slug, ...p }));
-  const types = opts.type ? [opts.type] : [...new Set(pages.map((p) => p.type).filter(Boolean))];
+  const known = [...new Set(pages.map((p) => p.type).filter(Boolean))];
+  const types = opts.type ? [opts.type] : known;
   if (!types.length) { console.error('layout-cluster: state.json has no typed pages'); process.exit(1); }
+  if (opts.type && !pages.some((p) => p.type === opts.type && p.slug)) { console.error(`layout-cluster: no pages of type ${opts.type} in state.json (types: ${known.join(', ') || 'none'}) — nothing written`); process.exit(1); }
   const classes = residualClasses();
   const previous = existsSync(clusterPath) ? readJson(clusterPath) : null;
   const report = { generatedAt: new Date().toISOString(), root: opts.root, minCluster: opts.minCluster, k: opts.k, breakpoints: bps, types: [] };
@@ -402,7 +421,7 @@ async function main() {
     blocking += r.ungated.length;
     if (!opts.json) console.log(renderType(r, bps));
   }
-  writeFileSync(clusterPath, `${JSON.stringify(report, null, 2)}\n`);
+  writeFileSync(clusterPath, `${JSON.stringify(mergeReport(previous, report), null, 2)}\n`);
   if (opts.writeState) {
     const stamp = new Map();
     for (const t of report.types) { for (const c of t.clusters) for (const s of c.pages) stamp.set(s, c.id); for (const c of t.tail) for (const s of c.pages) stamp.set(s, 'tail'); }

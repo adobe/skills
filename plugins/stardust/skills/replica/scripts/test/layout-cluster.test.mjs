@@ -19,7 +19,7 @@ const failures = [];
 const check = (ok, msg) => { if (!ok) failures.push(msg); };
 const run = (args, opts = {}) => { const r = spawnSync(process.execPath, [SCRIPT, ...args], { encoding: 'utf8', ...opts }); return { status: r.status, out: `${r.stdout}${r.stderr}` }; };
 
-const { DEFAULT_K, urlsFromClusters, signatureOf, tokenOf, editDistance, signatureDiff, clusterSignatures, pickExemplar, gateStatus, isGated, clusterType, renderType, applyCover, defaultMinCluster } = await import(SCRIPT);
+const { DEFAULT_K, mergeReport, urlsFromClusters, signatureOf, tokenOf, editDistance, signatureDiff, clusterSignatures, pickExemplar, gateStatus, isGated, clusterType, renderType, applyCover, defaultMinCluster } = await import(SCRIPT);
 
 // --- signature tokens
 const hero = { tag: 'section', firstClass: 'program-hero', groups: [], interactive: false, columns: 1 };
@@ -131,7 +131,21 @@ try {
   const st = JSON.parse(readFileSync(join(tmp, 'stardust', 'state.json'), 'utf8')); st.handsOff = true; writeFileSync(join(tmp, 'stardust', 'state.json'), JSON.stringify(st));
   c = run(['--root', join(tmp, 'stardust'), '--cover', 'c1=c1', '--reason', 'x']);
   check(c.status === 1 && /handsOff is true/.test(c.out), `--cover under handsOff exits 1, got ${c.status}\n${c.out}`);
+  // defect: `--type <typo>` used to rewrite layout-clusters.json with `types: []` and exit 0 (no browser is reached — the check precedes extraction)
+  const before = readFileSync(join(tmp, 'stardust', 'current', 'layout-clusters.json'), 'utf8');
+  c = run(['--root', join(tmp, 'stardust'), '--type', 'no-such-type']);
+  check(c.status === 1 && /no pages of type no-such-type/.test(c.out) && /types: .*program/.test(c.out), `--type matching no page exits 1 and names the known types, got ${c.status}\n${c.out}`);
+  check(readFileSync(join(tmp, 'stardust', 'current', 'layout-clusters.json'), 'utf8') === before, 'a --type run that matches nothing leaves layout-clusters.json untouched');
 } finally { rmSync(tmp, { recursive: true, force: true }); }
+
+// --- mergeReport: a --type run replaces only its own type; other types + coveredBy survive
+const prevFile = { generatedAt: 'old', types: [{ type: 'program', clusters: [{ id: 'c1', signature: ['x'], coveredBy: null }], tail: [], ungated: [] }, { type: 'landing', clusters: [{ id: 'c1', signature: ['l'], coveredBy: { cluster: 'c2', reason: 'kept' } }], tail: [], ungated: [] }] };
+const freshProgram = { type: 'program', clusters: [{ id: 'c1', signature: ['y'] }], tail: [], ungated: ['c1'] };
+let merged = mergeReport(prevFile, { generatedAt: 'new', types: [freshProgram] });
+check(merged.types.length === 2 && merged.types[0] === freshProgram && merged.types[1].type === 'landing' && merged.types[1].clusters[0].coveredBy?.reason === 'kept' && merged.generatedAt === 'new', `a --type run replaces its own type in place and keeps the others (with coveredBy), got ${JSON.stringify(merged.types.map((t) => [t.type, t.clusters[0].signature]))}`);
+merged = mergeReport(prevFile, { types: [{ type: 'article', clusters: [], tail: [], ungated: [] }] });
+check(merged.types.map((t) => t.type).join() === 'program,landing,article', 'a new type is appended after the previous ones');
+check(mergeReport(null, { types: [freshProgram] }).types.length === 1 && mergeReport({ types: 'garbage' }, { types: [freshProgram] }).types.length === 1, 'no / malformed previous file → the report as is');
 
 // --- browser half: only when playwright resolves from the repo
 let pw = false; try { await import('playwright'); pw = true; } catch { /* not installed here */ }
