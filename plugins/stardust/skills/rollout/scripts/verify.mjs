@@ -49,6 +49,10 @@
  *   ok               target is a coverage row that is delivered
  *   pending-target   target is a coverage row not yet delivered — advisory: the page
  *                    stays `verified`, `delivery.pendingLinks` records the targets
+ *   hotlinked        the delivered body still carries an external `<img src="https://…">` —
+ *                    advisory (info): the ingester did not rewrite it into Media Bus; the
+ *                    page stays `verified` (a broken one is already `about:error`), the
+ *                    action is deploy's rehost-media.mjs (decisions row `media`)
  *   outside-inventory  target is no coverage row at all — governed by rollout.json
  *                    `links.outsideInventory: "fail" | "warn"` (default `fail` =
  *                    the page is `failed`; `warn` records `delivery.outsideLinks`
@@ -319,6 +323,8 @@ for (const p of target) {
   p.delivery.outsideLinks = outside.length && status === 'verified' ? outside : undefined;
   results.push({ slug: p.slug, path: served, type, status, reason, class: failureClass(reason), severity: status === 'failed' ? 'error' : undefined });
   if (pending.length) advisories.push({ slug: p.slug, path: served, type, status, class: 'pending-target link', reason: `links to undelivered coverage rows: ${pending.slice(0, 5).join(', ')}`, severity: 'info' });
+  const hot = status !== 'failed' && r.body ? [...new Set([...r.body.matchAll(/<img\b[^>]*\ssrc="(https?:\/\/[^"]+)"/gi)].map((m) => m[1]))] : []; // T27.5: hotlinked (advisory, never a FAIL)
+  if (hot.length) advisories.push({ slug: p.slug, path: served, type, status, class: 'hotlinked image', reason: `${hot.length} external <img> not ingested into Media Bus — rehost-media.mjs: ${hot.slice(0, 3).join(', ')}`, severity: 'info' });
   if (outside.length && status === 'verified') advisories.push({ slug: p.slug, path: served, type, status, class: 'outside-inventory link (warn)', reason: `links outside coverage: ${outside.slice(0, 5).join(', ')}`, severity: 'warn' });
 }
 
@@ -356,7 +362,8 @@ const ok = results.filter((r) => r.status === 'verified').length;
 const heldByGate = results.filter((r) => r.status === 'deployed').length;
 const bad = results.filter((r) => r.status === 'failed');
 const byType = results.reduce((a, r) => { a[r.type] = (a[r.type] || 0) + 1; return a; }, {});
-const pendingPages = advisories.filter((a) => a.severity === 'info').length;
+const pendingPages = advisories.filter((a) => a.class === 'pending-target link').length;
+const hotlinkedPages = advisories.filter((a) => a.class === 'hotlinked image').length;
 const outsideWarnPages = advisories.filter((a) => a.severity === 'warn').length;
 const anchor = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 const summaryMd = join(REPORT, 'summary.md');
@@ -376,6 +383,7 @@ if (ALL && !ROOT && undelivered) head.push(`not delivered: ${undelivered} (${INC
 if (wantedPaths) head.push(`--paths: ${target.length} of ${wantedPaths.size} listed selected${noRow.length ? ` · ${noRow.length} no coverage row` : ''}${notSelected.length ? ` · ${notSelected.length} not delivered (${notSelected.slice(0, 5).join(' ')})` : ''}`);
 if (pendingPages) head.push(`pending-target links: ${pendingPages} page(s) (advisory — the targets are coverage rows not yet delivered)`);
 if (outsideWarnPages) head.push(`outside-inventory links: ${outsideWarnPages} page(s) (links.outsideInventory: warn)`);
+if (hotlinkedPages) head.push(`hotlinked images: ${hotlinkedPages} page(s) (advisory — external <img> the ingester did not rewrite; deploy rehost-media.mjs)`);
 const tail = [`report: ${summaryMd} (table, then per-page rows per class) · data: ${join(REPORT, 'summary.json')}`];
 if (!target.length) tail.push(ALL && skipped ? 'Nothing delivered yet — every row is pending/content-pending/converting.' : 'Nothing to verify (no deployed pages). Deliver pages first, or pass --all.');
 const table = report.total ? renderTable(report, { title: 'rollout verify — findings by class', maxLines: MAX_LINES - head.length - tail.length }) : [];
@@ -397,7 +405,7 @@ writeJSON(join(REPORT, 'summary.json'), {
   generatedAt: now, source: ROOT ? `root:${ROOT}` : BASE, mode: ROOT ? 'root' : 'http', outsideInventory: OUTSIDE_POLICY,
   total: pages.length, checked: results.length, verified: ok, failed: bad.length, skipped, undelivered, unverified: unverified.length,
   ...(wantedPaths ? { paths: { listed: wantedPaths.size, selected: target.length, noRow, notSelected } } : {}),
-  pendingTargetPages: pendingPages, outsideWarnPages, gateReport: GATE_REPORT_PATH, heldByGate, aiReadability: airRollup,
+  pendingTargetPages: pendingPages, outsideWarnPages, hotlinkedPages, gateReport: GATE_REPORT_PATH, heldByGate, aiReadability: airRollup,
   classes: report.classes.map((c) => ({ class: c.class, count: c.count, severity: c.severity ?? null, worstExample: c.worst ? `${c.worst.page} — ${c.worst.message}` : null, pointer: c.worst ? c.worst.pointer : null })),
   pages: pageRows,
 });
