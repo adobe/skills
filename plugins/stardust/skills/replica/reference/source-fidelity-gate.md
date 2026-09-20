@@ -154,12 +154,11 @@ capture is re-taken every iteration.
    **Cells.** Item 5 gates every chrome STATE, not the resting bands
    alone: each top-level trigger open, search, language switcher, the
    mobile drawer + one drill level, footer accordions — probed once per
-   archetype set by `../scripts/chrome-states.mjs` (hover → click, panel
-   association, per-state panel crops at this same ≥98 % bar, chrome-parity's
-   diff per opened state, `missing on build` = MISSING, exit 2) and cached
+   archetype set by `../scripts/chrome-states.mjs` (per-state panel crops
+   at this same ≥98 % bar, chrome-parity's diff per opened state,
+   `missing on build` = MISSING, exit 2), cached
    state-aware (`chrome-live-states.json`; `chrome-parity --open`/`--scroll`
-   for one state at a time, `chrome-live-<state>.json`). Named states,
-   contract, escape hatch and residual route: `chrome-states.md`.
+   = one state, `chrome-live-<state>.json`). Contract: `chrome-states.md`.
    **Multi-theme sites**: the probe clusters header identity across one
    live URL per page type — each distinct identity is a chrome variant with
    its own resting crop, encoded as a variant, never fixed per page.
@@ -836,7 +835,9 @@ residual carries `artifacts[]`
 table's **permanent** classes; an entry missing either is invalid and the
 breakpoint is FAIL. `published.<bp>` holds the published-origin result per
 breakpoint (§ The published-origin gate); a breakpoint absent there is
-`ungated` — reported as such, never as passed. `../scripts/gate-ledger-lint.mjs`
+`ungated` — reported as such, never as passed. The top-level `chrome`
+block (variants, per-state `gated | dead | unprobed:<reason>`) and
+`archetypes[].chromeVariant`: `chrome-states.md` § Chrome variants. `../scripts/gate-ledger-lint.mjs`
 is this ledger's reader (rollout Setup, `migrate` before any A′ render; `--published`
 reports `published.<bp>` and the coverage line): it applies § Pass bar to `result`
 and this residual rule per configured breakpoint — a shape it cannot read is

@@ -565,8 +565,13 @@ capture-invisible under the freeze, and the pixel re-run proves it).
 The resting header crop measures ONE cell of a matrix — `{chrome variant}
 × {rest, scrolled} × {each top-level trigger open} × {search} × {language}
 × {drawer, drilled} × {footer accordions}` — and every other cell is what a
-reviewer touches first. Named states, contract and residual route:
-`chrome-states.md` (§ The matrix · § Contract). Four rules:
+reviewer touches first. Named states, contract, the `progress.json`
+`chrome` block and the residual route: `chrome-states.md`. Before the first
+archetype: `../scripts/chrome-variants.mjs --write` buckets the inventory by
+a static fingerprint of the captured chrome (zero live hits) — the chrome
+archetype row for a variant (rest crops + every state `gated | dead |
+unprobed:<reason>`, observed never inferred) is gated BEFORE its first page
+archetype and imported by the later ones. Four rules:
 
 1. **Probe the matrix, never infer it.** Run `../scripts/chrome-states.mjs
    <live> --from-state stardust/state.json --live-cache …` ONCE per
