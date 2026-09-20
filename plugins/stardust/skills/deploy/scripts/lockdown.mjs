@@ -33,14 +33,15 @@
  *   line, the site half continues);  4 POST …/secrets.json {} → a site token;  5 GET …/access/site.json, merge
  *   (`allow` union, `secretId` appended — never replaced), POST it back;  6 write the token to --env by NAME and
  *   `credentials.siteTokenEnv` to --state;  7 verify `<branch>--<site>--<org>.aem.page` and `.aem.live`:
- *   anonymous → 401/403, `Authorization: token …` → accepted (200; 404 on a host with nothing published).
+ *   anonymous → 401/403 (a 30x on `/` is followed ONE hop first), `Authorization: token …` → accepted (2xx; 404 on a
+ *   host with nothing published). A 5xx / no answer WITH the token is no verdict — never "accepted".
  *   Last stdout line: `SUMMARY lockdown <org>/<site> repo=… site=… verify=… exit=<n>` (+ `owner: <cmd>`).
  *
  * Exit codes (a `timeout` 124 wrapper stays "no verdict"):
  *   0  locked and verified on both hosts (repo private or --no-repo)
  *   1  verification failed after --wait (anonymous still answers, or the token is rejected) — fail loud, re-run
  *   2  no verdict: usage, token missing or a placeholder (no request made), env file not ignored, config 404 / 401 /
- *      unreachable, secret not returned
+ *      unreachable, secret not returned, or the delivery host answered 5xx / nothing with the token after --wait
  *   3  owner action needed: the repo step was denied or --gh-mode print — `owner:` carries the exact command;
  *      the site half ran and verified (else 1)
  * Never: prints a token value, `cat`s an env file, touches the source site, publishes, guesses a config.
@@ -107,7 +108,7 @@ async function http(method, url, { auth, body, json } = {}) {
     const res = await fetch(url, { method, headers, body: json !== undefined ? JSON.stringify(json) : body, redirect: 'manual', signal: AbortSignal.timeout(HTTP_TIMEOUT_MS) });
     const text = await res.text();
     let data = null; try { data = text ? JSON.parse(text) : null; } catch { data = null; }
-    return { status: res.status, data, xError: res.headers.get('x-error') || '' };
+    return { status: res.status, data, xError: res.headers.get('x-error') || '', location: res.headers.get('location') || '' };
   } catch (err) { return { status: 0, data: null, note: String(err?.message || err).slice(0, 160) }; }
 }
 
@@ -196,18 +197,22 @@ async function verifyHosts(a, tokenValue, log) {
     last = {};
     let allOk = true;
     for (const h of hosts) {
-      const anon = await http('GET', `${h}/`);
+      // anonymous: `/` may 30x on a delivery host (a locale redirect) — follow ONE hop, then read the verdict there
+      let anon = await http('GET', `${h}/`);
+      if (anon.status >= 300 && anon.status < 400 && anon.location) anon = { ...(await http('GET', new URL(anon.location, `${h}/`).href)), hop: anon.status };
       const withTok = await http('GET', `${h}/`, { auth });
       const locked = anon.status === 401 || anon.status === 403;
-      const accepted = withTok.status > 0 && withTok.status !== 401 && withTok.status !== 403;
-      last[h] = { anonymous: anon.status || `000 ${anon.note || ''}`.trim(), token: withTok.status || `000 ${withTok.note || ''}`.trim(), ok: locked && accepted };
+      // accepted = the token is honoured: 2xx, or 404 (nothing published yet). 5xx / 000 is NO verdict (the host, not the lock) — never "accepted"
+      const accepted = (withTok.status >= 200 && withTok.status < 300) || withTok.status === 404;
+      const noVerdict = withTok.status === 0 || withTok.status >= 500;
+      last[h] = { anonymous: anon.status || `000 ${anon.note || ''}`.trim(), hop: anon.hop || null, token: withTok.status || `000 ${withTok.note || ''}`.trim(), ok: locked && accepted, noVerdict };
       if (!last[h].ok) allOk = false;
     }
     if (allOk || Date.now() >= deadline) break;
     await sleep(POLL_MS);
   }
-  for (const [h, r] of Object.entries(last)) log(`verify: ${h}/  anonymous ${r.anonymous}${r.ok ? '' : r.anonymous === 200 ? ' (still open)' : ''} · token ${r.token}${r.token === 404 ? ' (accepted — nothing published on this host yet)' : ''} → ${r.ok ? 'locked' : 'NOT locked'}`);
-  return { ok: Object.values(last).every((r) => r.ok), hosts: last };
+  for (const [h, r] of Object.entries(last)) log(`verify: ${h}/  anonymous ${r.anonymous}${r.hop ? ` (after a ${r.hop} hop)` : ''}${r.ok ? '' : r.anonymous === 200 ? ' (still open)' : ''} · token ${r.token}${r.token === 404 ? ' (accepted — nothing published on this host yet)' : r.noVerdict ? ' (no verdict — the host did not answer; not a lock result)' : ''} → ${r.ok ? 'locked' : r.noVerdict ? 'NO VERDICT' : 'NOT locked'}`);
+  return { ok: Object.values(last).every((r) => r.ok), noVerdict: Object.values(last).some((r) => r.noVerdict && !r.ok), hosts: last };
 }
 
 async function lock(a) {
@@ -260,6 +265,7 @@ async function lock(a) {
   // 7 verify both hosts, capped
   const v = await verifyHosts(a, secretValue, log);
   out.hosts = v.hosts;
+  if (!v.ok && v.noVerdict) { log(`verification reached no verdict after ${a.wait}s — a delivery host answered 5xx / nothing with the token (the host, not the lock); re-run the same command, do not hand off (exit 2)`); return summary(repo.repo, 'applied', 'no-verdict', 2, repo.owner); }
   if (!v.ok) { log(`verification failed after ${a.wait}s — the lock is not proven on both hosts; re-run the same command, do not hand off (exit 1)`); return summary(repo.repo, 'applied', 'failed', 1, repo.owner); }
   if (repo.owner) { log(`site locked and verified; the repo half needs the owner (exit 3)`); return summary(repo.repo, 'locked', 'ok', 3, repo.owner); }
   log(`locked and verified — later delivery-host reads take --token-env ${a.siteTokenEnv} (site-token-env on the driver)`);

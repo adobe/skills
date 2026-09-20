@@ -654,9 +654,9 @@ async function main(argv) {
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === '--help' || a === '-h') { process.stdout.write(USAGE); return 0; }
-    if (a === '--out') opts.out = argv[++i];
+    if (a === '--out') opts.out = value(i++, a);
     else if (a === '--json') opts.json = true;
-    else if (a === '--style-split') opts.styleSplit = argv[++i];
+    else if (a === '--style-split') opts.styleSplit = value(i++, a);
     else if (a === '--self-test') opts.selfTest = true;
     else if (a === '--probe') opts.probe = true;
     else if (a === '--compare') opts.compare = value(i++, a);

@@ -51,7 +51,7 @@ const g = (...args) => { const r = spawnSync('git', ['-c', 'user.name=t', '-c', 
 
 // ---- mock admin + delivery -----------------------------------------------------
 const SECRET = 'sekret-VALUE-9f8e7d6c';
-const rules = { config: 200, access: { allow: ['*@old.example'], secretId: 'old-id' }, anonPage: 401, anonLive: 401, tokLive: 200, tokPage: 200, anonOpenPolls: 0, servedByRepo: {} };
+const rules = { config: 200, access: { allow: ['*@old.example'], secretId: 'old-id' }, anonPage: 401, anonLive: 401, tokLive: 200, tokPage: 200, anonOpenPolls: 0, servedByRepo: {}, anonRedirect: null };
 let requests = [];
 const server = createServer((req, res) => {
   let body = '';
@@ -70,6 +70,7 @@ const server = createServer((req, res) => {
       if (p === '/scripts/aem.js') { const st = rules.servedByRepo[u.searchParams.get('repo') || ''] ?? 200; return send(st, '// aem'); }
       if (auth === `token ${SECRET}`) return send(kind === 'live' ? rules.tokLive : rules.tokPage, '<html>ok</html>');
       if (auth) return send(401, '', { 'x-error': 'access-not-allowed' });
+      if (rules.anonRedirect && p === '/') return send(302, '', { location: `/aem.${kind}${rules.anonRedirect}` }); // a locale redirect on the root (absolute-path Location, under the test-hook base)
       if (rules.anonOpenPolls > 0) { rules.anonOpenPolls -= 1; return send(200, '<html>open</html>'); }
       const st = kind === 'live' ? rules.anonLive : rules.anonPage;
       return send(st, st === 200 ? '<html>open</html>' : '', st === 401 ? { 'x-error': 'access-not-allowed' } : {});
@@ -90,7 +91,7 @@ const run = (args, env = {}) => new Promise((resolve) => {
 const LOCK = ['--org', 'o', '--repo', 'r', '--site', 's', '--admin-base', base, '--env', join(proj, '.env'), '--state', join(proj, 'stardust', 'state.json'), '--wait', '1'];
 const envFile = () => (existsSync(join(proj, '.env')) ? readFileSync(join(proj, '.env'), 'utf8') : '');
 const posts = () => requests.filter((q) => q.method === 'POST');
-const reset = () => { requests = []; rmSync(ghLog, { force: true }); rules.config = 200; rules.access = { allow: ['*@old.example'], secretId: 'old-id' }; rules.anonPage = 401; rules.anonLive = 401; rules.tokLive = 200; rules.tokPage = 200; rules.anonOpenPolls = 0; };
+const reset = () => { requests = []; rmSync(ghLog, { force: true }); rules.config = 200; rules.access = { allow: ['*@old.example'], secretId: 'old-id' }; rules.anonPage = 401; rules.anonLive = 401; rules.tokLive = 200; rules.tokPage = 200; rules.anonOpenPolls = 0; rules.anonRedirect = null; };
 const stateFile = join(proj, 'stardust', 'state.json');
 
 try {
@@ -163,6 +164,13 @@ try {
   assert.match(r.stdout.trim().split('\n').at(-1), /repo=already-private site=applied verify=failed exit=1$/);
   reset(); setGh('private'); rules.anonOpenPolls = 2; r = await run([...LOCK, '--allow', '*@operator.example'], { DA_TOKEN: 'da-tok' }); assert.equal(r.status, 0, `propagation: open for two polls, then locked → 0: ${r.all}`);
   reset(); setGh('private'); rules.tokPage = 401; r = await run([...LOCK, '--allow', '*@operator.example'], { DA_TOKEN: 'da-tok' }); assert.equal(r.status, 1); assert.match(r.stdout, /anonymous 401 · token 401 → NOT locked/);
+  // NEGATIVE (verify semantics): a 5xx WITH the token is no verdict, never "accepted → locked" (was: any non-401/403 status counted as accepted)
+  reset(); setGh('private'); rules.tokLive = 503; r = await run([...LOCK, '--allow', '*@operator.example'], { DA_TOKEN: 'da-tok' });
+  assert.equal(r.status, 2, `5xx with the token is no verdict (exit 2), not locked: ${r.all}`); assert.match(r.stdout, /token 503 \(no verdict — the host did not answer; not a lock result\) → NO VERDICT/); assert.doesNotMatch(r.stdout, /aem\.live\/ {2}anonymous 401 · token 503 → locked/);
+  assert.match(r.stdout.trim().split('\n').at(-1), /verify=no-verdict exit=2$/);
+  // an anonymous 302 on `/` (locale redirect) is followed one hop: the 401 behind it is the verdict, not "still open"
+  reset(); setGh('private'); rules.anonRedirect = '/en/'; r = await run([...LOCK, '--allow', '*@operator.example'], { DA_TOKEN: 'da-tok' });
+  assert.equal(r.status, 0, `one redirect hop is followed: ${r.all}`); assert.match(r.stdout, /anonymous 401 \(after a 302 hop\) · token 200 → locked/);
 
   // 6. repo denied → exit 3 with the exact owner command; the site half ran and verified
   reset(); setGh('denied');

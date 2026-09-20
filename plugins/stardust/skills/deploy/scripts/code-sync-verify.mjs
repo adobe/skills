@@ -245,7 +245,9 @@ export function lintFiles(root, files) {
   if (!list) {
     // a failed listing is NO verdict: an empty list from a non-repo or a HEAD-less root must never read as "nothing to lint"
     if (!git(root, ['rev-parse', '--is-inside-work-tree']).ok) return { error: `${root} is not a git work tree` };
-    const diff = git(root, ['diff', '--name-only', '--diff-filter=ACMR', 'HEAD', '--', ...LINT_PATHS]);
+    // --relative: paths come back relative to ROOT (git diff prints repo-root-relative paths; an EDS root that is a
+    // subdirectory of the work tree would otherwise see every file as `not found`); ls-files is cwd-relative already
+    const diff = git(root, ['diff', '--name-only', '--relative', '--diff-filter=ACMR', 'HEAD', '--', ...LINT_PATHS]);
     if (!diff.ok) return { error: `git diff HEAD failed (${diff.err.split('\n')[0] || 'no HEAD?'})` };
     const others = git(root, ['ls-files', '--others', '--exclude-standard', '--', ...LINT_PATHS]);
     if (!others.ok) return { error: `git ls-files failed (${others.err.split('\n')[0]})` };
@@ -274,11 +276,12 @@ export function resolveToolchain(root, sampleJs, { needJs = true, needCss = true
   if (needJs && !eslint) missing.push('eslint');
   if (needCss && !stylelint) missing.push('stylelint');
   let parserNote = null;
+  let probe = null; // the sample file's eslint run — reused by the caller so one file is not linted twice
   if (eslint && sampleJs) {
-    const probe = spawnSync(eslint, [sampleJs], { cwd: root, encoding: 'utf8' });
+    probe = spawnSync(eslint, [sampleJs], { cwd: root, encoding: 'utf8' });
     if (/Failed to load parser|Cannot find module/.test(`${probe.stderr}${probe.stdout}`)) { parserNote = ((`${probe.stderr}${probe.stdout}`).match(/Failed to load parser[^\n]*|Cannot find module[^\n]*/) || ['parser missing'])[0]; missing.push('eslint parser'); }
   }
-  return { eslint, stylelint, missing, parserNote };
+  return { eslint, stylelint, missing, parserNote, probe: probe ? { file: sampleJs, status: probe.status, stdout: probe.stdout, stderr: probe.stderr } : null };
 }
 
 function lint(a) {
@@ -330,8 +333,12 @@ function lint(a) {
     findings.push(...(matched.length ? matched : [`${label}: exited ${r.status} — ${firstLine}`]));
   };
   if (!unavailable) {
-    // errors block; warnings pass (eslint exits 0 on warnings only, stylelint too)
-    runTool(tc.eslint, jsPresent, 'eslint');
+    // errors block; warnings pass (eslint exits 0 on warnings only, stylelint too). The parser probe already linted
+    // the sample file clean — reuse that verdict instead of running eslint on it twice (a failing probe re-runs so
+    // its findings print).
+    const probeClean = tc.probe && tc.probe.status === 0 && !a.fix;
+    if (probeClean) perFile[tc.probe.file].eslint = 0;
+    runTool(tc.eslint, probeClean ? jsPresent.filter((f) => f !== tc.probe.file) : jsPresent, 'eslint');
     runTool(tc.stylelint, cssPresent, 'stylelint');
     if (crashed.length) unavailable = `lint: unavailable (${crashed.join('; ')})`;
   }

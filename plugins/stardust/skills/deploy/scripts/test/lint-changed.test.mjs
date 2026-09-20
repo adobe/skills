@@ -165,6 +165,32 @@ try {
   assert.deepEqual(new Set(shimPaths('eslint')), new Set(['blocks/cards/cards.js']), 'the missing .js never reaches eslint');
   assert.deepEqual(shimPaths('stylelint'), [], 'the missing .css never reaches stylelint (no css left → not invoked)');
 
+  // 7. NEGATIVE (listing paths): an EDS root that is a SUBDIRECTORY of the git work tree — `git diff --name-only`
+  //    prints repo-root-relative paths, which joined to --root did not exist → every changed file was `not found`
+  //    (exit 2 with `not found` findings); with --relative the shims receive root-relative paths and the run is clean.
+  //    Also: the parser probe's clean run on the sample file is reused — eslint sees the sample file ONCE.
+  const repo2 = mkdtempSync(join(tmpdir(), 'lint-changed-sub-'));
+  const site = join(repo2, 'site');
+  const w2 = (p, body) => { mkdirSync(join(site, dirname(p)), { recursive: true }); writeFileSync(join(site, p), body); };
+  w2('blocks/cards/cards.js', 'export default function decorate(block) { block.classList.add("ready"); }\n');
+  w2('blocks/cards/cards.css', '.cards { display: grid; }\n');
+  w2('styles/styles.css', ':root { --brand: #123; }\n');
+  const log2 = join(repo2, 'shim.log');
+  for (const name of ['eslint', 'stylelint']) { const p = join(site, 'node_modules', '.bin', name); mkdirSync(dirname(p), { recursive: true }); writeFileSync(p, `#!/bin/sh\necho "${name} $@" >> "${log2}"\nexit 0\n`); chmodSync(p, 0o755); }
+  const g2 = (...args) => { const r = spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@x.test', ...args], { cwd: repo2, encoding: 'utf8' }); if (r.status !== 0) throw new Error(`git ${args.join(' ')}: ${r.stderr}`); return r.stdout.trim(); };
+  g2('init', '-q', '-b', 'main'); writeFileSync(join(repo2, '.gitignore'), 'node_modules/\n'); g2('add', '-A'); g2('commit', '-q', '-m', 'base');
+  w2('blocks/cards/cards.js', 'export default function decorate(block) { block.classList.add("ready", "v2"); }\n');
+  w2('blocks/cards/cards.css', '.cards { display: grid; gap: 1rem; }\n');
+  const listed2 = lintFiles(site);
+  assert.deepEqual([listed2.js, listed2.css], [['blocks/cards/cards.js'], ['blocks/cards/cards.css']], `root-relative listing from a subdirectory root: ${JSON.stringify(listed2)}`);
+  r = spawnSync(process.execPath, [CLI, '--lint', '--root', site], { encoding: 'utf8', env: { PATH: process.env.PATH, HOME: repo2 } });
+  assert.equal(r.status, 0, `a subdirectory EDS root lints clean: ${r.stdout}${r.stderr}`);
+  assert.doesNotMatch(r.stdout, /not found under/);
+  assert.match(r.stdout, /blocks\/cards\/cards\.js {2}syntax ok · eslint 0/);
+  const eslintRuns = readFileSync(log2, 'utf8').split('\n').filter((l) => l.startsWith('eslint '));
+  assert.equal(eslintRuns.length, 1, `the sample file is linted once (probe reused), got: ${eslintRuns.join(' | ')}`);
+  rmSync(repo2, { recursive: true, force: true });
+
   // usage
   assert.equal(run('--help').status, 0);
   assert.equal(spawnSync(process.execPath, [CLI, '--lint', '--root', join(root, 'nope')], { encoding: 'utf8' }).status, 1);

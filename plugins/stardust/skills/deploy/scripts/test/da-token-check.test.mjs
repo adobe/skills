@@ -11,7 +11,7 @@
  *     `da: unreachable` in the block); an expired decode makes ZERO requests;
  *   - --need: remaining < need → 2;
  *   - --credentials: exact SITE_TOKEN slug match (LEDGERLINE vs LEDGERLINE_DEMO), schema keys incl. `daTarget`
- *     (unchecked without a smoke, ok on 200, not-visible on 404 with exit 2, denied on 403), state.json merged
+ *     (unchecked without a smoke, ok on 200, not-visible on 404 with exit 2, denied on 403 with `da: ok`), state.json merged
  *     (other keys kept, no token value inside), gh skipped / ok (mock GitHub) / expired;
  *   - usage: --help 0, unknown flag 1, --org without --repo 1.
  */
@@ -84,7 +84,7 @@ try {
   hits = 0; r = await run(['--org', 'o', '--repo', 'r'], { DA_TOKEN: ims(4) });
   assert.equal(r.status, 0, r.all); assert.match(r.stdout, /valid ~4\.0h \(source: shell\) · list: 200/); assert.equal(hits, 1, 'exactly one list GET');
   listStatus = 401; r = await run(['--org', 'o', '--repo', 'r'], { DA_TOKEN: ims(4) }); assert.equal(r.status, 2); assert.match(r.stdout, /rejected \(list 401; source: shell\)/);
-  listStatus = 403; r = await run(['--org', 'o', '--repo', 'r'], { DA_TOKEN: ims(4) }); assert.equal(r.status, 2); assert.match(r.stdout, /answers 403/);
+  listStatus = 403; r = await run(['--org', 'o', '--repo', 'r'], { DA_TOKEN: ims(4) }); assert.equal(r.status, 2); assert.match(r.stdout, /answers 403 .*daTarget: denied — not a token refresh/); assert.doesNotMatch(r.stdout, /refresh it in/);
   listStatus = 404; r = await run(['--org', 'o', '--repo', 'r'], { DA_TOKEN: ims(4) }); assert.equal(r.status, 2, '404 = target not visible → exit 2, never usable'); assert.match(r.stdout, /valid ~4\.0h \(source: shell\) but o\/r answers 404 — the DA org\/repo is not visible to this identity/); assert.match(r.stdout, /site-bootstrap\.md/); assert.doesNotMatch(r.stdout, /list: 404/);
   r = await run(['--org', 'o', '--repo', 'r', '--json'], { DA_TOKEN: ims(4) }); assert.equal(r.status, 2); assert.equal(JSON.parse(r.stdout).smoke, 404); assert.equal(JSON.parse(r.stdout).da, 'ok', 'the token itself is fine');
   listStatus = 503; r = await run(['--org', 'o', '--repo', 'r'], { DA_TOKEN: ims(4) }); assert.equal(r.status, 1, '5xx = no verdict, exit 1 not 2'); assert.match(r.stdout, /list: 503 — no verdict/);
@@ -113,7 +113,7 @@ try {
   listStatus = 404; r = await run(['--credentials', '--site', 'ledgerline', '--org', 'o', '--repo', 'r', '--state', state]);
   assert.equal(r.status, 2, r.all); assert.match(r.stdout, /credentials: da=ok daSource=repo-env daExpiresAt=\S+ daTarget=not-visible /); assert.equal(JSON.parse(readFileSync(state, 'utf8')).credentials.daTarget, 'not-visible');
   listStatus = 200; r = await run(['--credentials', '--site', 'ledgerline', '--org', 'o', '--repo', 'r', '--state', state]); assert.equal(r.status, 0); assert.match(r.stdout, /daTarget=ok /);
-  listStatus = 403; r = await run(['--credentials', '--site', 'ledgerline', '--org', 'o', '--repo', 'r', '--state', state]); assert.equal(r.status, 2); assert.match(r.stdout, /da=expired .*daTarget=denied /);
+  listStatus = 403; r = await run(['--credentials', '--site', 'ledgerline', '--org', 'o', '--repo', 'r', '--state', state]); assert.equal(r.status, 2); assert.match(r.stdout, /da=ok .*daTarget=denied /, 'a list 403 is an access refusal — the token is fine (was: da=expired → the refresh remedy for an access problem)'); assert.equal(JSON.parse(readFileSync(state, 'utf8')).credentials.da, 'ok');
   listStatus = 200;
   assert.equal(st.credentials.siteTokenEnv, 'SITE_TOKEN_LEDGERLINE'); assert.doesNotMatch(readFileSync(state, 'utf8'), /aaa|bbb|ccc/);
   r = await run(['--credentials', '--site', 'ledgerline-demo', '--no-smoke', '--state', state]); assert.match(r.stdout, /siteTokenEnv=SITE_TOKEN_LEDGERLINE_DEMO/);
