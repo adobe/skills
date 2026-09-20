@@ -1,0 +1,57 @@
+{
+  "slug": "news__storm-season-checklist",
+  "type": "article",
+  "renderBranch": "A",
+  "tier": "archetype",
+  "template": null,
+  "modules": [
+    "article-header",
+    "article-body",
+    "related-articles"
+  ],
+  "slotsFilled": [
+    "kicker",
+    "headline",
+    "byline",
+    "article-body",
+    "heading",
+    "related-link"
+  ],
+  "canonShas": {
+    "header": "9df3d58a07d2",
+    "footer": "323f63aaa91f",
+    "css": "c8372774ba5a"
+  },
+  "deviations": [],
+  "migrationDecisions": [
+    {
+      "kind": "register-applied",
+      "entry": "R-01",
+      "where": "footer",
+      "detail": "footer link colour lifted per inconsistency register; expected gate delta in footer band"
+    }
+  ],
+  "metadata": {
+    "title": "Storm season checklist: five things to do before the first warning — Larkspur Mutual",
+    "description": "Five preparations our claims adjusters wish every member made before storm season.",
+    "canonical": "https://www.larkspurmutual.example/news/storm-season-checklist/",
+    "ogTitle": "Storm season checklist: five things to do before the first warning — Larkspur Mutual",
+    "lang": "en"
+  },
+  "jsonLd": {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    "headline": "Storm season checklist: five things to do before the first warning",
+    "publisher": {
+      "@type": "Organization",
+      "name": "Larkspur Mutual"
+    }
+  },
+  "migratedAt": "2026-09-10T15:35:12Z",
+  "designMdSha": "a99e7fb42deeab5a131ba0b090a9a4ce6eaecf7e81be48128bfee70e3fd49a3e",
+  "designJsonSha": "27bf506c89928d5aab22bb3ff836aa673ff4a4fcd8f50e336ad0be1ef12f3a11",
+  "sourceCurrentSha": "85fd46a1b00cfc9a1adb95f68e0f0269406d857c30ac5ecdec366e800212159b",
+  "sourceProposedSha": "3cc1d721f7cf22cfcd13892dc8d087c8e8ea639c0070d9673ac871bf179f9918",
+  "assetsBundled": 3,
+  "brokenInternalLinks": 0
+}

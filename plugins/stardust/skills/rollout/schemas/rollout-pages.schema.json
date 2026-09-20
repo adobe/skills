@@ -72,6 +72,38 @@
             "deployedAt": { "type": ["string", "null"], "format": "date-time" },
             "verifiedAt": { "type": ["string", "null"], "format": "date-time" },
             "error": { "type": ["string", "null"], "description": "Failure detail when status == failed." },
+            "gates": {
+              "type": "object",
+              "description": "Per-page gate results ingested by update-coverage --gate <name> <json> / verify --ai-readability (reference/delivery-gates.md § Gate 5, § Gate 6). Copied from the instrument's artifact, never typed. unmeasured = the instrument gave no verdict; the row's status is untouched.",
+              "additionalProperties": false,
+              "properties": {
+                "ai-readability": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "strict": { "type": ["number", "null"] },
+                    "code": { "type": ["number", "null"] },
+                    "unmeasured": { "type": "boolean" },
+                    "error": { "type": ["string", "null"] },
+                    "min": { "type": ["number", "null"] },
+                    "origin": { "type": ["string", "null"] },
+                    "at": { "type": ["string", "null"], "format": "date-time" }
+                  }
+                },
+                "editability": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "authored": { "type": "integer" }, "editable": { "type": "integer" }, "dead": { "type": "integer" },
+                    "duplicated": { "type": "integer" }, "exempt": { "type": "integer" },
+                    "unmeasured": { "type": "boolean" },
+                    "exemptSource": { "type": "string", "enum": ["@ew-exempt", "cli"] },
+                    "origin": { "type": "string", "enum": ["harness", "url"] },
+                    "at": { "type": ["string", "null"], "format": "date-time" }
+                  }
+                }
+              }
+            },
             "gate": {
               "type": "object",
               "description": "Published-origin PAGE gate (gate-publish.mjs --report / verify.mjs --gate-report; reference/delivery-gates.md § Gate 8). Read from stardust/rollout/gate-report.json, never typed. Under flow: replica a row is verified only with status pass.",

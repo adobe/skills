@@ -285,3 +285,41 @@ node skills/rollout/scripts/content-acceptance.mjs --slug <s> --target-url https
   (exit 124 / 143 = killed, no verdict); no threshold changes (B29); the deploy
   ledger is untouched (pre-PUT); role-level drill-down of a failed page is
   `diff`'s `content-diff.mjs` (its capture-as-source mode), not a second classifier (B26).
+
+## Gate 5 — AI-readability (`code ≥ 98` on the delivered origin, per page)
+
+Deploy's atomic contract names the gate per page; rollout runs it per wave and
+ingests the artifact — never a typed number. Instrument:
+`skills/deploy/scripts/ai-readability.mjs`; ingest: `update-coverage.mjs --gate
+ai-readability <json>` (Phase C, preview origin) and `verify.mjs
+--ai-readability <json>` (Phase E, live origin).
+
+```bash
+node skills/deploy/scripts/ai-readability.mjs --origin https://<branch>--<repo>--<org>.aem.page --paths <wave-paths> --min 98 --json stardust/rollout/ai-readability-<wave>.json
+node skills/rollout/scripts/update-coverage.mjs --gate ai-readability stardust/rollout/ai-readability-<wave>.json
+node skills/rollout/scripts/verify.mjs --ai-readability stardust/rollout/ai-readability-live.json   # Phase E, over every verified page (≤ 150) or listing pages + the Gate 8 sample
+```
+
+- **Condition.** After each Phase C wave's preview run, every page of the wave
+  is scored on the **preview** origin (D1); `code < 98` → the row is `failed`
+  (`error: "ai-readability code N < 98 — top: <blocks>"`) and is not in the
+  `--publish` set. Phase E re-runs on **live** over every verified page (≤ 150;
+  above: every listing/index page + the Gate 8 sample per template) and flips
+  `code < 98` to `failed`. The bar is the artifact's own `min` (never retyped).
+- **Unmeasured ≠ FAIL.** An `error` row (`served fetch HTTP 429`, a timeout) is
+  `delivery.gates.ai-readability.unmeasured: true`: the row's status is
+  untouched, it is counted, `verify` exits 2 ("incomplete") while any remain —
+  a re-drive (sequentially, after the throttle window), never a pass, never a
+  FAIL. The qa `ai-readability/unmeasured` severity stays `info`.
+- **Escape hatch.** Per page: none. Per block: the instrument's `--allowlist`
+  (block + string, never a page) and `--exclude-blocks`. A page that stays
+  unmeasured is reported as such; the owner may close with a named `interim`
+  line in `decisions.md` only for pages the report lists.
+- **Hands-off.** No new auto-resolution: a `failed` readability page stays at
+  preview (D16), the wave continues on the other pages, the close-out leads
+  with the Readability line and the `failed` slugs go to `verify/summary.md`.
+- **Phase H line** — computed from `rollout.json.lastRun.gates.ai-readability`,
+  never typed: `Readability  strict median <n> · code median <n> · pages < 98:
+  <n> · unmeasured: <n>`; the report cannot close with `< 98` or `unmeasured` > 0
+  unless `decisions.md` names them. One instrument, one pass per phase (qa's
+  check K remains the drift monitor).

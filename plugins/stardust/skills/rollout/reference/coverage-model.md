@@ -88,6 +88,13 @@ of `delivery.status`:
 - **Ledger reconcile** — `update-coverage.mjs --from-ledger` after a
   `deploy-batch.mjs` run; merge rules once, under § Page delivery status
   lifecycle (Ledger reconcile).
+- **`delivery.gates.<name>`** — per-page gate results ingested from the
+  instrument's own artifact by `update-coverage.mjs --gate <name> <json>` /
+  `verify.mjs --ai-readability` (`ai-readability`: `{strict, code, unmeasured,
+  min, origin, at}`; `editability`: `{authored, editable, dead, duplicated,
+  exempt, unmeasured, exemptSource, origin, at}`). Below the bar → `failed`
+  with the reason; `unmeasured: true` → status untouched (no verdict ≠ FAIL);
+  roll-up `rollout.json.lastRun.gates.<name>`. `delivery-gates.md` § Gate 5 · § Gate 6.
 - **`delivery.gate`** — the published-origin **page gate**, copied from
   `stardust/rollout/gate-report.json` by `gate-publish.mjs --report` or
   `verify.mjs --gate-report` (never typed): `{ status: pass | fail |
