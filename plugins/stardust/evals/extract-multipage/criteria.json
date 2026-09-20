@@ -35,7 +35,7 @@
     {
       "name": "per_page_json_shape",
       "max_score": 5,
-      "description": "Each stardust/current/pages/<slug>.json contains all required top-level keys: _provenance (first key), slug, url, finalUrl, title, og, themeColor, headings, landmarks, ctas, links, media, forms, widgets, perSectionStyle — and the schema-2 additions: schemaVersion 2, landmarks with children (main's direct sections), heroHeadline, media.images[] (each with localPath | downloadError after the harvest). `node skills/extract/scripts/validate-page.mjs stardust/current/pages` exits 0 on every record; a FAIL row (missing key, synthesized renderedBy) fails this criterion."
+      "description": "Each stardust/current/pages/<slug>.json contains all required top-level keys: _provenance (first key), slug, url, finalUrl, title, og, themeColor, headings, landmarks, ctas, links, media, forms, widgets, perSectionStyle — and the schema-2 additions: schemaVersion 2, landmarks with children (main's direct sections), heroHeadline, media.images[] (each with localPath | downloadError after the harvest). `node skills/extract/scripts/validate-page.mjs --dir stardust/current/pages` exits 0 on every record; a FAIL row (missing key, synthesized renderedBy) fails this criterion."
     },
     {
       "name": "media_harvested",
