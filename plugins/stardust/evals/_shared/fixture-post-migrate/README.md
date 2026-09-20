@@ -30,9 +30,10 @@ crawled.
 | `stardust/state.json` | `skills/stardust/reference/state-machine.md` (§ Flow keys, § Page lifecycle) + `skills/stardust/reference/migrate-output-format.md` § State.json contract | `flow: "replica"`, `flowChosenAt`, `flowSource: "question"`; six pages `migrated` (two per type); `migrate` block with `pageMap`, `selfContained: true` |
 | `stardust/direction.md` | `skills/replica/reference/preserve-direction.md` § 2 | preserve-mode record, verbatim promotion, register pointer |
 | `stardust/replica/inconsistency-register.md` | same file, § 3 | one `applied` entry (R-01, footer link contrast) |
-| `stardust/replica/progress.json` | `skills/replica/reference/source-fidelity-gate.md` § Residual logging format | per-archetype gate ledger — see the three cases below |
+| `stardust/replica/progress.json` | `skills/replica/reference/source-fidelity-gate.md` § Residual logging format + `skills/replica/reference/chrome-states.md` § Chrome variants | per-archetype gate ledger — see the three cases below; one `chrome.variants[]` row (`default`, `pages: 6`, its states matrix) and `chromeVariant: "default"` on every archetype, so `chrome-variants.mjs --progress` lets the fan-out through |
 | `stardust/usage.md`, `stardust/usage.json` | `skills/stardust/scripts/token-ledger.mjs` output shape | hand-authored advisory usage ledger: three windows + `unwindowed`, totals (180 requests · fresh 121.1 k · cache read 55.93 M · output 304.1 k · est. USD 32.77), harness-reported USD 34.10 — the state report copies these, never recomputes them |
-| `stardust/migrated/**` | `skills/migrate/reference/migration-procedure.md` (§ Output path mapping, § `_meta.json` sidecar, § Provenance) | six pages at URL-literal paths + sidecars + three bundled assets |
+| `stardust/migrated/**` | `skills/migrate/reference/migration-procedure.md` (§ Output path mapping, § `_meta.json` sidecar, § Provenance) + `skills/migrate/reference/fidelity-tiers.md` § Declaration | six pages at URL-literal paths + sidecars (`fidelityTier`, `gatesPassed[]` — `archetype-gate` on the two `landing` pages only) + three bundled assets |
+| `stardust/current/pages/business.html` | `skills/migrate/scripts/importer-skeleton.mjs` header (rendered capture) | the `business` sibling's settled DOM (`hero-statement`, `coverage-tiles`, `member-stat-band`, `agent-locator-cta`), so the skeleton has one capture to read on this tree; the only file under `current/` |
 | `stardust/journal.md` | `skills/stardust/reference/journal-format.md` | four entries; the last carries the `Next:` line the resume path should quote |
 | `stardust/status.jsonl` | `skills/stardust/reference/run-status.md` | extract → replica → migrate → routing → rollout `blocked` |
 
@@ -66,8 +67,8 @@ intentional.
 
 ## Known limitations
 
-- **Not present**: `stardust/current/` (page JSON, screenshots, fonts,
-  `_brand-extraction.json`), the promoted root `PRODUCT.md` / `DESIGN.md` /
+- **Not present**: `stardust/current/` beyond `pages/business.html` (no page
+  JSON, screenshots, fonts, `_brand-extraction.json`), the promoted root `PRODUCT.md` / `DESIGN.md` /
   `DESIGN.json`, `stardust/prototypes/`, `stardust/replica/gates/`,
   `stardust/replica/motion/`, `stardust/dynamic-features.md`. Paths in
   `state.json`, `progress.json` and the journal point at them as a real

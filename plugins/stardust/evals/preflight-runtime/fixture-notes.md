@@ -17,7 +17,11 @@ this note and `answers.md` are not.
   edit (`root_manifest_untouched`) and the reason the preflight prints
   `lint unavailable` (`lint_unavailable_surfaced`).
 
-Nothing in the shared tree is edited.
+Nothing in the shared tree is edited. Copied before the shared tree gained
+`current/pages/business.html` and the `chrome.variants[]` /
+`archetypes[].chromeVariant` rows in `replica/progress.json` (T18.1), and
+without `migrated/assets/{favicon.svg,logo.svg,styles.css}` — none of them is
+read before the preflight.
 
 ## What the fixture deliberately makes true
 

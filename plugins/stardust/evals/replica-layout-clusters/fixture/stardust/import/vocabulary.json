@@ -1,0 +1,12 @@
+{
+  "root": "main",
+  "chrome": ["header.site-header", "footer.site-footer"],
+  "wrappers": [".program-hero__inner", ".coverage-tiles__grid", ".compare-columns__inner"],
+  "markers": {
+    "section.program-hero":    { "kind": "product-hero",    "emitter": "block:product-hero" },
+    "section.coverage-tiles":  { "kind": "coverage-tiles",  "emitter": "block:coverage-tiles" },
+    "section.compare-columns": { "kind": "compare-columns", "emitter": "block:compare-columns" },
+    "section.faq":             { "kind": "faq",             "emitter": "block:faq" },
+    "section.cta-band":        { "kind": "quote-cta",       "emitter": "block:quote-cta" }
+  }
+}

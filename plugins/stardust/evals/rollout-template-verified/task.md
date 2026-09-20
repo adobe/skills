@@ -46,8 +46,9 @@ the evidence allows. Print the Phase H `Blocks` line."
    `verified` (via `update-coverage.mjs --block <id> --status verified`),
    because `home` has `published.<bp>.pass` at both configured breakpoints.
 3. **Program and article blocks do not.** `product-hero`, `feature-list`,
-   `quote-cta`, `article-header`, `article-body`, `related-articles` end at
-   `deployed` (or `converted`) — never `verified` — even though every page is
+   `quote-cta`, `article-header`, `article-body`, `related-articles` stay
+   unverified — `pending` on this fixture (no `blocks/`, no conversion step;
+   `converted` / `deployed` once those steps run) — even though every page is
    previewed and the ledger reconcile succeeded. The agent does not "verify"
    them on the strength of a preview, a prototype gate, or a visual look —
    and when `update-coverage.mjs --block … --status verified` refuses the

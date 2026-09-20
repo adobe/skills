@@ -7,10 +7,35 @@
   "site": "https://www.larkspurmutual.example",
   "breakpointsConfigured": [1440, 360],
   "register": "stardust/replica/inconsistency-register.md",
+  "chrome": {
+    "variants": [
+      {
+        "key": null,
+        "name": "default",
+        "pages": 6,
+        "archetype": "home",
+        "states": {
+          "rest": "gated",
+          "scrolled": "gated",
+          "menu:Insurance": "gated",
+          "menu:Claims": "gated",
+          "search": "dead",
+          "drawer": "gated",
+          "drawer-drilled": "unprobed:auth-gated drawer link",
+          "footer-accordion:Company": "gated"
+        },
+        "gates": {
+          "360": "gates/home-360/chrome-states/chrome-states.json",
+          "1440": "gates/home-1440/chrome-states/chrome-states.json"
+        }
+      }
+    ]
+  },
   "archetypes": [
     {
       "pageType": "landing",
       "archetype": "home",
+      "chromeVariant": "default",
       "liveUrl": "https://www.larkspurmutual.example/",
       "prototype": "stardust/prototypes/home-proposed.html",
       "gated": true,
@@ -44,6 +69,7 @@
     {
       "pageType": "article",
       "archetype": "news__storm-season-checklist",
+      "chromeVariant": "default",
       "liveUrl": "https://www.larkspurmutual.example/news/storm-season-checklist/",
       "prototype": "stardust/prototypes/news__storm-season-checklist-proposed.html",
       "gated": true,
@@ -85,6 +111,7 @@
     {
       "pageType": "program",
       "archetype": "insurance__home",
+      "chromeVariant": "default",
       "liveUrl": "https://www.larkspurmutual.example/insurance/home/",
       "prototype": "stardust/prototypes/insurance__home-proposed.html",
       "gated": false,

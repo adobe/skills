@@ -2,7 +2,8 @@
   "slug": "insurance__home",
   "type": "program",
   "renderBranch": "A",
-  "tier": "archetype",
+  "fidelityTier": "archetype",
+  "gatesPassed": [],
   "template": null,
   "modules": [
     "product-hero",

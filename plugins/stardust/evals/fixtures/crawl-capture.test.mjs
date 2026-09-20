@@ -3,17 +3,25 @@
 // (extract/reference/current-state-schema.md) — run under Playwright against
 // the local static page evals/lint/fixtures/crawl-capture/page.html, served by
 // a node:http server in this process (images and fonts included, one 404).
-// Zero external requests. SKIPS with a notice (exit 0) when `playwright` is not
-// importable — the plugin tree ships no node_modules; the eval-runner env has it.
+// Zero external requests. Playwright is resolved the way crawl-assets.test.mjs
+// does — STARDUST_GATE_DEPS=<dir>/node_modules, else STARDUST_PW_ROOT/node_modules,
+// else the repo root's — never installed by this test (the plugin tree ships no
+// node_modules; a project's preflight-runtime.mjs install is the documented
+// source). SKIPS with one line (exit 0) when none resolves it.
 // Wrap in run-capped when driving it by hand: the browser launch is the only cost.
 // Usage: node plugins/stardust/evals/fixtures/crawl-capture.test.mjs  (exit 1 on failure)
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { capture, serializeDom, validateRecord, SCHEMA_VERSION } from '../../skills/extract/scripts/crawl.mjs';
 
+const REPO_ROOT = resolve(import.meta.dirname, '..', '..', '..', '..');
+const deps = process.env.STARDUST_GATE_DEPS || (process.env.STARDUST_PW_ROOT && join(process.env.STARDUST_PW_ROOT, 'node_modules')) || join(REPO_ROOT, 'node_modules');
 let chromium;
-try { ({ chromium } = await import('playwright')); } catch { console.log('crawl-capture test: SKIP — playwright not importable here (npm i -D playwright --no-save to run it)'); process.exit(0); }
+try { const pw = await import(pathToFileURL(createRequire(join(deps, 'x.js')).resolve('playwright')).href); chromium = (pw.chromium ?? pw.default?.chromium); if (!chromium) throw new Error('no chromium export'); } catch { console.log(`crawl-capture test: SKIP — playwright not resolvable from ${deps} (set STARDUST_GATE_DEPS=<dir>/node_modules, e.g. a project's stardust/node_modules after preflight-runtime.mjs)`); process.exit(0); }
 
 const html = readFileSync(new URL('../lint/fixtures/crawl-capture/page.html', import.meta.url), 'utf8');
 const svg = (w, h) => `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><rect width="${w}" height="${h}" fill="#147aff"/></svg>`;

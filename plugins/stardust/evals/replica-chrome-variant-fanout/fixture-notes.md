@@ -21,8 +21,8 @@ this note and `answers.md` are not.
 - `stardust/state.json` — two new `landing` pages, `members` and `claims`,
   `extracted` on 2026-09-15 (no prototype, no migrated path); `site.crawled`
   / `totalDiscovered` 6 → 8. No page carries `chromeVariant`.
-- `stardust/replica/progress.json` — a top-level `chrome` block with one
-  variant row, `default` (shape from `evals/lint/fixtures/chrome-variants/
+- `stardust/replica/progress.json` — identical to the shared tree's: a
+  top-level `chrome` block with one variant row, `default` (shape from `evals/lint/fixtures/chrome-variants/
   progress.json`; states cover the matrix incl. `search: dead` and
   `drawer-drilled: unprobed:…`; `pages: 6`, `archetype: home`), and
   `chromeVariant: "default"` on every `archetypes[]` entry. The gate results
@@ -61,3 +61,6 @@ this note and `answers.md` are not.
   change in the fingerprint inputs does not break the eval.
 - Every sha in the tree is syntactically valid but fabricated; nothing
   hashes to it.
+- Copied before the shared tree gained `usage.json` / `usage.md` (T13.4) and
+  `current/pages/business.html` — absent here (`current/pages/` holds only
+  the eight `.json` records); the chrome inventory reads none of them.

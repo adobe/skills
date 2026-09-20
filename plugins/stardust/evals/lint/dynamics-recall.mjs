@@ -78,7 +78,7 @@ try { const { createRequire } = await import('node:module'); createRequire(join(
 if (STATIC) {
   console.log('depth: not run (--static — the lint-chain mode; run without the flag from an EDS project for the browser half)');
 } else if (!playwright) {
-  console.log('depth: SKIPPED — playwright not resolvable from the cwd (npm i -D playwright --no-save to run the browser half)');
+  console.log('depth: SKIPPED — playwright not resolvable from the cwd (run from an EDS project whose stardust/node_modules preflight-runtime.mjs installed, for the browser half)');
 } else {
   const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.json': 'application/json' };
   const ROUTES = { '/mfe/remoteEntry.js': 'mfe-remoteEntry.js', '/api/items': 'api-items.json', '/api/search': 'api-items.json' };
