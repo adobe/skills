@@ -18,7 +18,7 @@ Phases, in order: Setup → A Inventory → B Block dedup plan → B2 Dynamic su
 | A | `node skills/rollout/scripts/inventory.mjs --site-url <source-url> [--content <eds-root>/content] [--redirects stardust/redirects.tsv]` (archetypes-only: add `--state stardust/state.json`) |
 | B | `node skills/rollout/scripts/blocks.mjs`; `node skills/rollout/scripts/plan.mjs` |
 | B2 | `node skills/dynamics/scripts/dynamics-detect.mjs --from-state … --reach stardust/current`; `node skills/dynamics/scripts/dynamics-plan.mjs --target-origin <live host> --migrated stardust/migrated`; `node skills/dynamics/scripts/dynamics-plan.mjs --lint stardust/dynamic-features.md stardust/dynamic-features-plan.md` |
-| C | per page: `node skills/rollout/scripts/delivery-lint.mjs --file <html> --path </da/path> --icons-dir icons [--chrome-docs content/nav.html,content/footer.html,…]` (multi-variant sites); `node skills/rollout/scripts/media-reconcile.mjs --file <html> --deploy-host <host> [--apply]`; `node skills/rollout/scripts/section-fidelity.mjs --file <html> --source <url>`; `node skills/rollout/scripts/update-coverage.mjs <slug> --status <s>`; batches: `node skills/deploy/scripts/deploy-batch.mjs --org … --repo … --branch … --content <dir> [--concurrency 4]` (preview); live: same command `--publish` after D1 |
+| C | per page: `node skills/rollout/scripts/delivery-lint.mjs --file <html> --path </da/path> --icons-dir icons [--chrome-docs content/nav.html,content/footer.html,…]` (multi-variant sites); `node skills/rollout/scripts/media-reconcile.mjs --file <html> --deploy-host <host> [--apply]`; `node skills/rollout/scripts/section-fidelity.mjs --file <html> --source <url>`; `node skills/rollout/scripts/update-coverage.mjs <slug> --status <s>`; waves: `node skills/rollout/scripts/wave.mjs <waveId> <roster> [--publish] [--unpark <reason\|all>]` (drives `deploy-batch.mjs` preview → live gate → `--publish` after D1; `regate-list` sub-command for class rounds) |
 | D | `node skills/rollout/scripts/assemble.mjs`; `node skills/rollout/scripts/redirects.mjs [--post-publish]` |
 | D2 | `node skills/dynamics/scripts/dynamics-check.mjs --origin <live host> --gate` |
 | E / E2 | `node skills/rollout/scripts/verify.mjs [--base <url> | --root <dir>] [--all] [--report <dir>]`; `node skills/deploy/scripts/localize-links.mjs --source-host <live-host> --content content --redirects stardust/redirects.tsv [--check]` |
@@ -37,7 +37,7 @@ Outputs (under `stardust/rollout/`): `coverage/{pages,templates,blocks}.json` ·
 | A | `reference/coverage-model.md` § Files · § Page delivery status lifecycle · § Artifact type + fidelity tier · § Idempotency rules (inventory) |
 | B | `reference/coverage-model.md` § Block delivery status lifecycle · § Dedup contract (plan.json); `reference/operational-learnings.md` § Extending a delivered site |
 | B2 / D2 | `../dynamics/reference/triage.md` § Rules; `../dynamics/reference/listings.md` § Why it is a PRE-IMPORT gate · § Block contract; `../dynamics/reference/patterns.md`; `../dynamics/reference/parity-report.md` § Schema |
-| C | `reference/delivery-lint.md` § Run it · § Where it sits in Phase C; `reference/delivery-gates.md` § Gate 1 · § Gate 2 · § Gate 3 · § Gate 4 · § Batched delivery at scale; `../deploy/reference/chrome.md` § Chrome states and variants; `../migrate/reference/fidelity-tiers.md` § Declaration (per page); `../migrate/reference/media-reconciliation.md` § The four decisions; waves: `../stardust/reference/fan-out.md` § Worker contract · § Scope and type of delegated agents; `../stardust/reference/harness-quirks.md`; `../deploy/da-deploy-protocol.md` § Two clocks; code-writing waves: `../deploy/reference/block-agents-brief.md` § The brief template · § Shared cores and variants |
+| C | `reference/delivery-lint.md` § Run it · § Where it sits in Phase C; `reference/delivery-gates.md` § Gate 1 · § Gate 2 · § Gate 3 · § Gate 4 · § Batched delivery at scale; `../deploy/reference/chrome.md` § Chrome states and variants; `../migrate/reference/fidelity-tiers.md` § Declaration (per page); `../migrate/reference/media-reconciliation.md` § The four decisions; waves: `reference/sweep-protocol.md` § Wave driver; `../stardust/reference/fan-out.md` § Worker contract · § Scope and type of delegated agents; `../stardust/reference/harness-quirks.md`; `../deploy/da-deploy-protocol.md` § Two clocks; code-writing waves: `../deploy/reference/block-agents-brief.md` § The brief template · § Shared cores and variants |
 | D3 | `reference/multilingual.md` |
 | E / E2 | `reference/coverage-model.md` § Verify; `reference/operational-learnings.md` § Two verify checks; `reference/sweep-protocol.md` (site-scale fix loop, after verify); `../stardust/reference/context-hygiene.md` § Runner reports and session hand-off |
 | F / G | `reference/audit-sources.md` § The sources · § Recording an external finding · § Fixability → who fixes it · § AEM autofix registry · § The loop; `reference/checks.md`; `reference/coverage-model.md` § Optimize gate (findings lifecycle); `reference/operational-learnings.md` § Optimize-gate learnings |
@@ -229,34 +229,30 @@ styled (per `stardust/runtime-contract.json`, `skills/deploy/SKILL.md`
 § Runtime-detection probe).
 
 **Execution model: waves.** Deliver in waves of parallel **author-only** agents
-— each agent curls its source pages and writes files only, never deploys or
-edits blocks — template clusters concurrently (non-overlapping pages),
-representative-first so blocks exist to be reused, and **a family's
-listing/index pages ship in its first wave**, before its volume wave (posts
-delivered ahead of their category/author pages bounce every in-page link, and
-a later stub wave can overwrite the rich pages); then a **central deploy**
-per page; then background batches on the same ledger. Clusters of 6–20+ siblings:
-`reference/delivery-gates.md` § Batched delivery. The central deploy step
-runs the bundled, resumable driver, never a serial loop:
-`node skills/deploy/scripts/deploy-batch.mjs --org <org> --repo <repo>
---branch <branch> --content <dir>` (concurrency pool, persistent path + body-hash
-ledger — only changed files and FAILs re-drive; retry/backoff, append-only log, delivered-`.plain.html` check),
-then, once the page gate passed (or `decisions.md` records publish-to-live), the
-separate `… --publish` run. Two clocks: code first on the ref the user will look at, then
-content; the publish report names the 2 h code-cache window end (`skills/deploy/da-deploy-protocol.md` § Two clocks).
-The driver and every batch run in the background; `stardust/.work/deploy/deploy-batch.progress.json`
-is the progress file (`skills/stardust/scripts/progress.mjs read <file>`) and its
-stdout `SUMMARY` line the completion; after a blip, re-run the same command.
-Then `update-coverage.mjs --from-ledger content/.deploy-ledger.json` reconciles the ledger into coverage (one write; no per-page `--status deployed`; merge rules: `reference/coverage-model.md` § Page delivery status lifecycle).
-Every wave agent follows `skills/stardust/reference/fan-out.md` § Worker contract
-(liveness, resume-once, finisher) and § Scope and type of delegated agents; every
-shell loop, runner and delivery step in a wave follows
-`skills/stardust/reference/harness-quirks.md`. When a wave must write code
-(converter encoders, per-group stylesheets, helpers), the deploy brief's ownership
-protocol applies — `skills/deploy/reference/block-agents-brief.md` § The brief
-template (ownership table, block-name claim) and § Shared cores and variants;
-author-only waves inherit the shared cores read-only, and the lead merges the
-per-agent `eds-conversion-log-<id>.md` files.
+— each agent writes files only, never deploys or edits blocks — template
+clusters concurrently (non-overlapping pages), representative-first so blocks
+exist to be reused, and **a family's listing/index pages ship in its first
+wave**, before its volume wave (posts delivered ahead of their category/author
+pages bounce every in-page link, and a later stub wave can overwrite the rich
+pages). The central deploy is the resumable driver, never a serial loop or a
+per-page agent turn: `node skills/rollout/scripts/wave.mjs <waveId> <roster>`
+runs the declared stage table per page (lint → local gate → `deploy-batch.mjs`
+preview → live gate on the preview origin → `--publish` only when explicit or
+`decisions.md` records publish-to-live), parks a failing page instead of the
+wave, re-drives only what its hashes say changed, and closes with
+`update-coverage.mjs --from-ledger` and the parked table — contract, stage
+table, park reasons and `--unpark`: `reference/sweep-protocol.md` § Wave driver.
+Drivers run in the background (`stardust/.work/rollout/wave.progress.json`,
+`skills/stardust/scripts/progress.mjs read <file>`, the stdout `SUMMARY` line;
+after a blip, re-run the same command). Two clocks: code first on the ref the
+user will look at, then content (`skills/deploy/da-deploy-protocol.md` § Two
+clocks). Every wave agent follows `skills/stardust/reference/fan-out.md`
+§ Worker contract and § Scope and type of delegated agents; every shell loop
+follows `skills/stardust/reference/harness-quirks.md`. When a wave must write
+code, the deploy brief's ownership protocol applies —
+`skills/deploy/reference/block-agents-brief.md` § The brief template and
+§ Shared cores and variants; author-only waves inherit the shared cores
+read-only, and the lead merges the per-agent `eds-conversion-log-<id>.md` files.
 
 ### Phase D — Site assembly (whole-site artifacts)
 
@@ -482,7 +478,8 @@ referenced, not vendored (`reference/audit-sources.md`).
 
 One per operator-card row; `lib.mjs` holds the shared IO, roll-up and
 autofix-registry helpers. `update-coverage.mjs` is the only
-writer of the coverage ledger; `section-fidelity.mjs` informs the gate, never decides.
+writer of the coverage ledger; `wave.mjs` writes only `waves/<wave>.state.json`
+(one driver per file); `section-fidelity.mjs` informs the gate, never decides.
 
 ## References
 
