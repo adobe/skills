@@ -15,6 +15,8 @@
 //   writer rules  patches applied last; a hand-edited output → exit 2 naming the path; --force overwrites;
 //                 second run → zero writes; --report-only writes _meta.json only; --dry-run writes nothing;
 //   hidden-live   stamped capture: [data-hidden-live] skipped + recorded, <details> kept; unstamped → "unstamped";
+//                 a capture with marked nodes but NO -stamp attribute is stamped too (crawl-independent — NEGATIVE:
+//                 it read "unstamped" and kept the hidden node before);
 //   root guard    a root selector resolving to <body> → exit 2; invalid map → exit 1; missing capture → exit 1;
 //   h1 is a DOM fact  `<h1><strong>Bold</strong> start</h1>` and an image-only <h1> pass; `<h1><em></em></h1>` is `h1 0`;
 //   bulk flush    a missing capture mid-bulk exits 1 AFTER writing the manifest + summary for the pages already processed;
@@ -172,6 +174,22 @@ assert.doesNotMatch(stamped, /Hidden modal|Never shown/, '[data-hidden-live] ski
 assert.match(stamped, /<details><summary>Terms<\/summary><p>Kept as a row\.<\/p><\/details>/, '<details> exempt from the skip');
 const smeta = json(M('stamped', '_meta.json'));
 assert.equal(smeta.audit.import.hiddenLive, 'stamped'); assert.deepEqual(smeta.audit.import.hidden, [{ selector: 'div.modal', reason: 'display:none' }]);
+
+// marks without the -stamp attribute: the mark itself is the evidence (crawl.mjs does not stamp yet)
+{
+  const st = JSON.parse(readFileSync(join(T, 'stardust', 'state.json'), 'utf8'));
+  st.pages.push({ slug: 'marked', url: 'https://www.larkspurmutual.example/marked/', title: 'Marked', type: 'static', status: 'extracted' });
+  writeFileSync(join(T, 'stardust', 'state.json'), JSON.stringify(st, null, 2));
+  const src = readFileSync(join(T, 'stardust', 'current', 'pages', 'stamped.html'), 'utf8');
+  assert.match(src, / data-hidden-live-stamp="[^"]+"/);
+  writeFileSync(join(T, 'stardust', 'current', 'pages', 'marked.html'), src.replace(/ data-hidden-live-stamp="[^"]+"/, '').replace(/Stamped/g, 'Marked'));
+  r = run('--slug', 'marked'); assert.equal(r.status, 0, r.stderr);
+  const mk = readFileSync(M('marked', 'index.html'), 'utf8');
+  assert.doesNotMatch(mk, /Hidden modal|Never shown/, 'marked nodes skipped without the -stamp attribute');
+  assert.match(mk, /<details><summary>Terms<\/summary>/);
+  const mmeta = json(M('marked', '_meta.json'));
+  assert.equal(mmeta.audit.import.hiddenLive, 'stamped', 'the mark is the stamp'); assert.deepEqual(mmeta.audit.import.hidden, [{ selector: 'div.modal', reason: 'display:none' }]);
+}
 
 // --- hand-edit guard: edited output → exit 2 naming the path; --force overwrites --------------------------------------------------
 writeFileSync(M('about', 'index.html'), aboutHtml.replace('About us (patched)', 'About us (hand edit)'));
