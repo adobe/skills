@@ -25,7 +25,7 @@ import { resolveEntry, runCapped } from '../deploy-page.mjs';
 const here = dirname(fileURLToPath(import.meta.url));
 const CLI = join(here, '..', 'deploy-page.mjs');
 const page = (t, links = []) => `<body><header></header><main><div><h1>${t}</h1><p>${'lorem ipsum dolor sit amet '.repeat(12)}</p>${links.map((h) => `<p><a href="${h}">${h}</a></p>`).join('')}</div></main><footer></footer></body>\n`;
-const nav = (href) => `<body><header></header><main><div><ul><li><a href="${href}">Home</a></li><li><a href="/b">B</a></li>${Array.from({ length: 6 }, (_, i) => `<li><a href="/section-${i}">Section ${i}</a></li>`).join('')}</ul></div></main><footer></footer></body>\n`;
+const nav = (href) => `<body><header></header><main><div><ul><li><a href="${href}">Home</a></li><li><a href="/b">B</a></li>${Array.from({ length: 6 }, (_, i) => `<li><a href="/b#section-${i}">Section ${i}</a></li>`).join('')}</ul></div></main><footer></footer></body>\n`;
 
 const dir = mkdtempSync(join(tmpdir(), 'deploy-page-'));
 const content = join(dir, 'content');
