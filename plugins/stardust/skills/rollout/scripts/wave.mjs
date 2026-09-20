@@ -22,11 +22,18 @@
  *   publish     hard   ledger row live (batch; --publish only)     deploy-batch.mjs … --publish --paths {pathsFile}
  *   pixel       soft   —  (--pixel all|sample|none, default none)  (none — project gate command; logs and proceeds)
  *                      sample = the first roster page of each type; the rest are stamped pixelSkipped: sample
- *   close       —      wave-level: update-coverage --from-ledger, report, parked table
+ *   close       —      wave-level: update-coverage --from-ledger · verify --paths <deployed pages> --base {previewOrigin}
+ *                      · dashboard (both only when a stage ran and coverage exists; logged, never a park) · waves.close[]
+ *                      · report with the parked table · status.jsonl end line. The journal line and the learnings
+ *                      row are the agent's Phase H step, fed by the report and the SUMMARY line.
  * A hard stage with no command whose artefact is missing on any active page is a
- * start-time exit 2 (config error) — never a silent pass. Overrides:
+ * start-time exit 2 (config error) — never a silent pass. --stage <name> runs ONE stage
+ * for the pages that completed the stage before it (earlier satisfied stages are recorded
+ * first, as the full run does); a page whose earlier hard stage is not satisfied is listed
+ * `not ready`, never run — no flag skips a hard stage. Overrides:
  *   rollout.json  waves.stages.<name>.cmd  (placeholders {slug} {path} {url} {type} {file} {webPath}
- *                 {migrated} {pathsFile} {previewOrigin} {waveId} {org} {repo} {branch})
+ *                 {migrated} {pathsFile} {previewOrigin} {waveId} {org} {repo} {branch} {rolloutDir} {reportDir});
+ *                 close steps are `verify` and `dashboard` (cmd null disables one)
  *                 {path} is the served path ('/' for the home page); {webPath} is deploy-batch's ledger key for the
  *                 same file — identical except '/' → '/index' (content/index.html; deploy-batch.mjs walkHtml). The
  *                 paths file, the ledger lookup and the live-gate URL use {webPath}; crawl and delivery-lint use {path}.
@@ -63,7 +70,7 @@
  * Exit: 0 every active page deployed (published with --publish) · 1 a page parked or FAIL ·
  *       2 usage / config · 3 token halt (status.jsonl `blocked` + `next` written) ·
  *       regate-list: 0 printed (empty list is exit 0) · 2 missing git / coverage.
- * Contract: reference/sweep-protocol.md § Wave driver.
+ * Contract: reference/waves.md.
  */
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync, appendFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
@@ -94,6 +101,12 @@ export const STAGES = [
   { name: 'pixel', cls: 'soft', scope: 'page', cmd: null, satisfied: (ctx, p, s) => ctx.pixel === 'none' || Boolean(s.pixelDone) || (Boolean(s.pixelSkipped) && (s.pixelSkipped !== 'sample' || ctx.pixel === 'sample')), when: (ctx) => ctx.pixel !== 'none' },
 ];
 const STAGE_INDEX = Object.fromEntries(STAGES.map((s, i) => [s.name, i]));
+// close steps — wave-level, run after the stages when something ran and coverage exists; a non-zero exit is
+// logged in the report (verify's own SUMMARY line is quoted), never a park: the hard gates are the stages above
+export const CLOSE_STEPS = [
+  { name: 'verify', cmd: `node ${rel(join(HERE, 'verify.mjs'))} --paths {pathsFile} --base {previewOrigin} --out {rolloutDir} --report {reportDir}` },
+  { name: 'dashboard', cmd: `node ${rel(join(HERE, 'dashboard.mjs'))} --out {rolloutDir}` },
+];
 
 // ---- helpers ------------------------------------------------------------------------
 function usage(code) {
@@ -252,7 +265,9 @@ export async function runWave(args) {
   ctx.sample = new Set(); { const seen = new Set(); for (const r of roster) if (!seen.has(r.type)) { seen.add(r.type); ctx.sample.add(r.slug); } }
   if (args.stage && !STAGE_INDEX[args.stage] && STAGE_INDEX[args.stage] !== 0) { console.error(`rollout wave: unknown stage ${args.stage} (${STAGES.map((s) => s.name).join(', ')})`); return 2; }
   // effective stage table: class is fixed here; only `cmd` may be overridden
-  const table = STAGES.map((s) => { const o = overrides[s.name]; if (o && o.class && o.class !== s.cls) console.error(`rollout wave: stage ${s.name} is ${s.cls} — a config cannot change a stage's class (ignored)`); return { ...s, cmd: o && Object.prototype.hasOwnProperty.call(o, 'cmd') ? o.cmd : s.cmd }; });
+  const withCmd = (s) => { const o = overrides[s.name]; if (o && o.class && o.class !== s.cls) console.error(`rollout wave: stage ${s.name} is ${s.cls} — a config cannot change a stage's class (ignored)`); return { ...s, cmd: o && Object.prototype.hasOwnProperty.call(o, 'cmd') ? o.cmd : s.cmd }; };
+  const table = STAGES.map(withCmd);
+  const closeTable = CLOSE_STEPS.map(withCmd);
 
   const stateFile = join(rolloutDir, 'waves', `${waveId}.state.json`);
   const st = loadState(stateFile, waveId, roster);
@@ -285,11 +300,24 @@ export async function runWave(args) {
     else if (s.localOk && s.codeHash !== ctx.codeHash) { s.localOk = false; s.stage = stageBefore('local-gate'); s.invalidated = 'code'; }
   }
 
+  const notReady = new Set();
   for (const stage of stagesToRun) {
     const i = effective.indexOf(stage);
-    const ready = (s) => effOrder(s.stage) === i - 1 || (stage.cls === 'soft' && effOrder(s.stage) >= i - 1); // a soft stage re-admits a page stamped `<stage>Skipped` (--pixel sample → all)
-    if (!args.stage) for (const r of active()) { const s = st.pages[r.slug]; if (ready(s) && stage.satisfied(ctx, r, s)) advance(s, stage, ctx, r); }
-    const todo = active().filter((r) => { const s = st.pages[r.slug]; return !stage.satisfied(ctx, r, s) && (args.stage || ready(s)); });
+    // a page enters stage i when it completed stage i-1; a soft stage (and a single --stage run) also re-admits a page
+    // recorded beyond i-1 — `<stage>Skipped` under --pixel sample → all, or a page whose later stage the hashes invalidated
+    const ready = (s) => effOrder(s.stage) === i - 1 || ((stage.cls === 'soft' || args.stage) && effOrder(s.stage) >= i - 1);
+    // --stage: record the earlier stages each page already satisfies (artefacts present, hashes current) — the same
+    // bookkeeping the full run does — so readiness is judged on the real state; an unsatisfied earlier HARD stage is
+    // never skipped over (sweep-protocol: no flag skips a hard stage)
+    if (args.stage) for (const prev of effective.slice(0, i)) { const j = effective.indexOf(prev); for (const r of active()) { const s = st.pages[r.slug]; if (effOrder(s.stage) === j - 1 && prev.satisfied(ctx, r, s)) advance(s, prev, ctx, r); } }
+    for (const r of active()) { const s = st.pages[r.slug]; if (ready(s) && stage.satisfied(ctx, r, s)) advance(s, stage, ctx, r); }
+    const todo = [];
+    for (const r of active()) {
+      const s = st.pages[r.slug];
+      if (stage.satisfied(ctx, r, s)) continue;
+      if (ready(s)) todo.push(r);
+      else if (args.stage) { notReady.add(r.slug); console.error(`wave ${waveId}: ${r.slug} not ready for ${stage.name} — at ${s.stage || 'start'}; the earlier hard stages run first (no flag skips a hard stage)`); }
+    }
     if (!todo.length) { save(); continue; }
     if (stage.scope === 'batch') {
       if (stage.name === 'publish') { const notGated = todo.filter((r) => !st.pages[r.slug].liveOk); for (const r of notGated) console.error(`wave ${waveId}: ${r.slug} not published — live gate did not pass`); }
@@ -341,12 +369,29 @@ export async function runWave(args) {
     save();
   }
 
-  // close: coverage reconcile + report + parked table
+  // close: coverage reconcile → verify --paths over the wave's deployed pages → dashboard → waves.close[] → report + parked table
   const ledgerAbs = join(root, ctx.ledger);
-  if (!args.stage && !ctx.dryRun && existsSync(ledgerAbs) && existsSync(join(rolloutDir, 'coverage', 'pages.json')) && existsSync(join(rolloutDir, 'coverage', 'blocks.json'))) {
-    await exec({ name: 'close' }, ['node', join(HERE, 'update-coverage.mjs'), '--from-ledger', ctx.ledger, '--url-base', ctx.previewOrigin, '--out', relative(root, rolloutDir) || 'stardust/rollout'], root);
+  const coverageOk = existsSync(join(rolloutDir, 'coverage', 'pages.json')) && existsSync(join(rolloutDir, 'coverage', 'blocks.json'));
+  const closeLog = [];
+  const ranSomething = results.invocations > 0;
+  if (!args.stage && !ctx.dryRun && coverageOk) {
+    const outRel = relative(root, rolloutDir) || 'stardust/rollout';
+    if (existsSync(ledgerAbs)) await exec({ name: 'close' }, ['node', join(HERE, 'update-coverage.mjs'), '--from-ledger', ctx.ledger, '--url-base', ctx.previewOrigin, '--out', outRel], root);
+    const deployedNow = roster.filter((r) => { const s = st.pages[r.slug]; return !s.parked && s.deployed; });
+    if (ranSomething && deployedNow.length) { // an idempotent re-run (zero invocations) re-verifies nothing
+      const verifyPaths = join(rolloutDir, 'waves', `${waveId}.verify-paths.txt`);
+      writeFileSync(verifyPaths, `${deployedNow.map((r) => deployKey(r.path)).join('\n')}\n`);
+      for (const step of closeTable) {
+        if (!step.cmd) continue;
+        const argvList = renderCmd(step.cmd, { ...vars(roster[0]), pathsFile: relative(root, verifyPaths), rolloutDir: outRel, reportDir: relative(root, join(rolloutDir, 'waves', `${waveId}.verify`)) });
+        const r = await exec(step, argvList, root);
+        const last = (r.stdout.trim().split('\n').filter(Boolean).at(-1) || '').slice(0, 200);
+        closeLog.push(`${step.name}: exit ${r.code}${last ? ` — ${last}` : ''}`);
+        if (r.code !== 0) console.error(`wave ${waveId}: close step ${step.name} exit ${r.code} (logged in the report; a close step never parks)`);
+      }
+    }
   }
-  for (const c of (waves.close || [])) await exec({ name: 'close' }, renderCmd(c, { ...vars(roster[0]), pathsFile: '' }), root);
+  for (const c of (waves.close || [])) await exec({ name: 'close' }, renderCmd(c, { ...vars(roster[0]), pathsFile: '', rolloutDir: relative(root, rolloutDir) || 'stardust/rollout' }), root);
   const parked = roster.filter((r) => st.pages[r.slug].parked);
   const nov = roster.filter((r) => st.pages[r.slug].noverdict);
   for (const r of roster) { const s = st.pages[r.slug]; if (s.parked) progress.tick({ ok: false, path: r.path }); else if (s.noverdict) progress.tick({ noverdict: true, path: r.path }); else progress.tick({ ok: true, path: r.path }); }
@@ -354,6 +399,8 @@ export async function runWave(args) {
   const report = [`# wave ${waveId} — ${nowIso()}`, '', `pages ${roster.length} · deployed ${roster.filter((r) => st.pages[r.slug].deployed).length} · published ${roster.filter((r) => st.pages[r.slug].published).length} · parked ${parked.length} · no verdict ${nov.length} · invocations ${results.invocations}`, ''];
   if (parked.length) { report.push('| slug | reason | detail | next |', '|---|---|---|---|'); for (const r of parked) { const s = st.pages[r.slug]; report.push(`| ${r.slug} | ${s.parked} | ${String(s.parkedDetail).replace(/\|/g, '\\|').slice(0, 160)} | ${s.next} |`); } report.push(''); }
   if (nov.length) report.push(`no verdict (re-run the same command): ${nov.map((r) => r.slug).join(', ')}`, '');
+  if (notReady.size) report.push(`not ready for --stage ${args.stage} (earlier hard stages first): ${[...notReady].join(', ')}`, '');
+  if (closeLog.length) report.push(...closeLog.map((l) => `close ${l}`), '');
   const reportFile = join(rolloutDir, 'waves', `${waveId}.report.md`);
   if (!ctx.dryRun) writeFileSync(reportFile, `${report.join('\n')}\n`);
   for (const r of roster) delete st.pages[r.slug].noverdict;
@@ -361,7 +408,7 @@ export async function runWave(args) {
   console.log(report.join('\n'));
   const exit = results.halted ? 3 : parked.length ? 1 : (args.stage || ctx.dryRun ? 0 : (done.length < roster.length - nov.length ? 1 : 0));
   statusLine(root, { event: 'end', detail: `wave ${waveId}: ${done.length}/${roster.length} ${ctx.publish ? 'published' : 'deployed'}, ${parked.length} parked, ${nov.length} no verdict`, artifact: relative(root, reportFile), next: `node skills/rollout/scripts/wave.mjs ${waveId} ${relative(root, resolve(rosterFile))}${ctx.publish ? ' --publish' : ''}` });
-  console.log(progress.summaryLine({ exit, details: relative(root, stateFile), extra: { parked: parked.length, wave: waveId } }));
+  console.log(progress.summaryLine({ exit, details: relative(root, stateFile), extra: { parked: parked.length, notready: notReady.size || undefined, wave: waveId } }));
   return exit;
 }
 const stageOrder = (name) => (name === null || name === undefined ? -1 : STAGE_INDEX[name]);

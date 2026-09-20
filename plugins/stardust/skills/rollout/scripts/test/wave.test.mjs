@@ -19,6 +19,11 @@
 //       intact in status.jsonl (runCapped unit case too);
 //   (j) --pixel sample runs the soft pixel stage on the first roster page of each type and stamps the rest
 //       `pixelSkipped: sample`; --pixel all runs it on the rest.
+//   (k) --stage <name> never skips an earlier hard stage: `--stage deploy` on a page that has not passed lint runs
+//       nothing (listed `not ready`, notready=1, no paths file); the page reaches deploy only through lint → local-gate;
+//   (l) close: when a stage ran and coverage exists the driver runs update-coverage --from-ledger, then verify.mjs
+//       --paths <the wave's deployed pages> --base <preview origin> and dashboard.mjs (overridable; a non-zero exit is
+//       logged in the report, never a park); an idempotent re-run runs no close step; cmd null disables a step;
 //   regate-list: blocks/<name>/** → mapped pages; styles/** → all (site-wide); content/<path>.html → that
 //       page (content); an unknown file → all (unmapped→all); empty diff → empty list exit 0; no coverage → exit 2.
 //
@@ -28,7 +33,7 @@ import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, existsSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { runCapped, deployKey, ledgerRow } from '../wave.mjs';
+import { runCapped, deployKey, ledgerRow, CLOSE_STEPS } from '../wave.mjs';
 
 const HERE = import.meta.dirname;
 const WAVE = join(HERE, '..', 'wave.mjs');
@@ -43,6 +48,7 @@ const calls = () => (existsSync(join(T, 'calls.jsonl')) ? readFileSync(join(T, '
 const resetCalls = () => { try { rmSync(join(T, 'calls.jsonl')); } catch { /* none */ } };
 const setPark = (o) => writeFileSync(join(T, 'park.json'), JSON.stringify(o));
 const setMode = (o) => writeFileSync(join(T, 'deploy-mode.json'), JSON.stringify(o));
+const setClose = (o) => writeFileSync(join(T, 'close-mode.json'), JSON.stringify(o));
 const state = () => json(join(P, 'stardust', 'rollout', 'waves', 'w1.state.json'));
 const status = () => readFileSync(join(P, 'stardust', 'status.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
 
@@ -221,6 +227,59 @@ assert.deepEqual(calls().filter((x) => x.stage === 'pixel').map((x) => x.slug).s
 assert.equal(state().pages.p2.pixelSkipped, undefined); assert.equal(state().pages.p2.pixelDone, true);
 assert.equal(run(['w1', 'roster.txt', '--pixel', 'some']).status, 2, '--pixel takes all|sample|none');
 
+// ---- (k) --stage never skips an earlier hard stage ---------------------------------------------------------------------
+writeFileSync(join(P, 'roster-p1.txt'), 'p1|landing|https://www.larkspurmutual.example/p1/\n');
+setPark({ lintFail: ['p1'] }); setMode({ mode: 'ok' }); resetCalls();
+r = run(['w3', 'roster-p1.txt', '--stage', 'deploy']);
+assert.equal(r.status, 0, r.stderr); assert.equal(calls().length, 0, '(k) --stage deploy on an unlinted page runs NOTHING (before the fix: deploy-batch PUT it)');
+assert.match(r.stderr, /p1 not ready for deploy — at convert; the earlier hard stages run first \(no flag skips a hard stage\)/);
+assert.match(r.stdout, /SUMMARY wave .* notready=1 wave=w3/, 'the SUMMARY line counts the not-ready page');
+let st3 = json(join(P, 'stardust', 'rollout', 'waves', 'w3.state.json'));
+assert.equal(st3.pages.p1.stage, 'convert', 'the satisfied earlier stages are recorded, lint is not'); assert.equal(st3.pages.p1.deployed, undefined); assert.equal(st3.pages.p1.contentHash, undefined);
+assert.ok(!existsSync(join(P, 'stardust', 'rollout', 'waves', 'w3.deploy-paths.txt')), 'no paths file written');
+assert.match(readFileSync(join(P, 'stardust', 'rollout', 'waves', 'w3.report.md'), 'utf8'), /not ready for --stage deploy \(earlier hard stages first\): p1/);
+resetCalls(); r = run(['w3', 'roster-p1.txt', '--stage', 'lint']);
+assert.equal(r.status, 1, 'the lint stage itself runs and parks the failing page'); assert.deepEqual(calls().map((c) => c.stage), ['lint']); assert.equal(json(join(P, 'stardust', 'rollout', 'waves', 'w3.state.json')).pages.p1.parked, 'lint');
+setPark({}); resetCalls(); r = run(['w3', 'roster-p1.txt', '--unpark', 'lint', '--stage', 'lint']);
+assert.equal(r.status, 0, r.stderr); assert.deepEqual(calls().map((c) => c.stage), ['lint']); assert.ok(json(join(P, 'stardust', 'rollout', 'waves', 'w3.state.json')).pages.p1.contentHash, 'lint pass recorded');
+resetCalls(); r = run(['w3', 'roster-p1.txt', '--stage', 'deploy']);
+assert.equal(calls().length, 0, '(k) still not ready: the local gate has not run'); assert.match(r.stderr, /not ready for deploy — at lint/);
+resetCalls(); r = run(['w3', 'roster-p1.txt', '--stage', 'local-gate']); assert.deepEqual(calls().map((c) => c.stage), ['local-gate']);
+resetCalls(); r = run(['w3', 'roster-p1.txt', '--stage', 'deploy']);
+assert.equal(r.status, 0, r.stderr); assert.deepEqual(calls().map((c) => c.stage), ['deploy-batch'], '(k) lint + local gate passed → the deploy stage runs'); assert.doesNotMatch(r.stdout, /notready/);
+st3 = json(join(P, 'stardust', 'rollout', 'waves', 'w3.state.json')); assert.equal(st3.pages.p1.deployed, true); assert.equal(st3.pages.p1.stage, 'deploy');
+assert.deepEqual(readFileSync(join(P, 'stardust', 'rollout', 'waves', 'w3.deploy-paths.txt'), 'utf8').trim().split('\n'), ['/p1']);
+assert.equal(run(['w3', 'roster-p1.txt', '--stage', 'nope']).status, 2, 'unknown stage → exit 2');
+
+// ---- (l) close: update-coverage --from-ledger → verify --paths <deployed pages> → dashboard (overridable, logged, never a park)
+mkdirSync(join(P, 'stardust', 'rollout', 'coverage'), { recursive: true });
+writeFileSync(join(P, 'stardust', 'rollout', 'coverage', 'pages.json'), JSON.stringify({ pages: pages.map(([slug, path]) => ({ slug, path, title: slug, templateId: 'landing', source: { sourceHash: 'h' }, blocks: [], delivery: { status: 'pending' } })) }));
+writeFileSync(join(P, 'stardust', 'rollout', 'coverage', 'blocks.json'), JSON.stringify({ blocks: [] }));
+writeFileSync(join(P, 'stardust', 'rollout', 'coverage', 'templates.json'), JSON.stringify({ templates: [{ id: 'landing', representativeSlug: 'p1', pages: pages.map(([s]) => s) }] }));
+assert.match(CLOSE_STEPS[0].cmd, /verify\.mjs --paths \{pathsFile\} --base \{previewOrigin\}/, 'default close: verify.mjs --paths over the wave against the preview origin'); assert.match(CLOSE_STEPS[1].cmd, /dashboard\.mjs/);
+const closeOverride = JSON.stringify({ verify: { cmd: `${stub('stub-close.mjs')} verify --paths {pathsFile} --base {previewOrigin} --out {rolloutDir} --report {reportDir}` }, dashboard: { cmd: `${stub('stub-close.mjs')} dashboard --out {rolloutDir}` } });
+setPark({}); setMode({ mode: 'ok' }); setClose({ verify: 1 }); resetCalls();
+writeFileSync(join(P, 'content', 'p1.html'), `<body><main><div><h1>p1 v4</h1><p>${'copy '.repeat(40)}</p></div></main></body>`);
+r = run(['w1', 'roster.txt', '--unpark', 'all', '--stages', closeOverride]);
+assert.equal(r.status, 0, `(l) every page deployed → exit 0; a failing close step never changes the verdict\n${r.stderr}\n${r.stdout}`);
+c = calls();
+const ver = c.find((x) => x.stage === 'verify'); assert.ok(ver, '(l) verify ran at close');
+assert.deepEqual(ver.argv.slice(0, 8), ['--paths', 'stardust/rollout/waves/w1.verify-paths.txt', '--base', 'https://main--site--acme.aem.page', '--out', 'stardust/rollout', '--report', 'stardust/rollout/waves/w1.verify']);
+assert.deepEqual(readFileSync(join(P, 'stardust', 'rollout', 'waves', 'w1.verify-paths.txt'), 'utf8').trim().split('\n').sort(), ['/p1', '/p2', '/p3', '/p4'], '(l) the verify list = the wave\'s deployed pages (deploy-batch keys)');
+assert.ok(c.some((x) => x.stage === 'dashboard' && x.argv.join(' ') === '--out stardust/rollout'), '(l) dashboard ran at close');
+assert.ok(c.indexOf(ver) > c.findLastIndex((x) => x.stage === 'deploy-batch'), 'close steps run after the stages');
+assert.match(readFileSync(join(P, 'stardust', 'rollout', 'waves', 'w1.report.md'), 'utf8'), /close verify: exit 1 — SUMMARY verify ok=0 failed=1 exit=1/, '(l) the close step\'s own SUMMARY line is quoted in the report');
+assert.match(r.stderr, /close step verify exit 1 \(logged in the report; a close step never parks\)/);
+assert.ok(Object.values(state().pages).every((p) => !p.parked && p.deployed), 'no page parked by a close step');
+assert.equal(json(join(P, 'stardust', 'rollout', 'coverage', 'pages.json')).pages.find((p) => p.slug === 'p1').delivery.status, 'deployed', '(l) update-coverage --from-ledger reconciled the ledger into coverage');
+resetCalls(); r = run(['w1', 'roster.txt', '--stages', closeOverride]);
+assert.equal(calls().length, 0, '(l) an idempotent re-run makes no stage AND no close-step invocation');
+writeFileSync(join(P, 'content', 'p2.html'), `<body><main><div><h1>p2 v4</h1><p>${'copy '.repeat(40)}</p></div></main></body>`);
+resetCalls(); r = run(['w1', 'roster.txt', '--stages', JSON.stringify({ ...JSON.parse(closeOverride), verify: { cmd: null } })]);
+assert.deepEqual(calls().filter((x) => ['verify', 'dashboard'].includes(x.stage)).map((x) => x.stage), ['dashboard'], '(l) cmd null disables one close step');
+resetCalls(); r = run(['w1', 'roster.txt', '--stage', 'lint', '--stages', closeOverride]);
+assert.ok(!calls().some((x) => ['verify', 'dashboard'].includes(x.stage)), '(l) a --stage run closes nothing');
+
 // ---- regate-list ------------------------------------------------------------------------------------------
 const R = join(T, 'regate'); mkdirSync(join(R, 'stardust'), { recursive: true });
 cpSync(SHARED, join(R, 'stardust', 'migrated'), { recursive: true });
@@ -249,4 +308,4 @@ assert.equal(r.status, 0); assert.equal(r.stdout.trim(), '', 'empty diff → emp
 assert.equal(rg(['--out', 'nowhere', '--files', 'x']).status, 2, 'no coverage → exit 2');
 
 rmSync(T, { recursive: true, force: true });
-console.log('wave.test: ok — park/unpark, hash re-gate, token halt, no-verdict, D1/D16 publish order, home page /index key, close-read stdout, pixel sample, regate-list');
+console.log('wave.test: ok — park/unpark, hash re-gate, token halt, no-verdict, D1/D16 publish order, home page /index key, close-read stdout, pixel sample, --stage readiness, close steps (verify --paths + dashboard), regate-list');

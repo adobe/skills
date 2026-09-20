@@ -298,8 +298,9 @@ whose harness cases skip when Playwright is unresolvable:
   chrome-variant guard both directions (fires on the named shape, silent on a
   clean page); typed inventory rows seeded + preserved, `--redirects`
   deployedPath, sitemap = live page rows; the runner-output contract on the
-  shared fixture, link classes, 429/503 retry → `unverified` / exit 2, and the
-  last-line `SUMMARY verify …` (throttled rows as `noverdict`).
+  shared fixture, link classes, 429/503 retry → `unverified` / exit 2, the
+  last-line `SUMMARY verify …` (throttled rows as `noverdict`), and `--paths`
+  (the regate-list consumer: listed rows only, site-wide summary intact).
 - `replica/scripts/gate-ledger-lint.test.mjs` — the gated-archetype
   precondition as an instrument over the shared post-migrate fixture (program
   never gated, article over the bar with unnamed residuals → blocked; landing
@@ -312,7 +313,18 @@ whose harness cases skip when Playwright is unresolvable:
   rules, `deployedPath` written only from a served (`live|previewed`) row,
   unmatched paths listed not invented, idempotence, exit codes; and that
   rollout/SKILL.md + da-deploy-protocol.md both name `--from-ledger` as the
-  reconcile.
+  reconcile; the template claim gate (`--block … --status verified` refused
+  until the archetype passed the published-origin gate at every breakpoint,
+  thin templates exempt, redesign skipped, the dashboard `Blocks` line).
+- `rollout/scripts/test/wave.test.mjs` — the wave driver over stub stages:
+  park/unpark, hash re-gate, token halt → `blocked` + `next`, exit 124 = no
+  verdict, D1/D16 publish order, the home page's `/index` key, `--stage`
+  readiness (no flag skips a hard stage), close steps (`verify --paths` over
+  the wave + dashboard, logged never parked), `regate-list` mapping.
+- `migrate/scripts/test/importer-skeleton.test.mjs` — the DOM importer
+  skeleton: walk rules, 0-sections exit, plan-time module-map block, unmapped /
+  flattened hard stop + early stop, bulk flush and exit precedence, writer
+  rules, hidden-live, root guard.
 - `deploy/scripts/test/deploy-batch-ledger.test.mjs`, `…-repairs.test.mjs`,
   `…-halt.test.mjs`, `…-persist.test.mjs`, `deploy/scripts/test/served-check.test.mjs`
   — the driver against `mock-da.mjs`: ledger idempotence + SUMMARY / progress

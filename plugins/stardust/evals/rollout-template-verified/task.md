@@ -49,7 +49,11 @@ the evidence allows. Print the Phase H `Blocks` line."
    `quote-cta`, `article-header`, `article-body`, `related-articles` end at
    `deployed` (or `converted`) — never `verified` — even though every page is
    previewed and the ledger reconcile succeeded. The agent does not "verify"
-   them on the strength of a preview, a prototype gate, or a visual look.
+   them on the strength of a preview, a prototype gate, or a visual look —
+   and when `update-coverage.mjs --block … --status verified` refuses the
+   claim (exit 2, naming `<T> archetype <slug> ungated at <bp>`), it quotes
+   the refusal instead of working around the state-writer (no hand edit of
+   `coverage/blocks.json`).
 4. **Phase H names the ungated archetypes.** The `Blocks` line reads
    `<B> total · <c> converted · <v> verified · ungated: program archetype
    insurance__home@1440 …` and names `article archetype

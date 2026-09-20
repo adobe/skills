@@ -24,6 +24,13 @@
  *   --include-undelivered   with --all over HTTP: probe the undelivered rows too (the line
  *                      then reads `not delivered: N (probed — --include-undelivered)`)
  *   --slug <s>         that one row, whatever its status
+ *   --paths <file|a,b,c>  restrict the selected set (default or --all) to these served paths — the
+ *                      consumer of `wave.mjs regate-list` / a wave's deploy-paths file (T06.4). Same
+ *                      shape as deploy-batch --paths (one per line or comma-separated, `#` comments);
+ *                      `/index` ≡ `/`, case, trailing slash and `.html|.jsp|.aspx|.php` are ignored
+ *                      (lib.mjs pathKey). Listed paths with no coverage row are counted and listed on
+ *                      stderr, never invented; listed rows outside the status set are `not selected`.
+ *                      The report lands under <out>/verify/paths/ so the site-wide summary stays intact.
  * The path fetched is `delivery.deployedPath` when set (update-coverage
  * --from-ledger / inventory --redirects), else `path`.
  *
@@ -72,21 +79,21 @@
  * like class-report.mjs (plugin tree, else stardust/scripts/stardust/); missing, the
  * line still prints in the same format. No progress file: the run is one HTTP pass.
  *
- * Usage: node skills/rollout/scripts/verify.mjs [--base <url> | --root <dir>] [--slug <s>]
+ * Usage: node skills/rollout/scripts/verify.mjs [--base <url> | --root <dir>] [--slug <s>] [--paths <file|a,b,c>]
  *          [--all [--include-undelivered]] [--out <rolloutDir>] [--report <dir>] [--verbose]
  * Exit: 0 no row failed · 1 at least one row is `failed` (advisory classes never set
- *       it) · 2 usage (no base/root, coverage missing — run inventory.mjs first — or
- *       class-report.mjs not found next to this script) or a page left `unverified`
+ *       it) · 2 usage (no base/root, coverage missing — run inventory.mjs first — an empty
+ *       --paths list, or class-report.mjs not found next to this script) or a page left `unverified`
  *       by 429/503 throttling after the inline retry (re-run)
  */
-import { writeFileSync, mkdirSync } from 'node:fs';
+import { writeFileSync, mkdirSync, existsSync, statSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { readJSON, writeJSON, rollupTemplates, rollupConfig, siteBase, deliveredPathOf, isDelivered, artifactType, loadPageHTML } from './lib.mjs';
+import { readJSON, writeJSON, rollupTemplates, rollupConfig, siteBase, deliveredPathOf, isDelivered, artifactType, loadPageHTML, pathKey } from './lib.mjs';
 
 function arg(name, fallback) { const i = process.argv.indexOf(`--${name}`); return i !== -1 && process.argv[i + 1] && !process.argv[i + 1].startsWith('--') ? process.argv[i + 1] : fallback; }
 const has = (f) => process.argv.includes(`--${f}`);
 if (has('help')) {
-  console.log('Usage: node skills/rollout/scripts/verify.mjs [--base <url> | --root <dir>] [--slug <s>] [--all [--include-undelivered]] [--out <rolloutDir>] [--report <dir>] [--verbose]\n  exit 0 no failed row · 1 at least one failed row · 2 usage (no base/root, no coverage, helper missing) or a page left unverified by 429/503 throttling (re-run)');
+  console.log('Usage: node skills/rollout/scripts/verify.mjs [--base <url> | --root <dir>] [--slug <s>] [--paths <file|a,b,c>] [--all [--include-undelivered]] [--out <rolloutDir>] [--report <dir>] [--verbose]\n  --paths restricts the selected rows to the listed served paths (regate-list / wave deploy-paths file); report under <out>/verify/paths/\n  exit 0 no failed row · 1 at least one failed row · 2 usage (no base/root, no coverage, empty --paths, helper missing) or a page left unverified by 429/503 throttling (re-run)');
   process.exit(0);
 }
 // class-report.mjs lives in skills/stardust/scripts/ (plugin tree) or stardust/scripts/stardust/ (project copy)
@@ -110,7 +117,8 @@ const onlySlug = arg('slug', null);
 const ALL = has('all');
 const INCLUDE_UNDELIVERED = has('include-undelivered');
 const VERBOSE = has('verbose');
-const REPORT = arg('report', onlySlug ? join(OUT, 'verify', `slug-${onlySlug}`) : join(OUT, 'verify'));
+const PATHS_SPEC = arg('paths', null);
+const REPORT = arg('report', onlySlug ? join(OUT, 'verify', `slug-${onlySlug}`) : PATHS_SPEC ? join(OUT, 'verify', 'paths') : join(OUT, 'verify'));
 const MAX_LINES = 60;
 
 const pagesPath = join(OUT, 'coverage', 'pages.json');
@@ -119,6 +127,13 @@ const pagesDoc = readJSON(pagesPath);
 if (!pagesDoc) { console.error('rollout verify: run inventory.mjs first.'); process.exit(2); }
 const pages = pagesDoc.pages || [];
 if (onlySlug && !pages.some((pg) => pg.slug === onlySlug)) { console.error(`rollout verify: no page with slug "${onlySlug}" in ${pagesPath}`); process.exit(2); } // a typo'd slug once wrote an empty summary and exited 0
+// --paths: the list restricts the selection; keys compared through pathKey (deploy-batch's `/index` for the home page matches `/`)
+let wantedPaths = null;
+if (PATHS_SPEC) {
+  const raw = existsSync(PATHS_SPEC) && statSync(PATHS_SPEC).isFile() ? readFileSync(PATHS_SPEC, 'utf8').split(/[\n,]/) : PATHS_SPEC.split(',');
+  wantedPaths = new Map(raw.map((x) => x.trim()).filter((x) => x && !x.startsWith('#')).map((x) => [pathKey(x), x]));
+  if (!wantedPaths.size) { console.error(`rollout verify: --paths ${PATHS_SPEC} lists no path`); process.exit(2); }
+}
 const BASE = siteBase(config, arg('base', null));
 if (!ROOT && !BASE) { console.error('rollout verify: need --base <url> or --root <dir> (or set site.liveHost).'); process.exit(2); }
 const OUTSIDE_POLICY = (config.links && config.links.outsideInventory) === 'warn' ? 'warn' : 'fail';
@@ -205,15 +220,22 @@ function failureClass(reason) {
 
 // --- select rows ------------------------------------------------------------------
 let undelivered = 0; // never-delivered rows met under --all over HTTP: skipped, or probed with --include-undelivered
+const listed = (p) => !wantedPaths || wantedPaths.has(pathKey(deliveredPathOf(p))) || wantedPaths.has(pathKey(p.path));
+const notSelected = []; // listed rows outside the status set (pending, content-pending …)
 const target = pages.filter((p) => {
   if (onlySlug) return p.slug === onlySlug;
+  if (!listed(p)) return false;
   if (ALL) {
     if (ROOT || isDelivered(p)) return true;
     undelivered += 1; return INCLUDE_UNDELIVERED;
   }
-  return ['deployed', 'verified'].includes(p.delivery && p.delivery.status);
+  const sel = ['deployed', 'verified'].includes(p.delivery && p.delivery.status);
+  if (!sel && wantedPaths) notSelected.push(p.slug);
+  return sel;
 });
 const skipped = INCLUDE_UNDELIVERED ? 0 : undelivered;
+const noRow = wantedPaths ? [...wantedPaths].filter(([k]) => !pages.some((p) => pathKey(deliveredPathOf(p)) === k || pathKey(p.path) === k)).map(([, raw]) => raw) : [];
+if (noRow.length) console.error(`rollout verify: --paths: ${noRow.length} path(s) with no coverage row (not invented): ${noRow.slice(0, 10).join(' ')}${noRow.length > 10 ? ` … +${noRow.length - 10}` : ''}`);
 
 const now = new Date().toISOString();
 const results = []; // one row per checked page: { slug, path, type, status, reason, class, severity }
@@ -269,6 +291,7 @@ const head = [
 ];
 if (unverified.length) head.push(`unverified: ${unverified.length} page(s) throttled (429/503 through the inline retry) — ledger untouched, exit 2: re-run verify`);
 if (ALL && !ROOT && undelivered) head.push(`not delivered: ${undelivered} (${INCLUDE_UNDELIVERED ? 'probed — --include-undelivered' : 'skipped'})`);
+if (wantedPaths) head.push(`--paths: ${target.length} of ${wantedPaths.size} listed selected${noRow.length ? ` · ${noRow.length} no coverage row` : ''}${notSelected.length ? ` · ${notSelected.length} not delivered (${notSelected.slice(0, 5).join(' ')})` : ''}`);
 if (pendingPages) head.push(`pending-target links: ${pendingPages} page(s) (advisory — the targets are coverage rows not yet delivered)`);
 if (outsideWarnPages) head.push(`outside-inventory links: ${outsideWarnPages} page(s) (links.outsideInventory: warn)`);
 const tail = [`report: ${summaryMd} (table, then per-page rows per class) · data: ${join(REPORT, 'summary.json')}`];
@@ -291,6 +314,7 @@ mkdirSync(REPORT, { recursive: true });
 writeJSON(join(REPORT, 'summary.json'), {
   generatedAt: now, source: ROOT ? `root:${ROOT}` : BASE, mode: ROOT ? 'root' : 'http', outsideInventory: OUTSIDE_POLICY,
   total: pages.length, checked: results.length, verified: ok, failed: bad.length, skipped, undelivered, unverified: unverified.length,
+  ...(wantedPaths ? { paths: { listed: wantedPaths.size, selected: target.length, noRow, notSelected } } : {}),
   pendingTargetPages: pendingPages, outsideWarnPages,
   classes: report.classes.map((c) => ({ class: c.class, count: c.count, severity: c.severity ?? null, worstExample: c.worst ? `${c.worst.page} — ${c.worst.message}` : null, pointer: c.worst ? c.worst.pointer : null })),
   pages: pageRows,
@@ -310,5 +334,5 @@ writeFileSync(summaryMd, md.join('\n'));
 console.log(lines.join('\n'));
 if (VERBOSE) for (const r of [...bad, ...unverified, ...advisories]) console.log(`  ${r.status === 'failed' ? '✗' : '·'} ${r.slug} (${r.type}): ${r.reason}`);
 const exitCode = unverified.length ? 2 : bad.length ? 1 : 0;
-console.log(summaryLine({ driver: 'verify', ok, failed: bad.length, noverdict: unverified.length, exit: exitCode, details: join(REPORT, 'summary.json'), extra: { skipped: ALL && !ROOT ? skipped : undefined, mode: ROOT ? 'root' : 'http' } }));
+console.log(summaryLine({ driver: 'verify', ok, failed: bad.length, noverdict: unverified.length, exit: exitCode, details: join(REPORT, 'summary.json'), extra: { skipped: ALL && !ROOT ? skipped : undefined, mode: ROOT ? 'root' : 'http', paths: wantedPaths ? wantedPaths.size : undefined } }));
 process.exit(exitCode);

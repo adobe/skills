@@ -85,7 +85,8 @@ Interactive session: the runner answers any question from `answers.md`
    path as the place to continue from, quotes the runner's last stdout
    line (`SUMMARY verify ok=… failed=… exit=… details=…`) verbatim, and
    the next command (`$stardust replica insurance__home`, then the class
-   actions).
+   actions). The re-check after a class fix is the mapped list — `wave.mjs
+   regate-list --since <ref>` piped into `verify.mjs --paths` — never a full re-verify.
 10. Inputs stay read-only: `stardust/migrated/**`, `state.json`,
     `progress.json` and `direction.md` are unchanged; writes land only under
     `stardust/rollout/`, plus an appended `journal.md` entry and

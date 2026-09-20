@@ -10,7 +10,7 @@ strings, switcher) is `../dynamics/reference/locale-trees.md`; this file is
 the delivery procedure and the manifest it runs on. Nothing here changes a
 gate bar or the publish order: D1 (gate on preview, publish on pass) and D16
 (hands-off preview-only) apply per tree, and every tree's pages ride the same
-`scripts/wave.mjs` roster and deploy ledger (`sweep-protocol.md` § Wave driver).
+`scripts/wave.mjs` roster and deploy ledger (`waves.md`).
 
 ## Manifest precondition — `stardust/trees.json`
 

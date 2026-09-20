@@ -57,7 +57,8 @@
  *   node skills/migrate/scripts/importer-skeleton.mjs (--slug <s> | --template <t> | --all) [--root <projectDir>]
  *        [--out <migratedDir>] [--dry-run] [--report-only] [--force] [--continue] [--json]
  * Exit: 0 written · 1 usage / missing capture (the run stops there; manifest + summary still flush) / invalid vocabulary
- *       or transform · 2 a page failed (see above)
+ *       or transform · 2 a page failed or a template blocked (see above) — 2 wins over 1 when a --continue run had
+ *       failed pages before the capture that stopped it (the missing page is still in the summary as `missing`)
  * Contract: reference/importer-recipe.md § Skeleton contract.
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -532,7 +533,7 @@ export function main(argv) {
   if (blockedRecs.length) console.log(`blocked: ${[...new Set(blockedRecs.map((r) => r.template))].map((t) => `template ${t} (${[...new Set(blockedTemplates.get(t))].join(', ')})`).join('; ')} — map or drop with reason in vocabulary.json`);
   if (unmappedKinds.size) console.log(`unmapped modules: ${unmappedKinds.size} kinds on ${unmappedPages.length} pages — map or drop with reason${stoppedTemplates.size ? ` (stopped early: ${[...stoppedTemplates].join(', ')})` : ''}`);
   console.log(`importer-skeleton: ${summary.ok} ok · ${failed} failed${blockedRecs.length ? ` · ${blockedRecs.length} blocked` : ''} · ${writes} writes${a.dryRun ? ' (dry run)' : ''}${a.reportOnly ? ' (report only)' : ''}`);
-  return missingCapture ? 1 : (failed || blockedRecs.length) ? 2 : 0;
+  return (failed || blockedRecs.length) ? 2 : missingCapture ? 1 : 0; // a failed page is the stronger verdict (header exit table)
 }
 
 const isMain = process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href;

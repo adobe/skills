@@ -114,6 +114,20 @@
       "title": "L1",
       "type": "ledgered",
       "status": "extracted"
+    },
+    {
+      "slug": "f1",
+      "url": "https://www.larkspurmutual.example/bulkfail/f1/",
+      "title": "F1",
+      "type": "bulkfail",
+      "status": "extracted"
+    },
+    {
+      "slug": "f2",
+      "url": "https://www.larkspurmutual.example/bulkfail/f2/",
+      "title": "F2",
+      "type": "bulkfail",
+      "status": "extracted"
     }
   ]
 }

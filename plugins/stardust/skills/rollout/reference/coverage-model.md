@@ -127,7 +127,17 @@ On every `inventory.mjs` run:
 
 - **pending** — inventoried as a distinct block, not yet converted.
 - **converted** — its EDS block (`blocks/<edsBlockName>/`) or fragment exists.
-- **deployed / verified** — live on the delivered site.
+- **deployed / verified** — live on the delivered site. `verified` is a **claim
+  gate**: `update-coverage.mjs --block <id> --status verified` is refused (exit 2,
+  naming `<T> archetype <slug> ungated|failed at <bp>`) until every template in the
+  block's `usedByTemplates` has its archetype's `published.<bp>.pass` at every
+  configured breakpoint in `stardust/replica/progress.json` (the published-origin
+  gate, `../../replica/reference/source-fidelity-gate.md` § The published-origin
+  gate). Absent slot = `ungated`, never FAIL; `thin:<type>` templates have no
+  archetype and are exempt; under `flow: redesign | reskin` the check is skipped
+  and printed. Escape: none — gate the archetype (`gate.sh --regime
+  published-origin` + `progress-record.mjs`); hands-off never writes the slot.
+  `dashboard.mjs` prints the same clause on the Phase H `Blocks` line.
 
 `blocks.mjs` is idempotent: a block already past `pending` keeps its status and
 `edsBlockName`; only still-`pending` blocks get a freshly derived name.

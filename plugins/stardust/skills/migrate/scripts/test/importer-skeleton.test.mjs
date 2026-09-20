@@ -18,6 +18,7 @@
 //   root guard    a root selector resolving to <body> → exit 2; invalid map → exit 1; missing capture → exit 1;
 //   h1 is a DOM fact  `<h1><strong>Bold</strong> start</h1>` and an image-only <h1> pass; `<h1><em></em></h1>` is `h1 0`;
 //   bulk flush    a missing capture mid-bulk exits 1 AFTER writing the manifest + summary for the pages already processed;
+//                 a failed page before the missing capture makes it exit 2 (a failed page is the stronger verdict);
 //   ledger block  (plan time) a lift-ledger kind with no emitter blocks its template under --template: every page `blocked`,
 //                 nothing rendered, exit 2; the ledger selector identifies the module on a --slug run (unmapped[] under its kind);
 //                 mapping the kind unblocks the template.
@@ -124,6 +125,11 @@ r = run('--template', 'bulk', '--continue', '--json'); assert.equal(r.status, 1,
 assert.ok(json(join(T, 'stardust', 'import-manifest.json'))['stardust/migrated/bulk/b1/index.html'], 'b1 landed in the manifest before the stop');
 assert.deepEqual(json(M('_import', 'summary.json')).records.map((x) => [x.slug, x.status]), [['b1', 'ok'], ['b2', 'missing']], 'summary carries the processed page and the missing one');
 r = run('--template', 'bulk', '--continue'); assert.equal(r.status, 1); assert.match(r.stdout, /1 ok · 0 failed · 0 writes/, 'b1 is not rewritten on the retry');
+
+// --- exit precedence: a --continue run with a FAILED page that then hits a missing capture exits 2 (header table), never 1 ---
+r = run('--template', 'bulkfail', '--continue', '--json'); assert.equal(r.status, 2, `failed page + missing capture → 2 (was 1)\n${r.stderr}`); assert.match(r.stderr, /f2: no capture/);
+assert.deepEqual(json(M('_import', 'summary.json')).records.map((x) => [x.slug, x.status]), [['f1', 'failed'], ['f2', 'missing']], 'summary flushed with both verdicts');
+assert.ok(!existsSync(M('bulkfail')), 'the flattened page is not written');
 
 // --- plan-time module-map precondition (T26.3 Gate A): an unmapped lift-ledger kind blocks its template -------------
 r = run('--template', 'ledgered', '--json'); assert.equal(r.status, 2, r.stdout);
