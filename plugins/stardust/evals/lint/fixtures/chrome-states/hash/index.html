@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Larkspur Mutual — chrome-states fixture (hash toggles)</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: Arial, sans-serif; font-size: 16px; color: #1d2a3a; }
+  header { position: relative; background: #fff; border-bottom: 1px solid #dde3ea; }
+  .bar { display: flex; align-items: center; gap: 24px; height: 72px; padding: 0 32px; }
+  .logo { font-weight: 700; font-size: 20px; text-decoration: none; color: #0b3d91; }
+  nav > ul { display: flex; gap: 28px; list-style: none; margin: 0; padding: 0; }
+  nav > ul > li > a { color: #1d2a3a; text-decoration: none; padding: 24px 0; display: inline-block; }
+  .panel { display: none; position: absolute; left: 0; right: 0; top: 72px; background: #f4f7fb; padding: 32px; z-index: 5; }
+  .panel.is-open { display: block; }
+  .panel ul { list-style: none; margin: 0; padding: 0; display: flex; gap: 32px; }
+  main { padding: 48px 32px; min-height: 2000px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <a class="logo" href="/">Larkspur Mutual</a>
+    <nav aria-label="Primary">
+      <ul>
+        <li><a href="#" aria-controls="p-products" aria-expanded="false">Products</a></li>
+        <li><a href="#" aria-controls="p-support" aria-expanded="false">Support</a></li>
+        <li><a href="/about/">About us</a></li>
+      </ul>
+    </nav>
+  </div>
+  <div class="panel" id="p-products"><ul><li><a href="/products/home/">Home cover</a></li><li><a href="/products/car/">Car cover</a></li></ul></div>
+  <div class="panel" id="p-support"><ul><li><a href="/support/claims/">Claims</a></li><li><a href="/support/contact/">Contact</a></li></ul></div>
+</header>
+<main><h1>Hash-toggle chrome</h1><p>Each top-level trigger is an anchor to "#" whose click handler opens the panel WITHOUT preventDefault — the URL gains a hash (a same-document navigation) but the page never leaves.</p></main>
+<script>
+  const closeAll = () => { document.querySelectorAll('.panel.is-open').forEach((p) => p.classList.remove('is-open')); document.querySelectorAll('header [aria-expanded="true"]').forEach((t) => t.setAttribute('aria-expanded', 'false')); };
+  document.querySelectorAll('nav a[aria-controls]').forEach((a) => {
+    a.addEventListener('click', () => { const open = a.getAttribute('aria-expanded') === 'true'; closeAll(); if (!open) { document.getElementById(a.getAttribute('aria-controls')).classList.add('is-open'); a.setAttribute('aria-expanded', 'true'); } });
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeAll(); });
+</script>
+</body>
+</html>

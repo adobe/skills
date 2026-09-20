@@ -3,7 +3,8 @@
 // Playwright resolves (STARDUST_PW_ROOT=<dir with node_modules>, or the cwd).
 //
 // Pure (no browser):
-//   --help exits 0 and names --from-state / --live-cache; an unknown flag exits 1;
+//   --help exits 0 and names --from-state / --live-cache / --tolerance; an unknown
+//     flag exits 1; a trailing value flag is refused ("needs a value", exit 1);
 //   pairStates: a live cell with a panel and no build trigger of that text is
 //     MISSING, a build-only panel is EXTRA, a live plain link is neither;
 //   clusterVariants: two identities differing in nav background are two variants;
@@ -21,11 +22,23 @@
 //   live+build → exit 2 (the BLOCKING branch): `menu:Claims` is `missing on
 //                build`, `menu:Insurance` is a delta (fontSize / CROP), the
 //                live side comes from the cache written by the first run
-//                (one live navigation per breakpoint — hit minimisation).
+//                (one live navigation per breakpoint — hit minimisation);
+//   hash toggles (fixtures/chrome-states/hash: two `<a href="#" aria-expanded>`
+//                triggers whose click adds a hash — a same-document navigation)
+//                → BOTH probed with a panel, the `scrolled` row recorded, no
+//                `navigated` flag and no loop-abort warning (defect fixture:
+//                `framenavigated` on the first click dropped the rest); the
+//                relative header is not pinnedScrolled; PNG paths are absolute
+//                even with a relative --out;
+//   --panel      the override names the panel, the trigger is still hovered:
+//                Insurance = how 'override' on #mega-insurance, opensOn hover;
+//                My account (override hidden) falls through to aria-controls on
+//                click; no trigger records `main` (defect fixture: the trigger was
+//                never opened and every cell recorded `main` as its panel).
 // Usage: node plugins/stardust/evals/lint/chrome-states-smoke.mjs
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { isAbsolute, join, resolve } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { pwRoot, skipBrowser, stageProjectCopy, serveDir } from './lib/_browser.mjs';
 
@@ -43,8 +56,12 @@ const runAsync = (args, cwd) => new Promise((res) => { lap(`run ${args.slice(-6)
 
 // ---- pure
 const help = run([SCRIPT, '--help']);
-check(help.status === 0 && /--from-state/.test(help.out) && /--live-cache/.test(help.out) && /124/.test(help.out), 'chrome-states --help must exit 0 and name --from-state, --live-cache and the 124 no-verdict rule');
+check(help.status === 0 && /--from-state/.test(help.out) && /--live-cache/.test(help.out) && /--tolerance/.test(help.out) && /124/.test(help.out), 'chrome-states --help must exit 0 and name --from-state, --live-cache, --tolerance and the 124 no-verdict rule');
 check(run([SCRIPT, 'https://example.invalid/', '--bogus']).status === 1, 'an unknown flag must exit 1');
+const trailing = run([SCRIPT, 'https://example.invalid/', '--width']);
+check(trailing.status === 1 && /--width needs a value/.test(trailing.out), 'a trailing value flag is refused with "needs a value" (never swallows the next flag)');
+const swallow = run([SCRIPT, 'https://example.invalid/', '--out', '--no-mobile']);
+check(swallow.status === 1 && /--out needs a value/.test(swallow.out), 'a value flag followed by another flag is refused, not consumed');
 check(run([SCRIPT]).status === 1, 'no <liveURL> must exit 1');
 
 const { pairStates, clusterVariants, linkSetCheck, samplesFromState, cacheKey, variantKeyOf } = await import(SCRIPT);
@@ -130,6 +147,33 @@ try {
   writeFileSync(join(work, 'sleep.mjs'), 'setTimeout(() => {}, 5000);');
   const r3 = await runAsync([staged.script('run-capped.mjs'), '--timeout', '1', '--', process.execPath, join(work, 'sleep.mjs')], staged.dir);
   check(r3.status === 124, `run-capped returns 124 on the deadline (got ${r3.status})`);
+  // D1 — hash toggles: a same-document navigation never aborts the trigger loop
+  const json3 = join(work, 'hash.json');
+  const r4 = await runAsync([staged.script('run-capped.mjs'), '--timeout', '85', '--', process.execPath, staged.script('chrome-states.mjs'), `${srv.url}/hash/`, '--no-mobile', '--out', 'out-hash', '--json', json3], staged.dir);
+  check(r4.status === 0, `hash-toggle run must exit 0 (got ${r4.status}): ${r4.out.slice(-600)}`);
+  const j3 = existsSync(json3) ? JSON.parse(readFileSync(json3, 'utf8')) : null;
+  if (j3) {
+    const hs = Object.fromEntries(j3.desktop.states.map((s) => [s.name, s]));
+    check(hs['menu:Products'] && hs['menu:Products'].panel && hs['menu:Products'].opensOn === 'click' && !hs['menu:Products'].navigated, `first hash toggle opens on click with a panel and is not flagged navigated (got ${JSON.stringify(hs['menu:Products'] && { on: hs['menu:Products'].opensOn, nav: hs['menu:Products'].navigated, warn: hs['menu:Products'].warn })})`);
+    check(hs['menu:Support'] && hs['menu:Support'].panel && hs['menu:Support'].panel.how === 'aria-controls', `the SECOND hash toggle is still probed and paired via aria-controls (got ${JSON.stringify(Object.keys(hs))})`);
+    check(hs.scrolled && hs.scrolled.identity, 'the scrolled row is recorded after hash toggles');
+    check(!j3.desktop.warnings.some((w) => /navigated/.test(w)), `no loop-abort warning on hash navigation (got ${JSON.stringify(j3.desktop.warnings)})`);
+    check(j3.desktop.identity && j3.desktop.identity.pinnedScrolled === false, `a position:relative header scrolled out of view is not pinnedScrolled (got ${JSON.stringify(j3.desktop.identity && j3.desktop.identity.pinnedScrolled)})`);
+    check(hs['menu:Products'] && hs['menu:Products'].png && isAbsolute(hs['menu:Products'].png) && existsSync(hs['menu:Products'].png), `PNG paths are absolute with a relative --out (got ${hs['menu:Products'] && hs['menu:Products'].png})`);
+  }
+  // D2 — --panel override: the trigger is still opened; how:'override' only when that element became visible
+  const json4 = join(work, 'override.json');
+  const r5 = await runAsync([staged.script('run-capped.mjs'), '--timeout', '85', '--', process.execPath, staged.script('chrome-states.mjs'), live, '--no-mobile', '--panel', '.mega.is-open', '--out', join(work, 'out-override'), '--json', json4], staged.dir);
+  check(r5.status === 0, `--panel run must exit 0 (got ${r5.status}): ${r5.out.slice(-600)}`);
+  const j4 = existsSync(json4) ? JSON.parse(readFileSync(json4, 'utf8')) : null;
+  if (j4) {
+    const os = Object.fromEntries(j4.desktop.states.map((s) => [s.name, s]));
+    const ins = os['menu:Insurance'];
+    check(ins && ins.panel && ins.panel.how === 'override' && ins.panel.id === 'mega-insurance' && ins.opensOn === 'hover', `--panel: Insurance is hovered open and the override panel is recorded as how 'override' (got ${JSON.stringify(ins && { how: ins.panel && ins.panel.how, id: ins.panel && ins.panel.id, on: ins.opensOn })})`);
+    const acc = os['menu:My account'];
+    check(acc && acc.panel && acc.panel.how === 'aria-controls' && acc.opensOn === 'click', `--panel: a trigger whose override stays hidden falls through the association chain (got ${JSON.stringify(acc && { how: acc.panel && acc.panel.how, on: acc.opensOn })})`);
+    check(!j4.desktop.states.some((s) => s.panel && s.panel.tag === 'main'), 'no trigger records <main> as its panel under --panel');
+  }
 } finally {
   await srv.close();
   staged.cleanup();

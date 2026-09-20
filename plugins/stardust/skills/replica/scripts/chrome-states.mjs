@@ -37,7 +37,9 @@
  *     --panel <sel>[|<buildSel>]     opened-panel override (default: association chain)
  *     --search <sel>[|<buildSel>]    search control override
  *     --toggle <sel>[|<buildSel>]    mobile menu toggle override
- *     --out <dir>           output dir  (default stardust/replica/gates/<slug>-<width>/chrome-states)
+ *     --out <dir>           output dir  (default stardust/replica/gates/<slug>-<width>/chrome-states);
+ *                           PNG paths in the report and the live cache are absolute
+ *     --tolerance <px>      metric tolerance passed to chrome-parity's compareRegion (default 1)
  *     --json [file]         machine-readable report (schema 1) to <file> or stdout
  *     --live-cache <f>      reuse/write the live side (all states, both widths, samples)
  *                           — one live navigation per breakpoint per URL; the key
@@ -90,6 +92,7 @@ Usage: node chrome-states.mjs <liveURL> [<buildURL>] [options]
   --from-state <f>    one live sample per page type from state.json.pages[]   --page <url>  extra sample (repeatable)
   --trigger|--panel|--search|--toggle <sel>[|<buildSel>]   selector overrides when the attribute pass finds nothing
   --out <dir>         output dir (default stardust/replica/gates/<slug>-<width>/chrome-states)
+  --tolerance <px>    metric tolerance for compareRegion (default 1)
   --json [file]       report (schema ${SCHEMA}) to <file> or stdout
   --live-cache <f>    reuse/write the live side — one live navigation per breakpoint per URL
   --consent <sel> | --dismiss <sel,…> | --consent-mode accept|deny | --block <substr,…>
@@ -112,33 +115,35 @@ export function parseArgs(argv) {
   if (rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
   const pos = [];
   const opts = { width: 1440, mobile: 360, noMobile: false, fromState: null, pages: [], trigger: null, panel: null, search: null, toggle: null, out: null, json: false, jsonFile: null, liveCache: null, consent: null, dismiss: [], consentMode: 'accept', block: [], headed: false, locale: null, tolerance: 1 };
+  const need = (flag, i) => { if (rest[i] === undefined || rest[i].startsWith('--')) { console.error(`${flag} needs a value\n\n${HELP}`); process.exit(1); } return rest[i]; };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
-    if (a === '--width') opts.width = Number(rest[i += 1]);
-    else if (a === '--mobile') opts.mobile = Number(rest[i += 1]);
+    if (a === '--width') opts.width = Number(need(a, ++i));
+    else if (a === '--mobile') opts.mobile = Number(need(a, ++i));
     else if (a === '--no-mobile') opts.noMobile = true;
-    else if (a === '--from-state') opts.fromState = rest[i += 1];
-    else if (a === '--page') opts.pages.push(rest[i += 1]);
-    else if (a === '--trigger') opts.trigger = pairSpec(rest[i += 1], a);
-    else if (a === '--panel') opts.panel = pairSpec(rest[i += 1], a);
-    else if (a === '--search') opts.search = pairSpec(rest[i += 1], a);
-    else if (a === '--toggle') opts.toggle = pairSpec(rest[i += 1], a);
-    else if (a === '--out') opts.out = rest[i += 1];
-    else if (a === '--tolerance') opts.tolerance = Number(rest[i += 1]);
+    else if (a === '--from-state') opts.fromState = need(a, ++i);
+    else if (a === '--page') opts.pages.push(need(a, ++i));
+    else if (a === '--trigger') opts.trigger = pairSpec(need(a, ++i), a);
+    else if (a === '--panel') opts.panel = pairSpec(need(a, ++i), a);
+    else if (a === '--search') opts.search = pairSpec(need(a, ++i), a);
+    else if (a === '--toggle') opts.toggle = pairSpec(need(a, ++i), a);
+    else if (a === '--out') opts.out = need(a, ++i);
+    else if (a === '--tolerance') opts.tolerance = Number(need(a, ++i));
     else if (a === '--json') { opts.json = true; if (rest[i + 1] && !rest[i + 1].startsWith('--')) opts.jsonFile = rest[i += 1]; }
-    else if (a === '--live-cache') opts.liveCache = rest[i += 1];
-    else if (a === '--consent') opts.consent = rest[i += 1];
-    else if (a === '--dismiss') opts.dismiss = (rest[i += 1] || '').split(',').map((s) => s.trim()).filter(Boolean);
-    else if (a === '--block') opts.block = (rest[i += 1] || '').split(',').map((s) => s.trim()).filter(Boolean);
-    else if (a === '--consent-mode') { opts.consentMode = rest[i += 1]; if (!['accept', 'deny'].includes(opts.consentMode)) { console.error(`--consent-mode must be accept or deny\n\n${HELP}`); process.exit(1); } }
+    else if (a === '--live-cache') opts.liveCache = need(a, ++i);
+    else if (a === '--consent') opts.consent = need(a, ++i);
+    else if (a === '--dismiss') opts.dismiss = need(a, ++i).split(',').map((s) => s.trim()).filter(Boolean);
+    else if (a === '--block') opts.block = need(a, ++i).split(',').map((s) => s.trim()).filter(Boolean);
+    else if (a === '--consent-mode') { opts.consentMode = need(a, ++i); if (!['accept', 'deny'].includes(opts.consentMode)) { console.error(`--consent-mode must be accept or deny\n\n${HELP}`); process.exit(1); } }
     else if (a === '--headed' || a.startsWith('--headed=')) opts.headed = parseHeadedFlag(a);
-    else if (a === '--storage-state') opts.storageState = rest[i += 1];
+    else if (a === '--storage-state') opts.storageState = need(a, ++i);
     else if (a === '--fresh-state') opts.freshState = true;
-    else if (a === '--solve-wait') { opts.solveWaitMs = parseSolveWaitFlag(rest[i += 1]); opts.headed = 3; }
-    else if (a === '--locale') opts.locale = rest[i += 1];
+    else if (a === '--solve-wait') { opts.solveWaitMs = parseSolveWaitFlag(need(a, ++i)); opts.headed = 3; }
+    else if (a === '--locale') opts.locale = need(a, ++i);
     else if (a.startsWith('--')) { console.error(`unknown flag ${a}\n\n${HELP}`); process.exit(1); }
     else pos.push(a);
   }
+  if (!(opts.tolerance >= 0)) { console.error(`--tolerance needs px >= 0\n\n${HELP}`); process.exit(1); }
   if (!(opts.width > 0) || !(opts.mobile > 0)) { console.error(`--width/--mobile need px values > 0\n\n${HELP}`); process.exit(1); }
   const [live, build = null] = pos;
   if (!live) { console.error(`need <liveURL>\n\n${HELP}`); process.exit(1); }
@@ -397,7 +402,10 @@ async function settleTop(page) {
   await page.waitForTimeout(300);
 }
 
-async function openTrigger(page, sel, kind = 'menu') {
+// `override` (--panel) names the panel element; the trigger is still hovered
+// then clicked, and the finder reports how:'override' only when that element
+// became visible — a hidden override falls through the association chain.
+async function openTrigger(page, sel, kind = 'menu', override = null) {
   const size = kind === 'menu' || kind === 'language' ? {} : { minW: 100, minH: 30 };
   const loc = page.locator(sel).first();
   if (!(await loc.count())) return { opensOn: 'none', found: false };
@@ -405,12 +413,12 @@ async function openTrigger(page, sel, kind = 'menu') {
   await loc.scrollIntoViewIfNeeded({ timeout: 2000 }).catch(() => {});
   await loc.hover({ timeout: 3000 }).catch(() => {});
   await page.waitForTimeout(CS.HOVER_WAIT + 250);
-  let panel = await page.evaluate(pageFindPanel, { triggerSel: sel, override: null, ...size });
+  let panel = await page.evaluate(pageFindPanel, { triggerSel: sel, override, ...size });
   if (panel) return { opensOn: 'hover', found: true, panel };
   await loc.click({ timeout: 3000, noWaitAfter: true }).catch(() => {});
   await page.evaluate((s) => new Promise((res) => { const el = document.querySelector(s); const t = setTimeout(res, 400); const done = () => { clearTimeout(t); setTimeout(res, 40); }; if (el) { el.addEventListener('transitionend', done, { once: true }); (el.closest('header, nav, footer') || document.body).addEventListener('transitionend', done, { once: true }); } }), sel).catch(() => {});
   await page.waitForTimeout(100);
-  panel = await page.evaluate(pageFindPanel, { triggerSel: sel, override: null, ...size });
+  panel = await page.evaluate(pageFindPanel, { triggerSel: sel, override, ...size });
   return { opensOn: panel ? 'click' : 'none', found: true, panel };
 }
 
@@ -430,7 +438,7 @@ async function panelShot(page, panel, file, w, h) {
 }
 
 async function recordState(page, { name, kind, text, sel, override, opts, side, width, vh, outDir, consent, url }) {
-  const opened = override ? { opensOn: 'override', found: true, panel: await page.evaluate(pageFindPanel, { triggerSel: sel, override }) } : await openTrigger(page, sel, kind);
+  const opened = await openTrigger(page, sel, kind, override);
   const st = { name, kind, text, opensOn: opened.opensOn, panel: opened.panel || null, region: null, model: null, png: null, sidecar: null };
   if (!opened.found) { st.warn = 'trigger not found on this side'; return st; }
   if (!opened.panel) { st.warn = 'no panel opened (plain link or navigation)'; return st; }
@@ -440,7 +448,7 @@ async function recordState(page, { name, kind, text, sel, override, opts, side, 
     for (const hh of hits) { const a = st.region.atoms.find((x) => x.key === hh.key); if (a) a.occluded = hh.occluded; }
   }
   if (kind === 'menu' || kind === 'language') st.model = await page.evaluate(pageNavModel, { panelSel: opened.panel.sel, triggerSel: sel }).catch(() => null);
-  const file = join(outDir, `${side}-${width}-${name.replace(/[^\w]+/g, '-').toLowerCase()}.png`);
+  const file = resolvePath(outDir, `${side}-${width}-${name.replace(/[^\w]+/g, '-').toLowerCase()}.png`);
   const clip = await panelShot(page, opened.panel, file, opened.panel.rect.w, opened.panel.rect.h);
   st.png = file; st.clip = clip;
   st.sidecar = writeSidecar(file, { url, width, vh, dpr: 1, capturedAt: new Date().toISOString(), instrument: { name: 'chrome-states', version: SCHEMA, options: { state: name, clip } }, consent, dismissed: [], fontsFailed: [], docHeight: null, chunks: 1, source: 'chrome-states', technique: opts.tier >= 2 ? 'chrome-headless' : 'headless', blocked: opts.block });
@@ -451,8 +459,12 @@ async function probeSide(browser, url, opts, { isLive, width, mobile, outDir, si
   const vh = mobile ? 800 : 900;
   const ctx = await newLiveContext(browser, { locale: opts.locale, viewport: { width, height: vh }, block: opts.block, ...sessionContextOptions(url, opts) }); // plain viewport, like the gate's 360 capture (isMobile would honour a missing viewport meta → 980 px layout)
   const page = await ctx.newPage();
-  let navigated = false;
-  const onNav = (frame) => { if (frame === page.mainFrame()) navigated = true; };
+  // `framenavigated` also fires on a same-document (hash) navigation — an
+  // `<a href="#" aria-expanded>` toggle is a state, not a link: only a
+  // change of the URL sans hash counts as leaving the page.
+  let navigated = false; let loadedUrl = null;
+  const sansHash = (u) => String(u || '').split('#')[0];
+  const onNav = (frame) => { if (frame === page.mainFrame() && loadedUrl !== null && sansHash(frame.url()) !== loadedUrl) navigated = true; };
   const out = { url, width, mobile: !!mobile, identity: null, triggers: [], states: [], flatLinks: [], topLevel: [], warnings: [] };
   try {
     await gotoLive(page, url, { waitUntil: defaultWaitUntil(url), settleMs: isLiveHttpUrl(url) ? 2500 : 1200, tier: isLive ? opts.tier : 1, solveWaitMs: opts.solveWaitMs });
@@ -460,6 +472,7 @@ async function probeSide(browser, url, opts, { isLive, width, mobile, outDir, si
     reportOverlayResidue('chrome-states', dOv);
     const consent = { mode: opts.consentMode, via: (dOv && (dOv.via || dOv.consentVia)) || 'none-detected' };
     await settleTop(page);
+    loadedUrl = sansHash(page.url());
     out.identity = await page.evaluate(pageIdentity);
     if (!out.identity) { out.warnings.push('no header landmark found (header / [role=banner] / *header*) — nothing enumerated'); return out; }
     out.flatLinks = await page.evaluate(pageFlatNavLinks);
@@ -475,7 +488,7 @@ async function probeSide(browser, url, opts, { isLive, width, mobile, outDir, si
       try {
         const st = await recordState(page, { name, kind: t.kind, text: t.text, sel: t.sel, override: t.kind === 'menu' ? ov('panel') : null, opts, side, width, vh, outDir, consent, url });
         st.trigger = { sel: t.sel, controls: t.controls, dataMenu: t.dataMenu, href: t.href, tag: t.tag };
-        if (navigated) { st.navigated = true; st.warn = 'trigger navigated — a link, not a toggle'; out.states.push(st); break; }
+        if (navigated) { st.navigated = true; st.warn = 'trigger navigated — a link, not a toggle'; out.states.push(st); out.warnings.push(`${name}: navigated away — remaining triggers not probed (record them as links)`); break; }
         out.states.push(st);
         if (t.kind === 'toggle' && st.panel) { // drill one level inside the open drawer
           const drawer = await page.evaluate(pageDrawerState, { drawerSel: st.panel.sel }).catch(() => null);
@@ -488,7 +501,7 @@ async function probeSide(browser, url, opts, { isLive, width, mobile, outDir, si
             if (drilled.panel) {
               drilled.region = await page.evaluate(probeRegion, { sel: drilled.panel.sel, openSel: drill.sel });
               drilled.drawer = await page.evaluate(pageDrawerState, { drawerSel: drilled.panel.sel }).catch(() => null);
-              const file = join(outDir, `${side}-${width}-drawer-drilled.png`);
+              const file = resolvePath(outDir, `${side}-${width}-drawer-drilled.png`);
               drilled.clip = await panelShot(page, drilled.panel, file, drilled.panel.rect.w, drilled.panel.rect.h); drilled.png = file;
               drilled.sidecar = writeSidecar(file, { url, width, vh, dpr: 1, capturedAt: new Date().toISOString(), instrument: { name: 'chrome-states', version: SCHEMA, options: { state: 'drawer-drilled', clip: drilled.clip } }, consent, dismissed: [], fontsFailed: [], docHeight: null, chunks: 1, source: 'chrome-states', technique: opts.tier >= 2 ? 'chrome-headless' : 'headless', blocked: opts.block });
             } else drilled.warn = 'drill click opened nothing';
@@ -506,7 +519,7 @@ async function probeSide(browser, url, opts, { isLive, width, mobile, outDir, si
     if (!mobile && !navigated) { // scrolled identity (sticky / shrink) — a state without a crop; heights feed the variant key
       await page.evaluate(() => window.scrollTo(0, 800)).catch(() => {}); await page.waitForTimeout(CS.CHROME_WAIT + 300);
       const scrolled = await page.evaluate(pageIdentity).catch(() => null);
-      if (out.identity && scrolled) { out.identity.heightScrolled = scrolled.height; out.identity.pinnedScrolled = scrolled.viewportTop <= 0 && /fixed|sticky/.test(scrolled.position) ? true : scrolled.viewportTop <= 0; out.states.push({ name: 'scrolled', kind: 'scroll', text: 'scrolled 800', opensOn: 'scroll', identity: scrolled }); }
+      if (out.identity && scrolled) { out.identity.heightScrolled = scrolled.height; out.identity.pinnedScrolled = scrolled.viewportTop + scrolled.height > 0; out.states.push({ name: 'scrolled', kind: 'scroll', text: 'scrolled 800', opensOn: 'scroll', identity: scrolled }); }
     }
   } finally {
     await ctx.close().catch(() => {});
