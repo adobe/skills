@@ -239,16 +239,15 @@ For each page in scope, follow
   `reference/content-preservation.md`. Internal-link rewriting
   always emits migrated-tree paths; missing slugs flagged
   broken.
-- **Content-count acceptance** per
-  `reference/fidelity-tiers.md` § Content-count acceptance:
-  compare role-classified node counts (headings, body/list
-  nodes, CTAs, images) between the captured source page JSON
-  and the rendered result. A count drop in any class not
-  covered by a logged `contentDeviations[]` entry fails the
-  page — dropped-content importer bugs must surface here,
-  while the importer is still cheap to fix, not at a
-  downstream fidelity gate. Record the pass in
-  `_meta.json#gatesPassed[]` as `"content-count"`.
+- **Content-count acceptance** — run
+  `node skills/rollout/scripts/content-acceptance.mjs --slug <slug>`
+  (source = the rendered sidecar `current/pages/<slug>.html`,
+  target = the written page; static counts, zero source hits).
+  Exit 2 = a count drop not covered by `contentDeviations[]`
+  or a words ratio < 0.9: the page does not advance to
+  `migrated` (`lastRun.failures[]`). PASS appends
+  `"content-count"` to `_meta.json#gatesPassed[]`; record and
+  escape: `../rollout/reference/delivery-gates.md` § Gate 7.
 - **Compose `<head>` metadata** per
   `reference/metadata-and-jsonld.md` (five categories;
   page-type-driven JSON-LD).

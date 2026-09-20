@@ -241,3 +241,47 @@ node skills/deploy/scripts/deploy-batch.mjs … --publish                      #
 - **Hands-off** stops at preview with the coverage line and the ranked class
   table (`stardust/scripts/class-report.mjs`), writes `status: blocked` with the
   exact re-drive, never publishes a template not at the bar.
+
+## Gate 7 — Content-count acceptance (source vs imported role inventory, offline)
+
+The cheapest gate in the flow and the one field runs skipped: static role
+counts of the rendered source sidecar against the migrated page. Instrument:
+`scripts/content-acceptance.mjs` (no browser, zero source hits). Hooks:
+`migrate` Phase 2 after content preservation (a FAIL keeps the page out of
+`migrated`), `rollout` Phase C step 2 beside `delivery-lint` (a FAIL is P1 →
+no PUT).
+
+```bash
+node skills/rollout/scripts/content-acceptance.mjs --slug <slug>                 # one page (state.json pageMap → target)
+node skills/rollout/scripts/content-acceptance.mjs --all --report-only          # bulk triage: records + summary.md, exit 0, no gatesPassed
+node skills/rollout/scripts/content-acceptance.mjs --slug <s> --target-url https://<preview>/<path>.plain.html   # one delivery-origin hit
+```
+
+- **Condition (what blocks).** Source = `stardust/current/pages/<slug>.html`
+  (from the capture JSON's `renderedHtml`) scoped to `main | [role=main]`
+  (else `--source-main` + `--source-exclude`, recorded); target = the migrated
+  HTML's `main` minus `.metadata` / `.section-metadata`. Classes: headings
+  (level + text), links (text + normalised path), images (count — the pipeline
+  renames `src`), list items, table rows, words. 🔴 = **any count drop** in a
+  class not covered by a `_meta.json#contentDeviations[]` entry (the 0.18.2 rule,
+  unchanged), or words ratio < 0.9; 🟡 = ratio > 1.1 (clones). Exit 2 on 🔴, 0
+  pass, 1 usage / `unmeasured` (a side missing — never a pass, never a FAIL).
+  PASS appends `"content-count"` to `gatesPassed[]` and writes
+  `stardust/migrated/_acceptance/<slug>.json` `{class{source, emitted,
+  dropped[], extra[]}, words{source, emitted, ratio}, tolerances, covered[],
+  verdict}` + `_acceptance/summary.md` (classes ranked by pages affected).
+- **Escape hatch.** A `contentDeviations[]` entry `{kind, source, target,
+  reason}` whose `source` matches the dropped text / href / src downgrades it to
+  `covered` — recorded, never silent. Tolerances only as explicit flags
+  (`--tolerance links=0.1,words=0.1`), echoed in the record and the summary; no
+  default relaxation. `--report-only` writes records and never `gatesPassed`. A
+  compiler record with `skipped[]` fails on any class not in `--skipped-allow`.
+- **Hands-off.** Nothing to resolve interactively: a failed page stays
+  `failed` with the reason, is listed under `content-count: P passed · C covered
+  · F failed · U unmeasured` in Phase H, and the run continues (one page never
+  aborts the rollout). Hands-off cannot author deviations or tolerances.
+- **Protected.** Zero source hits; ≤ 1 delivery-origin hit only with
+  `--target-url`; bulk `--all` over thousands of pages runs in the background
+  (exit 124 / 143 = killed, no verdict); no threshold changes (B29); the deploy
+  ledger is untouched (pre-PUT); role-level drill-down of a failed page is
+  `diff`'s `content-diff.mjs` (its capture-as-source mode), not a second classifier (B26).
