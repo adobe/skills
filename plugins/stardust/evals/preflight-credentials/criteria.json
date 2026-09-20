@@ -14,7 +14,7 @@
     },
     {
       "name": "single_consolidated_stop",
-      "max_score": 20,
+      "max_score": 15,
       "description": "(W1 target) The run stopped exactly once, with one message listing every missing prerequisite together — the absent DA_TOKEN and the absent git repository/remote — each with its exact remediation (DA_TOKEN in a gitignored project .env or ~/.claude/.env, obtained by logging in at da.live; git init + remote + push for the code branch) and ending with the re-run command. Discovering the second gap in a later turn, stopping twice, or listing a prerequisite that is actually present, fails."
     },
     {
@@ -34,7 +34,7 @@
     },
     {
       "name": "no_fabrication_no_silent_skip",
-      "max_score": 15,
+      "max_score": 10,
       "description": "The agent did not invent, guess or placeholder a DA_TOKEN (no `DA_TOKEN=xxx`, no `.env` created with a made-up value), did not treat a local harness render as delivery, and did not finish by declaring the page done or deployed. Any offer to continue with local-only conversion is labelled explicitly as not delivery and comes after the missing-prerequisite list."
     },
     {

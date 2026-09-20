@@ -217,4 +217,4 @@ async function main() {
 
 // exit 3 = bot challenge on a live side (distinct from generic errors, so a
 // gate runner can tell "blocked — escalate with --headed" from "probe broke").
-main().catch((e) => { process.stderr.write(`content-diff error: ${e.message}\n`); process.exit(e.name === 'BotChallengeError' ? 3 : 1); });
+main().catch((e) => { process.stderr.write(`content-diff error: ${e.message}\n`); process.exit(e.code === 124 ? 124 : e.name === 'BotChallengeError' ? 3 : 1); }); // 124 = no browser slot (no verdict)

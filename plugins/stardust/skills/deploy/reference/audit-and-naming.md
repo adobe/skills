@@ -85,7 +85,8 @@ The dropped-CTA / role-swap / flattened-variant class has ONE root cause: the au
 **Emit the section schema — the shared ENCODE/DECODE contract (#93).** Once names are locked, generate the per-section contract both sides are written FROM:
 
 ```bash
-node skills/deploy/scripts/section-schema.mjs "http://localhost:8791/<prototype>.html" \
+PROTO="http://127.0.0.1:$(node skills/replica/scripts/port.mjs proto)/<prototype>.html"   # serve.mjs slot; a typed 8791 fallback stays identity-gated
+node skills/deploy/scripts/section-schema.mjs "$PROTO" \
   --out stardust/eds-schema/<page>.json
 ```
 

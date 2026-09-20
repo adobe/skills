@@ -99,12 +99,10 @@ regression check instead of a debugging tool.
    (`../stardust/reference/state-machine.md` § Flow keys); if another
    flow is set, print it and the switch command (`$stardust reskin
    --switch-flow`) and stop.
-2. **Playwright import-resolvability probe** — same contract as
-   `../extract/SKILL.md` § Setup:
-   `node -e "import('playwright').then(()=>process.exit(0))"` from the
-   project root; on failure `npm i -D playwright --no-save
-   --legacy-peer-deps`. Re-run the probe before every phase that renders —
-   a `--no-save` install is pruned by any later real `npm i`.
+2. **Runtime preflight** — `node skills/stardust/scripts/preflight-runtime.mjs`
+   (master Setup step 9): playwright resolves from `stardust/node_modules`
+   for every phase that renders; never `npm i -D playwright --no-save` in
+   the EDS repo (`../stardust/reference/runtime-preflight.md` § Contract).
 3. **Copy the scripts into the project** (ESM resolves `playwright`
    from the *script's* dir). Copy
    `skills/reskin/scripts/*` and `skills/replica/scripts/impeccable-ignores.mjs`

@@ -109,8 +109,8 @@ that converts one page sees the other as the sibling it must not break.
 - `fonts/*.woff2` — `fonts.css` references the stock Roboto files, which are
   not shipped (binary); fallback faces render. A harness 404 on them is expected.
 - Playwright, `node_modules/` — the Setup says "Node + Playwright available";
-  the runner workspace has neither installed. The skill's Playwright re-probe
-  installs it (`npm i -D playwright --no-save`), which needs network.
+  the runner workspace has neither installed. The runtime preflight
+  (`preflight-runtime.mjs` → `stardust/node_modules`) installs it, which needs network.
 
 ## Known limitations — don't mistake these for skill bugs
 

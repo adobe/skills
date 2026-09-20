@@ -13,7 +13,7 @@ metadata:
 
 | phase | command / instrument | gate | writes |
 |---|---|---|---|
-| Setup 0–8 | `node -e "import('playwright').then(()=>process.exit(0))"`; master setup + flow guard; `directed` page; `DESIGN.md`/`.json` with canon (auto-bootstrap from the first approved prototype when absent); active direction; scope partition; `validateProvenance(page)`; mobile-adapt audit on Path A / A′ sources | flow guard; provenance validation; mobile-adapt audit (no skip flag) | `stardust/canon/` (bootstrap case) |
+| Setup 0–8 | `node skills/stardust/scripts/preflight-runtime.mjs`; master setup + flow guard; `directed` page; `DESIGN.md`/`.json` with canon (auto-bootstrap from the first approved prototype when absent); active direction; scope partition; `validateProvenance(page)`; mobile-adapt audit on Path A / A′ sources | flow guard; provenance validation; mobile-adapt audit (no skip flag) | `stardust/canon/` (bootstrap case) |
 | 1 Plan | dynamic-surface precondition (`dynamics` Phases 1–3 when `dynamic-features.md` is missing); gated-archetype precondition under `flow: replica`; print the plan | confirmation on large scope; skipped for `<slug>` / small runs | — |
 | 2 Per-page render | idempotent skip → placeholder gate → branch A / A′ / B with `fidelityTier` → canon + modules → content preservation → content-count acceptance → `<head>` metadata → validation contracts → asset bundling → media reconciliation → cinematic sibling copy → write | placeholder gate; strict validation contracts; content-count acceptance | `stardust/migrated/<path>/index.html` + `_meta.json`, `migrated/assets/<subpath>`, `migrated/assets/motion/` |
 | 3 Sitewide assets + portability | logo, favicon/font check, `robots.txt`, `sitemap.xml`; `--clean` stale removal; the grep audits; `node skills/migrate/fixtures/pagemap-audit.mjs stardust/migrated/ stardust/state.json`; `node skills/migrate/fixtures/file-protocol-audit.mjs stardust/migrated/` | every audit clean (no skip flag) | `migrated/assets/logo.<ext>`, `migrated/robots.txt`, `migrated/sitemap.xml` |
@@ -26,7 +26,7 @@ metadata:
 | Setup 7 | `skills/stardust/reference/state-machine.md` § Provenance validation |
 | 1 | `reference/content-preservation.md` § Dynamic dependencies · `../replica/reference/source-fidelity-gate.md` § Residual logging format · § Residual classes |
 | 2 (branch, path) | `reference/migration-procedure.md` § Three render branches · § Output path mapping · § Idempotent skip · `reference/template-and-module-rendering.md` § Render path selection · § Validation contracts · § Deviation policy · `reference/importer-recipe.md` (before writing or widening a sibling importer) |
-| 2 (fidelity, content) | `reference/fidelity-tiers.md` § The three tiers · § Sibling variance probe · § Content-count acceptance · `reference/content-preservation.md` § Internal link rewriting · § Forms |
+| 2 (fidelity, content) | `reference/fidelity-tiers.md` § The three tiers · § Sibling variance probe · § Module-map precondition · § Content-count acceptance · `reference/content-preservation.md` § Internal link rewriting · § Forms |
 | 2 (head, assets, media) | `reference/metadata-and-jsonld.md` § Categories · § Page-specific, preserved · § JSON-LD by page-type · `reference/asset-bundling.md` § Detection · § Rewrite · `reference/media-reconciliation.md` § The four decisions · § Cross-origin optimization |
 | 3 | `reference/migration-procedure.md` § Reference shape · § Page map · § Portability audits · `reference/metadata-and-jsonld.md` § Sitemap entry · `reference/asset-bundling.md` § Stale asset cleanup |
 | 4 | `skills/stardust/reference/migrate-output-format.md` § State.json contract · `skills/stardust/reference/state-machine.md` § Stale flagging (content-aware) |
@@ -38,8 +38,7 @@ Apply `direct`'s target spec, `prototype --prep`'s visual canon and
 inventory, producing a self-contained static HTML site under
 `stardust/migrated/` — per-page, incremental, idempotent. `migrate` is
 the final stardust phase: platform-agnostic HTML; downstream conversion
-(AEM EDS, a CMS, a framework) is a separate plugin's job, consuming
-`migrated/` + `DESIGN.json` + the per-page `_meta.json` sidecars.
+consumes `migrated/` + `DESIGN.json` + the per-page `_meta.json` sidecars.
 
 ## Inputs
 
@@ -49,49 +48,38 @@ the final stardust phase: platform-agnostic HTML; downstream conversion
 - `--all` — migrate every page including stale ones.
 - `--force` — re-migrate every page even when the idempotent
   skip would skip them.
-- `--require-approved` — refuse to migrate any non-`approved`
-  page. Default behaviour migrates `directed` pages too (using
-  Path A′ or Path B per
-  `reference/template-and-module-rendering.md`); this flag flips
-  approval-gating on.
-- `--strict-canon` — refuse approvals that conflict with canon.
-  Default logs the deviation and continues. Useful for projects
-  where canon discipline matters more than per-template
-  flexibility.
-- `--clean` — delete assets previously bundled but no longer
-  referenced from `stardust/migrated/assets/`. Off by default
-  (migrate is additive). **Implies `--force`** so the run's
-  `bundledAssets` Set is the complete union of referenced assets
-  (`reference/asset-bundling.md` § Stale asset cleanup).
+- `--require-approved` — refuse any non-`approved` page (default
+  migrates `directed` pages too, via Path A′ / B).
+- `--strict-canon` — refuse approvals that conflict with canon
+  (default: log the deviation, continue).
+- `--clean` — delete bundled assets no longer referenced (off by
+  default; **implies `--force`** so `bundledAssets` is the complete
+  union — `reference/asset-bundling.md` § Stale asset cleanup).
 - `--pin-timestamp <ISO8601>` — pin the migrate-provenance
   timestamp so re-runs without source changes produce byte-
   identical HTML (CI fingerprinting).
 
-The mobile-adapt audit, content-sourcing scan, and placeholder
-refusal are all mandatory gates — there is no `--skip-*` or
-`--allow-*` flag to bypass them. If a gate refuses a page, the
-remediation is to fix the proposed file (re-prototype, edit
-inline, or run an impeccable command) and re-invoke migrate.
+The mobile-adapt audit, content-sourcing scan and placeholder
+refusal are mandatory gates — no `--skip-*` / `--allow-*` flag; a
+refused page is fixed in the proposed file and migrate re-invoked.
 
 ## Setup
 
-0. **Playwright re-probe (mandatory first step).** `--no-save` playwright
-   installs from earlier phases are pruned by any later real `npm i`
-   (extract SKILL.md § Setup → `--no-save` installs are ephemeral). Before
-   any rendering step, probe
-   `node -e "import('playwright').then(()=>process.exit(0))"` from the
-   project root and re-install (`npm i -D playwright --no-save
-   --legacy-peer-deps`) on failure.
+0. **Runtime preflight (mandatory first step).** `node
+   skills/stardust/scripts/preflight-runtime.mjs` (master Setup step 9): the
+   three runtime packages resolve from `stardust/node_modules` and Chromium
+   is present before any rendering step — never `npm i -D playwright
+   --no-save` in the EDS repo (`skills/stardust/reference/runtime-preflight.md`
+   § Contract).
 1. Run the master skill's setup
    (`skills/stardust/SKILL.md` § Setup). **Flow guard.** If
    `stardust/state.json` exists without `flow` and the ask is a
    migration (a URL plus "migrate" / "to EDS" / "re-platform"), do not
-   run: print the two-flow table from the master skill § Two migration
-   flows and hand back to its routing — the flow is chosen and stamped
-   there before any sub-skill runs
-   (`skills/stardust/reference/state-machine.md` § Flow keys). Under
-   hands-off the master's default applies (keep-design phrase →
-   `replica`, otherwise `redesign`), recorded in `direction.md`.
+   run: print the master's two-flow table (§ Two migration flows) and hand
+   back to its routing, which stamps `flow`
+   (`skills/stardust/reference/state-machine.md` § Flow keys); hands-off
+   applies the master's default (keep-design phrase → `replica`, else
+   `redesign`), recorded in `direction.md`.
 2. Verify `stardust/state.json` exists with at least one
    `directed` page.
 3. Verify project-root `DESIGN.md` and `DESIGN.json` exist with
@@ -100,20 +88,17 @@ inline, or run an impeccable command) and re-invoke migrate.
    `header.html`, `footer.html`, `canon.css`.
 
    **Canon auto-bootstrap (when steps 3–4 find no canon).** The
-   `prototype → migrate → deploy` happy path never runs
-   `prepare-migration`, so a first migrate legitimately arrives with
-   no canon. When canon is absent **and** an `approved` prototype
-   exists, do not stop: run the canon write-back inline from the
+   `prototype → migrate → deploy` path never runs `prepare-migration`, so
+   a first migrate may arrive with no canon. Canon absent **and** an
+   `approved` prototype present: run the canon write-back inline from the
    first approved prototype (the canon-author, default `home`) per
-   `../prototype/reference/canon-extraction.md` § Five-step
-   procedure — `header.html` / `footer.html` / `canon.css` to
-   `stardust/canon/`, tokens + compositional moves pinned to
-   `DESIGN.json.extensions.canon`, `canon.source: "auto-bootstrap:
-   <slug>"` recorded — what `prototype --prep` does on first
-   approval. Only stop and recommend `$stardust prepare-migration`
-   when canon is absent **and** no approved prototype exists. Under
-   `state.json.handsOff` the bootstrap is automatic and logged;
-   interactively, surface it as a one-line notice.
+   `../prototype/reference/canon-extraction.md` § Five-step procedure —
+   `header.html` / `footer.html` / `canon.css` to `stardust/canon/`, tokens
+   + compositional moves pinned to `DESIGN.json.extensions.canon`,
+   `canon.source: "auto-bootstrap: <slug>"`. Stop and recommend
+   `$stardust prepare-migration` only when canon is absent **and** no
+   approved prototype exists. Hands-off: automatic and logged;
+   interactively a one-line notice.
 5. Verify `stardust/direction.md` has an active (not pending)
    direction.
 6. Read `state.json.pages[]` and partition into:
@@ -122,14 +107,12 @@ inline, or run an impeccable command) and re-invoke migrate.
      `<slug>`).
    - **skipped**: everything else, with reason captured.
 7. **Validate provenance on every in-scope page.** Call
-   `validateProvenance(page)` per
-   `skills/stardust/reference/state-machine.md` § Provenance
-   validation for every page in `inScope`. Abort with the
-   helper's error when any page lacks live-render evidence —
-   migrating a synthesized page record produces deployable HTML
-   that misrepresents the source site, the exact failure mode
-   that motivated the validator. Surface `Provenance OK on N
-   pages` in the migrate-plan output before Phase 1.
+   `validateProvenance(page)` (`skills/stardust/reference/state-machine.md`
+   § Provenance validation) for every page in `inScope`; abort with the
+   helper's error when any page lacks live-render evidence — a synthesized
+   record would become deployable HTML that misrepresents the source site.
+   Surface `Provenance OK on N pages` in the migrate-plan output before
+   Phase 1.
 8. **Mobile-adapt audit on every Path A / Path A′ source.** For
    every page whose render branch consumes a proposed or
    archetype HTML file (Path A, Path A′ per
@@ -142,28 +125,22 @@ inline, or run an impeccable command) and re-invoke migrate.
    - At least one `@media (max-width: ...)` rule.
    - At least one mobile-targeted breakpoint at ≤ 640px.
 
-   Refuse pages that fail — the audit is mandatory; there is no
-   skip flag. The user fixes the proposed file (re-prototype or
-   chat-driven impeccable command) and re-invokes migrate.
-   Record the audit result per page in the migrate report and
-   in the post-render `_meta.json#audit.adapt` sidecar. Path B
-   (unique-renders) skips the audit because adapt hasn't run
-   on those pages — a Path B page that needs mobile coverage
-   gets it via impeccable's `adapt` command, run separately by the
-   user. Surface this distinction in the report so it's not
-   read as a silent skip.
+   Refuse pages that fail — mandatory, no skip flag; the user fixes the
+   proposed file (re-prototype or an impeccable command) and re-invokes.
+   Record the result per page in the report and in
+   `_meta.json#audit.adapt`. Path B (unique renders) skips the audit —
+   adapt never ran there; impeccable's `adapt` covers such a page
+   separately — and the report says so, never a silent skip.
 
 ## Procedure
 
 ### Phase 1 — Plan
 
 **Dynamic-surface precondition (safety net).** If
-`stardust/dynamic-features.md` is missing, the hand-run flow
-(`extract → direct → prototype → migrate`) never passed a pre-import
-gate: run the stardust `dynamics` skill Phases 1–3 now (`extract --dynamics`
-for reach if needed, detector on the archetypes, triage draft, curate)
-before rendering any page. Never import a site as static without a
-decision per dynamic row. Per page, rows of the inventory that touch it
+`stardust/dynamic-features.md` is missing, no pre-import gate ran: run the
+`dynamics` skill Phases 1–3 now (`extract --dynamics` for reach, detector on
+the archetypes, triage, curate) before rendering any page — never import a
+site as static without a decision per dynamic row. Per page, rows of the inventory that touch it
 become `contentDeviations[]` `kind: "dynamic-dependency"` entries
 (`reference/content-preservation.md § Dynamic dependencies`).
 
@@ -177,7 +154,22 @@ lists each blocked type with its archetype slug and `$stardust replica
 <archetype>`: render nothing for that type. A page rendered under a type
 the lint passed records `"archetype-gate"` in `_meta.json#gatesPassed[]`.
 The same command guards `rollout` Setup; the published-origin re-gate is
-unchanged.
+unchanged. Then `node skills/replica/scripts/layout-cluster.mjs --type <t>
+--write-state`: a page whose `state.json.pages[].layoutCluster` is a cluster ≥ T
+with no exemplar gated at every configured breakpoint is a **coverage gap** —
+render nothing in that cluster; list it with the cluster id, the exemplar slug
+and `$stardust replica <exemplar>` (`reference/fidelity-tiers.md` § Sibling
+variance probe, Layout clusters). Tail clusters render and fall under the
+seeded sample.
+
+**Module-map precondition (`flow: replica`, sibling tier).** Before rendering any
+`sibling`-tier page, every kind the archetype's lift ledger names
+(`stardust/replica/progress.json.modules[]`, `firstSeen` in the template) must
+have an emitter in `stardust/import/vocabulary.json`; `node
+skills/migrate/scripts/importer-skeleton.mjs --template <t>` refuses at plan time
+otherwise — pages `blocked`, exit 2, nothing rendered, the kinds named. Map or
+`drop:<reason>` the kind, then re-run; hands-off never writes `drop:`
+(`reference/fidelity-tiers.md` § Module-map precondition).
 
 Print the plan and wait for confirmation when the scope is large:
 
@@ -229,7 +221,12 @@ For each page in scope, follow
   `_meta.json` so coverage shows what was craft-gated vs cloned.
 - **Render** per the chosen branch's procedure in T&M. A scripted
   sibling importer follows `reference/importer-recipe.md` (13 rules,
-  each with its enforcing instrument).
+  each with its enforcing instrument). The skeleton is `node
+  skills/migrate/scripts/importer-skeleton.mjs (--slug <s> | --template <t> |
+  --all)`: a vocabulary-driven DOM walk over the capture (never the live
+  page) that writes the page, `_meta.json#audit.import`,
+  `stardust/import-manifest.json` and `generators[]`; exit 2 on a failed page,
+  1 on a missing capture.
 - **Canon application** — chrome injection, canon.css
   injection, deviation logging.
 - **Module rendering** — render module instances via
@@ -247,7 +244,14 @@ For each page in scope, follow
   or a words ratio < 0.9: the page does not advance to
   `migrated` (`lastRun.failures[]`). PASS appends
   `"content-count"` to `_meta.json#gatesPassed[]`; record and
-  escape: `../rollout/reference/delivery-gates.md` § Gate 7.
+  escape: `../rollout/reference/measured-gates.md` § Gate 7.
+- **Unmapped and flattened modules are hard failures.** A visible module
+  with no emitter, or a `block:` kind emitted as default content, fails the
+  page (🔴, `_meta.json#audit.import.unmapped[] / flattened[]`, exit 2; the
+  page stays out of `migrated/`); escape = `drop:<reason>` or a
+  `contentDeviations[]` entry. Bulk runs stop a template once one kind is
+  unmapped on ≥ 3 of its pages (`unmapped modules: N kinds on M pages — map
+  or drop with reason`).
 - **Compose `<head>` metadata** per
   `reference/metadata-and-jsonld.md` (five categories;
   page-type-driven JSON-LD).
@@ -255,34 +259,25 @@ For each page in scope, follow
   refuse the page; soft contracts log and continue.
 - **Compute output path** per migration-procedure.md
   § Output path mapping.
-- **Asset bundling.** Scan the final HTML for asset references
-  (six detection shapes per
-  `reference/asset-bundling.md` § Detection), copy each unique
+- **Asset bundling.** Scan the final HTML for asset references (six
+  detection shapes, `reference/asset-bundling.md` § Detection), copy each
   referenced subpath from `stardust/current/assets/<subpath>` to
-  `stardust/migrated/assets/<subpath>` (preserving subdir
-  structure), then rewrite every reference to the root-relative
-  form `/assets/<subpath>`. Cross-page dedup uses a
-  module-level Set seeded from
-  `state.json.migrate.bundledAssets[]`. Missing source assets
-  warn-and-skip per § Edge cases; the bundle stays internally
-  consistent.
+  `stardust/migrated/assets/<subpath>` (subdirs preserved), rewrite every
+  reference to root-relative `/assets/<subpath>`. Cross-page dedup: a
+  module-level Set seeded from `state.json.migrate.bundledAssets[]`;
+  missing sources warn-and-skip (§ Edge cases).
 - **Media reconciliation.** For every image **not** bundled to
-  same-origin (reused source-CDN URLs under Mode A image-reuse),
-  decide optimize/keep/rewrite/omit per
-  `reference/media-reconciliation.md`. Cross-origin `<img>` kept
-  as source URLs must **skip `createOptimizedPicture`** (it drops
-  the `?v=` key and corrupts the rendition); broken URLs are
-  repaired (missing `?`-delimiter, wrong host) or omitted, never
-  shipped as `about:error`. `rollout` re-runs the authoritative
-  network resolve at delivery (`media-reconcile.mjs`).
-- **Cinematic sibling (when `<slug>-cinematic.html` exists).**
-  Migrate consumes the STATIC prototype only — the cinematic layer
-  is never merged. Copy the motion assets (`lenis.min.js`,
-  `lenis.min.css`) from `stardust/prototypes/` to
-  `stardust/migrated/assets/motion/` (idempotent) for downstream
-  consumers (deploy/rollout decide whether to wire them), and
-  record `cinematic-variant-not-consumed` in the page's
-  `_meta.json#migrationDecisions[]`.
+  same-origin (reused source-CDN URLs under Mode A image-reuse), decide
+  optimize/keep/rewrite/omit per `reference/media-reconciliation.md`.
+  Cross-origin `<img>` kept as source URLs **skip `createOptimizedPicture`**
+  (it drops the `?v=` key); broken URLs are repaired or omitted, never
+  shipped as `about:error`. `rollout` re-runs the authoritative network
+  resolve at delivery (`media-reconcile.mjs`).
+- **Cinematic sibling (when `<slug>-cinematic.html` exists).** Migrate
+  consumes the STATIC prototype only. Copy `lenis.min.js` / `lenis.min.css`
+  from `stardust/prototypes/` to `stardust/migrated/assets/motion/`
+  (idempotent) for downstream consumers and record
+  `cinematic-variant-not-consumed` in `_meta.json#migrationDecisions[]`.
 - **Write** the migrated `index.html` and the `_meta.json`
   sidecar in the same directory. Provenance block as first
   child of `<head>`. Record `assetsBundled` (count of unique
@@ -298,10 +293,8 @@ assets** that no individual page references explicitly:
 1. Copy `stardust/current/assets/logo.<ext>` to
    `stardust/migrated/assets/logo.<ext>` (only if missing or
    stale). Record under `state.json.migrate.bundledAssets[]`.
-2. Verify favicon variants and font files were generated by
-   `prepare-migration` Phase 4. If absent, log a warning and
-   continue (the migrated site renders without them, just
-   missing some platform-specific affordances).
+2. Verify favicon variants and font files from `prepare-migration`
+   Phase 4; absent → warn and continue.
 3. Add `stardust/migrated/robots.txt` and `sitemap.xml`
    derived from the migrated page inventory per
    `reference/metadata-and-jsonld.md` § Sitemap entry.
@@ -311,13 +304,11 @@ assets** that no individual page references explicitly:
    stale subpath from `stardust/migrated/assets/`. Record the
    deletions under `state.json.migrate.cleanedAssets[]`. Per
    `reference/asset-bundling.md` § Stale asset cleanup.
-5. Verify **portability** — the bundle must work via `file://`, at a
-   webserver root and at any subpath. Run every audit in
-   `reference/migration-procedure.md` § Portability audits (four
+5. Verify **portability** (`file://`, webserver root, any subpath): every
+   audit in `reference/migration-procedure.md` § Portability audits (four
    greps + `fixtures/pagemap-audit.mjs` + `fixtures/file-protocol-audit.mjs`);
-   any non-empty grep output or non-zero fixture exit fails the run
-   with the cited error. No skip flag: "self-contained,
-   zip-and-deploy" is the contract and the audits back the claim.
+   any output or non-zero exit fails the run with the cited error. No
+   skip flag.
 
 Asset migration is idempotent — files are content-hashed and
 copied only when missing; per-page bundling deduplicates across
@@ -339,8 +330,6 @@ Update `state.json`:
   § State.json contract: `selfContained: true`, `outputDir`,
   `totalAssetsBundled`, `bundledAssets[]`, per-page
   `assetsBundled` counts, `missingAssets[]`, `cleanedAssets[]`.
-  This is the forward-compat signal downstream consumers test
-  for.
 
 Print the run summary:
 
@@ -382,7 +371,7 @@ Next:    review index.html · $impeccable critique stardust/migrated/ · zip-and
 
 | Path                                              | Purpose                                                |
 |---------------------------------------------------|--------------------------------------------------------|
-| `stardust/migrated/<source-url-path>`             | Migrated page. Output path mirrors the source URL literally (see `reference/migration-procedure.md` § Output path mapping). The bundle is **zip-and-deploy**: drop on any static host at any path, or open `index.html` directly via `file://`. Every internal reference is relative to the page that emits it; nav targets carry an explicit `index.html` (or the source URL's literal filename) so file:// resolves without a server. |
+| `stardust/migrated/<source-url-path>`             | Migrated page; the path mirrors the source URL literally (`reference/migration-procedure.md` § Output path mapping). **Zip-and-deploy**: any static host at any path, or `index.html` via `file://` — every internal reference is relative to the emitting page; nav targets carry an explicit `index.html` (or the literal filename). |
 | _meta.json sidecar                                | Lives next to each migrated page. For `<dir>/index.html` the sidecar is `<dir>/_meta.json`; for `<dir>/<name>.html` the sidecar is `<dir>/<name>._meta.json` so multiple `.html` siblings don't collide. Per `reference/migration-procedure.md` § `_meta.json` sidecar. |
 | `stardust/migrated/index.html`                    | The home page (special case).                          |
 | `stardust/migrated/_meta.json`                    | Home sidecar.                                          |
@@ -406,6 +395,10 @@ The whole pipeline is built around two properties:
 - **Incremental.** Migrate 5 pages today, 20 pages tomorrow,
   fix one page's content next week — the migrated tree is
   always the union of every successful migration to date.
+- **Scripted importers keep both properties** through
+  `stardust/import-manifest.json` (path → sha): unchanged inputs → zero
+  writes; a hand-edited output is exit 2 naming the path
+  (`stardust/patches/<slug>.json` or `--force`).
 
 These properties hold even when DESIGN.md, canon, or modules are
 edited mid-run: the edit changes the relevant sha, so the next
@@ -417,26 +410,22 @@ writes the tree (generated `content/**` downstream included):
 
 - **Generated content is never hand-edited.** A per-page override
   lives in `stardust/patches/<slug>.json` (`[{selector, op:
-  replace|attr|remove, value}]`) and is applied by the importer or
-  generator as its last step, so a regen reproduces the fix. The
-  importer writes `stardust/import-manifest.json` (path → sha); on
-  the next run a manifest path whose on-disk sha differs is a hand
-  edit — warn with the path before overwriting. A hand edit found
-  this way moves into a patch file or into the importer; it is
-  never re-applied by hand.
+  replace|attr|remove, value}]`), applied by the importer or generator
+  as its last step so a regen reproduces the fix. The importer writes
+  `stardust/import-manifest.json` (path → sha); a manifest path whose
+  on-disk sha differs is a hand edit — warn with the path before
+  overwriting; it moves into a patch file or the importer, never
+  re-applied by hand.
 - **Generated site artifacts own their own path.** Fragments and
   chrome documents, index inputs and redirect sheets are produced by
   named scripts under `stardust/scripts/` from `stardust/`-rooted
-  sources (as `stardust/redirects.tsv` already is), run in a
-  recorded order after the importer (import → fragments/chrome →
-  index → redirects → localize-links → deploy). The importer deletes
-  or overwrites only paths in its manifest, never the output root.
-  A generator exits non-zero without writing when a page has 0
-  sections; a bulk driver stops on the first non-zero exit;
+  sources, in a recorded order after the importer (import →
+  fragments/chrome → index → redirects → localize-links → deploy). The
+  importer deletes or overwrites only paths in its manifest, never the
+  output root. A generator exits non-zero without writing when a page has
+  0 sections; a bulk driver stops on the first non-zero exit;
   `state.json.migrate.generators[<template>] = {script, sha}` lets a
-  regen re-drive only pages whose generator or source changed (the
-  redeploy becomes diff-only once the deploy ledger carries a
-  content hash).
+  regen re-drive only pages whose generator or source changed.
 
 ## Stale handling
 
@@ -444,8 +433,8 @@ When `direction.md`, canon, or the module catalog changes after
 some pages have been migrated:
 
 - Affected pages are flagged `stale: true` per
-  `skills/stardust/reference/state-machine.md` § Stale flagging.
-  Stale-flagging is content-aware in all three trigger cases.
+  `skills/stardust/reference/state-machine.md` § Stale flagging
+  (content-aware in all three trigger cases).
 - `$stardust migrate` (no flags) skips stale pages and reports
   the count.
 - `$stardust migrate --all` re-migrates each stale page,
@@ -453,9 +442,8 @@ some pages have been migrated:
 - `$stardust migrate <slug>` always operates on the named page,
   stale or not.
 
-The user decides whether stale pages should be refreshed —
-direction/canon/module changes don't invalidate prior migrated
-work, they just mark it as out-of-step.
+Stale pages are refreshed on the user's decision — a change marks prior
+work out-of-step, never invalid.
 
 ## Failure modes
 
@@ -478,20 +466,16 @@ work, they just mark it as out-of-step.
 - **Output path collision.** Two slugs mapping to the same
   output path. Refuse to write the second one and surface to
   the user — manual slug rename needed.
-- **Placeholder content in proposed/archetype file.** Refuse
-  to ship a page whose source contains `[data-placeholder]`
-  elements. Surface the unsourced list and recommend sourcing
-  real content (re-prototype, or edit the proposed file
-  directly). There is no bypass flag — shipping placeholders to
-  a public site is the failure mode this gate exists to prevent.
+- **Placeholder content in proposed/archetype file.** Refuse a page
+  whose source contains `[data-placeholder]`; surface the unsourced list
+  and recommend sourcing real content. No bypass flag — shipping
+  placeholders to a public site is the failure mode this gate prevents.
 - **Color reservation violated.** Refuse the page; surface to
   user with the offending color and the reserved-for context.
-- **Brand-faithful inversion conflict.** A hard rule declared
-  inverted in
-  `extensions.divergence.brand_faithful_inversions[]` is lifted
-  from validation per T&M § Brand-faithful inversion handling.
-  Emit a one-line note in the run summary acknowledging the
-  lift.
+- **Brand-faithful inversion conflict.** A hard rule declared inverted in
+  `extensions.divergence.brand_faithful_inversions[]` is lifted from
+  validation (T&M § Brand-faithful inversion handling); one-line note in
+  the run summary.
 
 ## What migrate does NOT do
 
@@ -515,23 +499,22 @@ work, they just mark it as out-of-step.
   validation contracts.
 - `reference/metadata-and-jsonld.md` — head composition, JSON-LD
   per page-type, canonical strategy.
-- `reference/importer-recipe.md` — the numbered importer rules
-  (rendered capture, element-scoped classification, exclusion
-  list, doc-source mapping) and what enforces each.
+- `reference/importer-recipe.md` — the numbered importer rules and what
+  enforces each.
+- `scripts/importer-skeleton.mjs` — the DOM importer skeleton the recipe's
+  rules are enforced by (`reference/importer-recipe.md` § Skeleton contract).
 - `reference/content-preservation.md` — what's kept,
   transformed, dropped; internal-link rewriting; asset path
   rewriting; form handling.
 - `reference/asset-bundling.md` — detection / copy / rewrite contract.
 - `skills/stardust/reference/migrate-output-format.md` — the
-  self-contained-bundle contract downstream consumers can rely
-  on (asset reference shape, directory layout,
+  self-contained-bundle contract (asset reference shape, layout,
   `state.json.migrate` block).
 - `skills/stardust/reference/token-contract.md` — `:root` block
   refreshed from DESIGN.md on every render.
-- `skills/stardust/reference/data-attributes.md` — structural
-  attributes including `data-template`, `data-module`,
-  `data-slot`, `data-canon`, `data-deviation`, `data-bespoke`,
-  `data-broken-link`.
+- `skills/stardust/reference/data-attributes.md` — `data-template`,
+  `data-module`, `data-slot`, `data-canon`, `data-deviation`,
+  `data-bespoke`, `data-broken-link`.
 - `skills/stardust/reference/state-machine.md` — page lifecycle,
   page typing, stale-flagging cascade.
 - `skills/stardust/reference/artifact-map.md` — provenance shape

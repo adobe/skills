@@ -683,4 +683,4 @@ async function main() {
 // exit 3 = bot challenge on the live side (distinct from generic errors, so a
 // runner can tell "blocked — escalate with --headed" from "probe broke").
 const invokedDirectly = (() => { try { return realpathSync(process.argv[1]) === fileURLToPath(import.meta.url); } catch { return false; } })();
-if (invokedDirectly) main().catch((e) => { console.error(`motion-observe error: ${e.message}`); process.exit(e.name === 'BotChallengeError' ? 3 : 1); });
+if (invokedDirectly) main().catch((e) => { console.error(`motion-observe error: ${e.message}`); process.exit(e.code === 124 ? 124 : e.name === 'BotChallengeError' ? 3 : 1); }); // 124 = no browser slot (no verdict)

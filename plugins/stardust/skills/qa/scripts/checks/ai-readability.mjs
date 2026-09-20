@@ -12,13 +12,17 @@
  * Findings:
  *   ai-readability-poor   error  strict < 75 (the tool's "Fair"/"Poor" bands — the owner sees a red gauge)
  *   ai-readability-low    warn   strict < 95, or code < 98 (block code adds words the document lacks)
+ *   ai-readability-undecided-exclusion  warn  an excluded block removed words with no complete allowlist decision
+ *                          entry — --ai-allowlist <file> (default stardust/ai-readability-allowlist.json when present)
  *   ai-readability-served-gap info  ≥ 40 rendered main words never served (fragment / index / generated text)
  * Evidence carries the top blocks by DOM-only words so the fix lands on the right block.
  */
 import {
   loadPlaywright, finding, originAuthFor, attachOriginAuth, arg, withNavSlot, getFetchLimiter, configureFetch, retryAfterMs, noteThrottled, noteRetry,
 } from '../lib.mjs';
-import { scorePage } from '../../../deploy/scripts/ai-readability.mjs';
+import { existsSync, readFileSync } from 'node:fs';
+import { scorePage, checkExclusions } from '../../../deploy/scripts/ai-readability.mjs';
+import { acquire } from '../../../stardust/scripts/browser-lock.mjs';
 
 const THROTTLE = (s) => s === 429 || s === 503;
 const sleep = (ms) => new Promise((r) => { setTimeout(r, ms); });
@@ -53,17 +57,21 @@ export async function run(ctx) {
   const { base, inventory } = ctx;
   const findings = [];
   const { chromium } = await loadPlaywright();
-  const browser = await chromium.launch();
+  const slot = await acquire({ script: 'qa-ai-readability' }).catch((e) => { if (e.code === 124) { console.error(e.message); process.exit(124); } throw e; }); // fan-out.md § Machine budget — 124 = no slot, no verdict, never an error row
+  const browser = await chromium.launch(); browser.on('disconnected', () => slot?.release());
   const auth = originAuthFor(base);
   const headers = auth ? { authorization: auth } : {};
   const excludeBlocks = (arg('ai-exclude-blocks', 'client-app,widget') || '').split(',').map((s) => s.trim()).filter(Boolean);
+  // the same allowlist entries the deploy gate reads (ai-readability.md § 6): an exclusion that removed words needs a complete decision entry
+  const allowFile = arg('ai-allowlist', existsSync('stardust/ai-readability-allowlist.json') ? 'stardust/ai-readability-allowlist.json' : null);
+  const allow = allowFile && existsSync(allowFile) ? JSON.parse(readFileSync(allowFile, 'utf8')) : null;
   // no extraHTTPHeaders: the site secret rides origin requests only (attachOriginAuth), never every third party
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   await attachOriginAuth(context);
   const summary = [];
   try {
     for (const p of inventory.pages) {
-      const r = await scorePaced(context, base.replace(/\/$/, ''), p.path, { excludeBlocks, headers });
+      const r = await scorePaced(context, base.replace(/\/$/, ''), p.path, { excludeBlocks, allow, headers });
       if (r.throttled) {
         // infrastructure state, not a readability verdict: counted in report.infra like every other check's `unmeasured`
         noteThrottled();
@@ -81,6 +89,7 @@ export async function run(ctx) {
         findings.push(finding('ai-readability', 'ai-readability-low', 'warn', p.path,
           `checker score ${r.strict.score}%, code score ${r.code.score}% (fragments credited +${r.code.fragmentWords} words = fragments cost ${r.code.fragmentsCostPts} pts${r.fragments?.length ? ` [${r.fragments.join(' ')}]` : ''}) — top: ${top.map((b) => `${b.block} ${b.servedGap}`).join(', ')}`, ev));
       }
+      if (allow) for (const x of checkExclusions(r, allow).filter((e) => !e.decided)) findings.push(finding('ai-readability', 'ai-readability-undecided-exclusion', 'warn', p.path, `excluded block ${x.block} removed ${x.words} words with no allowlist decision entry (reason, fallback, decision)`, { block: x.block, words: x.words }));
       if (r.servedGap.main >= 40) {
         findings.push(finding('ai-readability', 'ai-readability-served-gap', 'info', p.path,
           `${r.servedGap.main} of ${r.servedGap.renderedMain} rendered main words are absent from the served HTML (non-rendering crawlers never read them); chrome ${r.servedGap.chrome}`, ev));

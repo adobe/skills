@@ -66,8 +66,8 @@ refactor (see `notes/migrate-template-canon-refactor.md`):
 
 ```
 stardust/
-├── state.json                        # state machine (state-machine.md)
-├── status.jsonl                      # append-only phase-transition log — every skill appends start/end/blocked lines (run-status.md)
+├── state.json                        # state machine (state-machine.md) — first script writer extract/scripts/state-update.mjs (merge-by-slug)
+├── status.jsonl                      # append-only phase-transition log — every skill appends start/end/blocked lines (run-status.md); first script writer state-update.mjs
 ├── direction.md                      # resolved intent + reasoning trace
 ├── decisions.md                      # plan-time decision register — default rows applied, owner-decided rows, owner-only rows (decisions.md)
 ├── package.json                      # the run's own runtime deps (playwright, pixelmatch, pngjs) → node_modules/ beside it, never tracked (runtime-preflight.md)
@@ -90,16 +90,18 @@ stardust/
 ├── current/
 │   ├── PRODUCT.md                    # impeccable-format strategy of the EXISTING site
 │   ├── DESIGN.md                     # impeccable-format visual system of the EXISTING site
-│   ├── DESIGN.json                   # sidecar
-│   ├── brand-review.html             # self-contained visual review of the extraction (first eyeball-able artifact)
-│   ├── _brand-extraction.json        # consolidated brand surface (palette, type, motifs, voice, system components)
+│   ├── DESIGN.json                   # sidecar — seeded by extract/scripts/write-design-json.mjs
+│   ├── brand-review.html             # self-contained visual review of the extraction (first eyeball-able artifact) — rendered by extract/scripts/brand-review.mjs
+│   ├── _brand-extraction.json        # consolidated brand surface (palette, type, motifs, voice, system components) — owner extract/scripts/brand-surface.mjs (`_provenance.mode: full | bounded`)
 │   ├── _crawl-log.json               # discovery + crawl audit trail
 │   ├── pages/
 │   │   └── <slug>.json               # per-page parsed structure + content (includes metadata block)
 │   └── assets/
 │       ├── logo.<ext>                # extracted logo
 │       ├── screenshots/<slug>.png    # per-page viewport screenshots (used by brand-review)
-│       └── media/                    # extracted images, with original URLs
+│       ├── media/                    # harvested images (<basename>-<sha1:8>.<ext>) + _media-manifest.json; pages/*.json images[].localPath points here
+│       ├── fonts/                    # harvested font bodies + _fonts-manifest.json (licensing flag per family)
+│       └── icons/                    # favicon set + favicon-set.json (the one extra-request exception)
 ├── prototypes/
 │   ├── <slug>-shape.md               # per-page compositional brief (page-level deployment record)
 │   ├── <slug>-proposed.html          # proposed redesign (iteration target, migration source, user-facing review surface)
@@ -396,7 +398,8 @@ excluded folders tracked deletes that line or adds a negation below it.
 | `node_modules/`, `package-lock.json` | **never** | npm via the preflight | the installed runtime packages; `stardust/.gitignore` lists both |
 | `usage.md`, `usage.json` | yes | `token-ledger.mjs` (wave close, optional) | per-phase token table; `unknown` when no transcript dir resolves |
 | `live-budget.json` | yes | extract / any live tool | learned per-host live ceiling (`{ "<host>": { navPerMin, minGapMs, learnedAt, learnedBy, lastStatus } }`), merge-by-host, written on a bare 429 by `crawl.mjs` or `live-session.mjs gotoLive` (`learnedBy` names the tool); read by every live tool (`live-budget.mjs` beside `live-session.mjs`) until 7 days after `learnedAt`, then ignored; a clone inherits the origin's known limit |
-| `dynamic-features.md`, `dynamic-features-plan.md`, `dynamics/parity.json`, `trees.json` | yes | dynamics | dispositions and parity checks |
+| `dynamic-features.md`, `dynamic-features-plan.md`, `dynamics/parity.json` | yes | dynamics | dispositions and parity checks |
+| `trees.json` | yes | rollout (D3; dynamics fills the locale class rows) | the locale-tree manifest — `rollout/reference/multilingual.md` § Manifest precondition |
 | `dynamics/` other (`*.generated-plan.*`, `sheets/_sync.json`) | yes | dynamics | small text; drafts superseded by the curated file |
 | `redirects.tsv`, `runtime-contract.json`, `eds-conversion-log.md`, `ai-readability-allowlist.json` | yes | rollout / deploy | |
 | `canon/**` | yes | prototype | the design canon |
@@ -406,8 +409,8 @@ excluded folders tracked deletes that line or adds a negation below it.
 | `current/brand-sources/*/assets/screenshots/` | **no** | extract | screenshots |
 | `prototypes/**` incl. `assets/` | yes | prototype / replica | approved design; `assets/` is source media, not screenshots |
 | `validation/**` | **no** | master / prototype | clean-pass screenshots |
-| `replica/inconsistency-register.md`, `progress.json`, `motion/`, `capture/` | yes | replica | register, ledger, runtime CSS/DOM captures (2 MB) |
-| `replica/gates/**` | **no** | replica | per-iteration renders and diffs; verdicts live in `progress.json`; `live.png` re-taken on first run |
+| `replica/inconsistency-register.md`, `progress.json`, `motion/`, `capture/` (incl. `capture/lift/` — `lift.mjs` values per width, `capture/css/` — `--save-css` sheets) | yes | replica | register, ledger, runtime CSS/DOM captures (2 MB), the lift evidence |
+| `replica/gates/**` (incl. `gates/<slug>-<w>/chrome-states/`) | **no** | replica | per-iteration renders, diffs and chrome-state cells; verdicts live in `progress.json`; `live.png` re-taken on first run |
 | `reskin/**` except `content-model/**/*.png`, `reports/*.png` | yes | reskin | tokens, model, renderers, pages, ledger |
 | `migrated/**/*.html`, `_meta.json`, `robots.txt`, `sitemap.xml` | yes | migrate | the deliverable and its reasoning |
 | `migrated/assets/**` | **no** | migrate | byte copy of `current/assets/media` + favicon variants |
@@ -421,6 +424,7 @@ excluded folders tracked deletes that line or adds a negation below it.
 | `_pre-publish-backup/**`, `_palette-pick.html`, `*.generated.*` drafts | backup yes; picker no | prototype / direct / dynamics | |
 | `.work/live-<host>.lock` | **never** | extract / any live tool | per-host live lock (pid liveness); one live tool per origin at a time — `state-machine.md` § Concurrency |
 | `.work/env.json` | **no** | `preflight-runtime.mjs` + `preflight-transports.mjs` (merged) | the environment record the state report's `Preflight:` line reads — `runtime-preflight.md` § Files |
+| `.work/ports.json`, `.work/<role>.pid`, `.work/harness/marker.txt` | **never** | `replica/scripts/port.mjs` / `serve.mjs`, `deploy/scripts/build-harness.mjs` | the project's port slots + pidfiles and the harness identity marker `served-identity.mjs` asserts (exit 4 = no verdict) — `harness-quirks.md` § Ports |
 | `.work/**` | **no** | any | run residue: logs, harness page, pre-renders, probe dumps, `probes/` |
 | `*.log`, `*.err`, `*.out`, `last-run.json` anywhere | **no** | any | safety net until every writer routes to `.work/logs/` |
 | `_storage-state.json`, `*-clearance.json` | **never** | extract | admitted session (cookies / storage), written 0600; secrets. Writer: `crawl.mjs` (cleared challenge, `--save-state`, or after a capture-time escalation). Readers: every live instrument by default when a cookie domain matches the live host (`--storage-state <file>` names another, `--fresh-state` opts out) |

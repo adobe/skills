@@ -15,7 +15,7 @@ metadata:
 |---|---|---|---|
 | Setup 1 | read the skill's `metadata.impeccable` level; unless `none`: `node skills/stardust/scripts/impeccable-version-check.mjs --probe [--local <dir>]` (advisory, read-only) | `required` stops if missing; `optional` degrades; `none` skips 1 and 4 | `state.json.impeccable` |
 | Setup 2–4 | `PRODUCT.md` / `DESIGN.md` presence; read `stardust/state.json`; parse impeccable's `command-metadata.json` | — | — |
-| Setup 5–10 | status ledger; project hygiene (`stardust/.gitignore`, root `.gitignore`, `.hlxignore`, `git check-ignore`); `node skills/stardust/scripts/run-lock.mjs check` + project root; credentials lookup on migration-bound asks; origin probe (`preflight-transports.mjs`); `preflight-runtime.mjs` | `state.json` not ignored; `check` exit 3 (held) → read-only; no 401 blocker before the lookup ran; preflight exit 1 blocks browser instruments only | `stardust/status.jsonl`, `stardust/.gitignore`, `stardust/.work/run.lock`, `state.json.credentials`, `stardust/package.json`, `stardust/.work/env.json` |
+| Setup 5–10 | status ledger; project hygiene (`stardust/.gitignore`, root `.gitignore`, `.hlxignore`, `git check-ignore`); `node skills/stardust/scripts/run-lock.mjs check` + project root; credentials lookup on migration asks; origin probe (`preflight-transports.mjs`); `preflight-runtime.mjs` | `state.json` not ignored; `check` exit 3 (held) → read-only; no 401 blocker before the lookup ran; preflight exit 1 blocks browser instruments only | `stardust/status.jsonl`, `stardust/.gitignore`, `stardust/.work/run.lock`, `state.json.credentials`, `stardust/package.json`, `stardust/.work/env.json` |
 | Routing | no arg / resume → state report (`node skills/stardust/scripts/status.mjs`); sub-skill keyword → delegate; migration ask → § Two migration flows; freeform → intent reasoning | plan shown before any command (hands-off: recorded instead) | `state.json` flow keys |
 | Freeform intent | § The "open and reasoned" principle, steps 1–6 | plan confirmation | `stardust/direction.md` |
 | Hands-off | activation block (wave plan + stop point, commit policy); gate auto-resolution + decision defaults; transport preflight; background waits; turn-end contract (chain after PASS); scoped per-phase commits | quality gates unchanged; hard blockers and owner-only rows still stop; denied privileged action → ask once, `Blocked on owner:`; turn ends only on completion, blocker, > 45-min wait | `state.json.handsOff` / `approvedChain`, `direction.md` activation line, `status.jsonl` `blocked` (+ `owner`) |
@@ -149,14 +149,14 @@ Route on the user's input:
   | `audit` | three-perspective site audit (design, SEO/technical, LLM visibility) — scored report + findings ledger |
   | `qa` | read-only post-deploy QA sweep of the live site — findings, never fixes |
   | `uplift` | one-shot presales orchestrator (3 variants) |
+  | `lockdown` | private repo + site auth before the hand-off — `deploy` § When you finish |
 
   - `prototype --cinematic[=<register>]` layers a brand-faithful motion
     register on the static prototype (`skills/prototype/reference/motion-registers.md`).
   - `uplift` skips the extract/direct/prototype chain: one URL in, three
-    variants out (one cinematic), no further coordination.
-- **Migration to EDS — pick ONE of two flows, never mix them.** See
-  § Two migration flows before answering any "how do I migrate X" —
-  the answer differs by whether the design is kept.
+    variants out (one cinematic).
+- **Migration to EDS — pick ONE of two flows, never mix them:** § Two
+  migration flows.
 - **First word is anything else (a freeform phrase).** Treat it as a
   redesign intent: load `reference/intent-reasoning.md` and follow its
   procedure. **Do not execute any impeccable or stardust command before

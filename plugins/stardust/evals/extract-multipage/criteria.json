@@ -14,7 +14,7 @@
     },
     {
       "name": "discovery_before_crawl",
-      "max_score": 10,
+      "max_score": 5,
       "description": "Discovery (robots.txt Sitemap: directives -> sitemap.xml -> sitemap_index.xml -> CMS conventions -> nav union -> BFS fallback) happened before any per-page rendering. The discovery outcome (source used, discovered count, and the selected page list) was visible in the agent's narration; eliding a long cut list is acceptable."
     },
     {
@@ -24,7 +24,7 @@
     },
     {
       "name": "playwright_over_webfetch",
-      "max_score": 10,
+      "max_score": 5,
       "description": "Playwright was used for per-page rendering (1440x900 @ DPR 1, recorded in _provenance.dpr; wait per the configured wait mode — default 'medium': domcontentloaded + 2s grace, 8s hard cap — plus the scroll-to-bottom pass). Running the bundled scripts/crawl.mjs copied into the project satisfies this. WebFetch / curl was NOT used as a substitute for page rendering."
     },
     {
@@ -34,33 +34,43 @@
     },
     {
       "name": "per_page_json_shape",
+      "max_score": 5,
+      "description": "Each stardust/current/pages/<slug>.json contains all required top-level keys: _provenance (first key), slug, url, finalUrl, title, og, themeColor, headings, landmarks, ctas, links, media, forms, widgets, perSectionStyle — and the schema-2 additions: schemaVersion 2, landmarks with children (main's direct sections), heroHeadline, media.images[] (each with localPath | downloadError after the harvest). `node skills/extract/scripts/validate-page.mjs stardust/current/pages` exits 0 on every record; a FAIL row (missing key, synthesized renderedBy) fails this criterion."
+    },
+    {
+      "name": "media_harvested",
       "max_score": 10,
-      "description": "Each stardust/current/pages/<slug>.json contains all required top-level keys: _provenance (first key), slug, url, finalUrl, title, og, themeColor, headings, landmarks, ctas, links, media, forms, widgets, perSectionStyle."
+      "description": "Assets are harvested by intercepting the render's own responses, never re-requested: stardust/current/assets/media/ holds <basename>-<sha1:8>.<ext> copies with _media-manifest.json beside them, assets/fonts/ + _fonts-manifest.json (licensing flag per family), assets/icons/ + favicon-set.json (the one documented extra-request exception, ≤ 8 icon URLs once per run); every images[] entry carries localPath or downloadError; no second GET of a page or asset the render already fetched (hit minimisation on the source site)."
     },
     {
       "name": "brand_extraction_shape",
       "max_score": 10,
-      "description": "stardust/current/_brand-extraction.json exists with all sections: logo, palette (with role names + occurrences + sourceSelectors), type (heading + body families with weights / sizes), spacing, motifs (borderRadius / shadows / patterns), componentStyle (v1 fields preserved), voice samples, register guess."
+      "description": "stardust/current/_brand-extraction.json exists with all sections: logo, palette (with role names + occurrences + sourceSelectors), type (heading + body families with weights / sizes), spacing, motifs (borderRadius / shadows / patterns), componentStyle (v1 fields preserved), voice samples, register guess; _provenance names script (brand-surface.mjs — the offline Phase 3 writer, never a second live pass), mode (full | bounded) and notes[] (every deviation in words); logo carries step, renderedWidth/renderedHeight."
     },
     {
       "name": "logo_locator_chain",
       "max_score": 5,
-      "description": "Logo extracted via the priority chain. _brand-extraction.json.logo.source names the method used (inline-svg | img | apple-touch-icon | og-image | favicon | synthesized). File saved under stardust/current/assets/ (NOT icons/)."
+      "description": "Logo extracted via the priority chain (1 inline SVG in the banner · 1b the largest banner wordmark image ≥ 40×16 CSS px, aspect 0.5–6 · 2 img · 3 apple-touch-icon · 4 og-image · 5 favicon · 6 synthesized); _brand-extraction.json.logo.step records the step that won. _brand-extraction.json.logo.source names the method used (inline-svg | img | apple-touch-icon | og-image | favicon | synthesized). File saved under stardust/current/assets/ (NOT icons/)."
     },
     {
       "name": "current_product_md_direct",
-      "max_score": 10,
+      "max_score": 5,
       "description": "stardust/current/PRODUCT.md was authored directly (sections per impeccable's init.md format spec, product-schema 1: '# Product', the '<!-- impeccable:product-schema 1 -->' comment, Platform, Users, Product Purpose, Brand Commitments, Evidence on Hand, Product Principles; other schema sections where supported). The agent did NOT invoke $impeccable init or teach for the current-state file."
     },
     {
       "name": "current_design_md_direct",
-      "max_score": 10,
+      "max_score": 5,
       "description": "stardust/current/DESIGN.md and DESIGN.json were authored directly. DESIGN.md uses Stitch frontmatter (colors, typography, rounded, spacing, components) and the canonical body sections per impeccable's document.md (Overview, Colors, Typography, Layout, Elevation & Depth, Shapes, Components, Do's and Don'ts — canonical order; omitting irrelevant sections is allowed). DESIGN.json schemaVersion 2 with extensions block."
     },
     {
       "name": "state_json_shape",
       "max_score": 5,
-      "description": "stardust/state.json exists with _provenance first, site (originUrl/extractedAt/pageCap/totalDiscovered/crawled), direction present but unresolved (null, or an object with resolvedAt null), and pages[] (one entry per crawled page, status=extracted)."
+      "description": "stardust/state.json exists with _provenance first, site (originUrl/extractedAt/pageCap/totalDiscovered/crawled), direction present but unresolved (null, or an object with resolvedAt null), and pages[] (one entry per crawled page, status=extracted); state.json and status.jsonl are written by `node skills/extract/scripts/state-update.mjs` (merge-by-slug, exactly one status.jsonl line, the `Provenance: <live>/<total> live` line), never hand-composed."
+    },
+    {
+      "name": "phase_scripts_not_reimplemented",
+      "max_score": 10,
+      "description": "Phases 3–6 run the shipped scripts, not agent re-implementations: brand-surface.mjs (Phase 3), write-design-json.mjs (Phase 4 seed), brand-review.mjs (Phase 5, 13 detectors, exit 2 without _brand-extraction.json), state-update.mjs (Phase 6). No hand-written palette clustering, review HTML or state.json composition appears in the transcript; the scripts' own printed lines (Provenance ratio, detector table) are what the report quotes."
     },
     {
       "name": "provenance_stamped",

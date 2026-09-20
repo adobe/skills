@@ -323,4 +323,4 @@ async function main() {
 // CLI only when invoked directly (real paths — a symlinked tmpdir differs); the
 // pairing helpers are importable as a library.
 const isMain = (() => { try { return process.argv[1] && pathToFileURL(realpathSync(process.argv[1])).href === import.meta.url; } catch { return false; } })();
-if (isMain) main().catch((e) => { console.error(`anchor error: ${e.message}`); process.exit(e.name === 'BotChallengeError' ? 3 : 1); });
+if (isMain) main().catch((e) => { console.error(`anchor error: ${e.message}`); process.exit(e.code === 124 ? 124 : e.name === 'BotChallengeError' ? 3 : 1); }); // 124 = no browser slot (no verdict)

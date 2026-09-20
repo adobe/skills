@@ -42,4 +42,5 @@ are in the CHANGELOG, not here.
 
 ## Ports
 
-- Before any gate round, assert the server on the port is yours — `skills/replica/scripts/gate.sh --marker <string>` (the identity assertion) — and free stale listeners with `lsof -i :<port>`.
+- Ports are allocated, never typed: `node skills/replica/scripts/serve.mjs <dir> --role proto` / `port.mjs proto|harness` pick a per-project slot in 8800–8899 (prototypes) / 3100–3199 (the `aem up` harness) — never 8791, 3000 or 8765 (the documented fallbacks other tools default to); `stardust/.work/ports.json` + `<role>.pid` record the slot. A foreign listener on the slot is **listed, never killed** — the allocator moves on; `port.mjs stop <role>` ends only this project's server.
+- Before any gate round, assert the server on the port is yours — `skills/replica/scripts/gate.sh --marker <string>` / `served-identity.mjs <url> --marker <s>` (exit 4 = no verdict) — rather than freeing listeners by hand.

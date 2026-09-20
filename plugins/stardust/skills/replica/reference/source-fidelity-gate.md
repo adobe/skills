@@ -103,13 +103,11 @@ capture is re-taken every iteration.
    breakdown). 10% is the ship bar, not the target.
 4. **height delta: |Δ| ≤ 8px** — pixel-compare's own warning threshold is
    the bar (it prints ⚠ above 8px), so a −9px result is unambiguously a
-   residual, not a pass. A large delta invalidates the % — the overlap crop
-   silently discards the tail, so a short prototype can score deceptively
-   well. Fix heights before trusting anything else.
+   residual, not a pass. A large delta invalidates the % (the overlap crop
+   discards the tail) — fix heights first.
 5. **Chrome crop gate: header band AND footer band each ≤ 2% diff (≥98%
-   match, #115).** The full-page bar dilutes the chrome — header/footer are
-   a small share of page pixels but carry disproportionate visual weight
-   and repeat on every page of a rollout. Run `../scripts/crop-compare.mjs`
+   match, #115).** The full-page bar dilutes the chrome, which repeats on
+   every page of a rollout. Run `../scripts/crop-compare.mjs`
    over the SAME stitched captures the pixel probe used — no extra live hit:
 
    ```bash
@@ -400,13 +398,12 @@ fix is upstream, not a fourth loop.
   <gates-dir>/chrome-live.json` and `anchor.mjs --cache
   <gates-dir>/anchor-live.json` (live URL only) write the live measurement
   on the first run and reuse it while URL, width and selectors match —
-  delete the file to re-probe. On hard-CDN sites
-  (Akamai-class), take the live captures with `--headed` and treat further
-  live hits as spent budget — an IP-level block escalates within a few automated requests, after which the numbers measure the block, not the site. A challenged
-  headless run costs exactly **1** hit: `gotoLive` throws
-  `BotChallengeError` on the first challenge-classified response (the
-  wait+reload solve window runs only under `--headed`, where clearance can
-  actually land) — so the block budget is still intact when you escalate.
+  delete the file to re-probe. On hard-CDN sites take the live captures
+  with `--headed` and treat further live hits as spent budget (an IP-level
+  block escalates within a few requests). A challenged headless run costs
+  exactly **1** hit: `gotoLive` throws `BotChallengeError` on the first
+  challenge-classified response; the wait+reload solve window runs only
+  under `--headed`.
 - **Some origins score sessions, not requests (admitted-then-escalated):**
   one live-hitting tool per host at a time — `stardust/.work/live-<host>.lock`
   enforces it (`STARDUST_LIVE_FORCE=1` overrides); pacing never re-captures a
@@ -440,19 +437,16 @@ fix is upstream, not a fourth loop.
 
 ## Hardening rules (false-measurement traps)
 
-Each of these was hit live; skipping one silently corrupts the measurement
-rather than erroring.
+Each was hit live; skipping one corrupts the measurement silently.
 
 1. **Real-Chrome UA + the standard request headers on every capture and
    probe.** The default HeadlessChrome UA can receive a Cloudflare managed
    challenge, and the probe then **measures the challenge page as the
-   source** (it diffs cleanly, wrongly). And the UA alone is NOT
-   sufficient: field-proven (F-R1), a real-Chrome UA with Playwright's
-   minimal default headers still got HTTP 403 from Akamai; adding the standard set every
-   real Chrome sends (`Accept`, `Accept-Language`,
-   `Upgrade-Insecure-Requests`, `sec-ch-ua*`) produced HTTP 200 — Akamai
-   bot-manager fingerprints on the *absence* of those headers, not just the
-   UA. All three instruments now send both by default via the shared
+   source** (it diffs cleanly, wrongly). The UA alone is NOT sufficient
+   (F-R1): bot managers fingerprint on the *absence* of the standard header
+   set every real Chrome sends (`Accept`, `Accept-Language`,
+   `Upgrade-Insecure-Requests`, `sec-ch-ua*`), not just the UA. All three
+   instruments send both by default via the shared
    `diff/scripts/live-session.mjs`; `--ua` overrides the UA string only.
    The header set rides **document requests only** (F-B2):
    forcing it on every request makes cross-origin CORS-mode webfont fetches
@@ -808,7 +802,8 @@ reference dates get mixed up.
         { "region": "footer", "pct": 4.8, "cause": "glyph-antialiasing", "parity": "gates/home-1440/chrome-parity-iter3.json", "texture": { "thickPct": 6.1 }, "flaggedFor": "user",
           "artifacts": [ "gates/home-1440/chrome-parity-iter3.json", "gates/home-1440/crop-footer-iter3.json" ], "acceptedBy": "hands-off-policy:glyph-antialiasing" }
       ],
-      "captureState": [ { "what": "product tiles 4–6 on placeholder data-URIs", "where": "carousel-2" } ]
+      "captureState": [ { "what": "product tiles 4–6 on placeholder data-URIs", "where": "carousel-2" } ],
+      "motion": { "assert": { "verdict": "pass", "at": "<ISO-8601>", "target": "http://127.0.0.1:<proto slot>/home-proposed.html", "regime": "prototype", "observe": "stardust/replica/motion/home.json", "schema": 2 } }
     },
     "360": { "...": "..." }
   },
@@ -827,7 +822,12 @@ residual carries `artifacts[]`
 table's **permanent** classes; an entry missing either is invalid and the
 breakpoint is FAIL. `published.<bp>` holds the published-origin result per
 breakpoint (§ The published-origin gate); a breakpoint absent there is
-`ungated` — reported as such, never as passed. The top-level `chrome`
+`ungated` — reported as such, never as passed. `published.<bp>.residuals[]` is
+the page gate's residual door (`../../rollout/reference/publish-gate.md` § Gate 8,
+escape hatch c): the same row shape and validity rule as
+`breakpoints.<bp>.residuals[]`; a row without `page` applies to the archetype
+page, a row naming `page: <slug>` to that sibling of the type. `gate-publish.mjs`
+reads only this slot — prototype-regime residuals never open the door. The top-level `chrome`
 block (variants, per-state `gated | dead | unprobed:<reason>`) and
 `archetypes[].chromeVariant`: `chrome-states.md` § Chrome variants. `../scripts/gate-ledger-lint.mjs`
 is this ledger's reader (rollout Setup, `migrate` before any A′ render; `--published`

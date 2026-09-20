@@ -29,6 +29,6 @@ Expected clustering (`--min-cluster 3`): `c1` = A (exemplar the archetype
 ungated). With the default T (`max(5, 2 %)` = 5) B is tail.
 
 Deterministic coverage of the same facts without a browser:
-`skills/replica/scripts/test/layout-cluster.test.mjs` (in `lint:stardust`); its
+`evals/lint/layout-cluster-fixtures.mjs` (in `lint:stardust`); its
 browser half runs over these sidecar pages when Playwright resolves from the
 repo.

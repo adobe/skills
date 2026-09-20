@@ -9,7 +9,14 @@
  * decoration contract in one run.
  *
  *   node skills/deploy/scripts/qa-gate.mjs http://localhost:3000/stardust/.work/harness/page.html \
- *        --schema stardust/eds-schema/<page>.json [--maxw 1340]
+ *        --schema stardust/eds-schema/<page>.json [--maxw 1340] [--marker <s>]
+ *
+ * Served identity FIRST (exit 4 = no verdict, never a FAIL): before any page read the harness origin must
+ * be THIS project's — `replica/scripts/served-identity.mjs assertServedIdentity()` checks
+ * `/stardust/.work/harness/marker.txt` (written by build-harness.mjs), then the page body for the marker,
+ * then the schema's block names. `--marker <s>` overrides the marker read from stardust/.work/harness/marker.txt;
+ * with neither, identity is not asserted (one line says so). Ports: `aem up --port $(node
+ * skills/replica/scripts/port.mjs harness)` — never a typed 3000 (harness-quirks.md § Ports).
  *
  * Asserts (FAIL → exit 1):
  *   - the runtime booted: body.appear present (a blank render = harness bug, #40)
@@ -40,6 +47,7 @@
 /* eslint-disable no-console, no-await-in-loop, no-restricted-syntax */
 import { chromium } from 'playwright';
 import fs from 'fs';
+import { assertServedIdentity } from '../../replica/scripts/served-identity.mjs';
 
 const args = process.argv.slice(2);
 const url = args.find((a) => !a.startsWith('--'));
@@ -47,8 +55,21 @@ const opt = (name, dflt) => { const i = args.indexOf(`--${name}`); return i >= 0
 const schemaPath = opt('schema', null);
 const maxw = Number(opt('maxw', 1340));
 const fullBleedOpt = (opt('full-bleed', '') || '').split(',').map((s) => s.trim()).filter(Boolean);
-if (!url) { console.error('usage: qa-gate.mjs <harnessURL> [--schema <eds-schema.json>] [--maxw 1340] [--full-bleed hero,band]'); process.exit(2); }
+if (!url) { console.error('usage: qa-gate.mjs <harnessURL> [--schema <eds-schema.json>] [--maxw 1340] [--full-bleed hero,band] [--marker <s>]'); process.exit(2); }
 const schema = schemaPath ? JSON.parse(fs.readFileSync(schemaPath, 'utf8')) : null;
+
+// Served identity before any read: the server on that port must be ours (exit 4 = no verdict, never a FAIL).
+const MARKER_FILE = 'stardust/.work/harness/marker.txt';
+const marker = opt('marker', null) || (fs.existsSync(MARKER_FILE) ? fs.readFileSync(MARKER_FILE, 'utf8').trim() : null);
+if (marker) {
+  try {
+    const id = await assertServedIdentity(url, marker, { fallbackNames: schema ? (schema.sections || []).map((s) => s.section) : [] });
+    console.log(`identity: ${url} is ours (via ${id.via})`);
+  } catch (e) {
+    if (e.code === 4) { console.error(`qa-gate: ${e.message}`); process.exit(4); }
+    throw e;
+  }
+} else console.log(`identity: not asserted — pass --marker <s> or build the harness first (${MARKER_FILE})`);
 
 const fails = [];
 const warns = [];

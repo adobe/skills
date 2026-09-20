@@ -61,9 +61,9 @@ time: a **neutral whole-page pixel difference** — no residual policy, no
 ignore zones — of the published origin against the live source, at
 **1440 and 360**, source and build captured within minutes of each other.
 Per template the report prints median, p90 and the share of pages under
-10 %; the field name is `neutralDiff`. Until an instrument produces it the
-report prints `neutralDiff: not measured` — never a substitute taken from
-the gate. It is a **reporting number, not a pass bar** (B29): the gate's
+10 %; the field name is `neutralDiff`, produced by `gate-publish.mjs --report`
+(`gate-report.json`); without that report the line prints `neutralDiff: not
+measured` — never a substitute taken from the gate. It is a **reporting number, not a pass bar** (B29): the gate's
 verdict and residual semantics are unchanged by it.
 
 ---

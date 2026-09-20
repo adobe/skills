@@ -3,7 +3,7 @@
  * ai-readability.mjs `checkExclusions()` (T33.2): an `--exclude-blocks` entry that removed words must
  * carry a decision — an allowlist entry `{ block, exclude: true, reason, fallback: authored |
  * owner-accepted, decision }`. Without one the page FAILs (exit 1); the record is the escape hatch.
- * Pure: the fnbo-shaped gate JSON (one page with an excluded block of 263 words, one with 0) is the
+ * Pure: the regional-bank-shaped gate JSON (one page with an excluded block of 263 words, one with 0) is the
  * fixture; the module's CLI runs behind an isMain guard. analyse() and checkExclusions() share ONE
  * completeness test (decidedExclusions) — asserted on the helper, and executed for real in the browser
  * when playwright resolves (cwd package.json, then the global npm root); otherwise that case SKIPs.
@@ -28,13 +28,13 @@ const page = (words, name = 'calculator') => ({
   ],
 });
 
-test('a word-removing exclusion with no allowlist entry is undecided (the fnbo shape: 263 words)', () => {
+test('a word-removing exclusion with no allowlist entry is undecided (the regional-bank shape: 263 words)', () => {
   const r = checkExclusions(page(263), []);
   assert.equal(r.length, 1);
   assert.deepEqual([r[0].block, r[0].words, r[0].decided, r[0].why], ['calculator', 263, false, 'no allowlist entry']);
 });
 
-test('an excluded block that removed 0 words is not a decision (fnbo final JSON: excludedWords 0 on every page)', () => {
+test('an excluded block that removed 0 words is not a decision (regional-bank final JSON: excludedWords 0 on every page)', () => {
   assert.deepEqual(checkExclusions(page(0), []), []);
 });
 

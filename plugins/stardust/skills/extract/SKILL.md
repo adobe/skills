@@ -131,10 +131,11 @@ Additional checks for this sub-command:
    project-importable `playwright` module — probe
    `node -e "import('playwright').then(()=>process.exit(0))"` from the
    project root (`npx playwright --version` is NOT sufficient: ESM
-   ignores global installs and `NODE_PATH`). On failure `npm i -D
-   playwright --no-save --legacy-peer-deps` (`aem-boilerplate` pins
-   `eslint@8`); `--no-save` installs are pruned by a later `npm i`, so
-   every rendering skill re-runs the probe at its own start.
+   ignores global installs and `NODE_PATH`). On failure run `node
+   skills/stardust/scripts/preflight-runtime.mjs` (master Setup step 9):
+   one `npm i --prefix stardust` into `stardust/node_modules`, which the EDS
+   repo's own `npm i` never prunes (`skills/stardust/reference/runtime-preflight.md`
+   § Resolution chain). Never `npm i … --no-save` in the EDS repo.
    **Script location matters.** ESM resolves from the *script's*
    directory and the plugin tree ships no `node_modules`: copy the six
    extract scripts byte-identical, as a set, into `stardust/scripts/`

@@ -12,7 +12,7 @@ Full text of the deploy skill's Local QA section. Read:
 
 ```bash
 # 1. dev server (serves /scripts, /styles, /blocks, /fragments at their real paths)
-npx -y @adobe/aem-cli up --no-open &
+npx -y @adobe/aem-cli up --no-open --port $(node skills/replica/scripts/port.mjs harness) &   # per-project 3100–3199 slot, never 3000; build-harness writes the identity marker
 
 # 2. harness — use the committed helper (do NOT hand-roll the metadata strip, #46):
 #    it removes the metadata block by balanced tag-counting and rewrites absolute

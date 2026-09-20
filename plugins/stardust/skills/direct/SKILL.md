@@ -53,37 +53,35 @@ downstream sub-commands.
 - `<phrase>` — optional positional. The user's freeform intent
   ("make it better", "more Linear less Salesforce", "feel more premium
   on a small screen"). If omitted, ask the user for one.
-- `--re-direct` — optional. Replace the current direction with a new
-  one. Triggers stale-flagging on prototyped / approved / migrated
-  pages per `skills/stardust/reference/state-machine.md`. Default
-  behaviour without the flag is additive: if a direction already
-  exists, the agent asks before replacing.
+- `--re-direct` — optional. Replace the current direction; triggers
+  stale-flagging on prototyped / approved / migrated pages
+  (`skills/stardust/reference/state-machine.md`). Without it the run is
+  additive: an existing direction is replaced only after asking.
 - `--rebrand` — optional. Force rebrand mode (full divergence-seed
-  roll, no Mode A inheritance). Without it the default is
-  brand-faithful whenever the captured signal is `signal-strong`
-  (§ Mode-detection precedence).
-- `--prep` — optional. Run in **migrate-prep mode**: confirm the
-  type catalog, finalize the module catalog, capture color
-  reservations and brand-level metadata defaults, re-evaluate
-  direction against the wider crawl. See § Prep mode below.
-  Typically invoked via the `prepare-migration` orchestrator.
-- `--add-variant <name>` — optional. Add a new variant against
-  the existing direction without re-running intent reasoning or
-  mode detection. Writes `DESIGN-<name>.{md,json}` at the
-  project root and appends a per-variant section to
-  `stardust/direction.md`; existing prototypes are **not**
-  stale-flagged. See § Add-variant mode below.
+  roll, no Mode A inheritance); default is brand-faithful when the
+  signal is `signal-strong` (§ Mode-detection precedence).
+- `--prep` — optional. **Migrate-prep mode**: confirm the type catalog,
+  finalize the module catalog, capture color reservations and brand-level
+  metadata defaults, re-evaluate direction against the wider crawl
+  (§ Prep mode; usually via `prepare-migration`).
+- `--add-variant <name>` — optional. Add a variant against the
+  existing direction (no re-run of intent reasoning or mode
+  detection): writes `DESIGN-<name>.{md,json}` at the project root,
+  appends a per-variant section to `stardust/direction.md`; existing
+  prototypes are **not** stale-flagged (§ Add-variant mode).
 
 ## Setup
 
 1. Run the master skill's setup
    (`skills/stardust/SKILL.md` § Setup) — impeccable dep check, state
    read.
-2. Verify `stardust/state.json` exists and contains at least one
-   `extracted` page. If not, stop and recommend
-   `$stardust extract <url>` first.
+2. Verify `stardust/state.json` has at least one `extracted` page;
+   else stop and recommend `$stardust extract <url>`.
 3. Read `stardust/current/_brand-extraction.json`. If absent, stop —
-   extract did not complete brand-surface extraction; re-run extract.
+   extract did not complete brand-surface extraction; re-run extract. A
+   file with `_provenance.mode: "bounded"` (a `--single` / `--pages`
+   extract) is valid input: never `signal-strong` from one page unless the
+   replica lift is present; never synthesize missing sections.
 3b. **Cross-site brand inputs** (when present). `state.json.designSource`
    (design-donor mode: Mode A pins bind to the donor's derived
    system) and `_brand-extraction.json.origins[]` (sibling-property
@@ -343,17 +341,17 @@ The mode procedure:
      palette          inherited   → existing 5-color set
    ```
 
-6. **Image-reuse contract.** Captured images are reused via their
-   public URLs (or the local copies in
-   `stardust/current/assets/media/` written by extract Phase 2)
-   **at the same semantic position** as on the source site. Hero
-   stays hero. Story-tile portrait stays story-tile portrait.
-   Program-card image stays program-card image. Background-motif
-   image stays background motif.
+6. **Image-reuse contract.** Captured images are reused via the
+   harvested copies (`images[].localPath` under
+   `stardust/current/assets/media/`, extract Phase 2; a public URL only
+   where the record says `downloadError`) **at the same semantic
+   position** as on the source site. Hero
+   stays hero, story-tile portrait stays story-tile portrait,
+   background motif stays background motif.
 
-   This is part of brand-faithful inheritance: swapping a captured
-   portrait for a placeholder, or demoting the hero photo to a
-   thumbnail, erases the brand's most load-bearing trust signal.
+   Brand-faithful inheritance: swapping a portrait for a placeholder or
+   demoting the hero photo erases the brand's most load-bearing trust
+   signal.
 
    The only legitimate ways to deviate from semantic
    position-preservation under Mode A:

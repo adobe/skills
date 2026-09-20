@@ -26,7 +26,7 @@ const CASES = [
   // diacritics, percent-encoding, case
   ['/at/ärztin', '/at/arztin'],
   ['/dk/Book%20et%20møte', '/dk/book-et-mote'],
-  ['/om-Lilly', '/om-lilly'],
+  ['/om-Pharma', '/om-pharma'],
   ['/de/straße', '/de/strasse'],
   ['/no/Blåbær', '/no/blabaer'],
   // slashes and root

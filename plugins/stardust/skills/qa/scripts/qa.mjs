@@ -37,6 +37,10 @@
  *   --blocks-dir <dir>      editability: local blocks root — `@ew-exempt <reason>`
  *                           JSDoc tags in <dir>/<name>/<name>.js are honoured
  *   --fail-on <error|warn>  exit 1 threshold (default: error)
+ *   --source-host <h[,h]>   links: hrefs to these hosts are `source-host-link` (error when the path is in
+ *                           the inventory, warn otherwise); default rollout.json site.sourceHost
+ *   --ai-allowlist <json>   ai-readability: the deploy allowlist (default stardust/ai-readability-allowlist.json) whose
+ *                           recorded exclusions the score honours (undecided ones fail)
  *   --fetch-concurrency <n> per-host in-flight cap shared by every fetch and browser navigation
  *                           (default 4; halves on 429/503, +1 after 30 s clean)
  *   --browser-concurrency <n> parallel browser pages in browse/editability (default 2 — the observed

@@ -475,4 +475,4 @@ async function main() {
 // fixture runner without a browser; probeRegion / occlusionPass / STYLE are
 // imported by chrome-states.mjs (one diff engine for rest and open states).
 const isMain = (() => { try { return process.argv[1] && pathToFileURL(realpathSync(process.argv[1])).href === import.meta.url; } catch { return false; } })();
-if (isMain) main().catch((e) => { console.error(`chrome-parity error: ${e.message}`); process.exit(e.name === 'BotChallengeError' ? 3 : 1); });
+if (isMain) main().catch((e) => { console.error(`chrome-parity error: ${e.message}`); process.exit(e.code === 124 ? 124 : e.name === 'BotChallengeError' ? 3 : 1); }); // 124 = no browser slot (no verdict)

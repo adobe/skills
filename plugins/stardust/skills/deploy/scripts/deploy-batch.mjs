@@ -46,7 +46,9 @@
  *     appended to --redirects-tsv (default stardust/redirects.tsv, deduped) once the page
  *     delivers. Two files folding to one safe path: the first (webPath order) is driven,
  *     the other is `path-collision` — no PUT, zero network. A segment with no safe form
- *     (non-Latin script) is `path-unsafe` — transliterate the file path.
+ *     (non-Latin script) is `path-unsafe` — transliterate the file path. Gate 3 runs before
+ *     the ledger's unchanged/hash decision: a page delivered alone at its folded path that later
+ *     gains a colliding sibling is re-driven and parked, never skipped as `unchanged (hash)`.
  *   - `--strict-paths` turns every divergence into `path-unsafe` (no PUT): for pipelines
  *     where migrate already wrote safe paths, a divergence is a pipeline bug. No flag
  *     disables the fold.
@@ -379,10 +381,10 @@ async function daSourceSize(url, token) {
  * and say so). Mutates `ledger` only for --force resets and hash backfills;
  * every touched path is added to `touched` so persist() merges just those rows.
  */
-export async function buildPlan({ pages, ledger, want, exclude, publish, force, branch, verify, touched }) {
+export async function buildPlan({ pages, ledger, want, exclude, publish, force, branch, verify, touched, strictPaths = false }) {
   const rows = [];
   const todo = [];
-  const counts = { pages: 0, unchanged: 0, changed: 0, new: 0, failedLast: 0, excluded: 0, missing: 0, forced: 0, fastPublish: 0, reverify: 0 };
+  const counts = { pages: 0, unchanged: 0, changed: 0, new: 0, failedLast: 0, excluded: 0, missing: 0, forced: 0, fastPublish: 0, reverify: 0, pathSafety: 0 };
   const seen = new Set();
   const tld = publish ? 'aem.live' : 'aem.page';
   const drive = (p, reason, key) => { rows.push({ webPath: p.webPath, action: 'drive', reason }); todo.push(p); if (key) counts[key] += 1; };
@@ -394,6 +396,14 @@ export async function buildPlan({ pages, ledger, want, exclude, publish, force, 
     counts.pages += 1;
     if (exclude && exclude.has(p.webPath)) { skip(p, 'excluded', 'excluded'); continue; }
     p.hash = sha1(await readFile(p.file));
+    // Gate 3 first: a page with no safe form, a collision, or a --strict-paths divergence is
+    // always driven so deployOne parks it offline (path-unsafe / path-collision, zero network) —
+    // even when its ledger row is OK and its bytes are unchanged (a sibling may have appeared
+    // since it was delivered; the delivered GET at the folded path would be the OTHER page).
+    if (p.safePath === null || p.collision || (strictPaths && p.safePath !== undefined && p.safePath !== p.webPath)) {
+      drive(p, p.collision ? `path-collision (${p.collision})` : 'path-unsafe', 'pathSafety');
+      continue;
+    }
     const rec = ledger[p.webPath];
     if (force) {
       if (rec) { rec.status = 'pending'; touched.add(p.webPath); }
@@ -426,7 +436,7 @@ export async function buildPlan({ pages, ledger, want, exclude, publish, force, 
 
 export function planLine(c, extra = '') {
   return `[deploy-batch] ${c.pages} pages · ${c.unchanged} unchanged (hash) · ${c.changed} changed · ${c.new} new · ${c.failedLast} failed-last-time`
-    + `${c.forced ? ` · ${c.forced} forced` : ''}${c.fastPublish ? ` · ${c.fastPublish} previewed→publish` : ''}${c.reverify ? ` · ${c.reverify} re-verify failed` : ''}`
+    + `${c.forced ? ` · ${c.forced} forced` : ''}${c.fastPublish ? ` · ${c.fastPublish} previewed→publish` : ''}${c.reverify ? ` · ${c.reverify} re-verify failed` : ''}${c.pathSafety ? ` · ${c.pathSafety} path-safety` : ''}`
     + ` · ${c.excluded} excluded${c.missing ? ` · ${c.missing} not in content tree` : ''} · ${c.toDrive} to drive${extra}`;
 }
 
@@ -708,7 +718,7 @@ export async function main(argv = process.argv) {
   let plan;
   try {
     const verify = args.plan ? null : ({ webPath, tld }) => deliveredOk({ ...args, webPath, tld });
-    plan = await buildPlan({ pages, ledger, want, exclude, publish: args.publish, force: args.force, branch: args.branch, verify, touched });
+    plan = await buildPlan({ pages, ledger, want, exclude, publish: args.publish, force: args.force, branch: args.branch, verify, touched, strictPaths: args.strictPaths });
   } catch (err) {
     if (err instanceof HaltError) return halt(err, 0, '?');
     throw err;

@@ -317,6 +317,15 @@ font files, and even in-page `fetch()` from a headless client. What works:
   events) — the page's own requests are authorized; yours are not.
 - **Canvas readback** (same-origin) for the exact displayed bitmap when the
   rendition URL itself is refused.
+- **Harvested copies are mandatory in gated prototypes.** Extract's asset
+  harvest (`crawl.mjs --assets intercept|full`) writes `assets/media/` +
+  `_media-manifest.json` and stamps `images[].localPath` per record; a gated
+  prototype references those copies, never the source CDN URL — a
+  `downloadError` entry keeps the public URL and is listed in the brief. The
+  gate half (`build-broken-images`: stitch-shot sidecar `brokenImages` /
+  `imgCount`, `gate.sh` exit 2 when build − live > max(2, 10 %), fixture case) is
+  a replica-gate follow-up; until it lands, `qa-gate.mjs`'s broken-image count
+  is the check.
 - **Icons and vectors: harvest from the live DOM, never approximate.**
   Before authoring any icon, run one probe on the live page collecting
   `svg.outerHTML` (plus `<img src$=".svg">` and `mask-image` urls) near the
@@ -599,9 +608,9 @@ verdict `none`).
   owner. Never `acceptedBy`, never `--skip`.
 - *Regime.* `--regime published-origin` for the delivered page (preview
   host, D1); the record carries `regime`, the hand-off prints it per row.
-- *Eval.* `skills/replica/scripts/test/motion-assert.test.mjs` (compare
-  functions, record, CLI) and `evals/lint/motion-assert-fixtures.mjs`
-  (live-like pass; dead carousel named; schema-1 not-asserted; 124 → none).
+- *Eval.* `evals/lint/motion-assert-fixtures.mjs` (compare functions, record,
+  CLI; browser half: live-like pass, dead carousel named, schema-1
+  not-asserted, 124 → none).
 
 Pitfalls (each field-recorded):
 

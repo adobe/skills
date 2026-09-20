@@ -64,8 +64,9 @@ try {
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, /\[deploy-batch\] paths: 1 normalised \(rows → .*redirects\.tsv\) · 1 collision\(s\) · 1 with no safe form/);
   assert.match(r.stdout, /drive {3}\/sub\/Getting_Started {2}new {2}\[→ \/sub\/getting-started\]/);
-  assert.match(r.stdout, /drive {3}\/dup\/a_b {2}new {2}\[path-collision with \/dup\/a-b → \/dup\/a-b\]/);
-  assert.match(r.stdout, /drive {3}\/日本語 {2}new {2}\[path-unsafe: no safe form\]/);
+  assert.match(r.stdout, /drive {3}\/dup\/a_b {2}path-collision \(\/dup\/a-b\) {2}\[path-collision with \/dup\/a-b → \/dup\/a-b\]/);
+  assert.match(r.stdout, /drive {3}\/日本語 {2}path-unsafe {2}\[path-unsafe: no safe form\]/);
+  assert.match(r.stdout, / · 2 path-safety · /, 'plan line counts the Gate 3 rows');
   assert.equal(mock.requests.length, 0, '--plan makes no request');
   assert.ok(!existsSync(tsv), '--plan writes no redirect row');
 
@@ -111,7 +112,35 @@ try {
   assert.equal(led['/sub/Getting_Started'].status, 'path-unsafe');
   assert.equal(led['/sub/Getting_Started'].deployedPath, undefined, 'nothing was delivered, no deployedPath');
   assert.ok(!existsSync(tsv), 'no redirect row without a delivery');
-  console.log('deploy-batch-paths test: ok (safe-path PUT, deployedPath, redirect row + dedupe, path-collision, path-unsafe, --strict-paths, --plan notes)');
+  // a page delivered ALONE at its folded path, then a colliding sibling appears: the hash-equal,
+  // previously-OK row must NOT be skipped as `unchanged (hash)` (its delivered GET at /dup/a-b would be
+  // the sibling's content) — it is re-driven and parked as path-collision; exactly one PUT (the claimant).
+  const content2 = join(dir, 'content2'); const tsv2 = join(dir, 'stardust', 'redirects2.tsv');
+  mkdirSync(join(content2, 'dup'), { recursive: true });
+  writeFileSync(join(content2, 'dup', 'a_b.html'), page('AB2'));
+  const readLedger2 = () => JSON.parse(readFileSync(join(content2, '.deploy-ledger.json'), 'utf8'));
+  mock.reset();
+  r = await run(['--content', content2, '--redirects-tsv', tsv2]);
+  assert.equal(r.status, 0, `alone, a_b delivers at its folded path: ${r.stderr}`);
+  assert.deepEqual(puts(), ['/da/o/r/dup/a-b.html']);
+  assert.equal(readLedger2()['/dup/a_b'].status, 'previewed');
+  assert.equal(readLedger2()['/dup/a_b'].deployedPath, '/dup/a-b');
+  writeFileSync(join(content2, 'dup', 'a-b.html'), page('AB1'));
+  mock.reset();
+  r = await run(['--content', content2, '--redirects-tsv', tsv2]);
+  assert.equal(r.status, 1, `the later sibling makes a_b a collision: ${r.stderr}`);
+  assert.deepEqual(puts(), ['/da/o/r/dup/a-b.html'], 'one PUT — the claimant; the collided page is never re-PUT nor skipped as unchanged');
+  assert.match(r.stderr, /FAIL \/dup\/a_b \(path-collision\)/);
+  assert.ok(!/unchanged \(hash\)[^\n]*a_b|a_b[^\n]*unchanged/.test(r.stdout + r.stderr), 'a_b is not reported unchanged');
+  led = readLedger2();
+  assert.equal(led['/dup/a-b'].status, 'previewed');
+  assert.equal(led['/dup/a_b'].status, 'path-collision', 'a previously-OK, hash-equal row is re-driven through Gate 3');
+  // --plan on the same tree shows the row as path-collision, not unchanged
+  mock.reset();
+  r = await run(['--plan', '--content', content2, '--redirects-tsv', tsv2], { DA_TOKEN: '' });
+  assert.match(r.stdout, /drive {3}\/dup\/a_b {2}path-collision \(\/dup\/a-b\)/);
+  assert.equal(mock.requests.length, 0);
+  console.log('deploy-batch-paths test: ok (safe-path PUT, deployedPath, redirect row + dedupe, path-collision, path-unsafe, --strict-paths, --plan notes, late-sibling collision re-driven)');
 } finally {
   await mock.close();
   rmSync(dir, { recursive: true, force: true });

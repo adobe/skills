@@ -357,6 +357,27 @@ integrates; every runner also runs standalone with `node <path>`:
   `stardust/.work/extract/crawl.progress.json`, the progress helper
   resolving from the plugin tree; the one-page e2e (progress file + last-line
   `SUMMARY crawl …`) runs when playwright resolves, else one `SKIP` line.
+- `fixtures/validate-page.test.mjs`, `fixtures/crawl-capture.test.mjs`,
+  `fixtures/crawl-assets.test.mjs` — the extract schema-2 gate: a full record
+  passes (WARN never FAIL), a missing `landmarks` FAILs by name, pre-schema-2
+  only with `--legacy`, `renderedBy: synthesized` FAILs regardless, CLI exits;
+  `capture()` emits the documented shape against a local page (browser; SKIP
+  without playwright); the asset harvest's pure exports (`stripCdnParams`,
+  `sniffMime`, `assetPath`, `mergeManifest`, `licensingFlagFor`,
+  `buildFontsManifest`) plus the browser e2e (media + fonts from the render's
+  own responses, `images[].localPath` | `downloadError`, manifests +
+  `favicon-set.json`, the page hit once) that SKIPs without playwright.
+- `fixtures/brand-surface.test.mjs`, `fixtures/brand-review.test.mjs`,
+  `fixtures/state-update.test.mjs` — extract Phases 3–6 as scripts, no browser:
+  palette clustering + role naming with the consent button excluded, scale
+  audit, motif mode, system components across ≥ 2 pages, logo chain step 1b
+  (banner wordmark beats apple-touch-icon), `--bounded` → `_provenance.mode:
+  "bounded"`; the 13 review detectors each with a firing and a quiet input,
+  card consolidation, provenance comment first, exit 2 without
+  `_brand-extraction.json`; state-update's merge-by-slug (prototype / migrated /
+  hands-off / flow keys preserved), ONE `status.jsonl` line, the
+  `Provenance: <live>/<total>` line, `--prep` short → exit 1, strict schema gate
+  by default with `--legacy` opt-in, valued flags never swallow the next flag.
 - `sleep-poll.mjs --self-test` — no `skills/**/*.md` line teaches the
   `sleep N; tail|grep -c|cat|pgrep` poll (a line saying `never` is the
   prohibition and passes; `sleep-poll: ignore` exempts). 🟡 advisory this
@@ -378,6 +399,14 @@ integrates; every runner also runs standalone with `node <path>`:
   `lint/fixtures/redirects/redirects.tsv`: the row expansion, the exit-2
   shadow verdict (a Source that is also a delivered page) and `--check`
   writing nothing.
+- `query-index-smoke.mjs` — `rollout/scripts/query-index.mjs` against one
+  local server standing in for the admin API and the origin (D13): remote names
+  == file → POST → job → rows → exit 0 with the yaml POSTed whole; config 403 →
+  repo-yaml fallback, one loud line; 403 + `total: 0` → exit 3 + `INDEX-CONFIG.md`;
+  sample absent after the job → exit 1; no published page → exit 4 (no
+  verdict), nothing posted; remote index the file lacks → exit 3 unless
+  `--replace`; `--timeout abc` → exit 2 before any request; config POST 400 →
+  exit 1 (definitive) and `index-status.json` records it.
 - `replica-capture-fixtures.mjs` — static contracts always (`node --check`,
   `bash -n`, exit-5 / integer-scroll / opacity-hide / route.fallback greps,
   the pure live-session and review-image exports); browser fixtures for
@@ -410,6 +439,30 @@ integrates; every runner also runs standalone with `node <path>`:
   the slot and is listed, never killed, pinned foreign port exit 3, serve's
   marker / 404 / no-escape / second serve exit 98, identity ok / code 4 (no
   verdict), `stop` ends only this project's server.
+- `motion-assert-fixtures.mjs` — `replica/scripts/motion-assert.mjs`: pure half
+  always (schema gate, chrome states / class delta, widget advance, state
+  machines, entrance tolerance, verdict precedence, the
+  `breakpoints.<bp>.motion.assert` record writer with `result` untouched, the CLI contract — valued flags
+  never swallow the next flag, live-origin refusal, no exit code the script
+  cannot produce); the browser half (live-like page passes, a dead carousel names
+  its control, schema 1 → `not-asserted`, invented motion fails, `--record`,
+  `--timeout` → 124 = verdict none, 🟡 advisory per D15) runs when playwright
+  resolves or `STARDUST_GATE_DEPS=<dir>/node_modules`, else one `SKIP` line.
+- `variant-census-fixtures.mjs` — `replica/scripts/variant-census.mjs`: pure
+  half always (aggregation / coverage / exit logic, css + code token
+  extractors, allow-list parser, sampling, the ≤ 60-line renderer, CLI
+  contract); the browser half over `lint/fixtures/variant-census/` (counts +
+  majority, `li:icon`, unreferenced set → exit 2 → 0 with `--allow`, `--type`
+  scoping, per-theme facet, census `.json`/`.md`) under the same resolve-or-skip
+  rule.
+- `layout-cluster-fixtures.mjs` — `replica/scripts/layout-cluster.mjs`: pure
+  halves always (signature tokens, Levenshtein alignment diff, clustering with
+  `--k`, exemplar pick, gate status, the BLOCKING report, `--cover` refusal
+  rules, `--type` merges into the previous file and refuses an unknown type,
+  `--write-state` stamps `pages[].layoutCluster`, no stale fixture README
+  copies); the browser half (file:// extraction over
+  `replica-layout-clusters/fixture/` sidecars) under the same resolve-or-skip
+  rule.
 - `dynamics-recall.mjs` — detector recall over `_shared/dynamics-recall/`:
   the reach half (sidecar signals → `reach-only` rows, and the sidecar
   fields `crawl.mjs` must keep writing) always runs; the depth half
@@ -454,6 +507,15 @@ integrates; every runner also runs standalone with `node <path>`:
   conditional "none this run" line); the generic gate ingest, `converted`
   refused on `ewGate` fail / unmeasured / none, the `ewHeld` roll-up, schema
   keys after every write.
+- `rollout/scripts/content-acceptance.test.mjs`, `rollout/scripts/open-review-pairs.test.mjs`
+  — the offline content-count gate (Gate 7: same inventory → pass and
+  `content-count` in `gatesPassed[]` once; a dropped h2 / link / image / list
+  item → 🔴 exit 2 with `_meta.json` untouched; words ratio < 0.9 🔴, > 1.1
+  🟡; a matching `contentDeviations[]` entry → covered; `--tolerance`
+  echoed; `--report-only`; an empty target `<main>`) and the wave-close review
+  pack (source ↔ delivered join, gate numbers copied never re-judged,
+  `--per-template` / seeded `--random` / `--slug` / `--all`, a localhost or
+  token URL → exit 2 with nothing written, `review-pack.{md,json}`).
 - `replica/scripts/gate-ledger-lint.test.mjs` — the gated-archetype
   precondition as an instrument over the shared post-migrate fixture (program
   never gated, article over the bar with unnamed residuals → blocked; landing
@@ -484,6 +546,25 @@ integrates; every runner also runs standalone with `node <path>`:
   file, blip repairs, the 401 / access halt (and lib.mjs header claims naming
   only files that exist), a rejected checkpoint surviving the persist chain and
   webPath drive order, served-check's 124 (no verdict) vs 1 (served verdict).
+- `fixtures/da-path.test.mjs`, `deploy/scripts/test/deploy-batch-paths.test.mjs`,
+  `deploy/scripts/test/localize-links.test.mjs` — the one DA-safe path rule
+  (`stardust/scripts/da-path.mjs`: per-segment fold, leaf extension dropped,
+  `/index` kept, a segment that empties → null, idempotent, NOT extract's
+  slugify — D6); `deploy-batch` PUTting at `normalizeDaPath(webPath)` with the
+  ledger keyed on the file path + `deployedPath`, one redirects row, a fold
+  collision → `path-collision` with no request, `--strict-paths`; the URL map
+  and rewrite rules of `localize-links.mjs` (`--check` exit 2 while a link
+  would change, idempotent write pass, `--locale-alias` + `--append-redirects`,
+  `--unmigrated bounce|list`).
+- `deploy/scripts/test/deploy-page.test.mjs`, `node --test deploy/scripts/test/ai-readability-decisions.test.mjs`
+  — the per-page chain against `mock-da.mjs` (the localize write pass appends
+  the chrome document; a link left unlocalized → `links-unlocalized`, exit 1,
+  zero requests; a 🔴 page → `lint-red`, the clean page still PUT; `--publish`
+  → `POST /live/` per delivered page — preview is the default, D16; a child
+  outliving `--timeout` → `killed`, never `FAIL`) and `checkExclusions()`: an
+  `--exclude-blocks` entry that removed words needs a complete allowlist
+  decision (`exclude`, `reason`, `fallback`, `decision`) or the page FAILs;
+  the browser case SKIPs without playwright.
 - `impeccable-probe-fixtures.mjs` — runs `stardust/scripts/impeccable-version-check.mjs
   --probe/--state` and `script-paths.mjs --installed` over
   `lint/fixtures/impeccable-layout/` (4.1.3 legacy-launcher, 4.3.1 and a

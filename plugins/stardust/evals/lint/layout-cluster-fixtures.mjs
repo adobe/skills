@@ -6,7 +6,9 @@
 // runs when playwright resolves from the repo or STARDUST_GATE_DEPS names a
 // node_modules that has it; otherwise one SKIP line.
 //
-// Usage: node plugins/stardust/skills/replica/scripts/test/layout-cluster.test.mjs  (exit 1 on findings)
+// Lives under evals/lint/ (not beside the script) so replica Setup step 4 copies
+// no tests into projects.
+// Usage: node plugins/stardust/evals/lint/layout-cluster-fixtures.mjs  (exit 1 on findings)
 /* eslint-disable no-restricted-syntax, brace-style, object-curly-newline, max-len */
 import { spawnSync } from 'node:child_process';
 import { cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
@@ -14,8 +16,10 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
 const HERE = import.meta.dirname;
-const SCRIPT = join(HERE, '..', 'layout-cluster.mjs');
-const EVALS = join(HERE, '..', '..', '..', '..', 'evals');
+const PLUGIN = join(HERE, '..', '..');
+const SCRIPTS = join(PLUGIN, 'skills', 'replica', 'scripts');
+const SCRIPT = join(SCRIPTS, 'layout-cluster.mjs');
+const EVALS = join(PLUGIN, 'evals');
 const FIXTURE = join(EVALS, 'replica-layout-clusters', 'fixture', 'stardust');
 const failures = [];
 const check = (ok, msg) => { if (!ok) failures.push(msg); };
@@ -176,13 +180,13 @@ check(mergeReport(null, { types: [freshProgram] }).types.length === 1 && mergeRe
 // (the scripts dir is copied beside a node_modules symlink — the same resolve-or-symlink pattern as variant-census-fixtures.mjs)
 let pw = null; try { await import('playwright'); pw = 'repo'; } catch { /* not at the repo root */ }
 if (!pw && process.env.STARDUST_GATE_DEPS && existsSync(join(process.env.STARDUST_GATE_DEPS, 'playwright'))) pw = process.env.STARDUST_GATE_DEPS;
-if (!pw) console.log('layout-cluster.test: SKIP browser half — playwright not resolvable (set STARDUST_GATE_DEPS=<dir>/node_modules); the pure halves above ran');
+if (!pw) console.log('layout-cluster-fixtures: SKIP browser half — playwright not resolvable (set STARDUST_GATE_DEPS=<dir>/node_modules); the pure halves above ran');
 else {
   const tmp2 = mkdtempSync(join(tmpdir(), 'layout-cluster-b-'));
   try {
     let script = SCRIPT;
     if (pw !== 'repo') {
-      cpSync(join(HERE, '..'), join(tmp2, 'skills', 'replica', 'scripts'), { recursive: true });
+      cpSync(SCRIPTS, join(tmp2, 'skills', 'replica', 'scripts'), { recursive: true });
       symlinkSync(resolve(pw), join(tmp2, 'node_modules'));
       script = join(tmp2, 'skills', 'replica', 'scripts', 'layout-cluster.mjs');
     }
@@ -202,5 +206,5 @@ else {
   } finally { rmSync(tmp2, { recursive: true, force: true }); }
 }
 
-if (failures.length) { console.error(`layout-cluster.test: ${failures.length} failure(s)\n - ${failures.join('\n - ')}`); process.exit(1); }
-console.log(`layout-cluster.test: ok${pw ? ' (browser half ran)' : ''}`);
+if (failures.length) { console.error(`layout-cluster-fixtures: ${failures.length} failure(s)\n - ${failures.join('\n - ')}`); process.exit(1); }
+console.log(`layout-cluster-fixtures: ok${pw ? ' (browser half ran)' : ''}`);

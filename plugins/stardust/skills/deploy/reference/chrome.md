@@ -18,6 +18,7 @@ Chrome is the canonical fragment use case (D12): **content** lives in two author
 - `content/nav.html`: section 1 = brand (logo link), section 2 = the nav link list (`<ul>`), section 3 = tools/CTAs (the stock header block reads exactly these three sections into `.nav-brand` / `.nav-sections` / `.nav-tools` — keep that contract so the hamburger logic keeps working).
 - **Nav DECODE: the pipeline wraps each list item's trigger link in a `<p>` on live (#98).** The authored/harness shape is `<li><a>…<ul>`, the delivered shape is `<li><p><a></p><ul>` — a `:scope > a` trigger lookup and any `.nav-links > li > a` CSS silently miss on live while the harness passes (the #79 class, hitting chrome). Normalize in `decorate()`: match `:scope > a, :scope > p > a` and unwrap the `<p>`. Verify the desktop nav's STYLED render on the deployed preview, not just the harness.
 - `content/footer.html`: one section per footer band (link columns as lists, legal line, social links). The footer block renders them in order.
+- A search form's `action` is the **results service**, not a decoration: keep the absolute results URL (the source host's, or the index-backed `/search` once it ships — `../../dynamics/reference/listings.md` § Mechanics) until the site's own `/search` exists; a submit target that 404s is never authored.
 - Images (logo) follow the standard editorial-image rule: upload to DA `/media`, author a `content.da.live` `<img>` — the pipeline emits `<picture>`. Internal links root-relative; external fully-qualified (D4).
 
 ## The header/footer blocks (DECODE side)

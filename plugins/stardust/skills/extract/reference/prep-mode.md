@@ -63,6 +63,12 @@ Write the inferred type to `state.json.pages[].type`. The user
 confirms or refines during `direct --prep`. Discovery-mode runs
 leave `type` as `null`.
 
+Chrome variants are derived from the same capture, zero live hits:
+`node skills/replica/scripts/chrome-variants.mjs --write` buckets the
+per-page `chrome` fingerprint `crawl.mjs` records and stamps
+`pages[].chromeVariant` (`default` first; names persist, never renumbered —
+`../../replica/reference/chrome-states.md` § Chrome variants).
+
 ## 3. Module candidate detection
 
 After Phase 3 (brand-surface extraction), scan extracted pages for

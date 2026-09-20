@@ -205,6 +205,9 @@ assert.ok(cmds.length >= 6 && cmds.length % 2 === 0, `one command per page × bp
 assert.ok(cmds.every((c) => /--regime published-origin/.test(c) && / pub\d+ /.test(c) && /aem\.page/.test(c)), cmds[0]);
 assert.ok(cmds.some((c) => / home /.test(c)) && cmds.some((c) => / news__a /.test(c)) && cmds.some((c) => / prog__home /.test(c)), 'every archetype drawn');
 assert.ok(!cmds.some((c) => / news__b /.test(c)), 'excluded slug not drawn');
+// Correction 3: an archetype round carries --record so gate.sh upserts progress.json published.<bp>; sibling rows never do
+assert.ok(cmds.filter((c) => / (home|news__a|prog__home) /.test(c)).every((c) => / --record( |$)/.test(c)), `archetype rounds carry --record: ${cmds.join('\n')}`);
+assert.ok(cmds.filter((c) => !/ (home|news__a|prog__home) /.test(c)).every((c) => !/ --record( |$)/.test(c)), 'sibling rounds never write the archetype slot');
 assert.ok(!cmds.some((c) => / prog__life | prog__boat /.test(c)), 'non-delivered rows never drawn');
 assert.match(cmds.find((c) => / home /.test(c) && / 1440 /.test(c)), / pub4 /, 'label continues after the three existing rounds');
 assert.match(r.stdout, /nothing ran/);

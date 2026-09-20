@@ -21,7 +21,7 @@
  *                `prototype`); a type never gated prints `no verdict` — numbers are COPIED, never re-judged
  *
  * Selection: --per-template <n> (default 1: representative first, delivery order) · --random <n>
- *            [--seed <s>] (seeded, across templates — the synopsis-style dice roll) · --slug a,b · --all
+ *            [--seed <s>] (seeded, across templates — the seeded dice roll) · --slug a,b · --all
  * Output:    stardust/rollout/review-pack.md (+ review-pack.json): # · template · source → EDS · gate
  *            per breakpoint · regime · reference captured · status; then the login hint.
  * Opening:   `open` (macOS) / `xdg-open` (Linux) both URLs of each pair, batches of --batch <n> (default

@@ -5,31 +5,51 @@
     {
       "name": "extract_prep_unmodified",
       "max_score": 10,
-      "description": "stardust:extract --prep runs unchanged and produces the standard stardust/current/ artifacts (pages/*.json, screenshots, brand extraction, descriptive PRODUCT/DESIGN specs); no extract file or behavior is modified."
+      "description": "stardust:extract --prep runs unchanged and produces the standard stardust/current/ artifacts (pages/*.json, screenshots, brand extraction, descriptive PRODUCT/DESIGN specs); no extract file or behavior is modified A bounded entry (--single / --pages) still leaves stardust/current/_brand-extraction.json with `_provenance.mode: \"bounded\"` (brand-surface.mjs --bounded), which Phase 2's bounded promotion branch reads as a real file — never a synthesized spec."
     },
     {
       "name": "mechanical_promotion_no_direct",
-      "max_score": 15,
+      "max_score": 10,
       "description": "The target spec at the project root is a verbatim promotion of stardust/current/{PRODUCT,DESIGN}.{md,json}; stardust/direction.md records preserve mode; stardust:direct is never invoked and no divergence/palette/type re-selection occurs."
     },
     {
       "name": "inconsistency_register",
-      "max_score": 10,
+      "max_score": 5,
       "description": "stardust/replica/inconsistency-register.md exists; it is empty when no findings are supplied, and any entry carries captured evidence, the minimal change, and a status (applied/deferred). No design delta appears in the prototype without a register entry."
     },
     {
       "name": "clean_reauthoring",
-      "max_score": 15,
-      "description": "Archetype prototypes are clean re-authored HTML/CSS: semantic structure, tokenized CSS with values traceable to the source site's own stylesheets, no copied DOM/class-soup/framework artifacts, content verbatim from the captured page JSON."
+      "max_score": 10,
+      "description": "Archetype prototypes are clean re-authored HTML/CSS: semantic structure, tokenized CSS with values traceable to the source site's own stylesheets, no copied DOM/class-soup/framework artifacts, content verbatim from the captured page JSON; images reference the harvested copies (`images[].localPath` under stardust/current/assets/media/), never the source CDN URL — a `downloadError` entry is the one public-URL case and is listed in the brief."
+    },
+    {
+      "name": "css_lift_recorded",
+      "max_score": 5,
+      "description": "Fidelity values come from `node stardust/scripts/replica/lift.mjs <live> --width <w> [--save-css]` per gate width (stardust/replica/capture/lift/, capture/css/), cited in the prototype CSS — never eyeballed; the lift artefact is named in the Phase 3 evidence and in progress.json.modules[] for each module kind."
     },
     {
       "name": "source_fidelity_gate_runs",
-      "max_score": 20,
+      "max_score": 15,
       "description": "The source-fidelity gate runs all three probes (content-diff and visual-diff with --profile generic against the live URL, plus stitch-shot + pixel-compare) and its evidence (per-iteration metrics, band breakdown, height delta, diff images) is written under stardust/replica/."
     },
     {
+      "name": "chrome_states_probed",
+      "max_score": 5,
+      "description": "After the static pass the chrome state matrix is probed with `node stardust/scripts/replica/chrome-states.mjs <live> [<proto>] --from-state stardust/state.json --live-cache` (one live navigation, cached), every cell gated or a named residual; the approval message names the matrix; no state word or crop result appears that the probe did not record."
+    },
+    {
+      "name": "chrome_archetype_gated",
+      "max_score": 5,
+      "description": "One gated chrome archetype row per chrome variant (progress.json.chrome, chrome-variants.mjs --progress exit 0) before any page of that variant fans out; a second variant opens the `chrome-variant` decision row (template body class or nav:/footer: document, never page-local CSS); an unrowed variant's pages are not rendered, migrated or deployed in the session."
+    },
+    {
+      "name": "served_identity_owned",
+      "max_score": 5,
+      "description": "Prototypes are served through `serve.mjs --role proto` on the project's allocated slot (port.mjs proto, 8800–8899 — never a typed 8791); every gate round asserts the served identity (gate.sh --marker / served-identity.mjs, exit 4 = no verdict, never a FAIL); a foreign listener is listed, never killed."
+    },
+    {
       "name": "both_breakpoints_gated",
-      "max_score": 10,
+      "max_score": 5,
       "description": "The gate runs at both 1440 and 360; mobile results are recorded, not assumed from desktop."
     },
     {
@@ -39,7 +59,7 @@
     },
     {
       "name": "motion_record_before_approval",
-      "max_score": 10,
+      "max_score": 5,
       "description": "Before approval is requested for an archetype, stardust/replica/progress.json carries motion.{observed,implemented,dead} for it and, per gated breakpoint, breakpoints.<bp>.motion.assert written by skills/replica/scripts/motion-assert.mjs --record (verdict pass|fail|n/a|none, regime, target) — the transcript shows the script ran against the PROTOTYPE URL, never the live origin. A missing record is reported as `motion: unasserted` in the Phase 4 close, never approved over; a fail verdict is iterated or logged as a residual, not deleted."
     },
     {

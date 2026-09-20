@@ -322,4 +322,4 @@ async function main() {
 }
 
 const invokedDirectly = (() => { try { return realpathSync(process.argv[1]) === fileURLToPath(import.meta.url); } catch { return false; } })();
-if (invokedDirectly) main().catch((e) => { console.error(`sibling-variance error: ${e.message}`); process.exit(e.name === 'BotChallengeError' ? 3 : 1); });
+if (invokedDirectly) main().catch((e) => { console.error(`sibling-variance error: ${e.message}`); process.exit(e.code === 124 ? 124 : e.name === 'BotChallengeError' ? 3 : 1); }); // 124 = no browser slot (no verdict)

@@ -53,7 +53,8 @@ by inventing prose that looks like an extract synthesis. Instead, replica
 bounded run already has:
 
 - the single page's captured JSON (`current/pages/<slug>.json` — title,
-  metadata, headings, content structure, `customProps`);
+  metadata, headings, content structure, `cssCustomProperties` — 0.24.x
+  alias `customProps`);
 - the Phase-3 CSS lift (palette, type ramp, container model, button specs —
   exactly the values `recreation-procedure.md` § CSS lifting produces
   anyway; the spec records them, it never invents beyond them).

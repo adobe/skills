@@ -227,7 +227,7 @@ export function detectSingleBlockHoard(sections, { template = '', scrape = null 
     if (Array.isArray(scrape.nodes)) {
       sourceRegions = scrape.nodes.filter((n) => n.type === 'heading' && n.level >= 2 && n.level <= 3).length;
     } else if (Array.isArray(scrape.headings)) {
-      sourceRegions = scrape.headings.filter((h) => /^h[23]$/i.test(h.tag || h.level || '')).length;
+      sourceRegions = scrape.headings.filter((h) => [2, 3].includes(+h.level) || /^h[23]$/i.test(h.tag || '')).length; // schema 2 carries level as a number
     }
   }
   if (sourceRegions != null) {

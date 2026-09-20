@@ -22,7 +22,10 @@ The contract the two scripts maintain. Design rationale is in
 or without a scheme or trailing slash; every script normalises it on read
 (`lib.mjs` `siteBase`, `--base` overrides). `links.outsideInventory: "fail" |
 "warn"` — what an internal link to a path that is no coverage row does to the
-page in verify (default `fail`).
+page in verify (default `fail`). The `links` decisions row aligns with it: `bounce`
+(default) ⇒ `outsideInventory: fail` — no dead internal link should exist; `list`
+(owner-decided) ⇒ `warn`, and a target listed in `stardust/link-gaps.tsv` is a planned
+gap in verify and qa, never a failure.
 
 `rollout` writes nothing outside this directory. `stardust/migrated/`,
 `state.json`, and the rest of the agnostic core are read-only inputs.

@@ -177,7 +177,9 @@ export async function submit(form, endpoint) {
 Header/footer behaviour (hover dropdowns, search overlay, sticky banner, back-to-top,
 time-of-day greeting) is M `chrome only`. Evidence is motion observation (replica's
 `motion-observe`), not the detector. Dropdown panels are captured as structure (columns → items
-{label, link, description, action}), via a hover probe, not as flat link lists. Clock-dependent
+{label, link, description, action}), via a hover probe, not as flat link lists — the probe is
+`skills/replica/scripts/chrome-states.mjs` and its `navModel` JSON is the structure the header
+block is written from (`../../replica/reference/chrome-states.md` § The matrix). Clock-dependent
 strings are behaviour: reproduce the function with thresholds read from the live JS, never the
 captured string.
 

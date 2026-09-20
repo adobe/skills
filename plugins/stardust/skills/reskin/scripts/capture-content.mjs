@@ -140,7 +140,7 @@ let chromium;
 try { ({ chromium } = await import('playwright')); } catch {
   console.error('[capture-content] playwright not importable from this script\'s directory.');
   console.error('Copy skills/reskin/scripts/* into the project (stardust/scripts/reskin/) and');
-  console.error('run: npm i -D playwright --no-save --legacy-peer-deps  (extract SKILL.md § Setup)');
+  console.error('run: node skills/stardust/scripts/preflight-runtime.mjs  (master Setup step 9 — skills/stardust/reference/runtime-preflight.md § Resolution chain)');
   process.exit(2);
 }
 
@@ -148,7 +148,7 @@ const { script: NORMALIZE, ledger, source: normalizeSource } = await loadNormali
 mkdirSync(opts.out, { recursive: true });
 
 opts.tier = resolveStartTier(opts.headed); // ladder start = max(--headed tier, tier extract recorded) — live-session.mjs
-const browser = await launchTier(chromium, opts.tier);
+const browser = await launchTier(chromium, opts.tier).catch((e) => { if (e.code === 124) { console.error(e.message); process.exit(124); } throw e; }); // no browser slot = no verdict, never a FAIL
 // UA + standard headers + webdriver spoof on the context (live-session) —
 // harmless on local/file targets, mandatory on live ones (F-G/F-R1).
 const ctx = await newLiveContext(browser, {

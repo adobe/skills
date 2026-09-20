@@ -142,7 +142,7 @@ the copy cannot be captured headless the page **fails and stays on preview** (D1
 the open rows — never weakened. `authored` is proven only when the vendor renders: `--har <file>`
 replays a recorded vendor session headless (`--har-url` scopes it), `--wait <ms>` lets a late widget
 settle, and the excluded block's `servedGap` shows whether the copy is word-complete. The `qa`
-check runs the same scorer; it takes these decisions once it reads the allowlist (qa lane).
+check runs the same scorer and reads the same allowlist (`--ai-allowlist`), so both take these decisions.
 
 Facts to carry into any conversation with the owner: the tool ignores header, nav and footer by
 default; it fetches as a crawler first and falls back to the pre-JavaScript HTML; hidden text does

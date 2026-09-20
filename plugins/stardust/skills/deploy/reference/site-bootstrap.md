@@ -44,7 +44,7 @@ The pass bar of the chapter is step 6, not step 1: a repo without a served `/scr
 
 ## Denials and hands-off
 
-Steps 1, 2 (the push) and 3 are privileged actions (`skills/stardust/reference/harness-permissions.md` § Two classes); 4–6 are instruments. On a denial the run asks exactly once — approve, or run the printed command — else it appends `event: "blocked"` with `owner: "<the exact command>"` to `stardust/status.jsonl`, writes the command into `stardust/.work/ship.sh` (`reference/ship-script.md`), leads the state report, journal and reply with `Blocked on owner:`, and continues on author-only work (extract, direct, prototype, replica Phases 1–4, migrate). It never retries a variant of the denied command, never invents a preview URL, never treats a local harness render as the origin. Hands-off changes nothing above: the default is applied, the six bars stay, the seed stays preview-only.
+Steps 1, 2 (the push) and 3 are privileged actions (`skills/stardust/reference/harness-permissions.md` § Two classes); 4–6 are instruments. On a denial the run asks exactly once — approve, or run the printed command — else it appends `event: "blocked"` with `owner: "<the exact command>"` to `stardust/status.jsonl`, writes the command into `stardust/.work/ship.sh` (`ship-script.md`), leads the state report, journal and reply with `Blocked on owner:`, and continues on author-only work (extract, direct, prototype, replica Phases 1–4, migrate). It never retries a variant of the denied command, never invents a preview URL, never treats a local harness render as the origin. Hands-off changes nothing above: the default is applied, the six bars stay, the seed stays preview-only.
 
 ## Never
 

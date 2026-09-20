@@ -226,7 +226,7 @@ try { ({ chromium } = await loadPlaywright()); } catch (e) { console.error('%s: 
 // --headed = ladder start tier 2 (real Chrome headless), --headed=window = tier 3 (off-screen);
 // default = the tier extract recorded in _crawl-log.json#discovery.fetchTechnique.
 const headedArg = process.argv.find((a) => a === '--headed' || a.startsWith('--headed='));
-const browser = await launchTier(chromium, resolveStartTier(headedArg ? parseHeadedFlag(headedArg) : 0));
+const browser = await launchTier(chromium, resolveStartTier(headedArg ? parseHeadedFlag(headedArg) : 0)).catch((e) => { if (e.code === 124) { console.error(e.message); process.exit(124); } throw e; }); // no browser slot = no verdict, never a FAIL
 const report = { _provenance: provenance('detect', { settleMs: SETTLE, width: WIDTH, urls: URLS }), pages: {}, findings: [] };
 const findingsByKey = new Map();
 const add = (f) => {

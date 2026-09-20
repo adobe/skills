@@ -42,7 +42,8 @@
  * determinism, no guaranteed 404 per load).
  */
 import { readFileSync, writeFileSync, existsSync } from 'fs';
-import { join } from 'path';
+import { join, dirname } from 'path';
+import { createHash } from 'crypto';
 import { pipelineMimic, formatCounts, metaTags, resolveStyleSplit, styleSplitLine } from './pipeline-mimic.mjs';
 
 // Return the index just past the </div> that closes the <div> starting at `start`.
@@ -135,8 +136,16 @@ if (!faviconLink) {
   faviconLink = faviconExt ? `<link rel="icon" href="/favicon.${faviconExt}">` : '<link rel="icon" href="data:,">';
 }
 
+// 6. identity marker (served-identity.mjs, harness-quirks.md § Ports): one stable string per project, written
+// beside the harness as marker.txt (the dev server serves it at /stardust/.work/harness/marker.txt) and stamped
+// into the page, so qa-gate.mjs can tell this project's harness from another project's server on the same port.
+const markerFile = join(dirname(outFile), 'marker.txt');
+const marker = existsSync(markerFile) ? readFileSync(markerFile, 'utf8').trim() : `stardust-harness-${createHash('sha1').update(root).digest('hex').slice(0, 12)}`;
+if (!existsSync(markerFile)) writeFileSync(markerFile, `${marker}\n`);
+
 const doc = `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>QA harness</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="stardust-marker" content="${marker}">
 ${metaTags(meta)}
 <link rel="stylesheet" href="/styles/styles.css">
 <script src="/scripts/scripts.js" type="module"></script>

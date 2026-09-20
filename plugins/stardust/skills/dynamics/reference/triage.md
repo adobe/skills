@@ -80,6 +80,7 @@ listings.md. "none" when there are no listing blocks.>
 
 ## Decision batch
 <every non-self row, grouped by what it needs, one message to the owner>
+A class-`T` widget row's disposition (`embed-passthrough` / `static-snapshot`) is the decision the readability allowlist entry cites (`decision: dyn#<row>`, `deploy/reference/ai-readability.md` § 6) — one record, no duplicate row.
 
 ## Register (decided-out)
 | feature | reason | production statement |

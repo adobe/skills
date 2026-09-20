@@ -40,7 +40,8 @@
  *     [--locale-alias <prefix[,prefix]>] [--append-redirects] [--unmigrated bounce|list] \
  *     (<file…> | --all | --paths <file>) [--publish] [--media skip] [--timeout 600] \
  *     [--no-localize] [--icons-dir <dir>] [--styles <css>] [--allow-empty <a,b>] [--ledger <path>] \
- *     [--progress <path> | --no-progress] [--report <path>]
+ *     [--progress <path> | --no-progress] [--report <path>] \
+ *     [--require-code-synced [--code-sync-record <f>]] [--site-token-env <NAME>] [--token-env <NAME>] [--concurrency <n>]
  *
  *   <file…>       content files (paths on disk) — or web paths (`/about`, resolved under --content)
  *   --all         every *.html under --content
@@ -55,6 +56,9 @@
  *   --ledger      deploy-batch ledger (default <content>/.deploy-ledger.json)
  *   --report      chain report JSON (default stardust/.work/deploy/deploy-page.<ts>.json)
  *   --progress    progress JSON (default stardust/.work/deploy/deploy-page.progress.json)
+ *   --require-code-synced / --code-sync-record / --site-token-env / --token-env / --concurrency
+ *                 passed through unchanged to deploy-batch (stage 5; see its header) — a refused
+ *                 code-sync run is deploy-batch exit 3 → chain exit 3, zero PUT
  *
  * Output: one line per page with its stage results; the chain report; the LAST stdout line is
  *   SUMMARY deploy-page ok=<n> failed=<n> [noverdict=<n>] exit=<code> details=<report> published=<n>|preview-only
@@ -88,7 +92,7 @@ const OK_STATUS = new Set(['live', 'previewed']);
 const BLOCKED = new Set(['links-unlocalized', 'lint-red', 'lint-error', 'delivery-lint', 'sanitise-fail']);
 
 function usage() {
-  console.log('usage: node skills/deploy/scripts/deploy-page.mjs --org <org> --repo <repo> --branch <branch> --source-host <host[,host]> [--content content] [--redirects <tsv>] [--locale-alias <prefix[,prefix]>] [--append-redirects] [--unmigrated bounce|list] (<file…> | --all | --paths <file>) [--publish] [--media skip] [--timeout 600] [--no-localize] [--icons-dir <dir>] [--styles <css>] [--allow-empty <a,b>] [--ledger <path>] [--progress <path> | --no-progress] [--report <path>]');
+  console.log('usage: node skills/deploy/scripts/deploy-page.mjs --org <org> --repo <repo> --branch <branch> --source-host <host[,host]> [--content content] [--redirects <tsv>] [--locale-alias <prefix[,prefix]>] [--append-redirects] [--unmigrated bounce|list] (<file…> | --all | --paths <file>) [--publish] [--media skip] [--timeout 600] [--no-localize] [--icons-dir <dir>] [--styles <css>] [--allow-empty <a,b>] [--ledger <path>] [--progress <path> | --no-progress] [--report <path>] [--require-code-synced [--code-sync-record <f>]] [--site-token-env <NAME>] [--token-env <NAME>] [--concurrency <n>]');
 }
 
 export function parseArgs(argv) {
@@ -118,6 +122,11 @@ export function parseArgs(argv) {
     else if (k === '--report') a.report = next();
     else if (k === '--progress') a.progress = next();
     else if (k === '--no-progress') a.progress = null;
+    else if (k === '--require-code-synced') a.requireCodeSynced = true;
+    else if (k === '--code-sync-record') a.codeSyncRecord = next();
+    else if (k === '--site-token-env') a.siteTokenEnv = next();
+    else if (k === '--token-env') a.tokenEnv = next();
+    else if (k === '--concurrency') a.concurrency = Math.max(1, +next() || 4);
     else if (k === '--help' || k === '-h') { usage(); process.exit(0); }
     else if (k.startsWith('--')) throw new Error(`unknown arg: ${k}`);
     else a.files.push(k);
@@ -259,7 +268,11 @@ export async function main(argv = process.argv) {
     mkdirSync(path.dirname(args.report), { recursive: true });
     const listFile = path.join(path.dirname(args.report), `paths.${Date.now()}.txt`);
     writeFileSync(listFile, `${toDeploy.join('\n')}\n`);
-    const dbArgs = [SCRIPTS.deployBatch, '--org', args.org, '--repo', args.repo, '--branch', args.branch, '--content', args.content, '--paths', listFile, '--ledger', args.ledger, '--no-progress', ...(args.redirects ? ['--redirects-tsv', args.redirects] : []), ...(args.publish ? ['--publish'] : [])];
+    const dbArgs = [SCRIPTS.deployBatch, '--org', args.org, '--repo', args.repo, '--branch', args.branch, '--content', args.content, '--paths', listFile, '--ledger', args.ledger, '--no-progress', ...(args.redirects ? ['--redirects-tsv', args.redirects] : []), ...(args.publish ? ['--publish'] : []),
+      // transport pass-through (documented on the row-D command): the served==tree precondition and token names
+      ...(args.requireCodeSynced ? ['--require-code-synced'] : []), ...(args.codeSyncRecord ? ['--code-sync-record', args.codeSyncRecord] : []),
+      ...(args.siteTokenEnv ? ['--site-token-env', args.siteTokenEnv] : []), ...(args.tokenEnv ? ['--token-env', args.tokenEnv] : []),
+      ...(args.concurrency ? ['--concurrency', String(args.concurrency)] : [])];
     const d = await runCapped(node, dbArgs, { timeoutMs, echo: (t) => process.stderr.write(t) });
     const ledger = existsSync(args.ledger) ? JSON.parse(readFileSync(args.ledger, 'utf8')) : {};
     const nextLine = (d.stdout.match(/^next=.*$/m) || [])[0];

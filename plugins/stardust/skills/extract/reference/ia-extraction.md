@@ -258,6 +258,10 @@ The original URL is always preserved in `state.json` and the per-page
 JSON. Projects created before this rule may carry `home` for the root:
 read it as a legacy alias of `index`, never write it.
 
+A slug is not the DA path (D6): the delivery path is a per-segment fold of the
+source URL path — `normalizeDaPath()` in `skills/stardust/scripts/da-path.mjs` —
+never derived from, and never re-keying, the slug.
+
 ## Page selection — favour template variety over IA breadth
 
 The most useful crawl is one that covers every distinct **page type**
@@ -480,8 +484,12 @@ pages or refresh existing ones.
 
 ## Multi-locale and i18n
 
-Sites with multiple language variants (`/en/`, `/de/`, `?locale=fr`):
-v2 extracts the default locale only. Cross-locale crawl is out of
-scope and would inflate the cap predictably. The user can run
-multiple stardust projects per locale if needed; the SKILL.md should
-mention this in the user report.
+Sites with language trees (`/en/`, `/de/`, twins on another host): the default
+locale is extracted first; the other trees are **discovered, typed and listed, not
+crawled** in this pass. Discovery = `link[rel=alternate][hreflang]` on captured
+pages ∪ every host sitemap ∪ a one-level BFS from each locale root, with the
+`source` recorded per URL; 301 twins are excluded. Typing = the twin's page type
+first, the classifier as a check, disagreements listed. The list feeds
+`stardust/trees.json` (`rollout/reference/multilingual.md` § Manifest
+precondition) — the D3 wave runs per tree on the same block library; the crawl
+cap is not inflated here.

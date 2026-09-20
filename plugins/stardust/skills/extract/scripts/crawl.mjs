@@ -385,13 +385,26 @@ export const STEALTH_ARGS = ['--disable-blink-features=AutomationControlled'];
 export const OFFSCREEN_ARGS = ['--window-position=-32000,-32000', '--disable-backgrounding-occluded-windows',
   '--disable-renderer-backgrounding', '--disable-background-timer-throttling'];
 export function tierOf(technique) { return LEGACY_TIER[technique] || (TIERS.indexOf(technique) + 1) || 0; }
-/** Launch the browser for one ladder tier. Takes the caller's `chromium` so this module stays import-free. */
+/** Launch the browser for one ladder tier. Takes the caller's `chromium` (playwright is never imported here); the only import is the lazily resolved, optional browser lock. */
 export async function launchTier(chromium, tier) {
-  if (tier <= 1) return chromium.launch({ headless: true });
+  // fan-out.md § Machine budget: one browser slot per launch (skills/stardust/scripts/browser-lock.mjs),
+  // released when the browser disconnects; throws { code: 124 } when no slot frees up (no verdict, never a
+  // FAIL). The lock module is resolved lazily — plugin layout, project copy, STARDUST_SKILLS_DIR — and a
+  // copy shipped without it runs unlocked. STARDUST_BROWSER_SLOTS=0 disables it (gate.sh sets it for its
+  // children after taking the round's slot).
+  let slot = null;
+  const lockPaths = ['../../stardust/scripts/browser-lock.mjs', '../stardust/browser-lock.mjs', process.env.STARDUST_SKILLS_DIR ? `${process.env.STARDUST_SKILLS_DIR}/stardust/scripts/browser-lock.mjs` : null].filter(Boolean);
+  for (const c of lockPaths) {
+    try { const lock = await import(new URL(c, import.meta.url)); slot = await lock.acquire({}); break; }
+    catch (e) { if (e.code === 'ERR_MODULE_NOT_FOUND') continue; throw e; }
+  }
+  const launch = (opts) => chromium.launch(opts)
+    .then((b) => { b.on('disconnected', () => slot?.release()); return b; }, (e) => { slot?.release(); throw e; });
+  if (tier <= 1) return launch({ headless: true });
   const stealth = { channel: 'chrome', args: STEALTH_ARGS, ignoreDefaultArgs: ['--enable-automation'] };
-  if (tier === 2) return chromium.launch({ ...stealth, headless: true });
+  if (tier === 2) return launch({ ...stealth, headless: true });
   const visible = process.env.STARDUST_HEADED_WINDOW === '1';
-  return chromium.launch({ ...stealth, headless: false, args: visible ? STEALTH_ARGS : [...STEALTH_ARGS, ...OFFSCREEN_ARGS] });
+  return launch({ ...stealth, headless: false, args: visible ? STEALTH_ARGS : [...STEALTH_ARGS, ...OFFSCREEN_ARGS] });
 }
 // A context factory so the stealth init script lands on EVERY context (probe +
 // workers) once the run is in stealth mode — the challenge re-fires per context
@@ -517,6 +530,7 @@ function acquireLiveLock(args, host) {
 // exit code for a fatal error (main().catch): a held live lock is "wait for the
 // other tool" (1), a challenge is 3, anything else 2.
 export function exitCodeOf(e) {
+  if (e?.code === 124) return 124; // no browser slot within the wait (browser-lock) — no verdict, never a FAIL
   if (e?.errorClass === 'BotChallengeError') return 3;
   if (e?.errorClass === 'LiveLockError') return 1;
   return 2;
@@ -2927,7 +2941,7 @@ if (entry === import.meta.url) {
   main().catch(async (e) => {
     console.error(`[crawl] fatal: ${e.errorClass || 'Error'}: ${e.message}`);
     try { if (persistOnFatal) persistOnFatal(); } catch { /* best effort */ }
-    const exit = exitCodeOf(e); // 3 challenge · 1 live lock · 2 otherwise
+    const exit = exitCodeOf(e); // 124 no browser slot · 3 challenge · 1 live lock · 2 otherwise
     try {
       const line = progress ? progress.summaryLine({ exit, details: '-', extra: { error: String(e.message || e).slice(0, 80) } }) : (await loadProgressHelper()).summaryLine({ driver: 'crawl', exit, details: '-', extra: { error: String(e.message || e).slice(0, 80) } });
       console.log(line);

@@ -111,7 +111,7 @@ let chromium;
 try { ({ chromium } = await import('playwright')); } catch {
   console.error('[dom-equality] playwright not importable from this script\'s directory.');
   console.error('Copy skills/reskin/scripts/* into the project (stardust/scripts/reskin/) and');
-  console.error('run: npm i -D playwright --no-save --legacy-peer-deps  (extract SKILL.md § Setup)');
+  console.error('run: node skills/stardust/scripts/preflight-runtime.mjs  (master Setup step 9 — skills/stardust/reference/runtime-preflight.md § Resolution chain)');
   process.exit(2);
 }
 
@@ -120,7 +120,7 @@ const die = (m, c = 2) => { console.error(`[dom-equality] ${m}`); process.exit(c
 const { script: NORMALIZE, source: normalizeSource } = await loadNormalize(args.normalize);
 
 args.tier = resolveStartTier(args.headed); // ladder start = max(--headed tier, tier extract recorded) — live-session.mjs
-const browser = await launchTier(chromium, args.tier);
+const browser = await launchTier(chromium, args.tier).catch((e) => { if (e.code === 124) { console.error(e.message); process.exit(124); } throw e; }); // no browser slot = no verdict, never a FAIL
 
 async function capture(url, scopeList, normalize) {
   // UA + standard headers + webdriver spoof (live-session) — harmless on

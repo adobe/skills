@@ -108,6 +108,8 @@ Flows, not presence — each check replays a user-visible flow through `skills/d
 | id | sev | what |
 |---|---|---|
 | `broken-internal-link` | error | internal href target ≥400 |
+| `source-host-link` | error / warn | href to a `--source-host` whose path is in the inventory (a bounce link the localize stage should have rewritten — error); path not in the inventory → warn, the honest boundary, counted |
+| `planned-link-gap` | warn | replaces `broken-internal-link` for a target listed in `stardust/link-gaps.tsv` (the owner-decided `links: list` row) when the sheet is present |
 | `link-via-redirect` | info | href resolves only via redirect |
 | `off-inventory-link` | info | live 200 but untracked |
 | `broken-anchor` | warn | `#fragment` has no matching id — server HTML first, then re-verified in the rendered DOM (blocks assign ids client-side; without the rendered pass this false-flags) |
@@ -115,6 +117,8 @@ Flows, not presence — each check replays a user-visible flow through `skills/d
 | `empty-href` | warn · `malformed-mailto` / `malformed-tel` warn | dead affordances |
 | `broken-external-link` | warn (never error — externals flap) | 404/410/DNS-fail, each unique URL probed once — **opt-in via `--probe-externals`** (on blog-scale fleets the unique-external set dominates sweep time) |
 | `externals-skipped` | info | externals not probed this run (the default); count reported so the skip is never silent |
+
+`/nav`, `/footer` and `/fragments/**` documents are scanned as referrers too; `--source-host <h[,h]>` (also read from `rollout.json.site.sourceHost`) enables the source-host class.
 
 ## a11y (H, browser, desktop, axe-core via CDN)
 
@@ -175,11 +179,13 @@ Per page: served HTML (ChatGPT-User UA, no JS) vs the rendered DOM as textConten
 stripped by default. `strict` = the tool's popup number; `code` = fragments credited + app blocks
 excluded (`--ai-exclude-blocks`, default `client-app,widget`); `servedGap` = rendered words absent
 from the served HTML, per block. Formula, cause classes and fixes: `deploy/reference/ai-readability.md`.
+`--ai-allowlist <file>` (default `stardust/ai-readability-allowlist.json` when present) passes the same entries the deploy gate reads.
 
 | id | sev | what |
 |---|---|---|
 | `ai-readability-poor` | error | strict < 75 — the owner's gauge reads Fair/Poor; the rendered DOM carries hundreds of words the document lacks (clones, index cards, fragments) |
 | `ai-readability-low` | warn | strict < 95 or code < 98 — block code adds words the document does not have |
+| `ai-readability-undecided-exclusion` | warn | an excluded block removed words with no complete allowlist decision entry (`exclude`, `reason`, `fallback`, `decision`) — `deploy/reference/ai-readability.md` § 6 |
 | `ai-readability-served-gap` | info | ≥ 40 rendered main words never served — non-rendering crawlers miss them (fragment / index / generated text); evidence names the blocks |
 | `ai-readability-unmeasured` | info | page could not be fetched or rendered for the check (an error, not a throttle) |
 | `unmeasured` | info | served fetch or render 429/503 after the paced retries through the per-host limiter — not scored, counted in `report.infra` (§ Cross-cutting) |

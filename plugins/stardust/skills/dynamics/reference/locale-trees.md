@@ -15,6 +15,9 @@ Locale is a **tree**, not a feature: every other class recurs inside it with loc
   `lang`-keyed string table whose every entry is **lifted from the live pages or marked OWNER** —
   "still English on live" is a valid lift, a translation is not. Strings server-rendered after a
   real submission (form confirmations) have no lift path → OWNER.
+- **Deliver.** The procedure and the manifest schema are `../../rollout/reference/multilingual.md`
+  (Phase D3): `stardust/trees.json` before fan-out, per-locale chrome documents, the two-line
+  runtime hook, twins gated 360 → 1440.
 - **Implement.** Re-run the class probes on the twins (hover chrome, selects, player ids, modal
   titles); reuse the archetypes when the classifier types the twins identically.
 - **Verify.** Per tree on the origin with auth scoped to the host: modal heading in the tree's

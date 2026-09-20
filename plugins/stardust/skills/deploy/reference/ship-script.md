@@ -12,7 +12,7 @@ file, names its path in the `Blocked on owner:` line, and never runs it.
 # stardust ship script — written by the run, run once by the owner. Edit the variables only.
 set -euo pipefail
 ORG=<org>; REPO=<repo>; WORK=<work-branch>; SERVE=main; PROJECT=<eds-project-dir>; CONTENT="$PROJECT/content"
-ISSUE=<tracking-issue-number-or-empty>; PLUGIN=<plugin-dir>
+ISSUE=<the stardust/decisions.md tracking row: issue number, or empty>; PLUGIN=<plugin-dir>
 git -C "$PROJECT" switch "$SERVE" && git -C "$PROJECT" merge --ff-only "$WORK"           # 1 merge
 git -C "$PROJECT" push origin "$SERVE"                                                    # 2 push — Code Sync builds
 node "$PLUGIN/skills/deploy/scripts/deploy-batch.mjs" --org "$ORG" --repo "$REPO" \

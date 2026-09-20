@@ -88,6 +88,13 @@ served at the bare `/beers` (no trailing slash) defaults to
 `_meta.json.outputPathDefault: "trailing-slash"` so re-runs are
 deterministic.
 
+Then every segment of the output path goes through `normalizeDaPath()`
+(`skills/stardust/scripts/da-path.mjs` — the one DA-safe rule; `deploy-batch.mjs`
+refuses to PUT a path that differs from it). A path the fold changes records
+`source→destination` in `stardust/redirects.tsv` and `_meta.json.deployedPath`
+when it differs from the literal path; two sources folding to one path are a
+collision (rule 8), never a silent overwrite.
+
 The output convention works on every static host (Netlify,
 Vercel, Cloudflare Pages, S3+CloudFront, GitHub Pages, plain
 nginx) without URL rewrite rules — and on `file://`, and at any

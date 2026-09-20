@@ -26,7 +26,7 @@
  * content-bearing siblings, outermost only) — inlined here until deploy
  * exports it.
  *
- * Coverage pass (the cigna:F15 / experian:F8 mechanism): every census class
+ * Coverage pass (the health-insurer F15 / credit-bureau F8 mechanism): every census class
  * is `referenced` when it appears as a selector token in a --css file or as
  * a string in a --code file; otherwise `unreferenced`. --allow lists classes
  * intentionally unstyled, one per line with a reason. Rendered comparison

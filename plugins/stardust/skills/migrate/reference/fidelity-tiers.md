@@ -138,7 +138,7 @@ diff vs the archetype's cluster. T = `max(5, 2 %)` of the type, printed,
   blocked, heads the phase report and the journal `Next:`, and the run
   continues on gated clusters.
 - *Eval.* `evals/replica-layout-clusters/` (blocked B page, rendered A page,
-  tail run) and `skills/replica/scripts/test/layout-cluster.test.mjs`.
+  tail run) and `evals/lint/layout-cluster-fixtures.mjs`.
 
 ## Content-count acceptance (content-fidelity is measured, not asserted)
 

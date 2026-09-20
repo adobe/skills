@@ -9,14 +9,18 @@
  *
  * Dedup signal (Phase 2): brand-module ids carried per page in the _meta.json
  * sidecar `modules[]` (shared by construction) + chrome (header/nav/footer,
- * site-wide singletons). Finer section-archetype dedup via structural signatures
- * is a later refinement; the `signature` field is reserved for it.
+ * site-wide singletons). `signature` is `<kind>:<id>`; when replica's
+ * `stardust/current/layout-clusters.json` exists (layout-cluster.mjs --write-state)
+ * it appends `|clusters:<type>/<cluster id>,…` — the layout clusters of the pages
+ * that compose the block, so a block seen only in ungated clusters is visible in
+ * the ledger. Finer section-archetype dedup is a later refinement.
  *
  * Idempotent: existing block delivery status is preserved.
  *
  * Usage: node skills/rollout/scripts/blocks.mjs [--out <rolloutDir>]
  */
 import { join } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
 import { readJSON, writeJSON, edsName, kindOf, blockCounts } from './lib.mjs';
 
 const i = process.argv.indexOf('--out');
@@ -29,6 +33,18 @@ if (!pagesDoc) {
   process.exit(1);
 }
 const pages = pagesDoc.pages || [];
+// slug → "<type>/<cluster id>" from replica's layout clusters, when the corpus fact exists (read-only; absent → reserved form)
+const clusterOf = new Map();
+const clustersFile = 'stardust/current/layout-clusters.json';
+if (existsSync(clustersFile)) {
+  try {
+    for (const t of JSON.parse(readFileSync(clustersFile, 'utf8')).types || []) for (const c of [...(t.clusters || []), ...(t.tail || [])]) for (const slug of c.pages || []) clusterOf.set(slug, `${t.type}/${c.id}`);
+  } catch { /* unreadable → signatures keep the reserved form */ }
+}
+const signatureOf = (kind, id, slugs) => {
+  const clusters = [...new Set(slugs.map((s) => clusterOf.get(s)).filter(Boolean))].sort();
+  return clusters.length ? `${kind}:${id}|clusters:${clusters.join(',')}` : `${kind}:${id}`;
+};
 const blocksPath = join(OUT, 'coverage', 'blocks.json');
 const prior = new Map(((readJSON(blocksPath, { blocks: [] }) || {}).blocks || []).map((b) => [b.id, b]));
 
@@ -63,7 +79,7 @@ const blocks = [...agg.entries()].map(([id, a]) => {
     id,
     label: id,
     kind,
-    signature: `${kind}:${id}`,
+    signature: signatureOf(kind, id, a.pages),
     source: null,
     usedByTemplates: [...a.templates].sort(),
     usedByPages: [...new Set(a.pages)].sort(),

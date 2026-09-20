@@ -33,6 +33,7 @@ Page types from extract:
   form     3   (donate, contact, volunteer)
   static   18  (about, team, financials, ...)
   unique   3   (404, search, faq)
+chrome variants: 2   (default 124 · variant-footer-legal 3 — `chrome-variant` row opens)
 
 Confirm catalog (yes / refine "<phrase>")?
 ```

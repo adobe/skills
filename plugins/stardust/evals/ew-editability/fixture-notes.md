@@ -55,8 +55,8 @@ The sibling page `home-proposed.html` stays in the tree so a run that converts
   half of `fidelity_not_traded` is checkable; the pixel half cannot fail or
   pass in this fixture.
 - `ew-editability-probe.mjs --simulate-editor` and `block-roundtrip.mjs` need
-  Playwright and a local server; neither is pre-installed (the skill's
-  Playwright re-probe installs it, which needs network). A run without
+  Playwright and a local server; neither is pre-installed (the runtime
+  preflight installs it into `stardust/node_modules`, which needs network). A run without
   network can author blocks and content but cannot produce the probe
   evidence `ew_gate_run_and_green` / `edit_mode_simulation_clean` look for.
 - Nothing can be pushed: no DA token, the `fstab.yaml` mount does not

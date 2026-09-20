@@ -219,7 +219,30 @@ try {
   r = await run(['--paths', list]);
   assert.equal(r.status, 0, r.out);
   assert.deepEqual(urls('PUT').sort(), ['/da/o/r/a.html', '/da/o/r/b.html', '/da/o/r/nav.html']);
-  console.log('deploy-page test: ok (chrome append, preview default, links-unlocalized zero-PUT + residue echo, lint-red, --publish, killed no-verdict, exit 3 propagation, Gate 3 fold through the chain, stage-1 pass-through, --paths file)');
+  // transport pass-through: --require-code-synced with no record → deploy-batch REFUSED (exit 3), zero PUT, no verdict
+  fresh({ navLocalized: true }); rmSync(join(content, '.deploy-ledger.json'), { force: true }); mock.reset();
+  r = await run(['/a', '--require-code-synced', '--code-sync-record', join(dir, 'nope', 'code-sync.json')]);
+  assert.equal(r.status, 3, `code-sync refusal propagates as exit 3: ${r.out}`);
+  assert.equal(urls('PUT').length, 0, 'refused run PUTs nothing');
+  assert.match(r.out, /REFUSED \(--require-code-synced\): no code-sync record/);
+  assert.ok(!/FAIL/.test(r.out), 'a refusal is no verdict, never FAIL');
+  // a valid record for this org/repo/ref lets the same command ship
+  mkdirSync(join(dir, 'nope'), { recursive: true });
+  writeFileSync(join(dir, 'nope', 'code-sync.json'), JSON.stringify({ org: 'o', repo: 'r', ref: 'main', status: 'ok', headSha: 'abc1234', ts: new Date().toISOString() }));
+  mock.reset();
+  r = await run(['/a', '--require-code-synced', '--code-sync-record', join(dir, 'nope', 'code-sync.json')]);
+  assert.equal(r.status, 0, `synced record → ships: ${r.out}`);
+  assert.deepEqual(urls('PUT'), ['/da/o/r/a.html']);
+  // --site-token-env / --token-env / --concurrency forwarded: the delivered GETs carry the named site token
+  fresh({ navLocalized: true }); rmSync(join(content, '.deploy-ledger.json'), { force: true }); mock.reset();
+  r = await run(['/a', '--site-token-env', 'MY_SITE_TOKEN', '--token-env', 'MY_DA', '--concurrency', '2'], { MY_SITE_TOKEN: 'site-secret', MY_DA: 'x', DA_TOKEN: '' });
+  assert.equal(r.status, 0, `forwarded token names: ${r.out}`);
+  assert.deepEqual(urls('PUT'), ['/da/o/r/a.html']);
+  const deliveredGets = mock.requests.filter((q) => q.method === 'GET' && /^\/delivery\//.test(q.url));
+  assert.ok(deliveredGets.length > 0 && deliveredGets.every((q) => q.auth === 'token site-secret'), `delivered GETs carry the --site-token-env value: ${JSON.stringify(deliveredGets)}`);
+  r = await run(['/a', '--concurrency']);
+  assert.equal(r.status, 2, '--concurrency needs a value');
+  console.log('deploy-page test: ok (chrome append, preview default, links-unlocalized zero-PUT + residue echo, lint-red, --publish, killed no-verdict, exit 3 propagation, Gate 3 fold through the chain, stage-1 pass-through, --paths file, transport pass-through: code-sync refusal exit 3 + token names/concurrency forwarded)');
 } finally {
   await mock.close();
   rmSync(dir, { recursive: true, force: true });

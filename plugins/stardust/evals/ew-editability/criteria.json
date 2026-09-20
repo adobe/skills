@@ -4,12 +4,12 @@
   "checklist": [
     {
       "name": "node_slotting_no_value_slotting",
-      "max_score": 20,
+      "max_score": 15,
       "description": "No block copies authored text into generated markup: no `textContent =`/`innerHTML =` assignments or template-literal interpolation whose source is an authored element; template-slotted blocks hold empty slot containers and MOVE the authored elements into them (Step 2b node-slotting)."
     },
     {
       "name": "move_not_rebuild",
-      "max_score": 15,
+      "max_score": 10,
       "description": "Every authored h1–h6/p/ul/ol/picture is placed with append()/prepend()/before(); no cloneNode+discard, no retagging, no .trim()/normalisation of displayed text; sibling walks capture nextElementSibling before append() (EW1)."
     },
     {
@@ -46,6 +46,11 @@
       "name": "edit_mode_simulation_clean",
       "max_score": 5,
       "description": "ew-editability-probe.mjs --simulate-editor reports no font/colour/line-height drift per text and block height Δ ≤ 2 px."
+    },
+    {
+      "name": "harness_identity_checked",
+      "max_score": 5,
+      "description": "The Local-QA harness is served on the project's allocated harness slot (`aem up --port $(node skills/replica/scripts/port.mjs harness)`, 3100–3199) and qa-gate.mjs asserts the served identity (build-harness's stardust/.work/harness/marker.txt, --marker) before reading a page; a mismatch is exit 4 = no verdict, never reported as a FAIL or a PASS."
     },
     {
       "name": "exemptions_declared",

@@ -41,6 +41,7 @@
 import { chromium } from 'playwright';
 import fs from 'fs';
 import path from 'path';
+import { pathToFileURL } from 'url';
 import { resolveProfile } from './diff-profiles.mjs';
 import { inventory, editableInventory } from './content-inventory.mjs';
 
@@ -164,4 +165,7 @@ async function main() {
   }
 }
 
-main().catch((e) => { process.stderr.write(`section-schema error: ${e.message}\n`); process.exit(1); });
+export { mapSections }; // the repeat-unit grouping replica's variant-census / layout-cluster mirror (one rule, this file)
+
+const isMain = (() => { try { return process.argv[1] && pathToFileURL(fs.realpathSync(process.argv[1])).href === import.meta.url; } catch { return false; } })();
+if (isMain) main().catch((e) => { process.stderr.write(`section-schema error: ${e.message}\n`); process.exit(1); });

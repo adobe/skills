@@ -58,7 +58,7 @@ Rebrand `styles/styles.css` — replace the boilerplate's DEMO layer (roboto tok
 
 That's it. No motion primitives. No utility classes beyond the button system. Section `style` values stay the small closed set above — never a parallel styling system for block-owned sections (see anti-pattern 2).
 
-`scripts/scripts.js` stays stock except the project-owned hooks: `buildAutoBlocks()` gains the site's D1 auto-blocks (embed/video URLs); `decorateMain()`/`loadEager` are never restructured. No reveal-on-scroll. No marquee init. No header scroll-state. Per-block animation is owned by per-block CSS.
+`scripts/scripts.js` stays stock except the project-owned hooks: `buildAutoBlocks()` gains the site's D1 auto-blocks (embed/video URLs) and, on multilingual sites, the two-line lang/hreflang hook (`../../rollout/reference/multilingual.md` § Procedure 5); `decorateMain()`/`loadEager` are never restructured. No reveal-on-scroll. No marquee init. No header scroll-state. Per-block animation is owned by per-block CSS.
 
 ## Token-completeness gate (#91)
 

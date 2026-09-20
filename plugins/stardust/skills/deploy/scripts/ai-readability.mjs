@@ -37,7 +37,7 @@
  *       and checkExclusions() both read `decidedExclusions(allow)` — an incomplete entry is
  *       undecided for the denominator AND the verdict. The rule is on whenever the caller passes an
  *       allowlist (this CLI always does — `[]` when there is no file); a consumer that passes none
- *       (the qa check until it takes `--ai-allowlist`) keeps the pre-decision denominator, so the
+ *       (a caller that omits `--ai-allowlist`) keeps the pre-decision denominator, so the
  *       shared scorer never changes a report that cannot yet supply decisions.
  * --wait <ms> adds a settle delay after section-status (vendor widgets that render late);
  * --har <file> [--har-url <regex>] replays a recorded vendor session (page.routeFromHAR, fallback
@@ -182,7 +182,7 @@ async function loadPlaywright() {
     try { const mod = normalize(await import(pathToFileURL(createRequire(base).resolve('playwright')).href)); if (mod) return mod; } catch { /* next link */ }
   }
   try { const mod = normalize(await import('playwright')); if (mod) return mod; } catch { /* fall through */ }
-  throw new Error('playwright not found — run node skills/stardust/scripts/preflight-runtime.mjs (master § Setup step 9)');
+  throw new Error('playwright not found — run node skills/stardust/scripts/preflight-runtime.mjs (master § Setup step 10)');
 }
 
 async function settle(page, extraWaitMs = 0) {

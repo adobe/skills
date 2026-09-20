@@ -62,6 +62,8 @@ and resumable. The state file is `stardust/state.json`. It is written by
       "url": "https://example.com/",
       "title": "Example Home",
       "type": "landing",
+      "chromeVariant": "default",
+      "layoutCluster": "c1",
       "status": "approved",
       "history": [
         { "status": "extracted",   "at": "..." },
@@ -179,7 +181,8 @@ a plain JWT `exp` is the fallback; lifecycle rule:
 `<SITE>` to the slug exactly after normalisation, and probes `GH_PAT`
 (`GET api.github.com/user`, 200/401) when the variable exists or `--gh` is
 given. Exit 2 = `da: expired | missing`, or the target answers 401/403/404
-(`blocked` line, remedy named by env-file class); exit 1 = `unreachable`
+(`blocked` line, remedy named by env-file class — `da: expired` with
+`daTarget: denied` is an access refusal, not token age: ask for access); exit 1 = `unreachable`
 (no verdict — re-run). Never hand-decode a token or declare a 401 blocker
 before it ran.
 
@@ -278,6 +281,14 @@ it.
 structure (Path A′ in `skills/migrate/SKILL.md`). A page typed
 `unique` is rendered as a one-off using DESIGN.md/json + canon +
 brand modules.
+
+**Corpus facts beside `type` (flow-neutral, optional).** `chromeVariant` —
+`default` | `variant-<key>`, stamped by `skills/replica/scripts/chrome-variants.mjs
+--write` from the captured chrome fingerprint (zero live hits); a second value
+opens the `chrome-variant` decision row before that variant fans out.
+`layoutCluster` — `c<n>` | `tail`, stamped by `skills/replica/scripts/layout-cluster.mjs
+--write-state`; a cluster ≥ T with no gated exemplar is a coverage gap for
+migrate/rollout (redesign flow: `direct --prep` refines the type catalog from it).
 
 ---
 

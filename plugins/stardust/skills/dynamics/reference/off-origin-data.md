@@ -48,7 +48,10 @@ from the source origin into DA and publishes; rows equal on both sides.
 
 Reused chrome links root-relative to the production host. Redirects sheet for aliases, the site
 query index as the "ours" oracle, a sandbox-only runtime rewrite of unserved same-origin links to
-the source host — then migrate the linked pages wave by wave.
+the source host — then migrate the linked pages wave by wave. Locale aliases (`/x` served, `/en/x`
+delivered) are `localize-links.mjs --locale-alias en --append-redirects` — the redirect sheet gains the
+rows the run resolved; a same-origin link no page serves follows the `links` decisions row
+(`--unmigrated bounce|list`).
 
 ## Verify (flows, not presence)
 

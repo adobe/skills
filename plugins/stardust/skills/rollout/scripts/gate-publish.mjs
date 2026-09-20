@@ -12,7 +12,9 @@
  * deploy ledger.
  *
  * Per page × configured breakpoint the driver composes the replica instruments:
- *   gate.sh <slug> <live-url> <origin-url> <W> pub<k> --regime published-origin [--refresh] [--variance]
+ *   gate.sh <slug> <live-url> <origin-url> <W> pub<k> --regime published-origin [--record] [--refresh] [--variance]
+ *     (`--record` only on an archetype's own row: gate.sh upserts progress.json `<type>.published.<W>`;
+ *     a sibling round never writes the archetype slot)
  *     → gates/<slug>-<W>/gate-pub<k>.json (live cached once per page × width; drift probe; 0/2/3/5/6/124)
  *   anchor.mjs both sides (live side: the cached gates/<slug>-<W>/anchor-live.json is READ, not
  *     re-probed — zero live hits whatever options gate.sh probed it with) → header + footer bands
@@ -385,7 +387,7 @@ async function main() {
       let label = null; let exit = null;
       if (!REPORT_ONLY) {
         label = nextLabel(dir);
-        const cmd = ['bash', join(REPLICA, 'gate.sh'), p.slug, live || '<live url missing>', `${ORIGIN}${served}`, String(W), label, '--regime', 'published-origin', ...(has(argv, 'refresh') ? ['--refresh'] : []), ...(has(argv, 'variance') ? ['--variance'] : [])];
+        const cmd = ['bash', join(REPLICA, 'gate.sh'), p.slug, live || '<live url missing>', `${ORIGIN}${served}`, String(W), label, '--regime', 'published-origin', ...(archetypes.has(p.slug) ? ['--record'] : []), ...(has(argv, 'refresh') ? ['--refresh'] : []), ...(has(argv, 'variance') ? ['--variance'] : [])];
         commands.push(cmd.join(' '));
         if (!DRY) {
           if (!live) { bps[W] = { status: 'unmeasured', pass: false, reason: 'no live URL (state.json pages[].url / rollout.json site.sourceUrl)', history: [] }; continue; }

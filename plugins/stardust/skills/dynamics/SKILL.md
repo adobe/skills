@@ -18,7 +18,7 @@ Phases, in order: 1 Detect → 2 Classify → 3 Triage (the gate output) → 4 I
 | 1 | `node skills/dynamics/scripts/dynamics-detect.mjs --from-state stardust/state.json --out stardust/current [--reach stardust/current]` (or `--urls …`) |
 | 2 | class per finding; vendors via `scripts/vendors.json`; `dynamics-plan.mjs --target-origin <host>` marks dead first-party API paths host-bound |
 | 3 | `node skills/dynamics/scripts/dynamics-plan.mjs [--target-origin …] [--migrated stardust/migrated] --out stardust/dynamics`; curate `stardust/dynamic-features.md` + `-plan.md`; `dynamics-plan.mjs --lint <inventory.md> <plan.md>` (every row placed once) |
-| 4 | per plan phase, from the pattern catalogue; tooling `snapshot-api.mjs`, `snapshot-forms.mjs`, `sync-sheets.mjs` |
+| 4 | per plan phase, from the pattern catalogue; index-backed rows first: `node skills/rollout/scripts/query-index.mjs --org <org> --site <site> --yaml helix-query.yaml --check` exit 0 (D13); tooling `snapshot-api.mjs`, `snapshot-forms.mjs`, `sync-sheets.mjs` |
 | 5 | write `stardust/dynamics/parity.json`; `node skills/dynamics/scripts/dynamics-check.mjs --origin <published origin> [--auth-header … | --token-env SITE_TOKEN] [--gate]` |
 
 Gates: Phase 3 — a row without a disposition fails the caller's pre-import gate (prepare-migration 4.5 / replica Phase 2 / rollout B2). Phase 4 — each plan phase ends with the flow verified on the published origin at both gate widths, a parity row, a journal entry and a commit. Phase 5 — replayed flows, not presence; `--gate` is the close-out condition (`reference/parity-report.md` rule 8).
@@ -30,7 +30,7 @@ Outputs: `stardust/current/_dynamics.json` + `dynamic-features.generated.md` · 
 | 1 | `reference/classes-and-signals.md` § Detection procedure · § Known noise |
 | 2 | `reference/classes-and-signals.md` § Classes · § Vendor table · § Origin-bound probe |
 | 3 | `reference/triage.md` § Dispositions · § Reproducibility · § Rules · § `stardust/dynamic-features.md` |
-| 4 | `reference/patterns.md` (one section per pattern); `reference/listings.md` § Mechanics · § Block contract; `reference/off-origin-data.md` § Tier 1 · § Tier 2 · § Tier 3 · § Tier 4 · § Sheet-backed data (class D); `reference/forms.md` § 1. Record the live form · § 2. Key the inventory · § 3. Decide the intake · § 4. The block · § 5. Regulated data; `reference/locale-trees.md` |
+| 4 | `reference/patterns.md` (one section per pattern); `reference/listings.md` § Mechanics (Registration gate) · § Block contract; `reference/off-origin-data.md` § Tier 1 · § Tier 2 · § Tier 3 · § Tier 4 · § Sheet-backed data (class D); `reference/forms.md` § 1. Record the live form · § 2. Key the inventory · § 3. Decide the intake · § 4. The block · § 5. Regulated data; `reference/locale-trees.md` |
 | 5 | `reference/parity-report.md` § Schema · § Rules; `reference/listings.md` § Verify; `reference/off-origin-data.md` § Verify (flows, not presence); `reference/forms.md` § 6. Verify (flow) |
 
 Sections: When it runs · Phase 1 — Detect · Phase 2 — Classify · Phase 3 — Triage · Phase 4 — Implement · Phase 5 — Verify · Hands-off resolutions · Hard blockers · Artifacts · References.
@@ -38,7 +38,7 @@ Sections: When it runs · Phase 1 — Detect · Phase 2 — Classify · Phase 3 
 Static migration treats a page as content and layout. This skill treats it as **behaviour**:
 everything the source renders from JavaScript, a service or a data source, and everything the
 target host cannot serve the same way. It forces a decision per row **before import**, then proves
-the behaviour after delivery. It never blocks the static path; every page must still work as a static page.
+the behaviour after delivery; the static path is never blocked.
 
 ## When it runs — migration-bound, default-on there, never elsewhere
 
@@ -52,28 +52,27 @@ the behaviour after delivery. It never blocks the static path; every page must s
 | **standalone** `$stardust dynamics <origin>` | all phases on a site that was already migrated without them |
 | **chain ends at `deploy`** (pilot, no rollout) | Phases 4–5 run standalone before the pilot is declared done; `parity.json` + `dynamics-check.mjs --gate` exit 0 are required in both flows |
 
-`uplift`, `audit` and a bare `extract` never trigger it: dynamics is a migration concern, not a
-redesign one.
+`uplift`, `audit` and a bare `extract` never trigger it (a migration concern, not a redesign one).
 
 ## Phase 1 — Detect
 
 Operator card row 1 (or `--urls` one per archetype + the home page). Depth on archetypes, reach
-from `extract --dynamics` sidecars; reach-only rows: `reference/classes-and-signals.md` § Detection
-procedure 2. Output `_dynamics.json` + `dynamic-features.generated.md`. Evidence only.
+from `extract --dynamics` sidecars (`reference/classes-and-signals.md` § Detection procedure 2).
+Output `_dynamics.json` + `dynamic-features.generated.md`. Evidence only.
 
 ## Phase 2 — Classify
 
 Every finding gets a class from `L S F M V T A R X I18N CR D`; known vendors resolve to a role
 through `scripts/vendors.json`; unknown third-party hosts stay visible as "inspect". When a target
 host exists, `dynamics-plan.mjs --target-origin <host>` probes every recorded first-party API path
-there and marks dead ones **host-bound** — the signal a pixel gate reports as "band shorter".
+there and marks dead ones **host-bound**.
 
 ## Phase 3 — Triage (the gate output)
 
 `dynamics-plan.mjs` (Operator card row 3) drafts one row per finding with the four axes pre-filled — **class · disposition ·
 reproducibility · status** — plus pattern, phase and the owner decision. Curate it into
-`stardust/dynamic-features.md` (subsumes the former dynamic-blocks map: § Listings contract +
-§ Features + § Decision batch + § Register) and `stardust/dynamic-features-plan.md`.
+`stardust/dynamic-features.md` (§ Listings contract · § Features · § Decision batch · § Register)
+and `stardust/dynamic-features-plan.md`.
 `reference/triage.md` is the contract. Rules that decide the shape of the phase:
 
 - **Reconcile against the migrated output** before scheduling anything.
@@ -89,9 +88,9 @@ reproducibility · status** — plus pattern, phase and the owner decision. Cura
 
 From `reference/patterns.md` (catalogue + contracts + embedded example mechanisms),
 `reference/listings.md`, `reference/off-origin-data.md`, `reference/forms.md`,
-`reference/locale-trees.md`. Principles that held on three sites: static first, then wire ·
-authoring contract before code · no owner input, no waiting (ship the interim tier, name the
-decision) · existing library first (feed it, do not fork it) · decided-out is explicit. Each phase
+`reference/locale-trees.md`. Principles: static first, then wire · authoring contract before
+code · no waiting on owner input (ship the interim tier, name the decision) · existing library
+first (feed it, never fork it) · decided-out is explicit. Each phase
 ends with the flow verified on the published origin at 1440 and 360, a parity row, a journal entry
 and a commit. Tooling: `snapshot-api.mjs`, `snapshot-forms.mjs`, `sync-sheets.mjs`. **Listings and data-fed bands are document-first**: the document carries the item text as authored rows, the block reads the index or snapshot only for non-text fields and top-up (`reference/listings.md` § Block contract; why: `deploy/reference/ai-readability.md`).
 

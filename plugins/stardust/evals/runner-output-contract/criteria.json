@@ -14,12 +14,12 @@
     },
     {
       "name": "ranked_class_report",
-      "max_score": 20,
+      "max_score": 15,
       "description": "The report to the user is a ranked class table with one row per finding class, each row carrying class, count, worst example (slug plus reason) and a file pointer to where the affected pages are listed. Rows are ordered by count (ties by severity). The complete report — table, triage and hand-off — is at most 60 lines. Every class present in the fixture appears: broken internal link(s), about:error, h1 count, blocked-by-precondition."
     },
     {
       "name": "summary_files_written",
-      "max_score": 15,
+      "max_score": 10,
       "description": "A summary.json and a summary.md exist under stardust/rollout/ (any subdirectory). summary.json lists every page with every finding (slug, reason, file pointer) and a per-class roll-up with counts; summary.md is the human-readable view of the same data. The per-class counts stated in the conversation equal the counts in summary.json."
     },
     {

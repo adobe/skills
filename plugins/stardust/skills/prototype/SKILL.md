@@ -112,13 +112,12 @@ acknowledgement.
 
 ## Setup
 
-0. **Playwright re-probe (mandatory first step).** `--no-save` playwright
-   installs from earlier phases are pruned by any later real `npm i`
-   (extract SKILL.md § Setup → `--no-save` installs are ephemeral). Before
-   any rendering step, probe
-   `node -e "import('playwright').then(()=>process.exit(0))"` from the
-   project root and re-install (`npm i -D playwright --no-save
-   --legacy-peer-deps`) on failure.
+0. **Runtime preflight (mandatory first step).** `node
+   skills/stardust/scripts/preflight-runtime.mjs` (master Setup step 9): the
+   three runtime packages resolve from `stardust/node_modules` and Chromium
+   is present before any rendering step — never `npm i -D playwright
+   --no-save` in the EDS repo (`skills/stardust/reference/runtime-preflight.md`
+   § Contract).
 1. Run the master skill's setup
    (`skills/stardust/SKILL.md` § Setup).
 2. Verify `stardust/state.json` exists and contains at least one

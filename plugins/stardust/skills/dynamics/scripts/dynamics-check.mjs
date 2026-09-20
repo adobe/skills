@@ -225,7 +225,7 @@ const RUNNERS = {
 export async function replay({ origin, parity, authHeader = null, headed = 0 }) {
   const { chromium } = await loadPlaywright();
   // headed = ladder start tier (0 = the tier extract recorded; 2 = real Chrome headless; 3 = off-screen window)
-  const browser = await launchTier(chromium, resolveStartTier(headed));
+  const browser = await launchTier(chromium, resolveStartTier(headed)).catch((e) => { if (e.code === 124) { console.error(e.message); process.exit(124); } throw e; }); // no browser slot = no verdict, never a FAIL
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   await attachOriginAuth(ctx, origin, authHeader);
   // entry-document statuses per check: a 429/503 on the origin's own document makes the replay unmeasured, not failed (qa dynamics/parity-unmeasured)

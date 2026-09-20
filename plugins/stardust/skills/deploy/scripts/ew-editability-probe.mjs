@@ -688,7 +688,7 @@ export async function loadChromium({ roots = globalNodeModulesCandidates() } = {
       if (mod) return mod.chromium;
     } catch { /* next candidate */ }
   }
-  throw new Error('playwright not found — run node skills/stardust/scripts/preflight-runtime.mjs (master § Setup step 9)');
+  throw new Error('playwright not found — run node skills/stardust/scripts/preflight-runtime.mjs (master § Setup step 10)');
 }
 
 // One launch to learn whether a browser BINARY exists behind a resolvable playwright

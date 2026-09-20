@@ -15,6 +15,7 @@
  */
 import { loadPlaywright, finding, pageUrl, attachOriginAuth, noteThrottled } from '../lib.mjs';
 import { gotoPaced } from './browse.mjs';
+import { acquire } from '../../../stardust/scripts/browser-lock.mjs';
 
 const BUDGET_TRANSFER_KB = 800;
 const BUDGET_JS_KB = 250;
@@ -58,7 +59,8 @@ export async function run(ctx) {
   const sev = (s) => (degraded ? 'info' : s);
 
   const { chromium } = await loadPlaywright();
-  const browser = await chromium.launch();
+  const slot = await acquire({ script: 'qa-perf' }).catch((e) => { if (e.code === 124) { console.error(e.message); process.exit(124); } throw e; }); // fan-out.md § Machine budget — 124 = no slot, no verdict, never an error row
+  const browser = await chromium.launch(); browser.on('disconnected', () => slot?.release());
   const reps = representatives(inventory, opts.perfPages || 10);
 
   for (const p of reps) {

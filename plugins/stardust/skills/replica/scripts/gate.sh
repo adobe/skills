@@ -148,6 +148,8 @@
 #   GATE_STITCH_TIMEOUT  seconds per stitch-shot          (default 300)
 #   GATE_COMPARE_TIMEOUT seconds per pixel-compare        (default 120)
 #   GATE_REAP_MIN        stale-instrument age in minutes  (default 15; 0 disables)
+#   STARDUST_BROWSER_SLOTS / _WAIT / _LOCK_DIR   the per-round browser slot (skills/stardust/scripts/browser-lock.mjs;
+#                        0 = unlocked); acquire exit 124 = no slot in time → gate.sh exits 124 (no verdict)
 #   GATE_ALLOW_CONSENT=1 pass --allow-consent to BOTH captures (a consent
 #                        container that survives dismissal is otherwise exit 5)
 #   GATE_ANCHOR_TIMEOUT  seconds per anchor.mjs landmark pass  (default 120)
@@ -307,6 +309,9 @@ if [ -f "$MASKS_JSON" ]; then
   echo "gate.sh: masks from $MASKS_JSON → $MASK_FLAGS on both captures; pixel-compare applies them from both sidecars (every mask on the verdict line and in the record)"
 fi
 REAP_MIN=${GATE_REAP_MIN:-15}
+# Browser slot (../../stardust/reference/fan-out.md § Machine budget): one per gate round, taken below before
+# the first capture; the module resolves from the project copy layout, then the plugin tree; absent → unlocked.
+LOCK="$HERE/../stardust/browser-lock.mjs"; [ -f "$LOCK" ] || LOCK="$HERE/../../stardust/scripts/browser-lock.mjs"; [ -f "$LOCK" ] || LOCK=""
 capped() { local t=$1 l=$2; shift 2; node "$HERE/run-capped.mjs" --timeout "$t" --label "$l" -- "$@"; }
 
 # Stale-instrument reap (own user, replica instruments only, by basename so the
@@ -321,6 +326,16 @@ if [ "$REAP_MIN" -gt 0 ] 2>/dev/null; then
           kill -9 "$pid" 2>/dev/null && echo "gate.sh: reaped stale instrument pid $pid (running $etime): $(printf '%s' "$cmd" | grep -oE '[a-z-]+\.mjs' | head -1)" >&2
         fi
       done
+  [ -n "$LOCK" ] && node "$LOCK" reap --min "$REAP_MIN" >&2   # parentless chromium older than REAP_MIN (browser-lock)
+fi
+
+# Take this round's browser slot (pid = this shell; released on EXIT). 124 = no slot within the wait: no verdict,
+# never a FAIL — re-run. Children (stitch-shot, anchor, chrome-parity via live-session launchTier) inherit
+# STARDUST_BROWSER_SLOTS=0 so the round holds exactly one slot.
+if [ -n "$LOCK" ] && [ "${STARDUST_BROWSER_SLOTS:-2}" != "0" ]; then
+  node "$LOCK" acquire --script gate.sh --project "$PWD" || exit $?
+  trap 'node "$LOCK" release >/dev/null 2>&1' EXIT
+  export STARDUST_BROWSER_SLOTS=0
 fi
 
 # Identity assertion — NEVER diff an unverified build URL (two field
@@ -558,6 +573,7 @@ fi
 
 # Build side: re-captured every iteration.
 # shellcheck disable=SC2086
+[ -n "$LOCK" ] && node "$LOCK" refresh >/dev/null 2>&1   # a long live capture must not let the slot expire (TTL)
 capped "$STITCH_TIMEOUT" "stitch-shot build $SLUG@$W" node "$HERE/stitch-shot.mjs" "$BUILD_URL" "$DIR/build.png" --width "$W" --consent-mode "$CONSENT_MODE" $STITCH_COMMON
 rc=$?
 [ $rc -eq 5 ] && { rm -f "$DIR/build.png" "$DIR/build.png.json"; echo "gate.sh: build capture INVALID (exit 5: overlay / error page / consent not deniable) — not a verdict, never a FAIL" >&2; exit 5; }
