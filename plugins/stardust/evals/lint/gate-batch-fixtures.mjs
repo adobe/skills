@@ -45,6 +45,7 @@ try {
   assert.deepEqual(classify(2), { verdict: 'FAIL', ok: false, noverdict: false });
   for (const c of [124, 3, 5, 6, 4, 1, 125, 7]) assert.equal(classify(c).noverdict, true, `exit ${c} is no verdict`);
   assert.equal(classify(124).verdict, 'NO VERDICT (deadline)');
+  assert.equal(classify(7).verdict, 'NO VERDICT (instrument-unavailable)', 'gate.sh exit 7 (dependency unresolved) is named, never failed');
   assert.equal(batchExit([0, 124, 2, 3]), 2);
   assert.equal(batchExit([0, 3, 124]), 124);
   assert.equal(batchExit([0, 3, 0]), 3);

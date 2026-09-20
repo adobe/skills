@@ -104,7 +104,10 @@
 # viewport — the partial PNG is removed, nothing is cached), 6 cap reached (3
 # counted rounds — decide: residual / register / --over-cap; nothing ran),
 # 124 instrument deadline exceeded (not a measurement — see below), 125 bad
-# argument / duplicate label.
+# argument / duplicate label, 7 instrument unavailable — a dependency (playwright /
+# pngjs / pixelmatch) did not resolve (stitch-shot / pixel-compare preflight exit 2,
+# before any capture or compare): no verdict, never a FAIL, not counted, the label is
+# not taken; run `node skills/stardust/scripts/preflight-runtime.mjs` and re-run.
 #
 # Iteration cap (source-fidelity-gate.md § Iteration discipline), mechanical
 # and PER REGIME: the count is DERIVED from the round records in the gate dir
@@ -539,6 +542,7 @@ capture_live() {
   # the PNG + sidecar: a partial live capture must never be reused as the
   # reference on the next round (the cache check above is "live.png exists").
   [ $rc -ne 0 ] && rm -f "$DIR/live.png" "$DIR/live.png.json"
+  [ $rc -eq 2 ] && { echo "gate.sh: live capture gave no verdict — instrument unavailable (stitch-shot preflight exit 2: a dependency did not resolve; run node skills/stardust/scripts/preflight-runtime.mjs) — never a FAIL, not counted; nothing captured" >&2; exit 7; }
   [ $rc -eq 5 ] && { echo "gate.sh: live capture INVALID (exit 5: short capture / overlay / error page / consent not deniable) — not a verdict, never a FAIL; nothing cached" >&2; exit 5; }
   [ $rc -ne 0 ] && { echo "gate.sh: live capture failed (exit $rc) — not comparing; nothing cached" >&2; exit $rc; }
 }
@@ -592,6 +596,7 @@ fi
 [ -n "$LOCK" ] && node "$LOCK" refresh >/dev/null 2>&1   # a long live capture must not let the slot expire (TTL)
 capped "$STITCH_TIMEOUT" "stitch-shot build $SLUG@$W" node "$HERE/stitch-shot.mjs" "$BUILD_URL" "$DIR/build.png" --width "$W" --consent-mode "$CONSENT_MODE" $STITCH_COMMON
 rc=$?
+[ $rc -eq 2 ] && { rm -f "$DIR/build.png" "$DIR/build.png.json"; echo "gate.sh: build capture gave no verdict — instrument unavailable (stitch-shot preflight exit 2: a dependency did not resolve; run node skills/stardust/scripts/preflight-runtime.mjs) — never a FAIL, not counted" >&2; exit 7; }
 [ $rc -eq 5 ] && { rm -f "$DIR/build.png" "$DIR/build.png.json"; echo "gate.sh: build capture INVALID (exit 5: overlay / error page / consent not deniable) — not a verdict, never a FAIL" >&2; exit 5; }
 [ $rc -ne 0 ] && { echo "gate.sh: build capture failed (exit $rc) — not comparing" >&2; exit $rc; }
 
@@ -673,6 +678,10 @@ fi
 # shellcheck disable=SC2086
 node "$HERE/pixel-compare.mjs" "$DIR/live.png" "$DIR/build.png" --out "$DIR/diff-$LBL.png" --review "$DIR/review-$LBL.png" --timeout "$COMPARE_TIMEOUT" --json-out "$DIR/gate-$LBL.json" $FORCE $MASK_ARG
 rc=$?
+# Preflight exit 2 (pngjs / pixelmatch unresolved) shares the code with a FAIL verdict but
+# writes no --json-out: without a record it is no verdict — instrument unavailable, never a
+# counted FAIL (the label stays free; the cached live reference is kept).
+if [ $rc -eq 2 ] && [ ! -f "$DIR/gate-$LBL.json" ]; then echo "gate.sh: pixel-compare gave no verdict — instrument unavailable (preflight exit 2, no record written: a dependency did not resolve; run node skills/stardust/scripts/preflight-runtime.mjs) — never a FAIL, round not counted, label $LBL not taken" >&2; exit 7; fi
 # A compare that produced no summary (deadline, incomparable pair) still
 # leaves a no-verdict record: the attempt is on the audit trail, its label is
 # taken, and it never counts against the cap.

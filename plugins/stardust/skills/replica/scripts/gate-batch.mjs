@@ -31,7 +31,8 @@
  *
  * Verdicts (gate.sh exit → row): 0 PASS → ok · 2 FAIL → failed · every other code is
  * NO VERDICT → noverdict, named by code (124 deadline, 3 bot-challenge, 5 invalid-capture,
- * 6 cap-reached, 4 wrong-server, 1 error, 125 usage). A deadline is never folded into
+ * 6 cap-reached, 4 wrong-server, 7 instrument-unavailable — a dependency did not resolve,
+ * 1 error, 125 usage). A deadline or a missing dependency is never folded into
  * failed. Table: slug width exit verdict pixel% Δh record (from gate-<label>.json when
  * the round wrote one).
  *
@@ -47,7 +48,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const USAGE = 'usage: gate-batch.mjs <pairs.tsv> [--concurrency 2] [--gate <gate.sh>] [--out <dir>] [--progress <file> | --no-progress] [--dry-run]';
-export const NO_VERDICT = { 124: 'deadline', 3: 'bot-challenge', 5: 'invalid-capture', 6: 'cap-reached', 4: 'wrong-server', 1: 'error', 125: 'usage' };
+export const NO_VERDICT = { 124: 'deadline', 3: 'bot-challenge', 5: 'invalid-capture', 6: 'cap-reached', 4: 'wrong-server', 7: 'instrument-unavailable', 1: 'error', 125: 'usage' };
 
 // progress.mjs: plugin tree, else the project copy beside stardust/scripts/stardust/; absent → SUMMARY only
 async function loadProgress() {

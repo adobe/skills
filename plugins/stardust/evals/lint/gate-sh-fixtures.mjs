@@ -42,6 +42,9 @@
 //     reason (1 error, 3 challenge — not only 124/5) after writing the PNG
 //     leaves no live.png(.json) behind; the next round captures afresh
 //     (defect fixture: only 124 and 5 removed the partial file);
+//   instrument unavailable — a stitch-shot / pixel-compare preflight exit 2
+//     (dependency unresolved) exits 7, writes no record, never counts (defect
+//     fixture: every compare rc 2 was a counted FAIL);
 //   verdict line — `verdict: <V> <pct> % Δh <n>px  iteration k/3` is ONE line;
 //   per-regime cap — three prototype rounds do not exhaust the published-
 //     origin cap (first published round runs as pub1, iteration 1); NO-OP and
@@ -92,7 +95,7 @@ mkdirSync(join(project, 'stardust', 'replica'), { recursive: true });
 // process's event loop, so an in-process server would never answer gate.sh's
 // identity curl.
 const server = spawn(process.execPath, ['-e', `
-  const s = require('node:http').createServer((q, r) => { r.setHeader('content-type', 'text/html'); r.end('<html><body><h1>fresh drift noise noise2 noise3 cap rec orphan regime stale forced partial proposed broken unlock</h1></body></html>'); });
+  const s = require('node:http').createServer((q, r) => { r.setHeader('content-type', 'text/html'); r.end('<html><body><h1>fresh drift noise noise2 noise3 cap rec orphan regime stale forced partial proposed broken unlock nodep nodep2</h1></body></html>'); });
   s.listen(0, '127.0.0.1', () => process.stdout.write(String(s.address().port)));
 `], { stdio: ['ignore', 'pipe', 'inherit'] });
 const port = await new Promise((r) => { server.stdout.once('data', (d) => r(String(d).trim())); });
@@ -329,6 +332,17 @@ try {
   r = gate('partial');
   check(r.status === 0 && readJson(sidecar('partial'))?.docHeight === 3000 && rec('partial', 'iter1')?.iteration === 1, `the round after a failed live capture captures afresh (no partial reuse) and is iteration 1\n${r.out}`);
 
+  // ---- instrument unavailable (slug nodep): a preflight exit 2 (dependency unresolved) is NO VERDICT, never a counted FAIL ----
+  // defect fixture: gate.sh mapped every compare rc 2 to FAIL — a missing pngjs/pixelmatch burned a cap round
+  r = gate('nodep', [], { STUB_PREFLIGHT_FAIL: '1' });
+  check(r.status === 7 && /instrument unavailable/.test(r.out) && /preflight-runtime\.mjs/.test(r.out) && !/verdict: FAIL/.test(r.out) && !existsSync(join(dirOf('nodep'), 'gate-iter1.json')) && existsSync(join(dirOf('nodep'), 'live.png')), `a pixel-compare preflight exit 2 (no record) must exit 7 / instrument unavailable, write no record, never FAIL, keep the live reference\n${r.out}`);
+  r = gate('nodep', [], { STUB_STITCH_EXIT: '2' });
+  check(r.status === 7 && /build capture gave no verdict — instrument unavailable/.test(r.out) && !existsSync(join(dirOf('nodep'), 'gate-iter1.json')), `a build stitch-shot preflight exit 2 must exit 7, not 2\n${r.out}`);
+  r = gate('nodep2', [], { STUB_STITCH_EXIT: '2' });
+  check(r.status === 7 && /live capture gave no verdict — instrument unavailable/.test(r.out) && !existsSync(join(dirOf('nodep2'), 'live.png')), `a live stitch-shot preflight exit 2 must exit 7, not 2; nothing cached\n${r.out}`);
+  r = gate('nodep');
+  check(r.status === 0 && rec('nodep', 'iter1')?.iteration === 1, `after an instrument-unavailable round the label iter1 is free and the next round is iteration 1 (not counted)\n${r.out}`);
+
   // ---- verdict line (slug fresh, already on disk) ----
   check(/^verdict: PASS 5 % Δh 0px  iteration 1\/3$/m.test(gateOut.fresh1), `the verdict line carries verdict, the two numbers and iteration k/3 on ONE line\n${gateOut.fresh1}`);
 
@@ -372,4 +386,4 @@ try {
 }
 
 if (failures.length) { console.error(`gate-sh-fixtures: ${failures.length} finding(s)`); for (const f of failures) console.error(`  ✗ ${f}`); process.exit(1); }
-console.log('gate-sh-fixtures: ok (broken-image gate failClass / symmetric / 124 stays / pre-field skip / --record ledgers pass false + lint blocks, freshness probe, live drift + cache invalidation + stored landmarks (2 hits), probe deadline, noise floor + same flags on live-b + stale floor after drift, iteration cap / --over-cap / --invalidate / NO-OP, per-regime cap + labels, partial live capture removed on any rc, verdict line, stale-procedure version read + safety net, --record ledger copy + masks[] shape + archetypes[] reader, --help)');
+console.log('gate-sh-fixtures: ok (broken-image gate failClass / symmetric / 124 stays / pre-field skip / --record ledgers pass false + lint blocks, freshness probe, live drift + cache invalidation + stored landmarks (2 hits), probe deadline, noise floor + same flags on live-b + stale floor after drift, iteration cap / --over-cap / --invalidate / NO-OP, per-regime cap + labels, partial live capture removed on any rc, instrument unavailable exit 7 (preflight rc 2 never a FAIL), verdict line, stale-procedure version read + safety net, --record ledger copy + masks[] shape + archetypes[] reader, --help)');

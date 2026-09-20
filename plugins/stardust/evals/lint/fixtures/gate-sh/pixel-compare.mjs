@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 // STUB pixel-compare for the gate.sh fixture runner: emits the real summary
 // shape to --json-out; no pixelmatch. Env: STUB_PCT, STUB_HDELTA, STUB_DIFFPX,
-// STUB_BAND0, STUB_COMPARE_EXIT (forces the exit code, e.g. 124), STUB_MASKS (JSON
+// STUB_BAND0, STUB_COMPARE_EXIT (forces the exit code, e.g. 124), STUB_PREFLIGHT_FAIL, STUB_MASKS (JSON
 // masks[] in the real shape: kind/class/label/spec|sel|src/areaPct/side/asymmetric).
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 const [a, b, ...rest] = process.argv.slice(2);
 const opt = (f, d) => { const i = rest.indexOf(f); return i >= 0 ? rest[i + 1] : d; };
+// STUB_PREFLIGHT_FAIL: the real script's preflightExit — a dependency did not resolve → one stderr line, exit 2, NO --json-out
+if (process.env.STUB_PREFLIGHT_FAIL) { console.error("pixel-compare.mjs: cannot resolve 'pngjs' — run node skills/stardust/scripts/preflight-runtime.mjs"); process.exit(2); }
 const forced = Number(process.env.STUB_COMPARE_EXIT || 0);
 if (forced === 124) process.exit(124);
 const pct = Number(process.env.STUB_PCT || 5);
