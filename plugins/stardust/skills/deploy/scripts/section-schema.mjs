@@ -26,9 +26,20 @@
  * of surviving instrumented elements — fewer means authored elements were rebuilt,
  * merged or synthesized (EW1), and the block is not editable in the workspace.
  *
+ * `structure` (per section, T28.4 — audit-and-naming.md § 2b): `{ interactive: [<selectors matched>],
+ * columns: <n> }` — interactive = descendants matching button/input/select/textarea/form/details,
+ * tab roles, aria-expanded/-controls or framework mounts (schema-checks.mjs INTERACTIVE_SELECTORS; a
+ * `{{…}}` text node counts as `text {{…}}`); columns = the largest count of content-bearing direct
+ * children of one container whose boxes share a top and differ in left at the schema width. A
+ * section triaged to default content (`defaultContent: true` | `{ reason, dynamicsRow }` — carried
+ * over from an existing --out file) that carries structure prints `⚠ generic-with-structure <section>:
+ * interactive=[…] columns=n` here and FAILs `qa-gate.mjs --schema` while it renders as prose.
+ * `hasH1` marks the section that holds the authored <h1> (qa-gate's h1Section check, T21.2).
+ *
  * Usage:
  *   node skills/deploy/scripts/section-schema.mjs <prototypeURL> [options]
- *     --out <file>     write JSON here (default stdout)
+ *     --out <file>     write JSON here (default stdout; an existing file's `defaultContent` and
+ *                      `decodeTier` per section name are kept)
  *     --width <px>     viewport width (default 1280)
  *     --profile <p>    eds | generic — eyebrow classifier thresholds (default eds)
  *
@@ -44,15 +55,17 @@ import path from 'path';
 import { pathToFileURL } from 'url';
 import { resolveProfile } from './diff-profiles.mjs';
 import { inventory, editableInventory } from './content-inventory.mjs';
+import { flagGenericWithStructure, INTERACTIVE_SELECTORS, MUSTACHE_MARKER } from './schema-checks.mjs';
 
 function parseArgs(argv) {
   const [, , url, ...rest] = argv;
   const opts = { out: null, width: 1280, profile: 'eds' };
+  const value = (i, flag) => { const v = rest[i]; if (v === undefined || v.startsWith('--')) throw new Error(`${flag} needs a value`); return v; };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
-    if (a === '--out') { opts.out = rest[i += 1]; }
-    else if (a === '--width') { opts.width = Number(rest[i += 1]); }
-    else if (a === '--profile') { opts.profile = rest[i += 1]; }
+    if (a === '--out') { opts.out = value(i += 1, a); }
+    else if (a === '--width') { opts.width = Number(value(i += 1, a)); }
+    else if (a === '--profile') { opts.profile = value(i += 1, a); }
   }
   return { url, opts };
 }
@@ -62,7 +75,25 @@ function parseArgs(argv) {
 // idea as style-fingerprint.mjs #90, but CONTENT-shaped: what a repeat unit
 // contains, so ENCODE knows what "one row per unit" must carry).
 /* eslint-disable no-undef */
-function mapSections() {
+function mapSections(structureArgs) {
+  const INTERACTIVE = (structureArgs && structureArgs.interactive) || [];
+  const MUSTACHE = (structureArgs && structureArgs.mustache) || 'text {{…}}';
+  // T28.4 structure facts: what makes a section NOT prose — interactive descendants and side-by-side columns
+  const structureFacts = (sec) => {
+    const interactive = INTERACTIVE.filter((sel) => { try { return !!sec.querySelector(sel); } catch { return false; } });
+    const walker = document.createTreeWalker(sec, NodeFilter.SHOW_TEXT);
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) { if (n.textContent.includes('{{')) { interactive.push(MUSTACHE); break; } }
+    const bearing = (el) => el.getBoundingClientRect().width > 0 && (el.textContent.trim().length > 0 || el.querySelector('img,picture,svg,video,iframe'));
+    let columns = 0;
+    for (const c of [sec, ...sec.querySelectorAll('*')]) {
+      const kids = [...c.children].filter(bearing);
+      if (kids.length < 2) continue;
+      const rows = new Map(); // top (rounded) → distinct lefts
+      for (const k of kids) { const r = k.getBoundingClientRect(); const top = Math.round(r.top / 4) * 4; if (!rows.has(top)) rows.set(top, new Set()); rows.get(top).add(Math.round(r.left)); }
+      for (const lefts of rows.values()) columns = Math.max(columns, lefts.size);
+    }
+    return { interactive, columns };
+  };
   const root = document.querySelector('main') || document.body;
   const all = [...root.querySelectorAll('section, [data-section]')];
   const top = all.filter((s) => !s.parentElement.closest('section, [data-section]'));
@@ -109,7 +140,7 @@ function mapSections() {
         reported.push(...members);
       }
     }
-    out.push({ idx, section: name, repeats: groups });
+    out.push({ idx, section: name, repeats: groups, structure: structureFacts(sec), hasH1: !!sec.querySelector('h1') });
   });
   return out;
 }
@@ -136,7 +167,7 @@ async function main() {
     });
     await page.waitForTimeout(400);
 
-    const mapped = await page.evaluate(mapSections);
+    const mapped = await page.evaluate(mapSections, { interactive: INTERACTIVE_SELECTORS, mustache: MUSTACHE_MARKER });
     sections = [];
     for (const m of mapped) {
       const inv = await page.evaluate(inventory, [`[data-ss-idx="${m.idx}"]`, prof.eyebrow]);
@@ -147,22 +178,32 @@ async function main() {
         imgCount: inv.imgCount,
         editableTexts: editable.count,
         repeats: m.repeats,
+        structure: m.structure,
+        ...(m.hasH1 ? { hasH1: true } : {}),
       });
     }
   } finally {
     await browser.close();
   }
 
+  // Step 2b decisions recorded on an earlier run of the same file survive a re-measure (defaultContent, decodeTier)
+  const previous = opts.out && fs.existsSync(opts.out) ? (() => { try { return JSON.parse(fs.readFileSync(opts.out, 'utf8')); } catch { return null; } })() : null;
+  if (previous && Array.isArray(previous.sections)) {
+    const byName = new Map(previous.sections.map((s) => [s.section, s]));
+    for (const s of sections) { const old = byName.get(s.section); if (!old) continue; for (const k of ['defaultContent', 'decodeTier']) if (old[k] !== undefined) s[k] = old[k]; }
+  }
   const schema = { source: url, width: opts.width, profile: prof.name, sections };
   const json = JSON.stringify(schema, null, 1);
+  const flagged = flagGenericWithStructure(schema);
   if (opts.out) {
     fs.mkdirSync(path.dirname(opts.out), { recursive: true });
     fs.writeFileSync(opts.out, `${json}\n`);
-    const totals = sections.map((s) => `${s.section}(${s.items.length} items${s.repeats.length ? `, ${s.repeats.map((r) => `${r.count}×${r.unitSelector}`).join('+')}` : ''}, ${s.editableTexts} editable)`).join(', ');
+    const totals = sections.map((s) => `${s.section}(${s.items.length} items${s.repeats.length ? `, ${s.repeats.map((r) => `${r.count}×${r.unitSelector}`).join('+')}` : ''}, ${s.editableTexts} editable${s.structure && (s.structure.interactive.length || s.structure.columns >= 2) ? `, ${s.structure.interactive.length ? `interactive ${s.structure.interactive.length}` : ''}${s.structure.interactive.length && s.structure.columns >= 2 ? ' ' : ''}${s.structure.columns >= 2 ? `${s.structure.columns} cols` : ''}` : ''})`).join(', ');
     process.stdout.write(`schema → ${opts.out}\n${sections.length} sections: ${totals}\n`);
   } else {
     process.stdout.write(`${json}\n`);
   }
+  for (const f of flagged) process.stdout.write(`⚠ generic-with-structure ${f.section}: ${f.facts}${f.reason || f.dynamicsRow ? ` — recorded: ${f.dynamicsRow ? `dynamics row ${f.dynamicsRow}` : ''}${f.dynamicsRow && f.reason ? ', ' : ''}${f.reason || ''}` : ' — needs a block or a dynamics row before conversion (audit-and-naming.md § 2b)'}\n`);
 }
 
 export { mapSections }; // the repeat-unit grouping replica's variant-census / layout-cluster mirror (one rule, this file)

@@ -30,6 +30,15 @@
  *   - wide-viewport (#13, second pass at 1600px): block content boxes stay
  *     ≤ --maxw unless the block is genuinely full-bleed in the schema order —
  *     over-wide boxes print as WARN (cross-check against the prototype).
+ *   - generic-with-structure (T28.4, audit-and-naming.md § 2b): a schema section triaged to default
+ *     content (`defaultContent: true`) whose measured `structure` has interactive descendants or ≥ 2
+ *     columns, and whose page section (matched by order over the schema's non-chrome sections) renders
+ *     with no `[data-block-name]` — prose cannot carry a tab strip or a side-by-side layout. FAIL; the
+ *     recorded object form `"defaultContent": { "reason", "dynamicsRow" }` prints it as ⚠ instead. No
+ *     `--allow-*` flag; hands-off never writes the reason.
+ *   - h1Section (T21.2): the authored <h1> still sits in its authored section — schema `hasH1` index
+ *     vs the rendered `main .section` holding the <h1>. A mismatch is a FAIL when
+ *     stardust/runtime-contract.json#autoBlocks is non-empty (a builder moved it), else a WARN.
  *   - full-bleed pass (the INVERSE of #13): for blocks rendered edge-to-edge,
  *     the block's section wrapper must compute the full viewport width. The
  *     list is derived from the loaded block CSS — every [data-block-name] whose
@@ -48,6 +57,7 @@
 import { chromium } from 'playwright';
 import fs from 'fs';
 import { assertServedIdentity } from '../../replica/scripts/served-identity.mjs';
+import { flagGenericWithStructure, h1SectionVerdict } from './schema-checks.mjs';
 
 const args = process.argv.slice(2);
 const url = args.find((a) => !a.startsWith('--'));
@@ -133,6 +143,8 @@ const r = await page.evaluate(() => {
       const b = s.querySelector('[data-block-name]');
       return { block: b.dataset.blockName };
     });
+  // every main section in order: its first block name (null = default content) and whether it holds the <h1>
+  out.mainSections = [...document.querySelectorAll('main .section')].map((s) => ({ block: s.querySelector('[data-block-name]') ? s.querySelector('[data-block-name]').dataset.blockName : null, hasH1: !!s.querySelector('h1') }));
   return out;
 });
 
@@ -169,6 +181,26 @@ if (schema && Array.isArray(schema.sections)) {
     const got = Math.max(inst.unitCount, inst.headingUnits, tagGot);
     check(got >= want, `units: "${s.section}" → block ${inst.name} renders ≥${want}`, `rendered ${got} (grid kids ${inst.unitCount} / unit headings ${inst.headingUnits} / tag ${tagGot})`);
   });
+}
+
+// generic-with-structure (T28.4) + h1Section (T21.2) — judged in schema-checks.mjs; the schema's non-chrome
+// sections bind to `main .section` by order (the same binding the unit-count pass uses).
+if (schema && Array.isArray(schema.sections)) {
+  const protoSections = schema.sections.filter((s) => !['header', 'footer'].includes(s.section));
+  for (const f of flagGenericWithStructure({ sections: protoSections })) {
+    const pos = protoSections.findIndex((s) => s.section === f.section);
+    const sec = r.mainSections[pos];
+    if (!sec) { warns.push(`generic-with-structure: schema section "${f.section}" (${f.facts}) has no page section #${pos + 1} by order — verify manually`); continue; }
+    if (sec.block) { ok.push(`generic-with-structure: "${f.section}" (${f.facts}) renders as block ${sec.block}`); continue; }
+    if (f.reason || f.dynamicsRow) { warns.push(`generic-with-structure: "${f.section}" has ${f.facts} and renders as default content — recorded: ${f.dynamicsRow ? `dynamics row ${f.dynamicsRow}` : ''}${f.dynamicsRow && f.reason ? ', ' : ''}${f.reason || ''}`); continue; }
+    fails.push(`generic-with-structure: section "${f.section}" has ${f.facts} but renders as default content — needs a block or a dynamics row (audit-and-naming.md § 2b)`);
+  }
+  const schemaH1 = protoSections.findIndex((s) => s.hasH1 === true);
+  const pageH1 = r.mainSections.findIndex((s) => s.hasH1);
+  const contractFile = 'stardust/runtime-contract.json';
+  const autoBlocks = fs.existsSync(contractFile) ? ((() => { try { return JSON.parse(fs.readFileSync(contractFile, 'utf8')).autoBlocks; } catch { return []; } })() || []) : [];
+  const v = h1SectionVerdict({ schemaIndex: schemaH1 >= 0 ? schemaH1 : null, pageIndex: pageH1 >= 0 ? pageH1 : null, autoBlocks });
+  if (v) (v.level === 'ok' ? ok : v.level === 'warn' ? warns : fails).push(`h1Section: ${v.message}`);
 }
 
 // full-bleed pass (inverse of #13): the full-bleed blocks' section wrappers must
