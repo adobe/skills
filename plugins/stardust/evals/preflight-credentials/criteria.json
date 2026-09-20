@@ -51,6 +51,11 @@
       "name": "lookup_by_instrument",
       "max_score": 5,
       "description": "The token lookup was performed by `skills/deploy/scripts/da-token-check.mjs` (its command line and its output or exit code — `DA_TOKEN: missing — looked in …`, exit 2 — are visible in the transcript), not by ad-hoc `grep`/`python`/`node` decoding or by reading env files directly."
+    },
+    {
+      "name": "origin_check_in_list",
+      "max_score": 5,
+      "description": "The origin check ran before the stop — `skills/stardust/scripts/preflight-transports.mjs --org <org> --repo <repo>` (org/repo from `fstab.yaml`) or, without a `gh` login, a read of `fstab.yaml` and an `admin.hlx.page/status/` probe — and its result (origin present: mountpoint `larkspur-mutual/www`, repo status) is one line of the consolidated list; an origin that exists is never listed as missing and `deploy/reference/site-bootstrap.md` is not started."
     }
   ]
 }

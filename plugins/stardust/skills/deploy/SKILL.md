@@ -15,7 +15,7 @@ Read this card, then the one section you are at — never the whole skill. Every
 
 | # | Step | Command / artefact | Pass bar |
 |---|---|---|---|
-| 0 | Probes | `node -e "import('playwright').then(()=>process.exit(0))"`; read the target's `scripts/aem.js` + `scripts/scripts.js` → `stardust/runtime-contract.json`; `pipeline-mimic.mjs --probe --org <org> --repo <repo> --branch <branch>` → `#pipeline` (optional; 2 = no verdict) | contract written before any code |
+| 0 | Probes | `node -e "import('playwright').then(()=>process.exit(0))"`; read the target's `scripts/aem.js` + `scripts/scripts.js` → `stardust/runtime-contract.json`; `pipeline-mimic.mjs --probe --org <org> --repo <repo> --branch <branch>` → `#pipeline` (optional) | contract written before any code |
 | 1 | Audit | pre-render JSX to `stardust/.work/prerender/`; `node skills/deploy/scripts/style-fingerprint.mjs "file://<abs>/<proto>.html"` | per-page section list + variation manifest |
 | 2 | Names + reuse | D1/D11 triage per section → `stardust/eds-conversion-log.md` | names locked in writing before any block code |
 | 2b | Schema + tier | `node skills/deploy/scripts/section-schema.mjs "<protoURL>" --out stardust/eds-schema/<page>.json` | schema + decode tier recorded per section |
@@ -212,11 +212,12 @@ Chapters (full text of the sections this core compresses — read by `##`, each 
 - `reference/ai-readability.md` — the AI-readability rule (#86, #100): checker formula, block rules, gate.
 - `reference/pipeline-facts.md` — what the DA → EDS pipeline rewrites on delivery: fact, remedy, lint id; § Local emulation, § Probe.
 - `reference/ship-script.md` — the one-command ship script a hands-off run writes when a push or publish is denied: merge → push → explicit publish → post-ship gate → issue comment.
+- `reference/site-bootstrap.md` — no EDS origin yet: repo, `fstab.yaml`, Code Sync, seed + preview, `state.json.site.eds`.
 
 Bundled contracts:
 
 - `davids-model.md` — David's Model distilled: the 15 rules (`D#N`) mapped to this skill's contracts and gates, plus component-model shape notes.
-- `da-deploy-protocol.md` — the DA Source API deploy contract (auth, PUT, preview/publish, asset-before-preview ordering) and the delivery pipeline (stages, batch driver, atomic contract, link localization, token lifecycle).
+- `da-deploy-protocol.md` — the DA Source API deploy contract (auth, PUT, preview/publish, asset ordering), § Code push gates and the delivery pipeline (stages, driver, atomic contract, link localization, token lifecycle).
 - `../../notes/deploy-improvements-archive.md` — the frozen `(#NN)` ledger; new findings go to `skills/stardust/reference/learnings.md`.
-- `scripts/ew-editability-probe.mjs` — the Experience Workspace editability gate (Step 8): instrument → decorate → count survivors; `--simulate-editor`; URL and `--content` modes; `@ew-exempt` tags.
-- Experience Workspace sources the contract was verified against: `reference/block-js-scaffold.md` § Experience Workspace sources.
+- `scripts/ew-editability-probe.mjs` — the Experience Workspace editability gate (Step 8): `--simulate-editor`; URL and `--content` modes; `@ew-exempt` tags.
+- Experience Workspace sources: `reference/block-js-scaffold.md` § Experience Workspace sources.
