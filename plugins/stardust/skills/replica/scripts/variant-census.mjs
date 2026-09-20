@@ -40,7 +40,8 @@
  *     --type <t>          pages of that type (state.json.pages[].type)
  *     --slugs <file>      newline list of slugs
  *     --from-clusters <json> [--cluster <id>]
- *                         pages of layout-cluster.mjs's clusters (one cluster, or all of --type)
+ *                         pages of layout-cluster.mjs's clusters (one cluster, or all;
+ *                         --type narrows to that type's clusters). --slugs is exclusive.
  *     --marker <attr,…>   component markers (default data-component,data-component-id,data-cmp
  *                         plus [class^="cmp-"]); none on a page → top-level sections and the
  *                         outermost repeat units are the components
@@ -119,7 +120,7 @@ export function parseArgs(argv) {
     else if (a === '--json') opts.json = true;
     else fail(`unknown flag ${a}`);
   }
-  if ([opts.type, opts.slugs, opts.fromClusters].filter(Boolean).length > 1) fail('--type, --slugs and --from-clusters are exclusive');
+  if (opts.slugs && (opts.type || opts.fromClusters)) fail('--slugs is exclusive with --type and --from-clusters (--type may scope --from-clusters)');
   if (opts.cluster && !opts.fromClusters) fail('--cluster needs --from-clusters');
   return opts;
 }
@@ -361,7 +362,7 @@ async function main() {
   try { slugs = slugsFor(opts, root); } catch (e) { console.error(`variant-census: ${e.message}`); process.exit(1); }
   if (!slugs.length) { console.error(`variant-census: no pages in scope${opts.type ? ` for type ${opts.type}` : ''}`); process.exit(1); }
   const all = slugs.length; slugs = sampleSlugs(slugs, opts.sample);
-  const scope = `${opts.type ? `type ${opts.type}` : opts.slugs ? `slugs ${opts.slugs}` : opts.fromClusters ? `clusters ${opts.cluster || 'all'}` : 'all pages'}${slugs.length < all ? ` (sampled ${slugs.length} of ${all})` : ''}`;
+  const scope = `${opts.fromClusters ? `clusters ${opts.cluster || 'all'}${opts.type ? ` of type ${opts.type}` : ''}` : opts.type ? `type ${opts.type}` : opts.slugs ? `slugs ${opts.slugs}` : 'all pages'}${slugs.length < all ? ` (sampled ${slugs.length} of ${all})` : ''}`;
   let referenced = null;
   if (opts.css.length || opts.code.length) {
     referenced = new Set();

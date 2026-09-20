@@ -15,7 +15,7 @@
 // Usage: node plugins/stardust/evals/lint/variant-census-fixtures.mjs  (exit 1 on findings)
 /* eslint-disable no-restricted-syntax, brace-style, object-curly-newline, max-len */
 import { spawnSync } from 'node:child_process';
-import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from 'node:fs';
+import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -87,7 +87,17 @@ const run = (args, opts = {}) => { const r = spawnSync(process.execPath, [opts.s
 const help = run(['--help']);
 check(help.status === 0 && /Usage:/.test(help.out) && /--min-pages/.test(help.out) && /--allow/.test(help.out) && /--from-clusters/.test(help.out) && /--sample/.test(help.out), 'variant-census --help exits 0 and names the flags');
 check(run(['--bogus']).status === 1, 'unknown flag exits 1');
-check(run(['--type', 'a', '--slugs', 'b']).status === 1, 'exclusive scopes exit 1');
+check(run(['--type', 'a', '--slugs', 'b']).status === 1 && run(['--slugs', 'b', '--from-clusters', 'c.json']).status === 1, '--slugs is exclusive with --type / --from-clusters (exit 1)');
+// defect: --type was rejected next to --from-clusters although the header documents it and slugsFor implements the type filter
+{
+  const tmpC = mkdtempSync(join(tmpdir(), 'variant-census-clusters-'));
+  try {
+    const clusters = join(tmpC, 'layout-clusters.json');
+    writeFileSync(clusters, JSON.stringify({ types: [{ type: 'program', clusters: [{ id: 'c1', pages: ['p1', 'p2'] }], tail: [] }] }));
+    const r = run(['--root', join(tmpC, 'stardust'), '--from-clusters', clusters, '--type', 'landing']);
+    check(r.status === 1 && !/exclusive/.test(r.out) && /no pages in scope for type landing/.test(r.out), `--type scopes --from-clusters (an absent type is "no pages in scope", not a usage error), got ${r.status}\n${r.out}`);
+  } finally { rmSync(tmpC, { recursive: true, force: true }); }
+}
 check(run(['--cluster', 'c1']).status === 1, '--cluster without --from-clusters exits 1');
 check(run(['--root', join(tmpdir(), 'no-such-stardust')]).status === 1, 'missing state.json exits 1');
 check(run(['--min-pages', '0']).status === 1, '--min-pages 0 exits 1');
