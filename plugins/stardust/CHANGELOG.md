@@ -4,6 +4,107 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.24.0-next.3 — B2 wave 2: hardening — instrumented gates, self-describing drivers, pipeline-shape lints (pre-release, `stardust/next` only)
+
+Third batch of the 2026-08 learnings-harvest plan: the 40 wave-2 items — script changes and lints that turn wave-1 rules into
+instruments — plus the runner-output contract flipped to an instrument; the Aug–Sep 2026 field sessions re-measured for every claim.
+Behind this batch: 956 `sleep ≥ 60` calls, 711 followed by a log read (≈ 54 h); delivery ledgers lost or rebuilt in 4 projects; an
+894-row batch red on `PUT 401` (5.5 h blocked); 8,522 crawl screenshots, 0 mobile; 11 projects re-derived pipeline rewrites by hand;
+1,992 dead texts on a 143-page rollout; 4,245 constant block instances over 4,191 documents; 74 of 95 verify "failures" never delivered.
+
+**Replica instruments**
+- **`scripts/stitch-shot.mjs` v3**: pinned chrome hidden on chunks 2+ (`--keep-pinned`), integer scroll, bounded decode,
+  `--expect-height`; a short, error-page or overlay-covered capture exits 5 (T19.1: pinned chrome was 10–20 % of the diff).
+  **Masks** (T17.3): `--mask-sel` / `--mask-iframes` / `--mask-images` / `--masks-json` → sidecar `masksRects[]`, paired per side
+  by `pixel-compare --mask-from`; an asymmetric pair is refused.
+- **`live-session.mjs` `dismissOverlays`**: first *visible* match, exact labels in eleven languages, one late window; returns
+  `consentPresent`, so **`--consent-mode accept|deny` fails loud** — an undismissed dialog is exit 5 unless `--allow-consent`
+  / `GATE_ALLOW_CONSENT=1` (T19.2: 11 projects lost rounds to a surviving banner). **Crawl consent mirror**: `crawl.mjs
+  dismissConsent` is the same pass and its `consent.method` is stitch-shot's default. **`--block <substr,…>`** route-abort on
+  all seven replica/diff instruments and the four reskin scripts, `GATE_BLOCK` (T14.5).
+- **`scripts/review-image.mjs`** (new): `--bands a b --out` stacks the k worst bands live | build with a heat bar; `--sheet <dir>
+  --per 12` tiles crops with digit labels and a JSON legend; `pixel-compare --review` calls it in-process, `gate.sh` writes
+  `review-<label>.png` every round (T02.2). **`anchor.mjs --landmarks`** (`--against`): Δy table + `first non-zero Δ` per round;
+  **`pixel-compare --offsets`** marks `◄ seam` per band (T05.3: 92 hand-rolled runs in one session; T05.4). **`chrome-parity.mjs`**
+  `--open <liveSel>[|<buildSel>]`, `--scroll <y>` (T18.3). **`motion-observe.mjs` schema 2**: `entrances[]`, `stateMachines[]` (T20.1).
+**Replica gate**
+- **`scripts/gate.sh` freshness**: `live.png` older than `GATE_REF_MAX_AGE_H` (24) or `--refresh` → one fresh `anchor.mjs
+  --landmarks` probe; Δh over `max(1 %, GATE_DRIFT_PX, variance Δh)` or a section-count change → `LIVE DRIFT … recapturing`,
+  caches dropped, `liveDrift{}` recorded; `--variance` prints the `noise floor`, never subtracted (T17.2: stale 5 %, fresh 31 %).
+- **Mechanical cap and the gate ledger**: rounds counted per regime from `gate-*.json` (`iter<k>` / `pub<k>`); the 4th
+  counted round exits **6** before any capture — `--over-cap <regime>` runs one more; **`--record`** calls the new
+  **`scripts/progress-record.mjs`**, which upserts `breakpoints.<w>{iterations, result, overCap, masks[]}` / `published.<w>`
+  into `progress.json` — `result.pass` copied, never typed (T15.4, T15.3). "Pass with an asterisk" is gone everywhere,
+  guarded by the new **`evals/lint/forbidden-phrases.mjs`**.
+- **`scripts/gate-ledger-lint.mjs`** (new, T15.5): applies the doc's pass bar and residual grammar (`artifacts[]`, `acceptedBy`)
+  to `progress.json` per breakpoint; `--published` reports PASS / FAIL / ungated; exit 0 / 2 blocked / 1 unreadable (never
+  a pass); runs at rollout Setup 2 and in migrate before any A′ render.
+- **`scripts/gate-batch.mjs`** (new, T01.2): `<pairs.tsv>` → the same `gate.sh` rounds **pooled per live host** (same-host
+  rows sequential under the live lock, `--concurrency` caps hosts), one verdict table, a progress JSON, one `SUMMARY
+  gate-batch …` line; exit-124 rows are `noverdict`, never `failed`. Phase 5 previews first: `EDS URL:` in the close (T12.4).
+**Deploy batch and delivery**
+- **`scripts/deploy-batch.mjs` ledger**: `bodyHash` + `branch` per row; skip iff hash-equal and still delivered on the run's
+  tld; `--force` resets only the selected rows and is stripped from `next=`; `--plan`, `--report` (T06.1). **Repairs**: `body-invalid`,
+  `overwrite-guard`, one re-preview on `about:error` (T27.2). **Token lifecycle** via the new **`scripts/lib.mjs`** (`resolveToken`,
+  `tokenExpiry`, `daSmoke`): preflight exit 2 before any PUT on a 401 list or a short TTL; the first mid-batch 401 halts with exit
+  **3**, ledger persisted, `next=` printed (T09.3); ledger, repair and halt tests run over the new in-process `scripts/test/mock-da.mjs`.
+- **Completion contract — `stardust/scripts/progress.mjs`** (new, shared): `createProgress()` writes `stardust/.work/<skill>/
+  <driver>.progress.json` atomically per tick, `progress.mjs read <file>` is the poll, and every exit path of `deploy-batch.mjs` ends
+  with one stdout line `SUMMARY deploy-batch ok=<n> failed=<n> exit=<code> details=<ledger> skipped=<n> published=<n>|preview-only`;
+  `crawl.mjs`, `verify.mjs` and `gate-batch.mjs` print the same line; **`evals/lint/sleep-poll.mjs`** (new) guards the docs (T01.2).
+- **`scripts/served-check.mjs` is the origin waiter** (no `wait-for-origin.mjs`): **`--same-as <file>`** — decoded served
+  bytes equal the local file; `--wait <s>` expiry, 5xx or network → exit **124** (no verdict), 1 only for served-but-wrong;
+  Step 10 gates only after it exits 0 for every touched CSS/JS and the page marker (T01.3: one page gated 4× in 32 min).
+  **`rollout/scripts/update-coverage.mjs --from-ledger <ledger> [--url-base]`** reconciles the deploy ledger into coverage (T06.1).
+**Deploy harness and lints**
+- **`scripts/pipeline-mimic.mjs`** (new): ten idempotent string-level pipeline transforms (section-metadata → classes,
+  metadata → `<meta>`, emphasis hoist, `<img>` → `<p><picture>`, `:icon:`, table → block, …) applied by `build-harness`,
+  `render-harness` (`--fragments` serves chrome), `block-roundtrip` and the EW probe; `--self-test` pins a real recording (T21.1).
+- **`scripts/ew-editability-probe.mjs`**: `openHarness()` serves the repo on a synthetic origin so real `import` chains resolve;
+  `@ew-exempt [<tag>] [/regex/] — <category>: reason` items in any comment, `--strict` (T32.2). **`scripts/block-lint.mjs`** EW rules:
+  🔴 EW-VALUE (text position only), EW-JOIN, EW-RETAG, EW-HEADER, EW-CLONE; 🟡 EW-CLASS, EW2-CSS, EW-RHYTHM, EW-COMPOSED; a declared
+  `@ew-exempt` item caps one value-slotting 🔴, only `all` / chrome cap the file (T32.3: every miss on 1,992 dead texts had a signature).
+- **`scripts/davids-model-lint.mjs`**: 🔴 WRAPPER; 🟡 D1-EMPTY (`--allow-empty`), channel-URL embed exemption, BREADCRUMB once
+  per tree; `--json` tree `census` with 🟡 D9-VOCAB, D15-STYLE, STYLE-SEL, D1-DENSITY, D1-SPACER, VEHICLE-*, CHROME-LEAK,
+  **D-CONST** (a row identical on ≥ 80 % of ≥ 5 instances), **D14-OPTIONS** (T29.2, T31.2, T16.2, T30.2, T30.4, T30.1: 99 pages
+  × 14 identical rows). **Reference**: new **`deploy/reference/section-rhythm.md`** (T29.4); `chrome.md` § Chrome states and variants (T18.4).
+**Extract**
+- **`crawl.mjs` captures**: `--mobile entry|all|none` → `<slug>-360.png`; pages > 16,000 px banded, `--dpr` 1 recorded;
+  `_signals.{emptyMain, brokenImages, subResourceBlock, overlayCoverPct, captureQuality}` + `OVERLAY?` / `DEGRADED`; the new
+  **`evals/lint/crawl-log-lint.mjs`** fails an `ok` vision verdict over a degraded capture (T19.4). **`discover()`**: robots
+  `Sitemap:` first, conventions only when empty, nav union, BFS `--depth` (T24.1).
+- **Sessions and pacing**: `--storage-state` | `--fresh-state` | `--solve-wait <ms>` on `crawl.mjs` and all eleven
+  `live-session.mjs` importers (T14.1, T14.3). New shared **`diff/scripts/live-budget.mjs`**: 10 nav/min, ≥ 3 s gap, a bare 429
+  halves the ceiling once, `stardust/live-budget.json` ceilings expire after 7 days, one live tool per host via `live-<host>.lock` (T14.4).
+**Dynamics / qa**
+- **Recall**: sidecars gain tabs, shadow hosts, empty config containers, loose controls, search shell, players, chat, quiz;
+  `dynamics-detect.mjs --reach` mints `reach-only` rows; the new **`evals/lint/dynamics-recall.mjs`** runs `--static` in the chain (T34.7).
+- **429/503 are infrastructure state**: `qa/scripts/lib.mjs` per-host limiter (`--fetch-concurrency 4`, `--browser-concurrency 2`),
+  Retry-After retries counted; a still-throttled probe is `<check>/unmeasured` info in `report.infra`; over `--throttle-max` exit **2** (T37.1).
+**Rollout**
+- **`scripts/verify.mjs --report` — instrument flip of the W1 runner-output contract**: the ranked class table (≤ 60 lines)
+  is the default stdout; `summary.json`, `summary.md` (table, then per-page rows per class), `--verbose`, `--report <dir>`,
+  `SUMMARY verify …` last (T02.3); a page still throttled after the inline retry is `unverified`, exit 2; `--all` verifies
+  delivered rows only; typed ledger `delivery.type page|fragment|index`, `inventory --content` / `--redirects` (T27.7).
+- **`scripts/delivery-lint.mjs`**: P1 `one-cta-per-p` (links-only), `--allow-no-h1` → P2 `h1-deviation`, P2 `description-alt`,
+  P1 `href-scheme` / `href-whitespace`, P2 `empty-block` (`--allow-empty`), `--chrome-docs <files> [--content <dir>]` → P1
+  `chrome-variant`, P2 `chrome-variant-count` (T30.4, T16.2, T18.4).
+**Master**
+- **`scripts/impeccable-version-check.mjs --probe`** (default when a copy is found, `--no-probe`): one `… — launcher, 23
+  commands, 0 drift` line; `--state stardust/state.json` merges `state.json#impeccable{…, probedAt, drift}`, re-probes past
+  `--max-age 24` h or `--refresh`; `script-paths.mjs --installed <dir> [--strict]` resolves every impeccable cite (T39.3).
+- **Process**: the nine lane reviews missed ≈ 40 % of the script deliverables (docs naming flags and lints no script had);
+  a whole-batch deep read caught them (`_b2-gaps.md`, 78 worklist lines) — remediation lanes closed 65, a targeted pass
+  over a second deep read (107 scripts) the rest; the lint chain grew from 13 to 51 runners.
+**Lints** — `npm run lint:stardust` newly chains `flag-parity.test.mjs`, `forbidden-phrases.mjs`, `sleep-poll.mjs --self-test`,
+`dynamics-recall.mjs --static`, `{replica-capture,gate-sh,gate-batch,motion-observe,block-lint-ew,impeccable-probe}-fixtures.mjs`,
+`pipeline-mimic-fixture.mjs`, `fixtures/{crawl-signals,crawl-log-lint,crawl-discover,crawl-progress,storage-state,live-budget,
+live-session-flags,live-session-goto}.test.mjs`, `deploy/scripts/test/{deploy-batch-ledger,-repairs,-halt,-persist,served-check,
+ew-editability-probe,harness-skip,ai-readability-landmarks}.test.mjs`, `stardust/…/progress.test.mjs`, `diff/…/live-budget.test.mjs`,
+`dynamics/…/reach-fields.test.mjs`, `qa/…/{throttle,browse-throttle,browser-unmeasured}.test.mjs`, `replica/…/gate-ledger-lint.test.mjs`,
+`rollout/…/{verify,inventory,delivery-lint,update-coverage}.test.mjs`; browser halves skip without Playwright.
+- Gate: eleven evals at n = 2–3 on 0.23.0 text vs this branch, three passes. Up: phase-checkpoint 40 → 100, runner-output-contract 20 → 50 (the verify instrument), resume-state-report 65 → 77.5, prototype 83 → 91.5, ai-readability 82.5 → 90, routing 95 → 100, intent-reasoning 67.5 → 70; unchanged: direct-from-phrase 87.5, ew-editability 105. Marginally below baseline: extract-multipage 87.5 → 82.5 (one run at 95, one cut by the 40-minute cap) and migrate-incremental 82.5 → 80 (one criterion flip). Three regressions were found and fixed in-batch: the Setup 1 impeccable probe wrote `state.json.impeccable` on read-only invocations and displaced Phase 1 reasoning on the freeform route (now read-only, deferred there); the state report rendered a `Repo:` block for a project nested in another repository; the shared fixture disagreed with itself on page counts. Six intent runs before the last fix scored 35–55; the three after scored 85, 85, 40 — the dimensional restatement remains unreliable on this route (0 of 3), recorded as open.
+
 ## 0.24.0-next.2 — B1 wave 1: hands-off contracts, pipeline-shape lints, preview-by-default delivery (pre-release, `stardust/next` only)
 
 Second batch of the 2026-08 learnings-harvest plan: the 48 wave-1 items — mostly rules, plus the lints and helpers that
