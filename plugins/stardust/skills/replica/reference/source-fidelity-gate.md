@@ -18,10 +18,8 @@ craft gates entirely: an archetype ships because it measured true, never
 because it looked right. Every fix in the loop comes off the instruments;
 eyeballing is not an input.
 
-Validated (UC1-E1, a typographic retail home page): 8.31% → 2.93% → 1.31% pixel diff across
-exactly 3 iterations, 0 structural 🔴, height Δ 0 — and the two defects the
-capture phase missed (span font fork, hero scrim) were both found only by
-these instruments.
+Validated: 8.31% → 2.93% → 1.31% pixel diff across exactly 3 iterations,
+0 structural 🔴, height Δ 0.
 
 ## The three probes
 
@@ -105,7 +103,7 @@ capture is re-taken every iteration.
    justified when the prototype mirrors them (e.g. a 1×1 SEO h1 at x0, a
    carousel tile at a negative offset).
 3. **pixel diff ≤ 10% full-page** — AND no band left unexplained (§ Band
-   breakdown). 10% is the ship bar, not the target (validated run: 1.31%).
+   breakdown). 10% is the ship bar, not the target.
 4. **height delta: |Δ| ≤ 8px** — pixel-compare's own warning threshold is
    the bar (it prints ⚠ above 8px), so a −9px result is unambiguously a
    residual, not a pass. A large delta invalidates the % — the overlap crop
@@ -160,8 +158,7 @@ capture is re-taken every iteration.
    template × theme id, not on the home archetype alone.** Theme tokens
    bind per theme id, not per brand: an alias derived from one theme's
    surface is wrong on every other theme, and the archetype gate cannot
-   see it (chrome is a small share of page pixels).
-   Alias only tokens the live CSS actually binds to the measured element,
+   see it. Alias only tokens the live CSS actually binds to the measured element,
    and treat the source's theme/variant classes as probe deltas → block
    variants on the sibling's content (`../../migrate/reference/fidelity-tiers.md`
    § Sibling variance probe) — encode the variant, never fix the page.
@@ -181,8 +178,7 @@ capture is re-taken every iteration.
    differing pixels have ≥5 differing neighbours) — glyph antialiasing is
    thin, misalignment and missing paint are thick; (3) the region is
    text-dense (link columns, nav rows) — a band with imagery or icons never
-   qualifies (parity's ICONS finding would not be quiet anyway). One or two
-   of the three is not enough: a quiet parity probe with a THICK texture is
+   qualifies. One or two of the three is not enough: a quiet parity probe with a THICK texture is
    a paint defect the probe does not model; a thin texture with parity
    deltas is a real metric error hiding in noise. The 2% bar itself is
    unchanged, and the residual is re-verified every gate round like any
@@ -278,7 +274,7 @@ runs over the same stitched PNGs — no live hit):**
   margins by eye against crops (`review-image.mjs --bands` / `crop-compare`,
   never `sips`).
 
-## Wide-viewport fluid check (fluid-vs-fixed is invisible at the gate widths, #116)
+## Wide-viewport fluid check (fluid-vs-fixed is invisible at the gate widths)
 
 Both gate breakpoints render a frozen `width: 720px` and an authored
 `width: 50%` byte-identically at 1440 — and 360 collapses both — so a
@@ -333,7 +329,7 @@ fix is upstream, not a fourth loop.
   the count is already on the verdict line; if it didn't move at all, find
   out why the rule never applied (specificity, wrong selector, value already
   in effect) before spending another round.
-- **Verify geometry fixes on the RULE-BEARING element, cache-free (#117).**
+- **Verify geometry fixes on the RULE-BEARING element, cache-free.**
   One field "parity verified" claim was wrong three ways at once: the probe
   matched a heuristic element ("white column wider than 400px") that wasn't
   the box carrying the lifted rule — always pair the same semantic element
@@ -532,7 +528,7 @@ rather than erroring.
    stitch-shot (`consent present, not dismissed — <container>`; `--consent
    <sel>` or `GATE_ALLOW_CONSENT=1` / `--allow-consent` on both sides) and
    a `WARN consent present` on the structural probes.
-7. **Granularity parity for JOIN/SPLIT false-reds (#87)** — mirror live
+7. **Granularity parity for JOIN/SPLIT false-reds** — mirror live
    node granularity or confirm-justify per
    `recreation-procedure.md` § Granularity parity.
 8. **Capture-state policy** — CDN-403 placeholders and hydration states are
@@ -884,6 +880,7 @@ and %, do not chase it.
 | `subpixel-layoutunit` | a whole band shifted 1px, anchors Δy ±1 — a fractional layout unit rounding differently per engine path | none — logged with band and % | user | yes |
 | `icon-font-substitution` | chrome-parity ICONS signature mismatch on a licensed icon font the new host cannot ship | harvest the live vectors first (`recreation-procedure.md` § Asset harvest, icons); residual only when the licensed face is unavailable | user | yes |
 | `capture-state` | CDN-403 placeholders, hydration states, fallback type on a face that fails for real browsers too (rules 8 and 14) | replicate as captured; real assets wired at delivery | delivery | until delivery |
+| `motion-unassertable` | `motion-assert` has no headless target (prototype / published page unreachable, observe run bot-blocked); no `motion.assert` record possible | none — `artifacts[]` (observe JSON, run output) + `acceptedBy`; interactive only, never hands-off | user | no |
 | `authored-volatile-masked` | campaign heroes / promo creatives that changed between capture and gate | `--mask` — every mask on the verdict line and in `masks[]` | user | n/a (masked) |
 
 The rollout phase's final report surfaces the residual list per page type

@@ -14,6 +14,8 @@
 //   coverage line; with one published PASS → counted;
 //   register:R-nn with a trailing description is a named cause;
 //   the gate doc's § Residual classes intro states the same cause grammar;
+//   every residual class a sibling reference names is a table row
+//   (motion-unassertable: valid with acceptedBy, refused under hands-off-policy);
 //   --help exits 0; unknown flag exits 1.
 // Usage: node plugins/stardust/skills/replica/scripts/gate-ledger-lint.test.mjs
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -101,6 +103,23 @@ try {
   const doc = readFileSync(join(HERE, '..', 'reference', 'source-fidelity-gate.md'), 'utf8');
   const intro = (doc.split(/^### Residual classes\s*$/m)[1] || '').split('\n| class id')[0];
   check(/register:R-nn/.test(intro) && !/own terms/.test(intro) && /class id from this table/.test(intro), `§ Residual classes intro must name the lint's cause grammar (class id | register:R-nn), not free-text causes\n${intro}`);
+  // doc/doc agreement: every residual class a sibling doc names ("residual class `x`") is a row of the table — recreation-procedure.md named
+  // `motion-unassertable` (behaviour-match escape) before the table had it, so the escape read "residuals unnamed" and blocked
+  const { residualClasses } = await import(join(HERE, 'progress-record.mjs'));
+  const classes = residualClasses();
+  for (const f of ['recreation-procedure.md', 'preserve-direction.md']) {
+    const named = [...readFileSync(join(HERE, '..', 'reference', f), 'utf8').matchAll(/residual class\s+`([a-z0-9-]+)`/g)].map((m) => m[1]);
+    for (const id of named) check(classes.has(id), `${f} names residual class \`${id}\` but § Residual classes has no such row`);
+  }
+  check(classes.has('motion-unassertable') && classes.get('motion-unassertable').permanent === false, 'motion-unassertable is a table row and NOT permanent (interactive acceptance only — hands-off never self-accepts it)');
+  const unassertable = JSON.parse(JSON.stringify(valid)); unassertable.residuals[1].cause = 'motion-unassertable: prototype server unreachable from the headless run'; unassertable.residuals[1].acceptedBy = 'user';
+  const p7c = ledgerFile('unassertable', { archetypes: [{ pageType: 'landing', archetype: 'home', prototype: 'x.html', motion, breakpoints: { 1440: unassertable, 360: good(1, 0) } }] });
+  r = run(['--progress', p7c, '--all-types']);
+  check(r.status === 0 && /landing: ok — home/.test(r.out), `motion-unassertable with artifacts[] + acceptedBy is a named, valid residual\n${r.out}`);
+  unassertable.residuals[1].acceptedBy = 'hands-off-policy:motion-unassertable';
+  const p7d = ledgerFile('unassertable-handsoff', { archetypes: [{ pageType: 'landing', archetype: 'home', prototype: 'x.html', motion, breakpoints: { 1440: unassertable, 360: good(1, 0) } }] });
+  r = run(['--progress', p7d, '--all-types']);
+  check(r.status === 2 && /hands-off-policy on a non-permanent class/.test(r.out), `hands-off cannot self-accept motion-unassertable\n${r.out}`);
 
   // synthetic: motion inventory missing; roster from state.json pages (type with no sibling is not checked)
   const p8 = ledgerFile('motion', { archetypes: [{ pageType: 'landing', archetype: 'home', prototype: 'x.html', breakpoints: { 1440: good(1, 0), 360: good(1, 0) } }, { pageType: 'program', archetype: 'prog', prototype: 'y.html', motion, breakpoints: {} }] });
