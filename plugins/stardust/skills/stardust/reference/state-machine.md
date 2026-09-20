@@ -44,7 +44,8 @@ and resumable. The state file is `stardust/state.json`. It is written by
       "liveHost": "https://main--sdt-<slug>--<org>.aem.live",
       "private": true,
       "bootstrappedAt": "<ISO timestamp>",
-      "bootstrappedBy": "site-bootstrap | existing | <owner-named skill>"
+      "bootstrappedBy": "site-bootstrap | existing | project-move | <owner-named skill>",
+      "movedFrom": { "org": "<old org>", "site": "<old site>", "liveHost": "https://main--<old site>--<old org>.aem.live", "at": "<ISO timestamp>" }
     }
   },
   "direction": {
@@ -82,7 +83,10 @@ and resumable. The state file is `stardust/state.json`. It is written by
 ```
 
 Top-level keys: `_provenance`, `site`, `direction`, `pages`. Always in
-that order. `_provenance` is always the first key. A hands-off run adds
+that order. `site.eds.movedFrom` exists only after a project move
+(`skills/deploy/reference/project-move.md`): the old coordinates and live
+host, written by step 2 when `site.eds` takes the new ones; the old
+surfaces it names stay untouched until the owner retires them. `_provenance` is always the first key. A hands-off run adds
 one optional top-level key, `handsOff` (after `direction`; see
 § Hands-off keys). A migration project adds `flow`, `flowChosenAt`,
 `flowSource` (after `direction` and `handsOff`, before `pages`; see
