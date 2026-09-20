@@ -52,7 +52,10 @@ An **instrument**, not a quality gate (`harness-permissions.md` § Two
 classes): it changes no verdict, no threshold, no gate round.
 
 - **Condition → blocks.** Exit 1 with one actionable line per item when
-  a dependency does not resolve after the install, Chromium is missing,
+  a dependency does not resolve from `stardust/node_modules` after the
+  install (a copy reachable only through Node's parent walk from
+  `<root>/node_modules` — a past `--no-save` install — is `missing`: the
+  EDS repo's next `npm i` prunes it), Chromium is missing,
   or lint is unavailable in a repo that declares it (`env.json.preflight`
   is then `partial`; the lines are also `env.json.missing`, and go to
   stderr under `--json` — the state report's `Preflight:` line copies

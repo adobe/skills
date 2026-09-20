@@ -27,8 +27,8 @@ const run = (root, ...extra) => spawnSync(process.execPath, [CLI, '--root', root
 const json = (p) => JSON.parse(readFileSync(p, 'utf8'));
 const dir = mkdtempSync(join(tmpdir(), 'preflight-runtime-'));
 
-function stubDeps(root) {
-  const nm = join(root, 'stardust', 'node_modules');
+function stubDeps(root, where = join('stardust', 'node_modules')) {
+  const nm = join(root, where);
   const exe = join(root, 'fake-chromium');
   writeFileSync(exe, '');
   for (const [name, version] of [['playwright', '1.99.0'], ['pixelmatch', '6.0.0'], ['pngjs', '7.0.0']]) {
@@ -71,6 +71,17 @@ try {
   assert.ok(!existsSync(join(f, 'stardust')), 'nothing created under a typo\'d --root');
   r = run(f, '--skip');
   assert.equal(r.status, 2, '--skip cannot seed a project either'); assert.ok(!existsSync(join(f, 'stardust')));
+
+  // (a2) the parent-walk leak: the three packages under <root>/node_modules ONLY (a past `--no-save` install)
+  //      resolve from stardust/package.json through Node's parent walk, but do not count — they are what the
+  //      EDS repo's next `npm i` prunes. --no-install must report them missing, never ok.
+  const a2 = join(dir, 'a2');
+  mkdirSync(join(a2, 'stardust'), { recursive: true });
+  stubDeps(a2, 'node_modules');
+  r = run(a2, '--no-install');
+  assert.equal(r.status, 1, `root-only node_modules exits 1 (parent-walk hit is not an install)\n${r.stdout}${r.stderr}`);
+  assert.match(r.stdout, /^missing: playwright, pixelmatch, pngjs — run: /m, 'the three root-only packages are reported missing');
+  assert.deepEqual(json(join(a2, 'stardust', '.work', 'env.json')).deps, { playwright: null, pixelmatch: null, pngjs: null }, 'env.json.deps records none of them');
 
   // (b) stubbed deps → ok; (c) idempotent
   const b = join(dir, 'b');
