@@ -315,6 +315,11 @@ from the URL's extension (a CDN transform) — recorded, never "fixed".
 (`pages[]`, `status`, `bytes`); `assets/_fonts-manifest.json` the font
 files with their `@font-face` descriptors, `licensingFlag` and the
 `iconFonts[]` table; `assets/favicon-set.json` every icon with `sizes`.
+The favicon set is the crawl's **one exception** to "zero extra
+requests": at most 8 icon URLs (`link[rel~=icon|apple-touch-icon|
+mask-icon]` + `/favicon.ico`, de-duplicated; the favicon the probe
+already fetched is reused, not re-fetched) are fetched once per run on
+the probe page, never per page; `--no-assets` skips the set.
 
 `src` / `currentSrc` are captured **with the query string intact**
 (enterprise DAM/CDN URLs carry load-bearing `?MOD=…&CACHEID=…`

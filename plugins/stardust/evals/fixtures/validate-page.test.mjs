@@ -10,7 +10,7 @@
 // Runs without playwright (crawl.mjs imports it lazily inside main()).
 // Usage: node plugins/stardust/evals/fixtures/validate-page.test.mjs  (exit 1 on failure)
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
@@ -63,6 +63,12 @@ assert.equal(synthLegacy.ok, false); assert.deepEqual(synthLegacy.fail, ['_prove
 // consent table export (T23.4 palette exclusion reads it — one source)
 assert.ok(CONSENT_LABELS.includes('accept all cookies') && CONSENT_LABELS.includes('reject all') && CONSENT_LABELS.includes('cookie settings') && CONSENT_LABELS.includes('no thanks'), 'accept + decline + settings + close labels, flat');
 assert.equal(new Set(CONSENT_LABELS).size, CONSENT_LABELS.length, 'de-duplicated');
+
+// doc pins (D8): the favicon set is the documented ONE exception to "zero extra requests" — SKILL Phase 2 and the schema's favicon-set note
+const skillDoc = readFileSync(new URL('../../skills/extract/SKILL.md', import.meta.url), 'utf8');
+const schemaDoc = readFileSync(new URL('../../skills/extract/reference/current-state-schema.md', import.meta.url), 'utf8');
+assert.match(skillDoc, /ONE exception: the favicon set — at\nmost 8 icon URLs/, 'SKILL Phase 2 names the favicon-set exception (≤ 8 URLs, once per run)');
+assert.match(schemaDoc, /favicon set is the crawl's \*\*one exception\*\* to "zero extra\nrequests": at most 8 icon URLs/, 'current-state-schema.md favicon-set note documents the exception');
 
 // CLI
 const dir = mkdtempSync(join(tmpdir(), 'validate-page-')); const pages = join(dir, 'pages'); mkdirSync(pages);

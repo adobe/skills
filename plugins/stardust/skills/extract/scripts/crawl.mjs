@@ -100,7 +100,9 @@
  *   downloadError; assets/_media-manifest.json and assets/_fonts-manifest.json
  *   (@font-face descriptors, licensingFlag, iconFonts[]) merge by URL across runs;
  *   the favicon SET (every link[rel~=icon]/apple-touch-icon/mask-icon + /favicon.ico)
- *   → assets/icons/ + assets/favicon-set.json; runs[].assets sums the run.
+ *   → assets/icons/ + assets/favicon-set.json — the ONE exception to "zero extra
+ *   requests": ≤ 8 icon URLs fetched once per run on the probe page (the probe's own
+ *   favicon is reused, not re-fetched); --no-assets skips it. runs[].assets sums the run.
  *
  * Completion contract (skills/stardust/scripts/progress.mjs): while the pool runs the
  *   crawler writes <out>/../.work/extract/crawl.progress.json (default; --progress

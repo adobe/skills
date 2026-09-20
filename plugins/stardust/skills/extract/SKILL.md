@@ -177,8 +177,7 @@ Additional checks for this sub-command:
    (`../replica/reference/source-fidelity-gate.md` § Hardening rule 6).
 4. **Bot-management probe.** On a fingerprint reject or a challenge
    response at the first navigation, climb the escalation ladder in
-   `reference/playwright-recipe.md` § Bot-management fallback
-   (headless → real Chrome headless → real Chrome off-screen; one
+   `reference/playwright-recipe.md` § Bot-management fallback (one
    hit per tier). `crawl.mjs` does this itself and records the winning
    tier in `_crawl-log.json#discovery.fetchTechnique`; re-runs start there.
 
@@ -311,12 +310,15 @@ Save to `stardust/current/pages/<slug>.json` with `_provenance` as the
 first key. **The bundled crawler also saves the settled rendered DOM
 verbatim as `stardust/current/pages/<slug>.html`** (path in the
 record's `renderedHtml` field). Capture once, parse offline (live
-probes stay for geometry and computed styles). The render's own image and font bodies are kept from the
-response stream (zero extra requests) under `assets/media/` and
-`assets/fonts/` as `<basename>-<hash>.<ext>` (`images[].localPath` |
-`downloadError`; `assets/_media-manifest.json`, `assets/_fonts-manifest.json`,
-`assets/favicon-set.json`); `--assets full` adds capped in-page fetches
-for CDN masters and unrequested candidates; `--no-assets` disables.
+probes stay for geometry and computed styles). The render's own image
+and font bodies are kept from the response stream (zero extra requests)
+under `assets/media/` and `assets/fonts/` as `<basename>-<hash>.<ext>`
+(`images[].localPath` | `downloadError`; `assets/_media-manifest.json`,
+`assets/_fonts-manifest.json`). The ONE exception: the favicon set — at
+most 8 icon URLs fetched once per run on the probe page →
+`assets/icons/`, `assets/favicon-set.json`. `--assets full` adds capped
+in-page fetches for CDN masters and unrequested candidates; `--no-assets`
+disables both.
 
 **Live-render evidence (synthesis is forbidden).** Refuse to mark
 a page `extracted` in `state.json` unless its `_provenance`
