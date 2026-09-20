@@ -20,15 +20,16 @@
  *     --port <n>     pin the port (port.mjs still probes it — a foreign listener there is exit 98)
  *     --root <dir>   project root (default cwd) — ports.json / pidfile live under <root>/stardust/.work/
  *     --marker <s>   identity marker (default: ports.json's for the role, else the root's basename)
+ *     --host <ip>    bind address (default 127.0.0.1)
  *     --json         print one JSON line { url, port, pid, marker, dir } instead of the prose line
  *     --help
  *
  * Responses: static files with a MIME table, `Cache-Control: no-store`,
  * `/.stardust-marker.txt` = marker (text/plain), 404 otherwise; paths never
- * escape <dir>. Exit codes: 0 clean stop (signal), 98 port already bound
- * (EADDRINUSE / foreign listener), 1 usage or I/O error.
+ * escape <dir>; a malformed percent-escape is 400. Exit codes: 0 clean stop
+ * (signal), 98 port already bound (EADDRINUSE / foreign listener), 1 usage or I/O error.
  */
-/* eslint-disable no-restricted-syntax, brace-style, object-curly-newline, max-len */
+/* eslint-disable no-restricted-syntax, brace-style, object-curly-newline, max-len, no-plusplus */
 import { createServer } from 'http';
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync, rmSync, realpathSync } from 'fs';
 import { basename, extname, join, normalize, resolve, sep } from 'path';
@@ -40,20 +41,21 @@ export const MARKER_PATH = '/.stardust-marker.txt';
 
 const HELP = `serve — static server with a project marker; refuses a taken port, never kills a listener
 
-Usage: node serve.mjs <dir> --role proto|harness [--port <n>] [--root <dir>] [--marker <s>] [--json]
+Usage: node serve.mjs <dir> --role proto|harness [--port <n>] [--root <dir>] [--marker <s>] [--host <ip>] [--json]
 Exit codes: 0 clean stop, 98 port already bound (listener printed), 1 usage / I/O error.`;
 
 function parse(argv) {
   const rest = argv.slice(2);
   if (rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
   const o = { dir: null, role: null, port: null, root: process.cwd(), marker: null, json: false, host: '127.0.0.1' };
+  const need = (flag, i) => { if (rest[i] === undefined || rest[i].startsWith('--')) { console.error(`${flag} needs a value\n\n${HELP}`); process.exit(1); } return rest[i]; };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
-    if (a === '--role') o.role = rest[i += 1];
-    else if (a === '--port') { o.port = Number(rest[i += 1]); if (!(o.port > 0)) { console.error(`--port needs a number\n\n${HELP}`); process.exit(1); } }
-    else if (a === '--root') o.root = rest[i += 1];
-    else if (a === '--marker') o.marker = rest[i += 1];
-    else if (a === '--host') o.host = rest[i += 1];
+    if (a === '--role') o.role = need(a, ++i);
+    else if (a === '--port') { o.port = Number(need(a, ++i)); if (!(o.port > 0)) { console.error(`--port needs a number\n\n${HELP}`); process.exit(1); } }
+    else if (a === '--root') o.root = need(a, ++i);
+    else if (a === '--marker') o.marker = need(a, ++i);
+    else if (a === '--host') o.host = need(a, ++i);
     else if (a === '--json') o.json = true;
     else if (a.startsWith('--')) { console.error(`unknown flag ${a}\n\n${HELP}`); process.exit(1); }
     else if (!o.dir) o.dir = a;
@@ -67,7 +69,8 @@ function parse(argv) {
 export function handler(dir, marker) {
   const root = realpathSync(dir);
   return (req, res) => {
-    const path = decodeURIComponent(new URL(req.url, 'http://x').pathname);
+    let path;
+    try { path = decodeURIComponent(new URL(req.url, 'http://x').pathname); } catch { res.writeHead(400, { 'cache-control': 'no-store' }); res.end('bad request (malformed path)'); return; } // a bad %-escape must never take the server down
     if (path === MARKER_PATH) { res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' }); res.end(`${marker}\n`); return; }
     const rel = normalize(path).replace(/^(\.\.[/\\])+/, '');
     let file = join(root, rel);

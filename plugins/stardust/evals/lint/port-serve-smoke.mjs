@@ -8,9 +8,13 @@
 //            DIFFERENT cwd makes the next call return the next slot and list the
 //            foreign pid (never killed — it is still alive afterwards); `--port`
 //            pinned to that foreign listener exits 3; `list` shows it as foreign;
-//            `stop proto` with no pidfile is a no-op exit 0.
+//            `stop proto` with no pidfile is a no-op exit 0; `stop` re-reads the
+//            pid's LIVE cwd (a pidfile claiming our cwd for a foreign pid is
+//            refused, exit 1, nothing killed); parseLsof = one row per socket;
+//            trailing value flags are refused (port / serve / served-identity).
 //   serve    serves /.stardust-marker.txt = marker and files under <dir>, 404s a
-//            missing file and a directory without index.html, never escapes <dir>;
+//            missing file and a directory without index.html, never escapes <dir>,
+//            answers 400 to a malformed percent-escape and stays up;
 //            a second serve on the same pinned port exits 98 (the BLOCKING branch);
 //            `port.mjs stop proto` ends it (pidfile pid, cwd under root) and removes the pidfile.
 //   identity assertServedIdentity: marker file → ok; page body with the marker → ok;
@@ -47,6 +51,18 @@ try {
   const { RANGES, EXCLUDED, slotFor, fnv1a } = await import(S('port.mjs'));
   check(fnv1a('a') !== fnv1a('b') && slotFor(root, 'proto') >= 8800 && slotFor(root, 'proto') <= 8899, 'slotFor hashes the root into the proto range');
   check(run('port.mjs', ['--help']).status === 0 && run('port.mjs', []).status === 1 && run('port.mjs', ['bogus']).status === 1, 'port --help 0, no args 1, unknown role 1');
+  // D7 — value flags never swallow the next flag (port / serve / served-identity)
+  const tr = run('port.mjs', ['proto', '--root']);
+  check(tr.status === 1 && /--root needs a value/.test(tr.out), 'port: a trailing --root is refused with "needs a value"');
+  check(run('port.mjs', ['proto', '--marker', '--json', '--root', root]).status === 1, 'port: --marker followed by a flag is refused, not consumed');
+  const sv = run('serve.mjs', [protos, '--role']);
+  check(sv.status === 1 && /--role needs a value/.test(sv.out), 'serve: a trailing --role is refused');
+  const si = run('served-identity.mjs', ['http://127.0.0.1:1/', '--marker']);
+  check(si.status === 1 && /--marker needs a value/.test(si.out), 'served-identity: a trailing --marker is refused');
+  // D14 — lsof parsing: one row per LISTEN socket (a pid on two ports is two rows)
+  const { parseLsof } = await import(S('port.mjs'));
+  const rows0 = parseLsof('p123\ncnode\nn127.0.0.1:8800\nn127.0.0.1:8801\np456\ncpython\nn*:3100\n');
+  check(rows0.length === 3 && rows0[0].port === 8800 && rows0[1].port === 8801 && rows0[1].pid === 123 && rows0[2].pid === 456 && rows0[2].command === 'python', `parseLsof yields one row per socket, not first-n-only (got ${JSON.stringify(rows0)})`);
 
   // ---- allocate
   const a1 = run('port.mjs', ['proto', '--root', root, '--json']);
@@ -94,6 +110,9 @@ try {
   check((await get(`${base}/nope.html`)).status === 404, '404 for a missing file');
   check((await get(`${base}/sub/`)).status === 404, 'a directory without index.html is 404 (no listing)');
   check((await get(`${base}/..%2F..%2Fetc%2Fpasswd`)).status !== 200, 'paths never escape <dir>');
+  // D13 — a malformed percent-escape is a 400, never an uncaught throw that ends the server
+  check((await get(`${base}/%E0%A4%A`)).status === 400, 'a malformed percent-escape answers 400');
+  check((await get(`${base}/.stardust-marker.txt`)).status === 200 && srv.exitCode === null, 'the server survives the malformed request');
   const pidf = join(root, 'stardust', '.work', 'proto.pid');
   check(existsSync(pidf) && JSON.parse(readFileSync(pidf, 'utf8')).pid === srv.pid, 'pidfile written with the server pid');
   // BLOCKING branch: a second serve on the same port
@@ -120,6 +139,16 @@ try {
   check(run('served-identity.mjs', []).status === 1, 'CLI without args exits 1');
   idSrv.close();
 
+  // ---- D14: stop re-reads the LIVE cwd — a pidfile that claims our cwd for a foreign (recycled) pid is refused
+  if (hasLsof) {
+    const decoy2 = spawnKeep(['-e', "setInterval(() => {}, 1000); console.log('up')"], other);
+    for (let i = 0; i < 50 && !/up/.test(decoy2.out()); i += 1) await sleep(100);
+    const lying = join(root, 'stardust', '.work', 'harness.pid');
+    writeFileSync(lying, JSON.stringify({ pid: decoy2.pid, port: 3150, role: 'harness', cwd: resolve(root) }));
+    const st2 = run('port.mjs', ['stop', 'harness', '--root', root]);
+    check(st2.status === 1 && /outside/.test(st2.out) && decoy2.exitCode === null, `stop trusts lsof's live cwd over the pidfile's claim: a foreign pid is refused and not killed (got ${st2.status}: ${st2.out.slice(-160)})`);
+    decoy2.kill(); await sleep(150); rmSync(lying, { force: true });
+  }
   // ---- stop: only ours, pidfile removed
   const st = run('port.mjs', ['stop', 'proto', '--root', root]);
   await sleep(300);

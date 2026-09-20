@@ -21,7 +21,7 @@
  * Importable: assertServedIdentity(url, marker, { fallbackNames, timeoutMs }) → { via, origin }
  *   throws Error with .code = 4 on mismatch.
  */
-/* eslint-disable no-restricted-syntax, brace-style, object-curly-newline, max-len */
+/* eslint-disable no-restricted-syntax, brace-style, object-curly-newline, max-len, no-plusplus */
 import { realpathSync } from 'fs';
 import { pathToFileURL } from 'url';
 
@@ -63,11 +63,12 @@ async function main() {
   const rest = process.argv.slice(2);
   if (!rest.length || rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(rest.length ? 0 : 1); }
   const o = { url: null, marker: null, names: [], timeoutMs: 10000, json: false };
+  const need = (flag, i) => { if (rest[i] === undefined || rest[i].startsWith('--')) { console.error(`${flag} needs a value\n\n${HELP}`); process.exit(1); } return rest[i]; };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
-    if (a === '--marker') o.marker = rest[i += 1];
-    else if (a === '--names') o.names = (rest[i += 1] || '').split(',').map((s) => s.trim()).filter(Boolean);
-    else if (a === '--timeout') o.timeoutMs = Number(rest[i += 1]) || 10000;
+    if (a === '--marker') o.marker = need(a, ++i);
+    else if (a === '--names') o.names = need(a, ++i).split(',').map((s) => s.trim()).filter(Boolean);
+    else if (a === '--timeout') o.timeoutMs = Number(need(a, ++i)) || 10000;
     else if (a === '--json') o.json = true;
     else if (a.startsWith('--')) { console.error(`unknown flag ${a}\n\n${HELP}`); process.exit(1); }
     else o.url = a;
