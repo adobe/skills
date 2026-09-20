@@ -193,6 +193,15 @@ whose harness cases skip when Playwright is unresolvable:
   idempotent (byte-identical except `writtenAt`); the root `package.json`
   is never created or edited; a declared-but-uninstalled eslint prints the
   `lint unavailable` line; `--skip`, `--help`, unknown-flag exits.
+- `resolve-chain-smoke.mjs` — `skills/stardust/scripts/lib/resolve.mjs`, the
+  dependency / sibling-script chain (script dir → cwd → nearest
+  `stardust/package.json` → `npm root -g`): the stub `playwright` under
+  `lint/fixtures/resolve-chain/stardust/node_modules` resolves from the
+  fixture root and from a sub-directory; every link empty → exit 2 with the
+  line naming `preflight-runtime.mjs`; `siblingScript` in the plugin layout,
+  a flat copy layout and `STARDUST_SKILLS_DIR`; static: every importer of the
+  three packages goes through the helper or sits in an ALLOW list that must
+  shrink per landed skill (stale entry = finding).
 - `doc-size.mjs` — byte caps on `SKILL.md` and `reference/*.md`, an
   `## Operator card` heading ahead of the procedure, the always-on total and
   the per-skill delta versus the last release tag; its temporary allowlist
