@@ -45,7 +45,8 @@
  * Exit codes: 0 every checked type ok (or --published), 2 at least one type
  * blocked, 1 ledger unreadable / shape not § Residual logging format / bad
  * arguments. Zero network; reads JSON files and the gate doc's § Residual
- * classes table (progress-record.mjs residualClasses()).
+ * classes table (progress-record.mjs residualClasses(); the project copy under
+ * stardust/scripts/replica/ uses the embedded list, parity-tested).
  *
  * Contracts untouched: no threshold of its own (the three bars are the doc's,
  * hardcoded from § Pass bar); the published-origin gate runs AFTER delivery,
@@ -199,8 +200,7 @@ function main() {
   if (shape === 'unknown' || !entries.length) { console.error(`gate-ledger-lint: cannot verify — ledger shape is not source-fidelity-gate.md § Residual logging format (archetypes[] | pageTypes{} | pageTypes[]); an unreadable ledger is never a pass`); process.exit(1); }
   const bps = (Array.isArray(ledger.breakpointsConfigured) && ledger.breakpointsConfigured.length ? ledger.breakpointsConfigured : DEFAULT_BPS).map(Number);
   const projectRoot = opts.project ? resolve(opts.project) : (() => { const d = resolve(dirname(opts.progress)); const m = d.match(/^(.*)\/stardust(\/|$)/); return m ? m[1] : dirname(dirname(d)); })();
-  const classes = residualClasses();
-  if (!classes.size) console.error('gate-ledger-lint: WARN § Residual classes table not found next to this script — every residual reads as unnamed');
+  const classes = residualClasses(); // doc table beside the plugin scripts, else the embedded list (project copy) — never empty
 
   if (opts.published) {
     const rep = publishedReport(entries, bps);
