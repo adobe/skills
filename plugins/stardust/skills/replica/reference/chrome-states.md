@@ -72,10 +72,13 @@ default ports untouched (replica-phase instrument; the deployed open-state
 gate is `chrome-parity --open` on the preview origin, `deploy/reference/chrome.md`);
 hit-minimisation — every state is a same-navigation action: one live
 navigation per breakpoint per URL plus one per variant sample, cached in
-`chrome-live-states.json` (state-aware key; `gate.sh`'s live-drift recapture
-deletes it with the other live caches); consent via live-session (default
-`accept`); no inlining (the model is a `/nav` fragment); no behaviour
-assertion (`opens on hover|click` is evidence for the motion pass).
+`chrome-live-states.json` (keyed on URL, widths and overrides — never the
+sample list, so the gate rounds below hit the `--from-state` run's file;
+`gate.sh`'s live-drift recapture deletes it with the other live caches);
+consent via live-session (default `accept`); no inlining (the model is a
+`/nav` fragment); no behaviour assertion — `opens on hover|click` is recorded
+per cell (`trigger`) and said as a WARN, evidence for `motion-assert`, never
+a delta.
 
 ## Instrument
 
@@ -119,13 +122,18 @@ without cache-busters) and writes `state.json.pages[].chromeVariant`
 (`--write`). Names persist, never renumbered: home bucket `default`, others
 `variant-<key>`; records without the field are `unfingerprinted` — blocked,
 never merged. One live probe per bucket (`chrome-states.mjs --from-state`)
-merges buckets that render identically. **The chrome archetype row comes
+prints the buckets that render identically; the merge is the agent's, written
+to `chrome.variants[]` by hand (the instrument records, never renames). **The chrome archetype row comes
 before the first page archetype of its variant**: item 5 at both breakpoints
 plus every state of § The matrix recorded as `gated` (crop passed), `dead`
 (observed absent on live — evidence, never inference) or `unprobed:<reason>`
-(bot challenge, auth-gated, headed-window ban — in the approval message and
-the hand-off, never silent); later archetypes on the variant import the row
-and re-run only the rest crop. A second variant opens the `chrome-variant`
+(bot challenge, auth-gated, headed-window ban — residual class
+`chrome-state-unprobed`, in the approval message and the hand-off, never
+silent); `gated` needs its artefact (`gates.<bp>` for every configured
+breakpoint — `chrome-variants.mjs --progress` re-reads it, a typed word blocks);
+later archetypes on the variant import the row and re-run only the rest crop.
+Hands-off applies the `chrome-variant` default and prints the row; it never
+skips the probe and never approves around an unrowed bucket. A second variant opens the `chrome-variant`
 Default row (`../../stardust/reference/decisions.md`: a template body class or
 a `nav:`/`footer:` document, never page-local CSS) BEFORE its fan-out;
 `chrome-variants.mjs --progress` exits 2 while a variant lacks its row.

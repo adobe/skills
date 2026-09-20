@@ -46,6 +46,15 @@
 //   per-regime cap — three prototype rounds do not exhaust the published-
 //     origin cap (first published round runs as pub1, iteration 1); NO-OP and
 //     --invalidate stay inside one regime; the prototype cap still fires;
+//   broken images (T23.2 gate half) — build sidecar brokenImages 5 / live 0 /
+//     20 imgs → exit 2, record failClass build-broken-images + brokenImages{},
+//     verdict line names it; live 5 / build 5 → the pixel verdict stands;
+//     build 2 / live 0 (≤ max(2, 10 %)) → PASS; a 124 compare with broken
+//     images stays 124 (no verdict is never turned into a FAIL); a sidecar
+//     without the keys skips the gate; a --record round on that FAIL ledgers
+//     pass false + failClass and gate-ledger-lint blocks the type (defect
+//     fixture: the record spread pixel-compare's `pass: true` after the
+//     verdict — ledgered as a PASS, lint said ok);
 //   stale procedure — the current stitch-shot version is read from a
 //     MULTI-LINE INSTRUMENT declaration (a reformat never disables the
 //     check); a live sidecar on an older version is re-taken; a build sidecar
@@ -83,7 +92,7 @@ mkdirSync(join(project, 'stardust', 'replica'), { recursive: true });
 // process's event loop, so an in-process server would never answer gate.sh's
 // identity curl.
 const server = spawn(process.execPath, ['-e', `
-  const s = require('node:http').createServer((q, r) => { r.setHeader('content-type', 'text/html'); r.end('<html><body><h1>fresh drift noise noise2 noise3 cap rec orphan regime stale forced partial proposed</h1></body></html>'); });
+  const s = require('node:http').createServer((q, r) => { r.setHeader('content-type', 'text/html'); r.end('<html><body><h1>fresh drift noise noise2 noise3 cap rec orphan regime stale forced partial proposed broken unlock</h1></body></html>'); });
   s.listen(0, '127.0.0.1', () => process.stdout.write(String(s.address().port)));
 `], { stdio: ['ignore', 'pipe', 'inherit'] });
 const port = await new Promise((r) => { server.stdout.once('data', (d) => r(String(d).trim())); });
@@ -112,6 +121,22 @@ try {
   const prHelp = spawnSync(process.execPath, [join(bin, 'progress-record.mjs'), '--help'], { encoding: 'utf8' });
   check(prHelp.status === 0 && /Usage:/.test(prHelp.stdout), 'progress-record --help must exit 0');
 
+  // ---- broken-image gate (slug broken): build − live > max(2, 10 % of imgCount) → FAIL exit 2 + failClass ----
+  // live.png is captured ONCE (cached reference) — its sidecar says 5 broken images for every round below; only the build side moves.
+  const BI = { STUB_IMG_COUNT: '20', STUB_PCT: '3', STUB_HDELTA: '1', STUB_BROKEN_LIVE: '5' };
+  let rb = gate('broken', [], { ...BI, STUB_BROKEN_BUILD: '5' });
+  check(rb.status === 0 && rec('broken', 'iter1')?.verdict === 'PASS' && !rec('broken', 'iter1')?.failClass && rec('broken', 'iter1')?.brokenImages?.live === 5 && rec('broken', 'iter1')?.brokenImages?.build === 5, `symmetric placeholders (live 5 / build 5) → the pixel verdict stands, brokenImages{} recorded\n${rb.out}`);
+  rb = gate('broken', [], { ...BI, STUB_BROKEN_BUILD: '7' });
+  check(rb.status === 0 && rec('broken', 'iter2')?.verdict === 'PASS', `build 7 − live 5 = 2 ≤ max(2, 10 % of 20) → PASS\n${rb.out}`);
+  rb = gate('broken', [], { ...BI, STUB_BROKEN_BUILD: '8' });
+  const b3 = rec('broken', 'iter3');
+  check(rb.status === 2 && b3?.verdict === 'FAIL' && b3.failClass === 'build-broken-images' && b3.brokenImages?.build === 8 && b3.brokenImages?.live === 5 && b3.brokenImages?.threshold === 2 && Array.isArray(b3.brokenImages?.srcs) && b3.exit === 2 && b3.iteration === 3, `build 8 − live 5 = 3 > 2 → exit 2, FAIL, failClass build-broken-images on the record (got ${rb.status} ${JSON.stringify(b3 && { v: b3.verdict, fc: b3.failClass, bi: b3.brokenImages })})\n${rb.out}`);
+  check(/verdict: FAIL .*failClass: build-broken-images \(build 8 − live 5/.test(rb.out) && /wire the harvested images\[\]\.localPath/.test(rb.out), `the verdict line names the failClass and the remedy\n${rb.out}`);
+  rb = gate('broken', ['--over-cap', 'canon-followup'], { ...BI, STUB_BROKEN_BUILD: '14', STUB_COMPARE_EXIT: '124' });
+  check(rb.status === 124 && rec('broken', 'iter4')?.verdict === 'no-verdict' && !rec('broken', 'iter4')?.failClass, `a 124 compare with broken images stays 124 / no-verdict — never promoted to FAIL\n${rb.out}`);
+  rb = gate('broken', ['--over-cap', 'canon-followup'], { STUB_PCT: '3', STUB_HDELTA: '1' });
+  check(rb.status === 0 && !/failClass/.test(rb.out) && rec('broken', 'iter5')?.brokenImages === undefined, `a build sidecar without the keys (pre-field capture) skips the gate\n${rb.out}`);
+
   // ---- <build-url> auto (slug proposed — the stub page carries the word): ports.json → this project's URL; absent → 125 ----
   const gateAuto = (slug, build) => { const r = spawnSync('bash', [join(bin, 'gate.sh'), slug, LIVE, build, '1440'], { cwd: project, encoding: 'utf8', env: { ...process.env, GATE_REAP_MIN: '0', STUB_ANCHOR_TRACE: anchorTrace } }); return { status: r.status, out: `${r.stdout}\n${r.stderr}` }; };
   let r = gateAuto('proposed', 'auto');
@@ -127,6 +152,9 @@ try {
   // ---- freshness (slug fresh) ----
   r = gate('fresh');
   if (r.status !== 0) throw new Error(`fresh round 1: expected exit 0, got ${r.status}\n${r.out}`);
+  // the runner stages no browser-lock.mjs: the round runs unlocked and SAYS so (fan-out § Machine budget — never silent); STARDUST_BROWSER_SLOTS=0 (a driver holding the slot) silences it
+  check(/WARN no browser-lock\.mjs beside the scripts .* takes NO machine-wide browser slot/.test(r.out), `an unlocked round prints the WARN line naming the paths tried\n${r.out}`);
+  check(!/WARN no browser-lock/.test(gate('unlock', [], { STARDUST_BROWSER_SLOTS: '0' }).out), 'STARDUST_BROWSER_SLOTS=0 (slot held by the driver) prints no unlocked WARN');
   const gateOut = { fresh1: r.out };
   const f1 = rec('fresh', 'iter1');
   check(f1?.verdict === 'PASS' && f1.regime === 'prototype' && f1.ref?.capturedAt === liveCapturedAt('fresh') && f1.iteration === 1, 'round 1: default label iter1, verdict PASS, regime prototype, ref.capturedAt from the sidecar, iteration 1');
@@ -278,6 +306,15 @@ try {
   const size = statSync(progress).size;
   r = gate('orphan', ['--record']);
   check(r.status === 0 && /no page type .* has archetype "orphan"/.test(r.out) && /would be:/.test(r.out) && statSync(progress).size === size, `--record with no matching page type must print the block and write nothing\n${r.out}`);
+  // defect: a build-broken-images FAIL round was ledgered as a PASS — the record spread pixel-compare's `pass: true` after
+  // the verdict, progress-record took `rec.pass` and dropped failClass, gate-ledger-lint re-judged the numbers only ('ok', exit 0)
+  pj = readJson(progress); pj.pageTypes.broken = { archetype: 'broken', prototype: 'x.html', motion: { observed: [], implemented: [], dead: [] }, breakpoints: {} }; writeFileSync(progress, JSON.stringify(pj, null, 2));
+  r = gate('broken', ['--record', '--over-cap', 'canon-followup'], { ...BI, STUB_BROKEN_BUILD: '8' });
+  pj = readJson(progress);
+  const bb = pj?.pageTypes?.broken?.breakpoints?.['1440'];
+  check(r.status === 2 && bb?.result?.pass === false && bb.result.failClass === 'build-broken-images' && bb.result.pixelPct === 3, `--record on a build-broken-images round must ledger pass false + failClass (got ${JSON.stringify(bb?.result && { pass: bb.result.pass, failClass: bb.result.failClass })})\n${r.out}`);
+  const gll = spawnSync(process.execPath, [join(SCRIPTS, 'gate-ledger-lint.mjs'), '--progress', progress, '--types', 'broken', '--project', project], { encoding: 'utf8' });
+  check(gll.status === 2 && /broken: blocked — .*1440 failClass build-broken-images/.test(`${gll.stdout}${gll.stderr}`), `gate-ledger-lint must block the page type on result.failClass (exit 2), got ${gll.status}\n${gll.stdout}${gll.stderr}`);
   // progress-record's shared reader must resolve the documented archetypes[] shape (the reader gap)
   const archetypesLedger = join(project, 'stardust', 'replica', 'progress-archetypes.json');
   writeFileSync(archetypesLedger, JSON.stringify({ breakpointsConfigured: [1440], archetypes: [{ pageType: 'landing', archetype: 'rec', breakpoints: {} }] }));
@@ -335,4 +372,4 @@ try {
 }
 
 if (failures.length) { console.error(`gate-sh-fixtures: ${failures.length} finding(s)`); for (const f of failures) console.error(`  ✗ ${f}`); process.exit(1); }
-console.log('gate-sh-fixtures: ok (freshness probe, live drift + cache invalidation + stored landmarks (2 hits), probe deadline, noise floor + same flags on live-b + stale floor after drift, iteration cap / --over-cap / --invalidate / NO-OP, per-regime cap + labels, partial live capture removed on any rc, verdict line, stale-procedure version read + safety net, --record ledger copy + masks[] shape + archetypes[] reader, --help)');
+console.log('gate-sh-fixtures: ok (broken-image gate failClass / symmetric / 124 stays / pre-field skip / --record ledgers pass false + lint blocks, freshness probe, live drift + cache invalidation + stored landmarks (2 hits), probe deadline, noise floor + same flags on live-b + stale floor after drift, iteration cap / --over-cap / --invalidate / NO-OP, per-regime cap + labels, partial live capture removed on any rc, verdict line, stale-procedure version read + safety net, --record ledger copy + masks[] shape + archetypes[] reader, --help)');

@@ -109,30 +109,32 @@ function parseArgs(argv) {
   if (rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
   const pos = [];
   const opts = { probes: [], main: 'main', block: [], width: 1440, tolerance: 2, consent: null, dismiss: [], consentMode: 'accept', headed: false, locale: null, json: false, brief: false, fromClusters: null, type: null };
+  // a value flag never swallows the next flag (`--type --json` → "--type needs a value", exit 1)
+  const need = (flag, i) => { if (rest[i] === undefined || rest[i].startsWith('--')) { console.error(`${flag} needs a value\n\n${HELP}`); process.exit(1); } return rest[i]; };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--probe') {
-      const spec = rest[i += 1] || '';
+      const spec = need(a, ++i);
       const m = spec.match(/^([\w-]+)=(.+)$/);
       if (!m) { console.error(`bad --probe "${spec}" — expected name=<selector>\n\n${HELP}`); process.exit(1); }
       opts.probes.push({ name: m[1], sel: m[2].trim() });
     }
-    else if (a === '--main') { opts.main = rest[i += 1]; }
-    else if (a === '--width') { opts.width = Number(rest[i += 1]); }
-    else if (a === '--tolerance') { opts.tolerance = Number(rest[i += 1]); }
-    else if (a === '--consent') { opts.consent = rest[i += 1]; }
-    else if (a === '--dismiss') { opts.dismiss = (rest[i += 1] || '').split(',').map((s) => s.trim()).filter(Boolean); }
-    else if (a === '--block') { opts.block = (rest[i += 1] || '').split(',').map((s) => s.trim()).filter(Boolean); }
-    else if (a === '--consent-mode') { opts.consentMode = rest[i += 1]; if (!['accept', 'deny'].includes(opts.consentMode)) { console.error(`--consent-mode must be accept or deny\n\n${HELP}`); process.exit(1); } }
+    else if (a === '--main') { opts.main = need(a, ++i); }
+    else if (a === '--width') { opts.width = Number(need(a, ++i)); }
+    else if (a === '--tolerance') { opts.tolerance = Number(need(a, ++i)); }
+    else if (a === '--consent') { opts.consent = need(a, ++i); }
+    else if (a === '--dismiss') { opts.dismiss = need(a, ++i).split(',').map((s) => s.trim()).filter(Boolean); }
+    else if (a === '--block') { opts.block = need(a, ++i).split(',').map((s) => s.trim()).filter(Boolean); }
+    else if (a === '--consent-mode') { opts.consentMode = need(a, ++i); if (!['accept', 'deny'].includes(opts.consentMode)) { console.error(`--consent-mode must be accept or deny\n\n${HELP}`); process.exit(1); } }
     else if (a === '--headed' || a.startsWith('--headed=')) { opts.headed = parseHeadedFlag(a); }
-    else if (a === '--storage-state') { opts.storageState = rest[i += 1]; }
+    else if (a === '--storage-state') { opts.storageState = need(a, ++i); }
     else if (a === '--fresh-state') { opts.freshState = true; }
-    else if (a === '--solve-wait') { opts.solveWaitMs = parseSolveWaitFlag(rest[i += 1]); opts.headed = 3; }
-    else if (a === '--locale') { opts.locale = rest[i += 1]; }
+    else if (a === '--solve-wait') { opts.solveWaitMs = parseSolveWaitFlag(need(a, ++i)); opts.headed = 3; }
+    else if (a === '--locale') { opts.locale = need(a, ++i); }
     else if (a === '--json') { opts.json = true; }
     else if (a === '--brief') { opts.brief = true; }
-    else if (a === '--from-clusters') { opts.fromClusters = rest[i += 1]; }
-    else if (a === '--type') { opts.type = rest[i += 1]; }
+    else if (a === '--from-clusters') { opts.fromClusters = need(a, ++i); }
+    else if (a === '--type') { opts.type = need(a, ++i); }
     else if (a.startsWith('--')) { console.error(`unknown flag ${a}\n\n${HELP}`); process.exit(1); }
     else pos.push(a);
   }

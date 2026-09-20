@@ -322,10 +322,11 @@ font files, and even in-page `fetch()` from a headless client. What works:
   `_media-manifest.json` and stamps `images[].localPath` per record; a gated
   prototype references those copies, never the source CDN URL — a
   `downloadError` entry keeps the public URL and is listed in the brief. The
-  gate half (`build-broken-images`: stitch-shot sidecar `brokenImages` /
-  `imgCount`, `gate.sh` exit 2 when build − live > max(2, 10 %), fixture case) is
-  a replica-gate follow-up; until it lands, `qa-gate.mjs`'s broken-image count
-  is the check.
+  gate enforces it: stitch-shot's sidecar records `imgCount` / `brokenImages`
+  (an `<img>` ≥ 10 px that loaded nothing); `gate.sh` fails the round (exit 2,
+  `failClass: build-broken-images` on the record) when build − live >
+  max(2, 10 % of `imgCount`) — no flag, no residual class (gate doc § Pass bar,
+  item 4).
 - **Icons and vectors: harvest from the live DOM, never approximate.**
   Before authoring any icon, run one probe on the live page collecting
   `svg.outerHTML` (plus `<img src$=".svg">` and `mask-image` urls) near the
@@ -605,7 +606,9 @@ verdict `none`).
   (no extra live hit — assert targets the prototype/published page). Exit
   124 → one re-run under the deadline, then `verdict: none` = `unasserted`,
   not self-approvable; `fail` after the cap → `status.jsonl` `blocked` +
-  owner. Never `acceptedBy`, never `--skip`.
+  owner. Never `acceptedBy`, never `--skip`. The approval check itself is
+  agent-side: no instrument reads `motion.assert` before approval — the
+  Phase 4 close prints `motion: unasserted` from the record's absence.
 - *Regime.* `--regime published-origin` for the delivered page (preview
   host, D1); the record carries `regime`, the hand-off prints it per row.
 - *Eval.* `evals/lint/motion-assert-fixtures.mjs` (compare functions, record,

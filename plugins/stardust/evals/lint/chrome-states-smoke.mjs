@@ -9,7 +9,13 @@
 //     MISSING, a build-only panel is EXTRA, a live plain link is neither;
 //   clusterVariants: two identities differing in nav background are two variants;
 //   linkSetCheck: model ⊇ flat links → panel-only list, a flat link outside the
-//     model is reported (enumeration gap); samplesFromState: one URL per type.
+//     model is reported (enumeration gap); samplesFromState: one URL per type;
+//   compareCells (B30 defect fixture): live opens on hover, build on click →
+//     the cell PASSES with a WARN and a `trigger` field — never `delta`; a panel
+//     rect delta still is a delta; cacheKey ignores the sample list (superset
+//     cache — the documented second command without --from-state hits the cache);
+//   --json <url>: a URL after --json stays the build positional (only *.json
+//     is the report path).
 // Browser (fixtures/chrome-states: two hover mega-menus whose panels live
 // OUTSIDE the <li> paired by aria-controls, a click toggle, a search dialog,
 // a 360-px drawer with one drill level + Back bar, footer details/summary; the
@@ -64,7 +70,24 @@ const swallow = run([SCRIPT, 'https://example.invalid/', '--out', '--no-mobile']
 check(swallow.status === 1 && /--out needs a value/.test(swallow.out), 'a value flag followed by another flag is refused, not consumed');
 check(run([SCRIPT]).status === 1, 'no <liveURL> must exit 1');
 
-const { pairStates, clusterVariants, linkSetCheck, samplesFromState, cacheKey, variantKeyOf } = await import(SCRIPT);
+const { pairStates, clusterVariants, linkSetCheck, samplesFromState, cacheKey, variantKeyOf, compareCells, parseArgs } = await import(SCRIPT);
+{
+  // B30 — hover-vs-click is trigger EVIDENCE (motion pass), never a chrome-cell delta (defect: TRIGGER finding → status delta → exit 2)
+  const st = (opensOn) => ({ name: 'menu:Insurance', kind: 'menu', text: 'Insurance', opensOn, panel: { rect: { w: 900, h: 400 }, how: 'aria-controls' }, region: null, png: null });
+  const cells = compareCells({ states: [st('hover')] }, { states: [st('click')] }, { tolerance: 1 }, '/nonexistent', 1440);
+  check(cells.length === 1 && cells[0].status === 'pass', `hover-vs-click cell must PASS (got ${JSON.stringify(cells[0] && { s: cells[0].status, f: cells[0].findings })})`);
+  check(cells[0].findings.every((f) => f.kind === 'WARN') && cells[0].findings.some((f) => /hover.*click/.test(f.msg)), 'the mismatch is said as a WARN naming both triggers');
+  check(cells[0].trigger && cells[0].trigger.live === 'hover' && cells[0].trigger.build === 'click', 'the cell records trigger {live, build} for motion-assert');
+  // a panel-rect delta is still a delta (crop-compare on absent PNGs is `skipped` → WARN; the PANEL finding gates)
+  const withPng = (o, w) => ({ ...st(o), png: '/nonexistent/live.png', clip: { width: w, height: 400 } });
+  const d = compareCells({ states: [withPng('hover', 900)] }, { states: [withPng('hover', 700)] }, { tolerance: 1 }, '/nonexistent', 1440);
+  check(d[0].status === 'delta' && d[0].findings.some((f) => f.kind === 'PANEL'), `a panel rect delta is still a delta (got ${JSON.stringify(d[0] && { s: d[0].status, f: d[0].findings.map((f) => f.kind) })})`);
+  // --json <buildURL>: the URL is the build positional, not the report path
+  const a = parseArgs(['node', 'x', 'https://l/', '--json', 'http://127.0.0.1:8801/home.html']);
+  check(a.build === 'http://127.0.0.1:8801/home.html' && a.opts.json && a.opts.jsonFile === null, `--json followed by a URL keeps the URL as the build side (got ${JSON.stringify({ b: a.build, f: a.opts.jsonFile })})`);
+  const b = parseArgs(['node', 'x', 'https://l/', '--json', 'out/report.json']);
+  check(b.opts.jsonFile === 'out/report.json' && !b.build, '--json <file.json> is the report path');
+}
 {
   const live = [{ name: 'menu:Insurance', text: 'Insurance', panel: { rect: {} }, opensOn: 'hover' }, { name: 'menu:Claims', text: 'Claims', panel: { rect: {} }, opensOn: 'hover' }, { name: 'menu:About us', text: 'About us', panel: null, opensOn: 'none' }];
   const build = [{ name: 'menu:Insurance', text: 'insurance', panel: { rect: {} }, opensOn: 'hover' }, { name: 'menu:Offers', text: 'Offers', panel: { rect: {} }, opensOn: 'click' }];
@@ -92,6 +115,7 @@ const { pairStates, clusterVariants, linkSetCheck, samplesFromState, cacheKey, v
   check(s.length === 2 && s[0].url === 'https://s/a' && s[1].type === 'untyped', 'samplesFromState: one URL per type, the archetype URL itself excluded');
   const k1 = cacheKey('https://s/', { width: 1440, mobile: 360, noMobile: false }, s); const k2 = cacheKey('https://s/', { width: 1440, mobile: 360, noMobile: true }, s);
   check(JSON.stringify(k1) !== JSON.stringify(k2), 'cacheKey changes with the mobile pass on/off');
+  check(JSON.stringify(k1) === JSON.stringify(cacheKey('https://s/', { width: 1440, mobile: 360, noMobile: false }, [])), 'cacheKey ignores the sample list — the --from-state cache serves the gate rounds run without it (defect: key mismatch → 2 live hits per round)');
 }
 if (failures.length) { console.error(`chrome-states-smoke: ${failures.length} pure failure(s)\n - ${failures.join('\n - ')}`); process.exit(1); }
 console.log('chrome-states-smoke: pure cases passed');

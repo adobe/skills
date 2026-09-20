@@ -9,7 +9,7 @@
  * decoration contract in one run.
  *
  *   node skills/deploy/scripts/qa-gate.mjs http://localhost:3000/stardust/.work/harness/page.html \
- *        --schema stardust/eds-schema/<page>.json [--maxw 1340] [--marker <s>]
+ *        --schema stardust/eds-schema/<page>.json [--maxw 1340] [--marker <s>] [--no-drive]
  *
  * Served identity FIRST (exit 4 = no verdict, never a FAIL): before any page read the harness origin must
  * be THIS project's — `replica/scripts/served-identity.mjs assertServedIdentity()` checks
@@ -40,14 +40,25 @@
  *     as a block bug and shipped three times before the template rule was
  *     found. WARN with the measured widths (cross-check the template CSS).
  *
+ *   - control pass (#28, T20.2): every [aria-label*=next i], [aria-label*=previous i],
+ *     .dots button, [aria-expanded], [role=tab], summary inside a [data-block-name]
+ *     is clicked once (dynamics lib.mjs driveControl — one helper, shared with
+ *     dynamics-check `click-control`); disabled / aria-disabled / zero-box
+ *     controls are SKIP; a control after which no observable changed
+ *     (aria-expanded, aria-selected, hidden, open, scrollLeft, a transform,
+ *     the block className) prints `control <sel> in block <name>: no observable
+ *     changed`. 🟡 ADVISORY this release (WARN, exit unchanged) — B30 "no
+ *     behaviour assertion" stands until the owner answers the D15 re-proposal;
+ *     then the line becomes FAIL. `--no-drive` skips the pass (one WARN says so).
+ *
  * Deliberately NOT here: CLS (deployed-URL only — the harness false-passes,
- * #100/#101), content/visual-diff (Step 10, deployed-URL only), and
- * interactive drives (#28 — hand-write those per block).
+ * #100/#101) and content/visual-diff (Step 10, deployed-URL only).
  */
 /* eslint-disable no-console, no-await-in-loop, no-restricted-syntax */
 import { chromium } from 'playwright';
 import fs from 'fs';
 import { assertServedIdentity } from '../../replica/scripts/served-identity.mjs';
+import { driveControl } from '../../dynamics/scripts/lib.mjs';
 
 const args = process.argv.slice(2);
 const url = args.find((a) => !a.startsWith('--'));
@@ -55,7 +66,8 @@ const opt = (name, dflt) => { const i = args.indexOf(`--${name}`); return i >= 0
 const schemaPath = opt('schema', null);
 const maxw = Number(opt('maxw', 1340));
 const fullBleedOpt = (opt('full-bleed', '') || '').split(',').map((s) => s.trim()).filter(Boolean);
-if (!url) { console.error('usage: qa-gate.mjs <harnessURL> [--schema <eds-schema.json>] [--maxw 1340] [--full-bleed hero,band] [--marker <s>]'); process.exit(2); }
+const noDrive = args.includes('--no-drive');
+if (!url) { console.error('usage: qa-gate.mjs <harnessURL> [--schema <eds-schema.json>] [--maxw 1340] [--full-bleed hero,band] [--marker <s>] [--no-drive]'); process.exit(2); }
 const schema = schemaPath ? JSON.parse(fs.readFileSync(schemaPath, 'utf8')) : null;
 
 // Served identity before any read: the server on that port must be ours (exit 4 = no verdict, never a FAIL).
@@ -145,6 +157,25 @@ check(r.brokenImgs === 0, 'zero broken images', `${r.brokenImgs} broken`);
 for (const b of r.blocks) {
   check(b.status === 'loaded', `block ${b.name} loaded`, `status=${b.status}`);
   check(b.height > 5 && b.kids > 0, `block ${b.name} renders non-empty`, `h=${b.height} kids=${b.kids}`);
+}
+
+// control pass (#28, T20.2) — click once, one observable must change. 🟡 advisory
+// this release (D15 pending): the dead-control line is a WARN, never a FAIL.
+const CONTROL_SELECTOR = '[data-block-name] :is([aria-label*="next" i], [aria-label*="previous" i], .dots button, [aria-expanded], [role="tab"], summary)';
+if (noDrive) warns.push('control pass skipped (--no-drive) — dead controls are not detected this run');
+else {
+  const n = await page.evaluate((sel) => { const els = [...document.querySelectorAll(sel)].slice(0, 24); els.forEach((el, i) => el.setAttribute('data-sd-ctl', String(i))); return els.length; }, CONTROL_SELECTOR);
+  let dead = 0;
+  for (let i = 0; i < n; i += 1) {
+    let d; try { d = await driveControl(page, `[data-sd-ctl="${i}"]`); } catch (e) { warns.push(`control ${i}: drive error — ${String(e.message).slice(0, 80)}`); continue; }
+    if (!d.found) continue;
+    if (d.skipped) ok.push(`control ${d.label} in block ${d.block}: skipped (${d.skipped})`);
+    else if (d.changed) ok.push(`control ${d.label} in block ${d.block}: ${d.by} changed`);
+    else { dead += 1; warns.push(`control ${d.label} in block ${d.block}: no observable changed (🟡 advisory this release — D15; becomes FAIL once answered)`); }
+    await page.keyboard.press('Escape').catch(() => {});
+  }
+  ok.push(`control pass: ${n} control(s) driven, ${dead} dead`);
+  await page.evaluate(() => { window.scrollTo(0, 0); document.querySelectorAll('[data-sd-ctl]').forEach((el) => el.removeAttribute('data-sd-ctl')); });
 }
 
 // schema unit counts — match Nth block-bearing page section to Nth schema

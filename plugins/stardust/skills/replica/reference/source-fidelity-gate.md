@@ -9,8 +9,8 @@
 - § Wide-viewport fluid check — after the desktop pass: catching frozen pixel widths that only diverge on wider screens.
 - § Iteration discipline — when a round fails: the hard cap, the measure-first order of fixes, and the three named regimes (`source-inconsistent`, `separate-composition`, `canon-followup`) that end a loop early or sit outside the cap.
 - § Hardening rules — before trusting any number: the false-measurement traps (UA challenges, overlays, animation, lazy media, font forks).
-- § The published-origin gate — after platform delivery: re-running the gate against the published page, the only number that counts as final.
-- § Residual logging format — when recording a passed or capped result in `progress.json`: the `result` fields `gate.sh` emits (regime, masks, unmasked %, reference date) and § Residual classes, the table every residual's `cause` cites.
+- § The published-origin gate — after platform delivery: the gate re-run against the published page — the final number.
+- § Residual logging format — when recording a result in `progress.json`: the `result` fields `gate.sh` emits and § Residual classes, the table every residual's `cause` cites.
 
 The gate proves an archetype matches the LIVE site — three instruments, per
 breakpoint, with a hard iteration cap. It replaces the redesign pipeline's
@@ -101,10 +101,15 @@ capture is re-taken every iteration.
    carousel tile at a negative offset).
 3. **pixel diff ≤ 10% full-page** — AND no band left unexplained (§ Band
    breakdown). 10% is the ship bar, not the target.
-4. **height delta: |Δ| ≤ 8px** — pixel-compare's own warning threshold is
-   the bar (it prints ⚠ above 8px), so a −9px result is unambiguously a
-   residual, not a pass. A large delta invalidates the % (the overlap crop
-   discards the tail) — fix heights first.
+4. **height delta: |Δ| ≤ 8px** — pixel-compare prints ⚠ above 8px; a
+   −9px result is a residual, not a pass. A large delta invalidates the %
+   (the overlap crop discards the tail) — fix heights first. A build side
+   with more broken images than live (sidecar `brokenImages` − live >
+   max(2, 10 % of `imgCount`)) is **FAIL** whatever the number: the round
+   record and its ledger copy carry `failClass: build-broken-images` with
+   `pass: false` (`gate-ledger-lint` blocks on it); no residual class, no
+   flag — wire the harvested `images[].localPath` copies
+   (`recreation-procedure.md` § Asset harvest).
 5. **Chrome crop gate: header band AND footer band each ≤ 2% diff (≥98%
    match, #115).** The full-page bar dilutes the chrome, which repeats on
    every page of a rollout. Run `../scripts/crop-compare.mjs`
@@ -288,43 +293,43 @@ is identical at 1440 and visibly off at 1512.
 
 ## Iteration discipline
 
-**Hard cap: 3 iterations per breakpoint.** With the recreation procedure
-followed a page converges within 3; more loops mean the inputs were wrong (values eyeballed instead of lifted, capture unhardened), and the
-fix is upstream, not a fourth loop.
+**Hard cap: 3 iterations per breakpoint.** A page authored per the
+recreation procedure converges within 3; more loops mean wrong inputs
+(eyeballed values, unhardened capture) — fix upstream.
 
 - **The cap is mechanical, per regime.** `gate.sh` counts the rounds from
   the round records (`gate-<label>.json` with verdict PASS/FAIL, not
   excluded, not a live-drift recapture, same `regime`; no-verdict rounds
   never count), labels rounds `iter<k>` (prototype) / `pub<k>`
   (published-origin) by default and stops at 3 with exit 6 before any capture.
-  `--over-cap <reason>` runs one more round with one of the regime labels
-  below, written to the record as `overCap`; `--invalidate <label> <fix>` is
+  `--over-cap <reason>` runs one more round with a regime label below,
+  written to the record as `overCap`; `--invalidate <label> <fix>` is
   the instrument-invalidated exclusion as a record field; `--record` copies
   `iterations` and `result` into `progress.json` (`progress-record.mjs`).
   The verdict line prints `iteration k/3` and `NO-OP` when the
   differing-pixel count did not move.
 - Measure first (iteration 1 IS the map — do not pre-polish).
-- **Chrome: parity probe first, pixels second.** Before a chrome band's first
-  pixel round, run `chrome-parity.mjs` and clear its deltas (§ Pass bar,
-  item 5); style deltas are named in one pass, pixels only say where.
+- **A round holds one browser slot** (`gate.sh` → `browser-lock.mjs`;
+  `../../stardust/reference/fan-out.md` § Machine budget): 124 on the slot
+  wait is a re-queue — no verdict, not an iteration.
+- **Chrome: parity probe first, pixels second.** Before a chrome band's
+  first pixel round, clear `chrome-parity.mjs`'s deltas (§ Pass bar, item
+  5) — style deltas are named in one pass, pixels only say where.
 - Every fix cites the instrument line that demanded it.
 - Images are read per `../../stardust/reference/context-hygiene.md` § Image
   reads: **`review-<label>.png` first** — `gate.sh` writes it every round
   (`pixel-compare --review`; standalone `../scripts/review-image.mjs
   --bands`): the 3 worst bands as [live | build] rows with a diff heat bar,
   one Read for the whole round. Then at most one full-resolution band per
-  hot band still unexplained (`crop-compare --out`), ≤ 10 per round, never
-  `live.png`/`proto.png`/`diff*.png` whole — the count is the cost.
+  unexplained hot band (`crop-compare --out`), ≤ 10 per round, never a
+  whole `live.png`/`proto.png`/`diff*.png` — the count is the cost.
 - **Before counting an iteration, verify the fix changed the render.** A
-  byte-identical differing-pixel count after a "fix" means the rule was a
-  no-op and the round measured nothing. The check is free —
-  the count is already on the verdict line; if it didn't move at all, find
-  out why the rule never applied (specificity, wrong selector, value already
-  in effect) before spending another round. On the published origin a
+  byte-identical differing-pixel count (`NO-OP` on the verdict line) means
+  the rule never applied — find out why before another round. On the published origin a
   byte-identical count repeated → run `node skills/deploy/scripts/code-sync-verify.mjs
-  --org <org> --repo <repo> --ref <branch>` first (served code == working
-  tree); a round measured against stale served code is
-  instrument-invalidated (`--invalidate`), not an iteration.
+  --org <org> --repo <repo> --ref <branch>` first; a round measured against
+  stale served code is instrument-invalidated (`--invalidate`), not an
+  iteration.
 - **Verify geometry fixes on the RULE-BEARING element, cache-free (#117).**
   Pair the same semantic element on both sides (the element the fixed rule
   targets on the build; the element whose source rule was lifted on live) —
@@ -442,25 +447,23 @@ Each was hit live; skipping one corrupts the measurement silently.
 1. **Real-Chrome UA + the standard request headers on every capture and
    probe.** The default HeadlessChrome UA can receive a Cloudflare managed
    challenge, and the probe then **measures the challenge page as the
-   source** (it diffs cleanly, wrongly). The UA alone is NOT sufficient
+   source**. The UA alone is NOT sufficient
    (F-R1): bot managers fingerprint on the *absence* of the standard header
    set every real Chrome sends (`Accept`, `Accept-Language`,
    `Upgrade-Insecure-Requests`, `sec-ch-ua*`), not just the UA. All three
    instruments send both by default via the shared
    `diff/scripts/live-session.mjs`; `--ua` overrides the UA string only.
-   The header set rides **document requests only** (F-B2):
-   forcing it on every request makes cross-origin CORS-mode webfont fetches
-   non-simple and kills them with `net::ERR_FAILED` — the capture then
-   silently renders fallback type (see rule 14); bot managers fingerprint
-   the navigation request, which still carries the full set. Sanity check
+   The header set rides **document requests only** (F-B2): on every
+   request it makes CORS-mode webfont fetches non-simple (`net::ERR_FAILED`
+   → fallback type, rule 14); the navigation request still carries the full
+   set. Sanity check
    when numbers shift inexplicably between runs: grep the content-diff
    inventory for challenge-page strings.
 2. **`domcontentloaded`, never `networkidle`, on live targets.** Live sites
    with analytics beacons never reach networkidle — hard timeout. Built in:
    the diff scripts default `domcontentloaded` for non-localhost http(s)
-   URLs (decided per side; EDS build/preview origins — `*.aem.page`,
-   `*.aem.live`, `*.hlx.page`, `*.hlx.live` — are the exception and get
-   `networkidle`, they decorate async) and keep `networkidle` for local
+   URLs (per side; EDS preview/live origins get `networkidle` — they
+   decorate async) and keep `networkidle` for local
    prototypes; `--wait-until` overrides. stitch-shot is always
    `domcontentloaded`.
 3. **Symmetric `--main` scoping — and never `body`.** Live `<main>` often
@@ -471,11 +474,10 @@ Each was hit live; skipping one corrupts the measurement silently.
    sites without a `<main>`, both sides otherwise false-flag BLANK RENDER
    while the main-scoped checks silently no-op). Two guardrails:
    - **`--main body` is NEVER a valid replica scope.** A too-broad root
-     self-poisons the instrument regardless of symmetry: reproduced,
-     content-diff run live-vs-ITSELF with `--main body` produced **103
-     structural 🔴** and asymmetric node counts from analytics/inline-script
-     text plus a nondeterministic cookie-settings panel. The content root
-     must exclude consent/analytics chrome.
+     self-poisons the instrument regardless of symmetry (live-vs-itself
+     with `--main body` reads dozens of structural 🔴 from inline-script
+     text and a nondeterministic consent panel). The content root must
+     exclude consent/analytics chrome.
    - **Verify the consent banner is actually gone post-dismiss before
      trusting an inventory** — consent UIs render nondeterministically
      between two sequential captures. If reds cluster on cookie/consent
@@ -491,8 +493,9 @@ Each was hit live; skipping one corrupts the measurement silently.
    shared `dismissOverlays` (stitch-shot always; diff probes via
    `--dismiss`): (a) cookie consent (clicked accept; `--consent <sel>` /
    `--dismiss <sel,...>` for non-standard banners); (b) **timed
-   marketing/newsletter interstitials** — they fire on a timer seconds after load and, undismissed, bake a per-seam contributor into the live capture, so the dismissal polls for late arrivals and stitch-shot sweeps
-   again after the settle pass. **Consent mode is one instrument
+   marketing/newsletter interstitials** — timer-fired; the dismissal polls
+   for late arrivals and stitch-shot sweeps again after the settle.
+   **Consent mode is one instrument
    parameter, the same on capture and gate**: `--consent-mode
    accept|deny` (default `accept`) on stitch-shot and every live-session
    probe (content-diff, visual-diff, anchor, chrome-parity,
@@ -794,15 +797,14 @@ reference dates get mixed up.
                    "at": "<ISO-8601>", "build": "a1b2c3d", "run": "<status.jsonl run start — optional>" },
       "justified": [
         { "probe": "visual", "flag": "1x1 h1 at x0", "why": "mirrors live SEO h1" },
-        { "probe": "content", "flag": "🟠 font fork ×2", "why": "licensed kit substituted, R-policy fonts", "permanent": true }
+        { "probe": "content", "flag": "🟠 font fork ×2", "why": "licensed kit substituted", "permanent": true }
       ],
       "residuals": [
         { "band": "y 4500–5000", "pct": 6.2, "cause": "capture-state", "what": "3 CDN-403 placeholder tiles", "flaggedFor": "delivery",
           "artifacts": [ "gates/home-1440/diff-iter3.png", "gates/home-1440/anchor-iter3.txt" ], "acceptedBy": "user" },
-        { "region": "footer", "pct": 4.8, "cause": "glyph-antialiasing", "parity": "gates/home-1440/chrome-parity-iter3.json", "texture": { "thickPct": 6.1 }, "flaggedFor": "user",
-          "artifacts": [ "gates/home-1440/chrome-parity-iter3.json", "gates/home-1440/crop-footer-iter3.json" ], "acceptedBy": "hands-off-policy:glyph-antialiasing" }
+        { "region": "footer", "pct": 4.8, "cause": "glyph-antialiasing", "flaggedFor": "user", "artifacts": [ "gates/home-1440/crop-footer-iter3.json" ], "acceptedBy": "hands-off-policy:glyph-antialiasing" }
       ],
-      "captureState": [ { "what": "product tiles 4–6 on placeholder data-URIs", "where": "carousel-2" } ],
+      "captureState": [ { "what": "tiles 4–6 on placeholder data-URIs", "where": "carousel-2" } ],
       "motion": { "assert": { "verdict": "pass", "at": "<ISO-8601>", "target": "http://127.0.0.1:<proto slot>/home-proposed.html", "regime": "prototype", "observe": "stardust/replica/motion/home.json", "schema": 2 } }
     },
     "360": { "...": "..." }
@@ -876,6 +878,7 @@ and %, do not chase it.
 | `icon-font-substitution` | chrome-parity ICONS signature mismatch on a licensed icon font the new host cannot ship | harvest the live vectors first (`recreation-procedure.md` § Asset harvest, icons); residual only when the licensed face is unavailable | user | yes |
 | `capture-state` | CDN-403 placeholders, hydration states, fallback type on a face that fails for real browsers too (rules 8 and 14) | replicate as captured; real assets wired at delivery | delivery | until delivery |
 | `motion-unassertable` | `motion-assert` has no headless target (prototype / published page unreachable, observe run bot-blocked); no `motion.assert` record possible | none — `artifacts[]` (observe JSON, run output) + `acceptedBy`; interactive only, never hands-off | user | no |
+| `chrome-state-unprobed` | a chrome matrix state the instrument cannot reach (bot challenge exit 3, auth-gated panel, headed-window ban): `chrome.variants[].states.<state>` = `unprobed:<reason>` (`chrome-states.md` § Chrome variants) | none — the state word IS the record; named in the approval message and the hand-off, never silent; the row still needs `rest` gated at both breakpoints | user | no |
 | `authored-volatile-masked` | campaign heroes / promo creatives that changed between capture and gate | `--mask` — every mask on the verdict line and in `masks[]` | user | n/a (masked) |
 
 The rollout phase's final report surfaces the residual list per page type

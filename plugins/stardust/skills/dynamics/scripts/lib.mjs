@@ -39,7 +39,7 @@ export async function loadPlaywright() {
     try { const mod = normalize(await import(pathToFileURL(createRequire(base).resolve('playwright')).href)); if (mod) return mod; } catch { /* next link */ }
   }
   try { const mod = normalize(await import('playwright')); if (mod) return mod; } catch { /* fall through */ }
-  throw new Error('playwright not importable — run node skills/stardust/scripts/preflight-runtime.mjs (master § Setup step 9); the dynamics instruments need a browser.');
+  throw new Error('playwright not importable — run node skills/stardust/scripts/preflight-runtime.mjs (master § Setup step 10 — skills/stardust/reference/runtime-preflight.md § Contract); the dynamics instruments need a browser.');
 }
 
 /* -------------------------------------------------------------- auth ---- */
@@ -111,6 +111,61 @@ export async function settlePage(page, { settleMs = 5000, scrollStep = 800, maxS
   for (let y = 0; y < maxScroll; y += scrollStep) { await page.mouse.wheel(0, scrollStep); await page.waitForTimeout(80); }
   await page.waitForTimeout(1500);
   await page.evaluate(() => window.scrollTo(0, 0));
+}
+
+/* ------------------------------------------------------ control drive --- */
+// One helper, two callers (dynamics-check `click-control`, deploy qa-gate's
+// control pass); motion-assert inlines the same observable set (it runs from
+// the project copy, which carries no dynamics lib). A deployed verify once
+// passed a carousel whose chevrons did nothing (measure() ran inside a
+// display:none section) — "opened" was asserted, never WHAT changed.
+export const CONTROL_OBSERVABLES = ['aria-expanded', 'aria-selected', 'aria-current', 'hidden', 'open', 'scrollLeft', 'transform', 'class', 'visible'];
+/* eslint-disable no-undef */
+function controlSnapshot({ sel, observeSel }) {
+  const el = document.querySelector(sel); if (!el) return null;
+  const r = el.getBoundingClientRect();
+  const block = el.closest('[data-block-name]') || el.closest('section') || el.parentElement;
+  const ctl = el.getAttribute('aria-controls'); const target = ctl ? document.getElementById(ctl) : null;
+  let scroller = null; for (let n = el.parentElement; n && n !== document.body; n = n.parentElement) { const cs = getComputedStyle(n); if (/(auto|scroll)/.test(cs.overflowX + cs.overflowY) || n.scrollWidth > n.clientWidth + 1) { scroller = n; break; } }
+  const transformed = block ? [...block.querySelectorAll('*')].find((e) => getComputedStyle(e).transform !== 'none') : null;
+  const vis = (e) => !!e && getComputedStyle(e).display !== 'none' && getComputedStyle(e).visibility !== 'hidden' && e.getBoundingClientRect().height > 0;
+  const label = `${el.tagName.toLowerCase()}${el.id ? `#${el.id}` : ''}${el.classList[0] ? `.${el.classList[0]}` : ''}${el.getAttribute('aria-label') ? `[aria-label="${el.getAttribute('aria-label')}"]` : ''}`;
+  return {
+    label, block: block && block.dataset ? block.dataset.blockName || block.className || block.tagName.toLowerCase() : null,
+    disabled: el.matches(':disabled') || el.getAttribute('aria-disabled') === 'true', box: r.width > 0 && r.height > 0,
+    'aria-expanded': el.getAttribute('aria-expanded'), 'aria-selected': el.getAttribute('aria-selected'), 'aria-current': el.getAttribute('aria-current'),
+    hidden: target ? (target.hidden || !vis(target)) : null,
+    open: el.closest('details') ? el.closest('details').open : null,
+    scrollLeft: scroller ? Math.round(scroller.scrollLeft) : (block ? Math.round(block.scrollLeft) : null),
+    transform: transformed ? getComputedStyle(transformed).transform : null,
+    class: block ? block.className : null,
+    visible: observeSel ? vis(document.querySelector(observeSel)) : null,
+  };
+}
+/* eslint-enable no-undef */
+/**
+ * Click `trigger` (a selector) once and report the first observable that changed:
+ * aria-expanded / aria-selected / aria-current on the control, `hidden` of its
+ * aria-controls target, `open` of its <details>, the nearest scroll container's
+ * scrollLeft, a descendant transform, the block's className, or `visible:<sel>`.
+ * `observe` pins one observable (`visible:<sel>` names an element); `expect`
+ * requires that value. Never throws for a missing / disabled / zero-box control:
+ * { found:false } | { skipped: 'disabled'|'zero-box', label } | { changed, by, before, after, label, block }.
+ */
+export async function driveControl(page, trigger, { observe = null, expect, settleMs = 600 } = {}) {
+  const observeSel = observe && observe.startsWith('visible:') ? observe.slice('visible:'.length) : null;
+  const key = observeSel ? 'visible' : observe;
+  const before = await page.evaluate(controlSnapshot, { sel: trigger, observeSel });
+  if (!before) return { found: false, trigger };
+  if (before.disabled) return { found: true, skipped: 'disabled', label: before.label, block: before.block };
+  if (!before.box) return { found: true, skipped: 'zero-box', label: before.label, block: before.block };
+  await page.evaluate((sel) => { const el = document.querySelector(sel); el.scrollIntoView({ block: 'center' }); el.click(); }, trigger);
+  await page.waitForTimeout(Math.min(600, settleMs));
+  const after = await page.evaluate(controlSnapshot, { sel: trigger, observeSel });
+  const keys = key ? [key] : CONTROL_OBSERVABLES;
+  const by = after ? keys.find((k) => JSON.stringify(before[k]) !== JSON.stringify(after[k])) || null : null;
+  const changed = !!by && (expect === undefined || String(after[by]) === String(expect));
+  return { found: true, changed, by, expect, before: key ? before[key] : undefined, after: key && after ? after[key] : undefined, label: before.label, block: before.block };
 }
 
 /** cheap `.env`-free fetch with status + headers; never throws */

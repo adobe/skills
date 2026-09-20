@@ -43,7 +43,11 @@
  *     --json [file]         machine-readable report (schema 1) to <file> or stdout
  *     --live-cache <f>      reuse/write the live side (all states, both widths, samples)
  *                           — one live navigation per breakpoint per URL; the key
- *                           carries width, mobile width, overrides and the sample list
+ *                           carries width, mobile width and overrides, NOT the sample
+ *                           list: the file is a superset (the --from-state run banks
+ *                           the samples, gate rounds without it replay at zero hits;
+ *                           a new sample URL is probed and appended). Written after
+ *                           the archetype probes, before the first sample.
  *                           (convention gates/<slug>-<w>/chrome-live-states.json)
  *     --consent <sel> | --dismiss <sel,…> | --consent-mode accept|deny | --block <substr,…>
  *     --headed[=window] | --locale <tag> | --storage-state <f> | --fresh-state | --solve-wait <ms>
@@ -129,7 +133,7 @@ export function parseArgs(argv) {
     else if (a === '--toggle') opts.toggle = pairSpec(need(a, ++i), a);
     else if (a === '--out') opts.out = need(a, ++i);
     else if (a === '--tolerance') opts.tolerance = Number(need(a, ++i));
-    else if (a === '--json') { opts.json = true; if (rest[i + 1] && !rest[i + 1].startsWith('--')) opts.jsonFile = rest[i += 1]; }
+    else if (a === '--json') { opts.json = true; if (rest[i + 1] && /\.json$/i.test(rest[i + 1])) opts.jsonFile = rest[i += 1]; } // only a *.json token is the file — a URL after --json stays a positional (build URL), never swallowed
     else if (a === '--live-cache') opts.liveCache = need(a, ++i);
     else if (a === '--consent') opts.consent = need(a, ++i);
     else if (a === '--dismiss') opts.dismiss = need(a, ++i).split(',').map((s) => s.trim()).filter(Boolean);
@@ -221,8 +225,11 @@ export function linkSetCheck(model, flatLinks) {
 }
 
 /** The live cache key — a mismatch re-probes (never a stale site, breakpoint or override set). */
-export function cacheKey(live, opts, samples) {
-  return { url: live, width: opts.width, mobile: opts.noMobile ? null : opts.mobile, overrides: { trigger: opts.trigger && opts.trigger.live, panel: opts.panel && opts.panel.live, search: opts.search && opts.search.live, toggle: opts.toggle && opts.toggle.live }, samples: samples.map((s) => s.url) };
+// The key never carries the sample list: the cache is a SUPERSET — a run with
+// --from-state banks the samples, the gate rounds without it replay from the
+// same file (zero live hits); a new sample URL is probed and appended.
+export function cacheKey(live, opts) {
+  return { url: live, width: opts.width, mobile: opts.noMobile ? null : opts.mobile, overrides: { trigger: opts.trigger && opts.trigger.live, panel: opts.panel && opts.panel.live, search: opts.search && opts.search.live, toggle: opts.toggle && opts.toggle.live } };
 }
 
 // --------------------------------------------------------------- in-page code
@@ -553,7 +560,7 @@ function cropCell(livePng, buildPng, height, outPng) {
   return { status: 'skipped', warn: `crop-compare exit ${r.status}: ${String(r.stderr || r.stdout).split('\n').find(Boolean) || 'no output'}` };
 }
 
-function compareCells(L, B, opts, outDir, width) {
+export function compareCells(L, B, opts, outDir, width) {
   const { paired, missing, extra } = pairStates(L.states.filter((s) => s.kind !== 'scroll'), B.states.filter((s) => s.kind !== 'scroll'));
   const cells = [];
   for (const p of paired) {
@@ -564,7 +571,11 @@ function compareCells(L, B, opts, outDir, width) {
       const r = compareRegion(p.name, p.live.region, p.build.region, opts.tolerance);
       cell.findings.push(...r.findings); cell.warnings = r.warnings || []; cell.pairs = r.pairs; cell.inventory = r.inventory;
     }
-    if (p.live.opensOn !== p.build.opensOn && p.build.opensOn !== 'override') cell.findings.push({ kind: 'TRIGGER', msg: `live opens on ${p.live.opensOn}, build on ${p.build.opensOn}` });
+    // B30 — no behaviour assertion here: how the panel opens (hover vs click) is
+    // evidence for the motion pass (motion-assert), never a gating delta of the
+    // chrome cell. Recorded on the cell (`trigger`) and said as a WARN.
+    cell.trigger = { live: p.live.opensOn, build: p.build.opensOn };
+    if (p.live.opensOn !== p.build.opensOn) cell.findings.push({ kind: 'WARN', msg: `live opens on ${p.live.opensOn}, build on ${p.build.opensOn} — trigger evidence for motion-assert, not a chrome delta` });
     if (p.live.png && p.build.png) {
       const h = Math.min(p.live.clip.height, p.build.clip.height);
       cell.crop = cropCell(p.live.png, p.build.png, h, join(outDir, `diff-${width}-${p.name.replace(/[^\w]+/g, '-').toLowerCase()}.png`));
@@ -586,7 +597,7 @@ function readLiveCache(file, key) {
   if (!file || !existsSync(file)) return null;
   try {
     const c = JSON.parse(readFileSync(file, 'utf8'));
-    if (JSON.stringify(c.key) !== JSON.stringify(key)) { console.error(`chrome-states: --live-cache ${file} was probed for a different url/width/overrides/samples — re-probing live`); return null; }
+    if (JSON.stringify(c.key) !== JSON.stringify(key)) { console.error(`chrome-states: --live-cache ${file} was probed for a different url/width/overrides — re-probing live`); return null; }
     return c;
   } catch (e) { console.error(`chrome-states: --live-cache ${file} unreadable (${e.message}) — re-probing live`); return null; }
 }
@@ -604,16 +615,24 @@ async function main() {
   const browser = await launchTier(chromium, opts.tier);
   let exit = 0;
   try {
-    const key = cacheKey(live, opts, samples);
+    const key = cacheKey(live, opts);
     const cached = readLiveCache(opts.liveCache, key);
+    const probedAt = cached ? cached.probedAt : new Date().toISOString();
     let L;
+    const saveCache = () => { if (opts.liveCache) { mkdirSync(dirname(opts.liveCache), { recursive: true }); writeFileSync(opts.liveCache, JSON.stringify({ key, probedAt, data: L }, null, 2)); } };
     if (cached) L = cached.data;
     else {
       L = { desktop: await probeSide(browser, live, opts, { isLive: true, width: opts.width, mobile: false, outDir: opts.out, side: 'live' }) };
       if (!opts.noMobile) L.mobile = await probeSide(browser, live, opts, { isLive: true, width: opts.mobile, mobile: true, outDir: opts.out, side: 'live' });
       L.samples = [];
-      for (const s of samples) { try { L.samples.push({ ...s, identity: await sampleIdentity(browser, s.url, opts) }); } catch (e) { if (e.name === 'BotChallengeError') throw e; L.samples.push({ ...s, identity: null, error: String(e.message).split('\n')[0] }); } }
-      if (opts.liveCache) { mkdirSync(dirname(opts.liveCache), { recursive: true }); writeFileSync(opts.liveCache, JSON.stringify({ key, probedAt: new Date().toISOString(), data: L }, null, 2)); }
+      saveCache(); // the archetype's two live navigations are banked BEFORE any sample probe — a bot challenge on a sample never costs them again
+    }
+    // samples: only the ones the cache lacks (superset cache); each one is banked as it lands
+    L.samples = Array.isArray(L.samples) ? L.samples : [];
+    const todo = samples.filter((s) => !L.samples.some((x) => x.url === s.url));
+    for (const s of todo) {
+      try { L.samples.push({ ...s, identity: await sampleIdentity(browser, s.url, opts) }); } catch (e) { if (e.name === 'BotChallengeError') throw e; L.samples.push({ ...s, identity: null, error: String(e.message).split('\n')[0] }); }
+      saveCache();
     }
     // variants: the archetype's own identity + every sample
     const variants = clusterVariants([{ url: live, identity: L.desktop.identity }, ...L.samples.filter((s) => s.identity)]);
@@ -630,7 +649,7 @@ async function main() {
       if (cells.some((c) => c.status === 'delta' || c.status === 'missing')) exit = 2;
     }
     const strip = (side) => side && { ...side, states: side.states.map((s) => ({ ...s, region: s.region ? { found: s.region.found, atoms: (s.region.atoms || []).length, rect: s.region.rect || null } : null })) };
-    const report = { schema: SCHEMA, live, build, width: opts.width, mobile: opts.noMobile ? null : opts.mobile, probedAt: cached ? cached.probedAt : new Date().toISOString(), liveCache: cached ? { file: opts.liveCache } : null, out: opts.out, variants: variants.map((v) => ({ key: v.key, pages: v.urls })), linkCheck, desktop: strip(L.desktop), mobileSide: strip(L.mobile), buildDesktop: strip(B && B.desktop), buildMobile: strip(B && B.mobile), cells, navModel };
+    const report = { schema: SCHEMA, live, build, width: opts.width, mobile: opts.noMobile ? null : opts.mobile, probedAt: cached ? cached.probedAt : new Date().toISOString(), liveCache: cached ? { file: opts.liveCache, samplesProbed: todo.length } : null, out: opts.out, variants: variants.map((v) => ({ key: v.key, pages: v.urls })), linkCheck, desktop: strip(L.desktop), mobileSide: strip(L.mobile), buildDesktop: strip(B && B.desktop), buildMobile: strip(B && B.mobile), cells, navModel };
     writeFileSync(join(opts.out, 'chrome-states.json'), JSON.stringify({ ...report, raw: { live: L, build: B } }, null, 2));
     if (opts.json) {
       const text = JSON.stringify(report, null, 2);

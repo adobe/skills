@@ -594,9 +594,9 @@ async function main() {
     // reducedMotion: 'reduce' — symmetric, and one less class of entrance
     // animation to freeze (crawl.mjs captures under the same preference).
     // Site auth (T12.2): only when asked, only on a delivery host — the source side never sees the token.
-    const isDeliveryHost = /\.aem\.(page|live)$/i.test(new URL(url).hostname);
+    const isDeliveryHost = /\.(aem|hlx)\.(page|live)$/i.test(new URL(url).hostname); // both pipeline host families; the source side never sees the token
     const siteAuth = (opts.tokenEnv || opts.authHeader) && isDeliveryHost ? resolveSiteAuth({ authHeader: opts.authHeader, tokenEnv: opts.tokenEnv }) : null;
-    if ((opts.tokenEnv || opts.authHeader) && !isDeliveryHost) console.log(`site auth not attached: ${new URL(url).hostname} is not a delivery host (.aem.page / .aem.live)`);
+    if ((opts.tokenEnv || opts.authHeader) && !isDeliveryHost) console.log(`site auth not attached: ${new URL(url).hostname} is not a delivery host (.aem.page / .aem.live / .hlx.page / .hlx.live)`);
     else if ((opts.tokenEnv || opts.authHeader) && !siteAuth) console.log(`site auth not attached: ${opts.tokenEnv || 'auth header'} does not resolve — reading anonymously (a locked host will answer 401)`);
     const ctx = await newLiveContext(browser, {
       ua: opts.ua, locale: opts.locale,
@@ -864,18 +864,28 @@ async function main() {
     const seams = seamRepeats(chunks, opts.width);
     const tail = await tailBelowFooter(page, totalH).catch(() => null);
     const dpr = await page.evaluate(() => window.devicePixelRatio).catch(() => 1);
+    // broken images (T23.2 gate half): <img> with a box ≥ 10 px that loaded nothing
+    // (complete && naturalWidth 0) — gate.sh fails the round when build − live >
+    // max(2, 10 % of imgCount) with failClass build-broken-images; recorded, not judged here.
+    const imgs = await page.evaluate(() => {
+      const rows = [...document.querySelectorAll('img')].filter((i) => { const r = i.getBoundingClientRect(); return r.width >= 10 && r.height >= 10; });
+      const broken = rows.filter((i) => i.complete && i.naturalWidth === 0);
+      return { imgCount: rows.length, brokenImages: broken.length, brokenSrcs: broken.slice(0, 20).map((i) => (i.currentSrc || i.src || '').slice(0, 200)) };
+    }).catch(() => null);
     const side = writeSidecar(out, {
       url, width: opts.width, vh: opts.vh, dpr, capturedAt: new Date().toISOString(),
       instrument: { ...INSTRUMENT, options: { settle: opts.settle, headed: opts.headed, startTier: resolveStartTier(opts.headed), locale: opts.locale, wait: opts.wait, timeout: opts.timeout, consent: opts.consent, dismiss: opts.dismiss, keepPinned: opts.keepPinned, exclude: opts.exclude, excludeLiveOnly: opts.excludeLiveOnly, expectHeight: opts.expectHeight, allowOverlay: opts.allowOverlay, allowConsent: opts.allowConsent, hideDefaults: opts.hideDefaults, removeText: opts.removeText, block: opts.block, maskSel: opts.maskSel, maskIframes: opts.maskIframes, maskImages: opts.maskImages } },
       consent: prov.consent, dismissed: prov.dismissed, fontsFailed: prov.fontsFailed,
       docHeight: totalH, chunks: chunks.length, source: 'stitch-shot', technique: TIERS[tier - 1], tier,
       pinnedHidden: [...pinnedHidden], pendingDecodes, tail, hidden: prov.hidden, seamRepeats: seams, blocked: parseBlockList(opts.block), visibilityState: prov.visibilityState,
+      ...(imgs || {}),
       ...(masksRects ? { masksRects } : {}),
     });
     console.log(`stitched ${out}: ${opts.width}x${totalH} from ${chunks.length} chunks  (consent ${prov.consent.mode}/${prov.consent.via}; sidecar ${side})`);
     if (!opts.keepPinned && chunks.length > 1) console.log(`pinned hidden on chunks 2+: ${pinnedHidden.size}${pinnedHidden.size ? ` [${[...pinnedHidden].join(', ')}]` : ''}`);
     else if (opts.keepPinned) console.log('pinned chrome kept on every chunk (--keep-pinned)');
     if (pendingDecodes) console.log(`WARN ${pendingDecodes} in-viewport image decode(s) did not finish inside the 1.5 s bound — chunk may carry a placeholder`);
+    if (imgs && imgs.brokenImages) console.log(`WARN ${imgs.brokenImages} of ${imgs.imgCount} image(s) loaded nothing (sidecar brokenImages/brokenSrcs) — gate.sh fails the round when build − live > max(2, 10 %): wire the harvested localPath copies`);
     if (seams >= 2) console.log(`WARN fixed overlay baked into ${seams} seams — chrome the pinned hide missed (iframe/shadow-hosted, or --keep-pinned): pass --exclude <sel> on both sides, or mask the seam rows (pixel-compare --mask)`);
     if (tail && tail.px > 8) console.log(`tail ${tail.px}px below footer: ${tail.elements.join(', ') || '(no element boxes — margin/padding)'}`);
     if (opts.block.length) console.log(`blocked: ${parseBlockList(opts.block).join(', ')} — run the same --block on the other side (the sidecar refuses an asymmetric pair)`);
@@ -898,4 +908,5 @@ async function main() {
 // and import.meta.url differ); importable otherwise, so the pure halves
 // (parseArgs, seamRepeats, INSTRUMENT) run in the fixture runner without a browser.
 const isMain = (() => { try { return process.argv[1] && pathToFileURL(realpathSync(process.argv[1])).href === import.meta.url; } catch { return false; } })();
-if (isMain) main().catch((e) => { console.error(`stitch-shot error: ${e.message}`); process.exit(e.name === 'BotChallengeError' ? 3 : e.name === 'InvalidCaptureError' ? 5 : 1); });
+// exit 124 = no browser slot in time (live-session launchTier, fan-out.md § Machine budget): no verdict, never a FAIL
+if (isMain) main().catch((e) => { console.error(`stitch-shot error: ${e.message}`); process.exit(e.code === 124 ? 124 : e.name === 'BotChallengeError' ? 3 : e.name === 'InvalidCaptureError' ? 5 : 1); });

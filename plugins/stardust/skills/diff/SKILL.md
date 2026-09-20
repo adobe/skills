@@ -64,7 +64,7 @@ prototype's DOM and the built DOM compare symmetrically, then diffs them.
 ## Run it
 
 ```bash
-# Prereq 0: node skills/stardust/scripts/preflight-runtime.mjs (master Setup step 9) — playwright, pixelmatch and pngjs
+# Prereq 0: node skills/stardust/scripts/preflight-runtime.mjs (master Setup step 10) — playwright, pixelmatch and pngjs
 # resolve from stardust/node_modules through the resolution chain (runtime-preflight.md § Resolution chain);
 # never npm i … --no-save in the EDS repo. Run the copied scripts from the project, not the plugin.
 # Copy the WHOLE skills/diff/scripts/ dir (content-diff imports diff-profiles + content-inventory).

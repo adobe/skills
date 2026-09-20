@@ -58,6 +58,12 @@ eq('L done static-snapshot, missing → clear', gateWith({ feature: 'rail', clas
 const [indexLine] = gate({ features: [listing] }, { indexStatus: { registered: 'denied' } });
 eq('index line names row, denied and the remedy', /^news listing \(L\): status "done", index-backed with index-status\.json registered: denied — run node skills\/rollout\/scripts\/query-index\.mjs .*exit 0/.test(indexLine), true);
 
+// click-control (T20.2) is a replay check like any other — it never adds a gate() condition (rule 8 unchanged)
+const clickCtl = { type: 'click-control', path: '/', trigger: '.cards .next', observe: 'scrollLeft' };
+eq('click-control on a done W row never blocks gate()', blocks({ feature: 'cards carousel', class: 'W', reproducibility: 'self', status: 'done', checks: [clickCtl] }), 0);
+eq('click-control does not satisfy the S search-query condition', blocks({ feature: 'search', class: 'S', status: 'done', checks: [clickCtl] }), 1);
+eq('click-control does not satisfy the V video-plays condition', blocks({ feature: 'player', class: 'V', disposition: 'embed-passthrough', status: 'done', checks: [clickCtl] }), 1);
+
 // the gate line names the row and the remedy
 const [line] = gate({ features: [{ feature: 'contact modal', class: 'M', reproducibility: 'self', status: 'pending modal' }] });
 eq('gate line names feature, class, status and remedy', /^contact modal \(M\): reproducibility self, status "pending modal" — implement it .*named owner decision$/.test(line), true);

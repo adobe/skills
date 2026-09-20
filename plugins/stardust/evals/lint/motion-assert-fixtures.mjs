@@ -48,13 +48,20 @@ const check = (ok, msg) => { if (!ok) failures.push(msg); };
 // the CLI contract — every CLI case exits before a launch.
 const load = (f) => JSON.parse(readFileSync(join(FIX, f), 'utf8'));
 const runPure = (args) => { const r = spawnSync(process.execPath, [SCRIPT, ...args], { encoding: 'utf8' }); return { status: r.status, out: `${r.stdout}${r.stderr}` }; };
-const { CHECKS, DEADLINE_EXIT, schemaGate, chromeStates, chromeDelta, compareChrome, activeDot, widgetAdvanced, stateChanged, entranceWithinTolerance, verdictOf, buildRecord, noVerdict, record, renderResult } = await import(SCRIPT);
+const { CHECKS, DEADLINE_EXIT, activeBrowsers, closeActiveBrowsers, schemaGate, chromeStates, chromeDelta, compareChrome, activeDot, widgetAdvanced, stateChanged, entranceWithinTolerance, verdictOf, buildRecord, noVerdict, record, renderResult } = await import(SCRIPT);
 const v2 = load('observe-v2.json'); const v1 = load('observe-v1.json'); const flat = load('observe-static.json');
 
 // --- schema gate
 check(schemaGate(v2).schema === 2 && schemaGate(v2).entrances && schemaGate(v2).stateMachines, 'schema 2 with entrances[]/stateMachines[] asserts (a) and (c)');
 check(schemaGate(v1).schema === 1 && !schemaGate(v1).entrances && !schemaGate(v1).stateMachines, 'schema 1 → (a)/(c) not asserted');
 check(CHECKS.length === 5 && DEADLINE_EXIT === 124, 'five named checks; 124 is the deadline exit');
+// defect: the deadline branch exited 124 while Chromium was still open — the browser slot stayed held until the process died
+{
+  let closed = 0; const fake = { close: async () => { closed += 1; } }; const hang = { close: () => new Promise(() => {}) }; const thrower = { close: async () => { throw new Error('gone'); } };
+  activeBrowsers.add(fake); activeBrowsers.add(hang); activeBrowsers.add(thrower);
+  const t0 = Date.now(); const n = await closeActiveBrowsers(200);
+  check(n === 3 && closed === 1 && activeBrowsers.size === 0 && Date.now() - t0 < 2000, `closeActiveBrowsers closes every registered browser, bounded per browser, never throws, empties the set (n ${n}, closed ${closed}, left ${activeBrowsers.size})`);
+}
 
 // --- chrome states + compare
 const S = chromeStates(v2.headerTimeline);
@@ -151,6 +158,10 @@ check(r.status === 2 && /not a URL/.test(r.out), 'a non-URL target exits 2');
 // the script never imports playwright before the usage checks (static contract)
 const src = readFileSync(SCRIPT, 'utf8');
 check(!/^import .*from 'playwright'/m.test(src) && /await import\('playwright'\)/.test(src), 'playwright is imported lazily — usage/help never need a browser');
+// launch-ladder parity (T20.2 § Script work "open target via live-session"): the browser comes from live-session launchTier, never a bare chromium.launch()
+check(!/chromium\.launch\(/.test(src) && /launchTier\(chromium/.test(src) && /live-session\.mjs/.test(src), 'the target is opened through live-session launchTier (two-layout lookup), not chromium.launch()');
+check(/e\.code === 124 \? DEADLINE_EXIT/.test(src), 'a launchTier slot timeout (code 124) exits 124 — no verdict, never 1');
+check(/if \(out\.deadline\) \{\s*await closeActiveBrowsers\(\)/.test(src) && /activeBrowsers\.add\(browser\)/.test(src), 'the deadline branch closes the launched browser before exit 124 (runChecks registers it)');
 check(/never opens the live origin/i.test(src) && !/--allow-/.test(src), 'header states the live-origin rule; no allow-style bypass flag');
 
 // --- deadline record path: no browser → the record writer alone (a temp ledger)
@@ -186,6 +197,8 @@ try {
   if (deps !== 'repo') {
     cpSync(join(PLUGIN, 'skills', 'replica', 'scripts'), join(tmp, 'skills', 'replica', 'scripts'), { recursive: true });
     cpSync(join(PLUGIN, 'skills', 'replica', 'reference'), join(tmp, 'skills', 'replica', 'reference'), { recursive: true });
+    cpSync(join(PLUGIN, 'skills', 'diff', 'scripts'), join(tmp, 'skills', 'diff', 'scripts'), { recursive: true }); // live-session.mjs (the launcher) sits beside the replica scripts in both layouts
+    for (const sk of ['deploy', 'dynamics']) cpSync(join(PLUGIN, 'skills', sk, 'scripts'), join(tmp, 'skills', sk, 'scripts'), { recursive: true }); // qa-gate + its driveControl import (T20.2 PR B)
     symlinkSync(resolve(deps), join(tmp, 'node_modules'));
     script = join(tmp, 'skills', 'replica', 'scripts', 'motion-assert.mjs');
   }
@@ -217,10 +230,20 @@ try {
   j = null; try { j = JSON.parse(r.out.split('\n').filter((l) => !l.startsWith('motion-assert')).join('\n')); } catch { /* asserted below */ }
   check(r.status === 1 && j?.checks?.chrome?.status === 'fail' && /live is static, target morphs/.test(j?.checks?.chrome?.detail || '') && j?.skips?.entrances, `static live vs morphing target = invented motion, fail; --skip reason recorded — got ${r.status} ${j?.checks?.chrome?.detail}`);
 
+  // T20.2 PR B — deploy qa-gate's control pass (dynamics lib.mjs driveControl) names the dead chevron; the faq toggle changes an observable
+  const qaGate = deps !== 'repo' ? join(tmp, 'skills', 'deploy', 'scripts', 'qa-gate.mjs') : join(PLUGIN, 'skills', 'deploy', 'scripts', 'qa-gate.mjs');
+  const qg = spawnSync(process.execPath, [qaGate, url('dead-carousel.html')], { encoding: 'utf8', timeout: 90000, cwd: tmp });
+  const qgOut = `${qg.stdout}${qg.stderr}`;
+  check(/control button\.next\[aria-label="Next"\] in block cards-carousel: no observable changed/.test(qgOut), `qa-gate control pass names the dead chevron (🟡 advisory) — got:\n${qgOut.split('\n').filter((l) => /control/.test(l)).join('\n')}`);
+  check(/control button\.faq__q in block faq: aria-expanded changed/.test(qgOut), 'qa-gate control pass: the faq toggle is a live control (aria-expanded changed)');
+  check(/⚠ control .*no observable changed/.test(qgOut) && !/✗ control /.test(qgOut), 'the dead control is a WARN line, not a FAIL (D15 pending — B30 stands)');
+  const qgNo = spawnSync(process.execPath, [qaGate, url('dead-carousel.html'), '--no-drive'], { encoding: 'utf8', timeout: 90000, cwd: tmp });
+  check(/control pass skipped \(--no-drive\)/.test(`${qgNo.stdout}${qgNo.stderr}`) && !/no observable changed/.test(`${qgNo.stdout}${qgNo.stderr}`), '--no-drive skips the pass and says so');
+
   r = run([join(FIX, 'observe-v2.json'), url('live-like.html'), '--timeout', '1', '--record', ledger, '--slug', 'home', '--width', '360']);
   check(r.status === 124 && /⏱ none/.test(r.out), `--timeout expiry exits 124 with verdict none — got ${r.status}\n${r.out}`);
   const led2 = JSON.parse(readFileSync(ledger, 'utf8'));
   check(led2.archetypes[0].breakpoints['360'].motion?.assert?.verdict === 'none' && led2.archetypes[0].breakpoints['360'].result.pass === true, 'deadline record: verdict none under breakpoints.360, result untouched');
 } finally { rmSync(tmp, { recursive: true, force: true }); }
 
-finish(`live-like pass, dead carousel named, schema-1 not-asserted, invented motion fails, --record, 124 → none [deps: ${deps}]`);
+finish(`live-like pass, dead carousel named, schema-1 not-asserted, invented motion fails, --record, 124 → none, qa-gate control pass names the dead chevron [deps: ${deps}]`);

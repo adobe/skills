@@ -38,7 +38,9 @@
  * Reasons: no ledger entry · never gated · missing prototype · <bp> missing ·
  *   <bp> <pct> % Δh <n> over bar, residuals unnamed / without artifacts[] /
  *   without acceptedBy / hands-off-policy on a non-permanent class ·
- *   `pass: true` typed over the bar · motion inventory missing.
+ *   `pass: true` typed over the bar · <bp> failClass <class> (a gate.sh build
+ *   defect such as build-broken-images — no residual escapes it) · motion
+ *   inventory missing.
  *   Warnings (never block): structuralRed absent (older ledger); declared
  *   prototype file not found in --project.
  *
@@ -119,6 +121,8 @@ export function judgeResult(result, bp) {
   const red = num(result?.structuralRed);
   const reasons = []; const warnings = [];
   if (pct == null || dh == null) return { pass: false, reasons: [`${bp} result without pixelPct/heightDelta numbers`], warnings, pct, dh };
+  // a gate.sh failClass (build-broken-images) is a build defect the numbers do not show — FAIL whatever they say
+  if (typeof result?.failClass === 'string' && result.failClass) reasons.push(`${bp} failClass ${result.failClass}`);
   if (pct > BARS.pixelPct) reasons.push(`${bp} ${pct} % over bar`);
   if (Math.abs(dh) > BARS.heightDelta) reasons.push(`${bp} Δh ${dh} over bar`);
   if (red == null) warnings.push(`${bp} structuralRed absent (older ledger)`);
@@ -165,6 +169,7 @@ export function judgeType(name, entry, { bps, classes, projectRoot }) {
       warnings.push(...j.warnings);
       if (j.pct != null) numbers.push(`${bp} ${j.pct} % Δh ${j.dh}`);
       if (j.pass) continue;
+      if (block.result.failClass) { reasons.push(`${bp} failClass ${block.result.failClass} — a build defect, no residual class escapes it (§ Pass bar 4)`); continue; }
       if (block.result.pass === true) reasons.push(`${bp} \`pass: true\` typed over the bar (${j.reasons.join(', ')})`);
       const rp = judgeResiduals(block.residuals, classes);
       if (rp.length) reasons.push(`${bp} ${j.pct} % Δh ${j.dh} over bar, ${rp.join(', ')}`);

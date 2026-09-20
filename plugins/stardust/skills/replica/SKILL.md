@@ -19,12 +19,12 @@ Phases, in order: Setup → 1 EXTRACT → 2 PRESERVE DIRECTION → 3 RECREATE �
 | 1 | `$stardust extract <URL> --prep --dynamics` — bounded entry: `--single` / `--pages <slug,...>`; then `replica/chrome-variants.mjs --write` (chrome variants from the capture, zero live hits) |
 | 2 | mechanical promotion + `stardust/replica/inconsistency-register.md`; the `dynamics` skill Phases 1–3 |
 | 3 | `replica/lift.mjs <live> --width <w>` per gate width (`--save-css`), chrome archetype row per variant first (`reference/chrome-states.md` § Chrome variants), then author `stardust/prototypes/<slug>-proposed.html` (+ per-page CSS) |
-| 4 | serve: `replica/serve.mjs stardust/prototypes --role proto` (port from `replica/port.mjs proto`; `port.mjs stop proto`); probes 1+2: `diff/content-diff.mjs`, `diff/visual-diff.mjs` (`--profile generic --width <w> --main <root> --dismiss`); probe 3: `replica/stitch-shot.mjs`, `replica/pixel-compare.mjs --timeout <s>`, `replica/review-image.mjs --bands|--sheet`; inner loop: `replica/anchor.mjs --landmarks --cache|--against`, `replica/chrome-parity.mjs --live-cache`, `replica/gate.sh <slug> <live> <proto> <width> [iter] [--marker] [--refresh] [--variance] [--over-cap <reason>] [--record → replica/progress-record.mjs]`; sweeps: `replica/gate-batch.mjs <pairs.tsv> [--concurrency 2]` (progress: `stardust/.work/replica/gate-batch.progress.json`) — env `GATE_STITCH_TIMEOUT`, `GATE_COMPARE_TIMEOUT`, `GATE_ANCHOR_TIMEOUT`, `GATE_REAP_MIN`, `GATE_BLOCK`, `GATE_ALLOW_CONSENT`, `GATE_LANDMARKS=0`; each node step runs under `replica/run-capped.mjs --timeout <s> -- <cmd>`; then `replica/motion-observe.mjs <live> [--hover <sel>] [--click <sel>] [--triggers auto]` → `replica/motion-assert.mjs <observe.json> <proto> --record stardust/replica/progress.json --slug <slug>`; chrome cells: `replica/chrome-states.mjs <live> [<proto>] --from-state stardust/state.json --live-cache` |
-| 5 | `replica/gate-ledger-lint.mjs --state stardust/state.json` (exit 2 = blocked types); `replica/chrome-variants.mjs --progress stardust/replica/progress.json` (exit 2 = a variant without its chrome row); first: `deploy` the approved archetype to a branch preview; `replica/sibling-variance.mjs <archetype> <siblings…> --probe <block>=<sel>`; then the `migrate` (sibling tier) → `deploy` → `rollout` skills; re-run the Phase 4 gate against the published origin |
+| 4 | serve: `replica/serve.mjs stardust/prototypes --role proto` (port from `replica/port.mjs proto`; `port.mjs stop proto`); probes 1+2: `diff/content-diff.mjs`, `diff/visual-diff.mjs` (`--profile generic --width <w> --main <root> --dismiss`); probe 3: `replica/stitch-shot.mjs`, `replica/pixel-compare.mjs --timeout <s>`, `replica/review-image.mjs --bands|--sheet`; inner loop: `replica/anchor.mjs --landmarks --cache|--against`, `replica/chrome-parity.mjs --live-cache`, `replica/gate.sh <slug> <live> <proto> <width> [iter] [--marker] [--refresh] [--variance] [--over-cap <reason>] [--record → replica/progress-record.mjs]`; sweeps: `replica/gate-batch.mjs <pairs.tsv> [--concurrency 2]` (progress: `stardust/.work/replica/gate-batch.progress.json`) — env `GATE_STITCH_TIMEOUT`, `GATE_COMPARE_TIMEOUT`, `GATE_ANCHOR_TIMEOUT`, `GATE_REAP_MIN`, `GATE_BLOCK`, `GATE_ALLOW_CONSENT`, `GATE_TOKEN_ENV`, `GATE_LANDMARKS=0`; each node step runs under `replica/run-capped.mjs --timeout <s> -- <cmd>`; then `replica/motion-observe.mjs <live> [--hover <sel>] [--click <sel>] [--triggers auto]` → `replica/motion-assert.mjs <observe.json> <proto> --record stardust/replica/progress.json --slug <slug>`; chrome cells: `replica/chrome-states.mjs <live> [<proto>] --from-state stardust/state.json --live-cache` |
+| 5 | `replica/gate-ledger-lint.mjs --state stardust/state.json` (exit 2 = blocked types); `replica/chrome-variants.mjs --progress stardust/replica/progress.json` (exit 2 = a variant without its chrome row); first: `deploy` the approved archetype to a branch preview; `replica/sibling-variance.mjs <archetype> <siblings…> --probe <block>=<sel>`; then the `migrate` (sibling tier) → `deploy` → `rollout` skills; re-run the Phase 4 gate (and `motion-assert.mjs … --regime published-origin`) against the published origin |
 
-Gates: Phase 2 — every dynamic-surface row has a disposition. Phase 4, per breakpoint (default `1440,360`) — content-diff 0 structural 🔴 · visual-diff flags none/justified · pixel diff ≤ 10% with no hot band unexplained · height |Δ| ≤ 8px · cap 3 iterations · interaction parity recorded · chrome state matrix probed, every cell gated or a named residual. `gate.sh` exits: 0 pass · 2 fail · 1 error / incomparable captures · 3 bot challenge · 4 wrong server · 5 invalid capture (consent / short / overlay / error page) · 6 cap reached (decide: residual / register / `--over-cap <reason>`; `--invalidate <label> <fix>` excludes a defect round; `--record` copies the round into `progress.json`) · 124 deadline (re-run, not a FAIL).
+Gates: Phase 2 — every dynamic-surface row has a disposition. Phase 4, per breakpoint (default `1440,360`) — content-diff 0 structural 🔴 · visual-diff flags none/justified · pixel diff ≤ 10% with no hot band unexplained · height |Δ| ≤ 8px · cap 3 iterations · interaction parity recorded · chrome state matrix probed, every cell gated or a named residual. `gate.sh` exits: 0 pass · 2 fail · 1 error / incomparable captures · 3 bot challenge · 4 wrong server · 5 invalid capture (consent / short / overlay / error page) · 6 cap reached (decide: residual / register / `--over-cap <reason>`; `--invalidate <label> <fix>` excludes a defect round; `--record` copies the round into `progress.json`) · 124 deadline or no browser slot (re-queue, not a FAIL).
 
-Outputs: `stardust/direction.md` · `stardust/replica/{inconsistency-register.md, progress.json, motion/<slug>.json, gates/<slug>-<width>/}` · `stardust/prototypes/<slug>-proposed.html` · root `PRODUCT.md` / `DESIGN.md` / `DESIGN.json`.
+Outputs: `stardust/direction.md` · `stardust/replica/{inconsistency-register.md, progress.json (+ `.chrome`), motion/<slug>.json, variant-census.json, capture/lift/, gates/<slug>-<width>/}` · `stardust/current/layout-clusters.json` · `stardust/.work/ports.json` · `stardust/prototypes/<slug>-proposed.html` · root `PRODUCT.md` / `DESIGN.md` / `DESIGN.json`.
 
 | At phase | Read |
 |---|---|
@@ -87,8 +87,8 @@ Five phases: 1 and 5 delegate to existing skills unchanged; 2–4 are
 
 ### Phase 1 — EXTRACT (delegate to `$stardust extract --prep --dynamics`)
 
-Invoke `$stardust extract <URL> --prep --assets full`, unchanged. Prep mode is required —
-replica consumes the full migration inventory, not the discovery cap:
+Invoke `$stardust extract <URL> --prep --assets full`, unchanged (prep mode:
+the full inventory, not the discovery cap):
 
 - `stardust/current/pages/<slug>.json` — per-page structure + content
   (verbatim source of every prototype string).
@@ -98,15 +98,16 @@ replica consumes the full migration inventory, not the discovery cap:
   — prototypes reference the copies, never the source CDN URL).
 - `stardust/current/PRODUCT.md`, `DESIGN.md`, `DESIGN.json` — the descriptive
   current state (Phase 2 promotes these verbatim).
-- `state.json.pages[].type` — page types (each becomes one archetype);
+- `state.json.pages[].type` — page types (each becomes one archetype: the
+  page whose layout cluster and chrome variant cover the most siblings —
+  `layout-cluster.mjs`, `chrome-variants.mjs` — never the first or prettiest);
   `pages[].chromeVariant` from `chrome-variants.mjs --write` — a second
   variant opens the `chrome-variant` decision row before its fan-out.
 - `DESIGN.json.extensions.modules[]` — module candidates (become blocks).
 
-When extract's summary comes back, lead with the flow line — "Flow: replica
-— the design is kept. Say `switch to redesign` now if it is to change."
-`switch to redesign` runs `$stardust prepare-migration --switch-flow`; the
-extract is reused, nothing else is.
+Lead extract's summary with "Flow: replica — the design is kept; say
+`switch to redesign` now if it is to change" (it runs `$stardust
+prepare-migration --switch-flow`; the extract is reused, nothing else).
 
 **Bounded entry (one page or a pilot).** `$stardust extract <URL> --single`
 (or `--pages <slug,...>`) is a first-class entry: per-page JSON, screenshot
@@ -177,10 +178,9 @@ as **clean semantic HTML/CSS** from three sources, in this order:
 (c) **The captured screenshot as ground truth** for what CSS doesn't name
     (composition, image crops, paint effects).
 
-**Every archetype gets its own standalone prototype — cumulative, never
-skipped**: each new prototype imports the shared layers earlier ones already gated and iterates
-only on its NEW modules —
-`reference/recreation-procedure.md` § Cumulative archetype prototypes.
+**Every archetype gets its own standalone, cumulative prototype**: it
+imports the layers earlier ones gated and iterates only on its NEW modules
+(`reference/recreation-procedure.md` § Cumulative archetype prototypes).
 
 **Module-kind lift ledger — `progress.json.modules[]`:** one entry per
 module KIND, `{ kind, firstSeen: <slug>, lifted: { "1440": <gate artefact>,
@@ -235,8 +235,7 @@ gate doc item 5, cells per `reference/chrome-states.md`):**
 - height delta **|Δ| ≤ 8px** (pixel-compare's own warning bar).
 
 **Iteration discipline: hard cap 3 iterations per breakpoint.** Fixes come
-off the instruments, never off eyeballing (image reads: numbers first, band
-crops, never the stitched page — read table 4). After 3 an over-bar breakpoint is
+off the instruments, never eyeballing (image reads: read table 4). After 3 an over-bar breakpoint is
 **FAIL** unless every residual is a named class with `artifacts[]` +
 `acceptedBy` (gate doc § Residual classes · § Residual logging format;
 `result` copied from `gate-<label>.json`); hands-off never approves it.
@@ -244,16 +243,12 @@ Three named regimes end a loop early or sit outside the cap —
 `source-inconsistent`, `separate-composition`, `canon-followup` (gate doc
 § Iteration discipline).
 
-**Hardening — the gate doc § Hardening rules is the list**, built into the
-shared `diff/scripts/live-session.mjs` and shipped as flags (`--ua`,
-`--wait-until`, `--dismiss`, `--headed[=window]`, `--locale`, `--main`;
-`stitch-shot.mjs` adds `--allow-consent`, `--no-dismiss-defaults`,
-`--remove-text`, `--keep-pinned`, `--exclude`): a challenge fails loud (exit
-3), the ladder is climbed, never degraded; `domcontentloaded`, never
-`networkidle`; symmetric `--main` (`body` never valid); pinned chrome hidden
-on chunks 2+ (`reference/recreation-procedure.md` § Fixed and sticky
-chrome); JOIN/SPLIT parity (#87); capture-state policy. A hand-edited project
-copy is a defect (gate doc § Script adaptations).
+**Hardening — the gate doc § Hardening rules is the list**, built into
+`diff/scripts/live-session.mjs` and shipped as flags: a challenge fails loud
+(exit 3), the ladder climbs, never degrades; `domcontentloaded`; symmetric
+`--main` (`body` never valid); pinned chrome hidden on chunks 2+; JOIN/SPLIT
+parity; capture-state policy. A hand-edited project copy is a defect (gate
+doc § Script adaptations).
 
 **After the static gate passes, interaction parity is a REQUIRED gate
 output per archetype — not a post-pass**
@@ -293,8 +288,10 @@ approves it. The phase-close block (master § Phase close) carries
 - **Pages beyond the archetypes** go through the stardust `migrate` skill at
   **sibling tier** (`../migrate/reference/fidelity-tiers.md`): structural
   clone of the gated archetype + content-fidelity + delivery-lint +
-  media-reconcile. Siblings inherit the archetype's source-fidelity gate —
-  never re-author one from scratch. First `replica/layout-cluster.mjs --type
+  media-reconcile. Siblings inherit the archetype's **prototype** gate; every
+  delivered page carries its own published-origin evidence (sample or cheap
+  probe — `../rollout/reference/publish-gate.md` § Coverage regime) — never
+  re-author one from scratch. First `replica/layout-cluster.mjs --type
   <t> --write-state`: a layout cluster ≥ T without a gated exemplar is a
   coverage gap — nothing in it renders (same file, § Sibling variance probe,
   Layout clusters). **Template constancy is measured**:
@@ -309,8 +306,8 @@ approves it. The phase-close block (master § Phase close) carries
   reconstructive; blocks obey the Experience Workspace editability contract
   (`../deploy/reference/block-js-scaffold.md`, EW1–EW10) and pass
   `block-roundtrip --ew`.
-- **Site-wide rollout** via the stardust `rollout` skill — its block dedup
-  implements "same blocks across the whole site".
+- **Site-wide rollout** via the stardust `rollout` skill (block dedup =
+  same blocks across the whole site).
 - **The hand-off names the captured variant**: every brief and report
   carries `captured variant: <markers, capture date, consent mode>` —
   compare against the capture, not a fresh live view

@@ -10,8 +10,13 @@
  * `state.json.pages[].chromeVariant` (--write). With --progress it is the
  * GATE: every variant needs a chrome archetype row in
  * `stardust/replica/progress.json.chrome.variants[]` whose every state is
- * `gated` | `dead` | `unprobed:<reason>` — a variant without that row, or a
- * row with an unknown state word, blocks fan-out of its pages (exit 2).
+ * `gated` | `dead` | `unprobed:<reason>` — a variant without that row, a
+ * row with an unknown state word, or a `gated` word without its evidence
+ * (`gates.<bp>` for every configured breakpoint: an existing chrome-states
+ * artefact — `chrome-states.json` with `schema: 1` + `cells[]`, or its directory; paths
+ * relative to progress.json's directory) blocks fan-out of its pages (exit 2).
+ * A typed word is not a crop: the lint re-reads the artefact, like
+ * gate-ledger-lint re-reads the numbers.
  *
  * Why (field record, five migrations): a second header/footer variant
  * (another CSS bundle, another template's chrome, a persistent subnav band)
@@ -33,8 +38,9 @@
  *
  * Exit codes:
  *   0  inventory printed (and written with --write); with --progress every variant has a valid row
- *   2  --progress: at least one variant without a row, or a row with a state outside
- *      gated | dead | unprobed:<reason> — fan-out of that bucket is blocked
+ *   2  --progress: at least one variant without a row, a row with a state outside
+ *      gated | dead | unprobed:<reason>, or a `gated` row whose gates.<bp> artefact is
+ *      missing / unreadable at any configured breakpoint — fan-out of that bucket is blocked
  *   1  error (no page records, unreadable state/progress JSON, unknown flag)
  *
  * Pages captured before the `chrome` field existed land in the `unfingerprinted`
@@ -43,8 +49,8 @@
  * `../reference/chrome-states.md` § Chrome variants.
  */
 /* eslint-disable no-restricted-syntax, brace-style, object-curly-newline, max-len, no-plusplus */
-import { existsSync, readdirSync, readFileSync, writeFileSync, realpathSync } from 'fs';
-import { join, basename } from 'path';
+import { existsSync, readdirSync, readFileSync, writeFileSync, realpathSync, statSync } from 'fs';
+import { join, basename, dirname, resolve as resolvePath } from 'path';
 import { createHash } from 'crypto';
 import { pathToFileURL } from 'url';
 
@@ -58,6 +64,7 @@ Usage: node chrome-variants.mjs [--pages <dir>] [--state <file>] [--write] [--pr
   --state <file>     state.json — persisted variant names are read from it; --write stores pages[].chromeVariant
   --write            write pages[].chromeVariant into --state (merge by slug; names never renumbered)
   --progress <file>  GATE: every variant needs progress.json.chrome.variants[] row with states gated | dead | unprobed:<reason>
+                     and, for a gated row, gates.<bp> artefacts that exist for every breakpointsConfigured (default 1440, 360)
   --json             inventory as JSON
   --help             this text
 
@@ -132,15 +139,28 @@ export function bucketPages(pages, existing = {}) {
   return buckets;
 }
 
+/** A gates.<bp> artefact: chrome-states.json (schema 1 with cells[]) or the directory holding it — must exist, parse AND
+ *  be a chrome-states report: `{}` / `[]` / a file without `schema: 1` is no evidence (defect: an empty object passed). */
+export function gateArtefactOk(path, root) {
+  if (!path || typeof path !== 'string') return false;
+  let file = resolvePath(root || '.', path);
+  try { if (statSync(file).isDirectory()) file = join(file, 'chrome-states.json'); } catch { return false; }
+  try { const j = JSON.parse(readFileSync(file, 'utf8')); return Boolean(j) && typeof j === 'object' && !Array.isArray(j) && j.schema === 1 && Array.isArray(j.cells); } catch { return false; }
+}
+
 /**
  * Gate check against progress.json.chrome.variants[]. Returns
  * { ok, blocked: [{ name, reason }] }. A variant is blocked when no row
- * carries its name (or key), when the row has no `states`, or when a state's
- * value is outside gated | dead | unprobed:<reason>. `unfingerprinted` is
+ * carries its name (or key), when the row has no `states`, when a state's
+ * value is outside gated | dead | unprobed:<reason>, or when a row with a
+ * `gated` state has no readable gates.<bp> artefact for every configured
+ * breakpoint (`progress.breakpointsConfigured`, default 1440 + 360; paths
+ * resolve against `root` = progress.json's directory). `unfingerprinted` is
  * blocked too — an unknown chrome is not a gated chrome.
  */
-export function checkProgress(buckets, progress) {
+export function checkProgress(buckets, progress, { root = '.' } = {}) {
   const rows = (progress && progress.chrome && Array.isArray(progress.chrome.variants)) ? progress.chrome.variants : [];
+  const bps = (Array.isArray(progress && progress.breakpointsConfigured) && progress.breakpointsConfigured.length ? progress.breakpointsConfigured : [1440, 360]).map(String);
   const blocked = [];
   for (const b of buckets) {
     if (b.key === 'unfingerprinted') { blocked.push({ name: b.name, reason: `${b.pages.length} page record(s) without a chrome fingerprint — re-run extract on one page per type` }); continue; }
@@ -149,8 +169,13 @@ export function checkProgress(buckets, progress) {
     const states = row.states && typeof row.states === 'object' ? Object.entries(row.states) : [];
     if (!states.length) { blocked.push({ name: b.name, reason: 'row has no states{} — the matrix was not recorded' }); continue; }
     const bad = states.filter(([, v]) => !STATE_WORDS.test(String(v)));
-    if (bad.length) blocked.push({ name: b.name, reason: `state(s) outside gated | dead | unprobed:<reason>: ${bad.map(([k, v]) => `${k}=${v}`).join(', ')}` });
-    else if (!states.some(([k]) => k === 'rest')) blocked.push({ name: b.name, reason: 'no `rest` state in the row (the resting crop is item 5)' });
+    if (bad.length) { blocked.push({ name: b.name, reason: `state(s) outside gated | dead | unprobed:<reason>: ${bad.map(([k, v]) => `${k}=${v}`).join(', ')}` }); continue; }
+    if (!states.some(([k]) => k === 'rest')) { blocked.push({ name: b.name, reason: 'no `rest` state in the row (the resting crop is item 5)' }); continue; }
+    // a `gated` word needs its evidence at every configured breakpoint — the artefact, not the typed word, is the crop
+    if (states.some(([, v]) => v === 'gated')) {
+      const missing = bps.filter((bp) => !gateArtefactOk(row.gates && row.gates[bp], root));
+      if (missing.length) blocked.push({ name: b.name, reason: `state(s) marked gated without evidence: gates.${missing.join(' / gates.')} missing or not a readable chrome-states.json (schema 1 with cells[]) — run chrome-states.mjs <live> <proto> at that width and record the artefact path` });
+    }
   }
   return { ok: blocked.length === 0, blocked };
 }
@@ -172,7 +197,7 @@ function main() {
   const existing = Object.fromEntries(statePages.filter((p) => p.chromeVariant).map((p) => [p.slug, p.chromeVariant]));
   for (const p of pages) { const sp = statePages.find((x) => x.slug === p.slug); if (sp && sp.type && !p.type) p.type = sp.type; }
   const buckets = bucketPages(pages, existing);
-  const gate = opts.progress ? checkProgress(buckets, readJson(opts.progress, 'progress')) : null;
+  const gate = opts.progress ? checkProgress(buckets, readJson(opts.progress, 'progress'), { root: dirname(opts.progress) }) : null;
 
   if (opts.write && state) {
     const bySlug = new Map(buckets.flatMap((b) => b.pages.map((p) => [p.slug, b.name])));

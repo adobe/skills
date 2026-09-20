@@ -7,6 +7,9 @@
 //              acceptedBy); landing ok;
 //   1440-only ledger with breakpointsConfigured [1440, 360] → "360 missing";
 //   `pass: true` typed next to heightDelta 28 → blocked (the hand-typed case);
+//   result.failClass (build-broken-images) under the bar → blocked, valid
+//   residuals do not escape it; progress-record blockFor() on a FAIL record
+//   with pixel-compare's `pass: true` lands pass false + failClass (defect);
 //   pageTypes{} alias accepted; unknown shape (pages{} + "4.02%") → exit 1;
 //   over the bar with named-class residuals + artifacts[] + acceptedBy → ok,
 //   hands-off-policy on a non-permanent class → blocked;
@@ -126,7 +129,7 @@ try {
   const rc = spawnSync(process.execPath, [join(copy, 'gate-ledger-lint.mjs'), '--progress', p5, '--all-types'], { encoding: 'utf8' });
   check(rc.status === 0 && /landing: ok — home 1440 12 % Δh 2/.test(`${rc.stdout}${rc.stderr}`) && !/WARN/.test(rc.stderr), `the project copy (stardust/scripts/replica/, no ../reference/) still resolves the class list: named residuals ok, exit 0, no WARN — got ${rc.status}\n${rc.stdout}${rc.stderr}`);
   const copied = spawnSync(process.execPath, ['--input-type=module', '-e', `import { residualClasses } from ${JSON.stringify(join(copy, 'progress-record.mjs'))}; const c = residualClasses(); console.log(JSON.stringify({ source: c.source, size: c.size, cs: c.get('capture-state') }));`], { encoding: 'utf8' });
-  check(/"source":"embedded","size":17,"cs":\{"permanent":false\}/.test(copied.stdout), `the copied reader reports source embedded with the full list, got ${copied.stdout}${copied.stderr}`);
+  check(/"source":"embedded","size":18,"cs":\{"permanent":false\}/.test(copied.stdout), `the copied reader reports source embedded with the full list, got ${copied.stdout}${copied.stderr}`);
   const unassertable = JSON.parse(JSON.stringify(valid)); unassertable.residuals[1].cause = 'motion-unassertable: prototype server unreachable from the headless run'; unassertable.residuals[1].acceptedBy = 'user';
   const p7c = ledgerFile('unassertable', { archetypes: [{ pageType: 'landing', archetype: 'home', prototype: 'x.html', motion, breakpoints: { 1440: unassertable, 360: good(1, 0) } }] });
   r = run(['--progress', p7c, '--all-types']);
@@ -135,6 +138,19 @@ try {
   const p7d = ledgerFile('unassertable-handsoff', { archetypes: [{ pageType: 'landing', archetype: 'home', prototype: 'x.html', motion, breakpoints: { 1440: unassertable, 360: good(1, 0) } }] });
   r = run(['--progress', p7d, '--all-types']);
   check(r.status === 2 && /hands-off-policy on a non-permanent class/.test(r.out), `hands-off cannot self-accept motion-unassertable\n${r.out}`);
+
+  // defect: a gate.sh build-broken-images FAIL was ledgered pass true (pixel-compare's key spread after the verdict) and the lint,
+  // judging pixelPct/heightDelta only, said ok — failClass blocks whatever the numbers say, and no residual class escapes it
+  const brokenImgs = { iterations: 1, result: { structuralRed: 0, pixelPct: 3, heightDelta: 1, pass: true, failClass: 'build-broken-images' }, residuals: JSON.parse(JSON.stringify(valid.residuals)) };
+  const pFc = ledgerFile('failclass', { archetypes: [{ pageType: 'landing', archetype: 'home', prototype: 'x.html', motion, breakpoints: { 1440: brokenImgs, 360: good(1, 0) } }] });
+  r = run(['--progress', pFc, '--all-types']);
+  check(r.status === 2 && /landing: blocked — 1440 failClass build-broken-images — a build defect, no residual class escapes it/.test(r.out) && !/typed over the bar/.test(r.out), `result.failClass blocks the type under the bar, residuals notwithstanding\n${r.out}`);
+  r = run(['--progress', ledgerFile('failclass-pub', { archetypes: [{ pageType: 'landing', archetype: 'home', published: { 1440: { result: { pixelPct: 3, heightDelta: 1, pass: true, failClass: 'build-broken-images' } } } }] }), '--published']);
+  check(/^landing: published: 1440 FAIL 3 % Δh 1/m.test(r.out), `--published reports a failClass round as FAIL\n${r.out}`);
+  const { blockFor } = await import(join(HERE, 'progress-record.mjs'));
+  const fcBlock = blockFor({ slug: 'home', width: 1440, verdict: 'FAIL', exit: 2, pass: true, pixelPct: 3, heightDelta: 1, failClass: 'build-broken-images', ref: {}, at: 'now' }, 'r.json', 1).block.result;
+  check(fcBlock.pass === false && fcBlock.failClass === 'build-broken-images', `blockFor: a failClass record lands pass false + failClass whatever pixel-compare's pass said — got ${JSON.stringify({ pass: fcBlock.pass, failClass: fcBlock.failClass })}`);
+  check(blockFor({ slug: 'home', width: 1440, verdict: 'PASS', exit: 0, pass: true, pixelPct: 3, heightDelta: 1, ref: {}, at: 'now' }, 'r.json', 1).block.result.failClass === undefined, 'blockFor: no failClass key on an ordinary round');
 
   // synthetic: motion inventory missing; roster from state.json pages (type with no sibling is not checked)
   const p8 = ledgerFile('motion', { archetypes: [{ pageType: 'landing', archetype: 'home', prototype: 'x.html', breakpoints: { 1440: good(1, 0), 360: good(1, 0) } }, { pageType: 'program', archetype: 'prog', prototype: 'y.html', motion, breakpoints: {} }] });
@@ -151,4 +167,4 @@ try {
 }
 
 if (failures.length) { console.error(`gate-ledger-lint.test: ${failures.length} finding(s)`); for (const f of failures) console.error(`  ✗ ${f}`); process.exit(1); }
-console.log('gate-ledger-lint.test: ok (shared fixture 2 blocked / landing ok, --json, --types, --published coverage, 360 missing, typed pass over Δh, pageTypes{} alias, unknown shape exit 1, named residuals ok / hands-off-policy permanent only / unnamed blocked, motion + roster, --help)');
+console.log('gate-ledger-lint.test: ok (shared fixture 2 blocked / landing ok, --json, --types, --published coverage, 360 missing, typed pass over Δh, failClass blocks + blockFor pass false, pageTypes{} alias, unknown shape exit 1, named residuals ok / hands-off-policy permanent only / unnamed blocked, motion + roster, --help)');
