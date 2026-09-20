@@ -43,15 +43,14 @@ iteration budget. Gate 1440 first (the geometry lifted from desktop CSS),
 then 360.
 
 ```bash
-# Serve the prototype from its own dir so relative assets resolve. Verify the
-# port is YOURS first (lsof -nP -iTCP:8791 -sTCP:LISTEN); prefer a per-project
-# port — a stale server from another stardust project on the shared suggested
-# port silently serves a foreign site into the gate.
-# On shared machines run gate.sh with --marker "<brand string>": the slug
-# default can false-pass against another stardust project sharing the slug
-# (both serving a home-proposed.html that contains "home").
-(cd stardust/prototypes && python3 -m http.server 8791 &)
-PROTO="http://localhost:8791/<slug>-proposed.html"
+# Serve from the prototypes dir with THIS project's server: serve.mjs takes
+# the slot port.mjs hashes for the project (8800–8899, never 8791), answers
+# /.stardust-marker.txt, refuses a taken port (exit 98), writes
+# stardust/.work/ports.json + proto.pid; a foreign listener is listed, never
+# killed. Without ports.json the documented 8791 stands. On shared machines
+# pass gate.sh --marker "<brand string>" (a shared slug can false-pass).
+node stardust/scripts/replica/serve.mjs stardust/prototypes --role proto &
+PROTO="http://127.0.0.1:$(node stardust/scripts/replica/port.mjs proto)/<slug>-proposed.html"
 LIVE="https://<site>/<path>"
 W=1440   # then 360
 GATE="stardust/replica/gates/<slug>-$W"

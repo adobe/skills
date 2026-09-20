@@ -19,7 +19,7 @@ Phases, in order: Setup → 1 EXTRACT → 2 PRESERVE DIRECTION → 3 RECREATE �
 | 1 | `$stardust extract <URL> --prep --dynamics` — bounded entry: `--single` / `--pages <slug,...>`; then `replica/chrome-variants.mjs --write` (chrome variants from the capture, zero live hits) |
 | 2 | mechanical promotion + `stardust/replica/inconsistency-register.md`; the `dynamics` skill Phases 1–3 |
 | 3 | chrome archetype row per variant first (`reference/chrome-states.md` § Chrome variants), then author `stardust/prototypes/<slug>-proposed.html` (+ per-page CSS) |
-| 4 | probes 1+2: `diff/content-diff.mjs`, `diff/visual-diff.mjs` (`--profile generic --width <w> --main <root> --dismiss`); probe 3: `replica/stitch-shot.mjs`, `replica/pixel-compare.mjs --timeout <s>`, `replica/review-image.mjs --bands|--sheet`; inner loop: `replica/anchor.mjs --landmarks --cache|--against`, `replica/chrome-parity.mjs --live-cache`, `replica/gate.sh <slug> <live> <proto> <width> [iter] [--marker] [--refresh] [--variance] [--over-cap <reason>] [--record → replica/progress-record.mjs]`; sweeps: `replica/gate-batch.mjs <pairs.tsv> [--concurrency 2]` (progress: `stardust/.work/replica/gate-batch.progress.json`) — env `GATE_STITCH_TIMEOUT`, `GATE_COMPARE_TIMEOUT`, `GATE_ANCHOR_TIMEOUT`, `GATE_REAP_MIN`, `GATE_BLOCK`, `GATE_ALLOW_CONSENT`, `GATE_LANDMARKS=0`; each node step runs under `replica/run-capped.mjs --timeout <s> -- <cmd>`; then `replica/motion-observe.mjs <live> [--hover <sel>] [--click <sel>] [--triggers auto]`; chrome cells: `replica/chrome-states.mjs <live> [<proto>] --from-state stardust/state.json --live-cache` |
+| 4 | serve: `replica/serve.mjs stardust/prototypes --role proto` (port from `replica/port.mjs proto`; `port.mjs stop proto`); probes 1+2: `diff/content-diff.mjs`, `diff/visual-diff.mjs` (`--profile generic --width <w> --main <root> --dismiss`); probe 3: `replica/stitch-shot.mjs`, `replica/pixel-compare.mjs --timeout <s>`, `replica/review-image.mjs --bands|--sheet`; inner loop: `replica/anchor.mjs --landmarks --cache|--against`, `replica/chrome-parity.mjs --live-cache`, `replica/gate.sh <slug> <live> <proto> <width> [iter] [--marker] [--refresh] [--variance] [--over-cap <reason>] [--record → replica/progress-record.mjs]`; sweeps: `replica/gate-batch.mjs <pairs.tsv> [--concurrency 2]` (progress: `stardust/.work/replica/gate-batch.progress.json`) — env `GATE_STITCH_TIMEOUT`, `GATE_COMPARE_TIMEOUT`, `GATE_ANCHOR_TIMEOUT`, `GATE_REAP_MIN`, `GATE_BLOCK`, `GATE_ALLOW_CONSENT`, `GATE_LANDMARKS=0`; each node step runs under `replica/run-capped.mjs --timeout <s> -- <cmd>`; then `replica/motion-observe.mjs <live> [--hover <sel>] [--click <sel>] [--triggers auto]`; chrome cells: `replica/chrome-states.mjs <live> [<proto>] --from-state stardust/state.json --live-cache` |
 | 5 | `replica/gate-ledger-lint.mjs --state stardust/state.json` (exit 2 = blocked types); `replica/chrome-variants.mjs --progress stardust/replica/progress.json` (exit 2 = a variant without its chrome row); first: `deploy` the approved archetype to a branch preview; `replica/sibling-variance.mjs <archetype> <siblings…> --probe <block>=<sel>`; then the `migrate` (sibling tier) → `deploy` → `rollout` skills; re-run the Phase 4 gate against the published origin |
 
 Gates: Phase 2 — every dynamic-surface row has a disposition. Phase 4, per breakpoint (default `1440,360`) — content-diff 0 structural 🔴 · visual-diff flags none/justified · pixel diff ≤ 10% with no hot band unexplained · height |Δ| ≤ 8px · cap 3 iterations · interaction parity recorded · chrome state matrix probed, every cell gated or a named residual. `gate.sh` exits: 0 pass · 2 fail · 1 error / incomparable captures · 3 bot challenge · 4 wrong server · 5 invalid capture (consent / short / overlay / error page) · 6 cap reached (decide: residual / register / `--over-cap <reason>`; `--invalidate <label> <fix>` excludes a defect round; `--record` copies the round into `progress.json`) · 124 deadline (re-run, not a FAIL).
@@ -37,8 +37,7 @@ Outputs: `stardust/direction.md` · `stardust/replica/{inconsistency-register.md
 
 Sections: Inputs · Setup · Procedure · What replica never does · Outputs · References.
 
-Same pages, same content, same design — new platform. `replica` migrates a
-site to AEM Edge Delivery keeping the
+Same pages, same content, same design — new platform. `replica` keeps the
 current design **near pixel-perfect**: the target spec IS the captured current
 state, the only permitted deltas are the entries of an explicit
 **inconsistency register**, and every archetype must pass a **measured
@@ -54,11 +53,10 @@ proven by instruments).
 ## Inputs
 
 - `<URL>` — required. The site to migrate.
-- `--breakpoints <list>` — optional. Gate breakpoints, default `1440,360`.
-  Each breakpoint gets its own gate pass — a 1440-tuned page is not gated at 360.
-- `--register <file>` — optional. User-supplied inconsistency items to seed
-  the register (Phase 2). Without it and without an audit, the register is
-  empty — a pure replica.
+- `--breakpoints <list>` — gate breakpoints, default `1440,360`; each gets
+  its own gate pass (a 1440-tuned page is not gated at 360).
+- `--register <file>` — inconsistency items seeding the register (Phase 2);
+  without it and without an audit the register is empty — a pure replica.
 
 ## Setup
 
@@ -77,9 +75,9 @@ proven by instruments).
    every gate run (`node -e "import('pixelmatch').then(()=>process.exit(0))"`).
 4. Copy scripts into the project and run them from there, not from the
    plugin: this skill's whole `scripts/` dir to `stardust/scripts/replica/`
-   AND the whole `../diff/scripts/` dir to `stardust/scripts/diff/`
-   (stitch-shot resolves `live-session.mjs` from the sibling dir). Never copy into the project-root `scripts/` (the EDS
-   boilerplate's; master skill § Artifacts, the write boundary).
+   AND `../diff/scripts/` to `stardust/scripts/diff/` (the instruments
+   resolve `live-session.mjs` from the sibling dir). Never into the
+   project-root `scripts/` (the EDS boilerplate's — the write boundary).
 5. **Impeccable ignore set for lifted values** — once, after the Phase 1
    capture: `node stardust/scripts/replica/impeccable-ignores.mjs`
    (`--files` on the user's go / hands-off; `--tokens` for the Phase 3
@@ -217,20 +215,19 @@ Full contract: `reference/source-fidelity-gate.md`. Run per archetype, per
 breakpoint (default 1440 AND 360), live URL as source vs served prototype:
 
 ```bash
-PROTO="http://localhost:8791/<slug>-proposed.html"   # python3 -m http.server from the prototypes dir
-# verify the port is YOURS (lsof -nP -iTCP:8791 -sTCP:LISTEN); gate.sh asserts a page marker (exit 4)
+node stardust/scripts/replica/serve.mjs stardust/prototypes --role proto &   # own port, marker file, pidfile
+PROTO="http://127.0.0.1:$(node stardust/scripts/replica/port.mjs proto)/<slug>-proposed.html"   # no ports.json → 8791
+# a foreign listener is listed, never killed — the allocator moves; gate.sh asserts the marker (exit 4 = no verdict)
 LIVE="https://<site>/<path>"
 
-# Probe 1+2 — the diff skill's two probes, generic profile (--dismiss: both overlay classes)
+# Probe 1+2 — the diff skill's two probes, generic profile
 node stardust/scripts/diff/content-diff.mjs "$LIVE" "$PROTO" --profile generic --width 1440 --main "<content-root>" --dismiss
 node stardust/scripts/diff/visual-diff.mjs  "$LIVE" "$PROTO" --profile generic --width 1440 --main "<content-root>" --dismiss
 
-# Probe 3 — gate.sh wraps stitch-shot (stitched, NEVER fullPage) + pixel-compare.
-# Masks only via stardust/replica/masks.json (class + source) — gate doc rule 19.
-
-# Inner loop (gate doc § Band breakdown): anchor probe both sides (live via
-# --cache $G/anchor-live.json), chrome-parity --live-cache BEFORE any pixel round, then
-stardust/scripts/replica/gate.sh <slug> "$LIVE" "$PROTO" 1440   # cached live.png, deadlines, round record, cap
+# Probe 3 — gate.sh wraps stitch-shot (stitched, NEVER fullPage) + pixel-compare;
+# masks only via stardust/replica/masks.json (rule 19). Inner loop (gate doc
+# § Band breakdown): anchor both sides (--cache), chrome-parity --live-cache first, then
+stardust/scripts/replica/gate.sh <slug> "$LIVE" auto 1440   # build URL from ports.json; cached live.png, deadlines, round record, cap
 ```
 
 **Pass bar (all five, per breakpoint — the fifth is the chrome crop gate,

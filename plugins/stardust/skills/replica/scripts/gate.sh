@@ -10,7 +10,7 @@
 # explicitly when capture hardening changed).
 #
 # Usage:
-#   stardust/scripts/replica/gate.sh <slug> <live-url> <build-url> <width> [iter-label] \
+#   stardust/scripts/replica/gate.sh <slug> <live-url> <build-url|auto[/<path>]> <width> [iter-label] \
 #     [--marker <string>] [--live-from-capture <png>] [--regime prototype|published-origin] \
 #     [--refresh] [--variance] \
 #     [--over-cap <source-inconsistent|separate-composition|canon-followup|instrument-invalidated>] \
@@ -94,7 +94,8 @@
 # codes: 0 gate PASS, 2 gate FAIL (over threshold), 3 bot challenge,
 # 1 capture/compare error (incl. incomparable captures), 4 build-side
 # identity assertion failed (the URL serves something that isn't this
-# project's page — wrong/stale server), 5 invalid capture — no verdict,
+# project's page — another project's server: listed, never killed; `auto`
+# reads this project's port from stardust/.work/ports.json), 5 invalid capture — no verdict,
 # never a FAIL (consent dialog still present after the dismissal window —
 # in deny mode nothing to reject, in accept mode nothing matched: pass
 # --consent <sel> via the crawl log's consent.method, or GATE_ALLOW_CONSENT=1;
@@ -172,6 +173,18 @@ SLUG=${1:?$USAGE}
 LIVE_URL=${2:?missing <live-url>}
 BUILD_URL=${3:?missing <build-url>}
 W=${4:?missing <width>}
+# <build-url> = auto[/<path>]: this project's prototype server from
+# stardust/.work/ports.json (port.mjs proto; serve.mjs writes it) — the URL is
+# never typed, so it can never name another project's port. Default path
+# <slug>-proposed.html. Without ports.json the documented default port stands.
+case "$BUILD_URL" in
+  auto|auto/*)
+    _P=$(node -e 'try{const j=JSON.parse(require("fs").readFileSync("stardust/.work/ports.json","utf8"));process.stdout.write(String(j.proto&&j.proto.port||""))}catch{}' 2>/dev/null)
+    [ -z "$_P" ] && { echo "gate.sh: <build-url> auto needs stardust/.work/ports.json#proto — start the server with serve.mjs <dir> --role proto (or pass the URL)" >&2; exit 125; }
+    _PATH=${BUILD_URL#auto}; _PATH=${_PATH#/}
+    BUILD_URL="http://127.0.0.1:$_P/${_PATH:-$SLUG-proposed.html}"
+    echo "gate.sh: build URL from ports.json → $BUILD_URL" ;;
+esac
 shift 4
 LBL=""
 case "${1:-}" in ''|--*) ;; *) LBL=$1; shift ;; esac
@@ -321,16 +334,24 @@ fi
 # (brand name, domain). Runs BEFORE any capture so a collision costs one
 # curl, not a gate round. -L: published/preview origins redirect (https,
 # trailing slash) — an unfollowed redirect must not read as a mismatch.
+# Own-server bookkeeping first (never by age — a healthy prototype server runs
+# for hours): a pidfile whose pid is dead is an ORPHAN and is removed; a
+# listener on the build port whose cwd is outside this project is LISTED,
+# never killed (three field runs killed other projects' servers — the
+# allocator moves instead: port.mjs proto → next slot).
+if [ -f stardust/.work/proto.pid ]; then
+  node -e 'const fs=require("fs");const p="stardust/.work/proto.pid";try{const j=JSON.parse(fs.readFileSync(p,"utf8"));try{process.kill(j.pid,0)}catch(e){if(e.code!=="EPERM"){fs.rmSync(p,{force:true});console.error(`gate.sh: proto pidfile pid ${j.pid} is gone — orphan pidfile removed (serve.mjs restarts on the same slot)`)}}}catch{}' 2>&1 >&2
+fi
 PAGE=$(curl -fsSL --max-time 10 "$BUILD_URL" 2>/dev/null) || PAGE=""
 if ! printf '%s' "$PAGE" | grep -qiF -- "$MARKER"; then
   echo "gate.sh: IDENTITY ASSERTION FAILED — $BUILD_URL does not serve a page containing \"$MARKER\" (or did not respond)." >&2
   echo "gate.sh: the server on that port is likely another project's (stale http.server?) — not comparing." >&2
   PORT=$(printf '%s' "$BUILD_URL" | sed -nE 's|^[a-z]+://[^:/]+:([0-9]+).*|\1|p')
   if [ -n "$PORT" ]; then
-    echo "gate.sh: port $PORT listener:" >&2
-    lsof -nP -iTCP:"$PORT" -sTCP:LISTEN >&2 || echo "gate.sh: (nothing listening on :$PORT)" >&2
+    echo "gate.sh: port $PORT listener (pid, command, cwd — a cwd outside this project is another project's: listed, never killed):" >&2
+    node "$HERE/port.mjs" list 2>/dev/null | grep -F ":$PORT " >&2 || lsof -nP -iTCP:"$PORT" -sTCP:LISTEN >&2 || echo "gate.sh: (nothing listening on :$PORT)" >&2
   fi
-  echo "gate.sh: kill/replace the stale server, or pass --marker <string> if the slug legitimately doesn't appear in the page." >&2
+  echo "gate.sh: this project's server: node $HERE/serve.mjs <prototypes-dir> --role proto (port.mjs proto picks a free slot; port.mjs stop proto ends only ours); or pass --marker <string> if the slug legitimately doesn't appear in the page." >&2
   exit 4
 fi
 
