@@ -13,7 +13,7 @@ metadata:
 
 | phase | command / instrument | gate | writes |
 |---|---|---|---|
-| Setup 1–4 | `node -e "import('playwright').then(()=>process.exit(0))"`; copy `skills/extract/scripts/{crawl,validate-page,brand-surface,write-design-json,brand-review,state-update}.mjs` as a set → `stardust/scripts/` (+ `skills/stardust/scripts/progress.mjs` → `stardust/scripts/stardust/`); origin-collision and flow guard; consent pre-flight; bot-management probe | flow stamped before a migration crawl | `_crawl-log.json#consent`, `#discovery.fetchTechnique` |
+| Setup 1–4 | `node -e "import('playwright').then(()=>process.exit(0))"`; copy `skills/extract/scripts/{crawl,validate-page,brand-surface,write-design-json,brand-review,state-update}.mjs` as a set → `stardust/scripts/` (+ `skills/stardust/scripts/{progress,browser-lock}.mjs` and `lib/resolve.mjs` → `stardust/scripts/stardust/` — the copy-as-a-set rule, `harness-permissions.md` § Two classes); origin-collision and flow guard; consent pre-flight; bot-management probe | flow stamped before a migration crawl | `_crawl-log.json#consent`, `#discovery.fetchTechnique` |
 | 1 Discovery | robots sitemaps → standard → conventions → nav union → BFS (`--depth`); subtree from the typed path; junk filter; cap via `--cap <N>` / `--all` / `--pages <slugs>` / `--single` | relay crawl's kept/cut summary; no gate | `stardust/current/_crawl-log.json` |
 | 2 Per-page extraction | `node stardust/scripts/crawl.mjs --url <origin> [--pages …] [--cap N \| --all \| --single] [--refresh <slug,…> \| --force] [--headed] [--concurrency N] [--wait <mode>] [--dynamics] [--mobile <mode>] [--dpr N] [--depth N] [--cookie n=v] [--storage-state <file> \| --fresh-state] [--save-state] [--solve-wait <ms>] [--progress <file> \| --no-progress] [--assets intercept\|full\|none \| --no-assets] [--prep]` — in the background; `progress.mjs read stardust/.work/extract/crawl.progress.json`, then its `SUMMARY` line | live-render evidence contract; schema gate `validate-page.mjs` (exit 1 = not `extracted`); synthesis is a Phase 2 failure | `current/pages/<slug>.json` + `.html`, `assets/screenshots/<slug>.png`, `assets/media/`, `state.json` page → `extracted` |
 | 2.5 Vision verification | look at each screenshot against its record; `_signals` flags first; escalation ladder (wait mode → next bot-management tier → fresh context); `node plugins/stardust/evals/lint/crawl-log-lint.mjs --dir stardust/current` | verdict `ok` / `recaptured` / `suspect`; never `ok` on DEGRADED / overlay | `_crawl-log.json#visionCheck[]` |
@@ -140,7 +140,11 @@ Additional checks for this sub-command:
    directory and the plugin tree ships no `node_modules`: copy the six
    extract scripts byte-identical, as a set, into `stardust/scripts/`
    (the siblings import `./crawl.mjs` for the consent table and the
-   validators) and run the copies.
+   validators) together with `skills/stardust/scripts/{progress,browser-lock}.mjs`
+   and `lib/resolve.mjs` → `stardust/scripts/stardust/` (`crawl.mjs`
+   resolves playwright through the chain, takes the machine's browser
+   slot and writes its progress file only with them beside it) and run
+   the copies.
 
    **Bundled crawler.** `skills/extract/scripts/crawl.mjs` is the
    runnable reference implementation of this sub-command (browser
