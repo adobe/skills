@@ -71,8 +71,8 @@ critique, and it does not modify the live site. It writes only under
 - `--cookie name=value[;Path=/]` — optional, repeatable. Seeds every
   context (age gates, region pins); names only are logged.
 - `--mobile entry|all|none` — optional, default `entry`. Also shoot the
-  page at 360×900 (`<slug>-360.png`, same page, no navigation); `--prep`
-  runs pass `all`.
+  page at 360×900 (`<slug>-360.png`, same page, no navigation); pass
+  `all` for a replica run (every archetype is gated at 360).
 - `--dpr <n>` — optional, default 1 (D4: the gate captures at 1);
   recorded in `_provenance.dpr`.
 - `--storage-state <file>` / `--fresh-state` — optional. Load a saved

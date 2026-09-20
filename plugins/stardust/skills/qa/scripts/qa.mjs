@@ -11,7 +11,7 @@
  *   --base <url>            live host to sweep (required)
  *   --checks <list>         comma list: routing,content,templates,metadata,links,browse,perf,editability,dynamics,ai-readability
  *                           (default: all) or a preset — delivery = routing,content,templates,metadata,links ·
- *                           browse = browse,perf,editability · parity = dynamics,ai-readability. Fleets > 100 pages:
+ *                           rendered = browse,perf,editability · parity = dynamics,ai-readability. Fleets > 100 pages:
  *                           run the three presets as separate, sequential invocations.
  *   --baseline-reset        delete <baselines> before the sweep (the step after an approved fix batch)
  *   --paths-file <txt>      inventory source: one path per line

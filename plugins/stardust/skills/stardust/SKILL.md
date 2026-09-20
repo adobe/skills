@@ -13,7 +13,7 @@ metadata:
 
 | step | what runs | gate / outcome | writes |
 |---|---|---|---|
-| Setup 1 | read the skill's `metadata.impeccable` level; unless `none`: `node skills/stardust/scripts/impeccable-version-check.mjs --probe --state stardust/state.json [--local <dir>]` (advisory) | `required` stops if missing; `optional` degrades; `none` skips 1 and 4 | `state.json.impeccable` |
+| Setup 1 | read the skill's `metadata.impeccable` level; unless `none`: `node skills/stardust/scripts/impeccable-version-check.mjs --probe [--local <dir>]` (advisory, read-only; `--state` only in a phase that writes `state.json` anyway) | `required` stops if missing; `optional` degrades; `none` skips 1 and 4 | `state.json.impeccable` |
 | Setup 2–4 | `PRODUCT.md` / `DESIGN.md` presence; read `stardust/state.json`; parse impeccable's `command-metadata.json` | — | — |
 | Setup 5–8 | status ledger; project hygiene (`stardust/.gitignore`, root `.gitignore`, `.hlxignore`, `git check-ignore`); `node skills/stardust/scripts/run-lock.mjs check` + project root; credentials lookup on migration-bound asks | `state.json` not ignored; `check` exit 3 (held) → read-only; no 401 blocker before the lookup ran | `stardust/status.jsonl`, `stardust/.gitignore`, `stardust/.work/run.lock`, `state.json.credentials` |
 | Routing | no arg / resume → state report; sub-skill keyword → delegate; migration ask → § Two migration flows; freeform → intent reasoning | plan shown before any command (hands-off: recorded instead) | `state.json` flow keys |
@@ -53,12 +53,15 @@ delegate the actual design work to **impeccable**.
    `impeccable: skipped` in the skill's first `status.jsonl` line.
    Otherwise, once per session, run
    `node <plugin>/skills/stardust/scripts/impeccable-version-check.mjs
-   --probe --state stardust/state.json` (`--local <dir>` for a skills
-   directory): it resolves the skill dir, merges it into an existing
+   --probe` (`--local <dir>` for a skills directory): read-only — it
+   resolves the skill dir and prints one advisory line per copy; surface
+   it verbatim only for a newer version or a `drift:` line; never stop or
+   degrade over it. Add `--state stardust/state.json` only from a phase
+   that writes `state.json` anyway (extract, direct, prototype, migrate,
+   replica, deploy, rollout): it merges the record into an existing
    `state.json#impeccable` (`reference/state-machine.md` § Impeccable
-   key; never creates the file, rewrites on change only) and prints one
-   advisory line per copy — surface it verbatim only for a newer version
-   or a `drift:` line; never stop or degrade over it. Sub-skills read
+   key; never creates the file, rewrites on change only). A no-argument
+   state report, a resume, `qa` or `audit` never write it. Sub-skills read
    `state.json#impeccable.skillDir` when present, never re-locate it.
    Under a permission layer read `reference/harness-permissions.md` § Two
    classes first. If absent, `required` skills stop and tell the user:

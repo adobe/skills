@@ -1,5 +1,5 @@
 {
-  "context": "open and reasoned (no silent intent → command mapping). Task and setup in task.md; each item is judged pass/fail and weighted by max_score.",
+  "context": "open and reasoned (no silent intent \u2192 command mapping). Task and setup in task.md; each item is judged pass/fail and weighted by max_score.",
   "type": "weighted_checklist",
   "checklist": [
     {
@@ -50,7 +50,7 @@
     {
       "name": "no_eds_references",
       "max_score": 5,
-      "description": "No mention of EDS, AEM, dev servers, framework targets."
+      "description": "No EDS, AEM, dev-server or framework-target content in the authored artifacts or in the design reasoning. Naming the migration flows as out of scope for a redesign phrase (the master skill's routing rule) is allowed."
     }
   ]
 }
