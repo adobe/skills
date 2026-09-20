@@ -31,7 +31,7 @@ node skills/rollout/scripts/close-check.mjs --skip <row> --reason "<text>"   # r
 | 7 | report | newest `stardust/rollout/report/*.md` is dated (name or mtime) ≥ the wave start and has a gate table and a `report-check:` line — the Phase H block written to a file, by hand until the run-status renderer lands | write `report/<wave-ts>.md` (`handoff-report.md` § Gate table first · § Residuals, links, report check) |
 | 8 | tracking | only when `decisions.md` row `tracking` ≠ none: `stardust/rollout/tracking.json {issueUrl, commentUrl, at}` updated this wave, or a `blocked` line whose `owner:` is the `gh issue comment …` → `[~]` | the comment, then `tracking.json` |
 | 9 | commit | git repo **and** `decisions.md` row `commit` = phase-end: a commit since the wave start touching `stardust/`; otherwise `[~] owner preference` | `git commit` of `stardust/` |
-| — | artifacts | `[-]` informational: the published-origin coverage line (`gate-report.json`), `Readability`, `Editability` (`lastRun.gates`) — copied, never re-judged | — |
+| — | artifacts | `[-]` informational: the published-origin coverage line (`gate-report.json`), `Readability`, `Editability` (`lastRun.gates`), `Usage` (`stardust/usage.json`, `usage: unknown` when absent) — copied, never re-judged | — |
 
 Marks: `[x]` met · `[ ]` required, open (exit 1) · `[~]` skipped with a
 recorded reason / blocked on owner (exit 0) · `[-]` informational. The last
@@ -40,8 +40,10 @@ stdout line is `SUMMARY close-check ok=<n> failed=<n> exit=<code> details=<statu
 ## Escape hatch
 
 None silent. `--fix` performs the mechanical rows (dashboard, review pack with
-`--no-open`) and re-checks; the agent rows — journal, ledger entry, tracking,
-commit — stay agent work. `--skip <row> --reason "<text>"` renders `[~]` and
+`--no-open`, the report rendered by `skills/stardust/scripts/status.mjs
+--markdown` into `report/<wave-ts>.md` when that script sits beside this skill)
+and re-checks; the agent rows — journal, ledger entry, tracking, commit — stay
+agent work. `--skip <row> --reason "<text>"` renders `[~]` and
 appends the reason to `journal.md` (audit trail); never for `status` (row 1)
 and never for `learnings` (row 4 — the conditional "none this run" line is its
 honest escape): exit 2. `--reconcile` is informational (`not reconciled (no
