@@ -393,7 +393,7 @@ export async function loadPlaywright() {
     const mod = normalize(await import('playwright'));
     if (mod) return mod;
   } catch { /* fall through */ }
-  throw new Error('playwright not found — run node skills/stardust/scripts/preflight-runtime.mjs (master § Setup step 9); browser checks need it.');
+  throw new Error('playwright not found — run node skills/stardust/scripts/preflight-runtime.mjs (master § Setup step 10); browser checks need it.');
 }
 
 /* ------------------------------------------------------------- inventory -- */

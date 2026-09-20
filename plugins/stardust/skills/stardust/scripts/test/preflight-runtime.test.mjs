@@ -16,7 +16,7 @@
  */
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -151,6 +151,12 @@ try {
   assert.match(r.stdout, /Exit codes: 0/);
   r = run(a, '--bogus');
   assert.equal(r.status, 2, 'unknown flag exits 2');
+  // (p) pointer pin: the runtime preflight is master Setup step 10 (step 9 is the origin probe) — no skill
+  //     file or script error string may send an agent to step 9 for preflight-runtime.mjs
+  const SK = join(here, '..', '..', '..');
+  const stale = [];
+  (function walk(d) { for (const e of readdirSync(d).sort()) { const p = join(d, e); if (statSync(p).isDirectory()) { if (e !== 'node_modules') walk(p); } else if (/\.(md|mjs)$/.test(e) && p !== fileURLToPath(import.meta.url)) { readFileSync(p, 'utf8').split('\n').forEach((l, i) => { if (/preflight-runtime|runtime preflight/i.test(l) && /Setup step 9\b|§ Setup step 9\b/.test(l)) stale.push(`${p.slice(SK.length + 1)}:${i + 1}`); }); } } })(SK);
+  assert.deepEqual(stale, [], 'runtime-preflight pointers name Setup step 10, never step 9');
   console.log('preflight-runtime test: ok');
 } finally {
   rmSync(dir, { recursive: true, force: true });

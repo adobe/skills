@@ -100,7 +100,7 @@ regression check instead of a debugging tool.
    flow is set, print it and the switch command (`$stardust reskin
    --switch-flow`) and stop.
 2. **Runtime preflight** — `node skills/stardust/scripts/preflight-runtime.mjs`
-   (master Setup step 9): playwright resolves from `stardust/node_modules`
+   (master Setup step 10): playwright resolves from `stardust/node_modules`
    for every phase that renders; never `npm i -D playwright --no-save` in
    the EDS repo (`../stardust/reference/runtime-preflight.md` § Contract).
 3. **Copy the scripts into the project** (ESM resolves `playwright`

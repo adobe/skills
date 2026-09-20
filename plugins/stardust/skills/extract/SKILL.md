@@ -132,7 +132,7 @@ Additional checks for this sub-command:
    `node -e "import('playwright').then(()=>process.exit(0))"` from the
    project root (`npx playwright --version` is NOT sufficient: ESM
    ignores global installs and `NODE_PATH`). On failure run `node
-   skills/stardust/scripts/preflight-runtime.mjs` (master Setup step 9):
+   skills/stardust/scripts/preflight-runtime.mjs` (master Setup step 10):
    one `npm i --prefix stardust` into `stardust/node_modules`, which the EDS
    repo's own `npm i` never prunes (`skills/stardust/reference/runtime-preflight.md`
    § Resolution chain). Never `npm i … --no-save` in the EDS repo.

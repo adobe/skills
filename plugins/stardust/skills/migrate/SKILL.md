@@ -66,7 +66,7 @@ refused page is fixed in the proposed file and migrate re-invoked.
 ## Setup
 
 0. **Runtime preflight (mandatory first step).** `node
-   skills/stardust/scripts/preflight-runtime.mjs` (master Setup step 9): the
+   skills/stardust/scripts/preflight-runtime.mjs` (master Setup step 10): the
    three runtime packages resolve from `stardust/node_modules` and Chromium
    is present before any rendering step — never `npm i -D playwright
    --no-save` in the EDS repo (`skills/stardust/reference/runtime-preflight.md`
