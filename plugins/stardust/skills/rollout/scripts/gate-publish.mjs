@@ -57,6 +57,9 @@
  * Report (`<out>/gate-report.json`, read-modify-write, history kept):
  *   { _provenance{writtenBy, writtenAt, bars}, generatedAt, breakpoints[], sample{seed,n,excluded[]}?,
  *     coverage{delivered, gated, pass, fail, publishedFailing, unmeasured, ungated},
+ *     templates{<template>: {pages, pass, fail, unmeasured, ungated, atBar}}   ← atBar = every selected page of the
+ *                            template PASSes (a named-class residual is a PASS row); a template not at the bar is
+ *                            not published — its rows are held (coverage regime, delivery-gates.md § Gate 8)
  *     neutralDiff{<template>: {<W>: {n, median, p90, under10}}}   ← reporting KPI from pixelPctUnmasked, not a bar
  *     pages{<path>: { path, slug, template, wasLive,
  *                     latest{ at, pass, status, breakpoints{<W>: {verdict, exit, pixelPct, pixelPctUnmasked,
@@ -182,11 +185,19 @@ export function buildReport(entries, { widths, previous = null, sample = null, a
     const t = e.template || 'untyped';
     for (const W of widths) { const v = bp[W].pixelPctUnmasked; if (Number.isFinite(v)) { nd[t] ??= {}; (nd[t][W] ??= []).push(v); } }
   }
+  const templates = {};
+  for (const e of [...entries].sort((x, y) => String(x.template || 'untyped').localeCompare(String(y.template || 'untyped')))) {
+    const t = e.template || 'untyped'; const st = pages[e.path].latest.status;
+    const T = templates[t] ??= { pages: 0, pass: 0, fail: 0, unmeasured: 0, ungated: 0, atBar: true };
+    T.pages += 1;
+    if (st === 'pass') T.pass += 1; else if (st === 'fail' || st === 'published-failing') T.fail += 1; else if (st === 'ungated') T.ungated += 1; else T.unmeasured += 1;
+    if (st !== 'pass') T.atBar = false;
+  }
   const neutralDiff = {};
   for (const [t, byW] of Object.entries(nd)) { neutralDiff[t] = {}; for (const [W, arr] of Object.entries(byW)) neutralDiff[t][W] = { n: arr.length, median: r2(median(arr)), p90: r2(p90(arr)), under10: r2(arr.filter((v) => v < 10).length / arr.length) }; }
   return {
     _provenance: { writtenBy: 'stardust:rollout gate-publish.mjs', writtenAt: at, bars: { pixel: 'pixel-compare record pass (unchanged)', heightDeltaPx: HEIGHT_BAR_PX, chromeCrops: 'crop-compare pass (unchanged)' }, regime: 'published-origin' },
-    generatedAt: at, breakpoints: widths, ...(sample ? { sample } : {}), coverage: counts, neutralDiff, pages,
+    generatedAt: at, breakpoints: widths, ...(sample ? { sample } : {}), coverage: counts, templates, neutralDiff, pages,
   };
 }
 export function coverageLine(c) {
@@ -197,6 +208,9 @@ export function renderMd(report, selectedPaths) {
   const rows = selectedPaths.map((p) => report.pages[p]).filter(Boolean).sort((a, b) => ['published-failing', 'fail', 'blocked', 'unmeasured', 'ungated', 'pass'].indexOf(a.latest.status) - ['published-failing', 'fail', 'blocked', 'unmeasured', 'ungated', 'pass'].indexOf(b.latest.status));
   const md = ['# gate-report — published-origin page gate', '', `Generated ${report.generatedAt}. Regime published-origin. Bars: pixel = record pass · |Δh| ≤ ${HEIGHT_BAR_PX} px · chrome crops = crop-compare pass (none restated here).`, '', `**${coverageLine(report.coverage)}**`, ''];
   if (report.sample) md.push(`Sample: seed ${report.sample.seed} · n ${report.sample.n} per template${report.sample.excluded.length ? ` · excluded ${report.sample.excluded.join(', ')}` : ''}`, '');
+  md.push('| template | pages | PASS | FAIL | unmeasured | ungated | at the bar |', '|---|---|---|---|---|---|---|');
+  for (const [t, T] of Object.entries(report.templates || {})) md.push(`| ${t} | ${T.pages} | ${T.pass} | ${T.fail} | ${T.unmeasured} | ${T.ungated} | ${T.atBar ? 'yes' : 'no — not published'} |`);
+  md.push('');
   md.push(`| page | status | ${widths.map((W) => `${W}`).join(' | ')} | wasLive | at |`, `|---|---|${widths.map(() => '---').join('|')}|---|---|`);
   for (const r of rows) md.push(`| ${r.path} | ${r.latest.status} | ${widths.map((W) => { const b = r.latest.breakpoints[W]; return b.status === 'ungated' ? 'ungated' : b.status === 'unmeasured' || b.status === 'blocked' ? `${b.status} (${b.reason})` : `${b.status.toUpperCase()} ${b.pixelPct} % Δh ${b.heightDelta}${b.cropsOk === false ? ' chrome✗' : ''}`; }).join(' | ')} | ${r.wasLive ? 'yes' : 'no'} | ${r.latest.at} |`);
   md.push('', '## neutralDiff (reporting KPI, not a bar)', '', '| template | bp | n | median | p90 | share < 10 % |', '|---|---|---|---|---|---|');
@@ -338,6 +352,8 @@ async function main() {
   const failing = Object.values(report.pages).filter((r) => entries.some((e) => e.path === r.path) && ['fail', 'published-failing'].includes(r.latest.status));
   console.log(`gate-publish (${REPORT_ONLY ? 'report from records' : ORIGIN}) — ${entries.length} page(s) × ${widths.join('/')}`);
   console.log(coverageLine(c));
+  const notAtBar = Object.entries(report.templates).filter(([, T]) => !T.atBar);
+  if (notAtBar.length) console.log(`templates not at the bar (not published): ${notAtBar.map(([t, T]) => `${t} (${T.pass}/${T.pages} PASS)`).join(' · ')}`);
   for (const r of failing.slice(0, 10)) console.log(`  ✗ ${r.path} ${r.latest.status}: ${widths.map((W) => `${W} ${r.latest.breakpoints[W].status}${r.latest.breakpoints[W].reason ? ` (${r.latest.breakpoints[W].reason})` : ''}`).join(' · ')}`);
   if (failing.length > 10) console.log(`  … +${failing.length - 10} (see ${join(OUT, 'gate-report.md')})`);
   console.log(`report: ${reportPath} · ${join(OUT, 'gate-report.md')} · delivery.gate merged on ${merged} coverage row(s)`);

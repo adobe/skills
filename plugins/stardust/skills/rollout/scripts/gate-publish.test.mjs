@@ -121,6 +121,11 @@ assert.equal(report.neutralDiff.landing['1440'].n, 2); // home 7.9 unmasked, bus
 assert.equal(report.neutralDiff.landing['1440'].median, 5.45);
 assert.equal(report.neutralDiff.landing['1440'].under10, 1);
 assert.equal(report._provenance.bars.heightDeltaPx, 8);
+// coverage regime: a template is at the bar only when every selected page PASSes
+assert.deepEqual(report.templates.landing, { pages: 2, pass: 1, fail: 1, unmeasured: 0, ungated: 0, atBar: false });
+assert.deepEqual(report.templates.program, { pages: 2, pass: 0, fail: 0, unmeasured: 1, ungated: 1, atBar: false });
+assert.match(r.stdout, /templates not at the bar \(not published\): article \(0\/3 PASS\) · landing \(1\/2 PASS\) · program \(0\/2 PASS\)/);
+assert.match(readFileSync(join(OUT, 'gate-report.md'), 'utf8'), /\| landing \| 2 \| 1 \| 1 \| 0 \| 0 \| no — not published \|/);
 assert.ok(existsSync(join(OUT, 'gate-report.md')));
 assert.match(readFileSync(join(OUT, 'gate-report.md'), 'utf8'), /\| \/news\/b \| published-failing \|/);
 // delivery.gate merged on the selected rows only
@@ -137,6 +142,7 @@ assert.equal(json(join(OUT, 'gate-report.json')).pages['/'].history.length, 1);
 r = run('--paths', '/,/news/c,/insurance/home', '--report');
 assert.equal(r.status, 0, `unmeasured/ungated never fail the run\n${r.stdout}`);
 assert.match(r.stdout, /published-gated 1 of 3 · PASS 1 · FAIL 0 · unmeasured 1 · ungated 1/);
+assert.equal(json(join(OUT, 'gate-report.json')).templates.landing.atBar, true, 'a template whose every selected page passes is at the bar');
 // exit 3 on a blocked record
 rec('prog__home', 1440, 'pub1', { verdict: 'no-verdict', pixelPct: undefined, exit: 3, at: '2026-09-13T00:00:00Z' });
 r = run('--slug', 'prog__home', '--report');

@@ -1,7 +1,7 @@
 {
   "_provenance": {
     "writtenBy": "stardust:rollout gate-publish.mjs",
-    "writtenAt": "2026-09-20T07:46:24.414Z",
+    "writtenAt": "2026-09-20T07:51:02.060Z",
     "bars": {
       "pixel": "pixel-compare record pass (unchanged)",
       "heightDeltaPx": 8,
@@ -9,7 +9,7 @@
     },
     "regime": "published-origin"
   },
-  "generatedAt": "2026-09-20T07:46:24.414Z",
+  "generatedAt": "2026-09-20T07:51:02.060Z",
   "breakpoints": [
     1440,
     360
@@ -23,6 +23,32 @@
     "unmeasured": 1,
     "ungated": 1,
     "blocked": 0
+  },
+  "templates": {
+    "article": {
+      "pages": 2,
+      "pass": 0,
+      "fail": 1,
+      "unmeasured": 1,
+      "ungated": 0,
+      "atBar": false
+    },
+    "landing": {
+      "pages": 2,
+      "pass": 2,
+      "fail": 0,
+      "unmeasured": 0,
+      "ungated": 0,
+      "atBar": true
+    },
+    "program": {
+      "pages": 2,
+      "pass": 0,
+      "fail": 1,
+      "unmeasured": 0,
+      "ungated": 1,
+      "atBar": false
+    }
   },
   "neutralDiff": {
     "landing": {
@@ -361,7 +387,7 @@
       "template": "program",
       "wasLive": false,
       "latest": {
-        "at": "2026-09-20T07:46:24.414Z",
+        "at": "2026-09-20T07:51:02.060Z",
         "pass": false,
         "status": "ungated",
         "breakpoints": {
@@ -404,6 +430,14 @@
       "history": [
         {
           "at": "2026-09-20T07:46:24.414Z",
+          "status": "ungated",
+          "breakpoints": {
+            "360": null,
+            "1440": null
+          }
+        },
+        {
+          "at": "2026-09-20T07:51:02.060Z",
           "status": "ungated",
           "breakpoints": {
             "360": null,
