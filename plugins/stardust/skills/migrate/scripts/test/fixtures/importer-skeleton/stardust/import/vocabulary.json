@@ -1,0 +1,16 @@
+{
+  "root": "main#content",
+  "chrome": ["header.site-header", "footer.site-footer", "nav.breadcrumb"],
+  "wrappers": [".container", ".row"],
+  "moduleSelectors": ["[data-module]", "[data-tpl]"],
+  "markers": {
+    "[data-tpl=\"hea01\"]": { "kind": "heading", "emitter": "default-content" },
+    ".card-grid": { "kind": "cards", "emitter": "block:cards" },
+    ".stat": { "kind": "stat", "emitter": "block:stats compact" },
+    ".promo-band": { "kind": "promo", "emitter": "section-style:highlight" },
+    ".newsletter": { "kind": "newsletter", "emitter": "drop:runtime form, delivered by dynamics row DYN-3" },
+    ".chat-widget": { "kind": "chat", "emitter": "dynamics:DYN-7" },
+    ".lazy-tiles": { "kind": "lazy-tiles", "emitter": "block:tiles" },
+    ".legacy-box": { "kind": "legacy-box" }
+  }
+}

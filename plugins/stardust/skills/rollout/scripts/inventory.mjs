@@ -8,6 +8,16 @@
  *   - stardust/rollout/coverage/templates.json (grouping for delivery order/reuse)
  *   - stardust/rollout/rollout.json            (config + lastRun summary; created if absent)
  *
+ * Template grouping = the ARCHETYPE group: a `renderBranch: A` page is its own
+ * template id, an `A'` sibling joins the archetype its `template` names (a type
+ * name is resolved to that type's archetype slug), a `B`/unique page groups as
+ * `thin:<type>`; `representativeSlug` is the archetype — the page the prototype
+ * phase gated, so plan.mjs's representative-first order, the sweep's template
+ * sample and Phase E's first-delivered-page check gate that page and not a
+ * sibling. (An archetype keyed by its type and its siblings by its slug once made
+ * six one-page templates of a six-page site.) Existing rows re-key on the next run;
+ * page delivery status is keyed by slug and preserved.
+ *
  * Idempotent + incremental: existing delivery status is preserved. When a page's
  * migrated HTML changed (sourceHash differs) after it was already deployed/verified,
  * it is re-flagged `stale` so the delivery loop re-delivers just that page.
@@ -145,13 +155,27 @@ const priorBySlug = new Map((priorPages.pages || []).map((p) => [p.slug, p]));
 const htmlFiles = walkHtml(MIGRATED).sort();
 const pages = [];
 
+// first pass: the archetypes (renderBranch A) by slug and by type, so siblings group under them
+const metaOf = new Map(htmlFiles.map((relHtml) => [relHtml, readJSON(join(MIGRATED, sidecarFor(relHtml)), {})]));
+const slugOf = (relHtml, meta) => { const path = deliveredPath(relHtml); return meta.slug || (path === '/' ? 'index' : path.replace(/^\//, '')); };
+const archetypeSlugs = new Set(); const archetypeByType = new Map();
+for (const [relHtml, meta] of metaOf) if (meta.renderBranch === 'A') { const s = slugOf(relHtml, meta); archetypeSlugs.add(s); if (meta.type && !archetypeByType.has(meta.type)) archetypeByType.set(meta.type, s); }
+/** Template id = the archetype group (header comment). */
+function templateIdFor(slug, meta) {
+  const rb = meta.renderBranch;
+  if (rb === 'A') return slug;
+  if (rb === "A'") { const t = meta.template; if (t && archetypeSlugs.has(t)) return t; if (t && archetypeByType.has(t)) return archetypeByType.get(t); if (archetypeByType.has(meta.type)) return archetypeByType.get(meta.type); return t || meta.type || null; }
+  if (rb === 'B') return `thin:${meta.type || 'untyped'}`;
+  return meta.template || meta.type || null;
+}
+
 for (const relHtml of htmlFiles) {
   const absHtml = join(MIGRATED, relHtml);
   const sourceHash = sha256(readFileSync(absHtml));
   const sidecarRel = sidecarFor(relHtml);
-  const meta = readJSON(join(MIGRATED, sidecarRel), {});
+  const meta = metaOf.get(relHtml) || {};
   const path = deliveredPath(relHtml);
-  const slug = meta.slug || (path === '/' ? 'index' : path.replace(/^\//, ''));
+  const slug = slugOf(relHtml, meta);
 
   const prior = priorBySlug.get(slug);
   let delivery;
@@ -170,7 +194,7 @@ for (const relHtml of htmlFiles) {
     slug,
     path,
     title: (meta.metadata && meta.metadata.title) || meta.slug || slug,
-    templateId: meta.template || meta.type || null,
+    templateId: templateIdFor(slug, meta),
     source: {
       migratedHtml: join(MIGRATED, relHtml),
       metaJson: existsSync(join(MIGRATED, sidecarRel)) ? join(MIGRATED, sidecarRel) : null,
@@ -300,9 +324,10 @@ for (const p of pages) {
 const templates = [...tmap.values()].map((t) => {
   const tp = pages.filter((p) => t.pages.includes(p.slug));
   const count = (s) => tp.filter((p) => p.delivery.status === s).length;
-  // The representative is the migrated archetype that converts the blocks — never a
-  // content-pending sibling (which pushes no document).
-  const rep = tp.find((p) => p.delivery.status !== 'content-pending') || tp[0];
+  // The representative is the ARCHETYPE (renderBranch A — the page the prototype phase
+  // gated); fallback: the first migrated page — never a content-pending sibling (which
+  // pushes no document).
+  const rep = tp.find((p) => archetypeSlugs.has(p.slug)) || tp.find((p) => p.delivery.status !== 'content-pending') || tp[0];
   return {
     id: t.id,
     representativeSlug: (rep && rep.slug) || null,

@@ -13,13 +13,15 @@
  * optimize (optimised = verified & no open findings). Template archetypes (the
  * pages that define a template for their siblings) are marked distinctly.
  *
- * Emits dashboard/index.html (self-contained, no external JS) + dashboard/data.json.
+ * Emits dashboard/index.html (self-contained, no external JS) + dashboard/data.json, and prints the
+ * Phase H `Blocks <B> total · <c> converted · <v> verified · ungated: <T> archetype <slug>@<bp>` line
+ * (blocks.ungated[] in data.json) — the template claim gate read from stardust/replica/progress.json.
  * Usage: node skills/rollout/scripts/dashboard.mjs [--out <rolloutDir>]
  * Exit: 0 written · 2 coverage missing (run inventory.mjs first)
  */
 import { join } from 'node:path';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
-import { readJSON, writeJSON, blockCounts } from './lib.mjs';
+import { readJSON, writeJSON, blockCounts, ungatedClause } from './lib.mjs';
 
 if (process.argv.includes('--help')) { console.log('Usage: node skills/rollout/scripts/dashboard.mjs [--out <rolloutDir>]\n  exit 0 written · 2 coverage missing'); process.exit(0); }
 const i = process.argv.indexOf('--out');
@@ -137,6 +139,10 @@ const stageCount = STAGES.reduce((m, s) => { m[s] = model.filter((p) => rankOf(p
 const stageExclusive = STAGES.reduce((m, s) => { m[s] = model.filter((p) => p.stage === s).length; return m; }, {});
 const countBy = (arr, get) => arr.reduce((m, x) => { const k = get(x); m[k] = (m[k] || 0) + 1; return m; }, {});
 const open = findings.filter((f) => f.status === 'open' || f.status === 'in-progress');
+// Phase H Blocks line: a template's blocks are `verified` only after its archetype's published-origin pass at every
+// breakpoint (lib.mjs archetypePublishedPass); the clause names each archetype × breakpoint still ungated — absent = ungated, not FAIL
+const progress = readJSON(join(OUT, '..', 'replica', 'progress.json'), null);
+const ungated = state && state.flow && state.flow !== 'replica' ? [] : ungatedClause(progress, templates, config.breakpoints || []);
 const snapshot = {
   generatedAt: new Date().toISOString(),
   target: config.target || 'aem-eds',
@@ -147,7 +153,7 @@ const snapshot = {
     const members = model.filter((p) => p.templateId === t.id);
     return { id: t.id, archetype: t.representativeSlug, pageCount: members.length, stages: STAGES.reduce((m, s) => { m[s] = members.filter((p) => p.stage === s).length; return m; }, {}) };
   }),
-  blocks: { ...blockCounts(blocks), ewFail: blocks.filter((b) => b.delivery && b.delivery.ewGate === 'fail').length }, // converted excludes ewGate fail | unmeasured (ewHeld) — lib.mjs blockCounts
+  blocks: { ...blockCounts(blocks), verified: blocks.filter((b) => (b.delivery && b.delivery.status) === 'verified').length, ungated, ewFail: blocks.filter((b) => b.delivery && b.delivery.ewGate === 'fail').length }, // converted excludes ewGate fail | unmeasured (ewHeld) — lib.mjs blockCounts; ungated = the template claim gate (lib.mjs ungatedClause)
   // gate roll-ups copied from rollout.json lastRun.gates (update-coverage --gate / verify --ai-readability) — never computed here
   gates: (config.lastRun && config.lastRun.gates) || null,
   quality: scorecard ? { overall: scorecard.current.overall, dimensions: scorecard.current.dimensions, severity: scorecard.current.severity, history: (scorecard.history || []).map((h) => h.overall) } : null,
@@ -162,6 +168,7 @@ writeFileSync(join(dashDir, 'index.html'), render(snapshot, tree, readIdentity()
 console.log(`rollout dashboard → ${join(dashDir, 'index.html')}`);
 console.log('='.repeat(60));
 console.log(`Pages ${model.length} (cumulative): ${STAGES.map((s) => `${s} ${stageCount[s]}`).join(' · ')}`);
+console.log(`Blocks ${snapshot.blocks.total} total · ${snapshot.blocks.converted} converted · ${snapshot.blocks.verified} verified${ungated.length ? ` · ungated: ${ungated.join(' · ')}` : ''}`);
 
 // ================================================================ rendering
 function esc(s) { return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }

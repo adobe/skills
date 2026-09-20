@@ -106,6 +106,9 @@ v2 evals without modification.
 | `preflight-credentials-expired/` | Entry point (`deploy`) | The instrument half of pre-flight: `da-token-check.mjs --credentials` runs before any conversion work and its verdict (exit 2, class-named refresh remedy) is the evidence; `state.json.credentials` written in the shipped shape (`da: expired`, `daSource: repo-env`, exact-match `siteTokenEnv`, `gh: skipped`); zero requests (decode proves expiry); one consolidated stop; no hand decode, no token value, no env dump. |
 | `phase-checkpoint-next-command/` | Phase close (`direct`) | Checkpoint block at phase end: completed files (all `ls`-verifiable) + a verified part + ONE verbatim next command + what a re-run would skip; journal `Next:` and `status.jsonl` `next` carry the same command; pages `extracted` → `directed` (rule: `run-status.md` § Phase close). |
 | `preflight-runtime/`         | Master Setup step 10      | Runtime preflight before any browser instrument: `preflight-runtime.mjs` installs into `stardust/node_modules` (one command), Chromium checked, `stardust/.work/env.json` written; no `npm i … --no-save` at the root, root `package.json` byte-identical, no `/tmp` probes, `lint unavailable` surfaced loudly, a denied install is a `blocked` line with the exact command — never a workaround or an invented verdict (rule: `runtime-preflight.md` § Contract). |
+| `rollout-locale-tree/`       | Phase D3 (`rollout`)      | Locale-tree wave on a manifest: `stardust/trees.json` before fan-out, `lang` + `alternate-*` rows, per-locale chrome from the locale's probe, the two-line runtime hook, twins gated 360 → 1440, brand surface untouched by the supplement, no literal tree paths (rule: `rollout/reference/multilingual.md`). |
+| `migrate-sibling-module-map/` | Phase 4 (`migrate`, sibling tier) | Module-map precondition at plan time: a lift-ledger kind with no emitter in `stardust/import/vocabulary.json` blocks the template by kind name before any sibling renders; hands-off never writes `drop:`; the mapped re-run renders with `audit.import` clean; zero source hits (rule: `migrate/reference/fidelity-tiers.md` § Module-map precondition). |
+| `rollout-template-verified/` | Phases A–C/H (`rollout`)  | Template = archetype group with the gated archetype as representative; a template's blocks flip to `verified` only when its archetype has `published.<bp>.pass` at every breakpoint; the others stay deployed with `ungated: <T> archetype <slug>@<bp>` on the Phase H Blocks line; hands-off never writes the pass (rule: `rollout/SKILL.md` Phase B, Phase C step 4). |
 
 ## Coverage map
 
@@ -416,8 +419,9 @@ integrates; every runner also runs standalone with `node <path>`:
   chrome-variant guard both directions (fires on the named shape, silent on a
   clean page); typed inventory rows seeded + preserved, `--redirects`
   deployedPath, sitemap = live page rows; the runner-output contract on the
-  shared fixture, link classes, 429/503 retry → `unverified` / exit 2, and the
-  last-line `SUMMARY verify …` (throttled rows as `noverdict`).
+  shared fixture, link classes, 429/503 retry → `unverified` / exit 2, the
+  last-line `SUMMARY verify …` (throttled rows as `noverdict`), and `--paths`
+  (the regate-list consumer: listed rows only, site-wide summary intact).
 - `rollout/scripts/gate-publish.test.mjs`, `rollout/scripts/close-check.test.mjs`,
   `rollout/scripts/gate-ingest.test.mjs` — the published-origin page gate as a
   report writer (statuses, exit-124 → `unmeasured`, label-scoped verdicts, the
@@ -439,7 +443,18 @@ integrates; every runner also runs standalone with `node <path>`:
   rules, `deployedPath` written only from a served (`live|previewed`) row,
   unmatched paths listed not invented, idempotence, exit codes; and that
   rollout/SKILL.md + da-deploy-protocol.md both name `--from-ledger` as the
-  reconcile.
+  reconcile; the template claim gate (`--block … --status verified` refused
+  until the archetype passed the published-origin gate at every breakpoint,
+  thin templates exempt, redesign skipped, the dashboard `Blocks` line).
+- `rollout/scripts/test/wave.test.mjs` — the wave driver over stub stages:
+  park/unpark, hash re-gate, token halt → `blocked` + `next`, exit 124 = no
+  verdict, D1/D16 publish order, the home page's `/index` key, `--stage`
+  readiness (no flag skips a hard stage), close steps (`verify --paths` over
+  the wave + dashboard, logged never parked), `regate-list` mapping.
+- `migrate/scripts/test/importer-skeleton.test.mjs` — the DOM importer
+  skeleton: walk rules, 0-sections exit, plan-time module-map block, unmapped /
+  flattened hard stop + early stop, bulk flush and exit precedence, writer
+  rules, hidden-live, root guard.
 - `deploy/scripts/test/deploy-batch-ledger.test.mjs`, `…-repairs.test.mjs`,
   `…-halt.test.mjs`, `…-persist.test.mjs`, `deploy/scripts/test/served-check.test.mjs`
   — the driver against `mock-da.mjs`: ledger idempotence + SUMMARY / progress

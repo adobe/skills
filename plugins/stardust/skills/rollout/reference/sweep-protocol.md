@@ -1,22 +1,23 @@
-# Site-scale fix loop — sample, class triage, tail, one confirmation sweep
+# Site-scale delivery — sample, class triage, tail, one confirmation sweep
 
 ## When to read what
 
-Read this after Phase E's structural verify passes and the question becomes
-"does the DELIVERED site match its source at every page?" — the fix loop at site
-scale. It sits **after** deploy's per-page reconcile (Step 10, one page against
-its prototype) and the per-page published-origin gate (`replica`
+The fix loop that follows Phase E's structural verify — "does the DELIVERED site
+match its source at every page?" (Phase C's wave driver is `waves.md`). It sits **after** deploy's per-page reconcile
+and the per-page published-origin gate (`replica`
 `reference/source-fidelity-gate.md` § The published-origin gate), which stay
-authoritative; it does not replace them. A read-only sweep with no fixing is
-the `qa` skill. Per-page gate mechanics: the replica gate file; the page-gate
-driver and the coverage regime: `reference/publish-gate.md` § Gate 8; delivery
+authoritative. A read-only sweep with no fixing is the `qa` skill; the
+page-gate driver and the coverage regime: `reference/publish-gate.md` § Gate 8; delivery
 mechanics: `reference/delivery-gates.md` § Batched delivery at scale.
 
-Running the full gate on every page after every fix is the failure mode this
-protocol replaces: a whole-site gate round is hours of wall time per pass, and
-most of what it re-measures did not change.
+## Wave driver
 
-## The protocol
+Phase C's stage runner is `scripts/wave.mjs`; its contract (stage table, park
+reasons and `next`, `--unpark`, hash re-gate, D1/D16 order, no-verdict, state,
+exit map) is `waves.md`. The fix loop below consumes its outputs: the deploy
+ledger, `waves/<wave>.report.md` and `wave.mjs regate-list`.
+
+## The fix loop
 
 1. **Reference once.** Capture the live side once per page and width into the
    gates dir and reuse it for every round (`gate.sh` keeps `live.png` when
@@ -25,18 +26,24 @@ most of what it re-measures did not change.
    instrument at a time against the live host.
 2. **Template sample.** Gate a **seeded random** sample per template —
    `node skills/rollout/scripts/gate-publish.mjs --sample <n ≥ 10> --seed <run
-   seed> --exclude <fix-loop slugs> --origin <preview>` (archetypes always in;
-   never the delivery-order head, never a page the fix loop touched; seed and
-   draw land in `gate-report.json`; `plan.mjs --sample` is the authoring-order
-   listing, not this sample). Triage **class-complete per page**: list every large delta on the
+   seed> --exclude <fix-loop slugs> --origin <preview>` (archetypes always in —
+   the representative is the template's **archetype**, the page the prototype
+   phase gated, `inventory.mjs` groups siblings under it; never the
+   delivery-order head, never a page the fix loop touched; seed and draw land in
+   `gate-report.json`; `plan.mjs --sample` is the authoring-order listing, not
+   this sample). Triage **class-complete per page**: list every large delta on the
    page (band table + anchor probe), not the first divergence, and name each
    delta's class (a block's CSS, a section style, a chrome state, an importer
    rule, page-specific content).
 3. **Fix once per class, re-gate only the mapped pages.** One fix per class,
-   then re-gate the pages that carry it: blocks or styles touched → pages via
-   `coverage/blocks.json` `usedByPages` and each page's `_meta.json` `blocks`
-   (by hand or `jq` today; a mapped re-gate list script replaces the manual
-   step when it lands). Never re-gate the whole site for a class fix.
+   then `node skills/rollout/scripts/wave.mjs regate-list --since <ref>` lists
+   the pages the change maps to (`slug<TAB>path<TAB>reason`): `blocks/<name>/**`
+   → the block's `usedByPages`; `styles/`, `scripts/`, `head.html`, chrome and
+   fragments → every page (`site-wide`); `content/<path>.html` → that page; a
+   file no rule maps → every page (`unmapped→all`). Fail-open by contract: a
+   wrong mapping costs time, never a skipped defect. `--files <list>` instead
+   of a git range; `--all` forces the full list; `--json` adds the ledger's
+   `bodyHash`/`branch` per page. Never re-gate the whole site for a class fix.
 4. **Tail.** After at most **3** class rounds the remainder is page-specific:
    class-level fixing on the residual tail leaves most pages unchanged and
    regresses some. Switch to a one-page loop (gate → fix → re-gate) on the
@@ -48,13 +55,14 @@ most of what it re-measures did not change.
    <preview>`; > 150: the seeded sample expands n → 4n → all as class rounds
    close (`publish-gate.md` § Coverage regime — every unsampled page stays
    `ungated`, held). Publish follows the pass (the D1 default): `deploy-batch
-   … --publish` over the PASS rows. Once the delivery ledger carries a content
-   hash, sweep changed pages only; until then the sweep is full. Output: the
-   residual ledger, the allowlist of accepted residuals, and the owner-item
-   list — nothing else re-runs.
+   … --publish` over the PASS rows. The sweep is full by contract —
+   `regate-list` narrows class rounds, never this step. Output: the residual
+   ledger, the allowlist of accepted residuals, and the owner-item list —
+   nothing else re-runs.
 6. **Report.** The Phase H report carries the sweep's ledger and allowlist
-   next to the delivery ledger; class rounds used and pages in the tail are
-   the two numbers that tell the reader how converged the site is.
+   next to the delivery ledger and the wave reports; class rounds used and
+   pages in the tail are the two numbers that tell the reader how converged
+   the site is.
 
 ## Ops rules while the loop runs
 

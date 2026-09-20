@@ -104,6 +104,40 @@ export function siteBase(config, override) {
 
 /** The path a row is actually served on: `delivery.deployedPath` (written by update-coverage --from-ledger or inventory --redirects) else `path`. */
 export const deliveredPathOf = (p) => (p && p.delivery && p.delivery.deployedPath) || (p && p.path) || '/';
+/** Served-path key: lower-case, no trailing slash, no `.html|.htm|.jsp|.aspx|.php`, `/index` → `/` (update-coverage --from-ledger, verify --paths). */
+export function pathKey(p) {
+  let s = String(p || '').trim().toLowerCase().replace(/[?#].*$/, '');
+  s = `/${s.replace(/^\/+/, '')}`.replace(/\/+$/, '') || '/';
+  s = s.replace(/\.(html?|jsp|aspx?|php)$/, '').replace(/\/index$/, '') || '/';
+  return s;
+}
+
+/**
+ * Template `verified` claim gate (coverage-model.md § Block delivery status lifecycle): a template's
+ * blocks may flip to `verified` only when its archetype passed the PUBLISHED-origin gate at every
+ * configured breakpoint. `progress` = stardust/replica/progress.json (archetypes[] rows carry
+ * pageType, archetype, published.<bp> = { pass } | { result: { pass } } — progress-record.mjs);
+ * `template` = a templates.json row (id = archetype slug, representativeSlug); `breakpoints` =
+ * rollout.json breakpoints[], else progress.breakpointsConfigured. Absent `published.<bp>` =
+ * `ungated`, never FAIL; `pass: false` = `failed`. A `thin:<type>` template has no archetype to
+ * gate → { ok: true, thin: true }. Returns { ok, archetype, pageType, ungated: [{ bp, state }] }.
+ */
+export function archetypePublishedPass(progress, template, breakpoints = []) {
+  const id = (template && template.id) || null;
+  if (id && id.startsWith('thin:')) return { ok: true, thin: true, archetype: null, pageType: id, ungated: [] };
+  const slug = (template && (template.representativeSlug || template.id)) || null;
+  const rows = progress && Array.isArray(progress.archetypes) ? progress.archetypes : [];
+  const arch = rows.find((a) => a && (a.archetype === slug || a.slug === slug)) || null;
+  const bps = (breakpoints && breakpoints.length ? breakpoints : (progress && progress.breakpointsConfigured) || []).map(String);
+  const state = (bp) => { const row = arch && arch.published && arch.published[bp]; if (!row) return 'ungated'; return row.pass === true || (row.result && row.result.pass === true) ? null : 'failed'; };
+  const ungated = bps.length ? bps.map((bp) => ({ bp, state: state(bp) })).filter((r) => r.state) : [{ bp: '*', state: 'no breakpoints configured' }];
+  return { ok: ungated.length === 0, archetype: slug, pageType: (arch && arch.pageType) || id, ungated };
+}
+/** The `ungated: <T> archetype <slug>@<bp>` clause for the Phase H Blocks line — empty when every template's archetype passed. */
+export function ungatedClause(progress, templates, breakpoints = []) {
+  return (templates || []).map((t) => archetypePublishedPass(progress, t, breakpoints)).filter((r) => !r.ok)
+    .flatMap((r) => r.ungated.map((u) => `${r.pageType} archetype ${r.archetype}@${u.bp}${u.state === 'ungated' ? '' : ` (${u.state})`}`));
+}
 
 /** Statuses meaning "a document exists on the target" — the rows a live verify/optimize/sitemap may act on. pending | content-pending | converting rows have nothing to GET. */
 export const DELIVERED_STATUSES = new Set(['deployed', 'verified', 'failed', 'stale']);

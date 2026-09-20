@@ -1,0 +1,12 @@
+{
+  "_provenance": { "writtenBy": "stardust:extract", "writtenAt": "2026-09-16T10:02:00Z", "stardustVersion": "0.24.0", "run": "supplement", "settle": { "strategy": "medium", "scrollSteps": 4, "settleMs": 800 } },
+  "slug": "home",
+  "url": "https://www.larkspurmutual.example/",
+  "lang": "en",
+  "alternates": [ { "hreflang": "en", "href": "https://www.larkspurmutual.example/" }, { "hreflang": "es", "href": "https://www.larkspurmutual.example/es/" } ],
+  "discovery": { "source": "hreflang" },
+  "title": "Larkspur Mutual — Home and auto insurance, member-owned since 1931",
+  "type": "landing",
+  "sections": [ { "id": "hero", "module": "hero-statement" }, { "id": "coverage", "module": "coverage-tiles" }, { "id": "find-an-agent", "module": "agent-locator-cta" } ],
+  "renderedHtml": "see home.html"
+}

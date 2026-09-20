@@ -1,0 +1,1 @@
+[ { "selector": "main .cards", "op": "attr", "name": "class", "value": "cards patched" }, { "selector": "main h1", "op": "replace", "value": "About us (patched)" } ]

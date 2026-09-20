@@ -222,3 +222,70 @@ try {
     rmSync(T2, { recursive: true, force: true });
   }
 }
+
+// ---- the template claim gate (T28.4 Gate B): --block … --status verified follows the archetype's published pass
+{
+  const { archetypePublishedPass, ungatedClause } = await import('./lib.mjs');
+  const T3 = mkdtempSync(join(tmpdir(), 'update-coverage-test3-'));
+  try {
+    const OUT3 = join(T3, 'stardust', 'rollout');
+    mkdirSync(join(OUT3, 'coverage'), { recursive: true }); mkdirSync(join(T3, 'stardust', 'replica'), { recursive: true });
+    const page = (slug, path, templateId, blocks) => ({ slug, path, title: slug, templateId, source: { sourceHash: 'h' }, blocks, delivery: { status: 'deployed' } });
+    writeFileSync(join(OUT3, 'coverage', 'pages.json'), JSON.stringify({ pages: [page('home', '/', 'home', ['hero']), page('business', '/business', 'home', ['hero']), page('insurance__home', '/insurance/home', 'insurance__home', ['quote-cta']), page('leaf', '/leaf', 'thin:leaf', ['plain'])] }));
+    writeFileSync(join(OUT3, 'coverage', 'templates.json'), JSON.stringify({ templates: [
+      { id: 'home', representativeSlug: 'home', pages: ['home', 'business'], blocks: ['hero'] },
+      { id: 'insurance__home', representativeSlug: 'insurance__home', pages: ['insurance__home'], blocks: ['quote-cta'] },
+      { id: 'thin:leaf', representativeSlug: 'leaf', pages: ['leaf'], blocks: ['plain'] },
+    ] }));
+    const blk = (id, templates) => ({ id, usedByTemplates: templates, usedByPages: [], delivery: { status: 'deployed', edsBlockName: id } });
+    writeFileSync(join(OUT3, 'coverage', 'blocks.json'), JSON.stringify({ blocks: [blk('hero', ['home']), blk('quote-cta', ['insurance__home']), blk('shared', ['home', 'insurance__home']), blk('plain', ['thin:leaf'])] }));
+    writeFileSync(join(OUT3, 'rollout.json'), JSON.stringify({ site: { liveHost: 'https://main--x--y.aem.live/' }, lastRun: {} }));
+    const pass = { pass: true, pixelPct: 2.1 };
+    const progress = { breakpointsConfigured: [1440, 360], archetypes: [
+      { pageType: 'landing', archetype: 'home', gated: true, published: { 1440: pass, 360: { result: { pass: true } } } }, // both shapes progress-record.mjs writes
+      { pageType: 'program', archetype: 'insurance__home', gated: false },
+    ] };
+    writeFileSync(join(T3, 'stardust', 'replica', 'progress.json'), JSON.stringify(progress));
+    const bstatus = (id) => json(join(OUT3, 'coverage', 'blocks.json')).blocks.find((b) => b.id === id).delivery.status;
+
+    // pure helper: absent published slot = ungated (not FAIL); pass:false = failed; thin templates are not gate-bound
+    assert.deepEqual(archetypePublishedPass(progress, { id: 'home', representativeSlug: 'home' }).ok, true);
+    assert.deepEqual(archetypePublishedPass(progress, { id: 'insurance__home', representativeSlug: 'insurance__home' }).ungated, [{ bp: '1440', state: 'ungated' }, { bp: '360', state: 'ungated' }]);
+    assert.deepEqual(archetypePublishedPass({ ...progress, archetypes: [{ pageType: 'landing', archetype: 'home', published: { 1440: pass, 360: { pass: false } } }] }, { id: 'home' }).ungated, [{ bp: '360', state: 'failed' }]);
+    assert.equal(archetypePublishedPass(progress, { id: 'home' }, [1440]).ok, true, 'rollout.json breakpoints override the configured list');
+    assert.equal(archetypePublishedPass(progress, { id: 'thin:leaf' }).thin, true);
+    assert.equal(archetypePublishedPass(null, { id: 'home' }).ok, false, 'no progress file → ungated');
+    assert.deepEqual(ungatedClause(progress, json(join(OUT3, 'coverage', 'templates.json')).templates), ['program archetype insurance__home@1440', 'program archetype insurance__home@360'], 'the Blocks-line clause names <T> archetype <slug>@<bp> — absent slot is ungated, never FAIL');
+
+    // CLI: the landing block verifies; the program block is refused (exit 2) naming archetype × bp; a block shared with an ungated template is refused too
+    let r = run('--block', 'hero', '--status', 'verified', '--out', OUT3);
+    assert.equal(r.status, 0, `home passed published at 1440 + 360 → hero verifies\n${r.stderr}`); assert.equal(bstatus('hero'), 'verified');
+    r = run('--block', 'quote-cta', '--status', 'verified', '--out', OUT3);
+    assert.equal(r.status, 2, 'ungated archetype → the verified claim is refused'); assert.match(r.stderr, /quote-cta cannot be verified — program archetype insurance__home ungated at 1440, program archetype insurance__home ungated at 360/); assert.match(r.stderr, /never edit the ledger/);
+    assert.equal(bstatus('quote-cta'), 'deployed', 'status untouched by a refused claim');
+    r = run('--block', 'shared', '--status', 'verified', '--out', OUT3); assert.equal(r.status, 2, 'every template using the block must be gated'); assert.equal(bstatus('shared'), 'deployed');
+    r = run('--block', 'plain', '--status', 'verified', '--out', OUT3); assert.equal(r.status, 0, 'a thin template has no archetype to gate'); assert.equal(bstatus('plain'), 'verified');
+    r = run('--block', 'quote-cta', '--status', 'deployed', '--out', OUT3); assert.equal(r.status, 0, 'other statuses are not gated');
+    // the dashboard prints the same clause on its Blocks line and records it in data.json
+    r = spawnSync(process.execPath, [join(HERE, 'dashboard.mjs'), '--out', OUT3], { encoding: 'utf8' });
+    assert.equal(r.status, 0, r.stderr); assert.match(r.stdout, /^Blocks 4 total · 4 converted · 2 verified · ungated: program archetype insurance__home@1440 · program archetype insurance__home@360$/m);
+    assert.deepEqual(json(join(OUT3, 'dashboard', 'data.json')).blocks.ungated, ['program archetype insurance__home@1440', 'program archetype insurance__home@360']);
+    // the archetype gated later → the claim goes through (the ledger is the only path; the test writes what progress-record.mjs would)
+    progress.archetypes[1].published = { 1440: pass, 360: pass }; writeFileSync(join(T3, 'stardust', 'replica', 'progress.json'), JSON.stringify(progress));
+    r = run('--block', 'quote-cta', '--status', 'verified', '--out', OUT3); assert.equal(r.status, 0, r.stderr); assert.equal(bstatus('quote-cta'), 'verified');
+    // a failed published pass is `failed at <bp>`, still refused
+    progress.archetypes[1].published[360] = { pass: false }; writeFileSync(join(T3, 'stardust', 'replica', 'progress.json'), JSON.stringify(progress));
+    r = run('--block', 'shared', '--status', 'verified', '--out', OUT3); assert.equal(r.status, 2); assert.match(r.stderr, /insurance__home failed at 360/);
+    // flow: redesign → the check is skipped and printed as skipped (the published-origin gate is replica's)
+    writeFileSync(join(T3, 'stardust', 'state.json'), JSON.stringify({ flow: 'redesign' }));
+    r = run('--block', 'shared', '--status', 'verified', '--out', OUT3); assert.equal(r.status, 0, r.stderr); assert.match(r.stdout, /published-origin check skipped under flow: redesign/);
+    r = spawnSync(process.execPath, [join(HERE, 'dashboard.mjs'), '--out', OUT3], { encoding: 'utf8' }); assert.doesNotMatch(r.stdout, /ungated:/, 'no ungated clause under redesign');
+    // the rule lives in one reference and the operator card points at it
+    const model = readFileSync(join(HERE, '..', 'reference', 'coverage-model.md'), 'utf8');
+    assert.match(model, /published\.<bp>\.pass/, 'coverage-model.md § Block delivery status lifecycle carries the claim-gate rule');
+    assert.match(readFileSync(join(HERE, '..', 'SKILL.md'), 'utf8'), /Block delivery status lifecycle/, 'the operator card points at the section');
+    console.log('update-coverage.test: ok (template claim gate: --block … --status verified refused until the archetype passed the published-origin gate at every breakpoint; thin templates exempt; redesign skipped; dashboard Blocks line)');
+  } finally {
+    rmSync(T3, { recursive: true, force: true });
+  }
+}

@@ -51,6 +51,11 @@
       "name": "summary_line_quoted",
       "max_score": 5,
       "description": "The hand-off quotes the runner's completion line verbatim — the last stdout line of verify.mjs, `SUMMARY verify ok=<n> failed=<n> [noverdict=<n>] exit=<code> details=<path>/summary.json …` — and its counts equal the class table's and summary.json's. A hand-off that paraphrases the counts without the line, or quotes a line whose numbers differ from the files, fails."
+    },
+    {
+      "name": "regate_list_feeds_verify_paths",
+      "max_score": 5,
+      "description": "When the hand-off names the re-check that follows a class fix, it is the mapped list — `node skills/rollout/scripts/wave.mjs regate-list --since <ref>` (or `--files`) piped into `node skills/rollout/scripts/verify.mjs --paths <list>` — not a full `verify --all` re-run and not a hand-built page list. A hand-off that proposes re-verifying the whole tree after a one-block fix, or that names no re-check at all, fails."
     }
   ]
 }

@@ -48,17 +48,24 @@
  * its remedy — a block is never `converted` around the editability gate. The roll-up `lastRun.blocks`
  * counts a converted-or-later block whose ewGate is fail | unmeasured as `ewHeld`, not `converted`.
  *
+ * --block <id> --status verified is a CLAIM gate (coverage-model.md § Block delivery status lifecycle):
+ * refused (exit 2, naming `<T> archetype <slug> ungated|failed at <bp>`) unless every template in the
+ * block's usedByTemplates has its archetype's `published.<bp>.pass` at every configured breakpoint in
+ * stardust/replica/progress.json (lib.mjs archetypePublishedPass; `published.<bp>` absent = ungated,
+ * not FAIL). Under state.json `flow: redesign | reskin` the check is skipped and printed as skipped —
+ * the published-origin gate is replica's. Pages still deploy and preview: only the status is blocked.
+ *
  * Re-derives templates.json + rollout.json roll-ups after every write.
  * Exit: 0 written · 1 unknown slug/block, or a block refused `converted` by its ewGate · 2 usage (bad status, ledger missing/unreadable/not an
  *       object, unknown --gate name or unreadable gate JSON, coverage/blocks missing — run
  *       inventory.mjs / blocks.mjs first: the rollout family's precondition code, coverage-model.md
- *       § Verify (Exit)). A --gate run with unmeasured pages still exits 0: the re-drive is the
+ *       § Verify (Exit)) or a `verified` block claim refused. A --gate run with unmeasured pages still exits 0: the re-drive is the
  *       instrument's, the ingest recorded what it saw.
  */
 import { join, resolve } from 'node:path';
 import { existsSync, readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
-import { readJSON, writeJSON, rollupTemplates, rollupConfig, deliveredPathOf } from './lib.mjs';
+import { readJSON, writeJSON, rollupTemplates, rollupConfig, deliveredPathOf, pathKey, archetypePublishedPass } from './lib.mjs';
 
 function arg(name, fallback) {
   const i = process.argv.indexOf(`--${name}`);
@@ -77,13 +84,7 @@ export function sameResource(a, b) {
   const n = (p) => { const s = String(p || '/').split(/[?#]/)[0].replace(/\/index$/, '/').replace(/\/+$/, ''); return s || '/'; };
   return n(a) === n(b);
 }
-/** Served-path key: lower-case, no trailing slash, no `.html|.htm|.jsp|.aspx|.php`, `/index` → `/`. */
-export function pathKey(p) {
-  let s = String(p || '').trim().toLowerCase().replace(/[?#].*$/, '');
-  s = `/${s.replace(/^\/+/, '')}`.replace(/\/+$/, '') || '/';
-  s = s.replace(/\.(html?|jsp|aspx?|php)$/, '').replace(/\/index$/, '') || '/';
-  return s;
-}
+export { pathKey }; // lives in lib.mjs (verify --paths shares it); re-exported for existing importers
 
 /**
  * Pure merge — returns { changes: [{ slug, from, to, deployedPath }], counts, unmatched }.
@@ -226,7 +227,8 @@ function main() {
     '   or: update-coverage.mjs --gate <ai-readability|editability> <gate.json> [--min 98] [--out <rolloutDir>]   (per-page gate ingest; unmeasured = status untouched)',
     '   or: update-coverage.mjs --block <id> --status <pending|converted|deployed|verified|failed> [--eds-name <n>] [--out <rolloutDir>]',
     '   or: update-coverage.mjs --from-ledger <content/.deploy-ledger.json> [--url-base <origin>] [--out <rolloutDir>]',
-    '  exit 0 written · 1 unknown slug/block · 2 usage (bad status, ledger unreadable, coverage/blocks missing)',
+    '  --block … --status verified is refused (exit 2) until every template using the block has its archetype published-gated at every breakpoint',
+    '  exit 0 written · 1 unknown slug/block · 2 usage (bad status, ledger unreadable, coverage/blocks missing) or a verified claim refused',
   ].join('\n');
   if (process.argv.includes('--help') || process.argv.includes('-h')) { console.log(USAGE); process.exit(0); }
 
@@ -299,6 +301,21 @@ function main() {
     if (!doc) { console.error(`rollout: ${blocksPath} not found — run blocks.mjs first.`); process.exit(2); }
     const b = (doc.blocks || []).find((x) => x.id === blockId);
     if (!b) { console.error(`rollout: no block "${blockId}".`); process.exit(1); }
+    if (status === 'verified') {
+      // claim gate: the block's templates must each have their archetype published-gated at every breakpoint
+      const state = readJSON(join(OUT, '..', 'state.json'), null); const flow = state && state.flow;
+      if (flow && flow !== 'replica') console.log(`block ${blockId}: published-origin check skipped under flow: ${flow} (the published-origin gate is replica's)`);
+      else {
+        const progress = readJSON(join(OUT, '..', 'replica', 'progress.json'), null);
+        const templates = ((readJSON(templatesPath, {}) || {}).templates) || [];
+        const bps = ((readJSON(configPath, {}) || {}).breakpoints) || [];
+        const bad = (b.usedByTemplates || []).map((id) => templates.find((t) => t.id === id) || { id, representativeSlug: id }).map((t) => archetypePublishedPass(progress, t, bps)).filter((r) => !r.ok);
+        if (bad.length) {
+          console.error(`rollout update-coverage: block ${blockId} cannot be verified — ${bad.map((r) => r.ungated.map((u) => `${r.pageType} archetype ${r.archetype} ${u.state} at ${u.bp}`).join(', ')).join('; ')}${progress ? '' : ' (no stardust/replica/progress.json)'} — gate the archetype on the published origin (replica source-fidelity-gate.md § The published-origin gate); never edit the ledger (exit 2)`);
+          process.exit(2);
+        }
+      }
+    }
     b.delivery = b.delivery || {};
     // Gate 6 (measured-gates.md; coverage-model.md § Block delivery status lifecycle): `converted` requires the
     // ingested editability verdict pass | exempt — fail / unmeasured / none is refused, never downgraded silently

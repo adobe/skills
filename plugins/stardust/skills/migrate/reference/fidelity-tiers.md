@@ -17,7 +17,7 @@ trade so a reviewer can see, per page, what was and wasn't checked.
 | Tier | Render branch | Gates it MUST pass | When |
 |---|---|---|---|
 | **archetype** | Path A (approved prototype) | Full `prototype` gate stack: critique, audit, mobile-adapt, anti-template, content-sourcing, `:root` + data-attribute contracts | One representative page **per template**. The design canon. |
-| **sibling** | Path A′ (canon-fork) | **Variance-probed** (§ Sibling variance probe — run once per template BEFORE cloning) + structural clone of the archetype + **content-fidelity** (verbatim source copy, no fabrication, **measured** — § Content-count acceptance) + **delivery-lint** + **media-reconcile**. NOT full craft. A scripted sibling importer follows `importer-recipe.md`. | Every other page of a template the archetype already covers. **The cheap default for breadth.** |
+| **sibling** | Path A′ (canon-fork) | **Variance-probed** (§ Sibling variance probe — run once per template BEFORE cloning) + structural clone of the archetype + **content-fidelity** (verbatim source copy, no fabrication, **measured** — § Content-count acceptance) + **delivery-lint** + **media-reconcile**. NOT full craft. A scripted sibling importer is `skills/migrate/scripts/importer-skeleton.mjs` driven by `stardust/import/vocabulary.json` (`importer-recipe.md` § Skeleton contract). | Every other page of a template the archetype already covers. **The cheap default for breadth.** |
 | **thin** | unique (graceful) | delivery-lint + media-reconcile + a declared `contentGap`. Renders metadata + hero + whatever real content exists (e.g. a PDF link). No fabricated filler. | Pages with little/no body content (PDF-only, redirect stubs, bodyless landing). |
 
 The point of the table: **archetype is craft-gated once per template; siblings
@@ -100,6 +100,32 @@ this failure class, so make it part of the per-page acceptance:
   logged `contentDeviations[]` entry covers it. The page does not advance
   to `migrated`; the remediation is fixing the importer/template while it
   is still cheap, then re-running the page.
+- **Compared classes include structure, not only counts:** list depth (the
+  deepest `ul`/`ol` nesting), nested-list count and `<table>` count — a
+  flattening importer keeps the `li` count and loses the depth (one legal
+  converter shipped three live levels as one); the same any-drop rule applies.
+- **Module-map precondition (sibling tier).** Every kind the archetype's lift
+  ledger names (`replica/progress.json.modules[]`) has an emitter in
+  `stardust/import/vocabulary.json` before the template's siblings render;
+  a template with an unmapped kind is blocked exactly as an ungated archetype
+  is — report the kinds, render nothing for that type (`importer-skeleton.mjs
+  --template <t>` refuses at plan time: pages `blocked`, exit 2). At import a visible
+  module with no emitter, or a `block:` kind emitted as prose, is 🔴
+  (`_meta.json#audit.import.unmapped[] / flattened[]`, `importer-skeleton.mjs`
+  exit 2; the page never reaches `migrated`). "Flattened to prose with a
+  logged warning" is a defect, not a note. Escapes: a `drop:<reason>` emitter
+  or a `contentDeviations[]` entry — never a numeric tolerance; a bulk run
+  stops a template once one kind is unmapped on ≥ 3 of its pages
+  (`unmapped modules: N kinds on M pages — map or drop with reason`).
+- **Two renders, pick by counts.** When an archetype template and a generic
+  or thin render both exist for a page or family, run the acceptance on both
+  against the captured source and adopt the render with no drop or the
+  smaller drop; never adopt an archetype template for a sibling family on the
+  strength of the archetype's own pass. Hands-off picks by counts, never by
+  template preference.
+- **A count miss on a sibling is a slot gap in the generator or archetype** —
+  fix the generator; `contentDeviations[]` (`kind: "runtime"`) covers
+  runtime-only items and is the only allowlist.
 - Record the pass as `"content-count"` in the page's `gatesPassed[]`.
 - Before upload, run `node skills/deploy/scripts/davids-model-lint.mjs content/ --chrome content/nav.html,content/footer.html` over the tree — a page whose link labels are mostly chrome labels was captured through the importer's `<main>` fallback (🟡 CHROME-LEAK; threshold `--chrome-min`).
 

@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Fixture test: typed coverage rows across inventory.mjs, assemble.mjs and optimize.mjs.
 //
-//   inventory  --content seeds chrome (nav*, footer*), fragments/** and *.json rows with
+//   inventory  template = archetype group (A page → own slug, A′ → its archetype, representative =
+//              the archetype); --content seeds chrome (nav*, footer*), fragments/** and *.json rows with
 //              delivery.type fragment | index and stable slugs; a typed row survives a
 //              re-run without --content and a re-run whose source file is gone
 //              (source.missing: true, delivery preserved); --redirects seeds
@@ -56,6 +57,14 @@ assert.match(r.stdout, /typed rows 5 \(fragment\/index\)/, 'report line names th
 const templates = json(join(OUT, 'coverage', 'templates.json')).templates;
 assert.ok(templates.every((t) => !t.pages.some((s) => s.startsWith('chrome-') || s.startsWith('fragment-') || s.startsWith('index-'))), 'typed rows are excluded from template roll-ups');
 assert.equal(templates.reduce((n, t) => n + t.pageCount, 0), 6, 'roll-ups count page rows only');
+// template = the archetype group, representative = the renderBranch A page (T28.4: the prototype phase
+// gated home / insurance__home / news__storm-season-checklist — the sample and Phase E must gate those)
+assert.deepEqual(templates.map((t) => [t.id, t.representativeSlug, t.pages]), [
+  ['home', 'home', ['business', 'home']],
+  ['insurance__home', 'insurance__home', ['insurance__auto', 'insurance__home']],
+  ['news__storm-season-checklist', 'news__storm-season-checklist', ['news__annual-report-2025', 'news__storm-season-checklist']],
+], 'three archetype groups, archetype as representative');
+assert.equal(bySlug().get('business').templateId, 'home', 'an A′ sibling carries its archetype slug as templateId');
 const config = json(join(OUT, 'rollout.json'));
 assert.deepEqual(config.links, { outsideInventory: 'fail' }, 'rollout.json seeds the link policy default');
 

@@ -19,7 +19,10 @@
 //      report under verify/slug-<s>/ and leaves the site-wide verify/summary.json intact;
 //      a 429/503 is retried inline (Retry-After honoured) — a page recovering on the retry
 //      is verified, a page still throttled is `unverified` (ledger status untouched) and
-//      the run exits 2, never a failed page; an all-delivered ledger prints no
+//      the run exits 2, never a failed page; --paths <file|a,b,c> (the regate-list / wave
+//      deploy-paths consumer) restricts the set through pathKey (`/index` ≡ `/`), reports
+//      no-row and not-selected paths, writes under verify/paths/ and leaves the site-wide
+//      summary intact; an all-delivered ledger prints no
 //      `not delivered: 0` line (the summary lines print only when non-zero). The LAST
 //      stdout line of every run is the completion contract's
 //      `SUMMARY verify ok= failed= [noverdict=] exit= details=` line (progress.mjs);
@@ -104,6 +107,32 @@ const lines = (s) => s.split('\n').filter((l) => l.length);
   r = run(['--root', MIG, '--all', '--out', OUT, '--report', REP, '--verbose']);
   assert.equal((r.stdout.match(/^ {2}✗ /gm) || []).length, 6, '--verbose prints the per-page ✗ rows');
   assert.ok(!existsSync(join(OUT, 'verify')), '--report overrides the default <out>/verify/');
+
+  // --paths (T06.4): the consumer of `wave.mjs regate-list` / a wave's deploy-paths file restricts the set; the
+  // site-wide report stays intact; `/index` (deploy-batch's key) ≡ `/`; no-row paths are listed, never invented
+  r = run(['--root', MIG, '--all', '--out', OUT]);
+  const siteWide = readFileSync(join(OUT, 'verify', 'summary.json'), 'utf8');
+  writeFileSync(join(T, 'regate.txt'), '# class round 1\n/index\n/business\n/nowhere\n');
+  r = run(['--root', MIG, '--all', '--out', OUT, '--paths', join(T, 'regate.txt')]);
+  assert.equal(r.status, 1, `--paths on two failing pages → exit 1\n${r.stderr}`);
+  s = json(join(OUT, 'verify', 'paths', 'summary.json'));
+  assert.deepEqual([s.total, s.checked, s.failed], [6, 2, 2], 'only the listed rows are checked (the home page through deploy-batch\'s /index key)');
+  assert.deepEqual(s.pages.map((p) => p.slug).sort(), ['business', 'home']);
+  assert.deepEqual(s.paths, { listed: 3, selected: 2, noRow: ['/nowhere'], notSelected: [] }, 'summary.json records the list: no-row path listed, not invented');
+  assert.match(r.stderr, /--paths: 1 path\(s\) with no coverage row \(not invented\): \/nowhere/);
+  assert.match(r.stdout, /--paths: 2 of 3 listed selected · 1 no coverage row/);
+  assert.match(r.stdout.trim().split('\n').at(-1), /^SUMMARY verify ok=0 failed=2 exit=1 details=.*verify\/paths\/summary\.json mode=root paths=3$/, 'SUMMARY carries the list size');
+  assert.equal(readFileSync(join(OUT, 'verify', 'summary.json'), 'utf8'), siteWide, 'a --paths run never overwrites the site-wide summary');
+  r = run(['--root', MIG, '--all', '--out', OUT, '--paths', '/News/Annual-Report-2025/,/insurance/auto.html']);
+  assert.deepEqual(json(join(OUT, 'verify', 'paths', 'summary.json')).pages.map((p) => p.slug).sort(), ['insurance__auto', 'news__annual-report-2025'], 'comma list; case, trailing slash and .html ignored');
+  // default (no --all) selection is still deployed|verified: a listed pending row is `not selected`, not checked
+  { const pj = json(join(OUT, 'coverage', 'pages.json')); for (const p of pj.pages) p.delivery.status = p.slug === 'home' ? 'deployed' : 'pending'; writeFileSync(join(OUT, 'coverage', 'pages.json'), JSON.stringify(pj)); }
+  r = run(['--root', MIG, '--out', OUT, '--paths', '/,/business']);
+  s = json(join(OUT, 'verify', 'paths', 'summary.json'));
+  assert.deepEqual([s.checked, s.paths.notSelected], [1, ['business']], 'default set ∩ list; the pending row is reported as not selected');
+  assert.match(r.stdout, /1 not delivered \(business\)/);
+  writeFileSync(join(T, 'empty.txt'), '# nothing\n');
+  assert.equal(run(['--root', MIG, '--out', OUT, '--paths', join(T, 'empty.txt')]).status, 2, 'an empty --paths list is a usage error');
   rmSync(T, { recursive: true, force: true });
 }
 
