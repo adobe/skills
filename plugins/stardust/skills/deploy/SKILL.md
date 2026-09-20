@@ -24,7 +24,7 @@ Read this card, then the one section you are at — never the whole skill. Every
 | 5 | Buttons | restyle the boilerplate `a.button` rules; block JS MOVES CTA paragraphs | no manufactured anchors |
 | 6 | Chrome | `content/nav.html`, `content/footer.html`, `blocks/header`, `blocks/footer` | three-section nav contract kept |
 | 7 | Block agents | one brief per archetype cluster from the template — pointers only | briefs name files + headings, never inline text |
-| 8 | Block JS | `node skills/deploy/scripts/block-lint.mjs blocks/ --styles styles/styles.css`; `node skills/deploy/scripts/block-roundtrip.mjs "<protoURL>" content/<page>.html --blocks <name>` | block-lint exit 0; round-trip exit 0 — no structural 🔴, no dead text, no duplicated index |
+| 8 | Block JS | `node skills/deploy/scripts/block-lint.mjs blocks/ --styles styles/styles.css`; `node skills/deploy/scripts/block-roundtrip.mjs "<protoURL>" content/<page>.html --blocks <name>` | block-lint exit 0; round-trip exit 0 — no structural 🔴, no dead text, no duplicated index; `code-sync-verify.mjs --lint` exit 0 before the commit |
 | 9 | Content pages | `node skills/deploy/scripts/davids-model-lint.mjs content/ --icons-dir icons --styles styles/styles.css`; `sanitise.js <file>` | lint exit 0 + whole-page round-trip clean → first PUT + preview (URL in the first status line) |
 | QA | Local harness | `block-lint.mjs blocks/ --styles styles/styles.css`; `pipeline-mimic.mjs --self-test`; `build-harness.mjs` → `qa-gate.mjs <harnessURL> --schema stardust/eds-schema/<page>.json`; whole-page `block-roundtrip --strict`; `render-harness.mjs content/<page>.html <out.png> --fragments content/`; `ew-editability-probe.mjs --simulate-editor` | block-lint + qa-gate exit 0; no edit-mode drift |
 | D | Deploy | `node skills/deploy/scripts/deploy-batch.mjs --org <org> --repo <repo> --branch <branch> --content content --require-code-synced` (preview), then a separate `… --publish` run on pass; `localize-links.mjs --source-host <live-host> --check`; `ai-readability.mjs --origin <live> <paths>`; progress: `skills/stardust/scripts/progress.mjs read stardust/.work/deploy/deploy-batch.progress.json` | per-page atomic contract passed; AI-readability ≥ 98 |
@@ -41,7 +41,7 @@ Outputs: `blocks/<name>/<name>.{js,css}` · `content/**/*.html` (+ `nav.html`, `
 | 5 | `reference/buttons.md` § 5, § Block JS — move the CTA paragraph |
 | 6 | `reference/chrome.md` § The nav/footer documents, § The header/footer blocks, § What still cannot run, § Chrome states and variants |
 | 7 | `reference/block-agents-brief.md` § The brief template, § Shared cores and variants; `davids-model.md` |
-| 8 | `reference/block-js-scaffold.md` § 8. Block JS scaffold, § Experience Workspace editability contract, § Runtime order, § Decode rules |
+| 8 | `reference/block-js-scaffold.md` § 8. Block JS scaffold, § Experience Workspace editability contract, § Runtime order, § Decode rules; `da-deploy-protocol.md` § Code push gates before the commit |
 | 9 | `reference/content-page-scaffold.md` § 9. Content page scaffold; `reference/encode-contract.md` § Authoring shapes, § Pipeline-sensitive shapes, § Images |
 | QA | `reference/local-qa.md` § Gates, § Local-QA scope boundary; `reference/pipeline-facts.md` § Local emulation |
 | D | `da-deploy-protocol.md` § Delivery pipeline, § Deploy (DA Source API + curl), § Two clocks; § DA_TOKEN lifecycle (`da-token-check.mjs`) before the first token read |

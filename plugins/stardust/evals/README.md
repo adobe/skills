@@ -186,6 +186,13 @@ whose harness cases skip when Playwright is unresolvable:
   Playwright with no browser binary makes the probe suite print one `SKIP`
   line and exit 0 (its pure cases still run); the fixture itself SKIPs when
   Playwright is unresolvable.
+- `deploy/scripts/test/lint-changed.test.mjs` — `code-sync-verify.mjs --lint` on a
+  boilerplate-shaped temp project (no `"type":"module"`) with shim eslint/stylelint in
+  `node_modules/.bin`: the ESM-safe syntax stage catches a duplicate `const` that plain
+  `node --check` passes (pinned), a missing toolchain or a `Failed to load parser` is exit 2
+  "unavailable" never clean, `--syntax-only` prints the journal line and still runs syntax,
+  only the files the run touched (changed + untracked) reach the tools, findings in them
+  block (exit 2) while warnings pass, `--fix` is forwarded.
 - `deploy/scripts/test/code-sync-verify.test.mjs` — `code-sync-verify.mjs` against a temp
   git repo with a bare origin, a gzip origin and a fake admin: served == tree → 0 with one
   row per path and the `ok` record; a pushed change the origin serves stale → 124 (never 2)

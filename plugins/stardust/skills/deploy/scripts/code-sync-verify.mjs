@@ -237,7 +237,7 @@ export function lintFiles(root, files) {
     ...lines(git(root, ['diff', '--name-only', '--diff-filter=ACMR', 'HEAD', '--', ...LINT_PATHS]).out),
     ...lines(git(root, ['ls-files', '--others', '--exclude-standard', '--', ...LINT_PATHS]).out),
   ];
-  const uniq = [...new Set(list)].filter((f) => /\.(js|css)$/.test(f) && !/(^|\/)scripts\/(aem|scripts)\.js$/.test(f) || (files && files.includes(f)));
+  const uniq = [...new Set(list)].filter((f) => /\.(js|css)$/.test(f));
   return { js: uniq.filter((f) => f.endsWith('.js')), css: uniq.filter((f) => f.endsWith('.css')) };
 }
 
@@ -245,8 +245,10 @@ export function lintFiles(root, files) {
 export function syntaxCheck(root, file) {
   const r = spawnSync(process.execPath, ['--input-type=module', '--check'], { input: readFileSync(path.join(root, file)), encoding: 'utf8' });
   if (r.status === 0) return null;
-  const m = (r.stderr || '').match(/^(?:\[stdin\]:)?(\d+)?\n?([\s\S]*?)(SyntaxError: .*)$/m) || [];
-  return (r.stderr || '').split('\n').filter((l) => /SyntaxError|^\[stdin\]:\d+/.test(l)).join(' ').trim() || m[3] || 'syntax error';
+  const err = r.stderr || '';
+  const line = (err.match(/^\[stdin\]:(\d+)/m) || [])[1];
+  const msg = (err.match(/^(SyntaxError|ReferenceError|TypeError): .*$/m) || [])[0] || 'syntax error';
+  return `${line ? `line ${line}: ` : ''}${msg}`;
 }
 
 /** eslint / stylelint from <root>/node_modules/.bin only; the parser probe runs eslint once on one file. */
