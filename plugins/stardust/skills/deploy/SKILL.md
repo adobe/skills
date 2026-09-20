@@ -44,13 +44,9 @@ Outputs: `blocks/<name>/<name>.{js,css}` · `content/**/*.html` (+ `nav.html`, `
 | 8 | `reference/block-js-scaffold.md` § 8. Block JS scaffold, § Experience Workspace editability contract, § Runtime order, § Decode rules |
 | 9 | `reference/content-page-scaffold.md` § 9. Content page scaffold; `reference/encode-contract.md` § Authoring shapes, § Pipeline-sensitive shapes, § Images |
 | QA | `reference/local-qa.md` § Gates, § Local-QA scope boundary; `reference/pipeline-facts.md` § Local emulation |
-| D | `da-deploy-protocol.md` § Delivery pipeline, § Deploy (DA Source API + curl), § Two clocks |
+| D | `da-deploy-protocol.md` § Delivery pipeline, § Deploy (DA Source API + curl), § Two clocks; § DA_TOKEN lifecycle (`da-token-check.mjs`) before the first token read |
 | 10 | `reference/deployed-reconcile.md` § The six reconcile checks, § Reading content-diff |
 | any failure | `reference/anti-patterns.md` (by group); `reference/checklist.md` before each DA push |
-
-## Index
-
-When to use · Target runtime (compressed) · Playwright re-probe · Runtime-detection probe · The one rule that drives everything else · Output you will produce · The ENCODE contract — ten bullets · Steps 1–9 · Local QA before deploy — in brief · Deploy (DA Source API) · Step 10 — Reconcile on the DEPLOYED URL · When you finish · References
 
 ## When to use
 

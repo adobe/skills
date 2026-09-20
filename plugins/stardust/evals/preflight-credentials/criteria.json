@@ -46,6 +46,11 @@
       "name": "workspace_untouched",
       "max_score": 5,
       "description": "Apart from stardust/status.jsonl, stardust/journal.md and stardust/.gitignore, the workspace is byte-identical to the fixture: no new blocks/**, content/**, stardust/runtime-contract.json, stardust/eds-conversion-log.md, and no edits to styles/styles.css or scripts/."
+    },
+    {
+      "name": "lookup_by_instrument",
+      "max_score": 5,
+      "description": "The token lookup was performed by `skills/deploy/scripts/da-token-check.mjs` (its command line and its output or exit code — `DA_TOKEN: missing — looked in …`, exit 2 — are visible in the transcript), not by ad-hoc `grep`/`python`/`node` decoding or by reading env files directly."
     }
   ]
 }

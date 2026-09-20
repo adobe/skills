@@ -128,7 +128,7 @@ import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createProgress, defaultProgressFile, summaryLine } from '../../stardust/scripts/progress.mjs';
-import { resolveToken, tokenExpiry, daSmoke } from './lib.mjs';
+import { resolveToken, tokenExpiry, daSmoke, siteTokenName } from './lib.mjs';
 
 const DA_SRC = process.env.DEPLOY_BATCH_DA_SRC || 'https://admin.da.live/source';
 const ADMIN = process.env.DEPLOY_BATCH_ADMIN || 'https://admin.hlx.page';
@@ -152,7 +152,7 @@ export { resolveToken, tokenExpiry, daSmoke };
 
 /** SITE_TOKEN_<REPO> (uppercased, non-alphanumerics → _) then SITE_TOKEN. */
 export function siteTokenNames(repo) {
-  return [`SITE_TOKEN_${String(repo).toUpperCase().replace(/[^A-Z0-9]/g, '_')}`, 'SITE_TOKEN'];
+  return [siteTokenName(repo), 'SITE_TOKEN'];
 }
 
 /** median `ms` of the verify rows in an existing log — the s/page default (≥ 20 samples). */

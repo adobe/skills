@@ -96,6 +96,7 @@ v2 evals without modification.
 | `resume-state-report/`       | Master skill resume       | § Routing "No argument" / resume: state report first (`Flow:` line + per-archetype gate numbers from `progress.json`), journal `Next:` quoted and checked against state, replica-flow recommendation (ungated archetype → `replica <archetype>`), nothing written, next phase entered through its skill, heading-list before any skill-file read (W1 target). |
 | `runner-output-contract/`    | Batch reporting (`rollout` Phase E) | Runner-output contract on an offline full-site verify: ranked class table (class → count → worst example → file pointer) in the conversation, full per-page listing in `summary.json` + `summary.md` under `stardust/rollout/`, triage per class, hand-off names the summary files (rule: `context-hygiene.md` § Runner reports). |
 | `preflight-credentials/`     | Entry point (`deploy`)    | W1 pre-flight: token (present, unexpired, looked up through env → `.env` → `~/.claude/.env`), pushable code branch and scaffold are checked before any conversion work; one consolidated missing-prerequisite list with exact remediation; token value never printed; no push, no DA write, no fabricated token, no silent skip; `blocked` recorded in status.jsonl. |
+| `preflight-credentials-expired/` | Entry point (`deploy`) | The instrument half of pre-flight: `da-token-check.mjs --credentials` runs before any conversion work and its verdict (exit 2, class-named refresh remedy) is the evidence; `state.json.credentials` written in the shipped shape (`da: expired`, `daSource: repo-env`, exact-match `siteTokenEnv`, `gh: skipped`); zero requests (decode proves expiry); one consolidated stop; no hand decode, no token value, no env dump. |
 | `phase-checkpoint-next-command/` | Phase close (`direct`) | Checkpoint block at phase end: completed files (all `ls`-verifiable) + a verified part + ONE verbatim next command + what a re-run would skip; journal `Next:` and `status.jsonl` `next` carry the same command; pages `extracted` → `directed` (rule: `run-status.md` § Phase close). |
 
 ## Coverage map
@@ -185,6 +186,13 @@ whose harness cases skip when Playwright is unresolvable:
   Playwright with no browser binary makes the probe suite print one `SKIP`
   line and exit 0 (its pure cases still run); the fixture itself SKIPs when
   Playwright is unresolvable.
+- `deploy/scripts/test/da-token-check.test.mjs` — `da-token-check.mjs` against a temp
+  HOME and a mock DA list: resolution order (shell > `./.env` > `~/.claude/.env` >
+  `~/.env`, class printed, value never), IMS `created_at`+`expires_in` vs plain `exp`
+  vs undecodable (unknown → advisory), smoke 200 / 401 / 403 / 5xx / network (exit
+  0 / 2 / 2 / 1 / 1), zero requests on a proven-expired token, `--need`, and the
+  `--credentials` block (exact `SITE_TOKEN_<SLUG>` match — never a prefix — state
+  merge keeping other keys, GH_PAT probe ok / expired / skipped).
 - `doc-size.mjs` — byte caps on `SKILL.md` and `reference/*.md`, an
   `## Operator card` heading ahead of the procedure, the always-on total and
   the per-skill delta versus the last release tag; its temporary allowlist
