@@ -95,7 +95,9 @@ of `delivery.status`:
   instrument's own artifact by `update-coverage.mjs --gate <name> <json>` /
   `verify.mjs --ai-readability` (`ai-readability`: `{strict, code, unmeasured,
   min, origin, at}`; `editability`: `{authored, editable, dead, duplicated,
-  exempt, unmeasured, exemptSource, origin, at}`). Below the bar → `failed`
+  exempt, unmeasured, exemptSource, origin, at}` — `exemptSource` and `origin`
+  are derived by the ingest from the probe's `exemptions[]` / `url`, not read
+  from a probe field). Below the bar → `failed`
   with the reason; `unmeasured: true` → status untouched (no verdict ≠ FAIL);
   roll-up `rollout.json.lastRun.gates.<name>`. `measured-gates.md` § Gate 5 · § Gate 6.
 - **`delivery.gate`** — the published-origin **page gate**, copied from

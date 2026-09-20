@@ -77,7 +77,9 @@ node skills/rollout/scripts/update-coverage.mjs --gate editability stardust/roll
 - **Escape hatch.** Only the declared one — `@ew-exempt` in the block JSDoc
   (EW5 categories; item-level tags). No `--skip-ew` / `--no-ew` on the contract
   row (`--no-ew` stays a `block-roundtrip` diagnostic). A CLI `--exempt a,b` is
-  recorded `exemptSource: cli` and printed in Phase H, never silent.
+  recorded `exemptSource: cli` — inferred by the ingest from the probe's
+  `exemptions[].source === '--exempt'` (the probe JSON carries no
+  `exemptSource` field itself) — and printed in Phase H, never silent.
 - **Hands-off.** A failing block is a code defect fixed in the Step 8 loop ("fix
   by moving, never by weakening"); at the iteration cap the page records
   `--status failed --error "editability: dead N in <block>"` and the rollout

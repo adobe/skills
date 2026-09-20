@@ -48,6 +48,10 @@ import { join, dirname, resolve, basename } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 // ---- text + key normalisation (the content-inventory.mjs norm() rule — kept identical) ----
+// normKey() duplicates the in-page `norm` of skills/diff/scripts/content-inventory.mjs and
+// skills/deploy/scripts/content-inventory.mjs (B26: both copies keep a local const; neither exports it — an
+// export from both is the pending cross-cluster edit). Until then the fixture test evaluates both copies'
+// `norm` bodies over a corpus and pins them equal to this function, so a drift fails the chain, not a gate.
 const ARROWS = /[→➔➜›⇒➤>]+/g;
 export const clean = (s) => String(s || '').replace(/\s+/g, ' ').trim();
 export function normKey(s) {

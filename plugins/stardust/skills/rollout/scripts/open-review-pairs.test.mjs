@@ -10,7 +10,8 @@
 //   selection  --per-template 1 = representative first per template; --random n --seed s deterministic
 //              across runs and different for another seed; --slug a,b; --all
 //   live host  a liveHost of localhost / 127.0.0.1 or a token in a URL → exit 2, nothing written;
-//              no liveHost → exit 1; coverage missing → exit 1; --help exit 0
+//              no liveHost → exit 1; coverage missing → exit 1; --help exit 0; a value flag without a value →
+//              exit 2 (usage — the rollout family's code; NEGATIVE: it was exit 1, the coverage-missing class)
 //   files      review-pack.md (one table row per pair + the login hint) and review-pack.json; --no-open
 //              writes the pack only; the script never fetches (URLs and numbers come from files)
 //
@@ -92,6 +93,8 @@ r = run('--random', '2', '--seed', '1'); assert.equal(r.status, 0); assert.equal
 r = run('--all'); assert.equal(json(join(OUT, 'review-pack.json')).rows.length, 5);
 r = run('--slug', 'business'); assert.match(readFileSync(join(OUT, 'review-pack.md'), 'utf8'), /\(archetype home\)/);
 assert.match(r.stdout, /not opened \(--no-open\)/);
+// usage: a value flag swallowing the next flag → exit 2 (NEGATIVE: exit 1, the coverage-missing class, before)
+{ const u = run('--per-template', '--random'); assert.equal(u.status, 2, `usage → exit 2\n${u.stderr}`); assert.match(u.stderr, /--(per-template|random) needs a value/); }
 // refusals
 write('http://localhost:3000'); rmSync(join(OUT, 'review-pack.md'));
 r = run('--per-template', '1'); assert.equal(r.status, 2); assert.match(r.stderr, /localhost/); assert.ok(!existsSync(join(OUT, 'review-pack.md')), 'nothing written on refusal');

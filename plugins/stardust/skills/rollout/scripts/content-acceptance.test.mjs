@@ -37,6 +37,20 @@ const T = mkdtempSync(join(tmpdir(), 'content-acceptance-test-'));
 const json = (p) => JSON.parse(readFileSync(p, 'utf8'));
 const run = (...a) => spawnSync(process.execPath, [CLI, ...a], { encoding: 'utf8', cwd: T });
 
+// normKey parity with content-inventory.mjs norm() — both copies' `norm` bodies are lifted from the source files and
+// evaluated over a corpus (the copies are not exported; a drift in either fails here, not silently in the gate)
+{
+  const corpus = ['“Read more” → Plans…', 'Auto – Home — Life!', '  Get a Quote › ', 'FAQs: what’s covered?', 'Save 20%·', 'Storm » Fire ⇒ Theft', 'Life  insurance;', 'Contact  us…  ', 'Renters’ cover', '"Quoted" — “curly”'];
+  for (const copy of ['diff', 'deploy']) {
+    const src = readFileSync(join(HERE, '..', '..', copy, 'scripts', 'content-inventory.mjs'), 'utf8');
+    const start = src.indexOf('const ARROWS = '); const normAt = src.indexOf('const norm = (s) =>', start); const end = src.indexOf('.trim();', normAt) + '.trim();'.length;
+    assert.ok(start !== -1 && normAt !== -1 && end > normAt, `${copy}/content-inventory.mjs: norm() body found`);
+    const arrows = src.slice(start, src.indexOf('\n', start));
+    const body = src.slice(normAt, end);
+    const norm = new Function(`${arrows} const clean = (s) => (s || '').replace(/\\s+/g, ' ').trim(); ${body} return norm;`)();
+    for (const t of corpus) assert.equal(norm(t), normKey(t), `${copy} norm("${t}") === normKey`);
+  }
+}
 // normKey parity with content-inventory.mjs norm()
 assert.equal(normKey('“Read more” → Plans…'), '"read more" plans', 'trailing punctuation (incl. the … → ... expansion) is stripped, as in content-inventory norm()');
 assert.equal(normKey('Auto – Home — Life!'), 'auto - home - life');

@@ -33,6 +33,8 @@ for (const p of [...want].sort()) {
 writeFileSync(ledgerFile, JSON.stringify(ledger, null, 2));
 if (mode.mode === 'exit3') {
   if (mode.bigStdout) for (let i = 0; i < 3000; i += 1) console.log(`{"ts":"2026-01-01T00:00:00.000Z","path":"/p${i}","step":"verify","ok":true,"ms":123,"pad":"${'x'.repeat(60)}"}`);
-  console.log(`halt: DA_TOKEN 401 — next=node skills/deploy/scripts/deploy-batch.mjs --paths ${val('--paths')}`); console.log(`SUMMARY deploy-batch ok=${n} failed=0 exit=3 details=${ledgerFile}`); process.exit(3);
-}
-console.log(`SUMMARY deploy-batch ok=${n} failed=0 exit=0 details=${ledgerFile}`);
+  console.log(`halt: DA_TOKEN 401 — next=node skills/deploy/scripts/deploy-batch.mjs --paths ${val('--paths')}`); console.log(`SUMMARY deploy-batch ok=${n} failed=0 exit=3 details=${ledgerFile}`);
+  // exitCode, never process.exit(): a pipe write is asynchronous on macOS — exiting right after ~300 KB of stdout can drop
+  // the next= line under load (the driver then falls back to the argv), which is a stub defect, not the driver's
+  process.exitCode = 3;
+} else console.log(`SUMMARY deploy-batch ok=${n} failed=0 exit=0 details=${ledgerFile}`);
