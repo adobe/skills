@@ -113,6 +113,12 @@ node skills/migrate/scripts/importer-skeleton.mjs --slug <s> | --template <t> | 
   (`flattened[]`); a manifest path edited by hand (`--force` overwrites, the
   path is printed). Exit 1 = usage, missing capture, invalid map. No numeric
   tolerance exists; the escapes are `drop:<reason>`, `dynamics:<row>`, a patch.
+- **Plan-time block (`--template` / `--all`).** A lift-ledger kind
+  (`stardust/replica/progress.json` `modules[]`, `pageType` or `firstSeen` in
+  the template) with no emitter blocks the template: every page is recorded
+  `blocked`, nothing renders, exit 2 (`fidelity-tiers.md` § Module-map
+  precondition). Ledger selectors also identify modules on a page (`unmapped[]`
+  under the ledger kind, `ledger: true`).
 - **Bulk.** Per-page records; stop on the first failure unless `--continue`;
   one kind unmapped on ≥ 3 pages of a template stops that template early and
   the summary reads `unmapped modules: N kinds on M pages — map or drop with

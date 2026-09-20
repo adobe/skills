@@ -108,7 +108,8 @@ this failure class, so make it part of the per-page acceptance:
   ledger names (`replica/progress.json.modules[]`) has an emitter in
   `stardust/import/vocabulary.json` before the template's siblings render;
   a template with an unmapped kind is blocked exactly as an ungated archetype
-  is — report the kinds, render nothing for that type. At import a visible
+  is — report the kinds, render nothing for that type (`importer-skeleton.mjs
+  --template <t>` refuses at plan time: pages `blocked`, exit 2). At import a visible
   module with no emitter, or a `block:` kind emitted as prose, is 🔴
   (`_meta.json#audit.import.unmapped[] / flattened[]`, `importer-skeleton.mjs`
   exit 2; the page never reaches `migrated`). "Flattened to prose with a

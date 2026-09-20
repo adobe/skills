@@ -1,0 +1,21 @@
+{
+  "root": "main#content",
+  "chrome": [
+    "header.site-header",
+    "footer.site-footer"
+  ],
+  "wrappers": [
+    ".container",
+    ".row"
+  ],
+  "markers": {
+    ".tile-grid": {
+      "kind": "coverage-tiles",
+      "emitter": "block:coverage-tiles"
+    },
+    "section.find-agent": {
+      "kind": "agent-locator-cta",
+      "emitter": "block:agent-locator-cta"
+    }
+  }
+}

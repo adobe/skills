@@ -1,15 +1,119 @@
 {
   "flow": "replica",
   "pages": [
-    { "slug": "about", "url": "https://www.larkspurmutual.example/about/", "title": "About", "type": "static", "template": "static", "representative": "home", "status": "extracted" },
-    { "slug": "hea", "url": "https://www.larkspurmutual.example/careers/hea.html", "title": "Careers", "type": "static", "status": "extracted" },
-    { "slug": "grid", "url": "https://www.larkspurmutual.example/grid", "title": "Grid", "type": "static", "status": "extracted" },
-    { "slug": "empty", "url": "https://www.larkspurmutual.example/empty/", "title": "Empty", "type": "static", "status": "extracted" },
-    { "slug": "flat", "url": "https://www.larkspurmutual.example/flat/", "title": "Flat", "type": "static", "status": "extracted" },
-    { "slug": "stamped", "url": "https://www.larkspurmutual.example/stamped/", "title": "Stamped", "type": "static", "status": "extracted" },
-    { "slug": "u1", "url": "https://www.larkspurmutual.example/programs/u1/", "title": "U1", "type": "program", "status": "extracted" },
-    { "slug": "u2", "url": "https://www.larkspurmutual.example/programs/u2/", "title": "U2", "type": "program", "status": "extracted" },
-    { "slug": "u3", "url": "https://www.larkspurmutual.example/programs/u3/", "title": "U3", "type": "program", "status": "extracted" },
-    { "slug": "u4", "url": "https://www.larkspurmutual.example/programs/u4/", "title": "U4", "type": "program", "status": "extracted" }
+    {
+      "slug": "about",
+      "url": "https://www.larkspurmutual.example/about/",
+      "title": "About",
+      "type": "static",
+      "template": "static",
+      "representative": "home",
+      "status": "extracted"
+    },
+    {
+      "slug": "hea",
+      "url": "https://www.larkspurmutual.example/careers/hea.html",
+      "title": "Careers",
+      "type": "static",
+      "status": "extracted"
+    },
+    {
+      "slug": "grid",
+      "url": "https://www.larkspurmutual.example/grid",
+      "title": "Grid",
+      "type": "static",
+      "status": "extracted"
+    },
+    {
+      "slug": "empty",
+      "url": "https://www.larkspurmutual.example/empty/",
+      "title": "Empty",
+      "type": "static",
+      "status": "extracted"
+    },
+    {
+      "slug": "flat",
+      "url": "https://www.larkspurmutual.example/flat/",
+      "title": "Flat",
+      "type": "static",
+      "status": "extracted"
+    },
+    {
+      "slug": "stamped",
+      "url": "https://www.larkspurmutual.example/stamped/",
+      "title": "Stamped",
+      "type": "static",
+      "status": "extracted"
+    },
+    {
+      "slug": "u1",
+      "url": "https://www.larkspurmutual.example/programs/u1/",
+      "title": "U1",
+      "type": "program",
+      "status": "extracted"
+    },
+    {
+      "slug": "u2",
+      "url": "https://www.larkspurmutual.example/programs/u2/",
+      "title": "U2",
+      "type": "program",
+      "status": "extracted"
+    },
+    {
+      "slug": "u3",
+      "url": "https://www.larkspurmutual.example/programs/u3/",
+      "title": "U3",
+      "type": "program",
+      "status": "extracted"
+    },
+    {
+      "slug": "u4",
+      "url": "https://www.larkspurmutual.example/programs/u4/",
+      "title": "U4",
+      "type": "program",
+      "status": "extracted"
+    },
+    {
+      "slug": "inlineh1",
+      "url": "https://www.larkspurmutual.example/inline-h1/",
+      "title": "Inline h1",
+      "type": "static",
+      "status": "extracted"
+    },
+    {
+      "slug": "imgh1",
+      "url": "https://www.larkspurmutual.example/img-h1/",
+      "title": "Image h1",
+      "type": "static",
+      "status": "extracted"
+    },
+    {
+      "slug": "blankh1",
+      "url": "https://www.larkspurmutual.example/blank-h1/",
+      "title": "Blank h1",
+      "type": "static",
+      "status": "extracted"
+    },
+    {
+      "slug": "b1",
+      "url": "https://www.larkspurmutual.example/bulk/b1/",
+      "title": "B1",
+      "type": "bulk",
+      "status": "extracted"
+    },
+    {
+      "slug": "b2",
+      "url": "https://www.larkspurmutual.example/bulk/b2/",
+      "title": "B2",
+      "type": "bulk",
+      "status": "extracted"
+    },
+    {
+      "slug": "l1",
+      "url": "https://www.larkspurmutual.example/ledgered/l1/",
+      "title": "L1",
+      "type": "ledgered",
+      "status": "extracted"
+    }
   ]
 }

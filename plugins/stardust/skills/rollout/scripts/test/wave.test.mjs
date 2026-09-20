@@ -11,7 +11,14 @@
 //   (e) --unpark lint clears only lint parks; --unpark all clears all;
 //   (f) without --publish deploy-batch is never invoked with --publish and the live gate targets the
 //       preview host; with --publish only live-gated pages publish; a --force override is refused (exit 2);
-//   (g) a hard stage with no command and a missing artefact → exit 2 before any stage runs.
+//   (g) a hard stage with no command and a missing artefact → exit 2 before any stage runs;
+//   (h) the home page: roster `index` → served path `/`, deploy-batch key `/index` in the paths file, the ledger
+//       lookup and the live-gate URL (a `/` in the paths file is `missing … not in content tree` — no row, proven
+//       on the stub, which keys the tree exactly as deploy-batch's walkHtml does);
+//   (i) a child whose stdout exceeds the pipe buffer is read to `close`: the `next=` line after ~300 KB of log is
+//       intact in status.jsonl (runCapped unit case too);
+//   (j) --pixel sample runs the soft pixel stage on the first roster page of each type and stamps the rest
+//       `pixelSkipped: sample`; --pixel all runs it on the rest.
 //   regate-list: blocks/<name>/** → mapped pages; styles/** → all (site-wide); content/<path>.html → that
 //       page (content); an unknown file → all (unmapped→all); empty diff → empty list exit 0; no coverage → exit 2.
 //
@@ -21,6 +28,7 @@ import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, existsSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { runCapped, deployKey, ledgerRow } from '../wave.mjs';
 
 const HERE = import.meta.dirname;
 const WAVE = join(HERE, '..', 'wave.mjs');
@@ -57,7 +65,8 @@ const rolloutJson = {
     lint: { cmd: `${stub('stub-lint.mjs')} {slug}` },
     'local-gate': { cmd: `${stub('stub-gate.mjs')} {slug}` },
     deploy: { cmd: `${stub('stub-deploy-batch.mjs')} --org {org} --repo {repo} --branch {branch} --content {content} --paths {pathsFile}` },
-    'live-gate': { cmd: `${stub('stub-live.mjs')} {previewOrigin}{path}.plain.html` },
+    'live-gate': { cmd: `${stub('stub-live.mjs')} {previewOrigin}{webPath}.plain.html` },
+    pixel: { cmd: `${stub('stub-pixel.mjs')} {slug}` },
     publish: { cmd: `${stub('stub-deploy-batch.mjs')} --org {org} --repo {repo} --branch {branch} --content {content} --publish --paths {pathsFile}` },
   } },
 };
@@ -142,7 +151,7 @@ setPark({}); r = run(['w1', 'roster.txt']); assert.equal(r.status, 0, 're-run co
 
 // ---- (c) deploy-batch exit 3: da-token parks, blocked + next, exit 3, token-free stages of others ran ---------
 for (const s of ['p1', 'p2']) writeFileSync(join(P, 'content', `${s}.html`), `<body><main><div><h1>${s} v3</h1><p>${'copy '.repeat(40)}</p></div></main></body>`);
-setMode({ mode: 'exit3' }); resetCalls();
+setMode({ mode: 'exit3', bigStdout: true }); resetCalls();
 r = run(['w1', 'roster.txt']);
 assert.equal(r.status, 3, `(c) exit 3 propagates\n${r.stderr}`);
 st = state();
@@ -150,6 +159,7 @@ assert.equal(st.pages.p1.parked, undefined, 'the row the driver delivered before
 assert.equal(st.pages.p2.parked, 'da-token', '(c) the undelivered page parks da-token');
 const blocked = status().filter((l) => l.event === 'blocked');
 assert.equal(blocked.length, 1); assert.match(blocked[0].next, /deploy-batch\.mjs --paths/); assert.match(blocked[0].detail, /DA_TOKEN halt/);
+assert.match(blocked[0].next, /^node skills\/deploy\/scripts\/deploy-batch\.mjs --paths stardust\/rollout\/waves\/w1\.deploy-paths\.txt$/, '(i) the next= line after ~300 KB of child stdout is intact (read to close, not exit)');
 assert.deepEqual(calls().filter((x) => x.stage === 'live-gate').map((x) => x.url), ['https://main--site--acme.aem.page/p1.plain.html'], '(c) the token-free live gate of the delivered page still ran');
 assert.match(r.stdout, /SUMMARY wave .*exit=3/);
 setMode({ mode: 'ok' });
@@ -171,6 +181,45 @@ setPark({}); setMode({ mode: 'fail', failPath: '/p3' });
 writeFileSync(join(P, 'content', 'p3.html'), `<body><main><div><h1>p3 v3</h1><p>${'copy '.repeat(40)}</p></div></main></body>`);
 r = run(['w1', 'roster.txt', '--unpark', 'live-gate']);
 assert.equal(state().pages.p3.parked, 'preview', 'a non-ok ledger row parks `preview`'); assert.match(state().pages.p3.parkedDetail, /put-fail: DA 500/);
+
+// ---- (h) the home page: served path `/`, deploy-batch key `/index` everywhere the ledger is involved ------------------
+assert.equal(deployKey('/'), '/index'); assert.equal(deployKey('/p1'), '/p1');
+assert.deepEqual(ledgerRow({ '/index': { status: 'live' } }, '/'), { status: 'live' }, 'the ledger row for `/` is keyed /index');
+writeFileSync(join(P, 'stardust', 'current', 'pages', 'index.html'), '<html><body><main><h1>home</h1></main></body></html>');
+writeFileSync(join(P, 'stardust', 'migrated', 'index.html'), '<html><body><main><h1>home</h1></main></body></html>');
+writeFileSync(join(P, 'content', 'index.html'), `<body><main><div><h1>home</h1><p>${'copy '.repeat(40)}</p></div></main></body>`);
+writeFileSync(join(P, 'roster-home.txt'), 'index|landing|https://www.larkspurmutual.example/\n');
+setPark({}); setMode({ mode: 'ok' }); resetCalls();
+r = run(['w2', 'roster-home.txt']);
+assert.equal(r.status, 0, `(h) the home page deploys\n${r.stderr}\n${r.stdout}`);
+const home = json(join(P, 'stardust', 'rollout', 'waves', 'w2.state.json')).pages.index;
+assert.equal(home.path, '/', 'served path stays /'); assert.equal(home.deployed, true); assert.equal(home.liveOk, true); assert.equal(home.parked, undefined);
+assert.deepEqual(readFileSync(join(P, 'stardust', 'rollout', 'waves', 'w2.deploy-paths.txt'), 'utf8').trim().split('\n'), ['/index'], '(h) the paths file carries deploy-batch\'s key');
+assert.ok(json(join(P, 'content', '.deploy-ledger.json'))['/index'], 'ledger row under /index');
+assert.deepEqual(calls().filter((x) => x.stage === 'live-gate').map((x) => x.url), ['https://main--site--acme.aem.page/index.plain.html'], '(h) live gate hits /index.plain.html, never //.plain.html');
+assert.deepEqual(calls().filter((x) => x.stage === 'lint').map((x) => x.argv || x.slug), ['index']);
+// negative fixture: a `/` in the paths file is not in deploy-batch's tree → no row (what parked the home page before)
+writeFileSync(join(T, 'slash-paths.txt'), '/\n');
+const slash = spawnSync(process.execPath, [join(FX, 'stub-deploy-batch.mjs'), '--content', 'content', '--paths', join(T, 'slash-paths.txt')], { cwd: P, encoding: 'utf8', env: { ...process.env, WAVE_T: T } });
+assert.match(slash.stdout, /missing \/  not in content tree/, 'a bare / is not a content-tree key'); assert.equal(json(join(P, 'content', '.deploy-ledger.json'))['/'], undefined, 'and gets no ledger row');
+
+// ---- (i) runCapped reads the child to `close`: 300 KB of stdout then a next= line ---------------------------------------
+{
+  const big = await runCapped([process.execPath, '-e', "process.stdout.write('x'.repeat(300000) + '\\nnext=OK\\n'); process.exitCode = 7"], { cwd: P, timeoutSec: 30 });
+  assert.equal(big.code, 7, 'exit code is the verdict'); assert.ok(big.stdout.endsWith('next=OK\n'), `(i) stdout complete at close (${big.stdout.length} B)`); assert.equal(big.stdout.length, 300009);
+  const dead = await runCapped([process.execPath, '-e', 'setTimeout(() => {}, 30000)'], { cwd: P, timeoutSec: 1 });
+  assert.equal(dead.code, 124, 'deadline → 124'); assert.equal(dead.timedOut, true);
+}
+
+// ---- (j) --pixel sample: first page per type; --pixel all: the rest --------------------------------------------------------
+resetCalls(); r = run(['w1', 'roster.txt', '--pixel', 'sample']);
+assert.deepEqual(calls().filter((x) => x.stage === 'pixel').map((x) => x.slug), ['p1'], '(j) sample = the first roster page of each type (p3 is parked)');
+st = state(); assert.equal(st.pages.p1.pixelDone, true); assert.equal(st.pages.p2.pixelSkipped, 'sample'); assert.equal(st.pages.p4.pixelSkipped, 'sample'); assert.equal(st.pages.p2.pixelDone, undefined, 'a sampled-out page is not pixel-gated'); assert.notEqual(st.pages.p2.stage, 'pixel', 'and keeps its stage so --pixel all can reach it');
+resetCalls(); r = run(['w1', 'roster.txt', '--pixel', 'sample']); assert.equal(calls().filter((x) => x.stage === 'pixel').length, 0, '(j) a second sample run is idempotent');
+resetCalls(); r = run(['w1', 'roster.txt', '--pixel', 'all']);
+assert.deepEqual(calls().filter((x) => x.stage === 'pixel').map((x) => x.slug).sort(), ['p2', 'p4'], '(j) all = every page not yet pixel-gated');
+assert.equal(state().pages.p2.pixelSkipped, undefined); assert.equal(state().pages.p2.pixelDone, true);
+assert.equal(run(['w1', 'roster.txt', '--pixel', 'some']).status, 2, '--pixel takes all|sample|none');
 
 // ---- regate-list ------------------------------------------------------------------------------------------
 const R = join(T, 'regate'); mkdirSync(join(R, 'stardust'), { recursive: true });
@@ -200,4 +249,4 @@ assert.equal(r.status, 0); assert.equal(r.stdout.trim(), '', 'empty diff → emp
 assert.equal(rg(['--out', 'nowhere', '--files', 'x']).status, 2, 'no coverage → exit 2');
 
 rmSync(T, { recursive: true, force: true });
-console.log('wave.test: ok — park/unpark, hash re-gate, token halt, no-verdict, D1/D16 publish order, regate-list');
+console.log('wave.test: ok — park/unpark, hash re-gate, token halt, no-verdict, D1/D16 publish order, home page /index key, close-read stdout, pixel sample, regate-list');

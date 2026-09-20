@@ -1,0 +1,19 @@
+{
+  "_provenance": {
+    "writtenBy": "stardust:replica"
+  },
+  "modules": [
+    {
+      "kind": "plan-compare",
+      "pageType": "ledgered",
+      "firstSeen": "l1",
+      "selector": ".plan-compare"
+    },
+    {
+      "kind": "cards",
+      "pageType": "static",
+      "firstSeen": "about",
+      "selector": ".card-grid"
+    }
+  ]
+}

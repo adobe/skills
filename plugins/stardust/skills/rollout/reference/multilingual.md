@@ -75,21 +75,21 @@ this block; a lint reads it when one ships.
    The switcher targets each language's home. Per-language chrome documents
    are published content: they belong on each tree's roster.
 5. **Runtime hook (project-owned, two lines).** `scripts/scripts.js` stays
-   stock except this hook (the allow-list in `../deploy/reference/foundation.md`
-   § 3 names it): in `loadEager`, replace the boilerplate's
-   `document.documentElement.lang = 'en'` with the metadata row, and add the
-   alternates in `buildAutoBlocks()`:
+   stock: both lines live inside `buildAutoBlocks(main)`, the one project hook
+   `../deploy/reference/foundation.md` § 3 allows — `loadEager` and
+   `decorateMain` are never restructured, and the boilerplate's
+   `document.documentElement.lang = 'en'` is left in place (the hook overrides it):
 
    ```js
-   document.documentElement.lang = getMetadata('lang') || 'en';
    // buildAutoBlocks(main):
+   document.documentElement.lang = getMetadata('lang') || 'en';
    document.querySelectorAll('meta[name^="alternate-"]').forEach((m) => { const l = document.createElement('link'); l.rel = 'alternate'; l.hreflang = m.name.slice(10); l.href = m.content; document.head.append(l); });
    ```
 
    Content side: every page carries a `lang` metadata row; twins carry
-   `alternate-<lang>` rows for each sibling tree
-   (`../migrate/reference/metadata-and-jsonld.md`); `importer-skeleton.mjs`
-   emits the `lang` row.
+   `alternate-<lang>` rows for each sibling tree (row names:
+   `../dynamics/reference/locale-trees.md`, Plan bullet; values: the tree's
+   `trees.json` entry); `importer-skeleton.mjs` emits the `lang` row.
 6. **Indexes and sitemaps per language.** Clone each `helix-query.yaml` index
    with a language-scoped `include` glob and a language-prefixed `target`, and
    fix selectors that encode language (`a[href*="/specialities/"]` is not the
@@ -111,7 +111,7 @@ this block; a lint reads it when one ships.
    scripts — a wired `/es/` in a block is the hard-coded-path failure class.
 9. **Verify per tree** on the origin: `<html lang>` and alternates, modal
    headings and video ids in the tree's language, results only from that
-   tree, the switcher round-trips (`locale-trees.md` § Verify); `qa` runs with
+   tree, the switcher round-trips (`locale-trees.md`, Verify bullet); `qa` runs with
    language awareness per tree.
 
 ## Eval

@@ -15,7 +15,12 @@
 //   writer rules  patches applied last; a hand-edited output → exit 2 naming the path; --force overwrites;
 //                 second run → zero writes; --report-only writes _meta.json only; --dry-run writes nothing;
 //   hidden-live   stamped capture: [data-hidden-live] skipped + recorded, <details> kept; unstamped → "unstamped";
-//   root guard    a root selector resolving to <body> → exit 2; invalid map → exit 1; missing capture → exit 1.
+//   root guard    a root selector resolving to <body> → exit 2; invalid map → exit 1; missing capture → exit 1;
+//   h1 is a DOM fact  `<h1><strong>Bold</strong> start</h1>` and an image-only <h1> pass; `<h1><em></em></h1>` is `h1 0`;
+//   bulk flush    a missing capture mid-bulk exits 1 AFTER writing the manifest + summary for the pages already processed;
+//   ledger block  (plan time) a lift-ledger kind with no emitter blocks its template under --template: every page `blocked`,
+//                 nothing rendered, exit 2; the ledger selector identifies the module on a --slug run (unmapped[] under its kind);
+//                 mapping the kind unblocks the template.
 //
 // Usage: node plugins/stardust/skills/migrate/scripts/test/importer-skeleton.test.mjs  (exit 1 on failure)
 import assert from 'node:assert/strict';
@@ -109,6 +114,29 @@ assert.equal(json(M('grid', '_meta.json')).outputPathDefault, 'trailing-slash', 
 // --- 0 sections / no h1 → exit 2, nothing written --------------------------------------------------------------------------
 r = run('--slug', 'empty'); assert.equal(r.status, 2); assert.match(r.stderr, /0 sections, h1 0 — an empty page is never written/); assert.ok(!existsSync(M('empty')), 'no file for an empty page');
 
+// --- h1 presence is a DOM fact (inline-first and image-only headings pass; an empty inline heading fails) ------------------
+r = run('--slug', 'inlineh1'); assert.equal(r.status, 0, `inline-first <h1> is a heading\n${r.stderr}`); assert.match(readFileSync(M('inline-h1', 'index.html'), 'utf8'), /<h1><strong>Bold<\/strong> start<\/h1>/);
+r = run('--slug', 'imgh1'); assert.equal(r.status, 0, `image-only <h1> is a heading\n${r.stderr}`);
+r = run('--slug', 'blankh1'); assert.equal(r.status, 2); assert.match(r.stderr, /h1 0 — an empty page is never written/); assert.ok(!existsSync(M('blank-h1')), 'an <h1> with no text or image is not a heading');
+
+// --- bulk: a missing capture stops the run (exit 1) but the manifest + summary flush for the pages already processed -----
+r = run('--template', 'bulk', '--continue', '--json'); assert.equal(r.status, 1, r.stderr); assert.match(r.stderr, /b2: no capture/);
+assert.ok(json(join(T, 'stardust', 'import-manifest.json'))['stardust/migrated/bulk/b1/index.html'], 'b1 landed in the manifest before the stop');
+assert.deepEqual(json(M('_import', 'summary.json')).records.map((x) => [x.slug, x.status]), [['b1', 'ok'], ['b2', 'missing']], 'summary carries the processed page and the missing one');
+r = run('--template', 'bulk', '--continue'); assert.equal(r.status, 1); assert.match(r.stdout, /1 ok · 0 failed · 0 writes/, 'b1 is not rewritten on the retry');
+
+// --- plan-time module-map precondition (T26.3 Gate A): an unmapped lift-ledger kind blocks its template -------------
+r = run('--template', 'ledgered', '--json'); assert.equal(r.status, 2, r.stdout);
+assert.match(r.stderr, /template ledgered blocked — lift-ledger kinds without an emitter: "plan-compare"/);
+assert.deepEqual(r.stdout.split('\n').filter((l) => l.startsWith('{')).map((l) => JSON.parse(l)).map((x) => [x.slug, x.status]), [['l1', 'blocked']]);
+assert.ok(!existsSync(M('ledgered')), 'nothing rendered for a blocked template');
+assert.deepEqual(json(M('_import', 'summary.json')).blockedTemplates, ['ledgered']);
+r = run('--slug', 'l1', '--json'); assert.equal(r.status, 2, 'the ledger selector identifies the module on a single page');
+{ const lrec = JSON.parse(r.stdout.split("\n")[0]); assert.equal(lrec.status, "failed"); assert.deepEqual(lrec.audit.unmapped.map((u) => [u.kind, u.selector, u.ledger]), [["plan-compare", ".plan-compare", true]]); }
+{ const v = json(join(T, 'stardust', 'import', 'vocabulary.json')); v.markers['.plan-compare'] = { kind: 'plan-compare', emitter: 'block:plan-compare' }; writeFileSync(join(T, 'stardust', 'import', 'vocabulary.json'), JSON.stringify(v, null, 2)); }
+r = run('--template', 'ledgered'); assert.equal(r.status, 0, `mapping the kind unblocks the template\n${r.stderr}`); assert.deepEqual(json(M('ledgered', 'l1', '_meta.json')).modules, ['plan-compare']);
+r = run('--template', 'program', '--dry-run'); assert.doesNotMatch(r.stderr, /blocked/, 'a template with no ledger kinds is never blocked by the ledger');
+
 // --- flattened: a block: kind the walk cannot shape → exit 2 + flattened[] ----------------------------------------------------------
 r = run('--slug', 'flat', '--json'); assert.equal(r.status, 2, r.stdout);
 let rec = JSON.parse(r.stdout.split('\n')[0]);
@@ -157,4 +185,4 @@ r = run('--slug', 'nowhere'); assert.equal(r.status, 1); assert.match(r.stderr, 
 assert.equal(run().status, 1); assert.equal(spawnSync(process.execPath, [SCRIPT, '--help'], { encoding: 'utf8' }).status, 0);
 
 rmSync(T, { recursive: true, force: true });
-console.log('importer-skeleton.test: ok (walk rules 3/4/5/6/7/10, 0-sections exit, unmapped/flattened hard stop + early stop, writer rules, hidden-live, root guard, exits)');
+console.log('importer-skeleton.test: ok (walk rules 3/4/5/6/7/10, 0-sections exit, DOM h1, ledger plan-time block, unmapped/flattened hard stop + early stop, bulk flush, writer rules, hidden-live, root guard, exits)');

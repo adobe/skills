@@ -18,14 +18,18 @@
  *   lint        hard   contentHash recorded == file                rollout/scripts/delivery-lint.mjs --file {file} --path {path}
  *   local-gate  hard   localOk with contentHash + codeHash current deploy/scripts/davids-model-lint.mjs {file}
  *   deploy      hard   ledger row live|previewed (batch, --paths)  deploy/scripts/deploy-batch.mjs … --paths {pathsFile}
- *   live-gate   hard   liveOk (against the PREVIEW origin)         deploy/scripts/served-check.mjs {previewOrigin}{path}.plain.html --absent about:error
+ *   live-gate   hard   liveOk (against the PREVIEW origin)         deploy/scripts/served-check.mjs {previewOrigin}{webPath}.plain.html --absent about:error
  *   publish     hard   ledger row live (batch; --publish only)     deploy-batch.mjs … --publish --paths {pathsFile}
  *   pixel       soft   —  (--pixel all|sample|none, default none)  (none — project gate command; logs and proceeds)
+ *                      sample = the first roster page of each type; the rest are stamped pixelSkipped: sample
  *   close       —      wave-level: update-coverage --from-ledger, report, parked table
  * A hard stage with no command whose artefact is missing on any active page is a
  * start-time exit 2 (config error) — never a silent pass. Overrides:
- *   rollout.json  waves.stages.<name>.cmd  (placeholders {slug} {path} {url} {type} {file}
+ *   rollout.json  waves.stages.<name>.cmd  (placeholders {slug} {path} {url} {type} {file} {webPath}
  *                 {migrated} {pathsFile} {previewOrigin} {waveId} {org} {repo} {branch})
+ *                 {path} is the served path ('/' for the home page); {webPath} is deploy-batch's ledger key for the
+ *                 same file — identical except '/' → '/index' (content/index.html; deploy-batch.mjs walkHtml). The
+ *                 paths file, the ledger lookup and the live-gate URL use {webPath}; crawl and delivery-lint use {path}.
  *                 waves.ledger (default content/.deploy-ledger.json) · waves.content (default content)
  *                 waves.previewOrigin (default https://<ref>--<site>--<org>.aem.page from site.da)
  *                 waves.close[] (extra close commands)
@@ -35,10 +39,14 @@
  *   row: put-fail, body-invalid, overwrite-guard, path-collision, verify-fail) ·
  *   live-gate · publish · da-token (deploy-batch exit 3) · config.
  *   Child exit 124/143 = NO VERDICT: the page keeps its stage, counts `noverdict`,
- *   is listed for re-run, is never parked. Soft stages log and proceed.
+ *   is listed for re-run, is never parked. Soft stages log and proceed. Child output is
+ *   read to `close` (not `exit`), so a `next=` line after a large stdout is never cut.
  * Hash re-gate: contentHash = sha1 of content/<path>.html (recorded at lint pass);
  *   a change clears localOk + liveOk for that page (deploy-batch's own hash decides
- *   the re-PUT). codeHash = sha1 over blocks/ styles/ scripts/ head.html; a change
+ *   the re-PUT). deploy-batch PUTs the file's bytes unchanged (no in-place rewrite), so
+ *   a hash recorded at lint survives the deploy stage; sanitise belongs to the convert
+ *   command, BEFORE lint — a sanitise run between lint and deploy is a content change
+ *   and re-gates the page (by design). codeHash = sha1 over blocks/ styles/ scripts/ head.html; a change
  *   clears localOk on every page (local gate re-runs; nothing re-converts).
  * Order (D1/D16): deploy = preview · live gate on the preview origin · publish only
  *   with --publish, only for pages whose live gate passed · never --force.
@@ -81,9 +89,9 @@ export const STAGES = [
   { name: 'lint', cls: 'hard', scope: 'page', cmd: `node ${rel(join(SKILLS, 'rollout/scripts/delivery-lint.mjs'))} --file {file} --path {path}`, satisfied: (ctx, p, s) => Boolean(s.contentHash) && s.contentHash === fileHash(contentFile(ctx, p)) },
   { name: 'local-gate', cls: 'hard', scope: 'page', cmd: `node ${rel(join(SKILLS, 'deploy/scripts/davids-model-lint.mjs'))} {file}`, satisfied: (ctx, p, s) => Boolean(s.localOk) && s.codeHash === ctx.codeHash && s.contentHash === fileHash(contentFile(ctx, p)) },
   { name: 'deploy', cls: 'hard', scope: 'batch', cmd: `node ${rel(join(SKILLS, 'deploy/scripts/deploy-batch.mjs'))} --org {org} --repo {repo} --branch {branch} --content {content} --paths {pathsFile}`, satisfied: (ctx, p, s) => Boolean(s.deployed) && s.deployedHash === fileHash(contentFile(ctx, p)) },
-  { name: 'live-gate', cls: 'hard', scope: 'page', cmd: `node ${rel(join(SKILLS, 'deploy/scripts/served-check.mjs'))} {previewOrigin}{path}.plain.html --absent about:error`, satisfied: (ctx, p, s) => Boolean(s.liveOk) && s.liveOkHash === s.deployedHash },
+  { name: 'live-gate', cls: 'hard', scope: 'page', cmd: `node ${rel(join(SKILLS, 'deploy/scripts/served-check.mjs'))} {previewOrigin}{webPath}.plain.html --absent about:error`, satisfied: (ctx, p, s) => Boolean(s.liveOk) && s.liveOkHash === s.deployedHash },
   { name: 'publish', cls: 'hard', scope: 'batch', cmd: `node ${rel(join(SKILLS, 'deploy/scripts/deploy-batch.mjs'))} --org {org} --repo {repo} --branch {branch} --content {content} --publish --paths {pathsFile}`, satisfied: (ctx, p, s) => Boolean(s.published) && s.publishedHash === s.deployedHash, when: (ctx) => ctx.publish },
-  { name: 'pixel', cls: 'soft', scope: 'page', cmd: null, satisfied: (ctx, p, s) => ctx.pixel === 'none' || Boolean(s.pixelDone), when: (ctx) => ctx.pixel !== 'none' },
+  { name: 'pixel', cls: 'soft', scope: 'page', cmd: null, satisfied: (ctx, p, s) => ctx.pixel === 'none' || Boolean(s.pixelDone) || (Boolean(s.pixelSkipped) && (s.pixelSkipped !== 'sample' || ctx.pixel === 'sample')), when: (ctx) => ctx.pixel !== 'none' },
 ];
 const STAGE_INDEX = Object.fromEntries(STAGES.map((s, i) => [s.name, i]));
 
@@ -141,6 +149,10 @@ export function pathFor(slug, url, coverage = new Map()) {
   return p || '/';
 }
 const contentFile = (ctx, p) => join(ctx.root, ctx.content, p.path === '/' ? 'index.html' : `${p.path.slice(1)}.html`);
+/** deploy-batch's ledger key for the served path: content/index.html is keyed `/index` (walkHtml), every other path is itself. */
+export const deployKey = (path) => (path === '/' ? '/index' : path);
+/** The ledger row for a page — by deploy-batch's key first, then the served-path spellings an older ledger may carry. */
+export const ledgerRow = (ledger, path) => ledger[deployKey(path)] || ledger[path] || ledger[`${path}/`] || null;
 function migratedFile(ctx, p) {
   const cov = ctx.coverage.get(p.slug);
   if (cov && cov.source && cov.source.migratedHtml && existsSync(join(ctx.root, cov.source.migratedHtml))) return join(ctx.root, cov.source.migratedHtml);
@@ -172,8 +184,13 @@ export function runCapped(argv, { cwd, timeoutSec, env }) {
     child.stdout.on('data', (d) => { stdout += d; });
     child.stderr.on('data', (d) => { stderr += d; });
     const timer = timeoutSec > 0 ? setTimeout(() => { timedOut = true; try { child.kill('SIGTERM'); } catch { /* gone */ } setTimeout(() => { try { child.kill('SIGKILL'); } catch { /* gone */ } }, 3000).unref(); }, timeoutSec * 1000) : null;
-    child.on('error', (e) => { if (timer) clearTimeout(timer); done({ code: 127, stdout, stderr: `${stderr}${e.message}`, timedOut: false }); });
-    child.on('exit', (code, signal) => { if (timer) clearTimeout(timer); done({ code: timedOut ? DEADLINE_EXIT : (code === null ? (signal === 'SIGTERM' ? 143 : 1) : code), stdout, stderr, timedOut }); });
+    let settled = false; let exitCode = null;
+    const finish = () => { if (settled) return; settled = true; if (timer) clearTimeout(timer); done({ code: exitCode === null ? 1 : exitCode, stdout, stderr, timedOut }); };
+    child.on('error', (e) => { if (settled) return; settled = true; if (timer) clearTimeout(timer); done({ code: 127, stdout, stderr: `${stderr}${e.message}`, timedOut: false }); });
+    // the verdict is the exit code, but the OUTPUT is complete only at `close` (stdout past the pipe buffer is
+    // still unread at `exit`) — resolve on close; a grandchild holding the pipe open cannot stall the wave: 2 s after exit we settle with what arrived
+    child.on('exit', (code, signal) => { exitCode = timedOut ? DEADLINE_EXIT : (code === null ? (signal === 'SIGTERM' ? 143 : 1) : code); setTimeout(finish, 2000).unref(); });
+    child.on('close', finish);
   });
 }
 const noVerdict = (code) => code === DEADLINE_EXIT || code === 143;
@@ -231,6 +248,8 @@ export async function runWave(args) {
   if (!existsSync(rosterFile)) { console.error(`rollout wave: roster not found: ${rosterFile}`); return 2; }
   const roster = parseRoster(readFileSync(rosterFile, 'utf8'), ctx.coverage);
   if (!roster.length) { console.error('rollout wave: roster is empty'); return 2; }
+  // --pixel sample: the first roster page of each type (the roster is representative-first per plan.mjs)
+  ctx.sample = new Set(); { const seen = new Set(); for (const r of roster) if (!seen.has(r.type)) { seen.add(r.type); ctx.sample.add(r.slug); } }
   if (args.stage && !STAGE_INDEX[args.stage] && STAGE_INDEX[args.stage] !== 0) { console.error(`rollout wave: unknown stage ${args.stage} (${STAGES.map((s) => s.name).join(', ')})`); return 2; }
   // effective stage table: class is fixed here; only `cmd` may be overridden
   const table = STAGES.map((s) => { const o = overrides[s.name]; if (o && o.class && o.class !== s.cls) console.error(`rollout wave: stage ${s.name} is ${s.cls} — a config cannot change a stage's class (ignored)`); return { ...s, cmd: o && Object.prototype.hasOwnProperty.call(o, 'cmd') ? o.cmd : s.cmd }; });
@@ -257,7 +276,7 @@ export async function runWave(args) {
   const stagesToRun = args.stage ? effective.filter((s) => s.name === args.stage) : effective;
   if (args.stage && !stagesToRun.length) { console.error(`rollout wave: --stage ${args.stage} is not active in this run (publish needs --publish, pixel needs --pixel)`); return 2; }
   const results = { invocations: 0, halted: false };
-  const vars = (p) => ({ slug: p.slug, path: p.path, url: p.url || '', type: p.type, file: relative(root, contentFile(ctx, p)), migrated: (() => { const m = migratedFile(ctx, p); return m ? relative(root, m) : ''; })(), previewOrigin: ctx.previewOrigin, waveId, org: ctx.org, repo: ctx.repo, branch: ctx.branch, content: ctx.content });
+  const vars = (p) => ({ slug: p.slug, path: p.path, webPath: deployKey(p.path), url: p.url || '', type: p.type, file: relative(root, contentFile(ctx, p)), migrated: (() => { const m = migratedFile(ctx, p); return m ? relative(root, m) : ''; })(), previewOrigin: ctx.previewOrigin, waveId, org: ctx.org, repo: ctx.repo, branch: ctx.branch, content: ctx.content });
   const exec = async (stage, argvList, cwd) => { results.invocations += 1; if (ctx.dryRun) { console.log(`[dry-run] ${stage.name}: ${argvList.join(' ')}`); return { code: 0, stdout: '', stderr: '' }; } return runCapped(argvList, { cwd, timeoutSec: ctx.timeout }); };
   // invalidation before anything runs: content hash and code hash re-gate
   for (const r of active()) {
@@ -268,7 +287,7 @@ export async function runWave(args) {
 
   for (const stage of stagesToRun) {
     const i = effective.indexOf(stage);
-    const ready = (s) => effOrder(s.stage) === i - 1;
+    const ready = (s) => effOrder(s.stage) === i - 1 || (stage.cls === 'soft' && effOrder(s.stage) >= i - 1); // a soft stage re-admits a page stamped `<stage>Skipped` (--pixel sample → all)
     if (!args.stage) for (const r of active()) { const s = st.pages[r.slug]; if (ready(s) && stage.satisfied(ctx, r, s)) advance(s, stage, ctx, r); }
     const todo = active().filter((r) => { const s = st.pages[r.slug]; return !stage.satisfied(ctx, r, s) && (args.stage || ready(s)); });
     if (!todo.length) { save(); continue; }
@@ -279,14 +298,14 @@ export async function runWave(args) {
       if (!stage.cmd) { for (const r of batch) park(st, r.slug, 'config', `stage ${stage.name} has no command`); save(); continue; }
       const pathsFile = join(rolloutDir, 'waves', `${waveId}.${stage.name}-paths.txt`);
       mkdirSync(dirname(pathsFile), { recursive: true });
-      writeFileSync(pathsFile, `${batch.map((r) => r.path).join('\n')}\n`);
+      writeFileSync(pathsFile, `${batch.map((r) => deployKey(r.path)).join('\n')}\n`);
       const argvList = renderCmd(stage.cmd, { ...vars(batch[0]), pathsFile: relative(root, pathsFile) });
       if (argvList.includes('--force')) { console.error(`rollout wave: ${stage.name} command carries --force — refused (the ledger's hash skip is the re-drive rule)`); return 2; }
       const t0 = Date.now();
       const r = await exec(stage, argvList, root);
       const ledger = readJSON(join(root, ctx.ledger), {}) || {};
       for (const p of batch) {
-        const s = st.pages[p.slug]; const row = ledger[p.path] || ledger[`${p.path}/`] || null; const wantLive = stage.name === 'publish';
+        const s = st.pages[p.slug]; const row = ledgerRow(ledger, p.path); const wantLive = stage.name === 'publish';
         // a row counts only when it is THIS file's: bodyHash = sha1 of the bytes PUT (deploy-batch contract); a stale row from an earlier run is not a delivery
         const fresh = row && ((row.bodyHash && row.bodyHash === fileHash(contentFile(ctx, p))) || (!row.bodyHash && row.ts && Date.parse(row.ts) >= t0 - 1000));
         const ok = fresh && (row.status === 'live' || (!wantLive && row.status === 'previewed'));
@@ -308,12 +327,13 @@ export async function runWave(args) {
     const queue = todo.slice(); const workers = [];
     const one = async (p) => {
       const s = st.pages[p.slug];
-      if (!stage.cmd) { if (stage.cls === 'soft') { s[`${stage.name}Skipped`] = 'no command'; advance(s, stage, ctx, p); return; } park(st, p.slug, 'config', `stage ${stage.name} has no command`); return; }
+      if (stage.name === 'pixel' && ctx.pixel === 'sample' && !ctx.sample.has(p.slug)) { s.pixelSkipped = 'sample'; return; } // stamped, not advanced: --pixel all still reaches it
+      if (!stage.cmd) { if (stage.cls === 'soft') { advance(s, stage, ctx, p, { skipped: 'no command' }); return; } park(st, p.slug, 'config', `stage ${stage.name} has no command`); return; }
       const r = await exec(stage, renderCmd(stage.cmd, vars(p)), root);
       if (noVerdict(r.code)) { s.noverdict = true; console.error(`wave ${waveId}: ${p.slug} ${stage.name} → no verdict (exit ${r.code}); keeps stage ${s.stage || 'start'}`); return; }
       if (r.code === 0 || stage.cls === 'soft') {
         if (r.code !== 0) s[`${stage.name}Note`] = `soft stage exit ${r.code}`;
-        advance(s, stage, ctx, p);
+        advance(s, stage, ctx, p, { ran: true });
       } else park(st, p.slug, stage.name, r.stderr || r.stdout || `exit ${r.code}`);
     };
     for (let i = 0; i < Math.max(1, args.concurrency); i += 1) workers.push((async () => { while (queue.length) { await one(queue.shift()); save(); } })());
@@ -346,11 +366,11 @@ export async function runWave(args) {
 }
 const stageOrder = (name) => (name === null || name === undefined ? -1 : STAGE_INDEX[name]);
 const stageBefore = (name) => (STAGE_INDEX[name] > 0 ? STAGES[STAGE_INDEX[name] - 1].name : null);
-function advance(s, stage, ctx, p) {
+function advance(s, stage, ctx, p, opts = {}) {
   if (stage.name === 'lint') s.contentHash = fileHash(contentFile(ctx, p));
   if (stage.name === 'local-gate') { s.localOk = true; s.codeHash = ctx.codeHash; s.contentHash = s.contentHash || fileHash(contentFile(ctx, p)); }
   if (stage.name === 'live-gate') { s.liveOk = true; s.liveOkHash = s.deployedHash; }
-  if (stage.name === 'pixel') s.pixelDone = true;
+  if (stage.cls === 'soft') { if (opts.skipped) s[`${stage.name}Skipped`] = opts.skipped; else if (opts.ran) { s[`${stage.name}Done`] = true; delete s[`${stage.name}Skipped`]; } else if (!s[`${stage.name}Skipped`]) s[`${stage.name}Done`] = true; }
   if (stageOrder(s.stage) < STAGE_INDEX[stage.name]) s.stage = stage.name;
   delete s.invalidated;
 }
@@ -402,7 +422,7 @@ export function regateList(args) {
   const ledger = readJSON(join(root, 'content', '.deploy-ledger.json'), {}) || {};
   for (const r of rows) {
     const path = (r.page.delivery && r.page.delivery.deployedPath) || r.page.path;
-    if (args.json) { const row = ledger[path] || {}; console.log(JSON.stringify({ slug: r.slug, path, reason: r.reason, bodyHash: row.bodyHash || null, branch: row.branch || null })); } else console.log(`${r.slug}\t${path}\t${r.reason}`);
+    if (args.json) { const row = ledgerRow(ledger, path) || {}; console.log(JSON.stringify({ slug: r.slug, path, reason: r.reason, bodyHash: row.bodyHash || null, branch: row.branch || null })); } else console.log(`${r.slug}\t${path}\t${r.reason}`);
   }
   console.error(`${files === null ? 'all' : files.length} touched files → ${rows.length} pages (${counts.block} block-mapped · ${counts.content} content · ${counts.siteWide} site-wide · ${counts.unmapped} unmapped→all)`);
   return 0;

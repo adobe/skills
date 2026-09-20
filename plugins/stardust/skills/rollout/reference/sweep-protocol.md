@@ -37,13 +37,16 @@ overrides a stage's command, never its class):
 | lint | hard | recorded `contentHash` equals the file | `delivery-lint.mjs --file {file} --path {path}` |
 | local-gate | hard | `localOk` with `contentHash` + `codeHash` current | `davids-model-lint.mjs {file}` |
 | deploy | hard | ledger row `previewed`/`live` for THIS file's bytes | `deploy-batch.mjs … --paths {pathsFile}` (preview) |
-| live-gate | hard | `liveOk` for the deployed bytes | `served-check.mjs {previewOrigin}{path}.plain.html --absent about:error` |
+| live-gate | hard | `liveOk` for the deployed bytes | `served-check.mjs {previewOrigin}{webPath}.plain.html --absent about:error` |
 | publish | hard | ledger row `live`; runs only with `--publish` | `deploy-batch.mjs … --publish --paths {pathsFile}` |
-| pixel | soft | `--pixel none` (default) | none — project gate; logs and proceeds |
+| pixel | soft | `--pixel none` (default); `sample` = first roster page per type, the rest stamped `pixelSkipped` (reached by `all`) | none — project gate; logs and proceeds |
 | close | — | wave-level | `update-coverage.mjs --from-ledger`, report, parked table |
 
-A hard stage with no command whose artefact is missing on any active page is a
-start-time exit 2 (config error) — never a silent pass.
+`{path}` is the served path (`/` for the home page); `{webPath}` is deploy-batch's
+ledger key for the same file — identical except `/` → `/index` (`content/index.html`).
+The paths file, the ledger lookup and the live-gate URL use `{webPath}`; capture and
+lint use `{path}`. A hard stage with no command whose artefact is missing on any
+active page is a start-time exit 2 (config error) — never a silent pass.
 
 **Gate contract — what it blocks, on which condition.** A page is **parked**
 (never the wave) when a hard stage fails: reasons `capture`, `build`, `convert`,

@@ -18,7 +18,7 @@ Phases, in order: Setup → A Inventory → B Block dedup plan → B2 Dynamic su
 | A | `node skills/rollout/scripts/inventory.mjs --site-url <source-url> [--content <eds-root>/content] [--redirects stardust/redirects.tsv]` (archetypes-only: add `--state stardust/state.json`) |
 | B | `node skills/rollout/scripts/blocks.mjs`; `node skills/rollout/scripts/plan.mjs` |
 | B2 | `node skills/dynamics/scripts/dynamics-detect.mjs --from-state … --reach stardust/current`; `node skills/dynamics/scripts/dynamics-plan.mjs --target-origin <live host> --migrated stardust/migrated`; `node skills/dynamics/scripts/dynamics-plan.mjs --lint stardust/dynamic-features.md stardust/dynamic-features-plan.md` |
-| C | per page: `node skills/rollout/scripts/delivery-lint.mjs --file <html> --path </da/path> --icons-dir icons [--chrome-docs content/nav.html,content/footer.html,…]` (multi-variant sites); `node skills/rollout/scripts/media-reconcile.mjs --file <html> --deploy-host <host> [--apply]`; `node skills/rollout/scripts/section-fidelity.mjs --file <html> --source <url>`; `node skills/rollout/scripts/update-coverage.mjs <slug> --status <s>`; waves: `node skills/rollout/scripts/wave.mjs <waveId> <roster> [--publish] [--unpark <reason\|all>]` (drives `deploy-batch.mjs` preview → live gate → `--publish` after D1; `regate-list` sub-command for class rounds) |
+| C | per page: `node skills/rollout/scripts/delivery-lint.mjs --file <html> --path </da/path> --icons-dir icons [--chrome-docs content/nav.html,content/footer.html,…]` (multi-variant sites); `node skills/rollout/scripts/media-reconcile.mjs --file <html> --deploy-host <host> [--apply]`; `node skills/rollout/scripts/section-fidelity.mjs --file <html> --source <url>`; `node skills/rollout/scripts/update-coverage.mjs <slug> --status <s>`; waves: `node skills/rollout/scripts/wave.mjs <waveId> <roster> [--publish] [--unpark <reason\|all>]` (`reference/sweep-protocol.md` § Wave driver) |
 | D | `node skills/rollout/scripts/assemble.mjs`; `node skills/rollout/scripts/redirects.mjs [--post-publish]` |
 | D2 | `node skills/dynamics/scripts/dynamics-check.mjs --origin <live host> --gate` |
 | E / E2 | `node skills/rollout/scripts/verify.mjs [--base <url> | --root <dir>] [--all] [--report <dir>]`; class rounds: `node skills/rollout/scripts/wave.mjs regate-list --since <ref>`; `node skills/deploy/scripts/localize-links.mjs --source-host <live-host> --content content --redirects stardust/redirects.tsv [--check]` |
@@ -63,16 +63,14 @@ page: `stardust deploy`.
    guard:** `stardust/state.json` without `flow` on a migration ask → do not
    roll out; print the master's two-flow table and hand back to its routing
    (`skills/stardust/reference/state-machine.md` § Flow keys).
-2. Verify `stardust/migrated/` exists with at least one `*.html` page (full mode:
+2. Verify `stardust/migrated/` exists with at least one `*.html` (full mode:
    all pages; archetypes-only: the archetypes + a `state.json` with `type`
    populated).
    **Gated-archetype precondition (`flow: replica`).** Run
-   `node skills/replica/scripts/gate-ledger-lint.mjs --state stardust/state.json`,
-   the reader of `stardust/replica/progress.json`
-   (`skills/replica/reference/source-fidelity-gate.md` § Residual logging
-   format: every configured breakpoint under § Pass bar, or over the bar
-   only with named-class residuals carrying `artifacts[]` and `acceptedBy`;
-   a shape it cannot read is not a pass). Exit 2 lists each blocked type
+   `node skills/replica/scripts/gate-ledger-lint.mjs --state stardust/state.json`
+   (reads `stardust/replica/progress.json` per
+   `skills/replica/reference/source-fidelity-gate.md` § Residual logging
+   format; a shape it cannot read is not a pass). Exit 2 lists each blocked type
    with its archetype slug and the command to gate it (`$stardust replica
    <archetype>`): neither fan out its siblings nor `POST /live/` any of
    them; other types proceed. Hands-off never bypasses a blocked type (it
@@ -131,6 +129,10 @@ node skills/rollout/scripts/plan.mjs     # → plan.json + a readable conversion
   later page REUSES it by name — the per-page `convert`/`reuse` lists are
   `deploy`'s Step-7 brief input, so each block converts once **without changing
   deploy**. `content-pending` pages are always `convert: []`.
+- Template = the archetype's group (`templates.json` keyed by archetype slug);
+  representative = the gated archetype (`renderBranch: A`), so C/E gate the page the
+  prototype gated. A `⚠ generic-with-structure` schema section (deploy Step 2b) is a
+  plan input: that page needs a block or a `dynamics` row before it converts.
 
 ### Phase B2 — Dynamic surface (PRE-IMPORT GATE — verify the inventory)
 
@@ -153,15 +155,15 @@ lint blocked are not in `plan.json`. For each page:
 
 1. **Convert + push** the migrated HTML (`source.migratedHtml`) to AEM via the
    `deploy` methodology. **Pass the plan step into deploy's brief**: create only the
-   blocks in `convert`; for each block in `reuse`, REUSE the existing block by its
-   `edsBlockName` (do not recreate). **The brief MUST carry the Experience Workspace
-   editability contract** (`skills/deploy/reference/block-js-scaffold.md` § Experience Workspace editability contract, EW1–EW10): every converted block
-   moves authored elements into wrappers (never rebuilds from text) and passes the
-   EW gate (`block-roundtrip --ew`) before it counts as delivered.
+   blocks in `convert`; for each block in `reuse`, reuse it by `edsBlockName`
+   (never recreate). **The brief MUST carry the Experience Workspace
+   editability contract** (`skills/deploy/reference/block-js-scaffold.md`, EW1–EW10):
+   blocks move authored elements into wrappers (never rebuild from text) and pass
+   `block-roundtrip --ew` before they count as delivered.
 
-   **`content-pending` pages** (archetypes-only): no migrated HTML — skip the
-   document push entirely (no shell/placeholder), record `content-pending`, surface
-   as "awaiting content track" (block code is already deployed via the archetype).
+   **`content-pending` pages** (archetypes-only): no migrated HTML — no document
+   push (no shell/placeholder); record `content-pending`, report "awaiting content
+   track" (block code ships with the archetype).
 
 2. **Static contract lint (pre-PUT, deterministic).** Before the push, run the
    delivery-contract linter — it catches the cheap, deterministic failures
@@ -226,9 +228,8 @@ lint blocked are not in `plan.json`. For each page:
 archetype page flips to `deployed`, stop and prove the foundation before
 authoring any second page: run the stardust `diff` skill (both probes) against its
 prototype, **plus computed-style invariants in a headless render** — grid
-containers compute `display: grid` (not stacked single-column), sections are
-full-bleed where the design says so, and the CTA/button classes are actually
-styled (per `stardust/runtime-contract.json`, `skills/deploy/SKILL.md`
+containers compute `display: grid`, sections are full-bleed where the design
+says so, and the CTA/button classes are styled (per `stardust/runtime-contract.json`, `skills/deploy/SKILL.md`
 § Runtime-detection probe).
 
 **Execution model: waves.** Deliver in waves of parallel **author-only** agents
@@ -236,20 +237,19 @@ styled (per `stardust/runtime-contract.json`, `skills/deploy/SKILL.md`
 clusters concurrently (non-overlapping pages), representative-first so blocks
 exist to be reused, and **a family's listing/index pages ship in its first
 wave**, before its volume wave (posts delivered ahead of their category pages
-bounce every in-page link; a later stub wave can overwrite the rich pages). The central deploy is the resumable driver, never a serial loop or a
-per-page agent turn: `node skills/rollout/scripts/wave.mjs <waveId> <roster>`
-runs the declared stage table per page (lint → local gate → `deploy-batch.mjs`
-preview → live gate on the preview origin → `--publish` only when explicit or
-`decisions.md` records publish-to-live), parks a failing page, not the wave,
-re-drives only what its hashes say changed, and closes with
-`update-coverage.mjs --from-ledger` and the parked table — contract, stage
-table, park reasons: `reference/sweep-protocol.md` § Wave driver.
-Drivers run in the background (`stardust/.work/rollout/wave.progress.json`,
-`progress.mjs read <file>`, the stdout `SUMMARY` line; after a blip, re-run the
-same command). Two clocks: code first on the ref the user will look at, then
-content (`skills/deploy/da-deploy-protocol.md` § Two clocks). Every wave agent follows `skills/stardust/reference/fan-out.md`
-§ Worker contract and § Scope and type of delegated agents; shell loops
-follow `skills/stardust/reference/harness-quirks.md`. When a wave must write
+bounce every in-page link; a later stub wave can overwrite the rich pages). The
+central deploy is `node skills/rollout/scripts/wave.mjs <waveId> <roster>` — the
+resumable driver, never a serial loop or a per-page agent turn: the declared stage
+table per page (lint → local gate → preview → live gate on the preview origin →
+`--publish` only when explicit or `decisions.md` records publish-to-live), parks the
+page, not the wave, re-drives only what its hashes say changed, closes with
+`update-coverage.mjs --from-ledger` and the parked table (`reference/sweep-protocol.md`
+§ Wave driver). Drivers run in the background (`progress.mjs read
+stardust/.work/rollout/wave.progress.json`; after a blip, re-run the same command).
+Two clocks: code first on the ref the user will look at, then content
+(`skills/deploy/da-deploy-protocol.md` § Two clocks). Wave agents follow
+`skills/stardust/reference/fan-out.md` § Worker contract and § Scope and type of
+delegated agents; shell loops `skills/stardust/reference/harness-quirks.md`. When a wave must write
 code, the deploy brief's ownership protocol applies —
 `skills/deploy/reference/block-agents-brief.md` § The brief template and
 § Shared cores and variants; author-only waves inherit the shared cores
@@ -286,9 +286,8 @@ Index-backed listings ship **document-first** (authored rows, index for non-text
 
 ### Phase D3 — Multilingual (optional)
 
-Language trees (`/fr/…`, `/en/…`) are parallel content trees that REUSE the same
-block library — only authored content and a little wiring change (language-routed
-chrome documents, per-language indexes and path-safety): `reference/multilingual.md`.
+Language trees (`/fr/…`, `/en/…`) are parallel content trees on the same block
+library — only content and a little wiring change: `reference/multilingual.md`.
 
 ### Phase E — Full-site verify
 
@@ -299,7 +298,7 @@ node skills/rollout/scripts/verify.mjs            # uses rollout.json site.liveH
 
 `verify` confirms each delivered row renders (200, no `about:error`, typed
 render check) and its internal links resolve, then flips it to `verified` or
-`failed`. Its summary lines (each printed only when non-zero), which rows, link
+`failed`. Its summary lines (printed when non-zero), which rows, link
 classes, the `links.outsideInventory` policy and the exit map:
 `reference/coverage-model.md` § Verify.
 Read `stardust/rollout/verify/summary.md`, triage per class — the per-page
@@ -307,8 +306,8 @@ rows sit below its table, never in the conversation (`skills/stardust/reference/
 § Runner reports and session hand-off).
 
 **Headless render check (per template).** A 200 `.plain.html` can still render
-blank — decoration failures (missing script, wrong wrapper class, 404 chrome)
-are invisible to a text check. On the FIRST delivered page of each template
+blank (missing script, wrong wrapper class, 404 chrome) — invisible to a text
+check. On the FIRST delivered page of each template
 (home included), load the live URL headless and assert decoration ran:
 `body.appear` set (per `stardust/runtime-contract.json`), `main .section` > 0,
 zero `pageerror` events, zero broken images.
@@ -392,12 +391,12 @@ staged findings flip to `fixed`.
 
 Hand-off shape: `skills/stardust/reference/handoff-report.md` — gate table first,
 source → target per page, report-check line last; review links open on the live
-host, the human logging in (`skills/deploy/da-deploy-protocol.md` § Site auth).
-Quote the vocabulary census in one line — `davids-model-lint.mjs content/ --json` → `census.styles.length` section styles, `census.blocks.length` blocks (the conversion log's locked vocabulary).
+host, the human logs in (`skills/deploy/da-deploy-protocol.md` § Site auth).
+Quote the vocabulary census — `davids-model-lint.mjs content/ --json` → `census.styles.length` section styles, `census.blocks.length` blocks (the conversion log's locked vocabulary).
 
 Include the dynamic parity table (`stardust/qa/dynamics-report.md`, from Phase D2)
 next to the delivery ledger: per feature its class, reach, status, owner decision
-and the replayed check — honest about what the site *does*, not only *shows*.
+and the replayed check.
 `dynamics-check.mjs --origin <live host> --gate` must exit 0 before the report closes
 (exit 3 = `parity.json` missing or a `self` row still pending — `skills/dynamics/reference/parity-report.md`
 rule 8); hands-off sets unshipped `self` rows to `interim` with a one-line reason

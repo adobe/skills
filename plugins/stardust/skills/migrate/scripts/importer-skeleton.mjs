@@ -40,9 +40,14 @@
  *   (c) a source module with visible content has no emitter → audit.import.unmapped[] · a `block:` kind that
  *       could not be shaped and would flatten to prose → flattened[] (both 🔴 — "flattened to prose with a
  *       logged warning" is the defect class, never a note); no numeric tolerance exists;
- *   (d) a manifest path whose on-disk sha differs from the recorded one (a hand edit) — refuse to overwrite.
+ *   (d) a manifest path whose on-disk sha differs from the recorded one (a hand edit) — refuse to overwrite;
+ *   (e) plan time (--template / --all): a lift-ledger kind (stardust/replica/progress.json modules[], pageType or
+ *       firstSeen in the template) with no emitter in vocabulary.json BLOCKS the template — every page of it is
+ *       recorded `blocked`, nothing renders (fidelity-tiers.md § Module-map precondition). Ledger selectors also
+ *       identify modules on a page: a visible one with no emitter is unmapped[] under its ledger kind.
  * Escapes: `drop:<reason>` / `dynamics:<row>` emitters in the map (recorded), a patch file, `--force` for (d).
- * Bulk (--all / --template): per-page records; stop on the first failure unless --continue; a kind unmapped on
+ * Bulk (--all / --template): per-page records (--template skips pages already `migrated` that have no capture); stop on
+ * the first failure unless --continue; a kind unmapped on
  * ≥ 3 pages of one template stops that template early (map it once instead of failing 500 pages);
  * exit 2 when any page failed. Second run with unchanged inputs → zero file writes.
  * Hidden-live: nodes stamped `data-hidden-live` by the capture are skipped (recorded in hidden[]; <details> kept);
@@ -51,7 +56,8 @@
  * Usage:
  *   node skills/migrate/scripts/importer-skeleton.mjs (--slug <s> | --template <t> | --all) [--root <projectDir>]
  *        [--out <migratedDir>] [--dry-run] [--report-only] [--force] [--continue] [--json]
- * Exit: 0 written · 1 usage / missing capture / invalid vocabulary or transform · 2 a page failed (see above)
+ * Exit: 0 written · 1 usage / missing capture (the run stops there; manifest + summary still flush) / invalid vocabulary
+ *       or transform · 2 a page failed (see above)
  * Contract: reference/importer-recipe.md § Skeleton contract.
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -331,6 +337,7 @@ export function importCapture(html, vocab, tf, opts = {}) {
   const markers = Object.entries(vocab.markers || {});
   const wrappers = vocab.wrappers || [];
   const moduleSelectors = vocab.moduleSelectors || DEFAULT_MODULE_SELECTORS;
+  const ledgerMods = (vocab.ledgerModules || []).filter((m) => m && m.selector && m.kind); // unmapped lift-ledger kinds: their selector names the module
   const sections = []; let cur = { style: null, nodes: [] };
   const closeSection = () => { if (cur.nodes.length) sections.push(cur); cur = { style: null, nodes: [] }; };
   const modules = [];
@@ -360,6 +367,8 @@ export function importCapture(html, vocab, tf, opts = {}) {
       return;
     }
     if (n.tag === 'section') { closeSection(); for (const c of kids(n)) visit(c); closeSection(); return; }
+    const lm = ledgerMods.find((m) => matches(n, m.selector, rootEl));
+    if (lm) { if (visible(n)) report.unmapped.push({ kind: lm.kind, selector: lm.selector, at: describe(n), ledger: true }); pushHtml(richText(n, tf, ctx)); return; }
     if (wrappers.some((w) => matches(n, w, rootEl))) { for (const c of kids(n)) visit(c); return; } // rule 4: recurse only through declared wrappers
     if (moduleSelectors.some((s) => matches(n, s, rootEl)) && visible(n)) { report.unmapped.push({ kind: kindOf(n), selector: moduleSelectors.find((s) => matches(n, s, rootEl)), at: describe(n) }); pushHtml(richText(n, tf, ctx)); return; }
     pushHtml(richText(n, tf, ctx)); // rule 5: default content in document order
@@ -369,7 +378,10 @@ export function importCapture(html, vocab, tf, opts = {}) {
   if (opts.walkSiblings !== false && rootEl.parent) { const sibs = kids(rootEl.parent); for (const s of sibs.slice(sibs.indexOf(rootEl) + 1)) { if (matches(s, 'footer, nav, header, [role="contentinfo"]')) break; visit(s); } }
   closeSection();
   const bodyHtml = sections.map((s) => renderSection(s)).join('\n');
-  const h1 = /<h1[\s>]/.test(bodyHtml) && /<h1[^>]*>\s*[^<\s]/.test(bodyHtml);
+  // h1 presence is a DOM fact, not a regex over the serialised page: `<h1><strong>Bold</strong> start</h1>` and an image-only
+  // heading are headings; `<h1><em></em></h1>` is not
+  const h1El = /<h1[\s>]/.test(bodyHtml) ? qs(parseHTML(bodyHtml), 'h1') : null;
+  const h1 = Boolean(h1El && (cleanText(h1El).length > 0 || qs(h1El, 'img')));
   return { sections, meta, modules, report, bodyHtml, h1 };
 }
 const cell = (c) => `      <div>${c}</div>`;
@@ -433,26 +445,38 @@ export function main(argv) {
   const roster = (state && state.pages) || [];
   let pages;
   if (a.slug) { const p = roster.find((x) => x.slug === a.slug) || { slug: a.slug, url: null, type: null }; pages = [p]; }
-  else if (a.template) pages = roster.filter((p) => p.type === a.template || p.template === a.template);
+  else if (a.template) pages = roster.filter((p) => (p.type === a.template || p.template === a.template) && (p.status !== 'migrated' || existsSync(S('current', 'pages', `${p.slug}.html`)) || existsSync(S('current', 'pages', `${p.slug}.json`)))); // a page already migrated by another generator and never captured is not this run's
   else pages = roster.filter((p) => existsSync(S('current', 'pages', `${p.slug}.html`)) || existsSync(S('current', 'pages', `${p.slug}.json`)));
   if (!pages.length) { console.error(`importer-skeleton: no pages selected${a.template ? ` for template ${a.template}` : ''} (state.json pages[] with a capture under stardust/current/pages/)`); return 1; }
+  // lift ledger ↔ vocabulary (fidelity-tiers.md § Module-map precondition): a kind with no emitter blocks its template at plan time
+  const ledger = readJSON(S('replica', 'progress.json'), null);
+  const ledgerModules = ledger && Array.isArray(ledger.modules) ? ledger.modules.filter((m) => m && m.kind) : [];
+  const hasEmitter = (m) => Object.entries(vocab.markers || {}).some(([sel, v]) => v && v.emitter && (v.kind === m.kind || sel === m.selector));
+  const ledgerUnmapped = ledgerModules.filter((m) => !hasEmitter(m));
+  const templateOf = (m) => m.pageType || m.template || ((roster.find((p) => p.slug === m.firstSeen) || {}).template) || ((roster.find((p) => p.slug === m.firstSeen) || {}).type) || null;
+  const blockedTemplates = new Map();
+  for (const m of ledgerUnmapped) { const t = templateOf(m); if (!t) continue; if (!blockedTemplates.has(t)) blockedTemplates.set(t, []); blockedTemplates.get(t).push(m.kind); }
+  if (!a.slug) for (const [t, kinds] of blockedTemplates) if (pages.some((p) => (p.template || p.type) === t)) console.error(`importer-skeleton: template ${t} blocked — lift-ledger kinds without an emitter: ${[...new Set(kinds)].map((k) => `"${k}"`).join(', ')} (progress.json modules[] vs vocabulary.json — map or drop:<reason>); nothing rendered for this template`);
+  const effVocab = { ...vocab, ledgerModules: ledgerUnmapped.filter((m) => m.selector) };
   const manifestFile = S('import-manifest.json'); const manifest = readJSON(manifestFile, {}) || {};
   const scriptSha = sha256(readFileSync(fileURLToPath(import.meta.url)));
   const vocabularySha = sha256(readFileSync(vocabFile)); const transformSha = existsSync(tfFile) ? sha256(readFileSync(tfFile)) : null;
-  const records = []; let writes = 0; let failed = 0; const unmappedByTemplate = new Map(); const stoppedTemplates = new Set();
+  const records = []; let writes = 0; let failed = 0; let missingCapture = false; const unmappedByTemplate = new Map(); const stoppedTemplates = new Set();
   const write = (file, content, { count = true } = {}) => { if (a.dryRun) return; if (existsSync(file) && readFileSync(file, 'utf8') === content) return; mkdirSync(dirname(file), { recursive: true }); writeFileSync(file, content); if (count) writes += 1; };
   for (const page of pages) {
     const template = page.template || page.type || null;
     if (template && stoppedTemplates.has(template)) { records.push({ slug: page.slug, status: 'skipped', reason: `template ${template} stopped early` }); continue; }
+    if (!a.slug && template && blockedTemplates.has(template)) { records.push({ slug: page.slug, template, status: 'blocked', reason: `template ${template} blocked — unmapped ledger kinds ${[...new Set(blockedTemplates.get(template))].join(', ')}` }); continue; }
     const rec = { slug: page.slug, template, status: 'ok' };
     const capHtml = S('current', 'pages', `${page.slug}.html`); const capJson = S('current', 'pages', `${page.slug}.json`);
     let html = null; let provenance = null;
     if (existsSync(capHtml)) html = readFileSync(capHtml, 'utf8');
     const cj = existsSync(capJson) ? readJSON(capJson) : null;
     if (cj) { if (!html && typeof cj.renderedHtml === 'string') html = cj.renderedHtml; provenance = cj._provenance || cj.provenance || (cj.settle ? { settle: cj.settle } : null); }
-    if (html === null) { console.error(`importer-skeleton: ${page.slug}: no capture (stardust/current/pages/${page.slug}.html or .json renderedHtml) — run extract; the importer never fetches the live page (rule 1)`); return 1; }
+    // a missing capture stops the run (exit 1) but never loses the pages already processed: the manifest and summary still flush below
+    if (html === null) { console.error(`importer-skeleton: ${page.slug}: no capture (stardust/current/pages/${page.slug}.html or .json renderedHtml) — run extract; the importer never fetches the live page (rule 1)`); records.push({ slug: page.slug, template, status: 'missing', reason: 'no capture — run extract' }); missingCapture = true; break; }
     const captureSha = sha256(html);
-    const res = importCapture(html, vocab, tf, { base: page.url || null });
+    const res = importCapture(html, effVocab, tf, { base: page.url || null });
     const audit = { captureSha, vocabularySha, transformSha, captureProvenance: provenance, unmapped: res.report.unmapped, flattened: res.report.flattened, dropped: res.report.dropped, hidden: res.report.hidden, hiddenLive: res.report.hiddenLive, patchesApplied: [] };
     const fail = (reason) => { rec.status = 'failed'; rec.reason = reason; rec.audit = audit; failed += 1; console.error(`importer-skeleton: ${page.slug}: ${reason}`); records.push(rec); };
     if (res.error) { fail(res.error); if (!a.cont) break; continue; }
@@ -498,15 +522,17 @@ export function main(argv) {
     write(manifestFile, `${JSON.stringify(Object.fromEntries(Object.entries(manifest).sort()), null, 2)}\n`);
     if (state) write(stateFile, `${JSON.stringify(state, null, 2)}\n`);
   }
+  const blockedRecs = records.filter((r) => r.status === 'blocked');
   const unmappedPages = records.filter((r) => r.audit && r.audit.unmapped && r.audit.unmapped.length);
   const unmappedKinds = new Set(unmappedPages.flatMap((r) => r.audit.unmapped.map((u) => u.kind)));
-  const summary = { _provenance: { writtenBy: 'stardust:migrate/importer-skeleton', writtenAt: new Date().toISOString() }, pages: records.length, ok: records.filter((r) => r.status === 'ok').length, failed, writes, stoppedTemplates: [...stoppedTemplates], records };
+  const summary = { _provenance: { writtenBy: 'stardust:migrate/importer-skeleton', writtenAt: new Date().toISOString() }, pages: records.length, ok: records.filter((r) => r.status === 'ok').length, failed, blocked: blockedRecs.length, writes, stoppedTemplates: [...stoppedTemplates], blockedTemplates: [...new Set(blockedRecs.map((r) => r.template))], records };
   if (!a.dryRun) { write(join(outDir, '_import', 'summary.json'), `${JSON.stringify(summary, null, 2)}\n`, { count: false }); write(join(outDir, '_import', 'summary.md'), `# import summary — ${summary._provenance.writtenAt}\n\npages ${summary.pages} · ok ${summary.ok} · failed ${failed} · writes ${writes}\n\n| slug | status | modules | reason |\n|---|---|---|---|\n${records.map((r) => `| ${r.slug} | ${r.status} | ${(r.modules || []).join(', ')} | ${(r.reason || '').replace(/\|/g, '\\|')} |`).join('\n')}\n`, { count: false }); }
   if (a.json) for (const r of records) console.log(JSON.stringify(r));
-  else for (const r of records) console.log(`${r.status === 'ok' ? '✓' : r.status === 'failed' ? '✗' : '·'} ${r.slug}${r.output ? ` → ${r.output}` : ''}${r.modules ? ` [${r.modules.join(', ')}]` : ''}${r.reason ? ` — ${r.reason}` : ''}`);
+  else for (const r of records) console.log(`${r.status === 'ok' ? '✓' : r.status === 'failed' ? '✗' : r.status === 'blocked' ? '⛔' : '·'} ${r.slug}${r.output ? ` → ${r.output}` : ''}${r.modules ? ` [${r.modules.join(', ')}]` : ''}${r.reason ? ` — ${r.reason}` : ''}`);
+  if (blockedRecs.length) console.log(`blocked: ${[...new Set(blockedRecs.map((r) => r.template))].map((t) => `template ${t} (${[...new Set(blockedTemplates.get(t))].join(', ')})`).join('; ')} — map or drop with reason in vocabulary.json`);
   if (unmappedKinds.size) console.log(`unmapped modules: ${unmappedKinds.size} kinds on ${unmappedPages.length} pages — map or drop with reason${stoppedTemplates.size ? ` (stopped early: ${[...stoppedTemplates].join(', ')})` : ''}`);
-  console.log(`importer-skeleton: ${summary.ok} ok · ${failed} failed · ${writes} writes${a.dryRun ? ' (dry run)' : ''}${a.reportOnly ? ' (report only)' : ''}`);
-  return failed ? 2 : 0;
+  console.log(`importer-skeleton: ${summary.ok} ok · ${failed} failed${blockedRecs.length ? ` · ${blockedRecs.length} blocked` : ''} · ${writes} writes${a.dryRun ? ' (dry run)' : ''}${a.reportOnly ? ' (report only)' : ''}`);
+  return missingCapture ? 1 : (failed || blockedRecs.length) ? 2 : 0;
 }
 
 const isMain = process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href;

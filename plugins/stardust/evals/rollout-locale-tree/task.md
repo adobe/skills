@@ -61,9 +61,9 @@ English pages are already delivered."
    the documented path-prefix fallback — not through a hard-coded `/es/` in
    block code.
 5. **The runtime hook is the two documented lines.** The only `scripts.js`
-   change is the `lang` metadata read in `loadEager` plus the `alternate-*`
-   link builder in `buildAutoBlocks()`; `decorateMain`/`loadEager` are not
-   restructured.
+   change is inside `buildAutoBlocks(main)`: the `lang` metadata read that sets
+   `document.documentElement.lang`, plus the `alternate-*` link builder;
+   `decorateMain`/`loadEager` are not touched.
 6. **Twin gate order.** The gate plan (or attempt) for `/es/` runs 360 first,
    then 1440, at unchanged bars. The origin is unreachable, so the gate has
    no verdict; the agent reports that as no verdict, never as a pass, and
