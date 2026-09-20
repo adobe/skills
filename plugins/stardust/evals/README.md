@@ -63,15 +63,25 @@ match the v2 surface.
 
 ## Format
 
-Each eval lives in its own directory and contains exactly two files:
+Each eval lives in its own directory and contains:
 
 - `task.md` — Setup, User prompt, Expected behavior. Human-readable
   scenario specification.
 - `criteria.json` — Weighted scoring rubric in the tessl `weighted_checklist`
   schema (`tessl plugin publish` validates it): `context`, `type`, and a
   `checklist` of `{ name, max_score, description }`. The runner reads `name` as
-  the criterion id and `max_score` as its weight; the total is the sum. Used by the eval runner to score the agent's
-  output.
+  the criterion id and `max_score` as its weight; the weights sum to 100 in
+  every eval (`lint/eval-hygiene.mjs` pins it). Used by the eval runner to
+  score the agent's output.
+- `fixture/` — the project tree copied into the workspace (visible to the
+  agent under test; empty when the eval starts from a clean project). Never
+  a copy of a `_shared/*/README.md`.
+- `fixture-notes.md` — provenance of every fixture file (which shared tree,
+  which deltas), what the fixture deliberately makes true, known limitations.
+  Required whenever `fixture/` holds files; not visible to the agent.
+- `answers.md` — the persona the runner answers questions from; required
+  unless `task.md` runs hands-off.
+- one row in § Evals in this suite and a mention in § Coverage map.
 
 This format mirrors v1's structure (and the format other Adobe-skills
 plugins use), so the eval runner that worked for v1 should work for
@@ -90,11 +100,12 @@ v2 evals without modification.
 | `intent-reasoning-style/`    | Master skill principle    | "Open and reasoned" — vague phrases get clarified, never silently mapped to commands. Pending direction persisted.          |
 | `replica-source-fidelity/`   | Entry point (`replica`)   | Mechanical preserve direction (no `direct`) + inconsistency register + clean re-authoring + the measured source-fidelity gate at both breakpoints + standard handoff. |
 | `replica-chrome-variant-fanout/` | Fan-out (`replica` row 5) | Chrome archetype precondition: `chrome-variants.mjs` inventory at zero live hits before fan-out + a variant without its `progress.json.chrome.variants[]` row is BLOCKED (exit 2, its pages not rendered) + no page-local `body:has()` / per-page chrome compensation (the `chrome-variant` decision with its default) + names persisted never renumbered + exact next command (one `chrome-states.mjs` probe per variant, the row, the `--progress` re-run) + nothing fabricated. |
+| `replica-layout-clusters/`   | Fan-out precondition (`replica`/`migrate` sibling tier) | Cluster-granularity gated-archetype rule: `layout-cluster.mjs` groups a type's pages by rendered layout signature offline; a cluster ≥ T whose exemplar has no gate result at every configured breakpoint is a coverage gap — its pages neither render at sibling tier nor fan out, the block names the cluster id, the exemplar slug and `$stardust replica <exemplar>`; tail clusters (< T) are reported and sampled, never blocked; pages in a gated cluster proceed; hands-off resolves by gating the exemplar, never `--cover` / `coveredBy`; ledger numbers untouched (`fidelity-tiers.md` § Sibling variance probe, Layout clusters). |
 | `reskin-content-fidelity/`   | Entry point (`reskin`)    | Donor via `--design-source` + content-model capture with scope guard + mapping-brief contract (≥80% mapped) + programmatic render + dual content/design-adoption gates. |
 | `ew-editability/`            | Entry point (`deploy`)    | Experience Workspace editability contract (EW1–EW10): node-slotting not value-slotting, authored elements moved into wrappers, wrapper-descendant selectors, `block-roundtrip --ew` + probe evidence, exemptions declared, fidelity not traded. |
 | `ai-readability/`            | Entry point (`deploy`)    | AI readability (#100): presentational carousel clones, document-first index-backed listing, explicit fragment decision, no generated visible text, gate run and reported, excluded vendor-widget block decided (authored default-state copy or a recorded `exclude` allowlist entry citing its dynamics row — never a bare `--exclude-blocks`), correct checker facts (no hidden-text or chrome work for the score). |
 | `routing-migration-flow/`    | Master skill routing      | § Two migration flows enforced: keep-design phrases → `replica` without a question, plain asks → one keep-vs-redesign question, redesign phrases → redesign flow; `flow` recorded in state.json; `prepare-migration` never loaded for keep-design; `migrate` never first; no hand-built pipeline. |
-| `resume-state-report/`       | Master skill resume       | § Routing "No argument" / resume: state report first, rendered by `status.mjs` (`Flow:` line + per-archetype gate numbers from `progress.json`, `Last phase:` + missing-`next` warning), journal `Next:` quoted and checked against state, replica-flow recommendation (ungated archetype → `replica <archetype>`), `Usage:` copied from `usage.json`, nothing written beyond Setup step 9's `.work/` record, next phase entered through its skill, heading-list before any skill-file read (W1 target). |
+| `resume-state-report/`       | Master skill resume       | § Routing "No argument" / resume: state report first, rendered by `status.mjs` (`Flow:` line + per-archetype gate numbers from `progress.json`, `Last phase:` + missing-`next` warning), journal `Next:` quoted and checked against state, replica-flow recommendation (ungated archetype → `replica <archetype>`), `Usage:` copied from `usage.json`, nothing written beyond Setup step 10's `.work/` record, next phase entered through its skill, heading-list before any skill-file read (W1 target). |
 | `runner-output-contract/`    | Batch reporting (`rollout` Phase E) | Runner-output contract on an offline full-site verify: ranked class table (class → count → worst example → file pointer) in the conversation, full per-page listing in `summary.json` + `summary.md` under `stardust/rollout/`, triage per class, hand-off names the summary files (rule: `context-hygiene.md` § Runner reports). |
 | `rollout-gate-publish/`      | Publish gate (`rollout` Phase C) | The published-origin page gate as the release condition (D1 instrument): `gate-publish.mjs` report read, `--publish` holds every row without a PASS at every breakpoint, `unmeasured` (124) is a re-drive not a FAIL, `published-failing` reported never unpublished, no escape flags under hands-off, gate table then coverage line, blocked at preview (`publish-gate.md` § Gate 8 + Coverage regime). |
 | `rollout-coverage-regime/`   | Coverage regime (`rollout` Phase C) | The seeded template sample as the siblings' page gate: `gate-publish.mjs --sample n --seed s --exclude <fix-loop slugs>` report read (`sample{}`, `templates{}.atBar`); a template not at the bar (2 FAIL, or one unmeasured re-drive) is held whole — its individually-passing rows too; pages with no report entry are `ungated`, never `--publish-ungated`; class table before the fix, mapped re-gate then the ≤ 150 `--all-delivered` sweep, never the delivery-order head; `neutralDiff` is reporting, not a bar; blocked at preview (`publish-gate.md` § Coverage regime, `sweep-protocol.md` step 2 / 5). |
@@ -119,6 +130,12 @@ v2 evals without modification.
 | Layer 2 — navigator orchestrator (4 phases)  | `extract-multipage`, `direct-from-phrase`, `prototype-before-after`, `migrate-incremental` |
 | Layer 3 — migration tooling (per-page, incremental, idempotent) | `migrate-incremental`, `migrate-multi-template`                |
 | Layer 3 — migrate output contract (self-contained bundle)   | `migrate-self-contained-bundle`                                 |
+| Layer 3 — sibling tier preconditions (`migrate`, `replica` fan-out) | `migrate-sibling-module-map`, `replica-layout-clusters`, `replica-chrome-variant-fanout` |
+| Layer 4 — keep-design flow (`replica`): measured source-fidelity gate | `replica-source-fidelity`, `replica-chrome-variant-fanout`, `replica-layout-clusters` |
+| Layer 4 — donor-design flow (`reskin`)       | `reskin-content-fidelity`                                        |
+| Layer 5 — delivery entry (`deploy`): pre-flight, bootstrap, editability, AI readability | `preflight-credentials`, `preflight-credentials-expired`, `site-bootstrap-missing-origin`, `ew-editability`, `ai-readability` |
+| Layer 5 — site-wide delivery (`rollout`): page gates, claim gates, waves, close | `rollout-gate-publish`, `rollout-coverage-regime`, `rollout-editability-gate`, `rollout-readability-close`, `rollout-template-verified`, `rollout-locale-tree`, `rollout-wave-close`, `lockdown-before-handoff`, `runner-output-contract` |
+| Master skill — routing, resume, Setup, phase close | `routing-migration-flow`, `resume-state-report`, `preflight-runtime`, `phase-checkpoint-next-command` |
 
 The cross-cutting properties are pinned across multiple evals:
 
@@ -579,6 +596,39 @@ integrates; every runner also runs standalone with `node <path>`:
   read from code only (spans, fences, indented blocks; a stray backtick is a
   literal), and the exit codes (probe always 0; lint 0 advisory / 1 `--strict`
   / 2 no install dir).
+- `fixtures/crawl-discover.test.mjs` — `crawl.mjs` discovery order
+  (`ia-extraction.md` § Discovery order) against a local static site: the
+  robots-named sitemap index wins over a larger stale root map by tier, never
+  by size; undeclared nav links and a one-hop BFS join the inventory; the
+  lower-tier fallbacks are never probed once a source wins.
+- `fixtures/crawl-log-lint.test.mjs` — `lint/crawl-log-lint.mjs` over
+  `lint/fixtures/crawl-log/{good,bad}`: `ok` with an overlay note or a
+  degraded capture → finding, a degraded page with no verdict → finding,
+  recaptured / suspect never fail, a missing `_crawl-log.json` is exit 2.
+- `fixtures/crawl-signals.test.mjs` — the capture-quality contract
+  (`current-state-schema.md` § _signals): `degraded` only on an empty main or
+  a sub-resource block, overlay cover and SPA-shell suspicion are flags, the
+  screenshot wrap stays under Chromium's texture limit.
+- `fixtures/storage-state.test.mjs` — `live-session.mjs` admitted-session
+  helpers: an explicit `--storage-state` wins and must exist, the reserved
+  default applies only on a cookie-domain match and never for a local URL,
+  `--fresh-state` → none, the saved state is written mode 0600.
+- `gate-sh-fixtures.mjs` — `replica/scripts/gate.sh` + `progress-record.mjs`
+  orchestration over stub instruments (`lint/fixtures/gate-sh/`), no browser:
+  reference freshness and LIVE DRIFT invalidation, the `--variance` noise
+  floor, the mechanical iteration cap (a no-verdict round keeps its label and
+  does not count), the ledger copy, the `auto` port branch; a probe deadline
+  (124) is a skipped check, never a FAIL.
+- `motion-observe-fixtures.mjs` — `replica/scripts/motion-observe.mjs` pure
+  halves: entrance aggregates per element family, state-machine transitions
+  grouped per element (click-paired first), the hover verdict with a reason,
+  the navigating-trigger guard; CLI contract (`--help`, `--triggers auto`,
+  unknown flag exit 1).
+- `qa/scripts/test/links-classes.test.mjs` — `qa/checks/links.mjs
+  classifyHref()`: `source-host-link` is an error only for an inventoried path
+  on a configured source host (the honest boundary warns; with none configured
+  the href is plain `external`), `planned` gaps from `link-gaps.tsv` never read
+  as broken links, fragments / assets / mailto / tel well-formedness.
 
 ## What stardust v2 evals deliberately do NOT test
 
