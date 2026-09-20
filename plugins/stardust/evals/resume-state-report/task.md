@@ -63,7 +63,11 @@ Both scenarios behave the same once the master skill is entered.
 2. **Setup runs read-only.** Impeccable check, target-state file check,
    `state.json` read, journal read (last 3–5 entries — the fixture has
    four). The pre-seeded `stardust/.gitignore` is byte-identical to the
-   reference, so hygiene has nothing to write.
+   reference, so hygiene has nothing to write. Step 9 runs
+   `preflight-runtime.mjs --no-install` (a resume is a read-only
+   session): it writes only `stardust/.work/env.json` and
+   `stardust/.work/probes/README`, never `stardust/package.json` or an
+   install.
 3. **The state report is the first substantive output**, rendered by
    `node skills/stardust/scripts/status.mjs` (read-only — `--no-probe` is
    fine, the origin is unreachable) in the § State report shape: `Site:` (origin, extracted 2026-09-08), `Direction:`
@@ -94,8 +98,10 @@ Both scenarios behave the same once the master skill is entered.
    immediate `rollout`.
 7. **Nothing is written** before the user answers: no `state.json`
    rewrite, no journal entry, no `status.jsonl` line, no new file under
-   `stardust/` (no `.work/run.lock` — the renderer only runs `run-lock.mjs
-   check`), no root `PRODUCT.md` / `DESIGN.md`. The report is read-only.
+   `stardust/` beyond step 9's `.work/env.json` and `.work/probes/README`
+   (no `.work/run.lock` — the renderer only runs `run-lock.mjs check`; no
+   `stardust/package.json`), no root `PRODUCT.md` / `DESIGN.md`. The
+   report is read-only.
 8. **The next phase is entered through its skill.** After the report the
    agent asks whether to proceed (a user is present); the persona says
    "go". The agent then invokes the stardust `replica` skill for

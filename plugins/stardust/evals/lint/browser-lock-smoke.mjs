@@ -10,7 +10,9 @@
 //   (d) release frees the slot (by pid; --all --stale removes only stale files);
 //   (e) status --json prints holders, slots and the orphan census; --help exits 0; usage exits 2;
 //   (f) TTL: an API holder outlives STARDUST_BROWSER_TTL_MIN (its unref'd keep-alive touches the file);
-//       a shell holder's aged slot is reaped by the census unless `refresh --pid` touched it first.
+//       a shell holder's aged slot is reaped by the census unless `refresh --pid` touched it first;
+//   (g) a non-numeric --wait / --slots / --min / --pid is usage (exit 2, at once) — never a NaN deadline that
+//       spins forever; `surplus()` names the newest holders past the budget (race repair after a write).
 // Usage: node plugins/stardust/evals/lint/browser-lock-smoke.mjs  (exit 1 on failure)
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
@@ -18,6 +20,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { surplus } from '../../skills/stardust/scripts/browser-lock.mjs';
 
 const CLI = join(import.meta.dirname, '..', '..', 'skills', 'stardust', 'scripts', 'browser-lock.mjs');
 const tmp = mkdtempSync(join(tmpdir(), 'browser-lock-'));
@@ -125,12 +128,27 @@ try {
   assert.equal(JSON.parse(r.stdout).reapedStale, 1, 'an aged, unrefreshed shell slot is reaped');
   assert.equal(run(['refresh', '--pid', String(holders[0].pid)]).stdout.trim(), 'refreshed 0', 'nothing left to refresh');
 
+  // (g) non-numeric budgets are usage errors, decided before any wait
+  run(['release', '--all']);
+  for (const bad of [['acquire', '--wait', 'abc'], ['acquire', '--slots', 'abc'], ['acquire', '--wait', ''], ['reap', '--min', 'abc'], ['release', '--pid', 'abc'], ['acquire', '--pid', '0']]) {
+    const t1 = Date.now();
+    r = run(bad);
+    assert.equal(r.status, 2, `${bad.join(' ')} exits 2\n${r.stdout}${r.stderr}`);
+    assert.ok(Date.now() - t1 < 1500, `${bad.join(' ')} decided at once, no wait`);
+    assert.match(r.stderr, /needs a number/);
+  }
+  assert.equal(readdirSync(dir).length, 0, 'a rejected acquire left no slot file');
+  const held = [{ file: '/l/b.json', mtime: 20 }, { file: '/l/a.json', mtime: 10 }, { file: '/l/c.json', mtime: 20 }];
+  assert.deepEqual(surplus(held, 2), ['/l/c.json'], 'newest by mtime, then name, backs off');
+  assert.deepEqual(surplus(held, 3), [], 'within budget → nobody backs off');
+  assert.deepEqual(surplus(held, 0), ['/l/a.json', '/l/b.json', '/l/c.json']);
+
   // help / usage
   r = spawnSync(process.execPath, [CLI, '--help'], { encoding: 'utf8' });
   assert.equal(r.status, 0); assert.match(r.stdout, /Exit codes: 0 acquired/);
   r = spawnSync(process.execPath, [CLI, 'bogus'], { encoding: 'utf8' });
   assert.equal(r.status, 2);
-  console.log('browser-lock smoke: ok (2 slots, third exits 124 with one waiting line + progress log, dead/old slots reaped, release by pid / --all --stale, status JSON + census, SLOTS=0 and --no-lock touch nothing, API keep-alive past the TTL, refresh for shell holders)');
+  console.log('browser-lock smoke: ok (2 slots, third exits 124 with one waiting line + progress log, dead/old slots reaped, release by pid / --all --stale, status JSON + census, SLOTS=0 and --no-lock touch nothing, API keep-alive past the TTL, refresh for shell holders, non-numeric budgets exit 2, surplus race repair)');
 } finally {
   for (const h of holders) h.kill('SIGKILL');
   rmSync(tmp, { recursive: true, force: true });

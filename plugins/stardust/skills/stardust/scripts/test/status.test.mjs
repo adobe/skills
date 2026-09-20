@@ -11,6 +11,8 @@
  *   - `Usage:` copies stardust/usage.json totals in the ledger's k / M form (180 requests, fresh 121.1 k, cache read
  *     55.93 M, output 304.1 k, est. USD 32.77, harness-reported USD 34.10) — never recomputed; absent file → no line;
  *   - --reconcile without a token reads `credentials.siteTokenEnv` (state-machine.md § Credentials key), not DA_TOKEN;
+ *   - a live host with slug-less migrated pages: the probe sample skips them (warning, no TypeError, no request);
+ *     `Preflight:` copies env.json `missing`; --sample must be a positive integer (else exit 2);
  *   - --help exits 0; unknown flag exits 2; no state.json exits 2.
  */
 import assert from 'node:assert/strict';
@@ -93,5 +95,19 @@ try {
   assert.ok(!/not-the-configured-variable/.test(r.stdout), 'token value never printed');
   r = spawnSync(process.execPath, [CLI, '--root', empty, '--no-probe'], { encoding: 'utf8' });
   assert.ok(!/^Usage:/m.test(r.stdout), 'text mode omits the Usage line without the file');
+  // slug-less migrated pages + a live host, probes ON: sample is empty (no HEAD, no served-check — no styles.css), exit 0, a warning
+  writeFileSync(join(empty, 'stardust', 'state.json'), JSON.stringify({ pages: [{ status: 'migrated' }, { status: 'migrated', url: 'https://x.example/a' }], site: { deployUrl: 'https://main--site--org.aem.page' } }));
+  mkdirSync(join(empty, 'stardust', '.work'), { recursive: true });
+  writeFileSync(join(empty, 'stardust', '.work', 'env.json'), JSON.stringify({ preflight: 'partial', missing: ['missing: chromium — run: node preflight-runtime.mjs'] }));
+  r = spawnSync(process.execPath, [CLI, '--root', empty, '--json'], { encoding: 'utf8' });
+  assert.equal(r.status, 0, `slug-less pages never throw\n${r.stderr}`);
+  const s = JSON.parse(r.stdout);
+  assert.deepEqual(s.probes, { host: 'https://main--site--org.aem.page', sample: [], tokens: null }, 'slug-less pages skipped, nothing fetched');
+  assert.ok(s.warnings.some((w) => w.startsWith('probes: 2 migrated page(s) without `slug` skipped')), `skip warning\n${s.warnings}`);
+  assert.deepEqual(s.preflightMissing, ['missing: chromium — run: node preflight-runtime.mjs']);
+  r = spawnSync(process.execPath, [CLI, '--root', empty, '--no-probe'], { encoding: 'utf8' });
+  assert.match(r.stdout, /^Preflight:\s+partial — 1 item\(s\): missing: chromium — run: node preflight-runtime\.mjs$/m, 'Preflight line copies the missing items');
+  for (const v of ['abc', '0', '-1', '2.5', '']) { r = spawnSync(process.execPath, [CLI, '--root', empty, '--sample', v], { encoding: 'utf8' }); assert.equal(r.status, 2, `--sample ${JSON.stringify(v)} exits 2`); assert.match(r.stderr, /positive integer/); }
+  r = spawnSync(process.execPath, [CLI, '--root', empty, '--sample'], { encoding: 'utf8' }); assert.equal(r.status, 2, '--sample without a value exits 2');
 } finally { rmSync(empty, { recursive: true, force: true }); }
-console.log('status test: ok (6 pages, 3 archetypes copied from the ledger, no verdict for the ungated one, not probed / not reconciled, missing-next warning, replica recommendation, Usage in k / M from usage.json, siteTokenEnv for --reconcile, nothing written, text + markdown, exits)');
+console.log('status test: ok (6 pages, 3 archetypes copied from the ledger, no verdict for the ungated one, not probed / not reconciled, missing-next warning, replica recommendation, Usage in k / M from usage.json, siteTokenEnv for --reconcile, slug-less probe sample skipped, Preflight copies missing, --sample validated, nothing written, text + markdown, exits)');

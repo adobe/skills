@@ -4,7 +4,8 @@
  * Run: node skills/stardust/scripts/test/preflight-runtime.test.mjs   (exit 1 on failure; no network)
  *   - empty project, --no-install → exit 1 naming exactly the three packages + chromium, each line pointing at
  *     the full preflight command; nothing tracked is written (no stardust/package.json); <root>/package.json
- *     never created;
+ *     never created; under --json the same lines go to stderr and env.json / the record carry `missing`;
+ *   - --root on a directory with no stardust/ → exit 2 and nothing created (a typo'd root never seeds a project);
  *   - stubbed stardust/node_modules/{playwright,pixelmatch,pngjs} → exit 0, env.json carries the record keys,
  *     deps versions, chromium ok, probes README; a second run is byte-identical except writtenAt; without
  *     --no-install the same tree gets stardust/package.json (merged, three devDependencies) and no npm spawn;
@@ -55,6 +56,21 @@ try {
   assert.deepEqual(env.deps, { playwright: null, pixelmatch: null, pngjs: null });
   assert.equal(env.chromium, 'unresolved');
   assert.ok(existsSync(join(a, 'stardust', '.work', 'probes', 'README')), 'probes dir + README created');
+  assert.deepEqual(env.missing, r.stdout.split('\n').filter((l) => l.startsWith('missing:')), 'env.json.missing holds the actionable lines');
+  // --json keeps the one-line-per-item contract: record on stdout, the lines on stderr
+  r = run(a, '--no-install', '--json');
+  assert.equal(r.status, 1, '--json still exits 1');
+  const rec = JSON.parse(r.stdout);
+  assert.equal(rec.preflight, 'partial'); assert.equal(rec.missing.length, 2, 'record carries missing');
+  assert.equal(r.stderr.match(/^missing:/gm)?.length, 2, `--json prints the two actionable lines on stderr\n${r.stderr}`);
+  // (f) a root without stardust/ is refused before any write
+  const f = join(dir, 'f'); mkdirSync(f);
+  r = run(f, '--no-install');
+  assert.equal(r.status, 2, `no stardust/ under --root exits 2\n${r.stdout}${r.stderr}`);
+  assert.match(r.stderr, /no stardust\/ under .* nothing written/);
+  assert.ok(!existsSync(join(f, 'stardust')), 'nothing created under a typo\'d --root');
+  r = run(f, '--skip');
+  assert.equal(r.status, 2, '--skip cannot seed a project either'); assert.ok(!existsSync(join(f, 'stardust')));
 
   // (b) stubbed deps → ok; (c) idempotent
   const b = join(dir, 'b');

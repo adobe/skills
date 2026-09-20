@@ -19,7 +19,7 @@
  *      is there, e.g. `transports` from preflight-transports.mjs):
  *      { projectRoot, nodeBin, nodeVersion, shell, bash32, pathSnapshot, tools,
  *        deps: { <pkg>: <version|null> }, chromium, lint, ports: {}, envFile,
- *        preflight: "ok" | "partial" | "skipped", writtenAt }
+ *        preflight: "ok" | "partial" | "skipped", missing: [<actionable line>], writtenAt }
  *   5. Lint: when `<root>/package.json` carries an eslint setup, `eslint` and
  *      `@babel/eslint-parser` must resolve from <root>; else `lint: "unavailable"`,
  *      one loud line and exit 1 (the EDS devDependencies are the repo's — never
@@ -27,17 +27,19 @@
  *
  * Usage:
  *   node skills/stardust/scripts/preflight-runtime.mjs [--root <dir>] [--no-install] [--offline] [--skip] [--json]
- *     --root <dir>   project root (default: nearest ancestor of cwd with a stardust/ dir, else cwd)
+ *     --root <dir>   project root (default: nearest ancestor of cwd with a stardust/ dir, else cwd);
+ *                    <root>/stardust/ must exist — a root without it exits 2 and writes nothing
  *     --no-install   check only — never spawn npm or the browser download and write nothing
  *                    tracked (no stardust/package.json); only .work/ is written (read-only sessions)
  *     --offline      accept a pre-populated stardust/node_modules; no network (implies --no-install)
  *     --skip         record `preflight: "skipped"` and exit 0 (the state report prints it)
- *     --json         print the env record on stdout
+ *     --json         print the env record on stdout (the `missing` lines then go to stderr)
  *
  * Exit codes: 0 every item present (or --skip) · 1 at least one item missing —
  * a dependency, chromium, or lint in a repo that declares it — one actionable
- * line per item (never a verdict: a missing browser is exit 2 in the instruments,
- * the same no-verdict class as exit 124) · 2 usage / I/O error.
+ * line per item, also kept as env.json `missing` (never a verdict: a missing
+ * browser is exit 2 in the instruments, the same no-verdict class as exit 124)
+ * · 2 usage / I/O error, including a --root (or cwd) with no stardust/ dir.
  * Zero requests to the source site: npm registry and the Playwright CDN only.
  */
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
@@ -72,6 +74,10 @@ export function findRoot(from) {
 }
 const root = opt('root') ? resolve(opt('root')) : findRoot(process.cwd());
 const sd = join(root, 'stardust');
+if (!existsSync(sd) || !statSync(sd).isDirectory()) { // never seed a fake project under a typo'd --root
+  console.error(`preflight-runtime: no stardust/ under ${root} — run from the project root or pass --root <project> (master § Setup step 5 creates it); nothing written`);
+  process.exit(2);
+}
 const noInstall = flag('no-install') || flag('offline');
 const envPath = join(sd, '.work', 'env.json');
 
@@ -191,6 +197,7 @@ const record = {
   ports: prev.ports ?? {},
   envFile,
   preflight: missing.length ? 'partial' : 'ok',
+  missing,
   writtenAt: new Date().toISOString(),
 };
 writeJson(envPath, record);
@@ -201,7 +208,7 @@ if (existsSync(join(sd, 'node_modules')) && spawnSync('git', ['rev-parse', '--is
   if (ci.status !== 0) console.error(`preflight-runtime: warn — ${join(sd, 'node_modules')} is not git-ignored; add node_modules/ to stardust/.gitignore`);
 }
 
-if (flag('json')) console.log(JSON.stringify(record, null, 2));
+if (flag('json')) { console.log(JSON.stringify(record, null, 2)); for (const m of missing) console.error(m); } // one actionable line per item, still
 else {
   console.log(`preflight-runtime: ${DEPS.map((d) => `${d} ${record.deps[d] ?? 'missing'}`).join(' · ')} · chromium ${chromium} · lint ${lint} · probes ${probes}`);
   for (const m of missing) console.log(m);

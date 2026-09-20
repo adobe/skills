@@ -23,7 +23,8 @@
  *     --json        machine-readable report on stdout
  *     --markdown    hand-off shape (handoff-report.md § Gate table first) + recap table + report-check line
  *     --no-probe    skip every network probe (default sample: 5 preview/live HEADs when a live host is known)
- *     --sample <n>  pages to HEAD on the live host (default 5)
+ *     --sample <n>  pages to HEAD on the live host (default 5; a positive integer, else exit 2); pages without
+ *                   a `slug` are skipped with a warning, never dereferenced
  *     --reconcile   opt-in admin bulk-status job (POST admin.hlx.page/status/<org>/<repo>/main/*) — needs the token
  *     --token-env   env var NAME holding the DA token (default state.json credentials.siteTokenEnv, else DA_TOKEN); never printed
  *     --ledger      deploy ledger path (default <root>/content/.deploy-ledger.json)
@@ -47,6 +48,8 @@ if (flag('help')) {
 const KNOWN = new Set(['--root', '--json', '--markdown', '--no-probe', '--sample', '--reconcile', '--token-env', '--ledger', '--help']);
 const bad = args.filter((a) => a.startsWith('--') && !KNOWN.has(a));
 if (bad.length) { console.error(`status: unknown flag ${bad.join(' ')} (--help)`); process.exit(2); }
+const sampleN = args.includes('--sample') ? Number(opt('sample')) : 5; // a bare --sample is usage, not the default
+if (!Number.isInteger(sampleN) || sampleN < 1) { console.error(`status: --sample needs a positive integer, got ${JSON.stringify(opt('sample') ?? '')} (--help)`); process.exit(2); }
 
 export function findRoot(from) {
   let d = resolve(from);
@@ -171,9 +174,11 @@ async function reconcile(o, r, token) {
 // --- probes ---------------------------------------------------------------------
 report.probes = 'not probed';
 if (!flag('no-probe') && liveHost && /aem\.(page|live)|\.hlx\./.test(liveHost)) {
-  const n = Number(opt('sample') ?? 5);
   const base = liveHost.replace(/\/$/, '').replace(/^(?!https?:)/, 'https://');
-  const sample = pages.filter((p) => p.status === 'migrated').slice(0, n);
+  const migrated = pages.filter((p) => p.status === 'migrated');
+  const sample = migrated.filter((p) => typeof p.slug === 'string' && p.slug).slice(0, sampleN);
+  const slugless = migrated.length - migrated.filter((p) => typeof p.slug === 'string' && p.slug).length;
+  if (slugless) warnings.push(`probes: ${slugless} migrated page(s) without \`slug\` skipped by the sample (state-machine.md § Page lifecycle states)`);
   const codes = [];
   for (const p of sample) {
     const path = (state.migrate?.pageMap ?? []).find((m) => m.slug === p.slug)?.sourceUrl ?? `/${p.slug.replace(/__/g, '/')}`;
@@ -194,7 +199,9 @@ if (!flag('no-probe') && liveHost && /aem\.(page|live)|\.hlx\./.test(liveHost)) 
 // --- run lock, preflight, usage, repo -------------------------------------------
 const lock = spawnSync(process.execPath, [join(HERE, 'run-lock.mjs'), 'check', '--root', root], { encoding: 'utf8' });
 report.activeRun = lock.status === 3 ? lock.stdout.trim() : null;
-report.preflight = readJson(join(sd, '.work', 'env.json'))?.preflight ?? null;
+const envRec = readJson(join(sd, '.work', 'env.json'));
+report.preflight = envRec?.preflight ?? null;
+report.preflightMissing = Array.isArray(envRec?.missing) ? envRec.missing : []; // the preflight's actionable lines, copied
 const usage = readJson(join(sd, 'usage.json'));
 report.usage = usage?.total ? { ...usage.total, windows: (usage.windows ?? []).length, generatedAt: usage.generatedAt ?? null, harnessCostUSD: usage.harnessCost?.totalCostUSD ?? null } : null;
 report.repo = null;
@@ -245,7 +252,7 @@ function renderText() {
   for (const b of report.blockedOnOwner) out.push(`Blocked on owner:  ${b.owner}`, `                   (since ${b.since} · ${b.detail || 'run continues on unblocked work'})`);
   if (report.activeRun) out.push(report.activeRun);
   if (resolve(process.cwd()) !== resolve(root)) out.push(`Project root: ${root} (not the working directory)`);
-  if (report.preflight) out.push(`Preflight:   ${report.preflight}`);
+  if (report.preflight) out.push(`Preflight:   ${report.preflight}${report.preflightMissing.length ? ` — ${report.preflightMissing.length} item(s): ${report.preflightMissing.join(' · ')}` : ''}`);
   out.push('');
   out.push(`Site:        ${state.site?.originUrl ?? '?'} (extracted ${day(state.site?.extractedAt)}, ${state.site?.crawled ?? pages.length}/${state.site?.totalDiscovered ?? '?'} pages)`);
   if (state.direction?.phrase) out.push(`Direction:   "${state.direction.phrase}"`, `             (resolved ${day(state.direction.resolvedAt)}, see ${state.direction.directionFile ?? 'stardust/direction.md'})`);

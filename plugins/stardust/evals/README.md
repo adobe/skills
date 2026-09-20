@@ -93,7 +93,7 @@ v2 evals without modification.
 | `ew-editability/`            | Entry point (`deploy`)    | Experience Workspace editability contract (EW1–EW10): node-slotting not value-slotting, authored elements moved into wrappers, wrapper-descendant selectors, `block-roundtrip --ew` + probe evidence, exemptions declared, fidelity not traded. |
 | `ai-readability/`            | Entry point (`deploy`)    | AI readability (#100): presentational carousel clones, document-first index-backed listing, explicit fragment decision, no generated visible text, gate run and reported, correct checker facts (no hidden-text or chrome work for the score). |
 | `routing-migration-flow/`    | Master skill routing      | § Two migration flows enforced: keep-design phrases → `replica` without a question, plain asks → one keep-vs-redesign question, redesign phrases → redesign flow; `flow` recorded in state.json; `prepare-migration` never loaded for keep-design; `migrate` never first; no hand-built pipeline. |
-| `resume-state-report/`       | Master skill resume       | § Routing "No argument" / resume: state report first, rendered by `status.mjs` (`Flow:` line + per-archetype gate numbers from `progress.json`, `Last phase:` + missing-`next` warning), journal `Next:` quoted and checked against state, replica-flow recommendation (ungated archetype → `replica <archetype>`), nothing written, next phase entered through its skill, heading-list before any skill-file read (W1 target). |
+| `resume-state-report/`       | Master skill resume       | § Routing "No argument" / resume: state report first, rendered by `status.mjs` (`Flow:` line + per-archetype gate numbers from `progress.json`, `Last phase:` + missing-`next` warning), journal `Next:` quoted and checked against state, replica-flow recommendation (ungated archetype → `replica <archetype>`), `Usage:` copied from `usage.json`, nothing written beyond Setup step 9's `.work/` record, next phase entered through its skill, heading-list before any skill-file read (W1 target). |
 | `runner-output-contract/`    | Batch reporting (`rollout` Phase E) | Runner-output contract on an offline full-site verify: ranked class table (class → count → worst example → file pointer) in the conversation, full per-page listing in `summary.json` + `summary.md` under `stardust/rollout/`, triage per class, hand-off names the summary files (rule: `context-hygiene.md` § Runner reports). |
 | `preflight-credentials/`     | Entry point (`deploy`)    | W1 pre-flight: token (present, unexpired, looked up through env → `.env` → `~/.claude/.env`), pushable code branch and scaffold are checked before any conversion work; one consolidated missing-prerequisite list with exact remediation; token value never printed; no push, no DA write, no fabricated token, no silent skip; `blocked` recorded in status.jsonl. |
 | `phase-checkpoint-next-command/` | Phase close (`direct`) | Checkpoint block at phase end: completed files (all `ls`-verifiable) + a verified part + ONE verbatim next command + what a re-run would skip; journal `Next:` and `status.jsonl` `next` carry the same command; pages `extracted` → `directed` (rule: `run-status.md` § Phase close). |
@@ -141,9 +141,9 @@ each a plain ESM script under `lint/` that exits 1 with one line per finding,
 then the fixture tests under `fixtures/` (plain `node:assert` scripts that
 import a script's exported pure functions — no playwright needed), the
 `*.test.mjs` runners beside the skill scripts, and one `node --test` suite
-whose harness cases skip when Playwright is unresolvable. A runner listed
-here joins the chain when its branch integrates (`package.json` is edited
-only at integration); every runner also runs standalone with `node <path>`:
+whose harness cases skip when Playwright is unresolvable. A runner a lane
+branch adds is listed here first and joins the chain when the branch
+integrates; every runner also runs standalone with `node <path>`:
 
 - `harness-neutral.mjs` — no namespaced sibling-skill references or
   Claude-only tool names outside lines marked "Claude Code".

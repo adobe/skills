@@ -19,7 +19,10 @@ one dependency dir stardust owns and one record of the environment.
 ## What it does
 
 `node skills/stardust/scripts/preflight-runtime.mjs [--root <dir>] [--no-install] [--offline] [--skip] [--json]`
-— idempotent, exit 0 / 1 / 2 (`--help` for the table):
+— idempotent, exit 0 / 1 / 2 (`--help` for the table). The root must
+already hold a `stardust/` dir (Setup step 5 creates it): a `--root` or
+cwd without one exits 2 and writes nothing — the preflight never seeds a
+project. Steps:
 
 1. Writes or merges `stardust/package.json` (private; devDependencies
    `playwright`, `pixelmatch`, `pngjs`) and runs **one**
@@ -51,7 +54,9 @@ classes): it changes no verdict, no threshold, no gate round.
 - **Condition → blocks.** Exit 1 with one actionable line per item when
   a dependency does not resolve after the install, Chromium is missing,
   or lint is unavailable in a repo that declares it (`env.json.preflight`
-  is then `partial`). A non-zero exit blocks **only the browser-instrument
+  is then `partial`; the lines are also `env.json.missing`, and go to
+  stderr under `--json` — the state report's `Preflight:` line copies
+  them). A non-zero exit blocks **only the browser-instrument
   phases** (replica / diff gates, deploy Local QA and `ai-readability`,
   dynamics, qa, reskin probes) and the deploy lint step — deploy never
   reports "eslint clean" while `env.json.lint` is `unavailable`. Extract
@@ -85,7 +90,7 @@ classes): it changes no verdict, no threshold, no gate round.
 |---|---|---|---|
 | `stardust/package.json` | yes | preflight (merge; not under `--no-install`) | `{ name: "stardust-deps", private, type: "module", devDependencies }` |
 | `stardust/node_modules/`, `stardust/package-lock.json` | **never** (`stardust/.gitignore` lists both; `.gitignore` = `*` written inside the dir for older project copies) | npm via the preflight | the three runtime packages |
-| `stardust/.work/env.json` | no | preflight + `preflight-transports.mjs` (merged) | `projectRoot`, `nodeBin`, `nodeVersion`, `shell`, `bash32`, `pathSnapshot`, `tools`, `deps`, `chromium`, `lint`, `ports`, `envFile`, `preflight`, `writtenAt`, `transports` |
+| `stardust/.work/env.json` | no | preflight + `preflight-transports.mjs` (merged) | `projectRoot`, `nodeBin`, `nodeVersion`, `shell`, `bash32`, `pathSnapshot`, `tools`, `deps`, `chromium`, `lint`, `ports`, `envFile`, `preflight`, `missing`, `writtenAt`, `transports` |
 | `stardust/.work/probes/` | no | preflight (dir + README); agents (scripts, output) | every ad-hoc probe; skill-scoped variants `stardust/.work/<skill>/probes/` |
 
 `env.json.preflight` is `ok`, `partial` (something missing, listed on
@@ -124,9 +129,15 @@ the plugin tree; `siblingScript(skill, file)` tries the plugin layout,
   tracked written under `--no-install`; stubbed `stardust/node_modules` →
   exit 0 and the `env.json` keys; idempotent; `<root>/package.json` never
   touched; lint `unavailable` → the loud line, exit 1, `partial` (and exit
-  0 once eslint resolves); `--skip`.
+  0 once eslint resolves); `--json` keeps the lines (stderr) and the
+  `missing` key; a `--root` without `stardust/` exits 2, nothing
+  created; `--skip`.
 - `evals/lint/resolve-chain-smoke.mjs` — the chain's links and the exit-2
   line, from the plugin tree and from a flat copy layout.
 - `evals/preflight-runtime/` — a replica gate round on the shared fixture:
   the preflight runs before any browser instrument, no `npm i … --no-save`,
-  no `/tmp/*.mjs`, root `package.json` byte-identical.
+  no `/tmp/*.mjs`, root `package.json` byte-identical. Every eval that
+  runs master Setup names step 9's writes: `runner-output-contract`
+  `read_only_inputs` allows `stardust/package.json` + `node_modules/`;
+  `resume-state-report` `nothing_written` allows only the two `.work/`
+  files `--no-install` writes.

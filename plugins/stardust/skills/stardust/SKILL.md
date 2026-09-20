@@ -89,7 +89,8 @@ delegate the actual design work to **impeccable**.
    (`reference/artifact-map.md` § Versioning).
 7. **Run lock and project root.** Run
    `node skills/stardust/scripts/run-lock.mjs check` (`--session <id>`
-   when you hold one). Exit 3 = another live session holds the run:
+   when you hold one; `reference/state-machine.md` § Concurrency →
+   Session advisory lock). Exit 3 = another live session holds the run:
    interactive, ask once — take over (`acquire --force`) or go
    read-only; hands-off, go read-only, append `event: "blocked"` quoting
    the `Active run:` line, stop at the first write. A requested project
@@ -150,6 +151,8 @@ Route on the user's input:
 
   - `prototype --cinematic[=<register>]` layers a brand-faithful motion
     register on the static prototype (`skills/prototype/reference/motion-registers.md`).
+  - `uplift` skips the extract/direct/prototype chain: one URL in, three
+    variants out (one cinematic), no further coordination.
 - **Migration to EDS — pick ONE of two flows, never mix them.** See
   § Two migration flows before answering any "how do I migrate X"
   question; the answer differs by whether the design is kept.
@@ -269,7 +272,8 @@ Defaults (override only when the invocation says otherwise):
   <file>`; it ends with one `SUMMARY` line —
   `../deploy/da-deploy-protocol.md` § Delivery pipeline) — never under one
   long `sleep`. Do independent work meanwhile;
-  otherwise check the progress file **at most every 4 minutes**; end the turn only
+  otherwise check the progress file **at most every 4 minutes** (no blocking
+  wait on agent output); end the turn only
   for waits over ~45 min or a user decision. Rationale, output caps and
   harness levers: `reference/run-status.md` § Long-running steps.
 - **Context hygiene.** Class tables in the conversation, per-page rows
@@ -435,30 +439,30 @@ Per-sub-skill specifics: the card's Validation row and
 - `reference/intent-examples.md` — worked examples of the reasoning style.
 - `reference/impeccable-command-map.md` — when to reach for each impeccable command.
 - `reference/state-machine.md` — page lifecycle, stale rules, state report, flow / credentials / hands-off keys, concurrency.
-- `reference/artifact-map.md` — every file stardust reads or writes: ownership, provenance shape, what is tracked.
+- `reference/artifact-map.md` — every file stardust reads or writes: ownership, provenance, tracking.
 - `reference/stardust.gitignore` — installed as `stardust/.gitignore` by Setup step 6.
 - `reference/divergence-toolkit.md` — anti-mediocrity device for `direct` and `prototype`.
 - `reference/token-contract.md` — the `:root` CSS custom-property contract every prototype and migrated page exposes.
 - `reference/data-attributes.md` — the structural `data-*` vocabulary on sections.
 - `reference/journal-format.md` — `stardust/journal.md` entry format; the append-only narrative layer.
-- `reference/run-status.md` — the `stardust/status.jsonl` contract; `next`, the phase-close block, long-running steps.
+- `reference/run-status.md` — the `status.jsonl` contract; `next`, the phase-close block, long-running steps.
 - `reference/fan-out.md` — the delegated-agent protocol: progress files, worker and coordinator contracts.
 - `reference/harness-quirks.md` — shell, runner, delivery, path, served-asset, local-QA and port rules.
-- `reference/context-hygiene.md` — what enters the conversation: image-read budget, class reports, ranged re-reads, hand-off.
-- `reference/learnings.md` — the per-run learnings ledger rollout's report phase writes and maintainers harvest.
-- `reference/decisions.md` — the plan-time decision register: default and owner-only rows, how the plan gate batches them.
-- `reference/handoff-report.md` — the phase-close hand-off shape: gate table first, reporting KPI, before/after evidence.
-- `reference/harness-permissions.md` — the two command classes a permission layer sees, the Claude Code pre-approval generator, capability probes.
+- `reference/context-hygiene.md` — what enters the conversation: image budget, class reports, hand-off.
+- `reference/learnings.md` — the per-run learnings ledger rollout writes and maintainers harvest.
+- `reference/decisions.md` — the plan-time decision register: default and owner-only rows, plan-gate batching.
+- `reference/handoff-report.md` — the phase-close hand-off shape: gate table first, KPI, evidence.
+- `reference/harness-permissions.md` — the two command classes, the Claude Code pre-approval generator, capability probes.
 
 ### Cinematic-feature references (cross-cutting)
 
 Owned by `prototype/`; cited by `direct` and `uplift` (register
 choice) and `migrate` (motion assets):
 
-- `../prototype/reference/motion-registers.md` — the five motion registers and the heuristic that maps PRODUCT.md personality traits to one.
-- `../prototype/reference/motion-stack.md` — technology choice (Lenis + CSS keyframes + rAF + IntersectionObserver) and bundle policy.
+- `../prototype/reference/motion-registers.md` — the five motion registers and the trait → register heuristic.
+- `../prototype/reference/motion-stack.md` — technology choice and bundle policy.
 - `../prototype/reference/motion-attributes.md` — the `data-*` vocabulary the motion runtime consumes.
-- `../prototype/reference/motion-runtime.md` — the canonical inline runtime script of every cinematic prototype.
+- `../prototype/reference/motion-runtime.md` — the canonical inline runtime of every cinematic prototype.
 - `../prototype/reference/motion-validation.md` § Pass 6 — cinematic-mode validation gates.
 
 ### Uplift-feature references
@@ -466,5 +470,5 @@ choice) and `migrate` (motion assets):
 Owned by `uplift/`. Cited by master routing when delegating
 `$stardust uplift <URL>`:
 
-- `../uplift/SKILL.md` — one-shot presales orchestrator: extract → 3-variant direction → prototype × 3 → summarize.
-- `../uplift/reference/what-if-candidates.md` — 8 worked trait-amplification candidates B and C select from in Phase 2b; § Extension rule admits evidence-shaped `derived` candidates.
+- `../uplift/SKILL.md` — one-shot presales orchestrator (extract → 3 directions → 3 prototypes → summary).
+- `../uplift/reference/what-if-candidates.md` — the trait-amplification candidates B and C select from (Phase 2b); § Extension rule for `derived` ones.

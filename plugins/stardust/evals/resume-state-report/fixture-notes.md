@@ -15,6 +15,12 @@ this note and `answers.md` are not.
   rather than "only the hygiene file changed". If the reference file
   changes, refresh this copy (`cmp` the two).
 
+`stardust/usage.md` / `stardust/usage.json` come from the shared tree
+(the advisory usage ledger `token-ledger.mjs` writes at a wave close):
+`usage_totals_from_file` grades the `Usage:` line against them, so they
+must be present here, not only in `_shared/`. Refresh with `cp -R` when
+the shared copies change (`cmp` both).
+
 Nothing in the shared tree is edited. Shape provenance for every file is in
 the shared README's table; the three gate cases the report must print
 (pass / pass-with-cause-logged-residuals / never gated) are described there
@@ -52,6 +58,14 @@ too.
 - `_provenance.stardustVersion` is 0.23.0 in `state.json` and 0.22.2 in
   the migrated HTML and `progress.json` — intentional (resumed after a
   plugin upgrade, per the shared README).
+
+## Setup step 9 writes
+
+The master Setup's runtime preflight runs with `--no-install` on a resume
+and writes `stardust/.work/env.json` and `stardust/.work/probes/README`
+— the two files `nothing_written` permits. Neither is pre-seeded: the
+fixture must show that `--no-install` writes nothing else (no
+`stardust/package.json`, no `node_modules/`).
 
 ## Renderer
 

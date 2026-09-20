@@ -35,7 +35,7 @@
     {
       "name": "nothing_written",
       "max_score": 10,
-      "description": "Up to the moment the user answers the proceed question, no file in the workspace is created or modified: state.json, journal.md, status.jsonl, progress.json, direction.md and everything under stardust/migrated/ are byte-identical to the fixture, and no root PRODUCT.md / DESIGN.md / DESIGN.json appears. The pre-seeded stardust/.gitignore is untouched. Any write, append, or edit tool call (or shell redirect into the workspace) before the answer fails; no stardust/.work/run.lock is created (status.mjs runs run-lock.mjs check only, never acquire)."
+      "description": "Up to the moment the user answers the proceed question, no file in the workspace is created or modified: state.json, journal.md, status.jsonl, progress.json, direction.md, usage.md / usage.json and everything under stardust/migrated/ are byte-identical to the fixture, and no root PRODUCT.md / DESIGN.md / DESIGN.json appears. The pre-seeded stardust/.gitignore is untouched. The only permitted writes are master Setup step 9's own record under stardust/.work/ (env.json, probes/README) from `preflight-runtime.mjs --no-install` — no stardust/package.json, no node_modules/, no install. Any other write, append, or edit tool call (or shell redirect into the workspace) before the answer fails; no stardust/.work/run.lock is created (status.mjs runs run-lock.mjs check only, never acquire)."
     },
     {
       "name": "next_phase_entered_via_skill",

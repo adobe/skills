@@ -404,8 +404,9 @@ session <sessionId> since <startedAt> — read-only unless you take over`
 — and the recommended next step is omitted. When the working directory
 is not the project root, the line `Project root: <path> (not the
 working directory)` follows it. `Preflight: <ok|partial|skipped>` copies
-`stardust/.work/env.json` `preflight` (`runtime-preflight.md` § Files);
-omitted when the file is absent. `Last phase:` is the last `status.jsonl`
+`stardust/.work/env.json` `preflight`, a `partial` followed by its
+`missing` lines (`runtime-preflight.md` § Files); omitted when the file
+is absent. `Last phase:` is the last `status.jsonl`
 line — `running since` when a `start` has no `end`, `next` verbatim, and
 a `warning:` when an `end` / `blocked` line lacks `next`. `Gates:` copies
 PASS / FAIL / `no verdict` per archetype × breakpoint from

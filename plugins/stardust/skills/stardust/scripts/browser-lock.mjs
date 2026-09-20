@@ -41,8 +41,9 @@
  *   … await browser.close(); slot?.release();                // release stops the keep-alive timer and deletes the slot file
  *
  * Exit codes: 0 acquired / released / refreshed / printed · 124 no slot within --wait (no verdict)
- *             · 2 usage or I/O error. No network. Never reaps a dev server (ports are
- *             the port allocator's, by pidfile only).
+ *             · 2 usage (a non-numeric --slots / --wait / --min / --pid included) or I/O
+ *             error. No network. Never reaps a dev server (ports are the port
+ *             allocator's, by pidfile only).
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync, appendFileSync, utimesSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
@@ -88,6 +89,11 @@ export function census({ dir, ttlMs }, now = Date.now()) {
   }
   return { held, reaped };
 }
+/** Advisory-lock race repair: after two simultaneous writes took the last slot, the holders past the budget
+ *  (newest by mtime, then file name) back off — both racers compute the same order. Returns the surplus files. */
+export function surplus(held, slots) {
+  return [...held].sort((a, b) => a.mtime - b.mtime || (a.file < b.file ? -1 : 1)).slice(Math.max(0, slots)).map((h) => h.file);
+}
 const describe = (held) => held.map((h) => `pid ${h.pid} ${h.script ?? '?'} ${basename(h.project ?? '?')}`).join(', ');
 const mmss = (ms) => `${Math.floor(ms / 60_000)}:${String(Math.floor((ms % 60_000) / 1000)).padStart(2, '0')}`;
 const sleep = (ms) => new Promise((r) => { setTimeout(r, ms); });
@@ -117,10 +123,14 @@ export async function acquire({ pid = process.pid, script = basename(process.arg
     if (held.length < cfg.slots) {
       const file = join(cfg.dir, `${pid}-${Date.now().toString(36)}.json`);
       writeFileSync(file, `${JSON.stringify({ pid, host: hostname().split('.')[0], project: resolve(project), script, since: new Date().toISOString() })}\n`);
-      const touch = () => { try { const n = new Date(); utimesSync(file, n, n); } catch { /* gone */ } };
-      const timer = setInterval(touch, Math.max(50, Math.floor(cfg.ttlMs / 3)));
-      timer.unref?.(); // never keeps the holder's process alive
-      return { file, release: () => { clearInterval(timer); try { unlinkSync(file); } catch { /* gone */ } }, refresh: touch };
+      const after = census(cfg).held; // re-census: a simultaneous acquire may have taken the same last slot
+      if (after.length <= cfg.slots || !surplus(after, cfg.slots).includes(file)) {
+        const touch = () => { try { const n = new Date(); utimesSync(file, n, n); } catch { /* gone */ } };
+        const timer = setInterval(touch, Math.max(50, Math.floor(cfg.ttlMs / 3)));
+        timer.unref?.(); // never keeps the holder's process alive
+        return { file, release: () => { clearInterval(timer); try { unlinkSync(file); } catch { /* gone */ } }, refresh: touch };
+      }
+      try { unlinkSync(file); } catch { /* gone */ } // over budget after the race — back off and wait like everyone else
     }
     const waited = Date.now() - t0;
     if (waited - lastNote >= NOTE_EVERY_MS) { note(cfg, `waiting for a slot (${held.length}/${cfg.slots} held by ${describe(held)}) ${mmss(waited)}`); lastNote = waited; }
@@ -177,9 +187,16 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   }
   const over = {};
   if (opt('lock-dir')) over.dir = resolve(opt('lock-dir'));
-  if (opt('slots') !== undefined) over.slots = Number(opt('slots'));
-  if (opt('wait') !== undefined) over.waitS = Number(opt('wait'));
-  const pid = opt('pid') ? Number(opt('pid')) : process.ppid;
+  const numArg = (n, min) => { // a NaN here would turn the --wait deadline into an infinite 0 ms poll
+    const v = opt(n); if (v === undefined) return undefined;
+    const x = Number(v);
+    if (v === '' || !Number.isFinite(x) || x < min) { console.error(`browser-lock: --${n} needs a number ≥ ${min}, got ${JSON.stringify(v)} (--help)`); process.exit(2); }
+    return x;
+  };
+  if (opt('slots') !== undefined) over.slots = numArg('slots', 0);
+  if (opt('wait') !== undefined) over.waitS = numArg('wait', 0);
+  const pid = opt('pid') !== undefined ? numArg('pid', 1) : process.ppid;
+  const reapMin = opt('min') !== undefined ? numArg('min', 0) : DEFAULTS.reapMin;
   try {
     if (cmd === 'acquire') {
       if (flag('no-lock')) { console.log('browser-lock: disabled (--no-lock)'); process.exit(0); }
@@ -195,7 +212,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       else console.log(`browser-lock: ${s.held.length}/${s.slots} slot(s) held${s.held.length ? ` (${describe(s.held)})` : ''} · ${s.reapedStale} stale reaped · ${s.orphans.length} orphan browser process(es)${s.orphans.length ? ` (oldest ${Math.max(...s.orphans.map((o) => o.minutes))} min)` : ''}`);
       process.exit(0);
     }
-    if (cmd === 'reap') { const k = reap({ minutes: opt('min') !== undefined ? Number(opt('min')) : DEFAULTS.reapMin }); console.log(`browser-lock: reaped ${k.length} orphan browser process(es)${k.length ? ` (${k.map((o) => `pid ${o.pid} ${o.minutes} min`).join(', ')})` : ''}`); process.exit(0); }
+    if (cmd === 'reap') { const k = reap({ minutes: reapMin }); console.log(`browser-lock: reaped ${k.length} orphan browser process(es)${k.length ? ` (${k.map((o) => `pid ${o.pid} ${o.minutes} min`).join(', ')})` : ''}`); process.exit(0); }
   } catch (e) {
     console.error(e.message);
     process.exit(e.code === DEADLINE_EXIT ? DEADLINE_EXIT : 2);
