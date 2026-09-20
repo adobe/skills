@@ -13,7 +13,8 @@
  * `gated` | `dead` | `unprobed:<reason>` — a variant without that row, a
  * row with an unknown state word, or a `gated` word without its evidence
  * (`gates.<bp>` for every configured breakpoint: an existing chrome-states
- * artefact — `chrome-states.json` with `schema: 1` + `cells[]`, or its directory; paths
+ * artefact — a COMPARED `chrome-states.json` (`schema: 1`, `build` set, ≥ 1 cell, no
+ * `delta` / `missing` cell), or its directory; paths
  * relative to progress.json's directory) blocks fan-out of its pages (exit 2).
  * A typed word is not a crop: the lint re-reads the artefact, like
  * gate-ledger-lint re-reads the numbers.
@@ -139,14 +140,25 @@ export function bucketPages(pages, existing = {}) {
   return buckets;
 }
 
-/** A gates.<bp> artefact: chrome-states.json (schema 1 with cells[]) or the directory holding it — must exist, parse AND
- *  be a chrome-states report: `{}` / `[]` / a file without `schema: 1` is no evidence (defect: an empty object passed). */
-export function gateArtefactOk(path, root) {
-  if (!path || typeof path !== 'string') return false;
+/** Why a gates.<bp> artefact is NOT gated evidence (null = it is): chrome-states.json (or the directory holding it) must
+ *  exist, parse, be a chrome-states report (`schema: 1` + `cells[]` — `{}` / `[]` was accepted once), AND be a compared
+ *  gate: `build` set (a live-only inventory has `build: null` and compares nothing), ≥ 1 cell, and no cell left at
+ *  `delta` / `missing` (that report says the chrome is NOT gated — chrome-states.mjs exits 2 on it). */
+export function gateArtefactWhy(path, root) {
+  if (!path || typeof path !== 'string') return 'no path';
   let file = resolvePath(root || '.', path);
-  try { if (statSync(file).isDirectory()) file = join(file, 'chrome-states.json'); } catch { return false; }
-  try { const j = JSON.parse(readFileSync(file, 'utf8')); return Boolean(j) && typeof j === 'object' && !Array.isArray(j) && j.schema === 1 && Array.isArray(j.cells); } catch { return false; }
+  try { if (statSync(file).isDirectory()) file = join(file, 'chrome-states.json'); } catch { return 'missing'; }
+  let j;
+  try { j = JSON.parse(readFileSync(file, 'utf8')); } catch { return 'missing or unreadable'; }
+  if (!j || typeof j !== 'object' || Array.isArray(j) || j.schema !== 1 || !Array.isArray(j.cells)) return 'not a chrome-states report (schema 1 with cells[])';
+  if (!j.build) return 'live-only inventory (build: null) — nothing was compared';
+  if (!j.cells.length) return 'no cells — nothing was compared';
+  const open = j.cells.filter((c) => c && (c.status === 'delta' || c.status === 'missing')).length;
+  if (open) return `${open} cell(s) still delta/missing — that report is a FAIL, not a gated chrome`;
+  return null;
 }
+/** Boolean form of gateArtefactWhy. */
+export function gateArtefactOk(path, root) { return gateArtefactWhy(path, root) === null; }
 
 /**
  * Gate check against progress.json.chrome.variants[]. Returns
@@ -173,8 +185,8 @@ export function checkProgress(buckets, progress, { root = '.' } = {}) {
     if (!states.some(([k]) => k === 'rest')) { blocked.push({ name: b.name, reason: 'no `rest` state in the row (the resting crop is item 5)' }); continue; }
     // a `gated` word needs its evidence at every configured breakpoint — the artefact, not the typed word, is the crop
     if (states.some(([, v]) => v === 'gated')) {
-      const missing = bps.filter((bp) => !gateArtefactOk(row.gates && row.gates[bp], root));
-      if (missing.length) blocked.push({ name: b.name, reason: `state(s) marked gated without evidence: gates.${missing.join(' / gates.')} missing or not a readable chrome-states.json (schema 1 with cells[]) — run chrome-states.mjs <live> <proto> at that width and record the artefact path` });
+      const missing = bps.map((bp) => [bp, gateArtefactWhy(row.gates && row.gates[bp], root)]).filter(([, why]) => why);
+      if (missing.length) blocked.push({ name: b.name, reason: `state(s) marked gated without evidence: gates.${missing.map(([bp, why]) => `${bp} ${why}`).join(' / gates.')} — run chrome-states.mjs <live> <proto> at that width until every cell passes and record the artefact path` });
     }
   }
   return { ok: blocked.length === 0, blocked };

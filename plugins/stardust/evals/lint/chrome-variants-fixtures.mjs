@@ -71,11 +71,11 @@ try {
   // the gate — BLOCKING branch
   // evidence first: the fixture's default row says `gated` and names gates.1440/360 artefacts that do not exist yet → blocked, naming both breakpoints
   const g0 = run(['--pages', pages, '--state', state, '--progress', progress], work);
-  check(g0.status === 2 && /default: state\(s\) marked gated without evidence: gates\.1440 \/ gates\.360/.test(g0.out), `a gated row without its chrome-states artefacts blocks and names the breakpoints (got ${g0.status}): ${g0.out.slice(-400)}`);
-  const artefact = (slug, w) => { const d = join(work, 'gates', `${slug}-${w}`, 'chrome-states'); mkdirSync(d, { recursive: true }); writeFileSync(join(d, 'chrome-states.json'), JSON.stringify({ schema: 1, live: 'https://s/', cells: [] })); };
+  check(g0.status === 2 && /default: state\(s\) marked gated without evidence: gates\.1440 missing \/ gates\.360 missing/.test(g0.out), `a gated row without its chrome-states artefacts blocks and names the breakpoints (got ${g0.status}): ${g0.out.slice(-400)}`);
+  const artefact = (slug, w) => { const d = join(work, 'gates', `${slug}-${w}`, 'chrome-states'); mkdirSync(d, { recursive: true }); writeFileSync(join(d, 'chrome-states.json'), JSON.stringify({ schema: 1, live: 'https://s/', build: 'http://127.0.0.1:1/p.html', cells: [{ name: 'rest', width: w, status: 'pass', findings: [] }] })); };
   artefact('index', 1440);
   const g0b = run(['--pages', pages, '--state', state, '--progress', progress], work);
-  check(g0b.status === 2 && /gates\.360 missing/.test(g0b.out) && !/gates\.1440 \//.test(g0b.out), 'one breakpoint gated, the other not → still blocked, only the missing one named');
+  check(g0b.status === 2 && /gates\.360 missing/.test(g0b.out) && !/gates\.1440 /.test(g0b.out), 'one breakpoint gated, the other not → still blocked, only the missing one named');
   artefact('index', 360);
   const g1 = run(['--pages', pages, '--state', state, '--progress', progress], work);
   check(g1.status === 2 && /lsg-legacy: no chrome archetype row/.test(g1.out) && /unfingerprinted:/.test(g1.out) && !/^  default: /m.test(g1.out), `missing row + unfingerprinted → exit 2 naming both, the evidenced default row passes (got ${g1.status}): ${g1.out.slice(-400)}`);
@@ -106,10 +106,26 @@ try {
     check(!gateArtefactOk(`gates/${name}-1440`, work), `gateArtefactOk: ${body} is not a chrome-states report — no evidence`);
   }
   check(checkProgress(bucketPages([P('index.json')]), { breakpointsConfigured: [1440], chrome: { variants: [{ name: 'default', states: { rest: 'gated' }, gates: { 1440: 'gates/empty-1440' } }] } }, { root: work }).ok === false, 'checkProgress: a gated row pointing at an empty-object chrome-states.json is BLOCKED');
+  // defect: any `schema: 1` + `cells[]` file counted as gated — a live-only inventory (build: null, cells: []) and an all-delta report passed as evidence
+  const cell = (status) => ({ name: 'menu', width: 1440, status, findings: [] });
+  for (const [name, body, why] of [
+    ['liveonly', { schema: 1, live: 'https://s/', build: null, cells: [] }, /live-only inventory/],
+    ['nocell', { schema: 1, live: 'https://s/', build: 'http://b/', cells: [] }, /no cells/],
+    ['alldelta', { schema: 1, live: 'https://s/', build: 'http://b/', cells: [cell('delta'), cell('delta')] }, /2 cell\(s\) still delta\/missing/],
+    ['onemissing', { schema: 1, live: 'https://s/', build: 'http://b/', cells: [cell('pass'), cell('missing')] }, /1 cell\(s\) still delta\/missing/],
+  ]) {
+    const d = join(work, 'gates', `${name}-1440`); mkdirSync(d, { recursive: true }); writeFileSync(join(d, 'chrome-states.json'), JSON.stringify(body));
+    check(!gateArtefactOk(`gates/${name}-1440`, work), `gateArtefactOk: ${name} is not a gated chrome — no evidence`);
+    const cp = checkProgress(bucketPages([P('index.json')]), { breakpointsConfigured: [1440], chrome: { variants: [{ name: 'default', states: { rest: 'gated' }, gates: { 1440: `gates/${name}-1440` } }] } }, { root: work });
+    check(cp.ok === false && why.test(cp.blocked[0]?.reason || ''), `checkProgress: ${name} blocks and the reason names why (got: ${cp.blocked[0]?.reason})`);
+  }
+  const passExtra = { schema: 1, live: 'https://s/', build: 'http://b/', cells: [cell('pass'), cell('extra')] };
+  writeFileSync(join(work, 'gates', 'passextra-1440.json'), JSON.stringify(passExtra));
+  check(gateArtefactOk('gates/passextra-1440.json', work), 'gateArtefactOk: pass + extra cells (no delta/missing) is gated evidence');
   // persisted names win over default: a home bucket already named keeps its name and nobody else becomes default
   const b = bucketPages([P('index.json'), P('legal.json')], { index: 'main' });
   check(b.find((x) => x.pages.some((p) => p.slug === 'index')).name === 'main' && !b.some((x) => x.name === 'default'), 'a persisted home name is kept and default is not handed to another bucket');
 } finally { rmSync(work, { recursive: true, force: true }); }
 
 if (failures.length) { console.error(`chrome-variants-fixtures: ${failures.length} failure(s)\n - ${failures.join('\n - ')}`); process.exit(1); }
-console.log('chrome-variants-fixtures: ok (fingerprint stability, buckets + names, marker candidates, --write, gate exit 2 / 0, gated-word evidence per breakpoint (schema 1 + cells[] required), state vocabulary, --help)');
+console.log('chrome-variants-fixtures: ok (fingerprint stability, buckets + names, marker candidates, --write, gate exit 2 / 0, gated-word evidence per breakpoint (compared report: schema 1, build set, ≥ 1 cell, no delta/missing), state vocabulary, --help)');
