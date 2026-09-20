@@ -1,0 +1,185 @@
+{
+  "url": "https://www.larkspurmutual.example/",
+  "width": 1440,
+  "headerTimeline": [
+    {
+      "y": 0,
+      "cls": "site-header",
+      "position": "fixed",
+      "height": "80px",
+      "transform": "none",
+      "transition": "height 0.2s",
+      "mainPadTop": "80px",
+      "bodyPadTop": "0px",
+      "headerCount": 1
+    },
+    {
+      "y": 1200,
+      "cls": "site-header shrunk",
+      "position": "fixed",
+      "height": "56px",
+      "transform": "none",
+      "transition": "height 0.2s",
+      "mainPadTop": "80px",
+      "bodyPadTop": "0px",
+      "headerCount": 1
+    },
+    {
+      "y": 2400,
+      "cls": "site-header shrunk",
+      "position": "fixed",
+      "height": "56px",
+      "transform": "none",
+      "transition": "height 0.2s",
+      "mainPadTop": "80px",
+      "bodyPadTop": "0px",
+      "headerCount": 1
+    },
+    {
+      "y": 800,
+      "cls": "site-header shrunk",
+      "position": "fixed",
+      "height": "56px",
+      "transform": "none",
+      "transition": "height 0.2s",
+      "mainPadTop": "80px",
+      "bodyPadTop": "0px",
+      "headerCount": 1
+    },
+    {
+      "y": 200,
+      "cls": "site-header shrunk",
+      "position": "fixed",
+      "height": "56px",
+      "transform": "none",
+      "transition": "height 0.2s",
+      "mainPadTop": "80px",
+      "bodyPadTop": "0px",
+      "headerCount": 1
+    },
+    {
+      "y": 60,
+      "cls": "site-header",
+      "position": "fixed",
+      "height": "80px",
+      "transform": "none",
+      "transition": "height 0.2s",
+      "mainPadTop": "80px",
+      "bodyPadTop": "0px",
+      "headerCount": 1
+    },
+    {
+      "y": 0,
+      "cls": "site-header",
+      "position": "fixed",
+      "height": "80px",
+      "transform": "none",
+      "transition": "height 0.2s",
+      "mainPadTop": "80px",
+      "bodyPadTop": "0px",
+      "headerCount": 1
+    }
+  ],
+  "widgetSamples": [
+    {
+      "sel": ".cards-carousel .next",
+      "frames": [
+        {
+          "t": 0,
+          "trackTransform": "none",
+          "boxScrollLeft": 0,
+          "boxTransform": "none",
+          "dots": [
+            {
+              "cls": "dot active"
+            },
+            {
+              "cls": "dot"
+            }
+          ]
+        },
+        {
+          "t": 200,
+          "trackTransform": "none",
+          "boxScrollLeft": 160,
+          "boxTransform": "none",
+          "dots": [
+            {
+              "cls": "dot active"
+            },
+            {
+              "cls": "dot"
+            }
+          ]
+        },
+        {
+          "t": 400,
+          "trackTransform": "none",
+          "boxScrollLeft": 320,
+          "boxTransform": "none",
+          "dots": [
+            {
+              "cls": "dot"
+            },
+            {
+              "cls": "dot active"
+            }
+          ]
+        },
+        {
+          "t": 600,
+          "trackTransform": "none",
+          "boxScrollLeft": 320,
+          "boxTransform": "none",
+          "dots": [
+            {
+              "cls": "dot"
+            },
+            {
+              "cls": "dot active"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "sel": ".logo-strip .next",
+      "frames": [
+        {
+          "t": 0,
+          "trackTransform": "none",
+          "boxScrollLeft": 0,
+          "boxTransform": "none",
+          "dots": []
+        },
+        {
+          "t": 200,
+          "trackTransform": "none",
+          "boxScrollLeft": 0,
+          "boxTransform": "none",
+          "dots": []
+        },
+        {
+          "t": 400,
+          "trackTransform": "none",
+          "boxScrollLeft": 0,
+          "boxTransform": "none",
+          "dots": []
+        },
+        {
+          "t": 600,
+          "trackTransform": "none",
+          "boxScrollLeft": 0,
+          "boxTransform": "none",
+          "dots": []
+        }
+      ]
+    }
+  ],
+  "hoverSamples": [],
+  "events": {
+    "animations": [],
+    "transitions": [],
+    "classMutations": []
+  }
+}

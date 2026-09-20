@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Motion-assert fixture — live-like prototype</title>
+<style>
+  /* Fixture: a prototype whose motion layer matches observe-v2.json — header
+     shrinks past y 120 (class morph, height 80 → 56), the cards carousel
+     advances by scrollLeft on .next, tiles reveal via inline opacity/transform
+     when scrolled into view, the FAQ toggles aria-expanded + its panel. */
+  body { margin: 0; font-family: system-ui, sans-serif; }
+  header.site-header { position: fixed; top: 0; left: 0; right: 0; height: 80px; background: #123; color: #fff; transition: height 0.2s; }
+  header.site-header.shrunk { height: 56px; }
+  main { padding-top: 80px; }
+  section { min-height: 600px; padding: 40px; }
+  .cards-carousel .track { display: flex; gap: 20px; overflow-x: hidden; scroll-behavior: auto; width: 620px; }
+  .cards-carousel .card { flex: 0 0 300px; height: 200px; background: #dde; }
+  .dot { width: 10px; height: 10px; border-radius: 5px; border: 0; background: #bbb; }
+  .dot.active { background: #123; }
+  .tile.reveal { opacity: 0; transform: translateY(25px); transition: opacity 0.5s, transform 0.5s; height: 120px; background: #eef; margin: 12px 0; }
+  .faq__a { display: none; }
+  .faq__a.open { display: block; }
+</style>
+</head>
+<body>
+<header class="site-header"><a href="/">Larkspur Mutual</a></header>
+<main>
+  <section class="hero"><h1>Home and auto insurance</h1><p>Member-owned since 1931.</p></section>
+  <section class="cards-carousel">
+    <h2>Coverage</h2>
+    <div class="track" id="track">
+      <div class="card">Dwelling</div><div class="card">Property</div><div class="card">Liability</div><div class="card">Loss of use</div>
+    </div>
+    <button class="prev" aria-label="Previous">‹</button>
+    <button class="next" aria-label="Next">›</button>
+    <div class="dots"><button class="dot active" aria-label="Slide 1"></button><button class="dot" aria-label="Slide 2"></button></div>
+  </section>
+  <section class="tiles">
+    <div class="tile reveal">Tile one</div><div class="tile reveal">Tile two</div><div class="tile reveal">Tile three</div>
+  </section>
+  <section class="faq">
+    <h2>Common questions</h2>
+    <button class="faq__q" aria-expanded="false" aria-controls="faq-a-1">How are premiums set?</button>
+    <div class="faq__a" id="faq-a-1"><p>By risk factors filed with the state.</p></div>
+  </section>
+  <section class="cta-band"><h2>Talk to an agent</h2></section>
+</main>
+<script>
+  // header morph: same state machine as live (single header, class toggled at a threshold, restored at top)
+  const header = document.querySelector('header.site-header');
+  const onScroll = () => { header.classList.toggle('shrunk', window.pageYOffset > 120); };
+  window.addEventListener('scroll', onScroll, { passive: true }); onScroll();
+  // carousel: scrollLeft driver, measured at click time (never cached at decorate)
+  const track = document.getElementById('track');
+  const dots = [...document.querySelectorAll('.dot')];
+  const go = (dir) => {
+    const pitch = track.querySelector('.card').getBoundingClientRect().width + 20;
+    track.scrollLeft = Math.max(0, track.scrollLeft + dir * pitch);
+    const idx = Math.round(track.scrollLeft / pitch) > 0 ? 1 : 0;
+    dots.forEach((d, i) => d.classList.toggle('active', i === idx));
+  };
+  document.querySelector('.next').addEventListener('click', () => go(1));
+  document.querySelector('.prev').addEventListener('click', () => go(-1));
+  // entrances: inline opacity/transform written by an observer, once
+  const io = new IntersectionObserver((entries) => { for (const e of entries) if (e.isIntersecting) { e.target.style.opacity = '1'; e.target.style.transform = 'none'; io.unobserve(e.target); } }, { threshold: 0.15 });
+  document.querySelectorAll('.tile.reveal').forEach((t) => io.observe(t));
+  // accordion: aria-expanded + controls display
+  const q = document.querySelector('.faq__q'); const a = document.getElementById('faq-a-1');
+  q.addEventListener('click', () => { const open = q.getAttribute('aria-expanded') !== 'true'; q.setAttribute('aria-expanded', String(open)); a.classList.toggle('open', open); });
+</script>
+</body>
+</html>

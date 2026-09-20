@@ -46,6 +46,14 @@
  *     --storage-state <file> | --fresh-state | --solve-wait <ms>  admitted-session reuse / clean start / interactive solve (live-session.mjs § Admitted-session reuse; --solve-wait implies a visible tier-3 window)
  *     --locale <tag>         pin Accept-Language + locale
  *     --json                 machine-readable output
+ *     --from-clusters <json> URL list from layout-cluster.mjs's
+ *                            stardust/current/layout-clusters.json: archetype =
+ *                            the archetype cluster's exemplar, siblings = every
+ *                            other cluster's exemplar (≥ T; --type <t> scopes
+ *                            one page type; URLs from the sibling state.json).
+ *                            Positional URLs, when given, replace the derived
+ *                            list. Probes and exit codes are unchanged — this
+ *                            only narrows WHICH pages are probed
  *     --brief                after the report, print one paste-ready markdown
  *                            block per sibling for its fan-out brief: the
  *                            archetype's and THIS page's section sequences
@@ -61,8 +69,9 @@
 
 /* eslint-disable import/no-extraneous-dependencies, import/extensions, no-await-in-loop, no-restricted-syntax, brace-style, object-curly-newline, max-len, no-plusplus, no-continue */
 import { chromium } from 'playwright';
-import { existsSync } from 'fs';
+import { existsSync, realpathSync } from 'fs';
 import { dirname, resolve as resolvePath } from 'path';
+import { urlsFromClusters } from './layout-cluster.mjs';
 import { fileURLToPath, pathToFileURL } from 'url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -89,6 +98,7 @@ Usage: node sibling-variance.mjs <archetypeURL> <siblingURL> [<siblingURL>…] [
   --storage-state <file> | --fresh-state | --solve-wait <ms>  admitted-session reuse / clean start / interactive solve (live-session.mjs; --solve-wait implies a visible tier-3 window)
   --locale <tag>        pin Accept-Language + locale
   --json                machine-readable output
+  --from-clusters <json>  archetype + sibling URLs = cluster exemplars from layout-clusters.json (--type <t> scopes)
   --brief               print a paste-ready brief block per sibling (section sequences + deltas)
   --help                this text
 
@@ -98,7 +108,7 @@ function parseArgs(argv) {
   const rest = argv.slice(2);
   if (rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
   const pos = [];
-  const opts = { probes: [], main: 'main', block: [], width: 1440, tolerance: 2, consent: null, dismiss: [], consentMode: 'accept', headed: false, locale: null, json: false, brief: false };
+  const opts = { probes: [], main: 'main', block: [], width: 1440, tolerance: 2, consent: null, dismiss: [], consentMode: 'accept', headed: false, locale: null, json: false, brief: false, fromClusters: null, type: null };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--probe') {
@@ -121,8 +131,16 @@ function parseArgs(argv) {
     else if (a === '--locale') { opts.locale = rest[i += 1]; }
     else if (a === '--json') { opts.json = true; }
     else if (a === '--brief') { opts.brief = true; }
+    else if (a === '--from-clusters') { opts.fromClusters = rest[i += 1]; }
+    else if (a === '--type') { opts.type = rest[i += 1]; }
     else if (a.startsWith('--')) { console.error(`unknown flag ${a}\n\n${HELP}`); process.exit(1); }
     else pos.push(a);
+  }
+  if (opts.fromClusters && pos.length < 2) {
+    const derived = urlsFromClusters(opts.fromClusters, opts.type);
+    if (!derived) { console.error(`--from-clusters: no probe pair in ${opts.fromClusters}${opts.type ? ` for type ${opts.type}` : ''} (needs a gated archetype cluster and at least one other cluster ≥ T with URLs in state.json)\n\n${HELP}`); process.exit(1); }
+    console.error(`sibling-variance: --from-clusters ${derived.type}: archetype ${derived.archetypeSlug} (${derived.archetypeCluster}) vs ${derived.siblings.length} cluster exemplar(s): ${derived.siblingSlugs.join(', ')}`);
+    return { archetype: derived.archetype, siblings: derived.siblings, opts };
   }
   if (pos.length < 2) { console.error(`need <archetypeURL> and at least one <siblingURL>\n\n${HELP}`); process.exit(1); }
   return { archetype: pos[0], siblings: pos.slice(1), opts };
@@ -303,4 +321,5 @@ async function main() {
   process.exit(varying ? 2 : 0);
 }
 
-main().catch((e) => { console.error(`sibling-variance error: ${e.message}`); process.exit(e.name === 'BotChallengeError' ? 3 : 1); });
+const invokedDirectly = (() => { try { return realpathSync(process.argv[1]) === fileURLToPath(import.meta.url); } catch { return false; } })();
+if (invokedDirectly) main().catch((e) => { console.error(`sibling-variance error: ${e.message}`); process.exit(e.name === 'BotChallengeError' ? 3 : 1); });

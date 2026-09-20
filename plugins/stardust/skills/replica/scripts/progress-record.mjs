@@ -126,18 +126,41 @@ export function pageTypesOf(ledger) {
 export function readLedger(path) { return readJson(path); }
 
 /**
- * Residual class ids from the gate doc's § Residual classes table
- * (`reference/source-fidelity-gate.md` next to this scripts dir, or the path
- * given). Returns Map<id, { permanent }>; empty when the doc is not found.
+ * source-fidelity-gate.md § Residual classes, embedded: [id, permanent]. The
+ * project copy under stardust/scripts/replica/ has no ../reference/ beside it,
+ * so the readers fall back to this list; gate-ledger-lint.test.mjs pins parity
+ * with the table (edit both together).
  */
-export function residualClasses(docPath = join(dirname(fileURLToPath(import.meta.url)), '..', 'reference', 'source-fidelity-gate.md')) {
+export const RESIDUAL_CLASSES = [
+  ['glyph-antialiasing', true], ['third-party-in-flow', true], ['tag-injected-tail', false], ['index-driven-content', true],
+  ['photo-reencoding', true], ['live-drift', false], ['nondeterministic-live', true], ['live-data-embed', true],
+  ['randomized-decoration', true], ['personalised-region', true], ['skip-link-focus', false], ['fixed-disc-at-seams', false],
+  ['subpixel-layoutunit', true], ['icon-font-substitution', true], ['capture-state', false], ['motion-unassertable', false],
+  ['authored-volatile-masked', false],
+];
+
+/** Parse a gate doc's § Residual classes table → Map<id, { permanent }> (empty when the text has no table). */
+export function parseResidualClasses(text) {
   const out = new Map();
-  let text = ''; try { text = readFileSync(docPath, 'utf8'); } catch { return out; }
-  const section = text.split(/^### Residual classes\s*$/m)[1] || '';
+  const section = String(text || '').split(/^### Residual classes\s*$/m)[1] || '';
   for (const line of section.split('\n')) {
     const m = line.match(/^\| `([a-z0-9-]+)` \|(?:[^|]*\|){3}\s*([^|]*)\|\s*$/);
     if (m) out.set(m[1], { permanent: /^yes/i.test(m[2].trim()) });
   }
+  return out;
+}
+
+/**
+ * Residual class ids: the gate doc's § Residual classes table when
+ * `reference/source-fidelity-gate.md` is beside this scripts dir (or at the
+ * path given), else the embedded RESIDUAL_CLASSES (project copy). Returns
+ * Map<id, { permanent }> with `.source` = 'doc' | 'embedded'; never empty.
+ */
+export function residualClasses(docPath = join(dirname(fileURLToPath(import.meta.url)), '..', 'reference', 'source-fidelity-gate.md')) {
+  let text = null; try { text = readFileSync(docPath, 'utf8'); } catch { /* project copy: no reference dir beside the scripts */ }
+  const fromDoc = text === null ? new Map() : parseResidualClasses(text);
+  const out = fromDoc.size ? fromDoc : new Map(RESIDUAL_CLASSES.map(([id, permanent]) => [id, { permanent }]));
+  out.source = fromDoc.size ? 'doc' : 'embedded';
   return out;
 }
 

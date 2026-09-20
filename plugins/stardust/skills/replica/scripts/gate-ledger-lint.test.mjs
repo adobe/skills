@@ -14,6 +14,10 @@
 //   coverage line; with one published PASS → counted;
 //   register:R-nn with a trailing description is a named cause;
 //   the gate doc's § Residual classes intro states the same cause grammar;
+//   every residual class a sibling reference names is a table row; the embedded
+//   RESIDUAL_CLASSES list equals the table and a project copy under
+//   stardust/scripts/replica/ (no ../reference/) resolves it (exit 0, no WARN);
+//   (motion-unassertable: valid with acceptedBy, refused under hands-off-policy);
 //   --help exits 0; unknown flag exits 1.
 // Usage: node plugins/stardust/skills/replica/scripts/gate-ledger-lint.test.mjs
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -101,6 +105,36 @@ try {
   const doc = readFileSync(join(HERE, '..', 'reference', 'source-fidelity-gate.md'), 'utf8');
   const intro = (doc.split(/^### Residual classes\s*$/m)[1] || '').split('\n| class id')[0];
   check(/register:R-nn/.test(intro) && !/own terms/.test(intro) && /class id from this table/.test(intro), `§ Residual classes intro must name the lint's cause grammar (class id | register:R-nn), not free-text causes\n${intro}`);
+  // doc/doc agreement: every residual class a sibling doc names ("residual class `x`") is a row of the table — recreation-procedure.md named
+  // `motion-unassertable` (behaviour-match escape) before the table had it, so the escape read "residuals unnamed" and blocked
+  const { residualClasses } = await import(join(HERE, 'progress-record.mjs'));
+  const classes = residualClasses();
+  for (const f of ['recreation-procedure.md', 'preserve-direction.md']) {
+    const named = [...readFileSync(join(HERE, '..', 'reference', f), 'utf8').matchAll(/residual class\s+`([a-z0-9-]+)`/g)].map((m) => m[1]);
+    for (const id of named) check(classes.has(id), `${f} names residual class \`${id}\` but § Residual classes has no such row`);
+  }
+  check(classes.has('motion-unassertable') && classes.get('motion-unassertable').permanent === false, 'motion-unassertable is a table row and NOT permanent (interactive acceptance only — hands-off never self-accepts it)');
+  // embedded list ↔ doc table parity (the project copy under stardust/scripts/replica/ has no ../reference/ and reads the embedded list)
+  const { RESIDUAL_CLASSES, parseResidualClasses } = await import(join(HERE, 'progress-record.mjs'));
+  const table = parseResidualClasses(doc);
+  check(classes.source === 'doc' && table.size === classes.size, `residualClasses() beside the plugin reads the doc table (${classes.size} rows)`);
+  check(RESIDUAL_CLASSES.length === table.size && RESIDUAL_CLASSES.every(([id, permanent]) => table.has(id) && table.get(id).permanent === permanent), `progress-record.mjs RESIDUAL_CLASSES must equal § Residual classes (id + permanent): embedded ${JSON.stringify(RESIDUAL_CLASSES)} vs doc ${JSON.stringify([...table].map(([id, v]) => [id, v.permanent]))}`);
+  // defect: from the project copy residualClasses() returned an empty map — every named residual read "unnamed", `accepted` read `fail`
+  const copy = join(work, 'project', 'stardust', 'scripts', 'replica');
+  mkdirSync(copy, { recursive: true });
+  for (const f of ['gate-ledger-lint.mjs', 'progress-record.mjs']) writeFileSync(join(copy, f), readFileSync(join(HERE, f)));
+  const rc = spawnSync(process.execPath, [join(copy, 'gate-ledger-lint.mjs'), '--progress', p5, '--all-types'], { encoding: 'utf8' });
+  check(rc.status === 0 && /landing: ok — home 1440 12 % Δh 2/.test(`${rc.stdout}${rc.stderr}`) && !/WARN/.test(rc.stderr), `the project copy (stardust/scripts/replica/, no ../reference/) still resolves the class list: named residuals ok, exit 0, no WARN — got ${rc.status}\n${rc.stdout}${rc.stderr}`);
+  const copied = spawnSync(process.execPath, ['--input-type=module', '-e', `import { residualClasses } from ${JSON.stringify(join(copy, 'progress-record.mjs'))}; const c = residualClasses(); console.log(JSON.stringify({ source: c.source, size: c.size, cs: c.get('capture-state') }));`], { encoding: 'utf8' });
+  check(/"source":"embedded","size":17,"cs":\{"permanent":false\}/.test(copied.stdout), `the copied reader reports source embedded with the full list, got ${copied.stdout}${copied.stderr}`);
+  const unassertable = JSON.parse(JSON.stringify(valid)); unassertable.residuals[1].cause = 'motion-unassertable: prototype server unreachable from the headless run'; unassertable.residuals[1].acceptedBy = 'user';
+  const p7c = ledgerFile('unassertable', { archetypes: [{ pageType: 'landing', archetype: 'home', prototype: 'x.html', motion, breakpoints: { 1440: unassertable, 360: good(1, 0) } }] });
+  r = run(['--progress', p7c, '--all-types']);
+  check(r.status === 0 && /landing: ok — home/.test(r.out), `motion-unassertable with artifacts[] + acceptedBy is a named, valid residual\n${r.out}`);
+  unassertable.residuals[1].acceptedBy = 'hands-off-policy:motion-unassertable';
+  const p7d = ledgerFile('unassertable-handsoff', { archetypes: [{ pageType: 'landing', archetype: 'home', prototype: 'x.html', motion, breakpoints: { 1440: unassertable, 360: good(1, 0) } }] });
+  r = run(['--progress', p7d, '--all-types']);
+  check(r.status === 2 && /hands-off-policy on a non-permanent class/.test(r.out), `hands-off cannot self-accept motion-unassertable\n${r.out}`);
 
   // synthetic: motion inventory missing; roster from state.json pages (type with no sibling is not checked)
   const p8 = ledgerFile('motion', { archetypes: [{ pageType: 'landing', archetype: 'home', prototype: 'x.html', breakpoints: { 1440: good(1, 0), 360: good(1, 0) } }, { pageType: 'program', archetype: 'prog', prototype: 'y.html', motion, breakpoints: {} }] });

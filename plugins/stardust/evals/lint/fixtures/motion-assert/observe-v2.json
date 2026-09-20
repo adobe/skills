@@ -1,0 +1,261 @@
+{
+  "schema": 2,
+  "url": "https://www.larkspurmutual.example/",
+  "width": 1440,
+  "headerTimeline": [
+    {
+      "y": 0,
+      "dir": "down",
+      "cls": "site-header",
+      "position": "fixed",
+      "height": "80px",
+      "transform": "none",
+      "transition": "height 0.2s",
+      "mainPadTop": "80px",
+      "bodyPadTop": "0px",
+      "headerCount": 1
+    },
+    {
+      "y": 1200,
+      "dir": "down",
+      "cls": "site-header shrunk",
+      "position": "fixed",
+      "height": "56px",
+      "transform": "none",
+      "transition": "height 0.2s",
+      "mainPadTop": "80px",
+      "bodyPadTop": "0px",
+      "headerCount": 1
+    },
+    {
+      "y": 2400,
+      "dir": "down",
+      "cls": "site-header shrunk",
+      "position": "fixed",
+      "height": "56px",
+      "transform": "none",
+      "transition": "height 0.2s",
+      "mainPadTop": "80px",
+      "bodyPadTop": "0px",
+      "headerCount": 1
+    },
+    {
+      "y": 800,
+      "dir": "up",
+      "cls": "site-header shrunk",
+      "position": "fixed",
+      "height": "56px",
+      "transform": "none",
+      "transition": "height 0.2s",
+      "mainPadTop": "80px",
+      "bodyPadTop": "0px",
+      "headerCount": 1
+    },
+    {
+      "y": 200,
+      "dir": "up",
+      "cls": "site-header shrunk",
+      "position": "fixed",
+      "height": "56px",
+      "transform": "none",
+      "transition": "height 0.2s",
+      "mainPadTop": "80px",
+      "bodyPadTop": "0px",
+      "headerCount": 1
+    },
+    {
+      "y": 60,
+      "dir": "up",
+      "cls": "site-header",
+      "position": "fixed",
+      "height": "80px",
+      "transform": "none",
+      "transition": "height 0.2s",
+      "mainPadTop": "80px",
+      "bodyPadTop": "0px",
+      "headerCount": 1
+    },
+    {
+      "y": 0,
+      "dir": "up",
+      "cls": "site-header",
+      "position": "fixed",
+      "height": "80px",
+      "transform": "none",
+      "transition": "height 0.2s",
+      "mainPadTop": "80px",
+      "bodyPadTop": "0px",
+      "headerCount": 1
+    }
+  ],
+  "widgetSamples": [
+    {
+      "sel": ".cards-carousel .next",
+      "frames": [
+        {
+          "t": 0,
+          "trackTransform": "none",
+          "boxScrollLeft": 0,
+          "boxTransform": "none",
+          "dots": [
+            {
+              "cls": "dot active"
+            },
+            {
+              "cls": "dot"
+            }
+          ]
+        },
+        {
+          "t": 200,
+          "trackTransform": "none",
+          "boxScrollLeft": 160,
+          "boxTransform": "none",
+          "dots": [
+            {
+              "cls": "dot active"
+            },
+            {
+              "cls": "dot"
+            }
+          ]
+        },
+        {
+          "t": 400,
+          "trackTransform": "none",
+          "boxScrollLeft": 320,
+          "boxTransform": "none",
+          "dots": [
+            {
+              "cls": "dot"
+            },
+            {
+              "cls": "dot active"
+            }
+          ]
+        },
+        {
+          "t": 600,
+          "trackTransform": "none",
+          "boxScrollLeft": 320,
+          "boxTransform": "none",
+          "dots": [
+            {
+              "cls": "dot"
+            },
+            {
+              "cls": "dot active"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "sel": ".logo-strip .next",
+      "frames": [
+        {
+          "t": 0,
+          "trackTransform": "none",
+          "boxScrollLeft": 0,
+          "boxTransform": "none",
+          "dots": []
+        },
+        {
+          "t": 200,
+          "trackTransform": "none",
+          "boxScrollLeft": 0,
+          "boxTransform": "none",
+          "dots": []
+        },
+        {
+          "t": 400,
+          "trackTransform": "none",
+          "boxScrollLeft": 0,
+          "boxTransform": "none",
+          "dots": []
+        },
+        {
+          "t": 600,
+          "trackTransform": "none",
+          "boxScrollLeft": 0,
+          "boxTransform": "none",
+          "dots": []
+        }
+      ]
+    }
+  ],
+  "hoverSamples": [],
+  "triggers": [],
+  "entrances": [
+    {
+      "family": "div.tile.reveal",
+      "elements": 3,
+      "mutations": 120,
+      "firstY": 800,
+      "durationMs": 890,
+      "from": {
+        "opacity": "0",
+        "transform": "translate(0px, 25px)",
+        "visibility": null
+      },
+      "to": {
+        "opacity": "1",
+        "transform": "none",
+        "visibility": null
+      },
+      "sample": "main > section > div.tile.reveal"
+    }
+  ],
+  "stateMachines": [
+    {
+      "el": "main > section.faq > button.faq__q",
+      "attr": "aria-expanded",
+      "kind": "attribute",
+      "controls": "faq-a-1",
+      "transitions": [
+        {
+          "from": "false",
+          "to": "true",
+          "y": 1400,
+          "t": 5100,
+          "trigger": {
+            "el": "main > section.faq > button.faq__q",
+            "txt": "How are premiums set?",
+            "dtMs": 40
+          },
+          "controlsDisplay": {
+            "before": "none",
+            "after": "block"
+          }
+        }
+      ],
+      "count": 1,
+      "triggered": 1
+    },
+    {
+      "el": "div.sticky-banner",
+      "attr": "data-state",
+      "kind": "attribute",
+      "controls": null,
+      "transitions": [
+        {
+          "from": "hidden",
+          "to": "shown",
+          "y": 800,
+          "t": 2000,
+          "trigger": null
+        }
+      ],
+      "count": 1,
+      "triggered": 0
+    }
+  ],
+  "events": {
+    "animations": [],
+    "transitions": [],
+    "classMutations": [],
+    "attrMutations": [],
+    "childList": [],
+    "styleMutatedElements": 3
+  }
+}

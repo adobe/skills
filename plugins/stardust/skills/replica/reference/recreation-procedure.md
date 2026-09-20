@@ -40,6 +40,15 @@ class of guesswork before the next begins:
    read a 1559px height deficit as a missing section). A large height delta
    with matching section ORDER is usually a duplicated instance, not a
    missing one.
+   **1b. Variant census across the type, before any CSS lift.** Run
+   `../scripts/variant-census.mjs --type <pageType> --css <canon glob>
+   --code <renderer glob> [--allow <file>]` (offline over the crawler
+   sidecar; the contract, budgeting rule and record shape are in
+   `../../migrate/reference/fidelity-tiers.md` § Sibling variance probe,
+   Variant census). Build the MAJORITY variant of every component first;
+   every minority variant on ≥ `--min-pages` pages is budgeted as a block
+   variant class before step 2; classifiers key on the census FACTS
+   (`li:icon`, `columns`), never on a family name.
 2. **Lift exact values from the source site's own CSS** (§ CSS lifting).
 3. **Fonts** (§ Fonts policy).
 4. **Compose against the captured screenshot** — the ground truth for
@@ -557,11 +566,42 @@ re-run pixel-compare per touched archetype at the gate breakpoints; the
 number must return to (± noise of) the gated value (recorded: 1.01% gated
 → 1.06% with invented motion → 1.01% exact after the evidence-only
 rewrite). The drift itself is the smell test: motion code that changes t=0
-is wrong. (2) **behavior match** — a headless run against the PROTOTYPE
-asserting, per page: tagged-element count == live fired count; chrome
-state at {top, scrolled-down, scrolled-up, back-to-top} == the live
-headerTimeline states; zero pageerrors. This is the motion analog of the
-anchor probe, trivial to script from the observe JSON.
+is wrong. (2) **behavior match** — `../scripts/motion-assert.mjs
+<observe.json> <prototypeURL> --record stardust/replica/progress.json
+--slug <slug>` replays the observe run against the PROTOTYPE (never the
+live origin — the JSON is the live evidence) and writes
+`breakpoints.<bp>.motion.assert`: chrome state at {top, scrolled-down,
+scrolled-up, back-to-top} (position, height, class delta) equals the live
+headerTimeline's; every widget that advanced live advances on the
+prototype after one click (a control it cannot locate is a fail — map it
+with `--control <live>=<target>`); zero pageerrors; with observe schema ≥ 2,
+entrance count within `--entrance-tolerance` and each click-paired state
+machine's trigger changes the same observable. Schema 1 records those two
+as `not-asserted`, never as a fail; a page with nothing observed records
+`n/a`. Exit 0 pass/n-a · 1 fail · 2 usage · 124 deadline (`--timeout`,
+verdict `none`).
+
+- *Gate (approval).* An archetype × breakpoint is presented as approvable
+  only with its `motion.assert` record present; a missing record prints
+  `motion: unasserted` in the Phase 4 close and hand-off, next to `ungated`,
+  and is never self-approved. A `fail` verdict is **🟡 advisory this
+  release** (D15 re-proposal): iterate within the existing 3-iteration cap,
+  then a residual row like a pixel over-bar — the record, not the verdict,
+  is the mechanical condition.
+- *Escape (each recorded).* No motion → `observed: []` from a real observe
+  run, `verdict: n/a`; bot-blocked / no headless target → residual class
+  `motion-unassertable` with `artifacts[]` + `acceptedBy` (interactive
+  only); `--skip <check>=<reason>` copies the reason into the record.
+- *Hands-off.* Runs `motion-observe` then `motion-assert --record` itself
+  (no extra live hit — assert targets the prototype/published page). Exit
+  124 → one re-run under the deadline, then `verdict: none` = `unasserted`,
+  not self-approvable; `fail` after the cap → `status.jsonl` `blocked` +
+  owner. Never `acceptedBy`, never `--skip`.
+- *Regime.* `--regime published-origin` for the delivered page (preview
+  host, D1); the record carries `regime`, the hand-off prints it per row.
+- *Eval.* `skills/replica/scripts/test/motion-assert.test.mjs` (compare
+  functions, record, CLI) and `evals/lint/motion-assert-fixtures.mjs`
+  (live-like pass; dead carousel named; schema-1 not-asserted; 124 → none).
 
 Pitfalls (each field-recorded):
 

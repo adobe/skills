@@ -1,0 +1,104 @@
+{
+  "schema": 2,
+  "url": "https://www.larkspurmutual.example/legal/",
+  "width": 1440,
+  "headerTimeline": [
+    {
+      "y": 0,
+      "dir": "down",
+      "cls": "site-header",
+      "position": "fixed",
+      "height": "80px",
+      "transform": "none",
+      "transition": "height 0.2s",
+      "mainPadTop": "80px",
+      "bodyPadTop": "0px",
+      "headerCount": 1
+    },
+    {
+      "y": 1200,
+      "dir": "down",
+      "cls": "site-header",
+      "position": "fixed",
+      "height": "80px",
+      "transform": "none",
+      "transition": "height 0.2s",
+      "mainPadTop": "80px",
+      "bodyPadTop": "0px",
+      "headerCount": 1
+    },
+    {
+      "y": 2400,
+      "dir": "down",
+      "cls": "site-header",
+      "position": "fixed",
+      "height": "80px",
+      "transform": "none",
+      "transition": "height 0.2s",
+      "mainPadTop": "80px",
+      "bodyPadTop": "0px",
+      "headerCount": 1
+    },
+    {
+      "y": 800,
+      "dir": "up",
+      "cls": "site-header",
+      "position": "fixed",
+      "height": "80px",
+      "transform": "none",
+      "transition": "height 0.2s",
+      "mainPadTop": "80px",
+      "bodyPadTop": "0px",
+      "headerCount": 1
+    },
+    {
+      "y": 200,
+      "dir": "up",
+      "cls": "site-header",
+      "position": "fixed",
+      "height": "80px",
+      "transform": "none",
+      "transition": "height 0.2s",
+      "mainPadTop": "80px",
+      "bodyPadTop": "0px",
+      "headerCount": 1
+    },
+    {
+      "y": 60,
+      "dir": "up",
+      "cls": "site-header",
+      "position": "fixed",
+      "height": "80px",
+      "transform": "none",
+      "transition": "height 0.2s",
+      "mainPadTop": "80px",
+      "bodyPadTop": "0px",
+      "headerCount": 1
+    },
+    {
+      "y": 0,
+      "dir": "up",
+      "cls": "site-header",
+      "position": "fixed",
+      "height": "80px",
+      "transform": "none",
+      "transition": "height 0.2s",
+      "mainPadTop": "80px",
+      "bodyPadTop": "0px",
+      "headerCount": 1
+    }
+  ],
+  "widgetSamples": [],
+  "hoverSamples": [],
+  "triggers": [],
+  "entrances": [],
+  "stateMachines": [],
+  "events": {
+    "animations": [],
+    "transitions": [],
+    "classMutations": [],
+    "attrMutations": [],
+    "childList": [],
+    "styleMutatedElements": 0
+  }
+}
