@@ -8,13 +8,14 @@
 // Usage: node plugins/stardust/skills/replica/scripts/test/layout-cluster.test.mjs  (exit 1 on findings)
 /* eslint-disable no-restricted-syntax, brace-style, object-curly-newline, max-len */
 import { spawnSync } from 'node:child_process';
-import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const HERE = import.meta.dirname;
 const SCRIPT = join(HERE, '..', 'layout-cluster.mjs');
-const FIXTURE = join(HERE, '..', '..', '..', '..', 'evals', 'replica-layout-clusters', 'fixture', 'stardust');
+const EVALS = join(HERE, '..', '..', '..', '..', 'evals');
+const FIXTURE = join(EVALS, 'replica-layout-clusters', 'fixture', 'stardust');
 const failures = [];
 const check = (ok, msg) => { if (!ok) failures.push(msg); };
 const run = (args, opts = {}) => { const r = spawnSync(process.execPath, [SCRIPT, ...args], { encoding: 'utf8', ...opts }); return { status: r.status, out: `${r.stdout}${r.stderr}` }; };
@@ -101,6 +102,15 @@ check(hit.c.coveredBy?.cluster === 'c1' && hit.c.coveredBy.by === 'operator' && 
 r = clusterType({ type: 'program', pages: [...pagesA, ...pagesB], ledger, bps: [1440, 360], classes, minCluster: 3, k: 0, previous: file.types[0] });
 check(r.clusters[1].coveredBy?.cluster === 'c1' && r.ungated.length === 0 && /covered by c1 \(columns are a two-up variant/.test(renderType(r, [1440, 360])), 're-clustering keeps a recorded coveredBy keyed by signature');
 check(r.clusters[1].gated[360] === 'ungated' && r.clusters[1].gated[1440] === 'accepted', 'coveredBy never rewrites the gate status — the exemplar record keeps 360 ungated');
+
+// --- eval hygiene: everything under an eval's fixture/ is visible to the agent under test; the shared
+// fixture README (rule 3) must not be copied there. fixture-notes.md beside fixture/ documents the deltas.
+const sharedTitle = readFileSync(join(EVALS, '_shared', 'fixture-post-migrate', 'README.md'), 'utf8').split('\n')[0];
+for (const ev of readdirSync(EVALS)) {
+  const readme = join(EVALS, ev, 'fixture', 'README.md');
+  if (existsSync(readme)) check(readFileSync(readme, 'utf8').split('\n')[0] !== sharedTitle, `evals/${ev}/fixture/README.md is a copy of the shared fixture README (visible to the agent under test) — delete it, document deltas in fixture-notes.md`);
+}
+check(existsSync(join(EVALS, 'replica-layout-clusters', 'fixture-notes.md')), 'replica-layout-clusters documents its fixture deltas in fixture-notes.md');
 
 // --- CLI contract
 const help = run(['--help']);
