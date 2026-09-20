@@ -101,14 +101,15 @@ export function parseArgs(argv) {
   const fail = (m) => { console.error(`layout-cluster: ${m}\n\n${HELP}`); process.exit(1); };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
-    if (a === '--root') opts.root = rest[++i];
-    else if (a === '--type') opts.type = rest[++i];
-    else if (a === '--min-cluster') { opts.minCluster = Number(rest[++i]); if (!Number.isInteger(opts.minCluster) || opts.minCluster < 2) fail('--min-cluster needs an integer ≥ 2'); }
-    else if (a === '--k') { opts.k = Number(rest[++i]); if (!Number.isInteger(opts.k) || opts.k < 0) fail('--k needs an integer ≥ 0'); }
+    const val = () => { const v = rest[i + 1]; if (v === undefined || String(v).startsWith('--')) fail(`${a} needs a value`); i += 1; return v; };
+    if (a === '--root') opts.root = val();
+    else if (a === '--type') opts.type = val();
+    else if (a === '--min-cluster') { opts.minCluster = Number(val()); if (!Number.isInteger(opts.minCluster) || opts.minCluster < 2) fail('--min-cluster needs an integer ≥ 2'); }
+    else if (a === '--k') { opts.k = Number(val()); if (!Number.isInteger(opts.k) || opts.k < 0) fail('--k needs an integer ≥ 0'); }
     else if (a === '--json') opts.json = true;
     else if (a === '--write-state') opts.writeState = true;
-    else if (a === '--cover') { const m = String(rest[++i] || '').match(/^([\w-]+)=([\w-]+)$/); if (!m) fail('--cover needs <id>=<gatedId>'); opts.cover = { id: m[1], gatedId: m[2] }; }
-    else if (a === '--reason') opts.reason = rest[++i];
+    else if (a === '--cover') { const m = String(val() || '').match(/^([\w-]+)=([\w-]+)$/); if (!m) fail('--cover needs <id>=<gatedId>'); opts.cover = { id: m[1], gatedId: m[2] }; }
+    else if (a === '--reason') opts.reason = val();
     else fail(`unknown flag ${a}`);
   }
   if (opts.cover && !String(opts.reason || '').trim()) fail('--cover needs --reason <text> (a recorded operator judgement, never implicit)');

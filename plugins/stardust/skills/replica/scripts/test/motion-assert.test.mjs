@@ -99,6 +99,8 @@ check(record({ pageTypes: { landing: { archetype: 'home' } } }, 'home', 360, rec
 const help = run(['--help']);
 check(help.status === 0 && /Usage:/.test(help.out) && /--record/.test(help.out) && /--skip/.test(help.out) && /--entrance-tolerance/.test(help.out) && /124/.test(help.out), 'motion-assert --help exits 0 and names the flags + exit codes');
 check(run(['--bogus']).status === 2, 'unknown flag exits 2 (usage)');
+// defect: --record/--slug (and every valued flag) swallowed the next flag as their value (`--record --slug home` recorded to a file named "--slug")
+for (const args of [['--record', '--slug', 'home'], ['--slug', '--json'], ['--width', '--json'], ['--control', '--skip', 'chrome=x'], ['--regime'], ['--timeout', '--json']]) { const r = run([join(FIX, 'observe-v2.json'), 'http://localhost:8791/x.html', ...args]); check(r.status === 2 && /needs a value/.test(r.out), `${args.join(' ')}: a flag without a value exits 2 with "needs a value", got ${r.status}\n${r.out.split('\n')[0]}`); }
 // defect: header + HELP promised exit 3 (bot challenge) while nothing in the script could raise it — the exit table must stay truthful
 check(!/bot challenge|· 3 /.test(help.out), `HELP does not promise an exit code the script cannot produce, got:\n${help.out}`);
 {

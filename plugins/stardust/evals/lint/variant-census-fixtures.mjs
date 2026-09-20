@@ -87,6 +87,8 @@ const run = (args, opts = {}) => { const r = spawnSync(process.execPath, [opts.s
 const help = run(['--help']);
 check(help.status === 0 && /Usage:/.test(help.out) && /--min-pages/.test(help.out) && /--allow/.test(help.out) && /--from-clusters/.test(help.out) && /--sample/.test(help.out), 'variant-census --help exits 0 and names the flags');
 check(run(['--bogus']).status === 1, 'unknown flag exits 1');
+// defect: --css/--code/--out (and every valued flag) swallowed the next flag as their value
+for (const args of [['--css', '--json'], ['--code', '--css', 'a.css'], ['--out', '--json'], ['--root', '--type', 'a'], ['--type'], ['--marker', '--json']]) { const r = run(args); check(r.status === 1 && /needs a value/.test(r.out), `${args.join(' ')}: a flag without a value exits 1 with "needs a value", got ${r.status}\n${r.out.split('\n')[0]}`); }
 check(run(['--type', 'a', '--slugs', 'b']).status === 1 && run(['--slugs', 'b', '--from-clusters', 'c.json']).status === 1, '--slugs is exclusive with --type / --from-clusters (exit 1)');
 // defect: --type was rejected next to --from-clusters although the header documents it and slugsFor implements the type filter
 {

@@ -105,18 +105,19 @@ export function parseArgs(argv) {
   const fail = (m) => { console.error(`variant-census: ${m}\n\n${HELP}`); process.exit(1); };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
-    if (a === '--root') opts.root = rest[++i];
-    else if (a === '--type') opts.type = rest[++i];
-    else if (a === '--slugs') opts.slugs = rest[++i];
-    else if (a === '--from-clusters') opts.fromClusters = rest[++i];
-    else if (a === '--cluster') opts.cluster = rest[++i];
-    else if (a === '--marker') opts.markers = String(rest[++i] || '').split(',').map((s) => s.trim()).filter(Boolean);
-    else if (a === '--css') opts.css.push(rest[++i]);
-    else if (a === '--code') opts.code.push(rest[++i]);
-    else if (a === '--allow') opts.allow = rest[++i];
-    else if (a === '--min-pages') { opts.minPages = Number(rest[++i]); if (!Number.isInteger(opts.minPages) || opts.minPages < 1) fail('--min-pages needs an integer ≥ 1'); }
-    else if (a === '--sample') { opts.sample = Number(rest[++i]); if (!Number.isInteger(opts.sample) || opts.sample < 1) fail('--sample needs an integer ≥ 1'); }
-    else if (a === '--out') opts.out = rest[++i];
+    const val = () => { const v = rest[i + 1]; if (v === undefined || String(v).startsWith('--')) fail(`${a} needs a value`); i += 1; return v; };
+    if (a === '--root') opts.root = val();
+    else if (a === '--type') opts.type = val();
+    else if (a === '--slugs') opts.slugs = val();
+    else if (a === '--from-clusters') opts.fromClusters = val();
+    else if (a === '--cluster') opts.cluster = val();
+    else if (a === '--marker') opts.markers = String(val() || '').split(',').map((s) => s.trim()).filter(Boolean);
+    else if (a === '--css') opts.css.push(val());
+    else if (a === '--code') opts.code.push(val());
+    else if (a === '--allow') opts.allow = val();
+    else if (a === '--min-pages') { opts.minPages = Number(val()); if (!Number.isInteger(opts.minPages) || opts.minPages < 1) fail('--min-pages needs an integer ≥ 1'); }
+    else if (a === '--sample') { opts.sample = Number(val()); if (!Number.isInteger(opts.sample) || opts.sample < 1) fail('--sample needs an integer ≥ 1'); }
+    else if (a === '--out') opts.out = val();
     else if (a === '--json') opts.json = true;
     else fail(`unknown flag ${a}`);
   }

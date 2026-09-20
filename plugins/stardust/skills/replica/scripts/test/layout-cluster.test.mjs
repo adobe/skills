@@ -121,6 +121,8 @@ check(existsSync(join(EVALS, 'replica-layout-clusters', 'fixture-notes.md')), 'r
 const help = run(['--help']);
 check(help.status === 0 && /Usage:/.test(help.out) && /--cover/.test(help.out) && /--min-cluster/.test(help.out) && /--write-state/.test(help.out), 'layout-cluster --help exits 0 and names the flags');
 check(run(['--bogus']).status === 1, 'an unknown flag exits 1');
+// defect: --root/--type/--reason swallowed the next flag as their value (`--root --type x` ran with root "--type")
+for (const args of [['--root', '--type', 'program'], ['--type', '--json'], ['--reason', '--cover', 'c2=c1'], ['--type'], ['--min-cluster', '--json'], ['--cover', '--reason', 'x']]) { const r = run(args); check(r.status === 1 && /needs a value/.test(r.out), `${args.join(' ')}: a flag without a value exits 1 with "needs a value", got ${r.status}\n${r.out.split('\n')[0]}`); }
 check(run(['--cover', 'c2=c1']).status === 1 && /--reason/.test(run(['--cover', 'c2=c1']).out), '--cover without --reason exits 1');
 check(run(['--min-cluster', '1']).status === 1, '--min-cluster below 2 exits 1');
 check(run(['--root', join(tmpdir(), 'no-such-stardust-dir')]).status === 1, 'a missing state.json exits 1');

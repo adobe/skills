@@ -101,15 +101,16 @@ export function parseArgs(argv) {
   const usage = (m) => { console.error(`motion-assert: ${m}\n\n${HELP}`); process.exit(2); };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
-    if (a === '--width') opts.width = Number(rest[++i]);
-    else if (a === '--tolerance') opts.tolerance = Number(rest[++i]);
-    else if (a === '--entrance-tolerance') opts.entranceTolerance = Number(rest[++i]);
-    else if (a === '--control') { const m = String(rest[++i] || '').match(/^(.+?)=(.+)$/); if (!m) usage('--control needs <live>=<target>'); opts.controls[m[1].trim()] = m[2].trim(); }
-    else if (a === '--skip') { const m = String(rest[++i] || '').match(/^([a-zA-Z]+)=(.+)$/); if (!m || !CHECKS.includes(m[1])) usage(`--skip needs <check>=<reason> with check in ${CHECKS.join('|')}`); opts.skips[m[1]] = m[2].trim(); }
-    else if (a === '--record') opts.record = rest[++i];
-    else if (a === '--slug') opts.slug = rest[++i];
-    else if (a === '--regime') { opts.regime = rest[++i]; if (!['prototype', 'published-origin'].includes(opts.regime)) usage('--regime must be prototype or published-origin'); }
-    else if (a === '--timeout') { opts.timeout = Number(rest[++i]); if (!(opts.timeout > 0)) usage('--timeout needs seconds > 0'); }
+    const val = () => { const v = rest[i + 1]; if (v === undefined || String(v).startsWith('--')) usage(`${a} needs a value`); i += 1; return v; };
+    if (a === '--width') opts.width = Number(val());
+    else if (a === '--tolerance') opts.tolerance = Number(val());
+    else if (a === '--entrance-tolerance') opts.entranceTolerance = Number(val());
+    else if (a === '--control') { const m = String(val() || '').match(/^(.+?)=(.+)$/); if (!m) usage('--control needs <live>=<target>'); opts.controls[m[1].trim()] = m[2].trim(); }
+    else if (a === '--skip') { const m = String(val() || '').match(/^([a-zA-Z]+)=(.+)$/); if (!m || !CHECKS.includes(m[1])) usage(`--skip needs <check>=<reason> with check in ${CHECKS.join('|')}`); opts.skips[m[1]] = m[2].trim(); }
+    else if (a === '--record') opts.record = val();
+    else if (a === '--slug') opts.slug = val();
+    else if (a === '--regime') { opts.regime = val(); if (!['prototype', 'published-origin'].includes(opts.regime)) usage('--regime must be prototype or published-origin'); }
+    else if (a === '--timeout') { opts.timeout = Number(val()); if (!(opts.timeout > 0)) usage('--timeout needs seconds > 0'); }
     else if (a === '--json') opts.json = true;
     else if (a.startsWith('--')) usage(`unknown flag ${a}`);
     else pos.push(a);
