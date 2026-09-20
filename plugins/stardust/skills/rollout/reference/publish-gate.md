@@ -41,7 +41,14 @@ node skills/deploy/scripts/deploy-batch.mjs … --publish --paths <PASS rows>  #
   (unpublishing is an owner decision). `gate-publish.mjs` exits 2 on any FAIL,
   0 when every measured page passes, 3 when a page is blocked (challenge /
   auth) — never on 124. Under `flow: replica` a row is `verified` only with
-  `delivery.gate.status === 'pass'` (`coverage-model.md` § `delivery.gate`).
+  `delivery.gate.status === 'pass'` (`coverage-model.md` § `delivery.gate`), and
+  `verify.mjs --gate-report` writes `published-origin` into the row's `gatesPassed[]`
+  (`../../migrate/reference/fidelity-tiers.md` § Declaration). **Archetype rounds
+  carry `gate.sh … --record`** (sibling rounds never do): the round upserts
+  `stardust/replica/progress.json` `archetypes[].published.<bp>` via
+  `progress-record.mjs` — the slot `update-coverage.mjs --block … --status verified`
+  (the block claim gate, `coverage-model.md` § Block delivery status lifecycle) and
+  the Phase H `Archetypes` line read; `--dry-run` prints the flag per command.
 - **Escape hatches (operator / owner, never hands-off; both flags pending
   with the deploy hunk).** (a) `--publish-no-regression` — already-live rows only: a FAIL row whose every
   breakpoint is ≤ `bestOfLast3 + 1` point publishes, action recorded

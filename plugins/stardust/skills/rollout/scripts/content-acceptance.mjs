@@ -41,7 +41,9 @@
  *        [--source-main <sel>] [--source-exclude <sel,…>] [--tolerance k=v,…] [--report-only]
  *        [--skipped-allow <class,…>] [--trace <text>] [--class notes=<srcSel>=<tgtSel>]
  *        [--out stardust/migrated/_acceptance] [--json]
- * Exit: 0 pass (or --report-only) · 1 usage / unmeasured (a side missing) · 2 🔴 dropped content
+ * Exit: 0 pass (or --report-only) · 1 unmeasured (a side missing — no verdict, never usage) · 2 usage (USAGE on stderr) or 🔴 dropped content
+ * A misconfigured invocation (swallowed value flag, unknown --class / --tolerance, no --slug/--all) is exit 2, never 1:
+ * a driver that maps 1 to "unmeasured, re-run" (wave.mjs Gate 7) must park it, not loop on it.
  */
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join, dirname, resolve, basename } from 'node:path';
@@ -180,7 +182,9 @@ export function judge(cmp, { deviations = [], tolerance = {}, skipped = [], skip
 }
 
 // ---- CLI ----
-function arg(name, fallback) { const i = process.argv.indexOf(`--${name}`); if (i === -1) return fallback; const v = process.argv[i + 1]; if (v === undefined || v.startsWith('--')) { console.error(`content-acceptance: --${name} needs a value`); process.exit(1); } return v; }
+const USAGE = 'usage: content-acceptance.mjs --slug <s> | --all [--state <state.json>] [--source <html>] [--target <html> | --target-url <plain.html>] [--meta <_meta.json>] [--source-main <sel>] [--source-exclude <sel,…>] [--tolerance k=v,…] [--report-only] [--skipped-allow <class,…>] [--trace <text>] [--class notes=<srcSel>=<tgtSel>] [--out <dir>] [--json]\n  exit 0 pass (or --report-only) · 1 unmeasured (a side missing — no verdict) · 2 usage or 🔴 dropped content';
+const usage = (msg) => { console.error(`content-acceptance: ${msg}\n${USAGE}`); process.exit(2); };
+function arg(name, fallback) { const i = process.argv.indexOf(`--${name}`); if (i === -1) return fallback; const v = process.argv[i + 1]; if (v === undefined || v.startsWith('--')) usage(`--${name} needs a value (got ${v === undefined ? 'nothing' : v})`); return v; }
 const has = (f) => process.argv.includes(`--${f}`);
 const readJson = (p) => { try { return JSON.parse(readFileSync(p, 'utf8')); } catch { return null; } };
 const isMain = process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href;
@@ -216,7 +220,6 @@ function summaryMd(records, outDir) {
   return md.join('\n');
 }
 async function main() {
-  const USAGE = 'usage: content-acceptance.mjs --slug <s> | --all [--state <state.json>] [--source <html>] [--target <html> | --target-url <plain.html>] [--meta <_meta.json>] [--source-main <sel>] [--source-exclude <sel,…>] [--tolerance k=v,…] [--report-only] [--skipped-allow <class,…>] [--trace <text>] [--class notes=<srcSel>=<tgtSel>] [--out <dir>] [--json]\n  exit 0 pass (or --report-only) · 1 usage / unmeasured (a side missing) · 2 🔴 dropped content';
   if (has('help') || has('h')) { console.log(USAGE); process.exit(0); }
   const statePath = arg('state', 'stardust/state.json');
   const state = readJson(statePath) || { pages: [], migrate: {} };
@@ -227,12 +230,12 @@ async function main() {
   // --class notes=<srcSel>=<tgtSel>: the one optional paired class (T26.3); anything else is a usage error
   const classArg = arg('class', null);
   let notes = null;
-  if (classArg !== null) { const m = String(classArg).match(/^notes=([^=]+)=(.+)$/); if (!m) { console.error(`content-acceptance: --class takes notes=<srcSel>=<tgtSel> (got ${classArg})`); process.exit(1); } notes = { source: m[1].trim(), target: m[2].trim() }; }
-  for (const [k, v] of Object.entries(tolerance)) if (!['headings', 'links', 'images', 'listItems', 'tableRows', 'listDepth', 'nestedLists', 'tables', 'notes', 'words'].includes(k) || !Number.isFinite(v) || v < 0 || v > 1) { console.error(`content-acceptance: --tolerance ${k}=${v} — classes headings|links|images|listItems|tableRows|listDepth|nestedLists|tables|notes|words, value 0–1`); process.exit(1); }
+  if (classArg !== null) { const m = String(classArg).match(/^notes=([^=]+)=(.+)$/); if (!m) usage(`--class takes notes=<srcSel>=<tgtSel> (got ${classArg})`); notes = { source: m[1].trim(), target: m[2].trim() }; }
+  for (const [k, v] of Object.entries(tolerance)) if (!['headings', 'links', 'images', 'listItems', 'tableRows', 'listDepth', 'nestedLists', 'tables', 'notes', 'words'].includes(k) || !Number.isFinite(v) || v < 0 || v > 1) usage(`--tolerance ${k}=${v} — classes headings|links|images|listItems|tableRows|listDepth|nestedLists|tables|notes|words, value 0–1`);
   const skippedAllow = (arg('skipped-allow', '') || '').split(',').map((s) => s.trim()).filter(Boolean);
   const reportOnly = has('report-only');
   const slugArg = arg('slug', null);
-  if (!slugArg && !has('all')) { console.error(USAGE); process.exit(1); }
+  if (!slugArg && !has('all')) usage('--slug <s> or --all is required');
   const pages = has('all') ? (state.pages || []) : [(state.pages || []).find((p) => p.slug === slugArg) || { slug: slugArg }];
   const migratedDir = (state.migrate && state.migrate.outputDir) || 'stardust/migrated/';
   const pageMap = (state.migrate && state.migrate.pageMap) || [];

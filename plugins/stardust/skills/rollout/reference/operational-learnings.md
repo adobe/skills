@@ -19,6 +19,22 @@ composing existing blocks. Reach for a new block only when no composition of the
 library reproduces the section. This keeps the library small and makes extension an
 authoring task, not an engineering one.
 
+## Re-conversion blast radius (Phase C)
+
+A converter, generator or block-mapping fix that lands mid-rollout changes an
+unknown subset of the delivered pages — conversion is not byte-deterministic, so
+"it only touches pages with X" is an estimate. **Measure the affected set, never
+estimate it:**
+1. Re-convert the whole candidate superset into the git-tracked content tree
+   (the migrate converter / `importer-skeleton.mjs` over the slugs — files only, no PUT).
+2. `git diff --stat content/` (or `grep -l <new marker>`) names the pages the fix
+   actually changed — that is the affected set.
+3. `git checkout -- <path>` the untouched rest, so only the affected pages carry
+   new bytes into `wave.mjs` (its hash skip leaves the rest alone); re-gate that set
+   only (`gate-publish.mjs --slug`, Gate 8) before publishing it.
+The superset is usually far larger than the measured set; the diff is the record
+of what re-entered delivery — never the fix's description.
+
 ## Two verify checks a roster-driven batch misses (Phase E)
 
 A roster built from detail-page sitemaps omits these, so they get committed but

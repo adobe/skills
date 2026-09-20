@@ -46,7 +46,14 @@ import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, existsSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { runCapped, deployKey, ledgerRow, publishHold, STAGES, CLOSE_STEPS } from '../wave.mjs';
+import { runCapped, deployKey, ledgerRow, publishHold, holdNext, STAGES, CLOSE_STEPS } from '../wave.mjs';
+
+// holdNext: the readability re-drive is `verify --paths <served path>` (verify matches pathKey, never slugs) — NEGATIVE: `--paths news__foo` before
+assert.match(holdNext('ai-readability:fail', { slug: 'news__foo', path: '/news/foo' }, {}), / --paths \/news\/foo$/);
+assert.match(holdNext('ai-readability:ungated', { slug: 'home', path: '/' }, {}), / --paths \/index$/, 'home page → deploy-batch key /index');
+assert.match(holdNext('gate:ungated', { slug: 'news__foo', path: '/news/foo' }, { previewOrigin: 'https://x.aem.page' }), /gate-publish\.mjs --slug news__foo --origin https:\/\/x\.aem\.page$/, 'gate-publish stays slug-keyed');
+assert.match(holdNext('content:fail', { slug: 'news__foo', path: '/news/foo' }, {}), /content-acceptance\.mjs --slug news__foo$/);
+
 
 const HERE = import.meta.dirname;
 const WAVE = join(HERE, '..', 'wave.mjs');

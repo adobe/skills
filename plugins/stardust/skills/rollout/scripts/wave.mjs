@@ -203,12 +203,14 @@ export function publishHold({ gateReport, coverageRow, acceptance }, path) {
   if ((ew.dead || 0) > 0 || (ew.duplicated || 0) > 0) return 'editability:fail';
   return null;
 }
-/** The re-drive for a hold class — the instrument that produces the missing / failing artefact. */
-export function holdNext(reason, slug, ctx) {
+/** The re-drive for a hold class — the instrument that produces the missing / failing artefact. `row` = { slug, path }:
+ *  verify --paths selects served paths (lib pathKey), so the readability re-drive carries deployKey(path), never the slug. */
+export function holdNext(reason, row, ctx) {
   const gate = String(reason).split(':')[0];
+  const { slug, path } = typeof row === 'string' ? { slug: row, path: `/${row}` } : row;
   if (gate === 'gate') return `node skills/rollout/scripts/gate-publish.mjs --slug ${slug} --origin ${ctx.previewOrigin}`;
   if (gate === 'content') return `node skills/rollout/scripts/content-acceptance.mjs --slug ${slug}`;
-  if (gate === 'ai-readability') return `node skills/rollout/scripts/verify.mjs --ai-readability <ai-readability.json> --paths ${slug}`;
+  if (gate === 'ai-readability') return `node skills/rollout/scripts/verify.mjs --ai-readability <ai-readability.json> --paths ${deployKey(path)}`;
   return `node skills/rollout/scripts/update-coverage.mjs --gate editability <ew-editability.json>`;
 }
 function migratedFile(ctx, p) {
@@ -372,7 +374,7 @@ export async function runWave(args) {
         for (const r of todo) {
           const s = st.pages[r.slug];
           const why = !s.liveOk ? 'live-gate:pending' : publishHold({ gateReport, coverageRow: coverageNow.get(r.slug), acceptance: acceptanceRecord(ctx, r.slug) }, r.path);
-          if (why) { s.held = why; s.heldNext = why === 'live-gate:pending' ? null : holdNext(why, r.slug, ctx); console.error(`wave ${waveId}: ${r.slug} held — ${why}${s.heldNext ? ` · next: ${s.heldNext}` : ''}`); } else { delete s.held; delete s.heldNext; }
+          if (why) { s.held = why; s.heldNext = why === 'live-gate:pending' ? null : holdNext(why, r, ctx); console.error(`wave ${waveId}: ${r.slug} held — ${why}${s.heldNext ? ` · next: ${s.heldNext}` : ''}`); } else { delete s.held; delete s.heldNext; }
         }
         const held = todo.filter((r) => st.pages[r.slug].held && st.pages[r.slug].held !== 'live-gate:pending');
         if (held.length) statusLine(root, { event: 'blocked', detail: `publish hold: ${held.length} page(s) held (${[...new Set(held.map((r) => st.pages[r.slug].held))].join(', ')}) — previewed, not published`, next: st.pages[held[0].slug].heldNext });

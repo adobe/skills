@@ -9,18 +9,21 @@
 //   covered       a contentDeviations[] entry whose source matches the dropped item → covered,
 //                 exit 0, record lists it under covered[] (never a silent pass)
 //   tolerance     --tolerance links=0.5 lets the drop through and is echoed in the record + stdout;
-//                 an unknown class / out-of-range value is exit 1
+//                 an unknown class / out-of-range value is exit 2 (usage)
 //   report-only   --report-only: record written, exit 0 on a 🔴, gatesPassed NOT written
 //   zero-row      an empty target <main> → every class dropped + words ratio 0 → 🔴
 //   skipped       a compiler record with skipped[] fails on a class not in --skipped-allow
 //   unmeasured    missing source sidecar → exit 1, verdict unmeasured (never pass, never FAIL);
-//                 --help exit 0; no --slug/--all exit 1
+//                 --help exit 0; no --slug/--all exit 2 (usage, USAGE on stderr)
+//   usage         exit 2 is the rollout-family usage code (open-review-pairs, query-index, verify): a swallowed value flag
+//                 (`--slug --all`), a bad --class / --tolerance, no --slug/--all → 2 + USAGE, so a driver mapping exit 1
+//                 to "unmeasured, re-run" (wave.mjs Gate 7) parks a misconfigured command instead of looping (NEGATIVE: 1 before)
 //   scoping       --source-main / --source-exclude scope the source side and are recorded
 //   normKey       identical to content-inventory.mjs norm(): quotes, dashes, arrows, case, trailing punctuation
 //   structure     (T26.3 Gate B) fail-list-depth: same li count, a 3-level list flattened to one → 🔴 listDepth +
 //                 nestedLists; fail-table-count: two source tables, one emitted → 🔴 tables (tr count kept);
 //                 pass-nested: depth preserved → exit 0; --class notes=<src>=<tgt> pairs an admonition
-//                 selector with the target shape (recorded; a bad value is exit 1)
+//                 selector with the target shape (recorded; a bad value is exit 2)
 //   contact       a dropped mailto:/tel: link is a links drop (keyed by scheme + value); a bare `#` anchor is not
 //
 // Usage: node plugins/stardust/skills/rollout/scripts/content-acceptance.test.mjs  (exit 1 on failure)
@@ -156,7 +159,7 @@ r = run('--slug', 'fail-table-count'); assert.equal(r.status, 2, r.stdout); asse
 r = run('--slug', 'pass-nested'); assert.equal(r.status, 0, r.stdout); rec = json(join(T, 'stardust', 'migrated', '_acceptance', 'pass-nested.json')); assert.equal(rec.class.listDepth.emitted, 3); assert.equal(rec.class.tables.emitted, 2); assert.equal(rec.class.notes, undefined, 'notes is opt-in');
 r = run('--slug', 'drop-note', '--class', 'notes=.callout=.note'); assert.equal(r.status, 2, r.stdout); assert.match(r.stdout, /notes: 2 → 1/); rec = json(join(T, 'stardust', 'migrated', '_acceptance', 'drop-note.json')); assert.deepEqual(rec.classes, { notes: { source: '.callout', target: '.note' } }); assert.equal(rec.class.notes.source, 2);
 r = run('--slug', 'pass-nested', '--class', 'notes=.callout=.note'); assert.equal(r.status, 0, r.stdout); assert.equal(json(join(T, 'stardust', 'migrated', '_acceptance', 'pass-nested.json')).class.notes.emitted, 2);
-assert.equal(run('--slug', 'pass-nested', '--class', 'admonitions=.a=.b').status, 1, '--class takes notes=<src>=<tgt> only');
+r = run('--slug', 'pass-nested', '--class', 'admonitions=.a=.b'); assert.equal(r.status, 2, '--class takes notes=<src>=<tgt> only'); assert.match(r.stderr, /usage: content-acceptance\.mjs/);
 assert.equal(run('--slug', 'fail-list-depth', '--tolerance', 'listDepth=1,nestedLists=1').status, 0, 'structure classes take the explicit, recorded tolerance');
 // contact links — NEGATIVE: mailto/tel were excluded from the links class before
 r = run('--slug', 'drop-mailto'); assert.equal(r.status, 2, r.stdout); assert.match(r.stdout, /links: 4 → 3/); rec = json(join(T, 'stardust', 'migrated', '_acceptance', 'drop-mailto.json')); assert.deepEqual(rec.class.links.dropped.map((d) => d.key), ['email us|mailto:hello@example.example']);
@@ -170,7 +173,7 @@ rec = json(join(T, 'stardust', 'migrated', '_acceptance', 'covered.json')); asse
 // explicit tolerance lets the drop through and is echoed
 r = run('--slug', 'drop-link', '--tolerance', 'links=0.5'); assert.equal(r.status, 0, r.stdout); assert.match(r.stdout, /tolerances links=0\.5/);
 assert.deepEqual(json(join(T, 'stardust', 'migrated', '_acceptance', 'drop-link.json')).tolerances, { links: 0.5 });
-assert.equal(run('--slug', 'ok', '--tolerance', 'ctas=0.1').status, 1); assert.equal(run('--slug', 'ok', '--tolerance', 'links=2').status, 1);
+assert.equal(run('--slug', 'ok', '--tolerance', 'ctas=0.1').status, 2); assert.equal(run('--slug', 'ok', '--tolerance', 'links=2').status, 2);
 // report-only: record written, exit 0, gatesPassed NOT written
 r = run('--slug', 'drop-h2', '--report-only'); assert.equal(r.status, 0); assert.equal(json(join(T, 'stardust', 'migrated', '_acceptance', 'drop-h2.json')).verdict, 'fail');
 { const mp = join(T, 'stardust', 'migrated', 'covered', '_meta.json'); const m = json(mp); m.gatesPassed = ['delivery-lint']; writeFileSync(mp, JSON.stringify(m)); }
@@ -201,7 +204,9 @@ assert.deepEqual(json(join(T, 'stardust', 'migrated', '_acceptance', 'ok.json'))
 const jd = judge({ headings: { source: 2, emitted: 1, dropped: [{ key: 'h2:get a quote', source: 1, emitted: 0 }], extra: [] }, links: { source: 0, emitted: 0, dropped: [], extra: [] }, images: { source: 0, emitted: 0, dropped: [], extra: [] }, listItems: { source: 0, emitted: 0, dropped: [], extra: [] }, tableRows: { source: 0, emitted: 0, dropped: [], extra: [] }, words: { source: 100, emitted: 100, ratio: 1 } }, { deviations: [{ source: 'Something else' }] });
 assert.equal(jd.verdict, 'fail'); assert.equal(jd.covered.length, 0);
 // usage
-assert.equal(run().status, 1); assert.equal(spawnSync(process.execPath, [CLI, '--help'], { encoding: 'utf8' }).status, 0);
+r = run(); assert.equal(r.status, 2, 'no --slug/--all is usage'); assert.match(r.stderr, /--slug <s> or --all is required[\s\S]*usage: content-acceptance\.mjs/);
+r = run('--slug', '--all'); assert.equal(r.status, 2, 'a value flag swallowing the next flag is usage, never unmeasured'); assert.match(r.stderr, /--slug needs a value \(got --all\)/);
+assert.equal(spawnSync(process.execPath, [CLI, '--help'], { encoding: 'utf8' }).status, 0);
 // zero source hits: the script never fetches unless --target-url is given
 const src = readFileSync(CLI, 'utf8');
 assert.equal((src.match(/fetch\(/g) || []).length, 1, 'one fetch — the --target-url delivery-origin hit only');

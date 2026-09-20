@@ -5,6 +5,8 @@
 //            sample silently before — NEGATIVE); `--timeout abc` stays exit 2
 //   denied   a 401/403 on the bulk-index POST is a denial, not "no verdict": INDEX-CONFIG.md written for an org admin,
 //            index-status.json verdict denied, exit 3 (NEGATIVE: exit 4 "unreachable" before); no read-back request
+//   replace  the remote query.yaml carries an index the file lacks and --replace is absent → exit 2 after the one config GET,
+//            nothing posted, no index-status.json (NEGATIVE: exit 3 before — the code listings.md maps to scaffolded-awaiting-owner)
 //
 // Offline: a local mock admin on 127.0.0.1 (config GET 404 → POST 200 → index POST 403); the evals fixture yaml +
 // coverage are read, never written. Usage: node plugins/stardust/skills/rollout/scripts/test/query-index.test.mjs
@@ -52,5 +54,15 @@ assert.ok(existsSync(cfg), 'INDEX-CONFIG.md written for an org admin'); assert.m
 const st = JSON.parse(readFileSync(join(T, 'stardust', 'dynamics', 'index-status.json'), 'utf8'));
 assert.equal(st.registered, 'denied'); assert.equal(st.exit, 3); assert.match(st.reason, /HTTP 403/);
 assert.deepEqual(hits.map((h) => h.split(' ')[0]), ['GET', 'POST', 'POST'], 'config GET, config POST, index POST — no read-back after the denial');
+// replace refusal: remote names absent from the file → exit 2 (usage class), GET only, no status file
+const hits2 = [];
+const server2 = createServer((req, res) => { hits2.push(`${req.method} ${req.url}`); res.writeHead(200, { 'content-type': 'text/plain' }); res.end(req.method === 'GET' ? 'version: 1\nindices:\n  locations:\n    target: /locations/query-index.json\n  news:\n    target: /news/query-index.json\n' : '{}'); });
+await new Promise((ok) => server2.listen(0, '127.0.0.1', ok));
+rmSync(join(T, 'stardust', 'dynamics', 'index-status.json'), { force: true }); // the denied record above must not mask 'nothing written'
+const r2 = await runAsync('--admin', `http://127.0.0.1:${server2.address().port}`, '--origin', 'http://127.0.0.1:9', '--sample', '/locations/harbourview');
+server2.close();
+assert.equal(r2.status, 2, `${r2.stdout}\n${r2.stderr}`); assert.match(r2.stderr, /REFUSED: the remote query\.yaml carries index name\(s\) the file does not: news/);
+assert.deepEqual(hits2.map((h) => h.split(' ')[0]), ['GET'], 'one config GET, nothing posted');
+assert.ok(!existsSync(join(T, 'stardust', 'dynamics', 'index-status.json')), 'no status file: the gate keeps reading missing, not denied');
 rmSync(T, { recursive: true, force: true });
-console.log('query-index.test: ok (usage exit 2 on a swallowed flag; bulk-index 403 → INDEX-CONFIG.md + exit 3, token never printed, no read-back)');
+console.log('query-index.test: ok (usage exit 2 on a swallowed flag; bulk-index 403 → INDEX-CONFIG.md + exit 3, token never printed, no read-back; replace refusal exit 2, GET only)');

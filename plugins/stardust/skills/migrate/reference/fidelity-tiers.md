@@ -17,7 +17,7 @@ trade so a reviewer can see, per page, what was and wasn't checked.
 | Tier | Render branch | Gates it MUST pass | When |
 |---|---|---|---|
 | **archetype** | Path A (approved prototype) | Full `prototype` gate stack: critique, audit, mobile-adapt, anti-template, content-sourcing, `:root` + data-attribute contracts | One representative page **per template**. The design canon. |
-| **sibling** | Path A′ (canon-fork) | **Variance-probed** (§ Sibling variance probe — run once per template BEFORE cloning) + structural clone of the archetype + **content-fidelity** (verbatim source copy, no fabrication, **measured** — § Content-count acceptance) + **delivery-lint** + **media-reconcile**. NOT full craft. A scripted sibling importer is `skills/migrate/scripts/importer-skeleton.mjs` driven by `stardust/import/vocabulary.json` (`importer-recipe.md` § Skeleton contract). | Every other page of a template the archetype already covers. **The cheap default for breadth.** |
+| **sibling** | Path A′ (canon-fork) | **Variance-probed** (§ Sibling variance probe — run once per template BEFORE cloning) + structural clone of the archetype + **content-fidelity** (verbatim source copy, no fabrication, **measured** — § Content-count acceptance) + **delivery-lint** + **media-reconcile** + **published-origin evidence** (its own `gate-publish.mjs` row, sampled or every page — `skills/rollout/reference/publish-gate.md` § Gate 8). NOT full craft. A scripted sibling importer is `skills/migrate/scripts/importer-skeleton.mjs` driven by `stardust/import/vocabulary.json` (`importer-recipe.md` § Skeleton contract). | Every other page of a template the archetype already covers. **The cheap default for breadth.** |
 | **thin** | unique (graceful) | delivery-lint + media-reconcile + a declared `contentGap`. Renders metadata + hero + whatever real content exists (e.g. a PDF link). No fabricated filler. | Pages with little/no body content (PDF-only, redirect stubs, bodyless landing). |
 
 The point of the table: **archetype is craft-gated once per template; siblings
@@ -209,13 +209,17 @@ Every page row in `state.json` and `coverage/pages.json` carries:
 ```json
 "fidelityTier": "archetype" | "sibling" | "thin",
 "archetypeSource": "<slug>",        // for sibling/thin: which archetype it forked
-"gatesPassed": ["archetype-gate", "variance-probe", "delivery-lint", "media-reconcile", "content-fidelity", "content-count"],
+"gatesPassed": ["archetype-gate", "variance-probe", "delivery-lint", "media-reconcile", "content-fidelity", "content-count", "published-origin"],
 "variants": ["hero compact", "tiers disc"],   // sibling: variant classes the probe called for (empty = template-constant)
 "contentGap": "source is a PDF download; no HTML body",   // thin only
 "deviation": "no h1 (source has none)"   // from delivery-lint --json under --allow-no-h1; omitted when the page has its h1
 ```
 
 `archetype-gate` — the page was rendered under a type `replica/scripts/gate-ledger-lint.mjs` passed (recorded by `migrate`, never typed).
+`published-origin` — the page's LATEST `gate-publish.mjs` round passed at every configured breakpoint; written to the coverage row by
+`rollout/scripts/verify.mjs --gate-report` (read, never re-judged) and removed by a failed re-gate. An archetype's round also runs
+`gate.sh --record`, upserting `stardust/replica/progress.json` `archetypes[].published.<bp>` — the slot the block claim gate reads.
+A page without the value is `ungated` in the coverage line — a sibling never inherits its archetype's number.
 
 `inventory.mjs` seeds the tier from the render branch; `migrate` confirms it;
 `verify.mjs` reads `delivery.type` (page/fragment/index) independently. Tier and
