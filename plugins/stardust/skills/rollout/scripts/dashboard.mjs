@@ -19,7 +19,7 @@
  */
 import { join } from 'node:path';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
-import { readJSON, writeJSON } from './lib.mjs';
+import { readJSON, writeJSON, blockCounts } from './lib.mjs';
 
 if (process.argv.includes('--help')) { console.log('Usage: node skills/rollout/scripts/dashboard.mjs [--out <rolloutDir>]\n  exit 0 written · 2 coverage missing'); process.exit(0); }
 const i = process.argv.indexOf('--out');
@@ -147,7 +147,7 @@ const snapshot = {
     const members = model.filter((p) => p.templateId === t.id);
     return { id: t.id, archetype: t.representativeSlug, pageCount: members.length, stages: STAGES.reduce((m, s) => { m[s] = members.filter((p) => p.stage === s).length; return m; }, {}) };
   }),
-  blocks: { total: blocks.length, converted: blocks.filter((b) => ['converted', 'deployed', 'verified'].includes(b.delivery && b.delivery.status)).length, ewFail: blocks.filter((b) => b.delivery && b.delivery.ewGate === 'fail').length },
+  blocks: { ...blockCounts(blocks), ewFail: blocks.filter((b) => b.delivery && b.delivery.ewGate === 'fail').length }, // converted excludes ewGate fail | unmeasured (ewHeld) — lib.mjs blockCounts
   // gate roll-ups copied from rollout.json lastRun.gates (update-coverage --gate / verify --ai-readability) — never computed here
   gates: (config.lastRun && config.lastRun.gates) || null,
   quality: scorecard ? { overall: scorecard.current.overall, dimensions: scorecard.current.dimensions, severity: scorecard.current.severity, history: (scorecard.history || []).map((h) => h.overall) } : null,

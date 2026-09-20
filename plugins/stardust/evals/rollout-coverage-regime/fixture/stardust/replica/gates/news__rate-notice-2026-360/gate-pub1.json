@@ -1,0 +1,27 @@
+{
+  "slug": "news__rate-notice-2026",
+  "label": "pub1",
+  "width": 360,
+  "regime": "published-origin",
+  "at": "2026-09-18T10:20:00Z",
+  "iteration": 1,
+  "ref": {
+    "url": "https://www.larkspurmutual.example/news/rate-notice-2026/",
+    "width": 360,
+    "capturedAt": "2026-09-18T09:20:00Z",
+    "sidecar": "stardust/replica/gates/news__rate-notice-2026-360/live.png.json",
+    "instrument": "stitch-shot",
+    "technique": "stitched"
+  },
+  "build": {
+    "url": "https://main--larkspur-mutual--larkspur.aem.page/news/rate-notice-2026"
+  },
+  "verdict": "PASS",
+  "exit": 0,
+  "pixelPct": 7.1,
+  "pixelPctUnmasked": 7.9,
+  "heightDelta": -4,
+  "pass": true,
+  "threshold": 10,
+  "differingPixels": 36799
+}

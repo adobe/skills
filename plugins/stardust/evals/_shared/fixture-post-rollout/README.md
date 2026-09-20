@@ -17,6 +17,7 @@ verified but NOT closed. Used by `evals/rollout-wave-close/` and by
 | `stardust/decisions.md` | tracking = none, commit = phase-end |
 | absent | `stardust/learnings.md`, `stardust/rollout/review-pack.{md,json}`, `stardust/rollout/report/` |
 
-Expected `close-check.mjs` as-is: rows learnings, review, dashboard `[ ]` (exit 1); report `[-]`;
+Expected `close-check.mjs` as-is: rows learnings, review, dashboard, report `[ ]` (exit 1);
 tracking `[-]`; commit `[~]` (not a git repository). `--fix` closes review + dashboard; the
-ledger entry for the flagged residual is agent work.
+ledger entry for the flagged residual and the report file (`report/<wave-ts>.md`: gate table +
+`report-check:` line) are agent work.

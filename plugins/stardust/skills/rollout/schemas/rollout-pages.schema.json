@@ -74,7 +74,7 @@
             "error": { "type": ["string", "null"], "description": "Failure detail when status == failed." },
             "gates": {
               "type": "object",
-              "description": "Per-page gate results ingested by update-coverage --gate <name> <json> / verify --ai-readability (reference/delivery-gates.md § Gate 5, § Gate 6). Copied from the instrument's artifact, never typed. unmeasured = the instrument gave no verdict; the row's status is untouched.",
+              "description": "Per-page gate results ingested by update-coverage --gate <name> <json> / verify --ai-readability (reference/measured-gates.md § Gate 5, § Gate 6). Copied from the instrument's artifact, never typed. unmeasured = the instrument gave no verdict; the row's status is untouched.",
               "additionalProperties": false,
               "properties": {
                 "ai-readability": {
@@ -106,7 +106,7 @@
             },
             "gate": {
               "type": "object",
-              "description": "Published-origin PAGE gate (gate-publish.mjs --report / verify.mjs --gate-report; reference/delivery-gates.md § Gate 8). Read from stardust/rollout/gate-report.json, never typed. Under flow: replica a row is verified only with status pass.",
+              "description": "Published-origin PAGE gate (gate-publish.mjs --report / verify.mjs --gate-report; reference/publish-gate.md § Gate 8). Read from stardust/rollout/gate-report.json, never typed. Under flow: replica a row is verified only with status pass.",
               "required": ["status"],
               "additionalProperties": false,
               "properties": {

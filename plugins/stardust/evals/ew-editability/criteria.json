@@ -40,7 +40,7 @@
     {
       "name": "gate_result_recorded",
       "max_score": 5,
-      "description": "Before 'ready to push' the report quotes the whole-page probe totals from the ew-editability-probe.mjs --json artifact (authored / editable / dead = 0 outside declared exemptions / duplicated = 0) and, in a rollout, the row is ingested with update-coverage.mjs --gate editability <json> — the result is recorded, not asserted (rollout delivery-gates.md § Gate 6)."
+      "description": "Before 'ready to push' the report quotes the whole-page probe totals from the ew-editability-probe.mjs --json artifact (authored / editable / dead = 0 outside declared exemptions / duplicated = 0) and, in a rollout, the row is ingested with update-coverage.mjs --gate editability <json> — the result is recorded, not asserted (rollout measured-gates.md § Gate 6)."
     },
     {
       "name": "edit_mode_simulation_clean",

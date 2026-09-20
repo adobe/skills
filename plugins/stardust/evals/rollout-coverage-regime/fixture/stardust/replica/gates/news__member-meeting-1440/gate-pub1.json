@@ -1,0 +1,27 @@
+{
+  "slug": "news__member-meeting",
+  "label": "pub1",
+  "width": 1440,
+  "regime": "published-origin",
+  "at": "2026-09-18T10:20:00Z",
+  "iteration": 1,
+  "ref": {
+    "url": "https://www.larkspurmutual.example/news/member-meeting/",
+    "width": 1440,
+    "capturedAt": "2026-09-18T09:20:00Z",
+    "sidecar": "stardust/replica/gates/news__member-meeting-1440/live.png.json",
+    "instrument": "stitch-shot",
+    "technique": "stitched"
+  },
+  "build": {
+    "url": "https://main--larkspur-mutual--larkspur.aem.page/news/member-meeting"
+  },
+  "verdict": "PASS",
+  "exit": 0,
+  "pixelPct": 6.2,
+  "pixelPctUnmasked": 7.0,
+  "heightDelta": 2,
+  "pass": true,
+  "threshold": 10,
+  "differingPixels": 32134
+}

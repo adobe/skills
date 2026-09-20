@@ -1,0 +1,63 @@
+{
+  "slug": "insurance__life",
+  "type": "program",
+  "renderBranch": "A'",
+  "tier": "sibling",
+  "template": "insurance__home",
+  "archetypePath": "stardust/prototypes/insurance__home-proposed.html",
+  "archetypeSha": "91aa145573f0",
+  "modules": [
+    "product-hero",
+    "feature-list",
+    "quote-cta"
+  ],
+  "slotsFilled": [
+    "headline",
+    "lede",
+    "primary-cta",
+    "heading",
+    "feature",
+    "copy"
+  ],
+  "variants": [
+    {
+      "block": "feature-list",
+      "variant": "items-5",
+      "evidence": "sibling-variance: 5 features vs 4 on archetype"
+    }
+  ],
+  "canonShas": {
+    "header": "9df3d58a07d2",
+    "footer": "323f63aaa91f",
+    "css": "c8372774ba5a"
+  },
+  "deviations": [],
+  "migrationDecisions": [
+    {
+      "kind": "register-applied",
+      "entry": "R-01",
+      "where": "footer",
+      "detail": "footer link colour lifted per inconsistency register; expected gate delta in footer band"
+    }
+  ],
+  "metadata": {
+    "title": "Life insurance — Larkspur Mutual",
+    "description": "Liability, collision and comprehensive coverage with a local repair network and lifetime workmanship guarantee.",
+    "canonical": "https://www.larkspurmutual.example/insurance/life/",
+    "ogTitle": "Auto insurance — Larkspur Mutual",
+    "lang": "en"
+  },
+  "jsonLd": {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "Life insurance — Larkspur Mutual",
+    "url": "https://www.larkspurmutual.example/insurance/life/"
+  },
+  "migratedAt": "2026-09-10T15:39:21Z",
+  "designMdSha": "a99e7fb42deeab5a131ba0b090a9a4ce6eaecf7e81be48128bfee70e3fd49a3e",
+  "designJsonSha": "27bf506c89928d5aab22bb3ff836aa673ff4a4fcd8f50e336ad0be1ef12f3a11",
+  "sourceCurrentSha": "d81e1dfb77ec6ab01210e62ea77dd2b85fdac6cd1c179844508a1f2af00c83f5",
+  "sourceProposedSha": null,
+  "assetsBundled": 3,
+  "brokenInternalLinks": 0
+}

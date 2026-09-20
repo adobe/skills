@@ -1,0 +1,27 @@
+{
+  "slug": "insurance__home",
+  "label": "pub1",
+  "width": 360,
+  "regime": "published-origin",
+  "at": "2026-09-18T10:20:00Z",
+  "iteration": 1,
+  "ref": {
+    "url": "https://www.larkspurmutual.example/insurance/home/",
+    "width": 360,
+    "capturedAt": "2026-09-18T09:20:00Z",
+    "sidecar": "stardust/replica/gates/insurance__home-360/live.png.json",
+    "instrument": "stitch-shot",
+    "technique": "stitched"
+  },
+  "build": {
+    "url": "https://main--larkspur-mutual--larkspur.aem.page/insurance/home"
+  },
+  "verdict": "PASS",
+  "exit": 0,
+  "pixelPct": 5.8,
+  "pixelPctUnmasked": 6.6,
+  "heightDelta": 2,
+  "pass": true,
+  "threshold": 10,
+  "differingPixels": 30061
+}

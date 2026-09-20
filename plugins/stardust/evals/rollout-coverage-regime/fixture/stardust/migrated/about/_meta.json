@@ -1,0 +1,65 @@
+{
+  "slug": "about",
+  "type": "landing",
+  "renderBranch": "A'",
+  "tier": "sibling",
+  "template": "home",
+  "archetypePath": "stardust/prototypes/home-proposed.html",
+  "archetypeSha": "cd2a66643ec2",
+  "modules": [
+    "hero-statement",
+    "coverage-tiles",
+    "agent-locator-cta"
+  ],
+  "slotsFilled": [
+    "headline",
+    "lede",
+    "primary-cta",
+    "heading",
+    "tile-title",
+    "tile-copy",
+    "copy",
+    "cta"
+  ],
+  "variants": [
+    {
+      "block": "coverage-tiles",
+      "variant": "tiles-4",
+      "evidence": "sibling-variance: 4 tiles vs 3 on archetype"
+    }
+  ],
+  "canonShas": {
+    "header": "9df3d58a07d2",
+    "footer": "323f63aaa91f",
+    "css": "c8372774ba5a"
+  },
+  "deviations": [],
+  "migrationDecisions": [
+    {
+      "kind": "register-applied",
+      "entry": "R-01",
+      "where": "footer",
+      "detail": "footer link colour lifted per inconsistency register; expected gate delta in footer band"
+    }
+  ],
+  "metadata": {
+    "title": "About Larkspur Mutual — member-owned since 1931",
+    "description": "Property, liability and commercial auto coverage for shops, farms and contractors in the three river counties.",
+    "canonical": "https://www.larkspurmutual.example/about/",
+    "ogTitle": "Business insurance — Larkspur Mutual",
+    "lang": "en"
+  },
+  "jsonLd": {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "About Larkspur Mutual — member-owned since 1931",
+    "url": "https://www.larkspurmutual.example/about/"
+  },
+  "migratedAt": "2026-09-10T15:33:47Z",
+  "designMdSha": "a99e7fb42deeab5a131ba0b090a9a4ce6eaecf7e81be48128bfee70e3fd49a3e",
+  "designJsonSha": "27bf506c89928d5aab22bb3ff836aa673ff4a4fcd8f50e336ad0be1ef12f3a11",
+  "sourceCurrentSha": "142bd839dcdfea4c067f04861bfecda78e4eee4384c2396ec34d674d54cc5bcd",
+  "sourceProposedSha": null,
+  "assetsBundled": 3,
+  "brokenInternalLinks": 0
+}

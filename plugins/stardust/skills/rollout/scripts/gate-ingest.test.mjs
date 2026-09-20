@@ -129,6 +129,28 @@ writeFileSync(join(T, 'ew2.json'), JSON.stringify([ew[2]]));
 uc('--gate', 'editability', join(T, 'ew2.json'));
 assert.equal(json(blocksPath).blocks.find((b) => b.id === 'cards').delivery.ewGate, 'unmeasured');
 
+// ---- Gate 6 on the block lifecycle: `converted` requires ewGate pass | exempt (coverage-model.md § Block lifecycle) ----
+{ const bdoc = json(blocksPath);
+  bdoc.blocks.push({ id: 'ticker', signature: 't', delivery: { status: 'pending' } });
+  const cards = bdoc.blocks.find((b) => b.id === 'cards'); cards.delivery.status = 'pending'; // ewGate is unmeasured from the run above
+  writeFileSync(blocksPath, JSON.stringify(bdoc));
+  const blk = (id) => spawnSync(process.execPath, [join(HERE, 'update-coverage.mjs'), '--block', id, '--status', 'converted', '--out', OUT], { encoding: 'utf8' });
+  let r = blk('cards'); assert.equal(r.status, 1, 'ewGate unmeasured → converted refused'); assert.match(r.stderr, /cannot be converted: ewGate unmeasured .*URL mode/);
+  assert.equal(json(blocksPath).blocks.find((b) => b.id === 'cards').delivery.status, 'pending', 'nothing written');
+  r = blk('ticker'); assert.equal(r.status, 1, 'no verdict ingested → refused'); assert.match(r.stderr, /no editability verdict ingested/);
+  const d2 = json(blocksPath); d2.blocks.find((b) => b.id === 'cards').delivery.ewGate = 'fail'; d2.blocks.find((b) => b.id === 'cards').delivery.ew = { authored: 6, editable: 2, dead: 4, exempt: 0, duplicated: 0 }; d2.blocks.find((b) => b.id === 'hero').delivery.ewGate = 'pass'; writeFileSync(blocksPath, JSON.stringify(d2));
+  r = blk('cards'); assert.equal(r.status, 1, 'ewGate fail → refused'); assert.match(r.stderr, /ewGate fail \(dead 4\)/); assert.doesNotMatch(r.stderr, /--skip-ew|--no-ew/);
+  r = blk('hero'); assert.equal(r.status, 0, `ewGate pass → converted\n${r.stderr}`); assert.equal(json(blocksPath).blocks.find((b) => b.id === 'hero').delivery.status, 'converted');
+  const d3 = json(blocksPath); d3.blocks.find((b) => b.id === 'ticker').delivery.ewGate = 'exempt'; writeFileSync(blocksPath, JSON.stringify(d3));
+  assert.equal(blk('ticker').status, 0, 'ewGate exempt → converted');
+  // roll-up: a block past pending with ewGate fail | unmeasured is ewHeld, not converted; schema keys only
+  const d4 = json(blocksPath); d4.blocks.find((b) => b.id === 'cards').delivery.status = 'converted'; writeFileSync(blocksPath, JSON.stringify(d4));
+  assert.equal(blk('hero').status, 0);
+  const lr = json(configPath).lastRun.blocks;
+  assert.equal(lr.ewHeld, 1, 'cards (converted, ewGate fail) is ewHeld'); assert.equal(lr.converted, d4.blocks.filter((b) => ['converted', 'deployed', 'verified'].includes(b.delivery.status)).length - 1, 'and not counted as converted');
+  assert.deepEqual(unknownKeys(json(configPath), schema('rollout-config.schema.json'), 'rollout.json'), [], 'lastRun.blocks.ewHeld is a schema key'); }
+
+
 // usage
 assert.equal(uc('--gate', 'nope', join(T, 'air.json')).status, 2);
 assert.equal(uc('--gate', 'ai-readability', join(T, 'missing.json')).status, 2);
@@ -163,4 +185,4 @@ assert.equal(r.status, 0, r.stdout); assert.match(r.stdout, /pages < 98: 0 · un
 r = vr('--ai-readability', join(T, 'bad.json')); assert.equal(r.status, 2); assert.match(r.stderr, /pages\[\] missing|not valid|unreadable/);
 
 rmSync(T, { recursive: true, force: true });
-console.log('gate-ingest.test: ok (matcher, ai-readability below/unmeasured/roll-up, editability page + block rows, schema keys after every ingest, verify --ai-readability exit 2 on unmeasured, usage)');
+console.log('gate-ingest.test: ok (matcher, ai-readability below/unmeasured/roll-up, editability page + block rows, schema keys after every ingest, verify --ai-readability exit 2 on unmeasured, usage, converted requires ewGate pass|exempt + ewHeld roll-up)');

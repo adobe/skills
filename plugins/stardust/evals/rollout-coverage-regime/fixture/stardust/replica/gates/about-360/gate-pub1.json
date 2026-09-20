@@ -1,0 +1,27 @@
+{
+  "slug": "about",
+  "label": "pub1",
+  "width": 360,
+  "regime": "published-origin",
+  "at": "2026-09-18T10:20:00Z",
+  "iteration": 1,
+  "ref": {
+    "url": "https://www.larkspurmutual.example/about/",
+    "width": 360,
+    "capturedAt": "2026-09-18T09:20:00Z",
+    "sidecar": "stardust/replica/gates/about-360/live.png.json",
+    "instrument": "stitch-shot",
+    "technique": "stitched"
+  },
+  "build": {
+    "url": "https://main--larkspur-mutual--larkspur.aem.page/about"
+  },
+  "verdict": "PASS",
+  "exit": 0,
+  "pixelPct": 4.9,
+  "pixelPctUnmasked": 5.7,
+  "heightDelta": 3,
+  "pass": true,
+  "threshold": 10,
+  "differingPixels": 25396
+}

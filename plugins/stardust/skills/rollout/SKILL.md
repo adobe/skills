@@ -37,9 +37,9 @@ Outputs (under `stardust/rollout/`): `coverage/{pages,templates,blocks}.json` ·
 | A | `reference/coverage-model.md` § Files · § Page delivery status lifecycle · § Artifact type + fidelity tier · § Idempotency rules (inventory) |
 | B | `reference/coverage-model.md` § Block delivery status lifecycle · § Dedup contract (plan.json); `reference/operational-learnings.md` § Extending a delivered site |
 | B2 / D2 | `../dynamics/reference/triage.md` § Rules; `../dynamics/reference/listings.md` § Why it is a PRE-IMPORT gate · § Block contract; `../dynamics/reference/patterns.md`; `../dynamics/reference/parity-report.md` § Schema |
-| C | `reference/delivery-lint.md` § Run it · § Where it sits in Phase C; `reference/delivery-gates.md` § Gate 1 · § Gate 2 · § Gate 3 · § Gate 4 · § Gate 5 · § Gate 6 · § Gate 7 · § Gate 8 · § Batched delivery at scale; `../deploy/reference/chrome.md` § Chrome states and variants; `../migrate/reference/fidelity-tiers.md` § Declaration (per page); `../migrate/reference/media-reconciliation.md` § The four decisions; waves: `../stardust/reference/fan-out.md` § Worker contract · § Scope and type of delegated agents; `../stardust/reference/harness-quirks.md`; `../deploy/da-deploy-protocol.md` § Two clocks; code-writing waves: `../deploy/reference/block-agents-brief.md` § The brief template · § Shared cores and variants |
+| C | `reference/delivery-lint.md` § Run it · § Where it sits in Phase C; `reference/delivery-gates.md` § Gate 1 · § Gate 2 · § Gate 3 · § Gate 4 · § Batched delivery at scale; `reference/measured-gates.md` § Gate 5 · § Gate 6 · § Gate 7; `reference/publish-gate.md` § Gate 8; `../deploy/reference/chrome.md` § Chrome states and variants; `../migrate/reference/fidelity-tiers.md` § Declaration (per page); `../migrate/reference/media-reconciliation.md` § The four decisions; waves: `../stardust/reference/fan-out.md` § Worker contract · § Scope and type of delegated agents; `../stardust/reference/harness-quirks.md`; `../deploy/da-deploy-protocol.md` § Two clocks; code-writing waves: `../deploy/reference/block-agents-brief.md` § The brief template · § Shared cores and variants |
 | D3 | `reference/multilingual.md` |
-| E / E2 | `reference/coverage-model.md` § Verify · § `delivery.gate`; `reference/delivery-gates.md` § Gate 8 → Coverage regime; `reference/operational-learnings.md` § Two verify checks; `reference/sweep-protocol.md` (site-scale fix loop, after verify); `../stardust/reference/context-hygiene.md` § Runner reports and session hand-off |
+| E / E2 | `reference/coverage-model.md` § Verify · § `delivery.gate`; `reference/publish-gate.md` § Gate 8 → Coverage regime; `reference/operational-learnings.md` § Two verify checks; `reference/sweep-protocol.md` (site-scale fix loop, after verify); `../stardust/reference/context-hygiene.md` § Runner reports and session hand-off |
 | F / G | `reference/audit-sources.md` § The sources · § Recording an external finding · § Fixability → who fixes it · § AEM autofix registry · § The loop; `reference/checks.md`; `reference/coverage-model.md` § Optimize gate (findings lifecycle); `reference/operational-learnings.md` § Optimize-gate learnings |
 | H | `reference/wave-close.md` § Rows · § Escape hatch; `../stardust/reference/handoff-report.md` § Gate table first · § Source → target · § Residuals, links, report check; `../replica/reference/source-fidelity-gate.md` § Per-breakpoint procedure; `../dynamics/reference/parity-report.md` rule 8; `../stardust/reference/learnings.md` § Entry shape |
 
@@ -65,8 +65,7 @@ tree: `stardust migrate` the archetypes first. Single page: `stardust deploy`.
    the archetypes + a `state.json` with `type` populated).
    **Gated-archetype precondition (`flow: replica`).** Run
    `node skills/replica/scripts/gate-ledger-lint.mjs --state stardust/state.json`
-   (the reader of `stardust/replica/progress.json`;
-   `skills/replica/reference/source-fidelity-gate.md` § Residual logging format —
+   (`skills/replica/reference/source-fidelity-gate.md` § Residual logging format —
    a shape it cannot read is not a pass). Exit 2 lists each blocked type with
    its archetype slug and the command to gate it (`$stardust replica <archetype>`):
    neither fan out its siblings nor `POST /live/` them; other types proceed.
@@ -163,7 +162,7 @@ types are absent). For each page:
    node skills/rollout/scripts/delivery-lint.mjs --file <html> --path </da/path> --icons-dir icons [--allow-no-h1] [--chrome-docs content/nav.html,content/footer.html,…]
    node skills/rollout/scripts/media-reconcile.mjs --file <html> --deploy-host <branch>--<repo>--<owner>.aem.live [--apply]
    ```
-   `content-acceptance` is the content-count gate (`reference/delivery-gates.md` § Gate 7):
+   `content-acceptance` is the content-count gate (`reference/measured-gates.md` § Gate 7):
    a dropped class not covered by `contentDeviations[]`, or words ratio < 0.9, is 🔴.
    `media-reconcile` resolves every image and decides optimize/keep/rewrite/omit
    (`skills/migrate/reference/media-reconciliation.md`) — the image-fidelity gate's
@@ -207,7 +206,7 @@ types are absent). For each page:
    ```
    **Gate on preview, then publish explicitly.** The default run is `PUT →
    preview`; the page gate is `gate-publish.mjs` (every delivered page ≤ 150, else
-   archetypes + the seeded sample — `reference/delivery-gates.md` § Gate 8); the
+   archetypes + the seeded sample — `reference/publish-gate.md` § Gate 8); the
    separate `deploy-batch.mjs … --publish` run takes the PASS rows only (`--paths`;
    report hold pending — § Gate 8) unless `decisions.md` records publish-to-live
    (D16) — hands-off stops at preview, never passes the escape flags (indexes:
@@ -294,9 +293,8 @@ without a gate PASS at `deployed` (read, never re-judged); `--ai-readability
 <live-run json>` flips `code < 98` to `failed`, leaves `unmeasured` untouched and
 exits 2 while any remain (≤ 150 pages: all; above: listing pages + the Gate 8
 sample). The qa `editability` check (URL mode) runs on the first delivered page
-per template, ingested with `--gate`. Its summary lines (each printed only when non-zero), which rows, link
-classes, the `links.outsideInventory` policy and the exit map:
-`reference/coverage-model.md` § Verify.
+per template, ingested with `--gate`. Summary lines, rows, link classes, the
+`links.outsideInventory` policy and the exit map: `reference/coverage-model.md` § Verify.
 Read `verify/summary.md`, triage per class — per-page rows stay in the file,
 never in the conversation (`skills/stardust/reference/context-hygiene.md`
 § Runner reports and session hand-off).
@@ -377,9 +375,10 @@ file edited, the change logged on `finding.autofix`, the finding staged
 **Close = `node skills/rollout/scripts/close-check.mjs --fix` exit 0**
 (`reference/wave-close.md`): nine artifact rows (status, journal, coverage,
 learnings, review, dashboard, report, tracking, commit); open rows print their
-fix; never say "closed" before exit 0. Hand-off
-shape: `skills/stardust/reference/handoff-report.md` — gate table first, source
-→ target per page, report-check last. **Review pairs:** `open-review-pairs.mjs
+fix; never say "closed" before exit 0. Hand-off shape
+(`skills/stardust/reference/handoff-report.md`: gate table first, source →
+target per page, report-check last), written to
+`stardust/rollout/report/<wave-ts>.md` (row 7). **Review pairs:** `open-review-pairs.mjs
 --per-template 1` (`--random 10` before the first live publish) writes
 `stardust/rollout/review-pack.md` — source ↔ delivered pairs with copied gate
 numbers, opened on the live host where the human logs in
@@ -442,7 +441,7 @@ stage reached — `identified → prototyped → deployed → optimised` (`optim
 verified **and** no open findings; a `content-pending` sibling stays
 `identified`); cumulative legend counts, archetypes badged `T`, templates table,
 scorecard.
-`dashboard/data.json` is the snapshot — regenerated after Phase A and at every wave close.
+`dashboard/data.json` is the snapshot, regenerated after Phase A and at every wave close.
 
 ## Inputs
 
@@ -470,8 +469,8 @@ referenced, not vendored (`reference/audit-sources.md`).
 ## Scripts
 
 One per operator-card row; `lib.mjs` holds the shared IO, roll-up and
-autofix-registry helpers. `update-coverage.mjs` is the only
-writer of the coverage ledger; `section-fidelity.mjs` informs the gate, never decides.
+autofix-registry helpers; `update-coverage.mjs` is the only coverage-ledger
+writer; `section-fidelity.mjs` informs the gate, never decides.
 
 ## References
 

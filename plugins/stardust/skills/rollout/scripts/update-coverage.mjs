@@ -28,7 +28,7 @@
  *   unmatched ledger paths are counted and listed, never invented as rows
  * Idempotent: a second run over the same ledger changes nothing but generatedAt.
  *
- * --gate <name> <json> is the generic per-page GATE INGEST (reference/delivery-gates.md § Gate 5,
+ * --gate <name> <json> is the generic per-page GATE INGEST (reference/measured-gates.md § Gate 5,
  * § Gate 6): the gate's own JSON artifact is matched to coverage rows (pages[].path | url | content
  * → served path / slug) and copied — never typed — into `delivery.gates.<name>`; a page below the
  * gate's bar flips to `failed` with the reason; a page the instrument could not measure is
@@ -43,8 +43,13 @@
  *                   unmeasured; blocks[] rows map to coverage/blocks.json by edsBlockName →
  *                   delivery.ewGate = pass | fail | exempt | unmeasured + ew{} counts.
  *
+ * --block <id> --status converted requires the block's ingested `delivery.ewGate` to be pass | exempt
+ * (measured-gates.md § Gate 6): fail / unmeasured / no verdict → refused, exit 1, the reason printed with
+ * its remedy — a block is never `converted` around the editability gate. The roll-up `lastRun.blocks`
+ * counts a converted-or-later block whose ewGate is fail | unmeasured as `ewHeld`, not `converted`.
+ *
  * Re-derives templates.json + rollout.json roll-ups after every write.
- * Exit: 0 written · 1 unknown slug/block · 2 usage (bad status, ledger missing/unreadable/not an
+ * Exit: 0 written · 1 unknown slug/block, or a block refused `converted` by its ewGate · 2 usage (bad status, ledger missing/unreadable/not an
  *       object, unknown --gate name or unreadable gate JSON, coverage/blocks missing — run
  *       inventory.mjs / blocks.mjs first: the rollout family's precondition code, coverage-model.md
  *       § Verify (Exit)). A --gate run with unmeasured pages still exits 0: the re-drive is the
@@ -295,6 +300,15 @@ function main() {
     const b = (doc.blocks || []).find((x) => x.id === blockId);
     if (!b) { console.error(`rollout: no block "${blockId}".`); process.exit(1); }
     b.delivery = b.delivery || {};
+    // Gate 6 (measured-gates.md; coverage-model.md § Block delivery status lifecycle): `converted` requires the
+    // ingested editability verdict pass | exempt — fail / unmeasured / none is refused, never downgraded silently
+    if (status === 'converted' && !['pass', 'exempt'].includes(b.delivery.ewGate)) {
+      const why = b.delivery.ewGate === 'fail' ? `ewGate fail (dead ${(b.delivery.ew && b.delivery.ew.dead) ?? '?'}${b.delivery.ew && b.delivery.ew.duplicated ? `, duplicated ${b.delivery.ew.duplicated}` : ''}) — fix by moving elements in the Step 8 loop, re-probe, re-ingest`
+        : b.delivery.ewGate === 'unmeasured' ? 'ewGate unmeasured (a block failed to install in harness mode) — probe in URL mode against the dev server or the preview origin, re-ingest'
+          : 'no editability verdict ingested — run ew-editability-probe.mjs on a page using it and `update-coverage.mjs --gate editability <json>` first';
+      console.error(`rollout: block ${blockId} cannot be converted: ${why} (converted requires ewGate pass | exempt; the only escape is a declared @ew-exempt in the block JSDoc)`);
+      process.exit(1);
+    }
     b.delivery.status = status;
     const edsNameArg = arg('eds-name', null);
     if (edsNameArg) b.delivery.edsBlockName = edsNameArg;

@@ -94,7 +94,7 @@ of `delivery.status`:
   min, origin, at}`; `editability`: `{authored, editable, dead, duplicated,
   exempt, unmeasured, exemptSource, origin, at}`). Below the bar → `failed`
   with the reason; `unmeasured: true` → status untouched (no verdict ≠ FAIL);
-  roll-up `rollout.json.lastRun.gates.<name>`. `delivery-gates.md` § Gate 5 · § Gate 6.
+  roll-up `rollout.json.lastRun.gates.<name>`. `measured-gates.md` § Gate 5 · § Gate 6.
 - **`delivery.gate`** — the published-origin **page gate**, copied from
   `stardust/rollout/gate-report.json` by `gate-publish.mjs --report` or
   `verify.mjs --gate-report` (never typed): `{ status: pass | fail |
@@ -105,7 +105,7 @@ of `delivery.status`:
   has no PASS stays `deployed` (advisory class `published-origin gate: <status>`).
   `unmeasured` is an instrument state (exit 124 / 5 / 6, crops not run), never a
   FAIL; `ungated` = no published-origin record. Contract and the publish hold:
-  `delivery-gates.md` § Gate 8.
+  `publish-gate.md` § Gate 8.
 - **`fidelityTier`** — `archetype | sibling | thin` (+ `archetypeSource`,
   `gatesPassed[]`), set by `migrate` from the render branch
   (`migrate/reference/fidelity-tiers.md`). Records *how much QA the page carries*:
@@ -146,9 +146,11 @@ On every `inventory.mjs` run:
 - **pending** — inventoried as a distinct block, not yet converted.
 - **converted** — its EDS block (`blocks/<edsBlockName>/`) or fragment exists
   **and** `delivery.ewGate ∈ {pass, exempt}` (`update-coverage --gate editability`
-  writes `ewGate` + `ew{}` per block from the probe's `blocks[]`; `fail` /
-  `unmeasured` keep the block from counting as converted —
-  `delivery-gates.md` § Gate 6).
+  writes `ewGate` + `ew{}` per block from the probe's `blocks[]`;
+  `update-coverage --block <id> --status converted` refuses `fail` /
+  `unmeasured` / no verdict, exit 1; a later `fail` / `unmeasured` ingest on a
+  block already past `pending` counts it as `lastRun.blocks.ewHeld`, not
+  `converted` — `measured-gates.md` § Gate 6).
 - **deployed / verified** — live on the delivered site.
 
 `blocks.mjs` is idempotent: a block already past `pending` keeps its status and

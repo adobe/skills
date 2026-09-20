@@ -1,0 +1,436 @@
+{
+  "_provenance": {
+    "writtenBy": "stardust:stardust",
+    "writtenAt": "2026-09-14T08:31:10Z",
+    "stardustVersion": "0.23.0"
+  },
+  "site": {
+    "originUrl": "https://www.larkspurmutual.example",
+    "deployUrl": null,
+    "extractedAt": "2026-09-08T09:41:52Z",
+    "pageCap": 25,
+    "totalDiscovered": 12,
+    "crawled": 12
+  },
+  "direction": {
+    "resolvedAt": "2026-09-08T10:05:00Z",
+    "phrase": "migrate the site to EDS keeping the current design",
+    "directionFile": "stardust/direction.md",
+    "iaFidelity": "verbatim"
+  },
+  "flow": "replica",
+  "flowChosenAt": "2026-09-14T08:31:10Z",
+  "flowSource": "question",
+  "pages": [
+    {
+      "slug": "home",
+      "url": "https://www.larkspurmutual.example/",
+      "title": "Larkspur Mutual — Home and auto insurance, member-owned since 1931",
+      "type": "landing",
+      "status": "migrated",
+      "history": [
+        {
+          "status": "extracted",
+          "at": "2026-09-08T09:22:04Z"
+        },
+        {
+          "status": "directed",
+          "at": "2026-09-08T10:05:00Z"
+        },
+        {
+          "status": "prototyped",
+          "at": "2026-09-09T11:48:31Z"
+        },
+        {
+          "status": "approved",
+          "at": "2026-09-09T14:02:17Z"
+        },
+        {
+          "status": "migrated",
+          "at": "2026-09-10T15:31:04Z"
+        }
+      ],
+      "stale": false,
+      "staleReason": null,
+      "currentStatePath": "stardust/current/pages/home.json",
+      "prototypePath": "stardust/prototypes/home-proposed.html",
+      "migratedPath": "stardust/migrated/index.html"
+    },
+    {
+      "slug": "business",
+      "url": "https://www.larkspurmutual.example/business/",
+      "title": "Business insurance — Larkspur Mutual",
+      "type": "landing",
+      "status": "migrated",
+      "history": [
+        {
+          "status": "extracted",
+          "at": "2026-09-08T09:23:40Z"
+        },
+        {
+          "status": "directed",
+          "at": "2026-09-08T10:05:00Z"
+        },
+        {
+          "status": "migrated",
+          "at": "2026-09-10T15:33:47Z"
+        }
+      ],
+      "stale": false,
+      "staleReason": null,
+      "currentStatePath": "stardust/current/pages/business.json",
+      "prototypePath": null,
+      "migratedPath": "stardust/migrated/business/index.html"
+    },
+    {
+      "slug": "news__storm-season-checklist",
+      "url": "https://www.larkspurmutual.example/news/storm-season-checklist/",
+      "title": "Storm season checklist: five things to do before the first warning — Larkspur Mutual",
+      "type": "article",
+      "status": "migrated",
+      "history": [
+        {
+          "status": "extracted",
+          "at": "2026-09-08T09:27:15Z"
+        },
+        {
+          "status": "directed",
+          "at": "2026-09-08T10:05:00Z"
+        },
+        {
+          "status": "prototyped",
+          "at": "2026-09-09T13:20:09Z"
+        },
+        {
+          "status": "approved",
+          "at": "2026-09-09T17:22:00Z"
+        },
+        {
+          "status": "migrated",
+          "at": "2026-09-10T15:35:12Z"
+        }
+      ],
+      "stale": false,
+      "staleReason": null,
+      "currentStatePath": "stardust/current/pages/news__storm-season-checklist.json",
+      "prototypePath": "stardust/prototypes/news__storm-season-checklist-proposed.html",
+      "migratedPath": "stardust/migrated/news/storm-season-checklist/index.html"
+    },
+    {
+      "slug": "news__annual-report-2025",
+      "url": "https://www.larkspurmutual.example/news/annual-report-2025/",
+      "title": "2025 annual report: surplus, claims paid, and what comes next — Larkspur Mutual",
+      "type": "article",
+      "status": "migrated",
+      "history": [
+        {
+          "status": "extracted",
+          "at": "2026-09-08T09:28:02Z"
+        },
+        {
+          "status": "directed",
+          "at": "2026-09-08T10:05:00Z"
+        },
+        {
+          "status": "migrated",
+          "at": "2026-09-10T15:36:40Z"
+        }
+      ],
+      "stale": false,
+      "staleReason": null,
+      "currentStatePath": "stardust/current/pages/news__annual-report-2025.json",
+      "prototypePath": null,
+      "migratedPath": "stardust/migrated/news/annual-report-2025/index.html"
+    },
+    {
+      "slug": "insurance__home",
+      "url": "https://www.larkspurmutual.example/insurance/home/",
+      "title": "Home insurance — Larkspur Mutual",
+      "type": "program",
+      "status": "migrated",
+      "history": [
+        {
+          "status": "extracted",
+          "at": "2026-09-08T09:31:48Z"
+        },
+        {
+          "status": "directed",
+          "at": "2026-09-08T10:05:00Z"
+        },
+        {
+          "status": "prototyped",
+          "at": "2026-09-09T16:05:44Z"
+        },
+        {
+          "status": "approved",
+          "at": "2026-09-09T17:22:00Z"
+        },
+        {
+          "status": "migrated",
+          "at": "2026-09-10T15:38:05Z"
+        }
+      ],
+      "stale": false,
+      "staleReason": null,
+      "currentStatePath": "stardust/current/pages/insurance__home.json",
+      "prototypePath": "stardust/prototypes/insurance__home-proposed.html",
+      "migratedPath": "stardust/migrated/insurance/home/index.html"
+    },
+    {
+      "slug": "insurance__auto",
+      "url": "https://www.larkspurmutual.example/insurance/auto/",
+      "title": "Auto insurance — Larkspur Mutual",
+      "type": "program",
+      "status": "migrated",
+      "history": [
+        {
+          "status": "extracted",
+          "at": "2026-09-08T09:32:30Z"
+        },
+        {
+          "status": "directed",
+          "at": "2026-09-08T10:05:00Z"
+        },
+        {
+          "status": "migrated",
+          "at": "2026-09-10T15:39:21Z"
+        }
+      ],
+      "stale": false,
+      "staleReason": null,
+      "currentStatePath": "stardust/current/pages/insurance__auto.json",
+      "prototypePath": null,
+      "migratedPath": "stardust/migrated/insurance/auto/index.html"
+    },
+    {
+      "slug": "about",
+      "url": "https://www.larkspurmutual.example/about/",
+      "title": "About Larkspur Mutual — member-owned since 1931",
+      "type": "landing",
+      "status": "migrated",
+      "history": [
+        {
+          "status": "extracted",
+          "at": "2026-09-08T09:23:40Z"
+        },
+        {
+          "status": "directed",
+          "at": "2026-09-08T10:05:00Z"
+        },
+        {
+          "status": "migrated",
+          "at": "2026-09-10T15:33:47Z"
+        }
+      ],
+      "stale": false,
+      "staleReason": null,
+      "currentStatePath": "stardust/current/pages/about.json",
+      "prototypePath": null,
+      "migratedPath": "stardust/migrated/about/index.html"
+    },
+    {
+      "slug": "news__rate-notice-2026",
+      "url": "https://www.larkspurmutual.example/news/rate-notice-2026/",
+      "title": "2026 rate notice — what changes for members",
+      "type": "article",
+      "status": "migrated",
+      "history": [
+        {
+          "status": "extracted",
+          "at": "2026-09-08T09:28:02Z"
+        },
+        {
+          "status": "directed",
+          "at": "2026-09-08T10:05:00Z"
+        },
+        {
+          "status": "migrated",
+          "at": "2026-09-10T15:36:40Z"
+        }
+      ],
+      "stale": false,
+      "staleReason": null,
+      "currentStatePath": "stardust/current/pages/news__rate-notice-2026.json",
+      "prototypePath": null,
+      "migratedPath": "stardust/migrated/news/rate-notice-2026/index.html"
+    },
+    {
+      "slug": "news__member-meeting",
+      "url": "https://www.larkspurmutual.example/news/member-meeting/",
+      "title": "Annual member meeting — agenda and voting",
+      "type": "article",
+      "status": "migrated",
+      "history": [
+        {
+          "status": "extracted",
+          "at": "2026-09-08T09:28:02Z"
+        },
+        {
+          "status": "directed",
+          "at": "2026-09-08T10:05:00Z"
+        },
+        {
+          "status": "migrated",
+          "at": "2026-09-10T15:36:40Z"
+        }
+      ],
+      "stale": false,
+      "staleReason": null,
+      "currentStatePath": "stardust/current/pages/news__member-meeting.json",
+      "prototypePath": null,
+      "migratedPath": "stardust/migrated/news/member-meeting/index.html"
+    },
+    {
+      "slug": "insurance__life",
+      "url": "https://www.larkspurmutual.example/insurance/life/",
+      "title": "Life insurance — Larkspur Mutual",
+      "type": "program",
+      "status": "migrated",
+      "history": [
+        {
+          "status": "extracted",
+          "at": "2026-09-08T09:32:30Z"
+        },
+        {
+          "status": "directed",
+          "at": "2026-09-08T10:05:00Z"
+        },
+        {
+          "status": "migrated",
+          "at": "2026-09-10T15:39:21Z"
+        }
+      ],
+      "stale": false,
+      "staleReason": null,
+      "currentStatePath": "stardust/current/pages/insurance__life.json",
+      "prototypePath": null,
+      "migratedPath": "stardust/migrated/insurance/life/index.html"
+    },
+    {
+      "slug": "insurance__boat",
+      "url": "https://www.larkspurmutual.example/insurance/boat/",
+      "title": "Boat insurance — Larkspur Mutual",
+      "type": "program",
+      "status": "migrated",
+      "history": [
+        {
+          "status": "extracted",
+          "at": "2026-09-08T09:32:30Z"
+        },
+        {
+          "status": "directed",
+          "at": "2026-09-08T10:05:00Z"
+        },
+        {
+          "status": "migrated",
+          "at": "2026-09-10T15:39:21Z"
+        }
+      ],
+      "stale": false,
+      "staleReason": null,
+      "currentStatePath": "stardust/current/pages/insurance__boat.json",
+      "prototypePath": null,
+      "migratedPath": "stardust/migrated/insurance/boat/index.html"
+    },
+    {
+      "slug": "insurance__flood",
+      "url": "https://www.larkspurmutual.example/insurance/flood/",
+      "title": "Flood insurance — Larkspur Mutual",
+      "type": "program",
+      "status": "migrated",
+      "history": [
+        {
+          "status": "extracted",
+          "at": "2026-09-08T09:32:30Z"
+        },
+        {
+          "status": "directed",
+          "at": "2026-09-08T10:05:00Z"
+        },
+        {
+          "status": "migrated",
+          "at": "2026-09-10T15:39:21Z"
+        }
+      ],
+      "stale": false,
+      "staleReason": null,
+      "currentStatePath": "stardust/current/pages/insurance__flood.json",
+      "prototypePath": null,
+      "migratedPath": "stardust/migrated/insurance/flood/index.html"
+    }
+  ],
+  "migrate": {
+    "at": "2026-09-10T15:40:02Z",
+    "outputDir": "stardust/migrated/",
+    "selfContained": true,
+    "pageMap": [
+      {
+        "sourceUrl": "/",
+        "outputPath": "index.html",
+        "slug": "home"
+      },
+      {
+        "sourceUrl": "/business/",
+        "outputPath": "business/index.html",
+        "slug": "business"
+      },
+      {
+        "sourceUrl": "/news/storm-season-checklist/",
+        "outputPath": "news/storm-season-checklist/index.html",
+        "slug": "news__storm-season-checklist"
+      },
+      {
+        "sourceUrl": "/news/annual-report-2025/",
+        "outputPath": "news/annual-report-2025/index.html",
+        "slug": "news__annual-report-2025"
+      },
+      {
+        "sourceUrl": "/insurance/home/",
+        "outputPath": "insurance/home/index.html",
+        "slug": "insurance__home"
+      },
+      {
+        "sourceUrl": "/insurance/auto/",
+        "outputPath": "insurance/auto/index.html",
+        "slug": "insurance__auto"
+      },
+      {
+        "sourceUrl": "/about/",
+        "outputPath": "about/index.html",
+        "slug": "about"
+      },
+      {
+        "sourceUrl": "/news/rate-notice-2026/",
+        "outputPath": "news/rate-notice-2026/index.html",
+        "slug": "news__rate-notice-2026"
+      },
+      {
+        "sourceUrl": "/news/member-meeting/",
+        "outputPath": "news/member-meeting/index.html",
+        "slug": "news__member-meeting"
+      },
+      {
+        "sourceUrl": "/insurance/life/",
+        "outputPath": "insurance/life/index.html",
+        "slug": "insurance__life"
+      },
+      {
+        "sourceUrl": "/insurance/boat/",
+        "outputPath": "insurance/boat/index.html",
+        "slug": "insurance__boat"
+      },
+      {
+        "sourceUrl": "/insurance/flood/",
+        "outputPath": "insurance/flood/index.html",
+        "slug": "insurance__flood"
+      }
+    ],
+    "totalAssetsBundled": 3,
+    "bundledAssets": [
+      "favicon.svg",
+      "logo.svg",
+      "styles.css"
+    ]
+  },
+  "handsOff": true
+}

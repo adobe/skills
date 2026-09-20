@@ -1,0 +1,58 @@
+{
+  "_provenance": {
+    "writtenBy": "stardust:rollout",
+    "writtenAt": "2026-09-18T09:12:00Z",
+    "stardustVersion": "0.24.0"
+  },
+  "generatedAt": "2026-09-18T09:12:00Z",
+  "templates": [
+    {
+      "id": "landing",
+      "representativeSlug": "home",
+      "pages": [
+        "home",
+        "business",
+        "about"
+      ],
+      "delivery": {
+        "verified": 0,
+        "deployed": 3,
+        "contentPending": 0,
+        "pending": 0
+      }
+    },
+    {
+      "id": "article",
+      "representativeSlug": "news__storm-season-checklist",
+      "pages": [
+        "news__storm-season-checklist",
+        "news__annual-report-2025",
+        "news__rate-notice-2026",
+        "news__member-meeting"
+      ],
+      "delivery": {
+        "verified": 0,
+        "deployed": 4,
+        "contentPending": 0,
+        "pending": 0
+      }
+    },
+    {
+      "id": "program",
+      "representativeSlug": "insurance__home",
+      "pages": [
+        "insurance__home",
+        "insurance__auto",
+        "insurance__life",
+        "insurance__boat",
+        "insurance__flood"
+      ],
+      "delivery": {
+        "verified": 0,
+        "deployed": 5,
+        "contentPending": 0,
+        "pending": 0
+      }
+    }
+  ]
+}

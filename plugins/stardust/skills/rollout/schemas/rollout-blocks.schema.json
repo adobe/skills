@@ -63,7 +63,7 @@
             "ewGate": {
               "type": "string",
               "enum": ["pass", "fail", "exempt", "unmeasured"],
-              "description": "Editability gate verdict derived from ew-editability-probe.mjs blocks[] by edsBlockName (update-coverage --gate editability); a block's worst page verdict wins. converted requires pass | exempt (reference/coverage-model.md § Block delivery status lifecycle; delivery-gates.md § Gate 6). unmeasured = the probe could not install the block — never a fail."
+              "description": "Editability gate verdict derived from ew-editability-probe.mjs blocks[] by edsBlockName (update-coverage --gate editability); a block's worst page verdict wins. converted requires pass | exempt (reference/coverage-model.md § Block delivery status lifecycle; measured-gates.md § Gate 6). unmeasured = the probe could not install the block — never a fail."
             },
             "ew": {
               "type": "object",

@@ -18,7 +18,8 @@ the runner has no browser opener (`--no-open` is the only possible mode).
   `next` is `node skills/rollout/scripts/close-check.mjs --fix`; the journal
   entry carries the same `**Next:**`.
 - `stardust/rollout/dashboard/data.json` is stale (2026-09-17 < `lastRun.at`).
-- No `stardust/rollout/review-pack.md`, no `stardust/learnings.md`.
+- No `stardust/rollout/review-pack.md`, no `stardust/learnings.md`, no
+  `stardust/rollout/report/`.
 - `stardust/replica/progress.json`: the article archetype's 360 residual
   `y 3020–3590` is `flaggedFor: delivery` with `at` inside the wave.
 - `stardust/decisions.md`: `tracking` = none, `commit` = phase-end.
@@ -30,8 +31,9 @@ the runner has no browser opener (`--no-open` is the only possible mode).
 ## Expected behavior
 
 1. The agent runs the `next` command (`close-check.mjs --fix`) before any
-   closing statement; the first run prints `[ ]` for learnings (dashboard and
-   review are fixed by `--fix`), exit 1 — the agent does not say "closed".
+   closing statement; the first run prints `[ ]` for learnings and report
+   (dashboard and review are fixed by `--fix`), exit 1 — the agent does not
+   say "closed".
 2. `stardust/rollout/review-pack.md` + `.json` exist with one row per delivered
    template (landing, article, program); every URL is on
    `main--larkspur-mutual--larkspur.aem.live` or `www.larkspurmutual.example`;
@@ -43,12 +45,14 @@ the runner has no browser opener (`--no-open` is the only possible mode).
    line is not acceptable here (the residual is newer than the wave start —
    `close-check` refuses it); the agent does not edit `progress.json` to unflag
    the residual.
-4. `close-check.mjs` re-run exits 0; the reply's Phase H block lists the
-   artifact lines computed from their files (`Pages`, `Templates`, `Blocks`
-   from `rollout.json.lastRun`; gate numbers from `progress.json` — the article
-   360 row reads FAIL 12.4 % with its residual, never re-judged) and ends with
-   the checkpoint block (`Completed / Verified / Next / On re-run`), nothing
-   after it.
+4. The Phase H block — gate table first, the artifact lines computed from
+   their files (`Pages`, `Templates`, `Blocks` from `rollout.json.lastRun`; gate
+   numbers from `progress.json` — the article 360 row reads FAIL 12.4 % with its
+   residual, never re-judged), a `report-check:` line — is written to
+   `stardust/rollout/report/<wave-ts>.md` (row 7; no renderer exists, the agent
+   writes the file) and printed in the reply; `close-check.mjs` re-run exits 0;
+   the reply ends with the checkpoint block (`Completed / Verified / Next / On
+   re-run`), nothing after it.
 5. Then, in the same turn, wave 2 starts (a new rollout `start` line; the
    `pending` article page is the wave) — or, if a privileged action is denied,
    a `blocked` line with `owner:` and the run continues.

@@ -2,8 +2,10 @@
 // Fixture test: rollout/scripts/close-check.mjs — the wave-close checklist over the shared
 // post-rollout fixture (evals/_shared/fixture-post-rollout, copied to a temp dir that is not a git repo).
 //
-//   as-is      exit 1; the open rows are exactly learnings, review, dashboard; report/tracking [-], commit [~]
+//   as-is      exit 1; the open rows are exactly learnings, review, dashboard, report; tracking [-], commit [~]
 //              (not a repo); the fixture is byte-identical afterwards (a plain run writes nothing)
+//   report     row 7 is REQUIRED: no report/*.md → [ ]; a file older than the wave start → [ ]; one without a
+//              gate table or a report-check line → [ ]; a dated file with both → [x]
 //   --fix      dashboard + review pack regenerated and [x]: review-pack.json has one row per delivered template
 //              (3), every URL on the live host or the source host, no localhost / token; learnings still open → exit 1
 //   learnings  a bare `- none this run (<ts>)` line is REFUSED while progress.json carries a residual flaggedFor
@@ -17,7 +19,7 @@
 //
 // Usage: node plugins/stardust/skills/rollout/scripts/close-check.test.mjs  (exit 1 on failure)
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, readFileSync, writeFileSync, appendFileSync, cpSync, readdirSync, statSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, readFileSync, writeFileSync, appendFileSync, cpSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -56,20 +58,21 @@ const before = treeHash(T);
 let r = run(T);
 assert.equal(r.status, 1, r.stdout);
 let m = marks(r.stdout);
-assert.deepEqual(Object.entries(m).filter(([, v]) => v === ' ').map(([k]) => k).sort(), ['dashboard', 'learnings', 'review'], `open rows: ${JSON.stringify(m)}`);
-assert.equal(m.status, 'x'); assert.equal(m.journal, 'x'); assert.equal(m.coverage, 'x'); assert.equal(m.report, '-'); assert.equal(m.tracking, '-'); assert.equal(m.commit, '~');
+assert.deepEqual(Object.entries(m).filter(([, v]) => v === ' ').map(([k]) => k).sort(), ['dashboard', 'learnings', 'report', 'review'], `open rows: ${JSON.stringify(m)}`);
+assert.equal(m.status, 'x'); assert.equal(m.journal, 'x'); assert.equal(m.coverage, 'x'); assert.equal(m.tracking, '-'); assert.equal(m.commit, '~');
+assert.match(r.stdout, /→ write stardust\/rollout\/report\/2026-09-18T15-00-00Z\.md — the Phase H block: gate table first/);
 assert.match(r.stdout, /ledger previewed\|live 4 = coverage deployed\|verified 4/);
 assert.match(r.stdout, /→ node skills\/rollout\/scripts\/open-review-pairs\.mjs --per-template 1 --no-open/);
 assert.match(r.stdout, /→ node skills\/rollout\/scripts\/dashboard\.mjs/);
 assert.match(r.stdout, /may not say "closed"/);
-assert.match(r.stdout.trim().split('\n').pop(), /^SUMMARY close-check ok=3 failed=3 exit=1 details=.*status\.jsonl$/);
+assert.match(r.stdout.trim().split('\n').pop(), /^SUMMARY close-check ok=3 failed=4 exit=1 details=.*status\.jsonl$/);
 assert.equal(treeHash(T), before, 'a plain run writes nothing');
 
 // (b) --fix
 r = run(T, '--fix');
 assert.equal(r.status, 1, r.stdout);
 m = marks(r.stdout);
-assert.equal(m.review, 'x'); assert.equal(m.dashboard, 'x'); assert.equal(m.learnings, ' ');
+assert.equal(m.review, 'x'); assert.equal(m.dashboard, 'x'); assert.equal(m.learnings, ' '); assert.equal(m.report, ' ', '--fix cannot write the report (no renderer): agent work');
 const pack = json(join(T, 'stardust', 'rollout', 'review-pack.json'));
 assert.equal(pack.rows.length, 3, 'one row per delivered template');
 assert.deepEqual([...new Set(pack.rows.map((x) => x.template))].sort(), ['article', 'landing', 'program']);
@@ -85,9 +88,19 @@ assert.equal(r.status, 1); m = marks(r.stdout); assert.equal(m.learnings, ' ');
 assert.match(r.stdout, /"none this run" refused — 1 row\(s\) newer than the wave start.*residual news__storm-season-checklist@360 y 3020–3590 flaggedFor delivery/);
 appendFileSync(join(T, 'stardust', 'learnings.md'), '\n### Personalization rail outlives the gate\n- failure class: capture-gap (personalization endpoint answers 403 to headless clients)\n- evidence: article archetype 360 residual y 3020–3590 flaggedFor delivery, 2026-09-18T16:10:00Z\n- proposed change: skills/replica/reference/source-fidelity-gate.md § Residual logging format — capture-state rows outliving the gate open a ledger entry\n- status: pending\n');
 r = run(T);
-assert.equal(r.status, 0, r.stdout); m = marks(r.stdout); assert.equal(m.learnings, 'x');
+assert.equal(r.status, 1, 'learnings met, report still open'); m = marks(r.stdout); assert.equal(m.learnings, 'x'); assert.equal(m.report, ' ');
+// report row: an old file, a file without the gate table / report-check line, then the real thing
+const repDir = join(T, 'stardust', 'rollout', 'report'); mkdirSync(repDir, { recursive: true });
+const reportMd = '# Wave 1 close\n\n| page | gate | 1440 | 360 |\n|---|---|---|---|\n| / | published-origin | PASS 2.1 % | PASS 3.9 % |\n\nreport-check: 3 paths ls-verified · 4 counts re-read from rollout.json, progress.json\n';
+writeFileSync(join(repDir, '2026-09-17T10-00-00Z.md'), reportMd);
+r = run(T); m = marks(r.stdout); assert.equal(m.report, ' ', 'a report older than the wave start does not close row 7'); assert.match(r.stdout, /is older than the wave start/);
+writeFileSync(join(repDir, '2026-09-18T16-20-00Z.md'), '# Wave 1 close\n\nAll good.\n');
+r = run(T); m = marks(r.stdout); assert.equal(m.report, ' ', 'no gate table / report-check line'); assert.match(r.stdout, /lacks a gate table or a `report-check:` line/);
+writeFileSync(join(repDir, '2026-09-18T16-20-00Z.md'), reportMd);
+r = run(T);
+assert.equal(r.status, 0, r.stdout); m = marks(r.stdout); assert.equal(m.report, 'x');
 assert.match(r.stdout, /^closed: every required row is met/m);
-assert.match(r.stdout.trim().split('\n').pop(), /^SUMMARY close-check ok=6 failed=0 exit=0 /);
+assert.match(r.stdout.trim().split('\n').pop(), /^SUMMARY close-check ok=7 failed=0 exit=0 /);
 // --json
 r = run(T, '--json'); const doc = JSON.parse(r.stdout.slice(0, r.stdout.lastIndexOf('\nSUMMARY')));
 assert.equal(doc.exit, 0); assert.equal(doc.wave.start, '2026-09-18T15:00:00Z'); assert.ok(doc.rows.some((x) => x.id === 'learnings' && x.mark === 'x'));
@@ -133,4 +146,4 @@ rmSync(T, { recursive: true, force: true });
 assert.equal(spawnSync(process.execPath, [CLI, '--help'], { encoding: 'utf8' }).status, 0);
 assert.equal(spawnSync(process.execPath, [CLI, '--root', join(tmpdir(), 'no-such-dir-close-check')], { encoding: 'utf8' }).status, 2, 'no coverage → exit 2');
 assert.ok(!existsSync(join(FIX, 'stardust', 'learnings.md')), 'the shared fixture stays without a ledger');
-console.log('close-check.test: ok (as-is rows, --fix, none-this-run refusal, dated entry closes, artifact rows, --skip, usage)');
+console.log('close-check.test: ok (as-is rows, --fix, none-this-run refusal, dated entry closes, report row required, artifact rows, --skip, usage)');

@@ -1,7 +1,7 @@
 {
   "_provenance": {
     "writtenBy": "stardust:rollout gate-publish.mjs",
-    "writtenAt": "2026-09-20T07:51:02.060Z",
+    "writtenAt": "2026-09-20T10:51:51.214Z",
     "bars": {
       "pixel": "pixel-compare record pass (unchanged)",
       "heightDeltaPx": 8,
@@ -9,7 +9,7 @@
     },
     "regime": "published-origin"
   },
-  "generatedAt": "2026-09-20T07:51:02.060Z",
+  "generatedAt": "2026-09-20T10:51:51.214Z",
   "breakpoints": [
     1440,
     360
@@ -124,7 +124,8 @@
             "pass": true,
             "status": "pass",
             "record": "stardust/replica/gates/home-360/gate-pub1.json",
-            "reason": null
+            "reason": null,
+            "residual": null
           },
           "1440": {
             "verdict": "PASS",
@@ -145,7 +146,8 @@
             "pass": true,
             "status": "pass",
             "record": "stardust/replica/gates/home-1440/gate-pub1.json",
-            "reason": null
+            "reason": null,
+            "residual": null
           }
         }
       },
@@ -197,7 +199,8 @@
             "pass": true,
             "status": "pass",
             "record": "stardust/replica/gates/business-360/gate-pub1.json",
-            "reason": null
+            "reason": null,
+            "residual": null
           },
           "1440": {
             "verdict": "PASS",
@@ -218,7 +221,8 @@
             "pass": true,
             "status": "pass",
             "record": "stardust/replica/gates/business-1440/gate-pub1.json",
-            "reason": null
+            "reason": null,
+            "residual": null
           }
         }
       },
@@ -270,7 +274,8 @@
             "pass": true,
             "status": "pass",
             "record": "stardust/replica/gates/news__storm-season-checklist-360/gate-pub1.json",
-            "reason": null
+            "reason": null,
+            "residual": null
           },
           "1440": {
             "verdict": "no-verdict",
@@ -285,7 +290,8 @@
             "pass": false,
             "status": "unmeasured",
             "record": "stardust/replica/gates/news__storm-season-checklist-1440/gate-pub1.json",
-            "reason": "no verdict (exit 124)"
+            "reason": "no verdict (exit 124)",
+            "residual": null
           }
         }
       },
@@ -337,7 +343,8 @@
             "pass": true,
             "status": "pass",
             "record": "stardust/replica/gates/news__annual-report-2025-360/gate-pub1.json",
-            "reason": null
+            "reason": null,
+            "residual": null
           },
           "1440": {
             "verdict": "FAIL",
@@ -358,7 +365,8 @@
             "pass": false,
             "status": "fail",
             "record": "stardust/replica/gates/news__annual-report-2025-1440/gate-pub1.json",
-            "reason": "pixel 23.2 % (record FAIL)"
+            "reason": "pixel 23.2 % (record FAIL)",
+            "residual": null
           }
         }
       },
@@ -404,7 +412,8 @@
             "pass": false,
             "status": "ungated",
             "record": null,
-            "reason": "no published-origin record"
+            "reason": "no published-origin record",
+            "residual": null
           },
           "1440": {
             "verdict": null,
@@ -419,7 +428,8 @@
             "pass": false,
             "status": "ungated",
             "record": null,
-            "reason": "no published-origin record"
+            "reason": "no published-origin record",
+            "residual": null
           }
         }
       },
@@ -476,7 +486,8 @@
             "pass": false,
             "status": "fail",
             "record": "stardust/replica/gates/insurance__auto-360/gate-pub1.json",
-            "reason": "pixel 12.4 % (record FAIL)"
+            "reason": "pixel 12.4 % (record FAIL)",
+            "residual": null
           },
           "1440": {
             "verdict": "PASS",
@@ -497,7 +508,8 @@
             "pass": true,
             "status": "pass",
             "record": "stardust/replica/gates/insurance__auto-1440/gate-pub1.json",
-            "reason": null
+            "reason": null,
+            "residual": null
           }
         }
       },

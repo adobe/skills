@@ -53,13 +53,14 @@
           "properties": {
             "total": { "type": "integer", "minimum": 0 },
             "converted": { "type": "integer", "minimum": 0 },
-            "pending": { "type": "integer", "minimum": 0 }
+            "pending": { "type": "integer", "minimum": 0 },
+            "ewHeld": { "type": "integer", "minimum": 0, "description": "Blocks past pending whose delivery.ewGate is fail | unmeasured — not counted as converted (measured-gates.md § Gate 6)." }
           }
         },
         "verifyFailures": { "type": "integer", "minimum": 0 },
         "gates": {
           "type": "object",
-          "description": "Site-wide roll-up per ingested gate, recomputed from every coverage row's delivery.gates.<name> by update-coverage --gate / verify --ai-readability (reference/delivery-gates.md § Gate 5, § Gate 6). The Phase H Readability / Editability lines are computed from here, never typed.",
+          "description": "Site-wide roll-up per ingested gate, recomputed from every coverage row's delivery.gates.<name> by update-coverage --gate / verify --ai-readability (reference/measured-gates.md § Gate 5, § Gate 6). The Phase H Readability / Editability lines are computed from here, never typed.",
           "additionalProperties": false,
           "properties": {
             "ai-readability": {

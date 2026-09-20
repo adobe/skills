@@ -1,0 +1,786 @@
+{
+  "_provenance": {
+    "writtenBy": "stardust:rollout gate-publish.mjs",
+    "writtenAt": "2026-09-18T10:25:00Z",
+    "bars": {
+      "pixel": "pixel-compare record pass (unchanged)",
+      "heightDeltaPx": 8,
+      "chromeCrops": "crop-compare pass (unchanged)"
+    },
+    "regime": "published-origin"
+  },
+  "generatedAt": "2026-09-18T10:25:00Z",
+  "breakpoints": [
+    1440,
+    360
+  ],
+  "sample": {
+    "seed": "11",
+    "n": 2,
+    "excluded": [
+      "news__annual-report-2025"
+    ],
+    "drawn": [
+      "news__storm-season-checklist",
+      "news__rate-notice-2026",
+      "news__member-meeting",
+      "home",
+      "business",
+      "about",
+      "insurance__home",
+      "insurance__flood",
+      "insurance__life"
+    ]
+  },
+  "coverage": {
+    "delivered": 9,
+    "gated": 8,
+    "pass": 6,
+    "fail": 2,
+    "publishedFailing": 0,
+    "unmeasured": 1,
+    "ungated": 0,
+    "blocked": 0
+  },
+  "templates": {
+    "article": {
+      "pages": 3,
+      "pass": 2,
+      "fail": 0,
+      "unmeasured": 1,
+      "ungated": 0,
+      "atBar": false
+    },
+    "landing": {
+      "pages": 3,
+      "pass": 3,
+      "fail": 0,
+      "unmeasured": 0,
+      "ungated": 0,
+      "atBar": true
+    },
+    "program": {
+      "pages": 3,
+      "pass": 1,
+      "fail": 2,
+      "unmeasured": 0,
+      "ungated": 0,
+      "atBar": false
+    }
+  },
+  "neutralDiff": {
+    "article": {
+      "360": {
+        "n": 3,
+        "median": 7.9,
+        "p90": 7.9,
+        "under10": 1
+      },
+      "1440": {
+        "n": 2,
+        "median": 7,
+        "p90": 7,
+        "under10": 1
+      }
+    },
+    "landing": {
+      "360": {
+        "n": 3,
+        "median": 5,
+        "p90": 5.7,
+        "under10": 1
+      },
+      "1440": {
+        "n": 3,
+        "median": 6.2,
+        "p90": 7.7,
+        "under10": 1
+      }
+    },
+    "program": {
+      "360": {
+        "n": 3,
+        "median": 7.1,
+        "p90": 14.9,
+        "under10": 0.67
+      },
+      "1440": {
+        "n": 3,
+        "median": 7.7,
+        "p90": 8.6,
+        "under10": 1
+      }
+    }
+  },
+  "pages": {
+    "/news/storm-season-checklist": {
+      "path": "/news/storm-season-checklist",
+      "slug": "news__storm-season-checklist",
+      "template": "article",
+      "wasLive": false,
+      "latest": {
+        "at": "2026-09-18T09:40:00Z",
+        "pass": false,
+        "status": "unmeasured",
+        "breakpoints": {
+          "360": {
+            "verdict": "PASS",
+            "exit": 0,
+            "pixelPct": 6.1,
+            "pixelPctUnmasked": 6.8999999999999995,
+            "heightDelta": 1,
+            "heightOk": true,
+            "cropsOk": true,
+            "header": {
+              "matchPct": 99.4,
+              "pass": true
+            },
+            "footer": {
+              "matchPct": 98.9,
+              "pass": true
+            },
+            "pass": true,
+            "status": "pass",
+            "record": "stardust/replica/gates/news__storm-season-checklist-360/gate-pub1.json",
+            "reason": null,
+            "residual": null
+          },
+          "1440": {
+            "verdict": "no-verdict",
+            "exit": 124,
+            "pixelPct": null,
+            "pixelPctUnmasked": null,
+            "heightDelta": null,
+            "heightOk": null,
+            "cropsOk": null,
+            "header": null,
+            "footer": null,
+            "pass": false,
+            "status": "unmeasured",
+            "record": "stardust/replica/gates/news__storm-season-checklist-1440/gate-pub1.json",
+            "reason": "no verdict (exit 124)",
+            "residual": null
+          }
+        }
+      },
+      "bestOfLast3": {
+        "360": 6.1,
+        "1440": null
+      },
+      "history": [
+        {
+          "at": "2026-09-18T09:40:00Z",
+          "status": "unmeasured",
+          "breakpoints": {
+            "360": 6.1,
+            "1440": null
+          }
+        }
+      ],
+      "reference": {
+        "360": "2026-09-18T09:20:00Z",
+        "1440": "2026-09-18T09:20:00Z"
+      }
+    },
+    "/news/rate-notice-2026": {
+      "path": "/news/rate-notice-2026",
+      "slug": "news__rate-notice-2026",
+      "template": "article",
+      "wasLive": false,
+      "latest": {
+        "at": "2026-09-18T10:20:00Z",
+        "pass": true,
+        "status": "pass",
+        "breakpoints": {
+          "360": {
+            "verdict": "PASS",
+            "exit": 0,
+            "pixelPct": 7.1,
+            "pixelPctUnmasked": 7.9,
+            "heightDelta": -4,
+            "heightOk": true,
+            "cropsOk": true,
+            "header": {
+              "matchPct": 99.3,
+              "pass": true
+            },
+            "footer": {
+              "matchPct": 98.9,
+              "pass": true
+            },
+            "pass": true,
+            "status": "pass",
+            "record": "stardust/replica/gates/news__rate-notice-2026-360/gate-pub1.json",
+            "reason": null,
+            "residual": null
+          },
+          "1440": {
+            "verdict": "PASS",
+            "exit": 0,
+            "pixelPct": 6.2,
+            "pixelPctUnmasked": 7,
+            "heightDelta": 2,
+            "heightOk": true,
+            "cropsOk": true,
+            "header": {
+              "matchPct": 99.3,
+              "pass": true
+            },
+            "footer": {
+              "matchPct": 98.9,
+              "pass": true
+            },
+            "pass": true,
+            "status": "pass",
+            "record": "stardust/replica/gates/news__rate-notice-2026-1440/gate-pub1.json",
+            "reason": null,
+            "residual": null
+          }
+        }
+      },
+      "bestOfLast3": {
+        "360": 7.1,
+        "1440": 6.2
+      },
+      "history": [
+        {
+          "at": "2026-09-18T10:20:00Z",
+          "status": "pass",
+          "breakpoints": {
+            "360": 7.1,
+            "1440": 6.2
+          }
+        }
+      ],
+      "reference": {
+        "360": "2026-09-18T09:20:00Z",
+        "1440": "2026-09-18T09:20:00Z"
+      }
+    },
+    "/news/member-meeting": {
+      "path": "/news/member-meeting",
+      "slug": "news__member-meeting",
+      "template": "article",
+      "wasLive": false,
+      "latest": {
+        "at": "2026-09-18T10:20:00Z",
+        "pass": true,
+        "status": "pass",
+        "breakpoints": {
+          "360": {
+            "verdict": "PASS",
+            "exit": 0,
+            "pixelPct": 7.1,
+            "pixelPctUnmasked": 7.9,
+            "heightDelta": -4,
+            "heightOk": true,
+            "cropsOk": true,
+            "header": {
+              "matchPct": 99.3,
+              "pass": true
+            },
+            "footer": {
+              "matchPct": 98.9,
+              "pass": true
+            },
+            "pass": true,
+            "status": "pass",
+            "record": "stardust/replica/gates/news__member-meeting-360/gate-pub1.json",
+            "reason": null,
+            "residual": null
+          },
+          "1440": {
+            "verdict": "PASS",
+            "exit": 0,
+            "pixelPct": 6.2,
+            "pixelPctUnmasked": 7,
+            "heightDelta": 2,
+            "heightOk": true,
+            "cropsOk": true,
+            "header": {
+              "matchPct": 99.3,
+              "pass": true
+            },
+            "footer": {
+              "matchPct": 98.9,
+              "pass": true
+            },
+            "pass": true,
+            "status": "pass",
+            "record": "stardust/replica/gates/news__member-meeting-1440/gate-pub1.json",
+            "reason": null,
+            "residual": null
+          }
+        }
+      },
+      "bestOfLast3": {
+        "360": 7.1,
+        "1440": 6.2
+      },
+      "history": [
+        {
+          "at": "2026-09-18T10:20:00Z",
+          "status": "pass",
+          "breakpoints": {
+            "360": 7.1,
+            "1440": 6.2
+          }
+        }
+      ],
+      "reference": {
+        "360": "2026-09-18T09:20:00Z",
+        "1440": "2026-09-18T09:20:00Z"
+      }
+    },
+    "/": {
+      "path": "/",
+      "slug": "home",
+      "template": "landing",
+      "wasLive": false,
+      "latest": {
+        "at": "2026-09-18T09:40:00Z",
+        "pass": true,
+        "status": "pass",
+        "breakpoints": {
+          "360": {
+            "verdict": "PASS",
+            "exit": 0,
+            "pixelPct": 4.2,
+            "pixelPctUnmasked": 5,
+            "heightDelta": 2,
+            "heightOk": true,
+            "cropsOk": true,
+            "header": {
+              "matchPct": 99.4,
+              "pass": true
+            },
+            "footer": {
+              "matchPct": 98.9,
+              "pass": true
+            },
+            "pass": true,
+            "status": "pass",
+            "record": "stardust/replica/gates/home-360/gate-pub1.json",
+            "reason": null,
+            "residual": null
+          },
+          "1440": {
+            "verdict": "PASS",
+            "exit": 0,
+            "pixelPct": 6.9,
+            "pixelPctUnmasked": 7.7,
+            "heightDelta": 0,
+            "heightOk": true,
+            "cropsOk": true,
+            "header": {
+              "matchPct": 99.4,
+              "pass": true
+            },
+            "footer": {
+              "matchPct": 98.9,
+              "pass": true
+            },
+            "pass": true,
+            "status": "pass",
+            "record": "stardust/replica/gates/home-1440/gate-pub1.json",
+            "reason": null,
+            "residual": null
+          }
+        }
+      },
+      "bestOfLast3": {
+        "360": 4.2,
+        "1440": 6.9
+      },
+      "history": [
+        {
+          "at": "2026-09-18T09:40:00Z",
+          "status": "pass",
+          "breakpoints": {
+            "360": 4.2,
+            "1440": 6.9
+          }
+        }
+      ],
+      "reference": {
+        "360": "2026-09-18T09:20:00Z",
+        "1440": "2026-09-18T09:20:00Z"
+      }
+    },
+    "/business": {
+      "path": "/business",
+      "slug": "business",
+      "template": "landing",
+      "wasLive": false,
+      "latest": {
+        "at": "2026-09-18T09:40:00Z",
+        "pass": true,
+        "status": "pass",
+        "breakpoints": {
+          "360": {
+            "verdict": "PASS",
+            "exit": 0,
+            "pixelPct": 3.8,
+            "pixelPctUnmasked": 4.6,
+            "heightDelta": -1,
+            "heightOk": true,
+            "cropsOk": true,
+            "header": {
+              "matchPct": 99.4,
+              "pass": true
+            },
+            "footer": {
+              "matchPct": 98.9,
+              "pass": true
+            },
+            "pass": true,
+            "status": "pass",
+            "record": "stardust/replica/gates/business-360/gate-pub1.json",
+            "reason": null,
+            "residual": null
+          },
+          "1440": {
+            "verdict": "PASS",
+            "exit": 0,
+            "pixelPct": 5.1,
+            "pixelPctUnmasked": 5.8999999999999995,
+            "heightDelta": 0,
+            "heightOk": true,
+            "cropsOk": true,
+            "header": {
+              "matchPct": 99.4,
+              "pass": true
+            },
+            "footer": {
+              "matchPct": 98.9,
+              "pass": true
+            },
+            "pass": true,
+            "status": "pass",
+            "record": "stardust/replica/gates/business-1440/gate-pub1.json",
+            "reason": null,
+            "residual": null
+          }
+        }
+      },
+      "bestOfLast3": {
+        "360": 3.8,
+        "1440": 5.1
+      },
+      "history": [
+        {
+          "at": "2026-09-18T09:40:00Z",
+          "status": "pass",
+          "breakpoints": {
+            "360": 3.8,
+            "1440": 5.1
+          }
+        }
+      ],
+      "reference": {
+        "360": "2026-09-18T09:20:00Z",
+        "1440": "2026-09-18T09:20:00Z"
+      }
+    },
+    "/about": {
+      "path": "/about",
+      "slug": "about",
+      "template": "landing",
+      "wasLive": false,
+      "latest": {
+        "at": "2026-09-18T10:20:00Z",
+        "pass": true,
+        "status": "pass",
+        "breakpoints": {
+          "360": {
+            "verdict": "PASS",
+            "exit": 0,
+            "pixelPct": 4.9,
+            "pixelPctUnmasked": 5.7,
+            "heightDelta": 3,
+            "heightOk": true,
+            "cropsOk": true,
+            "header": {
+              "matchPct": 99.3,
+              "pass": true
+            },
+            "footer": {
+              "matchPct": 98.9,
+              "pass": true
+            },
+            "pass": true,
+            "status": "pass",
+            "record": "stardust/replica/gates/about-360/gate-pub1.json",
+            "reason": null,
+            "residual": null
+          },
+          "1440": {
+            "verdict": "PASS",
+            "exit": 0,
+            "pixelPct": 5.4,
+            "pixelPctUnmasked": 6.2,
+            "heightDelta": 1,
+            "heightOk": true,
+            "cropsOk": true,
+            "header": {
+              "matchPct": 99.3,
+              "pass": true
+            },
+            "footer": {
+              "matchPct": 98.9,
+              "pass": true
+            },
+            "pass": true,
+            "status": "pass",
+            "record": "stardust/replica/gates/about-1440/gate-pub1.json",
+            "reason": null,
+            "residual": null
+          }
+        }
+      },
+      "bestOfLast3": {
+        "360": 4.9,
+        "1440": 5.4
+      },
+      "history": [
+        {
+          "at": "2026-09-18T10:20:00Z",
+          "status": "pass",
+          "breakpoints": {
+            "360": 4.9,
+            "1440": 5.4
+          }
+        }
+      ],
+      "reference": {
+        "360": "2026-09-18T09:20:00Z",
+        "1440": "2026-09-18T09:20:00Z"
+      }
+    },
+    "/insurance/home": {
+      "path": "/insurance/home",
+      "slug": "insurance__home",
+      "template": "program",
+      "wasLive": false,
+      "latest": {
+        "at": "2026-09-18T10:20:00Z",
+        "pass": true,
+        "status": "pass",
+        "breakpoints": {
+          "360": {
+            "verdict": "PASS",
+            "exit": 0,
+            "pixelPct": 5.8,
+            "pixelPctUnmasked": 6.6,
+            "heightDelta": 2,
+            "heightOk": true,
+            "cropsOk": true,
+            "header": {
+              "matchPct": 99.3,
+              "pass": true
+            },
+            "footer": {
+              "matchPct": 98.9,
+              "pass": true
+            },
+            "pass": true,
+            "status": "pass",
+            "record": "stardust/replica/gates/insurance__home-360/gate-pub1.json",
+            "reason": null,
+            "residual": null
+          },
+          "1440": {
+            "verdict": "PASS",
+            "exit": 0,
+            "pixelPct": 4.4,
+            "pixelPctUnmasked": 5.2,
+            "heightDelta": 0,
+            "heightOk": true,
+            "cropsOk": true,
+            "header": {
+              "matchPct": 99.3,
+              "pass": true
+            },
+            "footer": {
+              "matchPct": 98.9,
+              "pass": true
+            },
+            "pass": true,
+            "status": "pass",
+            "record": "stardust/replica/gates/insurance__home-1440/gate-pub1.json",
+            "reason": null,
+            "residual": null
+          }
+        }
+      },
+      "bestOfLast3": {
+        "360": 5.8,
+        "1440": 4.4
+      },
+      "history": [
+        {
+          "at": "2026-09-18T10:20:00Z",
+          "status": "pass",
+          "breakpoints": {
+            "360": 5.8,
+            "1440": 4.4
+          }
+        }
+      ],
+      "reference": {
+        "360": "2026-09-18T09:20:00Z",
+        "1440": "2026-09-18T09:20:00Z"
+      }
+    },
+    "/insurance/flood": {
+      "path": "/insurance/flood",
+      "slug": "insurance__flood",
+      "template": "program",
+      "wasLive": false,
+      "latest": {
+        "at": "2026-09-18T10:20:00Z",
+        "pass": false,
+        "status": "fail",
+        "breakpoints": {
+          "360": {
+            "verdict": "FAIL",
+            "exit": 2,
+            "pixelPct": 14.1,
+            "pixelPctUnmasked": 14.9,
+            "heightDelta": -96,
+            "heightOk": false,
+            "cropsOk": true,
+            "header": {
+              "matchPct": 99.3,
+              "pass": true
+            },
+            "footer": {
+              "matchPct": 98.9,
+              "pass": true
+            },
+            "pass": false,
+            "status": "fail",
+            "record": "stardust/replica/gates/insurance__flood-360/gate-pub1.json",
+            "reason": "pixel 14.1 % (record FAIL)",
+            "residual": null
+          },
+          "1440": {
+            "verdict": "PASS",
+            "exit": 0,
+            "pixelPct": 6.9,
+            "pixelPctUnmasked": 7.7,
+            "heightDelta": 3,
+            "heightOk": true,
+            "cropsOk": true,
+            "header": {
+              "matchPct": 99.3,
+              "pass": true
+            },
+            "footer": {
+              "matchPct": 98.9,
+              "pass": true
+            },
+            "pass": true,
+            "status": "pass",
+            "record": "stardust/replica/gates/insurance__flood-1440/gate-pub1.json",
+            "reason": null,
+            "residual": null
+          }
+        }
+      },
+      "bestOfLast3": {
+        "360": 14.1,
+        "1440": 6.9
+      },
+      "history": [
+        {
+          "at": "2026-09-18T10:20:00Z",
+          "status": "fail",
+          "breakpoints": {
+            "360": 14.1,
+            "1440": 6.9
+          }
+        }
+      ],
+      "reference": {
+        "360": "2026-09-18T09:20:00Z",
+        "1440": "2026-09-18T09:20:00Z"
+      }
+    },
+    "/insurance/life": {
+      "path": "/insurance/life",
+      "slug": "insurance__life",
+      "template": "program",
+      "wasLive": false,
+      "latest": {
+        "at": "2026-09-18T10:20:00Z",
+        "pass": false,
+        "status": "fail",
+        "breakpoints": {
+          "360": {
+            "verdict": "PASS",
+            "exit": 0,
+            "pixelPct": 6.3,
+            "pixelPctUnmasked": 7.1,
+            "heightDelta": 1,
+            "heightOk": true,
+            "cropsOk": true,
+            "header": {
+              "matchPct": 99.3,
+              "pass": true
+            },
+            "footer": {
+              "matchPct": 98.9,
+              "pass": true
+            },
+            "pass": true,
+            "status": "pass",
+            "record": "stardust/replica/gates/insurance__life-360/gate-pub1.json",
+            "reason": null,
+            "residual": null
+          },
+          "1440": {
+            "verdict": "PASS",
+            "exit": 0,
+            "pixelPct": 7.8,
+            "pixelPctUnmasked": 8.6,
+            "heightDelta": 22,
+            "heightOk": false,
+            "cropsOk": true,
+            "header": {
+              "matchPct": 99.3,
+              "pass": true
+            },
+            "footer": {
+              "matchPct": 98.9,
+              "pass": true
+            },
+            "pass": false,
+            "status": "fail",
+            "record": "stardust/replica/gates/insurance__life-1440/gate-pub1.json",
+            "reason": "|Δh| 22 px > 8",
+            "residual": null
+          }
+        }
+      },
+      "bestOfLast3": {
+        "360": 6.3,
+        "1440": 7.8
+      },
+      "history": [
+        {
+          "at": "2026-09-18T10:20:00Z",
+          "status": "fail",
+          "breakpoints": {
+            "360": 6.3,
+            "1440": 7.8
+          }
+        }
+      ],
+      "reference": {
+        "360": "2026-09-18T09:20:00Z",
+        "1440": "2026-09-18T09:20:00Z"
+      }
+    }
+  }
+}

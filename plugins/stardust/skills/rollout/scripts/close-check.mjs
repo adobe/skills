@@ -17,8 +17,9 @@
  *   5 review     stardust/rollout/review-pack.{md,json} generated ≥ the last deployedAt, ≥ 1 row per delivered
  *                templateId, every URL on site.liveHost or the source host (localhost / 127.0.0.1 / a token → fail)
  *   6 dashboard  dashboard/data.json generatedAt ≥ lastRun.at
- *   7 report     newest stardust/rollout/report/*.md with a gate table and a `report-check:` line — `[-]` while no
- *                report/ dir exists (the run-status renderer that writes it is pending; the Phase H block is the report)
+ *   7 report     newest stardust/rollout/report/*.md written ≥ the wave start with a gate table and a `report-check:`
+ *                line (handoff-report.md) — REQUIRED: the Phase H block is written to that file by hand until the
+ *                run-status renderer lands (--fix renders it only when status.mjs --markdown exists beside this skill)
  *   8 tracking   only when decisions.md row `tracking` ≠ none: tracking.json {issueUrl, commentUrl, at} updated this wave,
  *                or a `blocked` line with `owner: gh issue comment …` → `[~] blocked on owner` (exit 0)
  *   9 commit     when the project is a git repo AND decisions.md row `commit` = phase-end: a commit since the wave start
@@ -169,15 +170,18 @@ function main() {
     const dash = readJSON(join(OUT, 'dashboard', 'data.json'), null);
     const dashAt = ts(dash && dash.generatedAt);
     required('dashboard', dashAt !== null && (lastRunAt === null || dashAt >= lastRunAt), `dashboard: data.json generatedAt ${dash ? dash.generatedAt : 'missing'}${lastRunAt !== null ? ` vs lastRun.at ${config.lastRun.at}` : ''}`, 'node skills/rollout/scripts/dashboard.mjs');
-    // 7 report
+    // 7 report — required: the newest report/*.md of this wave carries the gate table and the report-check line
     const repDir = join(OUT, 'report');
-    if (!existsSync(repDir)) push('report', '-', 'report: no stardust/rollout/report/ — the Phase H block in the reply is the report (the run-status renderer that writes the file is pending)');
-    else {
-      const files = readdirSync(repDir).filter((f) => f.endsWith('.md')).sort();
-      const newest = files.length ? readText(join(repDir, files[files.length - 1])) : null;
-      const ok = !!newest && /^\|.*gate/im.test(newest) && /report-check:/i.test(newest);
-      required('report', ok, newest ? `report: ${files[files.length - 1]}${ok ? ' (gate table + report-check line)' : ' lacks a gate table or a `report-check:` line'}` : 'report: report/ has no .md', 'write the report (skills/stardust/reference/handoff-report.md § Gate table first · § Residuals, links, report check)');
-    }
+    const repFix = `write stardust/rollout/report/${start ? String(start.ts).replace(/[:.]/g, '-') : '<wave-ts>'}.md — the Phase H block: gate table first, coverage line, then \`report-check: <n> paths ls-verified · <m> counts re-read from <files>\` (skills/stardust/reference/handoff-report.md § Gate table first · § Residuals, links, report check)`;
+    const files = existsSync(repDir) ? readdirSync(repDir).filter((f) => f.endsWith('.md')).sort() : [];
+    const newestFile = files.length ? files[files.length - 1] : null;
+    const newest = newestFile ? readText(join(repDir, newestFile)) : null;
+    // <wave-ts>.md names its time with `-` for `:` (file-safe); a name without a time falls back to the file's mtime
+    const nameTs = newestFile ? (newestFile.replace(/T(\d{2})-(\d{2})(?:-(\d{2}))?/, (m, h, mi, sec) => `T${h}:${mi}${sec ? `:${sec}` : ''}`).match(ISO) || [])[0] : null;
+    const repAt = newestFile ? (nameTs && /T\d{2}:\d{2}/.test(nameTs) ? ts(nameTs) : ts(mtimeIso(join(repDir, newestFile)))) : null;
+    const repFresh = repAt !== null && (startAt === null || repAt >= startAt);
+    const repOk = !!newest && repFresh && /^\|.*gate/im.test(newest) && /report-check:/i.test(newest);
+    required('report', repOk, !newestFile ? `report: no stardust/rollout/report/*.md for this wave` : `report: ${newestFile}${repOk ? ' (gate table + report-check line)' : !repFresh ? ' is older than the wave start' : ' lacks a gate table or a `report-check:` line'}`, repFix);
     // 8 tracking · 9 commit — decisions.md rows
     const decisions = readText(join(SD, 'decisions.md')) || '';
     const rowOf = (id) => { const m = decisions.split('\n').find((l) => new RegExp(`^\\|\\s*\`?${id}\`?\\s*\\|`).test(l)); return m ? m.split('|').map((c) => c.trim()) : null; };

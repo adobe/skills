@@ -23,6 +23,14 @@
 //             (a crop record without `pass` is no verdict; B29); the footer names no unshipped deploy flag.
 //   run       a non-default --gates-dir is refused for a RUN (gate.sh writes the default dir); runPool caps
 //             in-flight rounds at --concurrency (2 only for live-cached pages) and keeps item order.
+//   label     a RUN reads only its own label's record: no record for the label → unmeasured (exit 3 →
+//             blocked), never the previous round's verdict; an explicit label picks that round.
+//   residual  the residual door: a valid published-origin residual (named class, artifacts[], acceptedBy —
+//             judged by replica's judgeResiduals) turns an over-bar breakpoint into PASS with reason
+//             `residual <class>`; one without artifacts[] keeps FAIL and names the defect; a sibling row
+//             needs `page: <slug>`; prototype-regime residuals (breakpoints.<W>.residuals) are never read.
+//   anchor    the live anchor probe is READ from gates/<slug>-<W>/anchor-live.json (any key) — never
+//             re-probed by the driver; a malformed cache → null (the one --cache probe then runs).
 //
 // Usage: node plugins/stardust/skills/rollout/scripts/gate-publish.test.mjs  (exit 1 on failure)
 import assert from 'node:assert/strict';
@@ -30,7 +38,7 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, existsSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { drawSample, breakpointVerdict, pageStatus, bestOfLast3, coverageLine, runPool } from './gate-publish.mjs';
+import { drawSample, breakpointVerdict, pageStatus, bestOfLast3, coverageLine, runPool, residualsFor, readAnchorCache, RESIDUAL_JUDGE } from './gate-publish.mjs';
 
 const HERE = import.meta.dirname;
 const CLI = join(HERE, 'gate-publish.mjs');
@@ -204,5 +212,50 @@ assert.ok(!existsSync(join(OUT, 'gate-report.json.tmp')));
 const beforeDry = readFileSync(join(OUT, 'gate-report.json'), 'utf8');
 assert.equal(readFileSync(join(OUT, 'gate-report.json'), 'utf8'), beforeDry, '--dry-run writes nothing');
 
+// ---- label-scoped verdict: a RUN never reads an older round when its own wrote no record ----
+assert.equal(breakpointVerdict(join(GATES, 'home-1440')).label, 'pub3', 'newest by default');
+assert.equal(breakpointVerdict(join(GATES, 'home-1440'), { label: 'pub2' }).pixelPct, 6.1, 'an explicit label picks that round');
+{ const v = breakpointVerdict(join(GATES, 'home-1440'), { label: 'pub9', exit: 125 });
+  assert.equal(v.status, 'unmeasured', 'no record for the label → unmeasured, not the previous PASS'); assert.match(v.reason, /wrote no record for pub9 \(exit 125\)/); assert.equal(v.history.length, 3, 'history still carried');
+  assert.equal(breakpointVerdict(join(GATES, 'home-1440'), { label: 'pub9', exit: 3 }).status, 'blocked');
+  assert.equal(breakpointVerdict(join(GATES, 'nowhere-360'), { label: 'pub1', exit: 1 }).status, 'unmeasured', 'usage exit + empty dir is unmeasured for a RUN, ungated only for --report'); }
+
+// ---- residual door (publish-gate.md § Gate 8, escape hatch c) ----
+assert.ok(RESIDUAL_JUDGE && typeof RESIDUAL_JUDGE.judge === 'function' && RESIDUAL_JUDGE.classes.size > 0, 'replica judge + class table loaded beside the skill');
+const valid = { band: 'y 0–96', pct: 2.1, cause: 'glyph-antialiasing: footer link column', artifacts: ['gates/news__a-1440/crop-footer-pub1.json'], acceptedBy: 'hands-off-policy:glyph-antialiasing' };
+{ const v = breakpointVerdict(join(GATES, 'news__a-1440'), { residuals: [valid] });
+  assert.equal(v.status, 'pass'); assert.equal(v.pass, true); assert.match(v.reason, /^residual glyph-antialiasing accepted by hands-off-policy:glyph-antialiasing \(was: chrome crop footer/); assert.deepEqual(v.residual.class, 'glyph-antialiasing');
+  const noArt = breakpointVerdict(join(GATES, 'business-360'), { residuals: [{ ...valid, artifacts: [] }] });
+  assert.equal(noArt.status, 'fail', 'a residual without artifacts[] opens nothing'); assert.match(noArt.reason, /residual door closed: residuals without artifacts\[\]/);
+  assert.equal(breakpointVerdict(join(GATES, 'business-360'), { residuals: [{ ...valid, cause: 'looks fine' }] }).status, 'fail', 'an unnamed class opens nothing');
+  assert.equal(breakpointVerdict(join(GATES, 'business-360'), { residuals: [{ ...valid, cause: 'live-drift: x', acceptedBy: 'hands-off-policy:live-drift' }] }).status, 'fail', 'hands-off-policy on a non-permanent class opens nothing');
+  assert.equal(breakpointVerdict(join(GATES, 'business-360'), { residuals: [{ ...valid, cause: 'register:R-01 footer colour', acceptedBy: 'register:R-01' }] }).residual.class, 'register:R-01');
+  assert.equal(breakpointVerdict(join(GATES, 'business-360'), { residuals: [valid], judge: null }).status, 'fail', 'no judge available → door closed');
+  assert.equal(breakpointVerdict(join(GATES, 'news__c-1440'), { residuals: [valid] }).status, 'unmeasured', 'a residual never turns no-verdict into PASS'); }
+// residualsFor: published-origin regime only, archetype row or a sibling row naming page
+{ const prog = { archetypes: [{ pageType: 'landing', archetype: 'home', breakpoints: { 360: { residuals: [{ ...valid, cause: 'third-party-in-flow: chat' }] } }, published: { 360: { residuals: [valid, { ...valid, page: 'business', cause: 'nondeterministic-live: ticker', acceptedBy: 'user' }] } } }] };
+  assert.deepEqual(residualsFor(prog, { slug: 'home', template: 'landing', W: 360 }), [valid], 'the archetype gets its own rows (no page field)');
+  assert.equal(residualsFor(prog, { slug: 'business', template: 'landing', W: 360 })[0].cause, 'nondeterministic-live: ticker', 'a sibling gets only rows naming it');
+  assert.deepEqual(residualsFor(prog, { slug: 'home', template: 'landing', W: 1440 }), [], 'per width');
+  assert.deepEqual(residualsFor({ archetypes: [{ pageType: 'landing', archetype: 'home', breakpoints: { 360: { residuals: [valid] } } }] }, { slug: 'home', template: 'landing', W: 360 }), [], 'prototype-regime residuals are never read'); }
+// CLI: the door through --report (business 360 FAIL by Δh 9 → PASS with a sibling residual), the md names the class
+writeFileSync(join(T, 'stardust', 'replica', 'progress.json'), JSON.stringify({ breakpointsConfigured: [1440, 360], archetypes: [{ pageType: 'landing', archetype: 'home', published: { 360: { residuals: [{ ...valid, page: 'business', cause: 'tag-injected-tail: consent footer', acceptedBy: 'user' }] } } }, { pageType: 'article', archetype: 'news__a' }, { pageType: 'program', archetype: 'prog__home' }] }));
+r = run('--paths', '/business', '--report');
+assert.equal(r.status, 0, `residual-door PASS → exit 0\n${r.stdout}`);
+assert.match(r.stdout, /published-gated 1 of 1 · PASS 1 · FAIL 0/);
+assert.equal(json(join(OUT, 'gate-report.json')).pages['/business'].latest.breakpoints['360'].residual.class, 'tag-injected-tail');
+assert.match(readFileSync(join(OUT, 'gate-report.md'), 'utf8'), /\| \/business \| pass \| PASS 3 % Δh 0 \| PASS 5 % Δh 9 \(residual tag-injected-tail\) \|/);
+writeFileSync(join(T, 'stardust', 'replica', 'progress.json'), JSON.stringify({ breakpointsConfigured: [1440, 360], archetypes: [{ pageType: 'landing', archetype: 'home', published: { 360: { residuals: [{ ...valid, page: 'business', cause: 'tag-injected-tail: consent footer', artifacts: [], acceptedBy: 'user' }] } } }] }));
+r = run('--paths', '/business', '--report');
+assert.equal(r.status, 2, 'an invalid residual keeps the FAIL');
+assert.match(json(join(OUT, 'gate-report.json')).pages['/business'].latest.breakpoints['360'].reason, /residual door closed: residuals without artifacts/);
+
+// ---- anchor cache read, never re-probed ----
+{ const f = join(T, 'anchor-live.json'); const data = { url: 'https://www.example.example/', sections: [{ label: 'hero', box: [96, 520] }], footer: [3100, 420], doc: 3520 };
+  writeFileSync(f, JSON.stringify({ key: { url: data.url, width: 1440, main: '#content' }, probedAt: '2026-09-12T00:00:00Z', data }));
+  assert.deepEqual(readAnchorCache(f), data, 'the cached probe is read whatever options (--main) it was probed with');
+  writeFileSync(f, '{not json'); assert.equal(readAnchorCache(f), null); assert.equal(readAnchorCache(join(T, 'missing.json')), null);
+  assert.match(src, /readAnchorCache\(join\(dir, 'anchor-live\.json'\)\) \|\| anchor\(live/, 'the live probe runs only when no cache file exists'); }
+
 rmSync(T, { recursive: true, force: true });
-console.log('gate-publish.test: ok');
+console.log('gate-publish.test: ok (statuses, history, KPI, coverage, exits, sample, label-scoped verdict, residual door, anchor cache)');

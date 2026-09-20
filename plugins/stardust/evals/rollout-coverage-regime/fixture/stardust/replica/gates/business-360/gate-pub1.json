@@ -1,0 +1,27 @@
+{
+  "slug": "business",
+  "label": "pub1",
+  "width": 360,
+  "regime": "published-origin",
+  "at": "2026-09-18T09:40:00Z",
+  "iteration": 1,
+  "ref": {
+    "url": "https://www.larkspurmutual.example/business",
+    "width": 360,
+    "capturedAt": "2026-09-18T09:20:00Z",
+    "sidecar": "stardust/replica/gates/business-360/live.png.json",
+    "instrument": "stitch-shot",
+    "technique": "stitched"
+  },
+  "build": {
+    "url": "https://main--larkspur-mutual--larkspur.aem.page/business"
+  },
+  "verdict": "PASS",
+  "exit": 0,
+  "pixelPct": 3.8,
+  "pixelPctUnmasked": 4.6,
+  "heightDelta": -1,
+  "pass": true,
+  "threshold": 10,
+  "differingPixels": 19699
+}

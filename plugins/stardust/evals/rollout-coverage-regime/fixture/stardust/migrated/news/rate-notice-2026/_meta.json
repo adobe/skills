@@ -1,0 +1,68 @@
+{
+  "slug": "news__rate-notice-2026",
+  "type": "article",
+  "renderBranch": "A'",
+  "tier": "sibling",
+  "template": "news__storm-season-checklist",
+  "archetypePath": "stardust/prototypes/news__storm-season-checklist-proposed.html",
+  "archetypeSha": "3cc1d721f7cf",
+  "modules": [
+    "article-header",
+    "article-body",
+    "related-articles"
+  ],
+  "slotsFilled": [
+    "kicker",
+    "headline",
+    "byline",
+    "article-body",
+    "heading",
+    "related-link"
+  ],
+  "variants": [
+    {
+      "block": "related-articles",
+      "variant": "items-2",
+      "evidence": "sibling-variance: 2 related links vs 3 on archetype"
+    }
+  ],
+  "canonShas": {
+    "header": "9df3d58a07d2",
+    "footer": "323f63aaa91f",
+    "css": "c8372774ba5a"
+  },
+  "deviations": [],
+  "migrationDecisions": [
+    {
+      "kind": "register-applied",
+      "entry": "R-01",
+      "where": "footer",
+      "detail": "footer link colour lifted per inconsistency register; expected gate delta in footer band"
+    }
+  ],
+  "metadata": {
+    "title": "2026 rate notice — what changes for members",
+    "description": "Highlights from the 2025 annual report to members.",
+    "canonical": "https://www.larkspurmutual.example/news/rate-notice-2026/",
+    "ogTitle": "2025 annual report: surplus, claims paid, and what comes next — Larkspur Mutual",
+    "lang": "en"
+  },
+  "jsonLd": {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    "headline": "2025 annual report: surplus, claims paid, and what comes next",
+    "publisher": {
+      "@type": "Organization",
+      "name": "Larkspur Mutual"
+    },
+    "name": "2026 rate notice — what changes for members",
+    "url": "https://www.larkspurmutual.example/news/rate-notice-2026/"
+  },
+  "migratedAt": "2026-09-10T15:36:40Z",
+  "designMdSha": "a99e7fb42deeab5a131ba0b090a9a4ce6eaecf7e81be48128bfee70e3fd49a3e",
+  "designJsonSha": "27bf506c89928d5aab22bb3ff836aa673ff4a4fcd8f50e336ad0be1ef12f3a11",
+  "sourceCurrentSha": "654033585146e09f9e290e7ee284f1601cce37b909fca3a4c8dc5b32d775f1d9",
+  "sourceProposedSha": null,
+  "assetsBundled": 3,
+  "brokenInternalLinks": 0
+}

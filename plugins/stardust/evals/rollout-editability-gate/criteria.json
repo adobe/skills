@@ -1,5 +1,5 @@
 {
-  "context": "Editability gate placement in rollout Phase C (delivery-gates.md § Gate 6), hands-off, offline. Task and setup in task.md; each item is judged pass/fail and weighted by max_score.",
+  "context": "Editability gate placement in rollout Phase C (measured-gates.md § Gate 6), hands-off, offline. Task and setup in task.md; each item is judged pass/fail and weighted by max_score.",
   "type": "weighted_checklist",
   "checklist": [
     { "name": "probe_ingested_via_gate_flag", "max_score": 20, "description": "Both probe artifacts are ingested with update-coverage.mjs --gate editability <json> (or the agent re-runs ew-editability-probe.mjs --json over the authored files and ingests that output). pages.json is never hand-edited; the gate block delivery.gates.editability on home carries authored 7, editable 5, dead 2, origin harness copied from the artifact." },

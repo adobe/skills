@@ -79,10 +79,10 @@
  * `flow: replica` (state.json) a row renders-verified here is `verified` ONLY when its gate
  * status is `pass`; otherwise it stays `deployed` and the class table carries one advisory
  * row per gate status (`published-origin gate: fail | unmeasured | ungated | published-failing`)
- * — the gate is never re-judged here, only read (reference/delivery-gates.md § Gate 8).
+ * — the gate is never re-judged here, only read (reference/publish-gate.md § Gate 8).
  *
  * AI-readability (`--ai-readability <ai-readability.mjs --json artifact>`, the Phase E live-origin run;
- * reference/delivery-gates.md § Gate 5): ingested with the same matcher as update-coverage --gate —
+ * reference/measured-gates.md § Gate 5): ingested with the same matcher as update-coverage --gate —
  * `code < min` flips the row to `failed` (reason "ai-readability code N < min — top: <blocks>"),
  * an `error` row is `unmeasured` (status untouched, counted, exit 2 — a re-drive, never a pass,
  * never a FAIL); `delivery.gates.ai-readability` is copied from the artifact, never typed; the

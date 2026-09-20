@@ -1,5 +1,5 @@
 {
-  "context": "Published-origin page gate as the release condition (rollout Phase C step 4 / delivery-gates.md § Gate 8), hands-off, offline. Task and setup in task.md; each item is judged pass/fail and weighted by max_score.",
+  "context": "Published-origin page gate as the release condition (rollout Phase C step 4 / publish-gate.md § Gate 8), hands-off, offline. Task and setup in task.md; each item is judged pass/fail and weighted by max_score.",
   "type": "weighted_checklist",
   "checklist": [
     {

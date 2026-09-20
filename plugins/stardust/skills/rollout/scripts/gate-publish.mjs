@@ -5,7 +5,7 @@
  *
  * It measures and writes; it never publishes. The release condition reads its report:
  * `stardust/rollout/gate-report.json` — every previewed row without a PASS is HELD
- * (reference/delivery-gates.md § Gate 8; the hold inside `deploy-batch.mjs --publish` is the
+ * (reference/publish-gate.md § Gate 8; the hold inside `deploy-batch.mjs --publish` is the
  * deploy cluster's hunk — until it lands the operator reads the report's held rows before
  * the publish run). The gate status lives in rollout coverage (`delivery.gate`) and in the
  * report — never in `state.json` (`migrated` is migrate's lifecycle state) and never in the
@@ -14,7 +14,8 @@
  * Per page × configured breakpoint the driver composes the replica instruments:
  *   gate.sh <slug> <live-url> <origin-url> <W> pub<k> --regime published-origin [--refresh] [--variance]
  *     → gates/<slug>-<W>/gate-pub<k>.json (live cached once per page × width; drift probe; 0/2/3/5/6/124)
- *   anchor.mjs both sides (live via --cache, zero extra hits) → header + footer bands
+ *   anchor.mjs both sides (live side: the cached gates/<slug>-<W>/anchor-live.json is READ, not
+ *     re-probed — zero live hits whatever options gate.sh probed it with) → header + footer bands
  *   crop-compare live.png build.png --y 0 --height <hh> · --y <live fy> --y-b <build fy> --height <fh>
  *     → gates/<slug>-<W>/crop-{header,footer}-pub<k>.json
  * PASS at a breakpoint = record `pass` (pixel-compare's own bar) ∧ |Δh| ≤ 8 px ∧ both
@@ -31,7 +32,15 @@
  *   unmeasured         a breakpoint has no verdict (exit 124 deadline, 5 invalid capture,
  *                      6 cap reached, crops not run) — never a FAIL, never counted (B32)
  *   ungated            a breakpoint has no published-origin record at all
- * A `prototype`-regime record is never read here (regime honesty).
+ * A `prototype`-regime record is never read here (regime honesty). A RUN reads only the record of
+ * the label it asked gate.sh for: when gate.sh wrote none (exit 1 / 125) the breakpoint is
+ * `unmeasured` — never an older round's verdict. The residual door (publish-gate.md § Gate 8,
+ * escape hatch (c)): a residual under progress.json `archetypes[].published.<W>.residuals[]` for
+ * this page (the archetype's own row, or a row naming `page: <slug>` for a sibling of the type)
+ * that passes § Residual logging format — judged by replica's gate-ledger-lint `judgeResiduals`
+ * (named class or register:R-nn, artifacts[], acceptedBy; hands-off-policy only on a permanent
+ * class) — turns an over-bar breakpoint into a PASS row with reason `residual <class>`; an invalid
+ * residual leaves it FAIL and the reason names the defect. Prototype-regime residuals are not read.
  *
  * Selection (one of):
  *   --paths <file|/a,/b>      delivered paths (file: one per line)
@@ -41,7 +50,7 @@
  *                             per template: its archetype + n pages drawn at random with a
  *                             fixed seed from the delivered rows, never the delivery-order
  *                             head, never an excluded (fix-loop) slug — the coverage-regime
- *                             sample (delivery-gates.md § Gate 8 → Coverage regime). Seed
+ *                             sample (publish-gate.md § Gate 8 → Coverage regime). Seed
  *                             and draw are recorded in the report.
  * Modes:
  *   (run)        drive the instruments sequentially — one gate.sh round at a time (hit-minimisation
@@ -66,11 +75,12 @@
  *     coverage{delivered, gated, pass, fail, publishedFailing, unmeasured, ungated},
  *     templates{<template>: {pages, pass, fail, unmeasured, ungated, atBar}}   ← atBar = every selected page of the
  *                            template PASSes (a named-class residual is a PASS row); a template not at the bar is
- *                            not published — its rows are held (coverage regime, delivery-gates.md § Gate 8)
+ *                            not published — its rows are held (coverage regime, publish-gate.md § Gate 8)
  *     neutralDiff{<template>: {<W>: {n, median, p90, under10}}}   ← reporting KPI from pixelPctUnmasked, not a bar
  *     pages{<path>: { path, slug, template, wasLive,
  *                     latest{ at, pass, status, breakpoints{<W>: {verdict, exit, pixelPct, pixelPctUnmasked,
- *                             heightDelta, heightOk, cropsOk, header, footer, pass, record, reason}} },
+ *                             heightDelta, heightOk, cropsOk, header, footer, pass, record, reason,
+ *                             residual{class, cause, acceptedBy} | null}} },
  *                     bestOfLast3{<W>: pct}, history[{at, breakpoints{<W>: pct}}], reference{<W>: capturedAt} } } }
  *   + `<out>/gate-report.md`. Coverage line (stdout and md):
  *   `published-gated P of M · PASS p · FAIL f · unmeasured u · ungated r[ · published-failing x]`
@@ -90,6 +100,31 @@ import { spawn, spawnSync } from 'node:child_process';
 import { readJSON, writeJSON, deliveredPathOf, isDelivered } from './lib.mjs';
 
 const HEIGHT_BAR_PX = 8; // the existing |Δh| bar (pixel-compare prints ⚠ over it; the gate applies it)
+
+/** replica's residual judge (gate-ledger-lint judgeResiduals + the § Residual classes table) — null when the
+ *  replica scripts are not beside this skill: the residual door then stays closed and says so. */
+export const RESIDUAL_JUDGE = await (async () => {
+  for (const c of ['../../replica/scripts/', '../replica/']) {
+    try {
+      const lint = await import(new URL(`${c}gate-ledger-lint.mjs`, import.meta.url));
+      const rec = await import(new URL(`${c}progress-record.mjs`, import.meta.url));
+      return { judge: lint.judgeResiduals, classes: rec.residualClasses() };
+    } catch (e) { if (e.code !== 'ERR_MODULE_NOT_FOUND') throw e; }
+  }
+  return null;
+})();
+/** Residuals of progress.json that may open the door for this page × width: published-origin regime only. */
+export function residualsFor(progress, { slug, template, W }) {
+  const arche = (progress && progress.archetypes) || [];
+  const entry = arche.find((a) => a.archetype === slug) || arche.find((a) => template && a.pageType === template);
+  if (!entry) return [];
+  const list = entry.published && entry.published[W] && Array.isArray(entry.published[W].residuals) ? entry.published[W].residuals : [];
+  return list.filter((r) => (r && r.page ? r.page === slug : entry.archetype === slug));
+}
+/** The cached live anchor probe (anchor.mjs --cache file: { key, probedAt, data }) — read as-is, never re-probed here. */
+export function readAnchorCache(file) {
+  try { const c = JSON.parse(readFileSync(file, 'utf8')); return c && c.data && Array.isArray(c.data.sections) ? c.data : null; } catch { return null; }
+}
 
 export function arg(argv, name, fallback) {
   const i = argv.indexOf(`--${name}`);
@@ -133,12 +168,31 @@ const cropOf = (dir, kind, label) => readJson(join(dir, `crop-${kind}-${label}.j
 /** crop-compare's own verdict; a record without `pass` is no verdict (never re-judged from matchPct — B29). */
 const cropOk = (c) => (c && typeof c.pass === 'boolean' ? c.pass : null);
 
-/** One breakpoint's verdict from the newest published-origin record (+ its crop files). */
-export function breakpointVerdict(dir) {
+/**
+ * One breakpoint's verdict from the newest published-origin record (+ its crop files) — or, with
+ * `label`, from THAT round only (a RUN never reads an older round when its own wrote no record).
+ * `residuals` (residualsFor) + the judge open the residual door on an over-bar breakpoint.
+ */
+export function breakpointVerdict(dir, { label = null, exit = null, residuals = [], judge = RESIDUAL_JUDGE } = {}) {
   const recs = publishedRecords(dir);
-  if (!recs.length) return { status: 'ungated', pass: false, reason: 'no published-origin record', history: [] };
-  const { file, rec } = recs[recs.length - 1];
   const history = recs.filter(({ rec: r }) => ['PASS', 'FAIL'].includes(r.verdict)).map(({ rec: r }) => ({ at: r.at, label: r.label, pixelPct: r.pixelPct, verdict: r.verdict }));
+  if (!recs.length && !label) return { status: 'ungated', pass: false, reason: 'no published-origin record', history: [] };
+  const pick = label ? recs.find(({ rec: r }) => r.label === label) : recs[recs.length - 1];
+  if (!pick) {
+    if (exit === 3) return { status: 'blocked', pass: false, reason: `blocked (challenge / auth) — gate.sh wrote no record for ${label}`, history };
+    return { status: 'unmeasured', pass: false, reason: `gate.sh wrote no record for ${label}${exit === null ? '' : ` (exit ${exit})`} — no verdict this round`, history };
+  }
+  const { file, rec } = pick;
+  const door = (out) => {
+    if (!residuals.length) return out;
+    if (!judge) return { ...out, reason: `${out.reason} — residual door closed: replica scripts not found beside this skill` };
+    const problems = judge.judge(residuals, judge.classes);
+    if (problems.length) return { ...out, reason: `${out.reason} — residual door closed: ${problems.join(', ')}` };
+    const r = residuals[0];
+    const cause = String(r.cause || '');
+    const cls = (cause.match(/^register:R-\d+/i) || [cause.split(/[:\s]/)[0]])[0];
+    return { ...out, status: 'pass', pass: true, reason: `residual ${cls} accepted by ${r.acceptedBy} (was: ${out.reason})`, residual: { class: cls, cause: r.cause, acceptedBy: r.acceptedBy } };
+  };
   const base = { record: file, label: rec.label, at: rec.at, verdict: rec.verdict, exit: rec.exit, pixelPct: rec.pixelPct ?? null, pixelPctUnmasked: rec.pixelPctUnmasked ?? null, heightDelta: rec.heightDelta ?? null, capturedAt: rec.ref && rec.ref.capturedAt, history };
   if (rec.exit === 3) return { ...base, status: 'blocked', pass: false, reason: 'blocked (challenge / auth) — no verdict' };
   if (!['PASS', 'FAIL'].includes(rec.verdict)) return { ...base, status: 'unmeasured', pass: false, reason: `no verdict (exit ${rec.exit})` };
@@ -147,10 +201,10 @@ export function breakpointVerdict(dir) {
   const hOk = cropOk(header); const fOk = cropOk(footer);
   const cropsOk = hOk === null || fOk === null ? null : hOk && fOk;
   const out = { ...base, heightOk, cropsOk, header: header ? { matchPct: header.matchPct, pass: hOk } : null, footer: footer ? { matchPct: footer.matchPct, pass: fOk } : null };
-  if (rec.verdict === 'FAIL') return { ...out, status: 'fail', pass: false, reason: `pixel ${rec.pixelPct} % (record FAIL)` };
-  if (!heightOk) return { ...out, status: 'fail', pass: false, reason: `|Δh| ${rec.heightDelta} px > ${HEIGHT_BAR_PX}` };
+  if (rec.verdict === 'FAIL') return door({ ...out, status: 'fail', pass: false, reason: `pixel ${rec.pixelPct} % (record FAIL)` });
+  if (!heightOk) return door({ ...out, status: 'fail', pass: false, reason: `|Δh| ${rec.heightDelta} px > ${HEIGHT_BAR_PX}` });
   if (cropsOk === null) return { ...out, status: 'unmeasured', pass: false, reason: header && footer ? 'chrome crop record carries no pass verdict (re-run crop-compare)' : 'chrome crops not run (header/footer crop files missing)' };
-  if (!cropsOk) { const k = hOk ? 'footer' : 'header'; const c = hOk ? footer : header; return { ...out, status: 'fail', pass: false, reason: `chrome crop ${k} match ${c.matchPct} % — crop-compare FAIL${Number.isFinite(Number(c.threshold)) ? ` (its bar ${c.threshold} % diff)` : ''}` }; }
+  if (!cropsOk) { const k = hOk ? 'footer' : 'header'; const c = hOk ? footer : header; return door({ ...out, status: 'fail', pass: false, reason: `chrome crop ${k} match ${c.matchPct} % — crop-compare FAIL${Number.isFinite(Number(c.threshold)) ? ` (its bar ${c.threshold} % diff)` : ''}` }); }
   return { ...out, status: 'pass', pass: true, reason: null };
 }
 
@@ -183,7 +237,7 @@ export function buildReport(entries, { widths, previous = null, sample = null, a
     const bol3 = {}; const reference = {};
     for (const W of widths) {
       const b = e.breakpoints[W];
-      bp[W] = { verdict: b.verdict ?? null, exit: b.exit ?? null, pixelPct: b.pixelPct ?? null, pixelPctUnmasked: b.pixelPctUnmasked ?? null, heightDelta: b.heightDelta ?? null, heightOk: b.heightOk ?? null, cropsOk: b.cropsOk ?? null, header: b.header ?? null, footer: b.footer ?? null, pass: b.pass, status: b.status, record: b.record ?? null, reason: b.reason };
+      bp[W] = { verdict: b.verdict ?? null, exit: b.exit ?? null, pixelPct: b.pixelPct ?? null, pixelPctUnmasked: b.pixelPctUnmasked ?? null, heightDelta: b.heightDelta ?? null, heightOk: b.heightOk ?? null, cropsOk: b.cropsOk ?? null, header: b.header ?? null, footer: b.footer ?? null, pass: b.pass, status: b.status, record: b.record ?? null, reason: b.reason, residual: b.residual ?? null };
       bol3[W] = bestOfLast3(b.history || []);
       if (b.capturedAt) reference[W] = b.capturedAt;
     }
@@ -222,11 +276,11 @@ export function renderMd(report, selectedPaths) {
   for (const [t, T] of Object.entries(report.templates || {})) md.push(`| ${t} | ${T.pages} | ${T.pass} | ${T.fail} | ${T.unmeasured} | ${T.ungated} | ${T.atBar ? 'yes' : 'no — not published'} |`);
   md.push('');
   md.push(`| page | status | ${widths.map((W) => `${W}`).join(' | ')} | wasLive | at |`, `|---|---|${widths.map(() => '---').join('|')}|---|---|`);
-  for (const r of rows) md.push(`| ${r.path} | ${r.latest.status} | ${widths.map((W) => { const b = r.latest.breakpoints[W]; return b.status === 'ungated' ? 'ungated' : b.status === 'unmeasured' || b.status === 'blocked' ? `${b.status} (${b.reason})` : `${b.status.toUpperCase()} ${b.pixelPct} % Δh ${b.heightDelta}${b.cropsOk === false ? ' chrome✗' : ''}`; }).join(' | ')} | ${r.wasLive ? 'yes' : 'no'} | ${r.latest.at} |`);
+  for (const r of rows) md.push(`| ${r.path} | ${r.latest.status} | ${widths.map((W) => { const b = r.latest.breakpoints[W]; return b.status === 'ungated' ? 'ungated' : b.status === 'unmeasured' || b.status === 'blocked' ? `${b.status} (${b.reason})` : `${b.status.toUpperCase()} ${b.pixelPct} % Δh ${b.heightDelta}${b.cropsOk === false ? ' chrome✗' : ''}${b.residual ? ` (residual ${b.residual.class})` : ''}`; }).join(' | ')} | ${r.wasLive ? 'yes' : 'no'} | ${r.latest.at} |`);
   md.push('', '## neutralDiff (reporting KPI, not a bar)', '', '| template | bp | n | median | p90 | share < 10 % |', '|---|---|---|---|---|---|');
   for (const [t, byW] of Object.entries(report.neutralDiff)) for (const [W, v] of Object.entries(byW)) md.push(`| ${t} | ${W} | ${v.n} | ${v.median} | ${v.p90} | ${v.under10} |`);
   if (!Object.keys(report.neutralDiff).length) md.push('| — | — | 0 | not measured | not measured | not measured |');
-  md.push('', 'Rows without a PASS are held from the publish run and re-drive with the same run once this report changes; the escape flags are operator/owner flags, never hands-off (delivery-gates.md § Gate 8 — the hold inside deploy-batch --publish is pending the deploy hunk; until then read the held rows here before publishing).', '');
+  md.push('', 'Rows without a PASS are held from the publish run and re-drive with the same run once this report changes; the escape flags are operator/owner flags, never hands-off (publish-gate.md § Gate 8 — the hold inside deploy-batch --publish is pending the deploy hunk; until then read the held rows here before publishing).', '');
   return md.join('\n');
 }
 
@@ -327,19 +381,24 @@ async function main() {
     const bps = {};
     for (const W of widths) {
       const dir = join(GATES, `${p.slug}-${W}`);
+      const residuals = residualsFor(progress, { slug: p.slug, template: templateOf(p), W });
+      let label = null; let exit = null;
       if (!REPORT_ONLY) {
-        const label = nextLabel(dir);
+        label = nextLabel(dir);
         const cmd = ['bash', join(REPLICA, 'gate.sh'), p.slug, live || '<live url missing>', `${ORIGIN}${served}`, String(W), label, '--regime', 'published-origin', ...(has(argv, 'refresh') ? ['--refresh'] : []), ...(has(argv, 'variance') ? ['--variance'] : [])];
         commands.push(cmd.join(' '));
         if (!DRY) {
           if (!live) { bps[W] = { status: 'unmeasured', pass: false, reason: 'no live URL (state.json pages[].url / rollout.json site.sourceUrl)', history: [] }; continue; }
           const r = await spawnP(cmd[0], cmd.slice(1), gateEnv);
+          exit = r.status;
           process.stdout.write(r.stdout || '');
           if (r.status === 3) blocked = true;
           if ((r.status === 0 || r.status === 2) && existsSync(join(dir, 'live.png')) && existsSync(join(dir, 'build.png'))) {
             // chrome crops: header band from the first section's top, footer bands aligned per side (anchor.mjs; live via --cache = zero extra hits)
             const anchor = (url, extra) => { const a = spawnSync(process.execPath, [join(REPLICA, 'anchor.mjs'), url, '--width', String(W), '--json', ...extra], { encoding: 'utf8' }); try { return JSON.parse(a.stdout.trim().split('\n').pop()); } catch { return null; } };
-            const la = anchor(live, ['--cache', join(dir, 'anchor-live.json')]); const ba = anchor(`${ORIGIN}${served}`, []);
+            // live side: read gate.sh's cached probe as-is (its key may carry options this driver does not pass — a key
+            // mismatch inside anchor.mjs would re-probe = one extra source-site hit); probe only when no cache exists
+            const la = readAnchorCache(join(dir, 'anchor-live.json')) || anchor(live, ['--cache', join(dir, 'anchor-live.json')]); const ba = anchor(`${ORIGIN}${served}`, []);
             const crop = (kind, args) => { const c = spawnSync(process.execPath, [join(REPLICA, 'crop-compare.mjs'), join(dir, 'live.png'), join(dir, 'build.png'), ...args, '--json', '--out', join(dir, `crop-${kind}-${label}.png`)], { encoding: 'utf8' }); try { const j = JSON.parse(c.stdout.trim().split('\n').find((l) => l.startsWith('{')) || 'null'); if (j) { j.pass = c.status === 0; writeFileSync(join(dir, `crop-${kind}-${label}.json`), `${JSON.stringify(j, null, 2)}\n`); } } catch { /* no crop record → unmeasured */ } };
             if (la && ba) {
               const hh = Math.max(40, Math.min(400, (la.sections && la.sections[0] && la.sections[0].box && la.sections[0].box[0]) || 80));
@@ -349,7 +408,7 @@ async function main() {
           }
         }
       }
-      bps[W] = DRY ? { status: 'ungated', pass: false, reason: 'dry-run', history: [] } : breakpointVerdict(dir);
+      bps[W] = DRY ? { status: 'ungated', pass: false, reason: 'dry-run', history: [] } : breakpointVerdict(dir, { label, exit, residuals });
     }
     const e = { path: served, slug: p.slug, template: templateOf(p), wasLive: wasLiveOf(p), breakpoints: bps };
     const st = pageStatus(bps, e.wasLive);

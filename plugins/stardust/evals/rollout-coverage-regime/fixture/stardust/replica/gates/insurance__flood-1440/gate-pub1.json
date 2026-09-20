@@ -1,0 +1,27 @@
+{
+  "slug": "insurance__flood",
+  "label": "pub1",
+  "width": 1440,
+  "regime": "published-origin",
+  "at": "2026-09-18T10:20:00Z",
+  "iteration": 1,
+  "ref": {
+    "url": "https://www.larkspurmutual.example/insurance/flood/",
+    "width": 1440,
+    "capturedAt": "2026-09-18T09:20:00Z",
+    "sidecar": "stardust/replica/gates/insurance__flood-1440/live.png.json",
+    "instrument": "stitch-shot",
+    "technique": "stitched"
+  },
+  "build": {
+    "url": "https://main--larkspur-mutual--larkspur.aem.page/insurance/flood"
+  },
+  "verdict": "PASS",
+  "exit": 0,
+  "pixelPct": 6.9,
+  "pixelPctUnmasked": 7.7,
+  "heightDelta": 3,
+  "pass": true,
+  "threshold": 10,
+  "differingPixels": 35762
+}

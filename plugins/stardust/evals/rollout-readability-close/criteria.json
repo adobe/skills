@@ -1,5 +1,5 @@
 {
-  "context": "AI-readability gate placement in rollout Phase E / Phase H (delivery-gates.md § Gate 5), hands-off, offline. Task and setup in task.md; each item is judged pass/fail and weighted by max_score.",
+  "context": "AI-readability gate placement in rollout Phase E / Phase H (measured-gates.md § Gate 5), hands-off, offline. Task and setup in task.md; each item is judged pass/fail and weighted by max_score.",
   "type": "weighted_checklist",
   "checklist": [
     {
