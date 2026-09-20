@@ -70,6 +70,15 @@ const schemaDoc = readFileSync(new URL('../../skills/extract/reference/current-s
 assert.match(skillDoc, /ONE exception: the favicon set — at\nmost 8 icon URLs/, 'SKILL Phase 2 names the favicon-set exception (≤ 8 URLs, once per run)');
 assert.match(schemaDoc, /favicon set is the crawl's \*\*one exception\*\* to "zero extra\nrequests": at most 8 icon URLs/, 'current-state-schema.md favicon-set note documents the exception');
 
+// doc pins (D3): playwright-recipe.md describes schema 2 — resolves from the rendered state (no HEAD probe), family-first icon fonts, logo step 1b
+const recipe = readFileSync(new URL('../../skills/extract/reference/playwright-recipe.md', import.meta.url), 'utf8');
+assert.ok(!/issue a `HEAD`/.test(recipe), 'recipe: no HEAD probe for resolves (rendered state only — never a second request)');
+assert.match(recipe, /`resolves` flag from the rendered state — never a\n\s+second request/, 'recipe item 11 states the rendered-state rule');
+assert.ok(!/\[class\^="icon-"\]/.test(recipe), 'recipe: the refuted [class^="icon-"] detector is gone');
+assert.match(recipe, /family-first and class-agnostic/, 'recipe item 17 is family-first');
+assert.match(recipe, /^1b\. \*\*Banner wordmark\*\*/m, 'recipe § Logo locator chain has step 1b');
+assert.match(recipe, /assets\/_fonts-manifest\.json#fonts\[\]/, 'recipe item 16 names the fonts manifest');
+
 // CLI
 const dir = mkdtempSync(join(tmpdir(), 'validate-page-')); const pages = join(dir, 'pages'); mkdirSync(pages);
 writeFileSync(join(pages, 'index.json'), JSON.stringify(full()));

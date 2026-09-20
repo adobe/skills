@@ -37,6 +37,11 @@ function project() {
   return { root, out, state };
 }
 
+// ---- doc pins (D3): prep-mode.md § 5 names state-update.mjs --prep; § 1 says a --prep run is never bounded ----
+const prepDoc = readFileSync(join(import.meta.dirname, '..', '..', 'skills', 'extract', 'reference', 'prep-mode.md'), 'utf8');
+assert.match(prepDoc, /`state-update\.mjs\n--prep` prints it[^\n]*\n[^\n]*\*\*exits 1 when live < total\*\*/, 'prep-mode § 5 names the script, the ratio line and exit 1');
+assert.match(prepDoc, /A `--prep` run is \*\*never bounded\*\*/, 'prep-mode § 1 says a --prep run is never bounded');
+
 // ---- pure functions ----
 const live = { slug: 'a', rec: { slug: 'a', _provenance: { renderedBy: 'playwright', fetchedAt: '2026-09-18T09:00:00Z', waitMode: 'medium', waitMs: 2500, httpStatus: 200 } } };
 const recs = [{ file: 'a.json', rec: live.rec }, { file: 'b.json', rec: { slug: 'b', _provenance: { renderedBy: 'playwright', fetchedAt: 'x', waitMode: 'medium', waitMs: 0, httpStatus: 200 } } }, { file: 'c.json', rec: null }];

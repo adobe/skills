@@ -43,12 +43,17 @@ values, and carries a source citation.
   "_provenance": {
     "writtenBy": "stardust:extract",
     "writtenAt": "2026-04-25T13:50:00Z",
+    "script": "brand-surface.mjs",  // the offline Phase 3 writer (never a second live pass)
     "readArtifacts": [
-      "https://example.com/",
-      "stardust/current/pages/index.json"
+      "stardust/current/pages/index.json",
+      "stardust/current/pages/index.html",
+      "stardust/current/_crawl-log.json",
+      "stardust/current/assets/_fonts-manifest.json"
     ],
     "synthesizedInputs": [],
-    "stardustVersion": "0.10.0"
+    "mode": "full",                 // "full" | "bounded" — see below
+    "pagesAggregated": 3,
+    "notes": []                     // exclusions, fallbacks, skipped records — every deviation, in words
   },
   "site": {
     "name": "Example",
@@ -70,6 +75,15 @@ values, and carries a source citation.
   "register": "brand"             // "brand" | "product" | "ambiguous"
 }
 ```
+
+`_provenance.mode` is `"bounded"` when the run was `--pages` / `--single`
+(cap 1) without `--prep`, or `brand-surface.mjs --bounded` was given:
+`voice`, `voiceTable`, `crossPromo` and `register` are **omitted** (never
+guessed from one page); palette, type, spacing, motifs, logo and
+`origins[]` are still aggregated. A `--prep` run is never bounded.
+`notes[]` carries every deviation in words (third-party chrome
+excluded, manifest absent, records skipped for missing provenance,
+palette entries dropped past the cap).
 
 ---
 
@@ -163,19 +177,31 @@ Merge rules:
 
 ```json
 {
-  "source": "inline-svg",          // one of: inline-svg | img | apple-touch-icon | og-image | favicon | synthesized
-  "sourceSelector": "header svg",  // CSS selector or URL — null only for synthesized
-  "localPath": "stardust/current/assets/logo.svg",
+  "source": "img",                 // one of: inline-svg | img | apple-touch-icon | og-image | favicon | synthesized
+  "step": "1b",                    // the chain step that won: "1" | "1b" | "2" | "3" | "4" | "5" | "6"
+  "sourceSelector": "img[src=\"https://example.com/img/wordmark.svg\"]", // CSS selector or URL — null only for synthesized
+  "url": "https://example.com/img/wordmark.svg",
+  "localPath": "stardust/current/assets/media/wordmark-3f9a1c2b.svg", // the harvested copy (assets/logo.svg for inline SVG)
   "format": "svg",                 // svg | png | jpg | ico
-  "intrinsicWidth": 180,
-  "intrinsicHeight": 32,
+  "intrinsicWidth": 360,
+  "intrinsicHeight": 64,
+  "renderedWidth": 180,            // CSS px at 1440 / DPR 1, from media.images[].rect — null when the step has no rect
+  "renderedHeight": 32,
   "synthesized": false,
   "synthesizedBasis": null         // e.g. "Brand initials EX, derived from page title"
 }
 ```
 
-Locator priority chain in `playwright-recipe.md` § Logo locator chain.
-First hit wins.
+Locator priority chain in `playwright-recipe.md` § Logo locator chain,
+resolved **offline** by `brand-surface.mjs` `resolveLogo()` over the home
+record and its sidecar: 1 inline SVG in the banner · **1b the largest
+`<img>` / inline `<svg>` rendered inside the banner landmark (rect
+≥ 40 × 16 CSS px, aspect 0.5–6, from `media.*[].rect` + `landmarks` — no
+logo-ish name required)** · 2 logo-ish `<img>` · 3 `apple-touch-icon` ·
+4 `og:image` · 5 favicon (`_crawl-log.json#favicon`) · 6 synthesized.
+First hit wins; `step` records it. Step 1b is why a header wordmark no
+longer loses to the touch icon; `brand-review.mjs` raises
+`T-logo-variants` only when the chain landed **below** 1b.
 
 ## § Palette
 
@@ -252,8 +278,10 @@ Aggregation rules:
   exclusion misses them and their border colour enters the palette),
   is dropped from palette counting and from button-cluster / component
   style aggregation. The regex is the coarse pre-filter; the exact label
-  table is `live-session.mjs` ACCEPT_LABELS / DECLINE_LABELS (crawl.mjs
-  carries a parity-checked copy) — reuse it verbatim, never fork the list.
+  table is `CONSENT_LABELS`, exported by `crawl.mjs` (its `dismissConsent`
+  table: accept + decline + settings + close labels, parity-checked with
+  `live-session.mjs`) and **imported** by `brand-surface.mjs`
+  `isThirdPartyChrome()` — one source, never a second list (B28).
 - Cap the palette at 8 entries. If the site uses more, keep the top 8
   by occurrences and record the dropped colors in `_provenance.notes`.
 - Track **usage context** per color in `usedAs`: a deduped list drawn

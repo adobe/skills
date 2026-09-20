@@ -45,6 +45,11 @@ assert.ok(isBoundedRun({ runs: [{ args: { pages: null, cap: 1 } }] }), '--single
 assert.ok(!isBoundedRun({ runs: [{ args: { pages: null, cap: 5 } }] }), 'a capped crawl is not bounded');
 assert.ok(!isBoundedRun({ runs: [{ args: { pages: ['/'], cap: 1, prep: true } }] }), '--prep is never bounded');
 
+// ---- doc pins (D3): brand-surface.md describes what the script writes ----
+const bsDoc = readFileSync(join(import.meta.dirname, '..', '..', 'skills', 'extract', 'reference', 'brand-surface.md'), 'utf8');
+for (const needle of ['"script": "brand-surface.mjs"', '"mode": "full"', '"notes": []', '"step": "1b"', '"renderedWidth": 180', '"renderedHeight": 32', '`CONSENT_LABELS`, exported by `crawl.mjs`', 'A `--prep` run is never bounded']) assert.ok(bsDoc.includes(needle), `brand-surface.md documents ${needle}`);
+assert.ok(!/live-session\.mjs` ACCEPT_LABELS \/ DECLINE_LABELS \(crawl\.mjs\ncarries/.test(bsDoc), 'brand-surface.md no longer points at a copied label list');
+
 // ---- modular set: full run ----
 const out = fresh('modular');
 const r1 = run(['--out', out]);
