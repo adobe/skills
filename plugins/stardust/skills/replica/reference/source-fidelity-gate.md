@@ -9,8 +9,8 @@
 - § Wide-viewport fluid check — after the desktop pass: catching frozen pixel widths that only diverge on wider screens.
 - § Iteration discipline — when a round fails: the hard cap, the measure-first order of fixes, and the three named regimes (`source-inconsistent`, `separate-composition`, `canon-followup`) that end a loop early or sit outside the cap.
 - § Hardening rules — before trusting any number: the false-measurement traps (UA challenges, overlays, animation, lazy media, font forks).
-- § The published-origin gate — after platform delivery: re-running the gate against the published page, the only number that counts as final.
-- § Residual logging format — when recording a passed or capped result in `progress.json`: the `result` fields `gate.sh` emits (regime, masks, unmasked %, reference date) and § Residual classes, the table every residual's `cause` cites.
+- § The published-origin gate — after platform delivery: the gate re-run against the published page — the final number.
+- § Residual logging format — when recording a result in `progress.json`: the `result` fields `gate.sh` emits and § Residual classes, the table every residual's `cause` cites.
 
 The gate proves an archetype matches the LIVE site — three instruments, per
 breakpoint, with a hard iteration cap. It replaces the redesign pipeline's
@@ -101,14 +101,14 @@ capture is re-taken every iteration.
    carousel tile at a negative offset).
 3. **pixel diff ≤ 10% full-page** — AND no band left unexplained (§ Band
    breakdown). 10% is the ship bar, not the target.
-4. **height delta: |Δ| ≤ 8px** — pixel-compare's own warning threshold is
-   the bar (it prints ⚠ above 8px), so a −9px result is unambiguously a
-   residual, not a pass. A large delta invalidates the % (the overlap crop
-   discards the tail) — fix heights first. A build side with more broken
-   images than live (sidecar `brokenImages` − live > max(2, 10 % of
-   `imgCount`)) is **FAIL** whatever the number: the round record carries
-   `failClass: build-broken-images` and the `src` list; no residual class,
-   no flag — wire the harvested `images[].localPath` copies
+4. **height delta: |Δ| ≤ 8px** — pixel-compare prints ⚠ above 8px; a
+   −9px result is a residual, not a pass. A large delta invalidates the %
+   (the overlap crop discards the tail) — fix heights first. A build side
+   with more broken images than live (sidecar `brokenImages` − live >
+   max(2, 10 % of `imgCount`)) is **FAIL** whatever the number: the round
+   record and its ledger copy carry `failClass: build-broken-images` with
+   `pass: false` (`gate-ledger-lint` blocks on it); no residual class, no
+   flag — wire the harvested `images[].localPath` copies
    (`recreation-procedure.md` § Asset harvest).
 5. **Chrome crop gate: header band AND footer band each ≤ 2% diff (≥98%
    match, #115).** The full-page bar dilutes the chrome, which repeats on
@@ -294,8 +294,8 @@ is identical at 1440 and visibly off at 1512.
 ## Iteration discipline
 
 **Hard cap: 3 iterations per breakpoint.** A page authored per the
-recreation procedure converges within 3; more loops mean the inputs were
-wrong (eyeballed values, unhardened capture) — the fix is upstream.
+recreation procedure converges within 3; more loops mean wrong inputs
+(eyeballed values, unhardened capture) — fix upstream.
 
 - **The cap is mechanical, per regime.** `gate.sh` counts the rounds from
   the round records (`gate-<label>.json` with verdict PASS/FAIL, not
@@ -309,25 +309,27 @@ wrong (eyeballed values, unhardened capture) — the fix is upstream.
   The verdict line prints `iteration k/3` and `NO-OP` when the
   differing-pixel count did not move.
 - Measure first (iteration 1 IS the map — do not pre-polish).
-- **Chrome: parity probe first, pixels second.** Before a chrome band's first
-  pixel round, run `chrome-parity.mjs` and clear its deltas (§ Pass bar,
-  item 5); style deltas are named in one pass, pixels only say where.
+- **A round holds one browser slot** (`gate.sh` → `browser-lock.mjs`;
+  `../../stardust/reference/fan-out.md` § Machine budget): 124 on the slot
+  wait is a re-queue — no verdict, not an iteration.
+- **Chrome: parity probe first, pixels second.** Before a chrome band's
+  first pixel round, clear `chrome-parity.mjs`'s deltas (§ Pass bar, item
+  5) — style deltas are named in one pass, pixels only say where.
 - Every fix cites the instrument line that demanded it.
 - Images are read per `../../stardust/reference/context-hygiene.md` § Image
   reads: **`review-<label>.png` first** — `gate.sh` writes it every round
   (`pixel-compare --review`; standalone `../scripts/review-image.mjs
   --bands`): the 3 worst bands as [live | build] rows with a diff heat bar,
   one Read for the whole round. Then at most one full-resolution band per
-  hot band still unexplained (`crop-compare --out`), ≤ 10 per round, never
-  `live.png`/`proto.png`/`diff*.png` whole — the count is the cost.
+  unexplained hot band (`crop-compare --out`), ≤ 10 per round, never a
+  whole `live.png`/`proto.png`/`diff*.png` — the count is the cost.
 - **Before counting an iteration, verify the fix changed the render.** A
   byte-identical differing-pixel count (`NO-OP` on the verdict line) means
-  the rule never applied (specificity, wrong selector, value already in
-  effect) — find out why before another round. On the published origin a
+  the rule never applied — find out why before another round. On the published origin a
   byte-identical count repeated → run `node skills/deploy/scripts/code-sync-verify.mjs
-  --org <org> --repo <repo> --ref <branch>` first (served code == working
-  tree); a round measured against stale served code is
-  instrument-invalidated (`--invalidate`), not an iteration.
+  --org <org> --repo <repo> --ref <branch>` first; a round measured against
+  stale served code is instrument-invalidated (`--invalidate`), not an
+  iteration.
 - **Verify geometry fixes on the RULE-BEARING element, cache-free (#117).**
   Pair the same semantic element on both sides (the element the fixed rule
   targets on the build; the element whose source rule was lifted on live) —

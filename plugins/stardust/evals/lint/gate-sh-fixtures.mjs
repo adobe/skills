@@ -51,7 +51,10 @@
 //     verdict line names it; live 5 / build 5 → the pixel verdict stands;
 //     build 2 / live 0 (≤ max(2, 10 %)) → PASS; a 124 compare with broken
 //     images stays 124 (no verdict is never turned into a FAIL); a sidecar
-//     without the keys skips the gate;
+//     without the keys skips the gate; a --record round on that FAIL ledgers
+//     pass false + failClass and gate-ledger-lint blocks the type (defect
+//     fixture: the record spread pixel-compare's `pass: true` after the
+//     verdict — ledgered as a PASS, lint said ok);
 //   stale procedure — the current stitch-shot version is read from a
 //     MULTI-LINE INSTRUMENT declaration (a reformat never disables the
 //     check); a live sidecar on an older version is re-taken; a build sidecar
@@ -303,6 +306,15 @@ try {
   const size = statSync(progress).size;
   r = gate('orphan', ['--record']);
   check(r.status === 0 && /no page type .* has archetype "orphan"/.test(r.out) && /would be:/.test(r.out) && statSync(progress).size === size, `--record with no matching page type must print the block and write nothing\n${r.out}`);
+  // defect: a build-broken-images FAIL round was ledgered as a PASS — the record spread pixel-compare's `pass: true` after
+  // the verdict, progress-record took `rec.pass` and dropped failClass, gate-ledger-lint re-judged the numbers only ('ok', exit 0)
+  pj = readJson(progress); pj.pageTypes.broken = { archetype: 'broken', prototype: 'x.html', motion: { observed: [], implemented: [], dead: [] }, breakpoints: {} }; writeFileSync(progress, JSON.stringify(pj, null, 2));
+  r = gate('broken', ['--record', '--over-cap', 'canon-followup'], { ...BI, STUB_BROKEN_BUILD: '8' });
+  pj = readJson(progress);
+  const bb = pj?.pageTypes?.broken?.breakpoints?.['1440'];
+  check(r.status === 2 && bb?.result?.pass === false && bb.result.failClass === 'build-broken-images' && bb.result.pixelPct === 3, `--record on a build-broken-images round must ledger pass false + failClass (got ${JSON.stringify(bb?.result && { pass: bb.result.pass, failClass: bb.result.failClass })})\n${r.out}`);
+  const gll = spawnSync(process.execPath, [join(SCRIPTS, 'gate-ledger-lint.mjs'), '--progress', progress, '--types', 'broken', '--project', project], { encoding: 'utf8' });
+  check(gll.status === 2 && /broken: blocked — .*1440 failClass build-broken-images/.test(`${gll.stdout}${gll.stderr}`), `gate-ledger-lint must block the page type on result.failClass (exit 2), got ${gll.status}\n${gll.stdout}${gll.stderr}`);
   // progress-record's shared reader must resolve the documented archetypes[] shape (the reader gap)
   const archetypesLedger = join(project, 'stardust', 'replica', 'progress-archetypes.json');
   writeFileSync(archetypesLedger, JSON.stringify({ breakpointsConfigured: [1440], archetypes: [{ pageType: 'landing', archetype: 'rec', breakpoints: {} }] }));
@@ -360,4 +372,4 @@ try {
 }
 
 if (failures.length) { console.error(`gate-sh-fixtures: ${failures.length} finding(s)`); for (const f of failures) console.error(`  ✗ ${f}`); process.exit(1); }
-console.log('gate-sh-fixtures: ok (broken-image gate failClass / symmetric / 124 stays / pre-field skip, freshness probe, live drift + cache invalidation + stored landmarks (2 hits), probe deadline, noise floor + same flags on live-b + stale floor after drift, iteration cap / --over-cap / --invalidate / NO-OP, per-regime cap + labels, partial live capture removed on any rc, verdict line, stale-procedure version read + safety net, --record ledger copy + masks[] shape + archetypes[] reader, --help)');
+console.log('gate-sh-fixtures: ok (broken-image gate failClass / symmetric / 124 stays / pre-field skip / --record ledgers pass false + lint blocks, freshness probe, live drift + cache invalidation + stored landmarks (2 hits), probe deadline, noise floor + same flags on live-b + stale floor after drift, iteration cap / --over-cap / --invalidate / NO-OP, per-regime cap + labels, partial live capture removed on any rc, verdict line, stale-procedure version read + safety net, --record ledger copy + masks[] shape + archetypes[] reader, --help)');

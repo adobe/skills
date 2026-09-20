@@ -65,7 +65,9 @@
  * live-session.mjs not beside this script · 124 deadline or no browser slot
  * in time (verdict none — re-run once; still none = unasserted, never FAIL).
  * Launch: live-session launchTier (tier 1) — launch-ladder parity, one
- * browser slot per launch (fan-out.md § Machine budget).
+ * browser slot per launch (fan-out.md § Machine budget); the deadline branch
+ * closes the browser before exit 124. Run it under run-capped.mjs like every
+ * node step of a round (replica operator card, Phase 4 tools row).
  * No bot-challenge exit: the target is the prototype / published page, never
  * the live origin (a bot-blocked observe run is the `motion-unassertable`
  * residual, source-fidelity-gate.md § Residual classes).
@@ -95,6 +97,16 @@ async function launchBrowser(chromium) {
 
 export const CHECKS = ['chrome', 'widgets', 'pageErrors', 'entrances', 'stateMachines'];
 export const DEADLINE_EXIT = 124;
+
+/** Browsers launched by runChecks and not yet closed — the deadline branch closes them before exit 124
+ *  (defect: the race exited while Chromium was still open; the slot stayed held until the process died). */
+export const activeBrowsers = new Set();
+/** Close every active browser, bounded by `ms` per browser; never throws, always empties the set. */
+export async function closeActiveBrowsers(ms = 5000) {
+  const all = [...activeBrowsers]; activeBrowsers.clear();
+  await Promise.all(all.map((b) => Promise.race([Promise.resolve().then(() => b.close()).catch(() => {}), new Promise((r) => { setTimeout(r, ms); })])));
+  return all.length;
+}
 
 const HELP = `motion-assert — replay a motion-observe run against the prototype / published page; record the verdict
 
@@ -345,6 +357,7 @@ async function runChecks({ observe, target, opts, warn }) {
   const { chromium } = await import('playwright');
   const width = opts.width || observe.width || 1440; const VH = 900;
   const browser = await launchBrowser(chromium);
+  activeBrowsers.add(browser);
   const checks = {}; let errors = 0;
   try {
     const ctx = await browser.newContext({ viewport: { width, height: VH } });
@@ -425,7 +438,7 @@ async function runChecks({ observe, target, opts, warn }) {
       }
     }
     if (!skip('pageErrors')) checks.pageErrors = { status: errors ? 'fail' : 'pass', detail: `${errors} pageerror(s)`, count: errors };
-  } finally { await browser.close(); }
+  } finally { activeBrowsers.delete(browser); await browser.close(); }
   if (warn) for (const k of CHECKS) if (!checks[k]) checks[k] = { status: 'n/a', detail: 'not run' };
   return { checks, width };
 }
@@ -457,6 +470,7 @@ async function main() {
   const out = await Promise.race([run, deadline]);
   clearTimeout(timer);
   if (out.deadline) {
+    await closeActiveBrowsers(); // the slot is released with the browser, not with the process
     const rec = noVerdict({ ...base, reason: `deadline ${opts.timeout}s reached — no verdict (re-run once; still none = unasserted)` });
     writeRecord(opts, rec, width);
     console.log(opts.json ? JSON.stringify(rec, null, 2) : renderResult(rec));

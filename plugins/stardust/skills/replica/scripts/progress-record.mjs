@@ -19,7 +19,9 @@
  * What it writes (source-fidelity-gate.md § Residual logging format):
  *   prototype regime      → <pageType>.breakpoints.<width> = { iterations, result, overCap?, record }
  *   published-origin regime → <pageType>.published.<width>  = { result, url, artifacts: [record] }
- *   result = { regime, pixelPct, pixelPctUnmasked, heightDelta, pass, masks[{spec, areaPct}], ref, at }
+ *   result = { regime, pixelPct, pixelPctUnmasked, heightDelta, pass, masks[{spec, areaPct}], ref, at, failClass? }
+ *   (a record with `failClass` — gate.sh build-broken-images — lands pass false + the class,
+ *   whatever pixel-compare's own `pass` said)
  *   iterations = counted rounds OF THE RECORD'S REGIME in its gate dir
  *   (verdict PASS|FAIL, not excluded, not a live-drift recapture, same
  *   regime — a record without `regime` is a prototype round): the same rule
@@ -92,7 +94,9 @@ const maskEntry = ({ kind, class: cls, spec, sel, src, areaPct, asymmetric, side
 /** The ledger block for one record. */
 export function blockFor(rec, recordPath, iterations) {
   const result = {
-    regime: rec.regime, pixelPct: rec.pixelPct, pixelPctUnmasked: rec.pixelPctUnmasked ?? rec.pixelPct, heightDelta: rec.heightDelta, pass: rec.pass ?? rec.verdict === 'PASS',
+    // a failClass round (gate.sh, e.g. build-broken-images) is the verdict's FAIL whatever pixel-compare's `pass` said; the class travels with the result so gate-ledger-lint blocks on it
+    regime: rec.regime, pixelPct: rec.pixelPct, pixelPctUnmasked: rec.pixelPctUnmasked ?? rec.pixelPct, heightDelta: rec.heightDelta, pass: rec.failClass ? rec.verdict === 'PASS' : (rec.pass ?? rec.verdict === 'PASS'),
+    ...(rec.failClass ? { failClass: rec.failClass } : {}),
     masks: (rec.masks || []).map(maskEntry), ref: rec.ref, at: rec.at,
     ...(rec.forced ? { forced: true } : {}), ...(rec.noiseFloor ? { noiseFloor: { pixelPct: rec.noiseFloor.pixelPct, heightDelta: rec.noiseFloor.heightDelta } } : {}),
   };

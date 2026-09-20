@@ -100,10 +100,16 @@ try {
   check(checkProgress(bucketPages([P('index.json')]), { chrome: { variants: [{ name: 'default', states: { rest: 'dead', scrolled: 'unprobed:auth wall' } }] } }).ok === true, 'checkProgress: a row with no gated state needs no artefact');
   check(checkProgress(bucketPages([P('index.json')]), { breakpointsConfigured: [1440], chrome: { variants: [{ name: 'default', states: { rest: 'gated' }, gates: { 1440: 'gates/index-1440/chrome-states' } }] } }, { root: work }).ok === true, 'checkProgress: gates.<bp> honoured per breakpointsConfigured, a directory path resolves to its chrome-states.json');
   check(gateArtefactOk('gates/index-1440/chrome-states/chrome-states.json', work) && !gateArtefactOk('gates/nope/chrome-states.json', work) && !gateArtefactOk(null, work), 'gateArtefactOk: file / missing / null');
+  // defect: `{}` and `[]` passed as evidence (schema undefined was accepted) — the header promises chrome-states.json with schema: 1
+  for (const [name, body] of [['empty', '{}'], ['array', '[]'], ['schemaless', '{"cells":[]}'], ['nocells', '{"schema":1}']]) {
+    const d = join(work, 'gates', `${name}-1440`); mkdirSync(d, { recursive: true }); writeFileSync(join(d, 'chrome-states.json'), body);
+    check(!gateArtefactOk(`gates/${name}-1440`, work), `gateArtefactOk: ${body} is not a chrome-states report — no evidence`);
+  }
+  check(checkProgress(bucketPages([P('index.json')]), { breakpointsConfigured: [1440], chrome: { variants: [{ name: 'default', states: { rest: 'gated' }, gates: { 1440: 'gates/empty-1440' } }] } }, { root: work }).ok === false, 'checkProgress: a gated row pointing at an empty-object chrome-states.json is BLOCKED');
   // persisted names win over default: a home bucket already named keeps its name and nobody else becomes default
   const b = bucketPages([P('index.json'), P('legal.json')], { index: 'main' });
   check(b.find((x) => x.pages.some((p) => p.slug === 'index')).name === 'main' && !b.some((x) => x.name === 'default'), 'a persisted home name is kept and default is not handed to another bucket');
 } finally { rmSync(work, { recursive: true, force: true }); }
 
 if (failures.length) { console.error(`chrome-variants-fixtures: ${failures.length} failure(s)\n - ${failures.join('\n - ')}`); process.exit(1); }
-console.log('chrome-variants-fixtures: ok (fingerprint stability, buckets + names, marker candidates, --write, gate exit 2 / 0, gated-word evidence per breakpoint, state vocabulary, --help)');
+console.log('chrome-variants-fixtures: ok (fingerprint stability, buckets + names, marker candidates, --write, gate exit 2 / 0, gated-word evidence per breakpoint (schema 1 + cells[] required), state vocabulary, --help)');

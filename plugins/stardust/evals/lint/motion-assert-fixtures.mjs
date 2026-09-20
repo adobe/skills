@@ -48,13 +48,20 @@ const check = (ok, msg) => { if (!ok) failures.push(msg); };
 // the CLI contract — every CLI case exits before a launch.
 const load = (f) => JSON.parse(readFileSync(join(FIX, f), 'utf8'));
 const runPure = (args) => { const r = spawnSync(process.execPath, [SCRIPT, ...args], { encoding: 'utf8' }); return { status: r.status, out: `${r.stdout}${r.stderr}` }; };
-const { CHECKS, DEADLINE_EXIT, schemaGate, chromeStates, chromeDelta, compareChrome, activeDot, widgetAdvanced, stateChanged, entranceWithinTolerance, verdictOf, buildRecord, noVerdict, record, renderResult } = await import(SCRIPT);
+const { CHECKS, DEADLINE_EXIT, activeBrowsers, closeActiveBrowsers, schemaGate, chromeStates, chromeDelta, compareChrome, activeDot, widgetAdvanced, stateChanged, entranceWithinTolerance, verdictOf, buildRecord, noVerdict, record, renderResult } = await import(SCRIPT);
 const v2 = load('observe-v2.json'); const v1 = load('observe-v1.json'); const flat = load('observe-static.json');
 
 // --- schema gate
 check(schemaGate(v2).schema === 2 && schemaGate(v2).entrances && schemaGate(v2).stateMachines, 'schema 2 with entrances[]/stateMachines[] asserts (a) and (c)');
 check(schemaGate(v1).schema === 1 && !schemaGate(v1).entrances && !schemaGate(v1).stateMachines, 'schema 1 → (a)/(c) not asserted');
 check(CHECKS.length === 5 && DEADLINE_EXIT === 124, 'five named checks; 124 is the deadline exit');
+// defect: the deadline branch exited 124 while Chromium was still open — the browser slot stayed held until the process died
+{
+  let closed = 0; const fake = { close: async () => { closed += 1; } }; const hang = { close: () => new Promise(() => {}) }; const thrower = { close: async () => { throw new Error('gone'); } };
+  activeBrowsers.add(fake); activeBrowsers.add(hang); activeBrowsers.add(thrower);
+  const t0 = Date.now(); const n = await closeActiveBrowsers(200);
+  check(n === 3 && closed === 1 && activeBrowsers.size === 0 && Date.now() - t0 < 2000, `closeActiveBrowsers closes every registered browser, bounded per browser, never throws, empties the set (n ${n}, closed ${closed}, left ${activeBrowsers.size})`);
+}
 
 // --- chrome states + compare
 const S = chromeStates(v2.headerTimeline);
@@ -154,6 +161,7 @@ check(!/^import .*from 'playwright'/m.test(src) && /await import\('playwright'\)
 // launch-ladder parity (T20.2 § Script work "open target via live-session"): the browser comes from live-session launchTier, never a bare chromium.launch()
 check(!/chromium\.launch\(/.test(src) && /launchTier\(chromium/.test(src) && /live-session\.mjs/.test(src), 'the target is opened through live-session launchTier (two-layout lookup), not chromium.launch()');
 check(/e\.code === 124 \? DEADLINE_EXIT/.test(src), 'a launchTier slot timeout (code 124) exits 124 — no verdict, never 1');
+check(/if \(out\.deadline\) \{\s*await closeActiveBrowsers\(\)/.test(src) && /activeBrowsers\.add\(browser\)/.test(src), 'the deadline branch closes the launched browser before exit 124 (runChecks registers it)');
 check(/never opens the live origin/i.test(src) && !/--allow-/.test(src), 'header states the live-origin rule; no allow-style bypass flag');
 
 // --- deadline record path: no browser → the record writer alone (a temp ledger)

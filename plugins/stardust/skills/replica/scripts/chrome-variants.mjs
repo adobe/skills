@@ -13,7 +13,7 @@
  * `gated` | `dead` | `unprobed:<reason>` — a variant without that row, a
  * row with an unknown state word, or a `gated` word without its evidence
  * (`gates.<bp>` for every configured breakpoint: an existing chrome-states
- * artefact — `chrome-states.json` with `schema: 1`, or its directory; paths
+ * artefact — `chrome-states.json` with `schema: 1` + `cells[]`, or its directory; paths
  * relative to progress.json's directory) blocks fan-out of its pages (exit 2).
  * A typed word is not a crop: the lint re-reads the artefact, like
  * gate-ledger-lint re-reads the numbers.
@@ -139,12 +139,13 @@ export function bucketPages(pages, existing = {}) {
   return buckets;
 }
 
-/** A gates.<bp> artefact: chrome-states.json (schema 1) or the directory holding it — must exist and parse. */
+/** A gates.<bp> artefact: chrome-states.json (schema 1 with cells[]) or the directory holding it — must exist, parse AND
+ *  be a chrome-states report: `{}` / `[]` / a file without `schema: 1` is no evidence (defect: an empty object passed). */
 export function gateArtefactOk(path, root) {
   if (!path || typeof path !== 'string') return false;
   let file = resolvePath(root || '.', path);
   try { if (statSync(file).isDirectory()) file = join(file, 'chrome-states.json'); } catch { return false; }
-  try { const j = JSON.parse(readFileSync(file, 'utf8')); return j && typeof j === 'object' && (j.schema === undefined || j.schema === 1); } catch { return false; }
+  try { const j = JSON.parse(readFileSync(file, 'utf8')); return Boolean(j) && typeof j === 'object' && !Array.isArray(j) && j.schema === 1 && Array.isArray(j.cells); } catch { return false; }
 }
 
 /**
@@ -173,7 +174,7 @@ export function checkProgress(buckets, progress, { root = '.' } = {}) {
     // a `gated` word needs its evidence at every configured breakpoint — the artefact, not the typed word, is the crop
     if (states.some(([, v]) => v === 'gated')) {
       const missing = bps.filter((bp) => !gateArtefactOk(row.gates && row.gates[bp], root));
-      if (missing.length) blocked.push({ name: b.name, reason: `state(s) marked gated without evidence: gates.${missing.join(' / gates.')} missing or not a readable chrome-states.json (schema 1) — run chrome-states.mjs <live> <proto> at that width and record the artefact path` });
+      if (missing.length) blocked.push({ name: b.name, reason: `state(s) marked gated without evidence: gates.${missing.join(' / gates.')} missing or not a readable chrome-states.json (schema 1 with cells[]) — run chrome-states.mjs <live> <proto> at that width and record the artefact path` });
     }
   }
   return { ok: blocked.length === 0, blocked };

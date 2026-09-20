@@ -704,7 +704,8 @@ const out = { slug, label, width: Number(width), regime, at: new Date().toISOStr
   ref: { url: liveUrl, width: Number(width), capturedAt, ...(side ? { sidecar: `${live}.json`, instrument: side.instrument && side.instrument.name, technique: side.technique, consent: side.consent } : { source: 'mtime' }) },
   build: { url: buildUrl }, verdict: rc === 0 ? 'PASS' : rc === 2 ? 'FAIL' : 'no-verdict', exit: rc, ...(landmarks ? { landmarks } : {}), ...j,
   ...(broken ? { brokenImages: { live: broken.live, build: broken.build, imgCount: broken.imgCount, threshold: broken.threshold, srcs: broken.srcs } } : {}),
-  ...(broken && broken.fail && rc === 2 ? { failClass: 'build-broken-images' } : {}) };
+  // failClass overrides pixel-compare's `pass` (spread above): a FAIL record never carries pass: true — the ledger copy reads `pass`
+  ...(broken && broken.fail && rc === 2 ? { failClass: 'build-broken-images', pass: false } : {}) };
 // Live drift is an EVENT on the record (not a progress.json residual): the
 // recapture round does not count against the cap, same rule as skip-link-focus.
 if (drift?.drift) out.liveDrift = { previousCapturedAt: drift.previousCapturedAt, docBefore: drift.docBefore, docAfter: drift.docAfter, sectionsBefore: drift.sectionsBefore, sectionsAfter: drift.sectionsAfter, thresholdPx: drift.thresholdPx, recaptured: true };
