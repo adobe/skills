@@ -53,6 +53,27 @@
  *     where migrate already wrote safe paths, a divergence is a pipeline bug. No flag
  *     disables the fold.
  *
+ * Publish hold (rollout publish-gate.md § Gate 8 — the release condition, D1 instrument):
+ *   - a `--publish` run reads `stardust/rollout/gate-report.json` (gate-publish.mjs --report; `--gate-report
+ *     <path>` names another file — a named file that is missing is exit 2, nothing read). Every row that
+ *     would go live is HELD unless its report entry is `latest.pass === true` and its template is at the
+ *     bar: plan reason `held (gate: 360 FAIL 12.4 % Δh -112)` / `held (gate: ungated — no published-origin
+ *     number)` / `held (gate: unmeasured — 1440 exit 124)` / `held (gate: template program not at the bar)`;
+ *     the ledger row stays `previewed`, no POST /live/, counts.held + SUMMARY `held=<n>`; the row re-drives on
+ *     the next `--publish` once the report changes. `/index` ≡ `/` (the report is keyed by served path). A page
+ *     with no template sits in the report's `untyped` group and takes that group's bar.
+ *   - already-`live` rows are never unpublished: an unchanged live row (hash equal, or a hash-less legacy row —
+ *     hash-unknown counts as unchanged here as in the rest of the plan) is skipped as today and its FAIL is
+ *     reported `published-failing`; a CHANGED live row is a re-publish and goes through the hold.
+ *   - escape hatches (operator / owner, never hands-off — D16): `--publish-no-regression` publishes a
+ *     changed live row whose every breakpoint is ≤ its best-of-last-3 + 1 point (reason carries
+ *     `no-regression: 1440 24.9→23.0`; the report status stays published-failing); `--publish-ungated`
+ *     publishes rows with NO report entry (redesign flow / owner-decided `publish: live` row). No flag
+ *     publishes a FAIL, unmeasured or not-at-bar row; `--force` re-drives but never lifts a hold.
+ *   - no report file and no flag = today's behaviour, with one WARN line (`publishing ungated`). Hands-off
+ *     (rollout Phase C) NAMES the default path — `--gate-report stardust/rollout/gate-report.json` — so an
+ *     absent report is exit 2 there, never an ungated publish (publish-gate.md § Gate 8 → Hands-off).
+ *
  * Token lifecycle (the one credential failure a run cannot self-recover; the
  * resolve/decode/smoke primitives are skills/deploy/scripts/lib.mjs):
  *   - preflight: DA_TOKEN is resolved shell → ./.env → ~/.claude/.env → ~/.env
@@ -80,8 +101,9 @@
  * failed/lastPath) — the file the agent's ≤ 4-minute check reads; on every exit
  * (driving run, --plan/--report with mode=…, halt with halted=…, fatal with error=…)
  * the LAST stdout line is
- *   SUMMARY deploy-batch ok=<n> failed=<n> exit=<code> details=<ledger> skipped=<n> published=<n>|preview-only
- * where ok/failed count the pages THIS run drove (a halt reports them too).
+ *   SUMMARY deploy-batch ok=<n> failed=<n> exit=<code> details=<ledger> skipped=<n> published=<n>|preview-only [held=<n>]
+ * where ok/failed count the pages THIS run drove (a halt reports them too); `held=` appears when a
+ * gate report was read.
  * Run it in the background (`nohup node … > stardust/.work/deploy/deploy-batch.log 2>&1 &`)
  * and read the progress file, then the SUMMARY line — never `sleep N; grep -c`.
  * Per driven page the stderr line prints https://<branch>--<repo>--<org>.aem.page<webPath>
@@ -94,7 +116,9 @@
  *     [--publish] [--force] [--allow-thin] [--allow-shrink] [--ledger path] [--log path] \
  *     [--progress path | --no-progress] [--token-env DA_TOKEN] [--site-token-env NAME] \
  *     [--sec-per-page 6] [--ignore-ttl] [--require-code-synced [--code-sync-record stardust/code-sync.json]] \
- *     [--strict-paths] [--redirects-tsv stardust/redirects.tsv] [--plan | --report]
+ *     [--strict-paths] [--redirects-tsv stardust/redirects.tsv] [--plan | --report] \
+ *     [--gate-report stardust/rollout/gate-report.json] [--publish-no-regression] [--publish-ungated] \
+ *     [--skip-code-sync-verify <reason>]
  *
  * --content   dir of *.html body-fragment files (default: content). Each file's
  *             path relative to this dir, minus .html, is its DA/web path.
@@ -109,7 +133,7 @@
  * --force     reset the selected pages to `pending` and re-drive them (ledger kept).
  * --plan      build and print the plan with one reason per path — no network,
  *             exit 0. `unchanged (hash)` / `changed` / `new` / `failed-last-time` /
- *             `excluded` / `not in content tree` / `previewed (publish fast path)`.
+ *             `excluded` / `not in content tree` / `previewed (publish fast path)` / `held (gate: …)`.
  * --report    print the ledger grouped by status — no network, exit 0.
  * --allow-thin    PUT a body under 200 B / without `<main` anyway.
  * --allow-shrink  PUT over an existing DA document more than 5× larger anyway.
@@ -128,13 +152,20 @@
  * --concurrency  parallel pages in flight (default 4; DA admin tolerates ~4-6).
  * --strict-paths       a webPath that differs from its safe form is `path-unsafe`, no PUT.
  * --redirects-tsv <f>  where `webPath<TAB>safe` rows go (default stardust/redirects.tsv).
+ * --gate-report <f>    the gate-publish report a --publish run holds against (default
+ *             stardust/rollout/gate-report.json when it exists; a named file must exist — exit 2).
+ * --publish-no-regression  publish a changed already-live row whose every breakpoint is ≤ best-of-last-3 + 1.
+ * --publish-ungated    publish rows with no report entry (owner-decided `publish: live`, redesign flow).
+ * --skip-code-sync-verify <reason>  the recorded escape from the served == tree precondition: one log line
+ *             `{ step: "instrument", instrument: "code-sync-verify", skipped: <reason> }` and one stderr line
+ *             (da-deploy-protocol.md § Code push gates); refused together with --require-code-synced.
  *
  * Plan line: `N pages · U unchanged (hash) · C changed · K new · F failed-last-time
- * · X excluded · T to drive`. Log (append-only jsonl) survives a restart.
+ * · X excluded · H held (gate) · T to drive`. Log (append-only jsonl) survives a restart.
  *
- * Exit codes: 0 = every driven page verified; 1 = one or more FAILs (re-run the
- * same command — verified pages are skipped); 2 = fatal (usage, missing/rejected/
- * expired token — nothing was PUT); 3 = halted on the first 401 mid-batch or an
+ * Exit codes: 0 = every driven page verified (held rows are not driven — read `held=`); 1 = one or more
+ * FAILs (re-run the same command — verified pages are skipped); 2 = fatal (usage, missing/rejected/
+ * expired token, a named --gate-report that does not exist — nothing was PUT); 3 = halted on the first 401 mid-batch or an
  * access-restricted delivery host (ledger checkpointed; re-run the printed `next`), or
  * refused by --require-code-synced before the ledger was read (record missing / stale / other ref).
  * A row flips to `live`/`previewed` only after the delivered GET — never on POST codes.
@@ -142,7 +173,8 @@
  * Test hooks (fixture tests only): DEPLOY_BATCH_DA_SRC, DEPLOY_BATCH_ADMIN,
  * DEPLOY_BATCH_DELIVERY_BASE and DEPLOY_BATCH_DA_LIST override the hosts;
  * DEPLOY_BATCH_REPAIR_DELAY_MS shortens the 3 s repair/blip wait. The module is importable
- * (normalisePath, readPathList, walkHtml, annotateSafePaths, buildPlan, mergeLedger, serialPersister) — main() runs only as a CLI.
+ * (normalisePath, readPathList, walkHtml, annotateSafePaths, buildPlan, mergeLedger, serialPersister,
+ * loadGateReport, gateEntry, gateVerdict, gateCoverageLine) — main() runs only as a CLI.
  * Pages are driven in webPath order (readdir order is filesystem-specific).
  *
  * No external deps — uses Node's global fetch/FormData/Blob (Node 18+).
@@ -165,6 +197,7 @@ const OK_STATUS = new Set(['live', 'previewed']);
 const REPAIR_DELAY_MS = Number(process.env.DEPLOY_BATCH_REPAIR_DELAY_MS) || 3000;
 const MIN_BODY_BYTES = 200;
 const SHRINK_RATIO = 5;
+const GATE_REPORT_DEFAULT = path.join('stardust', 'rollout', 'gate-report.json');
 
 export const sha1 = (buf) => createHash('sha1').update(buf).digest('hex');
 
@@ -209,7 +242,7 @@ export function deliveryUrl({ org, repo, branch, tld, webPath }) {
 }
 
 function usage() {
-  console.log('usage: node skills/deploy/scripts/deploy-batch.mjs --org <org> --repo <repo> --branch <branch> [--content content] [--paths <file|a,b>] [--exclude <file|a,b>] [--concurrency 4] [--publish] [--force] [--allow-thin] [--allow-shrink] [--ledger <path>] [--log <path>] [--progress <path> | --no-progress] [--token-env DA_TOKEN] [--site-token-env NAME] [--sec-per-page 6] [--retries 4] [--ignore-ttl] [--require-code-synced] [--code-sync-record <path>] [--strict-paths] [--redirects-tsv <file>] [--plan | --report]');
+  console.log('usage: node skills/deploy/scripts/deploy-batch.mjs --org <org> --repo <repo> --branch <branch> [--content content] [--paths <file|a,b>] [--exclude <file|a,b>] [--concurrency 4] [--publish] [--force] [--allow-thin] [--allow-shrink] [--ledger <path>] [--log <path>] [--progress <path> | --no-progress] [--token-env DA_TOKEN] [--site-token-env NAME] [--sec-per-page 6] [--retries 4] [--ignore-ttl] [--require-code-synced] [--code-sync-record <path>] [--strict-paths] [--redirects-tsv <file>] [--plan | --report] [--gate-report <file>] [--publish-no-regression] [--publish-ungated] [--skip-code-sync-verify <reason>]');
 }
 
 export function parseArgs(argv) {
@@ -244,10 +277,16 @@ export function parseArgs(argv) {
     else if (k === '--code-sync-record') a.codeSyncRecord = next();
     else if (k === '--strict-paths') a.strictPaths = true;
     else if (k === '--redirects-tsv') a.redirectsTsv = next();
+    else if (k === '--gate-report') a.gateReport = next();
+    else if (k === '--publish-no-regression') a.publishNoRegression = true;
+    else if (k === '--publish-ungated') a.publishUngated = true;
+    else if (k === '--skip-code-sync-verify') a.skipCodeSyncVerify = next();
     else if (k === '--help' || k === '-h') { usage(); process.exit(0); }
     else throw new Error(`unknown arg: ${k}`);
   }
   if (!a.report && (!a.org || !a.repo || !a.branch)) throw new Error('--org, --repo and --branch are required'); // --report reads the ledger only
+  if (!a.publish && (a.gateReport || a.publishNoRegression || a.publishUngated)) throw new Error('--gate-report, --publish-no-regression and --publish-ungated apply to a --publish run only (the hold acts on rows that would go live)');
+  if (a.skipCodeSyncVerify !== undefined && a.requireCodeSynced) throw new Error('--skip-code-sync-verify and --require-code-synced are exclusive — skip with a reason, or require the record');
   a.offline = a.plan || a.report;
   const tok = resolveToken(a.tokenEnv || 'DA_TOKEN');
   a.token = tok ? tok.value : undefined;
@@ -375,20 +414,89 @@ async function daSourceSize(url, token) {
   }
 }
 
+/* ------------------------------------------------------------ publish hold (Gate 8) -- */
+
+/** The gate-publish report a --publish run holds against; null when the default file is absent. A NAMED file must exist. */
+export function loadGateReport(file = GATE_REPORT_DEFAULT, explicit = false) {
+  if (!existsSync(file)) {
+    if (explicit) throw new Error(`--gate-report ${file} not found — run gate-publish.mjs --report first (publish-gate.md § Gate 8); nothing was read`);
+    return null;
+  }
+  let report;
+  try { report = JSON.parse(readFileSync(file, 'utf8')); } catch (e) { throw new Error(`gate report ${file} is not valid JSON (${e.message})`); }
+  if (!report || typeof report.pages !== 'object' || report.pages === null) throw new Error(`gate report ${file} has no pages{} — not a gate-publish.mjs report`);
+  return { file, report };
+}
+
+/** The report entry for a ledger webPath; `/index` folds to `/` (the report is keyed by served path). */
+export function gateEntry(report, webPath) {
+  const pages = report.pages || {};
+  if (pages[webPath]) return pages[webPath];
+  if (/\/index$/.test(webPath)) { const folded = webPath.slice(0, -'/index'.length) || '/'; if (pages[folded]) return pages[folded]; }
+  return null;
+}
+
+const gateBp = (W, b) => {
+  if (b.status === 'fail') return `${W} FAIL${Number.isFinite(b.pixelPct) ? ` ${b.pixelPct} %` : ''}${Number.isFinite(b.heightDelta) ? ` Δh ${b.heightDelta}` : ''}`;
+  if (b.status === 'unmeasured' || b.status === 'blocked') return `${W}${Number.isFinite(b.exit) ? ` exit ${b.exit}` : ' no verdict'}`;
+  return `${W} ${b.status}`;
+};
+
+/**
+ * May this row go live under the report? { allow: true, note? } | { allow: false, why }.
+ * PASS = latest.pass with the page's template at the bar; ungated rows publish only under --publish-ungated;
+ * a FAIL on an already-live row (a re-publish) only under --publish-no-regression when no breakpoint sits
+ * above its best-of-last-3 + 1 point; unmeasured / blocked never (B32 — no verdict is not a pass).
+ */
+export function gateVerdict(report, webPath, { wasLive = false, publishUngated = false, publishNoRegression = false } = {}) {
+  const ungated = () => (publishUngated ? { allow: true, note: 'ungated — --publish-ungated' } : { allow: false, why: 'ungated — no published-origin number' });
+  const e = gateEntry(report, webPath);
+  if (!e) return ungated();
+  const l = e.latest || {};
+  const bps = l.breakpoints || {};
+  const rows = (pred) => Object.entries(bps).filter(([, b]) => b && pred(b)).map(([W, b]) => gateBp(W, b)).join(', ');
+  if (l.pass === true && l.status === 'pass') {
+    const tplName = e.template || 'untyped'; // gate-publish groups template-less pages under `untyped` with its own bar
+    const tpl = report.templates ? report.templates[tplName] : null;
+    if (tpl && tpl.atBar === false) return { allow: false, why: `template ${tplName} not at the bar` };
+    return { allow: true };
+  }
+  if (l.status === 'ungated') return ungated();
+  if (l.status === 'unmeasured' || l.status === 'blocked') return { allow: false, why: `${l.status} — ${rows((b) => b.status === l.status) || 'no verdict'}` };
+  const failing = rows((b) => b.status === 'fail') || `${l.status || 'no PASS'}`;
+  const live = wasLive || e.wasLive === true;
+  if (live && publishNoRegression) {
+    const best = e.bestOfLast3 || {};
+    const widths = Object.keys(bps);
+    const within = widths.length > 0 && widths.every((W) => Number.isFinite(bps[W].pixelPct) && Number.isFinite(best[W]) && bps[W].pixelPct <= best[W] + 1);
+    if (within) return { allow: true, note: `no-regression: ${widths.map((W) => `${W} ${best[W]}→${bps[W].pixelPct}`).join(' ')}` };
+    return { allow: false, why: `${failing} — regressed past best-of-last-3 + 1 (--publish-no-regression does not apply)` };
+  }
+  return { allow: false, why: `${failing}${live ? ' — published-failing; a re-publish takes --publish-no-regression (owner)' : ''}` };
+}
+
+/** The report's coverage line with this run's held count appended. */
+export function gateCoverageLine(report, held) {
+  const c = report.coverage || {};
+  const n = (k) => (Number.isFinite(c[k]) ? c[k] : 0);
+  return `published-gated ${n('gated')} of ${n('delivered')} · PASS ${n('pass')} · FAIL ${n('fail')} · unmeasured ${n('unmeasured')} · ungated ${n('ungated')}${n('publishedFailing') ? ` · published-failing ${n('publishedFailing')}` : ''}${n('blocked') ? ` · blocked ${n('blocked')}` : ''} · held ${held}`;
+}
+
 /**
  * Decide, per page, drive or skip — and why. `verify` is the delivered-GET
  * probe (null in --plan mode: no network, hash-unknown rows count as unchanged
  * and say so). Mutates `ledger` only for --force resets and hash backfills;
  * every touched path is added to `touched` so persist() merges just those rows.
  */
-export async function buildPlan({ pages, ledger, want, exclude, publish, force, branch, verify, touched, strictPaths = false }) {
+export async function buildPlan({ pages, ledger, want, exclude, publish, force, branch, verify, touched, strictPaths = false, gate = null, publishUngated = false, publishNoRegression = false }) {
   const rows = [];
   const todo = [];
-  const counts = { pages: 0, unchanged: 0, changed: 0, new: 0, failedLast: 0, excluded: 0, missing: 0, forced: 0, fastPublish: 0, reverify: 0, pathSafety: 0 };
+  const counts = { pages: 0, unchanged: 0, changed: 0, new: 0, failedLast: 0, excluded: 0, missing: 0, forced: 0, fastPublish: 0, reverify: 0, pathSafety: 0, held: 0, publishedFailing: 0 };
   const seen = new Set();
   const tld = publish ? 'aem.live' : 'aem.page';
-  const drive = (p, reason, key) => { rows.push({ webPath: p.webPath, action: 'drive', reason }); todo.push(p); if (key) counts[key] += 1; };
-  const skip = (p, reason, key) => { rows.push({ webPath: p.webPath, action: 'skip', reason }); if (key) counts[key] += 1; };
+  let gateNote = ''; // per page: the escape that let a drive through, or the published-failing note on a skip
+  const drive = (p, reason, key) => { rows.push({ webPath: p.webPath, action: 'drive', reason: `${reason}${gateNote}` }); todo.push(p); if (key) counts[key] += 1; };
+  const skip = (p, reason, key) => { rows.push({ webPath: p.webPath, action: 'skip', reason: `${reason}${gateNote}` }); if (key) counts[key] += 1; };
 
   for (const p of pages) {
     if (want && !want.has(p.webPath)) continue;
@@ -400,11 +508,28 @@ export async function buildPlan({ pages, ledger, want, exclude, publish, force, 
     // always driven so deployOne parks it offline (path-unsafe / path-collision, zero network) —
     // even when its ledger row is OK and its bytes are unchanged (a sibling may have appeared
     // since it was delivered; the delivered GET at the folded path would be the OTHER page).
+    gateNote = '';
     if (p.safePath === null || p.collision || (strictPaths && p.safePath !== undefined && p.safePath !== p.webPath)) {
       drive(p, p.collision ? `path-collision (${p.collision})` : 'path-unsafe', 'pathSafety');
       continue;
     }
     const rec = ledger[p.webPath];
+    // Gate 8 — the publish hold (publish-gate.md): a row that would go live needs a PASS in the report. An
+    // unchanged live row is never touched (unpublishing is an owner decision — its FAIL is reported); a
+    // changed live row is a re-publish and is held like any other. Before `force`: --force never lifts a hold.
+    // A hash-less (legacy) live row counts as unchanged, as everywhere else in this plan (the live run's
+    // delivered GET decides, and backfills the hash).
+    if (publish && gate) {
+      const liveUnchanged = !!(rec && rec.status === 'live' && (!rec.bodyHash || rec.bodyHash === p.hash) && !force);
+      if (liveUnchanged) {
+        const e = gateEntry(gate.report, p.webPath);
+        if (e && e.latest && e.latest.status === 'published-failing') { counts.publishedFailing += 1; gateNote = ` · published-failing (gate: ${gateVerdict(gate.report, p.webPath, { wasLive: true }).why.replace(/ — published-failing.*$/, '')})`; }
+      } else {
+        const v = gateVerdict(gate.report, p.webPath, { wasLive: !!(rec && rec.status === 'live'), publishUngated, publishNoRegression });
+        if (!v.allow) { skip(p, `held (gate: ${v.why})`, 'held'); continue; }
+        if (v.note) gateNote = ` (gate: ${v.note})`;
+      }
+    }
     if (force) {
       if (rec) { rec.status = 'pending'; touched.add(p.webPath); }
       drive(p, 'forced (--force)', 'forced');
@@ -436,7 +561,7 @@ export async function buildPlan({ pages, ledger, want, exclude, publish, force, 
 
 export function planLine(c, extra = '') {
   return `[deploy-batch] ${c.pages} pages · ${c.unchanged} unchanged (hash) · ${c.changed} changed · ${c.new} new · ${c.failedLast} failed-last-time`
-    + `${c.forced ? ` · ${c.forced} forced` : ''}${c.fastPublish ? ` · ${c.fastPublish} previewed→publish` : ''}${c.reverify ? ` · ${c.reverify} re-verify failed` : ''}${c.pathSafety ? ` · ${c.pathSafety} path-safety` : ''}`
+    + `${c.forced ? ` · ${c.forced} forced` : ''}${c.fastPublish ? ` · ${c.fastPublish} previewed→publish` : ''}${c.reverify ? ` · ${c.reverify} re-verify failed` : ''}${c.pathSafety ? ` · ${c.pathSafety} path-safety` : ''}${c.held ? ` · ${c.held} held (gate)` : ''}${c.publishedFailing ? ` · ${c.publishedFailing} published-failing` : ''}`
     + ` · ${c.excluded} excluded${c.missing ? ` · ${c.missing} not in content tree` : ''} · ${c.toDrive} to drive${extra}`;
 }
 
@@ -670,6 +795,17 @@ export async function main(argv = process.argv) {
     return 0;
   }
 
+  // Gate 8: the publish hold reads gate-publish's report; a named file must exist (exit 2), the default may be absent (WARN)
+  const gate = args.publish ? loadGateReport(args.gateReport || GATE_REPORT_DEFAULT, !!args.gateReport) : null;
+  const say = args.plan ? console.log : console.error;
+  if (args.publish && !gate) say(`[deploy-batch] WARN no gate report at ${GATE_REPORT_DEFAULT} — publishing ungated: every previewed row goes live (publish-gate.md § Gate 8: under flow: replica run gate-publish.mjs --report first)`);
+  if (gate) say(`[deploy-batch] gate-report ${gate.file} (${gate.report.generatedAt || 'undated'}) — rows without a PASS at every breakpoint are held${args.publishUngated ? ' · --publish-ungated: rows with no entry publish' : ''}${args.publishNoRegression ? ' · --publish-no-regression: changed live rows within best-of-last-3 + 1 publish' : ''}`);
+  if (args.skipCodeSyncVerify !== undefined && !args.offline) {
+    console.error(`[deploy-batch] instrument: code-sync-verify skipped — ${args.skipCodeSyncVerify}`);
+    await mkdir(path.dirname(args.log), { recursive: true });
+    await appendFile(args.log, `${JSON.stringify({ t: new Date().toISOString(), step: 'instrument', instrument: 'code-sync-verify', skipped: args.skipCodeSyncVerify })}\n`);
+  }
+
   const pages = await walkHtml(args.content);
   const pathCounts = annotateSafePaths(pages);
   const pathLine = pathCounts.normalised || pathCounts.collisions || pathCounts.unsafe
@@ -718,7 +854,7 @@ export async function main(argv = process.argv) {
   let plan;
   try {
     const verify = args.plan ? null : ({ webPath, tld }) => deliveredOk({ ...args, webPath, tld });
-    plan = await buildPlan({ pages, ledger, want, exclude, publish: args.publish, force: args.force, branch: args.branch, verify, touched, strictPaths: args.strictPaths });
+    plan = await buildPlan({ pages, ledger, want, exclude, publish: args.publish, force: args.force, branch: args.branch, verify, touched, strictPaths: args.strictPaths, gate, publishUngated: args.publishUngated, publishNoRegression: args.publishNoRegression });
   } catch (err) {
     if (err instanceof HaltError) return halt(err, 0, '?');
     throw err;
@@ -741,21 +877,27 @@ export async function main(argv = process.argv) {
     if (remaining < projection && !args.ignoreTtl) throw new Error(`DA_TOKEN has ${(remaining / 60).toFixed(0)} min left but ${todo.length} pages × ${sec}s ÷ ${args.concurrency} ≈ ${(projection / 60).toFixed(0)} min — refresh it first, narrow --paths, or --ignore-ttl; nothing was PUT`);
   }
 
+  const gateLine = gate ? `[deploy-batch] ${gateCoverageLine(gate.report, counts.held)}` : null;
+  const heldRows = plan.rows.filter((r) => r.action === 'skip' && r.reason.startsWith('held (gate:'));
   if (args.plan) {
     console.log(planLine(counts, ` (plan only, publish=${args.publish})`));
     if (pathLine) console.log(pathLine);
+    if (gateLine) console.log(gateLine);
     const byPath = new Map(pages.map((p) => [p.webPath, p]));
     for (const r of plan.rows) {
       const p = byPath.get(r.webPath);
       const note = p && p.safePath === null ? '  [path-unsafe: no safe form]' : p && p.collision ? `  [path-collision with ${p.collision} → ${p.safePath}]` : p && p.safePath !== p.webPath ? `  [→ ${p.safePath}${args.strictPaths ? ' path-unsafe (--strict-paths)' : ''}]` : '';
       console.log(`  ${r.action.padEnd(7)} ${r.webPath}  ${r.reason}${note}`);
     }
-    console.log(summaryLine({ driver: 'deploy-batch', exit: 0, details: args.ledger, extra: { mode: 'plan', toDrive: counts.toDrive } }));
+    console.log(summaryLine({ driver: 'deploy-batch', exit: 0, details: args.ledger, extra: { mode: 'plan', toDrive: counts.toDrive, held: gate ? counts.held : undefined } }));
     return 0;
   }
 
   console.error(planLine(counts, ` (concurrency ${args.concurrency}, publish=${args.publish})`));
   if (pathLine) console.error(pathLine);
+  if (gateLine) console.error(gateLine);
+  for (const r of heldRows) console.error(`  held    ${r.webPath}  ${r.reason}`); // every held row, every run — the re-drive is the same command once the report changes
+  if (gate) for (const r of plan.rows) if (r.action === 'drive' && / \(gate: /.test(r.reason)) console.error(`  drive   ${r.webPath}  ${r.reason}`); // a row going live under an escape flag is always printed
   if (!todo.length) {
     const show = plan.rows.slice(0, 50); // one reason per path — why nothing moves
     for (const r of show) console.error(`  ${r.action.padEnd(7)} ${r.webPath}  ${r.reason}`);
@@ -763,7 +905,7 @@ export async function main(argv = process.argv) {
   }
   if (touched.size) await persist(); // hash backfills / --force resets
 
-  progress = createProgress({ file: args.progress, driver: 'deploy-batch', total: todo.length, extra: { publish: args.publish, skipped: counts.unchanged, ledger: args.ledger } });
+  progress = createProgress({ file: args.progress, driver: 'deploy-batch', total: todo.length, extra: { publish: args.publish, skipped: counts.unchanged, ledger: args.ledger, ...(gate ? { held: counts.held, gateReport: gate.file } : {}) } });
   const shared = args.branch !== 'main' ? [] : null;
   let done = 0;
   let firstUrl = null;
@@ -789,7 +931,7 @@ export async function main(argv = process.argv) {
 
   const fails = todo.map((p) => [p.webPath, ledger[p.webPath]]).filter(([, r]) => !OK_STATUS.has(r.status));
   console.error(`[deploy-batch] done. ${todo.length - fails.length} ok, ${fails.length} failed.${firstUrl ? `  first: ${firstUrl}` : ''}`);
-  const summary = (exit) => progress.summaryLine({ exit, details: args.ledger, extra: { skipped: counts.unchanged, published: args.publish ? todo.length - fails.length : 'preview-only' } });
+  const summary = (exit) => progress.summaryLine({ exit, details: args.ledger, extra: { skipped: counts.unchanged, published: args.publish ? todo.length - fails.length : 'preview-only', held: gate ? counts.held : undefined } });
   if (shared && shared.length) {
     console.error(`[deploy-batch] WARN two clocks: ${shared.length} document(s) already on DA are shared with main — main renders them with main's code until branch "${args.branch}" is merged (da-deploy-protocol.md § Two clocks).`);
   }

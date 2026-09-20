@@ -102,6 +102,12 @@ try {
   b = await runBuild(['--root', dir, '--style-split', 'bogus']); assert.equal(b.status, 1, 'an invalid flag value is still usage');
   r = await run(['--compare', mutated, '--contract', join(dir, 'fresh', 'rc.json')]); assert.equal(r.status, 3); assert.equal(JSON.parse(readFileSync(join(dir, 'fresh', 'rc.json'), 'utf8')).pipeline.multiValueStyle, 'first-only', 'contract created when absent');
 
+  // NEGATIVE (value guards): `--style-split --probe` / `--out --json` used to swallow the next flag as the value
+  // (then failed the enum check with a misleading message); every valued flag now exits 1 with "needs a value"
+  for (const args of [['--style-split', '--probe'], ['--out', '--json', join(FIX, 'pipeline-probe.html')], ['--style-split']]) {
+    r = await run(args); assert.equal(r.status, 1, `${args.join(' ')} → exit 1`); assert.match(r.stderr, /needs a value/, `${args.join(' ')}: "needs a value", got: ${r.stderr.split('\n')[0]}`);
+  }
+
   // --probe: no token → no verdict, contract untouched
   const before = readFileSync(contract, 'utf8');
   r = await run(['--probe', '--org', 'o', '--repo', 'r', '--branch', 'main', '--contract', contract]);

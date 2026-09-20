@@ -10,7 +10,7 @@
     {
       "name": "publish_holds_non_pass_rows",
       "max_score": 15,
-      "description": "The publish step is deploy-batch.mjs … --publish --plan (or an equivalent offline reading of the report). Exactly two rows are named publishable (/ and /business); /insurance/auto, /news/storm-season-checklist and /insurance/home are held with the report's reason class (FAIL / unmeasured / ungated). A run that publishes, or declares publishable, any held row fails this item."
+      "description": "The publish step is deploy-batch.mjs … --publish --plan (its `held (gate: …)` rows are the hold; an equivalent offline reading of the report is accepted). Exactly two rows are named publishable (/ and /business); /insurance/auto, /news/storm-season-checklist and /insurance/home are held with the report's reason class (FAIL / unmeasured / ungated). A run that publishes, or declares publishable, any held row fails this item."
     },
     {
       "name": "template_not_at_bar_not_published",

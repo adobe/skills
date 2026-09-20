@@ -149,6 +149,9 @@ assert.match(r.stdout, /templates not at the bar \(not published\): article \(0\
 assert.match(readFileSync(join(OUT, 'gate-report.md'), 'utf8'), /\| landing \| 2 \| 1 \| 1 \| 0 \| 0 \| no — not published \|/);
 assert.ok(existsSync(join(OUT, 'gate-report.md')));
 assert.match(readFileSync(join(OUT, 'gate-report.md'), 'utf8'), /\| \/news\/b \| published-failing \|/);
+// NEGATIVE: the rendered report names the shipped hold, never "pending the deploy hunk"
+assert.doesNotMatch(readFileSync(join(OUT, 'gate-report.md'), 'utf8'), /pending the deploy hunk|until then read the held rows/);
+assert.match(readFileSync(join(OUT, 'gate-report.md'), 'utf8'), /`deploy-batch --publish` reads this report's JSON and holds them; `--plan` prints the held reasons offline/);
 // delivery.gate merged on the selected rows only
 const cov = json(join(OUT, 'coverage', 'pages.json')).pages;
 assert.equal(cov.find((p) => p.slug === 'home').delivery.gate.status, 'pass');

@@ -129,6 +129,10 @@ number with what is agent-invisible *by design* and its cost (`fragments cost N 
 owner sees a decision, not a bare 84. Where it runs: the deploy atomic contract on the **published**
 page; the `qa` `ai-readability` check (same code); `audit` on sampled pages. String allowlist entries
 name a block and the runtime string they excuse, with a reason; the script prints every entry used.
+Exit codes: `1` a scored page below the bar or an undecided exclusion; `2` no scored FAIL but a page
+**unmeasured** (`error:` — the served fetch not 2xx, a 429, a navigation failure: no verdict, never a
+pass; the JSON carries `unmeasured: <n>`, rollout Gate 5 re-drives it) or a usage / infrastructure
+failure; `0` clean. A throttled run therefore never reads as a pass at the instrument.
 
 **Excluded blocks carry a decision (gate).** `--exclude-blocks` removes a block's words from the
 `code` denominator only when the allowlist carries a complete `exclude` entry for it —

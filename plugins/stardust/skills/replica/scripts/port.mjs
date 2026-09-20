@@ -20,7 +20,8 @@
  *       listeners on both ranges + the defaults, each own | foreign | orphan
  *     --root <dir>     project root (default cwd; ports.json lives under <root>/stardust/.work/)
  *     --marker <s>     identity marker recorded for the role (default: the root's basename)
- *     --port <n>       pin the port — still probed: a foreign listener there is exit 3, never reused
+ *     --port <n>       pin the port — still probed: a foreign listener there is exit 3, never reused;
+ *                      `STARDUST_PORT_PROTO` / `STARDUST_PORT_HARNESS` pin the same way when the flag is absent
  *     --json           machine-readable output
  *
  * Ranges: proto 8800–8899, harness 3100–3199 (100 slots each, start = fnv1a(root) % 100);
@@ -33,7 +34,7 @@
  *   3  no free slot in the role range, or --port pinned to a foreign listener
  *   1  error (unknown role/flag, lsof unusable for the pin check)
  *
- * Importable: allocate(role, opts), listeners(port), parseLsof(text), cwdOf(pid), slotFor(root, role), RANGES, EXCLUDED.
+ * Importable: allocate(role, opts), envPin(role), listeners(port), parseLsof(text), cwdOf(pid), slotFor(root, role), RANGES, EXCLUDED.
  * Contract: ../reference/source-fidelity-gate.md § Per-breakpoint procedure (the snippet).
  */
 /* eslint-disable no-restricted-syntax, brace-style, object-curly-newline, max-len, no-plusplus */
@@ -52,6 +53,7 @@ const HELP = `port — per-project port allocator; never kills a foreign listene
 Usage: node port.mjs <proto|harness> [--root <dir>] [--marker <s>] [--port <n>] [--json]
        node port.mjs stop <proto|harness> [--root <dir>]
        node port.mjs list [--root <dir>] [--json]
+Pin:   --port <n>, else STARDUST_PORT_<ROLE> (STARDUST_PORT_PROTO / STARDUST_PORT_HARNESS) — probed like any slot, a foreign listener is exit 3.
 Ranges: proto ${RANGES.proto.join('–')}, harness ${RANGES.harness.join('–')}; never ${[...EXCLUDED].join(', ')} (documented fallbacks).
 Exit codes: 0 ok, 3 no free slot / pinned port foreign, 1 error.`;
 
@@ -115,8 +117,18 @@ export function classify(l, root) { return l.cwd ? (under(l.cwd, root) ? 'own' :
  * Allocate (or reuse) the role's port. Returns { port, status: 'free'|'own', pid, marker, tried[], foreign[] }.
  * Throws { code: 3 } when the range has no free slot or a pinned port is foreign.
  */
+/** The env pin for a role (`STARDUST_PORT_PROTO`, `STARDUST_PORT_HARNESS`): a positive integer, else null (a malformed value is exit 1, never silently ignored). */
+export function envPin(role, env = process.env) {
+  const raw = env[`STARDUST_PORT_${String(role).toUpperCase()}`];
+  if (raw === undefined || raw === '') return null;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n <= 0) throw Object.assign(new Error(`STARDUST_PORT_${String(role).toUpperCase()}=${raw} is not a port number`), { code: 1 });
+  return n;
+}
+
 export async function allocate(role, { root = process.cwd(), marker = null, pin = null } = {}) {
   if (!RANGES[role]) throw Object.assign(new Error(`unknown role ${role} — proto | harness`), { code: 1 });
+  if (pin === null || pin === undefined) pin = envPin(role); // --port wins; the env pin is the same escape hatch for snippets that cannot pass a flag
   const [lo, hi] = RANGES[role]; const size = hi - lo + 1;
   const mk = marker || (readPorts(root)[role] || {}).marker || basename(resolve(root));
   const tried = []; const foreign = [];

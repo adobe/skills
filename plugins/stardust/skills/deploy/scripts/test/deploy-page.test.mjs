@@ -242,7 +242,39 @@ try {
   assert.ok(deliveredGets.length > 0 && deliveredGets.every((q) => q.auth === 'token site-secret'), `delivered GETs carry the --site-token-env value: ${JSON.stringify(deliveredGets)}`);
   r = await run(['/a', '--concurrency']);
   assert.equal(r.status, 2, '--concurrency needs a value');
-  console.log('deploy-page test: ok (chrome append, preview default, links-unlocalized zero-PUT + residue echo, lint-red, --publish, killed no-verdict, exit 3 propagation, Gate 3 fold through the chain, stage-1 pass-through, --paths file, transport pass-through: code-sync refusal exit 3 + token names/concurrency forwarded)');
+  r = await run(['/a', '--timeout', 'abc']);
+  assert.equal(r.status, 2, '--timeout abc is a usage error, not a silent 600'); assert.match(r.stderr, /--timeout takes whole seconds ≥ 1/);
+  r = await run(['/a', '--timeout', '0']);
+  assert.equal(r.status, 2, '--timeout 0 is a usage error');
+
+  // --skip-code-sync-verify <reason> forwarded: deploy-batch prints the instrument line and logs it; exclusive with --require-code-synced
+  fresh({ navLocalized: true }); rmSync(join(content, '.deploy-ledger.json'), { force: true }); mock.reset();
+  r = await run(['/a', '--skip-code-sync-verify', 'served code verified by hand at 09:12']);
+  assert.equal(r.status, 0, `skip line forwarded: ${r.out}`);
+  assert.match(r.stderr, /\[deploy-batch\] instrument: code-sync-verify skipped — served code verified by hand at 09:12/);
+  assert.match(readFileSync(join(content, '.deploy-log.jsonl'), 'utf8'), /"step":"instrument","instrument":"code-sync-verify","skipped":"served code verified by hand at 09:12"/);
+  r = await run(['/a', '--skip-code-sync-verify', 'x', '--require-code-synced']);
+  assert.equal(r.status, 2); assert.match(r.stderr, /exclusive/);
+
+  // Gate 8 through the chain: a --publish run holds the row the report does not PASS — chain exit 1, `held=1`, the PASS row goes live
+  fresh({ navLocalized: true }); rmSync(join(content, '.deploy-ledger.json'), { force: true }); mock.reset();
+  r = await run(['/a', '/b']);
+  assert.equal(r.status, 0, r.out);
+  mkdirSync(join(dir, 'stardust', 'rollout'), { recursive: true });
+  const gateRow = (p, status) => ({ path: p, slug: p.slice(1), template: 'landing', wasLive: false, latest: { at: '2026-09-18T09:40:00Z', pass: status === 'pass', status, breakpoints: { 1440: status === 'pass' ? { status: 'pass', pass: true, pixelPct: 5, heightDelta: 0 } : { status: 'fail', pass: false, pixelPct: 12.4, heightDelta: -112 } } }, bestOfLast3: {}, history: [] });
+  writeFileSync(join(dir, 'stardust', 'rollout', 'gate-report.json'), JSON.stringify({ generatedAt: '2026-09-18T09:41:00Z', coverage: { delivered: 2, gated: 2, pass: 1, fail: 1, unmeasured: 0, ungated: 0 }, templates: { landing: { atBar: true } }, pages: { '/a': gateRow('/a', 'pass'), '/b': gateRow('/b', 'fail') } }));
+  mock.reset();
+  r = await run(['/a', '/b', '--publish']);
+  assert.equal(r.status, 1, `a held page is not live → exit 1: ${r.out}`);
+  assert.deepEqual(urls('POST').filter((u) => u.startsWith('/admin/live/')), ['/admin/live/o/r/main/a'], 'POST /live/ for the PASS row only');
+  assert.match(r.stderr, /\[deploy-page\] \/b {2}localize ok · lint ok · delivery-lint ok · sanitise ok · deploy held \(gate\) — row previewed/);
+  assert.match(r.stderr, /HELD by the publish gate/);
+  assert.match(r.stdout.trim().split('\n').at(-1), /^SUMMARY deploy-page ok=1 failed=0 noverdict=1 exit=1 details=.* published=1 held=1$/);
+  assert.equal(JSON.parse(readFileSync(join(content, '.deploy-ledger.json'), 'utf8'))['/b'].status, 'previewed');
+  r = await run(['/a', '--publish-ungated']);
+  assert.equal(r.status, 2, 'an escape flag without --publish is a usage error'); assert.match(r.stderr, /apply to a --publish run only/);
+  rmSync(join(dir, 'stardust'), { recursive: true, force: true });
+  console.log('deploy-page test: ok (chrome append, preview default, links-unlocalized zero-PUT + residue echo, lint-red, --publish, killed no-verdict, exit 3 propagation, Gate 3 fold through the chain, stage-1 pass-through, --paths file, transport pass-through: code-sync refusal exit 3 + token names/concurrency forwarded, --timeout validated, --skip-code-sync-verify line, Gate 8 hold through the chain)');
 } finally {
   await mock.close();
   rmSync(dir, { recursive: true, force: true });

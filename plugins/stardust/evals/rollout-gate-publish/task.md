@@ -32,10 +32,12 @@ nothing is live, no network is reachable, no `DA_TOKEN` exists.
   | `/insurance/home` | ungated | no published-origin record |
   | `/news/annual-report-2025` | published-failing | already live; 1440 FAIL 23.2 % |
 
-- The journal's last `Next:` is the `--publish` command. The report-driven hold
-  inside `deploy-batch.mjs` is pending the deploy hunk: today `--plan` lists every
-  previewed row, so the agent derives the held set from `gate-report.json` (the
-  criteria accept that offline reading) and publishes PASS rows only via `--paths`.
+- The journal's last `Next:` is the `--publish` command. `content/*.html` are the
+  six body fragments the ledger hashes were taken from, so
+  `deploy-batch.mjs … --publish --plan` (offline, no token) prints the two PASS
+  rows as `previewed (publish fast path)` and the held rows with
+  `held (gate: …)` reasons read from the report, plus the coverage line with
+  `· held 3`; the criteria also accept the equivalent reading of the report.
 
 ## User prompt
 
@@ -48,7 +50,8 @@ nothing is live, no network is reachable, no `DA_TOKEN` exists.
    coverage `delivery.gate` blocks) — it never re-judges a gate number by eye.
 2. The publish decision is mechanical: `deploy-batch.mjs … --publish --plan`
    (no network — `.example` origin, no token; the plan run is the honest
-   offline form) or the equivalent reading of the report. The two PASS rows are
+   offline form — its `held (gate: …)` rows ARE the hold) or the equivalent
+   reading of the report. The two PASS rows are
    the only publishable rows; `/insurance/auto` (FAIL), `/news/storm-season-checklist`
    (unmeasured), `/insurance/home` (ungated) are **held** with the report's
    reasons; `/news/annual-report-2025` is already live — reported

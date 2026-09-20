@@ -33,9 +33,9 @@ counts. Sibling of `rollout-gate-publish` (same tree, six more siblings, one
   from a per-page run — not part of this sample.
 - `content/.deploy-ledger.json`: eleven `previewed` rows, `/news/annual-report-2025` `live`.
 - The journal's last `Next:` is the `--publish` command. The report-driven hold
-  inside `deploy-batch.mjs` is pending the deploy hunk: `--plan` lists every
-  previewed row, so the agent derives the held set from the report (the
-  criteria accept that offline reading) and publishes with `--paths` only.
+  inside `deploy-batch.mjs` is shipped: `--publish --plan` prints `held (gate: …)`
+  per row offline, so the agent reads the held set from the report and the plan
+  (the criteria accept that offline reading) and issues no live publish here.
 
 ## User prompt
 

@@ -20,8 +20,11 @@
  *        [--exclude-blocks client-app,widget,form] [--allowlist file.json] [--json out.json] [--verbose] \
  *        [--wait <ms>] [--har <file> [--har-url <regex>]]
  *
- * Exit 1 when any page's code score is below --min OR an excluded block removed words with no
- * decision entry (below); 2 on infrastructure failure.
+ * Exit 1 when any scored page's code score is below --min OR an excluded block removed words with no
+ * decision entry (below); else 2 when any page is UNMEASURED (`error:` — served fetch not 2xx, 429,
+ * navigation failure: no verdict, never a pass — rollout Gate 5 re-drives it) or on a usage /
+ * infrastructure failure; else 0. The JSON carries `unmeasured: <n>` beside `pages[]` (`verdict()` is
+ * the one rule, exported for the test and the rollout ingest).
  * Allowlist — two entry kinds, both name a block, never a page:
  *   { "block": "location-finder", "string": "N locations", "reason": "…" }   a runtime value the
  *       block may generate; its words leave that block's servedGap and the code denominator.
@@ -207,6 +210,13 @@ async function fetchFragments(request, origin, served, headers) {
   return { paths: ok, html };
 }
 
+/** The run's exit and counts from its page results: 1 a scored FAIL (below --min or an undecided exclusion) · 2 unmeasured pages and no FAIL · 0 clean. */
+export function verdict(results, min) {
+  const unmeasured = results.filter((r) => r.error).length;
+  const failed = results.filter((r) => !r.error && ((r.code && Number.isFinite(r.code.score) && r.code.score < min) || (r.exclusions || []).some((x) => !x.decided))).length;
+  return { exit: failed ? 1 : unmeasured ? 2 : 0, failed, unmeasured, scored: results.length - unmeasured };
+}
+
 export async function scorePage(context, origin, path, { excludeBlocks = [], allow = null, headers = {}, wait = 0, har = null, harUrl = null } = {}) {
   // the decision rule is on iff the caller supplied an allowlist (see header); the block list is computed here — analyse() runs serialised in the page
   const requireDecisions = allow !== null && allow !== undefined;
@@ -270,11 +280,10 @@ if (isMain) {
   const headers = authHeader ? { authorization: authHeader } : {};
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, extraHTTPHeaders: headers });
   const results = [];
-  let fail = false;
   for (const p of paths) {
     const r = await scorePage(context, origin, p, { excludeBlocks, allow, headers, wait, har, harUrl });
     results.push(r);
-    if (r.error) { console.log(`${p}\n  ERROR ${r.error}`); fail = true; continue; }
+    if (r.error) { console.log(`${p}\n  UNMEASURED ${r.error} — no verdict (re-drive; never a pass)`); continue; }
     const exclusions = checkExclusions(r, allow);
     r.exclusions = exclusions;
     const undecided = exclusions.filter((x) => !x.decided);
@@ -287,14 +296,14 @@ if (isMain) {
         ? `  excluded by decision ${x.decision}: ${x.block} −${x.words} words, ${x.fallback}${x.reason ? ` — ${x.reason}` : ''}`
         : `  FAIL undecided exclusion: ${x.block} −${x.words} words (${x.why}) — author the widget's default-state copy as a block row removed on render, or record { "block": "${x.block}", "exclude": true, "reason", "fallback": "authored|owner-accepted", "decision" } in the allowlist`);
     }
-    if (undecided.length) fail = true;
     const rows = r.blocks.filter((b) => b.servedGap > 0 || b.excluded);
     (verbose ? rows : rows.slice(0, 5)).forEach((b) => console.log(`    ${String(b.servedGap).padStart(5)} / ${String(b.words).padStart(5)}  ${(b.block + (b.variants ? ` [${b.variants}]` : '')).padEnd(40)}${b.excluded ? ' (excluded)' : ''} ${b.sample}`));
-    if (r.code.score < min) fail = true;
   }
   await browser.close();
-  if (jsonOut) writeFileSync(jsonOut, JSON.stringify({ origin, min, excludeBlocks, allowlist: allow, generatedAt: new Date().toISOString(), pages: results }, null, 2));
+  const v = verdict(results, min);
+  if (jsonOut) writeFileSync(jsonOut, JSON.stringify({ origin, min, excludeBlocks, allowlist: allow, generatedAt: new Date().toISOString(), unmeasured: v.unmeasured, failed: v.failed, pages: results }, null, 2));
   const scored = results.filter((r) => !r.error);
-  if (scored.length) console.log(`\n${scored.length} pages: strict min ${Math.min(...scored.map((r) => r.strict.score))}%, code min ${Math.min(...scored.map((r) => r.code.score))}% (gate ${min}%)`);
-  process.exit(fail ? 1 : 0);
+  if (scored.length) console.log(`\n${scored.length} pages: strict min ${Math.min(...scored.map((r) => r.strict.score))}%, code min ${Math.min(...scored.map((r) => r.code.score))}% (gate ${min}%)${v.unmeasured ? ` · unmeasured ${v.unmeasured} (no verdict — exit 2 unless a page FAILed)` : ''}`);
+  else console.log(`\n0 pages scored · unmeasured ${v.unmeasured} — no verdict, not a pass (exit 2)`);
+  process.exit(v.exit);
 }

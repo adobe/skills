@@ -24,8 +24,8 @@ under test; this file and `answers.md` are not.
 - `deploy-batch.mjs --publish` against the `.example` origin cannot reach an
   admin API; `--plan` is the honest offline form and what the criteria expect.
 - The `--publish` hold and the "template not at the bar" hold inside
-  deploy-batch land in the deploy cluster; until they do the agent applies both
-  from the report by hand — the criteria judge the decision, not the flag.
+  deploy-batch are shipped (`deploy-batch.mjs` header § Publish hold; `--plan`
+  prints the held reasons offline) — the criteria judge the decision, not the flag.
 - Twelve delivered pages are under the 150-page every-page regime: the sample
   here is sweep-protocol **step 2** (the fix loop's template sample), and the
   expected re-drive is the step 5 `--all-delivered` sweep.

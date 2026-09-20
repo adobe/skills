@@ -17,6 +17,8 @@
  * then the schema's block names. `--marker <s>` overrides the marker read from stardust/.work/harness/marker.txt;
  * with neither, identity is not asserted (one line says so). Ports: `aem up --port $(node
  * skills/replica/scripts/port.mjs harness)` — never a typed 3000 (harness-quirks.md § Ports).
+ * Arguments (schema-checks.mjs parseQaGateArgs): the URL is the one positional, wherever it sits; every value
+ * flag refuses a following `--flag`; an unknown flag is usage — exit 2, no browser launched.
  *
  * Asserts (FAIL → exit 1):
  *   - the runtime booted: body.appear present (a blank render = harness bug, #40)
@@ -30,6 +32,15 @@
  *   - wide-viewport (#13, second pass at 1600px): block content boxes stay
  *     ≤ --maxw unless the block is genuinely full-bleed in the schema order —
  *     over-wide boxes print as WARN (cross-check against the prototype).
+ *   - generic-with-structure (T28.4, audit-and-naming.md § 2b): a schema section triaged to default
+ *     content (`defaultContent: true`) whose measured `structure` has interactive descendants or ≥ 2
+ *     columns, and whose page section (matched by order over the schema's non-chrome sections) renders
+ *     with no `[data-block-name]` — prose cannot carry a tab strip or a side-by-side layout. FAIL; the
+ *     recorded object form `"defaultContent": { "reason", "dynamicsRow" }` prints it as ⚠ instead. No
+ *     `--allow-*` flag; hands-off never writes the reason.
+ *   - h1Section (T21.2): the authored <h1> still sits in its authored section — schema `hasH1` index
+ *     vs the rendered `main .section` holding the <h1>. A mismatch is a FAIL when
+ *     stardust/runtime-contract.json#autoBlocks is non-empty (a builder moved it), else a WARN.
  *   - full-bleed pass (the INVERSE of #13): for blocks rendered edge-to-edge,
  *     the block's section wrapper must compute the full viewport width. The
  *     list is derived from the loaded block CSS — every [data-block-name] whose
@@ -59,20 +70,16 @@ import { chromium } from 'playwright';
 import fs from 'fs';
 import { assertServedIdentity } from '../../replica/scripts/served-identity.mjs';
 import { driveControl } from '../../dynamics/scripts/lib.mjs';
+import { flagGenericWithStructure, h1SectionVerdict, parseQaGateArgs } from './schema-checks.mjs';
 
-const args = process.argv.slice(2);
-const url = args.find((a) => !a.startsWith('--'));
-const opt = (name, dflt) => { const i = args.indexOf(`--${name}`); return i >= 0 ? args[i + 1] : dflt; };
-const schemaPath = opt('schema', null);
-const maxw = Number(opt('maxw', 1340));
-const fullBleedOpt = (opt('full-bleed', '') || '').split(',').map((s) => s.trim()).filter(Boolean);
-const noDrive = args.includes('--no-drive');
-if (!url) { console.error('usage: qa-gate.mjs <harnessURL> [--schema <eds-schema.json>] [--maxw 1340] [--full-bleed hero,band] [--marker <s>] [--no-drive]'); process.exit(2); }
+const qa = parseQaGateArgs(process.argv.slice(2)); // value flags refuse a following --flag; the URL is the first positional that is not a flag's value
+const { url, schema: schemaPath, maxw, fullBleed: fullBleedOpt, noDrive } = qa;
+if (qa.error || !url) { if (qa.error) console.error(`qa-gate: ${qa.error}`); console.error('usage: qa-gate.mjs <harnessURL> [--schema <eds-schema.json>] [--maxw 1340] [--full-bleed hero,band] [--marker <s>] [--no-drive]'); process.exit(2); }
 const schema = schemaPath ? JSON.parse(fs.readFileSync(schemaPath, 'utf8')) : null;
 
 // Served identity before any read: the server on that port must be ours (exit 4 = no verdict, never a FAIL).
 const MARKER_FILE = 'stardust/.work/harness/marker.txt';
-const marker = opt('marker', null) || (fs.existsSync(MARKER_FILE) ? fs.readFileSync(MARKER_FILE, 'utf8').trim() : null);
+const marker = qa.marker || (fs.existsSync(MARKER_FILE) ? fs.readFileSync(MARKER_FILE, 'utf8').trim() : null);
 if (marker) {
   try {
     const id = await assertServedIdentity(url, marker, { fallbackNames: schema ? (schema.sections || []).map((s) => s.section) : [] });
@@ -145,6 +152,8 @@ const r = await page.evaluate(() => {
       const b = s.querySelector('[data-block-name]');
       return { block: b.dataset.blockName };
     });
+  // every main section in order: its first block name (null = default content) and whether it holds the <h1>
+  out.mainSections = [...document.querySelectorAll('main .section')].map((s) => ({ block: s.querySelector('[data-block-name]') ? s.querySelector('[data-block-name]').dataset.blockName : null, hasH1: !!s.querySelector('h1') }));
   return out;
 });
 
@@ -200,6 +209,26 @@ if (schema && Array.isArray(schema.sections)) {
     const got = Math.max(inst.unitCount, inst.headingUnits, tagGot);
     check(got >= want, `units: "${s.section}" → block ${inst.name} renders ≥${want}`, `rendered ${got} (grid kids ${inst.unitCount} / unit headings ${inst.headingUnits} / tag ${tagGot})`);
   });
+}
+
+// generic-with-structure (T28.4) + h1Section (T21.2) — judged in schema-checks.mjs; the schema's non-chrome
+// sections bind to `main .section` by order (the same binding the unit-count pass uses).
+if (schema && Array.isArray(schema.sections)) {
+  const protoSections = schema.sections.filter((s) => !['header', 'footer'].includes(s.section));
+  for (const f of flagGenericWithStructure({ sections: protoSections })) {
+    const pos = protoSections.findIndex((s) => s.section === f.section);
+    const sec = r.mainSections[pos];
+    if (!sec) { warns.push(`generic-with-structure: schema section "${f.section}" (${f.facts}) has no page section #${pos + 1} by order — verify manually`); continue; }
+    if (sec.block) { ok.push(`generic-with-structure: "${f.section}" (${f.facts}) renders as block ${sec.block}`); continue; }
+    if (f.reason || f.dynamicsRow) { warns.push(`generic-with-structure: "${f.section}" has ${f.facts} and renders as default content — recorded: ${f.dynamicsRow ? `dynamics row ${f.dynamicsRow}` : ''}${f.dynamicsRow && f.reason ? ', ' : ''}${f.reason || ''}`); continue; }
+    fails.push(`generic-with-structure: section "${f.section}" has ${f.facts} but renders as default content — needs a block or a dynamics row (audit-and-naming.md § 2b)`);
+  }
+  const schemaH1 = protoSections.findIndex((s) => s.hasH1 === true);
+  const pageH1 = r.mainSections.findIndex((s) => s.hasH1);
+  const contractFile = 'stardust/runtime-contract.json';
+  const autoBlocks = fs.existsSync(contractFile) ? ((() => { try { return JSON.parse(fs.readFileSync(contractFile, 'utf8')).autoBlocks; } catch { return []; } })() || []) : [];
+  const v = h1SectionVerdict({ schemaIndex: schemaH1 >= 0 ? schemaH1 : null, pageIndex: pageH1 >= 0 ? pageH1 : null, autoBlocks });
+  if (v) (v.level === 'ok' ? ok : v.level === 'warn' ? warns : fails).push(`h1Section: ${v.message}`);
 }
 
 // full-bleed pass (inverse of #13): the full-bleed blocks' section wrappers must

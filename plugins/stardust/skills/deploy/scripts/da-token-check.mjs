@@ -26,7 +26,8 @@
  *                     `daTarget` is what the ONE list call said about --org/--repo — ok (200) |
  *                     not-visible (404: wrong coordinates or no site yet → site-bootstrap.md) |
  *                     denied (401/403) | unchecked (no smoke) — so state.json shows WHY Setup step 8
- *                     refused when the token itself is fine. Merged into --state's `credentials`
+ *                     refused when the token itself is fine: a list 403 is `da: ok` + `daTarget: denied`
+ *                     (ask for access — not a token refresh); a list 401 is `da: expired` (refresh). Merged into --state's `credentials`
  *                     key (state.json is tracked: names, statuses and source classes only).
  *   --site <slug>     slug for the SITE_TOKEN_<SLUG> match — exact after normalisation
  *                     (uppercase, non-alphanumerics → `_`), never a prefix; default: --repo.
@@ -127,8 +128,8 @@ export async function check(a, { cwd = process.cwd(), home, env } = {}) {
       return out;
     }
     if (status === 403) {
-      out.da = 'expired';
-      out.lines.push(`${a.tokenEnv}: accepted but ${a.org}/${a.repo} answers 403 (source: ${tok.source}) — this identity has no access to that DA org/repo; ask the owner to grant it`);
+      out.da = 'ok'; // the token decoded and was accepted — the TARGET refused this identity (daTarget: denied), not token age
+      out.lines.push(`${a.tokenEnv}: accepted but ${a.org}/${a.repo} answers 403 (source: ${tok.source}) — this identity has no access to that DA org/repo; ask the owner to grant it (daTarget: denied — not a token refresh)`);
       return out;
     }
     if (status === 404) {

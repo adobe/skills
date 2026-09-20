@@ -35,4 +35,4 @@ Sample: seed 11 · n 2 per template · excluded news__annual-report-2025
 | program | 360 | 3 | 7.1 | 14.9 | 0.67 |
 | program | 1440 | 3 | 7.7 | 8.6 | 1 |
 
-Rows without a PASS are held from the publish run and re-drive with the same run once this report changes; the escape flags are operator/owner flags, never hands-off (publish-gate.md § Gate 8 — the hold inside deploy-batch --publish is pending the deploy hunk; until then read the held rows here before publishing).
+Rows without a PASS are held from the publish run and re-drive with the same run once this report changes; the escape flags are operator/owner flags, never hands-off (publish-gate.md § Gate 8 — `deploy-batch --publish` reads this report's JSON and holds them; `--plan` prints the held reasons offline).
