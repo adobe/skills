@@ -101,7 +101,7 @@ path of a renamed page (`delivery.deployedPath`).
 Inventory is **idempotent and incremental** (HTML changed after delivery →
 `stale`; `reference/coverage-model.md` § Idempotency rules). Fill in
 `rollout.json` `site.da.*` + `site.liveHost` if not inferred; run `dashboard.mjs`
-once here (first snapshot).
+once here (snapshot).
 
 **Plan gate.** Present every `stardust/decisions.md` row not yet `owner-decided` as
 one numbered message with defaults (`skills/stardust/reference/decisions.md` § How
@@ -374,13 +374,13 @@ file edited, the change logged on `finding.autofix`, the finding staged
 ### Phase H — Report (the wave close)
 
 Hand-off shape: `skills/stardust/reference/handoff-report.md` — gate table first,
-source → target per page, report-check line last. **Review pairs:**
+source → target per page, report-check last. **Review pairs:**
 `node skills/rollout/scripts/open-review-pairs.mjs --per-template 1` (and
 `--random 10` before the first live publish) writes `stardust/rollout/review-pack.md`
 — one source ↔ delivered pair per row with its copied gate number and regime,
 opened on the live host, the human logging in (`skills/deploy/da-deploy-protocol.md`
 § Site auth; localhost or a token in a URL is refused). Defects found there go
-through the gate, not around it: one budgeted fix round, re-gate the mapped pages.
+through the gate, not around it: one budgeted fix round, re-gate mapped pages.
 A wave closes only when every artifact line below is computed; the checkpoint
 block (`skills/stardust/reference/run-status.md` § Phase close) is last.
 One census line — `davids-model-lint.mjs content/ --json` → `census.styles.length`
