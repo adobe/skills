@@ -11,7 +11,14 @@
  *   (c) a page with a 🔴 (document-relative href) → `lint-red`, no PUT for it; the clean page is PUT;
  *   (d) --publish → POST /live/ per delivered page, status `live`;
  *   (e) a deploy-batch child that outlives --timeout → status `killed`, exit 1, no `FAIL` in the
- *       output (no verdict, B32); usage errors exit 2 with a SUMMARY line; --help exits 0.
+ *       output (no verdict, B32); usage errors exit 2 with a SUMMARY line; --help exits 0;
+ *   (f) a file name Gate 3 folds (`sub/Getting_Started.html`) passes stage 3 (the DELIVERED path is
+ *       linted) and deploy-batch PUTs it at `/sub/getting-started` with the redirect row on the
+ *       `--redirects` sheet — the chain never turns the Gate 3 default into --strict-paths;
+ *   (g) stage-1 pass-through: `--unmigrated bounce` (default) rewrites a dead `/missing` to the
+ *       source host and the page ships; `--unmigrated list` leaves it, writes link-gaps.tsv, ships;
+ *       `--locale-alias en --append-redirects` aliases `/x` → `/en/x` and appends the row;
+ *       the links-unlocalized residue echo carries the kept-absolute target list.
  */
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
@@ -70,6 +77,11 @@ try {
   r = await run(['/a', '--media', 'reconcile']);
   assert.equal(r.status, 2, '--media reconcile is reserved → exit 2');
   assert.match(r.stderr, /reserved/);
+  r = await run(['/a', '--unmigrated', 'maybe']);
+  assert.equal(r.status, 2, '--unmigrated takes bounce|list only');
+  r = await run(['/a', '--append-redirects']);
+  assert.equal(r.status, 2, '--append-redirects without --redirects is a usage error');
+  assert.match(r.stderr, /--append-redirects needs --redirects/);
 
   // (a) one page → nav rewritten by localize and appended; preview only
   mock.reset();
@@ -92,7 +104,7 @@ try {
   fresh();
   mkdirSync(join(dir, 'stardust'), { recursive: true });
   writeFileSync(join(dir, 'stardust', 'redirects.tsv'), '/old\t/mid\n/mid\t/b\n');
-  writeFileSync(join(content, 'a.html'), page('A', ['/old']));
+  writeFileSync(join(content, 'a.html'), page('A', ['/old', 'https://www.src.example/elsewhere']));
   rmSync(join(content, '.deploy-ledger.json'), { force: true });
   mock.reset();
   r = await run(['/a', '/b', '--redirects', join(dir, 'stardust', 'redirects.tsv')]);
@@ -100,6 +112,7 @@ try {
   assert.equal(mock.requests.length, 0, 'zero requests to DA when the check fails');
   assert.match(r.stderr, /links-unlocalized/);
   assert.match(r.stderr, /CHECK FAIL/);
+  assert.match(r.stderr, /KEPT[\s\S]*\/elsewhere/, `the residue echo carries the kept-absolute target list: ${r.stderr}`);
   rep = report();
   assert.equal(rep.run.localize, 'links-unlocalized');
   assert.equal(rep.pages['/b'].status, 'links-unlocalized', 'the run is parked, not just the offending page');
@@ -152,6 +165,53 @@ try {
   assert.equal(r.status, 3, 'deploy-batch halt → exit 3');
   assert.match(r.stderr, /HALTED[\s\S]*next=node x/);
 
+  // (f) a foldable file name: stage 3 lints the delivered path; deploy-batch PUTs at the safe path + redirect row
+  fresh({ navLocalized: true }); rmSync(join(content, '.deploy-ledger.json'), { force: true }); mock.reset();
+  const sheet = join(dir, 'stardust', 'redirects.tsv');
+  writeFileSync(sheet, '');
+  mkdirSync(join(content, 'sub'), { recursive: true });
+  writeFileSync(join(content, 'sub', 'Getting_Started.html'), page('Getting started'));
+  r = await run(['/sub/Getting_Started', '/b', '--redirects', sheet]);
+  assert.equal(r.status, 0, `a foldable file name is not a stage-3 block: ${r.out}`);
+  assert.deepEqual(urls('PUT').sort(), ['/da/o/r/b.html', '/da/o/r/sub/getting-started.html'], `PUT at the safe path: ${urls('PUT')}`);
+  assert.match(r.stderr, /\[deploy-page\] \/sub\/Getting_Started {2}localize ok · lint ok · delivery-lint ok · sanitise ok · deploy previewed {2}https:\/\/main--r--o\.aem\.page\/sub\/getting-started/, `delivered URL names the safe path: ${r.stderr}`);
+  assert.match(readFileSync(sheet, 'utf8'), /^\/sub\/Getting_Started\t\/sub\/getting-started$/m, 'Gate 3 redirect row on the --redirects sheet');
+  assert.equal(report().pages['/sub/Getting_Started'].status, 'previewed');
+  // a path with NO safe form is the one stage-3 P0 (deploy-batch would say path-unsafe too): blocked, no PUT
+  writeFileSync(join(content, '日本語.html'), page('JP'));
+  mock.reset();
+  r = await run(['/日本語', '--redirects', sheet]);
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /\/日本語 {2}localize ok · lint ok · delivery-lint P0\/P1/);
+  assert.equal(urls('PUT').length, 0);
+  rmSync(join(content, '日本語.html'));
+
+  // (g) stage-1 pass-through — the owner-decided `links: list` row and the locale alias work through the chain
+  fresh({ navLocalized: true }); rmSync(join(content, '.deploy-ledger.json'), { force: true }); mock.reset();
+  writeFileSync(join(content, 'a.html'), page('A', ['/missing']));
+  r = await run(['/a']);
+  assert.equal(r.status, 0, `bounce (default) resolves the dead href and ships: ${r.out}`);
+  assert.match(readFileSync(join(content, 'a.html'), 'utf8'), /href="https:\/\/www\.src\.example\/missing"/, 'dead root-relative href bounced to the source host');
+  assert.deepEqual(urls('PUT'), ['/da/o/r/a.html']);
+  fresh({ navLocalized: true }); rmSync(join(content, '.deploy-ledger.json'), { force: true }); mock.reset();
+  writeFileSync(join(content, 'a.html'), page('A', ['/missing']));
+  rmSync(join(dir, 'stardust', 'link-gaps.tsv'), { force: true });
+  r = await run(['/a', '--unmigrated', 'list']);
+  assert.equal(r.status, 0, `list leaves the gap and ships: ${r.out}`);
+  assert.match(readFileSync(join(content, 'a.html'), 'utf8'), /href="\/missing"/, 'list: href left in place');
+  assert.match(readFileSync(join(dir, 'stardust', 'link-gaps.tsv'), 'utf8'), /^\/missing\t1\t\/a\.html$/m, 'link-gaps.tsv row');
+  assert.deepEqual(urls('PUT'), ['/da/o/r/a.html']);
+  fresh({ navLocalized: true }); rmSync(join(content, '.deploy-ledger.json'), { force: true }); mock.reset();
+  mkdirSync(join(content, 'en'), { recursive: true });
+  writeFileSync(join(content, 'en', 'x.html'), page('X'));
+  writeFileSync(join(content, 'a.html'), page('A', ['/x']));
+  writeFileSync(sheet, '');
+  r = await run(['/a', '--locale-alias', 'en', '--append-redirects', '--redirects', sheet]);
+  assert.equal(r.status, 0, `locale alias through the chain: ${r.out}`);
+  assert.match(readFileSync(join(content, 'a.html'), 'utf8'), /href="\/en\/x"/, '/x aliased to /en/x');
+  assert.match(readFileSync(sheet, 'utf8'), /^\/x\t\/en\/x$/m, '--append-redirects wrote the alias row');
+  rmSync(join(content, 'en'), { recursive: true, force: true });
+
   // --paths <file> with mixed shapes, no word-splitting
   fresh(); rmSync(join(content, '.deploy-ledger.json'), { force: true }); mock.reset();
   const list = join(dir, 'list.txt');
@@ -159,7 +219,7 @@ try {
   r = await run(['--paths', list]);
   assert.equal(r.status, 0, r.out);
   assert.deepEqual(urls('PUT').sort(), ['/da/o/r/a.html', '/da/o/r/b.html', '/da/o/r/nav.html']);
-  console.log('deploy-page test: ok (chrome append, preview default, links-unlocalized zero-PUT, lint-red, --publish, killed no-verdict, exit 3 propagation, --paths file)');
+  console.log('deploy-page test: ok (chrome append, preview default, links-unlocalized zero-PUT + residue echo, lint-red, --publish, killed no-verdict, exit 3 propagation, Gate 3 fold through the chain, stage-1 pass-through, --paths file)');
 } finally {
   await mock.close();
   rmSync(dir, { recursive: true, force: true });

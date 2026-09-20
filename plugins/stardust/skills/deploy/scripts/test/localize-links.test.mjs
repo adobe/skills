@@ -13,7 +13,8 @@
  *   - T27.8: `--locale-alias en` maps `/x` → `/en/x` (both href kinds, action `aliased`) and
  *     `--append-redirects` appends the resolved aliases to the sheet once; `--unmigrated bounce`
  *     (default) rewrites a dead root-relative href to the first source host and fails `--check` until
- *     written; `--unmigrated list` leaves it, writes stardust/link-gaps.tsv and `--check` passes.
+ *     written; `--unmigrated list` leaves it, writes stardust/link-gaps.tsv and `--check` passes;
+ *     a dead href with a legacy page extension (`.php`, `.aspx`) is a gap, not an asset skip.
  */
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -45,6 +46,15 @@ assert.equal(canonicalPath('/日本語'), '/日本語', 'no safe form → lower-
   assert.equal(localizeHref('https://src.example/nowhere', { map, hosts }).action, 'kept-absolute');
   assert.equal(localizeHref('mailto:a@b.c', { map, hosts }).action, 'skip');
   assert.equal(localizeHref('/uber-uns', { map, hosts }).action, 'already');
+  // a dead root-relative href with a legacy PAGE extension is a gap (bounced / listed), never an asset skip;
+  // real assets and the root stay skipped
+  const inv = { map, hosts, bounceHost: 'www.src.example' };
+  assert.deepEqual(localizeHref('/old-page.php', inv), { href: 'https://www.src.example/old-page.php', action: 'bounced', key: '/old-page' });
+  assert.equal(localizeHref('/legacy/Default.aspx?id=3', { ...inv, unmigrated: 'list' }).action, 'gap');
+  assert.equal(localizeHref('/uber-uns.php', inv).action, 'normalized', 'a legacy extension on a page that exists folds to the served path');
+  assert.equal(localizeHref('/img/x.png', inv).action, 'skip');
+  assert.equal(localizeHref('/docs/brochure.pdf', inv).action, 'skip');
+  assert.equal(localizeHref('/', inv).action, 'skip');
 }
 
 const dir = mkdtempSync(join(tmpdir(), 'localize-links-'));

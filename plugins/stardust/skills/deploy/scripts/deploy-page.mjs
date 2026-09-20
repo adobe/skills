@@ -10,18 +10,26 @@
  * Stages, in place on --content (never a staging copy — chrome documents must ship with the pages
  * that reference them):
  *   1. localize   `localize-links.mjs` WRITE pass over the whole tree, then `--check`. Exit 2
- *                 (a localizable link remains) → status `links-unlocalized` for the RUN, residue
- *                 printed, no PUT for any page. Any nav / footer / fragments document the write
- *                 pass changed is appended to the deploy list. `--no-localize` skips the stage
- *                 (a tree with no source host — greenfield) and the LOCALIZE lint with it.
+ *                 (a localizable link remains) → status `links-unlocalized` for the RUN, the check
+ *                 output echoed in full (per-file counts, kept-absolute and unmigrated target lists),
+ *                 no PUT for any page. Any nav / footer / fragments document the write pass changed
+ *                 is appended to the deploy list. `--locale-alias`, `--append-redirects` (write pass
+ *                 only) and `--unmigrated bounce|list` pass through to both passes, so the owner-
+ *                 decided `links: list` row works through the chain. `--no-localize` skips the
+ *                 stage (a tree with no source host — greenfield) and the LOCALIZE lint with it.
  *   2. lint       `davids-model-lint.mjs <file> --source-host … --content-root …` per file.
  *                 Exit 2 (a 🔴) → `lint-red`, no PUT for THAT file; exit 1 → `lint-error`.
- *   3. delivery   `../../rollout/scripts/delivery-lint.mjs --file <file> --path <webPath>` when the
- *                 rollout skill is installed. Exit 1 (P0/P1) → `delivery-lint`, no PUT for that file.
+ *   3. delivery   `../../rollout/scripts/delivery-lint.mjs --file <file> --path <delivered path>`
+ *                 when the rollout skill is installed. Exit 1 (P0/P1) → `delivery-lint`, no PUT for
+ *                 that file. The path linted is `normalizeDaPath(webPath)` — the path deploy-batch
+ *                 PUTs to — so a file name Gate 3 folds (`Getting_Started.html` → `/getting-started`,
+ *                 redirect row written by deploy-batch) is not blocked here; only a path with NO safe
+ *                 form (non-Latin segment) is a stage-3 P0, the same verdict deploy-batch would give.
  *   4. sanitise   `sanitise.js <file>` in place (DA corrupts raw UTF-8).
- *   5. deploy     `deploy-batch.mjs --paths <list> [--publish]` — preview by default, live only with
- *                 an explicit --publish (D1/D16). The page's outcome is deploy-batch's own ledger
- *                 row (untouched by this script; Gate 3 path-safety runs inside it).
+ *   5. deploy     `deploy-batch.mjs --paths <list> [--publish] [--redirects-tsv <--redirects>]` —
+ *                 preview by default, live only with an explicit --publish (D1/D16). The page's
+ *                 outcome is deploy-batch's own ledger row (untouched by this script; Gate 3
+ *                 path-safety runs inside it, its redirect rows go to the same sheet stage 1 reads).
  *   Every child runs under --timeout (default 600 s). A child killed at the deadline (or exiting
  *   124/143) is status `killed` — NO verdict, never a FAIL — and is listed for re-run.
  *   `--media` is reserved: only `skip` (the default) is available in this release.
@@ -29,6 +37,7 @@
  * Usage:
  *   node skills/deploy/scripts/deploy-page.mjs --org <org> --repo <repo> --branch <branch> \
  *     --source-host <host[,host]> [--content content] [--redirects stardust/redirects.tsv] \
+ *     [--locale-alias <prefix[,prefix]>] [--append-redirects] [--unmigrated bounce|list] \
  *     (<file…> | --all | --paths <file>) [--publish] [--media skip] [--timeout 600] \
  *     [--no-localize] [--icons-dir <dir>] [--styles <css>] [--allow-empty <a,b>] [--ledger <path>] \
  *     [--progress <path> | --no-progress] [--report <path>]
@@ -41,7 +50,8 @@
  *   --timeout     seconds per child (default 600); 124/143/deadline → `killed`, no verdict
  *   --no-localize skip stage 1 and the LOCALIZE lint (no --source-host needed)
  *   --icons-dir / --styles / --allow-empty   passed to both lints
- *   --redirects   TSV for localize-links (default stardust/redirects.tsv when it exists)
+ *   --redirects   TSV for localize-links AND deploy-batch's Gate 3 rows (default stardust/redirects.tsv when it exists)
+ *   --locale-alias / --append-redirects / --unmigrated   passed to localize-links (stage 1; see its header)
  *   --ledger      deploy-batch ledger (default <content>/.deploy-ledger.json)
  *   --report      chain report JSON (default stardust/.work/deploy/deploy-page.<ts>.json)
  *   --progress    progress JSON (default stardust/.work/deploy/deploy-page.progress.json)
@@ -63,6 +73,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSy
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createProgress, defaultProgressFile, summaryLine } from '../../stardust/scripts/progress.mjs';
+import { normalizeDaPath } from '../../stardust/scripts/da-path.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SCRIPTS = {
@@ -77,11 +88,11 @@ const OK_STATUS = new Set(['live', 'previewed']);
 const BLOCKED = new Set(['links-unlocalized', 'lint-red', 'lint-error', 'delivery-lint', 'sanitise-fail']);
 
 function usage() {
-  console.log('usage: node skills/deploy/scripts/deploy-page.mjs --org <org> --repo <repo> --branch <branch> --source-host <host[,host]> [--content content] [--redirects <tsv>] (<file…> | --all | --paths <file>) [--publish] [--media skip] [--timeout 600] [--no-localize] [--icons-dir <dir>] [--styles <css>] [--allow-empty <a,b>] [--ledger <path>] [--progress <path> | --no-progress] [--report <path>]');
+  console.log('usage: node skills/deploy/scripts/deploy-page.mjs --org <org> --repo <repo> --branch <branch> --source-host <host[,host]> [--content content] [--redirects <tsv>] [--locale-alias <prefix[,prefix]>] [--append-redirects] [--unmigrated bounce|list] (<file…> | --all | --paths <file>) [--publish] [--media skip] [--timeout 600] [--no-localize] [--icons-dir <dir>] [--styles <css>] [--allow-empty <a,b>] [--ledger <path>] [--progress <path> | --no-progress] [--report <path>]');
 }
 
 export function parseArgs(argv) {
-  const a = { content: 'content', files: [], all: false, publish: false, media: 'skip', timeout: 600, localize: true, sourceHosts: [], passthrough: [] };
+  const a = { content: 'content', files: [], all: false, publish: false, media: 'skip', timeout: 600, localize: true, sourceHosts: [], localeAliases: [], appendRedirects: false, unmigrated: 'bounce' };
   for (let i = 2; i < argv.length; i += 1) {
     const k = argv[i];
     const next = () => { const v = argv[i + 1]; if (v === undefined || /^--/.test(v)) throw new Error(`${k} needs a value`); i += 1; return v; };
@@ -91,6 +102,9 @@ export function parseArgs(argv) {
     else if (k === '--content') a.content = next();
     else if (k === '--source-host') a.sourceHosts.push(...next().split(',').map((s) => s.trim()).filter(Boolean));
     else if (k === '--redirects') a.redirects = next();
+    else if (k === '--locale-alias') a.localeAliases.push(...next().split(',').map((s) => s.trim()).filter(Boolean));
+    else if (k === '--append-redirects') a.appendRedirects = true;
+    else if (k === '--unmigrated') a.unmigrated = next();
     else if (k === '--paths') a.pathsFile = next();
     else if (k === '--all') a.all = true;
     else if (k === '--publish') a.publish = true;
@@ -110,6 +124,7 @@ export function parseArgs(argv) {
   }
   if (!a.org || !a.repo || !a.branch) throw new Error('--org, --repo and --branch are required');
   if (a.localize && !a.sourceHosts.length) throw new Error('--source-host is required (or --no-localize for a tree with no source host)');
+  if (!['bounce', 'list'].includes(a.unmigrated)) throw new Error(`--unmigrated must be bounce or list (got ${a.unmigrated}); \`list\` is the owner-decided value of the \`links\` decisions row`);
   if (a.media !== 'skip') throw new Error(`--media ${a.media} is not available in this release (reserved) — run media-reconcile.mjs separately; the default is --media skip`);
   if (!existsSync(a.content) || !statSync(a.content).isDirectory()) throw new Error(`--content ${a.content} is not a directory`);
   if (a.pathsFile) {
@@ -118,6 +133,7 @@ export function parseArgs(argv) {
   }
   if (!a.files.length && !a.all) throw new Error('name at least one content file, or --all / --paths <file>');
   if (a.redirects === undefined && existsSync(path.join('stardust', 'redirects.tsv'))) a.redirects = path.join('stardust', 'redirects.tsv');
+  if (a.appendRedirects && !a.redirects) throw new Error('--append-redirects needs --redirects <tsv> (the sheet the alias rows go to)');
   a.ledger ||= path.join(a.content, '.deploy-ledger.json');
   a.report ||= path.join('stardust', '.work', 'deploy', `deploy-page.${new Date().toISOString().replace(/[:.]/g, '-')}.json`);
   if (a.progress === undefined) a.progress = defaultProgressFile('deploy', 'deploy-page');
@@ -185,9 +201,9 @@ export async function main(argv = process.argv) {
 
   // 1. localize — write pass over the WHOLE tree, then --check (the gate)
   if (args.localize) {
-    const base = ['--source-host', args.sourceHosts.join(','), '--content', args.content, ...(args.redirects ? ['--redirects', args.redirects] : [])];
+    const base = ['--source-host', args.sourceHosts.join(','), '--content', args.content, ...(args.redirects ? ['--redirects', args.redirects] : []), ...(args.localeAliases.length ? ['--locale-alias', args.localeAliases.join(',')] : []), '--unmigrated', args.unmigrated];
     const before = chromeHashes(args.content);
-    const w = await runCapped(node, [SCRIPTS.localize, ...base], { timeoutMs });
+    const w = await runCapped(node, [SCRIPTS.localize, ...base, ...(args.appendRedirects ? ['--append-redirects'] : [])], { timeoutMs });
     if (w.killed) { report.run.localize = 'killed'; for (const p of pages.values()) { p.stages.localize = 'killed'; p.status = 'killed'; progress.tick({ noverdict: true }); } console.error(`[deploy-page] localize write pass killed at the ${args.timeout} s deadline — no verdict, nothing was PUT; re-run`); return finish(1); }
     if (w.code !== 0) { report.run.localize = `error ${w.code}`; console.error(w.stderr.trim()); throw new Error(`localize-links write pass exited ${w.code}`); }
     const after = chromeHashes(args.content);
@@ -200,7 +216,8 @@ export async function main(argv = process.argv) {
     if (c.killed) { report.run.localize = 'killed'; for (const p of pages.values()) { p.stages.localize = 'killed'; p.status = 'killed'; progress.tick({ noverdict: true }); } console.error(`[deploy-page] localize --check killed at the deadline — no verdict; re-run`); return finish(1); }
     if (c.code === 2) {
       report.run.localize = 'links-unlocalized';
-      console.error(`[deploy-page] links-unlocalized — a localizable link remains after the write pass; no page is PUT this run. Residue:\n${c.stdout.trim().split('\n').filter((l) => /^\s{2}\/|CHECK/.test(l)).join('\n')}`);
+      // the whole check output: per-file counts, the kept-absolute and unmigrated target lists, the CHECK line
+      console.error(`[deploy-page] links-unlocalized — a localizable link remains after the write pass; no page is PUT this run. Residue:\n${c.stdout.trim()}`);
       for (const p of pages.values()) { p.stages.localize = 'links-unlocalized'; p.status = 'links-unlocalized'; progress.tick({ ok: false }); }
       return finish(1);
     }
@@ -222,7 +239,8 @@ export async function main(argv = process.argv) {
     if (l.code !== 0) { p.stages.lint = `error ${l.code}`; p.status = 'lint-error'; p.detail = l.stderr.trim().slice(0, 300); progress.tick({ ok: false, path: wp }); line(wp, p); continue; }
     p.stages.lint = 'ok';
     if (hasDeliveryLint) {
-      const d = await runCapped(node, [SCRIPTS.deliveryLint, '--file', p.file, '--path', wp, ...dlExtra], { timeoutMs });
+      // lint the DELIVERED path (Gate 3's fold, applied by deploy-batch before the PUT) — a foldable file name is not a stage-3 block
+      const d = await runCapped(node, [SCRIPTS.deliveryLint, '--file', p.file, '--path', normalizeDaPath(wp) ?? wp, ...dlExtra], { timeoutMs });
       if (d.killed) { p.stages['delivery-lint'] = 'killed'; p.status = 'killed'; progress.tick({ noverdict: true, path: wp }); line(wp, p); continue; }
       if (d.code === 1) { p.stages['delivery-lint'] = 'P0/P1'; p.status = 'delivery-lint'; p.detail = d.stdout.split('\n').filter((x) => /^\s+P[01] /.test(x)).join('\n'); progress.tick({ ok: false, path: wp }); line(wp, p); if (p.detail) console.error(p.detail); continue; }
       if (d.code !== 0) { p.stages['delivery-lint'] = `error ${d.code}`; p.status = 'lint-error'; p.detail = d.stderr.trim().slice(0, 300); progress.tick({ ok: false, path: wp }); line(wp, p); continue; }
@@ -241,7 +259,7 @@ export async function main(argv = process.argv) {
     mkdirSync(path.dirname(args.report), { recursive: true });
     const listFile = path.join(path.dirname(args.report), `paths.${Date.now()}.txt`);
     writeFileSync(listFile, `${toDeploy.join('\n')}\n`);
-    const dbArgs = [SCRIPTS.deployBatch, '--org', args.org, '--repo', args.repo, '--branch', args.branch, '--content', args.content, '--paths', listFile, '--ledger', args.ledger, '--no-progress', ...(args.publish ? ['--publish'] : [])];
+    const dbArgs = [SCRIPTS.deployBatch, '--org', args.org, '--repo', args.repo, '--branch', args.branch, '--content', args.content, '--paths', listFile, '--ledger', args.ledger, '--no-progress', ...(args.redirects ? ['--redirects-tsv', args.redirects] : []), ...(args.publish ? ['--publish'] : [])];
     const d = await runCapped(node, dbArgs, { timeoutMs, echo: (t) => process.stderr.write(t) });
     const ledger = existsSync(args.ledger) ? JSON.parse(readFileSync(args.ledger, 'utf8')) : {};
     const nextLine = (d.stdout.match(/^next=.*$/m) || [])[0];

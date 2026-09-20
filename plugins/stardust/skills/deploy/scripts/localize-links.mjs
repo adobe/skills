@@ -188,8 +188,9 @@ function parseHref(href) {
 // Delivery hosts are always localizable: a branch host dies at merge.
 const DELIVERY_HOST = /^[a-z0-9-]+--[a-z0-9-]+--[a-z0-9-]+\.(?:aem|hlx)\.(?:page|live)$/i;
 
-// an href to a non-page resource is never an internal-link gap
-const ASSET_PATH = /\.(?!html?$)[a-z0-9]{1,5}$/i;
+// an href to a non-page resource is never an internal-link gap — but a legacy page extension
+// (`.php`, `.jsp`, `.asp(x)`, the leaves da-path.mjs folds) is a PAGE: dead, it is bounced or listed
+const ASSET_PATH = /\.(?!(?:html?|php|jsp|aspx?)$)[a-z0-9]{1,5}$/i;
 
 /**
  * ctx: { map, hosts, aliases?, unmigrated?: 'bounce'|'list', bounceHost?: string }
