@@ -9,7 +9,7 @@
  * decompresses; this helper prints the facts and the verdict on one line, and
  * with `--wait` it IS the propagation waiter (replaces `sleep N; <gate>`).
  *
- *   node skills/deploy/scripts/served-check.mjs <url> [--grep <pattern> | --absent <pattern> | --same-as <file>] [--wait <s>] [--no-cache|--cache]
+ *   node skills/deploy/scripts/served-check.mjs <url> [--grep <pattern> | --absent <pattern> | --same-as <file>] [--wait <s>] [--no-cache|--cache] [--token-env <NAME>]
  *
  *   --grep <pattern>   regex the decoded body must match (the verdict)
  *   --absent <pattern> regex the decoded body must NOT match — the negative verdict
@@ -20,6 +20,10 @@
  *                      before a gate; prints `sha=match|differ (served N B / local M B)`
  *   --wait <s>         poll every 3 s up to <s> seconds until the verdict is a pass
  *   --no-cache         send `Cache-Control: no-cache` (default on; `--cache` to allow)
+ *   --token-env NAME   env name of the SITE token for an access-restricted delivery host
+ *                      (`SITE_TOKEN_<SITE>`; resolved shell → ./.env → ~/.claude/.env → ~/.env, sent as
+ *                      `Authorization: token …` to THIS url's host only, never printed) — without it a
+ *                      locked site answers 401 `x-error: access-not-allowed` and the verdict is exit 1
  *
  * Output (one line per probe): status content-encoding raw→decoded bytes last-modified age via grep=<n>|sha=…
  * Exit codes — the run-capped convention (no verdict is not a FAIL):
@@ -34,13 +38,13 @@
  */
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { fetchDecoded } from './lib.mjs';
+import { fetchDecoded, resolveToken } from './lib.mjs';
 
 const DEADLINE_EXIT = 124;
 const POLL_MS = Number(process.env.SERVED_CHECK_POLL_MS) || 3000; // fixture tests shorten the poll
 const args = process.argv.slice(2);
 if (!args.length || args.includes('--help') || args.includes('-h')) {
-  console.log('usage: node skills/deploy/scripts/served-check.mjs <url> [--grep <pattern> | --absent <pattern> | --same-as <file>] [--wait <seconds>] [--no-cache|--cache]\n  exit 0 pass · 1 served but wrong (pattern / bytes / 4xx / x-error) · 124 no verdict (wait expired, 5xx, network) · 2 usage');
+  console.log('usage: node skills/deploy/scripts/served-check.mjs <url> [--grep <pattern> | --absent <pattern> | --same-as <file>] [--wait <seconds>] [--no-cache|--cache] [--token-env <NAME>]\n  exit 0 pass · 1 served but wrong (pattern / bytes / 4xx / x-error) · 124 no verdict (wait expired, 5xx, network) · 2 usage');
   process.exit(args.length ? 0 : 2);
 }
 const opt = (n) => { const i = args.indexOf(n); if (i < 0) return null; const v = args[i + 1]; if (v === undefined || v.startsWith('--')) { console.error(`served-check: ${n} needs a value`); process.exit(2); } return v; }; // `--grep --wait 120` once made the regex literally "--wait"
@@ -52,6 +56,13 @@ const sameAs = opt('--same-as');
 if ([pattern, absent, sameAs].filter(Boolean).length > 1) { console.error('served-check: use ONE of --grep, --absent, --same-as'); process.exit(2); }
 const waitS = Number(opt('--wait') || 0);
 const noCache = !args.includes('--cache');
+const tokenEnv = opt('--token-env');
+let siteAuth = null;
+if (tokenEnv) {
+  const tok = resolveToken(tokenEnv);
+  if (!tok) { console.error(`served-check: ${tokenEnv} not found (shell, ./.env, ~/.claude/.env, ~/.env) — the delivery host will be read anonymously`); }
+  else siteAuth = /^(token|bearer) /i.test(tok.value) ? tok.value : `token ${tok.value}`;
+}
 const re = pattern || absent ? new RegExp(pattern || absent) : null;
 const negative = Boolean(absent);
 let local = null;
@@ -62,7 +73,7 @@ const sha = (buf) => createHash('sha256').update(buf).digest('hex').slice(0, 12)
 
 /** One probe → { verdict: 'pass' | 'wrong' | 'noverdict', line }. */
 async function probe() {
-  const headers = noCache ? { 'cache-control': 'no-cache', pragma: 'no-cache' } : {};
+  const headers = { ...(noCache ? { 'cache-control': 'no-cache', pragma: 'no-cache' } : {}), ...(siteAuth ? { authorization: siteAuth } : {}) };
   const res = await fetchDecoded(url, { headers }); // lib.mjs: decoded body + cache facts, shared with code-sync-verify
   if (res.status === 0) return { verdict: 'noverdict', line: `000 ${url} — ${res.error}` };
   const { buf, rawLen, enc, lastModified: lm, age, via: served, xerr } = res;

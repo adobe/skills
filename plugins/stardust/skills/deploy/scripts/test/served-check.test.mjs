@@ -8,6 +8,8 @@
  *   - --same-as <file>: 0 on byte-equal, 1 on differ with `sha=differ (served N B / local M B)`;
  *   - a 4xx or an `x-error` header is a verdict → exit 1; a 5xx or a network failure is NO verdict → exit 124;
  *   - --wait: keeps polling until the pass, exit 124 (never 1) when the cap expires;
+ *   - --token-env <NAME>: the site token is resolved by name and sent as `Authorization: token …`; a locked origin
+ *     answers 401 x-error without it (exit 1) and 200 with it (exit 0); the value never reaches stdout/stderr;
  *   - usage: --help 0, no args 2, two modes 2, unreadable --same-as file 2.
  */
 import assert from 'node:assert/strict';
@@ -34,6 +36,7 @@ const server = createServer((req, res) => {
     case '/xerr.css': return gz(200, CSS, { 'x-error': 'access-not-allowed' });
     case '/flaky.css': return gz(503, 'try later');
     case '/lands.css': return hits >= 3 ? gz(200, CSS) : gz(404, 'not yet'); // lands on the third poll
+    case '/locked.css': return req.headers.authorization === 'token SITESECRET' ? gz(200, CSS) : gz(401, '', { 'x-error': 'access-not-allowed' });
     default: return gz(404, 'no route');
   }
 });
@@ -41,7 +44,8 @@ await new Promise((r) => server.listen(0, '127.0.0.1', r));
 const base = `http://127.0.0.1:${server.address().port}`;
 // async spawn: the origin lives in THIS process, so a spawnSync would starve it
 const run = (...a) => new Promise((resolve) => {
-  const c = spawn(process.execPath, [CLI, ...a], { env: { ...process.env, SERVED_CHECK_POLL_MS: '50' } });
+  const env = typeof a[a.length - 1] === 'object' ? a.pop() : {};
+  const c = spawn(process.execPath, [CLI, ...a], { env: { ...process.env, HOME: dir, SERVED_CHECK_POLL_MS: '50', ...env } });
   let stdout = ''; let stderr = '';
   c.stdout.on('data', (d) => { stdout += d; }); c.stderr.on('data', (d) => { stderr += d; });
   const t = setTimeout(() => { c.kill(); stderr += '\n[test] TIMEOUT'; }, 20000);
@@ -101,6 +105,14 @@ try {
   assert.match(r.stderr, /pattern not served after 1s — no verdict \(exit 124\)/);
   r = await run(`${base}/missing.css`, '--wait', '1');
   assert.equal(r.status, 124, 'a 404 that never turns 2xx under --wait is still no verdict at the cap');
+
+  // --token-env: site token by name to the delivery host, never printed
+  r = await run(`${base}/locked.css`, '--grep', 'marker-v2');
+  assert.equal(r.status, 1, 'locked origin without a token is a verdict (401 x-error)'); assert.match(r.stdout, /x-error=access-not-allowed/);
+  r = await run(`${base}/locked.css`, '--grep', 'marker-v2', '--token-env', 'SITE_TOKEN_LOCKED', { SITE_TOKEN_LOCKED: 'SITESECRET' });
+  assert.equal(r.status, 0, `token sent: ${r.stderr}`); assert.doesNotMatch(r.stdout + r.stderr, /SITESECRET/);
+  r = await run(`${base}/locked.css`, '--grep', 'marker-v2', '--token-env', 'SITE_TOKEN_NOPE');
+  assert.equal(r.status, 1); assert.match(r.stderr, /SITE_TOKEN_NOPE not found .* read anonymously/);
 
   // usage
   assert.equal((await run('--help')).status, 0);

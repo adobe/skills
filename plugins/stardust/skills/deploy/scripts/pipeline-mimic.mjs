@@ -46,7 +46,7 @@
  * Fixtures (`--self-test`, also run by evals/lint/pipeline-mimic-fixture.mjs):
  *   fixtures/pipeline-probe.html + .plain.html  one instance of every rule; the .plain.html is
  *                DERIVED from the fact catalogue (reference/pipeline-facts.md), not recorded —
- *                rows resting on it alone are marked "assumed" there until T21.2 re-records it.
+ *                rows resting on it alone are marked "assumed" there until `--probe --record` re-records it.
  *   fixtures/pipeline-recorded.plain.html  a REAL delivered shape (preview .plain.html, hosts and
  *                names redacted; /media_<hash> src/srcset, <source> sets, width/height, heading
  *                ids): every rule must be a no-op on it, and normaliseForCompare() must hide

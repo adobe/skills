@@ -13,7 +13,7 @@
 //   deploy/scripts/fixtures/pipeline-recorded.plain.html  a REAL delivered shape
 // The probe .plain.html is DERIVED by hand from the catalogued facts
 // (deploy/reference/pipeline-facts.md — rows resting on it alone are marked
-// "assumed" there); T21.2's pipeline-probe.mjs re-records it from a preview origin.
+// "assumed" there); `pipeline-mimic.mjs --probe --record` re-records it from a preview origin.
 // The recorded file is a redacted preview .plain.html (media hashes, <source> sets,
 // real image dimensions, heading ids): the mimic must be a no-op on it and
 // normaliseForCompare() must hide exactly those artefacts — both asserted by the
