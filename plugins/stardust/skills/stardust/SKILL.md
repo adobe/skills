@@ -51,12 +51,13 @@ delegate the actual design work to **impeccable**.
    absent = `required`; the master is `required` for its freeform-intent
    route). `none` → skip this step and step 4, noting
    `impeccable: skipped` in the skill's first `status.jsonl` line.
-   Otherwise, once per session, run
+   Otherwise, once per session and never on the master's freeform-intent
+   route (there Phase 1 reasoning comes first; the probe runs when the
+   first impeccable command is about to execute), run
    `node <plugin>/skills/stardust/scripts/impeccable-version-check.mjs
-   --probe` (`--local <dir>`): read-only; surface
-   its line only for a newer version or `drift:`, never stop over it, and
-   surface nothing else from Setup — on the freeform route the
-   dimensional restatement is the first text the user sees. `--state
+   --probe` (`--local <dir>`): read-only; surface its line only for a
+   newer version or `drift:`, never stop over it, and surface nothing
+   else from Setup. `--state
    stardust/state.json` is added only by a phase that writes `state.json`
    anyway (`reference/state-machine.md` § Impeccable key); a state report,
    resume, `qa` or `audit` never write it. Sub-skills read
