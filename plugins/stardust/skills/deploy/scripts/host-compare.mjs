@@ -14,7 +14,8 @@
  *   --render      Playwright (resolution chain): per path load both pages and compare the rendered shape — block names
  *                 with `data-block-status`, the h1, section count, document height (±8 px)
  *   --width       render viewport width (default 1440)
- *   --timeout     whole-run cap in seconds (default 120): on expiry the run prints `no verdict` and exits 124
+ *   --timeout     whole-run cap in seconds (default 120) over EVERY phase — fetch, sitemap, render (a render load is
+ *                 bound to the remaining budget): on expiry the run prints `no verdict` and exits 124
  *
  * Per path, both `.plain.html` bodies (sheets: the JSON) are normalised before the compare:
  *   host      `<ref>--<site>--<org>.aem.page|live` → HOST · `content.da.live/<org>/<site>/` → `content.da.live/ORG/SITE/`
@@ -22,14 +23,14 @@
  * Classes:  identical · media-only (differs before, identical after the media normaliser — benign, listed) ·
  *           differs (FAIL — re-copy the path once, then report; never hand-patch the target) · missing (new host
  *           not 200 — FAIL) · stale-on-old (old not 200, new 200 — reported, not a failure) · unreachable (network).
- *           --render adds render-equal / render-differs (FAIL).
+ *           --render adds render-equal / render-differs (FAIL) / unreachable (a load that failed — 124, not a FAIL).
  * Last stdout line:
  *   SUMMARY host-compare paths=<n> identical=<n> media-only=<n> differs=<n> missing=<n> stale-on-old=<n> unreachable=<n> exit=<code>
  *
  * Exit codes:
  *   0    PASS — no differs / missing / render-differs          1  FAIL — at least one such row (listed)
  *   2    usage (bad origin, empty roster, Playwright unresolvable); an origin may carry a base path (mock hosts)
- *   124  no verdict — the --timeout cap expired or a row was unreachable and nothing FAILed (re-run, never a FAIL)
+ *   124  no verdict — the --timeout cap expired (in any phase) or a row was unreachable and nothing FAILed (re-run, never a FAIL)
  * Never: writes, publishes, touches the customer site (the two EDS origins only), sends a token.
  */
 import { readFileSync, statSync } from 'node:fs';
@@ -100,10 +101,10 @@ async function get(url, signal) {
 
 const sitemapPaths = (xml, origin) => [...xml.matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/g)].map((m) => { try { const u = new URL(m[1]); return u.pathname; } catch { return m[1].replace(origin, ''); } }).sort();
 
-async function renderShape(browser, url, width) {
+async function renderShape(browser, url, width, deadlineAt) {
   const page = await browser.newPage({ viewport: { width, height: 1000 }, reducedMotion: 'reduce' });
   try {
-    await page.goto(url, { waitUntil: 'networkidle', timeout: 45000 });
+    await page.goto(url, { waitUntil: 'networkidle', timeout: Math.min(45000, Math.max(250, deadlineAt - Date.now())) }); // never past the run cap
     await page.waitForTimeout(600);
     return await page.evaluate(() => ({
       blocks: [...document.querySelectorAll('main .block')].map((b) => `${b.dataset.blockName || b.className.split(' ')[0]}:${b.dataset.blockStatus || '-'}`),
@@ -121,6 +122,7 @@ export async function main(argv = process.argv.slice(2)) {
   const paths = readPaths(a.paths);
   if (!paths.length) { console.error('host-compare: the roster is empty'); return 2; }
   const ac = new AbortController();
+  const deadlineAt = Date.now() + a.timeout * 1000;
   const deadline = setTimeout(() => ac.abort(), a.timeout * 1000);
   const rows = [];
   const counts = { identical: 0, 'media-only': 0, differs: 0, missing: 0, 'stale-on-old': 0, unreachable: 0, 'render-equal': 0, 'render-differs': 0 };
@@ -136,14 +138,15 @@ export async function main(argv = process.argv.slice(2)) {
       rows[k] = { path: p, cls: c.cls, old: o.status, new: n.status, note: c.note };
     }
   }));
-  const timedOut = ac.signal.aborted;
+  let timedOut = ac.signal.aborted; // re-read after every later phase — a cap that expires mid-sitemap or mid-render is still no verdict
   for (const r of rows) { if (!r) continue; counts[r.cls] += 1; console.log(`  ${r.cls.padEnd(13)} ${r.path.padEnd(40)} old=${r.old} new=${r.new}${r.note ? ` ${r.note}` : ''}`); }
   let sitemap = null;
   if (a.sitemap && !timedOut) {
     const [o, n] = await Promise.all([get(`${a.old}/sitemap.xml`, ac.signal), get(`${a.new}/sitemap.xml`, ac.signal)]);
+    timedOut = ac.signal.aborted;
     const op = sitemapPaths(o.body, a.old); const np = sitemapPaths(n.body, a.new);
-    sitemap = { old: { status: o.status, count: op.length }, new: { status: n.status, count: np.length }, onlyOnOld: op.filter((x) => !np.includes(x)), onlyOnNew: np.filter((x) => !op.includes(x)) };
-    console.log(`sitemap old=${o.status}/${op.length} new=${n.status}/${np.length} only-on-old=${sitemap.onlyOnOld.length}${sitemap.onlyOnOld.length ? ` (${sitemap.onlyOnOld.slice(0, 10).join(', ')})` : ''} only-on-new=${sitemap.onlyOnNew.length}${sitemap.onlyOnNew.length ? ` (${sitemap.onlyOnNew.slice(0, 10).join(', ')})` : ''}`);
+    if (!timedOut) sitemap = { old: { status: o.status, count: op.length }, new: { status: n.status, count: np.length }, onlyOnOld: op.filter((x) => !np.includes(x)), onlyOnNew: np.filter((x) => !op.includes(x)) };
+    if (sitemap) console.log(`sitemap old=${o.status}/${op.length} new=${n.status}/${np.length} only-on-old=${sitemap.onlyOnOld.length}${sitemap.onlyOnOld.length ? ` (${sitemap.onlyOnOld.slice(0, 10).join(', ')})` : ''} only-on-new=${sitemap.onlyOnNew.length}${sitemap.onlyOnNew.length ? ` (${sitemap.onlyOnNew.slice(0, 10).join(', ')})` : ''}`);
   }
   if (a.render && !timedOut) {
     const pw = await resolveDep('playwright', { from: import.meta.url, script: 'host-compare.mjs' }).catch(exit2);
@@ -151,21 +154,28 @@ export async function main(argv = process.argv.slice(2)) {
     const browser = await chromium.launch();
     try {
       for (const r of rows) {
-        if (!r || r.path.endsWith('.json') || ac.signal.aborted) continue;
-        const [so, sn] = await Promise.all([renderShape(browser, `${a.old}${r.path}`, a.width), renderShape(browser, `${a.new}${r.path}`, a.width)]);
+        if (!r || r.path.endsWith('.json')) continue;
+        if (ac.signal.aborted) { timedOut = true; break; }
+        let so; let sn;
+        try { [so, sn] = await Promise.all([renderShape(browser, `${a.old}${r.path}`, a.width, deadlineAt), renderShape(browser, `${a.new}${r.path}`, a.width, deadlineAt)]); } catch (e) {
+          if (ac.signal.aborted || Date.now() >= deadlineAt) { timedOut = true; break; } // the cap, not the page
+          r.render = 'unreachable'; counts.unreachable += 1; r.renderNote = String(e.message || e).split('\n')[0].slice(0, 120);
+          console.log(`  ${r.render.padEnd(13)} ${r.path.padEnd(40)} ${r.renderNote}`); continue;
+        }
         const same = so.blocks.join(',') === sn.blocks.join(',') && so.h1 === sn.h1 && so.sections === sn.sections && Math.abs(so.height - sn.height) <= 8;
         r.render = same ? 'render-equal' : 'render-differs'; counts[r.render] += 1;
         r.renderNote = same ? '' : `blocks ${so.blocks.length}/${sn.blocks.length} h1 ${so.h1 === sn.h1 ? 'same' : 'differ'} sections ${so.sections}/${sn.sections} height ${so.height}/${sn.height}`;
         console.log(`  ${r.render.padEnd(13)} ${r.path.padEnd(40)}${r.renderNote ? ` ${r.renderNote}` : ''}`);
       }
     } finally { await browser.close(); }
+    timedOut = timedOut || ac.signal.aborted;
   }
   clearTimeout(deadline);
   const failed = rows.filter((r) => r && (FAIL.has(r.cls) || FAIL.has(r.render)));
   let code = 0;
   if (failed.length) code = 1;
   else if (timedOut || counts.unreachable) code = 124;
-  if (timedOut) console.log(`no verdict: --timeout ${a.timeout}s expired with ${rows.filter(Boolean).length}/${paths.length} paths compared — re-run (raise the cap or shrink the roster)`);
+  if (timedOut) console.log(`no verdict: --timeout ${a.timeout}s expired with ${rows.filter(Boolean).length}/${paths.length} paths fetched${a.sitemap && !sitemap ? ', sitemap not compared' : ''}${a.render ? `, ${rows.filter((r) => r && r.render).length} rendered` : ''} — re-run (raise the cap or shrink the roster)`);
   else if (code === 124) console.log('no verdict: unreachable rows and no FAIL — re-run');
   if (a.json) console.log(JSON.stringify({ old: a.old, new: a.new, rows: rows.filter(Boolean), sitemap, counts, exit: code }));
   console.log(summary(code));

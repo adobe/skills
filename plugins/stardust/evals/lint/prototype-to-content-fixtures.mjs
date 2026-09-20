@@ -21,13 +21,19 @@
 //   --thin on a migrated render (sr-only <h1> twin, --drop twin, table, empty shell, leading link
 //     list, second <h1>, form) → exit 0, `table` block, no `breadcrumbs` block, each drop logged
 //     with its reason, lint exit 0;
-//   CLI: --help lists every documented flag; `--out --thin` refused; unknown arg exit 1.
+//   CLI: --help lists every documented flag; `--out --thin` refused; unknown arg exit 1;
+//   NEGATIVE ledger key: `content/x.html`, `./content/x.html` and `../content/x.html` from a
+//     sub-directory are ONE row — no false `hand-edited` block on a respelt --out;
+//   NEGATIVE positional pairing: a schema whose section names all differ → exit 2, every section
+//     `unmapped` naming the same-position schema name, nothing written (never paired by index);
+//   NEGATIVE exit class: Playwright unresolvable (bare cwd, fake `npm`) → exit 2, nothing written;
+//     the header's exit-1 line does not claim it.
 // Browser case (Playwright via STARDUST_PW_ROOT or cwd; SKIP line otherwise): `--render --thin`
 //   on the ew-editability prototype → exit 0 with the page's <h1>.
 // Usage: node plugins/stardust/evals/lint/prototype-to-content-fixtures.mjs  (exit 1 on failure)
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pwRoot } from './lib/_browser.mjs';
@@ -159,6 +165,45 @@ try {
     const n = run([join(FIX, 'landing.html'), '--out', join(tmp, 'x.html'), '--ledger', ledger]); assert.equal(n.status, 2); assert.match(n.stdout, /no schema/);
     const j = run([join(FIX, 'landing.html'), '--schema', join(FIX, 'landing.schema.json'), '--out', join(tmp, 'j.html'), '--ledger', ledger, '--dry-run', '--json']);
     const line = j.stdout.trim().split('\n').pop(); assert.equal(JSON.parse(line).dryRun, true);
+  });
+
+  t('NEGATIVE ledger key: a respelt --out (./x, ../x from a sub-dir) finds the row — one row, no false hand-edit block', () => {
+    const proj = join(realpathSync(tmp), 'proj'); mkdirSync(join(proj, 'sub'), { recursive: true }); // realpath: the child's cwd is the resolved /private/var path
+    const lg = join(proj, 'transcribe.json');
+    const args = [join(FIX, 'landing.html'), '--schema', join(FIX, 'landing.schema.json'), '--ledger', lg, '--patches', nopatch];
+    let r = run([...args, '--out', 'content/c.html'], { cwd: proj }); assert.equal(r.status, 0, r.stdout + r.stderr);
+    const first = JSON.parse(readFileSync(lg, 'utf8')).pages;
+    assert.deepEqual(Object.keys(first), ['content/c.html'], 'keyed relative to the project root'); assert.equal(first['content/c.html'].path, join(proj, 'content', 'c.html'));
+    r = run([...args, '--out', './content/c.html'], { cwd: proj }); assert.equal(r.status, 0, `./ spelling must not read as a hand edit\n${r.stdout}`); assert.match(r.stdout, /^written/m);
+    r = run([...args, '--out', join('..', 'content', 'c.html')], { cwd: join(proj, 'sub') }); assert.equal(r.status, 0, `another cwd must not read as a hand edit\n${r.stdout}`);
+    r = run([...args, '--out', join(proj, 'content', 'c.html')], { cwd: proj }); assert.equal(r.status, 0, `absolute spelling must not read as a hand edit\n${r.stdout}`);
+    assert.deepEqual(Object.keys(JSON.parse(readFileSync(lg, 'utf8')).pages), ['content/c.html'], 'still one row after four spellings');
+    writeFileSync(join(proj, 'content', 'c.html'), '<body><main><div><h1>Mine</h1></div></main></body>');
+    r = run([...args, '--out', './content/c.html'], { cwd: proj }); assert.equal(r.status, 2); assert.match(r.stdout, /sha differs from the last generated one/, 'a real hand edit is still caught under the respelt path');
+  });
+
+  t('NEGATIVE positional pairing: renamed schema sections → exit 2, each section unmapped by NAME, nothing written', () => {
+    const renamed = { ...schema, sections: schema.sections.map((x) => ({ ...x, section: `${x.section}-band` })) };
+    const sf = join(tmp, 'renamed.schema.json'); writeFileSync(sf, JSON.stringify(renamed));
+    const o = join(tmp, 'content', 'renamed.html');
+    const r = run([join(FIX, 'landing.html'), '--schema', sf, '--out', o, '--ledger', ledger, '--patches', nopatch]);
+    assert.equal(r.status, 2, `a schema that matches by position only must block, not pair silently\n${r.stdout}`);
+    assert.ok(!existsSync(o), 'nothing written');
+    for (const n of ['hero', 'story', 'plans']) assert.match(r.stdout, new RegExp(`unmapped: ${n} on .*renamed\\.html \\(not in the schema \\(its position holds "${n}-band"`), `${n} is unmapped, naming the same-position schema name`);
+    assert.ok(!/plans\s+block:plans/.test(r.stdout), 'no block emitted by position');
+  });
+
+  t('NEGATIVE exit class: Playwright unresolvable → exit 2 (resolution chain), nothing written; the header agrees', () => {
+    const h = run(['--help']).stdout;
+    const one = h.split('\n').find((l) => /^\s*1\s{2}/.test(l)); assert.ok(one && !/Playwright/.test(one), `exit-1 line must not claim Playwright: ${one}`);
+    assert.match(h, /^\s*2\s{2}blocked[^\n]*\n\s*Playwright unresolvable/m, 'exit-2 line names Playwright unresolvable');
+    const bin = join(tmp, 'bin'); mkdirSync(bin, { recursive: true }); writeFileSync(join(bin, 'npm'), '#!/bin/sh\necho ""\n'); chmodSync(join(bin, 'npm'), 0o755);
+    const bare = join(tmp, 'bare'); mkdirSync(bare, { recursive: true });
+    const env = { ...process.env, PATH: bin }; delete env.STARDUST_PW_ROOT;
+    const r = run([join(FIX, 'landing.html'), '--render', '--thin', '--out', join(bare, 'x.html'), '--ledger', join(bare, 'l.json')], { cwd: bare, env });
+    assert.equal(r.status, 2, `unresolvable playwright is the chain's exit 2\n${r.stdout}${r.stderr}`);
+    assert.match(r.stderr, /prototype-to-content\.mjs: cannot resolve 'playwright' from /);
+    assert.ok(!existsSync(join(bare, 'x.html')) && !existsSync(join(bare, 'l.json')), 'nothing written');
   });
 
   const root = pwRoot();

@@ -9,6 +9,9 @@
 //   - sheets (.json) compared as-is, documents as .plain.html (`/` → /index.plain.html);
 //   - --sitemap counts and lists only-on-old / only-on-new; --paths accepts a roster file or a comma list;
 //   - --timeout: a hanging host → `no verdict`, exit 124 — never a FAIL; differs beats 124;
+//   - NEGATIVE (stale timedOut): the cap expiring AFTER the fetch phase (a hanging /sitemap.xml) is still
+//     `no verdict` + 124 — never exit 0 with partial coverage; browser half (SKIP line without Playwright):
+//     a hanging full-page load under --render → 124, the render load bound to the remaining budget;
 //   - --json row shape; --help lists every documented flag; `--old --paths` refused; a bad origin exit 2;
 //   - zero requests carry an Authorization header; nothing is written or POSTed.
 // Usage: node plugins/stardust/evals/fixtures/host-compare.test.mjs   (exit 1 on failure)
@@ -18,6 +21,7 @@ import { createServer } from 'node:http';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { pwRoot } from '../lint/lib/_browser.mjs';
 import { classify, normaliseHost, normaliseMedia, readPaths, parseArgs } from '../../skills/deploy/scripts/host-compare.mjs';
 
 const CLI = join(import.meta.dirname, '..', '..', 'skills', 'deploy', 'scripts', 'host-compare.mjs');
@@ -65,10 +69,11 @@ const hosts = {
 let requests = [];
 const server = createServer((req, res) => {
   requests.push({ method: req.method, url: req.url, auth: req.headers.authorization });
-  const m = req.url.match(/^\/(old|new|hang)(\/.*)$/);
+  const m = req.url.match(/^\/(old|new|hang|slow)(\/.*)$/);
   if (!m) { res.writeHead(404); res.end(); return; }
   if (m[1] === 'hang') return; // never answers
-  const body = hosts[m[1]][m[2]];
+  if (m[1] === 'slow' && (m[2] === '/sitemap.xml' || !/\.(plain\.html|json|xml)$/.test(m[2]))) return; // old host that answers .plain.html but hangs on the sitemap and on full-page loads
+  const body = hosts[m[1] === 'slow' ? 'old' : m[1]][m[2]];
   if (body === undefined) { res.writeHead(404); res.end('not found'); return; }
   res.writeHead(200, { 'content-type': m[2].endsWith('.json') ? 'application/json' : 'text/html' }); res.end(body);
 });
@@ -102,6 +107,11 @@ try {
   assert.equal(r.status, 124, r.stdout + r.stderr); assert.match(r.stdout, /no verdict: --timeout 1s expired/); assert.match(r.stdout, /exit=124$/m);
   r = await run(['--old', `${base}/old`, '--new', `${base}/new`, '--paths', '/news/,/', '--timeout', '30']);
   assert.equal(r.status, 1);
+  // NEGATIVE: the cap expires AFTER the fetch phase (sitemap hangs) → still no verdict + 124, never exit 0 with partial coverage
+  r = await run(['--old', `${base}/slow`, '--new', `${base}/new`, '--paths', '/', '--sitemap', '--timeout', '1']);
+  assert.equal(r.status, 124, `a cap expiring in the sitemap phase is no verdict\n${r.stdout}${r.stderr}`);
+  assert.match(r.stdout, /no verdict: --timeout 1s expired with 1\/1 paths fetched, sitemap not compared/);
+  assert.ok(!/^sitemap old=/m.test(r.stdout), 'no sitemap line from an aborted fetch'); assert.match(r.stdout, /exit=124$/m);
   // unreachable host (closed port) → 124 with nothing FAILed
   r = await run(['--old', 'http://127.0.0.1:9', '--new', `${base}/new`, '--paths', '/', '--timeout', '10']);
   assert.equal(r.status, 124, r.stdout + r.stderr); assert.match(r.stdout, /unreachable/);
@@ -111,7 +121,15 @@ try {
   const h = await run(['--help']); assert.equal(h.status, 0);
   for (const f of ['--old', '--new', '--paths', '--sitemap', '--render', '--width', '--concurrency', '--timeout', '--json', '--help']) assert.ok(h.stdout.includes(f), `help names ${f}`);
   assert.ok(!requests.some((q) => q.method !== 'GET'), 'nothing written or POSTed');
-  console.log('host-compare test: ok (normaliser, six classes, sheets, roster file/list, --sitemap, --timeout 124, unreachable 124, differs beats 124, --json, usage, help, GET-only no token)');
+  // browser half: the cap expires in the RENDER phase (full-page loads hang) → 124, never 0
+  const root = pwRoot();
+  if (root) {
+    const c = spawn(process.execPath, [CLI, '--old', `${base}/slow`, '--new', `${base}/new`, '--paths', '/', '--render', '--timeout', '3'], { cwd: root });
+    r = await new Promise((res) => { let stdout = ''; let stderr = ''; c.stdout.on('data', (d) => { stdout += d; }); c.stderr.on('data', (d) => { stderr += d; }); c.on('close', (status) => res({ status, stdout, stderr })); });
+    assert.equal(r.status, 124, `a cap expiring in the render phase is no verdict\n${r.stdout}${r.stderr}`);
+    assert.match(r.stdout, /no verdict: --timeout 3s expired with 1\/1 paths fetched, 0 rendered/); assert.ok(!/^\s+render-(differs|equal)\s/m.test(r.stdout), 'no render row — the phase was cut by the cap'); assert.match(r.stdout, /render-differs=0 exit=124$/m);
+  } else console.log('SKIP host-compare render-phase timeout: playwright is not resolvable (set STARDUST_PW_ROOT=<dir with node_modules>) — fetch/sitemap cases ran');
+  console.log('host-compare test: ok (normaliser, six classes, sheets, roster file/list, --sitemap, --timeout 124 in fetch and sitemap phases, unreachable 124, differs beats 124, --json, usage, help, GET-only no token)');
 } finally {
   server.closeAllConnections?.(); server.close();
   rmSync(dir, { recursive: true, force: true });
