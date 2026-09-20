@@ -1,0 +1,20 @@
+{
+  ":type": "sheet",
+  "total": 3,
+  "offset": 0,
+  "limit": 3,
+  "data": [
+    {
+      "source": "/home-insurance",
+      "destination": "/insurance/home"
+    },
+    {
+      "source": "/annual-report",
+      "destination": "https://main--larkspur--olduser.aem.live/news/annual-report-2025"
+    },
+    {
+      "source": "/promo",
+      "destination": "https://content.da.live/olduser/larkspur/fragments/promo"
+    }
+  ]
+}

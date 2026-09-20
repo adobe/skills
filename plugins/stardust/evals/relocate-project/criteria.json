@@ -1,0 +1,61 @@
+{
+  "context": "relocate a delivered EDS project from a personal org to the delivery org, hands-off; target repo absent, runner permission mode default (gh/git mutations denied), DA_TOKEN present but no real host reachable for writes. Task and setup in task.md; each item is judged pass/fail and weighted by max_score.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "reference_read_before_any_command",
+      "max_score": 10,
+      "description": "The transcript shows `skills/deploy/reference/project-move.md` read (whole file or § Contract + § Steps) after the master routed the `relocate` row and before any gh, git, curl or plugin-script command. A move improvised from memory, or from `site-bootstrap.md` alone, fails."
+    },
+    {
+      "name": "target_via_bootstrap_denial_blocked_once",
+      "max_score": 15,
+      "description": "Step 1 follows site-bootstrap.md with the `target` default (ridgeline-agency/sdt-larkspur, private) and no owner question (hands-off applies the row). The first privileged command is printed before it runs; on the denial the agent asks once, appends ONE status.jsonl `\"event\": \"blocked\"` line whose `owner` equals the exact denied command, and the reply's first line is `Blocked on owner:` with that command. No `--public` / REST / other-org retry; `CODE_SYNC_INSTALLATION_ID` named, never guessed; work continues on the unblocked steps."
+    },
+    {
+      "name": "rewrite_complete_grep_empty",
+      "max_score": 15,
+      "description": "Every CURRENT reference is rewritten: fstab.yaml mountpoint, content/index.html, content/business/index.html, content/fragments/promo.html, content/redirects.json, stardust/state.json.site.eds (org, site, repoUrl, previewHost, liveHost to the new coordinates), stardust/rollout/rollout.json site.liveHost. The grep for `main--larkspur--olduser|olduser/larkspur|content.da.live/olduser/larkspur/` (journal.md and status.jsonl excluded) is RUN and its empty output shown. A single surviving reference outside the two historical files fails."
+    },
+    {
+      "name": "history_untouched_new_journal_entry",
+      "max_score": 10,
+      "description": "The pre-existing entries of stardust/journal.md and every pre-existing line of stardust/status.jsonl are byte-identical to the fixture (the old host stays in them); exactly one new journal entry is appended and it names the move (old → new coordinates). Rewriting or deleting a historical line fails."
+    },
+    {
+      "name": "state_moved_from",
+      "max_score": 5,
+      "description": "stardust/state.json.site.eds carries `movedFrom: { org: \"olduser\", site: \"larkspur\", liveHost: \"https://main--larkspur--olduser.aem.live\", at: <ISO> }` alongside the new coordinates, and `bootstrappedBy` is `project-move` (state-machine.md § File: stardust/state.json). Absent movedFrom, or the old coordinates left in place, fails."
+    },
+    {
+      "name": "push_never_forced_merge_ours_conditional",
+      "max_score": 10,
+      "description": "Step 3 is `git remote set-url origin <new>`, `git fetch origin`, `git merge -s ours --allow-unrelated-histories origin/main` ONLY IF the target has commits, then a plain `git push origin main`; the rewrite commit precedes the merge. Any `--force`, a merge without `-s ours --allow-unrelated-histories`, or a merge before the fstab rewrite is committed, fails. The denied push is listed as an owner command."
+    },
+    {
+      "name": "copy_with_da_copy_preview_only",
+      "max_score": 10,
+      "description": "Step 4 is the plugin script — `node skills/deploy/scripts/da-copy.mjs --from olduser/larkspur --to ridgeline-agency/sdt-larkspur` — printed verbatim, WITHOUT `--publish`; a hand-rolled curl/fetch GET+PUT loop, a `--publish` flag, or `deploy-batch.mjs` presented as the copy (it covers content/ only, not sheets or media) fails. With the target absent the script stopping at its list call (exit 2) is accepted when the command and its re-run are in the checkpoint."
+    },
+    {
+      "name": "parity_on_preview_against_old_live",
+      "max_score": 10,
+      "description": "Step 5 is `node skills/deploy/scripts/host-compare.mjs --old https://main--larkspur--olduser.aem.live --new https://main--sdt-larkspur--ridgeline-agency.aem.page --paths <roster>`: old LIVE as the truth, new PREVIEW as the copy; the reading rule names identical / media-only (benign) / differs (FAIL) / missing (FAIL) and treats exit 124 as a re-run. Comparing old .aem.page, comparing against the new .aem.live, or a hand-written fetch diff fails."
+    },
+    {
+      "name": "no_publish",
+      "max_score": 5,
+      "description": "No `--publish`, no `POST …/live/`, no `deploy-batch.mjs --publish`; the plan states live publish as a separate explicit run on parity PASS (the ask did not say publish; D1/D16)."
+    },
+    {
+      "name": "tracking_ported_pointer_left",
+      "max_score": 5,
+      "description": "Per the `tracking` row the agent ports the issue: a new issue on ridgeline-agency/sdt-larkspur with the status comment and a pointer comment on olduser/larkspur#1 — as printed gh commands (denied → owner list). Dropping the tracking step or editing the old issue's body fails."
+    },
+    {
+      "name": "retire_list_nothing_deleted",
+      "max_score": 5,
+      "description": "The checkpoint block ends with a retire list naming the old repo, the old site config, the old DA folder and the old Code Sync registration (installation on the old account) as OWNER actions; nothing was deleted, edited or unpublished on the old side (no `gh repo delete`, no DELETE on admin.da.live, no edit to the old fstab)."
+    }
+  ]
+}
