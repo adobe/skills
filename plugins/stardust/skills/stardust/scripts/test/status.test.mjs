@@ -109,5 +109,7 @@ try {
   assert.match(r.stdout, /^Preflight:\s+partial — 1 item\(s\): missing: chromium — run: node preflight-runtime\.mjs$/m, 'Preflight line copies the missing items');
   for (const v of ['abc', '0', '-1', '2.5', '']) { r = spawnSync(process.execPath, [CLI, '--root', empty, '--sample', v], { encoding: 'utf8' }); assert.equal(r.status, 2, `--sample ${JSON.stringify(v)} exits 2`); assert.match(r.stderr, /positive integer/); }
   r = spawnSync(process.execPath, [CLI, '--root', empty, '--sample'], { encoding: 'utf8' }); assert.equal(r.status, 2, '--sample without a value exits 2');
+  r = spawnSync(process.execPath, [CLI, '--root', '--json', '--no-probe'], { encoding: 'utf8' }); assert.equal(r.status, 2, '--root --json: a value flag never swallows the next flag'); assert.match(r.stderr, /--root needs a value, got --json/);
+  r = spawnSync(process.execPath, [CLI, '--root', empty, '--ledger', '--no-probe'], { encoding: 'utf8' }); assert.equal(r.status, 2, '--ledger --no-probe exits 2'); assert.match(r.stderr, /--ledger needs a value/);
 } finally { rmSync(empty, { recursive: true, force: true }); }
 console.log('status test: ok (6 pages, 3 archetypes copied from the ledger, no verdict for the ungated one, not probed / not reconciled, missing-next warning, replica recommendation, Usage in k / M from usage.json, siteTokenEnv for --reconcile, slug-less probe sample skipped, Preflight copies missing, --sample validated, nothing written, text + markdown, exits)');

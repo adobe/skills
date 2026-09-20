@@ -106,6 +106,26 @@ try {
   assert.equal(r6.discovery.source, 'bfs', 'under a bot block the conventions are skipped; nav is what we have');
   assert.equal(r6.discovery.probes, 3);
 
+  // 4b — per-URL provenance and the hreflang union (ia-extraction.md § Multi-locale): a same-origin twin the
+  // probe page declares joins the roster under the same cap with source `hreflang`; an off-origin twin is
+  // listed (trees.json input), never fetched; sitemap/nav/entry URLs name their source. Before the change
+  // discovery.urls[] did not exist and hreflang twins were not discovered at all.
+  hits.length = 0;
+  const alternates = [`${origin}/es/`, `${origin}/about`, 'https://es.other.example/', `${origin}/assets/es.css`];
+  const r7 = await discoverInventory({ entry: `${origin}/`, origin, entryPath: '/', max: 100, navLinks: nav, alternates }, io);
+  const srcOf = Object.fromEntries(r7.discovery.urls.map((u) => [new URL(u.url).pathname, u.source]));
+  assert.equal(srcOf['/'], 'sitemap:/sitemaps/index.xml', 'entry listed by a sitemap keeps the sitemap source (the tier root that was fetched)');
+  assert.equal(srcOf['/blog/one'], 'sitemap:/sitemaps/index.xml');
+  assert.equal(srcOf['/employers/plans'], 'nav');
+  assert.equal(srcOf['/es/'], 'hreflang', 'the same-origin twin joined the roster');
+  assert.equal(srcOf['/about'], 'sitemap:/sitemaps/index.xml', 'first sighting wins — a twin also in the sitemap keeps the sitemap source');
+  assert.equal(r7.discovery.urls.length, r7.urls.length, 'one provenance row per kept URL');
+  assert.deepEqual(r7.discovery.hreflang, { declared: 4, sameOrigin: 2, offOrigin: ['https://es.other.example/'] }, 'declared/same-origin counts + off-origin list; the .css alternate is not a page');
+  assert.ok(!hits.some((h) => /es\.other|\/es\//.test(h)), `twins are listed, never fetched: ${hits}`);
+  assert.equal(r1.discovery.urls.length, 5, 'case 1 (cap 5) rows carry sources too'); assert.ok(r1.discovery.urls.every((u) => /^sitemap:/.test(u.source)), 'sitemap pages precede the nav-only ones');
+  const r8 = await discoverInventory({ entry: `${origin}/`, origin, entryPath: '/', max: 100, navLinks: nav }, io);
+  assert.equal(r8.discovery.hreflang, undefined, 'no alternates → no hreflang block');
+
   // 5 — robots parse + cookie flag
   const rb = parseRobots('# c\nUser-agent: *\nDisallow: /x\nSitemap: /rel.xml\nsitemap: https://cdn.example/s.xml\nCrawl-delay: 2.5\n', 'https://a.example');
   assert.deepEqual(rb.sitemaps, ['https://a.example/rel.xml', 'https://cdn.example/s.xml'], 'relative directives resolve, case-insensitive key');

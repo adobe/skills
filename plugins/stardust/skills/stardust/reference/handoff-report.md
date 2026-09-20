@@ -99,6 +99,8 @@ page for X" is answered by the log, not by memory.
   cannot hide passed-with-unexplained" rule live in
   `skills/replica/reference/source-fidelity-gate.md` § Residual logging
   format; the hand-off reproduces that list, it does not restate the rule.
+  `rollout/scripts/close-check.mjs` row 4 refuses a wave close whose
+  residuals have no `stardust/learnings.md` entry (`learnings.md` § Who writes).
 - **DA edit links** use the one form in `skills/deploy/da-deploy-protocol.md`
   (§ URLs line: edit · preview · live). No second form.
 - **Usage row (optional)** — one line from `stardust/usage.md`

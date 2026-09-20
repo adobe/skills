@@ -377,7 +377,7 @@ authored, the artifacts read (`reference/artifact-map.md`).
 
 `stardust/journal.md` is the chronological narrative layer — prompts,
 decisions, open questions — that neither `state.json` (*what is*) nor
-provenance (*why an artifact says what it says*) captures. **Maintain it
+provenance (*why*) captures. **Maintain it
 per `reference/journal-format.md`**: append an entry before ending any
 turn that made a non-trivial write, its `Next:` being the phase's
 `status.jsonl` `next` command, a phase-close entry opening with the gate
@@ -391,9 +391,9 @@ phase is recorded in `stardust/direction.md` as a **named deviation** —
 what it replaces, why the shipped instrument did not serve, where the
 replacement lives — and noted in the journal. Before writing one, list
 the shipped instruments (`ls skills/*/scripts`) and run it; write your own only
-when none exists, and ledger it here as a plugin gap. An unrecorded
-parallel pipeline is a defect — its fidelity numbers are never comparable
-to the gate's.
+when none exists, and ledger it as a plugin gap in `stardust/learnings.md`
+(`reference/learnings.md`), not only here. An unrecorded parallel
+pipeline is a defect — its numbers are never comparable to the gate's.
 
 ## Validation rule
 

@@ -13,11 +13,11 @@ metadata:
 
 | phase | command / instrument | gate | writes |
 |---|---|---|---|
-| Setup 1–4 | `node -e "import('playwright').then(()=>process.exit(0))"`; copy `skills/extract/scripts/{crawl,validate-page,brand-surface,write-design-json,brand-review,state-update}.mjs` as a set → `stardust/scripts/` (+ `skills/stardust/scripts/progress.mjs` → `stardust/scripts/stardust/`); origin-collision and flow guard; consent pre-flight; bot-management probe | flow stamped before a migration crawl | `_crawl-log.json#consent`, `#discovery.fetchTechnique` |
+| Setup 1–4 | `node -e "import('playwright').then(()=>process.exit(0))"`; copy `skills/extract/scripts/{crawl,validate-page,brand-surface,write-design-json,brand-review,state-update}.mjs` as a set → `stardust/scripts/` (flat, or nested under `stardust/scripts/extract/`) + `skills/stardust/scripts/{progress,browser-lock}.mjs` and `lib/resolve.mjs` → `stardust/scripts/stardust/` in either layout — the copy-as-a-set rule, `harness-permissions.md` § Two classes; origin-collision and flow guard; consent pre-flight; bot-management probe | flow stamped before a migration crawl | `_crawl-log.json#consent`, `#discovery.fetchTechnique` |
 | 1 Discovery | robots sitemaps → standard → conventions → nav union → BFS (`--depth`); subtree from the typed path; junk filter; cap via `--cap <N>` / `--all` / `--pages <slugs>` / `--single` | relay crawl's kept/cut summary; no gate | `stardust/current/_crawl-log.json` |
-| 2 Per-page extraction | `node stardust/scripts/crawl.mjs --url <origin> [--pages …] [--cap N \| --all \| --single] [--refresh <slug,…> \| --force] [--headed] [--concurrency N] [--wait <mode>] [--dynamics] [--mobile <mode>] [--dpr N] [--depth N] [--cookie n=v] [--storage-state <file> \| --fresh-state] [--save-state] [--solve-wait <ms>] [--progress <file> \| --no-progress] [--assets intercept\|full\|none \| --no-assets]` — in the background; `progress.mjs read stardust/.work/extract/crawl.progress.json`, then its `SUMMARY` line | live-render evidence contract; schema gate `validate-page.mjs` (exit 1 = not `extracted`); synthesis is a Phase 2 failure | `current/pages/<slug>.json` + `.html`, `assets/screenshots/<slug>.png`, `assets/media/`, `state.json` page → `extracted` |
+| 2 Per-page extraction | `node stardust/scripts/crawl.mjs --url <origin> [--pages …] [--cap N \| --all \| --single] [--refresh <slug,…> \| --force] [--headed] [--concurrency N] [--wait <mode>] [--dynamics] [--mobile <mode>] [--dpr N] [--depth N] [--cookie n=v] [--storage-state <file> \| --fresh-state] [--save-state] [--solve-wait <ms>] [--progress <file> \| --no-progress] [--assets intercept\|full\|none \| --no-assets] [--prep]` — in the background; `progress.mjs read stardust/.work/extract/crawl.progress.json`, then its `SUMMARY` line | live-render evidence contract; schema gate `validate-page.mjs` (exit 1 = not `extracted`); synthesis is a Phase 2 failure | `current/pages/<slug>.json` + `.html`, `assets/screenshots/<slug>.png`, `assets/media/`, `state.json` page → `extracted` |
 | 2.5 Vision verification | look at each screenshot against its record; `_signals` flags first; escalation ladder (wait mode → next bot-management tier → fresh context); `node plugins/stardust/evals/lint/crawl-log-lint.mjs --dir stardust/current` | verdict `ok` / `recaptured` / `suspect`; never `ok` on DEGRADED / overlay | `_crawl-log.json#visionCheck[]` |
-| 3 Brand-surface extraction | `node stardust/scripts/brand-surface.mjs --out stardust/current --home index [--bounded] [--lift <dir>]` — offline over `pages/*.json`; read its printed notes | exit 1 = no live record; source citation per value; `--pages`/`--single` runs → `_provenance.mode: "bounded"` | `current/_brand-extraction.json`, `assets/logo.svg` |
+| 3 Brand-surface extraction | `node stardust/scripts/brand-surface.mjs --out stardust/current --home index [--bounded \| --full] [--lift <dir>]` — offline over `pages/*.json`; read its printed notes | exit 1 = no live record; source citation per value; `--pages`/`--single` runs → `_provenance.mode: "bounded"` unless the crawl ran `--prep` or `--full` is given | `current/_brand-extraction.json`, `assets/logo.svg` |
 | 4 Seed current-state docs | `node stardust/scripts/write-design-json.mjs --out stardust/current`; author PRODUCT.md / DESIGN.md directly from impeccable's format specs (no `$impeccable init` / `document`) | provenance block first; exit 2 without the brand surface | `current/DESIGN.json`, `current/PRODUCT.md`, `current/DESIGN.md` |
 | 5 Brand review | `node stardust/scripts/brand-review.mjs --out stardust/current` — the 13 detectors print `T-xxx: fired \| quiet` | exit 2 without `_brand-extraction.json`; sections without data omitted | `current/brand-review.html` |
 | 6 State and report | `node stardust/scripts/state-update.mjs --out stardust/current [--prep] [--legacy] [--vision <file>]` — evidence table, wait summary, `Provenance: <live>/<total> live` | `extracted` only on live provenance + strict schema gate (`--legacy` = the validate-page opt-in); `--prep` exits 1 when live < total | `stardust/state.json`, `status.jsonl`, `_crawl-log.json#visionCheck[]` |
@@ -132,7 +132,7 @@ Additional checks for this sub-command:
    `node -e "import('playwright').then(()=>process.exit(0))"` from the
    project root (`npx playwright --version` is NOT sufficient: ESM
    ignores global installs and `NODE_PATH`). On failure run `node
-   skills/stardust/scripts/preflight-runtime.mjs` (master Setup step 9):
+   skills/stardust/scripts/preflight-runtime.mjs` (master Setup step 10):
    one `npm i --prefix stardust` into `stardust/node_modules`, which the EDS
    repo's own `npm i` never prunes (`skills/stardust/reference/runtime-preflight.md`
    § Resolution chain). Never `npm i … --no-save` in the EDS repo.
@@ -140,7 +140,13 @@ Additional checks for this sub-command:
    directory and the plugin tree ships no `node_modules`: copy the six
    extract scripts byte-identical, as a set, into `stardust/scripts/`
    (the siblings import `./crawl.mjs` for the consent table and the
-   validators) and run the copies.
+   validators) together with `skills/stardust/scripts/{progress,browser-lock}.mjs`
+   and `lib/resolve.mjs` → `stardust/scripts/stardust/` — the same
+   place whether the six sit flat or nested under `stardust/scripts/extract/`
+   (`crawl.mjs` resolves playwright through the chain, takes the
+   machine's browser slot and writes its progress file only with them
+   beside it; without them it runs unlocked and without a progress
+   file, one WARN per loader saying so) and run the copies.
 
    **Bundled crawler.** `skills/extract/scripts/crawl.mjs` is the
    runnable reference implementation of this sub-command (browser
@@ -386,7 +392,7 @@ alone.
 Run after Phases 2–2.5, offline over the page records — never a second
 live pass:
 
-    node stardust/scripts/brand-surface.mjs --out stardust/current --home index [--bounded] [--lift <dir>] [--dry-run]
+    node stardust/scripts/brand-surface.mjs --out stardust/current --home index [--bounded | --full] [--lift <dir>] [--dry-run]
 
 It writes `stardust/current/_brand-extraction.json` per
 `reference/brand-surface.md` — palette (third-party chrome excluded via
@@ -398,7 +404,8 @@ SVG; `type.files[]` comes from `assets/_fonts-manifest.json` (absent →
 `[]`, noted); the favicon is `_crawl-log.json#favicon`. Every value
 cites its source. A `--pages` / `--single` crawl is detected as bounded
 (`_provenance.mode: "bounded"`): voice, voiceTable, crossPromo and
-register are omitted, never guessed. Exit 1 = no live page record.
+register are omitted, never guessed — unless the crawl ran `--prep`
+(`runs[].args.prep`) or `--full` is given. Exit 1 = no live page record.
 Then read the printed notes (divergences, exclusions, skipped records)
 and the file before Phase 4 — the script aggregates; you review.
 
@@ -540,7 +547,7 @@ capture (≤ 3 pages). It must never balloon the crawl.
 | `stardust/current/DESIGN.json`              | Sidecar with extensions for motifs, voice, components |
 | `stardust/current/brand-review.html`        | Self-contained visual review of the extraction (first eyeball-able artifact) |
 | `stardust/current/pages/<slug>.json`        | Per-page parsed structure + content                 |
-| `stardust/current/pages/<slug>.html`        | Settled rendered DOM (crawler sidecar; parse offline, never re-scrape) |
+| `stardust/current/pages/<slug>.html`        | Settled rendered DOM (crawler sidecar; parse offline, never re-scrape); hidden-at-settle nodes carry `data-hidden-live="<reason>"`, `<html>` the stamp — the importer's skip input |
 | `stardust/current/assets/logo.<ext>`        | Extracted logo                                      |
 | `stardust/current/assets/favicon.<ext>`     | Site favicon (first-class asset; prototype head + deploy consume it) |
 | `stardust/current/assets/{media,fonts,icons}/` | Harvested bodies (`_media-manifest.json`, `_fonts-manifest.json`, `favicon-set.json` beside them) |
@@ -581,6 +588,10 @@ last-write-wins (`state-machine.md` § Concurrency).
   they appear only in the failure log. Without this validation a 5xx
   page silently lands as an empty success and propagates wrong data
   to `direct` and `prototype`.
+- **Every record fails the schema gate.** `crawl.mjs` still exits 0 —
+  its exit code is the run's (per-page verdicts are `_crawl-log.json`
+  and the record's own gate fields); `validate-page.mjs` is the exit-1
+  instrument and Phase 6 marks nothing `extracted` (§ Phase 2 schema gate).
 - **Login wall.** Do not authenticate. If the home page redirects to
   a login screen, capture that one page, mark the rest unreachable,
   and ask how to proceed (`--cookie`, another entry URL, or public

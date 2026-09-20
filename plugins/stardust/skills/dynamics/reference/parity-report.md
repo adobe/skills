@@ -32,7 +32,11 @@ Check types (closed set, all replayable): `fetch-json` · `dom-count` · `click-
 (`{ path, trigger, observe, expect? }` — one click on a control, one observable must change: the
 dead-chevron class; qa-gate's control pass is the harness-side twin, `--no-drive` skips it) · `listing-rows`
 (`{ path, block, index?, minRows? }` — authored rows of the block in `<path>.plain.html`, minus
-heading and label-list rows; one per listing page) — fields in the script header. A feature with no checks is listed under "features without checks" with its status
+heading and label-list rows; one per listing page) · `click-control` (`{ path, trigger, observe,
+expect? }` — one click on the trigger changes the named observable: `scrollLeft` · `aria-expanded` ·
+`aria-selected` · `hidden` · `open` · `class` · `visible:<sel>`; a disabled or zero-box trigger is
+SKIPPED with the reason, never clicked; an absent trigger or a pageerror during the drive FAILs naming
+it; `lib.mjs driveControl` is the one helper every control drive shares; not a rule-8 condition) — fields in the script header. A feature with no checks is listed under "features without checks" with its status
 and owner; `decided-out` rows belong there.
 
 ## Rules

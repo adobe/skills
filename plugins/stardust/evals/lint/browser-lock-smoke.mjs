@@ -12,7 +12,10 @@
 //   (f) TTL: an API holder outlives STARDUST_BROWSER_TTL_MIN (its unref'd keep-alive touches the file);
 //       a shell holder's aged slot is reaped by the census unless `refresh --pid` touched it first;
 //   (g) a non-numeric --wait / --slots / --min / --pid is usage (exit 2, at once) — never a NaN deadline that
-//       spins forever; `surplus()` names the newest holders past the budget (race repair after a write).
+//       spins forever; `surplus()` names the newest holders past the budget (race repair after a write);
+//   (h) slots are per PROCESS: launchTier in both ladder files (live-session.mjs, crawl.mjs — fake chromium,
+//       no browser) takes ONE slot for two launches and the slot is gone when the process exits;
+//       acquireProcess() hands the same slot to a second caller; a 124 rejection clears the memo.
 // Usage: node plugins/stardust/evals/lint/browser-lock-smoke.mjs  (exit 1 on failure)
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
@@ -143,12 +146,40 @@ try {
   assert.deepEqual(surplus(held, 3), [], 'within budget → nobody backs off');
   assert.deepEqual(surplus(held, 0), ['/l/a.json', '/l/b.json', '/l/c.json']);
 
+  // (h) per-process slot through both ladder copies (no browser: a fake chromium.launch)
+  run(['release', '--all']);
+  for (const ladder of ['skills/diff/scripts/live-session.mjs', 'skills/extract/scripts/crawl.mjs']) {
+    const mod = pathToFileURL(join(import.meta.dirname, '..', '..', ladder)).href;
+    const code = `import { launchTier } from ${JSON.stringify(mod)}; import { readdirSync } from 'node:fs';
+      const fake = { launch: async () => ({ on() {}, close: async () => {} }) };
+      const a = await launchTier(fake, 1); await a.close(); const b = await launchTier(fake, 1); await b.close();
+      console.log('slots ' + readdirSync(${JSON.stringify(dir)}).length);`;
+    const r2 = spawnSync(process.execPath, ['--input-type=module', '-e', code], { encoding: 'utf8', env: { ...env, STARDUST_BROWSER_LOCK_DIR: dir } });
+    assert.equal(r2.status, 0, `${ladder}: ${r2.stderr}`);
+    assert.match(r2.stdout, /^slots 1$/m, `${ladder}: two launches in one process hold ONE slot, not one per launch\n${r2.stdout}`);
+    assert.equal(readdirSync(dir).length, 0, `${ladder}: the process slot is released at exit`);
+  }
+  const twice = `import { acquireProcess } from ${JSON.stringify(pathToFileURL(CLI).href)};
+    const a = await acquireProcess({ script: 'p' }); const b = await acquireProcess({ script: 'p' });
+    console.log(a === b ? 'same' : 'different');`;
+  r = spawnSync(process.execPath, ['--input-type=module', '-e', twice], { encoding: 'utf8', env: { ...env, STARDUST_BROWSER_LOCK_DIR: dir } });
+  assert.equal(r.stdout.trim(), 'same', 'acquireProcess is memoised per process');
+  assert.equal(readdirSync(dir).length, 0, 'the memoised slot is released at exit');
+  // a 124 rejection clears the memo (the next caller waits again instead of re-throwing a stale rejection)
+  r = run(['acquire', '--pid', String(holders[0].pid)]); r = run(['acquire', '--pid', String(holders[1].pid)]);
+  const timed = `import { acquireProcess } from ${JSON.stringify(pathToFileURL(CLI).href)};
+    const e1 = await acquireProcess({ waitS: 1 }).catch((e) => e.code); const e2 = await acquireProcess({ waitS: 1 }).catch((e) => e.code);
+    console.log(e1 + ' ' + e2);`;
+  r = spawnSync(process.execPath, ['--input-type=module', '-e', timed], { encoding: 'utf8', env: { ...env, STARDUST_BROWSER_LOCK_DIR: dir } });
+  assert.equal(r.stdout.trim(), '124 124', `both process acquires exit 124 while the budget is held\n${r.stderr}`);
+  run(['release', '--all']);
+
   // help / usage
   r = spawnSync(process.execPath, [CLI, '--help'], { encoding: 'utf8' });
   assert.equal(r.status, 0); assert.match(r.stdout, /Exit codes: 0 acquired/);
   r = spawnSync(process.execPath, [CLI, 'bogus'], { encoding: 'utf8' });
   assert.equal(r.status, 2);
-  console.log('browser-lock smoke: ok (2 slots, third exits 124 with one waiting line + progress log, dead/old slots reaped, release by pid / --all --stale, status JSON + census, SLOTS=0 and --no-lock touch nothing, API keep-alive past the TTL, refresh for shell holders, non-numeric budgets exit 2, surplus race repair)');
+  console.log('browser-lock smoke: ok (2 slots, third exits 124 with one waiting line + progress log, dead/old slots reaped, release by pid / --all --stale, status JSON + census, SLOTS=0 and --no-lock touch nothing, API keep-alive past the TTL, refresh for shell holders, non-numeric budgets exit 2, surplus race repair, one slot per PROCESS through both ladder copies + memoised acquireProcess)');
 } finally {
   for (const h of holders) h.kill('SIGKILL');
   rmSync(tmp, { recursive: true, force: true });

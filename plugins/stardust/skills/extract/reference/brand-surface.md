@@ -76,11 +76,14 @@ values, and carries a source citation.
 }
 ```
 
-`_provenance.mode` is `"bounded"` when the run was `--pages` / `--single`
-(cap 1) without `--prep`, or `brand-surface.mjs --bounded` was given:
+`_provenance.mode` is `"bounded"` when the last `_crawl-log.json` run was
+`--pages` / `--single` (cap 1) without `--prep` (`runs[].args.prep`, written
+by `crawl.mjs --prep`), or `brand-surface.mjs --bounded` was given:
 `voice`, `voiceTable`, `crossPromo` and `register` are **omitted** (never
 guessed from one page); palette, type, spacing, motifs, logo and
-`origins[]` are still aggregated. A `--prep` run is never bounded.
+`origins[]` are still aggregated. A `--prep` run is never bounded;
+`brand-surface.mjs --full` overrides the detection by hand (exclusive
+with `--bounded`).
 `notes[]` carries every deviation in words (third-party chrome
 excluded, manifest absent, records skipped for missing provenance,
 palette entries dropped past the cap).

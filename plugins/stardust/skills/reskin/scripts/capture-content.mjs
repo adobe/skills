@@ -140,7 +140,7 @@ let chromium;
 try { ({ chromium } = await import('playwright')); } catch {
   console.error('[capture-content] playwright not importable from this script\'s directory.');
   console.error('Copy skills/reskin/scripts/* into the project (stardust/scripts/reskin/) and');
-  console.error('run: node skills/stardust/scripts/preflight-runtime.mjs  (master Setup step 9 — skills/stardust/reference/runtime-preflight.md § Resolution chain)');
+  console.error('run: node skills/stardust/scripts/preflight-runtime.mjs  (master Setup step 10 — skills/stardust/reference/runtime-preflight.md § Resolution chain)');
   process.exit(2);
 }
 

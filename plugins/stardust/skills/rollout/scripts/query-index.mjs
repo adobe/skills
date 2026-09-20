@@ -28,9 +28,11 @@
  *   0  registered (config route, or repo yaml honoured) AND the read-back found the sample
  *   1  read-back failed with a published sample after the job settled (rows 0 / sample absent) — a real FAIL ·
  *      also: the config POST was rejected with a non-auth 4xx (the yaml is not accepted; nothing indexed) — definitive
- *   2  usage (incl. --timeout / --poll-ms not a positive number — checked before any request) / missing token / unreadable yaml /
- *      the remote query.yaml carries index names the file lacks and --replace is absent (nothing posted — fix the file or add the owner row)
- *   3  config route denied AND the repo yaml is not honoured, or the bulk index POST itself answers 401/403
+ *   2  usage (incl. --timeout / --poll-ms not a positive number, or a value flag followed by another flag — checked
+ *      before any request) / missing token / unreadable yaml / `REFUSED`: the remote query.yaml carries index names
+ *      the file lacks and --replace is absent (nothing posted, nothing written — add the names to the file or record
+ *      the owner's --replace row and re-run; the rows keep their status: an incomplete file, not a denial)
+ *   3  `DENIED`: config route denied AND the repo yaml is not honoured, or the bulk index POST itself answers 401/403
  *      (INDEX-CONFIG.md written; owner decision) — the ONE exit-3 class: listings.md maps it to scaffolded-awaiting-owner
  *   4  no verdict — no published in-scope page (preview-only run), admin API unreachable (status 0 / 5xx on any
  *      admin call), or the job never settled; never a FAIL
@@ -116,8 +118,15 @@ export function exitCodeFor({ refused = false, unreachable = false, hasSample = 
 }
 
 /* --------------------------------------------------------------------- cli --- */
-// a value flag followed by another flag (or nothing) is a usage error, never a silent fallback (`--sample --replace` picked the default sample)
-function arg(name, fallback = null) { const i = process.argv.indexOf(`--${name}`); if (i === -1) return fallback; const v = process.argv[i + 1]; if (v === undefined || v.startsWith('--')) { console.error(`${TAG} --${name} needs a value (got ${v === undefined ? 'nothing' : v})`); process.exit(2); } return v; }
+class UsageError extends Error {}
+/** Value flag: absent → fallback; present with a following `--flag` or nothing → usage (never the fallback silently). */
+function arg(name, fallback = null) {
+  const i = process.argv.indexOf(`--${name}`);
+  if (i === -1) return fallback;
+  const v = process.argv[i + 1];
+  if (v === undefined || v.startsWith('--')) throw new UsageError(`--${name} needs a value (got ${v === undefined ? 'nothing' : v}); --help lists the flags`);
+  return v;
+}
 const has = (f) => process.argv.includes(`--${f}`);
 function resolveToken(name) {
   let v = process.env[name];
@@ -155,7 +164,7 @@ function indexConfigMd({ org, site, admin, indices, yaml, readback }) {
 
 async function main() {
   if (has('help')) {
-    console.log('usage: node skills/rollout/scripts/query-index.mjs --org <org> --site <site> --yaml helix-query.yaml [--ref main] [--origin <url>] [--sample </path>] [--pages <coverage/pages.json>] [--replace] [--check] [--out stardust/dynamics] [--admin https://admin.hlx.page] [--timeout 600] [--poll-ms 5000] [--token-env DA_TOKEN]\n  exit 0 registered + sample read back · 1 read-back failed or config POST rejected with a non-auth 4xx (FAIL) · 2 usage (incl. non-numeric --timeout/--poll-ms, remote names absent from the file without --replace) / token · 3 config denied and repo yaml not honoured (owner decision; the one exit-3 class) · 4 no verdict (unreachable, 5xx, job not settled, no published sample)');
+    console.log('usage: node skills/rollout/scripts/query-index.mjs --org <org> --site <site> --yaml helix-query.yaml [--ref main] [--origin <url>] [--sample </path>] [--pages <coverage/pages.json>] [--replace] [--check] [--out stardust/dynamics] [--admin https://admin.hlx.page] [--timeout 600] [--poll-ms 5000] [--token-env DA_TOKEN]\n  exit 0 registered + sample read back · 1 read-back failed or config POST rejected with a non-auth 4xx (FAIL) · 2 usage (incl. non-numeric --timeout/--poll-ms, a value flag followed by a flag) / token / REFUSED (remote names absent from the file without --replace; nothing posted) · 3 DENIED (config or index POST 401/403, yaml not honoured → INDEX-CONFIG.md; owner decision — the one exit-3 class) · 4 no verdict (unreachable, 5xx, job not settled, no published sample)');
     return 0;
   }
   // every value flag is parsed BEFORE the first request: a swallowed flag is exit 2 here, not a default picked mid-run
@@ -178,6 +187,7 @@ async function main() {
   const num = (name, fallback) => { const raw = arg(name, fallback); const n = Number(raw); return Number.isFinite(n) && n > 0 ? n : (console.error(`${TAG} --${name} must be a positive number, got "${raw}"`), null); };
   const timeoutS = num('timeout', 600); const pollMs = num('poll-ms', 5000);
   if (timeoutS === null || pollMs === null) return 2;
+  const pagesFile = arg('pages', 'stardust/rollout/coverage/pages.json'); const sampleArg = arg('sample'); // every value flag is read before the first request
   const timeoutMs = timeoutS * 1000;
   const auth = { authorization: `Bearer ${token}` };
   const configUrl = `${admin}/config/${org}/sites/${site}/content/query.yaml`;
@@ -199,10 +209,9 @@ async function main() {
   if (CHECK) { console.log(`${TAG} --check: ${configRoute}; file declares ${indices.map((x) => `${x.name} → ${x.target}`).join(', ')}. No POST, no writes.`); return 0; }
 
   // 2. sample — before any write: without a published in-scope page there is no verdict to earn
-  const pagesFile = arg('pages', 'stardust/rollout/coverage/pages.json');
   const pagesDoc = readJSON(pagesFile, null);
   const allIncludes = indices.flatMap((x) => x.include); const allExcludes = indices.flatMap((x) => x.exclude);
-  const sample = arg('sample') || pickSample((pagesDoc && pagesDoc.pages) || [], allIncludes, allExcludes);
+  const sample = sampleArg || pickSample((pagesDoc && pagesDoc.pages) || [], allIncludes, allExcludes);
   const status = (extra) => ({ _provenance: { writtenBy: 'stardust:rollout query-index.mjs', writtenAt: at, org, site, ref, admin, origin, yaml: yamlPath }, ...extra, at });
   if (!sample) {
     console.error(`${TAG} no verdict: no published (verified|deployed) page in ${pagesFile} matches an index include glob and no --sample given — the index builds from the published tree; re-run after the --publish run. Nothing posted.`);
@@ -227,10 +236,10 @@ async function main() {
   // 4. one bulk index job, polled
   const started = await call(`${admin}/index/${org}/${site}/${ref}/*`, { method: 'POST', headers: auth });
   if (started.status === 401 || started.status === 403) {
-    // a denial on the index job is the same owner decision as a denied config route: INDEX-CONFIG.md for an org admin, exit 3
+    // a denial on the index job is the same owner decision as a denied config route (not "no verdict": the token cannot drive the index): INDEX-CONFIG.md for an org admin, exit 3
     const file = resolvePath(OUT, '..', 'rollout', 'INDEX-CONFIG.md');
     writeText(file, indexConfigMd({ org, site, admin, indices, yaml, readback: `bulk index POST denied (HTTP ${started.status}) for ${tokenEnv} — nothing indexed` }));
-    writeJSON(join(OUT, 'index-status.json'), status({ registered: 'denied', verdict: 'denied', reason: `bulk index POST HTTP ${started.status}`, indices: indices.map((x) => ({ name: x.name, target: x.target, total: null, sampleFound: null, fields: [] })), job: null, sample, exit: 3 }));
+    writeJSON(join(OUT, 'index-status.json'), status({ registered: 'denied', verdict: 'index-denied', reason: `bulk index POST HTTP ${started.status}`, indices: indices.map((x) => ({ name: x.name, target: x.target, total: null, sampleFound: null, fields: [] })), job: null, sample, exit: 3 }));
     console.error(`${TAG} bulk index POST DENIED (HTTP ${started.status} for ${tokenEnv}) → ${file} written for an org admin; index-backed rows become scaffolded-awaiting-owner (exit 3)`);
     return 3;
   }
@@ -289,4 +298,4 @@ async function main() {
 
 // run only as the entry script — importing the module (tests) runs nothing
 const entry = process.argv[1] ? pathToFileURL(resolvePath(process.argv[1])).href : null;
-if (entry === import.meta.url) main().then((code) => { process.exitCode = code; }, (e) => { console.error(`${TAG} fatal: ${e.message}`); process.exitCode = 4; });
+if (entry === import.meta.url) main().then((code) => { process.exitCode = code; }, (e) => { console.error(`${TAG} ${e instanceof UsageError ? 'usage' : 'fatal'}: ${e.message}`); process.exitCode = e instanceof UsageError ? 2 : 4; });

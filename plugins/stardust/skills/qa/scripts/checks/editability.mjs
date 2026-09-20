@@ -21,12 +21,11 @@
  * Contract: deploy reference/block-js-scaffold.md § Experience Workspace editability contract (EW1–EW10).
  */
 import {
-  loadPlaywright, finding, pageUrl, pMap, arg, withNavSlot, getFetchLimiter, configureFetch, noteThrottled, noteRetry,
+  loadPlaywright, finding, pageUrl, pMap, arg, withNavSlot, getFetchLimiter, configureFetch, browserSlot, noteThrottled, noteRetry,
 } from '../lib.mjs';
 import {
   probeUrl, aggregate, readBlockExemptions, parseExemptList,
 } from '../../../deploy/scripts/ew-editability-probe.mjs';
-import { acquire } from '../../../stardust/scripts/browser-lock.mjs';
 
 const VIEWPORT_WIDTH = 1440;
 const SETTLE_MS = 1500;
@@ -40,8 +39,8 @@ export async function run(ctx) {
   const { base, inventory, opts } = ctx;
   const findings = [];
   const { chromium } = await loadPlaywright();
-  const slot = await acquire({ script: 'qa-editability' }).catch((e) => { if (e.code === 124) { console.error(e.message); process.exit(124); } throw e; }); // fan-out.md § Machine budget — 124 = no slot, no verdict, never an error row
-  const browser = await chromium.launch(); browser.on('disconnected', () => slot?.release());
+  await browserSlot('qa-editability').catch((e) => { if (e.code === 124) { console.error(e.message); process.exit(124); } throw e; }); // fan-out.md § Machine budget — the process's slot; 124 = no slot, no verdict, never an error row
+  const browser = await chromium.launch();
   const cliExempt = parseExemptList(opts.ewExempt || arg('ew-exempt', ''));
   const blocksDir = opts.blocksDir || arg('blocks-dir', null);
 

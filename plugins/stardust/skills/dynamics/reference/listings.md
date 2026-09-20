@@ -44,14 +44,18 @@ contract` records it; `helix-query.yaml` at the EDS project root is authored fro
   the script header; `stardust/dynamics/index-status.json` records `registered: config | repo-yaml | denied`.
   **Registration gate** — *condition:* rollout D2 may not mark an `index-backed` row done until the
   script exits 0; `dynamics-check.mjs --gate` blocks a built index-backed row while `index-status.json`
-  is missing or `denied`. *Escape:* honest downgrade, never a skip — exit 3 turns the rows
-  `scaffolded-awaiting-owner` with the decision named (an org admin registers `query.yaml` per
-  `stardust/rollout/INDEX-CONFIG.md`); exit 4 leaves the rows `interim` with `unverified: preview-only`
+  is missing or `denied`. *Escape:* honest downgrade, never a skip — exit 3 is the one owner class,
+  `DENIED` on stderr (config route or bulk-index POST 401/403, repo yaml not honoured;
+  `index-status.json` `registered: denied`): the rows turn `scaffolded-awaiting-owner` with the
+  decision named (an org admin registers `query.yaml` per `stardust/rollout/INDEX-CONFIG.md`).
+  `REFUSED` is exit 2, not a denial (the remote `query.yaml` carries index names the file lacks, no
+  `--replace`): it posts and writes nothing — add the names to the file or record the owner's
+  `--replace` row and re-run, the rows keep their status; exit 4 leaves the rows `interim` with `unverified: preview-only`
   until a publish run; the dry run is the check mode above; no skip-readback option exists.
   *Hands-off:* one config GET, never re-probed; on a refusal the repo yaml, bulk index and read-back
   proceed automatically; the replace option is never applied without an owner row; exit 4 is the
   expected outcome of a preview-only hands-off run and is not a blocker — the read-back condition is
-  the same in every mode. *Eval:* `evals/lint/query-index-smoke.mjs` and `scripts/test/gate.test.mjs`.
+  the same in every mode. *Eval:* `evals/lint/query-index-smoke.mjs`, `scripts/test/query-index-cli.test.mjs` (value-flag guard, index-POST denial) and `scripts/test/gate.test.mjs`.
 - Metadata → `<meta>`: `Tags` renders as one `<meta property="article:tag">` per tag (not
   `name="tags"`); a multi-valued property needs `values:` in its index definition; `PublishDate` →
   `publishdate` (§ What a row can carry).

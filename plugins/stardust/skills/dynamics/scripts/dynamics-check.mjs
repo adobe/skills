@@ -40,8 +40,10 @@
  *   listing-rows   { path*, block*, index?, minRows? }             authored rows of .<block> in <path>.plain.html (heading / label-list rows excluded) > 0,
  *                                                                  and ≥ min(index first-page count, minRows|12) when an index URL is given
  *   click-control  { path*, trigger*, observe*: scrollLeft|aria-expanded|aria-selected|hidden|open|class|visible:<sel>, expect? }
- *                                                                  the control is clicked once (lib.mjs driveControl, shared with deploy qa-gate's control
- *                                                                  pass); the named observable must change (to `expect` when given); a disabled / zero-box
+ *                                                                  the control is clicked once (lib.mjs driveControl, the one helper every control drive shares —
+ *                                                                  deploy qa-gate's control pass too); the named observable must change (to `expect` when given)
+ *                                                                  within 600 ms; an absent trigger or a pageerror during the drive is a FAIL naming the reason
+ *                                                                  (a chevron that advances nothing is the defect this exists for); a disabled / zero-box
  *                                                                  control is SKIP, not FAIL. Fails a replay like any type; NOT a gate() condition (rule 8)
  * Every check also records the third-party request statuses it observed, so a
  * probe-induced failure is distinguishable from a vendor restriction.
@@ -110,11 +112,13 @@ const RUNNERS = {
     return { pass: !!d && okH && okW && closed !== false, detail: d ? `dialog ${d.width}px · heading "${d.heading}" · ${d.fields} fields${d.iframe ? ' · iframe' : ''} · Escape closes: ${closed}` : 'no dialog opened', thirdParty };
   },
   async 'click-control'(c, { ctx, origin }) {
-    const { page, thirdParty } = await openPage(ctx, origin, c.path);
+    // flows, not presence: the control the parity row names must move its observable on one click
+    const { page, thirdParty, errors } = await openPage(ctx, origin, c.path);
     const d = await driveControl(page, c.trigger, { observe: c.observe, expect: c.expect });
     await page.close();
     if (!d.found) return { pass: false, detail: `control ${c.trigger} not on the page`, thirdParty };
     if (d.skipped) return { pass: true, detail: `SKIP control ${d.label} (${d.skipped})`, thirdParty };
+    if (errors.length) return { pass: false, detail: `control ${d.label}: ${errors.length} pageerror(s) during the drive — ${errors[0]}`, thirdParty };
     return { pass: d.changed, detail: d.changed ? `control ${d.label}: ${d.by} ${JSON.stringify(d.before)} → ${JSON.stringify(d.after)}` : `control ${d.label} in block ${d.block}: no observable changed (${c.observe}${c.expect !== undefined ? ` → ${c.expect}` : ''})`, thirdParty };
   },
   async 'search-query'(c, { ctx, origin }) {

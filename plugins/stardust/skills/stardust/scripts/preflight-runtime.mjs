@@ -11,7 +11,9 @@
  *      when any of the three fails to resolve from it. Node's parent walk then
  *      resolves `stardust/node_modules` from the project script copies AND from
  *      `stardust/.work/<skill>/probes/`; the EDS repo's own `npm i` can never
- *      prune it. `<root>/package.json` is never written.
+ *      prune it. A package reachable only through the parent walk
+ *      (`<root>/node_modules`, a past `--no-save` install) is `missing`, not
+ *      `ok` — the next EDS `npm i` prunes it. `<root>/package.json` is never written.
  *   2. Chromium: the resolved Playwright's `chromium.executablePath()` exists,
  *      else `playwright install chromium` (skipped under --no-install).
  *   3. `stardust/.work/probes/` (+ README) — ad-hoc probes live here, not /tmp.
@@ -42,9 +44,9 @@
  * · 2 usage / I/O error, including a --root (or cwd) with no stardust/ dir.
  * Zero requests to the source site: npm registry and the Playwright CDN only.
  */
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { dirname, join, resolve, delimiter } from 'node:path';
+import { dirname, join, resolve, delimiter, sep } from 'node:path';
 import { homedir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -55,7 +57,12 @@ const PROBES_README = 'Ad-hoc Playwright / pngjs probe scripts and their output 
 
 const args = process.argv.slice(2);
 const flag = (n) => args.includes(`--${n}`);
-const opt = (n) => { const i = args.indexOf(`--${n}`); return i >= 0 ? args[i + 1] : undefined; };
+const opt = (n) => { // a value flag never swallows the next flag (`--root --json` is usage, not a root named --json)
+  const i = args.indexOf(`--${n}`); if (i < 0) return undefined;
+  const v = args[i + 1];
+  if (v !== undefined && v.startsWith('--')) { console.error(`preflight-runtime: --${n} needs a value, got ${v} (--help)`); process.exit(2); }
+  return v;
+};
 if (flag('help')) {
   const text = readFileSync(new URL(import.meta.url), 'utf8').match(/\/\*\*([\s\S]*?)\*\//)[1].split('\n').map((l) => l.replace(/^\s*\* ?/, '')).join('\n').trim();
   console.log(text); process.exit(0);
@@ -84,14 +91,18 @@ const envPath = join(sd, '.work', 'env.json');
 function readJson(p) { try { return JSON.parse(readFileSync(p, 'utf8')); } catch { return null; } }
 function writeJson(p, obj) { mkdirSync(dirname(p), { recursive: true }); writeFileSync(p, `${JSON.stringify(obj, null, 2)}\n`); }
 
-/** Version of <pkg> as resolvable from <dir>/package.json, or null. */
-export function resolveDep(dir, pkg) {
+const real = (p) => { try { return realpathSync(p); } catch { return p; } };
+/** Version of <pkg> as resolvable from <dir>/package.json, or null. With `under` (a node_modules dir) only a
+ *  package installed BELOW it counts: Node's parent walk from stardust/package.json also reaches
+ *  <root>/node_modules, and the EDS repo's own `npm i` prunes whatever its package.json did not declare —
+ *  the failure class this preflight exists to remove, so such a hit is `missing`, never `ok`. */
+export function resolveDep(dir, pkg, { under = null } = {}) {
   try {
     const req = createRequire(join(dir, 'package.json'));
     let p = dirname(req.resolve(pkg));
     while (p !== dirname(p)) {
       const pj = readJson(join(p, 'package.json'));
-      if (pj && pj.name === pkg) return { version: pj.version ?? 'unknown', dir: p };
+      if (pj && pj.name === pkg) return !under || real(p).startsWith(`${real(under)}${sep}`) ? { version: pj.version ?? 'unknown', dir: p } : null;
       p = dirname(p);
     }
   } catch { /* unresolved */ }
@@ -136,7 +147,7 @@ let changed = !existsSync(pjPath);
 for (const d of DEPS) if (!pj.devDependencies[d]) { pj.devDependencies[d] = 'latest'; changed = true; }
 if (changed && !noInstall) writeJson(pjPath, pj); // --no-install writes nothing tracked
 
-let deps = Object.fromEntries(DEPS.map((d) => [d, resolveDep(sd, d)]));
+let deps = Object.fromEntries(DEPS.map((d) => [d, resolveDep(sd, d, { under: join(sd, 'node_modules') })]));
 const missingDeps = () => DEPS.filter((d) => !deps[d]);
 const npmCmd = `npm i --prefix ${sd} --no-audit --no-fund`;
 const selfCmd = `node ${fileURLToPath(import.meta.url)} --root ${root}`; // the full preflight, for --no-install callers
@@ -144,7 +155,7 @@ if (missingDeps().length && !noInstall) {
   console.log(`preflight-runtime: installing ${missingDeps().join(', ')} → ${join(sd, 'node_modules')}`);
   const r = spawnSync('npm', ['i', '--prefix', sd, '--no-audit', '--no-fund'], { stdio: ['ignore', 'ignore', 'inherit'] });
   if (r.status !== 0) console.error(`preflight-runtime: npm exited ${r.status}`);
-  deps = Object.fromEntries(DEPS.map((d) => [d, resolveDep(sd, d)]));
+  deps = Object.fromEntries(DEPS.map((d) => [d, resolveDep(sd, d, { under: join(sd, 'node_modules') })]));
 }
 if (missingDeps().length) missing.push(`missing: ${missingDeps().join(', ')} — run: ${noInstall ? selfCmd : npmCmd}`);
 if (!noInstall && existsSync(join(sd, 'node_modules')) && !existsSync(join(sd, 'node_modules', '.gitignore'))) writeFileSync(join(sd, 'node_modules', '.gitignore'), '*\n');

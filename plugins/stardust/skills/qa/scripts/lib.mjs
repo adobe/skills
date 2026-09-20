@@ -356,6 +356,28 @@ export function applyAllowlist(findings, entries) {
   return findings;
 }
 
+/* ---------------------------------------------------------- browser slot -- */
+/**
+ * The process's machine-wide browser slot (skills/stardust/reference/fan-out.md
+ * § Machine budget): ONE per qa run however many checks launch a browser — never
+ * per check, per launch or per context — released on process exit. browser-lock.mjs
+ * is resolved like the other siblings (plugin layout, STARDUST_SKILLS_DIR, flat
+ * copy); absent → one WARN line and the sweep runs unlocked. Rejects with
+ * { code: 124 } when no slot frees up: the caller exits 124 — no report, no verdict.
+ */
+let lockWarned = false;
+export async function browserSlot(script = 'qa') {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const tried = [join(here, '..', '..', 'stardust', 'scripts', 'browser-lock.mjs'), process.env.STARDUST_SKILLS_DIR ? join(process.env.STARDUST_SKILLS_DIR, 'stardust', 'scripts', 'browser-lock.mjs') : null, join(here, '..', 'stardust', 'browser-lock.mjs')].filter(Boolean);
+  const hit = tried.find((f) => existsSync(f));
+  if (!hit) {
+    if (!lockWarned) { lockWarned = true; console.error(`[qa] WARN browser-lock.mjs not found (tried ${tried.join(', ')}) — browser checks run without a machine slot; copy skills/stardust/scripts/ as a set (harness-permissions.md § Two classes)`); }
+    return null;
+  }
+  const lock = await import(pathToFileURL(hit).href);
+  return lock.acquireProcess ? lock.acquireProcess({ script }) : null;
+}
+
 /* ------------------------------------------------------------ playwright -- */
 
 /**
@@ -364,6 +386,15 @@ export function applyAllowlist(findings, entries) {
  */
 export async function loadPlaywright() {
   const normalize = (mod) => (mod.chromium ? mod : (mod.default?.chromium ? mod.default : null));
+  // the resolution chain (skills/stardust/scripts/lib/resolve.mjs — runtime-preflight.md § Resolution chain):
+  // plugin layout, then a project copy made as a set (harness-permissions.md § Two classes); a miss at every
+  // link throws its one preflight line (exit 2 in the caller, no verdict)
+  for (const c of ['../../stardust/scripts/lib/resolve.mjs', '../stardust/lib/resolve.mjs']) {
+    let chain = null;
+    try { chain = await import(new URL(c, import.meta.url)); } catch (e) { if (e.code !== 'ERR_MODULE_NOT_FOUND') throw e; }
+    if (chain) return normalize(await chain.resolveDep('playwright', { from: import.meta.url }));
+  }
+  // a legacy copy without lib/resolve.mjs beside it: the inline links
   for (const base of [join(process.cwd(), 'package.json'), join(process.cwd(), 'stardust', 'package.json')]) { // cwd, then stardust/node_modules (preflight-runtime.mjs)
     try { const mod = normalize(await import(pathToFileURL(createRequire(base).resolve('playwright')).href)); if (mod) return mod; } catch { /* next link */ }
   }
@@ -371,7 +402,7 @@ export async function loadPlaywright() {
     const mod = normalize(await import('playwright'));
     if (mod) return mod;
   } catch { /* fall through */ }
-  throw new Error('playwright not found — run node skills/stardust/scripts/preflight-runtime.mjs (master § Setup step 9); browser checks need it.');
+  throw new Error('playwright not found — run node skills/stardust/scripts/preflight-runtime.mjs (master § Setup step 10); browser checks need it.');
 }
 
 /* ------------------------------------------------------------- inventory -- */

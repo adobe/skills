@@ -437,8 +437,8 @@ integrates; every runner also runs standalone with `node <path>`:
   == file → POST → job → rows → exit 0 with the yaml POSTed whole; config 403 →
   repo-yaml fallback, one loud line; 403 + `total: 0` → exit 3 + `INDEX-CONFIG.md`;
   sample absent after the job → exit 1; no published page → exit 4 (no
-  verdict), nothing posted; remote index the file lacks → exit 3 unless
-  `--replace`; `--timeout abc` → exit 2 before any request; config POST 400 →
+  verdict), nothing posted; remote index the file lacks → exit 2 (REFUSED; 3 is
+  DENIED only) unless `--replace`; `--timeout abc` → exit 2 before any request; config POST 400 →
   exit 1 (definitive) and `index-status.json` records it.
 - `replica-capture-fixtures.mjs` — static contracts always (`node --check`,
   `bash -n`, exit-5 / integer-scroll / opacity-hide / route.fallback greps,

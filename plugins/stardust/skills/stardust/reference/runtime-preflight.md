@@ -52,7 +52,10 @@ An **instrument**, not a quality gate (`harness-permissions.md` § Two
 classes): it changes no verdict, no threshold, no gate round.
 
 - **Condition → blocks.** Exit 1 with one actionable line per item when
-  a dependency does not resolve after the install, Chromium is missing,
+  a dependency does not resolve from `stardust/node_modules` after the
+  install (a copy reachable only through Node's parent walk from
+  `<root>/node_modules` — a past `--no-save` install — is `missing`: the
+  EDS repo's next `npm i` prunes it), Chromium is missing,
   or lint is unavailable in a repo that declares it (`env.json.preflight`
   is then `partial`; the lines are also `env.json.missing`, and go to
   stderr under `--json` — the state report's `Preflight:` line copies
@@ -119,6 +122,17 @@ the plugin tree; `siblingScript(skill, file)` tries the plugin layout,
 `$STARDUST_SKILLS_DIR/<skill>/scripts/<file>`, then the flat copy layout
 (`../<skill>/<file>`), and exits 2 naming the three when none resolves. A
 `check-crashed` finding in qa stays an `error` row, never a pass.
+
+Through the helper today: `dynamics/scripts/lib.mjs` and
+`qa/scripts/lib.mjs` (`loadPlaywright()`), `extract/scripts/crawl.mjs`
+(lazily, from `stardust/scripts/stardust/lib/` in the flat or the nested
+copy layout — a lone copy falls back to the bare import). Still on their own imports, each to
+convert in its own skill's change: replica, diff, reskin and deploy
+scripts and the migrate / prototype fixtures — `evals/lint/resolve-chain-smoke.mjs`
+`ALLOW` is the ledger and must shrink. Until then a project copy stays
+runnable only when copied **as a set** (`harness-permissions.md` § Two
+classes): the skill's `scripts/` plus `skills/stardust/scripts/` (with
+`lib/`), because the scripts import `../stardust/<x>.mjs` siblings.
 
 ---
 

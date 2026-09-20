@@ -20,9 +20,8 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
-  loadPlaywright, finding, pageUrl, pathSlug, ensureDir, pMap, attachOriginAuth, withNavSlot, retryAfterMs, getFetchLimiter, configureFetch, noteThrottled, noteRetry,
+  loadPlaywright, finding, pageUrl, pathSlug, ensureDir, pMap, attachOriginAuth, withNavSlot, retryAfterMs, getFetchLimiter, configureFetch, browserSlot, noteThrottled, noteRetry,
 } from '../lib.mjs';
-import { acquire } from '../../../stardust/scripts/browser-lock.mjs';
 
 const THROTTLE = (s) => s === 429 || s === 503;
 /**
@@ -155,8 +154,8 @@ export async function run(ctx) {
   const { base, inventory, opts } = ctx;
   const findings = [];
   const { chromium } = await loadPlaywright();
-  const slot = await acquire({ script: 'qa-browse' }).catch((e) => { if (e.code === 124) { console.error(e.message); process.exit(124); } throw e; }); // fan-out.md § Machine budget — 124 = no slot, no verdict, never an error row
-  const browser = await chromium.launch(); browser.on('disconnected', () => slot?.release());
+  await browserSlot('qa-browse').catch((e) => { if (e.code === 124) { console.error(e.message); process.exit(124); } throw e; }); // fan-out.md § Machine budget — the process's slot; 124 = no slot, no verdict, never an error row
+  const browser = await chromium.launch();
   const baselineDir = opts.baselineDir;
   const shotDir = join(opts.outDir, 'shots');
   ensureDir(shotDir);

@@ -648,21 +648,24 @@ export const STEALTH_ARGS = ['--disable-blink-features=AutomationControlled'];
 export const OFFSCREEN_ARGS = ['--window-position=-32000,-32000', '--disable-backgrounding-occluded-windows',
   '--disable-renderer-backgrounding', '--disable-background-timer-throttling'];
 export function tierOf(technique) { return LEGACY_TIER[technique] || (TIERS.indexOf(technique) + 1) || 0; }
+let lockWarned = false;
 /** Launch the browser for one ladder tier. Takes the caller's `chromium` (playwright is never imported here); the only import is the lazily resolved, optional browser lock. */
 export async function launchTier(chromium, tier) {
-  // fan-out.md § Machine budget: one browser slot per launch (skills/stardust/scripts/browser-lock.mjs),
-  // released when the browser disconnects; throws { code: 124 } when no slot frees up (no verdict, never a
-  // FAIL). The lock module is resolved lazily — plugin layout, project copy, STARDUST_SKILLS_DIR — and a
-  // copy shipped without it runs unlocked. STARDUST_BROWSER_SLOTS=0 disables it (gate.sh sets it for its
-  // children after taking the round's slot).
-  let slot = null;
-  const lockPaths = ['../../stardust/scripts/browser-lock.mjs', '../stardust/browser-lock.mjs', process.env.STARDUST_SKILLS_DIR ? `${process.env.STARDUST_SKILLS_DIR}/stardust/scripts/browser-lock.mjs` : null].filter(Boolean);
+  // fan-out.md § Machine budget: ONE browser slot per PROCESS (skills/stardust/scripts/browser-lock.mjs
+  // acquireProcess) however many launches the ladder or a relaunch makes — never per launch or per
+  // context — released when the process exits; throws { code: 124 } when no slot frees up (no verdict,
+  // never a FAIL). The lock module is resolved lazily — plugin layout, the flat and the nested project
+  // copy (harness-permissions.md § Two classes), STARDUST_SKILLS_DIR — and a copy shipped without it (or
+  // with a pre-acquireProcess copy) runs unlocked after ONE WARN naming the paths tried. STARDUST_BROWSER_SLOTS=0
+  // disables it (gate.sh sets it for its children after taking the round's slot).
+  const lockPaths = ['../../stardust/scripts/browser-lock.mjs', './stardust/browser-lock.mjs', '../stardust/browser-lock.mjs', process.env.STARDUST_SKILLS_DIR ? `${process.env.STARDUST_SKILLS_DIR}/stardust/scripts/browser-lock.mjs` : null].filter(Boolean);
+  let locked = false;
   for (const c of lockPaths) {
-    try { const lock = await import(new URL(c, import.meta.url)); slot = await lock.acquire({}); break; }
+    try { const lock = await import(new URL(c, import.meta.url)); if (lock.acquireProcess) await lock.acquireProcess({}); locked = true; break; }
     catch (e) { if (e.code === 'ERR_MODULE_NOT_FOUND') continue; throw e; }
   }
-  const launch = (opts) => chromium.launch(opts)
-    .then((b) => { b.on('disconnected', () => slot?.release()); return b; }, (e) => { slot?.release(); throw e; });
+  if (!locked && !lockWarned) { lockWarned = true; console.error(`[launch] WARN browser-lock.mjs not found (tried ${lockPaths.join(', ')}) — this process launches without a machine slot; copy skills/stardust/scripts/ as a set (harness-permissions.md § Two classes)`); }
+  const launch = (opts) => chromium.launch(opts);
   if (tier <= 1) return launch({ headless: true });
   const stealth = { channel: 'chrome', args: STEALTH_ARGS, ignoreDefaultArgs: ['--enable-automation'] };
   if (tier === 2) return launch({ ...stealth, headless: true });

@@ -30,7 +30,9 @@
  * Exit codes: 0 rendered / dry-printed (detector results printed as `T-xxx: fired|quiet`)
  *   · 2 usage, or _brand-extraction.json missing / unreadable / without _provenance.
  * Exports (evals/fixtures/brand-review.test.mjs): parseArgs, runDetectors, consolidate,
- *   cssVars, renderReview, DETECTOR_IDS — importing runs nothing; main() runs only when
+ *   cssVars, renderReview, DETECTOR_IDS (13 detectors; T-contrast is the contextual 14th card, appended
+ *   after consolidate() from the review's own contrast check, printed as `fired (contextual)`) —
+ *   importing runs nothing; main() runs only when
  *   the file is the entry script.
  */
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
@@ -146,10 +148,10 @@ const assetHref = (localPath, url, outDir) => { if (localPath) { const rel = pat
 
 /** Pure render → { html, tensions, notes }. `pages` / `log` optional; `fontLink` = a <link> the live home page already loads (or null). */
 export function renderReview(brand, pages = [], log = null, { fontLink = null, outDir = 'stardust/current', now = new Date().toISOString() } = {}) {
-  const { vars, notes } = cssVars(brand); const site = brand.site || {}; const t = brand.type || {}; const v = brand.voice || null; const vt = brand.voiceTable || null; const m = brand.motifs || {}; const sp = brand.spacing || {}; const logo = brand.logo || null;
+  const { vars, notes, contrast: c } = cssVars(brand); const site = brand.site || {}; const t = brand.type || {}; const v = brand.voice || null; const vt = brand.voiceTable || null; const m = brand.motifs || {}; const sp = brand.spacing || {}; const logo = brand.logo || null;
   const upper = vt && vt.toneMetrics && vt.toneMetrics.headingsUppercasePercent >= 25;
   const raw = runDetectors(brand, pages); const tensions = consolidate(raw);
-  const { contrast: c } = cssVars(brand); if (c !== null && c < 4.5) tensions.push(card('T-contrast', 'Captured text on background fails WCAG AA', `${c.toFixed(2)}:1 — the review overrides its own body copy to #0f1217 on #ffffff.`, '_brand-extraction.json § palette'));
+  if (c !== null && c < 4.5) tensions.push(card('T-contrast', 'Captured text on background fails WCAG AA', `${c.toFixed(2)}:1 — the review overrides its own body copy to #0f1217 on #ffffff.`, '_brand-extraction.json § palette'));
   const homeSlug = pages.some((p) => p.slug === 'index') ? 'index' : (pages[0] || {}).slug;
   const runs = (log && log.runs) || []; const waits = pages.map((p) => (p._provenance || {})).filter((p) => p.waitMs);
   const avg = waits.length ? Math.round(waits.reduce((k, p) => k + p.waitMs, 0) / waits.length) : null;

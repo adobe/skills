@@ -187,7 +187,7 @@ from the served HTML, per block. Formula, cause classes and fixes: `deploy/refer
 | `ai-readability-low` | warn | strict < 95 or code < 98 — block code adds words the document does not have |
 | `ai-readability-undecided-exclusion` | warn | an excluded block removed words with no complete allowlist decision entry (`exclude`, `reason`, `fallback`, `decision`) — `deploy/reference/ai-readability.md` § 6 |
 | `ai-readability-served-gap` | info | ≥ 40 rendered main words never served — non-rendering crawlers miss them (fragment / index / generated text); evidence names the blocks |
-| `ai-readability-unmeasured` | info | page could not be fetched or rendered for the check (an error, not a throttle) |
+| `ai-readability-unmeasured` | info | page could not be fetched or rendered for the check (an error, not a throttle) — infrastructure state, never a pass: rollout Phase E/H count it as `unmeasured` and refuse the close while any remain |
 | `unmeasured` | info | served fetch or render 429/503 after the paced retries through the per-host limiter — not scored, counted in `report.infra` (§ Cross-cutting) |
 
 ## Cross-cutting
@@ -204,5 +204,11 @@ from the served HTML, per block. Formula, cause classes and fixes: `deploy/refer
   tests: `scripts/test/throttle.test.mjs`, `scripts/test/browse-throttle.test.mjs`,
   `scripts/test/browser-unmeasured.test.mjs` (perf / ai-readability / browse decoration; SKIP + exit 0
   without playwright).
+- A browser check (`browse`, `perf`, `links`, `editability`, `ai-readability`) takes the
+  process's machine-wide browser slot before its first launch — one per `qa.mjs` run,
+  never one per check (`lib.mjs browserSlot()`; `skills/stardust/reference/fan-out.md`
+  § Machine budget). No slot within `STARDUST_BROWSER_WAIT` → the run exits **124**: no
+  report, no verdict, never an `error` row. A project copy without `browser-lock.mjs`
+  beside the scripts runs unlocked and prints one WARN line.
 - Allowlisted findings keep their severity but don't count toward the exit
   code or summary totals; they render greyed-out in report.html.

@@ -407,6 +407,7 @@ excluded folders tracked deletes that line or adds a negation below it.
 | `current/` text: `PRODUCT.md`, `DESIGN.md`, `DESIGN.json`, `_brand-extraction.json`, `_crawl-log.json`, `_dynamics.json`, `brand-review.html`, `pages/*.json`, `pages/*.html` | yes | extract | `pages/*.json` feeds nine skills; the substrate of the pipeline |
 | `current/assets/**` | **no** | extract | 50 MB screenshots rewritten on every extract + source media; `migrate`/`deploy` need it → re-run extract on a clone |
 | `current/brand-sources/*/assets/screenshots/` | **no** | extract | screenshots |
+| `current/layout-clusters.json` | yes | replica (`layout-cluster.mjs`) / migrate | flow-neutral corpus fact — clusters, exemplar, gate status, `coveredBy`; `state.json.pages[].layoutCluster` is stamped from it (`migrate/reference/fidelity-tiers.md` § Sibling variance probe) |
 | `prototypes/**` incl. `assets/` | yes | prototype / replica | approved design; `assets/` is source media, not screenshots |
 | `validation/**` | **no** | master / prototype | clean-pass screenshots |
 | `replica/inconsistency-register.md`, `progress.json`, `motion/`, `capture/` (incl. `capture/lift/` — `lift.mjs` values per width, `capture/css/` — `--save-css` sheets) | yes | replica | register, ledger, runtime CSS/DOM captures (2 MB), the lift evidence |
@@ -420,7 +421,7 @@ excluded folders tracked deletes that line or adds a negation below it.
 | `rollout/qa/**` | **no** | rollout | screenshots of the delivered site |
 | `qa/allowlist.json`, `qa/report.*`, `qa/inventory.json`, `qa/dynamics-report.*`, `qa/ai-readability.json` | yes | qa | judgement and last report |
 | `qa/shots/**`, `qa/baselines/**` | **no** | qa | screenshots; baselines are per machine, a clone re-creates them |
-| `scripts/**` | yes (legacy) | extract / reskin / replica | byte copies of plugin scripts from skills not yet converted to the resolution chain (`runtime-preflight.md` § Resolution chain); a converted skill runs from `skills/<skill>/scripts/` and creates no copy |
+| `scripts/**` | yes (legacy) | extract / reskin / replica | byte copies of plugin scripts from skills not yet converted to the resolution chain (`runtime-preflight.md` § Resolution chain — converted so far: dynamics, qa; `crawl.mjs` uses the chain when copied as a set), made as a set with `skills/stardust/scripts/` → `scripts/stardust/` (`harness-permissions.md` § Two classes); a converted skill runs from `skills/<skill>/scripts/` and creates no copy |
 | `_pre-publish-backup/**`, `_palette-pick.html`, `*.generated.*` drafts | backup yes; picker no | prototype / direct / dynamics | |
 | `.work/live-<host>.lock` | **never** | extract / any live tool | per-host live lock (pid liveness); one live tool per origin at a time — `state-machine.md` § Concurrency |
 | `.work/env.json` | **no** | `preflight-runtime.mjs` + `preflight-transports.mjs` (merged) | the environment record the state report's `Preflight:` line reads — `runtime-preflight.md` § Files |

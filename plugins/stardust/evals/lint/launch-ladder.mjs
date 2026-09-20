@@ -15,7 +15,11 @@
 //     transitional; instruments use launchTier / launchLadder) — a temporary
 //     allowlist names the scripts still to be routed, and must shrink;
 //   * TIERS, STEALTH_ARGS, OFFSCREEN_ARGS and the launchTier function body are
-//     identical in the two files (modulo `export` and whitespace);
+//     identical in the two files (modulo `export` and whitespace) — the body is
+//     where the machine-wide browser slot is taken, ONCE per process
+//     (browser-lock.mjs acquireProcess; fan-out.md § Machine budget), so a
+//     relaunch up the ladder or a crawl's relaunch never takes a second slot
+//     (evals/lint/browser-lock-smoke.mjs case (h) pins it for both files);
 //   * the consent-label tables (ACCEPT_LABELS, DECLINE_LABELS, SETTINGS_LABELS,
 //     CLOSE_LABELS) and the DOM helpers pageFindLabelled / pageClickInShadow
 //     are identical too — live-session.mjs is the source of truth, crawl.mjs

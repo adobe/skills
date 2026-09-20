@@ -16,7 +16,7 @@
  */
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -27,8 +27,8 @@ const run = (root, ...extra) => spawnSync(process.execPath, [CLI, '--root', root
 const json = (p) => JSON.parse(readFileSync(p, 'utf8'));
 const dir = mkdtempSync(join(tmpdir(), 'preflight-runtime-'));
 
-function stubDeps(root) {
-  const nm = join(root, 'stardust', 'node_modules');
+function stubDeps(root, where = join('stardust', 'node_modules')) {
+  const nm = join(root, where);
   const exe = join(root, 'fake-chromium');
   writeFileSync(exe, '');
   for (const [name, version] of [['playwright', '1.99.0'], ['pixelmatch', '6.0.0'], ['pngjs', '7.0.0']]) {
@@ -71,6 +71,21 @@ try {
   assert.ok(!existsSync(join(f, 'stardust')), 'nothing created under a typo\'d --root');
   r = run(f, '--skip');
   assert.equal(r.status, 2, '--skip cannot seed a project either'); assert.ok(!existsSync(join(f, 'stardust')));
+
+  // (a1) a value flag followed by a flag is usage, decided before anything is read or written
+  r = spawnSync(process.execPath, [CLI, '--root', '--no-install'], { encoding: 'utf8', cwd: a });
+  assert.equal(r.status, 2, `--root --no-install exits 2\n${r.stdout}${r.stderr}`); assert.match(r.stderr, /--root needs a value, got --no-install/);
+
+  // (a2) the parent-walk leak: the three packages under <root>/node_modules ONLY (a past `--no-save` install)
+  //      resolve from stardust/package.json through Node's parent walk, but do not count — they are what the
+  //      EDS repo's next `npm i` prunes. --no-install must report them missing, never ok.
+  const a2 = join(dir, 'a2');
+  mkdirSync(join(a2, 'stardust'), { recursive: true });
+  stubDeps(a2, 'node_modules');
+  r = run(a2, '--no-install');
+  assert.equal(r.status, 1, `root-only node_modules exits 1 (parent-walk hit is not an install)\n${r.stdout}${r.stderr}`);
+  assert.match(r.stdout, /^missing: playwright, pixelmatch, pngjs — run: /m, 'the three root-only packages are reported missing');
+  assert.deepEqual(json(join(a2, 'stardust', '.work', 'env.json')).deps, { playwright: null, pixelmatch: null, pngjs: null }, 'env.json.deps records none of them');
 
   // (b) stubbed deps → ok; (c) idempotent
   const b = join(dir, 'b');
@@ -140,6 +155,12 @@ try {
   assert.match(r.stdout, /Exit codes: 0/);
   r = run(a, '--bogus');
   assert.equal(r.status, 2, 'unknown flag exits 2');
+  // (p) pointer pin: the runtime preflight is master Setup step 10 (step 9 is the origin probe) — no skill
+  //     file or script error string may send an agent to step 9 for preflight-runtime.mjs
+  const SK = join(here, '..', '..', '..');
+  const stale = [];
+  (function walk(d) { for (const e of readdirSync(d).sort()) { const p = join(d, e); if (statSync(p).isDirectory()) { if (e !== 'node_modules') walk(p); } else if (/\.(md|mjs)$/.test(e) && p !== fileURLToPath(import.meta.url)) { readFileSync(p, 'utf8').split('\n').forEach((l, i) => { if (/preflight-runtime|runtime preflight/i.test(l) && /Setup step 9\b|§ Setup step 9\b/.test(l)) stale.push(`${p.slice(SK.length + 1)}:${i + 1}`); }); } } })(SK);
+  assert.deepEqual(stale, [], 'runtime-preflight pointers name Setup step 10, never step 9');
   console.log('preflight-runtime test: ok');
 } finally {
   rmSync(dir, { recursive: true, force: true });
