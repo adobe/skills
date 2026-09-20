@@ -91,7 +91,7 @@ const bareHost = (h) => h.toLowerCase().replace(/^www\./, '').replace(/:\d+$/, '
 export function canonicalPath(p) {
   let s = (p || '').split(/[?#]/)[0].replace(/\/{2,}/g, '/');
   if (!s.startsWith('/')) s = `/${s}`;
-  s = s.replace(/\.html?$/i, '');
+  s = s.replace(/(\.html?)+$/i, ''); // loop-strip: a source that served `/x.html.html` must key as /x
   if (s.length > 1) s = s.replace(/\/+$/, '');
   if (s === '' || s === '/index') s = '/';
   s = s.replace(/\/index$/, '');

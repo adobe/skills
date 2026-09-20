@@ -25,6 +25,8 @@ const CLI = join(here, '..', 'localize-links.mjs');
 // pure: canonicalPath = query/ext/slash/index fold, then the delivery-safe fold
 assert.equal(canonicalPath('/Über_uns.html'), '/uber-uns');
 assert.equal(canonicalPath('/x/index.html'), '/x');
+assert.equal(canonicalPath('/x.html.html'), '/x', 'loop-strip: doubled extension (T27.6)');
+assert.equal(canonicalPath('/x.htm.html?y'), '/x');
 assert.equal(canonicalPath('/'), '/');
 assert.equal(canonicalPath('index.html'), '/');
 assert.equal(canonicalPath('/a/b/'), '/a/b');
