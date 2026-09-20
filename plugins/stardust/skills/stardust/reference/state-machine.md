@@ -214,6 +214,13 @@ invoked directly; `direct` when a zero-movement phrase hands off
 `extract` for audit or uplift): the keys mean "a migration flow was
 chosen", not "this is a migration".
 
+A migration project may also carry `"media": { "policy": "rehost-blocked" |
+"rehost-all" | "keep" }` (after the flow keys) — the answer to the `media`
+decisions row (`decisions.md` § Default rows). Absent means the default
+`rehost-blocked`; `skills/deploy/scripts/rehost-media.mjs` reads it (or
+`--policy`), `rollout/scripts/delivery-lint.mjs --media-policy` mirrors it.
+Written by the owner's answer, never by a script.
+
 **Guards that read it.** `migrate`, `deploy`, `rollout` and (for migration
 asks only) `extract` refuse to run a migration on a project that has
 `state.json` but no `flow`: they print the two-flow table and hand back to

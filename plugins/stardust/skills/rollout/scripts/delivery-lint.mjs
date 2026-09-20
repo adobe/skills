@@ -12,8 +12,14 @@
  * Usage:
  *   node skills/rollout/scripts/delivery-lint.mjs --file <html> [--path </da/path>]
  *        [--type page|fragment|index] [--icons-dir <dir>] [--allow-empty <name,…>]
- *        [--allow-no-h1] [--chrome-docs <nav.html>,<footer.html>,… [--content <dir>]] [--json]
+ *        [--allow-no-h1] [--chrome-docs <nav.html>,<footer.html>,… [--content <dir>]]
+ *        [--source-host <host>[,<host>] [--media-policy rehost-blocked|rehost-all|keep]] [--json]
  * Exit: 0 = clean (no P0/P1), 1 = P0/P1 findings, 2 = bad invocation. --help prints this.
+ *
+ * hotlinked-media P2 (--source-host): an authored <img src> / <video poster> still on the source
+ * host — the ingester hotlinks it (fragile: 403 cross-origin at preview → about:error). Silent
+ * when --media-policy keep is passed (the owner-decided `media` row, stardust/reference/decisions.md);
+ * the action is skills/deploy/scripts/rehost-media.mjs (B7: advisory first).
  *
  * h1: a page needs exactly one <h1> (0 → P0, > 1 → P1). A faithful page whose SOURCE has
  * no h1 is resolved by default with a visually-hidden default-content h1 from title/og:title;
@@ -79,6 +85,9 @@ const ALLOW_EMPTY = new Set((arg('allow-empty', '')).split(',').map((s) => s.tri
 const ALLOW_NO_H1 = process.argv.includes('--allow-no-h1');
 const CHROME_DOCS = (arg('chrome-docs', '')).split(',').map((s) => s.trim()).filter(Boolean);
 const CONTENT_DIR = arg('content', null);
+const SOURCE_HOSTS = (arg('source-host', '')).split(',').map((h) => h.trim().replace(/^https?:\/\//, '').replace(/\/.*$/, '').toLowerCase()).filter(Boolean);
+const MEDIA_POLICY = arg('media-policy', null);
+if (MEDIA_POLICY && !['rehost-blocked', 'rehost-all', 'keep'].includes(MEDIA_POLICY)) { console.error(`delivery-lint: --media-policy must be rehost-blocked | rehost-all | keep (got ${MEDIA_POLICY})`); process.exit(2); }
 if (!FILE) { console.error('delivery-lint: need --file <html>'); process.exit(2); }
 for (const f of CHROME_DOCS) if (!existsSync(f)) { console.error(`delivery-lint: --chrome-docs file not found: ${f}`); process.exit(2); }
 if (CONTENT_DIR && !(existsSync(CONTENT_DIR) && statSync(CONTENT_DIR).isDirectory())) { console.error(`delivery-lint: --content needs an existing directory (got ${CONTENT_DIR})`); process.exit(2); }
@@ -138,6 +147,12 @@ const imgs = [...html.matchAll(/<img\b[^>]*\ssrc="([^"]+)"[^>]*>/gi)].map((m) =>
 if (/about:error/i.test(html)) add('P0', 'about-error', 'about:error present — a broken image rendition shipped');
 for (const src of imgs) {
   if (/^\/img\//i.test(src)) add('P0', 'img-path', `/img/ src will 404 at delivery: ${src.slice(0, 60)}`);
+}
+/* hotlinked-media P2: an authored image still on the source host (T27.5) — silent under --media-policy keep */
+if (SOURCE_HOSTS.length && MEDIA_POLICY !== 'keep') {
+  for (const m of html.matchAll(/<(?:img\b[^>]*\ssrc|video\b[^>]*\sposter)="(https?:\/\/([^/"]+)[^"]*)"/gi)) {
+    if (SOURCE_HOSTS.includes(m[2].toLowerCase())) add('P2', 'hotlinked-media', `authored image still on the source host — run skills/deploy/scripts/rehost-media.mjs (decisions row \`media\`): ${m[1].slice(0, 60)}`);
+  }
 }
 /* cross-origin <img> inside an optimizing block → createOptimizedPicture breaks it */
 for (const blk of OPTIMIZING) {
