@@ -202,6 +202,14 @@ whose harness cases skip when Playwright is unresolvable:
   a flat copy layout and `STARDUST_SKILLS_DIR`; static: every importer of the
   three packages goes through the helper or sits in an ALLOW list that must
   shrink per landed skill (stale entry = finding).
+- `browser-lock-smoke.mjs` — `skills/stardust/scripts/browser-lock.mjs`, the
+  machine-wide browser semaphore (`fan-out.md` § Machine budget) against a
+  temp `--lock-dir`: two slots acquire, a third exits **124** after one
+  `waiting for a slot` line and a `waiting-slot` progress-log append (no
+  verdict, never a FAIL); dead-pid and old-mtime slot files are reaped and
+  re-used; `release` by pid and `--all --stale`; `status --json` holders +
+  orphan-browser census; `STARDUST_BROWSER_SLOTS=0` / `--no-lock` touch
+  nothing.
 - `doc-size.mjs` — byte caps on `SKILL.md` and `reference/*.md`, an
   `## Operator card` heading ahead of the procedure, the always-on total and
   the per-skill delta versus the last release tag; its temporary allowlist

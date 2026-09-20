@@ -33,7 +33,7 @@ metadata:
 | Routing (migration) | `reference/state-machine.md` § Flow keys |
 | Freeform intent | `reference/intent-reasoning.md` § Procedure · `reference/intent-dimensions.md` § Reading a phrase · `reference/impeccable-command-map.md` § Common sequences |
 | Hands-off | `reference/state-machine.md` § Hands-off keys · `reference/decisions.md` § Default rows · `reference/harness-permissions.md` § Privileged-action preflight · `reference/run-status.md` § Long-running steps |
-| Hands-off (delegating) | `reference/fan-out.md` § Scope and type · § Worker contract · § Coordinator contract |
+| Hands-off (delegating) | `reference/fan-out.md` § Scope and type · § Worker contract · § Coordinator contract · § Machine budget |
 | Any image read, batch instrument, phase boundary | `reference/context-hygiene.md` § Image reads · § Runner reports and session hand-off |
 | Per-page state | `reference/state-machine.md` § Page lifecycle states · § Stale flagging (content-aware) |
 | Journal | `reference/journal-format.md` § Entry format · § Reading the journal at session start |
@@ -224,8 +224,8 @@ cap as **wave 1 of a written wave plan** with its stop point; "commits
 land at each phase end without asking — hands-off overrides an
 ask-before-commit preference for this run"; the open owner-only
 decisions (`reference/decisions.md`). The mode removes **waiting**, not
-**validation**: every quality gate runs unchanged — hands-off changes *who answers*, not *what
-must pass*. Every interactive gate auto-resolves:
+**validation**: hands-off changes *who answers*, not *what must pass*.
+Every interactive gate auto-resolves:
 
 | gate | hands-off resolution |
 |---|---|
@@ -252,8 +252,8 @@ Defaults (override only when the invocation says otherwise):
   docs. The coordinator reads a skill's operator card, never
   its body, and before reading any file over 20 KB lists the headings
   and reads only the section the card names. Stall-prone instruments run
-  under their shipped deadline (replica `gate.sh`, `pixel-compare
-  --timeout`), never an agent-authored `sleep N; kill` loop. Worker contract (briefs
+  under their shipped deadline, never an agent-authored `sleep N; kill`
+  loop. Worker contract (briefs
   point at it): `reference/fan-out.md` § Worker contract.
 - **Image reads.** Numbers first, then `review-<label>.png` bands or a
   `sheet-NN.png` sheet (legend `.json`); never a stitched capture whole —
@@ -262,8 +262,8 @@ Defaults (override only when the invocation says otherwise):
   workers by default, the coordinator dispatches and merges —
   `reference/fan-out.md` § Scope and type of delegated agents.
 - **Wait discipline: never park the conversation past the prompt-cache
-  window.** Anything over ~2 minutes (gate round, crawl, batch push,
-  agent) runs in the background and writes a progress file
+  window.** Anything over ~2 minutes runs in the background and writes a
+  progress file
   (`<driver>.progress.json`, `skills/stardust/scripts/progress.mjs read
   <file>`; it ends with one `SUMMARY` line —
   `../deploy/da-deploy-protocol.md` § Delivery pipeline) — never under one
@@ -352,9 +352,10 @@ the current (extracted) state lives under `stardust/current/`. Full
 layout: `reference/artifact-map.md`.
 
 **Write boundary.** Stardust writes to `stardust/`, the impeccable target
-files at the project root, and the EDS project (only via `deploy`,
-`rollout`, `dynamics`). Run-only files (logs, pre-renders, script
-copies, drafts, probes) go under `stardust/.work/<skill>/`; the
+files at the project root, the EDS project (only via `deploy`,
+`rollout`, `dynamics`) and the machine-wide `~/.stardust/locks/`
+(`reference/fan-out.md` § Machine budget). Run-only files (logs,
+pre-renders, drafts, probes) go under `stardust/.work/<skill>/`; the
 root `scripts/` and `qa/` are not stardust's. Anything written elsewhere
 is a bug.
 
@@ -379,7 +380,7 @@ per `reference/journal-format.md`**: append an entry before ending any
 turn that made a non-trivial write, its `Next:` being the phase's
 `status.jsonl` `next` command, a phase-close entry opening with the gate
 table (`reference/handoff-report.md` § Gate table first); append-only,
-project-scoped, at the level of `PRODUCT.md`; its last 3–5 entries are
+project-scoped; its last 3–5 entries are
 read with `state.json` at the start of every session.
 
 **Named deviations.** Any agent-authored crawler, compiler, importer,

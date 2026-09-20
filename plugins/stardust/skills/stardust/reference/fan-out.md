@@ -14,6 +14,7 @@ worker side and what the coordinator does when a worker dies.
 - § Coordinator contract — before dispatching, and on every `failed` / `stalled` / lost-transcript notification.
 - § Progress files — the path convention both sides write and read.
 - § Scope and type of delegated agents — when deciding how many agents, how much each owns and whether it inherits the conversation.
+- § Machine budget — before dispatching browser-launching agents and when a gate round exits 124 on a slot wait.
 
 ## Progress files
 
@@ -86,6 +87,37 @@ A delegated agent, in this order:
   append to a shared file.
 - **Record deaths.** Every failure, stall, respawn and finisher is one
   line in the journal entry for the phase, with the slug.
+
+## Machine budget
+
+One machine runs a bounded number of browsers, whatever the project
+count: `skills/stardust/scripts/browser-lock.mjs` holds one slot file per
+live browser under `~/.stardust/locks/browser/` (the second permitted
+write root, master § Artifacts), `STARDUST_BROWSER_SLOTS` slots (default
+2; an owner setting per machine, never written to `state.json`).
+
+- **Dispatch ≤ slots.** Never launch more concurrent browser-launching
+  agents than there are slots; `browser-lock.mjs status` is the census
+  (holders + orphan browser processes) — run it before a wave, never a
+  raw Chromium process count.
+- **Acquire before the first navigation.** The live-session launch site
+  and `qa` `browse` take the slot around `launchTier`; `gate.sh` rounds
+  inherit it through `stitch-shot`. `crawl` keeps its own per-host budget
+  and takes no slot; deploy's single-page local probes are listed by the
+  census, not budgeted. Waiting adds zero source hits.
+- **A slot wait is a progress-file wait.** The holder prints one line
+  every 30 s and appends `waiting-slot` to `$STARDUST_PROGRESS_LOG`
+  (§ Progress files); after `STARDUST_BROWSER_WAIT` (600 s) it exits
+  **124** — no verdict, re-queue the round (§ Coordinator contract:
+  resume once, then finisher), never a FAIL and never an iteration.
+- **Escape hatch.** `STARDUST_BROWSER_SLOTS=0` disables the lock, any `N`
+  raises it, `--no-lock` per invocation, `release --all --stale` for a
+  wedged directory. Hands-off never raises the budget or bypasses the
+  lock; a machine saturated by a *foreign* holder past ~45 min is a
+  `blocked` line with `owner: "node skills/stardust/scripts/browser-lock.mjs status"`.
+- **Every agent closes its browser and server on exit**; `reap` kills
+  parentless `chrome-headless-shell` processes older than `GATE_REAP_MIN`
+  (the gate.sh reaper, extended) — never a dev server by cwd guess.
 
 ## Scope and type of delegated agents
 
