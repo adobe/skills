@@ -110,6 +110,15 @@
     .card .card-cta { color: var(--color-accent); font-weight: 600; }
     .card .glyph { width: 40px; height: 40px; border-radius: 10px; background: var(--color-bg); display: grid; place-items: center; color: var(--color-accent); font-weight: 700; }
 
+    /* calculator (vendor mount) */
+    .calculator { padding: var(--section-padding) 0; }
+    .calculator .mount { max-width: 760px; margin: 0 auto; padding: var(--spacing-xl); background: var(--color-surface); border: 1px solid var(--color-line); border-radius: var(--radius); }
+    .calc { display: grid; gap: var(--spacing-md); }
+    .calc label { display: grid; gap: var(--spacing-xs); font-size: var(--body-sm); color: var(--color-muted); }
+    .calc input, .calc select { padding: 12px 14px; border: 1px solid var(--color-line); border-radius: 8px; font: inherit; color: var(--color-fg); background: var(--color-bg); }
+    .calc .result { font-size: var(--body); margin: var(--spacing-sm) 0 0; }
+    .calc .fine { font-size: 13px; color: var(--color-muted); margin: 0; }
+
     /* locations */
     .locations { padding: var(--section-padding) 0; background: var(--color-surface); }
     .locations .section-head { display: flex; align-items: end; justify-content: space-between; max-width: none; gap: var(--spacing-xl); }
@@ -255,6 +264,25 @@
             <p>Fixed and adjustable mortgages underwritten locally, plus home-equity lines from 6.25% APR.</p>
             <span class="card-cta">Learn more</span>
           </a>
+        </div>
+      </div>
+    </section>
+
+    <section class="calculator" data-section="calculator" data-intent="self-serve tool" data-layout="contained" data-interactive="third-party" data-vendor="loan-calc">
+      <div class="container">
+        <div class="section-head">
+          <p class="eyebrow">Plan a loan</p>
+          <h2>What would a loan cost each month?</h2>
+          <p class="lede">Move the amount and the term; the payment updates as you go. Rates shown are today's starting rates for members in good standing.</p>
+        </div>
+        <div class="mount" data-widget-id="loan-calc" data-vendor-src="/vendor/embed.js">
+          <form class="calc" aria-label="Loan payment calculator">
+            <label>Loan amount <input type="number" value="15000" min="1000" max="75000" step="500"></label>
+            <label>Term in months <input type="number" value="48" min="12" max="84" step="12"></label>
+            <label>Loan type <select><option>Auto, new or used</option><option>Personal, unsecured</option><option>Home equity line</option></select></label>
+            <p class="result">Estimated payment <strong>$348 a month</strong> at 5.49% APR over 48 months. Total interest $1,704.</p>
+            <p class="fine">Estimate only. Your rate depends on credit history and the vehicle or collateral. Apply in the app or at any branch for a same-day decision.</p>
+          </form>
         </div>
       </div>
     </section>
