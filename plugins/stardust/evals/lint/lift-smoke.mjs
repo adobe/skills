@@ -19,7 +19,10 @@
 //   fixture face; mediaQueries has both exact strings; lineHeightUnitless
 //   "1.5" on the <sup>; ::before content on the badge; gridTemplateColumns on
 //   the grid; headingLevel 2/3; isLastChild + marginBottom on the last card;
-//   sections[] from main; stylesheets[] lists the linked + inline sheet.
+//   sections[] from main; stylesheets[] lists the linked + inline sheet;
+//   flex-grow: 1 and z-index: 1 recorded (per-property defaults — a global
+//   '1' dropped them), opacity 1 still dropped; the inline <svg> is an
+//   element (rect, root), its <circle>/<path> are not.
 //   360 → docHeight differs; a second 1440 run prints `reusing`, exit 0, no
 //   navigation (the cache); --refresh re-probes; --save-css writes the sheets.
 // Usage: node plugins/stardust/evals/lint/lift-smoke.mjs
@@ -93,6 +96,15 @@ try {
     check(j.stylesheets.some((s) => !s.inline && /styles\.css/.test(s.url)) && j.stylesheets.some((s) => s.inline), 'stylesheets[] lists the linked sheet and the inline <style>');
     check(j.cssDir && existsSync(join(staged.dir, j.cssDir)) && readdirSync(join(staged.dir, j.cssDir)).length >= 2, `--save-css wrote the sheets under ${j.cssDir}`);
     check(j.rootsFound.every((r) => r.found) && E.some((e) => e.root === 'header') && E.some((e) => e.root === 'footer'), 'header, main and footer walked from one navigation');
+    // D11 — per-property defaults: '1' is authored for flex-grow / z-index, default for opacity
+    const nav = E.find((e) => e.tag === 'nav');
+    check(nav && nav.s.flexGrow === '1', `flex-grow: 1 is recorded, not dropped as a default (got ${JSON.stringify(nav && nav.s.flexGrow)})`);
+    check(search && search.s.zIndex === '1', `z-index: 1 is recorded (got ${JSON.stringify(search && search.s.zIndex)})`);
+    check(!E.some((e) => e.s.opacity === '1' || e.s.flexShrink === '1'), 'opacity 1 / flex-shrink 1 stay dropped as defaults');
+    // D12 — the <svg> element itself is lifted; its shapes are not
+    const svg = E.find((e) => e.tag === 'svg');
+    check(svg && svg.rect.w === 20 && svg.root === 'header', `the inline <svg> is recorded with its rect (got ${JSON.stringify(svg && svg.rect)})`);
+    check(!E.some((e) => ['circle', 'path'].includes(e.tag)), 'svg children are not walked');
     check(j.consent && j.consent.mode === 'accept' && j.technique && j.capturedAt, 'provenance block (consent mode, technique, capturedAt)');
   }
   // cache: same url/width/roots → reusing, no navigation

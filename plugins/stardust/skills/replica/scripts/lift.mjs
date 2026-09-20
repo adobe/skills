@@ -175,7 +175,12 @@ export function reusable(out, url, opts) {
 /* eslint-disable no-undef */
 function pageLift({ roots, main, max, props, cssTexts }) {
   const norm = (s) => (s || '').replace(/\s+/g, ' ').trim();
-  const TRIVIAL = new Set(['none', 'normal', 'auto', '0px', '0', 'static', 'visible', 'start', 'rgba(0, 0, 0, 0)', 'transparent', 'nowrap', 'row', 'stretch', 'flex-start', 'initial', 'baseline', 'scroll', 'fill', 'wrap', 'disc', '1', 'ease 0s', 'all 0s ease 0s', 'content-box', 'left', 'top', 'repeat', '50% 50%', 'static', 'ltr', 'break-word', 'clip']);
+  // Defaults dropped from s{}: a global set plus PER-PROPERTY defaults — '1' is
+  // the default of opacity / flex-shrink but an authored value for flex-grow,
+  // z-index, order, column-count (a global '1' dropped `flex-grow: 1`).
+  const TRIVIAL = new Set(['none', 'normal', 'auto', '0px', '0', 'static', 'visible', 'start', 'rgba(0, 0, 0, 0)', 'transparent', 'nowrap', 'row', 'stretch', 'flex-start', 'initial', 'baseline', 'scroll', 'fill', 'wrap', 'disc', 'ease 0s', 'all 0s ease 0s', 'content-box', 'left', 'top', 'repeat', '50% 50%', 'ltr', 'break-word', 'clip']);
+  const TRIVIAL_FOR = { opacity: new Set(['1']), flexShrink: new Set(['1']), fontOpticalSizing: new Set(['auto']), lineHeight: new Set(['normal']) };
+  const trivial = (p, v) => TRIVIAL.has(v) || (TRIVIAL_FOR[p] && TRIVIAL_FOR[p].has(v));
   const rectOf = (el) => { const r = el.getBoundingClientRect(); return { x: Math.round(r.x), y: Math.round(r.y + window.scrollY), w: Math.round(r.width), h: Math.round(r.height) }; };
   const pathOf = (el) => { const bits = []; for (let n = el; n && n.nodeType === 1 && bits.length < 4; n = n.parentElement) { const c = String(n.className && n.className.baseVal !== undefined ? n.className.baseVal : n.className || '').trim().split(/\s+/).filter(Boolean).slice(0, 2).join('.'); bits.unshift(`${n.tagName.toLowerCase()}${c ? `.${c}` : ''}`); } return bits.join(' > '); };
   const ownText = (el) => [...el.childNodes].filter((n) => n.nodeType === 3).map((n) => n.nodeValue).join('').replace(/\s+/g, ' ').trim();
@@ -199,14 +204,14 @@ function pageLift({ roots, main, max, props, cssTexts }) {
       const { el, depth, parent } = queue.shift();
       if (max && count >= max) break;
       const tag = el.tagName.toLowerCase();
-      if (['script', 'style', 'noscript', 'template', 'svg'].includes(tag) && el !== root) continue;
+      if (['script', 'style', 'noscript', 'template'].includes(tag) && el !== root) continue;
       const cs = getComputedStyle(el);
       const rect = rectOf(el);
       const rendered = cs.display !== 'none' && (rect.w > 0 || rect.h > 0);
       if (!rendered && el !== root) continue;
       const i = elements.length; index.set(el, i); count += 1;
       const s = {};
-      for (const p of props) { const v = cs[p]; if (v === undefined || v === '' || TRIVIAL.has(v)) continue; s[p] = v; }
+      for (const p of props) { const v = cs[p]; if (v === undefined || v === '' || trivial(p, v)) continue; s[p] = v; }
       const text = ownText(el);
       const op = el.offsetParent;
       elements.push({
@@ -221,6 +226,7 @@ function pageLift({ roots, main, max, props, cssTexts }) {
         src: tag === 'img' ? (el.currentSrc || el.getAttribute('src') || null) : null,
         natural: tag === 'img' ? { w: el.naturalWidth, h: el.naturalHeight } : null,
       });
+      if (tag === 'svg') continue; // the <svg> itself is recorded (rect, fill, size); its shapes are not elements to author
       for (const c of el.children) queue.push({ el: c, depth: depth + 1, parent: i });
     }
   };
