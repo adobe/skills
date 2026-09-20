@@ -240,16 +240,16 @@ bounce every in-page link; a later stub wave can overwrite the rich pages). The 
 per-page agent turn: `node skills/rollout/scripts/wave.mjs <waveId> <roster>`
 runs the declared stage table per page (lint → local gate → `deploy-batch.mjs`
 preview → live gate on the preview origin → `--publish` only when explicit or
-`decisions.md` records publish-to-live), parks a failing page instead of the
-wave, re-drives only what its hashes say changed, and closes with
+`decisions.md` records publish-to-live), parks a failing page, not the wave,
+re-drives only what its hashes say changed, and closes with
 `update-coverage.mjs --from-ledger` and the parked table — contract, stage
-table, park reasons and `--unpark`: `reference/sweep-protocol.md` § Wave driver.
+table, park reasons: `reference/sweep-protocol.md` § Wave driver.
 Drivers run in the background (`stardust/.work/rollout/wave.progress.json`,
 `progress.mjs read <file>`, the stdout `SUMMARY` line; after a blip, re-run the
 same command). Two clocks: code first on the ref the user will look at, then
 content (`skills/deploy/da-deploy-protocol.md` § Two clocks). Every wave agent follows `skills/stardust/reference/fan-out.md`
-§ Worker contract and § Scope and type of delegated agents; every shell loop
-follows `skills/stardust/reference/harness-quirks.md`. When a wave must write
+§ Worker contract and § Scope and type of delegated agents; shell loops
+follow `skills/stardust/reference/harness-quirks.md`. When a wave must write
 code, the deploy brief's ownership protocol applies —
 `skills/deploy/reference/block-agents-brief.md` § The brief template and
 § Shared cores and variants; author-only waves inherit the shared cores
