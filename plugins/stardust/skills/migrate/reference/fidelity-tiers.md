@@ -116,6 +116,12 @@ this failure class, so make it part of the per-page acceptance:
   or a `contentDeviations[]` entry — never a numeric tolerance; a bulk run
   stops a template once one kind is unmapped on ≥ 3 of its pages
   (`unmapped modules: N kinds on M pages — map or drop with reason`).
+- **Two renders, pick by counts.** When an archetype template and a generic
+  or thin render both exist for a page or family, run the acceptance on both
+  against the captured source and adopt the render with no drop or the
+  smaller drop; never adopt an archetype template for a sibling family on the
+  strength of the archetype's own pass. Hands-off picks by counts, never by
+  template preference.
 - **A count miss on a sibling is a slot gap in the generator or archetype** —
   fix the generator; `contentDeviations[]` (`kind: "runtime"`) covers
   runtime-only items and is the only allowlist.

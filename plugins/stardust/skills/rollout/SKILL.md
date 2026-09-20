@@ -21,7 +21,7 @@ Phases, in order: Setup → A Inventory → B Block dedup plan → B2 Dynamic su
 | C | per page: `node skills/rollout/scripts/delivery-lint.mjs --file <html> --path </da/path> --icons-dir icons [--chrome-docs content/nav.html,content/footer.html,…]` (multi-variant sites); `node skills/rollout/scripts/media-reconcile.mjs --file <html> --deploy-host <host> [--apply]`; `node skills/rollout/scripts/section-fidelity.mjs --file <html> --source <url>`; `node skills/rollout/scripts/update-coverage.mjs <slug> --status <s>`; waves: `node skills/rollout/scripts/wave.mjs <waveId> <roster> [--publish] [--unpark <reason\|all>]` (drives `deploy-batch.mjs` preview → live gate → `--publish` after D1; `regate-list` sub-command for class rounds) |
 | D | `node skills/rollout/scripts/assemble.mjs`; `node skills/rollout/scripts/redirects.mjs [--post-publish]` |
 | D2 | `node skills/dynamics/scripts/dynamics-check.mjs --origin <live host> --gate` |
-| E / E2 | `node skills/rollout/scripts/verify.mjs [--base <url> | --root <dir>] [--all] [--report <dir>]`; `node skills/deploy/scripts/localize-links.mjs --source-host <live-host> --content content --redirects stardust/redirects.tsv [--check]` |
+| E / E2 | `node skills/rollout/scripts/verify.mjs [--base <url> | --root <dir>] [--all] [--report <dir>]`; class rounds: `node skills/rollout/scripts/wave.mjs regate-list --since <ref>`; `node skills/deploy/scripts/localize-links.mjs --source-host <live-host> --content content --redirects stardust/redirects.tsv [--check]` |
 | F | `node skills/rollout/scripts/optimize.mjs [--base <url> | --root <dir> | --slug <s> | --all]`; `node skills/rollout/scripts/findings.mjs record … / resolve <id> …` |
 | G | `node skills/rollout/scripts/autofix-aem.mjs --project <eds-root> [--dry-run] [--slug s] [--check c]` |
 | H | read `rollout.json.lastRun` + `optimize/scorecard.json` + `verify/summary.md`; write `stardust/learnings.md` |
@@ -211,6 +211,9 @@ lint blocked are not in `plan.json`. For each page:
    node skills/rollout/scripts/update-coverage.mjs --from-ledger content/.deploy-ledger.json --url-base <branch-preview-origin>
    node skills/rollout/scripts/update-coverage.mjs <slug> --status content-pending   # no document push
    ```
+   A template's blocks flip `deployed → verified` only once its archetype
+   (`representativeSlug`) has `published.<bp>.pass` at every breakpoint; else
+   Phase H reads `archetype <slug> ungated at <bp>` (claim gate, not a delivery block).
    **Gate on preview, then publish explicitly.** The driver's default run is
    `PUT → preview`; live publish is the separate `deploy-batch.mjs … --publish` run
    after the page gate passes (D1) or when `decisions.md` records publish-to-live
@@ -232,9 +235,8 @@ styled (per `stardust/runtime-contract.json`, `skills/deploy/SKILL.md`
 — each agent writes files only, never deploys or edits blocks — template
 clusters concurrently (non-overlapping pages), representative-first so blocks
 exist to be reused, and **a family's listing/index pages ship in its first
-wave**, before its volume wave (posts delivered ahead of their category/author
-pages bounce every in-page link, and a later stub wave can overwrite the rich
-pages). The central deploy is the resumable driver, never a serial loop or a
+wave**, before its volume wave (posts delivered ahead of their category pages
+bounce every in-page link; a later stub wave can overwrite the rich pages). The central deploy is the resumable driver, never a serial loop or a
 per-page agent turn: `node skills/rollout/scripts/wave.mjs <waveId> <roster>`
 runs the declared stage table per page (lint → local gate → `deploy-batch.mjs`
 preview → live gate on the preview origin → `--publish` only when explicit or
@@ -243,10 +245,9 @@ wave, re-drives only what its hashes say changed, and closes with
 `update-coverage.mjs --from-ledger` and the parked table — contract, stage
 table, park reasons and `--unpark`: `reference/sweep-protocol.md` § Wave driver.
 Drivers run in the background (`stardust/.work/rollout/wave.progress.json`,
-`skills/stardust/scripts/progress.mjs read <file>`, the stdout `SUMMARY` line;
-after a blip, re-run the same command). Two clocks: code first on the ref the
-user will look at, then content (`skills/deploy/da-deploy-protocol.md` § Two
-clocks). Every wave agent follows `skills/stardust/reference/fan-out.md`
+`progress.mjs read <file>`, the stdout `SUMMARY` line; after a blip, re-run the
+same command). Two clocks: code first on the ref the user will look at, then
+content (`skills/deploy/da-deploy-protocol.md` § Two clocks). Every wave agent follows `skills/stardust/reference/fan-out.md`
 § Worker contract and § Scope and type of delegated agents; every shell loop
 follows `skills/stardust/reference/harness-quirks.md`. When a wave must write
 code, the deploy brief's ownership protocol applies —
@@ -413,7 +414,8 @@ Archetypes  published-gated A of T at <bp> · ungated: <slug@bp …>   (read fro
 Live drift  <n> pages recaptured · <n> masks kept
 Pages       <N> total · <v> verified · <d> deployed · <p> pending · <cp> content-pending · <s> stale
 Templates   <T> (per-template delivered/total)
-Blocks      <B> total · <c> converted · <p> pending
+Blocks      <B> total · <c> converted · <v> verified · ungated: <T> archetype <slug>@<bp>
+Waves       <n> · parked <p> by reason (stardust/rollout/waves/*.report.md)
 Quality     health <H>/100 · open P1 <n> / P2 <n> / P3 <n>
 To deliver  <list of remaining slugs>
 Content     <cp> pages awaiting content track (block code deployed, document not yet pushed)
