@@ -1,0 +1,47 @@
+{
+  "slug": "home",
+  "url": "https://www.larkspurmutual.example/",
+  "title": "Larkspur Mutual — Home and auto insurance, member-owned since 1931",
+  "type": "landing",
+  "capturedAt": "2026-09-08T09:22:04Z",
+  "_provenance": {
+    "writtenBy": "stardust:extract",
+    "technique": "headless"
+  },
+  "headings": [
+    {
+      "level": 1,
+      "text": "Larkspur Mutual"
+    }
+  ],
+  "landmarks": [],
+  "chrome": {
+    "header": {
+      "tag": "header",
+      "id": null,
+      "classes": [
+        "site-header",
+        "site-header--main"
+      ],
+      "h": 72
+    },
+    "footer": {
+      "tag": "footer",
+      "id": null,
+      "classes": [
+        "site-footer"
+      ],
+      "h": 320
+    },
+    "navRows": 1,
+    "stylesheets": [
+      "www.larkspurmutual.example/assets/css/main.3f9a1c2d.css",
+      "www.larkspurmutual.example/assets/css/theme.css"
+    ],
+    "bodyClasses": [
+      "page",
+      "tpl-main",
+      "page-home"
+    ]
+  }
+}

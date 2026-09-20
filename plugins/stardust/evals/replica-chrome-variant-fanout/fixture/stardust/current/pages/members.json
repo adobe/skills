@@ -1,0 +1,49 @@
+{
+  "slug": "members",
+  "url": "https://www.larkspurmutual.example/members/",
+  "title": "Members: dividends, discounts and the annual meeting — Larkspur Mutual",
+  "type": "landing",
+  "capturedAt": "2026-09-15T10:12:30Z",
+  "_provenance": {
+    "writtenBy": "stardust:extract",
+    "technique": "headless"
+  },
+  "headings": [
+    {
+      "level": 1,
+      "text": "Members: dividends, discounts and the annual meeting"
+    }
+  ],
+  "landmarks": [],
+  "chrome": {
+    "header": {
+      "tag": "header",
+      "id": null,
+      "classes": [
+        "site-header",
+        "site-header--campaign",
+        "has-subnav"
+      ],
+      "h": 118
+    },
+    "footer": {
+      "tag": "footer",
+      "id": null,
+      "classes": [
+        "site-footer",
+        "site-footer--compact"
+      ],
+      "h": 180
+    },
+    "navRows": 2,
+    "stylesheets": [
+      "www.larkspurmutual.example/assets/css/main.3f9a1c2d.css",
+      "www.larkspurmutual.example/assets/css/campaign.7b2e91aa.css"
+    ],
+    "bodyClasses": [
+      "page",
+      "tpl-campaign",
+      "page-members"
+    ]
+  }
+}
