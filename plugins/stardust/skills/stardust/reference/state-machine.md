@@ -387,7 +387,9 @@ with the line it prints, before `Site:` — `Active run: <skill> in
 session <sessionId> since <startedAt> — read-only unless you take over`
 — and the recommended next step is omitted. When the working directory
 is not the project root, the line `Project root: <path> (not the
-working directory)` follows it.
+working directory)` follows it. `Preflight: <ok|partial|skipped>` copies
+`stardust/.work/env.json` `preflight` (`runtime-preflight.md` § Files);
+omitted when the file is absent.
 
 The `Repo:` block is rendered only when the project root is itself the git
 work-tree root (`git rev-parse --show-toplevel` resolves to the project

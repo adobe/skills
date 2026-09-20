@@ -364,16 +364,14 @@ export function applyAllowlist(findings, entries) {
  */
 export async function loadPlaywright() {
   const normalize = (mod) => (mod.chromium ? mod : (mod.default?.chromium ? mod.default : null));
-  try {
-    const req = createRequire(join(process.cwd(), 'package.json'));
-    const mod = normalize(await import(pathToFileURL(req.resolve('playwright')).href));
-    if (mod) return mod;
-  } catch { /* fall through */ }
+  for (const base of [join(process.cwd(), 'package.json'), join(process.cwd(), 'stardust', 'package.json')]) { // cwd, then stardust/node_modules (preflight-runtime.mjs)
+    try { const mod = normalize(await import(pathToFileURL(createRequire(base).resolve('playwright')).href)); if (mod) return mod; } catch { /* next link */ }
+  }
   try {
     const mod = normalize(await import('playwright'));
     if (mod) return mod;
   } catch { /* fall through */ }
-  throw new Error('playwright not found: install it in the project (npm i -D playwright) — browser checks need it.');
+  throw new Error('playwright not found — run node skills/stardust/scripts/preflight-runtime.mjs (master § Setup step 9); browser checks need it.');
 }
 
 /* ------------------------------------------------------------- inventory -- */

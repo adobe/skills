@@ -15,7 +15,7 @@ metadata:
 |---|---|---|---|
 | Setup 1 | read the skill's `metadata.impeccable` level; unless `none`: `node skills/stardust/scripts/impeccable-version-check.mjs --probe [--local <dir>]` (advisory, read-only) | `required` stops if missing; `optional` degrades; `none` skips 1 and 4 | `state.json.impeccable` |
 | Setup 2–4 | `PRODUCT.md` / `DESIGN.md` presence; read `stardust/state.json`; parse impeccable's `command-metadata.json` | — | — |
-| Setup 5–8 | status ledger; project hygiene (`stardust/.gitignore`, root `.gitignore`, `.hlxignore`, `git check-ignore`); `node skills/stardust/scripts/run-lock.mjs check` + project root; credentials lookup on migration-bound asks | `state.json` not ignored; `check` exit 3 (held) → read-only; no 401 blocker before the lookup ran | `stardust/status.jsonl`, `stardust/.gitignore`, `stardust/.work/run.lock`, `state.json.credentials` |
+| Setup 5–9 | status ledger; project hygiene (`stardust/.gitignore`, root `.gitignore`, `.hlxignore`, `git check-ignore`); `node skills/stardust/scripts/run-lock.mjs check` + project root; credentials lookup on migration-bound asks; `node skills/stardust/scripts/preflight-runtime.mjs` | `state.json` not ignored; `check` exit 3 (held) → read-only; no 401 blocker before the lookup ran; preflight exit 1 blocks browser instruments only | `stardust/status.jsonl`, `stardust/.gitignore`, `stardust/.work/run.lock`, `state.json.credentials`, `stardust/package.json`, `stardust/.work/env.json` |
 | Routing | no arg / resume → state report; sub-skill keyword → delegate; migration ask → § Two migration flows; freeform → intent reasoning | plan shown before any command (hands-off: recorded instead) | `state.json` flow keys |
 | Freeform intent | § The "open and reasoned" principle, steps 1–6 | plan confirmation | `stardust/direction.md` |
 | Hands-off | activation block (wave plan + stop point, commit policy); gate auto-resolution + decision defaults; transport preflight; background waits; turn-end contract (chain after PASS); scoped per-phase commits | quality gates unchanged; hard blockers and owner-only rows still stop; denied privileged action → ask once, `Blocked on owner:`; turn ends only on completion, blocker, > 45-min wait | `state.json.handsOff` / `approvedChain`, `direction.md` activation line, `status.jsonl` `blocked` (+ `owner`) |
@@ -29,6 +29,7 @@ metadata:
 | Setup 6, Artifacts | `reference/artifact-map.md` § Versioning · § Provenance shapes |
 | Any shell loop, runner, delivery or probe | `reference/harness-quirks.md` (whole card) |
 | Setup 1, 8 | `reference/harness-permissions.md` § Two classes · `reference/state-machine.md` § Impeccable key · § Credentials key |
+| Setup 9, every delegated brief | `reference/runtime-preflight.md` § Contract · § Files |
 | Routing (migration) | `reference/state-machine.md` § Flow keys |
 | Freeform intent | `reference/intent-reasoning.md` § Procedure · `reference/intent-dimensions.md` § Reading a phrase · `reference/impeccable-command-map.md` § Common sequences |
 | Hands-off | `reference/state-machine.md` § Hands-off keys · `reference/decisions.md` § Default rows · `reference/harness-permissions.md` § Privileged-action preflight · `reference/run-status.md` § Long-running steps |
@@ -60,9 +61,8 @@ delegate the actual design work to **impeccable**.
    stardust/state.json` is added only by a phase that writes `state.json`
    anyway (`reference/state-machine.md` § Impeccable key); a state report,
    resume, `qa` or `audit` never write it. Sub-skills read
-   `state.json#impeccable.skillDir`. Under a
-   permission layer read `reference/harness-permissions.md` § Two classes
-   first. If absent, `required` skills stop and tell the user:
+   `state.json#impeccable.skillDir`. If absent, `required` skills stop
+   and tell the user:
    > Stardust requires impeccable. Install it from
    > <https://github.com/pbakaus/impeccable> and re-run the command.
 
@@ -86,12 +86,10 @@ delegate the actual design work to **impeccable**.
    `.hlxignore` if present lists `stardust/`, and `git check-ignore -q
    stardust/state.json` must fail — if it passes, stop and name the rule.
    Offer (never write) LFS above 50 MB of tracked binaries
-   (`reference/artifact-map.md` § Versioning). Every shell loop, runner,
-   delivery step and probe follows `reference/harness-quirks.md`.
+   (`reference/artifact-map.md` § Versioning).
 7. **Run lock and project root.** Run
    `node skills/stardust/scripts/run-lock.mjs check` (`--session <id>`
-   when you hold one; `reference/state-machine.md` § Concurrency →
-   Session advisory lock). Exit 3 = another live session holds the run:
+   when you hold one). Exit 3 = another live session holds the run:
    interactive, ask once — take over (`acquire --force`) or go
    read-only; hands-off, go read-only, append `event: "blocked"` quoting
    the `Active run:` line, stop at the first write. A requested project
@@ -103,6 +101,11 @@ delegate the actual design work to **impeccable**.
    the lookup in `reference/state-machine.md` § Credentials key, write
    `state.json.credentials`. Never declare a 401 blocker before it ran;
    `--token-env` consumers default to `credentials.siteTokenEnv`.
+9. **Runtime preflight.** Run `node skills/stardust/scripts/preflight-runtime.mjs`
+   (`--no-install` when read-only): one dependency dir under `stardust/`,
+   Chromium, the probes dir and `stardust/.work/env.json`. Exit 1 blocks
+   the browser instruments only; hands-off installs without asking
+   (`reference/runtime-preflight.md` § Contract).
 
 ## Routing
 
@@ -146,8 +149,6 @@ Route on the user's input:
 
   - `prototype --cinematic[=<register>]` layers a brand-faithful motion
     register on the static prototype (`skills/prototype/reference/motion-registers.md`).
-  - `uplift` skips the extract/direct/prototype chain: one URL in, three
-    variants out (one cinematic), no further coordination.
 - **Migration to EDS — pick ONE of two flows, never mix them.** See
   § Two migration flows before answering any "how do I migrate X"
   question; the answer differs by whether the design is kept.
@@ -202,9 +203,8 @@ flow's pages stale, are defined in `reference/state-machine.md` § Flow
 keys.
 
 **Planning aids belong to one flow.** Redesign: the `prepare-migration`
-plan and gates, the canon, module catalogs, "learn the template, then
-compile" plans. Keep-design: `replica`'s inconsistency register and
-`progress.json`, the archetype gate ledgers, `rollout` waves. A redesign
+plan and gates, the canon, module catalogs. Keep-design: `replica`'s
+inconsistency register, `progress.json`, `rollout` waves. A redesign
 plan inside a replica run — or the reverse — is a routing defect: refuse
 it, or flag it in `direction.md` and hand back here. The first response
 to a migration question states the chosen flow and that `replica` needs
@@ -268,8 +268,7 @@ Defaults (override only when the invocation says otherwise):
   <file>`; it ends with one `SUMMARY` line —
   `../deploy/da-deploy-protocol.md` § Delivery pipeline) — never under one
   long `sleep`. Do independent work meanwhile;
-  otherwise check the progress file **at most every 4 minutes** (no blocking
-  wait on agent output); end the turn only
+  otherwise check the progress file **at most every 4 minutes**; end the turn only
   for waits over ~45 min or a user decision. Rationale, output caps and
   harness levers: `reference/run-status.md` § Long-running steps.
 - **Context hygiene.** Class tables in the conversation, per-page rows
@@ -388,8 +387,7 @@ wave driver, gate **or measurement/probe script** that replaces a skill
 phase is recorded in `stardust/direction.md` as a **named deviation** —
 what it replaces, why the shipped instrument did not serve, where the
 replacement lives — and noted in the journal. Before writing one, list
-the shipped instruments (`ls skills/*/scripts`, or the project copy under
-`stardust/scripts/<skill>/`) and run the shipped one; write your own only
+the shipped instruments (`ls skills/*/scripts`) and run the shipped one; write your own only
 when none exists, and ledger it here as a plugin gap. An unrecorded
 parallel pipeline is a defect — its fidelity numbers are never comparable
 to the gate's.
@@ -415,9 +413,8 @@ verifies *feature* correctness.
 4. Save the final clean-pass screenshots to
    `stardust/validation/<artifact>/<viewport>.png`.
 
-Per-sub-skill specifics: `extract/reference/playwright-recipe.md`,
-`prototype/reference/motion-validation.md`, `prototype/SKILL.md` Phases
-2.5–2.8.
+Per-sub-skill specifics: the card's Validation row and
+`prototype/SKILL.md` Phases 2.5–2.8.
 
 ## What stardust never does
 

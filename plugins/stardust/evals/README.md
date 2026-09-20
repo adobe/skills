@@ -97,6 +97,7 @@ v2 evals without modification.
 | `runner-output-contract/`    | Batch reporting (`rollout` Phase E) | Runner-output contract on an offline full-site verify: ranked class table (class → count → worst example → file pointer) in the conversation, full per-page listing in `summary.json` + `summary.md` under `stardust/rollout/`, triage per class, hand-off names the summary files (rule: `context-hygiene.md` § Runner reports). |
 | `preflight-credentials/`     | Entry point (`deploy`)    | W1 pre-flight: token (present, unexpired, looked up through env → `.env` → `~/.claude/.env`), pushable code branch and scaffold are checked before any conversion work; one consolidated missing-prerequisite list with exact remediation; token value never printed; no push, no DA write, no fabricated token, no silent skip; `blocked` recorded in status.jsonl. |
 | `phase-checkpoint-next-command/` | Phase close (`direct`) | Checkpoint block at phase end: completed files (all `ls`-verifiable) + a verified part + ONE verbatim next command + what a re-run would skip; journal `Next:` and `status.jsonl` `next` carry the same command; pages `extracted` → `directed` (rule: `run-status.md` § Phase close). |
+| `preflight-runtime/`         | Master Setup step 9       | Runtime preflight before any browser instrument: `preflight-runtime.mjs` installs into `stardust/node_modules` (one command), Chromium checked, `stardust/.work/env.json` written; no `npm i … --no-save` at the root, root `package.json` byte-identical, no `/tmp` probes, `lint unavailable` surfaced loudly, a denied install is a `blocked` line with the exact command — never a workaround or an invented verdict (rule: `runtime-preflight.md` § Contract). |
 
 ## Coverage map
 
@@ -185,6 +186,13 @@ whose harness cases skip when Playwright is unresolvable:
   Playwright with no browser binary makes the probe suite print one `SKIP`
   line and exit 0 (its pure cases still run); the fixture itself SKIPs when
   Playwright is unresolvable.
+- `skills/stardust/scripts/test/preflight-runtime.test.mjs` — the runtime
+  preflight contract offline: an empty project exits 1 naming exactly the
+  three packages + chromium and writes `stardust/package.json`; a stubbed
+  `stardust/node_modules` exits 0 with the `env.json` record keys and is
+  idempotent (byte-identical except `writtenAt`); the root `package.json`
+  is never created or edited; a declared-but-uninstalled eslint prints the
+  `lint unavailable` line; `--skip`, `--help`, unknown-flag exits.
 - `doc-size.mjs` — byte caps on `SKILL.md` and `reference/*.md`, an
   `## Operator card` heading ahead of the procedure, the always-on total and
   the per-skill delta versus the last release tag; its temporary allowlist

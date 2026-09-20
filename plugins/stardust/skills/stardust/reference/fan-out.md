@@ -10,7 +10,7 @@ worker side and what the coordinator does when a worker dies.
 
 ## When to read what
 
-- § Worker contract — paste its five rules into every brief (by pointer: "follow `fan-out.md` § Worker contract"); read before starting work as a delegated agent.
+- § Worker contract — paste its six rules into every brief (by pointer: "follow `fan-out.md` § Worker contract"); read before starting work as a delegated agent.
 - § Coordinator contract — before dispatching, and on every `failed` / `stalled` / lost-transcript notification.
 - § Progress files — the path convention both sides write and read.
 - § Scope and type of delegated agents — when deciding how many agents, how much each owns and whether it inherits the conversation.
@@ -34,6 +34,10 @@ worker side and what the coordinator does when a worker dies.
 
 A delegated agent, in this order:
 
+0. **Runtime preflight first.** Run
+   `node skills/stardust/scripts/preflight-runtime.mjs --no-install`; on
+   exit 1 stop with its line (`runtime-preflight.md` § Contract) — never
+   `npm i … --no-save`, never a probe in `/tmp`.
 1. **Skeleton first.** Write the primary artefact as a skeleton before
    doing any work on it — the SPEC, ledger, report or page list with
    its headings and empty rows — then append or fill in. A transcript
