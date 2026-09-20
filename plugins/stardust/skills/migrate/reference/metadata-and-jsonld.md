@@ -85,7 +85,7 @@ Plus on the `<html>` element:
 
 | field | source | emitted |
 |---|---|---|
-| `lang` | `<html lang>` of the captured page, else the tree's `lang` in `stardust/trees.json` | metadata row `lang` on every page (the runtime hook sets `document.documentElement.lang` from it); twins add `alternate-<lang>` rows with the sibling tree's URL (`rollout/reference/multilingual.md` § Procedure 5; `importer-skeleton.mjs` emits both) |
+| `lang` | `<html lang>` of the captured page, else the tree's `lang` in `stardust/trees.json` | metadata row `lang` on every page (the runtime hook sets `document.documentElement.lang` from it); twins add `alternate-<lang>` rows with the sibling tree's URL, authored from `stardust/trees.json` (`rollout/reference/multilingual.md` § Procedure 5, `reference/trees.schema.json`); `importer-skeleton.mjs` emits the `lang` row only |
 
 ## Page-specific, derived
 

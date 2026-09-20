@@ -44,7 +44,9 @@ folder (`decisions.md` `locale` default row — one folder per locale
 locale mirrors; `source` records how the tree was discovered; every
 `strings` entry is **lifted from the live pages or marked `owner: true`** —
 "still English on live" is a valid lift, a translation is not. The schema is
-this block; a lint reads it when one ships.
+`reference/trees.schema.json` (`required`: `_provenance`, `default`, `trees[]`
+with `lang`/`root`/`source`; `strings.<k>` = `{value, lifted, owner?}`);
+`scripts/test/trees-schema.test.mjs` pins this block against it.
 
 ## Procedure
 
