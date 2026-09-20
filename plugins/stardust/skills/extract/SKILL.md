@@ -15,7 +15,7 @@ metadata:
 |---|---|---|---|
 | Setup 1–4 | `node -e "import('playwright').then(()=>process.exit(0))"`; copy `skills/extract/scripts/crawl.mjs` → `stardust/scripts/crawl.mjs` (+ `skills/stardust/scripts/progress.mjs` → `stardust/scripts/stardust/`); origin-collision and flow guard; consent pre-flight; bot-management probe | flow stamped before a migration crawl | `_crawl-log.json#consent`, `#discovery.fetchTechnique` |
 | 1 Discovery | robots sitemaps → standard → conventions → nav union → BFS (`--depth`); subtree from the typed path; junk filter; cap via `--cap <N>` / `--all` / `--pages <slugs>` / `--single` | relay crawl's kept/cut summary; no gate | `stardust/current/_crawl-log.json` |
-| 2 Per-page extraction | `node stardust/scripts/crawl.mjs --url <origin> [--pages …] [--cap N \| --all \| --single] [--refresh <slug,…> \| --force] [--headed] [--concurrency N] [--wait <mode>] [--dynamics] [--mobile <mode>] [--dpr N] [--depth N] [--cookie n=v] [--storage-state <file> \| --fresh-state] [--save-state] [--solve-wait <ms>] [--progress <file> \| --no-progress]` — in the background; `progress.mjs read stardust/.work/extract/crawl.progress.json`, then its `SUMMARY` line | live-render evidence contract; synthesis is a Phase 2 failure | `current/pages/<slug>.json` + `.html`, `assets/screenshots/<slug>.png`, `assets/media/`, `state.json` page → `extracted` |
+| 2 Per-page extraction | `node stardust/scripts/crawl.mjs --url <origin> [--pages …] [--cap N \| --all \| --single] [--refresh <slug,…> \| --force] [--headed] [--concurrency N] [--wait <mode>] [--dynamics] [--mobile <mode>] [--dpr N] [--depth N] [--cookie n=v] [--storage-state <file> \| --fresh-state] [--save-state] [--solve-wait <ms>] [--progress <file> \| --no-progress]` — in the background; `progress.mjs read stardust/.work/extract/crawl.progress.json`, then its `SUMMARY` line | live-render evidence contract; schema gate `validate-page.mjs` (exit 1 = not `extracted`); synthesis is a Phase 2 failure | `current/pages/<slug>.json` + `.html`, `assets/screenshots/<slug>.png`, `assets/media/`, `state.json` page → `extracted` |
 | 2.5 Vision verification | look at each screenshot against its record; `_signals` flags first; escalation ladder (wait mode → next bot-management tier → fresh context); `node plugins/stardust/evals/lint/crawl-log-lint.mjs --dir stardust/current` | verdict `ok` / `recaptured` / `suspect`; never `ok` on DEGRADED / overlay | `_crawl-log.json#visionCheck[]` |
 | 3 Brand-surface extraction | aggregate across all extracted pages (+ brand-source pages) | source citation per value | `current/_brand-extraction.json`, `assets/logo.<ext>`, `assets/favicon.<ext>` |
 | 4 Seed current-state docs | author directly from impeccable's format specs (no `$impeccable init` / `document`) | provenance block first | `current/PRODUCT.md`, `current/DESIGN.md`, `current/DESIGN.json` |
@@ -28,7 +28,7 @@ metadata:
 | Setup 1, 4 | `reference/playwright-recipe.md` § Browser configuration · § Bot-management fallback |
 | Setup 3 | `reference/playwright-recipe.md` § Pre-flight: consent dismissal |
 | 1 | `reference/ia-extraction.md` § Discovery order · § Junk-page filter · § Page selection · § Incremental re-runs · § `_crawl-log.json` shape |
-| 2, 2.5 | `reference/playwright-recipe.md` § Wait modes · § Capture list · § Response validation · `reference/current-state-schema.md` § Live-render evidence · § Signals |
+| 2, 2.5 | `reference/playwright-recipe.md` § Wait modes · § Capture list · § Response validation · `reference/current-state-schema.md` § Schema gate · § Live-render evidence · § Signals |
 | 3 | `reference/brand-surface.md` § Aggregation scope · § Palette (third-party chrome exclusion) · § System components · § Voice |
 | 4 | `skills/stardust/reference/artifact-map.md` § Provenance shapes |
 | 5 | `reference/brand-review-template.md` § Section contract · § Tensions |
@@ -145,18 +145,13 @@ Additional checks for this sub-command:
    the copy.
 
    **Bundled crawler.** `skills/extract/scripts/crawl.mjs` is the
-   runnable reference implementation of this sub-command — browser
-   config + bot-management fallback, consent dismissal, wait + scroll,
-   the capture list, per-page full-page screenshots
-   (`assets/screenshots/<slug>.png`, the Phase 2.5 vision gate's
-   input), response validation, and the § Capture-hygiene hardening
-   (visibility filter, interstitial drop, SPA-shell flag, modal
-   `textContent` capture, tracking-pixel discounting, cross-page
-   duplicate detection). Invoke it (`node
+   runnable reference implementation of this sub-command (browser
+   config, bot-management ladder, consent dismissal, wait + scroll,
+   the full capture list, screenshots, response validation, the
+   § Capture-hygiene hardening). Invoke it (`node
    skills/extract/scripts/crawl.mjs --url <origin> [--pages …] [--cap N]
    [--concurrency N]`) rather than hand-rolling a Playwright script;
-   extend its in-page `capture()` for any recipe field it does not
-   yet emit.
+   the schema gate names any field it fails to emit.
 2. **Origin collision.** If `stardust/state.json` already records
    `site.originUrl` and the new `<url>` is a different origin, stop and
    ask before clobbering. Stardust does not silently mix two sites in
@@ -273,41 +268,35 @@ capture-list steps:
 Capture per page (full schema in `reference/current-state-schema.md`):
 
 - Page metadata (title, meta description, OG tags, theme-color)
-- Semantic structure: heading outline, landmark roles, sections
+- Semantic structure: heading outline (real `h1`–`h6` plus inferred
+  display heads, `inferred: true`), landmarks with heading-bounded
+  `children[]`, open shadow roots descended (`_signals.shadowRoots`)
 - **Hero headline + lede (resolved)** — `heroHeadline` / `heroLede`
-  picked by font-size × hero-region with a junk/hidden-state filter and
-  a clean meta-description fallback (per `reference/playwright-recipe.md`
-  § Capture list 5-bis). Required for JS-rendered sites whose
-  document-order headings surface modal / promo / count junk
-  instead of the real tagline.
-- Content: visible text per section (full innerText, **no
-  truncation** per `reference/playwright-recipe.md` § Capture
-  list 7), structured paragraphs (`body[]`), lists, FAQ Q/A
-  pairs, and review/testimonial quotes per
-  § Capture list 7-bis. Without these structured fields,
-  every body region under a heading falls back to placeholder
-  signature at migrate time.
+  by font-size × hero band with the junk filter and the
+  meta-description fallback (§ Capture list 5-bis; the winning source
+  is `_provenance.heroSource`).
+- Content: full innerText per landmark (**no truncation**, § Capture
+  list 7) and per section `body[]`, `lists[]`, `qa[]`, `quotes[]`,
+  sanitised `richtext` (§ Capture list 7-bis) — the fields migrate
+  renders real body copy from.
 - CTA labels and href targets, link inventory (internal vs external)
 - Per-section computed style summary: dominant colors, font families
   in use, spacing rhythm, border-radius, shadows
-- Media inventory: img with `currentSrc`/`srcset` captured **with
-  query strings intact** plus a `resolves` flag (HEAD/GET with browser
-  UA + Referer), intrinsic dimensions, inline SVG count, video/iframe
-  presence, `cssBackgrounds[]` (including pseudo-element `::before`/
-  `::after` walks per § Capture list 11) so `background-image`
-  heroes and motifs do not silently disappear and 404ing CDN
-  images are flagged before migrate ships `about:error`.
-- Font files captured via network-intercept (per § Capture list
-  16): every `woff2`/`woff`/`ttf`/`otf` response saved under
-  `assets/fonts/` and recorded in `_brand-extraction.json#type.files[]`
-  with licensing flag.
-- Icon-font detection (per § Capture list 17): when the page
-  uses `[class^="icon-"]` with non-default `::before`
-  font-family + codepoint, capture the family, save the file,
-  and record the `iconClass → codepoint` table in
-  `_brand-extraction.json#iconFont`.
-- Interactive elements: forms (with field types), buttons, modals
-  detected by ARIA roles
+- Media inventory: `media.images[]` with `currentSrc`/`srcset`/
+  `<source>` candidates **with query strings intact**, live `rect`,
+  intrinsic dimensions and `resolves` read from the rendered state
+  (never a second request), `inlineSvgs[]`, video/iframe rects →
+  `embedDominance`, `cssBackgrounds[]` objects including the
+  `::before`/`::after` walk (§ Capture list 11) so `background-image`
+  heroes surface and broken CDN images are flagged before migrate
+  ships `about:error`.
+- Font files via network-intercept (§ Capture list 16) under
+  `assets/fonts/`, recorded in `_brand-extraction.json#type.files[]`
+  with a licensing flag; icon fonts detected family-first from
+  `::before`/`::after` glyphs (`_signals.iconFont`, § Capture list 17).
+- Interactive elements: `forms[]` with labelled fields (always; the
+  `--dynamics` reach shape comes from the same walk), `widgets`,
+  `components`, `perSectionStyle[]`, `stats.motifs`
 - Screenshots by the bundled crawler after the settle:
   `assets/screenshots/<slug>.png` (banded above 16,000 px, `clipped`
   fallback) and `<slug>-360.png` (`--mobile`); modes and the
@@ -347,9 +336,14 @@ A page that cannot satisfy the contract is a Phase 2 failure:
 `_crawl-log.json#crawl.failures[]` with `errorClass:
 "ProvenanceMissing"`; continue.
 
-Mark the page `extracted` in `state.json` immediately after each
-successful page write. If a page fails, record the error in
-`_crawl-log.json` and continue.
+**Schema gate.** The crawler validates every record it writes
+(`validate-page.mjs` re-runs the same check offline: exit 0 pass,
+1 FAIL, 2 usage; `--legacy` admits pre-schema-2 records, never a
+missing provenance field). A FAIL stays on disk as evidence, is logged
+as `errorClass: "SchemaError"`, and is **not** marked `extracted`.
+Hands-off: `--refresh <slug>` once, then `event: "blocked"` naming
+the keys (`reference/current-state-schema.md` § Schema gate). Mark the page `extracted` in `state.json` after each
+write that passed; record failures in `_crawl-log.json` and continue.
 
 ### Phase 2.5 — Vision verification
 

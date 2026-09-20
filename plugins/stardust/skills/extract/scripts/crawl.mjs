@@ -64,6 +64,24 @@
  *     legacy site rendering in quirks mode needs its doctype mirrored, or the
  *     replica lays out standards-mode boxes against quirks-mode ground truth.
  *
+ * Schema 2 (current-state-schema.md; _provenance.schemaVersion = SCHEMA_VERSION):
+ *   capture() emits the documented per-page shape from ONE settled render —
+ *   headings with style/domPath + inferred display heads, heroHeadline/heroLede,
+ *   landmarks[].children[] (body/lists/qa/quotes/richtext, live rect),
+ *   ctas[].style, links{internal,external}, media.images[] objects with
+ *   `resolves` read from the rendered state (never a second request),
+ *   cssBackgrounds[] objects incl. ::before/::after, inlineSvgs, iframes →
+ *   embedDominance, forms[] (schema shape, always), widgets, components,
+ *   perSectionStyle[], stats (+ motifs counts), themeColor, language,
+ *   cssCustomProperties[], _signals.shadowRoots/inferredHeadings/iconFont.
+ *   Open shadow roots are descended (deepAll) and serialised into the sidecar
+ *   (serializeDom → declarative <template shadowrootmode>). 0.24.x aliases
+ *   written beside the schema names: description, media.imgs, customProps,
+ *   headings[].tag. SCHEMA GATE: every written record passes validateRecord;
+ *   a FAIL stays on disk, is logged as errorClass SchemaError and is never a
+ *   success (validate-page.mjs re-runs the check offline; Phase 6 marks only
+ *   passing records `extracted`).
+ *
  * Usage:
  *   node crawl.mjs --url https://example.com [--pages /a,/b] [--cap 25 | --all | --single] \
  *     [--refresh slug,slug | --force] [--out stardust/current] [--wait medium] \
@@ -164,13 +182,15 @@
  *   1 LiveLockError (another live tool holds stardust/.work/live-<host>.lock —
  *   wait for it, or STARDUST_LIVE_FORCE=1) · 2 fatal · 3 BotChallengeError
  *   (tier 3 still challenged, or --solve-wait expired — never captured as content).
- * Exports (for evals/fixtures/*.test.mjs): slugify, assignSlugs, MOBILE_SHOT_SUFFIX,
+ * Exports (for evals/fixtures/*.test.mjs and the sibling extract scripts, which
+ *   import ./crawl.mjs — copy the set together): slugify, assignSlugs, MOBILE_SHOT_SUFFIX,
  *   exitCodeOf, noteRateLimited, probeRateLimited, needsStateSave, mergeCrawlLog,
  *   RUN_LEVEL_DISCOVERY, TIERS, tierOf, captureQualityOf, SHOT_WRAP_PX,
  *   OVERLAY_FLAG_PCT, discoverInventory, parseRobots, parseCookieFlag,
  *   challengeMarker, CHALLENGE_PHRASE, HostBudget, BUDGET_DEFAULT,
  *   parseRetryAfter, mergeLiveBudget, tuneBudget, LIVE_BUDGET_TTL_MS, sessionReusedOf,
- *   UNPACED_DISCOVERY —
+ *   UNPACED_DISCOVERY, capture, serializeDom, SCHEMA_VERSION, REQUIRED_KEYS,
+ *   validateRecord, validateProvenance, WAIT_MODE_RE, CONSENT_LABELS —
  *   importing this module runs nothing; main() runs only when the file is
  *   the entry script.
  *
@@ -249,7 +269,7 @@ export function parseArgs(argv) {
     else if (k === '--single') a.max = 1;
     else if (k === '--refresh') a.refresh = val().split(',').map((s) => s.trim()).filter(Boolean);
     else if (k === '--force') a.force = true;
-    else if (k === '--wait') a.wait = val();
+    else if (k === '--wait') { a.wait = val(); if (!WAIT_MS[a.wait]) throw new Error(`--wait must be one of ${Object.keys(WAIT_MS).join('|')}`); } // the recorded waitMode must be a recipe mode (schema gate)
     else if (k === '--no-consent-dismiss') a.consent = false;
     else if (k === '--concurrency') a.concurrency = Math.max(1, +val() || 4);
     else if (k === '--dynamics') a.dynamics = true; // migration-bound: set by prepare-migration / replica / migrate, never by default
@@ -876,6 +896,59 @@ const CLOSE_LABELS = ['close', 'no thanks', 'no, thanks', 'not now', 'maybe late
 const CONSENT_ACCEPT_SELS = ['#onetrust-accept-btn-handler', '.truste-button2', '#CybotCookiebotDialogBodyLevelButtonAccept',
   '[aria-label*="Accept" i]', 'button[id*="accept" i]', 'button[class*="accept" i]'];
 
+// ---- Shared validation contract (schema 2) ----------------------------
+// Imported by validate-page.mjs, state-update.mjs and brand-surface.mjs — the
+// extract scripts are copied into stardust/scripts/ AS A SET (SKILL § Setup 1),
+// so `./crawl.mjs` resolves there too. current-state-schema.md § Required vs
+// optional and § Live-render evidence are the prose; this is the code.
+export const SCHEMA_VERSION = 2;
+// one flat table of every consent-control label the dismissal knows — brand-surface
+// excludes CTAs carrying these labels from the palette (B28: one source, never a second list)
+export const CONSENT_LABELS = [...new Set([...ACCEPT_LABELS, ...DECLINE_LABELS, ...SETTINGS_LABELS, ...CLOSE_LABELS])];
+export const WAIT_MODE_RE = /^(fast|medium|slow|spec|networkidle|domcontentloaded)(\(fallback\))?$/;
+/** the five live-render fields (state-machine.md § Provenance validation); { ok, missing[] } */
+export function validateProvenance(p) {
+  const missing = [];
+  if (!p || typeof p !== 'object') return { ok: false, missing: ['_provenance'] };
+  if (p.renderedBy !== 'playwright') missing.push('renderedBy');
+  if (!(Number.isInteger(p.waitMs) && p.waitMs > 0)) missing.push('waitMs');
+  if (typeof p.fetchedAt !== 'string' || Number.isNaN(Date.parse(p.fetchedAt))) missing.push('fetchedAt');
+  if (!(Number.isInteger(p.httpStatus) && p.httpStatus >= 200 && p.httpStatus < 400)) missing.push('httpStatus');
+  if (typeof p.waitMode !== 'string' || !WAIT_MODE_RE.test(p.waitMode)) missing.push('waitMode');
+  return { ok: missing.length === 0, missing };
+}
+// every top-level key the schema requires PRESENT (empty arrays/objects/null pass);
+// `dynamic` (--dynamics only) and `screenshotMobile` (--mobile) are optional by contract
+export const REQUIRED_KEYS = ['_provenance', 'slug', 'url', 'finalUrl', 'title', 'metaDescription', 'heroHeadline', 'heroLede', 'og', 'themeColor', 'language', 'headings', 'landmarks', 'ctas', 'links', 'media', 'forms', 'widgets', 'components', 'perSectionStyle', 'embedDominance', 'cssCustomProperties', 'screenshot', '_signals', 'stats'];
+/**
+ * Schema gate over one written record — { ok, fail[], warn[] }. FAIL = a
+ * required key or provenance field is absent, renderedBy is not playwright,
+ * schemaVersion is missing (unless `legacy`) or newer than this validator.
+ * WARN never fails: empty outline/CTAs, degraded capture, unpierced shadow roots.
+ * `legacy` admits pre-schema-2 records (WARN per absent key); provenance has no hatch.
+ */
+export function validateRecord(rec, { legacy = false } = {}) {
+  const fail = []; const warn = [];
+  if (!rec || typeof rec !== 'object') return { ok: false, fail: ['not an object'], warn };
+  const prov = validateProvenance(rec._provenance);
+  if (!prov.ok) fail.push(`_provenance.${prov.missing.join(', _provenance.')}`);
+  const v = rec._provenance && rec._provenance.schemaVersion;
+  const pre2 = !(Number.isInteger(v) && v >= 2);
+  if (Number.isInteger(v) && v > SCHEMA_VERSION) fail.push(`_provenance.schemaVersion ${v} > ${SCHEMA_VERSION} (newer than this validator)`);
+  for (const k of REQUIRED_KEYS) {
+    if (k in rec) continue;
+    if (pre2 && legacy && k !== '_provenance') warn.push(`legacy record: ${k} absent`);
+    else fail.push(k);
+  }
+  if (pre2 && !legacy) fail.push('_provenance.schemaVersion');
+  if ('links' in rec) { for (const side of ['internal', 'external']) if (!rec.links || Array.isArray(rec.links) || !Array.isArray(rec.links[side])) (pre2 && legacy ? warn : fail).push(pre2 && legacy ? `legacy record: links.${side} absent (flat links[])` : `links.${side}`); }
+  for (const k of ['headings', 'landmarks', 'ctas']) if (Array.isArray(rec[k]) && rec[k].length === 0) warn.push(`${k} empty`);
+  const s = rec._signals || {};
+  if (s.captureQuality === 'degraded') warn.push('captureQuality degraded');
+  if ((s.shadowRoots || 0) > 0 && (s.shadowTextLen || 0) === 0) warn.push(`${s.shadowRoots} open shadow root(s) with no pierced text`);
+  return { ok: fail.length === 0, fail, warn };
+}
+
 function pageFindLabelled({ labels, marker, requireOverlay }) {
   const norm = (s) => String(s || '').toLowerCase().replace(/[\u00a0\u200b]/g, ' ').replace(/\s+/g, ' ').trim().replace(/[.!…»›→]+$/g, '').trim();
   const set = new Set(labels);
@@ -1179,6 +1252,7 @@ export function finalizeDynamic(acc) {
 }
 
 function capture() {
+  // ---- helpers (self-contained: this function is serialised into the page) ----
   const vis = (el) => {
     if (!el || el.nodeType !== 1) return false;
     if (el.closest('[aria-hidden="true"],[hidden]')) return false;
@@ -1191,23 +1265,136 @@ function capture() {
   };
   const INTERSTITIAL = /(temporarily unavailable|page unavailable|continuing to a page|go back to spanish|continue in english|this site uses cookies|accept all cookies|change cookie settings|privacy notice)/i;
   const isInterstitial = (t) => t && INTERSTITIAL.test(t.trim());
+  // recipe 5-bis junk / hidden-state filter (shared by hero, headings reuse, CTA labels)
+  const JUNK = /^(thank you!?|our apologies.*|sign in|sign up|subscribe|newsletter|follow us|share this|related|contact us)$|featured products|limited-time offer|% off|save \d+%|^\d[\d,]*\s*(products?|results?|items?)$|^\d[\d,]*$|[{}]/i;
+  const isJunk = (t) => !t || JUNK.test(t.trim());
 
   let filtered = 0;
   const text = (el) => (el.textContent || '').replace(/\s+/g, ' ').trim();
+  const words = (s) => (s ? s.split(/\s+/).filter(Boolean).length : 0);
+  const px = (v) => parseFloat(v) || 0;
+  const rectOf = (el) => { const r = el.getBoundingClientRect(); return { x: Math.round(r.x + scrollX), y: Math.round(r.y + scrollY), width: Math.round(r.width), height: Math.round(r.height) }; };
+  const fnv = (s) => { let h = 0x811c9dc5; for (let i = 0; i < s.length; i += 1) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; } return `fnv1a:${h.toString(16).padStart(8, '0')}`; };
 
   const meta = (n) => document.querySelector(`meta[name="${n}"]`)?.content
     || document.querySelector(`meta[property="${n}"]`)?.content || null;
 
-  // headings: visible only, drop interstitial copy
-  const headings = [...document.querySelectorAll('h1,h2,h3,h4,h5,h6')].filter((h) => {
+  // ---- open shadow-root descent (deepQueryAll) ----
+  // Web-component islands (federated <x-island> hosts) keep their headings,
+  // copy and CTAs inside open shadow roots that document.querySelectorAll and
+  // page.content() never reach. Every query below walks the light DOM AND every
+  // open root (nested ≤ 3 deep); document order is kept by anchoring a shadow
+  // node to its top-level host.
+  const roots = [document];
+  const collectRoots = (root, depth) => {
+    if (depth > 3) return;
+    for (const el of root.querySelectorAll('*')) if (el.shadowRoot) { roots.push(el.shadowRoot); collectRoots(el.shadowRoot, depth + 1); }
+  };
+  collectRoots(document, 0);
+  const anchor = (el) => { let n = el; let r = n.getRootNode(); while (r && r !== document && r.host) { n = r.host; r = n.getRootNode(); } return n; };
+  const before = (a, b) => (a.compareDocumentPosition(b) & 4) !== 0;
+  const docOrder = (a, b) => {
+    if (a === b) return 0;
+    const ra = a.getRootNode(); const rb = b.getRootNode();
+    if (ra === rb) return before(a, b) ? -1 : 1;
+    const aa = anchor(a); const ab = anchor(b);
+    if (aa === ab) return ra === document ? -1 : 1;
+    return before(aa, ab) ? -1 : 1;
+  };
+  const inScope = (el, scope) => !scope || scope.contains(anchor(el)) || scope.contains(el);
+  const deepAll = (sel, scope = null) => {
+    const out = [];
+    for (const r of roots) {
+      if (r === document) { for (const el of (scope || document).querySelectorAll(sel)) out.push(el); continue; }
+      if (scope && !inScope(r.host, scope)) continue;
+      for (const el of r.querySelectorAll(sel)) out.push(el);
+    }
+    return roots.length > 1 ? out.sort(docOrder) : out;
+  };
+  const inShadow = (el) => el.getRootNode() !== document;
+  // textContent stops at a shadow boundary — deepText adds every open root hosted inside el
+  const deepText = (el) => [text(el), ...roots.slice(1).filter((r) => r.host && (el === r.host || el.contains(r.host) || el.contains(anchor(r.host)))).map((r) => text(r))].filter(Boolean).join(' ');
+  const shadowText = roots.slice(1).reduce((n, r) => n + text(r).length, 0);
+  const shadowRootsWithText = roots.slice(1).filter((r) => text(r).length > 0).length;
+  const allEls = deepAll('*').slice(0, 20000);
+
+  // domPath: tag[#id|.firstClass][:nth-child(n)] segments from the anchor down;
+  // a shadow boundary is written as ` >>> `. Selector-shaped, not guaranteed unique.
+  const seg = (el) => {
+    const tag = el.tagName.toLowerCase();
+    if (el.id && /^[A-Za-z][\w-]*$/.test(el.id)) return `${tag}#${el.id}`;
+    const cls = [...el.classList].find((c) => /^[A-Za-z][\w-]*$/.test(c));
+    const sib = el.parentElement ? [...el.parentElement.children].filter((c) => c.tagName === el.tagName) : [];
+    const nth = sib.length > 1 ? `:nth-child(${[...el.parentElement.children].indexOf(el) + 1})` : '';
+    return `${tag}${cls ? `.${cls}` : ''}${nth}`;
+  };
+  const domPath = (el) => {
+    const parts = []; let n = el; let guard = 0;
+    while (n && n.nodeType === 1 && guard < 40) {
+      guard += 1;
+      if (n.tagName === 'BODY' || n.tagName === 'HTML') break;
+      parts.unshift(seg(n));
+      const p = n.parentElement;
+      if (!p) { const r = n.getRootNode(); if (r && r.host) { parts.unshift('>>>'); n = r.host; continue; } break; }
+      n = p;
+    }
+    return parts.length > 14 ? `… > ${parts.slice(-14).join(' > ')}`.replace(/ > >>> > /g, ' >>> ') : parts.join(' > ').replace(/ > >>> > /g, ' >>> ');
+  };
+
+  const bodyCs = getComputedStyle(document.body);
+  const bodyFontSize = px(bodyCs.fontSize) || 16;
+  const styleOf = (el) => { const cs = getComputedStyle(el); return { fontFamily: cs.fontFamily, fontWeight: +cs.fontWeight || cs.fontWeight, fontSize: cs.fontSize, lineHeight: cs.lineHeight, letterSpacing: cs.letterSpacing, color: cs.color }; };
+
+  // ---- headings: visible only, drop interstitial copy; + inferred display heads ----
+  const headingEls = deepAll('h1,h2,h3,h4,h5,h6').filter((h) => {
     if (!vis(h)) return false;
     if (isInterstitial(text(h))) { filtered += 1; return false; }
-    return true;
-  }).map((h) => ({ tag: h.tagName.toLowerCase(), level: +h.tagName[1], text: text(h) })).filter((h) => h.text);
+    return !!text(h);
+  });
+  const headingSet = new Set(headingEls);
+  // inferred: a block element styled as a display head (≥ 24 px and ≥ 1.6× body,
+  // ≤ 120 chars of its own text) outside every real heading, link or button —
+  // the card-title-only outline of a div-styled hero is the recorded failure
+  const INFER_MIN_PX = 24; const INFER_RATIO = 1.6; const INFER_MAX_CHARS = 120;
+  const inferredEls = allEls.filter((el) => {
+    if (!/^(DIV|P|SPAN|STRONG|B)$/.test(el.tagName)) return false;
+    if (el.closest('h1,h2,h3,h4,h5,h6,a,button,[role="button"],nav,[role="navigation"]')) return false;
+    if (el.querySelector('h1,h2,h3,h4,h5,h6,p,ul,ol,img,svg,a,button')) return false;
+    const own = [...el.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent).join(' ').replace(/\s+/g, ' ').trim();
+    if (own.length < 3 || own.length > INFER_MAX_CHARS || own !== text(el)) return false;
+    if (!vis(el)) return false;
+    const cs = getComputedStyle(el);
+    if (!/^(block|flex|grid|list-item|table-cell)$/.test(cs.display) && el.tagName !== 'P') return false;
+    const fs = px(cs.fontSize);
+    return fs >= INFER_MIN_PX && fs >= bodyFontSize * INFER_RATIO && !isJunk(own);
+  });
+  const headingsAll = [...headingEls, ...inferredEls].sort(docOrder);
+  const headingIndex = new Map();
+  const headings = headingsAll.map((h, i) => {
+    headingIndex.set(h, i);
+    const inferred = !headingSet.has(h);
+    const st = styleOf(h);
+    const rec = { tag: h.tagName.toLowerCase(), level: inferred ? (px(st.fontSize) >= 32 ? 1 : 2) : +h.tagName[1], text: text(h), id: h.id || null, domPath: domPath(h), style: st };
+    if (inferred) rec.inferred = true;
+    if (inShadow(h)) rec.shadow = true;
+    return rec;
+  });
 
-  const main = document.querySelector('main') || document.body;
-  // body paragraphs: visible, non-interstitial
-  const body = [...main.querySelectorAll('p,blockquote,li')].filter((p) => {
+  // ---- hero headline + lede (recipe 5-bis) ----
+  const HERO_BAND = 820; const LEDE_BAND = 1300;
+  const heroCands = headingsAll.map((el, i) => ({ el, i })).filter(({ el }) => { const r = el.getBoundingClientRect(); const top = r.top + scrollY; return top >= 0 && top <= HERO_BAND && r.width >= 120 && !isJunk(text(el)); });
+  heroCands.sort((a, b) => px(getComputedStyle(b.el).fontSize) - px(getComputedStyle(a.el).fontSize));
+  const domHero = heroCands.length ? headings[heroCands[0].i].text : '';
+  const ledeEl = deepAll('p').find((p) => { if (!vis(p)) return false; const t = text(p); const top = p.getBoundingClientRect().top + scrollY; return top <= LEDE_BAND && t.length >= 40 && t.length <= 400 && !isJunk(t) && !isInterstitial(t); });
+  const metaDescription = meta('description');
+  const firstSentence = (s) => ((s || '').match(/^[^.!?]+[.!?]?/) || [''])[0].trim();
+  let heroSource = 'dom';
+  let heroHeadline = domHero; let heroLede = ledeEl ? text(ledeEl) : '';
+  if (!heroHeadline || !heroLede) { heroSource = 'meta-fallback'; if (!heroHeadline) heroHeadline = firstSentence(metaDescription); if (!heroLede) heroLede = metaDescription || ''; }
+
+  const main = document.querySelector('main, [role="main"]') || document.body;
+  // page-level body paragraphs (legacy alias of landmarks[].children[].body): visible, non-interstitial
+  const body = deepAll('p,blockquote,li', main).filter((p) => {
     if (!vis(p)) return false;
     const t = text(p);
     if (!t || t.length < 2) return false;
@@ -1215,36 +1402,334 @@ function capture() {
     return true;
   }).map(text);
 
-  // CTAs (visible button-like)
-  const ctas = [...document.querySelectorAll('a[href],button,[role="button"]')].filter(vis)
-    .map((a) => ({ label: text(a), href: a.getAttribute('href') || null }))
-    .filter((c) => c.label && !isInterstitial(c.label)).slice(0, 100);
+  // ---- CTAs (visible, button-like flagged) ----
+  const ctaStyle = (el) => { const cs = getComputedStyle(el); return { backgroundColor: cs.backgroundColor, color: cs.color, fontFamily: cs.fontFamily, fontWeight: +cs.fontWeight || cs.fontWeight, borderRadius: cs.borderRadius, padding: cs.padding, boxShadow: cs.boxShadow }; };
+  const transparent = (c) => !c || c === 'transparent' || /^rgba\(\s*\d+,\s*\d+,\s*\d+,\s*0\)$/.test(c);
+  const ctaEls = deepAll('a[href],button,[role="button"]').filter(vis);
+  const ctas = ctaEls.map((a) => {
+    const st = ctaStyle(a);
+    const buttonLike = a.tagName === 'BUTTON' || a.getAttribute('role') === 'button' || (!transparent(st.backgroundColor) && px(st.borderRadius) > 2 && px(st.padding) > 4);
+    const r = a.getBoundingClientRect();
+    const rec = { label: text(a) || a.getAttribute('aria-label') || '', href: a.getAttribute('href') || null, tag: a.tagName.toLowerCase(), domPath: domPath(a), style: st, appearsAbove: r.top + scrollY < innerHeight ? 'fold' : 'below-fold', buttonLike };
+    if (inShadow(a)) rec.shadow = true;
+    return rec;
+  }).filter((c) => c.label && !isInterstitial(c.label)).slice(0, 150);
 
-  // links
-  const links = [...new Set([...document.querySelectorAll('a[href]')].map((a) => a.href))];
+  // ---- links: internal vs external, de-duplicated by (href sans fragment, text) ----
+  const internal = []; const external = []; const seenLink = new Set();
+  for (const a of deepAll('a[href]')) {
+    let u; try { u = new URL(a.href, location.href); } catch { continue; }
+    if (!/^https?:$/.test(u.protocol)) continue;
+    const t = text(a) || a.getAttribute('aria-label') || (a.querySelector('img') ? a.querySelector('img').alt : '') || '';
+    const key = `${u.origin}${u.pathname}${u.search}|${t}`;
+    if (seenLink.has(key)) continue;
+    seenLink.add(key);
+    const same = u.host === location.host;
+    (same ? internal : external).push({ href: same ? `${u.pathname}${u.search}` : u.href, text: t, domPath: domPath(a) });
+  }
+  const links = { internal: internal.slice(0, 400), external: external.slice(0, 400) };
 
-  // media — tracking pixels (lone off-origin <=2px) do NOT count as media
-  const imgs = [...document.querySelectorAll('img')].map((im) => ({
-    src: im.currentSrc || im.src, alt: im.alt || '', w: im.naturalWidth, h: im.naturalHeight,
-  }));
-  const realImgs = imgs.filter((im) => im.src && im.w > 2 && im.h > 2
-    && !/(^data:|1x1|pixel|track|beacon|\/p\?|\/b\?)/i.test(im.src));
-  const cssBgs = [];
-  for (const el of document.querySelectorAll('*')) {
-    const bg = getComputedStyle(el).backgroundImage;
-    if (bg && bg !== 'none' && /url\(/.test(bg)) {
-      const r = el.getBoundingClientRect();
-      const m = bg.match(/url\(["']?([^"')]+)/);
-      if (r.width >= 100 && r.height >= 80 && m) cssBgs.push(m[1]);
+  // ---- media — tracking pixels (lone off-origin <=2px) do NOT count as media ----
+  const imgEls = deepAll('img');
+  const isPixel = (im) => /(^data:|1x1|pixel|track|beacon|\/p\?|\/b\?)/i.test(im.currentSrc || im.src || '');
+  const realImgEls = imgEls.filter((im) => {
+    if (!(im.currentSrc || im.src) || isPixel(im)) return false;
+    if (!im.complete) return true; // still loading — recorded with resolves: null
+    if (im.naturalWidth === 0) return !!(im.getAttribute('src') || im.getAttribute('srcset')); // broken — recorded with resolves: false
+    return im.naturalWidth > 2 && im.naturalHeight > 2;
+  });
+  const images = realImgEls.map((im) => {
+    const picture = im.closest('picture');
+    const resolves = im.complete ? im.naturalWidth > 0 : null; // rendered state only — never a second request (T14.4 budget)
+    return {
+      src: im.src || null,
+      currentSrc: im.currentSrc || im.src || null,
+      srcset: im.getAttribute('srcset') || null,
+      sources: picture ? [...picture.querySelectorAll('source')].map((s) => ({ media: s.getAttribute('media') || null, srcset: s.getAttribute('srcset') || null, type: s.getAttribute('type') || null })) : [],
+      alt: im.alt || '',
+      naturalWidth: im.naturalWidth, naturalHeight: im.naturalHeight,
+      rect: rectOf(im),
+      loading: im.getAttribute('loading') || null,
+      resolves,
+      localPath: null,
+      domPath: domPath(im),
+    };
+  }).slice(0, 300);
+  const realImgs = realImgEls.filter((im) => im.naturalWidth > 2 && im.naturalHeight > 2); // legacy alias + the low-media signal keep the loaded-only meaning
+  const imgs = realImgs.map((im) => ({ src: im.currentSrc || im.src, alt: im.alt || '', w: im.naturalWidth, h: im.naturalHeight }));
+  // CSS backgrounds ≥ 100×80 incl. ::before/::after (recipe 11) — objects; gradients counted in stats.motifs
+  const BG_MIN_W = 100; const BG_MIN_H = 80;
+  const cssBackgrounds = []; const seenBg = new Set();
+  const bgEntry = (el, cs, pseudo) => {
+    const bg = cs.backgroundImage;
+    if (!bg || bg === 'none' || !/url\(/.test(bg)) return;
+    for (const m of bg.matchAll(/url\(["']?([^"')]+)["']?\)/g)) {
+      let url = m[1]; try { url = new URL(url, location.href).href; } catch { /* keep raw */ }
+      if (/^data:/.test(url)) continue;
+      const path = `${domPath(el)}${pseudo || ''}`;
+      const key = `${url}|${path}`;
+      if (seenBg.has(key)) continue;
+      seenBg.add(key);
+      cssBackgrounds.push({ url, domPath: path, boundingClientRect: rectOf(el), backgroundSize: cs.backgroundSize, backgroundPosition: cs.backgroundPosition, backgroundRepeat: cs.backgroundRepeat, pseudo: pseudo || null, localPath: null });
     }
+  };
+  const motifs = { radii: {}, shadows: {}, gradients: {} };
+  const bump = (tbl, k) => { if (!k) return; tbl[k] = (tbl[k] || 0) + 1; };
+  for (const el of allEls) {
+    const cs = getComputedStyle(el);
+    const r = el.getBoundingClientRect();
+    if (r.width >= BG_MIN_W && r.height >= BG_MIN_H) {
+      bgEntry(el, cs, '');
+      for (const ps of ['::before', '::after']) { const pcs = getComputedStyle(el, ps); if (pcs.content !== 'none') bgEntry(el, pcs, ps); }
+    }
+    if (r.width < 2 || r.height < 2) continue;
+    // motif counts (element-weighted): brand-surface's mode-of-radii table
+    const rad = cs.borderRadius; if (rad && rad !== '0px' && !/^0px( 0px)*$/.test(rad)) bump(motifs.radii, rad);
+    if (cs.boxShadow && cs.boxShadow !== 'none') bump(motifs.shadows, cs.boxShadow);
+    if (/gradient\(/.test(cs.backgroundImage)) bump(motifs.gradients, cs.backgroundImage.match(/[a-z-]*gradient\([^)]*\)/)?.[0] || cs.backgroundImage.slice(0, 120));
+  }
+  // inline SVGs are routinely aria-hidden (decorative icons) — geometry decides, not ARIA
+  const rendered = (el) => { const cs = getComputedStyle(el); const r = el.getBoundingClientRect(); return cs.display !== 'none' && cs.visibility !== 'hidden' && r.width >= 2 && r.height >= 2; };
+  const inlineSvgs = deepAll('svg').filter(rendered).filter((s) => !s.parentElement?.closest('svg')).map((s) => ({ viewBox: s.getAttribute('viewBox') || null, domPath: domPath(s), markupHash: fnv(s.outerHTML), rect: rectOf(s), inBanner: !!s.closest('header, [role="banner"]') })).slice(0, 80);
+  const videos = deepAll('video').filter(vis).map((v) => ({
+    src: v.currentSrc || v.src || v.querySelector('source')?.src || null,
+    poster: v.poster || null, autoplay: v.autoplay, loop: v.loop, muted: v.muted, rect: rectOf(v), domPath: domPath(v),
+  }));
+  const iframes = deepAll('iframe').filter(vis).map((f) => {
+    let host = null; try { host = new URL(f.src, location.href).host; } catch { /* about:blank */ }
+    return { src: f.src || null, title: f.title || null, rect: rectOf(f), crossOrigin: !!host && host !== location.host, domPath: domPath(f) };
+  });
+  // embed dominance — the largest cross-origin iframe vs the viewport and <main>
+  const vw = innerWidth; const vh = innerHeight;
+  const mainH = Math.max(1, (main === document.body ? document.documentElement : main).scrollHeight || main.getBoundingClientRect().height);
+  let embedDominance = { dominated: false, iframeSrc: null, viewportCoveragePct: null, mainHeightCoveragePct: null, screenshot: null };
+  for (const f of iframes.filter((x) => x.crossOrigin)) {
+    const r = f.rect;
+    const w = Math.max(0, Math.min(r.x + r.width, vw) - Math.max(r.x, 0)); const h = Math.max(0, Math.min(r.y + r.height, vh) - Math.max(r.y, 0));
+    const viewportCoveragePct = Math.round((w * h) / (vw * vh) * 100);
+    const mainHeightCoveragePct = Math.round((r.height / mainH) * 100);
+    if ((embedDominance.viewportCoveragePct || 0) >= viewportCoveragePct && embedDominance.iframeSrc) continue;
+    embedDominance = { dominated: viewportCoveragePct > 50 || mainHeightCoveragePct > 80, iframeSrc: f.src, viewportCoveragePct, mainHeightCoveragePct, screenshot: null };
   }
 
   // MODAL / AJAX detail: read textContent of dialog/modal containers EVEN IF hidden
   // (XHR-populated detail sits in a display:none .modal until opened).
-  const modals = [...document.querySelectorAll('[role="dialog"],[aria-modal="true"],.modal,.modal-content')]
-    .map((m) => text(m)).filter((t) => t && t.length > 40).slice(0, 10);
+  const modalEls = deepAll('dialog,[role="dialog"],[aria-modal="true"],.modal,.modal-content');
+  const modals = modalEls.map((m) => text(m)).filter((t) => t && t.length > 40).slice(0, 10);
 
-  const mainText = text(main);
+  const mainText = deepText(main);
+
+  // ---- landmarks with heading-bounded children (schema § Landmarks, recipe 6/7/7-bis) ----
+  const IMPLICIT_ROLE = { HEADER: 'banner', NAV: 'navigation', MAIN: 'main', ASIDE: 'complementary', FOOTER: 'contentinfo', SECTION: 'region', FORM: 'form' };
+  const roleOf = (el) => el.getAttribute('role') || IMPLICIT_ROLE[el.tagName] || null;
+  const landmarkEls = deepAll('header,nav,main,aside,footer,[role="banner"],[role="navigation"],[role="main"],[role="complementary"],[role="contentinfo"],[role="region"]')
+    .filter((el) => vis(el) && !el.closest('dialog,[role="dialog"]'));
+  const SKIP_CHILD = /^(SCRIPT|STYLE|TEMPLATE|NOSCRIPT|LINK|META|BR|HR)$/;
+  const sectionChildren = (lm) => {
+    let node = lm; let kids = []; let guard = 0;
+    while (guard < 4) {
+      guard += 1;
+      kids = [...node.children].filter((c) => !SKIP_CHILD.test(c.tagName) && vis(c));
+      if (kids.length !== 1 || !/^(DIV|SECTION|ARTICLE)$/.test(kids[0].tagName)) break;
+      node = kids[0];
+    }
+    if (!kids.length) kids = [node];
+    return kids;
+  };
+  const ALLOWED = new Set(['P', 'UL', 'OL', 'LI', 'A', 'STRONG', 'EM', 'B', 'I', 'U', 'BR', 'H2', 'H3', 'H4']);
+  const richtextOf = (root) => {
+    const out = [];
+    const walk = (n) => {
+      for (const c of n.childNodes) {
+        if (c.nodeType === 3) { const t = c.textContent.replace(/\s+/g, ' '); if (t.trim()) out.push(t.replace(/[<>&]/g, (ch) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[ch]))); continue; }
+        if (c.nodeType !== 1 || /^(SCRIPT|STYLE|TEMPLATE|NOSCRIPT|SVG|IMG|BUTTON|FORM|IFRAME|VIDEO)$/.test(c.tagName)) continue;
+        if (!ALLOWED.has(c.tagName)) { walk(c); continue; }
+        const tag = c.tagName.toLowerCase();
+        if (tag === 'br') { out.push('<br>'); continue; }
+        const hrefAttr = tag === 'a' ? (c.getAttribute('href') || '').split('"').join('&quot;') : '';
+        const href = hrefAttr ? ` href="${hrefAttr}"` : '';
+        out.push(`<${tag}${href}>`); walk(c); out.push(`</${tag}>`);
+      }
+    };
+    walk(root);
+    return out.join('').replace(/\s+/g, ' ').trim().slice(0, 20000);
+  };
+  const purposeOf = (el, kid) => {
+    const cls = `${el.className || ''} ${el.id || ''}`.toLowerCase();
+    if (el.tagName === 'FOOTER' || el.closest('footer, [role="contentinfo"]')) return kid.links >= 4 ? 'footer-nav' : 'unknown';
+    if (kid.forms > 0) return 'form';
+    if (/hero|masthead|banner|jumbotron/.test(cls) || (kid.top < 900 && kid.headingLevel === 1)) return 'hero';
+    if (kid.quotes > 0 || /testimonial|review|logos?|partners|clients|trusted/.test(cls)) return 'social-proof';
+    if (kid.cards >= 3 || /features?|benefits|services|grid|cards/.test(cls)) return 'feature-list';
+    if (kid.headings > 0 && kid.ctas >= 1 && kid.ctas <= 2 && kid.words < 60) return 'cta-band';
+    if (kid.paragraphs >= 3 && kid.cards === 0) return 'rich-text';
+    return 'unknown';
+  };
+  const qaOf = (root) => {
+    const qa = [];
+    for (const d of deepAll('details', root)) { const s = d.querySelector('summary'); if (!s) continue; const a = [...d.childNodes].filter((n) => n !== s).map((n) => (n.textContent || '')).join(' ').replace(/\s+/g, ' ').trim(); qa.push({ q: text(s), a: a || null }); }
+    for (const t of deepAll('[aria-expanded][aria-controls]', root)) { const panel = t.getRootNode().getElementById ? t.getRootNode().getElementById(t.getAttribute('aria-controls')) : document.getElementById(t.getAttribute('aria-controls')); const q = text(t); if (!q || t.closest('nav,[role="navigation"],details')) continue; qa.push({ q, a: panel ? (text(panel) || null) : null }); }
+    return qa.slice(0, 60);
+  };
+  const quotesOf = (root) => deepAll('blockquote,[class*="testimonial" i],[class*="review-card" i],[class*="pullquote" i]', root).filter((q) => !q.parentElement?.closest('blockquote,[class*="testimonial" i],[class*="review-card" i]')).map((q) => {
+    const body = q.querySelector('p, q, [class*="text" i], [class*="quote" i]') || q;
+    const attr = q.querySelector('cite, footer, figcaption, [class*="author" i], [class*="name" i], [class*="attribution" i]');
+    const ratingEl = q.querySelector('[aria-label*="out of" i], [class*="rating" i], [class*="stars" i]');
+    let rating = null;
+    if (ratingEl) { const m = (ratingEl.getAttribute('aria-label') || '').match(/(\d+(?:\.\d+)?)\s*(?:out of|\/)/i); rating = m ? +m[1] : ratingEl.querySelectorAll('svg, i, span').length || null; }
+    const t = text(body === attr ? q : body).replace(attr ? text(attr) : '', '').trim();
+    return { text: t, attribution: attr ? text(attr) : null, rating };
+  }).filter((q) => q.text && q.text.length > 10).slice(0, 40);
+  const landmarks = landmarkEls.map((lm) => {
+    const kids = sectionChildren(lm).map((el) => {
+      const hEls = headingsAll.filter((h) => el.contains(h) || (inShadow(h) && el.contains(anchor(h))));
+      const headlineRef = hEls.length ? headingIndex.get(hEls[0]) : null;
+      const paras = deepAll('p,blockquote', el).filter((p) => vis(p) && !p.closest('li') && !(p.tagName === 'P' && p.closest('blockquote')) && !isInterstitial(text(p)) && text(p).length > 1);
+      const bodyArr = paras.map((p) => (p.tagName === 'BLOCKQUOTE' ? text(p) : (p.innerText || p.textContent || '').trim())).filter(Boolean);
+      const lists = deepAll('ul,ol', el).filter((l) => vis(l) && !l.closest('p') && !l.parentElement?.closest('ul,ol') && !l.closest('nav,[role="navigation"]')).map((l) => ({ ordered: l.tagName === 'OL', items: [...l.children].filter((li) => li.tagName === 'LI').map(text).filter(Boolean) })).filter((l) => l.items.length).slice(0, 40);
+      const ctaCount = ctaEls.filter((a) => el.contains(a) || (inShadow(a) && el.contains(anchor(a)))).length;
+      const cardCount = el.querySelectorAll('.card, [class*="card" i]:not([class*="card-grid" i]), article').length;
+      const t = deepText(el);
+      const r = el.getBoundingClientRect();
+      const kid = { top: r.top + scrollY, headings: hEls.length, headingLevel: hEls.length ? (headings[headingIndex.get(hEls[0])].level) : null, ctas: ctaCount, cards: cardCount, paragraphs: bodyArr.length, words: words(t), links: el.querySelectorAll('a[href]').length, forms: el.querySelectorAll('form').length, quotes: 0 };
+      const quotes = quotesOf(el); kid.quotes = quotes.length;
+      const rec = { tag: el.tagName.toLowerCase(), role: el.getAttribute('role') || null, id: el.id || null, classes: [...el.classList], purpose: purposeOf(el, kid), headlineRef, innerTextSummary: t.slice(0, 240), wordCount: kid.words, body: bodyArr, lists, qa: qaOf(el), quotes, richtext: richtextOf(el), rect: rectOf(el), domPath: domPath(el) };
+      if (inShadow(el)) rec.shadow = true;
+      return rec;
+    });
+    return { tag: lm.tagName.toLowerCase(), role: roleOf(lm), id: lm.id || null, classes: [...lm.classList], domPath: domPath(lm), innerText: deepText(lm), rect: rectOf(lm), children: kids };
+  });
+
+  // ---- per-section style (recipe 10; area-weighted over rendered descendants) ----
+  const mainLm = landmarkEls.find((el) => el === main) || main;
+  const sectionEls = sectionChildren(mainLm);
+  const perSectionStyle = sectionEls.map((sec, i) => {
+    const kidsRec = landmarks.find((l) => l.domPath === domPath(mainLm))?.children?.[i];
+    const desc = [sec, ...deepAll('*', sec)].filter((el) => { const r = el.getBoundingClientRect(); return r.width >= 2 && r.height >= 2; }).slice(0, 1500);
+    const bgW = new Map(); const txtW = new Map(); const gaps = new Map(); const radii = new Map(); const fams = new Map(); const shadows = new Set();
+    let hasImage = false; let hasGradient = false;
+    const add = (m, k, w) => { if (!k) return; m.set(k, (m.get(k) || 0) + w); };
+    for (const el of desc) {
+      const cs = getComputedStyle(el); const r = el.getBoundingClientRect(); const area = r.width * r.height;
+      if (!transparent(cs.backgroundColor)) add(bgW, cs.backgroundColor, area);
+      if (/url\(/.test(cs.backgroundImage)) hasImage = true;
+      if (/gradient\(/.test(cs.backgroundImage)) hasGradient = true;
+      const own = [...el.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent).join('').trim().length;
+      if (own) { add(txtW, cs.color, own); add(fams, cs.fontFamily.split(',')[0].replace(/["']/g, '').trim(), own); }
+      if (/^(flex|grid|inline-flex|inline-grid)$/.test(cs.display) && cs.gap && cs.gap !== 'normal' && cs.gap !== '0px') add(gaps, cs.gap, 1);
+      if (cs.borderRadius && cs.borderRadius !== '0px') add(radii, cs.borderRadius, 1);
+      if (cs.boxShadow && cs.boxShadow !== 'none' && shadows.size < 3) shadows.add(cs.boxShadow);
+    }
+    const top = (m) => [...m.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || null;
+    const scs = getComputedStyle(sec);
+    let bgColor = top(bgW);
+    if (!bgColor) { let p = sec; while (p) { const c = getComputedStyle(p).backgroundColor; if (!transparent(c)) { bgColor = c; break; } p = p.parentElement; } }
+    return {
+      sectionRef: domPath(sec), purpose: kidsRec ? kidsRec.purpose : 'unknown',
+      background: { color: bgColor || 'rgb(255, 255, 255)', hasImage, hasGradient }, // a transparent chain paints on the white canvas
+      text: { dominantColor: top(txtW) || scs.color },
+      spacing: { paddingBlock: scs.paddingBlock || `${scs.paddingTop} ${scs.paddingBottom}`, paddingInline: scs.paddingInline || `${scs.paddingLeft} ${scs.paddingRight}`, gap: top(gaps) },
+      borderRadius: top(radii),
+      fontFamilies: [...fams.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map((e) => e[0]),
+      shadowsUsed: [...shadows],
+    };
+  });
+
+  // ---- forms: one walk, two shapes (schema § Forms always; dynamic.forms reach under --dynamics) ----
+  const THIRD_PARTY = /(stripe|calendly|typeform|mailchimp|list-manage|hubspot|hsforms|marketo|pardot|salesforce|formstack|jotform|gravityforms|wufoo|cognito|eloqua)/i;
+  const labelOf = (i) => {
+    const root = i.getRootNode();
+    if (i.id) { const l = (root.querySelector ? root : document).querySelector(`label[for="${CSS.escape(i.id)}"]`); if (l) return text(l); }
+    const wrap = i.closest('label'); if (wrap) return text(wrap).replace(text(i), '').trim() || text(wrap);
+    return i.getAttribute('aria-label') || i.getAttribute('placeholder') || null;
+  };
+  const formEls = deepAll('form').filter(vis).slice(0, 20);
+  const formInputs = (f) => [...f.querySelectorAll('input,select,textarea')].filter((i) => !['hidden', 'submit', 'button', 'reset'].includes((i.type || '').toLowerCase()));
+  const forms = formEls.map((f) => {
+    const inputs = formInputs(f);
+    const rawAction = f.getAttribute('action');
+    let action = null; try { action = new URL(rawAction || location.href, location.href); } catch { /* keep null */ }
+    const classes = `${f.className || ''} ${f.id || ''} ${rawAction || ''}`;
+    const tpMatch = classes.match(THIRD_PARTY) || (action && action.host !== location.host && action.host.match(THIRD_PARTY));
+    return {
+      action: action ? (action.host === location.host ? `${action.pathname}${action.search}` : action.href) : null,
+      method: (f.getAttribute('method') || 'get').toLowerCase(),
+      fields: inputs.map((i) => ({ type: i.tagName === 'TEXTAREA' ? 'textarea' : i.tagName === 'SELECT' ? 'select' : (i.type || 'text').toLowerCase(), name: i.name || i.id || null, label: labelOf(i), required: i.required || i.getAttribute('aria-required') === 'true' })).slice(0, 40),
+      thirdParty: tpMatch ? tpMatch[0].toLowerCase().replace(/^(hsforms)$/, 'hubspot').replace(/^list-manage$/, 'mailchimp') : null,
+      domPath: domPath(f),
+    };
+  });
+  const dynForms = formEls.map((f) => {
+    const inputs = formInputs(f);
+    const names = inputs.map((i) => i.name || i.id || '').filter(Boolean);
+    const rawAction = f.getAttribute('action');
+    let action = null; try { action = new URL(rawAction || location.href, location.href); } catch { /* keep null */ }
+    const search = f.getAttribute('role') === 'search'
+      || inputs.some((i) => (i.type || '').toLowerCase() === 'search')
+      || names.some((n) => /^(q|s|query|search|keyword|keywords|term)$/i.test(n))
+      || (!!action && /search/i.test(action.pathname));
+    return {
+      action: action ? `${action.origin}${action.pathname}` : null,
+      hasAction: !!rawAction, // no action attribute → almost always JS-submitted
+      method: (f.getAttribute('method') || 'get').toLowerCase(),
+      sameOrigin: action ? action.origin === location.origin : true,
+      fieldCount: inputs.length,
+      fieldNames: [...new Set(names)].slice(0, 12),
+      search,
+    };
+  });
+
+  // ---- widgets (recipe 13) ----
+  const modalWidgets = modalEls.slice(0, 20).map((m) => {
+    const id = m.id;
+    const trig = id ? (deepAll(`[aria-controls="${CSS.escape(id)}"],[data-target="#${CSS.escape(id)}"],[data-bs-target="#${CSS.escape(id)}"],a[href="#${CSS.escape(id)}"]`)[0] || null) : null;
+    return { trigger: trig ? domPath(trig) : null, domPath: domPath(m) };
+  });
+  const accordionGroups = new Map();
+  for (const d of deepAll('details')) { const p = d.parentElement || d; accordionGroups.set(p, (accordionGroups.get(p) || 0) + 1); }
+  for (const t of deepAll('[aria-expanded][aria-controls]')) { if (t.closest('nav,[role="navigation"],details,[role="tablist"]')) continue; const p = t.parentElement?.parentElement || t.parentElement || t; accordionGroups.set(p, (accordionGroups.get(p) || 0) + 1); }
+  const accordions = [...accordionGroups.entries()].map(([el, n]) => ({ domPath: domPath(el), itemCount: n })).slice(0, 20);
+  const tabsW = deepAll('[role="tablist"]').map((t) => ({ domPath: domPath(t), tabCount: t.querySelectorAll('[role="tab"]').length })).slice(0, 20);
+  const widgets = { modals: modalWidgets, accordions, tabs: tabsW };
+
+  // ---- components: closed-list inventory (schema § Components) ----
+  const comp = (els) => ({ count: els.length, examples: [...new Set(els.map((el) => domPath(el)))].slice(0, 2) });
+  const gridParents = allEls.filter((el) => { const cs = getComputedStyle(el); if (!/^(grid|flex)$/.test(cs.display) || (cs.display === 'flex' && cs.flexWrap === 'nowrap' && el.children.length < 3)) return false; const kids = [...el.children].filter(vis); if (kids.length < 3) return false; const w = kids.map((k) => Math.round(k.getBoundingClientRect().width)); return w.every((x) => x > 40 && Math.abs(x - w[0]) <= 4); });
+  const cardEls = deepAll('.card, [class*="card" i]:not([class*="card-grid" i]):not([class*="cards" i]), article').filter(vis);
+  const currency = /[$€£¥]\s?\d|\d\s?(USD|EUR|GBP)/;
+  const statRows = gridParents.filter((g) => [...g.children].filter((k) => /\b\d{2,}[\d,.]*\s*[%+kKmM]?\b/.test(text(k)) && words(text(k)) <= 12).length >= 3);
+  const logoStrips = allEls.filter((el) => { const kids = [...el.children]; if (kids.length < 4) return false; const media = kids.filter((k) => k.matches('img,svg,a,picture') && (k.querySelector('img,svg') || k.matches('img,svg'))); if (media.length < 4 || media.length !== kids.length) return false; const own = text(el).length; const hs = media.map((k) => k.getBoundingClientRect().height); return own < 40 && hs.every((h) => h > 8 && Math.abs(h - hs[0]) <= 12); });
+  const components = {
+    cards: comp(cardEls),
+    grids: comp(gridParents),
+    accordions: comp(deepAll('details, [role="region"][aria-labelledby]')),
+    tabs: comp(deepAll('[role="tablist"]')),
+    tables: comp(deepAll('table:not([role="presentation"])')),
+    modals: comp(deepAll('dialog, [role="dialog"]')),
+    carousels: comp(deepAll('[class*="carousel" i], [class*="swiper" i], [class*="slick" i], [class*="slider" i]')),
+    videos: comp(deepAll('video')),
+    iframes: comp(deepAll('iframe')),
+    dataVizEmbeds: comp(deepAll('iframe[src*="datawrapper"], iframe[src*="flourish"], iframe[src*="tableau"], [class*="chart" i], canvas[class*="chart" i]')),
+    teamTiles: comp(deepAll('[class*="team" i] [class*="member" i], [class*="staff" i]')),
+    pricingTiles: comp(deepAll('[class*="pricing" i] [class*="tier" i], [class*="pricing" i] [class*="plan" i], [class*="price-card" i]').filter((el) => currency.test(text(el)))),
+    testimonialCards: comp([...deepAll('[class*="testimonial" i]'), ...deepAll('blockquote').filter((b) => b.querySelector('cite, footer'))]),
+    logoStrip: comp(logoStrips),
+    timeline: comp(deepAll('[class*="timeline" i], ol[class*="step" i]')),
+    breadcrumbs: comp(deepAll('nav[aria-label*="breadcrumb" i], [class*="breadcrumb" i]')),
+    statRow: comp(statRows),
+    ctaBand: comp(sectionEls.filter((s, i) => landmarks.find((l) => l.domPath === domPath(mainLm))?.children?.[i]?.purpose === 'cta-band')),
+    formFields: comp(formEls.flatMap((f) => formInputs(f))),
+    other: [],
+  };
+
+  // ---- theme colour, language, custom props ----
+  const themeMetas = [...document.querySelectorAll('meta[name="theme-color"]')];
+  const themeColor = {
+    light: (themeMetas.find((m) => /light/.test(m.media || '')) || themeMetas.find((m) => !m.media))?.content || null,
+    dark: themeMetas.find((m) => /dark/.test(m.media || ''))?.content || null,
+  };
+  const language = document.documentElement.lang || meta('content-language') || meta('og:locale') || null;
+
   // custom props — discovery-vs-value split:
   //   * the stylesheet walk DISCOVERS property NAMES declared on :root/html-ish
   //     selectors, recursing into @media/@supports groups AND @import'ed sheets
@@ -1257,15 +1742,24 @@ function capture() {
   //     list contains exactly ':root' or 'html'. Names that only appear in
   //     conditional/themed rules (e.g. `:root.dark`, `@media (…)`) and compute
   //     empty are skipped — the rendered page never used them.
+  //   * the same walk collects @font-face descriptors (recipe 16) so the asset
+  //     harvest can label a font body with family/weight/style.
   const propNames = new Set();
   const declaredFallback = {};
+  const fontFaces = [];
   const isConditionalMedia = (media) => !!(media && media.mediaText && !/^(all)?$/i.test(media.mediaText.trim()));
-  const walkRules = (rules, conditional) => {
+  const walkRules = (rules, conditional, sheetHref) => {
     for (const rule of rules || []) {
       if (rule.type === 3 /* CSSRule.IMPORT_RULE */ || (typeof CSSImportRule !== 'undefined' && rule instanceof CSSImportRule)) {
         try {
-          if (rule.styleSheet) walkRules(rule.styleSheet.cssRules, conditional || isConditionalMedia(rule.media));
+          if (rule.styleSheet) walkRules(rule.styleSheet.cssRules, conditional || isConditionalMedia(rule.media), rule.styleSheet.href || sheetHref);
         } catch { /* cross-origin imported sheet */ }
+        continue;
+      }
+      if (rule.type === 5 /* FONT_FACE_RULE */ && rule.style && fontFaces.length < 200) {
+        const st = rule.style;
+        const urls = [...(st.getPropertyValue('src') || '').matchAll(/url\(["']?([^"')]+)["']?\)/g)].map((m) => { try { return new URL(m[1], sheetHref || location.href).href; } catch { return m[1]; } });
+        fontFaces.push({ family: (st.getPropertyValue('font-family') || '').replace(/["']/g, '').trim(), weight: st.getPropertyValue('font-weight') || '400', style: st.getPropertyValue('font-style') || 'normal', unicodeRange: st.getPropertyValue('unicode-range') || null, urls, sourceCssRule: rule.cssText.slice(0, 400), sheet: sheetHref || 'inline' });
         continue;
       }
       if (rule.style && rule.selectorText) {
@@ -1283,13 +1777,14 @@ function capture() {
       if (rule.cssRules && rule.cssRules.length) {
         // grouping rule: @media/@supports carry a condition; @layer etc. do not
         const groupConditional = conditional || typeof rule.conditionText === 'string';
-        try { walkRules(rule.cssRules, groupConditional); } catch { /* skip */ }
+        try { walkRules(rule.cssRules, groupConditional, sheetHref); } catch { /* skip */ }
       }
     }
   };
   for (const sheet of document.styleSheets) {
-    try { walkRules(sheet.cssRules, isConditionalMedia(sheet.media)); } catch { /* cross-origin sheet */ }
+    try { walkRules(sheet.cssRules, isConditionalMedia(sheet.media), sheet.href); } catch { /* cross-origin sheet */ }
   }
+  for (const r of roots.slice(1)) { for (const sheet of r.styleSheets || []) { try { walkRules(sheet.cssRules, false, null); } catch { /* skip */ } } }
   for (const p of document.documentElement.style) {
     if (p.startsWith('--')) {
       propNames.add(p);
@@ -1304,8 +1799,31 @@ function capture() {
     else if (declaredFallback[name]) customProps[name] = declaredFallback[name];
     // else: conditional/themed-only name with empty computed value — skip
   }
+  const cssCustomProperties = Object.entries(customProps).map(([name, value]) => ({ name, value }));
 
-  // substance / SPA-shell signal
+  // ---- icon fonts: family-first (recipe 17) — every element's ::before/::after
+  // with a single-codepoint `content` and a non-system font-family, class-agnostic
+  const SYSTEM_FAMILY = /^(system-ui|-apple-system|blinkmacsystemfont|segoe ui|roboto|helvetica|arial|sans-serif|serif|monospace|inherit|initial|georgia|times|ui-sans-serif|ui-serif)$/i;
+  const iconTable = new Map();
+  for (const el of allEls) {
+    for (const ps of ['::before', '::after']) {
+      const pcs = getComputedStyle(el, ps);
+      const c = pcs.content;
+      if (!c || c === 'none' || c === 'normal' || !/^"(.|\\[0-9a-f]{1,6}\s?)"$/i.test(c)) continue;
+      const fam = (pcs.fontFamily || '').split(',')[0].replace(/["']/g, '').trim();
+      if (!fam || SYSTEM_FAMILY.test(fam)) continue;
+      const cp = c.slice(1, -1);
+      const code = cp.startsWith('\\') ? `U+${cp.slice(1).trim().toUpperCase().padStart(4, '0')}` : `U+${cp.codePointAt(0).toString(16).toUpperCase().padStart(4, '0')}`;
+      if (code === 'U+0020' || /^U\+00[2-7][0-9A-F]$/.test(code)) continue; // printable ASCII is a bullet/quote, not a glyph
+      const row = iconTable.get(fam) || { family: fam, classes: new Set(), codepoints: new Set() };
+      const cls = [...el.classList].find((k) => /icon|glyph|fa-|ico-/i.test(k)) || [...el.classList][0] || el.tagName.toLowerCase();
+      row.classes.add(cls); row.codepoints.add(code);
+      iconTable.set(fam, row);
+    }
+  }
+  const iconFont = [...iconTable.values()].map((r) => ({ family: r.family, classes: [...r.classes].slice(0, 12), codepoints: r.codepoints.size, glyphs: [...r.codepoints].slice(0, 40) }));
+
+  // ---- substance / SPA-shell signal ----
   const distinctHeadings = new Set(headings.map((h) => h.text)).size;
   const spaShellSuspect = distinctHeadings < 2 && mainText.length < 200 && realImgs.length === 0;
   // capture-quality signals (recorded, never thrown — the DOM is still evidence):
@@ -1317,12 +1835,11 @@ function capture() {
   //     viewport: a survey/feedback modal with a dimming scrim the consent pass
   //     did not know covers most of it; the dismissal already removed CMPs.
   const landmark = document.querySelector('main, [role="main"]');
-  const emptyMain = !!landmark && text(landmark).length < 50 && realImgs.length === 0;
-  const withSrc = [...document.querySelectorAll('img[src]')].filter((im) => im.getAttribute('src') && !/^data:/i.test(im.getAttribute('src')));
+  const emptyMain = !!landmark && deepText(landmark).length < 50 && realImgs.length === 0;
+  const withSrc = imgEls.filter((im) => im.getAttribute('src') && !/^data:/i.test(im.getAttribute('src')));
   const brokenImages = withSrc.filter((im) => im.complete && im.naturalWidth === 0).length;
   const subResourceBlock = brokenImages >= Math.max(3, Math.ceil(withSrc.length * 0.3));
   let overlayArea = 0;
-  const vw = window.innerWidth; const vh = window.innerHeight;
   for (const el of document.querySelectorAll('body *')) {
     const cs = getComputedStyle(el);
     if (cs.position !== 'fixed' || cs.display === 'none' || cs.visibility === 'hidden' || +cs.opacity === 0) continue;
@@ -1340,7 +1857,7 @@ function capture() {
   // developer-tool site the install commands are the most load-bearing content
   // and innerText body capture skips them). Visible pres only; innerText keeps
   // line structure.
-  const codeBlocks = [...document.querySelectorAll('pre')].filter(vis)
+  const codeBlocks = deepAll('pre').filter(vis)
     .map((el) => (el.innerText || '').trim()).filter(Boolean);
 
   // dynamic-surface evidence (DOM side): data blobs, hydration hints, forms.
@@ -1374,26 +1891,6 @@ function capture() {
     q('script[src*="marketo"],form[id^="mktoForm"]') && 'marketo-forms',
     q('.aem-Grid,[data-cmp-is]') && 'aem-sites',
   ].filter(Boolean);
-  const forms = [...document.querySelectorAll('form')].filter(vis).slice(0, 20).map((f) => {
-    const inputs = [...f.querySelectorAll('input,select,textarea')].filter((i) => !['hidden', 'submit', 'button', 'reset'].includes((i.type || '').toLowerCase()));
-    const names = inputs.map((i) => i.name || i.id || '').filter(Boolean);
-    const rawAction = f.getAttribute('action');
-    let action = null;
-    try { action = new URL(rawAction || location.href, location.href); } catch { /* keep null */ }
-    const search = f.getAttribute('role') === 'search'
-      || inputs.some((i) => (i.type || '').toLowerCase() === 'search')
-      || names.some((n) => /^(q|s|query|search|keyword|keywords|term)$/i.test(n))
-      || (!!action && /search/i.test(action.pathname));
-    return {
-      action: action ? `${action.origin}${action.pathname}` : null,
-      hasAction: !!rawAction, // no action attribute → almost always JS-submitted
-      method: (f.getAttribute('method') || 'get').toLowerCase(),
-      sameOrigin: action ? action.origin === location.origin : true,
-      fieldCount: inputs.length,
-      fieldNames: [...new Set(names)].slice(0, 12),
-      search,
-    };
-  });
   const ariaLiveRegions = document.querySelectorAll('[aria-live]:not([aria-live="off"])').length;
   // reach signals for dynamics-detect --reach: modal-trigger markers and player ids per page
   const triggers = [...document.querySelectorAll('a, button')].map((el) => {
@@ -1447,50 +1944,89 @@ function capture() {
     radioFieldsets: [...document.querySelectorAll('fieldset')].filter((f) => f.querySelectorAll('input[type=radio]').length >= 3).length,
   };
 
+  const stats = {
+    wordCount: words(mainText),
+    ctaCount: ctas.length,
+    internalLinkCount: links.internal.length,
+    externalLinkCount: links.external.length,
+    imageCount: images.length,
+    inlineSvgCount: inlineSvgs.length,
+    motifs,
+  };
+
   return {
-    dynamicDom: { inlineData, globalState, frameworkHints, forms, ariaLiveRegions, triggers, mediaIds, tabs, shadowHosts, emptyConfigContainers, controlGroups, searchShell, players, chatLoaders, federated, quiz },
+    dynamicDom: { inlineData, globalState, frameworkHints, forms: dynForms, ariaLiveRegions, triggers, mediaIds, tabs, shadowHosts, emptyConfigContainers, controlGroups, searchShell, players, chatLoaders, federated, quiz },
     finalUrl: location.href,
     title: document.title || null,
-    description: meta('description'),
-    og: { title: meta('og:title'), description: meta('og:description'), image: meta('og:image'), type: meta('og:type') },
+    metaDescription,
+    description: metaDescription, // 0.24.x alias (schema § Versioning)
+    heroHeadline,
+    heroLede,
+    og: { title: meta('og:title'), description: meta('og:description'), image: meta('og:image'), type: meta('og:type'), siteName: meta('og:site_name') },
+    themeColor,
+    language,
     headings,
+    landmarks,
     body,
     codeBlocks,
     ctas,
     links,
     media: {
-      imgs: realImgs,
-      allImgCount: imgs.length,
-      cssBackgrounds: [...new Set(cssBgs)],
+      images,
+      imgs, // 0.24.x alias of images[] ({src, alt, w, h})
+      allImgCount: imgEls.length,
+      cssBackgrounds,
+      inlineSvgs,
       modals,
-      videos: [...document.querySelectorAll('video')].filter(vis).map((v) => ({
-        src: v.currentSrc || v.src || v.querySelector('source')?.src || null,
-        poster: v.poster || null,
-        autoplay: v.autoplay,
-        loop: v.loop,
-        muted: v.muted,
-      })),
-      iframes: [...document.querySelectorAll('iframe')].filter(vis).map((f) => ({
-        src: f.src || null,
-        title: f.title || null,
-      })),
+      videos,
+      iframes,
     },
-    customProps,
+    forms,
+    widgets,
+    components,
+    perSectionStyle,
+    embedDominance,
+    cssCustomProperties,
+    customProps, // 0.24.x alias of cssCustomProperties[] (object form)
+    stats,
+    _fontFaces: fontFaces, // @font-face descriptors — folded into assets/_fonts-manifest.json by the writer, not persisted per page
+    _heroSource: heroSource, // → _provenance.heroSource
     _signals: {
       filteredInterstitials: filtered,
       distinctHeadings,
       mainTextLen: mainText.length,
       realImageCount: realImgs.length,
-      trackingOnlyMedia: imgs.length > 0 && realImgs.length === 0,
+      trackingOnlyMedia: imgEls.length > 0 && realImgs.length === 0,
       spaShellSuspect,
       emptyMain,
       brokenImages,
       subResourceBlock,
       overlayCoverPct,
+      shadowRoots: shadowRootsWithText,
+      shadowTextLen: shadowText,
+      inferredHeadings: inferredEls.length,
+      iconFont,
     },
     _compatMode: document.compatMode, // 'CSS1Compat' | 'BackCompat' (quirks) → _provenance.compatMode
     _contentHash: contentHash,
   };
+}
+
+// Rendered-DOM sidecar with open shadow roots serialised (declarative
+// `<template shadowrootmode="open">`) — page.content() drops island content.
+// Runs in-page on the same settled document; falls back to the plain outerHTML
+// where getHTML() is unavailable.
+function serializeDom() {
+  const dt = document.doctype;
+  const doctype = dt ? `<!DOCTYPE ${dt.name}${dt.publicId ? ` PUBLIC "${dt.publicId}"` : ''}${dt.systemId ? ` "${dt.systemId}"` : ''}>\n` : '';
+  const roots = [];
+  const collect = (root, depth) => { if (depth > 3) return; for (const el of root.querySelectorAll('*')) if (el.shadowRoot) { roots.push(el.shadowRoot); collect(el.shadowRoot, depth + 1); } };
+  collect(document, 0);
+  const html = document.documentElement;
+  if (typeof html.getHTML === 'function') {
+    try { return doctype + html.getHTML({ serializableShadowRoots: true, shadowRoots: roots }); } catch { /* fall through */ }
+  }
+  return doctype + html.outerHTML;
 }
 
 // captureQuality from the in-page signals — 'degraded' when the record is real
@@ -1629,6 +2165,9 @@ async function capturePage(context, url, slug, args, isEntry = false) {
   const rec = await page.evaluate(capture);
   const compatMode = rec._compatMode || null;
   delete rec._compatMode;
+  const heroSource = rec._heroSource || 'dom';
+  delete rec._heroSource;
+  rec._fontFaces = rec._fontFaces || []; // consumed by the writer (fonts manifest), never persisted per page
   // dynamic surface (opt-in): network recorder + DOM-side evidence → one `dynamic` section
   if (!recorder) delete rec.dynamicDom;
   else {
@@ -1659,7 +2198,7 @@ async function capturePage(context, url, slug, args, isEntry = false) {
   }
   // rendered DOM sidecar — the settled document as the instrument saw it
   // (written by the caller as pages/<slug>.html; parse offline, never re-scrape).
-  rec._renderedHtml = await page.content();
+  rec._renderedHtml = await page.evaluate(serializeDom).catch(() => null) || await page.content();
   // soft-404: empty page (no text, no headings, no media, no forms)
   if (!rec.headings.length && rec._signals.mainTextLen === 0 && rec._signals.realImageCount === 0) {
     throw Object.assign(new Error('empty page — possibly soft-404'), { errorClass: 'EmptyPageError' });
@@ -1671,6 +2210,7 @@ async function capturePage(context, url, slug, args, isEntry = false) {
   await mkdir(shotsDir, { recursive: true });
   const shot = await screenshotPage(page, slug, shotsDir);
   rec.screenshot = shot.files.length ? `assets/screenshots/${shot.files[0]}` : null;
+  if (rec.embedDominance && rec.embedDominance.dominated) rec.embedDominance.screenshot = rec.screenshot; // schema § Embed dominance: reason from pixels, not from the empty style data
   rec._signals.screenshotMode = shot.mode;
   rec._signals.docHeight = shot.docHeight;
   if (shot.bands) rec._signals.screenshotBands = shot.bands;
@@ -1694,6 +2234,10 @@ async function capturePage(context, url, slug, args, isEntry = false) {
     waitMode: args.wait || 'medium',
     waitMs: WAIT_MS[args.wait] || WAIT_MS.medium,
     httpStatus: status,
+    contentType: ct.split(';')[0].trim(),
+    schemaVersion: SCHEMA_VERSION, // the per-page schema this record follows (current-state-schema.md § Versioning) — validate-page.mjs keys on it
+    script: 'crawl.mjs',
+    heroSource, // "dom" | "meta-fallback" — which source heroHeadline/heroLede came from (recipe 5-bis)
     // capture conditions — field names identical to replica's capture sidecar
     // (capture-sidecar.mjs) so the two records compare 1:1 (current-state-schema.md § Top-level shape)
     width: CRAWL_CONTEXT.viewport.width,
@@ -1941,16 +2485,30 @@ async function main() {
           await writeFile(htmlFile, rec._renderedHtml);
           delete rec._renderedHtml;
           rec.renderedHtml = `pages/${slug}.html`;
+          const fontFaces = rec._fontFaces || [];
+          delete rec._fontFaces;
           const { _provenance, ...rest } = rec;
           // top-level renderedBy/fetchedAt are legacy-reader aliases of the same
           // _provenance fields — _provenance is the authoritative contract.
-          await writeFile(file, JSON.stringify({ _provenance, slug, url: recordUrl, renderedBy: _provenance.renderedBy, fetchedAt: _provenance.fetchedAt, ...rest }, null, 2));
-          results[idx] = { slug, file, hash };
+          const written = { _provenance, slug, url: recordUrl, renderedBy: _provenance.renderedBy, fetchedAt: _provenance.fetchedAt, ...rest };
+          await writeFile(file, JSON.stringify(written, null, 2));
+          // schema gate (validateRecord — validate-page.mjs runs the same check offline):
+          // a FAIL record stays on disk as evidence but is a SchemaError in the log,
+          // never a success — Phase 6 does not mark it `extracted`.
+          const schema = validateRecord(written);
+          if (!schema.ok) {
+            pending.delete(idx);
+            log.crawl.failures.push({ url, slug, errorClass: 'SchemaError', message: `record missing ${schema.fail.join(', ')} (written to ${path.relative(args.out, file)}; --refresh ${slug} re-captures)`, at: new Date().toISOString() });
+            console.error(`[crawl] FAIL ${slug}  SchemaError: missing ${schema.fail.join(', ')}`);
+            progress.tick({ ok: false, path: slug });
+            continue;
+          }
+          results[idx] = { slug, file, hash, fontFaces };
           pending.delete(idx);
           ok += 1; captured += 1;
           const s = rec._signals;
           const dy = rec.dynamic?.summary || {};
-          const warn = [s.spaShellSuspect && 'SPA-SHELL?', s.trackingOnlyMedia && 'TRACKING-PIXEL-ONLY', s.filteredInterstitials && `filtered:${s.filteredInterstitials}`, s.captureQuality === 'degraded' && 'DEGRADED', s.overlayCoverPct > OVERLAY_FLAG_PCT && 'OVERLAY?', s.screenshotMode !== 'fullPage' && `shot:${s.screenshotMode}`, dy.sameSiteEndpoints && `data-endpoints:${dy.sameSiteEndpoints}`, dy.searchForms && 'SEARCH-FORM', dy.hydrated && 'HYDRATED'].filter(Boolean).join(' ');
+          const warn = [s.spaShellSuspect && 'SPA-SHELL?', s.trackingOnlyMedia && 'TRACKING-PIXEL-ONLY', s.filteredInterstitials && `filtered:${s.filteredInterstitials}`, s.captureQuality === 'degraded' && 'DEGRADED', s.overlayCoverPct > OVERLAY_FLAG_PCT && 'OVERLAY?', s.screenshotMode !== 'fullPage' && `shot:${s.screenshotMode}`, s.shadowRoots && `shadow-roots:${s.shadowRoots}`, s.inferredHeadings && `inferred-heads:${s.inferredHeadings}`, schema.warn.length && `schema-warn:${schema.warn.length}`, dy.sameSiteEndpoints && `data-endpoints:${dy.sameSiteEndpoints}`, dy.searchForms && 'SEARCH-FORM', dy.hydrated && 'HYDRATED'].filter(Boolean).join(' ');
           console.error(`[crawl] OK   ${slug}  ${warn}`);
           progress.tick({ ok: true, path: slug });
         } catch (err) {
@@ -2067,6 +2625,10 @@ export function mergeCrawlLog(prev, log, run, okSlugs) {
   merged.runs = [...(Array.isArray(prev.runs) ? prev.runs : []), run];
   return merged;
 }
+
+export { capture, serializeDom }; // evals/fixtures/crawl-capture.test.mjs runs them under Playwright against a local fixture page
+// the `dynamicDom` keys capture() returns (dynamics/scripts/lib.mjs REACH_SIDECAR_FIELDS must be a subset — evals/lint/dynamics-recall.mjs)
+export const DYNAMIC_DOM_FIELDS = ['inlineData', 'globalState', 'frameworkHints', 'forms', 'ariaLiveRegions', 'triggers', 'mediaIds', 'tabs', 'shadowHosts', 'emptyConfigContainers', 'controlGroups', 'searchShell', 'players', 'chatLoaders', 'federated', 'quiz'];
 
 // run only as the entry script — importing the module (fixture tests) runs nothing
 const entry = process.argv[1] ? pathToFileURL(path.resolve(process.argv[1])).href : null;

@@ -76,7 +76,7 @@ const origin = `http://127.0.0.1:${server.address().port}`;
 try {
   const out = join(work, 'stardust', 'current');
   const r = await new Promise((ok) => {
-    const c = spawn(process.execPath, [CRAWL_COPY, '--url', `${origin}/`, '--single', '--out', out, '--mobile', 'none', '--no-consent-dismiss', '--wait', 'short'], { cwd: work, env: { ...process.env, STARDUST_LIVE_FORCE: '1' } });
+    const c = spawn(process.execPath, [CRAWL_COPY, '--url', `${origin}/`, '--single', '--out', out, '--mobile', 'none', '--no-consent-dismiss', '--wait', 'fast'], { cwd: work, env: { ...process.env, STARDUST_LIVE_FORCE: '1' } });
     let stdout = ''; let stderr = '';
     c.stdout.on('data', (d) => { stdout += d; }); c.stderr.on('data', (d) => { stderr += d; });
     c.on('close', (status) => ok({ status, stdout, stderr }));

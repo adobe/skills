@@ -442,8 +442,9 @@ informational output.
     { "at": "...", "args": { "url": "...", "pages": null, "cap": 5, "wait": "medium", "concurrency": 4, "dynamics": false, "refresh": [], "force": false, "headed": null, "depth": 1, "cookie": ["agegate_confirmed"], "mobile": "entry", "dpr": 1 },   // cookie = NAMES only, never values
       "technique": "headless", "discovered": 38, "skipped": 0, "captured": 24, "failed": ["contact"] }
   ]
-  // errorClass is one of: HTTPError | ContentTypeError | EmptyPageError | TimeoutError | NetworkError | BotChallengeError | ProvenanceMissing
-  // See playwright-recipe.md § Response validation for the trigger conditions.
+  // errorClass is one of: HTTPError | ContentTypeError | EmptyPageError | TimeoutError | NetworkError | BotChallengeError | ProvenanceMissing | SchemaError
+  // See playwright-recipe.md § Response validation for the trigger conditions; SchemaError = the written
+  // record failed the schema gate (current-state-schema.md § Schema gate) — it stays on disk, never a success.
 }
 ```
 
