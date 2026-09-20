@@ -24,10 +24,10 @@ Phases, in order: Setup → A Inventory → B Block dedup plan → B2 Dynamic su
 | E / E2 | `node skills/rollout/scripts/verify.mjs [--base <url> | --root <dir>] [--all] [--report <dir>] [--gate-report stardust/rollout/gate-report.json]`; `node skills/deploy/scripts/localize-links.mjs --source-host <live-host> --content content --redirects stardust/redirects.tsv [--check]` |
 | F | `node skills/rollout/scripts/optimize.mjs [--base <url> | --root <dir> | --slug <s> | --all]`; `node skills/rollout/scripts/findings.mjs record … / resolve <id> …` |
 | G | `node skills/rollout/scripts/autofix-aem.mjs --project <eds-root> [--dry-run] [--slug s] [--check c]` |
-| H | read `rollout.json.lastRun` + `optimize/scorecard.json` + `verify/summary.md`; write `stardust/learnings.md` |
-| I | `node skills/rollout/scripts/dashboard.mjs` |
+| H | wave close: `node skills/rollout/scripts/open-review-pairs.mjs --per-template 1 [--random 10] [--no-open]`; read `rollout.json.lastRun` + `optimize/scorecard.json` + `verify/summary.md`; write `stardust/learnings.md` |
+| I | `node skills/rollout/scripts/dashboard.mjs` — once after Phase A, then at every wave close |
 
-Gates: Setup — `gate-ledger-lint.mjs` exit 2 = blocked types under `flow: replica`. B2 — every dynamic row has a disposition; `dynamics-plan.mjs --lint` exit 0. C — `content-acceptance.mjs` exit 2 (dropped content) and delivery-lint P0/P1 block the PUT; source-fidelity, image-fidelity, path-safety, source-content hygiene, fidelity tier declared; EW gate `block-roundtrip --ew`; foundation-first gate on the first deployed archetype; chrome crops consume `pass`, never the pct alone; AI-readability `code < 98` and editability `dead > 0` = `failed` via `update-coverage --gate` (Gates 5–6; unmeasured = re-drive); page gate — `gate-publish.mjs` exit 2 = a FAIL page, `--publish` holds every row without a PASS (Gate 8). D — `redirects.mjs` exit 2 (a Source shadows a delivered page) blocks the sheet. E — `verify.mjs` exit 1 = a failed page (folder roots probed on both slash forms), exit 2 = usage / no coverage; a 429/503 through the inline retry leaves the page `unverified` and exits 2 — re-run, never a failed page; headless render check per template. E2 — `localize-links.mjs --check` exit 2 = links remain. F — `optimize.mjs` exits non-zero on any open in-scope P1. H — `dynamics-check.mjs --gate` exit 0 before the report closes.
+Gates: Setup — `gate-ledger-lint.mjs` exit 2 = blocked types under `flow: replica`. B2 — every dynamic row has a disposition; `dynamics-plan.mjs --lint` exit 0. C — `content-acceptance.mjs` exit 2 (dropped content) and delivery-lint P0/P1 block the PUT; source-fidelity, image-fidelity, path-safety, source-content hygiene, fidelity tier declared; EW gate `block-roundtrip --ew`; foundation-first gate on the first deployed archetype; chrome crops consume `pass`, never the pct alone; AI-readability `code < 98` and editability `dead > 0` = `failed` via `update-coverage --gate` (Gates 5–6; unmeasured = re-drive); page gate — `gate-publish.mjs` exit 2 = a FAIL page, `--publish` holds every row without a PASS (Gate 8). D — `redirects.mjs` exit 2 (a Source shadows a delivered page) blocks the sheet. E — `verify.mjs` exit 1 = a failed page (folder roots probed on both slash forms), exit 2 = usage / no coverage; a 429/503 through the inline retry leaves the page `unverified` and exits 2 — re-run, never a failed page; headless render check per template. E2 — `localize-links.mjs --check` exit 2 = links remain. F — `optimize.mjs` exits non-zero on any open in-scope P1. H — `dynamics-check.mjs --gate` exit 0 before the report closes; the review pack is written on the live host (`open-review-pairs.mjs` exit 2 = a localhost/token URL, nothing written).
 
 Outputs (under `stardust/rollout/`): `coverage/{pages,templates,blocks}.json` · `plan.json` · `rollout.json` · `verify/{summary.json,summary.md}` · `optimize/{findings,scorecard}.json` · `site/{sitemap.xml,robots.txt,manifest.json,redirects.json}` · `dashboard/{index.html,data.json}` (schemas: `schemas/rollout-*.schema.json`); plus `stardust/redirects.tsv`, `stardust/learnings.md`, EDS-project edits via autofix.
 
@@ -61,9 +61,8 @@ tree: `stardust migrate` the archetypes first. Single page: `stardust deploy`.
    guard:** `stardust/state.json` without `flow` on a migration ask → do not
    roll out; print the master's two-flow table and hand back to its routing
    (`skills/stardust/reference/state-machine.md` § Flow keys).
-2. Verify `stardust/migrated/` exists with at least one `*.html` page (full mode:
-   all pages; archetypes-only: the archetypes + a `state.json` with `type`
-   populated).
+2. Verify `stardust/migrated/` has at least one `*.html` page (archetypes-only:
+   the archetypes + a `state.json` with `type` populated).
    **Gated-archetype precondition (`flow: replica`).** Run
    `node skills/replica/scripts/gate-ledger-lint.mjs --state stardust/state.json`
    (the reader of `stardust/replica/progress.json`;
@@ -73,8 +72,8 @@ tree: `stardust migrate` the archetypes first. Single page: `stardust deploy`.
    neither fan out its siblings nor `POST /live/` them; other types proceed.
    Hands-off never bypasses a blocked type (self-accepts only the table's
    permanent classes as `hands-off-policy:<class>`); thresholds are the gate's.
-3. Verify the EDS/AEM target is ready exactly as `deploy` requires (project
-   scaffolding, `DA_TOKEN`, code branch pushable). `rollout` adds no new transport.
+3. Verify the EDS/AEM target is ready exactly as `deploy` requires (`DA_TOKEN`,
+   code branch pushable). `rollout` adds no new transport.
 4. If `state.json.handsOff` is true (`skills/stardust/SKILL.md` § Hands-off
    mode), run full-auto: no per-phase pauses; every gate and verify step runs
    unchanged. A wave close = the Phase H close (journal entry, `status.jsonl`
@@ -101,7 +100,8 @@ path of a renamed page (`delivery.deployedPath`).
 `content-pending`, `templateId` from `type`, `blocks` from the archetype sidecar.
 Inventory is **idempotent and incremental** (HTML changed after delivery →
 `stale`; `reference/coverage-model.md` § Idempotency rules). Fill in
-`rollout.json` `site.da.*` + `site.liveHost` if not inferred.
+`rollout.json` `site.da.*` + `site.liveHost` if not inferred; run `dashboard.mjs`
+once here (first snapshot).
 
 **Plan gate.** Present every `stardust/decisions.md` row not yet `owner-decided` as
 one numbered message with defaults (`skills/stardust/reference/decisions.md` § How
@@ -163,9 +163,8 @@ types are absent). For each page:
    node skills/rollout/scripts/delivery-lint.mjs --file <html> --path </da/path> --icons-dir icons [--allow-no-h1] [--chrome-docs content/nav.html,content/footer.html,…]
    node skills/rollout/scripts/media-reconcile.mjs --file <html> --deploy-host <branch>--<repo>--<owner>.aem.live [--apply]
    ```
-   `content-acceptance` is the content-count gate (`reference/delivery-gates.md` § Gate 7): any
-   dropped heading / link / image / list row not covered by `contentDeviations[]`, or a words
-   ratio < 0.9, is 🔴 — tolerances only as explicit flags, `unmeasured` when a side is missing.
+   `content-acceptance` is the content-count gate (`reference/delivery-gates.md` § Gate 7):
+   a dropped class not covered by `contentDeviations[]`, or words ratio < 0.9, is 🔴.
    `media-reconcile` resolves every image and decides optimize/keep/rewrite/omit
    (`skills/migrate/reference/media-reconciliation.md`) — the image-fidelity gate's
    authoritative form.
@@ -191,13 +190,13 @@ types are absent). For each page:
      sources render thin and faithful (tier `thin`), never padded.
    - **Fidelity tier declared** — each page's `fidelityTier`
      (archetype/sibling/thin; `skills/migrate/reference/fidelity-tiers.md`).
-   - **AI-readability** — `code ≥ 98` on the preview origin for every page of
-     the wave: `node skills/deploy/scripts/ai-readability.mjs --origin <preview> --paths <wave> --min 98 --json stardust/rollout/ai-readability-<wave>.json`,
-     then `update-coverage.mjs --gate ai-readability <json>`; below the bar =
-     `failed`, out of `--publish`; `unmeasured` = re-drive, never a pass (Gate 5).
-   - **Editability** — `node skills/deploy/scripts/ew-editability-probe.mjs --content <html> --blocks-dir blocks --json > stardust/rollout/ew/<slug>.json`,
-     then `update-coverage.mjs --gate editability <json>`; dead > 0 = `failed`;
-     probe exit 2 = `unmeasured` → URL mode on the preview origin (Gate 6).
+   - **AI-readability** — `code ≥ 98` on the preview origin per wave page:
+     `node skills/deploy/scripts/ai-readability.mjs --origin <preview> --paths <wave> --min 98 --json stardust/rollout/ai-readability-<wave>.json`
+     → `update-coverage.mjs --gate ai-readability <json>`; below = `failed`, out
+     of `--publish`; `unmeasured` = re-drive, never a pass (Gate 5).
+   - **Editability** — `node skills/deploy/scripts/ew-editability-probe.mjs --content <html> --blocks-dir blocks --json > stardust/rollout/ew/<slug>.json`
+     → `update-coverage.mjs --gate editability <json>`; dead > 0 = `failed`;
+     probe exit 2 = `unmeasured` → URL mode on preview (Gate 6).
 
 4. **Record outcomes** with the state-writer (never hand-edit the ledger):
    ```bash
@@ -206,15 +205,15 @@ types are absent). For each page:
    node skills/rollout/scripts/update-coverage.mjs --from-ledger content/.deploy-ledger.json --url-base <branch-preview-origin>
    node skills/rollout/scripts/update-coverage.mjs <slug> --status content-pending   # no document push
    ```
-   **Gate on preview, then publish explicitly.** The driver's default run is
-   `PUT → preview`; the page gate is `gate-publish.mjs` (every delivered page ≤ 150,
-   else archetypes + the seeded sample per template — `reference/delivery-gates.md`
-   § Gate 8); the separate `deploy-batch.mjs … --publish` run reads its report and
-   holds every row without a PASS (D1) unless `decisions.md` records publish-to-live
-   (D16) — hands-off stops at preview, never passes the escape flags (indexes: Phase D2). On failure: `--status
-   failed --error "<reason>"` and continue (one page's failure never aborts the rollout). A denied push or
-   publish under hands-off goes to `stardust/.work/ship.sh`
-   (`skills/deploy/reference/ship-script.md`), not a retry loop.
+   **Gate on preview, then publish explicitly.** The default run is `PUT →
+   preview`; the page gate is `gate-publish.mjs` (every delivered page ≤ 150, else
+   archetypes + the seeded sample — `reference/delivery-gates.md` § Gate 8); the
+   separate `deploy-batch.mjs … --publish` run reads its report and holds every row
+   without a PASS (D1) unless `decisions.md` records publish-to-live (D16) —
+   hands-off stops at preview, never passes the escape flags (indexes: Phase D2).
+   On failure: `--status failed --error "<reason>"` and continue (one page never
+   aborts the rollout). A denied push or publish under hands-off goes to
+   `stardust/.work/ship.sh` (`skills/deploy/reference/ship-script.md`), not a retry loop.
 
 **Foundation-first gate (hard block, once per rollout).** When the FIRST
 archetype page flips to `deployed`, prove the foundation before any second page:
@@ -223,34 +222,30 @@ computed-style invariants in a headless render** — grids compute `display:
 grid`, sections full-bleed where the design says so, CTA/button classes styled
 (`stardust/runtime-contract.json`, `skills/deploy/SKILL.md` § Runtime-detection probe).
 
-**Execution model: waves.** Parallel **author-only** agents (each curls its
-source pages and writes files only — never deploys or edits blocks) work
-template clusters concurrently, representative-first; **a family's
-listing/index pages ship in its first wave**, before its volume wave (posts
-ahead of their category pages bounce every in-page link; a later stub wave can
-overwrite rich pages). Then a **central deploy** runs the bundled, resumable
-driver, never a serial loop: `node skills/deploy/scripts/deploy-batch.mjs --org
-<org> --repo <repo> --branch <branch> --content <dir>` (concurrency pool, path +
-body-hash ledger — only changed files and FAILs re-drive; delivered-`.plain.html`
-check); then the page gate; then the separate `… --publish` run. Clusters of
-6–20+ siblings: `reference/delivery-gates.md` § Batched delivery. Two clocks:
-code first on the ref the user will look at, then content; the publish report
-names the 2 h code-cache window end (`skills/deploy/da-deploy-protocol.md` § Two
-clocks). Every batch runs in the background: `stardust/.work/deploy/deploy-batch.progress.json`
-is the progress file (`skills/stardust/scripts/progress.mjs read <file>`), the
-stdout `SUMMARY` line the completion; after a blip, re-run the same command.
-Then `update-coverage.mjs --from-ledger content/.deploy-ledger.json` reconciles
-the ledger into coverage (one write, no per-page `--status deployed`;
-`reference/coverage-model.md` § Page delivery status lifecycle).
+**Execution model: waves.** Parallel **author-only** agents (each writes files
+only — never deploys or edits blocks) work template clusters concurrently,
+representative-first; **a family's listing/index pages ship in its first wave**
+(posts ahead of their category pages bounce every in-page link). Then a
+**central deploy** runs the bundled, resumable driver, never a serial loop:
+`node skills/deploy/scripts/deploy-batch.mjs --org <org> --repo <repo> --branch
+<branch> --content <dir>` (path + body-hash ledger — only changed files and FAILs
+re-drive); then the page gate; then the separate `… --publish` run. Clusters of
+6–20+ siblings: `reference/delivery-gates.md` § Batched delivery. Two clocks: code
+first on the ref the user will look at, then content
+(`skills/deploy/da-deploy-protocol.md` § Two clocks). Every batch runs in the
+background: `stardust/.work/deploy/deploy-batch.progress.json` is the progress
+file (`skills/stardust/scripts/progress.mjs read <file>`), the stdout `SUMMARY`
+line the completion; after a blip, re-run the same command. Then
+`update-coverage.mjs --from-ledger content/.deploy-ledger.json` reconciles the
+ledger into coverage (one write; `reference/coverage-model.md` § Page delivery
+status lifecycle).
 Every wave agent follows `skills/stardust/reference/fan-out.md` § Worker contract
-(liveness, resume-once, finisher) and § Scope and type of delegated agents; every
-shell loop, runner and delivery step in a wave follows
-`skills/stardust/reference/harness-quirks.md`. When a wave must write code
-(converter encoders, per-group stylesheets, helpers), the deploy brief's ownership
-protocol applies — `skills/deploy/reference/block-agents-brief.md` § The brief
-template (ownership table, block-name claim) and § Shared cores and variants;
-author-only waves inherit the shared cores read-only, and the lead merges the
-per-agent `eds-conversion-log-<id>.md` files.
+and § Scope and type of delegated agents; every shell loop and runner follows
+`skills/stardust/reference/harness-quirks.md`. When a wave must write code, the
+deploy brief's ownership protocol applies — `skills/deploy/reference/block-agents-brief.md`
+§ The brief template and § Shared cores and variants; author-only waves inherit
+the shared cores read-only, and the lead merges the per-agent
+`eds-conversion-log-<id>.md` files.
 
 ### Phase D — Site assembly (whole-site artifacts)
 
@@ -281,9 +276,8 @@ every listing page goes through the Phase C AI-readability line.
 
 ### Phase D3 — Multilingual (optional)
 
-Language trees (`/fr/…`, `/en/…`) REUSE the same block library — only authored
-content and wiring change (language-routed chrome, per-language indexes,
-path-safety): `reference/multilingual.md`.
+Language trees (`/fr/…`, `/en/…`) REUSE the block library — only authored content
+and wiring change (routed chrome, per-language indexes): `reference/multilingual.md`.
 
 ### Phase E — Full-site verify
 
@@ -293,13 +287,13 @@ node skills/rollout/scripts/verify.mjs            # uses rollout.json site.liveH
 ```
 
 `verify` confirms each delivered row renders (200, no `about:error`, typed
-render check) and its internal links resolve, then flips it to `verified` or
-`failed`; with `--gate-report` it merges `delivery.gate` and, under `flow:
-replica`, keeps a row without a gate PASS at `deployed` (read, never re-judged);
-`--ai-readability <live-run json>` flips `code < 98` to `failed`, leaves
-`unmeasured` untouched and exits 2 while any remain (≤ 150 pages: all; above:
-listing pages + the Gate 8 sample). Phase E also runs the qa `editability` check
-(URL mode) on the first delivered page per template, ingested with `--gate`. Its summary lines (each printed only when non-zero), which rows, link
+render check) and its links resolve, then flips it `verified` or `failed`.
+`--gate-report` merges `delivery.gate` and, under `flow: replica`, keeps a row
+without a gate PASS at `deployed` (read, never re-judged); `--ai-readability
+<live-run json>` flips `code < 98` to `failed`, leaves `unmeasured` untouched and
+exits 2 while any remain (≤ 150 pages: all; above: listing pages + the Gate 8
+sample). The qa `editability` check (URL mode) runs on the first delivered page
+per template, ingested with `--gate`. Its summary lines (each printed only when non-zero), which rows, link
 classes, the `links.outsideInventory` policy and the exit map:
 `reference/coverage-model.md` § Verify.
 Read `verify/summary.md`, triage per class — per-page rows stay in the file,
@@ -317,7 +311,7 @@ decoration ran: `body.appear` set (`stardust/runtime-contract.json`), `main
 
 ### Phase E2 — Link-audit completeness
 
-`verify.mjs` checks the links on delivered rows; this phase closes the link
+`verify.mjs` checks links on delivered rows; this phase closes the link
 **targets** a roster-driven batch misses (`reference/operational-learnings.md`
 § Two verify checks):
 
@@ -377,11 +371,18 @@ file edited, the change logged on `finding.autofix`, the finding staged
 `in-progress`. `--dry-run` first; then **re-deploy** the edited pages and re-run
 **verify** + **optimize** — staged findings flip to `fixed`.
 
-### Phase H — Report
+### Phase H — Report (the wave close)
 
 Hand-off shape: `skills/stardust/reference/handoff-report.md` — gate table first,
-source → target per page, report-check line last; review links open on the live
-host, the human logging in (`skills/deploy/da-deploy-protocol.md` § Site auth).
+source → target per page, report-check line last. **Review pairs:**
+`node skills/rollout/scripts/open-review-pairs.mjs --per-template 1` (and
+`--random 10` before the first live publish) writes `stardust/rollout/review-pack.md`
+— one source ↔ delivered pair per row with its copied gate number and regime,
+opened on the live host, the human logging in (`skills/deploy/da-deploy-protocol.md`
+§ Site auth; localhost or a token in a URL is refused). Defects found there go
+through the gate, not around it: one budgeted fix round, re-gate the mapped pages.
+A wave closes only when every artifact line below is computed; the checkpoint
+block (`skills/stardust/reference/run-status.md` § Phase close) is last.
 One census line — `davids-model-lint.mjs content/ --json` → `census.styles.length`
 section styles, `census.blocks.length` blocks (the conversion log's locked vocabulary).
 
@@ -422,8 +423,9 @@ list — failed rows point at `verify/summary.md`, never a per-page list;
 
 **Also write/refresh `stardust/learnings.md`** per
 `skills/stardust/reference/learnings.md`: one entry per failure class this run
-surfaced (evidence, proposed skill + section to change, `status: pending`) —
-the entries plugin maintainers harvest into skill diffs.
+surfaced (evidence, proposed skill + section, `status: pending`). A run with no
+new class writes one `- none this run (<ts>)` line — only when no residual
+`flaggedFor: delivery` and no named deviation is newer than the wave start.
 
 ### Phase I — Dashboard
 
@@ -433,11 +435,11 @@ node skills/rollout/scripts/dashboard.mjs    # → dashboard/index.html + data.j
 
 A **self-contained, no-external-JS** dashboard in the project's design identity:
 a **page tree** of every identified page, nested by URL path, colour-coded by the
-most-advanced stage reached — `identified → prototyped → deployed → optimised`
-(`state.json`, coverage, optimize; `optimised` = verified **and** no open
-findings; a `content-pending` sibling stays `identified`); cumulative legend
-counts, archetypes badged `T`, open findings, templates table, scorecard.
-`dashboard/data.json` is the snapshot — regenerated at every wave close.
+stage reached — `identified → prototyped → deployed → optimised` (`optimised` =
+verified **and** no open findings; a `content-pending` sibling stays
+`identified`); cumulative legend counts, archetypes badged `T`, templates table,
+scorecard.
+`dashboard/data.json` is the snapshot — regenerated after Phase A and at every wave close.
 
 ## Inputs
 
