@@ -100,9 +100,10 @@ per-element computed-style capture "did most of the work".)
 
 Before any screenshot-eyeball tuning:
 
-1. **Fetch the live stylesheets** (curl or Playwright response capture —
-   CDN-defended sites 403 direct curl; intercept the page's own responses
-   instead, see § Asset harvest).
+1. **Fetch the live stylesheets** — `../scripts/lift.mjs --save-css`
+   captures them from the lift's own navigation (`text/css` responses +
+   inline `<style>`; CDN-defended sites 403 a direct curl, and
+   `document.styleSheets[].cssRules` throws cross-origin).
 2. **Lift the exact values** into a tokens file (`capture/tokens.json`
    pattern): container max-widths, the full type ramp (family / size /
    line-height / letter-spacing (exactly — `-0.005em` vs `normal` flips a
@@ -114,7 +115,11 @@ Before any screenshot-eyeball tuning:
    `../../deploy/reference/section-rhythm.md` § Hand-off from replica), radii, shadows,
    hero heights, breakpoint values — **and the
    text-rendering group**: `text-rendering`, `-webkit-font-smoothing`,
-   `font-synthesis`, `font-variant-numeric`, `font-kerning`. Sites commonly
+   `font-synthesis`, `font-variant-numeric`, `font-kerning`, and the
+   variable-font trio `font-variation-settings`, `font-optical-sizing`,
+   `font-feature-settings` (a body-level `'opsz'` axis missing on the
+   replica renders the face measurably narrower). Breakpoints come from
+   the lift's `mediaQueries[]` verbatim (`768` is not `767`). Sites commonly
    set these globally, and the ramp alone doesn't carry them: a ±1%
    glyph-width difference from a mismatched rendering mode produces
    systematic one-line-fewer/more wraps that present as inexplicable
@@ -125,9 +130,15 @@ Before any screenshot-eyeball tuning:
 3. **Replicate the container model**, not just the tokens: left-offset vs
    centered hero content, %-of-viewport heights, grid gutters. The container
    model is where "looks close but drifts" comes from.
-4. **Capture per-element computed styles** for the elements the gate will
-   measure (headings, CTAs, section wrappers). Computed styles resolve the
-   cascade the stylesheets only imply.
+4. **Run `../scripts/lift.mjs <live> --width <w>` once per gate width,
+   BEFORE authoring** — every rendered element under `header,main,footer`
+   to unlimited depth with rect, offsetParent-relative offset, inline
+   style, ~60 non-default computed properties, pseudo-elements, heading
+   level, last-child flag and the matched unitless `line-height`. Author
+   from its JSON (`stardust/replica/capture/lift/<slug>-<w>.json`); feed it
+   to `impeccable-ignores.mjs --tokens`. Computed styles resolve the
+   cascade the stylesheets only imply; a re-run on an existing record is a
+   no-op (`--refresh` re-probes).
 5. **Repeat 2–4 at EVERY gate breakpoint, not just desktop — the 360
    layout is NOT derivable from the 1440 recreation.** Mobile is its own
    authoring pass, not a shrink of desktop: lift the source's mobile
@@ -156,6 +167,21 @@ Before any screenshot-eyeball tuning:
 This converts 3–4 guess-and-screenshot loops into one. Eyeballing is for
 step 4 of the authoring order only — and even then, the gate's instruments
 outrank the eye.
+
+**Lift facts the pixel gate cannot explain** (each a recorded field defect
+the full-page number never surfaced; all are fields of the lift record):
+positioned elements are authored from `offset` (offsetParent-relative),
+never from the viewport `rect`; icon and logo strips size each instance
+inline (`inline`), a representative element misses them; `<sup>`/`<sub>`
+inherit the unitless `line-height` (`lineHeightUnitless`) or the line box
+grows; stacked columns round sub-pixel rows differently — compare row
+pitch, not one row; stacked grids need `minmax(0, 1fr)` + `min-width: 0`
+(`gridTemplateColumns`); the block wrapper's LAST child carries the
+bottom margin (`isLastChild` + `marginBottom`); the authored heading level
+is a lift fact (`headingLevel`), not a styling choice; a variant token
+equal to a runtime class fails deploy's `VARIANT-COLLIDE`; probe helpers
+are inlined inside `page.evaluate` — the project copy resolves nothing
+from the plugin tree.
 
 **No foundation `text-wrap: balance` on headings.** The redesign
 prototype's refined pass prescribes `h1–h6 { text-wrap: balance }`; live

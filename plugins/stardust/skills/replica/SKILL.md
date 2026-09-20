@@ -18,7 +18,7 @@ Phases, in order: Setup → 1 EXTRACT → 2 PRESERVE DIRECTION → 3 RECREATE �
 | Setup | `npm i -D playwright pixelmatch pngjs --no-save --legacy-peer-deps`; copy this skill's `scripts/` → `stardust/scripts/replica/` and `../diff/scripts/` → `stardust/scripts/diff/`; after Phase 1: `replica/impeccable-ignores.mjs [--files]` |
 | 1 | `$stardust extract <URL> --prep --dynamics` — bounded entry: `--single` / `--pages <slug,...>`; then `replica/chrome-variants.mjs --write` (chrome variants from the capture, zero live hits) |
 | 2 | mechanical promotion + `stardust/replica/inconsistency-register.md`; the `dynamics` skill Phases 1–3 |
-| 3 | chrome archetype row per variant first (`reference/chrome-states.md` § Chrome variants), then author `stardust/prototypes/<slug>-proposed.html` (+ per-page CSS) |
+| 3 | `replica/lift.mjs <live> --width <w>` per gate width (`--save-css`), chrome archetype row per variant first (`reference/chrome-states.md` § Chrome variants), then author `stardust/prototypes/<slug>-proposed.html` (+ per-page CSS) |
 | 4 | serve: `replica/serve.mjs stardust/prototypes --role proto` (port from `replica/port.mjs proto`; `port.mjs stop proto`); probes 1+2: `diff/content-diff.mjs`, `diff/visual-diff.mjs` (`--profile generic --width <w> --main <root> --dismiss`); probe 3: `replica/stitch-shot.mjs`, `replica/pixel-compare.mjs --timeout <s>`, `replica/review-image.mjs --bands|--sheet`; inner loop: `replica/anchor.mjs --landmarks --cache|--against`, `replica/chrome-parity.mjs --live-cache`, `replica/gate.sh <slug> <live> <proto> <width> [iter] [--marker] [--refresh] [--variance] [--over-cap <reason>] [--record → replica/progress-record.mjs]`; sweeps: `replica/gate-batch.mjs <pairs.tsv> [--concurrency 2]` (progress: `stardust/.work/replica/gate-batch.progress.json`) — env `GATE_STITCH_TIMEOUT`, `GATE_COMPARE_TIMEOUT`, `GATE_ANCHOR_TIMEOUT`, `GATE_REAP_MIN`, `GATE_BLOCK`, `GATE_ALLOW_CONSENT`, `GATE_LANDMARKS=0`; each node step runs under `replica/run-capped.mjs --timeout <s> -- <cmd>`; then `replica/motion-observe.mjs <live> [--hover <sel>] [--click <sel>] [--triggers auto]`; chrome cells: `replica/chrome-states.mjs <live> [<proto>] --from-state stardust/state.json --live-cache` |
 | 5 | `replica/gate-ledger-lint.mjs --state stardust/state.json` (exit 2 = blocked types); `replica/chrome-variants.mjs --progress stardust/replica/progress.json` (exit 2 = a variant without its chrome row); first: `deploy` the approved archetype to a branch preview; `replica/sibling-variance.mjs <archetype> <siblings…> --probe <block>=<sel>`; then the `migrate` (sibling tier) → `deploy` → `rollout` skills; re-run the Phase 4 gate against the published origin |
 
@@ -175,12 +175,12 @@ as **clean semantic HTML/CSS** from three sources, in this order:
     alt text, metadata from `current/pages/<slug>.json`. The migrate
     content-preservation rules (`../migrate/reference/content-preservation.md`)
     apply from the first line: no rewording, no fabrication.
-(b) **Exact values lifted from the source site's own CSS.** Fetch the live
-    stylesheets; lift container max-widths, the type ramp, button specs,
-    section paddings, radii, shadows, hero heights, the container model.
-    **Fidelity values come from the original site's CSS, not the eye.**
-(c) **The captured screenshot as ground truth** for everything CSS doesn't
-    name (composition, image crops, paint effects).
+(b) **Exact values lifted from the source site's own CSS** — `lift.mjs`
+    at each gate width, never the eye: container max-widths, the type
+    ramp, button specs, section paddings, radii, shadows, hero heights,
+    the container model, `@media` values, `@font-face` descriptors.
+(c) **The captured screenshot as ground truth** for what CSS doesn't name
+    (composition, image crops, paint effects).
 
 **Every archetype gets its own standalone prototype — cumulative, never
 skipped** (never direct platform authoring for a new archetype): each new
@@ -190,24 +190,22 @@ canon CSS + a per-archetype file) and iterates only on its NEW modules —
 
 **Module-kind lift ledger — `progress.json.modules[]`:** one entry per
 module KIND, `{ kind, firstSeen: <slug>, lifted: { "1440": <gate artefact>,
-"360": <gate artefact> } }`. A kind is lifted when it has a gate artefact
-at BOTH breakpoints. A sibling (Phase 5) that introduces a kind absent from
-the ledger triggers a lift plus a Phase 4 gate ON THAT SIBLING at both
-breakpoints before its template counts as recreated.
+"360": <gate artefact> } }`; lifted = a gate artefact at BOTH breakpoints.
+A sibling (Phase 5) introducing a kind absent from the ledger triggers a
+lift plus a Phase 4 gate ON THAT SIBLING at both breakpoints first.
 
 **Recreation, not redesign — never delegate to impeccable craft** (Phase 4
 replaces its gates).
 
-**Fonts:** same public source when available (extract's intercepted woff2
-for open/self-hostable faces). Licensed commercial kits are never rehosted:
-metric-matched substitute, brand family first in the stack so a licensed
-drop-in later wins, substitution surfaced to the user
-(`reference/recreation-procedure.md` § Fonts policy).
+**Fonts:** same public source when available (extract's intercepted woff2).
+Licensed kits are never rehosted: metric-matched substitute, brand family
+first in the stack so a licensed drop-in later wins, substitution surfaced
+to the user (`reference/recreation-procedure.md` § Fonts policy).
 
-**CSS-portation is the per-section fallback only** — paint-level effects not
-recoverable from computed styles, JS-hydrated commerce widgets, video or
-animated heroes. Port the minimal source rules for that section, scoped;
-never page-level. Criteria in `reference/recreation-procedure.md` § Fallback.
+**CSS-portation is the per-section fallback only** — paint-level effects
+not recoverable from computed styles, JS-hydrated widgets, video or animated
+heroes: the minimal source rules for that section, scoped, never page-level
+(`reference/recreation-procedure.md` § Fallback).
 
 ### Phase 4 — SOURCE-FIDELITY GATE (the heart — measured, per breakpoint)
 
@@ -224,6 +222,7 @@ LIVE="https://<site>/<path>"
 node stardust/scripts/diff/content-diff.mjs "$LIVE" "$PROTO" --profile generic --width 1440 --main "<content-root>" --dismiss
 node stardust/scripts/diff/visual-diff.mjs  "$LIVE" "$PROTO" --profile generic --width 1440 --main "<content-root>" --dismiss
 
+# Phase 3 evidence, once per width: node stardust/scripts/replica/lift.mjs "$LIVE" --width 1440 --save-css
 # Probe 3 — gate.sh wraps stitch-shot (stitched, NEVER fullPage) + pixel-compare;
 # masks only via stardust/replica/masks.json (rule 19). Inner loop (gate doc
 # § Band breakdown): anchor both sides (--cache), chrome-parity --live-cache first, then

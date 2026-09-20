@@ -1,0 +1,21 @@
+@font-face { font-family: "Fixture Sans"; src: url("/fonts/fixture-sans.woff2") format("woff2"); font-weight: 100 900; font-style: normal; font-display: swap; }
+:root { --brand: #0b3d91; }
+body { margin: 0; font-family: "Fixture Sans", Arial, sans-serif; font-size: 16px; color: #1d2a3a; font-variation-settings: "opsz" 6; text-rendering: optimizeLegibility; }
+main { max-width: 1200px; margin: 0 auto; padding: 32px; }
+.canvas { position: relative; margin-left: 100px; width: 600px; height: 120px; background: #eef2f7; }
+.canvas .search { position: absolute; left: 40px; top: 20px; width: 200px; height: 40px; background: #fff; border: 1px solid #ccd; }
+.icons img { display: inline-block; background: #cfd8e3; vertical-align: middle; margin-right: 8px; }
+.copy { line-height: 1.5; }
+.grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; }
+.grid > div { min-width: 0; padding: 16px; background: #f4f7fb; }
+.card { margin-bottom: 24px; }
+.card:last-child { margin-bottom: 40px; }
+.badge::before { content: "★"; color: var(--brand); margin-right: 4px; }
+.stack > div { padding-left: 2px; }
+h2 { font-size: 32px; letter-spacing: -0.005em; }
+h3 { font-size: 24px; text-transform: uppercase; }
+@media (max-width: 768px) {
+  main { padding: 16px; }
+  .grid { grid-template-columns: 1fr; }
+  .canvas { margin-left: 0; width: auto; }
+}
