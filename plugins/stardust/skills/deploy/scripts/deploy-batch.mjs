@@ -77,7 +77,7 @@
  *     --content content [--paths <file|a,b,c>] [--exclude <file|a,b,c>] [--concurrency 4] \
  *     [--publish] [--force] [--allow-thin] [--allow-shrink] [--ledger path] [--log path] \
  *     [--progress path | --no-progress] [--token-env DA_TOKEN] [--site-token-env NAME] \
- *     [--sec-per-page 6] [--ignore-ttl] [--plan | --report]
+ *     [--sec-per-page 6] [--ignore-ttl] [--require-code-synced [--code-sync-record stardust/code-sync.json]] [--plan | --report]
  *
  * --content   dir of *.html body-fragment files (default: content). Each file's
  *             path relative to this dir, minus .html, is its DA/web path.
@@ -103,6 +103,11 @@
  *             delivery host — default SITE_TOKEN_<REPO> (uppercased, non-alphanumerics → _), then SITE_TOKEN.
  * --sec-per-page N     wall seconds per page for the TTL projection (default: log median, else 6).
  * --ignore-ttl         run although the token is projected to expire mid-batch.
+ * --require-code-synced  refuse to open the ledger unless code-sync-verify.mjs's record
+ *             (`--code-sync-record`, default stardust/code-sync.json) is `status: ok` for this
+ *             --org/--repo/--branch — the served code IS the working tree before content is
+ *             previewed against it (da-deploy-protocol.md § Code push gates). Exit 3, nothing
+ *             read or written; default off so existing invocations are untouched.
  * --concurrency  parallel pages in flight (default 4; DA admin tolerates ~4-6).
  *
  * Plan line: `N pages · U unchanged (hash) · C changed · K new · F failed-last-time
@@ -111,7 +116,8 @@
  * Exit codes: 0 = every driven page verified; 1 = one or more FAILs (re-run the
  * same command — verified pages are skipped); 2 = fatal (usage, missing/rejected/
  * expired token — nothing was PUT); 3 = halted on the first 401 mid-batch or an
- * access-restricted delivery host (ledger checkpointed; re-run the printed `next`).
+ * access-restricted delivery host (ledger checkpointed; re-run the printed `next`), or
+ * refused by --require-code-synced before the ledger was read (record missing / stale / other ref).
  * A row flips to `live`/`previewed` only after the delivered GET — never on POST codes.
  *
  * Test hooks (fixture tests only): DEPLOY_BATCH_DA_SRC, DEPLOY_BATCH_ADMIN,
@@ -183,7 +189,7 @@ export function deliveryUrl({ org, repo, branch, tld, webPath }) {
 }
 
 function usage() {
-  console.log('usage: node skills/deploy/scripts/deploy-batch.mjs --org <org> --repo <repo> --branch <branch> [--content content] [--paths <file|a,b>] [--exclude <file|a,b>] [--concurrency 4] [--publish] [--force] [--allow-thin] [--allow-shrink] [--ledger <path>] [--log <path>] [--progress <path> | --no-progress] [--token-env DA_TOKEN] [--site-token-env NAME] [--sec-per-page 6] [--retries 4] [--ignore-ttl] [--plan | --report]');
+  console.log('usage: node skills/deploy/scripts/deploy-batch.mjs --org <org> --repo <repo> --branch <branch> [--content content] [--paths <file|a,b>] [--exclude <file|a,b>] [--concurrency 4] [--publish] [--force] [--allow-thin] [--allow-shrink] [--ledger <path>] [--log <path>] [--progress <path> | --no-progress] [--token-env DA_TOKEN] [--site-token-env NAME] [--sec-per-page 6] [--retries 4] [--ignore-ttl] [--require-code-synced] [--code-sync-record <path>] [--plan | --report]');
 }
 
 export function parseArgs(argv) {
@@ -214,6 +220,8 @@ export function parseArgs(argv) {
     else if (k === '--site-token-env') a.siteTokenEnv = next();
     else if (k === '--sec-per-page') a.secPerPage = Math.max(0.1, +next() || 6);
     else if (k === '--ignore-ttl') a.ignoreTtl = true;
+    else if (k === '--require-code-synced') a.requireCodeSynced = true;
+    else if (k === '--code-sync-record') a.codeSyncRecord = next();
     else if (k === '--help' || k === '-h') { usage(); process.exit(0); }
     else throw new Error(`unknown arg: ${k}`);
   }
@@ -227,6 +235,7 @@ export function parseArgs(argv) {
   const site = siteNames.map((n) => resolveToken(n)).find(Boolean);
   a.siteAuth = site ? (/^(token|bearer) /i.test(site.value) ? site.value : `token ${site.value}`) : null;
   a.siteTokenName = siteNames[0];
+  a.codeSyncRecord ||= 'stardust/code-sync.json';
   a.ledger ||= path.join(a.content, '.deploy-ledger.json');
   a.log ||= path.join(a.content, '.deploy-log.jsonl');
   if (a.progress === undefined) a.progress = defaultProgressFile('deploy', 'deploy-batch');
@@ -549,11 +558,31 @@ function report(ledger) {
   }
 }
 
+/** --require-code-synced: the reason to refuse, or null when the record proves served == tree for this org/repo/branch. */
+export function codeSyncRefusal({ codeSyncRecord, org, repo, branch }) {
+  const rerun = `run node skills/deploy/scripts/code-sync-verify.mjs --org ${org} --repo ${repo} --ref ${branch} (exit 0) first`;
+  if (!existsSync(codeSyncRecord)) return `no code-sync record at ${codeSyncRecord} — ${rerun}`;
+  let rec;
+  try { rec = JSON.parse(readFileSync(codeSyncRecord, 'utf8')); } catch (e) { return `${codeSyncRecord} is not valid JSON (${e.message}) — ${rerun}`; }
+  if (rec.org !== org || rec.repo !== repo) return `${codeSyncRecord} is for ${rec.org}/${rec.repo}, not ${org}/${repo} — ${rerun}`;
+  if (rec.ref !== branch) return `${codeSyncRecord} verified ref "${rec.ref}", this run previews on "${branch}" — ${rerun}`;
+  if (rec.status !== 'ok') return `${codeSyncRecord} status is "${rec.status}" (HEAD ${String(rec.headSha).slice(0, 7)}, ${rec.ts}) — served code ≠ working tree; ${rerun}`;
+  return null;
+}
+
 let summaryCtx = null; // set once args are known, so a fatal exit still prints a SUMMARY line
 
 export async function main(argv = process.argv) {
   const args = parseArgs(argv);
   summaryCtx = { details: args.ledger };
+  if (args.requireCodeSynced && !args.offline) {
+    const why = codeSyncRefusal(args);
+    if (why) {
+      console.error(`[deploy-batch] REFUSED (--require-code-synced): ${why}. Nothing read or written.`);
+      console.log(summaryLine({ driver: 'deploy-batch', exit: HALT_EXIT, details: args.ledger, extra: { refused: 'code-sync' } }));
+      return HALT_EXIT;
+    }
+  }
   const ledger = await readLedger(args.ledger);
   if (args.report) {
     report(ledger);

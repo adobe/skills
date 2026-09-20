@@ -34,6 +34,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
+import { fetchDecoded } from './lib.mjs';
 
 const DEADLINE_EXIT = 124;
 const POLL_MS = Number(process.env.SERVED_CHECK_POLL_MS) || 3000; // fixture tests shorten the poll
@@ -62,20 +63,10 @@ const sha = (buf) => createHash('sha256').update(buf).digest('hex').slice(0, 12)
 /** One probe → { verdict: 'pass' | 'wrong' | 'noverdict', line }. */
 async function probe() {
   const headers = noCache ? { 'cache-control': 'no-cache', pragma: 'no-cache' } : {};
-  let res;
-  try {
-    res = await fetch(url, { headers, redirect: 'follow' });
-  } catch (err) {
-    return { verdict: 'noverdict', line: `000 ${url} — ${err.message}` };
-  }
-  const buf = Buffer.from(await res.arrayBuffer()); // already decoded by fetch
+  const res = await fetchDecoded(url, { headers }); // lib.mjs: decoded body + cache facts, shared with code-sync-verify
+  if (res.status === 0) return { verdict: 'noverdict', line: `000 ${url} — ${res.error}` };
+  const { buf, rawLen, enc, lastModified: lm, age, via: served, xerr } = res;
   const body = buf.toString('utf8');
-  const rawLen = res.headers.get('content-length') || '?';
-  const enc = res.headers.get('content-encoding') || 'identity';
-  const lm = res.headers.get('last-modified') || '-';
-  const age = res.headers.get('age') || '-';
-  const served = res.headers.get('x-served-by') || res.headers.get('server') || '-';
-  const xerr = res.headers.get('x-error');
   const ok2xx = res.status >= 200 && res.status < 300;
   let verdictField = '';
   let matched = true;

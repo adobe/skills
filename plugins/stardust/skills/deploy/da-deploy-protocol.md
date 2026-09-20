@@ -5,6 +5,7 @@ Reference for the headless deploy sequence: write the sanitised **body-fragment*
 Read:
 - § Deploy (DA Source API + curl) — when writing or debugging a single page's PUT → preview → live, or a preview 409 / `about:error`;
 - § Two clocks — order of operations — before every code push that ships with content: which ref to push first, when to preview, where to gate, how to refactor a content shape without a broken intermediate state;
+- § Code push gates — before any `git commit` of code the run wrote (the syntax + lint gate) and before the first capture after a push (served code == working tree): conditions, exit codes, escape hatches, hands-off;
 - § Delivery pipeline — before the first deploy of a run: the stage table, the batch driver (#4), the per-page atomic delivery contract, link localization, the computed-style guard, token hygiene and the `DA_TOKEN` lifecycle.
 - § Site auth — header vs browser · § Token hygiene · § DA_TOKEN lifecycle — before a review link is shared or a token is read;
 - the boilerplate-document paragraph (§ Delivery pipeline) — before the first `PUT` to a DA path that already exists.
@@ -21,16 +22,14 @@ Needs an IMS token (`DA_TOKEN`; see the `da-content` / `da-auth` skills — may 
 ORG=<daOrg>; REPO=<daRepo>; BRANCH=<branch>; P=<path-without-extension>   # e.g. snowflake-blocks/test-1
 TOKEN="$DA_TOKEN"
 
-# 0. force Code Sync (webhook may not fire for a scripted push) — then wait for
-#    your edited blocks to be live before previewing. Served assets are gzip:
-#    every served-asset read goes through served-check.mjs (fetch decodes; a bare
-#    `curl | grep` scans compressed bytes and matches nothing), capped at 3 min.
-curl -sS -X POST -H "Authorization: Bearer $TOKEN" \
-  "https://admin.hlx.page/code/$ORG/$REPO/$BRANCH/*"          # expect 202
-node skills/deploy/scripts/served-check.mjs \
-  "https://$BRANCH--$REPO--$ORG.aem.page/blocks/<edited-block>/<edited-block>.js" \
-  --grep "<a marker string from your edit>" --wait 180        # exit 124 = did not land in 3 min (re-run or check the POST); exit 1 = served but wrong
-# … --same-as blocks/<edited-block>/<edited-block>.css   # served bytes == local file: the pre-gate check for every CSS/JS the round touched
+# 0. force Code Sync (the webhook may not fire for a scripted push), purge the CDN copy and
+#    PROVE the served code is the working tree before previewing or capturing: per code path
+#    changed since the last verified record, POST /code/ then POST /cache/, then the DECODED
+#    served body's SHA-256 must equal the file (served assets are gzip — fetch decodes; a bare
+#    `curl | grep` scans compressed bytes and matches nothing). Capped at 3 min (§ Code push gates).
+node skills/deploy/scripts/code-sync-verify.mjs --org $ORG --repo $REPO --ref $BRANCH   # → stardust/code-sync.json
+#    exit 0 = served == tree · 3 = dirty or unpushed code paths, push first · 124 = still propagating, re-run once · 2 = admin 401/403/404
+# one asset only: node skills/deploy/scripts/served-check.mjs "<asset-url>" --same-as <local-file> --wait 180   (same decoded read; 124 = no verdict, 1 = served but wrong)
 
 # 1. sanitise non-ASCII to entities (in place, idempotent) — DA corrupts raw UTF-8.
 #    It writes in place and reports on stderr; NEVER capture its output as the PUT body
@@ -100,9 +99,15 @@ URLs: DA edit `https://da.live/#/$ORG/$REPO/$P` · preview `https://$BRANCH--$RE
 
 A DA document is one document for every code ref: `main--<repo>--<org>` and `<branch>--<repo>--<org>` render the same content with different code. Content previews are near-instant; code is served with `cache-control: max-age=7200`, so a visitor (and the user checking the page) can hold the old code for up to two hours after a push. Three rules keep the two clocks from producing a report the user cannot reproduce:
 
-1. **Code first, on the ref the user will look at.** Push the code to that ref (usually `main`), force Code Sync and run the capped poll of step 0 for every push — then preview the content, then gate on that ref's host. Preview happens right after the DA-write bar (lint exit 0 + whole-page round-trip clean), before harness pixel work — the pixel iteration runs on the preview origin, never on a harness the user cannot open. When the gate must run on a branch host, the report says so and names main's intermediate state: "main renders the new content with old code until the branch merges" (`deploy-batch.mjs` prints the count of shared documents as a WARN when `--branch` is not `main`). The step-0 poll is `served-check.mjs --grep <marker> --wait 180` per push; `served-check.mjs <asset-url> --same-as <local-file>` per touched CSS/JS is the served == local check the gate waits for.
+1. **Code first, on the ref the user will look at.** Push the code to that ref (usually `main`), force Code Sync and run the capped poll of step 0 for every push — then preview the content, then gate on that ref's host. Preview happens right after the DA-write bar (lint exit 0 + whole-page round-trip clean), before harness pixel work — the pixel iteration runs on the preview origin, never on a harness the user cannot open. When the gate must run on a branch host, the report says so and names main's intermediate state: "main renders the new content with old code until the branch merges" (`deploy-batch.mjs` prints the count of shared documents as a WARN when `--branch` is not `main`). The step-0 instrument is `code-sync-verify.mjs` per push — every changed code path re-synced, purged and proved served == working tree before the capture (§ Code push gates); `served-check.mjs <asset-url> --same-as <local-file>` is its one-asset form.
 2. **Content-shape refactors ship in two moves, never one.** First push code that accepts BOTH shapes and verify it is served (step 0); then republish the content; then drop the legacy branch in a later push. Never push untested code and republish the tree in the same step — every intermediate state is live for the whole cache window. Before republishing, render the new content once against the previous code: `git push origin <prevSha>:refs/heads/compat-prev` serves the old code on `compat-prev--<repo>--<org>.aem.page` over the same shared document.
 3. **The publish step and the finish report state the window end.** "Code cached until <now + 2 h>" — the driver prints the timestamp when it publishes; a page that looks stale before then is the cache, not a regression.
+
+### Code push gates
+
+Two instruments bracket every code push; both live in `scripts/code-sync-verify.mjs`, both treat a deadline as "no verdict" (exit 124), never as a FAIL.
+
+**After the push, before any capture — `node skills/deploy/scripts/code-sync-verify.mjs --org <org> --repo <repo> --ref <branch>`.** Condition: the first published-origin capture of a round (Step 10, the replica published-origin regime, the rollout re-gate) and every `deploy-batch.mjs --require-code-synced` run wait until, for each code path changed since the last verified record (`blocks/**`, `styles/**`, `scripts/**`, `head.html`; `--all` for every tracked one), the decoded served body on `<ref>--<repo>--<org>.aem.page` equals the **working-tree** file byte for byte (not the HEAD blob — a recorded phantom round was uncommitted CSS with served == HEAD). It blocks that capture or preview run and nothing else: it never edits, PUTs or publishes. Exit codes: `0` every path matches — record `stardust/code-sync.json` `{org, repo, ref, headSha, status: ok, ts, paths}`; `3` uncommitted or unpushed code paths — deterministic, zero requests, push first; `124` a path still differs at the cap after `POST /code/` (re-sync, 202) then `POST /cache/` (purge, 200) — propagation pending: one bounded re-run, then the round is booked instrument-invalidated, never counted as an iteration; `2` admin `401/403/404` — token or Code Sync installation, the deploy step stops for that ref and the finish report names it. Two staleness classes, two levers: the CDN copy (`x-cache: HIT`, the `max-age` window) needs the purge; the code bus (`last-modified` pinned) needs the re-sync — neither `?cb=` nor `Cache-Control: no-cache` busts either. Escape hatch: omit `--require-code-synced` / skip the step, writing `instrument: code-sync-verify skipped — <why>` on the round's ledger line; no flag lowers the compare to byte counts or a raw grep. Hands-off runs it unchanged: `3` → commit, push (hands-off commits at phase end anyway), re-run; `124` → one re-run, then move on and retry after other work — never capture from a ref whose served code ≠ tree; `2` → owner row.
 
 ## Delivery pipeline — stages, batch driver, per-page atomic contract, token lifecycle
 

@@ -186,6 +186,13 @@ whose harness cases skip when Playwright is unresolvable:
   Playwright with no browser binary makes the probe suite print one `SKIP`
   line and exit 0 (its pure cases still run); the fixture itself SKIPs when
   Playwright is unresolvable.
+- `deploy/scripts/test/code-sync-verify.test.mjs` — `code-sync-verify.mjs` against a temp
+  git repo with a bare origin, a gzip origin and a fake admin: served == tree → 0 with one
+  row per path and the `ok` record; a pushed change the origin serves stale → 124 (never 2)
+  with `/code/` then `/cache/` for that path only; dirty or unpushed code paths → 3 with zero
+  requests; admin 401 → 2; `--no-purge`; a served 404; missing token → 2 before any POST; and
+  `deploy-batch --require-code-synced` refusing (exit 3, no ledger file) on a missing, other-ref
+  or pending record while an `ok` record lets the drive run.
 - `deploy/scripts/test/da-token-check.test.mjs` — `da-token-check.mjs` against a temp
   HOME and a mock DA list: resolution order (shell > `./.env` > `~/.claude/.env` >
   `~/.env`, class printed, value never), IMS `created_at`+`expires_in` vs plain `exp`
