@@ -127,6 +127,14 @@
 # cap position and `NO-OP` when the differing-pixel count equals the previous
 # counted round's of the same regime (the fix never applied).
 #
+# Broken-image gate (gate doc § Pass bar item 4): the build sidecar's
+# `brokenImages` (img with a box ≥ 10 px that loaded nothing) minus the live
+# side's > max(2, 10 % of the build `imgCount`) → verdict FAIL, exit 2,
+# `failClass: build-broken-images` + `brokenImages{}` on the record, whatever
+# the pixel number. Symmetric (a live side of placeholders never trips it);
+# no flag, no residual class — wire the harvested `images[].localPath`
+# copies. A no-verdict compare (124 / incomparable) stays no verdict.
+#
 # Comparable captures (gate doc § Hardening rule 15): both sides are taken by
 # stitch-shot with the same width, vh, dpr and CONSENT MODE, and each PNG
 # carries its provenance sidecar (<png>.json). A cached live.png WITHOUT a
@@ -579,6 +587,21 @@ rc=$?
 [ $rc -eq 5 ] && { rm -f "$DIR/build.png" "$DIR/build.png.json"; echo "gate.sh: build capture INVALID (exit 5: overlay / error page / consent not deniable) — not a verdict, never a FAIL" >&2; exit 5; }
 [ $rc -ne 0 ] && { echo "gate.sh: build capture failed (exit $rc) — not comparing" >&2; exit $rc; }
 
+# Broken-image gate (header): read both sidecars once; pre-field sidecars (no
+# brokenImages key on the build side) skip it. Applied to the record below.
+BROKEN_JSON=$(node -e '
+const fs = require("fs"); const read = (p) => { try { return JSON.parse(fs.readFileSync(p, "utf8")); } catch { return null; } };
+const [l, b] = process.argv.slice(1).map(read);
+if (!b || !Number.isFinite(b.brokenImages)) process.exit(0);
+const live = l && Number.isFinite(l.brokenImages) ? l.brokenImages : 0;
+const imgCount = Number.isFinite(b.imgCount) ? b.imgCount : 0;
+const threshold = Math.max(2, Math.ceil(imgCount * 0.1));
+const delta = b.brokenImages - live;
+process.stdout.write(JSON.stringify({ live, build: b.brokenImages, imgCount, threshold, delta, fail: delta > threshold, srcs: (b.brokenSrcs || []).slice(0, 20) }));
+' "$DIR/live.png.json" "$DIR/build.png.json" 2>/dev/null)
+BROKEN_FAIL=0
+case "$BROKEN_JSON" in *'"fail":true'*) BROKEN_FAIL=1; echo "gate.sh: build side loads fewer images than live — $BROKEN_JSON — FAIL (failClass build-broken-images): wire the harvested images[].localPath copies (recreation-procedure.md § Asset harvest)" >&2 ;; esac
+
 # Same-procedure safety net (format-independent): the build sidecar was
 # written by the instrument THIS round, so its instrument.version is the
 # current procedure whatever the source text looks like. A cached live
@@ -652,10 +675,13 @@ rc=$?
 # provenance sidecar when it has one, else from live.png's mtime. The regime
 # was decided before the count (top of the script).
 if [ -f "$DIR/gate-$LBL.json" ]; then
-  GATE_DRIFT_JSON="$DRIFT_JSON" GATE_COUNT="$COUNT" GATE_OVER_CAP="$OVER_CAP" node - "$DIR/gate-$LBL.json" "$DIR/live.png" "$SLUG" "$LBL" "$W" "$LIVE_URL" "$BUILD_URL" "$REGIME" "$rc" "$DIR/landmarks-$LBL.json" <<'NODE'
+  GATE_DRIFT_JSON="$DRIFT_JSON" GATE_COUNT="$COUNT" GATE_OVER_CAP="$OVER_CAP" GATE_BROKEN_JSON="$BROKEN_JSON" node - "$DIR/gate-$LBL.json" "$DIR/live.png" "$SLUG" "$LBL" "$W" "$LIVE_URL" "$BUILD_URL" "$REGIME" "$rc" "$DIR/landmarks-$LBL.json" <<'NODE'
 const fs = require('fs');
 const [rec, live, slug, label, width, liveUrl, buildUrl, regime, rcStr, lmFile] = process.argv.slice(2);
-const rc = Number(rcStr);
+// broken-image gate (header): a definitive compare (0 / 2) with the build side over the bar is FAIL; a no-verdict compare stays no verdict
+let broken = null; try { broken = process.env.GATE_BROKEN_JSON ? JSON.parse(process.env.GATE_BROKEN_JSON) : null; } catch { broken = null; }
+const rcRaw = Number(rcStr);
+const rc = broken && broken.fail && [0, 2].includes(rcRaw) ? 2 : rcRaw;
 const read = (p) => { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return null; } };
 const j = JSON.parse(fs.readFileSync(rec, 'utf8'));
 // landmark table (anchor.mjs --landmarks --against): rows, unpaired, firstDelta — absent when skipped/unavailable
@@ -672,7 +698,9 @@ const out = { slug, label, width: Number(width), regime, at: new Date().toISOStr
   ...(counts ? { iteration: Number(process.env.GATE_COUNT || 0) + 1 } : { counted: false }),
   ...(process.env.GATE_OVER_CAP ? { overCap: process.env.GATE_OVER_CAP } : {}),
   ref: { url: liveUrl, width: Number(width), capturedAt, ...(side ? { sidecar: `${live}.json`, instrument: side.instrument && side.instrument.name, technique: side.technique, consent: side.consent } : { source: 'mtime' }) },
-  build: { url: buildUrl }, verdict: rc === 0 ? 'PASS' : rc === 2 ? 'FAIL' : 'no-verdict', exit: rc, ...(landmarks ? { landmarks } : {}), ...j };
+  build: { url: buildUrl }, verdict: rc === 0 ? 'PASS' : rc === 2 ? 'FAIL' : 'no-verdict', exit: rc, ...(landmarks ? { landmarks } : {}), ...j,
+  ...(broken ? { brokenImages: { live: broken.live, build: broken.build, imgCount: broken.imgCount, threshold: broken.threshold, srcs: broken.srcs } } : {}),
+  ...(broken && broken.fail && rc === 2 ? { failClass: 'build-broken-images' } : {}) };
 // Live drift is an EVENT on the record (not a progress.json residual): the
 // recapture round does not count against the cap, same rule as skip-link-focus.
 if (drift?.drift) out.liveDrift = { previousCapturedAt: drift.previousCapturedAt, docBefore: drift.docBefore, docAfter: drift.docAfter, sectionsBefore: drift.sectionsBefore, sectionsAfter: drift.sectionsAfter, thresholdPx: drift.thresholdPx, recaptured: true };
@@ -686,7 +714,7 @@ fs.writeFileSync(rec, `${JSON.stringify(out, null, 2)}\n`);
 // The VERDICT LINE: verdict + the two gated numbers + the cap position on one
 // line (gate doc § Iteration discipline) — the line the loop reads.
 const iterPart = counts ? `iteration ${out.iteration}/3${out.overCap ? ` (over-cap: ${out.overCap})` : ''}${out.noOp ? `  NO-OP — differing pixels unchanged vs ${out.noOp.vs} (${out.noOp.differingPixels}): the fix never applied` : ''}` : 'not counted (no verdict or live-drift recapture)';
-console.log(`verdict: ${out.verdict}${Number.isFinite(j.pixelPct) ? ` ${j.pixelPct} % Δh ${j.heightDelta}px` : ''}  ${iterPart}`);
+console.log(`verdict: ${out.verdict}${Number.isFinite(j.pixelPct) ? ` ${j.pixelPct} % Δh ${j.heightDelta}px` : ''}${out.failClass ? `  failClass: ${out.failClass} (build ${broken.build} − live ${broken.live} broken image(s) > ${broken.threshold} of ${broken.imgCount})` : ''}  ${iterPart}`);
 console.log(`regime: ${regime}  reference: ${liveUrl} @${width} captured ${capturedAt}${side ? ` via ${side.technique || side.instrument?.name || 'unknown'}${side.source && side.source !== 'stitch-shot' ? ` (source: ${side.source})` : ''}` : ' (live.png mtime)'}${j.forced ? '  FORCED (incomparable captures — not a gate number)' : ''}${out.liveDrift ? `  LIVE DRIFT (Δh ${out.liveDrift.docAfter - out.liveDrift.docBefore}px — reference recaptured, round not counted)` : ''}${out.noiseFloor ? `  noise floor ${out.noiseFloor.pixelPct} % (raw ${j.pixelPct} % is the gated number${out.noiseFloor.stale ? `; floor graded against the ${out.noiseFloor.gradedAgainst} reference` : ''})` : ''}  record: ${rec}`);
 NODE
   # --record: upsert this breakpoint's block in stardust/replica/progress.json
@@ -694,4 +722,6 @@ NODE
   # the round: the number stands whether or not the ledger took it.
   [ -n "$RECORD" ] && node "$HERE/progress-record.mjs" "$DIR/gate-$LBL.json"
 fi
+# broken-image gate: a definitive compare (0 / 2) becomes FAIL; 124 / incomparable stay no verdict
+if [ "$BROKEN_FAIL" = "1" ] && { [ $rc -eq 0 ] || [ $rc -eq 2 ]; }; then rc=2; fi
 exit $rc

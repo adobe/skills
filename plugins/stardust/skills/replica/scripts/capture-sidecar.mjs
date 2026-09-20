@@ -28,6 +28,8 @@
  *     variants?: [ ... ],                                // optional (A/B / geo markers)
  *     blocked: [ '<substr>' ],                             // --block list (refusal key; [] when none)
  *     hidden?: [], pinnedHidden?: [], tail?: {}, pendingDecodes?, seamRepeats?, visibilityState?,   // optional
+ *     imgCount?, brokenImages?, brokenSrcs?: [ '<src>' ],   // <img> with a box ≥ 10 px / those that loaded nothing (complete && naturalWidth 0);
+ *       // gate.sh: build − live > max(2, 10 % of imgCount) → FAIL, failClass build-broken-images (gate doc § Pass bar item 4)
  *     masksRects?: [ { kind: 'sel'|'iframe'|'img', sel?, src?, x, y, w, h, fixed?, error? } ]
  *       // --mask-sel / --mask-iframes / --mask-images / --masks-json: page-space rects at
  *       // scroll 0 after the settle; present only when a --mask-* flag was given.

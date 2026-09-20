@@ -6,6 +6,8 @@
 // STUB_STITCH_EXIT — a capture that died mid-stitch), STUB_STITCH_VERSION
 // (sidecar instrument.version; default = INSTRUMENT.version below). The sidecar also records --block / --allow-consent /
 // --expect-height so the runner can assert live.png and live-b.png took the same flags.
+// STUB_IMG_COUNT / STUB_BROKEN_LIVE / STUB_BROKEN_BUILD (by the out path's side) → sidecar
+// imgCount / brokenImages (T23.2 broken-image gate); unset → the keys are absent (pre-field sidecar).
 //
 // INSTRUMENT is deliberately declared MULTI-LINE: gate.sh reads the current
 // procedure version from this declaration, and a reformat of the real
@@ -37,5 +39,6 @@ writeFileSync(`${out}.json`, `${JSON.stringify({
   // the flags pixel-compare refuses an asymmetric pair on / gate.sh must pass to BOTH live captures
   blocked: opt('--block', '').split(',').filter(Boolean), allowConsent: rest.includes('--allow-consent'), expectHeight: opt('--expect-height', null),
   docHeight: Number(process.env.STUB_DOC || 3000), chunks: 4, source: 'stitch-shot', technique: 'headless', tier: 1,
+  ...(process.env.STUB_IMG_COUNT ? { imgCount: Number(process.env.STUB_IMG_COUNT), brokenImages: Number((out.endsWith('build.png') ? process.env.STUB_BROKEN_BUILD : process.env.STUB_BROKEN_LIVE) || 0), brokenSrcs: ['https://cdn.example/a.jpg'] } : {}),
 }, null, 2)}\n`);
 console.log(`stub stitch-shot: ${out}`);
