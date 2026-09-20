@@ -32,7 +32,10 @@ nothing is live, no network is reachable, no `DA_TOKEN` exists.
   | `/insurance/home` | ungated | no published-origin record |
   | `/news/annual-report-2025` | published-failing | already live; 1440 FAIL 23.2 % |
 
-- The journal's last `Next:` is the `--publish` command.
+- The journal's last `Next:` is the `--publish` command. The report-driven hold
+  inside `deploy-batch.mjs` is pending the deploy hunk: today `--plan` lists every
+  previewed row, so the agent derives the held set from `gate-report.json` (the
+  criteria accept that offline reading) and publishes PASS rows only via `--paths`.
 
 ## User prompt
 

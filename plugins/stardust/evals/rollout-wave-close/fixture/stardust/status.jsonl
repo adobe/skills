@@ -1,0 +1,30 @@
+{ "ts": "2026-09-08T09:12:00Z", "skill": "stardust:extract", "phase": "discovery", "event": "start" }
+{ "ts": "2026-09-08T09:14:31Z", "skill": "stardust:extract", "phase": "discovery", "event": "end", "detail": "19 pages discovered via sitemap.xml; under cap 25", "artifact": "stardust/current/_crawl-log.json" }
+{ "ts": "2026-09-08T09:14:35Z", "skill": "stardust:extract", "phase": "per-page extraction", "event": "start" }
+{ "ts": "2026-09-08T09:38:10Z", "skill": "stardust:extract", "phase": "per-page extraction", "event": "end", "detail": "19/19 pages captured, 0 failures", "artifact": "stardust/current/pages/" }
+{ "ts": "2026-09-08T09:38:14Z", "skill": "stardust:extract", "phase": "brand-surface extraction", "event": "start" }
+{ "ts": "2026-09-08T09:39:40Z", "skill": "stardust:extract", "phase": "brand-surface extraction", "event": "end", "detail": "5 palette roles, 2 type families, 4 system components", "artifact": "stardust/current/_brand-extraction.json" }
+{ "ts": "2026-09-08T09:39:45Z", "skill": "stardust:extract", "phase": "seed current PRODUCT.md and DESIGN.md", "event": "start" }
+{ "ts": "2026-09-08T09:41:30Z", "skill": "stardust:extract", "phase": "seed current PRODUCT.md and DESIGN.md", "event": "end", "artifact": "stardust/current/DESIGN.json" }
+{ "ts": "2026-09-08T09:41:40Z", "skill": "stardust:extract", "phase": "update state and report", "event": "start" }
+{ "ts": "2026-09-08T09:41:52Z", "skill": "stardust:extract", "phase": "update state and report", "event": "end", "detail": "19 pages extracted, 3 page types", "artifact": "stardust/state.json" }
+{ "ts": "2026-09-08T10:01:00Z", "skill": "stardust:replica", "phase": "preserve direction", "event": "start" }
+{ "ts": "2026-09-08T10:05:00Z", "skill": "stardust:replica", "phase": "preserve direction", "event": "end", "detail": "PRODUCT.md, DESIGN.md, DESIGN.json promoted verbatim; register 1 entry", "artifact": "stardust/direction.md" }
+{ "ts": "2026-09-09T09:00:00Z", "skill": "stardust:replica", "phase": "recreate", "event": "start" }
+{ "ts": "2026-09-09T16:05:44Z", "skill": "stardust:replica", "phase": "recreate", "event": "end", "detail": "3 archetypes authored (landing, article, program)", "artifact": "stardust/prototypes/" }
+{ "ts": "2026-09-09T11:50:00Z", "skill": "stardust:replica", "phase": "source-fidelity gate", "event": "start" }
+{ "ts": "2026-09-09T17:22:00Z", "skill": "stardust:replica", "phase": "source-fidelity gate", "event": "end", "detail": "home pass 1440+360; news__storm-season-checklist over bar with cause-logged residuals; insurance__home not gated (deferred by user)", "artifact": "stardust/replica/progress.json" }
+{ "ts": "2026-09-10T15:20:00Z", "skill": "stardust:migrate", "phase": "plan", "event": "start" }
+{ "ts": "2026-09-10T15:24:12Z", "skill": "stardust:migrate", "phase": "plan", "event": "end", "detail": "6 pages in scope: 3 Path A, 3 Path A′", "artifact": "stardust/state.json" }
+{ "ts": "2026-09-10T15:24:15Z", "skill": "stardust:migrate", "phase": "per-page render", "event": "start" }
+{ "ts": "2026-09-10T15:39:21Z", "skill": "stardust:migrate", "phase": "per-page render", "event": "end", "detail": "6/6 pages rendered, 0 broken internal links", "artifact": "stardust/migrated/" }
+{ "ts": "2026-09-10T15:39:25Z", "skill": "stardust:migrate", "phase": "sitewide assets and bundle finalisation", "event": "start" }
+{ "ts": "2026-09-10T15:39:50Z", "skill": "stardust:migrate", "phase": "sitewide assets and bundle finalisation", "event": "end", "detail": "3 assets bundled; selfContained", "artifact": "stardust/migrated/assets/" }
+{ "ts": "2026-09-10T15:39:52Z", "skill": "stardust:migrate", "phase": "state and report", "event": "start" }
+{ "ts": "2026-09-10T15:40:02Z", "skill": "stardust:migrate", "phase": "state and report", "event": "end", "detail": "6 pages migrated", "artifact": "stardust/state.json" }
+{ "ts": "2026-09-14T08:30:02Z", "skill": "stardust:stardust", "phase": "routing", "event": "start" }
+{ "ts": "2026-09-14T08:31:10Z", "skill": "stardust:stardust", "phase": "routing", "event": "end", "detail": "flow guard: no flow on state.json; user answered keep the design → flow replica", "artifact": "stardust/state.json" }
+{ "ts": "2026-09-14T08:31:15Z", "skill": "stardust:rollout", "phase": "setup", "event": "start" }
+{ "ts": "2026-09-14T08:31:40Z", "skill": "stardust:rollout", "phase": "setup", "event": "blocked", "detail": "page type program blocked: archetype insurance__home never gated — run $stardust replica insurance__home; landing and article may ship" }
+{ "ts": "2026-09-18T15:00:00Z", "skill": "stardust:rollout", "phase": "C-deliver", "event": "start" }
+{ "ts": "2026-09-18T16:05:00Z", "skill": "stardust:rollout", "phase": "C-deliver", "event": "end", "detail": "wave 1: 4 pages previewed and verified (home, business, news__storm-season-checklist, insurance__home); 1 pending, 1 content-pending", "artifact": "stardust/rollout/coverage/pages.json", "next": "node skills/rollout/scripts/close-check.mjs --fix" }

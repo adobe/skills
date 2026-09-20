@@ -165,22 +165,27 @@ so the gates run uniformly:
 
 The archetype gate proves the recreation; **every delivered page** carries its
 own published-origin number or is `ungated`. The instrument is
-`scripts/gate-publish.mjs`; the release condition is `deploy-batch.mjs
---publish` reading its report. The script never publishes.
+`scripts/gate-publish.mjs`; the release condition is the publish run reading
+its report. The script never publishes. **Pending — deploy hunk:** the hold
+inside `deploy-batch.mjs --publish` (report read, `held (gate: …)` plan
+reasons, the two escape flags, the `held h` count) is the deploy cluster's
+part of this gate and is not in this release; until it lands the operator (or
+hands-off) reads `gate-report.md`'s held rows and passes `--paths` with the
+PASS rows only — the condition below is the contract both halves implement.
 
 ```bash
 node skills/rollout/scripts/gate-publish.mjs --all-delivered --origin https://<branch>--<repo>--<org>.aem.page   # every page (≤ 150 delivered)
 node skills/rollout/scripts/gate-publish.mjs --sample 10 --seed <run-seed> --exclude <fix-loop slugs> --origin <preview>   # coverage regime, > 150
 node skills/rollout/scripts/gate-publish.mjs --all-delivered --report      # offline: records → gate-report.{json,md} + delivery.gate
 node skills/rollout/scripts/verify.mjs --gate-report stardust/rollout/gate-report.json   # Phase E: read, never re-judge
-node skills/deploy/scripts/deploy-batch.mjs … --publish                      # reads the report, HOLDS every row without a PASS
+node skills/deploy/scripts/deploy-batch.mjs … --publish --paths <PASS rows>  # today: publish the PASS rows only; the report-driven hold is pending
 ```
 
-- **Condition (what blocks).** On the explicit `--publish` run a `previewed`
+- **Condition (what blocks).** On the explicit publish run a `previewed`
   ledger row is **held** — not `POST /live/`'d, status unchanged, plan reason
   `held (gate: 360 FAIL 12.4 % Δh -112)` / `held (gate: ungated)` / `held (gate:
-  unmeasured — 124)` — unless `gate-report.json` `pages[path].latest.pass ===
-  true`: PASS at **every configured breakpoint**, where PASS per breakpoint =
+  unmeasured — 124)` (pending, see above) — unless `gate-report.json`
+  `pages[path].latest.pass === true`: PASS at **every configured breakpoint**, where PASS per breakpoint =
   the round record's own `pass` ∧ |Δh| ≤ 8 px ∧ header + footer crops pass
   `crop-compare` (no bar restated or configurable — B29). Already-`live` rows
   are never touched by the hold; their FAIL is reported `published-failing`
@@ -188,8 +193,8 @@ node skills/deploy/scripts/deploy-batch.mjs … --publish                      #
   0 when every measured page passes, 3 when a page is blocked (challenge /
   auth) — never on 124. Under `flow: replica` a row is `verified` only with
   `delivery.gate.status === 'pass'` (`coverage-model.md` § `delivery.gate`).
-- **Escape hatches (operator / owner, never hands-off).** (a)
-  `--publish-no-regression` — already-live rows only: a FAIL row whose every
+- **Escape hatches (operator / owner, never hands-off; both flags pending
+  with the deploy hunk).** (a) `--publish-no-regression` — already-live rows only: a FAIL row whose every
   breakpoint is ≤ `bestOfLast3 + 1` point publishes, action recorded
   `published (no-regression: 1440 24.9→23.0)`, status stays
   `published-failing`. (b) `--publish-ungated` — rows with no report entry:
@@ -199,11 +204,12 @@ node skills/deploy/scripts/deploy-batch.mjs … --publish                      #
   format) makes an over-bar breakpoint a PASS row in the report — the only
   residual door. No `--bar`, no threshold flag.
 - **Hands-off.** Phase C previews, runs `gate-publish.mjs` over the delivered
-  pages (the coverage regime below decides sample vs every page), then
-  `deploy-batch --publish` — which publishes exactly the PASS rows and holds
-  the rest; prints the coverage line `published-gated P of M · PASS p · FAIL f ·
-  unmeasured u · ungated r · held h`; writes `status: blocked` with the re-drive
-  command when any row is held; **never** passes `--publish-ungated` or
+  pages (the coverage regime below decides sample vs every page), then the
+  publish run over exactly the PASS rows (today `--paths <PASS rows>`; the
+  report-driven hold once the deploy hunk lands) and holds the rest; prints
+  the report's coverage line `published-gated P of M · PASS p · FAIL f ·
+  unmeasured u · ungated r` (+ `held h` from the publish run when shipped);
+  writes `status: blocked` with the re-drive command when any row is held; **never** passes `--publish-ungated` or
   `--publish-no-regression`; never self-accepts an unnamed residual. D1 becomes
   mechanical, not judged; D16 kept — hands-off publishes only PASS rows.
 - **No verdict ≠ FAIL (B32).** Exit 124 / 3 / 5 / 6 from an instrument →
@@ -213,13 +219,16 @@ node skills/deploy/scripts/deploy-batch.mjs … --publish                      #
   KPI), never substituted for it (B9).
 - **Hit-minimisation.** Live side captured once per page × breakpoint
   (`gate.sh` `live.png` + sidecar, `anchor-live.json`), refreshed only by the
-  24 h drift probe (`--refresh`); sequential by default — `--concurrency 2` only
-  for pages whose live capture is cached; `--variance` (a second live hit) only
+  24 h drift probe (`--refresh`); one `gate.sh` round at a time by default —
+  `--concurrency 2` runs two rounds at once only over pages whose live capture
+  is cached at every width (they run after the uncached pages); `--variance` (a second live hit) only
   where the gate doc names it. The prototype-regime cap and the published-origin
   cap are separate (labels `iter<k>` / `pub<k>` in the same gate dir).
-- **Access-restricted previews.** `stitch-shot` carries no site-token cookie
-  today: gate on `aem.live` after an owner-decided publish, or wait for the
-  storage-state flag — state the limitation in the report, never skip the gate.
+- **Access-restricted previews.** `stitch-shot.mjs` accepts `--storage-state
+  <file>` (an admitted session), but `gate.sh` and `gate-publish.mjs` do not
+  forward it yet, so a site-token-protected preview cannot be stitched from
+  the gate: gate on `aem.live` after an owner-decided publish, or wait for the
+  pass-through — state the limitation in the report, never skip the gate.
 
 ### Coverage regime (which pages count as gated)
 
@@ -284,7 +293,9 @@ node skills/rollout/scripts/content-acceptance.mjs --slug <s> --target-url https
   `--target-url`; bulk `--all` over thousands of pages runs in the background
   (exit 124 / 143 = killed, no verdict); no threshold changes (B29); the deploy
   ledger is untouched (pre-PUT); role-level drill-down of a failed page is
-  `diff`'s `content-diff.mjs` (its capture-as-source mode), not a second classifier (B26).
+  `diff`'s `content-diff.mjs` (today against the live source URL — one source
+  hit per drill-down; a capture-as-source mode is pending), not a second
+  classifier (B26).
 
 ## Gate 5 — AI-readability (`code ≥ 98` on the delivered origin, per page)
 

@@ -3,11 +3,13 @@
  * rollout/gate-publish.mjs — the published-origin PAGE gate: one driver for every
  * delivered page (or a seeded sample), one report the publish run reads.
  *
- * It measures and writes; it never publishes. `deploy-batch.mjs --publish` reads
- * `stardust/rollout/gate-report.json` and HOLDS every previewed row without a PASS
- * (reference/delivery-gates.md § Gate 8). The gate status lives in rollout coverage
- * (`delivery.gate`) and in the report — never in `state.json` (`migrated` is
- * migrate's lifecycle state) and never in the deploy ledger.
+ * It measures and writes; it never publishes. The release condition reads its report:
+ * `stardust/rollout/gate-report.json` — every previewed row without a PASS is HELD
+ * (reference/delivery-gates.md § Gate 8; the hold inside `deploy-batch.mjs --publish` is the
+ * deploy cluster's hunk — until it lands the operator reads the report's held rows before
+ * the publish run). The gate status lives in rollout coverage (`delivery.gate`) and in the
+ * report — never in `state.json` (`migrated` is migrate's lifecycle state) and never in the
+ * deploy ledger.
  *
  * Per page × configured breakpoint the driver composes the replica instruments:
  *   gate.sh <slug> <live-url> <origin-url> <W> pub<k> --regime published-origin [--refresh] [--variance]
@@ -16,9 +18,11 @@
  *   crop-compare live.png build.png --y 0 --height <hh> · --y <live fy> --y-b <build fy> --height <fh>
  *     → gates/<slug>-<W>/crop-{header,footer}-pub<k>.json
  * PASS at a breakpoint = record `pass` (pixel-compare's own bar) ∧ |Δh| ≤ 8 px ∧ both
- * chrome crops pass (crop-compare's own bar). No bar is restated or configurable here
- * (B29): the driver copies `pass` and adds the two existing bars pixel-compare does not
- * apply. A page PASSes only when every configured breakpoint passes.
+ * chrome crops pass (crop-compare's own `pass`). No bar is restated or configurable here
+ * (B29): the driver copies `pass` from both instruments and adds the one existing bar
+ * pixel-compare does not apply (|Δh|); a crop record without a `pass` field is no verdict
+ * (unmeasured), never re-judged from its percentage. A page PASSes only when every
+ * configured breakpoint passes.
  *
  * Statuses (per page, `latest.status`):
  *   pass               every breakpoint PASS
@@ -40,8 +44,9 @@
  *                             sample (delivery-gates.md § Gate 8 → Coverage regime). Seed
  *                             and draw are recorded in the report.
  * Modes:
- *   (run)        drive the instruments sequentially (--concurrency 2 only for pages whose
- *                live capture is already cached), then write the report
+ *   (run)        drive the instruments sequentially — one gate.sh round at a time (hit-minimisation
+ *                on the source site); --concurrency 2 runs two rounds at once ONLY over pages whose
+ *                live capture is already cached (they follow the uncached pages) — then write the report
  *   --report     offline: read the round records + crop files already on disk, write
  *                gate-report.{json,md}, merge `delivery.gate` into coverage — no browser
  *   --dry-run    print the gate.sh command per page × width and exit 0 — nothing runs
@@ -49,7 +54,9 @@
  *   --origin <url>            the delivered origin (preview `*.aem.page` — D1 gates on preview;
  *                             `aem.live` only after an owner-decided publish) — required to run
  *   --widths 1440,360         default progress.json breakpointsConfigured, else 1440,360
- *   --gates-dir <dir>         default stardust/replica/gates      --out <dir>  default stardust/rollout
+ *   --gates-dir <dir>         default stardust/replica/gates (--report / --dry-run read any dir; a RUN needs
+ *                             gate.sh to honour GATE_DIR_ROOT — until it does, a non-default dir is refused, exit 1)
+ *   --out <dir>               default stardust/rollout
  *   --ledger <file>           default content/.deploy-ledger.json (wasLive from a `live` row — zero network)
  *   --state <file>            default stardust/state.json (live URL per page; else rollout.json site.sourceUrl + path)
  *   --refresh · --variance    passed through to gate.sh (drift probe / self-noise floor, where the doc names them)
@@ -79,7 +86,7 @@
 import { existsSync, readFileSync, readdirSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { readJSON, writeJSON, deliveredPathOf, isDelivered } from './lib.mjs';
 
 const HEIGHT_BAR_PX = 8; // the existing |Δh| bar (pixel-compare prints ⚠ over it; the gate applies it)
@@ -123,7 +130,8 @@ export function publishedRecords(dir) {
     .sort((a, b) => String(a.rec.at || '').localeCompare(String(b.rec.at || '')));
 }
 const cropOf = (dir, kind, label) => readJson(join(dir, `crop-${kind}-${label}.json`));
-const cropOk = (c) => (c ? (typeof c.pass === 'boolean' ? c.pass : Number(c.matchPct) >= 98) : null);
+/** crop-compare's own verdict; a record without `pass` is no verdict (never re-judged from matchPct — B29). */
+const cropOk = (c) => (c && typeof c.pass === 'boolean' ? c.pass : null);
 
 /** One breakpoint's verdict from the newest published-origin record (+ its crop files). */
 export function breakpointVerdict(dir) {
@@ -141,8 +149,8 @@ export function breakpointVerdict(dir) {
   const out = { ...base, heightOk, cropsOk, header: header ? { matchPct: header.matchPct, pass: hOk } : null, footer: footer ? { matchPct: footer.matchPct, pass: fOk } : null };
   if (rec.verdict === 'FAIL') return { ...out, status: 'fail', pass: false, reason: `pixel ${rec.pixelPct} % (record FAIL)` };
   if (!heightOk) return { ...out, status: 'fail', pass: false, reason: `|Δh| ${rec.heightDelta} px > ${HEIGHT_BAR_PX}` };
-  if (cropsOk === null) return { ...out, status: 'unmeasured', pass: false, reason: 'chrome crops not run (header/footer crop files missing)' };
-  if (!cropsOk) return { ...out, status: 'fail', pass: false, reason: `chrome crop ${hOk ? 'footer' : 'header'} ${(hOk ? footer : header).matchPct} % < 98` };
+  if (cropsOk === null) return { ...out, status: 'unmeasured', pass: false, reason: header && footer ? 'chrome crop record carries no pass verdict (re-run crop-compare)' : 'chrome crops not run (header/footer crop files missing)' };
+  if (!cropsOk) { const k = hOk ? 'footer' : 'header'; const c = hOk ? footer : header; return { ...out, status: 'fail', pass: false, reason: `chrome crop ${k} match ${c.matchPct} % — crop-compare FAIL${Number.isFinite(Number(c.threshold)) ? ` (its bar ${c.threshold} % diff)` : ''}` }; }
   return { ...out, status: 'pass', pass: true, reason: null };
 }
 
@@ -168,7 +176,9 @@ export function buildReport(entries, { widths, previous = null, sample = null, a
   for (const e of entries) {
     const status = pageStatus(e.breakpoints, e.wasLive);
     const prev = pages[e.path];
-    const latestAt = Object.values(e.breakpoints).map((b) => b.at).filter(Boolean).sort().pop() || at;
+    // newest record timestamp; a page with no record at all (ungated / dry) keeps its previous `at` while its
+    // status is unchanged — so a re-run over the same records adds no history row for it either
+    const latestAt = Object.values(e.breakpoints).map((b) => b.at).filter(Boolean).sort().pop() || (prev && prev.latest && prev.latest.status === status ? prev.latest.at : at);
     const bp = {};
     const bol3 = {}; const reference = {};
     for (const W of widths) {
@@ -216,9 +226,24 @@ export function renderMd(report, selectedPaths) {
   md.push('', '## neutralDiff (reporting KPI, not a bar)', '', '| template | bp | n | median | p90 | share < 10 % |', '|---|---|---|---|---|---|');
   for (const [t, byW] of Object.entries(report.neutralDiff)) for (const [W, v] of Object.entries(byW)) md.push(`| ${t} | ${W} | ${v.n} | ${v.median} | ${v.p90} | ${v.under10} |`);
   if (!Object.keys(report.neutralDiff).length) md.push('| — | — | 0 | not measured | not measured | not measured |');
-  md.push('', 'Held rows re-drive with the same `deploy-batch.mjs … --publish` once this report changes; `--publish-ungated` / `--publish-no-regression` are operator/owner flags (delivery-gates.md § Gate 8).', '');
+  md.push('', 'Rows without a PASS are held from the publish run and re-drive with the same run once this report changes; the escape flags are operator/owner flags, never hands-off (delivery-gates.md § Gate 8 — the hold inside deploy-batch --publish is pending the deploy hunk; until then read the held rows here before publishing).', '');
   return md.join('\n');
 }
+
+/** Run `fn` over `items` with at most `n` in flight (order of results = order of items). */
+export async function runPool(items, n, fn) {
+  const out = new Array(items.length); let next = 0;
+  const worker = async () => { while (next < items.length) { const k = next; next += 1; out[k] = await fn(items[k], k); } };
+  await Promise.all(Array.from({ length: Math.min(Math.max(1, n | 0), items.length || 1) }, worker));
+  return out;
+}
+const spawnP = (cmd, args, env) => new Promise((res) => {
+  let stdout = ''; let stderr = '';
+  const c = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, ...env } });
+  c.stdout.on('data', (d) => { stdout += d; }); c.stderr.on('data', (d) => { stderr += d; });
+  c.on('error', (e) => res({ status: null, stdout, stderr: `${stderr}${e.message}` }));
+  c.on('close', (status) => res({ status, stdout, stderr }));
+});
 
 // ---- CLI ----
 const isMain = process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href;
@@ -277,6 +302,15 @@ async function main() {
 
   const HERE = dirname(new URL(import.meta.url).pathname);
   const REPLICA = [join(HERE, '..', '..', 'replica', 'scripts'), join(HERE, '..', 'replica')].find((d) => existsSync(join(d, 'gate.sh'))) || join(HERE, '..', '..', 'replica', 'scripts');
+  // gate.sh writes stardust/replica/gates/<slug>-<W> unless it honours GATE_DIR_ROOT — a run into any other dir would
+  // read verdicts from one place and write records to another; --report / --dry-run read wherever --gates-dir points
+  const DEFAULT_GATES = 'stardust/replica/gates';
+  const gateShHonoursDir = existsSync(join(REPLICA, 'gate.sh')) && /GATE_DIR_ROOT/.test(readFileSync(join(REPLICA, 'gate.sh'), 'utf8'));
+  if (!REPORT_ONLY && !DRY && resolve(GATES) !== resolve(DEFAULT_GATES) && !gateShHonoursDir) {
+    console.error(`rollout gate-publish: --gates-dir ${GATES} cannot be used for a RUN — ${join(REPLICA, 'gate.sh')} writes ${DEFAULT_GATES}/<slug>-<W> and does not honour GATE_DIR_ROOT yet. Run with the default dir (or use --report / --dry-run, which read any dir).`);
+    process.exit(1);
+  }
+  const gateEnv = gateShHonoursDir ? { GATE_DIR_ROOT: GATES } : {};
   const nextLabel = (dir) => `pub${(existsSync(dir) ? readdirSync(dir).filter((f) => /^gate-pub\d+\.json$/.test(f)).length : 0) + 1}`;
   const cached = (dir) => existsSync(join(dir, 'live.png'));
 
@@ -287,7 +321,7 @@ async function main() {
   let blocked = false;
   const entries = [];
   const commands = [];
-  const runOne = (p) => {
+  const runOne = async (p) => {
     const live = liveUrlOf(p);
     const served = deliveredPathOf(p);
     const bps = {};
@@ -299,7 +333,7 @@ async function main() {
         commands.push(cmd.join(' '));
         if (!DRY) {
           if (!live) { bps[W] = { status: 'unmeasured', pass: false, reason: 'no live URL (state.json pages[].url / rollout.json site.sourceUrl)', history: [] }; continue; }
-          const r = spawnSync(cmd[0], cmd.slice(1), { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+          const r = await spawnP(cmd[0], cmd.slice(1), gateEnv);
           process.stdout.write(r.stdout || '');
           if (r.status === 3) blocked = true;
           if ((r.status === 0 || r.status === 2) && existsSync(join(dir, 'live.png')) && existsSync(join(dir, 'build.png'))) {
@@ -322,11 +356,14 @@ async function main() {
     prog.tick({ ok: st === 'pass', noverdict: ['unmeasured', 'ungated', 'blocked'].includes(st), path: served });
     return e;
   };
-  // sequential by default (hit-minimisation on the source site); --concurrency 2 only for pages whose live capture is cached
+  // sequential by default (hit-minimisation on the source site: one gate.sh round at a time); --concurrency 2 runs
+  // two rounds at once ONLY over pages whose live capture is already cached at every width — they go last
   const conc = Math.min(2, Math.max(1, Number(arg(argv, 'concurrency', '1')) || 1));
   const cachedOnly = conc === 2 ? selected.filter((p) => widths.every((W) => cached(join(GATES, `${p.slug}-${W}`)))) : [];
-  const ordered = [...selected.filter((p) => !cachedOnly.includes(p)), ...cachedOnly];
-  for (const p of ordered) entries.push(runOne(p));
+  const uncached = selected.filter((p) => !cachedOnly.includes(p));
+  entries.push(...await runPool(uncached, 1, runOne));
+  entries.push(...await runPool(cachedOnly, conc, runOne));
+  if (!REPORT_ONLY && !DRY && conc === 2) console.log(`gate-publish: ${uncached.length} page(s) sequential (live capture) · ${cachedOnly.length} at concurrency 2 (live cached)`);
 
   if (DRY) { console.log(commands.join('\n')); console.log(`gate-publish --dry-run: ${selected.length} page(s) × ${widths.length} breakpoint(s) — ${commands.length} sequential gate.sh rounds, nothing ran`); process.exit(0); }
 

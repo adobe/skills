@@ -18,16 +18,16 @@ Phases, in order: Setup → A Inventory → B Block dedup plan → B2 Dynamic su
 | A | `node skills/rollout/scripts/inventory.mjs --site-url <source-url> [--content <eds-root>/content] [--redirects stardust/redirects.tsv]` (archetypes-only: add `--state stardust/state.json`) |
 | B | `node skills/rollout/scripts/blocks.mjs`; `node skills/rollout/scripts/plan.mjs` |
 | B2 | `node skills/dynamics/scripts/dynamics-detect.mjs --from-state … --reach stardust/current`; `node skills/dynamics/scripts/dynamics-plan.mjs --target-origin <live host> --migrated stardust/migrated`; `node skills/dynamics/scripts/dynamics-plan.mjs --lint stardust/dynamic-features.md stardust/dynamic-features-plan.md` |
-| C | per page: `node skills/rollout/scripts/content-acceptance.mjs --slug <slug>`; `node skills/rollout/scripts/delivery-lint.mjs --file <html> --path </da/path> --icons-dir icons`; `node skills/rollout/scripts/media-reconcile.mjs --file <html> --deploy-host <host> [--apply]`; `node skills/rollout/scripts/section-fidelity.mjs --file <html> --source <url>`; `node skills/rollout/scripts/update-coverage.mjs <slug> --status <s>` / `--gate <name> <json>`; batches: `node skills/deploy/scripts/deploy-batch.mjs --org … --repo … --branch … --content <dir> [--concurrency 4]` (preview); page gate: `node skills/rollout/scripts/gate-publish.mjs --all-delivered \| --sample 10 --seed <s> --origin <preview>`; live: same deploy-batch command `--publish` (holds every row without a PASS) |
+| C | per page: `node skills/rollout/scripts/content-acceptance.mjs --slug <slug>`; `node skills/rollout/scripts/delivery-lint.mjs --file <html> --path </da/path> --icons-dir icons`; `node skills/rollout/scripts/media-reconcile.mjs --file <html> --deploy-host <host> [--apply]`; `node skills/rollout/scripts/section-fidelity.mjs --file <html> --source <url>`; `node skills/rollout/scripts/update-coverage.mjs <slug> --status <s>` / `--gate <name> <json>`; batches: `node skills/deploy/scripts/deploy-batch.mjs --org … --repo … --branch … --content <dir> [--concurrency 4]` (preview); page gate: `node skills/rollout/scripts/gate-publish.mjs --all-delivered \| --sample 10 --seed <s> --origin <preview>`; live: same command `--publish --paths <PASS rows>` (hold pending, § Gate 8) |
 | D | `node skills/rollout/scripts/assemble.mjs`; `node skills/rollout/scripts/redirects.mjs [--post-publish]` |
 | D2 | `node skills/dynamics/scripts/dynamics-check.mjs --origin <live host> --gate` |
 | E / E2 | `node skills/rollout/scripts/verify.mjs [--base <url> | --root <dir>] [--all] [--report <dir>] [--gate-report stardust/rollout/gate-report.json]`; `node skills/deploy/scripts/localize-links.mjs --source-host <live-host> --content content --redirects stardust/redirects.tsv [--check]` |
 | F | `node skills/rollout/scripts/optimize.mjs [--base <url> | --root <dir> | --slug <s> | --all]`; `node skills/rollout/scripts/findings.mjs record … / resolve <id> …` |
 | G | `node skills/rollout/scripts/autofix-aem.mjs --project <eds-root> [--dry-run] [--slug s] [--check c]` |
-| H | wave close: `node skills/rollout/scripts/open-review-pairs.mjs --per-template 1 [--random 10] [--no-open]`; read `rollout.json.lastRun` + `optimize/scorecard.json` + `verify/summary.md`; write `stardust/learnings.md` |
+| H | wave close: `node skills/rollout/scripts/close-check.mjs --fix` (exit 0 closes; runs `open-review-pairs.mjs --per-template 1 --no-open`, `dashboard.mjs`); write `stardust/learnings.md` |
 | I | `node skills/rollout/scripts/dashboard.mjs` — once after Phase A, then at every wave close |
 
-Gates: Setup — `gate-ledger-lint.mjs` exit 2 = blocked types under `flow: replica`. B2 — every dynamic row has a disposition; `dynamics-plan.mjs --lint` exit 0. C — `content-acceptance.mjs` exit 2 (dropped content) and delivery-lint P0/P1 block the PUT; source-fidelity, image-fidelity, path-safety, source-content hygiene, fidelity tier declared; EW gate `block-roundtrip --ew`; foundation-first gate on the first deployed archetype; chrome crops consume `pass`, never the pct alone; AI-readability `code < 98` and editability `dead > 0` = `failed` via `update-coverage --gate` (Gates 5–6; unmeasured = re-drive); page gate — `gate-publish.mjs` exit 2 = a FAIL page, `--publish` holds every row without a PASS (Gate 8). D — `redirects.mjs` exit 2 (a Source shadows a delivered page) blocks the sheet. E — `verify.mjs` exit 1 = a failed page (folder roots probed on both slash forms), exit 2 = usage / no coverage; a 429/503 through the inline retry leaves the page `unverified` and exits 2 — re-run, never a failed page; headless render check per template. E2 — `localize-links.mjs --check` exit 2 = links remain. F — `optimize.mjs` exits non-zero on any open in-scope P1. H — `dynamics-check.mjs --gate` exit 0 before the report closes; the review pack is written on the live host (`open-review-pairs.mjs` exit 2 = a localhost/token URL, nothing written).
+Gates: Setup — `gate-ledger-lint.mjs` exit 2 = blocked types under `flow: replica`. B2 — every dynamic row has a disposition; `dynamics-plan.mjs --lint` exit 0. C — `content-acceptance.mjs` exit 2 (dropped content) and delivery-lint P0/P1 block the PUT; source-fidelity, image-fidelity, path-safety, source-content hygiene, fidelity tier declared; EW gate `block-roundtrip --ew`; foundation-first gate on the first deployed archetype; chrome crops consume `pass`, never the pct alone; AI-readability `code < 98` and editability `dead > 0` = `failed` via `update-coverage --gate` (Gates 5–6; unmeasured = re-drive); page gate — `gate-publish.mjs` exit 2 = a FAIL page; publish PASS rows only (Gate 8). D — `redirects.mjs` exit 2 (a Source shadows a delivered page) blocks the sheet. E — `verify.mjs` exit 1 = a failed page (folder roots probed on both slash forms), exit 2 = usage / no coverage; a 429/503 through the inline retry leaves the page `unverified` and exits 2 — re-run, never a failed page; headless render check per template. E2 — `localize-links.mjs --check` exit 2 = links remain. F — `optimize.mjs` exits non-zero on any open in-scope P1. H — `close-check.mjs` exit 0 closes the wave; `dynamics-check.mjs --gate` exit 0 before the report closes; `open-review-pairs.mjs` exit 2 = a localhost/token URL, nothing written.
 
 Outputs (under `stardust/rollout/`): `coverage/{pages,templates,blocks}.json` · `plan.json` · `rollout.json` · `verify/{summary.json,summary.md}` · `optimize/{findings,scorecard}.json` · `site/{sitemap.xml,robots.txt,manifest.json,redirects.json}` · `dashboard/{index.html,data.json}` (schemas: `schemas/rollout-*.schema.json`); plus `stardust/redirects.tsv`, `stardust/learnings.md`, EDS-project edits via autofix.
 
@@ -41,7 +41,7 @@ Outputs (under `stardust/rollout/`): `coverage/{pages,templates,blocks}.json` ·
 | D3 | `reference/multilingual.md` |
 | E / E2 | `reference/coverage-model.md` § Verify · § `delivery.gate`; `reference/delivery-gates.md` § Gate 8 → Coverage regime; `reference/operational-learnings.md` § Two verify checks; `reference/sweep-protocol.md` (site-scale fix loop, after verify); `../stardust/reference/context-hygiene.md` § Runner reports and session hand-off |
 | F / G | `reference/audit-sources.md` § The sources · § Recording an external finding · § Fixability → who fixes it · § AEM autofix registry · § The loop; `reference/checks.md`; `reference/coverage-model.md` § Optimize gate (findings lifecycle); `reference/operational-learnings.md` § Optimize-gate learnings |
-| H | `../stardust/reference/handoff-report.md` § Gate table first · § Source → target · § Residuals, links, report check; `../replica/reference/source-fidelity-gate.md` § Per-breakpoint procedure; `../dynamics/reference/parity-report.md` rule 8; `../stardust/reference/learnings.md` § Entry shape |
+| H | `reference/wave-close.md` § Rows · § Escape hatch; `../stardust/reference/handoff-report.md` § Gate table first · § Source → target · § Residuals, links, report check; `../replica/reference/source-fidelity-gate.md` § Per-breakpoint procedure; `../dynamics/reference/parity-report.md` rule 8; `../stardust/reference/learnings.md` § Entry shape |
 
 `deploy` ships **one** page; `rollout` drives it per page over `migrate`'s output —
 **delivery only**, never redesign.
@@ -76,9 +76,9 @@ tree: `stardust migrate` the archetypes first. Single page: `stardust deploy`.
    code branch pushable). `rollout` adds no new transport.
 4. If `state.json.handsOff` is true (`skills/stardust/SKILL.md` § Hands-off
    mode), run full-auto: no per-phase pauses; every gate and verify step runs
-   unchanged. A wave close = the Phase H close (journal entry, `status.jsonl`
-   `end`, phase commit), then the next wave in the same turn — it never ends
-   the turn (master § Hands-off mode → Turn-end contract).
+   unchanged. A wave close = `close-check.mjs` exit 0 (Phase H), then the next
+   wave in the same turn — it never ends the turn (master § Hands-off mode →
+   Turn-end contract).
 
 ## Procedure
 
@@ -208,9 +208,10 @@ types are absent). For each page:
    **Gate on preview, then publish explicitly.** The default run is `PUT →
    preview`; the page gate is `gate-publish.mjs` (every delivered page ≤ 150, else
    archetypes + the seeded sample — `reference/delivery-gates.md` § Gate 8); the
-   separate `deploy-batch.mjs … --publish` run reads its report and holds every row
-   without a PASS (D1) unless `decisions.md` records publish-to-live (D16) —
-   hands-off stops at preview, never passes the escape flags (indexes: Phase D2).
+   separate `deploy-batch.mjs … --publish` run takes the PASS rows only (`--paths`;
+   report hold pending — § Gate 8) unless `decisions.md` records publish-to-live
+   (D16) — hands-off stops at preview, never passes the escape flags (indexes:
+   Phase D2).
    On failure: `--status failed --error "<reason>"` and continue (one page never
    aborts the rollout). A denied push or publish under hands-off goes to
    `stardust/.work/ship.sh` (`skills/deploy/reference/ship-script.md`), not a retry loop.
@@ -373,21 +374,24 @@ file edited, the change logged on `finding.autofix`, the finding staged
 
 ### Phase H — Report (the wave close)
 
-Hand-off shape: `skills/stardust/reference/handoff-report.md` — gate table first,
-source → target per page, report-check last. **Review pairs:**
-`node skills/rollout/scripts/open-review-pairs.mjs --per-template 1` (and
-`--random 10` before the first live publish) writes `stardust/rollout/review-pack.md`
-— one source ↔ delivered pair per row with its copied gate number and regime,
-opened on the live host, the human logging in (`skills/deploy/da-deploy-protocol.md`
-§ Site auth; localhost or a token in a URL is refused). Defects found there go
-through the gate, not around it: one budgeted fix round, re-gate mapped pages.
-A wave closes only when every artifact line below is computed; the checkpoint
-block (`skills/stardust/reference/run-status.md` § Phase close) is last.
-One census line — `davids-model-lint.mjs content/ --json` → `census.styles.length`
-section styles, `census.blocks.length` blocks (the conversion log's locked vocabulary).
+**Close = `node skills/rollout/scripts/close-check.mjs --fix` exit 0**
+(`reference/wave-close.md`): nine artifact rows (status, journal, coverage,
+learnings, review, dashboard, report, tracking, commit); open rows print their
+fix; never say "closed" before exit 0. Hand-off
+shape: `skills/stardust/reference/handoff-report.md` — gate table first, source
+→ target per page, report-check last. **Review pairs:** `open-review-pairs.mjs
+--per-template 1` (`--random 10` before the first live publish) writes
+`stardust/rollout/review-pack.md` — source ↔ delivered pairs with copied gate
+numbers, opened on the live host where the human logs in
+(`skills/deploy/da-deploy-protocol.md` § Site auth; localhost / token URLs are
+refused). Defects go through the gate, not around it: one budgeted fix round,
+re-gate mapped pages. The checkpoint block
+(`skills/stardust/reference/run-status.md` § Phase close) is last. One census
+line — `davids-model-lint.mjs content/ --json` → `census.styles.length` section
+styles, `census.blocks.length` blocks (the conversion log's locked vocabulary).
 
-Include the dynamic parity table (`stardust/qa/dynamics-report.md`) next to the
-delivery ledger; `dynamics-check.mjs --origin <live host> --gate` exits 0 before
+Dynamic parity table (`stardust/qa/dynamics-report.md`) beside the delivery
+ledger; `dynamics-check.mjs --origin <live host> --gate` exits 0 before
 the report closes (exit 3 = `parity.json` missing or a `self` row pending —
 `skills/dynamics/reference/parity-report.md` rule 8); hands-off sets unshipped
 `self` rows to `interim` with a named owner decision, never `pending`. List
@@ -400,7 +404,7 @@ rollout — <site> → aem-eds
 ==================================================
 Gate        <archetype> <bp>: FAIL <n> % (register: R-nn <title>) · <archetype> <bp>: ungated   ← failing/ungated rows first; none → all gated
 Archetypes  published-gated A of T at <bp> · ungated: <slug@bp …>   (read from stardust/replica/progress.json, never retyped)
-Pages gated published-gated P of M · PASS p · FAIL f · unmeasured u · ungated r · held h   (gate-report.json)
+Pages gated published-gated P of M · PASS p · FAIL f · unmeasured u · ungated r   (gate-report.json)
 Readability strict median <n> · code median <n> · pages < 98: <n> · unmeasured: <n>   (lastRun.gates.ai-readability)
 Editability <editable>/<authored> · dead <n> · exempt <n> · unmeasured <n>   (lastRun.gates.editability)
 Content-count <p> passed · <c> covered · <f> failed · <u> unmeasured   (migrated/_acceptance/summary.md)
@@ -413,19 +417,18 @@ To deliver  <list of remaining slugs>
 Content     <cp> pages awaiting content track (block code deployed, document not yet pushed)
 ```
 
-One line per artifact, in this order, each computed from its file, never
-typed: `Gate`/`Archetypes` from `stardust/replica/progress.json`
+One line per artifact, in this order, computed from its file, never typed:
+`Gate`/`Archetypes` from `stardust/replica/progress.json`
 (`published.<bp>` absent = `ungated`); `Live drift` from the round records'
 `liveDrift{}` + `variance.json` masks (`skills/replica/reference/source-fidelity-gate.md`
 § Per-breakpoint procedure). `pending`/`stale`/`failed` are the "what's missing"
 list — failed rows point at `verify/summary.md`, never a per-page list;
 `content-pending` is listed apart, not a failure.
 
-**Also write/refresh `stardust/learnings.md`** per
-`skills/stardust/reference/learnings.md`: one entry per failure class this run
-surfaced (evidence, proposed skill + section, `status: pending`). A run with no
-new class writes one `- none this run (<ts>)` line — only when no residual
-`flaggedFor: delivery` and no named deviation is newer than the wave start.
+**`stardust/learnings.md`** (`skills/stardust/reference/learnings.md`): one
+entry per failure class this run surfaced; `- none this run (<ts>)` only when no
+residual `flaggedFor: delivery` / named deviation is newer than the wave start
+(close-check row 4 refuses it otherwise).
 
 ### Phase I — Dashboard
 

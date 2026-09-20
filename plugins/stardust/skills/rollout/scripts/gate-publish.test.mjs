@@ -19,7 +19,10 @@
 //             differs from the delivery-order head, always includes the archetype, never a
 //             non-delivered row; --dry-run prints one sequential gate.sh command per page × bp
 //             with --regime published-origin and pub<k> labels, runs nothing, exit 0.
-//   never     the script contains no POST /live/ call and no --bar / --threshold flag (B29).
+//   never     the script contains no POST /live/ call, no --bar / --threshold flag and no restated crop bar
+//             (a crop record without `pass` is no verdict; B29); the footer names no unshipped deploy flag.
+//   run       a non-default --gates-dir is refused for a RUN (gate.sh writes the default dir); runPool caps
+//             in-flight rounds at --concurrency (2 only for live-cached pages) and keeps item order.
 //
 // Usage: node plugins/stardust/skills/rollout/scripts/gate-publish.test.mjs  (exit 1 on failure)
 import assert from 'node:assert/strict';
@@ -27,7 +30,7 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, existsSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { drawSample, breakpointVerdict, pageStatus, bestOfLast3, coverageLine } from './gate-publish.mjs';
+import { drawSample, breakpointVerdict, pageStatus, bestOfLast3, coverageLine, runPool } from './gate-publish.mjs';
 
 const HERE = import.meta.dirname;
 const CLI = join(HERE, 'gate-publish.mjs');
@@ -44,6 +47,8 @@ const run = (...a) => spawnSync(process.execPath, [CLI, ...a, '--out', OUT, '--g
 const src = readFileSync(CLI, 'utf8');
 assert.ok(!/POST[^\n]*\/live\/|fetch\(/.test(src), 'gate-publish must not POST /live/ (it measures and writes; deploy-batch --publish reads the report)');
 assert.ok(!/--bar\b|--threshold\b/.test(src), 'no --bar / --threshold flag (B29)');
+assert.ok(!/\b98\b/.test(src.split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n')), 'no crop bar restated in code — crop-compare\'s own pass is copied (B29)');
+assert.ok(!/publish-ungated|publish-no-regression/.test(src), 'the report footer names no unshipped deploy flag');
 
 // ---- coverage: 3 templates, 7 delivered pages + 1 content-pending + 1 pending ----
 const row = (slug, path, templateId, status) => ({ slug, path, templateId, source: { sourceHash: 'h' }, blocks: [], delivery: { status } });
@@ -87,15 +92,20 @@ rec('prog__home', 1440, 'iter1', { verdict: 'PASS', pixelPct: 1.0, regime: 'prot
 // prog__auto: PASS records, crops never run → unmeasured
 rec('prog__auto', 1440, 'pub1', { verdict: 'PASS', pixelPct: 4.0, at: '2026-09-12T00:00:00Z' });
 rec('prog__auto', 360, 'pub1', { verdict: 'PASS', pixelPct: 4.0, at: '2026-09-12T00:00:00Z' });
+// probe (not a coverage row): PASS record + crop files WITHOUT a pass field → no verdict, never re-judged from matchPct (B29)
+{ const d = rec('probe', 1440, 'pub1', { verdict: 'PASS', pixelPct: 1.0, at: '2026-09-12T00:00:00Z' }); for (const k of ['header', 'footer']) writeFileSync(join(d, `crop-${k}-pub1.json`), JSON.stringify({ matchPct: 99.9, diffPct: 0.1 })); }
 
 // pure helpers
 assert.equal(breakpointVerdict(join(GATES, 'business-360')).status, 'fail');
 assert.match(breakpointVerdict(join(GATES, 'business-360')).reason, /Δh.*9 px > 8/);
 assert.equal(breakpointVerdict(join(GATES, 'news__a-1440')).status, 'fail');
-assert.match(breakpointVerdict(join(GATES, 'news__a-1440')).reason, /footer 97/);
+assert.match(breakpointVerdict(join(GATES, 'news__a-1440')).reason, /footer match 97 % — crop-compare FAIL/);
 assert.equal(breakpointVerdict(join(GATES, 'news__c-1440')).status, 'unmeasured');
 assert.equal(breakpointVerdict(join(GATES, 'prog__home-1440')).status, 'ungated', 'prototype records are not read');
 assert.equal(breakpointVerdict(join(GATES, 'prog__auto-1440')).status, 'unmeasured', 'PASS without crops is incomplete, not a pass');
+assert.equal(breakpointVerdict(join(GATES, 'probe-1440')).status, 'unmeasured', 'a crop record without pass is no verdict (matchPct 99.9 is not re-judged against a bar)');
+assert.match(breakpointVerdict(join(GATES, 'probe-1440')).reason, /no pass verdict/);
+assert.doesNotMatch(breakpointVerdict(join(GATES, 'news__a-1440')).reason, /< 98/, 'the FAIL reason quotes crop-compare, not a restated bar');
 assert.equal(breakpointVerdict(join(GATES, 'nowhere-1440')).status, 'ungated');
 assert.equal(pageStatus({ 1440: { status: 'fail' }, 360: { status: 'pass' } }, true), 'published-failing');
 assert.equal(pageStatus({ 1440: { status: 'unmeasured' }, 360: { status: 'ungated' } }, false), 'unmeasured');
@@ -134,9 +144,12 @@ assert.equal(cov.find((p) => p.slug === 'home').delivery.gate.status, 'pass');
 assert.equal(cov.find((p) => p.slug === 'business').delivery.gate.breakpoints['360'].pass, false);
 assert.equal(cov.find((p) => p.slug === 'prog__life').delivery.gate, undefined, 'content-pending rows are not gated');
 assert.equal(cov.find((p) => p.slug === 'prog__boat').delivery.gate, undefined, 'undelivered rows are not gated');
-// idempotent history: a second run adds no row
+// idempotent history: a second run adds no row — for pages with records AND for record-less (ungated) pages
+assert.equal(report.pages['/insurance/home'].history.length, 1);
 r = run('--all-delivered', '--report');
 assert.equal(json(join(OUT, 'gate-report.json')).pages['/'].history.length, 1);
+assert.equal(json(join(OUT, 'gate-report.json')).pages['/insurance/home'].history.length, 1, 'an ungated page (no record, `at` = now) gets no new history row per re-run');
+assert.equal(json(join(OUT, 'gate-report.json')).pages['/insurance/auto'].history.length, 1, 'an unmeasured page keeps one row too');
 
 // exit 0 when the only non-PASS pages are unmeasured / ungated (B32)
 r = run('--paths', '/,/news/c,/insurance/home', '--report');
@@ -151,6 +164,15 @@ assert.equal(r.status, 3);
 assert.equal(run('--report').status, 1);
 assert.equal(spawnSync(process.execPath, [CLI, '--all-delivered', '--report', '--out', join(T, 'nope')], { encoding: 'utf8' }).status, 1);
 assert.equal(run('--all-delivered').status, 1, '--origin required to run');
+// a RUN with a non-default --gates-dir is refused while gate.sh writes stardust/replica/gates only (records would land elsewhere)
+r = run('--slug', 'home', '--origin', 'https://main--site--org.aem.page');
+assert.equal(r.status, 1, r.stdout); assert.match(r.stderr, /--gates-dir .* cannot be used for a RUN .*GATE_DIR_ROOT/);
+assert.ok(!existsSync(join(GATES, 'home-1440', 'gate-pub4.json')), 'nothing ran');
+// --concurrency: runPool caps in-flight work (2 for cached pages, 1 = sequential) and keeps item order
+{ let inFlight = 0; let peak = 0; const job = (ms) => async (x) => { inFlight += 1; peak = Math.max(peak, inFlight); await new Promise((res) => setTimeout(res, ms)); inFlight -= 1; return x * 2; };
+  assert.deepEqual(await runPool([1, 2, 3, 4], 2, job(15)), [2, 4, 6, 8]); assert.equal(peak, 2, 'concurrency 2 = two rounds in flight');
+  peak = 0; await runPool([1, 2, 3], 1, job(5)); assert.equal(peak, 1, 'sequential by default');
+  assert.deepEqual(await runPool([], 2, job(1)), []); }
 assert.equal(spawnSync(process.execPath, [CLI, '--help'], { encoding: 'utf8' }).status, 0);
 
 // ---- seeded sample (T15.2) ----

@@ -17,6 +17,8 @@
 //   verify         --ai-readability flips < min to failed, leaves an error row unmeasured (ledger status
 //                  untouched), prints the Readability line, counts it as noverdict and exits 2 while any
 //                  remain; summary.json carries aiReadability{}; a clean artifact exits 0
+//   schema         after every ingest rollout.json (lastRun.gates), blocks.json (delivery.ewGate/ew) and pages.json
+//                  (delivery.gates) carry only schema keys — the closed schemas accept the ingest's own output
 //   usage          unknown gate name / missing artifact / bad JSON → exit 2; --help exit 0
 //
 // Usage: node plugins/stardust/skills/rollout/scripts/gate-ingest.test.mjs  (exit 1 on failure)
@@ -41,6 +43,25 @@ const reset = () => {
   writeFileSync(configPath, JSON.stringify({ site: {}, lastRun: { at: 'x' } }));
 };
 const uc = (...a) => spawnSync(process.execPath, [UC, ...a, '--out', OUT], { encoding: 'utf8' });
+// schema contract: every key a gate ingest writes is a schema key (schemas/rollout-*.schema.json) — the
+// closed objects (`additionalProperties: false`) would otherwise reject the ingest's own output
+const schema = (n) => json(join(HERE, '..', 'schemas', n));
+const walk = (obj, node, at, out) => {
+  if (!node || !node.properties || !obj || typeof obj !== 'object') return;
+  for (const k of Object.keys(obj)) {
+    if (!(k in node.properties)) { out.push(`${at}.${k}`); continue; }
+    const sub = node.properties[k]; const ref = sub.$ref ? sub.$ref.replace('#/$defs/', '') : null;
+    walk(obj[k], ref ? node.__defs[ref] : Object.assign(sub, { __defs: node.__defs }), `${at}.${k}`, out);
+  }
+};
+const unknownKeys = (doc, sch, at) => { const out = []; walk(doc, Object.assign(sch, { __defs: Object.fromEntries(Object.entries(sch.$defs || {}).map(([k, v]) => [k, Object.assign(v, { __defs: sch.$defs })])) }), at, out); return out; };
+const assertSchemaKeys = (label) => {
+  assert.deepEqual(unknownKeys(json(configPath), schema('rollout-config.schema.json'), 'rollout.json'), [], `${label}: rollout.json (lastRun.gates) uses only schema keys`);
+  assert.deepEqual(unknownKeys(json(blocksPath), schema('rollout-blocks.schema.json'), 'blocks.json'), [], `${label}: blocks.json (delivery.ewGate / ew) uses only schema keys`);
+  assert.deepEqual(unknownKeys(json(pagesPath), schema('rollout-pages.schema.json'), 'pages.json'), [], `${label}: pages.json (delivery.gates) uses only schema keys`);
+  const enums = schema('rollout-blocks.schema.json').$defs.block.properties.delivery.properties.ewGate.enum;
+  assert.ok(json(blocksPath).blocks.every((b) => !b.delivery.ewGate || enums.includes(b.delivery.ewGate)), `${label}: every ewGate is in the schema enum`);
+};
 
 assert.deepEqual(GATE_NAMES, ['ai-readability', 'editability']);
 // matcher
@@ -73,6 +94,7 @@ assert.equal(cov.careers.status, 'deployed'); assert.equal(cov.legacy.gates, und
 let cfg = json(configPath);
 assert.deepEqual(cfg.lastRun.gates['ai-readability'], { strictMedian: 96, codeMedian: 99, below: 1, unmeasured: 1, measured: 3, min: 98, at: '2026-09-18T10:00:00Z' });
 assert.equal(cfg.lastRun.pages.failed, 1, 'roll-ups re-derived');
+assertSchemaKeys('ai-readability ingest');
 // pure: no min in the artifact → --min applies
 const pure = ingestGate([row('a', '/a')], 'ai-readability', { pages: [{ path: '/a', strict: { score: 90 }, code: { score: 95 } }] }, { min: 90 });
 assert.equal(pure.failed, 0); assert.equal(pure.rollup.min, 90);
@@ -100,6 +122,7 @@ assert.equal(blocks.cards.ewGate, 'fail', 'a block failing on one page is fail (
 assert.equal(blocks.footer.ewGate, 'pass', 'no edsBlockName yet → mapped by id when the probe block name equals the id (exempt rows with editable text are pass, not exempt)');
 cfg = json(configPath);
 assert.deepEqual(cfg.lastRun.gates.editability, { authored: 25, editable: 20, dead: 3, exempt: 2, unmeasured: 1, pagesFailed: 1, measured: 3, at: cfg.lastRun.gates.editability.at });
+assertSchemaKeys('editability ingest');
 // unmeasured block: a probe error page marks a passing block unmeasured
 reset();
 writeFileSync(join(T, 'ew2.json'), JSON.stringify([ew[2]]));
@@ -130,6 +153,7 @@ assert.equal(cov.home.status, 'verified'); assert.equal(cov.home.gates['ai-reada
 const sj = json(join(OUT, 'verify', 'summary.json'));
 assert.equal(sj.aiReadability.below, 1); assert.equal(sj.aiReadability.unmeasured, 1); assert.equal(sj.unverified, 1);
 assert.deepEqual(json(configPath).lastRun.gates['ai-readability'].codeMedian, 99);
+assertSchemaKeys('verify --ai-readability');
 // clean artifact → exit 0, no Readability unmeasured
 reset();
 writeFileSync(join(T, 'air-ok.json'), JSON.stringify({ ...air, pages: air.pages.filter((p) => !p.error && p.code.score >= 98 && p.path !== '/ghost') }));
@@ -139,4 +163,4 @@ assert.equal(r.status, 0, r.stdout); assert.match(r.stdout, /pages < 98: 0 · un
 r = vr('--ai-readability', join(T, 'bad.json')); assert.equal(r.status, 2); assert.match(r.stderr, /pages\[\] missing|not valid|unreadable/);
 
 rmSync(T, { recursive: true, force: true });
-console.log('gate-ingest.test: ok (matcher, ai-readability below/unmeasured/roll-up, editability page + block rows, verify --ai-readability exit 2 on unmeasured, usage)');
+console.log('gate-ingest.test: ok (matcher, ai-readability below/unmeasured/roll-up, editability page + block rows, schema keys after every ingest, verify --ai-readability exit 2 on unmeasured, usage)');
