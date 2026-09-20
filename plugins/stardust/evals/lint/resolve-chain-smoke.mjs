@@ -18,7 +18,8 @@
 //   4. static: every skills/*/scripts/**/*.mjs or skills/*/fixtures/*.mjs that names
 //      one of the three packages imports it through lib/resolve.mjs — ALLOW below
 //      lists the importers not yet converted and MUST shrink per landed skill; a
-//      stale entry fails.
+//      stale entry fails. The summary counts every importer (bare import OR a
+//      resolveDep/loadDep call naming the package), so the line is the tree's size.
 // Usage: node plugins/stardust/evals/lint/resolve-chain-smoke.mjs  (exit 1 on findings)
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -87,6 +88,9 @@ try {
 
 // 4. static: importers go through lib/resolve.mjs
 const DEP = /(?:from\s+|import\s*\(\s*|require\s*\(\s*|\.resolve\s*\(\s*)['"](playwright|pixelmatch|pngjs)['"]/;
+// a converted importer: names the package through the chain's entry points (the summary counts these too —
+// defect: only bare-import files were counted, so the line said 7 importers for a tree of 37)
+const CHAIN_DEP = /(?:resolveDeps?|loadDeps?)\s*\(\s*\[?\s*['"](playwright|pixelmatch|pngjs)['"]/;
 const files = [];
 (function walk(d) { for (const e of readdirSync(d)) { const p = join(d, e); if (statSync(p).isDirectory()) walk(p); else if (p.endsWith('.mjs')) files.push(p); } })(SKILLS);
 const used = new Set();
@@ -95,7 +99,8 @@ for (const f of files) {
   const key = relative(SKILLS, f);
   if (EXEMPT.has(key) || /\/test\//.test(key) || !/^[^/]+\/(scripts|fixtures)\//.test(key)) continue;
   const src = readFileSync(f, 'utf8');
-  if (!DEP.test(src)) continue;
+  const viaChain = src.includes('stardust/scripts/lib/resolve.mjs') && CHAIN_DEP.test(src);
+  if (!DEP.test(src) && !viaChain) continue;
   importers += 1;
   if (src.includes('stardust/scripts/lib/resolve.mjs')) continue;
   if (ALLOW[key]) { used.add(key); continue; }

@@ -123,16 +123,18 @@ the plugin tree; `siblingScript(skill, file)` tries the plugin layout,
 (`../<skill>/<file>`), and exits 2 naming the three when none resolves. A
 `check-crashed` finding in qa stays an `error` row, never a pass.
 
-Through the helper today: `dynamics/scripts/lib.mjs` and
-`qa/scripts/lib.mjs` (`loadPlaywright()`), `extract/scripts/crawl.mjs`
-(lazily, from `stardust/scripts/stardust/lib/` in the flat or the nested
-copy layout — a lone copy falls back to the bare import). Still on their own imports, each to
-convert in its own skill's change: replica, diff, reskin and deploy
-scripts and the migrate / prototype fixtures — `evals/lint/resolve-chain-smoke.mjs`
-`ALLOW` is the ledger and must shrink. Until then a project copy stays
-runnable only when copied **as a set** (`harness-permissions.md` § Two
+Every importer is on the chain (T07.5 complete): `dynamics/scripts/lib.mjs`
+and `qa/scripts/lib.mjs` (`loadPlaywright()`), `extract/scripts/crawl.mjs`,
+and the replica, diff, reskin and deploy scripts resolve playwright /
+pixelmatch / pngjs through `resolveDep` — from the plugin layout, else from
+`stardust/scripts/stardust/lib/` in the flat or the nested copy layout; a
+lone copy without the helper falls back to the bare import.
+`evals/lint/resolve-chain-smoke.mjs` `ALLOW` (the ledger of unconverted
+importers) is empty and a new direct import fails the lint. A project copy
+runs only when copied **as a set** (`harness-permissions.md` § Two
 classes): the skill's `scripts/` plus `skills/stardust/scripts/` (with
-`lib/`), because the scripts import `../stardust/<x>.mjs` siblings.
+`lib/`) → `stardust/scripts/stardust/`, because the copies find the chain
+and their `../stardust/<x>.mjs` siblings there.
 
 ---
 

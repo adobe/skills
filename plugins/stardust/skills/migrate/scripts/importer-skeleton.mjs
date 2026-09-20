@@ -52,8 +52,8 @@
  * exit 2 when any page failed. Second run with unchanged inputs → zero file writes.
  * Hidden-live: nodes marked `data-hidden-live` in the capture are skipped (recorded in hidden[]; <details> kept).
  * A capture is `stamped` when it carries the mark at all — a `data-hidden-live-stamp` attribute on <html>/<body>
- * OR ≥ 1 `[data-hidden-live]` node — whoever wrote it (crawl.mjs does not stamp yet; a hand/probe-marked capture
- * counts). A capture without any mark skips nothing and reports hiddenLive: "unstamped" — never a guess.
+ * OR ≥ 1 `[data-hidden-live]` node — whoever wrote it (crawl.mjs `stampHiddenLive` stamps every capture since T07.5;
+ * a hand/probe-marked capture counts too). A capture without any mark skips nothing and reports hiddenLive: "unstamped" — never a guess.
  *
  * Usage:
  *   node skills/migrate/scripts/importer-skeleton.mjs (--slug <s> | --template <t> | --all) [--root <projectDir>]

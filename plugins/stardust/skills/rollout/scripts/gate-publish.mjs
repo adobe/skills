@@ -5,9 +5,9 @@
  *
  * It measures and writes; it never publishes. The release condition reads its report:
  * `stardust/rollout/gate-report.json` — every previewed row without a PASS is HELD
- * (reference/publish-gate.md § Gate 8; the hold inside `deploy-batch.mjs --publish` is the
- * deploy cluster's hunk — until it lands the operator reads the report's held rows before
- * the publish run). The gate status lives in rollout coverage (`delivery.gate`) and in the
+ * (reference/publish-gate.md § Gate 8: `deploy-batch.mjs --publish` reads this report and
+ * keeps such rows `previewed` — they never go live, SUMMARY `held=<n>`; the operator reads the
+ * held rows before the publish run). The gate status lives in rollout coverage (`delivery.gate`) and in the
  * report — never in `state.json` (`migrated` is migrate's lifecycle state) and never in the
  * deploy ledger.
  *
