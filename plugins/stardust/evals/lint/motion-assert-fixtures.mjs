@@ -190,6 +190,7 @@ try {
     cpSync(join(PLUGIN, 'skills', 'replica', 'scripts'), join(tmp, 'skills', 'replica', 'scripts'), { recursive: true });
     cpSync(join(PLUGIN, 'skills', 'replica', 'reference'), join(tmp, 'skills', 'replica', 'reference'), { recursive: true });
     cpSync(join(PLUGIN, 'skills', 'diff', 'scripts'), join(tmp, 'skills', 'diff', 'scripts'), { recursive: true }); // live-session.mjs (the launcher) sits beside the replica scripts in both layouts
+    for (const sk of ['deploy', 'dynamics']) cpSync(join(PLUGIN, 'skills', sk, 'scripts'), join(tmp, 'skills', sk, 'scripts'), { recursive: true }); // qa-gate + its driveControl import (T20.2 PR B)
     symlinkSync(resolve(deps), join(tmp, 'node_modules'));
     script = join(tmp, 'skills', 'replica', 'scripts', 'motion-assert.mjs');
   }
@@ -221,10 +222,20 @@ try {
   j = null; try { j = JSON.parse(r.out.split('\n').filter((l) => !l.startsWith('motion-assert')).join('\n')); } catch { /* asserted below */ }
   check(r.status === 1 && j?.checks?.chrome?.status === 'fail' && /live is static, target morphs/.test(j?.checks?.chrome?.detail || '') && j?.skips?.entrances, `static live vs morphing target = invented motion, fail; --skip reason recorded — got ${r.status} ${j?.checks?.chrome?.detail}`);
 
+  // T20.2 PR B — deploy qa-gate's control pass (dynamics lib.mjs driveControl) names the dead chevron; the faq toggle changes an observable
+  const qaGate = deps !== 'repo' ? join(tmp, 'skills', 'deploy', 'scripts', 'qa-gate.mjs') : join(PLUGIN, 'skills', 'deploy', 'scripts', 'qa-gate.mjs');
+  const qg = spawnSync(process.execPath, [qaGate, url('dead-carousel.html')], { encoding: 'utf8', timeout: 90000, cwd: tmp });
+  const qgOut = `${qg.stdout}${qg.stderr}`;
+  check(/control button\.next\[aria-label="Next"\] in block cards-carousel: no observable changed/.test(qgOut), `qa-gate control pass names the dead chevron (🟡 advisory) — got:\n${qgOut.split('\n').filter((l) => /control/.test(l)).join('\n')}`);
+  check(/control button\.faq__q in block faq: aria-expanded changed/.test(qgOut), 'qa-gate control pass: the faq toggle is a live control (aria-expanded changed)');
+  check(/⚠ control .*no observable changed/.test(qgOut) && !/✗ control /.test(qgOut), 'the dead control is a WARN line, not a FAIL (D15 pending — B30 stands)');
+  const qgNo = spawnSync(process.execPath, [qaGate, url('dead-carousel.html'), '--no-drive'], { encoding: 'utf8', timeout: 90000, cwd: tmp });
+  check(/control pass skipped \(--no-drive\)/.test(`${qgNo.stdout}${qgNo.stderr}`) && !/no observable changed/.test(`${qgNo.stdout}${qgNo.stderr}`), '--no-drive skips the pass and says so');
+
   r = run([join(FIX, 'observe-v2.json'), url('live-like.html'), '--timeout', '1', '--record', ledger, '--slug', 'home', '--width', '360']);
   check(r.status === 124 && /⏱ none/.test(r.out), `--timeout expiry exits 124 with verdict none — got ${r.status}\n${r.out}`);
   const led2 = JSON.parse(readFileSync(ledger, 'utf8'));
   check(led2.archetypes[0].breakpoints['360'].motion?.assert?.verdict === 'none' && led2.archetypes[0].breakpoints['360'].result.pass === true, 'deadline record: verdict none under breakpoints.360, result untouched');
 } finally { rmSync(tmp, { recursive: true, force: true }); }
 
-finish(`live-like pass, dead carousel named, schema-1 not-asserted, invented motion fails, --record, 124 → none [deps: ${deps}]`);
+finish(`live-like pass, dead carousel named, schema-1 not-asserted, invented motion fails, --record, 124 → none, qa-gate control pass names the dead chevron [deps: ${deps}]`);
