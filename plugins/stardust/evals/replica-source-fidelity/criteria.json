@@ -38,6 +38,11 @@
       "description": "At most 3 measured iterations per breakpoint; unresolved deltas are logged as residuals rather than silently accepted or endlessly iterated."
     },
     {
+      "name": "motion_record_before_approval",
+      "max_score": 10,
+      "description": "Before approval is requested for an archetype, stardust/replica/progress.json carries motion.{observed,implemented,dead} for it and, per gated breakpoint, breakpoints.<bp>.motion.assert written by skills/replica/scripts/motion-assert.mjs --record (verdict pass|fail|n/a|none, regime, target) — the transcript shows the script ran against the PROTOTYPE URL, never the live origin. A missing record is reported as `motion: unasserted` in the Phase 4 close, never approved over; a fail verdict is iterated or logged as a residual, not deleted."
+    },
+    {
       "name": "font_policy",
       "max_score": 5,
       "description": "Fonts are loaded from the same public source or substituted with a metric-matched free face; no commercial/licensed kit is rehosted; the brand family stays first in the font stack."

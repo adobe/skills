@@ -19,7 +19,7 @@ Phases, in order: Setup → 1 EXTRACT → 2 PRESERVE DIRECTION → 3 RECREATE �
 | 1 | `$stardust extract <URL> --prep --dynamics` — bounded entry: `--single` / `--pages <slug,...>` |
 | 2 | mechanical promotion + `stardust/replica/inconsistency-register.md`; the `dynamics` skill Phases 1–3 |
 | 3 | author `stardust/prototypes/<slug>-proposed.html` (+ per-page CSS) |
-| 4 | probes 1+2: `diff/content-diff.mjs`, `diff/visual-diff.mjs` (`--profile generic --width <w> --main <root> --dismiss`); probe 3: `replica/stitch-shot.mjs`, `replica/pixel-compare.mjs --timeout <s>`, `replica/review-image.mjs --bands|--sheet`; inner loop: `replica/anchor.mjs --landmarks --cache|--against`, `replica/chrome-parity.mjs --live-cache`, `replica/gate.sh <slug> <live> <proto> <width> [iter] [--marker] [--refresh] [--variance] [--over-cap <reason>] [--record → replica/progress-record.mjs]`; sweeps: `replica/gate-batch.mjs <pairs.tsv> [--concurrency 2]` (progress: `stardust/.work/replica/gate-batch.progress.json`) — env `GATE_STITCH_TIMEOUT`, `GATE_COMPARE_TIMEOUT`, `GATE_ANCHOR_TIMEOUT`, `GATE_REAP_MIN`, `GATE_BLOCK`, `GATE_ALLOW_CONSENT`, `GATE_LANDMARKS=0`; each node step runs under `replica/run-capped.mjs --timeout <s> -- <cmd>`; then `replica/motion-observe.mjs <live> [--hover <sel>] [--click <sel>] [--triggers auto]` |
+| 4 | probes 1+2: `diff/content-diff.mjs`, `diff/visual-diff.mjs` (`--profile generic --width <w> --main <root> --dismiss`); probe 3: `replica/stitch-shot.mjs`, `replica/pixel-compare.mjs --timeout <s>`, `replica/review-image.mjs --bands|--sheet`; inner loop: `replica/anchor.mjs --landmarks --cache|--against`, `replica/chrome-parity.mjs --live-cache`, `replica/gate.sh <slug> <live> <proto> <width> [iter] [--marker] [--refresh] [--variance] [--over-cap <reason>] [--record → replica/progress-record.mjs]`; sweeps: `replica/gate-batch.mjs <pairs.tsv> [--concurrency 2]` (progress: `stardust/.work/replica/gate-batch.progress.json`) — env `GATE_STITCH_TIMEOUT`, `GATE_COMPARE_TIMEOUT`, `GATE_ANCHOR_TIMEOUT`, `GATE_REAP_MIN`, `GATE_BLOCK`, `GATE_ALLOW_CONSENT`, `GATE_LANDMARKS=0`; each node step runs under `replica/run-capped.mjs --timeout <s> -- <cmd>`; then `replica/motion-observe.mjs <live> [--hover <sel>] [--click <sel>] [--triggers auto]` → `replica/motion-assert.mjs <observe.json> <proto> --record stardust/replica/progress.json --slug <slug>` |
 | 5 | `replica/gate-ledger-lint.mjs --state stardust/state.json` (exit 2 = blocked types); first: `deploy` the approved archetype to a branch preview; `replica/sibling-variance.mjs <archetype> <siblings…> --probe <block>=<sel>`; then the `migrate` (sibling tier) → `deploy` → `rollout` skills; re-run the Phase 4 gate against the published origin |
 
 Gates: Phase 2 — every dynamic-surface row has a disposition. Phase 4, per breakpoint (default `1440,360`) — content-diff 0 structural 🔴 · visual-diff flags none/justified · pixel diff ≤ 10% with no hot band unexplained · height |Δ| ≤ 8px · cap 3 iterations · interaction parity recorded. `gate.sh` exits: 0 pass · 2 fail · 1 error / incomparable captures · 3 bot challenge · 4 wrong server · 5 invalid capture (consent / short / overlay / error page) · 6 cap reached (decide: residual / register / `--over-cap <reason>`; `--invalidate <label> <fix>` excludes a defect round; `--record` copies the round into `progress.json`) · 124 deadline (re-run, not a FAIL).
@@ -255,38 +255,37 @@ recorded false-measurement trap** built into the shared
 `diff/scripts/live-session.mjs` and shipped as flags (`--ua`,
 `--wait-until`, `--dismiss`, `--headed[=window]`, `--locale`, `--main`;
 `scripts/stitch-shot.mjs` adds `--allow-consent`, `--no-dismiss-defaults`,
-`--remove-text`, `--keep-pinned`, `--exclude`):
-real-Chrome UA + standard headers; a challenge interstitial fails loud
-(exit 3) and the bot-management ladder
-(`../extract/reference/playwright-recipe.md` § Bot-management fallback) is
-climbed, never degraded; `domcontentloaded`, never `networkidle`; symmetric
-`--main` (`body` never valid); both overlay classes dismissed, animations
-frozen, pointer parked; fixed/sticky chrome replicated fixed — seam repeats
-are instrument-provided (pinned chrome hidden on chunks 2+, both sides;
-`reference/recreation-procedure.md` § Fixed and sticky chrome); JOIN/SPLIT
-granularity parity (#87); capture-state policy. A project copy carrying
+`--remove-text`, `--keep-pinned`, `--exclude`): a challenge fails loud
+(exit 3) and the bot-management ladder is climbed, never degraded;
+`domcontentloaded`, never `networkidle`; symmetric `--main` (`body` never
+valid); overlays dismissed, animations frozen, pointer parked; pinned
+chrome hidden on chunks 2+ both sides (`reference/recreation-procedure.md`
+§ Fixed and sticky chrome); JOIN/SPLIT parity (#87). A project copy with
 hand-edits is a defect (gate doc § Script adaptations).
 
 **After the static gate passes, interaction parity is a REQUIRED gate
 output per archetype — not a post-pass**
 (`reference/recreation-procedure.md` § Interaction parity). Motion is OBSERVED,
-never inferred from static classes or CSS: run
-`stardust/scripts/replica/motion-observe.mjs` per archetype live URL
-(`--hover`, `--click`, `--triggers auto`) → `stardust/replica/motion/<slug>.json`
-(schema 2: `entrances[]`, `stateMachines[]`), implement ONLY behaviors that
-fired (dead classes = NOT implemented), record
-`motion: {observed, implemented, dead[]}` in `progress.json`, and re-run
-pixel-compare — the number must return to the gated value.
-Widgets are implemented, not justified away. Fan-out briefs carry the
-evidence rule + instrument invocation verbatim.
+never inferred: `motion-observe.mjs` per archetype live URL (`--hover`,
+`--click`, `--triggers auto`) → `stardust/replica/motion/<slug>.json`;
+implement ONLY behaviors that fired (dead classes = NOT implemented), record
+`motion: {observed, implemented, dead[]}` in `progress.json`; then
+`motion-assert.mjs <observe.json> <proto> --record … --slug <slug>` replays
+it against the PROTOTYPE (never live) and writes `breakpoints.<bp>.motion.assert`
+(🟡 advisory verdict this release; no record = `motion: unasserted`); re-run
+pixel-compare — the number must return to the gated value. Widgets are
+implemented, not justified away. Fan-out briefs carry the evidence rule +
+both invocations verbatim.
 
 When all breakpoints pass, present the archetype + its gate metrics for
 approval per the standard prototype approval flow (hands-off mode records
 `approvedBy: "hands-off"` per `../stardust/reference/state-machine.md`).
 The close leads with what is NOT green, per archetype × breakpoint
 (`home 360: FAIL 12 % (register: R-04 mobile normalization)`,
-`… 360: ungated`), then the passes and the coverage line `archetypes gated
-A of T at <bp> · ungated: <slug@bp …>` read from `progress.json`. The
+`… 360: ungated`, `… 1440: motion: unasserted`), then the passes and the
+coverage line `archetypes gated A of T at <bp> · ungated: <slug@bp …>` read
+from `progress.json`; an archetype without its `motion.assert` record is
+`ungated` for approval — hands-off never approves it. The
 phase-close checkpoint block (master skill § Phase close) carries
 `EDS URL: <branch preview URL> | none yet`.
 
@@ -320,11 +319,10 @@ phase-close checkpoint block (master skill § Phase close) carries
   editability contract, EW1–EW10) and pass `block-roundtrip --ew`.
 - **Site-wide rollout** via the stardust `rollout` skill — its block dedup
   implements "same blocks across the whole site".
-- **The hand-off names the captured variant.** Every brief and report
-  carries `captured variant: <observed variant markers, capture date,
-  consent mode>` and the line "your browser may render a different variant —
-  compare against the capture, not a fresh live view" (A/B, geo and cookie
-  buckets: `reference/recreation-procedure.md` § Asset harvest and the
+- **The hand-off names the captured variant**: every brief and report
+  carries `captured variant: <markers, capture date, consent mode>` and
+  "compare against the capture, not a fresh live view"
+  (`reference/recreation-procedure.md` § Asset harvest and the
   capture-state policy).
 - **The final gate runs against the PUBLISHED origin — not the harness**
   (`reference/source-fidelity-gate.md` § The published-origin gate): the

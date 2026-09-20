@@ -1,0 +1,50 @@
+{
+  "breakpointsConfigured": [
+    1440,
+    360
+  ],
+  "archetypes": [
+    {
+      "pageType": "landing",
+      "archetype": "home",
+      "prototype": "stardust/prototypes/home-proposed.html",
+      "motion": {
+        "observed": [
+          "header-shrink",
+          "cards-carousel"
+        ],
+        "implemented": [
+          "header-shrink",
+          "cards-carousel"
+        ],
+        "dead": [
+          "logo-strip-next"
+        ]
+      },
+      "breakpoints": {
+        "360": {
+          "iterations": 1,
+          "result": {
+            "regime": "prototype",
+            "structuralRed": 0,
+            "pixelPct": 3.87,
+            "heightDelta": 4,
+            "pass": true
+          },
+          "residuals": []
+        },
+        "1440": {
+          "iterations": 2,
+          "result": {
+            "regime": "prototype",
+            "structuralRed": 0,
+            "pixelPct": 2.14,
+            "heightDelta": 0,
+            "pass": true
+          },
+          "residuals": []
+        }
+      }
+    }
+  ]
+}
