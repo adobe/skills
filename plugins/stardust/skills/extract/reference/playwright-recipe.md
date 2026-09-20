@@ -445,7 +445,13 @@ For each page, capture:
 4. **Theme color** — `<meta name="theme-color">`, both `media="(prefers-color-scheme: light)"` and `dark` if present.
 5. **Heading outline** — every `h1`-`h6` in document order with text
    and computed font-family, font-weight, font-size, line-height,
-   letter-spacing, color.
+   letter-spacing, color, `domPath`; visible only (§ Capture hygiene 1).
+   **Inferred display heads (schema 2).** A block element styled as a
+   display head — font-size ≥ 24 px AND ≥ 1.6× the body size, ≤ 120
+   chars of its own text, outside every real heading, link and button —
+   joins the outline with `inferred: true` and `level` 1 (≥ 32 px) or 2.
+   Without it a div-styled hero leaves a card-title-only outline (the
+   recorded failure); `_signals.inferredHeadings` counts them.
 
 5-bis. **Hero headline + lede (resolved) — JS-rendered robustness.**
    On semantic / SSR sites the first `<h1>`/`<h2>` *is* the hero
@@ -498,7 +504,13 @@ For each page, capture:
    — not only for `heroHeadline`.
 
 6. **Landmark structure** — every `header`, `nav`, `main`, `aside`,
-   `footer`, plus elements with `role="banner|navigation|main|complementary|contentinfo|region"`. For each: tag, role, id, class, child element count.
+   `footer`, plus elements with `role="banner|navigation|main|complementary|contentinfo|region"`. For each: tag, role, id, class, child element count, `domPath`, `rect`, and (schema 2) the heading-bounded `children[]` of item 7.
+   **Shadow-root descent.** Every query in this list walks open shadow
+   roots (depth ≤ 3): headings, landmarks, CTAs, links, media and text
+   inside web components are captured, and the DOM sidecar is
+   serialized with `serializableShadowRoots`. `_signals.shadowRoots` /
+   `shadowTextLen` record what was pierced (roots with no pierced text
+   are a schema-gate WARN).
 7. **Visible text per landmark** — innerText in full, normalised
    whitespace. **No truncation.** Reference scripts must not slice
    `innerText` to a fixed length (an early v0.2 reference did
@@ -559,9 +571,12 @@ For each page, capture:
    border-radius, padding, box-shadow.
 9. **Link inventory** — every `<a href>`. Classify internal vs
    external by host. Strip query and fragment for de-dup.
-10. **Per-section style summary** — for each landmark, compute:
-    - dominant background-color (most pixels weighted)
-    - dominant text color
+10. **Per-section style summary** — for each section of `<main>`,
+    **area-weighted** over its rendered descendants (rect ≥ 2 × 2 px,
+    first 1500): every element votes with its rect area, so the value is
+    the largest painted area, never the most frequent declaration —
+    - dominant background-color (largest painted area)
+    - dominant text color (same weighting)
     - aggregate spacing (mode of `padding-block`, `padding-inline`,
       `gap`, `margin-block`)
     - dominant border-radius (mode of non-zero values across direct
@@ -581,16 +596,16 @@ For each page, capture:
       query (or reading `src` instead of the resolved `currentSrc`)
       yields a 404. An early reference that sliced `src` to a fixed
       length produced exactly this on an industrial-conglomerate run.
-    - **Record a `resolves` flag.** After capture, issue a `HEAD`
-      (fall back to `GET`) for each `<img>` src and set
-      `resolves: true` only on a 2xx with an image `content-type`.
-      On a bot-managed origin issue it through the page context (the
-      in-page `fetch` / route-fulfiller path that carries the accepted
-      fingerprint, per § Bot-management fallback) **and** with a
-      browser `User-Agent` + `Referer: <page-url>` — bare requests are
-      frequently rejected by enterprise CDNs even when the asset
-      exists. `migrate` must omit or repair (never author) any image
-      whose `resolves` is `false`.
+    - **Record a `resolves` flag from the rendered state — never a
+      second request.** `resolves` is `true` when the settled render
+      decoded the image (`img.complete && naturalWidth > 0`), `false`
+      when it completed at `naturalWidth 0` (broken), `null` when it
+      was still loading at capture. No `HEAD`/`GET` probe: a probe is an
+      extra hit per image (hit-minimisation), and on bot-managed origins
+      a bare request is rejected while the asset is fine. The harvested
+      body (`localPath`, item 16's interception) is the stronger
+      evidence when present. `migrate` must omit or repair (never
+      author) any image whose `resolves` is `false`.
     For each cross-origin `<iframe>` (host different from page host),
     additionally capture: `boundingClientRect` after layout settles,
     `viewportCoveragePct` (its rect area divided by 1440×900), and
@@ -659,12 +674,15 @@ For each page, capture:
     or whose `Content-Type` starts with `font/` to
     `stardust/current/assets/fonts/<basename>`. De-dupe by URL
     across pages — the same font fetched on three pages saves
-    once. Record per font in `_brand-extraction.json#type.files[]`:
-    `{ url, family, weight, style, unicodeRange, localPath,
-    sourceCssRule }`. Resolve `family` / `weight` / `style` by
-    finding the `@font-face` block in any captured stylesheet that
-    references the same URL — the rule's font descriptors are the
-    authoritative metadata.
+    once. Record per font in `assets/_fonts-manifest.json#fonts[]`
+    (`crawl.mjs` writes it, merged by URL across runs): `{ url, family,
+    weight, style, unicodeRange, localPath, sourceCssRule,
+    licensingFlag, mime, bytes, pages[] }`; `brand-surface.mjs` copies
+    the rows into `_brand-extraction.json#type.files[]` (manifest absent
+    → `[]`, noted). Resolve `family` / `weight` / `style` by finding the
+    `@font-face` block in any captured stylesheet that references the
+    same URL — the rule's font descriptors are the authoritative
+    metadata.
 
     Without this capture every prototype falls back to a `system-ui`
     / `Helvetica Neue` stack and the Mode A "brand-faithful" claim
@@ -676,11 +694,12 @@ For each page, capture:
     visible in network responses and absent from every captured
     artifact until added by a one-off script.
 
-    Captured fonts are sometimes private brand assets. Flag any
-    font whose family name does not match a known open-license
-    list (Google Fonts, Adobe Fonts free tier, fontsource.org
-    catalogue) in `_brand-extraction.json#type.files[].licensingFlag`
-    so the user can verify usage rights before deploying. Internal
+    Captured fonts are sometimes private brand assets. `crawl.mjs`
+    `licensingFlagFor()` flags each row (`licensingFlag`:
+    `open-license` when the family is in the open-licence prefix list —
+    Google Fonts / fontsource catalogue — `verify` otherwise, `unknown`
+    without a family) in the manifest, carried into `type.files[]`, so
+    the user can verify usage rights before deploying. Internal
     prototype review is generally fine — the files are already
     publicly served by the source site.
 
@@ -689,30 +708,31 @@ For each page, capture:
     rather than inline SVG. Without a detector for this, prototypes
     on icon-font sites render with emoji stand-ins (♿, 🔍, →, f,
     𝕏) that read as visibly amateur in a brand-faithful Mode A
-    output. Detection:
+    output. Detection is **family-first and class-agnostic** — an
+    `icon-*` class query was refuted in the field (icon classes are
+    named anything; a class-led detector missed whole icon sets):
 
-    - Query every element matching
-      `[class^="icon-"], [class*=" icon-"], i.icon, [data-icon]`.
-    - For each matched element, read the computed `::before`
-      `font-family` and `content` properties. When `font-family`
-      is non-default (i.e. not in `system-ui, sans-serif, Arial`,
-      etc.) and `content` is a quoted Unicode codepoint (not
-      `none`, `""`, or visible text), the element uses an icon
-      font.
-    - Build the icon-class → codepoint table from the unique
-      `(class, content)` pairs.
+    - For every element read the computed `::before` and `::after`
+      `content` and `font-family`. When `content` is a single quoted
+      codepoint (not `none` / `normal` / visible text) and the first
+      family is not a system one (`system-ui`, `-apple-system`,
+      `Segoe UI`, `Roboto`, `Helvetica`, `Arial`, the generic
+      families…), the element uses an icon font.
+    - Group by family; build the icon-class → codepoint table from the
+      unique `(class, content)` pairs.
     - Resolve the icon font's URL via the `@font-face` rule for
       that family and save the file via the network-intercept
       from § 16.
 
-    Record in `_brand-extraction.json#iconFont`:
-    `{ family, localPath, sourceCss, glyphs: [{ class, codepoint, name? }] }`.
-    Optional `name` is a heuristic guess from the class suffix
-    (`icon-search` → `"search"`, `icon-arrow-right` → `"arrow-right"`).
+    Record per family in `assets/_fonts-manifest.json#iconFonts[]`:
+    `{ family, classes[], codepoints, glyphs[], localPath, pages[] }`;
+    `brand-surface.mjs` lifts it into `_brand-extraction.json#iconFont`
+    (`null` when none). Optional glyph names are a heuristic guess from
+    the class suffix (`icon-search` → `"search"`).
 
-    When `inlineSvgCount < 5` on a page but `[class*="icon-" i]`
-    elements with non-default `::before` font-family are present,
-    surface in the brand-review HTML: *"icon font detected
+    When `inlineSvgCount < 5` on a page and the manifest carries an
+    `iconFonts[]` entry seen on it, surface in the brand-review HTML:
+    *"icon font detected
     (`<family>`, N distinct classes used) — see
     `_brand-extraction.json#iconFont` for the mapping."*
 
@@ -765,14 +785,26 @@ sections, and silent duplicate pages downstream.
 
 ## Logo locator chain
 
-For the brand-surface pass (Phase 3 of `extract`), find the logo in
-this exact priority order. Stop at the first hit.
+For the brand-surface pass (Phase 3 of `extract`), `brand-surface.mjs`
+`resolveLogo()` finds the logo **offline** — over the home record
+(`media.images[].rect`, `media.inlineSvgs[].rect`, `landmarks`) and its
+DOM sidecar — in this exact priority order. Stop at the first hit and
+record the winning `step` (`"1"`, `"1b"`, `"2"` … `"6"`).
 
 1. **Inline SVG** — first `<svg>` inside `header`, `[role="banner"]`,
    or `nav` that is not an icon (heuristic: width or viewBox-derived
    width ≥ 60 px and contains `<text>` or has `aria-label` matching
    the brand name).
-2. **`<img>` with logo-ish identifier** — `<img>` whose `src`, `alt`,
+1b. **Banner wordmark** — the largest `<img>` or inline `<svg>` rendered
+   inside the banner landmark (`header` / `[role="banner"]`) at 1440
+   (DPR 1): rect ≥ 40 × 16 CSS px, aspect 0.5–6, measured from the
+   record's rects — no logo-ish name required. Record `step: "1b"`,
+   `renderedWidth` / `renderedHeight`, `sourceSelector`, `localPath`
+   (the harvested copy). This is the step a name-based chain missed: a
+   header wordmark SVG lost to the `apple-touch-icon` at step 3.
+2. **`<img>` with logo-ish identifier** (with 1b ahead of it, this
+   catches only a logo-ish image rendered outside the banner or below
+   1b's size floor) — `<img>` whose `src`, `alt`,
    `class`, or `id` contains `logo`, `brand`, or the brand name
    slug (case-insensitive), inside `header`, `[role="banner"]`, or
    `nav`. **Additionally**, all of the following must hold,
@@ -834,11 +866,13 @@ Resolution order (first that returns a non-error, non-empty body):
 3. `/favicon.svg`, then `/favicon.ico` at the site root.
 
 Save it to `stardust/current/assets/favicon.<ext>` preserving the
-original format (svg/png/ico — never rasterize an SVG). Record the
-chosen source in `_brand-extraction.json` under
-`favicon: { source, url, file }`; when nothing resolves, record
-`favicon: null` and list it in `variantsNotCaptured` — do NOT
-synthesize one.
+original format (svg/png/ico — never rasterize an SVG). `crawl.mjs`
+records the chosen source in `_crawl-log.json#favicon: { source, url,
+file }` (`brand-surface.mjs` reads it for logo-chain step 5); when
+nothing resolves, `favicon: null` — do NOT synthesize one. The full
+icon set (every `link[rel~=icon|apple-touch-icon|mask-icon]` +
+`/favicon.ico`, ≤ 8 URLs, once per run) lands in `assets/icons/` +
+`assets/favicon-set.json` — the one documented extra-request exception.
 
 ## What NOT to capture
 

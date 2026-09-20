@@ -19,6 +19,11 @@ cap-respecting selection logic from `ia-extraction.md`
 § Page selection still applies for ordering and junk-filtering;
 it just doesn't truncate.
 
+A `--prep` run is **never bounded**: `brand-surface.mjs` reads
+`_crawl-log.json#runs[last].args.prep` and keeps the full brand surface
+(voice, voiceTable, crossPromo, register; `_provenance.mode: "full"`)
+even when the run also carried `--pages`.
+
 ### Sub-agent prompt requirements (when delegating)
 
 When `--prep` is heavy enough that the agent delegates extraction
@@ -172,12 +177,16 @@ Next: $stardust direct --prep  (confirm types, name modules)
 ```
 
 The `Provenance: <live>/<total> live` line is mandatory in
-prep-mode output. When the ratio is anything other than
-`<total>/<total>` the prep run has failed the synthesis guard;
-list the affected slugs as a sub-bullet and treat the prep run
-as incomplete (the cascade-level guard in
-`prepare-migration` SKILL.md surfaces the same check between
-phases).
+prep-mode output and is the script's, verbatim: `state-update.mjs
+--prep` prints it (with the not-marked slugs and their reasons) after
+the per-page evidence table and **exits 1 when live < total** — the
+prep run has failed the synthesis guard; `status.jsonl` gets a
+`blocked` line whose `next` is `$stardust extract --refresh <slugs>`,
+and `state.json` is still written for the live pages. Copy the line
+into the summary, list the affected slugs as a sub-bullet and treat
+the prep run as incomplete (the cascade-level guard in
+`prepare-migration` SKILL.md surfaces the same check between phases).
+The Inventory / Page types / Module candidates rows are the LLM's.
 
 Default mode (no `--prep`) is unchanged. The flag is intended for
 the `prepare-migration` orchestrator, though direct invocation is

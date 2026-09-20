@@ -1,0 +1,50 @@
+version: 1
+
+indices:
+  locations:
+    include:
+      - '/locations/**'
+    exclude:
+      - '/locations'
+    target: /query-index.json
+    properties:
+      title:
+        select: head > meta[property="og:title"]
+        value: attribute(el, 'content')
+      image:
+        select: head > meta[property="og:image"]
+        value: match(attribute(el, 'content'), 'https:\/\/[^/]+(\/.*)')
+      description:
+        select: head > meta[name="description"]
+        value: attribute(el, 'content')
+      address:
+        select: head > meta[name="address"]
+        value: attribute(el, 'content')
+      city:
+        select: head > meta[name="city"]
+        value: attribute(el, 'content')
+      hours:
+        select: head > meta[name="hours"]
+        value: attribute(el, 'content')
+      lat:
+        select: head > meta[name="lat"]
+        value: attribute(el, 'content')
+      lng:
+        select: head > meta[name="lng"]
+        value: attribute(el, 'content')
+      lastModified:
+        select: none
+        value: parseTimestamp(headers['last-modified'], 'ddd, DD MMM YYYY hh:mm:ss GMT')
+  news:
+    include:
+      - '/news/**'
+    exclude:
+      - '/news'
+    target: /news-index.json
+    properties:
+      title:
+        select: head > meta[property="og:title"]
+        value: attribute(el, 'content')
+      publishdate:
+        select: head > meta[name="publishdate"]
+        value: attribute(el, 'content')

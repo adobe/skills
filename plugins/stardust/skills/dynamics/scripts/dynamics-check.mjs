@@ -15,8 +15,10 @@
  *
  * Exit: 0 all replays pass · 1 a replay failed · 2 usage · 3 `--gate` blocked — the close-out condition
  * (reference/parity-report.md rule 8 lists the blocking rows; `gate()` below is the implementation and
- * test/gate.test.mjs the fixture). The report always ends with "Delivered / interim / decided-out" counts
- * and "Values the owner must supply" (feature · `owner`), from the parity rows.
+ * test/gate.test.mjs the fixture). One rule-8 condition reads a second file: a built `index-backed` row
+ * blocks while `index-status.json` (next to parity.json, written by skills/rollout/scripts/query-index.mjs)
+ * is missing or records `registered: denied`. The report always ends with "Delivered / interim / decided-out"
+ * counts and "Values the owner must supply" (feature · `owner`), from the parity rows.
  *
  * Check types (* = required):
  *   fetch-json     { url*, minRows?, expectKeys? }                 GET on the origin returns JSON with rows / keys
@@ -251,8 +253,14 @@ const bucket = (s) => (/^(pending|in-progress)/.test(s || '') ? 'pending' : /^(d
 // a row this run built (not one the capture pipeline shipped untouched — nothing to replay there)
 const built = (f) => bucket(f.status) === 'delivered' && !/^delivered-by-capture/.test(f.status || '');
 const MEDIA_PATTERN = /^(embed-passthrough|media-as-url|hls-stream)$/;
-/** close-out lint over parity rows (no browser): reasons that block the report; [] = clear. The rule text is parity-report.md rule 8. */
-export function gate(parity) {
+// an index-backed row: disposition `index-backed`, or a pattern carrying it (`search-index-backed`, `listing-index-backed`)
+const INDEX_BACKED = /index-backed/;
+/**
+ * close-out lint over parity rows (no browser): reasons that block the report; [] = clear. The rule text is parity-report.md rule 8.
+ * `indexStatus` = stardust/dynamics/index-status.json (skills/rollout/scripts/query-index.mjs); missing/null or `registered: denied`
+ * blocks every built index-backed row — the index was never proven by read-back.
+ */
+export function gate(parity, { indexStatus = null } = {}) {
   const out = [];
   for (const f of parity.features || []) {
     const has = (type, pred = () => true) => (f.checks || []).some((c) => c.type === type && pred(c));
@@ -261,6 +269,8 @@ export function gate(parity) {
     if (f.class === 'S' && built(f) && !has('search-query', (c) => c.compareLive || c.minResults !== undefined)) out.push(`${f.feature} (S): status "${f.status}" without a search-query check carrying compareLive or minResults — result counts were never compared with live`);
     // a built media row on an explicit player pattern ends in a playable proof
     if (f.class === 'V' && built(f) && (MEDIA_PATTERN.test(f.disposition || '') || MEDIA_PATTERN.test(f.pattern || '')) && !has('video-plays')) out.push(`${f.feature} (V): status "${f.status}", ${f.disposition || f.pattern} without a video-plays check — a poster-only render is not delivery`);
+    // a built index-backed row (listing / search) needs the query index registered AND read back (index-status.json, not denied)
+    if (built(f) && (INDEX_BACKED.test(f.disposition || '') || INDEX_BACKED.test(f.pattern || '')) && (!indexStatus || indexStatus.registered === 'denied')) out.push(`${f.feature} (${f.class}): status "${f.status}", ${f.disposition || f.pattern} with index-status.json ${indexStatus ? 'registered: denied' : 'missing'} — run node skills/rollout/scripts/query-index.mjs --org <org> --site <site> --yaml helix-query.yaml to exit 0 before marking the row done (exit 3 → scaffolded-awaiting-owner, INDEX-CONFIG.md)`);
   }
   return out;
 }
@@ -288,7 +298,7 @@ if (process.argv[1] && process.argv[1].endsWith('dynamics-check.mjs')) {
   const results = await replay({ origin, parity, authHeader: resolveAuthHeader(), headed: headedArg ? parseHeadedFlag(headedArg) : 0 });
   const out = arg('out', 'stardust/qa');
   const pass = results.filter((r) => r.pass).length;
-  const blocked = gate(parity);
+  const blocked = gate(parity, { indexStatus: readJSON(join(dirname(parityFile), 'index-status.json'), null) });
   const md = [
     `# Dynamics parity check — ${origin} — ${new Date().toISOString()}`, '',
     `Replayed ${results.length} checks over ${(parity.features || []).length} features · pass ${pass} · fail ${results.length - pass}. Flows, not presence.`, '',

@@ -1,0 +1,52 @@
+{
+  "_provenance": {
+    "writtenBy": "stardust:extract",
+    "writtenAt": "2026-09-18T10:00:00.000Z",
+    "script": "crawl.mjs",
+    "readArtifacts": []
+  },
+  "discovery": {
+    "fetchTechnique": "headless",
+    "count": 2,
+    "concurrency": 4,
+    "source": "--pages"
+  },
+  "consent": {
+    "method": "none-detected"
+  },
+  "favicon": null,
+  "crawl": {
+    "startedAt": "2026-09-18T09:58:00.000Z",
+    "finishedAt": "2026-09-18T09:59:00.000Z",
+    "successes": 2,
+    "failures": []
+  },
+  "runs": [
+    {
+      "at": "2026-09-18T09:58:00.000Z",
+      "args": {
+        "url": "https://example.com",
+        "pages": [
+          "/",
+          "/about"
+        ],
+        "cap": 5,
+        "wait": "medium",
+        "concurrency": 4,
+        "dynamics": false,
+        "refresh": [],
+        "force": false,
+        "headed": null,
+        "depth": 1,
+        "cookie": [],
+        "mobile": "entry",
+        "dpr": 1
+      },
+      "technique": "headless",
+      "discovered": 2,
+      "skipped": 0,
+      "captured": 2,
+      "failed": []
+    }
+  ]
+}

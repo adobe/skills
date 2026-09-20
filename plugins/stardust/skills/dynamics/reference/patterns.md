@@ -28,10 +28,12 @@ an existing library must be fed rather than forked.
 
 **Intent.** Search is a service, not a page. The header form's action must never become a
 root-relative link to nowhere. **Contract.** A `/search` page with the results block; the header
-form posts `?q=` (accept the source's parameter name too). **Mechanism.** Query index configured
-through the admin config service (`PUT/POST admin.hlx.page/config/<org>/sites/<site>/content/query.yaml`,
-the DA token is authorised — no UI), one bulk `POST /index/<org>/<site>/<ref>/*` with the page list,
-a `text` property for excerpts; the block ranks title > description > path, clips excerpt windows
+form posts `?q=` (accept the source's parameter name too). **Mechanism.** Query index registered
+through the admin config service (`POST admin.hlx.page/config/<org>/sites/<site>/content/query.yaml`)
+when the DA token is an org admin; otherwise the repo `helix-query.yaml` + bulk index, verified by
+read-back — `skills/rollout/scripts/query-index.mjs` (listings.md § Mechanics); one bulk
+`POST /index/<org>/<site>/<ref>/*` with the page list, a `text` property for excerpts; the block
+ranks title > description > path, clips excerpt windows
 around matches **after skipping the breadcrumb + title lead** the `text` property starts with,
 pages client-side, reflects the query into the inputs. Second corpora (a non-migrated library) are
 explicitly not reproduced. Per locale tree: one results page each and a `lang` index property.

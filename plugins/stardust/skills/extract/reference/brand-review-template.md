@@ -41,6 +41,15 @@ The page **renders in the brand's own captured colors and fonts**,
 not in a generic shell. The reviewer should feel like they're looking
 at *this site's* brand-review, not a stardust template applied to it.
 
+**Renderer.** `skills/extract/scripts/brand-review.mjs --out
+stardust/current` (run from the `stardust/scripts/` copy) renders this
+file: the 13 Tensions detectors below always run and print `T-xxx:
+fired | quiet`; a section whose source data is missing is omitted,
+never padded; **exit 2 without `_brand-extraction.json`** (or without
+its `_provenance`) — the review never fabricates a brand surface. The
+LLM reads the rendered review and the detector lines; it does not
+re-render or hand-author the HTML.
+
 ---
 
 ## Source artifacts
@@ -182,7 +191,7 @@ the mechanical baseline.
 | `T-radius-vocab` | Multiple small radii in use | `_brand-extraction.json#motifs.borderRadius.occurrences` | More than 2 distinct values < 16px each with ≥10 occurrences | "Radius vocabulary is fragmented: {list of radii with counts}. Direct will need to pick a single small-radius value or accept the variance." |
 | `T-cta-vocab` | CTA copy fragmented across semantic siblings | aggregated `pages/*.json#ctas[].label` | ≥2 distinct labels from the same CTA-equivalence bucket appear (see § CTA equivalence buckets) | "CTA voice is fragmented: {labels with counts}. Direct will need to pick a canonical voice for see-more / read-more / learn-more affordances." |
 | `T-link-content-free` | Content-free link labels in use | aggregated `pages/*.json#links.internal[].text` and `external` | Any of `{ "here", "click here", "read this", "more", "this" }` appears as link text ≥1× | "Content-free link labels found: {labels with counts and example pages}. Accessibility issue — screen readers and crawlers cannot tell what these point to." |
-| `T-logo-variants` | Single logo variant captured | `_brand-extraction.json#logo` | Always emits — current locator chain only captures first hit | "Only one logo variant captured ({source}). The redesign will need a monochrome / inverted / SVG variant set; direct should plan that." |
+| `T-logo-variants` | Logo chain landed below the banner wordmark | `_brand-extraction.json#logo` | `step` is below `1b` — `source` ∈ {`apple-touch-icon`, `og-image`, `favicon`, `synthesized`}: no wordmark was found in the banner. Quiet on steps 1 / 1b / 2 | "Only one logo variant captured ({source}, chain step {step}) — no wordmark was found in the banner. The redesign will need a monochrome / inverted / SVG variant set; direct should plan that." |
 | `T-color-imbalance` | Palette color used for text only or fill only | `_brand-extraction.json#palette[].usedAs` | Any color (excluding pure black, pure white, and `text-primary`/`text-secondary` roles) where `usedAs` contains only `["text"]` or only `["background"]` | "Color {value} ({role}) appears as {usedAs[0]} only — never as {missing contexts}. Direct will need to decide: drop, expand, or keep as accent." |
 | `T-no-tokens` | Site ships no design tokens | aggregated `pages/*.json#cssCustomProperties` | Empty across every page | "No CSS custom properties defined. The current site has no design-token layer; the migration target will introduce tokens, which is a structural change worth calling out to the user." |
 | `T-tokens-unused` | Tokens defined but visually unapplied | aggregated `pages/*.json#cssCustomProperties` + `_brand-extraction.json#palette[role="primary"].value` | A `--primary` / `--secondary` / `--success` / `--info` / `--warning` / `--danger` custom property exists with a value matching a known framework default (Bootstrap 4/5: `#007bff`, `#6c757d`, `#28a745`, `#17a2b8`, `#ffc107`, `#dc3545`; Tailwind `slate-500`/`gray-500`; Material defaults) AND the brand's actual computed primary palette differs from that token value | "Design tokens defined but unused: `--primary` ships as `<token-value>` (likely a {framework} default) while the brand's actual primary is `<palette-primary>`. The token layer exists in name only — the migration target will need to either rewire components to consume tokens or replace the token values to match the brand." |

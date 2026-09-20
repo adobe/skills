@@ -1,0 +1,67 @@
+{
+  "_provenance": {
+    "writtenBy": "stardust:extract",
+    "writtenAt": "2026-09-18T09:05:00.000Z",
+    "script": "crawl.mjs",
+    "readArtifacts": [
+      "https://example.com/sitemap.xml"
+    ]
+  },
+  "discovery": {
+    "fetchTechnique": "headless",
+    "count": 12,
+    "concurrency": 4,
+    "source": "sitemap.xml",
+    "kept": [
+      "https://example.com/",
+      "https://example.com/pricing",
+      "https://example.com/about"
+    ],
+    "cut": []
+  },
+  "consent": {
+    "method": "text:accept all cookies"
+  },
+  "favicon": {
+    "url": "https://example.com/favicon.ico",
+    "file": "stardust/current/assets/favicon.ico"
+  },
+  "crawl": {
+    "startedAt": "2026-09-18T09:00:00.000Z",
+    "finishedAt": "2026-09-18T09:04:00.000Z",
+    "successes": 3,
+    "failures": []
+  },
+  "visionCheck": [
+    {
+      "slug": "index",
+      "verdict": "ok",
+      "notes": "hero and nav match the record"
+    }
+  ],
+  "runs": [
+    {
+      "at": "2026-09-18T09:00:00.000Z",
+      "args": {
+        "url": "https://example.com",
+        "pages": null,
+        "cap": 5,
+        "wait": "medium",
+        "concurrency": 4,
+        "dynamics": false,
+        "refresh": [],
+        "force": false,
+        "headed": null,
+        "depth": 1,
+        "cookie": [],
+        "mobile": "entry",
+        "dpr": 1
+      },
+      "technique": "headless",
+      "discovered": 12,
+      "skipped": 0,
+      "captured": 3,
+      "failed": []
+    }
+  ]
+}

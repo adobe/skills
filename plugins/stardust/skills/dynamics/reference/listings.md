@@ -35,6 +35,32 @@ contract` records it; `helix-query.yaml` at the EDS project root is authored fro
 - **Publish the index early.** It is the cheapest "is this path ours" oracle and silences library
   code that expects it.
 - Localise internal links first, or the index captures source-site URLs as paths.
+- **Registration.** Register the index before the first index-backed row and prove it by read-back:
+  `node skills/rollout/scripts/query-index.mjs --org <org> --site <site> --yaml helix-query.yaml [--origin …] [--sample </path>] [--check]`.
+  The script tries the admin config route once with the DA token; on an auth refusal it falls back
+  to the repo `helix-query.yaml` (one loud line, never re-probed), then runs one bulk index job and
+  reads every index target back: the sample page must be a row with a non-empty Tier-2 property.
+  The read-back decides, not the route's status — an empty index answer is not a pass. Exit table in
+  the script header; `stardust/dynamics/index-status.json` records `registered: config | repo-yaml | denied`.
+  **Registration gate** — *condition:* rollout D2 may not mark an `index-backed` row done until the
+  script exits 0; `dynamics-check.mjs --gate` blocks a built index-backed row while `index-status.json`
+  is missing or `denied`. *Escape:* honest downgrade, never a skip — exit 3 turns the rows
+  `scaffolded-awaiting-owner` with the decision named (an org admin registers `query.yaml` per
+  `stardust/rollout/INDEX-CONFIG.md`); exit 4 leaves the rows `interim` with `unverified: preview-only`
+  until a publish run; the dry run is the check mode above; no skip-readback option exists.
+  *Hands-off:* one config GET, never re-probed; on a refusal the repo yaml, bulk index and read-back
+  proceed automatically; the replace option is never applied without an owner row; exit 4 is the
+  expected outcome of a preview-only hands-off run and is not a blocker — the read-back condition is
+  the same in every mode. *Eval:* `evals/lint/query-index-smoke.mjs` and `scripts/test/gate.test.mjs`.
+- Metadata → `<meta>`: `Tags` renders as one `<meta property="article:tag">` per tag (not
+  `name="tags"`); a multi-valued property needs `values:` in its index definition; `PublishDate` →
+  `publishdate` (§ What a row can carry).
+- Include / exclude globs use the slashless form (`/news/**`, exclude `/news`): a trailing-slash form
+  never matches the extensionless path the index sees.
+- New definitions need a reindex of existing pages (the bulk job); one target per index.
+- Index-driven listing pages record residual class `index-driven-content` at the fidelity gate
+  (`../../replica/reference/source-fidelity-gate.md` § Residual classes) — mask the listing band or
+  mirror the same data source; there is no listing-specific gate mode.
 
 ## Block contract
 

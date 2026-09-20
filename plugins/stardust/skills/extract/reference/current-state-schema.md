@@ -11,7 +11,8 @@
 - § Embed dominance — when a page's primary content lives inside a cross-origin iframe.
 - § Signals — before the Phase 2.5 vision pass: the crawler's own capture-quality flags (`_signals`) and what `screenshotMode` / `screenshotMobile` mean.
 - § CSS custom properties · § Per-section style — when capturing `:root` tokens and the per-section style summaries that feed brand-surface aggregation.
-- § Required vs optional · § Versioning — when a key has no data (empty, never omitted) or the schema evolves.
+- § Required vs optional · § Versioning — when a key has no data (empty, never omitted) or the schema evolves; § 0.24.x aliases lists the legacy names written beside the schema names.
+- § Schema gate — before marking a page `extracted`: what `validate-page.mjs` fails, warns and never weakens.
 - § Live-render evidence — before any write: why a synthesized page record is forbidden and how the guard refuses it.
 
 The shape of `stardust/current/pages/<slug>.json`. Every page extracted
@@ -32,7 +33,8 @@ The file is JSON because every consumer is non-human. It carries a
     "writtenAt": "2026-04-25T13:42:00Z",
     "readArtifacts": ["https://example.com/about"],
     "synthesizedInputs": [],
-    "stardustVersion": "0.10.0",
+    "schemaVersion": 2,              // REQUIRED. the per-page schema this record follows (see § Versioning)
+    "script": "crawl.mjs",           // the writer
     "renderedBy": "playwright",      // REQUIRED. "playwright" only — synthesis is forbidden (see § Live-render evidence)
     "fetchedAt": "2026-04-25T13:41:58Z",  // ISO 8601 timestamp of the live fetch (distinct from writtenAt)
     "waitMode": "networkidle",       // configured mode: fast | medium | spec | networkidle | domcontentloaded(fallback)
@@ -97,10 +99,17 @@ The file is JSON because every consumer is non-human. It carries a
 
 ## § Headings
 
-Document order. Computed style snapshot of the heading itself.
+Document order, light DOM and open shadow roots together (`shadow: true`
+on a heading that lives inside one). Computed style snapshot of the
+heading itself. A block element styled as a display head — at least
+24 px and 1.6× the body size, ≤ 120 chars of its own text, outside every
+real heading, link and button — is emitted once with `inferred: true`
+(`tag` = its element; `level` 1 or 2 by size): div-styled hero titles no
+longer vanish behind card `h3`s. `_signals.inferredHeadings` counts them.
 
 ```json
 {
+  "tag": "h2",
   "level": 2,
   "text": "Our story",
   "id": "story",
@@ -174,11 +183,20 @@ full DOM tree, just enough to map IA.
       "quotes": [                  // populated when testimonials / blockquotes detected
         { "text": "Best tool we ship.", "attribution": "Jane Doe, Acme",
           "rating": 5 }
-      ]
+      ],
+      "richtext": "<h2>Our story</h2><p>Lorem…</p><ul><li>…</li></ul>",   // sanitised prose: p ul ol li a(href) strong em b i u br h2-h4 only
+      "rect": { "x": 0, "y": 1180, "width": 1440, "height": 640 },       // live rect at 1440; 0×0 = placeholder / unhydrated module
+      "domPath": "main > section#story"
     }
   ]
 }
 ```
+
+`domPath` is selector-shaped (`tag#id` | `tag.firstClass` |
+`tag:nth-child(n)` segments; ` >>> ` marks a shadow boundary), stable
+enough to find the node again in the sidecar, not guaranteed unique.
+`body[]` holds the section's `p`/`blockquote` text outside list items
+(list items live in `lists[]`, so a `li > p` is never doubled).
 
 `innerText` is captured in **full** — no length cap. The
 `innerTextSummary` field stays as a 240-char preview for cheap
@@ -227,7 +245,8 @@ Every visually-button-like element. Captured per `playwright-recipe.md`
     "padding": "12px 24px",
     "boxShadow": "0 1px 2px rgba(0,0,0,0.06)"
   },
-  "appearsAbove": "fold"          // "fold" | "below-fold"
+  "appearsAbove": "fold",         // "fold" | "below-fold"
+  "buttonLike": true              // recipe 8 test (opaque background, radius, padding) or a real button — brand-surface filters on it
 }
 ```
 
@@ -239,7 +258,9 @@ Two arrays: `internal` (same host) and `external`. Each entry:
 { "href": "/pricing", "text": "Pricing", "domPath": "header > nav > a:nth-child(2)" }
 ```
 
-De-duplicate by `(href, text)`. Keep the first occurrence's `domPath`.
+De-duplicate by `(href, text)`, fragment dropped. Keep the first
+occurrence's `domPath`. Internal `href` is path + query; external is
+absolute; `mailto:`/`tel:`/`javascript:` are not links here.
 
 ## § Media
 
@@ -250,15 +271,19 @@ De-duplicate by `(href, text)`. Keep the first occurrence's `domPath`.
       "src": "https://cdn.example.com/connect/9f.../hero.jpg?MOD=AJPERES&CACHEID=...",
       "currentSrc": "https://cdn.example.com/connect/9f.../hero.jpg?MOD=AJPERES&CACHEID=...",
       "srcset": "...",
+      "sources": [ { "media": "(min-width: 1200px)", "srcset": "…", "type": null } ],   // <picture><source> candidates
       "alt": "Two engineers at a whiteboard",
       "naturalWidth": 2400,
       "naturalHeight": 1600,
+      "rect": { "x": 0, "y": 0, "width": 1440, "height": 720 },   // live rect at 1440 (the banner wordmark's rect feeds the logo chain)
       "resolves": true,
-      "localPath": "stardust/current/assets/media/hero-a3f9.jpg"
+      "localPath": "stardust/current/assets/media/hero-a3f9.jpg",
+      "domPath": "main > section.hero > img"
     }
   ],
+  "imgs": [ { "src": "…", "alt": "…", "w": 2400, "h": 1600 } ],   // 0.24.x alias of images[] (loaded images only)
   "inlineSvgs": [
-    { "viewBox": "0 0 24 24", "domPath": "...", "markupHash": "sha256:..." }
+    { "viewBox": "0 0 24 24", "domPath": "...", "markupHash": "fnv1a:8c3d9a21", "rect": { "x": 0, "y": 0, "width": 24, "height": 24 }, "inBanner": true }
   ],
   "cssBackgrounds": [
     {
@@ -268,27 +293,43 @@ De-duplicate by `(href, text)`. Keep the first occurrence's `domPath`.
       "backgroundSize": "cover",
       "backgroundPosition": "center center",
       "backgroundRepeat": "no-repeat",
+      "pseudo": null,                  // "::before" | "::after" when the image sits on generated content (domPath ends the same way)
       "localPath": "stardust/current/assets/media/slide-1-b7c4.png"
     }
   ],
-  "videos": [],
+  "videos": [ { "src": "…", "poster": "…", "autoplay": true, "loop": true, "muted": true, "rect": {}, "domPath": "…" } ],
   "iframes": [
-    { "src": "https://www.youtube.com/embed/...", "title": "Demo" }
+    { "src": "https://www.youtube.com/embed/...", "title": "Demo", "rect": {}, "crossOrigin": true, "domPath": "…" }
   ]
 }
 ```
 
-`localPath` is set only for media stardust successfully downloaded.
-Failed downloads have `localPath: null` and a `downloadError` field.
+`localPath` (relative to `stardust/current`, like `screenshot`) is set
+only for bodies the harvest kept — by default the render's own responses
+(`--assets intercept`), plus capped in-page fetches under `--assets full`.
+Failed or never-requested candidates have `localPath: null` and a
+`downloadError` (`HTTP 404`, `not-requested`, …). `mime` is sniffed from
+the bytes; `transformSuspect: true` marks a body whose format differs
+from the URL's extension (a CDN transform) — recorded, never "fixed".
+`assets/_media-manifest.json` holds the same rows per URL across runs
+(`pages[]`, `status`, `bytes`); `assets/_fonts-manifest.json` the font
+files with their `@font-face` descriptors, `licensingFlag` and the
+`iconFonts[]` table; `assets/favicon-set.json` every icon with `sizes`.
+The favicon set is the crawl's **one exception** to "zero extra
+requests": at most 8 icon URLs (`link[rel~=icon|apple-touch-icon|
+mask-icon]` + `/favicon.ico`, de-duplicated; the favicon the probe
+already fetched is reused, not re-fetched) are fetched once per run on
+the probe page, never per page; `--no-assets` skips the set.
 
 `src` / `currentSrc` are captured **with the query string intact**
 (enterprise DAM/CDN URLs carry load-bearing `?MOD=…&CACHEID=…`
-params; stripping them 404s). `resolves` is the result of a
-capture-time `HEAD`/`GET` (2xx + image `content-type`) issued with a
-browser `User-Agent` + `Referer` — see `playwright-recipe.md`
-§ Capture list (11) § Source-URL fidelity. `migrate` omits or repairs
-(never authors) any image whose `resolves` is `false`, which is how
-`about:error` is prevented before it ships.
+params; stripping them 404s). `resolves` is read from the **rendered
+state** of the same settled page — `true` when the image completed with
+a natural width, `false` when it completed empty (the broken-image
+icon), `null` while still loading — never a second request to the
+source origin. `migrate` omits or repairs (never authors) any image
+whose `resolves` is `false`, which is how `about:error` is prevented
+before it ships.
 
 `cssBackgrounds[]` captures every element whose computed
 `backgroundImage` resolves to one or more `url(...)` references
@@ -316,9 +357,14 @@ sites.
     { "type": "email", "name": "email", "label": "Your email", "required": true },
     { "type": "textarea", "name": "message", "label": "Message", "required": true }
   ],
-  "thirdParty": null               // or "stripe" | "calendly" | "typeform" | "mailchimp" | ...
+  "thirdParty": null,              // or "stripe" | "calendly" | "typeform" | "mailchimp" | ...
+  "domPath": "main > section#contact > form"
 }
 ```
+
+Always present (empty `[]` without forms). The `--dynamics` reach shape
+(`dynamic.forms[]`: `sameOrigin`, `search`, `fieldNames`) comes from the
+same walk — one query, two shapes, no classification.
 
 ## § Widgets
 
@@ -528,6 +574,10 @@ capture, never the site; none of them alone marks a page `suspect`.
   "brokenImages": 0,               // <img src> with complete && naturalWidth === 0
   "subResourceBlock": false,       // brokenImages ≥ max(3, 30 % of <img src>) — the edge 403'd images while the document loaded
   "overlayCoverPct": 4,            // position:fixed elements ∩ first viewport, % of the viewport; > 30 prints OVERLAY? on the page line
+  "shadowRoots": 1,                // open shadow roots carrying text — descended by every query and serialised into the sidecar
+  "shadowTextLen": 115,            // characters pierced from them (0 with shadowRoots > 0 = a WARN in the schema gate)
+  "inferredHeadings": 1,           // display heads emitted with inferred: true (§ Headings)
+  "iconFont": [ { "family": "atlas-icon", "classes": ["ecs-glyph"], "codepoints": 67, "glyphs": ["U+E001"] } ],   // family-first ::before/::after glyph walk (recipe 17)
   "captureQuality": "ok",          // "ok" | "degraded" (emptyMain or subResourceBlock) — degraded is recorded, never thrown
   "screenshotMode": "fullPage",    // "fullPage" | "banded" (> 16,000 px: <slug>.png + <slug>.part2.png…) | "clipped" (raster threw; first viewport only) | "failed"
   "screenshotBands": 3,            // banded only
@@ -560,7 +610,8 @@ starting with `--`).
 
 An **empty array** is itself a meaningful signal — it means the site
 ships no design tokens, which the Tensions detector flags. Do not
-omit the key; emit `[]` explicitly.
+omit the key; emit `[]` explicitly. `customProps` (the same pairs as one
+object) is the 0.24.x alias.
 
 ## § Per-section style
 
@@ -581,6 +632,12 @@ brand-surface aggregation has a stable input.
 }
 ```
 
+Colours are **area-weighted** over the section's rendered descendants
+(background by painted area, text by character count); spacing is the
+section's own padding plus the most frequent flex/grid `gap`.
+`stats.motifs {radii, shadows, gradients}` carries the page-wide
+element counts per value that brand-surface's motif mode reads.
+
 ---
 
 ## Required vs optional
@@ -596,10 +653,55 @@ are valid (and unusual — log a warning).
 
 ## Versioning
 
-The schema version is implicit in
-`_provenance.stardustVersion`. If the schema evolves, downstream
-consumers branch on the version. Backward-compatible additions do not
-require a version bump.
+`_provenance.schemaVersion` (integer, written by the script) is the
+schema version; a project-copied script cannot know the plugin version,
+so `stardustVersion` is not the carrier. Consumers branch on it;
+backward-compatible additions do not bump it. Records without the field
+are schema 1 (0.23 and earlier) — `validate-page.mjs --legacy` admits
+them with a WARN per absent key.
+
+### 0.24.x aliases
+
+Code follows the schema names; the crawl-only names of schema 1 are
+written beside them for one release and dropped in 0.25:
+
+| schema name | alias written | shape of the alias |
+|---|---|---|
+| `metaDescription` | `description` | same string |
+| `media.images[]` | `media.imgs[]` | `{ src, alt, w, h }`, loaded images only |
+| `cssCustomProperties[]` | `customProps` | one object `{ "--name": "value" }` |
+| `headings[].level` | `headings[].tag` | the element name (kept, not an alias to drop) |
+| `landmarks[].children[].body[]` | page-level `body[]` | flat `p`/`blockquote`/`li` text of `<main>` |
+
+Not aliased: `links` changed from a flat array to `{ internal, external }`
+(no plugin script read the flat form) and `cssBackgrounds[]` from URL
+strings to objects.
+
+## Schema gate
+
+`crawl.mjs` runs `validateRecord()` on every record it writes and
+`skills/extract/scripts/validate-page.mjs` re-runs it offline over
+`pages/*.json` (`--dir`, `--file`, `--legacy`, `--json`; exit 0 pass ·
+1 FAIL · 2 usage). Eval: `evals/fixtures/validate-page.test.mjs` and
+`evals/fixtures/crawl-capture.test.mjs` (the emitted record passes).
+
+- **Condition (FAIL, exit 1).** A required top-level key of § Required vs
+  optional is absent (empty passes), a provenance field of § Live-render
+  evidence is missing or `renderedBy` is not `playwright`, or
+  `schemaVersion` is missing or newer than the validator. Keys are named
+  per slug. **WARN (exit 0):** empty `headings`/`landmarks`/`ctas`,
+  `captureQuality: "degraded"`, shadow roots with no pierced text.
+- **Blocks.** Marking the page `extracted` in `state.json`. The record and
+  its sidecar stay on disk as evidence; the crawl log lists the slug under
+  `crawl.failures` with `errorClass: "SchemaError"`.
+- **Escape.** `--legacy` for pre-schema-2 records only; no hatch for the
+  provenance fields; no threshold to tune. `state-update.mjs` applies the
+  same strict verdict when it marks `extracted` and takes the same
+  `--legacy` opt-in (default off) — the two never disagree on a record.
+- **Hands-off.** A FAIL is an instrument fact: re-crawl the slug once with
+  `--refresh <slug>`; a second FAIL appends `event: "blocked"` naming the
+  keys and leaves the page unmarked. The condition is the same in every
+  mode.
 
 ## Live-render evidence (synthesis is forbidden)
 

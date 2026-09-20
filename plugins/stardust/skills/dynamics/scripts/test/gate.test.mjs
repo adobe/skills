@@ -4,7 +4,8 @@
  * Run: node skills/dynamics/scripts/test/gate.test.mjs
  *
  * `gate()` is the implementation of reference/parity-report.md rule 8; this
- * fixture pins which parity rows block and which never do, the close-out
+ * fixture pins which parity rows block and which never do (including the
+ * index-status.json condition for built index-backed rows), the close-out
  * sections, and the CLI's exit 3 when parity.json is missing under `--gate`.
  */
 import { spawnSync } from 'node:child_process';
@@ -41,6 +42,21 @@ eq('V done, no disposition/pattern → clear (not defaulted to embed-passthrough
 eq('V done rebuild-native → clear', blocks({ feature: 'hero', class: 'V', disposition: 'rebuild-native', status: 'done' }), 0);
 eq('V delivered-by-capture without disposition → clear', blocks({ feature: 'player', class: 'V', reproducibility: 'needs-human-capture', status: 'delivered-by-capture' }), 0);
 eq('V delivered-by-capture embed-passthrough → clear', blocks({ feature: 'player', class: 'V', disposition: 'embed-passthrough', status: 'delivered-by-capture' }), 0);
+
+// condition 5 — a built index-backed row needs index-status.json registered (config or repo-yaml), never denied or missing
+const gateWith = (feature, indexStatus) => gate({ features: [feature] }, { indexStatus }).length;
+const listing = { feature: 'news listing', class: 'L', pattern: 'listing-index-backed', disposition: 'index-backed', status: 'done', checks: [{ type: 'listing-rows', path: '/news', block: 'cards' }] };
+eq('L done index-backed, index-status denied → blocks', gateWith(listing, { registered: 'denied' }), 1);
+eq('L done index-backed, index-status config → clear', gateWith(listing, { registered: 'config' }), 0);
+eq('L done index-backed, index-status repo-yaml → clear', gateWith(listing, { registered: 'repo-yaml' }), 0);
+eq('L done index-backed, index-status missing → blocks', gateWith(listing, null), 1);
+eq('L done index-backed, gate() without options → blocks (missing)', blocks(listing), 1);
+eq('S done search-index-backed pattern, denied → blocks', gateWith({ feature: 'search', class: 'S', pattern: 'search-index-backed', status: 'done', checks: [search({ minResults: 3 })] }, { registered: 'denied' }), 1);
+eq('L interim index-backed, missing → clear (not built)', gateWith({ ...listing, status: 'interim', owner: 'index-driven or curated?' }, null), 0);
+eq('L scaffolded-awaiting-owner index-backed, denied → clear', gateWith({ ...listing, status: 'scaffolded-awaiting-owner', owner: 'org admin registers query.yaml per INDEX-CONFIG.md' }, { registered: 'denied' }), 0);
+eq('L done static-snapshot, missing → clear', gateWith({ feature: 'rail', class: 'L', disposition: 'static-snapshot', status: 'done' }, null), 0);
+const [indexLine] = gate({ features: [listing] }, { indexStatus: { registered: 'denied' } });
+eq('index line names row, denied and the remedy', /^news listing \(L\): status "done", index-backed with index-status\.json registered: denied — run node skills\/rollout\/scripts\/query-index\.mjs .*exit 0/.test(indexLine), true);
 
 // the gate line names the row and the remedy
 const [line] = gate({ features: [{ feature: 'contact modal', class: 'M', reproducibility: 'self', status: 'pending modal' }] });

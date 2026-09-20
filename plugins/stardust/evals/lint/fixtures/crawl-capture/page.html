@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Fixture — capture shape</title>
+<meta name="description" content="A fixture page for the crawl.mjs capture contract. It exercises every documented field once.">
+<meta property="og:title" content="Fixture">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)">
+<style>
+  :root { --color-primary: #147aff; --space-md: 16px; }
+  body { margin: 0; font: 16px/1.5 Georgia, serif; color: rgb(20, 20, 20); }
+  header, main > section, footer { padding: 32px 48px; }
+  header { background: rgb(240, 240, 240); }
+  .display-head { display: block; font-family: "Fixture Sans", Georgia, serif; font-size: 32px; font-weight: 700; line-height: 1.2; }
+  .hero { min-height: 400px; background-color: rgb(8, 12, 20); color: #fff; background-image: url("/img/hero-bg.png"); background-size: cover; }
+  .hero::before { content: ""; display: block; width: 400px; height: 120px; background-image: url("/img/hero-overlay.png"); }
+  .btn { display: inline-block; padding: 12px 24px; border-radius: 8px; background: rgb(20, 122, 255); color: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.2); }
+  .card { border-radius: 12px; box-shadow: 0 4px 16px rgba(0,0,0,.12); padding: 16px; background: #fff; border: 1px solid #ddd; }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+  .below { margin-top: 1200px; }
+  iframe.big { width: 600px; height: 400px; border: 0; }
+  .icon-search::before { content: "\e928"; font-family: "fixture-icons"; }
+  .ecs-glyph::before { content: "\e001"; font-family: "atlas-icon"; }
+  @font-face { font-family: "fixture-icons"; src: url("/fonts/fixture-icons.woff2") format("woff2"); font-weight: 400; font-style: normal; }
+  @font-face { font-family: "Fixture Sans"; src: url("/fonts/fixture-sans-700.woff2") format("woff2"); font-weight: 700; font-style: normal; }
+</style>
+</head>
+<body>
+<header>
+  <a href="/" class="brand"><img src="/img/wordmark.svg" alt="Fixture" width="180" height="32"></a>
+  <nav aria-label="Main">
+    <a href="/pricing">Pricing</a>
+    <a href="/about">About</a>
+    <a href="https://external.example/partner">Partner</a>
+    <a href="/pricing">Pricing</a>
+  </nav>
+  <span class="icon-search" aria-hidden="true"></span>
+  <span class="ecs-glyph" aria-hidden="true"></span>
+</header>
+<main>
+  <section class="hero" id="hero">
+    <div class="display-head">Designed for the way you actually work</div>
+    <p>One platform for your whole team, from intake to delivery. Every step is visible and every hand-off is recorded.</p>
+    <a class="btn" href="/signup">Start free trial</a>
+    <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><circle cx="12" cy="12" r="10"/></svg>
+  </section>
+  <section class="features" id="features">
+    <h2 id="features-title">What you get</h2>
+    <ul>
+      <li><p>Item one has a nested paragraph.</p></li>
+      <li><p>Item two also has one.</p></li>
+      <li>Item three is plain.</li>
+    </ul>
+    <div class="grid">
+      <div class="card"><h3>Card A</h3><p>Alpha.</p></div>
+      <div class="card"><h3>Card B</h3><p>Beta.</p></div>
+      <div class="card"><h3>Card C</h3><p>Gamma.</p></div>
+    </div>
+  </section>
+  <section class="island-band" id="island">
+    <fixture-island id="island-1"></fixture-island>
+  </section>
+  <section class="media" id="media">
+    <h2>Media</h2>
+    <picture>
+      <source media="(min-width: 1200px)" srcset="/img/wide.png 1x, /img/wide@2x.png 2x">
+      <source media="(max-width: 600px)" srcset="/img/narrow.png">
+      <img src="/img/fallback.png" alt="A rendered picture element" width="600" height="300">
+    </picture>
+    <img id="broken" src="/img/does-not-exist.png" alt="broken" width="200" height="100">
+    <iframe class="big" src="https://embed.example/chart/1" title="Chart"></iframe>
+    <details><summary>How do I cancel?</summary><p>From settings, then billing, then cancel.</p></details>
+    <blockquote><p>Best tool we ship.</p><cite>Jane Doe, Acme</cite></blockquote>
+  </section>
+  <section class="contact below" id="contact">
+    <h2>Contact</h2>
+    <form action="/api/contact" method="post">
+      <label for="email">Your email</label><input id="email" type="email" name="email" required>
+      <label for="msg">Message</label><textarea id="msg" name="message"></textarea>
+      <button type="submit">Send</button>
+    </form>
+    <pre>npm install fixture</pre>
+  </section>
+</main>
+<footer>
+  <a href="/privacy">Privacy</a> <a href="/terms">Terms</a> <a href="/about">About</a> <a href="/careers">Careers</a>
+</footer>
+<template id="island-tpl">
+  <style>.plan { border-radius: 4px; }</style>
+  <h2>Island heading</h2>
+  <p>Shadow paragraph copy that page.content() never serialises.</p>
+  <a class="plan-cta" href="/plans/pro">Choose Pro</a>
+</template>
+<script>
+  customElements.define('fixture-island', class extends HTMLElement {
+    connectedCallback() {
+      const root = this.attachShadow({ mode: 'open' });
+      root.append(document.getElementById('island-tpl').content.cloneNode(true));
+    }
+  });
+</script>
+</body>
+</html>

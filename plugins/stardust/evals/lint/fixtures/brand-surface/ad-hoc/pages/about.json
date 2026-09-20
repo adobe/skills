@@ -1,0 +1,446 @@
+{
+  "_provenance": {
+    "renderedBy": "playwright",
+    "fetchedAt": "2026-09-18T09:00:00.000Z",
+    "waitMode": "medium",
+    "waitMs": 2500,
+    "httpStatus": 200,
+    "width": 1440,
+    "dpr": 1,
+    "technique": "headless",
+    "storageState": false,
+    "variants": [],
+    "compatMode": "CSS1Compat",
+    "schemaVersion": 2,
+    "script": "crawl.mjs",
+    "contentType": "text/html",
+    "heroSource": "dom"
+  },
+  "slug": "about",
+  "url": "https://example.com/about",
+  "finalUrl": "https://example.com/about",
+  "title": "About — Example",
+  "metaDescription": "About — Example — Example helps teams ship their work.",
+  "description": "About — Example — Example helps teams ship their work.",
+  "heroHeadline": "About Example",
+  "heroLede": "A page-builder site with uneven type sizes.",
+  "og": {
+    "title": "About — Example",
+    "description": "About — Example — Example helps teams ship their work.",
+    "image": "https://example.com/og.jpg",
+    "type": "website",
+    "siteName": "Example"
+  },
+  "themeColor": {
+    "light": "#ffffff",
+    "dark": null
+  },
+  "language": "en",
+  "headings": [
+    {
+      "tag": "h1",
+      "level": 1,
+      "text": "About Example",
+      "id": null,
+      "domPath": "main > section > h1",
+      "style": {
+        "fontFamily": "\"Example Sans\", system-ui, sans-serif",
+        "fontWeight": 800,
+        "fontSize": "60px",
+        "lineHeight": 1.1,
+        "letterSpacing": "-0.02em",
+        "color": "rgb(15, 18, 23)"
+      }
+    },
+    {
+      "tag": "h2",
+      "level": 2,
+      "text": "Features",
+      "id": null,
+      "domPath": "main > section:nth-child(2) > h2",
+      "style": {
+        "fontFamily": "\"Example Sans\", system-ui, sans-serif",
+        "fontWeight": 700,
+        "fontSize": "45px",
+        "lineHeight": 1.2,
+        "letterSpacing": "-0.01em",
+        "color": "rgb(15, 18, 23)"
+      }
+    },
+    {
+      "tag": "h3",
+      "level": 3,
+      "text": "Fast",
+      "id": null,
+      "domPath": "main > section:nth-child(2) > h3",
+      "style": {
+        "fontFamily": "\"Example Sans\", system-ui, sans-serif",
+        "fontWeight": 700,
+        "fontSize": "32px",
+        "lineHeight": 1.2,
+        "letterSpacing": "-0.01em",
+        "color": "rgb(15, 18, 23)"
+      }
+    },
+    {
+      "tag": "h4",
+      "level": 4,
+      "text": "Details",
+      "id": null,
+      "domPath": "main > section:nth-child(2) > h4",
+      "style": {
+        "fontFamily": "\"Example Sans\", system-ui, sans-serif",
+        "fontWeight": 600,
+        "fontSize": "20px",
+        "lineHeight": 1.2,
+        "letterSpacing": "-0.01em",
+        "color": "rgb(15, 18, 23)"
+      }
+    }
+  ],
+  "landmarks": [
+    {
+      "tag": "header",
+      "role": "banner",
+      "id": null,
+      "classes": [],
+      "innerText": "Home About",
+      "children": [
+        {
+          "tag": "nav",
+          "role": null,
+          "id": null,
+          "classes": [],
+          "purpose": "unknown",
+          "headlineRef": null,
+          "innerTextSummary": "",
+          "wordCount": 40,
+          "body": [],
+          "lists": [],
+          "qa": [],
+          "quotes": [],
+          "richtext": false,
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 1440,
+            "height": 72
+          }
+        }
+      ]
+    },
+    {
+      "tag": "main",
+      "role": "main",
+      "id": null,
+      "classes": [],
+      "innerText": "...",
+      "children": [
+        {
+          "tag": "section",
+          "role": null,
+          "id": null,
+          "classes": [],
+          "purpose": "hero",
+          "headlineRef": 0,
+          "innerTextSummary": "",
+          "wordCount": 40,
+          "body": [],
+          "lists": [],
+          "qa": [],
+          "quotes": [],
+          "richtext": false,
+          "rect": {
+            "x": 0,
+            "y": 72,
+            "width": 1440,
+            "height": 500
+          }
+        },
+        {
+          "tag": "section",
+          "role": null,
+          "id": null,
+          "classes": [],
+          "purpose": "feature-list",
+          "headlineRef": 1,
+          "innerTextSummary": "",
+          "wordCount": 40,
+          "body": [],
+          "lists": [],
+          "qa": [],
+          "quotes": [],
+          "richtext": false,
+          "rect": {
+            "x": 0,
+            "y": 572,
+            "width": 1440,
+            "height": 700
+          }
+        }
+      ]
+    }
+  ],
+  "ctas": [
+    {
+      "label": "Learn more",
+      "href": "/about",
+      "tag": "a",
+      "domPath": "main > section > a.button",
+      "style": {
+        "backgroundColor": "rgb(230, 57, 70)",
+        "color": "rgb(255, 255, 255)",
+        "fontFamily": "\"Example Text\", system-ui, sans-serif",
+        "fontWeight": 600,
+        "borderRadius": "8px",
+        "padding": "12px 24px",
+        "boxShadow": "0 1px 2px rgba(0,0,0,0.06)"
+      },
+      "appearsAbove": "fold"
+    },
+    {
+      "label": "Read more",
+      "href": "/blog",
+      "tag": "a",
+      "domPath": "main > section:nth-child(2) > a.button",
+      "style": {
+        "backgroundColor": "rgb(230, 57, 70)",
+        "color": "rgb(255, 255, 255)",
+        "fontFamily": "\"Example Text\", system-ui, sans-serif",
+        "fontWeight": 600,
+        "borderRadius": "8px",
+        "padding": "12px 24px",
+        "boxShadow": "0 1px 2px rgba(0,0,0,0.06)"
+      },
+      "appearsAbove": "below-fold"
+    }
+  ],
+  "links": {
+    "internal": [
+      {
+        "href": "/product",
+        "text": "Product",
+        "domPath": "header > nav > a:nth-child(1)"
+      },
+      {
+        "href": "/pricing",
+        "text": "Pricing",
+        "domPath": "header > nav > a:nth-child(2)"
+      },
+      {
+        "href": "/about",
+        "text": "About",
+        "domPath": "header > nav > a:nth-child(3)"
+      },
+      {
+        "href": "/about",
+        "text": "About",
+        "domPath": "footer > nav > a:nth-child(1)"
+      },
+      {
+        "href": "/legal/privacy",
+        "text": "Privacy",
+        "domPath": "footer > nav > a:nth-child(2)"
+      }
+    ],
+    "external": []
+  },
+  "media": {
+    "images": [],
+    "imgs": [],
+    "inlineSvgs": [
+      {
+        "viewBox": "0 0 160 40",
+        "domPath": "header > a > svg",
+        "markupHash": "sha256:wordmark",
+        "rect": {
+          "x": 24,
+          "y": 16,
+          "width": 160,
+          "height": 40
+        }
+      }
+    ],
+    "cssBackgrounds": [],
+    "videos": [],
+    "iframes": []
+  },
+  "forms": [],
+  "widgets": {
+    "modals": [],
+    "accordions": [],
+    "tabs": []
+  },
+  "components": {
+    "cards": {
+      "count": 0,
+      "examples": []
+    },
+    "grids": {
+      "count": 0,
+      "examples": []
+    },
+    "accordions": {
+      "count": 0,
+      "examples": []
+    },
+    "tabs": {
+      "count": 0,
+      "examples": []
+    },
+    "tables": {
+      "count": 0,
+      "examples": []
+    },
+    "modals": {
+      "count": 0,
+      "examples": []
+    },
+    "carousels": {
+      "count": 0,
+      "examples": []
+    },
+    "videos": {
+      "count": 0,
+      "examples": []
+    },
+    "iframes": {
+      "count": 0,
+      "examples": []
+    },
+    "dataVizEmbeds": {
+      "count": 0,
+      "examples": []
+    },
+    "teamTiles": {
+      "count": 0,
+      "examples": []
+    },
+    "pricingTiles": {
+      "count": 0,
+      "examples": []
+    },
+    "testimonialCards": {
+      "count": 0,
+      "examples": []
+    },
+    "logoStrip": {
+      "count": 0,
+      "examples": []
+    },
+    "timeline": {
+      "count": 0,
+      "examples": []
+    },
+    "breadcrumbs": {
+      "count": 0,
+      "examples": []
+    },
+    "statRow": {
+      "count": 0,
+      "examples": []
+    },
+    "ctaBand": {
+      "count": 0,
+      "examples": []
+    },
+    "formFields": {
+      "count": 0,
+      "examples": []
+    },
+    "other": []
+  },
+  "perSectionStyle": [
+    {
+      "sectionRef": "main > section:nth-child(1)",
+      "purpose": "hero",
+      "background": {
+        "color": "rgb(255, 255, 255)",
+        "hasImage": false,
+        "hasGradient": false
+      },
+      "text": {
+        "dominantColor": "rgb(33, 37, 41)"
+      },
+      "spacing": {
+        "paddingBlock": "70px",
+        "paddingInline": "48px",
+        "gap": "24px"
+      },
+      "borderRadius": "0px",
+      "fontFamilies": [
+        "Example Display",
+        "Example Body"
+      ],
+      "shadowsUsed": []
+    },
+    {
+      "sectionRef": "main > section:nth-child(2)",
+      "purpose": "feature-list",
+      "background": {
+        "color": "rgb(250, 250, 250)",
+        "hasImage": false,
+        "hasGradient": false
+      },
+      "text": {
+        "dominantColor": "rgb(33, 37, 41)"
+      },
+      "spacing": {
+        "paddingBlock": "50px",
+        "paddingInline": "48px",
+        "gap": "24px"
+      },
+      "borderRadius": "3px",
+      "fontFamilies": [
+        "Example Body"
+      ],
+      "shadowsUsed": []
+    }
+  ],
+  "embedDominance": {
+    "dominated": false,
+    "iframeSrc": null,
+    "viewportCoveragePct": null,
+    "mainHeightCoveragePct": null,
+    "screenshot": null
+  },
+  "cssCustomProperties": [],
+  "customProps": {},
+  "stats": {
+    "wordCount": 300,
+    "ctaCount": 2,
+    "internalLinkCount": 5,
+    "externalLinkCount": 0,
+    "imageCount": 0,
+    "motifs": {
+      "radii": {
+        "3px": 14,
+        "0px": 20
+      },
+      "shadows": {},
+      "gradients": {
+        "linear-gradient(135deg, rgb(230, 57, 70) 0%, rgb(69, 123, 157) 100%)": 2
+      }
+    }
+  },
+  "_signals": {
+    "filteredInterstitials": 0,
+    "distinctHeadings": 0,
+    "mainTextLen": 2000,
+    "realImageCount": 0,
+    "trackingOnlyMedia": false,
+    "spaShellSuspect": false,
+    "emptyMain": false,
+    "brokenImages": 0,
+    "subResourceBlock": false,
+    "overlayCoverPct": 0,
+    "captureQuality": "ok",
+    "screenshotMode": "fullPage",
+    "docHeight": 3000,
+    "shadowRoots": 0,
+    "inferredHeadings": 0,
+    "iconFont": []
+  },
+  "screenshot": "assets/screenshots/about.png",
+  "renderedHtml": "pages/about.html"
+}
