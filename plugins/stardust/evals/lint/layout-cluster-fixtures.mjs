@@ -176,6 +176,21 @@ merged = mergeReport(prevFile, { types: [{ type: 'article', clusters: [], tail: 
 check(merged.types.map((t) => t.type).join() === 'program,landing,article', 'a new type is appended after the previous ones');
 check(mergeReport(null, { types: [freshProgram] }).types.length === 1 && mergeReport({ types: 'garbage' }, { types: [freshProgram] }).types.length === 1, 'no / malformed previous file → the report as is');
 
+// --- the eval fixture supports task step 4 (defect: no import/vocabulary.json → importer-skeleton exit 1 'vocabulary.json missing'; the gated-cluster render could only be asserted, never run)
+const IMPORTER = join(PLUGIN, 'skills', 'migrate', 'scripts', 'importer-skeleton.mjs');
+const tmp3 = mkdtempSync(join(tmpdir(), 'layout-cluster-fx-'));
+try {
+  cpSync(FIXTURE, join(tmp3, 'stardust'), { recursive: true });
+  check(existsSync(join(FIXTURE, 'import', 'vocabulary.json')), 'the eval fixture ships stardust/import/vocabulary.json (task step 4 needs an emitter map)');
+  const s4 = run(['--slug', 'insurance__life', '--root', tmp3], { script: IMPORTER });
+  const metaFile = join(tmp3, 'stardust', 'migrated', 'insurance', 'life', '_meta.json');
+  const meta = existsSync(metaFile) ? JSON.parse(readFileSync(metaFile, 'utf8')) : null;
+  check(s4.status === 0 && meta?.fidelityTier === 'sibling' && meta.renderBranch === "A'" && meta.audit?.import?.unmapped?.length === 0 && meta.audit.import.flattened.length === 0, `task step 4 is executable over the fixture: importer-skeleton --slug insurance__life exits 0 with a sibling-tier sidecar (unmapped [], flattened []), got ${s4.status}\n${s4.out}`);
+  rmSync(join(tmp3, 'stardust', 'import'), { recursive: true, force: true });
+  const s4b = run(['--slug', 'insurance__life', '--root', tmp3], { script: IMPORTER });
+  check(s4b.status === 1 && /vocabulary\.json missing/.test(s4b.out), `without the map the skeleton stops at exit 1 (the pre-fix fixture state), got ${s4b.status}`);
+} finally { rmSync(tmp3, { recursive: true, force: true }); }
+
 // --- browser half: when playwright resolves from the repo, or STARDUST_GATE_DEPS names a node_modules with it
 // (the scripts dir is copied beside a node_modules symlink — the same resolve-or-symlink pattern as variant-census-fixtures.mjs)
 let pw = null; try { await import('playwright'); pw = 'repo'; } catch { /* not at the repo root */ }
