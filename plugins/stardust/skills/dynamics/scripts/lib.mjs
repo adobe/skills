@@ -35,13 +35,11 @@ export function provenance(script, extra = {}) {
 /* ---------------------------------------------------------- playwright --- */
 export async function loadPlaywright() {
   const normalize = (m) => (m.chromium ? m : (m.default?.chromium ? m.default : null));
-  try {
-    const req = createRequire(join(process.cwd(), 'package.json'));
-    const mod = normalize(await import(pathToFileURL(req.resolve('playwright')).href));
-    if (mod) return mod;
-  } catch { /* fall through */ }
+  for (const base of [join(process.cwd(), 'package.json'), join(process.cwd(), 'stardust', 'package.json')]) { // cwd, then stardust/node_modules (preflight-runtime.mjs)
+    try { const mod = normalize(await import(pathToFileURL(createRequire(base).resolve('playwright')).href)); if (mod) return mod; } catch { /* next link */ }
+  }
   try { const mod = normalize(await import('playwright')); if (mod) return mod; } catch { /* fall through */ }
-  throw new Error('playwright not importable from the project (npm i -D playwright --no-save) — the dynamics instruments need a browser.');
+  throw new Error('playwright not importable — run node skills/stardust/scripts/preflight-runtime.mjs (master § Setup step 9); the dynamics instruments need a browser.');
 }
 
 /* -------------------------------------------------------------- auth ---- */

@@ -1,0 +1,2 @@
+# fixture stubs: the repo-root node_modules/ rule must not hide them
+!node_modules/

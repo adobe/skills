@@ -52,6 +52,9 @@ One JSON object per line (JSONL — no wrapping array, no pretty-print):
   harness-specific progress mechanisms (no `emit_milestone`, no
   session APIs). `stardust/status.jsonl` is the only progress
   contract; anything that wants milestones tails this file.
+- **One reader.** `node skills/stardust/scripts/status.mjs` renders the
+  `Last phase:` block and the `Blocked on owner:` lines from this file
+  (`state-machine.md` § State report) — read-only, never a writer.
 
 ## Phase close
 
@@ -90,7 +93,14 @@ write large files in ≤ 2 chunks and cap tool output (`| tail`,
 (the harness posts a task notification when it exits);
 `promptCacheTtl: "1h"` in settings.json stretches the window to an hour
 at 1.6× write price — an owner setting, worth it for any multi-hour
-session.
+session. `cleanupPeriodDays` above the run's expected span keeps the
+transcripts the usage ledger reads — an owner setting.
+A browser slot wait is the same kind of wait: the holder prints one line
+every 30 s and appends `waiting-slot` to the agent's progress log
+(`fan-out.md` § Machine budget). Usage per phase is a file, not a
+recollection: `node skills/stardust/scripts/token-ledger.mjs` renders
+`stardust/usage.md` from the harness transcripts when they exist (Claude
+Code: `~/.claude/projects/<project dir>/`), else prints `unknown`.
 
 Unlike other stardust artifacts, `status.jsonl` carries no provenance
 block — each line is self-describing via `ts` + `skill`, and the

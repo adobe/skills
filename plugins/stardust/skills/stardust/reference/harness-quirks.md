@@ -13,7 +13,7 @@ are in the CHANGELOG, not here.
 - macOS ships bash 3.2: no `declare -A`, no `mapfile`, no `read -a`, no GNU `cat -A` / `sed -i` without a suffix argument.
 - Heredocs that carry control characters or very long lines are rejected by the tool layer: write the file with the editor tool or a small patch script.
 - After patching CSS or JS by script, check brace balance and never append `//` to an existing line (it comments out the rest of a minified line).
-- Ad-hoc Playwright / pngjs probes and their output live under `stardust/.work/<skill>/probes/`, never in `/tmp` (probe files in `/tmp` are lost to the next session and to the state report).
+- Ad-hoc Playwright / pngjs probes and their output live under `stardust/.work/<skill>/probes/` (created by `preflight-runtime.mjs`; they resolve `stardust/node_modules` — `runtime-preflight.md`), never in `/tmp` (probe files in `/tmp` are lost to the next session and to the state report).
 
 ## Runner
 

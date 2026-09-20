@@ -369,6 +369,11 @@ re-render the proposed file from the existing brief.
 
 ## State report (rendered by `$stardust` with no args)
 
+Rendered by `node skills/stardust/scripts/status.mjs` (read-only: no
+lock, no ledger line, no `state.json` touch; `--json`, `--markdown` for
+the hand-off shape, `--no-probe`, opt-in `--reconcile`). The model adds
+the reasoning, never the numbers. Shape:
+
 ```
 stardust state
 ==============
@@ -381,6 +386,9 @@ Direction:   "make it more expressive for a young audience"
              (resolved 2026-04-25, see stardust/direction.md)
 Flow:        redesign (chosen 2026-04-25 from the user's phrase)
 
+Last phase:  migrate render end 2026-04-25T14:09Z
+             next: $stardust deploy home
+
 Pages
 -----
   ✓ migrated   index, about, pricing
@@ -391,6 +399,14 @@ Pages
 
 Stale: 2 pages (index, about) — direction changed since they were migrated.
        Re-run with `$stardust migrate --all` to update.
+
+Gates
+-----
+  home                 1440  PASS       6.9 %   published-origin a1b2c3d
+  product              —     no verdict —       (never gated)
+
+Delivery:    coverage deployed 12 · pending 3 · ledger previewed 12 · admin not reconciled
+Probes:      /  200, /about 200 · tokens 3/3
 
 Recommended next: $stardust prototype features
                   (5 directed pages waiting; closest to migration)
@@ -406,7 +422,22 @@ with the line it prints, before `Site:` — `Active run: <skill> in
 session <sessionId> since <startedAt> — read-only unless you take over`
 — and the recommended next step is omitted. When the working directory
 is not the project root, the line `Project root: <path> (not the
-working directory)` follows it.
+working directory)` follows it. `Preflight: <ok|partial|skipped>` copies
+`stardust/.work/env.json` `preflight`, a `partial` followed by its
+`missing` lines (`runtime-preflight.md` § Files); omitted when the file
+is absent. `Last phase:` is the last `status.jsonl`
+line — `running since` when a `start` has no `end`, `next` verbatim, and
+a `warning:` when an `end` / `blocked` line lacks `next`. `Gates:` copies
+PASS / FAIL / `no verdict` per archetype × breakpoint from
+`progress.json` with `at` / `regime` / `build` as recorded — never
+recomputed against a bar. `Delivery:` counts coverage rows and ledger
+rows by status; `--reconcile` adds the admin's previewed / published
+counts and flags drift (published while the `publish` row is preview) as
+a warning — the script never publishes. `Probes:` N preview / live HEAD
+codes and `tokens k/3` via `served-check.mjs`, else `not probed`.
+`Usage:` prints the totals of `stardust/usage.json` when
+`skills/stardust/scripts/token-ledger.mjs` has written it — copied, never
+recomputed or estimated; omitted when the file is absent.
 
 The `Repo:` block is rendered only when the project root is itself the git
 work-tree root (`git rev-parse --show-toplevel` resolves to the project

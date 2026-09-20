@@ -675,10 +675,9 @@ export function globalNodeModulesCandidates({ env = process.env, execPath = proc
 export async function loadChromium({ roots = globalNodeModulesCandidates() } = {}) {
   const normalize = (mod) => (mod.chromium ? mod : (mod.default?.chromium ? mod.default : null));
   const fromRoot = async (dir) => normalize(await import(pathToFileURL(createRequire(path.join(dir, 'noop.js')).resolve('playwright')).href));
-  try {
-    const mod = await fromRoot(process.cwd());
-    if (mod) return mod.chromium;
-  } catch { /* fall through */ }
+  for (const dir of [process.cwd(), path.join(process.cwd(), 'stardust')]) { // cwd, then stardust/node_modules (preflight-runtime.mjs)
+    try { const mod = await fromRoot(dir); if (mod) return mod.chromium; } catch { /* next link */ }
+  }
   try {
     const mod = normalize(await import('playwright'));
     if (mod) return mod.chromium;
@@ -689,7 +688,7 @@ export async function loadChromium({ roots = globalNodeModulesCandidates() } = {
       if (mod) return mod.chromium;
     } catch { /* next candidate */ }
   }
-  throw new Error('playwright not found: run from a project that has it installed (npm i -D playwright)');
+  throw new Error('playwright not found — run node skills/stardust/scripts/preflight-runtime.mjs (master § Setup step 9)');
 }
 
 // One launch to learn whether a browser BINARY exists behind a resolvable playwright

@@ -16,7 +16,7 @@ run's own instruments alike. Naming the class up front costs one line.
 | class | shapes | who resolves |
 |---|---|---|
 | **privileged actions** | repo create · Code Sync install · merge or push to the serving branch · `POST …/live/` publish · repo visibility change (`gh repo edit --visibility`) · site-auth config writes (`config/<org>/sites/<site>/secrets.json`, `access/site.json` — `skills/deploy/reference/site-lockdown.md`) · worker or edge deploys · pushes to a second site's repo · writes to shared multi-site tooling | the owner — surfaced once by the `Blocked on owner:` line (master § Hands-off mode); the run continues on unblocked work |
-| **instruments** | `node <plugin>/skills/<skill>/scripts/<x>.mjs …` and the project copy `node stardust/scripts/<skill>/<x>.mjs …` · `stardust/scripts/replica/gate.sh` · `python3 -m http.server` · `aem up` · `curl` to `admin.da.live` and `admin.hlx.page` · `gh api` reads | pre-approvable; when denied anyway, re-issue once as a bare command (below), then continue |
+| **instruments** | `node <plugin>/skills/<skill>/scripts/<x>.mjs …` (and, for skills not yet on the resolution chain, the legacy copy `node stardust/scripts/<skill>/<x>.mjs …`) · `stardust/scripts/replica/gate.sh` · `python3 -m http.server` · `aem up` · `curl` to `admin.da.live` and `admin.hlx.page` · `gh api` reads | pre-approvable; when denied anyway, re-issue once as a bare command (below), then continue |
 
 Scripts that import the shared helper (rollout `verify.mjs`, qa `qa.mjs`)
 also need `skills/stardust/scripts/class-report.mjs` copied to

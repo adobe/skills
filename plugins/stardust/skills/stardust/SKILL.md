@@ -15,8 +15,8 @@ metadata:
 |---|---|---|---|
 | Setup 1 | read the skill's `metadata.impeccable` level; unless `none`: `node skills/stardust/scripts/impeccable-version-check.mjs --probe [--local <dir>]` (advisory, read-only) | `required` stops if missing; `optional` degrades; `none` skips 1 and 4 | `state.json.impeccable` |
 | Setup 2–4 | `PRODUCT.md` / `DESIGN.md` presence; read `stardust/state.json`; parse impeccable's `command-metadata.json` | — | — |
-| Setup 5–8 | status ledger; project hygiene (`stardust/.gitignore`, root `.gitignore`, `.hlxignore`, `git check-ignore`); `node skills/stardust/scripts/run-lock.mjs check` + project root; credentials lookup on migration-bound asks | `state.json` not ignored; `check` exit 3 (held) → read-only; no 401 blocker before the lookup ran | `stardust/status.jsonl`, `stardust/.gitignore`, `stardust/.work/run.lock`, `state.json.credentials` |
-| Routing | no arg / resume → state report; sub-skill keyword → delegate; migration ask → § Two migration flows; freeform → intent reasoning | plan shown before any command (hands-off: recorded instead) | `state.json` flow keys |
+| Setup 5–10 | status ledger; project hygiene (`stardust/.gitignore`, root `.gitignore`, `.hlxignore`, `git check-ignore`); `node skills/stardust/scripts/run-lock.mjs check` + project root; credentials lookup on migration-bound asks; origin probe (`preflight-transports.mjs`); `preflight-runtime.mjs` | `state.json` not ignored; `check` exit 3 (held) → read-only; no 401 blocker before the lookup ran; preflight exit 1 blocks browser instruments only | `stardust/status.jsonl`, `stardust/.gitignore`, `stardust/.work/run.lock`, `state.json.credentials`, `stardust/package.json`, `stardust/.work/env.json` |
+| Routing | no arg / resume → state report (`node skills/stardust/scripts/status.mjs`); sub-skill keyword → delegate; migration ask → § Two migration flows; freeform → intent reasoning | plan shown before any command (hands-off: recorded instead) | `state.json` flow keys |
 | Freeform intent | § The "open and reasoned" principle, steps 1–6 | plan confirmation | `stardust/direction.md` |
 | Hands-off | activation block (wave plan + stop point, commit policy); gate auto-resolution + decision defaults; transport preflight; background waits; turn-end contract (chain after PASS); scoped per-phase commits | quality gates unchanged; hard blockers and owner-only rows still stop; denied privileged action → ask once, `Blocked on owner:`; turn ends only on completion, blocker, > 45-min wait | `state.json.handsOff` / `approvedChain`, `direction.md` activation line, `status.jsonl` `blocked` (+ `owner`) |
 | Every write | provenance block; journal entry; validate-and-fix loop on human-facing HTML | clean validation pass | `stardust/journal.md`, `stardust/validation/<artifact>/<viewport>.png` |
@@ -29,10 +29,11 @@ metadata:
 | Setup 6, Artifacts | `reference/artifact-map.md` § Versioning · § Provenance shapes |
 | Any shell loop, runner, delivery or probe | `reference/harness-quirks.md` (whole card) |
 | Setup 1, 8 | `reference/harness-permissions.md` § Two classes · `reference/state-machine.md` § Impeccable key · § Credentials key |
+| Setup 10, every delegated brief | `reference/runtime-preflight.md` § Contract · § Files |
 | Routing (migration) | `reference/state-machine.md` § Flow keys |
 | Freeform intent | `reference/intent-reasoning.md` § Procedure · `reference/intent-dimensions.md` § Reading a phrase · `reference/impeccable-command-map.md` § Common sequences |
 | Hands-off | `reference/state-machine.md` § Hands-off keys · `reference/decisions.md` § Default rows · `reference/harness-permissions.md` § Privileged-action preflight · `reference/run-status.md` § Long-running steps |
-| Hands-off (delegating) | `reference/fan-out.md` § Scope and type · § Worker contract · § Coordinator contract |
+| Hands-off (delegating) | `reference/fan-out.md` § Scope and type · § Worker contract · § Coordinator contract · § Machine budget |
 | Any image read, batch instrument, phase boundary | `reference/context-hygiene.md` § Image reads · § Runner reports and session hand-off |
 | Per-page state | `reference/state-machine.md` § Page lifecycle states · § Stale flagging (content-aware) |
 | Journal | `reference/journal-format.md` § Entry format · § Reading the journal at session start |
@@ -60,9 +61,8 @@ delegate the actual design work to **impeccable**.
    stardust/state.json` is added only by a phase that writes `state.json`
    anyway (`reference/state-machine.md` § Impeccable key); a state report,
    resume, `qa` or `audit` never write it. Sub-skills read
-   `state.json#impeccable.skillDir`. Under a
-   permission layer read `reference/harness-permissions.md` § Two classes
-   first. If absent, `required` skills stop and tell the user:
+   `state.json#impeccable.skillDir`. If absent, `required` skills stop
+   and tell the user:
    > Stardust requires impeccable. Install it from
    > <https://github.com/pbakaus/impeccable> and re-run the command.
 
@@ -85,8 +85,7 @@ delegate the actual design work to **impeccable**.
    `.hlxignore` if present lists `stardust/`, and `git check-ignore -q
    stardust/state.json` must fail — if it passes, stop and name the rule.
    Offer (never write) LFS above 50 MB of tracked binaries
-   (`reference/artifact-map.md` § Versioning). Every shell loop, runner,
-   delivery step and probe follows `reference/harness-quirks.md`.
+   (`reference/artifact-map.md` § Versioning).
 7. **Run lock and project root.** Run
    `node skills/stardust/scripts/run-lock.mjs check` (`--session <id>`
    when you hold one; `reference/state-machine.md` § Concurrency →
@@ -105,16 +104,20 @@ delegate the actual design work to **impeccable**.
 9. **Origin** (step 8's asks) — `node skills/stardust/scripts/preflight-transports.mjs
    --org <org> --repo <repo>`; `gh-repo absent` or `admin-read` 404 and no
    `state.json.site.eds` → `../deploy/reference/site-bootstrap.md` now — one
-   question with the `target` default (hands-off: default-applied).
+   question, `target` default (hands-off: applied).
+10. **Runtime preflight** — `node skills/stardust/scripts/preflight-runtime.mjs`
+    (`--no-install` when read-only): one dependency dir under `stardust/`,
+    Chromium, probes dir, `stardust/.work/env.json`. Exit 1 blocks browser
+    instruments only; hands-off installs unasked (`reference/runtime-preflight.md` § Contract).
 
 ## Routing
 
 Route on the user's input:
 
-- **No argument.** Render the **state report** of
-  `reference/state-machine.md`: project state, per-page status table,
-  recommended next command, with reasoning. Write nothing. The same
-  for any **resume** (a new session on a project with
+- **No argument.** Render the **state report**: `node
+  skills/stardust/scripts/status.mjs` (read-only; `reference/state-machine.md`
+  § State report), then the reasoned recommendation. Write
+  nothing. Same for any **resume** (a new session on a project with
   `stardust/state.json`, "continue", "where are we", a memory-driven
   resume): state report first (it names the flow and the last gate
   numbers), then execute the last `status.jsonl` `next` **through its
@@ -204,9 +207,8 @@ flow → refuse) and the explicit `--switch-flow` (marks the old flow's
 pages stale) are defined in `reference/state-machine.md` § Flow keys.
 
 **Planning aids belong to one flow.** Redesign: the `prepare-migration`
-plan and gates, the canon, module catalogs, "learn the template, then
-compile" plans. Keep-design: `replica`'s inconsistency register and
-`progress.json`, the archetype gate ledgers, `rollout` waves. A redesign
+plan and gates, the canon, module catalogs. Keep-design: `replica`'s
+inconsistency register, `progress.json`, `rollout` waves. A redesign
 plan inside a replica run — or the reverse — is a routing defect: refuse
 it, or flag it in `direction.md` and hand back here. The first response
 to a migration question states the chosen flow and that `replica` needs
@@ -226,8 +228,8 @@ cap as **wave 1 of a written wave plan** with its stop point; "commits
 land at each phase end without asking — hands-off overrides an
 ask-before-commit preference for this run"; the open owner-only
 decisions (`reference/decisions.md`). The mode removes **waiting**, not
-**validation**: every quality gate runs unchanged — hands-off changes *who answers*, not *what
-must pass*. Every interactive gate auto-resolves:
+**validation**: hands-off changes *who answers*, not *what must pass*.
+Every interactive gate auto-resolves:
 
 | gate | hands-off resolution |
 |---|---|
@@ -254,9 +256,8 @@ Defaults (override only when the invocation says otherwise):
   docs. The coordinator reads a skill's operator card, never
   its body, and before reading any file over 20 KB lists the headings
   and reads only the section the card names. Stall-prone instruments run
-  under their shipped deadline (replica `gate.sh`, `pixel-compare
-  --timeout`), never an agent-authored `sleep N; kill` loop. Worker contract:
-  `reference/fan-out.md` § Worker contract.
+  under their shipped deadline, never an agent-authored `sleep N; kill` loop.
+  Worker contract: `reference/fan-out.md` § Worker contract.
 - **Image reads.** Numbers first, then `review-<label>.png` bands or a
   `sheet-NN.png` sheet (legend `.json`); never a stitched capture whole —
   `reference/context-hygiene.md` § Image reads.
@@ -264,8 +265,8 @@ Defaults (override only when the invocation says otherwise):
   workers by default, the coordinator dispatches and merges —
   `reference/fan-out.md` § Scope and type of delegated agents.
 - **Wait discipline: never park the conversation past the prompt-cache
-  window.** Anything over ~2 minutes (gate round, crawl, batch push,
-  agent) runs in the background and writes a progress file
+  window.** Anything over ~2 minutes runs in the background and writes a
+  progress file
   (`<driver>.progress.json`, `skills/stardust/scripts/progress.mjs read
   <file>`; it ends with one `SUMMARY` line —
   `../deploy/da-deploy-protocol.md` § Delivery pipeline) — never under one
@@ -353,9 +354,10 @@ the current (extracted) state lives under `stardust/current/`. Full
 layout: `reference/artifact-map.md`.
 
 **Write boundary.** Stardust writes to `stardust/`, the impeccable target
-files at the project root, and the EDS project (only via `deploy`,
-`rollout`, `dynamics`). Run-only files (logs, pre-renders, script
-copies, drafts, probes) go under `stardust/.work/<skill>/`; the
+files at the project root, the EDS project (only via `deploy`,
+`rollout`, `dynamics`) and the machine-wide `~/.stardust/locks/`
+(`reference/fan-out.md` § Machine budget). Run-only files (logs,
+pre-renders, drafts, probes) go under `stardust/.work/<skill>/`; the
 root `scripts/` and `qa/` are not stardust's. Anything written elsewhere
 is a bug.
 
@@ -379,7 +381,7 @@ per `reference/journal-format.md`**: append an entry before ending any
 turn that made a non-trivial write, its `Next:` being the phase's
 `status.jsonl` `next` command, a phase-close entry opening with the gate
 table (`reference/handoff-report.md` § Gate table first); append-only,
-project-scoped, at the level of `PRODUCT.md`; its last 3–5 entries are
+project-scoped; its last 3–5 entries are
 read with `state.json` at the start of every session.
 
 **Named deviations.** Any agent-authored crawler, compiler, importer,
@@ -387,8 +389,7 @@ wave driver, gate **or measurement/probe script** that replaces a skill
 phase is recorded in `stardust/direction.md` as a **named deviation** —
 what it replaces, why the shipped instrument did not serve, where the
 replacement lives — and noted in the journal. Before writing one, list
-the shipped instruments (`ls skills/*/scripts`, or the project copy under
-`stardust/scripts/<skill>/`) and run it; write your own only
+the shipped instruments (`ls skills/*/scripts`) and run it; write your own only
 when none exists, and ledger it here as a plugin gap. An unrecorded
 parallel pipeline is a defect — its fidelity numbers are never comparable
 to the gate's.
@@ -414,9 +415,8 @@ verifies *feature* correctness.
 4. Save the final clean-pass screenshots to
    `stardust/validation/<artifact>/<viewport>.png`.
 
-Per-sub-skill specifics: `extract/reference/playwright-recipe.md`,
-`prototype/reference/motion-validation.md`, `prototype/SKILL.md` Phases
-2.5–2.8.
+Per-sub-skill specifics: the card's Validation row and
+`prototype/SKILL.md` Phases 2.5–2.8.
 
 ## What stardust never does
 
@@ -441,22 +441,22 @@ Per-sub-skill specifics: `extract/reference/playwright-recipe.md`,
 - `reference/token-contract.md` — the `:root` custom-property contract every prototype and migrated page exposes.
 - `reference/data-attributes.md` — the structural `data-*` vocabulary on sections.
 - `reference/journal-format.md` — `stardust/journal.md` entry format; the append-only narrative layer.
-- `reference/run-status.md` — the `stardust/status.jsonl` contract; `next`, the phase-close block, long-running steps.
+- `reference/run-status.md` — the `status.jsonl` contract; `next`, the phase-close block, long-running steps.
 - `reference/fan-out.md` — the delegated-agent protocol: progress files, worker and coordinator contracts.
 - `reference/harness-quirks.md` — shell, runner, delivery, path, served-asset, local-QA and port rules.
-- `reference/context-hygiene.md` — what enters the conversation: image-read budget, class reports, ranged re-reads, hand-off.
+- `reference/context-hygiene.md` — what enters the conversation: image budget, class reports, hand-off.
 - `reference/learnings.md` — the per-run learnings ledger rollout writes and maintainers harvest.
-- `reference/decisions.md` — the plan-time decision register: default and owner-only rows, batched at the plan gate.
-- `reference/handoff-report.md` — the phase-close hand-off shape: gate table first, reporting KPI, before/after evidence.
-- `reference/harness-permissions.md` — the two command classes a permission layer sees, the Claude Code pre-approval generator, capability probes.
+- `reference/decisions.md` — the plan-time decision register: default and owner-only rows, plan-gate batching.
+- `reference/handoff-report.md` — the phase-close hand-off shape: gate table first, KPI, evidence.
+- `reference/harness-permissions.md` — the two command classes, the Claude Code pre-approval generator, capability probes.
 
 ### Cinematic-feature references (cross-cutting)
 
 Owned by `prototype/`; cited by `direct` and `uplift` (register
 choice) and `migrate` (motion assets):
 
-- `../prototype/reference/motion-registers.md` — the five motion registers and the heuristic mapping PRODUCT.md personality traits to one.
-- `../prototype/reference/motion-stack.md` — technology choice (Lenis + CSS keyframes + rAF + IntersectionObserver) and bundle policy.
+- `../prototype/reference/motion-registers.md` — the five motion registers and the trait → register heuristic.
+- `../prototype/reference/motion-stack.md` — technology choice and bundle policy.
 - `../prototype/reference/motion-attributes.md` — the `data-*` vocabulary the motion runtime consumes.
 - `../prototype/reference/motion-runtime.md` — the canonical inline runtime of every cinematic prototype.
 - `../prototype/reference/motion-validation.md` § Pass 6 — cinematic-mode validation gates.
@@ -465,5 +465,5 @@ choice) and `migrate` (motion assets):
 
 Owned by `uplift/`; cited when delegating `$stardust uplift <URL>`:
 
-- `../uplift/SKILL.md` — one-shot presales orchestrator: extract → 3-variant direction → prototype × 3 → summarize.
-- `../uplift/reference/what-if-candidates.md` — 8 worked trait-amplification candidates B and C select from in Phase 2b; § Extension rule admits evidence-shaped `derived` candidates.
+- `../uplift/SKILL.md` — one-shot presales orchestrator (extract → 3 directions → 3 prototypes → summary).
+- `../uplift/reference/what-if-candidates.md` — the trait-amplification candidates B and C select from (Phase 2b); § Extension rule for `derived` ones.

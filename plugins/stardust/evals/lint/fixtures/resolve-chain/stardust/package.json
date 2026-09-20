@@ -1,0 +1,1 @@
+{ "name": "stardust-deps", "private": true, "type": "module", "devDependencies": { "playwright": "*", "pixelmatch": "*", "pngjs": "*" } }

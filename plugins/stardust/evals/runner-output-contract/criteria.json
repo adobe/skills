@@ -40,7 +40,7 @@
     {
       "name": "read_only_inputs",
       "max_score": 5,
-      "description": "stardust/migrated/**, stardust/replica/progress.json and stardust/direction.md are byte-identical to the fixture after the run; stardust/state.json may gain only the master Setup's `credentials` pre-flight block (everything else identical). Writes land only under stardust/rollout/, stardust/.work/, plus an appended journal.md entry, status.jsonl lines, and the master Setup's own housekeeping (stardust/.gitignore, stardust/learnings.md)."
+      "description": "stardust/migrated/**, stardust/replica/progress.json and stardust/direction.md are byte-identical to the fixture after the run; stardust/state.json may gain only the master Setup's `credentials` pre-flight block (everything else identical). Writes land only under stardust/rollout/, stardust/.work/ (including Setup step 9's env.json and probes/README), plus an appended journal.md entry, status.jsonl lines, and the master Setup's own housekeeping (stardust/.gitignore, stardust/learnings.md, and — from the runtime preflight — stardust/package.json with its untracked stardust/node_modules/). The root package.json is byte-identical."
     },
     {
       "name": "journal_and_status",

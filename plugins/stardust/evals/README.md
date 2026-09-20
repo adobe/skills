@@ -93,13 +93,14 @@ v2 evals without modification.
 | `ew-editability/`            | Entry point (`deploy`)    | Experience Workspace editability contract (EW1–EW10): node-slotting not value-slotting, authored elements moved into wrappers, wrapper-descendant selectors, `block-roundtrip --ew` + probe evidence, exemptions declared, fidelity not traded. |
 | `ai-readability/`            | Entry point (`deploy`)    | AI readability (#100): presentational carousel clones, document-first index-backed listing, explicit fragment decision, no generated visible text, gate run and reported, excluded vendor-widget block decided (authored default-state copy or a recorded `exclude` allowlist entry citing its dynamics row — never a bare `--exclude-blocks`), correct checker facts (no hidden-text or chrome work for the score). |
 | `routing-migration-flow/`    | Master skill routing      | § Two migration flows enforced: keep-design phrases → `replica` without a question, plain asks → one keep-vs-redesign question, redesign phrases → redesign flow; `flow` recorded in state.json; `prepare-migration` never loaded for keep-design; `migrate` never first; no hand-built pipeline. |
-| `resume-state-report/`       | Master skill resume       | § Routing "No argument" / resume: state report first (`Flow:` line + per-archetype gate numbers from `progress.json`), journal `Next:` quoted and checked against state, replica-flow recommendation (ungated archetype → `replica <archetype>`), nothing written, next phase entered through its skill, heading-list before any skill-file read (W1 target). |
+| `resume-state-report/`       | Master skill resume       | § Routing "No argument" / resume: state report first, rendered by `status.mjs` (`Flow:` line + per-archetype gate numbers from `progress.json`, `Last phase:` + missing-`next` warning), journal `Next:` quoted and checked against state, replica-flow recommendation (ungated archetype → `replica <archetype>`), `Usage:` copied from `usage.json`, nothing written beyond Setup step 9's `.work/` record, next phase entered through its skill, heading-list before any skill-file read (W1 target). |
 | `runner-output-contract/`    | Batch reporting (`rollout` Phase E) | Runner-output contract on an offline full-site verify: ranked class table (class → count → worst example → file pointer) in the conversation, full per-page listing in `summary.json` + `summary.md` under `stardust/rollout/`, triage per class, hand-off names the summary files (rule: `context-hygiene.md` § Runner reports). |
 | `preflight-credentials/`     | Entry point (`deploy`)    | W1 pre-flight: token (present, unexpired, looked up through env → `.env` → `~/.claude/.env`), pushable code branch and scaffold are checked before any conversion work; one consolidated missing-prerequisite list with exact remediation; token value never printed; no push, no DA write, no fabricated token, no silent skip; `blocked` recorded in status.jsonl. |
 | `site-bootstrap-missing-origin/` | Entry point (`deploy`) | No EDS origin (no `fstab.yaml`, repo absent): the transport probe ran before any conversion work and reported the absent repo; `deploy/reference/site-bootstrap.md` was read before any `gh`/`curl` mutation; exactly one owner question carrying the `target` default; every remote-creating command printed before it ran; on the denial one `blocked` line whose `owner:` is the exact command, `Blocked on owner:` first in the reply, no variant retry, no fabricated preview URL, no DA `PUT`; no token value or env-file dump. |
 | `lockdown-before-handoff/` | Entry point (`rollout` Phase H) | Register row `lockdown: on` at the end of Phase G, no `DA_TOKEN`/`GH_PAT` on the runner: `deploy/scripts/lockdown.mjs` runs before any report text (never a hand-rolled `curl`/`gh repo edit`); its exit 2 is one `blocked` line whose `owner:` is the exact command, no `end` line; the hand-off ships with `Blocked on owner:` first and `site: open (blocked on owner)` as the gate table's last line; the row is never turned off; no token value, env dump or invented `SITE_TOKEN_*`; zero network. |
 | `preflight-credentials-expired/` | Entry point (`deploy`) | The instrument half of pre-flight: `da-token-check.mjs --credentials` runs before any conversion work and its verdict (exit 2, class-named refresh remedy) is the evidence; `state.json.credentials` written in the shipped shape (`da: expired`, `daSource: repo-env`, exact-match `siteTokenEnv`, `gh: skipped`); zero requests (decode proves expiry); one consolidated stop; no hand decode, no token value, no env dump. |
 | `phase-checkpoint-next-command/` | Phase close (`direct`) | Checkpoint block at phase end: completed files (all `ls`-verifiable) + a verified part + ONE verbatim next command + what a re-run would skip; journal `Next:` and `status.jsonl` `next` carry the same command; pages `extracted` → `directed` (rule: `run-status.md` § Phase close). |
+| `preflight-runtime/`         | Master Setup step 10      | Runtime preflight before any browser instrument: `preflight-runtime.mjs` installs into `stardust/node_modules` (one command), Chromium checked, `stardust/.work/env.json` written; no `npm i … --no-save` at the root, root `package.json` byte-identical, no `/tmp` probes, `lint unavailable` surfaced loudly, a denied install is a `blocked` line with the exact command — never a workaround or an invented verdict (rule: `runtime-preflight.md` § Contract). |
 
 ## Coverage map
 
@@ -143,7 +144,9 @@ each a plain ESM script under `lint/` that exits 1 with one line per finding,
 then the fixture tests under `fixtures/` (plain `node:assert` scripts that
 import a script's exported pure functions — no playwright needed), the
 `*.test.mjs` runners beside the skill scripts, and one `node --test` suite
-whose harness cases skip when Playwright is unresolvable:
+whose harness cases skip when Playwright is unresolvable. A runner a lane
+branch adds is listed here first and joins the chain when the branch
+integrates; every runner also runs standalone with `node <path>`:
 
 - `harness-neutral.mjs` — no namespaced sibling-skill references or
   Claude-only tool names outside lines marked "Claude Code".
@@ -257,6 +260,47 @@ whose harness cases skip when Playwright is unresolvable:
   `--credentials` block (exact `SITE_TOKEN_<SLUG>` match — never a prefix — state
   merge keeping other keys, GH_PAT probe ok / expired / skipped, `daTarget` unchecked /
   ok / not-visible (404, exit 2 while `da` stays ok) / denied).
+- `skills/stardust/scripts/test/preflight-runtime.test.mjs` — the runtime
+  preflight contract offline: an empty project exits 1 naming exactly the
+  three packages + chromium and writes `stardust/package.json`; a stubbed
+  `stardust/node_modules` exits 0 with the `env.json` record keys and is
+  idempotent (byte-identical except `writtenAt`); the root `package.json`
+  is never created or edited (nothing tracked under `--no-install`); a
+  declared-but-uninstalled eslint prints the `lint unavailable` line and
+  exits 1, a resolvable one exits 0; `--skip`, `--help`, unknown-flag exits.
+- `resolve-chain-smoke.mjs` — `skills/stardust/scripts/lib/resolve.mjs`, the
+  dependency / sibling-script chain (script dir → cwd → nearest
+  `stardust/package.json` → `npm root -g`): the stub `playwright` under
+  `lint/fixtures/resolve-chain/stardust/node_modules` resolves from the
+  fixture root and from a sub-directory; every link empty → exit 2 with the
+  line naming `preflight-runtime.mjs`; `siblingScript` in the plugin layout,
+  a flat copy layout and `STARDUST_SKILLS_DIR`; static: every importer of the
+  three packages goes through the helper or sits in an ALLOW list that must
+  shrink per landed skill (stale entry = finding).
+- `browser-lock-smoke.mjs` — `skills/stardust/scripts/browser-lock.mjs`, the
+  machine-wide browser semaphore (`fan-out.md` § Machine budget) against a
+  temp `--lock-dir`: two slots acquire, a third exits **124** after one
+  `waiting for a slot` line and a `waiting-slot` progress-log append (no
+  verdict, never a FAIL); dead-pid and old-mtime slot files are reaped and
+  re-used; `release` by pid and `--all --stale`; `status --json` holders +
+  orphan-browser census; `STARDUST_BROWSER_SLOTS=0` / `--no-lock` touch
+  nothing.
+- `skills/stardust/scripts/test/status.test.mjs` — the read-only state
+  renderer on the shared post-migrate fixture: 6 migrated pages, three
+  archetypes copied from `progress.json` (PASS / FAIL / `no verdict` for the
+  ungated one — never recomputed), `not probed` / `not reconciled`, the
+  missing-`next` warning, the replica-flow recommendation
+  (`gate-ledger-lint` verdict lines, never-gated first), fixture
+  byte-identical afterwards, no `run.lock`, `--markdown` gate table +
+  `report-check:` line, exit codes.
+- `skills/stardust/scripts/test/token-ledger.test.mjs` — the advisory usage
+  ledger on `lint/fixtures/token-ledger/`: windows from `status.jsonl`
+  (+ an `unwindowed` row), requests de-duplicated by `requestId` (4 main
+  from 6 lines, 1 subagent from 2) with the subagent column separate,
+  prompts / acks classified (tool results and injected reminders skipped),
+  pages and tokens/page from the `end` detail, the harness `cost-state`
+  surfaced as a session figure, `usage: unknown` + exit 0 + no write when no
+  transcript dir resolves, idempotent except timestamps, `--dry-run`.
 - `doc-size.mjs` — byte caps on `SKILL.md` and `reference/*.md`, an
   `## Operator card` heading ahead of the procedure, the always-on total and
   the per-skill delta versus the last release tag; its temporary allowlist

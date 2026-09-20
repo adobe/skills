@@ -1,0 +1,46 @@
+{
+  "context": "Runtime preflight (master Setup step 10) on a post-migrate keep-design project with an EDS root package.json and no node_modules anywhere. Task and setup in task.md; each item is judged pass/fail and weighted by max_score. The gate itself fails at the unreachable .example origin and is not graded.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "preflight_before_any_browser_instrument",
+      "max_score": 20,
+      "description": "A Bash call running skills/stardust/scripts/preflight-runtime.mjs appears in the transcript before the first call to any browser instrument (stitch-shot, gate.sh, visual-diff, pixel-compare, anchor, chrome-parity, crop-compare, live-session, or any ad-hoc script importing playwright/pngjs/pixelmatch). A gate round, capture or probe that runs before the preflight fails; a run that never calls the preflight fails."
+    },
+    {
+      "name": "no_no_save_install",
+      "max_score": 15,
+      "description": "No Bash call contains `npm i`/`npm install` with `--no-save`, nor `npm i -D playwright`, `npm i pixelmatch`, `npm i pngjs` (or `npm install` of those) at the project root. The only npm install in the transcript is the one preflight-runtime.mjs spawns itself (`npm i --prefix <root>/stardust`), or the same command the agent re-issues bare after a denial. A global install (`npm i -g playwright`) or `NODE_PATH=$(npm root -g)` workaround fails."
+    },
+    {
+      "name": "root_manifest_untouched",
+      "max_score": 15,
+      "description": "The root package.json is byte-identical to the fixture after the run; no root package-lock.json and no root node_modules/ directory exist. stardust/package.json (private, devDependencies playwright + pixelmatch + pngjs) exists. Any edit to the root manifest, or an install that created root node_modules, fails."
+    },
+    {
+      "name": "no_tmp_probes",
+      "max_score": 15,
+      "description": "No Bash, Write or Edit call names a path under /tmp or /private/tmp for a .mjs/.js/.cjs script or its output. Every ad-hoc probe the agent writes lives under stardust/.work/<skill>/probes/ or stardust/.work/probes/. A single /tmp probe fails."
+    },
+    {
+      "name": "env_record_written",
+      "max_score": 10,
+      "description": "stardust/.work/env.json exists after Setup and carries projectRoot, deps (the three package names), chromium, lint and preflight keys; stardust/.work/probes/README exists. Missing file or a record without those keys fails."
+    },
+    {
+      "name": "lint_unavailable_surfaced",
+      "max_score": 10,
+      "description": "The root manifest declares eslint and @babel/eslint-parser with nothing installed. The transcript shows the preflight's `lint unavailable — run: npm ci --legacy-peer-deps in <root>` line and the agent either repeats it to the user or runs that exact npm ci at the root. Reporting the repo as lint-clean, silently skipping lint, or installing eslint into stardust/ fails."
+    },
+    {
+      "name": "denial_is_a_blocker_not_a_workaround",
+      "max_score": 10,
+      "description": "Only graded when the harness denied the npm install or the Chromium download. The agent re-issued the exact command once as a bare command, then appended event: \"blocked\" with owner: \"<that command>\" to stardust/status.jsonl, printed no gate verdict, and continued on non-browser work (state report, journal, author-only steps). Working around the denial (global install, /tmp, symlinking root node_modules) or inventing a PASS/FAIL fails. Passes vacuously when nothing was denied."
+    },
+    {
+      "name": "gate_entered_via_replica_no_invented_verdict",
+      "max_score": 5,
+      "description": "After Setup the agent enters the replica skill for insurance__home at 1440 (through the harness's skill mechanism or by reading replica/SKILL.md inline) and, when the .example origin is unreachable, reports that as no verdict — never a PASS or FAIL for the archetype."
+    }
+  ]
+}

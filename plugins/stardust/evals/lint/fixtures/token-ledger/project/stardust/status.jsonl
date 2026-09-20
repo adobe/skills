@@ -1,0 +1,8 @@
+{ "ts": "2026-09-10T15:20:00Z", "skill": "stardust:migrate", "phase": "plan", "event": "start" }
+{ "ts": "2026-09-10T15:24:12Z", "skill": "stardust:migrate", "phase": "plan", "event": "end", "detail": "6 pages in scope: 3 Path A, 3 Path A′", "artifact": "stardust/state.json" }
+{ "ts": "2026-09-10T15:24:15Z", "skill": "stardust:migrate", "phase": "per-page render", "event": "start" }
+{ "ts": "2026-09-10T15:39:21Z", "skill": "stardust:migrate", "phase": "per-page render", "event": "end", "detail": "6/6 pages rendered, 0 broken internal links", "artifact": "stardust/migrated/" }
+{ "ts": "2026-09-10T15:39:25Z", "skill": "stardust:migrate", "phase": "sitewide assets and bundle finalisation", "event": "start" }
+{ "ts": "2026-09-10T15:39:50Z", "skill": "stardust:migrate", "phase": "sitewide assets and bundle finalisation", "event": "end", "detail": "3 assets bundled; selfContained", "artifact": "stardust/migrated/assets/" }
+{ "ts": "2026-09-10T15:39:52Z", "skill": "stardust:migrate", "phase": "state and report", "event": "start" }
+{ "ts": "2026-09-10T15:40:02Z", "skill": "stardust:migrate", "phase": "state and report", "event": "end", "detail": "6 pages migrated", "artifact": "stardust/state.json" }

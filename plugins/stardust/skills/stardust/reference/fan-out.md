@@ -10,10 +10,11 @@ worker side and what the coordinator does when a worker dies.
 
 ## When to read what
 
-- § Worker contract — paste its five rules into every brief (by pointer: "follow `fan-out.md` § Worker contract"); read before starting work as a delegated agent.
+- § Worker contract — paste its six rules into every brief (by pointer: "follow `fan-out.md` § Worker contract"); read before starting work as a delegated agent.
 - § Coordinator contract — before dispatching, and on every `failed` / `stalled` / lost-transcript notification.
 - § Progress files — the path convention both sides write and read.
 - § Scope and type of delegated agents — when deciding how many agents, how much each owns and whether it inherits the conversation.
+- § Machine budget — before dispatching browser-launching agents and when a gate round exits 124 on a slot wait.
 
 ## Progress files
 
@@ -34,6 +35,10 @@ worker side and what the coordinator does when a worker dies.
 
 A delegated agent, in this order:
 
+0. **Runtime preflight first.** Run
+   `node skills/stardust/scripts/preflight-runtime.mjs --no-install`; on
+   exit 1 stop with its line (`runtime-preflight.md` § Contract) — never
+   `npm i … --no-save`, never a probe in `/tmp`.
 1. **Skeleton first.** Write the primary artefact as a skeleton before
    doing any work on it — the SPEC, ledger, report or page list with
    its headings and empty rows — then append or fill in. A transcript
@@ -82,6 +87,42 @@ A delegated agent, in this order:
   append to a shared file.
 - **Record deaths.** Every failure, stall, respawn and finisher is one
   line in the journal entry for the phase, with the slug.
+
+## Machine budget
+
+One machine runs a bounded number of browsers, whatever the project
+count: `skills/stardust/scripts/browser-lock.mjs` holds one slot file per
+live browser under `~/.stardust/locks/browser/` (the second permitted
+write root, master § Artifacts), `STARDUST_BROWSER_SLOTS` slots (default
+2; an owner setting per machine, never written to `state.json`).
+
+- **Dispatch ≤ slots.** Never launch more concurrent browser-launching
+  agents than there are slots; `browser-lock.mjs status` is the census
+  (holders + orphan browser processes) — run it before a wave, never a
+  raw Chromium process count.
+- **Acquire before the first navigation.** A shell driver wraps the
+  instrument — `browser-lock.mjs acquire --script <name>` before, `release`
+  after, `refresh` between steps of a round longer than the TTL; an
+  in-process holder calls the `acquire()` API around its launch (kept
+  fresh until `release()`). Each launch site (live-session `launchTier`,
+  `qa` `browse`, gate rounds via `stitch-shot`) adopts it in its own
+  skill's change. `crawl` keeps its per-host budget and takes no slot;
+  deploy's local probes are listed by the census, not budgeted.
+- **A slot wait is a progress-file wait.** The holder prints one line
+  every 30 s and appends `waiting-slot` to `$STARDUST_PROGRESS_LOG`
+  (§ Progress files); after `STARDUST_BROWSER_WAIT` (600 s) it exits
+  **124** — no verdict, re-queue the round (§ Coordinator contract:
+  resume once, then finisher), never a FAIL and never an iteration.
+- **Escape hatch.** `STARDUST_BROWSER_SLOTS=0` disables the lock, any `N`
+  raises it, `--no-lock` per invocation, `release --all --stale` for a
+  wedged directory. Hands-off never raises the budget or bypasses the
+  lock; a machine saturated by a *foreign* holder past ~45 min is a
+  `blocked` line with `owner: "node skills/stardust/scripts/browser-lock.mjs status"`.
+- **Every agent closes its browser and server on exit**; `browser-lock.mjs
+  reap` kills parentless `chrome-headless-shell` processes older than
+  `--min` (default 15) — the coordinator's sweep between waves; `gate.sh`
+  keeps its own `GATE_REAP_MIN` reaper for replica instruments. Never a
+  dev server by cwd guess.
 
 ## Scope and type of delegated agents
 
