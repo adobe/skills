@@ -242,6 +242,21 @@ such processes from earlier migrations were still alive on the test machine, som
   context (about $2.50 apiece at the cache-write rate); an earlier run re-wrote 513k and 694k the
   same way ($6–9 each). No compaction was involved; the sessions outran the cache lifetime inside
   one generation.
+- **Port probe without lsof** (replica, deploy and diff cards; gate.sh): the "is the port
+  yours" check is `curl -sI localhost:<port>/ | head -1` (a 200/404 line = something serves
+  the port), then a HEAD of your own file to reuse that server, and a start only when nothing
+  answered; `lsof` is an optional second step behind `command -v lsof`. A recorded session ran
+  on an image without lsof: `lsof … || echo free` printed "free" beside a live static server,
+  a second server on the same port died at once and the round chased 404s. gate.sh's exit-4
+  diagnostic guards its lsof call the same way and names the curl probe when lsof is absent;
+  exit codes unchanged.
+- **source-fidelity-gate.md pass bar item 5**: the header/footer `crop-compare.mjs` invocation
+  is complete on the card — both bands per breakpoint with `--y`, `--height`, `--y-b`,
+  `--threshold 2` and `--out` under `$GATE` (`build.png` named beside `proto.png`, since gate.sh
+  writes the former) — and each band number names the shipped output it comes from: the header
+  rect in `chrome-live.json`, the `footer` line of `anchor.mjs`, the capture heights on
+  pixel-compare's `A <w>x<h>  B <w>x<h>` line. A recorded run re-read `crop-compare.mjs --help`
+  four times across sessions to recover the flags.
 
 ## 0.22.0 — stardust owns `stardust/`: write boundary and versioning policy
 

@@ -105,7 +105,9 @@ print the part that matters, capped, and say what they left out:
   one image a round needs. Recorded: 21 image reads in one run, most of
   them full pages or triplets, for facts the verdict lines already held.
   Step 10's eyeball of the DEPLOYED page is the published `gate.sh --full`
-  round plus header/footer `crop-compare.mjs` bands, not a full-page image.
+  round plus header/footer `crop-compare.mjs` bands (the two-band invocation
+  and where each band number comes from: gate doc § Pass bar, item 5), not a
+  full-page image.
   The one exception is the brand-gestalt read at extract, which uses the
   shipped `thumb.mjs` (`skills/extract/scripts/thumb.mjs`, box-filtered to
   480 px) — one image per archetype, never the raw capture.
@@ -261,8 +263,16 @@ breakpoint (default 1440 AND 360), live URL as source vs served prototype:
 
 ```bash
 PROTO="http://localhost:8791/<slug>-proposed.html"   # python3 -m http.server from the prototypes dir
-# verify the port is YOURS (lsof -nP -iTCP:8791 -sTCP:LISTEN) — a stale foreign
-# server silently poisons the gate (gate.sh asserts a page marker, exit 4)
+# ONE server, ONE port — probe before starting one (curl is always present, lsof is not):
+curl -sI localhost:8791/ | head -1                       # 200/404 = something serves the port; no line = free
+curl -sI localhost:8791/<slug>-proposed.html | head -1   # 200 = it serves YOUR dir: reuse it
+command -v lsof >/dev/null && lsof -nP -iTCP:8791 -sTCP:LISTEN   # optional: names the pid
+# Nothing answered → start yours. Answers but not your file → a foreign server: never
+# kill a listener you did not start; take a per-project port and probe again.
+# `lsof … || echo free` is not a probe — without lsof it prints "free" beside a live
+# listener (recorded: a second server on the same port died at once and the round
+# chased 404s). A stale foreign server silently poisons the gate (gate.sh asserts a
+# page marker, exit 4).
 LIVE="https://<site>/<path>"
 
 # One command per round — gate.sh. The FIRST round of a breakpoint and the

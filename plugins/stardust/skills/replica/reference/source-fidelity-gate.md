@@ -31,14 +31,22 @@ iteration budget. Gate 1440 first (the geometry lifted from desktop CSS),
 then 360.
 
 ```bash
-# Serve the prototype from its own dir so relative assets resolve. Verify the
-# port is YOURS first (lsof -nP -iTCP:8791 -sTCP:LISTEN); prefer a per-project
-# port — a stale server from another stardust project on the shared suggested
-# port silently serves a foreign site into the gate (recorded twice, 2026-08).
-# On shared machines run gate.sh with --marker "<brand string>": the slug
+# Serve the prototype from its own dir so relative assets resolve. ONE server,
+# ONE port — probe before starting one (curl is always present, lsof is not):
+curl -sI localhost:8791/ | head -1                       # 200/404 = something serves the port; no line = free
+curl -sI localhost:8791/<slug>-proposed.html | head -1   # 200 = it serves YOUR dir: reuse it
+command -v lsof >/dev/null && lsof -nP -iTCP:8791 -sTCP:LISTEN   # optional: names the pid
+# Nothing answered → start yours. Answers but not your file → a foreign server:
+# never kill a listener you did not start; take a per-project port and probe
+# again. `lsof … || echo free` is not a probe — without lsof it prints "free"
+# beside a live listener (recorded: a second server on the same port died at
+# once and the round chased 404s). A stale server from another stardust
+# project on the shared suggested port silently serves a foreign site into
+# the gate (recorded twice) — gate.sh asserts a page marker, exit 4. On
+# shared machines run gate.sh with --marker "<brand string>": the slug
 # default can false-pass against another stardust project sharing the slug
 # (both serving a home-proposed.html that contains "home").
-(cd stardust/prototypes && python3 -m http.server 8791 &)
+(cd stardust/prototypes && python3 -m http.server 8791 &)   # only when nothing answered
 PROTO="http://localhost:8791/<slug>-proposed.html"
 LIVE="https://<site>/<path>"
 W=1440   # then 360
@@ -96,20 +104,38 @@ The prototype capture is re-taken every iteration.
    full-page-green pages whose chrome measured only 93–97% (lookalike
    icons, wrong micro-weights, off-by-10px nav rows all fit inside a ≤10%
    full-page bar). Run `../scripts/crop-compare.mjs` over the SAME stitched
-   captures the pixel probe used — no extra live hit:
+   captures the pixel probe used — no extra live hit — once per breakpoint
+   (`$GATE` is per width), header band then footer band:
 
    ```bash
-   node stardust/scripts/replica/crop-compare.mjs "$GATE/live.png" "$GATE/proto.png" \
-     --y 0 --height <nav-height> --out "$GATE/chrome-header-diff.png"
-   node stardust/scripts/replica/crop-compare.mjs "$GATE/live.png" "$GATE/proto.png" \
-     --y <liveDocH - footerH> --y-b <protoDocH - footerH> --height <footerH> \
-     --out "$GATE/chrome-footer-diff.png"
+   B="$GATE/proto.png"   # $GATE/build.png when gate.sh took the round's captures
+   NAV_H=<header bottom edge>  FOOTER_H=<footer height>
+   LIVE_H=<live capture height>  PROTO_H=<prototype capture height>
+   node stardust/scripts/replica/crop-compare.mjs "$GATE/live.png" "$B" \
+     --y 0 --height $NAV_H --threshold 2 --out "$GATE/chrome-header-diff.png"
+   node stardust/scripts/replica/crop-compare.mjs "$GATE/live.png" "$B" \
+     --y $((LIVE_H - FOOTER_H)) --y-b $((PROTO_H - FOOTER_H)) --height $FOOTER_H \
+     --threshold 2 --out "$GATE/chrome-footer-diff.png"
    ```
 
-   `--y-b` gives the footer crop a per-side offset so a small doc-height
-   delta doesn't contaminate it with a false full-band diff. Read the band
-   heights off the section-anchor probe (`anchor.mjs` prints the footer's
-   `[y, height]` on both sides).
+   Exit 2 = that band is over 2%. `--y-b` aligns the footer crop per side so
+   a small doc-height delta does not read as a false full-band diff. The
+   four numbers, none of them a new live hit:
+   - `NAV_H` — the live header's bottom edge, `rect.y + rect.h` (y is 0 unless
+     a strip sits above the header): `data.header.rect` in
+     `$GATE/chrome-live.json`, the live cache `gate.sh --full` and
+     `chrome-parity.mjs --live-cache` write (`json-query.mjs
+     $GATE/chrome-live.json --path data.header.rect`); no cache yet →
+     `measure.mjs "$LIVE" --selectors header --width $W` (one live hit).
+   - `FOOTER_H` — the `h` on the `y … h … footer` line `anchor.mjs` prints per
+     side (`--json` field `footer: [y, h]`; live side cached in
+     `$GATE/anchor-live.json` under `data.footer`). That line's `y` IS
+     `docH − footerH` while the footer is the last box — pass it straight to
+     `--y` / `--y-b` when you have it.
+   - `LIVE_H`, `PROTO_H` — the capture heights on pixel-compare's first verdict
+     line, `A <w>x<h>  B <w>x<h>  → compare …, height delta …px`
+     (`run-bg.mjs wait` surfaces it; stitch-shot's `stitched <file>: <w>x<h>`
+     line is the same number per side).
 
    **Styles diagnose, pixels confirm — run the computed-style parity probe
    BEFORE any pixel iteration on chrome.** `../scripts/chrome-parity.mjs`

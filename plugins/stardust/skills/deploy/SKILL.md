@@ -969,11 +969,17 @@ The retired `visual-diff` classes are covered elsewhere: stretched images by the
 
 ```bash
 # Prereq: a RENDERABLE prototype. Static → serve from its own dir so relative
-# ../assets resolve. JSX → pre-render first (#24/#27).
-( cd <prototype-dir> && python3 -m http.server 8791 & )
-# verify the port is YOURS first (lsof -nP -iTCP:8791 -sTCP:LISTEN); prefer a
-# per-project port — a stale server from another project makes the diff below
-# silently measure a foreign prototype
+# ../assets resolve. JSX → pre-render first (#24/#27). ONE server, ONE port —
+# probe before starting one (curl is always present, lsof is not):
+curl -sI localhost:8791/ | head -1                   # 200/404 = something serves the port; no line = free
+curl -sI localhost:8791/<prototype>.html | head -1   # 200 = it serves YOUR dir: reuse it
+command -v lsof >/dev/null && lsof -nP -iTCP:8791 -sTCP:LISTEN   # optional: names the pid
+( cd <prototype-dir> && python3 -m http.server 8791 & )   # only when nothing answered
+# Answers but not your file → a foreign server: never kill a listener you did not
+# start; prefer a per-project port — a stale server from another project makes the
+# diff below silently measure a foreign prototype. `lsof … || echo free` is not a
+# probe — without lsof it prints "free" beside a live listener (recorded: a second
+# server on the same port died at once and the round chased 404s).
 
 # Structural content + typography diff — ADVISORY summary. Use the DEPLOYED EDS URL
 # so blocks are decorated; a raw content .plain.html has no roles to classify.

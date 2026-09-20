@@ -131,10 +131,15 @@ if ! printf '%s' "$PAGE" | grep -qiF -- "$MARKER"; then
   echo "gate.sh: the server on that port is likely another project's (stale http.server?) — not comparing." >&2
   PORT=$(printf '%s' "$BUILD_URL" | sed -nE 's|^[a-z]+://[^:/]+:([0-9]+).*|\1|p')
   if [ -n "$PORT" ]; then
-    echo "gate.sh: port $PORT listener:" >&2
-    lsof -nP -iTCP:"$PORT" -sTCP:LISTEN >&2 || echo "gate.sh: (nothing listening on :$PORT)" >&2
+    if command -v lsof >/dev/null 2>&1; then
+      echo "gate.sh: port $PORT listener:" >&2
+      lsof -nP -iTCP:"$PORT" -sTCP:LISTEN >&2 || echo "gate.sh: (nothing listening on :$PORT)" >&2
+    else
+      # no lsof on this image (recorded): curl is the probe — a 200/404 line means something serves the port, no line means nothing listens
+      echo "gate.sh: (no lsof here — probe the port with: curl -sI localhost:$PORT/ | head -1)" >&2
+    fi
   fi
-  echo "gate.sh: kill/replace the stale server, or pass --marker <string> if the slug legitimately doesn't appear in the page." >&2
+  echo "gate.sh: move to a per-project port (never kill a listener you did not start), or pass --marker <string> if the slug legitimately doesn't appear in the page." >&2
   exit 4
 fi
 
