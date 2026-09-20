@@ -2,7 +2,8 @@
   "slug": "home",
   "type": "landing",
   "renderBranch": "A",
-  "tier": "archetype",
+  "fidelityTier": "archetype",
+  "gatesPassed": ["archetype-gate"],
   "template": null,
   "modules": [
     "hero-statement",

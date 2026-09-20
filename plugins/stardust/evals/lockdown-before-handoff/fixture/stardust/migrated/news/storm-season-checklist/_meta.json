@@ -2,7 +2,8 @@
   "slug": "news__storm-season-checklist",
   "type": "article",
   "renderBranch": "A",
-  "tier": "archetype",
+  "fidelityTier": "archetype",
+  "gatesPassed": [],
   "template": null,
   "modules": [
     "article-header",

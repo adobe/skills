@@ -11,8 +11,8 @@ hands-off.
 
 - `stardust/current/pages/{home,business}.{json,html}` — the default-language
   archetype and sibling records (`lang: "en"`, `alternates[]` with `hreflang`
-  `en`/`es` hrefs pointing at `/es/` and `/es/negocios/`); the shared tree
-  has no `current/` directory, so these are new files, not edits.
+  `en`/`es` hrefs pointing at `/es/` and `/es/negocios/`); the shared tree's
+  `current/` holds only `pages/business.html`, so these are new files, not edits.
 - `stardust/current/pages/{es,es__negocios}.{json,html}` — the two twins
   (`lang: "es"`, `discovery.source: "hreflang"`, alternates back to the
   English pages, `renderedHtml` with the captured Spanish copy).

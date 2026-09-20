@@ -47,7 +47,8 @@ six-page output, so a render of `insurance__renters` is unambiguous new output.
 - No `prototypes/`, no `current/pages/*.json` records and no `.gitignore`;
   the `.example` origin is unreachable by design — zero network is the
   contract (`no_live_traffic`).
-- The shared sidecars still carry `tier`/`fidelityTier` as the shared tree
-  does; only the new `insurance/renters/_meta.json` is skeleton output.
+- The shared sidecars are hand-authored (`fidelityTier`, `gatesPassed[]` per
+  `fidelity-tiers.md` § Declaration); only the new `insurance/renters/_meta.json`
+  is skeleton output.
 - Expected to fail on the 0.24.0-next.3 baseline (no module-map precondition):
   the baseline renders the sibling with the module flattened to prose.
