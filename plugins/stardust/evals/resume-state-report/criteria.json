@@ -15,7 +15,7 @@
     {
       "name": "gate_numbers_from_progress_json",
       "max_score": 15,
-      "description": "The report prints the last gate numbers per archetype exactly as stardust/replica/progress.json records them: home 2.14% at 1440 and 3.87% at 360 (pass); news__storm-season-checklist 11.6% at 1440 and 12.4% at 360 (over the bar, residuals cause-only — printed as `FAIL 11.6 % / 12.4 % (residuals unaccepted)`, blocked); insurance__home never gated. Numbers that are invented, rounded away from the ledger, recomputed, or missing for any archetype fail."
+      "description": "The report prints the last gate numbers per archetype exactly as stardust/replica/progress.json records them, as the verdict lines of `skills/replica/scripts/gate-ledger-lint.mjs --all-types` (the state report runs it under flow: replica) rather than a by-eye reading: `landing: ok — home 1440 2.14 % Δh 0 · 360 3.87 % Δh 4`; `article: blocked — 1440 11.6 % Δh 6 over bar, residuals without artifacts[], residuals without acceptedBy; 360 12.4 % Δh -7 over bar, … → $stardust replica news__storm-season-checklist`; `program: blocked — never gated → $stardust replica insurance__home` (wording may be paraphrased, numbers and verdicts may not). Numbers that are invented, rounded away from the ledger, recomputed, or missing for any archetype fail; an article row reported as passing or shippable fails."
     },
     {
       "name": "journal_next_quoted_and_verified",

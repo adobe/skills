@@ -43,6 +43,12 @@ crawled.
 | `article` | `news__storm-season-checklist` | over the bar, residuals cause-only (no `artifacts[]`/`acceptedBy`) | same | FAIL → blocked; re-log the residuals as named classes with artifacts[] and acceptedBy, or re-gate the archetype |
 | `program` | `insurance__home` | never gated (`gated: false`, `breakpoints: {}`) | — | blocked; the command to gate it is in the journal `Next:` line |
 
+Reader: `skills/replica/scripts/gate-ledger-lint.mjs --state stardust/state.json`
+exits 2 over this ledger (`program` and `article` blocked with the command to
+gate each, `landing` ok); `--published` reports every breakpoint `ungated`
+(no `published.<bp>` blocks). Its deterministic test,
+`skills/replica/scripts/gate-ledger-lint.test.mjs`, pins these three lines.
+
 Siblings: `business` (landing), `news__annual-report-2025` (article),
 `insurance__auto` (program) — rendered at Path A′ with one `variants[]`
 entry each.
