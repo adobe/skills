@@ -31,6 +31,7 @@ crawled.
 | `stardust/direction.md` | `skills/replica/reference/preserve-direction.md` § 2 | preserve-mode record, verbatim promotion, register pointer |
 | `stardust/replica/inconsistency-register.md` | same file, § 3 | one `applied` entry (R-01, footer link contrast) |
 | `stardust/replica/progress.json` | `skills/replica/reference/source-fidelity-gate.md` § Residual logging format | per-archetype gate ledger — see the three cases below |
+| `stardust/usage.md`, `stardust/usage.json` | `skills/stardust/scripts/token-ledger.mjs` output shape | hand-authored advisory usage ledger: three windows + `unwindowed`, totals (180 requests · fresh 121.1 k · cache read 55.93 M · output 304.1 k · est. USD 32.77), harness-reported USD 34.10 — the state report copies these, never recomputes them |
 | `stardust/migrated/**` | `skills/migrate/reference/migration-procedure.md` (§ Output path mapping, § `_meta.json` sidecar, § Provenance) | six pages at URL-literal paths + sidecars + three bundled assets |
 | `stardust/journal.md` | `skills/stardust/reference/journal-format.md` | four entries; the last carries the `Next:` line the resume path should quote |
 | `stardust/status.jsonl` | `skills/stardust/reference/run-status.md` | extract → replica → migrate → routing → rollout `blocked` |

@@ -218,6 +218,14 @@ whose harness cases skip when Playwright is unresolvable:
   (`gate-ledger-lint` verdict lines, never-gated first), fixture
   byte-identical afterwards, no `run.lock`, `--markdown` gate table +
   `report-check:` line, exit codes.
+- `skills/stardust/scripts/test/token-ledger.test.mjs` — the advisory usage
+  ledger on `lint/fixtures/token-ledger/`: windows from `status.jsonl`
+  (+ an `unwindowed` row), requests de-duplicated by `requestId` (4 main
+  from 6 lines, 1 subagent from 2) with the subagent column separate,
+  prompts / acks classified (tool results and injected reminders skipped),
+  pages and tokens/page from the `end` detail, the harness `cost-state`
+  surfaced as a session figure, `usage: unknown` + exit 0 + no write when no
+  transcript dir resolves, idempotent except timestamps, `--dry-run`.
 - `doc-size.mjs` — byte caps on `SKILL.md` and `reference/*.md`, an
   `## Operator card` heading ahead of the procedure, the always-on total and
   the per-skill delta versus the last release tag; its temporary allowlist

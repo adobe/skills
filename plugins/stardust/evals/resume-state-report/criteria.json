@@ -51,6 +51,11 @@
       "name": "heading_list_before_skill_reads",
       "max_score": 10,
       "description": "(W1 target) No skill file is read whole. Every tool-driven read of a skills/**/*.md file (SKILL.md or reference) is either a heading list (e.g. grep '^#') or a section-scoped read (offset/limit, line range) that follows one, covering only the sections the current step needs — state-machine.md § State report and § Flow keys, journal-format.md § Reading the journal at session start, replica § Setup / Phase 4. A full-file read of any SKILL.md or reference file fails. Text injected by the harness when a skill is invoked does not count as a read."
+    },
+    {
+      "name": "usage_totals_from_file",
+      "max_score": 5,
+      "description": "When the state report prints a `Usage:` line, its totals are exactly what stardust/usage.md / usage.json record (180 requests, fresh 121.1 k, cache read 55.93 M, output 304.1 k, est. USD 32.77; harness-reported USD 34.10 as a session figure) — copied, never recomputed from transcripts or estimated. A report that omits the line is fine; one that prints other numbers, or claims a per-phase cost the file does not hold, fails."
     }
   ]
 }

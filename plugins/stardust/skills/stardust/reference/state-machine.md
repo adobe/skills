@@ -415,6 +415,9 @@ rows by status; `--reconcile` adds the admin's previewed / published
 counts and flags drift (published while the `publish` row is preview) as
 a warning — the script never publishes. `Probes:` N preview / live HEAD
 codes and `tokens k/3` via `served-check.mjs`, else `not probed`.
+`Usage:` prints the totals of `stardust/usage.json` when
+`skills/stardust/scripts/token-ledger.mjs` has written it — copied, never
+recomputed or estimated; omitted when the file is absent.
 
 The `Repo:` block is rendered only when the project root is itself the git
 work-tree root (`git rev-parse --show-toplevel` resolves to the project

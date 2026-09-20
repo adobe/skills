@@ -96,6 +96,10 @@ page for X" is answered by the log, not by memory.
   format; the hand-off reproduces that list, it does not restate the rule.
 - **DA edit links** use the one form in `skills/deploy/da-deploy-protocol.md`
   (§ URLs line: edit · preview · live). No second form.
+- **Usage row (optional)** — one line from `stardust/usage.md`
+  (`skills/stardust/scripts/token-ledger.mjs`, advisory): the wave's
+  requests, cache read, output and, with prices supplied, the estimate;
+  `usage: unknown` is an allowed value, never a blocker.
 - **Report check** — the last line before the signature:
   `report-check: <n> paths ls-verified · <m> counts re-read from
   progress.json/coverage`. Every path in the report was listed with `ls`
