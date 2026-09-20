@@ -1,0 +1,48 @@
+{
+  "slug": "news__storm-season-checklist",
+  "url": "https://www.larkspurmutual.example/news/storm-season-checklist/",
+  "title": "Storm season checklist: five things to do before the first warning — Larkspur Mutual",
+  "type": "article",
+  "capturedAt": "2026-09-08T09:22:04Z",
+  "_provenance": {
+    "writtenBy": "stardust:extract",
+    "technique": "headless"
+  },
+  "headings": [
+    {
+      "level": 1,
+      "text": "Storm season checklist: five things to do before the first warning"
+    }
+  ],
+  "landmarks": [],
+  "chrome": {
+    "header": {
+      "tag": "header",
+      "id": null,
+      "classes": [
+        "site-header",
+        "site-header--main",
+        "is-sticky"
+      ],
+      "h": 72
+    },
+    "footer": {
+      "tag": "footer",
+      "id": null,
+      "classes": [
+        "site-footer"
+      ],
+      "h": 320
+    },
+    "navRows": 1,
+    "stylesheets": [
+      "www.larkspurmutual.example/assets/css/main.3f9a1c2d.css",
+      "www.larkspurmutual.example/assets/css/theme.css"
+    ],
+    "bodyClasses": [
+      "page",
+      "tpl-main",
+      "page-news-storm-season-checklist"
+    ]
+  }
+}

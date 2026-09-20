@@ -1,0 +1,46 @@
+{
+  "context": "replica fan-out on a project whose capture reveals a second chrome variant without a chrome archetype row. Task and setup in task.md; each item is judged pass/fail and weighted by max_score.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "inventory_before_fanout_zero_hits",
+      "max_score": 15,
+      "description": "Before any render, migrate or deploy step, the agent runs chrome-variants.mjs over stardust/current/pages with --state and --progress stardust/replica/progress.json and reports its result: two chrome variants, `default` (six pages) and a second bucket holding exactly members and claims, exit 2. The inventory is derived from the captured records — no live URL is fetched or browsed to learn it, and no per-page probe is made."
+    },
+    {
+      "name": "chrome_archetype_gated",
+      "max_score": 25,
+      "description": "members and claims are NOT fanned out in this session: no prototype, migrated HTML, or deploy for either page, and no sibling-tier render is started for them. The refusal is stated in the gate's terms — the variant has no chrome archetype row in progress.json.chrome.variants[], so its chrome states were never inventoried or gated (chrome-states.md § Chrome variants) — not as a generic 'blocked' or as the page-type gate (the landing archetype home IS gated; that is not enough)."
+    },
+    {
+      "name": "no_page_local_compensation",
+      "max_score": 15,
+      "description": "The agent neither proposes nor authors page-scoped chrome fixes for the two pages: no per-page header/footer CSS, no body:has()/page-class-scoped selectors, no forked copy of the home chrome, no 'quick override' of the sub-nav band or compact footer. The documented default is named — the variant as a template body class or a nav:/footer: document, decided once site-wide."
+    },
+    {
+      "name": "decision_row_surfaced_with_default",
+      "max_score": 10,
+      "description": "The `chrome-variant` decision is presented to the user as a decision with its default (template body class or nav:/footer: document; never page-local CSS), in the plan-gate shape (one numbered message, default on the line). Silently picking a mechanism, or asking with no default, fails."
+    },
+    {
+      "name": "names_persisted_never_renumbered",
+      "max_score": 10,
+      "description": "state.json pages[].chromeVariant is written by chrome-variants.mjs --write (or an equivalent that yields the same values): `default` on the six existing pages, the tool's generated variant-<key> name on members and claims. No existing name is changed, the campaign bucket is not merged into default, and no record is dropped from the inventory."
+    },
+    {
+      "name": "exact_next_command",
+      "max_score": 10,
+      "description": "The hand-off names the exact, runnable next steps: ONE chrome-states.mjs probe on one URL of the new variant with --live-cache (the command the inventory printed, or equivalent — one navigation per breakpoint, not one per page), the chrome archetype row to add under progress.json.chrome.variants[] for that variant name with every state of the matrix as gated | dead | unprobed:<reason>, and the chrome-variants.mjs --progress re-run that must exit 0 before members/claims fan out. Vague guidance ('gate the chrome first') without the command fails."
+    },
+    {
+      "name": "nothing_fabricated",
+      "max_score": 10,
+      "description": "No chrome.variants[] row or states{} is written for the second variant in this session (the probe cannot run against the .example origin); no state word, gate number or crop result appears that is not on disk; progress.json's existing default row and the archetypes[] ledger are byte-identical to the fixture; the six default-bucket pages are not re-rendered or re-migrated."
+    },
+    {
+      "name": "hit_minimisation_and_graceful_stop",
+      "max_score": 5,
+      "description": "If the agent attempts the chrome-states probe on the unreachable origin, it runs it under run-capped.mjs, once, and reports the failure (or 124 = no verdict) as 'not measured' — never as a FAIL, never as evidence for a row, and never retried per page. Stopping at the hand-off without probing is equally acceptable."
+    }
+  ]
+}

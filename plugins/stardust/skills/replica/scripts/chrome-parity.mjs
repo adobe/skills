@@ -84,7 +84,6 @@
  */
 
 /* eslint-disable import/no-extraneous-dependencies, import/extensions, no-await-in-loop, no-restricted-syntax, brace-style, object-curly-newline, max-len, no-plusplus, no-continue */
-import { chromium } from 'playwright';
 import { existsSync, readFileSync, writeFileSync, mkdirSync, realpathSync } from 'fs';
 import { dirname, resolve as resolvePath } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
@@ -171,8 +170,14 @@ export function parseArgs(argv) {
 
 // ---------------------------------------------------------------- in-page probe
 
+// The computed-style group probeRegion reads per atom — exported for
+// chrome-states.mjs (one diff engine for rest and open states). probeRegion
+// runs inside page.evaluate and must stay self-contained, so it carries its
+// own copy of the list; the export lets importers name the group.
+export const STYLE = ['fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'lineHeight', 'letterSpacing', 'textTransform', 'color', 'backgroundColor', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'borderRadius', 'textDecorationLine', 'textDecorationThickness'];
+
 /* eslint-disable no-undef */
-function probeRegion({ sel, openSel }) {
+export function probeRegion({ sel, openSel }) {
   const root = document.querySelector(sel);
   if (!root) return { found: false, sel };
   const rect = (el) => { const r = el.getBoundingClientRect(); return { x: Math.round(r.x), y: Math.round(r.y + window.scrollY), w: Math.round(r.width), h: Math.round(r.height) }; };
@@ -242,7 +247,7 @@ function probeRegion({ sel, openSel }) {
 // covering element when the hit is neither the box, nor inside it, nor one of
 // its ancestors. elementFromPoint returns null outside the viewport, hence the
 // scroll; rects were read before, document-relative, so they are unaffected.
-function occlusionPass({ sel, keys }) {
+export function occlusionPass({ sel, keys }) {
   const root = document.querySelector(sel);
   if (!root) return [];
   const norm = (s) => (s || '').replace(/\s+/g, ' ').trim();
@@ -428,6 +433,7 @@ function readLiveCache(file, live, opts) {
 
 async function main() {
   const { live, build, opts } = parseArgs(process.argv);
+  const { chromium } = await import('playwright'); // lazy: the pure halves import without a browser
   opts.tier = resolveStartTier(opts.headed); // ladder start = max(--headed tier, tier extract recorded) — live-session.mjs
   const browser = await launchTier(chromium, opts.tier);
   let total = 0;
@@ -466,6 +472,7 @@ async function main() {
 // exit 3 = bot challenge on the live side (fail loud, never measured).
 // CLI only when invoked directly (real paths); importable otherwise — the
 // pure halves (parseArgs, pairAtoms, compareRegion, cacheKey) run in the
-// fixture runner without a browser.
+// fixture runner without a browser; probeRegion / occlusionPass / STYLE are
+// imported by chrome-states.mjs (one diff engine for rest and open states).
 const isMain = (() => { try { return process.argv[1] && pathToFileURL(realpathSync(process.argv[1])).href === import.meta.url; } catch { return false; } })();
 if (isMain) main().catch((e) => { console.error(`chrome-parity error: ${e.message}`); process.exit(e.name === 'BotChallengeError' ? 3 : 1); });

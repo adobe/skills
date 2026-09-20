@@ -21,7 +21,7 @@ import { sessionContextOptions, parseSolveWaitFlag } from '../../skills/diff/scr
 
 const ROOT = join(import.meta.dirname, '..', '..', 'skills');
 const IMPORTERS = [
-  'replica/scripts/stitch-shot.mjs', 'replica/scripts/anchor.mjs', 'replica/scripts/chrome-parity.mjs', 'replica/scripts/motion-observe.mjs', 'replica/scripts/sibling-variance.mjs',
+  'replica/scripts/stitch-shot.mjs', 'replica/scripts/anchor.mjs', 'replica/scripts/chrome-parity.mjs', 'replica/scripts/chrome-states.mjs', 'replica/scripts/lift.mjs', 'replica/scripts/motion-observe.mjs', 'replica/scripts/sibling-variance.mjs',
   'diff/scripts/content-diff.mjs', 'diff/scripts/visual-diff.mjs',
   'reskin/scripts/dom-equality.mjs', 'reskin/scripts/slot-coverage.mjs', 'reskin/scripts/donor-probe.mjs', 'reskin/scripts/capture-content.mjs',
 ];

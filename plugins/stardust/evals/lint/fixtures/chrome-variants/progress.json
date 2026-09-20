@@ -1,0 +1,3 @@
+{ "_provenance": { "writtenBy": "stardust:replica" }, "chrome": { "variants": [
+  { "key": null, "name": "default", "pages": 2, "archetype": "index", "states": { "rest": "gated", "scrolled": "gated", "menu:Insurance": "gated", "search": "dead", "drawer": "gated", "drawer-drilled": "unprobed:auth-gated drawer link" }, "gates": { "1440": "gates/index-1440/chrome-states/chrome-states.json", "360": "gates/index-360/chrome-states/chrome-states.json" } }
+] }, "archetypes": [ { "pageType": "landing", "archetype": "index", "chromeVariant": "default" } ] }

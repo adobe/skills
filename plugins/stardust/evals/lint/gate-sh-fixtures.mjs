@@ -53,6 +53,9 @@
 //     net); an unreadable version prints a WARN — except on a --force round
 //     (imported extract capture) where the check does not apply; --invalidate
 //     on an unparseable record exits 1 and marks nothing;
+//   <build-url> auto — without stardust/.work/ports.json exit 125 before any
+//     capture; with it the URL is this project's proto port + <slug>-proposed.html
+//     (or the auto/<path> given) and the round runs;
 //   --help exits 0.
 //
 // Usage: node plugins/stardust/evals/lint/gate-sh-fixtures.mjs  (exit 1 on findings)
@@ -109,8 +112,20 @@ try {
   const prHelp = spawnSync(process.execPath, [join(bin, 'progress-record.mjs'), '--help'], { encoding: 'utf8' });
   check(prHelp.status === 0 && /Usage:/.test(prHelp.stdout), 'progress-record --help must exit 0');
 
+  // ---- <build-url> auto (slug proposed — the stub page carries the word): ports.json → this project's URL; absent → 125 ----
+  const gateAuto = (slug, build) => { const r = spawnSync('bash', [join(bin, 'gate.sh'), slug, LIVE, build, '1440'], { cwd: project, encoding: 'utf8', env: { ...process.env, GATE_REAP_MIN: '0', STUB_ANCHOR_TRACE: anchorTrace } }); return { status: r.status, out: `${r.stdout}\n${r.stderr}` }; };
+  let r = gateAuto('proposed', 'auto');
+  check(r.status === 125 && /auto needs stardust\/\.work\/ports\.json#proto/.test(r.out) && !existsSync(dirOf('proposed')), `auto without ports.json exits 125 before any capture\n${r.out}`);
+  mkdirSync(join(project, 'stardust', '.work'), { recursive: true });
+  writeFileSync(join(project, 'stardust', '.work', 'ports.json'), JSON.stringify({ proto: { role: 'proto', port: Number(port), cwd: project, marker: 'proposed' } }));
+  r = gateAuto('proposed', 'auto');
+  check(r.status === 0 && r.out.includes(`build URL from ports.json → http://127.0.0.1:${port}/proposed-proposed.html`) && rec('proposed', 'iter1')?.verdict === 'PASS', `auto resolves this project's proto port + the default <slug>-proposed.html path and the round runs\n${r.out}`);
+  r = gateAuto('proposed', 'auto/custom/page.html');
+  check(r.status === 0 && r.out.includes(`→ http://127.0.0.1:${port}/custom/page.html`), `auto/<path> keeps the given path\n${r.out}`);
+  rmSync(join(project, 'stardust', '.work'), { recursive: true, force: true });
+
   // ---- freshness (slug fresh) ----
-  let r = gate('fresh');
+  r = gate('fresh');
   if (r.status !== 0) throw new Error(`fresh round 1: expected exit 0, got ${r.status}\n${r.out}`);
   const gateOut = { fresh1: r.out };
   const f1 = rec('fresh', 'iter1');

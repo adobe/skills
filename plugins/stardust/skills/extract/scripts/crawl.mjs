@@ -2252,6 +2252,17 @@ function capture() {
       inferredHeadings: inferredEls.length,
       iconFont,
     },
+    // chrome fingerprint inputs (replica's chrome-variants.mjs — a chrome
+    // VARIANT key from the captured record, zero live hits): the header /
+    // footer landmark class sets, the count of nav rows in the header (a
+    // subnav band), the body classes (marker candidates) and the linked
+    // stylesheet paths. Recorded, never interpreted here.
+    chrome: (() => {
+      const lm = (sel) => { const el = document.querySelector(sel); return el ? { tag: el.tagName.toLowerCase(), id: el.id || null, classes: [...el.classList], h: Math.round(el.getBoundingClientRect().height) } : null; };
+      const rows = [...document.querySelectorAll('header nav, [role="banner"] nav, header [role="navigation"]')].map((n) => Math.round(n.getBoundingClientRect().top / 10));
+      const stylesheets = [...document.querySelectorAll('link[rel~="stylesheet"][href]')].map((l) => { try { const u = new URL(l.href); return `${u.host}${u.pathname}`; } catch { return l.getAttribute('href'); } });
+      return { header: lm('header, [role="banner"]'), footer: lm('footer, [role="contentinfo"]'), navRows: new Set(rows).size, bodyClasses: [...document.body.classList], stylesheets: [...new Set(stylesheets)].slice(0, 40) };
+    })(),
     _compatMode: document.compatMode, // 'CSS1Compat' | 'BackCompat' (quirks) → _provenance.compatMode
     _contentHash: contentHash,
   };

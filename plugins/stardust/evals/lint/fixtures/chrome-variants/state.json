@@ -1,0 +1,6 @@
+{ "_provenance": { "writtenBy": "stardust:extract" }, "site": { "url": "https://www.larkspurmutual.example/" }, "pages": [
+  { "slug": "index", "url": "https://www.larkspurmutual.example/", "type": "landing" },
+  { "slug": "about", "url": "https://www.larkspurmutual.example/about/", "type": "static" },
+  { "slug": "legal", "url": "https://www.larkspurmutual.example/legal/", "type": "static", "chromeVariant": "lsg-legacy" },
+  { "slug": "old", "url": "https://www.larkspurmutual.example/old/", "type": "static" }
+] }

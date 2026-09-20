@@ -89,7 +89,8 @@ the NEW page's live chrome, and flag any page-level compensation for
 back-port into the canon files so later archetypes don't re-discover it.
 When two templates genuinely differ, the canon records module VARIANTS
 keyed by template, each with its own gate evidence — never one value tuned
-per page. A canon fix after a pass is a `canon-followup` round —
+per page. Which templates differ is measured before fan-out, not
+discovered at each archetype — § Chrome archetype and the state matrix. A canon fix after a pass is a `canon-followup` round —
 `source-fidelity-gate.md` § Iteration discipline.
 
 ## CSS lifting — fidelity values come from the original site's CSS, not the eye
@@ -99,9 +100,10 @@ per-element computed-style capture "did most of the work".)
 
 Before any screenshot-eyeball tuning:
 
-1. **Fetch the live stylesheets** (curl or Playwright response capture —
-   CDN-defended sites 403 direct curl; intercept the page's own responses
-   instead, see § Asset harvest).
+1. **Fetch the live stylesheets** — `../scripts/lift.mjs --save-css`
+   captures them from the lift's own navigation (`text/css` responses +
+   inline `<style>`; CDN-defended sites 403 a direct curl, and
+   `document.styleSheets[].cssRules` throws cross-origin).
 2. **Lift the exact values** into a tokens file (`capture/tokens.json`
    pattern): container max-widths, the full type ramp (family / size /
    line-height / letter-spacing (exactly — `-0.005em` vs `normal` flips a
@@ -113,7 +115,11 @@ Before any screenshot-eyeball tuning:
    `../../deploy/reference/section-rhythm.md` § Hand-off from replica), radii, shadows,
    hero heights, breakpoint values — **and the
    text-rendering group**: `text-rendering`, `-webkit-font-smoothing`,
-   `font-synthesis`, `font-variant-numeric`, `font-kerning`. Sites commonly
+   `font-synthesis`, `font-variant-numeric`, `font-kerning`, and the
+   variable-font trio `font-variation-settings`, `font-optical-sizing`,
+   `font-feature-settings` (a body-level `'opsz'` axis missing on the
+   replica renders the face measurably narrower). Breakpoints come from
+   the lift's `mediaQueries[]` verbatim (`768` is not `767`). Sites commonly
    set these globally, and the ramp alone doesn't carry them: a ±1%
    glyph-width difference from a mismatched rendering mode produces
    systematic one-line-fewer/more wraps that present as inexplicable
@@ -124,9 +130,15 @@ Before any screenshot-eyeball tuning:
 3. **Replicate the container model**, not just the tokens: left-offset vs
    centered hero content, %-of-viewport heights, grid gutters. The container
    model is where "looks close but drifts" comes from.
-4. **Capture per-element computed styles** for the elements the gate will
-   measure (headings, CTAs, section wrappers). Computed styles resolve the
-   cascade the stylesheets only imply.
+4. **Run `../scripts/lift.mjs <live> --width <w>` once per gate width,
+   BEFORE authoring** — every rendered element under `header,main,footer`
+   to unlimited depth with rect, offsetParent-relative offset, inline
+   style, ~60 non-default computed properties, pseudo-elements, heading
+   level, last-child flag and the matched unitless `line-height`. Author
+   from its JSON (`stardust/replica/capture/lift/<slug>-<w>.json`); feed it
+   to `impeccable-ignores.mjs --tokens`. Computed styles resolve the
+   cascade the stylesheets only imply; a re-run on an existing record is a
+   no-op (`--refresh` re-probes).
 5. **Repeat 2–4 at EVERY gate breakpoint, not just desktop — the 360
    layout is NOT derivable from the 1440 recreation.** Mobile is its own
    authoring pass, not a shrink of desktop: lift the source's mobile
@@ -155,6 +167,21 @@ Before any screenshot-eyeball tuning:
 This converts 3–4 guess-and-screenshot loops into one. Eyeballing is for
 step 4 of the authoring order only — and even then, the gate's instruments
 outrank the eye.
+
+**Lift facts the pixel gate cannot explain** (each a recorded field defect
+the full-page number never surfaced; all are fields of the lift record):
+positioned elements are authored from `offset` (offsetParent-relative),
+never from the viewport `rect`; icon and logo strips size each instance
+inline (`inline`), a representative element misses them; `<sup>`/`<sub>`
+inherit the unitless `line-height` (`lineHeightUnitless`) or the line box
+grows; stacked columns round sub-pixel rows differently — compare row
+pitch, not one row; stacked grids need `minmax(0, 1fr)` + `min-width: 0`
+(`gridTemplateColumns`); the block wrapper's LAST child carries the
+bottom margin (`isLastChild` + `marginBottom`); the authored heading level
+is a lift fact (`headingLevel`), not a styling choice; a variant token
+equal to a runtime class fails deploy's `VARIANT-COLLIDE`; probe helpers
+are inlined inside `page.evaluate` — the project copy resolves nothing
+from the plugin tree.
 
 **No foundation `text-wrap: balance` on headings.** The redesign
 prototype's refined pass prescribes `h1–h6 { text-wrap: balance }`; live
@@ -558,6 +585,53 @@ Log each implemented interaction in the progress ledger the way a CSS
 portation is logged; the static gate is then re-run per the verification
 protocol above (markup rarely changes — hover CSS and trigger JS are
 capture-invisible under the freeze, and the pixel re-run proves it).
+
+## Chrome archetype and the state matrix
+
+The resting header crop measures ONE cell of a matrix — `{chrome variant}
+× {rest, scrolled} × {each top-level trigger open} × {search} × {language}
+× {drawer, drilled} × {footer accordions}` — and every other cell is what a
+reviewer touches first. Named states, contract, the `progress.json`
+`chrome` block and the residual route: `chrome-states.md`. Before the first
+archetype: `../scripts/chrome-variants.mjs --write` buckets the inventory by
+a static fingerprint of the captured chrome (zero live hits) — the chrome
+archetype row for a variant (rest crops + every state `gated | dead |
+unprobed:<reason>`, observed never inferred) is gated BEFORE its first page
+archetype and imported by the later ones. Four rules:
+
+1. **Probe the matrix, never infer it.** Run `../scripts/chrome-states.mjs
+   <live> --from-state stardust/state.json --live-cache …` ONCE per
+   archetype set (hover/tap every trigger, click the search control, open
+   the drawer and drill one level; per-state panel crops + the computed
+   styles chrome-parity diffs; trigger → panel association; header identity
+   per sampled page type). It is a REQUIRED Phase 4 output beside the motion
+   inventory — `motion-observe --hover` targets card families and does not
+   open navigation. Fan-out briefs carry its command block verbatim.
+2. **Detached panels belong to their trigger.** Mega-menu panels commonly
+   live OUTSIDE the trigger's `<li>` (paired by `aria-controls`, `data-menu`,
+   `id`, or rendered into a portal root). Author the nav document from the
+   ASSOCIATED panel the probe records (`chrome-states.md` § Nav model), not
+   from the header's visible anchors — otherwise group headers, icons,
+   descriptions, promo cards and panel footer links collapse into link text.
+   Lift panel placement (left edge, top offset from the nav row) from the
+   recorded rect, never guess it.
+3. **Chrome variants are measured on the page sample, then traced to a
+   page-level marker.** Header markup is byte-identical across pages; the
+   variant is decided by page content. The probe prints the distinct header
+   identities (position / background / link colour / logo fill / subnav
+   band) across one live URL per page type; each is a variant with its own
+   resting crop AND a marker the importer emits as page metadata (a
+   template body class or a `nav:`/`footer:` document — never page-local
+   CSS). The tempting theme attribute present on every page usually means
+   nothing — trace the variant to the content that flips it. The scrolled
+   state is usually exempt (measure it).
+4. **Gate the cells.** Each opened panel is crop-compared like the resting
+   header (same bar, band = the panel's rect, same width both sides); the
+   search, drawer, drilled and accordion states get a crop each; every
+   variant gets a resting crop. Record the matrix in the ledger; a missing
+   cell is a missing gate, not optional polish. Chrome transparent over a
+   moving background crops the opaque panel only — a full-width band there
+   reports background drift as chrome error.
 
 ## Fixed and sticky chrome (headers, floating tabs × stitched capture)
 

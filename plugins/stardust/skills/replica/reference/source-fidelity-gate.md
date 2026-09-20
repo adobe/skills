@@ -43,15 +43,15 @@ iteration budget. Gate 1440 first (the geometry lifted from desktop CSS),
 then 360.
 
 ```bash
-# Serve the prototype from its own dir so relative assets resolve. Verify the
-# port is YOURS first (lsof -nP -iTCP:8791 -sTCP:LISTEN); prefer a per-project
-# port — a stale server from another stardust project on the shared suggested
-# port silently serves a foreign site into the gate.
-# On shared machines run gate.sh with --marker "<brand string>": the slug
-# default can false-pass against another stardust project sharing the slug
-# (both serving a home-proposed.html that contains "home").
-(cd stardust/prototypes && python3 -m http.server 8791 &)
-PROTO="http://localhost:8791/<slug>-proposed.html"
+# Serve from the prototypes dir with THIS project's server: serve.mjs takes
+# the slot port.mjs hashes for the project (8800–8899, never 8791), answers
+# /.stardust-marker.txt, refuses a taken port (exit 98), writes
+# stardust/.work/ports.json + proto.pid; a foreign listener is listed, never
+# killed. No serve.mjs: python3 -m http.server 8791 -d stardust/prototypes
+# (typed URL, still identity-gated). On shared machines pass gate.sh
+# --marker "<brand string>" (a shared slug can false-pass).
+node stardust/scripts/replica/serve.mjs stardust/prototypes --role proto &
+PROTO="http://127.0.0.1:$(node stardust/scripts/replica/port.mjs proto)/<slug>-proposed.html"
 LIVE="https://<site>/<path>"
 W=1440   # then 360
 GATE="stardust/replica/gates/<slug>-$W"
@@ -151,27 +151,27 @@ capture is re-taken every iteration.
      --region header=header --region footer=footer   # + --region strip=<sel>|<sel>
    ```
 
-   States: `--open <liveSel>|<buildSel>` per top-level trigger (opened
-   menus — EXTRA, PSEUDO, OCCLUDED) and `--scroll <y>` for sticky chrome
-   (STICKY) — one state per run, cached per state (`chrome-live-<state>.json`).
-
-   **Multi-theme sites (a theme id on `html`/`body`, brand or product
-   themes on one template): run `chrome-parity.mjs` on one themed page per
-   template × theme id, not on the home archetype alone.** Theme tokens
-   bind per theme id, not per brand: an alias derived from one theme's
-   surface is wrong on every other theme, and the archetype gate cannot
-   see it (chrome is a small share of page pixels).
-   Alias only tokens the live CSS actually binds to the measured element,
-   and treat the source's theme/variant classes as probe deltas → block
-   variants on the sibling's content (`../../migrate/reference/fidelity-tiers.md`
-   § Sibling variance probe) — encode the variant, never fix the page.
+   **Cells.** Item 5 gates every chrome STATE, not the resting bands
+   alone: each top-level trigger open, search, language switcher, the
+   mobile drawer + one drill level, footer accordions — probed once per
+   archetype set by `../scripts/chrome-states.mjs` (per-state panel crops
+   at this same ≥98 % bar, chrome-parity's diff per opened state,
+   `missing on build` = MISSING, exit 2), cached
+   state-aware (`chrome-live-states.json`; `chrome-parity --open`/`--scroll`
+   = one state, `chrome-live-<state>.json`). Contract: `chrome-states.md`.
+   **Multi-theme sites**: the probe clusters header identity across one
+   live URL per page type — each distinct identity is a chrome variant with
+   its own resting crop, encoded as a variant, never fixed per page. Alias
+   only tokens the live CSS actually binds to the measured element, and
+   treat the source's theme/variant classes as probe deltas → block variants
+   on the sibling's content (`../../migrate/reference/fidelity-tiers.md`
+   § Sibling variance probe).
 
    **Glyph-dense chrome has a pixel noise floor — the ONE justified way past
-   the 2% bar, and it is evidence-gated three ways.** A footer of ~50 links
-   bottomed out at ~5% pixel diff with family, size, line-height, weight,
-   colour, pitch and positions all numerically identical: per-glyph
-   antialiasing between a hinted licensed face and the self-hosted webfont
-   dominates, and raw pixel bars over-iterate against noise. A chrome band
+   the 2% bar, and it is evidence-gated three ways.** A ~50-link footer
+   bottomed out at ~5% with every text metric and position numerically
+   identical: per-glyph antialiasing between a hinted licensed face and the
+   self-hosted webfont dominates, and raw pixel bars over-iterate against noise. A chrome band
    that FAILS crop-compare may be logged as a **justified residual** —
    never a pass — only when ALL three hold, and each is an artifact in the
    residual entry (§ Residual logging format, `cause: "glyph-antialiasing"`):
@@ -181,25 +181,21 @@ capture is re-taken every iteration.
    differing pixels have ≥5 differing neighbours) — glyph antialiasing is
    thin, misalignment and missing paint are thick; (3) the region is
    text-dense (link columns, nav rows) — a band with imagery or icons never
-   qualifies (parity's ICONS finding would not be quiet anyway). One or two
-   of the three is not enough: a quiet parity probe with a THICK texture is
-   a paint defect the probe does not model; a thin texture with parity
-   deltas is a real metric error hiding in noise. The 2% bar itself is
-   unchanged, and the residual is re-verified every gate round like any
-   other justified flag.
+   qualifies. One or two of the three is not enough: a quiet parity probe
+   with a THICK texture is a paint defect; a thin texture with parity
+   deltas is a metric error hiding in noise. The 2% bar itself is unchanged;
+   the residual is re-verified every gate round.
 
    **Chrome crops are ELEMENT-ANCHORED per side, never fixed-y — and
    "chrome" means every site-wide repeating band: header, sticky/quick-link
-   strips, footer.** Chrome is small-area, highest-salience and repeats on
-   every page. Two traps: (a) a fixed-y crop produces FALSE reads the moment
+   strips, footer.** Two traps: (a) a fixed-y crop produces FALSE reads the moment
    either side's rhythm shifts (a nav fix moves every strip below it). Locate each
    region on EACH side (its element rect via `anchor.mjs`, or its band
    edges via `row-profile.mjs`'s column scan) and pass both anchors
    (`--y`/`--y-b`); every gate round re-reads the anchors. (b) Regions whose
    live content is authored-volatile — campaign heroes, promo creatives that
    change between capture and gate — are masked out of the fidelity number
-   with `pixel-compare.mjs --mask <yA:h[@yB]>` or a `masks.json` entry (rule 19; printed on the verdict line, never silent): they are authored content, not conversion fidelity, and
-   chasing them burns iterations on a moving target.
+   with `pixel-compare.mjs --mask <yA:h[@yB]>` or a `masks.json` entry (rule 19; printed on the verdict line): they are authored content, not conversion fidelity.
 
 Applied inconsistency-register entries create expected deltas: cross-
 reference the entry ID (`R-<nn>`) when justifying a flag over its zone
@@ -837,7 +833,9 @@ residual carries `artifacts[]`
 table's **permanent** classes; an entry missing either is invalid and the
 breakpoint is FAIL. `published.<bp>` holds the published-origin result per
 breakpoint (§ The published-origin gate); a breakpoint absent there is
-`ungated` — reported as such, never as passed. `../scripts/gate-ledger-lint.mjs`
+`ungated` — reported as such, never as passed. The top-level `chrome`
+block (variants, per-state `gated | dead | unprobed:<reason>`) and
+`archetypes[].chromeVariant`: `chrome-states.md` § Chrome variants. `../scripts/gate-ledger-lint.mjs`
 is this ledger's reader (rollout Setup, `migrate` before any A′ render; `--published`
 reports `published.<bp>` and the coverage line): it applies § Pass bar to `result`
 and this residual rule per configured breakpoint — a shape it cannot read is
