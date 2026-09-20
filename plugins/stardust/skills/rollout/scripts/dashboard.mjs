@@ -19,7 +19,7 @@
  */
 import { join } from 'node:path';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
-import { readJSON, writeJSON } from './lib.mjs';
+import { readJSON, writeJSON, blockCounts } from './lib.mjs';
 
 if (process.argv.includes('--help')) { console.log('Usage: node skills/rollout/scripts/dashboard.mjs [--out <rolloutDir>]\n  exit 0 written · 2 coverage missing'); process.exit(0); }
 const i = process.argv.indexOf('--out');
@@ -147,7 +147,9 @@ const snapshot = {
     const members = model.filter((p) => p.templateId === t.id);
     return { id: t.id, archetype: t.representativeSlug, pageCount: members.length, stages: STAGES.reduce((m, s) => { m[s] = members.filter((p) => p.stage === s).length; return m; }, {}) };
   }),
-  blocks: { total: blocks.length, converted: blocks.filter((b) => ['converted', 'deployed', 'verified'].includes(b.delivery && b.delivery.status)).length },
+  blocks: { ...blockCounts(blocks), ewFail: blocks.filter((b) => b.delivery && b.delivery.ewGate === 'fail').length }, // converted excludes ewGate fail | unmeasured (ewHeld) — lib.mjs blockCounts
+  // gate roll-ups copied from rollout.json lastRun.gates (update-coverage --gate / verify --ai-readability) — never computed here
+  gates: (config.lastRun && config.lastRun.gates) || null,
   quality: scorecard ? { overall: scorecard.current.overall, dimensions: scorecard.current.dimensions, severity: scorecard.current.severity, history: (scorecard.history || []).map((h) => h.overall) } : null,
   findings: { byFixability: countBy(open, (f) => f.fixability), byAutofix: countBy(open.filter((f) => f.autofix && f.autofix.available), (f) => f.autofix.status) },
 };
@@ -252,6 +254,10 @@ footer{margin-top:26px;color:var(--muted);font-size:11px;border-top:1px solid va
   <div class="card"><div class="n">${s.stageCount.optimised}<span style="font-size:15px;color:var(--muted)">/${total}</span></div><div class="l">optimised</div></div>
   <div class="card"><div class="n">${q ? q.overall : '—'}</div><div class="l">quality health</div></div>
 </div>
+${s.gates ? `<div class="cards">
+  ${s.gates['ai-readability'] ? `<div class="card"><div class="n">${s.gates['ai-readability'].codeMedian ?? '—'}<span style="font-size:15px;color:var(--muted)"> code median</span></div><div class="l">readability · pages &lt; ${s.gates['ai-readability'].min}: ${s.gates['ai-readability'].below} · unmeasured ${s.gates['ai-readability'].unmeasured} (lastRun.gates.ai-readability)</div></div>` : ''}
+  ${s.gates.editability ? `<div class="card"><div class="n">${s.gates.editability.editable}<span style="font-size:15px;color:var(--muted)">/${s.gates.editability.authored}</span></div><div class="l">editable texts · dead ${s.gates.editability.dead} · exempt ${s.gates.editability.exempt} · unmeasured ${s.gates.editability.unmeasured} · blocks ewGate fail ${s.blocks.ewFail} (lastRun.gates.editability)</div></div>` : ''}
+</div>` : ''}
 
 <h2>Page tree</h2>
 <div class="legend">${legend}<span class="lg"><span class="tmpl-badge">T</span> template archetype</span><span class="lg muted-note">counts are cumulative — pages reached this stage or beyond</span></div>

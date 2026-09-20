@@ -8,7 +8,8 @@ scale. It sits **after** deploy's per-page reconcile (Step 10, one page against
 its prototype) and the per-page published-origin gate (`replica`
 `reference/source-fidelity-gate.md` § The published-origin gate), which stay
 authoritative; it does not replace them. A read-only sweep with no fixing is
-the `qa` skill. Per-page gate mechanics: the replica gate file; delivery
+the `qa` skill. Per-page gate mechanics: the replica gate file; the page-gate
+driver and the coverage regime: `reference/publish-gate.md` § Gate 8; delivery
 mechanics: `reference/delivery-gates.md` § Batched delivery at scale.
 
 Running the full gate on every page after every fix is the failure mode this
@@ -22,9 +23,12 @@ most of what it re-measures did not change.
    present; `anchor.mjs --cache`, `chrome-parity.mjs --live-cache`). A live
    capture is re-taken only when the source itself changed. One browser
    instrument at a time against the live host.
-2. **Template sample.** Gate the `node skills/rollout/scripts/plan.mjs
-   --sample 3` set per template (printed in delivery order), representative
-   first. Triage **class-complete per page**: list every large delta on the
+2. **Template sample.** Gate a **seeded random** sample per template —
+   `node skills/rollout/scripts/gate-publish.mjs --sample <n ≥ 10> --seed <run
+   seed> --exclude <fix-loop slugs> --origin <preview>` (archetypes always in;
+   never the delivery-order head, never a page the fix loop touched; seed and
+   draw land in `gate-report.json`; `plan.mjs --sample` is the authoring-order
+   listing, not this sample). Triage **class-complete per page**: list every large delta on the
    page (band table + anchor probe), not the first divergence, and name each
    delta's class (a block's CSS, a section style, a chrome state, an importer
    rule, page-specific content).
@@ -39,11 +43,15 @@ most of what it re-measures did not change.
    priority pages the owner names; every other residual is ledgered per
    `source-fidelity-gate.md` § Residual logging format with an owner item.
    Do not start a fourth class round.
-5. **One unattended confirmation sweep.** Gate every delivered page once,
-   against **preview**; publish follows the pass (the D1 default). Once the
-   delivery ledger carries a content hash, sweep changed pages only; until
-   then the sweep is full. Output: the residual ledger, the allowlist of
-   accepted residuals, and the owner-item list — nothing else re-runs.
+5. **One unattended confirmation sweep.** ≤ 150 delivered pages: gate every
+   page once against **preview** — `gate-publish.mjs --all-delivered --origin
+   <preview>`; > 150: the seeded sample expands n → 4n → all as class rounds
+   close (`publish-gate.md` § Coverage regime — every unsampled page stays
+   `ungated`, held). Publish follows the pass (the D1 default): `deploy-batch
+   … --publish` over the PASS rows. Once the delivery ledger carries a content
+   hash, sweep changed pages only; until then the sweep is full. Output: the
+   residual ledger, the allowlist of accepted residuals, and the owner-item
+   list — nothing else re-runs.
 6. **Report.** The Phase H report carries the sweep's ledger and allowlist
    next to the delivery ledger; class rounds used and pages in the tail are
    the two numbers that tell the reader how converged the site is.

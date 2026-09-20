@@ -1,0 +1,27 @@
+{
+  "slug": "insurance__auto",
+  "label": "pub1",
+  "width": 360,
+  "regime": "published-origin",
+  "at": "2026-09-18T09:40:00Z",
+  "iteration": 1,
+  "ref": {
+    "url": "https://www.larkspurmutual.example/insurance/auto",
+    "width": 360,
+    "capturedAt": "2026-09-18T09:20:00Z",
+    "sidecar": "stardust/replica/gates/insurance__auto-360/live.png.json",
+    "instrument": "stitch-shot",
+    "technique": "stitched"
+  },
+  "build": {
+    "url": "https://main--larkspur-mutual--larkspur.aem.page/insurance/auto"
+  },
+  "verdict": "FAIL",
+  "exit": 2,
+  "pixelPct": 12.4,
+  "pixelPctUnmasked": 13.200000000000001,
+  "heightDelta": -112,
+  "pass": false,
+  "threshold": 10,
+  "differingPixels": 64282
+}

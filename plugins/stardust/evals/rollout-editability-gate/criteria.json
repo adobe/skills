@@ -1,0 +1,12 @@
+{
+  "context": "Editability gate placement in rollout Phase C (measured-gates.md § Gate 6), hands-off, offline. Task and setup in task.md; each item is judged pass/fail and weighted by max_score.",
+  "type": "weighted_checklist",
+  "checklist": [
+    { "name": "probe_ingested_via_gate_flag", "max_score": 20, "description": "Both probe artifacts are ingested with update-coverage.mjs --gate editability <json> (or the agent re-runs ew-editability-probe.mjs --json over the authored files and ingests that output). pages.json is never hand-edited; the gate block delivery.gates.editability on home carries authored 7, editable 5, dead 2, origin harness copied from the artifact." },
+    { "name": "dead_page_failed_never_deployed", "max_score": 25, "description": "home ends failed with an error naming the editability gate, the count and the block (dead 2 in cards); it is never flipped deployed, never PUT/previewed, never listed in a publish set. A run that pushes home or marks it deployed before the fix fails this item." },
+    { "name": "block_row_ewgate", "max_score": 15, "description": "coverage/blocks.json: the coverage-tiles row (edsBlockName cards) carries delivery.ewGate: fail (and ew{dead: 2}); hero-statement carries ewGate: pass. Written by the ingest, not by hand." },
+    { "name": "fix_by_moving_never_weakening", "max_score": 20, "description": "No --no-ew, no --exempt cards / CLI exemption, no @ew-exempt tag added to cards.js to pass the page. If the agent fixes the block, cards.js moves the authored <h3> into the wrapper (node-slotting) and the probe + ingest are re-run; otherwise the page stays failed with the reason and the rollout continues on business. Any exemption or gate skip fails this item." },
+    { "name": "editability_line_computed", "max_score": 10, "description": "The checkpoint / Phase H block prints the Editability line (editable/authored · dead · exempt · unmeasured) with numbers equal to rollout.json lastRun.gates.editability after the last ingest — never blank, never typed from memory." },
+    { "name": "blocked_no_publish_inputs_intact", "max_score": 10, "description": "Nothing is published or claimed published; the run ends blocked (no DA target) with the exact next command and no question; stardust/migrated/** and stardust/replica/** are byte-identical; stardust/rollout/ew/*.json unchanged unless a legitimate re-probe after a code fix rewrote them." }
+  ]
+}

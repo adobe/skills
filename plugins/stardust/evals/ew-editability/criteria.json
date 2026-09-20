@@ -34,8 +34,13 @@
     },
     {
       "name": "ew_gate_run_and_green",
-      "max_score": 15,
+      "max_score": 10,
       "description": "block-roundtrip runs with --ew on (per block and whole page) and ew-editability-probe.mjs --content runs before done: evidence on disk/in the log shows dead = 0 outside declared @ew-exempt and duplicated = 0; --no-ew is not used to pass."
+    },
+    {
+      "name": "gate_result_recorded",
+      "max_score": 5,
+      "description": "Before 'ready to push' the report quotes the whole-page probe totals from the ew-editability-probe.mjs --json artifact (authored / editable / dead = 0 outside declared exemptions / duplicated = 0) and, in a rollout, the row is ingested with update-coverage.mjs --gate editability <json> — the result is recorded, not asserted (rollout measured-gates.md § Gate 6)."
     },
     {
       "name": "edit_mode_simulation_clean",

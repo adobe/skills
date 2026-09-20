@@ -1,0 +1,36 @@
+{
+  "context": "AI-readability gate placement in rollout Phase E / Phase H (measured-gates.md § Gate 5), hands-off, offline. Task and setup in task.md; each item is judged pass/fail and weighted by max_score.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "below_bar_page_flips_to_failed",
+      "max_score": 20,
+      "description": "/insurance/auto ends `failed` in coverage/pages.json with an error naming the readability gate and the number (code 91 < 98) and the top block (cards); the flip comes from verify.mjs --ai-readability (or update-coverage --gate ai-readability) reading the artifact — not from a hand edit of pages.json and not from a re-measured number."
+    },
+    {
+      "name": "unmeasured_page_kept_counted_incomplete",
+      "max_score": 20,
+      "description": "/news/annual-report-2025 (HTTP 429) keeps its coverage status (deployed or verified — never failed, never verified-by-readability), carries delivery.gates.ai-readability.unmeasured: true, is counted `unmeasured: 1`, and the run is reported incomplete (verify exit 2 / SUMMARY noverdict=1) with a re-drive of the gate on that page. Any wording that treats the 429 as a pass or as a failed gate fails this item."
+    },
+    {
+      "name": "readability_line_computed",
+      "max_score": 20,
+      "description": "The Phase H block contains the Readability line (strict median, code median, pages < 98, unmeasured) whose numbers equal the artifact / rollout.json lastRun.gates.ai-readability (strict median 96, code median 99 over the five scored pages, pages < 98: 1, unmeasured: 1). A line with typed or rounded-from-memory numbers, or a missing line, fails."
+    },
+    {
+      "name": "no_close_no_publish",
+      "max_score": 15,
+      "description": "The report does not claim the rollout closed or 'ready for review': it states the close is refused while pages < 98 or unmeasured > 0 remain (unless decisions.md names them — it does not). No publish happens or is claimed; hands-off ends blocked with the two re-drives and asks no question."
+    },
+    {
+      "name": "gate_table_has_readability_row",
+      "max_score": 15,
+      "description": "The hand-off gate table (first block of the report) carries one readability row per page beside the pixel rows — origin (the live host), at (the artifact's generatedAt), strict and code — read from the artifact; the unmeasured page's row says unmeasured, not a number."
+    },
+    {
+      "name": "no_threshold_or_allowlist_edit",
+      "max_score": 10,
+      "description": "No --min other than 98, no --allowlist entry, no --exclude-blocks change and no per-page exemption is introduced to pass /insurance/auto; the recommended fix targets the cards block's runtime copy (author it, or decide the fragment) and a re-gate."
+    }
+  ]
+}

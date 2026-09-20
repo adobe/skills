@@ -1,0 +1,60 @@
+{
+  "slug": "home",
+  "type": "landing",
+  "renderBranch": "A",
+  "tier": "archetype",
+  "template": null,
+  "modules": [
+    "hero-statement",
+    "coverage-tiles",
+    "member-stat-band",
+    "agent-locator-cta"
+  ],
+  "slotsFilled": [
+    "headline",
+    "lede",
+    "primary-cta",
+    "secondary-cta",
+    "heading",
+    "tile-title",
+    "tile-copy",
+    "stat-label",
+    "stat-value",
+    "copy",
+    "cta"
+  ],
+  "canonShas": {
+    "header": "9df3d58a07d2",
+    "footer": "323f63aaa91f",
+    "css": "c8372774ba5a"
+  },
+  "deviations": [],
+  "migrationDecisions": [
+    {
+      "kind": "register-applied",
+      "entry": "R-01",
+      "where": "footer",
+      "detail": "footer link colour lifted per inconsistency register; expected gate delta in footer band"
+    }
+  ],
+  "metadata": {
+    "title": "Larkspur Mutual — Home and auto insurance, member-owned since 1931",
+    "description": "Larkspur Mutual is a member-owned insurer covering homes, cars and small businesses across the three river counties.",
+    "canonical": "https://www.larkspurmutual.example/",
+    "ogTitle": "Larkspur Mutual — Home and auto insurance, member-owned since 1931",
+    "lang": "en"
+  },
+  "jsonLd": {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "Larkspur Mutual — Home and auto insurance, member-owned since 1931",
+    "url": "https://www.larkspurmutual.example/"
+  },
+  "migratedAt": "2026-09-10T15:31:04Z",
+  "designMdSha": "a99e7fb42deeab5a131ba0b090a9a4ce6eaecf7e81be48128bfee70e3fd49a3e",
+  "designJsonSha": "27bf506c89928d5aab22bb3ff836aa673ff4a4fcd8f50e336ad0be1ef12f3a11",
+  "sourceCurrentSha": "fb95cf458bc301ec1e4f97d2a4a209342ef5868d1f5498dc18f5c3bfa712ec15",
+  "sourceProposedSha": "cd2a66643ec2192413195e1bb98e284080e592c38c1aa340b2ff9121bc0c8a0c",
+  "assetsBundled": 3,
+  "brokenInternalLinks": 0
+}

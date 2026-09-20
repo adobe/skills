@@ -2,7 +2,9 @@
 
 The per-page checks Phase C runs before flipping a page to `deployed`, and the
 batched-delivery flow that runs them uniformly at scale. SKILL.md Phase C names
-each gate in one line; the mechanics live here.
+each gate in one line; the mechanics of Gates 1–4 live here. Gates 5–7 (the
+measured artifact gates): `measured-gates.md`; Gate 8 (the published-origin
+page gate + coverage regime, the release condition): `publish-gate.md`.
 
 **Two halves.** The gates split into a **static** pre-PUT lint
 (`reference/delivery-lint.md` → `scripts/delivery-lint.mjs`: wrapper,
@@ -144,9 +146,10 @@ so the gates run uniformly:
   `deploy-batch.mjs` command, `--paths` for a partial wave. An agent blocked
   at publish hands back with its local-harness gate result and
   "published-origin gate NOT run"; it never invents a publish path. On
-  re-auth the coordinator runs `next`, then the published-origin gate on the
-  newly delivered pages, and only then flips coverage — the ledger's POST
-  codes never flip state ("Admin 200 ≠ delivered" below). Halt classes, exit
+  re-auth the coordinator runs `next`, then `gate-publish.mjs --paths
+  <delivered paths> --origin <preview>` over the newly delivered pages
+  (`publish-gate.md` § Gate 8), and only then flips coverage — the ledger's
+  POST codes never flip state ("Admin 200 ≠ delivered" below). Halt classes, exit
   codes and remedies: `skills/deploy/da-deploy-protocol.md` § DA_TOKEN lifecycle.
   Two look-alikes: a delivered-host `401 x-error: access-not-allowed` is the
   `access-restricted` halt (remedy `SITE_TOKEN_<REPO>` via `--site-token-env`, then

@@ -1,0 +1,6 @@
+/* Canon CSS — shared chrome rules for the migrated bundle (sha c8372774ba5a).
+   Page-level tokens live in each page's :root block; this file carries only
+   what header and footer share across every page. */
+header[data-canon] img { display: block; }
+header[data-canon] nav { display: flex; flex-wrap: wrap; gap: 4px 0; }
+footer[data-canon] nav { display: flex; flex-wrap: wrap; }

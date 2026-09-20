@@ -1,0 +1,232 @@
+{
+  "_provenance": {
+    "writtenBy": "stardust:rollout",
+    "writtenAt": "2026-09-18T09:12:00Z",
+    "stardustVersion": "0.24.0"
+  },
+  "generatedAt": "2026-09-20T10:51:51.220Z",
+  "pages": [
+    {
+      "slug": "home",
+      "path": "/",
+      "title": "home",
+      "templateId": "landing",
+      "source": {
+        "migratedHtml": "stardust/migrated/index.html",
+        "metaJson": "stardust/migrated/_meta.json",
+        "sourceHash": "sha256:home00000000"
+      },
+      "blocks": [],
+      "delivery": {
+        "status": "deployed",
+        "deployedUrl": "https://main--larkspur-mutual--larkspur.aem.page/",
+        "deployedAt": "2026-09-18T09:05:00Z",
+        "type": "page",
+        "gate": {
+          "status": "pass",
+          "at": "2026-09-18T09:40:00Z",
+          "breakpoints": {
+            "360": {
+              "pixelPct": 4.2,
+              "heightDelta": 2,
+              "cropsOk": true,
+              "pass": true
+            },
+            "1440": {
+              "pixelPct": 6.9,
+              "heightDelta": 0,
+              "cropsOk": true,
+              "pass": true
+            }
+          },
+          "report": "stardust/rollout/gate-report.json"
+        }
+      }
+    },
+    {
+      "slug": "business",
+      "path": "/business",
+      "title": "business",
+      "templateId": "landing",
+      "source": {
+        "migratedHtml": "stardust/migrated/business/index.html",
+        "metaJson": "stardust/migrated/business/_meta.json",
+        "sourceHash": "sha256:business0000"
+      },
+      "blocks": [],
+      "delivery": {
+        "status": "deployed",
+        "deployedUrl": "https://main--larkspur-mutual--larkspur.aem.page/business",
+        "deployedAt": "2026-09-18T09:05:00Z",
+        "type": "page",
+        "gate": {
+          "status": "pass",
+          "at": "2026-09-18T09:40:00Z",
+          "breakpoints": {
+            "360": {
+              "pixelPct": 3.8,
+              "heightDelta": -1,
+              "cropsOk": true,
+              "pass": true
+            },
+            "1440": {
+              "pixelPct": 5.1,
+              "heightDelta": 0,
+              "cropsOk": true,
+              "pass": true
+            }
+          },
+          "report": "stardust/rollout/gate-report.json"
+        }
+      }
+    },
+    {
+      "slug": "news__storm-season-checklist",
+      "path": "/news/storm-season-checklist",
+      "title": "news__storm-season-checklist",
+      "templateId": "article",
+      "source": {
+        "migratedHtml": "stardust/migrated/news/storm-season-checklist/index.html",
+        "metaJson": "stardust/migrated/news/storm-season-checklist/_meta.json",
+        "sourceHash": "sha256:news__storm-season-checklist"
+      },
+      "blocks": [],
+      "delivery": {
+        "status": "deployed",
+        "deployedUrl": "https://main--larkspur-mutual--larkspur.aem.page/news/storm-season-checklist",
+        "deployedAt": "2026-09-18T09:05:00Z",
+        "type": "page",
+        "gate": {
+          "status": "unmeasured",
+          "at": "2026-09-18T09:40:00Z",
+          "breakpoints": {
+            "360": {
+              "pixelPct": 6.1,
+              "heightDelta": 1,
+              "cropsOk": true,
+              "pass": true
+            },
+            "1440": {
+              "pixelPct": null,
+              "heightDelta": null,
+              "cropsOk": null,
+              "pass": false
+            }
+          },
+          "report": "stardust/rollout/gate-report.json"
+        }
+      }
+    },
+    {
+      "slug": "news__annual-report-2025",
+      "path": "/news/annual-report-2025",
+      "title": "news__annual-report-2025",
+      "templateId": "article",
+      "source": {
+        "migratedHtml": "stardust/migrated/news/annual-report-2025/index.html",
+        "metaJson": "stardust/migrated/news/annual-report-2025/_meta.json",
+        "sourceHash": "sha256:news__annual-report-2025"
+      },
+      "blocks": [],
+      "delivery": {
+        "status": "deployed",
+        "deployedUrl": "https://main--larkspur-mutual--larkspur.aem.page/news/annual-report-2025",
+        "deployedAt": "2026-09-18T09:05:00Z",
+        "type": "page",
+        "gate": {
+          "status": "published-failing",
+          "at": "2026-09-18T09:40:00Z",
+          "breakpoints": {
+            "360": {
+              "pixelPct": 8.8,
+              "heightDelta": 4,
+              "cropsOk": true,
+              "pass": true
+            },
+            "1440": {
+              "pixelPct": 23.2,
+              "heightDelta": 41,
+              "cropsOk": true,
+              "pass": false
+            }
+          },
+          "report": "stardust/rollout/gate-report.json"
+        }
+      }
+    },
+    {
+      "slug": "insurance__home",
+      "path": "/insurance/home",
+      "title": "insurance__home",
+      "templateId": "program",
+      "source": {
+        "migratedHtml": "stardust/migrated/insurance/home/index.html",
+        "metaJson": "stardust/migrated/insurance/home/_meta.json",
+        "sourceHash": "sha256:insurance__home"
+      },
+      "blocks": [],
+      "delivery": {
+        "status": "deployed",
+        "deployedUrl": "https://main--larkspur-mutual--larkspur.aem.page/insurance/home",
+        "deployedAt": "2026-09-18T09:05:00Z",
+        "type": "page",
+        "gate": {
+          "status": "ungated",
+          "at": "2026-09-20T07:51:02.060Z",
+          "breakpoints": {
+            "360": {
+              "pixelPct": null,
+              "heightDelta": null,
+              "cropsOk": null,
+              "pass": false
+            },
+            "1440": {
+              "pixelPct": null,
+              "heightDelta": null,
+              "cropsOk": null,
+              "pass": false
+            }
+          },
+          "report": "stardust/rollout/gate-report.json"
+        }
+      }
+    },
+    {
+      "slug": "insurance__auto",
+      "path": "/insurance/auto",
+      "title": "insurance__auto",
+      "templateId": "program",
+      "source": {
+        "migratedHtml": "stardust/migrated/insurance/auto/index.html",
+        "metaJson": "stardust/migrated/insurance/auto/_meta.json",
+        "sourceHash": "sha256:insurance__auto"
+      },
+      "blocks": [],
+      "delivery": {
+        "status": "deployed",
+        "deployedUrl": "https://main--larkspur-mutual--larkspur.aem.page/insurance/auto",
+        "deployedAt": "2026-09-18T09:05:00Z",
+        "type": "page",
+        "gate": {
+          "status": "fail",
+          "at": "2026-09-18T09:40:00Z",
+          "breakpoints": {
+            "360": {
+              "pixelPct": 12.4,
+              "heightDelta": -112,
+              "cropsOk": true,
+              "pass": false
+            },
+            "1440": {
+              "pixelPct": 7.4,
+              "heightDelta": 3,
+              "cropsOk": true,
+              "pass": true
+            }
+          },
+          "report": "stardust/rollout/gate-report.json"
+        }
+      }
+    }
+  ]
+}

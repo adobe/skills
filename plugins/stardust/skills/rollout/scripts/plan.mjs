@@ -16,8 +16,9 @@
  * Writes stardust/rollout/plan.json and prints a readable plan.
  * `--sample <n>` prints the first n pages per template in delivery order
  * (representative first) as `slug<TAB>path<TAB>templateId` and exits without
- * writing — the template sample the site-scale sweep gates
- * (reference/sweep-protocol.md).
+ * writing — an authoring-order listing. The gate sample of the site-scale sweep
+ * is NOT this head: `gate-publish.mjs --sample <n> --seed <s> --exclude …`
+ * draws it seeded at random (reference/sweep-protocol.md step 2).
  * Usage: node skills/rollout/scripts/plan.mjs [--out <rolloutDir>] [--pending-only] [--sample <n>]
  */
 import { join } from 'node:path';

@@ -1,0 +1,397 @@
+{
+  "_provenance": {
+    "writtenBy": "stardust:rollout",
+    "writtenAt": "2026-09-18T09:12:00Z",
+    "stardustVersion": "0.24.0"
+  },
+  "generatedAt": "2026-09-18T10:25:00Z",
+  "pages": [
+    {
+      "slug": "home",
+      "path": "/",
+      "title": "home",
+      "templateId": "landing",
+      "source": {
+        "migratedHtml": "stardust/migrated/index.html",
+        "metaJson": "stardust/migrated/_meta.json",
+        "sourceHash": "sha256:home00000000"
+      },
+      "blocks": [],
+      "delivery": {
+        "status": "deployed",
+        "deployedUrl": "https://main--larkspur-mutual--larkspur.aem.page/",
+        "deployedAt": "2026-09-18T09:05:00Z",
+        "type": "page",
+        "gate": {
+          "status": "pass",
+          "at": "2026-09-18T09:40:00Z",
+          "breakpoints": {
+            "360": {
+              "pixelPct": 4.2,
+              "heightDelta": 2,
+              "cropsOk": true,
+              "pass": true
+            },
+            "1440": {
+              "pixelPct": 6.9,
+              "heightDelta": 0,
+              "cropsOk": true,
+              "pass": true
+            }
+          },
+          "report": "stardust/rollout/gate-report.json"
+        }
+      }
+    },
+    {
+      "slug": "business",
+      "path": "/business",
+      "title": "business",
+      "templateId": "landing",
+      "source": {
+        "migratedHtml": "stardust/migrated/business/index.html",
+        "metaJson": "stardust/migrated/business/_meta.json",
+        "sourceHash": "sha256:business0000"
+      },
+      "blocks": [],
+      "delivery": {
+        "status": "deployed",
+        "deployedUrl": "https://main--larkspur-mutual--larkspur.aem.page/business",
+        "deployedAt": "2026-09-18T09:05:00Z",
+        "type": "page",
+        "gate": {
+          "status": "pass",
+          "at": "2026-09-18T09:40:00Z",
+          "breakpoints": {
+            "360": {
+              "pixelPct": 3.8,
+              "heightDelta": -1,
+              "cropsOk": true,
+              "pass": true
+            },
+            "1440": {
+              "pixelPct": 5.1,
+              "heightDelta": 0,
+              "cropsOk": true,
+              "pass": true
+            }
+          },
+          "report": "stardust/rollout/gate-report.json"
+        }
+      }
+    },
+    {
+      "slug": "news__storm-season-checklist",
+      "path": "/news/storm-season-checklist",
+      "title": "news__storm-season-checklist",
+      "templateId": "article",
+      "source": {
+        "migratedHtml": "stardust/migrated/news/storm-season-checklist/index.html",
+        "metaJson": "stardust/migrated/news/storm-season-checklist/_meta.json",
+        "sourceHash": "sha256:news__storm-season-checklist"
+      },
+      "blocks": [],
+      "delivery": {
+        "status": "deployed",
+        "deployedUrl": "https://main--larkspur-mutual--larkspur.aem.page/news/storm-season-checklist",
+        "deployedAt": "2026-09-18T09:05:00Z",
+        "type": "page",
+        "gate": {
+          "status": "unmeasured",
+          "at": "2026-09-18T09:40:00Z",
+          "breakpoints": {
+            "360": {
+              "pixelPct": 6.1,
+              "heightDelta": 1,
+              "cropsOk": true,
+              "pass": true
+            },
+            "1440": {
+              "pixelPct": null,
+              "heightDelta": null,
+              "cropsOk": null,
+              "pass": false
+            }
+          },
+          "report": "stardust/rollout/gate-report.json"
+        }
+      }
+    },
+    {
+      "slug": "news__annual-report-2025",
+      "path": "/news/annual-report-2025",
+      "title": "news__annual-report-2025",
+      "templateId": "article",
+      "source": {
+        "migratedHtml": "stardust/migrated/news/annual-report-2025/index.html",
+        "metaJson": "stardust/migrated/news/annual-report-2025/_meta.json",
+        "sourceHash": "sha256:news__annual-report-2025"
+      },
+      "blocks": [],
+      "delivery": {
+        "status": "deployed",
+        "deployedUrl": "https://main--larkspur-mutual--larkspur.aem.page/news/annual-report-2025",
+        "deployedAt": "2026-09-18T09:05:00Z",
+        "type": "page"
+      }
+    },
+    {
+      "slug": "insurance__home",
+      "path": "/insurance/home",
+      "title": "insurance__home",
+      "templateId": "program",
+      "source": {
+        "migratedHtml": "stardust/migrated/insurance/home/index.html",
+        "metaJson": "stardust/migrated/insurance/home/_meta.json",
+        "sourceHash": "sha256:insurance__home"
+      },
+      "blocks": [],
+      "delivery": {
+        "status": "deployed",
+        "deployedUrl": "https://main--larkspur-mutual--larkspur.aem.page/insurance/home",
+        "deployedAt": "2026-09-18T09:05:00Z",
+        "type": "page",
+        "gate": {
+          "status": "pass",
+          "at": "2026-09-18T10:20:00Z",
+          "breakpoints": {
+            "360": {
+              "pixelPct": 5.8,
+              "heightDelta": 2,
+              "cropsOk": true,
+              "pass": true
+            },
+            "1440": {
+              "pixelPct": 4.4,
+              "heightDelta": 0,
+              "cropsOk": true,
+              "pass": true
+            }
+          },
+          "report": "stardust/rollout/gate-report.json"
+        }
+      }
+    },
+    {
+      "slug": "insurance__auto",
+      "path": "/insurance/auto",
+      "title": "insurance__auto",
+      "templateId": "program",
+      "source": {
+        "migratedHtml": "stardust/migrated/insurance/auto/index.html",
+        "metaJson": "stardust/migrated/insurance/auto/_meta.json",
+        "sourceHash": "sha256:insurance__auto"
+      },
+      "blocks": [],
+      "delivery": {
+        "status": "deployed",
+        "deployedUrl": "https://main--larkspur-mutual--larkspur.aem.page/insurance/auto",
+        "deployedAt": "2026-09-18T09:05:00Z",
+        "type": "page"
+      }
+    },
+    {
+      "slug": "about",
+      "path": "/about",
+      "title": "About Larkspur Mutual — member-owned since 1931",
+      "templateId": "landing",
+      "source": {
+        "migratedHtml": "stardust/migrated/about/index.html",
+        "metaJson": "stardust/migrated/about/_meta.json",
+        "sourceHash": "sha256:about0000000"
+      },
+      "blocks": [],
+      "delivery": {
+        "status": "deployed",
+        "deployedUrl": "https://main--larkspur-mutual--larkspur.aem.page/about",
+        "deployedAt": "2026-09-18T09:05:00Z",
+        "type": "page",
+        "gate": {
+          "status": "pass",
+          "at": "2026-09-18T10:20:00Z",
+          "breakpoints": {
+            "360": {
+              "pixelPct": 4.9,
+              "heightDelta": 3,
+              "cropsOk": true,
+              "pass": true
+            },
+            "1440": {
+              "pixelPct": 5.4,
+              "heightDelta": 1,
+              "cropsOk": true,
+              "pass": true
+            }
+          },
+          "report": "stardust/rollout/gate-report.json"
+        }
+      }
+    },
+    {
+      "slug": "news__rate-notice-2026",
+      "path": "/news/rate-notice-2026",
+      "title": "2026 rate notice — what changes for members",
+      "templateId": "article",
+      "source": {
+        "migratedHtml": "stardust/migrated/news/rate-notice-2026/index.html",
+        "metaJson": "stardust/migrated/news/rate-notice-2026/_meta.json",
+        "sourceHash": "sha256:newsrate-not"
+      },
+      "blocks": [],
+      "delivery": {
+        "status": "deployed",
+        "deployedUrl": "https://main--larkspur-mutual--larkspur.aem.page/news/rate-notice-2026",
+        "deployedAt": "2026-09-18T09:05:00Z",
+        "type": "page",
+        "gate": {
+          "status": "pass",
+          "at": "2026-09-18T10:20:00Z",
+          "breakpoints": {
+            "360": {
+              "pixelPct": 7.1,
+              "heightDelta": -4,
+              "cropsOk": true,
+              "pass": true
+            },
+            "1440": {
+              "pixelPct": 6.2,
+              "heightDelta": 2,
+              "cropsOk": true,
+              "pass": true
+            }
+          },
+          "report": "stardust/rollout/gate-report.json"
+        }
+      }
+    },
+    {
+      "slug": "news__member-meeting",
+      "path": "/news/member-meeting",
+      "title": "Annual member meeting — agenda and voting",
+      "templateId": "article",
+      "source": {
+        "migratedHtml": "stardust/migrated/news/member-meeting/index.html",
+        "metaJson": "stardust/migrated/news/member-meeting/_meta.json",
+        "sourceHash": "sha256:newsmember-m"
+      },
+      "blocks": [],
+      "delivery": {
+        "status": "deployed",
+        "deployedUrl": "https://main--larkspur-mutual--larkspur.aem.page/news/member-meeting",
+        "deployedAt": "2026-09-18T09:05:00Z",
+        "type": "page",
+        "gate": {
+          "status": "pass",
+          "at": "2026-09-18T10:20:00Z",
+          "breakpoints": {
+            "360": {
+              "pixelPct": 7.1,
+              "heightDelta": -4,
+              "cropsOk": true,
+              "pass": true
+            },
+            "1440": {
+              "pixelPct": 6.2,
+              "heightDelta": 2,
+              "cropsOk": true,
+              "pass": true
+            }
+          },
+          "report": "stardust/rollout/gate-report.json"
+        }
+      }
+    },
+    {
+      "slug": "insurance__life",
+      "path": "/insurance/life",
+      "title": "Life insurance — Larkspur Mutual",
+      "templateId": "program",
+      "source": {
+        "migratedHtml": "stardust/migrated/insurance/life/index.html",
+        "metaJson": "stardust/migrated/insurance/life/_meta.json",
+        "sourceHash": "sha256:insurancelif"
+      },
+      "blocks": [],
+      "delivery": {
+        "status": "deployed",
+        "deployedUrl": "https://main--larkspur-mutual--larkspur.aem.page/insurance/life",
+        "deployedAt": "2026-09-18T09:05:00Z",
+        "type": "page",
+        "gate": {
+          "status": "fail",
+          "at": "2026-09-18T10:20:00Z",
+          "breakpoints": {
+            "360": {
+              "pixelPct": 6.3,
+              "heightDelta": 1,
+              "cropsOk": true,
+              "pass": true
+            },
+            "1440": {
+              "pixelPct": 7.8,
+              "heightDelta": 22,
+              "cropsOk": true,
+              "pass": false
+            }
+          },
+          "report": "stardust/rollout/gate-report.json"
+        }
+      }
+    },
+    {
+      "slug": "insurance__boat",
+      "path": "/insurance/boat",
+      "title": "Boat insurance — Larkspur Mutual",
+      "templateId": "program",
+      "source": {
+        "migratedHtml": "stardust/migrated/insurance/boat/index.html",
+        "metaJson": "stardust/migrated/insurance/boat/_meta.json",
+        "sourceHash": "sha256:insuranceboa"
+      },
+      "blocks": [],
+      "delivery": {
+        "status": "deployed",
+        "deployedUrl": "https://main--larkspur-mutual--larkspur.aem.page/insurance/boat",
+        "deployedAt": "2026-09-18T09:05:00Z",
+        "type": "page"
+      }
+    },
+    {
+      "slug": "insurance__flood",
+      "path": "/insurance/flood",
+      "title": "Flood insurance — Larkspur Mutual",
+      "templateId": "program",
+      "source": {
+        "migratedHtml": "stardust/migrated/insurance/flood/index.html",
+        "metaJson": "stardust/migrated/insurance/flood/_meta.json",
+        "sourceHash": "sha256:insuranceflo"
+      },
+      "blocks": [],
+      "delivery": {
+        "status": "deployed",
+        "deployedUrl": "https://main--larkspur-mutual--larkspur.aem.page/insurance/flood",
+        "deployedAt": "2026-09-18T09:05:00Z",
+        "type": "page",
+        "gate": {
+          "status": "fail",
+          "at": "2026-09-18T10:20:00Z",
+          "breakpoints": {
+            "360": {
+              "pixelPct": 14.1,
+              "heightDelta": -96,
+              "cropsOk": true,
+              "pass": false
+            },
+            "1440": {
+              "pixelPct": 6.9,
+              "heightDelta": 3,
+              "cropsOk": true,
+              "pass": true
+            }
+          },
+          "report": "stardust/rollout/gate-report.json"
+        }
+      }
+    }
+  ]
+}

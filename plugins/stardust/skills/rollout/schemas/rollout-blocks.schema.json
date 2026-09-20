@@ -59,7 +59,24 @@
               "description": "Canonical EDS block name this block was converted to (blocks/<name>/). The dedup target."
             },
             "blockPath": { "type": ["string", "null"], "description": "Delivered block path / fragment path." },
-            "convertedAt": { "type": ["string", "null"], "format": "date-time" }
+            "convertedAt": { "type": ["string", "null"], "format": "date-time" },
+            "ewGate": {
+              "type": "string",
+              "enum": ["pass", "fail", "exempt", "unmeasured"],
+              "description": "Editability gate verdict derived from ew-editability-probe.mjs blocks[] by edsBlockName (update-coverage --gate editability); a block's worst page verdict wins. converted requires pass | exempt (reference/coverage-model.md § Block delivery status lifecycle; measured-gates.md § Gate 6). unmeasured = the probe could not install the block — never a fail."
+            },
+            "ew": {
+              "type": "object",
+              "description": "Editability counts copied from the probe for this block (worst page).",
+              "additionalProperties": false,
+              "properties": {
+                "authored": { "type": "integer", "minimum": 0 },
+                "editable": { "type": "integer", "minimum": 0 },
+                "dead": { "type": "integer", "minimum": 0 },
+                "exempt": { "type": "integer", "minimum": 0 },
+                "duplicated": { "type": "integer", "minimum": 0 }
+              }
+            }
           }
         }
       }

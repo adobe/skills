@@ -1,0 +1,41 @@
+{
+  "_provenance": {
+    "writtenBy": "stardust:rollout",
+    "writtenAt": "2026-09-18T15:00:00Z",
+    "stardustVersion": "0.24.0"
+  },
+  "generatedAt": "2026-09-18T16:05:00Z",
+  "blocks": [
+    {
+      "id": "hero-statement",
+      "label": "Hero statement",
+      "kind": "module",
+      "signature": "hero-statement",
+      "usedByPages": [
+        "home",
+        "business"
+      ],
+      "instanceCount": 2,
+      "delivery": {
+        "status": "converted",
+        "edsBlockName": "hero-statement",
+        "convertedAt": "2026-09-18T14:50:00Z"
+      }
+    },
+    {
+      "id": "coverage-tiles",
+      "label": "Coverage tiles",
+      "kind": "module",
+      "signature": "coverage-tiles",
+      "usedByPages": [
+        "home"
+      ],
+      "instanceCount": 1,
+      "delivery": {
+        "status": "converted",
+        "edsBlockName": "cards",
+        "convertedAt": "2026-09-18T14:55:00Z"
+      }
+    }
+  ]
+}

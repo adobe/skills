@@ -1,0 +1,31 @@
+{
+  "generatedAt": "2026-09-17T18:00:00Z",
+  "target": "aem-eds",
+  "site": {
+    "sourceUrl": "https://www.larkspurmutual.example",
+    "liveHost": "main--larkspur-mutual--larkspur.aem.live"
+  },
+  "stageCount": {
+    "identified": 6,
+    "prototyped": 6,
+    "deployed": 0,
+    "optimised": 0
+  },
+  "stageExclusive": {
+    "identified": 0,
+    "prototyped": 6,
+    "deployed": 0,
+    "optimised": 0
+  },
+  "pages": [],
+  "templates": [],
+  "blocks": {
+    "total": 0,
+    "converted": 0
+  },
+  "quality": null,
+  "findings": {
+    "byFixability": {},
+    "byAutofix": {}
+  }
+}

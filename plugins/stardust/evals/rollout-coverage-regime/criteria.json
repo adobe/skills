@@ -1,0 +1,51 @@
+{
+  "context": "Coverage regime — the seeded template sample as the page gate for siblings (rollout Phase C step 4 / sweep-protocol step 2 / publish-gate.md § Gate 8 → Coverage regime), hands-off, offline. Task and setup in task.md; each item is judged pass/fail and weighted by max_score.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "coverage_line_and_sample_from_report",
+      "max_score": 15,
+      "description": "The coverage line is read from gate-report.json coverage{} — published-gated 8 of 9 · PASS 6 · FAIL 2 · unmeasured 1 · ungated 0 — and the sample block is quoted (seed 11, n 2 per template, excluded news__annual-report-2025, the nine drawn slugs); the three pages with no report entry are named as ungated / held. A line typed from memory, or counts that fold the unmeasured page into FAIL, fails."
+    },
+    {
+      "name": "template_not_at_bar_not_published",
+      "max_score": 20,
+      "description": "Exactly landing is called at the bar; program (2 FAIL) and article (1 unmeasured) are named not at the bar and NONE of their rows is published or declared publishable — including /news/rate-notice-2026, /news/member-meeting and /insurance/home, which PASS individually. The publishable set is exactly /, /business, /about. Publishing or declaring publishable any other row, or calling a template at the bar because its archetype passes, fails."
+    },
+    {
+      "name": "class_table_before_fix",
+      "max_score": 15,
+      "description": "The two FAIL rows are triaged into a ranked class table (class → count → worst example → file pointer) — pixel over the bar at 360 with a collapsed band (/insurance/flood, Δh −96) and height Δ over 8 at 1440 (/insurance/life) — with one fix per class and a re-gate of the mapped pages (gate-publish.mjs --paths … --origin <preview>), not a whole-site re-run for a class fix; the fix is described as code/CSS work, never as a threshold or residual."
+    },
+    {
+      "name": "no_escape_flags_no_aggregate_bar",
+      "max_score": 15,
+      "description": "No --publish-ungated, no --publish-no-regression, no --bar / threshold flag or edit; no POST /live/ issued or claimed; the neutralDiff medians / p90 / share < 10 % are quoted as reporting only — the template is never called passing on an aggregate; the ungated pages are held, not published."
+    },
+    {
+      "name": "regime_redrive_seeded_never_head",
+      "max_score": 10,
+      "description": "The re-drive after the class fixes is the regime's: gate-publish.mjs --all-delivered --origin <preview> (≤ 150 delivered pages — the confirmation sweep, every page × every breakpoint) before any publish run, or an expanded seeded draw with the same --seed 11 and --exclude naming the fix-loop slugs. plan.mjs --sample (delivery-order head), hand-picked pages, or re-using the same sample as the sweep fails."
+    },
+    {
+      "name": "unmeasured_is_redrive_not_fail",
+      "max_score": 10,
+      "description": "/news/storm-season-checklist is called unmeasured (1440 exit 124 — no verdict) with its re-drive; never a FAIL, never a pass, never counted in the failed count; article is not at the bar because of it, with the reason named as a re-drive."
+    },
+    {
+      "name": "gate_table_then_coverage_line",
+      "max_score": 5,
+      "description": "The report opens with the gate table (path · status · per-breakpoint number · at · regime published-origin) before any counts or prose, then the coverage line, then the template table with the at-the-bar column."
+    },
+    {
+      "name": "handsoff_blocked_at_preview",
+      "max_score": 5,
+      "description": "Under handsOff the run ends blocked at preview: a status.jsonl blocked line whose next is the exact re-drive (class fixes → re-gate mapped pages → re-drive the unmeasured page → --all-delivered sweep → the same --publish run), no question to the user, no 'ready for review' / 'published' claim while rows are held."
+    },
+    {
+      "name": "read_only_inputs",
+      "max_score": 5,
+      "description": "stardust/migrated/**, stardust/replica/**, stardust/rollout/gate-report.json and content/.deploy-ledger.json are byte-identical to the fixture after the run; writes land only under stardust/rollout/ (coverage roll-ups), stardust/.work/, an appended journal.md entry and status.jsonl lines, plus the master Setup's own housekeeping."
+    }
+  ]
+}

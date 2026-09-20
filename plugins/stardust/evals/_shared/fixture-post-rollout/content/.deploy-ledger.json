@@ -1,0 +1,38 @@
+{
+  "/": {
+    "status": "previewed",
+    "attempts": 1,
+    "ts": "2026-09-18T15:52:00Z",
+    "put": 201,
+    "preview": 200,
+    "bodyHash": "b000ffffffffffffffffffffffffffffffffffff",
+    "branch": "main"
+  },
+  "/business": {
+    "status": "previewed",
+    "attempts": 1,
+    "ts": "2026-09-18T15:54:00Z",
+    "put": 201,
+    "preview": 200,
+    "bodyHash": "b001ffffffffffffffffffffffffffffffffffff",
+    "branch": "main"
+  },
+  "/news/storm-season-checklist": {
+    "status": "previewed",
+    "attempts": 1,
+    "ts": "2026-09-18T15:56:00Z",
+    "put": 201,
+    "preview": 200,
+    "bodyHash": "b002ffffffffffffffffffffffffffffffffffff",
+    "branch": "main"
+  },
+  "/insurance/home": {
+    "status": "previewed",
+    "attempts": 1,
+    "ts": "2026-09-18T15:58:00Z",
+    "put": 201,
+    "preview": 200,
+    "bodyHash": "b003ffffffffffffffffffffffffffffffffffff",
+    "branch": "main"
+  }
+}

@@ -1,0 +1,108 @@
+[
+  {
+    "content": "content/index.html",
+    "blocksDir": "blocks",
+    "stylesPath": "styles/styles.css",
+    "root": ".",
+    "pipeline": "mimic",
+    "totals": {
+      "authored": 7,
+      "editable": 5,
+      "dead": 2,
+      "duplicated": 0,
+      "exempt": 0
+    },
+    "blocks": [
+      {
+        "block": "hero-statement",
+        "authored": 3,
+        "editable": 3,
+        "dead": 0,
+        "duplicated": 0,
+        "exempt": 0,
+        "textDrift": 0,
+        "deadItems": [],
+        "dupItems": [],
+        "exemptItems": [],
+        "exemptReasons": [],
+        "exemptUsed": []
+      },
+      {
+        "block": "cards",
+        "authored": 4,
+        "editable": 2,
+        "dead": 2,
+        "duplicated": 0,
+        "exempt": 0,
+        "textDrift": 0,
+        "deadItems": [
+          {
+            "tag": "h3",
+            "text": "Home",
+            "label": "cards h3 #1"
+          },
+          {
+            "tag": "h3",
+            "text": "Auto",
+            "label": "cards h3 #2"
+          }
+        ],
+        "dupItems": [],
+        "exemptItems": [],
+        "exemptReasons": [],
+        "exemptUsed": []
+      }
+    ],
+    "rows": [
+      {
+        "block": "hero-statement",
+        "tag": "h1",
+        "text": "Coverage that fits the way you live",
+        "survivors": 1
+      },
+      {
+        "block": "hero-statement",
+        "tag": "p",
+        "text": "Home and auto, one member-owned company.",
+        "survivors": 1
+      },
+      {
+        "block": "hero-statement",
+        "tag": "a",
+        "text": "Get a quote",
+        "survivors": 1
+      },
+      {
+        "block": "cards",
+        "tag": "h3",
+        "text": "Home",
+        "survivors": 0
+      },
+      {
+        "block": "cards",
+        "tag": "p",
+        "text": "Storm, fire, theft.",
+        "survivors": 1
+      },
+      {
+        "block": "cards",
+        "tag": "h3",
+        "text": "Auto",
+        "survivors": 0
+      },
+      {
+        "block": "cards",
+        "tag": "p",
+        "text": "Liability and collision.",
+        "survivors": 1
+      }
+    ],
+    "sim": null,
+    "exemptions": {},
+    "errors": [],
+    "requests": {
+      "missing": {}
+    },
+    "strict": []
+  }
+]

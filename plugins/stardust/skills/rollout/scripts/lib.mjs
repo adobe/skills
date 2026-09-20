@@ -31,11 +31,13 @@ export function pageCounts(pages) {
   };
 }
 
-/** Block conversion counts from coverage/blocks.json rows. */
+/** Block conversion counts from coverage/blocks.json rows. A block past `pending` whose editability gate is
+ *  fail | unmeasured does not count as converted (coverage-model.md § Block delivery status lifecycle) — it is `ewHeld`. */
 export function blockCounts(blocks) {
-  const converted = blocks.filter((b) => ['converted', 'deployed', 'verified']
-    .includes(b.delivery && b.delivery.status)).length;
-  return { total: blocks.length, converted, pending: blocks.length - converted };
+  const past = blocks.filter((b) => ['converted', 'deployed', 'verified'].includes(b.delivery && b.delivery.status));
+  const ewHeld = past.filter((b) => ['fail', 'unmeasured'].includes(b.delivery.ewGate)).length;
+  const converted = past.length - ewHeld;
+  return { total: blocks.length, converted, pending: blocks.length - past.length, ...(ewHeld ? { ewHeld } : {}) };
 }
 
 /** Recompute each template's delivery roll-up in place from the page rows. */

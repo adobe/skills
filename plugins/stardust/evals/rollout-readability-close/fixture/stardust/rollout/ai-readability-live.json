@@ -1,0 +1,189 @@
+{
+  "origin": "https://main--larkspur-mutual--larkspur.aem.live",
+  "min": 98,
+  "excludeBlocks": [
+    "client-app",
+    "widget"
+  ],
+  "allowlist": [],
+  "generatedAt": "2026-09-18T14:05:00Z",
+  "pages": [
+    {
+      "path": "/",
+      "fragments": [],
+      "chromeFragments": [
+        "/nav.plain.html",
+        "/footer.plain.html"
+      ],
+      "strict": {
+        "score": 97,
+        "served": 640,
+        "rendered": 660,
+        "missing": 20
+      },
+      "landmarksCounted": {
+        "score": 98
+      },
+      "code": {
+        "score": 99,
+        "served": 660,
+        "rendered": 662,
+        "fragmentWords": 20,
+        "fragmentsCostPts": 3,
+        "excludedWords": 0,
+        "allowedWords": 0
+      },
+      "blocks": [],
+      "servedGap": {
+        "main": 0,
+        "chrome": 20,
+        "renderedMain": 640
+      }
+    },
+    {
+      "path": "/business",
+      "fragments": [],
+      "chromeFragments": [
+        "/nav.plain.html",
+        "/footer.plain.html"
+      ],
+      "strict": {
+        "score": 96,
+        "served": 640,
+        "rendered": 660,
+        "missing": 20
+      },
+      "landmarksCounted": {
+        "score": 97
+      },
+      "code": {
+        "score": 100,
+        "served": 660,
+        "rendered": 662,
+        "fragmentWords": 20,
+        "fragmentsCostPts": 3,
+        "excludedWords": 0,
+        "allowedWords": 0
+      },
+      "blocks": [],
+      "servedGap": {
+        "main": 0,
+        "chrome": 20,
+        "renderedMain": 640
+      }
+    },
+    {
+      "path": "/news/storm-season-checklist",
+      "fragments": [],
+      "chromeFragments": [
+        "/nav.plain.html",
+        "/footer.plain.html"
+      ],
+      "strict": {
+        "score": 98,
+        "served": 640,
+        "rendered": 660,
+        "missing": 20
+      },
+      "landmarksCounted": {
+        "score": 99
+      },
+      "code": {
+        "score": 100,
+        "served": 660,
+        "rendered": 662,
+        "fragmentWords": 20,
+        "fragmentsCostPts": 3,
+        "excludedWords": 0,
+        "allowedWords": 0
+      },
+      "blocks": [],
+      "servedGap": {
+        "main": 0,
+        "chrome": 20,
+        "renderedMain": 640
+      }
+    },
+    {
+      "path": "/insurance/home",
+      "fragments": [],
+      "chromeFragments": [
+        "/nav.plain.html",
+        "/footer.plain.html"
+      ],
+      "strict": {
+        "score": 95,
+        "served": 640,
+        "rendered": 660,
+        "missing": 20
+      },
+      "landmarksCounted": {
+        "score": 96
+      },
+      "code": {
+        "score": 99,
+        "served": 660,
+        "rendered": 662,
+        "fragmentWords": 20,
+        "fragmentsCostPts": 3,
+        "excludedWords": 0,
+        "allowedWords": 0
+      },
+      "blocks": [],
+      "servedGap": {
+        "main": 0,
+        "chrome": 20,
+        "renderedMain": 640
+      }
+    },
+    {
+      "path": "/insurance/auto",
+      "fragments": [],
+      "chromeFragments": [],
+      "strict": {
+        "score": 86,
+        "served": 580,
+        "rendered": 672,
+        "missing": 92
+      },
+      "landmarksCounted": {
+        "score": 87
+      },
+      "code": {
+        "score": 91,
+        "served": 600,
+        "rendered": 660,
+        "fragmentWords": 20,
+        "fragmentsCostPts": 3,
+        "excludedWords": 0,
+        "allowedWords": 0
+      },
+      "blocks": [
+        {
+          "block": "cards",
+          "variants": "coverage",
+          "words": 64,
+          "servedGap": 40,
+          "excluded": false,
+          "sample": "Roadside assistance included with every plan …"
+        },
+        {
+          "block": "hero",
+          "words": 30,
+          "servedGap": 12,
+          "excluded": false,
+          "sample": "Get a quote in minutes"
+        }
+      ],
+      "servedGap": {
+        "main": 52,
+        "chrome": 20,
+        "renderedMain": 652
+      }
+    },
+    {
+      "path": "/news/annual-report-2025",
+      "error": "served fetch HTTP 429"
+    }
+  ]
+}

@@ -53,10 +53,45 @@
           "properties": {
             "total": { "type": "integer", "minimum": 0 },
             "converted": { "type": "integer", "minimum": 0 },
-            "pending": { "type": "integer", "minimum": 0 }
+            "pending": { "type": "integer", "minimum": 0 },
+            "ewHeld": { "type": "integer", "minimum": 0, "description": "Blocks past pending whose delivery.ewGate is fail | unmeasured — not counted as converted (measured-gates.md § Gate 6)." }
           }
         },
-        "verifyFailures": { "type": "integer", "minimum": 0 }
+        "verifyFailures": { "type": "integer", "minimum": 0 },
+        "gates": {
+          "type": "object",
+          "description": "Site-wide roll-up per ingested gate, recomputed from every coverage row's delivery.gates.<name> by update-coverage --gate / verify --ai-readability (reference/measured-gates.md § Gate 5, § Gate 6). The Phase H Readability / Editability lines are computed from here, never typed.",
+          "additionalProperties": false,
+          "properties": {
+            "ai-readability": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "strictMedian": { "type": ["number", "null"] },
+                "codeMedian": { "type": ["number", "null"] },
+                "below": { "type": "integer", "minimum": 0, "description": "Measured pages with code < min (each is a failed row)." },
+                "unmeasured": { "type": "integer", "minimum": 0, "description": "Rows the instrument gave no verdict for — never counted as failed." },
+                "measured": { "type": "integer", "minimum": 0 },
+                "min": { "type": ["number", "null"], "description": "The bar, copied from the artifact (never retyped)." },
+                "at": { "type": ["string", "null"], "format": "date-time" }
+              }
+            },
+            "editability": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "authored": { "type": "integer", "minimum": 0 },
+                "editable": { "type": "integer", "minimum": 0 },
+                "dead": { "type": "integer", "minimum": 0 },
+                "exempt": { "type": "integer", "minimum": 0 },
+                "unmeasured": { "type": "integer", "minimum": 0 },
+                "pagesFailed": { "type": "integer", "minimum": 0 },
+                "measured": { "type": "integer", "minimum": 0 },
+                "at": { "type": ["string", "null"], "format": "date-time" }
+              }
+            }
+          }
+        }
       }
     }
   },
