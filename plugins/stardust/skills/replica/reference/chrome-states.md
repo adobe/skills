@@ -106,13 +106,14 @@ items (plain links included) as `navModel`. Link-set check: the model must
 contain every flat visible nav link at rest (a miss is a WARN — an enumeration
 gap); model-only links are `panel-only (off-DOM at rest)`, the content a
 rest-state gate never sees. The `/nav` HTML serialisation follows the deploy
-grammar (`../../deploy/reference/chrome.md` § N-level nav grammar); this file
-owns the JSON, not a second grammar.
+grammar (`../../deploy/reference/chrome.md` § Chrome states and variants —
+"N-level nav grammar"); this file owns the JSON, not a second grammar.
 
 ## Chrome variants
 
 `../scripts/chrome-variants.mjs` buckets the whole inventory at zero live hits
-by a static fingerprint of the captured record (`chrome` field: header/footer
+by a static fingerprint of the captured record (`chrome` field —
+`../../extract/reference/current-state-schema.md` § Chrome: header/footer
 landmark class sets minus state classes, nav-row count, stylesheet paths
 without cache-busters) and writes `state.json.pages[].chromeVariant`
 (`--write`). Names persist, never renumbered: home bucket `default`, others

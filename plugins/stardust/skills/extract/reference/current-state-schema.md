@@ -68,6 +68,7 @@ The file is JSON because every consumer is non-human. It carries a
 
   "headings": [ /* see § Headings */ ],
   "landmarks": [ /* see § Landmarks */ ],
+  "chrome": { /* see § Chrome — the header/footer fingerprint replica's chrome-variants.mjs buckets by */ },
   "ctas": [ /* see § CTAs */ ],
   "links": { "internal": [], "external": [] },
   "media": { /* see § Media */ },
@@ -206,6 +207,17 @@ each section heading; without them every body region falls back to
 the placeholder-with-signature treatment (per `prototype/reference/
 proposed-file-shell.md` § Content sourcing hierarchy) even when the
 source page had real prose to reuse.
+
+## § Chrome
+
+The static chrome fingerprint `crawl.mjs` records per page, consumed at zero
+live hits by `../../replica/scripts/chrome-variants.mjs` (contract:
+`../../replica/reference/chrome-states.md` § Chrome variants). Recorded, never
+interpreted here: `header` / `footer` = the landmark's `{ tag, id, classes[], h }`
+(or `null`), `navRows` = distinct nav-row bands in the header (a subnav band
+is 2), `bodyClasses[]` (variant marker candidates), `stylesheets[]` = linked
+sheet `host/path` strings without query (≤ 40). Records without the field
+bucket as `unfingerprinted` — re-run extract on one page per type.
 
 ## § CTAs
 
