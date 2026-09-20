@@ -1,0 +1,35 @@
+{
+  "_provenance": {
+    "writtenBy": "stardust:rollout",
+    "writtenAt": "2026-09-18T09:12:00Z",
+    "stardustVersion": "0.24.0"
+  },
+  "target": "aem-eds",
+  "site": {
+    "sourceUrl": "https://www.larkspurmutual.example",
+    "da": {
+      "org": "larkspur",
+      "site": "larkspur-mutual",
+      "ref": "main"
+    },
+    "liveHost": "main--larkspur-mutual--larkspur.aem.live"
+  },
+  "lastRun": {
+    "at": "2026-09-18T09:12:00Z",
+    "pages": {
+      "total": 6,
+      "verified": 0,
+      "deployed": 6,
+      "pending": 0,
+      "contentPending": 0,
+      "stale": 0,
+      "failed": 0
+    },
+    "blocks": {
+      "total": 9,
+      "converted": 9,
+      "pending": 0
+    },
+    "verifyFailures": 0
+  }
+}

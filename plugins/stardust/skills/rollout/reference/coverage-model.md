@@ -88,6 +88,17 @@ of `delivery.status`:
 - **Ledger reconcile** — `update-coverage.mjs --from-ledger` after a
   `deploy-batch.mjs` run; merge rules once, under § Page delivery status
   lifecycle (Ledger reconcile).
+- **`delivery.gate`** — the published-origin **page gate**, copied from
+  `stardust/rollout/gate-report.json` by `gate-publish.mjs --report` or
+  `verify.mjs --gate-report` (never typed): `{ status: pass | fail |
+  published-failing | unmeasured | ungated | blocked, at, breakpoints{<bp>:
+  {pixelPct, heightDelta, cropsOk, pass}}, report }`. Orthogonal to
+  `delivery.status` except for one rule: under `flow: replica` verify flips a
+  row to `verified` only when `gate.status === 'pass'`; a row that renders but
+  has no PASS stays `deployed` (advisory class `published-origin gate: <status>`).
+  `unmeasured` is an instrument state (exit 124 / 5 / 6, crops not run), never a
+  FAIL; `ungated` = no published-origin record. Contract and the publish hold:
+  `delivery-gates.md` § Gate 8.
 - **`fidelityTier`** — `archetype | sibling | thin` (+ `archetypeSource`,
   `gatesPassed[]`), set by `migrate` from the render branch
   (`migrate/reference/fidelity-tiers.md`). Records *how much QA the page carries*:

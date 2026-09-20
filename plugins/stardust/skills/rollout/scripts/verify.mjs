@@ -72,8 +72,17 @@
  * like class-report.mjs (plugin tree, else stardust/scripts/stardust/); missing, the
  * line still prints in the same format. No progress file: the run is one HTTP pass.
  *
+ * Published-origin page gate (`--gate-report <stardust/rollout/gate-report.json>`, written by
+ * gate-publish.mjs): each checked row's `delivery.gate` is merged from the report
+ * (`{status, at, breakpoints, report}`; a row the report does not name is `ungated`). Under
+ * `flow: replica` (state.json) a row renders-verified here is `verified` ONLY when its gate
+ * status is `pass`; otherwise it stays `deployed` and the class table carries one advisory
+ * row per gate status (`published-origin gate: fail | unmeasured | ungated | published-failing`)
+ * — the gate is never re-judged here, only read (reference/delivery-gates.md § Gate 8).
+ *
  * Usage: node skills/rollout/scripts/verify.mjs [--base <url> | --root <dir>] [--slug <s>]
  *          [--all [--include-undelivered]] [--out <rolloutDir>] [--report <dir>] [--verbose]
+ *          [--gate-report <gate-report.json>] [--state <state.json>]
  * Exit: 0 no row failed · 1 at least one row is `failed` (advisory classes never set
  *       it) · 2 usage (no base/root, coverage missing — run inventory.mjs first — or
  *       class-report.mjs not found next to this script) or a page left `unverified`
@@ -86,7 +95,7 @@ import { readJSON, writeJSON, rollupTemplates, rollupConfig, siteBase, delivered
 function arg(name, fallback) { const i = process.argv.indexOf(`--${name}`); return i !== -1 && process.argv[i + 1] && !process.argv[i + 1].startsWith('--') ? process.argv[i + 1] : fallback; }
 const has = (f) => process.argv.includes(`--${f}`);
 if (has('help')) {
-  console.log('Usage: node skills/rollout/scripts/verify.mjs [--base <url> | --root <dir>] [--slug <s>] [--all [--include-undelivered]] [--out <rolloutDir>] [--report <dir>] [--verbose]\n  exit 0 no failed row · 1 at least one failed row · 2 usage (no base/root, no coverage, helper missing) or a page left unverified by 429/503 throttling (re-run)');
+  console.log('Usage: node skills/rollout/scripts/verify.mjs [--base <url> | --root <dir>] [--slug <s>] [--all [--include-undelivered]] [--out <rolloutDir>] [--report <dir>] [--verbose] [--gate-report <gate-report.json>] [--state <state.json>]\n  exit 0 no failed row · 1 at least one failed row · 2 usage (no base/root, no coverage, helper missing, gate report unreadable) or a page left unverified by 429/503 throttling (re-run)');
   process.exit(0);
 }
 // class-report.mjs lives in skills/stardust/scripts/ (plugin tree) or stardust/scripts/stardust/ (project copy)
@@ -111,6 +120,8 @@ const ALL = has('all');
 const INCLUDE_UNDELIVERED = has('include-undelivered');
 const VERBOSE = has('verbose');
 const REPORT = arg('report', onlySlug ? join(OUT, 'verify', `slug-${onlySlug}`) : join(OUT, 'verify'));
+const GATE_REPORT_PATH = arg('gate-report', null);
+const STATE_PATH = arg('state', 'stardust/state.json');
 const MAX_LINES = 60;
 
 const pagesPath = join(OUT, 'coverage', 'pages.json');
@@ -122,6 +133,20 @@ if (onlySlug && !pages.some((pg) => pg.slug === onlySlug)) { console.error(`roll
 const BASE = siteBase(config, arg('base', null));
 if (!ROOT && !BASE) { console.error('rollout verify: need --base <url> or --root <dir> (or set site.liveHost).'); process.exit(2); }
 const OUTSIDE_POLICY = (config.links && config.links.outsideInventory) === 'warn' ? 'warn' : 'fail';
+// --gate-report: the published-origin page gate, read never re-judged. Under flow: replica a
+// render-verified row is `verified` only with gate status `pass`; else it stays `deployed`.
+const gateReport = GATE_REPORT_PATH ? readJSON(GATE_REPORT_PATH) : null;
+if (GATE_REPORT_PATH && (!gateReport || typeof gateReport.pages !== 'object')) { console.error(`rollout verify: --gate-report ${GATE_REPORT_PATH} unreadable or not a gate-report (pages{} missing) — run gate-publish.mjs first.`); process.exit(2); }
+const REPLICA_FLOW = ((readJSON(STATE_PATH, {}) || {}).flow) === 'replica';
+const GATE_STATUSES = ['fail', 'published-failing', 'blocked', 'unmeasured', 'ungated'];
+function gateOf(p) {
+  if (!gateReport) return null;
+  const served = deliveredPathOf(p);
+  const r = gateReport.pages[served] || gateReport.pages[p.path] || Object.values(gateReport.pages).find((x) => x.slug === p.slug);
+  if (!r || !r.latest) return { status: 'ungated', at: null, breakpoints: {}, report: GATE_REPORT_PATH };
+  const bps = Object.fromEntries(Object.entries(r.latest.breakpoints || {}).map(([W, b]) => [W, { pixelPct: b.pixelPct ?? null, heightDelta: b.heightDelta ?? null, cropsOk: b.cropsOk ?? null, pass: !!b.pass }]));
+  return { status: r.latest.status, at: r.latest.at, breakpoints: bps, report: GATE_REPORT_PATH };
+}
 
 // --- known targets: every coverage row by BOTH its path and its deployedPath ------
 const norm = (p) => (String(p).split(/[?#]/)[0].replace(/\/$/, '') || '/');
@@ -233,8 +258,17 @@ for (const p of target) {
     if (st !== 200) { status = 'failed'; reason = `folder root ${slashForm} → HTTP ${st}: add the redirect row ${slashForm} → ${served} (redirects.mjs emits both slash forms); internal links keep the canonical form ${served} (no slash)`; }
   }
   p.delivery = p.delivery || {};
+  const gate = gateOf(p);
+  if (gate) p.delivery.gate = gate;
+  if (gate && status === 'verified' && REPLICA_FLOW && gate.status !== 'pass') {
+    status = 'deployed'; // renders, but the page gate has not passed: not verified (D1 — the gate is read, not re-judged)
+    advisories.push({ slug: p.slug, path: served, type, status, class: `published-origin gate: ${GATE_STATUSES.includes(gate.status) ? gate.status : 'ungated'}`, reason: `renders, stays deployed — gate ${gate.status}${Object.entries(gate.breakpoints).map(([W, b]) => ` · ${W} ${b.pass ? 'PASS' : b.pixelPct === null ? 'no number' : `${b.pixelPct} %`}`).join('')} (${gate.report})`, severity: 'warn' });
+  } else if (gate && gate.status !== 'pass' && status !== 'failed') {
+    advisories.push({ slug: p.slug, path: served, type, status, class: `published-origin gate: ${GATE_STATUSES.includes(gate.status) ? gate.status : 'ungated'}`, reason: `gate ${gate.status} (${gate.report})`, severity: 'info' });
+  }
   p.delivery.status = status;
   if (status === 'verified') { p.delivery.verifiedAt = now; p.delivery.error = null; }
+  else if (status === 'deployed') p.delivery.error = null;
   else p.delivery.error = reason;
   p.delivery.pendingLinks = pending.length ? pending : undefined;
   p.delivery.outsideLinks = outside.length && status === 'verified' ? outside : undefined;
@@ -253,6 +287,7 @@ if (config && config.lastRun !== undefined) { rollupConfig(config, pages, blocks
 
 // --- class roll-up + report files ---------------------------------------------------
 const ok = results.filter((r) => r.status === 'verified').length;
+const heldByGate = results.filter((r) => r.status === 'deployed').length;
 const bad = results.filter((r) => r.status === 'failed');
 const byType = results.reduce((a, r) => { a[r.type] = (a[r.type] || 0) + 1; return a; }, {});
 const pendingPages = advisories.filter((a) => a.severity === 'info').length;
@@ -268,6 +303,7 @@ const head = [
   `Checked ${results.length} · ${ok} verified · ${bad.length} failed · types: ${Object.entries(byType).map(([k, v]) => `${k}:${v}`).join(' ') || '—'}`,
 ];
 if (unverified.length) head.push(`unverified: ${unverified.length} page(s) throttled (429/503 through the inline retry) — ledger untouched, exit 2: re-run verify`);
+if (gateReport) { const g = gateReport.coverage || {}; head.push(`published-gated ${g.gated ?? 0} of ${g.delivered ?? 0} · PASS ${g.pass ?? 0} · FAIL ${g.fail ?? 0} · unmeasured ${g.unmeasured ?? 0} · ungated ${g.ungated ?? 0}${g.publishedFailing ? ` · published-failing ${g.publishedFailing}` : ''} (${GATE_REPORT_PATH})`); if (heldByGate) head.push(`renders but stays deployed: ${heldByGate} page(s) — page gate not passed (flow: replica; verified counts only gate PASS)`); }
 if (ALL && !ROOT && undelivered) head.push(`not delivered: ${undelivered} (${INCLUDE_UNDELIVERED ? 'probed — --include-undelivered' : 'skipped'})`);
 if (pendingPages) head.push(`pending-target links: ${pendingPages} page(s) (advisory — the targets are coverage rows not yet delivered)`);
 if (outsideWarnPages) head.push(`outside-inventory links: ${outsideWarnPages} page(s) (links.outsideInventory: warn)`);
@@ -291,7 +327,7 @@ mkdirSync(REPORT, { recursive: true });
 writeJSON(join(REPORT, 'summary.json'), {
   generatedAt: now, source: ROOT ? `root:${ROOT}` : BASE, mode: ROOT ? 'root' : 'http', outsideInventory: OUTSIDE_POLICY,
   total: pages.length, checked: results.length, verified: ok, failed: bad.length, skipped, undelivered, unverified: unverified.length,
-  pendingTargetPages: pendingPages, outsideWarnPages,
+  pendingTargetPages: pendingPages, outsideWarnPages, gateReport: GATE_REPORT_PATH, heldByGate,
   classes: report.classes.map((c) => ({ class: c.class, count: c.count, severity: c.severity ?? null, worstExample: c.worst ? `${c.worst.page} — ${c.worst.message}` : null, pointer: c.worst ? c.worst.pointer : null })),
   pages: pageRows,
 });
@@ -310,5 +346,5 @@ writeFileSync(summaryMd, md.join('\n'));
 console.log(lines.join('\n'));
 if (VERBOSE) for (const r of [...bad, ...unverified, ...advisories]) console.log(`  ${r.status === 'failed' ? '✗' : '·'} ${r.slug} (${r.type}): ${r.reason}`);
 const exitCode = unverified.length ? 2 : bad.length ? 1 : 0;
-console.log(summaryLine({ driver: 'verify', ok, failed: bad.length, noverdict: unverified.length, exit: exitCode, details: join(REPORT, 'summary.json'), extra: { skipped: ALL && !ROOT ? skipped : undefined, mode: ROOT ? 'root' : 'http' } }));
+console.log(summaryLine({ driver: 'verify', ok, failed: bad.length, noverdict: unverified.length, exit: exitCode, details: join(REPORT, 'summary.json'), extra: { skipped: ALL && !ROOT ? skipped : undefined, mode: ROOT ? 'root' : 'http', gateHeld: heldByGate || undefined } }));
 process.exit(exitCode);

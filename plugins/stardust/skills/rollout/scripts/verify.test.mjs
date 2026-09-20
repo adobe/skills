@@ -250,6 +250,50 @@ const lines = (s) => s.split('\n').filter((l) => l.length);
   rmSync(T, { recursive: true, force: true });
 }
 
+// ---- D. --gate-report: the published-origin page gate is READ, never re-judged ----------
+{
+  const T = mkdtempSync(join(tmpdir(), 'verify-test-d-'));
+  const OUT = join(T, 'stardust', 'rollout'); mkdirSync(join(OUT, 'coverage'), { recursive: true });
+  const ROOT = join(T, 'tree'); mkdirSync(join(ROOT, 'b'), { recursive: true }); mkdirSync(join(ROOT, 'c'), { recursive: true }); mkdirSync(join(ROOT, 'd'), { recursive: true });
+  const html = '<html><body><main><h1>x</h1></main></body></html>';
+  for (const f of ['index.html', 'b/index.html', 'c/index.html', 'd/index.html']) writeFileSync(join(ROOT, f), html);
+  const row = (slug, path) => ({ slug, path, templateId: 'landing', source: { sourceHash: 'h', migratedHtml: `${path === '/' ? '' : path.slice(1) + '/'}index.html` }, blocks: [], delivery: { status: 'deployed' } });
+  writeFileSync(join(OUT, 'coverage', 'pages.json'), JSON.stringify({ generatedAt: 'x', pages: [row('a', '/'), row('b', '/b'), row('c', '/c'), row('d', '/d')] }));
+  writeFileSync(join(OUT, 'rollout.json'), JSON.stringify({ site: {}, lastRun: {} }));
+  const gate = (status, pass) => ({ latest: { at: '2026-09-12T00:00:00Z', pass, status, breakpoints: { 1440: { pixelPct: pass ? 6.9 : 12.4, heightDelta: 0, cropsOk: true, pass }, 360: { pixelPct: 4.2, heightDelta: 0, cropsOk: true, pass: true } } } });
+  const gr = { generatedAt: 'x', breakpoints: [1440, 360], coverage: { delivered: 4, gated: 2, pass: 1, fail: 1, publishedFailing: 0, unmeasured: 1, ungated: 1 }, pages: { '/': { slug: 'a', ...gate('pass', true) }, '/b': { slug: 'b', ...gate('fail', false) }, '/c': { slug: 'c', ...gate('unmeasured', false) } } };
+  writeFileSync(join(T, 'gate-report.json'), JSON.stringify(gr));
+  const replicaState = join(T, 'state-replica.json'); writeFileSync(replicaState, JSON.stringify({ flow: 'replica' }));
+  const redesignState = join(T, 'state-redesign.json'); writeFileSync(redesignState, JSON.stringify({ flow: 'redesign' }));
+  const vr = (...a) => spawnSync(process.execPath, [VERIFY, '--root', ROOT, '--all', '--out', OUT, ...a], { encoding: 'utf8', cwd: T });
+  // replica flow: verified only with gate pass; fail / unmeasured / ungated rows render but stay deployed
+  let r = vr('--gate-report', join(T, 'gate-report.json'), '--state', replicaState);
+  assert.equal(r.status, 0, `${r.stdout}\n${r.stderr}`);
+  let pages = JSON.parse(readFileSync(join(OUT, 'coverage', 'pages.json'), 'utf8')).pages;
+  const by = Object.fromEntries(pages.map((p) => [p.slug, p.delivery]));
+  assert.equal(by.a.status, 'verified'); assert.equal(by.a.gate.status, 'pass');
+  assert.equal(by.b.status, 'deployed', 'gate FAIL → renders but not verified'); assert.equal(by.b.gate.status, 'fail'); assert.equal(by.b.gate.breakpoints['1440'].pixelPct, 12.4);
+  assert.equal(by.c.status, 'deployed'); assert.equal(by.c.gate.status, 'unmeasured');
+  assert.equal(by.d.status, 'deployed'); assert.equal(by.d.gate.status, 'ungated', 'a row the report does not name is ungated');
+  assert.equal(by.b.error, null, 'held by the gate is not a failure');
+  assert.match(r.stdout, /published-gated 2 of 4 · PASS 1 · FAIL 1 · unmeasured 1 · ungated 1/);
+  assert.match(r.stdout, /renders but stays deployed: 3 page\(s\)/);
+  assert.match(r.stdout, /published-origin gate: fail/); assert.match(r.stdout, /published-origin gate: ungated/);
+  assert.match(r.stdout.trim().split('\n').pop(), /^SUMMARY verify ok=1 failed=0 exit=0 .*gateHeld=3$/);
+  const sj = JSON.parse(readFileSync(join(OUT, 'verify', 'summary.json'), 'utf8'));
+  assert.equal(sj.heldByGate, 3); assert.equal(sj.verified, 1); assert.equal(sj.failed, 0);
+  // redesign flow: the gate is merged and reported, the verified verdict is not held
+  r = vr('--gate-report', join(T, 'gate-report.json'), '--state', redesignState);
+  pages = JSON.parse(readFileSync(join(OUT, 'coverage', 'pages.json'), 'utf8')).pages;
+  assert.equal(pages.find((p) => p.slug === 'b').delivery.status, 'verified');
+  assert.equal(pages.find((p) => p.slug === 'b').delivery.gate.status, 'fail');
+  assert.match(r.stdout, /published-origin gate: fail/);
+  // unreadable report → exit 2 (usage), nothing written
+  r = vr('--gate-report', join(T, 'missing.json'), '--state', replicaState);
+  assert.equal(r.status, 2); assert.match(r.stderr, /gate-publish\.mjs first/);
+  rmSync(T, { recursive: true, force: true });
+}
+
 // ---- siteBase: one helper, no https://https:// ------------------------------------
 assert.equal(siteBase({ site: { liveHost: 'https://main--x--y.aem.live/' } }), 'https://main--x--y.aem.live');
 assert.equal(siteBase({ site: { liveHost: 'main--x--y.aem.live' } }), 'https://main--x--y.aem.live');
@@ -257,4 +301,4 @@ assert.equal(siteBase({ site: { liveHost: 'http://main--x--y.aem.page' } }), 'ht
 assert.equal(siteBase({ site: { liveHost: 'main--x--y.aem.live' } }, 'http://127.0.0.1:9/'), 'http://127.0.0.1:9', '--base override wins verbatim (trailing slash stripped)');
 assert.equal(siteBase({}), null);
 
-console.log('verify.test: ok (runner-output contract on the shared fixture; --all guard, link classes, deployedPath, typed rows, --slug report dir, 429/503 retry → unverified/exit 2, project-copy layout, siteBase)');
+console.log('verify.test: ok (runner-output contract on the shared fixture; --all guard, link classes, deployedPath, typed rows, --slug report dir, 429/503 retry → unverified/exit 2, project-copy layout, siteBase, --gate-report read-not-rejudged)');

@@ -71,7 +71,31 @@
             "deployedUrl": { "type": ["string", "null"], "format": "uri" },
             "deployedAt": { "type": ["string", "null"], "format": "date-time" },
             "verifiedAt": { "type": ["string", "null"], "format": "date-time" },
-            "error": { "type": ["string", "null"], "description": "Failure detail when status == failed." }
+            "error": { "type": ["string", "null"], "description": "Failure detail when status == failed." },
+            "gate": {
+              "type": "object",
+              "description": "Published-origin PAGE gate (gate-publish.mjs --report / verify.mjs --gate-report; reference/delivery-gates.md § Gate 8). Read from stardust/rollout/gate-report.json, never typed. Under flow: replica a row is verified only with status pass.",
+              "required": ["status"],
+              "additionalProperties": false,
+              "properties": {
+                "status": { "type": "string", "enum": ["pass", "fail", "published-failing", "unmeasured", "ungated", "blocked"], "description": "pass = every configured breakpoint PASS; unmeasured = an instrument gave no verdict (exit 124 / 5 / 6, crops not run) — never a FAIL; ungated = no published-origin record." },
+                "at": { "type": ["string", "null"], "format": "date-time" },
+                "breakpoints": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "pixelPct": { "type": ["number", "null"] },
+                      "heightDelta": { "type": ["number", "null"] },
+                      "cropsOk": { "type": ["boolean", "null"] },
+                      "pass": { "type": "boolean" }
+                    }
+                  }
+                },
+                "report": { "type": ["string", "null"], "description": "Path of the gate-report.json the block was copied from." }
+              }
+            }
           }
         }
       }

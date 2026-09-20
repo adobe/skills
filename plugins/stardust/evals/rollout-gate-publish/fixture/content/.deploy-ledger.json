@@ -1,0 +1,57 @@
+{
+  "/": {
+    "status": "previewed",
+    "attempts": 1,
+    "ts": "2026-09-18T09:05:00Z",
+    "put": 201,
+    "preview": 200,
+    "bodyHash": "b004ffffffffffffffffffffffffffffffffffff",
+    "branch": "main"
+  },
+  "/business": {
+    "status": "previewed",
+    "attempts": 1,
+    "ts": "2026-09-18T09:05:00Z",
+    "put": 201,
+    "preview": 200,
+    "bodyHash": "b008ffffffffffffffffffffffffffffffffffff",
+    "branch": "main"
+  },
+  "/news/storm-season-checklist": {
+    "status": "previewed",
+    "attempts": 1,
+    "ts": "2026-09-18T09:05:00Z",
+    "put": 201,
+    "preview": 200,
+    "bodyHash": "b028ffffffffffffffffffffffffffffffffffff",
+    "branch": "main"
+  },
+  "/news/annual-report-2025": {
+    "status": "live",
+    "attempts": 1,
+    "ts": "2026-09-18T09:05:00Z",
+    "put": 201,
+    "preview": 200,
+    "live": 200,
+    "bodyHash": "b024ffffffffffffffffffffffffffffffffffff",
+    "branch": "main"
+  },
+  "/insurance/home": {
+    "status": "previewed",
+    "attempts": 1,
+    "ts": "2026-09-18T09:05:00Z",
+    "put": 201,
+    "preview": 200,
+    "bodyHash": "b015ffffffffffffffffffffffffffffffffffff",
+    "branch": "main"
+  },
+  "/insurance/auto": {
+    "status": "previewed",
+    "attempts": 1,
+    "ts": "2026-09-18T09:05:00Z",
+    "put": 201,
+    "preview": 200,
+    "bodyHash": "b015ffffffffffffffffffffffffffffffffffff",
+    "branch": "main"
+  }
+}

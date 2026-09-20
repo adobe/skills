@@ -1,0 +1,490 @@
+{
+  "_provenance": {
+    "writtenBy": "stardust:rollout gate-publish.mjs",
+    "writtenAt": "2026-09-20T07:46:24.414Z",
+    "bars": {
+      "pixel": "pixel-compare record pass (unchanged)",
+      "heightDeltaPx": 8,
+      "chromeCrops": "crop-compare pass (unchanged)"
+    },
+    "regime": "published-origin"
+  },
+  "generatedAt": "2026-09-20T07:46:24.414Z",
+  "breakpoints": [
+    1440,
+    360
+  ],
+  "coverage": {
+    "delivered": 6,
+    "gated": 4,
+    "pass": 2,
+    "fail": 1,
+    "publishedFailing": 1,
+    "unmeasured": 1,
+    "ungated": 1,
+    "blocked": 0
+  },
+  "neutralDiff": {
+    "landing": {
+      "360": {
+        "n": 2,
+        "median": 4.8,
+        "p90": 5,
+        "under10": 1
+      },
+      "1440": {
+        "n": 2,
+        "median": 6.8,
+        "p90": 7.7,
+        "under10": 1
+      }
+    },
+    "article": {
+      "360": {
+        "n": 2,
+        "median": 8.25,
+        "p90": 9.6,
+        "under10": 1
+      },
+      "1440": {
+        "n": 1,
+        "median": 24,
+        "p90": 24,
+        "under10": 0
+      }
+    },
+    "program": {
+      "360": {
+        "n": 1,
+        "median": 13.2,
+        "p90": 13.2,
+        "under10": 0
+      },
+      "1440": {
+        "n": 1,
+        "median": 8.2,
+        "p90": 8.2,
+        "under10": 1
+      }
+    }
+  },
+  "pages": {
+    "/": {
+      "path": "/",
+      "slug": "home",
+      "template": "landing",
+      "wasLive": false,
+      "latest": {
+        "at": "2026-09-18T09:40:00Z",
+        "pass": true,
+        "status": "pass",
+        "breakpoints": {
+          "360": {
+            "verdict": "PASS",
+            "exit": 0,
+            "pixelPct": 4.2,
+            "pixelPctUnmasked": 5,
+            "heightDelta": 2,
+            "heightOk": true,
+            "cropsOk": true,
+            "header": {
+              "matchPct": 99.4,
+              "pass": true
+            },
+            "footer": {
+              "matchPct": 98.9,
+              "pass": true
+            },
+            "pass": true,
+            "status": "pass",
+            "record": "stardust/replica/gates/home-360/gate-pub1.json",
+            "reason": null
+          },
+          "1440": {
+            "verdict": "PASS",
+            "exit": 0,
+            "pixelPct": 6.9,
+            "pixelPctUnmasked": 7.7,
+            "heightDelta": 0,
+            "heightOk": true,
+            "cropsOk": true,
+            "header": {
+              "matchPct": 99.4,
+              "pass": true
+            },
+            "footer": {
+              "matchPct": 98.9,
+              "pass": true
+            },
+            "pass": true,
+            "status": "pass",
+            "record": "stardust/replica/gates/home-1440/gate-pub1.json",
+            "reason": null
+          }
+        }
+      },
+      "bestOfLast3": {
+        "360": 4.2,
+        "1440": 6.9
+      },
+      "history": [
+        {
+          "at": "2026-09-18T09:40:00Z",
+          "status": "pass",
+          "breakpoints": {
+            "360": 4.2,
+            "1440": 6.9
+          }
+        }
+      ],
+      "reference": {
+        "360": "2026-09-18T09:20:00Z",
+        "1440": "2026-09-18T09:20:00Z"
+      }
+    },
+    "/business": {
+      "path": "/business",
+      "slug": "business",
+      "template": "landing",
+      "wasLive": false,
+      "latest": {
+        "at": "2026-09-18T09:40:00Z",
+        "pass": true,
+        "status": "pass",
+        "breakpoints": {
+          "360": {
+            "verdict": "PASS",
+            "exit": 0,
+            "pixelPct": 3.8,
+            "pixelPctUnmasked": 4.6,
+            "heightDelta": -1,
+            "heightOk": true,
+            "cropsOk": true,
+            "header": {
+              "matchPct": 99.4,
+              "pass": true
+            },
+            "footer": {
+              "matchPct": 98.9,
+              "pass": true
+            },
+            "pass": true,
+            "status": "pass",
+            "record": "stardust/replica/gates/business-360/gate-pub1.json",
+            "reason": null
+          },
+          "1440": {
+            "verdict": "PASS",
+            "exit": 0,
+            "pixelPct": 5.1,
+            "pixelPctUnmasked": 5.8999999999999995,
+            "heightDelta": 0,
+            "heightOk": true,
+            "cropsOk": true,
+            "header": {
+              "matchPct": 99.4,
+              "pass": true
+            },
+            "footer": {
+              "matchPct": 98.9,
+              "pass": true
+            },
+            "pass": true,
+            "status": "pass",
+            "record": "stardust/replica/gates/business-1440/gate-pub1.json",
+            "reason": null
+          }
+        }
+      },
+      "bestOfLast3": {
+        "360": 3.8,
+        "1440": 5.1
+      },
+      "history": [
+        {
+          "at": "2026-09-18T09:40:00Z",
+          "status": "pass",
+          "breakpoints": {
+            "360": 3.8,
+            "1440": 5.1
+          }
+        }
+      ],
+      "reference": {
+        "360": "2026-09-18T09:20:00Z",
+        "1440": "2026-09-18T09:20:00Z"
+      }
+    },
+    "/news/storm-season-checklist": {
+      "path": "/news/storm-season-checklist",
+      "slug": "news__storm-season-checklist",
+      "template": "article",
+      "wasLive": false,
+      "latest": {
+        "at": "2026-09-18T09:40:00Z",
+        "pass": false,
+        "status": "unmeasured",
+        "breakpoints": {
+          "360": {
+            "verdict": "PASS",
+            "exit": 0,
+            "pixelPct": 6.1,
+            "pixelPctUnmasked": 6.8999999999999995,
+            "heightDelta": 1,
+            "heightOk": true,
+            "cropsOk": true,
+            "header": {
+              "matchPct": 99.4,
+              "pass": true
+            },
+            "footer": {
+              "matchPct": 98.9,
+              "pass": true
+            },
+            "pass": true,
+            "status": "pass",
+            "record": "stardust/replica/gates/news__storm-season-checklist-360/gate-pub1.json",
+            "reason": null
+          },
+          "1440": {
+            "verdict": "no-verdict",
+            "exit": 124,
+            "pixelPct": null,
+            "pixelPctUnmasked": null,
+            "heightDelta": null,
+            "heightOk": null,
+            "cropsOk": null,
+            "header": null,
+            "footer": null,
+            "pass": false,
+            "status": "unmeasured",
+            "record": "stardust/replica/gates/news__storm-season-checklist-1440/gate-pub1.json",
+            "reason": "no verdict (exit 124)"
+          }
+        }
+      },
+      "bestOfLast3": {
+        "360": 6.1,
+        "1440": null
+      },
+      "history": [
+        {
+          "at": "2026-09-18T09:40:00Z",
+          "status": "unmeasured",
+          "breakpoints": {
+            "360": 6.1,
+            "1440": null
+          }
+        }
+      ],
+      "reference": {
+        "360": "2026-09-18T09:20:00Z",
+        "1440": "2026-09-18T09:20:00Z"
+      }
+    },
+    "/news/annual-report-2025": {
+      "path": "/news/annual-report-2025",
+      "slug": "news__annual-report-2025",
+      "template": "article",
+      "wasLive": true,
+      "latest": {
+        "at": "2026-09-18T09:40:00Z",
+        "pass": false,
+        "status": "published-failing",
+        "breakpoints": {
+          "360": {
+            "verdict": "PASS",
+            "exit": 0,
+            "pixelPct": 8.8,
+            "pixelPctUnmasked": 9.600000000000001,
+            "heightDelta": 4,
+            "heightOk": true,
+            "cropsOk": true,
+            "header": {
+              "matchPct": 99.4,
+              "pass": true
+            },
+            "footer": {
+              "matchPct": 98.9,
+              "pass": true
+            },
+            "pass": true,
+            "status": "pass",
+            "record": "stardust/replica/gates/news__annual-report-2025-360/gate-pub1.json",
+            "reason": null
+          },
+          "1440": {
+            "verdict": "FAIL",
+            "exit": 2,
+            "pixelPct": 23.2,
+            "pixelPctUnmasked": 24,
+            "heightDelta": 41,
+            "heightOk": false,
+            "cropsOk": true,
+            "header": {
+              "matchPct": 99.4,
+              "pass": true
+            },
+            "footer": {
+              "matchPct": 98.9,
+              "pass": true
+            },
+            "pass": false,
+            "status": "fail",
+            "record": "stardust/replica/gates/news__annual-report-2025-1440/gate-pub1.json",
+            "reason": "pixel 23.2 % (record FAIL)"
+          }
+        }
+      },
+      "bestOfLast3": {
+        "360": 8.8,
+        "1440": 23.2
+      },
+      "history": [
+        {
+          "at": "2026-09-18T09:40:00Z",
+          "status": "published-failing",
+          "breakpoints": {
+            "360": 8.8,
+            "1440": 23.2
+          }
+        }
+      ],
+      "reference": {
+        "360": "2026-09-18T09:20:00Z",
+        "1440": "2026-09-18T09:20:00Z"
+      }
+    },
+    "/insurance/home": {
+      "path": "/insurance/home",
+      "slug": "insurance__home",
+      "template": "program",
+      "wasLive": false,
+      "latest": {
+        "at": "2026-09-20T07:46:24.414Z",
+        "pass": false,
+        "status": "ungated",
+        "breakpoints": {
+          "360": {
+            "verdict": null,
+            "exit": null,
+            "pixelPct": null,
+            "pixelPctUnmasked": null,
+            "heightDelta": null,
+            "heightOk": null,
+            "cropsOk": null,
+            "header": null,
+            "footer": null,
+            "pass": false,
+            "status": "ungated",
+            "record": null,
+            "reason": "no published-origin record"
+          },
+          "1440": {
+            "verdict": null,
+            "exit": null,
+            "pixelPct": null,
+            "pixelPctUnmasked": null,
+            "heightDelta": null,
+            "heightOk": null,
+            "cropsOk": null,
+            "header": null,
+            "footer": null,
+            "pass": false,
+            "status": "ungated",
+            "record": null,
+            "reason": "no published-origin record"
+          }
+        }
+      },
+      "bestOfLast3": {
+        "360": null,
+        "1440": null
+      },
+      "history": [
+        {
+          "at": "2026-09-20T07:46:24.414Z",
+          "status": "ungated",
+          "breakpoints": {
+            "360": null,
+            "1440": null
+          }
+        }
+      ],
+      "reference": {}
+    },
+    "/insurance/auto": {
+      "path": "/insurance/auto",
+      "slug": "insurance__auto",
+      "template": "program",
+      "wasLive": false,
+      "latest": {
+        "at": "2026-09-18T09:40:00Z",
+        "pass": false,
+        "status": "fail",
+        "breakpoints": {
+          "360": {
+            "verdict": "FAIL",
+            "exit": 2,
+            "pixelPct": 12.4,
+            "pixelPctUnmasked": 13.200000000000001,
+            "heightDelta": -112,
+            "heightOk": false,
+            "cropsOk": true,
+            "header": {
+              "matchPct": 99.4,
+              "pass": true
+            },
+            "footer": {
+              "matchPct": 98.9,
+              "pass": true
+            },
+            "pass": false,
+            "status": "fail",
+            "record": "stardust/replica/gates/insurance__auto-360/gate-pub1.json",
+            "reason": "pixel 12.4 % (record FAIL)"
+          },
+          "1440": {
+            "verdict": "PASS",
+            "exit": 0,
+            "pixelPct": 7.4,
+            "pixelPctUnmasked": 8.200000000000001,
+            "heightDelta": 3,
+            "heightOk": true,
+            "cropsOk": true,
+            "header": {
+              "matchPct": 99.4,
+              "pass": true
+            },
+            "footer": {
+              "matchPct": 98.9,
+              "pass": true
+            },
+            "pass": true,
+            "status": "pass",
+            "record": "stardust/replica/gates/insurance__auto-1440/gate-pub1.json",
+            "reason": null
+          }
+        }
+      },
+      "bestOfLast3": {
+        "360": 12.4,
+        "1440": 7.4
+      },
+      "history": [
+        {
+          "at": "2026-09-18T09:40:00Z",
+          "status": "fail",
+          "breakpoints": {
+            "360": 12.4,
+            "1440": 7.4
+          }
+        }
+      ],
+      "reference": {
+        "360": "2026-09-18T09:20:00Z",
+        "1440": "2026-09-18T09:20:00Z"
+      }
+    }
+  }
+}
