@@ -1,0 +1,12 @@
+/* canon: tabs both variants, cards, value-props, link-list — not the utility classes */
+.tabs { display: grid; }
+.tabs.horizontal [role="tablist"] { display: flex; }
+.tabs.vertical [role="tablist"] { flex-direction: column; }
+.tabs .tab { padding: 8px 16px; }
+.tabs .tab-panel { padding: 24px; }
+.cards { display: grid; gap: 24px; }
+.cards .card { border-radius: 8px; }
+.value-props { list-style: none; }
+.value-props__item { display: flex; gap: 12px; }
+.link-list li a { text-decoration: underline; }
+/* .g-col-xl-3 is not here — a comment does not count */

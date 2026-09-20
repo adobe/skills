@@ -77,6 +77,29 @@ The probe is read-only evidence — it never edits
 the clone — and it costs one live navigation per sibling, so run a
 template's siblings in one pass and reuse the JSON.
 
+**Variant census (the first page is never "the" design).** Before styling
+a block, `node scripts/replica/variant-census.mjs --type <t> --css <canon
+glob> --code <renderer glob> [--allow <file>] [--min-pages 2]` counts, over
+the crawler sidecar of every page of the type (offline, every request
+aborted, zero source hits), each component's modifier and descendant
+classes by page, its DOM facts (`li:icon`, `hasImg`, `columns`, …) and its
+theme split, and marks every class `referenced` (a selector token in
+`--css`, a string in `--code`) or `unreferenced`. Read-only evidence, never
+a gate: exit 0 written · 2 an unreferenced variant on ≥ `--min-pages` pages
+without an `--allow` line ("budget it") · 1 error. Procedure
+(`skills/replica/reference/recreation-procedure.md` § Authoring order, step
+1b): build the majority variant first; budget every minority variant on ≥
+min-pages pages as a block VARIANT class inside the vocabulary budget;
+`--allow` lists intentionally unstyled classes, one per line WITH a reason
+(a class that resolves to no rule in the SOURCE CSS either → "source
+unstyled"); record `census: { file, at, budgeted: [...] }` on the archetype
+in `progress.json` and copy the census next to the fan-out brief (this
+section's rule). Hands-off runs it, budgets, writes the allow-list from
+evidence and proceeds — it never asks and nothing weakens; omitting the
+census is a procedure deviation recorded in `direction.md`.
+`--from-clusters <json> [--cluster <id>]` scopes it to a layout cluster.
+Eval: `evals/lint/variant-census-fixtures.mjs`.
+
 **Layout clusters (one gated exemplar per cluster, not per CMS label).** A
 page type is a label; its pages are several layouts. Before the first
 sibling render of a type, run

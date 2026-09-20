@@ -40,6 +40,15 @@ class of guesswork before the next begins:
    read a 1559px height deficit as a missing section). A large height delta
    with matching section ORDER is usually a duplicated instance, not a
    missing one.
+   **1b. Variant census across the type, before any CSS lift.** Run
+   `../scripts/variant-census.mjs --type <pageType> --css <canon glob>
+   --code <renderer glob> [--allow <file>]` (offline over the crawler
+   sidecar; the contract, budgeting rule and record shape are in
+   `../../migrate/reference/fidelity-tiers.md` § Sibling variance probe,
+   Variant census). Build the MAJORITY variant of every component first;
+   every minority variant on ≥ `--min-pages` pages is budgeted as a block
+   variant class before step 2; classifiers key on the census FACTS
+   (`li:icon`, `columns`), never on a family name.
 2. **Lift exact values from the source site's own CSS** (§ CSS lifting).
 3. **Fonts** (§ Fonts policy).
 4. **Compose against the captured screenshot** — the ground truth for

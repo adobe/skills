@@ -1,0 +1,3 @@
+text-uppercase  # source unstyled
+g-col-xl-3  # bootstrap grid column overridden by a 100 % rule in the source — cards block emits its own grid
+leaf-c-value-props__item--icon  # budgeted: value-props icon variant emitted by the renderer as of the next build

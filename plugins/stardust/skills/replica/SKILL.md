@@ -178,9 +178,10 @@ as **clean semantic HTML/CSS** from three sources, in this order:
     alt text, metadata from `current/pages/<slug>.json`. The migrate
     content-preservation rules (`../migrate/reference/content-preservation.md`)
     apply from the first line: no rewording, no fabrication.
-(b) **Exact values lifted from the source site's own CSS.** Fetch the live
-    stylesheets; lift container max-widths, the type ramp, button specs,
-    section paddings, radii, shadows, hero heights, the container model.
+(b) **Exact values lifted from the source site's own CSS** — after
+    `replica/variant-census.mjs --type <t> --css … --code …` (majority
+    variant first, minority ≥ min-pages budgeted as variant classes;
+    `../migrate/reference/fidelity-tiers.md` § Sibling variance probe).
     **Fidelity values come from the original site's CSS, not the eye.**
 (c) **The captured screenshot as ground truth** for everything CSS doesn't
     name (composition, image crops, paint effects).
@@ -308,8 +309,8 @@ phase-close checkpoint block (master skill § Phase close) carries
   Layout clusters). **Template constancy is measured**:
   `replica/sibling-variance.mjs <archetype> <siblings…> --probe <block>=<sel>
   --brief` (or `--from-clusters`) once per template; every delta = a block
-  VARIANT class on the sibling's content. A new module kind on a sibling →
-  the lift ledger rule (Phase 3). Content-fidelity
+  VARIANT class on the sibling's content; census + probe JSON go next to
+  the brief. A new module kind on a sibling → the lift ledger rule (Phase 3). Content-fidelity
   is **measured per page at import time** (same file, § Content-count
   acceptance) so importer bugs surface early.
 - **Delivery** via the stardust `deploy` skill per page: decode tier biased

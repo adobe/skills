@@ -1,0 +1,2 @@
+# intentionally unstyled classes — one per line with a reason
+text-uppercase  # source unstyled: resolves to no rule in the source CSS either (bootstrap utility never loaded)
