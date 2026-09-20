@@ -2540,10 +2540,22 @@ async function capturePage(context, url, slug, args, isEntry = false) {
   }
 }
 
+// playwright through the resolution chain (skills/stardust/scripts/lib/resolve.mjs; runtime-preflight.md
+// § Resolution chain) when the helper sits beside this script — the plugin tree, or a project copy made
+// as a set (stardust/scripts/stardust/lib/) — else the bare import a lone copy resolved before.
+export async function loadPlaywright() {
+  for (const c of ['../../stardust/scripts/lib/resolve.mjs', './stardust/lib/resolve.mjs']) {
+    let chain = null;
+    try { chain = await import(new URL(c, import.meta.url)); } catch (e) { if (e.code !== 'ERR_MODULE_NOT_FOUND') throw e; }
+    if (chain) return chain.resolveDep('playwright', { from: import.meta.url }); // a miss at every link throws the one preflight line (exit 2)
+  }
+  return import('playwright');
+}
+
 async function main() {
   const args = parseArgs(process.argv);
   if (args.help) { printHelp(); return; }
-  const { chromium } = await import('playwright');
+  const { chromium } = await loadPlaywright();
   // per-run context options shared by probe and workers (--dpr; the admitted
   // session, once the probe has one, is added below)
   const ctxExtra = { deviceScaleFactor: args.dpr };

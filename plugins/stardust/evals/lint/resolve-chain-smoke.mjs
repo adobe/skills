@@ -33,8 +33,10 @@ const SKILLS = join(ROOT, 'skills');
 const FIX = join(import.meta.dirname, 'fixtures', 'resolve-chain');
 const RESOLVE = join(SKILLS, 'stardust', 'scripts', 'lib', 'resolve.mjs');
 
-// TEMPORARY — shrink per landed skill (replica+diff → reskin → deploy/dynamics/qa → fixtures + extract).
-// Key: path relative to skills/. Value: why it still imports directly.
+// TEMPORARY — shrink per landed skill (replica+diff → reskin → deploy → fixtures). Converted: dynamics and
+// qa (`loadPlaywright()` → the chain, inline links kept for a copy without lib/resolve.mjs beside it) and
+// extract/crawl.mjs (lazy: the chain when the helper is copied as a set, else the bare import a lone copy
+// resolved before). Key: path relative to skills/. Value: why it still imports directly.
 const ALLOW = {
   'deploy/scripts/ai-readability.mjs': 'inline cwd loader (T07.1 bridge) — convert with deploy',
   'deploy/scripts/block-roundtrip.mjs': 'static import — convert with deploy',
@@ -45,11 +47,8 @@ const ALLOW = {
   'deploy/scripts/style-fingerprint.mjs': 'static import — convert with deploy',
   'diff/scripts/content-diff.mjs': 'static import — convert with replica+diff',
   'diff/scripts/visual-diff.mjs': 'static import — convert with replica+diff',
-  'dynamics/scripts/lib.mjs': 'inline cwd loader (T07.1 bridge) — convert with dynamics/qa',
-  'extract/scripts/crawl.mjs': 'ships alone into projects (launch-ladder lint) — last in the series',
   'migrate/fixtures/file-protocol-audit.mjs': 'fixture bare import — convert with the fixtures',
   'prototype/fixtures/mobile-nav-audit.mjs': 'fixture bare import — convert with the fixtures',
-  'qa/scripts/lib.mjs': 'inline cwd loader (T07.1 bridge) — convert with dynamics/qa',
   'replica/scripts/anchor.mjs': 'static import + two-layout live-session probe — convert with replica+diff',
   'replica/scripts/chrome-parity.mjs': 'static import — convert with replica+diff',
   'replica/scripts/chrome-states.mjs': 'lazy import (pure halves need no browser) — convert with replica+diff',

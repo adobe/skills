@@ -16,11 +16,11 @@ run's own instruments alike. Naming the class up front costs one line.
 | class | shapes | who resolves |
 |---|---|---|
 | **privileged actions** | repo create · Code Sync install · merge or push to the serving branch · `POST …/live/` publish · repo visibility change (`gh repo edit --visibility`) · site-auth config writes (`config/<org>/sites/<site>/secrets.json`, `access/site.json` — `skills/deploy/reference/site-lockdown.md`) · worker or edge deploys · pushes to a second site's repo · writes to shared multi-site tooling | the owner — surfaced once by the `Blocked on owner:` line (master § Hands-off mode); the run continues on unblocked work |
-| **instruments** | `node <plugin>/skills/<skill>/scripts/<x>.mjs …` (and, for skills not yet on the resolution chain, the legacy copy `node stardust/scripts/<skill>/<x>.mjs …`) · `stardust/scripts/replica/gate.sh` · `python3 -m http.server` · `aem up` · `curl` to `admin.da.live` and `admin.hlx.page` · `gh api` reads | pre-approvable; when denied anyway, re-issue once as a bare command (below), then continue |
+| **instruments** | `node <plugin>/skills/<skill>/scripts/<x>.mjs …` (and, for skills not yet on the resolution chain, the legacy copy `node stardust/scripts/<skill>/<x>.mjs …` — **copied as a set**: `skills/<skill>/scripts/` → `stardust/scripts/<skill>/` together with `skills/stardust/scripts/` incl. `lib/` → `stardust/scripts/stardust/`, because the scripts import `../stardust/<x>.mjs` siblings — `progress`, `class-report`, `browser-lock`, `lib/resolve`; a partial copy fails with `ERR_MODULE_NOT_FOUND` or one exit-2 line, never a pass) · `stardust/scripts/replica/gate.sh` · `python3 -m http.server` · `aem up` · `curl` to `admin.da.live` and `admin.hlx.page` · `gh api` reads | pre-approvable; when denied anyway, re-issue once as a bare command (below), then continue |
 
-Scripts that import the shared helper (rollout `verify.mjs`, qa `qa.mjs`)
-also need `skills/stardust/scripts/class-report.mjs` copied to
-`stardust/scripts/stardust/`.
+The set rule is what keeps rollout `verify.mjs` and qa `qa.mjs`
+(`class-report.mjs`), `crawl.mjs` (`progress.mjs`, `lib/resolve.mjs`) and
+every browser instrument (`browser-lock.mjs`) runnable from a copy.
 
 A denial on a read, a `git status` or a plugin-file `sed -n` is carry-over
 from a privileged ask nearby — a false positive: issue the next command.

@@ -123,6 +123,17 @@ the plugin tree; `siblingScript(skill, file)` tries the plugin layout,
 (`../<skill>/<file>`), and exits 2 naming the three when none resolves. A
 `check-crashed` finding in qa stays an `error` row, never a pass.
 
+Through the helper today: `dynamics/scripts/lib.mjs` and
+`qa/scripts/lib.mjs` (`loadPlaywright()`), `extract/scripts/crawl.mjs`
+(lazily — a lone project copy without `stardust/lib/resolve.mjs` beside
+it falls back to the bare import). Still on their own imports, each to
+convert in its own skill's change: replica, diff, reskin and deploy
+scripts and the migrate / prototype fixtures — `evals/lint/resolve-chain-smoke.mjs`
+`ALLOW` is the ledger and must shrink. Until then a project copy stays
+runnable only when copied **as a set** (`harness-permissions.md` § Two
+classes): the skill's `scripts/` plus `skills/stardust/scripts/` (with
+`lib/`), because the scripts import `../stardust/<x>.mjs` siblings.
+
 ---
 
 ## Evals
