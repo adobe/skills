@@ -176,7 +176,7 @@ W=${4:?missing <width>}
 # <build-url> = auto[/<path>]: this project's prototype server from
 # stardust/.work/ports.json (port.mjs proto; serve.mjs writes it) — the URL is
 # never typed, so it can never name another project's port. Default path
-# <slug>-proposed.html. Without ports.json the documented default port stands.
+# <slug>-proposed.html. Without ports.json `auto` exits 125 — pass the URL.
 case "$BUILD_URL" in
   auto|auto/*)
     _P=$(node -e 'try{const j=JSON.parse(require("fs").readFileSync("stardust/.work/ports.json","utf8"));process.stdout.write(String(j.proto&&j.proto.port||""))}catch{}' 2>/dev/null)

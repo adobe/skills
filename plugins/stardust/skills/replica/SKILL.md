@@ -1,6 +1,6 @@
 ---
 name: replica
-description: Same-design migration — re-platform a site to AEM Edge Delivery (or any clean front end) keeping its current design near pixel-perfect. Recreates key pages (one archetype per page type) as clean re-authored HTML/CSS (never DOM copies), verifies each against the live site with a measured source-fidelity gate (structural + visual + stitched pixel diff per breakpoint), then hands off to migrate/deploy/rollout (subsumes prepare-migration's prep cascade — never chain the two). The only permitted design changes are entries in an explicit inconsistency register. Use when the user says "migrate this site keeping its current design", "same-design migration", "pixel-perfect replatform to AEM", or "keep the design, change the platform". NOT for redesigns — those are the stardust core pipeline (direct/prototype) or uplift.
+description: Same-design migration — re-platform a site to AEM Edge Delivery (or any clean front end) keeping its current design near pixel-perfect. Recreates key pages (one archetype per page type) as clean re-authored HTML/CSS (never DOM copies), verifies each against the live site with a measured source-fidelity gate (structural + visual + stitched pixel diff per breakpoint), then hands off to migrate/deploy/rollout for site-wide delivery (subsumes prepare-migration's prep cascade — never chain the two). The only permitted design changes are entries in an explicit inconsistency register. Use when the user says "migrate this site keeping its current design", "same-design migration", "pixel-perfect replatform to AEM", or "keep the design, change the platform". NOT for redesigns — those are the stardust core pipeline (direct/prototype) or uplift.
 license: Apache-2.0
 compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, and playwright-cli on PATH.
 metadata:
@@ -85,8 +85,8 @@ proven by instruments).
 
 ## Procedure
 
-Five phases. Phases 1 and 5 delegate to existing skills unchanged; phases
-2–4 are owned by `replica`.
+Five phases: 1 and 5 delegate to existing skills unchanged; 2–4 are
+`replica`'s.
 
 ### Phase 1 — EXTRACT (delegate to `$stardust extract --prep --dynamics`)
 
@@ -96,7 +96,7 @@ replica consumes the full migration inventory, not the discovery cap:
 - `stardust/current/pages/<slug>.json` — per-page structure + content
   (verbatim source of every string the prototypes will carry).
 - `stardust/current/assets/screenshots/` — per-page captures (ground truth
-  for recreation, alongside the gate's own stitched shots).
+  for recreation).
 - `stardust/current/assets/` — fonts (network-intercepted woff2), logo, media.
 - `stardust/current/PRODUCT.md`, `DESIGN.md`, `DESIGN.json` — the descriptive
   current state (Phase 2 promotes these verbatim).
@@ -112,7 +112,7 @@ extract is reused, nothing else is.
 
 **Bounded entry (one page or a pilot).** `$stardust extract <URL> --single`
 (or `--pages <slug,...>`) is a first-class entry: per-page JSON, screenshot
-and fonts are provided (the CSS lift is Phase 3's either way); it skips the
+and fonts are provided; it skips the
 prep-only inventory (a pilot that grows re-runs Phase 1 with `--prep`) and
 the descriptive synthesis, so Phase 2 takes the **bounded promotion branch**
 (`reference/preserve-direction.md` § 1a), provenance `bounded-single`.
@@ -135,13 +135,13 @@ Full contract: `reference/preserve-direction.md`. Summary:
    provenance `bounded-single`. Never mix the branches.
 2. **Write `stardust/direction.md`** recording preserve mode: what was
    promoted, from where, provenance (verbatim `--prep` promotion vs
-   `bounded-single` synthesis), and the register pointer. It tells downstream skills the direction step happened.
+   `bounded-single` synthesis), and the register pointer.
 3. **Build the inconsistency register** at
    `stardust/replica/inconsistency-register.md` — the ONLY permitted design
    deltas, the "almost" in almost-pixel-perfect. Sources: the stardust
    `audit` skill's design findings (only if the user wants improvements) and/or `--register` items. Every entry needs captured
    evidence + the minimal change + a status. **Empty register = pure
-   replica** — a valid outcome, not a failure.
+   replica** — a valid outcome.
 
 4. **Dynamic surface (migration gate — the stardust `dynamics` skill Phases 1–3).**
    Phase 1 must have run `extract --dynamics`. Run the detector on the
@@ -214,7 +214,8 @@ breakpoint (default 1440 AND 360), live URL as source vs served prototype:
 
 ```bash
 node stardust/scripts/replica/serve.mjs stardust/prototypes --role proto &   # own port, marker file, pidfile
-PROTO="http://127.0.0.1:$(node stardust/scripts/replica/port.mjs proto)/<slug>-proposed.html"   # no ports.json → 8791
+PROTO="http://127.0.0.1:$(node stardust/scripts/replica/port.mjs proto)/<slug>-proposed.html"   # the project's 8800–8899 slot, never 8791
+# no serve.mjs: python3 -m http.server 8791 -d stardust/prototypes → PROTO=http://localhost:8791/… (a typed port is still identity-gated, exit 4)
 # a foreign listener is listed, never killed — the allocator moves; gate.sh asserts the marker (exit 4 = no verdict)
 LIVE="https://<site>/<path>"
 
