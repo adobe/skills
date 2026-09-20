@@ -36,7 +36,11 @@ check(tokenOf({ tag: 'div', firstClass: '', groups: [{ count: 17, unit: { headin
 const A = signatureOf([hero, tiles, faq, cta]); const B = signatureOf([hero, tiles, cols, faq, cta]);
 check(A.length === 4 && B.length === 5, 'signatureOf yields one token per section');
 check(editDistance(A, B) === 1 && editDistance(A, A) === 0 && editDistance([], B) === 5, 'token-level edit distance');
-check(JSON.stringify(signatureDiff(A, B)) === JSON.stringify(['faq|g:2xt|i → compare-columns|g:2xht|c2 @2', 'cta-band → faq|g:2xt|i @3', '+cta-band @4']), `signature diff names positions, got ${JSON.stringify(signatureDiff(A, B))}`);
+// defect: the diff was positional — one inserted section read as three edits (two substitutions + a trailing insertion)
+check(JSON.stringify(signatureDiff(A, B)) === JSON.stringify(['+compare-columns|g:2xht|c2 @2']), `one inserted section is ONE edit from the alignment, got ${JSON.stringify(signatureDiff(A, B))}`);
+check(JSON.stringify(signatureDiff(B, A)) === JSON.stringify(['−compare-columns|g:2xht|c2 @2']), `the reverse is one deletion, got ${JSON.stringify(signatureDiff(B, A))}`);
+check(JSON.stringify(signatureDiff(A, signatureOf([hero, tiles, faq, { ...cta, firstClass: 'cta-band-alt' }]))) === JSON.stringify(['cta-band → cta-band-alt @3']), 'a renamed section is one substitution at its position');
+for (const [x, y] of [[A, B], [B, A], [[], B], [A, []], [signatureOf([hero, cta, tiles]), B]]) check(signatureDiff(x, y).length === editDistance(x, y), `diff length equals the edit distance for ${JSON.stringify([x, y])}`);
 
 // --- clustering: exact groups, then k-merge
 const sigs = [...['a1', 'a2', 'a3', 'a4', 'a5'].map((s) => ({ slug: s, signature: A })), ...['b1', 'b2', 'b3'].map((s) => ({ slug: s, signature: B })), { slug: 'a6', signature: signatureOf([hero, tiles, faq, { ...cta, firstClass: 'cta-band-alt' }]) }];
@@ -77,7 +81,7 @@ check(r.clusters.length === 2 && r.tail.length === 0 && r.unclustered[0] === 'no
 check(r.clusters[0].id === 'c1' && r.clusters[0].exemplar === 'a3' && r.clusters[0].exemplarSource === 'archetype' && isGated(r.clusters[0].gated), 'c1 = the archetype\'s cluster, gated');
 check(r.clusters[1].id === 'c2' && r.clusters[1].exemplar === 'b2' && r.clusters[1].exemplarSource === 'median' && !isGated(r.clusters[1].gated), `c2 exemplar = median page b2, ungated, got ${JSON.stringify(r.clusters[1])}`);
 check(JSON.stringify(r.ungated) === JSON.stringify(['c2']) && r.archetypeCluster === 'c1', 'the blocking fact names c2 only');
-check(r.clusters[1].diffVsArchetype.length === 3 && r.clusters[1].diffVsArchetype[0].includes('compare-columns'), 'per-cluster signature diff vs the archetype\'s cluster');
+check(r.clusters[1].diffVsArchetype.length === 1 && r.clusters[1].diffVsArchetype[0] === '+compare-columns|g:2xht|c2 @2', `per-cluster signature diff vs the archetype's cluster is the alignment (one insertion), got ${JSON.stringify(r.clusters[1].diffVsArchetype)}`);
 let text = renderType(r, [1440, 360]);
 check(/type program: 9 pages, 2 cluster\(s\) ≥ 3 \(gated 1\), tail 0 page\(s\), unclustered 1/.test(text), `summary line, got:\n${text}`);
 check(/c2 {5}3 pages {2}exemplar b2 \(median\) {2}ungated 1440 ✓\* 360 — → \$stardust replica b2/.test(text), `ungated cluster row carries the command to gate the exemplar, got:\n${text}`);
@@ -99,7 +103,7 @@ check(/cover target c2 is not gated/.test(threw || ''), `covering by an ungated 
 threw = null; try { applyCover(file, { id: 'c9', gatedId: 'c1', reason: 'x' }); } catch (e) { threw = e.message; }
 check(/cluster c9 not in the cluster file/.test(threw || ''), 'unknown cluster id is an error');
 const hit = applyCover(file, { id: 'c2', gatedId: 'c1', reason: 'columns are a two-up variant of the tiles block' });
-check(hit.c.coveredBy?.cluster === 'c1' && hit.c.coveredBy.by === 'operator' && hit.c.coveredBy.signatureDiff.length === 3 && file.types[0].ungated.length === 0, `coveredBy recorded with reason, by, diff; the type no longer blocks, got ${JSON.stringify(hit.c.coveredBy)}`);
+check(hit.c.coveredBy?.cluster === 'c1' && hit.c.coveredBy.by === 'operator' && hit.c.coveredBy.signatureDiff.length === 1 && file.types[0].ungated.length === 0, `coveredBy recorded with reason, by, diff; the type no longer blocks, got ${JSON.stringify(hit.c.coveredBy)}`);
 r = clusterType({ type: 'program', pages: [...pagesA, ...pagesB], ledger, bps: [1440, 360], classes, minCluster: 3, k: 0, previous: file.types[0] });
 check(r.clusters[1].coveredBy?.cluster === 'c1' && r.ungated.length === 0 && /covered by c1 \(columns are a two-up variant/.test(renderType(r, [1440, 360])), 're-clustering keeps a recorded coveredBy keyed by signature');
 check(r.clusters[1].gated[360] === 'ungated' && r.clusters[1].gated[1440] === 'accepted', 'coveredBy never rewrites the gate status — the exemplar record keeps 360 ungated');

@@ -147,17 +147,26 @@ export function editDistance(a, b) {
   return prev[n];
 }
 
-/** Human diff of two signatures: +token@i / −token@i / token→token@i. */
+/**
+ * Human diff of two signatures from the Levenshtein alignment (one inserted
+ * section is ONE edit, not a cascade of substitutions): `+token @i` (position
+ * in `to`) · `−token @i` (position in `from`) · `a → b @i` (position in `to`).
+ * `out.length === editDistance(from, to)`.
+ */
 export function signatureDiff(from, to) {
+  const m = from.length; const n = to.length;
+  const d = Array.from({ length: m + 1 }, (_, i) => { const row = new Array(n + 1).fill(0); row[0] = i; return row; });
+  for (let j = 1; j <= n; j++) d[0][j] = j;
+  for (let i = 1; i <= m; i++) for (let j = 1; j <= n; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (from[i - 1] === to[j - 1] ? 0 : 1));
   const out = [];
-  const max = Math.max(from.length, to.length);
-  for (let i = 0; i < max; i++) {
-    if (from[i] === to[i]) continue;
-    if (from[i] === undefined) out.push(`+${to[i]} @${i}`);
-    else if (to[i] === undefined) out.push(`−${from[i]} @${i}`);
-    else out.push(`${from[i]} → ${to[i]} @${i}`);
+  let i = m; let j = n;
+  while (i > 0 || j > 0) {
+    if (i > 0 && j > 0 && from[i - 1] === to[j - 1] && d[i][j] === d[i - 1][j - 1]) { i--; j--; continue; }
+    if (i > 0 && j > 0 && d[i][j] === d[i - 1][j - 1] + 1) { out.push(`${from[i - 1]} → ${to[j - 1]} @${j - 1}`); i--; j--; continue; }
+    if (j > 0 && d[i][j] === d[i][j - 1] + 1) { out.push(`+${to[j - 1]} @${j - 1}`); j--; continue; }
+    out.push(`−${from[i - 1]} @${i - 1}`); i--;
   }
-  return out;
+  return out.reverse();
 }
 
 /**
