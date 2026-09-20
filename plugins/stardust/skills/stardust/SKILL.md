@@ -48,8 +48,7 @@ delegate the actual design work to **impeccable**.
 
 1. **Resolve the impeccable dependency level.** Read the invoked skill's
    frontmatter `metadata.impeccable` (`required` | `optional` | `none`;
-   absent = `required`; the master is `required` for its freeform-intent
-   route). `none` → skip this step and step 4, noting
+   absent = `required`). `none` → skip this step and step 4, noting
    `impeccable: skipped` in the skill's first `status.jsonl` line.
    Otherwise, once per session and never on the master's freeform-intent
    route (there Phase 1 reasoning comes first; the probe runs when the
