@@ -339,6 +339,13 @@ const pc = await import(pathToFileURL(l1('replica', 'pixel-compare.mjs')).href);
 }
 help('replica', 'crop-compare.mjs');
 help('replica', 'sibling-variance.mjs');
+{
+  // sibling-variance value guards (defect: bare `rest[i += 1]` — `--type --json` stored "--json" as the type, `--from-clusters` at the end stored undefined)
+  for (const args of [['--from-clusters', '--type', 'x'], ['--type', '--json'], ['--probe', '--brief'], ['--width'], ['--main', '--json']]) {
+    const r = runL1('replica', 'sibling-variance.mjs', ['https://l/', 'https://s/', ...args]);
+    check(r.status === 1 && /needs a value/.test(r.stderr), `sibling-variance ${args.join(' ')}: a value flag without a value must exit 1 with "needs a value" (got ${r.status})\n${r.stderr.split('\n')[0]}`);
+  }
+}
 
 // ---- chrome-parity (T18.3): flags + the pure compare
 const cp = await import(pathToFileURL(l1('replica', 'chrome-parity.mjs')).href);

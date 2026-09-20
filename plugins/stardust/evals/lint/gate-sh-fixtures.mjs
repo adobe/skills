@@ -89,7 +89,7 @@ mkdirSync(join(project, 'stardust', 'replica'), { recursive: true });
 // process's event loop, so an in-process server would never answer gate.sh's
 // identity curl.
 const server = spawn(process.execPath, ['-e', `
-  const s = require('node:http').createServer((q, r) => { r.setHeader('content-type', 'text/html'); r.end('<html><body><h1>fresh drift noise noise2 noise3 cap rec orphan regime stale forced partial proposed broken</h1></body></html>'); });
+  const s = require('node:http').createServer((q, r) => { r.setHeader('content-type', 'text/html'); r.end('<html><body><h1>fresh drift noise noise2 noise3 cap rec orphan regime stale forced partial proposed broken unlock</h1></body></html>'); });
   s.listen(0, '127.0.0.1', () => process.stdout.write(String(s.address().port)));
 `], { stdio: ['ignore', 'pipe', 'inherit'] });
 const port = await new Promise((r) => { server.stdout.once('data', (d) => r(String(d).trim())); });
@@ -149,6 +149,9 @@ try {
   // ---- freshness (slug fresh) ----
   r = gate('fresh');
   if (r.status !== 0) throw new Error(`fresh round 1: expected exit 0, got ${r.status}\n${r.out}`);
+  // the runner stages no browser-lock.mjs: the round runs unlocked and SAYS so (fan-out § Machine budget — never silent); STARDUST_BROWSER_SLOTS=0 (a driver holding the slot) silences it
+  check(/WARN no browser-lock\.mjs beside the scripts .* takes NO machine-wide browser slot/.test(r.out), `an unlocked round prints the WARN line naming the paths tried\n${r.out}`);
+  check(!/WARN no browser-lock/.test(gate('unlock', [], { STARDUST_BROWSER_SLOTS: '0' }).out), 'STARDUST_BROWSER_SLOTS=0 (slot held by the driver) prints no unlocked WARN');
   const gateOut = { fresh1: r.out };
   const f1 = rec('fresh', 'iter1');
   check(f1?.verdict === 'PASS' && f1.regime === 'prototype' && f1.ref?.capturedAt === liveCapturedAt('fresh') && f1.iteration === 1, 'round 1: default label iter1, verdict PASS, regime prototype, ref.capturedAt from the sidecar, iteration 1');

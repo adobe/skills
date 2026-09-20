@@ -318,8 +318,12 @@ if [ -f "$MASKS_JSON" ]; then
 fi
 REAP_MIN=${GATE_REAP_MIN:-15}
 # Browser slot (../../stardust/reference/fan-out.md § Machine budget): one per gate round, taken below before
-# the first capture; the module resolves from the project copy layout, then the plugin tree; absent → unlocked.
-LOCK="$HERE/../stardust/browser-lock.mjs"; [ -f "$LOCK" ] || LOCK="$HERE/../../stardust/scripts/browser-lock.mjs"; [ -f "$LOCK" ] || LOCK=""
+# the first capture; the module resolves from the project copy layout (stardust/scripts/stardust/), the plugin
+# tree, then $STARDUST_SKILLS_DIR/stardust/scripts (stamped by the master setup); absent → the round runs
+# UNLOCKED and says so once (the census reads the line) — never silently.
+LOCK="$HERE/../stardust/browser-lock.mjs"; [ -f "$LOCK" ] || LOCK="$HERE/../../stardust/scripts/browser-lock.mjs"
+[ -f "$LOCK" ] || { [ -n "${STARDUST_SKILLS_DIR:-}" ] && LOCK="$STARDUST_SKILLS_DIR/stardust/scripts/browser-lock.mjs"; }
+[ -f "$LOCK" ] || { LOCK=""; [ "${STARDUST_BROWSER_SLOTS:-2}" != "0" ] && echo "gate.sh: WARN no browser-lock.mjs beside the scripts (looked in $HERE/../stardust/, $HERE/../../stardust/scripts/, \$STARDUST_SKILLS_DIR/stardust/scripts/) — this round takes NO machine-wide browser slot (fan-out.md § Machine budget); copy skills/stardust/scripts/browser-lock.mjs to stardust/scripts/stardust/ or export STARDUST_SKILLS_DIR" >&2; }
 capped() { local t=$1 l=$2; shift 2; node "$HERE/run-capped.mjs" --timeout "$t" --label "$l" -- "$@"; }
 
 # Stale-instrument reap (own user, replica instruments only, by basename so the
