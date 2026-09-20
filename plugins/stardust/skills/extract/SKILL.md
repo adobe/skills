@@ -15,7 +15,7 @@ metadata:
 |---|---|---|---|
 | Setup 1–4 | `node -e "import('playwright').then(()=>process.exit(0))"`; copy `skills/extract/scripts/crawl.mjs` → `stardust/scripts/crawl.mjs` (+ `skills/stardust/scripts/progress.mjs` → `stardust/scripts/stardust/`); origin-collision and flow guard; consent pre-flight; bot-management probe | flow stamped before a migration crawl | `_crawl-log.json#consent`, `#discovery.fetchTechnique` |
 | 1 Discovery | robots sitemaps → standard → conventions → nav union → BFS (`--depth`); subtree from the typed path; junk filter; cap via `--cap <N>` / `--all` / `--pages <slugs>` / `--single` | relay crawl's kept/cut summary; no gate | `stardust/current/_crawl-log.json` |
-| 2 Per-page extraction | `node stardust/scripts/crawl.mjs --url <origin> [--pages …] [--cap N \| --all \| --single] [--refresh <slug,…> \| --force] [--headed] [--concurrency N] [--wait <mode>] [--dynamics] [--mobile <mode>] [--dpr N] [--depth N] [--cookie n=v] [--storage-state <file> \| --fresh-state] [--save-state] [--solve-wait <ms>] [--progress <file> \| --no-progress]` — in the background; `progress.mjs read stardust/.work/extract/crawl.progress.json`, then its `SUMMARY` line | live-render evidence contract; schema gate `validate-page.mjs` (exit 1 = not `extracted`); synthesis is a Phase 2 failure | `current/pages/<slug>.json` + `.html`, `assets/screenshots/<slug>.png`, `assets/media/`, `state.json` page → `extracted` |
+| 2 Per-page extraction | `node stardust/scripts/crawl.mjs --url <origin> [--pages …] [--cap N \| --all \| --single] [--refresh <slug,…> \| --force] [--headed] [--concurrency N] [--wait <mode>] [--dynamics] [--mobile <mode>] [--dpr N] [--depth N] [--cookie n=v] [--storage-state <file> \| --fresh-state] [--save-state] [--solve-wait <ms>] [--progress <file> \| --no-progress] [--assets intercept\|full\|none \| --no-assets]` — in the background; `progress.mjs read stardust/.work/extract/crawl.progress.json`, then its `SUMMARY` line | live-render evidence contract; schema gate `validate-page.mjs` (exit 1 = not `extracted`); synthesis is a Phase 2 failure | `current/pages/<slug>.json` + `.html`, `assets/screenshots/<slug>.png`, `assets/media/`, `state.json` page → `extracted` |
 | 2.5 Vision verification | look at each screenshot against its record; `_signals` flags first; escalation ladder (wait mode → next bot-management tier → fresh context); `node plugins/stardust/evals/lint/crawl-log-lint.mjs --dir stardust/current` | verdict `ok` / `recaptured` / `suspect`; never `ok` on DEGRADED / overlay | `_crawl-log.json#visionCheck[]` |
 | 3 Brand-surface extraction | aggregate across all extracted pages (+ brand-source pages) | source citation per value | `current/_brand-extraction.json`, `assets/logo.<ext>`, `assets/favicon.<ext>` |
 | 4 Seed current-state docs | author directly from impeccable's format specs (no `$impeccable init` / `document`) | provenance block first | `current/PRODUCT.md`, `current/DESIGN.md`, `current/DESIGN.json` |
@@ -130,19 +130,15 @@ Additional checks for this sub-command:
 1. **Playwright availability.** Detect a Playwright MCP server, else a
    project-importable `playwright` module — probe
    `node -e "import('playwright').then(()=>process.exit(0))"` from the
-   project root. **`npx playwright --version` is NOT sufficient**: ESM
-   resolution honours neither a global install nor `NODE_PATH`, so the
-   scripts' `import 'playwright'` throws `ERR_MODULE_NOT_FOUND` where the
-   CLI succeeds. On failure `npm i -D playwright --no-save
-   --legacy-peer-deps` (the flag is required on `aem-boilerplate`
-   targets, whose pinned `eslint@8` makes a plain `npm i` exit
-   `ERESOLVE`). `--no-save` installs are ephemeral — a later real
-   `npm i` prunes them — so every rendering skill (prototype, migrate,
-   deploy, diff) re-runs the probe at its own start.
+   project root (`npx playwright --version` is NOT sufficient: ESM
+   ignores global installs and `NODE_PATH`). On failure `npm i -D
+   playwright --no-save --legacy-peer-deps` (`aem-boilerplate` pins
+   `eslint@8`); `--no-save` installs are pruned by a later `npm i`, so
+   every rendering skill re-runs the probe at its own start.
    **Script location matters.** ESM resolves from the *script's*
-   directory and the plugin tree ships no `node_modules`: copy
-   `crawl.mjs` byte-identical to `stardust/scripts/crawl.mjs` and run
-   the copy.
+   directory and the plugin tree ships no `node_modules`: copy the
+   extract scripts (`crawl.mjs`, `validate-page.mjs`) byte-identical
+   into `stardust/scripts/` as a set and run the copies.
 
    **Bundled crawler.** `skills/extract/scripts/crawl.mjs` is the
    runnable reference implementation of this sub-command (browser
@@ -291,9 +287,10 @@ Capture per page (full schema in `reference/current-state-schema.md`):
   heroes surface and broken CDN images are flagged before migrate
   ships `about:error`.
 - Font files via network-intercept (§ Capture list 16) under
-  `assets/fonts/`, recorded in `_brand-extraction.json#type.files[]`
-  with a licensing flag; icon fonts detected family-first from
-  `::before`/`::after` glyphs (`_signals.iconFont`, § Capture list 17).
+  `assets/fonts/` with `@font-face` descriptors and a licensing flag in
+  `assets/_fonts-manifest.json` (Phase 3 copies it into `type.files[]`);
+  icon fonts detected family-first from `::before`/`::after` glyphs
+  (`_signals.iconFont`, § Capture list 17).
 - Interactive elements: `forms[]` with labelled fields (always; the
   `--dynamics` reach shape comes from the same walk), `widgets`,
   `components`, `perSectionStyle[]`, `stats.motifs`
@@ -314,12 +311,13 @@ Capture per page (full schema in `reference/current-state-schema.md`):
 Save to `stardust/current/pages/<slug>.json` with `_provenance` as the
 first key. **The bundled crawler also saves the settled rendered DOM
 verbatim as `stardust/current/pages/<slug>.html`** (path in the
-record's `renderedHtml` field). Capture once, parse offline: importers
-and sibling generators iterate against this artifact instead of
-re-running live probes per selector guess; live probes stay for
-geometry and computed styles. Save referenced media to
-`stardust/current/assets/media/` preserving basename plus a short
-content hash.
+record's `renderedHtml` field). Capture once, parse offline (live
+probes stay for geometry and computed styles). The render's own image and font bodies are kept from the
+response stream (zero extra requests) under `assets/media/` and
+`assets/fonts/` as `<basename>-<hash>.<ext>` (`images[].localPath` |
+`downloadError`; `assets/_media-manifest.json`, `assets/_fonts-manifest.json`,
+`assets/favicon-set.json`); `--assets full` adds capped in-page fetches
+for CDN masters and unrequested candidates; `--no-assets` disables.
 
 **Live-render evidence (synthesis is forbidden).** Refuse to mark
 a page `extracted` in `state.json` unless its `_provenance`
@@ -643,7 +641,7 @@ capture (≤ 3 pages). It must never balloon the crawl.
 | `stardust/current/pages/<slug>.html`        | Settled rendered DOM (crawler sidecar; parse offline, never re-scrape) |
 | `stardust/current/assets/logo.<ext>`        | Extracted logo                                      |
 | `stardust/current/assets/favicon.<ext>`     | Site favicon (first-class asset; prototype head + deploy consume it) |
-| `stardust/current/assets/media/`            | Extracted media referenced by pages                 |
+| `stardust/current/assets/{media,fonts,icons}/` | Harvested bodies (`_media-manifest.json`, `_fonts-manifest.json`, `favicon-set.json` beside them) |
 | `stardust/current/assets/screenshots/`      | Per-page full-page screenshots, script-captured by `crawl.mjs` (Phase 2.5 vision gate + brand-review) |
 | `stardust/current/_brand-extraction.json`   | Consolidated brand surface (palette, type, motifs, voice, system components) |
 | `stardust/current/_crawl-log.json`          | Discovery + crawl audit trail (incl. `visionCheck[]`, `siblingCandidates[]`; `dynamicSurface` reach roll-up only with `--dynamics`) |
@@ -655,8 +653,7 @@ capture (≤ 3 pages). It must never balloon the crawl.
 
 Page captures run **concurrently**: the Phase 2 queue is drained by
 4–8 parallel browser contexts (`crawl.mjs --concurrency <n>`, default
-4), each on the probe's cloned session (Setup step 3); media
-`resolves` / HEAD checks batch with `Promise.all`; Phase 3 may
+4), each on the probe's cloned session (Setup step 3); Phase 3 may
 aggregate incrementally as long as `_brand-extraction.json` reflects
 every extracted page.
 
@@ -696,8 +693,7 @@ last-write-wins (`state-machine.md` § Concurrency).
   when tier 3 is still challenged; only then say the origin needs an
   interactive solve (`--solve-wait <ms>` on crawl.mjs or any live
   instrument opens a visible window and waits for you) or a WAF allowlist. A page-level wall usually does
-  NOT gate assets: probe one media/CSS/font URL with a browser-UA curl
-  before reaching for in-page fetch (the fallback, not the default).
+  NOT gate assets: the harvest rides the render's own responses.
 - **JavaScript-only content.** Playwright already handles this. If
   the configured wait condition never fires within the mode's hard
   cap (`reference/playwright-recipe.md` § Wait modes), fall back to

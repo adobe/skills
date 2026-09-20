@@ -88,8 +88,19 @@
  *     [--no-consent-dismiss] [--concurrency 4] [--dynamics] [--headed[=window]] \
  *     [--mobile entry|all|none] [--dpr 1] [--depth 1] [--cookie name=value[;Path=/]]... \
  *     [--storage-state <file> | --fresh-state] [--save-state] [--solve-wait <ms>] \
- *     [--progress <file> | --no-progress]
+ *     [--progress <file> | --no-progress] [--assets intercept|full|none | --no-assets] \
+ *     [--assets-max <n>] [--assets-max-bytes <n>]
  *   node crawl.mjs --help
+ *
+ * Asset harvest (default on; --no-assets disables; --assets full adds capped in-page
+ *   fetches): the render's own image/font bodies are kept from the response stream —
+ *   zero extra requests — under assets/media/ and assets/fonts/ as
+ *   <basename>-<sha1:8>.<ext> (ext = sniffed mime; a mismatch with the URL is
+ *   transformSuspect, never "fixed"); images[]/cssBackgrounds[] get localPath |
+ *   downloadError; assets/_media-manifest.json and assets/_fonts-manifest.json
+ *   (@font-face descriptors, licensingFlag, iconFonts[]) merge by URL across runs;
+ *   the favicon SET (every link[rel~=icon]/apple-touch-icon/mask-icon + /favicon.ico)
+ *   → assets/icons/ + assets/favicon-set.json; runs[].assets sums the run.
  *
  * Completion contract (skills/stardust/scripts/progress.mjs): while the pool runs the
  *   crawler writes <out>/../.work/extract/crawl.progress.json (default; --progress
@@ -190,7 +201,9 @@
  *   challengeMarker, CHALLENGE_PHRASE, HostBudget, BUDGET_DEFAULT,
  *   parseRetryAfter, mergeLiveBudget, tuneBudget, LIVE_BUDGET_TTL_MS, sessionReusedOf,
  *   UNPACED_DISCOVERY, capture, serializeDom, SCHEMA_VERSION, REQUIRED_KEYS,
- *   validateRecord, validateProvenance, WAIT_MODE_RE, CONSENT_LABELS —
+ *   validateRecord, validateProvenance, WAIT_MODE_RE, CONSENT_LABELS, stripCdnParams,
+ *   sniffMime, assetPath, mergeManifest, licensingFlagFor, fullAssetCandidates,
+ *   buildFontsManifest, FONT_URL_RE —
  *   importing this module runs nothing; main() runs only when the file is
  *   the entry script.
  *
@@ -243,7 +256,7 @@ export async function loadProgressHelper() {
 
 const MOBILE_MODES = ['entry', 'all', 'none'];
 export function parseArgs(argv) {
-  const a = { out: 'stardust/current', max: 5, wait: 'medium', consent: true, concurrency: 4, dynamics: false, refresh: [], force: false, headed: 0, mobile: 'entry', dpr: 1, depth: 1, cookies: [] };
+  const a = { out: 'stardust/current', max: 5, wait: 'medium', consent: true, concurrency: 4, dynamics: false, refresh: [], force: false, headed: 0, mobile: 'entry', dpr: 1, depth: 1, cookies: [], assets: 'intercept', assetsMax: ASSET_FULL_MAX, assetsMaxBytes: ASSET_MAX_BYTES };
   for (let i = 2; i < argv.length; i += 1) {
     const k = argv[i];
     // a value-taking flag never swallows the next flag: `--cap --all` is an error, not a 5-page crawl
@@ -275,6 +288,10 @@ export function parseArgs(argv) {
     else if (k === '--dynamics') a.dynamics = true; // migration-bound: set by prepare-migration / replica / migrate, never by default
     else if (k === '--headed') a.headed = 2; // start the ladder at tier 2 (real Chrome, still headless)
     else if (k === '--headed=window' || k === '--headed=offscreen') a.headed = 3; // start at tier 3 (off-screen window)
+    else if (k === '--assets') { a.assets = val(); if (!['intercept', 'full', 'none'].includes(a.assets)) throw new Error('--assets must be intercept|full|none'); }
+    else if (k === '--no-assets') a.assets = 'none';
+    else if (k === '--assets-max') { const n = +val(); if (!(n >= 0)) throw new Error('--assets-max must be ≥ 0'); a.assetsMax = n; }
+    else if (k === '--assets-max-bytes') { const n = +val(); if (!(n > 0)) throw new Error('--assets-max-bytes must be > 0'); a.assetsMaxBytes = n; }
     else if (k === '--progress') a.progress = val();
     else if (k === '--no-progress') a.progress = null;
     else throw new Error(`unknown arg: ${k}`);
@@ -1132,6 +1149,230 @@ async function captureFavicon(page, args) {
   } catch { return null; }
 }
 
+
+// ---- Asset harvest (--assets intercept|full|none; default intercept) -------
+// Every image and font body the settled render ALREADY fetched is kept from the
+// response stream (page.on('response')) — zero extra requests on the source
+// origin (recipe § Sub-resource fetches; the theme's hit-minimisation win).
+// Bodies land under <out>/assets/media/ and <out>/assets/fonts/ as
+// <basename>-<sha1(bytes):8>.<ext> (ext follows the SNIFFED mime — a CDN that
+// answers a .png URL with JPEG bytes is recorded as transformSuspect, never
+// "fixed": the render loaded that body). `--assets full` adds capped in-page
+// fetches for what the render did not request (CDN master with transform
+// params stripped, the largest srcset/<source> candidate, unrequested CSS
+// backgrounds). Manifests: assets/_media-manifest.json (per URL — merge-by-URL
+// across runs, a success replaces an earlier downloadError, nothing is ever
+// dropped) and assets/_fonts-manifest.json (per font file with its @font-face
+// descriptors + the family-first iconFonts[] table). Failures are recorded
+// (downloadError), never thrown — the harvest is additive capture.
+export const FONT_URL_RE = /\.(woff2?|ttf|otf|eot)(?:[?#]|$)/i;
+const IMAGE_CT = /^image\//i; const FONT_CT = /^(font\/|application\/(x-)?font|application\/vnd\.ms-fontobject)/i;
+const ASSET_MAX_BYTES = 25 * 1024 * 1024; // per body; --assets-max-bytes
+const ASSET_FULL_MAX = 200; // extra in-page fetches per run under --assets full; --assets-max
+// CDN transform params (imgix/Cloudinary/Akamai/Scene7/Contentful style) whose removal usually yields the master
+const CDN_PARAMS = /^(format|fm|fmt|quality|q|fit|crop|auto|w|h|width|height|dpr|resize|scale|wid|hei|imwidth|imheight|imformat|im|impolicy|optimize|compress|sharpen|blur|bg|flip|rotate|trim|pad|mask|frame|page|dl|cs)$/i;
+/** drop CDN transform params; unknown params (DAM cache keys) are kept — stripping them 404s */
+export function stripCdnParams(url) {
+  try {
+    const u = new URL(url);
+    const keep = [...u.searchParams.entries()].filter(([k]) => !CDN_PARAMS.test(k));
+    if (keep.length === u.searchParams.size) return url;
+    u.search = ''; for (const [k, v] of keep) u.searchParams.append(k, v);
+    return u.href;
+  } catch { return url; }
+}
+const MAGIC = [
+  ['png', (b) => b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47],
+  ['jpg', (b) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff],
+  ['gif', (b) => b.subarray(0, 4).toString('latin1') === 'GIF8'],
+  ['webp', (b) => b.subarray(0, 4).toString('latin1') === 'RIFF' && b.subarray(8, 12).toString('latin1') === 'WEBP'],
+  ['avif', (b) => b.subarray(4, 8).toString('latin1') === 'ftyp' && /avi[fs]/.test(b.subarray(8, 12).toString('latin1'))],
+  ['ico', (b) => b[0] === 0 && b[1] === 0 && b[2] === 1 && b[3] === 0],
+  ['woff2', (b) => b.subarray(0, 4).toString('latin1') === 'wOF2'],
+  ['woff', (b) => b.subarray(0, 4).toString('latin1') === 'wOFF'],
+  ['otf', (b) => b.subarray(0, 4).toString('latin1') === 'OTTO'],
+  ['ttf', (b) => (b[0] === 0 && b[1] === 1 && b[2] === 0 && b[3] === 0) || b.subarray(0, 4).toString('latin1') === 'true'],
+  ['eot', (b) => b[34] === 0x4c && b[35] === 0x50],
+  ['svg', (b) => /^\s*(<\?xml[^>]*>\s*)?(<!--[\s\S]*?-->\s*)*(<!DOCTYPE[^>]*>\s*)?<svg[\s>]/i.test(b.subarray(0, 512).toString('utf8'))],
+];
+const MIME_OF = { png: 'image/png', jpg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', avif: 'image/avif', ico: 'image/x-icon', svg: 'image/svg+xml', woff2: 'font/woff2', woff: 'font/woff', otf: 'font/otf', ttf: 'font/ttf', eot: 'application/vnd.ms-fontobject' };
+const EXT_ALIAS = { jpeg: 'jpg', 'svg+xml': 'svg', 'x-icon': 'ico', 'vnd.microsoft.icon': 'ico' };
+/** magic-byte sniff → { ext, mime, mismatch } — mismatch when the URL/header says another format (transformSuspect) */
+export function sniffMime(bytes, url = '', contentType = '') {
+  const b = Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes || []);
+  const hit = b.length >= 4 ? MAGIC.find(([, test]) => { try { return test(b); } catch { return false; } }) : null;
+  let urlExt = ''; try { urlExt = (path.extname(new URL(url, 'http://x').pathname).slice(1) || '').toLowerCase(); } catch { /* keep */ }
+  urlExt = EXT_ALIAS[urlExt] || urlExt;
+  const ctExt = EXT_ALIAS[(contentType.split(';')[0].split('/')[1] || '').trim().toLowerCase()] || (contentType.split(';')[0].split('/')[1] || '').trim().toLowerCase();
+  const ext = hit ? hit[0] : (MIME_OF[ctExt] ? ctExt : (MIME_OF[urlExt] ? urlExt : 'bin'));
+  const mismatch = !!hit && !!urlExt && MIME_OF[urlExt] !== undefined && urlExt !== hit[0];
+  return { ext, mime: MIME_OF[ext] || (contentType.split(';')[0].trim() || 'application/octet-stream'), mismatch };
+}
+/** <basename>-<sha1(bytes):8>.<ext> under the kind's directory; identical bytes at two URLs → one file */
+export function assetPath(url, bytes, kind = 'media', ext = null) {
+  let base = 'asset';
+  try { base = path.basename(new URL(url, 'http://x').pathname).replace(/\.[A-Za-z0-9]+$/, '') || 'asset'; } catch { /* keep */ }
+  base = base.replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'asset';
+  const b = Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes || []);
+  const hash = crypto.createHash('sha1').update(b).digest('hex').slice(0, 8);
+  const e = ext || sniffMime(b, url).ext;
+  return `assets/${kind}/${base}-${hash}.${e}`;
+}
+/** merge-by-URL: a re-run keeps earlier successes, a success replaces an earlier downloadError, URLs are never dropped; pages[] unions */
+export function mergeManifest(prev, next) {
+  const out = { ...(prev && prev.assets ? prev.assets : {}) };
+  for (const [url, e] of Object.entries((next && next.assets) || {})) {
+    const old = out[url];
+    if (!old) { out[url] = { ...e, pages: [...new Set(e.pages || [])] }; continue; }
+    const pages = [...new Set([...(old.pages || []), ...(e.pages || [])])];
+    if (e.localPath || !old.localPath) out[url] = { ...old, ...e, pages };
+    else out[url] = { ...old, pages }; // keep the earlier success over a new failure
+  }
+  return { _provenance: { writtenBy: 'stardust:extract', writtenAt: new Date().toISOString(), script: 'crawl.mjs' }, assets: out };
+}
+// families under an open licence (Google Fonts / fontsource catalogue, by prefix); anything else is flagged `verify` — the user checks usage rights
+const OPEN_LICENSE_FAMILIES = ['inter', 'roboto', 'open sans', 'lato', 'montserrat', 'source sans', 'source serif', 'source code', 'noto', 'poppins', 'raleway', 'nunito', 'work sans', 'playfair', 'merriweather', 'ibm plex', 'fira', 'dm sans', 'dm serif', 'dm mono', 'manrope', 'rubik', 'oswald', 'pt sans', 'pt serif', 'ubuntu', 'barlow', 'karla', 'mulish', 'outfit', 'space grotesk', 'space mono', 'libre franklin', 'libre baskerville', 'lora', 'archivo', 'public sans', 'figtree', 'jost', 'sora', 'plus jakarta', 'urbanist', 'hind', 'cabin', 'quicksand', 'josefin', 'exo', 'titillium', 'heebo', 'assistant', 'bitter', 'crimson', 'eb garamond', 'cormorant', 'anton', 'bebas neue', 'inconsolata', 'jetbrains mono', 'roboto mono', 'material icons', 'material symbols', 'font awesome', 'fontawesome', 'atkinson', 'red hat', 'overpass', 'chivo', 'epilogue', 'lexend', 'be vietnam', 'albert sans', 'instrument', 'geist', 'onest', 'recursive'];
+export function licensingFlagFor(family) {
+  const f = String(family || '').toLowerCase().replace(/["']/g, '').trim();
+  if (!f) return 'unknown';
+  return OPEN_LICENSE_FAMILIES.some((o) => f.startsWith(o)) ? 'open-license' : 'verify';
+}
+/** subscribe BEFORE goto: image/font responses of the render are buffered into the run-wide store (Map url → entry) */
+function attachAssetRecorder(page, store, { maxBytes = ASSET_MAX_BYTES } = {}) {
+  const pendingBodies = [];
+  page.on('response', (resp) => {
+    const url = resp.url();
+    if (/^(data|blob):/i.test(url)) return;
+    const rt = resp.request().resourceType();
+    const ct = resp.headers()['content-type'] || '';
+    const kind = rt === 'font' || FONT_CT.test(ct) || FONT_URL_RE.test(url) ? 'font' : (rt === 'image' || IMAGE_CT.test(ct)) ? 'image' : null;
+    if (!kind) return;
+    const status = resp.status();
+    const prev = store.get(url);
+    if (prev && prev.bytes) return; // captured once per run
+    if (status >= 300 && status < 400) return; // the redirect target arrives as its own response
+    if (status >= 400) { store.set(url, { kind, status, contentType: ct, bytes: null, error: `HTTP ${status}`, source: 'render' }); return; }
+    const p = resp.body().then((buf) => {
+      if (store.get(url)?.bytes) return;
+      if (buf.length > maxBytes) { store.set(url, { kind, status, contentType: ct, bytes: null, error: `body ${buf.length} B > --assets-max-bytes`, source: 'render' }); return; }
+      store.set(url, { kind, status, contentType: ct, bytes: buf, source: 'render' });
+    }).catch((e) => { if (!store.has(url)) store.set(url, { kind, status, contentType: ct, bytes: null, error: `body unavailable: ${String(e.message || e).slice(0, 60)}`, source: 'render' }); });
+    pendingBodies.push(p);
+  });
+  return { settle: () => Promise.allSettled(pendingBodies) };
+}
+/** --assets full: in-page fetch (fingerprint-inheriting) for candidates the render did not request; capped per run */
+async function fetchAssetsInPage(page, urls, store, args) {
+  let n = 0;
+  for (const url of urls) {
+    if (store.has(url)) continue;
+    if ((args.assetsExtra || 0) >= args.assetsMax) break;
+    args.assetsExtra = (args.assetsExtra || 0) + 1; n += 1;
+    const res = await page.evaluate(async (u) => {
+      try { const r = await fetch(u, { credentials: 'include' }); const ct = r.headers.get('content-type') || ''; if (!r.ok) return { status: r.status, ct, bytes: null }; return { status: r.status, ct, bytes: [...new Uint8Array(await r.arrayBuffer())] }; } catch (e) { return { status: 0, ct: '', bytes: null, error: String(e.message || e).slice(0, 60) }; }
+    }, url).catch((e) => ({ status: 0, ct: '', bytes: null, error: String(e.message || e).slice(0, 60) }));
+    const kind = FONT_URL_RE.test(url) || FONT_CT.test(res.ct) ? 'font' : 'image';
+    if (res.bytes && res.bytes.length) store.set(url, { kind, status: res.status, contentType: res.ct, bytes: Buffer.from(res.bytes), source: 'fetch' });
+    else store.set(url, { kind, status: res.status, contentType: res.ct, bytes: null, error: res.error || `HTTP ${res.status}`, source: 'fetch' });
+  }
+  return n;
+}
+/** the URLs --assets full asks for beyond the render: CDN master, largest srcset/<source> candidate, unrequested CSS backgrounds */
+export function fullAssetCandidates(media, store = new Map()) {
+  const out = new Set();
+  const largest = (srcset) => { let best = null; let bw = -1; for (const part of String(srcset || '').split(',')) { const [u, d] = part.trim().split(/\s+/); if (!u) continue; const w = d ? (/w$/.test(d) ? parseInt(d, 10) : parseFloat(d) * 1000) : 0; if (w > bw) { bw = w; best = u; } } return best; };
+  for (const im of media.images || []) {
+    const cur = im.currentSrc || im.src; if (!cur) continue;
+    const master = stripCdnParams(cur); if (master !== cur) out.add(master);
+    for (const ss of [im.srcset, ...(im.sources || []).map((s) => s.srcset)]) { const b = largest(ss); if (b) { try { out.add(new URL(b, cur).href); } catch { /* skip */ } } }
+  }
+  for (const bg of media.cssBackgrounds || []) if (bg.url && !store.has(bg.url)) out.add(bg.url);
+  return [...out].filter((u) => /^https?:/.test(u) && !store.has(u));
+}
+/** write one store entry to disk once (by content hash) → { localPath, mime, bytes, transformSuspect } | { downloadError } */
+async function persistAsset(url, entry, args, byHash) {
+  if (!entry) return { localPath: null, downloadError: 'not-requested' };
+  if (!entry.bytes) return { localPath: null, downloadError: entry.error || 'unavailable' };
+  const sniff = sniffMime(entry.bytes, url, entry.contentType);
+  const key = crypto.createHash('sha1').update(entry.bytes).digest('hex');
+  let rel = byHash.get(key);
+  if (!rel) {
+    rel = assetPath(url, entry.bytes, entry.kind === 'font' ? 'fonts' : 'media', sniff.ext);
+    await mkdir(path.dirname(path.join(args.out, rel)), { recursive: true });
+    if (!existsSync(path.join(args.out, rel))) await writeFile(path.join(args.out, rel), entry.bytes);
+    byHash.set(key, rel);
+  }
+  entry.localPath = rel; entry.mime = sniff.mime; entry.transformSuspect = sniff.mismatch;
+  return { localPath: rel, mime: sniff.mime, bytes: entry.bytes.length, transformSuspect: sniff.mismatch };
+}
+/** stamp images[]/cssBackgrounds[] of one record from the store and persist their bodies; returns the per-URL manifest rows */
+async function harvestRecordAssets(rec, slug, store, args, byHash) {
+  const rows = {};
+  const stamp = async (obj, url) => {
+    if (!url || !/^https?:/.test(url)) return;
+    const r = await persistAsset(url, store.get(url), args, byHash);
+    obj.localPath = r.localPath;
+    if (r.localPath) { obj.mime = r.mime; if (r.transformSuspect) obj.transformSuspect = true; delete obj.downloadError; } else obj.downloadError = r.downloadError;
+    rows[url] = { status: store.get(url)?.status ?? null, localPath: r.localPath, mime: r.mime || store.get(url)?.contentType?.split(';')[0] || null, bytes: r.bytes || null, kind: store.get(url)?.kind || 'image', source: store.get(url)?.source || null, transformSuspect: !!r.transformSuspect, downloadError: r.downloadError || null, pages: [slug] };
+  };
+  for (const im of rec.media?.images || []) {
+    await stamp(im, im.currentSrc || im.src);
+    const master = stripCdnParams(im.currentSrc || im.src || ''); if (master && master !== (im.currentSrc || im.src) && store.has(master)) { const r = await persistAsset(master, store.get(master), args, byHash); if (r.localPath) im.masterLocalPath = r.localPath; rows[master] = { ...rows[master], status: store.get(master).status, localPath: r.localPath, mime: r.mime || null, bytes: r.bytes || null, kind: 'image', source: 'fetch', transformSuspect: !!r.transformSuspect, downloadError: r.downloadError || null, pages: [slug] }; }
+  }
+  for (const bg of rec.media?.cssBackgrounds || []) await stamp(bg, bg.url);
+  for (const [url, e] of store) if (e.kind === 'font' && !rows[url]) { const r = await persistAsset(url, e, args, byHash); rows[url] = { status: e.status, localPath: r.localPath, mime: r.mime || null, bytes: r.bytes || null, kind: 'font', source: e.source, transformSuspect: !!r.transformSuspect, downloadError: r.downloadError || null, pages: [slug] }; }
+  return rows;
+}
+/** assets/_fonts-manifest.json — every harvested font body with its @font-face descriptors + the iconFonts[] table across pages */
+export function buildFontsManifest(mediaRows, fontFaces, iconFontsByPage) {
+  const fonts = [];
+  for (const [url, row] of Object.entries(mediaRows)) {
+    if (row.kind !== 'font') continue;
+    const face = fontFaces.find((f) => (f.urls || []).some((u) => u === url || u.split('#')[0] === url.split('#')[0]));
+    fonts.push({ url, family: face?.family || null, weight: face?.weight || null, style: face?.style || null, unicodeRange: face?.unicodeRange || null, localPath: row.localPath, mime: row.mime, bytes: row.bytes, sourceCssRule: face?.sourceCssRule || null, licensingFlag: licensingFlagFor(face?.family), downloadError: row.downloadError, pages: row.pages });
+  }
+  const icon = new Map();
+  for (const [slug, list] of Object.entries(iconFontsByPage)) for (const f of list || []) { const r = icon.get(f.family) || { family: f.family, classes: new Set(), glyphs: new Set(), pages: new Set() }; for (const c of f.classes || []) r.classes.add(c); for (const g of f.glyphs || []) r.glyphs.add(g); r.pages.add(slug); icon.set(f.family, r); }
+  const iconFonts = [...icon.values()].map((r) => ({ family: r.family, classes: [...r.classes].slice(0, 24), codepoints: r.glyphs.size, glyphs: [...r.glyphs].slice(0, 80), localPath: fonts.find((f) => f.family && f.family.toLowerCase() === r.family.toLowerCase())?.localPath || null, pages: [...r.pages] }));
+  return { _provenance: { writtenBy: 'stardust:extract', writtenAt: new Date().toISOString(), script: 'crawl.mjs' }, fonts, iconFonts };
+}
+/** favicon SET (all link[rel~=icon] with sizes, apple-touch-icon, mask-icon, /favicon.ico) → files + assets/favicon-set.json; rides the probe page like captureFavicon */
+async function captureFaviconSet(page, args, byHash, already = null) {
+  try {
+    const links = await page.evaluate(() => [...document.querySelectorAll('link[rel~="icon" i], link[rel~="apple-touch-icon" i], link[rel~="apple-touch-icon-precomposed" i], link[rel~="mask-icon" i]')]
+      .map((l) => ({ rel: (l.getAttribute('rel') || '').toLowerCase(), sizes: l.getAttribute('sizes') || null, href: l.href, color: l.getAttribute('color') || null })).filter((l) => l.href));
+    const fallback = new URL('/favicon.ico', args.origin).href;
+    const seen = new Set(); const wanted = [];
+    for (const l of [...links, { rel: 'icon', sizes: null, href: fallback, color: null }]) { if (seen.has(l.href) || wanted.length >= 8) continue; seen.add(l.href); wanted.push(l); }
+    const icons = [];
+    for (const l of wanted) {
+      if (already && already.url === l.href && existsSync(path.join(args.out, already.file))) {
+        // captureFavicon fetched this one already — reuse its bytes, no second hit
+        const buf = readFileSync(path.join(args.out, already.file)); const sniff = sniffMime(buf, l.href, '');
+        byHash.set(crypto.createHash('sha1').update(buf).digest('hex'), already.file);
+        icons.push({ rel: l.rel, sizes: l.sizes, url: l.href, file: already.file, mime: sniff.mime, bytes: buf.length, px: l.sizes && /^\d+x\d+$/i.test(l.sizes) ? parseInt(l.sizes, 10) : null, status: 200 });
+        continue;
+      }
+      const res = await page.evaluate(async (u) => { try { const r = await fetch(u); if (!r.ok) return { status: r.status }; return { status: r.status, ct: r.headers.get('content-type') || '', bytes: [...new Uint8Array(await r.arrayBuffer())] }; } catch { return { status: 0 }; } }, l.href).catch(() => ({ status: 0 }));
+      if (!res.bytes || !res.bytes.length) { icons.push({ ...l, url: l.href, file: null, status: res.status || 0 }); continue; }
+      const buf = Buffer.from(res.bytes);
+      const sniff = sniffMime(buf, l.href, res.ct || '');
+      const key = crypto.createHash('sha1').update(buf).digest('hex');
+      let rel = byHash.get(key);
+      if (!rel) { rel = assetPath(l.href, buf, 'icons', sniff.ext); await mkdir(path.dirname(path.join(args.out, rel)), { recursive: true }); await writeFile(path.join(args.out, rel), buf); byHash.set(key, rel); }
+      const px = l.sizes && /^\d+x\d+$/i.test(l.sizes) ? parseInt(l.sizes, 10) : null;
+      icons.push({ rel: l.rel, sizes: l.sizes, url: l.href, file: rel, mime: sniff.mime, bytes: buf.length, px, status: res.status });
+    }
+    const rasters = icons.filter((i) => i.file && i.mime !== 'image/svg+xml');
+    const largestRaster = rasters.sort((a, b) => (b.px || 0) - (a.px || 0) || b.bytes - a.bytes)[0]?.file || null;
+    const vector = icons.find((i) => i.file && i.mime === 'image/svg+xml')?.file || null;
+    const set = { _provenance: { writtenBy: 'stardust:extract', writtenAt: new Date().toISOString(), script: 'crawl.mjs' }, icons, largestRaster, vector };
+    await mkdir(path.join(args.out, 'assets'), { recursive: true });
+    await writeFile(path.join(args.out, 'assets', 'favicon-set.json'), JSON.stringify(set, null, 2));
+    return set;
+  } catch { return null; }
+}
+
 // ---- the capture, run in-page; returns the per-page record + hardening signals ----
 // ---- dynamic-surface evidence (network side) — OPT-IN (`--dynamics`) --------
 // Records WHAT the page fetched while rendering — never what it means. Cheap
@@ -1625,7 +1866,7 @@ function capture() {
     let bgColor = top(bgW);
     if (!bgColor) { let p = sec; while (p) { const c = getComputedStyle(p).backgroundColor; if (!transparent(c)) { bgColor = c; break; } p = p.parentElement; } }
     return {
-      sectionRef: domPath(sec), purpose: kidsRec ? kidsRec.purpose : 'unknown',
+      sectionRef: domPath(sec), purpose: kidsRec ? kidsRec.purpose : 'unknown', rect: rectOf(sec),
       background: { color: bgColor || 'rgb(255, 255, 255)', hasImage, hasGradient }, // a transparent chain paints on the white canvas
       text: { dominantColor: top(txtW) || scs.color },
       spacing: { paddingBlock: scs.paddingBlock || `${scs.paddingTop} ${scs.paddingBottom}`, paddingInline: scs.paddingInline || `${scs.paddingLeft} ${scs.paddingRight}`, gap: top(gaps) },
@@ -1944,7 +2185,9 @@ function capture() {
     radioFieldsets: [...document.querySelectorAll('fieldset')].filter((f) => f.querySelectorAll('input[type=radio]').length >= 3).length,
   };
 
+  const bodyP = deepAll('p', main).find((p) => vis(p) && text(p).length > 40);
   const stats = {
+    bodyStyle: bodyP ? styleOf(bodyP) : styleOf(document.body), // one paragraph's computed type — brand-surface's body family/size sample
     wordCount: words(mainText),
     ctaCount: ctas.length,
     internalLinkCount: links.internal.length,
@@ -2092,6 +2335,7 @@ const MOBILE_VIEWPORT = { width: 360, height: 900 }; // 900 = stitch-shot's defa
 async function capturePage(context, url, slug, args, isEntry = false) {
   const page = await context.newPage();
   const recorder = args.dynamics ? attachDynamicRecorder(page) : null; // opt-in; must precede goto — load-time fetches are the evidence
+  const assetRec = args.assets !== 'none' && args.assetStore ? attachAssetRecorder(page, args.assetStore, { maxBytes: args.assetsMaxBytes }) : null; // default on: the render's own image/font bodies, zero extra hits
   try {
   if (args.budget) await args.budget.take(); // per-host pacing — every navigation, every worker
   let resp = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
@@ -2247,6 +2491,13 @@ async function capturePage(context, url, slug, args, isEntry = false) {
     variants: await collectVariants(page, context),
     compatMode, // 'CSS1Compat' | 'BackCompat' — a quirks-mode source needs its doctype mirrored (recreation-procedure.md § CSS lifting)
   };
+  // asset harvest: let the buffered bodies settle (the scroll + 360 pass may have loaded more);
+  // --assets full adds capped in-page fetches for what the render did not request (same page
+  // context — the accepted fingerprint rides along)
+  if (assetRec) {
+    await assetRec.settle();
+    if (args.assets === 'full') rec._extraFetches = await fetchAssetsInPage(page, fullAssetCandidates(rec.media, args.assetStore), args.assetStore, args);
+  }
   rec._consentMethod = consentMethod; // hoisted into _crawl-log.json#consent.method by the writer, not persisted per page
   return rec;
   } finally {
@@ -2411,6 +2662,10 @@ async function main() {
   // mode, so bounded extracts can't silently drop it (CEN-4).
   const favicon = await captureFavicon(probe, args);
   if (favicon) console.error(`[crawl] favicon captured: ${favicon.file} (${favicon.url})`);
+  args.assetStore = new Map(); // run-wide: url → { kind, status, contentType, bytes, source } — shared by every worker, one body per URL
+  const assetsByHash = new Map(); // sha1(bytes) → assets/<kind>/<file>; identical bytes at two URLs share one file
+  const faviconSet = args.assets === 'none' ? null : await captureFaviconSet(probe, args, assetsByHash, favicon);
+  if (faviconSet) console.error(`[crawl] favicon set: ${faviconSet.icons.filter((i) => i.file).length} icon(s) → assets/favicon-set.json${faviconSet.largestRaster ? ` (largest raster ${faviconSet.largestRaster})` : ''}`);
   else console.error('[crawl] WARN no favicon captured — no link[rel~=icon] and /favicon.ico unreachable; deploy will ship the default icon unless one is provided');
   await probe.close();
 
@@ -2434,7 +2689,7 @@ async function main() {
   const startedAt = new Date().toISOString();
   const { createProgress } = await loadProgressHelper();
   progress = createProgress({ file: args.progress, driver: 'crawl', total: queue.length, extra: { technique, discovered: urls.length, skipped: skipped.length, log: logPath } });
-  const log = { discovery: { fetchTechnique: technique, count: urls.length, concurrency: args.concurrency, storageState: !!args.sessionReused, ...(loadedState || savedState ? { storageStateFile: savedState || loadedState } : {}), liveBudget: args.budget.toJSON(), ...discovery, ...(botBlock ? { botBlock, escalations } : {}), ...(originRedirect ? { originRedirect } : {}), ...(entryRedirect ? { entryRedirect } : {}), ...(skipped.length ? { skippedExtracted: skipped } : {}) }, consent: { method: args.consent ? 'none-detected' : 'skipped' }, favicon: favicon || null, crawl: { startedAt, finishedAt: null, successes: 0, failures: [] } };
+  const log = { discovery: { fetchTechnique: technique, count: urls.length, concurrency: args.concurrency, storageState: !!args.sessionReused, ...(loadedState || savedState ? { storageStateFile: savedState || loadedState } : {}), liveBudget: args.budget.toJSON(), ...discovery, ...(botBlock ? { botBlock, escalations } : {}), ...(originRedirect ? { originRedirect } : {}), ...(entryRedirect ? { entryRedirect } : {}), ...(skipped.length ? { skippedExtracted: skipped } : {}) }, consent: { method: args.consent ? 'none-detected' : 'skipped' }, favicon: favicon ? { ...favicon, set: faviconSet ? { file: 'assets/favicon-set.json', icons: faviconSet.icons.filter((i) => i.file).length, largestRaster: faviconSet.largestRaster, vector: faviconSet.vector } : null } : null, crawl: { startedAt, finishedAt: null, successes: 0, failures: [] } };
   let ok = 0;
   await context.close();
 
@@ -2448,7 +2703,9 @@ async function main() {
   // the pool pulling new pages, the browser relaunches one tier up and every
   // unfinished page is requeued — one extra pass, one hit per challenged page
   // per tier. At tier 3 a challenge is a terminal per-page failure.
-  const results = new Array(queue.length).fill(null); // { slug, file, hash } per queue index
+  const results = new Array(queue.length).fill(null); // { slug, file, hash, fontFaces, iconFont } per queue index
+  const mediaRows = {}; // url → manifest row for this run (merged into assets/_media-manifest.json at the end)
+  const assetStats = { extraFetches: 0 };
   const dynamicRollup = newDynamicRollup();
   const pending = new Set(queue.map((_, i) => i)); // neither captured nor terminally failed
   let escalate = 0; // next tier to relaunch at, set by the first challenged worker
@@ -2487,6 +2744,12 @@ async function main() {
           rec.renderedHtml = `pages/${slug}.html`;
           const fontFaces = rec._fontFaces || [];
           delete rec._fontFaces;
+          const extraFetches = rec._extraFetches || 0;
+          delete rec._extraFetches;
+          // asset harvest: stamp localPath / mime / downloadError from the run-wide store and persist the bodies once
+          const assetRows = args.assets === 'none' ? {} : await harvestRecordAssets(rec, slug, args.assetStore, args, assetsByHash);
+          for (const [u, row] of Object.entries(assetRows)) { const prevRow = mediaRows[u]; mediaRows[u] = prevRow ? { ...prevRow, ...row, localPath: row.localPath || prevRow.localPath, pages: [...new Set([...(prevRow.pages || []), slug])] } : row; }
+          assetStats.extraFetches += extraFetches;
           const { _provenance, ...rest } = rec;
           // top-level renderedBy/fetchedAt are legacy-reader aliases of the same
           // _provenance fields — _provenance is the authoritative contract.
@@ -2503,7 +2766,7 @@ async function main() {
             progress.tick({ ok: false, path: slug });
             continue;
           }
-          results[idx] = { slug, file, hash, fontFaces };
+          results[idx] = { slug, file, hash, fontFaces, iconFont: rec._signals.iconFont || [] };
           pending.delete(idx);
           ok += 1; captured += 1;
           const s = rec._signals;
@@ -2577,18 +2840,33 @@ async function main() {
     log.dynamicSurface = finalizeDynamic(dynamicRollup);
     console.error(`[crawl] dynamic surface (reach): ${log.dynamicSurface.endpoints.filter((e) => e.sameSite).length} same-site data endpoints, ${log.dynamicSurface.pagesWithSearchForm} pages with a search form, ${log.dynamicSurface.pagesHydrated} hydrated — depth + classification: stardust:dynamics`);
   }
+  // asset manifests (merge-by-URL across runs; fonts carry their @font-face descriptors + the iconFonts table)
+  let runAssets = { mode: args.assets, saved: 0, failed: 0, bytes: 0, extraFetches: assetStats.extraFetches, fonts: 0 };
+  if (args.assets !== 'none') {
+    const mediaManifestPath = path.join(args.out, 'assets', '_media-manifest.json');
+    const prevMedia = existsSync(mediaManifestPath) ? JSON.parse(await readFile(mediaManifestPath, 'utf8').catch(() => '{}')) : {};
+    const mergedMedia = mergeManifest(prevMedia, { assets: mediaRows });
+    await mkdir(path.join(args.out, 'assets'), { recursive: true });
+    await writeFile(mediaManifestPath, JSON.stringify(mergedMedia, null, 2));
+    const fontsManifest = buildFontsManifest(mergedMedia.assets, results.filter(Boolean).flatMap((r) => r.fontFaces || []), Object.fromEntries(results.filter(Boolean).map((r) => [r.slug, r.iconFont || []])));
+    await writeFile(path.join(args.out, 'assets', '_fonts-manifest.json'), JSON.stringify(fontsManifest, null, 2));
+    const rows = Object.values(mediaRows);
+    runAssets = { ...runAssets, saved: rows.filter((r) => r.localPath).length, failed: rows.filter((r) => !r.localPath).length, bytes: rows.reduce((n, r) => n + (r.bytes || 0), 0), fonts: fontsManifest.fonts.filter((f) => f.localPath).length, iconFonts: fontsManifest.iconFonts.length, transformSuspect: rows.filter((r) => r.transformSuspect).length };
+    console.error(`[crawl] assets: ${runAssets.saved} saved (${Math.round(runAssets.bytes / 1024)} KB, ${runAssets.fonts} font file(s)), ${runAssets.failed} failed${runAssets.transformSuspect ? `, ${runAssets.transformSuspect} transform-suspect` : ''}${runAssets.extraFetches ? `, ${runAssets.extraFetches} extra fetch(es) (--assets full)` : ''} → assets/_media-manifest.json, assets/_fonts-manifest.json`);
+  }
   // merge into the existing _crawl-log.json (mergeCrawlLog — append-only across runs)
   const failedNow = new Set(log.crawl.failures.map((x) => x.slug));
   log.crawl.successes = ok;
   log.crawl.finishedAt = new Date().toISOString();
   const merged = mergeCrawlLog(prev, log, {
     at: startedAt,
-    args: { url: args.url, pages: args.pages || null, cap: args.capLabel, wait: args.wait, concurrency: args.concurrencyRequested ?? args.concurrency, dynamics: args.dynamics, refresh: args.refresh, force: args.force, headed: args.headed || null, solveWait: args.solveWait || null, depth: args.depth, cookie: args.cookies.map((c) => c.name), mobile: args.mobile, dpr: args.dpr, storageState: loadedState ? 'loaded' : args.freshState ? 'fresh' : 'clone', saveState: !!savedState },
+    args: { url: args.url, pages: args.pages || null, cap: args.capLabel, wait: args.wait, concurrency: args.concurrencyRequested ?? args.concurrency, dynamics: args.dynamics, refresh: args.refresh, force: args.force, headed: args.headed || null, solveWait: args.solveWait || null, depth: args.depth, cookie: args.cookies.map((c) => c.name), mobile: args.mobile, dpr: args.dpr, assets: args.assets, storageState: loadedState ? 'loaded' : args.freshState ? 'fresh' : 'clone', saveState: !!savedState },
     technique,
     discovered: urls.length,
     skipped: skipped.length,
     captured: ok,
     failed: [...failedNow],
+    assets: runAssets,
   }, results.filter(Boolean).map((r) => r.slug));
   await writeFile(logPath, JSON.stringify(merged, null, 2));
   console.error(`[crawl] done. ${ok}/${queue.length} captured, ${failedNow.size} failed (${merged.crawl.failures.length} open across runs). log: ${logPath}`);

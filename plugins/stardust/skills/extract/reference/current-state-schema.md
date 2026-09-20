@@ -304,8 +304,17 @@ absolute; `mailto:`/`tel:`/`javascript:` are not links here.
 }
 ```
 
-`localPath` is set only for media stardust successfully downloaded.
-Failed downloads have `localPath: null` and a `downloadError` field.
+`localPath` (relative to `stardust/current`, like `screenshot`) is set
+only for bodies the harvest kept — by default the render's own responses
+(`--assets intercept`), plus capped in-page fetches under `--assets full`.
+Failed or never-requested candidates have `localPath: null` and a
+`downloadError` (`HTTP 404`, `not-requested`, …). `mime` is sniffed from
+the bytes; `transformSuspect: true` marks a body whose format differs
+from the URL's extension (a CDN transform) — recorded, never "fixed".
+`assets/_media-manifest.json` holds the same rows per URL across runs
+(`pages[]`, `status`, `bytes`); `assets/_fonts-manifest.json` the font
+files with their `@font-face` descriptors, `licensingFlag` and the
+`iconFonts[]` table; `assets/favicon-set.json` every icon with `sizes`.
 
 `src` / `currentSrc` are captured **with the query string intact**
 (enterprise DAM/CDN URLs carry load-bearing `?MOD=…&CACHEID=…`
