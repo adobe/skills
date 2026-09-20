@@ -229,6 +229,9 @@ try {
   assert.match(r.stderr, /\[deploy-page\] deploy-batch REFUSED \(exit 3, --require-code-synced\)/, 'the chain names the refusal, not a credential halt');
   assert.ok(!/fix the credential/.test(r.stderr), 'a code-sync refusal is not booked as a credential halt');
   assert.match(r.stderr, /deploy refused \(code-sync\)/, 'the per-page line names the refusal');
+  // the REPORT books the cause too (defect: every deploy-batch exit 3 was booked `halted` with the credential wording)
+  assert.equal(report().pages['/a'].stages.deploy, 'refused (code-sync)', 'report stage names the code-sync refusal, not a credential halt');
+  assert.equal(report().run.deploy, 'exit 3 (refused: code-sync)', 'report.run.deploy names the refusal');
   // a valid record for this org/repo/ref lets the same command ship
   mkdirSync(join(dir, 'nope'), { recursive: true });
   writeFileSync(join(dir, 'nope', 'code-sync.json'), JSON.stringify({ org: 'o', repo: 'r', ref: 'main', status: 'ok', headSha: 'abc1234', ts: new Date().toISOString() }));
