@@ -59,10 +59,10 @@ Every phase `end` line carries `next`; the report that closes the phase
 ends with this block and nothing after it:
 
 ```
-Completed: <phase> — <one-line result with the numbers re-read from the artifact>
+Completed: <phase> — <one-line result with the numbers re-read from the artifact>; every file written this phase by path (state.json, journal.md, status.jsonl included)
 Verified:  <what was checked and how — paths ls-verified>
 Next:      <one verbatim, pasteable command>
-On re-run: <what is skipped because its `end` line exists>
+On re-run: <the steps skipped because the `end` line exists — reasoning, artifact rewrite, page-status change — and what a deliberate re-run asks first>
 ```
 
 The journal entry's `Next:` line is the same command as `next`

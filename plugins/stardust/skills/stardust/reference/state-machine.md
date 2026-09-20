@@ -389,7 +389,11 @@ session <sessionId> since <startedAt> — read-only unless you take over`
 is not the project root, the line `Project root: <path> (not the
 working directory)` follows it.
 
-The `Repo:` block is rendered only when the project is a git repo. Its
+The `Repo:` block is rendered only when the project root is itself the git
+work-tree root (`git rev-parse --show-toplevel` resolves to the project
+root); a project nested inside another repository, or one with no `.git`,
+gets no `Repo:` block. The page table lists exactly the pages in
+`state.json` — never rows inferred from the journal or the crawl count. Its
 four facts come from `git ls-files` / `git check-ignore` and the master
 skill's write boundary (SKILL.md § Artifacts): counts and size of tracked
 files under `stardust/`; whether `stardust/state.json` is tracked (must

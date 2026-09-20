@@ -24,6 +24,11 @@ shows the plan, and only then executes.
 
 ### Step 1 — Restate
 
+The restatement is the **first user-visible text of the turn** — before any
+question and before any file write. Setup output (probe lines, status
+writes) is not surfaced unless it is an impeccable newer-version or `drift:`
+line.
+
 Restate the user's phrase in stardust's dimensional vocabulary
 (`intent-dimensions.md`). This is the "what I think you mean" sentence.
 

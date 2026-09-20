@@ -53,18 +53,16 @@ delegate the actual design work to **impeccable**.
    `impeccable: skipped` in the skill's first `status.jsonl` line.
    Otherwise, once per session, run
    `node <plugin>/skills/stardust/scripts/impeccable-version-check.mjs
-   --probe` (`--local <dir>` for a skills directory): read-only — it
-   resolves the skill dir and prints one advisory line per copy; surface
-   it verbatim only for a newer version or a `drift:` line; never stop or
-   degrade over it. Add `--state stardust/state.json` only from a phase
-   that writes `state.json` anyway (extract, direct, prototype, migrate,
-   replica, deploy, rollout): it merges the record into an existing
-   `state.json#impeccable` (`reference/state-machine.md` § Impeccable
-   key; never creates the file, rewrites on change only). A no-argument
-   state report, a resume, `qa` or `audit` never write it. Sub-skills read
-   `state.json#impeccable.skillDir` when present, never re-locate it.
-   Under a permission layer read `reference/harness-permissions.md` § Two
-   classes first. If absent, `required` skills stop and tell the user:
+   --probe` (`--local <dir>` for a skills directory): read-only; surface
+   its line only for a newer version or `drift:`, never stop over it, and
+   surface nothing else from Setup — on the freeform route the
+   dimensional restatement is the first text the user sees. `--state
+   stardust/state.json` is added only by a phase that writes `state.json`
+   anyway (`reference/state-machine.md` § Impeccable key); a state report,
+   resume, `qa` or `audit` never write it. Sub-skills read
+   `state.json#impeccable.skillDir`, never re-locate it. Under a
+   permission layer read `reference/harness-permissions.md` § Two classes
+   first. If absent, `required` skills stop and tell the user:
    > Stardust requires impeccable. Install it from
    > <https://github.com/pbakaus/impeccable> and re-run the command.
 

@@ -5,18 +5,18 @@ See `skills/stardust/reference/journal-format.md` for entry format.
 
 ---
 
-## 2026-09-08T10:05:00Z — Extracted larkspurmutual.example (19 pages) and set preserve direction
+## 2026-09-08T10:05:00Z — Extracted larkspurmutual.example (6 pages) and set preserve direction
 
 **Prompt:** User asked to migrate the site to EDS keeping the current design.
 
 **Decisions:**
-- Keep-design phrase → replica flow; no redesign machinery. `extract --prep --dynamics` ran unchanged: 19 pages discovered via sitemap, all crawled (under the 25 cap).
+- Keep-design phrase → replica flow; no redesign machinery. `extract --prep --dynamics` ran unchanged: 6 pages discovered via sitemap, all crawled (under the cap).
 - Page-type catalog confirmed as landing (home, business), article (2 member-news posts), program (home and auto insurance); the remaining 13 pages are siblings of those three types.
 - Preserve direction promoted `current/PRODUCT.md`, `DESIGN.md`, `DESIGN.json` verbatim to the project root; the stardust `direct` skill was not invoked.
 - Inconsistency register opened with one applied entry (R-01, footer link contrast) measured during CSS lifting; no audit run, user asked for nothing else.
 
 **Artifacts touched:**
-- stardust/current/ — created (19 pages, screenshots, fonts, `_brand-extraction.json`, PRODUCT.md, DESIGN.md, DESIGN.json)
+- stardust/current/ — created (6 pages, screenshots, fonts, `_brand-extraction.json`, PRODUCT.md, DESIGN.md, DESIGN.json)
 - PRODUCT.md, DESIGN.md, DESIGN.json — created (verbatim promotion)
 - stardust/direction.md — created (preserve-mode record)
 - stardust/replica/inconsistency-register.md — created (1 entry)
