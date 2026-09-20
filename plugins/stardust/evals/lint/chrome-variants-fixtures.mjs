@@ -13,7 +13,8 @@
 //                blocked; with rows for both and the old record removed → exit 0;
 //                a row whose state word is outside gated | dead | unprobed:<reason>
 //                → exit 2 naming it; a row without `rest` → exit 2;
-//   --help exits 0; an unknown flag exits 1; a missing pages dir exits 1.
+//   --help exits 0; an unknown flag exits 1; a trailing value flag exits 1
+//   ("needs a value"); a missing pages dir exits 1; records are read sorted.
 // Usage: node plugins/stardust/evals/lint/chrome-variants-fixtures.mjs
 import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -33,6 +34,9 @@ const pages = join(work, 'pages'); const state = join(work, 'state.json'); const
 try {
   check(run(['--help']).status === 0 && /--progress/.test(run(['--help']).out), '--help exits 0 and names --progress');
   check(run(['--bogus']).status === 1, 'an unknown flag exits 1');
+  const trailing = run(['--pages']);
+  check(trailing.status === 1 && /--pages needs a value/.test(trailing.out), 'a trailing value flag is refused with "needs a value"');
+  check(run(['--pages', '--json', '--state', state]).status === 1, 'a value flag followed by another flag is refused, not consumed');
   check(run(['--pages', join(work, 'nope'), '--state', state]).status === 1, 'a missing pages dir exits 1');
 
   const { fingerprintOf, bucketPages, checkProgress } = await import(SCRIPT);
@@ -46,7 +50,7 @@ try {
   const j = JSON.parse(inv.stdout);
   const byName = Object.fromEntries(j.variants.map((v) => [v.name, v]));
   check(j.variants.length === 3 && byName.default && byName['lsg-legacy'] && byName.unfingerprinted, `2 variants + unfingerprinted, home bucket = default, persisted name kept (got ${j.variants.map((v) => v.name).join(', ')})`);
-  check(byName.default && byName.default.pages === 2 && byName.default.sample.includes('index') && byName.default.sample.includes('about'), 'default holds index + about');
+  check(byName.default && byName.default.pages === 2 && byName.default.sample.join(',') === 'about,index', `default holds about + index in sorted record order — never the directory listing's (got ${JSON.stringify(byName.default && byName.default.sample)})`);
   check(byName.default && byName.default.markerCandidates.includes('tpl-main') && !byName.default.markerCandidates.includes('page-home') && !byName.default.markerCandidates.includes('page'), `marker candidates = body classes common to the bucket and absent elsewhere (got ${JSON.stringify(byName.default && byName.default.markerCandidates)})`);
   check(byName['lsg-legacy'] && byName['lsg-legacy'].markerCandidates.includes('tpl-legacy'), 'the legacy bucket names its template class');
   check(j.gate === null, 'no --progress → no gate verdict');

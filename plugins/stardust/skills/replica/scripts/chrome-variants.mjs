@@ -42,7 +42,7 @@
  * silently join `default`. Contract and the progress.json `chrome` shape:
  * `../reference/chrome-states.md` § Chrome variants.
  */
-/* eslint-disable no-restricted-syntax, brace-style, object-curly-newline, max-len */
+/* eslint-disable no-restricted-syntax, brace-style, object-curly-newline, max-len, no-plusplus */
 import { existsSync, readdirSync, readFileSync, writeFileSync, realpathSync } from 'fs';
 import { join, basename } from 'path';
 import { createHash } from 'crypto';
@@ -67,12 +67,13 @@ export function parseArgs(argv) {
   const rest = argv.slice(2);
   if (rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
   const opts = { pages: 'stardust/current/pages', state: 'stardust/state.json', write: false, progress: null, json: false };
+  const need = (flag, i) => { if (rest[i] === undefined || rest[i].startsWith('--')) { console.error(`${flag} needs a value\n\n${HELP}`); process.exit(1); } return rest[i]; };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
-    if (a === '--pages') opts.pages = rest[i += 1];
-    else if (a === '--state') opts.state = rest[i += 1];
+    if (a === '--pages') opts.pages = need(a, ++i);
+    else if (a === '--state') opts.state = need(a, ++i);
     else if (a === '--write') opts.write = true;
-    else if (a === '--progress') opts.progress = rest[i += 1];
+    else if (a === '--progress') opts.progress = need(a, ++i);
     else if (a === '--json') opts.json = true;
     else { console.error(`unknown argument ${a}\n\n${HELP}`); process.exit(1); }
   }
@@ -163,7 +164,7 @@ function readJson(file, what) {
 function main() {
   const opts = parseArgs(process.argv);
   if (!existsSync(opts.pages)) { console.error(`chrome-variants error: no page records at ${opts.pages} (run extract --prep first)`); process.exit(1); }
-  const files = readdirSync(opts.pages).filter((f) => f.endsWith('.json') && !f.startsWith('_'));
+  const files = readdirSync(opts.pages).filter((f) => f.endsWith('.json') && !f.startsWith('_')).sort(); // sorted: bucket order, `default` election and names never depend on the directory listing
   if (!files.length) { console.error(`chrome-variants error: ${opts.pages} holds no page records`); process.exit(1); }
   const pages = files.map((f) => { const j = readJson(join(opts.pages, f), 'page record'); return { slug: j.slug || basename(f, '.json'), url: j.url || j.finalUrl || null, type: j.type || null, chrome: j.chrome }; });
   const state = existsSync(opts.state) ? readJson(opts.state, 'state') : null;
