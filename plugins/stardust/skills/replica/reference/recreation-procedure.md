@@ -606,7 +606,9 @@ verdict `none`).
   (no extra live hit — assert targets the prototype/published page). Exit
   124 → one re-run under the deadline, then `verdict: none` = `unasserted`,
   not self-approvable; `fail` after the cap → `status.jsonl` `blocked` +
-  owner. Never `acceptedBy`, never `--skip`.
+  owner. Never `acceptedBy`, never `--skip`. The approval check itself is
+  agent-side: no instrument reads `motion.assert` before approval — the
+  Phase 4 close prints `motion: unasserted` from the record's absence.
 - *Regime.* `--regime published-origin` for the delivered page (preview
   host, D1); the record carries `regime`, the hand-off prints it per row.
 - *Eval.* `evals/lint/motion-assert-fixtures.mjs` (compare functions, record,
