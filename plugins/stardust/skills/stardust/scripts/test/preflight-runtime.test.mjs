@@ -72,6 +72,10 @@ try {
   r = run(f, '--skip');
   assert.equal(r.status, 2, '--skip cannot seed a project either'); assert.ok(!existsSync(join(f, 'stardust')));
 
+  // (a1) a value flag followed by a flag is usage, decided before anything is read or written
+  r = spawnSync(process.execPath, [CLI, '--root', '--no-install'], { encoding: 'utf8', cwd: a });
+  assert.equal(r.status, 2, `--root --no-install exits 2\n${r.stdout}${r.stderr}`); assert.match(r.stderr, /--root needs a value, got --no-install/);
+
   // (a2) the parent-walk leak: the three packages under <root>/node_modules ONLY (a past `--no-save` install)
   //      resolve from stardust/package.json through Node's parent walk, but do not count — they are what the
   //      EDS repo's next `npm i` prunes. --no-install must report them missing, never ok.

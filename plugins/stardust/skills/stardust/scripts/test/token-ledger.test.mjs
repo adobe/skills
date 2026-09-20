@@ -12,7 +12,7 @@
  */
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
+import { cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -70,13 +70,40 @@ try {
   assert.equal(strip(readFileSync(join(proj, 'stardust', 'usage.json'), 'utf8')), j1, 'usage.json identical except timestamps');
   assert.equal(JSON.parse(r.stdout).total.turns, 4, '--json prints the record');
 
+  // (f) a value flag followed by a flag is usage (exit 2), decided before anything is read
+  r = run('--transcripts', '--dry-run');
+  assert.equal(r.status, 2, `--transcripts --dry-run exits 2\n${r.stdout}${r.stderr}`); assert.match(r.stderr, /--transcripts needs a value, got --dry-run/);
+  // (g) --prices with fewer than four numbers: the column is dropped with a printed note — never NaN
+  r = run('--transcripts', join(FIX, 'transcripts'), '--prices', '3,3.75', '--json');
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stderr, /^usage: --prices ignored — needs four numbers/m, 'the note names the shape (stderr under --json)');
+  assert.ok(!/NaN/.test(r.stdout) && !/NaN/.test(readFileSync(join(proj, 'stardust', 'usage.md'), 'utf8')), 'no NaN anywhere');
+  assert.equal(JSON.parse(r.stdout).total.estCost, null, 'estCost null without valid prices');
+  // (h) rollout: a new wave closes the previous one whether status lines say `rollout` or `stardust:rollout`
+  //     (before the fix the closing keyed on the literal `stardust:rollout|` prefix, so a bare `rollout` never closed)
+  const waves = join(tmp, 'waves');
+  cpSync(join(FIX, 'project'), waves, { recursive: true });
+  const lines = [
+    { ts: '2026-09-10T15:20:00Z', skill: 'rollout', phase: 'wave 1', event: 'start' },
+    { ts: '2026-09-10T15:30:00Z', skill: 'stardust:rollout', phase: 'wave 2', event: 'start' },
+    { ts: '2026-09-10T15:39:52Z', skill: 'rollout', phase: 'wave 3', event: 'start' },
+  ];
+  writeFileSync(join(waves, 'stardust', 'status.jsonl'), lines.map((l) => JSON.stringify(l)).join('\n') + '\n');
+  r = spawnSync(process.execPath, [CLI, '--root', waves, '--transcripts', join(FIX, 'transcripts'), '--json'], { encoding: 'utf8', env: { ...process.env, HOME: home } });
+  assert.equal(r.status, 0, r.stderr);
+  const wv = JSON.parse(r.stdout).windows;
+  assert.deepEqual(wv.filter((w) => w.label.startsWith('rollout')).map((w) => [w.label, w.to]), [['rollout wave 1', '2026-09-10T15:30:00Z'], ['rollout wave 2', '2026-09-10T15:39:52Z'], ['rollout wave 3', wv[2].to]], 'wave 1 and 2 close when the next wave starts');
+  assert.notEqual(wv[2].to, null, 'the open last wave ends at the last request');
+  // (i) harness cost sessions are counted over the same list that is summed (main + subagent cost-state lines)
+  assert.equal(j.harnessCost.sessions, 1, 'fixture: one cost-state line in main, none in the subagent');
+
   // (e) dry-run, help
   rmSync(join(proj, 'stardust', 'usage.md')); rmSync(join(proj, 'stardust', 'usage.json'));
   r = run('--transcripts', join(FIX, 'transcripts'), '--dry-run');
   assert.equal(r.status, 0); assert.match(r.stdout, /\(dry run\)$/m);
   assert.ok(!existsSync(join(proj, 'stardust', 'usage.md')), '--dry-run writes nothing');
   r = spawnSync(process.execPath, [CLI, '--help'], { encoding: 'utf8' });
-  assert.equal(r.status, 0); assert.match(r.stdout, /Exit codes: 0 always/);
+  assert.equal(r.status, 0); assert.match(r.stdout, /Exit codes: 0 always/); assert.match(r.stdout, /2 only for a\nvalue flag followed by another flag/);
   assert.deepEqual(snapshot(FIX), before, 'fixture untouched');
   console.log('token-ledger test: ok (unknown → exit 0 no write; 4 windows + unwindowed; requestId dedupe 4 main / 1 sub; prompts 2 acks 1; pages + tokens/page; cost-state; idempotent; dry-run; help)');
 } finally {

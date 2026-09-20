@@ -33,7 +33,8 @@
  *     --json             print usage.json on stdout too
  *     --dry-run          print, write nothing
  *
- * Exit codes: 0 always (advisory) — `usage: unknown (…)` is a printed row, not a failure.
+ * Exit codes: 0 always (advisory) — `usage: unknown (…)` is a printed row, not a failure · 2 only for a
+ * value flag followed by another flag (`--ledger --no-probe`), decided before anything is read.
  * Writes only stardust/usage.md and stardust/usage.json (tracked, provenance first). No network.
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
@@ -42,7 +43,12 @@ import { homedir } from 'node:os';
 
 const args = process.argv.slice(2);
 const flag = (n) => args.includes(`--${n}`);
-const opt = (n) => { const i = args.indexOf(`--${n}`); return i >= 0 ? args[i + 1] : undefined; };
+const opt = (n) => { // a value flag never swallows the next flag (`--root --json` is usage, not a root named --json)
+  const i = args.indexOf(`--${n}`); if (i < 0) return undefined;
+  const v = args[i + 1];
+  if (v !== undefined && v.startsWith('--')) { console.error(`token-ledger: --${n} needs a value, got ${v} (--help)`); process.exit(2); }
+  return v;
+};
 if (flag('help')) {
   console.log(readFileSync(new URL(import.meta.url), 'utf8').match(/\/\*\*([\s\S]*?)\*\//)[1].split('\n').map((l) => l.replace(/^\s*\* ?/, '')).join('\n').trim());
   process.exit(0);
@@ -121,11 +127,12 @@ export function readTranscripts(files) {
 // --- windows --------------------------------------------------------------------
 export function windowsFromStatus(lines) {
   const out = []; const open = new Map();
-  const key = (l) => `${l.skill}|${l.phase}`;
+  const shortOf = (l) => String(l.skill ?? '?').replace(/^stardust:/, '');
+  const key = (l) => `${shortOf(l)}|${l.phase}`; // stripped: `skill: "rollout"` and `"stardust:rollout"` are one skill
   for (const l of lines) {
-    const short = String(l.skill ?? '?').replace(/^stardust:/, '');
+    const short = shortOf(l);
     if (l.event === 'start') {
-      if (short === 'rollout') for (const [k, w] of open) if (k.startsWith('stardust:rollout|') && !w.to) { w.to = l.ts; open.delete(k); }
+      if (short === 'rollout') for (const [k, w] of open) if (k.startsWith('rollout|') && !w.to) { w.to = l.ts; open.delete(k); } // a new wave closes the previous one
       const w = { label: `${short} ${l.phase}`, skill: short, phase: l.phase, from: l.ts, to: null, detail: null };
       out.push(w); open.set(key(l), w);
     } else if (l.event === 'end' || l.event === 'blocked') {
@@ -145,7 +152,12 @@ const M = readTranscripts(main); const S = readTranscripts(sub);
 const allTs = [...M.requests, ...S.requests].map((r) => r.ts).filter(Boolean).sort();
 for (const w of windows) if (!w.to) w.to = allTs.at(-1) ?? w.from;
 const inWin = (ts, w) => ts && ts >= w.from && ts <= w.to;
-const prices = opt('prices') ? opt('prices').split(',').map(Number) : null;
+let prices = null; // four finite numbers per million tokens (fresh, cache write, cache read, output) — else the column is dropped, with a printed note
+if (opt('prices') !== undefined) {
+  const p = String(opt('prices')).split(',').map(Number);
+  if (p.length === 4 && p.every(Number.isFinite)) prices = p;
+  else (flag('json') ? console.error : console.log)(`usage: --prices ignored — needs four numbers fresh,cacheWrite,cacheRead,output per M tokens, got ${JSON.stringify(opt('prices'))}`); // stderr under --json: stdout stays the record
+}
 const zero = () => ({ turns: 0, prompts: 0, acks: 0, fresh: 0, cacheWrite: 0, cacheWrite1h: 0, cacheWrite5m: 0, cacheRead: 0, output: 0, thinking: 0, subRequests: 0, subRead: 0, subOut: 0 });
 const rows = windows.map((w) => ({ ...w, ...zero() }));
 const unw = { label: 'unwindowed', from: null, to: null, detail: null, ...zero() };
@@ -163,7 +175,7 @@ const finish = (w) => {
 const table = [...rows.map(finish), finish(unw)];
 const total = table.reduce((a, w) => { for (const k of Object.keys(zero())) a[k] += w[k]; return a; }, zero());
 total.estCost = cost(total);
-const harnessCost = [...M.costs, ...S.costs].length ? { totalCostUSD: [...M.costs, ...S.costs].reduce((a, c) => a + c.totalCostUSD, 0), sessions: M.costs.length, models: Object.fromEntries([...M.costs, ...S.costs].flatMap((c) => Object.entries(c.modelUsage)).map(([k, v]) => [k, num(v?.costUSD)])) } : null;
+const harnessCost = [...M.costs, ...S.costs].length ? { totalCostUSD: [...M.costs, ...S.costs].reduce((a, c) => a + c.totalCostUSD, 0), sessions: [...M.costs, ...S.costs].length, models: Object.fromEntries([...M.costs, ...S.costs].flatMap((c) => Object.entries(c.modelUsage)).map(([k, v]) => [k, num(v?.costUSD)])) } : null;
 const firstStatus = statusLines[0]?.ts ?? null;
 const oldest = [M.oldest, S.oldest].filter(Boolean).sort()[0] ?? null;
 const retention = firstStatus && oldest && Date.parse(oldest) - Date.parse(firstStatus) > 3_600_000 ? `transcripts start ${oldest}, over an hour after the project's first status line ${firstStatus} — earlier windows are unrecoverable; keep the harness's transcript retention above the run's span (Claude Code: cleanupPeriodDays in settings.json, an owner setting)` : null;

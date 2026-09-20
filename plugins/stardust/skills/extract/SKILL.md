@@ -582,6 +582,10 @@ last-write-wins (`state-machine.md` § Concurrency).
   they appear only in the failure log. Without this validation a 5xx
   page silently lands as an empty success and propagates wrong data
   to `direct` and `prototype`.
+- **Every record fails the schema gate.** `crawl.mjs` still exits 0 —
+  its exit code is the run's (per-page verdicts are `_crawl-log.json`
+  and the record's own gate fields); `validate-page.mjs` is the exit-1
+  instrument and Phase 6 marks nothing `extracted` (§ Phase 2 schema gate).
 - **Login wall.** Do not authenticate. If the home page redirects to
   a login screen, capture that one page, mark the rest unreachable,
   and ask how to proceed (`--cookie`, another entry URL, or public

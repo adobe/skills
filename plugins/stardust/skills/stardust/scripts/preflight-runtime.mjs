@@ -57,7 +57,12 @@ const PROBES_README = 'Ad-hoc Playwright / pngjs probe scripts and their output 
 
 const args = process.argv.slice(2);
 const flag = (n) => args.includes(`--${n}`);
-const opt = (n) => { const i = args.indexOf(`--${n}`); return i >= 0 ? args[i + 1] : undefined; };
+const opt = (n) => { // a value flag never swallows the next flag (`--root --json` is usage, not a root named --json)
+  const i = args.indexOf(`--${n}`); if (i < 0) return undefined;
+  const v = args[i + 1];
+  if (v !== undefined && v.startsWith('--')) { console.error(`preflight-runtime: --${n} needs a value, got ${v} (--help)`); process.exit(2); }
+  return v;
+};
 if (flag('help')) {
   const text = readFileSync(new URL(import.meta.url), 'utf8').match(/\/\*\*([\s\S]*?)\*\//)[1].split('\n').map((l) => l.replace(/^\s*\* ?/, '')).join('\n').trim();
   console.log(text); process.exit(0);
