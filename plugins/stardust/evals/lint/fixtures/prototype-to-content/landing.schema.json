@@ -1,0 +1,45 @@
+{
+ "source": "file:///fixture/landing.html",
+ "width": 1280,
+ "profile": "eds",
+ "sections": [
+  {
+   "section": "hero",
+   "items": [
+    { "role": "heading", "order": 0, "text": "Cover that reads like a promise, not a policy" },
+    { "role": "body", "order": 1, "text": "Home and auto insurance written in plain language, with a member vote on every rate change since 1931." },
+    { "role": "cta", "order": 2, "text": "Get a quote", "href": "/quote" },
+    { "role": "cta", "order": 3, "text": "Compare the plans", "href": "./plans/index.html" }
+   ],
+   "imgCount": 0,
+   "editableTexts": 4,
+   "repeats": []
+  },
+  {
+   "section": "story",
+   "items": [
+    { "role": "heading", "order": 0, "text": "Why members stay" },
+    { "role": "body", "order": 1, "text": "Claims are handled by people who live where you live — the average call is answered in under a minute." },
+    { "role": "cta", "order": 2, "text": "Read the member charter", "href": "./about.html" }
+   ],
+   "imgCount": 0,
+   "editableTexts": 4,
+   "repeats": []
+  },
+  {
+   "section": "plans",
+   "items": [
+    { "role": "heading", "order": 0, "text": "Pick the plan that matches the house" },
+    { "role": "body", "order": 1, "text": "Three tiers, one deductible, no add-on maze." },
+    { "role": "heading", "order": 2, "text": "Essential" },
+    { "role": "heading", "order": 3, "text": "Standard" },
+    { "role": "heading", "order": 4, "text": "Complete" }
+   ],
+   "imgCount": 3,
+   "editableTexts": 11,
+   "repeats": [
+    { "unitSelector": "ARTICLE.card", "count": 3, "unit": { "headings": 1, "ctas": 1, "imgs": 1, "textRuns": 3 }, "uniform": true }
+   ]
+  }
+ ]
+}

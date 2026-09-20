@@ -3,7 +3,8 @@
 Full text of deploy Step 9. Read:
 - § 9. Content page scaffold — before emitting any content page: the `metadata` block (#34), the DA body-fragment shape (#7), per-page chrome rows;
 - § Multi-view SPA → multiple pages — when a prototype has several views with different chrome (#29);
-- § Image src hosts — before authoring any real image (`content.da.live` vs fixed `/img/` assets, #67).
+- § Image src hosts — before authoring any real image (`content.da.live` vs fixed `/img/` assets, #67);
+- § Generator contract — before authoring a page by hand: `prototype-to-content.mjs` writes it from the prototype and its schema (emitter table, exits, ledger, no `breadcrumbs` block).
 
 ## 9. Content page scaffold
 
@@ -59,3 +60,18 @@ To give a specific page different chrome, add `nav` and/or `footer` path rows to
 ## Image src hosts
 
 When the prototype has **real** images, AUTHORED content `<img src>` URLs must point at a host the preview ingester can fetch — **prefer `https://content.da.live/{org}/{repo}/media/<scope>/<file>`** (branch-independent; upload the binary via the Source API first — see **The ENCODE contract → Images**). A fully-qualified `https://main--<repo>--<owner>.aem.page/…` also ingests but is branch-locked. **NEVER** a repo-relative `/img/…` in authored content — it delivers as `<img src="about:error">`. **This applies ONLY to authored content `<img>` — NOT to fixed assets referenced as CSS backgrounds from block JS/CSS (#67): those stay root-relative `/img/<brand>/…` (anti-pattern 9b), browser-fetched and never ingested.** When the prototype uses **`<image-slot>` placeholders** (no real assets — common for claude-design prototypes), leave the image cells EMPTY (`<div></div>`); the block CSS background fallback (Step 7) renders the section correctly without an image. The author drops real images in later. The `image` / `og:image` METADATA row is the exception to the `content.da.live` preference: never a `content.da.live` URL there (anonymous fetches 401, so social cards and previews break) — leave it to the pipeline default or use a served `/media_…` URL (`../../migrate/reference/metadata-and-jsonld.md` § Page-specific, preserved).
+
+## Generator contract
+
+`node skills/deploy/scripts/prototype-to-content.mjs <prototype | migrated render | URL> --out content/<path>.html (--schema stardust/eds-schema/<page>.json | --thin) [--map <section>=block:<name>|default|drop:<reason>]* [--drop <selector>]* [--dry-run] [--force]` writes the body fragment above from a gated prototype (Step 2b's schema decides the shape) or from a Path-B migrated render (`--thin`). A local file is parsed as served — zero requests to the source site; an http(s) URL or `--render` goes through Playwright (resolution chain).
+
+| section | emitter |
+|---|---|
+| `--map <section>=…` | as written — `block:<name>`, `default` or `drop:<reason>`; recorded in the ledger |
+| schema `repeats[]` present | one block named after the section, one row per repeat unit (media cell, then text cell), fields in schema order; prose before/after the units stays default content in the same section |
+| no repeats, prose tags only | default content — headings, paragraphs, lists; a raw `<table>` becomes the `table` block; CTAs `<p><strong><a>>` / `<p><em><a>>` (class tokens `secondary` / `outline` / `ghost`) |
+| anything else | **unmapped** → exit 2, nothing written, `unmapped: <section> on <page>` with the `--map` to add — never a silent flatten, never a guessed block |
+
+Thin mode (`--thin`, no schema): every section is default content; a duplicate `<h1>` is demoted to `<h2>`; a link list before the first `<h1>` is dropped as `breadcrumb-trail → runtime` — never author a `breadcrumbs` block: the runtime builds the trail from the URL path in `buildAutoBlocks()` (the lint's BREADCRUMB remedy states the same rule); twins (same text as a sibling), empty shells and non-authorable elements (form, iframe, video, …) are dropped and logged one line each; site-specific vehicles arrive by `--drop <selector>` — the plugin ships no site vocabulary. The metadata block (Title from the `<h1>`, Description from the first paragraph of ≥ 40 chars) opens the first content section; internal links are root-relative without `.html` (D9); image `src` is kept verbatim (`content.da.live` after rehosting).
+
+Idempotent writer (`skills/migrate/SKILL.md` § Idempotent and incremental): `stardust/patches/<slug>.json` is applied last, `sanitise.js` runs on the output, and `stardust/.work/deploy/transcribe.json` records `{ sections[{name, emitter, rows}], blocks[], dropped[], unmapped[], sha, script }` per page — `blocks[]` is what rollout coverage reads. An existing output whose sha differs from the ledger's (or has no row) is a hand edit → exit 2 naming the path; move the edit into the patch file or pass `--force`. Exits: 0 written · 1 usage / unreadable input · 2 blocked (0 sections, no `<h1>`, unmapped, hand edit) — never a gate verdict. Hands-off: the script asks nothing; an unmapped page is recorded `blocked` with its section list and the run continues author-only. After it: `block-roundtrip.mjs` on the page, then this step's lint.

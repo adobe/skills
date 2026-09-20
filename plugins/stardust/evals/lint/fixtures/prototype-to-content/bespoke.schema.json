@@ -1,0 +1,9 @@
+{
+ "source": "file:///fixture/bespoke.html",
+ "width": 1280,
+ "profile": "eds",
+ "sections": [
+  { "section": "hero", "items": [ { "role": "eyebrow", "order": 0, "text": "Member-owned" }, { "role": "heading", "order": 1, "text": "A split hero with a picture beside the copy" }, { "role": "cta", "order": 2, "text": "Start a quote", "href": "/quote" } ], "imgCount": 1, "editableTexts": 3, "repeats": [] },
+  { "section": "story", "items": [ { "role": "heading", "order": 0, "text": "Plain words" }, { "role": "body", "order": 1, "text": "Every policy is written so a new member can read it on one page." } ], "imgCount": 0, "editableTexts": 2, "repeats": [] }
+ ]
+}
