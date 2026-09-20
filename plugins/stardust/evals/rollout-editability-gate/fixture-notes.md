@@ -13,6 +13,12 @@ and `fixture/styles/` come from `evals/ew-editability/fixture/`. Added on top:
 | `stardust/rollout/coverage/*.json`, `plan.json` | home + business `converting`, blocks `converted` with `edsBlockName` (coverage-tiles → cards) |
 | `journal.md` fifth entry, `status.jsonl` three lines | the `Next:` is the ingest |
 | `stardust/replica/progress.json` | all archetypes gated / residuals named so Setup does not block |
+| `stardust/migrated/insurance/{home,auto}/_meta.json` | `gatesPassed: ["archetype-gate"]` (shared tree: `[]`) — the program archetype is gated here (fidelity-tiers.md § Declaration) |
+| `stardust/state.json` `handsOff: true` (re-serialised) | the run is hands-off (master § Hands-off mode) |
+| `stardust/rollout/rollout.json` | the rollout run record (rollout schemas) |
+
+Copied before the shared tree gained `usage.json` / `usage.md` (T13.4) —
+absent here; the usage criteria do not apply.
 
 ## Known limitations — not skill bugs
 

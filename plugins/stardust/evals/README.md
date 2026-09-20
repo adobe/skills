@@ -78,9 +78,14 @@ Each eval lives in its own directory and contains:
   a copy of a `_shared/*/README.md`.
 - `fixture-notes.md` — provenance of every fixture file (which shared tree,
   which deltas), what the fixture deliberately makes true, known limitations.
-  Required whenever `fixture/` holds files; not visible to the agent.
+  Required whenever `fixture/` holds files; not visible to the agent. When
+  the notes call the fixture a copy of `_shared/<name>/`, every path that
+  differs from that tree (absent here, added here, different bytes) is named
+  — the shared tree moves on after a copy is taken.
 - `answers.md` — the persona the runner answers questions from; required
-  unless `task.md` runs hands-off.
+  unless `task.md` declares hands-off: a `## … (hands-off)` heading,
+  `--hands-off` in § User prompt, or `hands-off: true` front matter (prose
+  that mentions hands-off is not a declaration).
 - one row in § Evals in this suite and a mention in § Coverage map.
 
 This format mirrors v1's structure (and the format other Adobe-skills
@@ -180,9 +185,12 @@ integrates; every runner also runs standalone with `node <path>`:
   `criteria.json` parses as `weighted_checklist` with unique names and
   `max_score` weights summing to exactly 100, `task.md` present,
   `fixture-notes.md` whenever `fixture/` holds files, `answers.md` unless the
-  task runs hands-off, no `fixture/**/README.md` copied from `_shared/`, a row
-  in § Evals in this suite and a mention in § Coverage map; and every command
-  chained in the repo root `lint:stardust` is named in this section.
+  task declares hands-off (heading, prompt flag or front matter — a prose
+  mention does not exempt), notes that call the fixture a copy of
+  `_shared/<name>/` name every path that differs from that tree, no
+  `fixture/**/README.md` copied from `_shared/`, a row in § Evals in this
+  suite and a mention in § Coverage map; and every command chained in the
+  repo root `lint:stardust` is named in this section.
   `--self-test` exercises each finding class on a temp tree; exit 2 = usage.
 - `script-paths.mjs` — every plugin-internal script or reference path a
   skill doc names exists in the plugin tree. `--installed [<dir>] [--strict]`

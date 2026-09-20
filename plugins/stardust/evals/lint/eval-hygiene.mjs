@@ -6,8 +6,16 @@
 //                  max_score weights sum to exactly 100 (tessl normalises to 100;
 //                  a 110/135 rubric grades every item under weight);
 //   files        — task.md present; fixture-notes.md whenever fixture/ holds a
-//                  file other than .gitkeep; answers.md unless task.md runs
-//                  hands-off (the runner has no persona to answer from otherwise);
+//                  file other than .gitkeep; answers.md unless task.md DECLARES
+//                  hands-off — a `## … (hands-off)` heading, `--hands-off` inside
+//                  a § User prompt section, or `hands-off: true` front matter
+//                  (prose that merely mentions hands-off, e.g. a gate contract,
+//                  does not exempt: the runner has no persona to answer from);
+//   provenance   — a fixture-notes.md whose sentence names `_shared/<name>/` as
+//                  a copy (copy / copied / cp -R / "is the shared … tree")
+//                  names every path that differs between the shared tree and
+//                  fixture/ (missing here, added here, or different bytes) —
+//                  by path, basename or a backticked glob;
 //   readme-copy  — no fixture/**/README.md is a copy of a _shared/*/README.md
 //                  (shared README rule 3: everything under fixture/ is visible
 //                  to the agent under test);
@@ -21,7 +29,7 @@
 // Exit: 0 clean · 1 findings (one line each: <class> <path>: <what>) · 2 usage / evals dir unreadable
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, relative, resolve } from 'node:path';
+import { basename, join, relative, resolve } from 'node:path';
 
 const HERE = import.meta.dirname;
 const EVALS = resolve(HERE, '..');
@@ -30,6 +38,44 @@ const REPO_PKG = resolve(HERE, '..', '..', '..', '..', 'package.json');
 const readJson = (f) => { try { return JSON.parse(readFileSync(f, 'utf8')); } catch { return undefined; } };
 const listFiles = (d) => { const out = []; const walk = (x) => { for (const f of readdirSync(x).sort()) { const p = join(x, f); if (statSync(p).isDirectory()) walk(p); else out.push(p); } }; if (existsSync(d)) walk(d); return out; };
 const section = (text, head, ...stops) => { const i = text.indexOf(head); if (i < 0) return ''; const rest = text.slice(i + head.length); const ends = stops.map((s) => rest.indexOf(s)).filter((n) => n >= 0); return ends.length ? rest.slice(0, Math.min(...ends)) : rest; };
+
+/** task.md declares a hands-off run: `hands-off: true` front matter, a `## … (hands-off)` heading, or `--hands-off` inside a § User prompt section. A prose mention is not a declaration. */
+export function declaresHandsOff(task) {
+  const fm = task.match(/^---\n([\s\S]*?)\n---/);
+  if (fm && /^hands-off:\s*true\s*$/m.test(fm[1])) return true;
+  if (/^##[^\n]*\(hands-off\)\s*$/m.test(task)) return true;
+  return task.split(/^(?=## )/m).some((s) => /^## User prompt/i.test(s) && /--hands-off\b/.test(s));
+}
+
+/** The `_shared/<name>` tree a fixture-notes.md declares as its provenance (a sentence naming it as a copy), or null. */
+export function declaredShared(notes) {
+  for (const s of notes.replace(/\s+/g, ' ').split(/(?<=\.)\s+/)) {
+    const m = s.match(/_shared\/([\w-]+)\//);
+    if (m && /\b(cop(y|ied)|cp -R|is the shared)\b/i.test(s)) return m[1];
+  }
+  return null;
+}
+
+/** Every path that differs between the shared tree and fixture/ (top-level dirs of the shared tree only; its README is never copied). */
+export function fixtureDeltas(sharedDir, fixtureDir) {
+  const out = [];
+  for (const sub of readdirSync(sharedDir).sort()) {
+    const a = join(sharedDir, sub); if (!statSync(a).isDirectory()) continue;
+    const b = join(fixtureDir, sub);
+    if (!existsSync(b)) { out.push({ kind: 'only in the shared tree', path: `${sub}/` }); continue; }
+    const A = listFiles(a).map((p) => relative(a, p)), B = new Set(listFiles(b).map((p) => relative(b, p)));
+    for (const r of A) { if (!B.has(r)) out.push({ kind: 'only in the shared tree', path: `${sub}/${r}` }); else if (!readFileSync(join(a, r)).equals(readFileSync(join(b, r)))) out.push({ kind: 'differs from the shared tree', path: `${sub}/${r}` }); }
+    for (const r of [...B].sort()) if (!new Set(A).has(r)) out.push({ kind: 'only in fixture/', path: `${sub}/${r}` });
+  }
+  return out;
+}
+
+/** The notes name a path when they contain it, its basename, or a backticked glob (`*`, `**`, `{a,b}`) matching it. */
+export function namedIn(notes, path) {
+  if (notes.includes(path) || notes.includes(basename(path))) return true;
+  const globs = [...notes.matchAll(/`([^`\n]*[*{][^`\n]*)`/g)].map((x) => x[1].trim());
+  return globs.some((g) => { try { return new RegExp('(^|/)' + g.replace(/[.+^$()|[\]\\]/g, '\\$&').replace(/\{([^}]*)\}/g, (_, alts) => `(${alts.split(',').map((s) => s.trim()).join('|')})`).replace(/\*\*/g, '\u0000').replace(/\*/g, '[^/]*').replace(/\u0000/g, '.*') + '$').test(path); } catch { return false; } });
+}
 
 /** Lint one evals tree. `opts.readme` = README text, `opts.chain` = lint:stardust commands (or null to skip). Returns finding strings. */
 export function lintEvals(evalsDir, opts = {}) {
@@ -70,7 +116,16 @@ export function lintEvals(evalsDir, opts = {}) {
     const fixtureFiles = listFiles(join(dir, 'fixture')).filter((f) => !f.endsWith('.gitkeep'));
     if (fixtureFiles.length && !existsSync(join(dir, 'fixture-notes.md'))) findings.push(`files ${rel(dir)}: fixture/ holds ${fixtureFiles.length} file(s) but fixture-notes.md is missing`);
     const task = existsSync(join(dir, 'task.md')) ? readFileSync(join(dir, 'task.md'), 'utf8') : '';
-    if (!existsSync(join(dir, 'answers.md')) && !/hands-off/i.test(task)) findings.push(`files ${rel(dir)}: answers.md missing and task.md does not run hands-off`);
+    if (!existsSync(join(dir, 'answers.md')) && !declaresHandsOff(task)) findings.push(`files ${rel(dir)}: answers.md missing and task.md does not declare hands-off (a \`## … (hands-off)\` heading, --hands-off in § User prompt, or hands-off: true front matter)`);
+    const notesFile = join(dir, 'fixture-notes.md');
+    if (existsSync(notesFile)) {
+      const notes = readFileSync(notesFile, 'utf8');
+      const shared = declaredShared(notes);
+      const sharedDir = shared ? join(evalsDir, '_shared', shared) : null;
+      if (sharedDir && existsSync(sharedDir) && existsSync(join(dir, 'fixture'))) {
+        for (const { kind, path } of fixtureDeltas(sharedDir, join(dir, 'fixture'))) if (!namedIn(notes, path)) findings.push(`provenance ${rel(notesFile)}: ${path} ${kind} but the notes (a copy of _shared/${shared}/) do not name it`);
+      }
+    }
     for (const f of fixtureFiles.filter((x) => x.endsWith('README.md'))) {
       const t = readFileSync(f, 'utf8');
       if (sharedReadmes.some((s) => s === t || firstLine(s) === firstLine(t))) findings.push(`readme-copy ${rel(f)}: copy of a _shared/*/README.md (shared README rule 3 — delete it; fixture-notes.md documents the deltas)`);
@@ -106,36 +161,51 @@ function selfTest() {
     const w = (p, t) => { mkdirSync(join(tmp, p, '..'), { recursive: true }); writeFileSync(join(tmp, p), t); };
     const crit = (weights, extra = {}) => JSON.stringify({ context: 'x', type: 'weighted_checklist', checklist: weights.map((m, i) => ({ name: `c${i}`, max_score: m, description: 'd' })), ...extra });
     w('_shared/fx/README.md', '# Shared fixture — post-migrate replica project\nbody\n');
-    // good: hands-off, fixture + notes, sums to 100
+    w('_shared/fx/stardust/state.json', '{}'); w('_shared/fx/stardust/usage.json', '{}'); w('_shared/fx/stardust/current/pages/business.html', '<html></html>');
+    // good: hands-off heading, fixture + notes (no shared-tree claim), sums to 100
     w('good-eval/task.md', '# Eval\n## Task (hands-off)\n'); w('good-eval/criteria.json', crit([40, 30, 30])); w('good-eval/fixture/stardust/state.json', '{}'); w('good-eval/fixture-notes.md', 'notes');
-    // good: interactive with answers, empty fixture (.gitkeep only)
-    w('good-interactive/task.md', '# Eval\n## User prompt\n'); w('good-interactive/criteria.json', crit([100])); w('good-interactive/answers.md', 'persona'); w('good-interactive/fixture/.gitkeep', '');
+    // good: interactive with answers, empty fixture (.gitkeep only); notes compare against the shared tree without claiming a copy
+    w('good-interactive/task.md', '# Eval\n## User prompt\n'); w('good-interactive/criteria.json', crit([100])); w('good-interactive/answers.md', 'persona'); w('good-interactive/fixture/.gitkeep', ''); w('good-interactive/fixture-notes.md', '## Why not the shared tree\n`_shared/fx/` is a keep-design project after migrate.\n');
+    // good: hands-off declared by the prompt flag; a copy of the shared tree with every delta named (path, basename, glob)
+    w('good-prompt/task.md', '# Eval\nA gate contract sentence.\n## User prompt\n"$stardust rollout --hands-off — run Phase A"\n'); w('good-prompt/criteria.json', crit([100]));
+    w('good-prompt/fixture/stardust/state.json', '{"x":1}'); w('good-prompt/fixture/stardust/import/vocabulary.json', '{}');
+    w('good-prompt/fixture-notes.md', '`fixture/stardust/` is a `cp -R` of `evals/_shared/fx/stardust/` plus `import/vocabulary.json`; `state.json` gains x. Copied before the shared tree gained `usage.json` and `current/pages/*.html` — absent here.\n');
     // bad: sum 135, duplicate name, missing notes, missing answers, copied README, no row
     w('bad-eval/task.md', '# Eval\n## User prompt\n'); w('bad-eval/criteria.json', JSON.stringify({ type: 'weighted_checklist', checklist: [{ name: 'a', max_score: 100, description: 'd' }, { name: 'a', max_score: 35, description: 'd' }] }));
     w('bad-eval/fixture/stardust/state.json', '{}'); w('bad-eval/fixture/README.md', '# Shared fixture — post-migrate replica project\nstale copy\n');
     // bad: not weighted_checklist, empty checklist, no task.md
     w('bad-shape/criteria.json', JSON.stringify({ type: 'checklist', checklist: [] }));
-    const readme = ['# evals', '## Evals in this suite', '| `good-eval/` | x |', '| `good-interactive/` | x |', '| `bad-shape/` | x |', '## Coverage map', '`good-eval`, `good-interactive`, `bad-shape`', '## Running', '### Lints', '- `harness-neutral.mjs` — x', '- `deploy-batch-ledger.test.mjs`, `…-repairs.test.mjs`', '## What not'].join('\n');
+    // bad: prose mentions hands-off but nothing declares it, and no answers.md
+    w('bad-mention/task.md', '# Eval\nThe gate contract: condition, escape, hands-off never weakens it.\n## User prompt\n"$stardust deploy — push the batch"\n'); w('bad-mention/criteria.json', crit([100]));
+    // bad: claims a copy of the shared tree but names neither the shared files it lacks nor the file it adds
+    w('stale-copy/task.md', '# Eval\n## Task (hands-off)\n'); w('stale-copy/criteria.json', crit([100]));
+    w('stale-copy/fixture/stardust/state.json', '{"x":1}'); w('stale-copy/fixture/stardust/import/vocabulary.json', '{}');
+    w('stale-copy/fixture-notes.md', '`fixture/stardust/` is a verbatim copy of `evals/_shared/fx/stardust/`; `state.json` gains x.\n');
+    const readme = ['# evals', '## Evals in this suite', '| `good-eval/` | x |', '| `good-interactive/` | x |', '| `good-prompt/` | x |', '| `bad-shape/` | x |', '| `bad-mention/` | x |', '| `stale-copy/` | x |', '## Coverage map', '`good-eval`, `good-interactive`, `good-prompt`, `bad-shape`, `bad-mention`, `stale-copy`', '## Running', '### Lints', '- `harness-neutral.mjs` — x', '- `deploy-batch-ledger.test.mjs`, `…-repairs.test.mjs`', '## What not'].join('\n');
     const chain = ['node plugins/stardust/evals/lint/harness-neutral.mjs', 'node plugins/stardust/skills/deploy/scripts/test/deploy-batch-repairs.test.mjs', 'node plugins/stardust/evals/lint/unlisted-runner.mjs'];
     const f = lintEvals(tmp, { readme, chain });
     const has = (re) => f.some((x) => re.test(x));
-    check(!f.some((x) => /good-eval|good-interactive/.test(x)), `clean evals produce no finding, got ${JSON.stringify(f.filter((x) => /good-/.test(x)))}`);
+    check(!f.some((x) => /good-eval|good-interactive|good-prompt/.test(x)), `clean evals produce no finding, got ${JSON.stringify(f.filter((x) => /good-/.test(x)))}`);
     check(has(/^criteria bad-eval\/criteria\.json: max_score weights sum to 135, expected 100 \(2 items\)/), 'weights ≠ 100 is a finding naming the sum');
     check(has(/^criteria bad-eval\/criteria\.json: duplicate name a/), 'duplicate criterion names');
     check(has(/^files bad-eval: fixture\/ holds 2 file\(s\) but fixture-notes\.md is missing/), 'fixture files without fixture-notes.md');
-    check(has(/^files bad-eval: answers\.md missing and task\.md does not run hands-off/), 'interactive task without answers.md');
+    check(has(/^files bad-eval: answers\.md missing and task\.md does not declare hands-off/), 'interactive task without answers.md');
+    check(has(/^files bad-mention: answers\.md missing and task\.md does not declare hands-off/), 'a prose mention of hands-off does not exempt answers.md');
+    check(has(/^provenance stale-copy\/fixture-notes\.md: stardust\/current\/pages\/business\.html only in the shared tree/) && has(/^provenance stale-copy\/fixture-notes\.md: stardust\/usage\.json only in the shared tree/) && has(/^provenance stale-copy\/fixture-notes\.md: stardust\/import\/vocabulary\.json only in fixture\//) && !has(/^provenance stale-copy.*state\.json/), 'a claimed copy names every delta (missing, added); a named differing file is not a finding');
+    check(!has(/^provenance good-/), 'named deltas (path, basename, glob) and a comparison that claims no copy produce no provenance finding');
+    check(declaresHandsOff('---\nhands-off: true\n---\n# Eval\n') && !declaresHandsOff('# Eval\nhands-off never weakens a gate\n## User prompt\n"$stardust deploy"\n') && !declaresHandsOff('# Eval\n## Expected\n… `--hands-off` is refused …\n'), 'front matter declares; prose or a non-prompt section does not');
     check(has(/^readme-copy bad-eval\/fixture\/README\.md: copy of a _shared/), 'a fixture README that copies the shared one');
     check(has(/^readme-row bad-eval\/: no row in README\.md § Evals in this suite/) && has(/^readme-row bad-eval\/: not named in README\.md § Coverage map/), 'missing README row and map mention');
     check(has(/^criteria bad-shape\/criteria\.json: type is "checklist"/) && has(/^criteria bad-shape\/criteria\.json: checklist missing or empty/) && has(/^files bad-shape: task\.md missing/), 'wrong type, empty checklist, missing task.md');
     check(has(/^runners plugins\/stardust\/evals\/lint\/unlisted-runner\.mjs: chained/) && !has(/runners .*deploy-batch-repairs/) && !has(/runners .*harness-neutral/), 'a chained runner absent from § Lints is a finding; a listed one (or its …-suffix shorthand) is not');
     check(lintEvals(tmp, { readme, chain: null }).every((x) => !x.startsWith('runners ')), 'no chain → the runner check is skipped');
-    check(f.length === 12, `exactly the expected findings (12), got ${f.length}:\n${f.join('\n')}`);
+    check(f.length === 16, `exactly the expected findings (16), got ${f.length}:\n${f.join('\n')}`);
     // the real tree, as the chain runs it
     const real = lintEvals(EVALS, { chain: lintChain() });
     check(real.length === 0, `the plugin's own evals/ tree is clean, got ${real.length}:\n${real.join('\n')}`);
   } finally { rmSync(tmp, { recursive: true, force: true }); }
   if (failures.length) { console.error(`eval-hygiene self-test: ${failures.length} failure(s)\n - ${failures.join('\n - ')}`); process.exit(1); }
-  console.log('eval-hygiene self-test: ok (sum ≠ 100, duplicate names, wrong type, missing task/notes/answers, shared README copy, README row/map, runner list)');
+  console.log('eval-hygiene self-test: ok (sum ≠ 100, duplicate names, wrong type, missing task/notes/answers, hands-off declaration, shared-tree provenance, shared README copy, README row/map, runner list)');
 }
 
 const argv = process.argv.slice(2);
@@ -153,5 +223,5 @@ else {
   const findings = lintEvals(root, { chain: lintChain() });
   if (findings.length) { console.error(`eval-hygiene lint: ${findings.length} finding(s)\n${findings.join('\n')}`); process.exit(1); }
   const n = readdirSync(root).filter((d) => existsSync(join(root, d, 'criteria.json'))).length;
-  console.log(`eval-hygiene lint: ${n} evals clean (rubrics sum to 100; file set, README rows and the runner list agree)`);
+  console.log(`eval-hygiene lint: ${n} evals clean (rubrics sum to 100; file set, hands-off declarations, shared-tree provenance, README rows and the runner list agree)`);
 }

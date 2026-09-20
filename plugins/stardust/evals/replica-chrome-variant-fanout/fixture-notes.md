@@ -61,3 +61,6 @@ this note and `answers.md` are not.
   change in the fingerprint inputs does not break the eval.
 - Every sha in the tree is syntactically valid but fabricated; nothing
   hashes to it.
+- Copied before the shared tree gained `usage.json` / `usage.md` (T13.4) and
+  `current/pages/business.html` — absent here (`current/pages/` holds only
+  the eight `.json` records); the chrome inventory reads none of them.

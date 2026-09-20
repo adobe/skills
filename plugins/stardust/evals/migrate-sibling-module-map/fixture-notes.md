@@ -6,6 +6,11 @@ symlinked, never copied with the README) plus four deltas. Everything under
 `fixture/` is visible to the agent under test; this note is not. There is no
 `answers.md`: the task runs hands-off.
 
+Copied before the shared tree gained `stardust/usage.json` / `stardust/usage.md`
+(T13.4 usage ledger) and `stardust/current/pages/business.html` (rendered
+capture) — all three absent here; the resume/usage criteria do not apply and
+the skeleton reads only the `insurance__renters` capture.
+
 ## What this eval adds on top of the shared tree
 
 - `stardust/replica/progress.json` — a top-level `modules[]` lift ledger

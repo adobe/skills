@@ -11,7 +11,10 @@ the agent under test.
 
 The shared tree's shapes and their reference sources are documented in
 `evals/_shared/fixture-post-migrate/README.md`; nothing there was changed
-except the six `index.html` files listed below.
+except the six `index.html` files listed below. Copied before the shared tree
+gained `usage.json` / `usage.md` (T13.4), `current/pages/business.html` and
+the `chrome.variants[]` / `archetypes[].chromeVariant` rows in
+`replica/progress.json` (T18.1) — absent here; `verify.mjs` reads none of them.
 
 ## Seeded defects (the answer key)
 

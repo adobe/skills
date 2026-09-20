@@ -12,7 +12,9 @@ hands-off.
 - `stardust/current/pages/{home,business}.{json,html}` — the default-language
   archetype and sibling records (`lang: "en"`, `alternates[]` with `hreflang`
   `en`/`es` hrefs pointing at `/es/` and `/es/negocios/`); the shared tree's
-  `current/` holds only `pages/business.html`, so these are new files, not edits.
+  `current/` holds only `pages/business.html` (the skeleton's rendered capture),
+  which this eval's `business.html` replaces with the hreflang-bearing capture;
+  the other files are new.
 - `stardust/current/pages/{es,es__negocios}.{json,html}` — the two twins
   (`lang: "es"`, `discovery.source: "hreflang"`, alternates back to the
   English pages, `renderedHtml` with the captured Spanish copy).
@@ -33,7 +35,9 @@ hands-off.
 
 `stardust/replica/progress.json` is the shared ledger: `landing` (`home`)
 passes at 1440 and 360, so the twins are twins of a passed archetype. No
-`stardust/trees.json`, no `stardust/rollout/`, no EDS checkout.
+`stardust/trees.json`, no `stardust/rollout/`, no EDS checkout. Copied before
+the shared tree gained `stardust/usage.json` / `stardust/usage.md` (T13.4) —
+absent here; the resume/usage criteria do not apply.
 
 ## What the fixture deliberately makes true
 

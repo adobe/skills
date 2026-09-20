@@ -25,6 +25,10 @@ cases). Deltas, all hand-authored — nothing in the shared tree is edited:
   type-level lint — outside this eval's task). No `modules[]` ledger, so the
   module-map precondition never fires here (that gate has its own eval,
   `migrate-sibling-module-map`).
+- `migrated/insurance/{home,auto}/_meta.json` — `gatesPassed:
+  ["archetype-gate"]` where the shared tree has `[]`: the `program` archetype
+  is gated here, so the sidecar declaration follows `fidelity-tiers.md`
+  § Declaration.
 - `import/vocabulary.json` — maps the five program sections (`program-hero`
   → `block:product-hero`, `coverage-tiles`, `compare-columns`, `faq`,
   `cta-band` → `block:quote-cta`) so task step 4 is executable:
@@ -40,6 +44,9 @@ ungated). With the default T (`max(5, 2 %)` = 5) B is tail.
 
 ## Known limitations
 
+- Copied before the shared tree gained `usage.json` / `usage.md` (T13.4) and
+  `current/pages/business.html` — absent here (the eight program captures are
+  the only `current/pages/*.html`); the resume/usage criteria do not apply.
 - No `prototypes/` and no `current/pages/*.json` capture records: the
   `currentStatePath` entries in `state.json` dangle by design (the skeleton
   reads the `.html` sidecar first). Nothing reaches a browser but step 1–2's

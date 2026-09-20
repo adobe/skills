@@ -11,7 +11,9 @@ scaffold), with every credential deliberately absent. Everything under
 - `stardust/` — verbatim copy of `evals/_shared/fixture-post-migrate/stardust/`
   (fictional regional financial-services site; `.example` TLD, nothing
   crawled). Its README documents every shape. Unchanged here except for the
-  added `prototypes/` directory.
+  added `prototypes/` directory. Copied before the shared tree gained
+  `usage.json` / `usage.md` (T13.4) and `current/pages/business.html` — absent
+  here; pre-flight reads none of them.
 - `stardust/prototypes/home-proposed.html` — hand-authored from the shared
   tree's `stardust/migrated/index.html` so the prototype and the migrated
   page tell the same story. Single-file shape from

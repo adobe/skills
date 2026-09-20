@@ -19,7 +19,10 @@ this note and `answers.md` are not.
 (the advisory usage ledger `token-ledger.mjs` writes at a wave close):
 `usage_totals_from_file` grades the `Usage:` line against them, so they
 must be present here, not only in `_shared/`. Refresh with `cp -R` when
-the shared copies change (`cmp` both).
+the shared copies change (`cmp` both). Copied before the shared tree gained
+`current/pages/business.html`, and without
+`migrated/assets/{favicon.svg,logo.svg,styles.css}` — absent here; the state
+report reads neither.
 
 Nothing in the shared tree is edited. Shape provenance for every file is in
 the shared README's table; the three gate cases the report must print

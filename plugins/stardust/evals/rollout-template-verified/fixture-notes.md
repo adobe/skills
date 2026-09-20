@@ -22,6 +22,10 @@ symlinked, never copied with the README) plus two deltas. Everything under
 `plan.json`; `journal.md` and `status.jsonl` are the shared tree's (the last
 rollout line is the shared `blocked` on the `program` archetype).
 
+Copied before the shared tree gained `stardust/usage.json` / `stardust/usage.md`
+(T13.4) and `stardust/current/pages/business.html` — absent here (no
+`stardust/current/` at all); the resume/usage criteria do not apply.
+
 ## What the fixture deliberately makes true
 
 - `inventory.mjs` yields exactly three archetype-keyed groups (`home`,
