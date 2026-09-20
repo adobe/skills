@@ -97,6 +97,7 @@ v2 evals without modification.
 | `runner-output-contract/`    | Batch reporting (`rollout` Phase E) | Runner-output contract on an offline full-site verify: ranked class table (class → count → worst example → file pointer) in the conversation, full per-page listing in `summary.json` + `summary.md` under `stardust/rollout/`, triage per class, hand-off names the summary files (rule: `context-hygiene.md` § Runner reports). |
 | `preflight-credentials/`     | Entry point (`deploy`)    | W1 pre-flight: token (present, unexpired, looked up through env → `.env` → `~/.claude/.env`), pushable code branch and scaffold are checked before any conversion work; one consolidated missing-prerequisite list with exact remediation; token value never printed; no push, no DA write, no fabricated token, no silent skip; `blocked` recorded in status.jsonl. |
 | `phase-checkpoint-next-command/` | Phase close (`direct`) | Checkpoint block at phase end: completed files (all `ls`-verifiable) + a verified part + ONE verbatim next command + what a re-run would skip; journal `Next:` and `status.jsonl` `next` carry the same command; pages `extracted` → `directed` (rule: `run-status.md` § Phase close). |
+| `rollout-locale-tree/`       | Phase D3 (`rollout`)      | Locale-tree wave on a manifest: `stardust/trees.json` before fan-out, `lang` + `alternate-*` rows, per-locale chrome from the locale's probe, the two-line runtime hook, twins gated 360 → 1440, brand surface untouched by the supplement, no literal tree paths (rule: `rollout/reference/multilingual.md`). |
 
 ## Coverage map
 

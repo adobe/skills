@@ -1,0 +1,12 @@
+{
+  "_provenance": { "writtenBy": "stardust:extract", "writtenAt": "2026-09-16T10:02:00Z", "stardustVersion": "0.24.0", "run": "supplement", "settle": { "strategy": "medium", "scrollSteps": 4, "settleMs": 800 } },
+  "slug": "es__negocios",
+  "url": "https://www.larkspurmutual.example/es/negocios/",
+  "lang": "es",
+  "alternates": [ { "hreflang": "en", "href": "https://www.larkspurmutual.example/business/" }, { "hreflang": "es", "href": "https://www.larkspurmutual.example/es/negocios/" } ],
+  "discovery": { "source": "hreflang" },
+  "title": "Seguro para negocios — Larkspur Mutual",
+  "type": "landing",
+  "sections": [ { "id": "hero", "module": "hero-statement" }, { "id": "coverage", "module": "coverage-tiles" }, { "id": "find-an-agent", "module": "agent-locator-cta" } ],
+  "renderedHtml": "see es__negocios.html"
+}

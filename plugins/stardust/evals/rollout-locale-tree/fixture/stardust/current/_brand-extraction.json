@@ -1,0 +1,8 @@
+{
+  "_provenance": { "writtenBy": "stardust:extract", "writtenAt": "2026-09-08T09:39:40Z", "stardustVersion": "0.22.2" },
+  "origin": "https://www.larkspurmutual.example",
+  "lang": "en",
+  "palette": { "bg": "#ffffff", "fg": "#1f2a37", "accent": "#2f6b4f", "accent2": "#c8a24a" },
+  "type": { "heading": "Source Serif 4", "body": "Inter" },
+  "components": ["hero-statement", "coverage-tiles", "member-stat-band", "agent-locator-cta"]
+}

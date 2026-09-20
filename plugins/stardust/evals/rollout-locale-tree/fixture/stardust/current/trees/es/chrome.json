@@ -1,0 +1,7 @@
+{
+  "_provenance": { "writtenBy": "stardust:extract", "writtenAt": "2026-09-16T10:04:00Z", "probe": "hover", "page": "https://www.larkspurmutual.example/es/" },
+  "lang": "es",
+  "header": { "menu": "Menú", "search": "Buscar", "switcher": "English", "primary": [ { "label": "Seguro de hogar", "href": "/es/seguros/hogar/" }, { "label": "Negocios", "href": "/es/negocios/" } ], "hover": { "Seguro de hogar": [ { "label": "Hogar", "href": "/es/seguros/hogar/" }, { "label": "Auto", "href": "/es/seguros/auto/" } ] } },
+  "footer": { "legal": "© 2026 Larkspur Mutual. Una mutua de seguros propiedad de sus miembros.", "links": [ { "label": "Inicio", "href": "/es/" }, { "label": "Negocios", "href": "/es/negocios/" } ] },
+  "strings": { "menu": "Menú", "search": "Buscar", "close": "Cerrar", "form-confirmation": null }
+}
