@@ -70,7 +70,7 @@
 #   stardust/scripts/replica/gate.sh home "https://<site>/" \
 #     "http://localhost:8791/home-proposed.html" 1440 iter2
 #
-# Evidence lands in stardust/replica/gates/<slug>-<width>/
+# Evidence lands in stardust/replica/gates/<slug>-<width>/ ($GATE_DIR_ROOT overrides the root)
 # (live.png, build.png, diff-<label>.png, review-<label>.png, gate-<label>.json,
 # anchor-live.json, anchor-live.skip, landmarks-<label>.json; freshness.json
 # after a within-threshold drift check; live-b.png + variance.json after
@@ -162,6 +162,10 @@
 #                        (deploy lockdown.mjs → SITE_TOKEN_<SLUG>) → --token-env on
 #                        both captures; stitch-shot attaches it to .aem.page/.aem.live
 #                        hosts only, so the live source side never receives it
+#   GATE_DIR_ROOT        root of the evidence dirs (default stardust/replica/gates;
+#                        the round lands in $GATE_DIR_ROOT/<slug>-<width>/). Set by
+#                        rollout gate-publish.mjs --gates-dir so the driver reads
+#                        verdicts from the same dir the round wrote to.
 #   GATE_MASKS           path of the inventory-declared masks file
 #                        (default stardust/replica/masks.json; schema in
 #                        capture-sidecar.mjs). When it exists it is validated
@@ -220,7 +224,7 @@ while [ $# -gt 0 ]; do
 done
 
 HERE=$(cd "$(dirname "$0")" && pwd)
-DIR="stardust/replica/gates/$SLUG-$W"
+DIR="${GATE_DIR_ROOT:-stardust/replica/gates}/$SLUG-$W"
 mkdir -p "$DIR"
 
 # Regime — decided BEFORE the count: the prototype gate and the published-

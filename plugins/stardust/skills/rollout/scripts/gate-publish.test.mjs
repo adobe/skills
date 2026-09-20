@@ -21,8 +21,11 @@
 //             with --regime published-origin and pub<k> labels, runs nothing, exit 0.
 //   never     the script contains no POST /live/ call, no --bar / --threshold flag and no restated crop bar
 //             (a crop record without `pass` is no verdict; B29); the footer names no unshipped deploy flag.
-//   run       a non-default --gates-dir is refused for a RUN (gate.sh writes the default dir); runPool caps
-//             in-flight rounds at --concurrency (2 only for live-cached pages) and keeps item order.
+//   run       gate.sh resolves its evidence dir from $GATE_DIR_ROOT (NEGATIVE: it was hard-coded to
+//             stardust/replica/gates); a RUN into a non-default --gates-dir exports GATE_DIR_ROOT to the round runner
+//             (fixtures/gate-publish/stub-gate.sh via STARDUST_GATE_SH — no browser), the record lands there and the
+//             report reads it; a runner copy without GATE_DIR_ROOT is still refused for a RUN; runPool caps in-flight
+//             rounds at --concurrency (2 only for live-cached pages) and keeps item order.
 //   label     a RUN reads only its own label's record: no record for the label → unmeasured (exit 3 →
 //             blocked), never the previous round's verdict; an explicit label picks that round.
 //   residual  the residual door: a valid published-origin residual (named class, artifacts[], acceptedBy —
@@ -34,7 +37,7 @@
 //
 // Usage: node plugins/stardust/skills/rollout/scripts/gate-publish.test.mjs  (exit 1 on failure)
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -172,10 +175,39 @@ assert.equal(r.status, 3);
 assert.equal(run('--report').status, 1);
 assert.equal(spawnSync(process.execPath, [CLI, '--all-delivered', '--report', '--out', join(T, 'nope')], { encoding: 'utf8' }).status, 1);
 assert.equal(run('--all-delivered').status, 1, '--origin required to run');
-// a RUN with a non-default --gates-dir is refused while gate.sh writes stardust/replica/gates only (records would land elsewhere)
-r = run('--slug', 'home', '--origin', 'https://main--site--org.aem.page');
-assert.equal(r.status, 1, r.stdout); assert.match(r.stderr, /--gates-dir .* cannot be used for a RUN .*GATE_DIR_ROOT/);
-assert.ok(!existsSync(join(GATES, 'home-1440', 'gate-pub4.json')), 'nothing ran');
+// gate.sh: the evidence dir is $GATE_DIR_ROOT/<slug>-<W> (NEGATIVE: hard-coded stardust/replica/gates before) — the
+// --invalidate path exits right after mkdir, naming the dir, so no browser runs
+{
+  const GATE_SH = join(HERE, '..', '..', 'replica', 'scripts', 'gate.sh');
+  const D = mkdtempSync(join(tmpdir(), 'gate-dir-root-'));
+  const g = spawnSync('bash', [GATE_SH, 'home', 'https://www.larkspurmutual.example/', 'https://main--site--org.aem.page/', '1440', '--invalidate', 'nope', 'fix'], { encoding: 'utf8', cwd: D, env: { ...process.env, GATE_DIR_ROOT: join(D, 'custom-gates') } });
+  assert.equal(g.status, 1); assert.match(g.stderr, /no record .*custom-gates\/home-1440\/gate-nope\.json/, `gate.sh names the GATE_DIR_ROOT dir\n${g.stderr}`);
+  assert.ok(existsSync(join(D, 'custom-gates', 'home-1440')), 'the round dir is created under GATE_DIR_ROOT'); assert.ok(!existsSync(join(D, 'stardust')), 'nothing under the default root');
+  const g2 = spawnSync('bash', [GATE_SH, 'home', 'x', 'y', '1440', '--invalidate', 'nope', 'fix'], { encoding: 'utf8', cwd: D });
+  assert.match(g2.stderr, /stardust\/replica\/gates\/home-1440/, 'unset → the default root');
+  rmSync(D, { recursive: true, force: true });
+}
+// a RUN into a non-default --gates-dir: GATE_DIR_ROOT reaches the round runner and the record is read back from GATES
+{
+  const stub = join(HERE, 'test', 'fixtures', 'gate-publish', 'stub-gate.sh');
+  // snapshot: the stub adds a round to home-1440 / home-360 and rewrites the report — later cases count the original rounds
+  const reportBefore = readFileSync(join(OUT, 'gate-report.json'), 'utf8'); const pagesBefore = readFileSync(join(OUT, 'coverage', 'pages.json'), 'utf8');
+  const filesBefore = Object.fromEntries(['home-1440', 'home-360'].map((d) => [d, new Set(existsSync(join(GATES, d)) ? readdirSync(join(GATES, d)) : [])]));
+  const beforePct = json(join(OUT, 'gate-report.json')).pages['/'].latest.breakpoints['1440'].pixelPct;
+  const runStub = (sh) => spawnSync(process.execPath, [CLI, '--slug', 'home', '--origin', 'https://main--site--org.aem.page', '--out', OUT, '--gates-dir', GATES, '--ledger', join(T, 'content', '.deploy-ledger.json'), '--state', join(T, 'stardust', 'state.json')], { encoding: 'utf8', cwd: T, env: { ...process.env, STARDUST_GATE_SH: sh } });
+  r = runStub(stub);
+  assert.equal(r.status, 0, `${r.stdout}\n${r.stderr}`);
+  assert.equal(readFileSync(join(GATES, 'home-1440', 'env-root.txt'), 'utf8'), GATES, 'GATE_DIR_ROOT = --gates-dir reaches the round runner');
+  const calls = readFileSync(join(GATES, 'home-1440', 'calls.txt'), 'utf8').trim().split('\n'); assert.match(calls.at(-1), /^home https:\/\/[^ ]+ https:\/\/main--site--org\.aem\.page\/ 1440 pub\d+ --regime published-origin --record$/, `archetype round carries --record: ${calls.at(-1)}`);
+  const label = calls.at(-1).split(' ')[4]; assert.ok(existsSync(join(GATES, 'home-1440', `gate-${label}.json`)), 'the round record sits under --gates-dir');
+  const latest = json(join(OUT, 'gate-report.json')).pages['/'].latest; assert.notEqual(beforePct, 1.2); assert.equal(latest.breakpoints['1440'].pixelPct, 1.2, 'the record written under --gates-dir is the one the report read'); assert.equal(latest.status, 'pass'); assert.equal(latest.pass, true);
+  // a runner copy predating GATE_DIR_ROOT is still refused for a RUN into a non-default dir
+  writeFileSync(join(T, 'old-gate.sh'), '#!/usr/bin/env bash\nexit 0\n');
+  r = runStub(join(T, 'old-gate.sh'));
+  assert.equal(r.status, 1); assert.match(r.stderr, /cannot be used for a RUN .*GATE_DIR_ROOT/);
+  for (const [d, keep] of Object.entries(filesBefore)) { mkdirSync(join(GATES, d), { recursive: true }); for (const f of readdirSync(join(GATES, d))) if (!keep.has(f)) rmSync(join(GATES, d, f)); }
+  writeFileSync(join(OUT, 'gate-report.json'), reportBefore); writeFileSync(join(OUT, 'coverage', 'pages.json'), pagesBefore);
+}
 // --concurrency: runPool caps in-flight work (2 for cached pages, 1 = sequential) and keeps item order
 { let inFlight = 0; let peak = 0; const job = (ms) => async (x) => { inFlight += 1; peak = Math.max(peak, inFlight); await new Promise((res) => setTimeout(res, ms)); inFlight -= 1; return x * 2; };
   assert.deepEqual(await runPool([1, 2, 3, 4], 2, job(15)), [2, 4, 6, 8]); assert.equal(peak, 2, 'concurrency 2 = two rounds in flight');

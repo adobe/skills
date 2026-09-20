@@ -65,8 +65,9 @@
  *   --origin <url>            the delivered origin (preview `*.aem.page` — D1 gates on preview;
  *                             `aem.live` only after an owner-decided publish) — required to run
  *   --widths 1440,360         default progress.json breakpointsConfigured, else 1440,360
- *   --gates-dir <dir>         default stardust/replica/gates (--report / --dry-run read any dir; a RUN needs
- *                             gate.sh to honour GATE_DIR_ROOT — until it does, a non-default dir is refused, exit 1)
+ *   --gates-dir <dir>         default stardust/replica/gates; a RUN exports GATE_DIR_ROOT=<dir> to gate.sh so the
+ *                             round writes where this driver reads (a project copy of gate.sh predating
+ *                             GATE_DIR_ROOT refuses a non-default dir for a RUN, exit 1; --report / --dry-run read any dir)
  *   --out <dir>               default stardust/rollout
  *   --ledger <file>           default content/.deploy-ledger.json (wasLive from a `live` row — zero network)
  *   --state <file>            default stardust/state.json (live URL per page; else rollout.json site.sourceUrl + path)
@@ -358,15 +359,17 @@ async function main() {
 
   const HERE = dirname(new URL(import.meta.url).pathname);
   const REPLICA = [join(HERE, '..', '..', 'replica', 'scripts'), join(HERE, '..', 'replica')].find((d) => existsSync(join(d, 'gate.sh'))) || join(HERE, '..', '..', 'replica', 'scripts');
-  // gate.sh writes stardust/replica/gates/<slug>-<W> unless it honours GATE_DIR_ROOT — a run into any other dir would
-  // read verdicts from one place and write records to another; --report / --dry-run read wherever --gates-dir points
+  // STARDUST_GATE_SH: the fixture test's stub round runner (writes a record under $GATE_DIR_ROOT, no browser)
+  const GATE_SH = process.env.STARDUST_GATE_SH || join(REPLICA, 'gate.sh');
+  // gate.sh honours GATE_DIR_ROOT (its DIR = $GATE_DIR_ROOT/<slug>-<W>); a project copy predating it would read
+  // verdicts from one place and write records to another → a RUN into a non-default dir is refused for that copy only
   const DEFAULT_GATES = 'stardust/replica/gates';
-  const gateShHonoursDir = existsSync(join(REPLICA, 'gate.sh')) && /GATE_DIR_ROOT/.test(readFileSync(join(REPLICA, 'gate.sh'), 'utf8'));
+  const gateShHonoursDir = existsSync(GATE_SH) && /GATE_DIR_ROOT/.test(readFileSync(GATE_SH, 'utf8'));
   if (!REPORT_ONLY && !DRY && resolve(GATES) !== resolve(DEFAULT_GATES) && !gateShHonoursDir) {
-    console.error(`rollout gate-publish: --gates-dir ${GATES} cannot be used for a RUN — ${join(REPLICA, 'gate.sh')} writes ${DEFAULT_GATES}/<slug>-<W> and does not honour GATE_DIR_ROOT yet. Run with the default dir (or use --report / --dry-run, which read any dir).`);
+    console.error(`rollout gate-publish: --gates-dir ${GATES} cannot be used for a RUN — ${GATE_SH} writes ${DEFAULT_GATES}/<slug>-<W> and does not honour GATE_DIR_ROOT (a copy predating it). Update the copy, run with the default dir, or use --report / --dry-run, which read any dir.`);
     process.exit(1);
   }
-  const gateEnv = gateShHonoursDir ? { GATE_DIR_ROOT: GATES } : {};
+  const gateEnv = resolve(GATES) !== resolve(DEFAULT_GATES) ? { GATE_DIR_ROOT: GATES } : {};
   const nextLabel = (dir) => `pub${(existsSync(dir) ? readdirSync(dir).filter((f) => /^gate-pub\d+\.json$/.test(f)).length : 0) + 1}`;
   const cached = (dir) => existsSync(join(dir, 'live.png'));
 
@@ -387,7 +390,7 @@ async function main() {
       let label = null; let exit = null;
       if (!REPORT_ONLY) {
         label = nextLabel(dir);
-        const cmd = ['bash', join(REPLICA, 'gate.sh'), p.slug, live || '<live url missing>', `${ORIGIN}${served}`, String(W), label, '--regime', 'published-origin', ...(archetypes.has(p.slug) ? ['--record'] : []), ...(has(argv, 'refresh') ? ['--refresh'] : []), ...(has(argv, 'variance') ? ['--variance'] : [])];
+        const cmd = ['bash', GATE_SH, p.slug, live || '<live url missing>', `${ORIGIN}${served}`, String(W), label, '--regime', 'published-origin', ...(archetypes.has(p.slug) ? ['--record'] : []), ...(has(argv, 'refresh') ? ['--refresh'] : []), ...(has(argv, 'variance') ? ['--variance'] : [])];
         commands.push(cmd.join(' '));
         if (!DRY) {
           if (!live) { bps[W] = { status: 'unmeasured', pass: false, reason: 'no live URL (state.json pages[].url / rollout.json site.sourceUrl)', history: [] }; continue; }
