@@ -28,9 +28,13 @@
  *   0  registered (config route, or repo yaml honoured) AND the read-back found the sample
  *   1  read-back failed with a published sample after the job settled (rows 0 / sample absent) — a real FAIL ·
  *      also: the config POST was rejected with a non-auth 4xx (the yaml is not accepted; nothing indexed) — definitive
- *   2  usage (incl. --timeout / --poll-ms not a positive number — checked before any request) / missing token / unreadable yaml
- *   3  config route denied AND the repo yaml is not honoured (INDEX-CONFIG.md written; owner decision) ·
- *      also: remote index names absent from the file and no --replace (nothing posted)
+ *   2  usage (incl. --timeout / --poll-ms not a positive number, or a value flag followed by another flag —
+ *      checked before any request) / missing token / unreadable yaml
+ *   3  owner decision, two reasons told apart by the stderr word — `DENIED`: the config route (or the bulk
+ *      index POST) answered 401/403 and the repo yaml is not honoured → INDEX-CONFIG.md written, index-backed
+ *      rows scaffolded-awaiting-owner · `REFUSED`: the remote query.yaml carries index names the file does
+ *      not and no --replace → nothing posted, nothing written; add the names to the file or record the
+ *      owner's --replace row and re-run (the rows are not downgraded)
  *   4  no verdict — no published in-scope page (preview-only run), admin API unreachable (status 0 / 5xx on any
  *      admin call), or the job never settled; never a FAIL
  *
@@ -115,7 +119,15 @@ export function exitCodeFor({ refused = false, unreachable = false, hasSample = 
 }
 
 /* --------------------------------------------------------------------- cli --- */
-function arg(name, fallback = null) { const i = process.argv.indexOf(`--${name}`); return i !== -1 && process.argv[i + 1] !== undefined && !process.argv[i + 1].startsWith('--') ? process.argv[i + 1] : fallback; }
+class UsageError extends Error {}
+/** Value flag: absent → fallback; present with a following `--flag` or nothing → usage (never the fallback silently). */
+function arg(name, fallback = null) {
+  const i = process.argv.indexOf(`--${name}`);
+  if (i === -1) return fallback;
+  const v = process.argv[i + 1];
+  if (v === undefined || v.startsWith('--')) throw new UsageError(`--${name} needs a value (got ${v === undefined ? 'nothing' : v}); --help lists the flags`);
+  return v;
+}
 const has = (f) => process.argv.includes(`--${f}`);
 function resolveToken(name) {
   let v = process.env[name];
@@ -153,7 +165,7 @@ function indexConfigMd({ org, site, admin, indices, yaml, readback }) {
 
 async function main() {
   if (has('help')) {
-    console.log('usage: node skills/rollout/scripts/query-index.mjs --org <org> --site <site> --yaml helix-query.yaml [--ref main] [--origin <url>] [--sample </path>] [--pages <coverage/pages.json>] [--replace] [--check] [--out stardust/dynamics] [--admin https://admin.hlx.page] [--timeout 600] [--poll-ms 5000] [--token-env DA_TOKEN]\n  exit 0 registered + sample read back · 1 read-back failed or config POST rejected with a non-auth 4xx (FAIL) · 2 usage (incl. non-numeric --timeout/--poll-ms) / token · 3 config denied and repo yaml not honoured, or remote names need --replace · 4 no verdict (unreachable, 5xx, job not settled, no published sample)');
+    console.log('usage: node skills/rollout/scripts/query-index.mjs --org <org> --site <site> --yaml helix-query.yaml [--ref main] [--origin <url>] [--sample </path>] [--pages <coverage/pages.json>] [--replace] [--check] [--out stardust/dynamics] [--admin https://admin.hlx.page] [--timeout 600] [--poll-ms 5000] [--token-env DA_TOKEN]\n  exit 0 registered + sample read back · 1 read-back failed or config POST rejected with a non-auth 4xx (FAIL) · 2 usage (incl. non-numeric --timeout/--poll-ms, a value flag followed by a flag) / token · 3 owner decision: DENIED (config or index POST 401/403, yaml not honoured → INDEX-CONFIG.md) or REFUSED (remote names need --replace; nothing posted) · 4 no verdict (unreachable, 5xx, job not settled, no published sample)');
     return 0;
   }
   const org = arg('org'); const site = arg('site'); const yamlPath = arg('yaml');
@@ -174,6 +186,7 @@ async function main() {
   const num = (name, fallback) => { const raw = arg(name, fallback); const n = Number(raw); return Number.isFinite(n) && n > 0 ? n : (console.error(`${TAG} --${name} must be a positive number, got "${raw}"`), null); };
   const timeoutS = num('timeout', 600); const pollMs = num('poll-ms', 5000);
   if (timeoutS === null || pollMs === null) return 2;
+  const pagesFile = arg('pages', 'stardust/rollout/coverage/pages.json'); const sampleArg = arg('sample'); // every value flag is read before the first request
   const timeoutMs = timeoutS * 1000;
   const auth = { authorization: `Bearer ${token}` };
   const configUrl = `${admin}/config/${org}/sites/${site}/content/query.yaml`;
@@ -195,10 +208,9 @@ async function main() {
   if (CHECK) { console.log(`${TAG} --check: ${configRoute}; file declares ${indices.map((x) => `${x.name} → ${x.target}`).join(', ')}. No POST, no writes.`); return 0; }
 
   // 2. sample — before any write: without a published in-scope page there is no verdict to earn
-  const pagesFile = arg('pages', 'stardust/rollout/coverage/pages.json');
   const pagesDoc = readJSON(pagesFile, null);
   const allIncludes = indices.flatMap((x) => x.include); const allExcludes = indices.flatMap((x) => x.exclude);
-  const sample = arg('sample') || pickSample((pagesDoc && pagesDoc.pages) || [], allIncludes, allExcludes);
+  const sample = sampleArg || pickSample((pagesDoc && pagesDoc.pages) || [], allIncludes, allExcludes);
   const status = (extra) => ({ _provenance: { writtenBy: 'stardust:rollout query-index.mjs', writtenAt: at, org, site, ref, admin, origin, yaml: yamlPath }, ...extra, at });
   if (!sample) {
     console.error(`${TAG} no verdict: no published (verified|deployed) page in ${pagesFile} matches an index include glob and no --sample given — the index builds from the published tree; re-run after the --publish run. Nothing posted.`);
@@ -222,6 +234,13 @@ async function main() {
 
   // 4. one bulk index job, polled
   const started = await call(`${admin}/index/${org}/${site}/${ref}/*`, { method: 'POST', headers: auth });
+  if (started.status === 401 || started.status === 403) {
+    // a denial on the index job is the owner class (exit 3), not "no verdict": the token cannot drive the index
+    console.error(`${TAG} bulk index POST DENIED (HTTP ${started.status} for ${tokenEnv}) — an org admin runs the reindex; INDEX-CONFIG.md written, index-backed rows become scaffolded-awaiting-owner`);
+    writeJSON(join(OUT, 'index-status.json'), status({ registered: 'denied', verdict: 'index-denied', reason: `bulk index POST HTTP ${started.status}`, indices: indices.map((x) => ({ name: x.name, target: x.target, total: null, sampleFound: null, fields: [] })), job: null, sample, exit: 3 }));
+    writeText(resolvePath(OUT, '..', 'rollout', 'INDEX-CONFIG.md'), indexConfigMd({ org, site, admin, indices, yaml, readback: `not run — bulk index POST HTTP ${started.status}` }));
+    return 3;
+  }
   if (started.status === 0 || started.status >= 400) { console.error(`${TAG} bulk index POST answered ${started.status || started.error} — no verdict`); return 4; }
   const jobName = (started.json && started.json.job && started.json.job.name) || (started.json && started.json.name) || null;
   const jobUrl = (started.json && started.json.links && started.json.links.self) || (jobName ? `${admin}/job/${org}/${site}/${ref}/index/${jobName}` : null);
@@ -277,4 +296,4 @@ async function main() {
 
 // run only as the entry script — importing the module (tests) runs nothing
 const entry = process.argv[1] ? pathToFileURL(resolvePath(process.argv[1])).href : null;
-if (entry === import.meta.url) main().then((code) => { process.exitCode = code; }, (e) => { console.error(`${TAG} fatal: ${e.message}`); process.exitCode = 4; });
+if (entry === import.meta.url) main().then((code) => { process.exitCode = code; }, (e) => { console.error(`${TAG} ${e instanceof UsageError ? 'usage' : 'fatal'}: ${e.message}`); process.exitCode = e instanceof UsageError ? 2 : 4; });
