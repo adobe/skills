@@ -1,0 +1,34 @@
+{
+  "_provenance": {
+    "writtenBy": "stardust:extract",
+    "writtenAt": "2026-09-18T09:04:30.000Z",
+    "script": "crawl.mjs"
+  },
+  "fonts": [
+    {
+      "url": "https://example.com/fonts/example-sans-700.woff2",
+      "family": "Example Sans",
+      "weight": 700,
+      "style": "normal",
+      "unicodeRange": null,
+      "localPath": "stardust/current/assets/fonts/example-sans-700.woff2",
+      "sourceCssRule": "@font-face { font-family: 'Example Sans'; font-weight: 700; font-display: swap; src: url('/fonts/example-sans-700.woff2') format('woff2'); }",
+      "licensingFlag": "private",
+      "mime": "font/woff2",
+      "bytes": 41200
+    },
+    {
+      "url": "https://example.com/fonts/example-text-400.woff2",
+      "family": "Example Text",
+      "weight": 400,
+      "style": "normal",
+      "unicodeRange": null,
+      "localPath": "stardust/current/assets/fonts/example-text-400.woff2",
+      "sourceCssRule": "@font-face { font-family: 'Example Text'; font-weight: 400; font-display: swap; src: url('/fonts/example-text-400.woff2') format('woff2'); }",
+      "licensingFlag": "private",
+      "mime": "font/woff2",
+      "bytes": 38800
+    }
+  ],
+  "iconFonts": []
+}

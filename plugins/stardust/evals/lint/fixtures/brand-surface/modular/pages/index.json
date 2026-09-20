@@ -1,0 +1,724 @@
+{
+  "_provenance": {
+    "renderedBy": "playwright",
+    "fetchedAt": "2026-09-18T09:00:00.000Z",
+    "waitMode": "medium",
+    "waitMs": 2500,
+    "httpStatus": 200,
+    "width": 1440,
+    "dpr": 1,
+    "technique": "headless",
+    "storageState": false,
+    "variants": [],
+    "compatMode": "CSS1Compat",
+    "schemaVersion": 2,
+    "script": "crawl.mjs",
+    "contentType": "text/html",
+    "heroSource": "dom"
+  },
+  "slug": "index",
+  "url": "https://example.com/",
+  "finalUrl": "https://example.com/",
+  "title": "Example — Build, ship, and own your work",
+  "metaDescription": "Example — Build, ship, and own your work — Example helps teams ship their work.",
+  "description": "Example — Build, ship, and own your work — Example helps teams ship their work.",
+  "heroHeadline": "Build, ship, and own your work",
+  "heroLede": "One platform for your whole team, from intake to delivery. You decide how it runs.",
+  "og": {
+    "title": "Example — Build, ship, and own your work",
+    "description": "Example — Build, ship, and own your work — Example helps teams ship their work.",
+    "image": "https://example.com/og.jpg",
+    "type": "website",
+    "siteName": "Example"
+  },
+  "themeColor": {
+    "light": "#ffffff",
+    "dark": null
+  },
+  "language": "en",
+  "headings": [
+    {
+      "tag": "h1",
+      "level": 1,
+      "text": "Build, ship, and own your work",
+      "id": null,
+      "domPath": "main > section.hero > h1",
+      "style": {
+        "fontFamily": "\"Example Sans\", system-ui, sans-serif",
+        "fontWeight": 700,
+        "fontSize": "48px",
+        "lineHeight": 1.1,
+        "letterSpacing": "-0.02em",
+        "color": "rgb(255, 255, 255)"
+      }
+    },
+    {
+      "tag": "h2",
+      "level": 2,
+      "text": "Everything your team needs",
+      "id": null,
+      "domPath": "main > section:nth-child(2) > h2",
+      "style": {
+        "fontFamily": "\"Example Sans\", system-ui, sans-serif",
+        "fontWeight": 700,
+        "fontSize": "38.4px",
+        "lineHeight": 1.2,
+        "letterSpacing": "-0.01em",
+        "color": "rgb(15, 18, 23)"
+      }
+    },
+    {
+      "tag": "h3",
+      "level": 3,
+      "text": "Plan together",
+      "id": null,
+      "domPath": "main > section:nth-child(2) > div > h3",
+      "style": {
+        "fontFamily": "\"Example Sans\", system-ui, sans-serif",
+        "fontWeight": 600,
+        "fontSize": "30.72px",
+        "lineHeight": 1.2,
+        "letterSpacing": "-0.01em",
+        "color": "rgb(15, 18, 23)"
+      }
+    },
+    {
+      "tag": "h3",
+      "level": 3,
+      "text": "Ship faster",
+      "id": null,
+      "domPath": "main > section:nth-child(2) > div > h3",
+      "style": {
+        "fontFamily": "\"Example Sans\", system-ui, sans-serif",
+        "fontWeight": 600,
+        "fontSize": "30.72px",
+        "lineHeight": 1.2,
+        "letterSpacing": "-0.01em",
+        "color": "rgb(15, 18, 23)"
+      }
+    },
+    {
+      "tag": "h2",
+      "level": 2,
+      "text": "Company",
+      "id": null,
+      "domPath": "footer > div > h2",
+      "style": {
+        "fontFamily": "\"Example Sans\", system-ui, sans-serif",
+        "fontWeight": 700,
+        "fontSize": "38.4px",
+        "lineHeight": 1.2,
+        "letterSpacing": "-0.01em",
+        "color": "rgb(15, 18, 23)"
+      }
+    },
+    {
+      "tag": "h2",
+      "level": 2,
+      "text": "Legal",
+      "id": null,
+      "domPath": "footer > div > h2",
+      "style": {
+        "fontFamily": "\"Example Sans\", system-ui, sans-serif",
+        "fontWeight": 700,
+        "fontSize": "38.4px",
+        "lineHeight": 1.2,
+        "letterSpacing": "-0.01em",
+        "color": "rgb(15, 18, 23)"
+      }
+    }
+  ],
+  "landmarks": [
+    {
+      "tag": "header",
+      "role": "banner",
+      "id": null,
+      "classes": [
+        "site-header"
+      ],
+      "innerText": "Product Pricing About Get started",
+      "children": [
+        {
+          "tag": "nav",
+          "role": null,
+          "id": null,
+          "classes": [],
+          "purpose": "unknown",
+          "headlineRef": null,
+          "innerTextSummary": "",
+          "wordCount": 40,
+          "body": [],
+          "lists": [],
+          "qa": [],
+          "quotes": [],
+          "richtext": false,
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 1440,
+            "height": 64
+          }
+        }
+      ]
+    },
+    {
+      "tag": "main",
+      "role": "main",
+      "id": null,
+      "classes": [],
+      "innerText": "...",
+      "children": [
+        {
+          "tag": "section",
+          "role": null,
+          "id": null,
+          "classes": [
+            "hero"
+          ],
+          "purpose": "hero",
+          "headlineRef": 0,
+          "innerTextSummary": "",
+          "wordCount": 40,
+          "body": [
+            "One platform for your whole team, from intake to delivery. You decide how it runs, and your work stays yours."
+          ],
+          "lists": [],
+          "qa": [],
+          "quotes": [],
+          "richtext": false,
+          "rect": {
+            "x": 0,
+            "y": 64,
+            "width": 1440,
+            "height": 720
+          }
+        },
+        {
+          "tag": "section",
+          "role": null,
+          "id": null,
+          "classes": [],
+          "purpose": "feature-list",
+          "headlineRef": 1,
+          "innerTextSummary": "",
+          "wordCount": 40,
+          "body": [
+            "Plan, track and ship in one place."
+          ],
+          "lists": [],
+          "qa": [],
+          "quotes": [],
+          "richtext": false,
+          "rect": {
+            "x": 0,
+            "y": 784,
+            "width": 1440,
+            "height": 900
+          }
+        },
+        {
+          "tag": "section",
+          "role": null,
+          "id": null,
+          "classes": [],
+          "purpose": "cta-band",
+          "headlineRef": null,
+          "innerTextSummary": "",
+          "wordCount": 40,
+          "body": [],
+          "lists": [],
+          "qa": [],
+          "quotes": [],
+          "richtext": false,
+          "rect": {
+            "x": 0,
+            "y": 1684,
+            "width": 1440,
+            "height": 300
+          }
+        }
+      ]
+    },
+    {
+      "tag": "footer",
+      "role": "contentinfo",
+      "id": null,
+      "classes": [],
+      "innerText": "Company Legal",
+      "children": [
+        {
+          "tag": "div",
+          "role": null,
+          "id": null,
+          "classes": [],
+          "purpose": "footer-nav",
+          "headlineRef": 4,
+          "innerTextSummary": "",
+          "wordCount": 40,
+          "body": [],
+          "lists": [],
+          "qa": [],
+          "quotes": [],
+          "richtext": false,
+          "rect": {
+            "x": 0,
+            "y": 2600,
+            "width": 1440,
+            "height": 320
+          }
+        },
+        {
+          "tag": "div",
+          "role": null,
+          "id": null,
+          "classes": [],
+          "purpose": "footer-nav",
+          "headlineRef": 5,
+          "innerTextSummary": "",
+          "wordCount": 40,
+          "body": [],
+          "lists": [],
+          "qa": [],
+          "quotes": [],
+          "richtext": false,
+          "rect": {
+            "x": 0,
+            "y": 2600,
+            "width": 1440,
+            "height": 320
+          }
+        }
+      ]
+    }
+  ],
+  "ctas": [
+    {
+      "label": "Get started",
+      "href": "/signup",
+      "tag": "a",
+      "domPath": "header > nav > a.btn-primary",
+      "style": {
+        "backgroundColor": "rgb(20, 122, 255)",
+        "color": "rgb(255, 255, 255)",
+        "fontFamily": "\"Example Text\", system-ui, sans-serif",
+        "fontWeight": 600,
+        "borderRadius": "8px",
+        "padding": "12px 24px",
+        "boxShadow": "0 1px 2px rgba(0,0,0,0.06)"
+      },
+      "appearsAbove": "fold"
+    },
+    {
+      "label": "Start free trial",
+      "href": "/signup",
+      "tag": "a",
+      "domPath": "main > section.hero > a.btn-primary",
+      "style": {
+        "backgroundColor": "rgb(22, 124, 255)",
+        "color": "rgb(255, 255, 255)",
+        "fontFamily": "\"Example Text\", system-ui, sans-serif",
+        "fontWeight": 600,
+        "borderRadius": "8px",
+        "padding": "12px 24px",
+        "boxShadow": "0 1px 2px rgba(0,0,0,0.06)"
+      },
+      "appearsAbove": "fold"
+    },
+    {
+      "label": "Talk to sales",
+      "href": "/contact",
+      "tag": "a",
+      "domPath": "main > section.hero > a.btn-secondary",
+      "style": {
+        "backgroundColor": "rgba(0, 0, 0, 0)",
+        "color": "rgb(20, 122, 255)",
+        "fontFamily": "\"Example Text\", system-ui, sans-serif",
+        "fontWeight": 600,
+        "borderRadius": "8px",
+        "padding": "12px 24px",
+        "boxShadow": "0 1px 2px rgba(0,0,0,0.06)"
+      },
+      "appearsAbove": "fold"
+    },
+    {
+      "label": "Get started",
+      "href": "/signup",
+      "tag": "a",
+      "domPath": "main > section.cta-band > a.btn-primary",
+      "style": {
+        "backgroundColor": "rgb(20, 122, 255)",
+        "color": "rgb(255, 255, 255)",
+        "fontFamily": "\"Example Text\", system-ui, sans-serif",
+        "fontWeight": 600,
+        "borderRadius": "8px",
+        "padding": "12px 24px",
+        "boxShadow": "0 1px 2px rgba(0,0,0,0.06)"
+      },
+      "appearsAbove": "below-fold"
+    },
+    {
+      "label": "Accept all cookies",
+      "href": "#",
+      "tag": "button",
+      "domPath": "div#cookie-consent > div > button",
+      "style": {
+        "backgroundColor": "rgb(200, 30, 30)",
+        "color": "rgb(255, 255, 255)",
+        "fontFamily": "\"Example Text\", system-ui, sans-serif",
+        "fontWeight": 600,
+        "borderRadius": "8px",
+        "padding": "12px 24px",
+        "boxShadow": "0 1px 2px rgba(0,0,0,0.06)"
+      },
+      "appearsAbove": "fold"
+    }
+  ],
+  "links": {
+    "internal": [
+      {
+        "href": "/product",
+        "text": "Product",
+        "domPath": "header > nav > a:nth-child(1)"
+      },
+      {
+        "href": "/pricing",
+        "text": "Pricing",
+        "domPath": "header > nav > a:nth-child(2)"
+      },
+      {
+        "href": "/about",
+        "text": "About",
+        "domPath": "header > nav > a:nth-child(3)"
+      },
+      {
+        "href": "/about",
+        "text": "About",
+        "domPath": "footer > nav > a:nth-child(1)"
+      },
+      {
+        "href": "/legal/privacy",
+        "text": "Privacy",
+        "domPath": "footer > nav > a:nth-child(2)"
+      }
+    ],
+    "external": []
+  },
+  "media": {
+    "images": [
+      {
+        "src": "https://example.com/img/wordmark.svg",
+        "currentSrc": "https://example.com/img/wordmark.svg",
+        "srcset": null,
+        "sources": [],
+        "alt": "Example",
+        "naturalWidth": 360,
+        "naturalHeight": 64,
+        "rect": {
+          "x": 24,
+          "y": 16,
+          "width": 180,
+          "height": 32
+        },
+        "resolves": true,
+        "localPath": "stardust/current/assets/media/wordmark.svg",
+        "mime": "image/svg+xml"
+      },
+      {
+        "src": "https://example.com/img/hero.jpg",
+        "currentSrc": "https://example.com/img/hero.jpg",
+        "srcset": null,
+        "sources": [],
+        "alt": "Two engineers reviewing a tablet",
+        "naturalWidth": 2880,
+        "naturalHeight": 1440,
+        "rect": {
+          "x": 0,
+          "y": 64,
+          "width": 1440,
+          "height": 720
+        },
+        "resolves": true,
+        "localPath": "stardust/current/assets/media/hero.jpg"
+      },
+      {
+        "src": "https://example.com/img/plan.png",
+        "currentSrc": "https://example.com/img/plan.png",
+        "srcset": null,
+        "sources": [],
+        "alt": "",
+        "naturalWidth": 800,
+        "naturalHeight": 600,
+        "rect": {
+          "x": 100,
+          "y": 900,
+          "width": 400,
+          "height": 300
+        },
+        "resolves": true,
+        "localPath": null
+      }
+    ],
+    "imgs": [
+      {
+        "src": "https://example.com/img/wordmark.svg",
+        "alt": "Example",
+        "w": 360,
+        "h": 64
+      }
+    ],
+    "inlineSvgs": [
+      {
+        "viewBox": "0 0 24 24",
+        "domPath": "header > button > svg",
+        "markupHash": "sha256:menu",
+        "rect": {
+          "x": 1380,
+          "y": 20,
+          "width": 24,
+          "height": 24
+        }
+      }
+    ],
+    "cssBackgrounds": [
+      {
+        "url": "https://example.com/img/grid.png",
+        "domPath": "main > section.cta-band",
+        "boundingClientRect": {
+          "x": 0,
+          "y": 1684,
+          "width": 1440,
+          "height": 300
+        },
+        "backgroundSize": "cover",
+        "backgroundPosition": "center center",
+        "backgroundRepeat": "no-repeat",
+        "pseudo": null,
+        "localPath": null
+      }
+    ],
+    "videos": [],
+    "iframes": []
+  },
+  "forms": [],
+  "widgets": {
+    "modals": [],
+    "accordions": [],
+    "tabs": []
+  },
+  "components": {
+    "cards": {
+      "count": 6,
+      "examples": [
+        ".feature-card"
+      ]
+    },
+    "grids": {
+      "count": 1,
+      "examples": [
+        "main > section:nth-child(2) > div"
+      ]
+    },
+    "accordions": {
+      "count": 0,
+      "examples": []
+    },
+    "tabs": {
+      "count": 0,
+      "examples": []
+    },
+    "tables": {
+      "count": 0,
+      "examples": []
+    },
+    "modals": {
+      "count": 0,
+      "examples": []
+    },
+    "carousels": {
+      "count": 0,
+      "examples": []
+    },
+    "videos": {
+      "count": 0,
+      "examples": []
+    },
+    "iframes": {
+      "count": 0,
+      "examples": []
+    },
+    "dataVizEmbeds": {
+      "count": 0,
+      "examples": []
+    },
+    "teamTiles": {
+      "count": 0,
+      "examples": []
+    },
+    "pricingTiles": {
+      "count": 0,
+      "examples": []
+    },
+    "testimonialCards": {
+      "count": 0,
+      "examples": []
+    },
+    "logoStrip": {
+      "count": 0,
+      "examples": []
+    },
+    "timeline": {
+      "count": 0,
+      "examples": []
+    },
+    "breadcrumbs": {
+      "count": 0,
+      "examples": []
+    },
+    "statRow": {
+      "count": 0,
+      "examples": []
+    },
+    "ctaBand": {
+      "count": 1,
+      "examples": [
+        "section.cta-band"
+      ]
+    },
+    "formFields": {
+      "count": 0,
+      "examples": []
+    },
+    "other": []
+  },
+  "perSectionStyle": [
+    {
+      "sectionRef": "main > section:nth-child(1)",
+      "purpose": "hero",
+      "background": {
+        "color": "rgb(8, 12, 20)",
+        "hasImage": true,
+        "hasGradient": false
+      },
+      "text": {
+        "dominantColor": "rgb(255, 255, 255)"
+      },
+      "spacing": {
+        "paddingBlock": "96px",
+        "paddingInline": "48px",
+        "gap": "24px"
+      },
+      "borderRadius": "0px",
+      "fontFamilies": [
+        "Example Sans",
+        "Example Text"
+      ],
+      "shadowsUsed": []
+    },
+    {
+      "sectionRef": "main > section:nth-child(2)",
+      "purpose": "feature-list",
+      "background": {
+        "color": "rgb(255, 255, 255)",
+        "hasImage": false,
+        "hasGradient": false
+      },
+      "text": {
+        "dominantColor": "rgb(15, 18, 23)"
+      },
+      "spacing": {
+        "paddingBlock": "96px",
+        "paddingInline": "48px",
+        "gap": "24px"
+      },
+      "borderRadius": "8px",
+      "fontFamilies": [
+        "Example Text"
+      ],
+      "shadowsUsed": [
+        "0 4px 16px rgba(0,0,0,0.08)"
+      ]
+    },
+    {
+      "sectionRef": "main > section:nth-child(3)",
+      "purpose": "cta-band",
+      "background": {
+        "color": "rgb(247, 248, 250)",
+        "hasImage": false,
+        "hasGradient": false
+      },
+      "text": {
+        "dominantColor": "rgb(15, 18, 23)"
+      },
+      "spacing": {
+        "paddingBlock": "64px",
+        "paddingInline": "48px",
+        "gap": "24px"
+      },
+      "borderRadius": "16px",
+      "fontFamilies": [
+        "Example Text"
+      ],
+      "shadowsUsed": []
+    }
+  ],
+  "embedDominance": {
+    "dominated": false,
+    "iframeSrc": null,
+    "viewportCoveragePct": null,
+    "mainHeightCoveragePct": null,
+    "screenshot": null
+  },
+  "cssCustomProperties": [
+    {
+      "name": "--ex-primary",
+      "value": "#147aff"
+    },
+    {
+      "name": "--ex-container",
+      "value": "1200px"
+    }
+  ],
+  "customProps": {
+    "--ex-primary": "#147aff"
+  },
+  "stats": {
+    "wordCount": 512,
+    "ctaCount": 5,
+    "internalLinkCount": 5,
+    "externalLinkCount": 0,
+    "imageCount": 3,
+    "motifs": {
+      "radii": {
+        "0px": 40,
+        "8px": 20,
+        "16px": 5,
+        "9999px": 3
+      },
+      "shadows": {
+        "0 4px 16px rgba(0,0,0,0.08)": 6,
+        "0 1px 2px rgba(0,0,0,0.06)": 4
+      },
+      "gradients": {}
+    }
+  },
+  "_signals": {
+    "filteredInterstitials": 0,
+    "distinctHeadings": 0,
+    "mainTextLen": 2000,
+    "realImageCount": 0,
+    "trackingOnlyMedia": false,
+    "spaShellSuspect": false,
+    "emptyMain": false,
+    "brokenImages": 0,
+    "subResourceBlock": false,
+    "overlayCoverPct": 0,
+    "captureQuality": "ok",
+    "screenshotMode": "fullPage",
+    "docHeight": 3000,
+    "shadowRoots": 0,
+    "inferredHeadings": 0,
+    "iconFont": []
+  },
+  "screenshot": "assets/screenshots/index.png",
+  "renderedHtml": "pages/index.html"
+}

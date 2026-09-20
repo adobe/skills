@@ -13,14 +13,14 @@ metadata:
 
 | phase | command / instrument | gate | writes |
 |---|---|---|---|
-| Setup 1–4 | `node -e "import('playwright').then(()=>process.exit(0))"`; copy `skills/extract/scripts/crawl.mjs` → `stardust/scripts/crawl.mjs` (+ `skills/stardust/scripts/progress.mjs` → `stardust/scripts/stardust/`); origin-collision and flow guard; consent pre-flight; bot-management probe | flow stamped before a migration crawl | `_crawl-log.json#consent`, `#discovery.fetchTechnique` |
+| Setup 1–4 | `node -e "import('playwright').then(()=>process.exit(0))"`; copy `skills/extract/scripts/{crawl,validate-page,brand-surface,write-design-json,brand-review,state-update}.mjs` as a set → `stardust/scripts/` (+ `skills/stardust/scripts/progress.mjs` → `stardust/scripts/stardust/`); origin-collision and flow guard; consent pre-flight; bot-management probe | flow stamped before a migration crawl | `_crawl-log.json#consent`, `#discovery.fetchTechnique` |
 | 1 Discovery | robots sitemaps → standard → conventions → nav union → BFS (`--depth`); subtree from the typed path; junk filter; cap via `--cap <N>` / `--all` / `--pages <slugs>` / `--single` | relay crawl's kept/cut summary; no gate | `stardust/current/_crawl-log.json` |
 | 2 Per-page extraction | `node stardust/scripts/crawl.mjs --url <origin> [--pages …] [--cap N \| --all \| --single] [--refresh <slug,…> \| --force] [--headed] [--concurrency N] [--wait <mode>] [--dynamics] [--mobile <mode>] [--dpr N] [--depth N] [--cookie n=v] [--storage-state <file> \| --fresh-state] [--save-state] [--solve-wait <ms>] [--progress <file> \| --no-progress] [--assets intercept\|full\|none \| --no-assets]` — in the background; `progress.mjs read stardust/.work/extract/crawl.progress.json`, then its `SUMMARY` line | live-render evidence contract; schema gate `validate-page.mjs` (exit 1 = not `extracted`); synthesis is a Phase 2 failure | `current/pages/<slug>.json` + `.html`, `assets/screenshots/<slug>.png`, `assets/media/`, `state.json` page → `extracted` |
 | 2.5 Vision verification | look at each screenshot against its record; `_signals` flags first; escalation ladder (wait mode → next bot-management tier → fresh context); `node plugins/stardust/evals/lint/crawl-log-lint.mjs --dir stardust/current` | verdict `ok` / `recaptured` / `suspect`; never `ok` on DEGRADED / overlay | `_crawl-log.json#visionCheck[]` |
-| 3 Brand-surface extraction | aggregate across all extracted pages (+ brand-source pages) | source citation per value | `current/_brand-extraction.json`, `assets/logo.<ext>`, `assets/favicon.<ext>` |
-| 4 Seed current-state docs | author directly from impeccable's format specs (no `$impeccable init` / `document`) | provenance block first | `current/PRODUCT.md`, `current/DESIGN.md`, `current/DESIGN.json` |
-| 5 Brand review | render per template; run the Tensions detectors | template mandatory; sections without data omitted | `current/brand-review.html` |
-| 6 State and report | per-page evidence table (`live`, `waitMode`, `media(img/bg)`), wait summary, vision line | every row `live: yes` | `stardust/state.json` |
+| 3 Brand-surface extraction | `node stardust/scripts/brand-surface.mjs --out stardust/current --home index [--bounded] [--lift <dir>]` — offline over `pages/*.json`; read its printed notes | exit 1 = no live record; source citation per value; `--pages`/`--single` runs → `_provenance.mode: "bounded"` | `current/_brand-extraction.json`, `assets/logo.svg` |
+| 4 Seed current-state docs | `node stardust/scripts/write-design-json.mjs --out stardust/current`; author PRODUCT.md / DESIGN.md directly from impeccable's format specs (no `$impeccable init` / `document`) | provenance block first; exit 2 without the brand surface | `current/DESIGN.json`, `current/PRODUCT.md`, `current/DESIGN.md` |
+| 5 Brand review | `node stardust/scripts/brand-review.mjs --out stardust/current` — the 13 detectors print `T-xxx: fired \| quiet` | exit 2 without `_brand-extraction.json`; sections without data omitted | `current/brand-review.html` |
+| 6 State and report | `node stardust/scripts/state-update.mjs --out stardust/current [--prep] [--vision <file>]` — evidence table, wait summary, `Provenance: <live>/<total> live` | `extracted` only on live provenance; `--prep` exits 1 when live < total | `stardust/state.json`, `status.jsonl`, `_crawl-log.json#visionCheck[]` |
 | opt-in | `--brand-source <url>` / `--design-source <url>`; sibling-site discovery; `--prep` (implies `--all`) | prep summary `Provenance: <live>/<total>` line | `current/brand-sources/<host>/`, `stardust/canon-source/`, `state.json.pages[].type` |
 
 | at phase | read |
@@ -136,9 +136,10 @@ Additional checks for this sub-command:
    `eslint@8`); `--no-save` installs are pruned by a later `npm i`, so
    every rendering skill re-runs the probe at its own start.
    **Script location matters.** ESM resolves from the *script's*
-   directory and the plugin tree ships no `node_modules`: copy the
-   extract scripts (`crawl.mjs`, `validate-page.mjs`) byte-identical
-   into `stardust/scripts/` as a set and run the copies.
+   directory and the plugin tree ships no `node_modules`: copy the six
+   extract scripts byte-identical, as a set, into `stardust/scripts/`
+   (the siblings import `./crawl.mjs` for the consent table and the
+   validators) and run the copies.
 
    **Bundled crawler.** `skills/extract/scripts/crawl.mjs` is the
    runnable reference implementation of this sub-command (browser
@@ -381,78 +382,34 @@ alone.
 
 ### Phase 3 — Brand-surface extraction
 
-Run after Phases 2–2.5. Aggregation **may proceed incrementally** as
-concurrent captures complete (§ Concurrency),
-but the written file must reflect every extracted page — including
-brand-source pages per § Cross-site brand sources.
-Produces `stardust/current/_brand-extraction.json`
-per `reference/brand-surface.md`. Some fields are home-only (logo,
-voice samples, register heuristic); the visual tokens that drive
-DESIGN.md (palette, radius, shadow, type) are aggregated across **all
-extracted pages** to avoid the home-page bias documented in
-`brand-surface.md` § Aggregation scope. Captures:
+Run after Phases 2–2.5, offline over the page records — never a second
+live pass:
 
-- **Logo** by the v1 priority chain: inline SVG → `<img>` with
-  logo-ish class/id → `apple-touch-icon` → `og:image` → favicon →
-  synthesized placeholder. Save to `stardust/current/assets/logo.<ext>`.
-- **Favicon** — ALWAYS captured as its own asset (independent of the
-  logo chain) to `stardust/current/assets/favicon.<ext>`, per
-  `reference/playwright-recipe.md` § Favicon capture. Downstream,
-  `prototype` embeds it in the proposed page head and `deploy` ships
-  it to the Edge Delivery site.
-- **Palette** — aggregate computed colors across **all extracted
-  pages** (background, text, accents, borders, hovers). Frequency-sort,
-  cluster near-duplicates, emit a role-named list (background, surface,
-  text, primary, secondary, accent).
-- **Type** — font families in use with their weights, sizes, and
-  computed line-heights. Identify the heading family vs body family.
-  Run the modular-scale audit (`brand-surface.md` § Modular-scale
-  audit) and emit `scaleAudit.kind = "modular" | "ad-hoc"`.
-- **Motifs** — signature border-radius (cross-page mode of non-zero
-  values, weighted by element count), shadow stack (top 3 distinct,
-  cross-page), gradient inventory, common patterns (chip, badge,
-  card, hero-with-image). When the home-only mode disagrees with the
-  cross-page mode, surface the divergence in `_provenance.notes`.
-- **Voice samples** — first paragraph of body copy, the hero headline,
-  3 representative CTA labels, a representative link list. Used by
-  `direct` later but extracted now so the network round-trip is over.
-- **Hero image** — elevate the home page's primary visual
-  asset to `voice.heroImage` (per `reference/brand-surface.md`
-  § heroImage resolution), so downstream prototype picks the
-  live hero rather than the `og:image` from the raw media list.
-- **Hero medium (signature)** — when the hero/first viewport carries a
-  *moving* asset (background `<video>` / HLS / canvas / WebGL /
-  Lottie / animated SVG / scroll-driven motion), elevate it to
-  `voice.heroMedium` (per `reference/brand-surface.md` § heroMedium
-  resolution). This is the page's **signature**; without elevation
-  downstream prototype flattens it to a static hero. A non-null
-  `heroMedium` triggers signature
-  preservation (`skills/stardust/reference/intent-dimensions.md`
-  § 8b) at prototype time.
-- **Icon font** — when detected per `reference/playwright-recipe.md`
-  § Capture list 17, populate `_brand-extraction.json#iconFont`
-  with family, file path, and the `iconClass → codepoint`
-  table so prototypes can render the brand's actual icons.
-- **System components** — cross-page repeated DOM blocks (site
-  header, site footer, cross-promo strips, persistent CTAs,
-  breadcrumbs). Detected by heading-sequence + CTA-label fingerprint
-  per `reference/brand-surface.md` § System components. Required —
-  these are usually the most load-bearing surfaces and must not
-  silently disappear from the redesign target.
-- **Origins** — one entry per contributing origin in
-  `_brand-extraction.json#origins[]` per `reference/brand-surface.md`
-  § Origins. Single-origin runs emit a one-entry array; brand-source
-  runs attribute widened evidence per origin.
+    node stardust/scripts/brand-surface.mjs --out stardust/current --home index [--bounded] [--lift <dir>] [--dry-run]
 
-Do not invent values. Every captured value cites a source selector or
-URL in `_brand-extraction.json` for traceability.
+It writes `stardust/current/_brand-extraction.json` per
+`reference/brand-surface.md` — palette (third-party chrome excluded via
+crawl.mjs's consent table), type + modular-scale audit, spacing, motifs
+from `stats.motifs`, componentStyle, system components, the logo chain
+with its banner-wordmark step 1b, `origins[]`, voice / register
+(home-only) — plus `assets/logo.svg` when the chain lands on an inline
+SVG; `type.files[]` comes from `assets/_fonts-manifest.json` (absent →
+`[]`, noted); the favicon is `_crawl-log.json#favicon`. Every value
+cites its source. A `--pages` / `--single` crawl is detected as bounded
+(`_provenance.mode: "bounded"`): voice, voiceTable, crossPromo and
+register are omitted, never guessed. Exit 1 = no live page record.
+Then read the printed notes (divergences, exclusions, skipped records)
+and the file before Phase 4 — the script aggregates; you review.
 
 ### Phase 4 — Seed `stardust/current/PRODUCT.md` and `DESIGN.md`
 
 The current-state PRODUCT.md and DESIGN.md are **descriptive, not
 authored** — there is no interview to run because the user is not
-defining intent here, the agent is describing the existing site. Write
-them directly using impeccable's format specs:
+defining intent here, the agent is describing the existing site. Seed
+the tokens first — `node stardust/scripts/write-design-json.mjs --out
+stardust/current` writes DESIGN.json (schemaVersion 2, frontmatter
+tokens, `extensions`) from the brand surface (exit 2 without it); the
+prose below is yours, written directly from impeccable's format specs:
 
 - For PRODUCT.md, follow the section structure in impeccable's
   `reference/init.md` § Write PRODUCT.md. File order: stardust's
@@ -472,12 +429,8 @@ them directly using impeccable's format specs:
   Purpose`, `Positioning` and `Product Principles` from the captured
   copy and the brand surface. Where the agent must infer, mark the
   section with `_provenance: inferred` and a one-line basis sentence.
-- For DESIGN.md and DESIGN.json, follow the format spec in
-  impeccable's `reference/document.md`. Populate frontmatter
-  (`colors`, `typography`, `rounded`, `spacing`, `components`) from
-  the captured tokens. The `extensions` block of DESIGN.json carries
-  v1's `componentStyle`, `motifs`, and `voice` arrays so nothing is
-  lost.
+- For DESIGN.md, follow impeccable's `reference/document.md`; its
+  frontmatter mirrors the DESIGN.json the script wrote.
 
 Stardust does **not** invoke `$impeccable init` (formerly `teach`) or
 `$impeccable document` for the current-state files: those commands write to project
@@ -490,93 +443,40 @@ written by `$stardust direct` in Phase 2 of the pipeline, not here.
 
 ### Phase 5 — Render `stardust/current/brand-review.html`
 
-After Phase 4 writes the descriptive PRODUCT.md and DESIGN.md, emit
-the current-state brand review per
-`reference/brand-review-template.md`.
+    node stardust/scripts/brand-review.mjs --out stardust/current [--dry-run]
 
-The brand-review HTML is the **first surface a human can eyeball** to
-verify the extraction before committing to a redesign direction —
-misreads that are invisible in JSON (a wrong dominant radius, a
-missing system component, a single-page palette bias) are obvious to
-the eye while they are still cheap to fix (re-extract is fast;
-re-direct + re-prototype is not).
-
-The template is mandatory. In particular:
-
-1. Run the **Tensions detectors** listed in
-   `reference/brand-review-template.md` § Detectors. Each rule is
-   mechanical; emit a tension card whenever the trigger condition
-   matches. The review may ship with zero tensions if the data is
-   too thin to evaluate, but the detectors must always be run.
-2. Render in the brand's **own captured colors and fonts**, not a
-   stardust shell.
-3. Embed all CSS; do not load external JavaScript or fonts unless
-   the live site already does.
-4. Cite the source artifact for every section (e.g.
-   `_brand-extraction.json § type` under Typography).
-
-If the data for a section is missing, **omit the section** — do not
-fabricate placeholders. The coverage callout at the top reflects what
-is missing.
+renders the review per `reference/brand-review-template.md` — canonical
+section order, brand-faithful chrome from the captured palette and
+fonts, embedded CSS, no external JS or fonts (a font `<link>` the home
+page already loads is mirrored), sticky nav, coverage callout — and
+runs the 13 Tensions detectors, printing `T-xxx: fired|quiet`. Sections
+without data are omitted, never fabricated; exit 2 when
+`_brand-extraction.json` is missing or has no `_provenance`. It is the
+first surface a human eyeballs before `direct`: open it; add nuanced
+tensions on top of the mechanical baseline, never ship below it.
 
 ### Phase 6 — Update state and report
 
-After all Phase 2-5 writes succeed:
+    node stardust/scripts/state-update.mjs --out stardust/current [--prep] [--vision <file>] [--dry-run]
 
-1. Update `stardust/state.json` (schema in
-   `skills/stardust/reference/state-machine.md`):
-   - `site.originUrl`, `site.extractedAt`, `site.pageCap`,
-     `site.totalDiscovered`, `site.crawled`
-   - `pages[]` — one entry per crawled page with `status: "extracted"`,
-     filled `currentStatePath`, empty `prototypePath` and `migratedPath`
-   - `designSource` — only when `--design-source` was used:
-     `{ url, capturedAt, path }` per § Cross-site brand sources
-2. Print a one-screen summary:
-   ```
-   Extracted https://example.com (5/38 pages, sitemap.xml)
-
-   stardust/current/
-     PRODUCT.md, DESIGN.md, DESIGN.json, brand-review.html,
-     pages/ (5), assets/logo.svg, _brand-extraction.json, _crawl-log.json
-
-   Per-page evidence:
-     slug         live  waitMode               waitMs   status  media(img/bg)
-     /            yes   medium                 2380     200     38/6
-     /pricing     yes   medium                 1940     200     9/0   ⚠ low-media
-     /contact     yes   domcontentloaded(fb)   8000     200     3/0
-     ...
-
-   Wait summary: 4 resolved at medium (avg 2.4s), 1 fallback (timed out at 8s)
-     → /contact may be under-captured; consider --refresh
-   Media summary: 1 page flagged low-media (/pricing) — see media-coverage check
-   Vision check: 4 ok, 1 recaptured (/pricing) — _crawl-log.json#visionCheck
-
-   Open stardust/current/brand-review.html to verify the extraction
-   before running $stardust direct.
-
-   Coverage note: extracted 5 of 38 discovered pages; 5 pages
-   covering distinct templates is usually sufficient for the
-   cross-page brand surface. Widen with --cap <N> or --pages.
-
-   Next: $stardust direct  (resolve a redesign direction)
-   ```
-
-   The **per-page evidence table** is mandatory. `live` is `yes` when
-   `_provenance.renderedBy === "playwright"` AND `waitMs > 0`, else
-   `no` — the visible defense-in-depth signal for the synthesis
-   failure the write-time guard prevents; every row should read `yes`.
-   Wait summary: group `_provenance.waitMode`, average `waitMs`; slugs
-   whose mode ends in `(fallback)` (`(fb)` in the table) are `--refresh`
-   candidates.
-
-   **`media(img/bg)`** prints `<media.imgs> / <media.cssBackgrounds>`
-   counts. Flag `⚠ low-media` when a brand/marketing page (register
-   `brand`, or a landing/solution/product template) has
-   `cssBackgrounds: []` **and** no raster ≥ 600 px wide — the signature
-   of a silently failed background / lazy-media walk. Re-run the row
-   with `--refresh`, then up the ladder; a
-   `brand`-register site with all-zero `bg` counts is suspect, not
-   "uses no background images".
+merges `stardust/state.json` by slug (`site.*` incl.
+`extractPhases{captured, visionChecked, brandSurface, docs, review,
+scripts}`; `pages[]` → `extracted` + `currentStatePath` ONLY for records
+that pass `validateProvenance()` + `validateRecord()`; every other key
+and entry preserved), appends one `status.jsonl` line (`6-state`,
+`end` | `blocked`), records the Phase 2.5 verdicts given as
+`--vision <file>` (`[{slug, verdict, notes}]`) into
+`_crawl-log.json#visionCheck[]` (union by slug), and prints the
+mandatory per-page evidence table (`slug live waitMode waitMs status
+media(img/bg)`), wait summary and `Provenance: <live>/<total> live`.
+A `no` row is an instrument fact: re-crawl once with `--refresh
+<slug>` and re-run; never hand-edit the record. Under `--prep` the
+script exits 1 when live < total (synthesis guard). Add
+`state.json.designSource` yourself when `--design-source` was used.
+Then print the one-screen summary: artefacts written, the script's
+table verbatim, `⚠ low-media` where a brand page has `bg` 0 and no
+raster ≥ 600 px wide, the coverage note, `Open
+stardust/current/brand-review.html …`, `Next: $stardust direct`.
 
 ## Cross-site brand sources
 
@@ -731,10 +631,10 @@ reference):
   signal-source priority in the reference) are drafted under
   `DESIGN.json.extensions.modules[]` with `status: "candidate"`;
   per-page JSON gains a typed `slots` section per page-type.
-- The prep summary replaces the Phase 6 report; its
-  `Provenance: <live>/<total> live` line is mandatory, and any
-  ratio short of `<total>/<total>` means the run failed the
-  synthesis guard and is incomplete.
+- The prep summary replaces the Phase 6 report; `state-update.mjs
+  --prep` prints its mandatory `Provenance: <live>/<total> live` line
+  and exits 1 on any ratio short of `<total>/<total>` — the run failed
+  the synthesis guard and is incomplete.
 - When delegating extraction to a sub-agent, the sub-agent prompt
   **must** forbid synthesis by name and require the per-page
   evidence table and wait-summary line in its return
@@ -752,3 +652,4 @@ reference):
 - `reference/cross-site-sources.md` — full `--brand-source` / `--design-source` procedure (shallow capture, merge rules, canon-source donor).
 - `skills/stardust/reference/state-machine.md` — state.json contract.
 - `skills/stardust/reference/artifact-map.md` — provenance shape.
+- `scripts/validate-page.mjs`, `scripts/brand-surface.mjs`, `scripts/write-design-json.mjs`, `scripts/brand-review.mjs`, `scripts/state-update.mjs` — Phase 2 gate and Phases 3–6, copied with `crawl.mjs` as a set.
