@@ -10,7 +10,7 @@
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
-import { capture, serializeDom, validateRecord, SCHEMA_VERSION } from '../../skills/extract/scripts/crawl.mjs';
+import { capture, serializeDom, stampHiddenLive, validateRecord, SCHEMA_VERSION } from '../../skills/extract/scripts/crawl.mjs';
 
 let chromium;
 try { ({ chromium } = await import('playwright')); } catch { console.log('crawl-capture test: SKIP — playwright not importable here (npm i -D playwright --no-save to run it)'); process.exit(0); }
@@ -38,6 +38,9 @@ try {
   await page.waitForTimeout(300);
   const rec = await page.evaluate(capture);
   const sidecar = await page.evaluate(serializeDom);
+  // hidden-live stamp (importer-skeleton reads it) on the same settled page — no second navigation
+  const stamped = await page.evaluate(`(${stampHiddenLive})(document, window, '2026-01-01T00:00:00Z')`);
+  const sidecar2 = await page.evaluate(serializeDom);
   await page.close();
 
   // headings: real + inferred display head (once) + the shadow heading, document order
@@ -79,6 +82,15 @@ try {
   const contact = mainLm.children.find((c) => c.id === 'contact');
   assert.equal(contact.purpose, 'form');
   assert.deepEqual(rec.codeBlocks, ['npm install fixture']);
+  assert.deepEqual(rec.alternates, [], 'no hreflang alternates on the fixture → empty list, key present');
+
+  // hidden-live stamp: the settled document is stamped before the sidecar is serialised
+  assert.equal(stamped, 1, 'one topmost hidden node (the display:none modal); the closed <details> panel is not hidden-live');
+  assert.match(sidecar2, /<body[^>]* data-hidden-live-stamp="2026-01-01T00:00:00Z"/, 'the stamp marker sits on <body> (the sidecar serialises document content — the <html> tag itself is not in it)');
+  assert.match(sidecar2, /^<!DOCTYPE html>\n<head>/, 'sidecar shape unchanged: doctype + document content');
+  assert.match(sidecar2, /<div class="modal" style="display:none" data-hidden-live="display:none">/, 'the modal carries the reason');
+  assert.ok(!/<span data-hidden-live/.test(sidecar2), 'descendants of a stamped node are not stamped again');
+  assert.ok(!/<details[^>]*data-hidden-live|<summary[^>]*data-hidden-live|cancel\.<\/p><\/details>[\s\S]*data-hidden-live="visibility/.test(sidecar2), '<details> is never stamped');
 
   // CTAs
   const trial = rec.ctas.find((c) => c.label === 'Start free trial');

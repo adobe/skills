@@ -39,6 +39,11 @@
  *   no-page-errors { paths*[] }                                    no uncaught exceptions
  *   listing-rows   { path*, block*, index?, minRows? }             authored rows of .<block> in <path>.plain.html (heading / label-list rows excluded) > 0,
  *                                                                  and ≥ min(index first-page count, minRows|12) when an index URL is given
+ *   click-control  { path*, trigger*, observe*: scrollLeft|aria-expanded|aria-selected|hidden|open|class|visible:<sel>, expect? }
+ *                                                                  ONE click on the trigger changes the named observable (or reaches `expect`) within 600 ms —
+ *                                                                  lib.mjs driveControl, the one helper every control drive shares; a disabled / zero-box /
+ *                                                                  absent trigger or a pageerror during the drive is a FAIL naming the reason (a chevron
+ *                                                                  that advances nothing is the defect this exists for); never added to gate()
  * Every check also records the third-party request statuses it observed, so a
  * probe-induced failure is distinguishable from a vendor restriction.
  */
@@ -46,7 +51,7 @@
 import { join, dirname, resolve as resolvePath } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { existsSync } from 'node:fs';
-import { arg, flag, readJSON, writeJSON, writeText, provenance, loadPlaywright, resolveAuthHeader, attachOriginAuth, sameSite } from './lib.mjs';
+import { arg, flag, readJSON, writeJSON, writeText, provenance, loadPlaywright, resolveAuthHeader, attachOriginAuth, sameSite, driveControl } from './lib.mjs';
 
 const SCRIPT_NAME = 'dynamics-check';
 // live-session.mjs (diff skill) owns the bot-management launch ladder — no
@@ -194,6 +199,13 @@ const RUNNERS = {
     const all = [];
     for (const p of c.paths) { const { page, errors } = await openPage(ctx, origin, p); await page.close(); all.push(...errors.map((e) => `${p}: ${e}`)); }
     return { pass: all.length === 0, detail: all.length ? all.slice(0, 3).join(' | ').slice(0, 200) : `none on ${c.paths.length} page(s)` };
+  },
+  async 'click-control'(c, { ctx, origin }) {
+    // flows, not presence: the control the parity row names must move its observable on one click
+    const { page, thirdParty, errors } = await openPage(ctx, origin, c.path);
+    const r = await driveControl(page, c.trigger, { observe: c.observe, expect: c.expect });
+    await page.close();
+    return { pass: r.pass === true && errors.length === 0, detail: `${c.trigger} · ${r.detail}${errors.length ? ` · ${errors.length} pageerror(s): ${errors[0]}` : ''}`, thirdParty };
   },
   async 'listing-rows'(c, { ctx, origin }) {
     // document-first listings (reference/listings.md § Block contract): the served document, not the rendered DOM

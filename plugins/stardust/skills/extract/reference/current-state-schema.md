@@ -67,6 +67,7 @@ The file is JSON because every consumer is non-human. It carries a
   },
   "themeColor": { "light": "#ffffff", "dark": "#0a0a0a" },
   "language": "en",
+  "alternates": [ { "hreflang": "es", "href": "https://example.com/es/about" } ],  /* link[rel=alternate][hreflang]; locale twins feed discovery + trees.json (ia-extraction.md § Multi-locale) */
 
   "headings": [ /* see § Headings */ ],
   "landmarks": [ /* see § Landmarks */ ],

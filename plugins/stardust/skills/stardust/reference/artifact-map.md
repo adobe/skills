@@ -407,6 +407,7 @@ excluded folders tracked deletes that line or adds a negation below it.
 | `current/` text: `PRODUCT.md`, `DESIGN.md`, `DESIGN.json`, `_brand-extraction.json`, `_crawl-log.json`, `_dynamics.json`, `brand-review.html`, `pages/*.json`, `pages/*.html` | yes | extract | `pages/*.json` feeds nine skills; the substrate of the pipeline |
 | `current/assets/**` | **no** | extract | 50 MB screenshots rewritten on every extract + source media; `migrate`/`deploy` need it → re-run extract on a clone |
 | `current/brand-sources/*/assets/screenshots/` | **no** | extract | screenshots |
+| `current/layout-clusters.json` | yes | replica (`layout-cluster.mjs`) / migrate | flow-neutral corpus fact — clusters, exemplar, gate status, `coveredBy`; `state.json.pages[].layoutCluster` is stamped from it (`migrate/reference/fidelity-tiers.md` § Sibling variance probe) |
 | `prototypes/**` incl. `assets/` | yes | prototype / replica | approved design; `assets/` is source media, not screenshots |
 | `validation/**` | **no** | master / prototype | clean-pass screenshots |
 | `replica/inconsistency-register.md`, `progress.json`, `motion/`, `capture/` (incl. `capture/lift/` — `lift.mjs` values per width, `capture/css/` — `--save-css` sheets) | yes | replica | register, ledger, runtime CSS/DOM captures (2 MB), the lift evidence |

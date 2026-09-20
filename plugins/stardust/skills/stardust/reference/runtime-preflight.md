@@ -125,8 +125,8 @@ the plugin tree; `siblingScript(skill, file)` tries the plugin layout,
 
 Through the helper today: `dynamics/scripts/lib.mjs` and
 `qa/scripts/lib.mjs` (`loadPlaywright()`), `extract/scripts/crawl.mjs`
-(lazily — a lone project copy without `stardust/lib/resolve.mjs` beside
-it falls back to the bare import). Still on their own imports, each to
+(lazily, from `stardust/scripts/stardust/lib/` in the flat or the nested
+copy layout — a lone copy falls back to the bare import). Still on their own imports, each to
 convert in its own skill's change: replica, diff, reskin and deploy
 scripts and the migrate / prototype fixtures — `evals/lint/resolve-chain-smoke.mjs`
 `ALLOW` is the ledger and must shrink. Until then a project copy stays

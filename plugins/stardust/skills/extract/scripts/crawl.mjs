@@ -245,13 +245,17 @@ function readFileSyncSafe(u) { try { return readFileSync(u, 'utf8'); } catch { r
 /** Default progress file — the run-only write boundary beside the live lock: <out>/../.work/extract/crawl.progress.json. */
 export function crawlProgressFile(args) { return path.resolve(args.out, '..', '.work', 'extract', 'crawl.progress.json'); }
 
-// progress.mjs lives in skills/stardust/scripts/ (plugin tree) or stardust/scripts/stardust/
-// (project copy). Missing → the SUMMARY line still prints (inline format), no progress file.
+// The stardust set beside a copy of this script (harness-permissions.md § Two classes): the plugin tree
+// (../../stardust/scripts/), the flat extract copy (stardust/scripts/crawl.mjs + stardust/scripts/stardust/)
+// or the nested one (stardust/scripts/extract/crawl.mjs + stardust/scripts/stardust/). Every loader below tries
+// all three, so the layout an operator picked never decides whether the slot, the progress file or the chain lands.
+export const STARDUST_SET_DIRS = ['../../stardust/scripts/', './stardust/', '../stardust/'];
+// progress.mjs — missing → the SUMMARY line still prints (inline format), no progress file.
 export async function loadProgressHelper() {
-  for (const c of ['../../stardust/scripts/progress.mjs', './stardust/progress.mjs']) {
+  for (const c of STARDUST_SET_DIRS.map((d) => `${d}progress.mjs`)) {
     try { return await import(new URL(c, import.meta.url)); } catch (e) { if (e.code !== 'ERR_MODULE_NOT_FOUND') throw e; }
   }
-  console.error('[crawl] WARN progress.mjs not found next to this script — no progress file this run; copy skills/stardust/scripts/progress.mjs to stardust/scripts/stardust/');
+  console.error('[crawl] WARN progress.mjs not found next to this script — no progress file this run; copy skills/stardust/scripts/ as a set to stardust/scripts/stardust/ (harness-permissions.md § Two classes)');
   const summaryLine = ({ driver, ok = 0, failed = 0, noverdict = 0, exit = 0, details = '-', extra = {} }) => [`SUMMARY ${driver}`, `ok=${ok}`, `failed=${failed}`, ...(noverdict ? [`noverdict=${noverdict}`] : []), `exit=${exit}`, `details=${details}`, ...Object.entries(extra).filter(([, v]) => v !== undefined && v !== null && v !== '').map(([k, v]) => `${k}=${String(v).replace(/\s+/g, '_')}`)].join(' ');
   const createProgress = ({ driver, total = 0 }) => {
     const state = { driver, total, done: 0, ok: 0, failed: 0, noverdict: 0, lastPath: null };
@@ -391,19 +395,23 @@ export const STEALTH_ARGS = ['--disable-blink-features=AutomationControlled'];
 export const OFFSCREEN_ARGS = ['--window-position=-32000,-32000', '--disable-backgrounding-occluded-windows',
   '--disable-renderer-backgrounding', '--disable-background-timer-throttling'];
 export function tierOf(technique) { return LEGACY_TIER[technique] || (TIERS.indexOf(technique) + 1) || 0; }
+let lockWarned = false;
 /** Launch the browser for one ladder tier. Takes the caller's `chromium` (playwright is never imported here); the only import is the lazily resolved, optional browser lock. */
 export async function launchTier(chromium, tier) {
   // fan-out.md § Machine budget: ONE browser slot per PROCESS (skills/stardust/scripts/browser-lock.mjs
   // acquireProcess) however many launches the ladder or a relaunch makes — never per launch or per
   // context — released when the process exits; throws { code: 124 } when no slot frees up (no verdict,
-  // never a FAIL). The lock module is resolved lazily — plugin layout, project copy, STARDUST_SKILLS_DIR —
-  // and a copy shipped without it (or with a pre-acquireProcess copy) runs unlocked. STARDUST_BROWSER_SLOTS=0
+  // never a FAIL). The lock module is resolved lazily — plugin layout, the flat and the nested project
+  // copy (harness-permissions.md § Two classes), STARDUST_SKILLS_DIR — and a copy shipped without it (or
+  // with a pre-acquireProcess copy) runs unlocked after ONE WARN naming the paths tried. STARDUST_BROWSER_SLOTS=0
   // disables it (gate.sh sets it for its children after taking the round's slot).
-  const lockPaths = ['../../stardust/scripts/browser-lock.mjs', '../stardust/browser-lock.mjs', process.env.STARDUST_SKILLS_DIR ? `${process.env.STARDUST_SKILLS_DIR}/stardust/scripts/browser-lock.mjs` : null].filter(Boolean);
+  const lockPaths = ['../../stardust/scripts/browser-lock.mjs', './stardust/browser-lock.mjs', '../stardust/browser-lock.mjs', process.env.STARDUST_SKILLS_DIR ? `${process.env.STARDUST_SKILLS_DIR}/stardust/scripts/browser-lock.mjs` : null].filter(Boolean);
+  let locked = false;
   for (const c of lockPaths) {
-    try { const lock = await import(new URL(c, import.meta.url)); if (lock.acquireProcess) await lock.acquireProcess({}); break; }
+    try { const lock = await import(new URL(c, import.meta.url)); if (lock.acquireProcess) await lock.acquireProcess({}); locked = true; break; }
     catch (e) { if (e.code === 'ERR_MODULE_NOT_FOUND') continue; throw e; }
   }
+  if (!locked && !lockWarned) { lockWarned = true; console.error(`[launch] WARN browser-lock.mjs not found (tried ${lockPaths.join(', ')}) — this process launches without a machine slot; copy skills/stardust/scripts/ as a set (harness-permissions.md § Two classes)`); }
   const launch = (opts) => chromium.launch(opts);
   if (tier <= 1) return launch({ headless: true });
   const stealth = { channel: 'chrome', args: STEALTH_ARGS, ignoreDefaultArgs: ['--enable-automation'] };
@@ -755,13 +763,15 @@ async function collectSitemap(url, io, st, depth) {
  * Returns { urls, discovery } — `discovery` is the block written to
  * _crawl-log.json (ia-extraction.md § _crawl-log.json shape).
  */
-export async function discoverInventory({ entry, origin, entryPath = null, max = Infinity, botBlock = null, depth = 1, navLinks = [] }, io) {
+export async function discoverInventory({ entry, origin, entryPath = null, max = Infinity, botBlock = null, depth = 1, navLinks = [], alternates = [] }, io) {
   const scopePath = entryPath && entryPath !== '/' ? entryPath.replace(/\/+$/, '') : null;
   const sameOrigin = (u) => u === origin || u.startsWith(`${origin}/`);
   const inScope = (u) => { if (!scopePath) return true; try { const p = new URL(u).pathname.replace(/\/+$/, ''); return p === scopePath || p.startsWith(`${scopePath}/`); } catch { return false; } };
   const pageLike = (u) => sameOrigin(u) && !ASSET_RE.test(new URL(u).pathname);
   const candidates = []; const malformed = []; let probes = 0; let fetches = 0;
   const abs = (p) => new URL(p, origin).href;
+  // per-URL provenance (discovery.urls[].source): sitemap:<path> · nav · hreflang · bfs · entry — first sighting wins
+  const srcOf = new Map(); const src = (u, s) => { const k = dedupeKey(u); if (!srcOf.has(k)) srcOf.set(k, s); };
   const fetchTier = async (urls, tier, { all, guessed }) => {
     const leaves = [];
     for (const u of urls) {
@@ -771,6 +781,7 @@ export async function discoverInventory({ entry, origin, entryPath = null, max =
       await collectSitemap(u, io, st, 1);
       fetches += st.fetches; malformed.push(...st.malformed);
       const pages = [...new Set(st.leaves.filter(pageLike))];
+      for (const pg of pages) src(pg, `sitemap:${new URL(u).pathname}`);
       candidates.push({ url: u, tier, count: pages.length, ...(st.maxLastmod ? { maxLastmod: st.maxLastmod } : {}), ...(st.truncated ? { truncated: true } : {}), ...(st.deepDropped ? { deepDropped: st.deepDropped } : {}), ...(pages.length ? {} : { rejected: st.rootUnreachable ? 'unreachable' : 'empty' }) });
       leaves.push(...pages);
     }
@@ -807,7 +818,15 @@ export async function discoverInventory({ entry, origin, entryPath = null, max =
   const sitemapKeys = new Set(scoped.map(dedupeKey));
   const nav = [...new Set(navLinks.map((h) => { try { return normalizeUrl(h, origin); } catch { return null; } }).filter(Boolean).filter(pageLike).filter(inScope))];
   const navOnly = nav.filter((u) => !sitemapKeys.has(dedupeKey(u)));
-  let union = [...scoped, ...navOnly];
+  for (const u of nav) src(u, 'nav');
+  // hreflang union (ia-extraction.md § Multi-locale): same-origin twins the probe page declares join the roster
+  // under the same cap; off-origin twins are listed for trees.json, never fetched (no probe, no 301 check here)
+  const alt = [...new Set(alternates.map((h) => { try { return normalizeUrl(h, origin); } catch { return null; } }).filter(Boolean))];
+  const altSame = alt.filter((u) => pageLike(u) && inScope(u));
+  const altOnly = altSame.filter((u) => !sitemapKeys.has(dedupeKey(u)) && !nav.some((n) => dedupeKey(n) === dedupeKey(u)));
+  for (const u of altSame) src(u, 'hreflang');
+  const hreflang = alt.length ? { declared: alt.length, sameOrigin: altSame.length, offOrigin: alt.filter((u) => !sameOrigin(u)).slice(0, 50) } : null;
+  let union = [...scoped, ...navOnly, ...altOnly];
   let bfs = null;
   if (!scoped.length) {
     // BFS fallback — hop 1 is the probe page (0 hits); hops 2..depth fetch HTML
@@ -816,7 +835,7 @@ export async function discoverInventory({ entry, origin, entryPath = null, max =
     const breadth = Math.max(200, Number.isFinite(max) ? max : 0);
     const seen = new Map([[dedupeKey(entry), entry]]); const order = [];
     let frontier = [];
-    for (const u of nav) { const k = dedupeKey(u); if (!seen.has(k)) { seen.set(k, u); order.push(u); frontier.push(u); } }
+    for (const u of [...nav, ...altSame]) { const k = dedupeKey(u); if (!seen.has(k)) { seen.set(k, u); order.push(u); frontier.push(u); } }
     let fetched = 0; let hop = 1;
     while (hop < maxDepth && frontier.length && seen.size < breadth) {
       hop += 1; const next = [];
@@ -829,7 +848,7 @@ export async function discoverInventory({ entry, origin, entryPath = null, max =
           let h; try { h = normalizeUrl(m[1], u); } catch { continue; }
           if (!pageLike(h) || !inScope(h)) continue;
           const k = dedupeKey(h);
-          if (!seen.has(k)) { seen.set(k, h); order.push(h); next.push(h); if (seen.size >= breadth) break; }
+          if (!seen.has(k)) { seen.set(k, h); order.push(h); next.push(h); src(h, 'bfs'); if (seen.size >= breadth) break; }
         }
       }
       frontier = next;
@@ -841,9 +860,10 @@ export async function discoverInventory({ entry, origin, entryPath = null, max =
   const seen = new Set(); const all = [];
   for (const u of [entry, ...union]) { const k = dedupeKey(u); if (!seen.has(k)) { seen.add(k); all.push(u); } }
   const kept = all.slice(0, max); const cut = all.slice(kept.length).map((url) => ({ url, reason: 'cap' }));
+  const urls = kept.map((url) => ({ url, source: srcOf.get(dedupeKey(url)) || 'entry' }));
   const discovery = {
     source, sourceUrl, subtree: scopePath, census, navOnly: navOnly.length, probes, fetches, candidates, malformed: malformed.slice(0, 50),
-    kept, cut: cut.slice(0, 2000), ...(cut.length > 2000 ? { cutTruncated: cut.length } : {}), ...(bfs ? { bfs } : {}), ...(robots.crawlDelay ? { crawlDelay: robots.crawlDelay } : {}),
+    kept, urls, cut: cut.slice(0, 2000), ...(cut.length > 2000 ? { cutTruncated: cut.length } : {}), ...(bfs ? { bfs } : {}), ...(hreflang ? { hreflang } : {}), ...(robots.crawlDelay ? { crawlDelay: robots.crawlDelay } : {}),
   };
   return { urls: kept, discovery };
 }
@@ -871,7 +891,7 @@ async function discover(args, page) {
     if (urls.length > args.max) {
       console.error(`[crawl] WARN --pages lists ${urls.length} page(s), exceeding --cap ${args.capLabel} — crawling all of them (explicitly listed pages are never dropped)`);
     }
-    return { urls, discovery: { source: '--pages', subtree: null, kept: urls, cut: [] } };
+    return { urls, discovery: { source: '--pages', subtree: null, kept: urls, urls: urls.map((url) => ({ url, source: '--pages' })), cut: [] } };
   }
   // every discovery fetch rides the probe page: browser UA, admitted cookies, one
   // origin — and takes a budget token unless it is one of the ≤ 5 guessed probes
@@ -882,7 +902,8 @@ async function discover(args, page) {
   } };
   const navLinks = await page.evaluate((origin) => [...document.querySelectorAll('a[href]')]
     .map((a) => a.href).filter((h) => h.startsWith(origin)), args.origin);
-  return discoverInventory({ entry, origin: args.origin, entryPath: args.entryPath, max: args.max, botBlock: args.botBlock, depth: args.depth, navLinks }, io);
+  const alternates = await page.evaluate(() => [...document.querySelectorAll('link[rel="alternate"][hreflang]')].map((l) => l.href).filter(Boolean)).catch(() => []);
+  return discoverInventory({ entry, origin: args.origin, entryPath: args.entryPath, max: args.max, botBlock: args.botBlock, depth: args.depth, navLinks, alternates }, io);
 }
 
 // Consent containers whose presence after the dismissal pass means `failed`
@@ -1273,6 +1294,9 @@ export function faviconLines(favicon, faviconSet) {
 export function attachAssetRecorder(page, store, { maxBytes = ASSET_MAX_BYTES, slug = null } = {}) {
   const pendingBodies = [];
   const tag = (entry) => { if (slug) (entry.pages ??= new Set()).add(slug); return entry; };
+  // every write keeps the pages already recorded for the URL — a racing page tagged the placeholder while
+  // the body was in flight, an earlier page tagged the 4xx entry — so no branch drops an attribution
+  const put = (url, entry) => { const cur = store.get(url); if (cur?.pages) for (const pg of cur.pages) (entry.pages ??= new Set()).add(pg); store.set(url, tag(entry)); return entry; };
   page.on('response', (resp) => {
     const url = resp.url();
     if (/^(data|blob):/i.test(url)) return;
@@ -1282,15 +1306,22 @@ export function attachAssetRecorder(page, store, { maxBytes = ASSET_MAX_BYTES, s
     if (!kind) return;
     const status = resp.status();
     const prev = store.get(url);
-    if (prev) tag(prev); // this page requested it too
-    if (prev && prev.bytes) return; // captured once per run
+    if (prev) {
+      tag(prev); // this page requested it too
+      if (prev.bytes) return; // captured once per run
+      if (prev.pending) { if (prev.settled) pendingBodies.push(prev.settled); return; } // in flight on another page: attributed, awaited, not re-buffered
+    }
     if (status >= 300 && status < 400) return; // the redirect target arrives as its own response
-    if (status >= 400) { store.set(url, tag({ kind, status, contentType: ct, bytes: null, error: `HTTP ${status}`, source: 'render' })); return; }
+    if (status >= 400) { put(url, { kind, status, contentType: ct, bytes: null, error: `HTTP ${status}`, source: 'render' }); return; }
+    // placeholder written at once (not when the body settles): concurrent pages whose first response for the
+    // same font is in flight tag THIS entry instead of each seeing an empty store
+    const placeholder = put(url, { kind, status, contentType: ct, bytes: null, pending: true, source: 'render' });
     const p = resp.body().then((buf) => {
       if (store.get(url)?.bytes) return;
-      if (buf.length > maxBytes) { store.set(url, tag({ kind, status, contentType: ct, bytes: null, error: `body ${buf.length} B > --assets-max-bytes`, source: 'render' })); return; }
-      store.set(url, tag({ kind, status, contentType: ct, bytes: buf, source: 'render' }));
-    }).catch((e) => { if (!store.has(url)) store.set(url, tag({ kind, status, contentType: ct, bytes: null, error: `body unavailable: ${String(e.message || e).slice(0, 60)}`, source: 'render' })); });
+      if (buf.length > maxBytes) { put(url, { kind, status, contentType: ct, bytes: null, error: `body ${buf.length} B > --assets-max-bytes`, source: 'render' }); return; }
+      put(url, { kind, status, contentType: ct, bytes: buf, source: 'render' });
+    }).catch((e) => { if (!store.get(url)?.bytes) put(url, { kind, status, contentType: ct, bytes: null, error: `body unavailable: ${String(e.message || e).slice(0, 60)}`, source: 'render' }); });
+    placeholder.settled = p;
     pendingBodies.push(p);
   });
   return { settle: () => Promise.allSettled(pendingBodies) };
@@ -2009,6 +2040,8 @@ function capture() {
     dark: themeMetas.find((m) => /dark/.test(m.media || ''))?.content || null,
   };
   const language = document.documentElement.lang || meta('content-language') || meta('og:locale') || null;
+  // locale twins this page declares (ia-extraction.md § Multi-locale — listed and typed, never crawled here)
+  const alternates = [...document.querySelectorAll('link[rel="alternate"][hreflang]')].map((l) => ({ hreflang: l.getAttribute('hreflang'), href: l.href })).filter((a) => a.href).slice(0, 60);
 
   // custom props — discovery-vs-value split:
   //   * the stylesheet walk DISCOVERS property NAMES declared on :root/html-ish
@@ -2247,6 +2280,7 @@ function capture() {
     og: { title: meta('og:title'), description: meta('og:description'), image: meta('og:image'), type: meta('og:type'), siteName: meta('og:site_name') },
     themeColor,
     language,
+    alternates,
     headings,
     landmarks,
     body,
@@ -2303,6 +2337,34 @@ function capture() {
     _compatMode: document.compatMode, // 'CSS1Compat' | 'BackCompat' (quirks) → _provenance.compatMode
     _contentHash: contentHash,
   };
+}
+
+// Hidden-live stamp — read by skills/migrate/scripts/importer-skeleton.mjs (importer-recipe.md § Skeleton
+// contract): after settle, the TOPMOST nodes a visitor cannot see (computed display:none / visibility:hidden)
+// carry data-hidden-live="<reason>" and <html> + <body> carry data-hidden-live-stamp="<ISO ts>" (the sidecar's
+// getHTML() serialises the document's content, so <body> is the marker the importer finds), so the sidecar tells
+// hidden-at-settle content from content; an unstamped capture makes the importer skip nothing. <details> is
+// never stamped (a closed panel is authored content, kept as a row). Annotation only — no record field reads
+// it. `doc`/`win` are parameters so the fixture test runs it over a fake DOM; in-page: (fn)(document, window).
+export function stampHiddenLive(doc, win, at) {
+  const SKIP = /^(SCRIPT|STYLE|TEMPLATE|NOSCRIPT|HEAD|META|LINK|TITLE|BR|WBR|DETAILS)$/;
+  const root = doc.body || doc.documentElement;
+  if (!root || !doc.documentElement) return 0;
+  let n = 0;
+  const walk = (el) => {
+    for (const child of el.children) {
+      if (SKIP.test(child.tagName)) continue;
+      const cs = win.getComputedStyle(child);
+      const reason = cs.display === 'none' ? 'display:none' : cs.visibility === 'hidden' ? 'visibility:hidden' : null;
+      if (reason) { child.setAttribute('data-hidden-live', reason); n += 1; continue; } // topmost only — descendants inherit
+      walk(child);
+    }
+  };
+  walk(root);
+  const stamp = at || new Date().toISOString();
+  doc.documentElement.setAttribute('data-hidden-live-stamp', stamp);
+  if (doc.body) doc.body.setAttribute('data-hidden-live-stamp', stamp);
+  return n;
 }
 
 // Rendered-DOM sidecar with open shadow roots serialised (declarative
@@ -2490,8 +2552,10 @@ async function capturePage(context, url, slug, args, isEntry = false) {
       },
     };
   }
-  // rendered DOM sidecar — the settled document as the instrument saw it
-  // (written by the caller as pages/<slug>.html; parse offline, never re-scrape).
+  // hidden-live stamp on the settled document (stampHiddenLive above), then the rendered DOM sidecar —
+  // the settled document as the instrument saw it (written by the caller as pages/<slug>.html; parse
+  // offline, never re-scrape). The stamp count is a signal, never a gate.
+  rec._signals.hiddenLiveStamped = await page.evaluate(`(${stampHiddenLive})(document, window)`).catch(() => null);
   rec._renderedHtml = await page.evaluate(serializeDom).catch(() => null) || await page.content();
   // soft-404: empty page (no text, no headings, no media, no forms)
   if (!rec.headings.length && rec._signals.mainTextLen === 0 && rec._signals.realImageCount === 0) {
@@ -2560,9 +2624,9 @@ async function capturePage(context, url, slug, args, isEntry = false) {
 
 // playwright through the resolution chain (skills/stardust/scripts/lib/resolve.mjs; runtime-preflight.md
 // § Resolution chain) when the helper sits beside this script — the plugin tree, or a project copy made
-// as a set (stardust/scripts/stardust/lib/) — else the bare import a lone copy resolved before.
+// as a set (STARDUST_SET_DIRS, flat or nested) — else the bare import a lone copy resolved before.
 export async function loadPlaywright() {
-  for (const c of ['../../stardust/scripts/lib/resolve.mjs', './stardust/lib/resolve.mjs']) {
+  for (const c of STARDUST_SET_DIRS.map((d) => `${d}lib/resolve.mjs`)) {
     let chain = null;
     try { chain = await import(new URL(c, import.meta.url)); } catch (e) { if (e.code !== 'ERR_MODULE_NOT_FOUND') throw e; }
     if (chain) return chain.resolveDep('playwright', { from: import.meta.url }); // a miss at every link throws the one preflight line (exit 2)

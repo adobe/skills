@@ -13,6 +13,12 @@ should change → the pending entry is harvested into a skill diff.
   at the end of every delivery run.
 - **Any stardust skill may append** when it hits a failure class its
   SKILL.md didn't anticipate.
+- **A residual `flaggedFor: delivery` or a named deviation** (`direction.md`)
+  that outlives its gate is a `pending` entry — `evidence` is the residual
+  row. A wave that recorded none writes one line instead:
+  `- none this run (<ts>): no new failure classes; residuals: <n> (all classed), deviations: <n>`
+  — `rollout/scripts/close-check.mjs` row 4 accepts it only while no
+  residual or deviation is newer than the wave start.
 - **Plugin maintainers harvest**
   `pending` entries into skill diffs; landing the diff flips the
   entry's status to `folded`.

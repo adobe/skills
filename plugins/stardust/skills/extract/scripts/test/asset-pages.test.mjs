@@ -29,6 +29,34 @@ store.set('https://x/f3.woff2', { kind: 'font', bytes: Buffer.from('y'), source:
 assert.ok(fontUrlsFor(store, 'a').includes('https://x/f3.woff2'), 'untagged entries keep the run-wide attribution');
 assert.equal(store.get('https://x/f1.woff2').bytes.length, 1, 'captured once per run');
 
+// concurrent pages (--concurrency > 1): both first responses for the same font are in flight — the entry is a
+// placeholder from the first sighting, so the racer tags it; the body lands once; the loser's settle waits for it.
+// Before the fix the entry was written only when resp.body() resolved, so both racers saw an empty store, the
+// first body stored an entry tagged with ITS slug only and the second returned untagged (fonts under-attributed).
+const deferred = () => { let res; const promise = new Promise((r) => { res = r; }); return { promise, res }; };
+const slow = (url, d) => ({ ...resp(url, 'font'), body: () => d.promise });
+const c = fakePage(); const recC = attachAssetRecorder(c, store, { slug: 'c' });
+const d = fakePage(); const recD = attachAssetRecorder(d, store, { slug: 'd' });
+const bodyC = deferred(); const bodyD = deferred();
+c.emit('response', slow('https://x/shared.woff2', bodyC));
+d.emit('response', slow('https://x/shared.woff2', bodyD)); // in flight on c → tagged, not re-buffered
+assert.equal(store.get('https://x/shared.woff2').pending, true, 'placeholder written before the body settles');
+assert.deepEqual([...store.get('https://x/shared.woff2').pages].sort(), ['c', 'd'], 'the racer tags the placeholder');
+let dSettled = false; const dWait = recD.settle().then(() => { dSettled = true; });
+await new Promise((r) => { setTimeout(r, 5); });
+assert.equal(dSettled, false, 'page d\'s settle waits for the body in flight on page c');
+bodyC.res(Buffer.from('xy')); bodyD.res(Buffer.from('zz'));
+await recC.settle(); await dWait;
+const shared = store.get('https://x/shared.woff2');
+assert.equal(shared.bytes.toString(), 'xy', 'one body stored (the first to settle)'); assert.equal(shared.pending, undefined);
+assert.deepEqual([...shared.pages].sort(), ['c', 'd'], 'both racing pages stay attributed after the body lands');
+assert.ok(fontUrlsFor(store, 'd').includes('https://x/shared.woff2') && fontUrlsFor(store, 'c').includes('https://x/shared.woff2'));
+// the 4xx branch keeps the pages an earlier page recorded (before the fix it built a fresh object and dropped them)
+const r404 = (url) => ({ ...resp(url, 'font'), status: () => 404 });
+c.emit('response', r404('https://x/missing.woff2')); d.emit('response', r404('https://x/missing.woff2'));
+assert.deepEqual([...store.get('https://x/missing.woff2').pages].sort(), ['c', 'd'], '4xx entries merge pages across pages');
+assert.equal(store.get('https://x/missing.woff2').error, 'HTTP 404');
+
 const fav = { file: 'stardust/current/assets/favicon.ico', url: 'https://x/favicon.ico' };
 const set = { icons: [{ file: 'a.png' }, { file: null }], largestRaster: '180x180' };
 assert.deepEqual(faviconLines(fav, null), ['[crawl] favicon captured: stardust/current/assets/favicon.ico (https://x/favicon.ico)'], 'favicon captured + set skipped (--no-assets) → no WARN');
@@ -36,4 +64,4 @@ assert.equal(faviconLines(null, set).filter((l) => l.startsWith('[crawl] WARN'))
 assert.match(faviconLines(null, set)[0], /favicon set: 1 icon\(s\) .* \(largest raster 180x180\)/);
 const none = faviconLines(null, null); assert.equal(none.length, 1, 'neither → one line'); assert.ok(none[0].startsWith('[crawl] WARN no favicon captured'), 'neither → the WARN');
 assert.equal(faviconLines(fav, set).length, 2, 'both → two lines');
-console.log('asset-pages test: ok (fonts attributed to the requesting pages, untagged entries run-wide, favicon lines never warn on a captured icon)');
+console.log('asset-pages test: ok (fonts attributed to the requesting pages, concurrent first sightings tag one placeholder, 4xx merges pages, untagged entries run-wide, favicon lines never warn on a captured icon)');

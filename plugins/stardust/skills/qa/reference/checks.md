@@ -187,7 +187,7 @@ from the served HTML, per block. Formula, cause classes and fixes: `deploy/refer
 | `ai-readability-low` | warn | strict < 95 or code < 98 — block code adds words the document does not have |
 | `ai-readability-undecided-exclusion` | warn | an excluded block removed words with no complete allowlist decision entry (`exclude`, `reason`, `fallback`, `decision`) — `deploy/reference/ai-readability.md` § 6 |
 | `ai-readability-served-gap` | info | ≥ 40 rendered main words never served — non-rendering crawlers miss them (fragment / index / generated text); evidence names the blocks |
-| `ai-readability-unmeasured` | info | page could not be fetched or rendered for the check (an error, not a throttle) |
+| `ai-readability-unmeasured` | info | page could not be fetched or rendered for the check (an error, not a throttle) — infrastructure state, never a pass: rollout Phase E/H count it as `unmeasured` and refuse the close while any remain |
 | `unmeasured` | info | served fetch or render 429/503 after the paced retries through the per-host limiter — not scored, counted in `report.infra` (§ Cross-cutting) |
 
 ## Cross-cutting

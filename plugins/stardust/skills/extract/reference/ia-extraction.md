@@ -486,9 +486,13 @@ pages or refresh existing ones.
 
 Sites with language trees (`/en/`, `/de/`, twins on another host): the default
 locale is extracted first; the other trees are **discovered, typed and listed, not
-crawled** in this pass. Discovery = `link[rel=alternate][hreflang]` on captured
-pages ∪ every host sitemap ∪ a one-level BFS from each locale root, with the
-`source` recorded per URL; 301 twins are excluded. Typing = the twin's page type
+crawled** in this pass. Discovery = `link[rel=alternate][hreflang]` on the probe
+page (`crawl.mjs discover()`; every page record carries `alternates[]`) ∪ every
+host sitemap ∪ a one-level BFS from each locale root, with the `source` recorded
+per URL (`_crawl-log.json#discovery.urls[].source`: `sitemap:<path>` · `nav` ·
+`hreflang` · `bfs` · `entry`; `#discovery.hreflang` counts declared and same-origin
+twins and lists off-origin ones — listed, never probed); 301 twins are excluded
+when typed. Typing = the twin's page type
 first, the classifier as a check, disagreements listed. The list feeds
 `stardust/trees.json` (`rollout/reference/multilingual.md` § Manifest
 precondition) — the D3 wave runs per tree on the same block library; the crawl

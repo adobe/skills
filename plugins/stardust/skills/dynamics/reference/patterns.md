@@ -182,6 +182,9 @@ time-of-day greeting) is M `chrome only`. Evidence is motion observation (replic
 block is written from (`../../replica/reference/chrome-states.md` § The matrix). Clock-dependent
 strings are behaviour: reproduce the function with thresholds read from the live JS, never the
 captured string.
+**Verify.** One `click-control` check per control (`parity-report.md` § check types): the toggle
+flips `aria-expanded`, the carousel chevron moves `scrollLeft`, the search icon makes
+`visible:<sel>` true — a control that changes nothing on click is the defect, not a style note.
 
 ## client-rendered-page
 

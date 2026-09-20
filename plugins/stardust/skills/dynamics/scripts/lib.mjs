@@ -51,6 +51,60 @@ export async function loadPlaywright() {
   throw new Error('playwright not importable — run node skills/stardust/scripts/preflight-runtime.mjs (master § Setup step 10); the dynamics instruments need a browser.');
 }
 
+/* ---------------------------------------------------------- controls ---- */
+/**
+ * ONE helper for "click a control, assert an observable changed": dynamics-check `click-control` and
+ * deploy's qa-gate control pass call it from the plugin tree; replica's motion-assert (runs from a project
+ * copy) inlines the same observable set. A check, never an auto-fix (B13). Observables:
+ *   scrollLeft      nearest horizontally scrollable ancestor's scrollLeft, else the block track's transform
+ *   aria-expanded · aria-selected   the trigger's own attribute
+ *   hidden · open   the controlled panel (aria-controls → id, else the enclosing <details>, else the next sibling)
+ *   class           the enclosing block's className (or the trigger's)
+ *   visible:<sel>   whether <sel> is rendered (display/visibility/box)
+ * A disabled / aria-disabled / zero-box / absent trigger is SKIPPED with the reason (readObservable), never
+ * clicked — the caller decides whether a skip is a FAIL (dynamics-check: yes, the row named a flow to prove).
+ */
+export const CONTROL_OBSERVABLES = ['scrollLeft', 'aria-expanded', 'aria-selected', 'hidden', 'open', 'class', 'visible:<sel>'];
+/** In-page reader (serialised into the page by page.evaluate — no closure): { skipped } | { value }. */
+export function readObservable({ trigger, observe }) {
+  const el = document.querySelector(trigger);
+  if (!el) return { skipped: 'trigger not found' };
+  if (el.disabled || el.getAttribute('aria-disabled') === 'true') return { skipped: 'disabled' };
+  const box = el.getBoundingClientRect();
+  if (!(box.width > 0 && box.height > 0)) return { skipped: 'zero-box' };
+  const [kind, sel] = String(observe || 'aria-expanded').split(':');
+  const block = el.closest('[data-block-name]') || el.closest('section') || document.body;
+  if (kind === 'visible') { const t = sel && document.querySelector(sel); if (!t) return { value: 'absent' }; const cs = getComputedStyle(t); const b = t.getBoundingClientRect(); return { value: cs.display !== 'none' && cs.visibility !== 'hidden' && b.width > 0 && b.height > 0 ? 'visible' : 'hidden' }; }
+  if (kind === 'scrollLeft') {
+    for (let n = el; n && n !== document.body; n = n.parentElement) { const cs = getComputedStyle(n); if (/(auto|scroll)/.test(cs.overflowX) && n.scrollWidth > n.clientWidth) return { value: String(Math.round(n.scrollLeft)) }; }
+    const track = block.querySelector('[class*="track" i], [class*="slides" i], ul, [style*="transform"]');
+    return { value: track ? getComputedStyle(track).transform : String(Math.round(block.scrollLeft)) };
+  }
+  if (kind === 'class') return { value: String(block === document.body ? el.className : block.className) };
+  if (kind === 'hidden' || kind === 'open') {
+    const id = el.getAttribute('aria-controls'); const t = (id && document.getElementById(id)) || el.closest('details') || el.nextElementSibling || el;
+    return { value: String(kind === 'open' ? (t.open ?? t.hasAttribute('open')) : (t.hidden || getComputedStyle(t).display === 'none')) };
+  }
+  return { value: String(el.getAttribute(kind)) }; // aria-expanded / aria-selected / any attribute
+}
+/** Pure verdict of one drive from its two readings: { pass: true|false|null, skipped?, detail }. */
+export function observableChanged(before, after, { observe = 'aria-expanded', expect } = {}) {
+  if (before && before.skipped) return { pass: null, skipped: before.skipped, detail: `SKIP ${observe}: ${before.skipped}` };
+  const b = before ? before.value : undefined; const a = after ? (after.skipped ? `(${after.skipped})` : after.value) : undefined;
+  if (expect !== undefined) { const ok = String(a) === String(expect); return { pass: ok, detail: `${observe}: ${b} → ${a}${ok ? '' : ` (expected ${expect})`}` }; }
+  const changed = String(a) !== String(b);
+  return { pass: changed, detail: changed ? `${observe}: ${b} → ${a}` : `${observe} unchanged (${b}) — no observable changed` };
+}
+/** Read, click once, wait ≤ settleMs, read again. Skipped controls are never clicked. */
+export async function driveControl(page, trigger, { observe = 'aria-expanded', expect, settleMs = 600 } = {}) {
+  const before = await page.evaluate(readObservable, { trigger, observe });
+  if (before && before.skipped) return observableChanged(before, before, { observe, expect });
+  await page.click(trigger, { timeout: 8000 });
+  await new Promise((r) => { setTimeout(r, settleMs); });
+  const after = await page.evaluate(readObservable, { trigger, observe });
+  return observableChanged(before, after, { observe, expect });
+}
+
 /* -------------------------------------------------------------- auth ---- */
 /**
  * Resolve the site auth header from `--auth-header "<scheme> <secret>"` or

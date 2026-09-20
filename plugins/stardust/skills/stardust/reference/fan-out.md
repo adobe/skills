@@ -119,7 +119,8 @@ write root, master § Artifacts), `STARDUST_BROWSER_SLOTS` slots (default
   source-side limit; deploy's local harness probes take no slot and are
   listed by the census. In a project copy the lock module must be copied
   with the scripts as a set (`harness-permissions.md` § Two classes);
-  a copy without it runs unlocked, `qa` says so with one WARN line.
+  a copy without it runs unlocked; `qa` and both `launchTier` files say
+  so with one WARN line naming the paths tried.
 - **A slot wait is a progress-file wait.** The holder prints one line
   every 30 s and appends `waiting-slot` to `$STARDUST_PROGRESS_LOG`
   (§ Progress files); after `STARDUST_BROWSER_WAIT` (600 s) it exits

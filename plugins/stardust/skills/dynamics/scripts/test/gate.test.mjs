@@ -58,6 +58,10 @@ eq('L done static-snapshot, missing → clear', gateWith({ feature: 'rail', clas
 const [indexLine] = gate({ features: [listing] }, { indexStatus: { registered: 'denied' } });
 eq('index line names row, denied and the remedy', /^news listing \(L\): status "done", index-backed with index-status\.json registered: denied — run node skills\/rollout\/scripts\/query-index\.mjs .*exit 0/.test(indexLine), true);
 
+// a click-control row is a replay check (exit 1 on failure like any type), never a rule-8 close-out condition
+eq('M done with click-control only → clear (not extended to gate)', blocks({ feature: 'menu', class: 'M', reproducibility: 'self', status: 'done', checks: [{ type: 'click-control', path: '/', trigger: 'button.menu', observe: 'aria-expanded' }] }), 0);
+eq('S done with click-control but no search-query → still blocks (click-control satisfies no other condition)', blocks({ feature: 'search', class: 'S', status: 'done', checks: [{ type: 'click-control', path: '/', trigger: '.search-toggle', observe: 'visible:.search-box' }] }), 1);
+
 // the gate line names the row and the remedy
 const [line] = gate({ features: [{ feature: 'contact modal', class: 'M', reproducibility: 'self', status: 'pending modal' }] });
 eq('gate line names feature, class, status and remedy', /^contact modal \(M\): reproducibility self, status "pending modal" — implement it .*named owner decision$/.test(line), true);
