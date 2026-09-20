@@ -303,7 +303,7 @@ Aggregation rules:
       "unicodeRange": "U+0000-00FF",
       "localPath": "stardust/current/assets/fonts/sohne-buch.woff2",
       "sourceCssRule": "@font-face { font-family: 'Söhne'; src: url('/fonts/sohne-buch.woff2') format('woff2'); ... }",
-      "licensingFlag": "private"     // null | "private" | "open"
+      "licensingFlag": "verify"      // "open-license" | "verify" | "unknown" (crawl.mjs licensingFlagFor)
     }
   ]
 }
@@ -311,12 +311,14 @@ Aggregation rules:
 
 `files[]` is required when at least one captured page references
 a `@font-face` rule. Empty array when the site uses only
-system-stack fallbacks. `licensingFlag` defaults to `null`; set
-to `"private"` when the family name does not appear in the
-known-open-licence list (Google Fonts, Adobe Fonts free tier,
-fontsource.org); `"open"` when it does. The flag is heuristic —
-a `"private"` flag means *"verify before redeploying with
-prototype output"*, not *"this font is non-free."*
+system-stack fallbacks. `licensingFlag` is the manifest's value
+(`assets/_fonts-manifest.json`, written by `crawl.mjs`
+`licensingFlagFor()`): `"open-license"` when the family name is in
+the open-licence prefix list (Google Fonts / fontsource catalogue),
+`"verify"` otherwise, `"unknown"` without a family. `brand-surface.mjs`
+imports the same function for `--lift` faces — one vocabulary, never a
+second list. The flag is heuristic — `"verify"` means *"check usage
+rights before redeploying with prototype output"*, not *"non-free"*.
 
 Identify heading vs body by which family appears in the heading
 outline (`pages/<slug>.json` § Headings) most often. If only one

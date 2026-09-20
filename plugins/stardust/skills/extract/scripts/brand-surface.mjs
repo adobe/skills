@@ -29,6 +29,8 @@
  *         script, readArtifacts, synthesizedInputs: [], mode, notes[]) and, when the
  *         logo chain lands on an inline SVG, <out>/assets/logo.svg.
  *
+ * type.files[].licensingFlag: the manifest's value, else crawl.mjs licensingFlagFor()
+ * (open-license | verify | unknown) — one vocabulary, one family list (B28).
  * Rules implemented (brand-surface.md): palette area-weighted from perSectionStyle /
  * headings[].style / ctas[].style, non-colours dropped, ΔE < 5 (CIE76) clustering,
  * role naming, usedAs, cap 8; third-party chrome EXCLUDED — a CTA whose label is in
@@ -56,7 +58,7 @@ import { existsSync, readFileSync, readdirSync, statSync, writeFileSync, mkdirSy
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { pathToFileURL } from 'node:url';
-import { CONSENT_LABELS, validateProvenance } from './crawl.mjs';
+import { CONSENT_LABELS, validateProvenance, licensingFlagFor } from './crawl.mjs';
 
 const HELP = `brand-surface — offline Phase 3 aggregation of pages/*.json into _brand-extraction.json
 Usage: node brand-surface.mjs [--out stardust/current] [--home index] [--bounded] [--lift <dir>] [--dry-run]
@@ -253,7 +255,6 @@ export function resolveLogo(home, html, log, outDir) {
 
 // ---- aggregation ------------------------------------------------------------
 const CTA_LIST = new Set(['donate', 'donate now', 'give', 'give now', 'support us', 'contribute', 'read more', 'learn more', 'more info', 'see more', 'view more', 'view', 'more', 'discover more', 'explore', 'overview', 'sign up', 'signup', 'subscribe', 'register', 'join', 'create account', 'contact', 'contact us', 'get in touch', 'talk to us', 'reach out', 'say hello', 'get help', 'get involved', 'find help', 'volunteer', 'share', 'download', 'submit', 'here', 'click here', 'read this', 'this']);
-const OPEN_FONTS = /^(inter|roboto|open sans|lato|montserrat|poppins|source sans|source serif|noto|nunito|raleway|work sans|playfair|merriweather|dm sans|manrope|ibm plex|fira|space grotesk|rubik|oswald|pt sans|pt serif|libre|karla|mulish|jost|outfit|figtree|lora|barlow|cabin|ubuntu|arimo|tinos|cousine|public sans|atkinson)/i;
 const areaOf = (r) => (r && r.width > 0 && r.height > 0 ? Math.max(1, Math.round((r.width * r.height) / 10000)) : null);
 
 /**
@@ -306,7 +307,7 @@ export function buildBrandSurface(pages, sidecars, opts) {
   const audit = scaleAudit(levels.map((l) => l.px));
   const fonts = opts.fonts || null; const liftFaces = (opts.lift && opts.lift.fontFaces) || [];
   if (!fonts) notes.push(`assets/_fonts-manifest.json absent — type.files = []${liftFaces.length ? ` (${liftFaces.length} @font-face from --lift listed instead)` : ''}`);
-  const files = ((fonts && fonts.fonts) || liftFaces).map((f) => ({ url: f.url || null, family: f.family || null, weight: f.weight ?? null, style: f.style || 'normal', unicodeRange: f.unicodeRange || null, localPath: f.localPath || null, sourceCssRule: f.sourceCssRule || null, licensingFlag: f.licensingFlag ?? (f.family ? (OPEN_FONTS.test(f.family) ? 'open' : 'private') : null), ...(f.mime ? { mime: f.mime } : {}), ...(f.bytes ? { bytes: f.bytes } : {}) }));
+  const files = ((fonts && fonts.fonts) || liftFaces).map((f) => ({ url: f.url || null, family: f.family || null, weight: f.weight ?? null, style: f.style || 'normal', unicodeRange: f.unicodeRange || null, localPath: f.localPath || null, sourceCssRule: f.sourceCssRule || null, licensingFlag: f.licensingFlag ?? licensingFlagFor(f.family), ...(f.mime ? { mime: f.mime } : {}), ...(f.bytes ? { bytes: f.bytes } : {}) }));
   const display = files.map((f) => (String(f.sourceCssRule || '').match(/font-display\s*:\s*(swap|block|fallback|optional|auto)/i) || [])[1]).find(Boolean) || null;
   const bodyStyles = pages.flatMap((p) => cta(p).map((c) => c.style || {}));
   const type = {

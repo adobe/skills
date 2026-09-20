@@ -66,7 +66,7 @@ assert.ok(b._provenance.notes.some((n) => /third-party chrome: 3 CTA/.test(n)), 
 assert.equal(b.type.headingFamily.name, 'Example Sans'); assert.equal(b.type.bodyFamily.name, 'Example Text');
 assert.deepEqual(b.type.headingFamily.sizes, ['48px', '38.4px', '30.72px']);
 assert.equal(b.type.scaleAudit.kind, 'modular'); assert.equal(b.type.scaleAudit.matchedScale, 'major-third'); assert.equal(b.type.scaleRatio, 1.25);
-assert.equal(b.type.files.length, 2, 'type.files from the fonts manifest'); assert.equal(b.type.loadStrategy, 'swap'); assert.equal(b.iconFont, null);
+assert.equal(b.type.files.length, 2, 'type.files from the fonts manifest'); assert.deepEqual(b.type.files.map((f) => f.licensingFlag), ['verify', 'verify'], 'D6: manifest flag kept; a row without one gets crawl.mjs licensingFlagFor (verify), never private/open'); assert.equal(b.type.loadStrategy, 'swap'); assert.equal(b.iconFont, null);
 // motifs from stats.motifs (element-weighted: 8px = 20 + 30 + 10)
 assert.equal(b.motifs.borderRadius.primary, '8px'); assert.equal(b.motifs.borderRadius.occurrences['8px'], 60); assert.equal(b.motifs.borderRadius.pill, '9999px');
 assert.ok(!('0px' in b.motifs.borderRadius.occurrences), 'zero radius excluded');
@@ -121,6 +121,20 @@ assert.match(readFileSync(join(out4, 'assets', 'logo.svg'), 'utf8'), /^<svg view
 assert.deepEqual(a.systemComponents, []); assert.ok(a._provenance.notes.some((n) => /requires ≥ 3 pages/.test(n)));
 assert.equal(a.motifs.borderRadius.primary, '3px'); assert.equal(a.motifs.gradients.length, 1);
 assert.equal(a.spacing.baseUnit, null, '70/50 px paddings → no 4/8 rhythm'); assert.deepEqual(a.spacing.scale, []);
+
+// ---- --lift <dir> on the ad-hoc set (no fonts manifest → the lift's @font-face entries fill type.files)
+//   D5: readArtifacts / type.files order is sorted, never the filesystem's · D6: licensingFlag uses crawl.mjs
+//   licensingFlagFor (open-license | verify | unknown), never a second vocabulary
+const lift = mkdtempSync(join(tmpdir(), 'brand-surface-lift-')); mkdirSync(join(lift, 'sub'));
+writeFileSync(join(lift, 'z-fonts.json'), JSON.stringify({ fontFaces: [{ family: 'Example Sans', weight: 700, url: 'https://example.com/fonts/es-700.woff2' }] }));
+writeFileSync(join(lift, 'sub', 'y.css'), 'body{}');
+writeFileSync(join(lift, 'a-fonts.json'), JSON.stringify({ fonts: [{ family: 'Inter', weight: 400, url: 'https://example.com/fonts/inter-400.woff2' }] }));
+const out7 = fresh('ad-hoc'); const r7 = run(['--out', out7, '--lift', lift]); assert.equal(r7.code, 0, r7.out);
+const l = readJson(join(out7, '_brand-extraction.json'));
+assert.deepEqual(l._provenance.readArtifacts.filter((f) => f.startsWith(lift)), [join(lift, 'a-fonts.json'), join(lift, 'sub', 'y.css'), join(lift, 'z-fonts.json')], 'D5: lift files listed in sorted walk order');
+assert.deepEqual(l.type.files.map((f) => f.family), ['Inter', 'Example Sans'], 'D5: type.files follows the sorted file order');
+assert.deepEqual(l.type.files.map((f) => f.licensingFlag), ['open-license', 'verify'], 'D6: crawl.mjs licensingFlagFor vocabulary for lift faces');
+assert.ok(l._provenance.notes.some((n) => /2 @font-face from --lift/.test(n)));
 
 // ---- exits: dry-run writes nothing · no live record → 1 · usage → 2 · --help → 0
 const out5 = fresh('ad-hoc'); const r5 = run(['--out', out5, '--dry-run']); assert.equal(r5.code, 0); assert.ok(!existsSync(join(out5, '_brand-extraction.json')), 'dry-run writes nothing'); assert.match(r5.out, /"mode": "bounded"/);

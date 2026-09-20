@@ -13,7 +13,7 @@
       "unicodeRange": null,
       "localPath": "stardust/current/assets/fonts/example-sans-700.woff2",
       "sourceCssRule": "@font-face { font-family: 'Example Sans'; font-weight: 700; font-display: swap; src: url('/fonts/example-sans-700.woff2') format('woff2'); }",
-      "licensingFlag": "private",
+      "licensingFlag": "verify",
       "mime": "font/woff2",
       "bytes": 41200
     },
@@ -25,7 +25,6 @@
       "unicodeRange": null,
       "localPath": "stardust/current/assets/fonts/example-text-400.woff2",
       "sourceCssRule": "@font-face { font-family: 'Example Text'; font-weight: 400; font-display: swap; src: url('/fonts/example-text-400.woff2') format('woff2'); }",
-      "licensingFlag": "private",
       "mime": "font/woff2",
       "bytes": 38800
     }
