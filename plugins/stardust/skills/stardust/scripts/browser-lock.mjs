@@ -22,21 +22,25 @@
  * Usage:
  *   node skills/stardust/scripts/browser-lock.mjs acquire [--pid <n>] [--script <name>] [--project <root>] [--wait <s>] [--no-lock]
  *   node skills/stardust/scripts/browser-lock.mjs release [--pid <n>] | --all [--stale]
+ *   node skills/stardust/scripts/browser-lock.mjs refresh [--pid <n>]     (touch this holder's slot — a shell round longer than the TTL calls it per step)
  *   node skills/stardust/scripts/browser-lock.mjs status  [--json]         (the census: holders + orphan browsers)
  *   node skills/stardust/scripts/browser-lock.mjs reap    [--min <minutes>] (kill parentless chrome-headless-shell/chromium older than --min, default 15)
  *   common: [--lock-dir <dir>] [--slots <n>]
  *
  * `--pid` defaults to the parent process (the shell or driver that will own the
- * browser); an in-process holder passes its own. Env: STARDUST_BROWSER_SLOTS
+ * browser); an in-process holder passes its own. An API holder keeps its slot
+ * fresh itself (an unref'd timer touches the file every TTL/3); a shell holder
+ * calls `refresh` between steps or re-runs `acquire`. Env: STARDUST_BROWSER_SLOTS
  * (0 = disabled: acquire exits 0 and touches nothing), STARDUST_BROWSER_TTL_MIN,
  * STARDUST_BROWSER_WAIT, STARDUST_BROWSER_LOCK_DIR, STARDUST_PROGRESS_LOG. Owner
  * settings per machine — never written to state.json.
  *
  * API (in-process holders, e.g. live-session before launchTier):
  *   import { acquire, release, status, reap } from '…/stardust/scripts/browser-lock.mjs';
- *   const slot = await acquire({ script: 'stitch-shot' });   // { file, release() } | null (disabled) ; throws { code: 124 } on timeout
+ *   const slot = await acquire({ script: 'stitch-shot' });   // { file, release(), refresh() } | null (disabled) ; throws { code: 124 } on timeout
+ *   … await browser.close(); slot?.release();                // release stops the keep-alive timer and deletes the slot file
  *
- * Exit codes: 0 acquired / released / printed · 124 no slot within --wait (no verdict)
+ * Exit codes: 0 acquired / released / refreshed / printed · 124 no slot within --wait (no verdict)
  *             · 2 usage or I/O error. No network. Never reaps a dev server (ports are
  *             the port allocator's, by pidfile only).
  */
@@ -92,7 +96,16 @@ function note(cfg, line) {
   if (cfg.progressLog) { try { appendFileSync(cfg.progressLog, `${new Date().toISOString()} waiting-slot ok ${line}\n`); } catch { /* log dir gone */ } }
 }
 
-/** Take a slot or wait for one. Resolves { file, release, refresh } or null when disabled; rejects { code: 124 } on timeout. */
+/** Touch every slot file of <pid> so a long round outlives the TTL. Returns the count touched. */
+export function refresh({ pid = process.pid, env = process.env, ...over } = {}) {
+  const cfg = settings(env, over);
+  let n = 0;
+  const now = new Date();
+  for (const s of readSlots(cfg.dir)) if (s.pid === pid) { try { utimesSync(s.file, now, now); n += 1; } catch { /* gone */ } }
+  return n;
+}
+/** Take a slot or wait for one. Resolves { file, release, refresh } or null when disabled; rejects { code: 124 } on timeout.
+ *  The returned slot keeps itself fresh (unref'd timer, TTL/3) until release() — an API holder never expires mid-round. */
 export async function acquire({ pid = process.pid, script = basename(process.argv[1] ?? 'script'), project = process.cwd(), env = process.env, ...over } = {}) {
   const cfg = settings(env, over);
   if (cfg.slots <= 0) return null;
@@ -104,7 +117,10 @@ export async function acquire({ pid = process.pid, script = basename(process.arg
     if (held.length < cfg.slots) {
       const file = join(cfg.dir, `${pid}-${Date.now().toString(36)}.json`);
       writeFileSync(file, `${JSON.stringify({ pid, host: hostname().split('.')[0], project: resolve(project), script, since: new Date().toISOString() })}\n`);
-      return { file, release: () => { try { unlinkSync(file); } catch { /* gone */ } }, refresh: () => { try { const n = new Date(); utimesSync(file, n, n); } catch { /* gone */ } } };
+      const touch = () => { try { const n = new Date(); utimesSync(file, n, n); } catch { /* gone */ } };
+      const timer = setInterval(touch, Math.max(50, Math.floor(cfg.ttlMs / 3)));
+      timer.unref?.(); // never keeps the holder's process alive
+      return { file, release: () => { clearInterval(timer); try { unlinkSync(file); } catch { /* gone */ } }, refresh: touch };
     }
     const waited = Date.now() - t0;
     if (waited - lastNote >= NOTE_EVERY_MS) { note(cfg, `waiting for a slot (${held.length}/${cfg.slots} held by ${describe(held)}) ${mmss(waited)}`); lastNote = waited; }
@@ -155,7 +171,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const cmd = args.find((a) => !a.startsWith('--'));
   const opt = (n) => { const i = args.indexOf(`--${n}`); return i >= 0 ? args[i + 1] : undefined; };
   const flag = (n) => args.includes(`--${n}`);
-  if (flag('help') || !['acquire', 'release', 'status', 'reap'].includes(cmd)) {
+  if (flag('help') || !['acquire', 'release', 'refresh', 'status', 'reap'].includes(cmd)) {
     const text = readFileSync(new URL(import.meta.url), 'utf8').match(/\/\*\*([\s\S]*?)\*\//)[1].split('\n').map((l) => l.replace(/^\s*\* ?/, '')).join('\n').trim();
     console.log(text); process.exit(flag('help') ? 0 : 2);
   }
@@ -172,6 +188,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       process.exit(0);
     }
     if (cmd === 'release') { console.log(`released ${release({ pid, all: flag('all'), stale: flag('stale'), ...over })}`); process.exit(0); }
+    if (cmd === 'refresh') { console.log(`refreshed ${refresh({ pid, ...over })}`); process.exit(0); }
     if (cmd === 'status') {
       const s = status(over);
       if (flag('json')) console.log(JSON.stringify(s, null, 2));

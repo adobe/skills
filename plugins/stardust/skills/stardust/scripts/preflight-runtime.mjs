@@ -21,21 +21,23 @@
  *        deps: { <pkg>: <version|null> }, chromium, lint, ports: {}, envFile,
  *        preflight: "ok" | "partial" | "skipped", writtenAt }
  *   5. Lint: when `<root>/package.json` carries an eslint setup, `eslint` and
- *      `@babel/eslint-parser` must resolve from <root>; else `lint: "unavailable"`
- *      and one loud line (the EDS devDependencies are the repo's — never installed
- *      from here; the agent runs the printed `npm ci` itself).
+ *      `@babel/eslint-parser` must resolve from <root>; else `lint: "unavailable"`,
+ *      one loud line and exit 1 (the EDS devDependencies are the repo's — never
+ *      installed from here; the agent runs the printed `npm ci` itself).
  *
  * Usage:
  *   node skills/stardust/scripts/preflight-runtime.mjs [--root <dir>] [--no-install] [--offline] [--skip] [--json]
  *     --root <dir>   project root (default: nearest ancestor of cwd with a stardust/ dir, else cwd)
- *     --no-install   check only — never spawn npm or the browser download (read-only sessions)
+ *     --no-install   check only — never spawn npm or the browser download and write nothing
+ *                    tracked (no stardust/package.json); only .work/ is written (read-only sessions)
  *     --offline      accept a pre-populated stardust/node_modules; no network (implies --no-install)
  *     --skip         record `preflight: "skipped"` and exit 0 (the state report prints it)
  *     --json         print the env record on stdout
  *
  * Exit codes: 0 every item present (or --skip) · 1 at least one item missing —
- * one actionable line per item (never a verdict: a missing browser is exit 2 in
- * the instruments, the same no-verdict class as exit 124) · 2 usage / I/O error.
+ * a dependency, chromium, or lint in a repo that declares it — one actionable
+ * line per item (never a verdict: a missing browser is exit 2 in the instruments,
+ * the same no-verdict class as exit 124) · 2 usage / I/O error.
  * Zero requests to the source site: npm registry and the Playwright CDN only.
  */
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
@@ -43,7 +45,7 @@ import { createRequire } from 'node:module';
 import { dirname, join, resolve, delimiter } from 'node:path';
 import { homedir } from 'node:os';
 import { spawnSync } from 'node:child_process';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 export const DEPS = ['playwright', 'pixelmatch', 'pngjs'];
 export const TOOLS = ['node', 'npm', 'curl', 'python3', 'lsof', 'git'];
@@ -126,19 +128,20 @@ const pj = readJson(pjPath) ?? { name: 'stardust-deps', private: true, type: 'mo
 pj.devDependencies ??= {};
 let changed = !existsSync(pjPath);
 for (const d of DEPS) if (!pj.devDependencies[d]) { pj.devDependencies[d] = 'latest'; changed = true; }
-if (changed) writeJson(pjPath, pj);
+if (changed && !noInstall) writeJson(pjPath, pj); // --no-install writes nothing tracked
 
 let deps = Object.fromEntries(DEPS.map((d) => [d, resolveDep(sd, d)]));
 const missingDeps = () => DEPS.filter((d) => !deps[d]);
 const npmCmd = `npm i --prefix ${sd} --no-audit --no-fund`;
+const selfCmd = `node ${fileURLToPath(import.meta.url)} --root ${root}`; // the full preflight, for --no-install callers
 if (missingDeps().length && !noInstall) {
   console.log(`preflight-runtime: installing ${missingDeps().join(', ')} → ${join(sd, 'node_modules')}`);
   const r = spawnSync('npm', ['i', '--prefix', sd, '--no-audit', '--no-fund'], { stdio: ['ignore', 'ignore', 'inherit'] });
   if (r.status !== 0) console.error(`preflight-runtime: npm exited ${r.status}`);
   deps = Object.fromEntries(DEPS.map((d) => [d, resolveDep(sd, d)]));
 }
-if (missingDeps().length) missing.push(`missing: ${missingDeps().join(', ')} — run: ${npmCmd}`);
-if (existsSync(join(sd, 'node_modules')) && !existsSync(join(sd, 'node_modules', '.gitignore'))) writeFileSync(join(sd, 'node_modules', '.gitignore'), '*\n');
+if (missingDeps().length) missing.push(`missing: ${missingDeps().join(', ')} — run: ${noInstall ? selfCmd : npmCmd}`);
+if (!noInstall && existsSync(join(sd, 'node_modules')) && !existsSync(join(sd, 'node_modules', '.gitignore'))) writeFileSync(join(sd, 'node_modules', '.gitignore'), '*\n');
 
 // --- 2. chromium ------------------------------------------------------------
 let chromium = 'unresolved';
@@ -160,7 +163,7 @@ if (deps.playwright) {
     p = await exe();
   }
   chromium = p ? 'ok' : 'missing';
-  if (!p) missing.push(`missing: chromium — run: ${browserCmd}`);
+  if (!p) missing.push(`missing: chromium — run: ${noInstall ? selfCmd : browserCmd}`);
 } else missing.push('missing: chromium — resolve playwright first (above)');
 
 // --- 3. probes dir ----------------------------------------------------------
@@ -171,6 +174,7 @@ if (!existsSync(join(probes, 'README'))) writeFileSync(join(probes, 'README'), P
 // --- 4 + 5. environment record ---------------------------------------------
 const bash = bashVersion();
 const lint = lintCheck();
+if (lint === 'unavailable') missing.push(`lint unavailable — run: npm ci --legacy-peer-deps in ${root} (deploy never reports "eslint clean" while env.json.lint is unavailable)`);
 const envFile = [join(root, '.env'), join(homedir(), '.claude', '.env')].find((p) => existsSync(p)) ?? null;
 const record = {
   ...prev,
@@ -200,7 +204,6 @@ if (existsSync(join(sd, 'node_modules')) && spawnSync('git', ['rev-parse', '--is
 if (flag('json')) console.log(JSON.stringify(record, null, 2));
 else {
   console.log(`preflight-runtime: ${DEPS.map((d) => `${d} ${record.deps[d] ?? 'missing'}`).join(' · ')} · chromium ${chromium} · lint ${lint} · probes ${probes}`);
-  if (lint === 'unavailable') console.log(`lint unavailable — run: npm ci --legacy-peer-deps in ${root} (deploy never reports "eslint clean" while env.json.lint is unavailable)`);
   for (const m of missing) console.log(m);
 }
 process.exit(missing.length ? 1 : 0);

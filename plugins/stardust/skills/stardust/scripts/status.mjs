@@ -25,7 +25,7 @@
  *     --no-probe    skip every network probe (default sample: 5 preview/live HEADs when a live host is known)
  *     --sample <n>  pages to HEAD on the live host (default 5)
  *     --reconcile   opt-in admin bulk-status job (POST admin.hlx.page/status/<org>/<repo>/main/*) — needs the token
- *     --token-env   env var NAME holding the DA token (default from state.json credentials, else DA_TOKEN); never printed
+ *     --token-env   env var NAME holding the DA token (default state.json credentials.siteTokenEnv, else DA_TOKEN); never printed
  *     --ledger      deploy ledger path (default <root>/content/.deploy-ledger.json)
  *
  * Exit codes: 0 report printed (every probe may be `not probed`) · 2 usage or unreadable state.json.
@@ -136,7 +136,7 @@ const liveHost = state.site?.deployUrl ?? rollout?.site?.liveHost ?? null;
 report.delivery = { coverage: covRows.length ? covBy : null, ledger: ledger ? { file: ledgerPath, ...ledgerBy } : null, liveHost, org, repo, reconcile: 'not reconciled' };
 
 // --- reconcile (opt-in POST job) ------------------------------------------------
-const tokenEnv = opt('token-env') ?? state.credentials?.daTokenEnv ?? 'DA_TOKEN';
+const tokenEnv = opt('token-env') ?? state.credentials?.siteTokenEnv ?? 'DA_TOKEN'; // state-machine.md § Credentials key
 if (flag('reconcile')) {
   const token = process.env[tokenEnv];
   if (!token) report.delivery.reconcile = `not reconciled (no token in $${tokenEnv})`;
@@ -196,7 +196,7 @@ const lock = spawnSync(process.execPath, [join(HERE, 'run-lock.mjs'), 'check', '
 report.activeRun = lock.status === 3 ? lock.stdout.trim() : null;
 report.preflight = readJson(join(sd, '.work', 'env.json'))?.preflight ?? null;
 const usage = readJson(join(sd, 'usage.json'));
-report.usage = usage?.total ? { ...usage.total, windows: (usage.windows ?? []).length, generatedAt: usage.generatedAt ?? null } : null;
+report.usage = usage?.total ? { ...usage.total, windows: (usage.windows ?? []).length, generatedAt: usage.generatedAt ?? null, harnessCostUSD: usage.harnessCost?.totalCostUSD ?? null } : null;
 report.repo = null;
 const top = spawnSync('git', ['rev-parse', '--show-toplevel'], { cwd: root, encoding: 'utf8' });
 if (top.status === 0 && resolve(top.stdout.trim()) === resolve(root)) {
@@ -239,6 +239,7 @@ else {
 
 // --- render -----------------------------------------------------------------------
 const pct = (v) => (v === null || v === undefined ? '—' : `${v} %`);
+const kM = (n) => (typeof n !== 'number' ? '?' : n >= 1e6 ? `${(n / 1e6).toFixed(2)} M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)} k` : String(n)); // token-ledger.mjs shape
 function renderText() {
   const out = ['stardust state', '=============='];
   for (const b of report.blockedOnOwner) out.push(`Blocked on owner:  ${b.owner}`, `                   (since ${b.since} · ${b.detail || 'run continues on unblocked work'})`);
@@ -262,7 +263,7 @@ function renderText() {
   const d = report.delivery;
   out.push('', `Delivery:    coverage ${d.coverage ? Object.entries(d.coverage).map(([k, v]) => `${k} ${v}`).join(' · ') : 'no rollout coverage'} · ledger ${d.ledger ? Object.entries(ledgerBy).map(([k, v]) => `${k} ${v}`).join(' · ') || 'empty' : 'none'} · admin ${typeof d.reconcile === 'string' ? d.reconcile : `previewed ${d.reconcile.previewed} / published ${d.reconcile.published}`}`);
   out.push(`Probes:      ${typeof report.probes === 'string' ? report.probes : `${report.probes.sample.map((s) => `${s.path} ${s.code}`).join(', ')}${report.probes.tokens ? ` · tokens ${report.probes.tokens}` : ''}`}`);
-  if (report.usage) out.push(`Usage:       fresh ${report.usage.fresh ?? report.usage.input ?? '?'} · cache read ${report.usage.cacheRead ?? '?'} · output ${report.usage.output ?? '?'} (${report.usage.windows} windows, stardust/usage.md)`);
+  if (report.usage) { const u = report.usage; out.push(`Usage:       ${u.turns ?? '?'} requests · fresh ${kM(u.fresh)} · cache read ${kM(u.cacheRead)} · output ${kM(u.output)}${typeof u.estCost === 'number' ? ` · est. USD ${u.estCost.toFixed(2)}` : ''}${typeof u.harnessCostUSD === 'number' ? ` · harness-reported USD ${u.harnessCostUSD.toFixed(2)} (session)` : ''} — ${u.windows} window(s), copied from stardust/usage.json${u.generatedAt ? ` ${day(u.generatedAt)}` : ''}`); }
   if (report.gateLedgerLint) { out.push(''); for (const x of report.gateLedgerLint) out.push(`${x.type}: ${x.verdict}${x.verdict === 'ok' ? ` — ${x.archetype} ${x.numbers.join(' · ')}` : ` — ${x.reasons.join('; ')} → $stardust replica ${x.archetype}`}`); }
   if (report.recommendation) out.push('', `Recommended next: ${report.recommendation.command ?? '—'}`, `                  (${report.recommendation.why})`);
   if (report.repo) out.push('', `Repo:  tracked ${report.repo.tracked} files / ${(report.repo.bytes / 1e6).toFixed(1)} MB under stardust/; outside stardust/: ${report.repo.outsideStardust}`, `       state.json tracked ${report.repo.stateTracked ? '✓' : '✗'} · secrets tracked: ${report.repo.secretsTracked.length ? report.repo.secretsTracked.join(', ') : 'none ✓'}${report.repo.assetsPresent ? '' : '\n       current/assets/ absent on this checkout'}`);

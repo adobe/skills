@@ -2,11 +2,14 @@
 /**
  * Fixture test: skills/stardust/scripts/preflight-runtime.mjs — the runtime preflight contract.
  * Run: node skills/stardust/scripts/test/preflight-runtime.test.mjs   (exit 1 on failure; no network)
- *   - empty project, --no-install → exit 1 naming exactly the three packages + chromium; stardust/package.json
- *     written with the three devDependencies; <root>/package.json never created;
+ *   - empty project, --no-install → exit 1 naming exactly the three packages + chromium, each line pointing at
+ *     the full preflight command; nothing tracked is written (no stardust/package.json); <root>/package.json
+ *     never created;
  *   - stubbed stardust/node_modules/{playwright,pixelmatch,pngjs} → exit 0, env.json carries the record keys,
- *     deps versions, chromium ok, probes README; a second run is byte-identical except writtenAt;
- *   - eslint setup in <root>/package.json with no node_modules → lint "unavailable" + the loud line; the root
+ *     deps versions, chromium ok, probes README; a second run is byte-identical except writtenAt; without
+ *     --no-install the same tree gets stardust/package.json (merged, three devDependencies) and no npm spawn;
+ *   - eslint setup in <root>/package.json with no node_modules → lint "unavailable", the loud line, exit 1 and
+ *     preflight "partial" (negative fixture: the same tree with eslint resolvable exits 0); the root
  *     package.json is byte-identical after the run; `transports` from preflight-transports survives the merge;
  *   - --skip records preflight "skipped"; --help exits 0; an unknown flag exits 2.
  */
@@ -42,12 +45,10 @@ try {
   mkdirSync(join(a, 'stardust'), { recursive: true });
   let r = run(a, '--no-install');
   assert.equal(r.status, 1, `empty project exits 1\n${r.stdout}${r.stderr}`);
-  assert.match(r.stdout, /^missing: playwright, pixelmatch, pngjs — run: npm i --prefix .*stardust --no-audit --no-fund$/m);
-  assert.match(r.stdout, /^missing: chromium — /m);
+  assert.match(r.stdout, /^missing: playwright, pixelmatch, pngjs — run: node \S*preflight-runtime\.mjs --root /m, '--no-install points at the full preflight, not npm');
+  assert.match(r.stdout, /^missing: chromium — resolve playwright first/m);
   assert.equal(r.stdout.match(/^missing:/gm).length, 2, 'exactly two missing lines');
-  const pj = json(join(a, 'stardust', 'package.json'));
-  assert.equal(pj.private, true);
-  assert.deepEqual(Object.keys(pj.devDependencies).sort(), ['pixelmatch', 'playwright', 'pngjs']);
+  assert.ok(!existsSync(join(a, 'stardust', 'package.json')), '--no-install writes nothing tracked');
   assert.ok(!existsSync(join(a, 'package.json')), '<root>/package.json is never created');
   let env = json(join(a, 'stardust', '.work', 'env.json'));
   assert.equal(env.preflight, 'partial');
@@ -70,13 +71,22 @@ try {
   assert.deepEqual(env.deps, { playwright: '1.99.0', pixelmatch: '6.0.0', pngjs: '7.0.0' });
   assert.deepEqual(env.ports, {});
   assert.deepEqual(env.transports, { 'gh-user': 'ok' }, 'merge keeps the transports block');
-  assert.equal(readFileSync(join(b, 'stardust', 'node_modules', '.gitignore'), 'utf8'), '*\n');
+  assert.ok(!existsSync(join(b, 'stardust', 'node_modules', '.gitignore')), '--no-install writes nothing under the tracked tree');
   const first = { ...env, writtenAt: null };
   r = run(b, '--no-install', '--json');
   assert.equal(r.status, 0);
   const second = { ...json(join(b, 'stardust', '.work', 'env.json')), writtenAt: null };
   assert.deepEqual(second, first, 'second run byte-identical except writtenAt');
   assert.equal(JSON.parse(r.stdout).preflight, 'ok', '--json prints the record');
+  // (c2) install mode on a resolvable tree: the manifest is written / merged, no npm spawn, still exit 0
+  writeFileSync(join(b, 'stardust', 'package.json'), JSON.stringify({ name: 'stardust-deps', private: true, type: 'module', devDependencies: { pngjs: '^7' } }));
+  r = run(b);
+  assert.equal(r.status, 0, `install mode on a resolvable tree exits 0\n${r.stdout}${r.stderr}`);
+  assert.ok(!/installing|downloading/.test(r.stdout), 'nothing to install → no npm / browser spawn');
+  const pj = json(join(b, 'stardust', 'package.json'));
+  assert.equal(pj.private, true);
+  assert.deepEqual(pj.devDependencies, { pngjs: '^7', playwright: 'latest', pixelmatch: 'latest' }, 'merged, existing pin kept');
+  assert.equal(readFileSync(join(b, 'stardust', 'node_modules', '.gitignore'), 'utf8'), '*\n', 'node_modules/.gitignore = * for older project copies');
 
   // (d) lint unavailable, root package.json untouched
   const d = join(dir, 'd');
@@ -85,11 +95,25 @@ try {
   writeFileSync(join(d, 'package.json'), rootPj);
   stubDeps(d);
   r = run(d, '--offline');
-  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.equal(r.status, 1, `lint unavailable in a repo that declares it exits 1\n${r.stdout}${r.stderr}`);
   assert.match(r.stdout, /chromium ok · lint unavailable/);
   assert.match(r.stdout, /^lint unavailable — run: npm ci --legacy-peer-deps in /m);
+  assert.equal(r.stdout.match(/^lint unavailable/gm).length, 1, 'the loud line prints once');
+  assert.ok(!/^missing:/m.test(r.stdout), 'deps and chromium are present — lint is the only item');
   assert.equal(readFileSync(join(d, 'package.json'), 'utf8'), rootPj, 'root package.json byte-identical');
-  assert.equal(json(join(d, 'stardust', '.work', 'env.json')).lint, 'unavailable');
+  env = json(join(d, 'stardust', '.work', 'env.json'));
+  assert.equal(env.lint, 'unavailable');
+  assert.equal(env.preflight, 'partial', 'lint unavailable is a partial preflight');
+  // negative fixture: eslint + parser resolvable from <root> → lint ok, exit 0
+  mkdirSync(join(d, 'node_modules', '.bin'), { recursive: true });
+  writeFileSync(join(d, 'node_modules', '.bin', 'eslint'), '');
+  mkdirSync(join(d, 'node_modules', '@babel', 'eslint-parser'), { recursive: true });
+  writeFileSync(join(d, 'node_modules', '@babel', 'eslint-parser', 'package.json'), JSON.stringify({ name: '@babel/eslint-parser', version: '7.0.0', main: 'index.js' }));
+  writeFileSync(join(d, 'node_modules', '@babel', 'eslint-parser', 'index.js'), 'module.exports = {};\n');
+  r = run(d, '--offline');
+  assert.equal(r.status, 0, `lint resolvable exits 0\n${r.stdout}${r.stderr}`);
+  assert.match(r.stdout, /chromium ok · lint ok/);
+  assert.equal(json(join(d, 'stardust', '.work', 'env.json')).preflight, 'ok');
 
   // (e) --skip, --help, unknown flag
   r = run(a, '--skip');

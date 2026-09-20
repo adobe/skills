@@ -57,7 +57,7 @@ too.
 
 `node skills/stardust/scripts/status.mjs --root <fixture> --json --no-probe`
 is pinned deterministically by `skills/stardust/scripts/test/status.test.mjs`
-(in `lint:stardust`) against the shared tree: 6 migrated pages, the three
+against the shared tree: 6 migrated pages, the three
 gate cases, `probes: "not probed"`, `reconcile: "not reconciled"`, the
 missing-`next` warning on the last blocked line, the replica-flow
 recommendation, and a byte-identical fixture after the run. The last

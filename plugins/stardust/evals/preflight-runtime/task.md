@@ -63,9 +63,10 @@ program archetype"
    `stardust/.work/probes/README` exists.
 6. **Lint state is loud, not silent.** The root manifest declares eslint
    but nothing is installed: the preflight prints
-   `lint unavailable — run: npm ci --legacy-peer-deps in <root>` and the
-   agent repeats that line (or runs the command) rather than reporting the
-   repo as lint-clean or ignoring it.
+   `lint unavailable — run: npm ci --legacy-peer-deps in <root>` and exits
+   1 on it; the agent runs that command (or repeats the line when it is
+   declined) rather than reporting the repo as lint-clean, ignoring it, or
+   treating the exit as a gate verdict.
 7. **A denied install is a blocker line, not a workaround.** If the
    harness denies `npm i` or the Chromium download, the agent re-issues it
    once as a bare command, then records `event: "blocked"` in

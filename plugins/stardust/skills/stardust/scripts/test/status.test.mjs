@@ -8,11 +8,14 @@
  *   - the fixture tree is byte-identical after the run and no stardust/.work/run.lock appears;
  *   - text mode prints the § State report blocks; --markdown opens with the gate table and ends with report-check;
  *   - replica-flow recommendation is `$stardust replica insurance__home` (from gate-ledger-lint), then rollout;
+ *   - `Usage:` copies stardust/usage.json totals in the ledger's k / M form (180 requests, fresh 121.1 k, cache read
+ *     55.93 M, output 304.1 k, est. USD 32.77, harness-reported USD 34.10) — never recomputed; absent file → no line;
+ *   - --reconcile without a token reads `credentials.siteTokenEnv` (state-machine.md § Credentials key), not DA_TOKEN;
  *   - --help exits 0; unknown flag exits 2; no state.json exits 2.
  */
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -58,6 +61,8 @@ for (const re of [/^stardust state$/m, /^Site:\s+https:\/\/www\.larkspurmutual\.
   /^Delivery:\s+coverage no rollout coverage · ledger none · admin not reconciled$/m, /^Probes:\s+not probed$/m, /^program: blocked — never gated/m,
   /^Recommended next: \$stardust replica insurance__home$/m, /^warning: no `next` on the last blocked line/m]) assert.match(r.stdout, re);
 assert.ok(!/^Repo:/m.test(r.stdout), 'no Repo block: the fixture is not its own git top-level');
+assert.match(r.stdout, /^Usage:\s+180 requests · fresh 121\.1 k · cache read 55\.93 M · output 304\.1 k · est\. USD 32\.77 · harness-reported USD 34\.10 \(session\) — 4 window\(s\), copied from stardust\/usage\.json 2026-09-14$/m, 'Usage line copies usage.json in k / M form');
+assert.deepEqual([j.usage.turns, j.usage.fresh, j.usage.cacheRead, j.usage.output, j.usage.estCost, j.usage.harnessCostUSD, j.usage.windows], [180, 121100, 55930000, 304100, 32.77, 34.1, 4]);
 
 // markdown render
 r = run('--markdown', '--no-probe');
@@ -74,5 +79,19 @@ assert.equal(r.status, 0); assert.match(r.stdout, /Exit codes: 0 report printed/
 r = run('--bogus');
 assert.equal(r.status, 2, 'unknown flag exits 2');
 const empty = mkdtempSync(join(tmpdir(), 'status-empty-'));
-try { r = spawnSync(process.execPath, [CLI, '--root', empty], { encoding: 'utf8' }); assert.equal(r.status, 2, 'no state.json exits 2'); assert.match(r.stderr, /no readable stardust\/state\.json/); } finally { rmSync(empty, { recursive: true, force: true }); }
-console.log('status test: ok (6 pages, 3 archetypes copied from the ledger, no verdict for the ungated one, not probed / not reconciled, missing-next warning, replica recommendation, nothing written, text + markdown, exits)');
+try {
+  r = spawnSync(process.execPath, [CLI, '--root', empty], { encoding: 'utf8' }); assert.equal(r.status, 2, 'no state.json exits 2'); assert.match(r.stderr, /no readable stardust\/state\.json/);
+  // minimal project: no usage.json → no Usage line; --reconcile with no token → names credentials.siteTokenEnv, no network
+  mkdirSync(join(empty, 'stardust'), { recursive: true });
+  writeFileSync(join(empty, 'stardust', 'state.json'), JSON.stringify({ pages: [], credentials: { siteTokenEnv: 'SITE_TOKEN_STATUSTEST' } }));
+  const env = { ...process.env }; delete env.SITE_TOKEN_STATUSTEST; env.DA_TOKEN = 'not-the-configured-variable';
+  r = spawnSync(process.execPath, [CLI, '--root', empty, '--json', '--no-probe', '--reconcile'], { encoding: 'utf8', env });
+  assert.equal(r.status, 0, r.stderr);
+  const m = JSON.parse(r.stdout);
+  assert.equal(m.usage, null, 'no usage.json → no Usage block');
+  assert.equal(m.delivery.reconcile, 'not reconciled (no token in $SITE_TOKEN_STATUSTEST)', 'token env comes from credentials.siteTokenEnv, not DA_TOKEN');
+  assert.ok(!/not-the-configured-variable/.test(r.stdout), 'token value never printed');
+  r = spawnSync(process.execPath, [CLI, '--root', empty, '--no-probe'], { encoding: 'utf8' });
+  assert.ok(!/^Usage:/m.test(r.stdout), 'text mode omits the Usage line without the file');
+} finally { rmSync(empty, { recursive: true, force: true }); }
+console.log('status test: ok (6 pages, 3 archetypes copied from the ledger, no verdict for the ungated one, not probed / not reconciled, missing-next warning, replica recommendation, Usage in k / M from usage.json, siteTokenEnv for --reconcile, nothing written, text + markdown, exits)');

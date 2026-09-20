@@ -100,11 +100,14 @@ write root, master § Artifacts), `STARDUST_BROWSER_SLOTS` slots (default
   agents than there are slots; `browser-lock.mjs status` is the census
   (holders + orphan browser processes) — run it before a wave, never a
   raw Chromium process count.
-- **Acquire before the first navigation.** The live-session launch site
-  and `qa` `browse` take the slot around `launchTier`; `gate.sh` rounds
-  inherit it through `stitch-shot`. `crawl` keeps its own per-host budget
-  and takes no slot; deploy's single-page local probes are listed by the
-  census, not budgeted. Waiting adds zero source hits.
+- **Acquire before the first navigation.** A shell driver wraps the
+  instrument — `browser-lock.mjs acquire --script <name>` before, `release`
+  after, `refresh` between steps of a round longer than the TTL; an
+  in-process holder calls the `acquire()` API around its launch (kept
+  fresh until `release()`). Each launch site (live-session `launchTier`,
+  `qa` `browse`, gate rounds via `stitch-shot`) adopts it in its own
+  skill's change. `crawl` keeps its per-host budget and takes no slot;
+  deploy's local probes are listed by the census, not budgeted.
 - **A slot wait is a progress-file wait.** The holder prints one line
   every 30 s and appends `waiting-slot` to `$STARDUST_PROGRESS_LOG`
   (§ Progress files); after `STARDUST_BROWSER_WAIT` (600 s) it exits
@@ -115,9 +118,11 @@ write root, master § Artifacts), `STARDUST_BROWSER_SLOTS` slots (default
   wedged directory. Hands-off never raises the budget or bypasses the
   lock; a machine saturated by a *foreign* holder past ~45 min is a
   `blocked` line with `owner: "node skills/stardust/scripts/browser-lock.mjs status"`.
-- **Every agent closes its browser and server on exit**; `reap` kills
-  parentless `chrome-headless-shell` processes older than `GATE_REAP_MIN`
-  (the gate.sh reaper, extended) — never a dev server by cwd guess.
+- **Every agent closes its browser and server on exit**; `browser-lock.mjs
+  reap` kills parentless `chrome-headless-shell` processes older than
+  `--min` (default 15) — the coordinator's sweep between waves; `gate.sh`
+  keeps its own `GATE_REAP_MIN` reaper for replica instruments. Never a
+  dev server by cwd guess.
 
 ## Scope and type of delegated agents
 

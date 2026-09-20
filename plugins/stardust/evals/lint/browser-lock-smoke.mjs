@@ -8,13 +8,16 @@
 //   (b) a slot file with a dead pid and one with an old mtime are reaped and re-acquired;
 //   (c) SLOTS=0 acquires without creating the dir; --no-lock likewise;
 //   (d) release frees the slot (by pid; --all --stale removes only stale files);
-//   (e) status --json prints holders, slots and the orphan census; --help exits 0; usage exits 2.
+//   (e) status --json prints holders, slots and the orphan census; --help exits 0; usage exits 2;
+//   (f) TTL: an API holder outlives STARDUST_BROWSER_TTL_MIN (its unref'd keep-alive touches the file);
+//       a shell holder's aged slot is reaped by the census unless `refresh --pid` touched it first.
 // Usage: node plugins/stardust/evals/lint/browser-lock-smoke.mjs  (exit 1 on failure)
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 const CLI = join(import.meta.dirname, '..', '..', 'skills', 'stardust', 'scripts', 'browser-lock.mjs');
 const tmp = mkdtempSync(join(tmpdir(), 'browser-lock-'));
@@ -89,12 +92,45 @@ try {
   assert.equal(r.status, 0); assert.match(r.stdout, /disabled \(--no-lock\)/);
   assert.ok(!existsSync(dir0), 'disabled lock never creates the dir');
 
+  // (f) TTL keep-alive: API holder refreshes itself; shell holder needs `refresh`
+  run(['release', '--all']);
+  const ttlEnv = { STARDUST_BROWSER_TTL_MIN: '0.01' }; // 600 ms
+  const code = `import { acquire } from ${JSON.stringify(pathToFileURL(CLI).href)};
+    const slot = await acquire({ script: 'api-holder', dir: ${JSON.stringify(dir)} });
+    await new Promise((r) => setTimeout(r, 1800)); slot.release(); console.log('api-holder done');`;
+  const api = spawn(process.execPath, ['--input-type=module', '-e', code], { env: { ...env, ...ttlEnv }, stdio: ['ignore', 'pipe', 'pipe'] });
+  const apiOut = []; api.stdout.on('data', (d) => apiOut.push(d)); api.stderr.on('data', (d) => apiOut.push(d));
+  for (let i = 0; i < 40 && !readdirSync(dir).some((f) => f.startsWith(`${api.pid}-`)); i += 1) await new Promise((r) => setTimeout(r, 50)); // wait for the slot file
+  assert.ok(readdirSync(dir).some((f) => f.startsWith(`${api.pid}-`)), 'API holder took a slot');
+  await new Promise((r) => setTimeout(r, 1000)); // past the 600 ms TTL
+  r = run(['status', '--json'], ttlEnv);
+  s = JSON.parse(r.stdout);
+  assert.deepEqual(s.held.map((h) => h.script), ['api-holder'], `API holder still held past the TTL (kept fresh)\n${r.stdout}`);
+  assert.equal(s.reapedStale, 0);
+  await new Promise((res) => api.on('exit', res));
+  assert.match(Buffer.concat(apiOut).toString(), /api-holder done/);
+  assert.equal(readdirSync(dir).length, 0, 'release() removed the API holder\'s slot');
+  // shell holder: aged slot reaped — unless refreshed
+  r = run(['acquire', '--pid', String(holders[0].pid), '--script', 'shell-round'], ttlEnv);
+  assert.equal(r.status, 0);
+  const shellFile = join(dir, readdirSync(dir)[0]);
+  const aged = new Date(Date.now() - 5_000);
+  utimesSync(shellFile, aged, aged);
+  r = run(['refresh', '--pid', String(holders[0].pid)], ttlEnv);
+  assert.equal(r.stdout.trim(), 'refreshed 1');
+  r = run(['status', '--json'], ttlEnv);
+  assert.equal(JSON.parse(r.stdout).held.length, 1, 'refreshed shell slot survives the census');
+  utimesSync(shellFile, aged, aged);
+  r = run(['status', '--json'], ttlEnv);
+  assert.equal(JSON.parse(r.stdout).reapedStale, 1, 'an aged, unrefreshed shell slot is reaped');
+  assert.equal(run(['refresh', '--pid', String(holders[0].pid)]).stdout.trim(), 'refreshed 0', 'nothing left to refresh');
+
   // help / usage
   r = spawnSync(process.execPath, [CLI, '--help'], { encoding: 'utf8' });
   assert.equal(r.status, 0); assert.match(r.stdout, /Exit codes: 0 acquired/);
   r = spawnSync(process.execPath, [CLI, 'bogus'], { encoding: 'utf8' });
   assert.equal(r.status, 2);
-  console.log('browser-lock smoke: ok (2 slots, third exits 124 with one waiting line + progress log, dead/old slots reaped, release by pid / --all --stale, status JSON + census, SLOTS=0 and --no-lock touch nothing)');
+  console.log('browser-lock smoke: ok (2 slots, third exits 124 with one waiting line + progress log, dead/old slots reaped, release by pid / --all --stale, status JSON + census, SLOTS=0 and --no-lock touch nothing, API keep-alive past the TTL, refresh for shell holders)');
 } finally {
   for (const h of holders) h.kill('SIGKILL');
   rmSync(tmp, { recursive: true, force: true });

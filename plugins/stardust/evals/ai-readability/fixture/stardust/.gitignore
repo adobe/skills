@@ -22,6 +22,9 @@ reskin/reports/*.png
 
 # Run residue: anything a skill needs only during a run.
 .work/
+# The run's own dependency dir + lockfile (preflight-runtime.mjs); package.json stays tracked.
+node_modules/
+package-lock.json
 *.log
 *.err
 *.out

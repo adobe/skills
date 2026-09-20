@@ -141,7 +141,9 @@ each a plain ESM script under `lint/` that exits 1 with one line per finding,
 then the fixture tests under `fixtures/` (plain `node:assert` scripts that
 import a script's exported pure functions — no playwright needed), the
 `*.test.mjs` runners beside the skill scripts, and one `node --test` suite
-whose harness cases skip when Playwright is unresolvable:
+whose harness cases skip when Playwright is unresolvable. A runner listed
+here joins the chain when its branch integrates (`package.json` is edited
+only at integration); every runner also runs standalone with `node <path>`:
 
 - `harness-neutral.mjs` — no namespaced sibling-skill references or
   Claude-only tool names outside lines marked "Claude Code".
@@ -191,8 +193,9 @@ whose harness cases skip when Playwright is unresolvable:
   three packages + chromium and writes `stardust/package.json`; a stubbed
   `stardust/node_modules` exits 0 with the `env.json` record keys and is
   idempotent (byte-identical except `writtenAt`); the root `package.json`
-  is never created or edited; a declared-but-uninstalled eslint prints the
-  `lint unavailable` line; `--skip`, `--help`, unknown-flag exits.
+  is never created or edited (nothing tracked under `--no-install`); a
+  declared-but-uninstalled eslint prints the `lint unavailable` line and
+  exits 1, a resolvable one exits 0; `--skip`, `--help`, unknown-flag exits.
 - `resolve-chain-smoke.mjs` — `skills/stardust/scripts/lib/resolve.mjs`, the
   dependency / sibling-script chain (script dir → cwd → nearest
   `stardust/package.json` → `npm root -g`): the stub `playwright` under

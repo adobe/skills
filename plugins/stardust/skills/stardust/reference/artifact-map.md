@@ -70,6 +70,8 @@ stardust/
 ├── status.jsonl                      # append-only phase-transition log — every skill appends start/end/blocked lines (run-status.md)
 ├── direction.md                      # resolved intent + reasoning trace
 ├── decisions.md                      # plan-time decision register — default rows applied, owner-decided rows, owner-only rows (decisions.md)
+├── package.json                      # the run's own runtime deps (playwright, pixelmatch, pngjs) → node_modules/ beside it, never tracked (runtime-preflight.md)
+├── usage.md / usage.json             # optional per-phase token ledger, written at wave close by token-ledger.mjs; the state report copies its totals
 ├── learnings.md                      # per-run learnings ledger — rollout writes, maintainers harvest (learnings.md)
 ├── dynamic-features.md               # the dynamic-surface inventory: listings contract + one row per feature with class · disposition · reproducibility · status (dynamics Phase 3; prepare-migration 4.5 / replica Phase 2 / rollout B2)
 ├── dynamic-features-plan.md          # phases with deliverables, authoring contract, verification, owner decision (dynamics Phase 3)
@@ -390,6 +392,9 @@ excluded folders tracked deletes that line or adds a negation below it.
 | Path | Tracked | Owner | Notes |
 |---|---|---|---|
 | `state.json`, `status.jsonl`, `journal.md`, `learnings.md`, `direction.md`, `decisions.md` | yes | master / all | delivery state and decisions; a clone is dead without `state.json` |
+| `package.json` | yes | master (`preflight-runtime.mjs`, merged) | the run's three runtime devDependencies — `runtime-preflight.md` § Files |
+| `node_modules/`, `package-lock.json` | **never** | npm via the preflight | the installed runtime packages; `stardust/.gitignore` lists both |
+| `usage.md`, `usage.json` | yes | `token-ledger.mjs` (wave close, optional) | per-phase token table; `unknown` when no transcript dir resolves |
 | `live-budget.json` | yes | extract / any live tool | learned per-host live ceiling (`{ "<host>": { navPerMin, minGapMs, learnedAt, learnedBy, lastStatus } }`), merge-by-host, written on a bare 429 by `crawl.mjs` or `live-session.mjs gotoLive` (`learnedBy` names the tool); read by every live tool (`live-budget.mjs` beside `live-session.mjs`) until 7 days after `learnedAt`, then ignored; a clone inherits the origin's known limit |
 | `dynamic-features.md`, `dynamic-features-plan.md`, `dynamics/parity.json`, `trees.json` | yes | dynamics | dispositions and parity checks |
 | `dynamics/` other (`*.generated-plan.*`, `sheets/_sync.json`) | yes | dynamics | small text; drafts superseded by the curated file |
@@ -412,10 +417,11 @@ excluded folders tracked deletes that line or adds a negation below it.
 | `rollout/qa/**` | **no** | rollout | screenshots of the delivered site |
 | `qa/allowlist.json`, `qa/report.*`, `qa/inventory.json`, `qa/dynamics-report.*`, `qa/ai-readability.json` | yes | qa | judgement and last report |
 | `qa/shots/**`, `qa/baselines/**` | **no** | qa | screenshots; baselines are per machine, a clone re-creates them |
-| `scripts/**` | yes (for now) | extract / reskin / replica | byte copies of plugin scripts so ESM resolves the project's `node_modules`; stale against the installed plugin — removing the copies is a planned change |
+| `scripts/**` | yes (legacy) | extract / reskin / replica | byte copies of plugin scripts from skills not yet converted to the resolution chain (`runtime-preflight.md` § Resolution chain); a converted skill runs from `skills/<skill>/scripts/` and creates no copy |
 | `_pre-publish-backup/**`, `_palette-pick.html`, `*.generated.*` drafts | backup yes; picker no | prototype / direct / dynamics | |
 | `.work/live-<host>.lock` | **never** | extract / any live tool | per-host live lock (pid liveness); one live tool per origin at a time — `state-machine.md` § Concurrency |
-| `.work/**` | **no** | any | run residue: logs, harness page, pre-renders, probe dumps |
+| `.work/env.json` | **no** | `preflight-runtime.mjs` + `preflight-transports.mjs` (merged) | the environment record the state report's `Preflight:` line reads — `runtime-preflight.md` § Files |
+| `.work/**` | **no** | any | run residue: logs, harness page, pre-renders, probe dumps, `probes/` |
 | `*.log`, `*.err`, `*.out`, `last-run.json` anywhere | **no** | any | safety net until every writer routes to `.work/logs/` |
 | `_storage-state.json`, `*-clearance.json` | **never** | extract | admitted session (cookies / storage), written 0600; secrets. Writer: `crawl.mjs` (cleared challenge, `--save-state`, or after a capture-time escalation). Readers: every live instrument by default when a cookie domain matches the live host (`--storage-state <file>` names another, `--fresh-state` opts out) |
 

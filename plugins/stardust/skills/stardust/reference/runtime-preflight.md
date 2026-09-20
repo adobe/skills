@@ -50,18 +50,20 @@ classes): it changes no verdict, no threshold, no gate round.
 
 - **Condition → blocks.** Exit 1 with one actionable line per item when
   a dependency does not resolve after the install, Chromium is missing,
-  or lint is unavailable in a repo that declares it. A non-zero exit
-  blocks **only the browser-instrument phases** (replica / diff gates,
-  deploy Local QA and `ai-readability`, dynamics, qa, reskin probes) and
-  the deploy lint step — deploy never reports "eslint clean" while
-  `env.json.lint` is `unavailable`. Extract fallbacks, routing, the state
-  report and author-only work continue.
+  or lint is unavailable in a repo that declares it (`env.json.preflight`
+  is then `partial`). A non-zero exit blocks **only the browser-instrument
+  phases** (replica / diff gates, deploy Local QA and `ai-readability`,
+  dynamics, qa, reskin probes) and the deploy lint step — deploy never
+  reports "eslint clean" while `env.json.lint` is `unavailable`. Extract
+  fallbacks, routing, the state report and author-only work continue.
 - **Never a PASS by absence.** An instrument that cannot load its browser
   exits 2 with the preflight command — no verdict, the same class as
   exit 124 ≠ FAIL.
 - **Escape hatch.** `--skip` records `preflight: "skipped"` (the state
-  report prints it); `--no-install` checks only (read-only sessions,
-  `run-lock` exit 3); `--offline` accepts a pre-populated
+  report prints it); `--no-install` checks only and writes nothing
+  tracked — no `stardust/package.json`, no install; its missing lines
+  name the full preflight command (read-only sessions, `run-lock` exit
+  3, delegated agents); `--offline` accepts a pre-populated
   `stardust/node_modules`. No flag makes a missing dependency count as
   present.
 - **Hands-off.** The preflight IS the auto-resolution: it installs, it
@@ -81,8 +83,8 @@ classes): it changes no verdict, no threshold, no gate round.
 
 | path | tracked | who writes | contents |
 |---|---|---|---|
-| `stardust/package.json` | yes | preflight (merge) | `{ name: "stardust-deps", private, type: "module", devDependencies }` |
-| `stardust/node_modules/` | **never** (`.gitignore` = `*` written inside it; `stardust/.gitignore` lists it) | npm via the preflight | the three runtime packages |
+| `stardust/package.json` | yes | preflight (merge; not under `--no-install`) | `{ name: "stardust-deps", private, type: "module", devDependencies }` |
+| `stardust/node_modules/`, `stardust/package-lock.json` | **never** (`stardust/.gitignore` lists both; `.gitignore` = `*` written inside the dir for older project copies) | npm via the preflight | the three runtime packages |
 | `stardust/.work/env.json` | no | preflight + `preflight-transports.mjs` (merged) | `projectRoot`, `nodeBin`, `nodeVersion`, `shell`, `bash32`, `pathSnapshot`, `tools`, `deps`, `chromium`, `lint`, `ports`, `envFile`, `preflight`, `writtenAt`, `transports` |
 | `stardust/.work/probes/` | no | preflight (dir + README); agents (scripts, output) | every ad-hoc probe; skill-scoped variants `stardust/.work/<skill>/probes/` |
 
@@ -117,11 +119,12 @@ the plugin tree; `siblingScript(skill, file)` tries the plugin layout,
 
 ## Evals
 
-- `skills/stardust/scripts/test/preflight-runtime.test.mjs` (in
-  `lint:stardust`) — empty project → exit 1 naming exactly the three
-  packages + chromium; stubbed `stardust/node_modules` → exit 0 and the
-  `env.json` keys; idempotent; `<root>/package.json` never touched; lint
-  `unavailable` line; `--skip`.
+- `skills/stardust/scripts/test/preflight-runtime.test.mjs` — empty
+  project → exit 1 naming exactly the three packages + chromium, nothing
+  tracked written under `--no-install`; stubbed `stardust/node_modules` →
+  exit 0 and the `env.json` keys; idempotent; `<root>/package.json` never
+  touched; lint `unavailable` → the loud line, exit 1, `partial` (and exit
+  0 once eslint resolves); `--skip`.
 - `evals/lint/resolve-chain-smoke.mjs` — the chain's links and the exit-2
   line, from the plugin tree and from a flat copy layout.
 - `evals/preflight-runtime/` — a replica gate round on the shared fixture:
