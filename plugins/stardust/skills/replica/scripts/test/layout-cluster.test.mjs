@@ -3,14 +3,15 @@
 // halves (signature, clustering, exemplar pick, gate status, the BLOCKING
 // report, --cover refusal rules) without a browser, plus the CLI contract.
 // The browser half (file:// extraction over the eval fixture's sidecar pages)
-// runs only when playwright resolves from the repo; otherwise one SKIP line.
+// runs when playwright resolves from the repo or STARDUST_GATE_DEPS names a
+// node_modules that has it; otherwise one SKIP line.
 //
 // Usage: node plugins/stardust/skills/replica/scripts/test/layout-cluster.test.mjs  (exit 1 on findings)
 /* eslint-disable no-restricted-syntax, brace-style, object-curly-newline, max-len */
 import { spawnSync } from 'node:child_process';
-import { cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 
 const HERE = import.meta.dirname;
 const SCRIPT = join(HERE, '..', 'layout-cluster.mjs');
@@ -18,7 +19,7 @@ const EVALS = join(HERE, '..', '..', '..', '..', 'evals');
 const FIXTURE = join(EVALS, 'replica-layout-clusters', 'fixture', 'stardust');
 const failures = [];
 const check = (ok, msg) => { if (!ok) failures.push(msg); };
-const run = (args, opts = {}) => { const r = spawnSync(process.execPath, [SCRIPT, ...args], { encoding: 'utf8', ...opts }); return { status: r.status, out: `${r.stdout}${r.stderr}` }; };
+const run = (args, opts = {}) => { const { script = SCRIPT, ...spawn } = opts; const r = spawnSync(process.execPath, [script, ...args], { encoding: 'utf8', ...spawn }); return { status: r.status, out: `${r.stdout}${r.stderr}` }; };
 
 const { DEFAULT_K, mergeReport, urlsFromClusters, signatureOf, tokenOf, editDistance, signatureDiff, clusterSignatures, pickExemplar, gateStatus, isGated, clusterType, renderType, applyCover, defaultMinCluster } = await import(SCRIPT);
 
@@ -157,18 +158,26 @@ merged = mergeReport(prevFile, { types: [{ type: 'article', clusters: [], tail: 
 check(merged.types.map((t) => t.type).join() === 'program,landing,article', 'a new type is appended after the previous ones');
 check(mergeReport(null, { types: [freshProgram] }).types.length === 1 && mergeReport({ types: 'garbage' }, { types: [freshProgram] }).types.length === 1, 'no / malformed previous file → the report as is');
 
-// --- browser half: only when playwright resolves from the repo
-let pw = false; try { await import('playwright'); pw = true; } catch { /* not installed here */ }
-if (!pw) console.log('layout-cluster.test: SKIP browser half — playwright not resolvable (the pure halves above ran)');
+// --- browser half: when playwright resolves from the repo, or STARDUST_GATE_DEPS names a node_modules with it
+// (the scripts dir is copied beside a node_modules symlink — the same resolve-or-symlink pattern as variant-census-fixtures.mjs)
+let pw = null; try { await import('playwright'); pw = 'repo'; } catch { /* not at the repo root */ }
+if (!pw && process.env.STARDUST_GATE_DEPS && existsSync(join(process.env.STARDUST_GATE_DEPS, 'playwright'))) pw = process.env.STARDUST_GATE_DEPS;
+if (!pw) console.log('layout-cluster.test: SKIP browser half — playwright not resolvable (set STARDUST_GATE_DEPS=<dir>/node_modules); the pure halves above ran');
 else {
   const tmp2 = mkdtempSync(join(tmpdir(), 'layout-cluster-b-'));
   try {
+    let script = SCRIPT;
+    if (pw !== 'repo') {
+      cpSync(join(HERE, '..'), join(tmp2, 'skills', 'replica', 'scripts'), { recursive: true });
+      symlinkSync(resolve(pw), join(tmp2, 'node_modules'));
+      script = join(tmp2, 'skills', 'replica', 'scripts', 'layout-cluster.mjs');
+    }
     cpSync(FIXTURE, join(tmp2, 'stardust'), { recursive: true });
-    const b = run(['--root', join(tmp2, 'stardust'), '--type', 'program', '--min-cluster', '3', '--write-state'], { timeout: 90000 });
+    const b = run(['--root', join(tmp2, 'stardust'), '--type', 'program', '--min-cluster', '3', '--write-state'], { timeout: 90000, script });
     check(b.status === 2 && /type program: 8 pages, 2 cluster\(s\) ≥ 3 \(gated 1\)/.test(b.out) && /ungated .*→ \$stardust replica insurance__/.test(b.out), `browser run over the fixture sidecars: 2 clusters, B ungated, exit 2, got ${b.status}\n${b.out}`);
     const st = JSON.parse(readFileSync(join(tmp2, 'stardust', 'state.json'), 'utf8'));
     check(st.pages.find((p) => p.slug === 'insurance__home')?.layoutCluster === 'c1' && st.pages.find((p) => p.slug === 'insurance__umbrella')?.layoutCluster === 'c2', '--write-state stamps layoutCluster per page');
-    const d = run(['--root', join(tmp2, 'stardust'), '--type', 'program'], { timeout: 90000 });
+    const d = run(['--root', join(tmp2, 'stardust'), '--type', 'program'], { timeout: 90000, script });
     check(d.status === 0 && /tail {3}3 page\(s\)/.test(d.out), `default T=5 → the 3 B pages are tail, exit 0, got ${d.status}\n${d.out}`);
   } finally { rmSync(tmp2, { recursive: true, force: true }); }
 }
