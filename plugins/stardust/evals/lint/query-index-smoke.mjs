@@ -9,7 +9,8 @@
 // (3) config GET 403 → no second config call, bulk index, rows → exit 0, registered repo-yaml;
 // (4) 403 + {total:0} → exit 3 + INDEX-CONFIG.md; (5) job settled, sample absent → exit 1;
 // (6) empty coverage, no --sample → exit 4 and nothing posted; (7) remote carries an index the
-// file lacks → exit 3, nothing posted; --replace → posts.
+// file lacks → exit 3, nothing posted; --replace → posts; (8) --timeout abc → exit 2 before any
+// request (D7); (9) config POST 400 → exit 1 (definitive), no bulk index, index-status.json exit 1 (D7).
 //
 // Usage: node plugins/stardust/evals/lint/query-index-smoke.mjs  (exit 1 on findings)
 import { createServer } from 'node:http';
@@ -127,6 +128,24 @@ check(dry.status === 3 && dry.posts.length === 0 && dry.statusJson === null, `ch
 const dryOk = await run(['--check']);
 check(dryOk.status === 0 && dryOk.reqs.length === 1 && dryOk.statusJson === null, `check: same-names under --check exits 0 after one GET and writes nothing (got ${dryOk.status}, ${dryOk.reqs.length} requests)`);
 
+// (8) D7: --timeout abc / --poll-ms 0 → exit 2 before any request (the deadline is never NaN)
+const raw = (extra) => new Promise((resolve) => { state = { configGet: { status: 200, body: yamlText }, index: indexRows }; log = []; const c = spawn(process.execPath, [SCRIPT, '--org', 'o', '--site', 's', '--yaml', YAML, '--admin', BASE, '--origin', BASE, ...extra], { env: { ...process.env, DA_TOKEN: 'fixture' }, cwd: tmpdir() }); let stderr = ''; c.stderr.on('data', (d) => { stderr += d; }); c.on('close', (status) => resolve({ status, stderr, reqs: log.length })); });
+const badTimeout = await raw(['--timeout', 'abc']);
+check(badTimeout.status === 2 && badTimeout.reqs === 0, `bad-timeout: --timeout abc must exit 2 before any request, got ${badTimeout.status} / ${badTimeout.reqs} requests`);
+check(/--timeout must be a positive number/.test(badTimeout.stderr), 'bad-timeout: stderr names the flag');
+const badPoll = await raw(['--poll-ms', '0']);
+check(badPoll.status === 2 && badPoll.reqs === 0, `bad-poll: --poll-ms 0 must exit 2 before any request, got ${badPoll.status} / ${badPoll.reqs} requests`);
+
+// (9) D7: config POST answers a non-auth 4xx → exit 1 (the file is refused: definitive), no bulk index POST
+const rejected = await run([], { configPost: 400 });
+check(rejected.status === 1, `config-rejected: expected exit 1, got ${rejected.status}\n${rejected.stderr}`);
+check(rejected.posts.filter((p) => p.path.startsWith('/index/')).length === 0, 'config-rejected: no bulk index POST after a rejected config POST');
+check(/REJECTED.*400/.test(rejected.stderr), 'config-rejected: stderr says REJECTED with the status');
+check(rejected.statusJson && rejected.statusJson.exit === 1 && rejected.statusJson.verdict === 'config-rejected' && rejected.statusJson.registered === null, 'config-rejected: index-status.json records exit 1 / verdict config-rejected');
+// a 5xx on the same POST stays "no verdict" (exit 4)
+const flaky = await run([], { configPost: 503 });
+check(flaky.status === 4, `config-5xx: expected exit 4 (no verdict), got ${flaky.status}`);
+
 // no token → exit 2 before any request
 state = { configGet: { status: 200, body: yamlText }, index: indexRows }; log = [];
 const noToken = await new Promise((resolve) => { const env = { ...process.env }; delete env.DA_TOKEN; const c = spawn(process.execPath, [SCRIPT, '--org', 'o', '--site', 's', '--yaml', YAML, '--admin', BASE, '--origin', BASE], { env, cwd: tmpdir() }); c.on('close', (status) => resolve(status)); });
@@ -134,4 +153,4 @@ check(noToken === 2 && log.length === 0, `no-token: expected exit 2 with no requ
 
 server.close();
 if (failures.length) { console.error(`query-index-smoke: ${failures.length} finding(s)`); for (const f of failures) console.error(`  ✗ ${f}`); process.exit(1); }
-console.log('query-index-smoke: ok (same-names → 0 · POST body == file · 403 → repo-yaml 0 · 403 + empty → 3 + INDEX-CONFIG.md · sample absent → 1 · no sample → 4 · remote-only name → 3, --replace posts · --check writes nothing · no token → 2)');
+console.log('query-index-smoke: ok (same-names → 0 · POST body == file · 403 → repo-yaml 0 · 403 + empty → 3 + INDEX-CONFIG.md · sample absent → 1 · no sample → 4 · remote-only name → 3, --replace posts · --check writes nothing · --timeout abc → 2 · config POST 400 → 1, 503 → 4 · no token → 2)');

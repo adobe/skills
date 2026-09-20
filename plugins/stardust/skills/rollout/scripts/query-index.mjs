@@ -26,12 +26,13 @@
  *
  * Exit:
  *   0  registered (config route, or repo yaml honoured) AND the read-back found the sample
- *   1  read-back failed with a published sample after the job settled (rows 0 / sample absent) — a real FAIL
- *   2  usage / missing token / unreadable yaml
+ *   1  read-back failed with a published sample after the job settled (rows 0 / sample absent) — a real FAIL ·
+ *      also: the config POST was rejected with a non-auth 4xx (the yaml is not accepted; nothing indexed) — definitive
+ *   2  usage (incl. --timeout / --poll-ms not a positive number — checked before any request) / missing token / unreadable yaml
  *   3  config route denied AND the repo yaml is not honoured (INDEX-CONFIG.md written; owner decision) ·
  *      also: remote index names absent from the file and no --replace (nothing posted)
- *   4  no verdict — no published in-scope page (preview-only run), admin API unreachable, or the job
- *      never settled; never a FAIL
+ *   4  no verdict — no published in-scope page (preview-only run), admin API unreachable (status 0 / 5xx on any
+ *      admin call), or the job never settled; never a FAIL
  *
  * Writes (never under --check):
  *   <out>/index-status.json   { _provenance, registered: "config"|"repo-yaml"|"denied"|null, indices[], job, sample, exit, at }
@@ -152,7 +153,7 @@ function indexConfigMd({ org, site, admin, indices, yaml, readback }) {
 
 async function main() {
   if (has('help')) {
-    console.log('usage: node skills/rollout/scripts/query-index.mjs --org <org> --site <site> --yaml helix-query.yaml [--ref main] [--origin <url>] [--sample </path>] [--pages <coverage/pages.json>] [--replace] [--check] [--out stardust/dynamics] [--admin https://admin.hlx.page] [--timeout 600] [--poll-ms 5000] [--token-env DA_TOKEN]\n  exit 0 registered + sample read back · 1 read-back failed (FAIL) · 2 usage/token · 3 config denied and repo yaml not honoured, or remote names need --replace · 4 no verdict');
+    console.log('usage: node skills/rollout/scripts/query-index.mjs --org <org> --site <site> --yaml helix-query.yaml [--ref main] [--origin <url>] [--sample </path>] [--pages <coverage/pages.json>] [--replace] [--check] [--out stardust/dynamics] [--admin https://admin.hlx.page] [--timeout 600] [--poll-ms 5000] [--token-env DA_TOKEN]\n  exit 0 registered + sample read back · 1 read-back failed or config POST rejected with a non-auth 4xx (FAIL) · 2 usage (incl. non-numeric --timeout/--poll-ms) / token · 3 config denied and repo yaml not honoured, or remote names need --replace · 4 no verdict (unreachable, 5xx, job not settled, no published sample)');
     return 0;
   }
   const org = arg('org'); const site = arg('site'); const yamlPath = arg('yaml');
@@ -169,7 +170,11 @@ async function main() {
   const origin = String(arg('origin', `https://${ref}--${site}--${org}.aem.live`)).replace(/\/+$/, '');
   const OUT = arg('out', 'stardust/dynamics');
   const CHECK = has('check'); const REPLACE = has('replace');
-  const timeoutMs = Number(arg('timeout', 600)) * 1000; const pollMs = Number(arg('poll-ms', 5000));
+  // numerics are validated BEFORE the first request: a NaN deadline would poll zero times and exit 4 with a misleading line
+  const num = (name, fallback) => { const raw = arg(name, fallback); const n = Number(raw); return Number.isFinite(n) && n > 0 ? n : (console.error(`${TAG} --${name} must be a positive number, got "${raw}"`), null); };
+  const timeoutS = num('timeout', 600); const pollMs = num('poll-ms', 5000);
+  if (timeoutS === null || pollMs === null) return 2;
+  const timeoutMs = timeoutS * 1000;
   const auth = { authorization: `Bearer ${token}` };
   const configUrl = `${admin}/config/${org}/sites/${site}/content/query.yaml`;
   const at = new Date().toISOString();
@@ -204,7 +209,15 @@ async function main() {
   // 3. register through the config route (POST the whole file)
   if (configRoute !== 'denied') {
     const posted = await call(configUrl, { method: 'POST', headers: { ...auth, 'content-type': 'text/yaml' }, body: yaml });
-    if (posted.status === 401 || posted.status === 403) { configRoute = 'denied'; console.error(`${TAG} config route DENIED on POST (HTTP ${posted.status}) — falling back to the repo helix-query.yaml + bulk index; the read-back decides.`); } else if (posted.status === 0 || posted.status >= 400) { console.error(`${TAG} config POST answered ${posted.status || posted.error} — no verdict`); return 4; } else { configRoute = 'registered'; writeText(join(OUT, 'query.yaml'), yaml); console.log(`${TAG} config POST ${posted.status} → mirrored to ${join(OUT, 'query.yaml')}`); }
+    if (posted.status === 401 || posted.status === 403) { configRoute = 'denied'; console.error(`${TAG} config route DENIED on POST (HTTP ${posted.status}) — falling back to the repo helix-query.yaml + bulk index; the read-back decides.`); }
+    else if (posted.status >= 400 && posted.status < 500) {
+      // a non-auth 4xx is the config service refusing THIS file — definitive, not "no verdict"; nothing is indexed
+      console.error(`${TAG} config POST REJECTED (HTTP ${posted.status}${posted.text ? `: ${posted.text.trim().slice(0, 160)}` : ''}) — the config service does not accept ${yamlPath}; fix the file. FAIL, nothing indexed.`);
+      writeJSON(join(OUT, 'index-status.json'), status({ registered: null, verdict: 'config-rejected', reason: `config POST HTTP ${posted.status}`, indices: indices.map((x) => ({ name: x.name, target: x.target, total: null, sampleFound: null, fields: [] })), job: null, sample, exit: 1 }));
+      return 1;
+    }
+    else if (posted.status === 0 || posted.status >= 500) { console.error(`${TAG} config POST answered ${posted.status || posted.error} — no verdict`); return 4; }
+    else { configRoute = 'registered'; writeText(join(OUT, 'query.yaml'), yaml); console.log(`${TAG} config POST ${posted.status} → mirrored to ${join(OUT, 'query.yaml')}`); }
   }
 
   // 4. one bulk index job, polled
