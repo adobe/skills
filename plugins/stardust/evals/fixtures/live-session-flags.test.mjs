@@ -24,6 +24,7 @@ const IMPORTERS = [
   'replica/scripts/stitch-shot.mjs', 'replica/scripts/anchor.mjs', 'replica/scripts/chrome-parity.mjs', 'replica/scripts/chrome-states.mjs', 'replica/scripts/lift.mjs', 'replica/scripts/motion-observe.mjs', 'replica/scripts/sibling-variance.mjs',
   'diff/scripts/content-diff.mjs', 'diff/scripts/visual-diff.mjs',
   'reskin/scripts/dom-equality.mjs', 'reskin/scripts/slot-coverage.mjs', 'reskin/scripts/donor-probe.mjs', 'reskin/scripts/capture-content.mjs',
+  'deploy/scripts/rehost-media.mjs', // --technique headed-chrome: the in-page fetch opens one home document per origin
 ];
 const RESKIN = IMPORTERS.filter((f) => f.startsWith('reskin/'));
 const code = (src) => src.split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n'); // drop comment lines — the flag must be PARSED, not just documented

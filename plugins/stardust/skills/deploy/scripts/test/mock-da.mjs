@@ -8,12 +8,15 @@
  *   /da/<org>/<repo>/media/<scope>/<file>  DA media PUT (rasterise-svg / rehost-media) — bytes kept in
  *                                      `server.media` (path → Buffer); status from rules.mediaStatus(path, n)
  *   /cdn/<name>                        a source CDN fixture (media-reconcile / rehost-media probes):
- *                                      rules.cdn(name, headers) → { status, body: Buffer|string, headers }
+ *                                      rules.cdn(name, headers, search) → { status, body: Buffer|string, headers }
  *                                      (default 404); a `range` request against a Buffer body answers 206
  *                                      with content-range (`total` overrides the advertised size) unless
  *                                      the rule sets `noRange`
+ *   /                                  the CDN origin's home document: rules.root(headers) → { status, body,
+ *                                      headers } (default 200 HTML setting `sess=1` — an in-page fetch from
+ *                                      that document carries the cookie, a bare GET does not)
  *
- * `server.requests` records `{ method, url, auth, ua, range }` in order; `server.rules`
+ * `server.requests` records `{ method, url, auth, ua, range, accept, cookie }` in order; `server.rules`
  * is a mutable object the test edits between runs:
  *   putStatus(path, n) → status for the n-th PUT of that path (default 201)
  *   previewStatus(path, n), liveStatus(path, n) → default 200
@@ -39,6 +42,7 @@ export async function startMock() {
     listStatus: () => 200,
     mediaStatus: () => 201,
     cdn: () => ({ status: 404, body: 'no such asset' }),
+    root: () => ({ status: 200, body: '<!doctype html><title>mock origin</title>', headers: { 'set-cookie': 'sess=1; Path=/' } }),
   };
   const media = {};
   const server = createServer(async (req, res) => {
@@ -47,7 +51,7 @@ export async function startMock() {
     const raw = Buffer.concat(chunks);
     const body = raw.toString('utf8');
     const url = new URL(req.url, 'http://x');
-    requests.push({ method: req.method, url: url.pathname, auth: req.headers.authorization || null, ua: req.headers['user-agent'] || null, range: req.headers.range || null });
+    requests.push({ method: req.method, url: url.pathname, auth: req.headers.authorization || null, ua: req.headers['user-agent'] || null, range: req.headers.range || null, accept: req.headers.accept || null, cookie: req.headers.cookie || null });
     const reply = (status, text = '', headers = {}) => { res.writeHead(status, { 'content-type': 'text/html', ...headers }); res.end(text); };
     let m;
     if ((m = url.pathname.match(/^\/da\/[^/]+\/[^/]+(\/media\/.+)$/)) && !/\.html$/.test(url.pathname)) {
@@ -64,7 +68,7 @@ export async function startMock() {
       if (req.method === 'HEAD' || req.method === 'GET') return p in media ? reply(200, req.method === 'GET' ? media[p] : '') : reply(404);
     }
     if ((m = url.pathname.match(/^\/cdn\/(.+)$/))) {
-      const d = rules.cdn(decodeURI(m[1]), req.headers) || { status: 404 };
+      const d = rules.cdn(decodeURI(m[1]), req.headers, url.search) || { status: 404 };
       const buf = Buffer.isBuffer(d.body) ? d.body : Buffer.from(d.body || '');
       const range = req.headers.range && !d.noRange && d.status === 200 && Buffer.isBuffer(d.body) ? req.headers.range.match(/^bytes=(\d+)-(\d*)$/) : null;
       if (range) {
@@ -102,6 +106,7 @@ export async function startMock() {
       return reply(d.status, d.body || '', d.headers || {});
     }
     if ((m = url.pathname.match(/^\/list\//))) return reply(rules.listStatus(), '[]', { 'content-type': 'application/json' });
+    if (url.pathname === '/') { const d = rules.root(req.headers); return reply(d.status, d.body || '', d.headers || {}); }
     return reply(404, 'mock: no route');
   });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));

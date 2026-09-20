@@ -17,13 +17,29 @@
 //       --media-policy keep and on a content.da.live src
 //   (10) verify --root: a delivered body with an external <img> → advisory class `hotlinked image`,
 //        page stays verified, exit 0
+//   (11) NEGATIVE: a 429 backs off once and the retry is SENT (its own timer, same accept header) —
+//        REHOST_MEDIA_TIMEOUT_MS shorter than REHOST_MEDIA_BACKOFF_MS
+//   (12) NEGATIVE: under the DEFAULT policy a plain-200 raster > 1 MB is acted on: a recognised CDN
+//        transform host → pre-shrunk PUT (`via: cdn-transform`); no transform → `oversize`, exit 0
+//   (13) NEGATIVE: a ledger `kept` row written under --policy keep is re-evaluated under rehost-all
+//        (rehosted); the next rehost-all run is 0-hit again
+//   (14) NEGATIVE: --only blocked rehosts the 403-to-plain-UA jpeg and keeps the > 1 MB one with the
+//        note; an unknown --only token exits 2
+//   (15) --technique headed-chrome: a URL that 403s every bare GET and 200s only with the origin's
+//        cookie is fetched in-page (one home-document hit per origin) → rehosted, `source: in-page`;
+//        without the flag it stays `blocked`; without Playwright it stays `blocked` with the preflight
+//        note (browser half runs under STARDUST_PW_ROOT, else SKIP line)
+//   (16) --resize: a 1.1 MB noise PNG with no CDN transform → `oversize` by default, rehosted as a
+//        smaller JPEG (`via: resize`) with the flag (browser half as (15))
 //
 // Usage: node plugins/stardust/evals/lint/media-rehost-smoke.mjs  (exit 1 on findings)
 import { cpSync, existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
+import { createHash, randomFillSync } from 'node:crypto';
+import { createRequire } from 'node:module';
+import { crc32, deflateSync } from 'node:zlib';
 import { startMock } from '../../skills/deploy/scripts/test/mock-da.mjs';
 
 const HERE = import.meta.dirname;
@@ -42,9 +58,24 @@ const png = readFileSync(join(HERE, 'fixtures', 'media-preflight', 'ok.png'));
 // (the mock's decodeURI leaves the reserved %40 encoded — the stem rule must fold it, cigna note 89)
 // a minimal baseline JPEG: SOI, APP0, SOF0 (8-bit, 3×5 px), EOI — enough for the sniff + the SOF dimension scan
 const jpeg = Buffer.from('ffd8ffe000104a46494600010100000100010000ffc0000b080005000301011100ffd9', 'hex');
-mock.rules.cdn = (name, headers) => {
+// a decodable > 1 MB PNG: random RGB scanlines do not deflate (the --resize canvas re-encode must shrink it)
+function noisePng(w, h) {
+  const chunk = (type, data) => { const len = Buffer.alloc(4); len.writeUInt32BE(data.length); const td = Buffer.concat([Buffer.from(type), data]); const crc = Buffer.alloc(4); crc.writeUInt32BE(crc32(td)); return Buffer.concat([len, td, crc]); };
+  const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4); ihdr[8] = 8; ihdr[9] = 2;
+  const raw = Buffer.alloc((w * 3 + 1) * h); for (let y = 0; y < h; y += 1) randomFillSync(raw, y * (w * 3 + 1) + 1, w * 3);
+  return Buffer.concat([Buffer.from('89504e470d0a1a0a', 'hex'), chunk('IHDR', ihdr), chunk('IDAT', deflateSync(raw, { level: 1 })), chunk('IEND', Buffer.alloc(0))]);
+}
+const noise = noisePng(600, 600);
+const bigJpeg = Buffer.concat([jpeg.subarray(0, jpeg.length - 2), Buffer.alloc(1.5 * 1024 * 1024), jpeg.subarray(-2)]); // 1.5 MB: SOF dims + padding
+const slowHits = {};
+mock.rules.cdn = (name, headers, search = '') => {
   const browser = /Mozilla/.test(headers['user-agent'] || '');
   switch (name) {
+    case 'slow.png': slowHits[headers['user-agent']] = (slowHits[headers['user-agent']] || 0) + 1; return slowHits[headers['user-agent']] === 1 ? { status: 429, body: 'slow down', headers: { 'retry-after': '1' } } : { status: 200, body: png, headers: { 'content-type': 'image/png' } };
+    case 'im/big.jpg': return /im=Resize/.test(search) ? { status: 200, body: jpeg, headers: { 'content-type': 'image/jpeg' } } : { status: 200, body: bigJpeg, headers: { 'content-type': 'image/jpeg' } };
+    case 'plain/big.jpg': return { status: 200, body: bigJpeg, headers: { 'content-type': 'image/jpeg' } };
+    case 'noise.png': return { status: 200, body: noise, headers: { 'content-type': 'image/png' } };
+    case 'cookie.jpg': return /\bsess=1\b/.test(headers.cookie || '') ? { status: 200, body: jpeg, headers: { 'content-type': 'image/jpeg' } } : { status: 403, body: 'no session' };
     case 'ok.png': return { status: 200, body: png, headers: { 'content-type': 'image/png' } };
     case 'walled.jpg': return browser ? { status: 200, body: jpeg, headers: { 'content-type': 'image/jpeg' } } : { status: 403, body: 'bot wall' };
     case 'gone.png': return { status: 404, body: 'gone' };
@@ -56,10 +87,16 @@ mock.rules.cdn = (name, headers) => {
 const T = mkdtempSync(join(tmpdir(), 'media-rehost-smoke-'));
 function walk(d) { return readdirSync(d).sort().flatMap((n) => { const p = join(d, n); return statSync(p).isDirectory() ? walk(p) : p.endsWith('.html') ? [p] : []; }); }
 const seed = (name) => { const dir = join(T, name); rmSync(dir, { recursive: true, force: true }); cpSync(join(FIX, 'content'), dir, { recursive: true }); for (const f of walk(dir)) writeFileSync(f, readFileSync(f, 'utf8').replaceAll('__CDN__', CDN)); return dir; };
+const one = (name, ...assets) => { const dir = join(T, name); rmSync(dir, { recursive: true, force: true }); mkdirSync(dir, { recursive: true }); writeFileSync(join(dir, 'index.html'), `<body><header></header><main><div><h1>x</h1>${assets.map((a) => `<p><img src="${cdnUrl(a)}" alt=""></p>`).join('')}</div></main><footer></footer></body>`); return dir; }; // one document over named fixtures
+const ledgerOf = (p) => (existsSync(p) ? JSON.parse(readFileSync(p, 'utf8')) : {});
+const rowOf = (p, n) => ledgerOf(p)[cdnUrl(n)] || {};
+const withLedger = (args, p) => [...args.filter((a, i, arr) => arr[i - 1] !== '--ledger' && a !== '--ledger'), '--ledger', p];
 const cdnHits = () => mock.requests.filter((r) => r.url.startsWith('/cdn/')).length;
 const daHits = () => mock.requests.filter((r) => r.url.startsWith('/da/')).length;
+// HOME is redirected so no real .env is read; Playwright's browser cache stays where the runner host keeps it
+const BROWSERS = process.env.PLAYWRIGHT_BROWSERS_PATH || join(homedir(), process.platform === 'darwin' ? 'Library/Caches/ms-playwright' : process.platform === 'win32' ? 'AppData/Local/ms-playwright' : '.cache/ms-playwright');
 const run = (script, args, env = {}) => new Promise((resolve) => { // the mock lives in this process: spawn async so it can answer
-  const c = spawn(process.execPath, [script, ...args], { cwd: T, env: { ...process.env, HOME: T, DA_TOKEN: 'x', ...mock.env(), ...env } });
+  const c = spawn(process.execPath, [script, ...args], { cwd: T, env: { ...process.env, HOME: T, PLAYWRIGHT_BROWSERS_PATH: BROWSERS, DA_TOKEN: 'x', STARDUST_BROWSER_SLOTS: '0', ...mock.env(), ...env } });
   let stdout = ''; let stderr = '';
   c.stdout.on('data', (d) => { stdout += d; }); c.stderr.on('data', (d) => { stderr += d; });
   const t = setTimeout(() => { c.kill(); stderr += '\n[smoke] TIMEOUT'; }, 60000);
@@ -119,6 +156,69 @@ check(rk.json && rk.json.policy === 'keep', `(7) policy read from state.json med
 check(K[cdnUrl('ok.png')] && K[cdnUrl('ok.png')].status === 'kept', `(7) plain-200 png kept under policy keep: ${JSON.stringify(K[cdnUrl('ok.png')])}`);
 check(K[cdnUrl('walled.jpg')] && K[cdnUrl('walled.jpg')].status === 'rehosted', `(7) 403-to-plain-UA jpeg still rehosted under policy keep: ${JSON.stringify(K[cdnUrl('walled.jpg')])}`);
 check(readFileSync(join(keepTree, 'index.html'), 'utf8').includes('/cdn/ok.png'), '(7) the kept <img> is not rewritten');
+check(K[cdnUrl('ok.png')] && K[cdnUrl('ok.png')].policy === 'keep', '(13) a kept row records the policy it was kept under');
+
+// ---- (11) 429 back-off: the retry is sent with its own timer --------------------------------------
+const slowLedger = join(T, 'slow-ledger.json');
+const rSlow = await run(REHOST, withLedger(base(one('slow', 'slow.png'), ['--policy', 'rehost-all']), slowLedger), { REHOST_MEDIA_TIMEOUT_MS: '800', REHOST_MEDIA_BACKOFF_MS: '1200' });
+const slowReqs = mock.requests.filter((r) => r.url === '/cdn/slow.png');
+check(rSlow.status === 0 && rowOf(slowLedger, 'slow.png').status === 'rehosted', `(11) 429 then 200 → rehosted, exit 0 (got ${rSlow.status} ${JSON.stringify(rowOf(slowLedger, 'slow.png'))})`);
+check(slowReqs.length === 2 && slowReqs.every((r) => /^image\/\*/.test(r.accept || '')), `(11) two source GETs, both with the image accept header (got ${JSON.stringify(slowReqs.map((r) => r.accept))})`);
+
+// ---- (12) > 1 MB under the DEFAULT policy: transform host → pre-shrunk PUT; no transform → oversize --
+const bigLedger = join(T, 'big-ledger.json'); const bigTree = one('big', 'im/big.jpg', 'plain/big.jpg');
+const putsBig = mock.requests.filter((r) => r.method === 'PUT').length;
+const rBig = await run(REHOST, withLedger(base(bigTree), bigLedger));
+const imRow = rowOf(bigLedger, 'im/big.jpg'); const plainRow = rowOf(bigLedger, 'plain/big.jpg');
+check(rBig.status === 0 && rBig.json && rBig.json.policy === 'rehost-blocked', `(12) default policy is rehost-blocked, exit 0 (got ${rBig.status} ${rBig.json && rBig.json.policy})`);
+check(imRow.status === 'rehosted' && imRow.via === 'cdn-transform' && imRow.bytes === jpeg.length && imRow.reasons && imRow.reasons.includes('oversize'), `(12) Akamai-IM shaped URL → pre-shrunk through the transform and rehosted: ${JSON.stringify(imRow)}`);
+check(mock.requests.some((r) => r.url === '/cdn/im/big.jpg') && mock.requests.filter((r) => r.method === 'PUT').length === putsBig + 1, '(12) exactly one media PUT (the shrunk bytes), none for the oversize row');
+check(plainRow.status === 'oversize' && plainRow.bytes === bigJpeg.length && /--resize/.test(plainRow.note || ''), `(12) no transform → oversize with the --resize hint, not rehosted: ${JSON.stringify(plainRow)}`);
+check(readFileSync(join(bigTree, 'index.html'), 'utf8').includes('/cdn/plain/big.jpg') && !readFileSync(join(bigTree, 'index.html'), 'utf8').includes('/cdn/im/big.jpg'), '(12) only the rehosted reference is rewritten');
+
+// ---- (13) a kept row does not outlive its policy --------------------------------------------------
+const polLedger = join(T, 'policy-ledger.json'); const polTree = one('policy', 'ok.png');
+await run(REHOST, withLedger(base(polTree, ['--policy', 'keep']), polLedger));
+check(rowOf(polLedger, 'ok.png').status === 'kept', `(13) run 1 under keep: kept (${JSON.stringify(rowOf(polLedger, 'ok.png'))})`);
+const rAll = await run(REHOST, withLedger(base(polTree, ['--policy', 'rehost-all']), polLedger));
+check(rAll.status === 0 && rowOf(polLedger, 'ok.png').status === 'rehosted' && !rAll.json.rows[cdnUrl('ok.png')].cached, `(13) run 2 under rehost-all re-evaluates the kept row and rehosts it (${JSON.stringify(rowOf(polLedger, 'ok.png'))})`);
+const c13 = cdnHits();
+const rAll2 = await run(REHOST, withLedger(base(one('policy', 'ok.png'), ['--policy', 'rehost-all']), polLedger)); // a fresh copy of the page: run 2 rewrote the reference
+check(cdnHits() === c13 && rAll2.json && (rAll2.json.rows[cdnUrl('ok.png')] || {}).cached === true, '(13) run 3 under the same policy is ledger-final again (0 CDN hits)');
+
+// ---- (14) --only tokens ---------------------------------------------------------------------------
+const onlyLedger = join(T, 'only-ledger.json'); const onlyTree = one('only', 'walled.jpg', 'plain/big.jpg', 'ok.png');
+const rOnly = await run(REHOST, withLedger(base(onlyTree, ['--only', 'blocked']), onlyLedger));
+check(rOnly.status === 0 && rowOf(onlyLedger, 'walled.jpg').status === 'rehosted', `(14) --only blocked rehosts the 403-to-plain-UA jpeg (${JSON.stringify(rowOf(onlyLedger, 'walled.jpg'))})`);
+check(rowOf(onlyLedger, 'plain/big.jpg').status === 'kept' && /--only excludes oversize/.test(rowOf(onlyLedger, 'plain/big.jpg').note || '') && rowOf(onlyLedger, 'plain/big.jpg').only === 'blocked', `(14) the > 1 MB raster is kept with the --only note (${JSON.stringify(rowOf(onlyLedger, 'plain/big.jpg'))})`);
+check(rowOf(onlyLedger, 'ok.png').status === 'kept' && !rowOf(onlyLedger, 'ok.png').note, '(14) a plain-200 png under rehost-blocked is kept without a note (no reason to act)');
+const rOnlyBad = await run(REHOST, base(onlyTree, ['--only', 'nonsense']));
+check(rOnlyBad.status === 2 && /--only takes blocked \| oversize \| rehost \| all/.test(rOnlyBad.stderr), `(14) an unknown --only token is a usage error naming the tokens (got ${rOnlyBad.status})`);
+
+// ---- (15)(16) the browser paths: blocked stays blocked without them; Playwright half under STARDUST_PW_ROOT --
+const ckLedger = join(T, 'cookie-ledger.json'); const ckTree = one('cookie', 'cookie.jpg');
+const rCk = await run(REHOST, withLedger(base(ckTree), ckLedger));
+check(rCk.status === 1 && rowOf(ckLedger, 'cookie.jpg').status === 'blocked' && rowOf(ckLedger, 'cookie.jpg').http === 403, `(15) cookie-gated asset without the technique: blocked, exit 1 (${JSON.stringify(rowOf(ckLedger, 'cookie.jpg'))})`);
+const nzLedger = join(T, 'noise-ledger.json'); const nzTree = one('noise', 'noise.png');
+const rNz = await run(REHOST, withLedger(base(nzTree), nzLedger));
+check(noise.length > 1024 * 1024 && rNz.status === 0 && rowOf(nzLedger, 'noise.png').status === 'oversize', `(16) 1.1 MB png with no transform: oversize by default (${noise.length} B, ${JSON.stringify(rowOf(nzLedger, 'noise.png'))})`);
+let pwOk = false;
+if (process.env.STARDUST_PW_ROOT) { try { createRequire(join(process.env.STARDUST_PW_ROOT, 'package.json')).resolve('playwright'); pwOk = true; } catch { pwOk = false; } }
+if (pwOk) {
+  const rootBefore = mock.requests.filter((r) => r.url === '/').length;
+  const rHc = await run(REHOST, withLedger(base(ckTree, ['--technique', 'headed-chrome']), ckLedger));
+  const ck = rowOf(ckLedger, 'cookie.jpg');
+  check(rHc.status === 0 && ck.status === 'rehosted' && ck.source === 'in-page' && ck.technique === 'headed-chrome' && ck.width === 3, `(15) --technique headed-chrome: fetched in-page with the origin cookie, rehosted (exit ${rHc.status}, ${JSON.stringify(ck)}) ${rHc.stderr.slice(0, 200)}`);
+  check(mock.requests.filter((r) => r.url === '/').length === rootBefore + 1 && mock.requests.some((r) => r.url === '/cdn/cookie.jpg' && /sess=1/.test(r.cookie || '')), '(15) one home-document hit for the origin; the asset fetch carried its cookie');
+  const rRs = await run(REHOST, withLedger(base(nzTree, ['--resize']), nzLedger));
+  const nz = rowOf(nzLedger, 'noise.png');
+  check(rRs.status === 0 && nz.status === 'rehosted' && nz.via === 'resize' && nz.type === 'image/jpeg' && nz.bytes < noise.length && /\.jpg$/.test(nz.url), `(16) --resize re-encodes the oversize png in the page and rehosts the smaller JPEG (${JSON.stringify(nz)}) ${rRs.stderr.slice(0, 200)}`);
+} else {
+  const rNoPw = await run(REHOST, withLedger(base(ckTree, ['--technique', 'headed-chrome']), ckLedger), { STARDUST_PW_ROOT: join(T, 'no-such-root'), PATH: '' });
+  const ck = rowOf(ckLedger, 'cookie.jpg');
+  check(rNoPw.status === 1 && ck.status === 'blocked' && /playwright not found|browser launch failed/.test(ck.note || ''), `(15) without Playwright the row stays blocked with the preflight note, exit 1 (${JSON.stringify(ck)})`);
+  console.log('media-rehost-smoke: SKIP in-page fetch and --resize browser halves (STARDUST_PW_ROOT does not resolve playwright) — the playwright-missing branch ran');
+}
 
 // ---- (8) DA 401 → exit 3, HaltError; usage → exit 2 --------------------------------------------
 mock.rules.mediaStatus = () => 401;
@@ -161,4 +261,4 @@ check(!((summary.pages.find((p) => p.slug === 'clean') || {}).advisories || []).
 await mock.close();
 rmSync(T, { recursive: true, force: true });
 if (failures.length) { console.error(`media-rehost-smoke: ${failures.length} finding(s)`); for (const f of failures) console.error(`  ✗ ${f}`); process.exit(1); }
-console.log('media-rehost-smoke: ok (10 cases · ledger + 0-hit re-run, PUT only 2xx images, dead/not-image/signed, stem, --dry, policy keep, exit 3 on DA 401, delivery-lint hotlinked-media, verify hotlinked advisory)');
+console.log('media-rehost-smoke: ok (16 cases · ledger + 0-hit re-run, PUT only 2xx images, dead/not-image/signed, stem, --dry, policy keep, exit 3 on DA 401, delivery-lint hotlinked-media, verify hotlinked advisory, 429 retry sent, > 1 MB acted under the default, kept rows re-evaluated per policy, --only tokens, headed-chrome in-page fetch, --resize)');

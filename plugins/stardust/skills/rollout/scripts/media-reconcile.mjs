@@ -38,14 +38,16 @@
  *   --apply rewrites files in place (rewrite → suggested URL, omit → remove the <img>, svg-* →
  *   the PNG from the override map); --dry prints the plan and writes nothing (files or cache).
  *   --rasterise renders every blocking SVG through skills/deploy/scripts/rasterise-svg.mjs
- *   (Playwright, or --extract-raster) and PUTs the PNG to DA media/svg/; the reviewable
- *   artefact is --override-map (default stardust/rollout/media-overrides.json).
+ *   (Playwright, or --extract-raster — plugin layout only, run from the plugin checkout) and
+ *   PUTs the PNG to DA media/svg/; the reviewable artefact is --override-map (default
+ *   stardust/rollout/media-overrides.json).
  *   --cache (default stardust/rollout/media-probe.json under --content; none under --file) is the
  *   per-URL probe record: a re-run fetches nothing it already knows (5xx rows are re-probed after
  *   1 h; 0 and 401/403 answers are never cached — a token or a rehost changes them).
- *   --max-images <n> moves the P1 cap for this run (printed); --allow-large-raster turns
- *   raster-oversize into the advisory; --keep <s> leaves matching URLs untouched (`kept`,
- *   still a gate fail when the class blocks). --token-env <NAME>: the site token of a LOCKED
+ *   --max-images <n> moves the P1 cap for this run (printed); --allow-large-raster reads a
+ *   raster-oversize row as the advisory for THIS run only — the cache keeps the undowngraded
+ *   class, so the next run without the flag blocks again; --keep <s> leaves matching URLs
+ *   untouched (`kept`, still a gate fail when the class blocks). --token-env <NAME>: the site token of a LOCKED
  *   --deploy-host (sent only to that host, never printed).
  * Exit: 0 clean · 1 a blocking class remains (omit, rehost, unresolved, unplayable, svg-*,
  *       raster-oversize, doc-images P1) · 2 usage · 3 rasterise halted on a DA 401 (B13).
@@ -163,15 +165,18 @@ async function main() {
     return null;
   }
   const posters = new Set();
-  /** image decision for one URL — reads/writes the cache; returns { status, bytes, type, decision, suggested, hint } */
+  // the cache holds flag-independent facts: raster-oversize is stored as such and downgraded on READ under
+  // --allow-large-raster, so the escape lasts one run and never leaks into a later run through the cache
+  const view = (c) => (ALLOW_LARGE && c.class === 'raster-oversize' ? { ...c, class: 'raster-large', allowed: true } : c);
+  /** image decision for one URL — reads/writes the cache; returns { status, bytes, type, class, suggested, hint } */
   async function decideImage(u) {
-    if (fresh(cache[u])) return { ...cache[u], cached: true };
+    if (fresh(cache[u])) return view({ ...cache[u], cached: true });
     let r = await probe(u, { full: isSvgUrl(u) });
     if (!isSvgUrl(u) && /svg/i.test(r.type || '') && (r.status === 200 || r.status === 206)) r = await probe(u, { full: true });
     let decision = null; let suggested = null; let hint = null;
     if (r.status === 200 || r.status === 206) {
       if (isSvgUrl(u) || /svg/i.test(r.type || '')) decision = svgClass(r.buf);
-      else if (r.bytes > RASTER_MAX) { decision = ALLOW_LARGE ? 'raster-large' : 'raster-oversize'; hint = transformHint(u); }
+      else if (r.bytes > RASTER_MAX) { decision = 'raster-oversize'; hint = transformHint(u); }
       else if (r.bytes > RASTER_LARGE) { decision = 'raster-large'; hint = transformHint(u); }
       else decision = 'keep';
     } else {
@@ -187,7 +192,7 @@ async function main() {
     }
     const row = { status: r.status, bytes: r.bytes, type: r.type, class: decision, suggested, hint, at: new Date(now).toISOString() };
     if (cacheable(r.status)) cache[u] = row;
-    return row;
+    return view(row);
   }
   async function pool(items, fn) { const out = new Map(); let i = 0; await Promise.all(Array.from({ length: Math.min(CONC, items.length) }, async () => { while (i < items.length) { const u = items[i++]; out.set(u, await fn(u)); } })); return out; }
 
@@ -205,7 +210,7 @@ async function main() {
       const host = hostOf(u);
       if (isDaHosted(u)) rows.push({ url: u, host, status: null, decision: 'da-hosted', suggested: null, kind: 'image' });
       else if (DEPLOY_HOST && host === DEPLOY_HOST) rows.push({ url: u, host, status: null, decision: 'optimize', suggested: null, kind: 'image' });
-      else { const c = decided.get(u); rows.push({ url: u, host, status: c.status, bytes: c.bytes, decision: c.class, suggested: c.suggested, hint: c.hint || undefined, kept: kept(u) || undefined, kind: 'image' }); }
+      else { const c = decided.get(u); rows.push({ url: u, host, status: c.status, bytes: c.bytes, decision: c.class, suggested: c.suggested, hint: c.hint || undefined, allowed: c.allowed || undefined, kept: kept(u) || undefined, kind: 'image' }); }
     }
     for (const u of d.media) { const c = probedMedia.get(u) || { class: 'da-hosted' }; rows.push({ url: u, host: hostOf(u), status: c.status ?? null, decision: c.class, suggested: null, kind: 'media' }); }
     const docSev = d.imgCount > MAX_IMAGES ? 'P1' : d.imgCount > DOC_P2 ? 'P2' : null;
@@ -216,8 +221,8 @@ async function main() {
   // 4. --apply: rewrite / omit / rasterise (unresolved, rehost and kept rows are left untouched on purpose)
   const svgBlocked = [...new Set(results.filter((r) => /^svg-/.test(r.decision) && !r.kept).map((r) => r.url))];
   if (APPLY && RASTERISE && !DRY) {
-    const script = ['../../deploy/scripts/rasterise-svg.mjs', '../deploy/rasterise-svg.mjs'].map((c) => new URL(c, import.meta.url).pathname).find((p) => existsSync(p));
-    if (!script) { console.error('media-reconcile: rasterise-svg.mjs not found next to this script — copy skills/deploy/scripts/rasterise-svg.mjs to stardust/scripts/deploy/'); process.exit(2); }
+    const script = new URL('../../deploy/scripts/rasterise-svg.mjs', import.meta.url).pathname; // plugin layout only: the rasteriser imports rehost-media + this file by that layout
+    if (!existsSync(script)) { console.error('media-reconcile: skills/deploy/scripts/rasterise-svg.mjs not found — --rasterise runs from the plugin checkout, not a copied script'); process.exit(2); }
     for (const u of svgBlocked.filter((x) => !overrides[x])) {
       const r = spawnSync(process.execPath, [script, '--svg', u, '--org', arg('org'), '--repo', arg('repo'), '--override-map', OVERRIDE_MAP, ...(argv.includes('--extract-raster') ? ['--extract-raster'] : []), ...(arg('token-env', null) ? ['--token-env', arg('token-env')] : [])], { encoding: 'utf8' });
       if (r.status === 3) { process.stderr.write(r.stderr); process.exit(3); } // DA 401: halt, never a retry (B13)
@@ -227,7 +232,7 @@ async function main() {
   }
   const applied = [];
   for (const d of perFile) {
-    let html = readFileSync(d.file, 'utf8');
+    const orig = readFileSync(d.file, 'utf8'); let html = orig;
     for (const r of d.rows) {
       if (r.kept || r.kind === 'document') continue;
       if (r.decision === 'rewrite' && r.suggested) { html = replaceUrl(html, r.url, r.suggested); applied.push({ file: d.file, url: r.url, to: r.suggested }); }
@@ -235,7 +240,7 @@ async function main() {
       else if (/^svg-/.test(r.decision) && overrides[r.url] && overrides[r.url].png) { html = replaceUrl(html, r.url, overrides[r.url].png); r.decision = 'rewrite'; r.suggested = overrides[r.url].png; applied.push({ file: d.file, url: r.url, to: r.suggested }); }
     }
     html = html.replace(/<picture>\s*<\/picture>/gi, ''); // sweep any now-empty <picture>
-    if (APPLY && !DRY && html !== d.html) writeFileSync(d.file, html);
+    if (APPLY && !DRY && html !== orig) writeFileSync(d.file, html); // unchanged files are never rewritten (mtime stays)
   }
   for (const r of results) { const p = perFile.find((f) => f.file === r.file); const row = p && p.rows.find((x) => x.url === r.url && x.kind === r.kind); if (row) { r.decision = row.decision; r.suggested = row.suggested; } }
   if (CACHE_FILE && !DRY) { mkdirSync(dirname(CACHE_FILE), { recursive: true }); writeFileSync(CACHE_FILE, `${JSON.stringify(cache, null, 2)}\n`); }
@@ -250,7 +255,7 @@ async function main() {
     const TAG = { optimize: '✓ optimize', 'da-hosted': '✓ da-host ', keep: '✓ keep    ', rewrite: '→ rewrite ', rehost: '↓ rehost  ', omit: '✗ omit    ', unresolved: '? manual  ', unplayable: '✗ unplay  ', 'needs-credential': '! cred    ', 'svg-oversize': '✗ svg>40K ', 'svg-raster': '✗ svg-rast', 'svg-invalid': '✗ svg-html', 'raster-oversize': '✗ >10MB   ', 'raster-large': '~ >1MB    ', 'doc-images': '# images  ' };
     for (const r of results) if (r.decision !== 'keep' && r.decision !== 'optimize' && r.decision !== 'da-hosted') console.log(`  ${TAG[r.decision] || r.decision} ${r.status ? `[${r.status}] ` : ''}${r.severity ? `${r.severity} ${r.count} <img> ` : ''}${r.url.slice(0, 70)}${r.kept ? ' (kept)' : ''}${r.suggested ? `\n              → ${r.suggested.slice(0, 70)}` : ''}${r.hint ? `\n              hint: ${r.hint}` : ''}`);
     if (MAX_IMAGES !== DOC_P1) console.log(`  doc-images P1 cap moved to ${MAX_IMAGES} for this run (--max-images)`);
-    if (ALLOW_LARGE) console.log('  raster-oversize downgraded to advisory for this run (--allow-large-raster)');
+    if (ALLOW_LARGE) console.log(`  raster-oversize read as the advisory for this run only (--allow-large-raster; ${results.filter((r) => r.allowed).length} row(s), the cache keeps raster-oversize)`);
     if (svgBlocked.length && !RASTERISE) console.log(`  ${svgBlocked.length} SVG(s) cannot preview — rerun with --apply --rasterise --org <o> --repo <r> (or --extract-raster)`);
     console.log(`\n${Object.entries(counts).map(([k, v]) => `${v} ${k}`).join(' · ')}${CACHE_FILE ? ` · cache ${CACHE_FILE}` : ''}`);
   }

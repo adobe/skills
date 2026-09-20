@@ -15,9 +15,12 @@
 //        when STARDUST_PW_ROOT resolves playwright (else SKIP line)
 //   (12) exit 1 iff a blocking class remains; the clean tree exits 0; raster >1 MB advisory, >10 MB blocks
 //        unless --allow-large-raster
+//   (13) NEGATIVE: --allow-large-raster with --cache, then a re-run WITHOUT the flag on the same cache →
+//        raster-oversize, exit 1 (the escape lasts one run; the cache keeps the undowngraded class)
+//   (14) NEGATIVE: --apply never rewrites an unchanged file (mtime stays)
 //
 // Usage: node plugins/stardust/evals/lint/media-preflight-smoke.mjs  (exit 1 on findings)
-import { cpSync, existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
@@ -165,7 +168,26 @@ check(rAllow.json && cls(rAllow.json, cdnUrl('huge.jpg')) === 'raster-large', '(
 const rUsage = await run(RECONCILE, ['--content']);
 check(rUsage.status === 2, `usage: bare --content exits 2, got ${rUsage.status}`);
 
+// ---- (13) the --allow-large-raster escape never persists through the cache ------------------
+const hugeTree = join(T, 'huge'); mkdirSync(hugeTree, { recursive: true });
+writeFileSync(join(hugeTree, 'index.html'), `<body><header></header><main><div><h1>x</h1><p><img src="${cdnUrl('huge.jpg')}" alt=""></p></div></main><footer></footer></body>`);
+const hugeCache = join(T, 'huge-probe.json');
+const rA1 = await run(RECONCILE, ['--content', hugeTree, '--cache', hugeCache, '--allow-large-raster', '--json']);
+check(rA1.status === 0 && rA1.json && cls(rA1.json, cdnUrl('huge.jpg')) === 'raster-large', `(13) run with the flag: raster-large, exit 0 (got ${rA1.status} ${rA1.json && cls(rA1.json, cdnUrl('huge.jpg'))})`);
+check(existsSync(hugeCache) && JSON.parse(readFileSync(hugeCache, 'utf8'))[cdnUrl('huge.jpg')].class === 'raster-oversize', '(13) the cache stores the undowngraded class raster-oversize');
+const hitsA = cdnHits();
+const rA2 = await run(RECONCILE, ['--content', hugeTree, '--cache', hugeCache, '--json']);
+check(cdnHits() === hitsA, `(13) the re-run reads the cache (made ${cdnHits() - hitsA} CDN requests)`);
+check(rA2.status === 1 && rA2.json && cls(rA2.json, cdnUrl('huge.jpg')) === 'raster-oversize', `(13) re-run WITHOUT the flag on the same cache: raster-oversize, exit 1 (got ${rA2.status} ${rA2.json && cls(rA2.json, cdnUrl('huge.jpg'))})`);
+const rA3 = await run(RECONCILE, ['--content', hugeTree, '--cache', hugeCache, '--allow-large-raster']);
+check(rA3.status === 0 && /read as the advisory for this run only/.test(rA3.stdout), '(13) the flag prints its reason on every run it applies to');
+
+// ---- (14) --apply leaves an unchanged file untouched (mtime) ---------------------------------
+const cleanIdx = join(clean, 'index.html'); const old = new Date('2020-01-01T00:00:00Z'); utimesSync(cleanIdx, old, old);
+const rApplyClean = await run(RECONCILE, ['--content', clean, '--cache', cache, '--apply']);
+check(rApplyClean.status === 0 && statSync(cleanIdx).mtimeMs === old.getTime(), `(14) --apply on an unchanged file keeps its mtime (exit ${rApplyClean.status}, mtime ${statSync(cleanIdx).mtime.toISOString()})`);
+
 await mock.close();
 rmSync(T, { recursive: true, force: true });
 if (failures.length) { console.error(`media-preflight-smoke: ${failures.length} finding(s)`); for (const f of failures) console.error(`  ✗ ${f}`); process.exit(1); }
-console.log(`media-preflight-smoke: ok (12 cases · svg-oversize/raster/invalid, caps, poster ladder, cache 0-hit re-run, extract-raster PUT once, exit 1 iff blocking)`);
+console.log(`media-preflight-smoke: ok (14 cases · svg-oversize/raster/invalid, caps, poster ladder, cache 0-hit re-run, extract-raster PUT once, exit 1 iff blocking, --allow-large-raster one run only, --apply mtime)`);
