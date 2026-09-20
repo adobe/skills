@@ -30,6 +30,9 @@
  *                 preview by default, live only with an explicit --publish (D1/D16). The page's
  *                 outcome is deploy-batch's own ledger row (untouched by this script; Gate 3
  *                 path-safety runs inside it, its redirect rows go to the same sheet stage 1 reads).
+ *                 A --publish run holds every row without a PASS in stardust/rollout/gate-report.json
+ *                 (rollout publish-gate.md § Gate 8 — the hold, `held=` and the two owner escape flags
+ *                 live in deploy-batch; this chain only forwards them).
  *   Every child runs under --timeout (default 600 s). A child killed at the deadline (or exiting
  *   124/143) is status `killed` — NO verdict, never a FAIL — and is listed for re-run.
  *   `--media` is reserved: only `skip` (the default) is available in this release.
@@ -41,14 +44,15 @@
  *     (<file…> | --all | --paths <file>) [--publish] [--media skip] [--timeout 600] \
  *     [--no-localize] [--icons-dir <dir>] [--styles <css>] [--allow-empty <a,b>] [--ledger <path>] \
  *     [--progress <path> | --no-progress] [--report <path>] \
- *     [--require-code-synced [--code-sync-record <f>]] [--site-token-env <NAME>] [--token-env <NAME>] [--concurrency <n>]
+ *     [--require-code-synced [--code-sync-record <f>] | --skip-code-sync-verify <reason>] [--site-token-env <NAME>] \
+ *     [--token-env <NAME>] [--concurrency <n>] [--gate-report <f>] [--publish-ungated] [--publish-no-regression]
  *
  *   <file…>       content files (paths on disk) — or web paths (`/about`, resolved under --content)
  *   --all         every *.html under --content
  *   --paths <f>   a newline-delimited list of the same shapes (no shell word-splitting)
  *   --publish     also POST /live/ (passed through to deploy-batch); default preview only
  *   --media       reserved stage (default `skip`; any other value exits 2 — not shipped yet)
- *   --timeout     seconds per child (default 600); 124/143/deadline → `killed`, no verdict
+ *   --timeout     seconds per child (default 600, integer ≥ 1 — anything else is a usage error); 124/143/deadline → `killed`, no verdict
  *   --no-localize skip stage 1 and the LOCALIZE lint (no --source-host needed)
  *   --icons-dir / --styles / --allow-empty   passed to both lints
  *   --redirects   TSV for localize-links AND deploy-batch's Gate 3 rows (default stardust/redirects.tsv when it exists)
@@ -56,16 +60,21 @@
  *   --ledger      deploy-batch ledger (default <content>/.deploy-ledger.json)
  *   --report      chain report JSON (default stardust/.work/deploy/deploy-page.<ts>.json)
  *   --progress    progress JSON (default stardust/.work/deploy/deploy-page.progress.json)
- *   --require-code-synced / --code-sync-record / --site-token-env / --token-env / --concurrency
+ *   --require-code-synced / --code-sync-record / --skip-code-sync-verify / --site-token-env / --token-env /
+ *   --concurrency / --gate-report / --publish-ungated / --publish-no-regression
  *                 passed through unchanged to deploy-batch (stage 5; see its header) — a refused
- *                 code-sync run is deploy-batch exit 3 → chain exit 3, zero PUT
+ *                 code-sync run is deploy-batch exit 3 → chain exit 3, zero PUT; the escape flags
+ *                 are operator/owner flags (never hands-off) and need --publish
+ *   Shared modules resolve as plugin siblings (`../../stardust/scripts/`, `../../rollout/scripts/`): the
+ *   deploy scripts run from `<plugin>/skills/deploy/scripts/`; a missing rollout skill skips stage 3 with one
+ *   printed line, never silently.
  *
  * Output: one line per page with its stage results; the chain report; the LAST stdout line is
  *   SUMMARY deploy-page ok=<n> failed=<n> [noverdict=<n>] exit=<code> details=<report> published=<n>|preview-only
  *
  * Exit codes: 0 = every listed page `previewed` (or `live` with --publish); 1 = a page blocked
  * (links-unlocalized, lint-red, lint-error, delivery-lint, sanitise-fail), FAILed in deploy-batch,
- * or `killed` (no verdict — re-run); 2 = usage / fatal (nothing was PUT); 3 = deploy-batch halted
+ * `held` by the publish gate (stays previewed; SUMMARY `held=<n>`), or `killed` (no verdict — re-run); 2 = usage / fatal (nothing was PUT); 3 = deploy-batch halted
  * on a 401 / access-restricted host (its `next=` line is echoed — re-run it).
  *
  * Test hook (fixture tests only): DEPLOY_PAGE_DEPLOY_BATCH overrides the deploy-batch script path;
@@ -92,7 +101,7 @@ const OK_STATUS = new Set(['live', 'previewed']);
 const BLOCKED = new Set(['links-unlocalized', 'lint-red', 'lint-error', 'delivery-lint', 'sanitise-fail']);
 
 function usage() {
-  console.log('usage: node skills/deploy/scripts/deploy-page.mjs --org <org> --repo <repo> --branch <branch> --source-host <host[,host]> [--content content] [--redirects <tsv>] [--locale-alias <prefix[,prefix]>] [--append-redirects] [--unmigrated bounce|list] (<file…> | --all | --paths <file>) [--publish] [--media skip] [--timeout 600] [--no-localize] [--icons-dir <dir>] [--styles <css>] [--allow-empty <a,b>] [--ledger <path>] [--progress <path> | --no-progress] [--report <path>] [--require-code-synced [--code-sync-record <f>]] [--site-token-env <NAME>] [--token-env <NAME>] [--concurrency <n>]');
+  console.log('usage: node skills/deploy/scripts/deploy-page.mjs --org <org> --repo <repo> --branch <branch> --source-host <host[,host]> [--content content] [--redirects <tsv>] [--locale-alias <prefix[,prefix]>] [--append-redirects] [--unmigrated bounce|list] (<file…> | --all | --paths <file>) [--publish] [--media skip] [--timeout 600] [--no-localize] [--icons-dir <dir>] [--styles <css>] [--allow-empty <a,b>] [--ledger <path>] [--progress <path> | --no-progress] [--report <path>] [--require-code-synced [--code-sync-record <f>] | --skip-code-sync-verify <reason>] [--site-token-env <NAME>] [--token-env <NAME>] [--concurrency <n>] [--gate-report <f>] [--publish-ungated] [--publish-no-regression]');
 }
 
 export function parseArgs(argv) {
@@ -113,7 +122,7 @@ export function parseArgs(argv) {
     else if (k === '--all') a.all = true;
     else if (k === '--publish') a.publish = true;
     else if (k === '--media') a.media = next();
-    else if (k === '--timeout') a.timeout = Math.max(1, +next() || 600);
+    else if (k === '--timeout') { const t = Number(next()); if (!Number.isInteger(t) || t < 1) throw new Error('--timeout takes whole seconds ≥ 1'); a.timeout = t; }
     else if (k === '--no-localize') a.localize = false;
     else if (k === '--icons-dir') a.iconsDir = next();
     else if (k === '--styles') a.styles = next();
@@ -127,11 +136,17 @@ export function parseArgs(argv) {
     else if (k === '--site-token-env') a.siteTokenEnv = next();
     else if (k === '--token-env') a.tokenEnv = next();
     else if (k === '--concurrency') a.concurrency = Math.max(1, +next() || 4);
+    else if (k === '--skip-code-sync-verify') a.skipCodeSyncVerify = next();
+    else if (k === '--gate-report') a.gateReport = next();
+    else if (k === '--publish-ungated') a.publishUngated = true;
+    else if (k === '--publish-no-regression') a.publishNoRegression = true;
     else if (k === '--help' || k === '-h') { usage(); process.exit(0); }
     else if (k.startsWith('--')) throw new Error(`unknown arg: ${k}`);
     else a.files.push(k);
   }
   if (!a.org || !a.repo || !a.branch) throw new Error('--org, --repo and --branch are required');
+  if (a.skipCodeSyncVerify !== undefined && a.requireCodeSynced) throw new Error('--skip-code-sync-verify and --require-code-synced are exclusive — skip with a reason, or require the record');
+  if (!a.publish && (a.gateReport || a.publishUngated || a.publishNoRegression)) throw new Error('--gate-report, --publish-ungated and --publish-no-regression apply to a --publish run only');
   if (a.localize && !a.sourceHosts.length) throw new Error('--source-host is required (or --no-localize for a tree with no source host)');
   if (!['bounce', 'list'].includes(a.unmigrated)) throw new Error(`--unmigrated must be bounce or list (got ${a.unmigrated}); \`list\` is the owner-decided value of the \`links\` decisions row`);
   if (a.media !== 'skip') throw new Error(`--media ${a.media} is not available in this release (reserved) — run media-reconcile.mjs separately; the default is --media skip`);
@@ -239,6 +254,7 @@ export async function main(argv = process.argv) {
 
   // 2–4. per file: lint → delivery-lint → sanitise (offline; a blocked page never reaches the PUT list)
   const hasDeliveryLint = existsSync(SCRIPTS.deliveryLint);
+  if (!hasDeliveryLint) { console.error(`[deploy-page] delivery-lint: skipped — rollout skill not installed at ${SCRIPTS.deliveryLint}`); report.run['delivery-lint'] = 'skipped — rollout skill not installed'; }
   const toDeploy = [];
   for (const [wp, p] of pages) {
     const lintArgs = [SCRIPTS.lint, p.file, ...lintExtra, ...(args.localize ? ['--source-host', args.sourceHosts.join(','), '--content-root', args.content] : [])];
@@ -272,14 +288,19 @@ export async function main(argv = process.argv) {
       // transport pass-through (documented on the row-D command): the served==tree precondition and token names
       ...(args.requireCodeSynced ? ['--require-code-synced'] : []), ...(args.codeSyncRecord ? ['--code-sync-record', args.codeSyncRecord] : []),
       ...(args.siteTokenEnv ? ['--site-token-env', args.siteTokenEnv] : []), ...(args.tokenEnv ? ['--token-env', args.tokenEnv] : []),
-      ...(args.concurrency ? ['--concurrency', String(args.concurrency)] : [])];
+      ...(args.concurrency ? ['--concurrency', String(args.concurrency)] : []),
+      ...(args.skipCodeSyncVerify !== undefined ? ['--skip-code-sync-verify', args.skipCodeSyncVerify] : []),
+      // Gate 8 pass-through: the report path and the two owner escape flags (the hold itself is deploy-batch's)
+      ...(args.gateReport ? ['--gate-report', args.gateReport] : []), ...(args.publishUngated ? ['--publish-ungated'] : []), ...(args.publishNoRegression ? ['--publish-no-regression'] : [])];
     const d = await runCapped(node, dbArgs, { timeoutMs, echo: (t) => process.stderr.write(t) });
     const ledger = existsSync(args.ledger) ? JSON.parse(readFileSync(args.ledger, 'utf8')) : {};
     const nextLine = (d.stdout.match(/^next=.*$/m) || [])[0];
+    const heldRows = new Set([...d.stderr.matchAll(/^ {2}held {4}(\S+) {2}held \(gate:/gm)].map((m) => m[1])); // Gate 8: rows deploy-batch held from going live
     for (const wp of toDeploy) {
       const p = pages.get(wp);
       const rec = ledger[wp];
       if (d.killed) { p.stages.deploy = 'killed'; p.status = 'killed'; progress.tick({ noverdict: true, path: wp }); line(wp, p); continue; }
+      if (heldRows.has(wp)) { p.stages.deploy = `held (gate) — row ${rec ? rec.status : 'absent'}`; p.status = 'held'; progress.tick({ noverdict: true, path: wp }); line(wp, p); continue; }
       if (d.code === 3 && !(rec && OK_STATUS.has(rec.status))) { p.stages.deploy = 'halted'; p.status = 'halted'; progress.tick({ noverdict: true, path: wp }); line(wp, p); continue; }
       p.stages.deploy = rec ? rec.status : 'not-in-ledger';
       p.status = rec ? rec.status : 'not-in-ledger';
@@ -297,13 +318,15 @@ export async function main(argv = process.argv) {
   const all = [...pages.values()];
   const blocked = all.filter((p) => BLOCKED.has(p.status));
   const killed = all.filter((p) => p.status === 'killed' || p.status === 'halted');
-  const failed = all.filter((p) => !BLOCKED.has(p.status) && !OK_STATUS.has(p.status) && p.status !== 'killed' && p.status !== 'halted');
+  const held = all.filter((p) => p.status === 'held');
+  const failed = all.filter((p) => !BLOCKED.has(p.status) && !OK_STATUS.has(p.status) && p.status !== 'killed' && p.status !== 'halted' && p.status !== 'held');
   if (blocked.length) { console.error(`BLOCKED before any PUT (fix the page, re-run the same command):`); for (const [wp, p] of pages) if (BLOCKED.has(p.status)) console.error(`  ${wp}  ${p.status}`); }
   if (failed.length) { console.error(`FAILED in deploy-batch (re-run the same command — verified pages are skipped):`); for (const [wp, p] of pages) if (failed.includes(p)) console.error(`  ${wp}  ${p.status}  ${p.detail || ''}`.trimEnd()); }
   if (killed.length) { console.error(`NO VERDICT (deadline or halt — re-run the same command):`); for (const [wp, p] of pages) if (killed.includes(p)) console.error(`  ${wp}  ${p.status}`); }
-  if (exit === 0 && (blocked.length || failed.length || killed.length)) exit = 1;
-  console.error(`[deploy-page] ${all.length - blocked.length - failed.length - killed.length} ok · ${blocked.length} blocked · ${failed.length} failed · ${killed.length} no verdict`);
-  return finish(exit);
+  if (held.length) { console.error(`HELD by the publish gate (rollout publish-gate.md § Gate 8 — re-gate with gate-publish.mjs, then re-run the same command; the escape flags are owner flags):`); for (const [wp, p] of pages) if (held.includes(p)) console.error(`  ${wp}  ${p.stages.deploy}`); }
+  if (exit === 0 && (blocked.length || failed.length || killed.length || held.length)) exit = 1;
+  console.error(`[deploy-page] ${all.length - blocked.length - failed.length - killed.length - held.length} ok · ${blocked.length} blocked · ${failed.length} failed · ${killed.length} no verdict${held.length ? ` · ${held.length} held (gate)` : ''}`);
+  return finish(exit, held.length ? { held: held.length } : {});
 }
 
 const isMain = process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href;

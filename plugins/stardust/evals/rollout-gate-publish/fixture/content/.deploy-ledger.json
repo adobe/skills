@@ -1,11 +1,11 @@
 {
-  "/": {
+  "/index": {
     "status": "previewed",
     "attempts": 1,
     "ts": "2026-09-18T09:05:00Z",
     "put": 201,
     "preview": 200,
-    "bodyHash": "b004ffffffffffffffffffffffffffffffffffff",
+    "bodyHash": "bef48b65288243e04c322ac30c53158bc781d048",
     "branch": "main"
   },
   "/business": {
@@ -14,7 +14,7 @@
     "ts": "2026-09-18T09:05:00Z",
     "put": 201,
     "preview": 200,
-    "bodyHash": "b008ffffffffffffffffffffffffffffffffffff",
+    "bodyHash": "af403c51dc41d92d72352528bde7e061ee7d0155",
     "branch": "main"
   },
   "/news/storm-season-checklist": {
@@ -23,7 +23,7 @@
     "ts": "2026-09-18T09:05:00Z",
     "put": 201,
     "preview": 200,
-    "bodyHash": "b028ffffffffffffffffffffffffffffffffffff",
+    "bodyHash": "c6329c18de1d63a3a09c2081e13c36ae2898b74d",
     "branch": "main"
   },
   "/news/annual-report-2025": {
@@ -33,7 +33,7 @@
     "put": 201,
     "preview": 200,
     "live": 200,
-    "bodyHash": "b024ffffffffffffffffffffffffffffffffffff",
+    "bodyHash": "f1bdcaed4dde6392722de47b67b84b7d1d9808d7",
     "branch": "main"
   },
   "/insurance/home": {
@@ -42,7 +42,7 @@
     "ts": "2026-09-18T09:05:00Z",
     "put": 201,
     "preview": 200,
-    "bodyHash": "b015ffffffffffffffffffffffffffffffffffff",
+    "bodyHash": "698086fa3aa184af8320c1d3d8e11672b0b7376b",
     "branch": "main"
   },
   "/insurance/auto": {
@@ -51,7 +51,7 @@
     "ts": "2026-09-18T09:05:00Z",
     "put": 201,
     "preview": 200,
-    "bodyHash": "b015ffffffffffffffffffffffffffffffffffff",
+    "bodyHash": "f80b06cd9656ac8bfd5917ad152e0e6f38bb5a20",
     "branch": "main"
   }
 }
