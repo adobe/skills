@@ -19,10 +19,10 @@ Phases, in order: Setup → 1 EXTRACT → 2 PRESERVE DIRECTION → 3 RECREATE �
 | 1 | `$stardust extract <URL> --prep --dynamics` — bounded entry: `--single` / `--pages <slug,...>` |
 | 2 | mechanical promotion + `stardust/replica/inconsistency-register.md`; the `dynamics` skill Phases 1–3 |
 | 3 | author `stardust/prototypes/<slug>-proposed.html` (+ per-page CSS) |
-| 4 | probes 1+2: `diff/content-diff.mjs`, `diff/visual-diff.mjs` (`--profile generic --width <w> --main <root> --dismiss`); probe 3: `replica/stitch-shot.mjs`, `replica/pixel-compare.mjs --timeout <s>`, `replica/review-image.mjs --bands|--sheet`; inner loop: `replica/anchor.mjs --landmarks --cache|--against`, `replica/chrome-parity.mjs --live-cache`, `replica/gate.sh <slug> <live> <proto> <width> [iter] [--marker] [--refresh] [--variance] [--over-cap <reason>] [--record → replica/progress-record.mjs]`; sweeps: `replica/gate-batch.mjs <pairs.tsv> [--concurrency 2]` (progress: `stardust/.work/replica/gate-batch.progress.json`) — env `GATE_STITCH_TIMEOUT`, `GATE_COMPARE_TIMEOUT`, `GATE_ANCHOR_TIMEOUT`, `GATE_REAP_MIN`, `GATE_BLOCK`, `GATE_ALLOW_CONSENT`, `GATE_LANDMARKS=0`; each node step runs under `replica/run-capped.mjs --timeout <s> -- <cmd>`; then `replica/motion-observe.mjs <live> [--hover <sel>] [--click <sel>] [--triggers auto]` |
+| 4 | probes 1+2: `diff/content-diff.mjs`, `diff/visual-diff.mjs` (`--profile generic --width <w> --main <root> --dismiss`); probe 3: `replica/stitch-shot.mjs`, `replica/pixel-compare.mjs --timeout <s>`, `replica/review-image.mjs --bands|--sheet`; inner loop: `replica/anchor.mjs --landmarks --cache|--against`, `replica/chrome-parity.mjs --live-cache`, `replica/gate.sh <slug> <live> <proto> <width> [iter] [--marker] [--refresh] [--variance] [--over-cap <reason>] [--record → replica/progress-record.mjs]`; sweeps: `replica/gate-batch.mjs <pairs.tsv> [--concurrency 2]` (progress: `stardust/.work/replica/gate-batch.progress.json`) — env `GATE_STITCH_TIMEOUT`, `GATE_COMPARE_TIMEOUT`, `GATE_ANCHOR_TIMEOUT`, `GATE_REAP_MIN`, `GATE_BLOCK`, `GATE_ALLOW_CONSENT`, `GATE_LANDMARKS=0`; each node step runs under `replica/run-capped.mjs --timeout <s> -- <cmd>`; then `replica/motion-observe.mjs <live> [--hover <sel>] [--click <sel>] [--triggers auto]`; chrome cells: `replica/chrome-states.mjs <live> [<proto>] --from-state stardust/state.json --live-cache` |
 | 5 | `replica/gate-ledger-lint.mjs --state stardust/state.json` (exit 2 = blocked types); first: `deploy` the approved archetype to a branch preview; `replica/sibling-variance.mjs <archetype> <siblings…> --probe <block>=<sel>`; then the `migrate` (sibling tier) → `deploy` → `rollout` skills; re-run the Phase 4 gate against the published origin |
 
-Gates: Phase 2 — every dynamic-surface row has a disposition. Phase 4, per breakpoint (default `1440,360`) — content-diff 0 structural 🔴 · visual-diff flags none/justified · pixel diff ≤ 10% with no hot band unexplained · height |Δ| ≤ 8px · cap 3 iterations · interaction parity recorded. `gate.sh` exits: 0 pass · 2 fail · 1 error / incomparable captures · 3 bot challenge · 4 wrong server · 5 invalid capture (consent / short / overlay / error page) · 6 cap reached (decide: residual / register / `--over-cap <reason>`; `--invalidate <label> <fix>` excludes a defect round; `--record` copies the round into `progress.json`) · 124 deadline (re-run, not a FAIL).
+Gates: Phase 2 — every dynamic-surface row has a disposition. Phase 4, per breakpoint (default `1440,360`) — content-diff 0 structural 🔴 · visual-diff flags none/justified · pixel diff ≤ 10% with no hot band unexplained · height |Δ| ≤ 8px · cap 3 iterations · interaction parity recorded · chrome state matrix probed, every cell gated or a named residual. `gate.sh` exits: 0 pass · 2 fail · 1 error / incomparable captures · 3 bot challenge · 4 wrong server · 5 invalid capture (consent / short / overlay / error page) · 6 cap reached (decide: residual / register / `--over-cap <reason>`; `--invalidate <label> <fix>` excludes a defect round; `--record` copies the round into `progress.json`) · 124 deadline (re-run, not a FAIL).
 
 Outputs: `stardust/direction.md` · `stardust/replica/{inconsistency-register.md, progress.json, motion/<slug>.json, gates/<slug>-<width>/}` · `stardust/prototypes/<slug>-proposed.html` · root `PRODUCT.md` / `DESIGN.md` / `DESIGN.json`.
 
@@ -32,7 +32,7 @@ Outputs: `stardust/direction.md` · `stardust/replica/{inconsistency-register.md
 | 2 | `reference/preserve-direction.md` § 1. Promotion contract · § 1a. Bounded promotion branch · § 3. The inconsistency register; `../dynamics/reference/triage.md` § Dispositions |
 | 3 | `reference/recreation-procedure.md` § Authoring order · § Cumulative archetype prototypes · § CSS lifting · § Fonts policy · § Asset harvest and the capture-state policy · § CSS-portation fallback; parallel archetypes: `../stardust/reference/fan-out.md` § Scope and type of delegated agents · § Worker contract |
 | 4 | `reference/source-fidelity-gate.md` § Per-breakpoint procedure · § Pass bar · § Reading the band breakdown · § Iteration discipline · § Hardening rules · § Script adaptations; `../stardust/reference/context-hygiene.md` § Image reads; after a capped round: § Residual classes; close: `../stardust/reference/run-status.md` § Phase close |
-| 4, after the static pass | `reference/recreation-procedure.md` § Interaction parity · § Fixed and sticky chrome · § Granularity parity |
+| 4, after the static pass | `reference/recreation-procedure.md` § Interaction parity · § Chrome archetype and the state matrix · § Fixed and sticky chrome · § Granularity parity; `reference/chrome-states.md` § The matrix · § Contract |
 | 5 | `../migrate/reference/fidelity-tiers.md` § Sibling variance probe · § Content-count acceptance; `reference/source-fidelity-gate.md` § The published-origin gate · § Residual logging format; `../rollout/reference/sweep-protocol.md` § The protocol |
 
 Sections: Inputs · Setup · Procedure · What replica never does · Outputs · References.
@@ -44,14 +44,12 @@ state, the only permitted deltas are the entries of an explicit
 **inconsistency register**, and every archetype must pass a **measured
 source-fidelity gate** against the live site before anything ships.
 
-Two properties separate this from the redesign pipeline:
-
-1. **No creative decisions.** Direction is mechanical promotion of the
-   captured spec — the stardust `direct` skill is never invoked; judgment
-   calls are measurement policy, not taste.
-2. **Recreation, not copying.** Clean semantic HTML/CSS from captured
-   content + values lifted from the source site's own CSS — never DOM
-   copies or ported stylesheets; fidelity is proven by instruments.
+Two properties separate this from the redesign pipeline: **no creative
+decisions** (direction is mechanical promotion of the captured spec — the
+stardust `direct` skill is never invoked) and **recreation, not copying**
+(clean semantic HTML/CSS from captured content + values lifted from the
+source site's own CSS — never DOM copies or ported stylesheets; fidelity is
+proven by instruments).
 
 ## Inputs
 
@@ -107,11 +105,10 @@ replica consumes the full migration inventory, not the discovery cap:
 - `state.json.pages[].type` — page types (each becomes one archetype).
 - `DESIGN.json.extensions.modules[]` — module candidates (become blocks).
 
-When extract's summary comes back, surface it with the flow line first —
-"Flow: replica — the design is kept. Say `switch to redesign` now if it is
-to change." — so the first thing the user sees in this flow is the choice
-it rests on. `switch to redesign` runs `$stardust prepare-migration
---switch-flow`; the extract is reused, nothing else is.
+When extract's summary comes back, lead with the flow line — "Flow: replica
+— the design is kept. Say `switch to redesign` now if it is to change."
+`switch to redesign` runs `$stardust prepare-migration --switch-flow`; the
+extract is reused, nothing else is.
 
 **Bounded entry (one page or a pilot).** `$stardust extract <URL> --single`
 (or `--pages <slug,...>`) is a first-class entry: per-page JSON, screenshot
@@ -160,8 +157,8 @@ Full contract: `reference/preserve-direction.md`. Summary:
    (`../stardust/reference/decisions.md` § How phases use it); the
    dynamics batch rides along.
 
-Anything not in the register is out of scope for change. When a recreation
-choice would "improve" something not registered, it is a fidelity bug.
+Anything not in the register is out of scope; an unregistered "improvement"
+is a fidelity bug.
 
 ### Phase 3 — RECREATE (one archetype per page type)
 
@@ -201,8 +198,8 @@ at BOTH breakpoints. A sibling (Phase 5) that introduces a kind absent from
 the ledger triggers a lift plus a Phase 4 gate ON THAT SIBLING at both
 breakpoints before its template counts as recreated.
 
-**Recreation, not redesign — never delegate to impeccable craft:** its
-redesign gates do not apply; Phase 4 replaces them.
+**Recreation, not redesign — never delegate to impeccable craft** (Phase 4
+replaces its gates).
 
 **Fonts:** same public source when available (extract's intercepted woff2
 for open/self-hostable faces). Licensed commercial kits are never rehosted:
@@ -260,17 +257,14 @@ recorded false-measurement trap** built into the shared
 `diff/scripts/live-session.mjs` and shipped as flags (`--ua`,
 `--wait-until`, `--dismiss`, `--headed[=window]`, `--locale`, `--main`;
 `scripts/stitch-shot.mjs` adds `--allow-consent`, `--no-dismiss-defaults`,
-`--remove-text`, `--keep-pinned`, `--exclude`):
-real-Chrome UA + standard headers; a challenge interstitial fails loud
-(exit 3) and the bot-management ladder
-(`../extract/reference/playwright-recipe.md` § Bot-management fallback) is
-climbed, never degraded; `domcontentloaded`, never `networkidle`; symmetric
-`--main` (`body` never valid); both overlay classes dismissed, animations
-frozen, pointer parked; fixed/sticky chrome replicated fixed — seam repeats
-are instrument-provided (pinned chrome hidden on chunks 2+, both sides;
-`reference/recreation-procedure.md` § Fixed and sticky chrome); JOIN/SPLIT
-granularity parity (#87); capture-state policy. A project copy carrying
-hand-edits is a defect (gate doc § Script adaptations).
+`--remove-text`, `--keep-pinned`, `--exclude`): real-Chrome UA + standard
+headers; a challenge interstitial fails loud (exit 3) and the bot-management
+ladder is climbed, never degraded; `domcontentloaded`, never `networkidle`;
+symmetric `--main` (`body` never valid); overlays dismissed, animations
+frozen, pointer parked; fixed/sticky chrome replicated fixed (seam repeats
+are instrument-provided); JOIN/SPLIT granularity parity (#87);
+capture-state policy. A project copy carrying hand-edits is a defect (gate
+doc § Script adaptations).
 
 **After the static gate passes, interaction parity is a REQUIRED gate
 output per archetype — not a post-pass**
@@ -323,11 +317,10 @@ phase-close checkpoint block (master skill § Phase close) carries
   editability contract, EW1–EW10) and pass `block-roundtrip --ew`.
 - **Site-wide rollout** via the stardust `rollout` skill — its block dedup
   implements "same blocks across the whole site".
-- **The hand-off names the captured variant.** Every brief and report
-  carries `captured variant: <observed variant markers, capture date,
-  consent mode>` and the line "your browser may render a different variant —
-  compare against the capture, not a fresh live view" (A/B, geo and cookie
-  buckets: `reference/recreation-procedure.md` § Asset harvest and the
+- **The hand-off names the captured variant** — every brief and report
+  carries `captured variant: <markers, capture date, consent mode>` and
+  "your browser may render a different variant — compare against the
+  capture" (`reference/recreation-procedure.md` § Asset harvest and the
   capture-state policy).
 - **The final gate runs against the PUBLISHED origin — not the harness**
   (`reference/source-fidelity-gate.md` § The published-origin gate): the
@@ -341,9 +334,8 @@ phase-close checkpoint block (master skill § Phase close) carries
   `../stardust/reference/handoff-report.md` § Gate table first — gate table
   before counts, provenance per row; failing and `ungated` archetype ×
   breakpoint rows first (Phase 4 close), `published.<bp>` absent = `ungated`.
-- **Wave close chains.** A gate PASS or wave close starts the next planned
-  step in the same turn — master `../stardust/SKILL.md` § Hands-off mode →
-  Turn-end contract (`approvedChain`).
+- **Wave close chains** — a gate PASS or wave close starts the next planned
+  step in the same turn (master § Hands-off mode → Turn-end contract).
 
 **State:** replica writes its own state under `stardust/replica/` — the
 inconsistency register, `progress.json` (per page type: archetype slug,
@@ -385,7 +377,8 @@ PRODUCT.md / DESIGN.md / DESIGN.json    ← promoted verbatim from current/ (Pha
 - `reference/preserve-direction.md` — mechanical promotion contract,
   inconsistency-register entry schema, impeccable ignore set.
 - `reference/recreation-procedure.md` — CSS lifting, fonts, capture-state
-  policy, fixed/sticky chrome, parity rules, CSS-portation fallback.
+  policy, chrome state matrix, fixed/sticky chrome, parity rules, CSS-portation fallback.
+- `reference/chrome-states.md` — chrome states: the matrix, the item-5 cells contract, nav model.
 - `reference/source-fidelity-gate.md` — the full gate contract: probes, pass
   bar, bands, iteration regimes, hardening, published-origin gate, residuals.
 - `../diff/SKILL.md` — the two probes replica reuses (`--profile generic`);

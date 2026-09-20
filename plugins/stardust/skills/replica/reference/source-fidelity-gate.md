@@ -151,20 +151,18 @@ capture is re-taken every iteration.
      --region header=header --region footer=footer   # + --region strip=<sel>|<sel>
    ```
 
-   States: `--open <liveSel>|<buildSel>` per top-level trigger (opened
-   menus — EXTRA, PSEUDO, OCCLUDED) and `--scroll <y>` for sticky chrome
-   (STICKY) — one state per run, cached per state (`chrome-live-<state>.json`).
-
-   **Multi-theme sites (a theme id on `html`/`body`, brand or product
-   themes on one template): run `chrome-parity.mjs` on one themed page per
-   template × theme id, not on the home archetype alone.** Theme tokens
-   bind per theme id, not per brand: an alias derived from one theme's
-   surface is wrong on every other theme, and the archetype gate cannot
-   see it (chrome is a small share of page pixels).
-   Alias only tokens the live CSS actually binds to the measured element,
-   and treat the source's theme/variant classes as probe deltas → block
-   variants on the sibling's content (`../../migrate/reference/fidelity-tiers.md`
-   § Sibling variance probe) — encode the variant, never fix the page.
+   **Cells.** Item 5 gates every chrome STATE, not the resting bands
+   alone: each top-level trigger open, search, language switcher, the
+   mobile drawer + one drill level, footer accordions — probed once per
+   archetype set by `../scripts/chrome-states.mjs` (hover → click, panel
+   association, per-state panel crops at this same ≥98 % bar, chrome-parity's
+   diff per opened state, `missing on build` = MISSING, exit 2) and cached
+   state-aware (`chrome-live-states.json`; `chrome-parity --open`/`--scroll`
+   for one state at a time, `chrome-live-<state>.json`). Named states,
+   contract, escape hatch and residual route: `chrome-states.md`.
+   **Multi-theme sites**: the probe clusters header identity across one
+   live URL per page type — each distinct identity is a chrome variant with
+   its own resting crop, encoded as a variant, never fixed per page.
 
    **Glyph-dense chrome has a pixel noise floor — the ONE justified way past
    the 2% bar, and it is evidence-gated three ways.** A footer of ~50 links

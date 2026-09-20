@@ -43,9 +43,9 @@
 #   |Δh| > max(1 % of height, GATE_DRIFT_PX (default 24), recorded self-noise Δh)
 #   OR the top-level section count changed
 # the round prints `LIVE DRIFT Δh <px> sections <a→b> — recapturing`, deletes
-# ALL THREE live caches together (live.png + .json, anchor-live.json,
-# chrome-live.json — a recaptured PNG next to a stale chrome/anchor cache is
-# the mixed-reference bug one level down), stores the fresh probe (taken with
+# ALL live caches together (live.png + .json, anchor-live.json,
+# chrome-live[-<state>].json, chrome-live-states.json — a recaptured PNG next
+# to a stale chrome/anchor cache is the mixed-reference bug one level down), stores the fresh probe (taken with
 # --landmarks) as the new anchor-live.json — the hit is not wasted: the
 # landmark step reads it from cache — and records liveDrift{} in the round
 # record. A probe that hits its deadline (124) or is blocked skips the
@@ -446,9 +446,10 @@ else {
   out.drift = Math.abs(out.deltaPx) > out.thresholdPx || (sectionsBefore != null && sectionsAfter != null && sectionsBefore !== sectionsAfter);
 }
 if (out.drift) {
-  for (const f of ['live.png', 'live.png.json', 'anchor-live.json', 'chrome-live.json', 'freshness.json']) fs.rmSync(`${dir}/${f}`, { force: true });
+  for (const f of ['live.png', 'live.png.json', 'anchor-live.json', 'chrome-live.json', 'chrome-live-states.json', 'freshness.json']) fs.rmSync(`${dir}/${f}`, { force: true });
+  for (const f of fs.readdirSync(dir).filter((n) => /^chrome-live-.*\.json$/.test(n))) fs.rmSync(`${dir}/${f}`, { force: true }); // state-keyed chrome-parity caches (--open/--scroll)
   fs.writeFileSync(`${dir}/anchor-live.json`, `${JSON.stringify({ key: { url, width: Number(width), main: probe.main || 'main' }, probedAt: out.checkedAt, data: { doc: probe.doc, rootMissing: probe.rootMissing, rootWrapsChrome: probe.rootWrapsChrome, sections: probe.sections, footer: probe.footer, ...(probe.landmarks ? { landmarks: probe.landmarks } : {}) } }, null, 2)}\n`);
-  console.error(`gate.sh: LIVE DRIFT Δh ${out.deltaPx > 0 ? '+' : ''}${out.deltaPx}px (threshold ${out.thresholdPx}px) sections ${sectionsBefore ?? '?'}→${sectionsAfter ?? '?'} — recapturing live.png; anchor-live.json and chrome-live.json invalidated together (a stale reference is not a residual — this round does not count against the cap)`);
+  console.error(`gate.sh: LIVE DRIFT Δh ${out.deltaPx > 0 ? '+' : ''}${out.deltaPx}px (threshold ${out.thresholdPx}px) sections ${sectionsBefore ?? '?'}→${sectionsAfter ?? '?'} — recapturing live.png; anchor-live.json and the chrome-live caches invalidated together (a stale reference is not a residual — this round does not count against the cap)`);
 } else {
   // an inconclusive check verified nothing: no checkedAt stamp, so the next round probes again once a reference height exists
   if (!out.skipped) fs.writeFileSync(`${dir}/freshness.json`, `${JSON.stringify(out, null, 2)}\n`);
@@ -550,7 +551,7 @@ process.stdout.write(l && b && l.source !== "extract-capture" && v(l) !== v(b) ?
 ' "$DIR/live.png.json" "$DIR/build.png.json" 2>/dev/null)
   if [ -n "$VER_PAIR" ]; then
     echo "gate.sh: $DIR/live.png was captured by stitch-shot procedure ${VER_PAIR% *}, the build by ${VER_PAIR#* } — different-procedure pair; re-taking the live reference once so both sides use the same procedure" >&2
-    rm -f "$DIR/live.png" "$DIR/live.png.json" "$DIR/anchor-live.json" "$DIR/anchor-live.skip" "$DIR/chrome-live.json" "$DIR/freshness.json"
+    rm -f "$DIR/live.png" "$DIR/live.png.json" "$DIR/anchor-live.json" "$DIR/anchor-live.skip" "$DIR/chrome-live.json" "$DIR"/chrome-live-*.json "$DIR/freshness.json"
     capture_live
   fi
 fi

@@ -89,7 +89,8 @@ the NEW page's live chrome, and flag any page-level compensation for
 back-port into the canon files so later archetypes don't re-discover it.
 When two templates genuinely differ, the canon records module VARIANTS
 keyed by template, each with its own gate evidence — never one value tuned
-per page. A canon fix after a pass is a `canon-followup` round —
+per page. Which templates differ is measured before fan-out, not
+discovered at each archetype — § Chrome archetype and the state matrix. A canon fix after a pass is a `canon-followup` round —
 `source-fidelity-gate.md` § Iteration discipline.
 
 ## CSS lifting — fidelity values come from the original site's CSS, not the eye
@@ -558,6 +559,48 @@ Log each implemented interaction in the progress ledger the way a CSS
 portation is logged; the static gate is then re-run per the verification
 protocol above (markup rarely changes — hover CSS and trigger JS are
 capture-invisible under the freeze, and the pixel re-run proves it).
+
+## Chrome archetype and the state matrix
+
+The resting header crop measures ONE cell of a matrix — `{chrome variant}
+× {rest, scrolled} × {each top-level trigger open} × {search} × {language}
+× {drawer, drilled} × {footer accordions}` — and every other cell is what a
+reviewer touches first. Named states, contract and residual route:
+`chrome-states.md` (§ The matrix · § Contract). Four rules:
+
+1. **Probe the matrix, never infer it.** Run `../scripts/chrome-states.mjs
+   <live> --from-state stardust/state.json --live-cache …` ONCE per
+   archetype set (hover/tap every trigger, click the search control, open
+   the drawer and drill one level; per-state panel crops + the computed
+   styles chrome-parity diffs; trigger → panel association; header identity
+   per sampled page type). It is a REQUIRED Phase 4 output beside the motion
+   inventory — `motion-observe --hover` targets card families and does not
+   open navigation. Fan-out briefs carry its command block verbatim.
+2. **Detached panels belong to their trigger.** Mega-menu panels commonly
+   live OUTSIDE the trigger's `<li>` (paired by `aria-controls`, `data-menu`,
+   `id`, or rendered into a portal root). Author the nav document from the
+   ASSOCIATED panel the probe records (`chrome-states.md` § Nav model), not
+   from the header's visible anchors — otherwise group headers, icons,
+   descriptions, promo cards and panel footer links collapse into link text.
+   Lift panel placement (left edge, top offset from the nav row) from the
+   recorded rect, never guess it.
+3. **Chrome variants are measured on the page sample, then traced to a
+   page-level marker.** Header markup is byte-identical across pages; the
+   variant is decided by page content. The probe prints the distinct header
+   identities (position / background / link colour / logo fill / subnav
+   band) across one live URL per page type; each is a variant with its own
+   resting crop AND a marker the importer emits as page metadata (a
+   template body class or a `nav:`/`footer:` document — never page-local
+   CSS). The tempting theme attribute present on every page usually means
+   nothing — trace the variant to the content that flips it. The scrolled
+   state is usually exempt (measure it).
+4. **Gate the cells.** Each opened panel is crop-compared like the resting
+   header (same bar, band = the panel's rect, same width both sides); the
+   search, drawer, drilled and accordion states get a crop each; every
+   variant gets a resting crop. Record the matrix in the ledger; a missing
+   cell is a missing gate, not optional polish. Chrome transparent over a
+   moving background crops the opaque panel only — a full-width band there
+   reports background drift as chrome error.
 
 ## Fixed and sticky chrome (headers, floating tabs × stitched capture)
 

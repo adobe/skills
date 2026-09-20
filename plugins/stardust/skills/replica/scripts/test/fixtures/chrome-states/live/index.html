@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Larkspur Mutual — chrome-states fixture (live)</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: Arial, sans-serif; font-size: 16px; color: #1d2a3a; }
+  header { position: relative; background: #fff; border-bottom: 1px solid #dde3ea; }
+  .bar { display: flex; align-items: center; gap: 24px; height: 72px; padding: 0 32px; max-width: 1280px; margin: 0 auto; }
+  .logo { font-weight: 700; font-size: 20px; text-decoration: none; color: #0b3d91; }
+  .logo svg { width: 28px; height: 28px; vertical-align: middle; fill: #0b3d91; }
+  nav > ul { display: flex; gap: 28px; list-style: none; margin: 0; padding: 0; }
+  nav > ul > li > a { color: #1d2a3a; text-decoration: none; font-size: 16px; line-height: 24px; padding: 24px 0; display: inline-block; }
+  nav > ul > li > a:hover { color: #0b3d91; }
+  .mega { display: none; position: absolute; left: 0; right: 0; top: 72px; background: #f4f7fb; border-bottom: 1px solid #dde3ea; padding: 32px; z-index: 5; }
+  .mega.is-open { display: block; }
+  .mega .cols { display: grid; grid-template-columns: repeat(3, 1fr); gap: 32px; max-width: 1280px; margin: 0 auto; }
+  .mega h3 { font-size: 14px; text-transform: uppercase; letter-spacing: 0.08em; margin: 0 0 12px; color: #5a6b7d; }
+  .mega ul { list-style: none; margin: 0; padding: 0; }
+  .mega li { margin: 0 0 10px; }
+  .mega li a { color: #1d2a3a; text-decoration: none; font-size: 16px; line-height: 24px; }
+  .mega li p { margin: 2px 0 0; font-size: 13px; color: #5a6b7d; }
+  .mega .promo { background: #fff; padding: 16px; border: 1px solid #dde3ea; }
+  .mega .promo img { width: 100%; height: 80px; display: block; background: #cfd8e3; object-fit: cover; }
+  .mega .action { display: inline-block; margin-top: 8px; color: #0b3d91; font-weight: 700; text-decoration: none; }
+  .tools { margin-left: auto; display: flex; gap: 12px; align-items: center; }
+  .tools button { background: none; border: 1px solid #dde3ea; border-radius: 4px; padding: 8px 12px; font: inherit; cursor: pointer; }
+  #account-panel { display: none; position: absolute; right: 32px; top: 72px; background: #fff; border: 1px solid #dde3ea; padding: 16px; width: 260px; z-index: 5; }
+  #account-panel.is-open { display: block; }
+  #search-dialog { display: none; position: absolute; left: 0; right: 0; top: 72px; background: #0b3d91; padding: 40px 32px; z-index: 6; }
+  #search-dialog.is-open { display: block; }
+  #search-dialog input { width: 100%; max-width: 640px; height: 48px; font-size: 18px; padding: 0 16px; border: 0; }
+  .burger { display: none; }
+  .drawer { display: none; }
+  main { padding: 48px 32px; min-height: 900px; }
+  footer { background: #1d2a3a; color: #fff; padding: 32px; }
+  footer details summary { cursor: pointer; font-weight: 700; padding: 12px 0; list-style: none; }
+  footer details ul { list-style: none; padding: 0 0 12px; margin: 0; }
+  footer details a { color: #cfd8e3; text-decoration: none; }
+  footer .legal { margin-top: 24px; font-size: 13px; color: #9fb0c3; }
+  @media (max-width: 767px) {
+    .bar { height: 56px; padding: 0 16px; }
+    nav, .tools .account { display: none; }
+    .burger { display: inline-block; margin-left: auto; background: none; border: 0; width: 40px; height: 40px; font-size: 24px; }
+    .drawer { position: fixed; inset: 56px 0 0 0; background: #fff; z-index: 9; padding: 16px; overflow: auto; }
+    .drawer.is-open { display: block; }
+    .drawer ul { list-style: none; margin: 0; padding: 0; }
+    .drawer li { border-bottom: 1px solid #dde3ea; }
+    .drawer li button, .drawer li a { display: block; width: 100%; text-align: left; padding: 16px 0; font: inherit; font-size: 18px; background: none; border: 0; color: #1d2a3a; text-decoration: none; }
+    .drawer .level2 { display: none; }
+    .drawer.drilled .level1 { display: none; }
+    .drawer.drilled .level2 { display: block; }
+    .drawer .back { color: #0b3d91; font-weight: 700; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <a class="logo" href="/"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></svg> Larkspur Mutual</a>
+    <nav aria-label="Primary">
+      <ul>
+        <li><a href="/insurance/" aria-controls="mega-insurance" aria-haspopup="true" aria-expanded="false" data-menu="insurance">Insurance</a></li>
+        <li><a href="/claims/" aria-controls="mega-claims" aria-haspopup="true" aria-expanded="false" data-menu="claims">Claims</a></li>
+        <li><a href="/about/">About us</a></li>
+      </ul>
+    </nav>
+    <div class="tools">
+      <button class="account" aria-expanded="false" aria-controls="account-panel">My account</button>
+      <button class="search-toggle" aria-label="Search" aria-expanded="false" aria-controls="search-dialog">Search</button>
+      <button class="burger" aria-label="Menu" aria-expanded="false" aria-controls="drawer">☰</button>
+    </div>
+  </div>
+  <div class="mega" id="mega-insurance" data-menu="insurance">
+    <div class="cols">
+      <div><h3>Home</h3><ul>
+        <li><a href="/insurance/home/">Home insurance</a><p>Cover for the house and what is in it</p></li>
+        <li><a href="/insurance/contents/">Contents only</a><p>For renters</p></li>
+        <li><a href="/insurance/landlord/">Landlord</a></li>
+      </ul><a class="action" href="/insurance/">View all home cover</a></div>
+      <div><h3>Vehicle</h3><ul>
+        <li><a href="/insurance/car/">Car insurance</a><p>Comprehensive and third party</p></li>
+        <li><a href="/insurance/motorbike/">Motorbike</a></li>
+        <li><a href="https://partner.example/van" target="_blank" rel="noopener">Van (partner)</a></li>
+      </ul></div>
+      <div class="promo"><img alt=""><h4>Storm season checklist</h4><p>Get the house ready before the season turns.</p><a class="action" href="/news/storm-season-checklist/">Read the checklist</a></div>
+    </div>
+  </div>
+  <div class="mega" id="mega-claims" data-menu="claims">
+    <div class="cols">
+      <div><h3>Make a claim</h3><ul>
+        <li><a href="/claims/new/">Start a claim</a></li>
+        <li><a href="/claims/track/">Track a claim</a></li>
+      </ul></div>
+      <div><h3>Help</h3><ul>
+        <li><a href="/claims/faq/">Claims FAQ</a></li>
+        <li><a href="/claims/repairers/">Approved repairers</a></li>
+      </ul></div>
+    </div>
+  </div>
+  <div id="account-panel"><ul><li><a href="/account/login/">Log in</a></li><li><a href="/account/register/">Register</a></li></ul></div>
+  <div id="search-dialog" role="search"><form action="/search/"><input type="search" name="q" placeholder="Search Larkspur Mutual" aria-label="Search"></form></div>
+  <div class="drawer" id="drawer">
+    <ul class="level1">
+      <li><button class="drill" data-level="insurance">Insurance</button></li>
+      <li><button class="drill" data-level="claims">Claims</button></li>
+      <li><a href="/about/">About us</a></li>
+    </ul>
+    <ul class="level2">
+      <li><button class="back">Back</button></li>
+      <li><a href="/insurance/home/">Home insurance</a></li>
+      <li><a href="/insurance/car/">Car insurance</a></li>
+    </ul>
+  </div>
+</header>
+<main><h1>Insurance that keeps up with your life</h1><p>Fixture body.</p></main>
+<footer>
+  <details><summary>Products</summary><ul><li><a href="/insurance/home/">Home insurance</a></li><li><a href="/insurance/car/">Car insurance</a></li></ul></details>
+  <details><summary>Company</summary><ul><li><a href="/about/">About us</a></li><li><a href="/careers/">Careers</a></li></ul></details>
+  <p class="legal">© Larkspur Mutual. Fixture only.</p>
+</footer>
+<script>
+  // hover mega-menus whose panels live OUTSIDE the <li> (aria-controls pairing); click toggle; search dialog; drawer + drill
+  const closeAll = () => { document.querySelectorAll('.mega.is-open, #account-panel.is-open, #search-dialog.is-open').forEach((p) => p.classList.remove('is-open')); document.querySelectorAll('header [aria-expanded="true"]').forEach((t) => t.setAttribute('aria-expanded', 'false')); };
+  document.querySelectorAll('nav a[aria-controls]').forEach((a) => {
+    a.addEventListener('mouseenter', () => { closeAll(); document.getElementById(a.getAttribute('aria-controls')).classList.add('is-open'); a.setAttribute('aria-expanded', 'true'); });
+    a.addEventListener('click', (e) => { e.preventDefault(); });
+  });
+  document.querySelector('header').addEventListener('mouseleave', closeAll);
+  document.querySelector('.account').addEventListener('click', (e) => { const open = e.currentTarget.getAttribute('aria-expanded') === 'true'; closeAll(); if (!open) { document.getElementById('account-panel').classList.add('is-open'); e.currentTarget.setAttribute('aria-expanded', 'true'); } });
+  document.querySelector('.search-toggle').addEventListener('click', (e) => { const open = e.currentTarget.getAttribute('aria-expanded') === 'true'; closeAll(); if (!open) { document.getElementById('search-dialog').classList.add('is-open'); e.currentTarget.setAttribute('aria-expanded', 'true'); } });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeAll(); });
+  const drawer = document.getElementById('drawer');
+  document.querySelector('.burger').addEventListener('click', (e) => { const open = drawer.classList.toggle('is-open'); e.currentTarget.setAttribute('aria-expanded', String(open)); if (!open) drawer.classList.remove('drilled'); });
+  drawer.querySelectorAll('.drill').forEach((b) => b.addEventListener('click', () => drawer.classList.add('drilled')));
+  drawer.querySelector('.back').addEventListener('click', () => drawer.classList.remove('drilled'));
+</script>
+</body>
+</html>
