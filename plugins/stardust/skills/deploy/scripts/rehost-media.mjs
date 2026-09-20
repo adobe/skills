@@ -9,7 +9,7 @@
  * auth-gated for visitors) and never CSS url() (not an authored shape).
  *
  * Per unique external URL, ONE source GET (0 on a re-run — ledger-keyed; 0 when a captured
- * copy exists under --captured) and one DA PUT; the ledger is `stardust/da-media.json`
+ * copy exists under --captured) and one DA PUT; the ledger is `stardust/da-media.json` (checkpointed after every URL)
  * `{ [src]: { da, url, sha1, bytes, type, width, height, status, at } }`, re-read and merged:
  *   rehosted   bytes PUT to admin.da.live/source/<org>/<repo>/media/<scope>/<file>; every
  *              occurrence (plain and &amp; form) rewritten to the content.da.live URL
@@ -67,7 +67,7 @@
  * (15000) caps each source GET; REHOST_MEDIA_BACKOFF_MS (60000) is the one 429 back-off — the retry
  * gets its own timer; STARDUST_PW_ROOT resolves Playwright from the eval runner.
  */
-import { readFileSync, writeFileSync, existsSync, mkdirSync, realpathSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, realpathSync, renameSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { basename, dirname, join } from 'node:path';
@@ -264,7 +264,14 @@ async function main() {
     return { status: 'rehosted', da: put.da, url: put.url, ...row };
   }
   const rows = new Map(); let i = 0;
-  try { await Promise.all(Array.from({ length: Math.min(CONC, urls.length) }, async () => { while (i < urls.length) { const u = urls[i++]; rows.set(u, await handle(u)); } })); } finally { await pw.close(); }
+  // ledger checkpoint after EVERY URL (progress.mjs pattern: tmp + rename) — a killed run keeps its finished rows and the
+  // re-run makes 0 source hits for them (defect: the ledger was written once, at run end)
+  const checkpoint = () => {
+    if (DRY) return;
+    for (const [u, row] of rows) { const { cached, ...rest } = row; ledger[u] = rest; }
+    mkdirSync(dirname(LEDGER), { recursive: true }); writeFileSync(`${LEDGER}.tmp`, `${JSON.stringify(ledger, null, 2)}\n`); renameSync(`${LEDGER}.tmp`, LEDGER);
+  };
+  try { await Promise.all(Array.from({ length: Math.min(CONC, urls.length) }, async () => { while (i < urls.length) { const u = urls[i++]; rows.set(u, await handle(u)); checkpoint(); } })); } finally { await pw.close(); }
   // rewrite every occurrence (plain and &amp; form) of a rehosted src, merge + write the ledger
   let rewritten = 0;
   if (!DRY) {
@@ -273,8 +280,7 @@ async function main() {
       for (const [u, row] of rows) if (row.status === 'rehosted' && row.url) { html = replaceUrl(replaceUrl(html, u, row.url), u.replace(/&/g, '&amp;'), row.url); }
       if (html !== f.html) { writeFileSync(f.file, html); rewritten += 1; }
     }
-    for (const [u, row] of rows) { const { cached, ...rest } = row; ledger[u] = rest; }
-    mkdirSync(dirname(LEDGER), { recursive: true }); writeFileSync(LEDGER, `${JSON.stringify(ledger, null, 2)}\n`);
+    checkpoint();
   }
   const counts = {}; for (const row of rows.values()) counts[row.status] = (counts[row.status] || 0) + 1;
   const failing = [...rows.values()].filter((r) => ['blocked', 'dead', 'not-image'].includes(r.status)).length;

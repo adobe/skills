@@ -3,7 +3,8 @@
  * skills/deploy/scripts/da-copy.mjs — copy a DA folder tree to another org/site (project move, step 4).
  * Contract: reference/project-move.md § Steps. Three field moves each hand-wrote this loop; the
  * generalised one keeps their shape: recursive list, media first, host rewrite, sheets as JSON,
- * retry on 429, a resumable ledger — and previews only (D16): live is a separate explicit run.
+ * retry on 429, a resumable ledger checkpointed after every file (a killed run resumes) — and previews only (D16):
+ * live is a separate explicit run.
  *
  *   node skills/deploy/scripts/da-copy.mjs --from <org>/<site> --to <org>/<site>
  *        [--prefix <dir>] [--publish] [--dry] [--skip-copy] [--concurrency 4]
@@ -37,7 +38,7 @@
  * Never: deletes or edits anything under --from, publishes without --publish, prints a token value,
  * touches the customer site. Test hooks: DA_COPY_DA_BASE, DA_COPY_ADMIN_BASE (mock hosts), DA_COPY_BACKOFF_MS.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { resolveToken } from './lib.mjs';
@@ -124,7 +125,9 @@ const readLedger = (file, from, to) => {
   if (l.from !== from || l.to !== to) throw new Error(`${file} belongs to ${l.from} → ${l.to}; use --ledger for a second move`);
   return l;
 };
-const persist = (file, ledger) => { mkdirSync(path.dirname(file), { recursive: true }); writeFileSync(file, `${JSON.stringify(ledger, null, 2)}\n`); };
+// checkpoint after EVERY file (progress.mjs pattern: tmp + rename, a reader never sees a half write) — a killed run
+// keeps every finished row and the re-run skips them (defect: the ledger was written once, at run end)
+const persist = (file, ledger) => { mkdirSync(path.dirname(file), { recursive: true }); writeFileSync(`${file}.tmp`, `${JSON.stringify(ledger, null, 2)}\n`); renameSync(`${file}.tmp`, file); };
 
 async function pool(items, n, worker) {
   let i = 0;
@@ -185,7 +188,7 @@ export async function main(argv = process.argv.slice(2)) {
     } catch (e) {
       if (e.halt) { halted = e; return; }
       row.status = 'failed'; row.lastError = e.message; counts.failed += 1; console.log(`  FAILED   ${f.path}: ${e.message}`);
-    } finally { row.ts = new Date().toISOString(); ledger.rows[f.path] = row; }
+    } finally { row.ts = new Date().toISOString(); ledger.rows[f.path] = row; persist(a.ledger, ledger); }
   });
   persist(a.ledger, ledger);
   if (halted) { console.error(`da-copy: halted — ${halted.message}; ledger checkpointed at ${a.ledger}, re-run the same command after the refresh`); console.log(summary(2)); return 2; }

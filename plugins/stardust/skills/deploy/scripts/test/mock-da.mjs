@@ -9,6 +9,7 @@
  *                                      `server.media` (path → Buffer); status from rules.mediaStatus(path, n)
  *   /cdn/<name>                        a source CDN fixture (media-reconcile / rehost-media probes):
  *                                      rules.cdn(name, headers, search) → { status, body: Buffer|string, headers }
+ *                                      (`{ hang: true }` leaves the request unanswered)
  *                                      (default 404); a `range` request against a Buffer body answers 206
  *                                      with content-range (`total` overrides the advertised size) unless
  *                                      the rule sets `noRange`
@@ -69,6 +70,7 @@ export async function startMock() {
     }
     if ((m = url.pathname.match(/^\/cdn\/(.+)$/))) {
       const d = rules.cdn(decodeURI(m[1]), req.headers, url.search) || { status: 404 };
+      if (d.hang) return undefined; // never answered: the killed-run fixtures park one fetch here
       const buf = Buffer.isBuffer(d.body) ? d.body : Buffer.from(d.body || '');
       const range = req.headers.range && !d.noRange && d.status === 200 && Buffer.isBuffer(d.body) ? req.headers.range.match(/^bytes=(\d+)-(\d*)$/) : null;
       if (range) {

@@ -11,6 +11,8 @@
 //   - missing token → exit 2 before any request; 401 → exit 2 halt, ledger checkpointed;
 //   - a failed file → exit 1, row `failed` with lastError, the rest still copied; re-run retries only it;
 //   - the source tree is never written (no PUT/POST/DELETE under --from);
+//   - killed run (one GET parked): the ledger is checkpointed after every file — finished rows survive the kill,
+//     the re-run skips them and copies only the interrupted file (defect: written once at run end);
 //   - --help lists every documented flag; `--from --to` refused; a foreign ledger refused.
 // Usage: node plugins/stardust/evals/fixtures/da-copy.test.mjs   (exit 1 on failure)
 import assert from 'node:assert/strict';
@@ -47,7 +49,7 @@ const source = {
   'media/hero.png': { type: 'image/png', body: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 1, 2, 3]) },
 };
 let requests = [];
-const rules = { flaky429: null, fail500: null, unauthorized: false };
+const rules = { flaky429: null, fail500: null, unauthorized: false, hang: null };
 const server = createServer((req, res) => {
   const chunks = [];
   req.on('data', (c) => chunks.push(c));
@@ -58,7 +60,7 @@ const server = createServer((req, res) => {
     const u = req.url;
     let m;
     if ((m = u.match(new RegExp(`^/list/${FROM}(?:/(.*))?$`)))) { const d = m[1] || ''; if (!(d in tree)) { res.writeHead(404); res.end(); return; } res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify(tree[d])); return; }
-    if ((m = u.match(new RegExp(`^/source/${FROM}/(.+)$`))) && req.method === 'GET') { const f = source[m[1]]; if (!f) { res.writeHead(404); res.end(); return; } res.writeHead(200, { 'content-type': f.type }); res.end(f.body); return; }
+    if ((m = u.match(new RegExp(`^/source/${FROM}/(.+)$`))) && req.method === 'GET') { if (rules.hang === m[1]) return; const f = source[m[1]]; if (!f) { res.writeHead(404); res.end(); return; } res.writeHead(200, { 'content-type': f.type }); res.end(f.body); return; }
     if ((m = u.match(new RegExp(`^/source/${TO}/(.+)$`))) && req.method === 'PUT') {
       if (rules.fail500 === m[1]) { res.writeHead(500); res.end('boom'); return; }
       res.writeHead(201); res.end(); return;
@@ -141,6 +143,29 @@ try {
   assert.equal(r.status, 2, r.stdout + r.stderr); assert.match(r.stderr, /401/); assert.match(r.stdout, /exit=2$/m); rules.unauthorized = false;
   r = await run([]); assert.equal(r.status, 0, 'recovers after the refresh');
 
+  // killed run: the ledger is checkpointed after EVERY file (defect: written once at run end — a kill lost every row).
+  // One html GET hangs; once the media wave is on disk and the other html rows landed, SIGKILL; the rows survive, the re-run skips them.
+  rmSync(ledger, { force: true }); requests = []; rules.hang = 'about.html';
+  {
+    const c = spawn(process.execPath, [CLI, '--from', FROM, '--to', TO, '--ledger', ledger], { env, cwd: dir });
+    let out = ''; c.stdout.on('data', (d) => { out += d; }); c.stderr.on('data', (d) => { out += d; });
+    const rowsOnDisk = () => (existsSync(ledger) ? JSON.parse(readFileSync(ledger, 'utf8')).rows : {});
+    const t0 = Date.now();
+    while (Date.now() - t0 < 20000 && !(rowsOnDisk()['media/hero.png']?.status === 'copied' && rowsOnDisk()['news/index.html']?.status === 'previewed')) await new Promise((w) => { setTimeout(w, 25); });
+    c.kill('SIGKILL'); await new Promise((w) => { c.on('close', w); });
+    const rows = rowsOnDisk();
+    assert.equal(rows['media/hero.png']?.status, 'copied', `killed run: the media row was on disk before the kill\n${out}`);
+    assert.equal(rows['news/index.html']?.status, 'previewed', 'killed run: a finished html row was on disk before the kill');
+    assert.equal(rows['about.html'], undefined, 'killed run: the hung file has no row (never finished)');
+    assert.ok(!existsSync(`${ledger}.tmp`), 'checkpoints are tmp + rename: no half-written file left');
+  }
+  rules.hang = null; requests = [];
+  r = await run([]);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout, /skip\s+media\/hero\.png \(copied\)/, 're-run skips the checkpointed media row');
+  assert.ok(!puts().includes('media/hero.png') && !puts().includes('news/index.html'), 're-run PUTs nothing the killed run had finished');
+  assert.ok(puts().includes('about.html'), 're-run copies the file the kill interrupted');
+
   // foreign ledger refused; --help lists every flag
   r = await run(['--ledger', join(dir, 'foreign.json'), '--dry']); assert.equal(r.status, 0);
   requests = [];
@@ -150,7 +175,7 @@ try {
   const h = spawnSync(process.execPath, [CLI, '--help'], { encoding: 'utf8' });
   assert.equal(h.status, 0);
   for (const f of ['--from', '--to', '--prefix', '--publish', '--dry', '--skip-copy', '--concurrency', '--ledger', '--token-env', '--help']) assert.ok(h.stdout.includes(f), `help names ${f}`);
-  console.log('da-copy test: ok (order, rewrite, sheet JSON, media verbatim, preview-only default, --publish, 429 retry, resume skip, --dry, failed row + re-drive, token missing, 401 halt, source untouched, help)');
+  console.log('da-copy test: ok (order, rewrite, sheet JSON, media verbatim, preview-only default, --publish, 429 retry, resume skip, --dry, failed row + re-drive, token missing, 401 halt, killed run keeps checkpointed rows, source untouched, help)');
 } finally {
   server.close();
   rmSync(dir, { recursive: true, force: true });

@@ -68,6 +68,7 @@ function noisePng(w, h) {
 const noise = noisePng(600, 600);
 const bigJpeg = Buffer.concat([jpeg.subarray(0, jpeg.length - 2), Buffer.alloc(1.5 * 1024 * 1024), jpeg.subarray(-2)]); // 1.5 MB: SOF dims + padding
 const slowHits = {};
+let hangOn = true;
 mock.rules.cdn = (name, headers, search = '') => {
   const browser = /Mozilla/.test(headers['user-agent'] || '');
   switch (name) {
@@ -77,6 +78,7 @@ mock.rules.cdn = (name, headers, search = '') => {
     case 'noise.png': return { status: 200, body: noise, headers: { 'content-type': 'image/png' } };
     case 'cookie.jpg': return /\bsess=1\b/.test(headers.cookie || '') ? { status: 200, body: jpeg, headers: { 'content-type': 'image/jpeg' } } : { status: 403, body: 'no session' };
     case 'ok.png': return { status: 200, body: png, headers: { 'content-type': 'image/png' } };
+    case 'hang.png': return hangOn ? { hang: true } : { status: 200, body: png, headers: { 'content-type': 'image/png' } }; // (17) parked until the killed run is over
     case 'walled.jpg': return browser ? { status: 200, body: jpeg, headers: { 'content-type': 'image/jpeg' } } : { status: 403, body: 'bot wall' };
     case 'gone.png': return { status: 404, body: 'gone' };
     case 'fallback.jpg': return { status: 200, body: '<!doctype html><html><body>Not found</body></html>', headers: { 'content-type': 'text/html' } };
@@ -258,7 +260,24 @@ check(summary.pendingTargetPages === 0, '(10) a hotlinked advisory is not counte
 check(/hotlinked images: 1 page\(s\)/.test(rv.stdout), '(10) stdout carries the one-line hotlinked summary');
 check(!((summary.pages.find((p) => p.slug === 'clean') || {}).advisories || []).length, '(10) a Media-Bus-rewritten page has no advisory');
 
+// (17) killed run: the ledger is checkpointed after EVERY URL (defect: written once at run end — a kill lost every row).
+// hang.png never answers; once ok.png's row is on disk, SIGKILL; the row survives and the re-run makes 0 CDN hits for it.
+{
+  const killed = one('killed', 'ok.png', 'hang.png'); const lp = join(T, 'da-media-killed.json');
+  const c = spawn(process.execPath, [REHOST, ...withLedger(base(killed, ['--policy', 'rehost-all']), lp)], { cwd: T, env: { ...process.env, HOME: T, PLAYWRIGHT_BROWSERS_PATH: BROWSERS, DA_TOKEN: 'x', STARDUST_BROWSER_SLOTS: '0', ...mock.env() } });
+  let out = ''; c.stdout.on('data', (d) => { out += d; }); c.stderr.on('data', (d) => { out += d; });
+  const t0 = Date.now();
+  while (Date.now() - t0 < 20000 && rowOf(lp, 'ok.png').status !== 'rehosted') await new Promise((w) => { setTimeout(w, 25); });
+  c.kill('SIGKILL'); await new Promise((w) => { c.on('close', w); });
+  check(rowOf(lp, 'ok.png').status === 'rehosted', `(17) killed run: ok.png's row was on disk before the kill\n${out}`);
+  check(!ledgerOf(lp)[cdnUrl('hang.png')], '(17) the hung URL has no row (never finished)');
+  check(!existsSync(`${lp}.tmp`), '(17) checkpoints are tmp + rename: no half-written file left');
+  hangOn = false; const okHits = () => mock.requests.filter((r) => r.url === '/cdn/ok.png').length; const before = okHits();
+  const r17 = await run(REHOST, withLedger(base(killed, ['--policy', 'rehost-all']), lp));
+  check(r17.status === 0 && okHits() === before && rowOf(lp, 'hang.png').status === 'rehosted', `(17) re-run: 0 CDN hits for the checkpointed row, the interrupted URL rehosted (exit ${r17.status})\n${r17.stderr}`);
+}
+
 await mock.close();
 rmSync(T, { recursive: true, force: true });
 if (failures.length) { console.error(`media-rehost-smoke: ${failures.length} finding(s)`); for (const f of failures) console.error(`  ✗ ${f}`); process.exit(1); }
-console.log('media-rehost-smoke: ok (16 cases · ledger + 0-hit re-run, PUT only 2xx images, dead/not-image/signed, stem, --dry, policy keep, exit 3 on DA 401, delivery-lint hotlinked-media, verify hotlinked advisory, 429 retry sent, > 1 MB acted under the default, kept rows re-evaluated per policy, --only tokens, headed-chrome in-page fetch, --resize)');
+console.log('media-rehost-smoke: ok (17 cases · killed run keeps its checkpointed rows · ledger + 0-hit re-run, PUT only 2xx images, dead/not-image/signed, stem, --dry, policy keep, exit 3 on DA 401, delivery-lint hotlinked-media, verify hotlinked advisory, 429 retry sent, > 1 MB acted under the default, kept rows re-evaluated per policy, --only tokens, headed-chrome in-page fetch, --resize)');
