@@ -86,5 +86,6 @@ assert.match(readFileSync(join(out2, 'brand-review.html'), 'utf8'), /<link rel="
 writeFileSync(join(out2, '_brand-extraction.json'), JSON.stringify({ palette: [] })); assert.equal(run('brand-review.mjs', ['--out', out2]).code, 2, 'exit 2 without _provenance');
 rmSync(join(out, 'brand-review.html')); assert.equal(run('brand-review.mjs', ['--out', out, '--dry-run']).code, 0); assert.ok(!existsSync(join(out, 'brand-review.html')), 'dry-run writes nothing');
 assert.equal(run('brand-review.mjs', ['--help']).code, 0); assert.equal(run('brand-review.mjs', ['--nope']).code, 2);
+const d4 = run('brand-review.mjs', ['--out', '--dry-run']); assert.equal(d4.code, 2, 'D4: --out followed by a flag is a usage error (not a swallowed --dry-run)'); assert.match(d4.out, /--out needs a value/, 'D4: refused as usage, not as a missing brand file');
 
 console.log('brand-review test: ok');

@@ -60,15 +60,15 @@ export function parseArgs(argv) {
   const o = { out: 'stardust/current', state: null, prep: false, legacy: false, vision: null, dryRun: false };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
-    if (a === '--out') o.out = rest[++i];
-    else if (a === '--state') o.state = rest[++i];
+    const val = () => { const v = rest[i + 1]; if (v === undefined || /^--/.test(v)) throw new Error(`${a} needs a value`); i += 1; return v; }; // a following flag is not a value (`--out --prep`)
+    if (a === '--out') o.out = val();
+    else if (a === '--state') o.state = val();
     else if (a === '--prep') o.prep = true;
     else if (a === '--legacy') o.legacy = true;
-    else if (a === '--vision') o.vision = rest[++i];
+    else if (a === '--vision') o.vision = val();
     else if (a === '--dry-run') o.dryRun = true;
     else throw new Error(`unknown flag ${a}`);
   }
-  if (!o.out) throw new Error('--out needs a value');
   if (!o.state) o.state = path.join(o.out, '..', 'state.json');
   return o;
 }

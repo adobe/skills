@@ -35,11 +35,12 @@ export function parseArgs(argv) {
   if (rest.includes('--help') || rest.includes('-h')) return { help: true };
   const o = { out: 'stardust/current', dryRun: false };
   for (let i = 0; i < rest.length; i += 1) {
-    if (rest[i] === '--out') o.out = rest[++i];
-    else if (rest[i] === '--dry-run') o.dryRun = true;
-    else throw new Error(`unknown flag ${rest[i]}`);
+    const a = rest[i];
+    const val = () => { const v = rest[i + 1]; if (v === undefined || /^--/.test(v)) throw new Error(`${a} needs a value`); i += 1; return v; }; // a following flag is not a value (`--out --prep`)
+    if (a === '--out') o.out = val();
+    else if (a === '--dry-run') o.dryRun = true;
+    else throw new Error(`unknown flag ${a}`);
   }
-  if (!o.out) throw new Error('--out needs a value');
   return o;
 }
 

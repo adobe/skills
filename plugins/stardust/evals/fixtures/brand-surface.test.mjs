@@ -90,6 +90,13 @@ assert.ok(!b.voiceTable.ctaFrequency.some((c) => /cookie/i.test(c.label)), 'CMP 
 assert.ok(['brand', 'product', 'ambiguous'].includes(b.register));
 assert.equal(b.crossPromo.detected, false, 'footer headings are system components, not a cross-promo anchor');
 
+// write-design-json.mjs on the same brand surface: DESIGN.json seeded, _provenance first; D4 value-flag guard
+const WDJ = join(import.meta.dirname, '..', '..', 'skills', 'extract', 'scripts', 'write-design-json.mjs');
+const wdj = (args) => spawnSync(process.execPath, [WDJ, ...args], { encoding: 'utf8' }).status;
+assert.equal(wdj(['--out', out]), 0, 'write-design-json seeds DESIGN.json from the brand surface'); const dj = readJson(join(out, 'DESIGN.json')); assert.equal(Object.keys(dj)[0], '_provenance'); assert.equal(dj.schemaVersion, 2); assert.equal(dj._provenance.script, 'write-design-json.mjs'); assert.equal(dj.colors.primary, '#147aff');
+const wdjOut = (args) => { const r = spawnSync(process.execPath, [WDJ, ...args], { encoding: 'utf8' }); return { code: r.status, out: r.stdout + r.stderr }; };
+const w4 = wdjOut(['--out', '--dry-run']); assert.equal(w4.code, 2, 'D4: --out followed by a flag is a usage error'); assert.match(w4.out, /--out needs a value/, 'D4: refused as usage, not as a missing brand file'); assert.equal(wdj(['--bogus']), 2); assert.equal(wdj(['--help']), 0);
+
 // --bounded on the same set: voice/voiceTable/crossPromo/register omitted, mode stamped
 const out2 = fresh('modular');
 assert.equal(run(['--out', out2, '--bounded']).code, 0);
@@ -120,7 +127,7 @@ const out5 = fresh('ad-hoc'); const r5 = run(['--out', out5, '--dry-run']); asse
 const out6 = fresh('ad-hoc'); const dead = readJson(join(out6, 'pages', 'index.json')); delete dead._provenance.renderedBy; writeFileSync(join(out6, 'pages', 'index.json'), JSON.stringify(dead)); spawnSync('rm', [join(out6, 'pages', 'about.json')]);
 const r6 = run(['--out', out6]); assert.equal(r6.code, 1, 'every record failing provenance → exit 1'); assert.match(r6.out, /no live page record/);
 const empty = mkdtempSync(join(tmpdir(), 'brand-surface-empty-')); mkdirSync(join(empty, 'pages')); assert.equal(run(['--out', empty]).code, 1, 'empty pages dir → exit 1');
-assert.equal(run(['--out', out, '--bogus']).code, 2, 'unknown flag → exit 2'); assert.equal(run(['--out', join(empty, 'nope')]).code, 2, 'missing --out dir → exit 2');
+assert.equal(run(['--out', out, '--bogus']).code, 2, 'unknown flag → exit 2'); const d4 = run(['--out', out, '--home', '--bounded']); assert.equal(d4.code, 2, 'D4: --home followed by a flag is a usage error (not a swallowed --bounded)'); assert.match(d4.out, /--home needs a value/); const d4b = run(['--out', out, '--lift']); assert.equal(d4b.code, 2, 'D4: trailing --lift without a value → exit 2'); assert.match(d4b.out, /--lift needs a value/); assert.equal(run(['--out', join(empty, 'nope')]).code, 2, 'missing --out dir → exit 2');
 assert.equal(run(['--help']).code, 0);
 
 console.log('brand-surface test: ok');

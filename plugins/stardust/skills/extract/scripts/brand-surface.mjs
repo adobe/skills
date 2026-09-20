@@ -68,14 +68,14 @@ export function parseArgs(argv) {
   const o = { out: 'stardust/current', home: 'index', bounded: false, lift: null, dryRun: false };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
-    if (a === '--out') o.out = rest[++i];
-    else if (a === '--home') o.home = rest[++i];
+    const val = () => { const v = rest[i + 1]; if (v === undefined || /^--/.test(v)) throw new UsageError(`${a} needs a value`); i += 1; return v; }; // a following flag is not a value (`--out --prep`)
+    if (a === '--out') o.out = val();
+    else if (a === '--home') o.home = val();
     else if (a === '--bounded') o.bounded = true;
-    else if (a === '--lift') o.lift = rest[++i];
+    else if (a === '--lift') o.lift = val();
     else if (a === '--dry-run') o.dryRun = true;
     else throw new UsageError(`unknown flag ${a}`);
   }
-  if (!o.out || !o.home) throw new UsageError('--out and --home need a value');
   return o;
 }
 class UsageError extends Error {}
