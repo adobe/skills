@@ -136,7 +136,7 @@ export const RESIDUAL_CLASSES = [
   ['photo-reencoding', true], ['live-drift', false], ['nondeterministic-live', true], ['live-data-embed', true],
   ['randomized-decoration', true], ['personalised-region', true], ['skip-link-focus', false], ['fixed-disc-at-seams', false],
   ['subpixel-layoutunit', true], ['icon-font-substitution', true], ['capture-state', false], ['motion-unassertable', false],
-  ['authored-volatile-masked', false],
+  ['chrome-state-unprobed', false], ['authored-volatile-masked', false],
 ];
 
 /** Parse a gate doc's § Residual classes table → Map<id, { permanent }> (empty when the text has no table). */

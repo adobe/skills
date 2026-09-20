@@ -126,7 +126,7 @@ try {
   const rc = spawnSync(process.execPath, [join(copy, 'gate-ledger-lint.mjs'), '--progress', p5, '--all-types'], { encoding: 'utf8' });
   check(rc.status === 0 && /landing: ok — home 1440 12 % Δh 2/.test(`${rc.stdout}${rc.stderr}`) && !/WARN/.test(rc.stderr), `the project copy (stardust/scripts/replica/, no ../reference/) still resolves the class list: named residuals ok, exit 0, no WARN — got ${rc.status}\n${rc.stdout}${rc.stderr}`);
   const copied = spawnSync(process.execPath, ['--input-type=module', '-e', `import { residualClasses } from ${JSON.stringify(join(copy, 'progress-record.mjs'))}; const c = residualClasses(); console.log(JSON.stringify({ source: c.source, size: c.size, cs: c.get('capture-state') }));`], { encoding: 'utf8' });
-  check(/"source":"embedded","size":17,"cs":\{"permanent":false\}/.test(copied.stdout), `the copied reader reports source embedded with the full list, got ${copied.stdout}${copied.stderr}`);
+  check(/"source":"embedded","size":18,"cs":\{"permanent":false\}/.test(copied.stdout), `the copied reader reports source embedded with the full list, got ${copied.stdout}${copied.stderr}`);
   const unassertable = JSON.parse(JSON.stringify(valid)); unassertable.residuals[1].cause = 'motion-unassertable: prototype server unreachable from the headless run'; unassertable.residuals[1].acceptedBy = 'user';
   const p7c = ledgerFile('unassertable', { archetypes: [{ pageType: 'landing', archetype: 'home', prototype: 'x.html', motion, breakpoints: { 1440: unassertable, 360: good(1, 0) } }] });
   r = run(['--progress', p7c, '--all-types']);
