@@ -61,8 +61,11 @@
  *                 checks: { chrome, widgets, pageErrors, entrances, stateMachines }, skips: {…} }
  *
  * Exit codes: 0 pass or n/a · 1 fail (🟡 advisory this release) or error ·
- * 2 usage, unreadable observe JSON, or a target on the live origin ·
- * 124 deadline (verdict none — re-run once; still none = unasserted, never FAIL).
+ * 2 usage, unreadable observe JSON, a target on the live origin, or
+ * live-session.mjs not beside this script · 124 deadline or no browser slot
+ * in time (verdict none — re-run once; still none = unasserted, never FAIL).
+ * Launch: live-session launchTier (tier 1) — launch-ladder parity, one
+ * browser slot per launch (fan-out.md § Machine budget).
  * No bot-challenge exit: the target is the prototype / published page, never
  * the live origin (a bot-blocked observe run is the `motion-unassertable`
  * residual, source-fidelity-gate.md § Residual classes).
@@ -70,8 +73,25 @@
 
 /* eslint-disable import/no-extraneous-dependencies, import/extensions, no-await-in-loop, no-restricted-syntax, brace-style, object-curly-newline, max-len, no-plusplus, no-continue */
 import { existsSync, readFileSync, realpathSync, writeFileSync } from 'fs';
-import { fileURLToPath } from 'url';
+import { dirname, resolve as resolvePath } from 'path';
+import { fileURLToPath, pathToFileURL } from 'url';
 import { findPageType, readLedger } from './progress-record.mjs';
+
+// The browser is launched through live-session's launchTier (launch-ladder
+// parity: one launch site per machine, one browser slot per launch — fan-out.md
+// § Machine budget), never a bare launch call. Two layouts: the plugin
+// tree (../../diff/scripts) and the project copy (../diff). Resolved lazily —
+// usage / --help / the record writer never need it.
+const HERE = dirname(fileURLToPath(import.meta.url));
+export function liveSessionPath() {
+  return ['../../diff/scripts/live-session.mjs', '../diff/live-session.mjs'].map((p) => resolvePath(HERE, p)).find((p) => existsSync(p)) || null;
+}
+async function launchBrowser(chromium) {
+  const ls = liveSessionPath();
+  if (!ls) { const e = new Error('live-session.mjs not found (looked in ../../diff/scripts/ and ../diff/) — copy the diff skill\'s scripts dir alongside this one (replica SKILL.md § Setup step 4)'); e.code = 2; throw e; }
+  const { launchTier } = await import(pathToFileURL(ls).href);
+  return launchTier(chromium, 1); // tier 1: the target is the prototype / published page, never a bot-walled live origin
+}
 
 export const CHECKS = ['chrome', 'widgets', 'pageErrors', 'entrances', 'stateMachines'];
 export const DEADLINE_EXIT = 124;
@@ -324,7 +344,7 @@ function triggerSnapshot(sel) {
 async function runChecks({ observe, target, opts, warn }) {
   const { chromium } = await import('playwright');
   const width = opts.width || observe.width || 1440; const VH = 900;
-  const browser = await chromium.launch();
+  const browser = await launchBrowser(chromium);
   const checks = {}; let errors = 0;
   try {
     const ctx = await browser.newContext({ viewport: { width, height: VH } });
@@ -449,4 +469,5 @@ async function main() {
 }
 
 const invokedDirectly = (() => { try { return realpathSync(process.argv[1]) === fileURLToPath(import.meta.url); } catch { return false; } })();
-if (invokedDirectly) main().catch((e) => { console.error(`motion-assert error: ${e.message}`); process.exit(1); });
+// exit 124 also when live-session's launchTier got no browser slot in time (no verdict, never FAIL); 2 = live-session.mjs missing (setup)
+if (invokedDirectly) main().catch((e) => { console.error(`motion-assert error: ${e.message}`); process.exit(e.code === 124 ? DEADLINE_EXIT : e.code === 2 ? 2 : 1); });
