@@ -64,7 +64,7 @@ try {
   const out = join(dir, 'harness.html');
   r = run(BUILD, [FIXTURE, out, '--root', dir]);
   const html = r.status === 0 ? readFileSync(out, 'utf8') : '';
-  check('build-harness exits 0 and prints the counts line', r.status === 0 && /pipeline emulation: section-metadata 1/.test(r.stdout), r.stderr.trim());
+  check('build-harness exits 0 and prints the counts line', r.status === 0 && /pipeline emulation: section-metadata 2/.test(r.stdout), r.stderr.trim());
   check('build-harness emits <meta name="template"> from the metadata block', /<meta name="template" content="Landing Page">/.test(html) && /<meta name="nav" content="\/nav-minimal">/.test(html));
   check('build-harness main carries the delivered shape', /<div class="dark narrow" data-background="navy">/.test(html) && /<p><picture><img loading="lazy"/.test(html) && !/class="metadata"/.test(html));
   const out2 = join(dir, 'harness-raw.html');

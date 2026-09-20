@@ -15,7 +15,7 @@ Read this card, then the one section you are at — never the whole skill. Every
 
 | # | Step | Command / artefact | Pass bar |
 |---|---|---|---|
-| 0 | Probes | `node -e "import('playwright').then(()=>process.exit(0))"`; read the target's `scripts/aem.js` + `scripts/scripts.js` → `stardust/runtime-contract.json` | contract written before any code |
+| 0 | Probes | `node -e "import('playwright').then(()=>process.exit(0))"`; read the target's `scripts/aem.js` + `scripts/scripts.js` → `stardust/runtime-contract.json`; `pipeline-mimic.mjs --probe --org <org> --repo <repo> --branch <branch>` → `#pipeline` (optional; 2 = no verdict) | contract written before any code |
 | 1 | Audit | pre-render JSX to `stardust/.work/prerender/`; `node skills/deploy/scripts/style-fingerprint.mjs "file://<abs>/<proto>.html"` | per-page section list + variation manifest |
 | 2 | Names + reuse | D1/D11 triage per section → `stardust/eds-conversion-log.md` | names locked in writing before any block code |
 | 2b | Schema + tier | `node skills/deploy/scripts/section-schema.mjs "<protoURL>" --out stardust/eds-schema/<page>.json` | schema + decode tier recorded per section |
@@ -43,7 +43,7 @@ Outputs: `blocks/<name>/<name>.{js,css}` · `content/**/*.html` (+ `nav.html`, `
 | 7 | `reference/block-agents-brief.md` § The brief template, § Shared cores and variants; `davids-model.md` |
 | 8 | `reference/block-js-scaffold.md` § 8. Block JS scaffold, § Experience Workspace editability contract, § Runtime order, § Decode rules; `da-deploy-protocol.md` § Code push gates before the commit |
 | 9 | `reference/content-page-scaffold.md` § 9. Content page scaffold; `reference/encode-contract.md` § Authoring shapes, § Pipeline-sensitive shapes, § Images |
-| QA | `reference/local-qa.md` § Gates, § Local-QA scope boundary; `reference/pipeline-facts.md` § Local emulation |
+| QA | `reference/local-qa.md` § Gates, § Local-QA scope boundary; `reference/pipeline-facts.md` § Local emulation, § Probe |
 | D | `da-deploy-protocol.md` § Delivery pipeline, § Deploy (DA Source API + curl), § Two clocks; § DA_TOKEN lifecycle (`da-token-check.mjs`) before the first token read |
 | 10 | `reference/deployed-reconcile.md` § The six reconcile checks, § Reading content-diff; `da-deploy-protocol.md` § Code push gates |
 | any failure | `reference/anti-patterns.md` (by group); `reference/checklist.md` before each DA push |
@@ -180,7 +180,7 @@ Every page carries a `metadata` block — in the first content section, never al
 
 ## Deploy (DA Source API, from a local agent)
 
-The stages (code push with forced Code Sync, `localize-links.mjs` over the WHOLE tree after every generator, `sanitise.js`, `PUT`, `POST /preview/` then `/live/`) and the per-page atomic contract (`davids-model-lint` exit 0 → PUT → preview → live → delivered `.plain.html` asserted → computed-style guard on the live URL, every visible image non-zero (#122) → AI-readability gate (#100) → only then the ledger flips to `deployed`) run through `node skills/deploy/scripts/deploy-batch.mjs --org <org> --repo <repo> --branch <branch> --content content` (#4); preview follows the DA-write bar, before any harness pixel iteration, and the first status line names the preview URL `deploy-batch.mjs` prints per page — publish is a separate `--publish` on PASS (D1/D16); a production-affecting action is its own command, never joined with edits or commits in one shell string. Token hygiene (#16) and the `DA_TOKEN` lifecycle — preflight, exit 3 on the first mid-batch `401` — re-run the printed `next` — are part of the contract. Two clocks — code first on the ref the user will look at, then content. Before this step read `da-deploy-protocol.md` § Delivery pipeline, § Deploy (DA Source API + curl) and § Two clocks.
+The stages (code push with forced Code Sync, `localize-links.mjs` over the WHOLE tree after every generator, `sanitise.js`, `PUT`, `POST /preview/` then `/live/`) and the per-page atomic contract (`davids-model-lint` exit 0 → PUT → preview → live → delivered `.plain.html` asserted → computed-style guard on the live URL, every visible image non-zero (#122) → AI-readability gate (#100) → only then the ledger flips to `deployed`) run through `node skills/deploy/scripts/deploy-batch.mjs --org <org> --repo <repo> --branch <branch> --content content` (#4); preview follows the DA-write bar, before any harness pixel iteration, and the first status line names the preview URL `deploy-batch.mjs` prints per page — publish is a separate `--publish` on PASS (D1/D16); a production-affecting action is its own command, never joined with edits or commits in one shell string. Token hygiene (#16) and the `DA_TOKEN` lifecycle (§ DA_TOKEN lifecycle: preflight, exit 3 on a mid-batch `401` → re-run `next`) are part of the contract. Two clocks — code first on the ref the user will look at, then content. Before this step read `da-deploy-protocol.md` § Delivery pipeline, § Deploy (DA Source API + curl) and § Two clocks.
 
 ## Step 10 — Reconcile on the DEPLOYED URL (content-diff ADVISORY + eyeball + CLS)
 
@@ -210,13 +210,13 @@ Chapters (full text of the sections this core compresses — read by `##`, each 
 - `reference/anti-patterns.md` — the twenty anti-patterns, grouped.
 - `reference/checklist.md` — the per-page checklist.
 - `reference/ai-readability.md` — the AI-readability rule (#86, #100): checker formula, block rules, gate.
-- `reference/pipeline-facts.md` — what the DA → EDS pipeline rewrites on delivery: fact, remedy, lint id; § Local emulation (what `pipeline-mimic.mjs` reproduces).
+- `reference/pipeline-facts.md` — what the DA → EDS pipeline rewrites on delivery: fact, remedy, lint id; § Local emulation, § Probe.
 - `reference/ship-script.md` — the one-command ship script a hands-off run writes when a push or publish is denied: merge → push → explicit publish → post-ship gate → issue comment.
 
 Bundled contracts:
 
 - `davids-model.md` — David's Model distilled: the 15 rules (`D#N`) mapped to this skill's contracts and gates, plus component-model shape notes.
 - `da-deploy-protocol.md` — the DA Source API deploy contract (auth, PUT, preview/publish, asset-before-preview ordering) and the delivery pipeline (stages, batch driver, atomic contract, link localization, token lifecycle).
-- `../../notes/deploy-improvements-archive.md` — the frozen ledger the `(#NN)` citations point to; new findings go to `skills/stardust/reference/learnings.md`.
+- `../../notes/deploy-improvements-archive.md` — the frozen `(#NN)` ledger; new findings go to `skills/stardust/reference/learnings.md`.
 - `scripts/ew-editability-probe.mjs` — the Experience Workspace editability gate (Step 8): instrument → decorate → count survivors; `--simulate-editor`; URL and `--content` modes; `@ew-exempt` tags.
 - Experience Workspace sources the contract was verified against: `reference/block-js-scaffold.md` § Experience Workspace sources.

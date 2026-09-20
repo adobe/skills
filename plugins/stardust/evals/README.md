@@ -186,6 +186,14 @@ whose harness cases skip when Playwright is unresolvable:
   Playwright with no browser binary makes the probe suite print one `SKIP`
   line and exit 0 (its pure cases still run); the fixture itself SKIPs when
   Playwright is unresolvable.
+- `deploy/scripts/test/pipeline-probe.test.mjs` — `pipeline-mimic.mjs --compare / --probe`:
+  the shipped fixture pair → every rule `match`, `multiValueStyle comma`, `spaceStyle
+  hyphen-joined`, `zwspSurvives true` merged into a contract whose other keys survive; a
+  first-token-only plain → exit 3 with `sectionMeta differ` / `first-only` (D7's
+  fixture-verify), split tokens → `spaceStyle split`, a dropped ZWSP paragraph → `false`;
+  `--probe` without a token → exit 2 and the contract byte-identical; against the deploy-batch
+  mock the request order is PUT → preview → GET → DELETE ×2 (never `/live/`), `--record`
+  rewrites the fixture copy, preview 500 / plain 404 → exit 2; `contractStyleSplit()`.
 - `deploy/scripts/test/lint-changed.test.mjs` — `code-sync-verify.mjs --lint` on a
   boilerplate-shaped temp project (no `"type":"module"`) with shim eslint/stylelint in
   `node_modules/.bin`: the ESM-safe syntax stage catches a duplicate `const` that plain
