@@ -323,3 +323,44 @@ node skills/rollout/scripts/verify.mjs --ai-readability stardust/rollout/ai-read
   <n> · unmeasured: <n>`; the report cannot close with `< 98` or `unmeasured` > 0
   unless `decisions.md` names them. One instrument, one pass per phase (qa's
   check K remains the drift monitor).
+
+## Gate 6 — Editability (Experience Workspace: dead non-exempt text = 0, duplicated index = 0)
+
+The EW contract is measured, not asserted: every converted block passes
+`block-roundtrip --ew` in deploy's Step 8 loop **and** the page passes one
+whole-page probe. Instrument: `skills/deploy/scripts/ew-editability-probe.mjs`;
+ingest: `update-coverage.mjs --gate editability <probe.json>` (page rows +
+block rows in one call, T33.1's generic flag).
+
+```bash
+node skills/deploy/scripts/ew-editability-probe.mjs --content content/<page>.html --blocks-dir blocks --json > stardust/rollout/ew/<slug>.json   # harness
+node skills/deploy/scripts/ew-editability-probe.mjs https://<preview>/<path> --blocks-dir blocks --json > stardust/rollout/ew/<slug>.json      # URL mode (a block imports modules)
+node skills/rollout/scripts/update-coverage.mjs --gate editability stardust/rollout/ew/<slug>.json
+```
+
+- **Condition.** A page flips to `deployed` (and, transitively, into the
+  `--publish` set) only with `totals.dead === 0` (dead text outside a declared
+  `@ew-exempt`) and `totals.duplicated === 0`; `dead > 0` or `duplicated > 0` →
+  `failed` (`error: "editability: dead N in <block>"`). The pass bar is deploy's
+  own (`deploy/SKILL.md` Step 8 row), unchanged. Block rows: `blocks.json`
+  `delivery.ewGate = pass | fail | exempt | unmeasured` (+ `ew{authored,
+  editable, dead, exempt, duplicated}`) derived from the probe's `blocks[]` by
+  `edsBlockName`, a block's worst page verdict winning; `coverage-model.md`
+  § Block delivery status lifecycle: `converted` requires `ewGate ∈ {pass, exempt}`.
+- **No verdict ≠ FAIL.** Probe exit 2 (a block failed to install / decorate —
+  today every block with a static `import`) → `delivery.gates.editability.unmeasured:
+  true`, status untouched, the page un-flippable, Phase E/H count it. Resolution
+  until the harness resolves imports: URL mode against the dev-server harness or
+  the **preview** origin (our host — never the source site) produces the verdict.
+- **Escape hatch.** Only the declared one — `@ew-exempt` in the block JSDoc
+  (EW5 categories; item-level tags). No `--skip-ew` / `--no-ew` on the contract
+  row (`--no-ew` stays a `block-roundtrip` diagnostic). A CLI `--exempt a,b` is
+  recorded `exemptSource: cli` and printed in Phase H, never silent.
+- **Hands-off.** A failing block is a code defect fixed in the Step 8 loop ("fix
+  by moving, never by weakening"); at the iteration cap the page records
+  `--status failed --error "editability: dead N in <block>"` and the rollout
+  continues, the page out of `--publish`. Hands-off runs the URL-mode fallback
+  itself; unmeasured is never auto-resolved to pass. No owner decision involved.
+- **Phase H line** — `Editability  <editable>/<authored> · dead <n> · exempt <n>
+  · unmeasured <n>` from `rollout.json.lastRun.gates.editability`, never blank.
+  Single-page deploy keeps its artifact at `stardust/deploy/ew-<page>.json`.

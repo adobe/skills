@@ -1,0 +1,51 @@
+{
+  "_provenance": {
+    "writtenBy": "stardust:rollout",
+    "writtenAt": "2026-09-18T15:00:00Z",
+    "stardustVersion": "0.24.0"
+  },
+  "steps": [
+    {
+      "order": 1,
+      "slug": "home",
+      "convert": [
+        "hero-statement",
+        "coverage-tiles"
+      ],
+      "reuse": []
+    },
+    {
+      "order": 2,
+      "slug": "business",
+      "convert": [],
+      "reuse": [
+        "hero-statement"
+      ]
+    },
+    {
+      "order": 3,
+      "slug": "news__storm-season-checklist",
+      "convert": [],
+      "reuse": []
+    },
+    {
+      "order": 4,
+      "slug": "news__annual-report-2025",
+      "convert": [],
+      "reuse": []
+    },
+    {
+      "order": 5,
+      "slug": "insurance__home",
+      "convert": [],
+      "reuse": []
+    },
+    {
+      "order": 6,
+      "slug": "insurance__auto",
+      "convert": [],
+      "reuse": []
+    }
+  ],
+  "fragments": []
+}

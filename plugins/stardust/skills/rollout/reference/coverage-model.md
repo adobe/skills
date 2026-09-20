@@ -144,7 +144,11 @@ On every `inventory.mjs` run:
 ```
 
 - **pending** — inventoried as a distinct block, not yet converted.
-- **converted** — its EDS block (`blocks/<edsBlockName>/`) or fragment exists.
+- **converted** — its EDS block (`blocks/<edsBlockName>/`) or fragment exists
+  **and** `delivery.ewGate ∈ {pass, exempt}` (`update-coverage --gate editability`
+  writes `ewGate` + `ew{}` per block from the probe's `blocks[]`; `fail` /
+  `unmeasured` keep the block from counting as converted —
+  `delivery-gates.md` § Gate 6).
 - **deployed / verified** — live on the delivered site.
 
 `blocks.mjs` is idempotent: a block already past `pending` keeps its status and

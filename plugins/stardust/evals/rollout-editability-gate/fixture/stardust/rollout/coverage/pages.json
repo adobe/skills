@@ -1,0 +1,111 @@
+{
+  "_provenance": {
+    "writtenBy": "stardust:rollout",
+    "writtenAt": "2026-09-18T15:00:00Z",
+    "stardustVersion": "0.24.0"
+  },
+  "generatedAt": "2026-09-18T15:00:00Z",
+  "pages": [
+    {
+      "slug": "home",
+      "path": "/",
+      "title": "home",
+      "templateId": "landing",
+      "source": {
+        "migratedHtml": "stardust/migrated/index.html",
+        "metaJson": "stardust/migrated/_meta.json",
+        "sourceHash": "sha256:home00000000"
+      },
+      "blocks": [
+        "hero-statement",
+        "coverage-tiles"
+      ],
+      "delivery": {
+        "status": "converting",
+        "type": "page"
+      }
+    },
+    {
+      "slug": "business",
+      "path": "/business",
+      "title": "business",
+      "templateId": "landing",
+      "source": {
+        "migratedHtml": "stardust/migrated/business/index.html",
+        "metaJson": "stardust/migrated/business/_meta.json",
+        "sourceHash": "sha256:business0000"
+      },
+      "blocks": [
+        "hero-statement"
+      ],
+      "delivery": {
+        "status": "converting",
+        "type": "page"
+      }
+    },
+    {
+      "slug": "news__storm-season-checklist",
+      "path": "/news/storm-season-checklist",
+      "title": "news__storm-season-checklist",
+      "templateId": "article",
+      "source": {
+        "migratedHtml": "stardust/migrated/news/storm-season-checklist/index.html",
+        "metaJson": "stardust/migrated/news/storm-season-checklist/_meta.json",
+        "sourceHash": "sha256:news__storm-season-checklist"
+      },
+      "blocks": [],
+      "delivery": {
+        "status": "pending",
+        "type": "page"
+      }
+    },
+    {
+      "slug": "news__annual-report-2025",
+      "path": "/news/annual-report-2025",
+      "title": "news__annual-report-2025",
+      "templateId": "article",
+      "source": {
+        "migratedHtml": "stardust/migrated/news/annual-report-2025/index.html",
+        "metaJson": "stardust/migrated/news/annual-report-2025/_meta.json",
+        "sourceHash": "sha256:news__annual-report-2025"
+      },
+      "blocks": [],
+      "delivery": {
+        "status": "pending",
+        "type": "page"
+      }
+    },
+    {
+      "slug": "insurance__home",
+      "path": "/insurance/home",
+      "title": "insurance__home",
+      "templateId": "program",
+      "source": {
+        "migratedHtml": "stardust/migrated/insurance/home/index.html",
+        "metaJson": "stardust/migrated/insurance/home/_meta.json",
+        "sourceHash": "sha256:insurance__home"
+      },
+      "blocks": [],
+      "delivery": {
+        "status": "pending",
+        "type": "page"
+      }
+    },
+    {
+      "slug": "insurance__auto",
+      "path": "/insurance/auto",
+      "title": "insurance__auto",
+      "templateId": "program",
+      "source": {
+        "migratedHtml": "stardust/migrated/insurance/auto/index.html",
+        "metaJson": "stardust/migrated/insurance/auto/_meta.json",
+        "sourceHash": "sha256:insurance__auto"
+      },
+      "blocks": [],
+      "delivery": {
+        "status": "pending",
+        "type": "page"
+      }
+    }
+  ]
+}

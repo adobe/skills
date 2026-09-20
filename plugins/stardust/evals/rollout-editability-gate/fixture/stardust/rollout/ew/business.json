@@ -1,0 +1,53 @@
+[
+  {
+    "content": "content/business.html",
+    "blocksDir": "blocks",
+    "stylesPath": "styles/styles.css",
+    "root": ".",
+    "pipeline": "mimic",
+    "totals": {
+      "authored": 2,
+      "editable": 2,
+      "dead": 0,
+      "duplicated": 0,
+      "exempt": 0
+    },
+    "blocks": [
+      {
+        "block": "hero-statement",
+        "authored": 2,
+        "editable": 2,
+        "dead": 0,
+        "duplicated": 0,
+        "exempt": 0,
+        "textDrift": 0,
+        "deadItems": [],
+        "dupItems": [],
+        "exemptItems": [],
+        "exemptReasons": [],
+        "exemptUsed": []
+      }
+    ],
+    "rows": [
+      {
+        "block": "hero-statement",
+        "tag": "h1",
+        "text": "Business insurance",
+        "survivors": 1
+      },
+      {
+        "block": "hero-statement",
+        "tag": "p",
+        "text": "Property, liability and commercial auto.",
+        "survivors": 1
+      }
+    ],
+    "sim": null,
+    "exemptions": {},
+    "errors": [],
+    "requests": {
+      "missing": {}
+    },
+    "strict": []
+  }
+]

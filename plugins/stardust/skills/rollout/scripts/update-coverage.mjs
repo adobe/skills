@@ -158,15 +158,27 @@ export function matchPage(pages, key) {
   const pk = pathKey(k);
   return pages.find((p) => deliveredPathOf(p) === k || p.path === k) || pages.find((p) => pathKey(deliveredPathOf(p)) === pk || (p.path && pathKey(p.path) === pk)) || null;
 }
+/** Site-wide roll-up of one gate from EVERY row's delivery.gates.<name> (never from one artifact alone). */
+export function rollupGates(pages, name, { min = null, at = now } = {}) {
+  const rows = pages.map((p) => p.delivery && p.delivery.gates && p.delivery.gates[name]).filter(Boolean);
+  const measured = rows.filter((g) => !g.unmeasured);
+  const unmeasured = rows.length - measured.length;
+  if (name === 'ai-readability') {
+    const bar = min ?? (measured.find((g) => Number.isFinite(g.min)) || {}).min ?? 98;
+    return { strictMedian: median(measured.map((g) => g.strict)), codeMedian: median(measured.map((g) => g.code)), below: measured.filter((g) => Number.isFinite(g.code) && g.code < bar).length, unmeasured, measured: measured.length, min: bar, at };
+  }
+  const sum = (k) => measured.reduce((n, g) => n + (Number(g[k]) || 0), 0);
+  return { authored: sum('authored'), editable: sum('editable'), dead: sum('dead'), exempt: sum('exempt'), unmeasured, pagesFailed: measured.filter((g) => g.dead > 0 || g.duplicated > 0).length, measured: measured.length, at };
+}
 /**
  * Pure ingest — writes delivery.gates[name] on matched rows; below-bar → failed; unmeasured → status
- * untouched. Returns { matched, failed, unmeasured, unmatched[], rollup }.
+ * untouched. Returns { matched, failed, unmeasured, unmatched[], touched[], rollup } — rollup is the
+ * SITE-WIDE roll-up over every row carrying the gate (rollupGates), not this artifact alone.
  */
 export function ingestGate(pages, name, doc, { min = 98, at = now, blocks = null } = {}) {
   const g = gateRows(name, doc, { min });
   if (!g) return null;
   const out = { matched: 0, failed: 0, unmeasured: 0, unmatched: [], measured: 0, touched: [] };
-  const strict = []; const code = []; let ewAuthored = 0; let ewEditable = 0; let ewDead = 0; let ewExempt = 0;
   for (const { key, result } of g.rows) {
     const page = matchPage(pages, key);
     if (!page) { out.unmatched.push(key); continue; }
@@ -178,8 +190,6 @@ export function ingestGate(pages, name, doc, { min = 98, at = now, blocks = null
     page.delivery.gates[name] = rec;
     if (result.unmeasured) { out.unmeasured += 1; continue; }
     out.measured += 1;
-    if (name === 'ai-readability') { strict.push(result.strict); code.push(result.code); }
-    if (name === 'editability') { ewAuthored += result.authored; ewEditable += result.editable; ewDead += result.dead; ewExempt += result.exempt; }
     if (result.below) {
       out.failed += 1;
       page.delivery.status = 'failed';
@@ -199,9 +209,7 @@ export function ingestGate(pages, name, doc, { min = 98, at = now, blocks = null
     }
   }
   if (name === 'editability' && blocks) for (const { result } of g.rows) if (result.unmeasured) for (const b of result.blocks || []) { const row = blocks.find((x) => x.delivery && x.delivery.edsBlockName === b.block); if (row && (!row.delivery.ewGate || row.delivery.ewGate === 'pass')) row.delivery.ewGate = 'unmeasured'; }
-  out.rollup = name === 'ai-readability'
-    ? { strictMedian: median(strict), codeMedian: median(code), below: out.failed, unmeasured: out.unmeasured, measured: out.measured, min: g.bar, at: g.at }
-    : { authored: ewAuthored, editable: ewEditable, dead: ewDead, exempt: ewExempt, unmeasured: out.unmeasured, pagesFailed: out.failed, measured: out.measured, at: g.at };
+  out.rollup = rollupGates(pages, name, { min: name === 'ai-readability' ? g.bar : null, at: g.at });
   return out;
 }
 
