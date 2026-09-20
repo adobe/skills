@@ -9,8 +9,11 @@ of any gate; § State is the file you read to resume. The fix loop after Phase E
 is `sweep-protocol.md`.
 
 ```bash
-node skills/rollout/scripts/wave.mjs <waveId> <roster> [--publish] [--pixel all|sample|none] [--stage <name>] [--unpark <reason|all>] [--timeout 600]
+node skills/rollout/scripts/wave.mjs <waveId> <roster> [--publish] [--pixel all|sample|none] [--stage <name>] [--unpark <reason|all>] \
+     [--concurrency 2] [--timeout 600] [--stages <json>] [--out stardust/rollout] [--repo <eds-root>] [--dry-run]
+node skills/rollout/scripts/wave.mjs regate-list [--since <ref> | --files <list|file> | --all] [--json] [--out …] [--repo …]
 # roster: slug|type|url per line · state: stardust/rollout/waves/<wave>.state.json · progress: stardust/.work/rollout/wave.progress.json
+# exit 0 all deployed (published with --publish) · 1 parked / held / FAIL · 2 usage, config · 3 token halt · 124 never a verdict
 ```
 A stage runner that composes the shipped primitives and owns none of their
 contracts: `deploy-batch.mjs` (hash skip, merge-safe ledger, exit 3 halt, never
@@ -27,12 +30,13 @@ command, never its class (`null` disables a close step).
 |---|---|---|---|
 | capture | hard | `stardust/current/pages/<slug>.html` exists | `crawl.mjs --url {url} --pages {path}` |
 | build | hard | the migrated document exists | none — `migrate` is the skill |
+| content | hard | `contentOk` for the migrated file's bytes | `content-acceptance.mjs --slug {slug} --target {migrated}` (Gate 7: exit 2 parks `content`; exit 1 = unmeasured = no verdict) |
 | convert | hard | `content/<path>.html` exists | none — deploy methodology / project converter |
 | lint | hard | recorded `contentHash` equals the file | `delivery-lint.mjs --file {file} --path {path}` |
 | local-gate | hard | `localOk` with `contentHash` + `codeHash` current | `davids-model-lint.mjs {file}` |
 | deploy | hard | ledger row `previewed`/`live` for THIS file's bytes | `deploy-batch.mjs … --paths {pathsFile}` (preview) |
 | live-gate | hard | `liveOk` for the deployed bytes | `served-check.mjs {previewOrigin}{webPath}.plain.html --absent about:error` |
-| publish | hard | ledger row `live`; runs only with `--publish` | `deploy-batch.mjs … --publish --paths {pathsFile}` |
+| publish | hard | ledger row `live`; runs only with `--publish` | `deploy-batch.mjs … --publish --paths {pathsFile}` over the live-gated pages **minus the held rows** (§ Hands-off, order, no verdict) |
 | pixel | soft | `--pixel none` (default); `sample` = first roster page per type, the rest stamped `pixelSkipped` (reached by `all`) | none — project gate; logs and proceeds |
 | close | — | nothing ran this run (idempotent re-run) | `update-coverage.mjs --from-ledger`; `verify.mjs --paths <deployed pages> --base {previewOrigin}`; `dashboard.mjs`; `waves.close[]`; report + parked table |
 
@@ -46,7 +50,7 @@ learnings row are the agent's Phase H step, fed by the report and the `SUMMARY` 
 
 ## Gate contract — what it blocks, on which condition
 A page is **parked** (never the wave) when a hard stage fails: reasons `capture`,
-`build`, `convert`, `lint` (P0/P1), `local-gate` (🔴), `preview` (a non-ok ledger
+`build`, `content` (Gate 7 exit 2), `convert`, `lint` (P0/P1), `local-gate` (🔴), `preview` (a non-ok ledger
 row: `put-fail`, `body-invalid`, `overwrite-guard`, `path-collision`,
 `verify-fail`), `live-gate`, `publish`, `da-token` (deploy-batch exit 3),
 `config`. Parked pages leave every later stage; the wave closes with the parked
@@ -72,12 +76,26 @@ the token-free stages of the delivered pages complete, the close still runs,
 publish stays preview-only (D16 — `--publish` is explicit or a `decisions.md`
 publish row), and the next wave starts in the same turn. Hands-off removes
 waiting, never validation. **Order (D1/D16):** deploy (preview) → live gate on the
-**preview** origin → publish only for pages whose live gate passed → close;
-publishing first and gating on live is the anti-pattern this order names.
+**preview** origin → publish only for pages whose live gate passed **and whose
+gate artefacts read PASS** → close; publishing first and gating on live is the
+anti-pattern this order names. **The publish hold** (`publish-gate.md` § Gate 8
+condition, `measured-gates.md` § Gate 5–7; read, never re-judged): a live-gated
+row is held — stays `previewed`, never parked — when `gate-report.json`
+`pages[path].latest.pass !== true` (`held gate:<status>`, `gate:ungated` with no
+entry), when `stardust/migrated/_acceptance/<slug>.json` is not `pass`
+(`content:<verdict>`), or when the coverage row's `delivery.gates.ai-readability`
+/ `.editability` is absent (`:ungated`), `unmeasured` or below its own bar
+(`:fail`). Held rows print a table with the re-drive per class, `held=` on the
+`SUMMARY` line and one `blocked` status line; the wave exits 1 until they clear.
+No flag publishes a held row — the escape is the instrument that produces the
+artefact (`gate-publish.mjs`, `content-acceptance.mjs`, the two `--gate` ingests).
 **No verdict:** a stage child exiting 124 (deadline, `--timeout`, default 600 s) or
-143 leaves the page at its stage, counts `noverdict` in the progress file and
-`SUMMARY`, and is listed for re-run — never a park, never a FAIL; it does not
-enter the deploy batch.
+143 — and `content-acceptance.mjs` exit 1 (unmeasured) — leaves the page at its
+stage, counts `noverdict` in the progress file and `SUMMARY`, and is listed for
+re-run — never a park, never a FAIL; it does not enter the deploy batch.
+**Concurrency:** per-page stages run `--concurrency` wide (default 2) except
+`capture`, always one page at a time — one browser instrument against the source
+host (`sweep-protocol.md` § Ops rules).
 
 ## Hash re-gate
 `contentHash` (sha1 of `content/<path>.html`, recorded at the lint pass) changed →
@@ -90,11 +108,14 @@ no stage re-fetches the source (hit-minimisation).
 ## State
 `waves/<wave>.state.json` (tracked ledger; progress is `.work/` residue):
 `{waveId, startedAt, updatedAt, pages: {slug: {type, url, path, stage, parked?,
-parkedDetail?, parkedAt?, next?, invalidated?: content|code, contentHash?,
-codeHash?, localOk?, deployed?, deployedHash?, liveOk?, liveOkHash?, published?,
-publishedHash?, pixelDone?, pixelSkipped?: sample}}}`. Timestamps are ISO UTC,
-as every status line. Exit: 0 every active page deployed (published with
-`--publish`) · 1 a page parked · 2 usage/config · 3 token halt.
+parkedDetail?, parkedAt?, next?, held?: <gate>:<status>, heldNext?, invalidated?:
+content|code, contentOk?, contentOkHash?, contentHash?, codeHash?, localOk?,
+deployed?, deployedHash?, liveOk?, liveOkHash?, published?, publishedHash?,
+pixelDone?, pixelSkipped?: sample}}}`. Timestamps are ISO UTC, as every status
+line. Exit: 0 every active page deployed (published with `--publish`) · 1 a page
+parked or held · 2 usage/config · 3 token halt. The `rollout.json` `waves` block
+(`stages.<name>.cmd`, `ledger`, `content`, `previewOrigin`, `close[]`) is the
+`waves` key of `schemas/rollout-config.schema.json` — the key-walk tests apply.
 
 **Budget.** Target ≤ 50 agent turns per wave; the parked table is the only
 LLM-touched output.

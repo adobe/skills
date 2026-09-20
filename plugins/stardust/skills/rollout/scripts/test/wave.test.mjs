@@ -10,7 +10,12 @@
 //   (d) a local gate exiting 124 (and a real deadline) → `noverdict`, not parked, SUMMARY noverdict=, no FAIL;
 //   (e) --unpark lint clears only lint parks; --unpark all clears all;
 //   (f) without --publish deploy-batch is never invoked with --publish and the live gate targets the
-//       preview host; with --publish only live-gated pages publish; a --force override is refused (exit 2);
+//       preview host; with --publish the batch is the HELD-free set: a live-gated page with no gate-report.json
+//       entry is held `gate:ungated` (NEGATIVE: it published on liveOk alone before), `latest.pass !== true` →
+//       `gate:<status>`, an _acceptance record ≠ pass → `content:<verdict>`, a coverage row without / with an
+//       unmeasured or failing delivery.gates.ai-readability | editability → `<gate>:ungated|unmeasured|fail`;
+//       held rows stay previewed (never parked), print a held table + `held=` + one `blocked` status line with the
+//       re-drive; a --force override is refused (exit 2);
 //   (g) a hard stage with no command and a missing artefact → exit 2 before any stage runs;
 //   (h) the home page: roster `index` → served path `/`, deploy-batch key `/index` in the paths file, the ledger
 //       lookup and the live-gate URL (a `/` in the paths file is `missing … not in content tree` — no row, proven
@@ -24,8 +29,16 @@
 //   (l) close: when a stage ran and coverage exists the driver runs update-coverage --from-ledger, then verify.mjs
 //       --paths <the wave's deployed pages> --base <preview origin> and dashboard.mjs (overridable; a non-zero exit is
 //       logged in the report, never a park); an idempotent re-run runs no close step; cmd null disables a step;
+//   (m) the `content` stage (Gate 7) sits between build and convert with the default command
+//       `content-acceptance.mjs --slug {slug} --target {migrated}`: exit 2 parks `content`, exit 1 (unmeasured) is a
+//       no verdict (keeps its stage, never parked), exit 0 records contentOk for the migrated file's bytes;
+//   (n) the capture stage runs ONE instrument at a time whatever --concurrency says (a stub that detects an
+//       overlapping sibling would park the page — NEGATIVE before the fix);
+//   (o) rollout.json waves.{stages,ledger,content,previewOrigin,close} carry only rollout-config.schema.json keys
+//       (the key-walk inventory.test/gate-ingest.test apply — NEGATIVE: `waves` was not a schema key);
 //   regate-list: blocks/<name>/** → mapped pages; styles/** → all (site-wide); content/<path>.html → that
-//       page (content); an unknown file → all (unmapped→all); empty diff → empty list exit 0; no coverage → exit 2.
+//       page (content); an unknown file → all (unmapped→all); empty diff → empty list exit 0; no coverage → exit 2;
+//       --json reads bodyHash/branch from rollout.json waves.ledger (not a hard-coded content/.deploy-ledger.json).
 //
 // Usage: node plugins/stardust/skills/rollout/scripts/test/wave.test.mjs  (exit 1 on failure)
 import assert from 'node:assert/strict';
@@ -33,7 +46,7 @@ import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, existsSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { runCapped, deployKey, ledgerRow, CLOSE_STEPS } from '../wave.mjs';
+import { runCapped, deployKey, ledgerRow, publishHold, STAGES, CLOSE_STEPS } from '../wave.mjs';
 
 const HERE = import.meta.dirname;
 const WAVE = join(HERE, '..', 'wave.mjs');
@@ -172,17 +185,50 @@ setMode({ mode: 'ok' });
 r = run(['w1', 'roster.txt', '--unpark', 'da-token']); assert.equal(r.status, 0, 'unpark da-token resumes at deploy');
 assert.deepEqual(readFileSync(join(P, 'stardust', 'rollout', 'waves', 'w1.deploy-paths.txt'), 'utf8').trim().split('\n'), ['/p2'], 'only the halted page re-enters the batch');
 
-// ---- (f) --publish: only live-gated pages publish; a failed preview row parks `preview` --------------------
+// ---- (f) --publish: the hold — live gate + Gates 5–8 read from their artefacts; nothing publishes ungated ----------------
 setPark({ liveFail: ['/p3.plain.html'] }); setMode({ mode: 'ok' });
 writeFileSync(join(P, 'content', 'p3.html'), `<body><main><div><h1>p3 v2</h1><p>${'copy '.repeat(40)}</p></div></main></body>`);
 resetCalls(); r = run(['w1', 'roster.txt', '--publish']);
 assert.equal(r.status, 1, 'a live-gate park → exit 1');
 st = state();
 assert.equal(st.pages.p3.parked, 'live-gate'); assert.equal(st.pages.p3.published, undefined);
-for (const s of ['p1', 'p2', 'p4']) assert.equal(st.pages[s].published, true, `(f) ${s} published after its live gate passed`);
-const pub = calls().filter((x) => x.stage === 'deploy-batch' && x.argv.includes('--publish'));
-assert.equal(pub.length, 1, 'one publish batch');
-assert.deepEqual(readFileSync(join(P, 'stardust', 'rollout', 'waves', 'w1.publish-paths.txt'), 'utf8').trim().split('\n').sort(), ['/p1', '/p2', '/p4'], '(f) the publish roster holds the live-gated pages only');
+// NEGATIVE (the blocker): before the hold, p1/p2/p4 published on liveOk alone — there is no gate-report.json yet
+for (const s of ['p1', 'p2', 'p4']) { assert.ok(!st.pages[s].published, `(f) ${s} is HELD without a gate-report entry`); assert.equal(st.pages[s].held, 'gate:ungated'); assert.match(st.pages[s].heldNext, /gate-publish\.mjs --slug/); assert.equal(st.pages[s].parked, undefined, 'held is not a park'); }
+assert.equal(calls().filter((x) => x.stage === 'deploy-batch' && x.argv.includes('--publish')).length, 0, '(f) no publish batch when every row is held');
+assert.match(r.stdout, /SUMMARY wave .*held=3/, 'held= on the SUMMARY line'); assert.match(r.stdout, /\| p1 \| gate:ungated \| node skills\/rollout\/scripts\/gate-publish\.mjs --slug p1 --origin https:\/\/main--site--acme\.aem\.page \|/, 'held table with the re-drive');
+{ const b = status().filter((l) => l.event === 'blocked').at(-1); assert.match(b.detail, /publish hold: 3 page\(s\) held \(gate:ungated\)/); assert.match(b.next, /gate-publish\.mjs/); }
+// seed the artefacts: Gate 8 report (p1 + p4 pass, p2 fail), Gate 7 records (p1 pass, p4 fail), Gates 5–6 rows (p1 ok)
+const gr = (pass, status) => ({ latest: { pass, status, at: '2026-09-20T00:00:00Z', breakpoints: {} } });
+const writeGateReport = (pages) => writeFileSync(join(P, 'stardust', 'rollout', 'gate-report.json'), JSON.stringify({ generatedAt: '2026-09-20T00:00:00Z', pages }));
+writeGateReport({ '/p1': gr(true, 'pass'), '/p2': gr(false, 'fail'), '/p4': gr(true, 'pass') });
+const acc = (slug, verdict) => writeFileSync(join(P, 'stardust', 'migrated', '_acceptance', `${slug}.json`), JSON.stringify({ slug, verdict }));
+mkdirSync(join(P, 'stardust', 'migrated', '_acceptance'), { recursive: true }); acc('p1', 'pass'); acc('p4', 'fail');
+const gatesOk = { 'ai-readability': { strict: 96, code: 99, unmeasured: false, min: 98 }, editability: { authored: 4, editable: 4, dead: 0, duplicated: 0, unmeasured: false } };
+const writeCoverage = (gatesBySlug) => writeFileSync(join(P, 'stardust', 'rollout', 'coverage', 'pages.json'), JSON.stringify({ pages: pages.map(([slug, path]) => ({ slug, path, templateId: 'landing', delivery: { status: 'deployed', ...(gatesBySlug[slug] ? { gates: gatesBySlug[slug] } : {}) } })) }));
+mkdirSync(join(P, 'stardust', 'rollout', 'coverage'), { recursive: true }); writeCoverage({ p1: gatesOk });
+resetCalls(); r = run(['w1', 'roster.txt', '--publish']);
+st = state();
+assert.equal(st.pages.p1.published, true, `(f) p1 passes every gate → published\n${r.stderr}`); assert.equal(st.pages.p1.held, undefined);
+assert.equal(st.pages.p2.held, 'gate:fail'); assert.ok(!st.pages.p2.published, 'a FAIL row is held');
+assert.equal(st.pages.p4.held, 'content:fail'); assert.match(st.pages.p4.heldNext, /content-acceptance\.mjs --slug p4/);
+assert.equal(calls().filter((x) => x.stage === 'deploy-batch' && x.argv.includes('--publish')).length, 1, 'one publish batch');
+assert.deepEqual(readFileSync(join(P, 'stardust', 'rollout', 'waves', 'w1.publish-paths.txt'), 'utf8').trim().split('\n'), ['/p1'], '(f) the publish roster = the PASS rows only');
+assert.match(r.stdout, /held=2/);
+// Gates 5–6 in turn: content fixed → held on the readability row (absent → unmeasured → below the bar), then editability
+acc('p4', 'pass'); resetCalls(); r = run(['w1', 'roster.txt', '--publish']); assert.equal(state().pages.p4.held, 'ai-readability:ungated', 'no ingested readability row → ungated');
+writeCoverage({ p1: gatesOk, p4: { 'ai-readability': { strict: null, code: null, unmeasured: true, min: 98 } } }); r = run(['w1', 'roster.txt', '--publish']); assert.equal(state().pages.p4.held, 'ai-readability:unmeasured', 'unmeasured is never a pass');
+writeCoverage({ p1: gatesOk, p4: { 'ai-readability': { strict: 90, code: 95, unmeasured: false, min: 98 } } }); r = run(['w1', 'roster.txt', '--publish']); assert.equal(state().pages.p4.held, 'ai-readability:fail', 'below the bar → held');
+writeCoverage({ p1: gatesOk, p4: { 'ai-readability': gatesOk['ai-readability'], editability: { authored: 3, editable: 2, dead: 1, duplicated: 0, unmeasured: false } } }); r = run(['w1', 'roster.txt', '--publish']); assert.equal(state().pages.p4.held, 'editability:fail');
+writeCoverage({ p1: gatesOk, p4: gatesOk }); resetCalls(); r = run(['w1', 'roster.txt', '--publish']);
+assert.equal(state().pages.p4.published, true, '(f) every gate read → p4 publishes'); assert.equal(state().pages.p4.held, undefined, 'the hold clears');
+assert.deepEqual(readFileSync(join(P, 'stardust', 'rollout', 'waves', 'w1.publish-paths.txt'), 'utf8').trim().split('\n'), ['/p4']);
+assert.ok(!calls().some((x) => x.stage === 'deploy-batch' && !x.argv.includes('--publish')), 'a held row is never re-PUT (it stays previewed)');
+// unit: the hold reads, never re-judges
+assert.equal(publishHold({ gateReport: null, coverageRow: null, acceptance: null }, '/x'), 'gate:ungated');
+assert.equal(publishHold({ gateReport: { pages: { '/index': gr(true, 'pass') } }, coverageRow: { delivery: { gates: gatesOk } }, acceptance: { verdict: 'pass' } }, '/'), null, 'the home page is looked up under deploy-batch\'s /index key too');
+assert.equal(publishHold({ gateReport: { pages: { '/x': gr(false, 'unmeasured') } }, coverageRow: null, acceptance: null }, '/x'), 'gate:unmeasured');
+assert.equal(publishHold({ gateReport: { pages: { '/x': gr(true, 'pass') } }, coverageRow: null, acceptance: { verdict: 'unmeasured' } }, '/x'), 'content:unmeasured');
+rmSync(join(P, 'stardust', 'rollout', 'coverage'), { recursive: true, force: true }); rmSync(join(P, 'stardust', 'rollout', 'gate-report.json'));
 setPark({}); setMode({ mode: 'fail', failPath: '/p3' });
 writeFileSync(join(P, 'content', 'p3.html'), `<body><main><div><h1>p3 v3</h1><p>${'copy '.repeat(40)}</p></div></main></body>`);
 r = run(['w1', 'roster.txt', '--unpark', 'live-gate']);
@@ -232,12 +278,15 @@ writeFileSync(join(P, 'roster-p1.txt'), 'p1|landing|https://www.larkspurmutual.e
 setPark({ lintFail: ['p1'] }); setMode({ mode: 'ok' }); resetCalls();
 r = run(['w3', 'roster-p1.txt', '--stage', 'deploy']);
 assert.equal(r.status, 0, r.stderr); assert.equal(calls().length, 0, '(k) --stage deploy on an unlinted page runs NOTHING (before the fix: deploy-batch PUT it)');
-assert.match(r.stderr, /p1 not ready for deploy — at convert; the earlier hard stages run first \(no flag skips a hard stage\)/);
+assert.match(r.stderr, /p1 not ready for deploy — at build; the earlier hard stages run first \(no flag skips a hard stage\)/, 'the content stage (Gate 7) is a hard stage too');
 assert.match(r.stdout, /SUMMARY wave .* notready=1 wave=w3/, 'the SUMMARY line counts the not-ready page');
 let st3 = json(join(P, 'stardust', 'rollout', 'waves', 'w3.state.json'));
-assert.equal(st3.pages.p1.stage, 'convert', 'the satisfied earlier stages are recorded, lint is not'); assert.equal(st3.pages.p1.deployed, undefined); assert.equal(st3.pages.p1.contentHash, undefined);
+assert.equal(st3.pages.p1.stage, 'build', 'the satisfied earlier stages are recorded, content and lint are not'); assert.equal(st3.pages.p1.deployed, undefined); assert.equal(st3.pages.p1.contentHash, undefined);
 assert.ok(!existsSync(join(P, 'stardust', 'rollout', 'waves', 'w3.deploy-paths.txt')), 'no paths file written');
 assert.match(readFileSync(join(P, 'stardust', 'rollout', 'waves', 'w3.report.md'), 'utf8'), /not ready for --stage deploy \(earlier hard stages first\): p1/);
+resetCalls(); r = run(['w3', 'roster-p1.txt', '--stage', 'lint']);
+assert.equal(calls().length, 0, '(k) --stage lint before the content stage ran: not ready'); assert.match(r.stderr, /not ready for lint — at build/);
+r = run(['w3', 'roster-p1.txt', '--stage', 'content']); assert.equal(r.status, 0, r.stderr); assert.equal(json(join(P, 'stardust', 'rollout', 'waves', 'w3.state.json')).pages.p1.contentOk, true, '(k) Gate 7 recorded for p1');
 resetCalls(); r = run(['w3', 'roster-p1.txt', '--stage', 'lint']);
 assert.equal(r.status, 1, 'the lint stage itself runs and parks the failing page'); assert.deepEqual(calls().map((c) => c.stage), ['lint']); assert.equal(json(join(P, 'stardust', 'rollout', 'waves', 'w3.state.json')).pages.p1.parked, 'lint');
 setPark({}); resetCalls(); r = run(['w3', 'roster-p1.txt', '--unpark', 'lint', '--stage', 'lint']);
@@ -280,6 +329,59 @@ assert.deepEqual(calls().filter((x) => ['verify', 'dashboard'].includes(x.stage)
 resetCalls(); r = run(['w1', 'roster.txt', '--stage', 'lint', '--stages', closeOverride]);
 assert.ok(!calls().some((x) => ['verify', 'dashboard'].includes(x.stage)), '(l) a --stage run closes nothing');
 
+// ---- (m) the content stage (Gate 7): exit 2 parks `content`, exit 1 = no verdict, the default command names --slug/--target ---
+{
+  const contentStage = STAGES.find((x) => x.name === 'content');
+  assert.equal(STAGES.map((x) => x.name).slice(0, 4).join(' > '), 'capture > build > content > convert', 'Gate 7 sits between build and convert');
+  assert.equal(contentStage.cls, 'hard'); assert.match(contentStage.cmd, /content-acceptance\.mjs --slug \{slug\} --target \{migrated\}$/); assert.deepEqual(contentStage.noVerdict, [1]);
+  const cfg = { ...rolloutJson, waves: { stages: { ...rolloutJson.waves.stages, content: { cmd: `${stub('stub-content.mjs')} {slug} {migrated}` } } } };
+  writeFileSync(join(P, 'stardust', 'rollout', 'rollout.json'), JSON.stringify(cfg));
+  writeFileSync(join(P, 'roster-c.txt'), ['p1', 'p2', 'p4'].map((sl) => `${sl}|landing|https://www.larkspurmutual.example/${sl}/`).join('\n'));
+  setPark({ contentFail: ['p2'], contentUnmeasured: ['p4'] }); setMode({ mode: 'ok' }); resetCalls();
+  r = run(['w5', 'roster-c.txt']);
+  assert.equal(r.status, 1, r.stderr);
+  const s5 = json(join(P, 'stardust', 'rollout', 'waves', 'w5.state.json')).pages;
+  assert.equal(s5.p2.parked, 'content', '(m) exit 2 = dropped content → parked content'); assert.match(s5.p2.parkedDetail, /links: 3 → 2/); assert.match(s5.p2.next, /--unpark content/);
+  assert.equal(s5.p4.parked, undefined, '(m) unmeasured is never a park'); assert.equal(s5.p4.stage, 'build', '(m) a no-verdict page keeps its stage'); assert.equal(s5.p4.deployed, undefined, 'and never reaches the batch');
+  assert.equal(s5.p1.contentOk, true); assert.equal(s5.p1.deployed, true);
+  assert.match(r.stdout, /noverdict=1/); assert.doesNotMatch(r.stdout, /FAIL/);
+  assert.deepEqual(calls().filter((x) => x.stage === 'content').map((x) => x.target).sort(), ['stardust/migrated/p1/index.html', 'stardust/migrated/p2/index.html', 'stardust/migrated/p4/index.html'], '{migrated} is the migrated document');
+  assert.ok(!calls().some((x) => x.stage === 'deploy-batch' && readFileSync(join(P, 'stardust', 'rollout', 'waves', 'w5.deploy-paths.txt'), 'utf8').includes('/p2')), 'a content-parked page never enters the deploy batch');
+  resetCalls(); r = run(['w5', 'roster-c.txt']); assert.equal(calls().filter((x) => x.stage === 'content').map((x) => x.slug).join(), 'p4', '(m) idempotent: only the no-verdict page re-runs Gate 7');
+  writeFileSync(join(P, 'stardust', 'rollout', 'rollout.json'), JSON.stringify(rolloutJson, null, 2));
+  // the real instrument through the default command (state.json-free: --slug + --target) — one page
+  writeFileSync(join(P, 'roster-c1.txt'), 'p1|landing|https://www.larkspurmutual.example/p1/\n');
+  r = run(['w6', 'roster-c1.txt', '--dry-run']); assert.match(r.stdout, /\[dry-run\] content: node .*content-acceptance\.mjs --slug p1 --target stardust\/migrated\/p1\/index\.html/);
+  r = run(['w6', 'roster-c1.txt']); assert.equal(r.status, 0, `(m) the default Gate 7 command runs on a capture + migrated pair\n${r.stderr}\n${r.stdout}`);
+  assert.equal(json(join(P, 'stardust', 'migrated', '_acceptance', 'p1.json')).verdict, 'pass');
+}
+
+// ---- (n) capture: one instrument at a time on the source host, whatever --concurrency says -------------------------------
+{
+  const cfg = { ...rolloutJson, waves: { stages: { ...rolloutJson.waves.stages, capture: { cmd: `${stub('stub-capture.mjs')} --url {url} --pages {path}` } } } };
+  writeFileSync(join(P, 'stardust', 'rollout', 'rollout.json'), JSON.stringify(cfg));
+  for (const sl of ['q1', 'q2', 'q3']) { mkdirSync(join(P, 'stardust', 'migrated', sl), { recursive: true }); writeFileSync(join(P, 'stardust', 'migrated', sl, 'index.html'), `<html><body><main><h1>${sl}</h1></main></body></html>`); writeFileSync(join(P, 'content', `${sl}.html`), `<body><main><div><h1>${sl}</h1><p>${'copy '.repeat(40)}</p></div></main></body>`); }
+  writeFileSync(join(P, 'roster-q.txt'), ['q1', 'q2', 'q3'].map((sl) => `${sl}|landing|https://www.larkspurmutual.example/${sl}/`).join('\n'));
+  setPark({}); setMode({ mode: 'ok' }); resetCalls(); rmSync(join(T, 'capture.lock'), { force: true });
+  r = run(['w7', 'roster-q.txt', '--concurrency', '3']);
+  const s7 = json(join(P, 'stardust', 'rollout', 'waves', 'w7.state.json')).pages;
+  assert.ok(['q1', 'q2', 'q3'].every((sl) => !s7[sl].parked && existsSync(join(P, 'stardust', 'current', 'pages', `${sl}.html`))), `(n) three captures, no overlap (a parked capture = two crawls in flight)\n${r.stderr}`);
+  assert.equal(calls().filter((x) => x.stage === 'capture').length, 3);
+  assert.ok(calls().filter((x) => x.stage === 'lint').length >= 3, 'the other per-page stages still run at --concurrency');
+  writeFileSync(join(P, 'stardust', 'rollout', 'rollout.json'), JSON.stringify(rolloutJson, null, 2));
+}
+
+// ---- (o) rollout.json waves.* are schema keys (the key-walk inventory.test / gate-ingest.test apply to rollout.json) -----
+{
+  const schema = json(join(HERE, '..', '..', 'schemas', 'rollout-config.schema.json'));
+  const walk = (obj, node, at, out) => { if (!node || !node.properties || !obj || typeof obj !== 'object') return; for (const k of Object.keys(obj)) { if (!(k in node.properties)) { out.push(`${at}.${k}`); continue; } walk(obj[k], node.properties[k], `${at}.${k}`, out); } };
+  const doc = { _provenance: { writtenBy: 'stardust:rollout', writtenAt: '2026-09-20T00:00:00Z', stardustVersion: '0' }, target: 'aem-eds', site: { sourceUrl: 'https://www.larkspurmutual.example/', da: { org: 'acme', site: 'site', ref: 'main' } }, waves: { ...rolloutJson.waves, ledger: 'content/.deploy-ledger.json', content: 'content', previewOrigin: 'https://main--site--acme.aem.page', close: ['node x {rolloutDir}'] } };
+  const unknown = []; walk(doc, schema, 'rollout.json', unknown);
+  assert.deepEqual(unknown, [], `(o) a rollout.json configured per waves.md uses only schema keys (unknown: ${unknown})`);
+  assert.equal(schema.properties.waves.additionalProperties, false); assert.deepEqual(Object.keys(schema.properties.waves.properties.stages.additionalProperties.properties), ['cmd', 'class']);
+  assert.ok(STAGES.every((x) => new RegExp(`\\b${x.name}\\b`).test(schema.properties.waves.properties.stages.description)), 'every driver stage is named in the schema');
+}
+
 // ---- regate-list ------------------------------------------------------------------------------------------
 const R = join(T, 'regate'); mkdirSync(join(R, 'stardust'), { recursive: true });
 cpSync(SHARED, join(R, 'stardust', 'migrated'), { recursive: true });
@@ -306,6 +408,10 @@ spawnSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 
 r = rg(['--since', 'HEAD']);
 assert.equal(r.status, 0); assert.equal(r.stdout.trim(), '', 'empty diff → empty list, exit 0'); assert.match(r.stderr, /empty diff/);
 assert.equal(rg(['--out', 'nowhere', '--files', 'x']).status, 2, 'no coverage → exit 2');
+// --json annotates from rollout.json waves.ledger (NEGATIVE: content/.deploy-ledger.json was hard-coded)
+mkdirSync(join(R, 'delivery'), { recursive: true }); writeFileSync(join(R, 'delivery', 'ledger.json'), JSON.stringify({ '/news/annual-report-2025': { status: 'previewed', bodyHash: 'abc123', branch: 'main' } }));
+writeFileSync(join(R, 'stardust', 'rollout', 'rollout.json'), JSON.stringify({ waves: { ledger: 'delivery/ledger.json' } }));
+r = rg(['--files', 'content/news/annual-report-2025.html', '--json']); assert.equal(JSON.parse(r.stdout.trim()).bodyHash, 'abc123', 'regate-list --json reads waves.ledger');
 
 rmSync(T, { recursive: true, force: true });
-console.log('wave.test: ok — park/unpark, hash re-gate, token halt, no-verdict, D1/D16 publish order, home page /index key, close-read stdout, pixel sample, --stage readiness, close steps (verify --paths + dashboard), regate-list');
+console.log('wave.test: ok — park/unpark, hash re-gate, token halt, no-verdict, D1/D16 publish order + the Gates 5–8 hold, content stage (Gate 7), capture one-at-a-time, schema keys, home page /index key, close-read stdout, pixel sample, --stage readiness, close steps (verify --paths + dashboard), regate-list (+ waves.ledger)');

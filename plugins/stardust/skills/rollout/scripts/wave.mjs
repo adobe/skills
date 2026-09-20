@@ -14,12 +14,20 @@
  *   name        class  satisfied when (idempotent skip)            default command
  *   capture     hard   stardust/current/pages/<slug>.html exists   extract/scripts/crawl.mjs --url {url} --pages {path}
  *   build       hard   the migrated document exists                (none — migrate is the skill; project command)
+ *   content     hard   contentOk for the migrated file's bytes     rollout/scripts/content-acceptance.mjs --slug {slug} --target {migrated}
+ *                      (Gate 7; exit 2 = dropped content → park `content`; exit 1 = unmeasured → no verdict)
  *   convert     hard   content/<path>.html exists                  (none — deploy methodology / project converter)
  *   lint        hard   contentHash recorded == file                rollout/scripts/delivery-lint.mjs --file {file} --path {path}
  *   local-gate  hard   localOk with contentHash + codeHash current deploy/scripts/davids-model-lint.mjs {file}
  *   deploy      hard   ledger row live|previewed (batch, --paths)  deploy/scripts/deploy-batch.mjs … --paths {pathsFile}
  *   live-gate   hard   liveOk (against the PREVIEW origin)         deploy/scripts/served-check.mjs {previewOrigin}{webPath}.plain.html --absent about:error
  *   publish     hard   ledger row live (batch; --publish only)     deploy-batch.mjs … --publish --paths {pathsFile}
+ *                      the batch = live-gated pages minus the HELD rows (publish-gate.md § Gate 8 condition, read not
+ *                      re-judged): gate-report.json pages[path].latest.pass !== true → `gate:<status>` (`gate:ungated`
+ *                      without an entry); _acceptance/<slug>.json verdict ≠ pass → `content:<verdict>`; coverage
+ *                      delivery.gates.ai-readability / .editability absent → `<gate>:ungated`, unmeasured → `:unmeasured`,
+ *                      below the bar → `:fail`. Held rows stay previewed (never a park), are listed with their re-drive,
+ *                      count `held=` on the SUMMARY line and write one `blocked` status line — hands-off holds them too.
  *   pixel       soft   —  (--pixel all|sample|none, default none)  (none — project gate command; logs and proceeds)
  *                      sample = the first roster page of each type; the rest are stamped pixelSkipped: sample
  *   close       —      wave-level: update-coverage --from-ledger · verify --paths <deployed pages> --base {previewOrigin}
@@ -42,11 +50,14 @@
  *                 waves.close[] (extra close commands)
  *
  * Verdicts: a page is PARKED (never the wave) when a hard stage fails —
- *   reasons: capture · build · convert · lint · local-gate · preview (non-ok ledger
+ *   reasons: capture · build · content · convert · lint · local-gate · preview (non-ok ledger
  *   row: put-fail, body-invalid, overwrite-guard, path-collision, verify-fail) ·
  *   live-gate · publish · da-token (deploy-batch exit 3) · config.
  *   Child exit 124/143 = NO VERDICT: the page keeps its stage, counts `noverdict`,
- *   is listed for re-run, is never parked. Soft stages log and proceed. Child output is
+ *   is listed for re-run, is never parked (content-acceptance exit 1 = unmeasured is a no
+ *   verdict too). Soft stages log and proceed. Per-page stages run --concurrency wide except
+ *   `capture`, which always runs one page at a time (one browser instrument against the
+ *   source host — hit-minimisation). Child output is
  *   read to `close` (not `exit`), so a `next=` line after a large stdout is never cut.
  * Hash re-gate: contentHash = sha1 of content/<path>.html (recorded at lint pass);
  *   a change clears localOk + liveOk for that page (deploy-batch's own hash decides
@@ -67,7 +78,7 @@
  *   node skills/rollout/scripts/wave.mjs regate-list [--since <ref> | --files <list|file>] [--out <rolloutDir>]
  *        [--repo <eds-root>] [--json] [--all]
  *   roster: one page per line `slug|type|url` (or tab-separated; `#` comments).
- * Exit: 0 every active page deployed (published with --publish) · 1 a page parked or FAIL ·
+ * Exit: 0 every active page deployed (published with --publish) · 1 a page parked, held or FAIL ·
  *       2 usage / config · 3 token halt (status.jsonl `blocked` + `next` written) ·
  *       regate-list: 0 printed (empty list is exit 0) · 2 missing git / coverage.
  * Contract: reference/waves.md.
@@ -83,35 +94,36 @@ import { createProgress, defaultProgressFile } from '../../stardust/scripts/prog
 const HERE = import.meta.dirname;
 const SKILLS = resolve(HERE, '..', '..');
 export const DEADLINE_EXIT = 124;
-export const PARK_REASONS = ['capture', 'build', 'convert', 'lint', 'local-gate', 'preview', 'live-gate', 'publish', 'da-token', 'config'];
+export const PARK_REASONS = ['capture', 'build', 'content', 'convert', 'lint', 'local-gate', 'preview', 'live-gate', 'publish', 'da-token', 'config'];
 const DEPLOY_CLASS = new Set(['preview', 'publish', 'da-token']);
 const sha1 = (buf) => createHash('sha1').update(buf).digest('hex');
-const rel = (p) => p; // defaults spawn by absolute plugin path — the project cwd has no skills/ tree
 
 // ---- stage table -------------------------------------------------------------------
 export const STAGES = [
-  { name: 'capture', cls: 'hard', scope: 'page', cmd: `node ${rel(join(SKILLS, 'extract/scripts/crawl.mjs'))} --url {url} --pages {path}`, satisfied: (ctx, p) => existsSync(join(ctx.root, 'stardust', 'current', 'pages', `${p.slug}.html`)) },
+  { name: 'capture', cls: 'hard', scope: 'page', cmd: `node ${join(SKILLS, 'extract/scripts/crawl.mjs')} --url {url} --pages {path}`, satisfied: (ctx, p) => existsSync(join(ctx.root, 'stardust', 'current', 'pages', `${p.slug}.html`)) },
   { name: 'build', cls: 'hard', scope: 'page', cmd: null, satisfied: (ctx, p) => Boolean(migratedFile(ctx, p)) },
+  // Gate 7 — the offline role-inventory gate over the migrated document (zero source hits); exit 1 = unmeasured = no verdict
+  { name: 'content', cls: 'hard', scope: 'page', noVerdict: [1], cmd: `node ${join(SKILLS, 'rollout/scripts/content-acceptance.mjs')} --slug {slug} --target {migrated}`, satisfied: (ctx, p, s) => Boolean(s.contentOk) && s.contentOkHash === fileHash(migratedFile(ctx, p)) },
   { name: 'convert', cls: 'hard', scope: 'page', cmd: null, satisfied: (ctx, p) => existsSync(contentFile(ctx, p)) },
-  { name: 'lint', cls: 'hard', scope: 'page', cmd: `node ${rel(join(SKILLS, 'rollout/scripts/delivery-lint.mjs'))} --file {file} --path {path}`, satisfied: (ctx, p, s) => Boolean(s.contentHash) && s.contentHash === fileHash(contentFile(ctx, p)) },
-  { name: 'local-gate', cls: 'hard', scope: 'page', cmd: `node ${rel(join(SKILLS, 'deploy/scripts/davids-model-lint.mjs'))} {file}`, satisfied: (ctx, p, s) => Boolean(s.localOk) && s.codeHash === ctx.codeHash && s.contentHash === fileHash(contentFile(ctx, p)) },
-  { name: 'deploy', cls: 'hard', scope: 'batch', cmd: `node ${rel(join(SKILLS, 'deploy/scripts/deploy-batch.mjs'))} --org {org} --repo {repo} --branch {branch} --content {content} --paths {pathsFile}`, satisfied: (ctx, p, s) => Boolean(s.deployed) && s.deployedHash === fileHash(contentFile(ctx, p)) },
-  { name: 'live-gate', cls: 'hard', scope: 'page', cmd: `node ${rel(join(SKILLS, 'deploy/scripts/served-check.mjs'))} {previewOrigin}{webPath}.plain.html --absent about:error`, satisfied: (ctx, p, s) => Boolean(s.liveOk) && s.liveOkHash === s.deployedHash },
-  { name: 'publish', cls: 'hard', scope: 'batch', cmd: `node ${rel(join(SKILLS, 'deploy/scripts/deploy-batch.mjs'))} --org {org} --repo {repo} --branch {branch} --content {content} --publish --paths {pathsFile}`, satisfied: (ctx, p, s) => Boolean(s.published) && s.publishedHash === s.deployedHash, when: (ctx) => ctx.publish },
+  { name: 'lint', cls: 'hard', scope: 'page', cmd: `node ${join(SKILLS, 'rollout/scripts/delivery-lint.mjs')} --file {file} --path {path}`, satisfied: (ctx, p, s) => Boolean(s.contentHash) && s.contentHash === fileHash(contentFile(ctx, p)) },
+  { name: 'local-gate', cls: 'hard', scope: 'page', cmd: `node ${join(SKILLS, 'deploy/scripts/davids-model-lint.mjs')} {file}`, satisfied: (ctx, p, s) => Boolean(s.localOk) && s.codeHash === ctx.codeHash && s.contentHash === fileHash(contentFile(ctx, p)) },
+  { name: 'deploy', cls: 'hard', scope: 'batch', cmd: `node ${join(SKILLS, 'deploy/scripts/deploy-batch.mjs')} --org {org} --repo {repo} --branch {branch} --content {content} --paths {pathsFile}`, satisfied: (ctx, p, s) => Boolean(s.deployed) && s.deployedHash === fileHash(contentFile(ctx, p)) },
+  { name: 'live-gate', cls: 'hard', scope: 'page', cmd: `node ${join(SKILLS, 'deploy/scripts/served-check.mjs')} {previewOrigin}{webPath}.plain.html --absent about:error`, satisfied: (ctx, p, s) => Boolean(s.liveOk) && s.liveOkHash === s.deployedHash },
+  { name: 'publish', cls: 'hard', scope: 'batch', cmd: `node ${join(SKILLS, 'deploy/scripts/deploy-batch.mjs')} --org {org} --repo {repo} --branch {branch} --content {content} --publish --paths {pathsFile}`, satisfied: (ctx, p, s) => Boolean(s.published) && s.publishedHash === s.deployedHash, when: (ctx) => ctx.publish },
   { name: 'pixel', cls: 'soft', scope: 'page', cmd: null, satisfied: (ctx, p, s) => ctx.pixel === 'none' || Boolean(s.pixelDone) || (Boolean(s.pixelSkipped) && (s.pixelSkipped !== 'sample' || ctx.pixel === 'sample')), when: (ctx) => ctx.pixel !== 'none' },
 ];
 const STAGE_INDEX = Object.fromEntries(STAGES.map((s, i) => [s.name, i]));
 // close steps — wave-level, run after the stages when something ran and coverage exists; a non-zero exit is
 // logged in the report (verify's own SUMMARY line is quoted), never a park: the hard gates are the stages above
 export const CLOSE_STEPS = [
-  { name: 'verify', cmd: `node ${rel(join(HERE, 'verify.mjs'))} --paths {pathsFile} --base {previewOrigin} --out {rolloutDir} --report {reportDir}` },
-  { name: 'dashboard', cmd: `node ${rel(join(HERE, 'dashboard.mjs'))} --out {rolloutDir}` },
+  { name: 'verify', cmd: `node ${join(HERE, 'verify.mjs')} --paths {pathsFile} --base {previewOrigin} --out {rolloutDir} --report {reportDir}` },
+  { name: 'dashboard', cmd: `node ${join(HERE, 'dashboard.mjs')} --out {rolloutDir}` },
 ];
 
 // ---- helpers ------------------------------------------------------------------------
 function usage(code) {
   const out = code ? console.error : console.log;
-  out('Usage: node skills/rollout/scripts/wave.mjs <waveId> <roster> [--stage <name>] [--unpark <reason|all>] [--publish] [--pixel all|sample|none] [--concurrency N] [--timeout <s>] [--stages <json>] [--out <rolloutDir>] [--repo <eds-root>] [--dry-run]\n       node skills/rollout/scripts/wave.mjs regate-list [--since <ref> | --files <list|file>] [--out <rolloutDir>] [--repo <eds-root>] [--json] [--all]\n  exit 0 all deployed · 1 parked/FAIL · 2 usage/config · 3 token halt');
+  out('Usage: node skills/rollout/scripts/wave.mjs <waveId> <roster> [--stage <name>] [--unpark <reason|all>] [--publish] [--pixel all|sample|none] [--concurrency N] [--timeout <s>] [--stages <json>] [--out <rolloutDir>] [--repo <eds-root>] [--dry-run]\n       node skills/rollout/scripts/wave.mjs regate-list [--since <ref> | --files <list|file>] [--out <rolloutDir>] [--repo <eds-root>] [--json] [--all]\n  exit 0 all deployed (published with --publish) · 1 parked/held/FAIL · 2 usage/config · 3 token halt');
   process.exit(code);
 }
 export function parseArgs(argv) {
@@ -166,6 +178,39 @@ const contentFile = (ctx, p) => join(ctx.root, ctx.content, p.path === '/' ? 'in
 export const deployKey = (path) => (path === '/' ? '/index' : path);
 /** The ledger row for a page — by deploy-batch's key first, then the served-path spellings an older ledger may carry. */
 export const ledgerRow = (ledger, path) => ledger[deployKey(path)] || ledger[path] || ledger[`${path}/`] || null;
+/** Gate 7 record for a page (content-acceptance.mjs writes stardust/migrated/_acceptance/<slug>.json). */
+const acceptanceRecord = (ctx, slug) => readJSON(join(ctx.root, 'stardust', 'migrated', '_acceptance', `${slug}.json`), null);
+/**
+ * The publish hold (publish-gate.md § Gate 8 condition, measured-gates.md § Gate 5–7) — READ from the artefacts, never
+ * re-judged: null = publishable, else the hold reason `<gate>:<status>`. Every gate absent is `ungated`, a no-verdict
+ * row is `unmeasured` — neither is a pass, neither is a FAIL.
+ */
+export function publishHold({ gateReport, coverageRow, acceptance }, path) {
+  const pages = (gateReport && gateReport.pages) || {};
+  const g = pages[path] || pages[deployKey(path)] || pages[`${path}/`] || null;
+  if (!g || !g.latest) return 'gate:ungated';
+  if (g.latest.pass !== true) return `gate:${g.latest.status || 'fail'}`;
+  if (!acceptance) return 'content:ungated';
+  if (acceptance.verdict !== 'pass') return `content:${acceptance.verdict || 'fail'}`;
+  const gates = (coverageRow && coverageRow.delivery && coverageRow.delivery.gates) || {};
+  const ai = gates['ai-readability'];
+  if (!ai) return 'ai-readability:ungated';
+  if (ai.unmeasured) return 'ai-readability:unmeasured';
+  if (ai.min !== null && ai.min !== undefined && ai.code !== null && ai.code !== undefined && ai.code < ai.min) return 'ai-readability:fail';
+  const ew = gates.editability;
+  if (!ew) return 'editability:ungated';
+  if (ew.unmeasured) return 'editability:unmeasured';
+  if ((ew.dead || 0) > 0 || (ew.duplicated || 0) > 0) return 'editability:fail';
+  return null;
+}
+/** The re-drive for a hold class — the instrument that produces the missing / failing artefact. */
+export function holdNext(reason, slug, ctx) {
+  const gate = String(reason).split(':')[0];
+  if (gate === 'gate') return `node skills/rollout/scripts/gate-publish.mjs --slug ${slug} --origin ${ctx.previewOrigin}`;
+  if (gate === 'content') return `node skills/rollout/scripts/content-acceptance.mjs --slug ${slug}`;
+  if (gate === 'ai-readability') return `node skills/rollout/scripts/verify.mjs --ai-readability <ai-readability.json> --paths ${slug}`;
+  return `node skills/rollout/scripts/update-coverage.mjs --gate editability <ew-editability.json>`;
+}
 function migratedFile(ctx, p) {
   const cov = ctx.coverage.get(p.slug);
   if (cov && cov.source && cov.source.migratedHtml && existsSync(join(ctx.root, cov.source.migratedHtml))) return join(ctx.root, cov.source.migratedHtml);
@@ -320,9 +365,20 @@ export async function runWave(args) {
     }
     if (!todo.length) { save(); continue; }
     if (stage.scope === 'batch') {
-      if (stage.name === 'publish') { const notGated = todo.filter((r) => !st.pages[r.slug].liveOk); for (const r of notGated) console.error(`wave ${waveId}: ${r.slug} not published — live gate did not pass`); }
-      const batch = stage.name === 'publish' ? todo.filter((r) => st.pages[r.slug].liveOk) : todo;
-      if (!batch.length) continue;
+      if (stage.name === 'publish') {
+        // the hold: live gate + Gates 5–8 read from their artefacts (publishHold) — a held row stays previewed, is never parked
+        const gateReport = readJSON(join(rolloutDir, 'gate-report.json'), null);
+        const coverageNow = new Map(((readJSON(join(rolloutDir, 'coverage', 'pages.json'), {}) || {}).pages || []).map((p) => [p.slug, p]));
+        for (const r of todo) {
+          const s = st.pages[r.slug];
+          const why = !s.liveOk ? 'live-gate:pending' : publishHold({ gateReport, coverageRow: coverageNow.get(r.slug), acceptance: acceptanceRecord(ctx, r.slug) }, r.path);
+          if (why) { s.held = why; s.heldNext = why === 'live-gate:pending' ? null : holdNext(why, r.slug, ctx); console.error(`wave ${waveId}: ${r.slug} held — ${why}${s.heldNext ? ` · next: ${s.heldNext}` : ''}`); } else { delete s.held; delete s.heldNext; }
+        }
+        const held = todo.filter((r) => st.pages[r.slug].held && st.pages[r.slug].held !== 'live-gate:pending');
+        if (held.length) statusLine(root, { event: 'blocked', detail: `publish hold: ${held.length} page(s) held (${[...new Set(held.map((r) => st.pages[r.slug].held))].join(', ')}) — previewed, not published`, next: st.pages[held[0].slug].heldNext });
+      }
+      const batch = stage.name === 'publish' ? todo.filter((r) => !st.pages[r.slug].held) : todo;
+      if (!batch.length) { save(); continue; }
       if (!stage.cmd) { for (const r of batch) park(st, r.slug, 'config', `stage ${stage.name} has no command`); save(); continue; }
       const pathsFile = join(rolloutDir, 'waves', `${waveId}.${stage.name}-paths.txt`);
       mkdirSync(dirname(pathsFile), { recursive: true });
@@ -358,13 +414,15 @@ export async function runWave(args) {
       if (stage.name === 'pixel' && ctx.pixel === 'sample' && !ctx.sample.has(p.slug)) { s.pixelSkipped = 'sample'; return; } // stamped, not advanced: --pixel all still reaches it
       if (!stage.cmd) { if (stage.cls === 'soft') { advance(s, stage, ctx, p, { skipped: 'no command' }); return; } park(st, p.slug, 'config', `stage ${stage.name} has no command`); return; }
       const r = await exec(stage, renderCmd(stage.cmd, vars(p)), root);
-      if (noVerdict(r.code)) { s.noverdict = true; console.error(`wave ${waveId}: ${p.slug} ${stage.name} → no verdict (exit ${r.code}); keeps stage ${s.stage || 'start'}`); return; }
+      if (noVerdict(r.code) || (stage.noVerdict || []).includes(r.code)) { s.noverdict = true; console.error(`wave ${waveId}: ${p.slug} ${stage.name} → no verdict (exit ${r.code}); keeps stage ${s.stage || 'start'}`); return; }
       if (r.code === 0 || stage.cls === 'soft') {
         if (r.code !== 0) s[`${stage.name}Note`] = `soft stage exit ${r.code}`;
         advance(s, stage, ctx, p, { ran: true });
       } else park(st, p.slug, stage.name, r.stderr || r.stdout || `exit ${r.code}`);
     };
-    for (let i = 0; i < Math.max(1, args.concurrency); i += 1) workers.push((async () => { while (queue.length) { await one(queue.shift()); save(); } })());
+    // capture hits the SOURCE host: one browser instrument at a time (sweep-protocol § Ops rules), whatever --concurrency says
+    const width = stage.name === 'capture' ? 1 : Math.max(1, args.concurrency);
+    for (let i = 0; i < width; i += 1) workers.push((async () => { while (queue.length) { await one(queue.shift()); save(); } })());
     await Promise.all(workers);
     save();
   }
@@ -394,10 +452,12 @@ export async function runWave(args) {
   for (const c of (waves.close || [])) await exec({ name: 'close' }, renderCmd(c, { ...vars(roster[0]), pathsFile: '', rolloutDir: relative(root, rolloutDir) || 'stardust/rollout' }), root);
   const parked = roster.filter((r) => st.pages[r.slug].parked);
   const nov = roster.filter((r) => st.pages[r.slug].noverdict);
+  const held = ctx.publish ? roster.filter((r) => { const s = st.pages[r.slug]; return !s.parked && s.held && s.held !== 'live-gate:pending'; }) : [];
   for (const r of roster) { const s = st.pages[r.slug]; if (s.parked) progress.tick({ ok: false, path: r.path }); else if (s.noverdict) progress.tick({ noverdict: true, path: r.path }); else progress.tick({ ok: true, path: r.path }); }
   const done = roster.filter((r) => { const s = st.pages[r.slug]; return !s.parked && !s.noverdict && (ctx.publish ? s.published : s.deployed); });
-  const report = [`# wave ${waveId} — ${nowIso()}`, '', `pages ${roster.length} · deployed ${roster.filter((r) => st.pages[r.slug].deployed).length} · published ${roster.filter((r) => st.pages[r.slug].published).length} · parked ${parked.length} · no verdict ${nov.length} · invocations ${results.invocations}`, ''];
+  const report = [`# wave ${waveId} — ${nowIso()}`, '', `pages ${roster.length} · deployed ${roster.filter((r) => st.pages[r.slug].deployed).length} · published ${roster.filter((r) => st.pages[r.slug].published).length} · parked ${parked.length}${ctx.publish ? ` · held ${held.length}` : ''} · no verdict ${nov.length} · invocations ${results.invocations}`, ''];
   if (parked.length) { report.push('| slug | reason | detail | next |', '|---|---|---|---|'); for (const r of parked) { const s = st.pages[r.slug]; report.push(`| ${r.slug} | ${s.parked} | ${String(s.parkedDetail).replace(/\|/g, '\\|').slice(0, 160)} | ${s.next} |`); } report.push(''); }
+  if (held.length) { report.push('| slug | held (gate:status) | next |', '|---|---|---|'); for (const r of held) { const s = st.pages[r.slug]; report.push(`| ${r.slug} | ${s.held} | ${s.heldNext || ''} |`); } report.push(''); }
   if (nov.length) report.push(`no verdict (re-run the same command): ${nov.map((r) => r.slug).join(', ')}`, '');
   if (notReady.size) report.push(`not ready for --stage ${args.stage} (earlier hard stages first): ${[...notReady].join(', ')}`, '');
   if (closeLog.length) report.push(...closeLog.map((l) => `close ${l}`), '');
@@ -407,13 +467,14 @@ export async function runWave(args) {
   save();
   console.log(report.join('\n'));
   const exit = results.halted ? 3 : parked.length ? 1 : (args.stage || ctx.dryRun ? 0 : (done.length < roster.length - nov.length ? 1 : 0));
-  statusLine(root, { event: 'end', detail: `wave ${waveId}: ${done.length}/${roster.length} ${ctx.publish ? 'published' : 'deployed'}, ${parked.length} parked, ${nov.length} no verdict`, artifact: relative(root, reportFile), next: `node skills/rollout/scripts/wave.mjs ${waveId} ${relative(root, resolve(rosterFile))}${ctx.publish ? ' --publish' : ''}` });
-  console.log(progress.summaryLine({ exit, details: relative(root, stateFile), extra: { parked: parked.length, notready: notReady.size || undefined, wave: waveId } }));
+  statusLine(root, { event: 'end', detail: `wave ${waveId}: ${done.length}/${roster.length} ${ctx.publish ? 'published' : 'deployed'}, ${parked.length} parked${held.length ? `, ${held.length} held` : ''}, ${nov.length} no verdict`, artifact: relative(root, reportFile), next: `node skills/rollout/scripts/wave.mjs ${waveId} ${relative(root, resolve(rosterFile))}${ctx.publish ? ' --publish' : ''}` });
+  console.log(progress.summaryLine({ exit, details: relative(root, stateFile), extra: { parked: parked.length, held: held.length || undefined, notready: notReady.size || undefined, wave: waveId } }));
   return exit;
 }
 const stageOrder = (name) => (name === null || name === undefined ? -1 : STAGE_INDEX[name]);
 const stageBefore = (name) => (STAGE_INDEX[name] > 0 ? STAGES[STAGE_INDEX[name] - 1].name : null);
 function advance(s, stage, ctx, p, opts = {}) {
+  if (stage.name === 'content') { s.contentOk = true; s.contentOkHash = fileHash(migratedFile(ctx, p)); }
   if (stage.name === 'lint') s.contentHash = fileHash(contentFile(ctx, p));
   if (stage.name === 'local-gate') { s.localOk = true; s.codeHash = ctx.codeHash; s.contentHash = s.contentHash || fileHash(contentFile(ctx, p)); }
   if (stage.name === 'live-gate') { s.liveOk = true; s.liveOkHash = s.deployedHash; }
@@ -466,7 +527,8 @@ export function regateList(args) {
   const order = new Map((plan && plan.steps ? plan.steps.map((s) => s.slug) : []).map((s, i) => [s, i]));
   const rows = [...selected.entries()].map(([slug, reason]) => ({ slug, reason, page: pages.find((p) => p.slug === slug) })).filter((r) => r.page)
     .sort((a, b) => (order.has(a.slug) ? order.get(a.slug) : 1e9) - (order.has(b.slug) ? order.get(b.slug) : 1e9) || a.slug.localeCompare(b.slug));
-  const ledger = readJSON(join(root, 'content', '.deploy-ledger.json'), {}) || {};
+  const waves = ((readJSON(join(rolloutDir, 'rollout.json'), {}) || {}).waves) || {};
+  const ledger = readJSON(join(root, waves.ledger || join(waves.content || 'content', '.deploy-ledger.json')), {}) || {};
   for (const r of rows) {
     const path = (r.page.delivery && r.page.delivery.deployedPath) || r.page.path;
     if (args.json) { const row = ledgerRow(ledger, path) || {}; console.log(JSON.stringify({ slug: r.slug, path, reason: r.reason, bodyHash: row.bodyHash || null, branch: row.branch || null })); } else console.log(`${r.slug}\t${path}\t${r.reason}`);

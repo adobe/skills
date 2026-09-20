@@ -130,8 +130,10 @@ that **404 on the source** (stale entries) and pages with **no HTML body**
 
 ## Batched delivery at scale (clusters of 6–20+ siblings)
 
-Separate the concerns so an agent crash or token blowout can't corrupt state, and
-so the gates run uniformly:
+The driver is `scripts/wave.mjs` (`waves.md`: stage table, park reasons,
+`--unpark`, hash re-gate, the publish hold, D1/D16 order); this section is what
+its stages compose. Separate the concerns so an agent crash or token blowout
+can't corrupt state, and so the gates run uniformly:
 - **Author-only agents, central deploy.** Each cluster agent reads its work-list +
   the cleaned archetype template and *only writes content files* — it does NOT
   deploy. The orchestrator deploys centrally (one idempotent `PUT`+preview loop):

@@ -18,7 +18,7 @@ Phases, in order: Setup → A Inventory → B Block dedup plan → B2 Dynamic su
 | A | `node skills/rollout/scripts/inventory.mjs --site-url <source-url> [--content <eds-root>/content] [--redirects stardust/redirects.tsv]` (archetypes-only: `--state stardust/state.json`) |
 | B | `node skills/rollout/scripts/blocks.mjs`; `node skills/rollout/scripts/plan.mjs` |
 | B2 | `node skills/dynamics/scripts/dynamics-detect.mjs --from-state … --reach stardust/current`; `node skills/dynamics/scripts/dynamics-plan.mjs --target-origin <live host> --migrated stardust/migrated`; `node skills/dynamics/scripts/dynamics-plan.mjs --lint stardust/dynamic-features.md stardust/dynamic-features-plan.md` |
-| C | per page (all under `skills/rollout/scripts/`): `node skills/rollout/scripts/content-acceptance.mjs --slug <slug>`; `delivery-lint.mjs --file <html> --path </da/path> --icons-dir icons [--chrome-docs content/nav.html,content/footer.html,…]`; `media-reconcile.mjs --file <html> --deploy-host <host> [--apply]`; `section-fidelity.mjs --file <html> --source <url>`; `update-coverage.mjs <slug> --status <s>` / `--gate <name> <json>`; waves: `wave.mjs <waveId> <roster> [--publish] [--unpark <reason\|all>]` (`reference/waves.md`; transport `deploy-batch.mjs`, preview); page gate: `gate-publish.mjs --all-delivered \| --sample 10 --seed <s> --origin <preview>`; live: same command `--publish --paths <PASS rows>` (hold pending, § Gate 8) |
+| C | per page (all under `skills/rollout/scripts/`): `node skills/rollout/scripts/content-acceptance.mjs --slug <slug>`; `delivery-lint.mjs --file <html> --path </da/path> --icons-dir icons [--chrome-docs content/nav.html,content/footer.html,…]`; `media-reconcile.mjs --file <html> --deploy-host <host> [--apply]`; `section-fidelity.mjs --file <html> --source <url>`; `update-coverage.mjs <slug> --status <s>` / `--gate <name> <json>`; waves: `wave.mjs <waveId> <roster> [--publish] [--unpark <reason\|all>]` (`reference/waves.md`; transport `deploy-batch.mjs`, preview); page gate: `gate-publish.mjs --all-delivered \| --sample 10 --seed <s> --origin <preview>`; live: `wave.mjs … --publish` (holds rows without Gate 5–8 PASS, § Gate 8) |
 | D | `node skills/rollout/scripts/assemble.mjs`; `node skills/rollout/scripts/redirects.mjs [--post-publish]` |
 | D2 | `node skills/dynamics/scripts/dynamics-check.mjs --origin <live host> --gate` |
 | E / E2 | `node skills/rollout/scripts/verify.mjs [--base <url> | --root <dir>] [--all] [--paths <file>] [--report <dir>] [--gate-report stardust/rollout/gate-report.json]`; class rounds: `node skills/rollout/scripts/wave.mjs regate-list --since <ref>` → `verify.mjs --paths`; `node skills/deploy/scripts/localize-links.mjs --source-host <live-host> --content content --redirects stardust/redirects.tsv [--check]` |
@@ -126,8 +126,8 @@ node skills/rollout/scripts/plan.mjs     # → plan.json + a readable conversion
 - Template = the archetype's group (`templates.json` keyed by archetype slug);
   representative = the gated archetype (`renderBranch: A`), so C/E gate the page the
   prototype gated. A default-content section with interactive or multi-column
-  structure (deploy Step 2b's schema triage) is a plan input: that page needs a
-  block or a `dynamics` row before it converts.
+  structure (read from the capture; no schema field yet) is a plan input: that
+  page needs a block or a `dynamics` row before it converts.
 
 ### Phase B2 — Dynamic surface (PRE-IMPORT GATE — verify the inventory)
 
@@ -217,8 +217,8 @@ types are absent). For each page:
    **Gate on preview, then publish explicitly.** The default run is `PUT →
    preview`; the page gate is `gate-publish.mjs` (every delivered page ≤ 150, else
    archetypes + the seeded sample — `reference/publish-gate.md` § Gate 8); the
-   separate `deploy-batch.mjs … --publish` run takes the PASS rows only (`--paths`;
-   report hold pending) unless `decisions.md` records publish-to-live (D16) —
+   `wave.mjs … --publish` batch holds rows lacking Gate 5–8 PASS artefacts
+   (`reference/waves.md`) unless `decisions.md` records publish-to-live (D16) —
    hands-off stops at preview, never passes the escape flags (indexes: Phase D2).
    On failure: `--status failed --error "<reason>"` and continue; a denied push or
    publish under hands-off goes to `stardust/.work/ship.sh`
