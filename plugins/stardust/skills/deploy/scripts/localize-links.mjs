@@ -76,11 +76,11 @@ import { normalizeDaPath } from '../../stardust/scripts/da-path.mjs';
 
 function parseArgs(argv) {
   const rest = argv.slice(2);
-  const opts = { content: 'content', hosts: [], hostsRaw: [], redirects: null, dryRun: false, check: false, json: false, aliases: [], appendRedirects: false, unmigrated: 'bounce', gaps: path.join('stardust', 'link-gaps.tsv') };
+  const opts = { content: 'content', hosts: [], hostsRaw: [], prodHosts: [], redirects: null, dryRun: false, check: false, json: false, aliases: [], appendRedirects: false, unmigrated: 'bounce', gaps: path.join('stardust', 'link-gaps.tsv') };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--content') opts.content = rest[i += 1];
-    else if (a === '--source-host' || a === '--prod-host') { const hs = (rest[i += 1] || '').split(',').map((s) => s.trim()).filter(Boolean); opts.hosts.push(...hs); if (a === '--source-host') opts.hostsRaw.push(...hs); }
+    else if (a === '--source-host' || a === '--prod-host') { const hs = (rest[i += 1] || '').split(',').map((s) => s.trim()).filter(Boolean); opts.hosts.push(...hs); (a === '--source-host' ? opts.hostsRaw : opts.prodHosts).push(...hs); }
     else if (a === '--locale-alias') opts.aliases.push(...(rest[i += 1] || '').split(',').map((s) => s.trim().replace(/^\/+|\/+$/g, '')).filter(Boolean));
     else if (a === '--append-redirects') opts.appendRedirects = true;
     else if (a === '--unmigrated') opts.unmigrated = rest[i += 1];
@@ -92,7 +92,7 @@ function parseArgs(argv) {
     else if (a === '--help' || a === '-h') { usage(); process.exit(0); }
     else { console.error(`unknown argument ${a}`); usage(); process.exit(1); }
   }
-  if (!opts.hosts.length) { console.error('--source-host is required'); usage(); process.exit(1); }
+  if (!opts.hosts.length) { console.error('--source-host (or --prod-host) is required — under --unmigrated bounce it is also the host dead root-relative links bounce to'); usage(); process.exit(1); }
   if (!['bounce', 'list'].includes(opts.unmigrated)) { console.error(`--unmigrated must be bounce or list (got ${opts.unmigrated})`); process.exit(1); }
   if (opts.appendRedirects && !opts.redirects) { console.error('--append-redirects needs --redirects <file> (the sheet the rows go to)'); process.exit(1); }
   if (!existsSync(opts.content) || !statSync(opts.content).isDirectory()) { console.error(`--content ${opts.content} is not a directory`); process.exit(1); }
@@ -255,7 +255,11 @@ function main() {
   const hosts = opts.hosts.map(bareHost);
   const files = collectHtml(opts.content);
   const { map, redirects, aliases } = buildMap(files, opts.content, opts.redirects, opts.aliases);
-  const ctx = { map, hosts, aliases, unmigrated: opts.unmigrated, bounceHost: opts.hostsRaw[0] || null };
+  // bounce target: the first --source-host (the honest boundary), else the first --prod-host — a --prod-host-only run
+  // used to get bounceHost null: every dead link was booked `gap` silently and the residue said "BOUNCED to https://null"
+  const bounceHost = opts.hostsRaw[0] || opts.prodHosts[0] || null;
+  if (opts.unmigrated === 'bounce' && !bounceHost) { console.error('localize-links: --unmigrated bounce has no host to bounce to (pass --source-host or --prod-host, or --unmigrated list)'); process.exit(1); }
+  const ctx = { map, hosts, aliases, unmigrated: opts.unmigrated, bounceHost };
 
   const perFile = {};
   const keptAll = new Map();

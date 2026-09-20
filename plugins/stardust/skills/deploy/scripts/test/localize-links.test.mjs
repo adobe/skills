@@ -18,7 +18,7 @@
  */
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -133,6 +133,22 @@ try {
   // usage
   assert.equal(run2(['--unmigrated', 'maybe']).status, 1, 'bad --unmigrated value → exit 1');
   assert.equal(spawnSync(process.execPath, [CLI, '--source-host', 'x', '--content', c2, '--append-redirects'], { encoding: 'utf8' }).status, 1, '--append-redirects without --redirects → exit 1');
+  const noHost = spawnSync(process.execPath, [CLI, '--content', c2], { encoding: 'utf8' });
+  assert.equal(noHost.status, 1, 'no host at all → exit 1'); assert.match(noHost.stderr, /--source-host \(or --prod-host\) is required/, 'the refusal names both host flags');
+
+  // (6) --prod-host only under the default bounce: dead root-relative links bounce to the prod host
+  // (defect: bounceHost came from --source-host alone → every dead link booked `gap` silently, residue said "BOUNCED to https://null")
+  const runProd = (args) => spawnSync(process.execPath, [CLI, '--prod-host', 'www.new.example', '--locale-alias', 'en', '--content', c2, '--redirects', tsv, '--gaps', gaps, ...args], { encoding: 'utf8', cwd: d2 });
+  let rp = runProd(['--check']);
+  assert.equal(rp.status, 2, `prod-host-only --check names the bounce: ${rp.stdout}`);
+  assert.match(rp.stdout, /that would bounce to https:\/\/www\.new\.example/, `the residue names the prod host as the bounce target: ${rp.stdout}`);
+  assert.doesNotMatch(rp.stdout, /https:\/\/null/, 'never "https://null"');
+  rp = runProd([]);
+  assert.equal(rp.status, 0, rp.stderr);
+  assert.match(read2('en/a.html'), /href="https:\/\/www\.new\.example\/missing\?x=1#y"/, 'the dead link is bounced to the prod host, query + fragment kept');
+  assert.match(rp.stdout, /BOUNCED to https:\/\/www\.new\.example/); assert.match(rp.stdout, /bounced 1 unmigrated/);
+  assert.ok(!existsSync(gaps) || !/\/missing/.test(readFileSync(gaps, 'utf8')), 'bounce mode records no planned gap for the bounced link');
+  seed(); // back to the seeded content for the --source-host cases below
 
   // (2) default bounce: pre-write --check names /missing; write pass bounces it; post-write --check clean
   let r = run2(['--locale-alias', 'en', '--check']);
