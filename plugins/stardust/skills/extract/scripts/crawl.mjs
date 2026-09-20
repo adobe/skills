@@ -1258,9 +1258,21 @@ export function licensingFlagFor(family) {
   if (!f) return 'unknown';
   return OPEN_LICENSE_FAMILIES.some((o) => f.startsWith(o)) ? 'open-license' : 'verify';
 }
-/** subscribe BEFORE goto: image/font responses of the render are buffered into the run-wide store (Map url → entry) */
-function attachAssetRecorder(page, store, { maxBytes = ASSET_MAX_BYTES } = {}) {
+/** The stderr lines for the favicon step: the captured icon, the icon set, or ONE warning when neither landed
+ *  (a captured favicon is never reported missing because the set was skipped under --no-assets). */
+export function faviconLines(favicon, faviconSet) {
+  const out = [];
+  if (favicon) out.push(`[crawl] favicon captured: ${favicon.file} (${favicon.url})`);
+  if (faviconSet) out.push(`[crawl] favicon set: ${faviconSet.icons.filter((i) => i.file).length} icon(s) → assets/favicon-set.json${faviconSet.largestRaster ? ` (largest raster ${faviconSet.largestRaster})` : ''}`);
+  if (!favicon && !faviconSet) out.push('[crawl] WARN no favicon captured — no link[rel~=icon] and /favicon.ico unreachable; deploy will ship the default icon unless one is provided');
+  return out;
+}
+/** subscribe BEFORE goto: image/font responses of the render are buffered into the run-wide store (Map url → entry);
+ *  every entry records the pages (slugs) that requested it — `pages: Set` — so a font is attributed to the pages
+ *  that loaded it, not to every page processed after its first capture. */
+export function attachAssetRecorder(page, store, { maxBytes = ASSET_MAX_BYTES, slug = null } = {}) {
   const pendingBodies = [];
+  const tag = (entry) => { if (slug) (entry.pages ??= new Set()).add(slug); return entry; };
   page.on('response', (resp) => {
     const url = resp.url();
     if (/^(data|blob):/i.test(url)) return;
@@ -1270,21 +1282,27 @@ function attachAssetRecorder(page, store, { maxBytes = ASSET_MAX_BYTES } = {}) {
     if (!kind) return;
     const status = resp.status();
     const prev = store.get(url);
+    if (prev) tag(prev); // this page requested it too
     if (prev && prev.bytes) return; // captured once per run
     if (status >= 300 && status < 400) return; // the redirect target arrives as its own response
-    if (status >= 400) { store.set(url, { kind, status, contentType: ct, bytes: null, error: `HTTP ${status}`, source: 'render' }); return; }
+    if (status >= 400) { store.set(url, tag({ kind, status, contentType: ct, bytes: null, error: `HTTP ${status}`, source: 'render' })); return; }
     const p = resp.body().then((buf) => {
       if (store.get(url)?.bytes) return;
-      if (buf.length > maxBytes) { store.set(url, { kind, status, contentType: ct, bytes: null, error: `body ${buf.length} B > --assets-max-bytes`, source: 'render' }); return; }
-      store.set(url, { kind, status, contentType: ct, bytes: buf, source: 'render' });
-    }).catch((e) => { if (!store.has(url)) store.set(url, { kind, status, contentType: ct, bytes: null, error: `body unavailable: ${String(e.message || e).slice(0, 60)}`, source: 'render' }); });
+      if (buf.length > maxBytes) { store.set(url, tag({ kind, status, contentType: ct, bytes: null, error: `body ${buf.length} B > --assets-max-bytes`, source: 'render' })); return; }
+      store.set(url, tag({ kind, status, contentType: ct, bytes: buf, source: 'render' }));
+    }).catch((e) => { if (!store.has(url)) store.set(url, tag({ kind, status, contentType: ct, bytes: null, error: `body unavailable: ${String(e.message || e).slice(0, 60)}`, source: 'render' })); });
     pendingBodies.push(p);
   });
   return { settle: () => Promise.allSettled(pendingBodies) };
 }
+/** Font URLs of the store this page loaded: entries tagged with the slug, plus untagged ones (in-page fetches of this page). */
+export function fontUrlsFor(store, slug) {
+  return [...store].filter(([, e]) => e.kind === 'font' && (!e.pages || e.pages.has(slug))).map(([url]) => url);
+}
 /** --assets full: in-page fetch (fingerprint-inheriting) for candidates the render did not request; capped per run */
-async function fetchAssetsInPage(page, urls, store, args) {
+async function fetchAssetsInPage(page, urls, store, args, slug = null) {
   let n = 0;
+  const tag = (entry) => { if (slug) entry.pages = new Set([slug]); return entry; };
   for (const url of urls) {
     if (store.has(url)) continue;
     if ((args.assetsExtra || 0) >= args.assetsMax) break;
@@ -1293,8 +1311,8 @@ async function fetchAssetsInPage(page, urls, store, args) {
       try { const r = await fetch(u, { credentials: 'include' }); const ct = r.headers.get('content-type') || ''; if (!r.ok) return { status: r.status, ct, bytes: null }; return { status: r.status, ct, bytes: [...new Uint8Array(await r.arrayBuffer())] }; } catch (e) { return { status: 0, ct: '', bytes: null, error: String(e.message || e).slice(0, 60) }; }
     }, url).catch((e) => ({ status: 0, ct: '', bytes: null, error: String(e.message || e).slice(0, 60) }));
     const kind = FONT_URL_RE.test(url) || FONT_CT.test(res.ct) ? 'font' : 'image';
-    if (res.bytes && res.bytes.length) store.set(url, { kind, status: res.status, contentType: res.ct, bytes: Buffer.from(res.bytes), source: 'fetch' });
-    else store.set(url, { kind, status: res.status, contentType: res.ct, bytes: null, error: res.error || `HTTP ${res.status}`, source: 'fetch' });
+    if (res.bytes && res.bytes.length) store.set(url, tag({ kind, status: res.status, contentType: res.ct, bytes: Buffer.from(res.bytes), source: 'fetch' }));
+    else store.set(url, tag({ kind, status: res.status, contentType: res.ct, bytes: null, error: res.error || `HTTP ${res.status}`, source: 'fetch' }));
   }
   return n;
 }
@@ -1341,7 +1359,7 @@ async function harvestRecordAssets(rec, slug, store, args, byHash) {
     const master = stripCdnParams(im.currentSrc || im.src || ''); if (master && master !== (im.currentSrc || im.src) && store.has(master)) { const r = await persistAsset(master, store.get(master), args, byHash); if (r.localPath) im.masterLocalPath = r.localPath; rows[master] = { ...rows[master], status: store.get(master).status, localPath: r.localPath, mime: r.mime || null, bytes: r.bytes || null, kind: 'image', source: 'fetch', transformSuspect: !!r.transformSuspect, downloadError: r.downloadError || null, pages: [slug] }; }
   }
   for (const bg of rec.media?.cssBackgrounds || []) await stamp(bg, bg.url);
-  for (const [url, e] of store) if (e.kind === 'font' && !rows[url]) { const r = await persistAsset(url, e, args, byHash); rows[url] = { status: e.status, localPath: r.localPath, mime: r.mime || null, bytes: r.bytes || null, kind: 'font', source: e.source, transformSuspect: !!r.transformSuspect, downloadError: r.downloadError || null, pages: [slug] }; }
+  for (const url of fontUrlsFor(store, slug)) if (!rows[url]) { const e = store.get(url); const r = await persistAsset(url, e, args, byHash); rows[url] = { status: e.status, localPath: r.localPath, mime: r.mime || null, bytes: r.bytes || null, kind: 'font', source: e.source, transformSuspect: !!r.transformSuspect, downloadError: r.downloadError || null, pages: [slug] }; }
   return rows;
 }
 /** assets/_fonts-manifest.json — every harvested font body with its @font-face descriptors + the iconFonts[] table across pages */
@@ -2367,7 +2385,7 @@ const MOBILE_VIEWPORT = { width: 360, height: 900 }; // 900 = stitch-shot's defa
 async function capturePage(context, url, slug, args, isEntry = false) {
   const page = await context.newPage();
   const recorder = args.dynamics ? attachDynamicRecorder(page) : null; // opt-in; must precede goto — load-time fetches are the evidence
-  const assetRec = args.assets !== 'none' && args.assetStore ? attachAssetRecorder(page, args.assetStore, { maxBytes: args.assetsMaxBytes }) : null; // default on: the render's own image/font bodies, zero extra hits
+  const assetRec = args.assets !== 'none' && args.assetStore ? attachAssetRecorder(page, args.assetStore, { maxBytes: args.assetsMaxBytes, slug }) : null; // default on: the render's own image/font bodies, zero extra hits
   try {
   if (args.budget) await args.budget.take(); // per-host pacing — every navigation, every worker
   let resp = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
@@ -2528,7 +2546,7 @@ async function capturePage(context, url, slug, args, isEntry = false) {
   // context — the accepted fingerprint rides along)
   if (assetRec) {
     await assetRec.settle();
-    if (args.assets === 'full') rec._extraFetches = await fetchAssetsInPage(page, fullAssetCandidates(rec.media, args.assetStore), args.assetStore, args);
+    if (args.assets === 'full') rec._extraFetches = await fetchAssetsInPage(page, fullAssetCandidates(rec.media, args.assetStore), args.assetStore, args, slug);
   }
   rec._consentMethod = consentMethod; // hoisted into _crawl-log.json#consent.method by the writer, not persisted per page
   return rec;
@@ -2705,12 +2723,10 @@ async function main() {
   // favicon rides the probe page (already on the entry URL) — runs in every
   // mode, so bounded extracts can't silently drop it (CEN-4).
   const favicon = await captureFavicon(probe, args);
-  if (favicon) console.error(`[crawl] favicon captured: ${favicon.file} (${favicon.url})`);
-  args.assetStore = new Map(); // run-wide: url → { kind, status, contentType, bytes, source } — shared by every worker, one body per URL
+  args.assetStore = new Map(); // run-wide: url → { kind, status, contentType, bytes, source, pages } — shared by every worker, one body per URL
   const assetsByHash = new Map(); // sha1(bytes) → assets/<kind>/<file>; identical bytes at two URLs share one file
   const faviconSet = args.assets === 'none' ? null : await captureFaviconSet(probe, args, assetsByHash, favicon);
-  if (faviconSet) console.error(`[crawl] favicon set: ${faviconSet.icons.filter((i) => i.file).length} icon(s) → assets/favicon-set.json${faviconSet.largestRaster ? ` (largest raster ${faviconSet.largestRaster})` : ''}`);
-  else console.error('[crawl] WARN no favicon captured — no link[rel~=icon] and /favicon.ico unreachable; deploy will ship the default icon unless one is provided');
+  for (const line of faviconLines(favicon, faviconSet)) console.error(line);
   await probe.close();
 
   // scope: skip slugs already extracted (or beyond) unless --force, named by
