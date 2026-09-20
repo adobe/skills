@@ -14,7 +14,9 @@
  *   - an unchanged live row that the report calls published-failing is skipped as today (never unpublished)
  *     and counted `published-failing` — hash equal or a hash-less legacy row alike (NEGATIVE: the legacy row was
  *     held with the re-publish reason); a PASS page with no template takes the `untyped` group's bar (NEGATIVE);
- *     hands-off names the default report path, so its absence is exit 2;
+ *     hands-off names the default report path, so its absence is exit 2 — and the driver enforces it itself:
+ *     stardust/state.json `handsOff: true` + no report → `--publish` (and `--plan --publish`) is fatal exit 2,
+ *     nothing goes live, ledger byte-identical; a named report lifts it;
  *   - a named `--gate-report` that does not exist → exit 2, zero requests, ledger untouched;
  *   - no report file and no flag → today's behaviour plus one WARN `publishing ungated` line;
  *   - the default path stardust/rollout/gate-report.json is read without a flag;
@@ -250,7 +252,25 @@ try {
   assert.equal(r.status, 2, 'the reason is required'); assert.match(r.stderr, /--skip-code-sync-verify needs a value/);
   assert.ok(!existsSync(join(dir, 'stardust')), 'no stray writes');
 
-  console.log('deploy-batch-gate test: ok (hold on FAIL / unmeasured / ungated / not-at-bar / changed live, --publish-ungated, --publish-no-regression, published-failing kept, named report missing → 2, WARN without report, default path, --plan offline, --force never lifts a hold, flags need --publish, --skip-code-sync-verify line)');
+  // 12. hands-off enforcement in the instrument: state.json handsOff + no report → an ungated --publish is refused (exit 2); --plan agrees; a named report lifts it
+  seed(); mkdirSync(join(dir, 'stardust'), { recursive: true }); writeFileSync(join(dir, 'stardust', 'state.json'), JSON.stringify({ handsOff: true }));
+  const beforeHandsOff = readFileSync(ledgerPath, 'utf8');
+  r = await run(['--publish', '--paths', '/b']);
+  assert.equal(r.status, 2, `hands-off + no report → exit 2: ${r.out}`);
+  assert.match(r.stderr, /fatal: hands-off project .*no gate report at stardust\/rollout\/gate-report\.json/);
+  assert.ok(!/publishing ungated/.test(r.out), 'the operator WARN path is not taken under hands-off');
+  assert.deepEqual(lives(), [], 'nothing went live'); assert.equal(readFileSync(ledgerPath, 'utf8'), beforeHandsOff, 'ledger byte-identical');
+  assert.match(r.last, /^SUMMARY deploy-batch .*exit=2/);
+  r = await run(['--publish', '--plan', '--paths', '/b']);
+  assert.equal(r.status, 2, `--plan agrees with the run: ${r.out}`);
+  r = await run(['--publish', '--gate-report', reportPath, '--paths', '/b']);
+  assert.equal(r.status, 0, `a named report lifts the refusal: ${r.out}`); assert.deepEqual(lives(), ['/b']);
+  writeFileSync(join(dir, 'stardust', 'state.json'), JSON.stringify({ handsOff: false })); seed();
+  r = await run(['--publish', '--paths', '/b']);
+  assert.equal(r.status, 0, `an operator project keeps the WARN path: ${r.out}`); assert.match(r.stderr, /publishing ungated/);
+  rmSync(join(dir, 'stardust'), { recursive: true, force: true });
+
+  console.log('deploy-batch-gate test: ok (hold on FAIL / unmeasured / ungated / not-at-bar / changed live, --publish-ungated, --publish-no-regression, published-failing kept, named report missing → 2, WARN without report, default path, --plan offline, --force never lifts a hold, flags need --publish, --skip-code-sync-verify line, hands-off + no report → exit 2)');
 } finally {
   await mock.close();
   rmSync(dir, { recursive: true, force: true });

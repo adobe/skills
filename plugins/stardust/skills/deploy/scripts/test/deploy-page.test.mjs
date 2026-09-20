@@ -226,6 +226,9 @@ try {
   assert.equal(urls('PUT').length, 0, 'refused run PUTs nothing');
   assert.match(r.out, /REFUSED \(--require-code-synced\): no code-sync record/);
   assert.ok(!/FAIL/.test(r.out), 'a refusal is no verdict, never FAIL');
+  assert.match(r.stderr, /\[deploy-page\] deploy-batch REFUSED \(exit 3, --require-code-synced\)/, 'the chain names the refusal, not a credential halt');
+  assert.ok(!/fix the credential/.test(r.stderr), 'a code-sync refusal is not booked as a credential halt');
+  assert.match(r.stderr, /deploy refused \(code-sync\)/, 'the per-page line names the refusal');
   // a valid record for this org/repo/ref lets the same command ship
   mkdirSync(join(dir, 'nope'), { recursive: true });
   writeFileSync(join(dir, 'nope', 'code-sync.json'), JSON.stringify({ org: 'o', repo: 'r', ref: 'main', status: 'ok', headSha: 'abc1234', ts: new Date().toISOString() }));

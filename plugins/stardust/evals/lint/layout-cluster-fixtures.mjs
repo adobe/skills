@@ -202,6 +202,7 @@ else {
     let script = SCRIPT;
     if (pw !== 'repo') {
       cpSync(SCRIPTS, join(tmp2, 'skills', 'replica', 'scripts'), { recursive: true });
+      cpSync(join(SCRIPTS, '..', '..', 'deploy', 'scripts'), join(tmp2, 'skills', 'deploy', 'scripts'), { recursive: true }); // schema-checks.mjs: the grouping rule the driver injects in-page
       symlinkSync(resolve(pw), join(tmp2, 'node_modules'));
       script = join(tmp2, 'skills', 'replica', 'scripts', 'layout-cluster.mjs');
     }

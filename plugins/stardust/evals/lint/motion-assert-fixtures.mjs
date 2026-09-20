@@ -157,7 +157,7 @@ r = runPure([join(FIX, 'observe-v2.json'), 'not a url']);
 check(r.status === 2 && /not a URL/.test(r.out), 'a non-URL target exits 2');
 // the script never imports playwright before the usage checks (static contract)
 const src = readFileSync(SCRIPT, 'utf8');
-check(!/^import .*from 'playwright'/m.test(src) && /await import\('playwright'\)/.test(src), 'playwright is imported lazily — usage/help never need a browser');
+check(!/^import .*from 'playwright'/m.test(src) && /await (import|loadDep)\('playwright'\)/.test(src), 'playwright is imported lazily (through the resolution chain) — usage/help never need a browser');
 // launch-ladder parity (T20.2 § Script work "open target via live-session"): the browser comes from live-session launchTier, never a bare chromium.launch()
 check(!/chromium\.launch\(/.test(src) && /launchTier\(chromium/.test(src) && /live-session\.mjs/.test(src), 'the target is opened through live-session launchTier (two-layout lookup), not chromium.launch()');
 check(/e\.code === 124 \? DEADLINE_EXIT/.test(src), 'a launchTier slot timeout (code 124) exits 124 — no verdict, never 1');
@@ -198,7 +198,7 @@ try {
     cpSync(join(PLUGIN, 'skills', 'replica', 'scripts'), join(tmp, 'skills', 'replica', 'scripts'), { recursive: true });
     cpSync(join(PLUGIN, 'skills', 'replica', 'reference'), join(tmp, 'skills', 'replica', 'reference'), { recursive: true });
     cpSync(join(PLUGIN, 'skills', 'diff', 'scripts'), join(tmp, 'skills', 'diff', 'scripts'), { recursive: true }); // live-session.mjs (the launcher) sits beside the replica scripts in both layouts
-    for (const sk of ['deploy', 'dynamics']) cpSync(join(PLUGIN, 'skills', sk, 'scripts'), join(tmp, 'skills', sk, 'scripts'), { recursive: true }); // qa-gate + its driveControl import (T20.2 PR B)
+    for (const sk of ['deploy', 'dynamics', 'stardust']) cpSync(join(PLUGIN, 'skills', sk, 'scripts'), join(tmp, 'skills', sk, 'scripts'), { recursive: true }); // stardust: browser-lock + the resolution chain, copied as a set (else launchTier's WARN line breaks the --json parse) // qa-gate + its driveControl import (T20.2 PR B)
     symlinkSync(resolve(deps), join(tmp, 'node_modules'));
     script = join(tmp, 'skills', 'replica', 'scripts', 'motion-assert.mjs');
   }

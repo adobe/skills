@@ -55,7 +55,8 @@ ungated). With the default T (`max(5, 2 %)` = 5) B is tail.
   `layout-cluster.mjs` prints the ungated cluster and the `$stardust replica
   <exemplar>` command; the `coverage gap: ungated cluster c2 (3 pages)` plan
   line and the `clusters gated 1 of 2 · ungated: c2 (3)` coverage line are
-  written by the agent into the plan/report (`rollout/SKILL.md` Setup).
+  printed by `rollout/scripts/plan.mjs` from `layout-clusters.json` (the agent
+  carries them into the plan/report — `rollout/SKILL.md` Setup).
 
 Deterministic coverage of the same facts without a browser:
 `evals/lint/layout-cluster-fixtures.mjs` (in `lint:stardust`) — including

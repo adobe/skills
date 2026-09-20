@@ -116,6 +116,8 @@ v2 evals without modification.
 | `rollout-coverage-regime/`   | Coverage regime (`rollout` Phase C) | The seeded template sample as the siblings' page gate: `gate-publish.mjs --sample n --seed s --exclude <fix-loop slugs>` report read (`sample{}`, `templates{}.atBar`); a template not at the bar (2 FAIL, or one unmeasured re-drive) is held whole — its individually-passing rows too; pages with no report entry are `ungated`, never `--publish-ungated`; class table before the fix, mapped re-gate then the ≤ 150 `--all-delivered` sweep, never the delivery-order head; `neutralDiff` is reporting, not a bar; blocked at preview (`publish-gate.md` § Coverage regime, `sweep-protocol.md` step 2 / 5). |
 | `rollout-readability-close/` | Gate placement (`rollout` Phase E/H) | The AI-readability gate closes the rollout: `verify.mjs --ai-readability` ingests the live-run artifact — `code < 98` → `failed`, HTTP 429 → `unmeasured` (status kept, counted, exit 2 incomplete — never a pass, never a FAIL), Phase H Readability line computed from `lastRun.gates.ai-readability`, no close while `< 98` / `unmeasured` > 0, no threshold or allowlist edit (`measured-gates.md` § Gate 5). |
 | `rollout-editability-gate/`  | Gate placement (`rollout` Phase C) | The Experience Workspace editability gate decides the PUT set: `update-coverage --gate editability <probe.json>` ingests the whole-page probe — dead non-exempt text → `failed`, never `deployed`/pushed; `blocks.json` `ewGate: fail`; fix by moving elements, never by exemption or `--no-ew`; Editability line computed from `lastRun.gates.editability` (`measured-gates.md` § Gate 6). |
+| `relocate-project/`          | Sub-flow (`deploy` `relocate`) | Project move as one hands-off privileged bundle: create-new target (never a repo transfer), every CURRENT reference rewritten with the grep empty, `-s ours` merge then a normal push (never `--force`), `da-copy.mjs` preview-only, `host-compare.mjs` parity on `.aem.page` against the old live tree (`media-only` benign, exit 124 = re-run), publish a separate explicit run, old surfaces never deleted — the retire list names them (`deploy/reference/project-move.md`). |
+| `deploy-generic-with-structure/` | Step 2b gate (`deploy`)   | A default-content schema section whose `structure` facts say otherwise (`[role=tablist]` + two side-by-side plans): `section-schema.mjs` re-run prints `⚠ generic-with-structure`, the section gets a block (or a cited `dynamics` row), `qa-gate.mjs --schema` is run and its ✗ is never bypassed (no `--no-drive` as an escape, no hand-written `defaultContent.reason` under hands-off), the other sections stay prose, provenance intact (`audit-and-naming.md` § 2b). |
 | `rollout-wave-close/`        | Wave close (`rollout` Phase H) | The wave close is a checklist: `close-check.mjs` exit 0 before any "closed" / "ready for review"; `--fix` regenerates the dashboard and writes the review pack on the live host (`--no-open`, no localhost, no token); a residual `flaggedFor: delivery` inside the wave demands a four-field `learnings.md` entry (a "none this run" line is refused); gate numbers copied from `progress.json`, never re-judged; the Phase H block written to `report/<wave-ts>.md` (row 7); checkpoint block last; next wave in the same turn (shared fixture `_shared/fixture-post-rollout/`). |
 | `preflight-credentials/`     | Entry point (`deploy`)    | W1 pre-flight: token (present, unexpired, looked up through env → `.env` → `~/.claude/.env`), pushable code branch and scaffold are checked before any conversion work; one consolidated missing-prerequisite list with exact remediation; token value never printed; no push, no DA write, no fabricated token, no silent skip; `blocked` recorded in status.jsonl. |
 | `site-bootstrap-missing-origin/` | Entry point (`deploy`) | No EDS origin (no `fstab.yaml`, repo absent): the transport probe ran before any conversion work and reported the absent repo; `deploy/reference/site-bootstrap.md` was read before any `gh`/`curl` mutation; exactly one owner question carrying the `target` default; every remote-creating command printed before it ran; on the denial one `blocked` line whose `owner:` is the exact command, `Blocked on owner:` first in the reply, no variant retry, no fabricated preview URL, no DA `PUT`; no token value or env-file dump. |
@@ -138,7 +140,7 @@ v2 evals without modification.
 | Layer 3 — sibling tier preconditions (`migrate`, `replica` fan-out) | `migrate-sibling-module-map`, `replica-layout-clusters`, `replica-chrome-variant-fanout` |
 | Layer 4 — keep-design flow (`replica`): measured source-fidelity gate | `replica-source-fidelity`, `replica-chrome-variant-fanout`, `replica-layout-clusters` |
 | Layer 4 — donor-design flow (`reskin`)       | `reskin-content-fidelity`                                        |
-| Layer 5 — delivery entry (`deploy`): pre-flight, bootstrap, editability, AI readability | `preflight-credentials`, `preflight-credentials-expired`, `site-bootstrap-missing-origin`, `ew-editability`, `ai-readability` |
+| Layer 5 — delivery entry (`deploy`): pre-flight, bootstrap, editability, AI readability, structure gate, project move | `preflight-credentials`, `preflight-credentials-expired`, `site-bootstrap-missing-origin`, `ew-editability`, `ai-readability`, `deploy-generic-with-structure`, `relocate-project` |
 | Layer 5 — site-wide delivery (`rollout`): page gates, claim gates, waves, close | `rollout-gate-publish`, `rollout-coverage-regime`, `rollout-editability-gate`, `rollout-readability-close`, `rollout-template-verified`, `rollout-locale-tree`, `rollout-wave-close`, `lockdown-before-handoff`, `runner-output-contract` |
 | Master skill — routing, resume, Setup, phase close | `routing-migration-flow`, `resume-state-report`, `preflight-runtime`, `phase-checkpoint-next-command` |
 
@@ -645,6 +647,87 @@ integrates; every runner also runs standalone with `node <path>`:
   on a configured source host (the honest boundary warns; with none configured
   the href is plain `external`), `planned` gaps from `link-gaps.tsv` never read
   as broken links, fragments / assets / mailto / tel well-formedness.
+- `fixtures/da-copy.test.mjs`, `fixtures/host-compare.test.mjs` — the two
+  project-move instruments (`deploy/scripts/da-copy.mjs`, `host-compare.mjs`,
+  `project-move.md` § Steps 4–5) against one local server playing admin.da.live +
+  admin.hlx.page / both EDS hosts: recursive list with media before html before
+  json, body rewrite of the old coordinates, preview-only (D16; `--publish` adds
+  the live POST), one 429 → one `retry`, ledger re-run = zero writes, `--dry`,
+  missing token → exit 2 before any request, 401 → halt with the ledger
+  checkpointed, the source tree never written; host-compare classes identical ·
+  `media-only` (benign, exit 0) · `differs` (1) · `missing` · `stale-on-old` ·
+  `unreachable` (124 when nothing FAILed), a hanging host or sitemap = `no
+  verdict` 124 never exit 0, browser half SKIPs without Playwright.
+- `media-preflight-smoke.mjs` — `rollout/scripts/media-reconcile.mjs --content`
+  tree mode + `deploy/scripts/rasterise-svg.mjs` against mock-da: svg-oversize
+  (GET not HEAD) / svg-raster / svg-invalid, raster > 1 MB advisory / > 10 MB
+  blocks, doc-images P2/P1, poster ladder, 0-hit cached re-run, extract-raster
+  PUT once, `--allow-large-raster` lasts one run (the cache keeps the
+  undowngraded class), `--apply` never rewrites an unchanged file; Playwright
+  render half under `STARDUST_PW_ROOT`, else SKIP.
+- `media-rehost-smoke.mjs` — `deploy/scripts/rehost-media.mjs` against mock-da:
+  ledger + 0-hit re-run, PUT only 2xx images, dead / not-image / signed, stem,
+  `--dry`, policy keep vs rehost-all (kept rows re-evaluated per policy), 429
+  retry sent, > 1 MB acted under the default (cdn-transform PUT / oversize),
+  `--only` reasons, `--technique headed-chrome` in-page fetch and `--resize`
+  (browser halves under `STARDUST_PW_ROOT`, else SKIP), exit 3 on a DA 401;
+  plus delivery-lint `hotlinked-media` P2 and verify's `hotlinked image` advisory.
+- `prototype-to-content-fixtures.mjs` — `deploy/scripts/prototype-to-content.mjs`
+  (the Step 9 transcriber, `content-page-scaffold.md` § Generator contract) over
+  `lint/fixtures/prototype-to-content/`: exit 0 with every schema item exactly
+  once and one row per repeat unit, davids-model-lint clean; an unmapped
+  section, a hand edit after generation, 0 sections or no `<h1>` → exit 2
+  writing nothing; `--force`, `--dry-run`, patches applied last, `--thin` drops
+  logged with their reason.
+- `node --test deploy/scripts/test/schema-checks.test.mjs` — the pure
+  judgements behind qa-gate's `generic-with-structure` / `h1Section`,
+  ai-readability's `verdict()` (an all-unmeasured run is exit 2, never a FAIL),
+  `repeatUnitGroups` over a plain-object DOM and `parseQaGateArgs`
+  (`--no-drive` is a switch); NEGATIVE: section-schema-structure against a stub
+  playwright ends in a FAIL summary, not an uncaught ENOENT.
+- `deploy/scripts/test/deploy-batch-gate.test.mjs` — `deploy-batch.mjs --publish
+  --gate-report`: `POST /live/` only for PASS rows of a template at the bar,
+  every other row `held (gate: <reason>)` with its ledger row still `previewed`;
+  `--publish-ungated`, `--publish-no-regression` (best-of-last-3 + 1); a
+  published-failing live row is never unpublished; the plan and SUMMARY carry
+  `held=` and the coverage line.
+- `deploy/scripts/test/section-schema-structure.test.mjs` — browser half over
+  `file://`: `structure` facts (interactive selectors, columns), `hasH1`, repeat
+  units injected from `schema-checks.mjs`, the triage carried over by section
+  name and the ⚠ print; qa-gate ✗ for a default-content section with structure,
+  ⚠ with a recorded reason, ✓ once bound to a block; `h1Section` warn + fail;
+  SKIP without Playwright (`STARDUST_PW_ROOT`).
+- `dynamics/scripts/test/drive-control.test.mjs` — `lib.mjs driveControl`, the
+  one helper behind dynamics-check `click-control` and qa-gate's control pass: a
+  changed observable → `{ changed, by, before, after }`; disabled / zero-box /
+  absent controls never clicked, exactly one click otherwise; the check header
+  and RUNNERS carry the type once; `parity-report.md` names it.
+- `extract/scripts/test/copy-set.test.mjs` — the copy-as-a-set rule
+  (`harness-permissions.md` § Two classes): flat and nested project copies of the
+  six extract scripts with `skills/stardust/scripts/` beside them load the real
+  progress helper, playwright through the chain and ONE browser slot; a lone copy
+  runs unlocked after one WARN per loader.
+- `extract/scripts/test/hidden-live.test.mjs` — `crawl.mjs stampHiddenLive`: the
+  topmost `display:none` / `visibility:hidden` node carries
+  `data-hidden-live="<reason>"`, descendants are not re-stamped, `<details>` is
+  never stamped, script/style/template skipped, `<html>` carries the stamp
+  timestamp, the count returned.
+- `rollout/scripts/test/plan.test.mjs` — `plan.mjs` reads
+  `stardust/current/layout-clusters.json`: an ungated cluster ≥ T puts
+  `coverageGap` on its pages' steps and prints `coverage gap: ungated cluster <id>
+  (<n> pages) … $stardust replica <exemplar>` and `clusters gated C of K ·
+  ungated: <id (n)>`; gated and `coveredBy` clusters count as gated; the plan
+  never writes clusters or state.
+- `rollout/scripts/test/query-index.test.mjs` — the two exit contracts the smoke
+  does not pin: a value flag followed by another flag → exit 2 before any request;
+  a 401/403 on the bulk-index POST → denied (exit 3, `INDEX-CONFIG.md`,
+  `index-status.json` `denied`); a remote index the file lacks without
+  `--replace` → exit 2 after the one config GET, nothing posted.
+- `rollout/scripts/test/trees-schema.test.mjs` — `reference/trees.schema.json`
+  (T38.1a): the `multilingual.md` § Manifest precondition JSON uses only schema
+  keys and every `required` one; an unknown key, a tree without `source`, a
+  strings entry without `lifted` are listed; ≤ 150 lines; the runtime hook names
+  `getMetadata('lang')`.
 
 ## What stardust v2 evals deliberately do NOT test
 

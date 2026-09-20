@@ -78,6 +78,12 @@ import { existsSync, readFileSync, realpathSync, writeFileSync } from 'fs';
 import { dirname, resolve as resolvePath } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { findPageType, readLedger } from './progress-record.mjs';
+// Dependencies through the resolution chain (skills/stardust/scripts/lib/resolve.mjs — runtime-preflight.md
+// § Resolution chain): plugin layout, then a project copy made as a set (harness-permissions.md § Two classes);
+// a lone copy without the helper falls back to the bare import it resolved before. A miss at every link is one
+// line naming preflight-runtime.mjs.
+const CHAIN = await (async () => { for (const c of ['../../stardust/scripts/lib/resolve.mjs', '../stardust/lib/resolve.mjs']) { try { return await import(new URL(c, import.meta.url)); } catch (e) { if (e.code !== 'ERR_MODULE_NOT_FOUND') throw e; } } return null; })();
+const loadDep = (name) => (CHAIN ? CHAIN.resolveDep(name, { from: import.meta.url }) : import(name).then((m) => ('module.exports' in m ? m['module.exports'] : (m.default && Object.keys(m).every((k) => k === 'default' || k === '__esModule' || k in m.default) ? m.default : m))));
 
 // The browser is launched through live-session's launchTier (launch-ladder
 // parity: one launch site per machine, one browser slot per launch — fan-out.md
@@ -224,6 +230,9 @@ export function activeDot(dots) {
   return i < 0 ? null : i;
 }
 
+// Observable set mirrors skills/dynamics/scripts/lib.mjs driveControl (scrollLeft · aria-expanded · aria-selected ·
+// hidden · open · class · visible:<sel>) — inlined because motion-assert runs from a project copy that carries no
+// dynamics lib; change both together.
 /** widgetAdvanced(frames) → { advanced, by } — first vs last non-null frame on track transform, scrollLeft, active dot. */
 export function widgetAdvanced(frames) {
   const f = (frames || []).filter(Boolean);
@@ -354,7 +363,7 @@ function triggerSnapshot(sel) {
 // -------------------------------------------------------------------- driver
 
 async function runChecks({ observe, target, opts, warn }) {
-  const { chromium } = await import('playwright');
+  const { chromium } = await loadDep('playwright');
   const width = opts.width || observe.width || 1440; const VH = 900;
   const browser = await launchBrowser(chromium);
   activeBrowsers.add(browser);

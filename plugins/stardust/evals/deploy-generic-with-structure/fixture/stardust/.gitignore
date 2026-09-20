@@ -1,0 +1,36 @@
+# stardust/.gitignore — written by the stardust master skill (Setup step 6)
+# from skills/stardust/reference/stardust.gitignore. Stardust never edits
+# this copy again: the project owns any line it adds below.
+#
+# Everything else under stardust/ is meant to be committed: it cost tokens
+# to produce or captured a site that will not exist after launch.
+
+# Heavy regenerable captures, not tracked by default. Delete a line or add
+# a negation below it to track one in this project.
+current/assets/
+replica/gates/
+migrated/assets/
+rollout/qa/
+
+# Screenshots are never tracked, wherever a skill writes them.
+qa/shots/
+qa/baselines/
+validation/
+**/screenshots/
+reskin/content-model/**/*.png
+reskin/reports/*.png
+
+# Run residue: anything a skill needs only during a run.
+.work/
+# The run's own dependency dir + lockfile (preflight-runtime.mjs); package.json stays tracked.
+node_modules/
+package-lock.json
+*.log
+*.err
+*.out
+last-run.json
+_palette-pick.html
+
+# Captured session state. Secrets; never commit.
+_storage-state.json
+*-clearance.json

@@ -75,6 +75,22 @@ import { dirname, join, resolve } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { findPageType, pageTypesOf, readLedger, residualClasses } from './progress-record.mjs';
 import { judgeResiduals, judgeResult } from './gate-ledger-lint.mjs';
+// Dependencies through the resolution chain (skills/stardust/scripts/lib/resolve.mjs — runtime-preflight.md
+// § Resolution chain): plugin layout, then a project copy made as a set (harness-permissions.md § Two classes);
+// a lone copy without the helper falls back to the bare import it resolved before. A miss at every link is one
+// line naming preflight-runtime.mjs.
+const CHAIN = await (async () => { for (const c of ['../../stardust/scripts/lib/resolve.mjs', '../stardust/lib/resolve.mjs']) { try { return await import(new URL(c, import.meta.url)); } catch (e) { if (e.code !== 'ERR_MODULE_NOT_FOUND') throw e; } } return null; })();
+const loadDep = (name) => (CHAIN ? CHAIN.resolveDep(name, { from: import.meta.url }) : import(name).then((m) => ('module.exports' in m ? m['module.exports'] : (m.default && Object.keys(m).every((k) => k === 'default' || k === '__esModule' || k in m.default) ? m.default : m))));
+
+// The repeat-unit grouping rule is deploy schema-checks.mjs `repeatUnitGroups` (T28.2 — the ONE rule), injected into
+// the page through its `inPageCall`. Loaded by the browser driver only, so the pure halves import without deploy
+// beside them: plugin layout, then the flat project copy (stardust/scripts/replica ↔ stardust/scripts/deploy).
+async function loadSchemaChecks() {
+  for (const c of ['../../deploy/scripts/schema-checks.mjs', '../deploy/schema-checks.mjs']) {
+    try { return await import(new URL(c, import.meta.url)); } catch (e) { if (e.code !== 'ERR_MODULE_NOT_FOUND') throw e; }
+  }
+  throw new Error('deploy schema-checks.mjs not found (looked in ../../deploy/scripts/ and ../deploy/) — run from the plugin tree or copy skills/deploy/scripts/ beside this one as a set (harness-permissions.md § Two classes)');
+}
 
 const DEFAULT_BPS = [1440, 360];
 export const DEFAULT_K = 0;
@@ -341,30 +357,8 @@ export function extractFacts() {
   let sections = main ? [...main.children] : [...document.body.children].filter((el) => !['HEADER', 'FOOTER', 'NAV'].includes(el.tagName));
   sections = sections.filter((el) => !SKIP.includes(el.tagName) && (el.children.length || (el.textContent || '').trim()));
   if (main && !sections.length) sections = [...main.querySelectorAll(':scope > section, :scope > .section')];
-  const compose = (el) => ({
-    headings: el.querySelectorAll('h1,h2,h3,h4,h5,h6').length,
-    ctas: [...el.querySelectorAll('a')].filter((a) => (a.textContent || '').trim() && !a.querySelector('img,picture')).length,
-    imgs: el.querySelectorAll('img,picture,svg').length,
-    textRuns: [...el.querySelectorAll('*')].filter((e) => [...e.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim())).length,
-  });
-  // Repeat-unit grouping as section-schema.mjs mapSections: ≥ 2 same tag+firstClass
-  // content-bearing siblings, outermost only.
-  const groupsOf = (sec) => {
-    const reported = []; const groups = [];
-    for (const c of [sec, ...sec.querySelectorAll('*')]) {
-      if (SKIP.includes(c.tagName) || reported.some((r) => r !== c && r.contains(c))) continue;
-      const byKey = {};
-      [...c.children].forEach((k) => { if (ATOMS.includes(k.tagName) && k.tagName !== 'LI') return; const key = `${k.tagName}.${String(k.className || '').split(/\s+/)[0] || ''}`; (byKey[key] ||= []).push(k); });
-      for (const members of Object.values(byKey)) {
-        if (members.length < 2) continue;
-        const units = members.map(compose);
-        if (!units.some((u) => u.headings || u.ctas || u.imgs || u.textRuns)) continue;
-        groups.push({ count: members.length, unit: units[0], tag: members[0].tagName, depth: (() => { let d = 0; let e = c; while (e && e !== sec) { d++; e = e.parentElement; } return d; })() });
-        reported.push(...members);
-      }
-    }
-    return groups;
-  };
+  /* global repeatUnitGroups -- in scope via inPageCall (deploy schema-checks.mjs, the ONE grouping rule) */
+  const groupsOf = (sec) => repeatUnitGroups(sec, { skip: SKIP, atoms: ATOMS.filter((t) => t !== 'LI') }).map(({ count, unit, tag, depth }) => ({ count, unit, tag, depth }));
   const facts = sections.map((sec) => {
     const groups = groupsOf(sec);
     // columns = the outermost repeat group (depth ≤ 2) of 2–6 non-stacked units (lists, details, table rows stack by nature)
@@ -384,7 +378,8 @@ export function extractFacts() {
 // -------------------------------------------------------------------- driver
 
 async function factsForPages(slugs, pagesDir) {
-  const { chromium } = await import('playwright');
+  const { repeatUnitGroups, inPageCall } = await loadSchemaChecks();
+  const { chromium } = await loadDep('playwright');
   const browser = await chromium.launch();
   const out = {};
   try {
@@ -397,7 +392,7 @@ async function factsForPages(slugs, pagesDir) {
       const file = join(pagesDir, `${slug}.html`);
       if (!existsSync(file)) { out[slug] = null; continue; }
       await page.goto(pathToFileURL(resolve(file)).href, { waitUntil: 'domcontentloaded', timeout: 30000 });
-      out[slug] = await page.evaluate(extractFacts);
+      out[slug] = await page.evaluate(inPageCall(extractFacts, null, { repeatUnitGroups }));
       n++;
       if (n % 100 === 0) console.error(`layout-cluster: ${n}/${slugs.length} pages`);
     }

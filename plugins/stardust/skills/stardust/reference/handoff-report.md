@@ -46,6 +46,11 @@ never the prose. One row per archetype (or page) per breakpoint:
   table; they are not re-measured silently and not presented as fresh.
 - "N/N verified" totals, when printed, come *after* the table and count
   only PASS rows in the published-origin regime.
+- The measured-gate lines follow the table, one per gate from
+  `rollout.json.lastRun.gates.<name>` (`skills/rollout/reference/coverage-model.md`
+  § `delivery.gates`), quoting the instrument's own `failed` and `unmeasured`
+  counts (`ai-readability.mjs` JSON `failed` / `unmeasured` — exit 2 = unmeasured
+  pages, no verdict); an unmeasured page is never inside a PASS count.
 - The table's last line is the site's access state from the register row
   `lockdown`: `site: locked (lockdown.mjs exit 0 <at>)` · `site: open (row
   lockdown off — <reason>)` · `site: open (blocked on owner)` — the third

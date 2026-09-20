@@ -15,7 +15,7 @@ own published-origin number or is `ungated`. The instrument is
 its report. The script never publishes. The hold lives in the publish run,
 in two places that read the same report: `scripts/wave.mjs --publish` reads it
 (plus Gates 5–7's artefacts) and holds every live-gated row without
-`latest.pass === true` — `held gate:<status>`, listed with its re-drive, `held=`
+`latest.pass === true` or whose template is not at the bar (`gate:template-not-at-bar`) — `held gate:<status>`, listed with its re-drive, `held=`
 on the `SUMMARY` line (`waves.md` § Hands-off) — and the transport it calls,
 `deploy-batch.mjs --publish` (`../../deploy/scripts/deploy-batch.mjs` header
 § Publish hold), holds on its own: it reads `stardust/rollout/gate-report.json`
@@ -79,7 +79,9 @@ node skills/deploy/scripts/deploy-batch.mjs … --publish [--plan]           # h
   `--publish` run — `wave.mjs --publish`, or a hand-run `deploy-batch.mjs
   --publish` **naming the report** (`--gate-report
   stardust/rollout/gate-report.json` — an absent report is then exit 2, never
-  the operator's ungated WARN path) — which goes live with exactly the PASS rows
+  the operator's ungated WARN path; the transport enforces it too: with
+  `stardust/state.json` `handsOff: true` and no report, `deploy-batch --publish`
+  is refused, exit 2, nothing written) — which goes live with exactly the PASS rows
   and holds the rest; prints the coverage line `published-gated P of M · PASS p · FAIL f ·
   unmeasured u · ungated r · held h` (the publish run prints it);
   writes `status: blocked` with the re-drive command when any row is held; **never** passes `--publish-ungated` or

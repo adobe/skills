@@ -77,7 +77,19 @@ export function resolveDepPath(name, opts = {}) {
   throw new Error(`${script}: cannot resolve '${name}' from ${cwd} — ${PREFLIGHT_HINT}`);
 }
 
-const normalize = (m) => (m && typeof m === 'object' && m.default && Object.keys(m).every((k) => k === 'default' || k === '__esModule') ? m.default : m);
+/**
+ * The module's real API: a CJS package imported through ESM carries its exports object under `module.exports`
+ * (Node ≥ 22) beside whatever names the lexer detected — playwright's namespace has fifteen keys and no
+ * `chromium`; on older Node the `default` object is the superset of every detected name. A true ESM module
+ * (named exports not on `default`) is returned as is; a default-only namespace (pixelmatch) yields the default.
+ */
+const normalize = (m) => {
+  if (!m || typeof m !== 'object') return m;
+  if ('module.exports' in m) return m['module.exports'];
+  const d = m.default;
+  if (d && (typeof d === 'object' || typeof d === 'function') && Object.keys(m).every((k) => k === 'default' || k === '__esModule' || k in d)) return d;
+  return m;
+};
 
 /** The module for `name` through the chain (`default` normalised), or throws. */
 export async function resolveDep(name, opts = {}) {

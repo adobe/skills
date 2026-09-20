@@ -285,12 +285,12 @@ approves it. The phase-close block (master § Phase close) carries
   origin (gate doc § The published-origin gate). Approval is the trigger —
   hands-off never asks "ready to deploy?"; no EDS origin yet →
   `../deploy/reference/site-bootstrap.md` (rollout Setup step 3).
-- **Pages beyond the archetypes** go through the stardust `migrate` skill at
+- **Pages beyond the archetypes** go through the `migrate` skill at
   **sibling tier** (`../migrate/reference/fidelity-tiers.md`): structural
   clone of the gated archetype + content-fidelity + delivery-lint +
   media-reconcile. Siblings inherit the archetype's **prototype** gate; every
-  delivered page carries its own published-origin evidence (sample or cheap
-  probe — `../rollout/reference/publish-gate.md` § Coverage regime) — never
+  delivered page carries its own published-origin evidence (sample —
+  `../rollout/reference/publish-gate.md` § Coverage regime) — never
   re-author one from scratch. First `replica/layout-cluster.mjs --type
   <t> --write-state`: a layout cluster ≥ T without a gated exemplar is a
   coverage gap — nothing in it renders (same file, § Sibling variance probe,
@@ -301,12 +301,13 @@ approves it. The phase-close block (master § Phase close) carries
   the brief. A new module kind on a sibling → the lift ledger rule (Phase 3). Content-fidelity
   is **measured per page at import time** (same file, § Content-count
   acceptance).
-- **Delivery** via the stardust `deploy` skill per page: decode tier biased
+- **Delivery** via the `deploy` skill per page: decode tier biased
   to **template-slotted** for fixed compositions (deploy #95), repeat groups
-  reconstructive; blocks obey the Experience Workspace editability contract
-  (`../deploy/reference/block-js-scaffold.md`, EW1–EW10) and pass
-  `block-roundtrip --ew`.
-- **Site-wide rollout** via the stardust `rollout` skill (block dedup =
+  reconstructive; blocks obey the EW editability contract
+  (`../deploy/reference/block-js-scaffold.md`, EW1–EW10), pass
+  `block-roundtrip --ew` (rollout Gate 6 row), AI-readability ≥ 98
+  (Gate 5, deploy #100).
+- **Site-wide rollout** via the `rollout` skill (block dedup =
   same blocks across the whole site).
 - **The hand-off names the captured variant**: every brief and report
   carries `captured variant: <markers, capture date, consent mode>` —

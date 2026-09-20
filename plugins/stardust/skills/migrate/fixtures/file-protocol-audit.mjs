@@ -17,13 +17,18 @@
 //   1  one or more findings (offending file + href + reason printed).
 //   2  usage error or Playwright not installed.
 //
-// Requires Playwright:
-//   npm i -D playwright
-//   npx playwright install chromium
+// Requires Playwright, resolved through the chain (skills/stardust/scripts/lib/resolve.mjs); a miss is exit 2
+// naming `node skills/stardust/scripts/preflight-runtime.mjs` (master § Setup step 10).
 
 import { existsSync, statSync } from 'node:fs';
 import { resolve, isAbsolute, join, dirname } from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
+// Dependencies through the resolution chain (skills/stardust/scripts/lib/resolve.mjs — runtime-preflight.md
+// § Resolution chain): plugin layout, then a project copy made as a set (harness-permissions.md § Two classes);
+// a lone copy without the helper falls back to the bare import it resolved before. A miss at every link is one
+// line naming preflight-runtime.mjs.
+const CHAIN = await (async () => { for (const c of ['../../stardust/scripts/lib/resolve.mjs', '../stardust/lib/resolve.mjs']) { try { return await import(new URL(c, import.meta.url)); } catch (e) { if (e.code !== 'ERR_MODULE_NOT_FOUND') throw e; } } return null; })();
+const loadDep = (name) => (CHAIN ? CHAIN.resolveDep(name, { from: import.meta.url }) : import(name).then((m) => ('module.exports' in m ? m['module.exports'] : (m.default && Object.keys(m).every((k) => k === 'default' || k === '__esModule' || k in m.default) ? m.default : m))));
 
 const dirArg = process.argv[2];
 if (!dirArg) {
@@ -40,10 +45,11 @@ if (!existsSync(INDEX) || !statSync(INDEX).isFile()) {
 
 let chromium;
 try {
-  ({ chromium } = await import('playwright'));
-} catch {
+  ({ chromium } = await loadDep('playwright'));
+} catch (e) {
+  if (e?.message) console.error(e.message);
   console.error('file-protocol-audit: Playwright is required.');
-  console.error('  npm i -D playwright && npx playwright install chromium');
+  console.error('  run node skills/stardust/scripts/preflight-runtime.mjs (master § Setup step 10 — skills/stardust/reference/runtime-preflight.md § Contract)');
   process.exit(2);
 }
 

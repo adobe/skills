@@ -84,6 +84,12 @@ import { resolveProfile } from './diff-profiles.mjs';
 import { inventory, diffInventories, summarise } from './content-inventory.mjs';
 import { EDITABLE, runtimeMimic, instrument, survey, openHarness, installBlockJs, installErrors, runDecorate, readBlockExemptions, aggregate, strictFindings, formatRequests } from './ew-editability-probe.mjs';
 import { pipelineMimic, formatCounts, resolveStyleSplit, styleSplitLine } from './pipeline-mimic.mjs';
+// Dependencies through the resolution chain (skills/stardust/scripts/lib/resolve.mjs — runtime-preflight.md
+// § Resolution chain): plugin layout, then a project copy made as a set (harness-permissions.md § Two classes);
+// a lone copy without the helper falls back to the bare import it resolved before. A miss at every link is one
+// line naming preflight-runtime.mjs.
+const CHAIN = await (async () => { for (const c of ['../../stardust/scripts/lib/resolve.mjs', '../stardust/lib/resolve.mjs']) { try { return await import(new URL(c, import.meta.url)); } catch (e) { if (e.code !== 'ERR_MODULE_NOT_FOUND') throw e; } } return null; })();
+const loadDep = (name) => (CHAIN ? CHAIN.resolveDep(name, { from: import.meta.url }) : import(name).then((m) => ('module.exports' in m ? m['module.exports'] : (m.default && Object.keys(m).every((k) => k === 'default' || k === '__esModule' || k in m.default) ? m.default : m))));
 
 const VALUE_FLAGS = new Set(['--blocks', '--map', '--styles', '--blocks-dir', '--width', '--profile', '--style-split', '--root']);
 function parseArgs(argv) {
@@ -189,7 +195,7 @@ async function main() {
     process.stderr.write(usage);
     process.exit(1);
   }
-  const { chromium } = await import('playwright'); // after --help / usage: the flags work without a browser install
+  const { chromium } = await loadDep('playwright'); // after --help / usage: the flags work without a browser install
   const prof = resolveProfile(opts.profile);
   const rtProf = { ...prof, fontDelta: Infinity }; // structure only — no FONT FORK in the harness
 

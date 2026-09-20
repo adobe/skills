@@ -72,7 +72,9 @@
  *     publishes a FAIL, unmeasured or not-at-bar row; `--force` re-drives but never lifts a hold.
  *   - no report file and no flag = today's behaviour, with one WARN line (`publishing ungated`). Hands-off
  *     (rollout Phase C) NAMES the default path — `--gate-report stardust/rollout/gate-report.json` — so an
- *     absent report is exit 2 there, never an ungated publish (publish-gate.md § Gate 8 → Hands-off).
+ *     absent report is exit 2 there, never an ungated publish (publish-gate.md § Gate 8 → Hands-off); the
+ *     driver enforces it as well: `stardust/state.json` `handsOff: true` + no report + `--publish` (plan or
+ *     run) = fatal exit 2, nothing written — hands-off never weakens a gate.
  *
  * Token lifecycle (the one credential failure a run cannot self-recover; the
  * resolve/decode/smoke primitives are skills/deploy/scripts/lib.mjs):
@@ -426,6 +428,11 @@ export function loadGateReport(file = GATE_REPORT_DEFAULT, explicit = false) {
   try { report = JSON.parse(readFileSync(file, 'utf8')); } catch (e) { throw new Error(`gate report ${file} is not valid JSON (${e.message})`); }
   if (!report || typeof report.pages !== 'object' || report.pages === null) throw new Error(`gate report ${file} has no pages{} — not a gate-publish.mjs report`);
   return { file, report };
+}
+
+/** Hands-off never weakens a gate: state.json `handsOff: true` with no gate report refuses an ungated --publish (exit 2). */
+export function handsOffProject(file = path.join('stardust', 'state.json')) {
+  try { return JSON.parse(readFileSync(file, 'utf8')).handsOff === true; } catch { return false; }
 }
 
 /** The report entry for a ledger webPath; `/index` folds to `/` (the report is keyed by served path). */
@@ -798,6 +805,7 @@ export async function main(argv = process.argv) {
   // Gate 8: the publish hold reads gate-publish's report; a named file must exist (exit 2), the default may be absent (WARN)
   const gate = args.publish ? loadGateReport(args.gateReport || GATE_REPORT_DEFAULT, !!args.gateReport) : null;
   const say = args.plan ? console.log : console.error;
+  if (args.publish && !gate && handsOffProject()) throw new Error(`hands-off project (stardust/state.json handsOff: true) and no gate report at ${GATE_REPORT_DEFAULT} — an ungated publish is never hands-off (publish-gate.md § Gate 8 → Hands-off): run gate-publish.mjs --report first. Nothing written`);
   if (args.publish && !gate) say(`[deploy-batch] WARN no gate report at ${GATE_REPORT_DEFAULT} — publishing ungated: every previewed row goes live (publish-gate.md § Gate 8: under flow: replica run gate-publish.mjs --report first)`);
   if (gate) say(`[deploy-batch] gate-report ${gate.file} (${gate.report.generatedAt || 'undated'}) — rows without a PASS at every breakpoint are held${args.publishUngated ? ' · --publish-ungated: rows with no entry publish' : ''}${args.publishNoRegression ? ' · --publish-no-regression: changed live rows within best-of-last-3 + 1 publish' : ''}`);
   if (args.skipCodeSyncVerify !== undefined && !args.offline) {

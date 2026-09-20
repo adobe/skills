@@ -48,16 +48,19 @@ gracefully, log it as a content gap — do NOT invent filler.
 The #1 recurring defect at scale: an authored external image URL the preview
 ingester can't fetch delivers as `<img src="about:error">` — a silent break that
 "it renders" hides. The systematic resolver is `media-reconcile.mjs` (it decides
-optimize/keep/rewrite/omit per image and can `--apply` the fix); the manual
+optimize/keep/rewrite/omit/rehost per image, blocks pre-PUT on
+svg-oversize/svg-raster/svg-invalid/raster-oversize/doc-images P1 and can `--apply`
+the fix — `--rasterise` for a 409-certain SVG); the manual
 form, for a single image, is a 200 check:
 
 ```bash
-node skills/rollout/scripts/media-reconcile.mjs --file <html> --deploy-host <host>   # all images
+node skills/rollout/scripts/media-reconcile.mjs --content <dir> --deploy-host <host>   # the whole tree, per-URL cache stardust/rollout/media-probe.json
 curl -s -o /dev/null -w '%{http_code}' <url>                                          # one image
 ```
 
-If it isn't 200, OMIT the image (the block renders without it) rather than ship
-`about:error`. Never author a logo/placeholder stand-in as if it were editorial.
+Only a definitive 404/410 is `omit`; a 401/403 to the browser UA is `rehost` —
+`skills/deploy/scripts/rehost-media.mjs` moves it onto DA media (ledger
+`stardust/da-media.json`, `media` decision row) — never ship `about:error`. Never author a logo/placeholder stand-in as if it were editorial.
 Two failure signatures where the asset exists behind a malformed URL — fix the
 URL, don't drop the image:
 - **Wrong rendition variant** — the source exposes only a derivative that 404s

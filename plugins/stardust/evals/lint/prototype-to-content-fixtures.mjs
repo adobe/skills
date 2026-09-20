@@ -17,7 +17,7 @@
 //     `--map hero=block:hero` → exit 0, one row, two cells, lint exit 0;
 //   0 sections / no <h1> → exit 2, nothing written;  --dry-run → nothing written, no ledger;
 //   patches/<slug>.json replace op applied last;
-//   hand edit after generation → exit 2 naming the path (NEGATIVE: the rwe overwrite), --force → 0;
+//   hand edit after generation → exit 2 naming the path (NEGATIVE: the energy-utility overwrite), --force → 0;
 //   --thin on a migrated render (sr-only <h1> twin, --drop twin, table, empty shell, leading link
 //     list, second <h1>, form) → exit 0, `table` block, no `breadcrumbs` block, each drop logged
 //     with its reason, lint exit 0;

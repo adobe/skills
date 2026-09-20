@@ -22,9 +22,9 @@
  * style: variants are class tokens and DOM facts (`li:icon` = an <li> holding
  * svg|img|i|[class*=icon] or an empty classed leaf; `columns` = the uniform
  * count of the outermost same-class sibling group, ≤ 6). The repeat-unit
- * grouping is section-schema.mjs `mapSections`' (≥ 2 same tag+class
- * content-bearing siblings, outermost only) — inlined here until deploy
- * exports it.
+ * grouping is deploy schema-checks.mjs `repeatUnitGroups` (shared with
+ * section-schema.mjs; ≥ 2 same tag+class content-bearing siblings, outermost
+ * only), injected in-page through `inPageCall`.
  *
  * Coverage pass (the health-insurer F15 / credit-bureau F8 mechanism): every census class
  * is `referenced` when it appears as a selector token in a --css file or as
@@ -74,6 +74,22 @@
 import { existsSync, globSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'fs';
 import { dirname, join, resolve } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
+// Dependencies through the resolution chain (skills/stardust/scripts/lib/resolve.mjs — runtime-preflight.md
+// § Resolution chain): plugin layout, then a project copy made as a set (harness-permissions.md § Two classes);
+// a lone copy without the helper falls back to the bare import it resolved before. A miss at every link is one
+// line naming preflight-runtime.mjs.
+const CHAIN = await (async () => { for (const c of ['../../stardust/scripts/lib/resolve.mjs', '../stardust/lib/resolve.mjs']) { try { return await import(new URL(c, import.meta.url)); } catch (e) { if (e.code !== 'ERR_MODULE_NOT_FOUND') throw e; } } return null; })();
+const loadDep = (name) => (CHAIN ? CHAIN.resolveDep(name, { from: import.meta.url }) : import(name).then((m) => ('module.exports' in m ? m['module.exports'] : (m.default && Object.keys(m).every((k) => k === 'default' || k === '__esModule' || k in m.default) ? m.default : m))));
+
+// The repeat-unit grouping rule is deploy schema-checks.mjs `repeatUnitGroups` (T28.2 — the ONE rule), injected into
+// the page through its `inPageCall`. Loaded by the browser driver only, so the pure halves import without deploy
+// beside them: plugin layout, then the flat project copy (stardust/scripts/replica ↔ stardust/scripts/deploy).
+async function loadSchemaChecks() {
+  for (const c of ['../../deploy/scripts/schema-checks.mjs', '../deploy/schema-checks.mjs']) {
+    try { return await import(new URL(c, import.meta.url)); } catch (e) { if (e.code !== 'ERR_MODULE_NOT_FOUND') throw e; }
+  }
+  throw new Error('deploy schema-checks.mjs not found (looked in ../../deploy/scripts/ and ../deploy/) — run from the plugin tree or copy skills/deploy/scripts/ beside this one as a set (harness-permissions.md § Two classes)');
+}
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const DEFAULT_MARKERS = ['data-component', 'data-component-id', 'data-cmp'];
@@ -258,23 +274,8 @@ export function collectPage({ markers }) {
     imgs: el.querySelectorAll('img,picture').length,
     textRuns: [...el.querySelectorAll('*')].filter((e) => [...e.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim())).length,
   });
-  // Repeat-unit grouping as section-schema.mjs mapSections (outermost same tag+class siblings with content).
-  const repeatUnits = (root) => {
-    const reported = []; const units = [];
-    for (const c of [root, ...root.querySelectorAll('*')]) {
-      if (SKIP.includes(c.tagName) || reported.some((r) => r !== c && r.contains(c))) continue;
-      const byKey = {};
-      [...c.children].forEach((k) => { const key = `${k.tagName}.${tokens(k)[0] || ''}`; (byKey[key] ||= []).push(k); });
-      for (const members of Object.values(byKey)) {
-        if (members.length < 2) continue;
-        const us = members.map(compose);
-        if (!us.some((u) => u.headings || u.ctas || u.imgs || u.textRuns)) continue;
-        units.push({ members, count: members.length, depth: (() => { let d = 0; let e = c; while (e && e !== root) { d++; e = e.parentElement; } return d; })() });
-        reported.push(...members);
-      }
-    }
-    return units;
-  };
+  /* global repeatUnitGroups -- in scope via inPageCall (deploy schema-checks.mjs, the ONE grouping rule) */
+  const repeatUnits = (root) => repeatUnitGroups(root, { skip: SKIP }).map(({ members, count, depth }) => ({ members, count, depth }));
   const main = document.querySelector('main') || document.body;
   let marked = markers.flatMap((a) => [...document.querySelectorAll(`[${a}]`)].map((el) => ({ el, cls: el.getAttribute(a) || tokens(el)[0] || el.tagName.toLowerCase(), marker: a })));
   marked = marked.concat([...document.querySelectorAll('[class^="cmp-"], [class*=" cmp-"]')].filter((el) => !marked.some((m) => m.el === el)).map((el) => ({ el, cls: tokens(el).find((t) => t.startsWith('cmp-')), marker: 'class' })));
@@ -325,7 +326,8 @@ export function slugsFor(opts, root) {
 }
 
 async function collect(slugs, pagesDir, markers) {
-  const { chromium } = await import('playwright');
+  const { repeatUnitGroups, inPageCall } = await loadSchemaChecks();
+  const { chromium } = await loadDep('playwright');
   const browser = await chromium.launch();
   const out = [];
   try {
@@ -337,7 +339,7 @@ async function collect(slugs, pagesDir, markers) {
       const file = join(pagesDir, `${slug}.html`);
       if (!existsSync(file)) { out.push({ slug, noSidecar: true }); continue; }
       await page.goto(pathToFileURL(resolve(file)).href, { waitUntil: 'domcontentloaded', timeout: 30000 });
-      out.push({ slug, ...(await page.evaluate(collectPage, { markers })) });
+      out.push({ slug, ...(await page.evaluate(inPageCall(collectPage, { markers }, { repeatUnitGroups }))) });
       if (++n % 100 === 0) console.error(`variant-census: ${n}/${slugs.length} pages`);
     }
   } finally { await browser.close(); }

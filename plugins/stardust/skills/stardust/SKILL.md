@@ -391,8 +391,8 @@ phase is recorded in `stardust/direction.md` as a **named deviation** —
 what it replaces, why the shipped instrument did not serve, where the
 replacement lives — and noted in the journal. Before writing one, list
 the shipped instruments (`ls skills/*/scripts`) and run it; write your own only
-when none exists, and ledger it as a plugin gap in `stardust/learnings.md`
-(`reference/learnings.md`), not only here. An unrecorded parallel
+when none exists, and ledger it as a plugin gap in `reference/learnings.md`,
+not only here. An unrecorded parallel
 pipeline is a defect — its numbers are never comparable to the gate's.
 
 ## Validation rule

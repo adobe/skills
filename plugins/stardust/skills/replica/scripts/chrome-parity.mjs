@@ -87,6 +87,12 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync, realpathSync } from 'fs';
 import { dirname, resolve as resolvePath } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
+// Dependencies through the resolution chain (skills/stardust/scripts/lib/resolve.mjs — runtime-preflight.md
+// § Resolution chain): plugin layout, then a project copy made as a set (harness-permissions.md § Two classes);
+// a lone copy without the helper falls back to the bare import it resolved before. A miss at every link is one
+// line naming preflight-runtime.mjs.
+const CHAIN = await (async () => { for (const c of ['../../stardust/scripts/lib/resolve.mjs', '../stardust/lib/resolve.mjs']) { try { return await import(new URL(c, import.meta.url)); } catch (e) { if (e.code !== 'ERR_MODULE_NOT_FOUND') throw e; } } return null; })();
+const loadDep = (name) => (CHAIN ? CHAIN.resolveDep(name, { from: import.meta.url }) : import(name).then((m) => ('module.exports' in m ? m['module.exports'] : (m.default && Object.keys(m).every((k) => k === 'default' || k === '__esModule' || k in m.default) ? m.default : m))));
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const LIVE_SESSION = ['../../diff/scripts/live-session.mjs', '../diff/live-session.mjs']
@@ -433,7 +439,7 @@ function readLiveCache(file, live, opts) {
 
 async function main() {
   const { live, build, opts } = parseArgs(process.argv);
-  const { chromium } = await import('playwright'); // lazy: the pure halves import without a browser
+  const { chromium } = await loadDep('playwright'); // lazy: the pure halves import without a browser
   opts.tier = resolveStartTier(opts.headed); // ladder start = max(--headed tier, tier extract recorded) — live-session.mjs
   const browser = await launchTier(chromium, opts.tier);
   let total = 0;

@@ -11,7 +11,7 @@
  *     With `reason` (or `dynamicsRow`) recorded on the section the flag is a warning; without it a FAIL.
  *     Hands-off never writes the reason (it resolves by converting a block within the cap).
  *
- *   h1SectionVerdict({ schemaIndex, pageIndex, autoBlocks })  (T21.2 — jet2 F19 b)
+ *   h1SectionVerdict({ schemaIndex, pageIndex, autoBlocks })  (T21.2 — leisure-airline F19 b)
  *     The authored <h1> must still sit in its authored section after the runtime ran
  *     `buildAutoBlocks()`. schemaIndex = the schema section (chrome excluded) that holds the h1,
  *     pageIndex = the rendered `main .section` that holds it. Equal → ok. Different with a non-empty

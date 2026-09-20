@@ -123,13 +123,17 @@ import { writeFileSync, mkdirSync, existsSync, realpathSync } from 'fs';
 import { dirname, resolve as resolvePath } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 
-// live-session.mjs lives in the diff skill's scripts dir. Two layouts exist:
-// the plugin tree (skills/replica/scripts ↔ skills/diff/scripts) and the
-// documented project copy (scripts/replica ↔ scripts/diff) — resolve either,
+// Dependencies through the resolution chain (skills/stardust/scripts/lib/resolve.mjs — runtime-preflight.md
+// § Resolution chain): plugin layout, then a project copy made as a set (harness-permissions.md § Two classes);
+// a lone copy without the helper falls back to the bare import it resolved before. A miss at every link is one
+// line naming preflight-runtime.mjs.
+const CHAIN = await (async () => { for (const c of ['../../stardust/scripts/lib/resolve.mjs', '../stardust/lib/resolve.mjs']) { try { return await import(new URL(c, import.meta.url)); } catch (e) { if (e.code !== 'ERR_MODULE_NOT_FOUND') throw e; } } return null; })();
+const loadDep = (name) => (CHAIN ? CHAIN.resolveDep(name, { from: import.meta.url }) : import(name).then((m) => ('module.exports' in m ? m['module.exports'] : (m.default && Object.keys(m).every((k) => k === 'default' || k === '__esModule' || k in m.default) ? m.default : m))));
+// live-session.mjs (the diff skill) through the chain's siblingScript — plugin tree, STARDUST_SKILLS_DIR, flat project
+// copy (stardust/scripts/replica ↔ stardust/scripts/diff); a lone copy without the chain probes the two layouts itself,
 // so a project re-copy can't silently sever the shared hardening.
 const HERE = dirname(fileURLToPath(import.meta.url));
-const LIVE_SESSION = ['../../diff/scripts/live-session.mjs', '../diff/live-session.mjs']
-  .map((p) => resolvePath(HERE, p)).find((p) => existsSync(p));
+const LIVE_SESSION = (() => { try { return CHAIN ? CHAIN.siblingScript('diff', 'live-session.mjs', { from: import.meta.url }) : ['../../diff/scripts/live-session.mjs', '../diff/live-session.mjs'].map((p) => resolvePath(HERE, p)).find((p) => existsSync(p)); } catch { return null; } })();
 
 export const SCHEMA = 2;
 // A trigger that navigates tears the instrumented document down under the
@@ -290,7 +294,7 @@ async function main() {
   }
   const { REAL_CHROME_UA, isLiveHttpUrl, launchTier, parseHeadedFlag, parseSolveWaitFlag, resolveStartTier, newLiveContext, gotoLive, sessionContextOptions, dismissOverlays, reportOverlayResidue } = await import(pathToFileURL(LIVE_SESSION).href);
   const { url, out, opts } = parseArgs(process.argv, { parseHeadedFlag, parseSolveWaitFlag, defaultUa: REAL_CHROME_UA });
-  const { chromium } = await import('playwright');
+  const { chromium } = await loadDep('playwright');
   const VH = 900;
   opts.tier = resolveStartTier(opts.headed); // ladder start = max(--headed tier, tier extract recorded) — live-session.mjs
   const browser = await launchTier(chromium, opts.tier);

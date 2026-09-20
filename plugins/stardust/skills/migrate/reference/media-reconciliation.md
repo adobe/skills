@@ -49,13 +49,20 @@ For every authored image URL (`<img src>`, `srcset`, inline/`<style>` `url(...)`
 ## Run it
 
 ```bash
-node skills/rollout/scripts/media-reconcile.mjs --file <content.html> \
+node skills/rollout/scripts/media-reconcile.mjs --content <dir> \
   --deploy-host <branch>--<repo>--<owner>.aem.live \
   [--host-rewrite cdn.shopify.com/s/files=www.store.com/cdn/shop/files] \
   [--json] [--apply]
 ```
 
 Without `--apply` it reports the decision per image (exit `1` if any `omit`).
+Exit 1 also on `rehost`, `unresolved`, `unplayable`, `svg-oversize | svg-raster |
+svg-invalid`, `raster-oversize` and `doc-images` P1 (> 200 `<img>`); `raster-large`
+(> 1 MB) is advisory. Every URL is probed once per run and cached in
+`stardust/rollout/media-probe.json` (401/403 and status 0 never cached; the cache
+stores the class before any `--allow-large-raster` downgrade). `--apply --rasterise
+--org <o> --repo <r>` renders a blocking SVG onto DA media/svg/
+(`skills/deploy/scripts/rasterise-svg.mjs`).
 With `--apply` it rewrites the file in place: `rewrite` → suggested URL,
 `omit` → the `<img>` (and any emptied `<picture>`) removed. Run it in Phase C
 after `delivery-lint`, before the PUT.
@@ -84,4 +91,10 @@ the Content Bus (decoupled, EDS-optimized), **rehost**: download the resolving
 rendition into the migrated tree / DA and rewrite the `src` to the same-origin
 path — which then qualifies for `optimize`. Asset bundling
 (`reference/asset-bundling.md`) is the bulk mechanism; media-reconciliation is
-the per-image decision that precedes it.
+the per-image decision that precedes it. The rehost step is
+`skills/deploy/scripts/rehost-media.mjs` (ledger `stardust/da-media.json`, stem
+`<leaf>-<sha8>.<ext>`, `media` decision row in `stardust/reference/decisions.md`):
+under every policy it acts on what the ingester cannot ingest — 401/403 to its plain
+fetch (browser UA or `--technique headed-chrome` in-page), rasters > 1 MB (CDN
+transform or `--resize`, else `oversize`) and media-reconcile `rehost` rows;
+`rehost-all` moves every external image.

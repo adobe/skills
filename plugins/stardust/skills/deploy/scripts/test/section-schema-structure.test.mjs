@@ -45,6 +45,7 @@ let scripts = SCRIPTS;
 if (deps !== 'scripts') {
   cpSync(join(SKILLS, 'deploy', 'scripts'), join(dir, 'skills', 'deploy', 'scripts'), { recursive: true, filter: (src) => !/[\\/]test([\\/]|$)/.test(src) });
   cpSync(join(SKILLS, 'replica', 'scripts'), join(dir, 'skills', 'replica', 'scripts'), { recursive: true, filter: (src) => !/[\\/]test([\\/]|$)/.test(src) });
+  for (const sk of ['dynamics', 'stardust']) cpSync(join(SKILLS, sk, 'scripts'), join(dir, 'skills', sk, 'scripts'), { recursive: true, filter: (src) => !/[\\/]test([\\/]|$)/.test(src) }); // qa-gate's control pass (dynamics lib.mjs driveControl) + the resolution chain / browser lock, copied as a set
   symlinkSync(resolve(deps), join(dir, 'node_modules'));
   scripts = join(dir, 'skills', 'deploy', 'scripts');
 }

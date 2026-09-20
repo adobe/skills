@@ -108,7 +108,7 @@ export function rosterFrom({ state, migratedDir, entries }) {
   const pages = Array.isArray(state?.pages) ? state.pages : (state?.pages && typeof state.pages === 'object' ? Object.entries(state.pages).map(([slug, p]) => ({ slug, ...p })) : []);
   for (const p of pages) if (p?.type && p.slug && !archetypeSlugs.has(p.slug) && p.tier !== 'archetype') types.add(p.type);
   if (!types.size && migratedDir && existsSync(migratedDir)) {
-    const walk = (d) => { for (const f of readdirSync(d)) { const p = join(d, f); if (statSync(p).isDirectory()) walk(p); else if (f === '_meta.json') { try { const m = readJson(p); if (m.type && m.tier && m.tier !== 'archetype') types.add(m.type); } catch { /* unreadable sidecar: not roster material */ } } } };
+    const walk = (d) => { for (const f of readdirSync(d)) { const p = join(d, f); if (statSync(p).isDirectory()) walk(p); else if (f === '_meta.json') { try { const m = readJson(p); const tier = m.fidelityTier ?? m.tier; if (m.type && tier && tier !== 'archetype') types.add(m.type); } catch { /* unreadable sidecar: not roster material */ } } } };
     walk(migratedDir);
   }
   return [...types];

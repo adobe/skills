@@ -26,7 +26,7 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { pathKey, mergeLedgerIntoCoverage } from './update-coverage.mjs';
+import { pathKey, mergeLedgerIntoCoverage, gateRows } from './update-coverage.mjs';
 
 const HERE = import.meta.dirname;
 const CLI = join(HERE, 'update-coverage.mjs');
@@ -288,4 +288,16 @@ try {
   } finally {
     rmSync(T3, { recursive: true, force: true });
   }
+}
+
+// Gate 6 ingest: the probe's own per-result `unmeasured` (--json) is read when present; an older artifact without it derives from errors[]
+{
+  const t = { authored: 3, editable: 3, dead: 0, duplicated: 0, exempt: 0 };
+  const rows = gateRows('editability', [
+    { url: 'https://p/a', totals: t, errors: ['x'], unmeasured: false }, // probe said measured — the field wins over the derivation
+    { url: 'https://p/b', totals: t, errors: ['x'] }, // legacy artifact: errors and no dead → derived unmeasured
+    { content: 'content/c.html', totals: { ...t, dead: 1 }, errors: ['x'], unmeasured: false }, // dead with an error is still a FAIL, never unmeasured
+  ]).rows;
+  assert.deepEqual(rows.map((r) => [r.result.unmeasured, r.result.below]), [[false, false], [true, false], [false, true]]);
+  console.log('update-coverage.test: ok (editability ingest reads the probe unmeasured field, derives it only for a legacy artifact)');
 }

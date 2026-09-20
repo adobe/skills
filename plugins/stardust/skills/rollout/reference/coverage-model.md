@@ -97,7 +97,9 @@ of `delivery.status`:
   min, origin, at}`; `editability`: `{authored, editable, dead, duplicated,
   exempt, unmeasured, exemptSource, origin, at}` — `exemptSource` and `origin`
   are derived by the ingest from the probe's `exemptions[]` / `url`, not read
-  from a probe field). Below the bar → `failed`
+  from a probe field; `unmeasured` is the probe's own per-result `--json` field —
+  errors and no dead/duplicated count — derived from `errors[]` only for an
+  older artifact without it). Below the bar → `failed`
   with the reason; `unmeasured: true` → status untouched (no verdict ≠ FAIL);
   roll-up `rollout.json.lastRun.gates.<name>`. `measured-gates.md` § Gate 5 · § Gate 6.
 - **`delivery.gate`** — the published-origin **page gate**, copied from
@@ -166,7 +168,10 @@ On every `inventory.mjs` run:
   archetype and are exempt; under `flow: redesign | reskin` the check is skipped
   and printed. Escape: none — gate the archetype (`gate.sh --regime
   published-origin` + `progress-record.mjs`); hands-off never writes the slot.
-  `dashboard.mjs` prints the same clause on the Phase H `Blocks` line.
+  `dashboard.mjs` prints the same clause on the Phase H `Blocks` line. The template
+  claim gate checks the archetype's `published.<bp>.pass` only; the lifecycle order
+  (`pending → converted → deployed → verified`) is enforced by the Phase C flow, not
+  by `update-coverage.mjs`.
 
 `blocks.mjs` is idempotent: a block already past `pending` keeps its status and
 `edsBlockName`; only still-`pending` blocks get a freshly derived name.

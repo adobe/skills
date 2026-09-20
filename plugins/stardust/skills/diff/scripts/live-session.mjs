@@ -105,9 +105,10 @@
  * one crawl.mjs writes when a challenge cleared or on `--save-state`.
  * `--storage-state <file>` names another file, `--fresh-state` opts out; the
  * default lookup applies only when one of the file's cookie domains matches
- * the live host, and never to a local URL. All 11 importers (replica stitch-shot,
+ * the live host, and never to a local URL. All 12 importers (replica stitch-shot,
  * anchor, chrome-parity, motion-observe, sibling-variance; diff content-diff,
- * visual-diff; reskin dom-equality, slot-coverage, donor-probe, capture-content)
+ * visual-diff; reskin dom-equality, slot-coverage, donor-probe, capture-content;
+ * deploy rehost-media)
  * parse the three session flags and spread sessionContextOptions(url, opts)
  * into newLiveContext — evals/fixtures/live-session-flags.test.mjs pins it. What it fixes: the probe-cleared →
  * fresh-worker-403 class, and A/B / consent bucket drift between the capture

@@ -104,7 +104,7 @@ check(run(['--cluster', 'c1']).status === 1, '--cluster without --from-clusters 
 check(run(['--root', join(tmpdir(), 'no-such-stardust')]).status === 1, 'missing state.json exits 1');
 check(run(['--min-pages', '0']).status === 1, '--min-pages 0 exits 1');
 const src = readFileSync(SCRIPT, 'utf8');
-check(/route\.abort\(\)/.test(src) && /javaScriptEnabled: false/.test(src) && /await import\('playwright'\)/.test(src), 'static contract: every request aborted, scripts off, playwright imported lazily');
+check(/route\.abort\(\)/.test(src) && /javaScriptEnabled: false/.test(src) && /await (import|loadDep)\('playwright'\)/.test(src), 'static contract: every request aborted, scripts off, playwright imported lazily');
 
 // --- browser half
 let deps = null;
@@ -118,6 +118,7 @@ else {
     if (deps !== 'repo') {
       cpSync(join(PLUGIN, 'skills', 'replica', 'scripts'), join(tmp, 'skills', 'replica', 'scripts'), { recursive: true });
       cpSync(join(PLUGIN, 'skills', 'stardust', 'scripts'), join(tmp, 'skills', 'stardust', 'scripts'), { recursive: true });
+      cpSync(join(PLUGIN, 'skills', 'deploy', 'scripts'), join(tmp, 'skills', 'deploy', 'scripts'), { recursive: true }); // schema-checks.mjs: the grouping rule the driver injects in-page
       symlinkSync(resolve(deps), join(tmp, 'node_modules'));
       script = join(tmp, 'skills', 'replica', 'scripts', 'variant-census.mjs');
     }

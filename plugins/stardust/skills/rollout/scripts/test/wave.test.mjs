@@ -235,6 +235,11 @@ assert.equal(publishHold({ gateReport: null, coverageRow: null, acceptance: null
 assert.equal(publishHold({ gateReport: { pages: { '/index': gr(true, 'pass') } }, coverageRow: { delivery: { gates: gatesOk } }, acceptance: { verdict: 'pass' } }, '/'), null, 'the home page is looked up under deploy-batch\'s /index key too');
 assert.equal(publishHold({ gateReport: { pages: { '/x': gr(false, 'unmeasured') } }, coverageRow: null, acceptance: null }, '/x'), 'gate:unmeasured');
 assert.equal(publishHold({ gateReport: { pages: { '/x': gr(true, 'pass') } }, coverageRow: null, acceptance: { verdict: 'unmeasured' } }, '/x'), 'content:unmeasured');
+// the template bar (publish-gate.md § Coverage regime) is read by both halves of Gate 8: a PASS row of a template not at the bar is HELD here, so deploy-batch never has to hold it (and wave never parks it `publish`)
+assert.equal(publishHold({ gateReport: { templates: { program: { atBar: false } }, pages: { '/x': { ...gr(true, 'pass'), template: 'program' } } }, coverageRow: { delivery: { gates: gatesOk } }, acceptance: { verdict: 'pass' } }, '/x'), 'gate:template-not-at-bar');
+assert.equal(publishHold({ gateReport: { templates: { program: { atBar: true } }, pages: { '/x': { ...gr(true, 'pass'), template: 'program' } } }, coverageRow: { delivery: { gates: gatesOk } }, acceptance: { verdict: 'pass' } }, '/x'), null, 'at the bar → publishable');
+assert.equal(publishHold({ gateReport: { templates: { untyped: { atBar: false } }, pages: { '/x': gr(true, 'pass') } }, coverageRow: { delivery: { gates: gatesOk } }, acceptance: { verdict: 'pass' } }, '/x'), 'gate:template-not-at-bar', 'a template-less page takes the untyped group bar');
+assert.match(holdNext('gate:template-not-at-bar', { slug: 'x', path: '/x' }, { previewOrigin: 'https://p' }), /gate-publish\.mjs --slug x/, 'the re-drive is the gate');
 rmSync(join(P, 'stardust', 'rollout', 'coverage'), { recursive: true, force: true }); rmSync(join(P, 'stardust', 'rollout', 'gate-report.json'));
 setPark({}); setMode({ mode: 'fail', failPath: '/p3' });
 writeFileSync(join(P, 'content', 'p3.html'), `<body><main><div><h1>p3 v3</h1><p>${'copy '.repeat(40)}</p></div></main></body>`);

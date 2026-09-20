@@ -1,0 +1,162 @@
+{
+ "source": "stardust/migrated/insurance/home/index.html",
+ "width": 1280,
+ "profile": "eds",
+ "sections": [
+  {
+   "section": "product-hero",
+   "items": [
+    {
+     "role": "heading",
+     "order": 0,
+     "text": "Home insurance"
+    },
+    {
+     "role": "body",
+     "order": 1,
+     "text": "Replacement-cost settlement on every policy. No depreciation deducted from what it takes to rebuild."
+    },
+    {
+     "role": "cta",
+     "order": 2,
+     "text": "Start a quote",
+     "href": "#quote"
+    }
+   ],
+   "imgCount": 0,
+   "editableTexts": 2,
+   "repeats": [],
+   "structure": {
+    "interactive": [],
+    "columns": 1
+   },
+   "hasH1": true
+  },
+  {
+   "section": "features",
+   "items": [
+    {
+     "role": "heading",
+     "order": 0,
+     "text": "What every policy includes"
+    },
+    {
+     "role": "body",
+     "order": 1,
+     "text": "Dwelling and other structures at replacement cost"
+    },
+    {
+     "role": "body",
+     "order": 2,
+     "text": "Contents at replacement cost, scheduled items optional"
+    },
+    {
+     "role": "body",
+     "order": 3,
+     "text": "Personal liability to $500,000"
+    },
+    {
+     "role": "body",
+     "order": 4,
+     "text": "Loss of use while your home is repaired"
+    }
+   ],
+   "imgCount": 0,
+   "editableTexts": 2,
+   "repeats": [],
+   "structure": {
+    "interactive": [],
+    "columns": 4
+   }
+  },
+  {
+   "section": "compare-plans",
+   "items": [
+    {
+     "role": "heading",
+     "order": 0,
+     "text": "Compare policy forms"
+    },
+    {
+     "role": "body",
+     "order": 1,
+     "text": "Standard"
+    },
+    {
+     "role": "body",
+     "order": 2,
+     "text": "Premier"
+    },
+    {
+     "role": "heading",
+     "order": 3,
+     "text": "Standard"
+    },
+    {
+     "role": "body",
+     "order": 4,
+     "text": "Dwelling and contents at replacement cost. Liability to $300,000. Named perils on detached structures."
+    },
+    {
+     "role": "cta",
+     "order": 5,
+     "text": "Quote Standard",
+     "href": "#quote"
+    },
+    {
+     "role": "heading",
+     "order": 6,
+     "text": "Premier"
+    },
+    {
+     "role": "body",
+     "order": 7,
+     "text": "Everything in Standard plus open-perils contents, $500,000 liability and guaranteed rebuild cost."
+    },
+    {
+     "role": "cta",
+     "order": 8,
+     "text": "Quote Premier",
+     "href": "#quote"
+    }
+   ],
+   "imgCount": 0,
+   "editableTexts": 5,
+   "repeats": [],
+   "structure": {
+    "interactive": [
+     "button",
+     "[role=tab]",
+     "[role=tablist]",
+     "[role=tabpanel]",
+     "[aria-controls]"
+    ],
+    "columns": 2
+   },
+   "decodeTier": "default",
+   "defaultContent": true
+  },
+  {
+   "section": "quote",
+   "items": [
+    {
+     "role": "heading",
+     "order": 0,
+     "text": "Get a home quote"
+    },
+    {
+     "role": "body",
+     "order": 1,
+     "text": "Call 1-800-555-0142 or visit any of our twelve offices. Most quotes take under twenty minutes."
+    }
+   ],
+   "imgCount": 0,
+   "editableTexts": 2,
+   "repeats": [],
+   "structure": {
+    "interactive": [],
+    "columns": 1
+   }
+  }
+ ]
+}

@@ -190,6 +190,8 @@ export function publishHold({ gateReport, coverageRow, acceptance }, path) {
   const g = pages[path] || pages[deployKey(path)] || pages[`${path}/`] || null;
   if (!g || !g.latest) return 'gate:ungated';
   if (g.latest.pass !== true) return `gate:${g.latest.status || 'fail'}`;
+  const tpl = gateReport.templates ? gateReport.templates[g.template || 'untyped'] : null; // publish-gate.md § Coverage regime: a template not at the bar is not published
+  if (tpl && tpl.atBar === false) return 'gate:template-not-at-bar'; // the same hold deploy-batch applies — read here so the row is held, never parked `publish`
   if (!acceptance) return 'content:ungated';
   if (acceptance.verdict !== 'pass') return `content:${acceptance.verdict || 'fail'}`;
   const gates = (coverageRow && coverageRow.delivery && coverageRow.delivery.gates) || {};

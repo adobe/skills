@@ -18,7 +18,7 @@ Phases, in order: Setup → A Inventory → B Block dedup plan → B2 Dynamic su
 | A | `node skills/rollout/scripts/inventory.mjs --site-url <source-url> [--content <eds-root>/content] [--redirects stardust/redirects.tsv]` (archetypes-only: `--state stardust/state.json`) |
 | B | `node skills/rollout/scripts/blocks.mjs`; `node skills/rollout/scripts/plan.mjs` |
 | B2 | `node skills/dynamics/scripts/dynamics-detect.mjs --from-state … --reach stardust/current`; `node skills/dynamics/scripts/dynamics-plan.mjs --target-origin <live host> --migrated stardust/migrated`; `node skills/dynamics/scripts/dynamics-plan.mjs --lint stardust/dynamic-features.md stardust/dynamic-features-plan.md` |
-| C | per page (all under `skills/rollout/scripts/`): `node skills/rollout/scripts/content-acceptance.mjs --slug <slug>`; `delivery-lint.mjs --file <html> --path </da/path> --icons-dir icons [--chrome-docs content/nav.html,content/footer.html,…]`; `media-reconcile.mjs --file <html> --deploy-host <host> [--apply]`; `section-fidelity.mjs --file <html> --source <url>`; `update-coverage.mjs <slug> --status <s>` / `--gate <name> <json>`; waves: `wave.mjs <waveId> <roster> [--publish] [--unpark <reason\|all>]` (`reference/waves.md`; transport `deploy-batch.mjs`, preview); page gate: `gate-publish.mjs --all-delivered \| --sample 10 --seed <s> --origin <preview>`; live: `wave.mjs … --publish` (holds rows without Gate 5–8 PASS, § Gate 8) |
+| C | per page (all under `skills/rollout/scripts/`): `node skills/rollout/scripts/content-acceptance.mjs --slug <slug>`; `delivery-lint.mjs --file <html> --path </da/path> --icons-dir icons [--chrome-docs content/nav.html,content/footer.html,…]`; `media-reconcile.mjs --content <dir> --deploy-host <host> [--apply]`; `section-fidelity.mjs --file <html> --source <url>`; `update-coverage.mjs <slug> --status <s>` / `--gate <name> <json>`; waves: `wave.mjs <waveId> <roster> [--publish] [--unpark <reason\|all>]` (`reference/waves.md`; transport `deploy-batch.mjs`, preview); page gate: `gate-publish.mjs --all-delivered \| --sample 10 --seed <s> --origin <preview>`; live: `wave.mjs … --publish` (holds rows without Gate 5–8 PASS, § Gate 8) |
 | D | `node skills/rollout/scripts/assemble.mjs`; `node skills/rollout/scripts/redirects.mjs [--post-publish]` |
 | D2 | `node skills/dynamics/scripts/dynamics-check.mjs --origin <live host> --gate` |
 | E / E2 | `node skills/rollout/scripts/verify.mjs [--base <url> | --root <dir>] [--all] [--paths <file>] [--report <dir>] [--gate-report stardust/rollout/gate-report.json]`; class rounds: `node skills/rollout/scripts/wave.mjs regate-list --since <ref>` → `verify.mjs --paths`; `node skills/deploy/scripts/localize-links.mjs --source-host <live-host> --content content --redirects stardust/redirects.tsv [--check]` |
@@ -125,9 +125,8 @@ node skills/rollout/scripts/plan.mjs     # → plan.json + a readable conversion
   Step-7 brief input. `content-pending` pages are always `convert: []`.
 - Template = the archetype's group (`templates.json` keyed by archetype slug);
   representative = the gated archetype (`renderBranch: A`), so C/E gate the page the
-  prototype gated. A default-content section with interactive or multi-column
-  structure (read from the capture; no schema field yet) is a plan input: that
-  page needs a block or a `dynamics` row before it converts.
+  prototype gated. A default-content section with `structure` facts (interactive /
+  columns ≥ 2, `section-schema.mjs`) needs a block or a `dynamics` row before its page converts.
 
 ### Phase B2 — Dynamic surface (PRE-IMPORT GATE — verify the inventory)
 
@@ -146,8 +145,8 @@ block during delivery. Walk `plan.json.steps` (representative pages first; Setup
 types are absent). For each page:
 
 1. **Convert + push** the migrated HTML (`source.migratedHtml`) to AEM via the
-   `deploy` methodology. **Pass the plan step into deploy's brief**: create only the
-   blocks in `convert`; REUSE each block in `reuse` by its `edsBlockName`. **The
+   `deploy` methodology. **Pass the plan step into deploy's brief**: create only the `convert`
+   blocks; REUSE the `reuse` blocks by `edsBlockName`. **The
    brief carries the EW editability contract**
    (`skills/deploy/reference/block-js-scaffold.md` § Experience Workspace
    editability contract, EW1–EW10); `block-roundtrip --ew` passes before a block
@@ -159,19 +158,20 @@ types are absent). For each page:
    push, no shell/placeholder; record `content-pending` (block code ships with the
    archetype).
 
-2. **Static contract lint (pre-PUT, deterministic).** Before the push, run the
-   delivery-contract linter (`reference/delivery-lint.md`). **A P0/P1 blocks the PUT.**
-   Once per code-writing wave, before any round-trip: `node skills/deploy/scripts/block-lint.mjs blocks/ --styles styles/styles.css` exits 0 (`@ew-exempt` caps → `block-roundtrip --ew` decides).
-   Once per wave over the converted content: `node skills/deploy/scripts/davids-model-lint.mjs content/` — a 🟡 D-CONST is decided ONCE per block (`decisions.md`), never per page.
+2. **Static contract lint (pre-PUT).** Run the delivery-contract linter
+   (`reference/delivery-lint.md`). **A P0/P1 blocks the PUT.**
+   Once per code wave: `node skills/deploy/scripts/block-lint.mjs blocks/ --styles styles/styles.css` exits 0 (`@ew-exempt` caps → `block-roundtrip --ew` decides).
+   Once per wave: `node skills/deploy/scripts/davids-model-lint.mjs content/` — a 🟡 D-CONST is decided ONCE per block (`decisions.md`), never per page.
    ```bash
    node skills/rollout/scripts/content-acceptance.mjs --slug <slug>        # source vs migrated role counts; exit 2 = P1, no PUT
    node skills/rollout/scripts/delivery-lint.mjs --file <html> --path </da/path> --icons-dir icons [--allow-no-h1] [--chrome-docs content/nav.html,content/footer.html,…]
-   node skills/rollout/scripts/media-reconcile.mjs --file <html> --deploy-host <branch>--<repo>--<owner>.aem.live [--apply]
+   node skills/rollout/scripts/media-reconcile.mjs --content <dir> --deploy-host <branch>--<repo>--<owner>.aem.live [--apply [--rasterise --org <o> --repo <r>]]
    ```
-   `content-acceptance` is the content-count gate (`reference/measured-gates.md` § Gate 7):
-   a dropped class not covered by `contentDeviations[]`, or words ratio < 0.9, is 🔴.
-   `media-reconcile` decides optimize/keep/rewrite/omit per image
-   (`skills/migrate/reference/media-reconciliation.md`) — the image-fidelity gate.
+   `content-acceptance` (`reference/measured-gates.md` § Gate 7): a dropped class outside
+   `contentDeviations[]` or a words ratio < 0.9 is 🔴.
+   `media-reconcile` decides optimize/keep/rewrite/omit/rehost per image and blocks pre-PUT on
+   svg-oversize/svg-raster/svg-invalid/raster-oversize/doc-images P1 (`../deploy/reference/encode-contract.md`
+   § Media pre-flight); `skills/deploy/scripts/rehost-media.mjs` acts on `rehost` rows per the `media` decision row.
 
    **Chrome guard set.** Before chrome is signed off, every top-level trigger is
    opened on the preview page (`chrome-parity --open <sel>`) and the header, footer
@@ -187,8 +187,7 @@ types are absent). For each page:
    (served == tree). One-line rules; mechanics in `reference/delivery-gates.md`:
    - **Source-fidelity** — never add sections the source lacks or fabricate
      facts (`section-fidelity.mjs --file <html> --source <url>`, operator card).
-   - **Image-fidelity** — every authored `<img>` src returns 200 or is omitted;
-     never `<img src="about:error">` (`media-reconcile.mjs`, step 2).
+   - **Image-fidelity** — `media-reconcile.mjs` (step 2): resolve, rehost or omit; never `about:error`.
    - **Path-safety** — `normalizeDaPath()` (`stardust/scripts/da-path.mjs`): delivery-lint
      flags it, `deploy-batch` enforces it before the PUT and writes the
      `stardust/redirects.tsv` row; a `path-collision` parks the page.

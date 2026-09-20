@@ -675,6 +675,13 @@ export function globalNodeModulesCandidates({ env = process.env, execPath = proc
 export async function loadChromium({ roots = globalNodeModulesCandidates() } = {}) {
   const normalize = (mod) => (mod.chromium ? mod : (mod.default?.chromium ? mod.default : null));
   const fromRoot = async (dir) => normalize(await import(pathToFileURL(createRequire(path.join(dir, 'noop.js')).resolve('playwright')).href));
+  // the resolution chain first (skills/stardust/scripts/lib/resolve.mjs — runtime-preflight.md § Resolution chain):
+  // plugin layout, then a project copy made as a set; the inline links below serve a lone copy without it
+  for (const c of ['../../stardust/scripts/lib/resolve.mjs', '../stardust/lib/resolve.mjs']) {
+    let chain = null;
+    try { chain = await import(new URL(c, import.meta.url)); } catch (e) { if (e.code !== 'ERR_MODULE_NOT_FOUND') throw e; }
+    if (chain) { try { const mod = normalize(await chain.resolveDep('playwright', { from: import.meta.url })); if (mod) return mod.chromium; } catch { break; } }
+  }
   for (const dir of [process.cwd(), path.join(process.cwd(), 'stardust')]) { // cwd, then stardust/node_modules (preflight-runtime.mjs)
     try { const mod = await fromRoot(dir); if (mod) return mod.chromium; } catch { /* next link */ }
   }
@@ -749,7 +756,8 @@ async function main() {
       const strict = opts.strict ? strictFindings(agg) : [];
       if (v.dead || v.duplicated || strict.length) fail = true;
       if (errors.length) probeError = true;
-      results.push({ content: opts.content, blocksDir, stylesPath, root, pipeline, totals: agg.totals, blocks: agg.blocks, rows, sim, exemptions, errors, requests, strict });
+      // no verdict ≠ FAIL: a probe error with no dead/duplicated count is `unmeasured` (update-coverage --gate editability reads this field; rollout Gate 6)
+      results.push({ content: opts.content, blocksDir, stylesPath, root, pipeline, totals: agg.totals, blocks: agg.blocks, rows, sim, exemptions, errors, requests, strict, unmeasured: errors.length > 0 && !(v.dead || v.duplicated) });
       if (!opts.json) console.log(`${pipeline}\n${formatTable(`${opts.content} (harness, ${blocksDir}, ${stylesPath}, root ${root})`, agg, { sim, verbose: opts.verbose || opts.strict, errors, requests, strict })}`);
     }
     for (const url of opts.urls) {
@@ -761,7 +769,7 @@ async function main() {
       const v = verdict(agg);
       const strict = opts.strict ? strictFindings(agg) : [];
       if (v.dead || v.duplicated || strict.length) fail = true;
-      results.push({ url, totals: agg.totals, blocks: agg.blocks, rows, sim, exemptions, strict });
+      results.push({ url, totals: agg.totals, blocks: agg.blocks, rows, sim, exemptions, strict, unmeasured: false });
       if (!opts.json) console.log(formatTable(url, agg, { sim, verbose: opts.verbose || opts.strict, strict }));
     }
   } catch (e) { console.error(e); process.exit(2); } finally { await browser.close(); }

@@ -75,7 +75,8 @@
  * Exit codes: 0 = every listed page `previewed` (or `live` with --publish); 1 = a page blocked
  * (links-unlocalized, lint-red, lint-error, delivery-lint, sanitise-fail), FAILed in deploy-batch,
  * `held` by the publish gate (stays previewed; SUMMARY `held=<n>`), or `killed` (no verdict — re-run); 2 = usage / fatal (nothing was PUT); 3 = deploy-batch halted
- * on a 401 / access-restricted host (its `next=` line is echoed — re-run it).
+ * on a 401 / access-restricted host (its `next=` line is echoed — re-run it) OR refused by --require-code-synced (the
+ * SUMMARY's `refused=code-sync` tells the two apart; the chain's verdict line and report.run.deploy name the cause).
  *
  * Test hook (fixture tests only): DEPLOY_PAGE_DEPLOY_BATCH overrides the deploy-batch script path;
  * deploy-batch's own DEPLOY_BATCH_* host overrides pass through the environment.
@@ -296,12 +297,14 @@ export async function main(argv = process.argv) {
     const ledger = existsSync(args.ledger) ? JSON.parse(readFileSync(args.ledger, 'utf8')) : {};
     const nextLine = (d.stdout.match(/^next=.*$/m) || [])[0];
     const heldRows = new Set([...d.stderr.matchAll(/^ {2}held {4}(\S+) {2}held \(gate:/gm)].map((m) => m[1])); // Gate 8: rows deploy-batch held from going live
+    const refusedCodeSync = d.code === 3 && /\brefused=code-sync\b/.test(d.stdout); // --require-code-synced REFUSAL shares exit 3 with the 401 halt; the SUMMARY names it
+    const haltStage = refusedCodeSync ? 'refused (code-sync)' : 'halted';
     for (const wp of toDeploy) {
       const p = pages.get(wp);
       const rec = ledger[wp];
       if (d.killed) { p.stages.deploy = 'killed'; p.status = 'killed'; progress.tick({ noverdict: true, path: wp }); line(wp, p); continue; }
       if (heldRows.has(wp)) { p.stages.deploy = `held (gate) — row ${rec ? rec.status : 'absent'}`; p.status = 'held'; progress.tick({ noverdict: true, path: wp }); line(wp, p); continue; }
-      if (d.code === 3 && !(rec && OK_STATUS.has(rec.status))) { p.stages.deploy = 'halted'; p.status = 'halted'; progress.tick({ noverdict: true, path: wp }); line(wp, p); continue; }
+      if (d.code === 3 && !(rec && OK_STATUS.has(rec.status))) { p.stages.deploy = haltStage; p.status = 'halted'; progress.tick({ noverdict: true, path: wp }); line(wp, p); continue; }
       p.stages.deploy = rec ? rec.status : 'not-in-ledger';
       p.status = rec ? rec.status : 'not-in-ledger';
       if (rec && rec.lastError) p.detail = rec.lastError;
@@ -310,9 +313,10 @@ export async function main(argv = process.argv) {
       line(wp, p);
     }
     if (d.killed) console.error(`[deploy-page] deploy-batch killed at the ${args.timeout} s deadline — no verdict for ${toDeploy.length} page(s); the ledger keeps what was delivered, re-run the same command`);
-    if (d.code === 3) { console.error(`[deploy-page] deploy-batch HALTED (exit 3) — fix the credential and re-run${nextLine ? `; its resume command:\n${nextLine}` : ''}`); exit = 3; }
+    if (refusedCodeSync) { console.error(`[deploy-page] deploy-batch REFUSED (exit 3, --require-code-synced) — the served tree is not the local tree (no verdict, nothing PUT); sync the code (code-sync-verify.mjs → record) and re-run`); exit = 3; }
+    else if (d.code === 3) { console.error(`[deploy-page] deploy-batch HALTED (exit 3) — fix the credential and re-run${nextLine ? `; its resume command:\n${nextLine}` : ''}`); exit = 3; }
     else if (d.code === 2) { console.error(`[deploy-page] deploy-batch fatal (exit 2): ${(d.stderr.match(/fatal: .*/) || [''])[0]}`); exit = 2; }
-    report.run.deploy = d.killed ? 'killed' : `exit ${d.code}`;
+    report.run.deploy = d.killed ? 'killed' : refusedCodeSync ? 'exit 3 (refused: code-sync)' : `exit ${d.code}`;
   } else report.run.deploy = 'nothing to deploy';
 
   const all = [...pages.values()];

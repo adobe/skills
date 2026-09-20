@@ -33,41 +33,10 @@ const SKILLS = join(ROOT, 'skills');
 const FIX = join(import.meta.dirname, 'fixtures', 'resolve-chain');
 const RESOLVE = join(SKILLS, 'stardust', 'scripts', 'lib', 'resolve.mjs');
 
-// TEMPORARY — shrink per landed skill (replica+diff → reskin → deploy → fixtures). Converted: dynamics and
-// qa (`loadPlaywright()` → the chain, inline links kept for a copy without lib/resolve.mjs beside it) and
-// extract/crawl.mjs (lazy: the chain when the helper is copied as a set, else the bare import a lone copy
-// resolved before). Key: path relative to skills/. Value: why it still imports directly.
-const ALLOW = {
-  'deploy/scripts/ai-readability.mjs': 'inline cwd loader (T07.1 bridge) — convert with deploy',
-  'deploy/scripts/block-roundtrip.mjs': 'static import — convert with deploy',
-  'deploy/scripts/ew-editability-probe.mjs': 'inline cwd + npm root -g loader — convert with deploy',
-  'deploy/scripts/qa-gate.mjs': 'static import — convert with deploy',
-  'deploy/scripts/render-harness.mjs': 'static import — convert with deploy',
-  'deploy/scripts/section-schema.mjs': 'static import — convert with deploy',
-  'deploy/scripts/style-fingerprint.mjs': 'static import — convert with deploy',
-  'diff/scripts/content-diff.mjs': 'static import — convert with replica+diff',
-  'diff/scripts/visual-diff.mjs': 'static import — convert with replica+diff',
-  'migrate/fixtures/file-protocol-audit.mjs': 'fixture bare import — convert with the fixtures',
-  'prototype/fixtures/mobile-nav-audit.mjs': 'fixture bare import — convert with the fixtures',
-  'replica/scripts/anchor.mjs': 'static import + two-layout live-session probe — convert with replica+diff',
-  'replica/scripts/chrome-parity.mjs': 'static import — convert with replica+diff',
-  'replica/scripts/chrome-states.mjs': 'lazy import (pure halves need no browser) — convert with replica+diff',
-  'replica/scripts/layout-cluster.mjs': 'lazy import (pure halves need no browser) — convert with replica+diff',
-  'replica/scripts/lift.mjs': 'lazy import (pure halves need no browser) — convert with replica+diff',
-  'replica/scripts/motion-assert.mjs': 'lazy import (pure halves need no browser) — convert with replica+diff',
-  'replica/scripts/crop-compare.mjs': 'static import — convert with replica+diff',
-  'replica/scripts/motion-observe.mjs': 'static import + two-layout probe — convert with replica+diff',
-  'replica/scripts/pixel-compare.mjs': 'static import — convert with replica+diff',
-  'replica/scripts/review-image.mjs': 'static import — convert with replica+diff',
-  'replica/scripts/row-profile.mjs': 'static import — convert with replica+diff',
-  'replica/scripts/sibling-variance.mjs': 'static import — convert with replica+diff',
-  'replica/scripts/stitch-shot.mjs': 'static import — convert with replica+diff',
-  'replica/scripts/variant-census.mjs': 'lazy import (pure halves need no browser) — convert with replica+diff',
-  'reskin/scripts/capture-content.mjs': 'dynamic import — convert with reskin',
-  'reskin/scripts/dom-equality.mjs': 'dynamic import — convert with reskin',
-  'reskin/scripts/donor-probe.mjs': 'dynamic import — convert with reskin',
-  'reskin/scripts/slot-coverage.mjs': 'dynamic import — convert with reskin',
-};
+// Every importer is on the chain (T07.5 complete: dynamics, qa, extract, replica, diff, reskin, deploy and the two
+// fixtures). An entry added here names an importer that is NOT yet converted — key: path relative to skills/,
+// value: why it still imports directly — and MUST shrink again per landed skill; a stale entry fails the lint.
+const ALLOW = {};
 // Not importers: the preflight resolves the packages on purpose; the helper is the chain.
 const EXEMPT = new Set(['stardust/scripts/preflight-runtime.mjs', 'stardust/scripts/lib/resolve.mjs']);
 

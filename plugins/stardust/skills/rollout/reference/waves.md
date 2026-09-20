@@ -82,7 +82,8 @@ anti-pattern this order names. **The publish hold** (`publish-gate.md` § Gate 8
 condition, `measured-gates.md` § Gate 5–7; read, never re-judged): a live-gated
 row is held — stays `previewed`, never parked — when `gate-report.json`
 `pages[path].latest.pass !== true` (`held gate:<status>`, `gate:ungated` with no
-entry), when `stardust/migrated/_acceptance/<slug>.json` is not `pass`
+entry, `gate:template-not-at-bar` when `templates[<t>].atBar === false` — the
+same hold `deploy-batch --publish` applies, so a row is held, never parked), when `stardust/migrated/_acceptance/<slug>.json` is not `pass`
 (`content:<verdict>`), or when the coverage row's `delivery.gates.ai-readability`
 / `.editability` is absent (`:ungated`), `unmeasured` or below its own bar
 (`:fail`). Held rows print a table with the re-drive per class, `held=` on the

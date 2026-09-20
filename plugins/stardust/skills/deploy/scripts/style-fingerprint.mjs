@@ -11,7 +11,14 @@
  *   node style-fingerprint.mjs "file:///abs/path/to/<prototype>.html"
  * Output: JSON — [{ section, bg, color, variationGroups:[{selector,count,variants:[{style,indices}]}] }]
  */
-import { chromium } from 'playwright';
+// Dependencies through the resolution chain (skills/stardust/scripts/lib/resolve.mjs — runtime-preflight.md
+// § Resolution chain): plugin layout, then a project copy made as a set (harness-permissions.md § Two classes);
+// a lone copy without the helper falls back to the bare import it resolved before. A miss at every link is one
+// line naming preflight-runtime.mjs, exit 2 (no verdict — the same class as 124).
+const CHAIN = await (async () => { for (const c of ['../../stardust/scripts/lib/resolve.mjs', '../stardust/lib/resolve.mjs']) { try { return await import(new URL(c, import.meta.url)); } catch (e) { if (e.code !== 'ERR_MODULE_NOT_FOUND') throw e; } } return null; })();
+const loadDep = (name) => (CHAIN ? CHAIN.resolveDep(name, { from: import.meta.url }) : import(name).then((m) => ('module.exports' in m ? m['module.exports'] : (m.default && Object.keys(m).every((k) => k === 'default' || k === '__esModule' || k in m.default) ? m.default : m))));
+const preflightExit = (e) => { console.error(e.message); process.exit(2); };
+const { chromium } = await loadDep('playwright').catch(preflightExit);
 const url = process.argv[2];
 const b = await chromium.launch();
 const p = await b.newPage({ viewport: { width: 1280, height: 900 } });

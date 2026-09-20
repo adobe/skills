@@ -55,7 +55,7 @@ const mock = await startMock();
 const CDN = mock.base.replace(/^http:\/\//, '');
 const cdnUrl = (n) => `http://${CDN}/cdn/${n}`;
 const png = readFileSync(join(HERE, 'fixtures', 'media-preflight', 'ok.png'));
-// (the mock's decodeURI leaves the reserved %40 encoded — the stem rule must fold it, cigna note 89)
+// (the mock's decodeURI leaves the reserved %40 encoded — the stem rule must fold it, health-insurer note 89)
 // a minimal baseline JPEG: SOI, APP0, SOF0 (8-bit, 3×5 px), EOI — enough for the sniff + the SOF dimension scan
 const jpeg = Buffer.from('ffd8ffe000104a46494600010100000100010000ffc0000b080005000301011100ffd9', 'hex');
 // a decodable > 1 MB PNG: random RGB scanlines do not deflate (the --resize canvas re-encode must shrink it)

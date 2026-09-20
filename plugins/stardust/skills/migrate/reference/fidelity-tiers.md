@@ -119,7 +119,8 @@ diff vs the archetype's cluster. T = `max(5, 2 %)` of the type, printed,
   `rollout` fans none out. The page is listed with its cluster id, the
   exemplar slug and `$stardust replica <exemplar>`; plan line
   `coverage gap: ungated cluster <id> (<n> pages)`, coverage line
-  `clusters gated C of K · ungated: <id (n)> …`. Pages in gated clusters
+  `clusters gated C of K · ungated: <id (n)> …` (both printed by
+  `rollout/scripts/plan.mjs`). Pages in gated clusters
   proceed. Tail clusters (< T) carry `layoutCluster: tail` — reported, never
   blocked, eligible for the seeded published-origin sample, never silently
   passed.
