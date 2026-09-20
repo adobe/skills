@@ -18,11 +18,10 @@
  * Evidence carries the top blocks by DOM-only words so the fix lands on the right block.
  */
 import {
-  loadPlaywright, finding, originAuthFor, attachOriginAuth, arg, withNavSlot, getFetchLimiter, configureFetch, retryAfterMs, noteThrottled, noteRetry,
+  loadPlaywright, finding, originAuthFor, attachOriginAuth, arg, withNavSlot, getFetchLimiter, configureFetch, retryAfterMs, browserSlot, noteThrottled, noteRetry,
 } from '../lib.mjs';
 import { existsSync, readFileSync } from 'node:fs';
 import { scorePage, checkExclusions } from '../../../deploy/scripts/ai-readability.mjs';
-import { acquire } from '../../../stardust/scripts/browser-lock.mjs';
 
 const THROTTLE = (s) => s === 429 || s === 503;
 const sleep = (ms) => new Promise((r) => { setTimeout(r, ms); });
@@ -57,8 +56,8 @@ export async function run(ctx) {
   const { base, inventory } = ctx;
   const findings = [];
   const { chromium } = await loadPlaywright();
-  const slot = await acquire({ script: 'qa-ai-readability' }).catch((e) => { if (e.code === 124) { console.error(e.message); process.exit(124); } throw e; }); // fan-out.md § Machine budget — 124 = no slot, no verdict, never an error row
-  const browser = await chromium.launch(); browser.on('disconnected', () => slot?.release());
+  await browserSlot('qa-ai-readability').catch((e) => { if (e.code === 124) { console.error(e.message); process.exit(124); } throw e; }); // fan-out.md § Machine budget — the process's slot; 124 = no slot, no verdict, never an error row
+  const browser = await chromium.launch();
   const auth = originAuthFor(base);
   const headers = auth ? { authorization: auth } : {};
   const excludeBlocks = (arg('ai-exclude-blocks', 'client-app,widget') || '').split(',').map((s) => s.trim()).filter(Boolean);

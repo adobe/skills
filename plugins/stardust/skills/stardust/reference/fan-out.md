@@ -100,14 +100,26 @@ write root, master § Artifacts), `STARDUST_BROWSER_SLOTS` slots (default
   agents than there are slots; `browser-lock.mjs status` is the census
   (holders + orphan browser processes) — run it before a wave, never a
   raw Chromium process count.
-- **Acquire before the first navigation.** A shell driver wraps the
-  instrument — `browser-lock.mjs acquire --script <name>` before, `release`
-  after, `refresh` between steps of a round longer than the TTL; an
-  in-process holder calls the `acquire()` API around its launch (kept
-  fresh until `release()`). Each launch site (live-session `launchTier`,
-  `qa` `browse`, gate rounds via `stitch-shot`) adopts it in its own
-  skill's change. `crawl` keeps its per-host budget and takes no slot;
-  deploy's local probes are listed by the census, not budgeted.
+- **One slot per process, taken before the first navigation.** Slots
+  are per *process*, never per launch or per context. The acquire sites:
+  `diff/scripts/live-session.mjs launchTier` (and `crawl.mjs`'s
+  byte-identical ladder copy) takes the process's slot through
+  `acquireProcess()` on its first launch — a relaunch up the ladder or a
+  crawl's relaunch reuses it — and releases it when the process exits, so
+  every `launchTier` consumer (anchor, stitch-shot, chrome-parity,
+  visual-diff, dynamics, reskin probes, `crawl`) is covered without its
+  own code; `qa` browser checks take it through `qa/scripts/lib.mjs
+  browserSlot()` — one per `qa.mjs` run, however many checks launch;
+  `replica/scripts/gate.sh` takes one for the whole round (`acquire
+  --script gate.sh`, `refresh` between steps, `release` on exit) and
+  exports `STARDUST_BROWSER_SLOTS=0` so the instruments it spawns launch
+  inside that slot. Any other shell driver wraps its instrument the same
+  way (`acquire` before, `release` after). `crawl` holds one slot for its
+  run — its per-host live budget (`live-budget.json`) is a separate,
+  source-side limit; deploy's local harness probes take no slot and are
+  listed by the census. In a project copy the lock module must be copied
+  with the scripts as a set (`harness-permissions.md` § Two classes);
+  a copy without it runs unlocked, `qa` says so with one WARN line.
 - **A slot wait is a progress-file wait.** The holder prints one line
   every 30 s and appends `waiting-slot` to `$STARDUST_PROGRESS_LOG`
   (§ Progress files); after `STARDUST_BROWSER_WAIT` (600 s) it exits

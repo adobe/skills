@@ -35,10 +35,15 @@
  * STARDUST_BROWSER_WAIT, STARDUST_BROWSER_LOCK_DIR, STARDUST_PROGRESS_LOG. Owner
  * settings per machine — never written to state.json.
  *
- * API (in-process holders, e.g. live-session before launchTier):
- *   import { acquire, release, status, reap } from '…/stardust/scripts/browser-lock.mjs';
- *   const slot = await acquire({ script: 'stitch-shot' });   // { file, release(), refresh() } | null (disabled) ; throws { code: 124 } on timeout
- *   … await browser.close(); slot?.release();                // release stops the keep-alive timer and deletes the slot file
+ * API (in-process holders — live-session launchTier, crawl.mjs's ladder copy, qa/scripts/lib.mjs browserSlot):
+ *   import { acquireProcess, acquire, release, status, reap } from '…/stardust/scripts/browser-lock.mjs';
+ *   await acquireProcess({ script: 'stitch-shot' });         // the PROCESS's slot: one per process however many browsers it
+ *                                                             // launches (a ladder relaunch, a crawl, five qa checks) — memoised,
+ *                                                             // released on process exit; null when disabled; throws { code: 124 }
+ *   const slot = await acquire({ script: 'shell-round' });   // a raw slot: { file, release(), refresh() } | null — for holders that
+ *   … slot?.release();                                        // manage their own lifetime (release deletes the file, stops the timer)
+ * Slots are per PROCESS, never per context or per launch (hit-minimisation: a crawl relaunching up the
+ * ladder holds one slot for its run and re-hits nothing).
  *
  * Exit codes: 0 acquired / released / refreshed / printed · 124 no slot within --wait (no verdict)
  *             · 2 usage (a non-numeric --slots / --wait / --min / --pid included) or I/O
@@ -140,6 +145,13 @@ export async function acquire({ pid = process.pid, script = basename(process.arg
     }
     await sleep(Math.min(POLL_MS, cfg.waitMs - waited));
   }
+}
+/** The PROCESS's slot: one acquire per process however many browsers it launches, released on process exit.
+ *  Memoised as a promise so concurrent callers share one wait; a rejected wait ({ code: 124 }) clears the memo. */
+let processSlot = null;
+export function acquireProcess(opts = {}) {
+  processSlot ??= acquire(opts).then((slot) => { if (slot) process.on('exit', () => slot.release()); return slot; }, (e) => { processSlot = null; throw e; });
+  return processSlot;
 }
 /** Remove this pid's slots (or all / only stale with all+stale). Returns the count removed. */
 export function release({ pid = process.pid, all = false, stale = false, env = process.env, ...over } = {}) {

@@ -204,5 +204,11 @@ from the served HTML, per block. Formula, cause classes and fixes: `deploy/refer
   tests: `scripts/test/throttle.test.mjs`, `scripts/test/browse-throttle.test.mjs`,
   `scripts/test/browser-unmeasured.test.mjs` (perf / ai-readability / browse decoration; SKIP + exit 0
   without playwright).
+- A browser check (`browse`, `perf`, `links`, `editability`, `ai-readability`) takes the
+  process's machine-wide browser slot before its first launch — one per `qa.mjs` run,
+  never one per check (`lib.mjs browserSlot()`; `skills/stardust/reference/fan-out.md`
+  § Machine budget). No slot within `STARDUST_BROWSER_WAIT` → the run exits **124**: no
+  report, no verdict, never an `error` row. A project copy without `browser-lock.mjs`
+  beside the scripts runs unlocked and prints one WARN line.
 - Allowlisted findings keep their severity but don't count toward the exit
   code or summary totals; they render greyed-out in report.html.

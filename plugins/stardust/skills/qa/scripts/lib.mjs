@@ -356,6 +356,28 @@ export function applyAllowlist(findings, entries) {
   return findings;
 }
 
+/* ---------------------------------------------------------- browser slot -- */
+/**
+ * The process's machine-wide browser slot (skills/stardust/reference/fan-out.md
+ * § Machine budget): ONE per qa run however many checks launch a browser — never
+ * per check, per launch or per context — released on process exit. browser-lock.mjs
+ * is resolved like the other siblings (plugin layout, STARDUST_SKILLS_DIR, flat
+ * copy); absent → one WARN line and the sweep runs unlocked. Rejects with
+ * { code: 124 } when no slot frees up: the caller exits 124 — no report, no verdict.
+ */
+let lockWarned = false;
+export async function browserSlot(script = 'qa') {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const tried = [join(here, '..', '..', 'stardust', 'scripts', 'browser-lock.mjs'), process.env.STARDUST_SKILLS_DIR ? join(process.env.STARDUST_SKILLS_DIR, 'stardust', 'scripts', 'browser-lock.mjs') : null, join(here, '..', 'stardust', 'browser-lock.mjs')].filter(Boolean);
+  const hit = tried.find((f) => existsSync(f));
+  if (!hit) {
+    if (!lockWarned) { lockWarned = true; console.error(`[qa] WARN browser-lock.mjs not found (tried ${tried.join(', ')}) — browser checks run without a machine slot; copy skills/stardust/scripts/ as a set (harness-permissions.md § Two classes)`); }
+    return null;
+  }
+  const lock = await import(pathToFileURL(hit).href);
+  return lock.acquireProcess ? lock.acquireProcess({ script }) : null;
+}
+
 /* ------------------------------------------------------------ playwright -- */
 
 /**

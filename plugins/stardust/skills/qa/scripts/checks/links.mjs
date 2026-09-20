@@ -23,9 +23,8 @@
  *     error). The skip is always reported as an info finding, never silent.
  */
 import { existsSync, readFileSync } from 'node:fs';
-import { fetchUrl, pMap, finding, pageUrl, decodeAttr, isThrottled, noteThrottled, arg } from '../lib.mjs';
+import { fetchUrl, pMap, finding, pageUrl, decodeAttr, isThrottled, noteThrottled, arg, browserSlot } from '../lib.mjs';
 import { gotoPaced } from './browse.mjs';
-import { acquire } from '../../../stardust/scripts/browser-lock.mjs';
 
 const unmeasured = (path, what, res) => finding('links', 'unmeasured', 'info', path, `${what} throttled (HTTP ${res.status} after retries) — not measured; re-run`, { status: res.status });
 
@@ -171,8 +170,8 @@ export async function run(ctx) {
     try {
       const { loadPlaywright } = await import('../lib.mjs');
       const { chromium } = await loadPlaywright();
-      const slot = await acquire({ script: 'qa-links' }).catch((e) => { if (e.code === 124) { console.error(e.message); process.exit(124); } throw e; }); // fan-out.md § Machine budget — 124 = no slot, no verdict, never an error row
-      const browser = await chromium.launch(); browser.on('disconnected', () => slot?.release());
+      await browserSlot('qa-links').catch((e) => { if (e.code === 124) { console.error(e.message); process.exit(124); } throw e; }); // fan-out.md § Machine budget — the process's slot; 124 = no slot, no verdict, never an error row
+      const browser = await chromium.launch();
       const page = await browser.newPage();
       renderedIds = new Map();
       for (const target of [...new Set(suspects.map((a) => a.targetPath))]) {
