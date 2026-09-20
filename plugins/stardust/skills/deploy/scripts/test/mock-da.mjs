@@ -5,8 +5,15 @@
  *   /admin/preview|live/<org>/<repo>/<ref><path>   admin.hlx.page
  *   /delivery/<tld><path>.plain.html   the delivered tree (aem.page | aem.live)
  *   /list/<org>/<repo>/                the DA list smoke (preflight)
+ *   /da/<org>/<repo>/media/<scope>/<file>  DA media PUT (rasterise-svg / rehost-media) — bytes kept in
+ *                                      `server.media` (path → Buffer); status from rules.mediaStatus(path, n)
+ *   /cdn/<name>                        a source CDN fixture (media-reconcile / rehost-media probes):
+ *                                      rules.cdn(name, headers) → { status, body: Buffer|string, headers }
+ *                                      (default 404); a `range` request against a Buffer body answers 206
+ *                                      with content-range (`total` overrides the advertised size) unless
+ *                                      the rule sets `noRange`
  *
- * `server.requests` records `{ method, url, auth }` in order; `server.rules`
+ * `server.requests` records `{ method, url, auth, ua, range }` in order; `server.rules`
  * is a mutable object the test edits between runs:
  *   putStatus(path, n) → status for the n-th PUT of that path (default 201)
  *   previewStatus(path, n), liveStatus(path, n) → default 200
@@ -30,15 +37,44 @@ export async function startMock() {
     liveStatus: () => 200,
     delivered: () => ({ status: 200, body: '<main><h1>ok</h1></main>' }),
     listStatus: () => 200,
+    mediaStatus: () => 201,
+    cdn: () => ({ status: 404, body: 'no such asset' }),
   };
+  const media = {};
   const server = createServer(async (req, res) => {
     const chunks = [];
     for await (const c of req) chunks.push(c);
-    const body = Buffer.concat(chunks).toString('utf8');
+    const raw = Buffer.concat(chunks);
+    const body = raw.toString('utf8');
     const url = new URL(req.url, 'http://x');
-    requests.push({ method: req.method, url: url.pathname, auth: req.headers.authorization || null });
+    requests.push({ method: req.method, url: url.pathname, auth: req.headers.authorization || null, ua: req.headers['user-agent'] || null, range: req.headers.range || null });
     const reply = (status, text = '', headers = {}) => { res.writeHead(status, { 'content-type': 'text/html', ...headers }); res.end(text); };
     let m;
+    if ((m = url.pathname.match(/^\/da\/[^/]+\/[^/]+(\/media\/.+)$/)) && !/\.html$/.test(url.pathname)) {
+      const p = decodeURI(m[1]);
+      if (req.method === 'PUT') {
+        const st = rules.mediaStatus(p, nth(`media${p}`));
+        if (st < 400) {
+          // multipart: the binary part sits between the part's blank line and the closing boundary
+          const start = raw.indexOf('\r\n\r\n'); const tail = raw.lastIndexOf('\r\n--');
+          media[p] = start !== -1 && tail > start ? raw.subarray(start + 4, tail) : raw;
+        }
+        return reply(st, st >= 400 ? `media put ${st}` : '');
+      }
+      if (req.method === 'HEAD' || req.method === 'GET') return p in media ? reply(200, req.method === 'GET' ? media[p] : '') : reply(404);
+    }
+    if ((m = url.pathname.match(/^\/cdn\/(.+)$/))) {
+      const d = rules.cdn(decodeURI(m[1]), req.headers) || { status: 404 };
+      const buf = Buffer.isBuffer(d.body) ? d.body : Buffer.from(d.body || '');
+      const range = req.headers.range && !d.noRange && d.status === 200 && Buffer.isBuffer(d.body) ? req.headers.range.match(/^bytes=(\d+)-(\d*)$/) : null;
+      if (range) {
+        const from = Number(range[1]); const to = Math.min(range[2] === '' ? buf.length - 1 : Number(range[2]), buf.length - 1);
+        res.writeHead(206, { 'content-type': 'application/octet-stream', ...(d.headers || {}), 'content-range': `bytes ${from}-${to}/${d.total || buf.length}`, 'content-length': String(to - from + 1) });
+        return res.end(buf.subarray(from, to + 1));
+      }
+      res.writeHead(d.status, { 'content-type': 'application/octet-stream', ...(d.headers || {}) });
+      return res.end(req.method === 'HEAD' ? '' : buf);
+    }
     if ((m = url.pathname.match(/^\/da\/[^/]+\/[^/]+(\/.+)\.html$/))) {
       const p = decodeURI(m[1]);
       if (req.method === 'PUT') {
@@ -74,6 +110,7 @@ export async function startMock() {
     base,
     requests,
     source,
+    media,
     rules,
     env: () => ({
       DEPLOY_BATCH_DA_SRC: `${base}/da`,
