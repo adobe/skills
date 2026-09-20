@@ -67,7 +67,7 @@ export function tokenExpiry(jwt) {
   } catch { return null; }
 }
 
-/** `SITE_TOKEN_<SLUG>`: uppercased, every non-alphanumeric → `_` (`rwe-demo` → SITE_TOKEN_RWE_DEMO). Exact-match only — never a prefix. */
+/** `SITE_TOKEN_<SLUG>`: uppercased, every non-alphanumeric → `_` (`ledgerline-demo` → SITE_TOKEN_LEDGERLINE_DEMO). Exact-match only — never a prefix. */
 export function siteTokenName(slug) {
   return `SITE_TOKEN_${String(slug).toUpperCase().replace(/[^A-Z0-9]/g, '_')}`;
 }

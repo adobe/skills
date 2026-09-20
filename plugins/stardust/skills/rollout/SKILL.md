@@ -154,18 +154,19 @@ lint blocked are not in `plan.json`. For each page:
 1. **Convert + push** the migrated HTML (`source.migratedHtml`) to AEM via the
    `deploy` methodology. **Pass the plan step into deploy's brief**: create only the
    blocks in `convert`; for each block in `reuse`, REUSE the existing block by its
-   `edsBlockName` (do not recreate). **The brief MUST carry the Experience Workspace
+   `edsBlockName`. **The brief MUST carry the Experience Workspace
    editability contract** (`skills/deploy/reference/block-js-scaffold.md` § Experience Workspace editability contract, EW1–EW10): every converted block
-   moves authored elements into wrappers (never rebuilds from text) and passes the
-   EW gate (`block-roundtrip --ew`) before it counts as delivered.
+   moves authored elements into wrappers and passes the
+   EW gate (`block-roundtrip --ew`) before it counts as delivered. Code-writing
+   waves commit only after `node skills/deploy/scripts/code-sync-verify.mjs --lint`
+   exits 0 (`../deploy/da-deploy-protocol.md` § Code push gates).
 
    **`content-pending` pages** (archetypes-only): no migrated HTML — skip the
    document push entirely (no shell/placeholder), record `content-pending`, surface
    as "awaiting content track" (block code is already deployed via the archetype).
 
 2. **Static contract lint (pre-PUT, deterministic).** Before the push, run the
-   delivery-contract linter — it catches the cheap, deterministic failures
-   offline so a broken page never reaches preview. Codes and mechanics in
+   delivery-contract linter. Codes and mechanics in
    `reference/delivery-lint.md`. **A P0/P1 blocks the PUT.**
    `node skills/deploy/scripts/block-lint.mjs blocks/ --styles styles/styles.css` exits 0 once per code-writing wave (EW-* static signatures; a 🔴 capped by a declared `@ew-exempt` item is `block-roundtrip --ew`'s call) — before any block's round-trip.
    Once per wave, the tree lint over the converted content — `node skills/deploy/scripts/davids-model-lint.mjs content/`: a 🟡 D-CONST (a row identical on ≥ 80 % of a block's instances) is decided ONCE per block (placeholder / block default / one `Source` row, `decisions.md`), never fixed page by page.
@@ -173,14 +174,14 @@ lint blocked are not in `plan.json`. For each page:
    node skills/rollout/scripts/delivery-lint.mjs --file <html> --path </da/path> --icons-dir icons [--allow-no-h1] [--chrome-docs content/nav.html,content/footer.html,…]
    node skills/rollout/scripts/media-reconcile.mjs --file <html> --deploy-host <branch>--<repo>--<owner>.aem.live [--apply]
    ```
-   `media-reconcile` resolves every image on the network and decides
-   optimize/keep/rewrite/omit (`skills/migrate/reference/media-reconciliation.md`)
-   — the authoritative form of the image-fidelity gate below.
+   `media-reconcile` decides optimize/keep/rewrite/omit per image
+   (`skills/migrate/reference/media-reconciliation.md`) — the image-fidelity
+   gate's authoritative form.
 
    **Chrome guard set.** Before chrome is signed off, every top-level trigger is
    opened on the preview page (`chrome-parity --open <sel>`) and the header, footer
    and open-state crops pass the crop gate against the cached live capture
-   (`--live-cache`; #115 unchanged); `aria-current="page"` is set by the header
+   (`--live-cache`); `aria-current="page"` is set by the header
    block; a multi-variant site's pages name their `nav:`/`footer:` rows (P1
    `chrome-variant`, P2 `chrome-variant-count`). Trigger: a push touching `styles/`,
    `blocks/header`, `blocks/footer` or a block with `usedByPages > 1` → re-run
@@ -188,15 +189,17 @@ lint blocked are not in `plan.json`. For each page:
    next wave; consume the record's `pass`, never the pixel percentage alone —
    `../deploy/reference/chrome.md` § Chrome states and variants.
 
-3. **Run the delivery gates** before flipping a page to `deployed`. Each is a
-   one-line rule here; mechanics + helpers in `reference/delivery-gates.md`:
+3. **Run the delivery gates** before flipping a page to `deployed` — a
+   published-origin re-gate captures only after `code-sync-verify.mjs --org
+   --repo --ref` exits 0 (served code == tree). Each is a one-line rule here;
+   mechanics + helpers in `reference/delivery-gates.md`:
    - **Source-fidelity** — don't add sections the source lacks; never fabricate
      facts. `node skills/rollout/scripts/section-fidelity.mjs --file <html> --source <url>`
    - **Image-fidelity** — every authored `<img>` src must return 200 or be omitted;
      never ship `<img src="about:error">`. Run `media-reconcile.mjs` (step 2).
    - **Path-safety** — normalize source paths to AEM-Edge-safe form (lowercase, no
      trailing `-`/`_`, no `--` segment); record original→normalized in
-     `stardust/redirects.tsv`. (delivery-lint flags violations.)
+     `stardust/redirects.tsv`.
    - **Source-content hygiene** — skip dead source URLs; author bodyless/PDF-only
      sources thin and faithful (tier `thin`,
      `skills/migrate/reference/fidelity-tiers.md`), don't pad with invented prose.
@@ -215,9 +218,9 @@ lint blocked are not in `plan.json`. For each page:
    `PUT → preview`; live publish is the separate `deploy-batch.mjs … --publish` run
    after the page gate passes (D1) or when `decisions.md` records publish-to-live
    (D16) — hands-off stops at preview (indexes: Phase D2). On failure: `--status
-   failed --error "<reason>"` and continue (one page's failure never aborts the rollout). A denied push or
+   failed --error "<reason>"` and continue. A denied push or
    publish under hands-off goes to `stardust/.work/ship.sh`
-   (`skills/deploy/reference/ship-script.md`), not a retry loop.
+   (`skills/deploy/reference/ship-script.md`).
 
 **Foundation-first gate (hard block, once per rollout).** When the FIRST
 archetype page flips to `deployed`, stop and prove the foundation before

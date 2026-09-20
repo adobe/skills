@@ -55,7 +55,7 @@
  *
  * Module: `pipelineMimic(html, { styleSplit, rules }) → { html, meta, counts }`,
  * `formatCounts(counts)`, `bodyClasses(meta)`, `metaTags(meta)`, `normaliseForCompare(html)`,
- * `probeVerdicts(fixtureHtml, plainHtml)`, `contractStyleSplit(contractPath)`.
+ * `probeVerdicts(fixtureHtml, plainHtml)`, `contractStyleSplit(contractPath)`, `resolveStyleSplit(flag, root)`.
  *
  * Probe (the D7 "fixture-verify"; re-measures the catalogue on THIS stack — reference/pipeline-facts.md § Probe):
  *   --probe --org <org> --repo <repo> --branch <ref>   PUT the probe fixture to a hidden DA path
@@ -66,10 +66,13 @@
  *   Verdict per rule (sectionMeta … whitespace): `match` — the fetched page carries the rule as catalogued;
  *   `differ` — disabling the rule (or, for sectionMeta, the other `--style-split`) brings the mimic closer
  *   to the fetched page; `unmeasured` — the fixture never exercised it. Plus `multiValueStyle`
- *   (comma | first-only), `spaceStyle` (hyphen-joined | split), `zwspSurvives`, `probedAt`, `ref`, `origin` —
- *   merged into `--contract stardust/runtime-contract.json` under `pipeline` (other keys kept; file created
- *   when absent). `--record` rewrites fixtures/pipeline-probe.plain.html from the fetched page (`--fixture-dir`
- *   for another copy). `contractStyleSplit(path)` is the helper the harness scripts read instead of a flag.
+ *   (comma | first-only), `spaceStyle` (hyphen-joined | split), `zwspSurvives`, `residual` (normalised lines
+ *   the full mimic still leaves different — 0 when the catalogue explains the whole page), `probedAt`, `ref`,
+ *   `origin` — merged into `--contract stardust/runtime-contract.json` under `pipeline` (other keys kept; file
+ *   created when absent). `--record` rewrites fixtures/pipeline-probe.plain.html from the fetched page
+ *   (`--fixture-dir` for another copy). `resolveStyleSplit(flag, root)` is what build-harness / render-harness /
+ *   block-roundtrip call: the `--style-split` flag wins, else `#pipeline.multiValueStyle`, else `comma` — and
+ *   they print `style-split <value> (<source>)` once per run.
  *
  * CLI:
  *   node skills/deploy/scripts/pipeline-mimic.mjs <in.html> [--out <file>] [--json]
@@ -84,7 +87,9 @@
  *   1 = usage / read error / self-test failed; 2 = probe NO VERDICT (token missing or 401/403, preview not
  *   2xx, .plain.html not 200 after retries — `pipeline` left untouched, one WARN, never reported as a FAIL);
  *   3 = probe/compare recorded WITH deviations (one line per differing rule; the contract carries the
- *   measured value — the harness then narrows its render, the rule text is never auto-edited).
+ *   measured value — the harness then narrows its render, the rule text is never auto-edited) OR with a
+ *   residual no rule explains (`residual > 0`, every rule `match`: the page deviates for a reason outside the
+ *   catalogue — inspect it, `--record` keeps it; a clean contract is never recorded over it silently).
  * Dependency-free; never writes to content/ (the harness presents the delivered
  * shape — delivery itself is unchanged: 0.19.3 "nothing changes what the pipeline emits").
  * Test hooks: DEPLOY_BATCH_DA_SRC / DEPLOY_BATCH_ADMIN / DEPLOY_BATCH_DELIVERY_BASE (the deploy-batch mock).
@@ -522,6 +527,15 @@ export function contractStyleSplit(contractPath = 'stardust/runtime-contract.jso
   } catch { return null; }
 }
 
+/** The harness scripts' styleSplit: the flag wins, else the measured `#pipeline.multiValueStyle` under <root>/stardust/, else comma. */
+export function resolveStyleSplit(flag, root = process.cwd()) {
+  if (flag) return { value: flag, source: '--style-split' };
+  const measured = contractStyleSplit(path.join(root, 'stardust', 'runtime-contract.json'));
+  if (measured) return { value: measured, source: 'runtime-contract.json#pipeline' };
+  return { value: 'comma', source: 'default — #pipeline unmeasured' };
+}
+export const styleSplitLine = (r) => `style-split ${r.value} (${r.source})`;
+
 function mergeContract(file, pipeline) {
   let contract = {};
   if (existsSync(file)) { try { contract = JSON.parse(readFileSync(file, 'utf8')); } catch (e) { throw new Error(`${file} is not valid JSON (${e.message}) — fix it; nothing written`); } }
@@ -532,15 +546,17 @@ function mergeContract(file, pipeline) {
 
 function recordVerdicts(opts, fixtureHtml, plainHtml, origin) {
   const v = probeVerdicts(fixtureHtml, plainHtml);
-  const pipeline = { ...v.rules, multiValueStyle: v.multiValueStyle, spaceStyle: v.spaceStyle, zwspSurvives: v.zwspSurvives, probedAt: new Date().toISOString(), ref: opts.branch || null, origin };
+  const pipeline = { ...v.rules, multiValueStyle: v.multiValueStyle, spaceStyle: v.spaceStyle, zwspSurvives: v.zwspSurvives, residual: v.distance, probedAt: new Date().toISOString(), ref: opts.branch || null, origin };
+  const unexplained = v.distance > 0 && !v.deviations.length;
   mergeContract(opts.contract, pipeline);
   if (opts.record) { writeFileSync(path.join(opts.fixtureDir, 'pipeline-probe.plain.html'), plainHtml); process.stderr.write(`pipeline probe: recorded ${path.join(opts.fixtureDir, 'pipeline-probe.plain.html')}\n`); }
   if (opts.json) process.stdout.write(`${JSON.stringify(pipeline, null, 2)}\n`);
   else {
-    process.stdout.write(`pipeline probe: ${RULES.map((r) => `${r} ${v.rules[r]}`).join(', ')} · multiValueStyle ${v.multiValueStyle} · spaceStyle ${v.spaceStyle} · zwspSurvives ${v.zwspSurvives} → ${opts.contract}#pipeline\n`);
+    process.stdout.write(`pipeline probe: ${RULES.map((r) => `${r} ${v.rules[r]}`).join(', ')} · multiValueStyle ${v.multiValueStyle} · spaceStyle ${v.spaceStyle} · zwspSurvives ${v.zwspSurvives} · residual ${v.distance} → ${opts.contract}#pipeline\n`);
     for (const r of v.deviations) process.stdout.write(`  differ: ${r} — the fetched page does not carry this rule as catalogued (reference/pipeline-facts.md); the measured value is in the contract, the rule text is unchanged\n`);
   }
-  return v.deviations.length ? 3 : 0;
+  if (unexplained) process.stderr.write(`WARN pipeline probe: residual ${v.distance} normalised line(s) differ that no catalogued rule explains — the page deviates for a reason outside reference/pipeline-facts.md; inspect the fetched .plain.html (--record keeps it under the fixture dir) before trusting the local render; recorded with residual (exit 3)\n`);
+  return v.deviations.length || unexplained ? 3 : 0;
 }
 
 async function probe(opts) {
@@ -576,7 +592,7 @@ const USAGE = 'usage: node skills/deploy/scripts/pipeline-mimic.mjs <in.html> [-
   + '       node skills/deploy/scripts/pipeline-mimic.mjs --probe --org <org> --repo <repo> --branch <ref> [--contract stardust/runtime-contract.json] [--record] [--fixture-dir <dir>] [--token-env DA_TOKEN] [--json]\n'
   + '       node skills/deploy/scripts/pipeline-mimic.mjs --compare <plain.html> [--contract <path>] [--record] [--fixture-dir <dir>] [--json]\n'
   + `       rules: ${RULES.join(', ')}\n`
-  + '       exit 0 ok · 1 usage / self-test failed · 2 probe no verdict · 3 recorded with deviations\n';
+  + '       exit 0 ok · 1 usage / self-test failed · 2 probe no verdict · 3 recorded with deviations or an unexplained residual\n';
 
 async function main(argv) {
   const opts = { out: null, json: false, styleSplit: 'comma', rules: {}, selfTest: false, files: [], probe: false, compare: null, contract: 'stardust/runtime-contract.json', record: false, fixtureDir: path.join(import.meta.dirname, 'fixtures'), tokenEnv: 'DA_TOKEN' };

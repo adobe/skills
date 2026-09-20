@@ -315,25 +315,26 @@ phase-close checkpoint block (master skill § Phase close) carries
   (same file, § Sibling variance probe). A new module kind on a sibling →
   the lift ledger rule (Phase 3). Content-fidelity
   is **measured per page at import time** (same file, § Content-count
-  acceptance) so importer bugs surface early.
+  acceptance).
 - **Delivery** via the stardust `deploy` skill per page: decode tier biased
   to **template-slotted** for fixed compositions (deploy #95), repeat groups
   reconstructive; blocks obey the Experience Workspace editability contract
   (`../deploy/reference/block-js-scaffold.md` § Experience Workspace
   editability contract, EW1–EW10) and pass `block-roundtrip --ew`.
-- **Site-wide rollout** via the stardust `rollout` skill — its block dedup
-  implements "same blocks across the whole site".
+- **Site-wide rollout** via the stardust `rollout` skill (block dedup
+  site-wide).
 - **The hand-off names the captured variant.** Every brief and report
   carries `captured variant: <observed variant markers, capture date,
   consent mode>` and the line "your browser may render a different variant —
-  compare against the capture, not a fresh live view" (A/B, geo and cookie
-  buckets: `reference/recreation-procedure.md` § Asset harvest and the
-  capture-state policy).
+  compare against the capture, not a fresh live view"
+  (`reference/recreation-procedure.md` § Asset harvest).
 - **The final gate runs against the PUBLISHED origin — not the harness**
-  (`reference/source-fidelity-gate.md` § The published-origin gate): the
-  delivery pipeline transforms markup, so harness numbers understate.
-  Re-run the full gate per delivered page against the preview/live origin
-  (published-origin regime); only the published number counts;
+  (`reference/source-fidelity-gate.md` § The published-origin gate).
+  Re-run the full gate per delivered page against the published origin
+  (published-origin regime) — only that number counts — after
+  `node skills/deploy/scripts/code-sync-verify.mjs --org <org> --repo <repo>
+  --ref <branch>` exits 0 (served code == tree; a stale-served round is
+  instrument-invalidated, not an iteration);
   at site scale the fix loop after that gate is
   `../rollout/reference/sweep-protocol.md` (sample, class rounds, tail,
   confirmation sweep).

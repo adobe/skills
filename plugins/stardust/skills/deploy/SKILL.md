@@ -60,7 +60,7 @@ The user has:
 2. An EDS project at the repo root — **vanilla `aem-boilerplate`** (`github.com/adobe/aem-boilerplate`): `scripts/aem.js` + `scripts/scripts.js`, `blocks/` with `header`/`footer`/`fragment`, `styles/styles.css` + `styles/fonts.css`, `head.html`. This is the ONLY runtime this skill targets — no runtime files are ever ported, vendored, or edited.
 3. A goal to convert: prototypes → authorable EDS blocks + EDS content pages under `content/**`.
 
-If the user has prototypes but no EDS scaffolding, stop and ask whether to scaffold from `adobe/aem-boilerplate` (template as-is). EDS but no prototypes: this skill doesn't apply.
+Prototypes but no EDS origin (repo, `fstab.yaml`, Code Sync): `reference/site-bootstrap.md` at Setup — one question with the `target` default; the clone of the new repo is the scaffold. EDS but no prototypes: this skill doesn't apply.
 
 **Flow guard (stardust projects).** When `stardust/state.json` exists but has no `flow` and the ask is a migration (a URL plus "migrate" / "to EDS" / "re-platform"), stop before Step 1: print the master skill's two-flow table (`skills/stardust/SKILL.md` § Two migration flows) and hand back to its routing, which stamps `flow` (`skills/stardust/reference/state-machine.md` § Flow keys). Hand-authored prototypes with no `state.json` are this skill's standalone use.
 
@@ -74,7 +74,7 @@ The stock boilerplate provides everything the conversion needs; the runtime is n
 
 ## Runtime-detection probe (run before Step 1 — write `stardust/runtime-contract.json`)
 
-Boilerplate clones drift (button classes, wrapper names, buttonization rules), and a wrong assumption here is **silent and sitewide**. Before converting anything, read the TARGET's own `scripts/scripts.js` + `scripts/aem.js` — what the button decorator emits and requires, how `decorateBlock` wraps blocks — and record the answers:
+Boilerplate clones drift, and a wrong assumption here is **silent and sitewide**. Before converting anything, read the TARGET's own `scripts/scripts.js` + `scripts/aem.js` and record the answers:
 
 ```json
 {
@@ -83,15 +83,16 @@ Boilerplate clones drift (button classes, wrapper names, buttonization rules), a
   "buttonClasses": ".button / .button.primary / .button.secondary / .button.accent, in p.button-wrapper",
   "buttonization": "formatted-only | bare-links-too",
   "fragmentScriptPolicy": "inert-innerHTML",
-  "emptySectionCollapse": true
+  "emptySectionCollapse": true,
+  "pipeline": { "multiValueStyle": "comma", "residual": 0, "probedAt": "<ISO>" }
 }
 ```
 
-Block CSS/JS generation and the Local-QA harness read this contract. Values above = current `adobe/aem-boilerplate` main; the two known drift axes:
+Block CSS/JS generation and the Local-QA harness read this contract; the harness `style-split` defaults to `pipeline.multiValueStyle` — a measured `first-only` narrows the local render, never the rule. Values above = current `adobe/aem-boilerplate` main; the two known drift axes:
 - **`buttonClasses`** — current main emits `a.button` (+ `.primary`/`.secondary`/`.accent`) inside `p.button-wrapper`; older clones emit `p.button-container`, and some buttonize a bare `<a>` alone in a paragraph (`bare-links-too`) where current main requires authored `<strong>`/`<em>`.
-- **`blockWrapperClass`** — `decorateBlock` adds `.block` + `data-block-name` and wraps the block in `div.<name>-wrapper` (section gains `.<name>-container`). Scope block CSS under `.<name>` (the class every vintage sets); confirm by asserting a grid container computes `display: grid` in a headless render (a wrong guess degrades every grid to `display: block` while typography still looks fine).
+- **`blockWrapperClass`** — `decorateBlock` adds `.block` + `data-block-name` and wraps the block in `div.<name>-wrapper` (section gains `.<name>-container`). Scope block CSS under `.<name>` (the class every vintage sets); confirm by asserting a grid container computes `display: grid` in a headless render.
 
-When `emptySectionCollapse` is true (a metadata-only section is consumed into `<head>` and leaves an empty padded band), add `main .section:empty { display: none }` to the foundation as the fallback — the rule is to never author the metadata block alone (Step 9).
+When `emptySectionCollapse` is true, add `main .section:empty { display: none }` to the foundation as the fallback — the rule is to never author the metadata block alone (Step 9).
 
 ## The one rule that drives everything else
 

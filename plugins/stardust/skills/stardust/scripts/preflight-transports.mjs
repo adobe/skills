@@ -18,7 +18,8 @@
  *   { ..., "transports": { "<probe>": "ok" | "denied" | "unreachable" }, "transportsAt": "<iso>" }
  * Prints one line per probe, then `Blocked on owner:` with the unblock per
  * denied probe. Tokens are read by env-var NAME only (`--token-env`, default
- * DA_TOKEN); the value is never printed or written.
+ * DA_TOKEN) through deploy's `resolveToken` (shell → ./.env → ~/.claude/.env →
+ * ~/.env — the same order da-token-check.mjs prints); the value is never printed or written.
  *
  * Usage:
  *   node skills/stardust/scripts/preflight-transports.mjs --org <org> --repo <repo>
@@ -31,6 +32,7 @@
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { resolveToken } from '../../deploy/scripts/lib.mjs';
 
 const DA_SRC = 'https://admin.da.live/source';
 const ADMIN = 'https://admin.hlx.page';
@@ -161,7 +163,7 @@ function unblock(name, o) {
 
 async function main() {
   const o = parseArgs(process.argv.slice(2));
-  const token = process.env[o.tokenEnv] || '';
+  const token = resolveToken(o.tokenEnv)?.value || ''; // shell → ./.env → ~/.claude/.env → ~/.env: a .env-only token is not a denial
   const ctx = { ...o, token };
   const transports = {};
   const notes = {};

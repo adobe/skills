@@ -14,7 +14,9 @@
  *   --root <dir>       repo root the harness is served from (favicon detection;
  *                      default: cwd)
  *   --no-pipeline      skip the pipeline emulation (pure A/B against the old harness)
- *   --style-split      section-metadata `style` split: comma (D7 default) | first-only
+ *   --style-split      section-metadata `style` split: comma | first-only. Absent → the measured
+ *                      `<root>/stardust/runtime-contract.json#pipeline.multiValueStyle` (pipeline-mimic
+ *                      --probe), else comma (D7 default); the source prints once per run
  *
  * Pipeline emulation (pipeline-mimic.mjs) runs FIRST on the extracted <main>:
  * section-metadata → classes/data-*, <img> → <p><picture>, sole-emphasis links
@@ -41,7 +43,7 @@
  */
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { join } from 'path';
-import { pipelineMimic, formatCounts, metaTags } from './pipeline-mimic.mjs';
+import { pipelineMimic, formatCounts, metaTags, resolveStyleSplit, styleSplitLine } from './pipeline-mimic.mjs';
 
 // Return the index just past the </div> that closes the <div> starting at `start`.
 function matchDivEnd(s, start) {
@@ -59,7 +61,7 @@ function matchDivEnd(s, start) {
 const argv = process.argv.slice(2);
 let root = process.cwd();
 let pipeline = true;
-let styleSplit = 'comma';
+let styleSplit = null;
 const pos = [];
 for (let i = 0; i < argv.length; i++) {
   if (argv[i] === '--root') root = argv[++i];
@@ -69,10 +71,11 @@ for (let i = 0; i < argv.length; i++) {
   else pos.push(argv[i]);
 }
 const [inFile, outFile] = pos;
-if (!inFile || !outFile || !['comma', 'first-only'].includes(styleSplit)) {
+if (!inFile || !outFile || (styleSplit && !['comma', 'first-only'].includes(styleSplit))) {
   process.stderr.write('usage: node skills/deploy/scripts/build-harness.mjs <contentFile> <outHarness> [--root <dir>] [--no-pipeline] [--style-split comma|first-only]\n');
   process.exit(1);
 }
+const split = resolveStyleSplit(styleSplit, root); // flag > runtime-contract.json#pipeline > comma
 let html = readFileSync(inFile, 'utf8');
 
 // 1. extract <main>…</main>
@@ -86,8 +89,8 @@ let main = mm ? mm[0] : html;
 let meta = {};
 let countsLine = 'pipeline emulation: off (--no-pipeline)';
 if (pipeline) {
-  const r = pipelineMimic(main, { styleSplit });
-  main = r.html; meta = r.meta; countsLine = formatCounts(r.counts);
+  const r = pipelineMimic(main, { styleSplit: split.value });
+  main = r.html; meta = r.meta; countsLine = `${formatCounts(r.counts)} — ${styleSplitLine(split)}`;
 }
 
 // 2. remove the metadata section: the wrapper <div> two levels above class="metadata"

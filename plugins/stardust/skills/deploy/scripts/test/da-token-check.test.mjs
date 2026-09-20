@@ -6,10 +6,11 @@
  *   - resolution order shell > ./.env > ~/.claude/.env > ~/.env, the CLASS printed, the value never;
  *   - IMS claims (created_at + expires_in, string ms) valid → 0 / expired → 2 with the refresh file named;
  *     plain `exp` seconds; three-segment garbage and two-segment strings → "expiry unknown", exit 0 offline;
- *   - smoke: list 200 → 0 with `list: 200`; 401 → 2 (rejected); 403 → 2; unreachable → 1 (no verdict);
- *     an expired decode makes ZERO requests;
+ *   - smoke: list 200 → 0 with `list: 200`; 401 → 2 (rejected); 403 → 2; 404 → 2 (org/repo not visible to this
+ *     identity — never `valid · list: 404`, the site-bootstrap pointer printed); unreachable / 5xx → 1 (no verdict,
+ *     `da: unreachable` in the block); an expired decode makes ZERO requests;
  *   - --need: remaining < need → 2;
- *   - --credentials: exact SITE_TOKEN slug match (RWE vs RWE_DEMO), schema keys, state.json merged
+ *   - --credentials: exact SITE_TOKEN slug match (LEDGERLINE vs LEDGERLINE_DEMO), schema keys, state.json merged
  *     (other keys kept, no token value inside), gh skipped / ok (mock GitHub) / expired;
  *   - usage: --help 0, unknown flag 1, --org without --repo 1.
  */
@@ -29,7 +30,7 @@ const ims = (hoursLeft) => `h.${b64u({ created_at: String(Date.now() - 3600_000)
 const jwtExp = (hoursLeft) => `h.${b64u({ exp: Math.round(Date.now() / 1000 + hoursLeft * 3600) })}.s`;
 
 // pure helpers
-assert.equal(siteTokenName('rwe-demo'), 'SITE_TOKEN_RWE_DEMO');
+assert.equal(siteTokenName('ledgerline-demo'), 'SITE_TOKEN_LEDGERLINE_DEMO');
 assert.equal(siteTokenName('Larkspur Mutual'), 'SITE_TOKEN_LARKSPUR_MUTUAL');
 
 const root = mkdtempSync(join(tmpdir(), 'da-token-check-'));
@@ -83,7 +84,10 @@ try {
   assert.equal(r.status, 0, r.all); assert.match(r.stdout, /valid ~4\.0h \(source: shell\) · list: 200/); assert.equal(hits, 1, 'exactly one list GET');
   listStatus = 401; r = await run(['--org', 'o', '--repo', 'r'], { DA_TOKEN: ims(4) }); assert.equal(r.status, 2); assert.match(r.stdout, /rejected \(list 401; source: shell\)/);
   listStatus = 403; r = await run(['--org', 'o', '--repo', 'r'], { DA_TOKEN: ims(4) }); assert.equal(r.status, 2); assert.match(r.stdout, /answers 403/);
+  listStatus = 404; r = await run(['--org', 'o', '--repo', 'r'], { DA_TOKEN: ims(4) }); assert.equal(r.status, 2, '404 = target not visible → exit 2, never usable'); assert.match(r.stdout, /valid ~4\.0h \(source: shell\) but o\/r answers 404 — the DA org\/repo is not visible to this identity/); assert.match(r.stdout, /site-bootstrap\.md/); assert.doesNotMatch(r.stdout, /list: 404/);
+  r = await run(['--org', 'o', '--repo', 'r', '--json'], { DA_TOKEN: ims(4) }); assert.equal(r.status, 2); assert.equal(JSON.parse(r.stdout).smoke, 404); assert.equal(JSON.parse(r.stdout).da, 'ok', 'the token itself is fine');
   listStatus = 503; r = await run(['--org', 'o', '--repo', 'r'], { DA_TOKEN: ims(4) }); assert.equal(r.status, 1, '5xx = no verdict, exit 1 not 2'); assert.match(r.stdout, /list: 503 — no verdict/);
+  r = await run(['--org', 'o', '--repo', 'r', '--json'], { DA_TOKEN: ims(4) }); assert.equal(JSON.parse(r.stdout).da, 'unreachable', 'no verdict is not `ok`');
   listStatus = 200;
   r = await run(['--org', 'o', '--repo', 'r'], { DA_TOKEN: ims(4), DEPLOY_BATCH_DA_LIST: 'http://127.0.0.1:9/list' }); assert.equal(r.status, 1); assert.match(r.stdout, /list: 000 — no verdict/);
   hits = 0; r = await run(['--org', 'o', '--repo', 'r'], { DA_TOKEN: ims(-1) }); assert.equal(r.status, 2); assert.equal(hits, 0, 'decode proves expiry → no request');
@@ -96,28 +100,28 @@ try {
   // --credentials: exact slug match, schema, state merge, gh
   const state = join(cwd, 'stardust', 'state.json');
   writeFileSync(state, JSON.stringify({ flow: 'replica', site: { originUrl: 'https://x.example' } }, null, 2));
-  envFile(join(cwd, '.env'), [`DA_TOKEN=${ims(6)}`, 'SITE_TOKEN_RWE=aaa', 'SITE_TOKEN_RWE_DEMO=bbb', 'SITE_TOKEN_JET2=ccc']);
-  assert.deepEqual(siteTokenNamesIn({ cwd, home, env: {} }), ['SITE_TOKEN_JET2', 'SITE_TOKEN_RWE', 'SITE_TOKEN_RWE_DEMO']);
-  r = await run(['--credentials', '--site', 'rwe', '--no-smoke', '--state', state]);
+  envFile(join(cwd, '.env'), [`DA_TOKEN=${ims(6)}`, 'SITE_TOKEN_LEDGERLINE=aaa', 'SITE_TOKEN_LEDGERLINE_DEMO=bbb', 'SITE_TOKEN_MERIDIAN_AIRWAYS=ccc']);
+  assert.deepEqual(siteTokenNamesIn({ cwd, home, env: {} }), ['SITE_TOKEN_LEDGERLINE', 'SITE_TOKEN_LEDGERLINE_DEMO', 'SITE_TOKEN_MERIDIAN_AIRWAYS']);
+  r = await run(['--credentials', '--site', 'ledgerline', '--no-smoke', '--state', state]);
   assert.equal(r.status, 0, r.all);
-  assert.match(r.stdout, /credentials: da=ok daSource=repo-env daExpiresAt=\S+ siteTokenEnv=SITE_TOKEN_RWE gh=skipped/);
+  assert.match(r.stdout, /credentials: da=ok daSource=repo-env daExpiresAt=\S+ siteTokenEnv=SITE_TOKEN_LEDGERLINE gh=skipped/);
   let st = JSON.parse(readFileSync(state, 'utf8'));
   assert.equal(st.flow, 'replica', 'other keys kept');
   assert.deepEqual(Object.keys(st.credentials).sort(), ['at', 'da', 'daExpiresAt', 'daSource', 'gh', 'siteTokenEnv']);
-  assert.equal(st.credentials.siteTokenEnv, 'SITE_TOKEN_RWE'); assert.doesNotMatch(readFileSync(state, 'utf8'), /aaa|bbb|ccc/);
-  r = await run(['--credentials', '--site', 'rwe-demo', '--no-smoke', '--state', state]); assert.match(r.stdout, /siteTokenEnv=SITE_TOKEN_RWE_DEMO/);
-  r = await run(['--credentials', '--repo', 'rw', '--org', 'o', '--no-smoke', '--state', state]);
-  assert.match(r.stdout, /siteTokenEnv=none \(looked for SITE_TOKEN_RW\)/, 'prefix never matches');
+  assert.equal(st.credentials.siteTokenEnv, 'SITE_TOKEN_LEDGERLINE'); assert.doesNotMatch(readFileSync(state, 'utf8'), /aaa|bbb|ccc/);
+  r = await run(['--credentials', '--site', 'ledgerline-demo', '--no-smoke', '--state', state]); assert.match(r.stdout, /siteTokenEnv=SITE_TOKEN_LEDGERLINE_DEMO/);
+  r = await run(['--credentials', '--repo', 'ledger', '--org', 'o', '--no-smoke', '--state', state]);
+  assert.match(r.stdout, /siteTokenEnv=none \(looked for SITE_TOKEN_LEDGER\)/, 'prefix never matches');
   st = JSON.parse(readFileSync(state, 'utf8')); assert.equal(st.credentials.siteTokenEnv, null); assert.equal('siteTokenWanted' in st.credentials, false);
-  r = await run(['--credentials', '--site', 'rwe', '--no-smoke', '--state', join(cwd, 'nope.json')]); assert.equal(r.status, 0); assert.match(r.stdout, /absent — not created/);
-  r = await run(['--credentials', '--site', 'rwe', '--no-smoke', '--state', state, '--gh']); assert.match(r.stdout, /gh=missing/);
-  r = await run(['--credentials', '--site', 'rwe', '--no-smoke', '--state', state], { GH_PAT: 'ghp_SECRETPAT' }); assert.match(r.stdout, /gh=ok/); assert.doesNotMatch(r.all, /SECRETPAT/);
-  ghStatus = 401; r = await run(['--credentials', '--site', 'rwe', '--no-smoke', '--state', state], { GH_PAT: 'ghp_x' }); assert.match(r.stdout, /gh=expired/); ghStatus = 200;
+  r = await run(['--credentials', '--site', 'ledgerline', '--no-smoke', '--state', join(cwd, 'nope.json')]); assert.equal(r.status, 0); assert.match(r.stdout, /absent — not created/);
+  r = await run(['--credentials', '--site', 'ledgerline', '--no-smoke', '--state', state, '--gh']); assert.match(r.stdout, /gh=missing/);
+  r = await run(['--credentials', '--site', 'ledgerline', '--no-smoke', '--state', state], { GH_PAT: 'ghp_SECRETPAT' }); assert.match(r.stdout, /gh=ok/); assert.doesNotMatch(r.all, /SECRETPAT/);
+  ghStatus = 401; r = await run(['--credentials', '--site', 'ledgerline', '--no-smoke', '--state', state], { GH_PAT: 'ghp_x' }); assert.match(r.stdout, /gh=expired/); ghStatus = 200;
   // an expired token still writes the block (da=expired) — the master reads it into the blocked line
-  r = await run(['--credentials', '--site', 'rwe', '--no-smoke', '--state', state], { DA_TOKEN: ims(-3) });
+  r = await run(['--credentials', '--site', 'ledgerline', '--no-smoke', '--state', state], { DA_TOKEN: ims(-3) });
   assert.equal(r.status, 2); st = JSON.parse(readFileSync(state, 'utf8')); assert.equal(st.credentials.da, 'expired'); assert.equal(st.credentials.daSource, 'shell');
-  r = await run(['--credentials', '--site', 'rwe', '--no-smoke', '--json', '--state', state]);
-  const j = JSON.parse(r.stdout); assert.equal(j.credentials.siteTokenEnv, 'SITE_TOKEN_RWE'); assert.equal(j.exit, 0);
+  r = await run(['--credentials', '--site', 'ledgerline', '--no-smoke', '--json', '--state', state]);
+  const j = JSON.parse(r.stdout); assert.equal(j.credentials.siteTokenEnv, 'SITE_TOKEN_LEDGERLINE'); assert.equal(j.exit, 0);
 
   // usage
   assert.equal((await run(['--help'])).status, 0);

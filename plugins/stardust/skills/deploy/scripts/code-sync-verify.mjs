@@ -36,15 +36,19 @@
  *   <file>.js` passed a duplicate `const` on a boilerplate repo (no "type":"module") and shipped a
  *   22-minute site-wide chrome outage; (2) `<root>/node_modules/.bin/eslint` when it and its parser
  *   resolve; (3) `<root>/node_modules/.bin/stylelint` when it resolves. Local `.bin` only — never
- *   `npx` (it may fetch). Errors block, warnings pass. A missing toolchain is exit 2 "lint
- *   unavailable — npm ci --legacy-peer-deps in <root>", never a pass; `--syntax-only` is allowed
+ *   `npx` (it may fetch). Errors block, warnings pass. A missing tool for a file class present in the
+ *   list (eslint with .js, stylelint with .css) is exit 2 "lint unavailable — npm ci --legacy-peer-deps
+ *   in <root>", never a pass; a tool no listed file needs is not required. `--syntax-only` is allowed
  *   only when installing it was denied or impossible (the line `lint: unavailable (<reason>)` goes
  *   to the journal and the finish report). Files the run touched are the run's — "pre-existing"
  *   never applies to them; the boilerplate's `npm run lint` over `.` is the site's CI, not this gate.
+ *   Without --files the list comes from git: a root that is not a work tree, has no commit yet, or
+ *   whose listing fails is exit 1 "cannot list changed files — pass --files" — never "nothing to lint".
  *
  * Exit codes (both modes; 124 = no verdict, never a FAIL — the run-capped convention):
  *   0    verify: every changed path served == tree (record status `ok`) · lint: clean / nothing to lint
- *   1    usage (unknown flag, missing --org/--repo/--ref, unreadable root)
+ *   1    usage (unknown flag, missing --org/--repo/--ref, unreadable root) · lint: the changed-file listing
+ *        failed (not a git work tree / no HEAD) and no --files was given — no verdict, never a pass
  *   2    verify: admin POST 401/403/404 (token or Code Sync installation — definitive) · lint: findings
  *        in touched files, or toolchain unavailable
  *   3    verify: local precondition — uncommitted or unpushed changes under the code paths ("push first")
@@ -233,10 +237,16 @@ async function verify(a) {
 
 /** The files the run touched: changed vs HEAD (ACMR) + untracked, under the lint paths; or --files. */
 export function lintFiles(root, files) {
-  const list = files || [
-    ...lines(git(root, ['diff', '--name-only', '--diff-filter=ACMR', 'HEAD', '--', ...LINT_PATHS]).out),
-    ...lines(git(root, ['ls-files', '--others', '--exclude-standard', '--', ...LINT_PATHS]).out),
-  ];
+  let list = files;
+  if (!list) {
+    // a failed listing is NO verdict: an empty list from a non-repo or a HEAD-less root must never read as "nothing to lint"
+    if (!git(root, ['rev-parse', '--is-inside-work-tree']).ok) return { error: `${root} is not a git work tree` };
+    const diff = git(root, ['diff', '--name-only', '--diff-filter=ACMR', 'HEAD', '--', ...LINT_PATHS]);
+    if (!diff.ok) return { error: `git diff HEAD failed (${diff.err.split('\n')[0] || 'no HEAD?'})` };
+    const others = git(root, ['ls-files', '--others', '--exclude-standard', '--', ...LINT_PATHS]);
+    if (!others.ok) return { error: `git ls-files failed (${others.err.split('\n')[0]})` };
+    list = [...lines(diff.out), ...lines(others.out)];
+  }
   const uniq = [...new Set(list)].filter((f) => /\.(js|css)$/.test(f));
   return { js: uniq.filter((f) => f.endsWith('.js')), css: uniq.filter((f) => f.endsWith('.css')) };
 }
@@ -251,14 +261,14 @@ export function syntaxCheck(root, file) {
   return `${line ? `line ${line}: ` : ''}${msg}`;
 }
 
-/** eslint / stylelint from <root>/node_modules/.bin only; the parser probe runs eslint once on one file. */
-export function resolveToolchain(root, sampleJs) {
+/** eslint / stylelint from <root>/node_modules/.bin only; a tool is required only for a file class in the list; the parser probe runs eslint once on one file. */
+export function resolveToolchain(root, sampleJs, { needJs = true, needCss = true } = {}) {
   const bin = (n) => { const p = path.join(root, 'node_modules', '.bin', n); return existsSync(p) ? p : null; };
   const eslint = bin('eslint');
   const stylelint = bin('stylelint');
   const missing = [];
-  if (!eslint) missing.push('eslint');
-  if (!stylelint) missing.push('stylelint');
+  if (needJs && !eslint) missing.push('eslint');
+  if (needCss && !stylelint) missing.push('stylelint');
   let parserNote = null;
   if (eslint && sampleJs) {
     const probe = spawnSync(eslint, [sampleJs], { cwd: root, encoding: 'utf8' });
@@ -268,7 +278,9 @@ export function resolveToolchain(root, sampleJs) {
 }
 
 function lint(a) {
-  const { js, css } = lintFiles(a.root, a.files);
+  const listed = lintFiles(a.root, a.files);
+  if (listed.error) { console.error(`lint-changed: cannot list changed files — ${listed.error}; pass --files <a,b,…> (no verdict, exit 1)`); return 1; }
+  const { js, css } = listed;
   const all = [...js, ...css];
   if (!all.length) { console.log('lint-changed: nothing to lint (no changed or untracked files under blocks/ scripts/ styles/)'); return 0; }
   const findings = [];
@@ -280,7 +292,7 @@ function lint(a) {
     if (err) findings.push(`${f}: ${err}`);
   }
   for (const f of css) perFile[f] = { syntax: '-' };
-  const tc = resolveToolchain(a.root, js.find((f) => existsSync(path.join(a.root, f))));
+  const tc = resolveToolchain(a.root, js.find((f) => existsSync(path.join(a.root, f))), { needJs: js.length > 0, needCss: css.length > 0 });
   let unavailable = null;
   if (tc.missing.length) {
     unavailable = `lint: unavailable (${tc.missing.join(', ')} do not resolve from ${a.root}/node_modules/.bin${tc.parserNote ? ` — ${tc.parserNote}` : ''})`;

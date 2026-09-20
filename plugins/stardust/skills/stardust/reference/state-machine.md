@@ -141,9 +141,9 @@ never a home path:
 ```json
 "credentials": {
   "at": "2026-09-18T08:40:00Z",
-  "da": "ok | expired | missing",
+  "da": "ok | expired | missing | unreachable",
   "daExpiresAt": "2026-09-19T07:12:00Z",
-  "daSource": "shell | repo-env | global-env",
+  "daSource": "shell | repo-env | global-env | home-env",
   "siteTokenEnv": "SITE_TOKEN_<SITE>",
   "gh": "ok | expired | missing | skipped"
 }
@@ -153,16 +153,20 @@ never a home path:
 `--token-env` consumer defaults to it. `gh` is `skipped` when neither the
 ask nor the environment involves repo creation or Code Sync.
 
-**Lookup.** Resolve `DA_TOKEN` in order — shell env, repo `.env`, the
-harness's user-level env file (Claude Code: `~/.claude/.env`) — and read
-its remaining hours from the JWT `exp` claim (lifecycle rule:
-`skills/deploy/da-deploy-protocol.md` § DA_TOKEN lifecycle). Enumerate
-`SITE_TOKEN_*` **names** in the same files by pattern match — never `cat`
-an env file — and match `<SITE>` to the repo slug case-insensitively.
-Probe `GH_PAT` with `GET api.github.com/user` (200/401 only) when repo
-creation or Code Sync is in the ask or the variable exists. The
-`--credentials` mode of deploy's token-check script emits this block once
-it ships; until then the steps above are the procedure.
+**Lookup.** `node skills/deploy/scripts/da-token-check.mjs --credentials
+--site <slug> --state stardust/state.json [--org <org> --repo <repo>]`
+writes the block. It resolves `DA_TOKEN` in order — shell env, repo `.env`,
+the harness's user-level env file (Claude Code: `~/.claude/.env`), `~/.env` —
+reads the remaining hours from the IMS claims (`created_at` + `expires_in`;
+a plain JWT `exp` is the fallback; lifecycle rule:
+`skills/deploy/da-deploy-protocol.md` § DA_TOKEN lifecycle), enumerates
+`SITE_TOKEN_*` **names** by pattern — never `cat` an env file — matching
+`<SITE>` to the slug exactly after normalisation, and probes `GH_PAT`
+(`GET api.github.com/user`, 200/401) when the variable exists or `--gh` is
+given. Exit 2 = `da: expired | missing`, or the target answers 401/403/404
+(`blocked` line, remedy named by env-file class); exit 1 = `unreachable`
+(no verdict — re-run). Never hand-decode a token or declare a 401 blocker
+before it ran.
 
 ---
 

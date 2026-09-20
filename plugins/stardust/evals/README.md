@@ -192,16 +192,22 @@ whose harness cases skip when Playwright is unresolvable:
   hyphen-joined`, `zwspSurvives true` merged into a contract whose other keys survive; a
   first-token-only plain → exit 3 with `sectionMeta differ` / `first-only` (D7's
   fixture-verify), split tokens → `spaceStyle split`, a dropped ZWSP paragraph → `false`;
-  `--probe` without a token → exit 2 and the contract byte-identical; against the deploy-batch
-  mock the request order is PUT → preview → GET → DELETE ×2 (never `/live/`), `--record`
-  rewrites the fixture copy, preview 500 / plain 404 → exit 2; `contractStyleSplit()`.
+  an unexplained deviation (h1 text changed + an extra `<p>`, every rule `match`) → exit 3 with
+  `residual > 0` stored and one WARN — never a clean contract; `--probe` without a token → exit 2
+  and the contract byte-identical; against the deploy-batch mock the request order is PUT →
+  preview → GET → DELETE ×2 (never `/live/`), `--record` rewrites the fixture copy, preview 500 /
+  plain 404 → exit 2; `contractStyleSplit()` / `resolveStyleSplit()` (flag > `#pipeline` > comma)
+  and `build-harness.mjs` printing `style-split first-only (runtime-contract.json#pipeline)`.
 - `deploy/scripts/test/lint-changed.test.mjs` — `code-sync-verify.mjs --lint` on a
   boilerplate-shaped temp project (no `"type":"module"`) with shim eslint/stylelint in
   `node_modules/.bin`: the ESM-safe syntax stage catches a duplicate `const` that plain
   `node --check` passes (pinned), a missing toolchain or a `Failed to load parser` is exit 2
-  "unavailable" never clean, `--syntax-only` prints the journal line and still runs syntax,
-  only the files the run touched (changed + untracked) reach the tools, findings in them
-  block (exit 2) while warnings pass, `--fix` is forwarded.
+  "unavailable" never clean (a tool is required only for a file class in the list — stylelint
+  alone passes a CSS-only change), a root that is not a git work tree or has no commit yet
+  without `--files` is exit 1 "cannot list changed files" (never "nothing to lint"),
+  `--syntax-only` prints the journal line and still runs syntax, only the files the run touched
+  (changed + untracked) reach the tools, findings in them block (exit 2) while warnings pass,
+  `--fix` is forwarded.
 - `deploy/scripts/test/code-sync-verify.test.mjs` — `code-sync-verify.mjs` against a temp
   git repo with a bare origin, a gzip origin and a fake admin: served == tree → 0 with one
   row per path and the `ok` record; a pushed change the origin serves stale → 124 (never 2)
@@ -212,8 +218,10 @@ whose harness cases skip when Playwright is unresolvable:
 - `deploy/scripts/test/da-token-check.test.mjs` — `da-token-check.mjs` against a temp
   HOME and a mock DA list: resolution order (shell > `./.env` > `~/.claude/.env` >
   `~/.env`, class printed, value never), IMS `created_at`+`expires_in` vs plain `exp`
-  vs undecodable (unknown → advisory), smoke 200 / 401 / 403 / 5xx / network (exit
-  0 / 2 / 2 / 1 / 1), zero requests on a proven-expired token, `--need`, and the
+  vs undecodable (unknown → advisory), smoke 200 / 401 / 403 / 404 / 5xx / network (exit
+  0 / 2 / 2 / 2 / 1 / 1 — a 404 names the org/repo as not visible and points at
+  `site-bootstrap.md`, never `valid · list: 404`; 5xx/network write `da: unreachable`),
+  zero requests on a proven-expired token, `--need`, and the
   `--credentials` block (exact `SITE_TOKEN_<SLUG>` match — never a prefix — state
   merge keeping other keys, GH_PAT probe ok / expired / skipped).
 - `doc-size.mjs` — byte caps on `SKILL.md` and `reference/*.md`, an

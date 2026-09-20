@@ -61,7 +61,12 @@ then `DELETE` · admin `GET /status/<org>/<repo>/main/`. Results go to
 `stardust/.work/env.json` under `transports` (`ok` | `denied` | `unreachable`).
 `node skills/stardust/scripts/preflight-transports.mjs --org <org> --repo <repo>
 [--branch main] [--token-env DA_TOKEN]` runs the five and writes that block
-(exit 2 on any denial; `--help` lists the flags).
+(exit 2 on any denial; `--help` lists the flags). It pairs at Setup with
+`node skills/deploy/scripts/da-token-check.mjs --credentials --site <slug>
+--state stardust/state.json` (`state-machine.md` § Credentials key): the token
+check decides whether `DA_TOKEN` is usable, the transport probe whether the
+write lands — both resolve the token by NAME (shell → `.env` files), so a
+`.env`-only token is never reported as `denied`.
 A probe proves capability — token, reachability, org access — not permission:
 a read that passes says nothing about the write that follows.
 

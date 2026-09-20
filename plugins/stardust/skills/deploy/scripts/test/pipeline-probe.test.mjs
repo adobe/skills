@@ -12,7 +12,11 @@
  *   - --probe against the deploy-batch mock: PUT /.stardust-probe/… → POST /preview/ → GET .plain.html → DELETE ×2,
  *     never POST /live/; exit 0 and the contract's origin/ref; --record rewrites the fixture copy under --fixture-dir;
  *     preview 500 → exit 2 with the source deleted; plain 404 after the retries → exit 2;
- *   - contractStyleSplit() reads the measured value (null when absent / unmeasured); usage: --help 0, --probe without --org 1.
+ *   - an unexplained residual (h1 text changed + an extra <p>: every rule `match`) → exit 3, `residual > 0` stored,
+ *     one WARN naming it — never a clean contract; the fixture pair records `residual 0`;
+ *   - contractStyleSplit() reads the measured value (null when absent / unmeasured); resolveStyleSplit(): flag >
+ *     `<root>/stardust/runtime-contract.json#pipeline` > comma, and build-harness prints
+ *     `style-split first-only (runtime-contract.json#pipeline)` from such a contract; usage: --help 0, --probe without --org 1.
  */
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
@@ -21,7 +25,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { startMock } from './mock-da.mjs';
-import { contractStyleSplit, probeVerdicts } from '../pipeline-mimic.mjs';
+import { contractStyleSplit, probeVerdicts, resolveStyleSplit, styleSplitLine } from '../pipeline-mimic.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const CLI = join(here, '..', 'pipeline-mimic.mjs');
@@ -56,17 +60,42 @@ try {
   v = probeVerdicts(fixture, plain.replace('<p><strong><a href="/start">Start now</a></strong></p>', '<p><a href="/start"><strong>Start now</strong></a></p>').replace('<div><em><a href="/b">Go</a></em></div>', '<div><a href="/b"><em>Go</em></a></div>'));
   assert.equal(v.rules.hoist, 'differ', 'un-hoisted links: disabling the hoist rule sits closer'); assert.equal(v.rules.picture, 'match');
 
+  // an unexplained deviation: no rule accounts for it — the residual must surface, never a clean contract
+  const unexplainedHtml = plain.replace(/<h1([^>]*)>([^<]*)<\/h1>/, '<h1$1>Another headline<\/h1>').replace('</main>', '<div><p>An extra paragraph the pipeline never produced.</p></div></main>');
+  assert.notEqual(unexplainedHtml, plain);
+  v = probeVerdicts(fixture, unexplainedHtml);
+  assert.deepEqual(v.deviations, [], 'no catalogued rule explains it'); assert.ok(v.distance > 0, `residual distance ${v.distance}`);
+  assert.equal(probeVerdicts(fixture, plain).distance, 0);
+
   // --compare, contract merge
   let r = await run(['--compare', join(FIX, 'pipeline-probe.plain.html'), '--contract', contract]);
   assert.equal(r.status, 0, r.all);
-  assert.match(r.stdout, /pipeline probe: sectionMeta match, .* whitespace match · multiValueStyle comma · spaceStyle hyphen-joined · zwspSurvives true → /);
-  let c = rc(); assert.equal(c.runtime, 'vanilla-eds', 'other keys kept'); assert.equal(c.pipeline.multiValueStyle, 'comma'); assert.match(c.pipeline.probedAt, /^\d{4}-\d{2}-\d{2}T/); assert.match(c.pipeline.origin, /^offline:/); assert.equal(c.pipeline.ref, null);
+  assert.match(r.stdout, /pipeline probe: sectionMeta match, .* whitespace match · multiValueStyle comma · spaceStyle hyphen-joined · zwspSurvives true · residual 0 → /);
+  let c = rc(); assert.equal(c.runtime, 'vanilla-eds', 'other keys kept'); assert.equal(c.pipeline.multiValueStyle, 'comma'); assert.equal(c.pipeline.residual, 0); assert.match(c.pipeline.probedAt, /^\d{4}-\d{2}-\d{2}T/); assert.match(c.pipeline.origin, /^offline:/); assert.equal(c.pipeline.ref, null);
+  const unexplained = join(dir, 'unexplained.plain.html'); writeFileSync(unexplained, unexplainedHtml);
+  r = await run(['--compare', unexplained, '--contract', contract]);
+  assert.equal(r.status, 3, `unexplained residual is exit 3, never 0: ${r.all}`);
+  assert.match(r.stderr, /WARN pipeline probe: residual \d+ normalised line\(s\) differ that no catalogued rule explains/);
+  assert.match(r.stdout, /residual [1-9]\d* → /); assert.doesNotMatch(r.stdout, /differ:/);
+  c = rc(); assert.ok(c.pipeline.residual > 0, 'residual stored'); for (const k of RULES) assert.equal(c.pipeline[k], 'match');
+  r = await run(['--compare', unexplained, '--contract', contract, '--json']); assert.equal(r.status, 3); assert.ok(JSON.parse(r.stdout).residual > 0);
   assert.equal(contractStyleSplit(contract), 'comma');
   const mutated = join(dir, 'first-only.plain.html'); writeFileSync(mutated, plain.replace('class="dark narrow"', 'class="dark"'));
   r = await run(['--compare', mutated, '--contract', contract, '--json']);
   assert.equal(r.status, 3, 'recorded with deviations'); const j = JSON.parse(r.stdout); assert.equal(j.sectionMeta, 'differ'); assert.equal(j.multiValueStyle, 'first-only'); assert.equal(rc().pipeline.multiValueStyle, 'first-only');
   assert.equal(contractStyleSplit(contract), 'first-only');
   assert.equal(contractStyleSplit(join(dir, 'nope.json')), null);
+  // the harness default chain: flag > contract > comma — and build-harness prints the source
+  assert.deepEqual(resolveStyleSplit('comma', dir), { value: 'comma', source: '--style-split' });
+  assert.deepEqual(resolveStyleSplit(null, dir), { value: 'first-only', source: 'runtime-contract.json#pipeline' });
+  assert.deepEqual(resolveStyleSplit(undefined, join(dir, 'nowhere')), { value: 'comma', source: 'default — #pipeline unmeasured' });
+  assert.equal(styleSplitLine(resolveStyleSplit(null, dir)), 'style-split first-only (runtime-contract.json#pipeline)');
+  const BUILD = join(here, '..', 'build-harness.mjs');
+  const runBuild = (args) => new Promise((resolve) => { const c = spawn(process.execPath, [BUILD, join(FIX, 'pipeline-probe.html'), join(dir, 'harness.html'), ...args], { cwd: dir }); let out = ''; c.stdout.on('data', (d) => { out += d; }); c.stderr.on('data', (d) => { out += d; }); c.on('close', (status) => resolve({ status, out })); });
+  let b = await runBuild(['--root', dir]); assert.equal(b.status, 0, b.out); assert.match(b.out, /style-split first-only \(runtime-contract\.json#pipeline\)/, 'the measured value is the default');
+  b = await runBuild(['--root', dir, '--style-split', 'comma']); assert.equal(b.status, 0); assert.match(b.out, /style-split comma \(--style-split\)/, 'the flag wins');
+  b = await runBuild(['--root', join(dir, 'nowhere-root')]); assert.equal(b.status, 0); assert.match(b.out, /style-split comma \(default — #pipeline unmeasured\)/);
+  b = await runBuild(['--root', dir, '--style-split', 'bogus']); assert.equal(b.status, 1, 'an invalid flag value is still usage');
   r = await run(['--compare', mutated, '--contract', join(dir, 'fresh', 'rc.json')]); assert.equal(r.status, 3); assert.equal(JSON.parse(readFileSync(join(dir, 'fresh', 'rc.json'), 'utf8')).pipeline.multiValueStyle, 'first-only', 'contract created when absent');
 
   // --probe: no token → no verdict, contract untouched

@@ -16,10 +16,13 @@
  *                     ./.env → ~/.claude/.env → ~/.env (lib.mjs resolveToken); the CLASS is
  *                     printed (shell | repo-env | global-env | home-env), never the value.
  *   --org/--repo      enable the smoke: ONE `GET admin.da.live/list/<org>/<repo>/` (skipped
- *                     when the decode already proves expiry, or without both flags).
+ *                     when the decode already proves expiry, or without both flags). 200 usable;
+ *                     401 rejected; 403 no access; 404 the org/repo is not visible to this identity
+ *                     (wrong coordinates or no site yet — reference/site-bootstrap.md) — exit 2 each.
  *   --need <h>        the batch ahead needs this many hours — fewer remaining is exit 2.
  *   --no-smoke        decode only (offline switch — not an override; expiry still exits 2).
- *   --credentials     emit the Credentials block {at, da, daExpiresAt, daSource, siteTokenEnv, gh}
+ *   --credentials     emit the Credentials block {at, da, daExpiresAt, daSource, siteTokenEnv, gh};
+ *                     `da` is ok | expired | missing | unreachable (the smoke gave no verdict)
  *                     and merge it into --state's `credentials` key (state.json is tracked:
  *                     names, statuses and source classes only).
  *   --site <slug>     slug for the SITE_TOKEN_<SLUG> match — exact after normalisation
@@ -33,8 +36,8 @@
  * Exit codes (never conflated — the exit-124 "no verdict" convention has an exit-1 sibling here):
  *   0  token usable (and remaining ≥ --need when given); unknown expiry with no smoke possible
  *      is 0 with a WARN — advisory fails to unknown, blocking only when it PROVES expiry
- *   2  DA token missing, expired by decode, smoke 401/403, or remaining < --need
- *   1  smoke unreachable (network / 5xx — no verdict) or usage error
+ *   2  DA token missing, expired by decode, smoke 401/403/404 (target not usable), or remaining < --need
+ *   1  smoke unreachable (network / 5xx — no verdict, `da: unreachable`) or usage error
  * No dependencies (Node 18+). Test hooks: DEPLOY_BATCH_DA_LIST (list host), DA_TOKEN_CHECK_GH_API
  * (GitHub API base). Talks to admin.da.live and api.github.com only — never the source site.
  */
@@ -49,7 +52,7 @@ const FILE_BY_CLASS = { shell: 'the shell environment', 'repo-env': './.env', 'g
 function usage() {
   console.log('usage: node skills/deploy/scripts/da-token-check.mjs [--token-env DA_TOKEN] [--org <org> --repo <repo>] [--need <hours>] [--no-smoke] [--json]\n'
     + '       node skills/deploy/scripts/da-token-check.mjs --credentials --site <slug> [--state stardust/state.json] [--gh] [--org <org> --repo <repo>] [--json]\n'
-    + '  exit 0 usable · 2 missing / expired / 401 / under --need · 1 unreachable (no verdict) or usage');
+    + '  exit 0 usable · 2 missing / expired / 401 / 403 / 404 / under --need · 1 unreachable (no verdict) or usage');
 }
 
 export function parseArgs(argv) {
@@ -125,8 +128,13 @@ export async function check(a, { cwd = process.cwd(), home, env } = {}) {
       out.lines.push(`${a.tokenEnv}: accepted but ${a.org}/${a.repo} answers 403 (source: ${tok.source}) — this identity has no access to that DA org/repo; ask the owner to grant it`);
       return out;
     }
-    if (status === 0 || status >= 500) {
+    if (status === 404) {
       out.da = 'ok';
+      out.lines.push(`${a.tokenEnv}: valid${out.remainingH === null ? '' : ` ~${fmtH(out.remainingH)}h`} (source: ${tok.source}) but ${a.org}/${a.repo} answers 404 — the DA org/repo is not visible to this identity: check the coordinates (decisions.md row \`target\`), or the site does not exist yet (skills/deploy/reference/site-bootstrap.md); not usable against this target`);
+      return out; // exit 2: the token is fine, the target is not
+    }
+    if (status === 0 || status >= 500) {
+      out.da = 'unreachable';
       out.exit = 1;
       out.lines.push(`${a.tokenEnv}: valid${out.remainingH === null ? '' : ` ~${fmtH(out.remainingH)}h`} (source: ${tok.source}) · list: ${status || '000'} — no verdict from admin.da.live (network / 5xx); re-run`);
       return out;

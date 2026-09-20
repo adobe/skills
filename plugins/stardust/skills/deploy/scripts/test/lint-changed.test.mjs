@@ -11,7 +11,10 @@
  *     same file (why `--input-type=module` is required);
  *   - unavailable ≠ clean: a clean file with no .bin/eslint → exit 2 "lint: unavailable … npm ci --legacy-peer-deps";
  *     with --syntax-only → exit 0 and stdout carries `lint: unavailable (`; a shim answering
- *     `Failed to load parser` → unavailable too;
+ *     `Failed to load parser` → unavailable too; a tool is required only for a file class in the list
+ *     (a CSS-only change passes with stylelint alone; eslint alone lints a JS-only change);
+ *   - no silent pass: a root that is not a git work tree (or has no commit yet) without --files → exit 1
+ *     "cannot list changed files — pass --files", never "nothing to lint" (a duplicate const sits in the tree);
  *   - scoping: after `git commit` of everything, changing only cards.js + cards.css passes exactly those
  *     two paths to the shims (untracked files count, untouched files never); --files overrides;
  *   - findings block: a changed `bad-cards.js` → exit 2 with the shim's error line; warnings-only (exit 0
@@ -78,10 +81,27 @@ try {
   r = run('--files', 'blocks/cards/cards.js');
   assert.equal(r.status, 2); assert.match(r.stderr, /eslint parser do not resolve .* — .*Failed to load parser '@babel\/eslint-parser'/);
   rmShims(); rmSync(log, { force: true });
+  // a tool is required only for a file class present in the list
+  shim('stylelint');
+  r = run('--files', 'blocks/cards/cards.css'); assert.equal(r.status, 0, `CSS-only change with stylelint alone: ${r.stdout}${r.stderr}`); assert.match(r.stdout, /1 file\(s\) clean$/m);
+  r = run('--files', 'blocks/cards/cards.js,blocks/cards/cards.css'); assert.equal(r.status, 2, 'a .js in the list still needs eslint'); assert.match(r.stderr, /unavailable \(eslint do not resolve/);
+  rmShims(); shim('eslint');
+  r = run('--files', 'blocks/cards/cards.js'); assert.equal(r.status, 0, `JS-only change with eslint alone: ${r.stdout}${r.stderr}`);
+  r = run('--files', 'blocks/cards/cards.css'); assert.equal(r.status, 2); assert.match(r.stderr, /unavailable \(stylelint do not resolve/);
+  rmShims(); rmSync(log, { force: true });
+
+  // 2b. no silent pass: not a git work tree (the header.js duplicate const sits in the tree) and no --files → exit 1, never "nothing to lint"
+  r = run();
+  assert.equal(r.status, 1, `non-git root without --files must be no verdict: ${r.stdout}${r.stderr}`);
+  assert.match(r.stderr, /cannot list changed files — .* is not a git work tree; pass --files/); assert.doesNotMatch(r.stdout, /nothing to lint/);
+  g('init', '-q', '-b', 'main');
+  r = run(); assert.equal(r.status, 1, 'a repo with no commit yet (no HEAD) is no verdict too'); assert.match(r.stderr, /cannot list changed files — git diff HEAD failed/);
+  assert.deepEqual(lintFiles(root, null).error !== undefined, true);
+  assert.deepEqual(lintFiles(root, ['blocks/header/header.js']), { js: ['blocks/header/header.js'], css: [] }, '--files bypasses git');
 
   // 3. scoping via git: only the files this run touched reach the tools
   shim('eslint'); shim('stylelint');
-  g('init', '-q', '-b', 'main'); w('.gitignore', 'node_modules/\nshim.log\n'); g('add', '-A'); g('commit', '-q', '-m', 'base');
+  w('.gitignore', 'node_modules/\nshim.log\n'); g('add', '-A'); g('commit', '-q', '-m', 'base');
   r = run();
   assert.equal(r.status, 0, r.stdout + r.stderr); assert.match(r.stdout, /nothing to lint/);
   w('blocks/cards/cards.js', 'export default function decorate(block) { block.classList.add("ready", "v2"); }\n');
