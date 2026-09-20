@@ -176,6 +176,14 @@ integrates; every runner also runs standalone with `node <path>`:
 
 - `harness-neutral.mjs` — no namespaced sibling-skill references or
   Claude-only tool names outside lines marked "Claude Code".
+- `eval-hygiene.mjs` — every eval directory ships the § Format file set:
+  `criteria.json` parses as `weighted_checklist` with unique names and
+  `max_score` weights summing to exactly 100, `task.md` present,
+  `fixture-notes.md` whenever `fixture/` holds files, `answers.md` unless the
+  task runs hands-off, no `fixture/**/README.md` copied from `_shared/`, a row
+  in § Evals in this suite and a mention in § Coverage map; and every command
+  chained in the repo root `lint:stardust` is named in this section.
+  `--self-test` exercises each finding class on a temp tree; exit 2 = usage.
 - `script-paths.mjs` — every plugin-internal script or reference path a
   skill doc names exists in the plugin tree. `--installed [<dir>] [--strict]`
   is the cross-plugin pass: the five impeccable cite forms (impeccable's
