@@ -702,6 +702,29 @@ integrates; every runner also runs standalone with `node <path>`:
   changed observable → `{ changed, by, before, after }`; disabled / zero-box /
   absent controls never clicked, exactly one click otherwise; the check header
   and RUNNERS carry the type once; `parity-report.md` names it.
+- `dynamics/scripts/test/gate.test.mjs` — `gate()` behind `dynamics-check --gate`
+  (`parity-report.md` rule 8): which parity rows block and which never do (an
+  index-backed row built only once `index-status.json` says so), the close-out
+  sections, exit 3 when `parity.json` is missing under `--gate`.
+- `dynamics/scripts/test/lint.test.mjs` — `dynamics-plan.mjs --lint`: every
+  inventory row `| N |` is placed exactly once in the plan as `- #N …`; `#N`
+  tokens in prose are not rows.
+- `dynamics/scripts/test/query-index-cli.test.mjs` — `query-index.mjs` end to end
+  against one local stand-in: a value flag followed by another flag is usage (exit
+  2 before any request); a 401/403 on the bulk-index POST is DENIED (exit 3,
+  `index-status.json` `denied`, `INDEX-CONFIG.md` written); REFUSED (exit 2,
+  nothing posted, nothing written) is told apart by exit code and stderr word.
+- `extract/scripts/test/asset-pages.test.mjs` — `crawl.mjs` asset attribution
+  with fake page/response objects: every store entry names the pages that
+  requested it and `fontUrlsFor(store, slug)` returns only THAT page's fonts
+  (defect: every run-wide font was emitted for every page); a captured favicon
+  is never reported missing when the icon set was skipped.
+- `extract/scripts/test/prep-bounded.test.mjs` — the prep-vs-bounded contract
+  between `crawl.mjs` and `brand-surface.mjs`: `--prep` implies `--all` unless a
+  cap was given, `runs[].args.prep` is written and read by `isBoundedRun()`, a
+  `--pages` run is auto-bounded, `--full` overrides, `--bounded --full` is exit 2
+  (defect: no `prep` key was written, so every prep run with `--pages` was
+  silently bounded).
 - `extract/scripts/test/copy-set.test.mjs` — the copy-as-a-set rule
   (`harness-permissions.md` § Two classes): flat and nested project copies of the
   six extract scripts with `skills/stardust/scripts/` beside them load the real
