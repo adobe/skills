@@ -20,7 +20,7 @@ metadata:
 | 3 Brand-surface extraction | `node stardust/scripts/brand-surface.mjs --out stardust/current --home index [--bounded] [--lift <dir>]` — offline over `pages/*.json`; read its printed notes | exit 1 = no live record; source citation per value; `--pages`/`--single` runs → `_provenance.mode: "bounded"` | `current/_brand-extraction.json`, `assets/logo.svg` |
 | 4 Seed current-state docs | `node stardust/scripts/write-design-json.mjs --out stardust/current`; author PRODUCT.md / DESIGN.md directly from impeccable's format specs (no `$impeccable init` / `document`) | provenance block first; exit 2 without the brand surface | `current/DESIGN.json`, `current/PRODUCT.md`, `current/DESIGN.md` |
 | 5 Brand review | `node stardust/scripts/brand-review.mjs --out stardust/current` — the 13 detectors print `T-xxx: fired \| quiet` | exit 2 without `_brand-extraction.json`; sections without data omitted | `current/brand-review.html` |
-| 6 State and report | `node stardust/scripts/state-update.mjs --out stardust/current [--prep] [--vision <file>]` — evidence table, wait summary, `Provenance: <live>/<total> live` | `extracted` only on live provenance; `--prep` exits 1 when live < total | `stardust/state.json`, `status.jsonl`, `_crawl-log.json#visionCheck[]` |
+| 6 State and report | `node stardust/scripts/state-update.mjs --out stardust/current [--prep] [--legacy] [--vision <file>]` — evidence table, wait summary, `Provenance: <live>/<total> live` | `extracted` only on live provenance + strict schema gate (`--legacy` = the validate-page opt-in); `--prep` exits 1 when live < total | `stardust/state.json`, `status.jsonl`, `_crawl-log.json#visionCheck[]` |
 | opt-in | `--brand-source <url>` / `--design-source <url>`; sibling-site discovery; `--prep` (implies `--all`) | prep summary `Provenance: <live>/<total>` line | `current/brand-sources/<host>/`, `stardust/canon-source/`, `state.json.pages[].type` |
 
 | at phase | read |
@@ -145,14 +145,12 @@ Additional checks for this sub-command:
    runnable reference implementation of this sub-command (browser
    config, bot-management ladder, consent dismissal, wait + scroll,
    the full capture list, screenshots, response validation, the
-   § Capture-hygiene hardening). Invoke it (`node
-   skills/extract/scripts/crawl.mjs --url <origin> [--pages …] [--cap N]
-   [--concurrency N]`) rather than hand-rolling a Playwright script;
-   the schema gate names any field it fails to emit.
+   § Capture-hygiene hardening). Invoke the copy rather than
+   hand-rolling a Playwright script; the schema gate names any field it
+   fails to emit.
 2. **Origin collision.** If `stardust/state.json` already records
    `site.originUrl` and the new `<url>` is a different origin, stop and
-   ask before clobbering. Stardust does not silently mix two sites in
-   one project.
+   ask before clobbering.
    **Flow guard (migration asks only).** If the ask carries migration
    intent ("migrate", "to EDS", "re-platform", "1:1", "replica") and
    `stardust/state.json` exists — or is about to be created — without
@@ -457,13 +455,14 @@ tensions on top of the mechanical baseline, never ship below it.
 
 ### Phase 6 — Update state and report
 
-    node stardust/scripts/state-update.mjs --out stardust/current [--prep] [--vision <file>] [--dry-run]
+    node stardust/scripts/state-update.mjs --out stardust/current [--prep] [--legacy] [--vision <file>] [--dry-run]
 
 merges `stardust/state.json` by slug (`site.*` incl.
 `extractPhases{captured, visionChecked, brandSurface, docs, review,
 scripts}`; `pages[]` → `extracted` + `currentStatePath` ONLY for records
-that pass `validateProvenance()` + `validateRecord()`; every other key
-and entry preserved), appends one `status.jsonl` line (`6-state`,
+that pass `validateProvenance()` + strict `validateRecord()` — the same
+verdict as `validate-page.mjs`; `--legacy` admits pre-schema-2 records on
+both, never a provenance field; every other key and entry preserved), appends one `status.jsonl` line (`6-state`,
 `end` | `blocked`), records the Phase 2.5 verdicts given as
 `--vision <file>` (`[{slug, verdict, notes}]`) into
 `_crawl-log.json#visionCheck[]` (union by slug), and prints the
@@ -614,12 +613,9 @@ When invoked with `--prep`, extract runs an extended pass that
 prepares the inventory for migration — **read
 `reference/prep-mode.md` in full before running any `--prep`
 extraction**. Discovery-mode runs (without `--prep`) are unchanged:
-small cap, no typing, no module detection. The flag is intended for
-the `prepare-migration` orchestrator, though direct invocation is
-supported.
+small cap, no typing, no module detection.
 
-Core contract (procedure, formats, and detection rules in the
-reference):
+Core contract (procedure, formats and detection rules in the reference):
 
 - `--prep` implies `--all` — migration coverage requires the full
   junk-filtered inventory, not the discovery cap.
@@ -633,8 +629,8 @@ reference):
   per-page JSON gains a typed `slots` section per page-type.
 - The prep summary replaces the Phase 6 report; `state-update.mjs
   --prep` prints its mandatory `Provenance: <live>/<total> live` line
-  and exits 1 on any ratio short of `<total>/<total>` — the run failed
-  the synthesis guard and is incomplete.
+  and exits 1 on any ratio short of `<total>/<total>` (synthesis guard;
+  the run is incomplete).
 - When delegating extraction to a sub-agent, the sub-agent prompt
   **must** forbid synthesis by name and require the per-page
   evidence table and wait-summary line in its return

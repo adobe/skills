@@ -7,7 +7,9 @@
 //   direction, flow keys, page type and status beyond `extracted` · status.jsonl gains exactly ONE
 //   line · _crawl-log.json#visionCheck[] merged by slug keeping existing entries, _provenance first,
 //   nothing else rewritten · the `Provenance: <live>/<total> live` line · --prep with live < total →
-//   exit 1 + blocked line · --dry-run writes nothing · exit 2 without a pages dir · --help exits 0.
+//   exit 1 + blocked line · --dry-run writes nothing · exit 2 without a pages dir · --help exits 0 ·
+//   STRICT schema gate by default (a pre-schema-2 record validate-page.mjs FAILs is not marked
+//   extracted); --legacy is the opt-in (D2) · a value flag followed by another flag is a usage error (D4).
 // Usage: node plugins/stardust/evals/fixtures/state-update.test.mjs  (exit 1 on failure)
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -37,8 +39,12 @@ function project() {
 
 // ---- pure functions ----
 const live = { slug: 'a', rec: { slug: 'a', _provenance: { renderedBy: 'playwright', fetchedAt: '2026-09-18T09:00:00Z', waitMode: 'medium', waitMs: 2500, httpStatus: 200 } } };
-const a1 = assessRecords([{ file: 'a.json', rec: live.rec }, { file: 'b.json', rec: { slug: 'b', _provenance: { renderedBy: 'playwright', fetchedAt: 'x', waitMode: 'medium', waitMs: 0, httpStatus: 200 } } }, { file: 'c.json', rec: null }]);
-assert.equal(a1[0].live, true, 'a legacy (pre-schema-2) record with live provenance is live'); assert.equal(a1[1].live, false); assert.deepEqual(a1[1].reasons, ['_provenance.waitMs', '_provenance.fetchedAt']); assert.equal(a1[2].live, false);
+const recs = [{ file: 'a.json', rec: live.rec }, { file: 'b.json', rec: { slug: 'b', _provenance: { renderedBy: 'playwright', fetchedAt: 'x', waitMode: 'medium', waitMs: 0, httpStatus: 200 } } }, { file: 'c.json', rec: null }];
+const a0 = assessRecords(recs);
+assert.equal(a0[0].live, false, 'STRICT default: a pre-schema-2 record with live provenance is NOT live (validate-page.mjs FAILs it)');
+assert.ok(a0[0].reasons.includes('_provenance.schemaVersion') && a0[0].reasons.includes('landmarks'), `strict reasons name the schema keys, got ${a0[0].reasons}`);
+const a1 = assessRecords(recs, { legacy: true });
+assert.equal(a1[0].live, true, '--legacy opt-in: the same record is live'); assert.equal(a1[1].live, false); assert.deepEqual(a1[1].reasons, ['_provenance.waitMs', '_provenance.fetchedAt']); assert.equal(a1[2].live, false);
 const m1 = mergeState(null, a1, { outDir: 'stardust/current', now: 't', artifacts: {}, visionCount: 0 });
 assert.deepEqual(Object.keys(m1.state), ['_provenance', 'site', 'direction', 'pages'], 'fresh state: canonical key order'); assert.equal(m1.state.direction, null);
 assert.deepEqual(m1.marked, ['a']); assert.deepEqual(m1.unmarked.map((u) => u.slug), ['b', 'c']); assert.equal(m1.state.pages.length, 1); assert.equal(m1.state.pages[0].currentStatePath, 'stardust/current/pages/a.json'); assert.equal(m1.state.pages[0].status, 'extracted');
@@ -85,5 +91,15 @@ const p4 = project(); const before = readFileSync(p4.state, 'utf8'); const r4 = 
 assert.equal(readFileSync(join(p4.root, 'stardust', 'status.jsonl'), 'utf8').trim().split('\n').length, 1, 'dry-run appends nothing'); assert.equal(readJson(join(p4.out, '_crawl-log.json')).visionCheck.length, 1, 'dry-run does not merge visionCheck');
 const p5 = project(); spawnSync('rm', [p5.state, join(p5.root, 'stardust', 'status.jsonl')]); assert.equal(run(['--out', p5.out, '--state', p5.state]).code, 0); const s5 = readJson(p5.state); assert.equal(s5.direction, null); assert.equal(s5.site.originUrl, 'https://example.com'); assert.equal(s5.pages.length, 3); assert.ok(existsSync(join(p5.root, 'stardust', 'status.jsonl')), 'status.jsonl created on first write');
 assert.equal(run(['--out', join(p5.root, 'nowhere'), '--state', p5.state]).code, 2, 'missing pages dir → exit 2'); assert.equal(run(['--bogus']).code, 2); assert.equal(run(['--help']).code, 0);
+assert.match(run(['--help']).out, /--legacy/, '--help names --legacy');
+
+// ---- D2: strict schema gate by default; --legacy admits a pre-schema-2 record ----
+const legacyProject = () => { const q = project(); const old = readJson(join(q.out, 'pages', 'about.json')); old.slug = 'archive'; old.url = 'https://example.com/archive'; delete old._provenance.schemaVersion; delete old.landmarks; delete old.stats; writeFileSync(join(q.out, 'pages', 'archive.json'), JSON.stringify(old)); return q; };
+const p6 = legacyProject(); const r6 = run(['--out', p6.out, '--state', p6.state]);
+assert.equal(r6.code, 0); assert.match(r6.out, /^Provenance: 3\/5 live — not marked extracted: .*archive \(landmarks, stats, _provenance\.schemaVersion\)/m, 'strict: the pre-schema-2 record is listed with the keys validate-page.mjs names');
+assert.ok(!readJson(p6.state).pages.some((e) => e.slug === 'archive'), 'strict: not marked extracted');
+const p7 = legacyProject(); const r7 = run(['--out', p7.out, '--state', p7.state, '--legacy']);
+assert.equal(r7.code, 0); assert.match(r7.out, /^Provenance: 4\/5 live \(--legacy\) — not marked extracted: contact/m, '--legacy: admitted, the synthesized record still is not');
+assert.equal(readJson(p7.state).pages.find((e) => e.slug === 'archive').status, 'extracted');
 
 console.log('state-update test: ok');

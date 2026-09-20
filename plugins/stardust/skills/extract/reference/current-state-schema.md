@@ -690,7 +690,9 @@ strings to objects.
   its sidecar stay on disk as evidence; the crawl log lists the slug under
   `crawl.failures` with `errorClass: "SchemaError"`.
 - **Escape.** `--legacy` for pre-schema-2 records only; no hatch for the
-  provenance fields; no threshold to tune.
+  provenance fields; no threshold to tune. `state-update.mjs` applies the
+  same strict verdict when it marks `extracted` and takes the same
+  `--legacy` opt-in (default off) — the two never disagree on a record.
 - **Hands-off.** A FAIL is an instrument fact: re-crawl the slug once with
   `--refresh <slug>`; a second FAIL appends `event: "blocked"` naming the
   keys and leaves the page unmarked. The condition is the same in every

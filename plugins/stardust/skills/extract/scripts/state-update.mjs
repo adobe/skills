@@ -10,9 +10,13 @@
  * mandatory `Provenance: <live>/<total> live` line (prep-mode.md § 5).
  *
  * Usage:
- *   node state-update.mjs [--out stardust/current] [--state stardust/state.json] [--prep] [--vision <file>] [--dry-run]
+ *   node state-update.mjs [--out stardust/current] [--state stardust/state.json] [--prep] [--legacy] [--vision <file>] [--dry-run]
  *   node state-update.mjs --help
  *     --prep            prep-mode contract: exit 1 when live < total (the run is incomplete)
+ *     --legacy          admit pre-schema-2 records (validateRecord { legacy: true }, the same
+ *                       opt-in as validate-page.mjs --legacy): absent schema-2 keys WARN instead
+ *                       of blocking `extracted`. Default STRICT — a record validate-page.mjs FAILs
+ *                       is never marked extracted here. No hatch for the provenance fields.
  *     --vision <file>   JSON: [{ slug, verdict, notes }] or { visionCheck: [...] } — merged
  *                       into _crawl-log.json#visionCheck[] by slug (union; an existing
  *                       slug's entry is kept, nothing else in the log is rewritten)
@@ -46,18 +50,20 @@ import { pathToFileURL } from 'node:url';
 import { validateProvenance, validateRecord } from './crawl.mjs';
 
 const HELP = `state-update — Phase 6: merge-by-slug state.json, one status.jsonl line, visionCheck[] merge, evidence table
-Usage: node state-update.mjs [--out stardust/current] [--state stardust/state.json] [--prep] [--vision <file>] [--dry-run]
+Usage: node state-update.mjs [--out stardust/current] [--state stardust/state.json] [--prep] [--legacy] [--vision <file>] [--dry-run]
+  --legacy  admit pre-schema-2 records (same opt-in as validate-page.mjs --legacy); default strict
 Exit codes: 0 ok · 1 --prep and live < total · 2 usage / missing pages dir.`;
 
 export function parseArgs(argv) {
   const rest = argv.slice(2);
   if (rest.includes('--help') || rest.includes('-h')) return { help: true };
-  const o = { out: 'stardust/current', state: null, prep: false, vision: null, dryRun: false };
+  const o = { out: 'stardust/current', state: null, prep: false, legacy: false, vision: null, dryRun: false };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--out') o.out = rest[++i];
     else if (a === '--state') o.state = rest[++i];
     else if (a === '--prep') o.prep = true;
+    else if (a === '--legacy') o.legacy = true;
     else if (a === '--vision') o.vision = rest[++i];
     else if (a === '--dry-run') o.dryRun = true;
     else throw new Error(`unknown flag ${a}`);
@@ -68,13 +74,15 @@ export function parseArgs(argv) {
 }
 const readJson = (p) => JSON.parse(readFileSync(p, 'utf8'));
 
-/** Per record: { slug, rec, live, reasons[], warn[] } — live = provenance ok AND validateRecord(legacy) ok. */
-export function assessRecords(records) {
+/** Per record: { slug, rec, live, reasons[], warn[] } — live = provenance ok AND validateRecord({ legacy }) ok.
+ *  Strict by default (the verdict validate-page.mjs gives); { legacy: true } only under --legacy. */
+export function assessRecords(records, { legacy = false } = {}) {
   return records.map(({ file, rec }) => {
     const slug = (rec && rec.slug) || file.replace(/\.json$/, '');
     if (!rec || typeof rec !== 'object') return { slug, rec: null, live: false, reasons: ['unreadable JSON'], warn: [] };
-    const prov = validateProvenance(rec._provenance); const v = validateRecord(rec, { legacy: true });
-    const reasons = [...(prov.ok ? [] : prov.missing.map((m) => `_provenance.${m}`)), ...v.fail.filter((f) => !f.startsWith('_provenance.'))];
+    const prov = validateProvenance(rec._provenance); const v = validateRecord(rec, { legacy });
+    const provJoined = prov.ok ? null : `_provenance.${prov.missing.join(', _provenance.')}`; // validateRecord repeats the provenance verdict as one joined entry
+    const reasons = [...(prov.ok ? [] : prov.missing.map((m) => `_provenance.${m}`)), ...v.fail.filter((f) => f !== provJoined)];
     return { slug, rec, live: prov.ok && v.ok, reasons: [...new Set(reasons)], warn: v.warn };
   });
 }
@@ -130,7 +138,7 @@ function main() {
   const pagesDir = path.join(args.out, 'pages');
   if (!existsSync(pagesDir) || !statSync(pagesDir).isDirectory()) { console.error(`state-update: ${pagesDir} is not a directory — run crawl.mjs first\n\n${HELP}`); process.exit(2); }
   const records = readdirSync(pagesDir).filter((f) => f.endsWith('.json') && !f.startsWith('_')).sort().map((file) => { let rec = null; try { rec = readJson(path.join(pagesDir, file)); } catch { rec = null; } return { file, rec }; });
-  const assessed = assessRecords(records);
+  const assessed = assessRecords(records, { legacy: args.legacy });
   let prev = null; if (existsSync(args.state)) { try { prev = readJson(args.state); } catch (e) { console.error(`state-update: ${args.state} is not valid JSON (${e.message}) — not writing`); process.exit(2); } }
   const logPath = path.join(args.out, '_crawl-log.json'); let log = null; if (existsSync(logPath)) { try { log = readJson(logPath); } catch { log = null; } }
   let vision = null; if (args.vision) { try { vision = readJson(args.vision); } catch (e) { console.error(`state-update: --vision ${args.vision} unreadable: ${e.message}`); process.exit(2); } }
@@ -143,7 +151,7 @@ function main() {
   const modes = {}; for (const a of assessed) if (a.live) { const m = a.rec._provenance.waitMode; modes[m] = modes[m] || { n: 0, ms: 0 }; modes[m].n += 1; modes[m].ms += a.rec._provenance.waitMs; }
   console.log(`Wait summary: ${Object.entries(modes).map(([m, v]) => `${v.n} at ${m} (avg ${(v.ms / v.n / 1000).toFixed(1)}s)`).join(', ') || 'no live page'}`);
   console.log(`Vision check: ${vc.visionCheck.length} entr${vc.visionCheck.length === 1 ? 'y' : 'ies'}${vision ? ` (+${vc.added} added, ${vc.kept} existing kept)` : ''} — _crawl-log.json#visionCheck`);
-  console.log(`Provenance: ${live}/${total} live${live < total ? ` — not marked extracted: ${unmarked.map((u) => `${u.slug} (${u.reasons.join(', ')})`).join('; ')}` : ' (every page has Playwright evidence)'}`);
+  console.log(`Provenance: ${live}/${total} live${args.legacy ? ' (--legacy)' : ''}${live < total ? ` — not marked extracted: ${unmarked.map((u) => `${u.slug} (${u.reasons.join(', ')})`).join('; ')}` : ' (every page has Playwright evidence)'}`);
   const detail = `${live}/${total} live · ${marked.length} marked extracted${unmarked.length ? ` · not marked: ${unmarked.map((u) => u.slug).join(', ')}` : ''}${incomplete ? ' — prep run incomplete (synthesis guard)' : ''}`;
   const line = { ts: state._provenance.writtenAt, skill: 'stardust:extract', phase: '6-state', event: incomplete ? 'blocked' : 'end', detail, artifact: args.state, next: incomplete ? `$stardust extract --refresh ${unmarked.map((u) => u.slug).join(',')}` : (args.prep ? '$stardust direct --prep' : '$stardust direct') };
   const statusPath = path.join(path.dirname(args.state), 'status.jsonl');
