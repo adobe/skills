@@ -41,7 +41,7 @@ import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSyn
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { drawSample, breakpointVerdict, pageStatus, bestOfLast3, coverageLine, runPool, residualsFor, readAnchorCache, RESIDUAL_JUDGE } from './gate-publish.mjs';
+import { drawSample, clusterExemplars, breakpointVerdict, pageStatus, bestOfLast3, coverageLine, runPool, residualsFor, readAnchorCache, RESIDUAL_JUDGE } from './gate-publish.mjs';
 
 const HERE = import.meta.dirname;
 const CLI = join(HERE, 'gate-publish.mjs');
@@ -228,6 +228,13 @@ assert.equal(art.length, 4);
 const head = many.filter((p) => p.templateId === 'article').slice(0, 4).map((p) => p.slug);
 assert.notDeepEqual(art, head, 'not the delivery-order head');
 const ex = drawSample(many, { n: 3, seed: 7, exclude: new Set(art.slice(1)), archetypes: new Set(['news__a']) }).map((p) => p.slug);
+// T28.1 stratum: a layout-cluster exemplar is always drawn (NEGATIVE: the seeded pool could leave a cluster unsampled)
+{ const doc = { types: [{ type: 'article', clusters: [{ id: 'c2', exemplar: art[art.length - 1], pages: art.slice(-3), gated: { 1440: 'ungated' } }, { id: 'c3', exemplar: art[art.length - 2], coveredBy: 'c1' }] }] };
+  assert.deepEqual([...clusterExemplars(doc)], [art[art.length - 1]], 'a coveredBy cluster is no stratum');
+  const noEx = drawSample(many, { n: 1, seed: 7, archetypes: new Set(['news__a']) }).map((p) => p.slug);
+  assert.ok(!noEx.includes(art[art.length - 1]), 'without the stratum the exemplar is left to the dice');
+  const withEx = drawSample(many, { n: 1, seed: 7, archetypes: new Set(['news__a']), exemplars: clusterExemplars(doc) }).map((p) => p.slug);
+  assert.ok(withEx.includes(art[art.length - 1]) && withEx.includes('news__a'), 'archetype + cluster exemplar always in'); assert.equal(withEx.length, noEx.length + 1, 'the exemplar is a stratum, not one of the n draws'); }
 assert.ok(art.slice(1).every((s) => !ex.includes(s)), '--exclude slugs are never drawn');
 // CLI: --dry-run prints one sequential gate.sh command per page × bp, pub<k> labels, no run
 r = run('--sample', '1', '--seed', '7', '--exclude', 'news__b', '--dry-run', '--origin', 'https://main--site--org.aem.page');

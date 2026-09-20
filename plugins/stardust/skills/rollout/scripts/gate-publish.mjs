@@ -49,7 +49,8 @@
  *   --slug <s>                one coverage row
  *   --all-delivered           every delivered coverage row (deployed | verified | stale | failed)
  *   --sample <n> [--seed <s>] [--exclude <slugs|file>]
- *                             per template: its archetype + n pages drawn at random with a
+ *                             per template: its archetype + every layout-cluster exemplar
+ *                             (stardust/current/layout-clusters.json, T28.1 stratum) + n pages drawn at random with a
  *                             fixed seed from the delivered rows, never the delivery-order
  *                             head, never an excluded (fix-loop) slug — the coverage-regime
  *                             sample (publish-gate.md § Gate 8 → Coverage regime). Seed
@@ -143,15 +144,24 @@ export function lcg(seed) {
   let s = (Number(seed) >>> 0) || 1;
   return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 0x100000000; };
 }
-export function drawSample(pages, { n, seed, exclude = new Set(), archetypes = new Set() }) {
+/** Cluster exemplars from stardust/current/layout-clusters.json (T28.1): one stratum per layout cluster ≥ T — always drawn. */
+export function clusterExemplars(doc) {
+  const out = new Set();
+  for (const t of (doc && doc.types) || []) for (const c of t.clusters || []) if (c.exemplar && !c.coveredBy) out.add(c.exemplar);
+  return out;
+}
+export function drawSample(pages, { n, seed, exclude = new Set(), archetypes = new Set(), exemplars = new Set() }) {
   const byTemplate = new Map();
   for (const p of pages) { const t = p.templateId || 'untyped'; if (!byTemplate.has(t)) byTemplate.set(t, []); byTemplate.get(t).push(p); }
   const rnd = lcg(seed);
   const picked = [];
+  // archetypes and cluster exemplars are strata, not draws: always in (a cluster's own gate result is what the
+  // coverage line counts), never excluded by --exclude's fix-loop list narrowing the random pool
+  const fixed = (p) => archetypes.has(p.slug) || exemplars.has(p.slug);
   for (const [, list] of [...byTemplate.entries()].sort(([a], [b]) => a.localeCompare(b))) {
     const sorted = [...list].sort((a, b) => a.slug.localeCompare(b.slug));
-    const arche = sorted.filter((p) => archetypes.has(p.slug) && !exclude.has(p.slug));
-    const pool = sorted.filter((p) => !archetypes.has(p.slug) && !exclude.has(p.slug));
+    const arche = sorted.filter((p) => fixed(p) && !exclude.has(p.slug));
+    const pool = sorted.filter((p) => !fixed(p) && !exclude.has(p.slug));
     for (let i = pool.length - 1; i > 0; i -= 1) { const j = Math.floor(rnd() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]; } // Fisher–Yates, seeded
     picked.push(...arche, ...pool.slice(0, n));
   }
@@ -351,8 +361,9 @@ async function main() {
     const n = Number(arg(argv, 'sample', null)); if (!Number.isInteger(n) || n < 1) { console.error('rollout gate-publish: --sample needs a positive integer'); process.exit(1); }
     const seed = arg(argv, 'seed', String(Date.now() % 100000));
     const exRaw = arg(argv, 'exclude', ''); const excluded = exRaw ? (existsSync(exRaw) ? readFileSync(exRaw, 'utf8').split('\n') : exRaw.split(',')).map((s) => s.trim()).filter(Boolean) : [];
-    selected = drawSample(delivered, { n, seed, exclude: new Set(excluded), archetypes });
-    sample = { seed, n, excluded, drawn: selected.map((p) => p.slug) };
+    const exemplars = clusterExemplars(readJSON(join(dirname(OUT), 'current', 'layout-clusters.json'), null));
+    selected = drawSample(delivered, { n, seed, exclude: new Set(excluded), archetypes, exemplars });
+    sample = { seed, n, excluded, drawn: selected.map((p) => p.slug), ...(exemplars.size ? { clusterExemplars: [...exemplars].sort() } : {}) };
   } else { console.error(USAGE); process.exit(1); }
   if (!REPORT_ONLY && !DRY && !ORIGIN) { console.error(`rollout gate-publish: --origin <delivered origin> is required to run the gate (or use --report / --dry-run).\n${USAGE}`); process.exit(1); }
   if (!REPORT_ONLY && !DRY && !/\.aem\.page$|\.aem\.page\/|\.aem\.live/.test(ORIGIN)) console.error('rollout gate-publish: note — the D1 default gates the PREVIEW origin (*.aem.page); aem.live only after an owner-decided publish.');
