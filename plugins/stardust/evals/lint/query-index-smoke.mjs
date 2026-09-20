@@ -9,7 +9,7 @@
 // (3) config GET 403 → no second config call, bulk index, rows → exit 0, registered repo-yaml;
 // (4) 403 + {total:0} → exit 3 + INDEX-CONFIG.md; (5) job settled, sample absent → exit 1;
 // (6) empty coverage, no --sample → exit 4 and nothing posted; (7) remote carries an index the
-// file lacks → exit 3, nothing posted; --replace → posts; (8) --timeout abc → exit 2 before any
+// file lacks → exit 2 (usage class; 3 = denied only), nothing posted; --replace → posts; (8) --timeout abc → exit 2 before any
 // request (D7); (9) config POST 400 → exit 1 (definitive), no bulk index, index-status.json exit 1 (D7).
 //
 // Usage: node plugins/stardust/evals/lint/query-index-smoke.mjs  (exit 1 on findings)
@@ -113,9 +113,9 @@ check(noSample.status === 4, `no-sample: expected exit 4, got ${noSample.status}
 check(noSample.posts.length === 0, `no-sample: nothing may be posted, got ${noSample.posts.map((p) => p.path).join(',')}`);
 check(noSample.statusJson && noSample.statusJson.registered === null, 'no-sample: index-status.json records registered null (no verdict)');
 
-// (7) remote has `news`, the file does not → exit 3, nothing posted; --replace → posts
+// (7) remote has `news`, the file does not → exit 2 (an incomplete file, not a denial), nothing posted; --replace → posts
 const extra = await run([], { configGet: { status: 200, body: remoteText } });
-check(extra.status === 3, `remote-extra: expected exit 3, got ${extra.status}\n${extra.stderr}`);
+check(extra.status === 2, `remote-extra: expected exit 2, got ${extra.status}\n${extra.stderr}`);
 check(extra.posts.length === 0, 'remote-extra: nothing may be posted without --replace');
 check(/REFUSED.*news/.test(extra.stderr), 'remote-extra: stderr must name the remote-only index');
 const replaced = await run(['--replace'], { configGet: { status: 200, body: remoteText } });
@@ -124,7 +124,7 @@ check(replaced.configCalls.filter((c) => c.method === 'POST').length === 1, 'rem
 
 // --check: GET + diff only, nothing posted, nothing written
 const dry = await run(['--check'], { configGet: { status: 200, body: remoteText } });
-check(dry.status === 3 && dry.posts.length === 0 && dry.statusJson === null, `check: remote-extra diff under --check exits 3 with no POST and no writes (got ${dry.status}, ${dry.posts.length} posts)`);
+check(dry.status === 2 && dry.posts.length === 0 && dry.statusJson === null, `check: remote-extra diff under --check exits 2 with no POST and no writes (got ${dry.status}, ${dry.posts.length} posts)`);
 const dryOk = await run(['--check']);
 check(dryOk.status === 0 && dryOk.reqs.length === 1 && dryOk.statusJson === null, `check: same-names under --check exits 0 after one GET and writes nothing (got ${dryOk.status}, ${dryOk.reqs.length} requests)`);
 
@@ -153,4 +153,4 @@ check(noToken === 2 && log.length === 0, `no-token: expected exit 2 with no requ
 
 server.close();
 if (failures.length) { console.error(`query-index-smoke: ${failures.length} finding(s)`); for (const f of failures) console.error(`  ✗ ${f}`); process.exit(1); }
-console.log('query-index-smoke: ok (same-names → 0 · POST body == file · 403 → repo-yaml 0 · 403 + empty → 3 + INDEX-CONFIG.md · sample absent → 1 · no sample → 4 · remote-only name → 3, --replace posts · --check writes nothing · --timeout abc → 2 · config POST 400 → 1, 503 → 4 · no token → 2)');
+console.log('query-index-smoke: ok (same-names → 0 · POST body == file · 403 → repo-yaml 0 · 403 + empty → 3 + INDEX-CONFIG.md · sample absent → 1 · no sample → 4 · remote-only name → 2 (3 = denied only), --replace posts · --check writes nothing · --timeout abc → 2 · config POST 400 → 1, 503 → 4 · no token → 2)');

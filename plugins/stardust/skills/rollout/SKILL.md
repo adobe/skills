@@ -18,7 +18,7 @@ Phases, in order: Setup → A Inventory → B Block dedup plan → B2 Dynamic su
 | A | `node skills/rollout/scripts/inventory.mjs --site-url <source-url> [--content <eds-root>/content] [--redirects stardust/redirects.tsv]` (archetypes-only: `--state stardust/state.json`) |
 | B | `node skills/rollout/scripts/blocks.mjs`; `node skills/rollout/scripts/plan.mjs` |
 | B2 | `node skills/dynamics/scripts/dynamics-detect.mjs --from-state … --reach stardust/current`; `node skills/dynamics/scripts/dynamics-plan.mjs --target-origin <live host> --migrated stardust/migrated`; `node skills/dynamics/scripts/dynamics-plan.mjs --lint stardust/dynamic-features.md stardust/dynamic-features-plan.md` |
-| C | per page (all under `skills/rollout/scripts/`): `node skills/rollout/scripts/content-acceptance.mjs --slug <slug>`; `delivery-lint.mjs --file <html> --path </da/path> --icons-dir icons [--chrome-docs content/nav.html,content/footer.html,…]`; `media-reconcile.mjs --file <html> --deploy-host <host> [--apply]`; `section-fidelity.mjs --file <html> --source <url>`; `update-coverage.mjs <slug> --status <s>` / `--gate <name> <json>`; waves: `wave.mjs <waveId> <roster> [--publish] [--unpark <reason\|all>]` (`reference/waves.md`; transport `deploy-batch.mjs`, preview); page gate: `gate-publish.mjs --all-delivered \| --sample 10 --seed <s> --origin <preview>`; live: same command `--publish --paths <PASS rows>` (hold pending, § Gate 8) |
+| C | per page (all under `skills/rollout/scripts/`): `node skills/rollout/scripts/content-acceptance.mjs --slug <slug>`; `delivery-lint.mjs --file <html> --path </da/path> --icons-dir icons [--chrome-docs content/nav.html,content/footer.html,…]`; `media-reconcile.mjs --file <html> --deploy-host <host> [--apply]`; `section-fidelity.mjs --file <html> --source <url>`; `update-coverage.mjs <slug> --status <s>` / `--gate <name> <json>`; waves: `wave.mjs <waveId> <roster> [--publish] [--unpark <reason\|all>]` (`reference/waves.md`; transport `deploy-batch.mjs`, preview); page gate: `gate-publish.mjs --all-delivered \| --sample 10 --seed <s> --origin <preview>`; live: `wave.mjs … --publish` (holds rows without Gate 5–8 PASS, § Gate 8) |
 | D | `node skills/rollout/scripts/assemble.mjs`; `node skills/rollout/scripts/redirects.mjs [--post-publish]` |
 | D2 | `node skills/dynamics/scripts/dynamics-check.mjs --origin <live host> --gate` |
 | E / E2 | `node skills/rollout/scripts/verify.mjs [--base <url> | --root <dir>] [--all] [--paths <file>] [--report <dir>] [--gate-report stardust/rollout/gate-report.json]`; class rounds: `node skills/rollout/scripts/wave.mjs regate-list --since <ref>` → `verify.mjs --paths`; `node skills/deploy/scripts/localize-links.mjs --source-host <live-host> --content content --redirects stardust/redirects.tsv [--check]` |
@@ -37,7 +37,7 @@ Outputs (under `stardust/rollout/`): `coverage/{pages,templates,blocks}.json` ·
 | A | `reference/coverage-model.md` § Files · § Page delivery status lifecycle · § Artifact type + fidelity tier · § Idempotency rules (inventory) |
 | B | `reference/coverage-model.md` § Block delivery status lifecycle · § Dedup contract (plan.json); `reference/operational-learnings.md` § Extending a delivered site |
 | B2 / D2 | `../dynamics/reference/triage.md` § Rules; `../dynamics/reference/listings.md` § Why it is a PRE-IMPORT gate · § Block contract; `../dynamics/reference/patterns.md`; `../dynamics/reference/parity-report.md` § Schema |
-| C | `reference/delivery-lint.md` § Run it · § Where it sits in Phase C; `reference/delivery-gates.md` § Gate 1 · § Gate 2 · § Gate 3 · § Gate 4 · § Batched delivery at scale; `reference/measured-gates.md` § Gate 5 · § Gate 6 · § Gate 7; `reference/publish-gate.md` § Gate 8; `../deploy/reference/chrome.md` § Chrome states and variants; `../migrate/reference/fidelity-tiers.md` § Declaration (per page); `../migrate/reference/media-reconciliation.md` § The four decisions; waves: `reference/waves.md`; `../stardust/reference/fan-out.md` § Worker contract · § Scope and type of delegated agents; `../stardust/reference/harness-quirks.md`; `../deploy/da-deploy-protocol.md` § Two clocks; code-writing waves: `../deploy/reference/block-agents-brief.md` § The brief template · § Shared cores and variants |
+| C | `reference/delivery-lint.md` § Run it · § Where it sits in Phase C; `reference/delivery-gates.md` § Gate 1 · § Gate 2 · § Gate 3 · § Gate 4 · § Batched delivery at scale; `reference/measured-gates.md` § Gate 5 · § Gate 6 · § Gate 7; `reference/publish-gate.md` § Gate 8; `reference/operational-learnings.md` § Re-conversion blast radius; `../deploy/reference/chrome.md` § Chrome states and variants; `../migrate/reference/fidelity-tiers.md` § Declaration (per page); `../migrate/reference/media-reconciliation.md` § The four decisions; waves: `reference/waves.md`; `../stardust/reference/fan-out.md` § Worker contract · § Scope and type of delegated agents; `../stardust/reference/harness-quirks.md`; `../deploy/da-deploy-protocol.md` § Two clocks; code-writing waves: `../deploy/reference/block-agents-brief.md` § The brief template · § Shared cores and variants |
 | D3 | `reference/multilingual.md` |
 | E / E2 | `reference/coverage-model.md` § Verify · § `delivery.gate`; `reference/publish-gate.md` § Gate 8 → Coverage regime; `reference/operational-learnings.md` § Two verify checks; `reference/sweep-protocol.md`; `../stardust/reference/context-hygiene.md` § Runner reports and session hand-off |
 | F / G | `reference/audit-sources.md` § The sources · § Recording an external finding · § Fixability → who fixes it · § AEM autofix registry · § The loop; `reference/checks.md`; `reference/coverage-model.md` § Optimize gate (findings lifecycle); `reference/operational-learnings.md` § Optimize-gate learnings |
@@ -126,8 +126,8 @@ node skills/rollout/scripts/plan.mjs     # → plan.json + a readable conversion
 - Template = the archetype's group (`templates.json` keyed by archetype slug);
   representative = the gated archetype (`renderBranch: A`), so C/E gate the page the
   prototype gated. A default-content section with interactive or multi-column
-  structure (deploy Step 2b's schema triage) is a plan input: that page needs a
-  block or a `dynamics` row before it converts.
+  structure (read from the capture; no schema field yet) is a plan input: that
+  page needs a block or a `dynamics` row before it converts.
 
 ### Phase B2 — Dynamic surface (PRE-IMPORT GATE — verify the inventory)
 
@@ -213,12 +213,14 @@ types are absent). For each page:
    ```
    `--block … --status verified` is refused until the template's archetype passed
    the published-origin gate at every breakpoint (`reference/coverage-model.md`
-   § Block delivery status lifecycle; Phase H reads `ungated: <T> archetype <slug>@<bp>`).
+   § Block delivery status lifecycle; Phase H reads `ungated: <T> archetype <slug>@<bp>`) —
+   `gate-publish.mjs` runs archetype rounds with `gate.sh --record`, upserting the
+   `progress.json` `published.<bp>` slot (`reference/publish-gate.md` § Gate 8).
    **Gate on preview, then publish explicitly.** The default run is `PUT →
-   preview`; the page gate is `gate-publish.mjs` (every delivered page ≤ 150, else
-   archetypes + the seeded sample — `reference/publish-gate.md` § Gate 8); the
-   separate `deploy-batch.mjs … --publish` run takes the PASS rows only (`--paths`;
-   report hold pending) unless `decisions.md` records publish-to-live (D16) —
+   preview`; the page gate is `gate-publish.mjs` (coverage regime —
+   `reference/publish-gate.md` § Gate 8); the `wave.mjs … --publish` batch holds
+   rows lacking Gate 5–8 PASS artefacts
+   (`reference/waves.md`) unless `decisions.md` records publish-to-live (D16) —
    hands-off stops at preview, never passes the escape flags (indexes: Phase D2).
    On failure: `--status failed --error "<reason>"` and continue; a denied push or
    publish under hands-off goes to `stardust/.work/ship.sh`
@@ -238,13 +240,10 @@ wave** (posts ahead of their category pages bounce every in-page link). The cent
 <waveId> <roster>` — the resumable driver, never a serial loop or a per-page agent
 turn: a declared stage table per page (lint → local gate → preview → live gate on
 the preview origin → `--publish` only when explicit or D16-recorded), parks the
-page, not the wave, re-drives only what its hashes say changed (transport
-`deploy-batch.mjs`, path + body-hash ledger), closes with `update-coverage.mjs
---from-ledger` and `verify.mjs --paths` over the wave and the parked table —
-`reference/waves.md`. Drivers run in the background (`progress.mjs read
-stardust/.work/rollout/wave.progress.json`; after a blip, re-run).
-Sibling clusters: `reference/delivery-gates.md` § Batched delivery; the rest of the
-wave reading is the operator card's row C.
+page, not the wave, re-drives only what its hashes say changed, closes with the
+ledger read-back + `verify.mjs --paths` — `reference/waves.md`. Drivers run in the background (`progress.mjs read
+stardust/.work/rollout/wave.progress.json`).
+Sibling clusters: `reference/delivery-gates.md` § Batched delivery.
 
 ### Phase D — Site assembly (whole-site artifacts)
 

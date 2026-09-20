@@ -12,19 +12,22 @@ else. Gates 1–4 + batched delivery: `delivery-gates.md`; Gates 5–7:
 The archetype gate proves the recreation; **every delivered page** carries its
 own published-origin number or is `ungated`. The instrument is
 `scripts/gate-publish.mjs`; the release condition is the publish run reading
-its report. The script never publishes. **Pending — deploy hunk:** the hold
-inside `deploy-batch.mjs --publish` (report read, `held (gate: …)` plan
-reasons, the two escape flags, the `held h` count) is the deploy cluster's
-part of this gate and is not in this release; until it lands the operator (or
-hands-off) reads `gate-report.md`'s held rows and passes `--paths` with the
-PASS rows only — the condition below is the contract both halves implement.
+its report. The script never publishes. **The hold today:** `scripts/wave.mjs
+--publish` reads this report (plus Gates 5–7's artefacts) and holds every
+live-gated row without `latest.pass === true` — `held gate:<status>`, listed
+with its re-drive, `held=` on the `SUMMARY` line (`waves.md` § Hands-off).
+**Pending — deploy hunk:** the same hold inside a bare `deploy-batch.mjs
+--publish` (`held (gate: …)` plan reasons, the two escape flags, the `held h`
+count) is the deploy cluster's part and is not in this release; a hand-run
+`deploy-batch` still takes `--paths` with the PASS rows only.
 
 ```bash
 node skills/rollout/scripts/gate-publish.mjs --all-delivered --origin https://<branch>--<repo>--<org>.aem.page   # every page (≤ 150 delivered)
 node skills/rollout/scripts/gate-publish.mjs --sample 10 --seed <run-seed> --exclude <fix-loop slugs> --origin <preview>   # coverage regime, > 150
 node skills/rollout/scripts/gate-publish.mjs --all-delivered --report      # offline: records → gate-report.{json,md} + delivery.gate
 node skills/rollout/scripts/verify.mjs --gate-report stardust/rollout/gate-report.json   # Phase E: read, never re-judge
-node skills/deploy/scripts/deploy-batch.mjs … --publish --paths <PASS rows>  # today: publish the PASS rows only; the report-driven hold is pending
+node skills/rollout/scripts/wave.mjs <wave> <roster> --publish                 # the hold: PASS rows publish, the rest are held (waves.md)
+node skills/deploy/scripts/deploy-batch.mjs … --publish --paths <PASS rows>  # hand-run transport: PASS rows only; its own report-driven hold is pending
 ```
 
 - **Condition (what blocks).** On the explicit publish run a `previewed`
@@ -38,7 +41,14 @@ node skills/deploy/scripts/deploy-batch.mjs … --publish --paths <PASS rows>  #
   (unpublishing is an owner decision). `gate-publish.mjs` exits 2 on any FAIL,
   0 when every measured page passes, 3 when a page is blocked (challenge /
   auth) — never on 124. Under `flow: replica` a row is `verified` only with
-  `delivery.gate.status === 'pass'` (`coverage-model.md` § `delivery.gate`).
+  `delivery.gate.status === 'pass'` (`coverage-model.md` § `delivery.gate`), and
+  `verify.mjs --gate-report` writes `published-origin` into the row's `gatesPassed[]`
+  (`../../migrate/reference/fidelity-tiers.md` § Declaration). **Archetype rounds
+  carry `gate.sh … --record`** (sibling rounds never do): the round upserts
+  `stardust/replica/progress.json` `archetypes[].published.<bp>` via
+  `progress-record.mjs` — the slot `update-coverage.mjs --block … --status verified`
+  (the block claim gate, `coverage-model.md` § Block delivery status lifecycle) and
+  the Phase H `Archetypes` line read; `--dry-run` prints the flag per command.
 - **Escape hatches (operator / owner, never hands-off; both flags pending
   with the deploy hunk).** (a) `--publish-no-regression` — already-live rows only: a FAIL row whose every
   breakpoint is ≤ `bestOfLast3 + 1` point publishes, action recorded
@@ -57,8 +67,8 @@ node skills/deploy/scripts/deploy-batch.mjs … --publish --paths <PASS rows>  #
   never read here. No `--bar`, no threshold flag.
 - **Hands-off.** Phase C previews, runs `gate-publish.mjs` over the delivered
   pages (the coverage regime below decides sample vs every page), then the
-  publish run over exactly the PASS rows (today `--paths <PASS rows>`; the
-  report-driven hold once the deploy hunk lands) and holds the rest; prints
+  publish run over exactly the PASS rows (`wave.mjs --publish` holds the rest
+  mechanically; a hand-run `deploy-batch` takes `--paths <PASS rows>`); prints
   the report's coverage line `published-gated P of M · PASS p · FAIL f ·
   unmeasured u · ungated r` (+ `held h` from the publish run when shipped);
   writes `status: blocked` with the re-drive command when any row is held; **never** passes `--publish-ungated` or

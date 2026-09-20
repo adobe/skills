@@ -13,19 +13,22 @@
  *                WARNING, never a fail; admin bulk-status only via --reconcile (informational: `not reconciled (no token)`)
  *   4 learnings  stardust/learnings.md: ≥ 1 entry carrying an ISO date ≥ wave start, OR one line
  *                `- none this run (<ts>): …` — accepted only when progress.json has no residual `flaggedFor: delivery`
- *                newer than the wave start and direction.md names no deviation newer than it (else the rows are listed)
+ *                newer than the wave start under `breakpoints.<bp>` OR `published.<bp>` (both regimes) and
+ *                direction.md names no deviation newer than it (else the rows are listed)
  *   5 review     stardust/rollout/review-pack.{md,json} generated ≥ the last deployedAt, ≥ 1 row per delivered
  *                templateId, every URL on site.liveHost or the source host (localhost / 127.0.0.1 / a token → fail)
  *   6 dashboard  dashboard/data.json generatedAt ≥ lastRun.at
  *   7 report     newest stardust/rollout/report/*.md written ≥ the wave start with a gate table and a `report-check:`
- *                line (handoff-report.md) — REQUIRED: the Phase H block is written to that file by hand until the
- *                run-status renderer lands (--fix renders it only when status.mjs --markdown exists beside this skill)
+ *                line (handoff-report.md) — REQUIRED. `--fix` renders it with `skills/stardust/scripts/status.mjs
+ *                --root <root> --markdown` when that script sits beside this skill (plugin layout) into
+ *                report/<wave-ts>.md; a project copy without it writes the Phase H block by hand
  *   8 tracking   only when decisions.md row `tracking` ≠ none: tracking.json {issueUrl, commentUrl, at} updated this wave,
  *                or a `blocked` line with `owner: gh issue comment …` → `[~] blocked on owner` (exit 0)
  *   9 commit     when the project is a git repo AND decisions.md row `commit` = phase-end: a commit since the wave start
  *                touching stardust/; otherwise `[~] owner preference`
  *  [-] rows      informational, never failing: the artifact lines (published-origin coverage line, Readability,
- *                Editability) copied from their files — never re-judged here.
+ *                Editability) copied from their files — never re-judged here — and `usage` from stardust/usage.json
+ *                (token-ledger.mjs; `usage: unknown` when absent).
  *
  * Marks: [x] met · [ ] required and not met (exit 1) · [~] skipped with a recorded reason / blocked on owner ·
  *        [-] informational. Exit 1 prints the pasteable command for each [ ] row.
@@ -42,8 +45,8 @@
  *       inventory.mjs; --skip on row 1 / 4 or without --reason; unknown row)
  * The LAST stdout line is `SUMMARY close-check ok=<rows met> failed=<rows open> exit=<code> details=<status.jsonl>`.
  */
-import { existsSync, readFileSync, readdirSync, statSync, appendFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { existsSync, readFileSync, readdirSync, statSync, appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
+import { join, resolve, relative } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { readJSON, siteBase, deliveredPathOf, isDelivered } from './lib.mjs';
@@ -84,7 +87,7 @@ export function learningsVerdict(md, { start, residuals, deviations }) {
   if (entries.length) return { ok: true, reason: `${entries.length} entr${entries.length === 1 ? 'y' : 'ies'} this wave`, entries: entries.length };
   const none = md.split('\n').map((l) => l.match(/^- none this run \(([^)]+)\)/)).find((m) => m && ts(m[1]) !== null && ts(m[1]) >= start);
   if (!none) return { ok: false, reason: 'no entry with a date ≥ wave start and no `- none this run (<ts>)` line' };
-  const open = [...residuals.map((r) => `residual ${r.archetype}@${r.bp} ${r.band} flaggedFor delivery`), ...deviations.map((d) => `deviation: ${d}`)];
+  const open = [...residuals.map((r) => `residual ${r.archetype}@${r.bp} ${r.band} flaggedFor delivery${r.regime === 'published-origin' ? ' (published-origin)' : ''}`), ...deviations.map((d) => `deviation: ${d}`)];
   if (open.length) return { ok: false, reason: `"none this run" refused — ${open.length} row(s) newer than the wave start need a ledger entry: ${open.slice(0, 3).join('; ')}`, none: true };
   return { ok: true, reason: 'none this run (no residual flagged for delivery, no named deviation this wave)', none: true };
 }
@@ -142,7 +145,8 @@ function main() {
     // 4 learnings
     const progress = readJSON(join(SD, 'replica', 'progress.json'), null);
     const residuals = [];
-    for (const a of (progress && progress.archetypes) || []) for (const [bp, b] of Object.entries(a.breakpoints || {})) for (const r of (b && b.residuals) || []) { const at = ts(r.at) ?? ts(a.approvedAt) ?? ts(progress._provenance && progress._provenance.writtenAt); if (r.flaggedFor === 'delivery' && startAt !== null && at !== null && at >= startAt) residuals.push({ archetype: a.archetype, bp, band: r.band }); }
+    // both regimes: the prototype gate's breakpoints.<bp>.residuals[] and the published-origin gate's published.<bp>.residuals[]
+    for (const a of (progress && progress.archetypes) || []) for (const [regime, byBp] of [['prototype', a.breakpoints], ['published-origin', a.published]]) for (const [bp, b] of Object.entries(byBp || {})) for (const r of (b && b.residuals) || []) { const at = ts(r.at) ?? ts(a.approvedAt) ?? ts(progress._provenance && progress._provenance.writtenAt); if (r.flaggedFor === 'delivery' && startAt !== null && at !== null && at >= startAt) residuals.push({ archetype: a.archetype, bp, band: r.band, regime }); }
     const deviations = (readText(join(SD, 'direction.md')) || '').split('\n').filter((l) => /deviation/i.test(l) && [...l.matchAll(ISO)].some((m) => startAt !== null && ts(m[0]) >= startAt)).map((l) => l.trim().slice(0, 80));
     const lv = learningsVerdict(readText(join(SD, 'learnings.md')), { start: startAt ?? now, residuals, deviations });
     required('learnings', lv.ok, `learnings.md: ${lv.reason}`, residuals.length ? `append a ledger entry per row (evidence = the residual row; proposed change = the owning skill section) — skills/stardust/reference/learnings.md § Entry shape` : 'append one entry per failure class this wave, or `- none this run (<ts>): no new failure classes; residuals: <n> (all classed), deviations: <n>` — skills/stardust/reference/learnings.md');
@@ -212,6 +216,10 @@ function main() {
     const g = (config.lastRun && config.lastRun.gates) || {};
     if (g['ai-readability']) { const a = g['ai-readability']; push('artifacts', '-', `Readability  strict median ${a.strictMedian ?? '—'} · code median ${a.codeMedian ?? '—'} · pages < ${a.min}: ${a.below} · unmeasured: ${a.unmeasured}   (lastRun.gates.ai-readability)`); }
     if (g.editability) { const e = g.editability; push('artifacts', '-', `Editability  ${e.editable}/${e.authored} · dead ${e.dead} · exempt ${e.exempt} · unmeasured ${e.unmeasured}   (lastRun.gates.editability)`); }
+    // [-] usage — T13.4's ledger, copied; advisory, never a row that fails
+    const usage = readJSON(join(SD, 'usage.json'), null);
+    const kt = (n) => (n === null || n === undefined ? '—' : n >= 1e6 ? `${(n / 1e6).toFixed(2)} M` : n >= 1e3 ? `${Math.round(n / 1e3)} k` : String(n));
+    if (usage && usage.total) { const t = usage.total; push('usage', '-', `Usage  ${Array.isArray(usage.windows) ? Math.max(0, usage.windows.length - 1) : 0} window(s) · ${t.turns ?? '—'} requests · fresh ${kt(t.fresh)} · cache read ${kt(t.cacheRead)} · output ${kt(t.output)}   (usage.json ${usage.generatedAt || ''})`); } else push('usage', '-', 'usage: unknown (no stardust/usage.json — node skills/stardust/scripts/token-ledger.mjs renders it)');
     // --skip
     if (skipRow) for (const r of rows) if (r.id === skipRow && r.mark === ' ') { r.mark = '~'; r.text = `${skipRow}: skipped — ${skipReason}`; r.fix = null; }
   };
@@ -222,6 +230,12 @@ function main() {
     const runs = [];
     if (open.has('dashboard')) runs.push(['dashboard.mjs', [join(HERE, 'dashboard.mjs'), '--out', OUT]]);
     if (open.has('review') && siteBase(config, null)) runs.push(['open-review-pairs.mjs', [join(HERE, 'open-review-pairs.mjs'), '--per-template', '1', '--no-open', '--out', OUT, '--state', join(SD, 'state.json'), '--progress', join(SD, 'replica', 'progress.json')]]);
+    // row 7: render the Phase H report with the master's read-only state renderer when it sits beside this skill
+    const STATUS = resolve(HERE, '..', '..', 'stardust', 'scripts', 'status.mjs');
+    if (open.has('report') && start && existsSync(STATUS)) {
+      const rep = spawnSync(process.execPath, [STATUS, '--root', ROOT, '--markdown', '--no-probe'], { encoding: 'utf8', cwd: ROOT });
+      if (rep.status === 0 && /report-check:/i.test(rep.stdout)) { mkdirSync(join(OUT, 'report'), { recursive: true }); const f = join(OUT, 'report', `${String(start.ts).replace(/[:.]/g, '-')}.md`); writeFileSync(f, rep.stdout); console.log(`--fix status.mjs --markdown → ${relative(ROOT, f)}`); } else console.log(`--fix status.mjs --markdown: exit ${rep.status} — report left to the agent\n${(rep.stderr || '').trim()}`);
+    } else if (open.has('report') && !existsSync(STATUS)) console.log('--fix report: skills/stardust/scripts/status.mjs not beside this skill — write the Phase H block by hand');
     for (const [name, a] of runs) { const r = spawnSync(process.execPath, a, { encoding: 'utf8', cwd: ROOT }); console.log(`--fix ${name}: exit ${r.status}${r.status ? `\n${(r.stderr || r.stdout).trim()}` : ''}`); }
     check();
   }

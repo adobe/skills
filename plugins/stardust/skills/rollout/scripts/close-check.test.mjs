@@ -7,7 +7,13 @@
 //   report     row 7 is REQUIRED: no report/*.md → [ ]; a file older than the wave start → [ ]; one without a
 //              gate table or a report-check line → [ ]; a dated file with both → [x]
 //   --fix      dashboard + review pack regenerated and [x]: review-pack.json has one row per delivered template
-//              (3), every URL on the live host or the source host, no localhost / token; learnings still open → exit 1
+//              (3), every URL on the live host or the source host, no localhost / token; the report rendered with
+//              status.mjs --markdown into report/<wave-ts>.md (gate table + report-check line → row 7 [x]; NEGATIVE:
+//              it stayed [ ] "agent work" before); learnings still open → exit 1
+//   usage      `[-] usage` copies stardust/usage.json's total (windows, requests, fresh / cache read / output);
+//              absent → `usage: unknown` naming token-ledger.mjs; never a failing row
+//   published  a residual flaggedFor delivery under archetypes[].published.<bp>.residuals[] (the published-origin
+//              regime) refuses the bare none line too (NEGATIVE: only breakpoints.<bp> was scanned before)
 //   learnings  a bare `- none this run (<ts>)` line is REFUSED while progress.json carries a residual flaggedFor
 //              delivery newer than the wave start; a four-field entry dated in the wave closes the row → exit 0
 //   rows       journal **Next:** ≠ status next → journal [ ]; no rollout start line → status [ ]; lastRun.at older
@@ -72,7 +78,11 @@ assert.equal(treeHash(T), before, 'a plain run writes nothing');
 r = run(T, '--fix');
 assert.equal(r.status, 1, r.stdout);
 m = marks(r.stdout);
-assert.equal(m.review, 'x'); assert.equal(m.dashboard, 'x'); assert.equal(m.learnings, ' '); assert.equal(m.report, ' ', '--fix cannot write the report (no renderer): agent work');
+assert.equal(m.review, 'x'); assert.equal(m.dashboard, 'x'); assert.equal(m.learnings, ' ');
+assert.equal(m.report, 'x', '--fix renders the report with status.mjs --markdown (plugin layout)'); assert.match(r.stdout, /--fix status\.mjs --markdown → stardust\/rollout\/report\/2026-09-18T15-00-00Z\.md/);
+{ const rendered = readFileSync(join(T, 'stardust', 'rollout', 'report', '2026-09-18T15-00-00Z.md'), 'utf8'); assert.match(rendered, /^\|.*gate/im, 'gate table first'); assert.match(rendered, /report-check: \d+ paths ls-verified/, 'report-check line'); }
+assert.match(r.stdout, /\[-\] usage: unknown \(no stardust\/usage\.json — node skills\/stardust\/scripts\/token-ledger\.mjs renders it\)/, '[-] usage row, advisory');
+rmSync(join(T, 'stardust', 'rollout', 'report'), { recursive: true, force: true }); // the row-7 sequence below starts from no report
 const pack = json(join(T, 'stardust', 'rollout', 'review-pack.json'));
 assert.equal(pack.rows.length, 3, 'one row per delivered template');
 assert.deepEqual([...new Set(pack.rows.map((x) => x.template))].sort(), ['article', 'landing', 'program']);
@@ -89,6 +99,23 @@ assert.match(r.stdout, /"none this run" refused — 1 row\(s\) newer than the wa
 appendFileSync(join(T, 'stardust', 'learnings.md'), '\n### Personalization rail outlives the gate\n- failure class: capture-gap (personalization endpoint answers 403 to headless clients)\n- evidence: article archetype 360 residual y 3020–3590 flaggedFor delivery, 2026-09-18T16:10:00Z\n- proposed change: skills/replica/reference/source-fidelity-gate.md § Residual logging format — capture-state rows outliving the gate open a ledger entry\n- status: pending\n');
 r = run(T);
 assert.equal(r.status, 1, 'learnings met, report still open'); m = marks(r.stdout); assert.equal(m.learnings, 'x'); assert.equal(m.report, ' ');
+// [-] usage from usage.json (T13.4's ledger), copied
+writeFileSync(join(T, 'stardust', 'usage.json'), JSON.stringify({ generatedAt: '2026-09-18T16:30:00Z', windows: [{ label: 'rollout w1' }, { label: 'unwindowed' }], total: { turns: 42, fresh: 1_250_000, cacheWrite: 10, cacheRead: 3_400_000, output: 88_000 } }));
+r = run(T); assert.match(r.stdout, /\[-\] Usage  1 window\(s\) · 42 requests · fresh 1\.25 M · cache read 3\.40 M · output 88 k   \(usage\.json 2026-09-18T16:30:00Z\)/, 'usage line copied from usage.json');
+assert.equal(marks(r.stdout).learnings, 'x', 'the usage row never changes a verdict');
+// published-origin regime residual (NEGATIVE): a delivery-flagged residual under published.<bp> refuses the none line
+{
+  const T2 = fresh();
+  const pp = join(T2, 'stardust', 'replica', 'progress.json'); const prog = json(pp);
+  for (const a of prog.archetypes) for (const b of Object.values(a.breakpoints || {})) if (b && b.residuals) b.residuals = b.residuals.filter((x) => x.flaggedFor !== 'delivery');
+  const art = prog.archetypes.find((a) => a.archetype === 'news__storm-season-checklist');
+  art.published = { 1440: { pass: false, residuals: [{ band: 'y 900–1100', pct: 4.2, cause: 'capture-state: consent bar', flaggedFor: 'delivery', at: '2026-09-18T16:12:00Z' }] } };
+  writeFileSync(pp, JSON.stringify(prog, null, 2));
+  appendFileSync(join(T2, 'stardust', 'learnings.md'), '# Learnings\n\n- none this run (2026-09-18T16:20:00Z): no new failure classes; residuals: 1 (all classed), deviations: 0\n');
+  const r2 = run(T2); assert.equal(marks(r2.stdout).learnings, ' ', 'a published-regime residual keeps row 4 open');
+  assert.match(r2.stdout, /residual news__storm-season-checklist@1440 y 900–1100 flaggedFor delivery \(published-origin\)/);
+  rmSync(T2, { recursive: true, force: true });
+}
 // report row: an old file, a file without the gate table / report-check line, then the real thing
 const repDir = join(T, 'stardust', 'rollout', 'report'); mkdirSync(repDir, { recursive: true });
 const reportMd = '# Wave 1 close\n\n| page | gate | 1440 | 360 |\n|---|---|---|---|\n| / | published-origin | PASS 2.1 % | PASS 3.9 % |\n\nreport-check: 3 paths ls-verified · 4 counts re-read from rollout.json, progress.json\n';

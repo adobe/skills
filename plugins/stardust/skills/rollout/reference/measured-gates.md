@@ -77,7 +77,9 @@ node skills/rollout/scripts/update-coverage.mjs --gate editability stardust/roll
 - **Escape hatch.** Only the declared one — `@ew-exempt` in the block JSDoc
   (EW5 categories; item-level tags). No `--skip-ew` / `--no-ew` on the contract
   row (`--no-ew` stays a `block-roundtrip` diagnostic). A CLI `--exempt a,b` is
-  recorded `exemptSource: cli` and printed in Phase H, never silent.
+  recorded `exemptSource: cli` — inferred by the ingest from the probe's
+  `exemptions[].source === '--exempt'` (the probe JSON carries no
+  `exemptSource` field itself) — and printed in Phase H, never silent.
 - **Hands-off.** A failing block is a code defect fixed in the Step 8 loop ("fix
   by moving, never by weakening"); at the iteration cap the page records
   `--status failed --error "editability: dead N in <block>"` and the rollout
@@ -105,8 +107,11 @@ node skills/rollout/scripts/content-acceptance.mjs --slug <s> --target-url https
   (from the capture JSON's `renderedHtml`) scoped to `main | [role=main]`
   (else `--source-main` + `--source-exclude`, recorded); target = the migrated
   HTML's `main` minus `.metadata` / `.section-metadata`. Classes: headings
-  (level + text), links (text + normalised path), images (count — the pipeline
-  renames `src`), list items, table rows, words. 🔴 = **any count drop** in a
+  (level + text), links (text + normalised path; `mailto:`/`tel:` by value, bare
+  `#` anchors excluded), images (count — the pipeline renames `src`), list
+  items, table rows, `listDepth`, `nestedLists`, `tables` (structure — a
+  flattened list keeps its `li` count), opt-in `notes` (`--class
+  notes=<srcSel>=<tgtSel>`), words. 🔴 = **any count drop** in a
   class not covered by a `_meta.json#contentDeviations[]` entry (the 0.18.2 rule,
   unchanged), or words ratio < 0.9; 🟡 = ratio > 1.1 (clones). Exit 2 on 🔴, 0
   pass, 1 usage / `unmeasured` (a side missing — never a pass, never a FAIL).

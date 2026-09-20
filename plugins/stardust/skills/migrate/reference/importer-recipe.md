@@ -98,7 +98,10 @@ node skills/migrate/scripts/importer-skeleton.mjs --slug <s> | --template <t> | 
   `root` (fail loud on body or a chrome landmark), classify each element with
   `el.matches` (rule 3), recurse only through `wrappers[]` (rules 4/5), emit
   default content in document order, merge adjacent same-emitter runs (rule
-  10), skip `[data-hidden-live]` on a stamped capture (`<details>` kept).
+  10), skip `[data-hidden-live]` on a stamped capture (`<details>` kept) — stamped
+  = the capture carries the mark (`data-hidden-live-stamp` on `<html>`/`<body>`
+  or any marked node), whoever wrote it; unmarked → `hiddenLive: "unstamped"`,
+  nothing skipped.
 - **Outputs (exit 0).** `stardust/migrated/<outputPath>` in the block-model
   document form with a metadata block (`title`, `description`, `template`,
   `lang`), `_meta.json` (`renderBranch: "A'"`, `fidelityTier: "sibling"`,

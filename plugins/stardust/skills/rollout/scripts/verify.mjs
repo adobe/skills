@@ -305,6 +305,9 @@ for (const p of target) {
   p.delivery = p.delivery || {};
   const gate = gateOf(p);
   if (gate) p.delivery.gate = gate;
+  // fidelity-tiers.md § Declaration: `published-origin` in the row's gatesPassed[] follows the report's LATEST round —
+  // pass adds it, any other status removes it (read, never re-judged; a stale pass never survives a failed re-gate)
+  if (gate) { const gp = (Array.isArray(p.gatesPassed) ? p.gatesPassed : []).filter((g) => g !== 'published-origin'); if (gate.status === 'pass') gp.push('published-origin'); if (gp.length || Array.isArray(p.gatesPassed)) p.gatesPassed = gp; }
   if (gate && status === 'verified' && REPLICA_FLOW && gate.status !== 'pass') {
     status = 'deployed'; // renders, but the page gate has not passed: not verified (D1 — the gate is read, not re-judged)
     advisories.push({ slug: p.slug, path: served, type, status, class: `published-origin gate: ${GATE_STATUSES.includes(gate.status) ? gate.status : 'ungated'}`, reason: `renders, stays deployed — gate ${gate.status}${Object.entries(gate.breakpoints).map(([W, b]) => ` · ${W} ${b.pass ? 'PASS' : b.pixelPct === null ? 'no number' : `${b.pixelPct} %`}`).join('')} (${gate.report})`, severity: 'warn' });

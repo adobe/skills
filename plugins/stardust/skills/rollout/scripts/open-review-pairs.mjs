@@ -24,15 +24,17 @@
  *            [--seed <s>] (seeded, across templates — the seeded dice roll) · --slug a,b · --all
  * Output:    stardust/rollout/review-pack.md (+ review-pack.json): # · template · source → EDS · gate
  *            per breakpoint · regime · reference captured · status; then the login hint.
- * Opening:   `open` (macOS) / `xdg-open` (Linux) both URLs of each pair, batches of --batch <n> (default
- *            10, the cap); --no-open writes the pack only (hands-off, CI, eval — the default when no
- *            opener exists).
+ * Opening:   `open` (macOS) / `xdg-open` (Linux) both URLs of the FIRST --batch <n> pairs (default 10, the
+ *            cap — a human reviews ≤ 10 pairs per sitting); the remaining pairs stay in the pack, opened by a
+ *            re-run narrowed with --slug a,b or --random <n> --seed <s>; --no-open writes the pack only
+ *            (hands-off, CI, eval — the default when no opener exists).
  *
  * Usage: node skills/rollout/scripts/open-review-pairs.mjs [--per-template 1 | --random <n> [--seed <s>] | --slug a,b | --all]
  *          [--out stardust/rollout] [--state stardust/state.json] [--progress stardust/replica/progress.json]
  *          [--gate-report <out>/gate-report.json] [--batch 10] [--no-open]
- * Exit: 0 pack written · 1 usage / coverage missing (run inventory.mjs) / no liveHost · 2 a pair would
- *       open on localhost / 127.0.0.1 or carry a token — the pack is NOT written (never a token in a URL)
+ * Exit: 0 pack written · 1 coverage missing (run inventory.mjs) / no liveHost / no delivered row · 2 usage
+ *       (a value flag without a value — the rollout family's usage code) or a pair that would open on
+ *       localhost / 127.0.0.1 or carry a token — the pack is NOT written (never a token in a URL)
  */
 import { existsSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -40,7 +42,7 @@ import { pathToFileURL } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { readJSON, writeJSON, siteBase, deliveredPathOf, isDelivered } from './lib.mjs';
 
-function arg(argv, name, fallback) { const i = argv.indexOf(`--${name}`); if (i === -1) return fallback; const v = argv[i + 1]; if (v === undefined || v.startsWith('--')) { console.error(`open-review-pairs: --${name} needs a value`); process.exit(1); } return v; }
+function arg(argv, name, fallback) { const i = argv.indexOf(`--${name}`); if (i === -1) return fallback; const v = argv[i + 1]; if (v === undefined || v.startsWith('--')) { console.error(`open-review-pairs: --${name} needs a value`); process.exit(2); } return v; }
 const has = (argv, f) => argv.includes(`--${f}`);
 
 export function lcg(seed) { let s = (Number(seed) >>> 0) || 1; return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 0x100000000; }; }
@@ -113,7 +115,7 @@ export function renderPack(rows, bps, { at = new Date().toISOString(), selection
 const isMain = process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href;
 function main() {
   const argv = process.argv;
-  const USAGE = 'usage: open-review-pairs.mjs [--per-template 1 | --random <n> [--seed <s>] | --slug a,b | --all] [--out stardust/rollout] [--state stardust/state.json] [--progress stardust/replica/progress.json] [--gate-report <file>] [--batch 10] [--no-open]\n  exit 0 pack written · 1 usage / coverage missing / no liveHost · 2 a pair would open on localhost or carry a token (pack not written)';
+  const USAGE = 'usage: open-review-pairs.mjs [--per-template 1 | --random <n> [--seed <s>] | --slug a,b | --all] [--out stardust/rollout] [--state stardust/state.json] [--progress stardust/replica/progress.json] [--gate-report <file>] [--batch 10] [--no-open]\n  exit 0 pack written · 1 coverage missing / no liveHost / no delivered row · 2 usage, or a pair would open on localhost or carry a token (pack not written)';
   if (has(argv, 'help') || has(argv, 'h')) { console.log(USAGE); process.exit(0); }
   const OUT = arg(argv, 'out', 'stardust/rollout');
   const pagesDoc = readJSON(join(OUT, 'coverage', 'pages.json'));
@@ -143,7 +145,9 @@ function main() {
   if (!canOpen) { console.log(has(argv, 'no-open') ? 'not opened (--no-open): the pack is the deliverable.' : `no opener (${opener}) on this host — pack written, open the links from review-pack.md.`); process.exit(0); }
   const batch = Math.min(10, Math.max(1, Number(arg(argv, 'batch', '10')) || 10));
   const urls = rows.flatMap((r) => [r.source, r.eds].filter(Boolean));
-  for (let i = 0; i < urls.length; i += batch * 2) { for (const u of urls.slice(i, i + batch * 2)) spawnSync(opener, [u], { stdio: 'ignore' }); if (i + batch * 2 < urls.length) console.log(`opened ${Math.min(batch, (urls.length - i) / 2)} pair(s) — next batch after review: re-run with --slug <next> or --random`); if (i + batch * 2 < urls.length) break; }
+  // one batch per run (a human reviews ≤ --batch pairs per sitting); the rest stay in the pack — re-run with --slug / --random
+  for (const u of urls.slice(0, batch * 2)) spawnSync(opener, [u], { stdio: 'ignore' });
+  if (urls.length > batch * 2) console.log(`opened ${batch} of ${urls.length / 2} pair(s) — the rest are in review-pack.md; open them with --slug a,b or --random <n> --seed <s>`);
   console.log('log in to the delivered site in the opened browser session (da-deploy-protocol.md § Site auth); compare each pair side by side.');
   process.exit(0);
 }

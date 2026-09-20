@@ -40,6 +40,29 @@
         "outsideInventory": { "type": "string", "enum": ["fail", "warn"], "default": "fail", "description": "What an internal link to a path that is no coverage row does to the page: fail = the page is failed; warn = recorded in delivery.outsideLinks, the page stays verified." }
       }
     },
+    "waves": {
+      "type": "object",
+      "description": "scripts/wave.mjs configuration (reference/waves.md § Stage table, § State): stage COMMAND overrides (the class is fixed in the driver's table), ledger / content paths, the preview origin and extra close commands. Absent = every default.",
+      "additionalProperties": false,
+      "properties": {
+        "stages": {
+          "type": "object",
+          "description": "Keyed by stage name — capture | build | content | convert | lint | local-gate | deploy | live-gate | publish | pixel, and the close steps verify | dashboard. `cmd: null` disables a close step; a hard stage left without a command whose artefact is missing is a start-time exit 2, never a silent pass.",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "cmd": { "type": ["string", "null"], "description": "Command template; placeholders {slug} {path} {url} {type} {file} {webPath} {migrated} {pathsFile} {previewOrigin} {waveId} {org} {repo} {branch} {content} {rolloutDir} {reportDir}. A batch command carrying --force is refused (exit 2)." },
+              "class": { "type": "string", "enum": ["hard", "soft"], "description": "Informational: the driver keeps its own class and prints a line when this differs." }
+            }
+          }
+        },
+        "ledger": { "type": "string", "description": "deploy-batch ledger the driver reads rows from (default <content>/.deploy-ledger.json); regate-list --json reads the same file." },
+        "content": { "type": "string", "description": "Converted content tree (default content)." },
+        "previewOrigin": { "type": "string", "format": "uri", "description": "Live-gate + verify origin (default https://<ref>--<site>--<org>.aem.page from site.da)." },
+        "close": { "type": "array", "items": { "type": "string" }, "description": "Extra close commands (same placeholders), run after verify / dashboard; logged, never a park." }
+      }
+    },
     "lastRun": {
       "type": ["object", "null"],
       "description": "Summary of the most recent rollout run (the dashboard headline reads this).",

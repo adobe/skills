@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://stardust.dev/schemas/trees.schema.json",
+  "title": "stardust/trees.json — the locale-tree manifest (rollout Phase D3 precondition)",
+  "description": "One entry per language tree the D3 wave delivers (multilingual.md § Manifest precondition). Every `strings` value is lifted from the live pages or marked owner: true — never generated (A18). A single-language site never writes this file; a one-tree manifest is derived from evidence.",
+  "type": "object",
+  "required": ["_provenance", "default", "trees"],
+  "additionalProperties": false,
+  "properties": {
+    "_provenance": {
+      "type": "object",
+      "required": ["writtenBy", "writtenAt", "stardustVersion"],
+      "additionalProperties": true,
+      "properties": {
+        "writtenBy": { "type": "string", "examples": ["stardust:rollout", "stardust:extract"] },
+        "writtenAt": { "type": "string", "format": "date-time" },
+        "stardustVersion": { "type": "string" },
+        "decidedBy": { "type": "string", "enum": ["extract", "owner", "hands-off"], "description": "How the tree list was decided: evidence (extract), the owner's locale row, or hands-off from hreflang / twin probes." }
+      }
+    },
+    "default": { "type": "string", "pattern": "^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$", "description": "BCP 47 tag of the default-language tree (the one extracted first)." },
+    "decisions": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "locale": { "type": "string", "description": "The decisions.md `locale` row verbatim — one folder per locale incl. the default, root redirects to it." }
+      }
+    },
+    "trees": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/tree" }
+    }
+  },
+  "$defs": {
+    "tree": {
+      "type": "object",
+      "required": ["lang", "root", "source"],
+      "additionalProperties": false,
+      "properties": {
+        "lang": { "type": "string", "pattern": "^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$", "description": "BCP 47 tag; the page metadata row `lang` and `<html lang>` of every page in the tree." },
+        "root": { "type": "string", "pattern": "^/", "description": "The locale folder, e.g. /es (one folder per locale including the default)." },
+        "twinRoot": { "type": ["string", "null"], "description": "Root of the tree this locale mirrors (null on the default tree)." },
+        "source": { "type": "string", "pattern": "^(hreflang|sitemap:/.+|bfs|pages|twin-probe|owner)$", "description": "How the tree was discovered: hreflang alternates, sitemap:<path>, a locale-root BFS, --pages, a twin probe, or the owner." },
+        "nav": { "type": ["string", "null"], "pattern": "^/", "description": "The tree's chrome documents (published content, on the tree's roster)." },
+        "footer": { "type": ["string", "null"], "pattern": "^/" },
+        "search": { "type": ["string", "null"], "pattern": "^/", "description": "The tree's results page (dynamics locale-trees.md)." },
+        "contact": { "type": ["string", "null"], "pattern": "^/" },
+        "chromeSource": { "type": ["string", "null"], "description": "Hover-probe evidence for the tree's chrome, under stardust/current/trees/<lang>/." },
+        "strings": {
+          "type": "object",
+          "description": "Chrome labels keyed by placeholder name; each lifted from the live tree or an owner value — a translation is not a lift.",
+          "additionalProperties": { "$ref": "#/$defs/string" }
+        }
+      }
+    },
+    "string": {
+      "type": "object",
+      "required": ["value", "lifted"],
+      "additionalProperties": false,
+      "properties": {
+        "value": { "type": ["string", "null"], "description": "null only while owner: true and the owner has not answered." },
+        "lifted": { "type": "boolean", "description": "true = copied from the live pages of this tree (\"still English on live\" is a valid lift)." },
+        "owner": { "type": "boolean", "description": "true = an owner decision is pending or supplied the value; never generated." },
+        "evidence": { "type": "string", "description": "Where the lift was read (URL or capture path)." }
+      }
+    }
+  }
+}

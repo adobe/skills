@@ -50,8 +50,10 @@
  * the first failure unless --continue; a kind unmapped on
  * ≥ 3 pages of one template stops that template early (map it once instead of failing 500 pages);
  * exit 2 when any page failed. Second run with unchanged inputs → zero file writes.
- * Hidden-live: nodes stamped `data-hidden-live` by the capture are skipped (recorded in hidden[]; <details> kept);
- * an unstamped capture skips nothing and reports hiddenLive: "unstamped".
+ * Hidden-live: nodes marked `data-hidden-live` in the capture are skipped (recorded in hidden[]; <details> kept).
+ * A capture is `stamped` when it carries the mark at all — a `data-hidden-live-stamp` attribute on <html>/<body>
+ * OR ≥ 1 `[data-hidden-live]` node — whoever wrote it (crawl.mjs does not stamp yet; a hand/probe-marked capture
+ * counts). A capture without any mark skips nothing and reports hiddenLive: "unstamped" — never a guess.
  *
  * Usage:
  *   node skills/migrate/scripts/importer-skeleton.mjs (--slug <s> | --template <t> | --all) [--root <projectDir>]
@@ -321,7 +323,9 @@ export function importCapture(html, vocab, tf, opts = {}) {
   const doc = parseHTML(html);
   const report = { unmapped: [], flattened: [], dropped: [], hidden: [], deviations: [], hiddenLive: 'unstamped' };
   const htmlEl = qs(doc, 'html'); const body = qs(doc, 'body') || doc;
-  const stamped = (htmlEl && attr(htmlEl, 'data-hidden-live-stamp') !== undefined) || attr(body, 'data-hidden-live-stamp') !== undefined;
+  // crawl-independent: the stamp attribute OR any marked node makes the capture `stamped` (the mark is the evidence)
+  const anyMarked = (n) => n && n.children ? n.children.some((k) => k.tag && (attr(k, 'data-hidden-live') !== undefined || anyMarked(k))) : false;
+  const stamped = (htmlEl && attr(htmlEl, 'data-hidden-live-stamp') !== undefined) || attr(body, 'data-hidden-live-stamp') !== undefined || anyMarked(body);
   report.hiddenLive = stamped ? 'stamped' : 'unstamped';
   const ctx = { stamped, hidden: report.hidden, base: opts.base || null };
   const meta = {

@@ -11,10 +11,16 @@
  *
  * Counts by class (keys via the same normalisation content-inventory.mjs uses — case, quotes,
  * dashes, arrows, trailing punctuation): headings h1–h6 (per level + text), links (text +
- * normalised path), images (count — the pipeline renames src to /media_<hash>), list items, table rows, words.
+ * normalised path; mailto:/tel: keyed by scheme + value so a dropped contact link counts; bare `#`
+ * anchors and javascript: excluded), images (count — the pipeline renames src to /media_<hash>),
+ * list items, table rows, words — and STRUCTURE (T26.3 Gate B): listDepth (deepest ul/ol nesting),
+ * nestedLists (ul/ol opened inside a list), tables (<table> count): a flattening importer keeps the
+ * li count and loses the depth; the same any-drop rule applies. Optional `--class notes=<srcSel>=<tgtSel>`
+ * pairs a source admonition selector with the target shape and compares their counts as class `notes`.
  *
  * Verdict (the 0.18.2 rule, unchanged by default):
- *   🔴 any count DROP in headings / links / images / list items / table rows not covered by a
+ *   🔴 any count DROP in headings / links / images / list items / table rows / list depth / nested
+ *      lists / tables (/ notes) not covered by a
  *      `_meta.json#contentDeviations[]` entry (`{kind, source, target, reason}`: a `source`
  *      text / href / src matching the dropped item downgrades it to `covered`), or words
  *      ratio < 0.9 (dropped body copy)                                      → exit 2
@@ -33,14 +39,21 @@
  *   node skills/rollout/scripts/content-acceptance.mjs --slug <s> | --all [--state stardust/state.json]
  *        [--source <html>] [--target <html> | --target-url <plain.html>] [--meta <_meta.json>]
  *        [--source-main <sel>] [--source-exclude <sel,…>] [--tolerance k=v,…] [--report-only]
- *        [--skipped-allow <class,…>] [--trace <text>] [--out stardust/migrated/_acceptance] [--json]
- * Exit: 0 pass (or --report-only) · 1 usage / unmeasured (a side missing) · 2 🔴 dropped content
+ *        [--skipped-allow <class,…>] [--trace <text>] [--class notes=<srcSel>=<tgtSel>]
+ *        [--out stardust/migrated/_acceptance] [--json]
+ * Exit: 0 pass (or --report-only) · 1 unmeasured (a side missing — no verdict, never usage) · 2 usage (USAGE on stderr) or 🔴 dropped content
+ * A misconfigured invocation (swallowed value flag, unknown --class / --tolerance, no --slug/--all) is exit 2, never 1:
+ * a driver that maps 1 to "unmeasured, re-run" (wave.mjs Gate 7) must park it, not loop on it.
  */
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join, dirname, resolve, basename } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 // ---- text + key normalisation (the content-inventory.mjs norm() rule — kept identical) ----
+// normKey() duplicates the in-page `norm` of skills/diff/scripts/content-inventory.mjs and
+// skills/deploy/scripts/content-inventory.mjs (B26: both copies keep a local const; neither exports it — an
+// export from both is the pending cross-cluster edit). Until then the fixture test evaluates both copies'
+// `norm` bodies over a corpus and pins them equal to this function, so a drift fails the chain, not a gate.
 const ARROWS = /[→➔➜›⇒➤>]+/g;
 export const clean = (s) => String(s || '').replace(/\s+/g, ' ').trim();
 export function normKey(s) {
@@ -50,7 +63,7 @@ export function normKey(s) {
     .replace(/\s+/g, ' ').trim()
     .toLowerCase().replace(/[.,;:!?·•]+$/g, '').trim();
 }
-export const pathKey = (href) => { const h = String(href || '').trim(); if (!h || /^(javascript:|mailto:|tel:|#)/i.test(h)) return null; try { const u = new URL(h, 'https://x.example'); return `${u.pathname.replace(/\/+$/, '').replace(/\.(html?|jsp|aspx?|php)$/i, '').toLowerCase() || '/'}`; } catch { return h.toLowerCase(); } };
+export const pathKey = (href) => { const h = String(href || '').trim(); if (!h || /^(javascript:|#)/i.test(h)) return null; if (/^mailto:/i.test(h)) return h.toLowerCase().split('?')[0]; if (/^tel:/i.test(h)) return `tel:${h.slice(4).replace(/[\s().-]/g, '')}`; try { const u = new URL(h, 'https://x.example'); return `${u.pathname.replace(/\/+$/, '').replace(/\.(html?|jsp|aspx?|php)$/i, '').toLowerCase() || '/'}`; } catch { return h.toLowerCase(); } };
 const decode = (s) => String(s).replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)));
 
 // ---- a tiny tolerant HTML tokenizer (no deps, like delivery-lint / qa lib) ----
@@ -85,10 +98,11 @@ const matchSel = (tok, sel) => {
  * Static inventory of the region matched by `mainSel` (first match; whole document when
  * none matches and `fallbackWhole`), skipping subtrees matched by `exclude` selectors.
  */
-export function inventory(html, { mainSel = 'main,[role=main]', exclude = [], fallbackWhole = true } = {}) {
+export function inventory(html, { mainSel = 'main,[role=main]', exclude = [], fallbackWhole = true, notesSel = null } = {}) {
   const toks = tokenize(html);
-  const inv = { headings: {}, links: {}, images: {}, listItems: 0, tableRows: 0, words: 0, headingLevels: {}, scoped: false, excluded: 0 };
+  const inv = { headings: {}, links: {}, images: {}, listItems: 0, tableRows: 0, listDepth: 0, nestedLists: 0, tables: 0, notes: notesSel ? 0 : null, words: 0, headingLevels: {}, scoped: false, excluded: 0 };
   const stack = []; // open tags inside the region
+  const listDepthNow = () => stack.filter((t) => t === 'ul' || t === 'ol').length;
   let inMain = false; let mainDepth = 0; let skipDepth = 0; let headingLevel = null; let headingText = ''; let linkHref = null; let linkText = '';
   let sawMain = toks.some((t) => t.type === 'open' && matchSel(t, mainSel));
   if (!sawMain && !fallbackWhole) return inv;
@@ -105,6 +119,9 @@ export function inventory(html, { mainSel = 'main,[role=main]', exclude = [], fa
       if (t.tag === 'img') { const src = t.attrs.src || t.attrs['data-src'] || ''; if (src && !/^data:/.test(src)) { const k = basename(String(src).split(/[?#]/)[0]).toLowerCase() || src; inv.images[k] = (inv.images[k] || 0) + 1; } }
       if (t.tag === 'li') inv.listItems += 1;
       if (t.tag === 'tr') inv.tableRows += 1;
+      if (t.tag === 'table') inv.tables += 1;
+      if (t.tag === 'ul' || t.tag === 'ol') { const d = listDepthNow(); /* this list is already on the stack */ inv.listDepth = Math.max(inv.listDepth, d); if (d > 1) inv.nestedLists += 1; }
+      if (notesSel && matchSel(t, notesSel)) inv.notes += 1;
     } else if (t.type === 'close') {
       const i = stack.lastIndexOf(t.tag); if (i !== -1) stack.length = i;
       if (skipDepth && stack.length < skipDepth) skipDepth = 0;
@@ -135,6 +152,11 @@ export function compare(src, tgt) {
     images: { source: sum(src.images), emitted: sum(tgt.images), dropped: sum(tgt.images) < sum(src.images) ? [{ key: 'img', source: sum(src.images), emitted: sum(tgt.images), missing: Object.keys(src.images).filter((k) => !(k in tgt.images)) }] : [], extra: [] },
     listItems: { source: src.listItems, emitted: tgt.listItems, dropped: tgt.listItems < src.listItems ? [{ key: 'li', source: src.listItems, emitted: tgt.listItems }] : [], extra: [] },
     tableRows: { source: src.tableRows, emitted: tgt.tableRows, dropped: tgt.tableRows < src.tableRows ? [{ key: 'tr', source: src.tableRows, emitted: tgt.tableRows }] : [], extra: [] },
+    // structure (T26.3 Gate B): same li count with a lost level is a drop in listDepth / nestedLists
+    listDepth: { source: src.listDepth || 0, emitted: tgt.listDepth || 0, dropped: (tgt.listDepth || 0) < (src.listDepth || 0) ? [{ key: 'ul/ol depth', source: src.listDepth, emitted: tgt.listDepth || 0 }] : [], extra: [] },
+    nestedLists: { source: src.nestedLists || 0, emitted: tgt.nestedLists || 0, dropped: (tgt.nestedLists || 0) < (src.nestedLists || 0) ? [{ key: 'nested ul/ol', source: src.nestedLists, emitted: tgt.nestedLists || 0 }] : [], extra: [] },
+    tables: { source: src.tables || 0, emitted: tgt.tables || 0, dropped: (tgt.tables || 0) < (src.tables || 0) ? [{ key: 'table', source: src.tables, emitted: tgt.tables || 0 }] : [], extra: [] },
+    ...(src.notes !== null && src.notes !== undefined && tgt.notes !== null && tgt.notes !== undefined ? { notes: { source: src.notes, emitted: tgt.notes, dropped: tgt.notes < src.notes ? [{ key: 'notes', source: src.notes, emitted: tgt.notes }] : [], extra: [] } } : {}),
     words: { source: src.words, emitted: tgt.words, ratio: src.words ? Math.round((tgt.words / src.words) * 1000) / 1000 : (tgt.words ? null : 1) },
   };
 }
@@ -143,7 +165,8 @@ export function judge(cmp, { deviations = [], tolerance = {}, skipped = [], skip
   const red = []; const yellow = []; const covered = [];
   const devKeys = deviations.map((d) => normKey(d.source || '')).filter(Boolean);
   const coveredBy = (item) => { const k = normKey(item.key.split('|')[0].replace(/^h[1-6]:/, '')); const p = item.key.split('|')[1]; const hit = deviations.find((d) => { const ds = normKey(d.source || ''); return ds && (ds === k || (p && normKey(pathKey(d.source) || '') === normKey(p)) || item.key.toLowerCase().includes(ds) || (item.missing || []).some((m) => normKey(m) === ds || normKey(basename(String(d.source || '').split(/[?#]/)[0])) === normKey(m))); }); return hit || null; };
-  for (const c of ['headings', 'links', 'images', 'listItems', 'tableRows']) {
+  for (const c of ['headings', 'links', 'images', 'listItems', 'tableRows', 'listDepth', 'nestedLists', 'tables', 'notes']) {
+    if (!cmp[c]) continue;
     const tol = Number(tolerance[c] || 0);
     const allowedDrop = Math.floor(cmp[c].source * tol);
     let uncovered = 0;
@@ -159,26 +182,28 @@ export function judge(cmp, { deviations = [], tolerance = {}, skipped = [], skip
 }
 
 // ---- CLI ----
-function arg(name, fallback) { const i = process.argv.indexOf(`--${name}`); if (i === -1) return fallback; const v = process.argv[i + 1]; if (v === undefined || v.startsWith('--')) { console.error(`content-acceptance: --${name} needs a value`); process.exit(1); } return v; }
+const USAGE = 'usage: content-acceptance.mjs --slug <s> | --all [--state <state.json>] [--source <html>] [--target <html> | --target-url <plain.html>] [--meta <_meta.json>] [--source-main <sel>] [--source-exclude <sel,…>] [--tolerance k=v,…] [--report-only] [--skipped-allow <class,…>] [--trace <text>] [--class notes=<srcSel>=<tgtSel>] [--out <dir>] [--json]\n  exit 0 pass (or --report-only) · 1 unmeasured (a side missing — no verdict) · 2 usage or 🔴 dropped content';
+const usage = (msg) => { console.error(`content-acceptance: ${msg}\n${USAGE}`); process.exit(2); };
+function arg(name, fallback) { const i = process.argv.indexOf(`--${name}`); if (i === -1) return fallback; const v = process.argv[i + 1]; if (v === undefined || v.startsWith('--')) usage(`--${name} needs a value (got ${v === undefined ? 'nothing' : v})`); return v; }
 const has = (f) => process.argv.includes(`--${f}`);
 const readJson = (p) => { try { return JSON.parse(readFileSync(p, 'utf8')); } catch { return null; } };
 const isMain = process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href;
 
-async function acceptPage({ slug, sourcePath, targetPath, targetUrl, metaPath, outDir, mainSel, exclude, tolerance, reportOnly, skippedAllow, trace, jsonOut }) {
-  const rec = { slug, at: new Date().toISOString(), source: sourcePath, target: targetUrl || targetPath, meta: metaPath || null, scope: { main: mainSel, exclude }, tolerances: tolerance, reportOnly, verdict: null };
+async function acceptPage({ slug, sourcePath, targetPath, targetUrl, metaPath, outDir, mainSel, exclude, tolerance, reportOnly, skippedAllow, trace, jsonOut, notes = null }) {
+  const rec = { slug, at: new Date().toISOString(), source: sourcePath, target: targetUrl || targetPath, meta: metaPath || null, scope: { main: mainSel, exclude }, tolerances: tolerance, ...(notes ? { classes: { notes } } : {}), reportOnly, verdict: null };
   // unmeasured = a side is missing: the record still lands (never a pass, never a FAIL — the page stays ungated)
   const unmeasured = (reason) => { rec.verdict = 'unmeasured'; rec.reason = reason; mkdirSync(outDir, { recursive: true }); writeFileSync(join(outDir, `${slug}.json`), `${JSON.stringify(rec, null, 2)}\n`); return rec; };
   if (!sourcePath || !existsSync(sourcePath)) return unmeasured(`source sidecar missing (${sourcePath || 'no renderedHtml / --source'}) — zero source hits: re-run extract for this page`);
   let targetHtml;
   if (targetUrl) { try { const res = await fetch(targetUrl); if (!res.ok) return unmeasured(`--target-url HTTP ${res.status}`); targetHtml = await res.text(); } catch (e) { return unmeasured(`--target-url fetch error: ${e.message}`); } } else { if (!targetPath || !existsSync(targetPath)) return unmeasured(`target missing (${targetPath || '--target'})`); targetHtml = readFileSync(targetPath, 'utf8'); }
-  const src = inventory(readFileSync(sourcePath, 'utf8'), { mainSel, exclude });
-  const tgt = inventory(targetHtml, { mainSel: 'main,[role=main]', exclude: ['.metadata', '.section-metadata', ...(targetUrl ? [] : [])] });
+  const src = inventory(readFileSync(sourcePath, 'utf8'), { mainSel, exclude, notesSel: notes ? notes.source : null });
+  const tgt = inventory(targetHtml, { mainSel: 'main,[role=main]', exclude: ['.metadata', '.section-metadata', ...(targetUrl ? [] : [])], notesSel: notes ? notes.target : null });
   const meta = metaPath ? readJson(metaPath) : null;
   const existing = readJson(join(outDir, `${slug}.json`));
   const skipped = (existing && Array.isArray(existing.skipped)) ? existing.skipped : [];
   const cmp = compare(src, tgt);
   const j = judge(cmp, { deviations: (meta && meta.contentDeviations) || [], tolerance, skipped, skippedAllow });
-  Object.assign(rec, { class: { headings: cmp.headings, links: cmp.links, images: cmp.images, listItems: cmp.listItems, tableRows: cmp.tableRows }, words: cmp.words, sourceScoped: src.scoped, sourceExcludedSubtrees: src.excluded, red: j.red, yellow: j.yellow, covered: j.covered, skipped, verdict: j.verdict });
+  Object.assign(rec, { class: { headings: cmp.headings, links: cmp.links, images: cmp.images, listItems: cmp.listItems, tableRows: cmp.tableRows, listDepth: cmp.listDepth, nestedLists: cmp.nestedLists, tables: cmp.tables, ...(cmp.notes ? { notes: cmp.notes } : {}) }, words: cmp.words, sourceScoped: src.scoped, sourceExcludedSubtrees: src.excluded, red: j.red, yellow: j.yellow, covered: j.covered, skipped, verdict: j.verdict });
   if (trace) { const k = normKey(trace); rec.trace = { text: trace, inSource: Object.keys({ ...src.headings, ...src.links }).some((x) => x.includes(k)) || readFileSync(sourcePath, 'utf8').toLowerCase().includes(k), inTarget: targetHtml.toLowerCase().includes(k) }; }
   mkdirSync(outDir, { recursive: true });
   writeFileSync(join(outDir, `${slug}.json`), `${JSON.stringify(rec, null, 2)}\n`);
@@ -195,7 +220,6 @@ function summaryMd(records, outDir) {
   return md.join('\n');
 }
 async function main() {
-  const USAGE = 'usage: content-acceptance.mjs --slug <s> | --all [--state <state.json>] [--source <html>] [--target <html> | --target-url <plain.html>] [--meta <_meta.json>] [--source-main <sel>] [--source-exclude <sel,…>] [--tolerance k=v,…] [--report-only] [--skipped-allow <class,…>] [--trace <text>] [--out <dir>] [--json]\n  exit 0 pass (or --report-only) · 1 usage / unmeasured (a side missing) · 2 🔴 dropped content';
   if (has('help') || has('h')) { console.log(USAGE); process.exit(0); }
   const statePath = arg('state', 'stardust/state.json');
   const state = readJson(statePath) || { pages: [], migrate: {} };
@@ -203,11 +227,15 @@ async function main() {
   const mainSel = arg('source-main', 'main,[role=main]');
   const exclude = (arg('source-exclude', '') || '').split(',').map((s) => s.trim()).filter(Boolean);
   const tolerance = Object.fromEntries((arg('tolerance', '') || '').split(',').filter(Boolean).map((kv) => { const [k, v] = kv.split('='); return [k.trim(), Number(v)]; }));
-  for (const [k, v] of Object.entries(tolerance)) if (!['headings', 'links', 'images', 'listItems', 'tableRows', 'words'].includes(k) || !Number.isFinite(v) || v < 0 || v > 1) { console.error(`content-acceptance: --tolerance ${k}=${v} — classes headings|links|images|listItems|tableRows|words, value 0–1`); process.exit(1); }
+  // --class notes=<srcSel>=<tgtSel>: the one optional paired class (T26.3); anything else is a usage error
+  const classArg = arg('class', null);
+  let notes = null;
+  if (classArg !== null) { const m = String(classArg).match(/^notes=([^=]+)=(.+)$/); if (!m) usage(`--class takes notes=<srcSel>=<tgtSel> (got ${classArg})`); notes = { source: m[1].trim(), target: m[2].trim() }; }
+  for (const [k, v] of Object.entries(tolerance)) if (!['headings', 'links', 'images', 'listItems', 'tableRows', 'listDepth', 'nestedLists', 'tables', 'notes', 'words'].includes(k) || !Number.isFinite(v) || v < 0 || v > 1) usage(`--tolerance ${k}=${v} — classes headings|links|images|listItems|tableRows|listDepth|nestedLists|tables|notes|words, value 0–1`);
   const skippedAllow = (arg('skipped-allow', '') || '').split(',').map((s) => s.trim()).filter(Boolean);
   const reportOnly = has('report-only');
   const slugArg = arg('slug', null);
-  if (!slugArg && !has('all')) { console.error(USAGE); process.exit(1); }
+  if (!slugArg && !has('all')) usage('--slug <s> or --all is required');
   const pages = has('all') ? (state.pages || []) : [(state.pages || []).find((p) => p.slug === slugArg) || { slug: slugArg }];
   const migratedDir = (state.migrate && state.migrate.outputDir) || 'stardust/migrated/';
   const pageMap = (state.migrate && state.migrate.pageMap) || [];
@@ -219,7 +247,7 @@ async function main() {
     const pm = pageMap.find((m) => m.slug === p.slug);
     const targetPath = arg('target', null) && !has('all') ? arg('target', null) : (pm ? join(migratedDir, pm.outputPath) : null);
     const metaPath = arg('meta', null) && !has('all') ? arg('meta', null) : (targetPath ? join(dirname(targetPath), '_meta.json') : null);
-    const rec = await acceptPage({ slug: p.slug, sourcePath, targetPath, targetUrl: has('all') ? null : arg('target-url', null), metaPath: metaPath && existsSync(metaPath) ? metaPath : null, outDir, mainSel, exclude, tolerance, reportOnly, skippedAllow, trace: arg('trace', null), jsonOut: has('json') });
+    const rec = await acceptPage({ slug: p.slug, sourcePath, targetPath, targetUrl: has('all') ? null : arg('target-url', null), metaPath: metaPath && existsSync(metaPath) ? metaPath : null, outDir, mainSel, exclude, tolerance, reportOnly, skippedAllow, notes, trace: arg('trace', null), jsonOut: has('json') });
     records.push(rec);
     if (!has('json')) {
       const line = rec.verdict === 'unmeasured' ? `? ${rec.slug}: unmeasured — ${rec.reason}` : `${rec.verdict === 'pass' ? '✓' : '🔴'} ${rec.slug}: ${rec.verdict}${rec.red.length ? ` — ${rec.red.map((f) => f.msg).join('; ')}` : ''}${rec.yellow.length ? ` — 🟡 ${rec.yellow.map((f) => f.msg).join('; ')}` : ''}${rec.covered.length ? ` — covered: ${rec.covered.length} item(s) by contentDeviations[]` : ''}${Object.keys(tolerance).length ? ` — tolerances ${Object.entries(tolerance).map(([k, v]) => `${k}=${v}`).join(',')}` : ''}${rec.gatesPassedWritten ? ' — gatesPassed += content-count' : reportOnly && rec.verdict === 'pass' ? ' — report-only (gatesPassed not written)' : ''}`;
