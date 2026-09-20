@@ -155,6 +155,10 @@
 #   GATE_BLOCK           comma list of URL substrings → --block on BOTH captures
 #                        (undismissable third-party widgets; the sidecar refuses
 #                        an asymmetric pair, so the gate is the only safe place)
+#   GATE_TOKEN_ENV       env NAME of the site token of a LOCKED build origin
+#                        (deploy lockdown.mjs → SITE_TOKEN_<SLUG>) → --token-env on
+#                        both captures; stitch-shot attaches it to .aem.page/.aem.live
+#                        hosts only, so the live source side never receives it
 #   GATE_MASKS           path of the inventory-declared masks file
 #                        (default stardust/replica/masks.json; schema in
 #                        capture-sidecar.mjs). When it exists it is validated
@@ -278,6 +282,7 @@ COMPARE_TIMEOUT=${GATE_COMPARE_TIMEOUT:-120}
 STITCH_COMMON=""
 [ "${GATE_ALLOW_CONSENT:-0}" = "1" ] && STITCH_COMMON="--allow-consent"
 [ -n "${GATE_BLOCK:-}" ] && STITCH_COMMON="$STITCH_COMMON --block $GATE_BLOCK"
+[ -n "${GATE_TOKEN_ENV:-}" ] && STITCH_COMMON="$STITCH_COMMON --token-env $GATE_TOKEN_ENV"
 # Masks (see header GATE_MASKS): validate first, then the same file on both captures and the compare.
 MASKS_JSON=${GATE_MASKS:-stardust/replica/masks.json}
 MASK_FLAGS='{"maskSel":[],"maskIframes":false,"maskImages":false}'

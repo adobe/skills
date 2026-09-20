@@ -35,7 +35,17 @@ and resumable. The state file is `stardust/state.json`. It is written by
     "extractedAt": "<ISO timestamp>",
     "pageCap": 25,
     "totalDiscovered": 38,
-    "crawled": 25
+    "crawled": 25,
+    "eds": {
+      "org": "<org>",
+      "site": "sdt-<slug>",
+      "repoUrl": "https://github.com/<org>/sdt-<slug>",
+      "previewHost": "https://main--sdt-<slug>--<org>.aem.page",
+      "liveHost": "https://main--sdt-<slug>--<org>.aem.live",
+      "private": true,
+      "bootstrappedAt": "<ISO timestamp>",
+      "bootstrappedBy": "site-bootstrap | existing | <owner-named skill>"
+    }
   },
   "direction": {
     "resolvedAt": "<ISO timestamp>",
@@ -141,28 +151,37 @@ never a home path:
 ```json
 "credentials": {
   "at": "2026-09-18T08:40:00Z",
-  "da": "ok | expired | missing",
+  "da": "ok | expired | missing | unreachable",
   "daExpiresAt": "2026-09-19T07:12:00Z",
-  "daSource": "shell | repo-env | global-env",
+  "daSource": "shell | repo-env | global-env | home-env",
+  "daTarget": "ok | not-visible | denied | unchecked",
   "siteTokenEnv": "SITE_TOKEN_<SITE>",
   "gh": "ok | expired | missing | skipped"
 }
 ```
 
-`siteTokenEnv` is the matched variable name (or absent); every
-`--token-env` consumer defaults to it. `gh` is `skipped` when neither the
-ask nor the environment involves repo creation or Code Sync.
+`daTarget` is what the one list call said about `--org/--repo`: `not-visible`
+(404 — wrong coordinates, or no site yet → `skills/deploy/reference/site-bootstrap.md`)
+is why step 8 refuses while `da` stays `ok`; `unchecked` without a smoke.
+`siteTokenEnv` is the matched variable name (or absent; `lockdown.mjs` writes
+it when it creates the site token); every `--token-env` consumer defaults to
+it. `gh` is `skipped` when neither the ask nor the environment involves repo
+creation or Code Sync.
 
-**Lookup.** Resolve `DA_TOKEN` in order — shell env, repo `.env`, the
-harness's user-level env file (Claude Code: `~/.claude/.env`) — and read
-its remaining hours from the JWT `exp` claim (lifecycle rule:
-`skills/deploy/da-deploy-protocol.md` § DA_TOKEN lifecycle). Enumerate
-`SITE_TOKEN_*` **names** in the same files by pattern match — never `cat`
-an env file — and match `<SITE>` to the repo slug case-insensitively.
-Probe `GH_PAT` with `GET api.github.com/user` (200/401 only) when repo
-creation or Code Sync is in the ask or the variable exists. The
-`--credentials` mode of deploy's token-check script emits this block once
-it ships; until then the steps above are the procedure.
+**Lookup.** `node skills/deploy/scripts/da-token-check.mjs --credentials
+--site <slug> --state stardust/state.json [--org <org> --repo <repo>]`
+writes the block. It resolves `DA_TOKEN` in order — shell env, repo `.env`,
+the harness's user-level env file (Claude Code: `~/.claude/.env`), `~/.env` —
+reads the remaining hours from the IMS claims (`created_at` + `expires_in`;
+a plain JWT `exp` is the fallback; lifecycle rule:
+`skills/deploy/da-deploy-protocol.md` § DA_TOKEN lifecycle), enumerates
+`SITE_TOKEN_*` **names** by pattern — never `cat` an env file — matching
+`<SITE>` to the slug exactly after normalisation, and probes `GH_PAT`
+(`GET api.github.com/user`, 200/401) when the variable exists or `--gh` is
+given. Exit 2 = `da: expired | missing`, or the target answers 401/403/404
+(`blocked` line, remedy named by env-file class); exit 1 = `unreachable`
+(no verdict — re-run). Never hand-decode a token or declare a 401 blocker
+before it ran.
 
 ---
 

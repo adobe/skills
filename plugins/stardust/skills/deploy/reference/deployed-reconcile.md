@@ -2,7 +2,7 @@
 
 Full text of deploy Step 10. Read:
 - § Step 10 — after a page is `deployed`: what the atomic contract already proved, the QA-scope note;
-- § The six reconcile checks — served-check first (gate after the origin serves the round), then the per-page procedure: content-diff summary, deployed eyeball, CLS probe, chrome crop gate (#115), ≥1920 box check (#116), geometry-fix hygiene (#117);
+- § The six reconcile checks — `code-sync-verify.mjs` first (gate only after the origin serves the round's working tree), then the per-page procedure: content-diff summary, deployed eyeball, CLS probe, chrome crop gate (#115), ≥1920 box check (#116), geometry-fix hygiene (#117);
 - § Running content-diff — the commands and the fixed-asset URL grep (#44);
 - § Reading content-diff — how to triage its flags (#78);
 - § Scope — when to hand over to the site-wide `qa` sweep or the rollout fix loop instead.
@@ -22,7 +22,7 @@ After deploy, reconcile the EDS page against the source prototype on the **DEPLO
 
 ## The six reconcile checks
 
-**Gate only after the origin serves what you shipped.** Run the checks below only after `node skills/deploy/scripts/served-check.mjs <css-or-js-url> --same-as <local-file> --wait 180` exits 0 for every block CSS/JS the round touched (served bytes equal the file you pushed) and `served-check.mjs <page-url> --grep '<marker>' --wait 180` exits 0 for the page — a gate run earlier measures yesterday's code; the wait is the helper's capped poll, never `sleep N; <gate>`. Exit 124 is no verdict (the cap expired: re-run or check the Code Sync POST), exit 1 is served-but-wrong; neither is a gate result.
+**Gate only after the origin serves what you shipped.** Run the checks below only after `node skills/deploy/scripts/code-sync-verify.mjs --org <org> --repo <repo> --ref <branch>` exits 0 — every code path changed since the last verified record re-synced, purged and served byte-equal to the working tree (`da-deploy-protocol.md` § Code push gates) — and `served-check.mjs <page-url> --grep '<marker>' --wait 180` exits 0 for the page; a gate run earlier measures yesterday's code, and the wait is the instrument's capped poll, never `sleep N; <gate>`. Exit 124 is no verdict (still propagating: re-run once, then book the round instrument-invalidated), exit 3 is "push first", exit 2 is an admin denial, exit 1 on served-check is served-but-wrong; none is a gate result.
 
 **Live drift is an event, not a residual.** When the published-origin `gate.sh` round prints `LIVE DRIFT` (the live reference aged past `GATE_REF_MAX_AGE_H` or `--refresh` was passed and the fresh probe moved beyond the bounded threshold), the reference was recaptured and that round does not count against the cap; the round record carries `liveDrift{}` and the rollout Phase H report's `Live drift` line counts those records (`skills/replica/reference/source-fidelity-gate.md` § Iteration discipline).
 

@@ -13,7 +13,7 @@
 //   deploy/scripts/fixtures/pipeline-recorded.plain.html  a REAL delivered shape
 // The probe .plain.html is DERIVED by hand from the catalogued facts
 // (deploy/reference/pipeline-facts.md — rows resting on it alone are marked
-// "assumed" there); T21.2's pipeline-probe.mjs re-records it from a preview origin.
+// "assumed" there); `pipeline-mimic.mjs --probe --record` re-records it from a preview origin.
 // The recorded file is a redacted preview .plain.html (media hashes, <source> sets,
 // real image dimensions, heading ids): the mimic must be a no-op on it and
 // normaliseForCompare() must hide exactly those artefacts — both asserted by the
@@ -64,7 +64,7 @@ try {
   const out = join(dir, 'harness.html');
   r = run(BUILD, [FIXTURE, out, '--root', dir]);
   const html = r.status === 0 ? readFileSync(out, 'utf8') : '';
-  check('build-harness exits 0 and prints the counts line', r.status === 0 && /pipeline emulation: section-metadata 1/.test(r.stdout), r.stderr.trim());
+  check('build-harness exits 0 and prints the counts line', r.status === 0 && /pipeline emulation: section-metadata 2/.test(r.stdout), r.stderr.trim());
   check('build-harness emits <meta name="template"> from the metadata block', /<meta name="template" content="Landing Page">/.test(html) && /<meta name="nav" content="\/nav-minimal">/.test(html));
   check('build-harness main carries the delivered shape', /<div class="dark narrow" data-background="navy">/.test(html) && /<p><picture><img loading="lazy"/.test(html) && !/class="metadata"/.test(html));
   const out2 = join(dir, 'harness-raw.html');

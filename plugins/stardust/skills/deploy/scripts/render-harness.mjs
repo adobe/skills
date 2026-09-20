@@ -30,7 +30,9 @@
  *                         and runtimeMimic all see the delivered shape; the page
  *                         metadata's template/theme become body classes as
  *                         decorateTemplateAndTheme would; counts printed once per run)
- *     --style-split       comma (D7 default) | first-only — section-metadata `style` split
+ *     --style-split       comma | first-only — section-metadata `style` split; absent → the measured
+ *                         `<root>/stardust/runtime-contract.json#pipeline.multiValueStyle`, else comma
+ *                         (D7 default); `style-split <value> (<source>)` prints once per run
  *     --root <dir>        repo root the block imports resolve against (default: the
  *                         blocks dir's parent). The harness page has a synthetic origin
  *                         served from this root (ew-editability-probe.mjs openHarness), so
@@ -58,11 +60,11 @@ import {
   EDITABLE, firstExisting, readMainHtml, dropMetadata, discoverBlocks, runtimeMimic, instrument, survey, simulateEditor,
   openHarness, installBlockJs, installErrors, runDecorate, readBlockExemptions, aggregate, formatTable, formatRequests, verdict, strictFindings, fetchQuickEditCss,
 } from './ew-editability-probe.mjs';
-import { pipelineMimic, formatCounts, bodyClasses } from './pipeline-mimic.mjs';
+import { pipelineMimic, formatCounts, bodyClasses, resolveStyleSplit, styleSplitLine } from './pipeline-mimic.mjs';
 
 function parseArgs(argv) {
   const rest = argv.slice(2);
-  const opts = { positional: [], styles: null, blocksDir: null, root: null, fragments: undefined, strict: false, width: 1280, ew: false, simulate: false, pipeline: true, styleSplit: 'comma' };
+  const opts = { positional: [], styles: null, blocksDir: null, root: null, fragments: undefined, strict: false, width: 1280, ew: false, simulate: false, pipeline: true, styleSplit: null };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--styles') { opts.styles = rest[i += 1]; }
@@ -87,12 +89,15 @@ async function main() {
   const { contentPath, out, blocks, opts } = parseArgs(process.argv);
   const usage = 'usage: node render-harness.mjs <content/path.html> <out.png> [block-name ...] [--styles css] [--blocks-dir dir] [--root dir] [--fragments dir] [--width px] [--ew] [--strict] [--simulate-editor] [--no-pipeline] [--style-split comma|first-only]\n';
   if (opts.help) { process.stdout.write(usage); process.exit(0); }
-  if (!contentPath || !out || !['comma', 'first-only'].includes(opts.styleSplit)) {
+  if (!contentPath || !out || (opts.styleSplit && !['comma', 'first-only'].includes(opts.styleSplit))) {
     process.stderr.write(usage);
     process.exit(2);
   }
   const stylesPath = opts.styles || firstExisting(['eds/styles/styles.css', 'styles/styles.css'], 'styles.css');
   const blocksDir = opts.blocksDir || firstExisting(['eds/blocks', 'blocks'], 'blocks dir');
+  const root = opts.root || path.dirname(path.resolve(blocksDir));
+  const split = resolveStyleSplit(opts.styleSplit, root); // flag > runtime-contract.json#pipeline > comma
+  opts.styleSplit = split.value;
   let mainHtml = readMainHtml(contentPath);
   const bodyCls = ['appear'];
   if (opts.pipeline) {
@@ -100,10 +105,9 @@ async function main() {
     const r = pipelineMimic(mainHtml, { styleSplit: opts.styleSplit });
     mainHtml = r.html;
     bodyCls.push(...bodyClasses(r.meta));
-    console.log(formatCounts(r.counts));
+    console.log(`${formatCounts(r.counts)} — ${styleSplitLine(split)}`);
   }
   const styles = fs.readFileSync(stylesPath, 'utf8');
-  const root = opts.root || path.dirname(path.resolve(blocksDir));
   const fragments = opts.fragments === undefined ? (fs.existsSync('content') ? 'content' : null) : opts.fragments;
 
   const b = await chromium.launch();

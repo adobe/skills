@@ -68,7 +68,7 @@ The brief template:
 >
 > **EDS content page format**: NO `<head>` element (project `head.html` is injected by EDS), empty `<header></header>`/`<footer></footer>`, each top-level `<div>` inside `<main>` is one section holding one block OR default content, section-metadata only as a Step-3 `style` value on default-content sections, no `<style>`/`<script>`, fully-qualified image URLs.
 >
-> **Done criteria**: [list of paths]; the whole-page `block-roundtrip` on the foundation archetype page (`content/<foundation-page>.html`) still exits 0 after your changes — a regression there is yours to fix before you return. Return a list of new blocks + one-line summary per page.
+> **Done criteria**: [list of paths]; `node skills/deploy/scripts/code-sync-verify.mjs --lint --files <your files>` exits 0 before your commit (findings in files you touched are yours whatever line they sit on; a missing toolchain is never "clean" — `../da-deploy-protocol.md` § Code push gates); the whole-page `block-roundtrip` on the foundation archetype page (`content/<foundation-page>.html`) still exits 0 after your changes — a regression there is yours to fix before you return. Return a list of new blocks + one-line summary per page.
 
 ## Shared cores and variants
 

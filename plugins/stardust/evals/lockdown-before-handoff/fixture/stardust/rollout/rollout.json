@@ -1,0 +1,30 @@
+{
+  "_provenance": {
+    "writtenBy": "stardust:rollout",
+    "writtenAt": "2026-09-14T09:05:12Z",
+    "againstInput": "https://www.larkspurmutual.example",
+    "readArtifacts": [
+      "stardust/migrated/",
+      "stardust/state.json"
+    ]
+  },
+  "site": {
+    "sourceUrl": "https://www.larkspurmutual.example",
+    "da": {
+      "org": "larkspur",
+      "site": "sdt-larkspur-mutual"
+    },
+    "liveHost": "https://main--sdt-larkspur-mutual--larkspur.aem.live",
+    "previewHost": "https://main--sdt-larkspur-mutual--larkspur.aem.page",
+    "branch": "main"
+  },
+  "links": {
+    "outsideInventory": "warn"
+  },
+  "lastRun": {
+    "phase": "G",
+    "at": "2026-09-14T11:58:40Z",
+    "verified": 6,
+    "failed": 0
+  }
+}

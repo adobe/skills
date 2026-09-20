@@ -332,20 +332,20 @@ fix is upstream, not a fourth loop.
   no-op and the round measured nothing. The check is free —
   the count is already on the verdict line; if it didn't move at all, find
   out why the rule never applied (specificity, wrong selector, value already
-  in effect) before spending another round.
+  in effect) before spending another round. On the published origin a
+  byte-identical count repeated → run `node skills/deploy/scripts/code-sync-verify.mjs
+  --org <org> --repo <repo> --ref <branch>` first (served code == working
+  tree); a round measured against stale served code is
+  instrument-invalidated (`--invalidate`), not an iteration.
 - **Verify geometry fixes on the RULE-BEARING element, cache-free (#117).**
-  One field "parity verified" claim was wrong three ways at once: the probe
-  matched a heuristic element ("white column wider than 400px") that wasn't
-  the box carrying the lifted rule — always pair the same semantic element
-  on both sides (the element the fixed rule targets on the build; the
-  element whose source rule was lifted on live); the re-check ran through a
-  CACHED stylesheet — verify serving out-of-band
+  Pair the same semantic element on both sides (the element the fixed rule
+  targets on the build; the element whose source rule was lifted on live) —
+  never a heuristic match; verify serving out-of-band
   (`node skills/deploy/scripts/served-check.mjs <css-url> --grep
-  '<new-rule>'` — served assets are gzip-encoded; the helper decodes and
-  prints the grep verdict) and re-render in a fresh headless context; and
-  a reviewer's screenshot encodes their zoom — back-compute their CSS viewport from any
-  element with a known percentage rule (a card at 851px under `width: 50%`
-  → viewport 1702px) and reproduce THAT viewport headlessly before letting
+  '<new-rule>'` — served assets are gzip-encoded; the helper decodes) and
+  re-render in a fresh headless context; a reviewer's screenshot encodes
+  their zoom — back-compute their CSS viewport from an element with a known
+  percentage rule and reproduce THAT viewport headlessly before letting
   their numbers overturn a fix.
 - Probe schedule per fix round: **pixels every round; content-diff +
   visual-diff at milestones** — iteration 1, after any fix that touched
@@ -747,9 +747,8 @@ touched and `… <page-url> --grep <marker> --wait 180` for the page marker —
   parity. Treat the pre-publish harness number as provisional
   and the reconcile round as expected work, not a regression.
 - **Two published-origin rounds without improvement → stop editing CSS.**
-  The number is then not a CSS problem. Run, in this order: the served-hash
-  check (§ Iteration discipline — CDN `max-age` serves the previous round
-  for hours); the DOM
+  The number is then not a CSS problem. Run, in this order: the served-code
+  check (`code-sync-verify.mjs`, § Iteration discipline); the DOM
   ladder published-vs-prototype (which wrappers the pipeline added); the
   landmark Δy table (`anchor.mjs --landmarks --against`); the
   text-wrap diff (line counts per matched paragraph). CSS experiments run

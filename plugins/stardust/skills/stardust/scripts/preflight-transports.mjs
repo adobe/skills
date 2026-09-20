@@ -9,28 +9,33 @@
  * not permission: a read that passes says nothing about the write that follows.
  *
  *   gh-user     gh api user
- *   gh-repo     gh api repos/<org>/<repo>   (404 → gh api orgs/<org>)
+ *   gh-repo     gh api repos/<org>/<repo>   (404 → gh api orgs/<org>, then users/<org>: reachable = `absent`)
  *   git-push    git push --dry-run <remote> <branch>          (cwd = --root)
  *   da-write    PUT 1 byte to admin.da.live /source/<org>/<repo>/.stardust-preflight/<ts>.html, then DELETE
  *   admin-read  GET admin.hlx.page /status/<org>/<repo>/<branch>/
  *
  * Writes `<root>/stardust/.work/env.json` (merged with what is there):
- *   { ..., "transports": { "<probe>": "ok" | "denied" | "unreachable" }, "transportsAt": "<iso>" }
+ *   { ..., "transports": { "<probe>": "ok" | "denied" | "unreachable" | "absent" }, "transportsAt": "<iso>" }
+ * `absent` (gh-repo only): the repo answers 404 while the org/user is reachable —
+ * there is no origin yet. Not a denial: exit unchanged, one `No origin:` line
+ * pointing at `deploy/reference/site-bootstrap.md` (master Setup step 9 reads it).
  * Prints one line per probe, then `Blocked on owner:` with the unblock per
  * denied probe. Tokens are read by env-var NAME only (`--token-env`, default
- * DA_TOKEN); the value is never printed or written.
+ * DA_TOKEN) through deploy's `resolveToken` (shell → ./.env → ~/.claude/.env →
+ * ~/.env — the same order da-token-check.mjs prints); the value is never printed or written.
  *
  * Usage:
  *   node skills/stardust/scripts/preflight-transports.mjs --org <org> --repo <repo>
  *        [--branch main] [--remote origin] [--root <dir>] [--token-env DA_TOKEN]
  *        [--skip gh-user,gh-repo,git-push,da-write,admin-read]
  *
- * Exit: 0 all ok · 2 any denied · 1 none denied but some unreachable / usage error.
+ * Exit: 0 all ok (an `absent` repo is ok — bootstrap, not an owner action) · 2 any denied · 1 none denied but some unreachable / usage error.
  * No dependencies (Node 18+: global fetch / FormData / Blob).
  */
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { resolveToken } from '../../deploy/scripts/lib.mjs';
 
 const DA_SRC = 'https://admin.da.live/source';
 const ADMIN = 'https://admin.hlx.page';
@@ -107,11 +112,15 @@ function classify(code, note) {
 
 async function probeGhUser() { return run('gh', ['api', 'user']); }
 
+const is404 = (r) => r.status === 'unreachable' && /\b404\b|not found/i.test(r.raw || '');
+
 async function probeGhRepo({ org, repo }) {
   const r = run('gh', ['api', `repos/${org}/${repo}`]);
-  if (r.status !== 'unreachable' || !/\b404\b|not found/i.test(r.raw || '')) return r;
-  const o = run('gh', ['api', `orgs/${org}`]);
-  return o.status === 'ok' ? { status: 'ok', note: `repo absent; org ${org} reachable` } : o;
+  if (!is404(r)) return r;
+  // repo 404 + owner reachable = no origin yet (`absent`, master Setup step 9 → site-bootstrap.md); an org that is a user account answers on users/
+  let o = run('gh', ['api', `orgs/${org}`]);
+  if (is404(o)) o = run('gh', ['api', `users/${org}`]);
+  return o.status === 'ok' ? { status: 'absent', note: `repo absent; ${org} reachable` } : o;
 }
 
 async function probeGitPush({ root, remote, branch }) {
@@ -161,7 +170,7 @@ function unblock(name, o) {
 
 async function main() {
   const o = parseArgs(process.argv.slice(2));
-  const token = process.env[o.tokenEnv] || '';
+  const token = resolveToken(o.tokenEnv)?.value || ''; // shell → ./.env → ~/.claude/.env → ~/.env: a .env-only token is not a denial
   const ctx = { ...o, token };
   const transports = {};
   const notes = {};
@@ -185,6 +194,8 @@ async function main() {
 
   const denied = Object.entries(transports).filter(([, s]) => s === 'denied').map(([n]) => n);
   const unreachable = Object.entries(transports).filter(([, s]) => s === 'unreachable').map(([n]) => n);
+  const absent = Object.entries(transports).filter(([, s]) => s === 'absent').map(([n]) => n);
+  if (absent.length) process.stdout.write(`\nNo origin (bootstrap at Setup, not an owner action): ${absent.join(', ')} — bootstrap: deploy/reference/site-bootstrap.md\n`);
   if (denied.length) {
     process.stdout.write('\nBlocked on owner:\n');
     for (const n of denied) process.stdout.write(`  ${n}: ${unblock(n, o)}${notes[n] ? `   [${notes[n]}]` : ''}\n`);

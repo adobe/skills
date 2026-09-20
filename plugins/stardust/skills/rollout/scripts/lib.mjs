@@ -196,3 +196,24 @@ export function computeScorecard(findings, runId, now) {
     fixed: { P1: sev(fixed, 'P1'), P2: sev(fixed, 'P2'), P3: sev(fixed, 'P3') },
   };
 }
+
+/**
+ * Site-token header for a LOCKED delivery host (deploy's lockdown.mjs writes SITE_TOKEN_<SLUG>;
+ * state.json credentials.siteTokenEnv names it). Resolved by NAME through deploy/scripts/lib.mjs
+ * resolveToken (shell → ./.env → ~/.claude/.env → ~/.env) from the plugin tree or the project copy
+ * (stardust/scripts/deploy/lib.mjs — copy it along with this file). The value is never printed.
+ * Returns null (anonymous read) when no name is given or it does not resolve — one stderr note.
+ */
+export async function siteAuthHeader(name, tool = 'rollout') {
+  if (!name) return null;
+  for (const c of ['../../deploy/scripts/lib.mjs', '../deploy/lib.mjs']) {
+    try {
+      const { resolveToken } = await import(new URL(c, import.meta.url));
+      const t = resolveToken(name);
+      if (!t) { console.error(`${tool}: ${name} not found (shell, ./.env, ~/.claude/.env, ~/.env) — the delivery host will be read anonymously`); return null; }
+      return /^(token|bearer) /i.test(t.value) ? t.value : `token ${t.value}`;
+    } catch (e) { if (e.code !== 'ERR_MODULE_NOT_FOUND') throw e; }
+  }
+  console.error(`${tool}: deploy/scripts/lib.mjs not found next to this script — copy skills/deploy/scripts/lib.mjs to stardust/scripts/deploy/; the delivery host will be read anonymously`);
+  return null;
+}

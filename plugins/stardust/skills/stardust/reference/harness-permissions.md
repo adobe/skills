@@ -15,7 +15,7 @@ run's own instruments alike. Naming the class up front costs one line.
 
 | class | shapes | who resolves |
 |---|---|---|
-| **privileged actions** | repo create · Code Sync install · merge or push to the serving branch · `POST …/live/` publish · worker or edge deploys · pushes to a second site's repo · writes to shared multi-site tooling | the owner — surfaced once by the `Blocked on owner:` line (master § Hands-off mode); the run continues on unblocked work |
+| **privileged actions** | repo create · Code Sync install · merge or push to the serving branch · `POST …/live/` publish · repo visibility change (`gh repo edit --visibility`) · site-auth config writes (`config/<org>/sites/<site>/secrets.json`, `access/site.json` — `skills/deploy/reference/site-lockdown.md`) · worker or edge deploys · pushes to a second site's repo · writes to shared multi-site tooling | the owner — surfaced once by the `Blocked on owner:` line (master § Hands-off mode); the run continues on unblocked work |
 | **instruments** | `node <plugin>/skills/<skill>/scripts/<x>.mjs …` and the project copy `node stardust/scripts/<skill>/<x>.mjs …` · `stardust/scripts/replica/gate.sh` · `python3 -m http.server` · `aem up` · `curl` to `admin.da.live` and `admin.hlx.page` · `gh api` reads | pre-approvable; when denied anyway, re-issue once as a bare command (below), then continue |
 
 Scripts that import the shared helper (rollout `verify.mjs`, qa `qa.mjs`)
@@ -58,10 +58,19 @@ The **capability probes** it names, within the first five minutes: `gh api user`
 · `gh api repos/<org>/<repo>` (exists?) or `gh api orgs/<org>` · `git push
 --dry-run origin <branch>` · DA `PUT` of a 1-byte `/.stardust-preflight/<ts>`
 then `DELETE` · admin `GET /status/<org>/<repo>/main/`. Results go to
-`stardust/.work/env.json` under `transports` (`ok` | `denied` | `unreachable`).
+`stardust/.work/env.json` under `transports` (`ok` | `denied` | `unreachable` |
+`absent`). `absent` is `gh-repo` only — the repo answers 404 while the org or
+user is reachable: no origin yet, not a denial (exit unchanged); the probe
+prints `No origin … bootstrap: deploy/reference/site-bootstrap.md` and master
+Setup step 9 runs that chapter now, never after migrate.
 `node skills/stardust/scripts/preflight-transports.mjs --org <org> --repo <repo>
 [--branch main] [--token-env DA_TOKEN]` runs the five and writes that block
-(exit 2 on any denial; `--help` lists the flags).
+(exit 2 on any denial; `--help` lists the flags). It pairs at Setup with
+`node skills/deploy/scripts/da-token-check.mjs --credentials --site <slug>
+--state stardust/state.json` (`state-machine.md` § Credentials key): the token
+check decides whether `DA_TOKEN` is usable, the transport probe whether the
+write lands — both resolve the token by NAME (shell → `.env` files), so a
+`.env`-only token is never reported as `denied`.
 A probe proves capability — token, reachability, org access — not permission:
 a read that passes says nothing about the write that follows.
 

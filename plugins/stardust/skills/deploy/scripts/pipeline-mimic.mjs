@@ -46,7 +46,7 @@
  * Fixtures (`--self-test`, also run by evals/lint/pipeline-mimic-fixture.mjs):
  *   fixtures/pipeline-probe.html + .plain.html  one instance of every rule; the .plain.html is
  *                DERIVED from the fact catalogue (reference/pipeline-facts.md), not recorded —
- *                rows resting on it alone are marked "assumed" there until T21.2 re-records it.
+ *                rows resting on it alone are marked "assumed" there until `--probe --record` re-records it.
  *   fixtures/pipeline-recorded.plain.html  a REAL delivered shape (preview .plain.html, hosts and
  *                names redacted; /media_<hash> src/srcset, <source> sets, width/height, heading
  *                ids): every rule must be a no-op on it, and normaliseForCompare() must hide
@@ -54,20 +54,59 @@
  *                scratch path, POST /preview/, GET <preview>/<path>.plain.html.
  *
  * Module: `pipelineMimic(html, { styleSplit, rules }) → { html, meta, counts }`,
- * `formatCounts(counts)`, `bodyClasses(meta)`, `metaTags(meta)`, `normaliseForCompare(html)`.
+ * `formatCounts(counts)`, `bodyClasses(meta)`, `metaTags(meta)`, `normaliseForCompare(html)`,
+ * `probeVerdicts(fixtureHtml, plainHtml)`, `contractStyleSplit(contractPath)`, `resolveStyleSplit(flag, root)`,
+ * `scanAutoBlocks(scriptsJsSource)`.
+ *
+ * Runtime scan (target-runtime.md § Auto-blocking hook — the D1 auto-blocks the project owns):
+ *   --runtime scripts/scripts.js [--contract stardust/runtime-contract.json] [--json]
+ *   Static regex scan, no execution: every helper `buildAutoBlocks()` calls with `main` becomes one
+ *   `{ fn, trigger }` row — `trigger` is the selectors the helper queries (`h1, picture`) or `—`. Rows
+ *   are written to the contract's `autoBlocks` key (other keys kept; file created when absent). A helper
+ *   that queries both `h1` and `picture` is flagged `guard: h1 and picture must share a section` (the
+ *   authored <h1> otherwise leaves its section on every page). No `buildAutoBlocks` → `autoBlocks: []`.
+ *   Exit 0 written · 1 cannot read the file.
+ *
+ * Probe (the D7 "fixture-verify"; re-measures the catalogue on THIS stack — reference/pipeline-facts.md § Probe):
+ *   --probe --org <org> --repo <repo> --branch <ref>   PUT the probe fixture to a hidden DA path
+ *        (`/.stardust-probe/pipeline-<ts>.html`) → POST /preview/ → GET `<ref>--<repo>--<org>.aem.page/….plain.html`
+ *        (bounded retries) → DELETE the preview and the source. Never POST /live/ (D1, D16); ≤ 7 requests,
+ *        all on the TARGET, none on the source site. Then the region diff below.
+ *   --compare <fetched.plain.html>   the same diff offline on a page already fetched (the eval path).
+ *   Verdict per rule (sectionMeta … whitespace): `match` — the fetched page carries the rule as catalogued;
+ *   `differ` — disabling the rule (or, for sectionMeta, the other `--style-split`) brings the mimic closer
+ *   to the fetched page; `unmeasured` — the fixture never exercised it. Plus `multiValueStyle`
+ *   (comma | first-only), `spaceStyle` (hyphen-joined | split), `zwspSurvives`, `residual` (normalised lines
+ *   the full mimic still leaves different — 0 when the catalogue explains the whole page), `probedAt`, `ref`,
+ *   `origin` — merged into `--contract stardust/runtime-contract.json` under `pipeline` (other keys kept; file
+ *   created when absent). `--record` rewrites fixtures/pipeline-probe.plain.html from the fetched page
+ *   (`--fixture-dir` for another copy). `resolveStyleSplit(flag, root)` is what build-harness / render-harness /
+ *   block-roundtrip call: the `--style-split` flag wins, else `#pipeline.multiValueStyle`, else `comma` — and
+ *   they print `style-split <value> (<source>)` once per run.
  *
  * CLI:
  *   node skills/deploy/scripts/pipeline-mimic.mjs <in.html> [--out <file>] [--json]
  *        [--style-split comma|first-only] [--no-<rule> …]
  *   node skills/deploy/scripts/pipeline-mimic.mjs --self-test     # fixture pair check
+ *   node skills/deploy/scripts/pipeline-mimic.mjs --probe --org <org> --repo <repo> --branch <ref>
+ *        [--contract stardust/runtime-contract.json] [--record] [--fixture-dir <dir>] [--token-env DA_TOKEN] [--json]
+ *   node skills/deploy/scripts/pipeline-mimic.mjs --compare <plain.html> [--contract <path>] [--record] [--fixture-dir <dir>] [--json]
  *   node skills/deploy/scripts/pipeline-mimic.mjs --help
  *
- * Exit codes: 0 = ok (self-test passed), 1 = usage / read error / self-test failed.
+ * Exit codes: 0 = ok (self-test passed; probe/compare recorded, every rule matches the catalogue);
+ *   1 = usage / read error / self-test failed; 2 = probe NO VERDICT (token missing or 401/403, preview not
+ *   2xx, .plain.html not 200 after retries — `pipeline` left untouched, one WARN, never reported as a FAIL);
+ *   3 = probe/compare recorded WITH deviations (one line per differing rule; the contract carries the
+ *   measured value — the harness then narrows its render, the rule text is never auto-edited) OR with a
+ *   residual no rule explains (`residual > 0`, every rule `match`: the page deviates for a reason outside the
+ *   catalogue — inspect it, `--record` keeps it; a clean contract is never recorded over it silently).
  * Dependency-free; never writes to content/ (the harness presents the delivered
  * shape — delivery itself is unchanged: 0.19.3 "nothing changes what the pipeline emits").
+ * Test hooks: DEPLOY_BATCH_DA_SRC / DEPLOY_BATCH_ADMIN / DEPLOY_BATCH_DELIVERY_BASE (the deploy-batch mock).
  */
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { resolveToken } from './lib.mjs';
 
 // ─────────────────────────────────────────────── minimal HTML tree ──
 const VOID = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr']);
@@ -442,13 +481,176 @@ export function selfTest(dir = path.join(import.meta.dirname, 'fixtures')) {
   return { failures, counts: out.counts, meta: out.meta };
 }
 
+// ────────────────────────────────────────────────────────── probe ──
+const DA_SRC = process.env.DEPLOY_BATCH_DA_SRC || 'https://admin.da.live/source';
+const ADMIN = process.env.DEPLOY_BATCH_ADMIN || 'https://admin.hlx.page';
+const DELIVERY_BASE = process.env.DEPLOY_BATCH_DELIVERY_BASE || null;
+const PROBE_RETRIES = 3;
+const PROBE_DELAY_MS = Number(process.env.PIPELINE_PROBE_DELAY_MS) || 2000;
+const ZWSP = /\u200b|&#8203;|&#x200b;/i;
+const forDiff = (html) => normaliseForCompare(html).replace(/&#8203;|&#x200b;/gi, '\u200b').split('\n');
+/** symmetric line-multiset distance — enough to say which variant sits closer to a fixture-sized page */
+function distance(a, b) {
+  const count = new Map();
+  for (const l of a) count.set(l, (count.get(l) || 0) + 1);
+  for (const l of b) count.set(l, (count.get(l) || 0) - 1);
+  let d = 0; for (const v of count.values()) d += Math.abs(v);
+  return d;
+}
+
+/** Per-rule verdicts of a fetched .plain.html against the catalogue (the mimic) applied to the probe fixture. */
+export function probeVerdicts(fixtureHtml, plainHtml) {
+  const target = forDiff(plainHtml);
+  const full = pipelineMimic(fixtureHtml);
+  const base = distance(forDiff(full.html), target);
+  const rules = {};
+  for (const r of RULES) {
+    if (!full.counts[r]) { rules[r] = 'unmeasured'; continue; }
+    if (base === 0) { rules[r] = 'match'; continue; }
+    const without = distance(forDiff(pipelineMimic(fixtureHtml, { rules: { [r]: false } }).html), target);
+    rules[r] = without < base ? 'differ' : 'match';
+  }
+  let multiValueStyle = 'comma';
+  if (base > 0 && full.counts.sectionMeta) {
+    const firstOnly = distance(forDiff(pipelineMimic(fixtureHtml, { styleSplit: 'first-only' }).html), target);
+    if (firstOnly < base) { multiValueStyle = 'first-only'; rules.sectionMeta = 'differ'; }
+  }
+  // a space-separated `style` token: the catalogue says ONE hyphen-joined class; `split` when the page shows the tokens apart
+  const spaceToken = [...fixtureHtml.matchAll(/<div>style<\/div><div>([^<]+)<\/div>/gi)].map((m) => m[1].trim()).find((v) => !v.includes(',') && /\s/.test(v));
+  let spaceStyle = 'unmeasured';
+  if (spaceToken) {
+    const joined = toClassName(spaceToken); const apart = spaceToken.split(/\s+/).map(toClassName);
+    const classAttrs = [...plainHtml.matchAll(/<div class="([^"]*)"/g)].map((m) => m[1].split(/\s+/));
+    if (classAttrs.some((c) => c.includes(joined))) spaceStyle = 'hyphen-joined';
+    else if (classAttrs.some((c) => apart.every((t) => c.includes(t)))) { spaceStyle = 'split'; rules.sectionMeta = 'differ'; }
+  }
+  const zwspSurvives = ZWSP.test(fixtureHtml) ? ZWSP.test(plainHtml) : null;
+  const deviations = RULES.filter((r) => rules[r] === 'differ');
+  return { rules, multiValueStyle, spaceStyle, zwspSurvives, deviations, distance: base };
+}
+
+/** `pipeline.multiValueStyle` from a runtime contract — the harness default when --style-split is absent; null when unmeasured. */
+export function contractStyleSplit(contractPath = 'stardust/runtime-contract.json') {
+  try {
+    const v = JSON.parse(readFileSync(contractPath, 'utf8')).pipeline?.multiValueStyle;
+    return v === 'comma' || v === 'first-only' ? v : null;
+  } catch { return null; }
+}
+
+/** The harness scripts' styleSplit: the flag wins, else the measured `#pipeline.multiValueStyle` under <root>/stardust/, else comma. */
+export function resolveStyleSplit(flag, root = process.cwd()) {
+  if (flag) return { value: flag, source: '--style-split' };
+  const measured = contractStyleSplit(path.join(root, 'stardust', 'runtime-contract.json'));
+  if (measured) return { value: measured, source: 'runtime-contract.json#pipeline' };
+  return { value: 'comma', source: 'default — #pipeline unmeasured' };
+}
+export const styleSplitLine = (r) => `style-split ${r.value} (${r.source})`;
+
+function mergeContract(file, pipeline) {
+  let contract = {};
+  if (existsSync(file)) { try { contract = JSON.parse(readFileSync(file, 'utf8')); } catch (e) { throw new Error(`${file} is not valid JSON (${e.message}) — fix it; nothing written`); } }
+  contract.pipeline = pipeline;
+  mkdirSync(path.dirname(file), { recursive: true });
+  writeFileSync(file, `${JSON.stringify(contract, null, 2)}\n`);
+}
+
+function recordVerdicts(opts, fixtureHtml, plainHtml, origin) {
+  const v = probeVerdicts(fixtureHtml, plainHtml);
+  const pipeline = { ...v.rules, multiValueStyle: v.multiValueStyle, spaceStyle: v.spaceStyle, zwspSurvives: v.zwspSurvives, residual: v.distance, probedAt: new Date().toISOString(), ref: opts.branch || null, origin };
+  const unexplained = v.distance > 0 && !v.deviations.length;
+  mergeContract(opts.contract, pipeline);
+  if (opts.record) { writeFileSync(path.join(opts.fixtureDir, 'pipeline-probe.plain.html'), plainHtml); process.stderr.write(`pipeline probe: recorded ${path.join(opts.fixtureDir, 'pipeline-probe.plain.html')}\n`); }
+  if (opts.json) process.stdout.write(`${JSON.stringify(pipeline, null, 2)}\n`);
+  else {
+    process.stdout.write(`pipeline probe: ${RULES.map((r) => `${r} ${v.rules[r]}`).join(', ')} · multiValueStyle ${v.multiValueStyle} · spaceStyle ${v.spaceStyle} · zwspSurvives ${v.zwspSurvives} · residual ${v.distance} → ${opts.contract}#pipeline\n`);
+    for (const r of v.deviations) process.stdout.write(`  differ: ${r} — the fetched page does not carry this rule as catalogued (reference/pipeline-facts.md); the measured value is in the contract, the rule text is unchanged\n`);
+  }
+  if (unexplained) process.stderr.write(`WARN pipeline probe: residual ${v.distance} normalised line(s) differ that no catalogued rule explains — the page deviates for a reason outside reference/pipeline-facts.md; inspect the fetched .plain.html (--record keeps it under the fixture dir) before trusting the local render; recorded with residual (exit 3)\n`);
+  return v.deviations.length || unexplained ? 3 : 0;
+}
+
+// ─────────────────────────────────────────────────────── runtime scan ──
+
+/** The body of `function <name>(` … matching-brace, or null. */
+function fnBody(src, name) {
+  const m = src.match(new RegExp(`(?:function\\s+${name}\\s*\\([^)]*\\)|(?:const|let|var)\\s+${name}\\s*=\\s*(?:async\\s*)?(?:\\([^)]*\\)|\\w+)\\s*=>)\\s*\\{`));
+  if (!m) return null;
+  let i = m.index + m[0].length; let depth = 1; const start = i;
+  for (; i < src.length && depth; i += 1) { if (src[i] === '{') depth += 1; else if (src[i] === '}') depth -= 1; }
+  return depth ? null : src.slice(start, i - 1);
+}
+
+/** Static inventory of the auto-blocks `buildAutoBlocks()` wires: [{ fn, trigger, guard? }]. */
+export function scanAutoBlocks(src) {
+  const body = fnBody(src, 'buildAutoBlocks');
+  if (body === null) return [];
+  const calls = [...new Set([...body.matchAll(/\b([A-Za-z_$][\w$]*)\s*\(\s*main\b/g)].map((m) => m[1]).filter((n) => n !== 'buildAutoBlocks'))];
+  return calls.map((fn) => {
+    const helper = fnBody(src, fn) || '';
+    const selectors = [...new Set([...helper.matchAll(/querySelector(?:All)?\(\s*(['"`])((?:(?!\1).)+)\1/g)].map((m) => m[2].trim()))];
+    const row = { fn, trigger: selectors.length ? selectors.join(', ') : '—' };
+    if (selectors.some((q) => /\bh1\b/.test(q)) && selectors.some((q) => /\bpicture\b|\bimg\b/.test(q))) row.guard = 'h1 and picture must share a section';
+    return row;
+  });
+}
+
+function runtimeScan(opts) {
+  let src;
+  try { src = readFileSync(opts.runtime, 'utf8'); } catch (e) { process.stderr.write(`cannot read ${opts.runtime}: ${e.message}\n`); return 1; }
+  const autoBlocks = scanAutoBlocks(src);
+  const file = opts.contract;
+  let contract = {};
+  if (existsSync(file)) { try { contract = JSON.parse(readFileSync(file, 'utf8')); } catch (e) { process.stderr.write(`${file} is not valid JSON (${e.message}) — fix it; nothing written\n`); return 1; } }
+  contract.autoBlocks = autoBlocks;
+  mkdirSync(path.dirname(file), { recursive: true });
+  writeFileSync(file, `${JSON.stringify(contract, null, 2)}\n`);
+  if (opts.json) process.stdout.write(`${JSON.stringify(autoBlocks, null, 2)}\n`);
+  else {
+    process.stdout.write(`runtime scan: ${autoBlocks.length} auto-block${autoBlocks.length === 1 ? '' : 's'} in ${opts.runtime} → ${file}#autoBlocks\n`);
+    for (const r of autoBlocks) process.stdout.write(`  ${r.fn}  trigger: ${r.trigger}${r.guard ? `  guard: ${r.guard}` : ''}\n`);
+  }
+  return 0;
+}
+
+async function probe(opts) {
+  const fixtureHtml = readFileSync(path.join(opts.fixtureDir, 'pipeline-probe.html'), 'utf8');
+  const noVerdict = (why) => { process.stderr.write(`WARN pipeline probe: no verdict — ${why}; ${opts.contract}#pipeline left as is, the catalogue defaults apply (exit 2)\n`); return 2; };
+  const tok = resolveToken(opts.tokenEnv);
+  if (!tok) return noVerdict(`${opts.tokenEnv} missing (run node skills/deploy/scripts/da-token-check.mjs)`);
+  const { org, repo, branch } = opts;
+  const p = `/.stardust-probe/pipeline-${Date.now()}`;
+  const headers = { Authorization: `Bearer ${tok.value}` };
+  const call = async (method, url, body) => { try { const res = await fetch(url, { method, headers, body }); return res; } catch (err) { return { status: 0, text: async () => String(err.message || err) }; } };
+  const fd = new FormData(); fd.append('data', new Blob([fixtureHtml], { type: 'text/html' }), 'pipeline-probe.html');
+  const put = await call('PUT', `${DA_SRC}/${org}/${repo}${p}.html`, fd);
+  if (put.status < 200 || put.status >= 300) return noVerdict(`PUT ${put.status} (token source: ${tok.source})`);
+  const cleanup = async () => { await call('DELETE', `${ADMIN}/preview/${org}/${repo}/${branch}${p}`); await call('DELETE', `${DA_SRC}/${org}/${repo}${p}.html`); };
+  const prev = await call('POST', `${ADMIN}/preview/${org}/${repo}/${branch}${p}`);
+  if (prev.status < 200 || prev.status >= 300) { await cleanup(); return noVerdict(`preview ${prev.status}`); }
+  const origin = DELIVERY_BASE ? `${DELIVERY_BASE}/aem.page` : `https://${branch}--${repo}--${org}.aem.page`;
+  let plain = null; let last = 0;
+  for (let i = 0; i < PROBE_RETRIES && plain === null; i += 1) {
+    const res = await call('GET', `${origin}${p}.plain.html`);
+    last = res.status;
+    if (res.status === 200) plain = await res.text(); else await new Promise((r) => setTimeout(r, PROBE_DELAY_MS));
+  }
+  await cleanup();
+  if (plain === null) return noVerdict(`.plain.html ${last} after ${PROBE_RETRIES} reads`);
+  return recordVerdicts(opts, fixtureHtml, plain, origin);
+}
+
 // ──────────────────────────────────────────────────────────── CLI ──
 const USAGE = 'usage: node skills/deploy/scripts/pipeline-mimic.mjs <in.html> [--out <file>] [--json] [--style-split comma|first-only] [--no-<rule>]\n'
   + '       node skills/deploy/scripts/pipeline-mimic.mjs --self-test\n'
-  + `       rules: ${RULES.join(', ')}\n`;
+  + '       node skills/deploy/scripts/pipeline-mimic.mjs --probe --org <org> --repo <repo> --branch <ref> [--contract stardust/runtime-contract.json] [--record] [--fixture-dir <dir>] [--token-env DA_TOKEN] [--json]\n'
+  + '       node skills/deploy/scripts/pipeline-mimic.mjs --compare <plain.html> [--contract <path>] [--record] [--fixture-dir <dir>] [--json]\n'
+  + '       node skills/deploy/scripts/pipeline-mimic.mjs --runtime scripts/scripts.js [--contract <path>] [--json]   # → contract.autoBlocks [{fn, trigger}]\n'
+  + `       rules: ${RULES.join(', ')}\n`
+  + '       exit 0 ok · 1 usage / self-test failed · 2 probe no verdict · 3 recorded with deviations or an unexplained residual\n';
 
-function main(argv) {
-  const opts = { out: null, json: false, styleSplit: 'comma', rules: {}, selfTest: false, files: [] };
+async function main(argv) {
+  const opts = { out: null, json: false, styleSplit: 'comma', rules: {}, selfTest: false, files: [], probe: false, compare: null, contract: 'stardust/runtime-contract.json', record: false, fixtureDir: path.join(import.meta.dirname, 'fixtures'), tokenEnv: 'DA_TOKEN' };
+  const value = (i, flag) => { const v = argv[i + 1]; if (v === undefined || v.startsWith('--')) { process.stderr.write(`${flag} needs a value\n${USAGE}`); throw new RangeError('usage'); } return v; };
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === '--help' || a === '-h') { process.stdout.write(USAGE); return 0; }
@@ -456,11 +658,35 @@ function main(argv) {
     else if (a === '--json') opts.json = true;
     else if (a === '--style-split') opts.styleSplit = argv[++i];
     else if (a === '--self-test') opts.selfTest = true;
+    else if (a === '--probe') opts.probe = true;
+    else if (a === '--compare') opts.compare = value(i++, a);
+    else if (a === '--org') opts.org = value(i++, a);
+    else if (a === '--repo') opts.repo = value(i++, a);
+    else if (a === '--branch') opts.branch = value(i++, a);
+    else if (a === '--contract') opts.contract = value(i++, a);
+    else if (a === '--record') opts.record = true;
+    else if (a === '--fixture-dir') opts.fixtureDir = value(i++, a);
+    else if (a === '--token-env') opts.tokenEnv = value(i++, a);
+    else if (a === '--runtime') opts.runtime = value(i++, a);
     else if (a.startsWith('--no-')) { const r = a.slice(5).replace(/-([a-z])/g, (_, ch) => ch.toUpperCase()); if (!RULES.includes(r)) { process.stderr.write(`unknown rule ${a}\n${USAGE}`); return 1; } opts.rules[r] = false; }
     else if (a.startsWith('--')) { process.stderr.write(`unknown option ${a}\n${USAGE}`); return 1; }
     else opts.files.push(a);
   }
   if (!['comma', 'first-only'].includes(opts.styleSplit)) { process.stderr.write(`--style-split must be comma or first-only\n`); return 1; }
+  if (opts.runtime) {
+    if (opts.probe || opts.compare) { process.stderr.write(`--runtime is its own mode\n${USAGE}`); return 1; }
+    return runtimeScan(opts);
+  }
+  if (opts.probe || opts.compare) {
+    if (opts.probe && opts.compare) { process.stderr.write(`--probe and --compare are exclusive\n${USAGE}`); return 1; }
+    if (opts.probe && (!opts.org || !opts.repo || !opts.branch)) { process.stderr.write(`--probe needs --org, --repo and --branch\n${USAGE}`); return 1; }
+    if (opts.compare) {
+      let plain;
+      try { plain = readFileSync(opts.compare, 'utf8'); } catch (e) { process.stderr.write(`cannot read ${opts.compare}: ${e.message}\n`); return 1; }
+      return recordVerdicts(opts, readFileSync(path.join(opts.fixtureDir, 'pipeline-probe.html'), 'utf8'), plain, `offline:${opts.compare}`);
+    }
+    return probe(opts);
+  }
   if (opts.selfTest) {
     const { failures, counts } = selfTest();
     if (failures.length) { failures.forEach((f) => process.stderr.write(`✗ ${f}\n`)); return 1; }
@@ -478,4 +704,4 @@ function main(argv) {
 }
 
 const isCli = process.argv[1] && path.basename(process.argv[1]) === 'pipeline-mimic.mjs';
-if (isCli) process.exit(main(process.argv.slice(2)));
+if (isCli) main(process.argv.slice(2)).then((code) => process.exit(code)).catch((e) => { if (!(e instanceof RangeError)) process.stderr.write(`pipeline-mimic: ${e.message}\n`); process.exit(1); });

@@ -40,7 +40,9 @@
  *                        authored <main> before the harness page is built, so
  *                        section tagging, EW instrumentation and runtimeMimic all see
  *                        the DELIVERED shape; the rule counts print once per run)
- *     --style-split      comma (D7 default) | first-only — section-metadata `style` split
+ *     --style-split      comma | first-only — section-metadata `style` split; absent → the measured
+ *                        `<root>/stardust/runtime-contract.json#pipeline.multiValueStyle`, else comma
+ *                        (D7 default); `style-split <value> (<source>)` prints once per run
  *
  * EW contract in two sentences (deploy reference/block-js-scaffold.md § Experience Workspace editability
  * contract, EW1–EW10): the workspace stamps an index on every authored text element,
@@ -81,12 +83,12 @@ import path from 'path';
 import { resolveProfile } from './diff-profiles.mjs';
 import { inventory, diffInventories, summarise } from './content-inventory.mjs';
 import { EDITABLE, runtimeMimic, instrument, survey, openHarness, installBlockJs, installErrors, runDecorate, readBlockExemptions, aggregate, strictFindings, formatRequests } from './ew-editability-probe.mjs';
-import { pipelineMimic, formatCounts } from './pipeline-mimic.mjs';
+import { pipelineMimic, formatCounts, resolveStyleSplit, styleSplitLine } from './pipeline-mimic.mjs';
 
 const VALUE_FLAGS = new Set(['--blocks', '--map', '--styles', '--blocks-dir', '--width', '--profile', '--style-split', '--root']);
 function parseArgs(argv) {
   const rest = argv.slice(2);
-  const opts = { blocks: null, map: {}, styles: null, blocksDir: null, root: null, strict: false, width: 1280, profile: 'eds', json: false, ew: true, pipeline: true, styleSplit: 'comma' };
+  const opts = { blocks: null, map: {}, styles: null, blocksDir: null, root: null, strict: false, width: 1280, profile: 'eds', json: false, ew: true, pipeline: true, styleSplit: null };
   if (rest.includes('--help') || rest.includes('-h')) return { opts: { ...opts, help: true } };
   // positionals are the non-flag tokens wherever they sit (`--strict a b` == `a b --strict`)
   const positional = rest.filter((a, i) => !a.startsWith('--') && !(i > 0 && VALUE_FLAGS.has(rest[i - 1])));
@@ -183,7 +185,7 @@ async function main() {
   const { proto, content, opts } = parseArgs(process.argv);
   const usage = 'usage: node skills/deploy/scripts/block-roundtrip.mjs <prototypeURL> <content/page.html> [--blocks a,b] [--map name=sel] [--styles css] [--blocks-dir dir] [--width px] [--profile p] [--ew|--no-ew] [--json] [--no-pipeline] [--style-split comma|first-only] [--root dir] [--strict]\n';
   if (opts.help) { process.stdout.write(usage); process.exit(0); }
-  if (!proto || !content || !['comma', 'first-only'].includes(opts.styleSplit)) {
+  if (!proto || !content || (opts.styleSplit && !['comma', 'first-only'].includes(opts.styleSplit))) {
     process.stderr.write(usage);
     process.exit(1);
   }
@@ -193,6 +195,8 @@ async function main() {
 
   const stylesPath = opts.styles || firstExisting(['eds/styles/styles.css', 'styles/styles.css'], 'styles.css');
   const blocksDir = opts.blocksDir || firstExisting(['eds/blocks', 'blocks'], 'blocks dir');
+  const split = resolveStyleSplit(opts.styleSplit, opts.root || path.dirname(path.resolve(blocksDir))); // flag > runtime-contract.json#pipeline > comma
+  opts.styleSplit = split.value;
 
   const raw = fs.readFileSync(content, 'utf8');
   const mainMatch = raw.match(/<main>([\s\S]*?)<\/main>/);
@@ -204,7 +208,7 @@ async function main() {
   if (opts.pipeline) {
     const r = pipelineMimic(mainHtml, { styleSplit: opts.styleSplit });
     mainHtml = r.html;
-    process.stdout.write(`${formatCounts(r.counts)}\n`);
+    process.stdout.write(`${formatCounts(r.counts)} — ${styleSplitLine(split)}\n`);
   }
   // metadata + section-metadata are pipeline config, never rendered content —
   // removed in the DOM after setContent (never by regexing the HTML: a lazy regex
