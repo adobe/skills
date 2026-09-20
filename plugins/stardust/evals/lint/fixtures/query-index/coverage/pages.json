@@ -1,0 +1,10 @@
+{
+  "generatedAt": "2026-01-01T00:00:00.000Z",
+  "pages": [
+    { "slug": "home", "path": "/", "delivery": { "status": "verified" } },
+    { "slug": "locations", "path": "/locations", "delivery": { "status": "verified" } },
+    { "slug": "locations-harbourview", "path": "/locations/harbourview", "delivery": { "status": "verified" } },
+    { "slug": "locations-salt-marsh", "path": "/locations/salt-marsh", "delivery": { "status": "deployed" } },
+    { "slug": "locations-pending", "path": "/locations/pending", "delivery": { "status": "pending" } }
+  ]
+}

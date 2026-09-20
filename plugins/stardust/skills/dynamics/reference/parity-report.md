@@ -56,7 +56,9 @@ and owner; `decided-out` rows belong there.
    this file is missing; a `reproducibility: self` row is still `pending*` / `in-progress`; a built
    S row (`done`, not `delivered-by-capture`) has no `search-query` carrying `compareLive` or
    `minResults`; a built V row whose `disposition` / `pattern` is `embed-passthrough`, `media-as-url`
-   or `hls-stream` has no `video-plays`. Rollout Phase H and the pilot-only chain do not close while
+   or `hls-stream` has no `video-plays`; a built `index-backed` row (disposition or pattern) while
+   `stardust/dynamics/index-status.json` is missing or records `registered: denied` — exit 0 of
+   `skills/rollout/scripts/query-index.mjs` clears it. Rollout Phase H and the pilot-only chain do not close while
    it exits non-zero. Undelivered non-`self` rows never block — they stay `interim` with a named
    owner decision; a blocked `self` row is implemented, or set `status: interim` with a one-line
    reason and a named owner decision, never left `pending`. The report always ends with "Delivered /
