@@ -17,12 +17,32 @@
  *
  *   node skills/deploy/scripts/ai-readability.mjs --origin https://main--site--org.aem.live \
  *        [--paths file | /path …] [--min 98] [--token-env SITE_TOKEN | --auth-header "token …"] \
- *        [--exclude-blocks client-app,widget,form] [--allowlist file.json] [--json out.json] [--verbose]
+ *        [--exclude-blocks client-app,widget,form] [--allowlist file.json] [--json out.json] [--verbose] \
+ *        [--wait <ms>] [--har <file> [--har-url <regex>]]
  *
- * Exit 1 when any page's code score is below --min; 2 on infrastructure failure.
- * Allowlist: [{ "block": "location-finder", "string": "N locations", "reason": "…" }] — a runtime
- * value the block is allowed to generate; its words are removed from that block's servedGap and
- * from the code denominator. Entries name a block and a string, never a page.
+ * Exit 1 when any page's code score is below --min OR an excluded block removed words with no
+ * decision entry (below); 2 on infrastructure failure.
+ * Allowlist — two entry kinds, both name a block, never a page:
+ *   { "block": "location-finder", "string": "N locations", "reason": "…" }   a runtime value the
+ *       block may generate; its words leave that block's servedGap and the code denominator.
+ *   { "block": "calculator", "exclude": true, "reason": "…", "fallback": "authored" | "owner-accepted",
+ *     "decision": "dyn#6" }   the DECISION behind an --exclude-blocks entry: `--exclude-blocks`
+ *       removes a block's words from the code denominator ONLY with this entry. A word-removing
+ *       exclusion without one is `FAIL undecided exclusion` (exit 1) — the record is the escape
+ *       hatch, there is no flag. `fallback: authored` = the block carries the widget's default-
+ *       state copy as an authored row and removes it on render (≈0 points); `owner-accepted` =
+ *       the strict gap is accepted, the report prints it. `decision` cites the
+ *       dynamic-features.md § Decision batch row (or a decisions.md id). Fragments are not gated:
+ *       they stay credited and printed as `fragments cost N pts`. One rule, one place: analyse()
+ *       and checkExclusions() both read `decidedExclusions(allow)` — an incomplete entry is
+ *       undecided for the denominator AND the verdict. The rule is on whenever the caller passes an
+ *       allowlist (this CLI always does — `[]` when there is no file); a consumer that passes none
+ *       (the qa check until it takes `--ai-allowlist`) keeps the pre-decision denominator, so the
+ *       shared scorer never changes a report that cannot yet supply decisions.
+ * --wait <ms> adds a settle delay after section-status (vendor widgets that render late);
+ * --har <file> [--har-url <regex>] replays a recorded vendor session (page.routeFromHAR, fallback
+ * to the network) so a bot-walled third-party renders headless and `fallback: authored` can be
+ * proven word-complete against the rendered widget.
  */
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -32,9 +52,30 @@ import { pathToFileURL } from 'node:url';
 export const CHATGPT_UA = 'Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; ChatGPT-User/1.0; +https://openai.com/bot';
 export const LANDMARKS = 'nav,header,footer,.nav,.navigation,.navbar,.nav-bar,.menu,.main-menu,.header,.site-header,.page-header,.footer,.site-footer,.page-footer,#nav,#navigation,#navbar,#header,#footer,#menu,[role="navigation"],[role="banner"],[role="contentinfo"],aside,[role="complementary"],[role="search"]';
 
+/* ------------------------------------------------------------- decisions -- */
+export const EXCLUSION_FALLBACKS = ['authored', 'owner-accepted'];
+
+/** Why an `exclude: true` entry does not decide its block — null when it is complete. */
+export function exclusionWhy(e) {
+  if (!e) return 'no allowlist entry';
+  if (!e.reason) return 'entry lacks reason';
+  if (!EXCLUSION_FALLBACKS.includes(e.fallback)) return 'entry lacks fallback: authored | owner-accepted';
+  if (!e.decision) return 'entry lacks decision (dynamic-features row / decisions id)';
+  return null;
+}
+
+/** block → its COMPLETE `exclude: true` entry (the one test analyse() and checkExclusions() share). */
+export function decidedExclusions(allow = []) {
+  return new Map((allow || []).filter((a) => a && a.exclude === true && a.block && !exclusionWhy(a)).map((a) => [a.block, a]));
+}
+
 /* -------------------------------------------------------------- in-page code -- */
-/** Runs inside the page. Returns both scenarios, the code score and per-block attribution. */
-export function analyse({ served, fragments, landmarks, excludeBlocks, allow }) {
+/**
+ * Runs inside the page (serialised — no module scope). Returns both scenarios, the code score and
+ * per-block attribution. `decidedBlocks` = [...decidedExclusions(allow).keys()]; `requireDecisions`
+ * = the caller passed an allowlist (false → an excluded block always leaves the denominator).
+ */
+export function analyse({ served, fragments, landmarks, excludeBlocks, allow, decidedBlocks, requireDecisions }) {
   const tokens = (t) => t.replace(/\s+/g, ' ').replace(/\s*([,.!?;:])\s*/g, '$1 ').trim().split(/\s+/).filter(Boolean);
   const clean = (html, ignoreLandmarks, isServed) => {
     const d = new DOMParser().parseFromString(html, 'text/html');
@@ -75,7 +116,10 @@ export function analyse({ served, fragments, landmarks, excludeBlocks, allow }) 
   };
   const servedSet = new Set(tokens(nodeText(clean(served, false, true).documentElement).toLowerCase()));
   const allowByBlock = {};
-  (allow || []).forEach((a) => { (allowByBlock[a.block] ||= []).push(...tokens(String(a.string || '').toLowerCase())); });
+  const decidedExclude = new Set(decidedBlocks || []);
+  (allow || []).forEach((a) => {
+    if (a && a.block && a.exclude !== true) (allowByBlock[a.block] ||= []).push(...tokens(String(a.string || '').toLowerCase()));
+  });
   const blocks = [];
   const regions = [];
   document.querySelectorAll('main .section > div').forEach((w) => {
@@ -85,7 +129,7 @@ export function analyse({ served, fragments, landmarks, excludeBlocks, allow }) 
   });
   const hd = document.querySelector('header'); if (hd) regions.push({ name: 'header', el: hd, variants: '' });
   const ft = document.querySelector('footer'); if (ft) regions.push({ name: 'footer', el: ft, variants: '' });
-  let excludedWords = 0; let allowedWords = 0; let renderedMain = 0;
+  let excludedWords = 0; let allowedWords = 0; let renderedMain = 0; let undecidedWords = 0;
   regions.forEach(({ name, el, variants }) => {
     const ws = tokens(nodeText(el));
     const allowed = new Set(allowByBlock[name] || []);
@@ -94,9 +138,12 @@ export function analyse({ served, fragments, landmarks, excludeBlocks, allow }) 
     gap = gap.filter((w) => !allowed.has(w.toLowerCase()));
     allowedWords += gapBefore - gap.length;
     const excluded = name !== 'header' && name !== 'footer' && (excludeBlocks || []).includes(name);
-    if (excluded) excludedWords += ws.length;
+    // an exclusion removes words from the code denominator ONLY when the allowlist carries its (complete) decision
+    const undecided = requireDecisions !== false && excluded && ws.length > 0 && !decidedExclude.has(name);
+    if (excluded && !undecided) excludedWords += ws.length;
+    if (undecided) undecidedWords += ws.length;
     if (name !== 'header' && name !== 'footer') renderedMain += ws.length;
-    blocks.push({ block: name, variants, words: ws.length, servedGap: gap.length, excluded, sample: [...new Set(gap)].slice(0, 12).join(' ') });
+    blocks.push({ block: name, variants, words: ws.length, servedGap: gap.length, excluded, undecided, sample: [...new Set(gap)].slice(0, 12).join(' ') });
   });
   blocks.sort((a, b) => b.servedGap - a.servedGap);
 
@@ -106,10 +153,26 @@ export function analyse({ served, fragments, landmarks, excludeBlocks, allow }) 
   const codeRendered = Math.max(0, strict.rendered - excludedWords - allowedWords);
   // fragmentsCostPts: strict points the page loses to runtime-fetched fragment copy — the owner's decision, surfaced per page
   const fragmentsCostPts = Math.max(0, ratio(strict.served + fragmentWords, strict.rendered) - strict.score);
-  const code = { score: ratio(codeServed, codeRendered), served: codeServed, rendered: codeRendered, fragmentWords, fragmentsCostPts, excludedWords, allowedWords };
+  const code = { score: ratio(codeServed, codeRendered), served: codeServed, rendered: codeRendered, fragmentWords, fragmentsCostPts, excludedWords, allowedWords, undecidedWords };
 
   const servedGapTotal = blocks.filter((b) => b.block !== 'header' && b.block !== 'footer').reduce((n, b) => n + b.servedGap, 0);
   return { strict, landmarksCounted, code, blocks, servedGap: { main: servedGapTotal, chrome: blocks.filter((b) => b.block === 'header' || b.block === 'footer').reduce((n, b) => n + b.servedGap, 0), renderedMain } };
+}
+
+/**
+ * Every excluded block that removed (or would remove) words on a page, with its decision: pure over a
+ * scorePage result + the allowlist, so deploy, qa and audit apply one rule. `decided` needs an entry
+ * `{ block, exclude: true, reason, fallback: authored | owner-accepted, decision }` — an incomplete entry
+ * is undecided and says why.
+ */
+export function checkExclusions(result, allow = []) {
+  const decided = decidedExclusions(allow);
+  const raw = new Map((allow || []).filter((a) => a && a.exclude === true && a.block).map((a) => [a.block, a]));
+  return (result.blocks || []).filter((b) => b.excluded && b.words > 0).map((b) => {
+    const e = decided.get(b.block) || raw.get(b.block) || null;
+    const why = decided.has(b.block) ? null : exclusionWhy(e);
+    return { block: b.block, words: b.words, decided: !why, fallback: e ? e.fallback : null, decision: e ? e.decision : null, reason: e ? e.reason : null, why };
+  });
 }
 
 /* ------------------------------------------------------------------ driver -- */
@@ -124,12 +187,12 @@ async function loadPlaywright() {
   throw new Error('playwright not found: install it in the project (npm i -D playwright)');
 }
 
-async function settle(page) {
+async function settle(page, extraWaitMs = 0) {
   await page.waitForFunction(() => {
     const s = [...document.querySelectorAll('[data-section-status]')];
     return s.length === 0 || s.every((e) => e.dataset.sectionStatus === 'loaded');
   }, null, { timeout: 20000 }).catch(() => {});
-  await page.waitForTimeout(1500);
+  await page.waitForTimeout(1500 + Math.max(0, extraWaitMs));
 }
 
 /** Fragment documents the served page references (fragment links + fragment blocks), as plain HTML. */
@@ -146,10 +209,15 @@ async function fetchFragments(request, origin, served, headers) {
   return { paths: ok, html };
 }
 
-export async function scorePage(context, origin, path, { excludeBlocks = [], allow = [], headers = {} } = {}) {
+export async function scorePage(context, origin, path, { excludeBlocks = [], allow = null, headers = {}, wait = 0, har = null, harUrl = null } = {}) {
+  // the decision rule is on iff the caller supplied an allowlist (see header); the block list is computed here — analyse() runs serialised in the page
+  const requireDecisions = allow !== null && allow !== undefined;
+  const decidedBlocks = [...decidedExclusions(allow || []).keys()];
   const url = `${origin}${path}`;
   const page = await context.newPage();
   try {
+    // a bot-walled vendor host never serves headless Chromium: replay the recorded session, fall back to the network for everything else
+    if (har) await page.routeFromHAR(har, { notFound: 'fallback', ...(harUrl ? { url: new RegExp(harUrl) } : {}) });
     const servedRes = await context.request.get(url, { headers: { ...headers, 'user-agent': CHATGPT_UA, accept: 'text/html' }, timeout: 20000 });
     if (!servedRes.ok()) return { path, error: `served fetch HTTP ${servedRes.status()}` };
     const served = await servedRes.text();
@@ -163,11 +231,11 @@ export async function scorePage(context, origin, path, { excludeBlocks = [], all
       if (!frags.paths.includes(fp) && !runtime.has(fp)) { try { runtime.set(fp, await res.text()); } catch { /* skip */ } }
     });
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
-    await settle(page);
+    await settle(page, wait);
     // chrome fragments (nav/header/footer/menu) are loaded by blocks the strict score strips — crediting them would inflate code
     const isChrome = (fp) => /(^|\/)(nav|header|footer|menu)[^/]*(\/|$)/i.test(fp);
     const credited = [...frags.paths.map((fp, i) => [fp, frags.html[i]]), ...runtime.entries()].filter(([fp, html]) => html && !isChrome(fp));
-    const r = await page.evaluate(analyse, { served, fragments: credited.map(([, html]) => html), landmarks: LANDMARKS, excludeBlocks, allow });
+    const r = await page.evaluate(analyse, { served, fragments: credited.map(([, html]) => html), landmarks: LANDMARKS, excludeBlocks, allow: allow || [], decidedBlocks, requireDecisions });
     return { path, fragments: credited.map(([fp]) => fp), chromeFragments: [...frags.paths, ...runtime.keys()].filter(isChrome), ...r };
   } catch (e) {
     return { path, error: e.message.split('\n')[0] };
@@ -178,6 +246,7 @@ export async function scorePage(context, origin, path, { excludeBlocks = [], all
 const isMain = process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url;
 if (isMain) {
   const args = process.argv.slice(2);
+  if (args.includes('--help') || args.includes('-h')) { console.log(readFileSync(new URL(import.meta.url), 'utf8').match(/\/\*\*([\s\S]*?)\*\//)[1].replace(/^ \* ?/gm, '')); process.exit(0); }
   const opt = (n, d) => { const i = args.indexOf(n); return i >= 0 ? args.splice(i, 2)[1] : d; };
   const has = (n) => { const i = args.indexOf(n); if (i >= 0) { args.splice(i, 1); return true; } return false; };
   const origin = (opt('--origin', '') || '').replace(/\/$/, '');
@@ -188,10 +257,14 @@ if (isMain) {
   const allowFile = opt('--allowlist', null);
   const jsonOut = opt('--json', null);
   const pathsFile = opt('--paths', null);
+  const wait = Number(opt('--wait', '0')) || 0;
+  const har = opt('--har', null);
+  const harUrl = opt('--har-url', null);
   const verbose = has('--verbose');
   let paths = args.filter((a) => a.startsWith('/'));
   if (pathsFile && existsSync(pathsFile)) paths = paths.concat(readFileSync(pathsFile, 'utf8').split('\n').map((s) => s.trim()).filter((s) => s.startsWith('/')));
-  if (!origin || !paths.length) { console.error('usage: ai-readability.mjs --origin <published origin> [--paths file | /path …] [--min 98]'); process.exit(2); }
+  if (!origin || !paths.length) { console.error('usage: ai-readability.mjs --origin <published origin> [--paths file | /path …] [--min 98] [--exclude-blocks a,b] [--allowlist file] [--wait ms] [--har file [--har-url re]]'); process.exit(2); }
+  if (har && !existsSync(har)) { console.error(`ai-readability: --har ${har} not found`); process.exit(2); }
   const allow = allowFile && existsSync(allowFile) ? JSON.parse(readFileSync(allowFile, 'utf8')) : [];
 
   const { chromium } = await loadPlaywright();
@@ -201,13 +274,22 @@ if (isMain) {
   const results = [];
   let fail = false;
   for (const p of paths) {
-    const r = await scorePage(context, origin, p, { excludeBlocks, allow, headers });
+    const r = await scorePage(context, origin, p, { excludeBlocks, allow, headers, wait, har, harUrl });
     results.push(r);
     if (r.error) { console.log(`${p}\n  ERROR ${r.error}`); fail = true; continue; }
-    const flag = r.code.score < min ? 'FAIL' : 'ok';
+    const exclusions = checkExclusions(r, allow);
+    r.exclusions = exclusions;
+    const undecided = exclusions.filter((x) => !x.decided);
+    const flag = r.code.score < min || undecided.length ? 'FAIL' : 'ok';
     console.log(`${p}\n  strict ${String(r.strict.score).padStart(3)}%  (served ${r.strict.served} / rendered ${r.strict.rendered}, missing ${r.strict.missing}; landmarks counted ${r.landmarksCounted.score}%)`
       + `\n  code   ${String(r.code.score).padStart(3)}%  ${flag}  (fragments credited +${r.code.fragmentWords} words = fragments cost ${r.code.fragmentsCostPts} pts${r.fragments.length ? ` [${r.fragments.join(' ')}]` : ''}, app blocks −${r.code.excludedWords}, allowlisted −${r.code.allowedWords})`
       + `\n  servedGap main ${r.servedGap.main} / ${r.servedGap.renderedMain} words, chrome ${r.servedGap.chrome}`);
+    for (const x of exclusions) {
+      console.log(x.decided
+        ? `  excluded by decision ${x.decision}: ${x.block} −${x.words} words, ${x.fallback}${x.reason ? ` — ${x.reason}` : ''}`
+        : `  FAIL undecided exclusion: ${x.block} −${x.words} words (${x.why}) — author the widget's default-state copy as a block row removed on render, or record { "block": "${x.block}", "exclude": true, "reason", "fallback": "authored|owner-accepted", "decision" } in the allowlist`);
+    }
+    if (undecided.length) fail = true;
     const rows = r.blocks.filter((b) => b.servedGap > 0 || b.excluded);
     (verbose ? rows : rows.slice(0, 5)).forEach((b) => console.log(`    ${String(b.servedGap).padStart(5)} / ${String(b.words).padStart(5)}  ${(b.block + (b.variants ? ` [${b.variants}]` : '')).padEnd(40)}${b.excluded ? ' (excluded)' : ''} ${b.sample}`));
     if (r.code.score < min) fail = true;

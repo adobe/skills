@@ -12,10 +12,12 @@
 | 3 | newsletter-signup | Newsletter e-mail capture (heading, lede, e-mail field, button) | F | home, accounts (footer band) | rebuild-native | needs-backend | scaffolded-awaiting-owner | fragment `/fragments/newsletter`; endpoint via `scripts/site-config.js`, disabled until the owner names the list provider | owner: marketing — which e-mail provider receives the form | source: POST to a marketing-automation vendor host |
 | 4 | faq-accordion | FAQ accordion, collapsed answers | M | home, accounts | rebuild-native | self | pending | accordion (`details`/`summary` → block) | — | source: jQuery toggle on `.faq__q` |
 | 5 | online-banking-login | "Log in" → online banking | X | chrome | decided-out | needs-business-decision | decided-out | link kept to the existing off-origin login | owner: digital banking | source: sign-in link to the core-banking vendor host |
+| 6 | loan-calculator | Loan payment calculator (vendor embed into a mount div) | T | home | embed-passthrough | self | pending | vendor mount `[data-widget-id="loan-calc"]` loading `/vendor/embed.js`; the block authors the widget's default-state copy as a row and removes it on render | owner: lending — accept the strict gap the vendor words open, or ship the authored default state (`deploy/reference/ai-readability.md` § 3 Vendor widgets) | source: tag-manager-proxied third party, ~60 words written into the mount at runtime, none in the document |
 
 ## Decision batch
 - **needs-backend** — #3 newsletter-signup: which provider receives submissions; until answered the form renders with a "no backend connected" message and the endpoint stays empty in `scripts/site-config.js`.
 - **needs-business-decision** — #5 online-banking-login: kept as an off-origin link; nothing to rebuild.
+- **third-party (class T)** — #6 loan-calculator: `embed-passthrough` keeps the vendor script; the readability gate needs either the authored default-state copy (fallback `authored`) or the owner's acceptance of the strict gap (`owner-accepted`) — the allowlist entry cites this row (`dyn#6`).
 
 ## Register (decided-out)
 | feature | reason | production statement |

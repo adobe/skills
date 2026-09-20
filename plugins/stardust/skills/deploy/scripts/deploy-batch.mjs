@@ -37,6 +37,20 @@
  *   - verify blip: the delivered GET retries once after 3 s on a fetch error,
  *     5xx or 000 (a 404 is a verdict, not a blip).
  *
+ * Path-safety (rollout delivery-gates.md § Gate 3; the rule is stardust/scripts/da-path.mjs):
+ *   - no PUT ever goes to a path that differs from `normalizeDaPath(webPath)`. A page
+ *     whose file-derived webPath is not delivery-safe (case, `_`, `--`, edge `-`, dots,
+ *     diacritics, `%xx`, `.php` leaf, query) is PUT / previewed / published / verified at
+ *     the safe path; the ledger row stays keyed on `webPath` and records `deployedPath`
+ *     (the field update-coverage --from-ledger carries); one `webPath<TAB>safe` row is
+ *     appended to --redirects-tsv (default stardust/redirects.tsv, deduped) once the page
+ *     delivers. Two files folding to one safe path: the first (webPath order) is driven,
+ *     the other is `path-collision` — no PUT, zero network. A segment with no safe form
+ *     (non-Latin script) is `path-unsafe` — transliterate the file path.
+ *   - `--strict-paths` turns every divergence into `path-unsafe` (no PUT): for pipelines
+ *     where migrate already wrote safe paths, a divergence is a pipeline bug. No flag
+ *     disables the fold.
+ *
  * Token lifecycle (the one credential failure a run cannot self-recover; the
  * resolve/decode/smoke primitives are skills/deploy/scripts/lib.mjs):
  *   - preflight: DA_TOKEN is resolved shell → ./.env → ~/.claude/.env → ~/.env
@@ -77,7 +91,8 @@
  *     --content content [--paths <file|a,b,c>] [--exclude <file|a,b,c>] [--concurrency 4] \
  *     [--publish] [--force] [--allow-thin] [--allow-shrink] [--ledger path] [--log path] \
  *     [--progress path | --no-progress] [--token-env DA_TOKEN] [--site-token-env NAME] \
- *     [--sec-per-page 6] [--ignore-ttl] [--require-code-synced [--code-sync-record stardust/code-sync.json]] [--plan | --report]
+ *     [--sec-per-page 6] [--ignore-ttl] [--require-code-synced [--code-sync-record stardust/code-sync.json]] \
+ *     [--strict-paths] [--redirects-tsv stardust/redirects.tsv] [--plan | --report]
  *
  * --content   dir of *.html body-fragment files (default: content). Each file's
  *             path relative to this dir, minus .html, is its DA/web path.
@@ -109,6 +124,8 @@
  *             previewed against it (da-deploy-protocol.md § Code push gates). Exit 3, nothing
  *             read or written; default off so existing invocations are untouched.
  * --concurrency  parallel pages in flight (default 4; DA admin tolerates ~4-6).
+ * --strict-paths       a webPath that differs from its safe form is `path-unsafe`, no PUT.
+ * --redirects-tsv <f>  where `webPath<TAB>safe` rows go (default stardust/redirects.tsv).
  *
  * Plan line: `N pages · U unchanged (hash) · C changed · K new · F failed-last-time
  * · X excluded · T to drive`. Log (append-only jsonl) survives a restart.
@@ -123,7 +140,7 @@
  * Test hooks (fixture tests only): DEPLOY_BATCH_DA_SRC, DEPLOY_BATCH_ADMIN,
  * DEPLOY_BATCH_DELIVERY_BASE and DEPLOY_BATCH_DA_LIST override the hosts;
  * DEPLOY_BATCH_REPAIR_DELAY_MS shortens the 3 s repair/blip wait. The module is importable
- * (normalisePath, readPathList, walkHtml, buildPlan, mergeLedger, serialPersister) — main() runs only as a CLI.
+ * (normalisePath, readPathList, walkHtml, annotateSafePaths, buildPlan, mergeLedger, serialPersister) — main() runs only as a CLI.
  * Pages are driven in webPath order (readdir order is filesystem-specific).
  *
  * No external deps — uses Node's global fetch/FormData/Blob (Node 18+).
@@ -135,6 +152,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createProgress, defaultProgressFile, summaryLine } from '../../stardust/scripts/progress.mjs';
 import { resolveToken, tokenExpiry, daSmoke, siteTokenName } from './lib.mjs';
+import { normalizeDaPath } from '../../stardust/scripts/da-path.mjs';
 
 const DA_SRC = process.env.DEPLOY_BATCH_DA_SRC || 'https://admin.da.live/source';
 const ADMIN = process.env.DEPLOY_BATCH_ADMIN || 'https://admin.hlx.page';
@@ -189,11 +207,11 @@ export function deliveryUrl({ org, repo, branch, tld, webPath }) {
 }
 
 function usage() {
-  console.log('usage: node skills/deploy/scripts/deploy-batch.mjs --org <org> --repo <repo> --branch <branch> [--content content] [--paths <file|a,b>] [--exclude <file|a,b>] [--concurrency 4] [--publish] [--force] [--allow-thin] [--allow-shrink] [--ledger <path>] [--log <path>] [--progress <path> | --no-progress] [--token-env DA_TOKEN] [--site-token-env NAME] [--sec-per-page 6] [--retries 4] [--ignore-ttl] [--require-code-synced] [--code-sync-record <path>] [--plan | --report]');
+  console.log('usage: node skills/deploy/scripts/deploy-batch.mjs --org <org> --repo <repo> --branch <branch> [--content content] [--paths <file|a,b>] [--exclude <file|a,b>] [--concurrency 4] [--publish] [--force] [--allow-thin] [--allow-shrink] [--ledger <path>] [--log <path>] [--progress <path> | --no-progress] [--token-env DA_TOKEN] [--site-token-env NAME] [--sec-per-page 6] [--retries 4] [--ignore-ttl] [--require-code-synced] [--code-sync-record <path>] [--strict-paths] [--redirects-tsv <file>] [--plan | --report]');
 }
 
 export function parseArgs(argv) {
-  const a = { content: 'content', concurrency: 4, publish: false, force: false, retries: 4, plan: false, report: false, allowThin: false, allowShrink: false, ignoreTtl: false };
+  const a = { content: 'content', concurrency: 4, publish: false, force: false, retries: 4, plan: false, report: false, allowThin: false, allowShrink: false, ignoreTtl: false, strictPaths: false, redirectsTsv: path.join('stardust', 'redirects.tsv') };
   for (let i = 2; i < argv.length; i += 1) {
     const k = argv[i];
     const next = () => { const v = argv[i + 1]; if (v === undefined || /^--/.test(v)) throw new Error(`${k} needs a value`); i += 1; return v; }; // `--progress --plan` once recorded "--plan" as the progress path
@@ -222,6 +240,8 @@ export function parseArgs(argv) {
     else if (k === '--ignore-ttl') a.ignoreTtl = true;
     else if (k === '--require-code-synced') a.requireCodeSynced = true;
     else if (k === '--code-sync-record') a.codeSyncRecord = next();
+    else if (k === '--strict-paths') a.strictPaths = true;
+    else if (k === '--redirects-tsv') a.redirectsTsv = next();
     else if (k === '--help' || k === '-h') { usage(); process.exit(0); }
     else throw new Error(`unknown arg: ${k}`);
   }
@@ -255,6 +275,32 @@ export async function walkHtml(dir, base = dir, list = readdir) {
     }
   }
   return out.sort((a, b) => (a.webPath < b.webPath ? -1 : a.webPath > b.webPath ? 1 : 0));
+}
+
+/**
+ * Gate 3 before any network: `safePath` = normalizeDaPath(webPath) (null = no safe form),
+ * `collision` = the webPath that already claimed the same safe path (first in webPath order
+ * wins). Mutates the page records; returns the counts the header line prints.
+ */
+export function annotateSafePaths(pages) {
+  const claimed = new Map();
+  const counts = { normalised: 0, collisions: 0, unsafe: 0 };
+  for (const p of pages) {
+    p.safePath = normalizeDaPath(p.webPath);
+    p.collision = null;
+    if (p.safePath === null) { counts.unsafe += 1; continue; }
+    const owner = claimed.get(p.safePath);
+    if (owner !== undefined) { p.collision = owner; counts.collisions += 1; continue; }
+    claimed.set(p.safePath, p.webPath);
+    if (p.safePath !== p.webPath) counts.normalised += 1;
+  }
+  return counts;
+}
+
+/** `source<TAB>destination` rows of an existing redirects sheet, as a Set of `src\tdst`. */
+function readRedirectRows(file) {
+  if (!existsSync(file)) return new Set();
+  return new Set(readFileSync(file, 'utf8').split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith('#')).map((l) => l.split(/\t+|\s{2,}/).slice(0, 2).join('\t')));
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -366,7 +412,7 @@ export async function buildPlan({ pages, ledger, want, exclude, publish, force, 
       skip(p, rec.bodyHash ? 'unchanged (hash)' : 'unchanged (no hash — a live run verifies the delivered page first)', 'unchanged');
       continue;
     }
-    const v = await verify({ webPath: p.webPath, tld });
+    const v = await verify({ webPath: p.safePath || p.webPath, tld });
     if (!v.ok) { drive(p, `re-verify failed (${v.why})`, 'reverify'); continue; }
     if (!rec.bodyHash) { rec.bodyHash = p.hash; rec.branch ||= branch; touched.add(p.webPath); }
     skip(p, rec.status === 'previewed' && !publish ? 'unchanged (hash; previewed-only — needs --publish to go live)' : 'unchanged (hash)', 'unchanged');
@@ -422,21 +468,44 @@ async function persistLedger(file, ledger, touched) {
   return merged;
 }
 
-async function deployOne(page, args, ledger, logLine, shared) {
+async function deployOne(page, args, ledger, logLine, shared, redirects = null) {
   const { org, repo, branch, token, publish, siteAuth, siteTokenName } = args;
-  const enc = encodeURI(page.webPath);
   const rec = ledger[page.webPath] || (ledger[page.webPath] = { status: 'pending', attempts: 0 });
   const t0 = Date.now();
   rec.attempts += 1;
   rec.ts = new Date().toISOString();
   let putHash = null; // recorded on the row only once the delivered GET passes
 
+  // 0. path-safety (Gate 3) — zero network. The ledger stays keyed on the file-derived
+  //    webPath; the page is driven at its safe path and the row records `deployedPath`.
+  const safe = page.safePath === undefined ? normalizeDaPath(page.webPath) : page.safePath;
+  if (safe === null) {
+    rec.status = 'path-unsafe';
+    rec.lastError = 'no delivery-safe form (a segment empties after folding — non-Latin script): transliterate the file path (delivery-gates.md § Gate 3)';
+    await logLine({ path: page.webPath, step: 'path-safety', status: rec.status });
+    return rec;
+  }
+  if (page.collision) {
+    rec.status = 'path-collision';
+    rec.lastError = `normalises to ${safe}, already claimed by ${page.collision} — give one of them a distinct path (no PUT)`;
+    await logLine({ path: page.webPath, step: 'path-safety', status: rec.status, safe, claimedBy: page.collision });
+    return rec;
+  }
+  if (args.strictPaths && safe !== page.webPath) {
+    rec.status = 'path-unsafe';
+    rec.lastError = `path differs from its safe form ${safe} (--strict-paths: migrate must write safe paths)`;
+    await logLine({ path: page.webPath, step: 'path-safety', status: rec.status, safe });
+    return rec;
+  }
+  if (safe !== page.webPath) rec.deployedPath = safe; else delete rec.deployedPath;
+  const enc = encodeURI(safe);
+
   // Publish fast path: a page this ledger already holds as `previewed`, whose
   // bytes are unchanged (hash) and that still delivers on aem.page needs only
   // POST /live/ + verify — re-running PUT → preview for every page would double
   // the admin traffic of a 1k-page run.
   const fastPublish = publish && !args.force && rec.status === 'previewed' && rec.bodyHash && rec.bodyHash === page.hash
-    && (await deliveredOk({ org, repo, branch, webPath: page.webPath, tld: 'aem.page', siteAuth, siteTokenName })).ok;
+    && (await deliveredOk({ org, repo, branch, webPath: safe, tld: 'aem.page', siteAuth, siteTokenName })).ok;
 
   if (!fastPublish) {
     const buf = await readFile(page.file);
@@ -509,12 +578,12 @@ async function deployOne(page, args, ledger, logLine, shared) {
   //    repaired by ONE idempotent re-preview (an image lost the ingest race
   //    with Code Sync); only a persisting about:error is a FAIL.
   const tld = publish ? 'aem.live' : 'aem.page';
-  let v = await deliveredOk({ org, repo, branch, webPath: page.webPath, tld, siteAuth, siteTokenName });
+  let v = await deliveredOk({ org, repo, branch, webPath: safe, tld, siteAuth, siteTokenName });
   if (!v.ok && v.aboutError) {
     const again = await call('POST', `${ADMIN}/preview/${org}/${repo}/${branch}${enc}`, { token }, 1);
     if (again.status < 400 && publish) await call('POST', `${ADMIN}/live/${org}/${repo}/${branch}${enc}`, { token }, 1);
     await sleep(REPAIR_DELAY_MS);
-    const v2 = again.status < 400 ? await deliveredOk({ org, repo, branch, webPath: page.webPath, tld, siteAuth, siteTokenName }) : { ok: false, why: `re-preview ${again.status}` };
+    const v2 = again.status < 400 ? await deliveredOk({ org, repo, branch, webPath: safe, tld, siteAuth, siteTokenName }) : { ok: false, why: `re-preview ${again.status}` };
     await logLine({ path: page.webPath, step: 'repreview', status: again.status, ok: v2.ok });
     if (v2.ok) rec.repaired = 're-preview';
     else delete rec.repaired;
@@ -525,6 +594,7 @@ async function deployOne(page, args, ledger, logLine, shared) {
   if (v.ok) {
     delete rec.lastError; // a stale "PUT 401" must not outlive the page's recovery
     if (putHash) { rec.bodyHash = putHash; rec.branch = branch; }
+    if (safe !== page.webPath && redirects) await redirects.add(page.webPath, safe);
   } else rec.lastError = v.why;
   await logLine({ path: page.webPath, step: 'verify', ok: v.ok, why: v.why, ms: Date.now() - t0 });
   return rec;
@@ -591,6 +661,21 @@ export async function main(argv = process.argv) {
   }
 
   const pages = await walkHtml(args.content);
+  const pathCounts = annotateSafePaths(pages);
+  const pathLine = pathCounts.normalised || pathCounts.collisions || pathCounts.unsafe
+    ? `[deploy-batch] paths: ${pathCounts.normalised} normalised (rows → ${args.redirectsTsv})${pathCounts.collisions ? ` · ${pathCounts.collisions} collision(s)` : ''}${pathCounts.unsafe ? ` · ${pathCounts.unsafe} with no safe form` : ''}${args.strictPaths ? ' · --strict-paths: divergent pages are path-unsafe' : ''}`
+    : null;
+  // redirect rows: one `webPath<TAB>safe` per normalised page, appended once it delivers, deduped against the sheet
+  const redirectRows = args.plan ? null : readRedirectRows(args.redirectsTsv);
+  const redirects = args.plan ? null : {
+    add: async (src, dst) => {
+      const row = `${src}\t${dst}`;
+      if (redirectRows.has(row)) return;
+      redirectRows.add(row);
+      await mkdir(path.dirname(args.redirectsTsv), { recursive: true });
+      await appendFile(args.redirectsTsv, `${row}\n`);
+    },
+  };
   const want = args.paths ? await readPathList(args.paths) : null;
   const exclude = args.exclude ? await readPathList(args.exclude) : null;
   const touched = new Set();
@@ -648,12 +733,19 @@ export async function main(argv = process.argv) {
 
   if (args.plan) {
     console.log(planLine(counts, ` (plan only, publish=${args.publish})`));
-    for (const r of plan.rows) console.log(`  ${r.action.padEnd(7)} ${r.webPath}  ${r.reason}`);
+    if (pathLine) console.log(pathLine);
+    const byPath = new Map(pages.map((p) => [p.webPath, p]));
+    for (const r of plan.rows) {
+      const p = byPath.get(r.webPath);
+      const note = p && p.safePath === null ? '  [path-unsafe: no safe form]' : p && p.collision ? `  [path-collision with ${p.collision} → ${p.safePath}]` : p && p.safePath !== p.webPath ? `  [→ ${p.safePath}${args.strictPaths ? ' path-unsafe (--strict-paths)' : ''}]` : '';
+      console.log(`  ${r.action.padEnd(7)} ${r.webPath}  ${r.reason}${note}`);
+    }
     console.log(summaryLine({ driver: 'deploy-batch', exit: 0, details: args.ledger, extra: { mode: 'plan', toDrive: counts.toDrive } }));
     return 0;
   }
 
   console.error(planLine(counts, ` (concurrency ${args.concurrency}, publish=${args.publish})`));
+  if (pathLine) console.error(pathLine);
   if (!todo.length) {
     const show = plan.rows.slice(0, 50); // one reason per path — why nothing moves
     for (const r of show) console.error(`  ${r.action.padEnd(7)} ${r.webPath}  ${r.reason}`);
@@ -668,11 +760,11 @@ export async function main(argv = process.argv) {
   try {
     await pool(todo, args.concurrency, async (p) => {
       touched.add(p.webPath);
-      const rec = await deployOne(p, args, ledger, logLine, shared);
+      const rec = await deployOne(p, args, ledger, logLine, shared, redirects);
       done += 1;
       const ok = OK_STATUS.has(rec.status);
       progress.tick({ ok, path: p.webPath });
-      const url = ok ? `https://${args.branch}--${args.repo}--${args.org}.${rec.status === 'live' ? 'aem.live' : 'aem.page'}${p.webPath}` : null;
+      const url = ok ? `https://${args.branch}--${args.repo}--${args.org}.${rec.status === 'live' ? 'aem.live' : 'aem.page'}${rec.deployedPath || p.webPath}` : null;
       if (url && !firstUrl) firstUrl = url;
       console.error(`[${done}/${todo.length}] ${ok ? 'OK  ' : 'FAIL'} ${p.webPath} (${rec.status})${url ? `  ${url}` : ''}`);
       // a failed checkpoint is not a page failure: warn, keep driving — the final write (below) is the one that must succeed

@@ -34,6 +34,10 @@
  * the old site for a page that exists on the new origin. Advisory (🟡) in this
  * release; the fix is `localize-links.mjs` (the pipeline stage), not a hand edit.
  *
+ * In the delivery chain this is stage 2: `deploy-page.mjs` runs it per file after the
+ * localize pass and before delivery-lint / sanitise / PUT — exit 2 here is `lint-red`,
+ * no PUT for that file. Run through the chain, not a shell loop (see its header).
+ *
  * Exit codes: 0 = clean (🟡 advisories allowed — review, fix or justify in the
  * conversion log), 2 = at least one 🔴, 1 = usage/parse failure.
  *

@@ -4,7 +4,7 @@
   "checklist": [
     {
       "name": "clones_presentational",
-      "max_score": 20,
+      "max_score": 15,
       "description": "Carousel/marquee loop clones carry no text nodes, alt=\"\", no href, no role/aria; the rendered DOM word count of the block equals the authored slide text counted once."
     },
     {
@@ -28,8 +28,13 @@
       "description": "ai-readability.mjs runs as part of the delivery contract; the report records strict score, code score and per-block served gap per page; code ≥ 98."
     },
     {
+      "name": "excluded_block_decided",
+      "max_score": 10,
+      "description": "The vendor-mounted calculator band (class T) is either delivered with the widget's default-state copy authored as a block row that the block removes on render (code ≥ 98 with the mount rendered), or its `--exclude-blocks` exclusion is recorded in `stardust/ai-readability-allowlist.json` as `{ block, exclude: true, reason, fallback: authored | owner-accepted, decision }` citing the `dynamic-features.md` § Decision batch row; the report lists the excluded block with its word cost under strict. A bare `--exclude-blocks` run that removes the calculator's words with no such entry fails this item."
+    },
+    {
       "name": "checker_facts_correct",
-      "max_score": 15,
+      "max_score": 10,
       "description": "No time is spent on hidden text, aria-hidden/inert, or nav/footer inlining for the score; the transcript states the count-ratio formula and that landmarks are ignored by default; chrome inlining, if raised, is presented as a trade-off, not done silently."
     }
   ]

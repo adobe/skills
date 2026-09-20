@@ -14,7 +14,7 @@ The two Setups describe different pages; each has its own prototype here:
 
 | Setup | prototype | sections |
 |---|---|---|
-| ai-readability | `stardust/prototypes/home-proposed.html` | hero carousel (3 slides), 4-up card grid of card-links, locations band (12 branches, index-backed), newsletter band carrying the fragment trio (`data-fragment-source="/fragments/newsletter"`), FAQ accordion (6 collapsed `details`) |
+| ai-readability | `stardust/prototypes/home-proposed.html` | hero carousel (3 slides), 4-up card grid of card-links, calculator band (vendor mount `[data-widget-id="loan-calc"]` showing the default state; `vendor/embed.js` at the fixture root re-renders it at runtime — class `T`, `dynamic-features.md` row 6), locations band (12 branches, index-backed), newsletter band carrying the fragment trio (`data-fragment-source="/fragments/newsletter"`), FAQ accordion (6 collapsed `details`) |
 | ew-editability | `stardust/prototypes/accounts-proposed.html` | hero (eyebrow + `h1` + lede + two CTAs), section head as prose above a 3-up card grid of card-links, testimonials marquee (4 looped slides), rates accordion (4), closing prose band |
 
 Both prototypes share chrome, `:root` tokens and CSS conventions, so a run
@@ -45,6 +45,13 @@ that converts one page sees the other as the sibling it must not break.
   § file format. Row 2 marks the locations band `index-backed` over
   `/query-index.json`; row 3 records the newsletter as a fragment awaiting a
   backend decision.
+- `vendor/embed.js` — the third-party calculator stand-in (`deploy/reference/
+  ai-readability.md` § 3 Vendor widgets). It replaces the mount's content with
+  its own markup carrying the same ~60 words plus a vendor footer line, so a
+  block that keeps the authored default state in the DOM double-counts and a
+  block that removes it on render counts once — the `excluded_block_decided`
+  criterion is measurable either way. The prototype itself stays script-free;
+  `data-vendor-src` on the mount names what the block loads.
 - `helix-query.yaml` — `skills/dynamics/reference/listings.md`: a
   `locations` index scoped to `/locations/**`, targeting `/query-index.json`.
 - `query-index.json` — 12 rows shaped like the published index (`path`,

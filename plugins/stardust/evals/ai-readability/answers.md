@@ -35,6 +35,12 @@ option). Never ask questions back. Never volunteer extra requirements.
 - **Locations band — render the 12 branches from the index or author
   them in the document?** **Author them in the document.** The index is
   for images, map coordinates and any branch we open later.
+- **Loan calculator band — author its default state or accept the gap?**
+  **Author the default state** (amount, term, loan type, the payment line and
+  the fine print) so the sponsor can read it in the page, and let the block
+  swap in the live calculator when the vendor script loads. If the copy
+  cannot be captured, record the exclusion with the reason and cite the
+  dynamic-features row — "never just switch it off."
 - **Carousel loop clones / hidden text / accordion answers:** "Do
   whatever the checker actually measures. Don't spend time on hidden
   text if it doesn't move the number."

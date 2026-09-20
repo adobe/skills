@@ -71,15 +71,34 @@ expected `<img>`+alt count (CSS-background images are absent from it).
 ## Gate 3 — Path-safety (source paths must be AEM-Edge-safe, or normalized + redirected)
 
 Real source URLs are not always valid EDS resource paths; DA accepts the `PUT`
-(201) but preview/serve then 404s/400s, so this is invisible until verify. Before
-deploy, normalize each path and, when it changes, record the original→normalized
-pair so the source URL can be redirected (a final migration must not 404 inbound
-links). Rules:
-- lowercase the whole path;
-- trim a trailing `-`/`_` in any segment;
-- collapse `_`→`-` and runs of `-`;
-- replace the `--` segment delimiter (e.g. `klinik-st--anna`) — AEM reserves `--`
-  as the `branch--repo--owner` host delimiter, so a `--` in a path 400s.
+(201) but preview/serve then 404s/400s, so this is invisible until verify. The
+rule is one function, `normalizeDaPath()` in `skills/stardust/scripts/da-path.mjs`
+(per segment: percent-decode, fold diacritics, lowercase, every non-`[a-z0-9]`
+run → `-`, trim edge `-`; the leaf drops one `.html|.php|…`; query and fragment
+are dropped; a segment that empties — a non-Latin script — has no safe form and
+must be transliterated). Three consumers, no per-script copy:
+- `scripts/delivery-lint.mjs` — P0 `path-safety` names the safe target;
+- `../deploy/scripts/deploy-batch.mjs` — **enforces it**: no PUT goes to a path
+  that differs from its safe form. A divergent page is PUT / previewed /
+  published / verified at the safe path, its ledger row (keyed on the file path)
+  records `deployedPath`, and one `source<TAB>destination` row is appended to
+  `stardust/redirects.tsv` once it delivers (deduped). Two files folding to one
+  safe path → the second is `path-collision`, no PUT (identity is migrate's
+  output path; a collision is refused, never a silent overwrite). Escape hatch:
+  `--strict-paths` makes every divergence `path-unsafe` (for pipelines where
+  migrate already wrote safe paths); `--redirects-tsv` relocates the sheet. No
+  flag disables the fold. Hands-off has nothing to answer — the fold is
+  deterministic and the redirect row keeps inbound links; a `path-collision` /
+  `path-unsafe` page parks as a non-ok row and re-drives like any FAIL;
+- `../deploy/scripts/localize-links.mjs` — map keys and rewrite targets are the
+  safe form, so internal links name the path DA serves (D9).
+
+One rule for every segment: folders tolerate `_` and case, leaves do not — that
+split is the diagnosis of a 400 vs a 404, not the normaliser; folding folders too
+is a superset of safe and every change emits a redirect row. Not extract's
+`slugify` (D6): a slug is one flat identifier, the DA path a per-segment fold.
+Prove a surprising class with `admin.hlx.page/status/<org>/<repo>/<ref><path>` →
+`webPath`; a DA source PUT before the fold is an orphan — delete it, re-run.
 
 Append each change to `stardust/redirects.tsv` (`source<TAB>destination`);
 Phase D's `scripts/redirects.mjs` turns the sheet into `site/redirects.json`

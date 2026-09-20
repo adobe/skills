@@ -27,7 +27,7 @@ Phases, in order: Setup → A Inventory → B Block dedup plan → B2 Dynamic su
 | H | read `rollout.json.lastRun` + `optimize/scorecard.json` + `verify/summary.md`; write `stardust/learnings.md` |
 | I | `node skills/rollout/scripts/dashboard.mjs` |
 
-Gates: Setup — `gate-ledger-lint.mjs` exit 2 = blocked types under `flow: replica`. B2 — every dynamic row has a disposition; `dynamics-plan.mjs --lint` exit 0. C — delivery-lint P0/P1 blocks the PUT; source-fidelity, image-fidelity, path-safety, source-content hygiene, fidelity tier declared; EW gate `block-roundtrip --ew`; foundation-first gate on the first deployed archetype; chrome crops consume `pass`, never the pct alone. D — `redirects.mjs` exit 2 (a Source shadows a delivered page) blocks the sheet. E — `verify.mjs` exit 1 = a failed page (folder roots probed on both slash forms), exit 2 = usage / no coverage; a 429/503 through the inline retry leaves the page `unverified` and exits 2 — re-run, never a failed page; headless render check per template. E2 — `localize-links.mjs --check` exit 2 = links remain. F — `optimize.mjs` exits non-zero on any open in-scope P1. H — `dynamics-check.mjs --gate` exit 0 before the report closes.
+Gates: Setup — `gate-ledger-lint.mjs` exit 2 = blocked types under `flow: replica`. B2 — every dynamic row has a disposition; `dynamics-plan.mjs --lint` exit 0. C — delivery-lint P0/P1 blocks the PUT; source-fidelity, image-fidelity, path-safety, source-content hygiene, fidelity tier declared; EW gate `block-roundtrip --ew`; foundation-first gate on the first deployed archetype; chrome crops consume `pass`, never the pct alone. D — `redirects.mjs` exit 2 (a Source shadows a delivered page) blocks the sheet. E — `verify.mjs` exit 1 = a failed page (folder roots probed on both slash forms), exit 2 = usage/no coverage; a 429/503 after the inline retry leaves the page `unverified`, exit 2 — re-run, never a failed page; headless render check per template. E2 — `localize-links.mjs --check` exit 2 = links remain. F — `optimize.mjs` exits non-zero on any open in-scope P1. H — `dynamics-check.mjs --gate` exit 0 before the report closes.
 
 Outputs (under `stardust/rollout/`): `coverage/{pages,templates,blocks}.json` · `plan.json` · `rollout.json` · `verify/{summary.json,summary.md}` · `optimize/{findings,scorecard}.json` · `site/{sitemap.xml,robots.txt,manifest.json,redirects.json}` · `dashboard/{index.html,data.json}` (schemas: `schemas/rollout-*.schema.json`); plus `stardust/redirects.tsv`, `stardust/learnings.md`, EDS-project edits via autofix.
 
@@ -190,17 +190,17 @@ lint blocked are not in `plan.json`. For each page:
    next wave; consume the record's `pass`, never the pixel percentage alone —
    `../deploy/reference/chrome.md` § Chrome states and variants.
 
-3. **Run the delivery gates** before flipping a page to `deployed` — a
-   published-origin re-gate captures only after `code-sync-verify.mjs --org
-   --repo --ref` exits 0 (served code == tree). Each is a one-line rule here;
-   mechanics + helpers in `reference/delivery-gates.md`:
+3. **Run the delivery gates** before flipping a page to `deployed`. Per page the
+   chain is `deploy-page.mjs` (steps 2–3 = its stages); a published-origin
+   re-gate captures only after `code-sync-verify.mjs --org --repo --ref` exits 0
+   (served == tree). One-line rules; mechanics in `reference/delivery-gates.md`:
    - **Source-fidelity** — don't add sections the source lacks; never fabricate
      facts. `node skills/rollout/scripts/section-fidelity.mjs --file <html> --source <url>`
    - **Image-fidelity** — every authored `<img>` src must return 200 or be omitted;
      never ship `<img src="about:error">`. Run `media-reconcile.mjs` (step 2).
-   - **Path-safety** — normalize source paths to AEM-Edge-safe form (lowercase, no
-     trailing `-`/`_`, no `--` segment); record original→normalized in
-     `stardust/redirects.tsv`.
+   - **Path-safety** — `normalizeDaPath()` (`stardust/scripts/da-path.mjs`): delivery-lint
+     flags it, `deploy-batch` enforces it before the PUT and writes the
+     `stardust/redirects.tsv` row; a `path-collision` parks the page.
    - **Source-content hygiene** — skip dead source URLs; author bodyless/PDF-only
      sources thin and faithful (tier `thin`,
      `skills/migrate/reference/fidelity-tiers.md`), don't pad with invented prose.
@@ -335,12 +335,10 @@ against preview): `reference/sweep-protocol.md`.
   the chrome rows included.
 - **Localize source-site bounce links** with the deploy stage, not by hand:
   `node skills/deploy/scripts/localize-links.mjs --source-host <live-host>
-  --content content --redirects stardust/redirects.tsv`; **re-run over the
-  WHOLE tree after every wave** (earlier pages gain targets only when a later
-  wave ships them). `--check` is the gate (exit 2 = links remain).
-- **Strip trailing slashes and `.html` from internal links** (EDS 404s both
-  while `.plain.html` passes); repoint `.html` links with no local page at the
-  working source URL.
+  --content content --redirects stardust/redirects.tsv [--unmigrated bounce|list]`
+  (`links` decisions row; `list` is owner-decided → `stardust/link-gaps.tsv`);
+  **re-run over the WHOLE tree after every wave**; it also strips `/x/` and `.html`.
+  `--check` is the gate `deploy-page.mjs` runs first (exit 2 = no PUT).
 - **The audit GETs each href against the LIVE tree** — ledger resolution misses
   the trailing-slash and case defects only delivery exposes.
 

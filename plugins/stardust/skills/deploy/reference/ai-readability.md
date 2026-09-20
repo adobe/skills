@@ -61,6 +61,7 @@ second.
 | **Definition-driven forms** (block renders labels, sections, options from `data/forms/*.json`) | 335 words on an enquiry page | block accepts authored field rows; JSON stays an import format |
 | **Generated labels, counts, duplicates** ("Show more", "N results", sr-only helpers, a cloned chip for another breakpoint, an accordion header cloned for mobile) | 1–5 points, but every page | author the label list; place one element with CSS `order`; drop unauthored sr-only text |
 | **Runtime chrome** (`/nav`, `/footer`) | 60–170 words | neutral by default; see § 5 before inlining |
+| **Vendor widgets** (calculators, locators, chat, forms a third-party script writes into a mount — class `T` in the dynamics inventory) | 200–400 words per page | author the widget's default-state copy as a block row (labels, result line, fine print) with reserved heights; the block removes it when the vendor renders — ≈0 points and the page stays citable. Never a bare `--exclude-blocks`: the exclusion needs its decision entry (§ 6) |
 | **Hidden text**, breakpoint variants, collapsed panels | 0 points | nothing — do not "clip instead of hide" for the score |
 
 ## 4. Block rules (deploy § block authoring, alongside EW1–EW10)
@@ -114,24 +115,34 @@ owner decision batch (rollout Phase D / `dynamics-plan`) carrying the cost above
 node skills/deploy/scripts/ai-readability.mjs --origin https://main--site--org.aem.live \
      [--paths stardust/rollout/pages.txt | /path …] [--min 98] [--token-env SITE_TOKEN] \
      [--exclude-blocks client-app,widget,form] [--allowlist stardust/ai-readability-allowlist.json] \
-     [--json stardust/qa/ai-readability.json] [--verbose]
+     [--json stardust/qa/ai-readability.json] [--verbose] [--wait <ms>] [--har <file> [--har-url <regex>]]
 ```
 
-Per page it prints three numbers and a cause table:
+Per page it prints three numbers and a cause table: **strict** — the checker's popup number
+(landmarks ignored), plus the toggle-off variant; **code** — strict with referenced fragment documents
+credited to the served side and the `--exclude-blocks` app blocks removed from the rendered side
+(isolates block-decoration defects from content-architecture decisions); **servedGap** — rendered
+words absent from the served HTML, attributed per block (metric 2).
 
-- **strict** — the checker's popup number (landmarks ignored), plus the toggle-off variant;
-- **code** — strict with referenced fragment documents credited to the served side and the
-  `--exclude-blocks` app blocks removed from the rendered side: isolates block-decoration defects
-  from content-architecture decisions;
-- **servedGap** — rendered words absent from the served HTML, attributed per block (metric 2).
+Gate on `code ≥ --min` (default 98) — the part the block code owns. Report `strict` as the customer
+number with what is agent-invisible *by design* and its cost (`fragments cost N pts` per page), so the
+owner sees a decision, not a bare 84. Where it runs: the deploy atomic contract on the **published**
+page; the `qa` `ai-readability` check (same code); `audit` on sampled pages. String allowlist entries
+name a block and the runtime string they excuse, with a reason; the script prints every entry used.
 
-Gate on `code ≥ --min` (default 98) — that is the part the block code owns. Report `strict` as the
-customer number and list what is agent-invisible *by design* with its point cost — the script prints
-`fragments cost N pts` per page (strict points the fragment copy would add if inlined) — so the owner
-sees a decision, not a bare 84. Where it runs: the deploy
-atomic delivery contract on the **published** page; the `qa` `ai-readability` check (same code); the
-`audit` LLM-visibility phase on sampled pages. Allowlist entries name a block and the runtime string
-they excuse, with a reason; the script prints every entry it used.
+**Excluded blocks carry a decision (gate).** `--exclude-blocks` removes a block's words from the
+`code` denominator only when the allowlist carries a complete `exclude` entry for it —
+`{ "block", "exclude": true, "reason", "fallback": "authored" | "owner-accepted", "decision": "<dyn row>" }`,
+`decision` citing the `dynamic-features.md` § Decision batch row (no second file). A word-removing
+exclusion without one prints `FAIL undecided exclusion: <block> −N words` and exits 1 (the bar's
+code); blocks that removed no words and fragments are untouched. The entry is the escape hatch (no
+flag): `authored` = the default-state copy is a block row removed on render; `owner-accepted` = the
+strict gap is accepted and printed. Hands-off authors the default state (`fallback: authored`); when
+the copy cannot be captured headless the page **fails and stays on preview** (D1/D16), listed among
+the open rows — never weakened. `authored` is proven only when the vendor renders: `--har <file>`
+replays a recorded vendor session headless (`--har-url` scopes it), `--wait <ms>` lets a late widget
+settle, and the excluded block's `servedGap` shows whether the copy is word-complete. The `qa`
+check runs the same scorer; it takes these decisions once it reads the allowlist (qa lane).
 
 Facts to carry into any conversation with the owner: the tool ignores header, nav and footer by
 default; it fetches as a crawler first and falls back to the pre-JavaScript HTML; hidden text does
