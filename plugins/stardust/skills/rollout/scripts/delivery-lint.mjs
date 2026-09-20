@@ -43,6 +43,13 @@
  * --content <dir> when given (chrome docs and fragments excluded). Single-variant sites
  * are silent — exit semantics unchanged (deploy/reference/chrome.md § Chrome states and variants).
  *
+ * path-safety P0 (--path): the target path must equal `normalizeDaPath(path)` — the shared
+ * rule in ../../stardust/scripts/da-path.mjs (case, `_`, `--`, edge `-`, dots, diacritics,
+ * `%xx`, `.html|.php` leaf, query). The message names the safe target to record in
+ * redirects.tsv; a segment with no safe form (non-Latin script) is P0 "transliterate".
+ * deploy-batch.mjs enforces the same fold before the PUT (rollout Gate 3). A project copy
+ * of this script must carry da-path.mjs with it.
+ *
  * --icons-dir <dir> enables the icon-token checks (silent without it): every
  * `:name:` token / `<span class="icon icon-name">` must resolve to <dir>/name.svg|png
  * (P0 icon-missing); an authored `:icon-x:` while <dir>/x.svg exists doubles the
@@ -55,6 +62,7 @@
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { basename, join, relative } from 'node:path';
+import { normalizeDaPath } from '../../stardust/scripts/da-path.mjs';
 
 function arg(name, fb) { const i = process.argv.indexOf(`--${name}`); if (i === -1) return fb; const v = process.argv[i + 1]; if (v === undefined || v.startsWith('--')) { console.error(`rollout delivery-lint: --${name} needs a value`); process.exit(2); } return v; } // never swallow the next flag
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
@@ -169,12 +177,12 @@ if (type !== 'index') {
   }
 }
 
-/* ---- path-safety of the target DA path ---- */
+/* ---- path-safety of the target DA path: the shared rule (stardust/scripts/da-path.mjs),
+   the same fold deploy-batch applies before the PUT and localize-links keys its map on ---- */
 if (DAPATH) {
-  const norm = DAPATH.toLowerCase()
-    .split('/').map((s) => s.replace(/_/g, '-').replace(/-+/g, '-').replace(/^-+|-+$/g, '')).join('/')
-    .replace(/\/{2,}/g, '/').replace(/(.)\/$/, '$1');
-  if (norm !== DAPATH) add('P0', 'path-safety', `path is not delivery-safe; normalize ${DAPATH} → ${norm} (record in redirects.tsv)`);
+  const norm = normalizeDaPath(DAPATH);
+  if (norm === null) add('P0', 'path-safety', `path has a segment with no delivery-safe form (non-Latin script): ${DAPATH} — transliterate before deploy (delivery-gates.md § Gate 3)`);
+  else if (norm !== DAPATH) add('P0', 'path-safety', `path is not delivery-safe; normalize ${DAPATH} → ${norm} (record in redirects.tsv)`);
   if (/\/\//.test(DAPATH)) add('P0', 'path-safety', 'double slash in path makes the DA PUT 400 while preview/live still 200');
 }
 

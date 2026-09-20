@@ -15,6 +15,8 @@
 //                       without a `nav:` (or `footer:`) metadata row, the --file page and
 //                       every page under --content; single-variant sites are silent
 //   chrome-variant-count P2  > 3 distinct documents of one kind
+//   path-safety P0      --path folded through stardust/scripts/da-path.mjs (dots, diacritics,
+//                       %xx, .php + query, _ / -- / edge -); non-Latin → "transliterate"; safe → silent
 //
 // Usage: node plugins/stardust/skills/rollout/scripts/delivery-lint.test.mjs  (exit 1 on failure)
 import assert from 'node:assert/strict';
@@ -126,5 +128,23 @@ const count = (r, rule) => r.rules.filter((x) => x.endsWith(` ${rule}`)).length;
   assert.equal(run(['--file', noRow, '--chrome-docs', join(T, 'content/nope.html')]).status, 2, 'missing --chrome-docs file → exit 2');
 }
 
+// ---- path-safety P0 through the shared rule (stardust/scripts/da-path.mjs, T27.3) --------
+{
+  const pg = w('path.html', page('<p>x</p>', metaRow('title', 'T')));
+  const msg = (r) => (r.json.findings.find((f) => f.rule === 'path-safety') || {}).msg || '';
+  for (const [p, safe] of [['/articles/category.automotive', '/articles/category-automotive'], ['/at/\u00e4rztin', '/at/arztin'], ['/a b/c%20d', '/a-b/c-d'], ['/dw/ipdir.php?c=DW01_add', '/dw/ipdir'], ['/A_b/c--d-', '/a-b/c-d']]) {
+    const r = run(['--file', pg, '--path', p]);
+    assert.deepEqual([r.status, count(r, 'path-safety')], [1, 1], `${p}: one P0 path-safety (${r.rules})`);
+    assert.ok(msg(r).includes(`\u2192 ${safe} `), `${p}: message names the safe target ${safe}: ${msg(r)}`);
+  }
+  let r = run(['--file', pg, '--path', '/\u65e5\u672c\u8a9e']);
+  assert.deepEqual([r.status, count(r, 'path-safety')], [1, 1], 'non-Latin: P0');
+  assert.match(msg(r), /transliterate/, 'non-Latin path asks for transliteration, never a guessed target');
+  r = run(['--file', pg, '--path', '/products/getting-started']);
+  assert.equal(count(r, 'path-safety'), 0, 'a safe path is silent');
+  r = run(['--file', pg, '--path', '/a//b']);
+  assert.equal(count(r, 'path-safety'), 2, 'double slash: the fold P0 plus the PUT-400 P0');
+}
+
 rmSync(T, { recursive: true, force: true });
-console.log('delivery-lint.test: ok (empty-block P2/--allow-empty, href-scheme, href-whitespace, one-cta-per-p links-only, --allow-no-h1/h1-deviation/deviation, description-alt, chrome-variant/--content, chrome-variant-count, single-variant silence)');
+console.log('delivery-lint.test: ok (empty-block P2/--allow-empty, href-scheme, href-whitespace, one-cta-per-p links-only, --allow-no-h1/h1-deviation/deviation, description-alt, chrome-variant/--content, chrome-variant-count, single-variant silence, path-safety via da-path.mjs)');

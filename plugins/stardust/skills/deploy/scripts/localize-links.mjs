@@ -17,7 +17,10 @@
  * internal targets as later waves ship them):
  *   1. Builds the URL map from the content tree: every *.html under --content
  *      is a served path (extensionless; `x/index.html` → `/x`; root `/`), plus
- *      the entries of --redirects (source path → destination) when given.
+ *      the entries of --redirects (source path → destination) when given. Keys
+ *      and targets are the DELIVERY-SAFE form (stardust/scripts/da-path.mjs —
+ *      the path deploy-batch PUTs to), so a tree carrying `_`, case, dots or
+ *      diacritics in file names still maps hrefs to the path DA serves.
  *   2. Rewrites every <a href> whose host is a --source-host (with or without
  *      `www.`, http or https or protocol-relative), a delivery host
  *      (`<ref>--<repo>--<org>.aem.page|live`, implicit) or the --prod-host,
@@ -51,6 +54,7 @@
  */
 import { readFileSync, writeFileSync, readdirSync, statSync, existsSync } from 'fs';
 import path from 'path';
+import { normalizeDaPath } from '../../stardust/scripts/da-path.mjs';
 
 function parseArgs(argv) {
   const rest = argv.slice(2);
@@ -80,7 +84,10 @@ function usage() {
 const bareHost = (h) => h.toLowerCase().replace(/^www\./, '').replace(/:\d+$/, '');
 
 // Canonical lookup key for a path: no query/fragment, no .html/.htm, no
-// trailing slash (root stays "/"), collapsed slashes, lower-cased.
+// trailing slash (root stays "/"), `/index` folded, then the delivery-safe fold
+// (stardust/scripts/da-path.mjs — the path deploy-batch actually PUTs to, so map
+// keys AND rewrite targets name the served path: `/Über_uns.html` → `/uber-uns`).
+// A path with no safe form (non-Latin segment) keeps its lower-cased shape.
 export function canonicalPath(p) {
   let s = (p || '').split(/[?#]/)[0].replace(/\/{2,}/g, '/');
   if (!s.startsWith('/')) s = `/${s}`;
@@ -88,7 +95,8 @@ export function canonicalPath(p) {
   if (s.length > 1) s = s.replace(/\/+$/, '');
   if (s === '' || s === '/index') s = '/';
   s = s.replace(/\/index$/, '');
-  return s.toLowerCase() || '/';
+  s = s.toLowerCase() || '/';
+  return normalizeDaPath(s) ?? s;
 }
 
 function collectHtml(dir, out = []) {
