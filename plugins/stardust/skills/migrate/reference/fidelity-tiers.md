@@ -77,6 +77,46 @@ The probe is read-only evidence — it never edits
 the clone — and it costs one live navigation per sibling, so run a
 template's siblings in one pass and reuse the JSON.
 
+**Layout clusters (one gated exemplar per cluster, not per CMS label).** A
+page type is a label; its pages are several layouts. Before the first
+sibling render of a type, run
+`node scripts/replica/layout-cluster.mjs --type <t> --write-state` — offline
+over the crawler sidecar `stardust/current/pages/<slug>.html` (every request
+aborted, zero source hits); it writes `stardust/current/layout-clusters.json`
+(a flow-neutral corpus fact) and `state.json.pages[].layoutCluster`, and
+prints per cluster: count, exemplar, gate status per breakpoint, signature
+diff vs the archetype's cluster. T = `max(5, 2 %)` of the type, printed,
+`--min-cluster` overrides — a selection default, never a pass bar.
+
+- *Condition (blocks, `flow: replica` only).* A cluster of ≥ T pages whose
+  exemplar has no gate result at every configured breakpoint (pass, or over
+  the bar with named-class residuals — the gated-archetype precondition's own
+  definitions; a no-verdict round is `ungated`, never FAIL) is a
+  **coverage gap**: `migrate` renders none of its pages at sibling tier and
+  `rollout` fans none out. The page is listed with its cluster id, the
+  exemplar slug and `$stardust replica <exemplar>`; plan line
+  `coverage gap: ungated cluster <id> (<n> pages)`, coverage line
+  `clusters gated C of K · ungated: <id (n)> …`. Pages in gated clusters
+  proceed. Tail clusters (< T) carry `layoutCluster: tail` — reported, never
+  blocked, eligible for the seeded published-origin sample, never silently
+  passed.
+- *Escape (both recorded).* Gate the exemplar (replica Phase 3–4 on that
+  page), or — operator only, after reading the printed signature diff —
+  `layout-cluster.mjs --cover <id>=<gatedId> --reason <text>` writes
+  `coveredBy` on the cluster (refused for an ungated target and under
+  `state.json.handsOff`); then
+  `sibling-variance.mjs --from-clusters stardust/current/layout-clusters.json`
+  probes the archetype cluster's exemplar against every other cluster's and
+  must show variant-class deltas only. There is no flag that admits an
+  ungated cluster.
+- *Hands-off.* Never sets `coveredBy` ("same template" by agent judgement is
+  the recorded failure). It resolves by work: gate each ungated cluster's
+  exemplar within the iteration cap; a cluster still ungated at cap stays
+  blocked, heads the phase report and the journal `Next:`, and the run
+  continues on gated clusters.
+- *Eval.* `evals/replica-layout-clusters/` (blocked B page, rendered A page,
+  tail run) and `skills/replica/scripts/test/layout-cluster.test.mjs`.
+
 ## Content-count acceptance (content-fidelity is measured, not asserted)
 
 "Verbatim source copy, no fabrication" needs an instrument, per page, **at
@@ -144,6 +184,9 @@ re-forking its siblings).
 > without an approved archetype because the template was never prototyped),
 > `log()` it as a coverage gap. An ungated page that reads as "deployed" is the
 > failure this tier model exists to make visible.
+> The same row exists per layout cluster (`layout-clusters.json`): `clusters
+> gated C of K · ungated: <id (n)> …` — a cluster's pages delivered under
+> another cluster's gate are ungated pages, whatever the type label says.
 
 ## Why declared, not inferred
 

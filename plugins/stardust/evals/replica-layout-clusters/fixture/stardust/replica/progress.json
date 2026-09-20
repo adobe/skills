@@ -1,0 +1,258 @@
+{
+  "_provenance": {
+    "writtenBy": "stardust:replica",
+    "writtenAt": "2026-09-09T17:22:00Z",
+    "stardustVersion": "0.22.2"
+  },
+  "site": "https://www.larkspurmutual.example",
+  "breakpointsConfigured": [
+    1440,
+    360
+  ],
+  "register": "stardust/replica/inconsistency-register.md",
+  "archetypes": [
+    {
+      "pageType": "landing",
+      "archetype": "home",
+      "liveUrl": "https://www.larkspurmutual.example/",
+      "prototype": "stardust/prototypes/home-proposed.html",
+      "gated": true,
+      "approvedAt": "2026-09-09T14:02:17Z",
+      "motion": {
+        "observed": [
+          "nav-shrink-on-scroll",
+          "coverage-tile-hover-lift"
+        ],
+        "implemented": [
+          "nav-shrink-on-scroll",
+          "coverage-tile-hover-lift"
+        ],
+        "dead": [
+          "aos-fade-up"
+        ]
+      },
+      "breakpoints": {
+        "360": {
+          "iterations": 3,
+          "result": {
+            "structuralRed": 0,
+            "visualFlags": "1 justified",
+            "pixelPct": 3.87,
+            "heightDelta": 4,
+            "chrome": {
+              "headerPct": 1.1,
+              "footerPct": 1.9
+            },
+            "pass": true
+          },
+          "justified": [
+            {
+              "probe": "visual",
+              "flag": "footer link colour delta",
+              "why": "register entry R-01 (applied)"
+            }
+          ],
+          "residuals": [],
+          "captureState": []
+        },
+        "1440": {
+          "iterations": 2,
+          "result": {
+            "structuralRed": 0,
+            "visualFlags": "1 justified",
+            "pixelPct": 2.14,
+            "heightDelta": 0,
+            "chrome": {
+              "headerPct": 0.6,
+              "footerPct": 1.7
+            },
+            "pass": true
+          },
+          "justified": [
+            {
+              "probe": "visual",
+              "flag": "footer link colour delta",
+              "why": "register entry R-01 (applied) — expected bounded delta in the footer band"
+            }
+          ],
+          "residuals": [],
+          "captureState": []
+        }
+      }
+    },
+    {
+      "pageType": "article",
+      "archetype": "news__storm-season-checklist",
+      "liveUrl": "https://www.larkspurmutual.example/news/storm-season-checklist/",
+      "prototype": "stardust/prototypes/news__storm-season-checklist-proposed.html",
+      "gated": true,
+      "approvedAt": "2026-09-09T17:22:00Z",
+      "motion": {
+        "observed": [],
+        "implemented": [],
+        "dead": [
+          "aos-fade-up"
+        ]
+      },
+      "breakpoints": {
+        "360": {
+          "iterations": 3,
+          "result": {
+            "structuralRed": 0,
+            "visualFlags": "2 justified",
+            "pixelPct": 12.4,
+            "heightDelta": -7,
+            "chrome": {
+              "headerPct": 1.4,
+              "footerPct": 1.8
+            },
+            "pass": false
+          },
+          "justified": [
+            {
+              "probe": "content",
+              "flag": "🟠 font fork ×1",
+              "why": "same permanent font fork as 1440",
+              "permanent": true
+            },
+            {
+              "probe": "visual",
+              "flag": "footer link colour delta",
+              "why": "register entry R-01 (applied)"
+            }
+          ],
+          "residuals": [
+            {
+              "band": "y 3020–3590",
+              "pct": 9.1,
+              "cause": "capture-state: same personalization rail, stacked to 3 × 190px at 360",
+              "flaggedFor": "delivery"
+            },
+            {
+              "band": "y 0–72",
+              "pct": 1.9,
+              "cause": "live hamburger icon is an inline SVG at a 0.5px sub-pixel offset; build places the lifted SVG at an integer position",
+              "flaggedFor": "user"
+            }
+          ],
+          "captureState": [
+            {
+              "what": "related-articles rail tiles 1–3 on placeholder markup",
+              "where": "aside[data-section=related-articles]"
+            }
+          ]
+        },
+        "1440": {
+          "iterations": 3,
+          "result": {
+            "structuralRed": 0,
+            "visualFlags": "2 justified",
+            "pixelPct": 11.6,
+            "heightDelta": 6,
+            "chrome": {
+              "headerPct": 0.8,
+              "footerPct": 1.6
+            },
+            "pass": false
+          },
+          "justified": [
+            {
+              "probe": "content",
+              "flag": "🟠 font fork ×1",
+              "why": "licensed body face substituted by a metric-matched open face, R-policy fonts",
+              "permanent": true
+            },
+            {
+              "probe": "visual",
+              "flag": "footer link colour delta",
+              "why": "register entry R-01 (applied)"
+            }
+          ],
+          "residuals": [
+            {
+              "band": "y 1880–2460",
+              "pct": 7.9,
+              "cause": "capture-state: related-articles rail loads 3 tiles from a personalization endpoint that answered 403 headless; placeholder tiles captured on the live side",
+              "flaggedFor": "delivery"
+            },
+            {
+              "band": "y 640–1120",
+              "pct": 2.8,
+              "cause": "glyph-antialiasing: the metric-matched substitute renders ~0.3px heavier than the licensed face at 17px",
+              "parity": "gates/news__storm-season-checklist-1440/chrome-parity-iter3.json",
+              "texture": {
+                "thickPct": 3.2
+              },
+              "flaggedFor": "user"
+            }
+          ],
+          "captureState": [
+            {
+              "what": "related-articles rail tiles 1–3 on placeholder markup",
+              "where": "aside[data-section=related-articles]"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "pageType": "program",
+      "archetype": "insurance__home",
+      "liveUrl": "https://www.larkspurmutual.example/insurance/home/",
+      "prototype": "stardust/prototypes/insurance__home-proposed.html",
+      "gated": true,
+      "approvedAt": "2026-09-09T17:22:00Z",
+      "motion": {
+        "observed": [
+          "faq-details-toggle"
+        ],
+        "implemented": [
+          "faq-details-toggle"
+        ],
+        "dead": []
+      },
+      "breakpoints": {
+        "360": {
+          "iterations": 2,
+          "result": {
+            "regime": "prototype",
+            "structuralRed": 0,
+            "visualFlags": "none",
+            "pixelPct": 4.1,
+            "heightDelta": -3,
+            "pass": true,
+            "ref": {
+              "url": "https://www.larkspurmutual.example/insurance/home/",
+              "width": 360,
+              "capturedAt": "2026-09-12T09:30:00Z"
+            },
+            "at": "2026-09-12T09:50:00Z"
+          },
+          "justified": [],
+          "residuals": [],
+          "captureState": []
+        },
+        "1440": {
+          "iterations": 2,
+          "result": {
+            "regime": "prototype",
+            "structuralRed": 0,
+            "visualFlags": "none",
+            "pixelPct": 3.4,
+            "heightDelta": 2,
+            "pass": true,
+            "ref": {
+              "url": "https://www.larkspurmutual.example/insurance/home/",
+              "width": 1440,
+              "capturedAt": "2026-09-12T09:00:00Z"
+            },
+            "at": "2026-09-12T09:20:00Z"
+          },
+          "justified": [],
+          "residuals": [],
+          "captureState": []
+        }
+      }
+    }
+  ]
+}

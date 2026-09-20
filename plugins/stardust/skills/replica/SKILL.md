@@ -163,14 +163,12 @@ Full contract: `reference/preserve-direction.md`. Summary:
 Anything not in the register is out of scope for change. When a recreation
 choice would "improve" something not registered, it is a fidelity bug.
 
-### Phase 3 — RECREATE (one archetype per page type)
+### Phase 3 — RECREATE (one archetype per page type, one exemplar per layout cluster)
 
-When archetypes are recreated in parallel, each worker follows
-`../stardust/reference/fan-out.md` § Scope and type of delegated agents ·
-§ Worker contract: one agent per archetype gate loop, its own
-`progress-<slug>.json` beside `progress.json`, merged by the lead; each
-brief cites `reference/recreation-procedure.md` § Cumulative archetype
-prototypes.
+Parallel archetypes: one worker per archetype gate loop
+(`../stardust/reference/fan-out.md` § Worker contract), its own
+`progress-<slug>.json` merged by the lead; each brief cites
+`reference/recreation-procedure.md` § Cumulative archetype prototypes.
 
 Full method: `reference/recreation-procedure.md`. For each page type in the
 inventory, author `stardust/prototypes/<slug>-proposed.html` (+ per-page CSS)
@@ -204,16 +202,13 @@ breakpoints before its template counts as recreated.
 **Recreation, not redesign — never delegate to impeccable craft:** its
 redesign gates do not apply; Phase 4 replaces them.
 
-**Fonts:** same public source when available (extract's intercepted woff2
-for open/self-hostable faces). Licensed commercial kits are never rehosted:
-metric-matched substitute, brand family first in the stack so a licensed
-drop-in later wins, substitution surfaced to the user
+**Fonts:** same public source when available; licensed kits are never
+rehosted — metric-matched substitute, surfaced to the user
 (`reference/recreation-procedure.md` § Fonts policy).
 
-**CSS-portation is the per-section fallback only** — paint-level effects not
-recoverable from computed styles, JS-hydrated commerce widgets, video or
-animated heroes. Port the minimal source rules for that section, scoped;
-never page-level. Criteria in `reference/recreation-procedure.md` § Fallback.
+**CSS-portation is the per-section fallback only** (paint effects, hydrated
+widgets, video heroes) — scoped, never page-level; criteria in
+`reference/recreation-procedure.md` § Fallback.
 
 ### Phase 4 — SOURCE-FIDELITY GATE (the heart — measured, per breakpoint)
 
@@ -308,11 +303,13 @@ phase-close checkpoint block (master skill § Phase close) carries
   **sibling tier** (`../migrate/reference/fidelity-tiers.md`): structural
   clone of the gated archetype + content-fidelity + delivery-lint +
   media-reconcile. Siblings inherit the archetype's source-fidelity gate —
-  never re-author one from scratch. **Template constancy is measured, not
-  assumed**: run `stardust/scripts/replica/sibling-variance.mjs
-  <archetype> <siblings…> --probe <block>=<sel> … --brief` once per template
-  and budget every delta as a block VARIANT class on the sibling's content
-  (same file, § Sibling variance probe). A new module kind on a sibling →
+  never re-author one from scratch. First `replica/layout-cluster.mjs --type
+  <t> --write-state`: a layout cluster ≥ T without a gated exemplar is a
+  coverage gap — nothing in it renders (same file, § Sibling variance probe,
+  Layout clusters). **Template constancy is measured**:
+  `replica/sibling-variance.mjs <archetype> <siblings…> --probe <block>=<sel>
+  --brief` (or `--from-clusters`) once per template; every delta = a block
+  VARIANT class on the sibling's content. A new module kind on a sibling →
   the lift ledger rule (Phase 3). Content-fidelity
   is **measured per page at import time** (same file, § Content-count
   acceptance) so importer bugs surface early.

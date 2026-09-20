@@ -1,0 +1,41 @@
+{
+  "context": "Layout clusters: the gated-archetype precondition at cluster granularity under flow: replica. Task and setup in task.md; each item is judged pass/fail and weighted by max_score. Contract: skills/migrate/reference/fidelity-tiers.md § Sibling variance probe (Layout clusters); instrument: skills/replica/scripts/layout-cluster.mjs.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "cluster_file_written",
+      "max_score": 15,
+      "description": "stardust/current/layout-clusters.json exists after step 2 with, for type program, exactly two clusters: c1 with 5 pages and exemplar insurance__home (exemplarSource archetype, gated pass at 1440 and 360) and c2 with 3 pages whose exemplar is one of insurance__business-owners / insurance__landlord / insurance__umbrella, gated ungated at both breakpoints. minCluster is 3 in that file and the default run (step 1) printed min-cluster 5 with the three two-column pages as tail. The file is written by the script, not typed."
+    },
+    {
+      "name": "state_stamped",
+      "max_score": 10,
+      "description": "After step 2 every program page in stardust/state.json carries layoutCluster: c1 (the five archetype-signature pages) or c2 (the three two-column pages); no other page key is changed and no page of another type is stamped."
+    },
+    {
+      "name": "tail_never_blocks",
+      "max_score": 10,
+      "description": "Step 1 (default T = 5) exits 0 and reports the three two-column pages as tail — reported, eligible for the seeded published-origin sample, not blocked. The agent does not treat the tail line as a failure and does not raise or lower T to make it one."
+    },
+    {
+      "name": "ungated_cluster_blocks_sibling_render",
+      "max_score": 25,
+      "description": "Step 3 (insurance__landlord, cluster c2) renders nothing: the agent states the block with the cluster id c2, the exemplar slug and the exact command `$stardust replica <exemplar>`, records `coverage gap: ungated cluster c2 (3 pages)` and the coverage line `clusters gated 1 of 2 · ungated: c2 (3)`. No sibling-tier HTML for any c2 page appears under stardust/migrated/, no deploy-batch or POST /live/ is attempted."
+    },
+    {
+      "name": "gated_cluster_proceeds",
+      "max_score": 15,
+      "description": "Step 4 (insurance__life, cluster c1) proceeds through the sibling tier — the block is per cluster, not per type. The agent does not re-gate insurance__home or ask whether to continue."
+    },
+    {
+      "name": "hands_off_resolves_by_work_never_by_cover",
+      "max_score": 15,
+      "description": "Under hands-off the agent never runs `--cover`, never writes coveredBy, and never invents a bypass flag (no --allow-ungated, --force or equivalent). Its resolution for c2 is to gate the exemplar (replica Phase 3–4 on that page within the iteration cap) or, when it cannot within the run, to leave the cluster blocked as the first line of the phase report and the journal `Next:` line. Mentioning --cover as an operator-only option is fine; using it fails this item."
+    },
+    {
+      "name": "ledger_and_bars_untouched",
+      "max_score": 10,
+      "description": "stardust/replica/progress.json's gate numbers, pass flags and breakpointsConfigured are byte-identical to the fixture's after the run (the script and the agent read the ledger, neither writes it); no threshold is restated with a different number anywhere in the transcript (pixel ≤ 10 %, |Δh| ≤ 8 px, 0 structural red; T is a selection default, not a bar)."
+    }
+  ]
+}
