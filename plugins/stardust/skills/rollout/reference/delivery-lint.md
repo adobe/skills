@@ -36,7 +36,7 @@ advisory (surfaced, never blocks).
 | `img-path` | P0 | A `/img/...` src 404s at delivery. |
 | `cross-origin-optimize` | P2 | An external `<img>` inside a block that runs `createOptimizedPicture` (cards/columns/hero) may be corrupted (dropped `?v=`, added `&format=webply`). Advisory — the authoritative resolve is `media-reconcile.mjs`. |
 | `trailing-slash` / `html-extension` | P1 | Internal links with a trailing slash or `.html` 404 on EDS (it serves extensionless, no-trailing-slash). |
-| `path-safety` | P0 | The target DA path must be lowercase, hyphenated, no `_`, no `//`. A double slash makes the PUT 400 while preview/live still 200 — a silent partial. Normalize and record the original → safe mapping in `redirects.tsv`. |
+| `path-safety` | P0 | `--path` differs from `normalizeDaPath(--path)` (`skills/stardust/scripts/da-path.mjs`, the one rule: per segment percent-decode, fold diacritics, lowercase, non-`[a-z0-9]` runs → `-`, trim edge `-`; the leaf drops `.html|.php|…`; query/fragment dropped). DA accepts the PUT, preview/live 400/404 — a silent partial. The message names the safe target; `deploy-batch.mjs` folds it before the PUT and writes the `redirects.tsv` row (`delivery-gates.md` § Gate 3). A segment that empties (non-Latin script) has no safe form → P0 `transliterate before deploy`. |
 | `metadata` | P2 | No metadata block → thin query-index rows (no description/og:image at import time). |
 | `description-alt` | P2 | The metadata `description` starts with "Image" or equals an `<img alt>` on the page — an importer wrote alt text into the description; write a real one. |
 | `icon-missing` | P0 | `:x:` (or `<span class="icon icon-x">`) with no `icons/x.svg\|png` in the code tree — the runtime fetches `/icons/x.svg` and renders a broken-image box; the asset must exist in the branch before the PUT. Needs `--icons-dir`; silent without it. |
@@ -49,6 +49,10 @@ advisory (surfaced, never blocks).
 
 `--optimizing-blocks a,b,c` overrides the block list for the cross-origin check
 (default `cards,columns,hero`) when a project's block set differs.
+
+The script imports `../../stardust/scripts/da-path.mjs`: a project copy of
+`delivery-lint.mjs` must carry that module too — never an inline re-implementation
+of the path rule (the per-script copies are how the rule drifted in the field).
 
 ## Where it sits in Phase C
 

@@ -93,15 +93,12 @@ must be transliterated). Three consumers, no per-script copy:
 - `../deploy/scripts/localize-links.mjs` — map keys and rewrite targets are the
   safe form, so internal links name the path DA serves (D9).
 
-Why one rule for every segment: the platform tolerates `_` and case in FOLDER
-segments but not `--` or an edge `-`, while the LEAF is lower-cased and
-hyphen-only at delivery — the folder/leaf split is the diagnosis of a 400 vs a
-404, not the normaliser; folding folders too is a superset of safe and every
-change emits a redirect row. This is **not** extract's `slugify` (D6): slugs are
-one flat identifier per page, the DA path is a per-segment fold of the URL path.
-When a path class surprises you, prove the rule with
-`admin.hlx.page/status/<org>/<repo>/<ref><path>` → `webPath`; a DA source PUT
-before the fold landed is an orphan — delete it by hand and re-run.
+One rule for every segment: folders tolerate `_` and case, leaves do not — that
+split is the diagnosis of a 400 vs a 404, not the normaliser; folding folders too
+is a superset of safe and every change emits a redirect row. Not extract's
+`slugify` (D6): a slug is one flat identifier, the DA path a per-segment fold.
+Prove a surprising class with `admin.hlx.page/status/<org>/<repo>/<ref><path>` →
+`webPath`; a DA source PUT before the fold is an orphan — delete it, re-run.
 
 Append each change to `stardust/redirects.tsv` (`source<TAB>destination`);
 Phase D's `scripts/redirects.mjs` turns the sheet into `site/redirects.json`

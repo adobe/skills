@@ -54,7 +54,14 @@ assert.equal(canonicalPath('/日本語'), '/日本語', 'no safe form → lower-
   assert.equal(localizeHref('/uber-uns.php', inv).action, 'normalized', 'a legacy extension on a page that exists folds to the served path');
   assert.equal(localizeHref('/img/x.png', inv).action, 'skip');
   assert.equal(localizeHref('/docs/brochure.pdf', inv).action, 'skip');
+  assert.equal(localizeHref('/fonts/brand.woff2', inv).action, 'skip');
   assert.equal(localizeHref('/', inv).action, 'skip');
+  // negative: a dotted PAGE path (the class Gate 3 folds) is not an asset — dead, it is bounced or listed,
+  // never shipped as a silent 404 on the new origin
+  assert.deepEqual(localizeHref('/about.us', inv), { href: 'https://www.src.example/about.us', action: 'bounced', key: '/about-us' });
+  assert.equal(localizeHref('/news/2024.09', { ...inv, unmigrated: 'list' }).action, 'gap');
+  assert.equal(localizeHref('/news/2024.09', inv).action, 'bounced');
+  assert.equal(localizeHref('/about.us', { map: new Map([...map, ['/about-us', '/about-us']]), hosts, bounceHost: 'www.src.example' }).action, 'normalized', 'a dotted path whose folded page exists rewrites to the served path');
 }
 
 const dir = mkdtempSync(join(tmpdir(), 'localize-links-'));

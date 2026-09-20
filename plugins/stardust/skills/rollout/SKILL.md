@@ -188,15 +188,16 @@ lint blocked are not in `plan.json`. For each page:
    next wave; consume the record's `pass`, never the pixel percentage alone —
    `../deploy/reference/chrome.md` § Chrome states and variants.
 
-3. **Run the delivery gates** before flipping a page to `deployed`. Each is a
-   one-line rule here; mechanics + helpers in `reference/delivery-gates.md`:
+3. **Run the delivery gates** before flipping a page to `deployed`. Per page the
+   chain is `deploy-page.mjs` (steps 2–3 are its stages). One-line rules here;
+   mechanics in `reference/delivery-gates.md`:
    - **Source-fidelity** — don't add sections the source lacks; never fabricate
      facts. `node skills/rollout/scripts/section-fidelity.mjs --file <html> --source <url>`
    - **Image-fidelity** — every authored `<img>` src must return 200 or be omitted;
      never ship `<img src="about:error">`. Run `media-reconcile.mjs` (step 2).
-   - **Path-safety** — normalize source paths to AEM-Edge-safe form (lowercase, no
-     trailing `-`/`_`, no `--` segment); record original→normalized in
-     `stardust/redirects.tsv`. (delivery-lint flags violations.)
+   - **Path-safety** — `normalizeDaPath()` (`stardust/scripts/da-path.mjs`): delivery-lint
+     flags it, `deploy-batch` enforces it before the PUT and writes the
+     `stardust/redirects.tsv` row; a `path-collision` parks the page.
    - **Source-content hygiene** — skip dead source URLs; author bodyless/PDF-only
      sources thin and faithful (tier `thin`,
      `skills/migrate/reference/fidelity-tiers.md`), don't pad with invented prose.
@@ -331,12 +332,10 @@ against preview): `reference/sweep-protocol.md`.
   the chrome rows included.
 - **Localize source-site bounce links** with the deploy stage, not by hand:
   `node skills/deploy/scripts/localize-links.mjs --source-host <live-host>
-  --content content --redirects stardust/redirects.tsv`; **re-run over the
-  WHOLE tree after every wave** (earlier pages gain targets only when a later
-  wave ships them). `--check` is the gate (exit 2 = links remain).
-- **Strip trailing slashes and `.html` from internal links** (EDS 404s both
-  while `.plain.html` passes); repoint `.html` links with no local page at the
-  working source URL.
+  --content content --redirects stardust/redirects.tsv [--unmigrated bounce|list]`
+  (`links` decisions row; `list` is owner-decided → `stardust/link-gaps.tsv`);
+  **re-run over the WHOLE tree after every wave**; it also strips `/x/` and `.html`.
+  `--check` is the gate `deploy-page.mjs` runs first (exit 2 = no PUT).
 - **The audit GETs each href against the LIVE tree** — ledger resolution misses
   the trailing-slash and case defects only delivery exposes.
 

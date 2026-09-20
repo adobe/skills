@@ -188,9 +188,12 @@ function parseHref(href) {
 // Delivery hosts are always localizable: a branch host dies at merge.
 const DELIVERY_HOST = /^[a-z0-9-]+--[a-z0-9-]+--[a-z0-9-]+\.(?:aem|hlx)\.(?:page|live)$/i;
 
-// an href to a non-page resource is never an internal-link gap — but a legacy page extension
-// (`.php`, `.jsp`, `.asp(x)`, the leaves da-path.mjs folds) is a PAGE: dead, it is bounced or listed
-const ASSET_PATH = /\.(?!(?:html?|php|jsp|aspx?)$)[a-z0-9]{1,5}$/i;
+// an href to a non-page resource is never an internal-link gap. The asset test is an EXPLICIT
+// extension list, never "any short dotted tail": a dotted page path (`/about.us`, `/news/2024.09`,
+// the class da-path.mjs folds) is a PAGE — dead, it is bounced or listed, not skipped as an asset —
+// and a legacy page extension (`.php`, `.jsp`, `.asp(x)`) is a page for the same reason.
+const ASSET_EXT = 'png|jpe?g|gif|svg|webp|avif|ico|bmp|tiff?|pdf|json|xml|txt|csv|tsv|css|m?js|map|zip|gz|mp3|mp4|webm|ogg|wav|woff2?|ttf|otf|eot|docx?|xlsx?|pptx?|ics|vcf|rss|atom';
+const ASSET_PATH = new RegExp(`\\.(?:${ASSET_EXT})$`, 'i');
 
 /**
  * ctx: { map, hosts, aliases?, unmigrated?: 'bounce'|'list', bounceHost?: string }
