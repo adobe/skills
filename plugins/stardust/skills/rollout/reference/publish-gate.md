@@ -34,7 +34,8 @@ node skills/deploy/scripts/deploy-batch.mjs … --publish [--plan]           # h
   ledger row is **held** — not `POST /live/`'d, status unchanged, plan reason
   `held (gate: 360 FAIL 12.4 % Δh -112)` / `held (gate: ungated — no
   published-origin number)` / `held (gate: unmeasured — 1440 exit 124)` /
-  `held (gate: template <t> not at the bar)` — unless `gate-report.json`
+  `held (gate: template <t> not at the bar)` (pages with no template are the
+  report's `untyped` group and take its bar) — unless `gate-report.json`
   `pages[path].latest.pass === true`: PASS at **every configured breakpoint**, where PASS per breakpoint =
   the round record's own `pass` ∧ |Δh| ≤ 8 px ∧ header + footer crops pass
   `crop-compare` (no bar restated or configurable — B29). Already-`live` rows
@@ -62,8 +63,10 @@ node skills/deploy/scripts/deploy-batch.mjs … --publish [--plan]           # h
   never read here. No `--bar`, no threshold flag.
 - **Hands-off.** Phase C previews, runs `gate-publish.mjs` over the delivered
   pages (the coverage regime below decides sample vs every page), then the
-  `--publish` run, which goes live with exactly the PASS rows and holds the
-  rest; prints the coverage line `published-gated P of M · PASS p · FAIL f ·
+  `--publish` run **naming the report** (`--gate-report
+  stardust/rollout/gate-report.json` — an absent report is then exit 2, never
+  the operator's ungated WARN path), which goes live with exactly the PASS rows
+  and holds the rest; prints the coverage line `published-gated P of M · PASS p · FAIL f ·
   unmeasured u · ungated r · held h` (the publish run prints it);
   writes `status: blocked` with the re-drive command when any row is held; **never** passes `--publish-ungated` or
   `--publish-no-regression`; never self-accepts an unnamed residual. D1 becomes

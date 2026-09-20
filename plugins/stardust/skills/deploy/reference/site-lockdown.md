@@ -30,13 +30,13 @@ node skills/deploy/scripts/lockdown.mjs --inventory --org <org> [--prefix sdt-]
 | allow list | `--allow`, default `*@<domain of git config user.email>` — the **operator's** domain, printed in the plan gate | the customer's domain is a later owner decision on the same row |
 | `SITE_TOKEN_<SLUG>` | written by the script into `./.env` (`--env`) and named in `state.json.credentials.siteTokenEnv` | the value is never printed; `.env` must already be git-ignored (master Setup step 6) — asserted before any write |
 
-Steps, in order, stop at the first failure: config present (`GET config/<org>/sites/<site>.json`; 404 = the config service is not enabled — exit 2, never a guessed config) → repo private (`gh repo edit … --visibility private`; `--gh-mode rest` with `GH_PAT`; `--gh-mode print` hands the command to the owner) → `POST …/secrets.json {}` → `access/site.json` merged (`allow` union, `secretId` appended) and posted → token to `.env` by name, `credentials.siteTokenEnv` to `state.json` → verify both hosts: anonymous `401`, `Authorization: token …` accepted, polled every 3 s up to `--wait` (default 60 s).
+Steps, in order, stop at the first failure: config present (`GET config/<org>/sites/<site>.json`; 404 = the config service is not enabled — exit 2, never a guessed config) → repo private (`gh repo edit … --visibility private`; `--gh-mode rest` with `GH_PAT`; `--gh-mode print` hands the command to the owner) → `POST …/secrets.json {}` → `access/site.json` merged (`allow` union, `secretId` appended) and posted → token to `.env` by name, `credentials.siteTokenEnv` to `state.json` → verify both hosts: anonymous `401`, `Authorization: token …` accepted (a locale `30x` on `/` is followed one hop for both reads), polled every 3 s up to `--wait` (default 60 s).
 
 | exit | meaning | the run does |
 |---|---|---|
 | 0 | locked and verified on `.aem.page` and `.aem.live` | hand-off proceeds; gate table carries `site: locked` |
-| 1 | verification failed after the capped wait | re-run once; still 1 → `blocked`, no hand-off — never "probably propagated" |
-| 2 | no verdict: token missing, `.env` not ignored, config 404 / 401, unreachable | fix the named cause, re-run the same command; config 404 is an owner ask |
+| 1 | verification failed after the capped wait: a host still answers anonymously or rejects the token (outranks a no-verdict sibling) | re-run once; still 1 → `blocked`, no hand-off — never "probably propagated" |
+| 2 | no verdict: token missing, `.env` not ignored, config 404 / 401, unreachable, or a host proven locked not answering with the token | fix the named cause, re-run the same command; config 404 is an owner ask |
 | 3 | owner action: the repo step was denied or `--gh-mode print` | `blocked` line with `owner:` = the printed `gh repo edit …`; the site half is locked and verified |
 
 A `timeout` wrapper's 124 is no verdict, as everywhere else.

@@ -18,6 +18,16 @@
  *     `runtime-contract.json#autoBlocks` → FAIL naming the builder rows (an auto-block moved it);
  *     different with none → WARN (something else moved it — verify by eye); unknown on either side →
  *     null (nothing to judge; qa-gate's own `exactly one <h1>` check covers the count).
+ *
+ *   repeatUnitGroups(root, { skip, atoms })  (T28.2 — the ONE repeat-unit grouping rule)
+ *     Runs IN the page: section-schema.mjs mapSections and replica's layout-cluster / variant-census
+ *     collectors call it through `inPageCall(fn, args, { repeatUnitGroups })`, so the rule lives in this
+ *     browser-free module and never diverges. Body free of module-scope identifiers by contract
+ *     (schema-checks.test.mjs runs it over a plain-object DOM).
+ *
+ *   parseQaGateArgs(argv)  — qa-gate.mjs's argument table: the URL is the first positional that is not a
+ *     flag's value (`--schema x.json <url>` no longer reads x.json as the URL); value flags refuse a following
+ *     `--flag`; unknown flags are a usage error.
  */
 
 export const INTERACTIVE_SELECTORS = ['button', 'input', 'select', 'textarea', 'form', 'details', '[role=tab]', '[role=tablist]', '[role=tabpanel]', '[aria-expanded]', '[aria-controls]', '[data-reactroot]', '[data-v-app]', '[ng-app]', '[data-widget]'];
@@ -59,4 +69,78 @@ export function h1SectionVerdict({ schemaIndex, pageIndex, autoBlocks = [] } = {
   const where = `h1 left its authored section: schema section #${schemaIndex + 1} → page section #${pageIndex + 1}`;
   if (rows.length) return { level: 'fail', message: `${where} — an auto-block moved it (runtime-contract.json#autoBlocks: ${rows.map((r) => `${r.fn}${r.trigger ? ` ← ${r.trigger}` : ''}`).join(', ')}); guard the builder so h1 and picture share one section (target-runtime.md § Auto-blocking hook)` };
   return { level: 'warn', message: `${where} — no auto-block is recorded (runtime-contract.json#autoBlocks empty or absent); verify by eye` };
+}
+
+/* eslint-disable no-undef */
+/**
+ * IN-PAGE. Outermost containers whose direct children hold ≥ 2 same tag + first-class siblings carrying content
+ * (a heading, a text CTA, an image or a text run) form one repeat-unit group; a reported unit's inner lists are
+ * part of the unit, never a second group. `skip` = container tags never scanned (SCRIPT, STYLE, …); `atoms` =
+ * child tags never grouped (LI stays groupable). Returns [{ unitSelector, tag, count, unit, uniform, depth,
+ * members }] — `members` are elements (strip them before crossing the evaluate boundary).
+ */
+export function repeatUnitGroups(root, opts) {
+  const skip = (opts && opts.skip) || [];
+  const atoms = (opts && opts.atoms) || [];
+  const compose = (el) => ({
+    headings: el.querySelectorAll('h1,h2,h3,h4,h5,h6').length,
+    ctas: [...el.querySelectorAll('a')].filter((a) => (a.textContent || '').trim() && !a.querySelector('img,picture')).length,
+    imgs: el.querySelectorAll('img,picture').length,
+    textRuns: [...el.querySelectorAll('*')].filter((e) => [...e.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim())).length,
+  });
+  const sig = (u) => `${u.headings}|${u.ctas}|${u.imgs}|${u.textRuns}`;
+  const reported = [];
+  const groups = [];
+  for (const c of [root, ...root.querySelectorAll('*')]) {
+    if (skip.includes(c.tagName) || reported.some((r) => r !== c && r.contains(c))) continue;
+    const byKey = {};
+    for (const k of c.children) {
+      if (atoms.includes(k.tagName)) continue;
+      const key = `${k.tagName}.${String(k.className || '').trim().split(/\s+/)[0] || ''}`;
+      (byKey[key] ||= []).push(k);
+    }
+    for (const [key, members] of Object.entries(byKey)) {
+      if (members.length < 2) continue;
+      const units = members.map(compose);
+      if (!units.some((u) => u.headings || u.ctas || u.imgs || u.textRuns)) continue;
+      let depth = 0;
+      for (let e = c; e && e !== root; e = e.parentElement) depth += 1;
+      groups.push({ unitSelector: key, tag: members[0].tagName, count: members.length, unit: units[0], uniform: units.every((u) => sig(u) === sig(units[0])), depth, members });
+      reported.push(...members);
+    }
+  }
+  return groups;
+}
+/* eslint-enable no-undef */
+
+/**
+ * Source of `fn(args)` with `helpers` (name → in-page function) defined in scope. Pass the string to
+ * page.evaluate: it runs as ONE expression through the driver, so no page-side eval and a strict prototype CSP
+ * is irrelevant. `args` must be JSON.
+ */
+export function inPageCall(fn, args, helpers = {}) {
+  const defs = Object.entries(helpers).map(([n, f]) => `const ${n} = ${f.toString()};`).join('\n');
+  return `((__args) => { ${defs}\nreturn (${fn.toString()})(__args); })(${JSON.stringify(args === undefined ? null : args)})`;
+}
+
+const QA_GATE_VALUE_FLAGS = { schema: 'schema', maxw: 'maxw', 'full-bleed': 'fullBleed', marker: 'marker' };
+
+/** qa-gate.mjs argv (after the script) → { url, schema, maxw, fullBleed, marker, error }. */
+export function parseQaGateArgs(argv) {
+  const out = { url: null, schema: null, maxw: 1340, fullBleed: [], marker: null, error: null };
+  for (let i = 0; i < argv.length; i += 1) {
+    const a = argv[i];
+    if (a.startsWith('--')) {
+      const name = a.slice(2);
+      if (!(name in QA_GATE_VALUE_FLAGS)) { out.error = `unknown flag ${a}`; return out; }
+      const v = argv[i + 1];
+      if (v === undefined || v.startsWith('--')) { out.error = `${a} needs a value`; return out; }
+      i += 1;
+      if (name === 'maxw') { out.maxw = Number(v); if (!Number.isFinite(out.maxw) || out.maxw <= 0) { out.error = '--maxw needs a positive number of px'; return out; } }
+      else if (name === 'full-bleed') out.fullBleed = v.split(',').map((s) => s.trim()).filter(Boolean);
+      else out[QA_GATE_VALUE_FLAGS[name]] = v;
+    } else if (out.url === null) out.url = a;
+    else { out.error = `unexpected argument ${a} (one harness URL)`; return out; }
+  }
+  return out;
 }

@@ -30,4 +30,4 @@ Generated 2026-09-20T10:51:51.214Z. Regime published-origin. Bars: pixel = recor
 | program | 360 | 1 | 13.2 | 13.2 | 0 |
 | program | 1440 | 1 | 8.2 | 8.2 | 1 |
 
-Rows without a PASS are held from the publish run and re-drive with the same run once this report changes; the escape flags are operator/owner flags, never hands-off (publish-gate.md § Gate 8 — the hold inside deploy-batch --publish is pending the deploy hunk; until then read the held rows here before publishing).
+Rows without a PASS are held from the publish run and re-drive with the same run once this report changes; the escape flags are operator/owner flags, never hands-off (publish-gate.md § Gate 8 — `deploy-batch --publish` reads this report's JSON and holds them; `--plan` prints the held reasons offline).

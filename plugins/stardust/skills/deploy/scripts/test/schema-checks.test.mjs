@@ -1,16 +1,27 @@
 #!/usr/bin/env node
 /**
  * schema-checks.mjs — the pure judgements behind qa-gate.mjs `generic-with-structure` (T28.4) and `h1Section`
- * (T21.2), plus ai-readability.mjs `verdict()` (T33.1). No browser: the facts are fixture JSON, the judgement
- * is what the test pins. The BLOCKING branches (a prose section with a tab strip → FAIL; a moved <h1> with an
- * auto-block → FAIL; an all-unmeasured readability run → exit 2, never 0) each have a case, and the escapes
- * (recorded `defaultContent.reason` / `dynamicsRow` → warn; no auto-blocks → warn) too.
+ * (T21.2), plus ai-readability.mjs `verdict()` (T33.1), the in-page repeat-unit grouping `repeatUnitGroups`
+ * (T28.2 — run over a plain-object DOM, no browser) and qa-gate.mjs's argument table `parseQaGateArgs`. No
+ * browser: the facts are fixture JSON, the judgement is what the test pins. The BLOCKING branches (a prose
+ * section with a tab strip → FAIL; a moved <h1> with an auto-block → FAIL; an all-unmeasured readability run →
+ * exit 2, never the old exit 1 FAIL) each have a case, and the escapes (recorded `defaultContent.reason` /
+ * `dynamicsRow` → warn; no auto-blocks → warn) too. NEGATIVE: section-schema-structure.test.mjs against a stub
+ * playwright ends in a FAIL summary, not an uncaught ENOENT.
  * Run: node --test skills/deploy/scripts/test/schema-checks.test.mjs
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { flagGenericWithStructure, h1SectionVerdict, hasStructure, defaultContentOf, INTERACTIVE_SELECTORS, MUSTACHE_MARKER } from '../schema-checks.mjs';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
+import { flagGenericWithStructure, h1SectionVerdict, hasStructure, defaultContentOf, INTERACTIVE_SELECTORS, MUSTACHE_MARKER, repeatUnitGroups, inPageCall, parseQaGateArgs } from '../schema-checks.mjs';
 import { verdict } from '../ai-readability.mjs';
+
+const here = dirname(fileURLToPath(import.meta.url));
 
 const sec = (section, defaultContent, structure, extra = {}) => ({ section, items: [], repeats: [], editableTexts: 1, ...(defaultContent === undefined ? {} : { defaultContent }), structure, ...extra });
 const prose = { interactive: [], columns: 1 };
@@ -58,15 +69,80 @@ test('h1Section: same section → ok; moved with a recorded auto-block → FAIL 
   assert.equal(h1SectionVerdict({ schemaIndex: 0, pageIndex: 1, autoBlocks: 'not-a-list' }).level, 'warn', 'a malformed contract never FAILs by itself');
 });
 
-test('ai-readability verdict(): a scored FAIL → 1; only unmeasured pages → 2 (never 0 — the throttled-run hole); clean → 0; counts in the JSON', () => {
+test('ai-readability verdict(): a scored FAIL → 1; only unmeasured pages → 2 (no verdict — the pre-fix run exited 1 FAIL); clean → 0; counts in the JSON', () => {
   const ok = { path: '/a', strict: { score: 100 }, code: { score: 99 }, exclusions: [] };
   const low = { path: '/b', strict: { score: 100 }, code: { score: 91 }, exclusions: [] };
   const undecided = { path: '/c', strict: { score: 100 }, code: { score: 100 }, exclusions: [{ block: 'calc', decided: false }] };
   const err = { path: '/d', error: 'served fetch HTTP 429' };
   assert.deepEqual(verdict([ok], 98), { exit: 0, failed: 0, unmeasured: 0, scored: 1 });
-  assert.deepEqual(verdict([err, err], 98), { exit: 2, failed: 0, unmeasured: 2, scored: 0 }, 'every page 429 → exit 2, not the old `fail ? 1 : 0` pass');
+  assert.deepEqual(verdict([err, err], 98), { exit: 2, failed: 0, unmeasured: 2, scored: 0 }, 'every page 429 → exit 2 (no verdict), not the old exit 1 FAIL (`fail = true` on r.error)');
   assert.deepEqual(verdict([ok, err], 98), { exit: 2, failed: 0, unmeasured: 1, scored: 1 });
   assert.deepEqual(verdict([low, err], 98), { exit: 1, failed: 1, unmeasured: 1, scored: 1 }, 'a scored FAIL wins over unmeasured');
   assert.deepEqual(verdict([undecided], 98), { exit: 1, failed: 1, unmeasured: 0, scored: 1 }, 'an undecided exclusion is a FAIL');
   assert.deepEqual(verdict([], 98), { exit: 0, failed: 0, unmeasured: 0, scored: 0 });
+});
+
+// ---- repeatUnitGroups over a plain-object DOM (the in-page contract: DOM API only, no module-scope identifiers) ----
+const el = (tagName, className, children = [], text = '') => {
+  const node = { tagName, className, children, childNodes: [], parentElement: null };
+  node.childNodes = [...(text ? [{ nodeType: 3, textContent: text }] : []), ...children];
+  for (const c of children) c.parentElement = node;
+  const all = () => children.flatMap((c) => [c, ...c.querySelectorAll('*')]);
+  node.querySelectorAll = (sel) => all().filter((n) => sel === '*' || sel.split(',').map((t) => t.trim().toUpperCase()).includes(n.tagName));
+  node.querySelector = (sel) => node.querySelectorAll(sel)[0] || null;
+  node.contains = (n) => n === node || all().includes(n);
+  Object.defineProperty(node, 'textContent', { get: () => text + children.map((c) => c.textContent).join('') });
+  return node;
+};
+const card = (t) => el('DIV', 'card', [el('H3', '', [], t), el('P', '', [], 'body'), el('A', 'cta', [], 'Read')]);
+
+test('repeatUnitGroups: ≥ 2 same tag+class content-bearing siblings form one outermost group; an inner list is part of the unit; skip/atoms honoured', () => {
+  const li = () => el('LI', '', [el('SPAN', '', [], 'item')]); // a bare text <li> has no text RUN below it (the rule counts descendants) — one span makes it content
+  const section = el('SECTION', 'cards', [el('H2', '', [], 'Cards'), el('DIV', 'grid', [card('A'), card('B'), el('UL', '', [li(), li()])]), el('SCRIPT', '', [el('SPAN', 'x', [], 'a'), el('SPAN', 'x', [], 'b')])]);
+  const groups = repeatUnitGroups(section, { skip: ['SCRIPT'] });
+  assert.deepEqual(groups.map(({ members, ...g }) => g), [
+    { unitSelector: 'DIV.card', tag: 'DIV', count: 2, unit: { headings: 1, ctas: 1, imgs: 0, textRuns: 3 }, uniform: true, depth: 1 },
+    { unitSelector: 'LI.', tag: 'LI', count: 2, unit: { headings: 0, ctas: 0, imgs: 0, textRuns: 1 }, uniform: true, depth: 2 },
+  ], 'the ul is a sibling of the cards, so its items are a second (deeper) group; SCRIPT children are never scanned');
+  assert.equal(groups[0].members.length, 2, 'members are the elements themselves (stripped before crossing the evaluate boundary)');
+  const nested = el('SECTION', '', [el('DIV', 'grid', [el('DIV', 'card', [el('UL', '', [li(), li()])]), el('DIV', 'card', [el('UL', '', [li(), li()])])])]);
+  assert.deepEqual(repeatUnitGroups(nested).map((g) => g.unitSelector), ['DIV.card'], 'a reported unit\'s inner list is part of the unit, not a second group');
+  assert.deepEqual(repeatUnitGroups(section, { skip: ['SCRIPT'], atoms: ['LI'] }).map((g) => g.unitSelector), ['DIV.card'], 'atoms are never grouped');
+  assert.deepEqual(repeatUnitGroups(el('SECTION', '', [el('DIV', 'sp', []), el('DIV', 'sp', [])])), [], 'empty siblings are not a group');
+  assert.doesNotMatch(repeatUnitGroups.toString(), /INTERACTIVE_SELECTORS|MUSTACHE_MARKER|QA_GATE_VALUE_FLAGS|import\b/, 'in-page body names no module-scope identifier');
+});
+
+test('inPageCall: one expression with the helper in scope — evaluable as a string, JSON args', () => {
+  const src = inPageCall((a) => helperFn(a.n) + 1, { n: 2 }, { helperFn: (v) => v * 10 }); // eslint-disable-line no-undef
+  assert.equal(eval(src), 21); // eslint-disable-line no-eval
+  assert.doesNotMatch(src, /new Function|\beval\(/, 'no page-side eval (a strict prototype CSP is irrelevant)');
+});
+
+test('parseQaGateArgs: the URL is the first positional that is not a flag value; value flags refuse a following --flag; unknown flags are usage errors', () => {
+  assert.deepEqual(parseQaGateArgs(['--schema', 'x.json', 'http://h/p.html']), { url: 'http://h/p.html', schema: 'x.json', maxw: 1340, fullBleed: [], marker: null, error: null }, 'NEGATIVE: the old first-non-flag rule read x.json as the URL');
+  assert.deepEqual(parseQaGateArgs(['http://h/p.html', '--maxw', '1600', '--full-bleed', 'hero, band', '--marker', 'm1']), { url: 'http://h/p.html', schema: null, maxw: 1600, fullBleed: ['hero', 'band'], marker: 'm1', error: null });
+  assert.equal(parseQaGateArgs(['http://h/p.html', '--marker', '--schema', 's.json']).error, '--marker needs a value', 'NEGATIVE: the old opt() took --schema as the marker');
+  assert.equal(parseQaGateArgs(['http://h/p.html', '--schema']).error, '--schema needs a value');
+  assert.equal(parseQaGateArgs(['http://h/p.html', '--maxw', 'wide']).error, '--maxw needs a positive number of px');
+  assert.match(parseQaGateArgs(['http://h/p.html', '--json']).error, /unknown flag --json/);
+  assert.match(parseQaGateArgs(['http://h/p.html', 'other']).error, /unexpected argument other/);
+  assert.equal(parseQaGateArgs([]).url, null);
+});
+
+test('NEGATIVE: section-schema-structure.test.mjs with a stub playwright ends in a FAIL summary (exit 1), never an uncaught ENOENT stack', () => {
+  let resolvable = false;
+  try { createRequire(join(here, '..', 'x.mjs')).resolve('playwright'); resolvable = true; } catch { /* the plugin tree: STARDUST_PW_ROOT decides */ }
+  if (resolvable) return; // an EDS project resolves the real playwright first — the stub cannot be injected here
+  const stub = mkdtempSync(join(tmpdir(), 'pw-stub-'));
+  mkdirSync(join(stub, 'node_modules', 'playwright'), { recursive: true });
+  writeFileSync(join(stub, 'node_modules', 'playwright', 'package.json'), JSON.stringify({ name: 'playwright', version: '0.0.0-stub', main: 'index.js' }));
+  writeFileSync(join(stub, 'node_modules', 'playwright', 'index.js'), 'module.exports = { chromium: { launch: async () => { throw new Error("stub playwright: no browser"); } } };\n');
+  try {
+    const r = spawnSync(process.execPath, [join(here, 'section-schema-structure.test.mjs')], { encoding: 'utf8', env: { ...process.env, STARDUST_PW_ROOT: stub, STARDUST_GATE_DEPS: '' }, timeout: 80000 });
+    assert.equal(r.status, 1, `exit 1: ${r.stdout}${r.stderr}`);
+    assert.match(r.stdout, /^FAIL section-schema exits 0/m);
+    assert.match(r.stdout, /^FAIL section-schema wrote no .*schema\.json \(exit 1\)/m);
+    assert.match(r.stdout, /section-schema-structure test: FAILED$/m);
+    assert.doesNotMatch(r.stderr, /ENOENT|at .*readFileSync/, 'no uncaught stack');
+  } finally { rmSync(stub, { recursive: true, force: true }); }
 });

@@ -33,8 +33,10 @@
  *   line, the site half continues);  4 POST …/secrets.json {} → a site token;  5 GET …/access/site.json, merge
  *   (`allow` union, `secretId` appended — never replaced), POST it back;  6 write the token to --env by NAME and
  *   `credentials.siteTokenEnv` to --state;  7 verify `<branch>--<site>--<org>.aem.page` and `.aem.live`:
- *   anonymous → 401/403 (a 30x on `/` is followed ONE hop first), `Authorization: token …` → accepted (2xx; 404 on a
- *   host with nothing published). A 5xx / no answer WITH the token is no verdict — never "accepted".
+ *   anonymous → 401/403, `Authorization: token …` → accepted (2xx; 404 on a host with nothing published); a 30x
+ *   on `/` is followed ONE hop for both reads. A 5xx / no answer WITH the token on a host the anonymous read
+ *   proves locked is no verdict — never "accepted"; a host still open (or rejecting the token) is NOT locked
+ *   and outranks a no-verdict sibling (exit 1, not 2).
  *   Last stdout line: `SUMMARY lockdown <org>/<site> repo=… site=… verify=… exit=<n>` (+ `owner: <cmd>`).
  *
  * Exit codes (a `timeout` 124 wrapper stays "no verdict"):
@@ -200,19 +202,24 @@ async function verifyHosts(a, tokenValue, log) {
       // anonymous: `/` may 30x on a delivery host (a locale redirect) — follow ONE hop, then read the verdict there
       let anon = await http('GET', `${h}/`);
       if (anon.status >= 300 && anon.status < 400 && anon.location) anon = { ...(await http('GET', new URL(anon.location, `${h}/`).href)), hop: anon.status };
-      const withTok = await http('GET', `${h}/`, { auth });
+      // with the token the same locale redirect applies — follow the same ONE hop (a 30x is not "rejected")
+      let withTok = await http('GET', `${h}/`, { auth });
+      if (withTok.status >= 300 && withTok.status < 400 && withTok.location) withTok = { ...(await http('GET', new URL(withTok.location, `${h}/`).href, { auth })), hop: withTok.status };
       const locked = anon.status === 401 || anon.status === 403;
       // accepted = the token is honoured: 2xx, or 404 (nothing published yet). 5xx / 000 is NO verdict (the host, not the lock) — never "accepted"
       const accepted = (withTok.status >= 200 && withTok.status < 300) || withTok.status === 404;
-      const noVerdict = withTok.status === 0 || withTok.status >= 500;
-      last[h] = { anonymous: anon.status || `000 ${anon.note || ''}`.trim(), hop: anon.hop || null, token: withTok.status || `000 ${withTok.note || ''}`.trim(), ok: locked && accepted, noVerdict };
+      // no verdict only when the anonymous half proves the lock and the token half did not answer; a host still open is NOT locked whatever the token read did
+      const noVerdict = locked && (withTok.status === 0 || withTok.status >= 500);
+      last[h] = { anonymous: anon.status || `000 ${anon.note || ''}`.trim(), hop: anon.hop || null, token: withTok.status || `000 ${withTok.note || ''}`.trim(), tokenHop: withTok.hop || null, ok: locked && accepted, noVerdict };
       if (!last[h].ok) allOk = false;
     }
     if (allOk || Date.now() >= deadline) break;
     await sleep(POLL_MS);
   }
-  for (const [h, r] of Object.entries(last)) log(`verify: ${h}/  anonymous ${r.anonymous}${r.hop ? ` (after a ${r.hop} hop)` : ''}${r.ok ? '' : r.anonymous === 200 ? ' (still open)' : ''} · token ${r.token}${r.token === 404 ? ' (accepted — nothing published on this host yet)' : r.noVerdict ? ' (no verdict — the host did not answer; not a lock result)' : ''} → ${r.ok ? 'locked' : r.noVerdict ? 'NO VERDICT' : 'NOT locked'}`);
-  return { ok: Object.values(last).every((r) => r.ok), noVerdict: Object.values(last).some((r) => r.noVerdict && !r.ok), hosts: last };
+  for (const [h, r] of Object.entries(last)) log(`verify: ${h}/  anonymous ${r.anonymous}${r.hop ? ` (after a ${r.hop} hop)` : ''}${r.ok ? '' : r.anonymous === 200 ? ' (still open)' : ''} · token ${r.token}${r.tokenHop ? ` (after a ${r.tokenHop} hop)` : ''}${r.token === 404 ? ' (accepted — nothing published on this host yet)' : r.noVerdict ? ' (no verdict — the host did not answer; not a lock result)' : ''} → ${r.ok ? 'locked' : r.noVerdict ? 'NO VERDICT' : 'NOT locked'}`);
+  const rows = Object.values(last);
+  const failed = rows.some((r) => !r.ok && !r.noVerdict); // a proven-open host or a rejected token outranks a no-verdict host: exit 1, not 2
+  return { ok: rows.every((r) => r.ok), noVerdict: !failed && rows.some((r) => r.noVerdict), hosts: last };
 }
 
 async function lock(a) {

@@ -25,5 +25,5 @@ agent under test; this file and `answers.md` are not.
 - The `--publish` hold is deploy-batch's (`held (gate: …)` plan reasons,
   `held=` in the SUMMARY); the criteria judge the decision, so an agent that
   reads the report directly and reaches the same held set also passes.
-- `stardust/rollout/gate-report.md` was rendered before the hold shipped; its
-  trailing sentence still calls the hold pending — the JSON is the input.
+- `stardust/rollout/gate-report.md` is the rendered view; its trailing sentence
+  names the deploy-batch hold — the JSON is the input.

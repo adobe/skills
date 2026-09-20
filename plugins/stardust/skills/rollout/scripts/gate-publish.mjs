@@ -282,7 +282,7 @@ export function renderMd(report, selectedPaths) {
   md.push('', '## neutralDiff (reporting KPI, not a bar)', '', '| template | bp | n | median | p90 | share < 10 % |', '|---|---|---|---|---|---|');
   for (const [t, byW] of Object.entries(report.neutralDiff)) for (const [W, v] of Object.entries(byW)) md.push(`| ${t} | ${W} | ${v.n} | ${v.median} | ${v.p90} | ${v.under10} |`);
   if (!Object.keys(report.neutralDiff).length) md.push('| — | — | 0 | not measured | not measured | not measured |');
-  md.push('', 'Rows without a PASS are held from the publish run and re-drive with the same run once this report changes; the escape flags are operator/owner flags, never hands-off (publish-gate.md § Gate 8 — the hold inside deploy-batch --publish is pending the deploy hunk; until then read the held rows here before publishing).', '');
+  md.push('', 'Rows without a PASS are held from the publish run and re-drive with the same run once this report changes; the escape flags are operator/owner flags, never hands-off (publish-gate.md § Gate 8 — `deploy-batch --publish` reads this report\'s JSON and holds them; `--plan` prints the held reasons offline).', '');
   return md.join('\n');
 }
 

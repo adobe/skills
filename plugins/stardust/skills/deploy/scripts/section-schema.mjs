@@ -55,7 +55,7 @@ import path from 'path';
 import { pathToFileURL } from 'url';
 import { resolveProfile } from './diff-profiles.mjs';
 import { inventory, editableInventory } from './content-inventory.mjs';
-import { flagGenericWithStructure, INTERACTIVE_SELECTORS, MUSTACHE_MARKER } from './schema-checks.mjs';
+import { flagGenericWithStructure, INTERACTIVE_SELECTORS, MUSTACHE_MARKER, repeatUnitGroups, inPageCall } from './schema-checks.mjs';
 
 function parseArgs(argv) {
   const [, , url, ...rest] = argv;
@@ -75,6 +75,7 @@ function parseArgs(argv) {
 // idea as style-fingerprint.mjs #90, but CONTENT-shaped: what a repeat unit
 // contains, so ENCODE knows what "one row per unit" must carry).
 /* eslint-disable no-undef */
+/* global repeatUnitGroups -- defined in scope by inPageCall (schema-checks.mjs) */
 function mapSections(structureArgs) {
   const INTERACTIVE = (structureArgs && structureArgs.interactive) || [];
   const MUSTACHE = (structureArgs && structureArgs.mustache) || 'text {{…}}';
@@ -107,39 +108,9 @@ function mapSections(structureArgs) {
     seen[base] = (seen[base] || 0) + 1;
     const name = seen[base] > 1 ? `${base}-${seen[base]}` : base;
 
-    // Repeating-unit groups: containers whose direct children form >=2 same
-    // tag+class siblings that carry content. Outermost groups only — a card's
-    // inner list is part of the card unit, not a second group.
-    const reported = [];
-    const groups = [];
-    for (const c of [sec, ...sec.querySelectorAll('*')]) {
-      if (reported.some((r) => r !== c && r.contains(c))) continue; // inside a reported unit
-      const byKey = {};
-      [...c.children].forEach((k) => {
-        const key = `${k.tagName}.${(k.className || '').toString().split(' ')[0] || ''}`;
-        (byKey[key] ||= []).push(k);
-      });
-      for (const [key, members] of Object.entries(byKey)) {
-        if (members.length < 2) continue;
-        const compose = (el) => ({
-          headings: el.querySelectorAll('h1,h2,h3,h4,h5,h6').length,
-          ctas: [...el.querySelectorAll('a')].filter((a) => a.textContent.trim() && !a.querySelector('img,picture')).length,
-          imgs: el.querySelectorAll('img,picture').length,
-          textRuns: [...el.querySelectorAll('*')].filter((e) => [...e.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim())).length,
-        });
-        const units = members.map(compose);
-        const hasContent = units.some((u) => u.headings || u.ctas || u.imgs || u.textRuns);
-        if (!hasContent) continue;
-        const sig = (u) => `${u.headings}|${u.ctas}|${u.imgs}|${u.textRuns}`;
-        groups.push({
-          unitSelector: key,
-          count: members.length,
-          unit: units[0],
-          uniform: units.every((u) => sig(u) === sig(units[0])),
-        });
-        reported.push(...members);
-      }
-    }
+    // Repeating-unit groups — the ONE rule is schema-checks.mjs repeatUnitGroups (browser-free module;
+    // replica's layout-cluster / variant-census inject the same source). Elements never cross the boundary.
+    const groups = repeatUnitGroups(sec).map(({ unitSelector, count, unit, uniform }) => ({ unitSelector, count, unit, uniform }));
     out.push({ idx, section: name, repeats: groups, structure: structureFacts(sec), hasH1: !!sec.querySelector('h1') });
   });
   return out;
@@ -167,7 +138,7 @@ async function main() {
     });
     await page.waitForTimeout(400);
 
-    const mapped = await page.evaluate(mapSections, { interactive: INTERACTIVE_SELECTORS, mustache: MUSTACHE_MARKER });
+    const mapped = await page.evaluate(inPageCall(mapSections, { interactive: INTERACTIVE_SELECTORS, mustache: MUSTACHE_MARKER }, { repeatUnitGroups }));
     sections = [];
     for (const m of mapped) {
       const inv = await page.evaluate(inventory, [`[data-ss-idx="${m.idx}"]`, prof.eyebrow]);
@@ -206,7 +177,7 @@ async function main() {
   for (const f of flagged) process.stdout.write(`⚠ generic-with-structure ${f.section}: ${f.facts}${f.reason || f.dynamicsRow ? ` — recorded: ${f.dynamicsRow ? `dynamics row ${f.dynamicsRow}` : ''}${f.dynamicsRow && f.reason ? ', ' : ''}${f.reason || ''}` : ' — needs a block or a dynamics row before conversion (audit-and-naming.md § 2b)'}\n`);
 }
 
-export { mapSections }; // the repeat-unit grouping replica's variant-census / layout-cluster mirror (one rule, this file)
+export { mapSections }; // in-page mapper; the repeat-unit grouping itself is schema-checks.mjs repeatUnitGroups (browser-free — replica imports it there)
 
 const isMain = (() => { try { return process.argv[1] && pathToFileURL(fs.realpathSync(process.argv[1])).href === import.meta.url; } catch { return false; } })();
 if (isMain) main().catch((e) => { process.stderr.write(`section-schema error: ${e.message}\n`); process.exit(1); });

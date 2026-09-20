@@ -60,15 +60,19 @@
  *     bar: plan reason `held (gate: 360 FAIL 12.4 % Δh -112)` / `held (gate: ungated — no published-origin
  *     number)` / `held (gate: unmeasured — 1440 exit 124)` / `held (gate: template program not at the bar)`;
  *     the ledger row stays `previewed`, no POST /live/, counts.held + SUMMARY `held=<n>`; the row re-drives on
- *     the next `--publish` once the report changes. `/index` ≡ `/` (the report is keyed by served path).
- *   - already-`live` rows are never unpublished: an unchanged live row is skipped as today and its FAIL is
+ *     the next `--publish` once the report changes. `/index` ≡ `/` (the report is keyed by served path). A page
+ *     with no template sits in the report's `untyped` group and takes that group's bar.
+ *   - already-`live` rows are never unpublished: an unchanged live row (hash equal, or a hash-less legacy row —
+ *     hash-unknown counts as unchanged here as in the rest of the plan) is skipped as today and its FAIL is
  *     reported `published-failing`; a CHANGED live row is a re-publish and goes through the hold.
  *   - escape hatches (operator / owner, never hands-off — D16): `--publish-no-regression` publishes a
  *     changed live row whose every breakpoint is ≤ its best-of-last-3 + 1 point (reason carries
  *     `no-regression: 1440 24.9→23.0`; the report status stays published-failing); `--publish-ungated`
  *     publishes rows with NO report entry (redesign flow / owner-decided `publish: live` row). No flag
  *     publishes a FAIL, unmeasured or not-at-bar row; `--force` re-drives but never lifts a hold.
- *   - no report file and no flag = today's behaviour, with one WARN line (`publishing ungated`).
+ *   - no report file and no flag = today's behaviour, with one WARN line (`publishing ungated`). Hands-off
+ *     (rollout Phase C) NAMES the default path — `--gate-report stardust/rollout/gate-report.json` — so an
+ *     absent report is exit 2 there, never an ungated publish (publish-gate.md § Gate 8 → Hands-off).
  *
  * Token lifecycle (the one credential failure a run cannot self-recover; the
  * resolve/decode/smoke primitives are skills/deploy/scripts/lib.mjs):
@@ -452,8 +456,9 @@ export function gateVerdict(report, webPath, { wasLive = false, publishUngated =
   const bps = l.breakpoints || {};
   const rows = (pred) => Object.entries(bps).filter(([, b]) => b && pred(b)).map(([W, b]) => gateBp(W, b)).join(', ');
   if (l.pass === true && l.status === 'pass') {
-    const tpl = e.template && report.templates ? report.templates[e.template] : null;
-    if (tpl && tpl.atBar === false) return { allow: false, why: `template ${e.template} not at the bar` };
+    const tplName = e.template || 'untyped'; // gate-publish groups template-less pages under `untyped` with its own bar
+    const tpl = report.templates ? report.templates[tplName] : null;
+    if (tpl && tpl.atBar === false) return { allow: false, why: `template ${tplName} not at the bar` };
     return { allow: true };
   }
   if (l.status === 'ungated') return ungated();
@@ -512,8 +517,10 @@ export async function buildPlan({ pages, ledger, want, exclude, publish, force, 
     // Gate 8 — the publish hold (publish-gate.md): a row that would go live needs a PASS in the report. An
     // unchanged live row is never touched (unpublishing is an owner decision — its FAIL is reported); a
     // changed live row is a re-publish and is held like any other. Before `force`: --force never lifts a hold.
+    // A hash-less (legacy) live row counts as unchanged, as everywhere else in this plan (the live run's
+    // delivered GET decides, and backfills the hash).
     if (publish && gate) {
-      const liveUnchanged = !!(rec && rec.status === 'live' && rec.bodyHash && rec.bodyHash === p.hash && !force);
+      const liveUnchanged = !!(rec && rec.status === 'live' && (!rec.bodyHash || rec.bodyHash === p.hash) && !force);
       if (liveUnchanged) {
         const e = gateEntry(gate.report, p.webPath);
         if (e && e.latest && e.latest.status === 'published-failing') { counts.publishedFailing += 1; gateNote = ` · published-failing (gate: ${gateVerdict(gate.report, p.webPath, { wasLive: true }).why.replace(/ — published-failing.*$/, '')})`; }

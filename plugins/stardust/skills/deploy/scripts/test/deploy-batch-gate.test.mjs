@@ -12,7 +12,9 @@
  *   - `--publish-no-regression` publishes a CHANGED live row whose breakpoints sit within best-of-last-3 + 1
  *     (reason `no-regression: 1440 24.9→23.0`) and still holds the regressing one;
  *   - an unchanged live row that the report calls published-failing is skipped as today (never unpublished)
- *     and counted `published-failing`;
+ *     and counted `published-failing` — hash equal or a hash-less legacy row alike (NEGATIVE: the legacy row was
+ *     held with the re-publish reason); a PASS page with no template takes the `untyped` group's bar (NEGATIVE);
+ *     hands-off names the default report path, so its absence is exit 2;
  *   - a named `--gate-report` that does not exist → exit 2, zero requests, ledger untouched;
  *   - no report file and no flag → today's behaviour plus one WARN `publishing ungated` line;
  *   - the default path stardust/rollout/gate-report.json is read without a flag;
@@ -67,6 +69,10 @@ const report = {
   assert.deepEqual(gateVerdict(report, '/e'), { allow: false, why: 'ungated — no published-origin number' });
   assert.deepEqual(gateVerdict(report, '/e', { publishUngated: true }), { allow: true, note: 'ungated — --publish-ungated' });
   assert.deepEqual(gateVerdict(report, '/g'), { allow: false, why: 'template program not at the bar' });
+  // NEGATIVE: a PASS page with no template takes the report's `untyped` group bar (was: the atBar check skipped when template is null)
+  const untyped = { ...report, templates: { ...report.templates, untyped: { pages: 2, pass: 1, fail: 1, unmeasured: 0, ungated: 0, atBar: false } }, pages: { ...report.pages, '/u': entry('/u', null, 'pass', { 360: bp('pass', 2.0, 0), 1440: bp('pass', 3.0, 0) }) } };
+  assert.deepEqual(gateVerdict(untyped, '/u'), { allow: false, why: 'template untyped not at the bar' });
+  assert.deepEqual(gateVerdict({ ...untyped, templates: { ...untyped.templates, untyped: { ...untyped.templates.untyped, atBar: true } } }, '/u'), { allow: true }, 'untyped at the bar publishes');
   assert.equal(gateVerdict(report, '/f', { wasLive: true }).allow, false, 'a changed live FAIL row is held without the flag');
   assert.deepEqual(gateVerdict(report, '/f', { wasLive: true, publishNoRegression: true }), { allow: true, note: 'no-regression: 360 8.8→8.8 1440 24.9→23' });
   assert.match(gateVerdict(report, '/h', { wasLive: true, publishNoRegression: true }).why, /regressed past best-of-last-3 \+ 1/);
@@ -159,6 +165,19 @@ try {
   assert.equal(readLedger()['/f'].status, 'live');
   assert.equal(named('/f'), 1, 'one delivered GET (the unchanged-row verify), no POST');
 
+  // 4b. NEGATIVE: an unchanged live row from a hash-less (legacy) ledger is skipped as today — not held with the
+  //     published-failing re-publish reason (was: `liveUnchanged` required bodyHash, so the row went through the hold)
+  seed();
+  led = readLedger(); delete led['/f'].bodyHash; writeFileSync(ledgerPath, JSON.stringify(led));
+  r = await run(['--plan', '--publish', '--gate-report', reportPath]);
+  assert.match(r.stdout, /skip {4}\/f {2}unchanged \(no hash — a live run verifies the delivered page first\) · published-failing \(gate: 1440 FAIL 23 % Δh 41\)/, 'the plan says so offline');
+  r = await run(['--publish', '--gate-report', reportPath]);
+  assert.equal(r.status, 0, r.out);
+  assert.doesNotMatch(r.stderr, /\/f {2}held \(gate:/, 'a hash-less unchanged live row is not held');
+  assert.match(r.stderr, /· 1 published-failing/); assert.match(r.stderr, /· 5 held \(gate\)/);
+  assert.equal(readLedger()['/f'].status, 'live'); assert.equal(readLedger()['/f'].bodyHash, sha1(page('F')), 'the live run backfills the hash');
+  assert.ok(!lives().includes('/f'), 'never re-published');
+
   // 5. a named report that does not exist is fatal — exit 2, nothing read or written
   seed();
   const before = readFileSync(ledgerPath, 'utf8');
@@ -167,6 +186,9 @@ try {
   assert.match(r.stderr, /fatal: --gate-report .*missing\.json not found — run gate-publish\.mjs --report first/);
   assert.equal(mock.requests.length, 0, 'zero requests');
   assert.equal(readFileSync(ledgerPath, 'utf8'), before, 'ledger untouched');
+  // the hands-off form names the default path: an absent report is then exit 2, never an ungated publish
+  r = await run(['--publish', '--gate-report', 'stardust/rollout/gate-report.json']);
+  assert.equal(r.status, 2, r.out); assert.equal(lives().length, 0, 'nothing published');
 
   // 6. no report and no flag: today's behaviour with the WARN line (every previewed row goes live)
   seed();
