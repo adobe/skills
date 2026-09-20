@@ -99,6 +99,12 @@ check(record({ pageTypes: { landing: { archetype: 'home' } } }, 'home', 360, rec
 const help = run(['--help']);
 check(help.status === 0 && /Usage:/.test(help.out) && /--record/.test(help.out) && /--skip/.test(help.out) && /--entrance-tolerance/.test(help.out) && /124/.test(help.out), 'motion-assert --help exits 0 and names the flags + exit codes');
 check(run(['--bogus']).status === 2, 'unknown flag exits 2 (usage)');
+// defect: header + HELP promised exit 3 (bot challenge) while nothing in the script could raise it — the exit table must stay truthful
+check(!/bot challenge|· 3 /.test(help.out), `HELP does not promise an exit code the script cannot produce, got:\n${help.out}`);
+{
+  const src = readFileSync(SCRIPT, 'utf8');
+  check(!/BotChallengeError|exit\(3\)|· 3 bot/.test(src), 'no exit 3 / BotChallengeError branch in motion-assert.mjs (it never opens the live origin)');
+}
 check(run([join(FIX, 'observe-v2.json')]).status === 2, 'missing <targetURL> exits 2');
 check(run([join(tmpdir(), 'no-such-observe.json'), 'http://localhost:8791/home-proposed.html']).status === 2, 'unreadable observe JSON exits 2');
 let r = run([join(FIX, 'observe-v2.json'), 'https://www.larkspurmutual.example/']);

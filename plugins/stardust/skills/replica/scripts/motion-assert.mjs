@@ -60,9 +60,12 @@
  * Record shape: { verdict: pass|fail|n/a|none, at, target, regime, observe, schema, width,
  *                 checks: { chrome, widgets, pageErrors, entrances, stateMachines }, skips: {…} }
  *
- * Exit codes: 0 pass or n/a · 1 fail (🟡 advisory this release) · 2 usage,
- * unreadable observe JSON, or a target on the live origin · 3 bot challenge ·
+ * Exit codes: 0 pass or n/a · 1 fail (🟡 advisory this release) or error ·
+ * 2 usage, unreadable observe JSON, or a target on the live origin ·
  * 124 deadline (verdict none — re-run once; still none = unasserted, never FAIL).
+ * No bot-challenge exit: the target is the prototype / published page, never
+ * the live origin (a bot-blocked observe run is the `motion-unassertable`
+ * residual, source-fidelity-gate.md § Residual classes).
  */
 
 /* eslint-disable import/no-extraneous-dependencies, import/extensions, no-await-in-loop, no-restricted-syntax, brace-style, object-curly-newline, max-len, no-plusplus, no-continue */
@@ -88,7 +91,7 @@ Usage: node motion-assert.mjs <observe.json> <targetURL> [options]
   --help                      this text
 
 Never opens the live origin (the observe JSON is the live evidence).
-Exit: 0 pass/n-a · 1 fail (advisory 🟡) · 2 usage · 3 bot challenge · 124 deadline (no verdict).`;
+Exit: 0 pass/n-a · 1 fail (advisory 🟡) or error · 2 usage · 124 deadline (no verdict).`;
 
 export function parseArgs(argv) {
   const rest = argv.slice(2);
@@ -445,4 +448,4 @@ async function main() {
 }
 
 const invokedDirectly = (() => { try { return realpathSync(process.argv[1]) === fileURLToPath(import.meta.url); } catch { return false; } })();
-if (invokedDirectly) main().catch((e) => { console.error(`motion-assert error: ${e.message}`); process.exit(e.name === 'BotChallengeError' ? 3 : 1); });
+if (invokedDirectly) main().catch((e) => { console.error(`motion-assert error: ${e.message}`); process.exit(1); });
