@@ -17,6 +17,11 @@
 //                 --help exit 0; no --slug/--all exit 1
 //   scoping       --source-main / --source-exclude scope the source side and are recorded
 //   normKey       identical to content-inventory.mjs norm(): quotes, dashes, arrows, case, trailing punctuation
+//   structure     (T26.3 Gate B) fail-list-depth: same li count, a 3-level list flattened to one → 🔴 listDepth +
+//                 nestedLists; fail-table-count: two source tables, one emitted → 🔴 tables (tr count kept);
+//                 pass-nested: depth preserved → exit 0; --class notes=<src>=<tgt> pairs an admonition
+//                 selector with the target shape (recorded; a bad value is exit 1)
+//   contact       a dropped mailto:/tel: link is a links drop (keyed by scheme + value); a bare `#` anchor is not
 //
 // Usage: node plugins/stardust/skills/rollout/scripts/content-acceptance.test.mjs  (exit 1 on failure)
 import assert from 'node:assert/strict';
@@ -76,7 +81,7 @@ assert.equal(cmpOk.images.dropped.length, 0, 'images compare by count — the me
 // ---- project layout: state.json + current/pages + migrated ----
 const w = (p, s) => { mkdirSync(join(T, p, '..'), { recursive: true }); writeFileSync(join(T, p), s); };
 const page = (slug, out) => ({ slug, url: `https://www.example.example/${slug}/`, type: 'program', status: 'migrated', currentStatePath: `stardust/current/pages/${slug}.json` });
-const state = { flow: 'replica', pages: ['ok', 'drop-h2', 'drop-link', 'drop-img', 'drop-li', 'words-low', 'words-high', 'covered', 'zero', 'nosource', 'skipped'].map((s) => page(s)), migrate: { outputDir: 'stardust/migrated/', pageMap: [] } };
+const state = { flow: 'replica', pages: ['ok', 'drop-h2', 'drop-link', 'drop-img', 'drop-li', 'words-low', 'words-high', 'covered', 'zero', 'nosource', 'skipped', 'fail-list-depth', 'fail-table-count', 'pass-nested', 'drop-note', 'drop-mailto'].map((s) => page(s)), migrate: { outputDir: 'stardust/migrated/', pageMap: [] } };
 const addPage = (slug, srcHtml, tgtHtml, meta = {}) => {
   state.migrate.pageMap.push({ sourceUrl: `/${slug}/`, outputPath: `${slug}/index.html`, slug });
   w(`stardust/current/pages/${slug}.json`, JSON.stringify({ slug, renderedHtml: `pages/${slug}.html` }));
@@ -94,6 +99,19 @@ addPage('words-high', SRC, TGT_OK.replace('</main>', `<p>${'extra copy '.repeat(
 addPage('covered', SRC, TGT_OK.replace('<a href="/quote">Start your quote</a> or ', ''), { contentDeviations: [{ kind: 'dynamic-dependency', source: 'Start your quote', target: null, reason: 'quote CTA is the dynamics form (owner decision D-03)' }] });
 addPage('zero', SRC, '<html><body><main><div class="cards"><div><div></div></div></div></main></body></html>');
 addPage('nosource', null, TGT_OK);
+// structure (T26.3 Gate B): a 3-level list + 2 tables + 2 admonitions on the source
+const NESTED = '<ul><li>Cover<ul><li>Storm<ul><li>Hail</li></ul></li><li>Fire</li></ul></li><li>Theft</li></ul>';
+const FLAT = '<ul><li>Cover</li><li>Storm</li><li>Hail</li><li>Fire</li><li>Theft</li></ul>';
+const SRC_STRUCT = SRC.replace('<ul><li>Storm damage</li><li>Fire</li><li>Theft</li></ul>', `${NESTED}<div class="callout"><p>Note one</p></div><div class="callout"><p>Note two</p></div>`).replace('<table><tr><td>a</td></tr><tr><td>b</td></tr></table>', '<table><tr><td>a</td></tr></table><table><tr><td>b</td></tr></table>');
+const TGT_STRUCT = (list, tables, notes) => TGT_OK.replace('<ul><li>Storm damage</li><li>Fire</li><li>Theft</li></ul>', `${list}${notes}`).replace('<table><tr><td>a</td></tr><tr><td>b</td></tr></table>', tables);
+const TWO_TABLES = '<table><tr><td>a</td></tr></table><table><tr><td>b</td></tr></table>';
+const TWO_NOTES = '<div class="note"><div><div>Note one</div></div></div><div class="note"><div><div>Note two</div></div></div>';
+addPage('fail-list-depth', SRC_STRUCT, TGT_STRUCT(FLAT, TWO_TABLES, TWO_NOTES));
+addPage('fail-table-count', SRC_STRUCT, TGT_STRUCT(NESTED, '<table><tr><td>a</td></tr><tr><td>b</td></tr></table>', TWO_NOTES));
+addPage('pass-nested', SRC_STRUCT, TGT_STRUCT(NESTED, TWO_TABLES, TWO_NOTES));
+addPage('drop-note', SRC_STRUCT, TGT_STRUCT(NESTED, TWO_TABLES, '<div class="note"><div><div>Note one</div></div></div>'));
+// contact links: mailto/tel count; a bare # anchor never does
+addPage('drop-mailto', SRC.replace('<h2>Get a quote</h2>', '<h2>Get a quote</h2><p><a href="mailto:hello@example.example">Email us</a> <a href="tel:+1 (800) 555-0100">Call</a> <a href="#top">Top</a></p>'), TGT_OK.replace('<h2>Get a quote</h2>', '<h2>Get a quote</h2><p><a href="tel:+18005550100">Call</a></p>'));
 addPage('skipped', SRC, TGT_OK);
 w('stardust/state.json', JSON.stringify(state, null, 2));
 mkdirSync(join(T, 'stardust', 'migrated', '_acceptance'), { recursive: true });
@@ -116,6 +134,19 @@ for (const [slug, cls] of [['drop-h2', 'headings'], ['drop-link', 'links'], ['dr
   assert.deepEqual(json(join(T, 'stardust', 'migrated', slug, '_meta.json')).gatesPassed, ['delivery-lint'], `${slug}: gatesPassed untouched on a FAIL`);
   assert.equal(json(join(T, 'stardust', 'migrated', '_acceptance', `${slug}.json`)).red[0].class, cls);
 }
+// structure (T26.3 Gate B) — NEGATIVE: before the counters the flattened list passed on its li count alone
+{ const si2 = inventory(SRC_STRUCT); assert.equal(si2.listDepth, 3); assert.equal(si2.nestedLists, 2); assert.equal(si2.tables, 2); assert.equal(si2.listItems, 5, 'the li count is the same on both sides of fail-list-depth'); }
+r = run('--slug', 'fail-list-depth'); assert.equal(r.status, 2, r.stdout); assert.match(r.stdout, /listDepth: 3 → 1 \(2 dropped\)/); assert.match(r.stdout, /nestedLists: 2 → 0/);
+rec = json(join(T, 'stardust', 'migrated', '_acceptance', 'fail-list-depth.json')); assert.equal(rec.class.listItems.dropped.length, 0, 'li count kept'); assert.deepEqual(rec.red.map((x) => x.class), ['listDepth', 'nestedLists']);
+r = run('--slug', 'fail-table-count'); assert.equal(r.status, 2, r.stdout); assert.match(r.stdout, /tables: 2 → 1 \(1 dropped\)/); assert.equal(json(join(T, 'stardust', 'migrated', '_acceptance', 'fail-table-count.json')).class.tableRows.dropped.length, 0, 'tr count kept');
+r = run('--slug', 'pass-nested'); assert.equal(r.status, 0, r.stdout); rec = json(join(T, 'stardust', 'migrated', '_acceptance', 'pass-nested.json')); assert.equal(rec.class.listDepth.emitted, 3); assert.equal(rec.class.tables.emitted, 2); assert.equal(rec.class.notes, undefined, 'notes is opt-in');
+r = run('--slug', 'drop-note', '--class', 'notes=.callout=.note'); assert.equal(r.status, 2, r.stdout); assert.match(r.stdout, /notes: 2 → 1/); rec = json(join(T, 'stardust', 'migrated', '_acceptance', 'drop-note.json')); assert.deepEqual(rec.classes, { notes: { source: '.callout', target: '.note' } }); assert.equal(rec.class.notes.source, 2);
+r = run('--slug', 'pass-nested', '--class', 'notes=.callout=.note'); assert.equal(r.status, 0, r.stdout); assert.equal(json(join(T, 'stardust', 'migrated', '_acceptance', 'pass-nested.json')).class.notes.emitted, 2);
+assert.equal(run('--slug', 'pass-nested', '--class', 'admonitions=.a=.b').status, 1, '--class takes notes=<src>=<tgt> only');
+assert.equal(run('--slug', 'fail-list-depth', '--tolerance', 'listDepth=1,nestedLists=1').status, 0, 'structure classes take the explicit, recorded tolerance');
+// contact links — NEGATIVE: mailto/tel were excluded from the links class before
+r = run('--slug', 'drop-mailto'); assert.equal(r.status, 2, r.stdout); assert.match(r.stdout, /links: 4 → 3/); rec = json(join(T, 'stardust', 'migrated', '_acceptance', 'drop-mailto.json')); assert.deepEqual(rec.class.links.dropped.map((d) => d.key), ['email us|mailto:hello@example.example']);
+assert.equal(Object.keys(inventory('<main><a href="tel:+1 (800) 555-0100">Call</a><a href="#top">Top</a></main>').links).join(), 'call|tel:+18005550100', 'tel keyed by digits; # anchors excluded');
 // words
 r = run('--slug', 'words-low'); assert.equal(r.status, 2); assert.match(r.stdout, /words: ratio 0\.\d+ < 0\.90/);
 r = run('--slug', 'words-high'); assert.equal(r.status, 0); assert.match(r.stdout, /🟡 words: ratio \d\.\d+ > 1\.10/);

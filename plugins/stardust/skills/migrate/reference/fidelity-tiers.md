@@ -163,10 +163,12 @@ this failure class, so make it part of the per-page acceptance:
   logged `contentDeviations[]` entry covers it. The page does not advance
   to `migrated`; the remediation is fixing the importer/template while it
   is still cheap, then re-running the page.
-- **Compared classes include structure, not only counts:** list depth (the
-  deepest `ul`/`ol` nesting), nested-list count and `<table>` count — a
-  flattening importer keeps the `li` count and loses the depth (one legal
-  converter shipped three live levels as one); the same any-drop rule applies.
+- **Compared classes include structure, not only counts:** `listDepth` (the
+  deepest `ul`/`ol` nesting), `nestedLists` and `tables` in
+  `content-acceptance.mjs` — a flattening importer keeps the `li` count and
+  loses the depth (one legal converter shipped three live levels as one); the
+  same any-drop rule applies. `--class notes=<srcSel>=<tgtSel>` pairs a source
+  admonition selector with its target shape as the optional `notes` class.
 - **Module-map precondition (sibling tier).** Every kind the archetype's lift
   ledger names (`replica/progress.json.modules[]`) has an emitter in
   `stardust/import/vocabulary.json` before the template's siblings render;
