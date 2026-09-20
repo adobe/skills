@@ -594,9 +594,9 @@ async function main() {
     // reducedMotion: 'reduce' — symmetric, and one less class of entrance
     // animation to freeze (crawl.mjs captures under the same preference).
     // Site auth (T12.2): only when asked, only on a delivery host — the source side never sees the token.
-    const isDeliveryHost = /\.aem\.(page|live)$/i.test(new URL(url).hostname);
+    const isDeliveryHost = /\.(aem|hlx)\.(page|live)$/i.test(new URL(url).hostname); // both pipeline host families; the source side never sees the token
     const siteAuth = (opts.tokenEnv || opts.authHeader) && isDeliveryHost ? resolveSiteAuth({ authHeader: opts.authHeader, tokenEnv: opts.tokenEnv }) : null;
-    if ((opts.tokenEnv || opts.authHeader) && !isDeliveryHost) console.log(`site auth not attached: ${new URL(url).hostname} is not a delivery host (.aem.page / .aem.live)`);
+    if ((opts.tokenEnv || opts.authHeader) && !isDeliveryHost) console.log(`site auth not attached: ${new URL(url).hostname} is not a delivery host (.aem.page / .aem.live / .hlx.page / .hlx.live)`);
     else if ((opts.tokenEnv || opts.authHeader) && !siteAuth) console.log(`site auth not attached: ${opts.tokenEnv || 'auth header'} does not resolve — reading anonymously (a locked host will answer 401)`);
     const ctx = await newLiveContext(browser, {
       ua: opts.ua, locale: opts.locale,
@@ -898,4 +898,5 @@ async function main() {
 // and import.meta.url differ); importable otherwise, so the pure halves
 // (parseArgs, seamRepeats, INSTRUMENT) run in the fixture runner without a browser.
 const isMain = (() => { try { return process.argv[1] && pathToFileURL(realpathSync(process.argv[1])).href === import.meta.url; } catch { return false; } })();
-if (isMain) main().catch((e) => { console.error(`stitch-shot error: ${e.message}`); process.exit(e.name === 'BotChallengeError' ? 3 : e.name === 'InvalidCaptureError' ? 5 : 1); });
+// exit 124 = no browser slot in time (live-session launchTier, fan-out.md § Machine budget): no verdict, never a FAIL
+if (isMain) main().catch((e) => { console.error(`stitch-shot error: ${e.message}`); process.exit(e.code === 124 ? 124 : e.name === 'BotChallengeError' ? 3 : e.name === 'InvalidCaptureError' ? 5 : 1); });
