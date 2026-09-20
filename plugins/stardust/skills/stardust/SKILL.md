@@ -16,7 +16,7 @@ metadata:
 | Setup 1 | read the skill's `metadata.impeccable` level; unless `none`: `node skills/stardust/scripts/impeccable-version-check.mjs --probe [--local <dir>]` (advisory, read-only) | `required` stops if missing; `optional` degrades; `none` skips 1 and 4 | `state.json.impeccable` |
 | Setup 2–4 | `PRODUCT.md` / `DESIGN.md` presence; read `stardust/state.json`; parse impeccable's `command-metadata.json` | — | — |
 | Setup 5–9 | status ledger; project hygiene (`stardust/.gitignore`, root `.gitignore`, `.hlxignore`, `git check-ignore`); `node skills/stardust/scripts/run-lock.mjs check` + project root; credentials lookup on migration-bound asks; `node skills/stardust/scripts/preflight-runtime.mjs` | `state.json` not ignored; `check` exit 3 (held) → read-only; no 401 blocker before the lookup ran; preflight exit 1 blocks browser instruments only | `stardust/status.jsonl`, `stardust/.gitignore`, `stardust/.work/run.lock`, `state.json.credentials`, `stardust/package.json`, `stardust/.work/env.json` |
-| Routing | no arg / resume → state report; sub-skill keyword → delegate; migration ask → § Two migration flows; freeform → intent reasoning | plan shown before any command (hands-off: recorded instead) | `state.json` flow keys |
+| Routing | no arg / resume → state report (`node skills/stardust/scripts/status.mjs`); sub-skill keyword → delegate; migration ask → § Two migration flows; freeform → intent reasoning | plan shown before any command (hands-off: recorded instead) | `state.json` flow keys |
 | Freeform intent | § The "open and reasoned" principle, steps 1–6 | plan confirmation | `stardust/direction.md` |
 | Hands-off | activation block (wave plan + stop point, commit policy); gate auto-resolution + decision defaults; transport preflight; background waits; turn-end contract (chain after PASS); scoped per-phase commits | quality gates unchanged; hard blockers and owner-only rows still stop; denied privileged action → ask once, `Blocked on owner:`; turn ends only on completion, blocker, > 45-min wait | `state.json.handsOff` / `approvedChain`, `direction.md` activation line, `status.jsonl` `blocked` (+ `owner`) |
 | Every write | provenance block; journal entry; validate-and-fix loop on human-facing HTML | clean validation pass | `stardust/journal.md`, `stardust/validation/<artifact>/<viewport>.png` |
@@ -111,9 +111,10 @@ delegate the actual design work to **impeccable**.
 
 Route on the user's input:
 
-- **No argument.** Render the **state report** described in
-  `reference/state-machine.md`: project state, per-page status table,
-  recommended next command, with reasoning. Do not write anything.
+- **No argument.** Render the **state report**: `node
+  skills/stardust/scripts/status.mjs` (read-only; `reference/state-machine.md`
+  § State report), then the recommendation with reasoning. Do not write
+  anything.
   The same applies to any **resume** (a new session on a project with
   `stardust/state.json`, "continue", "where are we", a memory-driven
   resume): state report first (it names the flow and the last gate

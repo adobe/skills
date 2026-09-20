@@ -18,6 +18,11 @@
       "description": "The report prints the last gate numbers per archetype exactly as stardust/replica/progress.json records them: home 2.14% at 1440 and 3.87% at 360 (pass); news__storm-season-checklist 11.6% at 1440 and 12.4% at 360 (over the bar, residuals cause-only — printed as `FAIL 11.6 % / 12.4 % (residuals unaccepted)`, blocked); insurance__home never gated. Numbers that are invented, rounded away from the ledger, recomputed, or missing for any archetype fail."
     },
     {
+      "name": "state_report_via_status_script",
+      "max_score": 10,
+      "description": "The state report is produced by running `node <plugin>/skills/stardust/scripts/status.mjs` (any of its read-only flags) in the fixture root, and its output is what the agent renders: the numbers home 2.14 / 3.87 (PASS), news__storm-season-checklist 11.6 / 12.4 (FAIL), insurance__home `no verdict`, the `Last phase:` line rollout setup blocked 2026-09-14T08:31:40Z and the warning `no \\`next\\` on the last blocked line` appear as the script printed them. A report assembled by reading the files by hand when the script is available, or numbers that differ from the script's output, fails."
+    },
+    {
       "name": "journal_next_quoted_and_verified",
       "max_score": 10,
       "description": "The agent reads the last 3–5 journal entries and quotes the most recent Next: line ('$stardust replica insurance__home — gate the program archetype at 1440 and 360, then $stardust rollout', verbatim or near-verbatim), then states that it checked it against state: insurance__home is still gated: false, deployUrl is still null, the last status.jsonl line is the blocked rollout — so the journal is current. Quoting without the check, or claiming a discrepancy that does not exist, fails."
@@ -30,7 +35,7 @@
     {
       "name": "nothing_written",
       "max_score": 10,
-      "description": "Up to the moment the user answers the proceed question, no file in the workspace is created or modified: state.json, journal.md, status.jsonl, progress.json, direction.md and everything under stardust/migrated/ are byte-identical to the fixture, and no root PRODUCT.md / DESIGN.md / DESIGN.json appears. The pre-seeded stardust/.gitignore is untouched. Any write, append, or edit tool call (or shell redirect into the workspace) before the answer fails."
+      "description": "Up to the moment the user answers the proceed question, no file in the workspace is created or modified: state.json, journal.md, status.jsonl, progress.json, direction.md and everything under stardust/migrated/ are byte-identical to the fixture, and no root PRODUCT.md / DESIGN.md / DESIGN.json appears. The pre-seeded stardust/.gitignore is untouched. Any write, append, or edit tool call (or shell redirect into the workspace) before the answer fails; no stardust/.work/run.lock is created (status.mjs runs run-lock.mjs check only, never acquire)."
     },
     {
       "name": "next_phase_entered_via_skill",

@@ -8,6 +8,7 @@
 - § Source → target — when listing delivered pages: the pair every page prints.
 - § Residuals, links, report check — the three pointers and the honesty line.
 - § Customer-facing summaries — when the same run is written up for a non-operator.
+- § Tracking issue — when progress is reported outside the session: the one place, the update-in-place rule, what a denial does.
 
 A hand-off that says "ready for review" while gate rows fail, or that
 quotes three different fidelity numbers across a run, costs the owner a
@@ -99,9 +100,26 @@ page for X" is answered by the log, not by memory.
   `report-check: <n> paths ls-verified · <m> counts re-read from
   progress.json/coverage`. Every path in the report was listed with `ls`
   and every count was re-read from its artifact immediately before
-  printing; a report that cannot say so does not ship. (Instrument slot:
-  the status renderer's `--markdown` mode and the close checklist run
-  this check and fail on a missing gate table or provenance field.)
+  printing; a report that cannot say so does not ship.
+  `node skills/stardust/scripts/status.mjs --markdown` renders the gate
+  table, the recap table and this line; the close checklist fails on a
+  missing gate table or provenance field.
+
+---
+
+## Tracking issue
+
+Progress outside the session has **one** home: the `tracking` row of
+`stardust/decisions.md` (default `none` — the recap is written to
+`stardust/rollout/report/`; the owner's value is an issue URL). When set:
+
+- one comment per wave close, **updated in place** (`gh issue comment
+  --edit-last`-style) — the body is `status.mjs --markdown`; blockers are
+  a comment the moment they stop a wave; the hand-off returns the link;
+- `ship-script.md` `ISSUE=` is sourced from the row — no second key;
+- a denied `gh` call is `Blocked on owner:` with `owner: "gh issue
+  comment …"` (master § Hands-off mode); the run continues. No token
+  ever appears in a URL or body.
 
 ---
 

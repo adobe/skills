@@ -1,0 +1,78 @@
+#!/usr/bin/env node
+/**
+ * Fixture test: skills/stardust/scripts/status.mjs — the read-only state report.
+ * Run: node skills/stardust/scripts/test/status.test.mjs   (exit 1 on failure; no network)
+ *   - `--json --no-probe` on evals/_shared/fixture-post-migrate: 6 migrated pages, 3 archetypes with the recorded
+ *     numbers (home 2.14 / 3.87 PASS, article 11.6 / 12.4 FAIL, program `no verdict`), probes "not probed",
+ *     reconcile "not reconciled", lastStatus.event "blocked", the missing-`next` warning, exit 0;
+ *   - the fixture tree is byte-identical after the run and no stardust/.work/run.lock appears;
+ *   - text mode prints the § State report blocks; --markdown opens with the gate table and ends with report-check;
+ *   - replica-flow recommendation is `$stardust replica insurance__home` (from gate-ledger-lint), then rollout;
+ *   - --help exits 0; unknown flag exits 2; no state.json exits 2.
+ */
+import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, relative } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const here = dirname(fileURLToPath(import.meta.url));
+const CLI = join(here, '..', 'status.mjs');
+const FIX = join(here, '..', '..', '..', '..', 'evals', '_shared', 'fixture-post-migrate');
+const snapshot = (d) => { const out = {}; (function walk(p) { for (const e of readdirSync(p)) { const f = join(p, e); if (statSync(f).isDirectory()) walk(f); else out[relative(d, f)] = readFileSync(f); } })(d); return out; };
+const run = (...a) => spawnSync(process.execPath, [CLI, '--root', FIX, ...a], { encoding: 'utf8' });
+
+const before = snapshot(FIX);
+let r = run('--json', '--no-probe');
+assert.equal(r.status, 0, r.stderr);
+const j = JSON.parse(r.stdout);
+assert.equal(j.pages.total, 6);
+assert.deepEqual(Object.keys(j.pages.byStatus), ['migrated']);
+assert.equal(j.pages.byStatus.migrated.length, 6, 'six migrated pages');
+const g = (a, bp) => j.gates.find((x) => x.archetype === a && String(x.bp) === String(bp));
+assert.deepEqual([g('home', 1440).verdict, g('home', 1440).pixelPct, g('home', 360).verdict, g('home', 360).pixelPct], ['PASS', 2.14, 'PASS', 3.87]);
+assert.deepEqual([g('news__storm-season-checklist', 1440).verdict, g('news__storm-season-checklist', 1440).pixelPct, g('news__storm-season-checklist', 360).pixelPct], ['FAIL', 11.6, 12.4]);
+const prog = j.gates.find((x) => x.archetype === 'insurance__home');
+assert.equal(prog.verdict, 'no verdict', 'never gated is no verdict, not FAIL');
+assert.equal(new Set(j.gates.map((x) => x.archetype)).size, 3, 'three archetypes');
+assert.equal(j.probes, 'not probed');
+assert.equal(j.delivery.reconcile, 'not reconciled');
+assert.equal(j.lastStatus.event, 'blocked');
+assert.ok(j.warnings.some((w) => w.startsWith('no `next` on the last blocked line')), `missing-next warning\n${j.warnings}`);
+assert.equal(j.flow.flow, 'replica');
+assert.equal(j.recommendation.command, '$stardust replica insurance__home', JSON.stringify(j.recommendation));
+assert.match(j.recommendation.why, /then \$stardust rollout/);
+assert.equal(j.activeRun, null);
+assert.equal(j.decisions, null, 'no decisions.md in the fixture');
+
+// nothing written
+assert.deepEqual(snapshot(FIX), before, 'fixture byte-identical after the run');
+assert.ok(!existsSync(join(FIX, 'stardust', '.work', 'run.lock')), 'no run.lock created');
+
+// text render
+r = run('--no-probe');
+assert.equal(r.status, 0, r.stderr);
+for (const re of [/^stardust state$/m, /^Site:\s+https:\/\/www\.larkspurmutual\.example \(extracted 2026-09-08, 6\/6 pages\)$/m, /^Flow:\s+replica \(chosen 2026-09-14 from the keep-vs-redesign question\)$/m,
+  /^Last phase:\s+rollout setup blocked 2026-09-14T08:31:40Z$/m, /^  ✓ migrated\s+home, business, /m, /^  home\s+1440\s+PASS\s+2\.14 %/m, /^  insurance__home\s+—\s+no verdict/m,
+  /^Delivery:\s+coverage no rollout coverage · ledger none · admin not reconciled$/m, /^Probes:\s+not probed$/m, /^program: blocked — never gated/m,
+  /^Recommended next: \$stardust replica insurance__home$/m, /^warning: no `next` on the last blocked line/m]) assert.match(r.stdout, re);
+assert.ok(!/^Repo:/m.test(r.stdout), 'no Repo block: the fixture is not its own git top-level');
+
+// markdown render
+r = run('--markdown', '--no-probe');
+assert.equal(r.status, 0, r.stderr);
+assert.match(r.stdout, /^\| page \/ archetype \| bp \| verdict \| pixel % \|/, 'gate table first');
+assert.match(r.stdout, /^\| home \| 1440 \| PASS \| 2\.14 \|/m);
+assert.match(r.stdout, /^\| insurance__home \| — \| no verdict \|/m);
+assert.match(r.stdout, /^report-check: \d+ paths ls-verified · \d+ counts re-read from progress\.json\/state\.json$/m);
+assert.deepEqual(snapshot(FIX), before, 'still byte-identical');
+
+// exits
+r = spawnSync(process.execPath, [CLI, '--help'], { encoding: 'utf8' });
+assert.equal(r.status, 0); assert.match(r.stdout, /Exit codes: 0 report printed/);
+r = run('--bogus');
+assert.equal(r.status, 2, 'unknown flag exits 2');
+const empty = mkdtempSync(join(tmpdir(), 'status-empty-'));
+try { r = spawnSync(process.execPath, [CLI, '--root', empty], { encoding: 'utf8' }); assert.equal(r.status, 2, 'no state.json exits 2'); assert.match(r.stderr, /no readable stardust\/state\.json/); } finally { rmSync(empty, { recursive: true, force: true }); }
+console.log('status test: ok (6 pages, 3 archetypes copied from the ledger, no verdict for the ungated one, not probed / not reconciled, missing-next warning, replica recommendation, nothing written, text + markdown, exits)');

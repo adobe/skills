@@ -52,3 +52,14 @@ too.
 - `_provenance.stardustVersion` is 0.23.0 in `state.json` and 0.22.2 in
   the migrated HTML and `progress.json` — intentional (resumed after a
   plugin upgrade, per the shared README).
+
+## Renderer
+
+`node skills/stardust/scripts/status.mjs --root <fixture> --json --no-probe`
+is pinned deterministically by `skills/stardust/scripts/test/status.test.mjs`
+(in `lint:stardust`) against the shared tree: 6 migrated pages, the three
+gate cases, `probes: "not probed"`, `reconcile: "not reconciled"`, the
+missing-`next` warning on the last blocked line, the replica-flow
+recommendation, and a byte-identical fixture after the run. The last
+`status.jsonl` line deliberately carries no `next`, so the warning is part
+of the expected report — not a fixture defect.
