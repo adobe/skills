@@ -1,9 +1,9 @@
-// Shared helper for the replica scripts' browser-dependent tests.
+// Shared helper for the replica scripts' browser-dependent runners (evals/lint/*-smoke.mjs).
 //
 // The plugin repo carries no Playwright devDependency, so every test that
 // needs Chromium self-skips (prints one SKIP line, exits 0) unless a
 // Playwright install is reachable: `STARDUST_PW_ROOT=<dir with node_modules>`
-// or the cwd itself (run the test from an EDS project — same rule as
+// or the cwd itself (run the runner from an EDS project — same rule as
 // qa/scripts/test/browser-unmeasured.test.mjs). The pure halves of every
 // script are asserted regardless.
 //
@@ -21,7 +21,7 @@ import { join, resolve } from 'node:path';
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 
-const SCRIPTS = resolve(import.meta.dirname, '..');
+const SCRIPTS = resolve(import.meta.dirname, '..', '..', '..', 'skills', 'replica', 'scripts');
 const DIFF_SCRIPTS = resolve(SCRIPTS, '..', '..', 'diff', 'scripts');
 
 /** Directory whose node_modules resolves playwright, or null. */

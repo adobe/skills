@@ -14,14 +14,14 @@
 //                a row whose state word is outside gated | dead | unprobed:<reason>
 //                → exit 2 naming it; a row without `rest` → exit 2;
 //   --help exits 0; an unknown flag exits 1; a missing pages dir exits 1.
-// Usage: node plugins/stardust/skills/replica/scripts/test/chrome-variants.test.mjs
+// Usage: node plugins/stardust/evals/lint/chrome-variants-fixtures.mjs
 import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
 const HERE = import.meta.dirname;
-const SCRIPT = resolve(HERE, '..', 'chrome-variants.mjs');
+const SCRIPT = resolve(HERE, '..', '..', 'skills', 'replica', 'scripts', 'chrome-variants.mjs');
 const FIXTURE = join(HERE, 'fixtures', 'chrome-variants');
 const failures = [];
 const check = (ok, msg) => { if (!ok) failures.push(msg); };
@@ -85,5 +85,5 @@ try {
   check(b.find((x) => x.pages.some((p) => p.slug === 'index')).name === 'main' && !b.some((x) => x.name === 'default'), 'a persisted home name is kept and default is not handed to another bucket');
 } finally { rmSync(work, { recursive: true, force: true }); }
 
-if (failures.length) { console.error(`chrome-variants.test: ${failures.length} failure(s)\n - ${failures.join('\n - ')}`); process.exit(1); }
-console.log('chrome-variants.test: ok (fingerprint stability, buckets + names, marker candidates, --write, gate exit 2 / 0, state vocabulary, --help)');
+if (failures.length) { console.error(`chrome-variants-fixtures: ${failures.length} failure(s)\n - ${failures.join('\n - ')}`); process.exit(1); }
+console.log('chrome-variants-fixtures: ok (fingerprint stability, buckets + names, marker candidates, --write, gate exit 2 / 0, state vocabulary, --help)');

@@ -22,15 +22,15 @@
 //                build`, `menu:Insurance` is a delta (fontSize / CROP), the
 //                live side comes from the cache written by the first run
 //                (one live navigation per breakpoint — hit minimisation).
-// Usage: node plugins/stardust/skills/replica/scripts/test/chrome-states.test.mjs
+// Usage: node plugins/stardust/evals/lint/chrome-states-smoke.mjs
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
-import { pwRoot, skipBrowser, stageProjectCopy, serveDir } from './_browser.mjs';
+import { pwRoot, skipBrowser, stageProjectCopy, serveDir } from './lib/_browser.mjs';
 
 const HERE = import.meta.dirname;
-const SCRIPT = resolve(HERE, '..', 'chrome-states.mjs');
+const SCRIPT = resolve(HERE, '..', '..', 'skills', 'replica', 'scripts', 'chrome-states.mjs');
 const FIXTURE = join(HERE, 'fixtures', 'chrome-states');
 const failures = [];
 const check = (ok, msg) => { if (!ok) failures.push(msg); };
@@ -76,12 +76,12 @@ const { pairStates, clusterVariants, linkSetCheck, samplesFromState, cacheKey, v
   const k1 = cacheKey('https://s/', { width: 1440, mobile: 360, noMobile: false }, s); const k2 = cacheKey('https://s/', { width: 1440, mobile: 360, noMobile: true }, s);
   check(JSON.stringify(k1) !== JSON.stringify(k2), 'cacheKey changes with the mobile pass on/off');
 }
-if (failures.length) { console.error(`chrome-states.test: ${failures.length} pure failure(s)\n - ${failures.join('\n - ')}`); process.exit(1); }
-console.log('chrome-states.test: pure cases passed');
+if (failures.length) { console.error(`chrome-states-smoke: ${failures.length} pure failure(s)\n - ${failures.join('\n - ')}`); process.exit(1); }
+console.log('chrome-states-smoke: pure cases passed');
 
 // ---- browser
 const root = pwRoot();
-if (!root) skipBrowser('chrome-states.test');
+if (!root) skipBrowser('chrome-states-smoke');
 const staged = stageProjectCopy(root, ['chrome-states.mjs', 'chrome-parity.mjs', 'motion-observe.mjs', 'capture-sidecar.mjs', 'crop-compare.mjs', 'run-capped.mjs']);
 const work = mkdtempSync(join(tmpdir(), 'chrome-states-test-'));
 const srv = await serveDir(FIXTURE);
@@ -135,5 +135,5 @@ try {
   staged.cleanup();
   rmSync(work, { recursive: true, force: true });
 }
-if (failures.length) { console.error(`chrome-states.test: ${failures.length} failure(s)\n - ${failures.join('\n - ')}`); process.exit(1); }
-console.log('chrome-states.test: browser cases passed');
+if (failures.length) { console.error(`chrome-states-smoke: ${failures.length} failure(s)\n - ${failures.join('\n - ')}`); process.exit(1); }
+console.log('chrome-states-smoke: browser cases passed');

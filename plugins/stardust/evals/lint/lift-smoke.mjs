@@ -22,15 +22,15 @@
 //   sections[] from main; stylesheets[] lists the linked + inline sheet.
 //   360 → docHeight differs; a second 1440 run prints `reusing`, exit 0, no
 //   navigation (the cache); --refresh re-probes; --save-css writes the sheets.
-// Usage: node plugins/stardust/skills/replica/scripts/test/lift.test.mjs
+// Usage: node plugins/stardust/evals/lint/lift-smoke.mjs
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
-import { pwRoot, skipBrowser, stageProjectCopy, serveDir } from './_browser.mjs';
+import { pwRoot, skipBrowser, stageProjectCopy, serveDir } from './lib/_browser.mjs';
 
 const HERE = import.meta.dirname;
-const SCRIPT = resolve(HERE, '..', 'lift.mjs');
+const SCRIPT = resolve(HERE, '..', '..', 'skills', 'replica', 'scripts', 'lift.mjs');
 const FIXTURE = join(HERE, 'fixtures', 'lift');
 const failures = [];
 const check = (ok, msg) => { if (!ok) failures.push(msg); };
@@ -52,12 +52,12 @@ const { parseCssMeta, reusable, PROPS } = await import(SCRIPT);
   check(['fontVariationSettings', 'fontOpticalSizing', 'fontFeatureSettings', 'gridTemplateColumns', 'lineHeight', 'marginBottom'].every((p) => PROPS.includes(p)), 'PROPS carries the font-variation trio, grid template and margins');
   check(reusable('/nonexistent.json', 'u', { width: 1440, roots: ['main'] }) === false, 'reusable: a missing file is not reusable');
 }
-if (failures.length) { console.error(`lift.test: ${failures.length} pure failure(s)\n - ${failures.join('\n - ')}`); process.exit(1); }
-console.log('lift.test: pure cases passed');
+if (failures.length) { console.error(`lift-smoke: ${failures.length} pure failure(s)\n - ${failures.join('\n - ')}`); process.exit(1); }
+console.log('lift-smoke: pure cases passed');
 
 // ---- browser
 const root = pwRoot();
-if (!root) skipBrowser('lift.test');
+if (!root) skipBrowser('lift-smoke');
 const staged = stageProjectCopy(root, ['lift.mjs', 'run-capped.mjs']);
 const work = mkdtempSync(join(tmpdir(), 'lift-test-'));
 const srv = await serveDir(FIXTURE);
@@ -110,5 +110,5 @@ try {
 } finally {
   await srv.close(); staged.cleanup(); rmSync(work, { recursive: true, force: true });
 }
-if (failures.length) { console.error(`lift.test: ${failures.length} failure(s)\n - ${failures.join('\n - ')}`); process.exit(1); }
-console.log('lift.test: browser cases passed');
+if (failures.length) { console.error(`lift-smoke: ${failures.length} failure(s)\n - ${failures.join('\n - ')}`); process.exit(1); }
+console.log('lift-smoke: browser cases passed');

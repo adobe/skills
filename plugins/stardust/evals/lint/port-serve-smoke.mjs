@@ -17,7 +17,7 @@
 //            block-name fallback → ok; wrong marker file / 404 / no answer → code 4
 //            (no verdict, never a pass); CLI exit 4 and 0.
 // The foreign-listener cases need lsof (cwd lookup); without it they print SKIP.
-// Usage: node plugins/stardust/skills/replica/scripts/test/port-serve.test.mjs
+// Usage: node plugins/stardust/evals/lint/port-serve-smoke.mjs
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -25,7 +25,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { createServer } from 'node:http';
 
 const HERE = import.meta.dirname;
-const S = (n) => resolve(HERE, '..', n);
+const S = (n) => resolve(HERE, '..', '..', 'skills', 'replica', 'scripts', n);
 const failures = [];
 const check = (ok, msg) => { if (!ok) failures.push(msg); };
 const run = (script, args, cwd) => { const r = spawnSync(process.execPath, [S(script), ...args], { encoding: 'utf8', cwd }); return { status: r.status, out: `${r.stdout}\n${r.stderr}`, stdout: r.stdout.trim() }; };
@@ -128,5 +128,5 @@ try {
   for (const ch of children) { try { ch.kill('SIGKILL'); } catch { /* gone */ } }
   rmSync(root, { recursive: true, force: true }); rmSync(other, { recursive: true, force: true });
 }
-if (failures.length) { console.error(`port-serve.test: ${failures.length} failure(s)\n - ${failures.join('\n - ')}`); process.exit(1); }
-console.log('port-serve.test: ok (range + stability + ports.json, foreign listener moves/lists/never killed, pin exit 3, serve marker/404/escape, second serve exit 98, identity ok/4, stop own only)');
+if (failures.length) { console.error(`port-serve-smoke: ${failures.length} failure(s)\n - ${failures.join('\n - ')}`); process.exit(1); }
+console.log('port-serve-smoke: ok (range + stability + ports.json, foreign listener moves/lists/never killed, pin exit 3, serve marker/404/escape, second serve exit 98, identity ok/4, stop own only)');

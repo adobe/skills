@@ -263,6 +263,28 @@ whose harness cases skip when Playwright is unresolvable:
   (landmark cache, `anchor-live.skip`) when `STARDUST_GATE_DEPS=<dir>/node_modules`
   (or the repo-root `node_modules`) resolves playwright + pngjs + pixelmatch,
   else one `SKIP` line.
+- `chrome-states-smoke.mjs`, `lift-smoke.mjs` — the replica state-matrix
+  probe and the computed-style lift over `lint/fixtures/chrome-states/` and
+  `lint/fixtures/lift/`: pure halves always (`--help`, flag guards,
+  `pairStates` / `clusterVariants` / `linkSetCheck` / `cacheKey`,
+  `parseCssMeta` / `reusable`); the browser halves (every trigger opened,
+  aria-controls panels outside the `<li>`, hash-toggle triggers never abort
+  the loop, `--panel` override recorded only when it became visible, cache =
+  one live navigation, exit 2 on a missing cell, 124 from run-capped = no
+  verdict; the lift's depth / offset / inline sizes / @font-face / @media /
+  reuse contract) run when `STARDUST_PW_ROOT=<dir with node_modules>` (or the
+  cwd) resolves playwright, else one `SKIP` line. The shared helper
+  `lint/lib/_browser.mjs` stages the documented project layout in a temp dir.
+- `chrome-variants-fixtures.mjs` — `replica/scripts/chrome-variants.mjs` over
+  `lint/fixtures/chrome-variants/` (no browser): fingerprint stability across
+  state classes and cache-busted sheets, buckets + persisted names (never
+  renumbered), marker candidates, `--write`, the `--progress` gate (exit 2
+  without a row / with a bad state word / without `rest`, exit 0 when rowed).
+- `port-serve-smoke.mjs` — `port.mjs` / `serve.mjs` / `served-identity.mjs`
+  on 127.0.0.1: range + stability + `ports.json`, a foreign listener moves
+  the slot and is listed, never killed, pinned foreign port exit 3, serve's
+  marker / 404 / no-escape / second serve exit 98, identity ok / code 4 (no
+  verdict), `stop` ends only this project's server.
 - `dynamics-recall.mjs` — detector recall over `_shared/dynamics-recall/`:
   the reach half (sidecar signals → `reach-only` rows, and the sidecar
   fields `crawl.mjs` must keep writing) always runs; the depth half
