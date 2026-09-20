@@ -40,7 +40,8 @@
  *     --k <edits>          merge signatures within this many section edits
  *                          into one family (default 0 — exact signatures; a one-section difference IS a different layout)
  *     --json               print the cluster report as JSON instead of text
- *     --write-state        stamp state.json.pages[].layoutCluster (<id> | tail)
+ *     --write-state        stamp state.json.pages[].layoutCluster (<id> | tail) — pages[]
+ *                          or the {slug: …} map; nothing stampable exits 1, unwritten
  *     --cover <id>=<gatedId> --reason <text>
  *                          OPERATOR ONLY: record that cluster <id> is a variant
  *                          of gated cluster <gatedId> (writes coveredBy on the
@@ -278,6 +279,21 @@ export function applyCover(clusterFile, { id, gatedId, reason, handsOff = false,
 }
 
 /**
+ * --write-state: stamp state.json.pages[].layoutCluster (<id> | tail) IN PLACE
+ * for both page shapes — pages[] and the pages{slug: …} map (the map used to be
+ * copied for reading, so the stamp landed on the copy and nothing was written).
+ * Returns the number of pages stamped.
+ */
+export function stampState(state, types) {
+  const stamp = new Map();
+  for (const t of types || []) { for (const c of t.clusters || []) for (const s of c.pages) stamp.set(s, c.id); for (const c of t.tail || []) for (const s of c.pages) stamp.set(s, 'tail'); }
+  let n = 0;
+  if (Array.isArray(state.pages)) { for (const p of state.pages) if (p && stamp.has(p.slug)) { p.layoutCluster = stamp.get(p.slug); n++; } }
+  else if (state.pages && typeof state.pages === 'object') { for (const [slug, p] of Object.entries(state.pages)) if (p && typeof p === 'object' && stamp.has(slug)) { p.layoutCluster = stamp.get(slug); n++; } }
+  return n;
+}
+
+/**
  * Merge one run's report into the previous cluster file: a `--type <t>` run
  * replaces only that type's entry; every other type (and its coveredBy
  * records) survives. Order: previous types first (replaced in place), new
@@ -432,14 +448,14 @@ async function main() {
     if (!opts.json) console.log(renderType(r, bps));
   }
   writeFileSync(clusterPath, `${JSON.stringify(mergeReport(previous, report), null, 2)}\n`);
+  let stamped = 0;
   if (opts.writeState) {
-    const stamp = new Map();
-    for (const t of report.types) { for (const c of t.clusters) for (const s of c.pages) stamp.set(s, c.id); for (const c of t.tail) for (const s of c.pages) stamp.set(s, 'tail'); }
-    for (const p of pages) if (stamp.has(p.slug)) p.layoutCluster = stamp.get(p.slug);
+    stamped = stampState(state, report.types);
+    if (!stamped) { console.error(`layout-cluster: --write-state stamped nothing — state.json.pages is neither pages[] nor a {slug: …} map with these slugs; state.json not written`); process.exit(1); }
     writeFileSync(statePath, `${JSON.stringify(state, null, 2)}\n`);
   }
   if (opts.json) console.log(JSON.stringify(report, null, 2));
-  else console.log(`→ ${clusterPath}${opts.writeState ? ` · state.json pages[].layoutCluster stamped` : ''}`);
+  else console.log(`→ ${clusterPath}${opts.writeState ? ` · state.json pages[].layoutCluster stamped (${stamped})` : ''}`);
   process.exit(blocking ? 2 : 0);
 }
 

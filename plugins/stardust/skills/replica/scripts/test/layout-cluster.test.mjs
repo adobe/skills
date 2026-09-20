@@ -21,7 +21,7 @@ const failures = [];
 const check = (ok, msg) => { if (!ok) failures.push(msg); };
 const run = (args, opts = {}) => { const { script = SCRIPT, ...spawn } = opts; const r = spawnSync(process.execPath, [script, ...args], { encoding: 'utf8', ...spawn }); return { status: r.status, out: `${r.stdout}${r.stderr}` }; };
 
-const { DEFAULT_K, mergeReport, urlsFromClusters, signatureOf, tokenOf, editDistance, signatureDiff, clusterSignatures, pickExemplar, gateStatus, isGated, clusterType, renderType, applyCover, defaultMinCluster } = await import(SCRIPT);
+const { DEFAULT_K, mergeReport, stampState, urlsFromClusters, signatureOf, tokenOf, editDistance, signatureDiff, clusterSignatures, pickExemplar, gateStatus, isGated, clusterType, renderType, applyCover, defaultMinCluster } = await import(SCRIPT);
 
 // --- signature tokens
 const hero = { tag: 'section', firstClass: 'program-hero', groups: [], interactive: false, columns: 1 };
@@ -155,6 +155,14 @@ try {
   check(readFileSync(join(tmp, 'stardust', 'current', 'layout-clusters.json'), 'utf8') === before, 'a --type run that matches nothing leaves layout-clusters.json untouched');
 } finally { rmSync(tmp, { recursive: true, force: true }); }
 
+// --- stampState: pages[] AND the {slug: …} map are stamped in place (defect: the map was copied for reading, the stamp landed on the copy, nothing was written)
+const stampTypes = [{ type: 'program', clusters: [{ id: 'c1', pages: ['a1', 'a2'] }], tail: [{ pages: ['b1'] }] }];
+const arrState = { pages: [{ slug: 'a1' }, { slug: 'b1' }, { slug: 'zz' }] };
+check(stampState(arrState, stampTypes) === 2 && arrState.pages[0].layoutCluster === 'c1' && arrState.pages[1].layoutCluster === 'tail' && !('layoutCluster' in arrState.pages[2]), `pages[] stamped in place (2), got ${JSON.stringify(arrState)}`);
+const mapState = { pages: { a1: { type: 'program' }, a2: { type: 'program' }, b1: {}, zz: {} } };
+check(stampState(mapState, stampTypes) === 3 && mapState.pages.a1.layoutCluster === 'c1' && mapState.pages.a2.layoutCluster === 'c1' && mapState.pages.b1.layoutCluster === 'tail' && !('layoutCluster' in mapState.pages.zz), `{slug: …} map stamped in place (3), got ${JSON.stringify(mapState)}`);
+check(stampState({ pages: 'garbage' }, stampTypes) === 0 && stampState({}, stampTypes) === 0, 'an unstampable pages shape stamps nothing (the CLI then exits 1 without writing)');
+
 // --- mergeReport: a --type run replaces only its own type; other types + coveredBy survive
 const prevFile = { generatedAt: 'old', types: [{ type: 'program', clusters: [{ id: 'c1', signature: ['x'], coveredBy: null }], tail: [], ungated: [] }, { type: 'landing', clusters: [{ id: 'c1', signature: ['l'], coveredBy: { cluster: 'c2', reason: 'kept' } }], tail: [], ungated: [] }] };
 const freshProgram = { type: 'program', clusters: [{ id: 'c1', signature: ['y'] }], tail: [], ungated: ['c1'] };
@@ -182,7 +190,13 @@ else {
     const b = run(['--root', join(tmp2, 'stardust'), '--type', 'program', '--min-cluster', '3', '--write-state'], { timeout: 90000, script });
     check(b.status === 2 && /type program: 8 pages, 2 cluster\(s\) ≥ 3 \(gated 1\)/.test(b.out) && /ungated .*→ \$stardust replica insurance__/.test(b.out), `browser run over the fixture sidecars: 2 clusters, B ungated, exit 2, got ${b.status}\n${b.out}`);
     const st = JSON.parse(readFileSync(join(tmp2, 'stardust', 'state.json'), 'utf8'));
-    check(st.pages.find((p) => p.slug === 'insurance__home')?.layoutCluster === 'c1' && st.pages.find((p) => p.slug === 'insurance__umbrella')?.layoutCluster === 'c2', '--write-state stamps layoutCluster per page');
+    check(st.pages.find((p) => p.slug === 'insurance__home')?.layoutCluster === 'c1' && st.pages.find((p) => p.slug === 'insurance__umbrella')?.layoutCluster === 'c2' && /layoutCluster stamped \(8\)/.test(b.out), `--write-state stamps layoutCluster per page and prints the count, got:\n${b.out.split('\n').pop()}`);
+    // the same fixture with state.json.pages as a {slug: …} map: stamped in place, not on a read copy
+    const asMap = { ...st, pages: Object.fromEntries(st.pages.map(({ slug, layoutCluster, ...p }) => [slug, p])) };
+    writeFileSync(join(tmp2, 'stardust', 'state.json'), JSON.stringify(asMap, null, 2));
+    const m = run(['--root', join(tmp2, 'stardust'), '--type', 'program', '--min-cluster', '3', '--write-state'], { timeout: 90000, script });
+    const stm = JSON.parse(readFileSync(join(tmp2, 'stardust', 'state.json'), 'utf8'));
+    check(m.status === 2 && stm.pages.insurance__home?.layoutCluster === 'c1' && stm.pages.insurance__umbrella?.layoutCluster === 'c2', `--write-state over a {slug: …} map writes the stamps, got ${m.status} ${JSON.stringify(stm.pages.insurance__home)}`);
     const d = run(['--root', join(tmp2, 'stardust'), '--type', 'program'], { timeout: 90000, script });
     check(d.status === 0 && /tail {3}3 page\(s\)/.test(d.out), `default T=5 → the 3 B pages are tail, exit 0, got ${d.status}\n${d.out}`);
   } finally { rmSync(tmp2, { recursive: true, force: true }); }
