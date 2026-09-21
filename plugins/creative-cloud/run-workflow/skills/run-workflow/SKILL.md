@@ -15,6 +15,7 @@ description: >-
   discovery; a "what tools" question is answered directly from your visible
   tool list, no call. DO NOT TRIGGER for direct Firefly API calls without
   MCP (use firefly-api-specs).
+compatibility: Requires an enterprise Adobe account with a Firefly Services or Firefly Creative Production entitlement, assigned via the Adobe Admin Console. Not available to individual/personal Adobe accounts.
 license: Apache-2.0
 metadata:
   version: 1.0.0

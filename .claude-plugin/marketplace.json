@@ -193,7 +193,7 @@
     {
       "name": "run-workflow",
       "source": "./plugins/creative-cloud/run-workflow",
-      "description": "Discover, compose, run, publish, and save Adobe Firefly workflows through the run-workflow MCP server, including predefined featured workflows for common marketing and production use cases.",
+      "description": "Discover, compose, run, publish, and save Adobe Firefly workflows through the run-workflow MCP server, including predefined featured workflows for common marketing and production use cases. Requires an enterprise Adobe account with a Firefly Services or Firefly Creative Production entitlement.",
       "version": "1.0.0",
       "category": "creative-cloud",
       "keywords": [
