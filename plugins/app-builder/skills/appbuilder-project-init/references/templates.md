@@ -165,10 +165,8 @@ The sample is the single source of truth for the correct unified three-namespace
    ```
    https://experience.adobe.com/?devMode=true&ext=https://localhost:9080#/assets/contenthub/
    ```
-   (add `&repo=<delivery-repo>` only if `allowedRepos` is populated; no `/index.html` for local). Use **this** URL — **not** the generic Experience Cloud shell URL `aio app run` prints (`…/custom-apps/?localDevUrl=…`); that one does not load Content Hub.
-6. **If the panel doesn't appear:** confirm `allowedRepos` is empty for local dev, the URL uses `#/assets/contenthub/` with `devMode=true`, and the cert was accepted. Note that the `card` and `selectionBar` surfaces require the host's `EXTENSIBILITY_AEM_CONTENTHUB` feature flag (asset-details panels do not).
-
-**Post-scaffold sanity check:** `app.config.yaml` includes `aem/assets/contenthub/1`; `extensionId` is identical in `Constants.js` and every component that calls `attach()`; if you pruned a namespace, its `ExtensionRegistration.js` block, `App.js` route, and component file are all gone (no dangling route); `npm install` succeeded and `aio app run` serves `localhost:9080`.
+   (add `&repo=<delivery-repo>` only if `allowedRepos` is populated; no `/index.html` for local).
+6. **If the panel doesn't appear:** confirm `allowedRepos` is empty for local dev, the URL uses `#/assets/contenthub/` with `devMode=true`, and the cert was accepted.
 
 ## @adobe/generator-app-api-mesh
 

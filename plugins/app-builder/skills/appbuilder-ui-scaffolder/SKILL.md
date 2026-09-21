@@ -4,12 +4,11 @@ description: >-
   Generate React Spectrum UI components for Adobe Experience Cloud Shell SPAs and AEM UI Extensions.
   Provides patterns for pages, forms, data tables, dialogs, and navigation using @adobe/react-spectrum.
   Guides ExC Shell integration with @adobe/exc-app including runtime.done(), IMS token passthrough,
-  and shell theming. Guides AEM UI Extension development with @adobe/uix-guest, including Content Hub
-  surfaces (aem/assets/contenthub/1 — asset details panels, card actions, bulk actions).
-  Trigger on: building App Builder UI, React Spectrum components, ExC Shell pages, forms, data tables,
-  dialogs, modals, navigation, theming, web-src, Spectrum design system, @adobe/exc-app, AEM extension,
-  AEM UI extension, Content Fragment Console, Universal Editor extension, Content Hub panel, Content Hub
-  card action, Content Hub bulk action, uix-guest, @adobe/uix-guest, extension points for AEM,
+  and shell theming. Guides AEM UI Extension development with @adobe/uix-guest for Content Fragment
+  Console, CF Editor, Universal Editor, Assets View and Content Hub surfaces. Trigger on: building App Builder UI,
+  React Spectrum components, ExC Shell pages, forms, data tables, dialogs, modals, navigation, theming,
+  web-src, Spectrum design system, @adobe/exc-app, AEM extension, AEM UI extension, Content Fragment
+  Console, Universal Editor extension, uix-guest, @adobe/uix-guest, extension points for AEM,
   customizing AEM surfaces.
 metadata:
   category: frontend
@@ -100,10 +99,10 @@ If there is any ambiguity — multiple patterns could fit, constraints are uncle
 - "Add a custom RTE toolbar button in the Content Fragment Editor."
 - "Create a Universal Editor extension with a header menu button."
 - "Add a custom panel to the Content Hub Asset Details Dialog."
-- "Build a Content Hub extension that shows asset metadata in a side panel."
+- "Build a Content Hub extension."
 - "Add an action button to Content Hub asset cards."
 - "Add a bulk action to the Content Hub selection bar."
-- "Customize the Content Hub extension UI with React Spectrum."
+- "Customize the Content Hub extension UI."
 
 ## Inputs To Request
 
@@ -142,7 +141,6 @@ If there is any ambiguity — multiple patterns could fit, constraints are uncle
 ## Chaining
 
 - Chains FROM `appbuilder-project-init` — once the extension is scaffolded and running locally, this skill handles UI customization and React Spectrum patterns
-- Works alongside `appbuilder-action-scaffolder` for full-stack features (UI calls backend actions — including Content Hub web actions)
-- Chains TO `appbuilder-testing` (unit/component tests for the generated UI)
-- Chains TO `appbuilder-cicd-pipeline` (GitHub Actions deployment of frontend changes)
-- Chains TO `appbuilder-e2e-testing` (Playwright E2E tests against the deployed extension)
+- Works alongside `appbuilder-action-scaffolder` for full-stack features (UI calls backend actions)
+- Chains TO `appbuilder-testing` (test generated UI components)
+- Chains TO `appbuilder-cicd-pipeline` (deploy frontend changes)

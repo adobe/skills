@@ -9,8 +9,7 @@ description: >-
   pipelines, continuous integration, continuous delivery, deploy automation, multi-environment
   promotion, aio app add ci, or wants to automate their App Builder build and release process.
   Also trigger when users mention deploy workflows, release pipelines, GitHub secrets for
-  App Builder, aio app deploy for AEM extensions, Extension
-  Manager approval, or automate deployment of an AEM UI extension.
+  App Builder.
 metadata:
   category: deployment-automation
 license: Apache-2.0

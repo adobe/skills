@@ -71,7 +71,7 @@ Extension point identifiers:
 - `aem/cf-editor/1` — Content Fragment Editor
 - `aem/universal-editor/1` — Universal Editor
 - `aem/assets/1` — Assets View (requires Assets Ultimate license)
-- `aem/assets/contenthub/1` — Content Hub (unified — asset details, card, and selection bar surfaces via one `register()` call)
+- `aem/assets/contenthub/1` — Content Hub
 
 ---
 
@@ -421,11 +421,9 @@ Content Hub is a single extension point that spans **three** surfaces, each opte
 - **Asset card actions** (`card`) — buttons on asset cards (Assets grid, inside a collection, link-share) **and** on collection tiles in the Collections grid; the host passes the surface as `actionContext.context` (`'assets'` or `'collections'` — see below).
 - **Selection bar / bulk actions** (`selectionBar`) — buttons in the multi-select action bar.
 
-> Use the deprecated ID `aem/contenthub/assets/details/1` only for older projects mid-transition; new projects use `aem/assets/contenthub/1`.
-
 **Auth is different from the other AEM surfaces:** Content Hub does *not* use `sharedContext`. Get auth and environment from the `host` namespaces instead (`host.auth.getIMSInfo()`, `host.discovery.getAemHost()` — see Host APIs below).
 
-### Registration (all three namespaces)
+### Registration
 
 ```js
 import { register } from '@adobe/uix-guest';
@@ -632,16 +630,6 @@ aio app build && aio app run
 Test URL: `https://experience.adobe.com/?devMode=true&ext=https://localhost:9080#/assets/contenthub/`
 
 First run only: navigate to `https://localhost:9080` and accept the self-signed cert, or the panel stays blank. No `&repo=` needed when `allowedRepos = []`.
-
-### Common Gotchas (Content Hub)
-
-1. **`openDialog` is a single object** — passing `{ id }` yourself makes the host retry every 500ms until it times out (`… timed out after 10000ms`, `[object Object] doesn't exist`) while `host.toast` still works, masking the cause. Never pass `{ id }`.
-2. **`const guestConnection` breaks card/selectionBar** — their `onActionClick` fires after `register()` resolves; use `let` or the handler closes over `undefined`.
-3. **`getCurrentAsset()` returns a STRING**, not `{ id }`. (Assets View's `host.details.getCurrentResourceInfo()` is a different shape — don't mix.)
-4. **Card/selectionBar buttons use `label`, not `title`** — a button with only `title` renders blank. (`assetDetails` panels use `title`/`tooltip`.)
-5. **`card` vs `selectionBar` signatures differ** — `card.getActionButtons(actionContext)` receives `actionContext.context` (`'assets'` | `'collections'`) and `onActionClick(resourceType, buttonId, resourceId)` takes a single resource (the host also passes a 4th `{ context }` you can ignore); `selectionBar.getActionButtons()` takes no arguments and `onActionClick(buttonId, assetIds)` takes an array (no `resourceType`).
-6. **Buttons missing entirely** — `card`/`selectionBar` are gated by the `EXTENSIBILITY_AEM_CONTENTHUB` flag; asset-details panels still show when it's off (they're gated by the separate, older `EXTENSIBILITY_ASSETS_DETAILS` flag).
-7. **`attach()` id must match `register()` id** — export `extensionId` from `Constants.js` and import it in both.
 
 ---
 
