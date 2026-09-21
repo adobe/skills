@@ -29,8 +29,13 @@
  *
  * Usage:
  *   node skills/stardust/scripts/preflight-runtime.mjs [--root <dir>] [--no-install] [--offline] [--skip] [--json]
- *     --root <dir>   project root (default: nearest ancestor of cwd with a stardust/ dir, else cwd);
- *                    <root>/stardust/ must exist — a root without it exits 2 and writes nothing
+ *     --root <dir>   project root (default: nearest ancestor of cwd whose stardust/ is a PROJECT dir — holds
+ *                    state.json, status.jsonl, journal.md, .gitignore or a package.json named stardust-deps —
+ *                    else cwd); <root>/stardust/ must exist — a root without it exits 2 and writes nothing.
+ *                    A stardust/ that is the plugin itself (.claude-plugin/plugin.json or skills/stardust/SKILL.md)
+ *                    is never a project: the plugin dir is named `stardust`, so the bare dir-name walk once
+ *                    picked `plugins/` as root and seeded plugins/stardust/{package.json,node_modules}. With no
+ *                    --root and no project found, a cwd inside a plugin tree exits 2 (one line, nothing written)
  *     --no-install   check only — never spawn npm or the browser download and write nothing
  *                    tracked (no stardust/package.json); only .work/ is written (read-only sessions)
  *     --offline      accept a pre-populated stardust/node_modules; no network (implies --no-install)
@@ -41,7 +46,8 @@
  * a dependency, chromium, or lint in a repo that declares it — one actionable
  * line per item, also kept as env.json `missing` (never a verdict: a missing
  * browser is exit 2 in the instruments, the same no-verdict class as exit 124)
- * · 2 usage / I/O error, including a --root (or cwd) with no stardust/ dir.
+ * · 2 usage / I/O error, including a --root (or cwd) with no stardust/ dir, a stardust/ that is the plugin,
+ * or a cwd inside the plugin tree with no project above it.
  * Zero requests to the source site: npm registry and the Playwright CDN only.
  */
 import { existsSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
@@ -70,10 +76,28 @@ if (flag('help')) {
 const unknown = args.filter((a) => a.startsWith('--') && !['--root', '--no-install', '--offline', '--skip', '--json', '--help'].includes(a));
 if (unknown.length) { console.error(`preflight-runtime: unknown flag ${unknown.join(' ')} (--help)`); process.exit(2); }
 
+const isDir = (p) => { try { return statSync(p).isDirectory(); } catch { return false; } };
+/** `d` is a plugin checkout / install (the stardust plugin's own dir is named `stardust`). */
+export const isPluginDir = (d) => existsSync(join(d, '.claude-plugin', 'plugin.json')) || existsSync(join(d, 'skills', 'stardust', 'SKILL.md'));
+/** Nearest ancestor of `from` (inclusive) that is a plugin root (`.claude-plugin/plugin.json`), or null. */
+export function pluginTreeOf(from) {
+  for (let d = resolve(from); ; d = dirname(d)) {
+    if (existsSync(join(d, '.claude-plugin', 'plugin.json'))) return d;
+    if (dirname(d) === d) return null;
+  }
+}
+export const PROJECT_MARKERS = ['state.json', 'status.jsonl', 'journal.md', '.gitignore'];
+/** `sd` is a project's stardust/ dir: not a plugin, and holds a project marker or a package.json named stardust-deps. */
+export function isProjectStardustDir(sd) {
+  if (!isDir(sd) || isPluginDir(sd)) return false;
+  if (PROJECT_MARKERS.some((f) => existsSync(join(sd, f)))) return true;
+  try { return JSON.parse(readFileSync(join(sd, 'package.json'), 'utf8'))?.name === 'stardust-deps'; } catch { return false; }
+}
+/** Nearest ancestor of `from` (inclusive) whose stardust/ is a project dir; else `from` itself (the caller checks it). */
 export function findRoot(from) {
   let d = resolve(from);
   for (;;) {
-    if (existsSync(join(d, 'stardust')) && statSync(join(d, 'stardust')).isDirectory()) return d;
+    if (isProjectStardustDir(join(d, 'stardust'))) return d;
     const up = dirname(d);
     if (up === d) return resolve(from);
     d = up;
@@ -81,8 +105,16 @@ export function findRoot(from) {
 }
 const root = opt('root') ? resolve(opt('root')) : findRoot(process.cwd());
 const sd = join(root, 'stardust');
-if (!existsSync(sd) || !statSync(sd).isDirectory()) { // never seed a fake project under a typo'd --root
+if (!opt('root') && !isProjectStardustDir(sd) && pluginTreeOf(root)) { // fell back to cwd, and cwd is the plugin: never seed it
+  console.error(`preflight-runtime: ${root} is inside the plugin tree ${pluginTreeOf(root)} — the plugin is not a project; run from the project root or pass --root <project>; nothing written`);
+  process.exit(2);
+}
+if (!isDir(sd)) { // never seed a fake project under a typo'd --root
   console.error(`preflight-runtime: no stardust/ under ${root} — run from the project root or pass --root <project> (master § Setup step 5 creates it); nothing written`);
+  process.exit(2);
+}
+if (isPluginDir(sd)) { // `plugins/` as root: its stardust/ is the plugin, not a project
+  console.error(`preflight-runtime: ${sd} is the stardust plugin, not a project's stardust/ dir — run from the project root or pass --root <project>; nothing written`);
   process.exit(2);
 }
 const noInstall = flag('no-install') || flag('offline');

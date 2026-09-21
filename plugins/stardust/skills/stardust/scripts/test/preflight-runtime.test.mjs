@@ -12,11 +12,16 @@
  *   - eslint setup in <root>/package.json with no node_modules → lint "unavailable", the loud line, exit 1 and
  *     preflight "partial" (negative fixture: the same tree with eslint resolvable exits 0); the root
  *     package.json is byte-identical after the run; `transports` from preflight-transports survives the merge;
- *   - --skip records preflight "skipped"; --help exits 0; an unknown flag exits 2.
+ *   - --skip records preflight "skipped"; --help exits 0; an unknown flag exits 2;
+ *   - the plugin is not a project: with no --root, a cwd inside a plugin tree (.claude-plugin/plugin.json above it)
+ *     and a cwd whose stardust/ IS the plugin (the `plugins/` dir) exit 2 with one line and write nothing —
+ *     no package.json / node_modules / .work under the plugin (the 2026-09 footgun: the plugin dir is named
+ *     `stardust`); a real project (stardust/state.json) below a directory holding an unrelated `stardust/`,
+ *     reached from inside a vendored plugin tree, wins: env.json lands in the project, nothing elsewhere.
  */
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -155,6 +160,45 @@ try {
   assert.match(r.stdout, /Exit codes: 0/);
   r = run(a, '--bogus');
   assert.equal(r.status, 2, 'unknown flag exits 2');
+  // (g) the plugin is never a project: cwd inside a fake plugin tree, no --root → exit 2, one line, nothing written
+  const g = join(dir, 'g');
+  const plug = join(g, 'plugins', 'stardust');
+  mkdirSync(join(plug, '.claude-plugin'), { recursive: true }); writeFileSync(join(plug, '.claude-plugin', 'plugin.json'), '{"name":"stardust"}');
+  mkdirSync(join(plug, 'skills', 'stardust', 'scripts'), { recursive: true }); writeFileSync(join(plug, 'skills', 'stardust', 'SKILL.md'), '# stardust\n');
+  const listAll = (d) => { const out = []; (function walk(x) { for (const e of readdirSync(x).sort()) { const q = join(x, e); out.push(q.slice(g.length + 1)); if (statSync(q).isDirectory()) walk(q); } })(d); return out; };
+  const before = listAll(g);
+  for (const cwd of [join(plug, 'skills', 'stardust', 'scripts'), plug]) {
+    for (const extra of [['--no-install'], [], ['--skip']]) {
+      r = spawnSync(process.execPath, [CLI, ...extra], { encoding: 'utf8', cwd });
+      assert.equal(r.status, 2, `cwd ${cwd} ${extra.join(' ')} exits 2\n${r.stdout}${r.stderr}`);
+      assert.match(r.stderr, /is inside the plugin tree .* the plugin is not a project; .* nothing written/);
+      assert.equal(r.stderr.trim().split('\n').length, 1, 'one line'); assert.equal(r.stdout, '', 'nothing on stdout');
+    }
+  }
+  // cwd = plugins/: its stardust/ is the plugin — the case that once seeded plugins/stardust/{package.json,node_modules}
+  r = spawnSync(process.execPath, [CLI], { encoding: 'utf8', cwd: join(g, 'plugins') });
+  assert.equal(r.status, 2, `cwd plugins/ exits 2\n${r.stdout}${r.stderr}`); assert.match(r.stderr, /is the stardust plugin, not a project's stardust\/ dir .* nothing written/);
+  r = run(join(g, 'plugins'), '--no-install');
+  assert.equal(r.status, 2, '--root plugins/ is refused too'); assert.match(r.stderr, /is the stardust plugin/);
+  assert.deepEqual(listAll(g), before, 'nothing written anywhere under the plugin tree');
+  for (const f of ['package.json', 'package-lock.json', 'node_modules', '.work', 'stardust']) assert.ok(!existsSync(join(plug, f)), `no ${f} under the plugin`);
+  // (h) a real project below a directory that happens to hold an unrelated stardust/ wins — even from inside a plugin
+  //     tree vendored under the project (the plugin's own stardust/ is skipped as a candidate, the unrelated one lacks markers)
+  const h = join(dir, 'h');
+  mkdirSync(join(h, 'stardust'), { recursive: true }); writeFileSync(join(h, 'stardust', 'notes.txt'), 'unrelated\n');
+  const site = join(h, 'site');
+  mkdirSync(join(site, 'stardust'), { recursive: true }); writeFileSync(join(site, 'stardust', 'state.json'), '{}');
+  const vend = join(site, 'plugins', 'stardust');
+  mkdirSync(join(vend, '.claude-plugin'), { recursive: true }); writeFileSync(join(vend, '.claude-plugin', 'plugin.json'), '{"name":"stardust"}');
+  mkdirSync(join(vend, 'skills', 'stardust', 'scripts'), { recursive: true });
+  r = spawnSync(process.execPath, [CLI, '--no-install'], { encoding: 'utf8', cwd: join(vend, 'skills', 'stardust', 'scripts') });
+  assert.equal(r.status, 1, `real project found from inside the vendored plugin: empty project exits 1\n${r.stdout}${r.stderr}`);
+  env = json(join(site, 'stardust', '.work', 'env.json'));
+  assert.equal(realpathSync(env.projectRoot), realpathSync(site), 'the project with state.json is the root');
+  assert.deepEqual(readdirSync(join(h, 'stardust')), ['notes.txt'], 'the unrelated stardust/ above is untouched');
+  assert.ok(!existsSync(join(vend, '.work')) && !existsSync(join(vend, 'package.json')), 'nothing under the vendored plugin');
+  r = spawnSync(process.execPath, [CLI, '--no-install'], { encoding: 'utf8', cwd: join(site, 'stardust') });
+  assert.equal(r.status, 1); assert.equal(realpathSync(json(join(site, 'stardust', '.work', 'env.json')).projectRoot), realpathSync(site), 'from inside the project stardust/ too');
   // (p) pointer pin: the runtime preflight is master Setup step 10 (step 9 is the origin probe) — no skill
   //     file or script error string may send an agent to step 9 for preflight-runtime.mjs
   const SK = join(here, '..', '..', '..');

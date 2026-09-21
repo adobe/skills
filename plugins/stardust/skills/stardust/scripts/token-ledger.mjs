@@ -56,13 +56,22 @@ if (flag('help')) {
 const ACK = /^(c?co\s?n?tinue( now| the work)?|proceed|ok,? proceed|yes,? proceed|go|go on|go ahead|resume|keep going|ok go|yes|ok|okay|done|retry|(da )?token refreshed|next)[.!]?$/i;
 const SKIP = [/^<command/, /^<local-command/, /^<system-reminder/, /^<task-notification/, /This session is being continued/];
 
+const readJson = (p) => { try { return JSON.parse(readFileSync(p, 'utf8')); } catch { return null; } };
+// A stardust/ counts as a project dir only with a project marker (or a stardust-deps package.json) and never when it is
+// the plugin itself (its dir is named `stardust`): the bare dir-name walk once picked `plugins/` as root from inside the
+// plugin tree. Same rule as preflight-runtime.mjs findRoot.
+const isPluginDir = (d) => existsSync(join(d, '.claude-plugin', 'plugin.json')) || existsSync(join(d, 'skills', 'stardust', 'SKILL.md'));
+const pluginTreeOf = (from) => { for (let d = resolve(from); ; d = dirname(d)) { if (existsSync(join(d, '.claude-plugin', 'plugin.json'))) return d; if (dirname(d) === d) return null; } };
+const isProjectStardustDir = (sd) => existsSync(sd) && !isPluginDir(sd)
+  && (['state.json', 'status.jsonl', 'journal.md', '.gitignore'].some((f) => existsSync(join(sd, f))) || readJson(join(sd, 'package.json'))?.name === 'stardust-deps');
 function findRoot(from) {
   let d = resolve(from);
-  for (;;) { if (existsSync(join(d, 'stardust'))) return d; const up = dirname(d); if (up === d) return resolve(from); d = up; }
+  for (;;) { if (isProjectStardustDir(join(d, 'stardust'))) return d; const up = dirname(d); if (up === d) return resolve(from); d = up; }
 }
 const root = opt('root') ? resolve(opt('root')) : findRoot(process.cwd());
 const sd = join(root, 'stardust');
-const readJson = (p) => { try { return JSON.parse(readFileSync(p, 'utf8')); } catch { return null; } };
+if (!opt('root') && !isProjectStardustDir(sd) && pluginTreeOf(root)) { console.error(`token-ledger: ${root} is inside the plugin tree ${pluginTreeOf(root)} — the plugin is not a project; run from the project root or pass --root <project>; nothing written`); process.exit(2); }
+if (isPluginDir(sd)) { console.error(`token-ledger: ${sd} is the stardust plugin, not a project's stardust/ dir — pass --root <project>; nothing written`); process.exit(2); }
 const readJsonl = (p) => { try { return readFileSync(p, 'utf8').split('\n').filter(Boolean).map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean); } catch { return []; } };
 const unknown = (why) => { console.log(`usage: unknown (${why})`); process.exit(0); };
 

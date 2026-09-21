@@ -46,8 +46,10 @@ const tmp = realpathSync(mkdtempSync(join(tmpdir(), 'resolve-chain-'))); // real
 try {
   // 1. the stardust/package.json link, from the fixture root and from a sub-directory
   const from = pathToFileURL(join(tmp, 'plugin', 'skills', 'x', 'scripts', 'probe.mjs')).href;
+  const pwPath = resolveDepPath('playwright', { from, cwd: FIX, global: false });
+  assert.ok(pwPath.startsWith(join(FIX, 'stardust', 'node_modules')), `playwright must resolve to the fixture stub, not ${pwPath} — a node_modules above the fixture (e.g. plugins/stardust/node_modules) shadows it; remove it`);
   const pw = await resolveDep('playwright', { from, cwd: FIX, global: false });
-  assert.deepEqual(pw.chromium, { stub: true }, 'playwright stub resolves through stardust/package.json');
+  assert.equal(pw.chromium && pw.chromium.stub, true, 'playwright stub resolves through stardust/package.json');
   const sub = join(FIX, 'stardust', '.work', 'replica');
   assert.equal(resolveDepPath('pngjs', { from, cwd: sub, global: false }), join(FIX, 'stardust', 'node_modules', 'pngjs', 'index.js'), 'sub-directory cwd walks up to stardust/');
   const both = await resolveDeps(['pixelmatch', 'pngjs'], { from, cwd: FIX, global: false });

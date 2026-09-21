@@ -183,6 +183,13 @@ integrates; every runner also runs standalone with `node <path>`:
 
 - `harness-neutral.mjs` — no namespaced sibling-skill references or
   Claude-only tool names outside lines marked "Claude Code".
+- `plugin-tree.mjs` — the plugin root (`plugins/stardust/`) carries no
+  project or runtime residue: no `package.json`, `package-lock.json`,
+  `node_modules/`, `.work/` or `stardust/` project dir (the plugin's own dir is
+  named `stardust`, so a root walk run from inside it once took `plugins/` for
+  a project and seeded all of these; `evals/runner/node_modules` and
+  `evals/runner/results` are allowed). One line per finding; `--root <dir>`
+  lints another tree; exit 2 = not a plugin root.
 - `eval-hygiene.mjs` — every eval directory ships the § Format file set:
   `criteria.json` parses as `weighted_checklist` with unique names and
   `max_score` weights summing to exactly 100, `task.md` present,

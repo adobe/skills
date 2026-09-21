@@ -37,11 +37,14 @@ export const PREFLIGHT_HINT = 'run node skills/stardust/scripts/preflight-runtim
 const toPath = (from) => (from ? (from.startsWith('file:') ? fileURLToPath(from) : from) : null);
 const isDir = (p) => { try { return statSync(p).isDirectory(); } catch { return false; } };
 
-/** Nearest ancestor of `dir` (inclusive) that holds `stardust/package.json`, or null. */
+/** Nearest ancestor of `dir` (inclusive) that holds `stardust/package.json`, or null. A `stardust/` that is the plugin
+ *  itself (`.claude-plugin/plugin.json` — the plugin dir is named `stardust`) is skipped: it must never carry a
+ *  package.json, and if one leaks in it is not a project's dependency dir. */
 export function nearestStardustDir(dir) {
   let d = resolve(dir);
   for (;;) {
-    if (existsSync(join(d, 'stardust', 'package.json'))) return join(d, 'stardust');
+    const sd = join(d, 'stardust');
+    if (existsSync(join(sd, 'package.json')) && !existsSync(join(sd, '.claude-plugin', 'plugin.json'))) return sd;
     const up = dirname(d);
     if (up === d) return null;
     d = up;
