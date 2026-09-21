@@ -189,7 +189,7 @@ Pick the template that matches the user's intent. When unclear, default to `@ado
 | User wants | Template |
 | --- | --- |
 | SPA with actions + React UI | @adobe/generator-app-excshell |
-| Content Hub extension (asset details panel, card action, bulk action) | Content Hub Scaffolding — see section below |
+| Content Hub extension (asset details panel, card action, bulk action) | No generator — scaffold from sample app, see [`references/templates.md`](references/templates.md) |
 | AEM Content Fragment Console extension | @adobe/aem-cf-admin-ui-ext-tpl |
 | AEM React SPA (WKND-based) | @adobe/generator-app-aem-react |
 | Adobe API Mesh (GraphQL) | @adobe/generator-app-api-mesh |
@@ -198,22 +198,6 @@ Pick the template that matches the user's intent. When unclear, default to `@ado
 | Bare / from-scratch project (no pre-scaffolded actions or UI) | init.sh init-bare |
 
 For a headless/backend-only request, prefer `init-bare` when possible. If the user still needs a template that generates UI files, plan a post-init cleanup so the final project has no `web-src` frontend directory or web manifest wiring.
-
-## Content Hub Extension Scaffolding
-
-Content Hub (`aem/assets/contenthub/1` — asset details panels, card actions, bulk actions) has **no `aio app init` generator**, so scaffold it from the maintained sample app:
-
-```bash
-aio app init --repo adobe/aem-uix-examples/aem-assets-contenthub-sample
-```
-
-`--repo` fetches via the GitHub API (unauthenticated ≈ 60 req/hr shared per IP), so it usually fails with `too many requests`. On that error, **ask the user for a GitHub PAT** (a classic token with no scopes suffices for public read) and retry with `--github-pat <token>`. If you instead fall back to `git clone`/`cp` of the sample, you **must** then wire it — `aio console workspace download <file>.json` → `aio app use <file>.json` to populate `.aio`/`.env` — otherwise `aio app use` fails with "Incomplete .aio configuration." See the **"Content Hub extension"** entry in [`references/templates.md`](references/templates.md) for the full catalog entry and post-init customization (extension id, `allowedRepos`, pruning namespaces, testing in Content Hub). The Console/login/workspace/cert steps are the same as any template — see the **Bootstrap** section above. For deployment (Stage → Production), chain to the `appbuilder-cicd-pipeline` skill.
-
-**Before scaffolding, ask the user (`AskUserQuestion`):**
-1. **Target workspace** — list the project's existing workspaces (`aio console workspace list --projectId <projectId>` — the flag is `--projectId`, not `--projectName`) and let them choose, then `aio console workspace select <workspaceId>`. New App Builder projects already have **Stage** and **Production**, so *select* one (recommend Stage for dev) — **never run `aio console workspace create Stage`; it already exists** and will error. Never guess/increment a workspace id — always list them.
-2. **Allowed repos** — the delivery repo IDs the extension may register with (`delivery-pXXX-eYYY.adobeaemcloud.com`), or **Skip**. Skip leaves `allowedRepos = []` (any repo, fine for local dev; must be populated before Production). Write the chosen values into `ExtensionRegistration.js`.
-
-**When it triggers:** the user says "create/scaffold a Content Hub extension", or names a Content Hub surface ("asset details panel", "card action button", "bulk action"). Once the extension is scaffolded and running, chain to `appbuilder-ui-scaffolder` for UI customization (React Spectrum patterns for each namespace).
 
 ## Initialize via Script
 

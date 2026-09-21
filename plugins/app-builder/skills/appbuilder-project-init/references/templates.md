@@ -136,8 +136,6 @@ runtimeManifest:
 aio app init --repo adobe/aem-uix-examples/aem-assets-contenthub-sample
 ```
 
-The sample is the single source of truth for the correct unified three-namespace shape.
-
 > **`--repo` almost always needs a GitHub token.** `aio app init --repo` fetches the sample through the GitHub API, which is rate-limited to ~60 requests/hour for **unauthenticated** calls (shared per IP), so the command above usually fails with `Error: too many requests, please try again later`. When it does, **ask the user for a GitHub personal access token** (a classic token with **no scopes** is enough for public-repo read) and retry:
 > ```bash
 > aio app init --repo adobe/aem-uix-examples/aem-assets-contenthub-sample --github-pat <your-github-pat>
@@ -148,10 +146,14 @@ The sample is the single source of truth for the correct unified three-namespace
 > aio app use /tmp/console.json                       # populates .aio/.env (treat console.json as a secret — gitignore it)
 > ```
 
+**Before scaffolding, ask the user (`AskUserQuestion`):**
+1. **Target workspace** — list the project's existing workspaces (`aio console workspace list --projectId <projectId>` — the flag is `--projectId`, not `--projectName`) and let them choose, then `aio console workspace select <workspaceId>`. New App Builder projects already have **Stage** and **Production**, so *select* one (recommend Stage for dev) — **never run `aio console workspace create Stage`; it already exists** and will error. Never guess/increment a workspace id — always list them.
+2. **Allowed repos** — the delivery repo IDs the extension may register with (`delivery-pXXX-eYYY.adobeaemcloud.com`), or **Skip** (leaves `allowedRepos = []`, i.e. any repo). See post-init step 2 below for where this value goes and the Production requirement.
+
 ### Post-init customization
 
 1. **Set the extension id.** Change `extensionId` in `src/aem-assets-contenthub-1/web-src/src/components/Constants.js` — it must match between `register()` (ExtensionRegistration.js) and `attach()` (the panel/modal components).
-2. **Populate `allowedRepos`.** In `ExtensionRegistration.js`, keep `allowedRepos = []` for local dev (any repo), and add delivery repo IDs (`delivery-pXXX-eYYY.adobeaemcloud.com`) before deploying to Production. Change the **array** — do not disable the check by making `shouldSkipRegistration` return `false`.
+2. **Populate `allowedRepos`.** In `ExtensionRegistration.js`, write the value collected in the pre-scaffold question above (empty array for local dev, or the delivery repo IDs) — must be non-empty before deploying to Production. Change the **array** — do not disable the check by making `shouldSkipRegistration` return `false`.
 3. **Keep only the namespaces you need.** The sample registers all three. To drop one, remove its block in `ExtensionRegistration.js`, its `<Route>` in `App.js`, and its component file. See the namespace contracts in the `appbuilder-ui-scaffolder` skill (`references/aem-extensions.md`).
 4. **Customize the UI** — all files under `src/aem-assets-contenthub-1/web-src/src/components/`:
    - `ExtensionRegistration.js` — which panels/buttons appear, and their title / icon / label
@@ -167,6 +169,7 @@ The sample is the single source of truth for the correct unified three-namespace
    ```
    All four are required: `ext=https://localhost:9080`, `devMode=true`, `repo=<delivery-repo>` (points Content Hub at the delivery instance — needed even with `allowedRepos = []`), and the `#/assets/contenthub/` hash. Do **not** use the `…/custom-apps/?localDevUrl=…` URL `aio app run` prints, and do **not** invent a `<host>/content-hub.html?ext=…` URL — neither loads the extension.
 6. **If the panel doesn't appear:** confirm the URL has all four params above and the cert was accepted. `card`/`selectionBar` also require the host's `EXTENSIBILITY_AEM_CONTENTHUB` feature flag (asset-details panels do not).
+7. **Publish org-wide.** Deploy to Stage/Production via the `appbuilder-cicd-pipeline` skill, then submit for approval in Adobe Developer Console → Production workspace → **Submit for approval**. The org admin reviews and approves/rejects in **MyExchange** (`exchange.adobe.com` → Experience Cloud Apps → Pending Review).
 
 ## @adobe/generator-app-api-mesh
 
