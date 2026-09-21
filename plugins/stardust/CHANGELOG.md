@@ -4,6 +4,44 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## Unreleased — hands-off fan-out: ten card rules, a scope guard, a section cap, a scripts index
+
+- **replica/SKILL.md, replica/reference/handoff-contract.md § 3, rollout/SKILL.md § Waves and
+  § E2, deploy/SKILL.md § Lint and § Images**: ten one-line rules placed where the agent acts,
+  distilled from one recorded, fully successful hands-off run (delivery = a main agent plus
+  five subagents, 117 min). Never `sleep` before `run-bg.mjs wait`; propagation waits are
+  bounded `curl -sf` polls (20 sleeps, 27.7 min). Lint AND commit the foundation before any
+  subagent spawns, no token or property rename after fan-out (a rename under three running
+  agents cost seven coordination messages and re-reads). Lint rules named up front — lines
+  ≤ 100 chars, kebab-case custom properties — targeted fixes only, never `--fix` on a file
+  another agent edits (54 lint runs, 25 failing, 91 of 100 hits `max-len`, six block files
+  rewritten for line length, one `--fix` collided with a pending write). Authored scripts:
+  shebang, ESM `import` only, `.mjs` run with `node`, a `--help` that touches no file (one
+  script's `--help` ran main and rewrote `stardust/state.json`). E2 scope rule for targets
+  missing from the capture: deliver when ≤ 12 pages, else repoint to the source site;
+  other-locale and external targets repoint; never a 404 (10 uncaptured in-scope pages were
+  delivered — the right call — and 15 other-locale links repointed). `da-media-upload --scope`
+  is relative to `media/`. One-shot helpers under `/tmp`, never in the worktree (a helper
+  named for tokens tripped the checkpoint's secret-name rule at every boundary). One
+  `section.mjs` section per call and the scripts index before any `--help` (78 `--help`
+  calls; one five-section call returned 82 KB that sat in context for 160 turns). Disjoint
+  clusters spawn concurrently (a second wave idled 14 min behind an unrelated first). Every
+  subagent tool call under 4 minutes (calls of 5.2 and 6.6 min crossed the 5-minute prompt-
+  cache window and re-wrote the whole context).
+- **deploy/da-media-upload.mjs**: `--scope media/<name>` is a usage error (exit 2) naming the
+  rule and the corrected flag, before any request — a recorded run doubled the folder to
+  `media/media/<name>`, 242 wrong uploads and 242 deletes, about six minutes. Usage text and
+  header carry the rule. Contract test: deploy/scripts/test/da-media-upload.test.mjs.
+- **replica/section.mjs**: `--all` over more than one section caps the printed total at 20 KB
+  — the sections that fit print, one final `NOTE: N section(s) omitted (<title> <size> KB, …)
+  — request them one at a time` names the rest, exit 0; a single section is never cut.
+  Contract test: replica/scripts/test/inspect.test.mjs.
+- **stardust/reference/scripts-index.md** (new) + **evals/lint/scripts-index.mjs** (new): every
+  shipped script on one line — `<skill>/<script> — what — key flags` — read before any
+  `--help`; the lint keeps it complete (one line per `skills/*/scripts/*.{mjs,js,sh}`, every
+  line names an existing script, under 8 KB), wired into `lint:stardust` and the validate
+  workflow. The replica card's reading discipline and References name the index.
+
 ## 0.22.1 — replica instruments: the pixel-compare hang fixed, deadlines, live-side caches, a path lint
 
 - **rollout/inventory.mjs**: an archetype whose sidecar leaves `template` null (the migrate

@@ -205,6 +205,14 @@ should run the bundled, resumable driver rather than a serial loop:
 already-live pages, retry/backoff, append-only log, delivered-`.plain.html` check).
 After a transient blip, re-run the same command — it re-drives only the FAILs.
 Then reconcile the ledger into coverage with `update-coverage.mjs`.
+**Foundation first:** lint AND commit `styles.css`, header/footer CSS and the
+contract file BEFORE the first agent spawns; no token or custom-property rename
+after fan-out (a recorded rename under three running agents cost seven
+coordination messages). **Disjoint clusters spawn concurrently** — a wave waits
+only on a real dependency (a recorded second wave idled 14 min behind an
+unrelated first). **Every subagent tool call stays under 4 minutes** (the prompt
+cache holds 5; calls of 5.2 and 6.6 min re-wrote the whole context): split long
+gate chains, background them with `run-bg.mjs start` and `wait`.
 
 ### Phase D — Site assembly (whole-site artifacts)
 
@@ -288,6 +296,11 @@ link **targets** a roster-driven batch misses
 - **The audit GETs each href against the LIVE tree.** Structural resolution
   against the ledger misses trailing-slash and case defects that only
   delivery exposes.
+- **Targets missing from the capture.** In-scope internal targets never
+  captured: capture and deliver them when ≤ 12 pages, else repoint to the
+  source site and record it in the journal; other-locale and external targets:
+  repoint to the source site. Never leave a 404 (a recorded audit found 10
+  uncaptured in-scope pages — delivering them was the right call).
 
 ### Phase F — Optimize: multi-source audit + gate (delivery quality)
 

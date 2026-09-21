@@ -79,7 +79,9 @@ print the part that matters, capped, and say what they left out:
 
 - **Reference docs**: `node stardust/scripts/replica/section.mjs <doc> --list`
   for the outline, then `section.mjs <doc> '<heading>'` for the one section
-  the current step needs — never the whole file.
+  the current step needs — never the whole file. **One section per call**:
+  a recorded call for five sections returned 82 KB that stayed in context
+  for 160 turns (`--all` over several sections is capped at 20 KB now).
 - **Captured CSS**: `css-rules.mjs <sheet> '<selector regex>' [--media <re>]
   [--decl <re>]` — the rule blocks, each with its media condition, instead
   of line ranges of the sheet.
@@ -121,7 +123,9 @@ print the part that matters, capped, and say what they left out:
   full invocation shape per deploy and rollout script. Never `sed`/`head`/
   `grep` a script's source to learn its flags or what it writes (16 such
   reads in one recorded session, four greps over one crawler in another):
-  run it with `--help`.
+  run it with `--help`. **Index first:** `../stardust/reference/scripts-index.md`
+  has every shipped script on one line (what, key flags) — ask `--help` only for
+  a flag it does not name (a recorded run asked `--help` 78 times).
 
 Write anything you will need again to a file under `stardust/` (a lifted
 value table, a section map) and read the file back by query, not the
@@ -299,7 +303,9 @@ node stardust/scripts/replica/chrome-parity.mjs "$LIVE" "$PROTO" --width 1440 --
 # Rounds run in the BACKGROUND and are waited for in bounded slices (gate doc § Iteration discipline,
 # "a step never outlives the context cache"): start every round at once — the slots pace the Chromiums,
 # no `sleep N;` staggering — then `wait` prints verdict lines only. Exit 75 = still going: run `wait`
-# again as your NEXT step, never in a shell loop.
+# again as your NEXT step, never in a shell loop. NEVER `sleep` before `wait` (a recorded run spent
+# 27.7 min in 20 sleeps). A propagation wait is a bounded poll, inline, ≤ 5 s apart — never a fixed sleep:
+#   for i in $(seq 1 24); do curl -sf "$URL" -o /dev/null && break; sleep 5; done   # 2 min cap
 node stardust/scripts/replica/run-bg.mjs start --name <slug>-1440-iter2 -- stardust/scripts/replica/gate.sh <slug> "$LIVE" "$PROTO" 1440 iter2
 node stardust/scripts/replica/run-bg.mjs start --name <slug>-360-iter2  -- stardust/scripts/replica/gate.sh <slug> "$LIVE" "$PROTO" 360  iter2
 node stardust/scripts/replica/run-bg.mjs wait      # returns within 100 s; full output: run-bg.mjs log <job> --grep <re>
@@ -501,3 +507,5 @@ PRODUCT.md / DESIGN.md / DESIGN.json    ← promoted verbatim from current/ (Pha
 - `../migrate/reference/fidelity-tiers.md` — archetype/sibling model Phase 5
   hands off to.
 - `../deploy/SKILL.md` § decode tiers (#95) — template-slotted bias.
+- `../stardust/reference/scripts-index.md` — every shipped script on one line
+  (what it does, key flags); read it before any `--help`.
