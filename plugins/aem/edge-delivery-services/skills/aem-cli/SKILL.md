@@ -1,6 +1,6 @@
 ---
 name: aem-cli
-description: Reference for the Adobe AEM CLI (@adobe/aem-cli, formerly the helix-cli npm package; commands `aem up`, `aem import`, `aem content`) — installation, the local Edge Delivery dev server, .env / AEM_* configuration, HTTPS/TLS, proxy & certificate trust, content sync with da.live, and troubleshooting. Use when installing, running, or configuring the aem/hlx CLI, when `aem up` fails (port conflicts, cert errors, proxy 404s, pipeline vs. local-file confusion), or when migrating from the old helix-cli package. Do NOT use for da.live content-format rules or the DA Source API contract (use da-content); do NOT use for writing EDS block code (use content-driven-development).
+description: Use this when installing, running, or configuring the Adobe AEM CLI (@adobe/aem-cli, formerly the helix-cli npm package; commands `aem up`, `aem import`, `aem content`), when `aem up` fails (port conflicts, cert errors, proxy 404s, pipeline vs. local-file confusion), or when migrating from the old helix-cli package. Covers installation, the local Edge Delivery dev server, .env / AEM_* configuration, HTTPS/TLS, proxy and certificate trust, content sync with da.live, and troubleshooting. For da.live content-format rules or the DA Source API contract use da-content; for writing EDS block code use content-driven-development.
 license: Apache-2.0
 metadata:
   version: "1.0.0"

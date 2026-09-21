@@ -1,6 +1,6 @@
 ---
 name: content-driven-development
-description: Apply a Content Driven Development process to AEM Edge Delivery Services development. Use for ALL code changes - new blocks, block modifications, CSS styling, bug fixes, core functionality (scripts.js, styles, etc.), or any JavaScript/CSS work that needs validation.
+description: Use this when making any AEM Edge Delivery Services (EDS, Franklin, Helix) code change — new blocks, block modifications, CSS styling, bug fixes, core functionality (scripts.js, styles, delayed.js), or any JavaScript/CSS work that needs validation. Covers the Content Driven Development process — identifying or creating real test content before writing code, designing an author-friendly content model, and validating against that content throughout development. Do not use for documentation-only changes or configuration changes that do not affect authoring.
 license: Apache-2.0
 metadata:
   version: "2.0.1"
