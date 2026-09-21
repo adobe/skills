@@ -32,7 +32,7 @@ Set up CI/CD pipelines for Adobe App Builder projects — GitHub Actions (primar
 | Azure DevOps / GitLab CI / Jenkins | references/generic-pipeline-guide.md |
 | Secrets setup guide | references/secrets-management.md |
 | Debugging deploy failures | references/debugging.md |
-| Content Hub extension deploy | § Content Hub Extension Deployment (below) |
+| Deploy a UI extension (incl. Content Hub) | § Deploy & Approval (UI Extensions) below |
 
 ## Fast Path (for clear requests)
 
@@ -67,35 +67,18 @@ If user specifies Azure DevOps, GitLab CI, or Jenkins → use `references/generi
 7. **Troubleshoot:** If deploy fails, consult `references/debugging.md` for common scenarios
 8. **Test:** Push to a branch and verify workflow runs successfully
 
-## Content Hub Extension Deployment
+## Deploy & Approval (UI Extensions)
 
-Content Hub extensions (`aem/assets/contenthub/1`) deploy with the **same `aio app deploy` pipeline** as any App Builder extension — the GitHub Actions / secrets guidance above applies unchanged. Only these steps are Content Hub-specific.
+The manual promotion path for any UIX extension — **same for all surfaces** (Content Hub, aem-assets-view, cf-console-admin); see the official [UIX development flow](https://developer.adobe.com/uix/docs/guides/development-flow/):
 
-**Prerequisites:** `aio app run` works locally; `allowedRepos` in `ExtensionRegistration.js` is populated with delivery repo IDs before Production; `aio where` shows the right org/project.
+1. **Local preview** — `aio app run`, then test in the host. Content Hub: `https://experience.adobe.com/?devMode=true&ext=https://localhost:9080#/assets/contenthub/`.
+2. **Deploy to Stage** — `aio app deploy` (Stage is the default workspace after init).
+3. **Switch to Production** — `aio app use -w Production`; when prompted, **Merge** `.env`, **Overwrite** `.aio`.
+4. **Deploy to Production** — `aio app deploy`.
+5. **Submit for approval** — in Adobe Developer Console → Production workspace → **Submit for approval** → fill the App Submission Details form (status → *In Review*).
+6. **Admin approves** — the org admin reviews in **MyExchange** (`exchange.adobe.com` → Experience Cloud Apps → Pending Review) and approves/rejects — **not** in Extension Manager. Once approved, the extension is available to that org (for `aem/assets/contenthub/1`, in that org's Content Hub). Re-deploying to Production after publish requires revoking the approval and submitting a new request.
 
-**Switch workspace, then deploy** (clean subshell so credentials actually download):
-
-```bash
-bash -c 'unset CI AIO_CLI_NO_TTY TERM; aio app use -w Stage --overwrite --no-input'   # or -w Production
-aio app deploy 2>&1 | tee /tmp/aio-deploy.log
-```
-
-Partial failure is still usable: if web assets deployed but actions failed, the UI still loads — open the CDN URL and note actions are unavailable rather than treating it as blocking.
-
-**Open the deployed extension** (parse the CDN base from the log, keep the Content Hub deep-link hash):
-
-```bash
-CDN_URL=$(grep -Eo 'https://[^ ]+adobeio-static\.net[^ ]*' /tmp/aio-deploy.log | grep 'index\.html' | tail -1)
-open "https://experience.adobe.com/?devMode=true&ext=${CDN_URL}#/assets/contenthub/"
-```
-
-**Extension Manager approval (Production only):** open `https://experience.adobe.com/aem/extension-manager`, find the extension by name, click **Approve** — it then shows for all entitled users with no `ext=` parameter.
-
-**Content Hub-specific troubleshooting:**
-- *Visible with `ext=` but not after approval* → approved in the wrong workspace (`ext=` bypasses workspace checks); confirm with `aio where`, switch, redeploy, re-approve.
-- *Invisible to some users* → the project has extra Adobe services (e.g. Cloud Manager) not all users are entitled to; remove non-required services in Developer Console, keep only Runtime, then redeploy and reapprove.
-
-**Before Production:** `allowedRepos` populated, tested on the CDN URL (not localhost), and verified without the `ext=` parameter after approval.
+Content Hub specifics: preview via the `#/assets/contenthub/` deep link (above), and populate `allowedRepos` before Production.
 
 ## Inputs To Request
 

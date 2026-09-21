@@ -133,15 +133,25 @@ runtimeManifest:
 **No generator template exists for this extension point** — scaffold from the maintained sample app instead of `aio app init --template`:
 
 ```bash
-aio app init --repo adobe/aem-uix-examples/aem-assets-contenthub-sample --github-pat <your-github-pat>
+aio app init --repo adobe/aem-uix-examples/aem-assets-contenthub-sample
 ```
 
 The sample is the single source of truth for the correct unified three-namespace shape.
 
+> **`--repo` almost always needs a GitHub token.** `aio app init --repo` fetches the sample through the GitHub API, which is rate-limited to ~60 requests/hour for **unauthenticated** calls (shared per IP), so the command above usually fails with `Error: too many requests, please try again later`. When it does, **ask the user for a GitHub personal access token** (a classic token with **no scopes** is enough for public-repo read) and retry:
+> ```bash
+> aio app init --repo adobe/aem-uix-examples/aem-assets-contenthub-sample --github-pat <your-github-pat>
+> ```
+> Prefer the token + `aio app init` path. If a token isn't available and you fall back to fetching the sample another way (e.g., `git clone` the folder + copy into place), you **must** replicate the wiring `aio app init` does — a raw copy leaves an unwired project and the next `aio app use` fails with *"Incomplete .aio configuration."* After selecting the org/project/workspace, download the workspace config and import it:
+> ```bash
+> aio console workspace download /tmp/console.json   # config for the selected workspace
+> aio app use /tmp/console.json                       # populates .aio/.env (treat console.json as a secret — gitignore it)
+> ```
+
 ### Post-init customization
 
 1. **Set the extension id.** Change `extensionId` in `src/aem-assets-contenthub-1/web-src/src/components/Constants.js` — it must match between `register()` (ExtensionRegistration.js) and `attach()` (the panel/modal components).
-2. **Populate `allowedRepos`.** In `ExtensionRegistration.js`, keep `allowedRepos = []` for local dev (any repo), and add delivery repo IDs (`delivery-pXXX-eYYY.adobeaemcloud.com`) before deploying to Production.
+2. **Populate `allowedRepos`.** In `ExtensionRegistration.js`, keep `allowedRepos = []` for local dev (any repo), and add delivery repo IDs (`delivery-pXXX-eYYY.adobeaemcloud.com`) before deploying to Production. Change the **array** — do not disable the check by making `shouldSkipRegistration` return `false`.
 3. **Keep only the namespaces you need.** The sample registers all three. To drop one, remove its block in `ExtensionRegistration.js`, its `<Route>` in `App.js`, and its component file. See the namespace contracts in the `appbuilder-ui-scaffolder` skill (`references/aem-extensions.md`).
 4. **Customize the UI** — all files under `src/aem-assets-contenthub-1/web-src/src/components/`:
    - `ExtensionRegistration.js` — which panels/buttons appear, and their title / icon / label
@@ -151,7 +161,11 @@ The sample is the single source of truth for the correct unified three-namespace
    - `actions/generic/index.js` — server-side logic / AEM API calls
 
    See the `appbuilder-ui-scaffolder` skill (`references/aem-extensions.md`) for React Spectrum patterns and the host-API contract per namespace.
-5. **Test in Content Hub.** Run `aio app run`, accept the localhost cert (open `https://localhost:9080` → Advanced → Proceed, or type `thisisunsafe` — the panel stays blank until it's accepted), then open `https://experience.adobe.com/?devMode=true&ext=https://localhost:9080#/assets/contenthub/` (add `&repo=<delivery-repo>` only if `allowedRepos` is populated; no `/index.html` for local).
+5. **Test in Content Hub.** Run `aio app run`, accept the localhost cert (open `https://localhost:9080` → Advanced → Proceed, or type `thisisunsafe` — the panel stays blank until it's accepted), then open exactly:
+   ```
+   https://experience.adobe.com/?devMode=true&ext=https://localhost:9080#/assets/contenthub/
+   ```
+   (add `&repo=<delivery-repo>` only if `allowedRepos` is populated; no `/index.html` for local). Use **this** URL — **not** the generic Experience Cloud shell URL `aio app run` prints (`…/custom-apps/?localDevUrl=…`); that one does not load Content Hub.
 6. **If the panel doesn't appear:** confirm `allowedRepos` is empty for local dev, the URL uses `#/assets/contenthub/` with `devMode=true`, and the cert was accepted. Note that the `card` and `selectionBar` surfaces require the host's `EXTENSIBILITY_AEM_CONTENTHUB` feature flag (asset-details panels do not).
 
 **Post-scaffold sanity check:** `app.config.yaml` includes `aem/assets/contenthub/1`; `extensionId` is identical in `Constants.js` and every component that calls `attach()`; if you pruned a namespace, its `ExtensionRegistration.js` block, `App.js` route, and component file are all gone (no dangling route); `npm install` succeeded and `aio app run` serves `localhost:9080`.
