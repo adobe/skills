@@ -1,5 +1,5 @@
 {
-  "context": "deploy — the published page reads the same to an agent as to a browser. Task and setup in task.md; each item is judged pass/fail and weighted by max_score.",
+  "context": "deploy \u2014 the published page reads the same to an agent as to a browser. Task and setup in task.md; each item is judged pass/fail and weighted by max_score.",
   "type": "weighted_checklist",
   "checklist": [
     {
@@ -10,12 +10,12 @@
     {
       "name": "document_first_listing",
       "max_score": 20,
-      "description": "The index-backed band is delivered with one authored row per listed item (card text) plus a label-list row; the block renders from rows and uses the index only for non-text fields and top-up (reference/ai-readability.md § 4 rule 3)."
+      "description": "The index-backed band is delivered with one authored row per listed item (card text) plus a label-list row; the block renders from rows and uses the index only for non-text fields and top-up (reference/ai-readability.md \u00a7 4 rule 3)."
     },
     {
       "name": "fragment_decision_explicit",
       "max_score": 15,
-      "description": "The fragment-linked band is either inlined with a `fragment | /fragments/x` section-metadata row or listed in the report as agent-invisible by design with its point cost — never left implicit."
+      "description": "The fragment-linked band is either inlined with a `fragment | /fragments/x` section-metadata row or listed in the report as agent-invisible by design with its point cost \u2014 never left implicit."
     },
     {
       "name": "no_generated_visible_text",
@@ -25,17 +25,17 @@
     {
       "name": "gate_run_and_reported",
       "max_score": 15,
-      "description": "ai-readability.mjs runs as part of the delivery contract; the report records strict score, code score and per-block served gap per page; code ≥ 98."
+      "description": "ai-readability.mjs runs as part of the delivery contract; the report records strict score, code score and per-block served gap per page; code \u2265 98."
     },
     {
       "name": "excluded_block_decided",
       "max_score": 10,
-      "description": "The vendor-mounted calculator band (class T) is either delivered with the widget's default-state copy authored as a block row that the block removes on render (code ≥ 98 with the mount rendered), or its `--exclude-blocks` exclusion is recorded in `stardust/ai-readability-allowlist.json` as `{ block, exclude: true, reason, fallback: authored | owner-accepted, decision }` citing the `dynamic-features.md` § Decision batch row; the report lists the excluded block with its word cost under strict. A bare `--exclude-blocks` run that removes the calculator's words with no such entry fails this item."
+      "description": "The vendor-mounted calculator band (class T) is either delivered with the widget's default-state copy authored as a block row that the block removes on render (code \u2265 98 with the mount rendered), or its `--exclude-blocks` exclusion is recorded in `stardust/ai-readability-allowlist.json` as `{ block, exclude: true, reason, fallback: authored | owner-accepted, decision }` citing the `dynamic-features.md` \u00a7 Decision batch row; the report lists the excluded block with its word cost under strict. A bare `--exclude-blocks` run that removes the calculator's words with no such entry fails this item."
     },
     {
       "name": "checker_facts_correct",
       "max_score": 10,
-      "description": "No time is spent on hidden text, aria-hidden/inert, or nav/footer inlining for the score; the transcript states the count-ratio formula and that landmarks are ignored by default; chrome inlining, if raised, is presented as a trade-off, not done silently."
+      "description": "The agent's decisions are consistent with the checker's facts: hidden/aria-hidden/inert text and nav/footer content are not inlined to inflate the score, and no statement contradicts the count-ratio formula (min(100, servedWords / renderedWords \u00d7 100)). Relying on the shipped ai-readability.mjs output for the numbers is correct; restating the formula in the agent's own words is not required."
     }
   ]
 }
