@@ -70,7 +70,7 @@ If user specifies Azure DevOps, GitLab CI, or Jenkins → use `references/generi
 
 The manual promotion path for any UIX extension — **same for all surfaces** (Content Hub, aem-assets-view, cf-console-admin); see the official [UIX development flow](https://developer.adobe.com/uix/docs/guides/development-flow/):
 
-1. **Local preview** — `aio app run`, then test in the host. Content Hub: `https://experience.adobe.com/?devMode=true&ext=https://localhost:9080#/assets/contenthub/`.
+1. **Local preview** — `aio app run`, then test in the host. Content Hub (replace `<delivery-repo>` with the user's delivery host): `https://experience.adobe.com/?devMode=true&ext=https://localhost:9080&repo=<delivery-repo>#/assets/contenthub/`. All four params required (`ext`, `devMode`, `repo`, `#/assets/contenthub/`); do **not** use the `…/custom-apps/?localDevUrl=…` URL `aio` prints.
 2. **Deploy to Stage** — `aio app deploy` (Stage is the default workspace after init).
 3. **Switch to Production** — `aio app use -w Production`; when prompted, **Merge** `.env`, **Overwrite** `.aio`.
 4. **Deploy to Production** — `aio app deploy`.

@@ -161,12 +161,12 @@ The sample is the single source of truth for the correct unified three-namespace
    - `actions/generic/index.js` — server-side logic / AEM API calls
 
    See the `appbuilder-ui-scaffolder` skill (`references/aem-extensions.md`) for React Spectrum patterns and the host-API contract per namespace.
-5. **Test in Content Hub.** Run `aio app run`, accept the localhost cert (open `https://localhost:9080` → Advanced → Proceed, or type `thisisunsafe` — the panel stays blank until it's accepted), then open exactly:
+5. **Test in Content Hub.** Run `aio app run` and accept the localhost cert (open `https://localhost:9080` → Advanced → Proceed, or type `thisisunsafe` — the panel stays blank until accepted). Then open **exactly** this URL, replacing `<delivery-repo>` with the user's Content Hub delivery host (ask them; e.g. `delivery-p12345-e67890.adobeaemcloud.com`):
    ```
-   https://experience.adobe.com/?devMode=true&ext=https://localhost:9080#/assets/contenthub/
+   https://experience.adobe.com/?devMode=true&ext=https://localhost:9080&repo=<delivery-repo>#/assets/contenthub/
    ```
-   (add `&repo=<delivery-repo>` only if `allowedRepos` is populated; no `/index.html` for local).
-6. **If the panel doesn't appear:** confirm `allowedRepos` is empty for local dev, the URL uses `#/assets/contenthub/` with `devMode=true`, and the cert was accepted.
+   All four are required: `ext=https://localhost:9080`, `devMode=true`, `repo=<delivery-repo>` (points Content Hub at the delivery instance — needed even with `allowedRepos = []`), and the `#/assets/contenthub/` hash. Do **not** use the `…/custom-apps/?localDevUrl=…` URL `aio app run` prints, and do **not** invent a `<host>/content-hub.html?ext=…` URL — neither loads the extension.
+6. **If the panel doesn't appear:** confirm the URL has all four params above and the cert was accepted. `card`/`selectionBar` also require the host's `EXTENSIBILITY_AEM_CONTENTHUB` feature flag (asset-details panels do not).
 
 ## @adobe/generator-app-api-mesh
 

@@ -627,9 +627,9 @@ The web action (`actions/generic/index.js`) makes the authenticated AEM Assets A
 aio app build && aio app run
 ```
 
-Test URL: `https://experience.adobe.com/?devMode=true&ext=https://localhost:9080#/assets/contenthub/`
+Test URL (replace `<delivery-repo>` with your Content Hub delivery host, e.g. `delivery-p12345-e67890.adobeaemcloud.com`): `https://experience.adobe.com/?devMode=true&ext=https://localhost:9080&repo=<delivery-repo>#/assets/contenthub/`. All four params are required (`ext`, `devMode`, `repo`, `#/assets/contenthub/`); `repo` points Content Hub at your delivery instance. Do not use the `…/custom-apps/?localDevUrl=…` URL `aio` prints.
 
-First run only: navigate to `https://localhost:9080` and accept the self-signed cert, or the panel stays blank. No `&repo=` needed when `allowedRepos = []`.
+First run only: navigate to `https://localhost:9080` and accept the self-signed cert, or the panel stays blank. No `&repo=` needed when `allowedRepos = []`.Guides AEM UI Extension development with @
 
 ---
 
