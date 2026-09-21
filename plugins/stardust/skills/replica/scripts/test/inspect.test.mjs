@@ -67,6 +67,27 @@ check('section: no match exits 2 and prints the outline to stderr; usage exits 1
   assert.equal(section(MD, /nope/), null);
 });
 
+// Multi-section cap (74-char lines): Alpha ≈ 14 KB, Beta ≈ 22 KB (alone above the cap), Gamma ≈ 0.8 KB.
+const BIG = (tag, n) => Array.from({ length: n }, (_, i) => `${tag} line ${String(i + 1).padStart(3, '0')} ${'x'.repeat(60)}`).join('\n');
+const MD2 = `# Big\n\n## Alpha\n\n${BIG('alpha', 190)}\n\n## Beta\n\n${BIG('beta', 300)}\n\n## Gamma\n\n${BIG('gamma', 10)}\n`;
+const md2 = join(dir, 'big.md'); writeFileSync(md2, MD2);
+check('section: --all over the 20 KB cap prints the sections that fit, then one final NOTE naming the omitted ones with sizes; exit 0', () => {
+  const r = run('section.mjs', md2, '^(alpha|beta|gamma)$', '--all');
+  assert.equal(r.code, 0, r.err);
+  assert.match(r.out, /^## Alpha$/m); assert.match(r.out, /alpha line 190/, 'the first section prints whole');
+  assert.doesNotMatch(r.out, /beta line 001/, 'Beta would push the total past 20 KB');
+  assert.match(r.out, /^## Gamma$/m); assert.match(r.out, /gamma line 010/, 'a later section that still fits is printed');
+  assert.ok(r.out.length <= 20 * 1024, `output stays within the cap (${r.out.length} chars)`);
+  const last = r.out.trimEnd().split('\n').pop();
+  assert.match(last, /^NOTE: 1 section\(s\) omitted \(Beta 22\.\d KB\) — request them one at a time$/, `last line: ${last}`);
+  const first = run('section.mjs', md2, '^(beta|gamma)$', '--all'); // the first match alone exceeds the cap
+  assert.equal(first.code, 0); assert.doesNotMatch(first.out, /beta line 001/); assert.match(first.out, /gamma line 010/);
+  assert.match(first.out.trimEnd().split('\n').pop(), /^NOTE: 1 section\(s\) omitted \(Beta 22\.\d KB\)/);
+});
+check('section: a single section is never truncated by the cap; --all under the cap prints no NOTE', () => {
+  const r = run('section.mjs', md2, 'beta'); assert.equal(r.code, 0, r.err); assert.match(r.out, /beta line 300/); assert.doesNotMatch(r.out, /NOTE:/);
+  const two = run('section.mjs', md2, '^(alpha|gamma)$', '--all'); assert.equal(two.code, 0); assert.match(two.out, /alpha line 190/); assert.match(two.out, /gamma line 010/); assert.doesNotMatch(two.out, /NOTE:/);
+});
 // ---- css-rules ----------------------------------------------------------------------------------
 check('css-rules: parser handles comments, strings, data URIs, nested conditionals and raw at-rules', () => {
   const rules = parseCss(CSS);

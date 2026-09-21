@@ -16,6 +16,9 @@
  *       [--level <n>]      only headings of this level (2 = "##")
  *       [--max-lines <n>]  cap the body (default 400; the rest is named by line range)
  *       [--all]            every matching section, not just the first
+ *                          more than one section → the printed total is capped at 20 KB: the
+ *                          sections that fit print, one final NOTE names the omitted ones with
+ *                          their sizes — request those one at a time. One section is never cut.
  *
  * The body runs to the next heading of the same or a higher level. Headings
  * inside fenced code blocks are ignored. Exit 0 = printed, 2 = no match
@@ -26,7 +29,8 @@
 import { readFileSync, realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-const HELP = 'Usage: node section.mjs <file.md> (--list | "<heading regex>") [--level <n>] [--max-lines <n>] [--all]';
+const HELP = 'Usage: node section.mjs <file.md> (--list | "<heading regex>") [--level <n>] [--max-lines <n>] [--all]  (--all: 20 KB cap over more than one section; a NOTE names the rest)';
+const MULTI_CAP = 20 * 1024; // printed characters when --all shows more than one section
 
 export function outline(text) {
   const lines = text.split('\n');
@@ -87,11 +91,16 @@ function cli(argv) {
   const found = section(text, re, { level, maxLines });
   if (!found) { console.error(`section: no heading matches /${pattern}/i in ${file} — outline:\n${formatOutline(heads, file)}`); return 2; }
   const show = all ? found : found.slice(0, 1);
-  for (const s of show) {
-    console.log(`${file} L${s.line}–L${s.end} (${s.length} lines)`);
-    console.log(s.text);
-    if (s.note) console.log(s.note);
-  }
+  // More than one section: cap the printed total. A recorded session asked for five sections in one
+  // call and carried 82 KB in its context for 160 turns. The sections that fit print in document
+  // order; the rest are named with their sizes in one final NOTE. One section is never cut here.
+  const blocks = show.map((s) => [`${file} L${s.line}–L${s.end} (${s.length} lines)`, s.text, s.note].filter(Boolean).join('\n'));
+  const omitted = []; let used = 0;
+  blocks.forEach((b, k) => {
+    if (blocks.length > 1 && used + b.length > MULTI_CAP) { omitted.push(`${show[k].title} ${(b.length / 1024).toFixed(1)} KB`); return; }
+    used += b.length + 1; console.log(b);
+  });
+  if (omitted.length) console.log(`NOTE: ${omitted.length} section(s) omitted (${omitted.join(', ')}) — request them one at a time`);
   if (!all && found.length > 1) console.log(`\nalso matches: ${found.slice(1).map((h) => `L${h.line} ${'#'.repeat(h.level)} ${h.title}`).join(' | ')}  (--all for every one)`);
   return 0;
 }
