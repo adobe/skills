@@ -43,6 +43,8 @@
  * Usage:
  *   DA_TOKEN=… node skills/deploy/scripts/da-media-upload.mjs --org <org> --repo <repo> --scope <scope> \
  *     (--dir <local dir> | --manifest <json>) [options]
+ *     --scope <name>       the folder under media/; relative — never media/<name> (the DA
+ *                          path would double to media/media/<name>; refused as a usage error)
  *     --dir <path>         upload every image under this directory; the path
  *                          relative to it becomes <file> (sub-folders kept)
  *     --manifest <json>    upload the entries listed in a JSON manifest (below)
@@ -79,6 +81,7 @@ import { fileURLToPath } from 'node:url';
 const HELP = `da-media-upload — rehost captured images to the DA media folder
 
 Usage: DA_TOKEN=… node da-media-upload.mjs --org <org> --repo <repo> --scope <scope> (--dir <dir> | --manifest <json>) [options]
+  --scope <name>        the folder under media/ (relative — never media/<name>: the path would double to media/media/<name>)
   --dir <path>          upload every image under the directory (relative path = <file>)
   --manifest <json>     upload the listed entries: [{file, source?, name?}], {file: source}, or {images:[{localPath, src}]}
   --concurrency <n>     parallel uploads (default 4)
@@ -135,6 +138,9 @@ export function parseArgs(argv, env = process.env) {
   }
   for (const k of ['org', 'repo', 'scope']) if (!o[k]) usage(`--${k} is required`);
   if (!/^[A-Za-z0-9][A-Za-z0-9_.-]*(\/[A-Za-z0-9][A-Za-z0-9_.-]*)*$/.test(o.scope)) usage('--scope must be a path segment (letters, digits, - _ .), optionally nested with /');
+  // --scope is the folder UNDER media/: the DA path is media/<scope>/<file>. A recorded run passed
+  // `--scope media/<name>` and uploaded 242 files to media/media/<name>, then deleted them all.
+  if (/^media\//.test(o.scope)) usage(`--scope is relative to media/ — pass the folder name under it (--scope ${o.scope.slice(6)}), never media/<name>: the upload path would double to media/${o.scope}/<file>`);
   if (!!o.dir === !!o.manifest) usage('give exactly one of --dir or --manifest');
   o.token = env.DA_TOKEN;
   if (!o.dryRun && !o.token) usage('DA_TOKEN is not set in the environment (the token is read from there only)');

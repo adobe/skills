@@ -284,6 +284,14 @@ await check('the first upload runs alone: no other PUT arrives while it is in fl
 });
 
 // ---- dry run, usage ----------------------------------------------------------------------------------
+await check('--scope is relative to media/: a scope that starts with media/ is a usage error (the folder would double to media/media/<name>), nothing is sent', async () => {
+  const before = requests.length;
+  const r = await run(['--scope', 'media/hero', '--dir', 'assets']);
+  assert.equal(r.code, 2, r.out + r.err);
+  assert.match(r.err, /--scope is relative to media\//); assert.match(r.err, /media\/media\//);
+  assert.equal(requests.length, before, 'no request left the process');
+  allOutput.push(r.out, r.err);
+});
 await check('--dry-run needs no token, sends nothing, writes nothing', async () => {
   const before = requests.length; const ledgerBefore = readFileSync(LEDGER, 'utf8'); const mtime = statSync(LEDGER).mtimeMs;
   const r = await run(['--scope', 'other', '--dir', 'assets', '--dry-run'], { token: null });
