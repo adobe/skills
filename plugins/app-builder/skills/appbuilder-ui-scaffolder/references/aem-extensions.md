@@ -450,7 +450,7 @@ guestConnection = await register({
 });
 ```
 
-Opt into any combination — only implement the namespaces you use, and scaffold one component per namespace (`PanelAssetDetailsExtensionTab.js` for `assetDetails`, `CardActionModal.js` for `card`, `SelectionBarModal.js` for `selectionBar`). `card` and `selectionBar` are gated by the `EXTENSIBILITY_AEM_CONTENTHUB` feature flag; when it is off the host renders no buttons for those surfaces, but `assetDetails` panels still render.
+Opt into any combination — only implement the namespaces you use, and scaffold one component per namespace (`PanelAssetDetailsExtensionTab.js` for `assetDetails`, `CardActionModal.js` for `card`, `SelectionBarModal.js` for `selectionBar`).
 
 `app.config.yaml` includes the unified extension point once:
 
@@ -627,7 +627,7 @@ The web action (`actions/generic/index.js`) makes the authenticated AEM Assets A
 aio app build && aio app run
 ```
 
-Test URL (replace `<delivery-repo>` with your Content Hub delivery host, e.g. `delivery-p12345-e67890.adobeaemcloud.com`): `https://experience.adobe.com/?devMode=true&ext=https://localhost:9080&repo=<delivery-repo>#/assets/contenthub/`. All four params are required (`ext`, `devMode`, `repo`, `#/assets/contenthub/`); `repo` points Content Hub at your delivery instance. Do not use the `…/custom-apps/?localDevUrl=…` URL `aio` prints.
+Test URL (replace `<delivery-repo>` with your Content Hub delivery host, e.g. `delivery-p12345-e67890.adobeaemcloud.com`): `https://experience.adobe.com/?devMode=true&ext=https://localhost:9080&repoId=<delivery-repo>#/assets/contenthub/`. All four params are required (`ext`, `devMode`, `repoId`, `#/assets/contenthub/`); `repoId` points Content Hub at your delivery instance. Do not use the `…/custom-apps/?localDevUrl=…` URL `aio` prints.
 
 First run only: navigate to `https://localhost:9080` and accept the self-signed cert, or the panel stays blank. No `&repo=` needed when `allowedRepos = []`.Guides AEM UI Extension development with @
 

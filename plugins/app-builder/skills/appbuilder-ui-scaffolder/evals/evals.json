@@ -171,25 +171,25 @@
       "assertions": [
         {
           "type": "file_matches_glob",
-          "glob": "web-src/src/**/*.{js,jsx}",
+          "glob": "src/aem-assets-contenthub-1/web-src/src/**/*.{js,jsx}",
           "content_pattern": "@adobe/uix-guest",
           "description": "Uses @adobe/uix-guest for the Content Hub extension."
         },
         {
           "type": "file_matches_glob",
-          "glob": "web-src/src/**/*.{js,jsx}",
+          "glob": "src/aem-assets-contenthub-1/web-src/src/**/*.{js,jsx}",
           "content_pattern": "getActionButtons\\(actionContext\\)",
           "description": "card.getActionButtons receives actionContext (context: 'assets' | 'collections')."
         },
         {
           "type": "file_not_contains",
-          "path": "web-src/src/components/ExtensionRegistration.js",
+          "path": "src/aem-assets-contenthub-1/web-src/src/components/ExtensionRegistration.js",
           "pattern": "onActionClick(resourceType, buttonId, resourceId, actionContext)",
           "description": "card.onActionClick takes exactly 3 args, no trailing actionContext."
         },
         {
           "type": "file_matches_glob",
-          "glob": "web-src/src/**/*.{js,jsx}",
+          "glob": "src/aem-assets-contenthub-1/web-src/src/**/*.{js,jsx}",
           "content_pattern": "openDialog",
           "description": "Opens the modal via host.modal.openDialog(), not showUrl()."
         }
