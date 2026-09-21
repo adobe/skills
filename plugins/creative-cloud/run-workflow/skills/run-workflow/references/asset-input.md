@@ -3,37 +3,75 @@
 Load this when uploading files, resolving inline-paste images, hitting a macOS permission error, or
 saving outputs locally.
 
-The run-workflow MCP server is a **local process** on the user's machine. **It can only upload from a
-real local file path or a URL** — it can never read an image that exists only as an inline paste/drag
-in the chat. Never try to read, base64-encode, or open files yourself; delegate to `upload_asset`.
-When you don't have a path or URL, ask the user for one.
+## Uploading assets — 3-rule decision (apply in order, stop at first match)
 
-## Where am I running?
-- **Cursor** — real file paths and local references are available → use `upload_asset` with
-  `filePaths`. Inline images and paths work as they do today; do not add prompts or change behavior.
-- **Claude Code** — a path exists only when the user typed or `@`-mentioned it. A pasted screenshot
-  is vision-only with no path → ask the user for a local file path or a URL.
-- **Claude Desktop** — pasted/attached images have no local path the server can read → ask the user
-  for a local file path or a URL.
+**Rule 1 — Have a local file path?**
+→ Call `upload_asset(filePaths: [path])` immediately. Do not diagnose your environment first.
+→ If it throws a hosted-mode error (`"filePath" not supported` / `not available in hosted mode`):
+  switch to the **Hosted upload flow** below. Do not retry with a different path.
 
-## Routing
+**Rule 2 — Have a URL (public, presigned, or SAS)?**
+→ Call `upload_asset(urls: [url])`. No further evaluation needed.
 
-| Source | Call |
-|---|---|
-| Public URL | `upload_asset` with `urls` (server re-uploads to ADLS) |
-| Presigned / SAS URL | `upload_asset` with `urls` (passed through unchanged) |
-| Real local file path or folder | `upload_asset` with `filePaths` (folders expand to their image/video contents) |
-| Inline paste with no path (Claude Code/Desktop) | Ask the user for a local path or URL — do **not** guess a path |
-| A base64 string you already hold | `upload_asset` with `base64Items` |
+**Rule 3 — User attached a file in chat with no path available?**
+→ Use the **Hosted upload flow** below (`create_upload_url` → POST → use response `url`).
 
-Never transcribe a pasted image into base64. Never use claude.ai sandbox paths (`/mnt/user-data/…`,
-`/home/claude/…`, `/tmp/claude…`) — they do not exist for the local MCP server.
+**Never use base64 for file assets** — base64 is only for small text/JSON payloads already in memory.
+Never use claude.ai sandbox paths (`/mnt/user-data/…`, `/home/claude/…`, `/tmp/claude…`) as
+`filePaths` — the MCP server can never read them.
 
-## Inline-image flow (Claude Code / Desktop)
-When the user provided an image inline (pasted/dragged, no path) and run-workflow needs it:
-1. Prompt: *"Please share the local file path for that image (e.g.
-   `/Users/<name>/Downloads/photo.jpg`), or a URL."*
-2. Call `upload_asset` with `filePaths: ["<the path>"]`.
+If you have none of the above (no path, no URL, no attached file): ask the user before calling anything.
+
+## Hosted upload flow (hosted mode only)
+
+Use this whenever `upload_asset` with `filePath`/`filePaths` throws the hosted-mode error, or the user
+is on a hosted MCP connection and has (or has been asked to) attach real asset files in chat. Files
+attached in chat land inside the client's own code-execution/analysis sandbox (e.g. Claude Desktop's,
+typically under `/mnt/user-data/uploads/…`) — that environment can reach them, the MCP server cannot.
+
+1. Call `create_upload_url` once per file (or one batched call with `files: [{fileName, mediaType}, …]`
+   for a folder's worth of assets). Each result carries `uploadUrl`, `uploadToken`, `fileName` plus a
+   self-describing POST spec (`method`, `fieldName`, `tokenHeader`, `mediaType`, `expectedResponse`, and
+   a ready-to-run `example`) so you can build the upload from the tool result alone. `uploadUrl` is on
+   this **same run-workflow domain** (`/mcp/upload`) — never an Azure Storage domain — so nothing here
+   requires the client's sandbox to reach any host beyond the one it already uses for the MCP
+   connection itself.
+2. For each file, use the code-execution/analysis tool (NOT an MCP tool call) to POST the attached
+   file's bytes as `multipart/form-data` straight to its `uploadUrl`, sending the `uploadToken` in the
+   `x-upload-token` header (never in the URL) — bytes never enter the model's context or any MCP
+   tool-call payload:
+   ```
+   curl -X POST -H "x-upload-token: <uploadToken>" -F "file=@<path-to-attached-file>;type=<mediaType>" "<uploadUrl>"
+   ```
+3. The POST response is itself `{ url, blobPath, storageType }`. Use **that response's `url`** (not the
+   `uploadUrl` you POSTed to) directly as the workflow input — pass it as the input's `content[].url`.
+   A follow-up `upload_asset` with `url`/`urls` set to it is **optional**: it recognizes the already-
+   valid presigned URL and passes it through unchanged, so it adds a round-trip without moving bytes.
+   Use it only if you specifically want the normalized asset-reference shape back.
+
+## Folder paths — check access, then curate
+
+When the user gives a **folder** path (not a single file), don't hand the raw folder to `upload_asset`
+blindly. Instead:
+
+1. **Check access.** Try to list the folder's contents yourself (e.g. `ls`/`Glob` on the path). If that
+   fails with a permission error, tell the user you don't have access and ask them to grant it — either
+   by moving the folder to an accessible location or by granting access when prompted. (This is a
+   separate permission boundary from the run-workflow MCP server's own access — if `upload_asset` later
+   also fails with EPERM on the same path, follow the reactive `request_folder_access` flow below;
+   don't conflate the two.)
+2. **Pull everything.** Once listable, enumerate every file in the folder — not just images. Include
+   documents, CSVs, fonts, templates, etc. so nothing relevant is missed.
+3. **Analyze relevance.** Match each file against what the current task actually needs (e.g. for a
+   banners-at-scale run: product images, a template, fonts, a merge CSV, brand guidelines — see
+   [`intake.md`](intake.md) Step 4 for the checklist shape). Note files that are clearly unrelated (a
+   random invoice, `.DS_Store`, an unrelated screenshot) and leave them out.
+4. **Confirm before uploading.** Tell the user which files you found and which ones you plan to use; if
+   it's ambiguous whether a file is relevant, ask rather than guessing. Then call `upload_asset` with an
+   explicit `filePaths` list containing only the relevant files — not the bare folder path.
+
+`upload_asset`'s own folder-expansion behavior (extension-whitelist only, no curation) is a fallback for
+already-confirmed asset folders, not the default path for a folder the user just handed over.
 
 ## On a permission error — MANDATORY, no exceptions
 
@@ -59,38 +97,40 @@ do NOT suggest alternative paths. `request_folder_access` is the ONLY correct re
 Do not retry the same path in a loop or invent alternate paths (never `/mnt/user-data/…`).
 
 ## Workflow outputs
-Downloaded outputs are organized per run under
-`{outputDir}/sessions/{sessionId}/{workflowId}/outputs/`, so re-runs and multiple workflows never
-overwrite each other. If the user granted a folder via `request_folder_access`, outputs go under
-`<grantedFolder>/run-workflow-outputs/sessions/{sessionId}/{workflowId}/` instead.
 
-**After a workflow completes (downloading outputs):**
-→ Call `download_output` with `saveTo` set to an `outputs/` subfolder next to the user's input files.
-   Example: if the user's images came from `/Users/alice/photos/`, use
-   `saveTo: "/Users/alice/photos/outputs/"`.
-   In Claude Desktop, output files are written directly to disk and are NOT shown inline in chat
-   (1MB response cap).
-→ Always tell the user the exact folder path where their files were saved.
+The server organizes outputs internally under
+`{outputDir}/sessions/{sessionId}/{workflowId}/outputs/` so re-runs never overwrite each other. If
+the user granted a folder via `request_folder_access`, that path becomes the root instead.
+
+**When downloading outputs** (only after the user confirms in the 3-step sequence in
+[`SKILL.md`](../SKILL.md) — do not download automatically):
+→ Pass `saveTo` set to an `outputs/` subfolder next to the user's input files. Example: if images
+  came from `/Users/alice/photos/`, use `saveTo: "/Users/alice/photos/outputs/"`.
+→ Always tell the user the exact folder path where files were saved. In Claude Desktop, files are
+  written to disk and not shown inline (1MB cap).
+
+`saveTo` is the user-facing destination you pass to `download_output`; the server's internal
+session path above is separate — they compose, not compete.
 
 ## Retrieving outputs after completion
 
-After `run_workflow_get_status(instanceId, includeOutputs: true)` returns, extract output URLs using
-the **first matching path** below. Do NOT call `inspect_run` for successful runs.
+After `run_workflow_get_status` returns `completed`, read the **`OUTPUT URLS:` text block** that
+leads the response — it lists every output as one compact `- <name> — <url>` line. Copy the `url`
+values from those lines verbatim. This block is the intended source for presenting outputs.
 
-**Path A — `outputUrls[]` present (preferred).** Each entry has `url`, `name`, `nodeId`, `mimeType`.
-Use these directly.
+**Do not parse the JSON `outputUrls[]` array to get URLs.** The response also ends with a large
+`JSON.stringify(statusResult)` blob (batch metadata + `outputUrls[]`); it exists for programmatic /
+diagnostic use only. On a big batch that blob is what balloons the response — reading it to fish out
+URLs is the slow path.
 
-**Path B — `downloadedOutputs[]` present.** Each entry also has `localPath`. Present `url`. Then
-check displayability:
-- Filter entries where `mimeType` is `image/jpeg`, `image/png`, `image/gif`, or `image/webp` (PDFs
-  and videos are not displayable inline)
-- If ≤ 5 displayable entries have a `localPath`, call `display_asset` with those paths to show them
-  inline in chat
-- If > 5 displayable entries, skip `display_asset` — listing URLs is sufficient (too many images
-  would exceed the response cap)
+**Large / overflowed responses (50+ outputs).** On a large batch the completed response can exceed
+the client response budget and get truncated or written to a temp file. When that happens: make two
+targeted greps — first grep for `VIEW YOUR ASSETS:` (show any folder-link lines found), then grep
+for `OUTPUT URLS:` (take the contiguous `- … — …` lines that follow). Do **not**:
+- do multiple exploratory reads through the JSON blob to reconstruct the URL list, or
+- re-call `run_workflow_get_status` to "get the rest" — there is no pagination; the completed
+  response already contains every URL, all in that one `OUTPUT URLS:` block.
 
-**Path C — last resort.** Call `inspect_run` with the execution ID.
-
-**Inline-capable clients (Cursor etc.):** the server already embeds inline images automatically — do
-NOT call `display_asset`; still print the URLs in text (inline images are additive). In Claude
-Desktop, never re-inline via `display_asset` (exceeds the response cap) — text URLs only.
+Only check `downloadedOutputs[]` if the `OUTPUT URLS:` block is absent or empty. Only call
+`inspect_run` as a last resort if both are absent. Do not call `display_asset` here — follow the
+Presenting outputs sequence in [`SKILL.md`](../SKILL.md).
