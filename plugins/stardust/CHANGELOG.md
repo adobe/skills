@@ -4,6 +4,127 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.24.0-next.4 — B3 waves 3–4: new gates, new scripts, sub-flows (pre-release, `stardust/next` only)
+
+Fourth and last build batch of the 2026-08 learnings-harvest plan before promotion: all 43 wave-3/4 items — gates that were prose become
+scripts with exit codes, flows hand-rolled per project become drivers (39 from the lane branches; project move, media pre-flight, rehost
+and prototype → content landed in remediation). Behind this batch: 122 of ~137 pages `published-failing` on a rollout whose archetype
+gates were all green (F6); 1.12 M tokens read per page before a wave driver existed, 0.014 M once one converged (F17); 435 of 506 batch
+failures were path classes fixable offline (F22); 189 scripts failed on a missing package in 24 projects, ≈ 414 `--no-save` re-installs;
+64 browser kills for memory in 9 projects; 41 port collisions in 17 projects; 223 of 247 operator repos public, site auth on 2; 52 of 510
+imported pages flattened to prose with a warning and no stop (F11); 62 of 190 pages shipped Δh −600 after a second header surfaced.
+
+**Gates** (condition → escape hatch; hands-off never takes an escape)
+- **Schema gate** — `validate-page.mjs` FAIL, exit 1, on a record missing a schema-2 key, provenance or `renderedBy: playwright`;
+  `state-update.mjs` marks `extracted` only on a pass → `--legacy`, pre-schema-2 only (T23.1).
+- **Lockdown before hand-off** — row `lockdown: on`: `lockdown.mjs` exit 0 after the last anonymous gate, 3 = repo step denied → `blocked`
+  + `owner:` → owner-decided `off` with a reason, no CLI skip (T12.2).
+- **Code sync** — `code-sync-verify.mjs` exit 0 (served == tree) before a published-origin capture, `deploy-batch --require-code-synced`
+  refuses exit 3 → `--skip-code-sync-verify <reason>` (T22.1); `--lint` before a commit, exit 2 → `--syntax-only` (T22.3).
+- **Layout clusters** — `layout-cluster.mjs` exit 2 on a cluster ≥ T = max(5, 2 %) with no exemplar gated at every breakpoint: no sibling
+  render, no fan-out, `plan.mjs` prints the `coverage gap:` line → operator-only `--cover` (T28.1).
+- **Chrome archetype per variant** — `chrome-variants.mjs --progress` exit 2 while a fingerprint bucket has no gated `chrome.variants[]`
+  row; none of its pages fans out → `unprobed:<reason>` (T18.1). **Chrome-state cells** — `chrome-states.mjs`: every live state
+  crop-passes (≥ 98 %) or is a named residual, `missing on build` = exit 2; hover-vs-click is a WARN, never a delta (B30) (T18.2).
+- **Motion-assert precondition** — `motion-assert.mjs` ships 🟡 (the D15/B30 re-proposal): its record `breakpoints.<bp>.motion.assert` is
+  the approval precondition, absent = `motion: unasserted`, never self-approved → residual `motion-unassertable` (T20.2).
+- **Published gate on every page** — `gate-publish.mjs`: PASS = round `pass` ∧ |Δh| ≤ 8 ∧ chrome crops, per page × breakpoint; ≤ 150 pages
+  = every page, above it a seeded sample per template; exit 2 any FAIL, 124 = `unmeasured`. **The hold** — `deploy-batch --publish` reads
+  `gate-report.json`: a row without `latest.pass` or in a template not at bar is `held (gate: …)`; `wave.mjs --publish` reads Gates 5–8
+  the same way → `--publish-no-regression`, `--publish-ungated` (D16); `--force` never lifts a hold (T15.1).
+- **Content acceptance** — `content-acceptance.mjs` exit 2 on a role-count drop (headings, links, images, `li`, `tr`, list depth, tables)
+  not in `_meta contentDeviations[]` or a words ratio < 0.9 → a deviation entry, `--tolerance`, `--class notes=` (T16.1).
+- **Readability close** — `update-coverage --gate ai-readability`: `code` < 98 = `failed`, 429 = `unmeasured`, an undecided exclusion =
+  FAIL (T33.1, T33.2). **Editability row** — `--gate editability`: `dead = 0 ∧ duplicated = 0` else `failed` → `@ew-exempt` (T32.1).
+- **Template-verified and module-map fan-out** — `update-coverage --block … --status verified` exit 2 until the archetype has
+  `published.<bp>.pass` (T28.4); `importer-skeleton.mjs` fails a page with an unmapped or flattened module → `drop:<reason>` (T26.3).
+- **Generic-with-structure** — `section-schema.mjs` records `structure.{interactive,columns}`; `qa-gate.mjs --schema` FAILs a
+  default-content section with them → a recorded `reason`/`dynamicsRow` (T28.4).
+- **Served identity** — `served-identity.mjs --marker` exit 4 = not ours, no verdict; `gate.sh … auto` reads `ports.json` (T07.3).
+  **Browser slot** — a launch takes one of `STARDUST_BROWSER_SLOTS` (2); `{ code: 124 }` = no slot, no verdict (T04.3).
+- **Query-index registration** — `query-index.mjs` exit 0 (registered *and* read back) before the first index-backed row; `dynamics-check
+  --gate` blocks a built row without it; 3 = `scaffolded-awaiting-owner`, 4 = `interim`; decision row `index-registration` (T34.5). **Wave
+  close** — `close-check.mjs` exit 1 while a row is open → `--skip <row> --reason`, never rows 1/4 (T13.2).
+- **Media pre-flight** — `media-reconcile.mjs --content <dir>` blocks pre-PUT on `svg-oversize | svg-raster | svg-invalid |
+  raster-oversize | doc-images P1` → `--apply --rasterise` (T27.4). **Rehost policy** (row `media`) — `rehost-media.mjs` rehosts only what
+  the ingester cannot fetch; `hotlinked-media` P2 → owner `rehost-all` | `keep` (T27.5).
+- **Build-broken-images** — `stitch-shot` sidecar `brokenImages/imgCount`, `gate.sh` failClass exit 2 when build − live > max(2, 10 %)
+  (T23.2). **Control pass** — `qa-gate.mjs` clicks every control once; nothing changed = 🟡 advisory (D15), `--no-drive` = WARN (T20.2).
+**Extract**
+- **Schema 2 from `capture()`** (T23.1): inferred display heads, `landmarks[].children`, `media.images[]`, hreflang twins joined (T38.1b);
+  a FAIL stays on disk as `SchemaError`. **Asset harvest by interception** (T23.2): `--assets intercept|full|none` (default intercept,
+  zero extra hits) → `assets/media/`, `assets/fonts/` as `<name>-<sha1:8>.<sniffed>`, `_media-manifest.json`, `_fonts-manifest.json`.
+- **Phases 3–6 as scripts** (T23.4): `brand-surface.mjs` (501 l, `--bounded`/`--full` → `_provenance.mode`), `write-design-json.mjs` (89
+  l), `brand-review.mjs` (234 l, 13 detectors), `state-update.mjs` (168 l, merge by slug + one `status.jsonl` line, `--prep` exit 1 when
+  live < total), `validate-page.mjs` (103 l); `extract/SKILL.md` 44,479 → 41,835 B.
+**Deploy**
+- **`da-token-check.mjs`** (204 l, T09.1): decode IMS expiry, one list smoke, hours left; exit 2 expired/401. **`site-bootstrap.md`** (56
+  l, T12.1): the origin chain to a served 200, master Setup step 9 **Origin**. **`lockdown.mjs`** (333 l) + **`site-lockdown.md`** (64 l,
+  T12.2): private repo + `access/site.json` + site token, both hosts verified; `--token-env` on every live-reading script.
+- **Project move** (T12.3): **`project-move.md`** (84 l, one privileged bundle, old surfaces never deleted), **`da-copy.mjs`** (199 l,
+  resumable ledger, preview-only), **`host-compare.mjs`** (186 l, byte parity on `.aem.page`, `media-only` benign); master rows
+  `relocate`, `lockdown`.
+- **`code-sync-verify.mjs`** (369 l, T22.1/T22.3): re-sync, purge, prove, record `stardust/code-sync.json`. **`pipeline-mimic.mjs --probe
+  | --compare`** (T21.2): one hidden probe document (≤ 7 requests) → `runtime-contract.json#pipeline`. **`schema-checks.mjs`** (148 l):
+  the browser-free judgements — `repeatUnitGroups` (the one grouping rule), `h1SectionVerdict` (T21.2: FAIL when an auto-block moved the
+  `<h1>`).
+- **`deploy-page.mjs`** (343 l, T27.6): the per-page chain as one command — localize → `--check` → davids-model 🔴 → delivery-lint →
+  sanitise → `deploy-batch`; exit 3 = transport halt, `killed` = no verdict. **`stardust/scripts/da-path.mjs`** (84 l, T27.3):
+  `normalizeDaPath()` shared by deploy-batch, delivery-lint, localize-links; a colliding sibling is `path-collision`, never an overwrite.
+  **`localize-links.mjs`** (T27.8): `--unmigrated bounce|list` (owner-decided `links` row).
+- **Media** (T27.4/T27.5): **`rasterise-svg.mjs`** (120 l: a 409-certain SVG → PNG on DA media); **`rehost-media.mjs`** (292 l: ledger
+  `stardust/da-media.json`, `--technique headed-chrome`). **`prototype-to-content.mjs`** (433 l, T26.6): prototype + section schema →
+  `content/<path>.html`; `--map` overrides, `--thin`, unmapped = exit 2 nothing written, never a `breadcrumbs` block.
+**Rollout / migrate**
+- **`wave.mjs`** (551 l) + **`waves.md`** (122 l, T27.1): one process, a declared stage table (capture → … → content (Gate 7) → preview →
+  live gate → `--publish` minus held rows → close), parks the page never the wave, re-drives only what `contentHash`/`codeHash` changed;
+  `rollout-config.schema.json` gains `waves`. **`wave.mjs regate-list`** (T06.4) maps a code diff to pages fail-open; `verify.mjs --paths`
+  consumes it. **Template = archetype group** (T28.4): `inventory.mjs` keys `templates.json` by slug.
+- **`importer-skeleton.mjs`** (544 l, T26.1): vocabulary-driven DOM walk over the capture, patches last, `import-manifest.json` hand-edit
+  guard, `_meta#audit.import`, `fidelityTier`; bulk runs stop a template at 3 unmapped pages (T26.3). **Multilingual** (T38.1):
+  `multilingual.md` is the Phase D3 procedure on a `stardust/trees.json` manifest, **`trees.schema.json`** (69 l).
+- **Wave-close pack** (T13.2): **`close-check.mjs`** (258 l), **`open-review-pairs.mjs`** (154 l), **`wave-close.md`** (69 l). New:
+  **`measured-gates.md`** (138 l, Gates 5–7), **`publish-gate.md`** (130 l, Gate 8), **`content-acceptance.mjs`** (265 l),
+  **`gate-publish.mjs`** (476 l, `neutralDiff`, `--record` on archetype rounds only), **`query-index.mjs`** (301 l).
+**Replica**
+- **`chrome-states.mjs`** (688 l) + **`chrome-states.md`** (158 l, T18.2); **`chrome-variants.mjs`** (234 l, T18.1; `crawl.mjs` gains the
+  `chrome` fingerprint). **`port.mjs`** (215 l: 8800–8899 / 3100–3199, never 8791), **`serve.mjs`** (122 l, `/.stardust-marker.txt`),
+  **`served-identity.mjs`** (88 l) (T07.3). **`lift.mjs`** (304 l, T23.5): per-breakpoint computed-style lift.
+- **`layout-cluster.mjs`** (458 l, T28.1), **`motion-assert.mjs`** (496 l, T20.2), **`variant-census.mjs`** (397 l, T28.2:
+  modifier/descendant classes per component across a type, exit 2 on an unbudgeted variant without `--allow`); `progress-record.mjs`
+  embeds the 18 residual classes so a project copy never reads "residuals unnamed" (T15.5); `gate.sh` counts its cap per regime.
+**Master**
+- **Runtime pre-flight** (T07.1): `preflight-runtime.mjs` (227 l) + `runtime-preflight.md` (157 l) — one `npm i --prefix stardust`; a
+  package found only under `<root>/node_modules` is `missing`; never `--no-save` in the EDS repo. **`lib/resolve.mjs`** (123 l, T07.5):
+  four layouts, CJS `module.exports` unwrapped, a miss is exit 2, one line; all 37 importers load playwright / pngjs / pixelmatch through
+  it — `resolve-chain-smoke` ALLOW is empty.
+- **`browser-lock.mjs`** (232 l, T04.3): machine-wide semaphore, one slot per process (`acquireProcess`), `STARDUST_BROWSER_SLOTS` (2),
+  124 = no slot; `fan-out.md` § Machine budget — `crawl` holds one slot for its run (the validation's "crawl exempt" reversed here).
+  **`status.mjs`** (303 l, T13.1): `--markdown` = the tracking-issue comment. **`token-ledger.mjs`** (210 l, T13.4): advisory.
+**Evals and lints** — sixteen new agent evals: `site-bootstrap-missing-origin`, `lockdown-before-handoff`,
+`preflight-credentials-expired`, `preflight-runtime`, `relocate-project`, `deploy-generic-with-structure`, `rollout-gate-publish`,
+`rollout-coverage-regime`, `rollout-readability-close`, `rollout-editability-gate`, `rollout-wave-close`, `rollout-template-verified`,
+`rollout-locale-tree`, `migrate-sibling-module-map`, `replica-chrome-variant-fanout`, `replica-layout-clusters`; every rubric sums to 100,
+pinned by the new `evals/lint/eval-hygiene.mjs` (227 l). `npm run lint:stardust` grew from 51 to 106 runners:
+`evals/lint/{browser-lock,chrome-states,lift,port-serve,query-index,resolve-chain,media-preflight,media-rehost}-smoke.mjs` (186 / 207 /
+126 / 161 / 156 / 107 / 193 / 264 l), `{chrome-variants,layout-cluster,motion-assert,variant-census,prototype-to-content}-fixtures.mjs`
+(115 / 226 / 249 / 147 / 223 l), `eval-hygiene` + `--self-test`, and 31 `*.test.mjs`; browser halves skip without `STARDUST_GATE_DEPS`;
+replica's runners live under `evals/lint/`, never copied.
+- **Process**: two of the eight workflow lanes (replica, extract-dynamics) stalled in the watchdog and were rebuilt as direct agents
+  (replica split in two); checklist reviews of those three lanes closed 33 findings (10 majors, 23 minors). A cross-lane read of the nine
+  branches found 4 unbuilt items and 13 defects; two integrations, each with a deep read, found 5 blockers (a silent path-collision
+  overwrite, a crawl holding a gate slot, a wave publish weaker than Gate 8, `waves` refused by the schema, hover-vs-click asserted as a
+  chrome delta) and then 0; remediation lanes closed 65 of the 89 worklist lines, the second integration the rest.
+**Open**
+- D15 LOCALIZE stays 🟡 — owner decision pending; deploy-page's stage-2 `lint-red` catches only 🔴, so a localizable residue is stage 1's
+  alone.
+- `stitch-shot --storage-state` is not forwarded through `gate.sh`/`gate-publish` (publish-gate.md § Access-restricted previews).
+- `normKey()` stays a third copy in `content-acceptance.mjs`; the `anchor-sweep.mjs` cheap probe is absent (T16.1, T15.2).
+- T13.2 writer side: master SKILL § Journal rule and SFG § Residual logging format still lack the `- none this run (<ts>)` sentence.
+- Media lane follow-ups: no T14.4 per-host pacing in `media-reconcile` yet; a 404 `omit` cache row has no TTL; the `hotlinked` verify case
+  lives in `media-rehost-smoke` case 10; `prototype-to-content.mjs` awaits its `lib/transcribe.mjs` split.
+- Gate: 25 evals at n = 2 (11 against 0.23.0 text, 14 new gate evals on their first reading). Up: phase-checkpoint 40 → 100, prototype 83 → 100, extract-multipage 87.5 → 100, runner-output-contract 20 → 47.5, resume-state-report 65 → 75, intent-reasoning 67.5 → 72.5, migrate-incremental 82.5 → 87.5; unchanged: direct-from-phrase 87.5; within noise: ai-readability 82.5 → 80 (one criterion rescoped — the shipped checker now prints the formula the criterion asked the agent to restate), ew-editability 105 → 100 (no failed criterion). routing-migration-flow 95 → 90: in both runs the replica archetype worker authored a DOM-walking compiler with no named deviation — a field behaviour the evals now expose, not a B3 change; recorded as the next instrument candidate. New gate evals: preflight-runtime 95, wave-close 90, editability-gate 90, locale-tree 87.5, generic-with-structure 85, sibling-module-map 80, chrome-variant-fanout 80, template-verified 80, readability-close 70, gate-publish 60, relocate-project 42.5, coverage-regime 42.5, lockdown-before-handoff 35 — the last three are flows the agent still works around (lockdown: token pulled and config API called by hand), first items for a follow-up batch.
+
 ## 0.24.0-next.3 — B2 wave 2: hardening — instrumented gates, self-describing drivers, pipeline-shape lints (pre-release, `stardust/next` only)
 
 Third batch of the 2026-08 learnings-harvest plan: the 40 wave-2 items — script changes and lints that turn wave-1 rules into
