@@ -11,7 +11,7 @@ Where Gate 2 says "curl each external image, omit if not 200", this adds the
 *decision tree* — optimize / keep / rewrite / omit — and a script that resolves
 every image on the network and can apply the fix.
 
-## The four decisions
+## The decisions
 
 For every authored image URL (`<img src>`, `srcset`, inline/`<style>` `url(...)`):
 
@@ -20,7 +20,12 @@ For every authored image URL (`<img src>`, `srcset`, inline/`<style>` `url(...)`
 2. **keep** — **external**, resolves `200`. Reference as-is, but the block must
    **skip optimization** for it (see § Cross-origin optimization). Most reused
    source images land here.
-3. **rewrite** — external, the literal URL breaks but a known repair resolves:
+3. **hosted** — on the site's content host (`content.da.live` / `admin.da.live`).
+   Never fetched — the host is auth-gated, an anonymous GET is `401` by design.
+   Verified **offline** against `stardust/deploy/media-ledger.json` (auto-detected,
+   or `--media-ledger <file>`; no ledger → pass with a NOTE). Missing from an existing
+   ledger **fails the gate** — the uploader never recorded it, so the live site 404s.
+4. **rewrite** — external, the literal URL breaks but a known repair resolves:
    - **missing query delimiter** — `…/<id>&wid=600` (no `?`) makes `<id>&wid=600`
      a bogus asset id → 403. Repair the first `&` after the id to `?`.
    - **wrong host** — the same asset family lives on two CDNs and only one
@@ -30,10 +35,10 @@ For every authored image URL (`<img src>`, `srcset`, inline/`<style>` `url(...)`
    - **wrong rendition variant** — a derivative 404s where a sibling resolves
      (`…/4x3/768/…` 404, `…/original/768/…` 200). Not auto-repaired; flag for
      manual rewrite.
-4. **omit** — external, a **definitive 4xx** (404/403/410) with no repair.
+5. **omit** — external, a **definitive 4xx** (404/403/410) with no repair.
    **Drop the `<img>`** (and its enclosing `<picture>`/`<source>`) so the block
    renders gracefully. Never ship `about:error`, never substitute a placeholder.
-5. **unresolved** — a network error, timeout, or **5xx** (transient). The image
+6. **unresolved** — a network error, timeout, or **5xx** (transient). The image
    may be fine; the script flags it for a human and **never auto-deletes it on
    `--apply`**. Re-run, or resolve manually. The gate fails until it's cleared.
 
@@ -43,10 +48,12 @@ For every authored image URL (`<img src>`, `srcset`, inline/`<style>` `url(...)`
 node skills/rollout/scripts/media-reconcile.mjs --file <content.html> \
   --deploy-host <branch>--<repo>--<owner>.aem.live \
   [--host-rewrite cdn.shopify.com/s/files=www.store.com/cdn/shop/files] \
+  [--media-ledger <file>] \
   [--json] [--apply]
 ```
 
-Without `--apply` it reports the decision per image (exit `1` if any `omit`).
+Without `--apply` it reports the decision per image (exit `1` on `omit`,
+`unresolved`, or a `hosted` URL missing from the ledger).
 With `--apply` it rewrites the file in place: `rewrite` → suggested URL,
 `omit` → the `<img>` (and any emptied `<picture>`) removed. Run it in Phase C
 after `delivery-lint`, before the PUT.

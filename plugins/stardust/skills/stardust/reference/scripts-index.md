@@ -67,7 +67,7 @@ Run the project copies under `stardust/scripts/<skill>/`. Read this before any `
 - `rollout/findings.mjs` — record/resolve findings — `record --source --layer --check --severity`; `resolve <id> --status`
 - `rollout/inventory.mjs` — coverage from migrated tree — `[--migrated <dir>] [--site-url <u>] [--state <f>]`
 - `rollout/lib.mjs` — library, no CLI
-- `rollout/media-reconcile.mjs` — per-image decision — `--file <html> --deploy-host <h> [--apply]`
+- `rollout/media-reconcile.mjs` — per-image decision — `--file <html> --deploy-host <h> [--media-ledger <file>] [--apply]`
 - `rollout/optimize.mjs` — quality findings + gate — `[--base <u>|--root <dir>] [--all]`
 - `rollout/plan.mjs` — conversion plan — `[--out <dir>] [--pending-only]`
 - `rollout/section-fidelity.mjs` — authored vs source outline — `--file <html> --source <u>|--source-file <p>`
