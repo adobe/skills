@@ -5,7 +5,7 @@ metadata:
   category: project-initialization
 license: Apache-2.0
 compatibility: Requires aio CLI (Adobe I/O CLI) — install or refresh with `npm install -g @adobe/aio-cli` so the bundled plugins (`aio-cli-plugin-console`, `aio-cli-plugin-app`, etc.) are current. Node.js 18+ (Node 24 supported on Stage runtimes). Bash shell.
-allowed-tools: Bash(aio:*) Bash(npm:*) Bash(node:*) Bash(mkdir:*) Bash(lsof:*) Bash(kill:*) Bash(open:*) Read Write
+allowed-tools: Bash(aio:*) Bash(npm:*) Bash(node:*) Read Write Edit
 ---
 # App Builder Project Initialization
 
