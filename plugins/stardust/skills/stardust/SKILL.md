@@ -191,6 +191,12 @@ otherwise):
   header and footer, (2) section landing/overview pages, (3) a
   representative spread of detail pages across all templates. State
   the chosen caps in `direction.md`.
+- **Captured pages stay in the roster.** Locale is never a reason to
+  drop a captured page: every `state.json` row is delivered —
+  duplicate-content locale shells ride the sibling tier of their twin;
+  `D3-multilingual` is for language trees that were never captured, not
+  for skipping captured ones (a recorded run lost ten locale roots to an
+  extract agent that hard-coded one locale).
 - **Delegate by file pointer, read by section.** A brief to a delegated
   agent names the files and sections it needs (`state.json`, the page's
   schema, the phase's SKILL.md sections); it never inlines reference docs.

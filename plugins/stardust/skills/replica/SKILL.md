@@ -329,7 +329,11 @@ iteration's fixes come off the instruments, never off eyeballing. After 3,
 log the residuals in the ledger and move on — a documented 2% residual beats
 an undocumented fourth loop. **No single step waits longer than the context
 cache lives:** instruments that run for minutes go through `run-bg.mjs`
-(start, then `wait` in ≤ 100-second slices). One recorded 15-minute gate
+(start, then `wait` in ≤ 100-second slices; `wait` returns within 180 s at
+most). The rule binds the main agent exactly as it binds subagents: a
+main-agent turn that runs a long instrument in the foreground, or two long
+instruments as parallel tool calls, is the same blocked step (a recorded
+338 s turn cost one cache re-write). One recorded 15-minute gate
 batch cost a full 513k-token context rewrite — $6.30, more than the rounds
 it waited for (reference doc § Iteration discipline).
 

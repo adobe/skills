@@ -4,6 +4,31 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## Unreleased — root redirect, captured-page roster, rehosted url(), sibling pixel bar, hosted media, 180 s wait
+
+- **handoff-contract.md § 3 D-site, rollout/SKILL.md § Phase D**: the redirects sheet MUST carry
+  `/` and `/index.html` → the landing page (from the source site's own root redirect), and
+  `curl -sIL https://<host>.aem.page/` must end in 200 — the runner's readiness probe is that HEAD.
+- **handoff-contract.md § 3 E2, rollout/SKILL.md § Phase E2, stardust/SKILL.md § Hands-off**:
+  captured pages (every `state.json` row, `duplicateOf` shells and locale roots included) are always
+  delivered; other-locale repoint only when that locale root was never captured; the ≤ 12 rule is
+  for uncaptured pages (a recorded run dropped ten captured locale roots by citing it).
+- **replica/reference/recreation-procedure.md § CSS lifting**: every `url()` in a lifted rule is
+  rehosted under `stardust/current/assets/`; a source-host `url()` or a dropped `background-image`
+  is a gate FAIL (recorded: language-switcher flags lost at recreate, one hot-link masked the gate).
+- **handoff-contract.md § 1**: new sibling row 5 — pixel bar at 1440 AND 360 through `run-bg.mjs
+  start` + `wait` before C-deliver, the archetype's bar; `gatesPassed` gains `pixel-gate-1440` /
+  `pixel-gate-360` (eleven siblings failed the 360 bar on the published origin, 17–27 %).
+- **handoff-contract.md § 1 row 7 + § 4, rollout/media-reconcile.mjs**: new `hosted` decision —
+  content-host URLs verified offline against `stardust/deploy/media-ledger.json` (`--media-ledger`),
+  never fetched anonymously; missing from an existing ledger → exit 1; no ledger file → NOTE.
+- **handoff-contract.md § 3 fan-out, rollout/SKILL.md § Phase C, replica/SKILL.md § Phase 4**: the
+  4-minute rule binds the main agent too — one long instrument per turn via `run-bg.mjs start`,
+  `wait` as the next call (a recorded 338 s foreground turn cost one cache re-write).
+- **replica/run-bg.mjs**: `wait` ceiling 180 s (was 270). **replica/gate-evidence.mjs**: acceptance
+  adds `pixel-gate-<width>` per `--widths`. **replica/measure.mjs**: default props add
+  `backgroundImage`.
+
 ## Unreleased — hands-off fan-out: ten card rules, a scope guard, a section cap, a scripts index
 
 - **replica/SKILL.md, replica/reference/handoff-contract.md § 3, rollout/SKILL.md § Waves and

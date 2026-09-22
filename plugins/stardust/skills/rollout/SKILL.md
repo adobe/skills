@@ -142,11 +142,14 @@ Walk `plan.json.steps` in order (representative pages first). For each page:
    `reference/delivery-lint.md`. **A P0/P1 blocks the PUT.**
    ```bash
    node skills/rollout/scripts/delivery-lint.mjs --file <html> --path </da/path>
-   node skills/rollout/scripts/media-reconcile.mjs --file <html> --deploy-host <branch>--<repo>--<owner>.aem.live [--apply]
+   node skills/rollout/scripts/media-reconcile.mjs --file <html> --deploy-host <branch>--<repo>--<owner>.aem.live [--media-ledger <file>] [--apply]
    ```
-   `media-reconcile` resolves every image on the network and decides
+   `media-reconcile` resolves every non-hosted image on the network and decides
    optimize/keep/rewrite/omit (`skills/migrate/reference/media-reconciliation.md`)
-   — the authoritative form of the image-fidelity gate below.
+   — the authoritative form of the image-fidelity gate below. A content-host URL
+   (`content.da.live`) is the `hosted` decision instead: checked offline against the
+   media ledger (`--media-ledger <file>`, auto-detected), never fetched anonymously
+   (`401` by design); missing from the ledger fails the gate.
 
 3. **Run the delivery gates** before flipping a page to `deployed`. Each is a
    one-line rule here; mechanics + helpers in `reference/delivery-gates.md`:
@@ -210,9 +213,13 @@ contract file BEFORE the first agent spawns; no token or custom-property rename
 after fan-out (a recorded rename under three running agents cost seven
 coordination messages). **Disjoint clusters spawn concurrently** — a wave waits
 only on a real dependency (a recorded second wave idled 14 min behind an
-unrelated first). **Every subagent tool call stays under 4 minutes** (the prompt
-cache holds 5; calls of 5.2 and 6.6 min re-wrote the whole context): split long
-gate chains, background them with `run-bg.mjs start` and `wait`.
+unrelated first). **Every tool call stays under 4 minutes, the main agent's
+included** (the prompt cache holds 5; calls of 5.2 and 6.6 min re-wrote the whole
+context, and so did one 338 s foreground turn on the main agent that ran a pixel
+loop beside a deploy-batch start + wait): a long instrument (gate rounds, pixel
+loops, Playwright captures, deploy batches) goes through `run-bg.mjs start`, and
+`wait` is the NEXT tool call — it returns within 180 s; never two long instruments
+as parallel tool calls in one turn, never two `wait`s in one command.
 
 ### Phase D — Site assembly (whole-site artifacts)
 
@@ -226,7 +233,17 @@ and a fragments manifest mapping chrome blocks to the authored chrome documents
 (`deploy` authors + deploys the documents through the normal content chain —
 they MUST be published or the chrome 404s sitewide).
 **Redirects:** if Phase C's path-safety gate emitted `stardust/redirects.tsv`, wire
-it into the EDS redirects mechanism here so original inbound URLs don't 404.
+it into the EDS redirects mechanism here so original inbound URLs don't 404 — the
+redirects sheet at the content root (on a DA-backed site `/redirects.json`, columns
+Source / Destination; PUT through the admin API, then preview + publish it like a
+page). The sheet MUST carry `/` and `/index.html` → the landing page, taken from
+the source site's own root redirect (`curl -sI <source-url>` and follow the
+Location chain; when the source root serves a page directly, deliver that page as
+the root document instead of a redirect). Then verify
+`curl -sIL https://<branch>--<repo>--<owner>.aem.page/` ends in 200: the runner's
+readiness probe is exactly that HEAD on `/`, and a 404 there fails the run after
+every phase has passed (recorded — a sheet with a row for every `.html` path and
+none for `/`).
 
 ### Phase D2 — Dynamic features (`dynamics` Phases 4–5)
 
@@ -298,9 +315,13 @@ link **targets** a roster-driven batch misses
   delivery exposes.
 - **Targets missing from the capture.** In-scope internal targets never
   captured: capture and deliver them when ≤ 12 pages, else repoint to the
-  source site and record it in the journal; other-locale and external targets:
-  repoint to the source site. Never leave a 404 (a recorded audit found 10
-  uncaptured in-scope pages — delivering them was the right call).
+  source site and record it in the journal; external targets: repoint to the
+  source site; other-locale targets: repoint ONLY when that locale root was
+  never captured. Any captured page — a `stardust/state.json` row, including
+  `duplicateOf` shells and locale roots — is in scope and is delivered, never
+  repointed (the ≤ 12 rule is for UNcaptured pages; a recorded run dropped ten
+  captured locale roots by citing it). Never leave a 404 (a recorded audit
+  found 10 uncaptured in-scope pages — delivering them was the right call).
 
 ### Phase F — Optimize: multi-source audit + gate (delivery quality)
 
