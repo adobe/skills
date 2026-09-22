@@ -23,10 +23,13 @@
  *     --width <px[,px…]>   viewport width(s); repeatable or comma-separated (default 1440)
  *     --props <list>       computed properties to read, camelCase, comma-separated —
  *                          REPLACES the default list (display, position, width, height,
- *                          maxWidth, margin, padding, gap, backgroundColor, color,
- *                          fontFamily, fontSize, fontWeight, lineHeight, letterSpacing,
- *                          textTransform, textAlign, borderRadius, border, boxShadow,
- *                          opacity, objectFit)
+ *                          maxWidth, margin, padding, gap, backgroundColor, backgroundImage,
+ *                          color, fontFamily, fontSize, fontWeight, lineHeight,
+ *                          letterSpacing, textTransform, textAlign, borderRadius, border,
+ *                          boxShadow, opacity, objectFit). backgroundImage is measured
+ *                          because a recorded recreate step transcribed a nav's rules and
+ *                          dropped every `background-image: url(…)` (flag icons) — the
+ *                          --against diff could not name what it had not measured
  *     --against <url2>     measure the same selectors on <url2> too and print, per
  *                          selector per width, `Δx Δy Δw Δh` in px (against − url) and
  *                          every property whose value differs (`prop: url → against`).
@@ -44,7 +47,9 @@
  *
  * Output (table): one block per width, one line per match (`sel[i]  x y w h
  * vis "text"`) followed by its properties, then — with --against — the delta
- * line. --json: { _provenance: { writtenBy, writtenAt, urls[], widths[],
+ * line. In the table a backgroundImage `url("https://host/long/path/flag-de.svg")`
+ * prints as `url(…/flag-de.svg)` so a row stays one line (the JSON keeps the
+ * full value). --json: { _provenance: { writtenBy, writtenAt, urls[], widths[],
  * selectors[], props[], allMatches, failed[], warnings[] }, widths[],
  * selectors[], pages: { [url]: { [width]: { [selector]: [ { index, of, rect:
  * { x, y, w, h }, visible, text, props } ] } } }, deltas?: { [width]: {
@@ -77,7 +82,7 @@ if (process.argv.includes('--help') || process.argv.includes('-h')) {
 // Current stable desktop Chrome on macOS — the platform token and minor version are frozen by
 // Chrome's UA reduction, so only the major matters.
 export const DEFAULT_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36';
-export const DEFAULT_PROPS = ['display', 'position', 'width', 'height', 'maxWidth', 'margin', 'padding', 'gap', 'backgroundColor', 'color', 'fontFamily', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing', 'textTransform', 'textAlign', 'borderRadius', 'border', 'boxShadow', 'opacity', 'objectFit'];
+export const DEFAULT_PROPS = ['display', 'position', 'width', 'height', 'maxWidth', 'margin', 'padding', 'gap', 'backgroundColor', 'backgroundImage', 'color', 'fontFamily', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing', 'textTransform', 'textAlign', 'borderRadius', 'border', 'boxShadow', 'opacity', 'objectFit'];
 export const MATCH_CAP = 12;
 export const TEXT_MAX = 40;
 const VIEWPORT_H = 900;
@@ -259,10 +264,23 @@ export function buildDeltas(result, urlA, urlB) {
 const signed = (n) => (n > 0 ? `+${n}` : String(n));
 const pad = (v, n) => String(v).padStart(n);
 
+// The table prints computed values raw. A backgroundImage reads `url("https://host/long/path/flag-de.svg")`,
+// one per layer, comma-separated — so the table keeps the file name per url(); a data: URL keeps its MIME type;
+// gradients, `none` and every other property print as they are. The JSON carries the full value.
+export function shortValue(prop, value) {
+  if (prop !== 'backgroundImage' || typeof value !== 'string') return value;
+  return value.replace(/url\((["']?)([^"')]*)\1\)/g, (whole, q, ref) => {
+    if (/^data:/i.test(ref)) return `url(${ref.split(/[;,]/)[0]}…)`;
+    const path = ref.split(/[?#]/)[0].replace(/\/+$/, '');
+    const name = path.slice(path.lastIndexOf('/') + 1);
+    return path.includes('/') && name ? `url(…/${name})` : whole;
+  });
+}
+
 export function formatDelta(pair) {
   const r = pair.rect;
   const rect = `Δx ${signed(r.dx)} Δy ${signed(r.dy)} Δw ${signed(r.dw)} Δh ${signed(r.dh)}`;
-  const props = Object.entries(pair.props).map(([k, [a, b]]) => `${k}: ${a} → ${b}`);
+  const props = Object.entries(pair.props).map(([k, [a, b]]) => `${k}: ${shortValue(k, a)} → ${shortValue(k, b)}`);
   return `${rect}  ${props.length ? props.join('; ') : 'props equal'}`;
 }
 
@@ -290,7 +308,7 @@ export function formatTable(result) {
           for (const m of M) {
             lines.push(`  ${m.of > 1 ? `${sel} [${m.index + 1} of ${m.of}]` : sel}`);
             lines.push(`    ${matchLine(tag, m)}`);
-            lines.push(`      ${Object.entries(m.props).map(([k, v]) => `${k}: ${v}`).join('; ')}`);
+            lines.push(`      ${Object.entries(m.props).map(([k, v]) => `${k}: ${shortValue(k, v)}`).join('; ')}`);
           }
         }
         continue;

@@ -396,7 +396,7 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
   start --name <slug>-<w>-<iter> -- gate.sh …` for every round at once (the
   default 3 slots launch them first come first served — each capture is a
   Chromium, and the slots replace the `sleep N;` staggering), then `run-bg.mjs
-  wait` (returns within `--max`, default 100 s, clamped to 270) prints one
+  wait` (returns within `--max`, default 100 s, clamped to 180) prints one
   line per job plus its verdict lines; exit 75 means "still going — `wait`
   again as your NEXT step". Never wrap `wait` in a shell loop: that
   recreates the blocked step. The full instrument output stays in

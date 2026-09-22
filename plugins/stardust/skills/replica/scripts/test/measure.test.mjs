@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // skills/replica/scripts/test/measure.test.mjs — the measure.mjs contract: argument parsing and
 // its usage errors, delta computation (exact px, prop diffs, a side with no match), table and
-// delta formatting, --help in an empty cwd; then end-to-end against two in-process fixture pages
+// delta formatting (a backgroundImage url() shortened to its file name), --help in an empty cwd;
+// then end-to-end against two in-process fixture pages
 // that differ in one element's padding + colour and one element's position (rects, props,
 // --against deltas, the --all-matches cap, a selector missing on one side, --json / --out,
 // a page that fails to load). The end-to-end part runs where playwright is importable and
@@ -13,7 +14,7 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { DEFAULT_PROPS, MATCH_CAP, UsageError, buildDeltas, computeDeltas, formatDelta, formatTable, isLiveHttpUrl, parseArgs } from '../measure.mjs';
+import { DEFAULT_PROPS, MATCH_CAP, UsageError, buildDeltas, computeDeltas, formatDelta, formatTable, isLiveHttpUrl, parseArgs, shortValue } from '../measure.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'measure.mjs');
@@ -28,13 +29,14 @@ await check('parseArgs: selectors split on commas, widths repeatable + comma-sep
   assert.deepEqual(o.selectors, ['.hero', '.cta', 'main > p']);
   assert.deepEqual(o.widths, [1440, 360]);
   assert.deepEqual(o.props, DEFAULT_PROPS);
+  assert.equal(DEFAULT_PROPS[DEFAULT_PROPS.indexOf('backgroundColor') + 1], 'backgroundImage', 'backgroundImage sits right after backgroundColor'); assert.equal(DEFAULT_PROPS.length, 23);
   assert.equal(o.against, null); assert.equal(o.allMatches, false); assert.equal(o.json, false); assert.equal(o.out, null);
   assert.equal(o.timeoutMs, 20000); assert.match(o.ua, /Chrome\//);
   assert.deepEqual(parseArgs(['http://a/', '--selectors', 'h1']).widths, [1440]);
 });
 await check('parseArgs: --props replaces the default list; --against, --all-matches, --json, --out, --timeout-ms, --ua', () => {
   const o = parseArgs(['http://a/', '--selectors', 'h1', '--props', 'padding, color', '--against', 'http://b/', '--all-matches', '--json', '--out', 'm.json', '--timeout-ms', '5000', '--ua', 'probe/1']);
-  assert.deepEqual(o.props, ['padding', 'color']);
+  assert.deepEqual(o.props, ['padding', 'color']); assert.equal(o.props.includes('backgroundImage'), false, '--props replaces the default list, it does not extend it');
   assert.equal(o.against, 'http://b/'); assert.equal(o.allMatches, true); assert.equal(o.json, true);
   assert.equal(o.out, 'm.json'); assert.equal(o.timeoutMs, 5000); assert.equal(o.ua, 'probe/1');
 });
@@ -92,6 +94,21 @@ const prov = (urls, extra = {}) => ({ writtenBy: 'measure', writtenAt: 'now', ur
 await check('formatDelta: signed px deltas then differing props, or "props equal"', () => {
   assert.equal(formatDelta(computeDeltas(A, B).pairs[0]), 'Δx +12 Δy -4 Δw 0 Δh +12  padding: 64px 0px → 48px 0px');
   assert.equal(formatDelta(computeDeltas(A, A).pairs[0]), 'Δx 0 Δy 0 Δw 0 Δh 0  props equal');
+});
+await check('shortValue: a backgroundImage url() keeps its file name in the table and the Δ line; gradients, none and other props print raw; the JSON keeps the full value', () => {
+  const long = 'url("https://cdn.example.test/assets/i18n/flags/v3/flag-de.svg")';
+  assert.equal(shortValue('backgroundImage', long), 'url(…/flag-de.svg)');
+  assert.equal(shortValue('backgroundImage', `${long}, url("https://cdn.example.test/x/y/flag-fr.svg?v=2#a")`), 'url(…/flag-de.svg), url(…/flag-fr.svg)', 'one per layer, query and fragment dropped');
+  assert.equal(shortValue('backgroundImage', 'url("data:image/svg+xml;base64,PHN2Zy4uLg==")'), 'url(data:image/svg+xml…)');
+  assert.equal(shortValue('backgroundImage', 'none'), 'none');
+  assert.equal(shortValue('backgroundImage', 'linear-gradient(rgb(0, 0, 0), rgb(255, 255, 255))'), 'linear-gradient(rgb(0, 0, 0), rgb(255, 255, 255))');
+  assert.equal(shortValue('backgroundImage', null), null); assert.equal(shortValue('color', long), long, 'only backgroundImage is shortened');
+  const a = [match({ x: 0, y: 0, w: 24, h: 16 }, { backgroundImage: long, color: 'rgb(0, 0, 0)' })];
+  const b = [match({ x: 0, y: 0, w: 24, h: 16 }, { backgroundImage: 'none', color: 'rgb(0, 0, 0)' })];
+  assert.equal(formatDelta(computeDeltas(a, b).pairs[0]), 'Δx 0 Δy 0 Δw 0 Δh 0  backgroundImage: url(…/flag-de.svg) → none');
+  assert.deepEqual(computeDeltas(a, b).pairs[0].props.backgroundImage, [long, 'none'], 'the delta structure (and so the JSON) keeps the full value');
+  const t = formatTable({ _provenance: prov(['http://a/'], { props: ['backgroundImage', 'color'] }), widths: [1440], selectors: ['.flag'], pages: { 'http://a/': { 1440: { '.flag': a } } } });
+  assert.match(t, /\n {6}backgroundImage: url\(…\/flag-de\.svg\); color: rgb\(0, 0, 0\)$/m); assert.doesNotMatch(t, /cdn\.example\.test/);
 });
 await check('formatTable: one page — one block per width, rect line + props line per match, "no match" named', () => {
   const t = formatTable({ _provenance: prov(['http://a/']), widths: [1440], selectors: ['.hero', '.gone'], pages: { 'http://a/': { 1440: { '.hero': A, '.gone': [] } } } });

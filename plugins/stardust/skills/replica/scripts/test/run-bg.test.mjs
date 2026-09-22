@@ -94,10 +94,14 @@ await check('wait names an unknown job instead of hanging on it', () => {
   assert.equal(r.code, 0); assert.match(r.out, /^ghost {2}no such job/m);
 });
 await check(`--max above ${MAX_CEILING_SEC} s is clamped and says why`, () => {
-  assert.ok(MAX_CEILING_SEC < 300, 'ceiling sits under the five-minute cache lifetime');
+  assert.equal(MAX_CEILING_SEC, 180, 'ceiling leaves the previous generation (up to ~150 s) its share of the five-minute cache lifetime');
   assert.equal(bg('start', '--name', 'z', '--', 'true').code, 0);
   const r = bg('wait', '--max', '9999', 'z');
-  assert.equal(r.code, 0); assert.match(r.err, /--max 9999 clamped to 270s/);
+  assert.equal(r.code, 0); assert.match(r.err, /--max 9999 clamped to 180s — a step must return before the context cache expires \(180 s: a generation can take up to ~150 s and the cache holds 5 min/);
+  const r200 = bg('wait', '--max', '200', 'z');
+  assert.equal(r200.code, 0); assert.match(r200.err, /--max 200 clamped to 180s/);
+  const r179 = bg('wait', '--max', '179', 'z');
+  assert.equal(r179.code, 0); assert.equal(r179.err, '', 'a --max at or under the ceiling is not clamped');
 });
 await check('a wrapper killed without an exit is reported lost, not running', async () => {
   assert.equal(bg('start', '--name', 'lost', '--', process.execPath, '-e', 'setTimeout(()=>{},1500)').code, 0);

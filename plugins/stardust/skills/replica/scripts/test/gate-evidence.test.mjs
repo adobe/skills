@@ -2,7 +2,8 @@
 // skills/replica/scripts/test/gate-evidence.test.mjs — the gate-evidence.mjs contract: sidecar discovery, job
 // attribution from run-bg state (never log prose, never mtime), latest-round selection, the derived gates and their
 // FAIL:/OPEN: evidence, the sidecar merge (existing first, indent preserved, nothing else touched), the progress
-// ledger, --dry-run, --check, --slug, --json, --help, the delivery-lint fallback.
+// ledger, --dry-run, --check against the width-aware acceptance set (a pixel gate per --widths entry), --slug, --json,
+// --help, the delivery-lint fallback.
 // Run: node plugins/stardust/skills/replica/scripts/test/gate-evidence.test.mjs   (about 2 s)
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -10,7 +11,7 @@ import { mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ACCEPTANCE, attribute, daPath, detectIndent, nameOwner, pagePaths, parseCounts, parseFindings, parseLint, parseVariance, parseVerdict } from '../gate-evidence.mjs';
+import { ACCEPTANCE, acceptanceFor, attribute, daPath, detectIndent, nameOwner, pagePaths, parseCounts, parseFindings, parseLint, parseVariance, parseVerdict } from '../gate-evidence.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'gate-evidence.mjs');
@@ -128,15 +129,16 @@ check('a run: one row per page (walk order), the missing lines, the summary, no 
   assert.match(rows[0], /^home {2}archetype {2}1440=1\.31%\/Δ-3 {2}360=— {2}cd=— {2}lint=1P0·0P1·0P2 {2}media=— {2}gates=1$/);
   assert.match(rows[1], /^about-history {2}sibling {2}1440=— {2}360=— {2}cd=3\(1🔴\) {2}lint=1P0·0P1·0P2 {2}media=2keep·1omit {2}gates=1$/);
   assert.match(rows[2], /^tours-north {2}sibling /);
-  assert.match(r.out, /^about-history: missing delivery-lint, media-reconcile, content-fidelity, content-count$/m);
-  assert.match(r.out, /^tours-north: missing variance-probe$/m);
+  assert.match(r.out, /^about-history: missing pixel-gate-1440, pixel-gate-360, delivery-lint, media-reconcile, content-fidelity, content-count$/m);
+  assert.match(r.out, /^tours-north: missing variance-probe, pixel-gate-360$/m);
   assert.match(r.out, /^gate-evidence: 3 pages, 3 sidecars updated$/m);
   assert.equal(r.err, '');
 });
-check('tours-north: the declaration stays first, then the derived gates in order; no pixel-gate-360', () => {
+check('tours-north: the declaration stays first, then the derived gates in order; no pixel-gate-360 — and the set reports it missing', () => {
   const m = json(side.north);
   assert.deepEqual(m.gatesPassed, ['content-fidelity', 'pixel-gate-1440', 'content-count', 'media-reconcile', 'delivery-lint']);
   assert.equal(m.gateEvidence['content-fidelity'], NORTH0.gateEvidence['content-fidelity']);
+  assert.deepEqual(json(PROGRESS).migrate.missing['tours-north'], ['variance-probe', 'pixel-gate-360'], 'a FAIL round at 360 leaves the pixel gate missing from the acceptance set');
 });
 check('tours-north evidence: latest round by endedAt (not mtime), the running round ignored, every job line ends with its log pointer', () => {
   const e = json(side.north).gateEvidence;
@@ -179,7 +181,7 @@ check('progress.json: migrate totals, per-gate counts, missing sets, siblings bl
   assert.equal(p.migrate.pages, 3); assert.equal(p.migrate.archetypes, 1); assert.equal(p.migrate.siblings, 2); assert.equal(p.migrate.thin, 0);
   assert.ok(Date.now() - Date.parse(p.migrate.at) < 60000, p.migrate.at);
   assert.deepEqual(p.migrate.gates, { 'pixel-gate-1440': 2, 'delivery-lint': 1, 'variance-probe': 1, 'content-fidelity': 1, 'content-count': 1, 'media-reconcile': 1 });
-  assert.deepEqual(p.migrate.missing, { 'about-history': ['delivery-lint', 'media-reconcile', 'content-fidelity', 'content-count'], 'tours-north': ['variance-probe'] });
+  assert.deepEqual(p.migrate.missing, { 'about-history': ['pixel-gate-1440', 'pixel-gate-360', 'delivery-lint', 'media-reconcile', 'content-fidelity', 'content-count'], 'tours-north': ['variance-probe', 'pixel-gate-360'] });
   const s = p.siblings['tours-north'];
   assert.equal(s.archetype, 'tours'); assert.deepEqual(s.variants, ['tours--wide']); assert.equal(s.pixel['1440'].pct, 0.13); assert.equal(s.pixel['1440'].label, 'iter2');
   assert.deepEqual(s.pixel['360'], { pct: 0.9, px: 4700, heightDelta: 12, verdict: 'PASS', label: 'iter1' });
@@ -193,10 +195,20 @@ check('a second run is idempotent: sidecars byte-identical, ledger identical but
   assert.equal(read(side.north), snap.north); assert.equal(read(side.history), snap.history); assert.equal(read(side.home), snap.home);
   const again = json(PROGRESS); delete again.migrate.at; delete snap.progress.migrate.at; assert.deepEqual(again, snap.progress);
 });
-check('--check exits 2 and names every sibling short of the acceptance set', () => {
+check('--check exits 2 and names every sibling short of the acceptance set, pixel gates included; the archetype is never listed', () => {
   const r = run('--check'); assert.equal(r.code, 2);
-  assert.match(r.out, /^about-history: missing delivery-lint, media-reconcile, content-fidelity, content-count$/m); assert.match(r.out, /^tours-north: missing variance-probe$/m);
-  assert.deepEqual(ACCEPTANCE, ['variance-probe', 'delivery-lint', 'media-reconcile', 'content-fidelity', 'content-count']);
+  assert.match(r.out, /^about-history: missing pixel-gate-1440, pixel-gate-360, delivery-lint, media-reconcile, content-fidelity, content-count$/m); assert.match(r.out, /^tours-north: missing variance-probe, pixel-gate-360$/m);
+  assert.doesNotMatch(r.out, /^home: missing/m, 'the archetype (no 360 round, lint FAIL) is not held to the sibling set');
+  assert.deepEqual(ACCEPTANCE, ['variance-probe', 'pixel-gate-1440', 'pixel-gate-360', 'delivery-lint', 'media-reconcile', 'content-fidelity', 'content-count']);
+  assert.deepEqual(acceptanceFor([1440, 360]), ACCEPTANCE); assert.deepEqual(acceptanceFor([360, 1440]).slice(1, 3), ['pixel-gate-360', 'pixel-gate-1440'], 'pixel gates follow the --widths order');
+});
+check('--widths 1440 alone drops pixel-gate-360 from the acceptance set: rows, --check lines, the table column', () => {
+  assert.deepEqual(acceptanceFor([1440]), ['variance-probe', 'pixel-gate-1440', 'delivery-lint', 'media-reconcile', 'content-fidelity', 'content-count']);
+  const r = run('--widths', '1440', '--check', '--dry-run', '--json'); assert.equal(r.code, 2, r.err);
+  const rows = JSON.parse(r.out); const missing = (slug) => rows.find((x) => x.slug === slug).missing;
+  assert.deepEqual(missing('tours-north'), ['variance-probe']); assert.deepEqual(missing('about-history'), ['pixel-gate-1440', 'delivery-lint', 'media-reconcile', 'content-fidelity', 'content-count']); assert.deepEqual(missing('home'), []);
+  const t = run('--widths', '1440', '--check', '--dry-run'); assert.equal(t.code, 2, t.err);
+  assert.match(t.out, /^tours-north: missing variance-probe$/m); assert.doesNotMatch(t.out, /pixel-gate-360/); assert.match(t.out, /^tours-north {2}sibling {2}1440=0\.13%\/Δ2 {2}cd=/m, 'no 360 column');
 });
 check('--slug limits the rows and never rewrites the ledger totals; an unknown slug is a usage error', () => {
   const { at } = json(PROGRESS).migrate;
@@ -209,7 +221,7 @@ check('--json prints the rows as a JSON array', () => {
   const r = run('--json'); assert.equal(r.code, 0, r.err);
   const rows = JSON.parse(r.out); assert.equal(rows.length, 3);
   const n = rows.find((x) => x.slug === 'tours-north');
-  assert.equal(n.tier, 'sibling'); assert.equal(n.pixel['1440'].pct, 0.13); assert.deepEqual(n.missing, ['variance-probe']); assert.equal(n.outputPath, 'tours/north/index.html'); assert.ok(n.gateEvidence['content-count']);
+  assert.equal(n.tier, 'sibling'); assert.equal(n.pixel['1440'].pct, 0.13); assert.deepEqual(n.missing, ['variance-probe', 'pixel-gate-360']); assert.equal(n.outputPath, 'tours/north/index.html'); assert.ok(n.gateEvidence['content-count']);
 });
 check('--help in an empty cwd: exit 0, usage on stdout, nothing written', () => {
   const cwd = mkdtempSync(join(tmpdir(), 'gate-evidence-help-'));

@@ -10,10 +10,10 @@
  * one gate batch was launched as three parallel shell steps — each
  * `sleep 5|10|15;` then two gate rounds and a content-diff — and the next
  * model call came 15 minutes later. The agent's prompt cache lives five
- * minutes past the last call, so that call re-wrote the whole 513k-token
- * context at the cache-write price: $6.30 for one silent gap, more than the
- * gate rounds it waited for. Every other gap in that session stayed under
- * 184 s and the session ran a 96% cache-hit ratio. The rule that falls out:
+ * minutes from the start of the last call, so that call re-wrote the whole
+ * 513k-token context at the cache-write price: $6.30 for one silent gap, more
+ * than the gate rounds it waited for. Every other gap in that session stayed
+ * under 184 s and the session ran a 96% cache-hit ratio. The rule that falls out:
  * an instrument may run as long as it needs, but the STEP that waits for it
  * must return inside the cache lifetime, and must return a verdict summary —
  * the full output belongs in a log file the agent reads by `log --grep`.
@@ -37,8 +37,10 @@
  * wait   polls until the named jobs (default: every job unfinished when the
  *        wait began; if none, the latest batch — jobs ended within 10 min of the
  *        newest; --all: every job on disk) have ended, or --max seconds pass
- *        (default 100; clamped to 270 — returning before the context cache
- *        expires is the point), then prints one line per job and, for ended
+ *        (default 100; clamped to 180 — returning before the context cache
+ *        expires is the point: the cache holds 5 min from the START of the
+ *        previous model request, and that request's generation alone can take
+ *        ~150 s, recorded), then prints one line per job and, for ended
  *        jobs, its verdict lines: log lines matching --grep (default: the gate
  *        instruments' verdict vocabulary), else the last --tail (8) lines.
  *        Exit 0 = every named job ended; 75 = some still queued/running —
@@ -66,7 +68,10 @@ export const DEFAULT_DIR = 'stardust/.work/replica/bg';
 export const DEFAULT_TIMEOUT_SEC = 900;
 export const DEFAULT_SLOTS = 3;
 export const DEFAULT_MAX_SEC = 100;
-export const MAX_CEILING_SEC = 270;
+// The context cache holds 5 min from the START of the previous model request, and in a recorded run that request's
+// generation took p50 12 s, p95 79 s, max ~150 s — the former 270 s ceiling plus a generation regularly crossed 300 s and
+// re-wrote the cache. 180 s leaves the generation its room.
+export const MAX_CEILING_SEC = 180;
 export const DEFAULT_TAIL = 8;
 export const STILL_RUNNING_EXIT = 75;
 // With nothing going and no names given, `wait`/`status` report the latest batch: jobs that ended
@@ -211,7 +216,7 @@ function pickNames(dir, requested, { all = false } = {}) {
 export async function wait(dir, requested, { maxSec = DEFAULT_MAX_SEC, tail, grep, all = false } = {}) {
   if (!Number.isFinite(maxSec) || maxSec < 0) throw new UsageError(`run-bg: --max must be a number of seconds\n${HELP}`);
   let ceilingSec = maxSec;
-  if (maxSec > MAX_CEILING_SEC) { ceilingSec = MAX_CEILING_SEC; console.error(`run-bg: --max ${maxSec} clamped to ${MAX_CEILING_SEC}s — a step must return before the context cache expires`); }
+  if (maxSec > MAX_CEILING_SEC) { ceilingSec = MAX_CEILING_SEC; console.error(`run-bg: --max ${maxSec} clamped to ${MAX_CEILING_SEC}s — a step must return before the context cache expires (${MAX_CEILING_SEC} s: a generation can take up to ~150 s and the cache holds 5 min from the start of the previous request)`); }
   const { names, hidden } = pickNames(dir, requested, { all });
   const t0 = Date.now();
   for (;;) {

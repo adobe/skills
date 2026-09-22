@@ -40,8 +40,12 @@
  *
  *   --slug <s>   only these pages (repeatable): rows and sidecar writes; the progress
  *                ledger's `migrate` totals are rewritten only by an unfiltered run
- *   --check      exit 2 when a sibling lacks a gate of the acceptance set
- *                (variance-probe, delivery-lint, media-reconcile, content-fidelity, content-count)
+ *   --check      exit 2 when a sibling lacks a gate of the acceptance set: variance-probe,
+ *                pixel-gate-<w> for EVERY --widths entry, delivery-lint, media-reconcile,
+ *                content-fidelity, content-count. The pixel gates belong to the set: a recorded
+ *                run published eleven siblings that had never been compared at 360, and they
+ *                read 17–27 % against the ≤ 10 % bar on the published origin. Archetypes and
+ *                thin pages are not held to this set here (their `missing` is always empty)
  *   --dry-run    compute and print, write nothing
  *   --json       the rows as a JSON array instead of the table
  *
@@ -65,8 +69,12 @@ import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listJobs, logPath } from './run-bg.mjs';
 
-export const ACCEPTANCE = ['variance-probe', 'delivery-lint', 'media-reconcile', 'content-fidelity', 'content-count'];
 export const DEFAULTS = { migrated: 'stardust/migrated', bg: 'stardust/.work/replica/bg', progress: 'stardust/replica/progress.json', lint: 'stardust/scripts/rollout/delivery-lint.mjs', widths: [1440, 360], heightTolerance: 8 };
+// The sibling acceptance set for one --widths list: a pixel gate per width, in the order given. Every reader of the set
+// (--check, the row's `missing`, progress.json migrate.missing) goes through this; archetypes and thin pages are not held to it.
+export const acceptanceFor = (widths) => ['variance-probe', ...widths.map((w) => `pixel-gate-${w}`), 'delivery-lint', 'media-reconcile', 'content-fidelity', 'content-count'];
+// The set for the default widths (1440, 360) — kept for importers.
+export const ACCEPTANCE = acceptanceFor(DEFAULTS.widths);
 // Instrument script → job kind. The instrument is the first cmd/arg token with one of these basenames
 // (a wrapper such as bash or run-capped may precede it); its own arguments follow.
 export const INSTRUMENTS = { 'gate.sh': 'pixel', 'content-diff.mjs': 'content-diff', 'media-reconcile.mjs': 'media-reconcile', 'delivery-lint.mjs': 'delivery-lint', 'sibling-variance.mjs': 'variance' };
@@ -362,6 +370,7 @@ export function collect(o) {
   const lint = resolveLint(o);
   if (!lint) notes.push(`delivery-lint: ${o.lint} not found — pass --lint (using run-bg delivery-lint jobs, if any)`);
   const ctx = { migrated, pages, slugs: pages.map((p) => p.slug), lint };
+  const acceptance = acceptanceFor(o.widths);
   const rows = []; let updated = 0;
   for (const page of selected) {
     const d = derive(page, jobs, o, ctx);
@@ -371,7 +380,7 @@ export function collect(o) {
     const text = serialize(meta, page.indent, page.eol);
     if (text !== page.text) { updated += 1; if (!o.dryRun) writeFileSync(page.file, text); }
     const tier = meta.fidelityTier || null;
-    rows.push({ slug: page.slug, tier, archetype: meta.archetypeSource || meta.template || null, variants: Array.isArray(meta.variants) ? meta.variants : [], outputPath: page.outputPath, migrated: join(o.migrated, page.outputPath), ...d.facts, gatesPassed: meta.gatesPassed, gateEvidence: meta.gateEvidence, missing: tier === 'sibling' ? ACCEPTANCE.filter((g) => !meta.gatesPassed.includes(g)) : [] });
+    rows.push({ slug: page.slug, tier, archetype: meta.archetypeSource || meta.template || null, variants: Array.isArray(meta.variants) ? meta.variants : [], outputPath: page.outputPath, migrated: join(o.migrated, page.outputPath), ...d.facts, gatesPassed: meta.gatesPassed, gateEvidence: meta.gateEvidence, missing: tier === 'sibling' ? acceptance.filter((g) => !meta.gatesPassed.includes(g)) : [] });
   }
   if (rows.length && !o.dryRun) {
     const prior = existsSync(o.progress) ? readJson(o.progress) : { data: {}, indent: 2, eol: true };

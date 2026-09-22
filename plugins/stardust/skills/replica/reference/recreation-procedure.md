@@ -122,6 +122,18 @@ This converts 3–4 guess-and-screenshot loops into one. Eyeballing is for
 step 4 of the authoring order only — and even then, the gate's instruments
 outrank the eye.
 
+**Every `url()` in a lifted rule is rehosted.** A canon rule carries a
+`url()` only when it resolves to a file under `stardust/current/assets/`
+(harvest it — § Asset harvest — and keep its intrinsic size and
+`background-size`): a `url()` pointing at the source host is a gate FAIL,
+not a pass — it renders in the pixel compare and vanishes on the delivered
+site; a dropped `background-image` (icons, flags, decorative marks under
+the extract size filter) is the same defect (recorded: a language
+switcher's flag icons transcribed into the canon CSS without their
+`url()`s, and the one kept hot-linked the source site, which masked the
+pixel gate). `measure.mjs` now lists `backgroundImage`, so a `--against`
+run names the miss.
+
 **No foundation `text-wrap: balance` on headings.** The redesign
 prototype's refined pass prescribes `h1–h6 { text-wrap: balance }`; live
 sites almost never use it, and under it multi-line card titles and band
