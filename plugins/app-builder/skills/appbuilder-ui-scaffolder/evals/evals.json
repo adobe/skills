@@ -165,31 +165,30 @@
     },
     {
       "id": 6,
-      "prompt": "Add an action button to Content Hub asset cards that opens a modal with the asset's metadata.",
-      "expected_output": "Content Hub extension using the card namespace with getActionButtons(actionContext) reading actionContext.context ('assets' | 'collections'), an onActionClick(resourceType, buttonId, resourceId) handler, and host.modal.openDialog() to show the modal.",
+      "prompt": "Add an action button to Content Hub asset cards that opens a modal to submit the asset to an external review/approval workflow.",
+      "expected_output": "Content Hub extension using the card namespace with getActionButtons(actionContext) reading actionContext.context ('assets' | 'collections'), an onActionClick(resourceType, buttonId, resourceId) handler that calls host.modal.openDialog() to open a custom review/approval modal.",
       "files": [],
       "assertions": [
         {
           "type": "file_matches_glob",
-          "glob": "src/aem-assets-contenthub-1/web-src/src/**/*.{js,jsx}",
+          "glob": "web-src/src/**/*.{js,jsx}",
           "content_pattern": "@adobe/uix-guest",
           "description": "Uses @adobe/uix-guest for the Content Hub extension."
         },
         {
           "type": "file_matches_glob",
-          "glob": "src/aem-assets-contenthub-1/web-src/src/**/*.{js,jsx}",
+          "glob": "web-src/src/**/*.{js,jsx}",
           "content_pattern": "getActionButtons\\(actionContext\\)",
           "description": "card.getActionButtons receives actionContext (context: 'assets' | 'collections')."
         },
         {
-          "type": "file_not_contains",
-          "path": "src/aem-assets-contenthub-1/web-src/src/components/ExtensionRegistration.js",
-          "pattern": "onActionClick(resourceType, buttonId, resourceId, actionContext)",
-          "description": "card.onActionClick takes exactly 3 args, no trailing actionContext."
+          "type": "output_not_contains",
+          "pattern": "resourceId, actionContext)",
+          "description": "card.onActionClick takes exactly 3 args (resourceType, buttonId, resourceId) — no trailing actionContext."
         },
         {
           "type": "file_matches_glob",
-          "glob": "src/aem-assets-contenthub-1/web-src/src/**/*.{js,jsx}",
+          "glob": "web-src/src/**/*.{js,jsx}",
           "content_pattern": "openDialog",
           "description": "Opens the modal via host.modal.openDialog(), not showUrl()."
         }
