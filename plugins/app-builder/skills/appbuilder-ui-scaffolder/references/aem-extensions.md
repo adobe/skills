@@ -480,7 +480,7 @@ assetDetails: {
 }
 ```
 
-Restrict to specific repos with an allow-list; leave it empty to load for any repo (safe for local dev):
+Restrict to specific repos with an allow-list; leave it empty to load for any repo (safe for local dev). Use each repo's **full delivery hostname** (e.g. `delivery-p12345-e167890.adobeaemcloud.com`):
 
 ```js
 const allowedRepos = ['delivery-p12345-e167890.adobeaemcloud.com'];
@@ -627,9 +627,9 @@ The web action (`actions/generic/index.js`) makes the authenticated AEM Assets A
 aio app build && aio app run
 ```
 
-Test URL (replace `<delivery-repo>` with your Content Hub delivery host, e.g. `delivery-p12345-e67890.adobeaemcloud.com`): `https://experience.adobe.com/?devMode=true&ext=https://localhost:9080&repoId=<delivery-repo>#/assets/contenthub/`. All four params are required (`ext`, `devMode`, `repoId`, `#/assets/contenthub/`); `repoId` points Content Hub at your delivery instance. Do not use the `…/custom-apps/?localDevUrl=…` URL `aio` prints.
+Test URL (replace `<delivery-repo>` with your Content Hub delivery host, e.g. `delivery-p12345-e67890.adobeaemcloud.com`): `https://experience.adobe.com/?devMode=true&ext=https://localhost:9080#/assets/contenthub/`. Both params are required (`ext`, `devMode`). Do not use the `…/custom-apps/?localDevUrl=…` URL `aio` prints.
 
-First run only: navigate to `https://localhost:9080` and accept the self-signed cert, or the panel stays blank. No `&repo=` needed when `allowedRepos = []`.Guides AEM UI Extension development with @
+First run only: navigate to `https://localhost:9080` and accept the self-signed cert, or the panel stays blank. The `repoId` param is always required (it points Content Hub at the delivery instance), regardless of `allowedRepos`.
 
 ---
 

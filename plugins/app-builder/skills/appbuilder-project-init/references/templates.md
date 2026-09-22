@@ -153,7 +153,7 @@ aio app init --repo adobe/aem-uix-examples/aem-assets-contenthub-sample
 ### Post-init customization
 
 1. **Set the extension id.** Change `extensionId` in `src/aem-assets-contenthub-1/web-src/src/components/Constants.js` — it must match between `register()` (ExtensionRegistration.js) and `attach()` (the panel/modal components).
-2. **Populate `allowedRepos`.** In `ExtensionRegistration.js`, write the value collected in the pre-scaffold question above (empty array for local dev, or the delivery repo IDs) — must be non-empty before deploying to Production. Change the **array** — do not disable the check by making `shouldSkipRegistration` return `false`.
+2. **Populate `allowedRepos`.** In `ExtensionRegistration.js`, write the value collected in the pre-scaffold question above (empty array for local dev, or the delivery repo IDs). **Use each repo's full delivery hostname** (`delivery-pXXX-eYYY.adobeaemcloud.com`).
 3. **Keep only the namespaces you need.** The sample registers all three. To drop one, remove its block in `ExtensionRegistration.js`, its `<Route>` in `App.js`, and its component file. See the namespace contracts in the `appbuilder-ui-scaffolder` skill (`references/aem-extensions.md`).
 4. **Customize the UI** — all files under `src/aem-assets-contenthub-1/web-src/src/components/`:
    - `ExtensionRegistration.js` — which panels/buttons appear, and their title / icon / label
