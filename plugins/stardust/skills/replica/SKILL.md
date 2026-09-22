@@ -53,8 +53,9 @@ eyeballing.
 4. Copy scripts into the project and run them from there, not from the
    plugin: this skill's whole `scripts/` dir (stitch-shot, pixel-compare,
    crop-compare, chrome-parity, row-profile, sibling-variance, anchor, measure,
-   gate.sh, run-capped, run-bg, gate-evidence, section, css-rules, json-query,
-   html-slice, motion-observe, motion-compare) to `stardust/scripts/replica/`,
+   gate.sh, run-capped, run-bg, gate-evidence, foundation-freeze, section,
+   css-rules, json-query, html-slice, motion-observe, motion-compare) to
+   `stardust/scripts/replica/`,
    the master skill's `../stardust/scripts/` (ledger.mjs, state.mjs — the
    ledger and state writers) to `stardust/scripts/stardust/`, the migrate
    skill's `../migrate/scripts/` (migrate.mjs — the per-page render
@@ -428,6 +429,14 @@ end --detail "<per-breakpoint numbers>"`. Resuming a run starts with
   node-slotting, never value-slotting) and pass `block-roundtrip --ew`.**
 - **Site-wide rollout** via the stardust `rollout` skill, unchanged — its block dedup
   is what implements "same blocks across the whole site".
+- **C-deliver runs in units** (`reference/handoff-contract.md` § 3, row C +
+  Fan-out discipline): C0 — the main agent alone delivers and gates the
+  foundation, then `foundation-freeze.mjs freeze` + commit; C1…Cn — one
+  subagent per template cluster runs the WHOLE per-page chain, PUT and
+  published gates included, and reports one verdict line; C-final — `check`,
+  the queued `foundation-requests.md` lines applied once, `C-deliver end`.
+  Each unit is recorded in `stardust/rollout/progress.json` and committed,
+  then the runner is asked for a boundary; no frozen file is edited mid-wave.
 - **The final gate runs against the PUBLISHED origin — not the harness**
   (`reference/source-fidelity-gate.md` § The published-origin gate): the
   delivery pipeline transforms markup, so harness numbers understate.
@@ -449,7 +458,12 @@ end --detail "<per-breakpoint numbers>"`. Resuming a run starts with
 **State:** replica writes its own state under `stardust/replica/` — the
 inconsistency register, `progress.json` (per page type: archetype slug,
 iterations used, per-breakpoint gate results, residuals, motion
-inventory), `motion/<slug>.json`, and `gates/<slug>-<width>/` evidence. Pipeline status (extracted → prototyped →
+inventory), `motion/<slug>.json`, and `gates/<slug>-<width>/` evidence.
+Phase 5 adds three files under `stardust/rollout/`: `progress.json` (the
+C-deliver unit ledger — status, gates and verdict per unit),
+`foundation-freeze.json` (the sha256 manifest of the frozen foundation) and
+`foundation-requests.md` (queued foundation change requests, applied once at
+C-final). Pipeline status (extracted → prototyped →
 approved → migrated) stays in the core `state.json` per the standard state
 machine — replica never redefines it.
 
@@ -479,7 +493,11 @@ stardust/
 │   ├── progress.json                   ← per-page-type ledger: iterations, gate results, residuals, motion inventory
 │   ├── motion/<slug>.json              ← motion-observe evidence
 │   └── gates/<slug>-<width>/           ← live.png, proto.png, diff.png, probe outputs per iteration
-└── migrated/                           ← from migrate (Phase 5)
+├── migrated/                           ← from migrate (Phase 5)
+└── rollout/                            ← from rollout (Phase 5); coverage/, plan.json … per its SKILL.md
+    ├── progress.json                   ← C-deliver unit ledger: status, gates, verdict per unit
+    ├── foundation-freeze.json          ← sha256 manifest of the frozen foundation (C0 → C-final)
+    └── foundation-requests.md          ← queued foundation change requests, applied once at C-final
 
 PRODUCT.md / DESIGN.md / DESIGN.json    ← promoted verbatim from current/ (Phase 2)
 ```

@@ -4,7 +4,19 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
-## Unreleased — root redirect, captured-page roster, rehosted url(), sibling pixel bar, hosted media, 180 s wait
+## Unreleased — C-deliver units, foundation freeze, root redirect, captured roster, sibling pixel bar, 180 s wait
+
+- **handoff-contract.md § 3 row C + Fan-out discipline, § 4, § 5; replica/SKILL.md § Phase 5**:
+  C-deliver stays ONE ledger phase but runs in RECORDED UNITS (`stardust/rollout/progress.json`):
+  C0 foundation by the main agent alone, then `foundation-freeze.mjs freeze` + commit; C1…Cn one
+  subagent per template cluster running the whole per-page chain including PUT and the published
+  gates, one verdict line each, `deploy-batch.mjs --concurrency 2` per cluster; C-final applies the
+  queued `foundation-requests.md` lines once. After every unit: record, commit, ask the runner for a
+  boundary (a recorded run spent 118 turns and grew 177k → 520k context in one C-deliver session
+  while the boundary rule was never consulted). Three new fan-out bullets — Foundation freeze,
+  Change requests, Mechanical check — and "no edit of a frozen file after fan-out" (a recorded
+  main-agent edit under four running clusters cost two coordination messages and 23 minutes of
+  rework). New **replica/foundation-freeze.mjs** (`freeze` / `check`, 16 tests).
 
 - **handoff-contract.md § 3 D-site, rollout/SKILL.md § Phase D**: the redirects sheet MUST carry
   `/` and `/index.html` → the landing page (from the source site's own root redirect), and
