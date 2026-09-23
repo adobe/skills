@@ -346,6 +346,16 @@ approved --by hands-off --prototype stardust/prototypes/<slug>-proposed.html`
 and `node stardust/scripts/stardust/ledger.mjs replica source-fidelity-gate
 end --detail "<per-breakpoint numbers>"`. Resuming a run starts with
 `ledger.mjs tail` and `state.mjs summary --slugs`, not `cat`.
+Every phase of this skill — extract and preserve-direction included — opens
+with `node stardust/scripts/stardust/ledger.mjs replica <phase> start` as its
+FIRST command, before any script of the phase runs (a recorded hands-off run
+wrote a phase's `start` beside its `end` after 109 minutes of work and read
+as idle to its supervisor; `ledger.mjs` refuses an `end` without an open
+`start` under `--strict`), and closes with the `end` line plus a section in
+`stardust/journal.md` headed `## <Phase name> — <what happened> (<date>)` —
+the section is part of the phase `end`, and `ledger.mjs … end` warns when it
+is missing (a recorded run's journal began at its second session; another's
+had one section for the whole run).
 
 ### Phase 5 — HANDOFF (delegate — migrate → deploy → rollout, unchanged)
 

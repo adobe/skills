@@ -6,9 +6,11 @@
 // svg safety, the 401 policy (an expired JWT exits 3 before any request; the first upload runs alone;
 // a 401 burst on a valid token is retried and lands; a 401 that persists through its retries on ANY
 // file halts with exit 3 — ledger saved, in-flight uploads finish, the rest not attempted, nothing
-// marked failed, one stderr line with the re-run command), the atomic ledger write, --dry-run, usage
-// errors (a value flag swallowing nothing or another --flag) — and that the token value never
-// reaches stdout, stderr or the ledger.
+// marked failed, one stderr line with the re-run command), the atomic ledger write, --dry-run, the token
+// source (--token-env <NAME>, --token-file <path>: the expiry, halt and re-run lines name the variable or
+// file, never the value; never both flags; a missing or empty file is a usage error; a dry run reads no
+// file), usage errors (a value flag swallowing nothing or another --flag) — and that the token value
+// never reaches stdout, stderr or the ledger.
 // Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
@@ -103,8 +105,9 @@ writeFileSync(join(assets, 'a.png'), FILES.a); writeFileSync(join(assets, 'b.jpg
 writeFileSync(join(assets, 'd.mp4'), randomBytes(300)); writeFileSync(join(assets, 'e.svg'), FILES.svg);
 const LEDGER = join(proj, 'stardust', 'deploy', 'media-ledger.json');
 
-const run = (args, { token = TOKEN } = {}) => new Promise((resolve) => {
-  const env = { ...process.env }; delete env.DA_TOKEN; if (token) env.DA_TOKEN = token;
+const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const run = (args, { token = TOKEN, extraEnv = {} } = {}) => new Promise((resolve) => {
+  const env = { ...process.env, ...extraEnv }; delete env.DA_TOKEN; if (token) env.DA_TOKEN = token;
   const p = spawn(process.execPath, [SCRIPT, '--org', ORG, '--repo', REPO, '--admin-url', BASE, '--content-url', `${BASE}/content`, '--backoff-ms', '5', ...args], { cwd: proj, env });
   let out = ''; let err = '';
   p.stdout.on('data', (d) => { out += d; }); p.stderr.on('data', (d) => { err += d; });
@@ -353,6 +356,49 @@ await check('the first upload runs alone: no other PUT arrives while it is in fl
   assert.deepEqual(puts.slice(1).filter((q) => q.duringSlow).map((q) => q.url), [], 'no PUT arrived while the first upload was being served');
   const peak = Math.max(...puts.slice(1).map((q) => q.inflight));
   assert.ok(peak >= 2, `the remaining uploads ran concurrently (peak in-flight ${peak})`);
+});
+
+// ---- token source: --token-env <NAME>, --token-file <path> --------------------------------------------
+await check('--token-env <NAME> reads the token from that variable (DA_TOKEN ignored); the expiry, HALT and re-run lines name the variable; an unset variable is a usage error', async () => {
+  writeFileSync(join(assets, 'env1.png'), randomBytes(40));
+  writeFileSync(join(proj, 'env.json'), JSON.stringify([{ file: 'assets/env1.png' }]));
+  const r = await run(['--scope', 'brand', '--manifest', 'env.json', '--token-env', 'MEDIA_TOKEN'], { token: null, extraEnv: { MEDIA_TOKEN: TOKEN } });
+  assert.equal(r.code, 0, r.out + r.err); assert.match(r.out, /^OK assets\/env1\.png -> /m);
+  const miss = await run(['--scope', 'brand', '--manifest', 'env.json', '--token-env', 'MEDIA_TOKEN'], { token: TOKEN });
+  assert.equal(miss.code, 2, miss.out + miss.err); assert.match(miss.err, /MEDIA_TOKEN is not set in the environment/);
+  const h = await run(['--scope', 'brand', '--manifest', 'halt.json', '--token-env', 'MEDIA_TOKEN', '--retries', '0'], { token: null, extraEnv: { MEDIA_TOKEN: TOKEN } });
+  assert.equal(h.code, 3, h.out + h.err);
+  assert.match(h.out, /^HALT assets\/expired\.png 401 \(unauthorized through 1 attempt — MEDIA_TOKEN rejected; not recorded as failed, the re-run resumes here\)$/m);
+  assert.match(h.err, /^da-media-upload: MEDIA_TOKEN rejected \(401 through 1 attempt on assets\/expired\.png, the lone first upload\): refresh MEDIA_TOKEN in the environment and re-run the same command — the ledger skips what already uploaded: MEDIA_TOKEN=<fresh token> node \S+da-media-upload\.mjs .* --token-env MEDIA_TOKEN --retries 0$/m);
+  const x = await run(['--scope', 'brand', '--manifest', 'halt.json', '--token-env', 'MEDIA_TOKEN'], { token: null, extraEnv: { MEDIA_TOKEN: EXPIRED_JWT } });
+  assert.equal(x.code, 3, x.out + x.err); assert.match(x.err, /^da-media-upload: MEDIA_TOKEN is expired — its exp claim is .* Refresh it and re-run: MEDIA_TOKEN=<fresh token> node /);
+});
+await check('--token-file <path> reads the token from the file once at start (trailing newline ignored; DA_TOKEN ignored); the expiry, HALT and re-run lines name the file and carry no variable; both flags, a missing or an empty file are usage errors; a dry run reads no file', async () => {
+  const tokenFile = join(proj, 'da-token'); writeFileSync(tokenFile, `${TOKEN}\n`);
+  writeFileSync(join(assets, 'file1.png'), randomBytes(40)); writeFileSync(join(proj, 'file.json'), JSON.stringify([{ file: 'assets/file1.png' }]));
+  const r = await run(['--scope', 'brand', '--manifest', 'file.json', '--token-file', tokenFile], { token: null });
+  assert.equal(r.code, 0, r.out + r.err); assert.match(r.out, /^OK assets\/file1\.png -> /m);
+  assert.equal(requests.filter((q) => q.method === 'PUT').at(-1).headers.authorization, `Bearer ${TOKEN}`, 'the file value without its newline');
+  const h = await run(['--scope', 'brand', '--manifest', 'halt.json', '--token-file', tokenFile, '--retries', '0'], { token: null });
+  assert.equal(h.code, 3, h.out + h.err);
+  assert.match(h.out, new RegExp(`^HALT assets/expired\\.png 401 \\(unauthorized through 1 attempt — the token in ${esc(tokenFile)} rejected; not recorded as failed, the re-run resumes here\\)$`, 'm'));
+  assert.match(h.err, new RegExp(`^da-media-upload: the token in ${esc(tokenFile)} rejected \\(401 through 1 attempt on assets/expired\\.png, the lone first upload\\): write a fresh token to ${esc(tokenFile)} and re-run the same command — the ledger skips what already uploaded: node \\S+da-media-upload\\.mjs .* --token-file ${esc(tokenFile)} --retries 0   \\(after writing the fresh token to ${esc(tokenFile)}\\)$`, 'm'));
+  assert.doesNotMatch(h.err, /<fresh token>|DA_TOKEN/);
+  writeFileSync(tokenFile, EXPIRED_JWT);
+  const x = await run(['--scope', 'brand', '--manifest', 'halt.json', '--token-file', tokenFile], { token: null });
+  assert.equal(x.code, 3, x.out + x.err); assert.match(x.err, new RegExp(`^da-media-upload: the token in ${esc(tokenFile)} is expired — its exp claim is `)); assert.doesNotMatch(x.err, /DA_TOKEN/);
+  const both = await run(['--scope', 'brand', '--manifest', 'file.json', '--token-file', tokenFile, '--token-env', 'X'], { token: null });
+  assert.equal(both.code, 2, both.err); assert.match(both.err, /at most one of --token-env \/ --token-file/);
+  const missing = await run(['--scope', 'brand', '--manifest', 'file.json', '--token-file', join(proj, 'no-such-token')], { token: TOKEN });
+  assert.equal(missing.code, 2, missing.err); assert.match(missing.err, /cannot read --token-file .*no-such-token/);
+  writeFileSync(tokenFile, '  \n');
+  const empty = await run(['--scope', 'brand', '--manifest', 'file.json', '--token-file', tokenFile], { token: null });
+  assert.equal(empty.code, 2, empty.err); assert.match(empty.err, /--token-file .* is empty/);
+  const dry = await run(['--scope', 'dry-file', '--manifest', 'file.json', '--token-file', join(proj, 'no-such-token'), '--dry-run'], { token: null }); // a new scope: no ledger row to skip on
+  assert.equal(dry.code, 0, dry.out + dry.err); assert.match(dry.out, /^DRY assets\/file1\.png -> \S+\/media\/dry-file\/file1\.png/m); assert.equal(dry.err, '', 'a dry run never reads the token file');
+  const noval = await run(['--scope', 'brand', '--manifest', 'file.json', '--token-env'], { token: TOKEN }); assert.equal(noval.code, 2); assert.match(noval.err, /--token-env needs a value/);
+  const badname = await run(['--scope', 'brand', '--manifest', 'file.json', '--token-env', 'not a name'], { token: TOKEN }); assert.equal(badname.code, 2); assert.match(badname.err, /--token-env needs an environment variable name/);
+  const help = await run(['--help']); assert.match(help.out, /--token-env <NAME>/); assert.match(help.out, /--token-file <path>/);
 });
 
 // ---- dry run, usage ----------------------------------------------------------------------------------

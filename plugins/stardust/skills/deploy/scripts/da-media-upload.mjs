@@ -38,23 +38,28 @@
  * 401 policy (two recorded facts: one 401 must not halt; a persistent 401 must
  * halt fast — an expired token once left an 894-row batch failing file by file
  * for 5.5 hours):
- *   preflight — if DA_TOKEN is a JWT whose `exp` has passed, exit 3 before any
+ *   preflight — if the token is a JWT whose `exp` has passed, exit 3 before any
  *       request, naming the expiry (a non-JWT token, or one without exp, is
  *       simply tried).
  *   first upload — runs alone to prove the token, with the bounded 401 retries.
  *   any 401 — retried with the same short backoff as a 429. A 401 that persists
  *       through its retries on ANY file (first or later) HALTS the batch: exit 3,
  *       ledger persisted, in-flight uploads allowed to finish, remaining files
- *       left `not attempted`, one stderr line naming DA_TOKEN and the exact
- *       re-run command (the same command resumes from the ledger). A file is
- *       never marked `failed` because of a 401 — it prints HALT, not FAIL.
+ *       left `not attempted`, one stderr line naming the token's variable or file
+ *       and the exact re-run command (the same command resumes from the ledger).
+ *       A file is never marked `failed` because of a 401 — it prints HALT, not FAIL.
  *
- * Token: read from the DA_TOKEN environment variable only; it is never
- * printed and never written to the ledger or anywhere else.
+ * Token: from the environment variable named by --token-env (default DA_TOKEN),
+ * or from --token-file <path> (read once at start; one of the two — a hands-off
+ * harness hands the token over as a file, and a recorded run's uploader read
+ * DA_TOKEN only). The value is never printed, never part of the re-run command
+ * and never written to the ledger or anywhere else.
  *
  * Usage:
  *   DA_TOKEN=… node skills/deploy/scripts/da-media-upload.mjs --org <org> --repo <repo> --scope <scope> \
  *     (--dir <local dir> | --manifest <json>) [options]
+ *     --token-env <NAME>   environment variable holding the token       (default DA_TOKEN)
+ *     --token-file <path>  read the token from this file instead (never both flags)
  *     --scope <name>       the folder under media/; relative — never media/<name> (the DA
  *                          path would double to media/media/<name>; refused as a usage error)
  *     --dir <path>         upload every image under this directory; the path
@@ -83,8 +88,9 @@
  *   DRY <file> -> <content url>                               (--dry-run)
  * Exit codes: 0 no failures, 1 any FAIL, 2 usage error (a value flag followed by
  *   nothing or by another --flag included), 3 token halt (expired JWT before any
- *   request, or a 401 that persisted through its retries — refresh DA_TOKEN and
- *   re-run the same command; the ledger skips what already landed).
+ *   request, or a 401 that persisted through its retries — refresh the token in
+ *   the variable or file the halt line names and re-run the same command; the
+ *   ledger skips what already landed).
  */
 
 /* eslint-disable no-restricted-syntax, brace-style, object-curly-newline, max-len, no-await-in-loop */
@@ -107,16 +113,20 @@ Usage: DA_TOKEN=… node da-media-upload.mjs --org <org> --repo <repo> --scope <
   --dry-run             list what would be uploaded; no network, no ledger write
   --admin-url <base>    override https://admin.da.live (local test double)
   --content-url <base>  override https://content.da.live (local test double)
+  --token-env <NAME>    environment variable holding the token (default DA_TOKEN)
+  --token-file <path>   read the token from this file instead (one of the two, never both)
   --help                this text
 
+Token: from the variable named by --token-env, or from --token-file (read once at start); never printed,
+never in the re-run command, never written to the ledger.
 Writes: the ledger at --ledger (not with --dry-run) and, for a manifest entry whose local
 file is absent but names a source, the fetched image bytes saved to that entry's file path.
 Prints one line per file (OK / SKIP / FAIL / HALT / DRY) and a summary. Exit 0 = no failures, 1 = any FAIL,
 2 = usage (a value flag followed by nothing or another --flag included), 3 = token halt.
-Token halt: an expired JWT in DA_TOKEN exits 3 before any request; the first upload runs alone to prove the
-token; a 401 retries like a 429, and a 401 that still persists through its retries on any file halts the batch
-(ledger saved, in-flight uploads finish, the rest not attempted, never marked failed) — refresh DA_TOKEN and
-re-run the same command; the ledger skips what already landed.`;
+Token halt: an expired JWT exits 3 before any request; the first upload runs alone to prove the token; a 401
+retries like a 429, and a 401 that still persists through its retries on any file halts the batch (ledger
+saved, in-flight uploads finish, the rest not attempted, never marked failed) — refresh the token in the
+variable or file the halt line names and re-run the same command; the ledger skips what already landed.`;
 
 const USAGE_EXIT = 2;
 const TOKEN_EXIT = 3;
@@ -156,6 +166,8 @@ export function parseArgs(argv, env = process.env) {
     else if (a === '--dry-run') o.dryRun = true;
     else if (a === '--admin-url') o.adminUrl = next().replace(/\/+$/, '');
     else if (a === '--content-url') o.contentUrl = next().replace(/\/+$/, '');
+    else if (a === '--token-env') o.tokenEnv = next();
+    else if (a === '--token-file') o.tokenFile = next();
     else usage(`unknown argument ${a}`);
   }
   for (const k of ['org', 'repo', 'scope']) if (!o[k]) usage(`--${k} is required`);
@@ -164,10 +176,25 @@ export function parseArgs(argv, env = process.env) {
   // `--scope media/<name>` and uploaded 242 files to media/media/<name>, then deleted them all.
   if (/^media\//.test(o.scope)) usage(`--scope is relative to media/ — pass the folder name under it (--scope ${o.scope.slice(6)}), never media/<name>: the upload path would double to media/${o.scope}/<file>`);
   if (!!o.dir === !!o.manifest) usage('give exactly one of --dir or --manifest');
-  o.token = env.DA_TOKEN;
-  if (!o.dryRun && !o.token) usage('DA_TOKEN is not set in the environment (the token is read from there only)');
+  // The token source: one variable (default DA_TOKEN) or one file, never both. The file is read here,
+  // once, before anything else runs; a dry run uses no token and so reads none. The value is kept on
+  // `token` only — every message names the source (`tokenLabel`), never the value.
+  if (o.tokenEnv && o.tokenFile) usage('give at most one of --token-env / --token-file');
+  o.tokenEnv ||= 'DA_TOKEN';
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(o.tokenEnv)) usage('--token-env needs an environment variable name (letters, digits, underscore)');
+  if (o.tokenFile) {
+    if (!o.dryRun) {
+      try { o.token = readFileSync(o.tokenFile, 'utf8').trim(); } catch (e) { usage(`cannot read --token-file ${o.tokenFile}: ${e.message}`); }
+      if (!o.token) usage(`--token-file ${o.tokenFile} is empty`);
+    }
+  } else o.token = env[o.tokenEnv];
+  if (!o.dryRun && !o.token) usage(`${o.tokenEnv} is not set in the environment (the token is read from there — or from --token-file — only)`);
   return o;
 }
+
+// How the messages name the token and say how to refresh it — the variable or the file, never the value.
+const tokenLabel = (o) => (o.tokenFile ? `the token in ${o.tokenFile}` : o.tokenEnv);
+const refreshHint = (o) => (o.tokenFile ? `write a fresh token to ${o.tokenFile}` : `refresh ${o.tokenEnv} in the environment`);
 
 // ---- inputs ------------------------------------------------------------------------------------
 
@@ -221,10 +248,12 @@ export function jwtExpiry(token) {
   } catch { return null; }
 }
 
-// The exact command to re-run once DA_TOKEN is fresh: same script, same arguments (the token itself is
-// never on the command line — it is read from the environment only).
+// The exact command to re-run once the token is fresh: same script, same arguments (the token itself is
+// never on the command line — it comes from the environment variable, or from the --token-file path).
 const shellQuote = (a) => (/^[A-Za-z0-9_./:=@%+,-]+$/.test(a) ? a : `'${a.replace(/'/g, "'\\''")}'`);
-const rerunCommand = () => `DA_TOKEN=<fresh token> node ${process.argv.slice(1).map(shellQuote).join(' ')}`;
+const rerunCommand = (o) => (o.tokenFile
+  ? `node ${process.argv.slice(1).map(shellQuote).join(' ')}   (after writing the fresh token to ${o.tokenFile})`
+  : `${o.tokenEnv}=<fresh token> node ${process.argv.slice(1).map(shellQuote).join(' ')}`);
 
 // ---- http --------------------------------------------------------------------------------------------
 
@@ -293,7 +322,7 @@ async function main() {
     const exp = jwtExpiry(opts.token);
     if (exp !== null && exp * 1000 <= Date.now()) {
       const ago = Math.max(1, Math.round((Date.now() - exp * 1000) / 60000));
-      console.error(`da-media-upload: DA_TOKEN is expired — its exp claim is ${new Date(exp * 1000).toISOString()} (${ago} min ago); nothing was sent. Refresh it and re-run: ${rerunCommand()}`);
+      console.error(`da-media-upload: ${tokenLabel(opts)} is expired — its exp claim is ${new Date(exp * 1000).toISOString()} (${ago} min ago); nothing was sent. Refresh it and re-run: ${rerunCommand(opts)}`);
       process.exit(TOKEN_EXIT);
     }
   }
@@ -373,9 +402,9 @@ async function main() {
       // is left not attempted — never `failed` — so the same command resumes exactly here. Workers already
       // in flight finish their own upload; nothing new starts.
       await drain(res);
-      say(`HALT ${e.file} 401 (unauthorized through ${attempts} attempt${attempts === 1 ? '' : 's'} — DA_TOKEN rejected; not recorded as failed, the re-run resumes here)`);
+      say(`HALT ${e.file} 401 (unauthorized through ${attempts} attempt${attempts === 1 ? '' : 's'} — ${tokenLabel(opts)} rejected; not recorded as failed, the re-run resumes here)`);
       if (!halted) {
-        halted = `DA_TOKEN rejected (401 through ${attempts} attempt${attempts === 1 ? '' : 's'} on ${e.file}${tokenAccepted ? ', after the token had been accepted earlier in this batch' : ', the lone first upload'}): refresh DA_TOKEN in the environment and re-run the same command — the ledger skips what already uploaded: ${rerunCommand()}`;
+        halted = `${tokenLabel(opts)} rejected (401 through ${attempts} attempt${attempts === 1 ? '' : 's'} on ${e.file}${tokenAccepted ? ', after the token had been accepted earlier in this batch' : ', the lone first upload'}): ${refreshHint(opts)} and re-run the same command — the ledger skips what already uploaded: ${rerunCommand(opts)}`;
         persist();
       }
       return;

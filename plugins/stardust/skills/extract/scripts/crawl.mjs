@@ -45,6 +45,16 @@
  *     (viewport-only fallback on extremely tall pages; mode in _signals.screenshotMode,
  *     relative path in the page record's `screenshot` field) — feeds the extract
  *     SKILL.md Phase 2.5 vision gate.
+ *   - LOCALE-ROOT CAPTURE GAPS (cross-page, after the crawl): for every captured
+ *     locale root — a one- or two-segment path of locale codes, such as /en, /fr-ca,
+ *     /ca/en — the same-origin links ON that page under its own path are listed and
+ *     the ones the crawl never captured are written to _crawl-log.json#captureGaps
+ *     ({ roots: [{ root, slug, linked, uncaptured[] }], detail }) and summarised on
+ *     stderr. `detail` is the ready ledger string ("uncaptured first-level targets:
+ *     ca/en 15, fr/fr 0") for the extract `end` line, so the owner sees the gap
+ *     before Phase 2. Two recorded hands-off runs captured a locale root whose
+ *     15-page subtree discovery never listed, and learned it six hours later from
+ *     the rollout link audit (15 × 404, then repointed to the source).
  *
  * Usage:
  *   node crawl.mjs --url https://example.com [--pages a,b,c] [--max 25] \
@@ -75,8 +85,9 @@
  *   assets/favicon.<ext>           the site icon from <link rel~=icon> or /favicon.ico, <ext> from
  *                                  its content-type — the ONLY media file this crawler downloads
  *   _crawl-log.json                discovery technique + page count, consent mode, favicon result,
- *                                  per-URL failures, slash retries (+ `dynamicSurface` with
- *                                  --dynamics); merged into an existing log, never replaced
+ *                                  per-URL failures, slash retries, `captureGaps` (locale roots,
+ *                                  above) (+ `dynamicSurface` with --dynamics); merged into an
+ *                                  existing log, never replaced
  * Not captured here: page images and videos (recorded as URLs under `media`, never downloaded),
  * stylesheets, font files, the logo and the rest of the brand surface — those belong to the
  * extract skill's Phase 3 (brand-surface extraction), not to the crawl; do not look for them
@@ -88,20 +99,28 @@
  * availability probe alone does NOT make the ESM module importable).
  */
 import { mkdir, writeFile, readFile } from 'node:fs/promises';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { fileURLToPath } from 'node:url';
+
+// Compare by real path: a symlinked checkout or temp dir must not turn the CLI into a silent no-op — and
+// a test that imports the pure helpers below (captureGaps, localeRootPath) must not start a crawl.
+const SELF = fileURLToPath(import.meta.url);
+function safeRealpath(p) { try { return realpathSync(p); } catch { return p; } }
+const IS_MAIN = Boolean(process.argv[1]) && SELF === safeRealpath(process.argv[1]);
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
-if (process.argv.includes('--help') || process.argv.includes('-h')) {
+if (IS_MAIN && (process.argv.includes('--help') || process.argv.includes('-h'))) {
   const src = readFileSync(new URL(import.meta.url), 'utf8');
   const header = src.match(/\/\*\*[\s\S]*?\*\//);
   console.log(header ? header[0].replace(/^\/\*\*\s*|\s*\*\/$/g, '').replace(/^\s*\* ?/gm, '').trim() : 'no usage header');
   process.exit(0);
 }
 
-// playwright is imported only past the --help guard, so --help answers on a checkout without it.
-const { chromium } = await import('playwright');
+// playwright is imported inside main(), past the --help guard and never on import, so --help answers on
+// a checkout without it and the pure helpers are testable without a browser.
+let chromium;
 
 const WAIT_MS = { fast: 1200, medium: 2500, slow: 5000 };
 
@@ -254,6 +273,55 @@ function normalizeUrl(u, base) {
 function dedupeKey(href) {
   const url = new URL(href);
   return url.origin + url.pathname.replace(/\/+$/, '') + url.search;
+}
+
+// ---- locale-root capture gaps (post-pass; pure, exported for tests) ----
+// A locale root is a captured page whose path is one or two segments of locale codes — `/en`,
+// `/fr-ca`, `/de_DE`, `/ca/en` (region, then language). Its first-level targets are the same-origin
+// links ON that page that lie under its own path (query, hash and trailing slash folded; assets,
+// mailto:/tel: and other hosts dropped; a `www.` prefix folded). Those the crawl never captured
+// (no record with that url or finalUrl) are the gaps. Two recorded hands-off runs captured a locale
+// root while its 15-page subtree, linked from that very page, never entered the inventory.
+const LOCALE_SEG = /^[a-z]{2,3}(?:[-_][a-z]{2,4})?$/i;
+const ASSET_EXT = /\.(?:css|js|mjs|json|xml|txt|pdf|zip|gz|ico|png|jpe?g|gif|svg|webp|avif|mp[34]|webm|woff2?|ttf|otf|eot)$/i;
+export function localeRootPath(href) {
+  let u;
+  try { u = new URL(href); } catch { return null; }
+  const segs = u.pathname.split('/').filter(Boolean);
+  if (!segs.length || segs.length > 2 || !segs.every((s) => LOCALE_SEG.test(s))) return null;
+  return `/${segs.join('/')}`;
+}
+const hostKey = (u) => u.host.toLowerCase().replace(/^www\./, '');
+const pathKey = (u) => u.pathname.replace(/\/+$/, '') || '/';
+// a record's `links` is the flat href list capture() writes; the schema's { internal, external } shape is read too
+const linkList = (links) => (Array.isArray(links) ? links : links && typeof links === 'object' ? [...(links.internal || []), ...(links.external || [])] : []);
+export function captureGaps(records) {
+  const captured = new Set();
+  for (const r of records) {
+    for (const h of [r.url, r.finalUrl]) { try { const u = new URL(h); captured.add(`${hostKey(u)}${pathKey(u)}`); } catch { /* absent or not a URL */ } }
+  }
+  const roots = [];
+  for (const r of records) {
+    const root = localeRootPath(r.url);
+    if (!root) continue;
+    const base = new URL(r.url);
+    const targets = new Set();
+    for (const raw of linkList(r.links)) {
+      let u;
+      try { u = new URL(raw, r.url); } catch { continue; }
+      if (!/^https?:$/.test(u.protocol) || hostKey(u) !== hostKey(base)) continue;
+      const p = pathKey(u);
+      if (!p.startsWith(`${root}/`) || ASSET_EXT.test(p)) continue;
+      targets.add(p);
+    }
+    const uncaptured = [...targets].filter((p) => !captured.has(`${hostKey(base)}${p}`)).sort();
+    roots.push({ root, slug: r.slug, linked: targets.size, uncaptured });
+  }
+  roots.sort((a, b) => a.root.localeCompare(b.root));
+  const detail = roots.length
+    ? `uncaptured first-level targets: ${roots.map((r) => `${r.root.slice(1)} ${r.uncaptured.length}`).join(', ')}`
+    : 'uncaptured first-level targets: none (no locale root captured)';
+  return { roots, detail };
 }
 
 // ---- discovery: explicit pages > sitemap (validated) > BFS from nav ----
@@ -882,6 +950,7 @@ async function capturePage(context, url, slug, args) {
 
 async function main() {
   const args = parseArgs(process.argv);
+  ({ chromium } = await import('playwright'));
   const outPages = path.join(args.out, 'pages');
   await mkdir(outPages, { recursive: true });
 
@@ -992,7 +1061,7 @@ async function main() {
         // top-level renderedBy/fetchedAt are legacy-reader aliases of the same
         // _provenance fields — _provenance is the authoritative contract.
         await writeFile(file, JSON.stringify({ _provenance, slug, url: recordUrl, renderedBy: _provenance.renderedBy, fetchedAt: _provenance.fetchedAt, ...rest }, null, 2));
-        results[idx] = { slug, file, hash };
+        results[idx] = { slug, file, hash, url: recordUrl, finalUrl: rec.finalUrl, links: rec.links }; // url/finalUrl/links feed the capture-gap post-pass
         ok += 1;
         const s = rec._signals;
         const dy = rec.dynamic?.summary || {};
@@ -1022,6 +1091,13 @@ async function main() {
     await writeFile(r.file, JSON.stringify(rec, null, 2));
     console.error(`[crawl] DUP  ${r.slug}  DUP-OF:${canonical}`);
   }
+  // locale-root capture gaps: the subtree a captured locale root links to but discovery never listed —
+  // surfaced here, and as a ready --detail string for the extract `end` ledger line, not six hours later
+  // in the rollout link audit.
+  log.captureGaps = captureGaps(results.filter(Boolean));
+  if (log.captureGaps.roots.length) {
+    console.error(`[crawl] capture gaps: ${log.captureGaps.roots.map((r) => `${r.root} ${r.uncaptured.length} of ${r.linked} first-level target(s) uncaptured`).join('; ')} — list in _crawl-log.json#captureGaps; ledger --detail "${log.captureGaps.detail}"`);
+  }
   if (args.dynamics) {
     log.dynamicSurface = finalizeDynamic(dynamicRollup);
     console.error(`[crawl] dynamic surface (reach): ${log.dynamicSurface.endpoints.filter((e) => e.sameSite).length} same-site data endpoints, ${log.dynamicSurface.pagesWithSearchForm} pages with a search form, ${log.dynamicSurface.pagesHydrated} hydrated — depth + classification: stardust:dynamics`);
@@ -1033,4 +1109,4 @@ async function main() {
   console.error(`[crawl] done. ${ok}/${urls.length} captured, ${log.crawl.failures.length} failed. log: ${logPath}`);
 }
 
-main().catch((e) => { console.error(`[crawl] fatal: ${e.message}`); process.exit(2); });
+if (IS_MAIN) main().catch((e) => { console.error(`[crawl] fatal: ${e.message}`); process.exit(2); });
