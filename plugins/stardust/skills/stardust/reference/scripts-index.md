@@ -32,7 +32,7 @@ Run the project copies under `stardust/scripts/<skill>/`. Read this before any `
 - `dynamics/sync-sheets.mjs` — sheet JSON → DA + preview — `--source <o> --org --repo --paths a.json,b.json`
 - `extract/crawl.mjs` — site crawler → pages, screenshots, `_crawl-log.json#captureGaps` — `--url <u> [--pages a,b] [--max 25] [--out stardust/current] [--dynamics]`
 - `extract/style-census.mjs` — computed-style census (one live pass) — `[--pages <dir>|--urls a,b] [--width <px>] [--headed]`
-- `extract/thumb.mjs` — legible capture thumbnails, ≤ --max-bytes — `<png|dir…> [--width 480] [--max-height <px>] [--max-bytes 150000]`
+- `extract/thumb.mjs` — legible capture thumbnails ≤ --max-bytes (narrower first, then a crop ≥ --min-share; a share < 100 → the rest via --offset) — `<png|dir…> [--width 480] [--max-height <px>] [--max-bytes 150000] [--min-share 60] [--offset <px>]`
 - `migrate/migrate.mjs` — per-page render driver + sidecar — `render <slug…|--all>`; `gate|deviation|variant|modules <slug>`
 - `qa/lib.mjs` — library, no CLI
 - `qa/qa.mjs` — read-only live sweep → report.json — `--base <live-url>`

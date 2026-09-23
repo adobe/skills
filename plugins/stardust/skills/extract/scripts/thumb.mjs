@@ -17,45 +17,69 @@
  * Usage:
  *   node skills/extract/scripts/thumb.mjs <png|dir…> [options]
  *     --width <px>       thumbnail width; a narrower source is not upscaled (default 480)
- *     --max-height <px>  cap on the thumbnail height. The SOURCE is cropped at
- *                        max-height × (source width / --width) rows first, so the
- *                        output is at most this tall; a crop is noted on the
- *                        stdout line                                     (default 3200)
- *     --max-bytes <n>    cap on the thumbnail's PNG size in bytes. A thumbnail over
- *                        it is re-encoded at a lower --max-height (the same crop from
- *                        the bottom) until it fits; the stdout line notes the crop, the
- *                        cap and the final size. Every thumbnail is read into a model
- *                        context — a recorded hands-off run read eight of 268–608 KB,
- *                        3.2 MB, into one context                       (default 150000)
+ *     --max-height <px>  upper bound on the thumbnail height. The SOURCE is cropped at
+ *                        max-height × (source width / width) rows, so the output is at
+ *                        most this tall; the stdout line notes the crop and the kept
+ *                        share of the page                                   (default 3200)
+ *     --max-bytes <n>    cap on the thumbnail's PNG size in bytes — every thumbnail is
+ *                        read into a model context (a recorded hands-off run read eight
+ *                        of 268–608 KB, 3.2 MB, into one context). A thumbnail over the
+ *                        cap is re-encoded, in this order, until one fits:
+ *                          1. narrower: the WHOLE page again at each width step below
+ *                             --width (480 → 400 → 320 → 240);
+ *                          2. shorter, at the narrowest step only: the largest height
+ *                             under the cap, found by bisection on the MEASURED encoded
+ *                             size (PNG size is not linear in rows — a byte-ratio guess
+ *                             overshoots by an order of magnitude), never below the
+ *                             --min-share floor: the vision check reads the whole page
+ *                             through the thumbnail, and a hero strip is not the page (a
+ *                             recorded run kept a median 28 % of each page);
+ *                          3. still over at the floor: the floor thumbnail is written
+ *                             anyway, named on stderr, exit 1 — raise --max-bytes or
+ *                             lower --min-share for that page.                (default 150000)
+ *     --min-share <pct>  the least share of the page (of the rows from --offset down) a
+ *                        cap-driven crop keeps, in percent, 1–100                (default 60)
+ *     --offset <px>      first SOURCE row of the thumbnail — the slice below a crop. The
+ *                        output name gains -<offset>, so the first thumbnail stays  (default 0)
  *     --out <dir>        where the thumbnails go, created if missing
  *                                          (default: each source's own directory)
  *     --suffix <s>       appended to the source basename                 (default -thumb)
  *     --help, -h         this header
  *
  *   A directory argument stands for the PNG files in it (sorted; files already
- *   carrying --suffix are skipped, so a re-run over the screenshots directory
- *   never thumbnails its own output). Any pngjs colour type is accepted — the
- *   decoder yields 8-bit RGBA. One line per file on stdout:
- *     <src>: <W>x<H> -> <w>x<h>[ (cropped at <n>px of <H>[; re-encoded for --max-bytes <b>])] -> <dst> (<bytes> bytes)
+ *   carrying --suffix — or --suffix-<offset>, a slice — are skipped, so a re-run
+ *   over the screenshots directory never thumbnails its own output). Any pngjs
+ *   colour type is accepted — the decoder yields 8-bit RGBA. One line per file on
+ *   stdout:
+ *     <src>: <W>x<H> -> <w>x<h> [scaled to <w>px] [(cropped at <n>px of <H> = <share>%)] [for --max-bytes <b>] -> <dst> (<bytes> bytes)
+ *   `scaled to` says the width stepped down for the cap; `cropped at <n>px` is the
+ *   first source row NOT in the thumbnail and `<share>` the kept percent of the page
+ *   (floored — a crop never reads 100): the rest of the page is one more call away,
+ *   `--offset <n>`, whose line notes `(rows <offset>-<end>px of <H> = <share>%)`
+ *   instead; `for --max-bytes` says the cap drove the scale or the crop.
  *
  * Example (every page capture at once, then read the thumbnails):
  *   node stardust/scripts/thumb.mjs stardust/current/assets/screenshots --width 480
+ *   node stardust/scripts/thumb.mjs stardust/current/assets/screenshots/home.png --offset 2270
+ *     — the rest of a page whose line read `cropped at 2270px of 3782 = 60%`; writes home-thumb-2270.png
  *
  * Writes:
- *   <out>/<basename><suffix>.png   one per input (default <out> = the source's directory)
+ *   <out>/<basename><suffix>[-<offset>].png   one per input (default <out> = the source's directory)
  *   Nothing else. A source is never overwritten: an output path equal to its
  *   input (e.g. --suffix '' without --out) is refused before anything is written.
  *
  * Requires: pngjs (project devDependency — the same one the replica scripts
- * use; run the project copy, as Setup does for crawl.mjs). --help needs nothing.
- * Exit codes: 0 ok · 1 an input failed to read or write (named on stderr; the
- * others are still written), or a thumbnail still over --max-bytes at one row
- * (written anyway, named on stderr — the cap cannot be met at that --width) ·
- * 2 usage (no inputs, bad flag, a value flag followed by nothing or by another
- * --flag — named, never swallowed — or an output that would overwrite an input
- * or collide with another output).
+ * use; run the project copy, as Setup does for crawl.mjs, or point NODE_PATH at
+ * the project's node_modules). --help needs nothing.
+ * Exit codes: 0 ok · 1 an input failed to read or write, or --offset is past its
+ * last row (named on stderr; the others are still written), or a thumbnail still
+ * over --max-bytes at the narrowest width and the height floor (written anyway,
+ * named on stderr) · 2 usage (no inputs, bad flag, a value flag followed by
+ * nothing or by another --flag — named, never swallowed — or an output that would
+ * overwrite an input or collide with another output).
  */
 import { mkdirSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { basename, dirname, extname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -64,8 +88,10 @@ const SELF = fileURLToPath(import.meta.url);
 function safeRealpath(p) { try { return realpathSync(p); } catch { return p; } }
 const IS_MAIN = Boolean(process.argv[1]) && SELF === safeRealpath(process.argv[1]);
 
-export const DEFAULTS = { width: 480, maxHeight: 3200, maxBytes: 150000, suffix: '-thumb', out: null };
-const SYNOPSIS = 'usage: node thumb.mjs <png|dir…> [--width 480] [--max-height 3200] [--max-bytes 150000] [--out <dir>] [--suffix -thumb]  (--help for the full header)';
+export const DEFAULTS = { width: 480, maxHeight: 3200, maxBytes: 150000, minShare: 60, offset: 0, suffix: '-thumb', out: null };
+// The widths a thumbnail over --max-bytes is retried at (narrowest last); --width itself comes first.
+export const WIDTH_STEPS = [480, 400, 320, 240];
+const SYNOPSIS = 'usage: node thumb.mjs <png|dir…> [--width 480] [--max-height 3200] [--max-bytes 150000] [--min-share 60] [--offset 0] [--out <dir>] [--suffix -thumb]  (--help for the full header)';
 
 export class UsageError extends Error { constructor(msg, code = 2) { super(msg); this.code = code; } }
 
@@ -77,10 +103,13 @@ const usageHeader = () => {
 
 // pngjs is loaded here, after --help and argument checks, so those answer the same in a checkout
 // that lacks the module (the plugin tree ships no node_modules — see Setup on running project copies).
+// ESM resolution ignores NODE_PATH; CommonJS resolution honours it, so a checkout without a
+// node_modules of its own can point NODE_PATH at a project's install (the test runs that way).
 async function loadPng() {
   try { return (await import('pngjs')).PNG; } catch (e) {
     if (e.code !== 'ERR_MODULE_NOT_FOUND') throw e;
-    throw new Error(`${e.message.split('\n')[0]} — pngjs is a project devDependency; copy this script into the project (stardust/scripts/thumb.mjs, beside crawl.mjs) and run that copy`);
+    try { return createRequire(import.meta.url)('pngjs').PNG; } catch (e2) { if (e2.code !== 'MODULE_NOT_FOUND') throw e2; }
+    throw new Error(`${e.message.split('\n')[0]} — pngjs is a project devDependency; copy this script into the project (stardust/scripts/thumb.mjs, beside crawl.mjs) and run that copy, or set NODE_PATH=<project>/node_modules`);
   }
 }
 
@@ -105,21 +134,80 @@ export function binWeights(n, m) {
   return bins;
 }
 
-// One thumbnail's geometry: output size and how many SOURCE rows feed it. Never upscales; the crop
-// is taken in source rows, so `h` never exceeds maxHeight and the kept part is the page top.
-export function planThumb(W, H, { width = DEFAULTS.width, maxHeight = DEFAULTS.maxHeight } = {}) {
+// One thumbnail's geometry: output size and which SOURCE rows feed it — `rows` rows from `start`
+// (= offset, which the caller keeps below H). Never upscales; the crop is taken in source rows, so
+// `h` never exceeds maxHeight and the kept part starts at the offset.
+export function planThumb(W, H, { width = DEFAULTS.width, maxHeight = DEFAULTS.maxHeight, offset = 0 } = {}) {
   const w = Math.min(W, width);
   const scale = W / w;
-  const rows = Math.min(H, Math.floor(maxHeight * scale));
+  const start = offset;
+  const rows = Math.min(H - start, Math.floor(maxHeight * scale));
   const h = Math.max(1, Math.min(maxHeight, Math.round(rows / scale)));
-  return { w, h, rows, cropped: rows < H };
+  return { w, h, rows, start, cropped: rows < H };
 }
 
-// The next --max-height to try when a thumbnail's PNG is over --max-bytes: PNG size is roughly linear
-// in rows, so the height is scaled by the byte ratio with an 8 % margin — and always drops by at least
-// one row, so the re-encode loop ends (at one row if it must).
-export function nextMaxHeight(h, bytes, maxBytes) {
-  return Math.max(1, Math.min(h - 1, Math.floor(((h * maxBytes) / bytes) * 0.92)));
+// The kept share of the page as the integer percent the line prints — floored, so anything short
+// of the whole page never reads 100.
+export const cropShare = (rows, H) => Math.floor((rows * 100) / H);
+
+// The widths a thumbnail over --max-bytes is retried at: --width first, then each standard step below it.
+export const widthLadder = (width) => [width, ...WIDTH_STEPS.filter((s) => s < width)];
+
+// The lowest --max-height a cap-driven crop may go to: the smallest thumbnail height whose plan keeps
+// at least minShare % of the rows from `offset` down (in source rows — floor(h × scale) of them).
+export function floorHeight(W, H, { width = DEFAULTS.width, offset = 0, minShare = DEFAULTS.minShare } = {}) {
+  const scale = W / Math.min(W, width);
+  const need = Math.ceil(((H - offset) * minShare) / 100);
+  let h = Math.max(1, Math.ceil(need / scale));
+  while (Math.floor(h * scale) < need) h += 1; // the float seam of ceil(need / scale)
+  return h;
+}
+
+// Fit a thumbnail under maxBytes. `encode(plan)` returns the PNG bytes (anything with `.length`),
+// so the search is pure and the tests drive it with a size model. Levers, in order: (a) the width
+// ladder — the WHOLE page again at each step below --width; (b) at the narrowest step only, the
+// largest height under the cap by bisection on the measured size, never below the --min-share floor
+// (nor above --max-height, which stays an upper bound); (c) the floor itself when even that is over —
+// `unmet` is set, the caller writes it and warns. Returns the plan, its bytes and what happened.
+export function fitToCap(W, H, opts, encode) {
+  const { width = DEFAULTS.width, maxHeight = DEFAULTS.maxHeight, maxBytes = DEFAULTS.maxBytes, minShare = DEFAULTS.minShare, offset = 0 } = opts;
+  let encodes = 0;
+  const at = (w, mh) => { const plan = planThumb(W, H, { width: w, maxHeight: mh, offset }); encodes += 1; return { plan, out: encode(plan) }; };
+  const fits = (r) => r.out.length <= maxBytes;
+  const done = (r, scaled, forCap, unmet) => ({ ...r, scaled, forCap, unmet, encodes });
+  let best = at(width, maxHeight);
+  if (fits(best)) return done(best, false, false, false);
+  // (a) narrower first — the vision check reads the whole page through the thumbnail.
+  for (const step of widthLadder(width).slice(1)) {
+    if (Math.min(W, step) >= best.plan.w) continue; // the source is narrower than this step: same geometry
+    best = at(step, maxHeight);
+    if (fits(best)) return done(best, true, true, false);
+  }
+  const scaled = best.plan.w < Math.min(W, width);
+  // (b) shorter, never below the floor — and only by measuring: PNG size is not linear in rows.
+  const { w, h: hFull } = best.plan;
+  const hFloor = Math.min(hFull, floorHeight(W, H, { width: w, offset, minShare }));
+  if (hFloor >= hFull) return done(best, scaled, true, true); // --max-height already at or under the floor
+  let lo = at(w, hFloor);
+  if (!fits(lo)) return done(lo, scaled, true, true); // (c) the floor is over: written anyway, exit 1
+  let loH = hFloor; let hi = hFull; // lo fits; hi was measured over the cap
+  while (hi - loH > 1) {
+    const mid = Math.floor((loH + hi) / 2);
+    const r = at(w, mid);
+    if (fits(r)) { lo = r; loH = mid; } else hi = mid;
+  }
+  return done(lo, scaled, true, false);
+}
+
+// The stdout line's middle: `<w>x<h> [scaled to <w>px] [(cropped at <n>px of <H> = <share>%)] [for
+// --max-bytes <b>]`; a slice (--offset) notes `(rows <start>-<end>px of <H> = <share>%)` instead.
+export function thumbNote(plan, H, { scaled = false, forCap = false, maxBytes = DEFAULTS.maxBytes } = {}) {
+  const { w, h, rows, start } = plan;
+  const parts = [`${w}x${h}`];
+  if (scaled) parts.push(`scaled to ${w}px`);
+  if (rows < H) parts.push(start > 0 ? `(rows ${start}-${start + rows}px of ${H} = ${cropShare(rows, H)}%)` : `(cropped at ${rows}px of ${H} = ${cropShare(rows, H)}%)`);
+  if (forCap) parts.push(`for --max-bytes ${maxBytes}`);
+  return parts.join(' ');
 }
 
 // Box-filter downscale of the top `rows` rows of an RGBA buffer `W` wide to w×h. Separable: each
@@ -147,22 +235,34 @@ export function boxDownscale(src, W, rows, w, h) {
   return out;
 }
 
-export const thumbPath = (src, { out = null, suffix = DEFAULTS.suffix } = {}) => join(out || dirname(src), `${basename(src, extname(src))}${suffix}.png`);
+// The PNG for a plan — its source rows (from `start`) box-downscaled to w×h, pngjs defaults: the
+// bytes the cap measures and the file that is written.
+export function encodeThumb(PNG, png, plan) {
+  const t = new PNG({ width: plan.w, height: plan.h });
+  t.data = boxDownscale(png.data.subarray(plan.start * png.width * 4), png.width, plan.rows, plan.w, plan.h);
+  return PNG.sync.write(t);
+}
 
-// A directory stands for its PNG files (sorted); files already carrying the suffix are skipped so a
-// re-run over the screenshots directory never thumbnails its own output. Anything else is taken as
-// a file and, if it is not a readable PNG, fails at read time — named on stderr, exit 1.
+export const thumbPath = (src, { out = null, suffix = DEFAULTS.suffix, offset = 0 } = {}) => join(out || dirname(src), `${basename(src, extname(src))}${suffix}${offset > 0 ? `-${offset}` : ''}.png`);
+
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+// A directory stands for its PNG files (sorted); files already carrying the suffix — or the suffix
+// plus a slice's -<offset> — are skipped so a re-run over the screenshots directory never thumbnails
+// its own output. Anything else is taken as a file and, if it is not a readable PNG, fails at read
+// time — named on stderr, exit 1.
 export function expandInputs(paths, suffix, warn = () => {}) {
   const files = [];
+  const ownRe = suffix ? new RegExp(`${escapeRe(suffix)}(?:-\\d+)?\\.png$`, 'i') : null;
   for (const p of paths) {
     let isDir = false;
     try { isDir = statSync(p).isDirectory(); } catch { /* absent: the read fails later and names it */ }
     if (!isDir) { files.push(p); continue; }
     const all = readdirSync(p).filter((f) => /\.png$/i.test(f)).sort();
-    const own = suffix ? all.filter((f) => f.toLowerCase().endsWith(`${suffix}.png`.toLowerCase())) : [];
+    const own = ownRe ? all.filter((f) => ownRe.test(f)) : [];
     const take = all.filter((f) => !own.includes(f));
     if (!take.length) warn(`no *.png in ${p}`);
-    else if (own.length) warn(`${p}: skipped ${own.length} existing *${suffix}.png`);
+    else if (own.length) warn(`${p}: skipped ${own.length} existing *${suffix}*.png`);
     files.push(...take.map((f) => join(p, f)));
   }
   return files;
@@ -177,10 +277,12 @@ export function parseArgs(argv) {
     // A value flag followed by nothing or by another --flag is a usage error naming the flag (a
     // single-dash value like `--suffix -720` stays a value).
     const need = () => { if (i + 1 >= argv.length || argv[i + 1].startsWith('--')) throw new UsageError(`${a} needs a value`); i += 1; return argv[i]; };
-    const int = (v) => { const n = Number(v); if (!Number.isInteger(n) || n < 1) throw new UsageError(`${a} needs a positive integer, got "${v}"`); return n; };
+    const int = (v, { min = 1, max = Infinity, what = 'a positive integer' } = {}) => { const n = Number(v); if (!Number.isInteger(n) || n < min || n > max) throw new UsageError(`${a} needs ${what}, got "${v}"`); return n; };
     if (a === '--width') opts.width = int(need());
     else if (a === '--max-height') opts.maxHeight = int(need());
     else if (a === '--max-bytes') opts.maxBytes = int(need());
+    else if (a === '--min-share') opts.minShare = int(need(), { max: 100, what: 'a percent from 1 to 100' });
+    else if (a === '--offset') opts.offset = int(need(), { min: 0, what: 'a source row (a non-negative integer)' });
     else if (a === '--out') opts.out = need();
     else if (a === '--suffix') opts.suffix = need();
     else if (a.startsWith('-') && a !== '-') throw new UsageError(`unknown option ${a}`);
@@ -217,22 +319,16 @@ export async function main(argv, { log = console.log, warn = console.error } = {
   for (const { src, dst } of jobs) {
     try {
       const png = PNG.sync.read(readFileSync(src));
-      const encode = (plan) => { const t = new PNG({ width: plan.w, height: plan.h }); t.data = boxDownscale(png.data, png.width, plan.rows, plan.w, plan.h); return PNG.sync.write(t); };
-      let plan = planThumb(png.width, png.height, opts);
-      let out = encode(plan);
-      // The size cap: lower --max-height (the same crop from the bottom) until the PNG fits — or one row.
-      let capped = false;
-      while (out.length > opts.maxBytes && plan.h > 1) {
-        plan = planThumb(png.width, png.height, { ...opts, maxHeight: nextMaxHeight(plan.h, out.length, opts.maxBytes) });
-        out = encode(plan);
-        capped = true;
-      }
+      if (opts.offset >= png.height) throw new Error(`--offset ${opts.offset} is past the last row of a ${png.width}x${png.height} page`);
+      const fit = fitToCap(png.width, png.height, opts, (plan) => encodeThumb(PNG, png, plan));
       mkdirSync(dirname(dst), { recursive: true });
-      writeFileSync(dst, out);
-      const { w, h, rows, cropped } = plan;
-      const notes = [cropped ? `cropped at ${rows}px of ${png.height}` : null, capped ? `re-encoded for --max-bytes ${opts.maxBytes}` : null].filter(Boolean);
-      log(`${src}: ${png.width}x${png.height} -> ${w}x${h}${notes.length ? ` (${notes.join('; ')})` : ''} -> ${dst} (${out.length} bytes)`);
-      if (out.length > opts.maxBytes) { failed += 1; warn(`thumb: ${dst}: ${out.length} bytes at ${h} row(s) still exceeds --max-bytes ${opts.maxBytes} — the cap cannot be met at this --width; written anyway`); }
+      writeFileSync(dst, fit.out);
+      log(`${src}: ${png.width}x${png.height} -> ${thumbNote(fit.plan, png.height, { ...fit, maxBytes: opts.maxBytes })} -> ${dst} (${fit.out.length} bytes)`);
+      if (fit.unmet) {
+        failed += 1;
+        const { w, h, rows } = fit.plan;
+        warn(`thumb: ${dst}: ${fit.out.length} bytes at ${w}x${h} (${cropShare(rows, png.height)}% of the page — the narrowest width and the height floor) still exceeds --max-bytes ${opts.maxBytes}; written anyway — raise --max-bytes or lower --min-share for this page`);
+      }
     } catch (e) {
       failed += 1;
       warn(`thumb: ${src}: ${e.message}`);

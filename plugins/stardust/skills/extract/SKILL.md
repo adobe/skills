@@ -340,12 +340,26 @@ Read the whole page through its thumbnail —
 `node stardust/scripts/thumb.mjs stardust/current/assets/screenshots/<slug>.png --width 480`
 (`skills/extract/scripts/thumb.mjs`, copied beside `crawl.mjs`; a
 box-filter downscale, so 1-px rules and hairline borders survive; its
-`--max-bytes` cap, 150 KB by default, re-encodes a heavy page at a lower
-`--max-height` so no thumbnail exceeds it) —
+`--max-bytes` cap, 150 KB by default, re-encodes a heavy page narrower
+first — 400, 320, 240 px, the whole page each time — and crops only when
+the narrowest width is still over, never below 60 % of the page,
+`--min-share`) —
 never the full-resolution screenshot, and read any detail as a crop of
-the full capture. **A thumbnail enters the context only after
-`thumb.mjs` has written it (≤ 150 KB) — or the vision check runs in a
-subagent that reads the thumbnails and returns one line per page**
+the full capture. The check is of the WHOLE page, so read the script's
+stdout line before the image: `cropped at <n>px of <H> = <share>%` with a
+share below 100 means the thumbnail ends at source row `<n>` — run
+`node stardust/scripts/thumb.mjs stardust/current/assets/screenshots/<slug>.png --offset <n>`
+and read that second file too (`<slug>-thumb-<n>.png`; its line reads
+`rows <n>-<end>px of <H> = <share>%` — repeat with `--offset <end>` while
+`<end>` is short of `<H>`). A `still exceeds --max-bytes` stderr line
+(exit 1) means the 60 % floor was written over the cap: read it, then its
+`--offset` slice, or raise `--max-bytes` for that page. A recorded
+hands-off run's thumbnails kept a median 28 % of each page (minimum 9 %)
+— the hero and little else — and the check read them as the page.
+**A thumbnail enters the context only after `thumb.mjs` has written it
+(≤ 150 KB, or the floor thumbnail it named on stderr) — or the vision
+check runs in a subagent that reads the thumbnails and returns one line
+per page**
 (`<slug>: ok | recaptured | suspect — <note>`); a recorded hands-off run
 read eight `*-thumb.png` files of 268–608 KB each into one context —
 3.2 MB of pixels for eight verdicts.
