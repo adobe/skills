@@ -150,15 +150,22 @@ re-written whenever a step outlives the five-minute prompt cache.
 - **`replica/reference/handoff-contract.md`** (new): what the Phase 5 executor needs from
   migrate, deploy and rollout — sibling-tier steps, the editability, decode and DA protocols,
   rollout phases A–I with their ledger strings, one usage line per script, bookkeeping. C-deliver
-  runs as recorded units in `stardust/rollout/progress.json`: C0 foundation by the main agent,
-  then `foundation-freeze.mjs freeze` + commit; C1…Cn one subagent per template cluster AUTHORS
-  through the local structural asserts and hands back a path list, the MAIN agent deploys one
-  `deploy-batch.mjs --paths …` at a time (the batch ledger has one writer, the token one owner),
-  the cluster gates on the preview origin and reports one verdict line; C-final applies the
+  runs as recorded units in `stardust/rollout/progress.json`: C0 foundation authored and deployed
+  by one foundation subagent, gated by the main agent on the published origin, then
+  `foundation-freeze.mjs freeze` + commit; C1…Cn one subagent per template cluster runs the whole
+  chain — local asserts, PUT → preview, the published-origin gates — driving its own
+  `deploy-batch.mjs --paths … --ledger stardust/deploy/ledger-<cluster>.json --concurrency 2`
+  (the shared ledgers are lock-safe, so clusters deploy at once; a recorded 36-page hands-off run
+  delivered 36/36 this way with zero 401s and its coordinator at or below 131k tokens of context)
+  and reports one verdict line; the main agent only spawns, waits and records; C-final applies the
   queued `foundation-requests.md` once. A unit end is a resume point, never by itself a reason
   to end the session.
+- **The foundation is a subagent's unit**: a recorded run's main agent authored, deployed, gated
+  and fixed the foundation itself in C0 and grew from 107k to 337k tokens of context inside that
+  one unit — more than its four cluster units together; the coordinator now gates the shell only,
+  and a failing gate goes back to the foundation subagent as one message carrying the numbers.
 - **Rules placed where the agent acts** (replica, rollout, deploy cards): lint and commit the
-  foundation before any subagent spawns, no rename of a frozen file after fan-out; lint rules in
+  foundation before any cluster subagent spawns, no frozen-file rename after fan-out; lint rules in
   every brief; disjoint clusters spawn concurrently; the root `/` is served by the `index`
   document and must answer 200 (a `/` redirect row only when the source root itself redirects);
   captured pages are always delivered — the ≤ 12 default is for uncaptured in-scope targets,

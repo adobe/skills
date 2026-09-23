@@ -376,17 +376,17 @@ end --detail "<per-breakpoint numbers>"`. Resuming a run starts with
 - **Site-wide rollout** via the stardust `rollout` skill, unchanged — its block dedup
   is what implements "same blocks across the whole site".
 - **C-deliver runs in units** (`reference/handoff-contract.md` § 3, row C +
-  Fan-out discipline): C0 — the main agent alone delivers and gates the
-  foundation, then `foundation-freeze.mjs freeze` + commit; C1…Cn — one
-  subagent per template cluster AUTHORS its pages through the local
-  structural asserts and hands back a path list; the MAIN agent deploys each
-  landed cluster with one `deploy-batch.mjs --paths …` at a time (one ledger
-  writer, the token in one place); the cluster's subagent then gates on the
-  preview origin and reports one verdict line; C-final — `check`, the queued
-  `foundation-requests.md` lines applied once, `C-deliver end`. Each unit is
-  recorded in `stardust/rollout/progress.json` and committed — a safe resume
-  point, never by itself a reason to end the session; no frozen file is
-  edited mid-wave.
+  Fan-out discipline): C0 — ONE foundation subagent authors AND deploys the
+  foundation; the main agent gates the shell on the published origin, then
+  `foundation-freeze.mjs freeze` + commit; C1…Cn — one subagent per template
+  cluster runs the whole chain, PUT → preview → published-origin gates
+  included, with its own batch ledger (`deploy-batch.mjs --ledger …`,
+  lock-safe) and reports one verdict line; the main agent only coordinates
+  and records; C-final — `check`, the queued `foundation-requests.md` lines
+  applied once, `C-deliver end`. Each unit is recorded in
+  `stardust/rollout/progress.json` and committed — a safe resume point,
+  never by itself a reason to end the session; no frozen file is edited
+  mid-wave.
 - **The final gate runs against the PUBLISHED origin — not the harness**
   (`reference/source-fidelity-gate.md` § The published-origin gate): the
   delivery pipeline transforms markup, so harness numbers understate.
