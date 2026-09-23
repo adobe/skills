@@ -25,6 +25,17 @@ One JSON object per line (JSONL — no wrapping array, no pretty-print):
 | `detail` | no | one human-readable line (counts, blocker reason) |
 | `artifact` | no | path to the phase's primary output, when one exists |
 
+**Phase names.** A `Phase N — Title` heading uses the title's descriptive
+word in lower-case kebab form (`render` for "Phase 2 — Per-page render"); a
+`Letter —` or `N.` step heading uses `<Letter or N>-<first word>`
+(`C-deliver`, `I-dashboard`, deploy's `1-audit`). The reference list per skill is the `PHASES` table in
+`skills/stardust/scripts/ledger.mjs`, which writes the line
+(`node skills/stardust/scripts/ledger.mjs <skill> <phase> <start|end|blocked>
+[--detail "…"] [--artifact <path>] [--strict]`), writes a known phase in the
+table's own form (an alias or a differently-cased name is normalised) and
+warns on a name outside the table. Supervising runners key on these strings,
+so a skill's final phase must appear exactly as listed.
+
 ## Rules
 
 - **Append-only, never rewritten.** A correction is a new line, not an
