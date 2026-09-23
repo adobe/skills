@@ -127,6 +127,17 @@ re-written whenever a step outlives the five-minute prompt cache.
   answered 401 across a whole first burst); a 401 that persists after the token was accepted
   HALTS the batch (exit 3, ledger persisted, the same command resumes) — never a per-file FAIL
   (an expired token once left an 894-row batch failing file by file for 5.5 hours).
+- **`deploy/scripts/deploy-batch.mjs`** follows the same 401 policy: a JWT past its `exp` exits 3
+  before any request; a 401 on PUT, preview or live is retried like a 429; a 401 that persists
+  through its retries on any page HALTS the batch — exit 3, no new page started, pages in flight
+  finished, ledger persisted through the lock-safe merge, the halted page keeps its status
+  (`attempts` incremented), one stderr `HALT <path> 401 after <n> attempts — refresh DA_TOKEN and
+  re-run: <the same command>` line. Before, 401 was not retryable there, the page went `put-fail`
+  and the batch ran on through every remaining page with exit 1 — the shape the uploader's rule
+  was written against. Exit codes documented (0 / 1 failed pages / 2 usage / 3 token halt);
+  `--backoff-ms` and the env test hooks `DA_SOURCE_BASE`, `AEM_ADMIN_BASE`, `DEPLOY_VERIFY_ORIGIN`
+  (production defaults unchanged); contract test `deploy/scripts/test/deploy-batch.test.mjs`
+  against a local fake of the three hosts.
 - **`rollout/scripts/media-reconcile.mjs`**: content-host URLs are decided `hosted` against the
   media ledger (`--media-ledger`, auto-detected), never fetched anonymously; a hosted URL missing
   from the ledger fails; with no ledger at all the URLs are `unresolved` (exit 1) — never a pass.

@@ -8,7 +8,7 @@ Run the project copies under `stardust/scripts/<skill>/`. Read this before any `
 - `deploy/content-inventory.mjs` — library (role classifier), no CLI
 - `deploy/da-media-upload.mjs` — rehost images to DA — `--org --repo --scope <under media/> --dir|--manifest [--dry-run]`; exit 3 = token halt
 - `deploy/davids-model-lint.mjs` — content-model lint — `content/ | <page>.html [--json]`
-- `deploy/deploy-batch.mjs` — resumable PUT→preview→live — `--org --repo --branch --content content [--no-publish]`
+- `deploy/deploy-batch.mjs` — resumable PUT→preview→live — `--org --repo --branch --content content [--no-publish]`; exit 1 = failed pages, 3 = token halt
 - `deploy/diff-profiles.mjs` — library (eds|generic profiles), no CLI
 - `deploy/file-lock.mjs` — library (lock + atomic ledger merge), no CLI
 - `deploy/ew-editability-probe.mjs` — rendered editability gate — `--content <p>.html | <url…> [--simulate-editor]`
