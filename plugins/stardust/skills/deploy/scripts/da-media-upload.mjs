@@ -90,6 +90,7 @@
 /* eslint-disable no-restricted-syntax, brace-style, object-curly-newline, max-len, no-await-in-loop */
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import { mergeLedger } from './file-lock.mjs';
 import { basename, dirname, extname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -297,15 +298,15 @@ async function main() {
     }
   }
   const ledger = loadLedger(opts.ledger);
-  // The ONLY writer of the ledger: a full serialisation to a sibling tmp file, then an atomic rename, so a
-  // reader (or a re-run after a kill) never sees a half-written file, and one call never interleaves with
-  // another. Synchronous on purpose — concurrent workers cannot cut in between the write and the rename.
+  // The ledger is shared by every uploader on the site (cluster subagents upload at once during a
+  // fan-out): persist takes the cross-process lock, re-reads the file on disk, lays this run's entries
+  // over it (ours win — they are the newest facts about the files we touched) and writes tmp + rename.
+  // Synchronous on purpose — concurrent workers in this process cannot cut in between read and rename.
   const persist = () => {
     if (opts.dryRun) return;
-    mkdirSync(dirname(opts.ledger) || '.', { recursive: true });
-    const tmp = `${opts.ledger}.${process.pid}.tmp`;
-    writeFileSync(tmp, `${JSON.stringify(ledger, null, 2)}\n`);
-    renameSync(tmp, opts.ledger);
+    try {
+      mergeLedger(opts.ledger, ledger, { onBad: (e) => console.error(`da-media-upload: ledger ${opts.ledger} on disk is not readable JSON (${e.message}) — this run's entries are written over it`) });
+    } catch (e) { console.error(`da-media-upload: ${e.message}`); }
   };
   const counts = { uploaded: 0, skipped: 0, notImage: 0, failed: 0, dry: 0 };
   let halted = null;

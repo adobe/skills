@@ -119,6 +119,14 @@ re-written whenever a step outlives the five-minute prompt cache.
 - **`rollout/scripts/media-reconcile.mjs`**: content-host URLs are decided `hosted` against the
   media ledger (`--media-ledger`, auto-detected), never fetched anonymously; a hosted URL missing
   from the ledger fails; with no ledger at all the URLs are `unresolved` (exit 1) — never a pass.
+- **Shared ledgers safe under a fan-out** (`rollout/scripts/lib.mjs` + `update-coverage.mjs`,
+  `deploy/scripts/file-lock.mjs` + `da-media-upload.mjs` + `deploy-batch.mjs`): the coverage
+  files, the media ledger and the batch ledger were read whole, mutated in memory and rewritten
+  in place — with several cluster subagents recording at once the last writer won, and a lost
+  media row then failed the media gate. Each writer now takes a cross-process lock (a lock
+  directory, stale after 60 s, a 30 s bounded wait), re-reads the file on disk, merges its own
+  rows over it and writes through a tmp + rename. Contract tests spawn eight concurrent
+  coverage updates and a second uploader's rows.
 - **`deploy/scripts/build-harness.mjs`**: folds `section-metadata` blocks as the pipeline does
   and remaps DA image URLs to captured files via `--media-ledger`.
 - **`replica/scripts/measure.mjs`** and **`extract/scripts/style-census.mjs`** (new): box-by-box

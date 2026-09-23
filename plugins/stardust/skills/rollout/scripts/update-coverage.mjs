@@ -13,12 +13,18 @@
  *
  * Re-derives templates.json + rollout.json roll-ups after every write.
  *
+ * Safe under a fan-out: the whole read-modify-write (pages or blocks, then the roll-ups) runs
+ * under one cross-process lock, `<out>/.coverage.lock`, and every file is written through a
+ * tmp + rename, so several cluster subagents recording rows at once never lose one and a reader
+ * never sees a half-written file. A lock older than 60 s (a crashed writer) is reclaimed; waiting
+ * longer than 30 s for one is an error (exit 1) naming the owner.
+ *
  * Writes (under --out, default stardust/rollout): coverage/pages.json (page form) or
  * coverage/blocks.json (block form), then coverage/templates.json and rollout.json when
  * they exist. One result line on stdout.
  */
 import { join } from 'node:path';
-import { readJSON, writeJSON, rollupTemplates, rollupConfig } from './lib.mjs';
+import { readJSON, writeJSON, rollupTemplates, rollupConfig, acquireLock } from './lib.mjs';
 import { readFileSync } from 'node:fs';
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
@@ -44,6 +50,10 @@ const blocksPath = join(OUT, 'coverage', 'blocks.json');
 const templatesPath = join(OUT, 'coverage', 'templates.json');
 const configPath = join(OUT, 'rollout.json');
 const now = new Date().toISOString();
+
+// One lock for the four files: taken BEFORE the first read, released at exit (every path below
+// ends in process.exit or falls off the end). The reads that follow therefore see the latest write.
+try { acquireLock(join(OUT, '.coverage')); } catch (e) { console.error(`rollout: ${e.message}`); process.exit(1); }
 
 function reRoll() {
   const pagesDoc = readJSON(pagesPath);

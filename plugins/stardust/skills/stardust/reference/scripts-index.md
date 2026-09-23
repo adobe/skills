@@ -10,6 +10,7 @@ Run the project copies under `stardust/scripts/<skill>/`. Read this before any `
 - `deploy/davids-model-lint.mjs` — content-model lint — `content/ | <page>.html [--json]`
 - `deploy/deploy-batch.mjs` — resumable PUT→preview→live — `--org --repo --branch --content content [--no-publish]`
 - `deploy/diff-profiles.mjs` — library (eds|generic profiles), no CLI
+- `deploy/file-lock.mjs` — library (lock + atomic ledger merge), no CLI
 - `deploy/ew-editability-probe.mjs` — rendered editability gate — `--content <p>.html | <url…> [--simulate-editor]`
 - `deploy/localize-links.mjs` — source hrefs → root-relative — `--source-host <h> [--content content] [--check]`
 - `deploy/qa-gate.mjs` — decoration asserts on harness — `<harnessURL> --schema stardust/eds-schema/<p>.json`

@@ -40,6 +40,7 @@ import { readFile, writeFile, appendFile, readdir, stat } from 'node:fs/promises
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { readFileSync } from 'node:fs';
+import { mergeLedger } from './file-lock.mjs';
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
@@ -212,7 +213,12 @@ async function main() {
     todo.push(p);
   }
 
-  const persist = async () => writeFile(args.ledger, JSON.stringify(ledger, null, 2));
+  // Shared file: lock + re-read + merge (this run's rows win) + tmp/rename, so a second batch or a
+  // kill mid-write never loses rows or leaves a ledger the next run refuses to parse.
+  const persist = async () => {
+    try { mergeLedger(args.ledger, ledger, { onBad: (e) => console.error(`[deploy-batch] ledger on disk unreadable (${e.message}) — this run's rows are written over it`) }); }
+    catch (e) { console.error(`[deploy-batch] ${e.message}`); }
+  };
   const logLine = async (o) => appendFile(args.log, `${JSON.stringify({ t: new Date().toISOString(), ...o })}\n`);
 
   console.error(`[deploy-batch] ${pages.length} pages, ${skipped} already live, ${todo.length} to drive (concurrency ${args.concurrency}, publish=${args.publish})`);

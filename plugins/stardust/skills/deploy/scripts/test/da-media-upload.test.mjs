@@ -172,6 +172,28 @@ await check('ledger records each upload (path, size, sha256, content url) and ne
   assert.ok(readFileSync(LEDGER, 'utf8').endsWith('}\n'), 'the ledger ends with a trailing newline');
   assert.deepEqual(readdirSync(dirname(LEDGER)), ['media-ledger.json'], 'the atomic write leaves no tmp file behind');
 });
+
+// ---- shared ledger: another cluster's rows survive this run's persist -------------------------------
+await check('a row another uploader wrote to the shared ledger survives this run (lock + re-read + merge)', async () => {
+  const before = JSON.parse(readFileSync(LEDGER, 'utf8'));
+  const aKey = Object.keys(before).find((k) => k.endsWith('/brand/a.png'));
+  const foreignKey = aKey.replace('/brand/a.png', '/other-cluster/z.png');
+  writeFileSync(LEDGER, `${JSON.stringify({ ...before, [foreignKey]: { status: 'uploaded', file: 'assets/z.png', size: 1, by: 'cluster-2' } }, null, 2)}\n`);
+  writeFileSync(join(assets, 'f.png'), FILES.a);
+  try {
+    const r = await run(['--scope', 'brand', '--dir', 'assets']);
+    assert.equal(r.code, 0, r.out + r.err);
+    assert.match(r.out, /^OK assets\/f\.png -> /m);
+    const l = ledger();
+    assert.equal(l[foreignKey].by, 'cluster-2', 'the other writer\'s row is kept');
+    assert.equal(l[aKey.replace('/brand/a.png', '/brand/f.png')].status, 'uploaded');
+    assert.deepEqual(readdirSync(dirname(LEDGER)), ['media-ledger.json'], 'no tmp file, no lock dir left');
+  } finally {
+    rmSync(join(assets, 'f.png'));
+    const l = JSON.parse(readFileSync(LEDGER, 'utf8')); delete l[foreignKey]; delete l[aKey.replace('/brand/a.png', '/brand/f.png')];
+    writeFileSync(LEDGER, `${JSON.stringify(l, null, 2)}\n`);
+  }
+});
 await check('re-run skips every uploaded file (same path and size) without a request; a changed size re-uploads', async () => {
   const before = requests.length;
   const r = await run(['--scope', 'brand', '--dir', 'assets']);

@@ -29,6 +29,7 @@ const TIMEOUT_MS = 15000;
 // and has no argv handling of its own; a script that grows a CLI must leave this list.
 const EXEMPT = {
   'deploy/scripts/content-inventory.mjs': 'library: role-classified inventory + diff, imported by block-roundtrip and section-schema; no CLI',
+  'deploy/scripts/file-lock.mjs': 'library: cross-process lock + atomic merge for the shared deploy ledgers; no CLI',
   'deploy/scripts/diff-profiles.mjs': 'library: stack profiles (eds|generic) for the inventory classifiers; no CLI',
   'diff/scripts/content-inventory.mjs': 'library: the diff skill\'s copy of the inventory classifier, imported by content-diff; no CLI',
   'diff/scripts/diff-profiles.mjs': 'library: the diff skill\'s copy of the stack profiles, imported by content-diff and visual-diff; no CLI',
