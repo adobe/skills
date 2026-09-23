@@ -9,7 +9,25 @@
 # delete it explicitly to re-take (site changed, capture hardening changed).
 #
 # Usage:
-#   stardust/scripts/replica/gate.sh <slug> <live-url> <build-url> <width> [iter-label] [--marker <string>]
+#   stardust/scripts/replica/gate.sh <slug> <live-url> <build-url> <width> [iter-label]
+#       [--marker <string>] [--full] [--main <selector>] [--no-dismiss] [--help]
+#
+#   --full   the whole Phase 4 probe set in one round: after the pixel verdict the
+#            three other probes run IN PARALLEL, each under its own deadline —
+#            content-diff (structural 🔴 count), visual-diff (advisory flags),
+#            chrome-parity (header/footer deltas, live side cached) — and only
+#            their verdict lines are printed. Evidence per probe lands next to the
+#            pixel evidence: content-diff-<label>.txt, visual-diff-<label>.txt +
+#            vdiff-<label>/, chrome-parity-<label>.txt. Needs the diff skill's
+#            scripts at stardust/scripts/diff/ (Setup step 4). The build URL may be
+#            a served prototype or the published/preview origin — the published-
+#            origin gate is the same command with the preview URL (pass --marker
+#            when the slug string does not occur in the served page).
+#            Exit with --full: 124 on any deadline; else the pixel verdict, then 2
+#            on a structural 🔴 or a chrome delta, 1 when a probe errored (it gave
+#            no verdict), 0 only when all four ran and passed.
+#   --main <selector>   content root for the diff probes (default: main)
+#   --no-dismiss        do not dismiss consent/marketing overlays on the probes
 #
 # Example (iteration 2 of the home archetype at 1440):
 #   stardust/scripts/replica/gate.sh home "https://<site>/" \
@@ -37,15 +55,35 @@
 #   GATE_STITCH_TIMEOUT  seconds per stitch-shot          (default 300)
 #   GATE_COMPARE_TIMEOUT seconds per pixel-compare        (default 120)
 #   GATE_REAP_MIN        stale-instrument age in minutes  (default 15; 0 disables)
+#   GATE_PROBE_TIMEOUT   seconds per --full probe          (default 300)
 set -u
+
+if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
+  sed -n '2,/^set -u$/p' "$0" | grep -E '^#' | sed -E 's/^# ?//'
+  exit 0
+fi
 
 SLUG=${1:?usage: gate.sh <slug> <live-url> <build-url> <width> [iter-label] [--marker <string>]}
 LIVE_URL=${2:?missing <live-url>}
 BUILD_URL=${3:?missing <build-url>}
 W=${4:?missing <width>}
-LBL=${5:-iter}
+LBL=iter
 MARKER="$SLUG"
-[ "${6:-}" = "--marker" ] && MARKER=${7:?--marker needs a value}
+FULL=0
+MAIN=main
+DISMISS=--dismiss
+shift 4
+if [ $# -gt 0 ] && [ "${1#--}" = "$1" ]; then LBL=$1; shift; fi
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --marker) MARKER=${2:?--marker needs a value}; shift 2 ;;
+    --full) FULL=1; shift ;;
+    --main) MAIN=${2:?--main needs a selector}; shift 2 ;;
+    --no-dismiss) DISMISS=""; shift ;;
+    --help|-h) sed -n '2,/^set -u$/p' "$0" | grep -E '^#' | sed -E 's/^# ?//'; exit 0 ;;
+    *) echo "gate.sh: unknown argument $1 (see --help)" >&2; exit 125 ;;
+  esac
+done
 
 HERE=$(cd "$(dirname "$0")" && pwd)
 DIR="stardust/replica/gates/$SLUG-$W"
@@ -53,6 +91,7 @@ mkdir -p "$DIR"
 
 STITCH_TIMEOUT=${GATE_STITCH_TIMEOUT:-300}
 COMPARE_TIMEOUT=${GATE_COMPARE_TIMEOUT:-120}
+PROBE_TIMEOUT=${GATE_PROBE_TIMEOUT:-300}
 REAP_MIN=${GATE_REAP_MIN:-15}
 capped() { local t=$1 l=$2; shift 2; node "$HERE/run-capped.mjs" --timeout "$t" --label "$l" -- "$@"; }
 
@@ -92,10 +131,15 @@ if ! printf '%s' "$PAGE" | grep -qiF -- "$MARKER"; then
   echo "gate.sh: the server on that port is likely another project's (stale http.server?) — not comparing." >&2
   PORT=$(printf '%s' "$BUILD_URL" | sed -nE 's|^[a-z]+://[^:/]+:([0-9]+).*|\1|p')
   if [ -n "$PORT" ]; then
-    echo "gate.sh: port $PORT listener:" >&2
-    lsof -nP -iTCP:"$PORT" -sTCP:LISTEN >&2 || echo "gate.sh: (nothing listening on :$PORT)" >&2
+    if command -v lsof >/dev/null 2>&1; then
+      echo "gate.sh: port $PORT listener:" >&2
+      lsof -nP -iTCP:"$PORT" -sTCP:LISTEN >&2 || echo "gate.sh: (nothing listening on :$PORT)" >&2
+    else
+      # no lsof on this image (recorded): curl is the probe — a 200/404 line means something serves the port, no line means nothing listens
+      echo "gate.sh: (no lsof here — probe the port with: curl -sI localhost:$PORT/ | head -1)" >&2
+    fi
   fi
-  echo "gate.sh: kill/replace the stale server, or pass --marker <string> if the slug legitimately doesn't appear in the page." >&2
+  echo "gate.sh: move to a per-project port (never kill a listener you did not start), or pass --marker <string> if the slug legitimately doesn't appear in the page." >&2
   exit 4
 fi
 
@@ -116,3 +160,56 @@ rc=$?
 
 # pixel-compare supervises its own deadline (--timeout); exit 124 = no verdict.
 node "$HERE/pixel-compare.mjs" "$DIR/live.png" "$DIR/build.png" --out "$DIR/diff-$LBL.png" --timeout "$COMPARE_TIMEOUT"
+PIXEL_RC=$?
+[ "$FULL" = 1 ] || exit $PIXEL_RC
+
+# --full: the other three Phase 4 probes, in parallel, each under a deadline. One
+# recorded round that ran them one after another took 15 minutes; in parallel the
+# round costs the slowest probe. Their full reports go to evidence files; stdout
+# carries one verdict line each so the loop reads verdicts, not reports.
+DIFF="$HERE/../diff"
+if [ ! -f "$DIFF/content-diff.mjs" ] || [ ! -f "$DIFF/visual-diff.mjs" ]; then
+  echo "gate.sh: --full needs the diff skill's scripts at $DIFF (Setup step 4) — pixel verdict above stands" >&2
+  exit $PIXEL_RC
+fi
+CD="$DIR/content-diff-$LBL.txt"; VD="$DIR/visual-diff-$LBL.txt"; CP="$DIR/chrome-parity-$LBL.txt"
+capped "$PROBE_TIMEOUT" "content-diff $SLUG@$W" node "$DIFF/content-diff.mjs" "$LIVE_URL" "$BUILD_URL" \
+  --profile generic --width "$W" --main "$MAIN" $DISMISS > "$CD" 2>&1 &
+P_CD=$!
+capped "$PROBE_TIMEOUT" "visual-diff $SLUG@$W" node "$DIFF/visual-diff.mjs" "$LIVE_URL" "$BUILD_URL" \
+  --profile generic --width "$W" --main "$MAIN" $DISMISS --out "$DIR/vdiff-$LBL" > "$VD" 2>&1 &
+P_VD=$!
+capped "$PROBE_TIMEOUT" "chrome-parity $SLUG@$W" node "$HERE/chrome-parity.mjs" "$LIVE_URL" "$BUILD_URL" \
+  --width "$W" --live-cache "$DIR/chrome-live.json" > "$CP" 2>&1 &
+P_CP=$!
+wait $P_CD; RC_CD=$?
+wait $P_VD; RC_VD=$?
+wait $P_CP; RC_CP=$?
+
+verdict() { # $1 rc, $2 label, $3 line
+  case "$1" in
+    0|2) echo "$2: $3" ;;
+    124) echo "$2: DEADLINE (exit 124) — re-run, not a verdict" ;;
+    3) echo "$2: BLOCKED (exit 3) — bot challenge on the live side, escalate --headed" ;;
+    *) echo "$2: ERROR (exit $1) — $(grep -iE 'error' "$4" | head -1 | cut -c1-160)" ;;
+  esac
+}
+FINDINGS=$(grep -E '^Findings:' "$CD" | head -1 | sed -E 's/^Findings: //')
+STRUCTURAL=$(printf '%s' "$FINDINGS" | grep -oE '[0-9]+ structural' | grep -oE '^[0-9]+' || echo 0)
+verdict "$RC_CD" "content-diff" "${FINDINGS:-no findings line}" "$CD"
+FLAGS=$(awk '/red flags \(advisory\)/{f=1;next} f&&/^[[:space:]]*•/{n++} f&&/^Full metrics/{exit} END{print n+0}' "$VD")
+verdict "$RC_VD" "visual-diff" "$FLAGS advisory flag(s) — $(awk '/red flags \(advisory\)/{f=1;next} f&&/^[[:space:]]*•/{sub(/^[[:space:]]*• /,""); printf "%s; ", substr($0,1,60)} f&&/^Full metrics/{exit}' "$VD")" "$VD"
+CHROME=$(grep -E '^(✗|✓)' "$CP" | tail -1 | cut -c1-120)
+verdict "$RC_CP" "chrome-parity" "${CHROME:-no summary line}" "$CP"
+echo "evidence: $CD $VD $CP $DIR/vdiff-$LBL/"
+
+# Exit: any deadline → 124 (re-run); else the pixel verdict rules, and a structural
+# content 🔴 or a chrome delta fails the round the same way an over-threshold pixel diff does.
+for rc in "$RC_CD" "$RC_VD" "$RC_CP" "$PIXEL_RC"; do [ "$rc" = 124 ] && exit 124; done
+[ "$PIXEL_RC" != 0 ] && exit $PIXEL_RC
+[ "${STRUCTURAL:-0}" -gt 0 ] 2>/dev/null && exit 2
+[ "$RC_CP" = 2 ] && exit 2
+# A probe that errored gave no verdict, so the round is not a pass: 3 (bot challenge) passes through,
+# anything else is the capture/compare error class (1). Only 0 and 2 carry a verdict.
+for rc in "$RC_CD" "$RC_VD" "$RC_CP"; do case "$rc" in 0|2) ;; 3) exit 3 ;; *) exit 1 ;; esac; done
+exit 0
