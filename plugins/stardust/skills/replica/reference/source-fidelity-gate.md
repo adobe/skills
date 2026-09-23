@@ -210,9 +210,10 @@ reference the entry ID (`R-<nn>`) when justifying a flag over its zone
 (`preserve-direction.md` § Gate interaction).
 
 **Outside the numbered bar, and outside the iteration cap: the
-horizontal-overflow assert.** `document.documentElement.scrollWidth` equals
-the viewport width at every gate breakpoint on the build side, evaluated on
-the published origin for a delivered page. It is not a bar item because a
+horizontal-overflow assert.** `document.documentElement.scrollWidth` is
+within 4 px of the viewport width (`GATE_OVERFLOW_TOLERANCE`, integer
+rounding) at every gate breakpoint on the build side, evaluated on the
+published origin for a delivered page. It is not a bar item because a
 bar item can be traded for a documented residual; this cannot
 (§ Iteration discipline, the HARD assert). `gate.sh` runs it every round
 and prints the verdict line; `measure.mjs` prints the number on its root
@@ -361,9 +362,12 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
 - After iteration 3: log residuals (§ Residual logging) and move on. A
   documented residual is a pass with an asterisk; an undocumented fourth
   loop is scope creep.
-- **HARD assert, not subject to the cap: `document.documentElement.scrollWidth
-  === viewport width` at every gate breakpoint, evaluated on the published
-  origin.** A recorded hands-off run delivered two pages that rendered 373 px
+- **HARD assert, not subject to the cap: `document.documentElement.scrollWidth`
+  no more than 4 px over the viewport width at every gate breakpoint,
+  evaluated on the published origin** (`GATE_OVERFLOW_TOLERANCE`, default 4:
+  scrollWidth and clientWidth are integers, so a correct page whose widest
+  box is 360.4 px reads +1; the qa skill's rendered sweep fails above the
+  same 4 px — a real overflow is 13 px and up). A recorded hands-off run delivered two pages that rendered 373 px
   and 400 px wide at a 360 viewport — accordion headers and a blockquote
   overflowing, text clipped — and the gate logged `|Δ| 19–26 px at 360 …
   logged, not iterated further (3-iteration cap reached)` and passed them.

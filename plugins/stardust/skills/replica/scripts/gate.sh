@@ -16,10 +16,14 @@
 # Horizontal-overflow assert (every round, build side only — no live hit):
 #   after the build capture, measure.mjs reads document.documentElement's
 #   scrollWidth at <width> on the build URL (overflow-<label>.txt in the
-#   evidence dir). A document wider than its viewport prints
+#   evidence dir). A document wider than its viewport by more than
+#   GATE_OVERFLOW_TOLERANCE px (default 4 — scrollWidth and clientWidth are
+#   integers, so a correct page whose widest box is 360.4 px reads +1; the qa
+#   skill's rendered sweep fails above the same 4 px) prints
 #   `gate.sh: OVERFLOW at <w> — build scrollWidth <n> > viewport <n> (+<n>px) → FAIL`
-#   and the round exits 2 whatever the pixel number says; a clean root prints
-#   `gate.sh: overflow assert at <w> — … → ok`. This is the hard assert no
+#   and the round exits 2 whatever the pixel number says; a clean root, or one
+#   inside the tolerance, prints `gate.sh: overflow assert at <w> — … → ok`
+#   (the px over and the tolerance named). This is the hard assert no
 #   iteration cap waives (source-fidelity-gate.md § Iteration discipline): a
 #   recorded hands-off run delivered two pages 373 and 400 px wide at a 360
 #   viewport and logged them as residuals. gate-evidence.mjs reads the same
@@ -91,6 +95,7 @@
 # under `--inspect` (someone's debugger); SIGTERM first, SIGKILL only if still
 # alive ~2 s later. Overrides:
 #   GATE_STITCH_TIMEOUT  seconds per stitch-shot and per overflow probe (default 300)
+#   GATE_OVERFLOW_TOLERANCE  px of build scrollWidth over the viewport still ok (default 4; 0 = exact)
 #   GATE_COMPARE_TIMEOUT seconds per pixel-compare        (default 120)
 #   GATE_REAP_MIN        stale-instrument age in minutes  (default 15; 0 disables)
 #   GATE_PROBE_TIMEOUT   seconds per --full probe          (default 300)
@@ -130,6 +135,8 @@ mkdir -p "$DIR"
 STITCH_TIMEOUT=${GATE_STITCH_TIMEOUT:-300}
 COMPARE_TIMEOUT=${GATE_COMPARE_TIMEOUT:-120}
 PROBE_TIMEOUT=${GATE_PROBE_TIMEOUT:-300}
+OVF_TOL=${GATE_OVERFLOW_TOLERANCE:-4}
+case "$OVF_TOL" in ''|*[!0-9]*) echo "gate.sh: GATE_OVERFLOW_TOLERANCE must be a whole number of px (got '$OVF_TOL')" >&2; exit 125 ;; esac
 REAP_MIN=${GATE_REAP_MIN:-15}
 capped() { local t=$1 l=$2; shift 2; node "$HERE/run-capped.mjs" --timeout "$t" --label "$l" -- "$@"; }
 # One retry on exit 1 only (the capture/compare error class — Chromium under parallel load); 3, 4 and 124 are
@@ -240,11 +247,14 @@ VP=$(grep -oE 'viewport +[0-9]+' "$OVF" | head -1 | grep -oE '[0-9]+$')
 # pixel-compare supervises its own deadline (--timeout); exit 124 = no verdict.
 node "$HERE/pixel-compare.mjs" "$DIR/live.png" "$DIR/build.png" --out "$DIR/diff-$LBL.png" --timeout "$COMPARE_TIMEOUT"
 PIXEL_RC=$?
-# The overflow assert rules a PASS: a build wider than its viewport is a FAIL (exit 2) whatever the pixel
-# number says; a round with no pixel verdict (124 / 1 / 3 / 4) keeps that code — the line is still printed.
-if [ -n "$OVER" ]; then
+# The overflow assert rules a PASS: a build wider than its viewport by more than the tolerance is a FAIL
+# (exit 2) whatever the pixel number says; a round with no pixel verdict (124 / 1 / 3 / 4) keeps that code —
+# the line is still printed. Within the tolerance (integer rounding of a subpixel width) the line says so.
+if [ -n "$OVER" ] && [ "$OVER" -gt "$OVF_TOL" ]; then
   echo "gate.sh: OVERFLOW at $W — build scrollWidth $SW > viewport $VP (+${OVER}px) → FAIL (hard assert: no iteration cap waives horizontal overflow; evidence $OVF)"
   [ "$PIXEL_RC" = 0 ] && PIXEL_RC=2
+elif [ -n "$OVER" ]; then
+  echo "gate.sh: overflow assert at $W — build scrollWidth $SW vs viewport $VP (+${OVER}px, within the ${OVF_TOL}px rounding tolerance) → ok"
 else
   echo "gate.sh: overflow assert at $W — build scrollWidth $SW = viewport → ok"
 fi

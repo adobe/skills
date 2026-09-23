@@ -19,8 +19,10 @@ lines, `state-machine.md` `site.captureGaps`, `journal-format.md`'s heading rule
 - **`replica/scripts/gate.sh`, `measure.mjs`, `gate-evidence.mjs` — horizontal overflow is a hard
   assert, not a residual.** `measure.mjs` prints a root line per width per side (scrollWidth beside
   scrollHeight and the viewport, `◄◄ OVERFLOW +<n>px`; `root`/`rootDeltas` in the JSON); `gate.sh`
-  runs it on the build side every round (no live hit) and fails the round on overflow whatever the
-  pixel number says; `gate-evidence.mjs` records `FAIL: horizontal overflow` over a PASS pixel line,
+  runs it on the build side every round (no live hit) and fails the round on an overflow of more than
+  `GATE_OVERFLOW_TOLERANCE` px (default 4 — scrollWidth and clientWidth are integers, a correct page
+  whose widest box is 360.4 px reads +1, and the qa skill's rendered sweep fails above the same 4 px;
+  a real overflow is 13 px and up) whatever the pixel number says; `gate-evidence.mjs` records `FAIL: horizontal overflow` over a PASS pixel line,
   withholds `pixel-gate-<w>`, shows `/ovf+<px>` on the row and `overflowX` in the ledger. A recorded
   hands-off run delivered two pages 373 and 400 px wide at a 360 viewport and passed them as
   "logged, not iterated further (3-iteration cap reached)"; `source-fidelity-gate.md` § Iteration
