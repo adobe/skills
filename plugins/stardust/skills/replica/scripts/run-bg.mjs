@@ -25,40 +25,71 @@
  *   node run-bg.mjs log    <job> [--tail <n>] [--grep <re>]
  *   node run-bg.mjs clean  [--all]
  *   (every form: [--dir <d>], default stardust/.work/replica/bg, env RUN_BG_DIR)
+ *   A value flag (--name --dir --timeout --slots --max --tail --grep) followed by
+ *   nothing or by another --flag is a usage error (exit 125) naming the flag —
+ *   never a silently swallowed value.
  *
  * start  returns at once. The job runs detached under run-capped.mjs
  *        (default --timeout 900 s — a background job without a deadline is the
  *        hang class run-capped exists for; 0 disables) in its own process
  *        group, stdout+stderr in <dir>/<job>.log, state in <dir>/<job>.json.
- *        --slots (default 3, env RUN_BG_SLOTS) is a soft concurrency cap:
- *        a job waits, first come first served, until fewer than that many
- *        jobs are running. Each capture is a Chromium; start them all at once
- *        and let the slots pace them — no `sleep N;` staggering.
+ *        --slots (default 2; env RUN_BG_SLOTS, else STARDUST_BROWSER_SLOTS) is a
+ *        soft concurrency cap: a job waits, first come first served, until fewer
+ *        than that many jobs are running. Each capture is a Chromium, and one
+ *        `gate.sh --full` round holds three of them at its peak (the three probes
+ *        run in parallel), so two slots — up to six Chromiums — is the machine
+ *        budget. Start the jobs all at once and let the slots pace them — no
+ *        `sleep N;` staggering, and do not raise the slots for --full rounds.
  * wait   polls until the named jobs (default: every job unfinished when the
  *        wait began; if none, the latest batch — jobs ended within 10 min of the
  *        newest; --all: every job on disk) have ended, or --max seconds pass
- *        (default 100; clamped to 180 — returning before the context cache
- *        expires is the point: the cache holds 5 min from the START of the
- *        previous model request, and that request's generation alone can take
- *        ~150 s, recorded), then prints one line per job and, for ended
- *        jobs, its verdict lines: log lines matching --grep (default: the gate
- *        instruments' verdict vocabulary), else the last --tail (8) lines.
+ *        (default 100; clamped to 110 — the agent's shell tool kills a foreground
+ *        command at about two minutes and returns nothing from it, so a wait that
+ *        could run 180 s died with no output; 110 s leaves node startup and the
+ *        report their room, and still returns well inside the context cache's
+ *        five minutes from the start of the previous model request), then prints
+ *        one line per job and, for ended jobs, its verdict lines: log lines
+ *        matching --grep (default: the gate instruments' verdict vocabulary),
+ *        else the last --tail (8) lines.
  *        Exit 0 = every named job ended; 75 = some still queued/running —
  *        run `wait` again as your NEXT step. Never loop on it inside one
  *        command; that recreates the blocked step this tool removes.
  * status one pass of the same report, without waiting.
  * log    a bounded view of one job's log: the last --tail lines (default
  *        40) or the --grep matches (at most 200).
- * clean  deletes ended jobs' files; --all also stops queued/running jobs.
+ * clean  deletes ended and lost jobs' files; --all also stops queued/running
+ *        jobs: SIGTERM to the wrapper (run-capped forwards it to the
+ *        instrument's process group and escalates to SIGKILL after 3 s), then
+ *        after a 4 s grace SIGKILL to the wrapper's whole process group and to
+ *        the instrument's, and the files go only once the wrapper is gone. A
+ *        lost job (wrapper gone) whose instrument still runs is stopped the same
+ *        way through the recorded childPid. Nothing is ever signalled unless its
+ *        identity matches (below).
+ *
+ * Liveness: a job's state records the wrapper pid AND its process start time
+ * (`ps -o lstart`, the same on macOS and procps Linux) — a bare pid names a
+ * recycled process after a reboot or a busy day, and EPERM answers for a
+ * process that is not ours. A job counts as alive only when the pid exists, is
+ * not a zombie, and its start time is the recorded one (state files from before
+ * the identity was recorded fall back to the command line containing
+ * `run-bg.mjs __run … --name <job>`). Anything else is `lost`: it blocks no
+ * FIFO slot, never refuses its name to a new `start`, and is never signalled.
+ * After spawn the wrapper is the state file's only writer (the starter writes
+ * it once before spawn; the wrapper's first act is to write its own pid + start
+ * time — a state younger than 15 s without a pid is still spawning). When the
+ * wrapper launches the instrument it records childPid + childStart, found by
+ * `ps` as its own child (run-capped's API does not expose the pid); where `ps`
+ * is unavailable (and no /proc) they stay null and `clean --all` cannot reach
+ * an orphaned instrument — the wrapper's own group is still killed.
  *
  * Per-job exit codes are the instrument's (gate.sh: 0 PASS, 2 FAIL, 3 bot
  * challenge, 4 identity, 1 error); 124 = deadline, no verdict — re-run.
  *
- * Also importable: start(), wait(), status(), report helpers — see the tests.
+ * Also importable: start(), wait(), status(), alive(), phase(), report helpers — see the tests.
  */
 
 /* eslint-disable no-restricted-syntax, brace-style, object-curly-newline, max-len */
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, unlinkSync, writeFileSync, realpathSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -66,22 +97,33 @@ import { DEADLINE_EXIT, runCapped } from './run-capped.mjs';
 
 export const DEFAULT_DIR = 'stardust/.work/replica/bg';
 export const DEFAULT_TIMEOUT_SEC = 900;
-export const DEFAULT_SLOTS = 3;
+// Each capture is a Chromium and a `gate.sh --full` round holds three at its peak: two slots = up to six Chromiums,
+// the machine budget. RUN_BG_SLOTS, else STARDUST_BROWSER_SLOTS, else this.
+export const DEFAULT_SLOTS = 2;
 export const DEFAULT_MAX_SEC = 100;
-// The context cache holds 5 min from the START of the previous model request, and in a recorded run that request's
-// generation took p50 12 s, p95 79 s, max ~150 s — the former 270 s ceiling plus a generation regularly crossed 300 s and
-// re-wrote the cache. 180 s leaves the generation its room.
-export const MAX_CEILING_SEC = 180;
+// The agent's shell tool kills a foreground command at about two minutes and returns nothing from it — a wait that
+// could run 180 s died with no output. 110 s leaves node startup and the report their room, and still returns inside
+// the context cache's five minutes from the start of the previous model request.
+export const MAX_CEILING_SEC = 110;
 export const DEFAULT_TAIL = 8;
 export const STILL_RUNNING_EXIT = 75;
 // With nothing going and no names given, `wait`/`status` report the latest batch: jobs that ended
 // within this window of the newest ending. Earlier sessions' jobs stay on disk (their logs are
 // evidence) but out of the report — one session's wait had dumped every prior session's summary.
 export const RECENT_WINDOW_SEC = 600;
+// The starter writes the state without a pid; the wrapper's first act is to write its own. A pid-less state
+// younger than this is still spawning (node startup on a loaded machine), older is lost.
+export const SPAWN_GRACE_SEC = 15;
+// clean --all: SIGTERM first (run-capped forwards it to the instrument's group and SIGKILLs that after 3 s), then
+// SIGKILL whatever is left after this grace.
+const CLEAN_GRACE_MS = 4000;
+// One `ps` snapshot serves a whole report/poll pass.
+const PROC_TTL_MS = 250;
 // The gate instruments' verdict vocabulary: pixel-compare's size/height/percentage/band lines,
 // stitch-shot's completion line, gate.sh's fail-loud prefixes, run-capped's deadline notice,
-// content-diff's structural count. Override with --grep for another instrument.
-export const VERDICT_RE = /differing pixels|height delta|hot band|\bPASS\b|\bFAIL(?:ED)?\b|WARNING|\berror\b|exceeded|IDENTITY|reaped|stitched \S+:|structural|🔴|run-capped:|gate\.sh:|\b(?:content-diff|visual-diff|chrome-parity|evidence): |DEADLINE|BLOCKED|ERROR \(exit|delta\(s\)|advisory|motion summary:/;
+// content-diff's structural count, motion-compare's SUMMARY, the browser-lock's wait/hold notices.
+// Override with --grep for another instrument.
+export const VERDICT_RE = /differing pixels|height delta|hot band|\bPASS\b|\bFAIL(?:ED)?\b|WARNING|\berror\b|exceeded|IDENTITY|reaped|stitched \S+:|structural|🔴|run-capped:|gate\.sh:|\b(?:content-diff|visual-diff|chrome-parity|evidence): |DEADLINE|BLOCKED|ERROR \(exit|delta\(s\)|advisory|motion summary:|SUMMARY|browser-lock:/;
 const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9_.-]*$/;
 const POLL_MS = Number(process.env.RUN_BG_POLL_MS) || 2000;
 const SELF = fileURLToPath(import.meta.url);
@@ -98,32 +140,73 @@ class UsageError extends Error { constructor(msg, code = 125) { super(msg); this
 const sleep = (ms) => new Promise((r) => { setTimeout(r, ms); });
 const statePath = (dir, name) => join(dir, `${name}.json`);
 export const logPath = (dir, name) => join(dir, `${name}.log`);
+const secondsBetween = (a, b) => Math.max(0, Math.round((new Date(b || Date.now()) - new Date(a)) / 1000));
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\-]/g, '\\$&');
 
 export function readState(dir, name) { try { return JSON.parse(readFileSync(statePath(dir, name), 'utf8')); } catch { return null; } }
 function writeState(dir, st) { const p = statePath(dir, st.name); const tmp = `${p}.${process.pid}.tmp`; writeFileSync(tmp, JSON.stringify(st, null, 1)); renameSync(tmp, p); return st; }
-// Read-modify-write: the starter and the detached wrapper both touch the file in the first milliseconds.
-function patchState(dir, name, patch) { const st = readState(dir, name); if (!st) throw new Error(`run-bg: state for ${name} vanished from ${dir}`); return writeState(dir, { ...st, ...patch }); }
 export function listJobs(dir) { if (!existsSync(dir)) return []; return readdirSync(dir).filter((f) => f.endsWith('.json')).map((f) => readState(dir, f.slice(0, -5))).filter(Boolean); }
 
-function alive(pid) {
-  if (!pid) return false;
-  try { process.kill(pid, 0); } catch (e) { return e.code === 'EPERM'; }
-  // A wrapper is orphaned the moment `start` returns. Under a PID 1 that does not reap (node as a
-  // container's entrypoint), a dead wrapper lingers as a zombie and still answers signal 0 — read
-  // its state where the kernel exposes it, or a killed job would read "running" forever.
-  if (process.platform === 'linux') {
-    try { const stat = readFileSync(`/proc/${pid}/stat`, 'utf8'); const state = stat.charAt(stat.lastIndexOf(')') + 2); return state !== 'Z' && state !== 'X'; } catch { return false; }
+// ---- process identity --------------------------------------------------------------------------
+// pid → { ppid, state, start, command } from one `ps` run (cached PROC_TTL_MS); null when ps is unusable.
+// lstart is 5 whitespace tokens ("Wed Sep 23 07:59:27 2026") on macOS and procps alike; -ww: never truncate.
+let procCache = { at: 0, table: null };
+function procTable({ fresh = false } = {}) {
+  if (!fresh && Date.now() - procCache.at < PROC_TTL_MS) return procCache.table;
+  let table = null;
+  const r = spawnSync('ps', ['-e', '-ww', '-o', 'pid=,ppid=,state=,lstart=,command='], { encoding: 'utf8' });
+  if (r.status === 0 && r.stdout) {
+    table = new Map();
+    for (const line of r.stdout.split('\n')) {
+      const t = line.trim().split(/\s+/);
+      if (t.length < 9) continue;
+      table.set(Number(t[0]), { ppid: Number(t[1]), state: t[2], start: t.slice(3, 8).join(' '), command: t.slice(8).join(' ') });
+    }
   }
-  return true;
+  procCache = { at: Date.now(), table };
+  return table;
 }
-// queued: waiting for a slot · running · ended: wrote an exit · lost: the wrapper died without writing one (kill -9, reboot).
+// One process's identity: the ps snapshot, else /proc (Linux without ps: start = kernel start ticks), else null.
+export function procInfo(pid, opts) {
+  const t = procTable(opts);
+  if (t) return t.get(Number(pid)) || null;
+  try {
+    const stat = readFileSync(`/proc/${pid}/stat`, 'utf8'); const f = stat.slice(stat.lastIndexOf(')') + 2).split(' ');
+    return { ppid: Number(f[1]), state: f[0], start: `ticks:${f[19]}`, command: readFileSync(`/proc/${pid}/cmdline`, 'latin1').split('\0').join(' ').trim() };
+  } catch { return null; }
+}
+// A pid alone is not a job: pids recycle, and EPERM answers for a process that is not ours. Ours = the pid exists,
+// is not a zombie (a dead wrapper lingers as one under a PID 1 that does not reap), and its start time is the one
+// recorded at spawn — or, for state files without one, its command line is this script's `__run --name <job>`.
+export function alive(pid, { start = null, name = null } = {}, opts) {
+  if (!pid) return false;
+  try { process.kill(pid, 0); } catch { return false; }
+  const p = procInfo(pid, opts);
+  if (!p || /^[ZX]/.test(p.state)) return false;
+  if (start) return p.start === start;
+  return Boolean(name) && new RegExp(`run-bg\\.mjs __run\\b.* --name ${escapeRe(name)}(?: |$)`).test(p.command);
+}
+const wrapperAlive = (st, opts) => alive(st.wrapperPid, { start: st.wrapperStart, name: st.name }, opts);
+const childAlive = (st, opts) => Boolean(st.childStart) && alive(st.childPid, { start: st.childStart }, opts);
+// The wrapper's own child right after runCapped spawned it (ps itself excluded) — run-capped does not expose the pid.
+function childOf(ppid) {
+  const t = procTable({ fresh: true }); if (!t) return null;
+  for (const [pid, p] of t) if (p.ppid === ppid && !/^(?:\S*\/)?ps(?: |$)/.test(p.command)) return { pid, start: p.start };
+  return null;
+}
+function signal(pid, sig, { group = false } = {}) { try { process.kill(group && process.platform !== 'win32' ? -pid : pid, sig); return true; } catch { return false; } }
+
+// queued: waiting for a slot (or still spawning) · running · ended: wrote an exit · lost: the wrapper died without
+// writing one (kill -9, reboot) or the stored pid now names some other process.
 export function phase(st) {
   if (st.endedAt) return 'ended';
-  if (!alive(st.wrapperPid)) return 'lost';
+  if (!st.wrapperPid) return secondsBetween(st.queuedAt) < SPAWN_GRACE_SEC ? 'queued' : 'lost';
+  if (!wrapperAlive(st)) return 'lost';
   return st.launchedAt ? 'running' : 'queued';
 }
 const isPending = (st) => ['queued', 'running'].includes(phase(st));
-const secondsBetween = (a, b) => Math.max(0, Math.round((new Date(b || Date.now()) - new Date(a)) / 1000));
+// lost, but the instrument the wrapper launched is still running.
+const isOrphan = (st) => phase(st) === 'lost' && childAlive(st);
 
 // ---- start -------------------------------------------------------------------------------------
 export function start(dir, name, cmd, args, { timeoutSec = DEFAULT_TIMEOUT_SEC, slots = DEFAULT_SLOTS } = {}) {
@@ -134,19 +217,21 @@ export function start(dir, name, cmd, args, { timeoutSec = DEFAULT_TIMEOUT_SEC, 
   mkdirSync(dir, { recursive: true });
   const prev = readState(dir, name);
   if (prev && isPending(prev)) throw new UsageError(`run-bg: ${name} is still ${phase(prev)} (wrapper pid ${prev.wrapperPid}) — pick another --name, or \`clean --all\` to stop it`, 2);
-  const st = { name, cmd, args, cwd: process.cwd(), timeoutSec, slots, queuedAt: new Date().toISOString(), wrapperPid: null, launchedAt: null, endedAt: null, exit: null, timedOut: false };
+  // Written once, before the spawn; from here on the wrapper is the file's only writer.
+  const st = { name, cmd, args, cwd: process.cwd(), timeoutSec, slots, queuedAt: new Date().toISOString(), wrapperPid: null, wrapperStart: null, launchedAt: null, childPid: null, childStart: null, endedAt: null, exit: null, timedOut: false };
   writeState(dir, st);
   const fd = openSync(logPath(dir, name), 'w');
   const child = spawn(process.execPath, [SELF, '__run', '--dir', dir, '--name', name], { detached: true, stdio: ['ignore', fd, fd], cwd: process.cwd(), env: process.env });
   closeSync(fd);
-  patchState(dir, name, { wrapperPid: child.pid });
   child.unref();
   return { name, log: logPath(dir, name), wrapperPid: child.pid };
 }
 
-// The detached wrapper: take a slot (FIFO), run the command under run-capped, record the exit.
+// The detached wrapper: record its identity, take a slot (FIFO), run the command under run-capped, record the exit.
 async function runWrapper(dir, name) {
-  let st = patchState(dir, name, { wrapperPid: process.pid });
+  let st = readState(dir, name);
+  if (!st) throw new Error(`run-bg: state for ${name} vanished from ${dir}`);
+  st = writeState(dir, { ...st, wrapperPid: process.pid, wrapperStart: procInfo(process.pid, { fresh: true })?.start ?? null });
   for (;;) {
     const others = listJobs(dir).filter((j) => j.name !== name);
     const running = others.filter((j) => phase(j) === 'running').length;
@@ -154,10 +239,12 @@ async function runWrapper(dir, name) {
     if (running < st.slots && ahead === 0) break;
     await sleep(Math.min(POLL_MS, 1000));
   }
-  st = patchState(dir, name, { launchedAt: new Date().toISOString() });
+  const run = runCapped(st.cmd, st.args, { timeoutSec: st.timeoutSec, label: name }); // spawns synchronously
+  const child = childOf(process.pid);
+  st = writeState(dir, { ...st, launchedAt: new Date().toISOString(), childPid: child?.pid ?? null, childStart: child?.start ?? null });
   console.log(`run-bg: ${name} launched ${st.launchedAt} (timeout ${st.timeoutSec || 'none'}s): ${[st.cmd, ...st.args].join(' ')}`);
-  const code = await runCapped(st.cmd, st.args, { timeoutSec: st.timeoutSec, label: name });
-  patchState(dir, name, { endedAt: new Date().toISOString(), exit: code, timedOut: code === DEADLINE_EXIT });
+  const code = await run;
+  writeState(dir, { ...st, endedAt: new Date().toISOString(), exit: code, timedOut: code === DEADLINE_EXIT });
   console.log(`run-bg: ${name} ended exit=${code}`);
   process.exitCode = code;
 }
@@ -180,7 +267,7 @@ export function describe(st) {
   const ph = phase(st);
   if (ph === 'queued') return `${st.name}  queued ${secondsBetween(st.queuedAt)}s (waiting for a slot)`;
   if (ph === 'running') return `${st.name}  running ${secondsBetween(st.launchedAt)}s`;
-  if (ph === 'lost') return `${st.name}  lost — wrapper gone without an exit (kill -9? reboot?) — re-run`;
+  if (ph === 'lost') return `${st.name}  lost — wrapper gone without an exit (kill -9? reboot?)${isOrphan(st) ? `; its instrument (pid ${st.childPid}) still runs — \`clean --all\` stops it` : ''} — re-run`;
   const took = st.launchedAt ? ` in ${secondsBetween(st.launchedAt, st.endedAt)}s` : '';
   return st.timedOut ? `${st.name}  deadline ${st.timeoutSec}s exceeded (exit ${DEADLINE_EXIT}: no verdict — re-run, or raise --timeout for a legitimately huge page)${took}` : `${st.name}  done exit=${st.exit}${took}`;
 }
@@ -216,7 +303,7 @@ function pickNames(dir, requested, { all = false } = {}) {
 export async function wait(dir, requested, { maxSec = DEFAULT_MAX_SEC, tail, grep, all = false } = {}) {
   if (!Number.isFinite(maxSec) || maxSec < 0) throw new UsageError(`run-bg: --max must be a number of seconds\n${HELP}`);
   let ceilingSec = maxSec;
-  if (maxSec > MAX_CEILING_SEC) { ceilingSec = MAX_CEILING_SEC; console.error(`run-bg: --max ${maxSec} clamped to ${MAX_CEILING_SEC}s — a step must return before the context cache expires (${MAX_CEILING_SEC} s: a generation can take up to ~150 s and the cache holds 5 min from the start of the previous request)`); }
+  if (maxSec > MAX_CEILING_SEC) { ceilingSec = MAX_CEILING_SEC; console.error(`run-bg: --max ${maxSec} clamped to ${MAX_CEILING_SEC}s — the agent's shell tool kills a foreground command at about two minutes and returns nothing from it; ${MAX_CEILING_SEC} s leaves startup and the report their room (and a step must still return before the context cache expires)`); }
   const { names, hidden } = pickNames(dir, requested, { all });
   const t0 = Date.now();
   for (;;) {
@@ -241,20 +328,37 @@ export function showLog(dir, name, { tail = 40, grep = null } = {}) {
   return `${head}\n${out.join('\n')}`;
 }
 
+// Without --all: ended and lost jobs' files go; queued/running jobs, and lost jobs whose instrument still runs, stay.
+// With --all: every live wrapper (own group) and every identity-matched instrument (own group) is stopped — SIGTERM,
+// grace, SIGKILL — and a job's files go only once nothing of it is left alive.
 export async function clean(dir, { all = false } = {}) {
-  const out = []; const stopped = [];
+  const out = []; const targets = new Map(); // name → [{ pid, ident, what }]
   for (const j of listJobs(dir)) {
-    if (isPending(j)) {
-      if (!all) { out.push(`run-bg: keeping ${j.name} (${phase(j)}) — \`clean --all\` stops it`); continue; }
-      try { process.kill(j.wrapperPid, 'SIGTERM'); } catch { /* already gone */ }
-      stopped.push(j.name); out.push(`run-bg: stopped ${j.name}`);
-    }
+    const pending = isPending(j); const orphan = !pending && isOrphan(j);
+    if (!pending && !orphan) continue;
+    if (!all) { out.push(`run-bg: keeping ${j.name} (${pending ? phase(j) : `lost, instrument pid ${j.childPid} still running`}) — \`clean --all\` stops it`); continue; }
+    const t = [];
+    if (pending) t.push({ pid: j.wrapperPid, ident: { start: j.wrapperStart, name: j.name }, what: 'wrapper' });
+    if (childAlive(j)) t.push({ pid: j.childPid, ident: { start: j.childStart }, what: 'instrument' });
+    targets.set(j.name, t);
+    for (const x of t) signal(x.pid, 'SIGTERM', { group: x.what === 'instrument' });
   }
-  if (stopped.length) await sleep(500); // let run-capped forward the signal and the wrapper write its exit before the files go
+  const left = () => [...targets.values()].flat().filter((x) => alive(x.pid, x.ident, { fresh: true }));
+  if (targets.size) {
+    const t0 = Date.now();
+    while (left().length && Date.now() - t0 < CLEAN_GRACE_MS) await sleep(100);
+    for (const x of left()) signal(x.pid, 'SIGKILL', { group: true });
+    if (left().length) await sleep(200);
+  }
+  const survivors = new Set(left().map((x) => x.pid));
+  for (const [name, t] of targets) {
+    const stuck = t.filter((x) => survivors.has(x.pid));
+    out.push(stuck.length ? `run-bg: could not stop ${name} (${stuck.map((x) => `${x.what} pid ${x.pid}`).join(', ')} survived SIGKILL) — files kept` : `run-bg: stopped ${name}`);
+  }
   for (const j of listJobs(dir)) {
-    if (isPending(j) && !all) continue;
+    if ((isPending(j) || isOrphan(j)) && (!all || (targets.get(j.name) || []).some((x) => survivors.has(x.pid)))) continue;
     for (const p of [statePath(dir, j.name), logPath(dir, j.name)]) { try { unlinkSync(p); } catch { /* gone */ } }
-    if (!stopped.includes(j.name)) out.push(`run-bg: removed ${j.name}`);
+    if (!targets.has(j.name)) out.push(`run-bg: removed ${j.name}`);
   }
   return out.join('\n');
 }
@@ -262,18 +366,20 @@ export async function clean(dir, { all = false } = {}) {
 // ---- cli ---------------------------------------------------------------------------------------
 function parse(argv) {
   const [sub, ...rest] = argv;
-  const o = { dir: process.env.RUN_BG_DIR || DEFAULT_DIR, names: [], name: null, timeoutSec: DEFAULT_TIMEOUT_SEC, slots: Number(process.env.RUN_BG_SLOTS) || DEFAULT_SLOTS, maxSec: DEFAULT_MAX_SEC, tail: undefined, grep: null, all: false, cmd: [] };
-  const num = (flag, v) => { const n = Number(v); if (v === undefined || !Number.isFinite(n)) throw new UsageError(`run-bg: ${flag} needs a number\n${HELP}`); return n; };
+  const o = { dir: process.env.RUN_BG_DIR || DEFAULT_DIR, names: [], name: null, timeoutSec: DEFAULT_TIMEOUT_SEC, slots: Number(process.env.RUN_BG_SLOTS) || Number(process.env.STARDUST_BROWSER_SLOTS) || DEFAULT_SLOTS, maxSec: DEFAULT_MAX_SEC, tail: undefined, grep: null, all: false, cmd: [] };
+  const num = (flag, v) => { const n = Number(v); if (!Number.isFinite(n)) throw new UsageError(`run-bg: ${flag} needs a number (got ${v})\n${HELP}`); return n; };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
+    // A value flag never swallows a following flag (or nothing) as its value.
+    const value = () => { const v = rest[i + 1]; if (v === undefined || v.startsWith('--')) throw new UsageError(`run-bg: ${a} needs a value${v === undefined ? '' : ` (got ${v})`}\n${HELP}`); i += 1; return v; };
     if (a === '--') { o.cmd = rest.slice(i + 1); break; }
-    if (a === '--dir') o.dir = rest[++i];
-    else if (a === '--name') o.name = rest[++i];
-    else if (a === '--timeout') o.timeoutSec = num(a, rest[++i]);
-    else if (a === '--slots') o.slots = num(a, rest[++i]);
-    else if (a === '--max') o.maxSec = num(a, rest[++i]);
-    else if (a === '--tail') o.tail = num(a, rest[++i]);
-    else if (a === '--grep') { const v = rest[++i]; try { o.grep = new RegExp(v); } catch (e) { throw new UsageError(`run-bg: bad --grep ${v}: ${e.message}`); } }
+    if (a === '--dir') o.dir = value();
+    else if (a === '--name') o.name = value();
+    else if (a === '--timeout') o.timeoutSec = num(a, value());
+    else if (a === '--slots') o.slots = num(a, value());
+    else if (a === '--max') o.maxSec = num(a, value());
+    else if (a === '--tail') o.tail = num(a, value());
+    else if (a === '--grep') { const v = value(); try { o.grep = new RegExp(v); } catch (e) { throw new UsageError(`run-bg: bad --grep ${v}: ${e.message}`); } }
     else if (a === '--all') o.all = true;
     else if (a.startsWith('--')) throw new UsageError(`run-bg: unknown flag ${a}\n${HELP}`);
     else o.names.push(a);

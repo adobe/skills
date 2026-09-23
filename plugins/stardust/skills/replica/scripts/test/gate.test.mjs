@@ -121,6 +121,14 @@ check('the error is named on the verdict line', /^content-diff: ERROR \(exit 1\)
 r = await gate(['home', 'https://live.example/', buildUrl, '1440', 'iter6c', '--full'], { STUB_CD_RC: '3' });
 check('a bot challenge on a probe passes through as exit 3', r.status === 3, `status ${r.status}`);
 
+// --full, the pixel step gave no verdict → the probes are skipped, exit = pixel rc
+r = await gate(['home', 'https://live.example/', buildUrl, '1440', 'iter6d', '--full'], { STUB_PIXEL_RC: '124' });
+check('pixel rc 124 under --full skips the probes and exits 124', r.status === 124, `status ${r.status}`);
+check('the skip is said in one line', /^gate\.sh: probes skipped — the pixel round gave no verdict \(exit 124\)/m.test(r.stderr), r.stderr);
+check('no probe ran or left evidence after a pixel deadline', !/^(content-diff|visual-diff|chrome-parity): /m.test(r.stdout) && !existsSync(join(root, 'stardust/replica/gates/home-1440/content-diff-iter6d.txt')));
+r = await gate(['home', 'https://live.example/', buildUrl, '1440', 'iter6e', '--full'], { STUB_PIXEL_RC: '1' });
+check('pixel rc 1 skips the probes and exits 1', r.status === 1 && /probes skipped/.test(r.stderr) && !existsSync(join(root, 'stardust/replica/gates/home-1440/chrome-parity-iter6e.txt')), `status ${r.status}`);
+
 // --main / --no-dismiss reach the probes (recorded by the stub through its argv → evidence file)
 stub(diff, 'content-diff.mjs', `console.log('argv ' + process.argv.slice(2).join(' ')); console.log('Findings: none — content + roles match');`);
 r = await gate(['home', 'https://live.example/', buildUrl, '1440', 'iter7', '--full', '--main', '#content', '--no-dismiss']);
