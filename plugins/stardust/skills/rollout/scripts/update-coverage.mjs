@@ -23,8 +23,8 @@
  *   to hash; `sourceHash` is a stable digest of origin + slug + path). The template row in
  *   templates.json is created or extended. Idempotent: the same slug again updates the row (a slug
  *   that belongs to a captured page is refused; a path already owned by another slug is refused).
- *   `inventory.mjs` rebuilds pages.json from the migrated tree and drops these rows — re-run the
- *   same --new line after every inventory run.
+ *   `inventory.mjs` keeps these rows on a re-run (the origin marker identifies them; status untouched)
+ *   until the migrated tree holds a file for the slug or a migrated page owns the path — the line runs once.
  *
  * Re-derives templates.json + rollout.json roll-ups after every write.
  *

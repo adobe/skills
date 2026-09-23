@@ -360,8 +360,9 @@ assembled sitemap unless registered:
 ```bash
 node skills/rollout/scripts/update-coverage.mjs --new search --path /search --template search --origin dynamics --title "Search"
 ```
-then record its status like any page. `inventory.mjs` rebuilds the ledger from the
-migrated tree and drops such rows — re-run the same `--new` line after it.
+then record its status like any page. `inventory.mjs` keeps such rows on a re-run (the
+origin marker in `source.migratedHtml` identifies them; status untouched), so the line
+runs once.
 
 ### Phase D3 — Multilingual (per-language trees) — optional
 

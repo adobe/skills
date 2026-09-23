@@ -2,7 +2,8 @@
 // skills/rollout/scripts/test/inventory.test.mjs — the inventory.mjs contract: template grouping
 // from the sidecars (an archetype with `template: null` groups under its own slug, with the
 // siblings that name it; `type` last), the archetype as representative, the empty-modules
-// report, and delivery state preserved across re-runs.
+// report, delivery state preserved across re-runs, and a row added by `update-coverage.mjs --new`
+// (origin marker in source.migratedHtml) kept across a re-run until the migrated tree holds it.
 // Run: node plugins/stardust/skills/rollout/scripts/test/inventory.test.mjs
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -74,6 +75,37 @@ check('a re-run keeps delivery state, drops the empty-modules count and fills th
   assert.deepEqual(t['tours-bali'].blocks, ['cards', 'gallery', 'hero']); assert.equal(t['tours-bali'].delivery.deployed, 1);
   const utah = json('coverage/pages.json').pages.find((p) => p.slug === 'tours-utah'); assert.equal(utah.delivery.status, 'deployed');
   assert.equal(json('rollout.json').site.sourceUrl, 'https://example.test', 'site config survives a re-run without --site-url');
+});
+
+// A page built outside the migrated tree, registered with `update-coverage.mjs --new`, survives the
+// next inventory run with its status untouched — registered once, never re-registered after every
+// inventory — and gives way once the migrated tree holds a file for its slug.
+const UPDATE = join(HERE, '..', 'update-coverage.mjs');
+const reg = spawnSync(process.execPath, [UPDATE, '--new', 'search', '--path', '/search', '--template', 'search', '--origin', 'dynamics', '--title', 'Search', '--status', 'deployed', '--out', out], { encoding: 'utf8' });
+const third = run();
+check('a --new row (origin marker in source.migratedHtml) is kept across a re-run — status untouched, in its template row and the counts, named on the report', () => {
+  assert.equal(reg.status, 0, reg.stderr);
+  assert.equal(third.status, 0, third.stderr);
+  const row = json('coverage/pages.json').pages.find((p) => p.slug === 'search');
+  assert.ok(row, 'the row survived the re-run');
+  assert.equal(row.source.migratedHtml, 'dynamics:search'); assert.equal(row.delivery.status, 'deployed'); assert.equal(row.path, '/search'); assert.equal(row.templateId, 'search'); assert.equal(row.title, 'Search');
+  const t = Object.fromEntries(json('coverage/templates.json').templates.map((x) => [x.id, x]));
+  assert.deepEqual(t.search.pages, ['search']); assert.equal(t.search.delivery.deployed, 1);
+  assert.equal(json('rollout.json').lastRun.pages.total, 6); assert.equal(json('rollout.json').lastRun.pages.deployed, 2);
+  assert.match(third.stdout, /^Pages {7}6 total/m, third.stdout);
+  assert.match(third.stdout, /^Kept {8}1 row\(s\) built outside the migrated tree \(update-coverage\.mjs --new\), status untouched: search$/m, third.stdout);
+  assert.equal(json('coverage/pages.json').pages.filter((p) => p.path === '/search').length, 1, 'one row per path');
+});
+page('search/index.html', { slug: 'search', type: 'search', fidelityTier: 'archetype', renderBranch: 'A', template: null, modules: ['search-results'] });
+const fourth = run();
+check('once the migrated tree holds the slug, the migrated row replaces the marker row (delivery state carried by slug, re-flagged stale for the new HTML); nothing is kept', () => {
+  assert.equal(fourth.status, 0, fourth.stderr);
+  const rows = json('coverage/pages.json').pages.filter((p) => p.slug === 'search');
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].source.migratedHtml, join(migrated, 'search/index.html')); assert.deepEqual(rows[0].blocks, ['search-results']);
+  assert.equal(rows[0].delivery.status, 'stale', 'a deployed page whose HTML changed is re-flagged stale');
+  assert.doesNotMatch(fourth.stdout, /^Kept /m, fourth.stdout);
+  assert.equal(json('rollout.json').lastRun.pages.total, 6);
 });
 
 rmSync(root, { recursive: true, force: true });

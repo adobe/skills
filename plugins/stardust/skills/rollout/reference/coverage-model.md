@@ -104,8 +104,9 @@ sidecar, so `inventory.mjs` never rows it and it stays outside `verify.mjs
 - the template row is created (`representativeSlug` = the page) or extended;
 - idempotent by slug (a re-run updates path / title / template / status); a slug
   that belongs to a captured page, and a path another row owns, are refused;
-- `inventory.mjs` rebuilds `pages.json` from the migrated tree and DROPS these
-  rows — re-run the same `--new` line after every inventory run;
+- `inventory.mjs` keeps these rows on a re-run (the origin marker identifies
+  them; status untouched) until the migrated tree holds a file for the slug or a
+  migrated page owns the path — the line runs once;
 - `dashboard.mjs` opens `source.migratedHtml` as a file for brand tokens and
   skips a row it cannot open, so the marker is harmless there.
 
