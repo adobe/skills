@@ -11,13 +11,23 @@
  *   design-pass        → upstream (fix in migrate/prototype); rollout surfaces only
  *   out-of-scope       → informational
  *
+ * Source parity: when the page's capture exists (`<current>/pages/<slug>.json`, with its
+ * rendered-DOM sidecar `pages/<slug>.html`), a finding whose condition the SOURCE shares — the
+ * same <title> (title-length / title-missing), no meta description on the source either, no
+ * JSON-LD on the source either, the same title or description shared by the same pages — is
+ * tagged `fixability: out-of-scope` with the evidence prefix `source parity: ` (the findings
+ * schema has no parity property). Such findings are informational: listed in their own report
+ * section, excluded from the health score and the open P1/P2/P3 counts, never gated, never
+ * auto-fixed. A recorded hands-off run accepted 63 of them by hand.
+ *
  * Automated layers: accessibility, seo, ai-search, cross-page. The judgment layers
  * (brand-tensions, design-ux, content-conversion) are left null (not assessed) for
  * a future LLM-driven enrichment pass.
  *
  * Usage: node skills/rollout/scripts/optimize.mjs [--base <url> | --root <dir>]
- *          [--slug <s>] [--all] [--out <rolloutDir>]
- *   --base defaults to rollout.json's site.liveHost; --out to stardust/rollout
+ *          [--slug <s>] [--all] [--out <rolloutDir>] [--current <captureDir>]
+ *   --base defaults to rollout.json's site.liveHost; --out to stardust/rollout;
+ *   --current to stardust/current (the extract capture; parity is not assessed when absent)
  *
  * Reads <out>/coverage/pages.json (required — run inventory.mjs first) and rollout.json.
  * Writes (under <out>/optimize/): findings.json (the ledger, with this run appended) and
@@ -27,7 +37,10 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { readJSON, writeJSON, loadPageHTML, computeScorecard, autofixFor, ASSESSED_BY_BASELINE } from './lib.mjs';
+import {
+  readJSON, writeJSON, loadPageHTML, computeScorecard, autofixFor, ASSESSED_BY_BASELINE,
+  markSourceParity, isSourceParity, sourceParityCounts,
+} from './lib.mjs';
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
@@ -40,6 +53,7 @@ if (process.argv.includes('--help') || process.argv.includes('-h')) {
 function arg(name, fallback) { const i = process.argv.indexOf(`--${name}`); return i !== -1 && process.argv[i + 1] ? process.argv[i + 1] : fallback; }
 const OUT = arg('out', 'stardust/rollout');
 const ROOT = arg('root', null);
+const CURRENT = arg('current', 'stardust/current');
 const onlySlug = arg('slug', null);
 const ALL = process.argv.includes('--all');
 
@@ -62,6 +76,7 @@ const mk = (layer, check, severity, fixability, level, ids, evidence, recommende
 const has = (re, s) => re.test(s);
 const titleOf = (html) => (html.match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [])[1]?.trim() || null;
 const descOf = (html) => (html.match(/<meta[^>]+name=["']description["'][^>]*content=["']([^"']*)["']/i) || [])[1]?.trim() || null;
+const hasJsonLd = (html) => /application\/ld\+json/i.test(html);
 
 function detectPage(html, slug) {
   const f = [];
@@ -79,7 +94,7 @@ function detectPage(html, slug) {
   if (h1 !== 1) f.push(mk('seo', 'single-h1', 'P1', 'platform-migration', lvl, id, `${h1} <h1> (expected exactly 1)`, 'Hero/lead headline = the page\'s single <h1>; other titles <h2> (deploy #35).'));
   if (!has(/<link[^>]+rel=["']canonical["']/i, html)) f.push(mk('seo', 'canonical', 'P2', 'platform-migration', lvl, id, 'no rel=canonical', 'Emit a self-canonical link at delivery.'));
   // ai-search
-  if (!has(/application\/ld\+json/i, html)) f.push(mk('ai-search', 'jsonld', 'P2', 'platform-migration', lvl, id, 'no JSON-LD structured data', 'Emit page-type JSON-LD in the head (metadata-and-jsonld).'));
+  if (!hasJsonLd(html)) f.push(mk('ai-search', 'jsonld', 'P2', 'platform-migration', lvl, id, 'no JSON-LD structured data', 'Emit page-type JSON-LD in the head (metadata-and-jsonld).'));
   return f;
 }
 
@@ -99,6 +114,44 @@ function detectSite(loaded) {
   return f;
 }
 
+// --- Source parity (the capture, when present) ---------------------------------
+// The capture is extract's `pages/<slug>.json` (document.title, meta description) plus the
+// rendered-DOM sidecar it names in `renderedHtml` (default `pages/<slug>.html`) for JSON-LD.
+const decodeEntities = (s) => s.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&nbsp;/g, ' ');
+const norm = (s) => decodeEntities(String(s ?? '')).replace(/\s+/g, ' ').trim();
+
+function loadCapture(slug) {
+  const rec = readJSON(join(CURRENT, 'pages', `${slug}.json`));
+  if (!rec) return null;
+  const sidecar = rec.renderedHtml ? join(CURRENT, rec.renderedHtml) : join(CURRENT, 'pages', `${slug}.html`);
+  let jsonld = null; // null = unknown (no rendered sidecar)
+  if (existsSync(sidecar)) { try { jsonld = hasJsonLd(readFileSync(sidecar, 'utf8')); } catch { jsonld = null; } }
+  return { title: norm(rec.title || (rec.og && rec.og.title) || ''), description: norm(rec.description || ''), jsonld };
+}
+
+/** The shared condition when `f` mirrors the source, else null. */
+function parityReason(f, captures, deliveredBySlug) {
+  const ids = f.scope.ids;
+  if (f.scope.level === 'page' && ids.length === 1) {
+    const cap = captures.get(ids[0]); const got = deliveredBySlug.get(ids[0]);
+    if (!cap || !got) return null;
+    if (f.check === 'title-missing') return !cap.title ? 'the source page has no <title> either' : null;
+    if (f.check === 'title-length') return cap.title && norm(got.title) === cap.title ? 'the source page carries the same <title>' : null;
+    if (f.check === 'meta-description') return !cap.description ? 'the source page has no meta description either' : null;
+    if (f.check === 'jsonld') return cap.jsonld === false ? 'the source page has no JSON-LD either' : null;
+    return null;
+  }
+  if (f.check === 'duplicate-title' || f.check === 'duplicate-description') {
+    const key = f.check === 'duplicate-title' ? 'title' : 'description';
+    const caps = ids.map((s) => captures.get(s)); const gots = ids.map((s) => deliveredBySlug.get(s));
+    if (caps.some((c) => !c) || gots.some((g) => !g)) return null;
+    const shared = norm(gots[0][key === 'title' ? 'title' : 'desc']);
+    if (!shared) return null;
+    return caps.every((c) => c[key] === shared) ? `the source shares this ${key} across the same pages` : null;
+  }
+  return null;
+}
+
 // --- Select pages + load HTML --------------------------------------------------
 const target = pages.filter((p) => {
   if (onlySlug) return p.slug === onlySlug;
@@ -108,23 +161,28 @@ const target = pages.filter((p) => {
 
 const inspectedSlugs = new Set();
 const loaded = [];
-const detected = [];
+const rawDetected = [];
+const captures = new Map();
 for (const p of target) {
   const r = await loadPageHTML(p, { root: ROOT, base: BASE });
   if (!r.ok) continue; // unreachable pages are verify.mjs's concern, not optimize's
   inspectedSlugs.add(p.slug);
   loaded.push({ slug: p.slug, title: titleOf(r.body), desc: descOf(r.body) });
-  detected.push(...detectPage(r.body, p.slug));
+  const cap = loadCapture(p.slug);
+  if (cap) captures.set(p.slug, cap);
+  rawDetected.push(...detectPage(r.body, p.slug));
 }
 const ranSite = target.length === pages.length || ALL || !onlySlug;
-if (ranSite) detected.push(...detectSite(loaded));
+if (ranSite) rawDetected.push(...detectSite(loaded));
+
+const deliveredBySlug = new Map(loaded.map((l) => [l.slug, l]));
+const detected = rawDetected.map((d) => { const why = parityReason(d, captures, deliveredBySlug); return why ? markSourceParity(d, why) : d; });
 
 // --- Merge with prior findings (detect -> fix -> verify) -----------------------
 const findingsPath = join(OUT, 'optimize', 'findings.json');
 const scorecardPath = join(OUT, 'optimize', 'scorecard.json');
 const prior = readJSON(findingsPath, { runs: [], findings: [] });
 const priorById = new Map((prior.findings || []).map((x) => [x.id, x]));
-const detectedById = new Map(detected.map((d) => [d.id, d]));
 const now = new Date().toISOString();
 const runId = `run-${(prior.runs || []).length + 1}`;
 
@@ -141,7 +199,9 @@ for (const d of detected) {
   const p = priorById.get(d.id);
   if (p && (p.status === 'accepted' || p.status === 'wontfix')) { out.push(p); continue; }
   if (p && (p.status === 'open' || p.status === 'in-progress')) {
-    out.push({ ...p, severity: d.severity, fixability: d.fixability, evidence: d.evidence, recommendedMove: d.recommendedMove });
+    // the parity tag follows this run's detection; autofix state is re-derived only when the tag flips
+    const autofix = isSourceParity(d) !== isSourceParity(p) ? d.autofix : p.autofix;
+    out.push({ ...p, severity: d.severity, fixability: d.fixability, evidence: d.evidence, recommendedMove: d.recommendedMove, autofix });
   } else if (p && p.status === 'fixed') {
     out.push({ ...d, status: 'open', firstSeenRun: p.firstSeenRun, resolvedBy: null }); // regression
   } else {
@@ -167,27 +227,38 @@ writeJSON(findingsPath, { _provenance: { writtenBy: 'stardust:rollout/optimize',
 
 // --- Scorecard (over ALL sources in the ledger, not just baseline) -------------
 const open = out.filter((x) => x.status === 'open' || x.status === 'in-progress');
+const parity = open.filter(isSourceParity);
+const scored = open.filter((x) => !isSourceParity(x));
 const snapshot = computeScorecard(out, runId, now);
+const parityCounts = sourceParityCounts(out);
 const dimensions = snapshot.dimensions;
 const overall = snapshot.overall;
 const priorSc = readJSON(scorecardPath, { history: [] });
 writeJSON(scorecardPath, { _provenance: { writtenBy: 'stardust:rollout/optimize', writtenAt: now, stardustVersion: (config._provenance || {}).stardustVersion || '0.0.0' }, current: snapshot, history: [...(priorSc.history || []), snapshot] });
 
 // --- Report + gate -------------------------------------------------------------
-const openP1 = open.filter((x) => x.severity === 'P1');
+const openP1 = scored.filter((x) => x.severity === 'P1');
+const line = (x) => `  ${x.severity} ${x.layer}/${x.check} [${x.scope.ids.join(',')}] — ${x.evidence}`;
 console.log(`rollout optimize (${ROOT ? `root:${ROOT}` : BASE})  run ${runId}`);
 console.log('='.repeat(64));
 console.log(`Inspected   ${inspectedSlugs.size} pages${ranSite ? ' + site checks' : ''}`);
 console.log(`Health      ${overall}/100   (a11y ${dimensions.accessibility} · seo ${dimensions.seo} · ai ${dimensions['ai-search']} · xpage ${dimensions['cross-page']})`);
 console.log(`Open        P1 ${snapshot.severity.P1} · P2 ${snapshot.severity.P2} · P3 ${snapshot.severity.P3}   ·   Fixed this history: P1 ${snapshot.fixed.P1} · P2 ${snapshot.fixed.P2} · P3 ${snapshot.fixed.P3}`);
-const route = (fx) => open.filter((x) => x.fixability === fx);
+if (captures.size) console.log(`Source parity  ${parityCounts.total} (P1 ${parityCounts.P1} · P2 ${parityCounts.P2} · P3 ${parityCounts.P3}) — mirror the source capture (${captures.size}/${inspectedSlugs.size} pages captured under ${join(CURRENT, 'pages')}); informational, not scored`);
+else console.log(`Source parity  not assessed — no capture under ${join(CURRENT, 'pages')} (pass --current <dir> to point at the extract capture)`);
+const route = (fx) => scored.filter((x) => x.fixability === fx);
 for (const fx of ['platform-migration', 'design-pass', 'out-of-scope']) {
   const items = route(fx);
   if (!items.length) continue;
   const who = fx === 'platform-migration' ? 'rollout re-deploy fixes' : fx === 'design-pass' ? 'UPSTREAM (migrate/prototype)' : 'informational';
   console.log(`\n${fx} — ${who}:`);
-  for (const x of items.slice(0, 12)) console.log(`  ${x.severity} ${x.layer}/${x.check} [${x.scope.ids.join(',')}] — ${x.evidence}`);
+  for (const x of items.slice(0, 12)) console.log(line(x));
   if (items.length > 12) console.log(`  … ${items.length - 12} more`);
+}
+if (parity.length) {
+  console.log('\nsource parity — informational (mirrors the source capture; not scored, not gated, not auto-fixed):');
+  for (const x of parity.slice(0, 12)) console.log(line(x));
+  if (parity.length > 12) console.log(`  … ${parity.length - 12} more`);
 }
 if (openP1.length) { console.log(`\n✗ GATE: ${openP1.length} open P1 finding(s) — rollout is not delivery-clean.`); process.exit(1); }
 console.log('\n✓ GATE: no open P1 findings.');

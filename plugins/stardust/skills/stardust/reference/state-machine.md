@@ -61,7 +61,10 @@ that order. `_provenance` is always the first key. A hands-off run adds
 one optional top-level key, `handsOff` (after `direction`; see
 § Hands-off keys). A migration project adds `flow`, `flowChosenAt`,
 `flowSource` (after `direction` and `handsOff`, before `pages`; see
-§ Flow keys).
+§ Flow keys). `site.captureGaps` (optional, written by `extract --prep`
+from `_crawl-log.json#captureGaps`): `[{ root, slug, linked, uncaptured:
+[<path>…] }]` per captured locale root — uncaptured targets never become
+`pages[]` rows.
 
 ---
 

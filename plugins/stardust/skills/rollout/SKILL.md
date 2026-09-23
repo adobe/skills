@@ -150,6 +150,15 @@ Walk `plan.json.steps` in order (representative pages first). For each page:
    deploy, § Step 10). A recorded delivery session iterated CSS against a local
    harness pixel diff for its whole budget and delivered no page.
 
+   **Chrome and fragment documents carry `Robots | noindex`.** `content/nav.html`,
+   `content/footer.html`, every per-locale `nav-*` / `footer-*` document and any
+   locale shell that is not a page get one more metadata block row at write time —
+   `<div><div>Robots</div><div>noindex</div></div>` (renders
+   `<meta name="robots" content="noindex">`). Without it the platform's index of
+   published documents, and the `/sitemap.xml` it serves, list them as pages: a
+   recorded hands-off run served 58 sitemap urls for a 36-page site (every page
+   plus 22 chrome documents). Phase D verifies the served sitemap.
+
    **`content-pending` pages** (archetypes-only): no migrated HTML — skip the
    document push entirely (no shell/placeholder), record `content-pending`, surface
    as "awaiting content track." Their block code is already deployed via the
@@ -251,7 +260,8 @@ as parallel tool calls in one turn, never two `wait`s in one command.
 ### Phase D — Site assembly (whole-site artifacts)
 
 ```bash
-node skills/rollout/scripts/assemble.mjs   # → rollout/site/{sitemap.xml,robots.txt,manifest.json}
+node skills/rollout/scripts/assemble.mjs   # → rollout/site/{sitemap.xml,robots.txt,manifest.json} — the EXPECTED set
+node skills/rollout/scripts/assemble.mjs --verify-origin https://<branch>--<repo>--<owner>.aem.live   # vs the SERVED /sitemap.xml; exit 1 on a mismatch
 ```
 
 Generates site-wide artifacts: `sitemap.xml` + `robots.txt` from delivered paths,
@@ -259,6 +269,41 @@ and a fragments manifest mapping chrome blocks to the authored chrome documents
 (`content/nav.html`, `content/footer.html`) with their `canon/*.html` source
 (`deploy` authors + deploys the documents through the normal content chain —
 they MUST be published or the chrome 404s sitewide).
+
+**The assembled sitemap is never the served one.** `stardust/rollout/` is in
+`.hlxignore`, so `site/sitemap.xml` is a local artifact — the EXPECTED url set.
+The platform serves its own `/sitemap.xml`, built from its index of every
+published document, chrome documents included unless each carries `Robots |
+noindex` (Phase C). A recorded hands-off run read the local file, reported
+"sitemap 36 urls" and shipped a served sitemap of 58 (36 pages + 22 `nav` /
+`footer` documents). Two remedies, the first required:
+- **Authoring:** every chrome/fragment document — `/nav`, `/footer`, per-locale
+  `nav-*` / `footer-*`, locale shells that are not pages — carries the metadata
+  row `Robots | noindex`; a document already published without it is re-authored
+  and re-published (preview → live) before the check below.
+- **Configuration (alternative, additive):** when the code branch is writable, a
+  `helix-sitemap.yaml` at the project root (`sitemaps.default.include: ['/**']`,
+  `exclude: ['/nav', '/footer', '/**/nav*', '/**/footer*', '/fragments/**']`,
+  `properties.lastmod: lastModified`) keeps chrome out of the served sitemap even
+  when a document lacks the row; the same `exclude` globs go into
+  `helix-query.yaml` (Phase D2) so the index never carries them either.
+
+**Verify the SERVED sitemap, never the local file.** `assemble.mjs --verify-origin
+<live-origin>` fetches `<origin>/sitemap.xml` (a sitemap index is followed),
+compares its `<loc>` paths with the coverage rows, prints served vs assembled
+counts with every extra and missing path, records the result in
+`site/manifest.json` (`servedSitemap`) and exits 1 on any difference. An extra
+path is a chrome document without `noindex` or a page built outside the migrated
+tree with no coverage row (`update-coverage.mjs --new`, Phase D2); a missing path
+is a page not published live. Re-run after the fix until it exits 0. The `D-site`
+ledger `end` line names the SERVED count, never the assembled one — e.g.
+`--detail "sitemap served 36 = assembled 36; redirects wired; / 200"`.
+
+**D-site checklist** (all before the `D-site end` line): `assemble.mjs
+--verify-origin` exits 0 · every chrome document carries `Robots | noindex` and is
+published · the redirects sheet is published (below) · `curl -sIL <origin>/` ends
+in 200.
+
 **Redirects:** if Phase C's path-safety gate emitted `stardust/redirects.tsv`, wire
 it into the EDS redirects mechanism here so original inbound URLs don't 404 — the
 redirects sheet at the content root (on a DA-backed site `/redirects.json`, columns
@@ -285,6 +330,39 @@ Each feature ends with a parity row in `stardust/dynamics/parity.json` carrying 
 Failed replays are `dynamic-gap` / `api-dependency` learnings, never silent passes.
 Index-backed listings ship **document-first** (authored rows, index for non-text and top-up —
 `dynamics/reference/listings.md`); the deploy AI-readability gate runs on every listing page.
+
+**A missing query index is a code-branch gap, not a configuration-service problem.**
+`/query-index.json` answering 404 means the project ships no `helix-query.yaml` (the
+demo boilerplate does not). The FIRST remedy: author `helix-query.yaml` at the code
+branch root indexing the delivered content roots into `target: /query-index.json`
+(`title` from `og:title`, `description`, `image`, `lastModified`; chrome and search
+documents excluded — skeleton in `skills/dynamics/reference/listings.md` § Getting an
+index at all), push the branch, make sure the pages are published LIVE, then poll
+`/query-index.json` no more often than every 5 s for at most 10 minutes until `total`
+settles at the page count. No admin-configuration write is part of this — the indexer
+builds from live-published pages; a 403 from the configuration service with the
+migration token is expected and is not a reason to stop. Only when the code branch is
+NOT writable does the sheet-backed interim index ship (recorded `interim`, decision
+named). A recorded hands-off run probed the configuration service, read its 403 as "no
+index can be configured" and built the interim index — the fix was one committed yaml.
+
+**Search parity is count + titles, not presence.** The results block ranks title
+matches first and consults description, then body text, only while fewer than N title
+hits exist (N = the source's visible count for the probe term), dedupes by title +
+description and caps the typeahead at N — N, the top titles and one known hit are read
+from the SOURCE during detect and recorded on the `search-query` check (`expectCount`,
+`expectTitles`, `expectIncludes`); `dynamics-check.mjs` fails the check on a count
+mismatch (`skills/dynamics/reference/patterns.md` § search-index-backed).
+
+**Pages built here enter coverage.** A results page (or any page without a capture)
+has no inventory row, so it stays outside `verify.mjs --all`, `optimize.mjs` and the
+assembled sitemap unless registered:
+```bash
+node skills/rollout/scripts/update-coverage.mjs --new search --path /search --template search --origin dynamics --title "Search"
+```
+then record its status like any page. `inventory.mjs` keeps such rows on a re-run (the
+origin marker in `source.migratedHtml` identifies them; status untouched), so the line
+runs once.
 
 ### Phase D3 — Multilingual (per-language trees) — optional
 
@@ -371,6 +449,15 @@ tags each by **fixability**, and gates the rollout. Sources (full mapping in
    `site-architecture`.
 4. **`stardust:tensions`** — mechanical design tensions from
    `stardust/current/brand-review.html`.
+
+**Source parity.** When the extract capture exists (`stardust/current/pages/<slug>.json`
+and its rendered sidecar; `--current <dir>` to point elsewhere), baseline findings the
+SOURCE shares — the same `<title>`, no description on the source either, no JSON-LD on
+the source either, the same title shared by the same pages — are tagged `fixability:
+out-of-scope` with the evidence prefix `source parity:` and listed in their own report
+section: informational, excluded from the health score and the open P1/P2/P3 counts,
+never gated, never auto-fixed. A recorded hands-off run accepted 63 such findings by
+hand. Everything else routes as before (`reference/checks.md` § Source parity).
 
 Normalize each source's findings into the ledger with the writer:
 
@@ -533,13 +620,17 @@ Normalize each one's output into the ledger via `findings.mjs record`. See
 - `scripts/blocks.mjs` — distinct-block dedup ledger (`blocks.json`).
 - `scripts/plan.mjs` — dedup-driven delivery order + per-page convert/reuse briefs.
 - `scripts/update-coverage.mjs` — deterministic delivery state-writer for pages and
-  blocks; re-derives all roll-ups.
+  blocks; re-derives all roll-ups. `--new <slug> --path --template --origin` registers a
+  page built outside the migrated tree (D2) so it enters coverage.
 - `scripts/section-fidelity.mjs` — source-fidelity gate scaffold (authored sections
   vs source heading outline; informs the gate, never auto-decides).
-- `scripts/assemble.mjs` — site-level sitemap / robots / fragments manifest.
+- `scripts/assemble.mjs` — site-level sitemap / robots / fragments manifest (the
+  EXPECTED set); `--verify-origin <live-origin>` compares the SERVED `/sitemap.xml`
+  with it and exits 1 on a mismatch.
 - `scripts/verify.mjs` — full-site structural verification (HTTP or offline `--root`).
 - `scripts/optimize.mjs` — `rollout:baseline` detectors + the multi-source gate;
-  exits non-zero on open P1.
+  exits non-zero on open P1. Findings mirroring the source capture are tagged
+  `source parity:` — informational, not scored, not gated.
 - `scripts/findings.mjs` — record/resolve findings from the external audit sources.
 - `scripts/autofix-aem.mjs` — the AEM autofix engine (edits the EDS project).
 - `scripts/dashboard.mjs` — design-identity dashboard + `data.json` snapshot.

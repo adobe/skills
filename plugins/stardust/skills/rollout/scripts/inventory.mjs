@@ -28,6 +28,14 @@
  * that archetype's blocks, pushing no document. Block code ships from the archetypes;
  * sibling content is populated later by a separate content track.
  *
+ * Rows added by `update-coverage.mjs --new` (a page built outside the migrated tree —
+ * a search results page from the dynamics phase; `source.migratedHtml` carries the
+ * origin marker `<origin>:<slug>` instead of a file path) are KEPT on a re-run, status
+ * untouched, so the page is registered once — never re-registered after every
+ * inventory run (a recorded hands-off run lost its search page from coverage, the
+ * sitemap and verify this way). Such a row gives way only when the migrated tree now
+ * holds a file for its slug, or a migrated page owns its path.
+ *
  * Usage:
  *   node skills/rollout/scripts/inventory.mjs [--migrated <dir>] [--out <rolloutDir>] [--site-url <url>] [--state <state.json>]
  *   defaults: --migrated stardust/migrated  --out stardust/rollout
@@ -215,6 +223,23 @@ if (STATE) {
   }
 }
 
+// --- Keep the rows update-coverage.mjs --new added (pages built outside the migrated tree) ---
+// The origin marker in source.migratedHtml (`<origin>:<slug>`, never a path with a slash) identifies
+// them. A prior row with the marker whose slug has no migrated file — and whose path no migrated page
+// owns — is carried over untouched (status included); otherwise the migrated row wins.
+const isOriginMarker = (s) => typeof s === 'string' && /^[a-z][a-z0-9-]*:[^/]+$/.test(s);
+const migratedSlugs = new Set(pages.map((p) => p.slug));
+const migratedPaths = new Set(pages.map((p) => p.path));
+const kept = [];
+for (const prior of (priorPages.pages || [])) {
+  if (!prior || !prior.source || !isOriginMarker(prior.source.migratedHtml)) continue;
+  if (migratedSlugs.has(prior.slug) || migratedPaths.has(prior.path)) continue;
+  pages.push(prior);
+  kept.push(prior.slug);
+  migratedSlugs.add(prior.slug);
+  migratedPaths.add(prior.path);
+}
+
 pages.sort((a, b) => a.slug.localeCompare(b.slug));
 
 // --- Derive the template grouping ----------------------------------------------
@@ -288,6 +313,7 @@ console.log(`rollout inventory → ${OUT}`);
 console.log('='.repeat(60));
 console.log(`Pages       ${counts.total} total · ${counts.verified} verified · ${counts.deployed} deployed · ${counts.pending} pending · ${counts.contentPending} content-pending · ${counts.stale} stale`);
 console.log(`Templates   ${templates.length} (${templates.map((t) => `${t.id}:${t.pageCount}`).join(', ')})`);
+if (kept.length) console.log(`Kept        ${kept.length} row(s) built outside the migrated tree (update-coverage.mjs --new), status untouched: ${kept.join(', ')}`);
 const blockless = pages.filter((p) => p.source.metaJson && !p.blocks.length).length;
 if (blockless) console.log(`Blocks      modules[] empty on ${blockless}/${pages.length} sidecars — Phase B (blocks.mjs) dedups from them: fill each page's block ids (composite sections; title, text, image, button, separator are default content) and re-run the inventory`);
 const todo = pages.filter((p) => ['pending', 'stale', 'failed'].includes(p.delivery.status));

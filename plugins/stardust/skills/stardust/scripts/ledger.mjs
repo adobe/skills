@@ -24,6 +24,17 @@
 // an unknown skill or phase warns on stderr and the line is still written — under --strict it exits
 // 2 and writes nothing. `blocked` without a --detail is treated the same way (the contract wants the
 // blocker reason in `detail`).
+//
+// The start guard: an `end` needs an open `start` — an earlier line for the same skill + phase with
+// event `start` and no `end` for that pair after it. Without one the `end` warns (plain mode) or is
+// refused under --strict (exit 2, nothing written, one stderr line naming the missing start). The
+// `start` line is the FIRST command of a phase, before any script runs: a recorded hands-off run wrote
+// a phase's `start` and `end` one second apart after 109 minutes of work, so a supervisor tailing the
+// ledger saw an idle run the whole time.
+// The journal check: on `end`, when `<dir>/journal.md` exists and has no `## ` heading that names the
+// phase (case-insensitive; dashes, underscores and spaces are one separator), one warning on stderr —
+// never an exit-code change, even under --strict (a recorded run's journal began at its second session;
+// another's had one section for the whole run). An absent journal is not checked.
 // Exit codes: 0 ok · 2 usage or strict violation.
 import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync, openSync, readSync, closeSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
@@ -31,6 +42,7 @@ import { fileURLToPath } from 'node:url';
 
 export const DEFAULT_DIR = 'stardust';
 export const FILE_NAME = 'status.jsonl';
+export const JOURNAL_NAME = 'journal.md'; // beside the ledger; checked on `end`
 export const EVENTS = ['start', 'end', 'blocked'];
 export const DEFAULT_TAIL = 5;
 const DETAIL_HEAD = 72;
@@ -156,6 +168,9 @@ by nothing or by another flag is a usage error.
 <skill> may be given as "extract" or "stardust:extract". A known <phase> is written in the table's
 own form (aliases and case are normalised). Unknown skill/phase → warning on stderr, line still
 written; with --strict → exit 2, nothing written. Exit codes: 0 ok, 2 usage/strict.
+An end needs an open start (same skill + phase, no later end): missing → warning, or exit 2 under
+--strict. Write the start line FIRST, before any script of the phase runs. On end, a <dir>/${JOURNAL_NAME}
+without a "## " heading naming the phase gets a warning (never an exit-code change).
 Known skills: ${Object.keys(PHASES).join(', ')}
 Known phases per skill (ledger form; accepted aliases in parentheses):
 ${phaseTableText()}`;
@@ -204,6 +219,39 @@ export function buildLine({ skill, phase, event, detail, artifact, next, owner, 
   if (next != null && String(next).trim()) line.next = oneLine(next);
   if (owner != null && String(owner).trim()) line.owner = oneLine(owner);
   return line;
+}
+
+// The start guard. Null when the ledger holds an open `start` for (skill, phase) — a start line for that
+// pair with no end line for it afterwards (a `blocked` in between keeps it open); otherwise the warning
+// text, naming the start command that is missing. Lines are compared in their canonical forms, so a
+// hand-written alias or a differently-cased phase still pairs with its end.
+export function checkOpenStart(lines, skill, phase) {
+  const want = String(phase).toLowerCase();
+  let open = false;
+  for (const l of lines) {
+    if (!l || String(l.skill || '').toLowerCase() !== skill) continue;
+    if (String(canonicalPhase(skill, String(l.phase || ''))).toLowerCase() !== want) continue;
+    if (l.event === 'start') open = true;
+    else if (l.event === 'end') open = false;
+  }
+  return open ? null : `end for ${skill} ${phase} has no matching start (no earlier start line for this skill and phase without a later end) — the start line is the FIRST command of a phase, before any script runs: node ledger.mjs ${bareSkill(skill)} ${phase} start`;
+}
+
+export const journalPath = (dir) => join(dir, JOURNAL_NAME);
+// Case folded, dashes / underscores / runs of spaces collapsed to one space: "Preserve direction",
+// "preserve-direction" and "PRESERVE_DIRECTION" are one name.
+const foldName = (s) => String(s).toLowerCase().replace(/[\s_-]+/g, ' ').trim();
+
+// The journal check for `end`. Null when <dir>/journal.md is absent, or has a `## ` heading (exactly two
+// hashes) whose text names the phase; otherwise the warning text. A warning only — the caller never turns
+// it into an exit code.
+export function checkJournalSection(dir, phase) {
+  const file = journalPath(dir);
+  if (!existsSync(file)) return null;
+  const want = foldName(phase);
+  const headings = readFileSync(file, 'utf8').split('\n').filter((l) => /^## /.test(l)).map((l) => foldName(l.slice(3)));
+  if (headings.some((h) => h.includes(want))) return null;
+  return `${file} has no "## " section naming ${phase} — a journal section is part of every phase end: "## ${phase} — <what happened> (<date>)"`;
 }
 
 export const ledgerPath = (dir) => join(dir, FILE_NAME);
@@ -299,9 +347,15 @@ export function main(argv) {
     console.error(`ledger: phase "${line.phase}" written as "${canon}" (the table's form for ${line.skill})`);
     line.phase = canon;
   }
-  const warnings = [checkPhase(line.skill, line.phase), event === 'blocked' && !line.detail ? 'blocked without --detail (the contract wants the blocker reason there)' : null].filter(Boolean);
+  const warnings = [
+    checkPhase(line.skill, line.phase),
+    event === 'blocked' && !line.detail ? 'blocked without --detail (the contract wants the blocker reason there)' : null,
+    event === 'end' ? checkOpenStart(readLines(opts.dir).lines, line.skill, line.phase) : null,
+  ].filter(Boolean);
   if (warnings.length && opts.strict) throw new UsageError(`strict: ${warnings.join('; ')} — nothing written`);
   for (const w of warnings) console.error(`ledger: warning: ${w}`);
+  // The journal check is advisory: printed after the strict gate, so a refused end stays one stderr line.
+  if (event === 'end') { const j = checkJournalSection(opts.dir, line.phase); if (j) console.error(`ledger: warning: ${j}`); }
   appendLine(opts.dir, line);
   console.log(JSON.stringify(line));
   return 0;

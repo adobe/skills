@@ -61,6 +61,16 @@ dynamics from an open-ended stall into a bounded phase.
    "cannot exist here" are never confused.
 7. **Static first, then wire.** Every feature degrades to a working static page before any phase
    replaces one degradation with the live behaviour. The inventory never blocks the static path.
+8. **A missing query index is a yaml file, not a service.** `/query-index.json` → 404 on the
+   target means no `helix-query.yaml` in the code branch (listings and search, class L / S):
+   author it, push, publish live, poll (no more often than every 5 s, bounded) —
+   listings.md § Getting an index at all. The sheet-backed interim index ships only when the
+   code branch is not writable; a 403 from the configuration service is never the reason (a
+   recorded hands-off run read one missing yaml file as "cannot be configured").
+9. **Search parity is count and titles.** Record the source's visible result count and top
+   titles per probe term at detect time (`expectCount`, `expectTitles` on the `search-query`
+   check in `parity.json`); the rebuilt search ranks title matches first, dedupes by title +
+   description and caps the dropdown at that count (patterns.md § search-index-backed).
 
 ## `stardust/dynamic-features.md`
 

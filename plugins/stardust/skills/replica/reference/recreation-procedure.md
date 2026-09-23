@@ -84,7 +84,8 @@ Before any screenshot-eyeball tuning:
    pattern): container max-widths, the full type ramp (family / size /
    line-height / letter-spacing / weight per level), button specs (border,
    radius, padding — the whole spec, not just color), section paddings,
-   radii, shadows, hero heights, breakpoint values — **and the
+   radii, shadows, hero heights, breakpoint values, **`box-sizing` per
+   container** (§ Box model is a lifted value) — **and the
    text-rendering group**: `text-rendering`, `-webkit-font-smoothing`,
    `font-synthesis`, `font-variant-numeric`, `font-kerning`. Sites commonly
    set these globally, and the ramp alone doesn't carry them: a ±1%
@@ -199,6 +200,71 @@ viewport-specific artifact into content and CSS.
   (`source-fidelity-gate.md` § Wide-viewport fluid check) — but the check
   only catches what this rule prevents; lifting the model up front is the
   cheap half.
+
+### Box model is a lifted value (`box-sizing` per container)
+
+`box-sizing` is a first-class lifted value: read per container from the
+computed-style capture (step 4), declared per block in the recreation and
+in its block CSS — never assumed, never set once for the page. A recorded
+hands-off run's prototypes all gated at ≤ 0.1 %, and the delivered pages
+came out with the chrome 9 px narrower and a facts row 106 px shorter at
+360: the source laid out its grids content-box, the prototype carried no
+reset, and the delivery boilerplate's universal `*, *::before, *::after {
+box-sizing: border-box }` shrank every padded %-width container after
+conversion — the agent had to discover the source's box model itself, at
+the published-origin gate. Rules:
+
+- **Lift it.** For every container the gate measures (section wrappers,
+  grids, cards, rows, chrome bars) record `boxSizing` beside width and
+  padding. `measure.mjs` lists it in its default props, so a `--against`
+  run prints `boxSizing: content-box → border-box` per box — the fork is
+  named before a pixel round.
+- **Declare it per block.** The block's CSS states the box model its lifted
+  widths were authored under (`.block-x, .block-x * { box-sizing:
+  content-box }` when the source was content-box), and the canon file
+  header records the source's box model per container family.
+- **On a replica the boilerplate reset is SCOPED, never universal.** The
+  deploy skill's global `border-box` reset (#106) is a redesign rule. A
+  replica project declares the reset in `styles/styles.css` scoped to the
+  blocks whose lift recorded `border-box` (or to the wrapper classes the
+  source applied it to), states the scope in the canon header and the
+  progress ledger, and leaves everything else at the browser default the
+  source relied on. A universal reset is a design change without a register
+  entry.
+- **Read the symptom.** A width or height short by exactly a padding sum
+  (2 × padding-x on a width, 2 × padding-y on a row) at one breakpoint is a
+  box-model fork, not a spacing error — re-lift `boxSizing`, do not nudge
+  the padding. The same fork is one of the recorded causes of horizontal
+  overflow at 360 (`source-fidelity-gate.md` § Iteration discipline, the
+  HARD assert).
+
+### Image renditions per breakpoint (`srcset` / `sizes` are lifted values)
+
+The browser picks a rendition per viewport from `srcset` / `sizes`. A
+recorded hands-off run's live page selected the 400 px rendition at 360
+while the build served its 1600 px rendition at every width; each rendition
+rounds its rendered height from its own intrinsic ratio, so every inline
+image differed by a fraction of a pixel (0.64 px recorded), and summed down
+the page that was a 2.2 px root-height delta that cost iterations chasing a
+layout bug that was not there. Rules:
+
+- **Record per image which rendition live selects at EACH gate width.**
+  `measure.mjs "$LIVE" --against "$PROTO" --selectors "img" --all-matches
+  --width 1440,360` prints `img <naturalWidth>×<naturalHeight> …/<file>` per
+  match per side and `img.naturalWidth: a → b; img.file: a → b` on the Δ line
+  when the selection differs (`--json`: `img: { naturalWidth, naturalHeight,
+  currentSrc }` per match). Write the per-width table into the capture notes
+  beside the lifted CSS.
+- **Author the same `srcset` / `sizes`** — the same candidate widths and the
+  same `sizes` expression, on the rehosted files — so the build selects the
+  same rendition at every gate width. On the delivery platform map them onto
+  the pipeline's rendition widths (the `/media_<hash>?width=…` set the
+  optimizer emits; `source-fidelity-gate.md` § The published-origin gate:
+  read dimensions from the delivered rendition, not the authored asset).
+- **Read the symptom.** A sub-3 px root-height delta with equal boxes (every
+  measured section Δh 0 while `img.naturalWidth` differs) is a
+  rendition-ratio symptom, not a layout bug — fix the rendition, do not touch
+  spacing, and do not spend an iteration on it.
 
 ## Wrap-junction margins (cards-on-a-canvas sites)
 

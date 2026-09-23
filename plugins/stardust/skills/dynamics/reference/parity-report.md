@@ -31,6 +31,15 @@ Check types (closed set, all replayable): `fetch-json` · `dom-count` · `click-
 script header. A feature with no checks is listed under "features without checks" with its status
 and owner; `decided-out` rows belong there.
 
+`search-query` compares with what the SOURCE showed for the same term, read at detect time and
+recorded on the check: `expectCount` (the visible result count — a mismatch FAILS), `expectTitles`
+(the top ≤ 3 titles, compared as a set), `expectIncludes` (one known hit), optional
+`titleSelector` / `countTolerance`; two results sharing title + text are duplicates and fail.
+Example: `{ "type": "search-query", "path": "/search", "term": "bali", "resultSelector":
+".search-results li", "expectCount": 3, "expectTitles": ["Bali Escape", "Bali by Bike", "Bali Food
+Trail"], "expectIncludes": "/tours/bali" }`. A recorded hands-off run's check passed on presence
+while the typeahead returned 10 entries for a source answer of 3.
+
 ## Rules
 
 1. **Flows, not presence.** A check passes when the user-visible flow completes. "Block rendered" or

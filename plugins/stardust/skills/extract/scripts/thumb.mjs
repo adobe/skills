@@ -21,6 +21,12 @@
  *                        max-height × (source width / --width) rows first, so the
  *                        output is at most this tall; a crop is noted on the
  *                        stdout line                                     (default 3200)
+ *     --max-bytes <n>    cap on the thumbnail's PNG size in bytes. A thumbnail over
+ *                        it is re-encoded at a lower --max-height (the same crop from
+ *                        the bottom) until it fits; the stdout line notes the crop, the
+ *                        cap and the final size. Every thumbnail is read into a model
+ *                        context — a recorded hands-off run read eight of 268–608 KB,
+ *                        3.2 MB, into one context                       (default 150000)
  *     --out <dir>        where the thumbnails go, created if missing
  *                                          (default: each source's own directory)
  *     --suffix <s>       appended to the source basename                 (default -thumb)
@@ -30,7 +36,7 @@
  *   carrying --suffix are skipped, so a re-run over the screenshots directory
  *   never thumbnails its own output). Any pngjs colour type is accepted — the
  *   decoder yields 8-bit RGBA. One line per file on stdout:
- *     <src>: <W>x<H> -> <w>x<h>[ (cropped at <n>px of <H>)] -> <dst>
+ *     <src>: <W>x<H> -> <w>x<h>[ (cropped at <n>px of <H>[; re-encoded for --max-bytes <b>])] -> <dst> (<bytes> bytes)
  *
  * Example (every page capture at once, then read the thumbnails):
  *   node stardust/scripts/thumb.mjs stardust/current/assets/screenshots --width 480
@@ -43,9 +49,11 @@
  * Requires: pngjs (project devDependency — the same one the replica scripts
  * use; run the project copy, as Setup does for crawl.mjs). --help needs nothing.
  * Exit codes: 0 ok · 1 an input failed to read or write (named on stderr; the
- * others are still written) · 2 usage (no inputs, bad flag, a value flag
- * followed by nothing or by another --flag — named, never swallowed — or an
- * output that would overwrite an input or collide with another output).
+ * others are still written), or a thumbnail still over --max-bytes at one row
+ * (written anyway, named on stderr — the cap cannot be met at that --width) ·
+ * 2 usage (no inputs, bad flag, a value flag followed by nothing or by another
+ * --flag — named, never swallowed — or an output that would overwrite an input
+ * or collide with another output).
  */
 import { mkdirSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, extname, join, resolve } from 'node:path';
@@ -56,8 +64,8 @@ const SELF = fileURLToPath(import.meta.url);
 function safeRealpath(p) { try { return realpathSync(p); } catch { return p; } }
 const IS_MAIN = Boolean(process.argv[1]) && SELF === safeRealpath(process.argv[1]);
 
-export const DEFAULTS = { width: 480, maxHeight: 3200, suffix: '-thumb', out: null };
-const SYNOPSIS = 'usage: node thumb.mjs <png|dir…> [--width 480] [--max-height 3200] [--out <dir>] [--suffix -thumb]  (--help for the full header)';
+export const DEFAULTS = { width: 480, maxHeight: 3200, maxBytes: 150000, suffix: '-thumb', out: null };
+const SYNOPSIS = 'usage: node thumb.mjs <png|dir…> [--width 480] [--max-height 3200] [--max-bytes 150000] [--out <dir>] [--suffix -thumb]  (--help for the full header)';
 
 export class UsageError extends Error { constructor(msg, code = 2) { super(msg); this.code = code; } }
 
@@ -105,6 +113,13 @@ export function planThumb(W, H, { width = DEFAULTS.width, maxHeight = DEFAULTS.m
   const rows = Math.min(H, Math.floor(maxHeight * scale));
   const h = Math.max(1, Math.min(maxHeight, Math.round(rows / scale)));
   return { w, h, rows, cropped: rows < H };
+}
+
+// The next --max-height to try when a thumbnail's PNG is over --max-bytes: PNG size is roughly linear
+// in rows, so the height is scaled by the byte ratio with an 8 % margin — and always drops by at least
+// one row, so the re-encode loop ends (at one row if it must).
+export function nextMaxHeight(h, bytes, maxBytes) {
+  return Math.max(1, Math.min(h - 1, Math.floor(((h * maxBytes) / bytes) * 0.92)));
 }
 
 // Box-filter downscale of the top `rows` rows of an RGBA buffer `W` wide to w×h. Separable: each
@@ -165,6 +180,7 @@ export function parseArgs(argv) {
     const int = (v) => { const n = Number(v); if (!Number.isInteger(n) || n < 1) throw new UsageError(`${a} needs a positive integer, got "${v}"`); return n; };
     if (a === '--width') opts.width = int(need());
     else if (a === '--max-height') opts.maxHeight = int(need());
+    else if (a === '--max-bytes') opts.maxBytes = int(need());
     else if (a === '--out') opts.out = need();
     else if (a === '--suffix') opts.suffix = need();
     else if (a.startsWith('-') && a !== '-') throw new UsageError(`unknown option ${a}`);
@@ -201,12 +217,22 @@ export async function main(argv, { log = console.log, warn = console.error } = {
   for (const { src, dst } of jobs) {
     try {
       const png = PNG.sync.read(readFileSync(src));
-      const { w, h, rows, cropped } = planThumb(png.width, png.height, opts);
-      const thumb = new PNG({ width: w, height: h });
-      thumb.data = boxDownscale(png.data, png.width, rows, w, h);
+      const encode = (plan) => { const t = new PNG({ width: plan.w, height: plan.h }); t.data = boxDownscale(png.data, png.width, plan.rows, plan.w, plan.h); return PNG.sync.write(t); };
+      let plan = planThumb(png.width, png.height, opts);
+      let out = encode(plan);
+      // The size cap: lower --max-height (the same crop from the bottom) until the PNG fits — or one row.
+      let capped = false;
+      while (out.length > opts.maxBytes && plan.h > 1) {
+        plan = planThumb(png.width, png.height, { ...opts, maxHeight: nextMaxHeight(plan.h, out.length, opts.maxBytes) });
+        out = encode(plan);
+        capped = true;
+      }
       mkdirSync(dirname(dst), { recursive: true });
-      writeFileSync(dst, PNG.sync.write(thumb));
-      log(`${src}: ${png.width}x${png.height} -> ${w}x${h}${cropped ? ` (cropped at ${rows}px of ${png.height})` : ''} -> ${dst}`);
+      writeFileSync(dst, out);
+      const { w, h, rows, cropped } = plan;
+      const notes = [cropped ? `cropped at ${rows}px of ${png.height}` : null, capped ? `re-encoded for --max-bytes ${opts.maxBytes}` : null].filter(Boolean);
+      log(`${src}: ${png.width}x${png.height} -> ${w}x${h}${notes.length ? ` (${notes.join('; ')})` : ''} -> ${dst} (${out.length} bytes)`);
+      if (out.length > opts.maxBytes) { failed += 1; warn(`thumb: ${dst}: ${out.length} bytes at ${h} row(s) still exceeds --max-bytes ${opts.maxBytes} — the cap cannot be met at this --width; written anyway`); }
     } catch (e) {
       failed += 1;
       warn(`thumb: ${src}: ${e.message}`);

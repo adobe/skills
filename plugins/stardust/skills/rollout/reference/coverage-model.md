@@ -8,13 +8,13 @@ The contract the two scripts maintain. Design rationale is in
 | File | Writer | Contract |
 |---|---|---|
 | `rollout.json` | inventory + blocks + update-coverage + verify | target + DA config + `lastRun` counts |
-| `coverage/pages.json` | inventory (rows) + update-coverage/verify (delivery) | one row per migrated page |
+| `coverage/pages.json` | inventory (rows) + update-coverage (`--new` rows, delivery) + verify (delivery) | one row per migrated page, plus rows for pages built outside the migrated tree |
 | `coverage/templates.json` | inventory + roll-up writers | pages grouped by `templateId` + roll-ups |
 | `coverage/blocks.json` | blocks (rows) + update-coverage (delivery) | one row per **distinct** block (dedup unit) |
 | `plan.json` | plan | dedup-driven delivery order + per-page convert/reuse |
 | `optimize/findings.json` | optimize + findings + autofix | multi-source quality findings (detect→fix→verify) |
 | `optimize/scorecard.json` | optimize + findings + autofix | per-layer health + overall + history |
-| `site/{sitemap.xml,robots.txt,manifest.json}` | assemble | site-level artifacts |
+| `site/{sitemap.xml,robots.txt,manifest.json}` | assemble | site-level artifacts (the EXPECTED sitemap; `manifest.json.servedSitemap` = the `--verify-origin` comparison with the SERVED one) |
 | `dashboard/{index.html,data.json}` | dashboard | self-contained progress view + snapshot |
 
 `rollout` writes nothing outside this directory. `stardust/migrated/`,
@@ -86,6 +86,30 @@ On every `inventory.mjs` run:
   delivered path, else from `state.json[].slug`). The `assets/` bundle is never
   inventoried.
 
+## Rows added outside the migrated tree (`update-coverage.mjs --new`)
+
+A page built during delivery rather than captured — a search results page from
+the dynamics phase, a landing page for a redirect — has no migrated HTML and no
+sidecar, so `inventory.mjs` never rows it and it stays outside `verify.mjs
+--all`, `optimize.mjs` and the assembled sitemap (recorded on a hands-off run).
+`--new <slug> --path </path> --template <id> --origin <origin> [--title …]
+[--status …]` adds the row under the coverage lock:
+
+- shape = the pages schema's page (`slug`, `path`, `title`, `templateId`,
+  `source`, `blocks: []`, `delivery`) — the schema allows no origin property, so
+  the origin is recorded in `source.migratedHtml` as `<origin>:<slug>` (a
+  migrated file is always a path with a slash; the two never collide),
+  `source.metaJson` null, `source.sourceHash` a stable digest of origin + slug +
+  path;
+- the template row is created (`representativeSlug` = the page) or extended;
+- idempotent by slug (a re-run updates path / title / template / status); a slug
+  that belongs to a captured page, and a path another row owns, are refused;
+- `inventory.mjs` keeps these rows on a re-run (the origin marker identifies
+  them; status untouched) until the migrated tree holds a file for the slug or a
+  migrated page owns the path — the line runs once;
+- `dashboard.mjs` opens `source.migratedHtml` as a file for brand tokens and
+  skips a row it cannot open, so the marker is harmless there.
+
 ## Block delivery status lifecycle
 
 ```
@@ -138,7 +162,9 @@ each delivered path back to a file for testing against a local export.
 (per-layer 0–100, `null` for unassessed judgment layers, + `history[]`). The gate
 exits non-zero while any **open P1** is in scope; fixability routes the fix
 (platform-migration → rollout re-deploys; design-pass → upstream; out-of-scope →
-informational). See `checks.md` for the catalog.
+informational). Findings that mirror the source capture (`checks.md` § Source
+parity) stay open but are excluded from the score, the open counts and the gate.
+See `checks.md` for the catalog.
 
 ## Roll-ups
 

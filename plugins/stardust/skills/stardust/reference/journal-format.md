@@ -46,6 +46,12 @@ See `skills/stardust/reference/journal-format.md` for entry format.
 The double-rule (`---`) at the end of each entry is mandatory — it makes
 diffs readable and gives the journal a visual scroll rhythm.
 
+In a stardust phase the one-line summary starts with the phase name
+(`## <ISO-8601 timestamp> — <Phase name> — <what happened>`), so
+`ledger.mjs … end` finds the phase in a `## ` heading; it accepts either
+shape — this one or replica's `## <Phase name> — <what happened> (<date>)`
+— as long as the phase name is somewhere in the heading.
+
 ## What to include
 
 **Always:**

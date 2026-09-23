@@ -2,15 +2,43 @@
 # skills/replica/scripts/gate.sh — one pixel-gate round in one command
 #
 # Stitches both sides (live capture CACHED across iterations — hit
-# minimization, source-fidelity-gate.md § Iteration discipline), runs
-# pixel-compare, and prints the verdict lines that drive the loop (size /
-# height delta / differing % / hot bands). The prototype/build side is
-# re-captured every round; the live side only when live.png is absent —
-# delete it explicitly to re-take (site changed, capture hardening changed).
+# minimization, source-fidelity-gate.md § Iteration discipline), runs the
+# horizontal-overflow assert on the build side, runs pixel-compare, and prints
+# the verdict lines that drive the loop (size / height delta / differing % /
+# hot bands / overflow). The prototype/build side is re-captured every round;
+# the live side only when live.png is absent — delete it explicitly to re-take
+# (site changed, capture hardening changed).
 #
 # Usage:
 #   stardust/scripts/replica/gate.sh <slug> <live-url> <build-url> <width> [iter-label]
 #       [--marker <string>] [--full] [--main <selector>] [--no-dismiss] [--help]
+#
+# Horizontal-overflow assert (every round, build side only — no live hit):
+#   after the build capture, measure.mjs reads document.documentElement's
+#   scrollWidth at <width> on the build URL (overflow-<label>.txt in the
+#   evidence dir). A document wider than its viewport by more than
+#   GATE_OVERFLOW_TOLERANCE px (default 4 — scrollWidth and clientWidth are
+#   integers, so a correct page whose widest box is 360.4 px reads +1; the qa
+#   skill's rendered sweep fails above the same 4 px) prints
+#   `gate.sh: OVERFLOW at <w> — build scrollWidth <n> > viewport <n> (+<n>px) → FAIL`
+#   and the round exits 2 whatever the pixel number says; a clean root, or one
+#   inside the tolerance, prints `gate.sh: overflow assert at <w> — … → ok`
+#   (the px over and the tolerance named). This is the hard assert no
+#   iteration cap waives (source-fidelity-gate.md § Iteration discipline): a
+#   recorded hands-off run delivered two pages 373 and 400 px wide at a 360
+#   viewport and logged them as residuals. gate-evidence.mjs reads the same
+#   line, so a PASS pixel line never earns pixel-gate-<w> over an overflow.
+#   The probe follows the capture's exit classes (below); a missing
+#   measure.mjs or a probe without a root line is exit 1 (fix the copy).
+#
+# Capture retry: a capture (live, build, or the overflow probe) that exits 1
+#   is retried ONCE before the round declares anything — under parallel
+#   Chromium load (three rounds in flight, nine Chromiums with --full) a
+#   recorded run saw about 8 of 62 sibling rounds exit 1 from the build
+#   capture and read them as verdicts. Two exit-1 attempts end the round with
+#   exit 1: "no verdict, re-queue the round" — never a FAIL, never a spent
+#   iteration. Only exit 1 is retried; 3 (bot challenge), 4 (identity) and
+#   124 (deadline) are final on the first attempt.
 #
 #   --full   the whole Phase 4 probe set in one round: after the pixel verdict the
 #            three other probes run IN PARALLEL, each under its own deadline —
@@ -43,14 +71,15 @@
 #     "http://localhost:8791/home-proposed.html" 1440 iter2
 #
 # Evidence lands in stardust/replica/gates/<slug>-<width>/
-# (live.png, build.png, diff-<label>.png).
+# (live.png, build.png, diff-<label>.png, overflow-<label>.txt).
 #
 # Fail-loud contract: a stitch-shot bot challenge (exit 3) or capture error
 # aborts the round — a missing/blocked side must never be compared. Exit
-# codes: 0 gate PASS, 2 gate FAIL (over threshold), 3 bot challenge,
-# 1 capture/compare error, 4 build-side identity assertion failed (the URL
-# serves something that isn't this project's page — wrong/stale server),
-# 124 instrument deadline exceeded (not a measurement — see below),
+# codes: 0 gate PASS, 2 gate FAIL (over threshold, or horizontal overflow on
+# the build side), 3 bot challenge, 1 capture/compare error (after the one
+# retry — re-queue, not a verdict), 4 build-side identity assertion failed
+# (the URL serves something that isn't this project's page — wrong/stale
+# server), 124 instrument deadline exceeded (not a measurement — see below),
 # 125 unknown argument (usage).
 #
 # Instrument deadlines + stale reap: every node step runs under
@@ -65,7 +94,8 @@
 # <path>/node) processes running one of the instrument scripts, never one
 # under `--inspect` (someone's debugger); SIGTERM first, SIGKILL only if still
 # alive ~2 s later. Overrides:
-#   GATE_STITCH_TIMEOUT  seconds per stitch-shot          (default 300)
+#   GATE_STITCH_TIMEOUT  seconds per stitch-shot and per overflow probe (default 300)
+#   GATE_OVERFLOW_TOLERANCE  px of build scrollWidth over the viewport still ok (default 4; 0 = exact)
 #   GATE_COMPARE_TIMEOUT seconds per pixel-compare        (default 120)
 #   GATE_REAP_MIN        stale-instrument age in minutes  (default 15; 0 disables)
 #   GATE_PROBE_TIMEOUT   seconds per --full probe          (default 300)
@@ -105,8 +135,21 @@ mkdir -p "$DIR"
 STITCH_TIMEOUT=${GATE_STITCH_TIMEOUT:-300}
 COMPARE_TIMEOUT=${GATE_COMPARE_TIMEOUT:-120}
 PROBE_TIMEOUT=${GATE_PROBE_TIMEOUT:-300}
+OVF_TOL=${GATE_OVERFLOW_TOLERANCE:-4}
+case "$OVF_TOL" in ''|*[!0-9]*) echo "gate.sh: GATE_OVERFLOW_TOLERANCE must be a whole number of px (got '$OVF_TOL')" >&2; exit 125 ;; esac
 REAP_MIN=${GATE_REAP_MIN:-15}
 capped() { local t=$1 l=$2; shift 2; node "$HERE/run-capped.mjs" --timeout "$t" --label "$l" -- "$@"; }
+# One retry on exit 1 only (the capture/compare error class — Chromium under parallel load); 3, 4 and 124 are
+# final. $1 names the step for the log line; the rest is the command (a function or a program).
+retry_once() {
+  local label=$1 rc; shift
+  "$@"; rc=$?
+  if [ "$rc" -eq 1 ]; then
+    echo "gate.sh: $label exited 1 — retrying once (a capture error under load is not a verdict)" >&2
+    "$@"; rc=$?
+  fi
+  return "$rc"
+}
 
 # Stale-instrument reap (own user, node processes running a replica instrument
 # only, by basename so the plugin tree and the project copy both match; nothing
@@ -115,7 +158,7 @@ capped() { local t=$1 l=$2; shift 2; node "$HERE/run-capped.mjs" --timeout "$t" 
 if [ "$REAP_MIN" -gt 0 ] 2>/dev/null; then
   REAPED=$(ps -U "$(id -un)" -o pid=,etime=,command= 2>/dev/null \
     | grep -E '^ *[0-9]+ +[^ ]+ +([^ ]*/)?node ' \
-    | grep -E '/(stitch-shot|pixel-compare|chrome-parity|anchor|crop-compare|visual-diff)\.mjs( |$)' \
+    | grep -E '/(stitch-shot|pixel-compare|chrome-parity|anchor|crop-compare|visual-diff|measure)\.mjs( |$)' \
     | grep -v -E 'run-capped|grep|--inspect' \
     | while read -r pid etime cmd; do
         mins=$(printf '%s' "$etime" | awk -F'[-:]' '{ n=NF; m=(n>=2)?$(n-1):0; h=(n>=3)?$(n-2):0; d=(n>=4)?$(n-3):0; printf "%d", d*1440 + h*60 + m }')
@@ -169,20 +212,52 @@ fi
 # (--settle: live JS-heavy pages need the lazyload pass). Never swallow the
 # output — exit 3 here means "blocked, escalate --headed", not "skip".
 if [ ! -f "$DIR/live.png" ]; then
-  capped "$STITCH_TIMEOUT" "stitch-shot live $SLUG@$W" node "$HERE/stitch-shot.mjs" "$LIVE_URL" "$DIR/live.png" --width "$W" --settle
+  capture_live() { rm -f "$DIR/live.png"; capped "$STITCH_TIMEOUT" "stitch-shot live $SLUG@$W" node "$HERE/stitch-shot.mjs" "$LIVE_URL" "$DIR/live.png" --width "$W" --settle; }
+  retry_once "live capture" capture_live
   rc=$?
-  [ $rc -eq 124 ] && rm -f "$DIR/live.png"   # never leave a partial live capture to be reused
-  [ $rc -ne 0 ] && { echo "gate.sh: live capture failed (exit $rc) — not comparing" >&2; exit $rc; }
+  [ $rc -ne 0 ] && rm -f "$DIR/live.png"   # never leave a partial live capture to be reused
+  [ $rc -ne 0 ] && { echo "gate.sh: live capture failed (exit $rc) — not comparing$([ $rc -eq 1 ] && printf ' (twice: no verdict — re-queue the round)')" >&2; exit $rc; }
 fi
 
-# Build side: re-captured every iteration.
-capped "$STITCH_TIMEOUT" "stitch-shot build $SLUG@$W" node "$HERE/stitch-shot.mjs" "$BUILD_URL" "$DIR/build.png" --width "$W"
+# Build side: re-captured every iteration; exit 1 retried once (header § Capture retry).
+capture_build() { capped "$STITCH_TIMEOUT" "stitch-shot build $SLUG@$W" node "$HERE/stitch-shot.mjs" "$BUILD_URL" "$DIR/build.png" --width "$W"; }
+retry_once "build capture" capture_build
 rc=$?
-[ $rc -ne 0 ] && { echo "gate.sh: build capture failed (exit $rc) — not comparing" >&2; exit $rc; }
+[ $rc -ne 0 ] && { echo "gate.sh: build capture failed (exit $rc) — not comparing$([ $rc -eq 1 ] && printf ' (twice: no verdict — re-queue the round)')" >&2; exit $rc; }
+
+# Horizontal-overflow assert (header § Horizontal-overflow assert): measure.mjs on the BUILD side only —
+# no live hit — reads documentElement.scrollWidth at $W; its root line is the evidence. The verdict line
+# is printed after pixel-compare's so the loop reads pixels, then the assert.
+OVF="$DIR/overflow-$LBL.txt"
+[ -f "$HERE/measure.mjs" ] || { echo "gate.sh: $HERE/measure.mjs missing — the overflow assert cannot run; re-copy the replica scripts dir (replica SKILL.md § Setup)" >&2; exit 1; }
+probe_overflow() { capped "$STITCH_TIMEOUT" "measure build $SLUG@$W" node "$HERE/measure.mjs" "$BUILD_URL" --selectors html --props display --width "$W" > "$OVF" 2>&1; }
+retry_once "overflow probe" probe_overflow
+rc=$?
+case "$rc" in
+  0) ;;
+  124) echo "gate.sh: overflow probe hit its deadline (exit 124) — no verdict, re-run the round" >&2; exit 124 ;;
+  3) echo "gate.sh: overflow probe blocked (exit 3) on $BUILD_URL — escalate --headed" >&2; exit 3 ;;
+  *) echo "gate.sh: overflow probe failed (exit $rc) — no verdict, re-queue the round: $(grep -iE 'measure:' "$OVF" | head -1 | cut -c1-160)" >&2; exit 1 ;;
+esac
+OVER=$(grep -oE 'OVERFLOW \+[0-9]+px' "$OVF" | head -1 | grep -oE '[0-9]+')
+SW=$(grep -oE 'scrollWidth +[0-9]+' "$OVF" | head -1 | grep -oE '[0-9]+$')
+VP=$(grep -oE 'viewport +[0-9]+' "$OVF" | head -1 | grep -oE '[0-9]+$')
+[ -z "$SW" ] && { echo "gate.sh: overflow probe printed no root line ($OVF) — re-copy measure.mjs from the plugin; the assert needs its root line" >&2; exit 1; }
 
 # pixel-compare supervises its own deadline (--timeout); exit 124 = no verdict.
 node "$HERE/pixel-compare.mjs" "$DIR/live.png" "$DIR/build.png" --out "$DIR/diff-$LBL.png" --timeout "$COMPARE_TIMEOUT"
 PIXEL_RC=$?
+# The overflow assert rules a PASS: a build wider than its viewport by more than the tolerance is a FAIL
+# (exit 2) whatever the pixel number says; a round with no pixel verdict (124 / 1 / 3 / 4) keeps that code —
+# the line is still printed. Within the tolerance (integer rounding of a subpixel width) the line says so.
+if [ -n "$OVER" ] && [ "$OVER" -gt "$OVF_TOL" ]; then
+  echo "gate.sh: OVERFLOW at $W — build scrollWidth $SW > viewport $VP (+${OVER}px) → FAIL (hard assert: no iteration cap waives horizontal overflow; evidence $OVF)"
+  [ "$PIXEL_RC" = 0 ] && PIXEL_RC=2
+elif [ -n "$OVER" ]; then
+  echo "gate.sh: overflow assert at $W — build scrollWidth $SW vs viewport $VP (+${OVER}px, within the ${OVF_TOL}px rounding tolerance) → ok"
+else
+  echo "gate.sh: overflow assert at $W — build scrollWidth $SW = viewport → ok"
+fi
 [ "$FULL" = 1 ] || exit $PIXEL_RC
 # No pixel verdict (124 deadline, 1 error, 3 bot challenge, 4 identity): the probes would spend three
 # Chromiums on a round that already has to be re-run — say so in one line and exit with the pixel rc.

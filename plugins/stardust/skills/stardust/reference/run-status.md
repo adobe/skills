@@ -48,6 +48,19 @@ so a skill's final phase must appear exactly as listed.
 - **One line per phase start, one per end.** No intermediate spam;
   per-page progress lives in each phase's own ledgers (e.g., rollout's
   `coverage/pages.json`).
+- **The `start` line is the FIRST command of a phase** — written
+  before any script of the phase runs, never beside `end` once the
+  work is done (a recorded hands-off run wrote a phase's `start` and
+  `end` one second apart after 109 minutes of work, so a supervisor
+  tailing the ledger saw an idle run the whole time). `ledger.mjs`
+  warns on an `end` with no open `start` — no earlier `start` for the
+  same skill + phase without a later `end` — and refuses it under
+  `--strict` (exit 2, nothing written, one stderr line naming the
+  missing start command).
+- **Every `end` has a journal section.** `ledger.mjs … end` also warns
+  when `stardust/journal.md` (beside the ledger) has no `## ` heading
+  naming the phase (case-insensitive) — a warning only, never an
+  exit-code change; an absent journal is not checked.
 - **Harness-agnostic.** Plugin skills must never reference
   harness-specific progress mechanisms (no `emit_milestone`, no
   session APIs). `stardust/status.jsonl` is the only progress

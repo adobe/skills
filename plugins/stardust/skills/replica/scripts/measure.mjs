@@ -7,6 +7,15 @@
  * (x, y, w, h — page-absolute, rounded), visibility, a text snippet and a
  * computed-style group of each match — on one page, or on two pages with a
  * delta line per selector (the live page against its served prototype).
+ * Every width also gets ONE root line per side — `document.documentElement`'s
+ * scrollWidth beside its scrollHeight and the viewport width — so horizontal
+ * overflow is a number on the table, never a residual (a recorded hands-off
+ * run delivered two pages 373 and 400 px wide at a 360 viewport and passed
+ * them; gate.sh reads this line as a hard assert). An `<img>` (or `<picture>`)
+ * match additionally reports the rendition the browser selected —
+ * naturalWidth × naturalHeight and the current source file — so a
+ * per-breakpoint rendition mismatch (live 400 px at 360, build 1600) is named
+ * instead of read as a sub-pixel layout bug.
  *
  * Why: comparing a section of the live page with its prototype needs exactly
  * this — rects + computed values for a few selectors at one width — and no
@@ -22,14 +31,18 @@
  *                          it without the comma or as two selectors
  *     --width <px[,px…]>   viewport width(s); repeatable or comma-separated (default 1440)
  *     --props <list>       computed properties to read, camelCase, comma-separated —
- *                          REPLACES the default list (display, position, width, height,
- *                          maxWidth, margin, padding, gap, backgroundColor, backgroundImage,
+ *                          REPLACES the default list (display, position, boxSizing, width,
+ *                          height, maxWidth, margin, padding, gap, backgroundColor, backgroundImage,
  *                          color, fontFamily, fontSize, fontWeight, lineHeight,
  *                          letterSpacing, textTransform, textAlign, borderRadius, border,
  *                          boxShadow, opacity, objectFit). backgroundImage is measured
  *                          because a recorded recreate step transcribed a nav's rules and
  *                          dropped every `background-image: url(…)` (flag icons) — the
- *                          --against diff could not name what it had not measured
+ *                          --against diff could not name what it had not measured. boxSizing is
+ *                          measured because the box model is a lifted value: a recorded run's
+ *                          replica inherited a universal border-box reset over content-box source
+ *                          grids (chrome −9 px, a row −106 px at 360) with every prototype gated
+ *                          ≤ 0.1 % — the --against diff names the fork per box
  *     --against <url2>     measure the same selectors on <url2> too and print, per
  *                          selector per width, `Δx Δy Δw Δh` in px (against − url) and
  *                          every property whose value differs (`prop: url → against`).
@@ -56,16 +69,24 @@
  * settle from top to bottom and back so lazy and entrance-animated content is
  * at rest, and the read at each width.
  *
- * Output (table): one block per width, one line per match (`sel[i]  x y w h
- * vis "text"`) followed by its properties, then — with --against — the delta
- * line. In the table a backgroundImage `url("https://host/long/path/flag-de.svg")`
+ * Output (table): one block per width, opening with the root line per side
+ * (`root  scrollWidth <n>  viewport <n>  scrollHeight <n>`, plus
+ * `◄◄ OVERFLOW +<n>px` when scrollWidth exceeds the root's clientWidth — the
+ * viewport, headless has no scrollbar gutter), then one line per match
+ * (`sel[i]  x y w h vis "text"`, an image match adds `img <nw>×<nh> …/<file>`)
+ * followed by its properties, then — with --against — the delta line
+ * (`img.naturalWidth: a → b` / `img.file: a → b` when the rendition differs).
+ * In the table a backgroundImage `url("https://host/long/path/flag-de.svg")`
  * prints as `url(…/flag-de.svg)` so a row stays one line (the JSON keeps the
  * full value). --json: { _provenance: { writtenBy, writtenAt, urls[], widths[],
  * selectors[], props[], allMatches, failed[], warnings[] }, widths[],
- * selectors[], pages: { [url]: { [width]: { [selector]: [ { index, of, rect:
- * { x, y, w, h }, visible, text, props } ] } } }, deltas?: { [width]: {
- * [selector]: { status, countA, countB, pairs: [ { index, rect: { dx, dy, dw,
- * dh }, props: { [prop]: [a, b] } } ] } } } }.
+ * selectors[], root: { [url]: { [width]: { viewport, clientWidth, scrollWidth,
+ * scrollHeight, overflowX } } }, pages: { [url]: { [width]: { [selector]: [ {
+ * index, of, rect: { x, y, w, h }, visible, text, props, img?: { naturalWidth,
+ * naturalHeight, currentSrc } } ] } } }, deltas?: { [width]: { [selector]: {
+ * status, countA, countB, pairs: [ { index, rect: { dx, dy, dw, dh }, props: {
+ * [prop]: [a, b] }, img?: { naturalWidth|naturalHeight|file: [a, b] } } ] } } },
+ * rootDeltas?: { [width]: { scrollWidth, scrollHeight } } } (B − A).
  *
  * Writes: nothing — unless --out <file>, which receives the JSON above.
  *
@@ -73,7 +94,8 @@
  * measured is still printed), 2 usage error, playwright not importable or
  * live-session.mjs not found, 3 bot challenge — the live side served an edge
  * interstitial (fail loud; nothing is printed as measured; escalate --headed).
- * A delta never changes the exit code — this is a measurement, not a gate.
+ * A delta or an overflow never changes the exit code — this is a measurement,
+ * not a gate; gate.sh turns the root line into the round's verdict.
  *
  * Requires playwright importable from the script's location and the diff
  * skill's live-session.mjs in one of two layouts — the plugin tree
@@ -97,7 +119,7 @@ if (process.argv.includes('--help') || process.argv.includes('-h')) {
 // Current stable desktop Chrome on macOS — the platform token and minor version are frozen by
 // Chrome's UA reduction, so only the major matters.
 export const DEFAULT_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36';
-export const DEFAULT_PROPS = ['display', 'position', 'width', 'height', 'maxWidth', 'margin', 'padding', 'gap', 'backgroundColor', 'backgroundImage', 'color', 'fontFamily', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing', 'textTransform', 'textAlign', 'borderRadius', 'border', 'boxShadow', 'opacity', 'objectFit'];
+export const DEFAULT_PROPS = ['display', 'position', 'boxSizing', 'width', 'height', 'maxWidth', 'margin', 'padding', 'gap', 'backgroundColor', 'backgroundImage', 'color', 'fontFamily', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing', 'textTransform', 'textAlign', 'borderRadius', 'border', 'boxShadow', 'opacity', 'objectFit'];
 export const MATCH_CAP = 12;
 export const TEXT_MAX = 40;
 const VIEWPORT_H = 900;
@@ -175,6 +197,8 @@ function measureInPage({ selectors, props, allMatches, cap, textMax }) {
         const text = norm(el.innerText !== undefined ? el.innerText : el.textContent);
         const p = {};
         for (const k of props) p[k] = cs[k] === undefined ? null : String(cs[k]);
+        // The rendition the browser selected: an <img> itself, or the <img> a <picture> resolved to.
+        const im = el.tagName === 'IMG' ? el : (el.tagName === 'PICTURE' ? el.querySelector('img') : null);
         return {
           index,
           of: nodes.length,
@@ -182,11 +206,17 @@ function measureInPage({ selectors, props, allMatches, cap, textMax }) {
           visible: el.getClientRects().length > 0 && cs.visibility !== 'hidden' && cs.display !== 'none',
           text: text.length > textMax ? `${text.slice(0, textMax - 1)}…` : text,
           props: p,
+          ...(im ? { img: { naturalWidth: im.naturalWidth, naturalHeight: im.naturalHeight, currentSrc: im.currentSrc || im.src || '' } } : {}),
         };
       }),
     };
   }
-  return out;
+  // The root line: scrollWidth against the root's clientWidth (the viewport; headless has no scrollbar
+  // gutter, headed subtracts one — so clientWidth, never innerWidth, is the honest comparand).
+  const de = document.documentElement;
+  const root = { viewport: window.innerWidth, clientWidth: de.clientWidth, scrollWidth: de.scrollWidth, scrollHeight: de.scrollHeight };
+  root.overflowX = Math.max(0, root.scrollWidth - root.clientWidth);
+  return { root, selectors: out };
 }
 /* eslint-enable no-undef */
 
@@ -246,7 +276,7 @@ async function main(argv) {
   }
   const urls = o.against ? [o.url, o.against] : [o.url];
   const session = await loadLiveSession();
-  const result = { _provenance: { writtenBy: 'skills/replica/scripts/measure.mjs', writtenAt: new Date().toISOString(), urls, widths: o.widths, selectors: o.selectors, props: o.props, allMatches: o.allMatches, failed: [], warnings: [] }, widths: o.widths, selectors: o.selectors, pages: {} };
+  const result = { _provenance: { writtenBy: 'skills/replica/scripts/measure.mjs', writtenAt: new Date().toISOString(), urls, widths: o.widths, selectors: o.selectors, props: o.props, allMatches: o.allMatches, failed: [], warnings: [] }, widths: o.widths, selectors: o.selectors, root: {}, pages: {} };
   // --headed: the stealth real-Chrome escalation tier from live-session; otherwise plain headless.
   const browser = o.headed ? await session.launchStealthHeaded(chromium) : await chromium.launch({ headless: true });
   try {
@@ -262,16 +292,22 @@ async function main(argv) {
   } finally {
     await browser.close().catch(() => {});
   }
-  // Per selector the JSON carries the match array; an invalid selector becomes a warning.
+  // Per selector the JSON carries the match array; an invalid selector becomes a warning. The root
+  // line moves to result.root[url][width]; an overflow is warned on stderr as well as printed.
   for (const [url, byWidth] of Object.entries(result.pages)) {
-    for (const [width, bySel] of Object.entries(byWidth)) {
+    result.root[url] = {};
+    for (const [width, measured] of Object.entries(byWidth)) {
+      result.root[url][width] = measured.root;
+      if (measured.root.overflowX > 0) result._provenance.warnings.push(`${url} @${width}: horizontal overflow +${measured.root.overflowX}px (scrollWidth ${measured.root.scrollWidth} > viewport ${measured.root.clientWidth})`);
+      const bySel = measured.selectors;
       for (const sel of o.selectors) {
         if (bySel[sel].error) result._provenance.warnings.push(`${url} @${width}: selector "${sel}" — ${bySel[sel].error}`);
         bySel[sel] = bySel[sel].matches;
       }
+      byWidth[width] = bySel;
     }
   }
-  if (o.against) result.deltas = buildDeltas(result, o.url, o.against);
+  if (o.against) { result.deltas = buildDeltas(result, o.url, o.against); result.rootDeltas = buildRootDeltas(result, o.url, o.against); }
   for (const w of result._provenance.warnings) console.error(`measure: ${w}`);
   if (o.out) { mkdirSync(dirname(o.out), { recursive: true }); writeFileSync(o.out, JSON.stringify(result, null, 2)); }
   console.log(o.json ? JSON.stringify(result, null, 2) : formatTable(result));
@@ -280,8 +316,20 @@ async function main(argv) {
 
 // ---- deltas + table (pure) -----------------------------------------------------------------------
 
+// The file name of an image source (query and fragment dropped, host dropped — live and build never share a
+// host, the rendition they picked is what the delta names); a data: URI keeps its MIME type.
+export function fileOf(src) {
+  const s = String(src || '');
+  if (!s) return '';
+  if (/^data:/i.test(s)) return `${s.split(/[;,]/)[0]}…`;
+  const path = s.split(/[?#]/)[0].replace(/\/+$/, '');
+  return path.slice(path.lastIndexOf('/') + 1);
+}
+
 // Two match arrays for one selector → status, counts and per-index pairs (B − A for the rect,
-// [a, b] for every property whose value differs). A side with no match is a status, not a skip.
+// [a, b] for every property whose value differs, and — when either side is an image — [a, b] for
+// naturalWidth / naturalHeight / file when the selected rendition differs). A side with no match is a
+// status, not a skip.
 export function computeDeltas(a, b) {
   const A = a || []; const B = b || [];
   let status = 'ok';
@@ -296,7 +344,16 @@ export function computeDeltas(a, b) {
       const va = A[i].props ? A[i].props[k] : undefined; const vb = B[i].props ? B[i].props[k] : undefined;
       if (va !== vb) props[k] = [va === undefined ? null : va, vb === undefined ? null : vb];
     }
-    pairs.push({ index: i, rect: { dx: rb.x - ra.x, dy: rb.y - ra.y, dw: rb.w - ra.w, dh: rb.h - ra.h }, props });
+    const pair = { index: i, rect: { dx: rb.x - ra.x, dy: rb.y - ra.y, dw: rb.w - ra.w, dh: rb.h - ra.h }, props };
+    if (A[i].img || B[i].img) {
+      const ia = A[i].img || {}; const ib = B[i].img || {};
+      const img = {};
+      for (const k of ['naturalWidth', 'naturalHeight']) { const va = ia[k] === undefined ? null : ia[k]; const vb = ib[k] === undefined ? null : ib[k]; if (va !== vb) img[k] = [va, vb]; }
+      const fa = fileOf(ia.currentSrc); const fb = fileOf(ib.currentSrc);
+      if (fa !== fb) img.file = [fa || null, fb || null];
+      if (Object.keys(img).length) pair.img = img;
+    }
+    pairs.push(pair);
   }
   return { status, countA: A.length, countB: B.length, pairs };
 }
@@ -309,6 +366,17 @@ export function buildDeltas(result, urlA, urlB) {
   for (const width of result.widths) {
     out[width] = {};
     for (const sel of result.selectors) out[width][sel] = computeDeltas((PA[width] || {})[sel], (PB[width] || {})[sel]);
+  }
+  return out;
+}
+// rootDeltas[width] = { scrollWidth, scrollHeight } (B − A); null when either side has no root line.
+export function buildRootDeltas(result, urlA, urlB) {
+  const RA = (result.root || {})[urlA]; const RB = (result.root || {})[urlB];
+  if (!RA || !RB) return null;
+  const out = {};
+  for (const width of result.widths) {
+    const a = RA[width]; const b = RB[width];
+    out[width] = a && b ? { scrollWidth: b.scrollWidth - a.scrollWidth, scrollHeight: b.scrollHeight - a.scrollHeight } : null;
   }
   return out;
 }
@@ -333,11 +401,21 @@ export function formatDelta(pair) {
   const r = pair.rect;
   const rect = `Δx ${signed(r.dx)} Δy ${signed(r.dy)} Δw ${signed(r.dw)} Δh ${signed(r.dh)}`;
   const props = Object.entries(pair.props).map(([k, [a, b]]) => `${k}: ${shortValue(k, a)} → ${shortValue(k, b)}`);
-  return `${rect}  ${props.length ? props.join('; ') : 'props equal'}`;
+  const img = Object.entries(pair.img || {}).map(([k, [a, b]]) => `img.${k}: ${a} → ${b}`);
+  const parts = [...props, ...img];
+  return `${rect}  ${parts.length ? parts.join('; ') : 'props equal'}`;
 }
 
 function matchLine(tag, m) {
-  return `${tag}  x ${pad(m.rect.x, 5)}  y ${pad(m.rect.y, 6)}  w ${pad(m.rect.w, 5)}  h ${pad(m.rect.h, 5)}  ${m.visible ? 'vis' : 'hid'}  "${m.text}"`;
+  const img = m.img ? `  img ${m.img.naturalWidth}×${m.img.naturalHeight} …/${fileOf(m.img.currentSrc)}` : '';
+  return `${tag}  x ${pad(m.rect.x, 5)}  y ${pad(m.rect.y, 6)}  w ${pad(m.rect.w, 5)}  h ${pad(m.rect.h, 5)}  ${m.visible ? 'vis' : 'hid'}  "${m.text}"${img}`;
+}
+
+// The root line: `scrollWidth <n>  viewport <n>  scrollHeight <n>`, then `◄◄ OVERFLOW +<n>px` when the document is wider
+// than its viewport — the horizontal-overflow assert gate.sh reads (source-fidelity-gate.md § Iteration discipline).
+export function formatRoot(root) {
+  const vp = root.clientWidth === root.viewport ? String(root.viewport) : `${root.viewport} (client ${root.clientWidth})`;
+  return `scrollWidth ${pad(root.scrollWidth, 5)}  viewport ${vp}  scrollHeight ${pad(root.scrollHeight, 6)}${root.overflowX > 0 ? `  ◄◄ OVERFLOW +${root.overflowX}px` : ''}`;
 }
 
 export function formatTable(result) {
@@ -349,6 +427,17 @@ export function formatTable(result) {
   for (const f of failed) lines.push(`  ✗ ${f.url} failed to load — ${f.error}`);
   for (const width of result.widths) {
     lines.push(`\n@ ${width}px`);
+    // Root line(s) first: one side prints `root  …`; two sides print A / B and the Δ.
+    const rootOf = (url) => ((result.root || {})[url] || {})[width];
+    if (!urlB) { const ra = rootOf(urlA); if (ra) lines.push(`  root  ${formatRoot(ra)}`); } else {
+      const ra = rootOf(urlA); const rb = rootOf(urlB);
+      if (ra || rb) {
+        lines.push('  root');
+        if (ra) lines.push(`    A  ${formatRoot(ra)}`);
+        if (rb) lines.push(`    B  ${formatRoot(rb)}`);
+        if (ra && rb) lines.push(`    Δ  scrollWidth ${signed(rb.scrollWidth - ra.scrollWidth)}  scrollHeight ${signed(rb.scrollHeight - ra.scrollHeight)}`);
+      }
+    }
     for (const sel of result.selectors) {
       const A = ((result.pages[urlA] || {})[width] || {})[sel];
       // One page, or two with a side that failed: print each loaded side on its own.

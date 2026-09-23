@@ -3,14 +3,16 @@
 // shape and key order, skill normalisation, file/dir creation on first write, append-only with
 // newline repair, unknown skill/phase warning vs --strict refusal, blocked-without-detail, tail
 // and last output, --next / --owner, the value-flag swallow rule, an explicit --dir that must exist,
-// usage errors. Run: node <this file>.
+// usage errors, the start guard (an end needs an open start: warning, or exit 2 under --strict with
+// nothing written) and the journal check on end (a journal.md without a "## " heading naming the
+// phase warns, never changes the exit code). Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { PHASES, buildLine, canonicalPhase, checkPhase, normaliseSkill, formatTail } from '../ledger.mjs';
+import { PHASES, buildLine, canonicalPhase, checkJournalSection, checkOpenStart, checkPhase, normaliseSkill, formatTail } from '../ledger.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'ledger.mjs');
@@ -207,7 +209,70 @@ check('a known phase is written in the table\'s own form — aliases and case no
   const g = run('replica', 'GATE', 'start'); assert.equal(g.code, 0); assert.equal(JSON.parse(g.out).phase, 'source-fidelity-gate');
   const u = run('replica', 'interaction-parity', 'end', '--detail', 'x'); assert.equal(u.code, 0);
   assert.equal(JSON.parse(u.out).phase, 'interaction-parity'); assert.match(u.err, /unknown phase/);
-  const s = run('rollout', 'i-dashboard', 'end', '--strict', '--detail', 'x'); assert.equal(s.code, 0, 'a normalised known phase passes --strict');
+  assert.equal(run('rollout', 'I-dashboard', 'start').code, 0);
+  const s = run('rollout', 'i-dashboard', 'end', '--strict', '--detail', 'x'); assert.equal(s.code, 0, `a normalised known phase with an open start passes --strict: ${s.err}`);
+});
+
+// ---- the start guard (an end needs an open start) and the journal check on end ---------------------
+const gdir = join(root, 'guard'); mkdirSync(gdir);
+const runIn = (d, ...args) => { const r = spawnSync(process.execPath, [SCRIPT, ...args, '--dir', d], { encoding: 'utf8' }); return { code: r.status, out: r.stdout, err: r.stderr }; };
+const linesIn = (d) => readFileSync(join(d, 'status.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
+check('checkOpenStart: no lines, a start consumed by a later end, a new start reopens, blocked keeps it open, another skill or phase does not count, alias and case forms pair, junk lines skipped', () => {
+  const L = (skill, phase, event) => ({ ts: 't', skill, phase, event });
+  assert.match(checkOpenStart([], 'stardust:rollout', 'C-deliver'), /^end for stardust:rollout C-deliver has no matching start .*node ledger\.mjs rollout C-deliver start$/);
+  assert.equal(checkOpenStart([L('stardust:rollout', 'C-deliver', 'start')], 'stardust:rollout', 'C-deliver'), null);
+  assert.match(checkOpenStart([L('stardust:rollout', 'C-deliver', 'start'), L('stardust:rollout', 'C-deliver', 'end')], 'stardust:rollout', 'C-deliver'), /no matching start/);
+  assert.equal(checkOpenStart([L('stardust:rollout', 'C-deliver', 'start'), L('stardust:rollout', 'C-deliver', 'end'), L('stardust:rollout', 'C-deliver', 'start')], 'stardust:rollout', 'C-deliver'), null, 'a new start after the end reopens the phase');
+  assert.equal(checkOpenStart([L('stardust:rollout', 'C-deliver', 'start'), L('stardust:rollout', 'C-deliver', 'blocked')], 'stardust:rollout', 'C-deliver'), null, 'blocked keeps the start open');
+  assert.match(checkOpenStart([L('stardust:migrate', 'plan', 'start')], 'stardust:prototype', 'plan'), /end for stardust:prototype plan has no matching start/, 'another skill\'s start does not count');
+  assert.match(checkOpenStart([L('stardust:rollout', 'D-site', 'start')], 'stardust:rollout', 'C-deliver'), /no matching start/, 'another phase\'s start does not count');
+  assert.equal(checkOpenStart([L('stardust:replica', 'gate', 'start')], 'stardust:replica', 'source-fidelity-gate'), null, 'a hand-written alias pairs with the canonical end');
+  assert.equal(checkOpenStart([L('stardust:rollout', 'i-dashboard', 'start')], 'stardust:rollout', 'I-dashboard'), null, 'case-folded');
+  assert.equal(checkOpenStart([null, { ts: 't' }, L('stardust:migrate', 'render', 'start')], 'stardust:migrate', 'render'), null, 'junk lines are skipped');
+});
+check('an end without a start: --strict exits 2 with ONE stderr line naming the missing start command and writes nothing (no ledger created); plain mode warns and still writes', () => {
+  const s = runIn(gdir, 'rollout', 'C-deliver', 'end', '--strict', '--detail', '27 pages');
+  assert.equal(s.code, 2); assert.equal(s.out, '');
+  assert.equal(s.err.trim().split('\n').length, 1, s.err);
+  assert.match(s.err.trimEnd(), /^ledger: strict: end for stardust:rollout C-deliver has no matching start \(no earlier start line for this skill and phase without a later end\) — the start line is the FIRST command of a phase, before any script runs: node ledger\.mjs rollout C-deliver start — nothing written$/);
+  assert.ok(!existsSync(join(gdir, 'status.jsonl')), 'nothing written, no file created');
+  const p = runIn(gdir, 'rollout', 'C-deliver', 'end', '--detail', '27 pages');
+  assert.equal(p.code, 0, p.err); assert.match(p.err, /^ledger: warning: end for stardust:rollout C-deliver has no matching start/m);
+  assert.equal(linesIn(gdir).length, 1); assert.equal(JSON.parse(p.out).event, 'end');
+});
+check('start then end passes --strict; a second end of the same phase is refused until a new start; blocked between start and end keeps it open; alias and case forms pair; another skill\'s start does not count; --help names the guard', () => {
+  assert.equal(runIn(gdir, 'rollout', 'D-site', 'start', '--strict').code, 0);
+  const e = runIn(gdir, 'rollout', 'd-site', 'end', '--strict', '--detail', 'assembled'); assert.equal(e.code, 0, e.err); assert.doesNotMatch(e.err, /matching start/);
+  const again = runIn(gdir, 'rollout', 'D-site', 'end', '--strict', '--detail', 'x'); assert.equal(again.code, 2); assert.match(again.err, /no matching start/);
+  assert.equal(runIn(gdir, 'rollout', 'D-site', 'start', '--strict').code, 0);
+  assert.equal(runIn(gdir, 'rollout', 'D-site', 'end', '--strict', '--detail', 'x').code, 0, 'a new start reopens the phase');
+  assert.equal(runIn(gdir, 'replica', 'gate', 'start', '--strict').code, 0);
+  assert.equal(runIn(gdir, 'replica', 'source-fidelity-gate', 'blocked', '--detail', 'waiting', '--strict').code, 0);
+  const g = runIn(gdir, 'replica', 'GATE', 'end', '--strict', '--detail', 'ok'); assert.equal(g.code, 0, g.err); assert.doesNotMatch(g.err, /matching start/);
+  assert.equal(runIn(gdir, 'migrate', 'plan', 'start', '--strict').code, 0);
+  const other = runIn(gdir, 'prototype', 'plan', 'end', '--strict', '--detail', 'x'); assert.equal(other.code, 2); assert.match(other.err, /end for stardust:prototype plan has no matching start/);
+  assert.ok(runIn(gdir, '--help').out.includes('An end needs an open start'), '--help names the guard');
+});
+check('journal check on end: no journal → silent; "## " headings that do not name the phase → one warning, exit unchanged even under --strict, line still written; a heading naming it (any case, dash or space, anywhere in the heading) → silent; ### headings and body text do not count; start is never checked', () => {
+  const jdir = join(root, 'journal'); mkdirSync(jdir);
+  assert.equal(runIn(jdir, 'replica', 'extract', 'start', '--strict').code, 0);
+  const none = runIn(jdir, 'replica', 'extract', 'end', '--strict', '--detail', '36 pages'); assert.equal(none.code, 0, none.err); assert.equal(none.err, '', 'no journal, no warning');
+  writeFileSync(join(jdir, 'journal.md'), '# Journal — site\n\n## 2026-09-22T10:00:00Z — Session 2 resumed\n\n### Preserve-direction notes\n\nbody text naming preserve-direction and extract\n\n---\n');
+  assert.equal(runIn(jdir, 'replica', 'preserve-direction', 'start', '--strict').code, 0, 'start is not checked against the journal');
+  const w = runIn(jdir, 'replica', 'preserve-direction', 'end', '--strict', '--detail', 'promoted');
+  assert.equal(w.code, 0, w.err); assert.equal(linesIn(jdir).length, 4, 'the end line is still written');
+  assert.equal(w.err.trim().split('\n').length, 1, w.err);
+  assert.match(w.err.trimEnd(), /^ledger: warning: .*journal\.md has no "## " section naming preserve-direction — a journal section is part of every phase end: "## preserve-direction — <what happened> \(<date>\)"$/);
+  assert.match(checkJournalSection(jdir, 'extract'), /no "## " section naming extract/, 'a ### heading and body text do not count');
+  assert.equal(checkJournalSection(join(root, 'nowhere'), 'extract'), null, 'absent journal → null');
+  appendFileSync(join(jdir, 'journal.md'), '\n## Preserve direction — target spec promoted verbatim (2026-09-22)\n\n---\n\n## 2026-09-22T12:00:00Z — EXTRACT: 36 pages captured\n\n---\n');
+  assert.equal(checkJournalSection(jdir, 'preserve-direction'), null, 'space for dash, capitalised');
+  assert.equal(checkJournalSection(jdir, 'extract'), null, 'the phase named after a timestamp, upper-case');
+  assert.match(checkJournalSection(jdir, 'recreate'), /no "## " section naming recreate/);
+  assert.equal(runIn(jdir, 'replica', 'preserve-direction', 'start').code, 0);
+  const ok = runIn(jdir, 'replica', 'preserve-direction', 'end', '--strict', '--detail', 'x'); assert.equal(ok.code, 0, ok.err); assert.equal(ok.err, '');
+  assert.equal(runIn(jdir, 'replica', 'extract', 'start').code, 0);
+  const ok2 = runIn(jdir, 'replica', 'Extract', 'end', '--detail', 'x'); assert.equal(ok2.code, 0, ok2.err); assert.doesNotMatch(ok2.err, /journal\.md|matching start/);
 });
 
 rmSync(root, { recursive: true, force: true });

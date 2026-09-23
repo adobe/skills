@@ -30,7 +30,7 @@
  *   a 401 that persists through its retries on ANY page HALTS the batch: no new
  *       page starts, pages already in flight finish, the ledger is persisted
  *       (lock-safe), one stderr line
- *         HALT <path> 401 after <n> attempts — refresh DA_TOKEN and re-run: <the same command>
+ *         HALT <path> 401 after <n> attempts — refresh <the token's variable or file> and re-run: <the same command>
  *       and exit 3. The halted page keeps its previous ledger status (`attempts`
  *       incremented), the pages not attempted keep theirs — no page is ever
  *       marked put-fail / preview-fail / live-fail because of a 401 (it prints
@@ -42,8 +42,11 @@
  *   (expired JWT before any request, or a 401 that persisted through its
  *   retries — refresh the token and re-run the same command).
  *
- * Token: read from the environment only (DA_TOKEN, or the variable named by
- * --token-env); never printed, never written to the ledger or the log.
+ * Token: from the environment variable named by --token-env (default DA_TOKEN),
+ * or from --token-file <path> (read once at start, trimmed; never both flags — the
+ * same two sources as da-media-upload.mjs). Never printed, never part of the
+ * re-run command, never written to the ledger or the log; the expiry and HALT
+ * lines name the variable or the file, never the value.
  *
  * Idempotent: PUT/preview/live are all safe to repeat. Safe to Ctrl-C and re-run.
  *
@@ -51,7 +54,7 @@
  *   DA_TOKEN=… node deploy-batch.mjs --org <org> --repo <repo> --branch <branch> \
  *     --content content [--paths list.txt] [--concurrency 4] [--no-publish] \
  *     [--force] [--ledger path] [--log path] [--retries 4] [--backoff-ms 500] \
- *     [--token-env DA_TOKEN]
+ *     [--token-env DA_TOKEN | --token-file <path>]
  *
  * --content   dir of *.html body-fragment files (default: content). Each file's
  *             path relative to this dir, minus .html, is its DA/web path.
@@ -63,6 +66,8 @@
  * --retries   attempts after the first for 000/408/429/5xx and 401 (default 4).
  * --backoff-ms  base delay of the capped exponential backoff (default 500).
  * --token-env  environment variable holding the token (default DA_TOKEN).
+ * --token-file read the token from this file instead (one of the two flags, never
+ *             both; a missing or empty file is a usage error, exit 2).
  *
  * Test hooks (environment, read once at start; the production defaults are
  * unchanged when unset):
@@ -112,21 +117,39 @@ function parseArgs(argv) {
     else if (k === '--no-publish') a.publish = false;
     else if (k === '--force') a.force = true;
     else if (k === '--token-env') a.tokenEnv = next();
+    else if (k === '--token-file') a.tokenFile = next();
     else throw new Error(`unknown arg: ${k}`);
   }
-  a.tokenEnv ||= 'DA_TOKEN';
-  a.token = process.env[a.tokenEnv];
   if (!a.org || !a.repo || !a.branch) throw new Error('--org, --repo and --branch are required');
-  if (!a.token) throw new Error(`missing token in env ${a.tokenEnv}`);
+  // The token source: one variable (default DA_TOKEN) or one file, never both — the uploader's rule. The
+  // file is read here, once, before anything else runs; the value lives on `token` only and every message
+  // names the source (tokenLabel), never the value.
+  if (a.tokenEnv && a.tokenFile) throw new Error('give at most one of --token-env / --token-file');
+  a.tokenEnv ||= 'DA_TOKEN';
+  if (a.tokenFile) {
+    let raw;
+    try { raw = readFileSync(a.tokenFile, 'utf8'); } catch (e) { throw new Error(`cannot read --token-file ${a.tokenFile}: ${e.message}`); }
+    a.token = raw.trim();
+    if (!a.token) throw new Error(`--token-file ${a.tokenFile} is empty`);
+  } else {
+    a.token = process.env[a.tokenEnv];
+    if (!a.token) throw new Error(`missing token in env ${a.tokenEnv}`);
+  }
   a.ledger ||= path.join(a.content, '.deploy-ledger.json');
   a.log ||= path.join(a.content, '.deploy-log.jsonl');
   return a;
 }
 
-// The exact command to re-run once the token is fresh: same script, same arguments (the token itself
-// is never on the command line — it is read from the environment only). Same helper as da-media-upload.
+// How the messages name the token and say how to refresh it — the variable or the file, never the value.
+const tokenLabel = (a) => (a.tokenFile ? `the token in ${a.tokenFile}` : a.tokenEnv);
+const refreshHint = (a) => (a.tokenFile ? `write a fresh token to ${a.tokenFile}` : `refresh ${a.tokenEnv}`);
+// The exact command to re-run once the token is fresh: same script, same arguments (the token itself is
+// never on the command line — it comes from the environment variable, or from the --token-file path).
+// Same helpers as da-media-upload.
 const shellQuote = (s) => (/^[A-Za-z0-9_./:=@%+,-]+$/.test(s) ? s : `'${s.replace(/'/g, "'\\''")}'`);
-const rerunCommand = (tokenEnv) => `${tokenEnv}=<fresh token> node ${process.argv.slice(1).map(shellQuote).join(' ')}`;
+const rerunCommand = (a) => (a.tokenFile
+  ? `node ${process.argv.slice(1).map(shellQuote).join(' ')}   (after writing the fresh token to ${a.tokenFile})`
+  : `${a.tokenEnv}=<fresh token> node ${process.argv.slice(1).map(shellQuote).join(' ')}`);
 
 async function walkHtml(dir, base = dir) {
   const out = [];
@@ -263,7 +286,7 @@ async function main() {
   const exp = jwtExpiry(args.token);
   if (exp !== null && exp * 1000 <= Date.now()) {
     const ago = Math.max(1, Math.round((Date.now() - exp * 1000) / 60000));
-    console.error(`[deploy-batch] ${args.tokenEnv} is expired — its exp claim is ${new Date(exp * 1000).toISOString()} (${ago} min ago); nothing was sent. Refresh it and re-run: ${rerunCommand(args.tokenEnv)}`);
+    console.error(`[deploy-batch] ${tokenLabel(args)} is expired — its exp claim is ${new Date(exp * 1000).toISOString()} (${ago} min ago); nothing was sent. Refresh it and re-run: ${rerunCommand(args)}`);
     process.exit(TOKEN_EXIT);
   }
   let pages = await walkHtml(args.content);
@@ -326,7 +349,7 @@ async function main() {
       console.error('FAILS (not the token — the same re-run re-drives them):');
       for (const r of failedRows) console.error(`  ${r.path}  ${r.rec.status}  ${r.rec.lastError || ''}`);
     }
-    console.error(`HALT ${halted.path} 401 after ${halted.attempts} attempt${halted.attempts === 1 ? '' : 's'} — refresh ${args.tokenEnv} and re-run: ${rerunCommand(args.tokenEnv)}`);
+    console.error(`HALT ${halted.path} 401 after ${halted.attempts} attempt${halted.attempts === 1 ? '' : 's'} — ${refreshHint(args)} and re-run: ${rerunCommand(args)}`);
     process.exit(TOKEN_EXIT);
   }
 

@@ -349,6 +349,60 @@ await check('usage errors exit 2 (unknown flag, missing --org/--repo/--branch, n
   assert.deepEqual(readdirSync(scratch), [], '--help wrote nothing'); rmSync(scratch, { recursive: true, force: true });
 });
 
+// ---- (g) --token-file <path> ----------------------------------------------------------------------------
+const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+await check('--token-file <path> reads the token from the file once at start (trailing newline ignored; DA_TOKEN unset); the expiry and HALT lines name the file and the re-run command carries no <var>= prefix; the same command resumes once the file is fresh', async () => {
+  const tokenFile = join(proj, 'da-token'); writeFileSync(tokenFile, `${TOKEN}\n`);
+  site('site-f', ['f1']);
+  const from = requests.length;
+  const r = await run(['--content', 'site-f', '--token-file', tokenFile], { token: null });
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.match(r.err, /^\[1\/1\] OK {3}\/f1 \(live\)$/m);
+  const admin = since(from).filter((q) => q.method !== 'GET');
+  assert.equal(admin.length, 3, 'PUT, preview, live');
+  for (const q of admin) assert.equal(q.headers.authorization, `Bearer ${TOKEN}`, 'the file value without its newline');
+  assert.equal(ledgerOf('site-f')['/f1'].status, 'live');
+  // a 401 that persists: the HALT line names the file and says how to refresh it; no `<var>=<fresh token>` prefix
+  site('site-f2', ['g-dead']);
+  const h = await run(['--content', 'site-f2', '--retries', '1', '--token-file', tokenFile], { token: null });
+  assert.equal(h.code, 3, h.out + h.err);
+  assert.match(h.err, /^\[1\/1\] HALT \/g-dead \(put 401 after 2 attempts — status kept pending, not failed\)$/m);
+  const halts = haltLines(h.err);
+  assert.equal(halts.length, 1, `one HALT line: ${h.err}`);
+  assert.match(halts[0], new RegExp(`^HALT /g-dead 401 after 2 attempts — write a fresh token to ${esc(tokenFile)} and re-run: node \\S+deploy-batch\\.mjs --org ${ORG} --repo ${REPO} --branch ${BRANCH} --backoff-ms 1 --content site-f2 --retries 1 --token-file ${esc(tokenFile)}   \\(after writing the fresh token to ${esc(tokenFile)}\\)$`));
+  assert.doesNotMatch(h.err, /<fresh token>|DA_TOKEN/);
+  assert.equal(ledgerOf('site-f2')['/g-dead'].status, 'pending', 'never put-fail because of a 401');
+  // an expired JWT in the file: exit 3 before any request, the line names the file
+  writeFileSync(tokenFile, `${EXPIRED_JWT}\n`);
+  const from2 = requests.length;
+  const x = await run(['--content', 'site-f2', '--token-file', tokenFile], { token: null });
+  assert.equal(x.code, 3, x.out + x.err);
+  assert.equal(x.err.trim().split('\n').length, 1, x.err);
+  assert.match(x.err, new RegExp(`^\\[deploy-batch\\] the token in ${esc(tokenFile)} is expired — its exp claim is ${new Date(EXPIRED_EXP * 1000).toISOString().replace(/[.]/g, '\\.')} \\(\\d+ min ago\\); nothing was sent\\. Refresh it and re-run: node \\S+deploy-batch\\.mjs .* --content site-f2 --token-file ${esc(tokenFile)}   \\(after writing the fresh token to ${esc(tokenFile)}\\)$`, 'm'));
+  assert.doesNotMatch(x.err, /<fresh token>|DA_TOKEN/);
+  assert.equal(requests.length, from2, 'no request left the process');
+  // the same command resumes once the file holds a fresh token
+  writeFileSync(tokenFile, FRESH_TOKEN);
+  const r2 = await run(['--content', 'site-f2', '--retries', '1', '--token-file', tokenFile], { token: null });
+  assert.equal(r2.code, 0, r2.out + r2.err);
+  assert.match(r2.err, /done\. 1 ok, 0 failed\./);
+  assert.equal(ledgerOf('site-f2')['/g-dead'].status, 'live'); assert.equal(ledgerOf('site-f2')['/g-dead'].attempts, 2);
+});
+await check('--token-file usage errors exit 2 with nothing sent: together with --token-env, a missing file (named), an empty file (named) — DA_TOKEN in the environment does not stand in; --help names the flag', async () => {
+  const from = requests.length;
+  const tokenFile = join(proj, 'da-token'); writeFileSync(tokenFile, TOKEN);
+  const both = await run(['--content', 'site-f', '--token-file', tokenFile, '--token-env', 'X'], { token: null });
+  assert.equal(both.code, 2, both.out + both.err); assert.match(both.err, /^\[deploy-batch\] fatal: give at most one of --token-env \/ --token-file$/m);
+  const missing = join(proj, 'no-such-token');
+  const miss = await run(['--content', 'site-f', '--token-file', missing], { token: TOKEN });
+  assert.equal(miss.code, 2, miss.out + miss.err); assert.match(miss.err, new RegExp(`^\\[deploy-batch\\] fatal: cannot read --token-file ${esc(missing)}: `, 'm'));
+  writeFileSync(tokenFile, '  \n');
+  const empty = await run(['--content', 'site-f', '--token-file', tokenFile], { token: TOKEN });
+  assert.equal(empty.code, 2, empty.out + empty.err); assert.match(empty.err, new RegExp(`^\\[deploy-batch\\] fatal: --token-file ${esc(tokenFile)} is empty$`, 'm'));
+  assert.equal(requests.length, from, 'no request left the process');
+  const help = await run(['--help']); assert.equal(help.code, 0); assert.match(help.out, /--token-env DA_TOKEN \| --token-file <path>/); assert.match(help.out, /--token-file read the token from this file instead/);
+});
+
 // ---- (f) the token never leaks ---------------------------------------------------------------------------
 await check('the token value never appears on stdout, stderr, in any ledger or any log', () => {
   assert.ok(allOutput.length > 20);

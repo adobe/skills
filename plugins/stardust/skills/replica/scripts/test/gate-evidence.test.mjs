@@ -5,7 +5,9 @@
 // ledger, --dry-run, --check against the width-aware acceptance set (a pixel gate per --widths entry) and against
 // stale gates, --slug, --json, --help, the delivery-lint fallback, the pixel regime (prototype vs published), deadline
 // and no-verdict jobs recorded OPEN, variance-probe only from the page's own ■ line, the name-fallback attribution
-// rule, a malformed progress.json aborting before any sidecar write.
+// rule, a malformed progress.json aborting before any sidecar write, the overflow assert line outranking a PASS pixel
+// line (FAIL: horizontal overflow, `/ovf+<px>` on the row, `overflowX` in the ledger), media-reconcile `n/a:` and
+// dropped from the acceptance set until the page's delivered content file exists (`--content`).
 // Run: node plugins/stardust/skills/replica/scripts/test/gate-evidence.test.mjs   (about 2 s)
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -13,7 +15,7 @@ import { mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ACCEPTANCE, acceptanceFor, attribute, daPath, deadline, detectIndent, nameOwner, pagePaths, parseCounts, parseFindings, parseLint, parseVariance, parseVerdict, regimeOf } from '../gate-evidence.mjs';
+import { ACCEPTANCE, acceptanceFor, attribute, contentFileFor, daPath, deadline, detectIndent, nameOwner, pagePaths, parseCounts, parseFindings, parseLint, parseOverflow, parseVariance, parseVerdict, regimeOf } from '../gate-evidence.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'gate-evidence.mjs');
@@ -22,7 +24,11 @@ const MIG = join(root, 'stardust/migrated');
 const BG = join(root, 'stardust/.work/replica/bg');
 const PROGRESS = join(root, 'stardust/replica/progress.json');
 const LINT = join(root, 'lint-stub.mjs');
-for (const d of [join(MIG, 'tours/north'), join(MIG, 'about'), BG, dirname(PROGRESS)]) mkdirSync(d, { recursive: true });
+const CONTENT = join(root, 'content');
+for (const d of [join(MIG, 'tours/north'), join(MIG, 'about'), BG, dirname(PROGRESS), join(CONTENT, 'tours'), join(CONTENT, 'about')]) mkdirSync(d, { recursive: true });
+// The delivered content tree (the deploy driver's): both siblings are delivered, the home archetype is not yet.
+writeFileSync(join(CONTENT, 'tours/north.html'), '<main><h1>North</h1></main>\n');
+writeFileSync(join(CONTENT, 'about/history.html'), '<main><p>History</p></main>\n');
 const PUBLISHED = 'https://main--site--org.aem.page';
 
 let failed = 0; let checks = 0;
@@ -90,6 +96,10 @@ check('parsers read the instruments\' verdict lines and nothing else', () => {
   assert.deepEqual(parseCounts('3 optimize · 2 unresolved').counts, { optimize: 3, unresolved: 2 });
   assert.equal(parseCounts('  live: 12 headings\n0 P0 · 0 P1 · 1 P2'), null);
   assert.deepEqual(parseLint('delivery-lint x\n\n1 P0 · 0 P1 · 2 P2\n'), { p0: 1, p1: 0, p2: 2, line: '1 P0 · 0 P1 · 2 P2' });
+  assert.deepEqual(parseOverflow(`${pixelLog(0, 1, 100, '0.01', 'PASS')}\ngate.sh: OVERFLOW at 360 — build scrollWidth 373 > viewport 360 (+13px) → FAIL (hard assert: no iteration cap waives horizontal overflow; evidence x/overflow-iter1.txt)\n`), { width: 360, px: 13, scrollWidth: 373, viewport: 360 });
+  assert.deepEqual(parseOverflow('gate.sh: overflow assert at 1440 — build scrollWidth 1440 = viewport → ok'), { width: 1440, px: 0, scrollWidth: null, viewport: null });
+  assert.equal(parseOverflow(pixelLog(0, 1, 100, '0.01', 'PASS')), null, 'a round that predates the assert has no overflow fact');
+  assert.equal(parseOverflow('measure: x @360: horizontal overflow +13px (scrollWidth 373 > viewport 360)'), null, 'measure\'s own warning is not gate.sh\'s verdict line');
   const log = read(join(BG, 'about-variance.log'));
   const vl = parseVariance(log, pagePaths('about/history.html')); assert.equal(vl.deltas, 2); assert.match(vl.line, /^■ .*history\.html: 2 delta\(s\)$/); assert.match(vl.summary, /^✗ 1 of 2 sibling/);
   assert.equal(parseVariance(log, pagePaths('about/team.html')).deltas, 0);
@@ -107,6 +117,12 @@ check('page identity helpers: URL paths, the DA path, the indent', () => {
   assert.deepEqual(pagePaths('tours/north/index.html'), ['/tours/north/index.html', '/tours/north/', '/tours/north']);
   assert.deepEqual(pagePaths('about/history.html'), ['/about/history.html', '/about/history']);
   assert.equal(daPath('index.html'), '/'); assert.equal(daPath('tours/north/index.html'), '/tours/north'); assert.equal(daPath('about/history.html'), '/about/history');
+  assert.deepEqual(contentFileFor(CONTENT, 'tours/north/index.html'), { file: join(CONTENT, 'tours/north.html'), exists: true });
+  assert.deepEqual(contentFileFor(CONTENT, 'about/history.html'), { file: join(CONTENT, 'about/history.html'), exists: true });
+  assert.deepEqual(contentFileFor(CONTENT, 'index.html'), { file: join(CONTENT, 'index.html'), exists: false }, 'the root page is <content>/index.html; absent → the first candidate is named');
+  mkdirSync(join(CONTENT, 'tours/east'), { recursive: true }); writeFileSync(join(CONTENT, 'tours/east/index.html'), '<main></main>');
+  assert.deepEqual(contentFileFor(CONTENT, 'tours/east/index.html'), { file: join(CONTENT, 'tours/east/index.html'), exists: true }, 'a folder index is the second candidate');
+  rmSync(join(CONTENT, 'tours/east'), { recursive: true, force: true });
   assert.equal(detectIndent('{\n "a": 1\n}'), ' '); assert.equal(detectIndent('{\n  "a": 1\n}'), '  '); assert.equal(detectIndent('{"a":1}'), 2);
 });
 check('attribute: gate.sh by its slug argument; URLs by path; files by cwd; slug word boundary; longest name prefix wins', () => {
@@ -175,12 +191,13 @@ check('about-history: only variance-probe passes; the others are recorded OPEN:/
   assert.equal(m.gateEvidence['delivery-lint'], 'FAIL: 1 P0 · 0 P1 · 0 P2 (delivery-lint --path /about/history)');
   assert.equal('pixel-gate-1440' in m.gateEvidence, false);
 });
-check('home (archetype): its own pixel round, lint FAIL at path /, no variance-probe at all', () => {
+check('home (archetype): its own pixel round, lint FAIL at path /, no variance-probe at all; not delivered → media-reconcile reads n/a, never OPEN', () => {
   const m = json(side.home);
   assert.deepEqual(m.gatesPassed, ['pixel-gate-1440']);
   assert.match(m.gateEvidence['pixel-gate-1440'], /height delta -3px, round iter @1440 \(home-1440-iter1\.log\) \[prototype regime\]$/);
   assert.equal(m.gateEvidence['delivery-lint'], 'FAIL: 1 P0 · 0 P1 · 0 P2 (delivery-lint --path /)');
   assert.equal('variance-probe' in m.gateEvidence, false);
+  assert.equal(m.gateEvidence['media-reconcile'], 'n/a: no delivered content file yet (content/index.html) — media-reconcile runs in the delivery chain (row C)');
 });
 check('sidecars: every other key untouched, key order kept, indent + trailing newline preserved, stray JSON ignored', () => {
   const n = json(side.north); const { gatesPassed: g1, gateEvidence: e1, ...restN } = n; const { gatesPassed: g0, gateEvidence: e0, ...rest0 } = NORTH0;
@@ -200,7 +217,7 @@ check('progress.json: migrate totals, per-gate counts, missing sets, siblings bl
   assert.deepEqual(p.migrate.missing, { 'about-history': ['pixel-gate-1440', 'pixel-gate-360', 'delivery-lint', 'media-reconcile', 'content-fidelity', 'content-count'], 'tours-north': ['variance-probe', 'pixel-gate-360'] });
   const s = p.siblings['tours-north'];
   assert.equal(s.archetype, 'tours'); assert.deepEqual(s.variants, ['tours--wide']); assert.equal(s.pixel['1440'].pct, 0.13); assert.equal(s.pixel['1440'].label, 'iter2');
-  assert.deepEqual(s.pixel['360'], { pct: 0.9, px: 4700, heightDelta: 12, verdict: 'PASS', label: 'iter1', regime: 'prototype' });
+  assert.deepEqual(s.pixel['360'], { pct: 0.9, px: 4700, heightDelta: 12, overflowX: null, verdict: 'PASS', label: 'iter1', regime: 'prototype' }, 'overflowX null: the round predates the assert');
   assert.equal(s.contentDiff, 'none — content + roles match'); assert.equal(s.deliveryLint, '0 P0 · 0 P1 · 1 P2'); assert.equal(s.media, '4 keep · 1 optimize · 0 omit');
   assert.equal(s.migrated, 'stardust/migrated/tours/north/index.html'); assert.deepEqual(s.gatesPassed, json(side.north).gatesPassed);
   assert.equal(p.siblings['about-history'].archetype, 'about'); assert.equal('home' in p.siblings, false);
@@ -243,6 +260,7 @@ check('--help in an empty cwd: exit 0, usage on stdout, nothing written', () => 
   const cwd = mkdtempSync(join(tmpdir(), 'gate-evidence-help-'));
   const r = spawnSync(process.execPath, [SCRIPT, '--help'], { cwd, encoding: 'utf8' });
   assert.equal(r.status, 0, r.stderr); assert.match(r.stdout, /usage/i); assert.match(r.stdout, /content-fidelity\s+NEVER added here/); assert.match(r.stdout, /--height-tolerance 8/);
+  assert.match(r.stdout, /--content <dir>/); assert.match(r.stdout, /n\/a: no delivered content file yet/); assert.match(r.stdout, /FAIL: horizontal overflow/); assert.match(r.stdout, /\[\/ovf\+<px>\]/);
   assert.deepEqual(readdirSync(cwd), []); rmSync(cwd, { recursive: true, force: true });
 });
 check('usage errors exit 1 with a message and no stack trace; an absent --migrated dir is not an error', () => {
@@ -266,6 +284,42 @@ check('a published-origin round is the published regime: evidence suffix and the
   assert.ok(m.gatesPassed.includes('pixel-gate-360'), 'the published round passes the gate the prototype round failed');
   assert.equal(m.gateEvidence['pixel-gate-1440'].endsWith('[prototype regime]'), true, 'the 1440 gate still reads prototype');
   const p = json(PROGRESS).siblings['tours-north'].pixel; assert.equal(p['360'].regime, 'published'); assert.equal(p['1440'].regime, 'prototype'); assert.equal(p['360'].label, 'pub1');
+});
+check('the overflow assert outranks the pixel line: a PASS round whose log carries gate.sh\'s OVERFLOW line is FAIL: horizontal overflow — row /ovf+<px>, ledger overflowX; a later clean-assert round passes with overflowX 0', () => {
+  job('tours-north-360-ovf1', GATE, ['tours-north', `${LIVE}/tours/north/`, `${PUBLISHED}/tours/north/`, '360', 'ovf1', '--marker', 'north'], { start: 85, end: 86, exit: 2, log: `${pixelLog(0, 2100, 522000, '0.40', 'PASS')}\ngate.sh: OVERFLOW at 360 — build scrollWidth 373 > viewport 360 (+13px) → FAIL (hard assert: no iteration cap waives horizontal overflow; evidence stardust/replica/gates/tours-north-360/overflow-ovf1.txt)` });
+  let r = run('--slug', 'tours-north'); assert.equal(r.code, 0, r.err);
+  let m = json(side.north);
+  assert.equal(m.gateEvidence['pixel-gate-360'], 'FAIL: horizontal overflow +13px at 360 (scrollWidth 373 > viewport 360) — 0.40% (2100 px, threshold 10%), height delta 0px, round ovf1 @360 (tours-north-360-ovf1.log) [published regime]');
+  assert.match(r.err, /tours-north: pixel-gate-360 stays in gatesPassed, but the latest evidence reads "FAIL: horizontal overflow/);
+  assert.match(r.out, /^tours-north {2}sibling {2}1440=0\.13%\/Δ2 {2}360=0\.40%\/Δ0\/ovf\+13 {2}cd=/m, r.out);
+  let p = json(PROGRESS).siblings['tours-north'].pixel['360']; assert.equal(p.overflowX, 13); assert.equal(p.verdict, 'PASS', 'the pixel verdict is reported as printed; the gate is what the overflow withholds'); assert.equal(p.label, 'ovf1');
+  const c = run('--check', '--slug', 'tours-north', '--dry-run'); assert.equal(c.code, 2); assert.match(c.out, /^tours-north: stale pixel-gate-360/m);
+  job('tours-north-360-ovf2', GATE, ['tours-north', `${LIVE}/tours/north/`, `${PUBLISHED}/tours/north/`, '360', 'ovf2', '--marker', 'north'], { start: 87, end: 88, exit: 0, log: `${pixelLog(0, 2600, 522000, '0.50', 'PASS')}\ngate.sh: overflow assert at 360 — build scrollWidth 360 = viewport → ok` });
+  r = run('--slug', 'tours-north'); assert.equal(r.code, 0, r.err); m = json(side.north);
+  assert.equal(m.gateEvidence['pixel-gate-360'], '0.50% (2600 px, threshold 10%), height delta 0px, round ovf2 @360 (tours-north-360-ovf2.log) [published regime]');
+  assert.match(r.out, /^tours-north {2}sibling {2}1440=0\.13%\/Δ2 {2}360=0\.50%\/Δ0 {2}cd=/m, 'no /ovf suffix on a clean assert');
+  p = json(PROGRESS).siblings['tours-north'].pixel['360']; assert.equal(p.overflowX, 0);
+});
+check('media-reconcile is required only once the delivered content file exists: absent → `n/a:` (latest run cited as advisory), dropped from the acceptance set and --check; present → OPEN and required again; --content moves the tree', () => {
+  const file = join(CONTENT, 'about/history.html'); const keep = read(file);
+  let m = json(side.history); assert.equal(m.gateEvidence['media-reconcile'], 'OPEN: 1 omit hold the gate — 2 keep · 1 omit (media-about-history.log)');
+  rmSync(file);
+  let r = run('--slug', 'about-history'); assert.equal(r.code, 0, r.err); m = json(side.history);
+  assert.equal(m.gateEvidence['media-reconcile'], 'n/a: no delivered content file yet (content/about/history.html) — media-reconcile runs in the delivery chain (row C) — latest run 2 keep · 1 omit (media-about-history.log) is advisory until then');
+  assert.equal(m.gatesPassed.includes('media-reconcile'), false);
+  let j = JSON.parse(run('--slug', 'about-history', '--check', '--dry-run', '--json').out)[0];
+  assert.deepEqual(j.missing, ['pixel-gate-1440', 'pixel-gate-360', 'delivery-lint', 'content-fidelity', 'content-count'], 'media-reconcile is not demanded before delivery'); assert.equal(j.delivered, false); assert.deepEqual(j.stale, []);
+  assert.match(run('--slug', 'about-history', '--check', '--dry-run').out, /^about-history: missing pixel-gate-1440, pixel-gate-360, delivery-lint, content-fidelity, content-count$/m);
+  writeFileSync(file, keep);
+  r = run('--slug', 'about-history'); assert.equal(r.code, 0, r.err); m = json(side.history);
+  assert.equal(m.gateEvidence['media-reconcile'], 'OPEN: 1 omit hold the gate — 2 keep · 1 omit (media-about-history.log)', 'the file exists again: the gate is required and its OPEN is back');
+  j = JSON.parse(run('--slug', 'about-history', '--check', '--dry-run', '--json').out)[0]; assert.ok(j.missing.includes('media-reconcile')); assert.equal(j.delivered, true);
+  // --content: a tree where nothing is delivered
+  j = JSON.parse(run('--content', 'nowhere', '--slug', 'tours-north', '--dry-run', '--json').out)[0];
+  assert.equal(j.delivered, false); assert.equal(j.missing.includes('media-reconcile'), false);
+  assert.ok(j.gatesPassed.includes('media-reconcile'), 'a pass earned earlier stays a pass');
+  assert.equal(j.gateEvidence['media-reconcile'], '4 keep · 1 optimize · 0 omit (media-tours-north.log)', 'a passing job passes whether or not the file exists');
+  const bad = run('--content'); assert.equal(bad.code, 1); assert.match(bad.err, /--content needs a value/);
 });
 check('the newest round on a deadline (timedOut / exit 124) is OPEN: deadline — an older pass is not resurrected; --full deadlines hit content-count too', () => {
   job('home-360-iter1', GATE, ['home', `${LIVE}/`, `${PROTO}/home-proposed.html`, '360', 'iter1'], { start: 85, end: 86, exit: 124, timedOut: true, log: 'stitched … live.png\nrun-bg: home-360-iter1 deadline 900s exceeded' });

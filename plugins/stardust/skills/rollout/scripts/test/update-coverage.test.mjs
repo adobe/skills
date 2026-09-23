@@ -3,7 +3,10 @@
 // different page each at the same moment → all eight rows land, the roll-ups count them, every file
 // parses, no lock dir or tmp file remains. Also: a stale lock is reclaimed; --help writes nothing;
 // a module mapped to EDS default content (`--eds-name default-content`) is never pending in the
-// block roll-up, whatever its status, and a blocks.mjs re-run keeps the mapping.
+// block roll-up, whatever its status, and a blocks.mjs re-run keeps the mapping. And `--new`: a page
+// built outside the migrated tree (a D2 search page) enters coverage as a schema-shaped row with its
+// origin in source.migratedHtml, joins its template, is idempotent, refuses captured slugs and taken
+// paths, and lands under the lock beside concurrent page updates.
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, readFileSync, readdirSync, writeFileSync, existsSync, utimesSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -133,6 +136,90 @@ await check('a blocks.mjs re-run keeps a default-content mapping recorded pendin
   assert.equal(byId.title.edsBlockName, 'default-content');
   assert.equal(byId.hero.edsBlockName, 'hero');
   assert.deepEqual(blockRollup(out), { total: 2, converted: 1, pending: 1 });
+});
+
+// --- --new: a page built outside the migrated tree enters coverage --------------------------------
+const readPages = (out) => JSON.parse(readFileSync(join(out, 'coverage', 'pages.json'), 'utf8')).pages;
+const readTemplates = (out) => JSON.parse(readFileSync(join(out, 'coverage', 'templates.json'), 'utf8')).templates;
+const readConfig = (out) => JSON.parse(readFileSync(join(out, 'rollout.json'), 'utf8'));
+// the pages schema's page / source / delivery property sets (additionalProperties: false)
+const PAGE_KEYS = ['blocks', 'delivery', 'path', 'slug', 'source', 'templateId', 'title'];
+const SOURCE_KEYS = ['metaJson', 'migratedHtml', 'sourceHash'];
+const DELIVERY_KEYS = ['deployedAt', 'deployedUrl', 'error', 'status', 'verifiedAt'];
+
+await check('--new adds a schema-shaped row (origin in source.migratedHtml), creates its template row and rolls both up', async () => {
+  const { proj, out } = fixture();
+  const r = await run(['--new', 'search', '--path', '/search/', '--template', 'search', '--origin', 'dynamics', '--title', 'Search results'], proj);
+  assert.equal(r.code, 0, r.err);
+  assert.match(r.out, /^search added \(dynamics\) → \/search {3}template search · pending$/m, r.out);
+  const row = readPages(out).find((p) => p.slug === 'search');
+  assert.ok(row, 'row exists');
+  assert.deepEqual(Object.keys(row).sort(), PAGE_KEYS);
+  assert.deepEqual(Object.keys(row.source).sort(), SOURCE_KEYS);
+  assert.deepEqual(Object.keys(row.delivery).sort(), DELIVERY_KEYS);
+  assert.equal(row.path, '/search', 'trailing slash normalized'); assert.equal(row.title, 'Search results'); assert.equal(row.templateId, 'search');
+  assert.equal(row.source.migratedHtml, 'dynamics:search'); assert.equal(row.source.metaJson, null); assert.match(row.source.sourceHash, /^sha256:[0-9a-f]{64}$/);
+  assert.deepEqual(row.blocks, []); assert.equal(row.delivery.status, 'pending'); assert.equal(row.delivery.error, null);
+  assert.deepEqual(readPages(out).map((p) => p.slug).slice(0, 2), ['page-0', 'page-1'], 'existing rows keep their order');
+  const t = readTemplates(out).find((x) => x.id === 'search');
+  assert.deepEqual(t.pages, ['search']); assert.equal(t.pageCount, 1); assert.equal(t.representativeSlug, 'search'); assert.deepEqual(t.blocks, []);
+  assert.equal(t.delivery.pending, 1);
+  assert.equal(readConfig(out).lastRun.pages.total, 9); assert.equal(readConfig(out).lastRun.pages.pending, 9);
+  assert.deepEqual(readdirSync(out).sort(), ['coverage', 'rollout.json'], 'no lock dir or tmp file left');
+});
+
+await check('--new is idempotent (the same slug updates, never duplicates) and --status / --template move the row', async () => {
+  const { proj, out } = fixture();
+  let r = await run(['--new', 'search', '--path', '/search', '--template', 'search', '--origin', 'dynamics'], proj);
+  assert.equal(r.code, 0, r.err);
+  r = await run(['--new', 'search', '--path', '/search', '--template', 'detail', '--origin', 'dynamics', '--status', 'deployed'], proj);
+  assert.equal(r.code, 0, r.err); assert.match(r.out, /^search updated \(dynamics\) → \/search {3}template detail · deployed$/m, r.out);
+  const rows = readPages(out).filter((p) => p.slug === 'search');
+  assert.equal(rows.length, 1); assert.equal(rows[0].templateId, 'detail'); assert.equal(rows[0].delivery.status, 'deployed');
+  const t = Object.fromEntries(readTemplates(out).map((x) => [x.id, x]));
+  assert.deepEqual(t.search.pages, [], 'left the first template'); assert.equal(t.search.pageCount, 0);
+  assert.ok(t.detail.pages.includes('search')); assert.equal(t.detail.pageCount, 9); assert.equal(t.detail.delivery.deployed, 1);
+  assert.equal(readConfig(out).lastRun.pages.deployed, 1);
+});
+
+await check('--new refuses a captured slug and a path another row owns (exit 1), and a missing flag is a usage error (exit 2) — the ledger untouched', async () => {
+  const { proj, out } = fixture();
+  const before = JSON.stringify(readPages(out));
+  let r = await run(['--new', 'page-0', '--path', '/p0', '--template', 'detail', '--origin', 'dynamics'], proj);
+  assert.equal(r.code, 1); assert.match(r.err, /"page-0" is a captured page/);
+  r = await run(['--new', 'search', '--path', '/search', '--template', 'search', '--origin', 'dynamics'], proj);
+  assert.equal(r.code, 0, r.err);
+  r = await run(['--new', 'suche', '--path', '/search', '--template', 'search', '--origin', 'dynamics'], proj);
+  assert.equal(r.code, 1); assert.match(r.err, /path \/search already belongs to "search"/);
+  r = await run(['--new', 'faq', '--path', 'faq', '--template', 'faq', '--origin', 'Dynamics'], proj);
+  assert.equal(r.code, 2); assert.match(r.err, /--path <\/delivered\/path> required/); assert.match(r.err, /--origin <token> required/);
+  r = await run(['--new', 'faq', '--path', '/faq', '--origin', 'dynamics'], proj);
+  assert.equal(r.code, 2); assert.match(r.err, /--template <id> required/);
+  const after = readPages(out).filter((p) => p.slug !== 'search');
+  assert.equal(JSON.stringify(after), before, 'only the one valid row was added');
+});
+
+await check('--new rows land under the lock beside concurrent page updates', async () => {
+  const { proj, out } = fixture();
+  const rs = await Promise.all([
+    run(['--new', 'search', '--path', '/search', '--template', 'search', '--origin', 'dynamics'], proj),
+    run(['--new', 'sitemap-page', '--path', '/sitemap', '--template', 'utility', '--origin', 'manual'], proj),
+    run(['page-0', '--status', 'deployed'], proj), run(['page-1', '--status', 'verified'], proj),
+  ]);
+  for (const r of rs) assert.equal(r.code, 0, r.err);
+  const pages = readPages(out);
+  assert.equal(pages.length, 10);
+  assert.equal(pages.find((p) => p.slug === 'page-0').delivery.status, 'deployed');
+  assert.equal(pages.find((p) => p.slug === 'sitemap-page').source.migratedHtml, 'manual:sitemap-page');
+  assert.deepEqual(readTemplates(out).map((t) => t.id), ['detail', 'search', 'utility']);
+  assert.equal(readConfig(out).lastRun.pages.total, 10);
+  assert.deepEqual(readdirSync(out).sort(), ['coverage', 'rollout.json']);
+});
+
+await check('--help names the --new form', async () => {
+  const proj = mkdtempSync(join(tmpdir(), 'update-coverage-help2-'));
+  const r = await run(['--help'], proj);
+  assert.equal(r.code, 0); assert.match(r.out, /--new <slug> --path <\/delivered\/path> --template <id> --origin <origin>/); assert.deepEqual(readdirSync(proj), []);
 });
 
 console.log(failed ? `update-coverage: ${failed} check(s) failed` : 'update-coverage: all checks passed');

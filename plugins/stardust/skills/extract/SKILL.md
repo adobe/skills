@@ -339,9 +339,16 @@ model reads the image — and verify it against the extracted record:
 Read the whole page through its thumbnail —
 `node stardust/scripts/thumb.mjs stardust/current/assets/screenshots/<slug>.png --width 480`
 (`skills/extract/scripts/thumb.mjs`, copied beside `crawl.mjs`; a
-box-filter downscale, so 1-px rules and hairline borders survive) —
+box-filter downscale, so 1-px rules and hairline borders survive; its
+`--max-bytes` cap, 150 KB by default, re-encodes a heavy page at a lower
+`--max-height` so no thumbnail exceeds it) —
 never the full-resolution screenshot, and read any detail as a crop of
-the full capture.
+the full capture. **A thumbnail enters the context only after
+`thumb.mjs` has written it (≤ 150 KB) — or the vision check runs in a
+subagent that reads the thumbnails and returns one line per page**
+(`<slug>: ok | recaptured | suspect — <note>`); a recorded hands-off run
+read eight `*-thumb.png` files of 268–608 KB each into one context —
+3.2 MB of pixels for eight verdicts.
 
 On mismatch, re-run that page's capture with the escalation ladder
 before proceeding: bump the wait mode one step
@@ -760,6 +767,24 @@ reference):
   signal-source priority in the reference) are drafted under
   `DESIGN.json.extensions.modules[]` with `status: "candidate"`;
   per-page JSON gains a typed `slots` section per page-type.
+- **Locale-root capture gaps are settled before Phase 2 of any flow.**
+  After the crawl, `crawl.mjs` takes every captured locale root (a one-
+  or two-segment path of locale codes — `/en`, `/fr-ca`, `/ca/en`),
+  lists the same-origin targets linked from that page under its own
+  path, and marks the ones missing from the capture:
+  `_crawl-log.json#captureGaps` (`roots[]` with `root`, `slug`,
+  `linked`, `uncaptured[]`, plus `detail`, a ready ledger string) and
+  one `[crawl] capture gaps:` stderr line. Copy `roots[]` to
+  `state.json.site.captureGaps` (the `site` block is extract's; an
+  uncaptured target never becomes a `pages[]` row) and carry `detail`
+  verbatim in the ledger `end` line that closes the extraction —
+  `ledger.mjs extract prep end --detail "… uncaptured first-level
+  targets: ca/en 15, fr/fr 0"` (replica's `extract end` repeats it) — so
+  the owner decides on the gap now (widen with `--pages`, or record it
+  as scope debt), not in the rollout link audit: two recorded hands-off
+  runs captured `/ca/en` as a locale root while 15 `/ca/en/*` pages
+  existed on the source, and found out six hours later, when 15 links
+  answered 404 and the gap exceeded the 12-page deliver threshold.
 - The prep summary replaces the Phase 6 report; its
   `Provenance: <live>/<total> live` line is mandatory, and any
   ratio short of `<total>/<total>` means the run failed the

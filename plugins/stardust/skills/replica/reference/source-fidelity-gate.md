@@ -15,7 +15,7 @@ these instruments.
 
 | Probe | Script | Catches | Blind to |
 |---|---|---|---|
-| Structural content + type | `../../diff/scripts/content-diff.mjs` (project copy) | dropped/mis-slotted headings·eyebrows·CTAs, invented/dropped copy, rendered-face font forks (width probe) | geometry |
+| Structural content + type | `../../diff/scripts/content-diff.mjs` (project copy) | dropped/mis-slotted headings·eyebrows·CTAs, invented/dropped copy, rendered-face font forks (width probe); dropped `placeholder`/`aria-label` values, missing/wrong/moved icons — on the main root AND the chrome roots (`header`, `footer`) by default | geometry |
 | Visual heuristics | `../../diff/scripts/visual-diff.mjs` (project copy) | stretched images, dropped wraps, blank renders, surface/ground flips | "right text, wrong slot" |
 | Pixel (replica-owned) | `../scripts/stitch-shot.mjs` + `../scripts/pixel-compare.mjs` | everything the other two abstract away: paint effects, scrims, exact geometry, image crops | semantics (a wrong-but-same-colored word) |
 
@@ -53,7 +53,10 @@ W=1440   # then 360
 GATE="stardust/replica/gates/<slug>-$W"
 
 # 1. structural — --dismiss keeps consent + timed marketing modals out of the
-#    inventory on both sides; add extra selectors for non-standard closers
+#    inventory on both sides; add extra selectors for non-standard closers.
+#    The header and footer roots are compared beside --main BY DEFAULT — this is
+#    the whole command, no chrome flag; the report has one block per root and a
+#    finding reads "[header]" / "[footer]" where it sits (--no-chrome = main only)
 node stardust/scripts/diff/content-diff.mjs "$LIVE" "$PROTO" --profile generic --width $W \
   --main "<content-root>" --dismiss | tee "$GATE/content-diff-iter<N>.txt"
 
@@ -83,9 +86,13 @@ The prototype capture is re-taken every iteration.
 
 ## Pass bar (all five, per breakpoint)
 
-1. **content-diff: 0 structural 🔴.** 🟡 (body/EXTRA) and 🟠 (font fork)
-   confirmed intended — a substituted licensed font is a permanent justified
-   🟠; record it once in the ledger.
+1. **content-diff: 0 structural 🔴 — across the main root AND the chrome
+   roots (`header`, `footer`), which the default run covers on every gate
+   page; each finding line names its root.** 🟡 (body/EXTRA, a missing
+   `title`, an `ICON MOVED` — the same icon at another anchor, e.g. inside a
+   text-less accordion button) and 🟠 (font fork) confirmed intended — a
+   substituted licensed font is a permanent justified 🟠; record it once in
+   the ledger.
 2. **visual-diff: flags none or justified.** A live page's own quirks are
    justified when the prototype mirrors them (e.g. a 1×1 SEO h1 at x0, a
    carousel tile at a negative offset — both real UC1-E1 justifications).
@@ -201,6 +208,16 @@ The prototype capture is re-taken every iteration.
 Applied inconsistency-register entries create expected deltas: cross-
 reference the entry ID (`R-<nn>`) when justifying a flag over its zone
 (`preserve-direction.md` § Gate interaction).
+
+**Outside the numbered bar, and outside the iteration cap: the
+horizontal-overflow assert.** `document.documentElement.scrollWidth` is
+within 4 px of the viewport width (`GATE_OVERFLOW_TOLERANCE`, integer
+rounding) at every gate breakpoint on the build side, evaluated on the
+published origin for a delivered page. It is not a bar item because a
+bar item can be traded for a documented residual; this cannot
+(§ Iteration discipline, the HARD assert). `gate.sh` runs it every round
+and prints the verdict line; `measure.mjs` prints the number on its root
+line for any ad-hoc read.
 
 **Calibration honesty — two fidelity regimes, one bar.** The validated
 numbers above (1.31%, Δ0) describe the **prototype regime**: a standalone
@@ -345,6 +362,49 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
 - After iteration 3: log residuals (§ Residual logging) and move on. A
   documented residual is a pass with an asterisk; an undocumented fourth
   loop is scope creep.
+- **HARD assert, not subject to the cap: `document.documentElement.scrollWidth`
+  no more than 4 px over the viewport width at every gate breakpoint,
+  evaluated on the published origin** (`GATE_OVERFLOW_TOLERANCE`, default 4:
+  scrollWidth and clientWidth are integers, so a correct page whose widest
+  box is 360.4 px reads +1; the qa skill's rendered sweep fails above the
+  same 4 px — a real overflow is 13 px and up). A recorded hands-off run delivered two pages that rendered 373 px
+  and 400 px wide at a 360 viewport — accordion headers and a blockquote
+  overflowing, text clipped — and the gate logged `|Δ| 19–26 px at 360 …
+  logged, not iterated further (3-iteration cap reached)` and passed them.
+  Horizontal overflow is not a residual class. `gate.sh` runs `measure.mjs`
+  on the BUILD side every round (no live hit) and reads its root line —
+  `root  scrollWidth <n>  viewport <n>  scrollHeight <n>  ◄◄ OVERFLOW +<n>px`
+  — so a build wider than its viewport prints `gate.sh: OVERFLOW at <w> —
+  build scrollWidth <n> > viewport <n> (+<n>px) → FAIL` and the round exits 2
+  whatever the pixel number says; `gate-evidence.mjs` records `FAIL:
+  horizontal overflow +<n>px` over a PASS pixel line and withholds
+  `pixel-gate-<w>`. No iteration cap, residual entry or register entry
+  waives it: a page whose scrollWidth exceeds the viewport at any gate
+  breakpoint is not verified, and the published-origin round (§ The
+  published-origin gate) is where it finally counts. Diagnose with
+  `measure.mjs "$BUILD" --selectors "<candidates>" --width 360 --all-matches`
+  — the box whose `x + w` exceeds the viewport; the recorded causes are a
+  desktop px width or `min-width` carried into the mobile pass,
+  `white-space: nowrap`, an unbroken string without `overflow-wrap`, a
+  content-box / border-box fork that adds padding beyond 100 %
+  (`recreation-procedure.md` § Box model is a lifted value), a negative
+  margin, `100vw` on a page with a scrollbar. When the LIVE side itself
+  overflows at a breakpoint (the root line on side A says so), the replica
+  does not mirror the defect: register the fix as an inconsistency entry and
+  build without overflow — the assert holds on the build regardless.
+- **Capture exit 1 is "re-queue", not a verdict.** Under parallel Chromium
+  load (three rounds in flight, nine Chromiums with `--full`) a recorded
+  hands-off run saw about 8 of 62 sibling gate rounds end in `build capture
+  failed (exit 1)` and read them as verdicts. `gate.sh` retries a capture
+  that exits 1 — live, build or the overflow probe — ONCE before declaring
+  anything (`gate.sh: <step> exited 1 — retrying once`); when both attempts
+  exit 1 the round exits 1 with `(twice: no verdict — re-queue the round)`.
+  Treat it exactly like exit 124: start the same round again through
+  `run-bg.mjs`, count no iteration, never write it into the ledger as a
+  FAIL (`gate-evidence.mjs` records it `OPEN: no verdict (exit 1)`). Exit 3
+  (bot challenge) and 4 (identity) are final on the first attempt. Do not
+  raise `RUN_BG_SLOTS` to make room — the default 3 is the pacing that keeps
+  the retry rare; lower it on a small machine.
 - **Instrument-invalidated runs don't consume the cap — once the defect is
   fixed and named.** The 3-iteration cap assumes valid instruments. When a
   run is later shown to have measured an instrument defect (a challenge
@@ -570,7 +630,8 @@ fail-loud, overlay dismissal, headed-stealth escalation) — and the diff
 scripts expose it as flags:
 
 ```bash
-# content-diff against a live source: no source edits, flags only
+# content-diff against a live source: no source edits, flags only (the header and
+# footer roots are compared beside --main by default — no extra flag; --no-chrome opts out)
 node stardust/scripts/diff/content-diff.mjs "$LIVE" "$PROTO" --profile generic \
   --width 1440 --main "<content-root>" --dismiss
 
@@ -647,6 +708,17 @@ Two rules for that final run:
   paddings in block CSS, re-measure) brought it to 6.5% with exact anchor
   parity (recorded). Treat the pre-publish harness number as provisional
   and the reconcile round as expected work, not a regression.
+
+**`media-reconcile.mjs` is a delivery-chain gate, not a prototype-gate
+instrument.** It resolves the images of the DELIVERED content file
+(`content/<path>.html` — handoff contract § 1 row 7 and § 3 row C); run on a
+prototype or a migrated file it exits 1 by construction, because no content
+file exists before C-deliver, and a recorded hands-off run carried
+`media-reconcile: OPEN` on every sibling sidecar until delivery for exactly
+that reason. `gate-evidence.mjs` records `n/a: no delivered content file
+yet` (never OPEN) while the page's content file is absent and leaves the
+gate out of the sibling acceptance set; once the file exists the gate is
+required again and its verdict counts. Nothing in Phase 4 runs it.
 
 Recurring EDS pipeline transforms that move the number (each recorded;
 none visible on a local harness):

@@ -243,6 +243,7 @@ LIVE="https://<site>/<path>"
 # fullPage:true — plus content-diff, visual-diff and chrome-parity under deadlines, one verdict
 # line each, reports in the gate dir); rounds in between are pixel rounds. Never hand-write a
 # wrapper around the instruments (a recorded one lost the deadlines; a round took 15 minutes).
+# content-diff inside --full compares --main AND the header/footer roots by default — no chrome flag.
 node stardust/scripts/replica/run-bg.mjs start --name <slug>-1440-iter1 -- \
   stardust/scripts/replica/gate.sh <slug> "$LIVE" "$PROTO" 1440 iter1 --full --main "<content-root>"
 node stardust/scripts/replica/run-bg.mjs start --name <slug>-360-iter1 -- \
@@ -271,12 +272,18 @@ or a chrome delta, 1 when a probe errored (it gave no verdict — read its
 `ERROR` line), 0 only when all four ran and passed.
 
 **Pass bar (all four, per breakpoint):**
-- content-diff: **0 structural 🔴** (🟡/🟠 confirmed intended);
+- content-diff: **0 structural 🔴** on the main root and the chrome roots — the default run covers both, each finding names its root (🟡/🟠 confirmed intended);
 - visual-diff: flags none or justified;
 - pixel diff: **≤ 10%** full-page, with no per-500px band left unexplained
   (the band breakdown is the navigation instrument — fix the first hot band,
   top-down; everything below it is offset-contaminated);
-- height delta **|Δ| ≤ 8px** (pixel-compare's own warning bar).
+- height delta **|Δ| ≤ 8px** (pixel-compare's own warning bar);
+- and, outside the bar and outside the cap, the horizontal-overflow assert:
+  `document.documentElement.scrollWidth` within 4 px of the viewport
+  (integer rounding; `GATE_OVERFLOW_TOLERANCE`) at every breakpoint on the
+  build side — gate.sh fails the round on more whatever the pixel number
+  says; a `capture failed (exit 1)` round (after gate.sh's one
+  retry) is re-queued, never counted.
 
 **Iteration discipline: hard cap 3 iterations per breakpoint.** Each
 iteration's fixes come off the instruments, never off eyeballing. After 3,
@@ -346,6 +353,16 @@ approved --by hands-off --prototype stardust/prototypes/<slug>-proposed.html`
 and `node stardust/scripts/stardust/ledger.mjs replica source-fidelity-gate
 end --detail "<per-breakpoint numbers>"`. Resuming a run starts with
 `ledger.mjs tail` and `state.mjs summary --slugs`, not `cat`.
+Every phase of this skill — extract and preserve-direction included — opens
+with `node stardust/scripts/stardust/ledger.mjs replica <phase> start` as its
+FIRST command, before any script of the phase runs (a recorded hands-off run
+wrote a phase's `start` beside its `end` after 109 minutes of work and read
+as idle to its supervisor; `ledger.mjs` refuses an `end` without an open
+`start` under `--strict`), and closes with the `end` line plus a section in
+`stardust/journal.md` headed `## <Phase name> — <what happened> (<date>)` —
+the section is part of the phase `end`, and `ledger.mjs … end` warns when it
+is missing (a recorded run's journal began at its second session; another's
+had one section for the whole run).
 
 ### Phase 5 — HANDOFF (delegate — migrate → deploy → rollout, unchanged)
 
@@ -359,7 +376,8 @@ end --detail "<per-breakpoint numbers>"`. Resuming a run starts with
 - **Pages beyond the archetypes** go through the stardust `migrate` skill at
   **sibling tier** (`../migrate/reference/fidelity-tiers.md`): structural
   clone of the gated archetype + content-fidelity + delivery-lint +
-  media-reconcile. Siblings inherit the archetype's source-fidelity gate —
+  media-reconcile (once the delivered content file exists). Siblings inherit
+  the archetype's source-fidelity gate —
   never re-author one from scratch. **Template constancy is measured, not
   assumed**: before cloning, run `stardust/scripts/replica/sibling-variance.mjs
   <archetype> <siblings…> --probe <block>=<sel> …` once per template and
