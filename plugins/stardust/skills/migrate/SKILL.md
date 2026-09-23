@@ -292,6 +292,23 @@ it cannot make are recorded on the sidecar with `gate`, `deviation`,
 `decision`, `variant` and `modules` on the same script; it never
 advances `pages[].status`.
 
+**Recorded units.** A whole-site render is bookkept as units in
+`stardust/migrate/progress.json`, the shape of rollout's C-deliver unit
+ledger (`../replica/reference/handoff-contract.md` § 3 row C):
+`units.<name>: {status: pending|running|done|failed, kind:
+plan|render|assets|report, templates[], pages: n, startedAt, endedAt,
+verdict}`. One `plan` unit (Phase 1), one `render` unit per template
+cluster of at most ~8 siblings (`migrate.mjs render <slug…>` takes the
+cluster's slug list), one `assets` unit when Phase 3 rehosts media, one
+`report` unit (Phase 4). Per unit, in this order: the `progress.json`
+write → the checkpoint commit → the next unit; a unit end is a safe
+resume point, not a stop. A session resumed inside migrate reads the file
+and runs only the units not `done`; a unit left `running` re-renders its
+slugs — the driver is idempotent, unchanged pages are skipped. A recorded
+run rendered 31 siblings through five parallel builders as one unit in
+one session — its most expensive — with no resume point between the plan
+and the final report.
+
 ### Phase 3 — Sitewide assets and bundle finalisation
 
 Per-page asset bundling already happened in Phase 2 (every

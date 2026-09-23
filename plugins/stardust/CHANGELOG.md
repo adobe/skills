@@ -4,6 +4,161 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## Unreleased
+
+Fixes from two recorded hands-off replica runs of one 36-page source site — one at 0.22.1, one at
+0.25.0 — verified against their artifacts. The shared documents carry the same rules:
+`replica/reference/handoff-contract.md` (§ 1 rows 4, 5, 9 and the acceptance paragraph; § 3 rows D,
+D2, E2; § 4 rows for `measure.mjs`, `thumb.mjs`, `ledger.mjs`, the uploader, the batch driver and
+the rollout writers; § 5 ledger rule and migrate units), `stardust/reference/scripts-index.md` usage
+lines, `state-machine.md` `site.captureGaps`, `journal-format.md`'s heading rule and
+`replica/SKILL.md`'s pass bar.
+
+### Gates that passed a broken site
+
+- **`replica/scripts/gate.sh`, `measure.mjs`, `gate-evidence.mjs` — horizontal overflow is a hard
+  assert, not a residual.** `measure.mjs` prints a root line per width per side (scrollWidth beside
+  scrollHeight and the viewport, `◄◄ OVERFLOW +<n>px`; `root`/`rootDeltas` in the JSON); `gate.sh`
+  runs it on the build side every round (no live hit) and fails the round on overflow whatever the
+  pixel number says; `gate-evidence.mjs` records `FAIL: horizontal overflow` over a PASS pixel line,
+  withholds `pixel-gate-<w>`, shows `/ovf+<px>` on the row and `overflowX` in the ledger. A recorded
+  hands-off run delivered two pages 373 and 400 px wide at a 360 viewport and passed them as
+  "logged, not iterated further (3-iteration cap reached)"; `source-fidelity-gate.md` § Iteration
+  discipline names the assert no cap waives.
+- **`diff/scripts/content-diff.mjs` compares attributes and icons, not text nodes only.** A second
+  in-page inventory (`placeholder`, `aria-label`, `title`; small images by file name, inline svg,
+  icon-font glyphs by `::before`/`::after` content, css icons, empty icon boxes) and a pure differ —
+  MISSING/EXTRA <ATTR>, MISSING ICON, ICON DIFF, ICON KIND, EXTRA ICON — 🔴 on interactive elements,
+  🟡 otherwise; output format and exit codes unchanged, `--json` gains `findings[]`; playwright loads
+  lazily so `--help` and the unit test need no browser. Recorded: every delivered page lacked the
+  search input's localized placeholder, a locale root carried the wrong flag, social links were
+  empty boxes — and the probe read 0 🔴.
+- **`replica/scripts/measure.mjs` reports the rendition per `<img>`** (`naturalWidth ×
+  naturalHeight`, current source file; `img.naturalWidth`/`img.file` deltas) and
+  `recreation-procedure.md` § Image renditions per breakpoint records which rendition live selects
+  at each gate width and authors the same `srcset`/`sizes`; a sub-3 px root-height delta with equal
+  boxes is a rendition-ratio symptom, not a layout bug (recorded: 0.64 px per inline image summed to
+  2.2 px and cost iterations).
+- **Box model is a lifted value.** `boxSizing` joins `measure.mjs`'s default props so `--against`
+  names a content-box/border-box fork per box; `recreation-procedure.md` § Box model is a lifted
+  value lifts it per container, declares it per block and scopes the boilerplate reset on a replica,
+  never universal (recorded: a universal `border-box` reset over content-box source grids — chrome
+  −9 px, a facts row −106 px at 360 — while every prototype gated ≤ 0.1 %).
+- **`replica/scripts/gate-evidence.mjs` no longer demands media-reconcile on prototype files.**
+  `--content <dir>` (default `content`); without the page's delivered content file the gate reads
+  `n/a: no delivered content file yet` (never OPEN) and leaves the sibling acceptance set and
+  `--check`; it is required again once the file exists. `source-fidelity-gate.md` places
+  media-reconcile in the delivery chain (row C). Recorded: every sibling sidecar carried
+  `media-reconcile: OPEN` until C-deliver.
+- **`replica/scripts/gate.sh` retries a capture that exits 1 once.** Live capture, build capture and
+  the overflow probe; two exit-1 attempts end the round with exit 1 "re-queue, not a verdict"
+  (3/4/124 stay final; run-bg slots unchanged at 3). Recorded: about 8 of 62 sibling gate rounds
+  under parallel Chromium load ended `build capture failed (exit 1)` and were read as verdicts.
+
+### Index, sitemap, search
+
+- **rollout Phase D / `assemble.mjs` — the served sitemap is verified, chrome is `noindex`.** The
+  assembled `site/sitemap.xml` is the EXPECTED set only (`stardust/rollout/` is in `.hlxignore`; the
+  platform serves its own `/sitemap.xml` from its index of published documents). Chrome and fragment
+  documents (`/nav`, `/footer`, per-locale `nav-*` / `footer-*`, locale shells that are not pages)
+  carry a `Robots | noindex` metadata row at write time; new `--verify-origin <live-origin>` fetches
+  the SERVED sitemap (a sitemap index followed), compares its `<loc>` paths with the coverage rows,
+  prints served / assembled counts with every extra and missing path, records
+  `manifest.json.servedSitemap` and exits 1 on a mismatch; the `D-site end` ledger detail names the
+  SERVED count. `helix-sitemap.yaml` + `helix-query.yaml` exclude globs documented as the additive
+  alternative. A recorded hands-off run reported "sitemap 36 urls" from the local file while the
+  served one listed 58 (every page plus 22 chrome documents).
+- **rollout Phase D2 / dynamics — a missing query index is a yaml file, not a service.** A 404 on
+  `/query-index.json` means no `helix-query.yaml` in the code branch: author it (skeleton in
+  `dynamics/reference/listings.md` § Getting an index at all — `og:title` title, description, image,
+  lastModified; chrome and search documents excluded), push, publish live, poll no more often than
+  every 5 s for at most 10 minutes; no configuration-service write is involved (a 403 there with the
+  migration token is expected); the sheet-backed interim index is the fallback only when the code
+  branch is not writable (triage rule 8, patterns.md). A recorded hands-off run read the 403 as "no
+  index can be configured" and built the interim index.
+- **dynamics search — parity is count + titles, not presence.** `patterns.md` § search-index-backed:
+  title matches rank first, description and body text only while fewer than N title hits (N = the
+  source's visible count, read during detect), dedupe by title + description, cap the dropdown at N.
+  `dynamics-check.mjs` `search-query` gains `expectCount` / `expectTitles` (+ `titleSelector`,
+  `countTolerance`) and compares result COUNT and the top-3 titles with the source's recorded
+  values, failing on a count mismatch or duplicates — pure `compareSearchResults()` with a fixture
+  test (`dynamics/scripts/test/dynamics-check.test.mjs`). A recorded hands-off run's typeahead
+  returned 10 unbounded entries for a term the source answered with 3.
+- **rollout `update-coverage.mjs --new` — pages built outside the migrated tree enter coverage,
+  once.** `--new <slug> --path </path> --template <id> --origin <origin> [--title …] [--status …]`
+  adds a schema-shaped row under the coverage lock (the pages schema allows no origin property: the
+  origin is recorded in `source.migratedHtml` as `<origin>:<slug>`), creates or extends the template
+  row, is idempotent by slug and refuses captured slugs and taken paths; `assemble.mjs`, `verify.mjs
+  --all` and `optimize.mjs` include the row. `inventory.mjs` keeps such rows on a re-run (the origin
+  marker identifies them; status untouched, one `Kept` report line) until the migrated tree holds a
+  file for the slug or a migrated page owns the path — the page is registered once, never
+  re-registered after every inventory run (`inventory.test.mjs`). A recorded hands-off run left its
+  D2-built search page out of all three.
+
+### Bookkeeping, capture, tooling
+
+- **`ledger.mjs` start guard.** An `end` now needs an open `start` for the same skill + phase — an
+  earlier `start` with no later `end`, paired in canonical forms; missing → warning, and under
+  `--strict` exit 2 with nothing written and one stderr line naming the missing start command.
+  `run-status.md` § Rules: the `start` line is the FIRST command of a phase, before any script runs.
+  Recorded: a hands-off run wrote a phase's `start` and `end` one second apart after 109 minutes of
+  work, so its supervisor saw an idle run.
+- **`ledger.mjs` journal check.** On `end`, a `stardust/journal.md` beside the ledger with no `## `
+  heading naming the phase (case- and separator-insensitive) gets one warning — never an exit-code
+  change; an absent journal is not checked. `replica/SKILL.md` bookkeeping: every phase, extract and
+  preserve-direction included, opens with the start line and closes with `end` plus a journal
+  section `## <Phase name> — <what happened> (<date>)`; `journal-format.md` reconciles its `##
+  <ISO-8601 timestamp> — <one-line summary>` heading with it — in a stardust phase the summary
+  starts with the phase name, and `ledger.mjs` accepts either shape. Recorded: one run's journal
+  began at Session 2; another's had one section for the whole run.
+- **`crawl.mjs` locale-root capture gaps.** After the crawl, every captured locale root (a one- or
+  two-segment path of locale codes — `/en`, `/fr-ca`, `/ca/en`) has the same-origin links on that
+  page under its own path listed and the uncaptured ones written to `_crawl-log.json#captureGaps`
+  (`roots[{root, slug, linked, uncaptured[]}]` + a ready `detail` string, `uncaptured first-level
+  targets: ca/en 15, fr/fr 0`) with one stderr line; `extract --prep` copies `roots[]` to
+  `state.json.site.captureGaps` (documented in `state-machine.md`) and carries `detail` in its `end`
+  ledger line. `crawl.mjs` is now importable (playwright imported inside `main`, real-path main
+  guard) and has a fixture-HTML unit test. Recorded: two runs captured `/ca/en` while 15 `/ca/en/*`
+  pages existed and learned it six hours later from the rollout link audit (15 × 404, then repointed
+  because 15 > the 12-page threshold).
+- **`thumb.mjs --max-bytes`.** Default 150000: a thumbnail over the cap is re-encoded at a lower
+  `--max-height` (the same bottom crop) until it fits; every line now ends with the final size, a
+  capped one also notes `re-encoded for --max-bytes <b>`; a cap unmeetable at one row is written,
+  named on stderr, exit 1. `extract/SKILL.md` Phase 2.5: a thumbnail enters the context only after
+  `thumb.mjs` has written it (≤ 150 KB), or the vision check runs in a subagent returning one line
+  per thumbnail. Recorded: eight thumbnails of 268–608 KB — 3.2 MB — read into one context.
+- **`da-media-upload.mjs` and `deploy-batch.mjs` — `--token-env <NAME>` / `--token-file <path>`.**
+  The token comes from the variable named by `--token-env` (default `DA_TOKEN`) or from
+  `--token-file` (read once at start, trimmed; never both; a missing or empty file is a usage error
+  naming the path; the uploader's dry run reads no file); the expiry, HALT and re-run lines name the
+  variable or file, never the value, and the file-mode re-run command carries no `<var>=<fresh
+  token>` prefix. JWT-expiry preflight and the 401 policy unchanged; `deploy/SKILL.md` token
+  paragraph: both drivers take both flags. Both test suites cover both flags
+  (`deploy-batch.test.mjs` + 2 checks); the uploader drops an unused import. Recorded: the hands-off
+  harness provided the token as a file while the uploader read `DA_TOKEN` only.
+- **rollout `optimize.mjs` — findings that mirror the source are informational.** With the extract
+  capture present (`--current <captureDir>`, default `stardust/current`: `pages/<slug>.json` +
+  rendered sidecar), a baseline finding whose condition the source shares — the same `<title>`
+  (title-length / title-missing), no meta description on the source either, no JSON-LD on the source
+  either, the same title or description shared by the same pages — is tagged `fixability:
+  out-of-scope` with the evidence prefix `source parity:` and autofix unavailable (the findings
+  schema has no parity property); listed in its own report section and excluded from the health
+  score, the open P1/P2/P3 counts and the gate (`lib.mjs`: `isSourceParity`, `markSourceParity`,
+  `sourceParityCounts`; `computeScorecard` skips them). A recorded hands-off run accepted 63 such
+  findings by hand.
+- **migrate renders as recorded units.** The migrate phase — plan, the render of every sibling,
+  state-and-report — is bookkept in `stardust/migrate/progress.json` with the C-deliver unit
+  ledger's shape (`units.<name>: {status: pending|running|done|failed, kind:
+  plan|render|assets|report, templates[], pages: n, startedAt, endedAt, verdict}`): one `plan` unit,
+  one `render` unit per template cluster of at most ~8 siblings (`migrate.mjs render <slug…>` takes
+  the slug list), one `assets` unit when media is rehosted there, one `report` unit. Per unit: the
+  progress write, then the checkpoint commit, then the next unit — a unit end is a safe resume
+  point; a session resumed inside migrate runs only the units not `done`, and a `running` unit
+  re-renders its slugs (the driver is idempotent). `handoff-contract.md` § 1 row 9 + § 5,
+  `migrate/SKILL.md` Phase 2. Recorded: on the 0.25.0 run the whole phase — 31 siblings through five
+  parallel builders — ran as ONE unit inside one session, the most expensive session of the run,
+  with no resume point between the plan and the final report.
+
 ## 0.25.0 — hands-off cost and autonomy: background instruments, inspection helpers, `--help` everywhere, bookkeeping writers, the Phase 5 contract
 
 Source: Karl Pauls' `stardust/replica-cache-perf` (13 commits, recorded hands-off replica runs of

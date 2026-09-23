@@ -276,7 +276,12 @@ or a chrome delta, 1 when a probe errored (it gave no verdict — read its
 - pixel diff: **≤ 10%** full-page, with no per-500px band left unexplained
   (the band breakdown is the navigation instrument — fix the first hot band,
   top-down; everything below it is offset-contaminated);
-- height delta **|Δ| ≤ 8px** (pixel-compare's own warning bar).
+- height delta **|Δ| ≤ 8px** (pixel-compare's own warning bar);
+- and, outside the bar and outside the cap, the horizontal-overflow assert:
+  `document.documentElement.scrollWidth` equals the viewport at every
+  breakpoint on the build side — gate.sh fails the round on it whatever the
+  pixel number says; a `capture failed (exit 1)` round (after gate.sh's one
+  retry) is re-queued, never counted.
 
 **Iteration discipline: hard cap 3 iterations per breakpoint.** Each
 iteration's fixes come off the instruments, never off eyeballing. After 3,
@@ -369,7 +374,8 @@ had one section for the whole run).
 - **Pages beyond the archetypes** go through the stardust `migrate` skill at
   **sibling tier** (`../migrate/reference/fidelity-tiers.md`): structural
   clone of the gated archetype + content-fidelity + delivery-lint +
-  media-reconcile. Siblings inherit the archetype's source-fidelity gate —
+  media-reconcile (once the delivered content file exists). Siblings inherit
+  the archetype's source-fidelity gate —
   never re-author one from scratch. **Template constancy is measured, not
   assumed**: before cloning, run `stardust/scripts/replica/sibling-variance.mjs
   <archetype> <siblings…> --probe <block>=<sel> …` once per template and
