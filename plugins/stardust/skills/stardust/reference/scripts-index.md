@@ -6,7 +6,7 @@ Run the project copies under `stardust/scripts/<skill>/`. Read this before any `
 - `deploy/block-roundtrip.mjs` — block round-trip + editability — `<protoURL> content/<p>.html [--blocks a,b] --ew`
 - `deploy/build-harness.mjs` — local structural harness — `content/<p>.html <out.html> [--root <dir>]`
 - `deploy/content-inventory.mjs` — library (role classifier), no CLI
-- `deploy/da-media-upload.mjs` — rehost images to DA — `--org --repo --scope <under media/> --dir|--manifest [--dry-run]`
+- `deploy/da-media-upload.mjs` — rehost images to DA — `--org --repo --scope <under media/> --dir|--manifest [--dry-run]`; exit 3 = token halt
 - `deploy/davids-model-lint.mjs` — content-model lint — `content/ | <page>.html [--json]`
 - `deploy/deploy-batch.mjs` — resumable PUT→preview→live — `--org --repo --branch --content content [--no-publish]`
 - `deploy/diff-profiles.mjs` — library (eds|generic profiles), no CLI
@@ -30,7 +30,7 @@ Run the project copies under `stardust/scripts/<skill>/`. Read this before any `
 - `dynamics/snapshot-forms.mjs` — record live forms — `--urls a,b [--out data/forms]`
 - `dynamics/sync-sheets.mjs` — sheet JSON → DA + preview — `--source <o> --org --repo --paths a.json,b.json`
 - `extract/crawl.mjs` — site crawler — `--url <u> [--pages a,b] [--max 25] [--out stardust/current] [--dynamics]`
-- `extract/style-census.mjs` — computed-style census — `[--pages <dir>|--urls a,b] [--out <f>] [--width <px>]`
+- `extract/style-census.mjs` — computed-style census (one live pass) — `[--pages <dir>|--urls a,b] [--width <px>] [--headed]`
 - `extract/thumb.mjs` — legible capture thumbnails — `<png|dir…> [--width 480] [--max-height <px>]`
 - `migrate/migrate.mjs` — per-page render driver + sidecar — `render <slug…|--all>`; `gate|deviation|variant|modules <slug>`
 - `qa/lib.mjs` — library, no CLI
@@ -45,12 +45,12 @@ Run the project copies under `stardust/scripts/<skill>/`. Read this before any `
 - `replica/gate.sh` — one gate round + probes — `<slug> <live> <build> <width> [iter] [--full] [--main <sel>]`
 - `replica/html-slice.mjs` — one element of captured HTML — `<page.html> header|footer|main|.cls [--text] [--all]`
 - `replica/json-query.mjs` — bounded view of JSON — `<f.json> [--path <p>] [--keys] [--match k=re] [--fields a,b]`
-- `replica/measure.mjs` — rects + computed values — `<url> --selectors "a,b" [--against <url>] [--width 1440,360]`
-- `replica/motion-compare.mjs` — live vs build motion — `<live.json> <build.json> [--tolerance-ms] [--tolerance-px]`
+- `replica/measure.mjs` — rects + computed values — `<url> --selectors "a,b" [--against <url>] [--width 1440,360] [--headed]`
+- `replica/motion-compare.mjs` — live vs build motion, advisory (exit 0) — `<live.json> <build.json> [--tolerance-ms]`
 - `replica/motion-observe.mjs` — observe motion — `<url> <out.json> [--click <sel>]… [--hover <sel>]…`
 - `replica/pixel-compare.mjs` — full-page pixel diff, bands — `<a.png> <b.png> [--out diff.png] [--threshold 10]`
 - `replica/row-profile.mjs` — row luminance profile — `<a.png> [<b.png>] [--color #rrggbb]`
-- `replica/run-bg.mjs` — background jobs, bounded wait — `start --name <j> -- <cmd>`; `wait [--max <s>]`; `log <j>`
+- `replica/run-bg.mjs` — background jobs, bounded wait — `start --name <j> [--slots 2] -- <cmd>`; `wait [--max ≤110]`; `log <j>`
 - `replica/run-capped.mjs` — deadline wrapper, exit 124 — `--timeout <s> -- <cmd>`
 - `replica/section.mjs` — one Markdown section / outline — `<doc.md> --list | "<heading re>" [--all] [--max-lines]`
 - `replica/sibling-variance.mjs` — template deltas across siblings — `<archetypeURL> <siblingURL>… --probe name=<sel>`

@@ -4,6 +4,161 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.24.0 — hands-off cost and autonomy: background instruments, inspection helpers, `--help` everywhere, bookkeeping writers, the Phase 5 contract
+
+Source: Karl Pauls' `stardust/replica-cache-perf` (13 commits, recorded hands-off replica runs of
+2026-09-18 to 2026-09-22), re-sliced into thematic commits, rebased over 0.22.2–0.23.1 and
+hardened after a code review and a cross-check against the `stardust/next` research branch. The
+theme is one number: a hands-off session's cost is its context, re-read on every model call and
+re-written whenever a step outlives the five-minute prompt cache.
+
+### Background instruments and the prompt-cache window
+
+- **`replica/scripts/run-bg.mjs`** (new): `start` detaches an instrument under `run-capped`
+  (900 s default) behind a first-come slot cap; `wait` returns within `--max` (100 s, ceiling
+  110 s — the shell tool's own limit is about two minutes) with one line per job plus its verdict
+  lines only, exit 75 while jobs are still going; `log --grep` reads the rest from
+  `stardust/.work/replica/bg/<job>.log`; `wait`/`status` with no names report the latest batch.
+  Recorded: one gate batch — three parallel steps, each `sleep 5|10|15;` then two rounds —
+  blocked for 15 minutes and the next call re-wrote a 513k-token context, $6.30 for one silent
+  gap, while every other gap in that session stayed under 184 s at a 96 % cache-hit ratio.
+  Slots default to 2 (`RUN_BG_SLOTS`, else `STARDUST_BROWSER_SLOTS`): each capture is a Chromium
+  and a `gate.sh --full` round holds three at its peak. Job liveness is checked against the
+  wrapper's recorded process identity, never a bare PID (a recycled PID after a reboot read
+  "running" forever and `clean --all` would have signalled a stranger); the wrapper is the only
+  writer of its state file after spawn; `clean --all` escalates to SIGKILL on the process group.
+- **`gate.sh --full` + `--help`**: the whole Phase 4 probe set in one round — after the pixel
+  verdict, content-diff, visual-diff and chrome-parity run in parallel under `GATE_PROBE_TIMEOUT`
+  (300 s), reports to the gate dir, one verdict line each; exit 124 on any deadline, 2 on a pixel
+  fail / structural 🔴 / chrome delta, 1 when a probe errored (no verdict is never a pass). When
+  the pixel step itself gave no verdict (124, 1, 3, 4) the probes are skipped. The published round
+  is the same command with the preview URL and `--marker`. The stale-instrument reaper matches
+  node processes only, skips `--inspect`, and sends TERM before KILL.
+- **Port probe without lsof** (replica, deploy, diff cards; gate.sh): `curl -sI localhost:<port>/`
+  is the probe, a HEAD of your own file the reuse check; `lsof … || echo free` printed "free"
+  beside a live listener on an image without lsof.
+- **Cards**: the master card's 0.22.2 wait discipline gains the harness-neutral form (run-bg,
+  `wait` as the next call, never after a `sleep`, never two long instruments as parallel tool
+  calls, the main agent bound like its subagents — a 338 s foreground turn cost one cache
+  re-write); one shell one working directory; author large files in parts (~150 lines a write —
+  two whole-document writes each re-wrote a ~200k-token context).
+
+### Inspection helpers and the reading discipline
+
+- **`replica/scripts/section.mjs`, `css-rules.mjs`, `json-query.mjs`, `html-slice.mjs`** (new):
+  a Markdown outline or one section (multi-section `--all` capped at 20 KB); the rule blocks
+  matching a selector regex with their @media condition; the shape, key union or a bounded
+  filtered table of any capture JSON, `--tsv` / `--path` for values a command consumes; one
+  element of a captured page, attributes stripped, scripts and inline SVG removed. Recorded: 172
+  steps carried 750k characters of tool output into a 535k-token context in 77 minutes.
+- **`extract/scripts/thumb.mjs`** (new): box-filtered whole-page thumbnails (`--width 480`) so
+  1-px rules survive the brand-gestalt read; the one exception to "one crop per fact".
+- **`replica/reference/reading-discipline.md`** (new; the replica card goes from 35 KB on the
+  source branch to 31 KB): the rules in full — which helper reads
+  what, instrument output only through `run-bg.mjs wait` and `log --grep`, one crop per fact,
+  never a stitched page or the live/build/diff triplet, script flags from the index then
+  `--help`, never the source. The replica card carries a 15-line pointer.
+- **`stardust/reference/scripts-index.md`** (new) + **`evals/lint/scripts-index.mjs`**: every
+  shipped script on one line, kept complete by the lint (cap 12 KB).
+
+### `--help` on every script
+
+- Every script under `skills/*/scripts` prints its usage header on `--help` / `-h` and exits 0
+  before parsing, reading a file or opening a browser (recorded: `section-schema` navigated to
+  `--help` as a URL, `style-fingerprint` crashed, `davids-model-lint` and `sanitise` read it as a
+  file). Scripts that write artifacts carry a `Writes:` block. The six scripts whose playwright
+  import preceded the guard import it lazily, so `--help` answers without playwright.
+- **`evals/lint/script-help.mjs`** (new, chained in `lint:stardust` and the validate workflow):
+  runs every script with `--help` in an empty cwd; fails on a non-zero exit, missing usage text or
+  a file written; pure libraries exempt by list.
+- **Main-module guards by real path**: node resolves the entry's symlinks for `import.meta.url`
+  but not for `process.argv[1]`; a symlinked checkout made each CLI a silent no-op.
+- **Value flags never swallow the next flag**: `--to --force`, `--name --dir` and the like are a
+  usage error naming the flag in the new parsers — run-bg, ledger, state, migrate,
+  da-media-upload, the inspection helpers, thumb, measure, style-census, motion-compare (a
+  status of "--force" would otherwise land in state.json).
+- **`impeccable-version-check.mjs --where`** prints impeccable's skill directory offline.
+
+### Bookkeeping writers
+
+- **`stardust/scripts/ledger.mjs`** and **`state.mjs`** (new): one conformant `status.jsonl`
+  line per phase transition, the phase name normalised against each skill's table (`--strict`
+  refuses an unknown one; optional `--next` / `--owner`); `state.mjs advance <slug…> --to
+  <status>` follows state-machine.md (backward refused without `--force`, `--history-only` for
+  the re-prototype case, the 0.23.0 `flow` keys kept in place). Recorded: one run wrote five
+  archetypes' ledger lines a session later from a throwaway script.
+- **`migrate/scripts/migrate.mjs`** (new): the per-page render driver — page map, URL-literal
+  output path (collisions checked on the AEM-folded path too), internal-link rewrite, asset
+  bundling, `<head>` composition, strict validation, `_meta.json` sidecar, idempotent skip, the
+  `migrate` block of `state.json` merged not replaced; `gate` / `deviation` / `decision` /
+  `variant` / `modules` for the judgments only the agent records. Refuses to render on a
+  project whose `state.json` carries no `flow` (0.23.0 routing).
+- **`replica/scripts/gate-evidence.mjs`** (new): derives the sibling acceptance gates from
+  run-bg job evidence into `gatesPassed[]` and `progress.json`, attributing jobs by their
+  arguments and taking the latest ended job per page × instrument × width. A sibling absent from
+  a variance probe is OPEN, never passed on the archetype's summary; a job that hit its deadline
+  or gave no verdict is OPEN; every pixel line names its regime (`[prototype regime]` on a local
+  build URL, `[published regime]` otherwise); `--check` fails on a gate whose latest evidence
+  regressed; writes are atomic. `content-fidelity` stays the agent's declaration.
+- **`replica/scripts/foundation-freeze.mjs`** (new): `freeze` writes the sha256 manifest of the
+  delivery foundation (`styles/`, `fonts/`, `head.html`, `scripts/`, header and footer blocks);
+  `check` exits 1 on any drift. Symlinks recorded, not followed.
+- **`rollout/scripts/inventory.mjs`**: an archetype whose sidecar leaves `template` null groups
+  under its own slug; its representative is the archetype; empty `modules[]` counted.
+
+### Media and delivery
+
+- **`deploy/scripts/da-media-upload.mjs`** (new): the DA media protocol as a script — multipart
+  PUT, persistent ledger (atomic), capped retries, content URLs printed, the token never;
+  `--scope media/<name>` refused (a recorded run doubled the folder, 242 wrong uploads). 401
+  policy from both recorded failures: a JWT past its `exp` exits 3 before any request; the first
+  upload runs alone to prove the token and a burst 401 on it is retried (a valid token was
+  answered 401 across a whole first burst); a 401 that persists after the token was accepted
+  HALTS the batch (exit 3, ledger persisted, the same command resumes) — never a per-file FAIL
+  (an expired token once left an 894-row batch failing file by file for 5.5 hours).
+- **`rollout/scripts/media-reconcile.mjs`**: content-host URLs are decided `hosted` against the
+  media ledger (`--media-ledger`, auto-detected), never fetched anonymously; a hosted URL missing
+  from the ledger fails; with no ledger at all the URLs are `unresolved` (exit 1) — never a pass.
+- **`deploy/scripts/build-harness.mjs`**: folds `section-metadata` blocks as the pipeline does
+  and remaps DA image URLs to captured files via `--media-ledger`.
+- **`replica/scripts/measure.mjs`** and **`extract/scripts/style-census.mjs`** (new): box-by-box
+  live-vs-prototype deltas for a selector list; the computed-style census over every captured
+  page. Both open the live side through the diff skill's `live-session.mjs` (real-Chrome UA and
+  headers, consent dismissal, bot challenge = exit 3), never a bare launch; the census runs once,
+  in the background, after the crawl.
+- **`replica/scripts/motion-compare.mjs`** (new, advisory): one line per behaviour between two
+  motion-observe outputs plus a summary; a MISSING / EXTRA line is confirmed on the class lines,
+  never a gate by itself (the sampler misses class-toggled and pseudo-element mechanics).
+
+### Phase 5 contract and fan-out rules
+
+- **`replica/reference/handoff-contract.md`** (new): what the Phase 5 executor needs from
+  migrate, deploy and rollout — sibling-tier steps, the editability, decode and DA protocols,
+  rollout phases A–I with their ledger strings, one usage line per script, bookkeeping. C-deliver
+  runs as recorded units in `stardust/rollout/progress.json`: C0 foundation by the main agent,
+  then `foundation-freeze.mjs freeze` + commit; C1…Cn one subagent per template cluster AUTHORS
+  through the local structural asserts and hands back a path list, the MAIN agent deploys one
+  `deploy-batch.mjs --paths …` at a time (the batch ledger has one writer, the token one owner),
+  the cluster gates on the preview origin and reports one verdict line; C-final applies the
+  queued `foundation-requests.md` once. A unit end is a resume point, never by itself a reason
+  to end the session.
+- **Rules placed where the agent acts** (replica, rollout, deploy cards): lint and commit the
+  foundation before any subagent spawns, no rename of a frozen file after fan-out; lint rules in
+  every brief; disjoint clusters spawn concurrently; the root `/` is served by the `index`
+  document and must answer 200 (a `/` redirect row only when the source root itself redirects);
+  captured pages are always delivered — the ≤ 12 default is for uncaptured in-scope targets,
+  which are a capture gap (crawl first) when the direction caps meant to include them and scope
+  extension (repoint) otherwise, both recorded in `direction.md`; one-shot helpers live under
+  `stardust/.work/<skill>/probes/`; every `url()` in a lifted CSS rule is rehosted under
+  `stardust/current/assets/`.
+- **Sibling pixel bar**: each sibling is gated at 1440 AND 360 before delivery through run-bg
+  (eleven siblings once failed the published 360 bar at 17–27 % after inheriting a gated
+  archetype); recorded as prototype-regime evidence that never replaces the published-origin
+  gate.
+- **source-fidelity-gate.md**: the header/footer `crop-compare.mjs` invocation is complete on
+  the card, each band number named with the shipped output it comes from; the published round is
+  the Phase 4 command with the preview URL.
+
 ## 0.23.1 — chrome: hover-dropdown reachability rule (deploy § 6, replica mechanism cloning) + qa `dropdown-unreachable` rendered check
 
 Recurring chrome defect: a hover-opened desktop dropdown whose sub-list is absolutely positioned
