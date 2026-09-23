@@ -18,7 +18,12 @@
  * Gates derived (each evidence one-liner carries its `(<job>.log)` pointer):
  *   pixel-gate-<width>  latest gate.sh round at that width (gate.sh <slug> <live> <build> <width>
  *                       [label]) whose pixel-compare line reads `→ PASS` with |height delta| ≤
- *                       --height-tolerance. The line ends with the round's REGIME, read from the
+ *                       --height-tolerance AND whose overflow assert did not fire: a round whose log
+ *                       carries gate.sh's `OVERFLOW at <w> — build scrollWidth <n> > viewport <n>
+ *                       (+<n>px)` line is `FAIL: horizontal overflow +<n>px …` whatever the pixel
+ *                       line says (a recorded run passed two pages 373 and 400 px wide at 360 as
+ *                       residuals; the assert is the one no iteration cap waives). The line ends
+ *                       with the round's REGIME, read from the
  *                       build URL argument: localhost / 127.0.0.1 / file: → `[prototype regime]`,
  *                       anything else → `[published regime]`. The prototype-regime bar screens
  *                       siblings before delivery; it never replaces the published-origin gate
@@ -28,7 +33,14 @@
  *                       `Findings: N (0 structural 🔴)`); when no such job exists, the newest
  *                       gate.sh --full round's `content-diff:` line; structural 🔴 > 0 → OPEN:
  *   media-reconcile     latest media-reconcile.mjs job whose counts line has no `omit` and no
- *                       `unresolved` (the instrument's own exit-1 rule); either → OPEN:
+ *                       `unresolved` (the instrument's own exit-1 rule); either → OPEN: — but only once
+ *                       the page's DELIVERED content file exists (`<--content>/<da-path>.html`, or
+ *                       `<da-path>/index.html`; the root page is `index.html`). Before that the gate is
+ *                       not required: the evidence reads `n/a: no delivered content file yet (<file>) —
+ *                       media-reconcile runs in the delivery chain (row C)`, the sibling acceptance set
+ *                       skips it, and a passing job still passes. A recorded run demanded it on
+ *                       prototype files and every sibling sidecar carried `media-reconcile: OPEN` until
+ *                       delivery. Once the file exists the gate is required again.
  *   delivery-lint       --lint run per page (`--file <html> --path </da/path>`), pass on
  *                       `0 P0 · 0 P1`; when --lint does not resolve, the latest delivery-lint.mjs
  *                       job for the page; P0/P1 → FAIL:
@@ -56,14 +68,17 @@
  * Usage:
  *   node stardust/scripts/replica/gate-evidence.mjs [--migrated stardust/migrated]
  *        [--bg stardust/.work/replica/bg] [--progress stardust/replica/progress.json]
- *        [--lint stardust/scripts/rollout/delivery-lint.mjs] [--widths 1440,360]
+ *        [--lint stardust/scripts/rollout/delivery-lint.mjs] [--content content] [--widths 1440,360]
  *        [--height-tolerance 8] [--slug <s>]… [--check] [--dry-run] [--json]
  *
  *   --slug <s>   only these pages (repeatable): rows and sidecar writes; the progress
  *                ledger's `migrate` totals are rewritten only by an unfiltered run
+ *   --content <dir>  the delivered content tree (default `content`, the deploy driver's) — the
+ *                media-reconcile gate is required only for a page whose file exists there
  *   --check      exit 2 when a sibling lacks a gate of the acceptance set: variance-probe,
- *                pixel-gate-<w> for EVERY --widths entry, delivery-lint, media-reconcile,
- *                content-fidelity, content-count. The pixel gates belong to the set: a recorded
+ *                pixel-gate-<w> for EVERY --widths entry, delivery-lint, media-reconcile (only once
+ *                the page's delivered content file exists — above), content-fidelity,
+ *                content-count. The pixel gates belong to the set: a recorded
  *                run published eleven siblings that had never been compared at 360, and they
  *                read 17–27 % against the ≤ 10 % bar on the published origin. Archetypes and
  *                thin pages are not held to this set here (their `missing` is always empty).
@@ -73,17 +88,20 @@
  *   --dry-run    compute and print, write nothing
  *   --json       the rows as a JSON array instead of the table
  *
- * Prints one row per page — `<slug>  <tier>  1440=<pct>%/Δ<px>  360=…  cd=<…>  lint=<…>
- * media=<…>  gates=<n>` — then `gate-evidence: <n> pages, <n> sidecars updated`.
+ * Prints one row per page — `<slug>  <tier>  1440=<pct>%/Δ<px>[/ovf+<px>]  360=…  cd=<…>  lint=<…>
+ * media=<…>  gates=<n>` (`/ovf+<px>` only when the round's overflow assert fired) — then
+ * `gate-evidence: <n> pages, <n> sidecars updated`.
  * Exit 0; 1 usage error (a malformed sidecar or progress.json included); 2 --check found a
  * sibling short of the acceptance set or a stale gate.
  *
  * Writes: each page's sidecar (`_meta.json` / `<name>._meta.json`): `gatesPassed[]` =
  * existing ∪ derived (existing first) and `gateEvidence{}` merged (derived lines overwrite
- * the same key) — nothing else, indent preserved. `--progress`: `migrate` {at, pages,
- * archetypes, siblings, thin, gates{<gate>: <pass count>}, missing{<slug>: [<gates>]}} and
- * `siblings{<slug>: {archetype, variants, pixel{<width>: {pct, px, heightDelta, verdict,
- * label, regime}}, contentDiff, deliveryLint, media, gatesPassed, migrated}}`, other keys
+ * the same key; `n/a: ` lines are neither passes nor stale) — nothing else, indent preserved.
+ * `--progress`: `migrate` {at, pages, archetypes, siblings, thin, gates{<gate>: <pass count>},
+ * missing{<slug>: [<gates>]}} and `siblings{<slug>: {archetype, variants, pixel{<width>:
+ * {pct, px, heightDelta, overflowX, verdict, label, regime}}, contentDiff, deliveryLint, media,
+ * gatesPassed, migrated}}` (`overflowX`: px over the viewport, 0 when the assert ran clean,
+ * null when the round predates it), other keys
  * preserved. progress.json is read and parsed BEFORE the first sidecar is touched (a malformed
  * ledger aborts the run with nothing written); every sidecar and the ledger are written through
  * a temp file + rename. Nothing with --dry-run or --help.
@@ -96,7 +114,7 @@ import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listJobs, logPath } from './run-bg.mjs';
 
-export const DEFAULTS = { migrated: 'stardust/migrated', bg: 'stardust/.work/replica/bg', progress: 'stardust/replica/progress.json', lint: 'stardust/scripts/rollout/delivery-lint.mjs', widths: [1440, 360], heightTolerance: 8 };
+export const DEFAULTS = { migrated: 'stardust/migrated', bg: 'stardust/.work/replica/bg', progress: 'stardust/replica/progress.json', lint: 'stardust/scripts/rollout/delivery-lint.mjs', content: 'content', widths: [1440, 360], heightTolerance: 8 };
 // The sibling acceptance set for one --widths list: a pixel gate per width, in the order given. Every reader of the set
 // (--check, the row's `missing`, progress.json migrate.missing) goes through this; archetypes and thin pages are not held to it.
 export const acceptanceFor = (widths) => ['variance-probe', ...widths.map((w) => `pixel-gate-${w}`), 'delivery-lint', 'media-reconcile', 'content-fidelity', 'content-count'];
@@ -124,6 +142,7 @@ export function parseArgs(argv) {
     else if (a === '--bg') o.bg = val(a, argv[++i]);
     else if (a === '--progress') o.progress = val(a, argv[++i]);
     else if (a === '--lint') { o.lint = val(a, argv[++i]); o.lintGiven = true; }
+    else if (a === '--content') o.content = val(a, argv[++i]);
     else if (a === '--widths') { o.widths = val(a, argv[++i]).split(',').map((w) => Number(w.trim())); if (!o.widths.length || o.widths.some((w) => !Number.isInteger(w) || w <= 0)) throw new UsageError(`gate-evidence: --widths needs a comma list of pixel widths (got "${argv[i]}")`); }
     else if (a === '--height-tolerance') { o.heightTolerance = Number(val(a, argv[++i])); if (!Number.isFinite(o.heightTolerance) || o.heightTolerance < 0) throw new UsageError('gate-evidence: --height-tolerance needs a number of pixels'); }
     else if (a === '--slug') o.slugs.push(val(a, argv[++i]));
@@ -259,6 +278,14 @@ export function parseCounts(text) {
   const counts = {}; for (const part of m[1].split(' · ')) { const [n, k] = part.split(' '); counts[k] = Number(n); }
   return { counts, line: m[1] };
 }
+// gate.sh's overflow assert: `gate.sh: OVERFLOW at <w> — build scrollWidth <n> > viewport <n> (+<n>px) → FAIL …` fired;
+// `gate.sh: overflow assert at <w> — … → ok` ran clean. The LAST of either decides; null when the round predates the assert.
+export function parseOverflow(text) {
+  const m = [...text.matchAll(/^gate\.sh: (?:OVERFLOW at (\d+) — build scrollWidth (\d+) > viewport (\d+) \(\+(\d+)px\)|overflow assert at (\d+) — [^\n]*→ ok)[^\n]*$/gm)].pop();
+  if (!m) return null;
+  if (m[5] !== undefined) return { width: Number(m[5]), px: 0, scrollWidth: null, viewport: null };
+  return { width: Number(m[1]), px: Number(m[4]), scrollWidth: Number(m[2]), viewport: Number(m[3]) };
+}
 // delivery-lint: `<n> P0 · <n> P1 · <n> P2`.
 export function parseLint(text) {
   const m = [...text.matchAll(/^(\d+) P0 · (\d+) P1 · (\d+) P2[ \t]*$/gm)].pop();
@@ -280,6 +307,15 @@ const latest = (items, at = (x) => jobAt(x.j)) => items.reduce((best, x) => (!be
 const fmtPct = (n) => `${n.toFixed(2)}%`;
 // The `--path` delivery-lint expects: the output path without `.html` and without a trailing `/index`; the root page is `/`.
 export function daPath(outputPath) { return `/${outputPath}`.replace(/\.html$/, '').replace(/\/index$/, '') || '/'; }
+// The page's DELIVERED content file (the deploy driver's tree: a file's path minus `.html` is its DA path): `<content>/<da-path>.html`,
+// or `<content>/<da-path>/index.html`; the root page is `<content>/index.html`. `file` names the first candidate (relative, for
+// evidence lines) even when none exists.
+export function contentFileFor(contentDir, outputPath) {
+  const p = daPath(outputPath);
+  const rel = p === '/' ? ['index.html'] : [`${p.slice(1)}.html`, `${p.slice(1)}/index.html`];
+  const hit = rel.find((r) => existsSync(join(contentDir, r)));
+  return { file: join(contentDir, hit || rel[0]), exists: Boolean(hit) };
+}
 
 export function runLint(lint, page) {
   const args = [lint, '--file', page.htmlFile, '--path', daPath(page.outputPath)];
@@ -294,7 +330,7 @@ export function runLint(lint, page) {
 export function derive(page, jobs, o, ctx) {
   const mine = jobs.filter((j) => attribute(j, page, ctx));
   const gates = []; const evidence = {}; const notes = [];
-  const facts = { pixel: {}, contentDiff: null, deliveryLint: null, media: null, variance: null };
+  const facts = { pixel: {}, contentDiff: null, deliveryLint: null, media: null, variance: null, delivered: null };
   const pass = (g, line) => { gates.push(g); evidence[g] = line; };
   const open = (g, line, prefix = 'OPEN') => { evidence[g] = `${prefix}: ${line}`; };
   const cite = (j) => `(${j.logName})`;
@@ -317,10 +353,13 @@ export function derive(page, jobs, o, ctx) {
     const { j, v } = best;
     const label = j.instArgs[4] && !j.instArgs[4].startsWith('--') ? j.instArgs[4] : 'iter';
     const regime = regimeOf(j);
-    facts.pixel[w] = { pct: v.pct, px: v.px, heightDelta: v.heightDelta, verdict: v.verdict, label, regime };
+    const ov = parseOverflow(j.log);
+    facts.pixel[w] = { pct: v.pct, px: v.px, heightDelta: v.heightDelta, overflowX: ov ? ov.px : null, verdict: v.verdict, label, regime };
     const line = `${fmtPct(v.pct)} (${v.px} px, threshold ${v.threshold}%), height delta ${v.heightDelta === null ? '?' : v.heightDelta}px, round ${label} @${w} ${cite(j)} [${regime} regime]`;
     const withinHeight = v.heightDelta !== null && Math.abs(v.heightDelta) <= o.heightTolerance;
-    if (v.verdict === 'PASS' && withinHeight) pass(`pixel-gate-${w}`, line);
+    // The overflow assert outranks the pixel line: a build wider than its viewport never earns the gate.
+    if (ov && ov.px > 0) open(`pixel-gate-${w}`, `horizontal overflow +${ov.px}px at ${w} (scrollWidth ${ov.scrollWidth} > viewport ${ov.viewport}) — ${line}`, 'FAIL');
+    else if (v.verdict === 'PASS' && withinHeight) pass(`pixel-gate-${w}`, line);
     else open(`pixel-gate-${w}`, v.verdict === 'PASS' ? `|height delta| > ${o.heightTolerance}px tolerance — ${line}` : line, 'FAIL');
   }
 
@@ -339,6 +378,14 @@ export function derive(page, jobs, o, ctx) {
     const held = ['omit', 'unresolved'].filter((k) => md.v.counts[k] > 0).map((k) => `${md.v.counts[k]} ${k}`);
     const line = `${md.v.line} ${cite(md.j)}`;
     if (!held.length) pass('media-reconcile', line); else open('media-reconcile', `${held.join(', ')} hold the gate — ${line}`);
+  }
+  // media-reconcile belongs to the delivery chain: without the page's delivered content file it is not required — an
+  // OPEN (or a deadline / a missing job) reads `n/a:` instead, a pass still stands. The caller drops it from the set.
+  const delivered = ctx.contentFile ? ctx.contentFile(page) : { file: null, exists: true };
+  facts.delivered = delivered.exists;
+  if (!delivered.exists && !gates.includes('media-reconcile')) {
+    const latest_ = md ? ` — latest run ${md.v.line} ${cite(md.j)} is advisory until then` : '';
+    evidence['media-reconcile'] = `n/a: no delivered content file yet (${delivered.file}) — media-reconcile runs in the delivery chain (row C)${latest_}`;
   }
 
   if (ctx.lint) {
@@ -403,7 +450,7 @@ export function buildProgress(existing, rows, { partial = false } = {}) {
 // ---- rows --------------------------------------------------------------------------------------
 const compact = (s) => (s === null || s === undefined ? '—' : String(s).replace(/ /g, ''));
 export function formatRow(r, widths) {
-  const px = widths.map((w) => `${w}=${r.pixel[w] ? `${fmtPct(r.pixel[w].pct)}/Δ${r.pixel[w].heightDelta}` : '—'}`).join('  ');
+  const px = widths.map((w) => `${w}=${r.pixel[w] ? `${fmtPct(r.pixel[w].pct)}/Δ${r.pixel[w].heightDelta}${r.pixel[w].overflowX > 0 ? `/ovf+${r.pixel[w].overflowX}` : ''}` : '—'}`).join('  ');
   const cd = r.contentDiff === null ? '—' : (/^none/.test(r.contentDiff) ? 'none' : compact(r.contentDiff.replace(/ structural 🔴\)/, '🔴)')));
   return `${r.slug}  ${r.tier || '—'}  ${px}  cd=${cd}  lint=${compact(r.deliveryLint)}  media=${compact(r.media)}  gates=${r.gatesPassed.length}`;
 }
@@ -425,7 +472,8 @@ export function collect(o) {
   const jobs = loadJobs(resolve(o.bg));
   const lint = resolveLint(o);
   if (!lint) notes.push(`delivery-lint: ${o.lint} not found — pass --lint (using run-bg delivery-lint jobs, if any)`);
-  const ctx = { migrated, pages, slugs: pages.map((p) => p.slug), lint };
+  const contentDir = resolve(o.content);
+  const ctx = { migrated, pages, slugs: pages.map((p) => p.slug), lint, contentFile: (page) => { const c = contentFileFor(contentDir, page.outputPath); return { ...c, file: relative(process.cwd(), c.file).split(sep).join('/') }; } };
   const acceptance = acceptanceFor(o.widths);
   // The ledger is parsed before any sidecar is touched: a malformed progress.json aborts with nothing written.
   const prior = existsSync(o.progress) ? readJson(o.progress) : { data: {}, indent: 2, eol: true };
@@ -439,7 +487,9 @@ export function collect(o) {
     const text = serialize(meta, page.indent, page.eol);
     if (text !== page.text) { updated += 1; if (!o.dryRun) writeAtomic(page.file, text); }
     const tier = meta.fidelityTier || null;
-    rows.push({ slug: page.slug, tier, archetype: meta.archetypeSource || meta.template || null, variants: Array.isArray(meta.variants) ? meta.variants : [], outputPath: page.outputPath, migrated: join(o.migrated, page.outputPath), ...d.facts, gatesPassed: meta.gatesPassed, gateEvidence: meta.gateEvidence, missing: tier === 'sibling' ? acceptance.filter((g) => !meta.gatesPassed.includes(g)) : [], stale });
+    // A sibling is not held to media-reconcile before its delivered content file exists (derive() recorded `n/a:` for it).
+    const required = acceptance.filter((g) => g !== 'media-reconcile' || d.facts.delivered !== false);
+    rows.push({ slug: page.slug, tier, archetype: meta.archetypeSource || meta.template || null, variants: Array.isArray(meta.variants) ? meta.variants : [], outputPath: page.outputPath, migrated: join(o.migrated, page.outputPath), ...d.facts, gatesPassed: meta.gatesPassed, gateEvidence: meta.gateEvidence, missing: tier === 'sibling' ? required.filter((g) => !meta.gatesPassed.includes(g)) : [], stale });
   }
   if (rows.length && !o.dryRun) {
     mkdirSync(dirname(resolve(o.progress)), { recursive: true });

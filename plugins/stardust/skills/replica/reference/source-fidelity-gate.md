@@ -202,6 +202,15 @@ Applied inconsistency-register entries create expected deltas: cross-
 reference the entry ID (`R-<nn>`) when justifying a flag over its zone
 (`preserve-direction.md` § Gate interaction).
 
+**Outside the numbered bar, and outside the iteration cap: the
+horizontal-overflow assert.** `document.documentElement.scrollWidth` equals
+the viewport width at every gate breakpoint on the build side, evaluated on
+the published origin for a delivered page. It is not a bar item because a
+bar item can be traded for a documented residual; this cannot
+(§ Iteration discipline, the HARD assert). `gate.sh` runs it every round
+and prints the verdict line; `measure.mjs` prints the number on its root
+line for any ad-hoc read.
+
 **Calibration honesty — two fidelity regimes, one bar.** The validated
 numbers above (1.31%, Δ0) describe the **prototype regime**: a standalone
 prototype gated against the live page, on a typographic page. Pages
@@ -345,6 +354,46 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
 - After iteration 3: log residuals (§ Residual logging) and move on. A
   documented residual is a pass with an asterisk; an undocumented fourth
   loop is scope creep.
+- **HARD assert, not subject to the cap: `document.documentElement.scrollWidth
+  === viewport width` at every gate breakpoint, evaluated on the published
+  origin.** A recorded hands-off run delivered two pages that rendered 373 px
+  and 400 px wide at a 360 viewport — accordion headers and a blockquote
+  overflowing, text clipped — and the gate logged `|Δ| 19–26 px at 360 …
+  logged, not iterated further (3-iteration cap reached)` and passed them.
+  Horizontal overflow is not a residual class. `gate.sh` runs `measure.mjs`
+  on the BUILD side every round (no live hit) and reads its root line —
+  `root  scrollWidth <n>  viewport <n>  scrollHeight <n>  ◄◄ OVERFLOW +<n>px`
+  — so a build wider than its viewport prints `gate.sh: OVERFLOW at <w> —
+  build scrollWidth <n> > viewport <n> (+<n>px) → FAIL` and the round exits 2
+  whatever the pixel number says; `gate-evidence.mjs` records `FAIL:
+  horizontal overflow +<n>px` over a PASS pixel line and withholds
+  `pixel-gate-<w>`. No iteration cap, residual entry or register entry
+  waives it: a page whose scrollWidth exceeds the viewport at any gate
+  breakpoint is not verified, and the published-origin round (§ The
+  published-origin gate) is where it finally counts. Diagnose with
+  `measure.mjs "$BUILD" --selectors "<candidates>" --width 360 --all-matches`
+  — the box whose `x + w` exceeds the viewport; the recorded causes are a
+  desktop px width or `min-width` carried into the mobile pass,
+  `white-space: nowrap`, an unbroken string without `overflow-wrap`, a
+  content-box / border-box fork that adds padding beyond 100 %
+  (`recreation-procedure.md` § Box model is a lifted value), a negative
+  margin, `100vw` on a page with a scrollbar. When the LIVE side itself
+  overflows at a breakpoint (the root line on side A says so), the replica
+  does not mirror the defect: register the fix as an inconsistency entry and
+  build without overflow — the assert holds on the build regardless.
+- **Capture exit 1 is "re-queue", not a verdict.** Under parallel Chromium
+  load (three rounds in flight, nine Chromiums with `--full`) a recorded
+  hands-off run saw about 8 of 62 sibling gate rounds end in `build capture
+  failed (exit 1)` and read them as verdicts. `gate.sh` retries a capture
+  that exits 1 — live, build or the overflow probe — ONCE before declaring
+  anything (`gate.sh: <step> exited 1 — retrying once`); when both attempts
+  exit 1 the round exits 1 with `(twice: no verdict — re-queue the round)`.
+  Treat it exactly like exit 124: start the same round again through
+  `run-bg.mjs`, count no iteration, never write it into the ledger as a
+  FAIL (`gate-evidence.mjs` records it `OPEN: no verdict (exit 1)`). Exit 3
+  (bot challenge) and 4 (identity) are final on the first attempt. Do not
+  raise `RUN_BG_SLOTS` to make room — the default 3 is the pacing that keeps
+  the retry rare; lower it on a small machine.
 - **Instrument-invalidated runs don't consume the cap — once the defect is
   fixed and named.** The 3-iteration cap assumes valid instruments. When a
   run is later shown to have measured an instrument defect (a challenge
@@ -647,6 +696,17 @@ Two rules for that final run:
   paddings in block CSS, re-measure) brought it to 6.5% with exact anchor
   parity (recorded). Treat the pre-publish harness number as provisional
   and the reconcile round as expected work, not a regression.
+
+**`media-reconcile.mjs` is a delivery-chain gate, not a prototype-gate
+instrument.** It resolves the images of the DELIVERED content file
+(`content/<path>.html` — handoff contract § 1 row 7 and § 3 row C); run on a
+prototype or a migrated file it exits 1 by construction, because no content
+file exists before C-deliver, and a recorded hands-off run carried
+`media-reconcile: OPEN` on every sibling sidecar until delivery for exactly
+that reason. `gate-evidence.mjs` records `n/a: no delivered content file
+yet` (never OPEN) while the page's content file is absent and leaves the
+gate out of the sibling acceptance set; once the file exists the gate is
+required again and its verdict counts. Nothing in Phase 4 runs it.
 
 Recurring EDS pipeline transforms that move the number (each recorded;
 none visible on a local harness):
