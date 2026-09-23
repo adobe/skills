@@ -105,6 +105,13 @@ re-written whenever a step outlives the five-minute prompt cache.
   `check` exits 1 on any drift. Symlinks recorded, not followed.
 - **`rollout/scripts/inventory.mjs`**: an archetype whose sidecar leaves `template` null groups
   under its own slug; its representative is the archetype; empty `modules[]` counted.
+- **`rollout/scripts/lib.mjs` `blockCounts` + `update-coverage.mjs`**: a module the agent maps to
+  EDS default content (title, text, image, button — no block needed) is recorded
+  `--block <id> --status converted --eds-name default-content` and is never counted pending,
+  whatever its status; `blocks.mjs` re-runs keep the mapping and the dashboard snapshot uses the
+  same count. A recorded hands-off run left four such rows at `status: pending`,
+  `rollout.json.lastRun.blocks.pending` stayed 4 with every page live and verified, and a
+  downstream completeness check read the finished run as unfinished.
 
 ### Media and delivery
 

@@ -12,7 +12,8 @@
  * site-wide singletons). Finer section-archetype dedup via structural signatures
  * is a later refinement; the `signature` field is reserved for it.
  *
- * Idempotent: existing block delivery status is preserved.
+ * Idempotent: existing block delivery status is preserved; a `default-content` mapping (a module
+ * that needs no block) keeps its name whatever its status.
  *
  * Usage: node skills/rollout/scripts/blocks.mjs [--out <rolloutDir>]   (default stardust/rollout)
  *
@@ -22,7 +23,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { readJSON, writeJSON, edsName, kindOf, blockCounts } from './lib.mjs';
+import { readJSON, writeJSON, edsName, kindOf, blockCounts, DEFAULT_CONTENT } from './lib.mjs';
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
@@ -67,8 +68,9 @@ const blocks = [...agg.entries()].map(([id, a]) => {
     blockPath: kind === 'chrome' ? `fragments/${edsName(id)}.html` : null,
     convertedAt: null,
   };
-  // Keep the derived EDS name fresh for not-yet-converted blocks.
-  if (delivery.status === 'pending') {
+  // Keep the derived EDS name fresh for not-yet-converted blocks — never over a default-content
+  // mapping, which is a resolved decision (no block to build) even while its status reads pending.
+  if (delivery.status === 'pending' && delivery.edsBlockName !== DEFAULT_CONTENT) {
     delivery.edsBlockName = kind === 'chrome' ? null : edsName(id);
     delivery.blockPath = kind === 'chrome' ? `fragments/${edsName(id)}.html` : delivery.blockPath || null;
   }

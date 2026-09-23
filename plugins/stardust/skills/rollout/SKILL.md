@@ -100,7 +100,10 @@ node skills/rollout/scripts/plan.mjs     # → plan.json + a readable conversion
   `instanceCount`. Chrome (`header`/`nav`/`footer`) is `kind: chrome` → site-wide
   authored documents (`/nav`, `/footer`) fed to the header/footer blocks. In
   archetypes-only mode the archetype sidecars fully determine the
-  block set; `content-pending` pages add none.
+  block set; `content-pending` pages add none. A module that maps to EDS **default
+  content** (title, text, image, button, separator — deploy's D1) needs no block: record
+  it `update-coverage.mjs --block <id> --status converted --eds-name default-content`;
+  such a row is never counted pending, whatever its status.
 - `plan.mjs` orders pages **representative-first per template** and gives each
   distinct block a **single conversion point**: the first page that uses it
   CONVERTS it, every later page REUSES it by name. The per-page `convert`/`reuse`
@@ -190,6 +193,7 @@ Walk `plan.json.steps` in order (representative pages first). For each page:
    ```bash
    node skills/rollout/scripts/update-coverage.mjs <slug> --status converting
    node skills/rollout/scripts/update-coverage.mjs --block <id> --status converted --eds-name <name>
+   node skills/rollout/scripts/update-coverage.mjs --block <id> --status converted --eds-name default-content   # maps to default content, no block
    node skills/rollout/scripts/update-coverage.mjs <slug> --status deployed --url <branch-preview-url>
    node skills/rollout/scripts/update-coverage.mjs <slug> --status content-pending   # no document push
    ```

@@ -56,7 +56,7 @@
             },
             "edsBlockName": {
               "type": ["string", "null"],
-              "description": "Canonical EDS block name this block was converted to (blocks/<name>/). The dedup target."
+              "description": "Canonical EDS block name this block was converted to (blocks/<name>/). The dedup target. `default-content` records a module mapped to EDS default content (no block needed); such a row is never counted pending, whatever its status."
             },
             "blockPath": { "type": ["string", "null"], "description": "Delivered block path / fragment path." },
             "convertedAt": { "type": ["string", "null"], "format": "date-time" }

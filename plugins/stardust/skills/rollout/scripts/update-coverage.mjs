@@ -10,6 +10,8 @@
  * Block:  node update-coverage.mjs --block <id> --status <s> [--eds-name <name>]
  *   page  <status>: pending | converting | deployed | verified | stale | failed
  *   block <status>: pending | converted | deployed | verified | failed
+ *   A module mapped to EDS default content (no block needed) is recorded
+ *   `--block <id> --status converted --eds-name default-content`; it is never counted pending.
  *
  * Re-derives templates.json + rollout.json roll-ups after every write.
  *

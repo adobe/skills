@@ -22,7 +22,7 @@
  */
 import { join } from 'node:path';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
-import { readJSON, writeJSON } from './lib.mjs';
+import { readJSON, writeJSON, blockCounts } from './lib.mjs';
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
@@ -157,7 +157,7 @@ const snapshot = {
     const members = model.filter((p) => p.templateId === t.id);
     return { id: t.id, archetype: t.representativeSlug, pageCount: members.length, stages: STAGES.reduce((m, s) => { m[s] = members.filter((p) => p.stage === s).length; return m; }, {}) };
   }),
-  blocks: { total: blocks.length, converted: blocks.filter((b) => ['converted', 'deployed', 'verified'].includes(b.delivery && b.delivery.status)).length },
+  blocks: { total: blocks.length, converted: blockCounts(blocks).converted },
   quality: scorecard ? { overall: scorecard.current.overall, dimensions: scorecard.current.dimensions, severity: scorecard.current.severity, history: (scorecard.history || []).map((h) => h.overall) } : null,
   findings: { byFixability: countBy(open, (f) => f.fixability), byAutofix: countBy(open.filter((f) => f.autofix && f.autofix.available), (f) => f.autofix.status) },
 };

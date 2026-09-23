@@ -74,9 +74,18 @@ export function pageCounts(pages) {
   };
 }
 
-/** Block conversion counts from coverage/blocks.json rows. */
+/**
+ * The `edsBlockName` that records a module mapped to EDS default content (title, text, image,
+ * button, separator — deploy's D1): the mapping is the resolved decision and there is no block to
+ * build, so such a row is never pending whatever its status. A recorded hands-off run left four of
+ * them at `status: pending` and the block roll-up read a finished, verified site as unfinished.
+ */
+export const DEFAULT_CONTENT = 'default-content';
+export const isDefaultContent = (b) => !!(b && b.delivery && b.delivery.edsBlockName === DEFAULT_CONTENT);
+
+/** Block conversion counts from coverage/blocks.json rows; a default-content mapping counts as converted. */
 export function blockCounts(blocks) {
-  const converted = blocks.filter((b) => ['converted', 'deployed', 'verified']
+  const converted = blocks.filter((b) => isDefaultContent(b) || ['converted', 'deployed', 'verified']
     .includes(b.delivery && b.delivery.status)).length;
   return { total: blocks.length, converted, pending: blocks.length - converted };
 }
