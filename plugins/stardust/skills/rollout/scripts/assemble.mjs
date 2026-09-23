@@ -9,11 +9,24 @@
  * fragments is deploy's job (this only prepares + records what to push).
  *
  * Usage: node skills/rollout/scripts/assemble.mjs [--out <rolloutDir>] [--canon <dir>]
+ *   defaults: --out stardust/rollout  --canon stardust/canon
+ *
+ * Reads <out>/coverage/pages.json (required — run inventory.mjs first), coverage/blocks.json
+ * and rollout.json. Writes (under <out>/site/): sitemap.xml, robots.txt, manifest.json
+ * (fragments list with their canon source and delivery status). Exit 1 when pages.json is missing.
  */
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { readJSON, writeJSON } from './lib.mjs';
 import { writeFileSync, mkdirSync } from 'node:fs';
+
+// --help prints this file's usage header, so an agent never reads the source to learn the flags.
+if (process.argv.includes('--help') || process.argv.includes('-h')) {
+  const src = readFileSync(new URL(import.meta.url), 'utf8');
+  const header = src.match(/\/\*\*[\s\S]*?\*\//);
+  console.log(header ? header[0].replace(/^\/\*\*\s*|\s*\*\/$/g, '').replace(/^\s*\* ?/gm, '').trim() : 'no usage header');
+  process.exit(0);
+}
 
 function arg(name, fallback) { const i = process.argv.indexOf(`--${name}`); return i !== -1 && process.argv[i + 1] ? process.argv[i + 1] : fallback; }
 const OUT = arg('out', 'stardust/rollout');

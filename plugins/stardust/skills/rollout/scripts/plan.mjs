@@ -13,11 +13,24 @@
  * Chrome (header/nav/footer) loads as site-wide authored documents (/nav, /footer), so it is listed
  * once under `fragments`, not per page.
  *
- * Writes stardust/rollout/plan.json and prints a readable plan.
  * Usage: node skills/rollout/scripts/plan.mjs [--out <rolloutDir>] [--pending-only]
+ *   --out defaults to stardust/rollout; --pending-only lists only pages not yet delivered
+ *
+ * Reads <out>/coverage/pages.json and coverage/blocks.json (both required — run inventory.mjs
+ * then blocks.mjs first) and coverage/templates.json. Writes <out>/plan.json and prints the
+ * readable plan on stdout. Exit 1 when an input is missing.
  */
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { readJSON, writeJSON } from './lib.mjs';
+
+// --help prints this file's usage header, so an agent never reads the source to learn the flags.
+if (process.argv.includes('--help') || process.argv.includes('-h')) {
+  const src = readFileSync(new URL(import.meta.url), 'utf8');
+  const header = src.match(/\/\*\*[\s\S]*?\*\//);
+  console.log(header ? header[0].replace(/^\/\*\*\s*|\s*\*\/$/g, '').replace(/^\s*\* ?/gm, '').trim() : 'no usage header');
+  process.exit(0);
+}
 
 const OUT = (() => { const i = process.argv.indexOf('--out'); return i !== -1 && process.argv[i + 1] ? process.argv[i + 1] : 'stardust/rollout'; })();
 const PENDING_ONLY = process.argv.includes('--pending-only');

@@ -37,6 +37,8 @@
  *                        texts (⚪ advisory). Shared instrument: ew-editability-probe.mjs.
  *     --json             dump per-block inventories (+ the editability survey)
  *
+ * Writes: nothing — the verdict (and the --json dump) goes to stdout.
+ *
  * EW contract in two sentences (deploy SKILL.md § Experience Workspace editability
  * contract, EW1–EW10): the workspace stamps an index on every authored text element,
  * runs the page's own decorate() over it, and can only attach an editor to an element
@@ -66,6 +68,14 @@ import fs from 'fs';
 import { resolveProfile } from './diff-profiles.mjs';
 import { inventory, diffInventories, summarise } from './content-inventory.mjs';
 import { EDITABLE, runtimeMimic, instrument, survey, installBlockJs, runDecorate, readBlockExemptions, aggregate } from './ew-editability-probe.mjs';
+
+// --help prints this file's usage header, so an agent never reads the source to learn the flags.
+if (process.argv.includes('--help') || process.argv.includes('-h')) {
+  const src = fs.readFileSync(new URL(import.meta.url), 'utf8');
+  const header = src.match(/\/\*\*[\s\S]*?\*\//);
+  console.log(header ? header[0].replace(/^\/\*\*\s*|\s*\*\/$/g, '').replace(/^\s*\* ?/gm, '').trim() : 'no usage header');
+  process.exit(0);
+}
 
 function parseArgs(argv) {
   const [, , proto, content, ...rest] = argv;

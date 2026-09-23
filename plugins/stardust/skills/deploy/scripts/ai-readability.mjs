@@ -20,6 +20,7 @@
  *        [--exclude-blocks client-app,widget,form] [--allowlist file.json] [--json out.json] [--verbose]
  *
  * Exit 1 when any page's code score is below --min; 2 on infrastructure failure.
+ * Writes: nothing unless --json <file> is given (the per-page results as JSON); the report is stdout.
  * Allowlist: [{ "block": "location-finder", "string": "N locations", "reason": "…" }] — a runtime
  * value the block is allowed to generate; its words are removed from that block's servedGap and
  * from the code denominator. Entries name a block and a string, never a page.
@@ -175,6 +176,13 @@ export async function scorePage(context, origin, path, { excludeBlocks = [], all
 /* --------------------------------------------------------------------- CLI -- */
 const isMain = process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url;
 if (isMain) {
+  // --help prints this file's usage header, so an agent never reads the source to learn the flags.
+  if (process.argv.includes('--help') || process.argv.includes('-h')) {
+    const src = readFileSync(new URL(import.meta.url), 'utf8');
+    const header = src.match(/\/\*\*[\s\S]*?\*\//);
+    console.log(header ? header[0].replace(/^\/\*\*\s*|\s*\*\/$/g, '').replace(/^\s*\* ?/gm, '').trim() : 'no usage header');
+    process.exit(0);
+  }
   const args = process.argv.slice(2);
   const opt = (n, d) => { const i = args.indexOf(n); return i >= 0 ? args.splice(i, 2)[1] : d; };
   const has = (n) => { const i = args.indexOf(n); if (i >= 0) { args.splice(i, 1); return true; } return false; };

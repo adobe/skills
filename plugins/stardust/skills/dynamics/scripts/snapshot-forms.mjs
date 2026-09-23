@@ -8,10 +8,24 @@
  * Feeds the definition-driven form block (reference/forms.md).
  *
  *   node snapshot-forms.mjs --urls <url,url> [--out data/forms] [--exclude "<extra selectors to skip>"] [--settle 3000]
+ *
+ * Writes (under --out, default data/forms): <name>.json per URL that has content-area
+ * controls — <name> is the slug of the URL's last path segment ("form" for a root URL);
+ * the definition carries _provenance {source, settleMs}. Per-URL lines go to stderr.
+ * Exit 0 on completion, 2 on usage.
  */
 /* eslint-disable no-await-in-loop, no-restricted-syntax, max-len */
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { arg, list, writeJSON, provenance, loadPlaywright, settlePage, slug } from './lib.mjs';
+
+// --help prints this file's usage header, so an agent never reads the source to learn the flags.
+if (process.argv.includes('--help') || process.argv.includes('-h')) {
+  const src = readFileSync(new URL(import.meta.url), 'utf8');
+  const header = src.match(/\/\*\*[\s\S]*?\*\//);
+  console.log(header ? header[0].replace(/^\/\*\*\s*|\s*\*\/$/g, '').replace(/^\s*\* ?/gm, '').trim() : 'no usage header');
+  process.exit(0);
+}
 
 const URLS = list(arg('urls', ''));
 if (!URLS.length) { console.error('usage: snapshot-forms.mjs --urls <url,…> [--out data/forms]'); process.exit(2); }

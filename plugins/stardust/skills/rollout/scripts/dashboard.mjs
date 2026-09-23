@@ -13,12 +13,24 @@
  * optimize (optimised = verified & no open findings). Template archetypes (the
  * pages that define a template for their siblings) are marked distinctly.
  *
- * Emits dashboard/index.html (self-contained, no external JS) + dashboard/data.json.
- * Usage: node skills/rollout/scripts/dashboard.mjs [--out <rolloutDir>]
+ * Usage: node skills/rollout/scripts/dashboard.mjs [--out <rolloutDir>]   (default stardust/rollout)
+ *
+ * Reads <out>/coverage/pages.json (required — run inventory.mjs first), coverage/templates.json,
+ * coverage/blocks.json, optimize/findings.json, optimize/scorecard.json, rollout.json and
+ * <out>/../state.json when present. Writes (under <out>/dashboard/): index.html (self-contained,
+ * no external JS) and data.json. Exit 1 when pages.json is missing.
  */
 import { join } from 'node:path';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { readJSON, writeJSON } from './lib.mjs';
+
+// --help prints this file's usage header, so an agent never reads the source to learn the flags.
+if (process.argv.includes('--help') || process.argv.includes('-h')) {
+  const src = readFileSync(new URL(import.meta.url), 'utf8');
+  const header = src.match(/\/\*\*[\s\S]*?\*\//);
+  console.log(header ? header[0].replace(/^\/\*\*\s*|\s*\*\/$/g, '').replace(/^\s*\* ?/gm, '').trim() : 'no usage header');
+  process.exit(0);
+}
 
 const i = process.argv.indexOf('--out');
 const OUT = i !== -1 && process.argv[i + 1] ? process.argv[i + 1] : 'stardust/rollout';

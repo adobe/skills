@@ -42,6 +42,9 @@
  *                  (run the plain pass first; --check is the pre-deploy assertion)
  *   --json         machine-readable summary
  *
+ * Writes: the rewritten *.html files IN PLACE under --content (nothing with
+ * --dry-run or --check; the summary is stdout).
+ *
  * Exit codes: 0 clean (or rewritten), 2 --check found localizable links,
  * 1 usage/IO error. Dependency-free (regex over the authored HTML, the same
  * technique as davids-model-lint.mjs — content pages are machine-generated).
@@ -171,6 +174,13 @@ function processFile(file, ctx) {
 // --------------------------------------------------------------------- main
 
 function main() {
+  // --help prints this file's usage header, so an agent never reads the source to learn the flags.
+  if (process.argv.includes('--help') || process.argv.includes('-h')) {
+    const src = readFileSync(new URL(import.meta.url), 'utf8');
+    const header = src.match(/\/\*\*[\s\S]*?\*\//);
+    console.log(header ? header[0].replace(/^\/\*\*\s*|\s*\*\/$/g, '').replace(/^\s*\* ?/gm, '').trim() : 'no usage header');
+    process.exit(0);
+  }
   const opts = parseArgs(process.argv);
   const hosts = opts.hosts.map(bareHost);
   const files = collectHtml(opts.content);

@@ -49,17 +49,57 @@
  * Usage:
  *   node crawl.mjs --url https://example.com [--pages a,b,c] [--max 25] \
  *     [--out stardust/current] [--wait medium] [--no-consent-dismiss] \
- *     [--concurrency 4]
+ *     [--concurrency 4] [--dynamics]
+ *     --url <url>             required; the entry page — its origin scopes discovery
+ *     --pages a,b,c           crawl exactly these paths/URLs (resolved against --url; the entry
+ *                             is added) instead of discovering via sitemap / same-origin nav links
+ *     --max <n>               discovery cap (default 25; listed --pages are never dropped)
+ *     --out <dir>             output root (default stardust/current)
+ *     --wait fast|medium|slow settle after load: 1200 / 2500 / 5000 ms (default medium)
+ *     --no-consent-dismiss    do not auto-dismiss consent overlays before capture
+ *     --concurrency <n>       parallel browser contexts (default 4)
+ *     --dynamics              also record each page's dynamic surface (network endpoints, forms,
+ *                             hydration hints) — set by the calling skill, off by default
+ *
+ * Writes (everything under --out; nothing outside it):
+ *   pages/<slug>.json              one record per captured page — slug, url, finalUrl, title,
+ *                                  description, og, headings, body, codeBlocks, ctas, links,
+ *                                  media {imgs, allImgCount, cssBackgrounds, modals, videos,
+ *                                  iframes}, customProps (CSS custom properties resolved on
+ *                                  :root), _signals, _provenance, renderedHtml, screenshot
+ *                                  (+ `dynamic` with --dynamics; `_signals.duplicateOf` marks a
+ *                                  page whose main content hashes equal to an earlier page's)
+ *   pages/<slug>.html              the settled rendered DOM, verbatim (parse offline — never re-scrape)
+ *   assets/screenshots/<slug>.png  full-page screenshot (viewport-only on very tall pages;
+ *                                  `_signals.screenshotMode` says which)
+ *   assets/favicon.<ext>           the site icon from <link rel~=icon> or /favicon.ico, <ext> from
+ *                                  its content-type — the ONLY media file this crawler downloads
+ *   _crawl-log.json                discovery technique + page count, consent mode, favicon result,
+ *                                  per-URL failures, slash retries (+ `dynamicSurface` with
+ *                                  --dynamics); merged into an existing log, never replaced
+ * Not captured here: page images and videos (recorded as URLs under `media`, never downloaded),
+ * stylesheets, font files, the logo and the rest of the brand surface — those belong to the
+ * extract skill's Phase 3 (brand-surface extraction), not to the crawl; do not look for them
+ * under --out after a crawl. Progress lines go to stderr. Exit 0 on completion, 2 on a fatal
+ * error (unknown or missing arguments included).
  *
  * Needs playwright importable from the project (see extract/SKILL.md Setup —
  * `npm i -D playwright` or the Playwright MCP server; the `npx playwright`
  * availability probe alone does NOT make the ESM module importable).
  */
 import { mkdir, writeFile, readFile } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { chromium } from 'playwright';
+
+// --help prints this file's usage header, so an agent never reads the source to learn the flags.
+if (process.argv.includes('--help') || process.argv.includes('-h')) {
+  const src = readFileSync(new URL(import.meta.url), 'utf8');
+  const header = src.match(/\/\*\*[\s\S]*?\*\//);
+  console.log(header ? header[0].replace(/^\/\*\*\s*|\s*\*\/$/g, '').replace(/^\s*\* ?/gm, '').trim() : 'no usage header');
+  process.exit(0);
+}
 
 const WAIT_MS = { fast: 1200, medium: 2500, slow: 5000 };
 
