@@ -46,8 +46,11 @@ gracefully, log it as a content gap — do NOT invent filler.
 The #1 recurring defect at scale: an authored external image URL the preview
 ingester can't fetch delivers as `<img src="about:error">` — a silent break that
 "it renders" hides. The systematic resolver is `media-reconcile.mjs` (it decides
-optimize/keep/rewrite/omit per image and can `--apply` the fix); the manual
-form, for a single image, is a 200 check:
+optimize/keep/rewrite/omit per image and can `--apply` the fix). Content-host URLs
+(`content.da.live`) are its `hosted` decision: verified offline against
+`stardust/deploy/media-ledger.json`, never anonymously fetched (a `401` there is by
+design); missing from the ledger fails the gate. The manual form, for a single
+image, is a 200 check:
 
 ```bash
 node skills/rollout/scripts/media-reconcile.mjs --file <html> --deploy-host <host>   # all images
