@@ -16,14 +16,18 @@ re-written whenever a step outlives the five-minute prompt cache.
 
 - **`replica/scripts/run-bg.mjs`** (new): `start` detaches an instrument under `run-capped`
   (900 s default) behind a first-come slot cap; `wait` returns within `--max` (100 s, ceiling
-  110 s — the shell tool's own limit is about two minutes) with one line per job plus its verdict
+  110 s — inside the shell tool's default timeout of about two minutes, which applies only to a
+  call that declares none; a declared longer timeout is honoured, and a recorded run completed
+  waits of 179–181 s under a declared 200 s) with one line per job plus its verdict
   lines only, exit 75 while jobs are still going; `log --grep` reads the rest from
   `stardust/.work/replica/bg/<job>.log`; `wait`/`status` with no names report the latest batch.
   Recorded: one gate batch — three parallel steps, each `sleep 5|10|15;` then two rounds —
   blocked for 15 minutes and the next call re-wrote a 513k-token context, $6.30 for one silent
   gap, while every other gap in that session stayed under 184 s at a 96 % cache-hit ratio.
-  Slots default to 2 (`RUN_BG_SLOTS`, else `STARDUST_BROWSER_SLOTS`): each capture is a Chromium
-  and a `gate.sh --full` round holds three at its peak. Job liveness is checked against the
+  Slots default to 3 (env override: `RUN_BG_SLOTS`, else `STARDUST_BROWSER_SLOTS`, lowers it on a
+  small machine or raises it on a large one): each capture is a Chromium and a `gate.sh --full`
+  round holds three at its peak, yet at 3 slots a recorded hands-off fan-out still queued 84 of
+  272 jobs for more than 10 s (90th percentile 78 s). Job liveness is checked against the
   wrapper's recorded process identity, never a bare PID (a recycled PID after a reboot read
   "running" forever and `clean --all` would have signalled a stranger); the wrapper is the only
   writer of its state file after spawn; `clean --all` escalates to SIGKILL on the process group.

@@ -287,7 +287,8 @@ otherwise):
   session.)
   The harness-neutral form of the same rule is replica's `run-bg.mjs`:
   `start` detaches the instrument, `wait` returns within `--max` (default
-  100 s, never past the tool's own ~2-minute limit) with verdict lines
+  100 s, ceiling 110 s — inside the shell tool's ~2-minute default timeout,
+  which applies only to a call that declares none) with verdict lines
   only, exit 75 = still going, `wait` again as the NEXT call — never in a
   shell loop, never after a `sleep`. The rule binds the main agent as it
   binds subagents: one long instrument in the foreground, or two long

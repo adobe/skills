@@ -32,9 +32,9 @@
 #            or a chrome delta, 1 when a probe errored (it gave no verdict), 0 only
 #            when all four ran and passed.
 #            Concurrency: a --full round holds up to THREE Chromiums at its peak
-#            (the three probes in parallel), so under run-bg's default two slots
-#            that is six — the machine budget. Do not raise RUN_BG_SLOTS for --full
-#            rounds; start them all and let the slots pace them.
+#            (the three probes in parallel), so run-bg's default three slots can
+#            hold nine; RUN_BG_SLOTS lowers that on a small machine. Start the
+#            rounds all at once and let the slots pace them — no sleep staggering.
 #   --main <selector>   content root for the diff probes (default: main)
 #   --no-dismiss        do not dismiss consent/marketing overlays on the probes
 #

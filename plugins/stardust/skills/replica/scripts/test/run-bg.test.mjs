@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // skills/replica/scripts/test/run-bg.test.mjs — the run-bg.mjs contract: detached start, FIFO
-// concurrency slots (default 2), bounded wait (exit 75 while jobs are going; --max clamped to 110), instrument
+// concurrency slots (default 3), bounded wait (exit 75 while jobs are going; --max clamped to 110), instrument
 // deadline (124), verdict-line extraction, duplicate-name refusal, pid identity (a recycled pid is lost, holds no
 // slot, is never signalled), the value-flag swallow rule, log/clean (--all stops wrapper + instrument).
 // Run: node plugins/stardust/skills/replica/scripts/test/run-bg.test.mjs   (about 10 s)
@@ -108,24 +108,25 @@ await check('wait names an unknown job instead of hanging on it', () => {
   assert.equal(r.code, 0); assert.match(r.out, /^ghost {2}no such job/m);
 });
 await check(`--max above ${MAX_CEILING_SEC} s is clamped and says why`, () => {
-  assert.equal(MAX_CEILING_SEC, 110, 'the agent\'s shell tool kills a foreground command at about two minutes; 110 s leaves startup and the report their room');
+  assert.equal(MAX_CEILING_SEC, 110, 'the agent\'s shell tool\'s default timeout is about two minutes and applies only to a call that declares none; 110 s returns inside it even when none is declared');
   assert.equal(bg('start', '--name', 'z', '--', 'true').code, 0);
   const r = bg('wait', '--max', '9999', 'z');
-  assert.equal(r.code, 0); assert.match(r.err, /--max 9999 clamped to 110s — the agent's shell tool kills a foreground command at about two minutes and returns nothing from it; 110 s leaves startup and the report their room/);
+  assert.equal(r.code, 0); assert.match(r.err, /--max 9999 clamped to 110s — the agent's shell tool's default timeout is about two minutes and applies to a call that declares none; 110 s returns inside it and leaves startup and the report their room/);
   const r200 = bg('wait', '--max', '200', 'z');
   assert.equal(r200.code, 0); assert.match(r200.err, /--max 200 clamped to 110s/);
   const r111 = bg('wait', '--max', '111', 'z');
-  assert.equal(r111.code, 0); assert.match(r111.err, /--max 111 clamped to 110s/, 'the former 179 s would die with the shell tool');
+  assert.equal(r111.code, 0); assert.match(r111.err, /--max 111 clamped to 110s/, 'the former 180 s ceiling outlived the shell tool\'s default timeout whenever the call declared none');
   const r110 = bg('wait', '--max', '110', 'z');
   assert.equal(r110.code, 0); assert.equal(r110.err, '', 'a --max at or under the ceiling is not clamped');
 });
 await check(`slots default to ${DEFAULT_SLOTS} — RUN_BG_SLOTS, else STARDUST_BROWSER_SLOTS, else ${DEFAULT_SLOTS}`, () => {
-  assert.equal(DEFAULT_SLOTS, 2, 'each capture is a Chromium and a gate.sh --full round holds three: two slots is the machine budget');
-  assert.equal(bg('start', '--name', 'd0', '--', 'true').code, 0); assert.equal(state('d0').slots, 2);
+  assert.equal(DEFAULT_SLOTS, 3, 'each capture is a Chromium and a gate.sh --full round holds three, yet at 3 slots a recorded fan-out still queued 84 of 272 jobs for more than 10 s: 3 is the default, the env moves it');
+  assert.equal(bg('start', '--name', 'd0', '--', 'true').code, 0); assert.equal(state('d0').slots, 3);
   assert.equal(run({ STARDUST_BROWSER_SLOTS: '4' }, 'start', '--name', 'd1', '--', 'true').code, 0); assert.equal(state('d1').slots, 4);
+  assert.equal(run({ RUN_BG_SLOTS: '2' }, 'start', '--name', 'd4', '--', 'true').code, 0); assert.equal(state('d4').slots, 2, 'RUN_BG_SLOTS alone overrides the default');
   assert.equal(run({ STARDUST_BROWSER_SLOTS: '4', RUN_BG_SLOTS: '1' }, 'start', '--name', 'd2', '--', 'true').code, 0); assert.equal(state('d2').slots, 1);
   assert.equal(run({ RUN_BG_SLOTS: '1' }, 'start', '--name', 'd3', '--slots', '5', '--', 'true').code, 0); assert.equal(state('d3').slots, 5, '--slots wins over the env');
-  assert.equal(bg('wait', '--max', '10', 'd0', 'd1', 'd2', 'd3').code, 0);
+  assert.equal(bg('wait', '--max', '10', 'd0', 'd1', 'd2', 'd3', 'd4').code, 0);
 });
 await check('a wrapper killed without an exit is reported lost, not running', async () => {
   assert.equal(bg('start', '--name', 'lost', '--', process.execPath, '-e', 'setTimeout(()=>{},1500)').code, 0);

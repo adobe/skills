@@ -33,21 +33,28 @@
  *        (default --timeout 900 s — a background job without a deadline is the
  *        hang class run-capped exists for; 0 disables) in its own process
  *        group, stdout+stderr in <dir>/<job>.log, state in <dir>/<job>.json.
- *        --slots (default 2; env RUN_BG_SLOTS, else STARDUST_BROWSER_SLOTS) is a
+ *        --slots (default 3; env RUN_BG_SLOTS, else STARDUST_BROWSER_SLOTS) is a
  *        soft concurrency cap: a job waits, first come first served, until fewer
- *        than that many jobs are running. Each capture is a Chromium, and one
- *        `gate.sh --full` round holds three of them at its peak (the three probes
- *        run in parallel), so two slots — up to six Chromiums — is the machine
- *        budget. Start the jobs all at once and let the slots pace them — no
- *        `sleep N;` staggering, and do not raise the slots for --full rounds.
+ *        than that many jobs are running. Both sides of the number: each capture
+ *        is a Chromium and one `gate.sh --full` round holds three of them at its
+ *        peak (the three probes run in parallel), so the cap bounds the Chromiums
+ *        at three per slot; yet at 3 slots a recorded hands-off fan-out (several
+ *        subagents and the main agent on one pool) still queued 84 of its 272 jobs
+ *        for more than 10 s (90th percentile 78 s, longest 210 s) with no memory
+ *        pressure. So 3 is the default; RUN_BG_SLOTS lowers it on a small machine
+ *        or raises it on a large one. Start the jobs all at once and let the
+ *        slots pace them — no `sleep N;` staggering.
  * wait   polls until the named jobs (default: every job unfinished when the
  *        wait began; if none, the latest batch — jobs ended within 10 min of the
  *        newest; --all: every job on disk) have ended, or --max seconds pass
- *        (default 100; clamped to 110 — the agent's shell tool kills a foreground
- *        command at about two minutes and returns nothing from it, so a wait that
- *        could run 180 s died with no output; 110 s leaves node startup and the
- *        report their room, and still returns well inside the context cache's
- *        five minutes from the start of the previous model request), then prints
+ *        (default 100; clamped to 110 — the agent's shell tool's default timeout
+ *        is about two minutes and applies only to a call that declares none, so
+ *        110 s returns inside that default even when the agent forgets to declare
+ *        one; a declared longer timeout is honoured — a recorded run completed
+ *        waits of 179–181 s under a declared 200 s. 110 s also leaves node
+ *        startup and the report their room, and still returns well inside the
+ *        context cache's five minutes from the start of the previous model
+ *        request), then prints
  *        one line per job and, for ended jobs, its verdict lines: log lines
  *        matching --grep (default: the gate instruments' verdict vocabulary),
  *        else the last --tail (8) lines.
@@ -97,13 +104,16 @@ import { DEADLINE_EXIT, runCapped } from './run-capped.mjs';
 
 export const DEFAULT_DIR = 'stardust/.work/replica/bg';
 export const DEFAULT_TIMEOUT_SEC = 900;
-// Each capture is a Chromium and a `gate.sh --full` round holds three at its peak: two slots = up to six Chromiums,
-// the machine budget. RUN_BG_SLOTS, else STARDUST_BROWSER_SLOTS, else this.
-export const DEFAULT_SLOTS = 2;
+// Each capture is a Chromium and a `gate.sh --full` round holds three at its peak, so the cap bounds the Chromiums at
+// three per slot — yet at 3 slots a recorded hands-off fan-out still queued 84 of 272 jobs for more than 10 s (90th
+// percentile 78 s), so 3 is the default. RUN_BG_SLOTS, else STARDUST_BROWSER_SLOTS, lowers it on a small machine or
+// raises it on a large one.
+export const DEFAULT_SLOTS = 3;
 export const DEFAULT_MAX_SEC = 100;
-// The agent's shell tool kills a foreground command at about two minutes and returns nothing from it — a wait that
-// could run 180 s died with no output. 110 s leaves node startup and the report their room, and still returns inside
-// the context cache's five minutes from the start of the previous model request.
+// The agent's shell tool's default timeout is about two minutes and applies only to a call that declares none: 110 s
+// returns inside that default even when the agent forgets to declare one, and a declared longer timeout is honoured
+// (a recorded run completed waits of 179–181 s under a declared 200 s). 110 s also leaves node startup and the report
+// their room, and still returns inside the context cache's five minutes from the start of the previous model request.
 export const MAX_CEILING_SEC = 110;
 export const DEFAULT_TAIL = 8;
 export const STILL_RUNNING_EXIT = 75;
@@ -303,7 +313,7 @@ function pickNames(dir, requested, { all = false } = {}) {
 export async function wait(dir, requested, { maxSec = DEFAULT_MAX_SEC, tail, grep, all = false } = {}) {
   if (!Number.isFinite(maxSec) || maxSec < 0) throw new UsageError(`run-bg: --max must be a number of seconds\n${HELP}`);
   let ceilingSec = maxSec;
-  if (maxSec > MAX_CEILING_SEC) { ceilingSec = MAX_CEILING_SEC; console.error(`run-bg: --max ${maxSec} clamped to ${MAX_CEILING_SEC}s — the agent's shell tool kills a foreground command at about two minutes and returns nothing from it; ${MAX_CEILING_SEC} s leaves startup and the report their room (and a step must still return before the context cache expires)`); }
+  if (maxSec > MAX_CEILING_SEC) { ceilingSec = MAX_CEILING_SEC; console.error(`run-bg: --max ${maxSec} clamped to ${MAX_CEILING_SEC}s — the agent's shell tool's default timeout is about two minutes and applies to a call that declares none; ${MAX_CEILING_SEC} s returns inside it and leaves startup and the report their room (a declared longer timeout is honoured, but a step must still return before the context cache expires)`); }
   const { names, hidden } = pickNames(dir, requested, { all });
   const t0 = Date.now();
   for (;;) {
