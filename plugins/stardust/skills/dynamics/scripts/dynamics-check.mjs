@@ -7,11 +7,16 @@
  * actually plays), never because a block rendered.
  *
  * Input: `stardust/dynamics/parity.json` (reference/parity-report.md) — per feature
- * a `checks[]` list from the closed set below. Output: `stardust/qa/dynamics-report.md`
- * + `.json`. Also exported as `replay()` for the qa `dynamics` check.
+ * a `checks[]` list from the closed set below. Also exported as `replay()` for the
+ * qa `dynamics` check.
  *
  *   node dynamics-check.mjs --origin https://main--site--org.aem.live [--parity stardust/dynamics/parity.json]
  *        [--out stardust/qa] [--auth-header "token …" | --token-env SITE_TOKEN] [--headed]
+ *
+ * Writes (under --out, default stardust/qa):
+ *   dynamics-report.md     one row per replayed check (PASS/FAIL, detail, third-party requests)
+ *   dynamics-report.json   the same results with _provenance
+ * Progress lines go to stderr. Exit 0 when every check passed, 1 otherwise, 2 on usage.
  *
  * Check types (* = required):
  *   fetch-json     { url*, minRows?, expectKeys? }                 GET on the origin returns JSON with rows / keys
@@ -26,6 +31,7 @@
  * probe-induced failure is distinguishable from a vendor restriction.
  */
 /* eslint-disable no-await-in-loop, no-restricted-syntax, max-len */
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { arg, flag, readJSON, writeJSON, writeText, provenance, loadPlaywright, resolveAuthHeader, attachOriginAuth, sameSite } from './lib.mjs';
 
@@ -146,6 +152,13 @@ export async function replay({ origin, parity, authHeader = null, headed = false
 
 /* ---------------------------------------------------------------- cli ---- */
 if (process.argv[1] && process.argv[1].endsWith('dynamics-check.mjs')) {
+  // --help prints this file's usage header, so an agent never reads the source to learn the flags.
+  if (process.argv.includes('--help') || process.argv.includes('-h')) {
+    const src = readFileSync(new URL(import.meta.url), 'utf8');
+    const header = src.match(/\/\*\*[\s\S]*?\*\//);
+    console.log(header ? header[0].replace(/^\/\*\*\s*|\s*\*\/$/g, '').replace(/^\s*\* ?/gm, '').trim() : 'no usage header');
+    process.exit(0);
+  }
   const origin = (arg('origin') || '').replace(/\/$/, '');
   if (!origin) { console.error('usage: dynamics-check.mjs --origin <published origin> [--parity stardust/dynamics/parity.json]'); process.exit(2); }
   const parityFile = arg('parity', 'stardust/dynamics/parity.json');

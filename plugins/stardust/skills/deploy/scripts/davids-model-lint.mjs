@@ -21,6 +21,7 @@
  *
  * Exit codes: 0 = clean (🟡 advisories allowed — review, fix or justify in the
  * conversion log), 2 = at least one 🔴, 1 = usage/parse failure.
+ * Writes: nothing — findings and the PASS/FAIL line go to stdout.
  *
  * 🔴 (block the write)                      🟡 (advisory)
  *   D1  wrapper block around default content   D1  block section with no repeating
@@ -41,6 +42,14 @@
  */
 import { readFileSync, readdirSync, statSync } from 'fs';
 import path from 'path';
+
+// --help prints this file's usage header, so an agent never reads the source to learn the flags.
+if (process.argv.includes('--help') || process.argv.includes('-h')) {
+  const src = readFileSync(new URL(import.meta.url), 'utf8');
+  const header = src.match(/\/\*\*[\s\S]*?\*\//);
+  console.log(header ? header[0].replace(/^\/\*\*\s*|\s*\*\/$/g, '').replace(/^\s*\* ?/gm, '').trim() : 'no usage header');
+  process.exit(0);
+}
 
 const WRAPPER_BLOCK_NAMES = new Set(['text', 'heading', 'title', 'image']);
 const KEY_VALUE_BLOCKS = new Set(['metadata', 'section-metadata']);

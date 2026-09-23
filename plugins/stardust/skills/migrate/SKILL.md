@@ -216,8 +216,11 @@ For each page in scope, follow
   once per template before cloning, `reference/fidelity-tiers.md` § Sibling
   variance probe; deltas become variant classes, never per-page forks),
   B/bodyless → `thin` — per `reference/fidelity-tiers.md`. Record
-  `fidelityTier`, `archetypeSource`, and `gatesPassed[]` in
-  `_meta.json` so coverage shows what was craft-gated vs cloned.
+  `fidelityTier`, `archetypeSource`, `template` (the archetype's slug;
+  the archetype's own sidecar leaves it null), `modules[]` (the page's
+  block ids — composite sections only) and `gatesPassed[]` in
+  `_meta.json` so coverage shows what was craft-gated vs cloned and
+  rollout groups and dedups from the sidecars, without a census.
 - **Render** per the chosen branch's procedure in T&M.
 - **Canon application** — chrome injection, canon.css
   injection, deviation logging.
@@ -277,6 +280,17 @@ For each page in scope, follow
   sidecar in the same directory. Provenance block as first
   child of `<head>`. Record `assetsBundled` (count of unique
   asset refs on this page) in `_meta.json`.
+
+The mechanics of this phase are scripted:
+`node skills/migrate/scripts/migrate.mjs render <slug…|--all>` (the
+project copy runs from `stardust/scripts/migrate/`) builds the page
+map, places each page at its URL-literal path, rewrites internal
+links, bundles assets, composes `<head>` (provenance, `:root`,
+canonical and JSON-LD defaults), validates strictly and writes the
+sidecar, skipping pages whose input shas are unchanged. The judgments
+it cannot make are recorded on the sidecar with `gate`, `deviation`,
+`decision`, `variant` and `modules` on the same script; it never
+advances `pages[].status`.
 
 ### Phase 3 — Sitewide assets and bundle finalisation
 
@@ -429,6 +443,12 @@ Next:
 | `stardust/migrated/robots.txt`                    | Minimal robots.txt.                                    |
 | `stardust/migrated/sitemap.xml`                   | Sitemap derived from migrated inventory + page types.  |
 | `stardust/state.json`                             | Updated with `migrated` status, history, and the `migrate` block (`selfContained: true`, asset counts). |
+
+The driver (`node stardust/scripts/migrate/migrate.mjs render …`) writes
+the per-page rows above (`index.html` / `<name>.html`, `_meta.json`,
+bundled `assets/**`) and the `migrate` block of `state.json` (`pageMap[]`,
+`bundledAssets[]`, `pages[]`, `missingAssets[]`, `lastRun`); status
+changes, robots.txt and sitemap.xml stay with Phases 3–4.
 
 ## Idempotent and incremental
 

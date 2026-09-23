@@ -100,7 +100,10 @@ node skills/rollout/scripts/plan.mjs     # → plan.json + a readable conversion
   `instanceCount`. Chrome (`header`/`nav`/`footer`) is `kind: chrome` → site-wide
   authored documents (`/nav`, `/footer`) fed to the header/footer blocks. In
   archetypes-only mode the archetype sidecars fully determine the
-  block set; `content-pending` pages add none.
+  block set; `content-pending` pages add none. A module that maps to EDS **default
+  content** (title, text, image, button, separator — deploy's D1) needs no block: record
+  it `update-coverage.mjs --block <id> --status converted --eds-name default-content`;
+  such a row is never counted pending, whatever its status.
 - `plan.mjs` orders pages **representative-first per template** and gives each
   distinct block a **single conversion point**: the first page that uses it
   CONVERTS it, every later page REUSES it by name. The per-page `convert`/`reuse`
@@ -138,6 +141,15 @@ Walk `plan.json.steps` in order (representative pages first). For each page:
    EW gate (`block-roundtrip --ew`) before it counts as delivered — a brief without
    it skipped the contract on 27/27 blocks of a real site.
 
+   **Deploy first, judge on the preview origin.** The local harness
+   (`build-harness.mjs` → `qa-gate.mjs`, `block-roundtrip.mjs --ew`) serves the
+   structural asserts only; every pixel or visual judgment — replica's
+   source-fidelity gate, the header/footer `crop-compare` bands, the deployed
+   eyeball — runs against the page's preview URL after `PUT → preview`, never
+   against the harness before the first PUT (deploy SKILL.md § Local QA before
+   deploy, § Step 10). A recorded delivery session iterated CSS against a local
+   harness pixel diff for its whole budget and delivered no page.
+
    **`content-pending` pages** (archetypes-only): no migrated HTML — skip the
    document push entirely (no shell/placeholder), record `content-pending`, surface
    as "awaiting content track." Their block code is already deployed via the
@@ -150,16 +162,21 @@ Walk `plan.json.steps` in order (representative pages first). For each page:
    `reference/delivery-lint.md`. **A P0/P1 blocks the PUT.**
    ```bash
    node skills/rollout/scripts/delivery-lint.mjs --file <html> --path </da/path>
-   node skills/rollout/scripts/media-reconcile.mjs --file <html> --deploy-host <branch>--<repo>--<owner>.aem.live [--apply]
+   node skills/rollout/scripts/media-reconcile.mjs --file <html> --deploy-host <branch>--<repo>--<owner>.aem.live [--media-ledger <file>] [--apply]
    ```
-   `media-reconcile` resolves every image on the network and decides
+   `media-reconcile` resolves every non-hosted image on the network and decides
    optimize/keep/rewrite/omit (`skills/migrate/reference/media-reconciliation.md`)
-   — the authoritative form of the image-fidelity gate below.
+   — the authoritative form of the image-fidelity gate below. A content-host URL
+   (`content.da.live`) is the `hosted` decision instead: checked offline against the
+   media ledger (`--media-ledger <file>`, auto-detected), never fetched anonymously
+   (`401` by design); missing from the ledger fails the gate.
 
 3. **Run the delivery gates** before flipping a page to `deployed`. Each is a
    one-line rule here; mechanics + helpers in `reference/delivery-gates.md`:
    - **Source-fidelity** — don't add sections the source lacks; never fabricate
      facts. `node skills/rollout/scripts/section-fidelity.mjs --file <html> --source <url>`
+     (a static outline check on the authored file — not replica's pixel
+     source-fidelity gate, which runs on the published origin after `deployed`)
    - **Image-fidelity** — every authored `<img>` src must return 200 or be omitted;
      never ship `<img src="about:error">`. Run `media-reconcile.mjs` (step 2).
    - **Path-safety** — normalize source paths to AEM-Edge-safe form (lowercase, no
@@ -176,6 +193,7 @@ Walk `plan.json.steps` in order (representative pages first). For each page:
    ```bash
    node skills/rollout/scripts/update-coverage.mjs <slug> --status converting
    node skills/rollout/scripts/update-coverage.mjs --block <id> --status converted --eds-name <name>
+   node skills/rollout/scripts/update-coverage.mjs --block <id> --status converted --eds-name default-content   # maps to default content, no block
    node skills/rollout/scripts/update-coverage.mjs <slug> --status deployed --url <branch-preview-url>
    node skills/rollout/scripts/update-coverage.mjs <slug> --status content-pending   # no document push
    ```
@@ -191,7 +209,9 @@ prototype, **plus computed-style invariants in a headless render** — grid
 containers compute `display: grid` (not stacked single-column), sections are
 full-bleed where the design says so, and the CTA/button classes are actually
 styled (per `stardust/runtime-contract.json`, `skills/deploy/SKILL.md`
-§ Runtime-detection probe). A wrong runtime assumption (block wrapper class,
+§ Runtime-detection probe). `deployed` means after PUT + preview: the gate's
+probes run against the page's preview URL, never a local harness — a
+pre-deploy harness pixel diff is NOT this gate. A wrong runtime assumption (block wrapper class,
 button classes) is silent and sitewide — typography still looks fine while
 every grid stacks. This one gate is the difference between fixing one page
 and rebuilding every template.
@@ -202,7 +222,9 @@ edits blocks — template clusters concurrently (non-overlapping pages),
 representative-first so blocks exist to be reused; then a **central deploy**
 per page; then background batches with a per-page OK/FAIL ledger, re-driving
 FAILs only. For clusters of 6–20+ siblings, the full flow is
-`reference/delivery-gates.md` § Batched delivery. The central deploy step
+`reference/delivery-gates.md` § Batched delivery (it also names the one
+variant where cluster agents deploy themselves — replica's Phase 5 fan-out,
+per-cluster deploy ledgers, lock-safe shared ledgers). The central deploy step
 should run the bundled, resumable driver rather than a serial loop:
 `node skills/deploy/scripts/deploy-batch.mjs --org <org> --repo <repo>
 --branch <branch> --content <dir>` (concurrency pool, persistent ledger that skips
@@ -213,6 +235,18 @@ of 5 minutes or more (the prompt-cache window) — the master skill's wait
 discipline; recorded batch waits of 9–10 minutes re-wrote a ~650k prefix each time.
 After a transient blip, re-run the same command — it re-drives only the FAILs.
 Then reconcile the ledger into coverage with `update-coverage.mjs`.
+**Foundation first:** lint AND commit `styles.css`, header/footer CSS and the
+contract file BEFORE the first agent spawns; no token or custom-property rename
+after fan-out (a recorded rename under three running agents cost seven
+coordination messages). **Disjoint clusters spawn concurrently** — a wave waits
+only on a real dependency (a recorded second wave idled 14 min behind an
+unrelated first). **Every tool call stays under 4 minutes, the main agent's
+included** (the prompt cache holds 5; calls of 5.2 and 6.6 min re-wrote the whole
+context, and so did one 338 s foreground turn on the main agent that ran a pixel
+loop beside a deploy-batch start + wait): a long instrument (gate rounds, pixel
+loops, Playwright captures, deploy batches) goes through `run-bg.mjs start`, and
+`wait` is the NEXT tool call — it returns within its `--max` (100 s by default); never two long instruments
+as parallel tool calls in one turn, never two `wait`s in one command.
 
 ### Phase D — Site assembly (whole-site artifacts)
 
@@ -226,7 +260,18 @@ and a fragments manifest mapping chrome blocks to the authored chrome documents
 (`deploy` authors + deploys the documents through the normal content chain —
 they MUST be published or the chrome 404s sitewide).
 **Redirects:** if Phase C's path-safety gate emitted `stardust/redirects.tsv`, wire
-it into the EDS redirects mechanism here so original inbound URLs don't 404.
+it into the EDS redirects mechanism here so original inbound URLs don't 404 — the
+redirects sheet at the content root (on a DA-backed site `/redirects.json`, columns
+Source / Destination; PUT through the admin API, then preview + publish it like a
+page). The root MUST answer: when the source root serves a page, deliver it as
+the root `index` document (the pipeline serves `/` from it — `/index` ≡ `/`;
+never also a `/` Source row, which would shadow it); only when the source root
+itself redirects (`curl -sI <source-url>`, follow the Location chain) does the
+sheet carry `/` and `/index.html` → the landing page. Then verify
+`curl -sIL https://<branch>--<repo>--<owner>.aem.page/` ends in 200: a 404 on
+`/` fails the whole delivery after every phase has passed (recorded — a sheet
+with a row for every `.html` path and
+none for `/`).
 
 ### Phase D2 — Dynamic features (`dynamics` Phases 4–5)
 
@@ -296,6 +341,18 @@ link **targets** a roster-driven batch misses
 - **The audit GETs each href against the LIVE tree.** Structural resolution
   against the ledger misses trailing-slash and case defects that only
   delivery exposes.
+- **Targets missing from the capture.** Two cases, both recorded in
+  `direction.md` as a named decision with the list: a target the direction's
+  caps meant to include is a CAPTURE GAP — crawl it first (capture → migrate →
+  gate, never authored from a live read) and deliver when the gap is ≤ 12
+  pages, else repoint to the source site and list it as scope debt; a target
+  outside the declared caps is SCOPE EXTENSION — repoint regardless of count.
+  External targets: repoint to the source site; other-locale targets: repoint
+  ONLY when that locale root was never captured. Any captured page — a `stardust/state.json` row, including
+  `duplicateOf` shells and locale roots — is in scope and is delivered, never
+  repointed (the ≤ 12 rule is for UNcaptured pages; a recorded run dropped ten
+  captured locale roots by citing it). Never leave a 404 (a recorded audit
+  found 10 uncaptured in-scope pages — delivering them was the right call).
 
 ### Phase F — Optimize: multi-source audit + gate (delivery quality)
 
@@ -422,7 +479,7 @@ boundary. (`state.json` is read-only and optional.)
 | Input | Source | Used for |
 |---|---|---|
 | `stardust/migrated/*.html` | `migrate` | the pages to deliver (read-only) |
-| `stardust/migrated/**/_meta.json` | `migrate` | `templateId` (`template`/`type`), `blocks` (`modules`), `title` |
+| `stardust/migrated/**/_meta.json` | `migrate` | `templateId` (`template`; an archetype with `template: null` groups under its own slug; else `type`), `blocks` (`modules` — the inventory report counts sidecars with an empty list: fill them before Phase B), `title` |
 | `stardust/state.json` | stardust core | *(archetypes-only mode)* full page roster + `type` for pages not yet migrated |
 | `stardust/rollout/rollout.json` | rollout / user | DA target coordinates |
 

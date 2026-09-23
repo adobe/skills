@@ -47,8 +47,15 @@ prototype's DOM and the built DOM compare symmetrically, then diffs them.
 # sync until the diff-skill abrasion PR consolidates them.)
 # Prereq: a RENDERABLE source. Static → serve from its own dir (python3 -m http.server).
 # The build URL must be the DECORATED page (live/preview or a local harness), not raw markup.
-# verify the port is YOURS first (lsof -nP -iTCP:8791 -sTCP:LISTEN); prefer a per-project
-# port — a stale server from another project makes both probes measure a foreign page
+# ONE server, ONE port — probe before starting one (curl is always present, lsof is not):
+curl -sI localhost:8791/ | head -1                   # 200/404 = something serves the port; no line = free
+curl -sI localhost:8791/<prototype>.html | head -1   # 200 = it serves YOUR dir: reuse it
+command -v lsof >/dev/null && lsof -nP -iTCP:8791 -sTCP:LISTEN   # optional: names the pid
+# Nothing answered → start yours. Answers but not your file → a foreign server: never kill
+# a listener you did not start; prefer a per-project port — a stale server from another
+# project makes both probes measure a foreign page. `lsof … || echo free` is not a probe —
+# without lsof it prints "free" beside a live listener (recorded: a second server on the
+# same port died at once and the round chased 404s).
 PROTO="http://localhost:8791/<prototype>.html"
 BUILD="https://<branch>--<repo>--<owner>.aem.page/<path>"   # or http://localhost:3000/<harness>
 

@@ -31,14 +31,22 @@ iteration budget. Gate 1440 first (the geometry lifted from desktop CSS),
 then 360.
 
 ```bash
-# Serve the prototype from its own dir so relative assets resolve. Verify the
-# port is YOURS first (lsof -nP -iTCP:8791 -sTCP:LISTEN); prefer a per-project
-# port — a stale server from another stardust project on the shared suggested
-# port silently serves a foreign site into the gate (recorded twice, 2026-08).
-# On shared machines run gate.sh with --marker "<brand string>": the slug
+# Serve the prototype from its own dir so relative assets resolve. ONE server,
+# ONE port — probe before starting one (curl is always present, lsof is not):
+curl -sI localhost:8791/ | head -1                       # 200/404 = something serves the port; no line = free
+curl -sI localhost:8791/<slug>-proposed.html | head -1   # 200 = it serves YOUR dir: reuse it
+command -v lsof >/dev/null && lsof -nP -iTCP:8791 -sTCP:LISTEN   # optional: names the pid
+# Nothing answered → start yours. Answers but not your file → a foreign server:
+# never kill a listener you did not start; take a per-project port and probe
+# again. `lsof … || echo free` is not a probe — without lsof it prints "free"
+# beside a live listener (recorded: a second server on the same port died at
+# once and the round chased 404s). A stale server from another stardust
+# project on the shared suggested port silently serves a foreign site into
+# the gate (recorded twice) — gate.sh asserts a page marker, exit 4. On
+# shared machines run gate.sh with --marker "<brand string>": the slug
 # default can false-pass against another stardust project sharing the slug
 # (both serving a home-proposed.html that contains "home").
-(cd stardust/prototypes && python3 -m http.server 8791 &)
+(cd stardust/prototypes && python3 -m http.server 8791 &)   # only when nothing answered
 PROTO="http://localhost:8791/<slug>-proposed.html"
 LIVE="https://<site>/<path>"
 W=1440   # then 360
@@ -96,20 +104,38 @@ The prototype capture is re-taken every iteration.
    full-page-green pages whose chrome measured only 93–97% (lookalike
    icons, wrong micro-weights, off-by-10px nav rows all fit inside a ≤10%
    full-page bar). Run `../scripts/crop-compare.mjs` over the SAME stitched
-   captures the pixel probe used — no extra live hit:
+   captures the pixel probe used — no extra live hit — once per breakpoint
+   (`$GATE` is per width), header band then footer band:
 
    ```bash
-   node stardust/scripts/replica/crop-compare.mjs "$GATE/live.png" "$GATE/proto.png" \
-     --y 0 --height <nav-height> --out "$GATE/chrome-header-diff.png"
-   node stardust/scripts/replica/crop-compare.mjs "$GATE/live.png" "$GATE/proto.png" \
-     --y <liveDocH - footerH> --y-b <protoDocH - footerH> --height <footerH> \
-     --out "$GATE/chrome-footer-diff.png"
+   B="$GATE/proto.png"   # $GATE/build.png when gate.sh took the round's captures
+   NAV_H=<header bottom edge>  FOOTER_H=<footer height>
+   LIVE_H=<live capture height>  PROTO_H=<prototype capture height>
+   node stardust/scripts/replica/crop-compare.mjs "$GATE/live.png" "$B" \
+     --y 0 --height $NAV_H --threshold 2 --out "$GATE/chrome-header-diff.png"
+   node stardust/scripts/replica/crop-compare.mjs "$GATE/live.png" "$B" \
+     --y $((LIVE_H - FOOTER_H)) --y-b $((PROTO_H - FOOTER_H)) --height $FOOTER_H \
+     --threshold 2 --out "$GATE/chrome-footer-diff.png"
    ```
 
-   `--y-b` gives the footer crop a per-side offset so a small doc-height
-   delta doesn't contaminate it with a false full-band diff. Read the band
-   heights off the section-anchor probe (`anchor.mjs` prints the footer's
-   `[y, height]` on both sides).
+   Exit 2 = that band is over 2%. `--y-b` aligns the footer crop per side so
+   a small doc-height delta does not read as a false full-band diff. The
+   four numbers, none of them a new live hit:
+   - `NAV_H` — the live header's bottom edge, `rect.y + rect.h` (y is 0 unless
+     a strip sits above the header): `data.header.rect` in
+     `$GATE/chrome-live.json`, the live cache `gate.sh --full` and
+     `chrome-parity.mjs --live-cache` write (`json-query.mjs
+     $GATE/chrome-live.json --path data.header.rect`); no cache yet →
+     `measure.mjs "$LIVE" --selectors header --width $W` (one live hit).
+   - `FOOTER_H` — the `h` on the `y … h … footer` line `anchor.mjs` prints per
+     side (`--json` field `footer: [y, h]`; live side cached in
+     `$GATE/anchor-live.json` under `data.footer`). That line's `y` IS
+     `docH − footerH` while the footer is the last box — pass it straight to
+     `--y` / `--y-b` when you have it.
+   - `LIVE_H`, `PROTO_H` — the capture heights on pixel-compare's first verdict
+     line, `A <w>x<h>  B <w>x<h>  → compare …, height delta …px`
+     (`run-bg.mjs wait` surfaces it; stitch-shot's `stitched <file>: <w>x<h>`
+     line is the same number per side).
 
    **Styles diagnose, pixels confirm — run the computed-style parity probe
    BEFORE any pixel iteration on chrome.** `../scripts/chrome-parity.mjs`
@@ -357,12 +383,32 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
   test), and a page's four rounds then spent a fixed 30 minutes sleeping.
   When a capture legitimately needs longer (a 10k-px page under `--settle`),
   raise the variable for that page and say so in the ledger.
-- **Your waiting has a ceiling too.** A gate round over several archetypes
-  or siblings runs in the background, not as a foreground `for` loop of
-  `gate.sh` calls (recorded: 5–10-minute foreground sweeps, 58 % of which
-  re-wrote the whole prompt prefix because the cache window is 5 minutes).
-  Read the round's ledger at most every 4 minutes, never with a single
-  `sleep` of 5 minutes or more — the master skill's wait discipline.
+- **A step never outlives the context cache — long instruments run in the
+  background, and the step that waits for them returns in bounded slices.**
+  The agent's prompt cache lives about five minutes past its last model
+  call; a step that blocks longer evicts it, and the next call re-writes the
+  whole context at the cache-write price. Recorded 2026-09-18 (hands-off
+  run, 26 pages, 1440+360): one gate batch — three parallel steps, each
+  `sleep 5|10|15;` then two rounds and a content-diff — blocked for 15
+  minutes; the next call wrote 513k tokens of cache, **$6.30 for one silent
+  gap, more than the rounds it waited for**, while every other gap in that
+  session stayed under 184 s at a 96 % cache-hit ratio. So: `run-bg.mjs
+  start --name <slug>-<w>-<iter> -- gate.sh …` for every round at once (the
+  default 3 slots, `RUN_BG_SLOTS` to move them, launch the rounds first come
+  first served — each capture is a Chromium, a `--full` round three, and the
+  slots replace the `sleep N;` staggering), then `run-bg.mjs
+  wait` (returns within `--max`, default 100 s, ceiling 110 s — inside the
+  shell tool's ~2-minute default timeout, which applies only to a call that
+  declares none) prints one
+  line per job plus its verdict lines; exit 75 means "still going — `wait`
+  again as your NEXT step". Never wrap `wait` in a shell loop: that
+  recreates the blocked step; between waits do independent work, and read
+  a round's ledger at most every 4 minutes (the master skill's wait
+  discipline — recorded: 5–10-minute foreground sweeps, 58 % of which
+  re-wrote the whole prompt prefix). The full instrument output stays in
+  `stardust/.work/replica/bg/<job>.log` — read it with `run-bg.mjs log <job>
+  --grep <re>`, not with `cat`; the same session carried 700k characters of
+  tool output in 77 minutes, and a verdict is four lines of it.
 - **Media-density budget.** The ≤3-iteration convergence was validated on a
   typographic, low-image page (the retail home). Image-dense commerce homes
   (recorded: a fashion retailer, ~130 imgs) spend iterations on media parity —
@@ -559,6 +605,16 @@ runs it invalidates, and (c) flagged for upstreaming into the plugin. An
 uncommented, unledgered edit is still a defect.
 
 ## The published-origin gate (EDS pipeline deltas)
+
+The published round is the Phase 4 command with the preview origin as the
+build URL — `gate.sh <slug> "$LIVE" "<preview-url>" <width> pub1 --full
+--marker "<brand or domain string>"` through `run-bg.mjs` — so the same four
+probes, deadlines and verdict lines apply; no hand-written wrapper. The
+`--marker` is required here: the identity assertion greps the served page for
+the marker, and the slug sits in the prototype's file name, not in the
+preview page. Keep the ordinary `stardust/replica/gates/<slug>-<width>/`
+evidence dir — the `pub<N>` label keeps the round apart, and a new dir would
+force a fresh live capture against the hit-minimisation rule.
 
 The prototype gate above proves the RECREATION; it does not prove the
 DELIVERED page. Local render harnesses systematically understate deltas

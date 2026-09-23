@@ -32,17 +32,30 @@
  *     --width <px>     viewport width (default 1280)
  *     --profile <p>    eds | generic — eyebrow classifier thresholds (default eds)
  *
+ * Writes: only --out <file> when given (parent directories are created; a one-line
+ * section summary then goes to stdout); without --out the schema JSON is stdout.
+ *
  * The prototype must be RENDERABLE (serve static prototypes from their own dir;
  * pre-render JSX first — deploy SKILL.md Step 1). file:// works when the
  * prototype's CSS is inline.
  */
 
 /* eslint-disable import/no-extraneous-dependencies, import/extensions, no-await-in-loop, no-restricted-syntax, brace-style, object-curly-newline, max-len, no-plusplus */
-import { chromium } from 'playwright';
 import fs from 'fs';
 import path from 'path';
 import { resolveProfile } from './diff-profiles.mjs';
 import { inventory, editableInventory } from './content-inventory.mjs';
+
+// --help prints this file's usage header, so an agent never reads the source to learn the flags.
+if (process.argv.includes('--help') || process.argv.includes('-h')) {
+  const src = fs.readFileSync(new URL(import.meta.url), 'utf8');
+  const header = src.match(/\/\*\*[\s\S]*?\*\//);
+  console.log(header ? header[0].replace(/^\/\*\*\s*|\s*\*\/$/g, '').replace(/^\s*\* ?/gm, '').trim() : 'no usage header');
+  process.exit(0);
+}
+
+// playwright is imported only past the --help guard, so --help answers on a checkout without it.
+const { chromium } = await import('playwright');
 
 function parseArgs(argv) {
   const [, , url, ...rest] = argv;

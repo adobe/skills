@@ -42,6 +42,15 @@
 import fs from 'node:fs';
 import { PNG } from 'pngjs';
 import pixelmatch from 'pixelmatch';
+import { readFileSync } from 'node:fs';
+
+// --help prints this file's usage header, so an agent never reads the source to learn the flags.
+if (process.argv.includes('--help') || process.argv.includes('-h')) {
+  const src = readFileSync(new URL(import.meta.url), 'utf8');
+  const header = src.match(/\/\*\*[\s\S]*?\*\//);
+  console.log(header ? header[0].replace(/^\/\*\*\s*|\s*\*\/$/g, '').replace(/^\s*\* ?/gm, '').trim() : 'no usage header');
+  process.exit(0);
+}
 
 function arg(name, fallback) {
   const i = process.argv.indexOf(`--${name}`);

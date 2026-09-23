@@ -46,8 +46,11 @@ gracefully, log it as a content gap — do NOT invent filler.
 The #1 recurring defect at scale: an authored external image URL the preview
 ingester can't fetch delivers as `<img src="about:error">` — a silent break that
 "it renders" hides. The systematic resolver is `media-reconcile.mjs` (it decides
-optimize/keep/rewrite/omit per image and can `--apply` the fix); the manual
-form, for a single image, is a 200 check:
+optimize/keep/rewrite/omit per image and can `--apply` the fix). Content-host URLs
+(`content.da.live`) are its `hosted` decision: verified offline against
+`stardust/deploy/media-ledger.json`, never anonymously fetched (a `401` there is by
+design); missing from the ledger fails the gate. The manual form, for a single
+image, is a 200 check:
 
 ```bash
 node skills/rollout/scripts/media-reconcile.mjs --file <html> --deploy-host <host>   # all images
@@ -105,7 +108,15 @@ so the gates run uniformly:
   the cleaned archetype template and *only writes content files* — it does NOT
   deploy. The orchestrator deploys centrally (one idempotent `PUT`+preview loop):
   token stays in one place, retries are trivial, and a sub-agent dying mid-response
-  leaves its files already on disk.
+  leaves its files already on disk. The replica Phase 5 fan-out
+  (`../../replica/reference/handoff-contract.md` § 3 row C) is the one sanctioned
+  variant: each cluster subagent drives its own `deploy-batch.mjs --paths …
+  --ledger stardust/deploy/ledger-<cluster>.json --concurrency 2` and gates on the
+  preview origin itself, which is safe only because the shared ledgers are written
+  under a lock (coverage, media) or per cluster (deploy), the token is read from
+  the environment by every driver, and a persistent 401 halts that cluster's batch
+  (exit 3) instead of failing pages — a recorded 36-page run delivered 36/36 this
+  way. Outside that contract, author-only + central deploy stays the rule.
 - **Validate structure BEFORE deploy.** Cheap deterministic check on every authored
   file — exactly one `<h1>`, the body/`<main>`/`<footer>` wrapper, balanced
   `<div>`s — catches a truncated/garbled file before it reaches DA.

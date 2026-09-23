@@ -10,8 +10,21 @@
  * Usage:
  *   node style-fingerprint.mjs "file:///abs/path/to/<prototype>.html"
  * Output: JSON — [{ section, bg, color, variationGroups:[{selector,count,variants:[{style,indices}]}] }]
+ * Writes: nothing — the JSON goes to stdout. The single positional is the prototype URL; there are no flags.
  */
-import { chromium } from 'playwright';
+import { readFileSync } from 'node:fs';
+
+// --help prints this file's usage header, so an agent never reads the source to learn the flags.
+if (process.argv.includes('--help') || process.argv.includes('-h')) {
+  const src = readFileSync(new URL(import.meta.url), 'utf8');
+  const header = src.match(/\/\*\*[\s\S]*?\*\//);
+  console.log(header ? header[0].replace(/^\/\*\*\s*|\s*\*\/$/g, '').replace(/^\s*\* ?/gm, '').trim() : 'no usage header');
+  process.exit(0);
+}
+
+// playwright is imported only past the --help guard, so --help answers on a checkout without it.
+const { chromium } = await import('playwright');
+
 const url = process.argv[2];
 const b = await chromium.launch();
 const p = await b.newPage({ viewport: { width: 1280, height: 900 } });

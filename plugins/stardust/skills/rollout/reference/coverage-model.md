@@ -97,9 +97,13 @@ On every `inventory.mjs` run:
 - **pending** — inventoried as a distinct block, not yet converted.
 - **converted** — its EDS block (`blocks/<edsBlockName>/`) or fragment exists.
 - **deployed / verified** — live on the delivered site.
+- **default-content mapping** — `edsBlockName: "default-content"` records a module that
+  maps to EDS default content and needs no block; every roll-up counts it as converted
+  whatever its status (record it `--status converted --eds-name default-content`).
 
 `blocks.mjs` is idempotent: a block already past `pending` keeps its status and
-`edsBlockName`; only still-`pending` blocks get a freshly derived name.
+`edsBlockName`; only still-`pending` blocks get a freshly derived name, never one mapped
+to `default-content`.
 
 ## Dedup contract (plan.json)
 

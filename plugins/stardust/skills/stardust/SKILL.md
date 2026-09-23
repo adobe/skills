@@ -37,6 +37,11 @@ sub-commands that delegate the actual design work to **impeccable**.
    line to the user verbatim when it reports a newer version; it prints the
    update command for the harness it found impeccable in. Any other outcome (current, unknown, offline) is
    noise — do not mention it, and never stop or degrade a run over it.
+   The same script with `--where` prints impeccable's skill directory
+   (the one holding its `SKILL.md` and `reference/`); note it once — the
+   phases that read impeccable's format specs (`reference/init.md`,
+   `reference/document.md`) read them from there by section, never after
+   a filesystem search.
 2. **Check the target-state files.** `PRODUCT.md` and `DESIGN.md` at the
    project root are the *target* state for stardust; check whether they
    exist (a directory listing is enough). Do not run impeccable's context
@@ -54,7 +59,12 @@ sub-commands that delegate the actual design work to **impeccable**.
    them in your reasoning.
 5. **Status ledger.** Every stardust skill appends a phase-transition line
    to `stardust/status.jsonl` at each phase start/end, per
-   `reference/run-status.md`.
+   `reference/run-status.md` — written with `skills/stardust/scripts/ledger.mjs
+   <skill> <phase> <start|end|blocked> [--detail …]` (it knows each skill's
+   phase names and warns on an unknown one; `--strict` refuses it), never
+   with a hand-built `printf`. Page status moves with
+   `skills/stardust/scripts/state.mjs advance <slug…> --to <status>`; a
+   resuming agent orients with `ledger.mjs tail` and `state.mjs summary`.
 6. **Project hygiene** (idempotent). Write `stardust/.gitignore` from
    `reference/stardust.gitignore` if absent; never edit a project's copy.
    In a git repo: root `.gitignore` covers `.env` / `.env.*` (managed
@@ -228,10 +238,21 @@ otherwise):
   header and footer, (2) section landing/overview pages, (3) a
   representative spread of detail pages across all templates. State
   the chosen caps in `direction.md`.
+- **Captured pages stay in the roster.** Locale is never a reason to
+  drop a captured page: every `state.json` row is delivered —
+  duplicate-content locale shells ride the sibling tier of their twin;
+  `D3-multilingual` is for language trees that were never captured, not
+  for skipping captured ones (a recorded run lost ten locale roots to an
+  extract agent that hard-coded one locale).
 - **Delegate by file pointer, read by section.** A brief to a delegated
   agent names the files and sections it needs (`state.json`, the page's
   schema, the phase's SKILL.md sections); it never inlines reference docs.
-  Reference documents are read by heading and line range, not end to end.
+  Reference documents are read by heading and line range, not end to end
+  (replica ships `skills/replica/scripts/section.mjs` for exactly this:
+  `--list` for a document's outline, then one heading; it works on any
+  Markdown file — a whole reference doc is 30–40k characters, the section
+  a step needs is 2–4k, and one recorded session paid for three whole docs
+  twice when their `cat` output overflowed and was re-read in full).
   Instruments that can stall run under their shipped deadline (replica
   `gate.sh`, `pixel-compare --timeout`) — never under an agent-authored
   `sleep N; kill` loop — and long steps write a progress file the
@@ -264,6 +285,33 @@ otherwise):
   `promptCacheTtl: "1h"` in settings.json stretches the window to an hour
   at 1.6× write price — an owner setting, worth it for any multi-hour
   session.)
+  The harness-neutral form of the same rule is replica's `run-bg.mjs`:
+  `start` detaches the instrument, `wait` returns within `--max` (default
+  100 s, ceiling 110 s — inside the shell tool's ~2-minute default timeout,
+  which applies only to a call that declares none) with verdict lines
+  only, exit 75 = still going, `wait` again as the NEXT call — never in a
+  shell loop, never after a `sleep`. The rule binds the main agent as it
+  binds subagents: one long instrument in the foreground, or two long
+  instruments as parallel tool calls in one turn, is the same blocked step
+  (recorded: a 338 s main-agent turn cost one full cache re-write).
+- **One shell, one working directory.** The harness's shell keeps its
+  working directory from one tool call to the next: a `cd` inside a
+  command moves every later command with it, and a path written from
+  the project root then fails from wherever the previous call ended.
+  Write paths from the project root (or absolute), and confine any `cd`
+  to a subshell — `(cd stardust/current && …)`. (Field evidence,
+  2026-09: one `cd` into the capture directory failed the next three
+  reads and cost a re-run turn.)
+- **Author large files in parts.** Write the skeleton, then append in
+  edits of roughly 150 lines or less, so no single turn generates for
+  longer than the prompt cache lives (about five minutes); a turn that
+  outruns it leaves the next request with a cold cache and re-writes
+  the whole context. (Field evidence, 2026-09: in one recorded run two
+  such turns — the brand documents written in one go at the end of
+  extract, and a first prototype's whole HTML and CSS in one write —
+  each cost a full re-write of a ~200k-token context; an earlier run
+  re-wrote 513k and 694k the same way. No compaction was involved; the
+  sessions simply outran the cache lifetime inside one generation.)
 - **Commit at the end of each phase** when the project is a git repo.
   Before the FIRST such commit, re-run Setup step 6 — the first commit
   lands at the end of the audit phase, long before deploy's SKILL.md is

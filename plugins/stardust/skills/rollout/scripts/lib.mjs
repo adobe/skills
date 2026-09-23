@@ -3,16 +3,59 @@
  * counts from the same per-unit truth (counts are always recomputed, never
  * incremented).
  */
-import { readFileSync, writeFileSync, mkdirSync, existsSync, statSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, statSync, renameSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 export function readJSON(path, fallback = null) {
   try { return JSON.parse(readFileSync(path, 'utf8')); } catch { return fallback; }
 }
 
+/** Whole-file write through a sibling tmp file + rename: a reader never sees a half-written file. */
 export function writeJSON(path, obj) {
   mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, `${JSON.stringify(obj, null, 2)}\n`);
+  const tmp = `${path}.${process.pid}.tmp`;
+  writeFileSync(tmp, `${JSON.stringify(obj, null, 2)}\n`);
+  renameSync(tmp, path);
+}
+
+/**
+ * Cross-process mutual exclusion for a read-modify-write of a shared file: a lock DIRECTORY
+ * `<target>.lock` (mkdir is atomic on every filesystem), an `owner` file naming pid + time, a
+ * bounded wait, and a stale lock (older than `staleMs`, a crashed writer) reclaimed. Several
+ * cluster subagents record coverage rows at once during a fan-out; without this the last writer
+ * won and rows were lost. Returns a release function (also run at process exit).
+ */
+export function acquireLock(target, { timeoutMs = 30000, staleMs = 60000, pollMs = 50 } = {}) {
+  const dir = `${target}.lock`;
+  mkdirSync(dirname(dir), { recursive: true });
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    try {
+      mkdirSync(dir);
+      writeFileSync(join(dir, 'owner'), `${process.pid} ${new Date().toISOString()}\n`);
+      break;
+    } catch (e) {
+      if (e.code !== 'EEXIST') throw e;
+      let st = null;
+      try { st = statSync(dir); } catch { continue; }
+      if (Date.now() - st.mtimeMs > staleMs) { try { rmSync(dir, { recursive: true, force: true }); } catch { /* raced */ } continue; }
+      if (Date.now() > deadline) {
+        let owner = '?'; try { owner = readFileSync(join(dir, 'owner'), 'utf8').trim(); } catch { /* none */ }
+        throw new Error(`lock ${dir} held for over ${timeoutMs} ms (owner ${owner}) — a crashed writer leaves it; remove the directory when no such process runs`);
+      }
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, pollMs);
+    }
+  }
+  let released = false;
+  const release = () => { if (released) return; released = true; try { rmSync(dir, { recursive: true, force: true }); } catch { /* gone */ } };
+  process.once('exit', release);
+  return release;
+}
+
+/** Run `fn` under the lock; the file(s) it touches must be re-read INSIDE `fn`, never before. */
+export function withLock(target, fn, opts) {
+  const release = acquireLock(target, opts);
+  try { return fn(); } finally { release(); }
 }
 
 const countBy = (rows, get, val) => rows.filter((r) => get(r) === val).length;
@@ -31,9 +74,18 @@ export function pageCounts(pages) {
   };
 }
 
-/** Block conversion counts from coverage/blocks.json rows. */
+/**
+ * The `edsBlockName` that records a module mapped to EDS default content (title, text, image,
+ * button, separator — deploy's D1): the mapping is the resolved decision and there is no block to
+ * build, so such a row is never pending whatever its status. A recorded hands-off run left four of
+ * them at `status: pending` and the block roll-up read a finished, verified site as unfinished.
+ */
+export const DEFAULT_CONTENT = 'default-content';
+export const isDefaultContent = (b) => !!(b && b.delivery && b.delivery.edsBlockName === DEFAULT_CONTENT);
+
+/** Block conversion counts from coverage/blocks.json rows; a default-content mapping counts as converted. */
 export function blockCounts(blocks) {
-  const converted = blocks.filter((b) => ['converted', 'deployed', 'verified']
+  const converted = blocks.filter((b) => isDefaultContent(b) || ['converted', 'deployed', 'verified']
     .includes(b.delivery && b.delivery.status)).length;
   return { total: blocks.length, converted, pending: blocks.length - converted };
 }

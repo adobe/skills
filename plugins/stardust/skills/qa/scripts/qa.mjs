@@ -9,7 +9,8 @@
  *
  * Options:
  *   --base <url>            live host to sweep (required)
- *   --checks <list>         comma list: routing,content,templates,metadata,links,browse,perf,editability (default: all)
+ *   --checks <list>         comma list: routing,content,templates,metadata,links,browse,perf,
+ *                           editability,dynamics,ai-readability (default: all)
  *   --paths-file <txt>      inventory source: one path per line
  *   --template-map <json>   inventory + template assignments (stardust/template-map.json)
  *   --scrape <dir>          stardust scrape captures for verbatim fidelity
@@ -32,18 +33,40 @@
  *                           exempt, not errors)
  *   --blocks-dir <dir>      editability: local blocks root — `@ew-exempt <reason>`
  *                           JSDoc tags in <dir>/<name>/<name>.js are honoured
+ *   --parity <json>         dynamics: the parity report to replay (default stardust/dynamics/parity.json)
+ *   --ai-exclude-blocks <a,b>  ai-readability: app blocks removed from the rendered side
+ *                           (default client-app,widget)
+ *   --browser-concurrency <n>  parallel pages for the browser checks (default 3)
+ *   --auth-header <value> | --token-env <NAME>
+ *                           auth for a protected origin: the header value, or the env var
+ *                           holding the token (default SITE_TOKEN; .env is read too)
  *   --fail-on <error|warn>  exit 1 threshold (default: error)
+ *
+ * Writes (under --out, default stardust/qa):
+ *   inventory.json                    the page inventory that was swept, with _provenance
+ *   report.json / report.html         findings, summary, checks run, duration
+ *   shots/<path-slug>.<viewport>.png  browse check: the current screenshots
+ *   <baselines>/<same name>.png       browse check: saved on first sight only (default <out>/baselines)
+ * Progress lines go to stderr; the summary goes to stdout.
  *
  * Exit codes: 0 clean (below threshold), 1 findings at/above threshold, 2 infra error.
  */
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { writeFileSync } from 'node:fs';
+import { writeFileSync, readFileSync } from 'node:fs';
 import {
   arg, flag, provenance, writeJSON, ensureDir, loadAllowlist, applyAllowlist, buildInventory,
   createPageCache, resolveAuthHeader, setOriginAuth,
 } from './lib.mjs';
 import { htmlReport } from './report-html.mjs';
+
+// --help prints this file's usage header, so an agent never reads the source to learn the flags.
+if (process.argv.includes('--help') || process.argv.includes('-h')) {
+  const src = readFileSync(new URL(import.meta.url), 'utf8');
+  const header = src.match(/\/\*\*[\s\S]*?\*\//);
+  console.log(header ? header[0].replace(/^\/\*\*\s*|\s*\*\/$/g, '').replace(/^\s*\* ?/gm, '').trim() : 'no usage header');
+  process.exit(0);
+}
 
 const here = dirname(fileURLToPath(import.meta.url));
 const BASE = (arg('base') || '').replace(/\/$/, '');

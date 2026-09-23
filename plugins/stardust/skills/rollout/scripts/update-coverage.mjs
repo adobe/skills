@@ -10,11 +10,32 @@
  * Block:  node update-coverage.mjs --block <id> --status <s> [--eds-name <name>]
  *   page  <status>: pending | converting | deployed | verified | stale | failed
  *   block <status>: pending | converted | deployed | verified | failed
+ *   A module mapped to EDS default content (no block needed) is recorded
+ *   `--block <id> --status converted --eds-name default-content`; it is never counted pending.
  *
  * Re-derives templates.json + rollout.json roll-ups after every write.
+ *
+ * Safe under a fan-out: the whole read-modify-write (pages or blocks, then the roll-ups) runs
+ * under one cross-process lock, `<out>/.coverage.lock`, and every file is written through a
+ * tmp + rename, so several cluster subagents recording rows at once never lose one and a reader
+ * never sees a half-written file. A lock older than 60 s (a crashed writer) is reclaimed; waiting
+ * longer than 30 s for one is an error (exit 1) naming the owner.
+ *
+ * Writes (under --out, default stardust/rollout): coverage/pages.json (page form) or
+ * coverage/blocks.json (block form), then coverage/templates.json and rollout.json when
+ * they exist. One result line on stdout.
  */
 import { join } from 'node:path';
-import { readJSON, writeJSON, rollupTemplates, rollupConfig } from './lib.mjs';
+import { readJSON, writeJSON, rollupTemplates, rollupConfig, acquireLock } from './lib.mjs';
+import { readFileSync } from 'node:fs';
+
+// --help prints this file's usage header, so an agent never reads the source to learn the flags.
+if (process.argv.includes('--help') || process.argv.includes('-h')) {
+  const src = readFileSync(new URL(import.meta.url), 'utf8');
+  const header = src.match(/\/\*\*[\s\S]*?\*\//);
+  console.log(header ? header[0].replace(/^\/\*\*\s*|\s*\*\/$/g, '').replace(/^\s*\* ?/gm, '').trim() : 'no usage header');
+  process.exit(0);
+}
 
 function arg(name, fallback) {
   const i = process.argv.indexOf(`--${name}`);
@@ -31,6 +52,10 @@ const blocksPath = join(OUT, 'coverage', 'blocks.json');
 const templatesPath = join(OUT, 'coverage', 'templates.json');
 const configPath = join(OUT, 'rollout.json');
 const now = new Date().toISOString();
+
+// One lock for the four files: taken BEFORE the first read, released at exit (every path below
+// ends in process.exit or falls off the end). The reads that follow therefore see the latest write.
+try { acquireLock(join(OUT, '.coverage')); } catch (e) { console.error(`rollout: ${e.message}`); process.exit(1); }
 
 function reRoll() {
   const pagesDoc = readJSON(pagesPath);

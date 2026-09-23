@@ -9,7 +9,9 @@
  * decoration contract in one run.
  *
  *   node skills/deploy/scripts/qa-gate.mjs http://localhost:3000/stardust/.work/harness/page.html \
- *        --schema stardust/eds-schema/<page>.json [--maxw 1340]
+ *        --schema stardust/eds-schema/<page>.json [--maxw 1340] [--full-bleed hero,band]
+ *
+ * Writes: nothing — PASS/WARN/FAIL lines go to stdout.
  *
  * Asserts (FAIL → exit 1):
  *   - the runtime booted: body.appear present (a blank render = harness bug, #40)
@@ -36,8 +38,18 @@
  * interactive drives (#28 — hand-write those per block).
  */
 /* eslint-disable no-console, no-await-in-loop, no-restricted-syntax */
-import { chromium } from 'playwright';
 import fs from 'fs';
+
+// --help prints this file's usage header, so an agent never reads the source to learn the flags.
+if (process.argv.includes('--help') || process.argv.includes('-h')) {
+  const src = fs.readFileSync(new URL(import.meta.url), 'utf8');
+  const header = src.match(/\/\*\*[\s\S]*?\*\//);
+  console.log(header ? header[0].replace(/^\/\*\*\s*|\s*\*\/$/g, '').replace(/^\s*\* ?/gm, '').trim() : 'no usage header');
+  process.exit(0);
+}
+
+// playwright is imported only past the --help guard, so --help answers on a checkout without it.
+const { chromium } = await import('playwright');
 
 const args = process.argv.slice(2);
 const url = args.find((a) => !a.startsWith('--'));
