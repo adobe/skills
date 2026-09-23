@@ -25,14 +25,32 @@ lines, `state-machine.md` `site.captureGaps`, `journal-format.md`'s heading rule
   hands-off run delivered two pages 373 and 400 px wide at a 360 viewport and passed them as
   "logged, not iterated further (3-iteration cap reached)"; `source-fidelity-gate.md` § Iteration
   discipline names the assert no cap waives.
-- **`diff/scripts/content-diff.mjs` compares attributes and icons, not text nodes only.** A second
-  in-page inventory (`placeholder`, `aria-label`, `title`; small images by file name, inline svg,
-  icon-font glyphs by `::before`/`::after` content, css icons, empty icon boxes) and a pure differ —
-  MISSING/EXTRA <ATTR>, MISSING ICON, ICON DIFF, ICON KIND, EXTRA ICON — 🔴 on interactive elements,
-  🟡 otherwise; output format and exit codes unchanged, `--json` gains `findings[]`; playwright loads
-  lazily so `--help` and the unit test need no browser. Recorded: every delivered page lacked the
+- **`diff/scripts/content-diff.mjs` compares attributes and icons, not text nodes only — on the
+  main root AND the chrome roots.** A second in-page inventory (`placeholder`, `aria-label`,
+  `title`; small images by file name, inline svg, icon-font glyphs by `::before`/`::after` content,
+  css icons, empty icon boxes) and a pure differ — MISSING/EXTRA <ATTR>, MISSING ICON, ICON DIFF,
+  ICON KIND, EXTRA ICON, ICON MOVED. Severity: MISSING PLACEHOLDER / ARIA-LABEL, MISSING ICON and
+  ICON DIFF are 🔴 on an interactive element (input, button, link or inside one) and 🟡 elsewhere;
+  MISSING TITLE is 🟡 always (a title tooltip is not read by most assistive tech and is commonly
+  dropped by design); ICON MOVED, ICON KIND and every EXTRA are 🟡. Roots: `--main` takes a
+  comma-separated selector list; `--chrome` (default on) adds the `header` and `footer` roots — the
+  first `<header>`/`[role=banner]` and `<footer>`/`[role=contentinfo]` outside the main root(s) —
+  and `--no-chrome` disables; the report has one block per root, every finding line carries its
+  root (`[header]`), `--json` gains `findings[]` (with `root`) and `roots{}`; the `Findings:` line
+  gate.sh and gate-evidence read and the exit codes are unchanged; playwright loads lazily so
+  `--help` and the unit test need no browser. Recorded first: every delivered page lacked the
   search input's localized placeholder, a locale root carried the wrong flag, social links were
-  empty boxes — and the probe read 0 🔴.
+  empty boxes — and the probe read 0 🔴. Then measured on a delivered 36-page replica (5 page
+  pairs): real regressions found on 4 of 5 pages — share links without aria-labels and icons,
+  dropped CTA aria-labels, a dropped localized search placeholder — and two false-red sources of
+  the layer's own removed: anchor-only icon pairing (7 present icons read as missing on one page —
+  the build hosts an FAQ page's accordion glyphs in text-less `<button>`s anchored `button#1…#7`
+  where the source anchors each to its question; leftover icons now pair by identity and document
+  order, within the same nearest block first, as `ICON MOVED` 🟡) and chrome outside the default
+  root (the two chrome cases the layer was written for were invisible unless the caller passed
+  `--main header`). `source-fidelity-gate.md` and `handoff-contract.md` § 1 row 4 say content-diff
+  covers main and chrome roots on every gate page — the recreate and C-deliver commands need no
+  new flag.
 - **`replica/scripts/measure.mjs` reports the rendition per `<img>`** (`naturalWidth ×
   naturalHeight`, current source file; `img.naturalWidth`/`img.file` deltas) and
   `recreation-procedure.md` § Image renditions per breakpoint records which rendition live selects

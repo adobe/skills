@@ -243,6 +243,7 @@ LIVE="https://<site>/<path>"
 # fullPage:true — plus content-diff, visual-diff and chrome-parity under deadlines, one verdict
 # line each, reports in the gate dir); rounds in between are pixel rounds. Never hand-write a
 # wrapper around the instruments (a recorded one lost the deadlines; a round took 15 minutes).
+# content-diff inside --full compares --main AND the header/footer roots by default — no chrome flag.
 node stardust/scripts/replica/run-bg.mjs start --name <slug>-1440-iter1 -- \
   stardust/scripts/replica/gate.sh <slug> "$LIVE" "$PROTO" 1440 iter1 --full --main "<content-root>"
 node stardust/scripts/replica/run-bg.mjs start --name <slug>-360-iter1 -- \
@@ -271,7 +272,7 @@ or a chrome delta, 1 when a probe errored (it gave no verdict — read its
 `ERROR` line), 0 only when all four ran and passed.
 
 **Pass bar (all four, per breakpoint):**
-- content-diff: **0 structural 🔴** (🟡/🟠 confirmed intended);
+- content-diff: **0 structural 🔴** on the main root and the chrome roots — the default run covers both, each finding names its root (🟡/🟠 confirmed intended);
 - visual-diff: flags none or justified;
 - pixel diff: **≤ 10%** full-page, with no per-500px band left unexplained
   (the band breakdown is the navigation instrument — fix the first hot band,

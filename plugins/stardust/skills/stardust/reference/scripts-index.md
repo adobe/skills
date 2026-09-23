@@ -18,7 +18,7 @@ Run the project copies under `stardust/scripts/<skill>/`. Read this before any `
 - `deploy/sanitise.js` — non-ASCII → entities, in place — `content/<p>.html` (one file per call)
 - `deploy/section-schema.mjs` — per-section role inventory — `<protoURL> [--out <f>] [--profile eds|generic]`
 - `deploy/style-fingerprint.mjs` — per-instance variation groups — `"file:///abs/<proto>.html"`
-- `diff/content-diff.mjs` — structural content + attribute/icon diff — `<protoURL> <edsURL> [--main <sel>] [--profile generic] [--json]`
+- `diff/content-diff.mjs` — structural content + attribute/icon diff, main + chrome roots — `<protoURL> <edsURL> [--main <sel[,sel]>] [--no-chrome] [--profile generic] [--json]`
 - `diff/content-inventory.mjs` — library (classifier copy), no CLI
 - `diff/diff-profiles.mjs` — library (profiles copy), no CLI
 - `diff/live-session.mjs` — library (hardened browser session), no CLI

@@ -27,11 +27,13 @@ Not for: a single static file with no JS decoration (use the build/harness URL s
 | Probe | Script | Sees | Blind to |
 |---|---|---|---|
 | **Pixel / layout** | `skills/diff/scripts/visual-diff.mjs` | stretched images, dropped max-width wraps, blank renders, surface/ground colour flips, image-count gaps | "right text, wrong slot"; a dropped CTA (full pixels, plausible colours → no flag) |
-| **Structural content + type** | `skills/diff/scripts/content-diff.mjs` | MISSING / ROLE-SWAPPED headings·eyebrows·CTAs, invented/dropped body copy, rendered-FACE font forks (width probe) | geometry / layout regressions |
+| **Structural content + type** | `skills/diff/scripts/content-diff.mjs` | MISSING / ROLE-SWAPPED headings·eyebrows·CTAs, invented/dropped body copy, rendered-FACE font forks (width probe); dropped `placeholder`/`aria-label`/`title` values, missing/wrong/moved icons — on the main root AND the `header`/`footer` chrome roots by default | geometry / layout regressions |
 
 `content-diff` extracts an ordered, role-classified inventory (`heading` / `eyebrow` /
-`cta`+href / `body`) from each `<main>`, classifying by **computed style + tag** so the
-prototype's DOM and the built DOM compare symmetrically, then diffs them.
+`cta`+href / `body`) from each root — the `--main` root(s) plus, by default, the `header`
+and `footer` chrome roots — classifying by **computed style + tag** so the prototype's DOM
+and the built DOM compare symmetrically, then diffs them root by root; a second inventory per
+root carries the `placeholder` / `aria-label` / `title` values and the icons.
 
 ## Run it
 
@@ -67,7 +69,12 @@ node skills/diff/scripts/content-diff.mjs  "$PROTO" "$BUILD" --profile eds   # -
 ```
 
 Flags (both tools): `--profile eds|generic` (default `eds`), `--width <px>` (default 1280),
-`--main <selector>` (content root; content-diff defaults from the profile, visual-diff to `main`),
+`--main <selector[,selector…]>` (content root; content-diff defaults from the profile and takes a
+comma-separated list — every root is inventoried and diffed on its own and each finding line
+carries its root as `[root]`; visual-diff takes one selector, default `main`), content-diff only:
+`--chrome` / `--no-chrome` (default on — the `header` and `footer` roots, resolved as the first
+`<header>`/`[role=banner]` and `<footer>`/`[role=contentinfo]` outside the main root(s), are
+compared beside it; a side lacking one is measured as empty there and the root line says so),
 plus the live-target set (shared engine: `scripts/live-session.mjs` — every context sends the
 real-Chrome UA **and** the standard Chrome request headers; the UA alone still 403s on
 Akamai-class bot management):
@@ -107,6 +114,9 @@ signal with **exit 0**. That is the probes' advisory contract: 0 = ran (flags ad
 
 - 🔴 **MISSING CTA / HEADING / EYEBROW** — real dropped content. FIX. A missing eyebrow is most often a segmentation drop where the eyebrow precedes its heading; a missing CTA means the component never rendered the link. These are exactly what the pixel probe cannot see.
 - 🔴 **ROLE SWAP** — same text under a different role (body painted as eyebrow, eyebrow folded into a teaser). FIX the component's node segmentation.
+- 🔴 **MISSING PLACEHOLDER / ARIA-LABEL, MISSING ICON, ICON DIFF on an interactive element** (an input, a button, a link or inside one) — a dropped localized search placeholder, a share link without its aria-label or icon, a wrong flag in a locale link, an empty icon box. FIX. Outside interactive elements the same findings are 🟡.
+- 🟡 **MISSING TITLE** — always 🟡: a title tooltip is not read by most assistive tech and is commonly dropped by design. 🟡 **ICON MOVED** — the same icon (glyph code point / file name / svg signature) at another anchor, paired by identity and document order after the anchor passes (typically a text-less `<button>` host that anchors as `button#n`): the icon is present, CONFIRM its placement. 🟡 **ICON KIND** (glyph vs svg vs image — the pixel probe judges) and every **EXTRA**.
+- Every finding line names its root — `🔴 MISSING PLACEHOLDER [header]: …` — and the report prints one block per root (`root "main"`, `root "header"`, …; a root a side lacks is measured as empty there and the line says which side).
 - 🟡 **MISSING BODY / EXTRA** — body prose dropped, or build copy with no source. Usually a placeholder→real-copy rewrite. CONFIRM intended; don't blindly "fix".
 - 🟠 **FONT FORK** — matched lines whose rendered FACE differs (width probe, never `document.fonts.check`). `source X→sys` means the prototype named font X but never loaded it and fell back to system — the build self-hosting the intended fallback is then CORRECT, not a bug. All forked lines are grouped into one advisory.
 - **Known limitation — node-granularity JOIN/SPLIT reads as 🔴 (#87).** When the source renders one text run as N sibling nodes and the build renders the same text as ONE node (or vice versa — e.g. three fact chips vs one combined chip span), the diff currently reports MISSING + ROLE SWAP + EXTRA for what is a non-defect. Until concat-matching lands (a source node that is a substring of a same-region build node → 🟡 JOIN/SPLIT advisory), verify a 🔴 whose texts concatenate into an EXTRA finding's text before treating it as dropped content — confirmed-justified is a pass.

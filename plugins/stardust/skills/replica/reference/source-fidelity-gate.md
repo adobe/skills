@@ -15,7 +15,7 @@ these instruments.
 
 | Probe | Script | Catches | Blind to |
 |---|---|---|---|
-| Structural content + type | `../../diff/scripts/content-diff.mjs` (project copy) | dropped/mis-slotted headings·eyebrows·CTAs, invented/dropped copy, rendered-face font forks (width probe) | geometry |
+| Structural content + type | `../../diff/scripts/content-diff.mjs` (project copy) | dropped/mis-slotted headings·eyebrows·CTAs, invented/dropped copy, rendered-face font forks (width probe); dropped `placeholder`/`aria-label` values, missing/wrong/moved icons — on the main root AND the chrome roots (`header`, `footer`) by default | geometry |
 | Visual heuristics | `../../diff/scripts/visual-diff.mjs` (project copy) | stretched images, dropped wraps, blank renders, surface/ground flips | "right text, wrong slot" |
 | Pixel (replica-owned) | `../scripts/stitch-shot.mjs` + `../scripts/pixel-compare.mjs` | everything the other two abstract away: paint effects, scrims, exact geometry, image crops | semantics (a wrong-but-same-colored word) |
 
@@ -53,7 +53,10 @@ W=1440   # then 360
 GATE="stardust/replica/gates/<slug>-$W"
 
 # 1. structural — --dismiss keeps consent + timed marketing modals out of the
-#    inventory on both sides; add extra selectors for non-standard closers
+#    inventory on both sides; add extra selectors for non-standard closers.
+#    The header and footer roots are compared beside --main BY DEFAULT — this is
+#    the whole command, no chrome flag; the report has one block per root and a
+#    finding reads "[header]" / "[footer]" where it sits (--no-chrome = main only)
 node stardust/scripts/diff/content-diff.mjs "$LIVE" "$PROTO" --profile generic --width $W \
   --main "<content-root>" --dismiss | tee "$GATE/content-diff-iter<N>.txt"
 
@@ -83,9 +86,13 @@ The prototype capture is re-taken every iteration.
 
 ## Pass bar (all five, per breakpoint)
 
-1. **content-diff: 0 structural 🔴.** 🟡 (body/EXTRA) and 🟠 (font fork)
-   confirmed intended — a substituted licensed font is a permanent justified
-   🟠; record it once in the ledger.
+1. **content-diff: 0 structural 🔴 — across the main root AND the chrome
+   roots (`header`, `footer`), which the default run covers on every gate
+   page; each finding line names its root.** 🟡 (body/EXTRA, a missing
+   `title`, an `ICON MOVED` — the same icon at another anchor, e.g. inside a
+   text-less accordion button) and 🟠 (font fork) confirmed intended — a
+   substituted licensed font is a permanent justified 🟠; record it once in
+   the ledger.
 2. **visual-diff: flags none or justified.** A live page's own quirks are
    justified when the prototype mirrors them (e.g. a 1×1 SEO h1 at x0, a
    carousel tile at a negative offset — both real UC1-E1 justifications).
@@ -619,7 +626,8 @@ fail-loud, overlay dismissal, headed-stealth escalation) — and the diff
 scripts expose it as flags:
 
 ```bash
-# content-diff against a live source: no source edits, flags only
+# content-diff against a live source: no source edits, flags only (the header and
+# footer roots are compared beside --main by default — no extra flag; --no-chrome opts out)
 node stardust/scripts/diff/content-diff.mjs "$LIVE" "$PROTO" --profile generic \
   --width 1440 --main "<content-root>" --dismiss
 
