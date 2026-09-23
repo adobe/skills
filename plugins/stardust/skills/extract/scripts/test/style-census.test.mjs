@@ -7,7 +7,7 @@
 // playwright is importable, prints a skip line otherwise. Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync, spawn } from 'node:child_process';
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, realpathSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, realpathSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -113,10 +113,21 @@ await check('aggregate is deterministic: reversed page/width key order gives a d
   assert.deepEqual(aggregate(reversed), agg);
 });
 await check('parseArgs: defaults, repeatable + comma widths deduped, usage errors', () => {
-  const d = parseArgs([]); assert.equal(d.pages, DEFAULTS.pages); assert.equal(d.out, DEFAULTS.out); assert.deepEqual(d.widths, [1440]); assert.equal(d.concurrency, 3); assert.equal(d.maxPages, Infinity); assert.equal(d.timeoutMs, 20000); assert.equal(d.ua, DEFAULT_UA); assert.match(DEFAULT_UA, /^Mozilla\/5\.0 \(Macintosh.*Chrome\/\d+/);
+  const d = parseArgs([]); assert.equal(d.pages, DEFAULTS.pages); assert.equal(d.out, DEFAULTS.out); assert.deepEqual(d.widths, [1440]); assert.equal(d.concurrency, 1, 'one live page at a time — the census is a full live pass'); assert.equal(d.maxPages, Infinity); assert.equal(d.timeoutMs, 20000); assert.equal(d.ua, DEFAULT_UA); assert.match(DEFAULT_UA, /^Mozilla\/5\.0 \(Macintosh.*Chrome\/\d+/);
+  assert.deepEqual(d.dismiss, []); assert.equal(d.headed, false); assert.equal(d.locale, null);
   assert.deepEqual(parseArgs(['--width', '360,1440', '--width', '1440']).widths, [360, 1440]);
   assert.deepEqual(parseArgs(['--urls', 'https://a.test/, https://b.test/x']).urls, ['https://a.test/', 'https://b.test/x']);
+  const l = parseArgs(['--concurrency', '2', '--dismiss', '.close, .later', '--dismiss', '#x', '--headed', '--locale', 'en-GB']);
+  assert.equal(l.concurrency, 2); assert.deepEqual(l.dismiss, ['.close', '.later', '#x']); assert.equal(l.headed, true); assert.equal(l.locale, 'en-GB');
+  assert.deepEqual(DEFAULTS.dismiss, [], 'parseArgs never mutates the shared default list');
   for (const bad of [['--bogus'], ['--width'], ['--width', 'wide'], ['--width', '100'], ['--concurrency', '0'], ['--timeout-ms', '10'], ['--pages', 'p', '--urls', 'https://a.test/'], ['--urls', '']]) assert.throws(() => parseArgs(bad), UsageError, bad.join(' '));
+});
+await check('parseArgs: a value flag followed by nothing or by another --flag is a usage error naming the flag (never swallows the flag)', () => {
+  for (const [flag, ...tail] of [['--pages'], ['--urls'], ['--out'], ['--width'], ['--concurrency'], ['--max-pages'], ['--timeout-ms'], ['--ua'], ['--dismiss'], ['--locale'], ['--out', '--headed'], ['--concurrency', '--width', '360'], ['--urls', '--out', 'x.json'], ['--locale', '--headed']]) {
+    assert.throws(() => parseArgs([flag, ...tail]), (e) => e instanceof UsageError && e.code === 2 && e.message.startsWith(`${flag} needs a value`), `${flag} ${tail.join(' ')}`);
+  }
+  const r = run(['--out', '--headed']); assert.equal(r.code, 2); assert.match(r.err, /style-census: --out needs a value/);
+  assert.ok(existsSync(join(HERE, '..', '..', '..', 'diff', 'scripts', 'live-session.mjs')), 'the plugin-tree layout the script resolves first');
 });
 await check('listUrls: finalUrl over url, non-records skipped, deduped in file order, --max-pages, missing dir and bad URL are usage errors', () => {
   const dir = join(root, 'pages'); mkdirSync(dir);

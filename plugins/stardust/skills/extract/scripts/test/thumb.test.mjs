@@ -66,6 +66,13 @@ check('parseArgs: defaults, every flag, positive-integer validation, unknown opt
     assert.throws(() => parseArgs(bad), (e) => e.code === 2, `should refuse: ${bad.join(' ') || '(no args)'}`);
   }
 });
+check('parseArgs: a value flag followed by nothing or by another --flag is a usage error (exit 2) naming the flag — never swallowed; a single-dash value stays a value', () => {
+  for (const [flag, ...tail] of [['--width'], ['--max-height'], ['--out'], ['--suffix'], ['--width', '--out', 'o'], ['--out', '--suffix', '-s'], ['--suffix', '--width', '48'], ['--max-height', '--help']]) {
+    assert.throws(() => parseArgs(['x.png', flag, ...tail]), (e) => e.code === 2 && e.message === `${flag} needs a value`, `${flag} ${tail.join(' ')}`);
+  }
+  assert.equal(parseArgs(['x.png', '--suffix', '-720']).opts.suffix, '-720');
+  assert.equal(parseArgs(['x.png', '--suffix', '']).opts.suffix, '');
+});
 check('expandInputs: files pass through (absent ones too — they fail at read time); a directory yields its sorted PNGs minus its own earlier output', () => {
   assert.deepEqual(expandInputs(['/nope/x.png'], '-thumb'), ['/nope/x.png']);
   const d = mkdtempSync(join(tmpdir(), 'thumb-expand-'));

@@ -22,7 +22,9 @@
  *
  * The body runs to the next heading of the same or a higher level. Headings
  * inside fenced code blocks are ignored. Exit 0 = printed, 2 = no match
- * (the outline is printed so the next call can hit), 125 = usage.
+ * (the outline is printed so the next call can hit), 125 = usage (unknown
+ * flag, or a value flag — --level, --max-lines — followed by nothing or by
+ * another --flag: the flag is named, never swallowed as the value).
  */
 
 /* eslint-disable no-restricted-syntax, brace-style, object-curly-newline, max-len */
@@ -72,17 +74,21 @@ function cli(argv) {
   const rest = argv.slice(2);
   if (!rest.length || rest.includes('--help') || rest.includes('-h')) { console.log(HELP); return rest.length ? 0 : 125; }
   let file = null; let pattern = null; let list = false; let level = null; let maxLines = 400; let all = false;
-  for (let i = 0; i < rest.length; i += 1) {
-    const a = rest[i];
-    if (a === '--list') list = true;
-    else if (a === '--all') all = true;
-    else if (a === '--level') level = Number(rest[++i]);
-    else if (a === '--max-lines') maxLines = Number(rest[++i]);
-    else if (a.startsWith('--')) { console.error(`section: unknown flag ${a}\n${HELP}`); return 125; }
-    else if (!file) file = a;
-    else if (!pattern) pattern = a;
-    else { console.error(`section: unexpected argument ${a}\n${HELP}`); return 125; }
-  }
+  // A value flag followed by nothing or by another --flag is a usage error naming the flag (125).
+  const need = (i, flag) => { if (i + 1 >= rest.length || rest[i + 1].startsWith('--')) throw new Error(`${flag} needs a value`); return rest[i + 1]; };
+  try {
+    for (let i = 0; i < rest.length; i += 1) {
+      const a = rest[i];
+      if (a === '--list') list = true;
+      else if (a === '--all') all = true;
+      else if (a === '--level') { level = Number(need(i, a)); i += 1; }
+      else if (a === '--max-lines') { maxLines = Number(need(i, a)); i += 1; }
+      else if (a.startsWith('--')) { console.error(`section: unknown flag ${a}\n${HELP}`); return 125; }
+      else if (!file) file = a;
+      else if (!pattern) pattern = a;
+      else { console.error(`section: unexpected argument ${a}\n${HELP}`); return 125; }
+    }
+  } catch (e) { console.error(`section: ${e.message}\n${HELP}`); return 125; }
   if (!file || (!list && !pattern)) { console.error(`section: need a file and --list or a heading regex\n${HELP}`); return 125; }
   let text; try { text = readFileSync(file, 'utf8'); } catch (e) { console.error(`section: cannot read ${file}: ${e.message}`); return 1; }
   const heads = outline(text);

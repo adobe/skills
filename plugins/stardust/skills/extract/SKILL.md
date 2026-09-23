@@ -377,8 +377,12 @@ probe.** `node <plugin>/skills/extract/scripts/style-census.mjs`
 (copied into the project like `crawl.mjs`, § Setup) measures every
 captured page at 1440 and writes
 `stardust/current/_computed-styles.json`; add `--width 360` when the
-breakpoints include it. A long run goes in the background when the
-harness offers it. Read the palette, type, motif and hover values
+breakpoints include it. It is one more live pass over every page —
+run it ONCE, after the crawl, in the background (replica's `run-bg.mjs`
+where copied, else the harness's own background run); it opens the
+live side through the diff skill's `live-session.mjs` (real-Chrome UA,
+consent dismissal, bot challenge = exit 3) like every other live
+instrument. Read the palette, type, motif and hover values
 from the file's `aggregate` (via `json-query.mjs` where the replica
 copies it, or one `node -e` otherwise) and cite each from its
 `sources[]` (`url`, `selector`, `prop`); the per-page detail —

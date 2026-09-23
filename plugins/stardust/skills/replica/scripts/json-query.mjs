@@ -37,7 +37,9 @@
  * Paths: dotted, with [n] or .n for indexes (`main[0].slides.1.content`).
  * Every reading view is capped and its footer says what was left out; `--tsv`
  * and `--path` to a string are not. Exit 0 = printed, 2 = path missing or
- * nothing matches, 125 = usage.
+ * nothing matches, 125 = usage (unknown flag, or a value flag — --path,
+ * --match, --fields, --max, --width, --depth — followed by nothing or by
+ * another --flag: the flag is named, never swallowed as the value).
  */
 
 /* eslint-disable no-restricted-syntax, brace-style, object-curly-newline, max-len */
@@ -174,15 +176,17 @@ function cli(argv) {
   const rest = argv.slice(2);
   if (!rest.length || rest.includes('--help') || rest.includes('-h')) { console.log(HELP); return rest.length ? 0 : 125; }
   const o = { file: null, path: '', filters: [], fields: [], max: 40, width: 48, tsv: false, header: true, keys: false, depth: 1, count: false };
+  // A value flag followed by nothing or by another --flag is a usage error naming the flag (125).
+  const need = (i, flag) => { if (i + 1 >= rest.length || rest[i + 1].startsWith('--')) throw new Error(`${flag} needs a value\n${HELP}`); return rest[i + 1]; };
   try {
     for (let i = 0; i < rest.length; i += 1) {
       const a = rest[i];
-      if (a === '--path') o.path = rest[++i] ?? '';
-      else if (a === '--match') o.filters.push(parseMatch(rest[++i] ?? ''));
-      else if (a === '--fields') o.fields = (rest[++i] ?? '').split(',').map((s) => s.trim()).filter(Boolean);
-      else if (a === '--max') o.max = Number(rest[++i]);
-      else if (a === '--width') o.width = Number(rest[++i]);
-      else if (a === '--depth') o.depth = Number(rest[++i]);
+      if (a === '--path') { o.path = need(i, a); i += 1; }
+      else if (a === '--match') { o.filters.push(parseMatch(need(i, a))); i += 1; }
+      else if (a === '--fields') { o.fields = need(i, a).split(',').map((s) => s.trim()).filter(Boolean); i += 1; }
+      else if (a === '--max') { o.max = Number(need(i, a)); i += 1; }
+      else if (a === '--width') { o.width = Number(need(i, a)); i += 1; }
+      else if (a === '--depth') { o.depth = Number(need(i, a)); i += 1; }
       else if (a === '--tsv') o.tsv = true;
       else if (a === '--no-header') o.header = false;
       else if (a === '--keys') o.keys = true;

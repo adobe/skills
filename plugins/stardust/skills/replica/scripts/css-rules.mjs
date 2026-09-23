@@ -22,7 +22,9 @@
  * --decl keeps rules with a matching declaration and shows only those
  * declarations (+N more); --count prints the number of matches. Values longer
  * than 80 characters (data URIs) are cut. Minified sheets get byte offsets
- * (@1234) instead of line numbers. Exit 0 = printed, 2 = no match.
+ * (@1234) instead of line numbers. Exit 0 = printed, 2 = no match, 125 = usage
+ * (bad regex, unknown flag, or a value flag — --media, --decl, --max — followed
+ * by nothing or by another --flag: the flag is named, never swallowed).
  *
  * Also importable: parseCss(text) → [{ selector, body, media[], offset }].
  */
@@ -126,13 +128,15 @@ function cli(argv) {
   if (!rest.length || rest.includes('--help') || rest.includes('-h')) { console.log(HELP); return rest.length ? 0 : 125; }
   let file = null; let pattern = null; let mediaRe = null; let noMedia = false; let declRe = null; let max = 40; let count = false;
   const re = (v, flag) => { try { return new RegExp(v, 'i'); } catch (e) { throw new Error(`bad ${flag} regex ${v}: ${e.message}`); } };
+  // A value flag followed by nothing or by another --flag is a usage error naming the flag (125).
+  const need = (i, flag) => { if (i + 1 >= rest.length || rest[i + 1].startsWith('--')) throw new Error(`${flag} needs a value\n${HELP}`); return rest[i + 1]; };
   try {
     for (let i = 0; i < rest.length; i += 1) {
       const a = rest[i];
-      if (a === '--media') mediaRe = re(rest[++i], a);
+      if (a === '--media') { mediaRe = re(need(i, a), a); i += 1; }
       else if (a === '--no-media') noMedia = true;
-      else if (a === '--decl') declRe = re(rest[++i], a);
-      else if (a === '--max') max = Number(rest[++i]);
+      else if (a === '--decl') { declRe = re(need(i, a), a); i += 1; }
+      else if (a === '--max') { max = Number(need(i, a)); i += 1; }
       else if (a === '--count') count = true;
       else if (a.startsWith('--')) throw new Error(`unknown flag ${a}\n${HELP}`);
       else if (!file) file = a;

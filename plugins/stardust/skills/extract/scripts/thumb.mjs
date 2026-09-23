@@ -43,8 +43,9 @@
  * Requires: pngjs (project devDependency — the same one the replica scripts
  * use; run the project copy, as Setup does for crawl.mjs). --help needs nothing.
  * Exit codes: 0 ok · 1 an input failed to read or write (named on stderr; the
- * others are still written) · 2 usage (no inputs, bad flag, an output that
- * would overwrite an input or collide with another output).
+ * others are still written) · 2 usage (no inputs, bad flag, a value flag
+ * followed by nothing or by another --flag — named, never swallowed — or an
+ * output that would overwrite an input or collide with another output).
  */
 import { mkdirSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, extname, join, resolve } from 'node:path';
@@ -158,7 +159,9 @@ export function parseArgs(argv) {
   const pos = [];
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
-    const need = () => { if (i + 1 >= argv.length) throw new UsageError(`${a} needs a value`); i += 1; return argv[i]; };
+    // A value flag followed by nothing or by another --flag is a usage error naming the flag (a
+    // single-dash value like `--suffix -720` stays a value).
+    const need = () => { if (i + 1 >= argv.length || argv[i + 1].startsWith('--')) throw new UsageError(`${a} needs a value`); i += 1; return argv[i]; };
     const int = (v) => { const n = Number(v); if (!Number.isInteger(n) || n < 1) throw new UsageError(`${a} needs a positive integer, got "${v}"`); return n; };
     if (a === '--width') opts.width = int(need());
     else if (a === '--max-height') opts.maxHeight = int(need());

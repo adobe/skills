@@ -51,6 +51,20 @@ await check('parseArgs: usage errors (code 2) — no url, no selectors, unknown 
   usage(['http://a/', '--selectors'], /--selectors needs a value/);
   usage(['http://a/', '--selectors', '.x', '--props', ','], /--props/);
 });
+await check('parseArgs: a value flag followed by nothing or by another --flag is a usage error naming the flag (never swallows the flag)', () => {
+  for (const [flag, ...tail] of [['--width'], ['--against'], ['--out'], ['--timeout-ms'], ['--ua'], ['--consent'], ['--dismiss'], ['--locale'], ['--width', '--json'], ['--against', '--all-matches'], ['--dismiss', '--headed'], ['--locale', '--json']]) {
+    assert.throws(() => parseArgs(['http://a/', '--selectors', '.x', flag, ...tail]), (e) => e instanceof UsageError && e.code === 2 && e.message.startsWith(`${flag} needs a value`), `${flag} ${tail.join(' ')}`);
+  }
+  // the CLI names the flag and exits 2
+  const r = spawnSync(process.execPath, [SCRIPT, 'http://a/', '--selectors', '.x', '--width', '--json'], { encoding: 'utf8' });
+  assert.equal(r.status, 2); assert.match(r.stderr, /measure: --width needs a value/);
+});
+await check('parseArgs: live-side flags — --consent, --dismiss (comma list, repeatable), --headed, --locale; live-session.mjs resolves from the plugin tree', () => {
+  const o = parseArgs(['http://a/', '--selectors', 'h1', '--consent', '#ok', '--dismiss', '.close, .later', '--dismiss', '.x', '--headed', '--locale', 'en-GB']);
+  assert.equal(o.consent, '#ok'); assert.deepEqual(o.dismiss, ['.close', '.later', '.x']); assert.equal(o.headed, true); assert.equal(o.locale, 'en-GB');
+  const d = parseArgs(['http://a/', '--selectors', 'h1']); assert.equal(d.consent, null); assert.deepEqual(d.dismiss, []); assert.equal(d.headed, false); assert.equal(d.locale, null);
+  assert.ok(existsSync(join(HERE, '..', '..', '..', 'diff', 'scripts', 'live-session.mjs')), 'the plugin-tree layout the script resolves first');
+});
 await check('isLiveHttpUrl: live origins yes; localhost, loopback and file no', () => {
   assert.equal(isLiveHttpUrl('https://www.example.org/x'), true);
   assert.equal(isLiveHttpUrl('http://localhost:8791/a.html'), false);

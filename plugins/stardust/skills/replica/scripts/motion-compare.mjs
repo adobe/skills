@@ -2,18 +2,34 @@
 /**
  * skills/replica/scripts/motion-compare.mjs
  *
- * Interaction-parity gate for the stardust:replica motion pass: compares two
- * motion-observe.mjs outputs — one taken on the live source page, one on the
- * rebuilt page — and prints one greppable verdict line per observed behavior
- * plus a summary, in the same short vocabulary as gate.sh / pixel-compare.
+ * Interaction-parity ADVISORY for the stardust:replica motion pass: compares
+ * two motion-observe.mjs outputs — one taken on the live source page, one on
+ * the rebuilt page — and prints one greppable verdict line per observed
+ * behavior plus a summary, in the same short vocabulary as gate.sh /
+ * pixel-compare. It is a finding generator, NOT a gate: it exits 0 whenever
+ * both inputs parsed, whatever the verdicts say.
  *
  * Policy (recreation-procedure.md § Interaction parity): motion is OBSERVED,
- * never inferred. A behavior that measurably fired on live must fire on the
+ * never inferred. A behavior that measurably fired on live should fire on the
  * build (else MISSING); a behavior that fired on the build but not on live is
- * invented motion (EXTRA); a behavior that was DEAD on live — the probe ran but
- * nothing changed — is NOT required on the build. For behaviors present on
- * both sides the timing (transition/animation time) and magnitude (px) deltas
- * are held to the tolerances.
+ * probably invented motion (EXTRA); a behavior that was DEAD on live — the
+ * probe ran but nothing changed — is NOT required on the build. For behaviors
+ * present on both sides the timing (transition/animation time) and magnitude
+ * (px) deltas are held to the tolerances.
+ *
+ * What a MISSING / EXTRA line IS: a finding the agent CONFIRMS on the `class`
+ * lines (the trigger classes the live runtime added — the mechanism channel)
+ * and on the element, then records in progress.json under
+ * `motion: { observed, implemented, dead[] }` — observed = the live behaviors
+ * that fired, implemented = the ones the build reproduces, dead[] = the ones
+ * the sampler saw nothing for. It is never, by itself, a gate that blocks
+ * approval: a hard fail here produced false blocks on class-toggled and
+ * pseudo-element mechanics the sampler cannot see (a live carousel that fades
+ * by toggling a class reads as "dead" to the frame sampler; a hover that moves
+ * a ::after underline reads as "no diff" to the hover probe), and a build that
+ * reproduced the live page faithfully was refused for it. A hover sample the
+ * observer could not take (`hovered: false`, or an `.error` field) counts as
+ * NOT OBSERVED — never as "dead on live" and never as evidence about the build.
  *
  * Where the instrument is blind, the verdict is advisory, never a hard EXTRA.
  * The widget frame sampler reads track/box transforms, scrollLeft and
@@ -37,7 +53,7 @@
  *               scrolled state, the restore threshold on the way back up,
  *               main/body padding compensation, transition time, and the
  *               header count (a build that renders two headers at once is a
- *               state that cannot exist on live — always a failure).
+ *               state that cannot exist on live — always a finding).
  *   widget      one per --click poke (widgetSamples[]): change across the
  *               sampled frames in track transform / scrollLeft / box
  *               transform / indicator classes, its settle time and transition
@@ -74,11 +90,18 @@
  *   motion <class> <name>: timing delta 420ms > 150ms (…)
  *   motion <class> <name>: magnitude delta 24px > 8px (…)
  *   motion <class> <name>: dead on live — not required (…)
- *   motion <class> <name>: extra on build — advisory (…)      does not fail the gate
- * then `motion summary: … → PASS|FAIL`.
+ *   motion <class> <name>: unobserved on live — not required (…)   probe failed / not hovered
+ *   motion <class> <name>: extra on build — advisory (…)
+ * then the final line
+ *   motion summary: <n> parity, <n> missing, <n> extra, <n> advisory (<n> out of tolerance,
+ *                   <n> dead or unobserved on live — not required; tolerance <ms>ms / <px>px)
  *
- * Exit codes: 0 parity holds, 1 any MISSING / EXTRA / out-of-tolerance
- * behavior, 2 usage error or unreadable input.
+ * Writes: nothing — unless --json <out>, which receives { live, build, toleranceMs,
+ * tolerancePx, advisory: true, counts, verdicts[] } (directories created).
+ *
+ * Exit codes: 0 both inputs parsed — ALWAYS, whatever the verdicts (advisory,
+ * not a gate); 1 an input is unreadable or not a motion-observe object;
+ * 2 usage error.
  * Resolution note: widget settle time is read from the observer's ~200 ms
  * frame grid, so a one-frame settle difference exceeds the default tolerance —
  * that is the instrument's resolution, not noise; raise --tolerance-ms to
@@ -90,7 +113,7 @@ import { readFileSync, writeFileSync, mkdirSync, realpathSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const HELP = `motion-compare — interaction-parity verdicts from two motion-observe JSONs
+const HELP = `motion-compare — interaction-parity findings from two motion-observe JSONs (advisory, not a gate)
 
 Usage: node motion-compare.mjs <live.json> <build.json> [options]
   --tolerance-ms <n>  timing tolerance in ms (default 150)
@@ -100,41 +123,48 @@ Usage: node motion-compare.mjs <live.json> <build.json> [options]
 
 Convention: <live.json> = observation of the live source page, <build.json> =
 observation of the rebuilt page (same observer, same pokes in the same order).
-Exit codes: 0 parity, 1 missing/extra/out-of-tolerance behavior, 2 usage or
-unreadable input.`;
+A MISSING / EXTRA line is a finding to confirm on the class lines and record in
+progress.json (motion: {observed, implemented, dead[]}) — never a block by itself.
+Exit codes: 0 both inputs parsed (always, whatever the verdicts), 1 unreadable
+input, 2 usage.`;
 
 const USAGE_EXIT = 2;
+const INPUT_EXIT = 1;
 
 function usage(msg) { console.error(`motion-compare error: ${msg}\n\n${HELP}`); process.exit(USAGE_EXIT); }
+function inputError(msg) { console.error(`motion-compare error: ${msg}`); process.exit(INPUT_EXIT); }
 
 function parseArgs(argv) {
   const rest = argv.slice(2);
   if (rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
   const pos = [];
   const opts = { toleranceMs: 150, tolerancePx: 8, json: null };
+  // A value flag followed by nothing or by another --flag is a usage error naming the flag.
+  const need = (i, flag) => { if (i + 1 >= rest.length || rest[i + 1].startsWith('--')) usage(`${flag} needs a value`); return rest[i + 1]; };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
-    if (a === '--tolerance-ms') { opts.toleranceMs = Number(rest[i += 1]); }
-    else if (a === '--tolerance-px') { opts.tolerancePx = Number(rest[i += 1]); }
-    else if (a === '--json') { opts.json = rest[i += 1]; }
+    if (a === '--tolerance-ms') { opts.toleranceMs = Number(need(i, a)); i += 1; }
+    else if (a === '--tolerance-px') { opts.tolerancePx = Number(need(i, a)); i += 1; }
+    else if (a === '--json') { opts.json = need(i, a); i += 1; }
     else if (a.startsWith('--')) usage(`unknown flag ${a}`);
     else pos.push(a);
   }
   if (pos.length !== 2) usage('need <live.json> and <build.json>');
   if (!Number.isFinite(opts.toleranceMs) || opts.toleranceMs < 0) usage('--tolerance-ms must be a non-negative number');
   if (!Number.isFinite(opts.tolerancePx) || opts.tolerancePx < 0) usage('--tolerance-px must be a non-negative number');
-  if (opts.json === undefined) usage('--json needs a path');
   return { livePath: pos[0], buildPath: pos[1], opts };
 }
 
 // ---- input ------------------------------------------------------------------------------------
 
+// An unreadable or non-motion-observe input is exit 1 (the file is wrong), distinct from exit 2
+// (the command line is wrong) — so a caller can tell "re-run the observer" from "fix the flags".
 function loadObservation(path, label) {
   let doc;
-  try { doc = JSON.parse(readFileSync(path, 'utf8')); } catch (e) { usage(`cannot read ${label} ${path}: ${e.message}`); }
-  if (!doc || typeof doc !== 'object' || Array.isArray(doc)) usage(`${label} ${path} is not a motion-observe object`);
+  try { doc = JSON.parse(readFileSync(path, 'utf8')); } catch (e) { inputError(`cannot read ${label} ${path}: ${e.message}`); }
+  if (!doc || typeof doc !== 'object' || Array.isArray(doc)) inputError(`${label} ${path} is not a motion-observe object`);
   const missing = ['headerTimeline', 'widgetSamples', 'hoverSamples', 'events'].filter((k) => !(k in doc));
-  if (missing.length) usage(`${label} ${path} lacks motion-observe keys: ${missing.join(', ')}`);
+  if (missing.length) inputError(`${label} ${path} lacks motion-observe keys: ${missing.join(', ')}`);
   const arr = (v) => (Array.isArray(v) ? v : []);
   const ev = doc.events && typeof doc.events === 'object' ? doc.events : {};
   return {
@@ -177,8 +207,9 @@ const near = (a, b, tol) => Math.abs(a - b) <= tol;
 // ---- verdict assembly ---------------------------------------------------------------------------
 
 // A verdict is { cls, name, state, note, deltas } where state ∈ parity | missing | extra |
-// tolerance | dead | unobserved | advisory. Only missing/extra/tolerance fail the gate.
-const FAILING = new Set(['missing', 'extra', 'tolerance']);
+// tolerance | dead | unobserved | advisory. missing/extra/tolerance are FINDINGS (the agent confirms
+// them on the class lines and the element); none of them changes the exit code — advisory, not a gate.
+const FINDING = new Set(['missing', 'extra', 'tolerance']);
 
 function verdictLine(v) {
   const head = `motion ${v.cls} ${v.name}:`;
@@ -415,8 +446,11 @@ export const normaliseHoverKey = (k) => {
   return parts.length >= 2 ? `${parts[0]}.${parts[parts.length - 1]}` : s;
 };
 
+// `hovered: false` (the observer could not hover the element — off-screen, covered, detached) or an
+// `.error` field is NOT OBSERVED: nothing is known about the live hover, so it is never read as "dead
+// on live" (which would license the build to drop it) and never as evidence about the build.
 export function hoverProfile(sample) {
-  if (!sample || sample.error) return { observed: false, error: sample?.error || 'no sample' };
+  if (!sample || sample.error || sample.hovered === false) return { observed: false, error: sample?.error || (sample && sample.hovered === false ? 'not hovered' : 'no sample') };
   const changed = [...new Set((Array.isArray(sample.changed) ? sample.changed : []).map(normaliseHoverKey))].sort();
   let timeMs = null;
   const after = sample.after || {};
@@ -534,8 +568,14 @@ export function compare(live, build, opts) {
   ];
   const count = (s) => verdicts.filter((v) => v.state === s).length;
   const counts = { behaviors: verdicts.length, parity: count('parity'), missing: count('missing'), extra: count('extra'), tolerance: count('tolerance'), dead: count('dead') + count('unobserved'), advisory: count('advisory') };
-  const pass = !verdicts.some((v) => FAILING.has(v.state));
-  return { verdicts, counts, pass };
+  // findings = the lines the agent must confirm and record; informational only (exit stays 0).
+  const findings = verdicts.filter((v) => FINDING.has(v.state)).length;
+  return { verdicts, counts, findings };
+}
+
+// The summary line: the four headline counts first (greppable), the rest in the parenthetical.
+export function summaryLine(counts, opts) {
+  return `motion summary: ${counts.parity} parity, ${counts.missing} missing, ${counts.extra} extra, ${counts.advisory} advisory (${counts.tolerance} out of tolerance, ${counts.dead} dead or unobserved on live — not required; tolerance ${opts.toleranceMs}ms / ${opts.tolerancePx}px)`;
 }
 
 function main() {
@@ -543,14 +583,16 @@ function main() {
   const live = loadObservation(livePath, 'live');
   const build = loadObservation(buildPath, 'build');
   if (live.width && build.width && live.width !== build.width) console.error(`motion-compare WARNING: viewport widths differ (live ${live.width}, build ${build.width}) — chrome and widget behavior are breakpoint-dependent`);
-  const { verdicts, counts, pass } = compare(live, build, opts);
+  const { verdicts, counts, findings } = compare(live, build, opts);
   for (const v of verdicts) console.log(verdictLine(v));
-  console.log(`motion summary: ${counts.behaviors} behaviors — ${counts.parity} parity, ${counts.missing} missing on build, ${counts.extra} extra on build, ${counts.tolerance} out of tolerance, ${counts.dead} dead on live (not required)${counts.advisory ? `, ${counts.advisory} advisory` : ''}  (tolerance ${opts.toleranceMs}ms / ${opts.tolerancePx}px) → ${pass ? 'PASS' : 'FAIL'}`);
+  console.log(summaryLine(counts, opts));
   if (opts.json) {
     mkdirSync(dirname(opts.json) || '.', { recursive: true });
-    writeFileSync(opts.json, JSON.stringify({ live: livePath, build: buildPath, toleranceMs: opts.toleranceMs, tolerancePx: opts.tolerancePx, pass, counts, verdicts: verdicts.map((v) => ({ ...v, line: verdictLine(v) })) }, null, 2));
+    writeFileSync(opts.json, JSON.stringify({ live: livePath, build: buildPath, toleranceMs: opts.toleranceMs, tolerancePx: opts.tolerancePx, advisory: true, findings, counts, verdicts: verdicts.map((v) => ({ ...v, line: verdictLine(v) })) }, null, 2));
   }
-  process.exitCode = pass ? 0 : 1;
+  // Advisory: both inputs parsed → exit 0, whatever the verdicts. The MISSING/EXTRA lines are
+  // findings for the agent to confirm and record (progress.json motion: {observed, implemented, dead[]}).
+  process.exitCode = 0;
 }
 
 // Only run when invoked directly, so the test can import the reducers. Compare by real path: node

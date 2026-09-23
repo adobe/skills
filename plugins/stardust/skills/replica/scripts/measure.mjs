@@ -40,10 +40,21 @@
  *     --out <file>         also write that JSON to <file> (directories created)
  *     --timeout-ms <ms>    per-page navigation timeout (default 20000)
  *     --ua <string>        user agent (default: the real-Chrome desktop UA)
+ *     --consent <sel>      extra consent-accept selector (live side; clicked, never removed)
+ *     --dismiss <sel,…>    extra overlay-dismiss selectors (live side; marketing modals etc.)
+ *     --headed             headed stealth real Chrome (escalation for bot-managed live sites)
+ *     --locale <tag>       pin Accept-Language + context locale (e.g. en-GB) on the live side
  *
- * Per page: goto (domcontentloaded on a live origin, networkidle on localhost /
- * file), reduced motion, a slow-scroll settle from top to bottom and back so
- * lazy and entrance-animated content is at rest, then the read at each width.
+ * Per page: the LIVE side (any http(s) origin that is not localhost) opens
+ * through the shared live-session helper — real-Chrome UA plus the standard
+ * request headers, navigator.webdriver spoof, challenge detection, then both
+ * overlay classes dismissed (cookie consent clicked, timed marketing modals
+ * closed) — exactly as stitch-shot and chrome-parity open it, so a bot-managed
+ * origin is measured as the page and never as an "Access Denied" interstitial.
+ * The prototype/build side (localhost / 127.0.0.1 / file) is a plain page from
+ * the same browser (networkidle). Both then get reduced motion, a slow-scroll
+ * settle from top to bottom and back so lazy and entrance-animated content is
+ * at rest, and the read at each width.
  *
  * Output (table): one block per width, one line per match (`sel[i]  x y w h
  * vis "text"`) followed by its properties, then — with --against — the delta
@@ -59,17 +70,21 @@
  * Writes: nothing — unless --out <file>, which receives the JSON above.
  *
  * Exit codes: 0 measured, 1 a page failed to load (named on stderr; what was
- * measured is still printed), 2 usage error or playwright not importable.
+ * measured is still printed), 2 usage error, playwright not importable or
+ * live-session.mjs not found, 3 bot challenge — the live side served an edge
+ * interstitial (fail loud; nothing is printed as measured; escalate --headed).
  * A delta never changes the exit code — this is a measurement, not a gate.
  *
- * Requires playwright importable from the script's location (replica SKILL.md
- * § Setup: copy the scripts dir into the project and run the copy). The
- * delta and table functions are exported and pure — the contract test runs
- * them without a browser.
+ * Requires playwright importable from the script's location and the diff
+ * skill's live-session.mjs in one of two layouts — the plugin tree
+ * (../../diff/scripts/live-session.mjs) or the project copy
+ * (../diff/live-session.mjs; replica SKILL.md § Setup copies both scripts
+ * dirs into the project and you run the copy). The delta and table functions
+ * are exported and pure — the contract test runs them without a browser.
  */
-import { mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
-import { dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { dirname, resolve as resolvePath } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
@@ -89,10 +104,23 @@ const VIEWPORT_H = 900;
 
 export class UsageError extends Error { constructor(msg) { super(msg); this.code = 2; } }
 
+const HERE = dirname(fileURLToPath(import.meta.url));
+// live-session.mjs lives in the diff skill's scripts dir. Two layouts exist: the plugin tree
+// (skills/replica/scripts ↔ skills/diff/scripts) and the documented project copy (scripts/replica ↔
+// scripts/diff) — resolve either, so a project re-copy can't silently sever the shared hardening.
+// Resolved lazily (in main) so the pure exports stay importable without it.
+const LIVE_SESSION_CANDIDATES = ['../../diff/scripts/live-session.mjs', '../diff/live-session.mjs'];
+async function loadLiveSession() {
+  const found = LIVE_SESSION_CANDIDATES.map((p) => resolvePath(HERE, p)).find((p) => existsSync(p));
+  if (!found) throw new UsageError('live-session.mjs not found (looked in ../../diff/scripts/ and ../diff/). Copy the diff skill\'s scripts dir alongside this one (replica SKILL.md § Setup).');
+  return import(pathToFileURL(found).href);
+}
+
 const splitList = (s) => String(s || '').split(',').map((x) => x.trim()).filter(Boolean);
 
 export function parseArgs(argv) {
-  const o = { url: null, against: null, selectors: [], widths: [], props: DEFAULT_PROPS, allMatches: false, json: false, out: null, timeoutMs: 20000, ua: DEFAULT_UA };
+  const o = { url: null, against: null, selectors: [], widths: [], props: DEFAULT_PROPS, allMatches: false, json: false, out: null, timeoutMs: 20000, ua: DEFAULT_UA, consent: null, dismiss: [], headed: false, locale: null };
+  // A value flag followed by nothing or by another --flag is a usage error naming the flag.
   const need = (i, flag) => { if (i + 1 >= argv.length || argv[i + 1].startsWith('--')) throw new UsageError(`${flag} needs a value`); return argv[i + 1]; };
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
@@ -105,6 +133,10 @@ export function parseArgs(argv) {
     else if (a === '--out') { o.out = need(i, a); i += 1; }
     else if (a === '--timeout-ms') { o.timeoutMs = Number(need(i, a)); i += 1; }
     else if (a === '--ua') { o.ua = need(i, a); i += 1; }
+    else if (a === '--consent') { o.consent = need(i, a); i += 1; }
+    else if (a === '--dismiss') { o.dismiss.push(...splitList(need(i, a))); i += 1; }
+    else if (a === '--headed') { o.headed = true; }
+    else if (a === '--locale') { o.locale = need(i, a); i += 1; }
     else if (a.startsWith('--')) { throw new UsageError(`unknown flag ${a} (see --help)`); }
     else if (o.url) { throw new UsageError(`unexpected argument "${a}" — one <url>; the second page goes in --against`); }
     else { o.url = a; }
@@ -170,15 +202,31 @@ async function settle(page) {
   await page.waitForTimeout(300);
 }
 
-async function measurePage(browser, url, o) {
+// The live side opens through live-session (stitch-shot / chrome-parity shape): UA + standard
+// headers + webdriver spoof on the context, gotoLive (BotChallengeError on an edge interstitial —
+// never measured as the source; solveWindow only under --headed), then both overlay classes
+// dismissed. The local prototype side is a plain page from the same browser.
+async function measurePage(browser, url, o, session) {
   const live = isLiveHttpUrl(url);
-  const context = await browser.newContext({ userAgent: o.ua, viewport: { width: o.widths[0], height: VIEWPORT_H }, reducedMotion: 'reduce', locale: 'en-US', colorScheme: 'light', ignoreHTTPSErrors: true });
+  const viewport = { width: o.widths[0], height: VIEWPORT_H };
+  const common = { reducedMotion: 'reduce', colorScheme: 'light', ignoreHTTPSErrors: true };
+  const context = live
+    ? await session.newLiveContext(browser, { ua: o.ua, locale: o.locale, viewport, ...common })
+    : await browser.newContext({ userAgent: o.ua, viewport, locale: 'en-US', ...common });
   const page = await context.newPage();
   const byWidth = {};
   try {
-    const resp = await page.goto(url, { waitUntil: live ? 'domcontentloaded' : 'networkidle', timeout: o.timeoutMs });
-    if (resp && resp.status() >= 400) throw new Error(`HTTP ${resp.status()}`);
-    await page.waitForTimeout(live ? 1500 : 300);
+    if (live) {
+      await session.gotoLive(page, url, { waitUntil: session.defaultWaitUntil(url), timeoutMs: o.timeoutMs, settleMs: 1500, solveWindow: o.headed });
+      const d = await session.dismissOverlays(page, { extra: [...(o.consent ? [o.consent] : []), ...o.dismiss], lateWindowMs: 6000 });
+      if (d.consent) console.error(`measure: consent dismissed via ${d.consent}`);
+      for (const sel of d.extra) console.error(`measure: overlay dismissed via extra selector ${sel}`);
+      for (const sel of d.marketing) console.error(`measure: marketing modal dismissed via ${sel}`);
+    } else {
+      const resp = await page.goto(url, { waitUntil: 'networkidle', timeout: o.timeoutMs });
+      if (resp && resp.status() >= 400) throw new Error(`HTTP ${resp.status()}`);
+      await page.waitForTimeout(300);
+    }
     for (const width of o.widths) {
       await page.setViewportSize({ width, height: VIEWPORT_H });
       await settle(page);
@@ -197,11 +245,15 @@ async function main(argv) {
     throw new UsageError(`playwright is not importable from ${dirname(fileURLToPath(import.meta.url))} (${e.code || e.message}) — replica SKILL.md § Setup: copy the scripts dir into the project and run the copy`);
   }
   const urls = o.against ? [o.url, o.against] : [o.url];
+  const session = await loadLiveSession();
   const result = { _provenance: { writtenBy: 'skills/replica/scripts/measure.mjs', writtenAt: new Date().toISOString(), urls, widths: o.widths, selectors: o.selectors, props: o.props, allMatches: o.allMatches, failed: [], warnings: [] }, widths: o.widths, selectors: o.selectors, pages: {} };
-  const browser = await chromium.launch({ headless: true });
+  // --headed: the stealth real-Chrome escalation tier from live-session; otherwise plain headless.
+  const browser = o.headed ? await session.launchStealthHeaded(chromium) : await chromium.launch({ headless: true });
   try {
     for (const url of urls) {
-      try { result.pages[url] = await measurePage(browser, url, o); } catch (e) {
+      try { result.pages[url] = await measurePage(browser, url, o, session); } catch (e) {
+        // A bot challenge is never a per-page "failed to load": fail loud (exit 3), measure nothing.
+        if (e.name === 'BotChallengeError') { e.code = 3; throw e; }
         const msg = String(e.message || e).split('\n')[0];
         result._provenance.failed.push({ url, error: msg });
         console.error(`measure: ${url} failed to load — ${msg}`);

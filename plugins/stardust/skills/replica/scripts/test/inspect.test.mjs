@@ -187,6 +187,38 @@ check('html-slice: CLI first match, --all, --text, --count, caps, no match exits
   assert.equal(run('html-slice.mjs', html, 'a b').code, 125);
 });
 
+// ---- value-flag swallow rule (all four) ---------------------------------------------------------
+// A value flag followed by nothing or by another --flag is a usage error (125) naming the flag —
+// the next flag is never swallowed as the value.
+check('section: --level / --max-lines without a value, or followed by another --flag, exit 125 naming the flag', () => {
+  for (const args of [[md, 'setup', '--level'], [md, 'setup', '--max-lines'], [md, 'setup', '--level', '--all'], [md, '--max-lines', '--list']]) {
+    const r = run('section.mjs', ...args); const flag = args.includes('--level') ? '--level' : '--max-lines';
+    assert.equal(r.code, 125, args.join(' ')); assert.match(r.err, new RegExp(`^section: ${flag} needs a value`)); assert.equal(r.out, '');
+  }
+  assert.equal(run('section.mjs', md, 'setup', '--level', '3', '--all').code, 0, 'a real value still parses');
+});
+check('css-rules: --media / --decl / --max without a value, or followed by another --flag, exit 125 naming the flag', () => {
+  for (const [flag, ...tail] of [['--media'], ['--decl'], ['--max'], ['--media', '--no-media'], ['--decl', '--count'], ['--max', '--media', '1024']]) {
+    const r = run('css-rules.mjs', css, 'cmp-teaser__title', flag, ...tail);
+    assert.equal(r.code, 125, `${flag} ${tail.join(' ')}`); assert.match(r.err, new RegExp(`^css-rules: ${flag} needs a value`)); assert.equal(r.out, '');
+  }
+  assert.equal(run('css-rules.mjs', css, 'cmp-teaser__title', '--media', '1024', '--count').code, 0, 'a real value still parses');
+});
+check('json-query: --path / --match / --fields / --max / --width / --depth without a value, or followed by another --flag, exit 125 naming the flag', () => {
+  for (const [flag, ...tail] of [['--path'], ['--match'], ['--fields'], ['--max'], ['--width'], ['--depth'], ['--path', '--keys'], ['--fields', '--tsv'], ['--max', '--path', 'elements'], ['--depth', '--count']]) {
+    const r = run('json-query.mjs', json, flag, ...tail);
+    assert.equal(r.code, 125, `${flag} ${tail.join(' ')}`); assert.match(r.err, new RegExp(`^json-query: ${flag} needs a value`)); assert.equal(r.out, '');
+  }
+  assert.equal(run('json-query.mjs', json, '--path', 'elements', '--keys').code, 0, 'a real value still parses');
+});
+check('html-slice: --keep-attrs / --max-chars without a value, or followed by another --flag, exit 125 naming the flag', () => {
+  for (const [flag, ...tail] of [['--keep-attrs'], ['--max-chars'], ['--keep-attrs', '--text'], ['--max-chars', '--all']]) {
+    const r = run('html-slice.mjs', html, 'header', flag, ...tail);
+    assert.equal(r.code, 125, `${flag} ${tail.join(' ')}`); assert.match(r.err, new RegExp(`^html-slice: ${flag} needs a value`)); assert.equal(r.out, '');
+  }
+  assert.equal(run('html-slice.mjs', html, 'header', '--keep-attrs', 'class', '--text').code, 0, 'a real value still parses');
+});
+
 rmSync(dir, { recursive: true, force: true });
 console.log(failed ? `\n${failed} failing` : '\ninspect helpers: all checks passed');
 process.exit(failed ? 1 : 0);
