@@ -22,7 +22,13 @@
  *   fetch-json     { url*, minRows?, expectKeys? }                 GET on the origin returns JSON with rows / keys
  *   dom-count      { path*, selector*, min* }                      ≥ min elements after settle
  *   click-dialog   { path*, trigger*, headingIncludes?, minWidth? } click opens a dialog; heading / width asserted; Escape closes it
- *   search-query   { path*, param?, term*, resultSelector*, expectIncludes* } results include the expected text/href
+ *   search-query   { path*, param?, term*, resultSelector*, titleSelector?, expectIncludes?, expectCount?, expectTitles?[], countTolerance? }
+ *                  the results are compared with what the SOURCE showed for the same term (read during detect,
+ *                  recorded here — at least one expectation): a result includes expectIncludes; the result COUNT
+ *                  equals expectCount (± countTolerance, default 0); the top titles (≤ 3) equal expectTitles as a
+ *                  set; no two results share title + text. A count mismatch FAILS — a recorded hands-off run's
+ *                  typeahead returned 10 entries (two home pages under one title) where the source returned 3.
+ *                  Exported as `compareSearchResults(results, check)` for the unit test and the qa check.
  *   form-flow      { path*, form?, submit*, fill*, statusSelector?, endpointPattern?, successIncludes? } empty submit refused, filled submit arrives
  *   video-plays    { path*, trigger?, iframeSelector?, playbackHost* } iframe present AND a playback request to the vendor observed
  *   consent-gate   { path*, forbiddenHosts*[] }                    no request to those hosts before consent
@@ -48,6 +54,44 @@ async function openPage(ctx, origin, path) {
 }
 const summarize = (tp) => { const m = {}; for (const t of tp) { const k = `${t.host}:${t.status}`; m[k] = (m[k] || 0) + 1; } return Object.entries(m).slice(0, 12).map(([k, n]) => `${k}×${n}`).join(' '); };
 const DIALOG = 'dialog[open], [role=dialog]:not([hidden]), [aria-modal=true]';
+
+/**
+ * Compare a results list `[{ title, text, href }]` with the expectations recorded from the SOURCE
+ * for the same term: `expectIncludes` (a result carries this text/href), `expectCount` (the
+ * source's result count, ± `countTolerance`, default 0), `expectTitles` (the source's top titles;
+ * the first ≤ 3 are compared as a set with the top results here). Two results sharing title + text
+ * are duplicates and fail. Pure — no browser, no network — so the unit test drives it directly.
+ * Returns { pass, detail, reasons[] }.
+ */
+export function compareSearchResults(results, { expectIncludes, expectCount, expectTitles, countTolerance = 0 } = {}) {
+  const norm = (x) => String(x ?? '').toLowerCase().replace(/\s+/g, ' ').trim();
+  const rows = (Array.isArray(results) ? results : []).map((r) => (typeof r === 'string' ? { title: norm(r), text: norm(r), href: '' } : { title: norm(r.title), text: norm(r.text), href: norm(r.href) }));
+  const hasCount = expectCount !== undefined && expectCount !== null && expectCount !== '' && Number.isFinite(Number(expectCount));
+  const wantCount = hasCount ? Number(expectCount) : null;
+  const titles = Array.isArray(expectTitles) ? expectTitles.map(norm).filter(Boolean) : [];
+  const reasons = [];
+  if (!expectIncludes && !hasCount && !titles.length) reasons.push('no expectation recorded (expectIncludes | expectCount | expectTitles)');
+  if (!rows.length && !(hasCount && wantCount === 0)) reasons.push('no results');
+  if (expectIncludes) {
+    const needle = norm(expectIncludes);
+    if (!rows.some((r) => `${r.title} ${r.text} ${r.href}`.includes(needle))) reasons.push(`expected "${expectIncludes}" MISSING`);
+  }
+  if (hasCount) {
+    const tol = Math.max(0, Number(countTolerance) || 0);
+    if (Math.abs(rows.length - wantCount) > tol) reasons.push(`count ${rows.length} vs source ${wantCount}${tol ? ` (±${tol})` : ''}`);
+  }
+  if (titles.length) {
+    const n = Math.min(3, titles.length);
+    const want = titles.slice(0, n); const got = rows.slice(0, n).map((r) => r.title);
+    const missing = want.filter((t) => !got.includes(t)); const unexpected = got.filter((t) => !want.includes(t));
+    if (missing.length || unexpected.length) reasons.push(`top-${n} titles differ — source: ${want.join(' | ')} · here: ${got.join(' | ') || '(none)'}`);
+  }
+  const seen = new Set(); const dupes = [];
+  for (const r of rows) { const k = `${r.title}|${r.text}`; if (seen.has(k)) { if (!dupes.includes(r.title)) dupes.push(r.title); } else seen.add(k); }
+  if (dupes.length) reasons.push(`duplicates (title + text): ${dupes.slice(0, 3).map((d) => `"${d.slice(0, 40)}"`).join(', ')}`);
+  const summary = `${rows.length} results${hasCount ? ` (source ${wantCount})` : ''}${rows[0] ? ` · first: ${rows[0].title.slice(0, 60)}` : ''}`;
+  return { pass: reasons.length === 0, detail: reasons.length ? `${summary} · ${reasons.join(' · ')}` : `${summary} · matches the source`, reasons };
+}
 
 const RUNNERS = {
   async 'fetch-json'(c, { ctx, origin }) {
@@ -78,10 +122,14 @@ const RUNNERS = {
     const sep = c.path.includes('?') ? '&' : '?';
     const { page, thirdParty } = await openPage(ctx, origin, `${c.path}${sep}${c.param || 'q'}=${encodeURIComponent(c.term)}`);
     await page.waitForSelector(c.resultSelector, { timeout: 15000 }).catch(() => {});
-    const r = await page.evaluate((s) => [...document.querySelectorAll(s)].map((el) => `${el.textContent} ${el.getAttribute('href') || el.querySelector('a')?.getAttribute('href') || ''}`.replace(/\s+/g, ' ').trim().toLowerCase()), c.resultSelector);
+    const results = await page.evaluate(({ s, ts }) => [...document.querySelectorAll(s)].map((el) => {
+      const squash = (x) => String(x || '').replace(/\s+/g, ' ').trim();
+      const t = ts ? el.querySelector(ts) : (el.matches('a, h1, h2, h3, h4') ? el : el.querySelector('h1, h2, h3, h4, [class*="title" i], a'));
+      return { title: squash((t || el).textContent), text: squash(el.textContent), href: el.getAttribute('href') || el.querySelector('a')?.getAttribute('href') || '' };
+    }), { s: c.resultSelector, ts: c.titleSelector || null });
     await page.close();
-    const hit = r.find((x) => x.includes(String(c.expectIncludes).toLowerCase()));
-    return { pass: r.length > 0 && !!hit, detail: `${r.length} results · expected "${c.expectIncludes}" ${hit ? 'found' : 'MISSING'}${r[0] ? ` · first: ${r[0].slice(0, 80)}` : ''}`, thirdParty };
+    const { pass, detail } = compareSearchResults(results, c);
+    return { pass, detail, thirdParty };
   },
   async 'form-flow'(c, { ctx, origin }) {
     const { page, thirdParty } = await openPage(ctx, origin, c.path);

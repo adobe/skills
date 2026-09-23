@@ -188,9 +188,44 @@ export function autofixFor(check) {
   return { available: true, target: 'aem-eds', strategy: a.strategy, kind: a.kind, status: 'pending', appliedBy: null, at: null, detail: null };
 }
 
-/** Compute a scorecard snapshot from the full findings list. */
+// --- optimize: source parity ---------------------------------------------------
+/**
+ * A finding whose condition the SOURCE capture shares — the same <title>, no meta description on
+ * the source either, no JSON-LD on the source either, the same title shared by the same pages —
+ * mirrors the source rather than a delivery defect. A recorded hands-off run accepted 63 such
+ * findings by hand. They stay in the ledger (listed in their own report section) but are
+ * informational: never scored, never counted open, never auto-fixed (a faithful migration is not
+ * rewritten). The findings schema has no parity property, so the tag is `fixability:
+ * out-of-scope` (the schema's own "informational" value) plus this evidence prefix; both are read.
+ */
+export const SOURCE_PARITY_PREFIX = 'source parity: ';
+export const isSourceParity = (f) => !!(f && f.fixability === 'out-of-scope' && typeof f.evidence === 'string' && f.evidence.startsWith(SOURCE_PARITY_PREFIX));
+
+/** Tag a detected finding as mirroring the source (`why` names the shared condition). */
+export function markSourceParity(finding, why) {
+  return {
+    ...finding,
+    fixability: 'out-of-scope',
+    evidence: `${SOURCE_PARITY_PREFIX}${finding.evidence} — ${why}`,
+    recommendedMove: 'Mirrors the source capture — informational, not scored, no rollout action; change it on the source (or record a content decision) if wanted.',
+    autofix: { available: false, target: 'aem-eds', strategy: null, kind: null, status: 'unavailable', appliedBy: null, at: null, detail: 'source parity — a faithful migration is not auto-rewritten' },
+  };
+}
+
+/** Open source-parity findings by severity (the report's own section; never in the score). */
+export function sourceParityCounts(findings) {
+  const rows = findings.filter((x) => (x.status === 'open' || x.status === 'in-progress') && isSourceParity(x));
+  const sev = (s) => rows.filter((x) => x.severity === s).length;
+  return { total: rows.length, P1: sev('P1'), P2: sev('P2'), P3: sev('P3') };
+}
+
+/**
+ * Compute a scorecard snapshot from the full findings list. Open source-parity findings are
+ * excluded from every dimension score and from the open P1/P2/P3 counts (they still mark their
+ * layer as assessed); `fixed` counts are untouched.
+ */
 export function computeScorecard(findings, runId, now) {
-  const open = findings.filter((x) => x.status === 'open' || x.status === 'in-progress');
+  const open = findings.filter((x) => (x.status === 'open' || x.status === 'in-progress') && !isSourceParity(x));
   const fixed = findings.filter((x) => x.status === 'fixed');
   const assessed = new Set();
   for (const f of findings) assessed.add(f.layer);

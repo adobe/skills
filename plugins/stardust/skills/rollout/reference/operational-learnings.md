@@ -37,7 +37,36 @@ reads 100%:
   plain link-resolution misses them). Rewrite to the local path. Keep an absolute
   source link only when no local page exists (e.g. an un-migrated language tree).
 
+## Site-assembly learnings (Phase D)
+
+- **The served sitemap is not the assembled one.** `stardust/rollout/site/sitemap.xml`
+  is the EXPECTED set (the directory is in `.hlxignore`); the platform builds
+  `/sitemap.xml` from its index of published documents — chrome documents included
+  unless each carries `Robots | noindex`. A recorded hands-off run reported "sitemap
+  36 urls" from the local file while the served one listed 58. Author the row on
+  every `nav` / `footer` / locale-shell document (or exclude them in
+  `helix-sitemap.yaml` + `helix-query.yaml` as well), then
+  `assemble.mjs --verify-origin <live-origin>` (exit 1 on a mismatch) — and the
+  `D-site end` ledger detail names the SERVED count.
+
+## Dynamic-features learnings (Phase D2)
+
+- **A 404 on `/query-index.json` means "no `helix-query.yaml`", not "no index can be
+  configured".** Commit the yaml in the code branch, push, publish the pages live and
+  poll (no more often than every 5 s, bounded) — no configuration-service write is
+  involved; a 403 there with the migration token is expected. The sheet-backed
+  interim index is the fallback only when the code branch is not writable
+  (`skills/dynamics/reference/listings.md` § Getting an index at all).
+- **A page built in D2 needs a coverage row** — `update-coverage.mjs --new` — or it
+  stays outside verify, optimize and the sitemap.
+
 ## Optimize-gate learnings (Phase F)
+
+- **Findings that mirror the source are informational, not work.** With the extract
+  capture present, `optimize.mjs` tags a finding whose condition the source shares
+  (`source parity:` evidence prefix, `fixability: out-of-scope`) and keeps it out of
+  the score, the open counts and the gate — a recorded hands-off run accepted 63 by
+  hand (`checks.md` § Source parity).
 
 - **A `head.html`-level fix needs a SITE-WIDE REPUBLISH to land, and to flip the
   findings.** The dominant baseline finding at scale is `ai-search/jsonld` ("no

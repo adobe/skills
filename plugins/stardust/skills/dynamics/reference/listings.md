@@ -24,6 +24,63 @@ contract` records it; `helix-query.yaml` at the EDS project root is authored fro
    field in metadata on one side, and the related items must themselves be indexed pages. Without
    that the block stays `static-snapshot` — record it, do not fake it.
 
+## Getting an index at all — `helix-query.yaml` first
+
+`/query-index.json` answering 404 means the project ships no `helix-query.yaml` (the demo
+boilerplate does not) — a code-branch authoring gap, never a configuration-service problem. The
+first remedy, in this order:
+
+1. Author `helix-query.yaml` at the code-branch root: the delivered content roots into
+   `target: /query-index.json`, chrome and search documents excluded.
+   ```yaml
+   version: 1
+   indices:
+     default:
+       include:
+         - '/**'
+       exclude:
+         - '/nav'
+         - '/footer'
+         - '/**/nav*'
+         - '/**/footer*'
+         - '/fragments/**'
+         - '/drafts/**'
+         - '/search'
+       target: /query-index.json
+       properties:
+         title:
+           select: head > meta[property="og:title"]
+           value: attribute(el, 'content')
+         description:
+           select: head > meta[name="description"]
+           value: attribute(el, 'content')
+         image:
+           select: head > meta[property="og:image"]
+           value: match(attribute(el, 'content'), 'https:\/\/[^/]+(\/.*)')
+         lastModified:
+           select: none
+           value: parseTimestamp(headers['last-modified'], 'ddd, DD MMM YYYY hh:mm:ss GMT')
+         robots:
+           select: head > meta[name="robots"]
+           value: attribute(el, 'content')
+   ```
+   Per content type add its Tier-2 fields (`publishdate`, `category`, …) from § Listings
+   contract; a `text` property (`select: main`, `value: textContent(el)`) when search excerpts
+   are wanted; a `lang` property per locale tree (a scoped index per tree, locale-trees.md).
+2. Commit and push the code branch (deploy's Code stage).
+3. Make sure the pages are published LIVE — the indexer reads live-published pages only; a
+   preview-only tree gives an empty index.
+4. Poll `GET <origin>/query-index.json` no more often than every 5 s, for at most 10 minutes,
+   until it answers 200 with `total` at the expected page count (re-publish one page to nudge an
+   index that stays at `building`). The total goes into the ledger detail.
+
+No admin configuration-service write is part of this — a 403 from `admin.hlx.page/config/…`
+with the migration token is expected and is not a blocker. A recorded hands-off run probed that
+service, concluded "no index can be configured" and built a sheet-backed interim index while
+the fix was one committed yaml file. The sheet-backed index (rows synced with
+`scripts/sync-sheets.mjs`, the block reading the sheet's JSON) is the fallback ONLY when the
+code branch is not writable, recorded `interim` with the owner decision named.
+
 ## Mechanics
 
 - Scoped indexes: include globs + `target` per index; exclude chrome and search documents; a

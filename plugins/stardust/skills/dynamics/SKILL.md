@@ -35,7 +35,11 @@ other platforms later), not a redesign one.
 `node skills/dynamics/scripts/dynamics-detect.mjs --from-state stardust/state.json --out stardust/current [--reach stardust/current]`
 (or `--urls` one per archetype + the home page). Depth on archetypes, reach from the crawl's
 `extract --dynamics` per-page signals. Output `stardust/current/_dynamics.json` +
-`dynamic-features.generated.md`. Evidence only. `reference/classes-and-signals.md`.
+`dynamic-features.generated.md`. Evidence only. `reference/classes-and-signals.md`. For every
+search form found, run one probe term on the SOURCE and record what it shows — the visible result
+count, the top titles (≤ 3), one known hit — as `expectCount` / `expectTitles` / `expectIncludes`
+on the feature's `search-query` check (Phase 5); without them the rebuilt search can only be
+checked for presence.
 
 ## Phase 2 — Classify
 
@@ -68,14 +72,21 @@ From `reference/patterns.md` (catalogue + contracts + embedded example mechanism
 authoring contract before code · no owner input, no waiting (ship the interim tier, name the
 decision) · existing library first (feed it, do not fork it) · decided-out is explicit. Each phase
 ends with the flow verified on the published origin at 1440 and 360, a parity row, a journal entry
-and a commit. Tooling: `snapshot-api.mjs`, `snapshot-forms.mjs`, `sync-sheets.mjs`. **Listings and data-fed bands are document-first**: the document carries the item text as authored rows, the block reads the index or snapshot only for non-text fields and top-up (`reference/listings.md` § Block contract; why: `deploy/reference/ai-readability.md`).
+and a commit. Tooling: `snapshot-api.mjs`, `snapshot-forms.mjs`, `sync-sheets.mjs`. **The query index
+comes from `helix-query.yaml` in the code branch** — commit, push, publish live, poll — never from a
+configuration-service write; the sheet-backed interim index only when the branch is not writable
+(`reference/listings.md` § Getting an index at all). **Search** ranks title matches first, dedupes by
+title + description and caps the dropdown at the source's visible count (`reference/patterns.md`
+§ search-index-backed). **Listings and data-fed bands are document-first**: the document carries the item text as authored rows, the block reads the index or snapshot only for non-text fields and top-up (`reference/listings.md` § Block contract; why: `deploy/reference/ai-readability.md`).
 
 ## Phase 5 — Verify: dynamic parity
 
 Write `stardust/dynamics/parity.json` (`reference/parity-report.md`) with replayable checks from the
 closed set; `node skills/dynamics/scripts/dynamics-check.mjs --origin <published origin> [--auth-header … | --token-env SITE_TOKEN]`
-writes `stardust/qa/dynamics-report.md`. **Flows, not presence.** The site secret rides an
-origin-scoped route filter only; third-party request statuses are recorded next to every assertion.
+writes `stardust/qa/dynamics-report.md`. **Flows, not presence.** A `search-query` check compares the
+result COUNT and the top titles with the source's recorded values — a count mismatch fails. The site
+secret rides an origin-scoped route filter only; third-party request statuses are recorded next to
+every assertion.
 
 ## Hands-off resolutions
 
@@ -96,7 +107,7 @@ required; an interim tier that would capture regulated data (record as decided-o
 ## Artifacts
 
 `stardust/current/_dynamics.json`, `dynamic-features.generated.md` · `stardust/dynamics/dynamic-features.generated-plan.{md,json}` ·
-`stardust/dynamic-features.md`, `stardust/dynamic-features-plan.md` (curated) · `helix-query.yaml` (listings) ·
+`stardust/dynamic-features.md`, `stardust/dynamic-features-plan.md` (curated) · `helix-query.yaml` (listings + search, committed in the code branch) ·
 `data/<feature>/*.json` + `_provenance.json` (snapshots, code bus) · `scripts/site-config.js` (owner-facing integrations, disabled) ·
 `stardust/dynamics/parity.json` · `stardust/qa/dynamics-report.{md,json}` · register rows · journal + status lines.
 

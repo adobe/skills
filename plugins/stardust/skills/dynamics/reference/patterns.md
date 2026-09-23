@@ -27,23 +27,45 @@ an existing library must be fed rather than forked.
 
 **Intent.** Search is a service, not a page. The header form's action must never become a
 root-relative link to nowhere. **Contract.** A `/search` page with the results block; the header
-form posts `?q=` (accept the source's parameter name too). **Mechanism.** Query index configured
-through the admin config service (`PUT/POST admin.hlx.page/config/<org>/sites/<site>/content/query.yaml`,
-the DA token is authorised — no UI), one bulk `POST /index/<org>/<site>/<ref>/*` with the page list,
-a `text` property for excerpts; the block ranks title > description > path, clips excerpt windows
-around matches **after skipping the breadcrumb + title lead** the `text` property starts with,
-pages client-side, reflects the query into the inputs. Second corpora (a non-migrated library) are
-explicitly not reproduced. Per locale tree: one results page each and a `lang` index property.
-**Verify.** A known term returns the expected page; pagination; excerpt sample.
+form posts `?q=` (accept the source's parameter name too). **Mechanism.** The query index comes
+from `helix-query.yaml` in the CODE branch (skeleton in listings.md § Getting an index at all):
+commit, push, publish the pages live, poll `/query-index.json` (no more often than every 5 s,
+bounded) — never a configuration-service write (a 403 there with the migration token is
+expected and means nothing; a recorded hands-off run read it as "no index possible" and shipped
+a sheet-backed interim index for want of one yaml file). A `text` property gives excerpts; the
+block clips excerpt windows around matches **after skipping the breadcrumb + title lead** the
+`text` property starts with, pages client-side, reflects the query into the inputs. Second
+corpora (a non-migrated library) are explicitly not reproduced. Per locale tree: one results
+page each and a `lang` index property.
+
+**Ranking and shape — read from the source during detect.** For each probe term the detect step
+records what the SOURCE shows: the visible result count, the top titles (≤ 3) and one expected
+hit, onto the feature's `search-query` check in `parity.json` (`expectCount`, `expectTitles`,
+`expectIncludes`). The block then: (1) title matches rank first; (2) description, then body-text
+(`text`) matches are consulted only while there are fewer than N title hits, N = the source's
+visible count; (3) results are deduped by title + description (two locale home pages under one
+title are one entry, or none — the source showed neither); (4) the typeahead dropdown is capped
+at N; the results page pages beyond it. Chrome and search documents are excluded from the index
+(their `Robots | noindex` row plus the `exclude` globs), so they never surface as results. A
+recorded hands-off run's typeahead returned 10 unbounded entries — section pages and two home
+pages sharing one title — for a term the source answered with 3 title matches.
+
+**Verify.** `search-query` with `expectCount` + `expectTitles` (+ `expectIncludes`): the count
+must equal the source's, the top titles must be the source's, no duplicates — a count mismatch
+FAILS (`scripts/dynamics-check.mjs`). Then pagination; an excerpt sample.
 
 ```js
-// example — index fetch, token-AND ranking, client paging (adapt selectors, copy, sizes)
-async function search(q, { index = '/query-index.json', pageSize = 20, page = 1 } = {}) {
+// example — index fetch, title-first ranking, deeper fields only below the source's visible count, dedupe, cap
+async function search(q, { index = '/query-index.json', visible = 3, pageSize = 20, page = 1 } = {}) {
   const terms = q.toLowerCase().split(/\s+/).filter((t) => t.length > 1);
   const rows = []; for (let off = 0; ; off += 500) { const j = await (await fetch(`${index}?offset=${off}&limit=500`)).json(); rows.push(...j.data); if (off + 500 >= j.total) break; }
-  const score = (r) => terms.reduce((s, t) => s + (r.title?.toLowerCase().includes(t) ? 3 : 0) + (r.description?.toLowerCase().includes(t) ? 1 : 0) + (r.path?.includes(t) ? 1 : 0), 0);
-  const hits = rows.map((r) => ({ r, s: score(r) })).filter((x) => terms.every((t) => `${x.r.title} ${x.r.description} ${x.r.text || ''}`.toLowerCase().includes(t))).sort((a, b) => b.s - a.s);
-  return { total: hits.length, items: hits.slice((page - 1) * pageSize, page * pageSize).map((x) => x.r) };
+  const hasAll = (s) => terms.every((t) => String(s || '').toLowerCase().includes(t));
+  const titleHits = rows.filter((r) => hasAll(r.title));
+  const descHits = titleHits.length < visible ? rows.filter((r) => !hasAll(r.title) && hasAll(r.description)) : [];
+  const textHits = titleHits.length + descHits.length < visible ? rows.filter((r) => !hasAll(r.title) && !hasAll(r.description) && hasAll(r.text)) : [];
+  const seen = new Set();
+  const hits = [...titleHits, ...descHits, ...textHits].filter((r) => { const k = `${r.title}|${r.description}`.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; });
+  return { total: hits.length, typeahead: hits.slice(0, visible), items: hits.slice((page - 1) * pageSize, page * pageSize) };
 }
 ```
 
