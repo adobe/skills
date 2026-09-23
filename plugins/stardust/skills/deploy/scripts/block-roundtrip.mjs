@@ -63,7 +63,6 @@
  */
 
 /* eslint-disable import/no-extraneous-dependencies, import/extensions, no-await-in-loop, no-restricted-syntax, brace-style, object-curly-newline, max-len, no-plusplus, no-continue */
-import { chromium } from 'playwright';
 import fs from 'fs';
 import { resolveProfile } from './diff-profiles.mjs';
 import { inventory, diffInventories, summarise } from './content-inventory.mjs';
@@ -76,6 +75,9 @@ if (process.argv.includes('--help') || process.argv.includes('-h')) {
   console.log(header ? header[0].replace(/^\/\*\*\s*|\s*\*\/$/g, '').replace(/^\s*\* ?/gm, '').trim() : 'no usage header');
   process.exit(0);
 }
+
+// playwright is imported only past the --help guard, so --help answers on a checkout without it.
+const { chromium } = await import('playwright');
 
 function parseArgs(argv) {
   const [, , proto, content, ...rest] = argv;

@@ -2,9 +2,10 @@
 // skills/rollout/scripts/test/media-reconcile.test.mjs — the media-reconcile.mjs contract: a URL on
 // the site's content host (content|admin.da.live) is `hosted` — never fetched anonymously, verified
 // offline against the media ledger (exact, query-stripped and re-encoded forms; missing from an
-// existing ledger fails the gate, no ledger passes with a NOTE, a ledger that will not load exits
-// 2) — while optimize / keep / rewrite / omit and --apply behave as before. Anonymous fetches go
-// to a local HTTP server; nothing reaches the network.
+// existing ledger fails the gate, no ledger makes it `unresolved` with reason + NOTE and exit 1 —
+// an unverified content-host image never passes — a ledger that will not load exits 2) — while
+// optimize / keep / rewrite / omit and --apply behave as before. Anonymous fetches go to a local
+// HTTP server; nothing reaches the network.
 // Run: node --test <this file>   (or node <this file>).
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
@@ -114,20 +115,45 @@ test('a hosted URL absent from an existing ledger (or not uploaded) fails the ga
   assert.deepEqual(seen, [], 'nothing was fetched');
 });
 
-test('no ledger file and no flag: hosted rows pass as no-ledger with one stderr NOTE naming the auto path', async () => {
+test('no ledger file and no flag: a content-host URL is unresolved (reason: no media ledger), exit 1, one stderr NOTE naming the auto path; never fetched', async () => {
   const dir = project(); seen.length = 0;
-  page(dir, [img(`${CDN}/hero.jpg`), img(`https://${SITE}/media_1.png`)]);
+  const file = page(dir, [img(`${CDN}/hero.jpg`), img(`https://${SITE}/media_1.png`)]); const before = readFileSync(file, 'utf8');
   const r = await run(['--file', 'page.html', '--deploy-host', SITE, '--json'], dir);
-  assert.equal(r.code, 0, r.err + r.out);
-  assert.equal(jsonOf(r).mediaLedger, null);
-  assert.equal(rowsOf(r)[`${CDN}/hero.jpg`].ledger, 'no-ledger');
-  assert.equal(rowsOf(r)[`${CDN}/hero.jpg`].status, null);
+  assert.equal(r.code, 1, r.err + r.out);
+  const j = jsonOf(r);
+  assert.equal(j.mediaLedger, null);
+  assert.deepEqual(j.counts, { optimize: 1, unresolved: 1 }, 'no `hosted` without a ledger');
+  const row = rowsOf(r)[`${CDN}/hero.jpg`];
+  assert.equal(row.decision, 'unresolved'); assert.equal(row.ledger, 'no-ledger'); assert.equal(row.status, null, 'never fetched anonymously');
+  assert.equal(row.reason, 'no media ledger — pass --media-ledger <file>');
+  assert.equal(rowsOf(r)[`https://${SITE}/media_1.png`].reason, undefined, 'only the unverified row carries a reason');
   const auto = join(dir, 'stardust', 'deploy', 'media-ledger.json');
-  assert.equal(r.err.trim(), `media-reconcile: no media ledger at ${auto} — hosted URLs are unverified (pass --media-ledger <file>)`);
+  assert.equal(r.err.trim(), `media-reconcile: no media ledger at ${auto} — 1 content-host URL(s) unverified → unresolved (pass --media-ledger <file>)`);
   assert.deepEqual(seen, []);
+  const text = await run(['--file', 'page.html', '--deploy-host', SITE, '--apply'], dir);
+  assert.equal(text.code, 1, text.out);
+  assert.match(text.out, /^ {2}\? manual {3}\S+\/hero\.jpg \(no media ledger — pass --media-ledger <file>\)$/m, text.out);
+  assert.match(text.out, /^1 unresolved · 1 optimize$/m, text.out);
+  assert.equal(readFileSync(file, 'utf8'), before, '--apply never deletes an unresolved image');
   page(dir, [img(`https://${SITE}/a.png`)], 'page2.html');
   const quiet = await run(['--file', 'page2.html', '--deploy-host', SITE], dir);
-  assert.equal(quiet.code, 0); assert.equal(quiet.err, '', 'no NOTE when the page has no hosted URL');
+  assert.equal(quiet.code, 0); assert.equal(quiet.err, '', 'no NOTE when the page has no content-host URL');
+});
+
+test('the same content-host URL: no ledger → unresolved exit 1; ledger listing it → hosted exit 0; ledger missing it → fails exit 1', async () => {
+  const dir = project(); seen.length = 0;
+  const file = page(dir, [img(`${CDN}/hero.jpg`)]);
+  const none = await run(['--file', file, '--json'], dir);
+  assert.equal(none.code, 1); assert.equal(rowsOf(none)[`${CDN}/hero.jpg`].decision, 'unresolved');
+  const listed = writeLedger(dir, 'listed.json', { 'media/home/hero.jpg': rec('hero.jpg') });
+  const ok = await run(['--file', file, '--media-ledger', listed, '--json'], dir);
+  assert.equal(ok.code, 0, ok.err + ok.out); assert.deepEqual(jsonOf(ok).counts, { hosted: 1 });
+  assert.equal(rowsOf(ok)[`${CDN}/hero.jpg`].ledger, 'uploaded'); assert.equal(ok.err, '');
+  const other = writeLedger(dir, 'other.json', { 'media/home/other.jpg': rec('other.jpg') });
+  const missing = await run(['--file', file, '--media-ledger', other, '--json'], dir);
+  assert.equal(missing.code, 1); assert.deepEqual(jsonOf(missing).counts, { hosted: 1 });
+  assert.equal(rowsOf(missing)[`${CDN}/hero.jpg`].ledger, 'missing');
+  assert.deepEqual(seen, [], 'the content host was never fetched in any of the three runs');
 });
 
 test('the ledger is auto-detected at <cwd>/stardust/deploy/media-ledger.json without the flag', async () => {
@@ -210,6 +236,7 @@ test('--help: exit 0, usage names hosted, --media-ledger and the exit rule; noth
   assert.equal(r.code, 0, r.err); assert.equal(r.err, '');
   assert.match(r.out, /Usage:/); assert.match(r.out, /^\s*hosted\s+— on the site's content host/m);
   assert.match(r.out, /--media-ledger <file>/);
-  assert.match(r.out, /exit 1 on omit, unresolved,\s+or a hosted URL missing from the ledger/);
+  assert.match(r.out, /exit 1 on omit, unresolved\s+\(a content-host URL with no ledger to verify it included\), or a hosted URL missing from\s+the ledger/);
+  assert.match(r.out, /none → every content-host URL is\s+`unresolved`/);
   assert.deepEqual(readdirSync(dir), []);
 });

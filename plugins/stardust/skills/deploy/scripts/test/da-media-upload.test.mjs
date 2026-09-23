@@ -3,24 +3,33 @@
 // local fake of the DA Source API (node http on a random port; no network): PUT method/path, the
 // multipart field name and part content type, the Authorization header, 429-then-200 retry, the
 // ledger skip on re-run (path + size), source-fetch 403 (bot wall) vs 404 (missing), a PUT 404,
-// svg safety, the 401 rule (the first upload runs alone; a 401 burst on a valid token is retried; a
-// 401 that persists on that first upload halts, one that persists later is that file's FAIL),
-// --dry-run, usage errors — and that the token value never reaches stdout, stderr or the ledger.
+// svg safety, the 401 policy (an expired JWT exits 3 before any request; the first upload runs alone;
+// a 401 burst on a valid token is retried and lands; a 401 that persists through its retries on ANY
+// file halts with exit 3 — ledger saved, in-flight uploads finish, the rest not attempted, nothing
+// marked failed, one stderr line with the re-run command), the atomic ledger write, --dry-run, usage
+// errors (a value flag swallowing nothing or another --flag) — and that the token value never
+// reaches stdout, stderr or the ledger.
 // Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { classify, readManifest } from '../da-media-upload.mjs';
+import { classify, jwtExpiry, readManifest } from '../da-media-upload.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'da-media-upload.mjs');
 const proj = mkdtempSync(join(tmpdir(), 'da-media-upload-test-'));
 const TOKEN = `tok-${randomBytes(12).toString('hex')}`;
+// JWT-shaped tokens for the preflight: header.payload.signature, base64url, the payload carrying exp.
+const jwt = (claims) => `${Buffer.from('{"alg":"RS256"}').toString('base64url')}.${Buffer.from(JSON.stringify(claims)).toString('base64url')}.${randomBytes(16).toString('base64url')}`;
+const EXPIRED_EXP = Math.floor(Date.now() / 1000) - 2 * 3600;
+const EXPIRED_JWT = jwt({ exp: EXPIRED_EXP, sub: 'x', client_id: 'test' });
+const FUTURE_JWT = jwt({ exp: Math.floor(Date.now() / 1000) + 3600, sub: 'x' });
+const SECRETS = [TOKEN, EXPIRED_JWT, FUTURE_JWT];
 const ORG = 'test-org'; const REPO = 'test-repo';
 let failed = 0;
 const check = async (name, fn) => { try { await fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`); } };
@@ -112,6 +121,12 @@ await check('classify: image types by extension, non-images skipped, unsafe svg 
   assert.equal(classify('x.svg', Buffer.from('<svg><image href="data:image/png;base64,AAAA"/></svg>')).fail, 'svg-unsafe');
   assert.equal(classify('x.svg', Buffer.alloc(41 * 1024, 0x20)).fail, 'svg-unsafe');
 });
+await check('jwtExpiry: reads exp from a JWT payload; null for a non-JWT, a JWT without exp, or garbage segments', () => {
+  assert.equal(jwtExpiry(EXPIRED_JWT), EXPIRED_EXP);
+  assert.equal(jwtExpiry(jwt({ sub: 'x' })), null);
+  assert.equal(jwtExpiry(TOKEN), null); assert.equal(jwtExpiry('a.b.c'), null); assert.equal(jwtExpiry('a.b'), null); assert.equal(jwtExpiry(undefined), null);
+  assert.equal(jwtExpiry(`x.${Buffer.from('not json').toString('base64url')}.y`), null);
+});
 await check('readManifest: array, map and extract § Media shapes all reduce to {file, source, name}', () => {
   const p = join(proj, 'm.json');
   writeFileSync(p, JSON.stringify([{ file: 'assets/a.png', source: 'https://origin.example/a.png' }, { file: 'assets/b.jpg', name: 'hero.jpg' }]));
@@ -154,6 +169,8 @@ await check('ledger records each upload (path, size, sha256, content url) and ne
   const a = l['media/brand/a.png'];
   assert.equal(a.status, 'uploaded'); assert.equal(a.file, 'assets/a.png'); assert.equal(a.size, 2048); assert.match(a.sha256, /^[0-9a-f]{64}$/); assert.equal(a.attempts, 2); assert.equal(a.contentUrl, contentUrl('a.png')); assert.equal(a.contentType, 'image/png');
   assert.ok(!readFileSync(LEDGER, 'utf8').includes(TOKEN), 'token must not be written to the ledger');
+  assert.ok(readFileSync(LEDGER, 'utf8').endsWith('}\n'), 'the ledger ends with a trailing newline');
+  assert.deepEqual(readdirSync(dirname(LEDGER)), ['media-ledger.json'], 'the atomic write leaves no tmp file behind');
 });
 await check('re-run skips every uploaded file (same path and size) without a request; a changed size re-uploads', async () => {
   const before = requests.length;
@@ -210,28 +227,43 @@ await check('5xx is retried up to --retries then reported as FAIL with the attem
   const r2 = await run(['--scope', 'brand', '--manifest', 'flaky2.json', '--retries', '4']);
   assert.equal(r2.code, 0, r2.out + r2.err); assert.match(r2.out, /^OK assets\/flaky2\.png -> \S+ \(after 3 attempts\)$/m);
 });
-await check('a 401 that persists on the first upload halts the batch (after the retries): ledger checkpointed, remaining files not attempted, actionable instruction on stderr', async () => {
+await check('a 401 that persists on the first upload halts the batch (after the retries): exit 3, nothing marked failed, ledger checkpointed, remaining files not attempted, one stderr line with the re-run command', async () => {
   for (const n of ['expired.png', 'z1.png', 'z2.png']) writeFileSync(join(assets, n), randomBytes(40));
   writeFileSync(join(proj, 'halt.json'), JSON.stringify([{ file: 'assets/expired.png' }, { file: 'assets/z1.png' }, { file: 'assets/z2.png' }]));
   const before = requests.filter((q) => q.method === 'PUT').length;
   const r = await run(['--scope', 'brand', '--manifest', 'halt.json', '--concurrency', '1', '--retries', '0']);
-  assert.equal(r.code, 1, r.out + r.err);
-  assert.match(r.out, /^FAIL assets\/expired\.png 401 \(unauthorized — DA_TOKEN expired or invalid; batch halted\)$/m);
-  assert.doesNotMatch(r.out, /z1\.png|z2\.png/); assert.match(r.out, /3 file\(s\) — 0 uploaded, 0 skipped \(0 not an image\), 1 failed, 2 not attempted/);
-  assert.match(r.err, /DA_TOKEN rejected \(401\): refresh it in the environment and re-run the same command/);
+  assert.equal(r.code, 3, r.out + r.err);
+  assert.match(r.out, /^HALT assets\/expired\.png 401 \(unauthorized through 1 attempt — DA_TOKEN rejected; not recorded as failed, the re-run resumes here\)$/m);
+  assert.doesNotMatch(r.out, /z1\.png|z2\.png|FAIL/); assert.match(r.out, /3 file\(s\) — 0 uploaded, 0 skipped \(0 not an image\), 0 failed, 3 not attempted/);
+  assert.equal(r.err.trim().split('\n').length, 1, `one stderr line: ${r.err}`);
+  assert.match(r.err, /^da-media-upload: DA_TOKEN rejected \(401 through 1 attempt on assets\/expired\.png, the lone first upload\): refresh DA_TOKEN in the environment and re-run the same command — the ledger skips what already uploaded: DA_TOKEN=<fresh token> node \S+da-media-upload\.mjs --org test-org --repo test-repo .* --scope brand --manifest halt\.json --concurrency 1 --retries 0$/m);
   assert.equal(requests.filter((q) => q.method === 'PUT').length, before + 1);
-  assert.equal(ledger()['media/brand/expired.png'].status, 'failed'); assert.equal(ledger()['media/brand/z1.png'], undefined);
+  assert.equal(ledger()['media/brand/expired.png'], undefined, 'a 401 never marks the file failed'); assert.equal(ledger()['media/brand/z1.png'], undefined);
   // The halt fires only once the retries are spent, and the first upload is alone even at --concurrency 4:
   // three attempts on expired.png, no PUT for z1/z2.
   const before2 = requests.filter((q) => q.method === 'PUT').length;
   const r2 = await run(['--scope', 'brand', '--manifest', 'halt.json', '--concurrency', '4', '--retries', '2', '--backoff-ms', '1']);
-  assert.equal(r2.code, 1, r2.out + r2.err);
-  assert.match(r2.out, /^FAIL assets\/expired\.png 401 \(unauthorized — DA_TOKEN expired or invalid; batch halted\)$/m);
-  assert.doesNotMatch(r2.out, /z1\.png|z2\.png/); assert.match(r2.out, /1 failed, 2 not attempted/); assert.match(r2.err, /DA_TOKEN rejected \(401\)/);
+  assert.equal(r2.code, 3, r2.out + r2.err);
+  assert.match(r2.out, /^HALT assets\/expired\.png 401 \(unauthorized through 3 attempts/m);
+  assert.doesNotMatch(r2.out, /z1\.png|z2\.png|FAIL/); assert.match(r2.out, /0 failed, 3 not attempted/); assert.match(r2.err, /DA_TOKEN rejected \(401 through 3 attempts on assets\/expired\.png, the lone first upload\)/);
   const puts2 = requests.filter((q) => q.method === 'PUT').slice(before2);
   assert.equal(puts2.length, 3, 'three attempts on the first upload, then the halt');
   assert.ok(puts2.every((q) => q.url.endsWith('/expired.png') && q.inflight === 1), 'every attempt was the lone request in flight');
-  assert.equal(ledger()['media/brand/expired.png'].attempts, 3); assert.equal(ledger()['media/brand/expired.png'].httpStatus, 401);
+  assert.equal(ledger()['media/brand/expired.png'], undefined);
+});
+await check('an expired JWT in DA_TOKEN exits 3 before any request, naming the expiry and the re-run command; a JWT with a future exp is tried (and a wrong one halts on the first upload)', async () => {
+  const before = requests.length; const ledgerBefore = readFileSync(LEDGER, 'utf8');
+  const r = await run(['--scope', 'brand', '--manifest', 'halt.json'], { token: EXPIRED_JWT });
+  assert.equal(r.code, 3, r.out + r.err);
+  assert.equal(r.out, '', 'nothing on stdout — no file was attempted');
+  assert.equal(r.err.trim().split('\n').length, 1, r.err);
+  assert.match(r.err, new RegExp(`^da-media-upload: DA_TOKEN is expired — its exp claim is ${new Date(EXPIRED_EXP * 1000).toISOString().replace(/[.]/g, '\\.')} \\(\\d+ min ago\\); nothing was sent\\. Refresh it and re-run: DA_TOKEN=<fresh token> node \\S+da-media-upload\\.mjs --org test-org .* --manifest halt\\.json$`, 'm'));
+  assert.equal(requests.length, before, 'no request left the process'); assert.equal(readFileSync(LEDGER, 'utf8'), ledgerBefore, 'the ledger is untouched');
+  const dry = await run(['--scope', 'brand', '--manifest', 'halt.json', '--dry-run'], { token: EXPIRED_JWT });
+  assert.equal(dry.code, 0, 'a dry run needs no token and never preflights it'); assert.match(dry.out, /^DRY assets\/expired\.png/m);
+  const fut = await run(['--scope', 'brand', '--manifest', 'halt.json', '--retries', '1', '--backoff-ms', '1'], { token: FUTURE_JWT });
+  assert.equal(fut.code, 3, fut.out + fut.err); assert.match(fut.out, /^HALT assets\/expired\.png 401 \(unauthorized through 2 attempts/m); assert.doesNotMatch(fut.err, /expired —/);
+  assert.equal(requests.length, before + 2, 'the future-exp JWT reached the admin API (two attempts on the lone first upload)');
 });
 
 // ---- the 401 rule: burst on a valid token, first upload alone, persistent 401 after acceptance ---------
@@ -250,21 +282,39 @@ await check('a burst of 401s on a valid token does not halt: the first upload re
   assert.ok(names.some((n) => l[`media/brand/${n}`].attempts > 1), 'the ledger records the retried attempts');
   for (const n of names) assert.equal(l[`media/brand/${n}`].status, 'uploaded');
 });
-await check('a 401 that persists after the token was accepted is that file\'s FAIL, not a halt: the batch continues', async () => {
+await check('a 401 that persists after the token was accepted halts too (exit 3): finished files in the ledger, in-flight upload finishes, the rest not attempted, nothing marked failed', async () => {
   for (const n of ['burst4.png', 'expired.png', 'z3.png']) writeFileSync(join(assets, n), randomBytes(40));
   writeFileSync(join(proj, 'late401.json'), JSON.stringify([{ file: 'assets/burst4.png' }, { file: 'assets/expired.png' }, { file: 'assets/z3.png' }]));
   const before = requests.length;
-  const r = await run(['--scope', 'brand', '--manifest', 'late401.json', '--concurrency', '2', '--retries', '2', '--backoff-ms', '1']);
-  assert.equal(r.code, 1, r.out + r.err);
+  const r = await run(['--scope', 'brand', '--manifest', 'late401.json', '--concurrency', '1', '--retries', '2', '--backoff-ms', '1']);
+  assert.equal(r.code, 3, r.out + r.err);
   assert.match(r.out, /^OK assets\/burst4\.png -> \S+ \(after 3 attempts\)$/m);
-  assert.match(r.out, /^FAIL assets\/expired\.png 401 \(unauthorized after 3 attempts; token was accepted earlier in this batch — re-run the same command, the ledger skips what already uploaded\)$/m);
-  assert.match(r.out, /^OK assets\/z3\.png -> \S+\/media\/brand\/z3\.png$/m);
-  assert.match(r.out, /3 file\(s\) — 2 uploaded, 0 skipped \(0 not an image\), 1 failed · ledger/);
-  assert.doesNotMatch(r.out, /halted|not attempted/); assert.equal(r.err, '', 'no halt instruction on stderr');
-  assert.equal(requests.slice(before).filter((q) => q.method === 'PUT').length, 3 + 3 + 1);
+  assert.match(r.out, /^HALT assets\/expired\.png 401 \(unauthorized through 3 attempts — DA_TOKEN rejected; not recorded as failed, the re-run resumes here\)$/m);
+  assert.doesNotMatch(r.out, /z3\.png|FAIL/, 'the remaining file was not attempted');
+  assert.match(r.out, /3 file\(s\) — 1 uploaded, 0 skipped \(0 not an image\), 0 failed, 2 not attempted · ledger/);
+  assert.equal(r.err.trim().split('\n').length, 1, r.err);
+  assert.match(r.err, /^da-media-upload: DA_TOKEN rejected \(401 through 3 attempts on assets\/expired\.png, after the token had been accepted earlier in this batch\): refresh DA_TOKEN .* re-run the same command — the ledger skips what already uploaded: DA_TOKEN=<fresh token> node \S+da-media-upload\.mjs --org test-org .* --manifest late401\.json --concurrency 1 --retries 2 --backoff-ms 1$/m);
+  assert.equal(requests.slice(before).filter((q) => q.method === 'PUT').length, 3 + 3);
   const l = ledger();
-  assert.equal(l['media/brand/expired.png'].status, 'failed'); assert.equal(l['media/brand/expired.png'].httpStatus, 401); assert.equal(l['media/brand/expired.png'].attempts, 3);
-  assert.equal(l['media/brand/z3.png'].status, 'uploaded');
+  assert.equal(l['media/brand/burst4.png'].status, 'uploaded', 'the finished file is in the ledger');
+  assert.equal(l['media/brand/expired.png'], undefined, 'never failed because of a 401'); assert.equal(l['media/brand/z3.png'], undefined);
+  // In flight at the halt: with the pool open at 2, the slow upload beside expired.png is allowed to finish
+  // (OK, in the ledger) while the files queued behind them are not attempted; a re-run resumes from there.
+  const names = ['burst5.png', 'expired.png', 'slow-first.png', 'z4.png', 'z5.png'];
+  for (const n of names) writeFileSync(join(assets, n), randomBytes(40));
+  writeFileSync(join(proj, 'late401b.json'), JSON.stringify(names.map((n) => ({ file: `assets/${n}` }))));
+  const before2 = requests.length;
+  const r2 = await run(['--scope', 'late', '--manifest', 'late401b.json', '--concurrency', '2', '--retries', '2', '--backoff-ms', '1']);
+  assert.equal(r2.code, 3, r2.out + r2.err);
+  assert.match(r2.out, /^OK assets\/burst5\.png/m); assert.match(r2.out, /^OK assets\/slow-first\.png -> \S+\/media\/late\/slow-first\.png$/m);
+  assert.match(r2.out, /^HALT assets\/expired\.png 401 \(unauthorized through 3 attempts/m);
+  assert.doesNotMatch(r2.out, /z4\.png|z5\.png|FAIL/);
+  assert.match(r2.out, /5 file\(s\) — 2 uploaded, 0 skipped \(0 not an image\), 0 failed, 3 not attempted/);
+  assert.equal(requests.slice(before2).filter((q) => q.method === 'PUT').length, 3 + 3 + 1, 'burst5 ×3, expired ×3, slow-first ×1 — nothing for z4/z5');
+  const l2 = ledger();
+  assert.equal(l2['media/late/burst5.png'].status, 'uploaded'); assert.equal(l2['media/late/slow-first.png'].status, 'uploaded');
+  assert.equal(l2['media/late/expired.png'], undefined); assert.equal(l2['media/late/z4.png'], undefined);
+  assert.ok(readFileSync(LEDGER, 'utf8').endsWith('}\n')); assert.deepEqual(readdirSync(dirname(LEDGER)), ['media-ledger.json'], 'no tmp file after the halt checkpoint');
 });
 await check('the first upload runs alone: no other PUT arrives while it is in flight, the rest use the pool concurrency', async () => {
   const names = ['slow-first.png', 'par1.png', 'par2.png', 'par3.png', 'par4.png'];
@@ -315,11 +365,17 @@ await check('usage errors exit 2: missing --org/--repo/--scope, both or neither 
   writeFileSync(join(proj, 'empty.json'), '[]'); await bad(['--scope', 's', '--manifest', 'empty.json'], /lists no entries/);
   await bad(['--scope', '../escape', '--dir', 'assets'], /--scope must be a path segment/);
   await bad(['--scope', 's', '--dir', 'assets', '--concurrency', '0'], /--concurrency needs a number ≥ 1/);
+  // a value flag swallows nothing: followed by another --flag or by the end of the line it is a usage error naming the flag
+  await bad(['--scope', '--dir', 'assets'], /--scope needs a value \(got --dir\)/);
+  await bad(['--scope', 's', '--dir', 'assets', '--ledger', '--dry-run'], /--ledger needs a value \(got --dry-run\)/);
+  await bad(['--scope', 's', '--dir'], /--dir needs a value$/m);
+  await bad(['--scope', 's', '--dir', 'assets', '--concurrency', '--retries', '2'], /--concurrency needs a value \(got --retries\)/);
   const help = await run(['--help']); assert.equal(help.code, 0); assert.match(help.out, /Usage: DA_TOKEN=… node da-media-upload\.mjs/);
 });
 await check('the token value never appears in any stdout or stderr', () => {
   assert.ok(allOutput.length > 10);
-  for (const s of allOutput) assert.ok(!s.includes(TOKEN), `token leaked: ${s.slice(0, 200)}`);
+  for (const s of allOutput) for (const secret of SECRETS) assert.ok(!s.includes(secret), `token leaked: ${s.slice(0, 200)}`);
+  assert.ok(!readFileSync(LEDGER, 'utf8').includes(EXPIRED_JWT) && !readFileSync(LEDGER, 'utf8').includes(FUTURE_JWT));
 });
 
 server.close();

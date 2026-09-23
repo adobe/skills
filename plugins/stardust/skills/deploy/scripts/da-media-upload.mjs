@@ -31,11 +31,23 @@
  *   the command is safe to repeat after a token refresh or a partial failure.
  *   Transient responses (429, 5xx, network errors) are retried with capped
  *   exponential backoff, and so is a 401 from the admin API (a valid token can
- *   be answered 401 under a concurrent burst). The first upload runs alone to
- *   prove the token: a 401 that persists through its retries halts the batch
- *   (token expired or invalid — the ledger is checkpointed; refresh DA_TOKEN and
- *   re-run the same command); a persistent 401 on a later file is that file's
- *   FAIL and the batch continues.
+ *   be answered 401 under a concurrent burst — recorded: a whole first burst at
+ *   concurrency 4, while a lone sequential PUT went through). The ledger is
+ *   written atomically (tmp + rename, trailing newline) from one place.
+ *
+ * 401 policy (two recorded facts: one 401 must not halt; a persistent 401 must
+ * halt fast — an expired token once left an 894-row batch failing file by file
+ * for 5.5 hours):
+ *   preflight — if DA_TOKEN is a JWT whose `exp` has passed, exit 3 before any
+ *       request, naming the expiry (a non-JWT token, or one without exp, is
+ *       simply tried).
+ *   first upload — runs alone to prove the token, with the bounded 401 retries.
+ *   any 401 — retried with the same short backoff as a 429. A 401 that persists
+ *       through its retries on ANY file (first or later) HALTS the batch: exit 3,
+ *       ledger persisted, in-flight uploads allowed to finish, remaining files
+ *       left `not attempted`, one stderr line naming DA_TOKEN and the exact
+ *       re-run command (the same command resumes from the ledger). A file is
+ *       never marked `failed` because of a 401 — it prints HALT, not FAIL.
  *
  * Token: read from the DA_TOKEN environment variable only; it is never
  * printed and never written to the ledger or anywhere else.
@@ -67,14 +79,17 @@
  *   OK <file> -> https://content.da.live/{org}/{repo}/media/<scope>/<name>
  *   SKIP <file> already uploaded (ledger) | not-an-image
  *   FAIL <file> <status|reason> …
+ *   HALT <file> 401 …                                          (the token halt; not a FAIL)
  *   DRY <file> -> <content url>                               (--dry-run)
- * Exit codes: 0 no failures, 1 any FAIL (or the halt: a 401 that persists through
- *   the retries on the first upload, which runs alone), 2 usage error.
+ * Exit codes: 0 no failures, 1 any FAIL, 2 usage error (a value flag followed by
+ *   nothing or by another --flag included), 3 token halt (expired JWT before any
+ *   request, or a 401 that persisted through its retries — refresh DA_TOKEN and
+ *   re-run the same command; the ledger skips what already landed).
  */
 
 /* eslint-disable no-restricted-syntax, brace-style, object-curly-newline, max-len, no-await-in-loop */
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, extname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -95,11 +110,15 @@ Usage: DA_TOKEN=… node da-media-upload.mjs --org <org> --repo <repo> --scope <
 
 Writes: the ledger at --ledger (not with --dry-run) and, for a manifest entry whose local
 file is absent but names a source, the fetched image bytes saved to that entry's file path.
-Prints one line per file (OK / SKIP / FAIL / DRY) and a summary. Exit 0 = no failures, 1 = any FAIL, 2 = usage.
-The first upload runs alone to prove the token; a 401 retries like a 429, and only a 401 that still persists
-on that first upload halts the batch (refresh DA_TOKEN, re-run the same command — the ledger skips what landed).`;
+Prints one line per file (OK / SKIP / FAIL / HALT / DRY) and a summary. Exit 0 = no failures, 1 = any FAIL,
+2 = usage (a value flag followed by nothing or another --flag included), 3 = token halt.
+Token halt: an expired JWT in DA_TOKEN exits 3 before any request; the first upload runs alone to prove the
+token; a 401 retries like a 429, and a 401 that still persists through its retries on any file halts the batch
+(ledger saved, in-flight uploads finish, the rest not attempted, never marked failed) — refresh DA_TOKEN and
+re-run the same command; the ledger skips what already landed.`;
 
 const USAGE_EXIT = 2;
+const TOKEN_EXIT = 3;
 const IMAGE_TYPES = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp', '.gif': 'image/gif', '.avif': 'image/avif', '.svg': 'image/svg+xml' };
 const SVG_MAX_BYTES = 40 * 1024;
 const RETRYABLE = new Set([0, 408, 425, 429, 500, 502, 503, 504]);
@@ -121,7 +140,9 @@ export function parseArgs(argv, env = process.env) {
   const num = (flag, v, min) => { const n = Number(v); if (!Number.isFinite(n) || n < min) usage(`${flag} needs a number ≥ ${min}`); return n; };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
-    const next = () => { if (i + 1 >= rest.length) usage(`${a} needs a value`); return rest[i += 1]; };
+    // A value flag swallows nothing: followed by the end of the line or by another --flag it is a usage error
+    // (recorded: `--ledger --dry-run` silently took "--dry-run" as the ledger path and then uploaded for real).
+    const next = () => { const v = rest[i + 1]; if (v === undefined || /^--/.test(v)) usage(`${a} needs a value${v === undefined ? '' : ` (got ${v})`}`); return rest[i += 1]; };
     if (a === '--org') o.org = next();
     else if (a === '--repo') o.repo = next();
     else if (a === '--scope') o.scope = next();
@@ -185,6 +206,25 @@ export function classify(name, bytes) {
   return { ok: true, type };
 }
 
+// ---- token preflight ----------------------------------------------------------------------------------
+
+// The `exp` claim (seconds since the epoch) of a JWT-shaped token, or null when the token is not a JWT or
+// carries no numeric exp. Decodes the middle segment only; nothing about the token is ever printed.
+export function jwtExpiry(token) {
+  if (typeof token !== 'string') return null;
+  const parts = token.split('.');
+  if (parts.length !== 3 || !parts.every((x) => /^[A-Za-z0-9_-]+$/.test(x))) return null;
+  try {
+    const claims = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+    return claims && Number.isFinite(claims.exp) ? claims.exp : null;
+  } catch { return null; }
+}
+
+// The exact command to re-run once DA_TOKEN is fresh: same script, same arguments (the token itself is
+// never on the command line — it is read from the environment only).
+const shellQuote = (a) => (/^[A-Za-z0-9_./:=@%+,-]+$/.test(a) ? a : `'${a.replace(/'/g, "'\\''")}'`);
+const rerunCommand = () => `DA_TOKEN=<fresh token> node ${process.argv.slice(1).map(shellQuote).join(' ')}`;
+
 // ---- http --------------------------------------------------------------------------------------------
 
 const sleep = (ms) => new Promise((r) => { setTimeout(r, ms); });
@@ -246,12 +286,31 @@ async function main() {
   const entries = opts.dir
     ? (existsSync(opts.dir) && statSync(opts.dir).isDirectory() ? walk(opts.dir).map((e) => ({ ...e, source: null })) : usage(`--dir ${opts.dir} is not a directory`))
     : readManifest(opts.manifest);
+  // Preflight: an expired JWT never reaches the network (recorded: an expired token left an 894-row batch
+  // failing file by file for 5.5 hours). Anything that is not a JWT with an exp is simply tried.
+  if (!opts.dryRun) {
+    const exp = jwtExpiry(opts.token);
+    if (exp !== null && exp * 1000 <= Date.now()) {
+      const ago = Math.max(1, Math.round((Date.now() - exp * 1000) / 60000));
+      console.error(`da-media-upload: DA_TOKEN is expired — its exp claim is ${new Date(exp * 1000).toISOString()} (${ago} min ago); nothing was sent. Refresh it and re-run: ${rerunCommand()}`);
+      process.exit(TOKEN_EXIT);
+    }
+  }
   const ledger = loadLedger(opts.ledger);
-  const persist = () => { if (opts.dryRun) return; mkdirSync(dirname(opts.ledger) || '.', { recursive: true }); writeFileSync(opts.ledger, JSON.stringify(ledger, null, 2)); };
+  // The ONLY writer of the ledger: a full serialisation to a sibling tmp file, then an atomic rename, so a
+  // reader (or a re-run after a kill) never sees a half-written file, and one call never interleaves with
+  // another. Synchronous on purpose — concurrent workers cannot cut in between the write and the rename.
+  const persist = () => {
+    if (opts.dryRun) return;
+    mkdirSync(dirname(opts.ledger) || '.', { recursive: true });
+    const tmp = `${opts.ledger}.${process.pid}.tmp`;
+    writeFileSync(tmp, `${JSON.stringify(ledger, null, 2)}\n`);
+    renameSync(tmp, opts.ledger);
+  };
   const counts = { uploaded: 0, skipped: 0, notImage: 0, failed: 0, dry: 0 };
   let halted = null;
-  // Set by the first 2xx from the admin API. Until then entries run one at a time (the preflight loop
-  // below), so a 401 that survives the retries there is a dead token; after it, a 401 is one file's FAIL.
+  // Set by the first 2xx from the admin API. Until then entries run one at a time (the single-flight loop
+  // below), so nothing else is in flight while the token is being proved.
   let tokenAccepted = false;
   const lines = [];
   const say = (s) => { lines.push(s); console.log(s); };
@@ -309,15 +368,15 @@ async function main() {
       return;
     }
     if (status === 401) {
+      // A 401 that survived every retry is the token, not this file: the batch halts (exit 3) and the file
+      // is left not attempted — never `failed` — so the same command resumes exactly here. Workers already
+      // in flight finish their own upload; nothing new starts.
       await drain(res);
-      if (!tokenAccepted) {
-        // The lone preflight upload still 401s after every retry: nothing else was in flight, so this is
-        // the token, not a burst — the only credential failure worth stopping the batch for.
-        fail('401', 'unauthorized — DA_TOKEN expired or invalid; batch halted', { httpStatus: status, attempts });
-        halted = 'DA_TOKEN rejected (401): refresh it in the environment and re-run the same command — the ledger skips what already uploaded';
-        return;
+      say(`HALT ${e.file} 401 (unauthorized through ${attempts} attempt${attempts === 1 ? '' : 's'} — DA_TOKEN rejected; not recorded as failed, the re-run resumes here)`);
+      if (!halted) {
+        halted = `DA_TOKEN rejected (401 through ${attempts} attempt${attempts === 1 ? '' : 's'} on ${e.file}${tokenAccepted ? ', after the token had been accepted earlier in this batch' : ', the lone first upload'}): refresh DA_TOKEN in the environment and re-run the same command — the ledger skips what already uploaded: ${rerunCommand()}`;
+        persist();
       }
-      fail('401', `unauthorized after ${attempts} attempts; token was accepted earlier in this batch — re-run the same command, the ledger skips what already uploaded`, { httpStatus: status, attempts });
       return;
     }
     const body = res ? (await res.text().catch(() => '')).slice(0, 160).replace(/\s+/g, ' ') : '';
@@ -332,10 +391,10 @@ async function main() {
     try { await worker(e); } catch (err) { if (!halted) recordFailure(e, 'error', String(err && err.message ? err.message : err)); }
     if ((sinceSave += 1) % 5 === 0) persist();
   };
-  // Preflight, single flight: entries run one at a time until the admin API has accepted the token (the
-  // first 2xx) or the batch halted on it. Only then does the pool open, so nothing else is in flight while
-  // the token is being proved. A dry run or a fully ledger-skipped batch never reaches the admin API and
-  // simply runs through this loop, with the same lines and counts as before.
+  // Single flight: entries run one at a time until the admin API has accepted the token (the first 2xx) or
+  // the batch halted on it. Only then does the pool open, so nothing else is in flight while the token is
+  // being proved. A dry run or a fully ledger-skipped batch never reaches the admin API and simply runs
+  // through this loop, with the same lines and counts as before.
   let next = 0;
   while (next < entries.length && !tokenAccepted && !halted) { await guarded(entries[next]); next += 1; }
   await pool(entries.slice(next), opts.concurrency, guarded);
@@ -344,7 +403,7 @@ async function main() {
   const notRun = halted ? entries.length - (counts.uploaded + counts.skipped + counts.failed) : 0;
   console.log(`da-media-upload: ${entries.length} file(s) — ${counts.uploaded} uploaded, ${counts.skipped} skipped (${counts.notImage} not an image), ${counts.failed} failed${counts.dry ? `, ${counts.dry} dry-run` : ''}${notRun ? `, ${notRun} not attempted` : ''}${opts.dryRun ? '' : ` · ledger ${opts.ledger}`}`);
   if (halted) console.error(`da-media-upload: ${halted}`);
-  process.exitCode = counts.failed || halted ? 1 : 0;
+  process.exitCode = halted ? TOKEN_EXIT : counts.failed ? 1 : 0;
 }
 
 // Compare by real path: node resolves the entry's symlinks for import.meta.url but not for argv[1], so a

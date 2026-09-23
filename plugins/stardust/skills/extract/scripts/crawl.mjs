@@ -91,7 +91,6 @@ import { mkdir, writeFile, readFile } from 'node:fs/promises';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { chromium } from 'playwright';
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
@@ -100,6 +99,9 @@ if (process.argv.includes('--help') || process.argv.includes('-h')) {
   console.log(header ? header[0].replace(/^\/\*\*\s*|\s*\*\/$/g, '').replace(/^\s*\* ?/gm, '').trim() : 'no usage header');
   process.exit(0);
 }
+
+// playwright is imported only past the --help guard, so --help answers on a checkout without it.
+const { chromium } = await import('playwright');
 
 const WAIT_MS = { fast: 1200, medium: 2500, slow: 5000 };
 

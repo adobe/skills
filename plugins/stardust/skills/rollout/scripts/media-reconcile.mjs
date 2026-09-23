@@ -8,7 +8,9 @@
  *   optimize  — same-origin (Content Bus) asset; safe to run createOptimizedPicture
  *   hosted    — on the site's content host (content|admin.da.live); verified against the
  *               media ledger offline, never fetched anonymously (auth-gated); missing
- *               from an existing ledger = gate fail
+ *               from an existing ledger = gate fail. Only a ledger-verified URL is hosted:
+ *               with no ledger at all the URL is `unresolved` (reason: no media ledger —
+ *               pass --media-ledger <file>) — an unverified content-host image never passes
  *   keep      — external, resolves 200; reference as-is but skip block optimization
  *   rewrite   — repairable break (missing ?-delimiter, wrong host) → suggested URL
  *   omit      — unresolvable; drop the <img> (render gracefully), never ship about:error
@@ -22,12 +24,14 @@
  *        [--media-ledger <file>]
  *   --apply rewrites the file in place (rewrite → suggested URL, omit → remove <img>).
  *   --media-ledger <file>  the deploy step's media ledger (default: auto-detect
- *        stardust/deploy/media-ledger.json under the cwd; none → hosted URLs unverified, NOTE).
+ *        stardust/deploy/media-ledger.json under the cwd; none → every content-host URL is
+ *        `unresolved` with a NOTE on stderr, and the gate fails).
  *
  * Writes: --file IN PLACE, only with --apply; otherwise nothing (the per-image decisions,
  * text or --json, go to stdout). Resolves every non-hosted image URL over the network.
- * Exit 2 without --file or when the media ledger will not load; exit 1 on omit, unresolved,
- * or a hosted URL missing from the ledger.
+ * Exit 2 without --file or when the media ledger will not load; exit 1 on omit, unresolved
+ * (a content-host URL with no ledger to verify it included), or a hosted URL missing from
+ * the ledger.
  */
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -90,6 +94,7 @@ function isHostedUrl(u) {
 }
 
 const stripQuery = (u) => u.replace(/[?#].*$/s, '');
+const NO_LEDGER_REASON = 'no media ledger — pass --media-ledger <file>';
 
 // Canonical form for ledger matching: query/fragment dropped, every path segment re-encoded.
 // The uploader encodeURIComponent()s each segment; authored HTML may carry either form.
@@ -105,7 +110,7 @@ function canonUrl(u) {
 
 // The media ledger (deploy/scripts/da-media-upload.mjs): an object keyed by DA path, each record
 // carrying the authored contentUrl. An explicit path must load; the auto-detected default may be
-// absent (hosted URLs then pass unverified, with a NOTE). A ledger that exists but will not load
+// absent (content-host URLs are then `unresolved`, with a NOTE). A ledger that exists but will not load
 // is a defect, not a reason to pass hosted URLs → exit 2. Returns { path, urls: Set | null }.
 function loadLedger(explicit) {
   const path = explicit || join(process.cwd(), 'stardust', 'deploy', 'media-ledger.json');
@@ -156,11 +161,15 @@ const results = [];
 for (const u of collect(html)) {
   const host = originOf(u);
   const sameOrigin = DEPLOY_HOST && host && host === DEPLOY_HOST;
-  let decision; let suggested = null; let status = null; let verdict = null;
+  let decision; let suggested = null; let status = null; let verdict = null; let reason = null;
   if (sameOrigin) {
     decision = 'optimize';
   } else if (isHostedUrl(u)) {
-    decision = 'hosted'; verdict = ledgerVerdict(u, ledger); // offline — never an anonymous GET
+    verdict = ledgerVerdict(u, ledger); // offline — never an anonymous GET
+    // `hosted` only when a ledger vouches for the URL (or exists and can be checked); with no
+    // ledger nothing has verified the image, and an unverified content-host image never passes.
+    if (verdict === 'no-ledger') { decision = 'unresolved'; reason = NO_LEDGER_REASON; }
+    else decision = 'hosted';
   } else {
     status = await resolve(u);
     if (status === 200) {
@@ -177,7 +186,7 @@ for (const u of collect(html)) {
       if (!decision) decision = (status >= 400 && status < 500) ? 'omit' : 'unresolved';
     }
   }
-  results.push({ url: u, host, status, decision, suggested, ledger: verdict });
+  results.push({ url: u, host, status, decision, suggested, ledger: verdict, ...(reason ? { reason } : {}) });
 }
 
 /* optionally apply rewrites/omits */
@@ -199,9 +208,10 @@ const notInLedger = (r) => r.decision === 'hosted' && r.ledger === 'missing';
 const failing = results
   .filter((r) => ['omit', 'unresolved'].includes(r.decision) || notInLedger(r));
 const mediaLedger = ledger.urls ? ledger.path : null;
-if (results.some((r) => r.ledger === 'no-ledger')) {
+const noLedger = results.filter((r) => r.ledger === 'no-ledger').length;
+if (noLedger) {
   console.error(`media-reconcile: no media ledger at ${ledger.path}`
-    + ' — hosted URLs are unverified (pass --media-ledger <file>)');
+    + ` — ${noLedger} content-host URL(s) unverified → unresolved (pass --media-ledger <file>)`);
 }
 if (JSON_OUT) {
   const report = {
@@ -217,7 +227,7 @@ if (JSON_OUT) {
   };
   for (const r of results) {
     const tag = notInLedger(r) ? '✗ hosted  ' : TAGS[r.decision];
-    const note = notInLedger(r) ? ' (not in ledger)' : '';
+    const note = notInLedger(r) ? ' (not in ledger)' : r.reason ? ` (${r.reason})` : '';
     console.log(`  ${tag} ${r.status ? `[${r.status}] ` : ''}${r.url.slice(0, 70)}${note}${r.suggested ? `\n              → ${r.suggested.slice(0, 70)}` : ''}`);
   }
   console.log(`\n${Object.entries(counts).map(([k, v]) => `${v} ${k}`).join(' · ')}`);

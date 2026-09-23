@@ -38,7 +38,6 @@
  * interactive drives (#28 — hand-write those per block).
  */
 /* eslint-disable no-console, no-await-in-loop, no-restricted-syntax */
-import { chromium } from 'playwright';
 import fs from 'fs';
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
@@ -48,6 +47,9 @@ if (process.argv.includes('--help') || process.argv.includes('-h')) {
   console.log(header ? header[0].replace(/^\/\*\*\s*|\s*\*\/$/g, '').replace(/^\s*\* ?/gm, '').trim() : 'no usage header');
   process.exit(0);
 }
+
+// playwright is imported only past the --help guard, so --help answers on a checkout without it.
+const { chromium } = await import('playwright');
 
 const args = process.argv.slice(2);
 const url = args.find((a) => !a.startsWith('--'));
