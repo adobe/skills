@@ -4,7 +4,7 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
-## 0.24.0 — hands-off cost and autonomy: background instruments, inspection helpers, `--help` everywhere, bookkeeping writers, the Phase 5 contract
+## 0.25.0 — hands-off cost and autonomy: background instruments, inspection helpers, `--help` everywhere, bookkeeping writers, the Phase 5 contract
 
 Source: Karl Pauls' `stardust/replica-cache-perf` (13 commits, recorded hands-off replica runs of
 2026-09-18 to 2026-09-22), re-sliced into thematic commits, rebased over 0.22.2–0.23.1 and

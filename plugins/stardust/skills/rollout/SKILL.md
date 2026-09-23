@@ -222,7 +222,9 @@ edits blocks — template clusters concurrently (non-overlapping pages),
 representative-first so blocks exist to be reused; then a **central deploy**
 per page; then background batches with a per-page OK/FAIL ledger, re-driving
 FAILs only. For clusters of 6–20+ siblings, the full flow is
-`reference/delivery-gates.md` § Batched delivery. The central deploy step
+`reference/delivery-gates.md` § Batched delivery (it also names the one
+variant where cluster agents deploy themselves — replica's Phase 5 fan-out,
+per-cluster deploy ledgers, lock-safe shared ledgers). The central deploy step
 should run the bundled, resumable driver rather than a serial loop:
 `node skills/deploy/scripts/deploy-batch.mjs --org <org> --repo <repo>
 --branch <branch> --content <dir>` (concurrency pool, persistent ledger that skips
