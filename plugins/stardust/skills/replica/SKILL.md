@@ -2,6 +2,7 @@
 name: replica
 description: Same-design migration — re-platform a site to AEM Edge Delivery (or any clean front end) keeping its current design near pixel-perfect. Recreates key pages (one archetype per page type) as clean re-authored HTML/CSS (never DOM copies), verifies each against the live site with a measured source-fidelity gate (structural + visual + stitched pixel diff per breakpoint), then hands off to migrate/deploy/rollout for site-wide delivery (subsumes prepare-migration's prep cascade — never chain the two). The only permitted design changes are entries in an explicit inconsistency register. Use when the user says "migrate this site keeping its current design", "same-design migration", "pixel-perfect replatform to AEM", or "keep the design, change the platform". NOT for redesigns — those are the stardust core pipeline (direct/prototype) or uplift.
 license: Apache-2.0
+compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, playwright-cli on PATH, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
 ---
 
 # stardust:replica — same-design migration
@@ -16,7 +17,7 @@ source-fidelity gate** against the live site before anything ships.
 Two properties make this a different animal from the redesign pipeline:
 
 1. **No creative decisions.** The direction step is mechanical promotion of
-   the captured spec — `stardust:direct` is never invoked. Every judgment
+   the captured spec — the stardust `direct` skill is never invoked. Every judgment
    call in a replica run is a *measurement-policy* call, not a taste call.
 2. **Recreation, not copying.** Archetypes are authored as clean semantic
    HTML/CSS from captured content + values lifted from the source site's own
@@ -41,7 +42,13 @@ eyeballing.
 ## Setup
 
 1. Run the master skill's setup (`../stardust/SKILL.md` § Setup): context
-   loader, state read.
+   loader, state read. **Flow guard.** If `state.json.flow` is
+   `redesign`, refuse: print the never-mix line and the switch command
+   (`$stardust replica --switch-flow`, which marks the redesign flow's
+   prototyped and migrated pages stale — master skill § Two migration
+   flows). If `flow` is absent, stamp `flow: "replica"`,
+   `flowSource: "user-phrase"` (`../stardust/reference/state-machine.md`
+   § Flow keys): invoking `replica` is the choice.
 2. Verify Playwright is importable from the project root (extract needs it;
    so do the gate scripts).
 3. Install the gate's pixel deps in the project:
@@ -66,9 +73,9 @@ eyeballing.
 Five phases. Phases 1 and 5 delegate to existing skills unchanged; phases
 2–4 are owned by `replica`.
 
-### Phase 1 — EXTRACT (delegate to `stardust:extract --prep --dynamics`)
+### Phase 1 — EXTRACT (delegate to `$stardust extract --prep --dynamics`)
 
-Invoke `stardust:extract <URL> --prep`, unchanged. Prep mode is required —
+Invoke `$stardust extract <URL> --prep`, unchanged. Prep mode is required —
 replica consumes the full migration inventory, not the discovery cap:
 
 - `stardust/current/pages/<slug>.json` — per-page structure + content
@@ -81,10 +88,16 @@ replica consumes the full migration inventory, not the discovery cap:
 - `state.json.pages[].type` — page types (each becomes one archetype).
 - `DESIGN.json.extensions.modules[]` — module candidates (become blocks).
 
+When extract's summary comes back, surface it with the flow line first —
+"Flow: replica — the design is kept. Say `switch to redesign` now if it is
+to change." — so the first thing the user sees in this flow is the choice
+it rests on. `switch to redesign` runs `$stardust prepare-migration
+--switch-flow`; the extract is reused, nothing else is.
+
 **Bounded/single-page entry (one-page or pilot runs).** `--prep` is the
 site-wide contract; it is NOT the only way in. When the ask is "replicate
 just this page" — or the user wants to pilot one archetype before committing
-to a full migration — invoke `stardust:extract <URL> --single` (or
+to a full migration — invoke `$stardust extract <URL> --single` (or
 `--pages <slug,...>` for a short list) instead. This is a first-class entry,
 not an improvisation: the recreation phase needs, per page, the captured
 page JSON (verbatim content), the per-page screenshot (ground truth), and
@@ -106,7 +119,7 @@ Extract's failure modes apply as-is (bot-management headed fallback, consent
 handling, no-synthesis rule). If extract had to fall back to headed Chrome,
 expect the gate captures to need the same treatment.
 
-### Phase 2 — PRESERVE DIRECTION (mechanical — never invoke `stardust:direct`)
+### Phase 2 — PRESERVE DIRECTION (mechanical — never invoke the stardust `direct` skill)
 
 Full contract: `reference/preserve-direction.md`. Summary:
 
@@ -125,13 +138,13 @@ Full contract: `reference/preserve-direction.md`. Summary:
    tells downstream skills "the direction step happened".
 3. **Build the inconsistency register** at
    `stardust/replica/inconsistency-register.md` — the ONLY permitted design
-   deltas, the "almost" in almost-pixel-perfect. Sources: `stardust:audit`
+   deltas, the "almost" in almost-pixel-perfect. Sources: the stardust `audit` skill
    design findings (run audit only if the user wants improvement candidates)
    and/or user-supplied items (`--register`). Every entry needs captured
    evidence + the minimal change + a status. **Empty register = pure
    replica** — that is a valid and common outcome, not a failure.
 
-4. **Dynamic surface (migration gate — `stardust:dynamics` Phases 1–3).**
+4. **Dynamic surface (migration gate — the stardust `dynamics` skill Phases 1–3).**
    Phase 1 must have run `extract --dynamics`. Run the detector on the
    archetypes, draft the triage (`--target-origin` when the EDS host is
    known), curate `stardust/dynamic-features.md` + `-plan.md`. Every row
@@ -208,9 +221,12 @@ node stardust/scripts/replica/pixel-compare.mjs stardust/replica/gates/<slug>-14
   stardust/replica/gates/<slug>-1440/proto.png --out stardust/replica/gates/<slug>-1440/diff.png
 
 # Iteration inner loop (gate doc § Band breakdown): anchor probe + pixel round
+G=stardust/replica/gates/<slug>-1440
+node stardust/scripts/replica/anchor.mjs "$LIVE"  --width 1440 --cache $G/anchor-live.json   # live side: probed once, reused
 node stardust/scripts/replica/anchor.mjs "$PROTO" --width 1440   # build-side runs are free
 # Chrome: computed-style parity BEFORE any pixel round on header/footer/strips
-node stardust/scripts/replica/chrome-parity.mjs "$LIVE" "$PROTO" --width 1440   # exit 0 = quiet, then crop-compare
+node stardust/scripts/replica/chrome-parity.mjs "$LIVE" "$PROTO" --width 1440 --live-cache $G/chrome-live.json   # exit 0 = quiet, then crop-compare
+# gate.sh: live.png cached, every step under a deadline (exit 124 = re-run, not FAIL), stale instruments reaped
 stardust/scripts/replica/gate.sh <slug> "$LIVE" "$PROTO" 1440 iter2
 ```
 
@@ -274,7 +290,7 @@ approval per the standard prototype approval flow (hands-off mode records
 
 ### Phase 5 — HANDOFF (delegate — migrate → deploy → rollout, unchanged)
 
-- **Pages beyond the archetypes** go through `stardust:migrate` at
+- **Pages beyond the archetypes** go through the stardust `migrate` skill at
   **sibling tier** (`../migrate/reference/fidelity-tiers.md`): structural
   clone of the gated archetype + content-fidelity + delivery-lint +
   media-reconcile. Siblings inherit the archetype's source-fidelity gate —
@@ -285,13 +301,13 @@ approval per the standard prototype approval flow (hands-off mode records
   file, § Sibling variance probe). Content-fidelity is
   **measured per page at import time** (same file, § Content-count
   acceptance) so importer bugs surface while cheap to fix.
-- **Delivery** via `stardust:deploy` per page. Bias the decode tier toward
+- **Delivery** via the stardust `deploy` skill per page. Bias the decode tier toward
   **template-slotted** for fixed-composition sections (deploy #95): replica
   sections are fixed compositions matched to a live original.
   Repeat groups (cards, listings) stay reconstructive. **Blocks
   obey the Experience Workspace editability contract (deploy § 8, EW1–EW10:
   node-slotting, never value-slotting) and pass `block-roundtrip --ew`.**
-- **Site-wide rollout** via `stardust:rollout`, unchanged — its block dedup
+- **Site-wide rollout** via the stardust `rollout` skill, unchanged — its block dedup
   is what implements "same blocks across the whole site".
 - **The final gate runs against the PUBLISHED origin — not the harness**
   (`reference/source-fidelity-gate.md` § The published-origin gate): the

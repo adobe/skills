@@ -1,6 +1,6 @@
 # direct --prep — migrate-prep mode
 
-Extended pass run by `stardust:direct` when invoked with `--prep`
+Extended pass run by the stardust `direct` skill when invoked with `--prep`
 (typically via the `prepare-migration` orchestrator). It finalizes
 the inventory data structures `migrate` consumes on top of the
 standard direct procedure; discovery-mode runs are unchanged.

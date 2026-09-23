@@ -329,7 +329,14 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
   unnamed "the instrument felt wrong" is still a spent iteration.
 - **Hit minimization: ONE live navigation per instrument per breakpoint per
   full gate run.** The live stitch PNG is captured once and reused across
-  iterations; only the prototype side re-captures. On hard-CDN sites
+  iterations; only the prototype side re-captures. The two other live-side
+  instruments cache the same way: `chrome-parity.mjs --live-cache
+  <gates-dir>/chrome-live.json` and `anchor.mjs --cache
+  <gates-dir>/anchor-live.json` (live URL only) write the live measurement
+  on the first run and reuse it while URL, width and selectors match —
+  delete the file to re-probe. Recorded without it: a chrome-parity round
+  on an AEM site cost 5½ minutes of live settle per iteration, ×3
+  iterations ×4 archetypes. On hard-CDN sites
   (Akamai-class), take the live captures with `--headed` and treat further
   live hits as spent budget — the recorded failure mode (luggage retailer) was an
   IP-level block escalating within ~3–4 automated requests, after which
@@ -338,6 +345,24 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
   `BotChallengeError` on the first challenge-classified response (the
   wait+reload solve window runs only under `--headed`, where clearance can
   actually land) — so the block budget is still intact when you escalate.
+- **Instrument deadlines are the gate's, not yours.** `gate.sh` runs each
+  capture under `run-capped.mjs` (stitch 300 s, compare 120 s —
+  `GATE_STITCH_TIMEOUT` / `GATE_COMPARE_TIMEOUT`) and reaps this user's
+  replica instruments older than 15 minutes before a round (`GATE_REAP_MIN`,
+  0 disables); `pixel-compare.mjs` supervises its own `--timeout` (120 s)
+  when run alone. Exit 124 is "no verdict — re-run", never a FAIL. Do not
+  wrap the instruments in your own `sleep N; kill` guard: three field
+  migrations did, after `pixel-compare` sat at 0 % CPU for 10+ minutes
+  (a Node exit-path hang, fixed in the script and now reproduced in a
+  test), and a page's four rounds then spent a fixed 30 minutes sleeping.
+  When a capture legitimately needs longer (a 10k-px page under `--settle`),
+  raise the variable for that page and say so in the ledger.
+- **Your waiting has a ceiling too.** A gate round over several archetypes
+  or siblings runs in the background, not as a foreground `for` loop of
+  `gate.sh` calls (recorded: 5–10-minute foreground sweeps, 58 % of which
+  re-wrote the whole prompt prefix because the cache window is 5 minutes).
+  Read the round's ledger at most every 4 minutes, never with a single
+  `sleep` of 5 minutes or more — the master skill's wait discipline.
 - **Media-density budget.** The ≤3-iteration convergence was validated on a
   typographic, low-image page (the retail home). Image-dense commerce homes
   (recorded: a fashion retailer, ~130 imgs) spend iterations on media parity —

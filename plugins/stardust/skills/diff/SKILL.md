@@ -1,7 +1,8 @@
 ---
 name: diff
-description: Reconcile a converted/built web page against its source prototype with two complementary probes — a PIXEL/layout diff (stretched images, dropped wraps, blank renders, colour flips) and a STRUCTURAL content+typography diff (dropped/mis-slotted headings, eyebrows, CTAs; rendered-face font forks). Stack-agnostic via profiles (eds | generic). Use after converting a prototype to EDS/AEM (the stardust:deploy Step 10), or for any prototype↔build fidelity check; invocable as stardust:diff and from workflows.
+description: Reconcile a converted/built web page against its source prototype with two complementary probes — a PIXEL/layout diff (stretched images, dropped wraps, blank renders, colour flips) and a STRUCTURAL content+typography diff (dropped/mis-slotted headings, eyebrows, CTAs; rendered-face font forks). Stack-agnostic via profiles (eds | generic). Use after converting a prototype to EDS/AEM (the stardust `deploy` skill Step 10), or for any prototype↔build fidelity check; invocable as the stardust `diff` skill and from workflows.
 license: Apache-2.0
+compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, playwright-cli on PATH, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
 ---
 
 # stardust:diff — prototype ↔ build reconcile
@@ -15,7 +16,7 @@ Both are framework-agnostic Playwright probes that compare two rendered URLs by
 
 ## When to use
 
-- After converting a prototype to EDS (the `stardust:deploy` skill's Step 10) — use `--profile eds`.
+- After converting a prototype to EDS (the stardust `deploy` skill's Step 10) — use `--profile eds`.
 - Any "does the build match the design?" check between two rendered URLs (a Figma export vs a React build, a legacy page vs a rebuild) — use `--profile generic`.
 - Inside a conversion/QA workflow as the validation gate (see *Workflow use*).
 
@@ -112,7 +113,7 @@ per-flag **remediation hints**, the **font-delta** threshold, the default conten
 **selector**, and the **eyebrow** classifier thresholds. The engines carry no stack
 strings.
 
-- **`eds`** (default) — Edge Delivery / DA remediation language + `stardust:deploy` finding numbers.
+- **`eds`** (default) — Edge Delivery / DA remediation language + the stardust `deploy` skill's finding numbers.
 - **`generic`** — neutral source/build language for any stack.
 
 Add a profile by copying `generic` in `diff-profiles.mjs` and editing `hints`.
@@ -122,7 +123,7 @@ Add a profile by copying `generic` in `diff-profiles.mjs` and editing `hints`.
 The structural probe's classifier + differ live in `skills/diff/scripts/content-inventory.mjs`
 (and a synced copy in `skills/deploy/scripts/content-inventory.mjs` that the deploy gates import
 locally so they don't depend on this skill — keep the two copies in sync until consolidated).
-They measure with the same instrument as two `stardust:deploy` gates:
+They measure with the same instrument as two gates of the stardust `deploy` skill:
 `section-schema.mjs` (the pre-code ENCODE/DECODE contract, deploy #93) and `block-roundtrip.mjs`
 (the in-loop per-block gate, deploy #94 — the same inventory diff, run per block at authoring time
 against a local decorate() harness, no DA needed, exit-code gated). Run the in-loop gate while
@@ -133,7 +134,7 @@ block's flattened-shape fallback, not the authoring.
 ## Workflow use
 
 Call both scripts in a validation phase and gate on the output. The
-`stardust:deploy` conversion workflow's Validate phase runs both after building
+the stardust `deploy` skill's conversion workflow Validate phase runs both after building
 a local harness; mirror that:
 
 1. Build/serve the decorated build page (e.g. a local QA harness, or the branch preview).
@@ -142,5 +143,5 @@ a local harness; mirror that:
 4. Loop until visual none/justified AND content-diff 0 structural 🔴.
 
 > Naming note: this skill ships in the `stardust` plugin and is invoked as
-> `stardust:diff`. It pairs with `stardust:deploy`, whose Step 10 runs both probes
+> the stardust `diff` skill. It pairs with the stardust `deploy` skill, whose Step 10 runs both probes
 > as its Validate gate.

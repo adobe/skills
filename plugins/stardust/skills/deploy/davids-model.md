@@ -1,4 +1,4 @@
-# David's Model — the authored-structure contract for stardust:deploy
+# David's Model — the authored-structure contract for the stardust `deploy` skill
 
 Distilled from https://www.aem.live/docs/davidsmodel (David Nuescheler's content-modeling
 rules, "second take") and https://www.aem.live/developer/component-model-definitions.

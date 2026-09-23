@@ -18,8 +18,12 @@ TOKEN="$DA_TOKEN"
 #    your edited blocks to be live before previewing. Assets gzip → curl --compressed.
 curl -sS -X POST -H "Authorization: Bearer $TOKEN" \
   "https://admin.hlx.page/code/$ORG/$REPO/$BRANCH/*"          # expect 202
-until curl -s --compressed "https://$BRANCH--$REPO--$ORG.aem.page/blocks/<edited-block>/<edited-block>.js" \
-  | grep -q "<a marker string from your edit>"; do sleep 3; done
+for i in $(seq 1 60); do   # capped: ~3 min, then fail loud — never an unbounded wait
+  curl -s --compressed "https://$BRANCH--$REPO--$ORG.aem.page/blocks/<edited-block>/<edited-block>.js" \
+    | grep -q "<a marker string from your edit>" && break
+  [ "$i" = 60 ] && { echo "code sync did not land in 3 min — check the POST above / Code Sync installation" >&2; exit 1; }
+  sleep 3
+done
 
 # 1. sanitise non-ASCII to entities (in place, idempotent) — DA corrupts raw UTF-8
 node skills/deploy/scripts/sanitise.js content/$P.html
@@ -34,7 +38,11 @@ curl -sS -X PUT -H "Authorization: Bearer $TOKEN" \
 #     about:error if a URL doesn't return image bytes AT THAT MOMENT. A just-pushed
 #     img/<brand>/x.jpg can lose the race with Code Sync. Wait for each authored image:
 for u in $(grep -oE 'https://[^"]+/img/[^"]+\.(jpg|jpeg|png|webp|svg)' content/$P.html | sort -u); do
-  until [ "$(curl -s -o /dev/null -w '%{http_code}' "$u")" = "200" ]; do sleep 3; done
+  for i in $(seq 1 40); do   # capped: ~2 min per asset, then fail loud
+    [ "$(curl -s -o /dev/null -w '%{http_code}' "$u")" = "200" ] && break
+    [ "$i" = 40 ] && { echo "asset never became live: $u" >&2; exit 1; }
+    sleep 3
+  done
 done
 # NB (#2): this bare-curl wait is for repo-relative /img/ assets only. Do NOT bare-curl
 #   - content.da.live/admin.da.live media URLs — they 401 to anon curl but ingest fine

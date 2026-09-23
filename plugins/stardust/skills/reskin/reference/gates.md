@@ -322,7 +322,7 @@ check, and a human-readable verdict (`accepted` | `needs-owner` |
   in `_provenance` and echoed in gate report headers — check them
   when a gate result looks impossible.
 
-## Relationship to stardust:diff
+## Relationship to the stardust `diff` skill
 
 `../../diff/SKILL.md`'s two probes (pixel + structural) remain the
 **build-side** check after Phase 6 deploys the page to EDS — run them

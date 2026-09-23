@@ -3,7 +3,7 @@
 Every prototype and every migrated page renders against the project-root
 `DESIGN.md` tokens, exposed as CSS custom properties on `:root`. The
 contract below is the **interface** between stardust's renderers and
-any downstream consumer (`stardust:deploy`/`stardust:rollout` for EDS, a framework component
+any downstream consumer (the stardust `deploy`/`rollout` skills for EDS, a framework component
 library, a design handoff).
 
 Carried from stardust v1 (design-guide.md) and aligned with
@@ -199,5 +199,5 @@ HTML file. When the user gives feedback during iteration:
   re-derived from the latest DESIGN.md so token edits propagate.
 - **`extract`** does not touch this block (extract describes the
   current site, which has its own arbitrary tokens).
-- Downstream consumers (e.g., `stardust:deploy`) read the block from
+- Downstream consumers (e.g., the stardust `deploy` skill) read the block from
   migrated pages as the canonical token interface.

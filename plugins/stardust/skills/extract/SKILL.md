@@ -1,7 +1,8 @@
 ---
 name: extract
-description: Crawl an existing website (capped, multi-page) and seed stardust/current/ with PRODUCT.md, DESIGN.md, DESIGN.json, a per-page inventory, and the consolidated brand surface — the captured design system, palette, typography, motifs, and voice of the live site. Use when the user wants to analyze an existing site's design, extract or reverse-engineer its design system or brand, capture design tokens from a live site, import a website as the starting point for a redesign, capture the current state before a migration, or invokes /stardust:extract. Trigger phrases include "analyze this site", "extract the design tokens", "capture the brand", "crawl the site", "reverse engineer the design". Not for scraping page data or content for its own sake (it captures design evidence, not datasets), and not for the redesign itself — extraction is descriptive; direction and prototyping happen downstream.
+description: Crawl an existing website (capped, multi-page) and seed stardust/current/ with PRODUCT.md, DESIGN.md, DESIGN.json, a per-page inventory, and the consolidated brand surface — the captured design system, palette, typography, motifs, and voice of the live site. Use when the user wants to analyze an existing site's design, extract or reverse-engineer its design system or brand, capture design tokens from a live site, import a website as the starting point for a redesign, capture the current state before a migration, or invokes `$stardust extract` (`/stardust:extract` in Claude Code). Trigger phrases include "analyze this site", "extract the design tokens", "capture the brand", "crawl the site", "reverse engineer the design". Not for scraping page data or content for its own sake (it captures design evidence, not datasets), and not for the redesign itself — extraction is descriptive; direction and prototyping happen downstream.
 license: Apache-2.0
+compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, playwright-cli on PATH, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
 ---
 
 # stardust:extract
@@ -51,7 +52,7 @@ critique, and it does not modify the live site. It writes only under
   them up in `_crawl-log.json#dynamicSurface`. Set by
   `prepare-migration`, `replica` and `migrate`'s safety net; never by a
   bare extract, `uplift` or `audit` — dynamics is a migration concern.
-  Depth and classification belong to `stardust:dynamics`.
+  Depth and classification belong to the stardust `dynamics` skill.
 - `--concurrency <n>` — optional. Parallel browser contexts for the
   per-page capture loop. Default 4; sane range 4–8. See
   § Concurrency.
@@ -128,6 +129,16 @@ Additional checks for this sub-command:
    `site.originUrl` and the new `<url>` is a different origin, stop and
    ask before clobbering. Stardust does not silently mix two sites in
    one project.
+   **Flow guard (migration asks only).** If the ask carries migration
+   intent ("migrate", "to EDS", "re-platform", "1:1", "replica") and
+   `stardust/state.json` exists — or is about to be created — without
+   `flow`, hand back to the master skill § Two migration flows before
+   crawling: the flow is chosen and stamped there, and a keep-design
+   ask enters through `replica` (which invokes this skill with `--prep`
+   itself). A bare `extract <url>` for a redesign, audit or uplift is
+   unaffected. (Recorded: `extract` on a raw URL as the entry of a
+   same-design migration; the agent then built its own importer beside
+   `replica`.)
 3. **Browser contexts.** Open a fresh `BrowserContext` per capture
    worker (§ Concurrency; default 4). Run the **consent dismissal
    pre-flight** per `reference/playwright-recipe.md` § Pre-flight:
@@ -276,7 +287,7 @@ Capture per page (full schema in `reference/current-state-schema.md`):
   player ids, hydration hints, in the page JSON `dynamic` section and
   `_crawl-log.json#dynamicSurface` (schema in
   `reference/current-state-schema.md § Dynamic`). Evidence only; the
-  `stardust:dynamics` sub-skill probes archetypes in depth and decides.
+  stardust `dynamics` sub-skill probes archetypes in depth and decides.
 
 Save to `stardust/current/pages/<slug>.json` with `_provenance` as the
 first key. **The bundled crawler also saves the settled rendered DOM
@@ -417,13 +428,23 @@ defining intent here, the agent is describing the existing site. Write
 them directly using impeccable's format specs:
 
 - For PRODUCT.md, follow the section structure in impeccable's
-  `reference/teach.md`. Populate `Register` from the brand surface
-  (sites that read as marketing/landing → `brand`; tools/dashboards →
-  `product`; ambiguous → `brand` with a note). Populate `Users`,
-  `Product Purpose`, `Brand Personality`, `Anti-references`, and
-  `Design Principles` from the captured copy and the brand surface.
-  Where the agent must infer, mark the section with `_provenance:
-  inferred` and a one-line basis sentence.
+  `reference/init.md` § Write PRODUCT.md. File order: stardust's
+  `<!-- stardust:provenance … -->` block first (per
+  `../stardust/reference/artifact-map.md` § Provenance, as for every
+  file this skill writes), then `# Product`, then the
+  `<!-- impeccable:product-schema 1 -->` comment verbatim, then
+  `Platform` (`web`), `Users`, `Product Purpose`, `Positioning`,
+  `Capabilities and Constraints`, `Brand Commitments`, `Evidence on
+  Hand`, `Product Principles`, `Accessibility & Inclusion`; omit a
+  section rather than pad it. Under `Brand Commitments` record the
+  register guess from the brand surface (sites that read as
+  marketing/landing → `brand`; tools/dashboards → `product`; ambiguous
+  → `brand` with a note), the observed brand personality and the
+  observed anti-references. `Evidence on Hand` lists what was captured
+  under `stardust/current/` with paths. Populate `Users`, `Product
+  Purpose`, `Positioning` and `Product Principles` from the captured
+  copy and the brand surface. Where the agent must infer, mark the
+  section with `_provenance: inferred` and a one-line basis sentence.
 - For DESIGN.md and DESIGN.json, follow the format spec in
   impeccable's `reference/document.md`. Populate frontmatter
   (`colors`, `typography`, `rounded`, `spacing`, `components`) from
@@ -431,8 +452,8 @@ them directly using impeccable's format specs:
   v1's `componentStyle`, `motifs`, and `voice` arrays so nothing is
   lost.
 
-Stardust does **not** invoke `$impeccable teach` or `$impeccable
-document` for the current-state files: those commands write to project
+Stardust does **not** invoke `$impeccable init` (formerly `teach`) or
+`$impeccable document` for the current-state files: those commands write to project
 root (the *target*) and run an interview. Stardust authors the
 descriptive snapshot directly. The format spec from impeccable is the
 contract; the runtime command is not.

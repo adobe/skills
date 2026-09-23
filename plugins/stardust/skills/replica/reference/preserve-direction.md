@@ -1,6 +1,6 @@
 # Preserve direction (mechanical promotion + inconsistency register)
 
-Replica's Phase 2. Replaces the creative direction step (`stardust:direct`)
+Replica's Phase 2. Replaces the creative direction step (the stardust `direct` skill)
 with a mechanical promotion: **the captured current state becomes the target
 spec, verbatim.** No divergence roll, no anchor, no Mode A/B, no craft
 re-direction. The phase makes exactly zero creative decisions — validated
@@ -130,7 +130,7 @@ reviewable artifact instead of a per-section judgment call during recreation.
 
 **Sources (both optional):**
 
-1. **`stardust:audit` design findings.** Run audit only when the user wants
+1. **Design findings from the stardust `audit` skill.** Run audit only when the user wants
    improvement candidates surfaced. Consume
    `stardust/audit/<domain-slug>/audit.json` design findings; each adopted
    finding becomes one register entry citing the finding ID. Adopt

@@ -1,6 +1,6 @@
 # Migrate output format
 
-The contract `stardust:migrate` produces and **every downstream
+The contract the stardust `migrate` skill produces and **every downstream
 consumer can rely on**. Authoring it as a separate reference (vs.
 folding it into `artifact-map.md`) is deliberate: this is the
 external interface — what changes here is a breaking change for

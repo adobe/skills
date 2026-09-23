@@ -5,7 +5,7 @@
     {
       "name": "activated",
       "max_score": 2,
-      "description": "The stardust:migrate skill was invoked."
+      "description": "The stardust `migrate` skill was invoked."
     },
     {
       "name": "plan_printed_with_branches",

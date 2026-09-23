@@ -1,0 +1,51 @@
+{
+  "context": "Routing a migration ask to one of the two migration flows. Four prompts in task.md run as separate sessions against the same empty project; each item is judged pass/fail per session and weighted by max_score.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "flow_named_first",
+      "max_score": 15,
+      "description": "The first response to every prompt names the chosen flow (redesign / replica) or, for the plain ask, presents the two flows and asks the one keep-vs-redesign question. For keep-design phrases it also states that replica needs no prepare-migration step."
+    },
+    {
+      "name": "plain_ask_asks_once",
+      "max_score": 15,
+      "description": "Prompt 1: exactly one question (keep vs redesign) is asked before any sub-skill loads, crawl runs or file is written. No second question, no default taken silently in an interactive session."
+    },
+    {
+      "name": "keep_design_no_question",
+      "max_score": 10,
+      "description": "Prompts 2 and 3: the keep-design phrase selects replica without asking; no clarifying question is posed."
+    },
+    {
+      "name": "flow_recorded_in_state",
+      "max_score": 15,
+      "description": "stardust/state.json carries flow (replica for prompts 1-3 after the answer, redesign for prompt 4), flowChosenAt (ISO timestamp) and flowSource (question for prompt 1, user-phrase for 2-4), placed after direction and before pages."
+    },
+    {
+      "name": "replica_invoked_for_keep_design",
+      "max_score": 15,
+      "description": "Prompts 1 (after 'keep the design'), 2 and 3: the replica skill is the sub-skill invoked. prepare-migration is never loaded or read in these sessions."
+    },
+    {
+      "name": "direct_never_proceeds_on_replica_phrase",
+      "max_score": 10,
+      "description": "Prompts 2 and 3: direct is not invoked; if it is reached, it writes only the zero-movement hand-off note to direction.md, stamps flow: replica, and stops recommending replica — it never restates axes, asks density/ia-fidelity questions or writes DESIGN files."
+    },
+    {
+      "name": "redesign_phrase_routes_to_redesign_flow",
+      "max_score": 10,
+      "description": "Prompt 4: flow is redesign, prepare-migration (or extract then direct) is invoked, replica is never invoked."
+    },
+    {
+      "name": "migrate_never_first",
+      "max_score": 5,
+      "description": "In no session is the migrate skill the first sub-skill invoked on the fresh project; a migrate-first attempt would be refused by its flow guard and handed back to the master routing."
+    },
+    {
+      "name": "no_parallel_pipeline",
+      "max_score": 5,
+      "description": "The agent authors no crawler, importer or compiler of its own in any session; any replacement of a skill phase is recorded as a named deviation in stardust/direction.md."
+    }
+  ]
+}

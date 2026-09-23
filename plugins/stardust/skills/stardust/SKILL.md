@@ -1,7 +1,8 @@
 ---
 name: stardust
-description: Guided multi-page redesign of an existing website through a four-phase pipeline — extract (crawl and capture the current site), direct (set a visual direction), prototype (generate redesigned HTML), and migrate (emit a deployable static site). Tracks progress incrementally per page in stardust/state.json so redesigns are resumable. Delegates the per-page design craft (typography, spacing, color, layout, motion) to the impeccable skill. Use when the user wants to redesign, revamp, modernize, or restyle an existing site they can point to by URL, run the extract/direct/prototype/migrate flow, or resume a multi-page redesign. Also routes the same-design migration flow (replica) and the donor-design flow (reskin). Not for designing a brand-new site from scratch or one-off single-component edits.
+description: Guided multi-page redesign of an existing website through a four-phase pipeline — extract (crawl and capture the current site), direct (set a visual direction), prototype (generate redesigned HTML), and migrate (emit a deployable static site). Tracks progress incrementally per page in stardust/state.json so redesigns are resumable. Delegates the per-page design craft (typography, spacing, color, layout, motion) to the impeccable skill. Use when the user wants to redesign, revamp, modernize, or restyle an existing site they can point to by URL, run the extract/direct/prototype/migrate flow, or resume a multi-page redesign or migration. Also routes the same-design migration flow (replica) and the donor-design flow (reskin). Not for designing a brand-new site from scratch or one-off single-component edits.
 license: Apache-2.0
+compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, playwright-cli on PATH, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
 ---
 
 # stardust
@@ -14,35 +15,42 @@ sub-commands that delegate the actual design work to **impeccable**.
 ## Setup (run before anything else)
 
 1. **Verify impeccable is installed.** Stardust has a hard dependency on
-   impeccable and ships no fallbacks. Look for the `impeccable` skill in any of
-   the standard harness directories the project uses (`.claude/skills/`,
-   `.agents/skills/`, `.cursor/skills/`, etc.). If it is not installed, stop
-   and tell the user:
+   impeccable and ships no fallbacks. Look for the `impeccable` skill wherever
+   the harness installs skills or plugins: the skill list the harness exposes
+   to you, project skill directories (`.claude/skills/`, `.agents/skills/`,
+   `.cursor/skills/`, `.github/skills/`), or the harness's plugin cache
+   (Claude Code: `~/.claude/plugins/cache/`; GitHub Copilot:
+   `~/.copilot/installed-plugins/*/impeccable/skills/impeccable`). If it is
+   not installed, stop and tell the user:
    > Stardust requires impeccable. Install it from
    > <https://github.com/pbakaus/impeccable> and re-run the command.
 
    **Version hint (advisory, never blocking).** Stardust deliberately pins
    NO impeccable version — the design craft should always be the current
-   one — and Claude Code only announces plugin updates through marketplace
-   auto-update, which is off by default for third-party marketplaces such
-   as impeccable's. So, once per session, run
+   one — and harnesses do not announce third-party plugin updates by
+   default (Claude Code's marketplace auto-update is off for third-party
+   marketplaces such as impeccable's; Copilot has no update notice). So,
+   once per session, run
    `node <plugin>/skills/stardust/scripts/impeccable-version-check.mjs`
    (add `--local <impeccable-dir>` when impeccable lives in a harness skills
    directory rather than the plugin registry) and surface its one output
    line to the user verbatim when it reports a newer version; it prints the
-   two update commands. Any other outcome (current, unknown, offline) is
+   update command for the harness it found impeccable in. Any other outcome (current, unknown, offline) is
    noise — do not mention it, and never stop or degrade a run over it.
-2. **Run impeccable's context loader once per session.** Execute the loader at
-   `<harness>/skills/impeccable/scripts/load-context.mjs`. Its JSON output
-   tells you whether `PRODUCT.md` and `DESIGN.md` exist at the project root
-   (these are the *target* state for stardust). Skip the loader if it already
-   ran in this session's history.
+2. **Check the target-state files.** `PRODUCT.md` and `DESIGN.md` at the
+   project root are the *target* state for stardust; check whether they
+   exist (a directory listing is enough). Do not run impeccable's context
+   loader (`scripts/impeccable context`) here: it emits directives for
+   impeccable's own flow (init, new-work, detector, update checks) that do
+   not apply to stardust's setup, and impeccable runs it itself whenever
+   stardust invokes an impeccable command. Skip if already known from this
+   session's history.
 3. **Read stardust's state.** Read `stardust/state.json` if present
    (`reference/state-machine.md` defines the schema). Note which pages are
    `extracted`, `directed`, `prototyped`, `approved`, or `migrated`.
 4. **Read impeccable's command registry.** Parse
    `<harness>/skills/impeccable/scripts/command-metadata.json`. This is the
-   single source of truth for the 23 impeccable commands; never hardcode
+   single source of truth for the 24 impeccable commands; never hardcode
    them in your reasoning.
 5. **Status ledger.** Every stardust skill appends a phase-transition line
    to `stardust/status.jsonl` at each phase start/end, per
@@ -63,26 +71,41 @@ Once setup is done, route on the user's input:
 - **No argument.** Render the **state report** described in
   `reference/state-machine.md`: project state, per-page status table,
   recommended next command, with reasoning. Do not write anything.
-- **First word names a sub-skill.** Delegate to the matching
-  `stardust:<name>` skill and pass remaining args through. The master
-  skill routes **all** sibling sub-skills:
+  The same applies to any **resume**: a new session on a project that
+  has `stardust/state.json`, "continue", "where are we", or a resume
+  driven by a memory file. Start with the state report (it names the
+  flow and the last gate numbers), then enter the next phase **through
+  its skill** — the procedure drives, not memory. (Recorded: a
+  144-hour resume session invoked no stardust skill at all, re-read
+  the procedure through `grep`, and followed whatever the previous
+  context remembered.)
+- **First word names a sub-skill.** Delegate to the matching sub-skill
+  and pass remaining args through. Sub-skills are named by their bare
+  skill name below; how to address one depends on the harness. Claude
+  Code namespaces plugin skills as `stardust:<name>` (Skill tool);
+  GitHub Copilot and other harnesses that flatten plugin skills expose
+  the bare `<name>`. If the harness has no skill-invocation tool, read
+  the sub-skill's `SKILL.md` and follow it inline. Never confuse the
+  stardust `extract` and `audit` skills with impeccable's `extract` and
+  `audit` commands, which are always written `$impeccable <command>`.
+  The master skill routes **all** sibling sub-skills:
 
-  | keyword | sub-skill | owns |
-  |---|---|---|
-  | `extract` | `stardust:extract` | crawl + capture the current site |
-  | `direct` | `stardust:direct` | resolve the visual direction |
-  | `prototype` | `stardust:prototype` | per-page redesign prototypes |
-  | `migrate` | `stardust:migrate` | full-site platform-agnostic static HTML |
-  | `prepare-migration` | `stardust:prepare-migration` | the migrate-prep cascade (prep phases, assets, dynamics gate) — **redesign flow only** |
-  | `replica` | `stardust:replica` | same-design migration (re-platform, keep the current design) — runs its own preserve-mode prep, then hands off to migrate/deploy/rollout |
-  | `reskin` | `stardust:reskin` | byte-faithful content re-laid onto a separately defined donor design system |
-  | `deploy` | `stardust:deploy` | one page → EDS blocks + DA delivery |
-  | `rollout` | `stardust:rollout` | whole migrated site → EDS, with coverage + delivery gates |
-  | `dynamics` | `stardust:dynamics` | the dynamic surface of a migration — detect, classify, triage, implement, verify (APIs, search, forms, modals, media, tags, client-rendered, sheet data); migration-bound, invoked by prepare-migration / replica / migrate / rollout or standalone on an already-migrated site |
-  | `diff` | `stardust:diff` | prototype ↔ build fidelity probes (pixel + structural) |
-  | `audit` | `stardust:audit` | three-perspective site audit — design tensions, SEO/technical, LLM visibility — scored report + findings ledger |
-  | `qa` | `stardust:qa` | read-only post-deploy QA sweep of the live site — routing, fidelity, template conformance, rendering, visual regression, SEO, links, a11y, perf — findings report only, never fixes |
-  | `uplift` | `stardust:uplift` | one-shot presales orchestrator (3 variants) |
+  | keyword | owns |
+  |---|---|
+  | `extract` | crawl + capture the current site |
+  | `direct` | resolve the visual direction |
+  | `prototype` | per-page redesign prototypes |
+  | `migrate` | full-site platform-agnostic static HTML |
+  | `prepare-migration` | the migrate-prep cascade (prep phases, assets, dynamics gate) — **redesign flow only** |
+  | `replica` | same-design migration (re-platform, keep the current design) — runs its own preserve-mode prep, then hands off to migrate/deploy/rollout |
+  | `reskin` | byte-faithful content re-laid onto a separately defined donor design system |
+  | `deploy` | one page → EDS blocks + DA delivery |
+  | `rollout` | whole migrated site → EDS, with coverage + delivery gates |
+  | `dynamics` | the dynamic surface of a migration — detect, classify, triage, implement, verify (APIs, search, forms, modals, media, tags, client-rendered, sheet data); migration-bound, invoked by prepare-migration / replica / migrate / rollout or standalone on an already-migrated site |
+  | `diff` | prototype ↔ build fidelity probes (pixel + structural) |
+  | `audit` | three-perspective site audit — design tensions, SEO/technical, LLM visibility — scored report + findings ledger |
+  | `qa` | read-only post-deploy QA sweep of the live site — routing, fidelity, template conformance, rendering, visual regression, SEO, links, a11y, perf — findings report only, never fixes |
+  | `uplift` | one-shot presales orchestrator (3 variants) |
 
   - `prototype` accepts `--cinematic` (or `--cinematic=<register>`)
     to layer a brand-faithful motion register on top of the static
@@ -123,11 +146,50 @@ That answer selects the flow; the downstream chain is shared.
   byte-gated, design comes from another live site or local prototypes.
 - **Both migration flows carry the dynamic surface by default.** The
   pre-import gate (`prepare-migration` 4.5 / `replica` Phase 2, with
-  `migrate` as the safety net) runs `stardust:dynamics` Phases 1–3 so
+  `migrate` as the safety net) runs the stardust `dynamics` skill Phases 1–3 so
   every API, search box, form, modal, player, tag and client-rendered
   surface gets a disposition before import; `rollout` D2 implements the
   reproducible rows and `qa` replays parity. Never for redesign-only
   work (`uplift`, a bare `extract`): dynamics is a migration concern.
+
+**Choosing, and recording the choice.** Read the ask before any sub-skill
+loads:
+
+- **Keep-design phrases select `replica` without a question:** "exact
+  replica", "1:1", "pixel-perfect", "faithful", "same design", "keep the
+  current design", "as is", "re-platform only", "migrate keeping the
+  design", or a direction phrase that pins every axis unchanged
+  (`ia-fidelity: verbatim` with palette, type and density all pinned).
+- **Redesign phrases select the redesign flow:** "redesign", "modernise",
+  "refresh", "new look", "rethink", "reimagine" — any phrase that moves a
+  design axis.
+- **Anything else** ("migrate X to EDS", "build a migration plan for X")
+  asks the one keep-vs-redesign question — the only question this section
+  asks. Under hands-off it is not asked: a keep-design phrase selects
+  `replica`, otherwise `redesign`, recorded as a named assumption in
+  `direction.md`.
+
+Stamp the choice in `state.json` as `flow` / `flowChosenAt` / `flowSource`
+(`reference/state-machine.md` § Flow keys) before delegating. The
+sub-skills enforce it: `migrate`, `deploy`, `rollout` and a
+migration-intent `extract` refuse to start a migration on a project with
+`state.json` and no `flow`; `prepare-migration` refuses under
+`flow: replica` and `replica` under `flow: redesign`. Switching is
+explicit — `$stardust replica --switch-flow` / `$stardust
+prepare-migration --switch-flow` — and marks the old flow's prototyped or
+migrated pages stale (§ Per-page state).
+
+**Planning aids belong to one flow.** Redesign: the `prepare-migration`
+plan and its phase gates, the canon, module catalogs, template plans of
+the "learn the template, then compile" kind. Keep-design: `replica`'s
+inconsistency register and `progress.json`, the archetype gate ledgers,
+`rollout` waves. A redesign procedure or plan template inside a replica
+run — or the reverse — is a routing defect: refuse it, or flag it in
+`direction.md` and hand back to this section. (Recorded: a same-design
+migration adopted a redesign-only "train the template, then compile" plan
+and spent an hour, 45 turns and 36 M tokens before reverting it; another
+loaded `prepare-migration` for a keep-design ask on a plugin that already
+described the two flows — description without a guard did not hold.)
 
 State the chosen flow explicitly in the first response to a migration
 question, including the fact that `replica` needs no `prepare-migration`
@@ -166,6 +228,42 @@ otherwise):
   header and footer, (2) section landing/overview pages, (3) a
   representative spread of detail pages across all templates. State
   the chosen caps in `direction.md`.
+- **Delegate by file pointer, read by section.** A brief to a delegated
+  agent names the files and sections it needs (`state.json`, the page's
+  schema, the phase's SKILL.md sections); it never inlines reference docs.
+  Reference documents are read by heading and line range, not end to end.
+  Instruments that can stall run under their shipped deadline (replica
+  `gate.sh`, `pixel-compare --timeout`) — never under an agent-authored
+  `sleep N; kill` loop — and long steps write a progress file the
+  coordinator polls instead of blocking on the agent. (Field evidence,
+  2026-09: in one recorded run the two conversion agents the harness
+  watchdog killed carried the fattest briefs and whole-document reads,
+  and a lean re-dispatch finished the same pages; that conversion lost
+  89 minutes to a blind wait and 30 to fixed sleeps.)
+- **Wait discipline: never park the conversation past the prompt-cache
+  window.** Anything expected to run longer than about 2 minutes — a gate
+  round over several pages, a crawl, a batch push, a capture set, a
+  delegated agent — runs in the background and writes a progress or
+  summary file; the coordinator never runs it in the foreground and never
+  covers it with one long `sleep`. While it runs, do independent work;
+  when there is none, check back with one short read of the progress
+  file **at most every 4 minutes** — never a fixed `sleep` of 5 minutes or
+  more, and never a blocking "wait for the agent's output" call with a
+  long timeout. The number is not taste: the prompt cache expires after
+  5 idle minutes, and at the 500–900k-token contexts a migration reaches,
+  every expiry re-writes the whole prefix at write price (12× a cached
+  read). Field data, 48 sessions: a foreground wait of ≤ 4 minutes missed
+  the cache in ~10 % of cases, ≥ 5 minutes in 85–87 %; 572 such
+  agent-side waits re-wrote 325 M tokens — 46 % of everything those
+  sessions wrote to the cache. Ending the turn to wait for a completion
+  notification helps the user, not the cache: a notification that arrives
+  after 5 minutes misses too (137 recorded), so prefer short checks for
+  waits under ~45 minutes and end the turn only when the wait is longer
+  or the user should decide. (Claude Code: `run_in_background: true` on
+  the shell call, the harness posts a task notification when it exits;
+  `promptCacheTtl: "1h"` in settings.json stretches the window to an hour
+  at 1.6× write price — an owner setting, worth it for any multi-hour
+  session.)
 - **Commit at the end of each phase** when the project is a git repo.
   Before the FIRST such commit, re-run Setup step 6 — the first commit
   lands at the end of the audit phase, long before deploy's SKILL.md is
@@ -252,6 +350,15 @@ here*. The journal does.
 a non-trivial write (any `direct`, `prototype`, `migrate`, or substantial
 iteration), append an entry before ending the turn.
 
+**Named deviations.** Any agent-authored crawler, compiler, importer,
+wave driver or gate that replaces a skill phase is recorded in
+`stardust/direction.md` as a **named deviation** — what it replaces, why
+the shipped instrument did not serve, where the replacement lives — and
+noted in the journal entry. An unrecorded parallel pipeline is a defect,
+not initiative: three recorded migrations rebuilt the import pipeline by
+hand (one a 60 KB importer) beside skills that shipped it, and their
+fidelity numbers were never comparable to the gate's.
+
 The journal is **append-only**. If a prior entry turns out wrong, write a
 new entry that corrects it; do not edit history. This preserves the
 reasoning trace and lets reviewers see how decisions evolved.
@@ -312,7 +419,7 @@ motion gate cascade).
 - Crawl an existing site beyond the user's confirmed page cap (an explicit `--pages` list is itself the confirmed scope — listed pages are never dropped; the crawler warns rather than truncates when the list exceeds `--max`).
 - Emit platform-specific output from `migrate`. `migrate` emits
   platform-agnostic static HTML; the EDS conversion and delivery are owned
-  by the `stardust:deploy` (one page) and `stardust:rollout` (whole site)
+  by the stardust `deploy` (one page) and `rollout` (whole site) skills
   sub-skills, routed above.
 
 ## References
@@ -320,7 +427,7 @@ motion gate cascade).
 - `reference/intent-dimensions.md` — the axes redesigns move along.
 - `reference/intent-reasoning.md` — the procedure for handling a freeform phrase.
 - `reference/intent-examples.md` — worked examples (8-12) of the reasoning style.
-- `reference/impeccable-command-map.md` — when to reach for each of the 23 impeccable commands.
+- `reference/impeccable-command-map.md` — when to reach for each of the 24 impeccable commands.
 - `reference/state-machine.md` — page lifecycle, stale rules, state report format.
 - `reference/artifact-map.md` — every file stardust reads or writes, with ownership, provenance shape and (§ Versioning) what is tracked.
 - `reference/stardust.gitignore` — installed as `stardust/.gitignore` by Setup step 6.
@@ -347,7 +454,7 @@ register), `uplift` (when picking C's register), and `migrate`
 ### Uplift-feature references
 
 Owned by `uplift/`. Cited by master routing when delegating
-`/stardust:uplift <URL>`:
+`$stardust uplift <URL>`:
 
 - `../uplift/SKILL.md` — one-shot presales orchestrator: extract → tension/trait identification → 3-variant direction → prototype × 3 → open + summarize.
 - `../uplift/reference/what-if-candidates.md` — catalog of 8 worked captured-trait amplification candidates that B and C select from in Phase 2b — plus its § Extension rule admitting evidence-shaped `derived` candidates.

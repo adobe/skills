@@ -2,6 +2,7 @@
 name: rollout
 description: Deploy a WHOLE redesigned site to AEM Edge Delivery Services — the full-site, bulk sibling of `deploy` (which ships one page). Use to roll out, bulk-deploy, or publish an entire migrated stardust site at once ("deploy all pages", "full site deployment", "deploy the whole/entire website to AEM"), not just a single page. Inventories the migrated tree (stardust/migrated/ + _meta.json) into a delivery ledger, dedups blocks, drives `deploy` per page, verifies, and tracks what's done and what's left. Supports archetypes-only mode — when only the template archetype pages are migrated, it deploys all block code immediately and registers the rest as content-pending.
 license: Apache-2.0
+compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, playwright-cli on PATH, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
 ---
 
 # stardust:rollout — whole site → AEM (Edge Delivery Services)
@@ -34,10 +35,27 @@ least the archetype pages first. For a single page, use `stardust deploy` direct
 
 ## Setup
 
-1. Run the master skill's setup (`skills/stardust/SKILL.md` § Setup).
+1. Run the master skill's setup (`skills/stardust/SKILL.md` § Setup). **Flow
+   guard:** `stardust/state.json` without `flow` on a migration ask → do not
+   roll out; print the master's two-flow table and hand back to its routing
+   (`skills/stardust/reference/state-machine.md` § Flow keys).
 2. Verify `stardust/migrated/` exists with at least one `*.html` page (full mode:
    all pages; archetypes-only: the archetypes + a `state.json` with `type`
    populated). If not, recommend `stardust migrate` on the archetypes and stop.
+   **Gated-archetype precondition (`flow: replica`).** Read
+   `stardust/replica/progress.json`: a page type may ship only when its
+   archetype has a gate result at every configured breakpoint that is
+   `pass: true`, or over the bar with every residual carrying a `cause`
+   (`skills/replica/reference/source-fidelity-gate.md` § Residual logging
+   format — a documented residual is a pass with an asterisk). A page type
+   whose archetype was never gated, or is over the bar with no residual
+   entries, is **blocked**: list it with its archetype slug and the command
+   to gate it (`$stardust replica <archetype>`), and neither fan out its
+   siblings nor `POST /live/` any of them. Accepting logged residuals under
+   hands-off is not a bypass for an ungated archetype. Thresholds are the
+   gate's, unchanged. (Recorded: 2,207 pages published at 24–28 % diff from
+   an archetype that never passed; a 3,366-page re-import after a random
+   review found what a gate would have.)
 3. Verify the EDS/AEM target is ready exactly as `deploy` requires (project
    scaffolding, `DA_TOKEN`, code branch pushable). `rollout` adds no new transport.
 4. If `state.json.handsOff` is true (`skills/stardust/SKILL.md` § Hands-off
@@ -101,7 +119,7 @@ Phase 2) must exist with a disposition on every row; verify it against fresh evi
 --target-origin <live host> --migrated stardust/migrated` (host-bound APIs, rows the capture
 already delivered). New evidence → new rows. The listings contract (per-type `<meta>` fields +
 `helix-query.yaml`) is emitted by Phase C's `deploy` brief per page: retrofitting metadata across
-published pages is a second migration. Missing inventory → run `stardust:dynamics` Phases 1–3 now.
+published pages is a second migration. Missing inventory → run the stardust `dynamics` skill Phases 1–3 now.
 Contract: `skills/dynamics/reference/triage.md`, `reference/listings.md`.
 
 ### Phase C — Deliver the site (drive `deploy` per page, per the plan)
@@ -168,7 +186,7 @@ Walk `plan.json.steps` in order (representative pages first). For each page:
 
 **Foundation-first gate (hard block, once per rollout).** When the FIRST
 archetype page flips to `deployed`, stop and prove the foundation before
-authoring any second page: run `stardust:diff` (both probes) against its
+authoring any second page: run the stardust `diff` skill (both probes) against its
 prototype, **plus computed-style invariants in a headless render** — grid
 containers compute `display: grid` (not stacked single-column), sections are
 full-bleed where the design says so, and the CTA/button classes are actually
@@ -189,6 +207,10 @@ should run the bundled, resumable driver rather than a serial loop:
 `node skills/deploy/scripts/deploy-batch.mjs --org <org> --repo <repo>
 --branch <branch> --content <dir>` (concurrency pool, persistent ledger that skips
 already-live pages, retry/backoff, append-only log, delivered-`.plain.html` check).
+The driver and every batch run in the background; its log and ledger are the
+progress file. Check them at most every 4 minutes and never with a fixed `sleep`
+of 5 minutes or more (the prompt-cache window) — the master skill's wait
+discipline; recorded batch waits of 9–10 minutes re-wrote a ~650k prefix each time.
 After a transient blip, re-run the same command — it re-drives only the FAILs.
 Then reconcile the ledger into coverage with `update-coverage.mjs`.
 
@@ -206,7 +228,7 @@ they MUST be published or the chrome 404s sitewide).
 **Redirects:** if Phase C's path-safety gate emitted `stardust/redirects.tsv`, wire
 it into the EDS redirects mechanism here so original inbound URLs don't 404.
 
-### Phase D2 — Dynamic features (`stardust:dynamics` Phases 4–5)
+### Phase D2 — Dynamic features (`dynamics` Phases 4–5)
 
 Implement the plan's reproducibility-`self` rows from the pattern catalogue
 (`skills/dynamics/reference/patterns.md` — index-backed listings and search, modal loader,

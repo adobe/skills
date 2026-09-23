@@ -1,7 +1,8 @@
 ---
 name: direct
-description: Set a redesign direction for an existing website. Analyzes the user's intent, picks a palette and visual direction, and writes the target spec (PRODUCT.md, DESIGN.md, DESIGN.json) plus a reasoning trace at stardust/direction.md. Use when the user asks to redesign a site, refresh the design, set a new design direction, define a redesign target, or invokes /stardust:direct.
+description: Set a redesign direction for an existing website. Analyzes the user's intent, picks a palette and visual direction, and writes the target spec (PRODUCT.md, DESIGN.md, DESIGN.json) plus a reasoning trace at stardust/direction.md. Use when the user asks to redesign a site, refresh the design, set a new design direction, define a redesign target, or invokes `$stardust direct` (`/stardust:direct` in Claude Code).
 license: Apache-2.0
+compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, playwright-cli on PATH, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
 ---
 
 # stardust:direct
@@ -95,8 +96,26 @@ Worked examples in
 `skills/stardust/reference/intent-examples.md` calibrate the style.
 Hard ceiling on questions: two per turn, no exceptions.
 
+**Zero movement is not a direction — hand off to `replica`.** Before
+restating, check whether the phrase pins every axis unchanged: "exact
+replica", "same design", "pixel-perfect", "faithful", "keep the current
+design", "1:1", "re-platform only", "preserve verbatim", or
+`ia-fidelity: verbatim` with palette, type and density all pinned. That
+is a same-design migration and `direct` has nothing to decide: write a
+one-paragraph note to `stardust/direction.md` ("zero-movement phrase —
+same-design migration; the direction is the mechanical promotion in
+`replica` Phase 2"), stamp `state.json.flow: "replica"` if unset
+(`../stardust/reference/state-machine.md` § Flow keys), and stop with
+"run `$stardust replica <url>`". Never continue into a redesign
+direction, a `--prep` module catalog or a plan on such a phrase — under
+hands-off included: "ask nothing" below never means "proceed on a
+replica phrase". (Recorded: `direct` invoked with "exact replica —
+preserve verbatim" kept going; 2,207 pages were published at 24–28 %
+pixel diff, four to five times the replica pass bar.)
+
 **Hands-off mode** (per `skills/stardust/SKILL.md` § Hands-off mode,
-`state.json.handsOff: true`): ask nothing and wait for nothing.
+`state.json.handsOff: true`): ask nothing and wait for nothing — after
+the zero-movement check above, which hands-off does not skip.
 Derive every answer the questions would have collected from the
 captured evidence — density and ia-fidelity from their documented
 defaults and trigger conditions, audience and register from the
@@ -468,7 +487,7 @@ list assumes brand-faithful inheritance, and a rebrand replaces the
 site rather than fixing it.
 
 **Audit reuse.** When `stardust/audit/<domain-slug>/audit.json`
-exists for this origin (written by `stardust:audit`), consume its
+exists for this origin (written by the stardust `audit` skill), consume its
 design findings as candidate improvements instead of re-deriving from
 scratch — carry the finding IDs into each item's evidence citation.
 The specificity bar below still applies to every carried item.
@@ -546,32 +565,50 @@ conditions before resolving any variant.
 ### Phase 3 — Author target PRODUCT.md
 
 Write `PRODUCT.md` at the project root using impeccable's
-`reference/teach.md` as the **format spec** (not as a runtime command
-to invoke). Direct authoring is intentional: by the time `direct`
+`reference/init.md` § Write PRODUCT.md as the **format spec** (not as
+a runtime command to invoke; `init`, formerly `teach`, runs an
+interview). Direct authoring is intentional: by the time `direct`
 runs, every answer impeccable's interview would surface has already
 been resolved through stardust's intent-reasoning + divergence
 resolution above.
 
-Sections to populate:
+File order: stardust's `<!-- stardust:provenance … -->` block first
+(per `../stardust/reference/artifact-map.md` § Provenance, as for
+every stardust-written artifact), then `# Product`, then the
+`<!-- impeccable:product-schema 1 -->` comment verbatim so impeccable
+reads the file as a current product record rather than a legacy one.
+Omit a section rather than filling it with generic prose. Sections to
+populate:
 
-- **Register** — from the resolved direction's `register` axis.
+- **Platform** — the bare value `web`.
 - **Users** — from the resolved audience tuple plus tone signals from
   the extracted brand surface.
 - **Product Purpose** — from the user's phrase + extracted hero copy
   + resolved tone, written as a one-line value statement followed by
   one-line scope.
-- **Brand Personality** — derived from resolved expressive axis +
-  tone + reference set. Weight axes the user explicitly moved over
-  inherited values.
-- **Anti-references** — the user's stated anti-refs **plus** any
-  anti-toolbox guardrails relevant to the resolved direction
-  (e.g. "modernise" triggers the Generic-2026-SaaS silhouette
-  guardrail; list it explicitly so prototype and polish enforce it).
-- **Design Principles** — 3-5, each mapping to a specific axis
-  movement. Format: one verb-led principle, one-line elaboration.
+- **Positioning** — the claim the site makes that a neighbour could
+  not truthfully copy, from the extracted hero and proof copy. Mark
+  inferred when the copy does not state it.
+- **Capabilities and Constraints** — the resolved constraint set
+  (`a11y-first`, `RTL-required`, platform or content constraints) and
+  any product fact the user pinned.
+- **Brand Commitments** — the binding identity decisions: the resolved
+  `register` axis, the brand personality derived from the resolved
+  expressive axis + tone + reference set (weight axes the user
+  explicitly moved over inherited values), and the anti-references —
+  the user's stated anti-refs **plus** any anti-toolbox guardrails
+  relevant to the resolved direction (e.g. "modernise" triggers the
+  Generic-2026-SaaS silhouette guardrail; list it explicitly so
+  prototype and polish enforce it).
+- **Evidence on Hand** — the captured copy, imagery and proof under
+  `stardust/current/` with paths, and the absences future work must
+  not fabricate (no testimonials captured, no pricing, …).
+- **Product Principles** — 3-5 durable strategic principles, each
+  mapping to a specific axis movement. Format: one verb-led principle,
+  one-line elaboration. No visual recipes; those belong in DESIGN.md.
 - **Accessibility & Inclusion** — populated when the constraint set
-  includes `a11y-first`, `RTL-required`, or similar. Otherwise
-  inherit impeccable's defaults.
+  includes `a11y-first`, `RTL-required`, or similar. Otherwise omit
+  and inherit impeccable's defaults.
 
 Where a section cannot be populated with confidence from inputs,
 mark it `<!-- _provenance: inferred -->` with a one-line basis

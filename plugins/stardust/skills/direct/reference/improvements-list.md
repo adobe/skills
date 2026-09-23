@@ -1,6 +1,6 @@
 # Improvements list — worked examples
 
-Consumed by `stardust:direct` Phase 2.5 (Mode A only). The contract,
+Consumed by the stardust `direct` skill Phase 2.5 (Mode A only). The contract,
 specificity bar, and stopping condition live in `SKILL.md` § Phase
 2.5; this file carries the worked examples that calibrate item
 specificity.

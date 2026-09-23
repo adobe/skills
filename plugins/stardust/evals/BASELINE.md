@@ -224,3 +224,58 @@ Operational: extract runs intermittently exceed run.mjs's default
 `--timeout-min 60`; aborted runs are invalid and must be deleted,
 not judged. Never run `judge.mjs` on a label while run.mjs is
 live — it will grade in-flight runs.
+
+# 2026-09-17 — harness-neutral wording + impeccable 4.x drift (PRs #368–#371)
+
+Safety net for the Copilot-compatibility stack: PR #369 (bare skill names,
+neutral tool wording), PR #370 (no context loader, `init.md` product
+schema, 24 commands). Baseline = `main` at e1b0117 in a pristine worktree;
+after = the stack at PR #370's head. Runner SDK bumped to 0.3.274 for both
+(0.3.220's bundled Claude Code rejects the current default model). Raw runs
+under `runner/results/` (local only); the Copilot side is
+`copilot-smoke/RECORDED.md`.
+
+## direct-from-phrase (N=3 vs N=3, ~$8–12 per run)
+
+Scores: baseline 85 / 100 / 85 (mean 90.0); after 85 / 85 / 85 (mean 85.0).
+
+| criterion | w | baseline | after | note |
+|---|---|---|---|---|
+| activated | 5 | 3/3 | 3/3 | |
+| dimensional_restatement | 10 | 1/3 | 0/3 | documented systematic fail (0/21 across every earlier label); the one baseline pass rendered the plan before the questions by chance. Same failure mechanism in every failing run on both sides: restatement lives in the post-answer plan and `direction.md`. |
+| gaps_identified | 5 | 1/3 | 0/3 | documented noisy (1/3 in the original baseline); same mechanism as above. |
+| question_ceiling | 10 | 3/3 | 3/3 | |
+| plan_shown_before_execution | 15 | 3/3 | 3/3 | |
+| divergence_resolved | 10 | 3/3 | 3/3 | |
+| product_md_direct | 10 | 3/3 | 3/3 | criterion re-pinned to the `init.md` schema (product-schema 1) for the after label; baseline judged against the `teach.md` list. Baseline runs already wrote a hybrid of both schemas because the model read impeccable's current `init.md` itself. |
+| design_md_direct | 10 | 3/3 | 3/3 | |
+| direction_md_shape | 10 | 3/3 | 3/3 | |
+| state_updated | 5 | 3/3 | 3/3 | |
+| no_silent_command_mapping | 5 | 3/3 | 3/3 | |
+| no_eds_references | 5 | 3/3 | 3/3 | |
+
+Gate (per the original baseline record): the stable criteria must hold and
+the noisy pair must not trend below baseline rate. Ten stable criteria hold
+at 3/3. The noisy pair moved 1/3 → 0/3, which the earlier record classes as
+variance at this N and which no touched instruction governs
+(`intent-reasoning.md` and `intent-dimensions.md` are unchanged). Token
+totals moved in both directions across runs (one baseline run took 59
+turns); no consistent cost signal.
+
+## extract-multipage (N=1 vs N=1, ~$20 per run, 75-minute budget)
+
+The default 30-minute budget is too short for stripe.com from a European
+egress (geo-redirects to `de-ch`/`it` locales force recaptures); both
+labels were rerun at 75 minutes.
+
+Scores: baseline 100; after 95 (first run), 100 (rerun on the fixed text).
+
+| criterion | w | baseline | after | note |
+|---|---|---|---|---|
+| activated, impeccable_dep_check, discovery_before_crawl, page_cap_confirmation, playwright_over_webfetch, per_page_json_shape, brand_extraction_shape, logo_locator_chain, current_product_md_direct, current_design_md_direct, state_json_shape, no_eds_references | | 12/12 | 12/12 | `impeccable_dep_check` passes with the loader removed; `current_product_md_direct` judged against the new schema. |
+| provenance_stamped | 5 | 1/1 | 0/1 | **real regression, fixed.** The new instruction said to start `PRODUCT.md` with `# Product` and the schema comment; the run dropped the `stardust:provenance` block that artifact-map requires first. direct kept the block in all three runs. Both instructions now spell out the order (provenance, `# Product`, schema comment) — commit 0b0700a on PR #370. |
+
+Rerun of the after label on the fixed text (commit 0b0700a): **100/100,
+13/13 criteria**, `provenance_stamped` back to 1/1; `PRODUCT.md` opens with
+the `stardust:provenance` block, then `# Product`, then the schema comment.
+$18 / 91 turns.

@@ -2,6 +2,7 @@
 name: reskin
 description: Rebuild an existing site's pages with byte-faithful content on a separately-defined donor design system — another live site, or local static HTML prototypes (Figma donors are contract-defined, not yet implemented). Content fidelity is gated byte-level (text, ordered images, SEO metadata); design application is flexible (content re-laid-out onto donor modules). Use when the user says "reskin my site with this design", "apply this design system to my content", "restyle my site to look like <other site>", "new design, same content", "rebrand my site using these prototypes", or names a content site plus a design donor. NOT for redesigning from intent (that's the stardust core extract/direct/prototype chain) and NOT for keeping the current design while migrating (that's the replica flow).
 license: Apache-2.0
+compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, playwright-cli on PATH, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
 ---
 
 # stardust:reskin — same content, donor design
@@ -61,7 +62,11 @@ regression check instead of a debugging tool.
 ## Setup
 
 1. Run the master skill's setup (`../stardust/SKILL.md` § Setup):
-   impeccable dep check, context loader, state read.
+   impeccable dep check, context loader, state read. **Flow.** Stamp
+   `state.json.flow: "reskin"` if unset
+   (`../stardust/reference/state-machine.md` § Flow keys); if another
+   flow is set, print it and the switch command
+   (`$stardust reskin --switch-flow`) instead of running.
 2. **Playwright import-resolvability probe** — same contract as
    `../extract/SKILL.md` § Setup:
    `node -e "import('playwright').then(()=>process.exit(0))"` from the
@@ -97,7 +102,7 @@ site, into `stardust/canon-source/`. Full recipes per donor type in
 `reference/donor-sources.md`; summary:
 
 - **Live URL** (`--donor <url>`): invoke
-  `stardust:extract <content-url> --design-source <donor-url>` — the
+  `$stardust extract <content-url> --design-source <donor-url>` — the
   existing skill, unchanged. It lands in `stardust/canon-source/`: the
   donor's `pages/`, `assets/` (screenshots included),
   `_brand-extraction.json`, `_crawl-log.json`, and a descriptive
@@ -362,7 +367,7 @@ per-family keeps the loop bounded without absorbing real failures.)
 Reskin owns the archetype pages; scale and shipping are the existing
 pipeline, unchanged:
 
-- **Scale via `stardust:migrate`** (`../migrate/SKILL.md`) with the
+- **Scale via the stardust `migrate` skill** (`../migrate/SKILL.md`) with the
   donor-pinned target (the `state.json.designSource` stamp Phase 1
   wrote is exactly what `direct`/`migrate` read for donor pinning;
   a bounded donor capture wrote no stamp — record the donor origin
@@ -372,7 +377,7 @@ pipeline, unchanged:
   gated archetype. Content rules are the ones reskin already
   enforces — `../migrate/reference/content-preservation.md` is
   inherited wholesale.
-- **Ship via `stardust:deploy` / `stardust:rollout`**, unchanged. Blocks
+- **Ship via the stardust `deploy` and `rollout` skills**, unchanged. Blocks
   written for donor modules obey the Experience Workspace editability
   contract (deploy SKILL.md § 8, EW1–EW10) and pass the EW gate
   (`block-roundtrip --ew`) before they are done.

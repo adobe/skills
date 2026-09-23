@@ -12,7 +12,7 @@ donor type produced them.
 The proven path — delegate entirely to the existing skill:
 
 ```
-stardust:extract <content-url> --design-source <donor-url>
+$stardust extract <content-url> --design-source <donor-url>
 ```
 
 This captures the donor to `stardust/canon-source/` (pages, assets,
@@ -126,7 +126,7 @@ python3 -m http.server 8793 --directory <path> &
 #    open http://localhost:8793/  — or curl -sI http://localhost:8793/
 
 # 3. Same capture path as a live donor
-stardust:extract <content-url> --design-source http://localhost:8793/
+$stardust extract <content-url> --design-source http://localhost:8793/
 ```
 
 Recipe notes:

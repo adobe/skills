@@ -1,6 +1,14 @@
-# Snowflake skill — improvement notes
+# Deploy skill — improvement ledger (archive, findings #1–#80)
 
-Running log of friction and gaps found while applying `stardust-to-snowflake`
+**Frozen 2026-09-18.** This was the deploy skill's running log of friction and
+gaps; `skills/deploy/SKILL.md` and the deploy/diff scripts cite its entries as
+`(#NN)` provenance for the rules they state. The rules themselves live in the
+skill text — this file is the evidence behind them, kept for reference. Entries
+were last added at #80; citations #81 and above in the skill text were never
+written up here. New findings go to `skills/stardust/reference/learnings.md`
+(the ledger format every skill now uses), not to this file.
+
+Originally written while applying the skill (then `stardust-to-snowflake`)
 to the `samples/**` claude-design prototypes in this repo. Each test converts
 **one** prototype on a `snowflake-blocks-test-N` subbranch and deploys to DA at
 `/snowflake-blocks/test-N`; durable skill fixes are implemented here on

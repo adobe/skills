@@ -1,40 +1,62 @@
 ---
 name: adobe-edit-quick-cut
 description: >
-  Create a punchy sizzle reel from a video using Adobe Quick Cut. Use this skill whenever a user
-  wants to cut, trim, or shorten a video into highlights — including phrases like "make a sizzle
-  reel", "make a highlight reel", "quick cut this", "cut the best parts", "shorten this video",
-  "make a highlight clip", "summarize this video visually", or any request to produce a shorter
-  edited version of a video. Use this skill for Quick Cut requests before suggesting manual
-  editing in Premiere. Requires the user to upload a video file.
+  Create a punchy highlight cut from a video with Adobe Quick Cut — for requests like "make a
+  sizzle reel", "make a highlight reel", "quick cut this", "cut the best parts", "shorten this
+  video", "make a highlight clip", or "summarize this video visually". Works from the user's
+  original request without follow-up questions and produces one highlight cut. Do NOT use it for
+  exact-timestamp trims ("cut from 0:30 to 1:15") or other deterministic edits — Quick Cut selects
+  moments by relevance, not exact instructions; those need manual editing. Requires a video file
+  (an upload or an already-referenced Creative Cloud asset).
 license: Apache-2.0
-compatibility: "Runs on both widget-capable surfaces (e.g. Claude Cowork, which supports the asset_add_file picker and asset_preview_file preview widgets) and non-UI agents (e.g. Codex, where those widgets are unavailable). The default flow uses the widgets; each widget step has a text-only fallback. Raw local paths are never passed to video tools."
-allowed-tools: adobe_mandatory_init asset_add_file asset_initialize_file_upload asset_finalize_file_upload video_create_quick_cut quickCutPoll asset_preview_file video_resize
+compatibility: "Runs on widget-capable surfaces (e.g. Claude Cowork, which supports the asset_add_file picker and asset_preview_file preview widgets) and on surfaces where those widgets aren't available. The default flow uses the widgets; each widget step has a text-only fallback used only when that widget isn't available on the current surface. Raw local paths are never passed to video tools."
+allowed-tools: adobe_mandatory_init asset_add_file asset_initialize_file_upload asset_finalize_file_upload video_create_quick_cut asset_preview_file video_resize video_render
 metadata:
-  version: 2.1.0
+  version: 3.0.0
   visibility: public
   surface: [claude, codex]
 ---
 
 # Adobe Edit Quick Cut
 
-Produces 3 AI-edited sizzle reel variations from a source video, all at the same duration and
-style — giving the user options to pick from.
+Produces **one** AI-edited highlight cut from a source video, working entirely from the user's
+original request. **No follow-up questions** — infer the intent and duration from what the user
+already said, fall back to a sensible default when they said nothing, and deliver a single preview.
 
-> **Surface note:** The default flow below uses Adobe's MCP App widgets — the `asset_add_file` file picker (Step 2) and the side-by-side `asset_preview_file` preview (Step 7). Follow it as written. Only if a widget tool is **not available on this surface** (e.g. Codex), use the *No-widget fallback* attached to that step.
+> **Surface note:** The default flow uses Adobe's MCP App widgets — the `asset_add_file` file picker (Step 2) and the `asset_preview_file` preview (Step 5). Use a step's *No-widget fallback* only when that widget isn't available on the current surface — decide by availability, not by client name.
+
+---
+
+## How Quick Cut Works — and What to Design Around
+
+`video_create_quick_cut` is an AI rough-cut tool. Its `user_prompt` is a **description of the video
+and the kind of result you want** (e.g. "interview with a nonprofit for social fundraising"), not a
+list of pacing directives. It selects moments itself. Key limits, each mapped to a rule below:
+
+| Quick Cut behavior / limit | Consequence | How this skill handles it |
+|---|---|---|
+| `user_prompt` describes **what the video is / is for** | Vague energy adjectives do little on their own | Send a clear description; merge the user's own words when given (Step 3) |
+| `target_duration` is a **soft target, not a hard trim** | Output can overshoot | Always pass a number — the user's length when given, else a **30s default** (Step 3) |
+| Output is a **transient presigned URL**, not a CC asset | The URL expires; can't feed `video_resize` directly | Preview **immediately** on completion (Step 5); re-ingest for resize (see *Known Gap*) |
+| An **identical prompt** tends to produce a **similar cut** | Re-runs give little variety | Offer another only with a **different intent or duration** (Step 6) |
+| **`video_create_quick_cut` runs async** (`status: "working"` → result on completion) | Proceeding on a "working" status skips the real result | Wait for the widget's completion event — never act on a "working" status (see *Async handling* below) |
+
+> **Async handling (`video_create_quick_cut`):** A `status: "working"` response is **pending — not a failure and not missing output**; never treat it as either. **Polling is managed by the widget — wait for its completion event; do not call any poll tool yourself.** Only after a **completed** result — or a terminal failure — do you read the output or apply any fallback.
 
 ---
 
 ## Tool Reference
 
-| Step | Tool | Notes |
-|------|------|-------|
-| Upload source video | `asset_add_file` | File picker; returns the CC asset ID required by Quick Cut |
-| Stage source video *(no-widget fallback)* | `asset_initialize_file_upload` + `asset_finalize_file_upload` | Only when `asset_add_file` is unavailable — stage a local video to CC; extract `assetId` from the finalize response |
-| Run Quick Cut variations | `video_create_quick_cut` | Fire 3 in parallel; same duration and style prompt |
-| Poll job status | `quickCutPoll` | Repeat until all 3 return `completed` |
-| Preview variations | `asset_preview_file` | Renders all 3 side-by-side for selection *(no-widget fallback: present the 3 URLs directly)* |
-| Resize re-uploaded output | `video_resize` | Workaround only — Quick Cut output must be re-uploaded first |
+| Tool | Purpose |
+|------|---------|
+| `adobe_mandatory_init` | Required init; returns file-handling rules and tool routing. |
+| `asset_add_file` | File picker; the widget injects the selected CC `assetId` into context on confirmation — wait for that, don't poll. |
+| `asset_initialize_file_upload` | No-widget staging fallback (step 1); begins a local-file upload. |
+| `asset_finalize_file_upload` | No-widget staging fallback (step 2); completes the upload and returns the `assetId`. |
+| `video_create_quick_cut` | Creates the highlight cut (one call). **Async** — may return `status: "working"`; the finished cut arrives when the job completes (widget-tracked). |
+| `asset_preview_file` | Renders the finished cut immediately on completion. |
+| `video_resize` | Resize workaround only, after re-ingesting a downloaded cut. |
+| `video_render` | For edits Quick Cut can't do — exact-timestamp trims, and adding/replacing music, audio, or images. |
 
 ---
 
@@ -42,283 +64,149 @@ style — giving the user options to pick from.
 
 ### Step 0 — Initialize Adobe Tools
 
-Call `adobe_mandatory_init` first. This returns file handling rules and tool routing guidance required for the rest of the workflow.
+Call `adobe_mandatory_init` first.
 
 ```json
-{ "skill_name": "adobe-edit-quick-cut", "skill_version": "2.1.0" }
+{ "skill_name": "adobe-edit-quick-cut", "skill_version": "3.0.0" }
 ```
 
 ---
 
 ### Step 1 — Entitlement Check
 
-Now that `adobe_mandatory_init` confirmed that the "Adobe for creativity" connector is live, check which tools are available through the "Adobe for creativity" connector by cross checking against the Tool Reference table above.
-
-This also tells you which widgets this surface supports: if `asset_add_file` and `asset_preview_file` are available, follow the default flow (Steps 2 and 7 as written). If one is not available (e.g. Codex), use that step's *No-widget fallback*. If a tool result carries an `importantNote`, or the connector injects "Asset Storage & Display" guidance for the current turn, follow it — it overrides the presentation defaults here.
+`adobe_mandatory_init` confirms the "Adobe for creativity" connector is live. Confirm `video_create_quick_cut` and `asset_preview_file` are available. If `asset_add_file` or `asset_preview_file` is unavailable on this surface, use that step's *No-widget fallback*. If a tool result carries an `importantNote` or "Asset Storage & Display" guidance, it overrides the presentation defaults here.
 
 ---
 
-### Step 2 — Open the File Picker
+### Step 2 — Get the Source Video
 
-Open the picker immediately with this message:
+If the user's message already references a Creative Cloud asset (a CC `assetId`), use it directly. Otherwise — including a raw chat upload or a local file, which isn't usable until it reaches Creative Cloud — get it in first via the picker (or the no-widget staging fallback below):
 
-> *"Let's create a punchy sizzle reel from your video. Start by selecting your file:"*
+> *"Let's create a highlight cut from your video. Start by selecting your file:"*
 
 ```javascript
 asset_add_file()
 ```
 
-Once the user selects a file, extract `assetId` (the CC asset ID) from the widget context.
+Extract `assetId` (the CC asset ID) from the widget context — the widget injects it on confirmation, so wait for that (don't poll).
 
 > `video_create_quick_cut` requires a CC asset ID (`assetId`), not `presignedAssetUrl`.
 
-**No-widget fallback** *(only if `asset_add_file` is unavailable on this surface, e.g. Codex)* — don't ask the user to pick; get the `assetId` from where the file is. Staging a local file requires egress — check egress status from `adobe_mandatory_init` first; if egress is disabled and no picker is available on this surface, tell the user staging isn't possible here. Otherwise:
-
-| Source | Action |
-|--------|--------|
-| File at a local path (e.g. `/mnt/user-data/uploads/…`) | Stage programmatically: get file size and MIME type, call `asset_initialize_file_upload({ path: "<filename>", media_type: "<mime>" })`, PUT the bytes to the returned upload URL, then `asset_finalize_file_upload({ filename: "<filename>", transfer_document: <from initialize response> })`. Extract the `assetId` from the finalize response — this is what `video_create_quick_cut` needs. |
-| File already in Creative Cloud | Reference it directly by its CC `assetId`. |
+**No-widget fallback** *(only if `asset_add_file` is unavailable on this surface)* — get the `assetId` from where the file is. A file already in Creative Cloud is referenced directly by its CC `assetId`. To stage a **local** file, use the upload path `adobe_mandatory_init` routes to for this surface (surfaces differ — it may name a surface-specific upload tool, or the `asset_initialize_file_upload` → PUT → `asset_finalize_file_upload` sequence). Staging requires egress — check egress status from `adobe_mandatory_init` first; if egress is disabled and no picker exists here, tell the user staging isn't possible. For the initialize/finalize sequence: get file size and MIME type, call `asset_initialize_file_upload({ path, media_type })`, PUT the bytes to the returned URL, then `asset_finalize_file_upload({ filename, transfer_document })`, and extract the `assetId`.
 
 ---
 
-### Step 3 — Confirm Upload
+### Step 3 — Build the Intent from the Original Request (no questions)
 
-Once the file is selected, confirm with:
+Do **not** ask the user anything. Derive both inputs from their original message.
 
-> *"Got it — [filename] is ready. Now let's set up your cut."*
+**`user_prompt`** — start from the generic intent, and merge the user's own words only if they gave any:
 
-Then immediately present the Q&A form below.
+- **Generic intent (default when the user gave no detail):**
+  > `An engaging highlight reel of this video that keeps its most compelling, high-energy, and visually interesting moments, with a strong opening and a natural flow, ready to share on social media.`
+
+- **User gave intent or output details** (content, occasion, purpose, a **topic focus** such as "the parts about pricing", or a vibe such as "cinematic", "hype", "for our fundraiser") — put their description first and keep the highlight framing:
+  > `<user's description>. Edit into an engaging highlight reel that keeps the strongest, most compelling moments with a natural flow, suitable for social sharing.`
+  Fold any named vibe adjective ("cinematic", "energetic") into the sentence. If the user's own description already fully specifies the desired output, use it as-is.
+
+**`target_duration`** (seconds) — always pass a number:
+
+- **User stated a length** → use that number. It's a **soft target** — Quick Cut aims for it but may run slightly over. For an upper bound ("under a minute"), target a few seconds under the cap (e.g. ~50) and note it's approximate; if they need a strict cap or an exact runtime, use `video_render` instead.
+- **No length stated** → use a **30s default**.
+
+> **Note (API gap):** the Quick Cut UI offers `Duration: Auto`, but the MCP `video_create_quick_cut` requires a numeric `target_duration` — so pass the user's length, or the 30s default.
 
 ---
 
-### Step 4 — Q&A Form (via AskUserQuestion)
-
-Wait for the user's answers before proceeding; present the questions via `AskUserQuestion` (not plain text) so the user gets tappable buttons.
-
-> **No-widget fallback** *(only if `AskUserQuestion` is unavailable, e.g. Codex)* — ask the same labeled options as a plain-text message and wait for the user's typed reply. The option set is identical.
+### Step 4 — Run One Cut, Then Wait for Completion
 
 ```javascript
-AskUserQuestion({
-  questions: [
+video_create_quick_cut({
+  assetIds: [assetId],
+  target_duration: <stated_length_or_30>,
+  user_prompt: "<generic-or-merged intent>"
+}) // → taskId
+```
+
+Acknowledge briefly: *"Creating your highlight cut — I'll preview it as soon as it's ready."*
+
+`video_create_quick_cut` is **async** too (returns `status: "working"`). **Wait for the completed result** before previewing (see *Async handling* above) — don't act on a `working` status. On completion, store `outputUrl` (the completed `presignedAssetUrl`). **The URL is time-limited — go straight to the preview.**
+
+> **If the completion event never arrives:** don't stall or invent a status — the last known state is *processing*. If a tracker exists but is slow, tell the user the cut is still processing and its preview will appear when it completes; if this surface has no async tracker at all, tell them the cut was submitted and is processing but this session can't retrieve the result, and suggest a widget-capable client such as Adobe Express.
+
+---
+
+### Step 5 — Preview the Result (mandatory, do this first)
+
+The moment the job completes, **call `asset_preview_file` as your very next action, before writing any summary.** Do not describe the video in prose instead of previewing it — the call must actually run, promptly, or the URL may expire.
+
+```javascript
+asset_preview_file({
+  assets: [
     {
-      header: "Cut Length",
-      question: "What kind of cut would you like? (target_duration is a strong hint, not a guarantee — pair with a strong vibe for best results)",
-      multiSelect: false,
-      options: [
-        { label: "Short Cut — Social First / Reels & TikTok (~15s, high energy, highlights)" },
-        { label: "Medium Cut — Engaging Storytelling (~30–60s, context, flow, balanced)" },
-        { label: "Long Cut — Full Sizzle (~90s, comprehensive, showcase, documentary)" }
-      ]
-    },
-    {
-      header: "Style / Vibe",
-      question: "What style or vibe would you like?",
-      multiSelect: false,
-      options: [
-        { label: "Action & Energy" },
-        { label: "Key Talking Moments" },
-        { label: "Cinematic & Dramatic" },
-        { label: "No Preference" }
-      ]
+      name: "Highlight cut.mp4",
+      presignedAssetUrl: outputUrl,
+      mediaType: "video/mp4",
+      source: "acp"
     }
   ]
 })
 ```
 
-Wait for the user's selections before proceeding to Step 5.
+Include `mediaType` and `source` — without them the widget may fail to render the video.
+
+**No-widget fallback** *(only if `asset_preview_file` is unavailable on this surface)* — present the URL directly (`Highlight cut.mp4 → <outputUrl>`). UI clients render media URLs inline; where inline rendering isn't available, download it (`curl -L -o highlight_cut.mp4 "<outputUrl>"`) and reference the local path. If `asset_preview_file` errors, immediately fall back to posting the URL as a link.
 
 ---
 
-### Step 5 — Acknowledge and Run
+### Step 6 — Summary + Offer Another
 
-Once the user answers, respond with:
+After the preview renders, give a one-line summary of what was made (and the actual length if it came out longer than any requested length — say so honestly). Then offer:
 
-> *"Got it — [cut type], [style] vibe. Creating 3 variations at that length — let me preview them for you."*
+> *"Want another version? Tell me a **different focus** (e.g. a specific moment or vibe) or a **different length** — that's what actually changes the cut. I can also resize it for a specific platform, or you can download it from the preview above."*
 
-Map their answers to parameters:
-
-**Q1 duration map:**
-| Answer                                              | target_duration |
-| --------------------------------------------------- | --------------- |
-| 1. Short Cut — Social First / Reels & TikTok (~15s) | 15              |
-| 2. Medium Cut — Engaging Storytelling (~30–60s)     | 45              |
-| 3. Long Cut — Full Sizzle (~90s)                    | 90              |
-
-**Q2 style map:**
-
-> ⚠️ The `user_prompt` is the primary lever for output quality — it does more work than
-> `target_duration`. Pass the prompts below verbatim — abbreviating them weakens the output.
-> The energy language in the prompt reinforces the intended duration feel and moment selection.
-
-| Answer                  | user_prompt                                                                                                                                                                                                      |
-| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1. Action & Energy      | `"Fast, punchy, hype, high energy. Hit hard and fast. Quick cuts, peak moments only, adrenaline rush from start to finish. No slow moments, no breathing room. Pure intensity."`                                 |
-| 2. Key Talking Moments  | `"Polished, commercial, confident. Smooth pacing with deliberate rhythm. Each moment feels intentional and curated. Moderate energy — impressive but controlled. Professional and refined."`                     |
-| 3. Cinematic & Dramatic | `"Documentary, cinematic, immersive. Let moments breathe and unfold naturally. Build a story arc with texture and depth. Full showcase — include quieter moments alongside peaks to create emotional contrast."` |
-| 4. No Preference        | `"Create the most engaging highlight reel from the best moments in the video. Balance energy and pacing naturally."`                                                                                             |
-
-Fire all 3 Quick Cut jobs **simultaneously** — same duration, same style prompt. The AI will
-naturally select different moments on each run, giving the user 3 genuine options to pick from:
-
-```javascript
-// Variation A
-video_create_quick_cut({
-  assetIds: [assetId],
-  target_duration: <mapped_seconds>,
-  user_prompt: "<mapped style prompt>"
-}) // → statusId_A
-
-// Variation B
-video_create_quick_cut({
-  assetIds: [assetId],
-  target_duration: <mapped_seconds>,
-  user_prompt: "<mapped style prompt>"
-}) // → statusId_B
-
-// Variation C
-video_create_quick_cut({
-  assetIds: [assetId],
-  target_duration: <mapped_seconds>,
-  user_prompt: "<mapped style prompt>"
-}) // → statusId_C
-```
+If the user asks for another, return to Step 4 with the new intent/length. Re-running the same intent tends to produce a very similar cut, so steer them toward a change.
 
 ---
 
-### Step 6 — Poll Until All 3 Complete
+## ⚠️ Known Gap — Output Cannot Feed Downstream Video Tools Directly
 
-Poll all 3 in each round using `quickCutPoll(statusId)`. Show progress % after each round.
-Repeat until all 3 return `jobStatus: "completed"`.
-
-Typical pattern: 0% → 7% → 78% → done. Usually 3–5 poll rounds.
-
-Store:
-- `url_A` — Variation A presignedAssetUrl
-- `url_B` — Variation B presignedAssetUrl
-- `url_C` — Variation C presignedAssetUrl
-
----
-
-### Step 7 — Preview All 3
-
-```javascript
-asset_preview_file({
-  assets: [
-    { name: "Variation 1 — <cut_type> <style>.mp4", presignedAssetUrl: url_A, source: "acp" },
-    { name: "Variation 2 — <cut_type> <style>.mp4", presignedAssetUrl: url_B, source: "acp" },
-    { name: "Variation 3 — <cut_type> <style>.mp4", presignedAssetUrl: url_C, source: "acp" }
-  ]
-})
-```
-
-**No-widget fallback** *(only if `asset_preview_file` is unavailable on this surface, e.g. Codex)* — present all 3 variation URLs directly in the message, labeled by variation:
-
-```
-Variation 1 — <cut_type> <style>.mp4 → <url_A>
-Variation 2 — <cut_type> <style>.mp4 → <url_B>
-Variation 3 — <cut_type> <style>.mp4 → <url_C>
-```
-
-UI clients that render media URLs inline will show previews automatically. In Codex or other non-UI agents, download each to the workspace (`curl -L -o variation_1.mp4 "<url_A>"`, etc.) and reference those local paths instead.
-
----
-
-### Step 8 — Deliver Summary + Download Prompt
-
-After preview, present:
-
-```
-✅ 3 variations ready — same length, different moment selection. Pick your favorite!
-
-| Variation | Cut Type | Style   | Target | Status |
-| --------- | -------- | ------- | ------ | ------ |
-| 1         | <type>   | <style> | ~<Xs>  | ✅      |
-| 2         | <type>   | <style> | ~<Xs>  | ✅      |
-| 3         | <type>   | <style> | ~<Xs>  | ✅      |
-```
-
-> Note: actual durations may vary — Quick Cut selects the best moments rather than cutting to
-> an exact second. The prompt vibe (e.g. "no breathing room") reinforces the intended length
-> feel more than the target_duration parameter alone.
-
-Then prompt:
-
-> *"Which variation do you want to download, or would you like all 3? You can also rerun with a different style or cut type."*
-
-The videos are available for download directly from the preview above (or from the links above on a no-widget surface).
-
----
-
-## ⚠️ Known Gap — Output Cannot Feed Downstream Video Tools
-
-`video_create_quick_cut` returns a temporary presigned download URL, not a CC-stored asset ID.
-Tools like `video_resize` and `media_enhance_speech` require a CC asset ID as input.
-
-**You cannot chain Quick Cut → Resize or Quick Cut → Enhance Speech directly.**
-
-**Workaround — if user wants to resize a Quick Cut output:**
-1. Tell the user: *"Quick Cut outputs can't be passed directly to the resize tool — you'll need to download your preferred cut first, then re-upload it and I'll resize from there."*
-2. Let them download from the preview.
-3. Re-ingest the downloaded file exactly as in Step 2 (`asset_add_file()`, or the no-widget staging fallback).
-4. Once re-uploaded, run `video_resize` on the fresh `assetId` with their target dimensions.
-
-When the user asks to resize or enhance a Quick Cut output, surface the limitation proactively — the chain is known to fail.
+`video_create_quick_cut` returns a temporary presigned URL, not a CC-stored asset ID. `video_resize`
+and `media_enhance_speech` require a CC asset ID, so **you cannot chain Quick Cut → Resize / Enhance
+directly.** To resize a Quick Cut output: tell the user to download it, re-ingest it exactly as in
+Step 2 (`asset_add_file()` or the staging fallback), then run `video_resize` on the fresh `assetId`.
+Surface this proactively when the user asks to resize or enhance a Quick Cut output.
 
 ---
 
 ## What Quick Cut Does NOT Support
 
-- Content-aware cuts based on speech ("remove the parts where they repeat themselves")
-- Trimming to specific timestamps ("cut from 0:30 to 1:15")
-- Semantic understanding of dialogue
+Quick Cut selects the most relevant moments for you — working from the video's **transcript/dialogue** when there's enough speech (and you can steer it to a **topic**, e.g. "the parts about pricing" or "the dog-washing parts"), and falling back to **visual** content (the footage captioned in chunks) when there's little speech. It always produces a highlight. It does **not**:
 
-For these, recommend a manual video-editing workflow.
+- Remove repeats or disfluencies ("um", "uh"), or do other deterministic transcript surgery you dictate — it selects a highlight, not exact edits.
+- Trim to specific timestamps ("cut from 0:30 to 1:15"), or add/replace music, audio, or images — **the `video_render` tool does these** (use it for precise trims and for adding music/audio/images).
 
 ---
 
 ## Error Handling
 
-- **`video_create_quick_cut` returns 403 (entitlement)**: Retrying does not help for a 403
-  entitlement — stop and surface the plan requirement. Respond with:
-  > *"I was unable to create your quick cut.*
-  >
-  > ***Why:** Adobe Quick Cut isn't available on your current Adobe plan.*
-  >
-  > ***Options:**
-  > - Upgrade your Adobe plan to one that includes Quick Cut.*
-  > - Manually trim your video using Adobe Premiere Rush or Premiere Pro.*
-  >
-  > *Let me know how you'd like to proceed."*
+- **`video_create_quick_cut` returns 403 (entitlement)**: Do not retry. Tell the user Quick Cut isn't on their current Adobe plan and offer to upgrade or trim manually in Premiere Rush / Premiere Pro.
 
-- **Any tool call returns 401 (not authenticated)**: Ask the user to re-authenticate via Adobe
-  OAuth and retry.
+- **Any tool returns 401 (not authenticated)**: Ask the user to re-authenticate via Adobe OAuth and retry.
 
-- **`StoryBuilderNoARoll`**: The most common error. Means Quick Cut detected no A-roll (talking
-  head / primary camera footage) in the clip — only B-roll. The tool requires at least some
-  dialogue or narration to anchor the story structure. Respond with:
-  > *"This video appears to be B-roll only — scenery, action, or product shots without anyone
-  > speaking to camera. Quick Cut needs some talking-head footage to build a story around. Try
-  > uploading a video that includes someone speaking on camera, or a mix of interview + B-roll.*
-  >
-  > *If you only have B-roll, Adobe Premiere Rush or Adobe Express let you manually assemble a
-  > highlight reel without requiring dialogue."*
-  Retries repeat the same error regardless of duration/style; no workaround exists.
+- **Output overshoots any requested length**: Expected — `target_duration` is a soft target. Report honestly. If they want it tighter, re-run once with a shorter length; for an exact runtime, use `video_render`.
 
-- **Job fails with any other error on first attempt**: Retry once with the same parameters. If
-  it fails again, report and suggest re-uploading the source video.
+- **Job fails with any other error on the first attempt**: Retry once only for a confirmed transient `5xx` (500/502/503/504). For `429`, wait for `Retry-After` (or a short backoff) before a single retry. Do **not** blindly retry other `4xx` responses — report them. If submission timed out and the job may have been accepted, wait for the existing job's completion event instead of submitting again (a second job wastes an expensive async run). If the permitted retry also fails, report and suggest re-uploading the source video.
 
-- **Stuck at same % for 5+ poll rounds**: Inform user, suggest re-uploading the source video.
+- **Progress stalls at the same % for a long time**: Inform the user, suggest re-uploading the source.
 
-- **User uploads an image by mistake**: Detect from `mediaType` — if not `video/*`, say so
-  and re-open the picker (or re-run the no-widget staging fallback).
-
-- **One of the 3 variations fails (but not all)**: Preview and deliver the successful ones, note
-  the failure clearly. If all 3 fail with `StoryBuilderNoARoll`, apply the B-roll error response
-  above.
+- **User uploads an image by mistake**: Detect from `mediaType` — if not `video/*`, say so and re-open the picker (or re-run the staging fallback).
 
 ---
 
 ## Constraints
 
-- Never pass a raw local filesystem path to `video_create_quick_cut` or any other video tool. Local files must reach Creative Cloud first — selected via the `asset_add_file` picker, or (no-widget fallback) staged via `asset_initialize_file_upload` → PUT → `asset_finalize_file_upload`; only the resulting `assetId` is valid.
+- Never pass a raw local filesystem path to `video_create_quick_cut` or any other video tool. Local files must reach Creative Cloud first — via the `asset_add_file` picker or the `asset_initialize_file_upload` → PUT → `asset_finalize_file_upload` staging fallback; only the resulting `assetId` is valid.
 - `video_create_quick_cut` requires `assetId` (CC asset ID), not `presignedAssetUrl`.
+- Produce **one** cut per request. Never fire multiple `video_create_quick_cut` jobs in parallel — additional versions are made one at a time, only when the user asks (Step 6).
+- Do not ask the user clarifying questions — work from the original request and the generic intent.

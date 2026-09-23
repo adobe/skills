@@ -4,7 +4,7 @@ Converts an AMS or on-premise Apache **Dispatcher** configuration to AEM as a Cl
 
 ## Mode taxonomy
 
-Every dispatcher config falls into exactly one of six modes. Get the mode — and the rest of the structured inventory — from `dispatcher-inventory.js`, run from the migration skill directory (`plugins/aem/cloud-service/skills/migration/`):
+Every dispatcher config falls into exactly one of seven modes. Get the mode — and the rest of the structured inventory — from `dispatcher-inventory.js`, run from the migration skill directory (`plugins/aem/cloud-service/skills/migration/`):
 
 ```bash
 node -e "console.log(JSON.stringify(require('./scripts/dispatcher-inventory.js').buildInventory('<config-root>'), null, 2))"
@@ -15,7 +15,8 @@ If the config root isn't already known, discover candidates first with `findConf
 | Mode | Signal | Route |
 |---|---|---|
 | `standard` | AMS v2.0 layout — `conf.dispatcher.d/` with `enabled_farms/` + `available_farms/` | Adobe tool, **AMS path** (`executors/main.js`) |
-| `flexible` | Monolithic `dispatcher.any` + `conf.vhost.d/`, no `conf.dispatcher.d/` | Adobe tool, **on-premise path** (`executors/singleFileMain.js`) |
+| `flexible` | Monolithic `dispatcher.any` + `conf.vhost.d/`, no `conf.dispatcher.d/`, **no** AMS markers | Adobe tool, **on-premise path** (`executors/singleFileMain.js`) |
+| `ams` | Same monolithic / `conf.vhost.d/`-only layout as `flexible` **but** with AMS markers (`ams_*` / `*_farm.any` files, or `conf.d/whitelists/`) | Adobe tool, **on-premise path** (`executors/singleFileMain.js`) — same route as `flexible`, labelled honestly |
 | `v1` | A bare `dispatcher.any` present, but the layout matches neither `standard` nor `flexible` (older/unusual arrangement) | On-premise path, **best-effort** |
 | `already-cloud` | Already has `opt-in/USE_SOURCES_DIRECTLY` or a populated `enabled_farms/farms.any`, and no AMS markers | **Report only** — do not run the tool |
 | `not-dispatcher` | No dispatcher signals at all (no `conf.d`/`conf.dispatcher.d`/`conf.vhost.d`, no `dispatcher.any`) | **Stop** — confirm the path with the user |

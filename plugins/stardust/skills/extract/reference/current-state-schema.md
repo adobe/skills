@@ -315,7 +315,7 @@ prepare-migration, replica and migrate set it) — **per-page reach evidence
 of what the page fetched and how it was rendered, never a classification.**
 The network side is recorded by a response listener attached before
 navigation; the DOM side is read from the settled document. The
-`stardust:dynamics` sub-skill probes archetypes in depth
+stardust `dynamics` sub-skill probes archetypes in depth
 (`_dynamics.json`) and folds these sections into each finding's reach;
 decisions live in `stardust/dynamic-features.md`. Absent section = the
 crawl ran without the flag (redesign-only work).

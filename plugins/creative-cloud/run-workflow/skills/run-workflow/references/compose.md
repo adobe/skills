@@ -63,6 +63,44 @@ If a required input for an action cannot be satisfied by any upstream output in 
 4. Once the user chooses, call `compose_workflow` again with updated natural-language instructions
    that incorporate either the uploaded asset URL or the additional generation step.
 
+## Response payload size — `lightPayload`
+
+`compose_workflow` returns the full `matrix_graph` (a ReactFlow node graph with per-node catalog
+data) by default. It is large and slow to tokenize, and `run_workflow_submit` never needs it — it
+only needs the lean `workflow` (actions + connections), `session_id`, and `next_step`, all of which
+are always returned.
+
+- **Single-template composes → pass `lightPayload: true`.** This drops `matrix_graph` from the
+  response and cuts latency. The full graph is still cached server-side; retrieve it any time with
+  `resolve_workflow_session(session_id)` (e.g. to store `workflow.json` for UI import).
+- **Chaining composes → omit `lightPayload` (or set `false`).** When you feed one compose response's
+  `matrix_graph` back as `current_graph` into a subsequent `compose_workflow` call (multi-template
+  rewire), that path reads `matrix_graph` inline, so it must stay in the response.
+
+When `lightPayload: true`, the response replaces `matrix_graph` with `matrix_graph_omitted: true` and
+a hint pointing at `resolve_workflow_session`.
+
+### Lean the other tools too — `list_featured_workflows` and `validate_workflow`
+
+The same "don't tokenize what you won't read" principle applies before compose and before submit:
+
+- **`list_featured_workflows(lightPayload: true)`** — omits the heavyweight `workflowGraph` from every
+  entry while keeping `classifierDescription`, `featuredWorkflowId`, `featuredVersion`, `name`,
+  `requiredInputs`, and `templateType`. That's everything you need to pick a workflow; `compose_workflow`
+  re-resolves the graph server-side by id, so it never reads `workflowGraph`. Use it whenever you only
+  need to choose a workflow.
+- **`validate_workflow(session_id: …)`** — validate the workflow cached by `compose_workflow` without
+  re-emitting the graph as tool arguments. Pass the compose `session_id` alone (no `workflow`/`graph`).
+  This is the preferred lean form; re-sending `workflow`/`graph` still works but forces the model to
+  regenerate the whole graph. Note that on the deterministic custom-template path `compose_workflow`
+  already validates and auto-corrects internally, so a separate `validate_workflow` is usually redundant.
+
+## Validation errors from `compose_workflow`
+
+If `compose_workflow` returns validation errors, call `get_workflow_examples` for the relevant
+action types, then retry with updated constraints. Cap retries at 1; if still invalid, show the user
+the errors and ask how to proceed.
+
 Example (`object-composite-v2` missing placement mask):
 > `object-composite-v2` needs a **placement mask** — an image that marks where on the background the
 > object should appear. I can't derive this from your current assets. Here are your options:

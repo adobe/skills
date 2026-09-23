@@ -62,10 +62,18 @@ const result = await generateRunbook({
 // result.gathered      → { findingsByPattern, sourceByPattern, … } for re-render after an LLM scan
 ```
 
-**CLI:**
+**CLI (the canonical Step-0 path — one command, no in-process bridge):**
 ```bash
-node scripts/runbook-generator.js <workspaceRoot> [--csv <bpaFilePath>] [--out <outputPath>]
+node scripts/runbook-generator.js <workspaceRoot> \
+  [--csv <bpaFilePath>] \
+  [--bpa-json <file>] \      # pre-fetched CAM/MCP findings, { "<slug>": [ <target>, … ] } — no mcpFetcher bridge needed
+  [--llm-findings <file>] \  # Tier-4 results, { "<pattern>": [ { file, line, snippet }, … ] } — merged + re-rendered in one pass
+  [--out <outputPath>] [--cache <cachePath>]
 ```
+
+- `--bpa-json` lets the agent dump its CAM/MCP fetch to a file instead of passing an in-process `mcpFetcher`; an omitted slug is treated as "not in report" (clean).
+- The analyzer is always **unioned** with BPA (BPA authoritative, analyzer fills source-only findings, deduped by class name), so a "BPA clean" cascade pattern still surfaces real source code — no manual reconciliation.
+- If the run prints `⚠️ Needs LLM scan`, grep for those patterns, write the hits to a JSON file, and re-run with `--llm-findings` to fold them in.
 
 ### `analyzer-runner.js`
 

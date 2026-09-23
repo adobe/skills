@@ -115,7 +115,7 @@ exists.
   src + a callout: "primary content lives in a third-party embed —
   visual style not captured."
 - **Footer** — provenance paragraph (which artifacts the review
-  read), "What's next" line pointing at `/stardust:direct`, and a
+  read), "What's next" line pointing at `$stardust direct`, and a
   badge legend.
 
 Optional sections from PRODUCT.md (Photography / imagery, Content
@@ -453,7 +453,7 @@ exists.
 14. **Embed-dominated pages `?`** — render only when one or more
     pages have `embedDominance.dominated: true`.
 15. **Footer** — provenance paragraph (which artifacts the review
-    read), "What's next" line pointing at `/stardust:direct`, badge
+    read), "What's next" line pointing at `$stardust direct`, badge
     legend.
 
 ### Component dimensions and density

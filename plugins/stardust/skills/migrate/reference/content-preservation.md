@@ -188,7 +188,7 @@ the crawl ran with `--dynamics`):
 - `static-snapshot` / `decided-out` → render the captured state and log
   `kind: "dynamic-dependency"` with the disposition and the reason.
 - **No inventory or no row** → the Phase 1 safety net ran
-  `stardust:dynamics` Phases 1–3; if a dynamic dependency still has no
+  the stardust `dynamics` skill Phases 1–3; if a dynamic dependency still has no
   row, log `disposition: "unclassified"` and surface it first in the
   report — a `dynamic-gap` learning.
 

@@ -22,7 +22,21 @@
 # aborts the round — a missing/blocked side must never be compared. Exit
 # codes: 0 gate PASS, 2 gate FAIL (over threshold), 3 bot challenge,
 # 1 capture/compare error, 4 build-side identity assertion failed (the URL
-# serves something that isn't this project's page — wrong/stale server).
+# serves something that isn't this project's page — wrong/stale server),
+# 124 instrument deadline exceeded (not a measurement — see below).
+#
+# Instrument deadlines + stale reap: every node step runs under
+# run-capped.mjs (macOS has no `timeout`). Three field migrations (2026-08/09)
+# recorded stitch-shot / pixel-compare sitting at 0 % CPU for 10+ minutes;
+# the leftover processes from earlier rounds (and from OTHER projects on a
+# shared machine — 8 found in one run) held Chromium + memory and slowed every
+# later round, and agents responded with ad-hoc `sleep 150; kill` loops that
+# burned a fixed 30 min per page. Before a round this script kills this
+# user's replica instruments older than GATE_REAP_MIN minutes (a healthy
+# capture or compare finishes in seconds to a few minutes). Overrides:
+#   GATE_STITCH_TIMEOUT  seconds per stitch-shot          (default 300)
+#   GATE_COMPARE_TIMEOUT seconds per pixel-compare        (default 120)
+#   GATE_REAP_MIN        stale-instrument age in minutes  (default 15; 0 disables)
 set -u
 
 SLUG=${1:?usage: gate.sh <slug> <live-url> <build-url> <width> [iter-label] [--marker <string>]}
@@ -36,6 +50,25 @@ MARKER="$SLUG"
 HERE=$(cd "$(dirname "$0")" && pwd)
 DIR="stardust/replica/gates/$SLUG-$W"
 mkdir -p "$DIR"
+
+STITCH_TIMEOUT=${GATE_STITCH_TIMEOUT:-300}
+COMPARE_TIMEOUT=${GATE_COMPARE_TIMEOUT:-120}
+REAP_MIN=${GATE_REAP_MIN:-15}
+capped() { local t=$1 l=$2; shift 2; node "$HERE/run-capped.mjs" --timeout "$t" --label "$l" -- "$@"; }
+
+# Stale-instrument reap (own user, replica instruments only, by basename so the
+# plugin tree and the project copy both match). ps etime is [[dd-]hh:]mm:ss.
+if [ "$REAP_MIN" -gt 0 ] 2>/dev/null; then
+  ps -U "$(id -un)" -o pid=,etime=,command= 2>/dev/null \
+    | grep -E '/(stitch-shot|pixel-compare|chrome-parity|anchor|crop-compare|visual-diff)\.mjs( |$)' \
+    | grep -v -E 'run-capped|grep' \
+    | while read -r pid etime cmd; do
+        mins=$(printf '%s' "$etime" | awk -F'[-:]' '{ n=NF; s=$n; m=(n>=2)?$(n-1):0; h=(n>=3)?$(n-2):0; d=(n>=4)?$(n-3):0; printf "%d", d*1440 + h*60 + m + (s>=30?1:0) }')
+        if [ "${mins:-0}" -ge "$REAP_MIN" ]; then
+          kill -9 "$pid" 2>/dev/null && echo "gate.sh: reaped stale instrument pid $pid (running $etime): $(printf '%s' "$cmd" | grep -oE '[a-z-]+\.mjs' | head -1)" >&2
+        fi
+      done
+fi
 
 # Identity assertion — NEVER diff an unverified build URL (two field
 # harvests, 2026-08: the same incident in both sessions, opposite directions —
@@ -70,14 +103,16 @@ fi
 # (--settle: live JS-heavy pages need the lazyload pass). Never swallow the
 # output — exit 3 here means "blocked, escalate --headed", not "skip".
 if [ ! -f "$DIR/live.png" ]; then
-  node "$HERE/stitch-shot.mjs" "$LIVE_URL" "$DIR/live.png" --width "$W" --settle
+  capped "$STITCH_TIMEOUT" "stitch-shot live $SLUG@$W" node "$HERE/stitch-shot.mjs" "$LIVE_URL" "$DIR/live.png" --width "$W" --settle
   rc=$?
+  [ $rc -eq 124 ] && rm -f "$DIR/live.png"   # never leave a partial live capture to be reused
   [ $rc -ne 0 ] && { echo "gate.sh: live capture failed (exit $rc) — not comparing" >&2; exit $rc; }
 fi
 
 # Build side: re-captured every iteration.
-node "$HERE/stitch-shot.mjs" "$BUILD_URL" "$DIR/build.png" --width "$W"
+capped "$STITCH_TIMEOUT" "stitch-shot build $SLUG@$W" node "$HERE/stitch-shot.mjs" "$BUILD_URL" "$DIR/build.png" --width "$W"
 rc=$?
 [ $rc -ne 0 ] && { echo "gate.sh: build capture failed (exit $rc) — not comparing" >&2; exit $rc; }
 
-node "$HERE/pixel-compare.mjs" "$DIR/live.png" "$DIR/build.png" --out "$DIR/diff-$LBL.png"
+# pixel-compare supervises its own deadline (--timeout); exit 124 = no verdict.
+node "$HERE/pixel-compare.mjs" "$DIR/live.png" "$DIR/build.png" --out "$DIR/diff-$LBL.png" --timeout "$COMPARE_TIMEOUT"

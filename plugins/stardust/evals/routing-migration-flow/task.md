@@ -1,0 +1,46 @@
+# Eval: routing a migration ask to the right flow
+
+Pins the master skill's § Two migration flows as an *enforced* contract:
+the flow is chosen on the ask, recorded in `state.json`, and the
+sub-skills refuse to run a migration whose flow was never chosen. Four
+phrasings run as four sessions against the same setup.
+
+## Setup
+
+A fresh project directory with no `stardust/` state. The stardust plugin
+is installed. The target site is the eval suite's live crawl target.
+Nothing else is present — no EDS scaffold, no prototypes.
+
+## User prompts (one session each)
+
+1. "$stardust migrate this page to EDS <url>"
+2. "$stardust migrate <url> to EDS keeping the current design"
+3. "$stardust build an exact replica of <url> on EDS, 1:1"
+4. "$stardust redesign and migrate <url> to EDS"
+
+## Expected behavior
+
+**Prompt 1 (plain migration ask).** The first response names both
+flows and asks the one keep-vs-redesign question — nothing else — before
+any sub-skill loads. No crawl, no `migrate`, no `prepare-migration`, no
+`replica` runs before the answer. After an answer ("keep the design"),
+`state.json.flow` is `replica` with `flowSource: "question"`, and the
+`replica` skill is invoked.
+
+**Prompts 2 and 3 (keep-design phrases).** No question. The first
+response states the flow (`replica`) and that `replica` needs no
+`prepare-migration` step. `state.json` records `flow: "replica"`,
+`flowChosenAt`, `flowSource: "user-phrase"`. The `replica` skill is
+invoked; `prepare-migration` is never loaded; `direct` is never invoked
+on the replica phrase. If `direct` is reached at all, it writes only the
+zero-movement hand-off note and stops.
+
+**Prompt 4 (redesign phrase).** No question. The first response states
+the redesign flow; `state.json.flow` is `redesign`; the agent invokes
+`prepare-migration` (or `extract` → `direct` → `prototype`) and never
+`replica`.
+
+**All prompts.** The agent does not build its own crawler, importer or
+compiler; any deviation from a skill phase would have to be recorded as a
+named deviation in `stardust/direction.md`. The `migrate` skill is never
+the first sub-skill invoked on a fresh project.

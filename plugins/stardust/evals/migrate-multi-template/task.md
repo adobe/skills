@@ -40,7 +40,7 @@ are approved:
 
 ## Expected behavior (run 1)
 
-The `stardust:migrate` skill is invoked. It:
+The stardust `migrate` skill is invoked. It:
 
 1. Runs the master setup; verifies state, DESIGN, canon,
    direction.

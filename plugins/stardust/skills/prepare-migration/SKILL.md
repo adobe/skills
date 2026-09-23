@@ -1,7 +1,8 @@
 ---
 name: prepare-migration
-description: Prepare a whole site for migration by orchestrating the prep cascade — a full-inventory crawl (extract --prep), page-type and module-catalog confirmation (direct --prep), archetype prototypes plus design canon (prototype --prep), and asset preparation — with confirmation gates between phases. Builds the typed page inventory, confirmed module catalog, and canon that stardust:migrate consumes. Use when the user wants to prepare or set up a full-site migration, run migration prep, confirm page types and modules before migrating a site, get a large site ready to migrate, or invokes /stardust:prepare-migration. Trigger phrases include "prepare the migration", "migration prep", "set up the migration data", "get the site ready to migrate". Redesign-flow only — for same-design migrations stardust:replica runs its own preserve-mode prep cascade; never chain prepare-migration with replica. Not for running the migration itself (stardust:migrate) or converting a single page (stardust:deploy).
+description: Prepare a whole site for migration by orchestrating the prep cascade — a full-inventory crawl (extract --prep), page-type and module-catalog confirmation (direct --prep), archetype prototypes plus design canon (prototype --prep), and asset preparation — with confirmation gates between phases. Builds the typed page inventory, confirmed module catalog, and canon that `migrate` consumes. Use when the user wants to prepare or set up a full-site migration, run migration prep, confirm page types and modules before migrating a site, get a large site ready to migrate, or invokes `$stardust prepare-migration`. Trigger phrases include "prepare the migration", "migration prep", "set up the migration data", "get the site ready to migrate". Redesign-flow only — for same-design migrations `replica` runs its own preserve-mode prep cascade; never chain prepare-migration with replica. Not for running the migration itself (`migrate`) or converting a single page (`deploy`).
 license: Apache-2.0
+compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, playwright-cli on PATH, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
 ---
 
 # stardust:prepare-migration
@@ -52,6 +53,21 @@ this site" a conscious gesture and keeps idempotency obvious.
 
 1. Run the master skill's setup (`skills/stardust/SKILL.md`
    § Setup) — impeccable dep check, context loader, state read.
+   **Flow guard.** This is the redesign flow's orchestrator. If
+   `state.json.flow` is `replica`, refuse: print "never run
+   `prepare-migration` before or after `replica`" and the switch
+   command (`$stardust prepare-migration --switch-flow`, which marks
+   the replica artefacts stale — master skill § Two migration flows).
+   If `flow` is absent, resolve it first: a keep-design phrase in the
+   ask ("1:1", "exact replica", "same design", "faithful",
+   "re-platform") means this skill does not apply — say so and hand to
+   `replica`; a plain migration ask gets the one keep-vs-redesign
+   question (hands-off: default `redesign`, recorded in
+   `direction.md`); then stamp `flow: "redesign"`
+   (`skills/stardust/reference/state-machine.md` § Flow keys).
+   (Recorded: "build a 1:1 migration plan" entered here on a plugin
+   that already described both flows and ran the redesign cascade for
+   two hours before `direct` was asked for an "exact replica".)
 2. Verify `stardust/state.json` exists with at least one extracted
    page. If not, recommend `$stardust extract <url>` and stop.
 3. Verify `stardust/direction.md` exists with an active direction.
@@ -78,34 +94,37 @@ this site" a conscious gesture and keeps idempotency obvious.
 ## Procedure
 
 The cascade runs five phases sequentially. Each phase invokes its
-underlying skill via the Skill tool, surfaces the phase's prep
+underlying skill via the harness's skill-invocation tool (see the master
+skill § Routing for how sub-skills are addressed), surfaces the phase's prep
 summary, then waits for user confirmation (unless `--skip-confirm`
 or hands-off mode) before advancing.
 
 ### Phase 1 — extract --prep
 
-Invoke:
-
-```
-Skill {
-  skill: "stardust:extract",
-  args: "--prep"
-}
-```
+Invoke the stardust `extract` skill with the argument `--prep`.
+Claude Code form: `Skill { skill: "stardust:extract", args: "--prep" }`.
 
 The underlying skill runs the standard extract procedure with the
 five `--prep` overlays (lift cap, page typing, module candidates,
 typed slots, prep summary).
 
-On completion, surface the summary verbatim and gate:
+On completion, surface the summary verbatim, name the flow, and gate —
+the first interactive gate of the cascade carries the keep-vs-redesign
+choice (one recorded migration ran this cascade for 3.5 hours before the
+user asked for the keep-design flow, and the work was discarded):
 
 ```
-Confirm and continue? (yes / refine "<phrase>")
+Flow: redesign — the design changes while migrating. Say `switch to replica` now if it is to be kept.
+Confirm and continue? (yes / refine "<phrase>" / switch to replica)
 ```
 
 User options:
 
 - **`yes`** — advance to Phase 2.
+- **`switch to replica`** — the design is to be kept: stop this cascade
+  and run `$stardust replica <url> --switch-flow` (master skill § Two
+  migration flows). The extract just produced is reused by replica
+  Phase 1; nothing else from this flow is.
 - **`refine "<phrase>"`** — re-invoke `extract --prep` with the
   refinement (e.g., "type news/* slugs as listing not article",
   "exclude /search and /404 from inventory"). Re-surface summary;
@@ -150,14 +169,8 @@ Cascade aborted between Phase 1 and Phase 2.
 
 ### Phase 2 — direct --prep
 
-Invoke:
-
-```
-Skill {
-  skill: "stardust:direct",
-  args: "--prep"
-}
-```
+Invoke the stardust `direct` skill with the argument `--prep`.
+Claude Code form: `Skill { skill: "stardust:direct", args: "--prep" }`.
 
 The underlying skill runs five `--prep` overlays (type catalog
 confirmation, module catalog finalization, color reservations,
@@ -168,14 +181,9 @@ Surface the summary and gate. User options match Phase 1
 
 ### Phase 3 — prototype --prep
 
-Invoke:
-
-```
-Skill {
-  skill: "stardust:prototype",
-  args: "--prep" + (canonFromSlug ? " --canon-from " + canonFromSlug : "")
-}
-```
+Invoke the stardust `prototype` skill with the argument `--prep`, plus
+`--canon-from <slug>` when a canon slug is already known.
+Claude Code form: `Skill { skill: "stardust:prototype", args: "--prep --canon-from <slug>" }`.
 
 The underlying skill fills page-type gaps (one approved archetype
 per type) and writes canon back per
@@ -230,7 +238,7 @@ Font downloads:      4 files (HarmoniaSans 4 weights)
 Brand assets:        all present
 ```
 
-### Phase 4.5 — Dynamic surface (pre-import gate — `stardust:dynamics` Phases 1–3)
+### Phase 4.5 — Dynamic surface (pre-import gate: `dynamics` Phases 1–3)
 
 Runs after assets prep and **before any bulk import**. Migration-bound:
 this is the step that keeps a dynamic site from being imported as a

@@ -194,6 +194,73 @@ folded back into the skills. The chrome crop gate, the sizing-model lift, the
 editability contract, link localization and the glyph-noise floor all entered
 the plugin that way.
 
+## Installing
+
+Stardust is packaged as a Claude Code plugin, and GitHub Copilot reads the
+same manifests, so both install from the adobe/skills marketplace. Impeccable
+is a hard dependency and is installed separately; Copilot does not resolve
+plugin dependencies.
+
+Claude Code:
+
+```bash
+/plugin marketplace add adobe/skills
+/plugin install stardust@adobe-skills
+/plugin marketplace add pbakaus/impeccable
+/plugin install impeccable@impeccable
+```
+
+GitHub Copilot CLI (also picked up by Copilot in VS Code and the cloud agent;
+verified 2026-09-17 with Copilot CLI 1.0.85):
+
+```bash
+copilot plugin marketplace add adobe/skills
+copilot plugin install stardust@adobe-skills
+copilot plugin marketplace add pbakaus/impeccable
+copilot plugin install impeccable@impeccable
+```
+
+In Copilot CLI the skills are addressed by their bare names (`stardust`,
+`extract`, `deploy`), not as `stardust:extract`. Where a skill body uses the
+Claude Code form, use the bare name.
+
+Other agents install the skills without plugin grouping. `npx skills add
+adobe/skills --list` shows all 108 skills in this repository as one flat
+list, so name stardust's fifteen explicitly, and install impeccable the same
+way:
+
+```bash
+npx skills add adobe/skills -s stardust -s extract -s direct -s prototype \
+  -s migrate -s prepare-migration -s replica -s reskin -s audit -s uplift \
+  -s diff -s deploy -s rollout -s dynamics -s qa
+npx skills add pbakaus/impeccable -s impeccable
+```
+
+`gh skill install adobe/skills --all` (GitHub CLI 2.90 or later) is the
+equivalent for the agents it supports. Both paths copy loose skills: no
+plugin grouping, no dependency check, updates through `npx skills update`
+or `gh skill update`.
+
+### Verified on
+
+| Harness | Version | Date | What was run |
+|---|---|---|---|
+| Claude Code | 2.1.x plugin | continuous | `evals/runner` suite |
+| GitHub Copilot CLI | 1.0.85 | 2026-09-17 | `evals/copilot-smoke/run.sh`: skill listing, bare-name load, master Setup |
+| Grok Build, Amp | | | expected to work (Claude plugin compatible), not run |
+| Codex, Cursor, Gemini CLI, OpenCode, Kiro and other `.agents/skills` adopters | | | installable through `npx skills add`; not run |
+
+`notes/multi-agent-distribution.md` has the reasoning behind the tiers and
+the work breakdown.
+
+### Prerequisites
+
+Stardust's bundled scripts run under Node 22 or later and need Playwright with
+Chromium resolvable from the project (`npm i -D playwright && npx playwright
+install chromium`). Several skills call `playwright-cli` from the adobe/skills
+`web` plugin. No harness installs these for you; the skills probe for them
+and print the install command when they are missing.
+
 ## Dependencies
 
 Stardust requires impeccable and has no fallback. The dependency is

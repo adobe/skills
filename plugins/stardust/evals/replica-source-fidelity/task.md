@@ -15,14 +15,14 @@ its current design"
 
 ## Expected behavior
 
-The `stardust:replica` skill is invoked. It:
+The stardust `replica` skill is invoked. It:
 
-1. Runs `stardust:extract --prep` unchanged (full inventory, page types,
+1. Runs `$stardust extract --prep` unchanged (full inventory, page types,
    screenshots, fonts, media, descriptive `stardust/current/` spec). No
    extract behavior is modified or bypassed.
 2. **Preserve direction is mechanical**: `stardust/current/{PRODUCT,DESIGN}.{md,json}`
    are promoted verbatim to the project root as the target spec;
-   `stardust/direction.md` records preserve mode. `stardust:direct` is NOT
+   `stardust/direction.md` records preserve mode. the stardust `direct` skill is NOT
    invoked; no divergence roll, no palette/type re-selection, no invented
    improvements.
 3. Creates the **inconsistency register** at
@@ -43,7 +43,7 @@ The `stardust:replica` skill is invoked. It:
    `stardust/replica/`. Hard cap of 3 iterations per breakpoint; unresolved
    deltas land in the residual log, not in silence.
 6. Hands off through the standard pipeline: archetypes at
-   `stardust/prototypes/<slug>-proposed.html` so `stardust:migrate` Path A /
+   `stardust/prototypes/<slug>-proposed.html` so the stardust `migrate` skill Path A /
    sibling tier consume them unchanged; core `state.json` lifecycle is used,
    not redefined.
 

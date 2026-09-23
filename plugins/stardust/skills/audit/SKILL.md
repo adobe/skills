@@ -1,7 +1,8 @@
 ---
 name: audit
-description: Full three-perspective audit of an existing website from one URL — design (tensions + concrete improvement opportunities), SEO/technical, and LLM/AI-search visibility — plus Core Web Vitals, synthesized into a scored, evidence-bound report. Use when the user asks to "audit this site", "site audit", "design audit", "SEO audit", "why is my site underperforming", "LLM visibility", "how does my site look to AI", or invokes /stardust:audit <url>.
+description: Full three-perspective audit of an existing website from one URL — design (tensions + concrete improvement opportunities), SEO/technical, and LLM/AI-search visibility — plus Core Web Vitals, synthesized into a scored, evidence-bound report. Use when the user asks to "audit this site", "site audit", "design audit", "SEO audit", "why is my site underperforming", "LLM visibility", "how does my site look to AI", or invokes `$stardust audit` (`/stardust:audit` in Claude Code) <url>.
 license: Apache-2.0
+compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, playwright-cli on PATH, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
 ---
 
 # stardust:audit
@@ -14,14 +15,14 @@ and LLM/AI-search visibility — measures Core Web Vitals, and
 synthesizes everything into a seven-dimension scorecard plus a
 prioritized findings ledger that tells the owner what to improve to
 generate a better business outcome. The report is also the natural
-seed for a redesign: its findings feed `stardust:uplift`'s
-improvements list and `stardust:direct`'s Phase 2.5, and it closes
-with uplift-shaped redesign directions so "run `stardust:uplift`" is
+seed for a redesign: its findings feed the stardust `uplift` skill's
+improvements list and the stardust `direct` skill's Phase 2.5, and it closes
+with uplift-shaped redesign directions so "run `$stardust uplift`" is
 the obvious next step.
 
 ## Opinionated defaults
 
-- **Multi-page by default** — `stardust:extract <url> --cap 8`
+- **Multi-page by default** — `$stardust extract <url> --cap 8`
   (home + seven IA pillars) unless `--single` or `--pages` overrides.
 - **Non-interactive** — the audit never asks questions. Every
   assumption it makes instead is recorded in
@@ -77,7 +78,7 @@ captured surface or governed by the underlying skills' contracts.
    stamped), recency from the newest
    `pages/<slug>.json#_provenance.fetchedAt` — reuse it
    and record `site.extraction.reused: true`. Otherwise invoke
-   `stardust:extract <url> --cap 8` (or `--single` / `--pages <n>`
+   `$stardust extract <url> --cap 8` (or `--single` / `--pages <n>`
    per the inputs). Extract owns the crawl, the screenshots,
    `_brand-extraction.json`, `pages/<slug>.json`, `PRODUCT.md` /
    `DESIGN.md`, and `brand-review.html` with its Tensions section.
@@ -132,9 +133,10 @@ Each lands in `audit.json#measurements` with `status` + `method` per
 Three passes over the captured home page (screenshot + live URL),
 folded into one set of design findings:
 
-1. **impeccable critique + audit.** Invoke via the Skill tool using
-   the delegation mechanic in `../prototype/SKILL.md` § Invoking
-   impeccable (`Skill { skill: "impeccable:impeccable", args:
+1. **impeccable critique + audit.** Invoke impeccable through the
+   harness's skill-invocation tool using the delegation mechanic in
+   `../prototype/SKILL.md` § Invoking impeccable (Claude Code form:
+   `Skill { skill: "impeccable:impeccable", args:
    "critique <target>" }`, then `"audit <target>"` for the
    accessibility / responsive / performance passes). Normalize its
    findings into the audit's finding shape.
@@ -260,7 +262,7 @@ findings and in `audit.json#benchmarks.references`.
    first key.
 5. **Render `stardust/audit/<domain-slug>/report.html`** by
    delegating to `$impeccable craft` with the brief in
-   `reference/report-format.md` Part 2 — the same Skill-tool
+   `reference/report-format.md` Part 2 — the same skill-invocation
    mechanic as prototype, and the same rule: **never hand-template
    the report**. Run the post-render validation checklist; on
    failure re-invoke craft with the specific violation. Open the
@@ -304,7 +306,7 @@ findings and in `audit.json#benchmarks.references`.
    Report: stardust/audit/<domain-slug>/report.html
    Data:   stardust/audit/<domain-slug>/audit.json
 
-   Next: run stardust:uplift <url> — the report's closing directions
+   Next: run `$stardust uplift <url>` — the report's closing directions
    are its variant briefs.
    ```
 
@@ -393,8 +395,8 @@ ledger's own id hash.
 - Audits and prescribes; never modifies the site or its redesign
   artifacts.
 - One origin per run. Auditing a competitor set is N runs.
-- The natural continuations: `stardust:uplift <url>` (the closing
-  directions are its variant briefs), `stardust:direct` (findings
+- The natural continuations: `$stardust uplift <url>` (the closing
+  directions are its variant briefs), the stardust `direct` skill (findings
   feed the Phase 2.5 improvements list), rollout's optimize loop
   (ledger findings with known check ids autofix on AEM).
 
@@ -408,7 +410,7 @@ ledger's own id hash.
   § Failure modes for the anti-synthesis discipline.
 - `../extract/reference/brand-review-template.md` § Tensions — the
   `T-*` detector catalog Phase 1 carries forward.
-- `../prototype/SKILL.md` § Invoking impeccable — the Skill-tool
+- `../prototype/SKILL.md` § Invoking impeccable — the skill-invocation
   delegation mechanic reused for critique (Phase 2) and the report
   render (Phase 6).
 - `../rollout/reference/audit-sources.md` — the findings-ledger

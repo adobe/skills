@@ -435,6 +435,16 @@ caught in user review — this is why the evidence rule exists):
    element morphing, same class-state transitions, same restore
    thresholds — the observe JSON's headerTimeline and classMutations name
    them) — never as a different mechanism with a similar look.
+4. **Hover-path reachability.** The live site's dropdown either has no gap
+   between the trigger and its sub-list or bridges it (padding on the
+   item, a pseudo-element, or a mouseleave delay in JS); a replica that
+   lifts the sub-list rect but not the bridge reproduces the look and
+   loses the click — the pointer crosses a dead strip and `:hover` closes
+   the menu (recorded: every desktop dropdown of a deployed replica
+   unreachable while all crops passed). Reachability is part of the state
+   machine: verify pointer travel trigger link → first sub-link keeps the
+   menu open (qa's `dropdown-unreachable` rendered check does this on the
+   deployed page).
 
 The two probe patterns the instrument wraps (both cheap, generic, no source
 JS needed): **hover diff** (`--hover`) — computed

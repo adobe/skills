@@ -4,6 +4,137 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.23.1 — chrome: hover-dropdown reachability rule (deploy § 6, replica mechanism cloning) + qa `dropdown-unreachable` rendered check
+
+Recurring chrome defect: a hover-opened desktop dropdown whose sub-list is absolutely positioned
+with an offset below the hovered `<li>` closes as the pointer crosses the gap; every crop and pixel
+gate passes because the resting state is identical (recorded 2026-09-19: 5/5 dropdowns unreachable
+on a deployed origin; an earlier same-symptom `pointer-events: none` case in the 2026-08 harvest).
+
+- **`deploy/SKILL.md` § 6**: "Hover dropdowns need a contiguous hover surface" — `<li>` spans the
+  nav row with the sub-list at `top: 100%`, or keep the lifted geometry and bridge the gap with an
+  invisible `::before` (off in the mobile query; preferred in replica mode); pre-deploy grep.
+- **`replica/reference/recreation-procedure.md`** Mechanism cloning rule item 4: hover-path
+  reachability is part of the state machine — verify trigger → first sub-link keeps the menu open.
+- **qa `dropdown-unreachable`** (rendered, desktop 1440, error): submenus discovered generically as
+  header elements that become visible on hover over a `header nav li`; the pointer walks in 2 px
+  steps straight down to the first sub-link; fails if the menu closes on the way or on arrival or
+  the sub-link is not under the pointer. Once per distinct header; fixture test
+  `qa/scripts/test/dropdown-unreachable.test.mjs`.
+
+## 0.23.0 — routing enforcement: the migration flow is chosen once, recorded, and guarded at every entry
+
+Evidence base: the same 48 field sessions. 0.18.5 fixed the routing *surface* (the two-flow table,
+"never mix", the never-chain descriptions) and the class survived it: on 0.21.1 a keep-design ask
+("migrate … to the final fidelity") loaded `prepare-migration`; on 0.18.5 a "same design" ask adopted
+a redesign-only "train the template, then compile" plan and reverted it after an hour, 45 turns and
+36 M tokens; a 144-hour resume session invoked no stardust skill at all and followed memory. Earlier
+in the corpus (0.18.1–0.18.2): "build a 1:1 migration plan" ran the redesign cascade for two hours
+before `direct` was asked for an "exact replica" and kept going — 2,207 pages published at 24–28 %
+pixel diff; a migration assessment ran the prep cascade 3.5 hours before the user asked for the
+keep-design flow and the work was discarded; `migrate <url>` / `extract <url>` as first commands on
+two same-design migrations led to hand-built compilers tuned by eye. Routing must be enforced at the
+sub-skill entry points and on the resume path, not only described in the master skill.
+
+- **`state.json.flow`** (`"redesign" | "replica" | "reskin"`, + `flowChosenAt`, `flowSource:
+  user-phrase | question | hands-off-default`) — `reference/state-machine.md` § Flow keys: stamped
+  once by whichever entry resolves the choice (master routing, `replica` / `prepare-migration` /
+  `reskin` Setup, `direct`'s hand-off); changed only by an explicit `--switch-flow`, which records a
+  `MODE SWITCH` in `direction.md` and marks the old flow's prototyped/migrated pages stale.
+- **Master skill § Two migration flows**: keep-design phrases ("exact replica", "1:1",
+  "pixel-perfect", "faithful", "same design", "keep the current design", "re-platform only", every
+  axis pinned) select `replica` without a question; redesign phrases select the redesign flow;
+  anything else asks the one keep-vs-redesign question (hands-off: keep-design phrase → `replica`,
+  else `redesign`, recorded). Planning aids are named per flow; a redesign procedure inside a
+  replica run (or the reverse) is a routing defect to refuse or flag. § Routing: a resume (new
+  session, "continue", memory-driven) starts with the state report and enters the next phase through
+  its skill. § Journal rule: agent-authored crawlers, compilers, importers and gates that replace a
+  skill phase are **named deviations** in `direction.md`. Description now says "resume a … migration".
+- **Entry guards**: `migrate`, `deploy`, `rollout` and a migration-intent `extract` refuse to start a
+  migration on a project with `state.json` and no `flow` (two-flow table, hand back);
+  `prepare-migration` refuses under `flow: replica` and resolves an absent flow before running;
+  `replica` refuses under `flow: redesign` and stamps `replica` when absent; `reskin` stamps `reskin`.
+  A bare `extract` for redesign/audit/uplift and `deploy` on hand-authored prototypes (no
+  `state.json`) are unaffected.
+- **`direct` Phase 1**: a zero-movement phrase (every axis pinned) is not a direction — write the
+  hand-off note, stamp `flow: replica`, stop with "run replica"; hands-off does not skip this.
+  intent-dimensions § 9 says the same in one line.
+- **First gate carries the choice**: `prepare-migration` Phase 1 gate prints `Flow: redesign …
+  switch to replica`; `replica` Phase 1 surfaces `Flow: replica … switch to redesign`. The state report
+  gains a `Flow:` line and replica-flow recommendations from `progress.json` (last gate numbers per
+  archetype).
+- **Gated-archetype precondition** (`flow: replica`): `migrate` (sibling tier) and `rollout` Setup
+  read `stardust/replica/progress.json` and block a page type whose archetype has no gate result at
+  each breakpoint that is a pass or over-the-bar with every residual carrying a `cause`. Reuses the
+  gate's pass/residual semantics; thresholds unchanged.
+- **`evals/routing-migration-flow/`** (new): four phrasings; asserts the flow is named first, the one
+  question for plain asks, `flow` recorded, `replica` invoked and `prepare-migration` never loaded for
+  keep-design, `migrate` never first, no hand-built pipeline.
+
+Deferred to the T13 progress-surface work: the enriched state report as a script (`stardust status`).
+
+## 0.22.2 — wait discipline: the coordinator never parks the conversation past the prompt-cache window
+
+Evidence base: the same 48 field sessions (Aug–Sep 2026, 24 projects), 20.7k main-session
+requests. 1,271 requests re-wrote most of their context (649 M of 713 M cache-creation tokens);
+1,222 of them followed an idle gap of ≥ 5 minutes. Classified by what preceded each: 46 % were the
+agent's own blocking waits — a foreground `sleep` (median 480 s), a 5–10-minute foreground gate
+sweep, crawl or publish loop, or a blocking read of an agent's output with a 10-minute timeout —
+worth 325 M tokens; 33 % were the user typing after a pause; 11 % were background-task
+notifications that arrived after 5 minutes. The cliff is sharp: a foreground `sleep` of ≤ 240 s
+missed the cache in 10 % of cases, 271–300 s in 18 %, ≥ 301 s in 85–87 %. Nothing in the plugin
+mentioned the cache window; the existing rule forbade `sleep N; kill` around instruments only.
+
+- **Master skill, hands-off defaults**: a "Wait discipline" bullet — long steps run in the
+  background with a progress/summary file; the coordinator does independent work or checks the
+  file at most every 4 minutes; never a fixed `sleep` ≥ 5 minutes, never a blocking output read
+  with a long timeout, never a foreground command expected to exceed ~2 minutes. Ending the turn
+  is for the user's benefit, not the cache's (a notification after 5 minutes misses too), so it is
+  reserved for waits over ~45 minutes or decisions the user should take. A Claude Code-marked
+  note names `run_in_background` and the harness's `promptCacheTtl: "1h"` owner setting (2× write
+  price instead of 1.25×; on these sessions it alone would have cut cache-side spend by ~29 %,
+  the rule alone by ~18 %).
+- **Mirrors**: deploy § 7 (brief/reading discipline), source-fidelity-gate § Iteration discipline
+  (gate rounds over several pages run in the background, not as foreground `for` loops — 58 % of
+  the recorded 5–10-minute sweeps re-wrote the prefix), rollout execution model (the batch driver's
+  log and ledger are the progress file).
+- No instrument, gate, threshold or verdict changes; the DA protocol's capped `until … sleep 3`
+  waits (≤ 3 min) stay as they are.
+
+## 0.22.1 — replica instruments: the pixel-compare hang fixed, deadlines, live-side caches, a path lint
+
+Evidence base: 48 field sessions (Aug–Sep 2026, 24 projects) plus the notes those runs wrote about
+themselves. `pixel-compare.mjs` was slow or timed out in 17 of 24 runs and on every plugin version
+since 0.18.1; seven projects' own notes name it, four describe it sitting at 0 % CPU after printing
+its verdict; agents answered with `sleep 150; kill` loops that cost one page 30 fixed minutes.
+Reproduced 2026-09-18: with stdout redirected (as gate.sh and every agent pipeline run it),
+`process.exit()` after the compare hung Node's platform shutdown (`Environment::Exit →
+DisposePlatform → WorkerThreadsTaskRunner::Shutdown → uv_thread_join`) in roughly 1 run in 4; nine
+such processes from earlier migrations were still alive on the test machine, some for six days.
+
+- **pixel-compare.mjs**: exits by draining (`process.exitCode`) instead of `process.exit()` —
+  0 hangs in 10 runs where the original hung; plus a supervised `--timeout` (default 120 s,
+  exit 124 = no verdict, not a FAIL) because the compare is synchronous and cannot time itself out.
+- **run-capped.mjs** (new): the deadline wrapper — macOS ships no `timeout`; kills the whole
+  process group (Chromium children included), passes exit codes through, 124 on the deadline.
+- **gate.sh**: every capture runs under `run-capped` (`GATE_STITCH_TIMEOUT` 300 s,
+  `GATE_COMPARE_TIMEOUT` 120 s), a partial live.png is never left for reuse, and this user's
+  replica instruments older than `GATE_REAP_MIN` (15) minutes are reaped before a round.
+- **chrome-parity.mjs `--live-cache`, anchor.mjs `--cache`**: the live side's measurement is
+  probed once per breakpoint and reused while URL, width and selectors match — the same contract
+  gate.sh already had for live.png (recorded: 5½-minute chrome-parity rounds ×3 ×4 archetypes).
+  anchor.mjs also warns when `--main` matched a wrapper that still contains header/footer (the
+  false-structural-red class recorded on four archetypes at once).
+- **evals/lint/script-paths.mjs** (new, in `npm run lint:stardust` and CI): every plugin-internal
+  `skills/<skill>/scripts/…` and `skills/<skill>/reference/…` path a skill doc names must exist.
+  It found two dangling references on main (a gate example pointing at the wrong skill's
+  `content-diff.mjs`, a hypothetical migrator path); both fixed.
+- Docs: source-fidelity-gate § Iteration discipline names the deadlines and caches; replica Phase 4
+  snippet uses them; deploy § 7 and the master skill's hands-off defaults get a brief-size and
+  read-by-section rule (across twelve runs deploy/SKILL.md was read whole ~20× per run, once per
+  dispatched agent; in one recorded run the watchdog-killed agents carried the fattest briefs); the DA protocol's two
+  `until … sleep 3` waits are capped and fail loud.
+
 ## 0.22.0 — stardust owns `stardust/`: write boundary and versioning policy
 
 Field projects answered "what do I commit" by hand, each differently; one lost its state machine

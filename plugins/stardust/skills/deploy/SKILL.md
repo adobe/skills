@@ -2,6 +2,7 @@
 name: deploy
 description: Convert per-page styled HTML prototypes (stardust under stardust/prototypes/**, or claude-design / Mobirise / Relume / Lovable / v0 / Figma-derived pages, or JSX prototypes pre-rendered to HTML, often under samples/) into Edge Delivery Services (EDS / AEM) blocks and content pages, then deploy via DA. Each prototype section becomes one EDS block; the prototype's per-section CSS becomes that block's CSS scoped under the block class. Use when the user wants to lift styled per-page HTML prototypes into a working EDS site under blocks/ and content/.
 license: Apache-2.0
+compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, playwright-cli on PATH, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
 ---
 
 # stardust:deploy — prototypes → EDS/AEM
@@ -19,6 +20,8 @@ The user has:
 3. A goal to convert: prototypes → authorable EDS blocks + EDS content pages under `content/**`.
 
 If the user has prototypes but no EDS scaffolding, stop and ask whether to scaffold from `adobe/aem-boilerplate` (use the template as-is; the conversion never modifies `scripts/aem.js`). If they have EDS but no prototypes, this skill doesn't apply.
+
+**Flow guard (stardust projects).** When `stardust/state.json` exists but has no `flow` and the ask is a migration (a URL plus "migrate" / "to EDS" / "re-platform"), stop before Step 1: print the master skill's two-flow table (`skills/stardust/SKILL.md` § Two migration flows) and hand back to its routing, which stamps `flow` (`skills/stardust/reference/state-machine.md` § Flow keys). Hand-authored prototypes with no `state.json` are unaffected — that is this skill's standalone use.
 
 ## Target runtime — vanilla aem-boilerplate (what the generated code can rely on)
 
@@ -209,7 +212,7 @@ team: team-hero, team-roster, work-style, recent, careers, closing
 …
 ```
 
-A useful pattern: dispatch the `Explore` subagent at thoroughness=quick with this exact ask. You don't need a 22-pattern punch list — you need filenames + section names. **Resist the urge to "find shared patterns."** Pattern reuse will emerge organically when two sections turn out to be byte-identical.
+A useful pattern: dispatch a read-only exploration subagent with this exact ask where the harness offers one (Claude Code: the `Explore` agent at thoroughness=quick); otherwise run the search inline. You don't need a 22-pattern punch list — you need filenames + section names. **Resist the urge to "find shared patterns."** Pattern reuse will emerge organically when two sections turn out to be byte-identical.
 
 **Fingerprint per-instance variation BEFORE writing block code (#90).** A section-name list is
 copy-level; it does NOT reveal that instances *inside* a repeated group look different — an active
@@ -596,6 +599,7 @@ Chrome is the canonical fragment use case (D12): **content** lives in two author
 - **Root-class hook (#26):** the block renders inside `header .header` / `footer .footer`. If the prototype's chrome styling is keyed to a different root class (e.g. `.utilnav` / `.site-footer`), have `decorate()` emit a `<div class="<that-class>">` wrapper so the lifted CSS matches unchanged.
 - **Multi-row chrome (utility bar + nav):** author the utility bar as an extra section in `/nav`; the header block slots it above the nav row. Update `--nav-height` (#81) to the combined height.
 - **Never pair a fixed `height` with vertical `padding` on a chrome row.** Under the global `border-box` reset (#106) `height: 40px; padding-top: 12px` shrinks the content box to 28px and mis-centers every utility-row item by 6px — one declaration, a whole-chrome offset (recorded). Chrome rows size from content (`min-height` when a floor is needed); before deploy, grep the chrome CSS for `height:` co-occurring with `padding` on flex rows.
+- **Hover dropdowns need a contiguous hover surface.** If the sub-list is absolutely positioned below the trigger `<li>` with any offset (`top: calc(100% + Npx)`, `margin-top`), the pointer leaves the `<li>` in the gap and `:hover` closes the menu before a sub-link is reachable — invisible to every static capture and pixel gate (recorded: 5/5 desktop dropdowns unreachable on a deployed origin that passed every crop). Either (a) make the `<li>` span the full nav row height and place the sub-list at `top: 100%`, or (b) keep the lifted geometry and add an invisible `::before` on the sub-list covering the gap (`top: -Npx; height: Npx; left: 0; right: 0`), turned off in the mobile query where the sub-list is static. Prefer (b) in replica mode (no geometry change). Before deploy, grep the chrome CSS for a hover-toggled `display`/`visibility` on an `absolute` sub-list with a non-zero `top`/`margin-top` offset; the qa `dropdown-unreachable` rendered check (`../qa/reference/checks.md` § rendered) walks the pointer path on the deployed page.
 
 **What still can't run (#20, #102):** authored content never carries `<script>` (D15), and EDS's delivered CSP (`script-src 'nonce-…' 'strict-dynamic'`) means inline `on*` handlers in ANY markup never fire. Forms in chrome (a newsletter signup in the footer) are wired in BLOCK JS: render the `<form>` from the block, attach a real `submit` listener in `decorate()`. Scroll-state chrome (sticky shadow, shrink-on-scroll) is now fine too — wire it in the header block's JS, honoring `prefers-reduced-motion`. **Block dependencies must not compile WebAssembly (#102):** the CSP has no `wasm-unsafe-eval`, so WASM-based players (dotlottie, wasm codecs/parsers) silently fall back on every REAL environment while working locally — for Lottie use `lottie-web`'s pure-JS `svg` renderer via a pinned-CDN module `import()` (strict-dynamic trusts module imports). Step 10: check the deployed page's browser console for CSP violations — a graceful fallback hides this class from every layout gate.
 
@@ -604,6 +608,8 @@ Chrome is the canonical fragment use case (D12): **content** lives in two author
 ### 7. Blocks (parallel agents)
 
 Dispatch one agent per page-archetype cluster (utility pages, services, case studies, etc.). Each agent owns a non-overlapping set of new blocks and content pages. Three to four parallel agents is the sweet spot.
+
+**Brief size and reading discipline.** The brief points at files — `stardust/eds-schema/<page>.json`, the conversion log's triage rows for its pages, this document's §§ 7–8, `davids-model.md` — and never pastes reference text into the prompt. Each agent reads by section (list the headings, then read the range it needs), not the whole file: across twelve field migrations this document (~27k words) was read end to end about twenty times per run, once per dispatched agent; in one recorded run the two conversion agents the harness's no-progress watchdog killed carried the fattest briefs, while a re-dispatch with a lean brief and line-ranged reads finished the same pages. Long-running steps (captures, gates, batch pushes) run in the background with a progress file the agent appends to per page, so the coordinator can read progress instead of waiting blind. The coordinator's own waiting follows the master skill's wait discipline: nothing runs in the foreground past ~2 minutes, no single `sleep` reaches 5 minutes (the prompt-cache window — at deploy-phase context sizes each expiry re-writes the whole prefix), and progress is read from the file at most every 4 minutes.
 
 The brief template:
 
@@ -973,7 +979,7 @@ The retired `visual-diff` classes are covered elsewhere: stretched images by the
 
 # Structural content + typography diff — ADVISORY summary. Use the DEPLOYED EDS URL
 # so blocks are decorated; a raw content .plain.html has no roles to classify.
-node skills/deploy/scripts/content-diff.mjs \
+node skills/diff/scripts/content-diff.mjs \
   "http://localhost:8791/<prototype>.html" \
   "https://<branch>--<repo>--<owner>.aem.page/<path>" \
   --profile eds   # --json to dump both inventories; exits 0 (advisory)
@@ -993,7 +999,7 @@ node skills/deploy/scripts/content-diff.mjs \
 
 Confirm the deployed eyeball is faithful and the CLS probe is < 0.1; the content-diff summary + the atomic-contract computed-style guard + `.plain.html` are the automated backstops. The flag lists double as a regression checklist — a new silent regression is worth adding both a fix AND a gate signal.
 
-**Step 10 is a per-page, during-conversion reconcile against the PROTOTYPE — not the whole-site sweep.** For a comprehensive post-rollout check of the DEPLOYED site against its extraction capture + visual baselines (routing, content fidelity, template conformance, rendered integrity, metadata/SEO, links, accessibility, performance budgets), use the read-only **`stardust:qa`** skill after `rollout`. The two are complementary: Step 10 asks "does this converted page match its prototype?", `stardust:qa` asks "is everything that shipped across the site actually correct?" — different reference, scope, and phase; they share no code.
+**Step 10 is a per-page, during-conversion reconcile against the PROTOTYPE — not the whole-site sweep.** For a comprehensive post-rollout check of the DEPLOYED site against its extraction capture + visual baselines (routing, content fidelity, template conformance, rendered integrity, metadata/SEO, links, accessibility, performance budgets), use the read-only **the stardust `qa` skill** skill after `rollout`. The two are complementary: Step 10 asks "does this converted page match its prototype?", the stardust `qa` skill asks "is everything that shipped across the site actually correct?" — different reference, scope, and phase; they share no code.
 
 ## Anti-patterns (lessons paid for the hard way)
 
@@ -1125,6 +1131,6 @@ Update `stardust/eds-conversion-log.md` (or create one) with: final block invent
 
 - `davids-model.md` — David's Model (aem.live) distilled: the 15 rules (`D#N`), each mapped to the contract or gate in this skill that enforces it, plus the component-model shape compatibility notes.
 - `da-deploy-protocol.md` — the curl-based DA Source API deploy contract (auth, source PUT, preview/publish, asset-before-preview ordering).
-- `IMPROVEMENTS.md` — running log of friction/gaps and the numbered findings (#NN) that the `stardust:diff` `eds` profile cites.
+- `../../notes/deploy-improvements-archive.md` — the frozen ledger (findings #1–#80) that the `(#NN)` citations in this document and in the deploy/diff scripts point to; new findings go to `skills/stardust/reference/learnings.md`.
 - `scripts/ew-editability-probe.mjs` — the Experience Workspace editability gate (Step 8 § contract): instrument → decorate → count survivors; `--simulate-editor` edit-mode drift; URL and `--content` harness modes; reads `@ew-exempt` JSDoc tags.
 - Experience Workspace sources the contract was verified against (read them when the mechanism seems to have changed): da.live `blocks/canvas/editor-utils/editor-utils.js` (`getInstrumentedHTML` — what is stamped), `blocks/canvas/ew-editor-wysiwyg/ew-editor-wysiwyg.js`, `blocks/shared/prose2aem.js` (cells keep their `<p>`); da-nx `nx/public/plugins/quick-edit/quick-edit.js` (`setBody` → `loadPage` → `restoreBlockIndices`), `src/prose.js` (`createEditor` swap shape), `src/images.js`, `src/dom-index.js`, `src/selection.js` (cursor math on `textContent` length).

@@ -32,6 +32,12 @@
  *     --headed           headed stealth real Chrome (bot-managed live sites)
  *     --locale <tag>     pin Accept-Language + locale (e.g. en-GB)
  *     --json             machine-readable output
+ *     --live-cache <f>   reuse the live side's measurement from <f> (JSON) when it
+ *                        exists for the same URL, width and region selectors; probe
+ *                        and write it otherwise. Same contract as gate.sh's live.png:
+ *                        one live navigation per breakpoint per full gate run, delete
+ *                        the file to re-probe. Convention:
+ *                        stardust/replica/gates/<slug>-<w>/chrome-live.json
  *
  * Example:
  *   node stardust/scripts/replica/chrome-parity.mjs "https://<site>/" "http://localhost:8791/home-proposed.html" \
@@ -51,7 +57,7 @@
 
 /* eslint-disable import/no-extraneous-dependencies, import/extensions, no-await-in-loop, no-restricted-syntax, brace-style, object-curly-newline, max-len, no-plusplus, no-continue */
 import { chromium } from 'playwright';
-import { existsSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { dirname, resolve as resolvePath } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 
@@ -76,6 +82,7 @@ Usage: node chrome-parity.mjs <liveURL> <buildURL> [options]
   --headed           headed stealth real Chrome (bot-managed live sites)
   --locale <tag>     pin Accept-Language + locale
   --json             machine-readable output
+  --live-cache <f>   reuse/write the live side's measurement (JSON) — one live hit per breakpoint
   --help             this text
 
 Exit codes: 0 parity within tolerance, 2 deltas printed, 1 error, 3 bot challenge (live side).`;
@@ -84,7 +91,7 @@ function parseArgs(argv) {
   const rest = argv.slice(2);
   if (rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
   const pos = [];
-  const opts = { regions: [], noDefaults: false, width: 1440, tolerance: 1, consent: null, dismiss: [], headed: false, locale: null, json: false };
+  const opts = { regions: [], noDefaults: false, width: 1440, tolerance: 1, consent: null, dismiss: [], headed: false, locale: null, json: false, liveCache: null };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--region') {
@@ -101,6 +108,7 @@ function parseArgs(argv) {
     else if (a === '--headed') { opts.headed = true; }
     else if (a === '--locale') { opts.locale = rest[i += 1]; }
     else if (a === '--json') { opts.json = true; }
+    else if (a === '--live-cache') { opts.liveCache = rest[i += 1]; }
     else if (a.startsWith('--')) { console.error(`unknown flag ${a}\n\n${HELP}`); process.exit(1); }
     else pos.push(a);
   }
@@ -248,19 +256,38 @@ async function probeSide(browser, url, opts, isLive) {
   return out;
 }
 
+// --live-cache: the live side's probe result keyed on URL + width + live
+// selectors. A key mismatch re-probes and overwrites (never measures a stale
+// site or the wrong breakpoint silently).
+function cacheKey(live, opts) { return { url: live, width: opts.width, regions: opts.regions.map((r) => `${r.name}=${r.live}`) }; }
+function readLiveCache(file, live, opts) {
+  if (!file || !existsSync(file)) return null;
+  try {
+    const c = JSON.parse(readFileSync(file, 'utf8'));
+    if (JSON.stringify(c.key) !== JSON.stringify(cacheKey(live, opts))) { console.error(`chrome-parity: --live-cache ${file} was probed for a different url/width/regions — re-probing live`); return null; }
+    return c;
+  } catch (e) { console.error(`chrome-parity: --live-cache ${file} unreadable (${e.message}) — re-probing live`); return null; }
+}
+
 async function main() {
   const { live, build, opts } = parseArgs(process.argv);
   const browser = opts.headed ? await launchStealthHeaded(chromium) : await chromium.launch();
   let total = 0;
   try {
-    const L = await probeSide(browser, live, opts, true);
+    const cached = readLiveCache(opts.liveCache, live, opts);
+    const L = cached ? cached.data : await probeSide(browser, live, opts, true);
+    if (opts.liveCache && !cached) {
+      mkdirSync(dirname(opts.liveCache), { recursive: true });
+      writeFileSync(opts.liveCache, JSON.stringify({ key: cacheKey(live, opts), probedAt: new Date().toISOString(), data: L }, null, 2));
+    }
+    const liveNote = cached ? ` (live side from cache ${opts.liveCache}, probed ${cached.probedAt} — delete the file to re-probe)` : '';
     const B = await probeSide(browser, build, opts, false);
     const regions = opts.regions.map((reg) => compareRegion(reg.name, L[reg.name], B[reg.name], opts.tolerance));
     total = regions.reduce((n, r) => n + r.findings.length, 0);
     if (opts.json) {
-      console.log(JSON.stringify({ live, build, width: opts.width, tolerance: opts.tolerance, regions, raw: { live: L, build: B } }, null, 2));
+      console.log(JSON.stringify({ live, build, width: opts.width, tolerance: opts.tolerance, liveCache: cached ? { file: opts.liveCache, probedAt: cached.probedAt } : null, regions, raw: { live: L, build: B } }, null, 2));
     } else {
-      console.log(`chrome-parity @ ${opts.width}px, tolerance ${opts.tolerance}px\n  live:  ${live}\n  build: ${build}`);
+      console.log(`chrome-parity @ ${opts.width}px, tolerance ${opts.tolerance}px\n  live:  ${live}${liveNote}\n  build: ${build}`);
       for (const r of regions) {
         const inv = r.inventory ? ` — ${r.pairs} paired of ${r.inventory.live.atoms}/${r.inventory.build.atoms} texts, ${r.inventory.live.icons}/${r.inventory.build.icons} icons` : '';
         console.log(`\n■ ${r.name}: ${r.findings.length ? `${r.findings.length} delta(s)` : '✓ parity'}${inv}`);

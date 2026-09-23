@@ -5,7 +5,7 @@
     {
       "name": "activated",
       "max_score": 5,
-      "description": "The stardust:direct skill was invoked with the freeform phrase as input."
+      "description": "The stardust `direct` skill was invoked with the freeform phrase as input."
     },
     {
       "name": "dimensional_restatement",
@@ -35,7 +35,7 @@
     {
       "name": "product_md_direct",
       "max_score": 10,
-      "description": "PRODUCT.md authored directly at project root using impeccable's teach.md as format spec. The agent did NOT invoke $impeccable teach. Sections present: Register, Users, Product Purpose, Brand Personality, Anti-references, Design Principles, Accessibility & Inclusion."
+      "description": "PRODUCT.md authored directly at project root using impeccable's init.md (product-schema 1) as format spec. The agent did NOT invoke $impeccable init or teach. File starts with '# Product' and the '<!-- impeccable:product-schema 1 -->' comment; sections present: Platform (web), Users, Product Purpose, Brand Commitments (register, personality, anti-references), Product Principles; Positioning, Capabilities and Constraints, Evidence on Hand and Accessibility & Inclusion present where the inputs support them."
     },
     {
       "name": "design_md_direct",

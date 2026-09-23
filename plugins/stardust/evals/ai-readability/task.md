@@ -16,7 +16,7 @@ to DA. The owner will run Adobe's AI Content Visibility Checker on it."
 
 ## Expected behavior
 
-The `stardust:deploy` skill is invoked. It:
+The stardust `deploy` skill is invoked. It:
 
 1. Writes the carousel so that loop clones are **presentational**: no text nodes, `alt=""`, no
    `href`, no `role`/`aria-*`. The rendered DOM word count of the carousel equals the authored

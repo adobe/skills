@@ -17,7 +17,7 @@ content, ready to push to DA"
 
 ## Expected behavior
 
-The `stardust:deploy` skill is invoked. It:
+The stardust `deploy` skill is invoked. It:
 
 1. Chooses a decode tier per section (Step 2b) and, for the template-slotted
    ones, writes **node-slotting** decode: the template holds empty slot

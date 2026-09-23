@@ -33,6 +33,18 @@
  *     --headed            escalation: headed stealth real Chrome
  *     --locale <tag>      pin Accept-Language + locale (e.g. en-GB)
  *     --json              machine-readable output on stdout
+ *     --cache <file>      reuse this URL's measurement from <file> (JSON) when it
+ *                         exists for the same URL, width and --main; probe and write
+ *                         it otherwise. For the LIVE side only — build-side runs are
+ *                         free and must re-measure. Same contract as gate.sh's
+ *                         live.png: delete the file to re-probe. Convention:
+ *                         stardust/replica/gates/<slug>-<w>/anchor-live.json
+ *
+ * Guard: when the `--main` root still contains a <header>/<footer> the section
+ * list includes chrome and every number below is contaminated (recorded: the
+ * AEM root wrapper matched on four archetypes at once — 24 false structural
+ * reds, doc-height as mainHeight). The probe prints a ⚠ and sets
+ * `rootWrapsChrome` in --json; fix the selector before reading the boxes.
  *
  * Example (one line per section; diff the two outputs side by side):
  *   node stardust/scripts/replica/anchor.mjs "https://<site>/<path>" --width 1440
@@ -45,7 +57,7 @@
 
 /* eslint-disable import/no-extraneous-dependencies, import/extensions, no-await-in-loop, no-restricted-syntax, brace-style, object-curly-newline, max-len */
 import { chromium } from 'playwright';
-import { existsSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { dirname, resolve as resolvePath } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 
@@ -71,6 +83,7 @@ Usage: node anchor.mjs <url> [options]
   --headed          headed stealth real Chrome (escalation for bot-managed sites)
   --locale <tag>    pin Accept-Language + locale (e.g. en-GB)
   --json            machine-readable output
+  --cache <file>    reuse/write this URL's measurement (JSON) — live side only
   --help            this text
 
 Exit codes: 0 printed, 1 error, 3 bot challenge (live side blocked — fail loud).`;
@@ -79,7 +92,7 @@ function parseArgs(argv) {
   const rest = argv.slice(2);
   if (rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
   const pos = [];
-  const opts = { width: 1440, main: 'main', consent: null, dismiss: [], headed: false, locale: null, json: false };
+  const opts = { width: 1440, main: 'main', consent: null, dismiss: [], headed: false, locale: null, json: false, cache: null };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--width') { opts.width = Number(rest[i += 1]); }
@@ -89,6 +102,7 @@ function parseArgs(argv) {
     else if (a === '--headed') { opts.headed = true; }
     else if (a === '--locale') { opts.locale = rest[i += 1]; }
     else if (a === '--json') { opts.json = true; }
+    else if (a === '--cache') { opts.cache = rest[i += 1]; }
     else if (a.startsWith('--')) { console.error(`unknown flag ${a}\n\n${HELP}`); process.exit(1); }
     else pos.push(a);
   }
@@ -97,8 +111,30 @@ function parseArgs(argv) {
   return { url, opts };
 }
 
+function print(url, opts, out, note) {
+  if (opts.json) {
+    console.log(JSON.stringify({ url, width: opts.width, main: opts.main, ...out }, null, 2));
+  } else {
+    console.log(`doc height ${out.doc}px  (${url} @ ${opts.width})${note || ''}`);
+    if (out.rootMissing) console.log(`  ⚠ no element matches --main "${opts.main}" — measured <body>; pass the real content root`);
+    if (out.rootWrapsChrome) console.log(`  ⚠ --main "${opts.main}" matched a wrapper that still contains <header>/<footer> — the list below includes chrome and its numbers are contaminated; pass the content root (source-fidelity-gate.md § Hardening rule 3)`);
+    for (const s of out.sections) console.log(`  y ${String(s.box[0]).padStart(6)}  h ${String(s.box[1]).padStart(5)}  ${s.label}`);
+    if (out.footer) console.log(`  y ${String(out.footer[0]).padStart(6)}  h ${String(out.footer[1]).padStart(5)}  footer`);
+  }
+}
+
+// --cache: keyed on URL + width + --main; a key mismatch re-probes and overwrites.
+function cacheKey(url, opts) { return { url, width: opts.width, main: opts.main }; }
+
 async function main() {
   const { url, opts } = parseArgs(process.argv);
+  if (opts.cache && existsSync(opts.cache)) {
+    try {
+      const c = JSON.parse(readFileSync(opts.cache, 'utf8'));
+      if (JSON.stringify(c.key) === JSON.stringify(cacheKey(url, opts))) { print(url, opts, c.data, `  [from cache ${opts.cache}, probed ${c.probedAt} — delete to re-probe]`); return; }
+      console.error(`anchor: --cache ${opts.cache} was probed for a different url/width/--main — re-probing`);
+    } catch (e) { console.error(`anchor: --cache ${opts.cache} unreadable (${e.message}) — re-probing`); }
+  }
   const browser = opts.headed ? await launchStealthHeaded(chromium) : await chromium.launch();
   try {
     const ctx = await newLiveContext(browser, { locale: opts.locale, viewport: { width: opts.width, height: 900 } });
@@ -119,7 +155,8 @@ async function main() {
 
     const out = await page.evaluate((rootSel) => {
       const box = (el) => { const r = el.getBoundingClientRect(); return [Math.round(r.y + window.scrollY), Math.round(r.height)]; };
-      const root = document.querySelector(rootSel) || document.body;
+      const matched = document.querySelector(rootSel);
+      const root = matched || document.body;
       // top-level sections: <section> children and .section-classed children
       // (EDS emits div.section) — plain divs excluded to keep the two sides'
       // lists comparable at the granularity the replica authors at.
@@ -131,18 +168,18 @@ async function main() {
       const footer = document.querySelector('footer');
       return {
         doc: Math.max(document.body.scrollHeight, document.documentElement.scrollHeight),
+        rootMissing: !matched,
+        rootWrapsChrome: !!(matched && matched !== document.body && matched.querySelector('header, footer')),
         sections: nodes.map((el, i) => ({ label: label(el, i), box: box(el) })),
         footer: footer ? box(footer) : null,
       };
     }, opts.main);
 
-    if (opts.json) {
-      console.log(JSON.stringify({ url, width: opts.width, ...out }, null, 2));
-    } else {
-      console.log(`doc height ${out.doc}px  (${url} @ ${opts.width})`);
-      for (const s of out.sections) console.log(`  y ${String(s.box[0]).padStart(6)}  h ${String(s.box[1]).padStart(5)}  ${s.label}`);
-      if (out.footer) console.log(`  y ${String(out.footer[0]).padStart(6)}  h ${String(out.footer[1]).padStart(5)}  footer`);
+    if (opts.cache) {
+      mkdirSync(dirname(opts.cache), { recursive: true });
+      writeFileSync(opts.cache, JSON.stringify({ key: cacheKey(url, opts), probedAt: new Date().toISOString(), data: out }, null, 2));
     }
+    print(url, opts, out);
   } finally {
     await browser.close();
   }

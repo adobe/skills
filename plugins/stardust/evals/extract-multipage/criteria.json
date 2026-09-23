@@ -5,7 +5,7 @@
     {
       "name": "activated",
       "max_score": 5,
-      "description": "The stardust:extract skill was invoked."
+      "description": "The stardust `extract` skill was invoked."
     },
     {
       "name": "impeccable_dep_check",
@@ -45,7 +45,7 @@
     {
       "name": "current_product_md_direct",
       "max_score": 10,
-      "description": "stardust/current/PRODUCT.md was authored directly (sections per impeccable's teach.md format spec). The agent did NOT invoke $impeccable teach for the current-state file."
+      "description": "stardust/current/PRODUCT.md was authored directly (sections per impeccable's init.md format spec, product-schema 1: '# Product', the '<!-- impeccable:product-schema 1 -->' comment, Platform, Users, Product Purpose, Brand Commitments, Evidence on Hand, Product Principles; other schema sections where supported). The agent did NOT invoke $impeccable init or teach for the current-state file."
     },
     {
       "name": "current_design_md_direct",

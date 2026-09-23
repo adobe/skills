@@ -5,7 +5,7 @@
     {
       "name": "activated",
       "max_score": 5,
-      "description": "The stardust:prototype skill was invoked."
+      "description": "The stardust `prototype` skill was invoked."
     },
     {
       "name": "single_proposed_file",

@@ -21,6 +21,21 @@ jobs:
 
       - run: npm run validate
 
+  stardust-harness-neutral:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+
+      - name: Stardust skill text stays harness-neutral
+        run: node plugins/stardust/evals/lint/harness-neutral.mjs
+
+      - name: Stardust skill text names only scripts and references that exist
+        run: node plugins/stardust/evals/lint/script-paths.mjs
+
   codeowners-coverage:
     runs-on: ubuntu-latest
     steps:

@@ -15,7 +15,7 @@ how its provenance block is shaped.
 | `AGENTS.md`      | impeccable   | never (read-only for stardust)                               | every sub-command (Design Context)     |
 
 Stardust authors `PRODUCT.md`, `DESIGN.md`, and `DESIGN.json` **directly**,
-treating impeccable's `reference/teach.md` and `reference/document.md` as
+treating impeccable's `reference/init.md` and `reference/document.md` as
 **format specs** rather than runtime commands. Reasoning: by the time
 `$stardust direct` runs, the user has already gone through stardust's
 intent-reasoning interview — re-running impeccable's interview would
@@ -23,7 +23,7 @@ duplicate questions. The resolved direction in `stardust/direction.md`
 carries every answer impeccable's interviews would surface.
 
 Users who want impeccable to validate or refine the project-root files
-can run `$impeccable teach` or `$impeccable document` directly at any
+can run `$impeccable init` or `$impeccable document` directly at any
 time; stardust does not own those commands and will not interfere.
 
 The same direct-authoring pattern is used for the descriptive files
@@ -66,8 +66,8 @@ stardust/
 ├── dynamics/                         # dynamics working dir: generated-plan draft, parity.json (Phase 5), snapshot sync logs
 ├── redirects.tsv                     # original→normalized path pairs from the path-safety gate (rollout Phase C)
 ├── runtime-contract.json             # EDS runtime probe result (deploy § Runtime-detection probe)
-├── uplift-improvements.md            # >=3 specific weaknesses (cut, not padded) — load-bearing for uplift's variant A (written by `stardust:uplift` Phase 2a; absent otherwise)
-├── uplift-questions.md               # 6–8 "what if…" candidates with disqualifications (written by `stardust:uplift` Phase 2b; absent otherwise)
+├── uplift-improvements.md            # >=3 specific weaknesses (cut, not padded) — load-bearing for uplift's variant A (written by the stardust `uplift` skill Phase 2a; absent otherwise)
+├── uplift-questions.md               # 6–8 "what if…" candidates with disqualifications (written by the stardust `uplift` skill Phase 2b; absent otherwise)
 ├── canon/                            # design canon (canon-extraction.md) — written by prototype --prep on first approval, extended on subsequent approvals
 │   ├── header.html                   # canonical header chrome
 │   ├── footer.html                   # canonical footer chrome
@@ -169,7 +169,7 @@ Owner: `$stardust rollout` (Phase C path-safety gate). One
 redirects mechanism at Phase D so original inbound URLs don't 404.
 
 ### `stardust/current/PRODUCT.md` and `DESIGN.md`
-Owner: `$stardust extract`. Authored by `$impeccable teach` /
+Owner: `$stardust extract`. Authored by `$impeccable init` /
 `$impeccable document` against the extracted site, but seeded by
 stardust. These files describe what *is*, not what *should be*.
 

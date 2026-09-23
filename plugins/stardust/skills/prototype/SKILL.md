@@ -1,7 +1,8 @@
 ---
 name: prototype
-description: Render a proposed redesign of a page on the current website as a self-contained static HTML file, then iterate via the impeccable craft loop. Per-page, idempotent, stale-aware. Use when the user asks for a redesign prototype, a before/after comparison, a design preview, a page mockup, a visual diff of the redesign, or invokes /stardust:prototype.
+description: Render a proposed redesign of a page on the current website as a self-contained static HTML file, then iterate via the impeccable craft loop. Per-page, idempotent, stale-aware. Use when the user asks for a redesign prototype, a before/after comparison, a design preview, a page mockup, a visual diff of the redesign, or invokes `$stardust prototype` (`/stardust:prototype` in Claude Code).
 license: Apache-2.0
+compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, playwright-cli on PATH, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
 ---
 
 # stardust:prototype
@@ -133,10 +134,10 @@ HTML. Don't.
 
 ### Invoking impeccable
 
-When stardust runs in a Claude Code skill context (impeccable
-exposed as the `impeccable:impeccable` Skill, not as a CLI), invoke
-impeccable via the Skill tool with the sub-command and its args
-mirroring the slash-command form:
+Impeccable is a skill, not a CLI. Invoke it through the harness's
+skill-invocation tool, passing the sub-command and its args as the
+skill's argument string, mirroring the slash-command form. In Claude
+Code the plugin namespaces it as `impeccable:impeccable`:
 
 ```
 Skill {
@@ -145,8 +146,13 @@ Skill {
 }
 ```
 
+In GitHub Copilot and other harnesses that flatten plugin skills the
+skill is named `impeccable` and takes the same argument string
+(`craft <feature-description>`). Every Claude Code `Skill { ... }`
+example in this skill translates the same way.
+
 Sub-commands referenced from this skill are all routed through the
-same Skill: `craft`, `shape`, plus the iteration commands
+same skill: `craft`, `shape`, plus the iteration commands
 (`bolder`, `quieter`, `distill`, `polish`, `colorize`, `typeset`,
 `layout`, `adapt`, `animate`, `delight`, `overdrive`, `impeccable`).
 
@@ -166,7 +172,7 @@ Stardust's job inside Phase 2 is therefore:
   `DESIGN.json`, hard constraints from `direction.md`, content
   sourcing rules from `reference/proposed-file-shell.md` § Content
   sourcing hierarchy).
-- Invoke craft via the Skill tool.
+- Invoke craft through the skill-invocation tool.
 - Validate the result against the contract (`:root` block, data
   attributes, divergence audit, impeccable hard rules, content
   sourcing). If validation fails, refuse to write — never paper over
@@ -776,8 +782,9 @@ quantifiable WCAG failures.
 
 Procedure:
 
-1. **Run both validators in parallel.** Invoke `impeccable:impeccable`
-   twice in the same Skill-tool batch:
+1. **Run both validators in parallel.** Invoke impeccable twice in one
+   batch of skill invocations (Claude Code form shown; see § Invoking
+   impeccable):
 
    ```
    Skill { skill: "impeccable:impeccable",
@@ -862,7 +869,9 @@ Procedure:
 
 6. **Optionally spawn an LLM design-review subagent** for an
    independent take when the user wants more than the
-   deterministic detector. Trigger only when the user explicitly
+   deterministic detector (where the harness offers a subagent
+   primitive; otherwise run a separate review pass in the same
+   session). Trigger only when the user explicitly
    asks ("give me a deeper critique", "second opinion") or when
    the deterministic pass returns ≥3 P0/P1 findings (signal that
    the render has multiple issues worth a closer look). Default
@@ -962,7 +971,8 @@ unchanged implementation.
 
 #### Adapt procedure
 
-Invoke impeccable adapt against the rendered file:
+Invoke impeccable adapt against the rendered file (Claude Code form;
+see § Invoking impeccable):
 
 ```
 Skill {

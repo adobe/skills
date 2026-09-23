@@ -22,6 +22,23 @@ Repository of Adobe skills for AI coding agents.
 /plugin install commerce-app-review@adobe-skills
 ```
 
+### GitHub Copilot CLI
+
+Copilot reads the Claude plugin manifests in this repository, so the same
+marketplace works there (verified 2026-09-17 with Copilot CLI 1.0.85 and the
+`stardust` plugin). Plugins are also picked up by Copilot in VS Code and the
+cloud agent.
+
+```bash
+copilot plugin marketplace add adobe/skills
+copilot plugin install stardust@adobe-skills
+copilot plugin install aem-edge-delivery-services@adobe-skills
+```
+
+Copilot CLI exposes plugin skills under their bare `name` with no plugin
+prefix, so two installed plugins with a same-named skill are ambiguous there.
+Plugin `dependencies` are not resolved; install them explicitly.
+
 ### Vercel Skills (npx skills)
 
 ```bash
@@ -312,6 +329,12 @@ See the [`commerce-app-review`](plugins/commerce/app-review/README.md) doc for t
 | `adobe-edit-quick-cut`           | Turn a long video into a punchy sizzle or highlight reel using Adobe Quick Cut                                        |
 | `adobe-retouch-portraits`        | Bulk walk-away retouching for wedding and event portraits: auto-straighten, auto-tone, and auto-light across a folder |
 | `adobe-resize-photos-and-videos` | Resize images and videos to exact pixel dimensions, aspect ratios, or named sizes (4K, HD, A4)                        |
+
+#### Run Workflow (requires enterprise Firefly Creative Production entitlement)
+
+| Skill          | Description                                                                                            |
+| -------------- | ------------------------------------------------------------------------------------------------------ |
+| `run-workflow` | Discover, compose, run, publish, and save Adobe Firefly workflows through the run-workflow MCP server  |
 
 ## Repository Structure
 

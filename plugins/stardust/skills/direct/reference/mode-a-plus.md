@@ -1,6 +1,6 @@
 # Mode A+ — Brand-adjacent refinement (bounded, evidence-gated)
 
-Consumed by `stardust:direct` Phase 2 when an improvements-list
+Consumed by the stardust `direct` skill Phase 2 when an improvements-list
 item names a captured type or color weakness with evidence.
 
 The middle tier between Mode A's hard pins and `--rebrand`. It exists

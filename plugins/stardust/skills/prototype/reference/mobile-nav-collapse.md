@@ -27,7 +27,7 @@ with a moderately-sized nav. This pattern centralises the fix.
 
 ## When this applies
 
-`$impeccable adapt`, invoked from `stardust:prototype` Phase 2.7,
+`$impeccable adapt`, invoked from the stardust `prototype` skill Phase 2.7,
 runs the Mobile-adapt audit (see `skills/prototype/SKILL.md`
 § Mobile-adapt audit). The audit refuses the file when, at 360px:
 
