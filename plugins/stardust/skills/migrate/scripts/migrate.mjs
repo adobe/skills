@@ -25,10 +25,21 @@
  *   node migrate.mjs modules <slug> <id…> | --clear                   → modules[]
  *   node migrate.mjs summary [--json]                                 one row per state page
  *   node migrate.mjs pagemap                                          prints the page map, writes nothing
- *   (every form takes --state / --out; paths are project-relative from the project root)
+ *   (every form takes --state / --out; paths are project-relative from the project root; a value
+ *   flag followed by nothing or by another --flag is a usage error naming the flag)
+ *
+ * Flow guard (state-machine.md § Flow keys, plugin 0.23.0): `render` refuses (exit 2) when the state
+ *   file exists but has no top-level `flow` — the master skill stamps flow / flowChosenAt / flowSource
+ *   when its routing resolves the two-flow question (skills/stardust/SKILL.md § Routing, § Two
+ *   migration flows); either flow value passes. The sidecar-only subcommands (gate, deviation,
+ *   decision, variant, modules) and summary / pagemap are not guarded.
  *
  * render — page set: --all = every page whose status is approved, migrated or directed (others
- *   print one `skip` line); explicit slugs must exist. Branch: approved/migrated with a source
+ *   print one `skip` line); explicit slugs must exist. Strict 8 (output-path collision) is checked on
+ *   the literal path AND on its AEM-folded form (lowercase, `_`/spaces/unsafe characters → `-`, as
+ *   delivery-lint's path-safety normalises), so `/About` and `/about/` collide before either is
+ *   written. A sidecar that exists but is not valid JSON is refused (strict sidecar), never
+ *   overwritten. Branch: approved/migrated with a source
  *   file → A (fidelityTier archetype); directed → A' (sibling) of the single approved/migrated
  *   page of the same type that has a source file — zero or several: the page is refused until
  *   --archetype <slug>=<archetype-slug> names one; a slug in --branch-b → B (thin). Source HTML:
@@ -43,10 +54,14 @@
  *   <out>/<output-path>              the migrated HTML (URL-literal rule; default stardust/migrated/)
  *   <out>/<dir>/_meta.json           sidecar next to index.html; <name>._meta.json next to <name>.html
  *   <out>/assets/**                  every bundled asset (copied only when missing or changed)
- *   state.json.migrate               pageMap[], bundledAssets[], pages[], missingAssets[], lastRun
- *                                    — the only key touched; every other key is preserved
- *   gate/deviation/decision/variant/modules rewrite one sidecar; summary and pagemap write nothing.
- * Exit: 0 clean · 2 any page refused · 1 usage error (message on stderr).
+ *   state.json.migrate               MERGED, never replaced: this script owns at, outputDir,
+ *                                    selfContained, pageMap[], totalAssetsBundled, bundledAssets[],
+ *                                    pages[], missingAssets[], cleanedAssets[], lastRun; any other
+ *                                    key already in `migrate` (e.g. generators) is kept as is. No
+ *                                    other top-level key is touched.
+ *   gate/deviation/decision/variant/modules rewrite one sidecar (a malformed sidecar is a usage
+ *   error naming the file, not overwritten); summary and pagemap write nothing.
+ * Exit: 0 clean · 2 any page refused or the flow guard · 1 usage error (message on stderr).
  */
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
@@ -54,11 +69,11 @@ import { basename, dirname, isAbsolute, join, posix, relative, resolve } from 'n
 import { fileURLToPath } from 'node:url';
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
-if (process.argv.includes('--help') || process.argv.includes('-h') || process.argv.length < 3) {
+// Only the main-module check below calls it: importing this module never prints or exits.
+function help() {
   const src = readFileSync(new URL(import.meta.url), 'utf8');
   const header = src.match(/\/\*\*[\s\S]*?\*\//);
-  console.log(header ? header[0].replace(/^\/\*\*\s*|\s*\*\/$/g, '').replace(/^\s*\* ?/gm, '').trim() : 'no usage header');
-  process.exit(0);
+  return header ? header[0].replace(/^\/\*\*\s*|\s*\*\/$/g, '').replace(/^\s*\* ?/gm, '').trim() : 'no usage header';
 }
 
 export const DRIVER_VERSION = '1';
@@ -75,6 +90,8 @@ const SELF = fileURLToPath(import.meta.url);
 export class UsageError extends Error { constructor(msg) { super(msg); this.code = 1; } }
 // A strict refusal: the page is not written, other pages continue, the run exits 2.
 export class Refusal extends Error { constructor(slug, rule, what, fix) { super(`refused ${slug}: strict ${rule} — ${what} — ${fix}`); this.slug = slug; } }
+// The whole run is refused before any page (exit 2): the project is not ready to migrate.
+export class RunRefusal extends Error {}
 
 // ---- io helpers ---------------------------------------------------------------------------------
 export const sha = (s) => createHash('sha1').update(s).digest('hex').slice(0, 12);
@@ -105,16 +122,22 @@ export const sidecarFor = (outputPath) => { const d = posix.dirname(outputPath);
 export const depthOf = (outputPath) => outputPath.split('/').length - 1;
 export const relPrefix = (depth) => (depth === 0 ? './' : '../'.repeat(depth));
 export const urlFormOf = (outputPath) => outputPath.replace(/(^|\/)index\.html$/, '$1');
+// The AEM-Edge-safe form of an output path, as delivery-lint's path-safety normalises a DA path: lowercase,
+// per segment `_`, spaces and anything outside [a-z0-9.] → `-`, runs of `-` collapsed, no leading/trailing `-`.
+// Two pages whose folded paths coincide would overwrite each other once delivered, whatever their literal case.
+export const foldPath = (outputPath) => outputPath.toLowerCase().split('/').filter(Boolean)
+  .map((seg) => seg.replace(/[^a-z0-9.]+/g, '-').replace(/-+/g, '-').replace(/^-+|-+$/g, '')).join('/');
 
-// The page map — every state page, built once per run; strict 8 refuses colliding slugs.
+// The page map — every state page, built once per run; strict 8 refuses colliding slugs. `collisions` is keyed by
+// the FOLDED output path (literal collisions fold to the same key), value = every slug that lands on it.
 export function buildPageMap(pages, originUrl) {
   const entries = []; const bySlug = new Map(); const byPath = new Map(); const seen = new Map(); const collisions = new Map();
   for (const page of pages) {
     const sourceUrl = pathnameOf(page.url, originUrl || undefined);
     const o = outputPathFor(sourceUrl);
-    const e = { sourceUrl, outputPath: o.outputPath, slug: page.slug, outputPathDefault: o.outputPathDefault, passthrough: o.passthrough };
+    const e = { sourceUrl, outputPath: o.outputPath, folded: foldPath(o.outputPath), slug: page.slug, outputPathDefault: o.outputPathDefault, passthrough: o.passthrough };
     entries.push(e); bySlug.set(page.slug, e); byPath.set(sourceUrl, e);
-    if (seen.has(o.outputPath)) { const list = collisions.get(o.outputPath) || [seen.get(o.outputPath)]; list.push(page.slug); collisions.set(o.outputPath, list); } else seen.set(o.outputPath, page.slug);
+    if (seen.has(e.folded)) { const list = collisions.get(e.folded) || [seen.get(e.folded)]; list.push(page.slug); collisions.set(e.folded, list); } else seen.set(e.folded, page.slug);
   }
   return { entries, bySlug, byPath, collisions };
 }
@@ -392,6 +415,7 @@ export function renderPage(run, page, entry) {
   const archetypeSource = archetype ? sourceFor(run, archetype) : null;
   const keys = { designMdSha: run.designMdSha, designJsonSha: run.designJsonSha, sourceCurrentSha: fsha(capturePath), sourceProposedSha: sha(sourceHtml), canonShas, archetypeSha: archetype ? fsha(archetypeSource) : null, driverVersion: DRIVER_VERSION };
   const old = readJson(sideFile);
+  if (old === null && isFile(sideFile)) throw new Refusal(slug, 'sidecar', `${toPosix(sideFile)} exists but is not valid JSON`, 'fix or delete the sidecar (its recorded judgments would be lost by overwriting), then re-run');
   // idempotent skip (migration-procedure.md § Idempotent skip) — the recorded input shas equal the current set
   if (!run.force && old && isFile(outFile) && JSON.stringify(Object.fromEntries(Object.keys(keys).map((k) => [k, old[k] ?? null]))) === JSON.stringify(keys)) return { status: 'unchanged', outputPath };
   // placeholder gate — no bypass flag
@@ -442,9 +466,11 @@ export function loadState(file) {
   if (!state || !Array.isArray(state.pages)) throw new UsageError(`${file} is not valid JSON with a pages[] array`);
   return state;
 }
-// The only key touched is `migrate`; the parsed key order is kept and `migrate` is appended when new.
+// The only key touched is `migrate`, and it is merged: keys this script does not own (generators, …) stay as they
+// were; the parsed key order is kept and `migrate` is appended when new.
 function writeMigrateBlock(file, state, block) {
-  state.migrate = block;
+  const prev = state.migrate && typeof state.migrate === 'object' && !Array.isArray(state.migrate) ? state.migrate : {};
+  state.migrate = { ...prev, ...block };
   const tmp = `${file}.${process.pid}.tmp`; writeFileSync(tmp, `${JSON.stringify(state, null, 2)}\n`); renameSync(tmp, file);
 }
 function directionLine(stateFile) {
@@ -453,8 +479,14 @@ function directionLine(stateFile) {
   const m = readFileSync(f, 'utf8').match(/Active[^\n]*?(\d{4}-\d{2}-\d{2}T[\d:]{8}Z)/);
   return `${f} (Active${m ? ` ${m[1]}` : ''})`;
 }
+// state-machine.md § Flow keys: a project with state.json but no `flow` has not answered the two-flow question yet.
+export function flowGuard(state, file) {
+  if (typeof state.flow === 'string' && state.flow.trim()) return;
+  throw new RunRefusal(`refused: ${toPosix(file)} has no top-level flow — stamp flow / flowChosenAt / flowSource before migrating (the master skill's routing does this: skills/stardust/SKILL.md § Routing → § Two migration flows — pick one, never mix; state-machine.md § Flow keys)`);
+}
 export function renderRun(o) {
   const state = loadState(o.state); const pages = state.pages; const bySlug = new Map(pages.map((p) => [p.slug, p]));
+  flowGuard(state, o.state);
   const originUrl = state.site?.originUrl || null;
   const pageMap = buildPageMap(pages, originUrl);
   let set;
@@ -465,7 +497,10 @@ export function renderRun(o) {
     set = [...new Set(o.slugs)];
   }
   const counts = { rendered: [], unchanged: [], refused: [], passthrough: [] };
-  for (const [path, slugs] of pageMap.collisions) for (const s of slugs) if (set.includes(s)) { console.error(`refused ${s}: strict 8 — output path ${path} collides with ${slugs.filter((x) => x !== s).join(', ')} — fix page.url of one of them`); counts.refused.push(s); }
+  for (const [folded, slugs] of pageMap.collisions) for (const s of slugs) if (set.includes(s)) {
+    const own = pageMap.bySlug.get(s).outputPath; const others = slugs.filter((x) => x !== s).map((x) => { const op = pageMap.bySlug.get(x).outputPath; return op === own ? x : `${x} (${op})`; });
+    console.error(`refused ${s}: strict 8 — output path ${own} collides with ${others.join(', ')}${others.some((x) => x.includes('(')) || folded !== own ? ` once AEM-folded to ${folded}` : ''} — fix page.url of one of them`); counts.refused.push(s);
+  }
   set = set.filter((s) => !counts.refused.includes(s));
   const canon = resolveCanon(o);
   const renderSet = new Set(set.filter((s) => !pageMap.bySlug.get(s).passthrough));
@@ -510,7 +545,9 @@ function sidecarPath(o, slug) {
   if (passthrough) throw new UsageError(`${slug} is a passthrough leaf (${outputPath}); it has no sidecar`);
   const file = join(o.out, sidecarFor(outputPath));
   if (!isFile(file)) throw new UsageError(`${file} does not exist — render ${slug} first`);
-  return { file, sidecar: readJson(file), state };
+  const sidecar = readJson(file);
+  if (sidecar === null || typeof sidecar !== 'object' || Array.isArray(sidecar)) throw new UsageError(`${toPosix(file)} is not a valid JSON sidecar — fix or delete it before recording anything (it is never overwritten blindly)`);
+  return { file, sidecar, state };
 }
 function saveSidecar(file, sidecar) { writeFileSync(file, `${JSON.stringify(sidecar, null, 2)}\n`); }
 const pushUnique = (arr, v) => { const key = JSON.stringify(v); if (!arr.some((x) => JSON.stringify(x) === key)) arr.push(v); return arr; };
@@ -564,7 +601,7 @@ export function summaryCmd(o) {
 }
 export function pagemapCmd(o) {
   const state = loadState(o.state); const m = buildPageMap(state.pages, state.site?.originUrl || null);
-  for (const e of m.entries) console.log(`${e.slug.padEnd(24)} ${e.sourceUrl.padEnd(36)} → ${e.outputPath}${e.passthrough ? '  (passthrough)' : ''}${m.collisions.has(e.outputPath) ? '  COLLISION' : ''}`);
+  for (const e of m.entries) console.log(`${e.slug.padEnd(24)} ${e.sourceUrl.padEnd(36)} → ${e.outputPath}${e.passthrough ? '  (passthrough)' : ''}${m.collisions.has(e.folded) ? `  COLLISION${e.folded !== e.outputPath ? ` (folds to ${e.folded})` : ''}` : ''}`);
   console.log(`${m.entries.length} entries, ${m.collisions.size} collision(s)`);
   return m.collisions.size ? 2 : 0;
 }
@@ -582,7 +619,8 @@ export function parseArgs(argv) {
     // --json is a switch on summary and takes an object on decision
     if (name === 'json' && val === undefined && argv[i + 1]?.startsWith('{')) val = argv[++i];
     if (BOOL.has(name) && val === undefined) { o[name === 'inline-canon' ? 'inlineCanon' : name] = true; continue; }
-    if (val === undefined) { val = argv[++i]; if (val === undefined) throw new UsageError(`--${name} needs a value`); }
+    // A value flag never swallows the next flag: `--evidence --force` is a forgotten value, not the text "--force".
+    if (val === undefined) { val = argv[++i]; if (val === undefined) throw new UsageError(`--${name} needs a value`); if (val.startsWith('--')) throw new UsageError(`--${name} needs a value (got ${val}, which is a flag)`); }
     if (REPEAT.has(name)) { raw[name].push(val); continue; }
     if (name === 'branch-b') { for (const t of val.split(',')) if (t.trim()) o.branchB.add(t.trim()); continue; }
     const key = { 'proto-dir': 'protoDir', 'canon-css': 'canonCss', 'stardust-version': 'stardustVersion' }[name] || name;
@@ -612,9 +650,10 @@ export function main(argv) {
 // Compare by real path: a symlinked checkout or temp dir must not turn the CLI into a silent no-op.
 function safeRealpath(p) { try { return realpathSync(p); } catch { return p; } }
 if (process.argv[1] && safeRealpath(SELF) === safeRealpath(process.argv[1])) {
+  if (process.argv.includes('--help') || process.argv.includes('-h') || process.argv.length < 3) { console.log(help()); process.exit(0); }
   try { process.exit(main(process.argv.slice(2))); } catch (e) {
     if (e instanceof UsageError) { console.error(`usage error: ${e.message}`); process.exit(1); }
-    if (e instanceof Refusal) { console.error(e.message); process.exit(2); }
+    if (e instanceof Refusal || e instanceof RunRefusal) { console.error(e.message); process.exit(2); }
     throw e;
   }
 }

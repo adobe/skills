@@ -6,7 +6,7 @@
 // entry, clears `stale` where the contract says so and re-stamps `_provenance`.
 //
 //   node state.mjs advance <slug…> --to <status> [--by <who>] [--prototype <path>] [--migrated <path>]
-//                  [--skill <name>] [--force] [--dir <stardust dir>]
+//                  [--skill <name>] [--force | --history-only] [--dir <stardust dir>]
 //   node state.mjs summary [--slugs] [--dir <stardust dir>]
 //
 // Lifecycle (state-machine.md § Page lifecycle states): extracted → directed → prototyped →
@@ -14,6 +14,15 @@
 // from an approved sibling's template, migrate Path A′). A move to the page's current status is a
 // re-entry (re-prototype, re-approve, re-migrate) and appends a fresh history entry. Backward moves
 // break the linearity rule ("a page never moves backward") and exit 2 unless --force.
+// --history-only appends the { status, at } entry WITHOUT changing `status` — state-machine.md
+// § Linearity rule: "re-running prototype after approved does not demote — it produces a new
+// prototype with a new history entry, and the user must re-approve". Forward/backward rules do not
+// apply to it; --prototype / --migrated still set their paths; stale is left as it is (the status
+// did not move). A value flag (--to, --by, --prototype, --migrated, --skill, --dir) followed by
+// nothing or by another --flag is a usage error naming the flag.
+// Top-level key order on write (state-machine.md § File): _provenance, site, direction, handsOff,
+// flow, flowChosenAt, flowSource, pages; a key this script does not know keeps its place relative
+// to the known keys around it (never pushed behind pages).
 // Exit codes: 0 ok · 2 usage, unknown slug, or illegal transition (nothing written in every 2 case).
 import { existsSync, readFileSync, renameSync, writeFileSync, realpathSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -29,15 +38,16 @@ export const SET_BY = { extracted: 'extract', directed: 'direct', prototyped: 'p
 // is successfully re-prototyped or re-migrated, clear its stale flag") and prototype SKILL.md
 // Phase 5 step 4 ("clear any stale flag on the page" at approval).
 export const CLEARS_STALE = new Set(['prototyped', 'approved', 'migrated']);
-// state-machine.md § File: top-level keys "always in that order"; handsOff sits after direction.
-const TOP_ORDER = ['_provenance', 'site', 'direction', 'handsOff', 'pages'];
+// state-machine.md § File: top-level keys "always in that order"; handsOff sits after direction, the
+// 0.23.0 flow keys (§ Flow keys) between it and pages.
+export const TOP_ORDER = ['_provenance', 'site', 'direction', 'handsOff', 'flow', 'flowChosenAt', 'flowSource', 'pages'];
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SELF = fileURLToPath(import.meta.url);
 const PLUGIN_MANIFEST = join(HERE, '..', '..', '..', '.claude-plugin', 'plugin.json');
 const HELP = `Usage:
   node state.mjs advance <slug…> --to <${ORDER.join('|')}> [--by <who>] [--prototype <path>]
-                 [--migrated <path>] [--skill <name>] [--force] [--dir <d>]
+                 [--migrated <path>] [--skill <name>] [--force | --history-only] [--dir <d>]
   node state.mjs summary [--slugs] [--dir <d>]
   (--dir defaults to ${DEFAULT_DIR}; the file is <dir>/${FILE_NAME} and must already exist)
 
@@ -46,6 +56,10 @@ advance  moves every named page to <status>: appends { status, at[, approvedBy] 
          re-stamps _provenance (writtenBy stardust:<skill>, writtenAt, stardustVersion).
          --by is only valid with --to approved (it becomes approvedBy, e.g. "hands-off").
          Backward moves exit 2 unless --force. All-or-nothing: one bad slug, nothing is written.
+         --history-only appends the history entry and leaves status untouched (re-running prototype
+         after approved does not demote — state-machine.md § Linearity rule); no direction check,
+         stale untouched, paths still set. Not combinable with --force.
+         A value flag followed by nothing or by another --flag is a usage error.
 summary  prints page counts by status (and the slugs per status with --slugs).
 Writes: advance rewrites <dir>/${FILE_NAME} in place (atomic temp file + rename); summary writes nothing.
 Exit codes: 0 ok, 2 usage / illegal transition.`;
@@ -94,10 +108,23 @@ export function stampProvenance(prev, writtenBy, at = nowIso()) {
   return { writtenBy, writtenAt: at, ...rest, ...(version ? { stardustVersion: version } : {}) };
 }
 
+// Known keys in TOP_ORDER; an unknown key keeps its place relative to the known keys: it follows the
+// highest-ranked known key that preceded it in the file (or leads when none did) — so a `reskin` or
+// `migrate` block between direction and pages stays there, and a trailing block stays trailing.
 export function orderTopLevel(state) {
+  const rank = (k) => TOP_ORDER.indexOf(k);
+  const after = new Map([[null, []]]);
+  let anchor = null;
+  for (const k of Object.keys(state)) {
+    if (rank(k) >= 0) { if (anchor === null || rank(k) > rank(anchor)) anchor = k; if (!after.has(k)) after.set(k, []); } else after.get(anchor).push(k);
+  }
   const out = {};
-  for (const k of TOP_ORDER) if (k in state) out[k] = state[k];
-  for (const k of Object.keys(state)) if (!(k in out)) out[k] = state[k];
+  for (const k of after.get(null)) out[k] = state[k];
+  for (const k of TOP_ORDER) {
+    if (!(k in state)) continue;
+    out[k] = state[k];
+    for (const u of after.get(k) || []) out[u] = state[u];
+  }
   return out;
 }
 
@@ -109,13 +136,26 @@ export function writeState(file, state) {
 
 // Applies the transition to every slug in memory; throws before touching anything when a slug is
 // unknown or a move is illegal. Returns the per-page summaries.
-export function advance(state, slugs, { to, by = null, prototype = null, migrated = null, force = false, at = nowIso() }) {
+export function advance(state, slugs, { to, by = null, prototype = null, migrated = null, force = false, historyOnly = false, at = nowIso() }) {
   if (!slugs.length) throw new UsageError('advance needs at least one <slug>');
   if (by && to !== 'approved') throw new UsageError('--by only applies to --to approved (it is recorded as approvedBy on the approved history entry)');
+  if (historyOnly && force) throw new UsageError('--history-only does not move the page, so --force has nothing to override — pass one of them');
   const bySlug = new Map(state.pages.map((p) => [p.slug, p]));
   const missing = slugs.filter((s) => !bySlug.has(s));
   if (missing.length) throw new UsageError(`unknown slug(s): ${missing.join(', ')} — ${state.pages.length} page(s) in state.json; advance moves existing entries only`);
-  const plan = slugs.map((slug) => { const page = bySlug.get(slug); return { slug, page, from: page.status, kind: classify(page.status, to) }; });
+  const plan = slugs.map((slug) => { const page = bySlug.get(slug); return { slug, page, from: page.status, kind: historyOnly ? 'history-only' : classify(page.status, to) }; });
+  if (historyOnly) {
+    if (!ORDER.includes(to)) throw new UsageError(`--to must be one of ${ORDER.join('|')}, got "${to}"`);
+    for (const m of plan) {
+      const entry = { status: to, at };
+      if (by) entry.approvedBy = by;
+      if (!Array.isArray(m.page.history)) m.page.history = [];
+      m.page.history.push(entry);
+      if (prototype) m.page.prototypePath = prototype;
+      if (migrated) m.page.migratedPath = migrated;
+    }
+    return { plan, cleared: [] };
+  }
   const bad = plan.filter((m) => m.kind === 'backward' || m.kind === 'unknown-from');
   if (bad.length && !force) {
     throw new UsageError(bad.map((m) => (m.kind === 'backward'
@@ -149,13 +189,19 @@ export function summarise(state) {
 
 // ---- argv --------------------------------------------------------------------------------------
 function parseArgs(argv) {
-  const opts = { dir: DEFAULT_DIR, force: false, slugs: false, to: null, by: null, prototype: null, migrated: null, skill: null };
+  const opts = { dir: DEFAULT_DIR, force: false, historyOnly: false, slugs: false, to: null, by: null, prototype: null, migrated: null, skill: null };
   const pos = [];
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
-    const need = () => { if (i + 1 >= argv.length) throw new UsageError(`${a} needs a value`); i += 1; return argv[i]; };
+    // A value flag never swallows the next flag: `--to --force` is a forgotten status, not the status "--force".
+    const need = () => {
+      if (i + 1 >= argv.length) throw new UsageError(`${a} needs a value`);
+      if (argv[i + 1].startsWith('--')) throw new UsageError(`${a} needs a value (got ${argv[i + 1]}, which is a flag)`);
+      i += 1; return argv[i];
+    };
     if (a === '--help' || a === '-h') opts.help = true;
     else if (a === '--force') opts.force = true;
+    else if (a === '--history-only') opts.historyOnly = true;
     else if (a === '--slugs') opts.slugs = true;
     else if (a === '--dir') opts.dir = need();
     else if (a === '--to') opts.to = need();
@@ -197,13 +243,13 @@ export function main(argv) {
     if (!ORDER.includes(opts.to)) throw new UsageError(`--to must be one of ${ORDER.join('|')}, got "${opts.to}"`);
     const { state, file } = readState(opts.dir);
     const at = nowIso();
-    const { plan, cleared } = advance(state, rest, { to: opts.to, by: opts.by, prototype: opts.prototype, migrated: opts.migrated, force: opts.force, at });
+    const { plan, cleared } = advance(state, rest, { to: opts.to, by: opts.by, prototype: opts.prototype, migrated: opts.migrated, force: opts.force, historyOnly: opts.historyOnly, at });
     const writtenBy = normaliseSkill(opts.skill || SET_BY[opts.to]);
     state._provenance = stampProvenance(state._provenance, writtenBy, at);
     writeState(file, state);
-    const moves = plan.map((m) => `${m.slug} (${m.from}→${opts.to}${m.kind === 'reentry' ? ', again' : m.kind === 'forward' ? '' : ', forced'})`).join(', ');
+    const moves = plan.map((m) => (m.kind === 'history-only' ? `${m.slug} (stays ${m.from}, ${opts.to} entry appended)` : `${m.slug} (${m.from}→${opts.to}${m.kind === 'reentry' ? ', again' : m.kind === 'forward' ? '' : ', forced'})`)).join(', ');
     const extras = [opts.by ? `approvedBy ${opts.by}` : null, opts.prototype ? `prototypePath set` : null, opts.migrated ? `migratedPath set` : null, cleared.length ? `stale cleared: ${cleared.join(', ')}` : null].filter(Boolean);
-    console.log(`state: ${plan.length} page(s) → ${opts.to}: ${moves}${extras.length ? ` · ${extras.join(' · ')}` : ''} · written by ${writtenBy}`);
+    console.log(`state: ${plan.length} page(s) ${opts.historyOnly ? 'history +=' : '→'} ${opts.to}: ${moves}${extras.length ? ` · ${extras.join(' · ')}` : ''} · written by ${writtenBy}`);
     return 0;
   }
 

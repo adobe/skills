@@ -2,7 +2,8 @@
 // skills/stardust/scripts/test/ledger.test.mjs — the ledger.mjs contract: run-status.md line
 // shape and key order, skill normalisation, file/dir creation on first write, append-only with
 // newline repair, unknown skill/phase warning vs --strict refusal, blocked-without-detail, tail
-// and last output, usage errors. Run: node <this file>.
+// and last output, --next / --owner, the value-flag swallow rule, an explicit --dir that must exist,
+// usage errors. Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
@@ -64,8 +65,15 @@ check('PHASES: every requested skill is present, rollout uses the <Letter>-<word
 });
 
 // ---- CLI: writing ---------------------------------------------------------------------------------
-check('first write creates the directory and the file, prints the line it wrote', () => {
+check('an explicit --dir that does not exist is a usage error (exit 2) and creates nothing', () => {
   assert.ok(!existsSync(dir));
+  const r = run('migrate', 'render', 'start');
+  assert.equal(r.code, 2); assert.equal(r.out, ''); assert.match(r.err, /--dir .*stardust is not an existing directory/);
+  assert.ok(!existsSync(dir), 'no directory grown for a mistyped --dir');
+  for (const cmd of [['tail'], ['last']]) { const t = run(...cmd); assert.equal(t.code, 2, cmd.join(' ')); assert.match(t.err, /not an existing directory/); }
+});
+check('first write into an existing --dir creates the file, prints the line it wrote', () => {
+  mkdirSync(dir);
   const r = run('migrate', 'render', 'start');
   assert.equal(r.code, 0, r.err); assert.equal(r.err, '');
   const printed = JSON.parse(r.out.trim());
@@ -79,6 +87,25 @@ check('prefixed skill, --detail and --artifact land in the line; the file is app
   const all = lines(); assert.equal(all.length, 2);
   assert.equal(all[0].event, 'start', 'earlier line untouched');
   assert.deepEqual(all[1], { ts: all[1].ts, skill: 'stardust:migrate', phase: 'render', event: 'end', detail: '12 pages rendered', artifact: 'stardust/migrated/' });
+});
+check('--next and --owner land in the line after artifact; an end line without --next is accepted', () => {
+  const r = run('migrate', 'assets', 'end', '--detail', 'bundle final', '--next', 'state-and-report:\n  advance pages', '--owner', 'migrate');
+  assert.equal(r.code, 0, r.err);
+  const l = lines().at(-1);
+  assert.deepEqual(Object.keys(l), ['ts', 'skill', 'phase', 'event', 'detail', 'next', 'owner']);
+  assert.equal(l.next, 'state-and-report: advance pages', 'collapsed to one line'); assert.equal(l.owner, 'migrate');
+  const b = buildLine({ skill: 'migrate', phase: 'render', event: 'end', artifact: 'x', next: ' ', owner: 'me' });
+  assert.deepEqual(Object.keys(b), ['ts', 'skill', 'phase', 'event', 'artifact', 'owner'], 'a blank --next is dropped');
+  assert.equal(run('migrate', 'render', 'end').code, 0, 'end without --next is fine');
+});
+check('a value flag followed by another flag is a usage error naming the flag, nothing written', () => {
+  const before = lines().length;
+  for (const args of [['migrate', 'render', 'start', '--detail', '--strict'], ['migrate', 'render', 'start', '--artifact', '--detail', 'x'], ['migrate', 'render', 'start', '--next', '--owner', 'me'], ['migrate', 'render', 'start', '--owner', '-n'], ['tail', '-n', '--dir'], ['migrate', 'render', 'start', '--detail']]) {
+    const r = run(...args);
+    assert.equal(r.code, 2, args.join(' ')); assert.equal(r.out, ''); assert.match(r.err, /^ledger: (--detail|--artifact|--next|--owner|-n) needs a value/, args.join(' '));
+  }
+  assert.match(run('migrate', 'render', 'start', '--detail', '--strict').err, /--detail needs a value \(got --strict, which is a flag\)/);
+  assert.equal(lines().length, before);
 });
 check('rollout letter-phase and blocked with a reason', () => {
   const r = run('rollout', 'C-deliver', 'blocked', '--detail', 'token expired (401) — checkpointed, awaiting re-auth');
@@ -123,6 +150,7 @@ check('usage errors exit 2: wrong arity, bad event, unknown option, missing valu
   assert.equal(run('migrate', 'render', 'start', '--detail').code, 2);
   const none = spawnSync(process.execPath, [SCRIPT], { encoding: 'utf8' }); assert.equal(none.status, 2); assert.match(none.stderr, /Usage:/);
   const h = run('--help'); assert.equal(h.code, 0); assert.match(h.out, /node ledger\.mjs <skill> <phase> <start\|end\|blocked>/); assert.match(h.out, /Known skills: stardust, extract, prototype, migrate, replica, dynamics, rollout, deploy/);
+  assert.match(h.out, /\[--next "…"\] \[--owner "…"\]/); assert.match(h.out, /explicit --dir must already exist/);
 });
 check('--help prints the phase table: every ledger-form phase and every alias of every skill, one line per skill', () => {
   const h = run('--help');

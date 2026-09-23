@@ -2,8 +2,10 @@
 // skills/replica/scripts/test/gate-evidence.test.mjs — the gate-evidence.mjs contract: sidecar discovery, job
 // attribution from run-bg state (never log prose, never mtime), latest-round selection, the derived gates and their
 // FAIL:/OPEN: evidence, the sidecar merge (existing first, indent preserved, nothing else touched), the progress
-// ledger, --dry-run, --check against the width-aware acceptance set (a pixel gate per --widths entry), --slug, --json,
-// --help, the delivery-lint fallback.
+// ledger, --dry-run, --check against the width-aware acceptance set (a pixel gate per --widths entry) and against
+// stale gates, --slug, --json, --help, the delivery-lint fallback, the pixel regime (prototype vs published), deadline
+// and no-verdict jobs recorded OPEN, variance-probe only from the page's own ■ line, the name-fallback attribution
+// rule, a malformed progress.json aborting before any sidecar write.
 // Run: node plugins/stardust/skills/replica/scripts/test/gate-evidence.test.mjs   (about 2 s)
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -11,7 +13,7 @@ import { mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ACCEPTANCE, acceptanceFor, attribute, daPath, detectIndent, nameOwner, pagePaths, parseCounts, parseFindings, parseLint, parseVariance, parseVerdict } from '../gate-evidence.mjs';
+import { ACCEPTANCE, acceptanceFor, attribute, daPath, deadline, detectIndent, nameOwner, pagePaths, parseCounts, parseFindings, parseLint, parseVariance, parseVerdict, regimeOf } from '../gate-evidence.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'gate-evidence.mjs');
@@ -21,6 +23,7 @@ const BG = join(root, 'stardust/.work/replica/bg');
 const PROGRESS = join(root, 'stardust/replica/progress.json');
 const LINT = join(root, 'lint-stub.mjs');
 for (const d of [join(MIG, 'tours/north'), join(MIG, 'about'), BG, dirname(PROGRESS)]) mkdirSync(d, { recursive: true });
+const PUBLISHED = 'https://main--site--org.aem.page';
 
 let failed = 0; let checks = 0;
 const check = (name, fn) => { checks += 1; try { fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`); } };
@@ -52,8 +55,8 @@ console.log('  P0 h1  no <h1>'); console.log('\\n1 P0 · 0 P1 · 0 P2'); process
 // run-bg state exactly as run-bg's start() + runWrapper() leave it (indent 1); `end: null` = still running (no endedAt).
 const T0 = Date.parse('2026-09-18T10:00:00.000Z');
 const iso = (min) => new Date(T0 + min * 60000).toISOString();
-function job(name, cmd, args, { start, end, exit = 0, log }) {
-  const st = { name, cmd, args, cwd: root, timeoutSec: 900, slots: 3, queuedAt: iso(start), wrapperPid: 4242, launchedAt: iso(start + 0.1), endedAt: end === null ? null : iso(end), exit: end === null ? null : exit, timedOut: false };
+function job(name, cmd, args, { start, end, exit = 0, log, timedOut = false }) {
+  const st = { name, cmd, args, cwd: root, timeoutSec: 900, slots: 3, queuedAt: iso(start), wrapperPid: 4242, launchedAt: iso(start + 0.1), endedAt: end === null ? null : iso(end), exit: end === null ? null : exit, timedOut };
   writeFileSync(join(BG, `${name}.json`), JSON.stringify(st, null, 1));
   writeFileSync(join(BG, `${name}.log`), `run-bg: ${name} launched ${st.launchedAt} (timeout 900s): ${[cmd, ...args].join(' ')}\n${log}\n${end === null ? '' : `run-bg: ${name} ended exit=${exit}\n`}`);
 }
@@ -90,8 +93,14 @@ check('parsers read the instruments\' verdict lines and nothing else', () => {
   const log = read(join(BG, 'about-variance.log'));
   const vl = parseVariance(log, pagePaths('about/history.html')); assert.equal(vl.deltas, 2); assert.match(vl.line, /^■ .*history\.html: 2 delta\(s\)$/); assert.match(vl.summary, /^✗ 1 of 2 sibling/);
   assert.equal(parseVariance(log, pagePaths('about/team.html')).deltas, 0);
-  const vn = parseVariance(log, pagePaths('other.html')); assert.equal(vn.deltas, null); assert.match(vn.line, /^✗ 1 of 2/);
+  const vn = parseVariance(log, pagePaths('other.html')); assert.equal(vn.deltas, null); assert.match(vn.line, /^✗ 1 of 2/); assert.equal(vn.own, false); assert.equal(vl.own, true);
   assert.equal(parseVariance('sibling-variance error: boom'), null);
+});
+check('regimeOf: localhost / 127.0.0.1 / file: build URLs are the prototype regime, anything else published; deadline() reads run-bg state', () => {
+  const px = (build) => ({ instArgs: ['home', `${LIVE}/`, build, '1440'] });
+  for (const u of [`${PROTO}/home-proposed.html`, 'http://127.0.0.1:8080/x.html', 'http://localhost/x', 'file:///tmp/home-proposed.html', 'HTTP://LOCALHOST:1/x']) assert.equal(regimeOf(px(u)), 'prototype', u);
+  for (const u of [`${PUBLISHED}/`, 'https://localhost.example.test/', 'https://www.example.test/127.0.0.1/', 'http://localhostx:80/', '']) assert.equal(regimeOf(px(u)), 'published', u);
+  assert.equal(deadline({ timedOut: true, exit: 0 }), true); assert.equal(deadline({ timedOut: false, exit: 124 }), true); assert.equal(deadline({ timedOut: false, exit: 2 }), false);
 });
 check('page identity helpers: URL paths, the DA path, the indent', () => {
   assert.deepEqual(pagePaths('index.html'), ['/index.html', '/']);
@@ -111,6 +120,12 @@ check('attribute: gate.sh by its slug argument; URLs by path; files by cwd; slug
   assert.equal(attribute(md, north, ctx), true); assert.equal(attribute(md, tours, ctx), false);
   const byName = { kind: 'delivery-lint', name: 'tours-north-lint', instArgs: ['--file', 'elsewhere.html'], cwd: root };
   assert.equal(attribute(byName, north, ctx), true); assert.equal(attribute(byName, tours, ctx), false);
+  // The name fallback only when no argument names ANY known page: a job called tours-north-… whose --file is another page's is that page's.
+  const history = { slug: 'about-history', outputPath: 'about/history.html' };
+  const misnamed = { kind: 'delivery-lint', name: 'tours-north-lint2', instArgs: ['--file', 'stardust/migrated/about/history.html'], cwd: root };
+  const ctxPages = { ...ctx, pages: [north, tours, bare, history], slugs: [...ctx.slugs, 'about-history'] };
+  assert.equal(attribute(misnamed, history, ctxPages), true); assert.equal(attribute(misnamed, north, ctxPages), false, 'named after tours-north, but its argument names about-history');
+  assert.equal(attribute(byName, north, ctxPages), true, 'no argument names any known page → the name still decides');
   assert.equal(nameOwner('tours-north-1440-iter2', ctx.slugs), 'tours-north'); assert.equal(nameOwner('tours-1440', ctx.slugs), 'tours'); assert.equal(nameOwner('cd-1', ctx.slugs), null);
 });
 
@@ -142,13 +157,14 @@ check('tours-north: the declaration stays first, then the derived gates in order
 });
 check('tours-north evidence: latest round by endedAt (not mtime), the running round ignored, every job line ends with its log pointer', () => {
   const e = json(side.north).gateEvidence;
-  assert.equal(e['pixel-gate-1440'], '0.13% (6960 px, threshold 10%), height delta 2px, round iter2 @1440 (tours-north-1440-iter2.log)');
-  assert.match(e['pixel-gate-360'], /^FAIL: \|height delta\| > 8px tolerance — 0\.90% .*height delta 12px, round iter1 @360 \(tours-north-360-iter1\.log\)$/);
+  assert.equal(e['pixel-gate-1440'], '0.13% (6960 px, threshold 10%), height delta 2px, round iter2 @1440 (tours-north-1440-iter2.log) [prototype regime]');
+  assert.match(e['pixel-gate-360'], /^FAIL: \|height delta\| > 8px tolerance — 0\.90% .*height delta 12px, round iter1 @360 \(tours-north-360-iter1\.log\) \[prototype regime\]$/);
   assert.equal(e['content-count'], 'content-diff: none — content + roles match (cd-tours-north.log)');
   assert.equal(e['media-reconcile'], '4 keep · 1 optimize · 0 omit (media-tours-north.log)');
   assert.equal(e['delivery-lint'], '0 P0 · 0 P1 · 1 P2 (delivery-lint --path /tours/north)');
   assert.doesNotMatch(JSON.stringify(e), /iter3|90\.00/, 'the still-running round left no trace');
-  for (const g of ['pixel-gate-1440', 'pixel-gate-360', 'content-count', 'media-reconcile']) assert.match(e[g], /\([a-z0-9-]+\.log\)$/, g);
+  for (const g of ['content-count', 'media-reconcile']) assert.match(e[g], /\([a-z0-9-]+\.log\)$/, g);
+  for (const g of ['pixel-gate-1440', 'pixel-gate-360']) assert.match(e[g], /\([a-z0-9-]+\.log\) \[prototype regime\]$/, g);
 });
 check('about-history: only variance-probe passes; the others are recorded OPEN:/FAIL: with their pointers', () => {
   const m = json(side.history);
@@ -162,7 +178,7 @@ check('about-history: only variance-probe passes; the others are recorded OPEN:/
 check('home (archetype): its own pixel round, lint FAIL at path /, no variance-probe at all', () => {
   const m = json(side.home);
   assert.deepEqual(m.gatesPassed, ['pixel-gate-1440']);
-  assert.match(m.gateEvidence['pixel-gate-1440'], /height delta -3px, round iter @1440 \(home-1440-iter1\.log\)$/);
+  assert.match(m.gateEvidence['pixel-gate-1440'], /height delta -3px, round iter @1440 \(home-1440-iter1\.log\) \[prototype regime\]$/);
   assert.equal(m.gateEvidence['delivery-lint'], 'FAIL: 1 P0 · 0 P1 · 0 P2 (delivery-lint --path /)');
   assert.equal('variance-probe' in m.gateEvidence, false);
 });
@@ -184,7 +200,7 @@ check('progress.json: migrate totals, per-gate counts, missing sets, siblings bl
   assert.deepEqual(p.migrate.missing, { 'about-history': ['pixel-gate-1440', 'pixel-gate-360', 'delivery-lint', 'media-reconcile', 'content-fidelity', 'content-count'], 'tours-north': ['variance-probe', 'pixel-gate-360'] });
   const s = p.siblings['tours-north'];
   assert.equal(s.archetype, 'tours'); assert.deepEqual(s.variants, ['tours--wide']); assert.equal(s.pixel['1440'].pct, 0.13); assert.equal(s.pixel['1440'].label, 'iter2');
-  assert.deepEqual(s.pixel['360'], { pct: 0.9, px: 4700, heightDelta: 12, verdict: 'PASS', label: 'iter1' });
+  assert.deepEqual(s.pixel['360'], { pct: 0.9, px: 4700, heightDelta: 12, verdict: 'PASS', label: 'iter1', regime: 'prototype' });
   assert.equal(s.contentDiff, 'none — content + roles match'); assert.equal(s.deliveryLint, '0 P0 · 0 P1 · 1 P2'); assert.equal(s.media, '4 keep · 1 optimize · 0 omit');
   assert.equal(s.migrated, 'stardust/migrated/tours/north/index.html'); assert.deepEqual(s.gatesPassed, json(side.north).gatesPassed);
   assert.equal(p.siblings['about-history'].archetype, 'about'); assert.equal('home' in p.siblings, false);
@@ -238,6 +254,92 @@ check('without a resolvable --lint the latest delivery-lint job stands in, and o
   const r = run('--lint', join(root, 'missing-lint.mjs'), '--slug', 'tours-north'); assert.equal(r.code, 0, r.err);
   assert.match(r.err, /^gate-evidence: delivery-lint: .*missing-lint\.mjs not found — pass --lint/m);
   assert.equal(json(side.north).gateEvidence['delivery-lint'], '0 P0 · 0 P1 · 0 P2 (lint-tours-north.log)');
+});
+
+
+// ---- hardening: regime, deadline, no verdict, stale, not-in-probe, malformed ledger ----------------
+check('a published-origin round is the published regime: evidence suffix and the progress.json regime field', () => {
+  job('tours-north-360-pub', GATE, ['tours-north', `${LIVE}/tours/north/`, `${PUBLISHED}/tours/north/`, '360', 'pub1', '--marker', 'north'], { start: 80, end: 84, exit: 0, log: pixelLog(0, 2600, 522000, '0.50', 'PASS') });
+  const r = run('--slug', 'tours-north'); assert.equal(r.code, 0, r.err);
+  const m = json(side.north);
+  assert.equal(m.gateEvidence['pixel-gate-360'], '0.50% (2600 px, threshold 10%), height delta 0px, round pub1 @360 (tours-north-360-pub.log) [published regime]');
+  assert.ok(m.gatesPassed.includes('pixel-gate-360'), 'the published round passes the gate the prototype round failed');
+  assert.equal(m.gateEvidence['pixel-gate-1440'].endsWith('[prototype regime]'), true, 'the 1440 gate still reads prototype');
+  const p = json(PROGRESS).siblings['tours-north'].pixel; assert.equal(p['360'].regime, 'published'); assert.equal(p['1440'].regime, 'prototype'); assert.equal(p['360'].label, 'pub1');
+});
+check('the newest round on a deadline (timedOut / exit 124) is OPEN: deadline — an older pass is not resurrected; --full deadlines hit content-count too', () => {
+  job('home-360-iter1', GATE, ['home', `${LIVE}/`, `${PROTO}/home-proposed.html`, '360', 'iter1'], { start: 85, end: 86, exit: 124, timedOut: true, log: 'stitched … live.png\nrun-bg: home-360-iter1 deadline 900s exceeded' });
+  job('tours-north-1440-iter4', GATE, ['tours-north', `${LIVE}/tours/north/`, `${PROTO}/tours-north-proposed.html`, '1440', 'iter4', '--full'], { start: 87, end: 88, exit: 124, timedOut: true, log: `${pixelLog(1, 100, 5313600, '0.01', 'PASS')}\ncontent-diff: DEADLINE (exit 124) — re-run, not a verdict` });
+  job('cd-tours-north-2', 'node', ['stardust/scripts/diff/content-diff.mjs', `${LIVE}/tours/north/`, `${PROTO}/tours-north-proposed.html`], { start: 89, end: 90, exit: 124, log: 'content-diff generic @1280\n(deadline)' });
+  const r = run('--slug', 'home', '--slug', 'tours-north'); assert.equal(r.code, 0, r.err);
+  const h = json(side.home);
+  assert.equal(h.gateEvidence['pixel-gate-360'], 'OPEN: deadline (home-360-iter1.log) — re-run'); assert.equal(h.gatesPassed.includes('pixel-gate-360'), false);
+  const n = json(side.north);
+  assert.equal(n.gateEvidence['pixel-gate-1440'], 'OPEN: deadline (tours-north-1440-iter4.log) — re-run', 'the iter2 PASS is not resurrected');
+  assert.equal(n.gateEvidence['content-count'], 'OPEN: deadline (cd-tours-north-2.log) — re-run', 'exit 124 without the timedOut flag counts as a deadline too');
+  assert.ok(n.gatesPassed.includes('pixel-gate-1440') && n.gatesPassed.includes('content-count'), 'gates are never removed');
+  assert.match(r.err, /tours-north: pixel-gate-1440 stays in gatesPassed, but the latest evidence reads "OPEN: deadline/);
+  assert.match(r.out, /^tours-north {2}sibling {2}1440=— {2}360=0\.50%\/Δ0 /m, 'no pixel fact at 1440 from a deadline');
+  const t = run('--slug', 'tours-north', '--json'); assert.equal(JSON.parse(t.out)[0].pixel['1440'], undefined);
+});
+check('a pixel round whose exit is not 0/2 (bot challenge 3, error 1, identity 4) is OPEN: no verdict, whatever its log says', () => {
+  job('home-1440-iter2', GATE, ['home', `${LIVE}/`, `${PROTO}/home-proposed.html`, '1440', 'iter2'], { start: 91, end: 92, exit: 3, log: `${pixelLog(0, 10, 5313600, '0.00', 'PASS')}\nstitch-shot: bot challenge on the live side` });
+  const r = run('--slug', 'home'); assert.equal(r.code, 0, r.err);
+  const h = json(side.home);
+  assert.equal(h.gateEvidence['pixel-gate-1440'], 'OPEN: no verdict (exit 3) (home-1440-iter2.log)');
+  assert.equal(h.gatesPassed.includes('pixel-gate-1440'), true, 'the earlier pass stays listed (never removed) — and is now stale');
+  job('home-1440-iter3', GATE, ['home', `${LIVE}/`, `${PROTO}/home-proposed.html`, '1440', 'iter3'], { start: 93, end: 94, exit: 4, log: pixelLog(0, 10, 5313600, '0.00', 'PASS') });
+  run('--slug', 'home'); assert.equal(json(side.home).gateEvidence['pixel-gate-1440'], 'OPEN: no verdict (exit 4) (home-1440-iter3.log)');
+  job('home-1440-iter4', GATE, ['home', `${LIVE}/`, `${PROTO}/home-proposed.html`, '1440', 'iter4'], { start: 95, end: 96, exit: 1, log: 'stitch-shot: ECONNREFUSED' });
+  run('--slug', 'home'); assert.equal(json(side.home).gateEvidence['pixel-gate-1440'], 'OPEN: no verdict (exit 1) (home-1440-iter4.log)');
+});
+check('--check exits 2 on a stale gate (in gatesPassed, latest evidence FAIL/OPEN) and names it — for an archetype too', () => {
+  const r = run('--check', '--slug', 'home', '--dry-run'); assert.equal(r.code, 2, r.err);
+  assert.match(r.out, /^home: stale pixel-gate-1440 — in gatesPassed, but the latest evidence reads FAIL\/OPEN/m);
+  assert.doesNotMatch(r.out, /^home: missing/m, 'the archetype is still not held to the sibling set');
+  const j = run('--check', '--slug', 'home', '--dry-run', '--json'); assert.equal(j.code, 2); assert.deepEqual(JSON.parse(j.out)[0].stale, ['pixel-gate-1440']);
+  const n = run('--check', '--slug', 'tours-north', '--dry-run'); assert.equal(n.code, 2); assert.match(n.out, /^tours-north: stale pixel-gate-1440, content-count — /m);
+  // a real FAIL while listed: about-history gets a FAIL round at 1440 after a hand-declared pixel-gate-1440
+  const hm = json(side.history); hm.gatesPassed.push('pixel-gate-1440'); hm.gateEvidence['pixel-gate-1440'] = 'declared by hand'; writeFileSync(side.history, JSON.stringify(hm, null, 2));
+  job('about-history-1440-iter1', GATE, ['about-history', `${LIVE}/about/history.html`, `${PROTO}/about-history-proposed.html`, '1440', 'iter1'], { start: 97, end: 98, exit: 2, log: pixelLog(0, 1000000, 5313600, '18.82', 'FAIL') });
+  const f = run('--check', '--slug', 'about-history', '--dry-run'); assert.equal(f.code, 2);
+  assert.match(f.out, /^about-history: stale pixel-gate-1440 — /m); assert.match(f.out, /^about-history: missing pixel-gate-360, delivery-lint, media-reconcile, content-fidelity, content-count$/m);
+  writeFileSync(side.history, JSON.stringify(HISTORY0, null, 2)); rmSync(join(BG, 'about-history-1440-iter1.json')); rmSync(join(BG, 'about-history-1440-iter1.log'));
+});
+check('variance-probe: a probe that never printed the page\'s ■ line is OPEN: not in the probe — under a ✗ and under a ✓ summary alike', () => {
+  mkdirSync(join(MIG, 'about'), { recursive: true });
+  writeFileSync(join(MIG, 'about/press.html'), '<html><body><main><p>Press</p></main></body></html>\n');
+  const PRESS0 = { slug: 'about-press', type: 'article', fidelityTier: 'sibling', archetypeSource: 'about', template: 'about', variants: [], migratedAt: '2026-09-04T00:00:00.000Z' };
+  const sidePress = join(MIG, 'about/press._meta.json'); writeFileSync(sidePress, `${JSON.stringify(PRESS0, null, 2)}\n`);
+  job('about-variance-2', 'node', ['stardust/scripts/replica/sibling-variance.mjs', `${LIVE}/about/`, `${LIVE}/about/press.html`, `${LIVE}/about/team.html`, '--probe', 'hero=.hero'], { start: 100, end: 101, exit: 2, log: `sibling-variance @ 1440px\n\n■ ${LIVE}/about/team.html: 1 delta(s)\n  height  hero: 1 vs 2\n\n✗ 1 of 2 sibling(s) vary from the archetype in: hero — budget variant classes.` });
+  let r = run('--slug', 'about-press'); assert.equal(r.code, 0, r.err);
+  let m = json(sidePress);
+  assert.equal(m.gateEvidence['variance-probe'], `OPEN: not in the probe — ✗ 1 of 2 sibling(s) vary from the archetype in: hero — budget variant classes. (about-variance-2.log)`);
+  assert.equal(m.gatesPassed.includes('variance-probe'), false);
+  job('about-variance-3', 'node', ['stardust/scripts/replica/sibling-variance.mjs', `${LIVE}/about/`, `${LIVE}/about/press.html`, '--probe', 'hero=.hero'], { start: 102, end: 103, exit: 0, log: `sibling-variance @ 1440px\n\n✓ 1 sibling(s) match the archetype` });
+  r = run('--slug', 'about-press'); assert.equal(r.code, 0, r.err); m = json(sidePress);
+  assert.equal(m.gateEvidence['variance-probe'], 'OPEN: not in the probe — ✓ 1 sibling(s) match the archetype (about-variance-3.log)', 'a ✓ summary without the page\'s own line never passes');
+  assert.equal(m.gatesPassed.includes('variance-probe'), false);
+  job('about-variance-4', 'node', ['stardust/scripts/replica/sibling-variance.mjs', `${LIVE}/about/`, `${LIVE}/about/press.html`, '--probe', 'hero=.hero'], { start: 104, end: 105, exit: 0, log: `sibling-variance @ 1440px\n\n■ ${LIVE}/about/press.html: ✓ matches the archetype\n\n✓ 1 sibling(s) match the archetype` });
+  r = run('--slug', 'about-press'); assert.equal(r.code, 0, r.err); m = json(sidePress);
+  assert.equal(m.gateEvidence['variance-probe'], `■ ${LIVE}/about/press.html: ✓ matches the archetype (about-variance-4.log)`); assert.deepEqual(m.gatesPassed, ['variance-probe']);
+  job('about-variance-5', 'node', ['stardust/scripts/replica/sibling-variance.mjs', `${LIVE}/about/`, `${LIVE}/about/press.html`], { start: 106, end: 107, exit: 124, timedOut: true, log: 'sibling-variance @ 1440px' });
+  r = run('--slug', 'about-press'); assert.equal(r.code, 0, r.err); assert.equal(json(sidePress).gateEvidence['variance-probe'], 'OPEN: deadline (about-variance-5.log) — re-run');
+  job('about-variance-6', 'node', ['stardust/scripts/replica/sibling-variance.mjs', `${LIVE}/about/`, `${LIVE}/about/press.html`], { start: 108, end: 109, exit: 1, log: 'sibling-variance error: boom' });
+  r = run('--slug', 'about-press'); assert.equal(r.code, 0, r.err); assert.equal(json(sidePress).gateEvidence['variance-probe'], 'OPEN: no verdict (exit 1) (about-variance-6.log)');
+  for (const n of [2, 3, 4, 5, 6]) { rmSync(join(BG, `about-variance-${n}.json`)); rmSync(join(BG, `about-variance-${n}.log`)); }
+  rmSync(sidePress); rmSync(join(MIG, 'about/press.html'));
+});
+check('a malformed progress.json aborts (exit 1, named) before any sidecar is written; writes go through temp + rename', () => {
+  const good = read(PROGRESS); writeFileSync(PROGRESS, '{ "pages": ');
+  job('media-home', 'node', ['stardust/scripts/rollout/media-reconcile.mjs', '--file', 'stardust/migrated/index.html'], { start: 110, end: 111, log: 'media-reconcile\n\n3 keep' });
+  const before = read(side.home);
+  const r = run('--slug', 'home'); assert.equal(r.code, 1); assert.match(r.err, /^gate-evidence: .*progress\.json: /); assert.doesNotMatch(r.err, /\n\s+at /);
+  assert.equal(read(side.home), before, 'the sidecar that would have gained media-reconcile is untouched');
+  assert.equal(read(PROGRESS), '{ "pages": ', 'the malformed ledger is left for the human');
+  writeFileSync(PROGRESS, good);
+  const ok = run('--slug', 'home'); assert.equal(ok.code, 0, ok.err); assert.equal(json(side.home).gateEvidence['media-reconcile'], '3 keep (media-home.log)');
+  assert.equal(readdirSync(dirname(side.home)).some((f) => f.endsWith('.tmp')), false); assert.equal(readdirSync(dirname(PROGRESS)).some((f) => f.endsWith('.tmp')), false);
 });
 
 rmSync(root, { recursive: true, force: true });

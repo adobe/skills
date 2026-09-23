@@ -1,12 +1,15 @@
 // Contract test for migrate.mjs — a mkdtemp project with seven state pages, prototypes, captures and a
-// canon; every subcommand is driven through the CLI (execFileSync/spawnSync), nothing is imported for
-// the assertions except the sha helper. Run: node skills/migrate/scripts/test/migrate.test.mjs
+// canon; every subcommand is driven through the CLI (execFileSync/spawnSync); foldPath is imported for
+// the pure check. Also: importing the module is silent, the flow guard, the merged state.json.migrate
+// block, AEM-folded output-path collisions, a malformed sidecar refused, the value-flag swallow rule.
+// Run: node skills/migrate/scripts/test/migrate.test.mjs
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { foldPath } from '../migrate.mjs';
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', 'migrate.mjs');
 const tmp = mkdtempSync(join(tmpdir(), 'migrate-test-'));
@@ -27,6 +30,7 @@ const state0 = {
   _provenance: { writtenBy: 'test' },
   site: { originUrl: 'https://example.test', name: 'Example' },
   direction: { status: 'active' },
+  flow: 'replica', flowChosenAt: '2026-09-01T00:00:00Z', flowSource: 'user-phrase',
   pages: [
     page('home', '/', 'approved', 'landing'),
     page('tours', '/tours/', 'approved', 'listing'),
@@ -38,6 +42,15 @@ const state0 = {
   ],
 };
 write(STATE, `${JSON.stringify(state0, null, 2)}\n`);
+
+// ---- importing the module never prints help or exits -------------------------------------------
+console.log('import');
+check('importing migrate.mjs with no argv prints nothing and does not exit (the help guard sits under the main check)', () => {
+  const r = spawnSync(process.execPath, ['--input-type=module', '-e', `await import(${JSON.stringify(pathToFileURL(SCRIPT).href)}); console.log('imported');`], { cwd: tmp, encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr); assert.equal(r.stdout, 'imported\n'); assert.equal(r.stderr, '');
+  const bare = run([]); assert.equal(bare.status, 0); assert.match(bare.out, /Usage:/, 'the CLI with no arguments still prints the usage');
+});
+
 const capture = (slug, title, desc) => write(`stardust/current/pages/${slug}.json`, JSON.stringify({ url: `https://example.test/${slug}`, title, metaDescription: desc, _provenance: { unsourcedContent: [] } }));
 capture('home', 'Home capture', 'Home description from the capture.');
 capture('tours', 'Tours capture', 'Tours description.');
@@ -71,6 +84,19 @@ write(`${P}/assets/img/hero@2x.jpg`, 'HERO2X');
 write(`${P}/assets/fonts/a.woff2`, 'FONT');
 write('stardust/current/assets/img/bg.png', 'BG');
 
+// ---- flow guard (state-machine.md § Flow keys) -------------------------------------------------
+console.log('flow guard');
+check('render refuses (exit 2) a state file without flow, pointing at the master routing; nothing is written', () => {
+  const noFlow = structuredClone(state0); delete noFlow.flow; delete noFlow.flowChosenAt; delete noFlow.flowSource;
+  write(STATE, `${JSON.stringify(noFlow, null, 2)}\n`);
+  const r = run(['render', '--all']);
+  assert.equal(r.status, 2, r.err); assert.equal(r.out, '');
+  assert.match(r.err, /^refused: stardust\/state\.json has no top-level flow — stamp flow \/ flowChosenAt \/ flowSource before migrating/);
+  assert.match(r.err, /skills\/stardust\/SKILL\.md § Routing/); assert.match(r.err, /Two migration flows/);
+  assert.ok(!has(OUT), 'no page rendered'); assert.equal('migrate' in json(STATE), false, 'state.json untouched');
+  for (const flow of ['replica', 'redesign']) { write(STATE, `${JSON.stringify({ ...noFlow, flow }, null, 2)}\n`); const ok = run(['pagemap']); assert.equal(ok.status, 0, ok.err); }
+  write(STATE, `${JSON.stringify(state0, null, 2)}\n`);
+});
 // ---- run 1: --all without --branch-b → six placed, faq refused --------------------------------
 console.log('render --all (first run)');
 const r1 = run(['render', '--all']);
@@ -142,7 +168,25 @@ check('state.json.migrate: page map from all 7 pages, sorted bundledAssets; page
   assert.deepEqual(s.migrate.pageMap[3], { sourceUrl: '/about/history.html', outputPath: 'about/history.html', slug: 'about-history', outputPathDefault: null });
   assert.deepEqual(s.migrate.bundledAssets, [...s.migrate.bundledAssets].sort()); assert.ok(s.migrate.bundledAssets.includes('img/bg.png'));
   assert.deepEqual(s.pages.map((p) => p.status), state0.pages.map((p) => p.status)); assert.deepEqual(s.site, state0.site); assert.equal(s.migrate.selfContained, true);
-  assert.deepEqual(Object.keys(s), ['_provenance', 'site', 'direction', 'pages', 'migrate']);
+  assert.deepEqual(Object.keys(s), ['_provenance', 'site', 'direction', 'flow', 'flowChosenAt', 'flowSource', 'pages', 'migrate']);
+  assert.equal(s.flow, 'replica');
+});
+check('the sidecar-only subcommands are not flow-guarded: gate works on a state without flow', () => {
+  const s = json(STATE); const flowKeys = { flow: s.flow, flowChosenAt: s.flowChosenAt, flowSource: s.flowSource }; delete s.flow; delete s.flowChosenAt; delete s.flowSource;
+  write(STATE, `${JSON.stringify(s, null, 2)}\n`);
+  const g = run(['gate', 'tours', 'probe-ok', '--evidence', 'unguarded']); assert.equal(g.status, 0, g.err); assert.deepEqual(json(`${OUT}/tours/_meta.json`).gatesPassed, ['probe-ok']);
+  const r = run(['render', 'tours']); assert.equal(r.status, 2); assert.match(r.err, /no top-level flow/);
+  const back = json(STATE); Object.assign(back, flowKeys); write(STATE, `${JSON.stringify(back, null, 2)}\n`);
+  // undo the gate so the later judgment checks start clean
+  const m = json(`${OUT}/tours/_meta.json`); m.gatesPassed = []; m.gateEvidence = {}; write(`${OUT}/tours/_meta.json`, `${JSON.stringify(m, null, 2)}\n`);
+});
+check('state.json.migrate is merged: a key this script does not own (generators) survives a render', () => {
+  const s = json(STATE); s.migrate.generators = { sitemap: 'stardust/scripts/gen/sitemap.mjs' }; s.migrate.cleanedAssets = ['old/x.png']; write(STATE, `${JSON.stringify(s, null, 2)}\n`);
+  const r = run(['render', 'tours', '--force']); assert.equal(r.status, 0, r.err);
+  const m = json(STATE).migrate;
+  assert.deepEqual(m.generators, { sitemap: 'stardust/scripts/gen/sitemap.mjs' }); assert.deepEqual(m.cleanedAssets, ['old/x.png']);
+  assert.deepEqual(m.lastRun.rendered, ['tours']); assert.equal(m.pageMap.length, 7);
+  const t = json(STATE); delete t.migrate.generators; t.migrate.cleanedAssets = []; write(STATE, `${JSON.stringify(t, null, 2)}\n`);
 });
 
 // ---- run 2/3: --branch-b places faq; the rest is unchanged; a third run touches nothing ---------
@@ -226,6 +270,36 @@ check('two pages mapping to one output path → both refused (strict 8) before a
   const r = run(['render', 'dup-a', 'dup-b']); assert.equal(r.status, 2);
   assert.match(r.err, /^refused dup-a: strict 8 — output path dup\/index\.html collides with dup-b/m); assert.match(r.err, /^refused dup-b: strict 8 /m);
   assert.ok(!has(`${OUT}/dup/index.html`)); assert.match(run(['pagemap']).out, /1 collision\(s\)/);
+});
+check('two pages that collide only once AEM-folded (/About vs /about/) are both refused (strict 8), before any render', () => {
+  assert.equal(foldPath('About/index.html'), 'about/index.html'); assert.equal(foldPath('Our Team/Meet_Us.html'), 'our-team/meet-us.html'); assert.equal(foldPath('a//b/'), 'a/b'); assert.equal(foldPath('x--y/-z-/index.html'), 'x-y/z/index.html');
+  const s2 = json(STATE); s2.pages.push(page('about-upper', '/About', 'approved', 'static'), page('about-lower', '/about/', 'approved', 'static'));
+  write(STATE, `${JSON.stringify(s2, null, 2)}\n`);
+  write(`${P}/about-upper-proposed.html`, minimal('About U')); write(`${P}/about-lower-proposed.html`, minimal('About L'));
+  const r = run(['render', 'about-upper', 'about-lower']); assert.equal(r.status, 2);
+  assert.match(r.err, /^refused about-upper: strict 8 — output path About\/index\.html collides with about-lower \(about\/index\.html\) once AEM-folded to about\/index\.html/m);
+  assert.match(r.err, /^refused about-lower: strict 8 — output path about\/index\.html collides with about-upper \(About\/index\.html\) once AEM-folded to about\/index\.html/m);
+  assert.ok(!has(`${OUT}/About/index.html`) && !has(`${OUT}/about/index.html`));
+  const pm = run(['pagemap']); assert.equal(pm.status, 2); assert.match(pm.out, /^about-upper .*→ About\/index\.html  COLLISION \(folds to about\/index\.html\)$/m); assert.match(pm.out, /^about-lower .*→ about\/index\.html  COLLISION$/m); assert.match(pm.out, /2 collision\(s\)/);
+  const back = json(STATE); back.pages = back.pages.filter((p) => !['about-upper', 'about-lower'].includes(p.slug)); write(STATE, `${JSON.stringify(back, null, 2)}\n`);
+});
+check('a malformed sidecar is refused by the sidecar subcommands (usage error naming the file) and by render (strict sidecar); never overwritten', () => {
+  const side = `${OUT}/tours/_meta.json`; const good = read(side);
+  write(side, '{ "slug": "tours", broken');
+  const g = run(['gate', 'tours', 'x']); assert.equal(g.status, 1); assert.match(g.err, /^usage error: stardust\/migrated\/tours\/_meta\.json is not a valid JSON sidecar/);
+  const v = run(['variant', 'tours', 'wide']); assert.equal(v.status, 1); assert.match(v.err, /not a valid JSON sidecar/);
+  assert.equal(read(side), '{ "slug": "tours", broken', 'untouched by the subcommands');
+  const r = run(['render', 'tours', '--force']); assert.equal(r.status, 2); assert.match(r.err, /^refused tours: strict sidecar — stardust\/migrated\/tours\/_meta\.json exists but is not valid JSON — fix or delete the sidecar/m);
+  assert.equal(read(side), '{ "slug": "tours", broken', 'untouched by render');
+  write(side, good);
+});
+check('a value flag followed by another flag (or nothing) is a usage error naming the flag', () => {
+  for (const [args, flag] of [[['gate', 'home', 'links', '--evidence', '--force'], 'evidence'], [['render', '--all', '--canon-css'], 'canon-css'], [['render', 'home', '--out', '--force'], 'out'], [['deviation', 'home', '--kind', '--reason', 'x'], 'kind'], [['render', 'home', '--source', '--all'], 'source']]) {
+    const r = run(args); assert.equal(r.status, 1, args.join(' ')); assert.match(r.err, new RegExp(`^usage error: --${flag} needs a value`), args.join(' '));
+  }
+  assert.match(run(['gate', 'home', 'links', '--evidence', '--force']).err, /--evidence needs a value \(got --force, which is a flag\)/);
+  assert.deepEqual(json(`${OUT}/_meta.json`).gatesPassed, ['visual-parity', 'links'], 'nothing recorded');
+  const ok = run(['decision', 'home', '--kind', 'k', '--json', '{"a":1}']); assert.equal(ok.status, 0, ok.err); // --json still takes its object
 });
 check('unknown slug and no command are usage errors (exit 1)', () => {
   assert.equal(run(['render', 'ghost']).status, 1); assert.equal(run(['frobnicate']).status, 1);

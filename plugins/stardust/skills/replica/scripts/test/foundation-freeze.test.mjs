@@ -2,13 +2,14 @@
 // skills/replica/scripts/test/foundation-freeze.test.mjs — the foundation-freeze.mjs contract: a sorted
 // sha256 manifest over the frozen set (existing default entries only, dot-entries and node_modules skipped,
 // no file contents), `check` exit 0 while nothing moved, exit 1 with one line per changed / missing / added
-// file under a frozen path, silence for files outside the set, --paths/--out/--manifest/--root, --help that
-// touches nothing, usage errors on exit 2 with one stderr line.
+// file under a frozen path, silence for files outside the set, symlinks recorded by link text and never followed
+// (file, directory, loop, dangling), a filesystem error mapped to exit 2 (exit 1 stays "changed"),
+// --paths/--out/--manifest/--root, --help that touches nothing, usage errors on exit 2 with one stderr line.
 // Run: node plugins/stardust/skills/replica/scripts/test/foundation-freeze.test.mjs   (about 1 s)
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -105,6 +106,49 @@ check('dot-entries and node_modules appearing under a frozen dir are not `added`
   write('scripts/.env', 'DA_TOKEN=x');
   const r = run('check'); assert.equal(r.code, 0, r.out);
 });
+check('symlinks are recorded by link text, never followed: a file link, a directory link, a loop, a dangling link', () => {
+  symlinkSync('styles.css', join(root, 'styles/link.css')); // file link
+  symlinkSync('../blocks', join(root, 'scripts/vendor')); // directory link — blocks/hero must not be pulled in
+  symlinkSync('.', join(root, 'scripts/loop')); // a loop: stat would ELOOP, lstat does not
+  symlinkSync('nowhere.css', join(root, 'styles/gone.css')); // dangling
+  const f = run('freeze'); assert.equal(f.code, 0, f.err);
+  const m = manifest();
+  assert.equal(m.files['styles/link.css'], 'symlink:styles.css'); assert.equal(m.files['scripts/vendor'], 'symlink:../blocks');
+  assert.equal(m.files['scripts/loop'], 'symlink:.'); assert.equal(m.files['styles/gone.css'], 'symlink:nowhere.css');
+  assert.equal(Object.keys(m.files).some((p) => p.startsWith('scripts/vendor/')), false, 'the linked directory is not walked');
+  assert.equal(f.out, `frozen ${FROZEN.length + 4} files → ${DEFAULT_OUT}\n`);
+  assert.equal(run('check').code, 0, 'unchanged with the links in place');
+  write('styles/styles.css', ':root { --x: 1 }\n');
+  let c = run('check'); assert.equal(c.code, 1); assert.deepEqual(lines(c.out), ['changed styles/styles.css', 'foundation changed: 1 changed, 0 missing, 0 added'], 'the link to it is not `changed`: its text did not move');
+  write('styles/styles.css', FIXTURE['styles/styles.css']);
+  unlinkSync(join(root, 'styles/link.css')); symlinkSync('fonts.css', join(root, 'styles/link.css'));
+  c = run('check'); assert.equal(c.code, 1); assert.deepEqual(lines(c.out), ['changed styles/link.css', 'foundation changed: 1 changed, 0 missing, 0 added'], 'a re-pointed link is a change');
+  unlinkSync(join(root, 'styles/link.css')); write('styles/link.css', FIXTURE['styles/styles.css']);
+  c = run('check'); assert.equal(c.code, 1); assert.match(c.out, /^changed styles\/link\.css$/m, 'a link replaced by a real file is a change');
+  for (const l of ['styles/link.css', 'scripts/vendor', 'scripts/loop', 'styles/gone.css']) unlinkSync(join(root, l));
+  assert.equal(run('freeze').code, 0);
+  assert.deepEqual(Object.keys(manifest().files), FROZEN, 'back to the plain set');
+});
+check('a frozen top-level entry that is itself a symlink is one `symlink:` entry (not walked), with or without the trailing slash', () => {
+  symlinkSync('blocks', join(root, 'fonts'));
+  const f = run('freeze'); assert.equal(f.code, 0, f.err);
+  assert.deepEqual(manifest().paths.filter((p) => p === 'fonts/'), ['fonts/']); assert.equal(manifest().files.fonts, 'symlink:blocks');
+  assert.equal(Object.keys(manifest().files).some((p) => p.startsWith('fonts/')), false);
+  assert.equal(run('check').code, 0);
+  unlinkSync(join(root, 'fonts')); assert.equal(run('freeze').code, 0); assert.equal('fonts' in manifest().files, false);
+});
+check('a filesystem error while hashing is exit 2 with one line naming the path — never exit 1 (changed)', () => {
+  if (typeof process.getuid === 'function' && process.getuid() === 0) { console.log('  (skipped: running as root, chmod 000 does not deny)'); return; }
+  const before = readFileSync(MANIFEST, 'utf8');
+  mkdirSync(join(root, 'styles/locked')); write('styles/locked/x.css', 'x{}'); chmodSync(join(root, 'styles/locked'), 0o000);
+  try {
+    const f = run('freeze'); assert.equal(f.code, 2, f.out); assert.equal(f.out, ''); assert.match(f.err, /^foundation-freeze: EACCES .*styles\/locked: /); assert.equal(lines(f.err).length, 1); assert.doesNotMatch(f.err, /\n\s+at /);
+    assert.equal(readFileSync(MANIFEST, 'utf8'), before, 'the previous manifest is intact (no partial write)');
+    const c = run('check'); assert.equal(c.code, 2, c.out); assert.match(c.err, /^foundation-freeze: EACCES/); assert.doesNotMatch(c.out, /foundation changed/);
+    assert.equal(readdirSync(join(root, 'stardust/rollout')).some((f2) => f2.endsWith('.tmp')), false, 'no temp file left behind');
+  } finally { chmodSync(join(root, 'styles/locked'), 0o755); rmSync(join(root, 'styles/locked'), { recursive: true, force: true }); }
+  assert.equal(run('check').code, 0, 'restored → unchanged');
+});
 check('--paths / --out / --root / --manifest: an explicit set from another working directory', () => {
   const cwd = mkdtempSync(join(tmpdir(), 'foundation-freeze-cwd-'));
   const go = (...a) => spawnSync(process.execPath, [SCRIPT, ...a], { cwd, encoding: 'utf8' });
@@ -154,9 +198,12 @@ check('freeze is idempotent: a second run records the same paths and hashes', ()
   const before = manifest(); const r = run('freeze'); assert.equal(r.code, 0, r.err);
   const after = manifest(); assert.deepEqual(after.paths, before.paths); assert.deepEqual(after.files, before.files);
 });
-check('exported helpers: snapshot() is sorted and skips absent entries; compare() classifies', () => {
+check('exported helpers: snapshot() is sorted, skips absent entries and records a symlink by text; compare() classifies', () => {
   const s = snapshot(root, ['head.html', 'fonts/', 'blocks/footer/']);
   assert.deepEqual(Object.keys(s), ['blocks/footer/footer.css', 'head.html']); assert.equal(s['head.html'], sha(FIXTURE['head.html']));
+  symlinkSync('head.html', join(root, 'head-link.html'));
+  assert.deepEqual(snapshot(root, ['head-link.html']), { 'head-link.html': 'symlink:head.html' }); unlinkSync(join(root, 'head-link.html'));
+  assert.equal(existsSync(join(root, 'head-link.html')), false);
   const d = compare({ files: { a: '1', b: '2', c: '3' } }, { a: '1', b: 'x', d: '4' });
   assert.deepEqual(d, { changed: ['b'], missing: ['c'], added: ['d'] });
 });

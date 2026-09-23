@@ -2,15 +2,16 @@
 // skills/stardust/scripts/test/state.test.mjs — the state.mjs contract: legal forward moves and
 // jumps, re-entry, backward refusal vs --force, all-or-nothing on a bad slug, history entry fields
 // (at, approvedBy), prototypePath / migratedPath, stale clearing per status, _provenance
-// re-stamp with extra keys preserved, top-level key order, summary counts and --slugs, usage
-// errors and the rejected --gate / --note flags. Run: node <this file>.
+// re-stamp with extra keys preserved, top-level key order (flow keys, unknown keys anchored in
+// place), --history-only, the value-flag swallow rule, summary counts and --slugs, usage errors and
+// the rejected --gate / --note flags. Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ORDER, SET_BY, advance, classify, orderTopLevel, pluginVersion, stampProvenance, summarise } from '../state.mjs';
+import { ORDER, SET_BY, TOP_ORDER, advance, classify, orderTopLevel, pluginVersion, stampProvenance, summarise } from '../state.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'state.mjs');
@@ -58,6 +59,19 @@ check('stampProvenance: writtenBy/writtenAt first, extra keys kept, stardustVers
 check('orderTopLevel: _provenance, site, direction, handsOff, pages, then the rest in place', () => {
   assert.deepEqual(Object.keys(orderTopLevel(FIXTURE)), ['_provenance', 'site', 'direction', 'handsOff', 'pages', 'migrate']);
   assert.deepEqual(Object.keys(orderTopLevel({ pages: [], _provenance: {} })), ['_provenance', 'pages']);
+});
+check('orderTopLevel: the 0.23.0 flow keys sit between handsOff and pages; an unknown key keeps its place, never pushed behind pages', () => {
+  assert.deepEqual(TOP_ORDER, ['_provenance', 'site', 'direction', 'handsOff', 'flow', 'flowChosenAt', 'flowSource', 'pages']);
+  const canonical = ['_provenance', 'site', 'direction', 'handsOff', 'flow', 'flowChosenAt', 'flowSource', 'pages', 'migrate'];
+  assert.deepEqual(Object.keys(orderTopLevel(Object.fromEntries(canonical.map((k) => [k, 1])))), canonical, 'a file already in order is untouched');
+  const shuffled = { pages: [], flowSource: 'question', flow: 'replica', _provenance: {}, flowChosenAt: 't', site: {} };
+  assert.deepEqual(Object.keys(orderTopLevel(shuffled)), ['_provenance', 'site', 'flow', 'flowChosenAt', 'flowSource', 'pages']);
+  const mid = { _provenance: {}, site: {}, direction: null, reskin: { tokens: 1 }, handsOff: false, pages: [], migrate: {} };
+  assert.deepEqual(Object.keys(orderTopLevel(mid)), ['_provenance', 'site', 'direction', 'reskin', 'handsOff', 'pages', 'migrate'], 'reskin stays after direction, not after pages');
+  const lead = { note: 'x', pages: [], _provenance: {} };
+  assert.deepEqual(Object.keys(orderTopLevel(lead)), ['note', '_provenance', 'pages'], 'a leading unknown key stays leading');
+  const tail = { _provenance: {}, pages: [], migrate: {}, flow: 'redesign', extra: 1 };
+  assert.deepEqual(Object.keys(orderTopLevel(tail)), ['_provenance', 'flow', 'pages', 'migrate', 'extra'], 'an unknown key that followed pages in the file still follows pages');
 });
 check('advance (in memory): unknown slug throws before any mutation; --by needs --to approved', () => {
   const s = structuredClone(FIXTURE);
@@ -126,6 +140,28 @@ check('--force allows the backward move and says so; --skill overrides writtenBy
   assert.equal(r.code, 0, r.err); assert.match(r.out, /contact \(approved→prototyped, forced\) · written by stardust:replica/);
   assert.equal(page('contact').status, 'prototyped'); assert.equal(page('contact').history.at(-1).status, 'prototyped'); assert.equal(read()._provenance.writtenBy, 'stardust:replica');
 });
+check('--history-only: a prototyped entry is appended after approved, status stays approved, no demotion, paths set, stale untouched', () => {
+  const s = read(); const c = s.pages.find((p) => p.slug === 'contact'); c.status = 'approved'; c.stale = true; c.staleReason = 'direction changed'; writeFileSync(file, JSON.stringify(s));
+  const before = page('contact').history.length;
+  const r = run('advance', 'contact', '--to', 'prototyped', '--history-only', '--prototype', 'stardust/prototypes/contact-proposed.v2.html');
+  assert.equal(r.code, 0, r.err); assert.match(r.out, /^state: 1 page\(s\) history \+= prototyped: contact \(stays approved, prototyped entry appended\) · prototypePath set · written by stardust:prototype$/m);
+  const p = page('contact');
+  assert.equal(p.status, 'approved', 'not demoted'); assert.equal(p.history.length, before + 1); assert.deepEqual(Object.keys(p.history.at(-1)), ['status', 'at']); assert.equal(p.history.at(-1).status, 'prototyped');
+  assert.equal(p.prototypePath, 'stardust/prototypes/contact-proposed.v2.html'); assert.equal(p.stale, true, 'stale is not cleared: the status did not move');
+  assert.equal(read()._provenance.writtenBy, 'stardust:prototype');
+  const h = read(); h.pages.find((x) => x.slug === 'contact').stale = false; h.pages.find((x) => x.slug === 'contact').staleReason = null; writeFileSync(file, JSON.stringify(h));
+  const fwd = run('advance', 'home', '--to', 'migrated', '--history-only'); assert.equal(fwd.code, 0, fwd.err); assert.equal(page('home').status, 'prototyped', 'a forward status is appended without moving either');
+  const both = run('advance', 'home', '--to', 'migrated', '--history-only', '--force'); assert.equal(both.code, 2); assert.match(both.err, /--history-only does not move the page/);
+  const bad = run('advance', 'home', '--to', 'done', '--history-only'); assert.equal(bad.code, 2); assert.match(bad.err, /--to must be one of/);
+});
+check('a value flag followed by another flag (or nothing) is a usage error naming the flag; file byte-identical', () => {
+  const before = readFileSync(file, 'utf8');
+  for (const [args, flag] of [[['advance', 'home', '--to', '--force'], '--to'], [['advance', 'home', '--to', 'approved', '--by', '--prototype', 'x'], '--by'], [['advance', 'home', '--to', 'prototyped', '--prototype', '--skill', 'prototype'], '--prototype'], [['advance', 'home', '--to', 'migrated', '--migrated', '--force'], '--migrated'], [['advance', 'home', '--to', 'migrated', '--skill', '--force'], '--skill'], [['advance', 'home', '--to'], '--to']]) {
+    const r = run(...args); assert.equal(r.code, 2, args.join(' ')); assert.equal(r.out, ''); assert.match(r.err, new RegExp(`^state: ${flag} needs a value`), args.join(' '));
+  }
+  const dir2 = spawnSync(process.execPath, [SCRIPT, 'summary', '--dir', '--slugs'], { encoding: 'utf8' }); assert.equal(dir2.status, 2); assert.match(dir2.stderr, /--dir needs a value \(got --slugs, which is a flag\)/);
+  assert.equal(readFileSync(file, 'utf8'), before);
+});
 check('a page whose status is outside the lifecycle needs --force', () => {
   const s = read(); s.pages.push(mkPage('odd', 'weird')); writeFileSync(file, JSON.stringify(s));
   const r = run('advance', 'odd', '--to', 'directed'); assert.equal(r.code, 2); assert.match(r.err, /current status "weird" is not in the lifecycle/);
@@ -136,9 +172,9 @@ check('a page whose status is outside the lifecycle needs --force', () => {
 check('summary prints counts by status (all five, plus other and stale); --slugs lists slugs per status', () => {
   const r = run('summary');
   assert.equal(r.code, 0, r.err);
-  assert.equal(r.out.trim(), '5 page(s) · extracted 0 · directed 2 · prototyped 2 · approved 0 · migrated 1 · stale 0');
+  assert.equal(r.out.trim(), '5 page(s) · extracted 0 · directed 2 · prototyped 1 · approved 1 · migrated 1 · stale 0');
   const s = run('summary', '--slugs');
-  assert.match(s.out, /^ {2}directed\s+2 {2}about, odd$/m); assert.match(s.out, /^ {2}prototyped\s+2 {2}home, contact$/m); assert.match(s.out, /^ {2}migrated\s+1 {2}pricing$/m);
+  assert.match(s.out, /^ {2}directed\s+2 {2}about, odd$/m); assert.match(s.out, /^ {2}prototyped\s+1 {2}home$/m); assert.match(s.out, /^ {2}approved\s+1 {2}contact$/m); assert.match(s.out, /^ {2}migrated\s+1 {2}pricing$/m);
   assert.doesNotMatch(s.out, /^ {2}extracted/m, 'empty statuses are not listed under --slugs');
 });
 check('summary shows out-of-lifecycle statuses and stale slugs', () => {
@@ -155,7 +191,7 @@ check('usage: missing --to, bad --to, no slug, unknown command, unknown option, 
   const n = run('advance', 'home', '--to', 'approved', '--note', 'why'); assert.equal(n.code, 2); assert.match(n.err, /journal\.md/);
   const none = spawnSync(process.execPath, [SCRIPT], { encoding: 'utf8' }); assert.equal(none.status, 2); assert.match(none.stderr, /Usage:/);
   const missing = spawnSync(process.execPath, [SCRIPT, 'summary', '--dir', join(root, 'nowhere')], { encoding: 'utf8' }); assert.equal(missing.status, 2); assert.match(missing.stderr, /does not exist — extract creates it/);
-  const h = run('--help'); assert.equal(h.code, 0); assert.match(h.out, /node state\.mjs advance <slug…> --to </); assert.match(h.out, /node state\.mjs summary \[--slugs\]/);
+  const h = run('--help'); assert.equal(h.code, 0); assert.match(h.out, /node state\.mjs advance <slug…> --to </); assert.match(h.out, /node state\.mjs summary \[--slugs\]/); assert.match(h.out, /--history-only/);
 });
 
 rmSync(root, { recursive: true, force: true });

@@ -15,9 +15,15 @@
  * written into `gateEvidence`, prefixed `FAIL: ` / `OPEN: `, so the reader sees why
  * the gate is missing. Existing entries are never removed.
  *
- * Gates derived (each evidence one-liner ends with its `(<job>.log)` pointer):
- *   pixel-gate-<width>  latest gate.sh round at that width (gate.sh <slug> … <width>) whose
- *                       pixel-compare line reads `→ PASS` with |height delta| ≤ --height-tolerance
+ * Gates derived (each evidence one-liner carries its `(<job>.log)` pointer):
+ *   pixel-gate-<width>  latest gate.sh round at that width (gate.sh <slug> <live> <build> <width>
+ *                       [label]) whose pixel-compare line reads `→ PASS` with |height delta| ≤
+ *                       --height-tolerance. The line ends with the round's REGIME, read from the
+ *                       build URL argument: localhost / 127.0.0.1 / file: → `[prototype regime]`,
+ *                       anything else → `[published regime]`. The prototype-regime bar screens
+ *                       siblings before delivery; it never replaces the published-origin gate
+ *                       (gate.sh header: "the published-origin gate is the same command with the
+ *                       preview URL") — a reader who needs the published verdict looks for that word.
  *   content-count       latest content-diff.mjs job for the page (`Findings: none …` or
  *                       `Findings: N (0 structural 🔴)`); when no such job exists, the newest
  *                       gate.sh --full round's `content-diff:` line; structural 🔴 > 0 → OPEN:
@@ -26,11 +32,26 @@
  *   delivery-lint       --lint run per page (`--file <html> --path </da/path>`), pass on
  *                       `0 P0 · 0 P1`; when --lint does not resolve, the latest delivery-lint.mjs
  *                       job for the page; P0/P1 → FAIL:
- *   variance-probe      siblings only: latest sibling-variance.mjs job (exit 0 or 2 = a verdict)
- *                       that named this page's URL or its archetype's; the page's `■` line is
- *                       the evidence; deltas reported with an empty `variants[]` → OPEN:
+ *   variance-probe      siblings only: latest sibling-variance.mjs job that named this page's URL
+ *                       or its archetype's. ONLY the page's own `■ <url>` line is evidence: 0 deltas
+ *                       pass, deltas pass only with a declared `variants[]`, deltas with an empty
+ *                       `variants[]` → OPEN:. A probe whose output has no `■` line for the page
+ *                       never passes — `OPEN: not in the probe — <✓|✗ summary>` — whatever the
+ *                       summary says.
  *   content-fidelity    NEVER added here — it is the agent's declaration
  *                       (`migrate.mjs gate <slug> content-fidelity --evidence …`)
+ *
+ * The NEWEST ended job per page × instrument (× width) decides, and only a verdict can pass:
+ *   • run-bg state `timedOut: true` or `exit 124` (the instrument's deadline) →
+ *     `OPEN: deadline (<job>.log) — re-run` for that gate; an older pass is not resurrected.
+ *   • a pixel round whose exit is not 0 or 2 (gate.sh: 1 = capture/compare error, 3 = bot
+ *     challenge, 4 = build-side identity failed) → `OPEN: no verdict (exit N) (<job>.log)`.
+ *   • a sibling-variance probe with an exit other than 0 or 2 → the same `OPEN: no verdict`.
+ *
+ * Attribution: gate.sh by its slug argument; other instruments by an argument that names the page
+ * (URL path, `<slug>-proposed.html`, a file resolved from the job's cwd). The job-name fallback
+ * (`<slug>-…`) applies only when NO argument names ANY known page — a job whose arguments name
+ * another page is that page's, whatever it was called.
  *
  * Usage:
  *   node stardust/scripts/replica/gate-evidence.mjs [--migrated stardust/migrated]
@@ -45,26 +66,32 @@
  *                content-fidelity, content-count. The pixel gates belong to the set: a recorded
  *                run published eleven siblings that had never been compared at 360, and they
  *                read 17–27 % against the ≤ 10 % bar on the published origin. Archetypes and
- *                thin pages are not held to this set here (their `missing` is always empty)
+ *                thin pages are not held to this set here (their `missing` is always empty).
+ *                Also exit 2, for ANY tier, on a STALE gate: one that sits in gatesPassed[] while
+ *                its latest evidence reads FAIL:/OPEN: — printed as `<slug>: stale <gates> — …`
+ *                (the gate is never removed; the line names what must be re-earned)
  *   --dry-run    compute and print, write nothing
  *   --json       the rows as a JSON array instead of the table
  *
  * Prints one row per page — `<slug>  <tier>  1440=<pct>%/Δ<px>  360=…  cd=<…>  lint=<…>
  * media=<…>  gates=<n>` — then `gate-evidence: <n> pages, <n> sidecars updated`.
- * Exit 0; 1 usage error; 2 --check found a sibling short of the acceptance set.
+ * Exit 0; 1 usage error (a malformed sidecar or progress.json included); 2 --check found a
+ * sibling short of the acceptance set or a stale gate.
  *
  * Writes: each page's sidecar (`_meta.json` / `<name>._meta.json`): `gatesPassed[]` =
  * existing ∪ derived (existing first) and `gateEvidence{}` merged (derived lines overwrite
  * the same key) — nothing else, indent preserved. `--progress`: `migrate` {at, pages,
  * archetypes, siblings, thin, gates{<gate>: <pass count>}, missing{<slug>: [<gates>]}} and
  * `siblings{<slug>: {archetype, variants, pixel{<width>: {pct, px, heightDelta, verdict,
- * label}}, contentDiff, deliveryLint, media, gatesPassed, migrated}}`, other keys preserved.
- * Nothing with --dry-run or --help.
+ * label, regime}}, contentDiff, deliveryLint, media, gatesPassed, migrated}}`, other keys
+ * preserved. progress.json is read and parsed BEFORE the first sidecar is touched (a malformed
+ * ledger aborts the run with nothing written); every sidecar and the ledger are written through
+ * a temp file + rename. Nothing with --dry-run or --help.
  */
 
 /* eslint-disable no-restricted-syntax, brace-style, object-curly-newline, max-len, no-continue */
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listJobs, logPath } from './run-bg.mjs';
@@ -124,6 +151,8 @@ function readJson(file) {
   return { data, text, indent: detectIndent(text), eol: text.endsWith('\n') };
 }
 const serialize = (data, indent, eol) => JSON.stringify(data, null, indent) + (eol ? '\n' : '');
+// Temp file + rename: a crash mid-write never leaves a half-written sidecar or ledger behind.
+function writeAtomic(file, text) { const tmp = `${file}.${process.pid}.tmp`; writeFileSync(tmp, text); renameSync(tmp, file); }
 
 export function findSidecars(migrated) {
   const out = [];
@@ -191,12 +220,23 @@ export function argNamesPage(arg, page, job, migrated) {
 // The slug a job name `<slug>-…` belongs to: the LONGEST known slug that prefixes it (`tours-north-1440` is tours-north's, not tours').
 export function nameOwner(name, slugs) { return slugs.filter((s) => name.startsWith(`${s}-`)).sort((a, b) => b.length - a.length)[0] || null; }
 
-// gate.sh: its first argument IS the slug. Other instruments: an argument names the page; last resort, the job name.
+// gate.sh: its first argument IS the slug. Other instruments: an argument names the page. The job-name fallback is
+// the last resort and only when no argument names ANY known page (ctx.pages) — a job called `tours-north-lint` whose
+// --file is about/history.html is about-history's, not tours-north's.
 export function attribute(job, page, ctx = {}) {
   if (job.kind === 'pixel') return job.instArgs[0] === page.slug;
   if (job.instArgs.some((a) => argNamesPage(a, page, job, ctx.migrated))) return true;
+  if ((ctx.pages || []).some((p) => p !== page && job.instArgs.some((a) => argNamesPage(a, p, job, ctx.migrated)))) return false;
   return ctx.slugs ? nameOwner(job.name, ctx.slugs) === page.slug : job.name.startsWith(`${page.slug}-`);
 }
+// The regime a gate.sh round ran in, from its build URL argument (gate.sh <slug> <live> <build> <width>): a served
+// prototype (localhost / 127.0.0.1 / file:) is `prototype`, anything else — the preview or live origin — `published`.
+export function regimeOf(job) {
+  const u = String(job.instArgs[2] || '');
+  return /^file:/i.test(u) || /^https?:\/\/(localhost|127\.0\.0\.1)(?=[:/?#]|$)/i.test(u) ? 'prototype' : 'published';
+}
+// A job that ended on the instrument's deadline: run-bg's `timedOut` flag or exit 124. Not a verdict.
+export const deadline = (job) => job.timedOut === true || job.exit === 124;
 
 // ---- verdict parsers (pure) --------------------------------------------------------------------
 // pixel-compare: `A WxH  B WxH  → compare WxH, height delta Npx` then `differing pixels: n / m = p%  (threshold t%) → PASS|FAIL…`.
@@ -225,13 +265,14 @@ export function parseLint(text) {
   return m ? { p0: Number(m[1]), p1: Number(m[2]), p2: Number(m[3]), line: `${m[1]} P0 · ${m[2]} P1 · ${m[3]} P2` } : null;
 }
 // sibling-variance: per sibling `■ <url>: ✓ matches the archetype | N delta(s)`, then a `✓|✗ … sibling(s) …` summary.
-// `paths` = the page's own URL paths; its `■` line is the evidence when present, else the summary.
+// `paths` = the page's own URL paths; its `■` line is the evidence when present (`own: true`), else the summary is
+// returned with `own: false` and `deltas: null` — the caller must not pass on a summary alone.
 export function parseVariance(text, paths = []) {
   const summary = [...text.matchAll(/^[✓✗] \d+ (?:of \d+ )?sibling\(s\) [^\n]*$/gm)].pop();
   const own = [...text.matchAll(/^■ (\S+): ([^\n]*)$/gm)].find((m) => { const p = urlPath(m[1]); return p !== null && paths.includes(p); });
   if (!summary && !own) return null;
   const d = own && own[2].match(/^(\d+) delta/);
-  return { summary: summary ? summary[0] : null, line: own ? own[0] : summary[0], deltas: own ? (d ? Number(d[1]) : 0) : null };
+  return { summary: summary ? summary[0] : null, line: own ? own[0] : summary[0], deltas: own ? (d ? Number(d[1]) : 0) : null, own: Boolean(own) };
 }
 
 // ---- derivation --------------------------------------------------------------------------------
@@ -257,30 +298,42 @@ export function derive(page, jobs, o, ctx) {
   const pass = (g, line) => { gates.push(g); evidence[g] = line; };
   const open = (g, line, prefix = 'OPEN') => { evidence[g] = `${prefix}: ${line}`; };
   const cite = (j) => `(${j.logName})`;
-  const parsed = (kinds, parse) => mine.filter((j) => kinds.includes(j.kind)).map((j) => ({ j, v: parse(j.log) })).filter((x) => x.v);
+  // The newest job of a set decides the gate: on a deadline, or (when `verdictExits` is given) an exit that is not a
+  // verdict, the gate is recorded OPEN and null is returned — an older pass never stands in. Otherwise the latest job
+  // with a parsable verdict line among the jobs that could carry one.
+  const pick = (list, parse, gate, verdictExits = null) => {
+    const newest = latest(list.map((j) => ({ j })));
+    if (!newest) return null;
+    if (deadline(newest.j)) { open(gate, `deadline ${cite(newest.j)} — re-run`); return null; }
+    if (verdictExits && !verdictExits.includes(newest.j.exit)) { open(gate, `no verdict (exit ${newest.j.exit}) ${cite(newest.j)}`); return null; }
+    const usable = list.filter((j) => !deadline(j) && (!verdictExits || verdictExits.includes(j.exit)));
+    return latest(usable.map((j) => ({ j, v: parse(j.log) })).filter((x) => x.v));
+  };
+  const ofKind = (...kinds) => mine.filter((j) => kinds.includes(j.kind));
 
   for (const w of o.widths) {
-    const best = latest(parsed(['pixel'], parseVerdict).filter((x) => Number(x.j.instArgs[3]) === w));
+    const best = pick(ofKind('pixel').filter((j) => Number(j.instArgs[3]) === w), parseVerdict, `pixel-gate-${w}`, [0, 2]);
     if (!best) continue;
     const { j, v } = best;
     const label = j.instArgs[4] && !j.instArgs[4].startsWith('--') ? j.instArgs[4] : 'iter';
-    facts.pixel[w] = { pct: v.pct, px: v.px, heightDelta: v.heightDelta, verdict: v.verdict, label };
-    const line = `${fmtPct(v.pct)} (${v.px} px, threshold ${v.threshold}%), height delta ${v.heightDelta === null ? '?' : v.heightDelta}px, round ${label} @${w} ${cite(j)}`;
+    const regime = regimeOf(j);
+    facts.pixel[w] = { pct: v.pct, px: v.px, heightDelta: v.heightDelta, verdict: v.verdict, label, regime };
+    const line = `${fmtPct(v.pct)} (${v.px} px, threshold ${v.threshold}%), height delta ${v.heightDelta === null ? '?' : v.heightDelta}px, round ${label} @${w} ${cite(j)} [${regime} regime]`;
     const withinHeight = v.heightDelta !== null && Math.abs(v.heightDelta) <= o.heightTolerance;
     if (v.verdict === 'PASS' && withinHeight) pass(`pixel-gate-${w}`, line);
     else open(`pixel-gate-${w}`, v.verdict === 'PASS' ? `|height delta| > ${o.heightTolerance}px tolerance — ${line}` : line, 'FAIL');
   }
 
   // The dedicated content-diff run is the acceptance check; a gate.sh --full round's line stands in only when there is none.
-  const dedicated = parsed(['content-diff'], parseFindings);
-  const cd = latest(dedicated.length ? dedicated : parsed(['pixel'], parseFindings));
+  const dedicated = ofKind('content-diff');
+  const cd = dedicated.length ? pick(dedicated, parseFindings, 'content-count') : pick(ofKind('pixel').filter((j) => j.instArgs.includes('--full')), parseFindings, 'content-count');
   if (cd) {
     facts.contentDiff = cd.v.text;
     const line = `content-diff: ${cd.v.text} ${cite(cd.j)}`;
     if (cd.v.structural === 0) pass('content-count', line); else open('content-count', line);
   }
 
-  const md = latest(parsed(['media-reconcile'], parseCounts));
+  const md = pick(ofKind('media-reconcile'), parseCounts, 'media-reconcile');
   if (md) {
     facts.media = md.v.line;
     const held = ['omit', 'unresolved'].filter((k) => md.v.counts[k] > 0).map((k) => `${md.v.counts[k]} ${k}`);
@@ -296,7 +349,7 @@ export function derive(page, jobs, o, ctx) {
       if (r.ok) pass('delivery-lint', line); else open('delivery-lint', line, 'FAIL');
     }
   } else {
-    const lj = latest(parsed(['delivery-lint'], parseLint));
+    const lj = pick(ofKind('delivery-lint'), parseLint, 'delivery-lint');
     if (lj) { facts.deliveryLint = lj.v.line; const line = `${lj.v.line} ${cite(lj.j)}`; if (lj.v.p0 === 0 && lj.v.p1 === 0) pass('delivery-lint', line); else open('delivery-lint', line, 'FAIL'); }
   }
 
@@ -304,13 +357,16 @@ export function derive(page, jobs, o, ctx) {
     const archSlug = page.meta.archetypeSource || page.meta.template || null;
     const arch = archSlug ? (ctx.pages || []).find((p) => p.slug === archSlug) || null : null;
     const paths = pagePaths(page.outputPath);
-    const probes = jobs.filter((j) => j.kind === 'variance' && [0, 2].includes(j.exit) && (mine.includes(j) || (arch && attribute(j, arch, ctx))));
-    const vj = latest(probes.map((j) => ({ j, v: parseVariance(j.log, paths) })).filter((x) => x.v));
+    const probes = jobs.filter((j) => j.kind === 'variance' && (mine.includes(j) || (arch && attribute(j, arch, ctx))));
+    const vj = pick(probes, (log) => parseVariance(log, paths), 'variance-probe', [0, 2]);
     if (vj) {
       facts.variance = vj.v.line;
       const variants = Array.isArray(page.meta.variants) ? page.meta.variants : [];
       const line = `${vj.v.line}${variants.length ? ` — variants [${variants.join(', ')}]` : ''} ${cite(vj.j)}`;
-      if (vj.v.deltas && !variants.length) open('variance-probe', `${vj.v.deltas} delta(s) and no variants[] declared — ${line}`); else pass('variance-probe', line);
+      // Only the page's own `■` line is evidence: a summary alone — ✓ or ✗ — says nothing about this page.
+      if (!vj.v.own) open('variance-probe', `not in the probe — ${vj.v.summary} ${cite(vj.j)}`);
+      else if (vj.v.deltas && !variants.length) open('variance-probe', `${vj.v.deltas} delta(s) and no variants[] declared — ${line}`);
+      else pass('variance-probe', line);
     }
   }
   return { gates, evidence, facts, notes };
@@ -371,6 +427,9 @@ export function collect(o) {
   if (!lint) notes.push(`delivery-lint: ${o.lint} not found — pass --lint (using run-bg delivery-lint jobs, if any)`);
   const ctx = { migrated, pages, slugs: pages.map((p) => p.slug), lint };
   const acceptance = acceptanceFor(o.widths);
+  // The ledger is parsed before any sidecar is touched: a malformed progress.json aborts with nothing written.
+  const prior = existsSync(o.progress) ? readJson(o.progress) : { data: {}, indent: 2, eol: true };
+  if (!prior.data || typeof prior.data !== 'object' || Array.isArray(prior.data)) throw new UsageError(`gate-evidence: ${o.progress} is not a JSON object`);
   const rows = []; let updated = 0;
   for (const page of selected) {
     const d = derive(page, jobs, o, ctx);
@@ -378,14 +437,13 @@ export function collect(o) {
     const { meta, stale } = mergeMeta(page.meta, d);
     for (const g of stale) notes.push(`${page.slug}: ${g} stays in gatesPassed, but the latest evidence reads "${meta.gateEvidence[g].slice(0, 100)}"`);
     const text = serialize(meta, page.indent, page.eol);
-    if (text !== page.text) { updated += 1; if (!o.dryRun) writeFileSync(page.file, text); }
+    if (text !== page.text) { updated += 1; if (!o.dryRun) writeAtomic(page.file, text); }
     const tier = meta.fidelityTier || null;
-    rows.push({ slug: page.slug, tier, archetype: meta.archetypeSource || meta.template || null, variants: Array.isArray(meta.variants) ? meta.variants : [], outputPath: page.outputPath, migrated: join(o.migrated, page.outputPath), ...d.facts, gatesPassed: meta.gatesPassed, gateEvidence: meta.gateEvidence, missing: tier === 'sibling' ? acceptance.filter((g) => !meta.gatesPassed.includes(g)) : [] });
+    rows.push({ slug: page.slug, tier, archetype: meta.archetypeSource || meta.template || null, variants: Array.isArray(meta.variants) ? meta.variants : [], outputPath: page.outputPath, migrated: join(o.migrated, page.outputPath), ...d.facts, gatesPassed: meta.gatesPassed, gateEvidence: meta.gateEvidence, missing: tier === 'sibling' ? acceptance.filter((g) => !meta.gatesPassed.includes(g)) : [], stale });
   }
   if (rows.length && !o.dryRun) {
-    const prior = existsSync(o.progress) ? readJson(o.progress) : { data: {}, indent: 2, eol: true };
     mkdirSync(dirname(resolve(o.progress)), { recursive: true });
-    writeFileSync(o.progress, serialize(buildProgress(prior.data, rows, { partial: o.slugs.length > 0 }), prior.indent, prior.eol));
+    writeAtomic(o.progress, serialize(buildProgress(prior.data, rows, { partial: o.slugs.length > 0 }), prior.indent, prior.eol));
   }
   return { rows, updated, notes };
 }
@@ -398,14 +456,16 @@ function cli(argv) {
   for (const n of r.notes) console.error(`gate-evidence: ${n}`);
   if (!r.rows.length) { console.log(`gate-evidence: no _meta.json sidecars${o.slugs.length ? ` for --slug ${o.slugs.join(', ')}` : ''} under ${o.migrated} — nothing to collect`); return 0; }
   const short = r.rows.filter((row) => row.missing.length);
+  const stale = r.rows.filter((row) => row.stale.length);
   if (o.json) console.log(JSON.stringify(r.rows, null, 2));
   else {
     for (const row of r.rows) console.log(formatRow(row, o.widths));
     for (const row of short) console.log(`${row.slug}: missing ${row.missing.join(', ')}`);
+    for (const row of stale) console.log(`${row.slug}: stale ${row.stale.join(', ')} — in gatesPassed, but the latest evidence reads FAIL/OPEN (re-earn it, or drop the gate)`);
     const n = (k, w) => `${k} ${w}${k === 1 ? '' : 's'}`;
     console.log(`gate-evidence: ${n(r.rows.length, 'page')}, ${n(r.updated, 'sidecar')} ${o.dryRun ? 'would be updated (dry-run: nothing written)' : 'updated'}`);
   }
-  return o.check && short.length ? 2 : 0;
+  return o.check && (short.length || stale.length) ? 2 : 0;
 }
 
 // Compare by real path: a symlinked checkout or temp dir must not turn the CLI into a silent no-op.

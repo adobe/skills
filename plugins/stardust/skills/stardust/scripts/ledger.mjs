@@ -6,9 +6,17 @@
 // line is echoed so the agent's transcript carries the record.
 //
 //   node ledger.mjs <skill> <phase> <start|end|blocked> [--detail "…"] [--artifact <path>]
-//                   [--dir <stardust dir>] [--strict]
+//                   [--next "…"] [--owner "…"] [--dir <stardust dir>] [--strict]
 //   node ledger.mjs tail [-n 5] [--dir <stardust dir>]
 //   node ledger.mjs last [<skill>] [--dir <stardust dir>]
+//
+// `--next` (what the next phase or the human does now) and `--owner` (who does it) are optional
+// and land in the line as `next` / `owner` when given — an `end` line without `--next` is still
+// accepted. A value flag (`--detail`, `--artifact`, `--next`, `--owner`, `--dir`, `-n`) followed
+// by nothing or by another flag is a usage error naming the flag, so a forgotten value never
+// swallows the next flag as its text. The default ledger dir (`stardust/`) is created on first
+// write; an explicit `--dir` that does not exist is a usage error (exit 2) — a mistyped directory
+// must not grow a second, empty ledger.
 //
 // `skill` is normalised to the `stardust:<name>` form whether given with or without the prefix.
 // `phase` is checked against the table below; a known phase is written in the table's own form (an
@@ -135,12 +143,16 @@ export const phaseTableText = () => Object.entries(PHASES)
   .map(([skill, table]) => `  ${skill}: ${Object.entries(table).map(([canon, aliases]) => (aliases.length ? `${canon} (${aliases.join(', ')})` : canon)).join(', ')}`)
   .join('\n');
 const HELP = `Usage:
-  node ledger.mjs <skill> <phase> <start|end|blocked> [--detail "…"] [--artifact <path>] [--dir <d>] [--strict]
+  node ledger.mjs <skill> <phase> <start|end|blocked> [--detail "…"] [--artifact <path>]
+                  [--next "…"] [--owner "…"] [--dir <d>] [--strict]
   node ledger.mjs tail [-n ${DEFAULT_TAIL}] [--dir <d>]
   node ledger.mjs last [<skill>] [--dir <d>]
-  (--dir defaults to ${DEFAULT_DIR}; the ledger is <dir>/${FILE_NAME}, created on first write)
+  (--dir defaults to ${DEFAULT_DIR}; the ledger is <dir>/${FILE_NAME}, created on first write;
+   an explicit --dir must already exist)
 
-Appends one run-status.md line { ts, skill, phase, event, detail?, artifact? } and prints it.
+Appends one run-status.md line { ts, skill, phase, event, detail?, artifact?, next?, owner? } and
+prints it. --next / --owner are optional (an end line without --next is fine). A value flag followed
+by nothing or by another flag is a usage error.
 <skill> may be given as "extract" or "stardust:extract". A known <phase> is written in the table's
 own form (aliases and case are normalised). Unknown skill/phase → warning on stderr, line still
 written; with --strict → exit 2, nothing written. Exit codes: 0 ok, 2 usage/strict.
@@ -182,13 +194,15 @@ export function canonicalPhase(skill, phase) {
   return phase;
 }
 
-export function buildLine({ skill, phase, event, detail, artifact, ts = nowIso() }) {
+export function buildLine({ skill, phase, event, detail, artifact, next, owner, ts = nowIso() }) {
   if (!EVENTS.includes(event)) throw new UsageError(`event must be one of ${EVENTS.join('|')}, got "${event}"`);
   const p = String(phase || '').trim();
   if (!p || /\s/.test(p)) throw new UsageError(`phase "${phase}" must be a single token (the skill's own phase name)`);
   const line = { ts, skill: normaliseSkill(skill), phase: p, event };
   if (detail != null && String(detail).trim()) line.detail = oneLine(detail);
   if (artifact != null && String(artifact).trim()) line.artifact = String(artifact).trim();
+  if (next != null && String(next).trim()) line.next = oneLine(next);
+  if (owner != null && String(owner).trim()) line.owner = oneLine(owner);
   return line;
 }
 
@@ -227,16 +241,24 @@ export const formatTail = (l) => [l.ts, l.skill, l.phase, l.event, l.detail ? (l
 
 // ---- argv --------------------------------------------------------------------------------------
 function parseArgs(argv) {
-  const opts = { dir: DEFAULT_DIR, strict: false, n: DEFAULT_TAIL, detail: null, artifact: null };
+  const opts = { dir: DEFAULT_DIR, dirGiven: false, strict: false, n: DEFAULT_TAIL, detail: null, artifact: null, next: null, owner: null };
   const pos = [];
+  const isFlag = (v) => v.startsWith('--') || v === '-n' || v === '-h';
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
-    const need = () => { if (i + 1 >= argv.length) throw new UsageError(`${a} needs a value`); i += 1; return argv[i]; };
+    // A value flag never swallows the next flag: `--detail --strict` is a forgotten value, not the text "--strict".
+    const need = () => {
+      if (i + 1 >= argv.length) throw new UsageError(`${a} needs a value`);
+      if (isFlag(argv[i + 1])) throw new UsageError(`${a} needs a value (got ${argv[i + 1]}, which is a flag)`);
+      i += 1; return argv[i];
+    };
     if (a === '--help' || a === '-h') opts.help = true;
     else if (a === '--strict') opts.strict = true;
-    else if (a === '--dir') opts.dir = need();
+    else if (a === '--dir') { opts.dir = need(); opts.dirGiven = true; }
     else if (a === '--detail') opts.detail = need();
     else if (a === '--artifact') opts.artifact = need();
+    else if (a === '--next') opts.next = need();
+    else if (a === '--owner') opts.owner = need();
     else if (a === '-n') { opts.n = Number(need()); if (!Number.isInteger(opts.n) || opts.n < 1) throw new UsageError('-n needs a positive integer'); }
     else if (a.startsWith('-') && a !== '-') throw new UsageError(`unknown option ${a}`);
     else pos.push(a);
@@ -249,6 +271,7 @@ export function main(argv) {
   const { opts, pos } = parseArgs(argv);
   if (opts.help) { console.log(HELP); return 0; }
   if (pos.length === 0) throw new UsageError(HELP);
+  if (opts.dirGiven && !(existsSync(opts.dir) && statSync(opts.dir).isDirectory())) throw new UsageError(`--dir ${opts.dir} is not an existing directory (a mistyped --dir must not start a second ledger; omit it for ${DEFAULT_DIR}/)`);
   const [cmd] = pos;
 
   if (cmd === 'tail') {
@@ -270,7 +293,7 @@ export function main(argv) {
 
   if (pos.length !== 3) throw new UsageError(`expected <skill> <phase> <start|end|blocked>, got ${pos.length} argument(s)\n${HELP}`);
   const [skill, phase, event] = pos;
-  const line = buildLine({ skill, phase, event, detail: opts.detail, artifact: opts.artifact });
+  const line = buildLine({ skill, phase, event, detail: opts.detail, artifact: opts.artifact, next: opts.next, owner: opts.owner });
   const canon = canonicalPhase(line.skill, line.phase);
   if (canon !== line.phase) {
     console.error(`ledger: phase "${line.phase}" written as "${canon}" (the table's form for ${line.skill})`);

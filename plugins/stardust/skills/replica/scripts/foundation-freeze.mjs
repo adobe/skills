@@ -32,16 +32,21 @@
  *   --root   the project root the frozen paths are relative to (default `.`); --out and
  *            --manifest are resolved from the working directory like every other flag.
  *
- * Directories are walked recursively; `node_modules` and dot-entries (`.env`, `.DS_Store`,
- * `.cache/`) are skipped, so `.env` is never read. The manifest holds hashes only — never a
- * file's contents. Exit codes: 0 ok · 1 check found a change · 2 usage (one line on stderr).
- * --help / -h prints this usage and touches no file.
+ * Directories are walked recursively with lstat — a symlink is never followed: it is recorded as
+ * `"symlink:<target>"` (its link text, not the target's hash) and compared as such, so a re-pointed
+ * link reads `changed` and a link to a directory can never pull that tree in or loop (ELOOP).
+ * `node_modules` and dot-entries (`.env`, `.DS_Store`, `.cache/`) are skipped, so `.env` is never
+ * read. The manifest holds hashes only — never a file's contents — and is written through a temp
+ * file + rename, so a crash mid-write leaves the previous manifest intact.
+ * Exit codes: 0 ok · 1 check found a change · 2 usage OR a filesystem error while hashing
+ * (EACCES, ENOENT on a path that vanished mid-walk, ELOOP …; one line on stderr naming the path)
+ * — exit 1 always means "changed", never a crash. --help / -h prints this usage and touches no file.
  */
 
 /* eslint-disable no-restricted-syntax, no-continue */
 import { createHash } from 'node:crypto';
 import {
-  existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSync, writeFileSync,
+  existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, readlinkSync, realpathSync, renameSync, statSync, writeFileSync,
 } from 'node:fs';
 import { dirname, isAbsolute, join, normalize, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -66,29 +71,41 @@ export function help() {
 }
 
 export const sha256 = (file) => createHash('sha256').update(readFileSync(file)).digest('hex');
+// A symlink's manifest value: its link text, never the target's contents (the link is what the
+// foundation froze; a re-pointed link is a change, a dangling one is still the same link).
+export const symlinkValue = (file) => `symlink:${readlinkSync(file)}`;
+// lstat, or null when the path is not there (a frozen entry that does not exist contributes nothing).
+function lstatOrNull(p) {
+  try { return lstatSync(p); } catch (e) { if (e.code === 'ENOENT' || e.code === 'ENOTDIR') return null; throw e; }
+}
 
-// Every regular file under `dir`, recursively, as root-relative POSIX paths in name order.
-// Dot-entries and node_modules are skipped: `.env` is never read, `.DS_Store` is never frozen.
-export function walk(root, dir, out = []) {
+// Every entry under `dir`, recursively — { <root-relative POSIX path>: <sha256 | symlink:<target>> } in
+// name order. lstat, never stat: a symlink is recorded, not followed. Dot-entries and node_modules are
+// skipped: `.env` is never read, `.DS_Store` is never frozen.
+export function walk(root, dir, out = {}) {
   for (const name of readdirSync(dir).sort()) {
     if (name.startsWith('.') || SKIP_DIRS.has(name)) continue;
     const full = join(dir, name);
-    const st = statSync(full);
-    if (st.isDirectory()) walk(root, full, out);
-    else if (st.isFile()) out.push(posix(relative(root, full)));
+    const st = lstatSync(full);
+    if (st.isSymbolicLink()) out[posix(relative(root, full))] = symlinkValue(full);
+    else if (st.isDirectory()) walk(root, full, out);
+    else if (st.isFile()) out[posix(relative(root, full))] = sha256(full);
   }
   return out;
 }
 
-// { <relative path>: <sha256> } over the frozen entries (files or directories) that exist under
-// root, sorted by path. An entry that does not exist contributes nothing.
+// { <relative path>: <sha256 | symlink:<target>> } over the frozen entries (files, directories or
+// symlinks) that exist under root, sorted by path. An entry that does not exist contributes nothing.
 export function snapshot(root, paths) {
   const files = {};
   for (const p of paths) {
-    const full = join(root, p);
-    if (!existsSync(full)) continue;
-    const list = statSync(full).isDirectory() ? walk(root, full) : [posix(relative(root, full))];
-    for (const rel of list) files[rel] = sha256(join(root, rel));
+    const full = join(root, p).replace(/[\\/]+$/, ''); // `fonts/` must lstat the entry itself, not follow a symlinked fonts
+    const st = lstatOrNull(full);
+    if (!st) continue;
+    const rel = posix(relative(root, full));
+    if (st.isSymbolicLink()) files[rel] = symlinkValue(full);
+    else if (st.isDirectory()) Object.assign(files, walk(root, full));
+    else if (st.isFile()) files[rel] = sha256(full);
   }
   return Object.fromEntries(Object.entries(files).sort(([a], [b]) => byPath(a, b)));
 }
@@ -147,7 +164,9 @@ export function freeze({ root, out, paths }) {
   const files = snapshot(rootAbs, list);
   const manifest = { frozenAt: new Date().toISOString(), root, paths: list, files };
   mkdirSync(dirname(resolve(out)), { recursive: true });
-  writeFileSync(out, `${JSON.stringify(manifest, null, 2)}\n`);
+  const tmp = `${out}.${process.pid}.tmp`;
+  writeFileSync(tmp, `${JSON.stringify(manifest, null, 2)}\n`);
+  renameSync(tmp, out);
   console.log(`frozen ${Object.keys(files).length} files → ${out}`);
   return 0;
 }
@@ -187,9 +206,11 @@ export function main(argv) {
     const opts = parseArgs(argv);
     return opts.cmd === 'freeze' ? freeze(opts) : check(opts);
   } catch (e) {
-    if (!(e instanceof UsageError)) throw e;
-    console.error(e.message);
-    return 2;
+    if (e instanceof UsageError) { console.error(e.message); return 2; }
+    // A filesystem error while hashing (EACCES, ENOENT on a path that vanished mid-walk, ELOOP, …) is
+    // not a foundation change: name the path, exit 2, so exit 1 keeps meaning "changed".
+    if (e && typeof e.code === 'string') { console.error(`foundation-freeze: ${e.code}${e.path ? ` ${e.path}` : ''}: ${e.message}`); return 2; }
+    throw e;
   }
 }
 
