@@ -39,6 +39,9 @@ jobs:
       - name: Stardust scripts index names every shipped script once
         run: node plugins/stardust/evals/lint/scripts-index.mjs
 
+      - name: Stardust scripts answer --help without touching a file (playwright/pngjs scripts skip without devDependencies)
+        run: node plugins/stardust/evals/lint/script-help.mjs
+
   codeowners-coverage:
     runs-on: ubuntu-latest
     steps:

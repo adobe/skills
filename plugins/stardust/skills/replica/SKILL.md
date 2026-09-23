@@ -59,13 +59,12 @@ eyeballing.
 4. Copy scripts into the project and run them from there, not from the
    plugin: this skill's whole `scripts/` dir (stitch-shot, pixel-compare,
    crop-compare, chrome-parity, row-profile, sibling-variance, anchor, measure,
-   gate.sh, run-capped, run-bg, gate-evidence, foundation-freeze, section,
-   css-rules, json-query, html-slice, motion-observe, motion-compare) to
-   `stardust/scripts/replica/`,
-   the master skill's `../stardust/scripts/` (ledger.mjs, state.mjs — the
-   ledger and state writers) to `stardust/scripts/stardust/`, the migrate
-   skill's `../migrate/scripts/` (migrate.mjs — the per-page render
-   driver) to `stardust/scripts/migrate/`, AND the whole
+   gate.sh, run-capped, run-bg, gate-evidence, foundation-freeze, the four
+   inspection helpers, motion-observe, motion-compare) to
+   `stardust/scripts/replica/`, the master skill's `../stardust/scripts/`
+   (ledger.mjs, state.mjs) to `stardust/scripts/stardust/`, the migrate
+   skill's `../migrate/scripts/` (migrate.mjs) to `stardust/scripts/migrate/`,
+   AND the whole
    `../diff/scripts/` dir to `stardust/scripts/diff/` (the diff scripts
    import diff-profiles.mjs, and ALL live-target hardening — including
    stitch-shot's — lives in its live-session.mjs; stitch-shot resolves it
@@ -74,69 +73,21 @@ eyeballing.
    `scripts/` — that is the EDS boilerplate's directory (master skill
    § Artifacts, the write boundary).
 
-**Reading and inspection discipline — the context is the budget.**
-Everything a step prints stays in the agent's context for the rest of the
-session and is re-read on every model call. Recorded in one hands-off
-session (2026-09-18, 77 minutes): 172 steps carried 750k characters of tool
-output into a 535k-token context; three whole reference documents `cat`ed
-at once overflowed and were then read again in full (157k characters for
-text paid for twice); 21 ad-hoc `node -e` dumps of capture JSON cost 141k,
-`sed -n` line ranges of a pretty-printed stylesheet 102k. The helpers below
-print the part that matters, capped, and say what they left out:
-
-- **Reference docs**: `node stardust/scripts/replica/section.mjs <doc> --list`
-  for the outline, then `section.mjs <doc> '<heading>'` for the one section
-  the current step needs — never the whole file. **One section per call**:
-  a recorded call for five sections returned 82 KB that stayed in context
-  for 160 turns (`--all` over several sections is capped at 20 KB now).
-- **Captured CSS**: `css-rules.mjs <sheet> '<selector regex>' [--media <re>]
-  [--decl <re>]` — the rule blocks, each with its media condition, instead
-  of line ranges of the sheet.
-- **Capture JSON** (computed styles, content trees, motion checks, crawl
-  logs — their shape is the run's own): `json-query.mjs <file>` for the
-  shape, `--path <p> --keys` to learn an array's fields, then `--path <p>
-  --match <key>=<re> --fields <a,b> --max 40` for a bounded table; values
-  that feed a command (URLs, slugs, selectors) come from `--tsv` or
-  `--path <record>.<field>`, never from the table — its cells are capped.
-- **Captured HTML**: `html-slice.mjs <page.html> header|footer|main|.class
-  [--text]` — one element, attributes stripped to the structural few,
-  scripts and inline SVG removed, capped.
-- **Instrument output**: never `cat` a log or a capture; gate rounds run
-  through `run-bg.mjs` (Phase 4) and are read back with `wait` summaries
-  and `log --grep`.
-- **Live vs prototype boxes**: `measure.mjs <live-url> --against
-  <prototype-url> --selectors "<css>,…" [--width 1440,360]` — rect +
-  computed values per selector, one delta line per box (Phase 3); never an
-  authored probe or a one-off `node -e` evaluate.
-- **Images**: one crop per fact, never a full stitched page (it is
-  downscaled past legibility and costs a step), never the live/build/diff
-  triplet — the diff crop of the first hot band (`crop-compare.mjs`) is the
-  one image a round needs. Recorded: 21 image reads in one run, most of
-  them full pages or triplets, for facts the verdict lines already held.
-  Step 10's eyeball of the DEPLOYED page is the published `gate.sh --full`
-  round plus header/footer `crop-compare.mjs` bands (the two-band invocation
-  and where each band number comes from: gate doc § Pass bar, item 5), not a
-  full-page image.
-  The one exception is the brand-gestalt read at extract, which uses the
-  shipped `thumb.mjs` (`skills/extract/scripts/thumb.mjs`, box-filtered to
-  480 px) — one image per archetype, never the raw capture.
-- **Script flags**: every shipped CLI script — replica, diff, master, deploy,
-  rollout, dynamics, qa, extract, reskin — answers `--help` (and `-h`) with
-  its usage header before it parses anything, touches a file or opens a
-  browser; the header names the flags, the exit codes and, for a script that
-  writes artifacts, a `Writes:` block listing every path (the
-  `script-help` lint keeps this true). The Phase 5 contract card's usage
-  table (`reference/handoff-contract.md` § 4) remains the one place with the
-  full invocation shape per deploy and rollout script. Never `sed`/`head`/
-  `grep` a script's source to learn its flags or what it writes (16 such
-  reads in one recorded session, four greps over one crawler in another):
-  run it with `--help`. **Index first:** `../stardust/reference/scripts-index.md`
-  has every shipped script on one line (what, key flags) — ask `--help` only for
-  a flag it does not name (a recorded run asked `--help` 78 times).
-
-Write anything you will need again to a file under `stardust/` (a lifted
-value table, a section map) and read the file back by query, not the
-instrument's output by scroll.
+**Reading and inspection discipline — the context is the budget**
+(`reference/reading-discipline.md`, read it once at Setup). Every byte a
+step prints is re-read on every later model call (recorded: 750k characters
+of tool output in one 77-minute session). The rules in one line each:
+reference docs by section (`section.mjs <doc> --list`, then one heading, one
+section per call); captured CSS through `css-rules.mjs`, capture JSON through
+`json-query.mjs` (values that feed a command from `--tsv`/`--path`, never the
+table), captured HTML through `html-slice.mjs`; instrument output through
+`run-bg.mjs wait` and `log --grep`, never `cat`; live-vs-prototype boxes
+through `measure.mjs`, never an authored probe; images one crop per fact,
+never a stitched page or the live/build/diff triplet (the extract thumbnail,
+`thumb.mjs`, is the one exception); script flags from
+`../stardust/reference/scripts-index.md` first, then `--help`, never the
+source. Write anything you will need again to a file under `stardust/` and
+read it back by query.
 
 ## Procedure
 
@@ -280,26 +231,18 @@ breakpoint (default 1440 AND 360), live URL as source vs served prototype:
 
 ```bash
 PROTO="http://localhost:8791/<slug>-proposed.html"   # python3 -m http.server from the prototypes dir
-# ONE server, ONE port — probe before starting one (curl is always present, lsof is not):
+# ONE server, ONE port — probe with curl before starting one (lsof is optional, often absent):
 curl -sI localhost:8791/ | head -1                       # 200/404 = something serves the port; no line = free
 curl -sI localhost:8791/<slug>-proposed.html | head -1   # 200 = it serves YOUR dir: reuse it
-command -v lsof >/dev/null && lsof -nP -iTCP:8791 -sTCP:LISTEN   # optional: names the pid
-# Nothing answered → start yours. Answers but not your file → a foreign server: never
-# kill a listener you did not start; take a per-project port and probe again.
-# `lsof … || echo free` is not a probe — without lsof it prints "free" beside a live
-# listener (recorded: a second server on the same port died at once and the round
-# chased 404s). A stale foreign server silently poisons the gate (gate.sh asserts a
-# page marker, exit 4).
+# no answer → start yours; answers but not your file → foreign server: never kill it, take a
+# per-project port (a foreign server silently poisons the gate; gate.sh asserts a marker, exit 4)
 LIVE="https://<site>/<path>"
 
-# One command per round — gate.sh. The FIRST round of a breakpoint and the
-# CONFIRMATION round after the last fix run `--full`: the pixel probe (stitched
-# captures, NEVER fullPage:true) plus the diff skill's two probes (generic
-# profile, --dismiss keeps consent + timed marketing modals out of both
-# inventories) and chrome-parity, the three IN PARALLEL under deadlines, one
-# verdict line each, full reports in the gate dir. Rounds in between are
-# pixel rounds (no --full). Never hand-write a wrapper around the instruments:
-# one recorded run did, lost the deadlines, and a round took 15 minutes.
+# One command per round — gate.sh, through run-bg. The FIRST round of a breakpoint and the
+# CONFIRMATION round after the last fix run `--full` (pixel probe — stitched captures, NEVER
+# fullPage:true — plus content-diff, visual-diff and chrome-parity under deadlines, one verdict
+# line each, reports in the gate dir); rounds in between are pixel rounds. Never hand-write a
+# wrapper around the instruments (a recorded one lost the deadlines; a round took 15 minutes).
 node stardust/scripts/replica/run-bg.mjs start --name <slug>-1440-iter1 -- \
   stardust/scripts/replica/gate.sh <slug> "$LIVE" "$PROTO" 1440 iter1 --full --main "<content-root>"
 node stardust/scripts/replica/run-bg.mjs start --name <slug>-360-iter1 -- \
@@ -312,13 +255,11 @@ node stardust/scripts/replica/anchor.mjs "$LIVE"  --width 1440 --cache $G/anchor
 node stardust/scripts/replica/anchor.mjs "$PROTO" --width 1440   # build-side runs are free
 # Chrome: computed-style parity BEFORE any pixel round on header/footer/strips
 node stardust/scripts/replica/chrome-parity.mjs "$LIVE" "$PROTO" --width 1440 --live-cache $G/chrome-live.json   # exit 0 = quiet, then crop-compare
-# gate.sh: live.png cached, every step under a deadline (exit 124 = re-run, not FAIL), stale instruments reaped.
-# Rounds run in the BACKGROUND and are waited for in bounded slices (gate doc § Iteration discipline,
-# "a step never outlives the context cache"): start every round at once — the slots pace the Chromiums,
-# no `sleep N;` staggering — then `wait` prints verdict lines only. Exit 75 = still going: run `wait`
-# again as your NEXT step, never in a shell loop. NEVER `sleep` before `wait` (a recorded run spent
-# 27.7 min in 20 sleeps). A propagation wait is a bounded poll, inline, ≤ 5 s apart — never a fixed sleep:
-#   for i in $(seq 1 24); do curl -sf "$URL" -o /dev/null && break; sleep 5; done   # 2 min cap
+# gate.sh: live.png cached, every step under a deadline (exit 124 = re-run, not FAIL). Rounds run in
+# the BACKGROUND: start every round at once (the slots pace the Chromiums — no `sleep N;` staggering),
+# then `wait` prints verdict lines only; exit 75 = still going → `wait` again as your NEXT step, never
+# in a shell loop, never after a `sleep` (gate doc § Iteration discipline). A propagation wait is a
+# bounded inline poll (`curl -sf` ≤ 5 s apart, capped), never a fixed sleep.
 node stardust/scripts/replica/run-bg.mjs start --name <slug>-1440-iter2 -- stardust/scripts/replica/gate.sh <slug> "$LIVE" "$PROTO" 1440 iter2
 node stardust/scripts/replica/run-bg.mjs start --name <slug>-360-iter2  -- stardust/scripts/replica/gate.sh <slug> "$LIVE" "$PROTO" 360  iter2
 node stardust/scripts/replica/run-bg.mjs wait      # returns within 100 s; full output: run-bg.mjs log <job> --grep <re>
@@ -341,14 +282,11 @@ or a chrome delta, 1 when a probe errored (it gave no verdict — read its
 iteration's fixes come off the instruments, never off eyeballing. After 3,
 log the residuals in the ledger and move on — a documented 2% residual beats
 an undocumented fourth loop. **No single step waits longer than the context
-cache lives:** instruments that run for minutes go through `run-bg.mjs`
-(start, then `wait` in ≤ 100-second slices; `wait` returns within 180 s at
-most). The rule binds the main agent exactly as it binds subagents: a
-main-agent turn that runs a long instrument in the foreground, or two long
-instruments as parallel tool calls, is the same blocked step (a recorded
-338 s turn cost one cache re-write). One recorded 15-minute gate
-batch cost a full 513k-token context rewrite — $6.30, more than the rounds
-it waited for (reference doc § Iteration discipline).
+cache lives:** long instruments go through `run-bg.mjs` (`start`, then `wait`
+in ≤ 100-second slices), main agent and subagents alike — a long instrument
+in the foreground, or two as parallel tool calls in one turn, is the same
+blocked step (reference doc § Iteration discipline: one 15-minute batch cost
+a 513k-token context rewrite, $6.30).
 
 **Hardening (each is a recorded false-measurement trap — see the reference
 doc for the full list):** real-Chrome UA **plus the standard request
@@ -386,16 +324,14 @@ never inferred from static classes or CSS: run
 `stardust/scripts/replica/motion-observe.mjs` per archetype live URL →
 `stardust/replica/motion/<slug>.json`, implement ONLY behaviors that
 fired (dead classes = NOT implemented), then observe the served prototype
-the same way — the same `--click`/`--hover` pokes in the same order (the
-comparator pairs probes by selector, then by order) — (`→
-stardust/replica/motion/<slug>-build.json`) and compare:
-`stardust/scripts/replica/motion-compare.mjs stardust/replica/motion/<slug>.json
-stardust/replica/motion/<slug>-build.json` — one verdict line per behavior
-(parity / MISSING on build / EXTRA on build / timing delta / advisory), exit
-0 = parity; dead-on-live behaviors are never required, and a widget or hover
-that fires on the build while the sampler saw nothing on live is advisory
-(the sampler misses class-toggled and pseudo-element mechanics — confirm on
-the class lines), not a fail. Record
+with the same `--click`/`--hover` pokes in the same order (→
+`stardust/replica/motion/<slug>-build.json`) and compare the two files with
+`stardust/scripts/replica/motion-compare.mjs` — one line per behavior
+(parity / MISSING on build / EXTRA on build / timing delta / advisory) and a
+summary line; it is a reporter, not a gate: a MISSING or EXTRA line is
+confirmed on the class lines (the sampler misses class-toggled and
+pseudo-element mechanics) and resolved in the prototype or recorded as dead.
+Record
 `motion: {observed, implemented, dead[]}` in `progress.json`, and re-run
 pixel-compare — the number must return to the gated value.
 Widgets are implemented, not justified away. Fan-out briefs carry the
@@ -405,9 +341,7 @@ When all breakpoints pass, present the archetype + its gate metrics for
 approval per the standard prototype approval flow (hands-off mode records
 `approvedBy: "hands-off"` per `../stardust/reference/state-machine.md`).
 Bookkeeping is one command each, never a hand-built JSON line or an inline
-`node -e` edit of state.json (one recorded run finished gating five
-archetypes and wrote their ledger lines a session later, from a throwaway
-script): `node stardust/scripts/stardust/state.mjs advance <slug> --to
+`node -e` edit of state.json: `node stardust/scripts/stardust/state.mjs advance <slug> --to
 approved --by hands-off --prototype stardust/prototypes/<slug>-proposed.html`
 and `node stardust/scripts/stardust/ledger.mjs replica source-fidelity-gate
 end --detail "<per-breakpoint numbers>"`. Resuming a run starts with
@@ -444,28 +378,29 @@ end --detail "<per-breakpoint numbers>"`. Resuming a run starts with
 - **C-deliver runs in units** (`reference/handoff-contract.md` § 3, row C +
   Fan-out discipline): C0 — the main agent alone delivers and gates the
   foundation, then `foundation-freeze.mjs freeze` + commit; C1…Cn — one
-  subagent per template cluster runs the WHOLE per-page chain, PUT and
-  published gates included, and reports one verdict line; C-final — `check`,
-  the queued `foundation-requests.md` lines applied once, `C-deliver end`.
-  Each unit is recorded in `stardust/rollout/progress.json` and committed,
-  then the runner is asked for a boundary; no frozen file is edited mid-wave.
+  subagent per template cluster AUTHORS its pages through the local
+  structural asserts and hands back a path list; the MAIN agent deploys each
+  landed cluster with one `deploy-batch.mjs --paths …` at a time (one ledger
+  writer, the token in one place); the cluster's subagent then gates on the
+  preview origin and reports one verdict line; C-final — `check`, the queued
+  `foundation-requests.md` lines applied once, `C-deliver end`. Each unit is
+  recorded in `stardust/rollout/progress.json` and committed — a safe resume
+  point, never by itself a reason to end the session; no frozen file is
+  edited mid-wave.
 - **The final gate runs against the PUBLISHED origin — not the harness**
   (`reference/source-fidelity-gate.md` § The published-origin gate): the
   delivery pipeline transforms markup, so harness numbers understate.
   Deploy the page first (`PUT → preview`), then gate it there — nothing
-  pixel-shaped runs on the local EDS harness before the first PUT (that
-  harness feeds `qa-gate`/`block-roundtrip` only; a recorded delivery
-  session spent its whole budget iterating CSS against a harness diff and
-  delivered no page). Re-run the full gate per delivered page against the
-  preview/live origin,
-  judged in the published-origin regime; only the published number counts.
-  It is the same command: `gate.sh <slug> "$LIVE" "<preview-origin-url>"
-  <width> pub1 --full --marker "<brand or domain string>"`, through
-  `run-bg.mjs`. The `--marker` is required here — the identity assertion
-  greps the served page for it, and the slug lives in the prototype's file
-  name, not in the preview page. The evidence stays in the ordinary
-  `stardust/replica/gates/<slug>-<width>/` dir under the `pub<N>` label; a
-  new dir would force a fresh live capture.
+  pixel-shaped runs on the local EDS harness before the first PUT (it feeds
+  `qa-gate`/`block-roundtrip` only; a recorded session spent its budget on a
+  harness diff and delivered no page). The published round is the same
+  command with the preview URL: `gate.sh <slug> "$LIVE" "<preview-url>"
+  <width> pub1 --full --marker "<brand or domain string>"` through
+  `run-bg.mjs` — `--marker` is required (the slug lives in the prototype's
+  file name, not the preview page) — in the ordinary
+  `stardust/replica/gates/<slug>-<width>/` dir under the `pub<N>` label (a
+  new dir would force a fresh live capture). Only the published number
+  counts.
 
 **State:** replica writes its own state under `stardust/replica/` — the
 inconsistency register, `progress.json` (per page type: archetype slug,
@@ -531,6 +466,8 @@ PRODUCT.md / DESIGN.md / DESIGN.json    ← promoted verbatim from current/ (Pha
 - `../diff/SKILL.md` — the two probes replica reuses (`--profile generic`);
   reading content-diff output; the #87 JOIN/SPLIT limitation.
 - `../extract/SKILL.md` § Prep mode — what Phase 1 provides.
+- `reference/reading-discipline.md` — the reading and inspection rules in
+  full: which helper reads what, the image rule, the evidence behind them.
 - `reference/handoff-contract.md` — Phase 5 contract card: sibling-tier
   steps, deploy editability/decode/DA protocols, rollout phases A–I with
   their ledger phase strings, one usage line per deploy and rollout

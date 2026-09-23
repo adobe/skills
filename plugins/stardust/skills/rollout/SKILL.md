@@ -239,7 +239,7 @@ included** (the prompt cache holds 5; calls of 5.2 and 6.6 min re-wrote the whol
 context, and so did one 338 s foreground turn on the main agent that ran a pixel
 loop beside a deploy-batch start + wait): a long instrument (gate rounds, pixel
 loops, Playwright captures, deploy batches) goes through `run-bg.mjs start`, and
-`wait` is the NEXT tool call — it returns within 180 s; never two long instruments
+`wait` is the NEXT tool call — it returns within its `--max` (100 s by default); never two long instruments
 as parallel tool calls in one turn, never two `wait`s in one command.
 
 ### Phase D — Site assembly (whole-site artifacts)
@@ -257,13 +257,14 @@ they MUST be published or the chrome 404s sitewide).
 it into the EDS redirects mechanism here so original inbound URLs don't 404 — the
 redirects sheet at the content root (on a DA-backed site `/redirects.json`, columns
 Source / Destination; PUT through the admin API, then preview + publish it like a
-page). The sheet MUST carry `/` and `/index.html` → the landing page, taken from
-the source site's own root redirect (`curl -sI <source-url>` and follow the
-Location chain; when the source root serves a page directly, deliver that page as
-the root document instead of a redirect). Then verify
-`curl -sIL https://<branch>--<repo>--<owner>.aem.page/` ends in 200: the runner's
-readiness probe is exactly that HEAD on `/`, and a 404 there fails the run after
-every phase has passed (recorded — a sheet with a row for every `.html` path and
+page). The root MUST answer: when the source root serves a page, deliver it as
+the root `index` document (the pipeline serves `/` from it — `/index` ≡ `/`;
+never also a `/` Source row, which would shadow it); only when the source root
+itself redirects (`curl -sI <source-url>`, follow the Location chain) does the
+sheet carry `/` and `/index.html` → the landing page. Then verify
+`curl -sIL https://<branch>--<repo>--<owner>.aem.page/` ends in 200: a 404 on
+`/` fails the whole delivery after every phase has passed (recorded — a sheet
+with a row for every `.html` path and
 none for `/`).
 
 ### Phase D2 — Dynamic features (`dynamics` Phases 4–5)
@@ -334,11 +335,14 @@ link **targets** a roster-driven batch misses
 - **The audit GETs each href against the LIVE tree.** Structural resolution
   against the ledger misses trailing-slash and case defects that only
   delivery exposes.
-- **Targets missing from the capture.** In-scope internal targets never
-  captured: capture and deliver them when ≤ 12 pages, else repoint to the
-  source site and record it in the journal; external targets: repoint to the
-  source site; other-locale targets: repoint ONLY when that locale root was
-  never captured. Any captured page — a `stardust/state.json` row, including
+- **Targets missing from the capture.** Two cases, both recorded in
+  `direction.md` as a named decision with the list: a target the direction's
+  caps meant to include is a CAPTURE GAP — crawl it first (capture → migrate →
+  gate, never authored from a live read) and deliver when the gap is ≤ 12
+  pages, else repoint to the source site and list it as scope debt; a target
+  outside the declared caps is SCOPE EXTENSION — repoint regardless of count.
+  External targets: repoint to the source site; other-locale targets: repoint
+  ONLY when that locale root was never captured. Any captured page — a `stardust/state.json` row, including
   `duplicateOf` shells and locale roots — is in scope and is delivered, never
   repointed (the ≤ 12 rule is for UNcaptured pages; a recorded run dropped ten
   captured locale roots by citing it). Never leave a 404 (a recorded audit
