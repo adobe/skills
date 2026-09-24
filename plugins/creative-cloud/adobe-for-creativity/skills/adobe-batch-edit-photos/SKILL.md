@@ -15,9 +15,9 @@ description: >
   Access: 🔐 Signed-In required | Gen AI: ❌
 license: Apache-2.0
 compatibility: "Runs on both widget-capable surfaces (e.g. Claude Cowork, which supports the asset_add_file picker and asset_preview_file preview widgets) and non-UI agents (e.g. Codex, where those widgets are unavailable). The default flow uses the widgets; each widget step has a text-only fallback. Local files reach Creative Cloud via the asset_add_file picker or (no-widget) asset_initialize_file_upload -> PUT -> asset_finalize_file_upload; raw local paths are never passed to image tools."
-allowed-tools: adobe_mandatory_init image_list_presets asset_add_file read_widget_context asset_initialize_file_upload asset_finalize_file_upload image_auto_straighten image_apply_auto_tone image_apply_adjustments image_apply_preset image_select_subject image_apply_gaussian_blur image_crop_and_resize asset_preview_file create_firefly_board
+allowed-tools: adobe_mandatory_init image_list_presets asset_add_file read_widget_context asset_initialize_file_upload asset_finalize_file_upload image_auto_straighten image_apply_auto_tone image_apply_adjustments image_apply_preset image_select_subject image_apply_effects image_apply_gaussian_blur image_crop_and_resize asset_preview_file create_firefly_board
 metadata:
-  version: 3.1.0
+  version: 4.0.0
   visibility: public
   surface: [claude, codex]
 ---
@@ -35,6 +35,8 @@ consistency of tone and color over squeezing the best out of any single image.
 
 > **Surface note:** The default flow uses Adobe's MCP App widgets (`asset_add_file` picker in Step 1, `asset_preview_file` preview in Steps 2c and 8). Follow it as written. Only if a widget tool is **not available on this surface** (e.g. Codex) use the *No-widget fallback* attached to that step. Present `AskUserQuestion` prompts as plain-text labeled options wherever no question widget exists.
 
+> **No interactive image editing here.** This overrides the single-image widget offer in the *Interactive Image Widgets* section of `adobe_mandatory_init`: this skill is a batch pipeline, so whatever the image count, never call or mention an interactive editing widget (any `_app` tool) — run the pipeline below as usual.
+
 ---
 
 ## Tool Reference
@@ -50,7 +52,7 @@ consistency of tone and color over squeezing the best out of any single image.
 | Fine-tune tweaks    | `image_apply_adjustments`                         | Batch — all selected tweaks in one call        |
 | Look preset         | `image_apply_preset`                              | Per image, core style vehicle                  |
 | Element detection   | `image_select_subject` with full bodyParts array  | Per image, Step 5e opt-in; also crop focus     |
-| Background blur     | `image_apply_gaussian_blur`                       | Per image, only if explicitly requested        |
+| Background blur     | `image_apply_effects` (`effect: "gaussianBlur"`)  | Per image, only if explicitly requested; falls back to `image_apply_gaussian_blur` |
 | Crop                | `image_crop_and_resize`                           | Per image, optional                            |
 | Sample preview      | `asset_preview_file`                              | Before/after on image[0] only *(no-widget fallback: present the 2 URLs directly)* |
 | Final preview       | `asset_preview_file`                              | Batch assets array *(no-widget fallback: present the URLs directly)* |
@@ -62,7 +64,7 @@ consistency of tone and color over squeezing the best out of any single image.
 Call `adobe_mandatory_init` first. This returns file handling rules and tool routing guidance required for the rest of the workflow.
 
 ```json
-{ "skill_name": "adobe-batch-edit-photos", "skill_version": "3.1.0" }
+{ "skill_name": "adobe-batch-edit-photos", "skill_version": "4.0.0" }
 ```
 
 ---
@@ -267,7 +269,7 @@ The preset column below is now **dynamic** — use the preset(s) from your Look�
 - "Desaturate / muted tones" → `saturation: -30`
 - "Adjust exposure (brighter/darker)" → `exposure: +0.5` (brighter) or `exposure: -0.5` (darker); infer direction from context, default to `+0.3` if unspecified
 - "Tune bright areas" → `lights: +20`
-- "Blur background (heavy)" → `image_apply_gaussian_blur` → `blurRadius: 12, blurTarget: "background"` (separate call — not part of `image_apply_adjustments`)
+- "Blur background (heavy)" → `image_apply_effects` → `effect: "gaussianBlur", blurRadius: 12, blurTarget: "background"` (separate call — not part of `image_apply_adjustments`; falls back to `image_apply_gaussian_blur` if unavailable)
 - "None" → skip fine-tune step entirely
 
 **Crop:**
@@ -508,6 +510,20 @@ Omit any parameter the user did not select. One call handles all tweaks simultan
 
 **Background blur** (if selected, per image):
 ```
+Tool: image_apply_effects
+Params:
+  imageURIs: ["<url_N>"]
+  options:
+    effect: "gaussianBlur"
+    blurRadius: 12
+    blurTarget: "background"
+```
+
+If `image_apply_effects` is unavailable on this surface (the tool is not
+registered, or the call fails with an unknown-tool error), retry once with the
+legacy per-effect tool `image_apply_gaussian_blur` — same parameters, minus the
+`effect` discriminator:
+```
 Tool: image_apply_gaussian_blur
 Params:
   imageURIs: ["<url_N>"]
@@ -661,7 +677,8 @@ Read `results[N].outputUrl`. On `success: false` → see Error Handling.
 | `image_auto_straighten` fails                       | Use original URI; note "straighten skipped".                                                                                                                                                             |
 | `image_apply_auto_tone` fails                       | Use straightened URI; note in summary.                                                                                                                                                                   |
 | Any adjustment tool fails                           | Use previous step's output; note in summary.                                                                                                                                                             |
-| `image_apply_gaussian_blur` fails                   | Use previous output; note "blur skipped".                                                                                                                                                                |
+| `image_apply_effects` is unavailable / unknown tool  | Retry once with `image_apply_gaussian_blur` using the same `blurRadius` and `blurTarget`; no user-visible change.                                                                                         |
+| `image_apply_effects` and its fallback both fail    | Use previous output; note "blur skipped".                                                                                                                                                                |
 | `image_crop_and_resize` fails                       | Use blur/adjusted output as final; note in summary.                                                                                                                                                      |
 | `asset_preview_file` returns "No approval received" | Present final output URLs as plain text links in the summary instead.                                                                                                                                    |
 | All steps fail on one image                         | Return original URI; flag clearly in summary.                                                                                                                                                            |
@@ -680,7 +697,7 @@ Read `results[N].outputUrl`. On `success: false` → see Error Handling.
 - Selective adaptive enhancements (Step 5e) are **off by default** — only run when the user explicitly opts in via Question 5.
 - Step 5e applies presets only to detected elements — an image with no sky gets no sky preset, an image with no person gets no subject preset. Per-image variation here is correct.
 - The preview pass uses a 1200px downscaled version of image 1; full-resolution is used for the final batch.
-- Background blur uses `image_apply_gaussian_blur` with `blurTarget: "background"` (`image_apply_lens_blur` is not used here).
+- Background blur uses `image_apply_effects` with `effect: "gaussianBlur"` and `blurTarget: "background"`, falling back to the legacy `image_apply_gaussian_blur` where `image_apply_effects` is not yet available (`image_apply_lens_blur` is not used here).
 - The before/after preview gate (Step 2c) is **mandatory and cannot be skipped** — the full batch never starts without explicit user confirmation, regardless of how clearly preferences were stated upfront.
 - After the user adjusts settings, the preview always repeats with the new settings before the batch runs. There is no "run all now without preview" escape path.
 - Completion is posted as a clear in-chat message (no push notifications).
