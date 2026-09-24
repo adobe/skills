@@ -366,7 +366,7 @@ should adopt a modular scale by default.
   "baseUnit": 4,                   // 4 | 8 — inferred from mode of paddings/gaps
   "scale": [4, 8, 12, 16, 24, 32, 48, 64, 96],
   "sectionPadding": "96px",
-  "containerMaxWidth": "1280px",
+  "containerMaxWidth": "1280px",   // measured (cap-probe #124); null when fluid
   "gridGap": "24px"
 }
 ```

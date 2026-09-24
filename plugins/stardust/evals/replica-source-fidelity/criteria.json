@@ -30,7 +30,7 @@
     {
       "name": "both_breakpoints_gated",
       "max_score": 10,
-      "description": "The gate runs at both 1440 and 360; mobile results are recorded, not assumed from desktop."
+      "description": "The gate runs at both 1440 and 360, and the content-cap row runs once per archetype after the 1440 pass (cap-probe.mjs live --against prototype at the derived probeWidth from DESIGN.json, evidence under stardust/replica/gates/<slug>-<probeWidth>/); mobile and wide results are recorded, not assumed from desktop."
     },
     {
       "name": "iteration_discipline",

@@ -13,7 +13,7 @@ Run the project copies under `stardust/scripts/<skill>/`. Read this before any `
 - `deploy/file-lock.mjs` — library (lock + atomic ledger merge), no CLI
 - `deploy/ew-editability-probe.mjs` — rendered editability gate — `--content <p>.html | <url…> [--simulate-editor]`
 - `deploy/localize-links.mjs` — source hrefs → root-relative — `--source-host <h> [--content content] [--check]`
-- `deploy/qa-gate.mjs` — decoration asserts on harness — `<harnessURL> --schema stardust/eds-schema/<p>.json`
+- `deploy/qa-gate.mjs` — decoration asserts + cap at the derived width — `<harnessURL> --schema stardust/eds-schema/<p>.json [--design DESIGN.json]`
 - `deploy/render-harness.mjs` — screenshot local decoration — `content/<p>.html <out.png> [<block>…] [--ew]`
 - `deploy/sanitise.js` — non-ASCII → entities, in place — `content/<p>.html` (one file per call)
 - `deploy/section-schema.mjs` — per-section role inventory — `<protoURL> [--out <f>] [--profile eds|generic]`
@@ -37,6 +37,7 @@ Run the project copies under `stardust/scripts/<skill>/`. Read this before any `
 - `qa/lib.mjs` — library, no CLI
 - `qa/qa.mjs` — read-only live sweep → report.json — `--base <live-url>`
 - `qa/report-html.mjs` — report.json → report.html — `[--report stardust/qa/report.json]`
+- `replica/cap-probe.mjs` — content-cap model: capture (→ DESIGN.json) or live-vs-build row at the derived width — `<url…> [--write-design DESIGN.json]` | `<live> --against <build> [--design DESIGN.json] [--slug <s>] [--main <sel>]`; exit 2 = FAIL
 - `replica/anchor.mjs` — section anchors — `<url> [--width 1440] [--main <sel>] [--cache <json>]`
 - `replica/chrome-parity.mjs` — header/footer style parity — `<liveURL> <buildURL> [--width] [--live-cache <json>]`
 - `replica/crop-compare.mjs` — pixel diff of one band — `<a.png> <b.png> --height <px> [--y] [--y-b] [--threshold 2]`

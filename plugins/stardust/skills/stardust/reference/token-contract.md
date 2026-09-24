@@ -116,7 +116,9 @@ a comment showing the role name above the token.
 ## Sizing `--max-width`
 
 The `1200px` in the example block is illustrative, not normative —
-stardust ships **no default container width**. Derive it per project:
+stardust ships **no default container width**. The replica flow MEASURES
+it — `cap-probe.mjs --write-design` (#124) writes `containerMaxWidth` (null
+when fluid) and `probeWidth`; inherit both as-is. Redesign derives it:
 
 1. **Captured surface first** (Mode A, per `direct/SKILL.md`).
    Inherit the captured container when it holds up. When it reads

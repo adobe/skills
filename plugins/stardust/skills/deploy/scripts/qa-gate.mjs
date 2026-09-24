@@ -9,7 +9,13 @@
  * decoration contract in one run.
  *
  *   node skills/deploy/scripts/qa-gate.mjs http://localhost:3000/stardust/.work/harness/page.html \
- *        --schema stardust/eds-schema/<page>.json [--maxw 1340] [--full-bleed hero,band]
+ *        --schema stardust/eds-schema/<page>.json [--design DESIGN.json] [--maxw <px>] [--full-bleed hero,band]
+ *
+ *   --design <file>  DESIGN.json whose extensions.breakpoints carry the measured sizing model
+ *                    (cap-probe.mjs --write-design): probeWidth sets the wide pass's viewport,
+ *                    containerMaxWidth is the cap asserted there and the --maxw default.
+ *                    Default: ./DESIGN.json when it exists. The URL may be the harness or the
+ *                    published origin — the cap assert is the same on both.
  *
  * Writes: nothing — PASS/WARN/FAIL lines go to stdout.
  *
@@ -22,9 +28,16 @@
  *   - schema unit counts: each schema section with repeats count N≥2 renders
  *     ≥N units in its matching page section (grid/flex children or unit-level
  *     headings — the 1-of-N / 0-of-N segmentation collapse, #48/#52/#62)
- *   - wide-viewport (#13, second pass at 1600px): block content boxes stay
- *     ≤ --maxw unless the block is genuinely full-bleed in the schema order —
- *     over-wide boxes print as WARN (cross-check against the prototype).
+ *   - wide pass at the DERIVED width (#13 → #124): the viewport is DESIGN.json's probeWidth
+ *     (max(2560, largest captured cap × 1.25) — never a fixed 1600/1920: a probe at a cap's
+ *     own width cannot see the cap; 2560 without a DESIGN.json). It asserts the OUTER cap
+ *     through the shared ../../replica/scripts/cap-probe.mjs (probePage): the page's content
+ *     cap (main / section scaffold) must hold within ±20 px of containerMaxWidth — FAIL names
+ *     the scaffold rule (recorded: a build declared --container-max and never applied it,
+ *     rendered edge to edge at every width, and both pixel gates passed because 1440 is
+ *     narrower than the cap). A null containerMaxWidth asserts that the build adds no cap.
+ *     Then the per-block check: content boxes stay ≤ --maxw unless the block is genuinely
+ *     full-bleed in the schema order — over-wide boxes print as WARN.
  *   - --full-bleed a,b (the INVERSE of #13): for blocks the prototype renders
  *     edge-to-edge, the block's section wrapper must compute the full viewport
  *     width. A template-level cap (`main > .section > div { max-width }`) that
@@ -55,9 +68,16 @@ const args = process.argv.slice(2);
 const url = args.find((a) => !a.startsWith('--'));
 const opt = (name, dflt) => { const i = args.indexOf(`--${name}`); return i >= 0 ? args[i + 1] : dflt; };
 const schemaPath = opt('schema', null);
-const maxw = Number(opt('maxw', 1340));
+// The sizing model lives in DESIGN.json (cap-probe.mjs --write-design); the probe itself is the
+// replica skill's cap-probe.mjs — plugin tree or the documented project copy (stardust/scripts/).
+const designPath = opt('design', fs.existsSync('DESIGN.json') ? 'DESIGN.json' : null);
+const HERE = new URL('.', import.meta.url);
+const capProbeUrl = ['../../replica/scripts/cap-probe.mjs', '../replica/cap-probe.mjs'].map((p) => new URL(p, HERE)).find((u) => fs.existsSync(u));
+const capProbe = capProbeUrl ? await import(capProbeUrl.href) : null;
+const sizing = capProbe && designPath ? capProbe.readDesignSizing(designPath) : null;
+const maxw = Number(opt('maxw', sizing && sizing.containerMaxWidth ? sizing.containerMaxWidth : 1340));
 const fullBleed = (opt('full-bleed', '') || '').split(',').map((s) => s.trim()).filter(Boolean);
-if (!url) { console.error('usage: qa-gate.mjs <harnessURL> [--schema <eds-schema.json>] [--maxw 1340] [--full-bleed hero,band]'); process.exit(2); }
+if (!url) { console.error('usage: qa-gate.mjs <harnessURL> [--schema <eds-schema.json>] [--design DESIGN.json] [--maxw <px>] [--full-bleed hero,band]'); process.exit(2); }
 const schema = schemaPath ? JSON.parse(fs.readFileSync(schemaPath, 'utf8')) : null;
 
 const fails = [];
@@ -177,15 +197,27 @@ if (fullBleed.length) {
   fb.forEach((b) => (b.w >= b.vw - 2 ? ok : warns).push(`full-bleed: block ${b.name} wrapper spans ${b.w}px of ${b.vw}px viewport${b.w < b.vw - 2 ? ' — a template-level `main > .section > div { max-width }` cap is likely out-specifying the block\'s escape rule; define ONE full-bleed escape at template level and route the block through it' : ''}`));
 }
 
-// wide-viewport pass (#13)
-await page.setViewportSize({ width: 1600, height: 900 });
-await page.waitForTimeout(600);
+// wide pass at the derived width (#13 → #124): the outer cap first, through the shared probe, then the
+// per-block boxes at the same viewport.
+let wideW = (sizing && sizing.probeWidth) || 2560;
+if (capProbe) {
+  const model = await capProbe.probePage(page, { rootSel: 'main', probeWidth: (sizing && sizing.probeWidth) || null });
+  wideW = model.probeWidth;
+  const got = model.contentMaxWidth;
+  if (!sizing) warns.push(`wide-${wideW}: no DESIGN.json sizing model (${designPath || '--design'}) — the outer cap is not asserted; run cap-probe.mjs --write-design (#124). Build content cap: ${got === null ? 'none (fluid)' : `${got}px`}`);
+  else if (sizing.containerMaxWidth === null) check(got === null, `no content cap at ${wideW} (DESIGN.json containerMaxWidth null — live is fluid, #124)`, got === null ? '' : `build caps content at ${got}px (${model.contentFrom}) — remove the scaffold cap`);
+  else check(got !== null && Math.abs(got - sizing.containerMaxWidth) <= 20, `content cap ${sizing.containerMaxWidth}px holds at ${wideW} (#124)`, got === null ? `content runs ${model.root.w2}px wide — apply the cap on the section scaffold (main { max-width } for a shell/content cap, main > .section > div { max-width } for a module cap; deploy Step 3)` : `build cap ${got}px (${model.contentFrom}) vs DESIGN.json ${sizing.containerMaxWidth}px`);
+} else {
+  warns.push(`wide-${wideW}: cap-probe.mjs not found beside this script (../../replica/scripts/ or ../replica/) — the outer cap is not asserted (#124); copy the replica scripts dir`);
+  await page.setViewportSize({ width: wideW, height: 900 });
+  await page.waitForTimeout(600);
+}
 const wide = await page.evaluate(() => [...document.querySelectorAll('[data-block-name]')].map((b) => {
   const inner = b.querySelector('.wrap, [class*="inner"], [class*="container"]') || b.firstElementChild;
   return { name: b.dataset.blockName, w: inner ? Math.round(inner.getBoundingClientRect().width) : 0 };
 }));
 wide.filter((b) => b.w > maxw + 40 && !['header', 'footer'].includes(b.name) && !fullBleed.includes(b.name)) // declared full-bleed blocks are exempt from #13
-  .forEach((b) => warns.push(`wide-1600: block ${b.name} content spans ${b.w}px (> ${maxw}) — full-bleed is correct ONLY if the prototype section has no inner max-width wrapper (#13)`));
+  .forEach((b) => warns.push(`wide-${wideW}: block ${b.name} content spans ${b.w}px (> ${maxw}) — full-bleed is correct ONLY if the prototype section has no inner max-width wrapper (#13)`));
 
 await browser.close();
 
