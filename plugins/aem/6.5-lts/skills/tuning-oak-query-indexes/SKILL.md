@@ -38,7 +38,8 @@ per the final section with verification stated as reasoned-but-unproven.
 
 1. **Get the query and every index definition it could plausibly use** — not just the one you assume
    applies. **If you don't already have the query in hand** — e.g. asked to audit a whole app/bundle rather
-   than tune one query someone handed you — use the `extracting-jcr-queries` skill first to find every
+   than tune one query someone handed you — first follow the bundled
+   [extracting JCR queries guide](references/extracting-jcr-queries.md) to find every
    JCR/QueryBuilder query the codebase actually issues (including ones assembled programmatically through
    wrapper/helper/DAO code, which a text grep alone misses); its output (construction site + every
    trigger/caller path) is the input to this skill's assessment, one query at a time. **If no live instance
