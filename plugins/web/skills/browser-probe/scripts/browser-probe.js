@@ -168,9 +168,10 @@ function waitForStable(session) {
   }
 }
 
+// Request #1 is the main document, which carries the CDN/WAF response headers
 function getNetworkLines(session) {
   try {
-    const raw = cli(session, 'network');
+    const raw = cli(session, 'response-headers', '1');
     return raw.split('\n').filter(Boolean);
   } catch {
     return [];

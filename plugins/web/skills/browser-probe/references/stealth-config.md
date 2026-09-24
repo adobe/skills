@@ -75,8 +75,8 @@ or for scripts using Playwright API directly.
 
 ## Provider Signature Table
 
-Maps observable signals (from `playwright-cli network` response headers and
-page content) to CDN bot detection providers and typical remedies.
+Maps observable signals (from `playwright-cli response-headers 1` main-document
+headers and page content) to CDN bot detection providers and typical remedies.
 
 | Signal | Provider | Confidence | Typical fix |
 |--------|----------|------------|-------------|
