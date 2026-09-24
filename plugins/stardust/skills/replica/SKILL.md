@@ -57,10 +57,7 @@ eyeballing.
    real `npm i` — re-probe before every gate run
    (`node -e "import('pixelmatch').then(()=>process.exit(0))"`).
 4. Copy scripts into the project and run them from there, not from the
-   plugin: this skill's whole `scripts/` dir (stitch-shot, pixel-compare,
-   crop-compare, chrome-parity, row-profile, sibling-variance, anchor, measure,
-   gate.sh, run-capped, run-bg, gate-evidence, foundation-freeze, the four
-   inspection helpers, motion-observe, motion-compare) to
+   plugin: this skill's whole `scripts/` dir to
    `stardust/scripts/replica/`, the master skill's `../stardust/scripts/`
    (ledger.mjs, state.mjs) to `stardust/scripts/stardust/`, the migrate
    skill's `../migrate/scripts/` (migrate.mjs) to `stardust/scripts/migrate/`,
@@ -188,8 +185,10 @@ as **clean semantic HTML/CSS** from three sources, in this order:
     content-preservation rules (`../migrate/reference/content-preservation.md`)
     apply from the first line: no rewording, no fabrication.
 (b) **Exact values lifted from the source site's own CSS.** Fetch the live
-    stylesheets; lift container max-widths, the type ramp, button specs,
-    section paddings, radii, shadows, hero heights, the container model.
+    stylesheets; lift the type ramp, button specs, section paddings, radii,
+    shadows, hero heights. The container model is measured, not lifted —
+    DESIGN.json `extensions.breakpoints` (extract's `cap-probe.mjs` run; a bounded
+    entry runs `cap-probe.mjs <live-url> --write-design stardust/current/DESIGN.json` first).
     **Fidelity values come from the original site's CSS, not the eye** — this
     converts 3–4 guess-and-screenshot loops into one. Box-by-box comparison of
     the live page against the served prototype goes through the shipped
@@ -231,11 +230,9 @@ breakpoint (default 1440 AND 360), live URL as source vs served prototype:
 
 ```bash
 PROTO="http://localhost:8791/<slug>-proposed.html"   # python3 -m http.server from the prototypes dir
-# ONE server, ONE port — probe with curl before starting one (lsof is optional, often absent):
-curl -sI localhost:8791/ | head -1                       # 200/404 = something serves the port; no line = free
+# ONE server, ONE port — probe with curl first (gate doc § Per-breakpoint procedure): no answer →
+# start yours; answers but not your file → foreign server, never kill it, take a per-project port
 curl -sI localhost:8791/<slug>-proposed.html | head -1   # 200 = it serves YOUR dir: reuse it
-# no answer → start yours; answers but not your file → foreign server: never kill it, take a
-# per-project port (a foreign server silently poisons the gate; gate.sh asserts a marker, exit 4)
 LIVE="https://<site>/<path>"
 
 # One command per round — gate.sh, through run-bg. The FIRST round of a breakpoint and the
@@ -264,20 +261,23 @@ node stardust/scripts/replica/chrome-parity.mjs "$LIVE" "$PROTO" --width 1440 --
 node stardust/scripts/replica/run-bg.mjs start --name <slug>-1440-iter2 -- stardust/scripts/replica/gate.sh <slug> "$LIVE" "$PROTO" 1440 iter2
 node stardust/scripts/replica/run-bg.mjs start --name <slug>-360-iter2  -- stardust/scripts/replica/gate.sh <slug> "$LIVE" "$PROTO" 360  iter2
 node stardust/scripts/replica/run-bg.mjs wait      # returns within 100 s; full output: run-bg.mjs log <job> --grep <re>
+# Content-cap row — once per archetype after the 1440 pass, at DESIGN.json's derived probeWidth (never a pinned 1920)
+node stardust/scripts/replica/cap-probe.mjs "$LIVE" --against "$PROTO" --design DESIGN.json --slug <slug> --main "<content-root>"
 ```
 
-`gate.sh --help` lists the flags; `--full` exits 124 when any probe hit its
-deadline (re-run, not a verdict), 2 on a pixel fail, a structural content 🔴
-or a chrome delta, 1 when a probe errored (it gave no verdict — read its
-`ERROR` line), 0 only when all four ran and passed.
+`gate.sh --help` lists the flags and exit codes (124 = deadline, re-run, not
+a verdict; 0 only when all four ran and passed).
 
-**Pass bar (all four, per breakpoint):**
+**Pass bar (all four per breakpoint, plus the content-cap row):**
 - content-diff: **0 structural 🔴** on the main root and the chrome roots — the default run covers both, each finding names its root (🟡/🟠 confirmed intended);
 - visual-diff: flags none or justified;
 - pixel diff: **≤ 10%** full-page, with no per-500px band left unexplained
   (the band breakdown is the navigation instrument — fix the first hot band,
   top-down; everything below it is offset-contaminated);
 - height delta **|Δ| ≤ 8px** (pixel-compare's own warning bar);
+- **content-cap row: `cap-probe.mjs … --against` prints `cap-probe: PASS`**
+  (gate doc § Pass bar item 6 — every live cap held within ±20 px by kind,
+  nothing capped only on the prototype; a ✗ names the sizing rule, no pixel iteration);
 - and, outside the bar and outside the cap, the horizontal-overflow assert:
   `document.documentElement.scrollWidth` within 4 px of the viewport
   (integer rounding; `GATE_OVERFLOW_TOLERANCE`) at every breakpoint on the
@@ -292,23 +292,19 @@ an undocumented fourth loop. **No single step waits longer than the context
 cache lives:** long instruments go through `run-bg.mjs` (`start`, then `wait`
 in ≤ 100-second slices), main agent and subagents alike — a long instrument
 in the foreground, or two as parallel tool calls in one turn, is the same
-blocked step (reference doc § Iteration discipline: one 15-minute batch cost
-a 513k-token context rewrite, $6.30).
+blocked step (reference doc § Iteration discipline).
 
 **Hardening (each is a recorded false-measurement trap — see the reference
 doc for the full list):** real-Chrome UA **plus the standard request
 headers** on every capture (built into the shared
-`diff/scripts/live-session.mjs` — the default HeadlessChrome UA gets a
-Cloudflare challenge that the probes then silently measure AS the source,
-and the UA alone still 403s on Akamai); a challenge/blocked interstitial
-**fails loud (exit 3)**, never measured — escalate with `--headed`, and a
-site that still blocks needs crawl.mjs-class capture (the gate must not
-silently degrade); `domcontentloaded` on live targets, never `networkidle`;
+`diff/scripts/live-session.mjs`); a challenge/blocked
+interstitial **fails loud (exit 3)**, never measured — escalate with
+`--headed`, and a site that still blocks needs crawl.mjs-class capture;
+`domcontentloaded` on live targets, never `networkidle`;
 symmetric `--main` scoping on both sides (`--main body` is never valid);
 both overlay classes dismissed via `--dismiss` (consent AND timed marketing
 modals); animations frozen for capture; the pointer parked after any
-dismissal click (a `:hover`-styled element under the resting cursor
-captures in hover state); fixed/sticky chrome replicated fixed, with its
+dismissal click; fixed/sticky chrome replicated fixed, with its
 scroll-state morph, so seam repeats stay symmetric
 (`reference/recreation-procedure.md` § Fixed and sticky chrome);
 granularity-parity policy for JOIN/SPLIT false-reds (#87); capture-state

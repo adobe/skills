@@ -175,20 +175,21 @@ Both were caught only by the gate in UC1-E1; check for them proactively:
 ### Lift the sizing MODEL, not the resolved value (#116)
 
 A computed-style lift records `width: 720px` from an element whose authored
-rule is `width: 50%`. At the gate widths the two are byte-identical — BOTH
-gate breakpoints render them the same — so the frozen value ships invisibly
-and diverges only on wider screens (recorded: a live hero card 940px at
-1920 vs the frozen 720px; the CTA row wrapped as a side effect). The same
-trap applies to DOM: capturing the 1440 layout OUTCOME (a button row that
-wrapped 3+1, authored as two rows / styled with an `.x + .x` sibling rule)
-instead of the layout MODEL (one wrapping flex row) freezes a
-viewport-specific artifact into content and CSS.
+rule is `width: 50%`; both gate widths render the two the same, so the frozen
+value ships invisibly and diverges on wider screens (#116, recorded). The
+same trap applies to DOM: a 1440 layout OUTCOME (a button row wrapped 3+1)
+captured instead of the layout MODEL (one wrapping flex row).
 
-- **Lift at TWO OR THREE widths (e.g. 1280 + 1440 + 1920) and diff the
-  lifts — widths AND heights.** Any box whose width scales between them is
-  FLUID: find the authored rule (`%` / `vw` / max-width model) in the
-  source CSS and encode the RULE, never the resolved px. Boxes that hold
-  constant are legitimately fixed. Section heights and overlaps get the
+- **Read the measured cap model first (#124), then lift widths AND heights
+  at two widths.** DESIGN.json `extensions.breakpoints` (extract's
+  `cap-probe.mjs` run) lists every cap origin: `caps[]` by kind (`shell` /
+  `content` / `module`, px, authored via), `modules[]` (capped or full-bleed
+  per section), `containerMaxWidth`, the derived `probeWidth`. Encode a
+  wrapper cap as `main { max-width }`, a module cap on the section column —
+  never a resolved px, never a source breakpoint (the target keeps its own
+  two). For everything else diff a lift at 1440 against one at `probeWidth`:
+  a box that scales is FLUID — encode its authored rule (`%` / `vw` /
+  max-width model), never the px; a box that holds is fixed. Heights get the
   same test: a fixed-height hero gated pixel-perfect at 1440 read "10px
   off" to a reviewer browsing at 1512 because live scaled it with the
   viewport (recorded); when a height or overlap scales, encode it
@@ -196,9 +197,9 @@ viewport-specific artifact into content and CSS.
 - **Layout groups get the same test**: if a row's children redistribute
   between the two widths, the model is a wrapping flex/grid row — author
   ONE row and let it wrap; never encode the wrap point as structure.
-- The gate-side backstop is the ≥1920 box-map spot check
-  (`source-fidelity-gate.md` § Wide-viewport fluid check) — but the check
-  only catches what this rule prevents; lifting the model up front is the
+- The gate-side backstop is the mandatory content-cap row
+  (`source-fidelity-gate.md` § Pass bar item 6: `cap-probe.mjs … --against`)
+  — it catches what this rule prevents; lifting the model up front is the
   cheap half.
 
 ### Box model is a lifted value (`box-sizing` per container)

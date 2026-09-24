@@ -104,12 +104,9 @@ Additional checks for this sub-command:
    start of its own run, not assume extract's install survived.
 
    **Script location matters.** ESM resolves `import 'playwright'`
-   from the *script's* directory, and the plugin tree ships no
-   `node_modules` — so running `crawl.mjs` from the plugin path
-   throws `ERR_MODULE_NOT_FOUND` even when the project has playwright
-   installed. Copy the script byte-identical into the project
-   (`stardust/scripts/crawl.mjs`) and run the copy; it resolves
-   against the project's `node_modules`.
+   from the *script's* directory and the plugin tree ships no
+   `node_modules`: copy every script byte-identical into the project
+   (`stardust/scripts/…`) and run the copy.
 
    **Bundled crawler.** `skills/extract/scripts/crawl.mjs` is a
    runnable reference implementation of this whole sub-command —
@@ -119,12 +116,9 @@ Additional checks for this sub-command:
    vision gate), response validation, and the §
    Capture-hygiene hardening (visibility filter, interstitial drop,
    SPA-shell flag, modal `textContent` capture, tracking-pixel
-   discounting, cross-page duplicate detection). Prefer invoking it
-   (`node skills/extract/scripts/crawl.mjs --url <origin> [--pages …]
-   [--max N] [--concurrency N]`) over hand-rolling a Playwright
-   script per run; extend
-   its in-page `capture()` to cover any recipe field it doesn't yet
-   emit.
+   discounting, cross-page duplicate detection). Prefer invoking it over
+   hand-rolling a Playwright script per run; extend its in-page
+   `capture()` to cover any recipe field it doesn't yet emit.
 2. **Origin collision.** If `stardust/state.json` already records
    `site.originUrl` and the new `<url>` is a different origin, stop and
    ask before clobbering. Stardust does not silently mix two sites in
@@ -391,18 +385,26 @@ probe.** `node <plugin>/skills/extract/scripts/style-census.mjs`
 (copied into the project like `crawl.mjs`, § Setup) measures every
 captured page at 1440 and writes
 `stardust/current/_computed-styles.json`; add `--width 360` when the
-breakpoints include it. It is one more live pass over every page —
-run it ONCE, after the crawl, in the background (replica's `run-bg.mjs`
-where copied, else the harness's own background run); it opens the
-live side through the diff skill's `live-session.mjs` (real-Chrome UA,
-consent dismissal, bot challenge = exit 3) like every other live
-instrument. Read the palette, type, motif and hover values
-from the file's `aggregate` (via `json-query.mjs` where the replica
-copies it, or one `node -e` otherwise) and cite each from its
-`sources[]` (`url`, `selector`, `prop`); the per-page detail —
-headings, buttons with hover, surfaces, histograms, custom
-properties, logo candidates, icon-font glyphs — sits under
-`pages[url][width]`. `--help` lists the flags and the output shape.
+breakpoints include it. One more live pass over every page — run it
+ONCE, after the crawl, in the background; it opens the live side
+through `live-session.mjs` like every other live instrument. Read the
+palette, type, motif and hover values from the file's `aggregate` and
+cite each from its `sources[]` (`url`, `selector`, `prop`); the
+per-page detail sits under `pages[url][width]`.
+
+**Content-cap model — run the shipped probe; author no lift (#124).**
+`node stardust/scripts/replica/cap-probe.mjs <archetype-url>… --write-design
+stardust/current/DESIGN.json` (replica's script; copy it with `live-session.mjs`)
+renders each archetype at 1440 and at a DERIVED wide width —
+max(2560, largest cap × 1.25); a probe AT a cap's width cannot see it — and
+records every box that stops growing (kind `shell` / `content` / `module`,
+px, authored via, tier) into `extensions.breakpoints`: `containerMaxWidth`
+(the `--max-width` source; null when fluid), `probeWidth`, `caps[]`,
+`modules[]`. One navigation per archetype after the census (never beside
+it), once DESIGN.json is authored (it merges). A cap on the shell or
+on every archetype is design intent whatever its value; `capRegister` lists
+single-module or archetype-divergent caps for the inconsistency register.
+Source breakpoints are never inherited — the target keeps its own two.
 Captures:
 
 - **Logo** by the v1 priority chain: inline SVG → `<img>` with
@@ -492,7 +494,7 @@ prints; read each spec by section, not whole):
   (`colors`, `typography`, `rounded`, `spacing`, `components`) from
   the captured tokens. The `extensions` block of DESIGN.json carries
   v1's `componentStyle`, `motifs`, and `voice` arrays so nothing is
-  lost.
+  lost, and `breakpoints` — the cap-probe sizing model — verbatim.
 
 Stardust does **not** invoke `$impeccable init` (formerly `teach`) or
 `$impeccable document` for the current-state files: those commands write to project

@@ -32,20 +32,11 @@ then 360.
 
 ```bash
 # Serve the prototype from its own dir so relative assets resolve. ONE server,
-# ONE port — probe before starting one (curl is always present, lsof is not):
+# ONE port — probe with curl before starting one (lsof is optional, often absent):
 curl -sI localhost:8791/ | head -1                       # 200/404 = something serves the port; no line = free
 curl -sI localhost:8791/<slug>-proposed.html | head -1   # 200 = it serves YOUR dir: reuse it
-command -v lsof >/dev/null && lsof -nP -iTCP:8791 -sTCP:LISTEN   # optional: names the pid
-# Nothing answered → start yours. Answers but not your file → a foreign server:
-# never kill a listener you did not start; take a per-project port and probe
-# again. `lsof … || echo free` is not a probe — without lsof it prints "free"
-# beside a live listener (recorded: a second server on the same port died at
-# once and the round chased 404s). A stale server from another stardust
-# project on the shared suggested port silently serves a foreign site into
-# the gate (recorded twice) — gate.sh asserts a page marker, exit 4. On
-# shared machines run gate.sh with --marker "<brand string>": the slug
-# default can false-pass against another stardust project sharing the slug
-# (both serving a home-proposed.html that contains "home").
+# Answers but not your file → foreign server: never kill it, take a per-project port. gate.sh asserts
+# a page marker (exit 4); on shared machines pass --marker "<brand string>" (a shared slug false-passes).
 (cd stardust/prototypes && python3 -m http.server 8791 &)   # only when nothing answered
 PROTO="http://localhost:8791/<slug>-proposed.html"
 LIVE="https://<site>/<path>"
@@ -84,7 +75,7 @@ full 3-iter, 2-breakpoint gate is already ≈12–18 live hits, and hard-CDN
 sites (recorded: an Akamai-defended luggage retailer) escalate to an IP block after a handful.
 The prototype capture is re-taken every iteration.
 
-## Pass bar (all five, per breakpoint)
+## Pass bar (all five per breakpoint, plus the content-cap row)
 
 1. **content-diff: 0 structural 🔴 — across the main root AND the chrome
    roots (`header`, `footer`), which the default run covers on every gate
@@ -219,6 +210,22 @@ bar item can be traded for a documented residual; this cannot
 and prints the verdict line; `measure.mjs` prints the number on its root
 line for any ad-hoc read.
 
+6. **Content-cap row — once per archetype after the 1440 pass, at the
+   DERIVED wide width (#116 → #124).** Both gate widths are narrower than
+   most caps and render a resolved px and an authored `%` identically, so
+   a build that renders edge to edge (recorded: live 1920 px shell + 1600 px
+   article, build token declared and never applied) or a frozen fluid value
+   passes them by construction. `node stardust/scripts/replica/cap-probe.mjs
+   "$LIVE" --against "$PROTO" --design DESIGN.json --slug <slug> --main
+   "<content-root>"` — one live navigation at DESIGN.json's `probeWidth`
+   (max(2560, largest cap × 1.25); a probe AT a cap's width cannot see it —
+   never pin 1920). Pass = every live cap held within ±20 px at the same
+   KIND (wrapper, then one module per top-level section — never by DOM depth,
+   EDS section wrappers are full width by design), nothing capped only on
+   the prototype; a ✗ names the sizing rule (deploy Step 3 scaffold; re-lift
+   per `recreation-procedure.md` § Lift the sizing MODEL), never a pixel
+   iteration. Evidence: `stardust/replica/gates/<slug>-<probeWidth>/cap-<label>.{json,txt}`.
+
 **Calibration honesty — two fidelity regimes, one bar.** The validated
 numbers above (1.31%, Δ0) describe the **prototype regime**: a standalone
 prototype gated against the live page, on a typographic page. Pages
@@ -291,27 +298,6 @@ runs over the same stitched PNGs — no live hit):**
   passes driven this way took a page 16.9% → 11.05% and a 1559px height
   delta → 48px. Do not tune margins by eye against crops. (Crop with pngjs;
   macOS `sips --cropOffset` is unreliable for band crops.)
-
-## Wide-viewport fluid check (fluid-vs-fixed is invisible at the gate widths, #116)
-
-Both gate breakpoints render a frozen `width: 720px` and an authored
-`width: 50%` byte-identically at 1440 — and 360 collapses both — so a
-computed-style lift that recorded the resolved px instead of the sizing
-MODEL passes every gate and diverges only on wider screens (recorded: a
-live hero card 940px at 1920 vs a frozen 720px; the CTA row wrapped as a
-side effect). After the 1440 pass, run a cheap **box-map spot check at
-≥1920**: sample the text-bearing elements' x/width on both sides (the
-anchor-probe technique at `--width 1920`, or one extra stitched capture)
-and compare — a box whose width scales on live but not on the prototype is
-a frozen fluid value. No full pixel gate is needed at 1920; the box map
-alone catches the mismatch class. Two rules when reading it: compare the
-same DOM tier (EDS/section wrappers are full-width by design and
-false-flag against live INNER containers), and fix upstream — re-lift the
-authored rule per `recreation-procedure.md` § Lift the sizing MODEL, don't
-nudge the px. Sample heights as well as widths, and take one extra sample
-at an intermediate width (1280 or 1680) when the live layout is fluid: a
-hero that scales with the viewport on live and is fixed-px on the prototype
-is identical at 1440 and visibly off at 1512 (recorded).
 
 ## Iteration discipline
 

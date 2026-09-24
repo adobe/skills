@@ -4,6 +4,85 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.25.2 — content cap: the container sizing model is measured, persisted and gated at a derived wide width (#124)
+
+A hands-off replica run delivered a site whose live pages centre their content in two nested caps —
+a 1920 px page shell and a 1600 px content article — as an edge-to-edge build: the token was
+declared (`--container-max: 1920px`) and never applied, `main > .section > div { max-width: none }`,
+and BOTH pixel gates passed (1440 ≈ 1.2 %, 360 within residuals) because 1440 is narrower than
+either cap — the defect was invisible by construction. Extract had recorded the shell in a bespoke
+field and missed the article; the optional ≥1920 box-map spot check (#116) never ran, and pinned at
+1920 it could not have seen the shell: a probe AT a cap's width reads the cap as the viewport. The
+two pixel gates are unchanged (1440 and 360, no third pixel gate); one cheap geometry-only read at a
+DERIVED wide width is added and made mandatory. Cross-references #13 (qa-gate's hardcoded 1600 wide
+pass) and #116 (the fluid-vs-fixed spot check, now folded into the row).
+
+- **New shared instrument `replica/scripts/cap-probe.mjs`** — extract, replica and deploy all call
+  the same script. Capture: render a page at 1440, then read the same boxes at a derived width (max(2560, largest
+  cap × 1.25); re-read once wider when a cap sits at ≥ probe ÷ 1.25) and at 0.9 × that width —
+  resizes, not navigations; a box is capped when the two wide reads agree (a 90 % container
+  scales, a max-width does not) — and list every cap ORIGIN (a capped box not merely inheriting,
+  padded or auto-margined inside a capped parent) with its
+  px, how it is authored (`max-width` / fixed / other), DOM tier and KIND — `shell` (outermost cap
+  holding ≥ 90 % of the content root's text), `content` (a further wrapper inside it), `module`
+  (one top-level section); chrome caps are not modelled. `contentMaxWidth` = the innermost
+  wrapper cap, else the module cap shared by half the capped sections, else null (fluid).
+  `--write-design` merges `extensions.breakpoints.{containerMaxWidth, probeWidth, shellMaxWidth,
+  caps[], modules[], capRegister[]}` into DESIGN.json; several archetypes aggregate, and a cap that
+  differs between archetypes or sits on a single module lands in `capRegister` for the
+  inconsistency register (a cap on the shell or on every archetype is design intent, whatever its
+  value; source breakpoints are never inherited). Compare (`<live> --against <build> [--design
+  DESIGN.json] [--slug <s>]`): rows by KIND — `wrapper cap`, one `module i/n` per section (advisory
+  while the section counts differ), `content cap` when neither side has a wrapper — never by DOM
+  depth; PASS = every live cap held within ±20 px, nothing capped only on the build; a ✗ prints the
+  scaffold rule to change (`main { max-width }` for a wrapper cap, the section div for a module
+  cap), never a pixel target. Evidence lands in `stardust/replica/gates/<slug>-<probeWidth>/
+  cap-<label>.{json,txt}` like the pixel rounds. Exit 0 / 2 FAIL / 1 / 3 bot challenge / 125 usage;
+  `--probe-width` pins the width for evidence runs only. `probePage` and the pure functions are
+  exported; `test/cap-probe.test.mjs` covers classification, aggregation, rows, args, the
+  DESIGN.json merge and — where playwright resolves — an end-to-end fixture (nested 1920/1600/1180
+  page vs a fluid and a fixed build, plus the pinned-1920 blind spot). `scripts-index.md` row added.
+- **Extract records the sizing MODEL, not a number.** `extract/SKILL.md` Phase 3: run the probe
+  once over the archetypes (`--write-design stardust/current/DESIGN.json`, one navigation each,
+  after the census); the `extensions` note names `breakpoints`; `brand-surface.md` § Spacing marks
+  `containerMaxWidth` as measured; `token-contract.md` § Sizing: the replica flow inherits
+  `containerMaxWidth` and `probeWidth` as-is, the step-up rules are redesign-only.
+- **Replica pass bar gains the mandatory content-cap row.** `SKILL.md` Phase 4 command + pass-bar
+  bullet; `source-fidelity-gate.md` § Pass bar item 6 (the ≥1920 § Wide-viewport fluid check is
+  folded into it — same-KIND pairing, re-lift upstream, no pixel iteration);
+  `recreation-procedure.md` § Lift the sizing MODEL reads the measured cap model before lifting,
+  encodes a wrapper cap on `main` and a module cap on the section column, and never reproduces a
+  source breakpoint. `evals/replica-source-fidelity`: `both_breakpoints_gated` also requires the
+  row's evidence; `task.md` names skipping it as a failure mode.
+- **Deploy.** Step 3 Foundation: the section scaffold honours the captured cap at its tier
+  (`main { max-width: var(--max-width); margin: 0 auto }` for a shell/content cap, the boilerplate
+  section div for a module cap, with the full-bleed escape for sections `modules[]` lists fluid).
+  `qa-gate.mjs --design DESIGN.json` (default `./DESIGN.json`): the wide pass runs at DESIGN.json's
+  `probeWidth` instead of a hardcoded 1600, asserts the OUTER cap through the shared `probePage`
+  (FAIL when the content cap does not hold within ±20 px of `containerMaxWidth`, or when the build
+  caps a fluid source), then the per-block `--maxw` warnings (default now `containerMaxWidth`); no
+  DESIGN.json or no probe beside the script → one ⚠ and the old behaviour. Step 10 item 5 is the
+  cap row on the deployed URL; Local QA paragraph, pitfall 13 and the checklist follow;
+  `handoff-contract.md` § 4 row updated.
+- **Evidence (the one place the site is named).** victoriassecret.com/us, 2026-09-24. Capture:
+  `shell 1920px max-width … > div.react.react-cms-component-list (tier 1, holds 98% of the text)`,
+  `content 1600px max-width … > article.… (tier 2)`, `contentMaxWidth: 1600px shellMaxWidth:
+  1920px probeWidth: 2560 consistent: yes`. Pinned `--probe-width 1920`: only `shell 1600px` — the
+  1920 shell read as the viewport and vanished, the reason the width is derived, never fixed.
+  Compare live vs the deployed origin: `✗ wrapper cap: live 1600px (content, … article) → build
+  NONE: content runs 2560px wide at 2560 (module caps only: 620px ×2, 340px ×2, 1180px ×1, …) —
+  fix the sizing rule, not pixels — deploy Step 3 scaffold: main { max-width: 1600px; margin: 0
+  auto }` → `cap-probe: FAIL at 2560 — 1 of 5 rows failed`. After that rule in the project's
+  `styles.css`, served locally by `aem up`: `✓ wrapper cap: live 1600px = build 1600px (±20)` →
+  `cap-probe: PASS at 2560 — 0 of 5 rows failed`; `qa-gate.mjs --design` on the same render:
+  `✓ content cap 1600px holds at 2560 (#124)`. Second validation, the inverse defect on another
+  delivered replica (baincapital.com vs its aem.page build, `--main` at the live section wrapper):
+  live modules are fluid (Bootstrap 90 % containers, `contentMaxWidth fluid`), the build caps every
+  section at 1430 px — `✗ content cap: build 1430px (module caps only: 1430px ×8) but live modules
+  are fluid — fix the sizing rule, not pixels: remove the module cap` → `FAIL at 2560`. Skill
+  prose is net smaller than before (the spot check section, duplicated port-probe and hardening
+  rationale were folded).
+
 ## 0.25.1 — replica run follow-ups: gates that passed a broken site, index/sitemap/search verification, capture gaps, the thumbnail cap, token files, recorded migrate units
 
 Fixes from two recorded hands-off replica runs of one 36-page source site — one at 0.22.1, one at
