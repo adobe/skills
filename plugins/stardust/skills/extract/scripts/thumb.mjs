@@ -73,8 +73,8 @@
  * the project's node_modules). --help needs nothing.
  * Exit codes: 0 ok · 1 an input failed to read or write, or --offset is past its
  * last row (named on stderr; the others are still written), or a thumbnail still
- * over --max-bytes at the narrowest width and the height floor (written anyway,
- * named on stderr) · 2 usage (no inputs, bad flag, a value flag followed by
+ * over --max-bytes at the narrowest width and the height floor — or --max-height,
+ * when that is at or under the floor (written anyway, named on stderr) · 2 usage (no inputs, bad flag, a value flag followed by
  * nothing or by another --flag — named, never swallowed — or an output that would
  * overwrite an input or collide with another output).
  */
@@ -322,7 +322,10 @@ export async function main(argv, { log = console.log, warn = console.error } = {
       if (fit.unmet) {
         failed += 1;
         const { w, h, rows } = fit.plan;
-        warn(`thumb: ${dst}: ${fit.out.length} bytes at ${w}x${h} (${cropShare(rows, png.height)}% of the page — the narrowest width and the height floor) still exceeds --max-bytes ${opts.maxBytes}; written anyway — raise --max-bytes or lower --min-share for this page`);
+        // What bounded the height: the --min-share floor, or an explicit --max-height already at or under it.
+        const atFloor = h >= floorHeight(png.width, png.height, { width: w, offset: opts.offset, minShare: opts.minShare });
+        const bound = atFloor ? 'the height floor' : `--max-height ${opts.maxHeight ?? DEFAULTS.maxHeight}`;
+        warn(`thumb: ${dst}: ${fit.out.length} bytes at ${w}x${h} (${cropShare(rows, png.height)}% of the page — the narrowest width and ${bound}) still exceeds --max-bytes ${opts.maxBytes}; written anyway — raise --max-bytes${atFloor ? ' or lower --min-share' : ''} for this page`);
       }
     } catch (e) {
       failed += 1;

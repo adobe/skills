@@ -320,6 +320,15 @@ check('a cap that cannot be met on a small source: no width step below --width 4
   assert.match(r.err, /^thumb: .*a-thumb\.png: \d+ bytes at 48x12 \(60% of the page — the narrowest width and the height floor\) still exceeds --max-bytes 40; written anyway — raise --max-bytes or lower --min-share for this page\n$/);
   assert.equal(read(join(out, 'a-thumb.png')).height, 12);
 });
+check('unmet under an explicit --max-height at or under the floor: the stderr line names --max-height, not the floor, and offers no --min-share remedy', () => {
+  const out = join(root, 'cap-unmet-max-height');
+  const r = run([heavySrc, '--out', out, '--max-height', '300', '--max-bytes', '10']); // the 60 % floor at 240 px is 380 rows; 300 is under it
+  assert.equal(r.code, 1, r.err);
+  const dst = join(out, 'gallery-thumb.png');
+  assert.equal(r.out, `${heavySrc}: 1440x3800 -> 240x300 scaled to 240px (cropped at 1800px of 3800 = 47%) for --max-bytes 10 -> ${dst} (${bytes(dst)} bytes)\n`);
+  assert.equal(r.err, `thumb: ${dst}: ${bytes(dst)} bytes at 240x300 (47% of the page — the narrowest width and --max-height 300) still exceeds --max-bytes 10; written anyway — raise --max-bytes for this page\n`);
+  assert.equal(read(dst).height, 300);
+});
 check('a directory input takes its PNGs (sorted), skips the non-PNG file and its own earlier output — slices included — and writes beside the sources', () => {
   const r = run([dir, '--width', '48']);
   assert.equal(r.code, 0, r.err);
