@@ -70,7 +70,7 @@ await check('an icon-font glyph inside a social link with no build icon at that 
   assert.equal(missing[0].msg, `source icon-font glyph U+F09A (Icons, 16×16) at "facebook" has no build icon there. ${ATTRIBUTE_HINTS.MISSING_ICON}`);
   const empty = diffAttributes(src, { attrs: [], icons: [icon('glyph', '', 'facebook', true, { family: '' })] }, prof);
   assert.deepEqual(kinds(empty), ['🔴 ICON DIFF']);
-  assert.match(empty[0].msg, /^source icon-font glyph U\+F09A \(Icons, 16×1[67]\) vs build empty icon box \(16×16\) at "facebook"\. /);
+  assert.match(empty[0].msg, /^source icon-font glyph U\+F09A \(Icons, 16×16\) vs build empty icon box \(16×16\) at "facebook"\. /);
 });
 await check('a different flag file inside a locale link is 🔴 ICON DIFF; the same file on another host is not a finding; outside a link the diff is 🟡', () => {
   const src = { attrs: [], icons: [icon('img', 'flag-de.svg', 'deutsch', true, { size: '24×16' })] };
@@ -213,7 +213,7 @@ let playwrightOk = false;
 try { await import('playwright'); playwrightOk = true; } catch { console.log('skip  end-to-end content-diff (playwright not importable here; run this test in an environment that has it)'); }
 if (playwrightOk) {
   const page = (body) => `<!doctype html><html><head><meta charset="utf-8"><style>
-    @font-face{font-family:Icons;src:local("Arial")} .fa::before{font-family:Icons;display:inline-block;width:16px;height:16px}
+    @font-face{font-family:Icons;src:local("Arial")} .fa{display:inline-block;width:16px;height:16px} .fa::before{font-family:Icons}
     .fa-facebook::before{content:"\\f09a"} .icon{display:inline-block;width:16px;height:16px} img.flag{width:24px;height:16px}
     </style></head><body><main>${body}</main></body></html>`;
   const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="16"><rect width="24" height="16" fill="#888"/></svg>';
@@ -249,7 +249,7 @@ if (playwrightOk) {
     assert.match(r.stdout, /^Findings: 3 \(3 structural 🔴\)$/m, r.stdout);
     assert.match(r.stdout, /^  🔴 MISSING PLACEHOLDER \[main\]: source <input> placeholder="Suche…" has no build <input> with that placeholder\. /m, r.stdout);
     assert.match(r.stdout, /^  🔴 ICON DIFF \[main\]: source image flag-de\.svg \(24×16\) vs build image flag-en\.svg \(24×16\) at "deutsch"\. /m, r.stdout);
-    assert.match(r.stdout, /^  🔴 ICON DIFF \[main\]: source icon-font glyph U\+F09A \(Icons, 16×1[67]\) vs build empty icon box \(16×16\) at "facebook"\. /m, r.stdout);
+    assert.match(r.stdout, /^  🔴 ICON DIFF \[main\]: source icon-font glyph U\+F09A \(Icons, 16×16\) vs build empty icon box \(16×16\) at "facebook"\. /m, r.stdout);
     assert.match(r.stdout, /^  attributes \(placeholder\/aria-label\/title\): source 3 \/ build 2; icons: source 2 \/ build 2$/m, r.stdout);
     const j = JSON.parse(r.stdout.slice(r.stdout.indexOf('Inventories JSON:') + 'Inventories JSON:'.length));
     assert.equal(j.findings.length, 3); assert.deepEqual(j.findings.map((f) => f.kind).sort(), ['ICON DIFF', 'ICON DIFF', 'MISSING PLACEHOLDER']);
