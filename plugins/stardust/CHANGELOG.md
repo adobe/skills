@@ -4,7 +4,7 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
-## Unreleased
+## 0.25.1 — replica run follow-ups: gates that passed a broken site, index/sitemap/search verification, capture gaps, the thumbnail cap, token files, recorded migrate units
 
 Fixes from two recorded hands-off replica runs of one 36-page source site — one at 0.22.1, one at
 0.25.0 — verified against their artifacts. The shared documents carry the same rules:
