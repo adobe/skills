@@ -55,7 +55,8 @@ export function detectSignals(networkLines, healths) {
   const joined = networkLines.join('\n').toLowerCase();
 
   if (joined.includes('server: akamaighost')
-      || joined.includes('server: akamainetstorage')) {
+      || joined.includes('server: akamainetstorage')
+      || joined.includes('akamai-grn:')) {
     signals.push('akamai-server');
   }
   if (joined.includes('bm_sz') || joined.includes('_abck')) {
