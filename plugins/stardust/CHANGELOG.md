@@ -4,7 +4,7 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
-## Unreleased
+## 0.25.1 — replica run follow-ups: gates that passed a broken site, index/sitemap/search verification, capture gaps, the thumbnail cap, token files, recorded migrate units
 
 Fixes from two recorded hands-off replica runs of one 36-page source site — one at 0.22.1, one at
 0.25.0 — verified against their artifacts. The shared documents carry the same rules:
@@ -147,6 +147,17 @@ lines, `state-machine.md` `site.captureGaps`, `journal-format.md`'s heading rule
   named on stderr, exit 1. `extract/SKILL.md` Phase 2.5: a thumbnail enters the context only after
   `thumb.mjs` has written it (≤ 150 KB), or the vision check runs in a subagent returning one line
   per thumbnail. Recorded: eight thumbnails of 268–608 KB — 3.2 MB — read into one context.
+- **`thumb.mjs --max-bytes` scales the width before it crops, bisects on measured size, keeps at
+  least 60 % of the page.** The first hands-off run with the cap cropped 25 of 27 thumbnails to a
+  median 28 % of each page (minimum 9 %) — a hero strip the vision check read as the whole page —
+  and landed at ~7.5 KB under a 120 KB cap: the crop was the first lever and the byte-ratio shrink
+  loop overshot by an order of magnitude (PNG size is not linear in rows). Now a thumbnail over the
+  cap is re-encoded narrower first (480 → 400 → 320 → 240 px, the whole page each time), then
+  shorter by bisection on the measured size, never below `--min-share` (default 60 %); still over
+  at the floor, the floor thumbnail is written, named on stderr, exit 1. New `--offset <px>`
+  thumbnails the rows below a crop (`<dst>` gains `-<offset>`), the stdout line names the scale and
+  the kept share, and `extract/SKILL.md` Phase 2.5 has the agent read a cropped page's `--offset`
+  slice too. pngjs also resolves through `NODE_PATH`.
 - **`da-media-upload.mjs` and `deploy-batch.mjs` — `--token-env <NAME>` / `--token-file <path>`.**
   The token comes from the variable named by `--token-env` (default `DA_TOKEN`) or from
   `--token-file` (read once at start, trimmed; never both; a missing or empty file is a usage error

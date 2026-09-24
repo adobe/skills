@@ -47,7 +47,9 @@ print the part that matters, capped, and say what they left out:
   full-page image.
   The one exception is the brand-gestalt read at extract, which uses the
   shipped `thumb.mjs` (`skills/extract/scripts/thumb.mjs`, box-filtered to
-  480 px) — one image per archetype, never the raw capture.
+  480 px or narrower under its size cap; a line with a crop share below
+  100 is followed by its `--offset` slice) — the whole page per archetype,
+  never the raw capture.
 - **Script flags**: every shipped CLI script — replica, diff, master, deploy,
   rollout, dynamics, qa, extract, reskin — answers `--help` (and `-h`) with
   its usage header before it parses anything, touches a file or opens a

@@ -213,7 +213,7 @@ let playwrightOk = false;
 try { await import('playwright'); playwrightOk = true; } catch { console.log('skip  end-to-end content-diff (playwright not importable here; run this test in an environment that has it)'); }
 if (playwrightOk) {
   const page = (body) => `<!doctype html><html><head><meta charset="utf-8"><style>
-    @font-face{font-family:Icons;src:local("Arial")} .fa::before{font-family:Icons;display:inline-block;width:16px;height:16px}
+    @font-face{font-family:Icons;src:local("Arial")} .fa{display:inline-block;width:16px;height:16px} .fa::before{font-family:Icons}
     .fa-facebook::before{content:"\\f09a"} .icon{display:inline-block;width:16px;height:16px} img.flag{width:24px;height:16px}
     </style></head><body><main>${body}</main></body></html>`;
   const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="16"><rect width="24" height="16" fill="#888"/></svg>';
