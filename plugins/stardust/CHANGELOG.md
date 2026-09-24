@@ -149,19 +149,15 @@ lines, `state-machine.md` `site.captureGaps`, `journal-format.md`'s heading rule
   per thumbnail. Recorded: eight thumbnails of 268–608 KB — 3.2 MB — read into one context.
 - **`thumb.mjs --max-bytes` scales the width before it crops, bisects on measured size, keeps at
   least 60 % of the page.** The first hands-off run with the cap cropped 25 of 27 thumbnails to a
-  median 28 % of each page (minimum 9 %) — a hero strip the vision check then read as the whole
-  page — and landed at ~7.5 KB under a 120 KB cap: the crop was the first lever, and the byte-ratio
-  shrink loop overshot by an order of magnitude (PNG size is not linear in rows). Now a thumbnail
-  over the cap is re-encoded narrower first (480 → 400 → 320 → 240 px, the whole page each time);
-  only when the narrowest width is still over does the height come down — the largest height under
-  the cap by bisection on the measured encoded size, never below `--min-share` (default 60 %);
-  still over at the floor, the floor thumbnail is written, named on stderr, exit 1. `--max-height`
-  stays an upper bound. New `--offset <px>` thumbnails the rows below a crop (`<dst>` gains
-  `-<offset>`; a directory re-run skips those too); the line names every step — `<w>x<h> [scaled
-  to <w>px] [(cropped at <n>px of <H> = <share>%)] [for --max-bytes <b>]`, a crop always with its
-  share — and `extract/SKILL.md` Phase 2.5 has the agent read the rest of a cropped page through
-  the `--offset` slice. pngjs also resolves through `NODE_PATH` (the tests run that way where no
-  project install is beside the script).
+  median 28 % of each page (minimum 9 %) — a hero strip the vision check read as the whole page —
+  and landed at ~7.5 KB under a 120 KB cap: the crop was the first lever and the byte-ratio shrink
+  loop overshot by an order of magnitude (PNG size is not linear in rows). Now a thumbnail over the
+  cap is re-encoded narrower first (480 → 400 → 320 → 240 px, the whole page each time), then
+  shorter by bisection on the measured size, never below `--min-share` (default 60 %); still over
+  at the floor, the floor thumbnail is written, named on stderr, exit 1. New `--offset <px>`
+  thumbnails the rows below a crop (`<dst>` gains `-<offset>`), the stdout line names the scale and
+  the kept share, and `extract/SKILL.md` Phase 2.5 has the agent read a cropped page's `--offset`
+  slice too. pngjs also resolves through `NODE_PATH`.
 - **`da-media-upload.mjs` and `deploy-batch.mjs` — `--token-env <NAME>` / `--token-file <path>`.**
   The token comes from the variable named by `--token-env` (default `DA_TOKEN`) or from
   `--token-file` (read once at start, trimmed; never both; a missing or empty file is a usage error

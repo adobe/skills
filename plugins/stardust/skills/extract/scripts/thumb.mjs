@@ -163,40 +163,35 @@ export function floorHeight(W, H, { width = DEFAULTS.width, offset = 0, minShare
   return h;
 }
 
-// Fit a thumbnail under maxBytes. `encode(plan)` returns the PNG bytes (anything with `.length`),
-// so the search is pure and the tests drive it with a size model. Levers, in order: (a) the width
-// ladder — the WHOLE page again at each step below --width; (b) at the narrowest step only, the
-// largest height under the cap by bisection on the measured size, never below the --min-share floor
-// (nor above --max-height, which stays an upper bound); (c) the floor itself when even that is over —
-// `unmet` is set, the caller writes it and warns. Returns the plan, its bytes and what happened.
+// Fit a thumbnail under maxBytes — the three levers the usage header describes (narrower, then
+// shorter by bisection down to the --min-share floor, then the floor itself with `unmet` set).
+// `encode(plan)` returns the PNG bytes (anything with `.length`), so the search is pure.
 export function fitToCap(W, H, opts, encode) {
   const { width = DEFAULTS.width, maxHeight = DEFAULTS.maxHeight, maxBytes = DEFAULTS.maxBytes, minShare = DEFAULTS.minShare, offset = 0 } = opts;
-  let encodes = 0;
-  const at = (w, mh) => { const plan = planThumb(W, H, { width: w, maxHeight: mh, offset }); encodes += 1; return { plan, out: encode(plan) }; };
+  const at = (w, mh) => { const plan = planThumb(W, H, { width: w, maxHeight: mh, offset }); return { plan, out: encode(plan) }; };
   const fits = (r) => r.out.length <= maxBytes;
-  const done = (r, scaled, forCap, unmet) => ({ ...r, scaled, forCap, unmet, encodes });
   let best = at(width, maxHeight);
-  if (fits(best)) return done(best, false, false, false);
+  if (fits(best)) return { ...best, scaled: false, forCap: false, unmet: false };
   // (a) narrower first — the vision check reads the whole page through the thumbnail.
   for (const step of widthLadder(width).slice(1)) {
     if (Math.min(W, step) >= best.plan.w) continue; // the source is narrower than this step: same geometry
     best = at(step, maxHeight);
-    if (fits(best)) return done(best, true, true, false);
+    if (fits(best)) return { ...best, scaled: true, forCap: true, unmet: false };
   }
   const scaled = best.plan.w < Math.min(W, width);
   // (b) shorter, never below the floor — and only by measuring: PNG size is not linear in rows.
   const { w, h: hFull } = best.plan;
   const hFloor = Math.min(hFull, floorHeight(W, H, { width: w, offset, minShare }));
-  if (hFloor >= hFull) return done(best, scaled, true, true); // --max-height already at or under the floor
+  if (hFloor >= hFull) return { ...best, scaled, forCap: true, unmet: true }; // --max-height already at or under the floor
   let lo = at(w, hFloor);
-  if (!fits(lo)) return done(lo, scaled, true, true); // (c) the floor is over: written anyway, exit 1
+  if (!fits(lo)) return { ...lo, scaled, forCap: true, unmet: true }; // (c) the floor is over: written anyway, exit 1
   let loH = hFloor; let hi = hFull; // lo fits; hi was measured over the cap
   while (hi - loH > 1) {
     const mid = Math.floor((loH + hi) / 2);
     const r = at(w, mid);
     if (fits(r)) { lo = r; loH = mid; } else hi = mid;
   }
-  return done(lo, scaled, true, false);
+  return { ...lo, scaled, forCap: true, unmet: false };
 }
 
 // The stdout line's middle: `<w>x<h> [scaled to <w>px] [(cropped at <n>px of <H> = <share>%)] [for

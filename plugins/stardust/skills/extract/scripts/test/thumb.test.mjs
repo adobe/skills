@@ -88,10 +88,10 @@ check('fitToCap over a size model: (a) narrower first — the whole page at 320 
   const model = (plan) => ({ length: plan.w * plan.h * 2 }); // 480×1267 → 1 216 320; 400×1056 → 844 800; 320×844 → 540 160
   const r = fitToCap(1440, 3800, { maxBytes: 600000 }, model);
   assert.deepEqual(r.plan, { w: 320, h: 844, rows: 3800, start: 0, cropped: false });
-  assert.deepEqual([r.scaled, r.forCap, r.unmet, r.encodes], [true, true, false, 3]);
+  assert.deepEqual([r.scaled, r.forCap, r.unmet], [true, true, false]);
   assert.equal(thumbNote(r.plan, 3800, { ...r, maxBytes: 600000 }), '320x844 scaled to 320px for --max-bytes 600000');
   const ok = fitToCap(1440, 3800, { maxBytes: 1300000 }, model);
-  assert.deepEqual([ok.plan.w, ok.scaled, ok.forCap, ok.unmet, ok.encodes], [480, false, false, false, 1], 'under the cap at once: one encode, no note');
+  assert.deepEqual([ok.plan.w, ok.scaled, ok.forCap, ok.unmet], [480, false, false, false], 'under the cap at once: no note');
   assert.equal(thumbNote(ok.plan, 3800, ok), '480x1267');
 });
 check('fitToCap: (b) at the narrowest width the height comes down by bisection on the measured size — the largest height under the cap, one step more would not fit; never below the floor', () => {
@@ -100,7 +100,6 @@ check('fitToCap: (b) at the narrowest width the height comes down by bisection o
   assert.deepEqual(r.plan, { w: 240, h: 416, rows: 2496, start: 0, cropped: true });
   assert.ok(model(planThumb(1440, 3800, { width: 240, maxHeight: 417 })).length > 200000, 'one row more is over the cap');
   assert.deepEqual([r.scaled, r.forCap, r.unmet], [true, true, false]);
-  assert.equal(r.encodes, 13, '4 ladder steps + the floor + 8 bisection steps over 253 rows');
   assert.equal(thumbNote(r.plan, 3800, { ...r, maxBytes: 200000 }), '240x416 scaled to 240px (cropped at 2496px of 3800 = 65%) for --max-bytes 200000');
   // Not linear in rows: a quadratic model. A byte-ratio guess from the full 240 px thumbnail
   // (633 × 274 000 / 424 689 × 0.92 = 375 rows) would land under the floor; measuring lands on 500.
@@ -111,12 +110,12 @@ check('fitToCap: (b) at the narrowest width the height comes down by bisection o
 check('fitToCap: (c) over the cap at the floor — the floor thumbnail (60 % of the page) is the result, `unmet`; --max-height below the floor is respected and needs no floor encode; a source narrower than every step has no ladder', () => {
   const model = (plan) => ({ length: plan.w * plan.h * 2 });
   const c = fitToCap(1440, 3800, { maxBytes: 100000 }, model);
-  assert.deepEqual(c.plan, { w: 240, h: 380, rows: 2280, start: 0, cropped: true }); assert.deepEqual([c.scaled, c.forCap, c.unmet, c.encodes], [true, true, true, 5]);
+  assert.deepEqual(c.plan, { w: 240, h: 380, rows: 2280, start: 0, cropped: true }); assert.deepEqual([c.scaled, c.forCap, c.unmet], [true, true, true]);
   assert.equal(cropShare(c.plan.rows, 3800), 60); assert.equal(thumbNote(c.plan, 3800, { ...c, maxBytes: 100000 }), '240x380 scaled to 240px (cropped at 2280px of 3800 = 60%) for --max-bytes 100000');
   const e = fitToCap(1440, 8000, { maxHeight: 100, maxBytes: 10 }, model);
-  assert.deepEqual([e.plan.w, e.plan.h, e.unmet, e.encodes], [240, 100, true, 4], 'h never exceeds --max-height; the floor (1600) is above it, so nothing to bisect');
+  assert.deepEqual([e.plan.w, e.plan.h, e.unmet], [240, 100, true], 'h never exceeds --max-height; the floor (1600) is above it, so nothing to bisect');
   const f = fitToCap(144, 60, { width: 48, maxBytes: 40 }, model);
-  assert.deepEqual(f.plan, { w: 48, h: 12, rows: 36, start: 0, cropped: true }); assert.deepEqual([f.scaled, f.unmet, f.encodes], [false, true, 2]);
+  assert.deepEqual(f.plan, { w: 48, h: 12, rows: 36, start: 0, cropped: true }); assert.deepEqual([f.scaled, f.unmet], [false, true]);
   assert.equal(thumbNote(f.plan, 60, { ...f, maxBytes: 40 }), '48x12 (cropped at 36px of 60 = 60%) for --max-bytes 40');
   const low = fitToCap(1440, 3800, { maxBytes: 100000, minShare: 25 }, model);
   assert.equal(low.unmet, false); assert.ok(cropShare(low.plan.rows, 3800) >= 25 && cropShare(low.plan.rows, 3800) < 60, `--min-share 25 lets it fit: ${cropShare(low.plan.rows, 3800)} %`);
@@ -124,7 +123,7 @@ check('fitToCap: (c) over the cap at the floor — the floor thumbnail (60 % of 
 check('fitToCap: an explicit --max-height stays the upper bound through the ladder; --offset bisects the rows below it with the floor relative to them', () => {
   const model = (plan) => ({ length: plan.w * plan.h * 2 });
   const d = fitToCap(1440, 8000, { maxHeight: 2000, maxBytes: 1700000 }, model); // 480×2000 → 1 920 000 over; 400×2000 → 1 600 000 fits
-  assert.deepEqual(d.plan, { w: 400, h: 2000, rows: 7200, start: 0, cropped: true }); assert.equal(d.encodes, 2);
+  assert.deepEqual(d.plan, { w: 400, h: 2000, rows: 7200, start: 0, cropped: true });
   assert.equal(thumbNote(d.plan, 8000, { ...d, maxBytes: 1700000 }), '400x2000 scaled to 400px (cropped at 7200px of 8000 = 90%) for --max-bytes 1700000');
   const s = fitToCap(1440, 3800, { offset: 1900, maxBytes: 100000 }, model); // 1900 rows below: 240 px full 317 → 152 160; floor 60 % → 190 rows; 480·h ≤ 100 000 → 208
   assert.deepEqual(s.plan, { w: 240, h: 208, rows: 1248, start: 1900, cropped: true }); assert.equal(s.unmet, false);
@@ -298,16 +297,6 @@ check('--max-bytes, lever (c): over the cap even at 240 px and the 60 % floor (t
   const lm = low.out.match(/ -> 240x(\d+) scaled to 240px \(cropped at (\d+)px of 3800 = (\d+)%\) for --max-bytes 150000 -> /); assert.ok(lm, low.out);
   assert.ok(Number(lm[3]) >= 20 && Number(lm[3]) < 60, `share ${lm[3]} between the lower floor and 60`); assert.ok(bytes(join(out, 'gallery-low.png')) <= 150000);
 });
-check('an explicit --max-height stays the upper bound under the cap: the ladder steps the width down while h never exceeds it', () => {
-  const s240 = heavySize({ width: 240, maxHeight: 300 }); const wider = Math.min(...[320, 400, 480].map((width) => heavySize({ width, maxHeight: 300 }))); const cap = Math.floor((s240 + wider) / 2);
-  assert.ok(s240 <= cap && cap < wider, `fixture: every wider step over ${cap} at 300 rows, 240 px under (${s240} / ${wider})`);
-  const out = join(root, 'cap-max-height');
-  const r = run([heavySrc, '--out', out, '--max-height', '300', '--max-bytes', String(cap)]);
-  assert.equal(r.code, 0, r.err); assert.equal(r.err, '');
-  const dst = join(out, 'gallery-thumb.png');
-  assert.equal(r.out, `${heavySrc}: 1440x3800 -> 240x300 scaled to 240px (cropped at 1800px of 3800 = 47%) for --max-bytes ${cap} -> ${dst} (${bytes(dst)} bytes)\n`);
-  assert.equal(read(dst).height, 300);
-});
 check('--offset <px>: the slice below a crop — starts at that source row, the file name gains -<offset>, the line reads `rows a-bpx of H = share%`; the first thumbnail stays; past the last row is a named exit-1 failure with nothing written', () => {
   const out = join(root, 'slices');
   const first = run([tallSrc, '--out', out, '--max-height', '2000']); assert.equal(first.code, 0, first.err);
@@ -322,22 +311,6 @@ check('--offset <px>: the slice below a crop — starts at that source row, the 
   const x = run([tallSrc, '--out', out, '--offset', '6000', '--suffix', '-x']); assert.equal(x.code, 0, x.err); assert.ok(existsSync(join(out, 'pricing-x-6000.png')));
   const past = run([tallSrc, '--out', out, '--offset', '8000']);
   assert.equal(past.code, 1); assert.equal(past.out, ''); assert.equal(past.err, `thumb: ${tallSrc}: --offset 8000 is past the last row of a 1440x8000 page\n`); assert.ok(!existsSync(join(out, 'pricing-thumb-8000.png')));
-});
-check('--offset with the cap: the ladder and the bisection run on the rows below the offset, the floor is 60 % of THOSE rows', () => {
-  const hFloor = floorHeight(1440, 3800, { width: 240, offset: 1900 }); assert.equal(hFloor, 190, '60 % of the 1900 rows below the offset, at 6×');
-  const sFull = heavySize({ width: 240, offset: 1900 }); const sFloor = heavySize({ width: 240, offset: 1900, maxHeight: hFloor }); const cap = Math.floor((sFloor + sFull) / 2);
-  assert.ok(sFloor <= cap && cap < sFull && cap < heavySize({ width: 320, offset: 1900 }), `fixture: 320 px and the full 240 px slice over ${cap}, its 60 % floor under (${sFloor} / ${sFull})`);
-  const out = join(root, 'slice-cap');
-  const r = run([heavySrc, '--out', out, '--offset', '1900', '--max-bytes', String(cap)]);
-  assert.equal(r.code, 0, r.err); assert.equal(r.err, '');
-  const dst = join(out, 'gallery-thumb-1900.png');
-  const m = r.out.match(new RegExp(`^${esc(heavySrc)}: 1440x3800 -> 240x(\\d+) scaled to 240px \\(rows 1900-(\\d+)px of 3800 = (\\d+)%\\) for --max-bytes ${cap} -> ${esc(dst)} \\((\\d+) bytes\\)\\n$`));
-  assert.ok(m, r.out);
-  const [h, end, share, size] = m.slice(1).map(Number);
-  assert.ok(h > hFloor && h < 317, `height ${h} between the slice's floor and its full 317 rows`); assert.equal(end - 1900, h * 6); assert.ok(end - 1900 >= 1140 && end < 3800, `kept ${end - 1900} of the 1900 rows below the offset (≥ 60 %)`); assert.equal(share, cropShare(end - 1900, 3800));
-  assert.equal(size, bytes(dst)); assert.ok(size <= cap); assert.ok(size >= 0.75 * cap, `${size} bytes: within 25 % of the cap ${cap}`);
-  assert.ok(heavySize({ width: 240, offset: 1900, maxHeight: h + 1 }) > cap, 'one row more is over the cap');
-  assert.equal(read(dst).height, h);
 });
 check('a cap that cannot be met on a small source: no width step below --width 48, the 60 % floor (12 rows) is still over — written, named on stderr, exit 1', () => {
   const out = join(root, 'cap-unmet-small');
