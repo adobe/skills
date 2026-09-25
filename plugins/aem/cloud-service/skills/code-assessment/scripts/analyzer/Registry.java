@@ -3,6 +3,7 @@ package analyzer;
 import analyzer.detectors.AssetManager;
 import analyzer.detectors.EventMigration;
 import analyzer.detectors.InjectInSlingModel;
+import analyzer.detectors.OakQueryIndexCoverage;
 import analyzer.detectors.OutboundCallTimeouts;
 import analyzer.detectors.OutdatedDependencies;
 import analyzer.detectors.RemoveDeprecatedApi;
@@ -28,6 +29,7 @@ public final class Registry {
             new AssetManager(),
             new OutboundCallTimeouts(),
             new UnboundedQuery(),
+            new OakQueryIndexCoverage(),
             new RemoveDeprecatedApi()
         ));
     }
