@@ -225,10 +225,9 @@ function challengeMarker(resp) {
     if (server.includes('big-ip') || server.includes('imperva') || h['x-iinfo']) return `HTTP ${status} + F5/Imperva edge signature`;
     // no edge signature — a genuine app-level status, not a challenge.
   }
-  // Akamai escalates to HTTP 400 with a JSON body {"result":"Bad Request"} after a
-  // burst of headless probes (recorded, walgreens 2026-09-18 — feedback A2): the
-  // instruments correctly refused to measure it but never suggested escalation. A
-  // 400 stamped by AkamaiGHost is a challenge marker, not an app-level status.
+  // Akamai escalates to HTTP 400 {"result":"Bad Request"} after a burst of headless
+  // probes (#125): the instruments refused to measure it but never suggested
+  // escalation. A 400 stamped by AkamaiGHost is a challenge marker.
   if (status === 400) {
     const server = (h.server || '').toLowerCase();
     if (server.includes('akamaighost') || server.includes('akamai') || h['x-akamai-transformed']) return 'HTTP 400 + Akamai edge signature (bot-management escalation)';
@@ -320,14 +319,11 @@ export async function gotoLive(page, url, { waitUntil = 'domcontentloaded', time
  * probes for. Pair with newLiveContext so the navigator.webdriver spoof lands
  * on every context. Takes the caller's `chromium` so this module stays import-free.
  *
- * WINDOW-FREE BY DEFAULT (#125, walgreens 2026-09-18 — feedback A1). The visible
- * window was never the ingredient that cleared the block, only the binary was:
- * verified `channel:'chrome'` + headless gets HTTP 200 from Akamai where the
- * bundled headless Chromium gets 400 {"result":"Bad Request"}. Visible windows
- * blocked the operator's desktop (four agents probing in parallel — "browsers
- * keep popping up"). A visible window is opt-in: `STARDUST_HEADED_WINDOW=1`,
- * for the rare challenge that genuinely needs a human. Every `--headed` flag in
- * the skills means THIS tier; none of them opens a window on its own.
+ * WINDOW-FREE BY DEFAULT (#125). The window was never what cleared the block, the
+ * binary was: `channel:'chrome'` + headless gets HTTP 200 from Akamai where bundled
+ * headless Chromium gets 400. Visible windows blocked an operator's desktop under
+ * four parallel agents. A window is opt-in: `STARDUST_HEADED_WINDOW=1`, for a
+ * challenge that genuinely needs a human. Every `--headed` flag means THIS tier.
  *
  * `channel: 'chrome'` needs Google Chrome installed; when the launch fails the
  * bundled Chromium is launched instead with the same stealth args and a loud

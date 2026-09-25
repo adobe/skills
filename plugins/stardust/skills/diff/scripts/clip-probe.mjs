@@ -4,54 +4,26 @@
 /**
  * skills/diff/scripts/clip-probe.mjs — the CLIPPING probe of the published-origin gate (#125, D1).
  *
- * Why: a page can PASS the pixel gate with every card broken. On the recorded offers page (walgreens,
- * 2026-09-25) the served render measured 6.7 % / Δh 69 px against the live origin — inside the bar —
- * while all 284 coupon cards clipped their description mid-glyph and pushed the "View details" link
- * under the Clip button: the card is a fixed 238 px with `overflow: hidden`, the badge took its own
- * row, the body started ~30 px too low. Pixelmatch underweights small text inside otherwise matching
- * shapes, so "PASS" meant "right shapes at the right places", not "every element present and legible".
- * The links WERE in the served DOM (284 in the fragments) — pure CSS geometry, invisible to a DOM
- * count and nearly invisible to pixels. Geometry is checkable — so check it.
+ * Why: a recorded page passed the pixel gate at 6.7 % with every card broken — a fixed-height card
+ * with `overflow: hidden` clipped the description mid-glyph and pushed the details link under the
+ * primary button. The links were in the DOM; pixelmatch underweights small text inside matching
+ * shapes. Geometry is checkable, so this probe checks it: every text node's line rects and every
+ * control's box against EVERY overflow-clipping ancestor (nearest first) and the page width.
  *
- * What it measures. The served page is loaded headless (window-free real Chrome, live-session tier),
- * settled with measure-live's slow scroll, then for every TEXT NODE with a non-empty box and every
- * CONTROL (a[href], button, [role=button|link], summary, select) the probe compares its rect(s) with
- * the rect of the nearest ancestor whose computed overflow / overflow-x / overflow-y is
- * hidden | clip | scroll | auto, and with the page width:
- *   TEXT CLIPPED      a text LINE cut across (partial line, > --min-cut px)         counted  🔴
- *   TEXT HIDDEN       whole lines outside an overflow-hidden ancestor (no line-clamp) counted  🔴
- *   CONTROL HIDDEN    a link / button whose box is fully outside its clipping ancestor counted 🔴
- *   CONTROL CLIPPED   a link / button cut across by > --min-cut px                    counted  🔴
- *   TEXT CLAMPED      whole lines hidden by a `-webkit-line-clamp` ancestor           advisory (design)
- *   TEXT|CONTROL COLLAPSED  whole lines / controls behind a "Read more" / aria-expanded=false collapsible  advisory (state)
- *   TEXT|CONTROL SCROLL-HIDDEN  outside an overflow auto|scroll ancestor (reachable)  advisory
- *   TEXT|CONTROL X-CUT | X-HIDDEN  horizontal only (carousel tracks, ellipsis)         advisory
- * Not reported (recorded false-positive classes): collapsed containers (client box ≤ 2 px — a closed
- * mega-menu with max-height 0), sr-only boxes (clip-path / clip / 1×1), visibility:hidden or opacity 0
- * subtrees, boxes wholly off-page (left:-9999px), text inside a control already reported.
+ *   TEXT CLIPPED / TEXT HIDDEN / CONTROL HIDDEN / CONTROL CLIPPED            counted (exit 2)
+ *   TEXT CLAMPED (line-clamp), TEXT|CONTROL COLLAPSED ("read more" toggle), SCROLL-HIDDEN,
+ *   X-CUT / X-HIDDEN (horizontal: carousels, ellipsis)                       advisory
+ *   collapsed containers (≤ 2 px), sr-only boxes, hidden / opacity-0 subtrees, off-page boxes,
+ *   text inside a control already reported                                   never reported
  *
- * Symmetric use: content-presence.mjs runs THIS inventory on both sides and reports what is hidden on
- * the build but visible on the origin; gate-all reads the build-side count into its `clipped` column
- * and verdict criterion 3 (`--clip-max`, default 0; a documented allowance per page in clip-allow.json
- * when a live page genuinely clips). The visible text LINE boxes come out as `textBoxes` — the input
- * of pixel-compare `--text-boxes` (D4).
+ * content-presence.mjs runs the same inventory on both sides; gate-all reads the served count as
+ * criterion 3. The visible text LINE boxes come out as `textBoxes` (pixel-compare --text-boxes).
  *
- * Usage:
- *   node skills/diff/scripts/clip-probe.mjs <url> [options]
- *     --width <px>        viewport width (default 1440)
- *     --min-cut <px>      partial cut below this many px is ignored (default 2 — sub-pixel rounding)
- *     --main <sel>        restrict to this root (default: the whole document)
- *     --json [<file>]     JSON on stdout (or to <file>): counts, findings, groups, textBoxes
- *     --max-findings <n>  cap the printed / serialised finding list (default 400; groups are complete)
- *     --advisory          also print the advisory kinds in the table
- *     --plain             bundled Chromium instead of the window-free real-Chrome tier
- *     --warmup <url>      visit this URL first (home warm-up on bot-managed sites)
- *     --locale <tag>      default en-US
- *
- * Exit: 0 nothing counted, 2 counted findings > 0, 1 error, 3 bot challenge.
- * Requires: playwright (project devDependency). `clipInventoryInPage`, `IN_PAGE_LIB`, `inPage`,
- * `summarize`, `formatTable` are exported; the browser is imported lazily in main so the contract test
- * runs the pure parts without one.
+ * Usage: node skills/diff/scripts/clip-probe.mjs <url> [--width 1440] [--min-cut 2] [--main <sel>]
+ *        [--json [<file>]] [--max-findings 400] [--advisory] [--more-words <regex>] [--plain]
+ *        [--warmup <url>] [--locale en-US]
+ * Exit: 0 nothing counted, 2 counted findings, 1 error, 3 bot challenge. Requires playwright.
+ * `clipInventoryInPage`, `IN_PAGE_LIB`, `inPage`, `summarize`, `formatTable` are exported.
  */
 import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
@@ -67,6 +39,7 @@ Usage: node clip-probe.mjs <url> [options]
   --json [<file>]     JSON (counts, findings, groups, textBoxes) on stdout or to <file>
   --max-findings <n>  cap the finding list (default 400)
   --advisory          print the advisory kinds too (CLAMPED, COLLAPSED, SCROLL-HIDDEN, X-CUT, X-HIDDEN)
+  --more-words <re>   "read more" toggle labels (default English: read|show|see|view|load + more|all|full|less)
   --plain             bundled Chromium instead of the window-free real-Chrome tier
   --warmup <url>      visit this URL first (bot-managed sites)
   --locale <tag>      default en-US
@@ -132,15 +105,17 @@ function __clipOf(el, inclusive) {
 // a clipper that is a "Read more" / "Show all" collapsible: it (or its parent) holds or is followed by a
 // control with aria-expanded="false" or a show-more label. Whole lines behind it are a STATE the visitor can
 // open, not a defect — recorded: 13 product pages read 4–46 TEXT HIDDEN inside their collapsed accordions.
-const __MORE = /\b(read|show|see|view|load)\s+(more|all|full|less)\b|\bmore\b\s*$|expand/i;
+const __MORE = typeof __MORE_OVERRIDE !== 'undefined' ? __MORE_OVERRIDE : /\\b(read|show|see|view|load)\\s+(more|all|full|less)\\b|\\bmore\\b\\s*$|expand/i;
 function __collapsible(clipEl) {
-  const scopes = [clipEl, __parent(clipEl)].filter(Boolean);
-  for (const sc of scopes) {
-    const controls = [...sc.querySelectorAll('button, [role="button"], a[href], summary, [aria-expanded]')];
-    if (controls.some((c) => c.getAttribute('aria-expanded') === 'false' || c.getAttribute('aria-controls') || __MORE.test(__norm(c.textContent || c.getAttribute('aria-label') || '')))) return true;
-    const next = sc.nextElementSibling;
-    if (next && (next.getAttribute('aria-expanded') === 'false' || __MORE.test(__norm(next.textContent || '').slice(0, 40)))) return true;
-  }
+  const isToggle = (c) => c.getAttribute('aria-expanded') === 'false' || c.getAttribute('aria-controls') || __MORE.test(__norm(c.textContent || c.getAttribute('aria-label') || '').slice(0, 40));
+  const CTRL = 'button, [role="button"], a[href], summary, [aria-expanded]';
+  // the toggle sits inside the box, right AFTER it, or in a small wrapper around it (≤ 3 children) — never
+  // before it or anywhere in a large ancestor, or every box on a page with one "Read more" reads collapsible
+  if ([...clipEl.querySelectorAll(CTRL)].some(isToggle)) return true;
+  const next = clipEl.nextElementSibling;
+  if (next && (isToggle(next) || [...next.querySelectorAll(CTRL)].some(isToggle))) return true;
+  const parent = __parent(clipEl);
+  if (parent && parent.children.length <= 3 && [...parent.querySelectorAll(CTRL)].some(isToggle)) return true;
   return false;
 }
 function __lineRects(node) {
@@ -205,7 +180,9 @@ function* __walk(root) {
 `;
 
 /** Build a page.evaluate expression: the library, then fn applied to a JSON-inlined arg. */
-export function inPage(fn, arg = {}) { return `(() => { ${IN_PAGE_LIB}\n return (${fn.toString()})(${JSON.stringify(arg)}); })()`; }
+export function inPage(fn, arg = {}, prelude = '') { return `(() => { ${prelude}\n${IN_PAGE_LIB}\n return (${fn.toString()})(${JSON.stringify(arg)}); })()`; }
+/** The "read more" word list is English by default; --more-words <regex> replaces it (both probes). */
+export const morePrelude = (re) => (re ? `const __MORE_OVERRIDE = new RegExp(${JSON.stringify(re)}, 'i');` : '');
 
 /**
  * In-page (needs IN_PAGE_LIB): page.evaluate(inPage(clipInventoryInPage, { minCut, rootSel, maxFindings }))
@@ -337,7 +314,7 @@ export const verdictLine = (counts) => `Clipped: ${counts.total} (text clipped $
 export function parseArgs(argv) {
   const rest = argv.slice(2);
   if (!rest.length || rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
-  const opts = { url: null, width: 1440, minCut: 2, main: null, json: false, jsonFile: null, maxFindings: 400, advisory: false, plain: false, warmup: null, locale: 'en-US' };
+  const opts = { url: null, width: 1440, minCut: 2, main: null, json: false, jsonFile: null, maxFindings: 400, advisory: false, plain: false, warmup: null, locale: 'en-US', moreWords: null };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--width') opts.width = Number(rest[++i]);
@@ -346,6 +323,7 @@ export function parseArgs(argv) {
     else if (a === '--json') { opts.json = true; if (rest[i + 1] && !rest[i + 1].startsWith('--')) opts.jsonFile = rest[++i]; }
     else if (a === '--max-findings') opts.maxFindings = Number(rest[++i]);
     else if (a === '--advisory') opts.advisory = true;
+    else if (a === '--more-words') opts.moreWords = rest[++i];
     else if (a === '--plain') opts.plain = true;
     else if (a === '--warmup') opts.warmup = rest[++i];
     else if (a === '--locale') opts.locale = rest[++i];
@@ -359,7 +337,7 @@ export function parseArgs(argv) {
 /** Load + settle a page and run the inventory (shared with gate-all's --no-content path). */
 export async function probe(page, url, opts) {
   const v = await visit(page, url, { warmup: opts.warmup });
-  const inv = await page.evaluate(inPage(clipInventoryInPage, { minCut: opts.minCut, rootSel: opts.main, maxFindings: opts.maxFindings }));
+  const inv = await page.evaluate(inPage(clipInventoryInPage, { minCut: opts.minCut, rootSel: opts.main, maxFindings: opts.maxFindings }, morePrelude(opts.moreWords)));
   return { url, at: new Date().toISOString(), width: opts.width, status: v.status, settlePasses: v.passes, ...inv, groups: summarize(inv.findings) };
 }
 

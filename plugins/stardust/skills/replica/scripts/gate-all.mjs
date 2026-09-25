@@ -3,75 +3,32 @@
 /**
  * skills/replica/scripts/gate-all.mjs — the published-origin gate over EVERY deployed page (#125, D0).
  *
- * Why a runner. A recorded rollout (96 pages) had pixel-gated its 5 archetypes and shipped the other 78
- * pages from the generic encoder unmeasured; the owner's first feedback was that the migrated pages "don't
- * look formatted as the original". The per-page gate (gate.sh) is the right instrument for the archetype
- * loop; delivery needs ONE run over the roster that captures, compares and probes every deployed page
- * the same way and writes one summary. This is that run, lifted from the project that grew it.
+ * Per `deployed` page in stardust/state.json (url = source, liveUrl = served): stitched captures of
+ * both sides (stitch-shot, --settle), pixel-compare, then content-presence (D2, carries clip-probe's
+ * inventory for both sides, D1) and — for units.json entries — unit-geometry (D3). Writes
+ * <out>/<slug>/{origin,eds,diff}.png + pixel.json + content.json + clip.json [+ units.json],
+ * <out>/summary.{json,md}; --only runs write <out>/runs/<ts>-<slug>.json instead.
  *
- * Per `deployed` page in stardust/state.json (slug, url = source, liveUrl = served, deployedPath):
- *   <out>/<slug>/origin.png   stitch-shot of the source page (window-free real Chrome, --settle)
- *   <out>/<slug>/eds.png      stitch-shot of the served page, same flags (symmetric instrument)
- *   <out>/<slug>/pixel.json   pixel-compare --json (overlap %, Δh, bands; --text-boxes % when D2 ran)
- *   <out>/<slug>/content.json content-presence: visible headings / links / buttons / images / text per band,
- *                             control state, both sides' clip inventories (D2 + D1)
- *   <out>/<slug>/clip.json    the served side's clip counts + groups (from content.json, or clip-probe alone
- *                             when the origin could not be probed)
- *   <out>/<slug>/units.json   unit-geometry rows when units.json declares repeated units for the page (D3)
- *   <out>/summary.{json,md}   one row per page; --only runs write <out>/runs/<ts>-<slug>.json instead
+ * VERDICT (all four): pixel % ≤ --threshold AND |Δh| ≤ --height-tol × origin height (a padded/union
+ * metric was tried and rejected — white gaps score as matches) AND served clipped ≤ --clip-max +
+ * clip-allow.json allowance AND content MISSING + HIDDEN links / headings = 0 (n/a when the origin
+ * could not be probed — never a fail) [+ required units within --unit-tol]. The pixel-only verdict is
+ * recorded beside it per page and in the totals — every run is calibration data.
  *
- * VERDICT (all four, per page) — "pixel PASS" used to mean "right shapes at the right places", not "every
- * element present and legible" (the offers example in source-fidelity-gate.md § The all-pages gate):
- *   1. pixel    overlap pixel % ≤ --threshold (default 10)
- *   2. height   |Δh| ≤ --height-tol × origin height (default 5 %) — the overlap crop cannot see a render
- *               thousands of px too tall; a padded/union metric was tried and REJECTED (white gaps score as
- *               matches — 9 pages 100–6900 px too tall passed it); pixel-compare --pad stays auxiliary
- *   3. clip     served-side clipped count ≤ --clip-max (default 0) + the page's clip-allow.json allowance
- *   4. content  content-presence MISSING + HIDDEN links / headings = 0 (control state, buttons, counts are
- *               reported in the row, not blocking); n/a — not a fail — when the origin could not be probed
- *   (+ units    unit-geometry off / hidden / missing = 0 for the units units.json marks "required": true;
- *               other declared units are advisory rows)
- * Both the pixel-only verdict (1 + 2) and the full verdict are recorded per page and totalled, so a run
- * doubles as calibration data for the bar.
+ * Sidecars in <out>/, each entry documented: masks.json (printed on the verdict), overrides.json
+ * (shown BESIDE the number, never replacing it), clip-allow.json, presence.json (session-variable
+ * regions), units.json (repeated units). Origin fallback: live stitch → previous origin
+ * (--recapture-origin) → <crawl-shots>/<slug>.png (`crawl-fullpage`, asymmetric, flagged).
  *
- * Sidecar files in <out>/ (all optional, all documented per entry — a masked or overridden number is never
- * reported as a plain one):
- *   masks.json      { slug: { masks: ['yA:h[@yB]', …], reason } }   pixel-compare --mask, printed on the verdict
- *   overrides.json  { slug: { verdict, reason, evidence } }         shown BESIDE the measured verdict, never replacing it
- *   clip-allow.json { slug: { max, reason } }                      documented clip allowance (a live page that clips)
- *   presence.json   { slug: { variable: ['selO=selE', …], main: 'selO=selE', reason } }  session-variable regions
- *   units.json      { slug: { units: [{ origin, eds, n, required }] } }                  repeated-unit declarations
- *
- * Origin fallback chain: live stitch → (with --recapture-origin) the previous origin.png → the crawl fullPage
- * screenshot <crawl-shots>/<slug>.png (instrument `crawl-fullpage`, ASYMMETRIC, flagged in the row and the
- * summary — lazy rails may be placeholders there). --blocked <regex> names origins the edge denies from this
- * egress (they go straight to the crawl shot unless --try-blocked).
- *
- * Usage:
- *   node skills/replica/scripts/gate-all.mjs [options]        (run from the project root)
- *     --state <file>           stardust/state.json
- *     --out <dir>              stardust/replica/gates/all-<width>
- *     --width <px>             1440
- *     --only <slug,…>          subset; writes runs/<ts>-<slug>.json, leaves summary.* alone
- *     --skip-existing          keep origin.png / eds.png already in the page dir
- *     --recapture-eds          with --skip-existing: keep origin.png, re-shoot eds.png (post-fix re-gate)
- *     --recapture-origin       re-shoot origin.png too (the previous one is kept when the re-shoot fails)
- *     --eds-host <host>        gate a code branch against the same DA content (host of liveUrl replaced;
- *                              branch hosts serve code from the LITERAL branch name — fix/x → push fix-x)
- *     --blocked <regex> / --try-blocked / --crawl-shots <dir>   origin fallback (above)
- *     --origin-concurrency 2 --eds-concurrency 4 --probe-concurrency 2
- *     --threshold 10 --height-tol 0.05 --clip-max 0 --unit-tol 4
- *     --no-clip / --no-content / --no-probes   drop criteria 3 / 4 / both (pixel-only verdict)
- *     --units <file>           default <out>/units.json
- *     --compare-only           no captures; recompute compares (+ probes unless --no-probes) from existing PNGs
- *     --warmup <url>           origin warm-up URL for the probes (bot-managed sites)
- *     --vh <px>                stitch-shot chunk height passthrough
- *
- * Requires: playwright, pixelmatch, pngjs (project devDependencies — the setup step writes them into
- * package.json, never `npm i --no-save`). stitch-shot.mjs and pixel-compare.mjs next to this file; the diff
- * skill's scripts dir alongside (../../diff/scripts or ../diff — the replica Setup copies both).
- * Exit: 0 every gated page PASS (overrides count), 2 any FAIL, 1 error. `verdict` and `formatSummary` are
- * exported for the contract test.
+ * Usage: node skills/replica/scripts/gate-all.mjs [--state f] [--out dir] [--width 1440]
+ *        [--only <slug,…>] [--skip-existing] [--recapture-eds] [--recapture-origin] [--eds-host <h>]
+ *        [--blocked <re>] [--try-blocked] [--crawl-shots <dir>] [--origin-concurrency 2]
+ *        [--eds-concurrency 4] [--probe-concurrency 2] [--threshold 10] [--height-tol 0.05]
+ *        [--clip-max 0] [--unit-tol 4] [--no-clip] [--no-content] [--no-probes] [--units <f>]
+ *        [--compare-only] [--warmup <url>] [--vh <px>]
+ * Requires playwright, pixelmatch, pngjs (project devDependencies); stitch-shot.mjs and
+ * pixel-compare.mjs next to this file; the diff skill's scripts dir alongside. Exit: 0 all PASS
+ * (overrides count), 2 any FAIL, 1 error. `verdict`, `formatSummary`, `parseArgs` are exported.
  */
 import { spawn } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';

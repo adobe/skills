@@ -3,65 +3,36 @@
 /* global __clipChain, __controlOf, __isControl, __norm, __pageRect, __parent, __path, __rendered, __sel, __srOnly, __visibleText, __walk */
 /**
  * skills/diff/scripts/content-presence.mjs — the CONTENT-PRESENCE gate of the published-origin gate
- * (#125, D2): live origin DOM vs served DOM, same minute, same settle, compared per band.
+ * (#125, D2): live origin vs served page, same minute, same settle, compared per band.
  *
- * content-diff.mjs reconciles a PROTOTYPE with its EDS build through a role classifier tuned to the
- * prototype's `.ds-*` DOM; on a live commerce origin (React apps, session rails, coupon walls) its
- * per-node findings were systematically false. This probe asks the smaller, checkable question the
- * pixel gate cannot answer: is every VISIBLE heading, link, button, image and paragraph of the origin
- * present AND visible on the served page, band by band — and does every control show the same state?
- * Recorded motivation (walgreens offers page, 2026-09-25): 284 "View details" links present in the served
- * DOM but pushed under the Clip button by an overflow-hidden card (pixel gate PASS at 6.7 %), and a
- * toolbar reading "Expiration Date" where the origin read "Recommended".
+ * content-diff.mjs's role classifier is tuned to a prototype's DOM; on live commerce origins its
+ * per-node findings were false. This probe asks the smaller question the pixel gate cannot: is every
+ * VISIBLE heading, link, button, image and text block of the origin present AND visible on the served
+ * page, band by band, and does every control show the same state? Both pages load in the same
+ * window-free real-Chrome tier and settle the same way (measure-live.mjs). Visibility = rendered,
+ * non-zero box, on-page, not clipped past 50 % (clip-probe's model): in the DOM but clipped = HIDDEN.
+ * Bands: the visible h1–h3 sequences aligned by text (LCS); items fall into bands by y.
  *
- * Method. Both pages load in the SAME window-free real-Chrome tier and settle with the same slow scroll
- * (measure-live.mjs); each side yields an inventory of visible items — headings (level), links (text or
- * aria-label / img alt, href path), buttons, images (alt / file name), text blocks (elements with own text)
- * and control STATE (a <select>'s selected option, checked radio / checkbox labels, [aria-selected] tabs,
- * [aria-pressed] / [aria-current] items, [aria-haspopup] / [role=combobox] triggers, result-count phrases
- * such as "284 coupons"). Visibility = rendered, non-zero box, on-page, and not clipped past 50 % by the
- * nearest overflow ancestor (clip-probe's model — an item inside the DOM but cut away is HIDDEN, not
- * present). Bands: the visible h1–h3 sequences are aligned by text in y-order (longest common
- * subsequence); each aligned heading opens a band on both sides and items fall into bands by y.
- *   MISSING HEADING / HIDDEN HEADING   🔴  an origin h1–h3 with no aligned build heading (hidden = in the DOM but clipped)
- *   MISSING LINK ×n / HIDDEN LINK ×n   🔴  an origin link text (per band) short on the build; hidden first, then missing
- *   MISSING BUTTON / HIDDEN BUTTON     🟠  same for buttons (state-variable labels are common — Clip / Clipped)
- *   CONTROL STATE                      🟠  same control (by label, else by ordinal in the band), different state text
- *   COUNT TEXT / COUNT IMAGES / COUNT LINKS  🟡  per-band count deltas beyond the tolerance; links only in variable regions
- *   MOVED LINK                         🟡  short in its band but present visibly elsewhere on the build
- *   EXTRA HEADING / EXTRA LINK         🟡  build-only items
- * Session-variable regions (rails, coupon walls, reviews): pass `--variable <sel,…>` (`selO=selE` when the
- * two sides differ) — items inside them are compared as COUNTS only, never as MISSING; gate-all reads the
- * same lists from presence.json per page. Items hidden on the ORIGIN are excluded from the origin side
- * (the origin's own clipping is not a conversion defect).
+ *   MISSING / HIDDEN HEADING, MISSING / HIDDEN LINK ×n        🔴  (exit 2)
+ *   MISSING / HIDDEN BUTTON, CONTROL STATE                    🟠
+ *   COUNT TEXT|IMAGES|LINKS, MOVED LINK, EXTRA …, HEADING AS TEXT  🟡
  *
- * Usage:
- *   node skills/diff/scripts/content-presence.mjs <originUrl> <edsUrl> [options]
- *     --width <px>            viewport width (default 1440)
- *     --main <sel>[=<selEds>] content root(s) (default: main, else body — per side)
- *     --variable <sel,…>      session-variable subtrees (counts only); `selO=selE` pairs allowed
- *     --json [<file>]         JSON on stdout or to <file>: inventories, bands, findings, totals,
- *                             clip (both sides), textBoxes (both sides — pixel-compare --text-boxes input)
- *     --min-cut <px>          clip-probe partial-cut floor (default 2)
- *     --chrome                include header / footer items — default off: chrome repeats on every page, its
- *                             promo strips and account state are session-variable, and the chrome crop gate
- *                             already judges it (gate doc § Pass bar item 5)
- *     --settle-passes <n>     slow-scroll passes until the height is stable (default 4). Trap: an
- *                             infinite-scroll origin keeps loading under the settle (recorded: 285 → 458
- *                             coupons) — that region is session-variable by nature, mark it --variable
- *     --max-findings <n>      cap per kind in the printed list (default 40; totals stay complete)
- *     --plain | --warmup <url> | --locale <tag>   as in measure-live
+ * Links and buttons are one pool on the served side; text-less image anchors count as images. Scope
+ * is symmetric (root only when BOTH sides have one, else whole page); header / footer and everything
+ * above / below them are left to the chrome crop gate unless --chrome. `--variable <selO=selE,…>`
+ * marks session-variable regions (counts only, HIDDEN still counts). The origin side fails loud on
+ * HTTP ≥ 400 (exit 4) and on a bot challenge (exit 3). Trap: an infinite-scroll origin keeps loading
+ * under the settle — mark that region --variable.
  *
- * Exit: 0 no structural finding, 2 any MISSING / HIDDEN link or heading (the gate criterion — buttons,
- * control state and counts are reported, not blocking), 1 error, 3 bot challenge on the origin, 4 origin
- * HTTP ≥ 400 (never measured as the origin — gate-all records `content: n/a` and keeps the clip column).
- * `presenceInventoryInPage` (in-page, needs clip-probe's IN_PAGE_LIB), `alignHeadings`, `diffPresence`,
- * `formatReport` are exported; the browser is imported lazily so the contract test runs the differ alone.
+ * Usage: node skills/diff/scripts/content-presence.mjs <originUrl> <edsUrl> [--width 1440]
+ *        [--main <sel>[=<selEds>]] [--variable <sel,…>] [--chrome] [--json [<file>]] [--min-cut 2]
+ *        [--settle-passes 4] [--max-findings 40] [--count-words <w,…>] [--plain] [--warmup <url>]
+ * `presenceInventoryInPage`, `alignHeadings`, `diffPresence`, `formatReport`, `norm` are exported.
  */
 import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { clipInventoryInPage, inPage, summarize } from './clip-probe.mjs';
+import { clipInventoryInPage, inPage, morePrelude, summarize } from './clip-probe.mjs';
 import { openBrowser, openPage, visit } from './measure-live.mjs';
 
 const HELP = `content-presence — origin vs served page: visible headings / links / buttons / images / text per band + control state (#125 D2)
@@ -76,6 +47,8 @@ Usage: node content-presence.mjs <originUrl> <edsUrl> [options]
   --settle-passes <n>      slow-scroll passes until the height is stable (default 4; infinite-scroll
                            origins keep loading — mark those regions --variable)
   --max-findings <n>       printed findings per kind (default 40)
+  --count-words <w,…>      result-count nouns (default English: results, items, products, coupons, offers, reviews, stores, matches)
+  --more-words <re>        "read more" toggle labels for the clip model (default English)
   --plain                  bundled Chromium instead of the window-free real-Chrome tier
   --warmup <url>           visit this URL first on the ORIGIN side (bot-managed sites)
   --locale <tag>           default en-US
@@ -84,17 +57,17 @@ Exit: 0 clean, 2 any MISSING/HIDDEN link or heading, 1 error, 3 bot challenge, 4
 
 // ---- in-page inventory (needs IN_PAGE_LIB — run via inPage()) -----------------------------------------
 /** page.evaluate(inPage(presenceInventoryInPage, { rootSel, variableSels })) → { docH, pageW, root, items[] } */
-export function presenceInventoryInPage({ rootSel = null, variableSels = [] } = {}) {
-  // Always walk the whole body; each item carries `inRoot` (inside <main> / --main). The differ picks the
-  // scope SYMMETRICALLY: root only when BOTH sides have one, else the whole page — a live origin without
-  // <main> against a build with one (recorded) would otherwise compare chrome against content.
+export function presenceInventoryInPage({ rootSel = null, variableSels = [], countWords = 'results?|items?|products?|coupons?|offers?|reviews?|stores?|matches' } = {}) {
+  const COUNT_RE = new RegExp(`\\b(\\d[\\d,]*)\\s+(${countWords})\\b`, 'i');
+  // Always walk the whole body; each item carries `inRoot`. The differ picks the scope SYMMETRICALLY: root
+  // only when BOTH sides have one, else the whole page (a live origin without <main> against a build with
+  // one would otherwise compare chrome against content).
   const root = document.body;
   const rootEl = (rootSel && document.querySelector(rootSel)) || (!rootSel && document.querySelector('main')) || null;
   // chrome landmarks: items inside them are flagged so the differ can leave the header / footer to the chrome
   // crop gate (the chrome repeats on every page and its live promo strips / account state are session-variable)
-  // Chrome = the landmarks AND everything above the header's bottom edge / below the footer's top edge:
-  // promo strips and skip links often sit OUTSIDE <header> (recorded: three session-variable promo links
-  // at y 11 flagged MISSING on every page). The chrome crop gate judges that region; --chrome includes it.
+  // Chrome = the landmarks AND everything above the header's bottom edge / below the footer's top edge
+  // (promo strips often sit OUTSIDE <header>); the chrome crop gate judges that region, --chrome includes it.
   const chromeEls = [...document.querySelectorAll('header, [role="banner"], footer, [role="contentinfo"]')].filter((c) => !rootEl || !rootEl.contains(c));
   const banner = chromeEls.filter((c) => c.matches('header, [role="banner"]')).map((c) => __pageRect(c.getBoundingClientRect())).filter((r) => r.h > 0);
   const contentinfo = chromeEls.filter((c) => c.matches('footer, [role="contentinfo"]')).map((c) => __pageRect(c.getBoundingClientRect())).filter((r) => r.h > 0);
@@ -166,7 +139,7 @@ export function presenceInventoryInPage({ rootSel = null, variableSels = [] } = 
       if (own.length >= 3 && !hasCountedAncestor(el) && !__controlOf(el)) {
         textBlocks.add(el);
         push('text', el, { text: own.slice(0, 80) });
-        const m = own.match(/\b(\d[\d,]*)\s+(results?|items?|products?|coupons?|offers?|reviews?|stores?|matches)\b/i);
+        const m = own.match(COUNT_RE);
         if (m) push('control', el, { label: `count ${m[2].toLowerCase().replace(/s$/, '')}`, value: m[1].replace(/,/g, ''), via: 'count' });
       }
     }
@@ -175,10 +148,9 @@ export function presenceInventoryInPage({ rootSel = null, variableSels = [] } = 
 }
 
 // ---- pure: alignment + diff --------------------------------------------------------------------------
-// Matching key: lower-case, trademark / footnote glyphs dropped (® ™ © † ‡ § * and a trailing footnote
-// digit — "no annual fee †", "1-hour delivery *", "$50/month. 1"), a bare "tm" token dropped (a <sup>TM</sup>
-// serialises as text on one side and as the glyph on the other — recorded: 17 false MISSING on one page),
-// punctuation runs collapsed. Exported for the test.
+// Matching key: lower-case; trademark / footnote glyphs and a trailing footnote digit dropped ("no annual
+// fee †", "$50/month. 1"); a bare "tm" token dropped (a <sup>TM</sup> serialises as text on one side and as
+// the glyph on the other — 17 false MISSING on one recorded page); punctuation runs collapsed.
 export const norm = (s) => (s || '')
   .toLowerCase()
   .replace(/[®™©†‡§*]/g, ' ')
@@ -255,9 +227,8 @@ export function diffPresence(originInv, edsInv, { countTol = 0.25, chrome = fals
       // links and buttons are ONE pool on the served side (a "Sign in" button served as a link is the same
       // visible control); the ORIGIN kind decides the severity.
       const action = (it) => it.kind === 'link' || it.kind === 'button';
-      // a text-less link (an image-only anchor without alt) has nothing a visitor reads; its presence is the
-      // image's (counted there) and its href does not survive the path rewrite of a migration — recorded:
-      // six product-rail image anchors read MISSING beside their matching text anchors. Text-keyed only.
+      // a text-less link (an image-only anchor without alt) is the image's presence (counted there); its href
+      // does not survive a migration's path rewrite — text-keyed only.
       const oFixed = oItems.filter((it) => it.kind === kind && !it.variable && norm(it.text)); const oVar = oItems.filter((it) => it.kind === kind && it.variable && norm(it.text));
       const eVis = countBy(eItems.filter((it) => action(it) && it.state === 'visible'), linkKey);
       const eHid = countBy(eItems.filter((it) => action(it) && it.state === 'hidden'), linkKey);
@@ -290,7 +261,7 @@ export function diffPresence(originInv, edsInv, { countTol = 0.25, chrome = fals
       let m = null;
       if (!generic) m = eC.find((x, idx) => !used.has(idx) && norm(x.label) === lab && (used.add(idx) || true));
       // ordinal fallback only for GENERIC labels: a specifically labelled trigger with no served counterpart is
-      // CONTROL MISSING, never paired with an unrelated trigger (recorded: 16 "rebate help" buttons paired with nav menus)
+      // CONTROL MISSING, never paired with an unrelated trigger
       if (!m && generic) { const sameVia = eC.map((x, idx) => ({ x, idx })).filter(({ x, idx }) => !used.has(idx) && x.via === c.via); const exact = sameVia.find(({ x }) => norm(x.value) === norm(c.value)); const pick = exact || sameVia[0]; if (pick) { used.add(pick.idx); m = pick.x; } }
       if (!m) {
         if (/^count/.test(lab)) { add('🟠', 'CONTROL STATE', `${c.label}: origin "${c.value}", served: none`, { band: k, label: c.label, value: c.value }); continue; }
@@ -332,7 +303,7 @@ export function formatReport(res, { maxPerKind = 40 } = {}) {
 export function parseArgs(argv) {
   const rest = argv.slice(2);
   if (rest.length < 2 || rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(rest.includes('--help') || rest.includes('-h') || !rest.length ? 0 : 1); }
-  const opts = { origin: null, eds: null, width: 1440, main: null, mainEds: null, variable: [], variableEds: [], json: false, jsonFile: null, minCut: 2, maxFindings: 40, plain: false, warmup: null, locale: 'en-US', chrome: false, settlePasses: 4 };
+  const opts = { origin: null, eds: null, width: 1440, main: null, mainEds: null, variable: [], variableEds: [], json: false, jsonFile: null, minCut: 2, maxFindings: 40, plain: false, warmup: null, locale: 'en-US', chrome: false, settlePasses: 4, countWords: null, moreWords: null };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--width') opts.width = Number(rest[++i]);
@@ -342,6 +313,8 @@ export function parseArgs(argv) {
     else if (a === '--min-cut') opts.minCut = Number(rest[++i]);
     else if (a === '--chrome') opts.chrome = true;
     else if (a === '--settle-passes') opts.settlePasses = Number(rest[++i]);
+    else if (a === '--count-words') opts.countWords = rest[++i].split(',').map((w) => w.trim()).filter(Boolean).join('|');
+    else if (a === '--more-words') opts.moreWords = rest[++i];
     else if (a === '--max-findings') opts.maxFindings = Number(rest[++i]);
     else if (a === '--plain') opts.plain = true;
     else if (a === '--warmup') opts.warmup = rest[++i];
@@ -354,12 +327,12 @@ export function parseArgs(argv) {
 }
 
 /** Inventory one side: visit + settle, presence inventory, clip inventory. */
-export async function inventorySide(browser, url, { width, locale, warmup, rootSel, variableSels, minCut, settlePasses = 4, httpError = 'measure' }) {
+export async function inventorySide(browser, url, { width, locale, warmup, rootSel, variableSels, minCut, settlePasses = 4, httpError = 'measure', countWords = null, moreWords = null }) {
   const { ctx, page } = await openPage(browser, { width, locale });
   try {
     const v = await visit(page, url, { warmup, settle: { passes: settlePasses }, httpError });
-    const inv = await page.evaluate(inPage(presenceInventoryInPage, { rootSel, variableSels }));
-    const clip = await page.evaluate(inPage(clipInventoryInPage, { minCut, rootSel: null, maxFindings: 400 }));
+    const inv = await page.evaluate(inPage(presenceInventoryInPage, countWords ? { rootSel, variableSels, countWords } : { rootSel, variableSels }, morePrelude(moreWords)));
+    const clip = await page.evaluate(inPage(clipInventoryInPage, { minCut, rootSel: null, maxFindings: 400 }, morePrelude(moreWords)));
     return { url, at: new Date().toISOString(), status: v.status, settlePasses: v.passes, ...inv, clip: { counts: clip.counts, groups: summarize(clip.findings), findings: clip.findings }, textBoxes: clip.textBoxes };
   } finally { await ctx.close(); }
 }
@@ -370,11 +343,11 @@ async function main() {
   const browser = await openBrowser(chromium, { tier: opts.plain ? 'plain' : 'stealth' });
   let o; let e;
   try {
-    // ORIGIN side fails loud on any HTTP ≥ 400 (a 403 Access-Denied page measured as the origin read "3 texts,
-    // 0 images → 100 EXTRA on the build" in a recorded run); the SERVED side is measured with a warning (a 404
-    // build before preview propagation is the advisory contract).
-    o = await inventorySide(browser, opts.origin, { width: opts.width, locale: opts.locale, warmup: opts.warmup, rootSel: opts.main, variableSels: opts.variable, minCut: opts.minCut, settlePasses: opts.settlePasses, httpError: 'throw' });
-    e = await inventorySide(browser, opts.eds, { width: opts.width, locale: opts.locale, warmup: null, rootSel: opts.mainEds, variableSels: opts.variableEds, minCut: opts.minCut, settlePasses: opts.settlePasses });
+    // ORIGIN side fails loud on any HTTP ≥ 400 (a 403 page measured as the origin reads "100 EXTRA on the
+    // build"); the SERVED side is measured with a warning (a 404 build before preview propagation is the
+    // advisory contract).
+    o = await inventorySide(browser, opts.origin, { width: opts.width, locale: opts.locale, warmup: opts.warmup, rootSel: opts.main, variableSels: opts.variable, minCut: opts.minCut, settlePasses: opts.settlePasses, httpError: 'throw', countWords: opts.countWords, moreWords: opts.moreWords });
+    e = await inventorySide(browser, opts.eds, { width: opts.width, locale: opts.locale, warmup: null, rootSel: opts.mainEds, variableSels: opts.variableEds, minCut: opts.minCut, settlePasses: opts.settlePasses, countWords: opts.countWords, moreWords: opts.moreWords });
   } finally { await browser.close(); }
   const res = diffPresence(o, e, { chrome: opts.chrome });
   const strip = (side) => ({ url: side.url, at: side.at, status: side.status, settlePasses: side.settlePasses, docH: side.docH, root: side.root, items: side.items, clip: { counts: side.clip.counts, groups: side.clip.groups } });

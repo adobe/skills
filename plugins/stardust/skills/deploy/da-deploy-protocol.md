@@ -56,11 +56,9 @@ done
 curl -sS -X POST -H "Authorization: Bearer $TOKEN" \
   "https://admin.hlx.page/preview/$ORG/$REPO/$BRANCH/$P"       # expect 200
 
-# 3a'. ANY admin 4xx: read the `x-error` response header first — the body is generic, the
-#      header carries the reason (deploy-batch appends it to the ledger's lastError as
-#      `[x-error: …]`). Known: `… 337 of 200 images` = the DA pipeline caps a document at
-#      200 images (#125, recorded on a 284-card coupon page) → split the long grid into
-#      /fragments/<name>-1, -2 documents and reference them from the page; no SVG hunt.
+# 3a'. ANY admin 4xx: the reason is in the `x-error` response header, not the body
+#      (deploy-batch appends it to lastError). `… N of 200 images` = the DA pipeline caps a
+#      document at 200 images (#125) → split long grids into /fragments/ documents.
 # 3a. preview 409 "error from content-bus" — the error is OPAQUE (no per-asset
 #     detail); do NOT dead-end on it. Two cheap diagnostics, in order:
 #   (i)  upload a known-good doc to the SAME path and re-preview — separates

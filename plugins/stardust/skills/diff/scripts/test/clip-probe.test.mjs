@@ -3,7 +3,7 @@
 // summarize groups findings by kind + clipper + parent and keeps advisory kinds apart, formatTable hides advisory
 // rows unless asked, verdictLine, parseArgs, --help in an empty cwd. Part (b), where playwright is importable:
 // a fixture page served from this process — a 238 px card with overflow:hidden whose description is cut
-// mid-line and whose "View details" link sits below the box (the recorded offers defect), a line-clamped
+// mid-line and whose "View details" link sits below the box (the recorded card defect), a line-clamped
 // paragraph (advisory only), a collapsed mega-menu (max-height 0 — must not count), an sr-only span (must not
 // count), a horizontal carousel track (advisory only), a "Read more" collapsible (advisory TEXT COLLAPSED) — and
 // a clean page (exit 0). Run: node <this file>.

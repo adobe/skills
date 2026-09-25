@@ -51,16 +51,11 @@ eyeballing.
    § Flow keys): invoking `replica` is the choice.
 2. Verify Playwright is importable from the project root (extract needs it;
    so do the gate scripts).
-3. Install the gate's deps in the project AS devDependencies — written into
-   `package.json`, never `--no-save`:
-   `npm i -D playwright pixelmatch pngjs cheerio --legacy-peer-deps`.
-   A `--no-save` install is PRUNED by any later real `npm i` (recorded twice in
-   one run: playwright vanished mid-gate when cheerio was added — feedback A3,
-   #125); re-probe before every gate run anyway
-   (`node -e "import('pixelmatch').then(()=>process.exit(0))"`). Run every
-   probe from the project root: ESM resolves `playwright` from the script's
-   own location, so an ad-hoc probe written elsewhere fails with
-   `ERR_MODULE_NOT_FOUND`.
+3. Install the gate's deps in the project AS devDependencies, never
+   `--no-save`: `npm i -D playwright pixelmatch pngjs cheerio --legacy-peer-deps`
+   (a `--no-save` install is pruned by the next real `npm i` — recorded twice
+   in one run, #125). Run every probe from the project root: ESM resolves
+   `playwright` from the script's own location.
 4. Copy scripts into the project and run them from there, not from the
    plugin: this skill's whole `scripts/` dir to
    `stardust/scripts/replica/`, the master skill's `../stardust/scripts/`
@@ -422,22 +417,14 @@ had one section for the whole run).
   `stardust/replica/gates/<slug>-<width>/` dir under the `pub<N>` label (a
   new dir would force a fresh live capture). Only the published number
   counts.
-- **The delivery gate is the ALL-PAGES run, four criteria, not the pixel
+- **The delivery gate is the ALL-PAGES run, four criteria — not the pixel
   number alone** (`reference/source-fidelity-gate.md` § The all-pages
-  published-origin gate, #125): once the roster is deployed,
-  `node stardust/scripts/replica/gate-all.mjs [--only <slug,…>] [--skip-existing]
-  [--eds-host <branch host>]` (through `run-bg.mjs`, it is a long instrument)
-  captures every `deployed` page on both sides, and a page is DELIVERED when
-  pixel % ≤ 10 AND |Δh| ≤ 5 % of the origin height AND `clip-probe` counts 0
-  clipped / hidden text and controls on the served page AND
-  `content-presence` reports 0 MISSING / HIDDEN links and headings against the
-  live origin (`units.json`-declared repeated units within 4 px on top). A
-  recorded page passed the pixel bar at 6.7 % with all 284 of its cards
-  clipped and their links hidden — the pixel gate proves shapes, the two DOM
-  probes prove elements. Evidence: `stardust/replica/gates/all-<width>/
-  <slug>/` + `summary.{json,md}` (pixel-only and full verdicts side by side —
-  the calibration pair); sidecars `masks.json`, `overrides.json`,
-  `clip-allow.json`, `presence.json`, `units.json`, each entry documented.
+  published-origin gate, #125): `node stardust/scripts/replica/gate-all.mjs
+  [--only <slug,…>] [--skip-existing] [--eds-host <host>]` through `run-bg.mjs`.
+  DELIVERED = pixel % ≤ 10 AND |Δh| ≤ 5 % AND 0 clipped text / controls
+  (`clip-probe`) AND 0 MISSING / HIDDEN links / headings (`content-presence`);
+  a recorded page passed the pixel bar with all of its cards clipped. Evidence
+  and sidecars: `stardust/replica/gates/all-<width>/`.
 
 **State:** replica writes its own state under `stardust/replica/` — the
 inconsistency register, `progress.json` (per page type: archetype slug,

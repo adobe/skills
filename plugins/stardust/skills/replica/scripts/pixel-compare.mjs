@@ -47,9 +47,8 @@
  *                          one per side under `textBoxes`); the differing-pixel
  *                          share is re-computed over those boxes only and
  *                          reported as `textPct`. Pixelmatch underweights small
- *                          text inside otherwise matching shapes — on the
- *                          recorded offers page 284 clipped card descriptions
- *                          cost < 1 point of the full-page number. Not a verdict
+ *                          text inside otherwise matching shapes (a recorded page
+ *                          read 6.7 % full-page, 16.5 % text-only). Not a verdict
  *                          criterion; summary.md carries it beside the pixel %.
  *     --timeout <s>        hard wall-clock deadline (default 120; 0 disables).
  *                          Enforced from a supervising process (the compare

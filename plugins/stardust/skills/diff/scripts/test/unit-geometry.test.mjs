@@ -22,7 +22,7 @@ check('keyed: role:text keys, selector#ordinal for text-less, #2 for duplicates'
   const k = keyed([el('text', 'Expires', 0, 0, 10, 10), el('image', '', 0, 0, 10, 10), el('image', '', 0, 0, 10, 10), el('text', 'Expires', 0, 0, 10, 10)]);
   assert.deepEqual(k.map((x) => x.key), ['text:expires', 'image:img#1', 'image:img#2', 'text:expires #2']);
 });
-check('alignUnit: the recorded offers card — body 28 px low, details link hidden, badge paired by position, image by order', () => {
+check('alignUnit: the recorded card — body 28 px low, details link hidden, badge paired by position, image by order', () => {
   const o = { rect: { x: 165, y: 500, w: 350, h: 260 }, elements: [el('text', '1 day left', -10, -10, 70, 70), el('image', '', 17, 76, 70, 70), el('text', 'Expires 09/26/26', 112, 12, 202, 15), el('text', 'Earn $5 W Cash rewards when you spend', 112, 27, 202, 54), el('link', 'View details', 112, 176, 91, 24), el('button', 'Clip', 12, 204, 326, 44)] };
   const e = { rect: { x: 165, y: 522, w: 355, h: 238 }, elements: [el('text', '2 days left', -27, -30, 64, 64), el('image', 'coupon', 11, 46, 65, 65), el('text', 'Expires 09/26/26', 101, 16, 242, 20), el('text', 'Earn $5 W Cash rewards when yo…', 101, 55, 215, 48), el('link', 'View details', 101, 204, 91, 20, { hidden: true }), el('link', 'Clip', 12, 182, 331, 44)] };
   const r = alignUnit(o, e, 4);

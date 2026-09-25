@@ -4,34 +4,21 @@
 /**
  * skills/diff/scripts/unit-geometry.mjs — per-unit GEOMETRY compare for repeated units (#125, D3).
  *
- * A card, a rail item, an FAQ row: the pixel gate sees the grid of shapes, not whether the badge sits on
- * the card corner or on its own row, whether the body starts 30 px too low, whether the details link is
- * where the origin puts it. The category, PDP and topic workstreams of the recorded run converged only
- * after MEASURING live element rects (`*-measure.mjs`); this probe makes that measurement a gate row:
- * for the first N matching units on the origin and on the served page it dumps the rects of the inner
- * elements (by role + text, shadow-DOM aware), aligns them, and reports per element Δx / Δy / Δw / Δh
- * RELATIVE TO THE UNIT's top-left corner against a tolerance (default 4 px), plus the unit's own size
- * and page position delta. Elements the served page clips away (clip-probe model) read `hidden`.
+ * A card, a rail item, an FAQ row: the pixel gate sees the grid of shapes, not whether the badge sits
+ * on the corner or the body starts 30 px low. The workstreams that converged measured live element
+ * rects; this makes that a gate row: for the first N matching units on both sides, the rects of the
+ * inner elements (role + text, shadow-DOM aware) relative to the unit's corner, aligned (key, text
+ * prefix, relaxed link ↔ button, images by order, leftover text by position) and reported as
+ * Δx / Δy / Δw / Δh against --tol, plus the unit's own size / position delta; `hidden` where the
+ * served page clips. Both sides settle the same way; the origin inventory caches per slug under
+ * stardust/current/measure/<slug>-units.json.
  *
- * Both sides load in the same window-free real-Chrome tier and settle with measure-live's slow scroll
- * (symmetric instrument). The origin inventory can be cached per slug under
- * `stardust/current/measure/<slug>-units.json` (the egress that reaches a blocked section may vanish).
- *
- * Usage:
- *   node skills/diff/scripts/unit-geometry.mjs <originUrl> <edsUrl> --unit "<selOrigin>=<selEds>" [options]
- *     --unit <selO>=<selE>  repeatable; one selector when both sides share it
- *     --n <count>           units per selector (default 1; the first N visible matches in DOM order)
- *     --tol <px>            per-element tolerance on |Δx|, |Δy|, |Δw|, |Δh| (default 4)
- *     --width <px>          viewport width (default 1440)
- *     --json [<file>]       JSON on stdout or to <file>
- *     --slug <s>            cache / reuse the ORIGIN inventory (--force to re-measure)
- *     --advisory            exit 0 even with elements off / missing (report only)
- *     --plain | --warmup <url> | --locale <tag>   as in measure-live
- *
- * Exit: 0 every element within tolerance, 2 any element off / missing / hidden (or a unit missing on one
- * side), 1 error, 3 bot challenge. gate-all runs it only for the units a project declares in units.json
- * (block families that repeat: cards, rails, lists, FAQs). `unitInventoryInPage`, `alignUnit`,
- * `formatUnits` are exported; the browser is imported lazily.
+ * Usage: node skills/diff/scripts/unit-geometry.mjs <originUrl> <edsUrl> --unit "<selO>=<selE>" …
+ *        [--n 1] [--tol 4] [--width 1440] [--json [<file>]] [--slug <s>] [--force] [--advisory]
+ *        [--plain] [--warmup <url>] [--locale en-US]
+ * Exit: 0 within tolerance, 2 any element off / hidden / missing, 1 error, 3 bot challenge.
+ * gate-all runs it for the units units.json declares. `unitInventoryInPage`, `alignUnit`,
+ * `keyed`, `compareUnits`, `formatUnits`, `verdictOf` are exported.
  */
 import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';

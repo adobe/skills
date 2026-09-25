@@ -26,7 +26,7 @@ const px = (pct, heightDelta, height = 10000) => ({ pct, heightDelta, compared: 
 const clip = (total) => ({ counts: { total, textClipped: total, textHidden: 0, controlHidden: 0, controlClipped: 0 } });
 const content = (missing, hidden, controlState = 0) => ({ totals: { missing, hidden, controlState } });
 
-check('the recorded offers page: pixel PASS, elements FAIL — pixelOnlyPass true, pass false, both reasons named', () => {
+check('the recorded card page: pixel PASS, elements FAIL — pixelOnlyPass true, pass false, both reasons named', () => {
   const v = verdict({ pixel: px(6.68, 69, 29326), clip: clip(379), content: content(0, 284, 2) });
   assert.equal(v.pixelOnlyPass, true); assert.equal(v.pass, false);
   assert.match(v.reasons.join('; '), /clipped 379/); assert.match(v.reasons.join('; '), /HIDDEN 284/); assert.match(v.reasons.join('; '), /2 control state/);
