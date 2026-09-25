@@ -11,6 +11,11 @@
           "type": "command_succeeds",
           "command": "node --check scripts/browser-probe.js",
           "description": "Browser probe script has valid syntax."
+        },
+        {
+          "type": "command_succeeds",
+          "command": "node --test scripts/browser-probe.test.mjs",
+          "description": "Browser probe unit and fake-CLI tests pass."
         }
       ]
     }

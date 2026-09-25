@@ -31,14 +31,25 @@ property names and semantics are identical, only the serialization differs.
 
 ## Procedure
 
+**Required input — the index definition(s). This skill does not run without them.** The whole
+assessment is a comparison of a query against the index definition(s) it could use, so the index
+definition is mandatory input, not an optional aid. If it was not provided, **ask for it** — accept any
+of: a FileVault `.content.xml` under an `/apps/.../install` package, a JSON export, or the live dump at
+`GET /system/console/status-oak-index-defn.json` (admin auth). **If none can be obtained, skip this skill
+and say so explicitly** — do not emit a coverage assessment from the query alone. A guess about what is
+indexed reads as a finding and gets acted on as one; no answer is better than a wrong one. (The query is
+the other required input — provide it directly, or build the inventory with the bundled
+[extracting JCR queries guide](references/extracting-jcr-queries.md).)
+
 **Preconditions**: steps 1 and 6 below both mention live-instance tools (`explain`, the Felix
-`InventoryPrinter`, Oak's trunk test suite) — neither is required. If you only have the query text and the
+`InventoryPrinter`, Oak's trunk test suite) — neither is required. Given the query text and the
 index definition(s), skip those tools' sub-bullets, do steps 2-5 and 7 as pure static analysis, and report
 per the final section with verification stated as reasoned-but-unproven.
 
 1. **Get the query and every index definition it could plausibly use** — not just the one you assume
    applies. **If you don't already have the query in hand** — e.g. asked to audit a whole app/bundle rather
-   than tune one query someone handed you — use the `extracting-jcr-queries` skill first to find every
+   than tune one query someone handed you — first follow the bundled
+   [extracting JCR queries guide](references/extracting-jcr-queries.md) to find every
    JCR/QueryBuilder query the codebase actually issues (including ones assembled programmatically through
    wrapper/helper/DAO code, which a text grep alone misses); its output (construction site + every
    trigger/caller path) is the input to this skill's assessment, one query at a time. **If no live instance

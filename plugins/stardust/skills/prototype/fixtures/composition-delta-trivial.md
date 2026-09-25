@@ -11,7 +11,7 @@
 -->
 ---
 slug: beers
-url: https://wasatchback.com/beers
+url: https://example.com/beers
 register: brand
 surprise: high
 dominantDimension: composition/catalog-grid

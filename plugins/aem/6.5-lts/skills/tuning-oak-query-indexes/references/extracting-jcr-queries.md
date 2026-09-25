@@ -1,11 +1,10 @@
----
-name: extracting-jcr-queries
-description: Use when auditing a codebase to find every JCR query it issues — XPath, SQL2, or AEM QueryBuilder predicates, including ones assembled programmatically through wrapper/helper/DAO code — before an Oak index audit, migration, performance investigation, or when asked "what queries does this app run".
-license: Apache-2.0
-compatibility: Any AEM/Oak codebase (Java, JSP/HTL, or config-driven) issuing JCR or AEM QueryBuilder queries.
----
-
 # Extracting JCR Queries
+
+> Reference for the `tuning-oak-query-indexes` skill. This is the query-inventory
+> procedure that step 1 of the skill runs when you ask it to audit a whole
+> codebase rather than tune a single query you already have in hand. It is not a
+> standalone skill — invoke `tuning-oak-query-indexes` and it applies this
+> procedure automatically.
 
 ## Overview
 
@@ -124,7 +123,7 @@ single-`/` path fragment (e.g. `/docs/readme[1]`) or a `//` line comment followe
 code from matching — use `//`, not `//?`, or that false-positive comes right back. The `element(*, NodeType)` branch is
 required, not optional — the plain `//[\w:*]+` name-token alternative alone cannot match through the
 parens/comma inside `element(*, dam:Asset)`, so a query already using an explicit nodetype restriction
-(the fix the paired `tuning-oak-query-indexes` skill recommends for its nodetype-scoping gotcha) is
+(the fix this skill recommends for its nodetype-scoping gotcha) is
 otherwise invisible to this technique — live-confirmed miss before this branch was added.
 
 **QueryBuilder, query-string form** — `path=...&type=...` (`&`-joined, e.g. a URL) or space-joined (e.g. a
@@ -140,8 +139,8 @@ grep -rnE "(^|[?&\"'[:space:]])([0-9]+_)?(path|type|property|fulltext|group|node
 Live-confirmed against a real stored predicate string in this repo
 (`bundles/core/src/test/java/.../CollectionServletTest.java`, `1_group.0_property=...4_group.property=...`
 space-separated) — the previous version of this pattern (bare `property`/`group\.\d+_group` keys, `&`-only
-separator) missed it entirely; a Smart-Collection-style query is exactly the case the paired
-`tuning-oak-query-indexes` skill's Section B flags as needing manual field identification, so silently
+separator) missed it entirely; a Smart-Collection-style query is exactly the case this
+skill's Section B flags as needing manual field identification, so silently
 missing it here means it never even reaches that step.
 
 **QueryBuilder, map/predicate form with literal keys** — `map.put("path", ...); map.put("type", ...)`

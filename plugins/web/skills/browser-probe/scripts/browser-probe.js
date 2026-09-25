@@ -55,7 +55,8 @@ export function detectSignals(networkLines, healths) {
   const joined = networkLines.join('\n').toLowerCase();
 
   if (joined.includes('server: akamaighost')
-      || joined.includes('server: akamainetstorage')) {
+      || joined.includes('server: akamainetstorage')
+      || joined.includes('akamai-grn:')) {
     signals.push('akamai-server');
   }
   if (joined.includes('bm_sz') || joined.includes('_abck')) {
@@ -168,13 +169,25 @@ function waitForStable(session) {
   }
 }
 
-function getNetworkLines(session) {
-  try {
-    const raw = cli(session, 'network');
-    return raw.split('\n').filter(Boolean);
-  } catch {
-    return [];
+// Indices of the redirect hops plus the final main document, whose
+// responses carry the CDN/WAF headers.
+export function findDocumentChain(requestsOutput, finalUrl) {
+  const target = finalUrl.split('#')[0];
+  const indices = [];
+  for (const line of requestsOutput.split('\n')) {
+    const match = line.match(/^(\d+)\. \[\w+\] (\S+)/);
+    if (!match) continue;
+    indices.push(match[1]);
+    if (match[2] === target) return indices;
   }
+  throw new Error(`main document ${target} not found in playwright-cli requests`);
+}
+
+function getDocumentHeaderLines(session, finalUrl) {
+  const indices = findDocumentChain(cli(session, 'requests', '--static'), finalUrl);
+  return indices.flatMap(
+    i => cli(session, 'response-headers', i).split('\n').filter(Boolean),
+  );
 }
 
 function runStep(url, stepDef) {
@@ -206,16 +219,22 @@ function runStep(url, stepDef) {
     waitForStable(session);
     const healthRaw = cliEval(session, HEALTH_CHECK_JS);
     const health = JSON.parse(healthRaw);
-    const networkLines = getNetworkLines(session);
     const result = checkHealth(health);
+    let networkLines = [];
+    let headerError = null;
+    try {
+      networkLines = getDocumentHeaderLines(session, health.url);
+    } catch (err) {
+      headerError = `Failed to read main-document response headers: ${err.message}`;
+      log(`  warning: ${headerError}`);
+    }
     const durationMs = Date.now() - start;
 
-    return {
-      step: buildStepResult(
-        stepDef.name, stepDef.config, result, health, durationMs,
-      ),
-      networkLines,
-    };
+    const step = buildStepResult(
+      stepDef.name, stepDef.config, result, health, durationMs,
+    );
+    if (headerError) step.headerError = headerError;
+    return { step, networkLines };
   } catch (err) {
     const durationMs = Date.now() - start;
     return {

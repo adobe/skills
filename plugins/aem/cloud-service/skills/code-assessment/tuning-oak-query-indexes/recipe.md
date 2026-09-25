@@ -1,44 +1,57 @@
----
-name: tuning-oak-query-indexes
-description: Use when a Jackrabbit Oak/AEM JCR query is slow, logs a traversal warning, or you're adding/changing a query and need to check or update its property/Lucene index definition so the query is answered by the index instead of in-memory filtering or sorting.
-license: Apache-2.0
-compatibility: Any Jackrabbit Oak-backed repository on AEM as a Cloud Service using property or Lucene query indexes.
----
+# Recipe — tuning Oak query indexes
 
-# Tuning Oak Query Indexes
+> Read this fully before assessing or proposing any index change. Control plane: [SKILL.md](SKILL.md).
 
-## Overview
-
-An Oak query only uses an index for the parts the index actually covers. Any `WHERE`/`ORDER BY`/fulltext
-field without a matching, correctly-flagged property definition gets evaluated node-by-node in memory —
-same for a wrong nodetype or path scope, **even if every field is indexed**. This skill is the procedure
-for finding exactly which fields/conditions aren't covered and what index-definition change fixes each
-one.
+This is the deep, step-by-step assessment procedure the runbook applies once the analyzer has located
+query-construction sites **and** the user has supplied the index definition(s). It is `guided`: never
+auto-apply an index change — write the corrected definition out for review and let the developer apply it.
 
 **Ground truth for every claim below**: [the AI agent indexing guide](references/ai-agent-indexing-guide.md),
 bundled alongside this skill so it works the same way regardless of which codebase it's copied into. Read
-it on demand for exact property tables, defaults, cost-model details, and edge cases — this skill is the
+it on demand for exact property tables, defaults, cost-model details, and edge cases — this recipe is the
 checklist, not the reference.
 
-**This skill assumes nothing about the codebase it's used in beyond "you have a query and an index
-definition."** It does not require an AEM instance, a running Oak repository, or a checkout of Oak's own
-Java source — those only *strengthen* confidence where noted (step 6 and the "explain can't reach this"
-fallback below), never a requirement; the core procedure — read the query, read the index definition, find
-the gap, propose the fix — works from the two artifacts alone. Index definitions in a
-real project are often FileVault XML (`.content.xml` under an `/apps/.../install` content package,
-`jcr:primaryType="oak:QueryIndexDefinition"` and friends), not raw JSON — read them the same way; the
-property names and semantics are identical, only the serialization differs.
+**This procedure assumes nothing about the codebase beyond "you have a query and an index definition."**
+It does not require an AEM instance, a running Oak repository, or a checkout of Oak's own Java source —
+those only *strengthen* confidence where noted (step 6 and the "explain can't reach this" fallback below),
+never a requirement; the core procedure — read the query, read the index definition, find the gap, propose
+the fix — works from the two artifacts alone. Index definitions in a real project are often FileVault XML
+(`.content.xml` under an `/apps/.../install` content package, `jcr:primaryType="oak:QueryIndexDefinition"`
+and friends), not raw JSON — read them the same way; the property names and semantics are identical, only
+the serialization differs.
 
-## Procedure
+## Input contract
+
+Per invocation, the analyzer produces a deduplicated list of query-construction findings (one per source
+line), each of shape `{pattern, file, line, snippet}` — e.g. `builder.createQuery(PredicateGroup.create(map), session)`
+or `queryManager.createQuery(statement, "JCR-SQL2")`. Read the surrounding code to recover the full query
+text (SQL2/XPath statement or the predicate map) — a single construction call often assembles the query
+from a map built over several preceding lines, or delegated to a wrapper/helper/DAO. If you need to build
+the query inventory from scratch (auditing a whole bundle rather than tuning a handed-over query), use the
+bundled [extracting JCR queries guide](references/extracting-jcr-queries.md) — its output (construction
+site + every trigger/caller path) is the input to this assessment, one query at a time.
+
+**Required input — the index definition(s). This skill does not run without them.** The whole
+assessment is a comparison of a query against the index definition(s) it could use, so the index
+definition is mandatory input, not an optional aid. If it was not provided, **ask for it** — accept any
+of: a FileVault `.content.xml` under an `/apps/.../install` package, a JSON export, or the live dump at
+`GET /system/console/status-oak-index-defn.json` (admin auth). **If none can be obtained, DEFER THE WHOLE
+PATTERN with a single line** (e.g. `tuning-oak-query-indexes: deferred — index definition not provided`) —
+do **not** emit a per-query skip for every finding, and do **not** emit a coverage assessment from the
+query alone. A guess about what is indexed reads as a finding and gets acted on as one; no answer is better
+than a wrong one.
 
 **Preconditions**: steps 1 and 6 below both mention live-instance tools (`explain`, the Felix
-`InventoryPrinter`, Oak's trunk test suite) — neither is required. If you only have the query text and the
+`InventoryPrinter`, Oak's trunk test suite) — neither is required. Given the query text and the
 index definition(s), skip those tools' sub-bullets, do steps 2-5 and 7 as pure static analysis, and report
 per the final section with verification stated as reasoned-but-unproven.
 
+## Procedure
+
 1. **Get the query and every index definition it could plausibly use** — not just the one you assume
    applies. **If you don't already have the query in hand** — e.g. asked to audit a whole app/bundle rather
-   than tune one query someone handed you — use the `extracting-jcr-queries` skill first to find every
+   than tune one query someone handed you — first follow the bundled
+   [extracting JCR queries guide](references/extracting-jcr-queries.md) to find every
    JCR/QueryBuilder query the codebase actually issues (including ones assembled programmatically through
    wrapper/helper/DAO code, which a text grep alone misses); its output (construction site + every
    trigger/caller path) is the input to this skill's assessment, one query at a time. **If no live instance
@@ -262,7 +275,8 @@ For every Section A query, produce:
 5. The corrected index definition (full JSON or content diff) for the index identified in item 4, with a
    one-line justification per change, **and the storage/size tradeoff called out explicitly** for any
    change that triggers one of the pitfalls above (don't let a size cost pass silently just because it
-   fixes the query).
+   fixes the query). **Never auto-apply** — write the corrected definition out for the developer to review
+   and apply.
 6. The `explain` command to run to verify, and what a passing result looks like — but if no live Oak
    instance is available, say so plainly and present the static analysis as reasoned-but-unproven rather
    than skipping verification silently.

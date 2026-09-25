@@ -60,6 +60,9 @@ Load `probe-report.json`. Check `firstSuccess`:
 - If non-null: a configuration worked. Proceed to Step 3.
 - If null: all configurations failed. Skip to Step 5.
 
+A step with `headerError` could not read response headers, so
+`detectedSignals` may be incomplete. Mention the error in the Step 5 report.
+
 ### Step 3 — Interpret results
 
 Match `detectedSignals` against the Provider Signature Table in
