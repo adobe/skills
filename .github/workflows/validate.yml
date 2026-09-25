@@ -42,6 +42,14 @@ jobs:
       - name: Stardust scripts answer --help without touching a file (playwright/pngjs scripts skip without devDependencies)
         run: node plugins/stardust/evals/lint/script-help.mjs
 
+      - name: Stardust source names no site (placeholders, infrastructure and vendor patterns are allowlisted)
+        run: node plugins/stardust/evals/lint/site-names.mjs
+
+      - name: Stardust skill prose delta against main (advisory — printed, never fails)
+        run: |
+          git fetch --no-tags --depth=1 origin main
+          node plugins/stardust/evals/lint/prose-delta.mjs --ref origin/main
+
   codeowners-coverage:
     runs-on: ubuntu-latest
     steps:
