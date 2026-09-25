@@ -1,6 +1,6 @@
 ---
 name: tuning-oak-query-indexes
-description: "AEM Cloud Service expert skill — check a JCR/Oak query is actually served by an index and, when it is not, propose the property/Lucene index-definition change so the query is answered by the index instead of in-memory filtering or sorting. Use for \"query is slow\", \"traversal warning\", \"is my query indexed\", \"tune oak index\", or a scan that flags a JCR/QueryBuilder query. The analyzer locates every query-construction site (createQuery / PredicateGroup.create); the recipe assesses each flagged query against the supplied index definition(s). Resolution is user-supplied: the index definition(s) are required input — if none is provided the whole pattern is deferred, never guessed. Guided fix — the developer reviews and applies the proposed index change; never auto-apply."
+description: "AEM Cloud Service expert skill — check a JCR/Oak query is actually served by an index and, when it is not, propose the property/Lucene index-definition change so the query is answered by the index instead of in-memory filtering or sorting. Use for \"query is slow\", \"traversal warning\", \"is my query indexed\", \"tune oak index\", or a scan that flags a JCR/QueryBuilder query. The analyzer locates every query-construction site (createQuery, getQueryManager, Sling findResources / queryResources, PredicateGroup.create / new PredicateGroup); the recipe assesses each flagged query against the supplied index definition(s). Resolution is user-supplied: the index definition(s) are required input — if none is provided the whole pattern is deferred, never guessed. Guided fix — the developer reviews and applies the proposed index change; never auto-apply."
 license: Apache-2.0
 ---
 
@@ -34,17 +34,26 @@ Detection is performed by the analyzer ([`../scripts/analyze.sh`](../scripts/REA
 bash ../scripts/analyze.sh <workspace-root> --pattern tuning-oak-query-indexes
 ```
 
-**Match criteria (what the detector flags)** — query-*construction* sites, matched on written method names
-(parse-level, no type resolution):
+**Match criteria (what the detector flags)** — query-*construction* sites, matched on written names
+(parse-level, no type resolution). These mirror the Java-API anchors the folded
+[extracting JCR queries guide](references/extracting-jcr-queries.md) used, so moving detection from grep to
+code keeps the same capture:
 
-- any invocation named `createQuery` — covers JCR `QueryManager.createQuery(...)` and AEM QueryBuilder
+- any invocation named `createQuery` — JCR `QueryManager.createQuery(...)` and AEM QueryBuilder
   `builder.createQuery(...)`.
-- a `create` invocation whose receiver's trailing simple name is `PredicateGroup` (i.e.
-  `PredicateGroup.create(...)`).
+- any invocation named `getQueryManager` — the JCR query entry point (`Workspace.getQueryManager()`).
+- any invocation named `findResources` or `queryResources` — the Sling `ResourceResolver` query APIs, which
+  run a real indexed repository query.
+- `PredicateGroup.create(...)` (a `create` invocation whose receiver's trailing simple name is
+  `PredicateGroup`) and `new PredicateGroup(...)` — QueryBuilder predicate-group construction.
 
 One finding per distinct source line, with the call as the snippet. The detector locates where queries are
 built; it does **not** judge coverage — that requires the query text (read the surrounding code) and the
 index definition(s) (see Resolution contract).
+
+**Known limits (out of a parse-level Java detector's reach — use the extracting guide's manual fallback):**
+non-Java queries (XPath/SQL2 in JSP/HTL/config, stored `dam:query` / Smart-Collection predicate strings,
+query-string form) and queries hidden behind a non-JCR wrapper method whose body has no direct query call.
 
 ## Resolution contract
 
