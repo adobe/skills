@@ -153,6 +153,11 @@ assert_count   "SlingResolver.java emits 2 query sites" "$OUT" '"file":"SlingRes
 assert_contains "QueryBuilderCtor.java flagged"         "$OUT" 'QueryBuilderCtor.java'
 assert_contains "new PredicateGroup captured"           "$OUT" 'new PredicateGroup'
 assert_count   "QueryBuilderCtor.java emits 2 sites"    "$OUT" '"file":"QueryBuilderCtor.java"' 2
+# Wrappers — the query call inside a wrapper body is flagged (once); callers + opaque DAO are not
+assert_contains "wrapper body flagged"                  "$OUT" 'Wrapper.java'
+assert_count   "Wrapper.java emits 1 site (the body)"   "$OUT" '"file":"Wrapper.java"' 1
+assert_absent  "wrapper callers not traced"             "$OUT" 'WrapperCaller.java'
+assert_absent  "opaque DAO (API in another module) not flagged" "$OUT" 'OpaqueDao.java'
 # Negatives — exact-name matching only, no false positives
 assert_absent  "clean file not flagged"                 "$OUT" 'Clean.java'
 assert_absent  "near-miss names not flagged"            "$OUT" 'Negatives.java'
