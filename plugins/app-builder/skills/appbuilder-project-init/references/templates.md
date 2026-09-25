@@ -119,6 +119,57 @@ runtimeManifest:
 2. **Map components.** Map AEM page components to React components using the SPA Editor SDK.
 3. **Update content model.** Replace WKND-specific components and content references with your project's content structure.
 
+## Content Hub extension (`aem/assets/contenthub/1`)
+
+| Field | Value |
+| --- | --- |
+| Extension Point | aem/assets/contenthub/1 |
+| Categories | ui |
+
+**Best for:** A Content Hub UI extension — Asset Details tab panels (`assetDetails`), asset-card / collection-tile action buttons (`card`), and selection-bar bulk actions (`selectionBar`).
+
+**Use when the user says:** "Content Hub extension", "asset details panel", "card action", "collection tile action", "bulk action bar", "aem/assets/contenthub/1"
+
+**No generator template exists for this extension point** — scaffold from the maintained sample app instead of `aio app init --template`:
+
+```bash
+aio app init --repo adobe/aem-uix-examples/aem-assets-contenthub-sample
+```
+
+> **`--repo` almost always needs a GitHub token.** `aio app init --repo` fetches the sample through the GitHub API, which is rate-limited to ~60 requests/hour for **unauthenticated** calls (shared per IP), so the command above usually fails with `Error: too many requests, please try again later`. When it does, **ask the user for a GitHub personal access token** (a classic token with **no scopes** is enough for public-repo read) and retry:
+> ```bash
+> aio app init --repo adobe/aem-uix-examples/aem-assets-contenthub-sample --github-pat <your-github-pat>
+> ```
+> Prefer the token + `aio app init` path. If a token isn't available and you fall back to fetching the sample another way (e.g., `git clone` the folder + copy into place), you **must** replicate the wiring `aio app init` does — a raw copy leaves an unwired project and the next `aio app use` fails with *"Incomplete .aio configuration."* After selecting the org/project/workspace, download the workspace config and import it:
+> ```bash
+> aio console workspace download /tmp/console.json   # config for the selected workspace
+> aio app use /tmp/console.json                       # populates .aio/.env (treat console.json as a secret — gitignore it)
+> ```
+
+**Before scaffolding, ask the user (`AskUserQuestion`):**
+1. **Target workspace** — list the project's existing workspaces (`aio console workspace list --projectId <projectId>` — the flag is `--projectId`, not `--projectName`) and let them choose, then `aio console workspace select <workspaceId>`. New App Builder projects already have **Stage** and **Production**, so *select* one (recommend Stage for dev) — **never run `aio console workspace create Stage`; it already exists** and will error. Never guess/increment a workspace id — always list them.
+2. **Allowed repos** — the delivery repo IDs the extension may register with (`delivery-pXXX-eYYY.adobeaemcloud.com`), or **Skip** (leaves `allowedRepos = []`, i.e. any repo). See post-init step 2 below for where this value goes and the Production requirement.
+
+### Post-init customization
+
+1. **Set the extension id.** Change `extensionId` in `src/aem-assets-contenthub-1/web-src/src/components/Constants.js` — it must match between `register()` (ExtensionRegistration.js) and `attach()` (the panel/modal components).
+2. **Populate `allowedRepos`.** In `ExtensionRegistration.js`, write the value collected in the pre-scaffold question above (empty array for local dev, or the delivery repo IDs). **Use each repo's full delivery hostname** (`delivery-pXXX-eYYY.adobeaemcloud.com`).
+3. **Keep only the namespaces you need.** The sample registers all three. To drop one, remove its block in `ExtensionRegistration.js`, its `<Route>` in `App.js`, and its component file. See the namespace contracts in the `appbuilder-ui-scaffolder` skill (`references/aem-extensions.md`).
+4. **Customize the UI** — all files under `src/aem-assets-contenthub-1/web-src/src/components/`:
+   - `ExtensionRegistration.js` — which panels/buttons appear, and their title / icon / label
+   - `PanelAssetDetailsExtensionTab.js` — Asset Details panel content (`assetDetails`)
+   - `CardActionModal.js` — card action modal content (`card`)
+   - `SelectionBarModal.js` — bulk-action modal content (`selectionBar`)
+   - `actions/generic/index.js` — server-side logic / AEM API calls
+
+   See the `appbuilder-ui-scaffolder` skill (`references/aem-extensions.md`) for React Spectrum patterns and the host-API contract per namespace.
+5. **Test in Content Hub.** Run `aio app run` and accept the localhost cert (open `https://localhost:9080` → Advanced → Proceed, or type `thisisunsafe` — the panel stays blank until accepted). Then open **exactly** this URL, replacing `<delivery-repo>` with the user's Content Hub delivery host (ask them; e.g. `delivery-p12345-e67890.adobeaemcloud.com`):
+   ```
+   https://experience.adobe.com/?devMode=true&ext=https://localhost:9080&repoId=<delivery-repo>#/assets/contenthub/
+   ```
+   All four are required: `ext=https://localhost:9080`, `devMode=true`, `repoId=<delivery-repo>` (points Content Hub at the delivery instance — needed even with `allowedRepos = []`), and the `#/assets/contenthub/` hash. Do **not** use the `…/custom-apps/?localDevUrl=…` URL `aio app run` prints, and do **not** invent a `<host>/content-hub.html?ext=…` URL — neither loads the extension.
+6. **Publish org-wide.** Deploy to Stage/Production via the `appbuilder-cicd-pipeline` skill, then submit for approval in Adobe Developer Console → Production workspace → **Submit for approval**. The org admin reviews and approves/rejects in **MyExchange** (`exchange.adobe.com` → Experience Cloud Apps → Pending Review).
+
 ## @adobe/generator-app-api-mesh
 
 | Field | Value |
@@ -205,6 +256,8 @@ User intent ──────────────────────�
   ├─ "AEM extension"  ─────────────────────── @adobe/aem-cf-admin-ui-ext-tpl
   │
   ├─ "AEM React SPA"  ─────────────────────── @adobe/generator-app-aem-react
+  │
+  ├─ "Content Hub extension"  ─────────────── aio app init --repo …/aem-assets-contenthub-sample
   │
   ├─ "API Mesh / GraphQL"  ────────────────── @adobe/generator-app-api-mesh
   │

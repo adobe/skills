@@ -112,6 +112,7 @@ Then `aio app deploy` will publish to the namespace owned by that workspace.
 | Asset Compute custom worker | @adobe/generator-app-asset-compute |
 | MCP server on Runtime | @adobe/generator-app-remote-mcp-server-generic |
 | Blank / from scratch | init-bare |
+| Content Hub extension (panels, card actions, bulk actions) | `aio app init --repo …/aem-assets-contenthub-sample` — see `references/templates.md` |
 
 See `references/templates.md` for detailed per-template post-init guidance.
 
