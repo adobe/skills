@@ -390,6 +390,16 @@ decoration ran: the runtime's `body.appear` class is set (per
 `stardust/runtime-contract.json`), `main .section` count > 0,
 zero `pageerror` events, zero broken images.
 
+**Published-origin gate over the roster (#125).** `verify` proves the pages render; the
+DELIVERY verdict is replica's all-pages gate: `node stardust/scripts/replica/gate-all.mjs
+--skip-existing` (from the project root, through `run-bg.mjs`) — stitched captures of the
+live origin and the served page per deployed page, pixel % ≤ 10 AND |Δh| ≤ 5 % AND 0 clipped
+text / controls (`clip-probe`) AND 0 MISSING / HIDDEN links / headings (`content-presence`).
+`summary.md` carries the pixel-only and the full verdict per page; record `delivery.gate` in
+`coverage/pages.json` from it, never from the pixel number alone (a recorded page passed at
+6.7 % with all 284 of its cards clipped). Rules: `../replica/reference/source-fidelity-gate.md`
+§ The all-pages published-origin gate.
+
 ### Phase E2 — Link-audit completeness
 
 `verify.mjs` checks the links on delivered pages; this phase closes the set of

@@ -4,6 +4,97 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.26.0 — published-origin gate hardened: element-level criteria beside the pixel number (#125)
+
+A 96-page rollout gated every deployed page on stitched 1440 captures and pixel-compare; the page
+`/offers/offers` PASSED at 6.73 % / Δh 69 px while all 284 of its coupon cards were visibly broken —
+a fixed 238 px card with `overflow: hidden`, the body ~30 px too low, the description clipped mid-glyph
+and the "View details" link pushed under the Clip button on every card, the toolbar reading
+"Expiration Date" where the origin reads "Recommended". The links WERE in the served DOM; pure CSS
+geometry, which pixelmatch underweights (small text inside otherwise matching shapes). "PASS" meant
+"right shapes at the right places", not "every element present and legible". Element presence and
+legibility are checkable — so the gate checks them. Cross-references #115 (chrome crop gate), #124
+(content-cap row) and feedback A1–A3 of the same run, upstreamed here.
+
+- **New `replica/scripts/gate-all.mjs` — the all-pages published-origin gate (D0).** For every
+  `deployed` page in `stardust/state.json`: stitched origin + served captures (window-free real Chrome,
+  `--settle`), `pixel-compare`, then the two DOM probes below on both sides in the same tier, per-page
+  dir `<slug>/{origin,eds,diff}.png + pixel.json + content.json + clip.json [+ units.json]`,
+  `summary.{json,md}`, `runs/<ts>-<slug>.json` for `--only` runs. **Verdict = pixel % ≤ 10 AND |Δh| ≤
+  5 % of the origin height AND clipped ≤ 0 (+ documented allowance) AND content MISSING + HIDDEN
+  links / headings = 0** (+ required repeated units within 4 px). The pixel-only verdict is recorded
+  beside the full one per page and in the totals — every run is calibration data. Flags: `--only`,
+  `--skip-existing`, `--recapture-eds`, `--recapture-origin`, `--eds-host` (a code branch against the
+  same DA content — branch hosts serve the LITERAL branch name, `fix/x` → mirror `fix-x`),
+  `--blocked <re>` / `--try-blocked` / `--crawl-shots`, the three concurrencies, `--threshold`,
+  `--height-tol`, `--clip-max`, `--unit-tol`, `--no-clip` / `--no-content` / `--no-probes`,
+  `--units`, `--compare-only`, `--warmup`. Sidecars, each entry documented: `masks.json` (printed on
+  the verdict, never reported unmasked), `overrides.json` (shown BESIDE the measured number, never
+  replacing it), `clip-allow.json`, `presence.json` (session-variable regions), `units.json`
+  (repeated-unit declarations). Origin fallback chain: live stitch → previous origin → crawl fullPage
+  screenshot (`crawl-fullpage`, asymmetric, flagged). A padded/union pixel metric was tried as the
+  height guard and rejected (white gaps score as matches) — the guard is explicit;
+  `pixel-compare --pad` ships as an auxiliary number only. `replica/scripts/sbs-crop.mjs` folds the
+  project's three side-by-side crop helpers into one (one crop per fact).
+- **New `diff/scripts/clip-probe.mjs` (D1).** Every text node's line rects and every control's box
+  against EVERY overflow-clipping ancestor (nearest first) and the page width: TEXT CLIPPED (a line
+  cut across), TEXT HIDDEN (whole lines behind an overflow-hidden ancestor without a line-clamp),
+  CONTROL HIDDEN / CLIPPED counted (exit 2); line-clamp, scrollable containers, horizontal cuts
+  (carousels, ellipsis) advisory; collapsed menus, sr-only boxes, hidden / opacity-0 subtrees,
+  off-page boxes never reported. Measured on the recorded page: 379 (284 anchors + 95 lines); 0 on the
+  live origin and on two known-good served pages. Emits the visible text LINE boxes (`textBoxes`).
+- **New `diff/scripts/content-presence.mjs` (D2) — `content-diff.mjs --published` hands over to it.**
+  Origin vs served inventories of VISIBLE headings, links (visible text — sr-only suffixes broke
+  matching), buttons, images, text blocks, aligned into bands by the h1–h3 sequence (LCS), plus
+  control STATE (select values, checked radios, `aria-selected`, `aria-pressed`, `aria-current`,
+  `aria-haspopup` triggers, result counts). MISSING / HIDDEN LINK ×n and HEADING 🔴 (HIDDEN = in the
+  DOM, clipped past 50 %), MISSING / HIDDEN BUTTON and CONTROL STATE 🟠, MOVED / EXTRA / COUNT /
+  HEADING AS TEXT 🟡. Links and buttons are one pool on the served side; text-less image anchors are
+  the image's presence, not a link's. Scope decided symmetrically (root only when BOTH sides have
+  one — a live origin without `<main>` against a build with one compared chrome against content);
+  header / footer and everything above / below them left to the chrome crop gate unless `--chrome`
+  (three session-variable promo-strip links read MISSING on every page). `--variable <selO=selE,…>`
+  = counts only, HIDDEN still counts. The origin side fails loud on HTTP ≥ 400 (exit 4) — a 403
+  Access-Denied page measured as the origin read "100 EXTRA" on the build. On the recorded page:
+  HIDDEN 284 "View details", CONTROL STATE sort by "recommended" → "expiration date".
+- **New `diff/scripts/unit-geometry.mjs` (D3) + `diff/scripts/measure-live.mjs`.** measure-live lifts
+  the shared parts of the four project measure scripts that converged: window-free real Chrome,
+  optional home warm-up, slow-scroll settle until the document height is stable, shadow-DOM-aware
+  serialisation with `data-r`/`data-t`, rect + computed type per selector, cache under
+  `stardust/current/measure/<slug>.json`. unit-geometry dumps the inner elements of the first N
+  repeated units on both sides (role + text, shadow-aware), pairs them (key, text prefix, relaxed
+  link ↔ button, images by order, leftover text by position — a "1 day left" vs "2 days left" badge),
+  and reports Δx / Δy / Δw / Δh relative to the unit against `--tol` (default 4), `hidden` where the
+  served page clips. On the recorded card: body elements Δy +28…+47, the details link Δy +28 and
+  hidden, the badge 70×70 at (−10,−10) vs 64×64 at (−27,−30), the card 260 → 238 px. Optional in
+  gate-all (`units.json`), mandatory for units a project marks `required`.
+- **`pixel-compare.mjs --text-boxes <json>` (D4, auxiliary)** — the differing-pixel share over the
+  origin's text boxes only, `textPct` in `--json`, printed beside the pixel % in summary.md: 16.5 %
+  vs 6.7 % on the recorded page; `--pad` (union-height %, auxiliary) merged from the project copy;
+  `textBoxPct` exported, main-module guard added. Backward compatible.
+- **Upstreamed feedback.** A1: `live-session.mjs launchStealthHeaded` is WINDOW-FREE by default
+  (`channel: 'chrome'` headless — the binary cleared Akamai, not the window; four agents' windows
+  blocked the operator's desktop); `STARDUST_HEADED_WINDOW=1` opts into a visible window; a failed
+  real-Chrome launch falls back to bundled Chromium with a loud warning. A2: Akamai's HTTP 400
+  `{"result":"Bad Request"}` escalation stamped by AkamaiGHost is a challenge marker. A3: the setup
+  steps (replica, extract, diff) install `playwright pixelmatch pngjs cheerio` as devDependencies
+  written into `package.json`, never `--no-save`, and say "run probes from the project root" once.
+  Deploy: `deploy-batch.mjs` appends the admin `x-error` header to every 4xx (`… 337 of 200 images`
+  — the DA pipeline caps a document at 200 images; protocol step 3a').
+- **Docs.** `replica/reference/source-fidelity-gate.md` § The all-pages published-origin gate (the
+  four criteria, sidecars, the offers example, calibration, open questions); `replica/SKILL.md`
+  Phase 5 delivery-gate bullet + the window-free `--headed` note; `deploy/SKILL.md` Step 10 item 7;
+  `rollout/SKILL.md` Phase E; `diff/SKILL.md` § The published-origin probes; `scripts-index.md`
+  rows. Tests: `diff/scripts/test/{clip-probe,content-presence,unit-geometry}.test.mjs`,
+  `replica/scripts/test/gate-all.test.mjs` (pure parts without a browser; clip-probe end-to-end
+  against a fixture card where playwright resolves). Lint clean (`npm run lint:stardust`, airbnb
+  eslint on the new scripts).
+- **Open questions** (for the next calibration run): default tolerances (`--clip-max 0`,
+  `--unit-tol 4`, the 25 % count tolerance in content-presence), how a project declares
+  repeated-unit block families (today per page in `units.json`; candidate: a flag on the block
+  inventory), whether buttons and control state should join the blocking set once the
+  session-variable label classes (Clip / Clipped) are modelled.
+
 ## 0.25.2 — content cap: the container sizing model is measured, persisted and gated at a derived wide width (#124)
 
 A hands-off replica run delivered a site whose live pages centre their content in two nested caps —

@@ -51,11 +51,16 @@ eyeballing.
    § Flow keys): invoking `replica` is the choice.
 2. Verify Playwright is importable from the project root (extract needs it;
    so do the gate scripts).
-3. Install the gate's pixel deps in the project:
-   `npm i -D playwright pixelmatch pngjs --no-save --legacy-peer-deps`.
-   Same trap as diff's prereq 0: a `--no-save` install is PRUNED by any later
-   real `npm i` — re-probe before every gate run
-   (`node -e "import('pixelmatch').then(()=>process.exit(0))"`).
+3. Install the gate's deps in the project AS devDependencies — written into
+   `package.json`, never `--no-save`:
+   `npm i -D playwright pixelmatch pngjs cheerio --legacy-peer-deps`.
+   A `--no-save` install is PRUNED by any later real `npm i` (recorded twice in
+   one run: playwright vanished mid-gate when cheerio was added — feedback A3,
+   #125); re-probe before every gate run anyway
+   (`node -e "import('pixelmatch').then(()=>process.exit(0))"`). Run every
+   probe from the project root: ESM resolves `playwright` from the script's
+   own location, so an ad-hoc probe written elsewhere fails with
+   `ERR_MODULE_NOT_FOUND`.
 4. Copy scripts into the project and run them from there, not from the
    plugin: this skill's whole `scripts/` dir to
    `stardust/scripts/replica/`, the master skill's `../stardust/scripts/`
@@ -253,6 +258,8 @@ node stardust/scripts/replica/anchor.mjs "$LIVE"  --width 1440 --cache $G/anchor
 node stardust/scripts/replica/anchor.mjs "$PROTO" --width 1440   # build-side runs are free
 # Chrome: computed-style parity BEFORE any pixel round on header/footer/strips
 node stardust/scripts/replica/chrome-parity.mjs "$LIVE" "$PROTO" --width 1440 --live-cache $G/chrome-live.json   # exit 0 = quiet, then crop-compare
+# --headed anywhere in these instruments = the WINDOW-FREE real-Chrome stealth tier (live-session
+# launchStealthHeaded, #125): it never opens a window; STARDUST_HEADED_WINDOW=1 is the only way to get one.
 # gate.sh: live.png cached, every step under a deadline (exit 124 = re-run, not FAIL). Rounds run in
 # the BACKGROUND: start every round at once (the slots pace the Chromiums — no `sleep N;` staggering),
 # then `wait` prints verdict lines only; exit 75 = still going → `wait` again as your NEXT step, never
@@ -415,11 +422,32 @@ had one section for the whole run).
   `stardust/replica/gates/<slug>-<width>/` dir under the `pub<N>` label (a
   new dir would force a fresh live capture). Only the published number
   counts.
+- **The delivery gate is the ALL-PAGES run, four criteria, not the pixel
+  number alone** (`reference/source-fidelity-gate.md` § The all-pages
+  published-origin gate, #125): once the roster is deployed,
+  `node stardust/scripts/replica/gate-all.mjs [--only <slug,…>] [--skip-existing]
+  [--eds-host <branch host>]` (through `run-bg.mjs`, it is a long instrument)
+  captures every `deployed` page on both sides, and a page is DELIVERED when
+  pixel % ≤ 10 AND |Δh| ≤ 5 % of the origin height AND `clip-probe` counts 0
+  clipped / hidden text and controls on the served page AND
+  `content-presence` reports 0 MISSING / HIDDEN links and headings against the
+  live origin (`units.json`-declared repeated units within 4 px on top). A
+  recorded page passed the pixel bar at 6.7 % with all 284 of its cards
+  clipped and their links hidden — the pixel gate proves shapes, the two DOM
+  probes prove elements. Evidence: `stardust/replica/gates/all-<width>/
+  <slug>/` + `summary.{json,md}` (pixel-only and full verdicts side by side —
+  the calibration pair); sidecars `masks.json`, `overrides.json`,
+  `clip-allow.json`, `presence.json`, `units.json`, each entry documented.
 
 **State:** replica writes its own state under `stardust/replica/` — the
 inconsistency register, `progress.json` (per page type: archetype slug,
 iterations used, per-breakpoint gate results, residuals, motion
 inventory), `motion/<slug>.json`, and `gates/<slug>-<width>/` evidence.
+The delivery gate (#125) adds `gates/all-<width>/` — one dir per deployed
+page (`origin.png`, `eds.png`, `diff.png`, `pixel.json`, `content.json`,
+`clip.json`, `units.json`), `summary.{json,md}`, `runs/` for `--only` runs and
+the documented sidecars (`masks.json`, `overrides.json`, `clip-allow.json`,
+`presence.json`, `units.json`).
 Phase 5 adds three files under `stardust/rollout/`: `progress.json` (the
 C-deliver unit ledger — status, gates and verdict per unit),
 `foundation-freeze.json` (the sha256 manifest of the frozen foundation) and

@@ -40,9 +40,10 @@ root carries the `placeholder` / `aria-label` / `title` values and the icons.
 ```bash
 # Prereq 0: playwright importable from the project root — probe
 #   node -e "import('playwright').then(()=>process.exit(0))"
-# and re-install (npm i -D playwright --no-save --legacy-peer-deps) on failure:
-# a --no-save install from extract is PRUNED by any later real npm i
-# (extract SKILL.md § Setup). Run the copied scripts from the project, not the plugin.
+# and on failure install it AS A devDependency (npm i -D playwright pixelmatch pngjs cheerio
+# --legacy-peer-deps — never --no-save: a --no-save install is PRUNED by the next real npm i,
+# recorded twice in one run; extract SKILL.md § Setup). Run the copied scripts from the project
+# root, not the plugin: ESM resolves `playwright` from the script's own location.
 # Copy the WHOLE skills/diff/scripts/ dir: content-diff imports its local diff-profiles.mjs
 # AND content-inventory.mjs. (The deploy gates #93/#94 now use their OWN synced copies in
 # skills/deploy/scripts/ — A6/A2 are independent of this skill; the two copies must stay in
@@ -109,6 +110,46 @@ aem.page before preview propagation** — is NOT fatal: the probe logs a loud wa
 measures the error page, and the flags (BLANK RENDER / content asymmetry) carry the
 signal with **exit 0**. That is the probes' advisory contract: 0 = ran (flags advisory),
 1 = probe error, 3 = bot challenge.
+
+## The published-origin probes (#125)
+
+`content-diff` reconciles a prototype with its build; on a LIVE commerce origin (React apps,
+session rails, coupon walls) its per-node findings were systematically false, and the pixel gate
+passed a page whose 284 cards were all broken (`../replica/reference/source-fidelity-gate.md`
+§ The all-pages published-origin gate). Three probes ask the smaller, checkable questions. All
+three load both sides in the same window-free real-Chrome tier and settle them with the same
+slow scroll (`scripts/measure-live.mjs`, the shared library) — the instrument stays symmetric.
+
+```bash
+ORIGIN="https://www.example.com/offers"            # the live source page
+SERVED="https://main--repo--owner.aem.live/offers"  # the published page
+# D1 — clipping: text lines cut / hidden, links and buttons outside their overflow ancestor. Exit 2 on any count.
+node stardust/scripts/diff/clip-probe.mjs "$SERVED" [--json clip.json] [--advisory]
+# D2 — presence: visible headings / links / buttons / images / text per band + control state. Exit 2 on MISSING/HIDDEN link or heading.
+node stardust/scripts/diff/content-presence.mjs "$ORIGIN" "$SERVED" [--variable ".origin-rail=.served-rail"] [--json content.json]
+node stardust/scripts/diff/content-diff.mjs --published "$ORIGIN" "$SERVED"   # same thing, from the older entry point
+# D3 — repeated units: per-element Δx/Δy/Δw/Δh of the first N cards / rail items / FAQ rows. Exit 2 on any element off / hidden / missing.
+node stardust/scripts/diff/unit-geometry.mjs "$ORIGIN" "$SERVED" --unit ".origin-card=.served-card" --n 2 [--tol 4]
+# the shared measurement: settle + rect + computed type per selector, cached per slug
+node stardust/scripts/diff/measure-live.mjs "$ORIGIN" ".hero" ".card" --all [--slug offers]
+```
+
+Reading them: `clip-probe` prints one line per group (kind × count in `<clipper>`, sample path,
+sample text, cut range) — a 🔴 group is a CSS geometry defect on the served page (a fixed-height
+box with `overflow: hidden`, a body offset), never authored content; 🟡 groups (CLAMPED,
+SCROLL-HIDDEN, X-CUT) are design or carousels. `content-presence` prints a band table (links
+O/E with the hidden count in brackets) then findings: HIDDEN LINK ×n = in the DOM, clipped away
+(fix the CSS); MISSING LINK = not served (fix the encoder); CONTROL STATE = the same control
+shows another value ("Recommended" → "Expiration Date" — the served default differs); COUNT …
+= session-variable region deltas, confirm by eye. `--variable` marks regions whose content
+differs per visit (rails, coupon walls, reviews) — counts only, HIDDEN still counts. The origin
+side fails loud on HTTP ≥ 400 (exit 4) and on a bot challenge (exit 3): an Access-Denied page is
+never measured as the origin. `unit-geometry` prints one table per unit with Δ relative to the
+unit's corner; `≈ "…" (by position)` marks a session-variable text paired by place (a "1 day
+left" badge vs "2 days left"). Traps: an infinite-scroll origin keeps loading under the settle
+(285 → 458 coupons) — mark the region `--variable`; a live origin without `<main>` is compared
+as a whole page against the build's whole page (the scope line says which), header / footer
+left to the chrome crop gate unless `--chrome`.
 
 ## Reading content-diff
 

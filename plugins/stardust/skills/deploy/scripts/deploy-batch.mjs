@@ -179,7 +179,12 @@ async function call(method, url, { token, body } = {}, { retries = 4, backoffMs 
     try {
       const res = await fetch(url, { method, headers: { Authorization: `Bearer ${token}` }, body });
       status = res.status;
-      text = status >= 400 ? (await res.text()).slice(0, 200) : '';
+      // The admin API puts the REASON of a 4xx in the `x-error` header, not the body: a preview 409 whose
+      // body says only "error from content-bus" carries "… 337 of 200 images" there (the DA pipeline caps a
+      // document at 200 images — long grids ride /fragments/ documents; #125). Surface it, or the ledger
+      // records an opaque failure and the agent diagnoses SVGs for an hour.
+      const xErr = status >= 400 ? (res.headers.get('x-error') || '') : '';
+      text = status >= 400 ? `${(await res.text()).slice(0, 200)}${xErr ? ` [x-error: ${xErr.slice(0, 200)}]` : ''}` : '';
     } catch (err) {
       status = 0;
       text = String(err.message || err);

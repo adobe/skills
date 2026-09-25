@@ -731,6 +731,76 @@ none visible on a local harness):
   page (recorded). Verify every `:has()` / block-class selector against the
   delivered `.plain.html` and rendered DOM, not the authored file.
 
+## The all-pages published-origin gate (gate-all) — four criteria (#125)
+
+**How the 2026-09 walgreens run motivated this.** The rollout gated its five archetypes and
+shipped 78 sibling pages unmeasured; the owner's first feedback was that the migrated pages
+"don't look formatted as the original". A project-grown runner then gated all 96 deployed pages
+(stitched 1440 origin + served captures, pixel-compare) and a fix program took the roster from
+3 to 67 PASS. Then `/offers/offers` PASSED that gate at **6.73 % / Δh 69 px** against
+`https://www.walgreens.com/offers/offers.jsp` while every one of its 284 coupon cards was
+visibly broken: the card is a fixed 238 px with `overflow: hidden`, the body starts ~30 px too
+low, the description is clipped mid-glyph and the "View details" link is pushed under the Clip
+button on all 284 cards — and the toolbar reads "Expiration Date" where the origin reads
+"Recommended". The links ARE in the served DOM (284 in the fragments): pure CSS geometry.
+Pixelmatch underweights small text inside otherwise matching shapes; the text-only number on
+that page (`--text-boxes`, D4) reads **16.5 %** against the 6.7 % full-page number. "PASS"
+meant "right shapes at the right places", not "every element present and legible". Element
+presence and legibility are checkable — so `gate-all.mjs` checks them.
+
+`node stardust/scripts/replica/gate-all.mjs` (from the project root; `../scripts/gate-all.mjs`
+in the plugin) runs, for every `deployed` page in `stardust/state.json`, the stitched captures
+and pixel-compare of the archetype gate PLUS two DOM probes that load both pages in the same
+window-free real-Chrome tier and settle them the same way (measure-live.mjs), and writes
+`stardust/replica/gates/all-<width>/<slug>/{origin,eds,diff}.png + pixel.json + content.json +
+clip.json [+ units.json]` and `summary.{json,md}`. **Verdict, per page — all four:**
+
+1. **pixel** — overlap pixel % ≤ `--threshold` (default 10).
+2. **height** — |Δh| ≤ `--height-tol` × origin height (default 5 %). The overlap crop cannot see
+   a render thousands of px too tall (9 pages 100–6900 px too tall passed the % alone); a
+   padded/union metric was tried and REJECTED — white gaps score as matches — so
+   `pixel-compare --pad` stays an auxiliary number and the guard is explicit.
+3. **clip** — served-side `clip-probe` count ≤ `--clip-max` (default 0) plus the page's
+   documented allowance in `clip-allow.json`. Counted: TEXT CLIPPED (a line cut across),
+   TEXT HIDDEN (whole lines behind an overflow-hidden ancestor without a line-clamp),
+   CONTROL HIDDEN / CLIPPED (a link or button outside / cut by its clipping ancestor).
+   Advisory, never counted: line-clamp truncation, scrollable containers, horizontal cuts
+   (carousel tracks, ellipsis), collapsed menus, sr-only boxes. On the offers page: 379
+   (284 "View details" anchors, 95 description lines); on the known-good pages: 0.
+4. **content** — `content-presence` MISSING + HIDDEN links and h1–h3 headings = 0. Origin
+   and served inventories of VISIBLE headings, links (by visible text), buttons, images and
+   text blocks, aligned into bands by the h1–h3 sequence, plus control STATE (select values,
+   checked radios, `aria-selected` tabs, `aria-haspopup` triggers, result counts). "Present in
+   the DOM but clipped past 50 %" is HIDDEN, not present. Buttons, control state and count
+   deltas are reported in the row, not blocking (Clip / Clipped labels and counts are
+   session-variable). Session-variable regions (rails, coupon walls, reviews) are declared in
+   `presence.json` and compared as counts — HIDDEN still counts there, geometry is not
+   session-variable. When the origin cannot be probed (edge 403 from this egress, bot
+   challenge) the row reads `content: n/a (<why>)` and the clip criterion still runs on the
+   served page — n/a never fails a page and never passes it silently.
+   (+ **units** — `unit-geometry` off / hidden / missing = 0 for the units `units.json` marks
+   `required: true`; other declared units are advisory rows. On the offers card it names the
+   defect in one table: every body element Δy +28…+47, the details link Δy +28 AND hidden,
+   the badge 70×70 at (−10,−10) vs 64×64 at (−27,−30), the card 260 → 238 px.)
+
+The summary records both the pixel-only verdict (1 + 2) and the full verdict per page and in
+the totals — every run is calibration data for the bar. Sidecars in the gate dir, each entry
+documented: `masks.json` (row masks for capture artefacts, printed on the verdict, never
+reported unmasked), `overrides.json` (documented verdicts shown BESIDE the measured number,
+never replacing it — "live origin drifted since capture; 9.14 % vs the gated capture"),
+`clip-allow.json`, `presence.json`, `units.json`. Origin fallback chain: live stitch →
+previous origin (`--recapture-origin`) → crawl fullPage screenshot (`crawl-fullpage`,
+ASYMMETRIC, flagged in the row). `--eds-host` gates a code branch against the same DA
+content (branch hosts serve code from the LITERAL branch name — `fix/x` → push a mirror
+`fix-x`; served CSS/JS are gzip, verify with `curl --compressed`). Single-page reads:
+`sbs-crop.mjs origin.png eds.png out.png --y <px> --height <px>` — one crop per fact.
+
+Calibration on the walgreens roster (96 pages, 2026-09-25, same captures): see the run's
+`summary.md` "Calibration" line — pixel-only PASS vs full PASS, and the failing-by-criterion
+counts. Open questions recorded there: the default tolerances (clip-max 0, unit-tol 4 px, the
+25 % count tolerance) and how a project declares repeated-unit block families (today:
+`units.json` per page; candidate: a `repeatedUnit: true` flag on the block inventory).
+
 ## Residual logging format
 
 Per archetype per breakpoint, in `stardust/replica/progress.json`:
