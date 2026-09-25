@@ -64,24 +64,23 @@ pass) and #116 (the fluid-vs-fixed spot check, now folded into the row).
   DESIGN.json or no probe beside the script → one ⚠ and the old behaviour. Step 10 item 5 is the
   cap row on the deployed URL; Local QA paragraph, pitfall 13 and the checklist follow;
   `handoff-contract.md` § 4 row updated.
-- **Evidence (the one place the site is named).** victoriassecret.com/us, 2026-09-24. Capture:
-  `shell 1920px max-width … > div.react.react-cms-component-list (tier 1, holds 98% of the text)`,
-  `content 1600px max-width … > article.… (tier 2)`, `contentMaxWidth: 1600px shellMaxWidth:
-  1920px probeWidth: 2560 consistent: yes`. Pinned `--probe-width 1920`: only `shell 1600px` — the
-  1920 shell read as the viewport and vanished, the reason the width is derived, never fixed.
-  Compare live vs the deployed origin: `✗ wrapper cap: live 1600px (content, … article) → build
-  NONE: content runs 2560px wide at 2560 (module caps only: 620px ×2, 340px ×2, 1180px ×1, …) —
-  fix the sizing rule, not pixels — deploy Step 3 scaffold: main { max-width: 1600px; margin: 0
-  auto }` → `cap-probe: FAIL at 2560 — 1 of 5 rows failed`. After that rule in the project's
-  `styles.css`, served locally by `aem up`: `✓ wrapper cap: live 1600px = build 1600px (±20)` →
-  `cap-probe: PASS at 2560 — 0 of 5 rows failed`; `qa-gate.mjs --design` on the same render:
-  `✓ content cap 1600px holds at 2560 (#124)`. Second validation, the inverse defect on another
-  delivered replica (baincapital.com vs its aem.page build, `--main` at the live section wrapper):
-  live modules are fluid (Bootstrap 90 % containers, `contentMaxWidth fluid`), the build caps every
-  section at 1430 px — `✗ content cap: build 1430px (module caps only: 1430px ×8) but live modules
-  are fluid — fix the sizing rule, not pixels: remove the module cap` → `FAIL at 2560`. Skill
-  prose is net smaller than before (the spot check section, duplicated port-probe and hardening
-  rationale were folded).
+- **Evidence (anonymised, 2026-09-24).** A commerce home page. Capture: `shell 1920px max-width
+  main > div.<cms-list> (tier 1, holds 98% of the text)`, `content 1600px max-width … > article
+  (tier 2)`, `contentMaxWidth: 1600px shellMaxWidth: 1920px probeWidth: 2560 consistent: yes`.
+  Pinned `--probe-width 1920`: only `shell 1600px` — the 1920 shell read as the viewport and
+  vanished, the reason the width is derived, never fixed. Compare live vs the deployed origin:
+  `✗ wrapper cap: live 1600px (content, … > article) → build NONE: content runs 2560px wide at
+  2560 (module caps only: 620px ×2, 340px ×2, 1180px ×1, …) — fix the sizing rule, not pixels —
+  deploy Step 3 scaffold: main { max-width: 1600px; margin: 0 auto }` → `cap-probe: FAIL at 2560 —
+  1 of 5 rows failed`. After that rule in the project's `styles.css`, served locally by the dev
+  server: `✓ wrapper cap: live 1600px = build 1600px (±20)` → `cap-probe: PASS at 2560 — 0 of 5
+  rows failed`; `qa-gate.mjs --design` on the same render: `✓ content cap 1600px holds at 2560
+  (#124)`. Second validation, the inverse defect on another delivered replica (a financial-services
+  home page, `--main` at the live section wrapper): live modules are fluid (90 % framework
+  containers, `contentMaxWidth fluid`), the build caps every section at 1430 px — `✗ content cap:
+  build 1430px (module caps only: 1430px ×8) but live modules are fluid — fix the sizing rule, not
+  pixels: remove the module cap` → `FAIL at 2560`. Skill prose is net smaller than before (the spot
+  check section, duplicated port-probe and hardening rationale were folded).
 
 ## 0.25.1 — replica run follow-ups: gates that passed a broken site, index/sitemap/search verification, capture gaps, the thumbnail cap, token files, recorded migrate units
 
