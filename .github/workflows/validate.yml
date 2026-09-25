@@ -42,6 +42,9 @@ jobs:
       - name: Stardust scripts answer --help without touching a file (playwright/pngjs scripts skip without devDependencies)
         run: node plugins/stardust/evals/lint/script-help.mjs
 
+      - name: Stardust version agrees across plugin.json, marketplace.json and the Tessl manifest
+        run: node scripts/plugin-version.mjs plugins/stardust
+
   codeowners-coverage:
     runs-on: ubuntu-latest
     steps:
