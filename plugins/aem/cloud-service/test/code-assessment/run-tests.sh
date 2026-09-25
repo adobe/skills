@@ -135,6 +135,12 @@ assert_contains "removeAssetForBinary call captured in snippet"     "$OUT" 'remo
 assert_count   "LegacyAssetWorkflow emits one finding per call site (3)" "$OUT" '"file":"LegacyAssetWorkflow.java"' 3
 assert_absent  "UnrelatedCreateAsset (no AssetManager import) skipped" "$OUT" 'UnrelatedCreateAsset.java'
 
+echo "[tuning-oak-query-indexes] JCR/QueryBuilder query construction sites flagged"
+OUT="$(run "$FIX/tuning-oak-query-indexes")"
+assert_contains "antipattern flagged"   "$OUT" '"pattern":"tuning-oak-query-indexes"'
+assert_contains "expected file present" "$OUT" 'Antipattern.java'
+assert_absent  "clean file not flagged" "$OUT" 'Clean.java'
+
 echo "[wiring] each registered detector has an expert skill + ready/analyzer catalog row"
 PATTERNS_MD="$SKILL_ROOT/references/patterns.md"
 for slug in $(bash "$ANALYZE" --list-patterns); do

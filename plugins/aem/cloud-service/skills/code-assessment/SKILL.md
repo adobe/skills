@@ -55,6 +55,7 @@ Route the request to one expert skill. Two pattern families share this skill:
 | "fix @Inject", "modernize Sling Models", `javax.inject.Inject` on `@Model` fields | [`inject-in-sling-model/`](inject-in-sling-model/SKILL.md) |
 | "add HTTP timeouts", "outbound/external call has no timeout", `HttpClient` / `HttpClients` / `OkHttpClient` built without a timeout | [`outbound-call-timeouts/`](outbound-call-timeouts/SKILL.md) |
 | "bound my query", "unbounded query", "query causing OOM", `p.limit=-1`, `setLimit(-1)` | [`unbounded-query/`](unbounded-query/SKILL.md) |
+| "query is slow", "traversal warning", "is my query indexed", "tune oak index", index coverage of a JCR/Oak query | [`tuning-oak-query-indexes/`](tuning-oak-query-indexes/SKILL.md) |
 | "remove deprecated API", "fix deprecated imports", "Cloud Manager deprecated API failure", `region-deprecated-api` / `api-regions-check` / `Import-Package not satisfied` pipeline failures, log4j migration, commons-lang/collections upgrades, deprecated Maven deps, unmodifiable OSGi configs | [`remove-deprecated-api/`](remove-deprecated-api/SKILL.md) _(analyzer detector with dynamic rules — preflight runs `aemanalyser-maven-plugin`; hint-driven fixes; see recipe.md)_ |
 
 **Architectural migration patterns** (guided remediation — full before/after, troubleshooting, modern alternatives; invoked directly or via `migration` for BPA/CAM-driven discovery):
