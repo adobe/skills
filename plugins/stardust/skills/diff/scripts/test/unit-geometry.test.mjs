@@ -47,7 +47,8 @@ check('missing + extra when nothing pairs; verdictOf totals; formatUnits marks r
   const r = alignUnit(o, e, 4);
   assert.equal(r.summary.missing, 1); assert.equal(r.summary.extra, 1);
   const res = [{ sel: 'a=b', units: [{ index: 0, ...r }] }, { sel: 'x=y', units: [], error: 'no visible unit' }];
-  assert.deepEqual(verdictOf(res), { units: 1, within: 0, off: 0, hidden: 0, missing: 1, errors: 1 });
+  assert.deepEqual(verdictOf(res), { units: 1, within: 0, off: 0, hidden: 0, missing: 1, errors: 1, requiredOff: 1 });
+  assert.equal(verdictOf([{ sel: 'a=b', required: false, units: [{ index: 0, ...r }] }]).requiredOff, 0, 'an advisory family never feeds the exit code');
   const s = formatUnits(res, 4); assert.match(s, /✗ missing/); assert.match(s, /🟡 extra/); assert.match(s, /no visible unit/);
 });
 check('compareUnits pairs units by index and reports a side without visible units', () => {

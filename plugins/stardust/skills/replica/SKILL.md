@@ -280,12 +280,22 @@ a verdict; 0 only when all four ran and passed).
 - **content-cap row: `cap-probe.mjs … --against` prints `cap-probe: PASS`**
   (gate doc § Pass bar item 6 — every live cap held within ±20 px by kind,
   nothing capped only on the prototype; a ✗ names the sizing rule, no pixel iteration);
+- **clip-probe: `Clipped: 0`** on the build side (a `--full` round runs it; cut or hidden
+  text / controls fail the round like an over-threshold pixel diff — #125); a
+  declared repeated-unit family (`stardust/replica/units.json`, gate doc item 7)
+  within 4 px;
 - and, outside the bar and outside the cap, the horizontal-overflow assert:
   `document.documentElement.scrollWidth` within 4 px of the viewport
   (integer rounding; `GATE_OVERFLOW_TOLERANCE`) at every breakpoint on the
   build side — gate.sh fails the round on more whatever the pixel number
   says; a `capture failed (exit 1)` round (after gate.sh's one
   retry) is re-queued, never counted.
+
+**Every prototype is a row (#125).** When the archetypes pass, one run per width
+writes the prototype table — `node stardust/scripts/replica/gate-all.mjs --stage
+prototype --proto-base "$PROTO_BASE" --width 1440` (then 360) through `run-bg.mjs`;
+it reuses each archetype's cached `live.png`. `gate-evidence.mjs` reads it as the
+source of record: a prototype without a row is ungated.
 
 **Iteration discipline: hard cap 3 iterations per breakpoint.** Each
 iteration's fixes come off the instruments, never off eyeballing. After 3,
@@ -424,7 +434,9 @@ had one section for the whole run).
   DELIVERED = pixel % ≤ 10 AND |Δh| ≤ 5 % AND 0 clipped text / controls
   (`clip-probe`) AND 0 MISSING / HIDDEN links / headings (`content-presence`);
   a recorded page passed the pixel bar with all of its cards clipped. Evidence
-  and sidecars: `stardust/replica/gates/all-<width>/`.
+  and sidecars: `stardust/replica/gates/all-<width>/`; with the Phase 4
+  `prototypes-<width>/` table it is the pair `gate-evidence.mjs` reads (a page
+  without a row is ungated).
 
 **State:** replica writes its own state under `stardust/replica/` — the
 inconsistency register, `progress.json` (per page type: archetype slug,

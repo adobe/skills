@@ -23,8 +23,8 @@ legible". Element presence and legibility are checkable — so the gate checks t
   4 px); the pixel-only verdict is recorded beside it — every run is calibration data. Sidecars, each
   entry documented: `masks.json`, `overrides.json` (shown beside the number, never replacing it),
   `clip-allow.json`, `presence.json`, `units.json`. Origin fallback live → previous → crawl shot
-  (asymmetric, flagged); `--eds-host` gates a code branch; a padded/union pixel metric was tried as
-  the height guard and rejected (white gaps score as matches) — `pixel-compare --pad` is auxiliary.
+  (asymmetric, flagged); `--eds-host` gates a code branch; a union (white-padded) pixel metric was
+  tried as the height guard and rejected (white gaps score as matches) — the guard is explicit.
   `replica/scripts/sbs-crop.mjs` folds three side-by-side crop helpers.
 - **New `diff/scripts/clip-probe.mjs` (D1)** — text lines and controls against every overflow-
   clipping ancestor: TEXT CLIPPED / HIDDEN, CONTROL HIDDEN / CLIPPED counted (exit 2); line-clamp,
@@ -42,7 +42,18 @@ legible". Element presence and legibility are checkable — so the gate checks t
   Δx / Δy / Δw / Δh of the first N repeated units relative to the unit, `hidden` where clipped,
   origin cached per slug. Recorded card: body +28…+47 px, details link +28 and hidden, badge
   70×70 at (−10,−10) vs 64×64 at (−27,−30), card 260 → 238.
-- **`pixel-compare.mjs --text-boxes` (D4, auxiliary)** + merged `--pad`; `textBoxPct` exported.
+- **`pixel-compare.mjs --text-boxes` (D4, auxiliary)**; `textBoxPct` exported. (`--pad`, the rejected
+  union metric, is not shipped.)
+- **The pixel-table rule.** Every crafted prototype and every deployed page is a row:
+  `gate-all --stage prototype --proto-base <url>` writes `gates/prototypes-<w>/summary.{json,md}` at the
+  end of Phase 4 (reusing each archetype's cached `live.png`), the default stage writes `gates/all-<w>/`;
+  `gate-evidence.mjs` reads the tables as the source of record (`--tables`; a page without a row is
+  `OPEN: no table row`, `--check` names a missing table), the eval requires the prototype table, rollout
+  Phase H reports both totals. `gate.sh --full` runs clip-probe on the build side in every regime,
+  content-presence in the published regime, unit-geometry when `stardust/replica/units.json` declares a
+  repeated-unit family for the slug (`{ family: { origin, build, n, required, pages[], templates[] } }`
+  — replica recreation-procedure § Repeated-unit families); element lines fail the round and outrank a
+  pixel PASS in gate-evidence the way the overflow assert does.
 - **Upstreamed feedback.** A1 `launchStealthHeaded` is WINDOW-FREE by default
   (`STARDUST_HEADED_WINDOW=1` opts in; bundled-Chromium fallback with a warning). A2 Akamai's HTTP
   400 escalation is a challenge marker. A3 setup steps install `playwright pixelmatch pngjs cheerio`

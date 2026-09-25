@@ -25,7 +25,7 @@
     {
       "name": "source_fidelity_gate_runs",
       "max_score": 20,
-      "description": "The source-fidelity gate runs all three probes (content-diff and visual-diff with --profile generic against the live URL, plus stitch-shot + pixel-compare) and its evidence (per-iteration metrics, band breakdown, height delta, diff images) is written under stardust/replica/."
+      "description": "The source-fidelity gate runs all three probes (content-diff and visual-diff with --profile generic against the live URL, plus stitch-shot + pixel-compare) and its evidence (per-iteration metrics, band breakdown, height delta, diff images) is written under stardust/replica/; --full rounds carry the clip-probe line, and every crafted prototype is a row in stardust/replica/gates/prototypes-<width>/summary.json (gate-all --stage prototype) — a prototype without a row is ungated."
     },
     {
       "name": "both_breakpoints_gated",

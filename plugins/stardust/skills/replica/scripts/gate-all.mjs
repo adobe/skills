@@ -3,25 +3,33 @@
 /**
  * skills/replica/scripts/gate-all.mjs — the published-origin gate over EVERY deployed page (#125, D0).
  *
- * Per `deployed` page in stardust/state.json (url = source, liveUrl = served): stitched captures of
- * both sides (stitch-shot, --settle), pixel-compare, then content-presence (D2, carries clip-probe's
- * inventory for both sides, D1) and — for units.json entries — unit-geometry (D3). Writes
- * <out>/<slug>/{origin,eds,diff}.png + pixel.json + content.json + clip.json [+ units.json],
+ * THE RULE (#125): every crafted prototype and every deployed page is a row in a pixel table —
+ * `<out>/summary.{json,md}` at `stardust/replica/gates/prototypes-<w>/` (--stage prototype: pages with
+ * a prototypePath, build = the served prototype, origin = the archetype round's cached live.png when
+ * present) and `stardust/replica/gates/all-<w>/` (--stage published, default: `deployed` pages, build =
+ * liveUrl). gate-evidence.mjs reads these tables as the source of record; a page without a row is ungated.
+ *
+ * Per page: stitched captures of both sides (stitch-shot, --settle), pixel-compare, then the DOM probes
+ * — clip-probe on the served side (D1, both stages), content-presence (D2, published stage; the
+ * prototype is authored from the same capture content-diff already reconciles) and unit-geometry (D3)
+ * for the repeated-unit families stardust/replica/units.json declares for the page. Writes
+ * <out>/<slug>/{origin,eds,diff}.png + pixel.json + clip.json [+ content.json, units.json],
  * <out>/summary.{json,md}; --only runs write <out>/runs/<ts>-<slug>.json instead.
  *
- * VERDICT (all four): pixel % ≤ --threshold AND |Δh| ≤ --height-tol × origin height (a padded/union
- * metric was tried and rejected — white gaps score as matches) AND served clipped ≤ --clip-max +
+ * VERDICT (all four): pixel % ≤ --threshold AND |Δh| ≤ --height-tol × origin height (a union metric
+ * was tried and rejected — white gaps score as matches) AND served clipped ≤ --clip-max +
  * clip-allow.json allowance AND content MISSING + HIDDEN links / headings = 0 (n/a when the origin
  * could not be probed — never a fail) [+ required units within --unit-tol]. The pixel-only verdict is
  * recorded beside it per page and in the totals — every run is calibration data.
  *
  * Sidecars in <out>/, each entry documented: masks.json (printed on the verdict), overrides.json
  * (shown BESIDE the number, never replacing it), clip-allow.json, presence.json (session-variable
- * regions), units.json (repeated units). Origin fallback: live stitch → previous origin
+ * regions); repeated units come from stardust/replica/units.json (unit-geometry.mjs header; a legacy
+ * <out>/units.json per page still reads). Origin fallback: live stitch → previous origin
  * (--recapture-origin) → <crawl-shots>/<slug>.png (`crawl-fullpage`, asymmetric, flagged).
  *
- * Usage: node skills/replica/scripts/gate-all.mjs [--state f] [--out dir] [--width 1440]
- *        [--only <slug,…>] [--skip-existing] [--recapture-eds] [--recapture-origin] [--eds-host <h>]
+ * Usage: node skills/replica/scripts/gate-all.mjs [--stage published|prototype] [--proto-base <url>]
+ *        [--state f] [--out dir] [--width 1440] [--only <slug,…>] [--skip-existing] [--recapture-eds] [--recapture-origin] [--eds-host <h>]
  *        [--blocked <re>] [--try-blocked] [--crawl-shots <dir>] [--origin-concurrency 2]
  *        [--eds-concurrency 4] [--probe-concurrency 2] [--threshold 10] [--height-tol 0.05]
  *        [--clip-max 0] [--unit-tol 4] [--no-clip] [--no-content] [--no-probes] [--units <f>]
@@ -32,12 +40,15 @@
  */
 import { spawn } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { basename, dirname, join, resolve } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const HELP = `gate-all — published-origin gate over every deployed page: pixel + height + clip + content (#125)
 
 Usage: node gate-all.mjs [options]   (from the project root)
+  --stage published|prototype  published (default): deployed pages vs liveUrl → gates/all-<w>/;
+                            prototype: pages with a prototypePath vs the served prototype → gates/prototypes-<w>/
+  --proto-base <url>        where the prototypes dir is served (prototype stage), e.g. http://localhost:8791
   --state <file>            stardust/state.json
   --out <dir>               stardust/replica/gates/all-<width>
   --width <px>              1440
@@ -64,10 +75,12 @@ Exit: 0 all PASS (overrides count), 2 any FAIL, 1 error.`;
 export function parseArgs(argv) {
   const rest = argv.slice(2);
   if (rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
-  const o = { state: 'stardust/state.json', out: null, width: 1440, only: null, skip: false, recaptureEds: false, recaptureOrigin: false, edsHost: null, blocked: null, tryBlocked: false, crawlShots: 'stardust/current/assets/screenshots', oc: 2, ec: 4, pc: 2, threshold: 10, heightTol: 0.05, clipMax: 0, unitTol: 4, clip: true, content: true, units: null, compareOnly: false, warmup: null, vh: null };
+  const o = { stage: 'published', protoBase: null, state: 'stardust/state.json', out: null, width: 1440, only: null, skip: false, recaptureEds: false, recaptureOrigin: false, edsHost: null, blocked: null, tryBlocked: false, crawlShots: 'stardust/current/assets/screenshots', oc: 2, ec: 4, pc: 2, threshold: 10, heightTol: 0.05, clipMax: 0, unitTol: 4, clip: true, content: true, units: null, compareOnly: false, warmup: null, vh: null };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i]; const v = () => rest[++i];
-    if (a === '--state') o.state = v(); else if (a === '--out') o.out = v(); else if (a === '--width') o.width = Number(v());
+    if (a === '--stage') { o.stage = v(); if (!['published', 'prototype'].includes(o.stage)) { console.error(`--stage must be published or prototype\n\n${HELP}`); process.exit(1); } }
+    else if (a === '--proto-base') o.protoBase = v().replace(/\/$/, '');
+    else if (a === '--state') o.state = v(); else if (a === '--out') o.out = v(); else if (a === '--width') o.width = Number(v());
     else if (a === '--only') o.only = v().split(',').map((s) => s.trim()).filter(Boolean);
     else if (a === '--skip-existing') o.skip = true; else if (a === '--recapture-eds') o.recaptureEds = true; else if (a === '--recapture-origin') o.recaptureOrigin = true;
     else if (a === '--eds-host') o.edsHost = v().replace(/\/$/, ''); else if (a === '--blocked') o.blocked = new RegExp(v()); else if (a === '--try-blocked') o.tryBlocked = true; else if (a === '--crawl-shots') o.crawlShots = v();
@@ -77,7 +90,8 @@ export function parseArgs(argv) {
     else if (a === '--units') o.units = v(); else if (a === '--compare-only') o.compareOnly = true; else if (a === '--warmup') o.warmup = v(); else if (a === '--vh') o.vh = Number(v());
     else if (a.startsWith('--')) { console.error(`unknown flag ${a}\n\n${HELP}`); process.exit(1); }
   }
-  if (!o.out) o.out = `stardust/replica/gates/all-${o.width}`;
+  if (o.stage === 'prototype' && o.content) o.content = false; // content-diff already reconciles the prototype's text
+  if (!o.out) o.out = `stardust/replica/gates/${o.stage === 'prototype' ? 'prototypes' : 'all'}-${o.width}`;
   return o;
 }
 
@@ -112,7 +126,7 @@ export function verdict({ pixel = {}, clip = null, content = null, units = null,
 const cell = (v, suffix = '') => (v == null ? 'n/a' : `${v}${suffix}`);
 export function formatSummary(summary) {
   const t = summary.totals; const p = summary._provenance;
-  const head = [`# Published-origin gate — all deployed pages, ${p.breakpoint}px`, '', `${p.writtenAt} · **${t.pass} PASS / ${t.fail} FAIL / ${t.error} error of ${t.pages}**${t.overridePass ? ` (+${t.overridePass} documented override${t.overridePass > 1 ? 's' : ''} → ${t.passWithOverrides} delivered)` : ''}`, '', `Verdict: ${p.verdict}`, '', `Calibration — pixel-only verdict (criteria 1+2): **${t.pixelOnlyPass} PASS**; full verdict (1–4): **${t.pass} PASS**. Failing by criterion: pixel ${t.failPixel}, height ${t.failHeight}, clip ${t.failClip}, content ${t.failContent}${t.failUnits ? `, units ${t.failUnits}` : ''}; content n/a (origin not probed) ${t.contentNA}.`, ''];
+  const head = [`# ${p.stage === 'prototype' ? 'Prototype gate — every crafted prototype' : 'Published-origin gate — all deployed pages'}, ${p.breakpoint}px`, '', `${p.writtenAt} · **${t.pass} PASS / ${t.fail} FAIL / ${t.error} error of ${t.pages}**${t.overridePass ? ` (+${t.overridePass} documented override${t.overridePass > 1 ? 's' : ''} → ${t.passWithOverrides} delivered)` : ''}`, '', `Verdict: ${p.verdict}`, '', `Calibration — pixel-only verdict (criteria 1+2): **${t.pixelOnlyPass} PASS**; full verdict (1–4): **${t.pass} PASS**. Failing by criterion: pixel ${t.failPixel}, height ${t.failHeight}, clip ${t.failClip}, content ${t.failContent}${t.failUnits ? `, units ${t.failUnits}` : ''}; content n/a (origin not probed) ${t.contentNA}.`, ''];
   const rows = ['| page | template | tier | origin | pixel % (text %) | Δh px | clipped | content | units | verdict | reasons |', '|---|---|---|---|---|---|---|---|---|---|---|'];
   for (const r of [...summary.rows].sort((a, b) => Number(b.pass) - Number(a.pass) || (a.pct ?? 999) - (b.pct ?? 999))) {
     const content = r.contentNA ? `n/a (${r.contentNA})` : r.content ? `MISSING ${r.content.missing} / HIDDEN ${r.content.hidden}${r.content.controlState ? ` / state ${r.content.controlState}` : ''}` : 'n/a';
@@ -129,6 +143,7 @@ const firstExisting = (cands) => cands.map((p) => resolve(HERE, p)).find((p) => 
 const STITCH = join(HERE, 'stitch-shot.mjs');
 const PIXEL = join(HERE, 'pixel-compare.mjs');
 const DIFF_DIR = firstExisting(['../../diff/scripts', '../diff']);
+const { unitsFor } = DIFF_DIR ? await import(pathToFileURL(join(DIFF_DIR, 'unit-geometry.mjs')).href) : { unitsFor: () => [] };
 const readJson = (p, d = null) => (existsSync(p) ? JSON.parse(readFileSync(p, 'utf8')) : d);
 
 function run(cmd, args, { timeoutMs = 480000 } = {}) {
@@ -148,13 +163,18 @@ async function main() {
   if (!existsSync(opts.state)) { console.error(`gate-all: ${opts.state} not found — run from the project root or pass --state`); process.exit(1); }
   if ((opts.clip || opts.content) && !DIFF_DIR) { console.error('gate-all: the diff skill\'s scripts dir was not found next to this one (../../diff/scripts or ../diff) — copy it (replica SKILL.md § Setup) or pass --no-probes'); process.exit(1); }
   const state = readJson(opts.state);
-  let pages = (state.pages || []).filter((p) => p.status === 'deployed' && p.liveUrl && p.url);
+  let pages = opts.stage === 'prototype'
+    ? (state.pages || []).filter((p) => p.prototypePath && p.url).map((p) => ({ ...p, liveUrl: `${opts.protoBase || 'http://localhost:8791'}/${basename(p.prototypePath)}` }))
+    : (state.pages || []).filter((p) => p.status === 'deployed' && p.liveUrl && p.url);
+  if (opts.stage === 'prototype' && !opts.protoBase) console.error('gate-all: --stage prototype without --proto-base — assuming http://localhost:8791 (serve the prototypes dir there, replica SKILL.md § Phase 4)');
   if (opts.only) pages = pages.filter((p) => opts.only.includes(p.slug));
   if (!pages.length) { console.error('gate-all: no deployed pages selected'); process.exit(1); }
   mkdirSync(opts.out, { recursive: true });
   const MASKS = readJson(join(opts.out, 'masks.json'), {}); const OVERRIDES = readJson(join(opts.out, 'overrides.json'), {});
   const CLIP_ALLOW = readJson(join(opts.out, 'clip-allow.json'), {}); const PRESENCE = readJson(join(opts.out, 'presence.json'), {});
+  const FAMILIES = readJson('stardust/replica/units.json', null);
   const UNITS = readJson(opts.units || join(opts.out, 'units.json'), {});
+  const unitsOf = (p) => (FAMILIES ? unitsFor(FAMILIES, p.slug, p.template) : ((UNITS[p.slug] || {}).units || []).map((x) => ({ origin: x.origin, eds: x.eds || x.origin, n: x.n || 1, required: x.required !== false })));
   const log = (s) => { const line = `${new Date().toISOString()} ${s}`; console.log(line); writeFileSync(join(opts.out, '_run.log'), `${line}\n`, { flag: 'a' }); };
   const dir = (p) => join(opts.out, p.slug);
   const edsUrl = (p) => (opts.edsHost ? p.liveUrl.replace(/^https?:\/\/[^/]+/, opts.edsHost) : p.liveUrl);
@@ -167,8 +187,10 @@ async function main() {
     const out = join(d, 'origin.png'); const meta = join(d, 'origin.json');
     if (opts.skip && !opts.recaptureOrigin && existsSync(out) && existsSync(meta)) { rec(p, 'origin', readJson(meta)); return; }
     const crawlShot = join(opts.crawlShots, `${p.slug}.png`);
+    const cachedLive = join('stardust/replica/gates', `${p.slug}-${opts.width}`, 'live.png');
     let r;
-    if (opts.blocked && opts.blocked.test(p.url) && !opts.tryBlocked) {
+    if (opts.stage === 'prototype' && existsSync(cachedLive)) { copyFileSync(cachedLive, out); r = { instrument: 'stitch-live', note: `reused ${cachedLive} (the archetype round's capture — hit minimisation)` }; }
+    else if (opts.blocked && opts.blocked.test(p.url) && !opts.tryBlocked) {
       if (existsSync(crawlShot)) { copyFileSync(crawlShot, out); r = { instrument: 'crawl-fullpage', asymmetric: true, note: `origin matches --blocked ${opts.blocked}; crawl screenshot used (lazy rails may be placeholders)` }; }
       else r = { instrument: 'none', error: `origin blocked and no crawl shot at ${crawlShot}` };
     } else {
@@ -218,15 +240,16 @@ async function main() {
       if (clip && (s.code === 0 || s.code === 2)) { rec(p, 'clip', { counts: clip.counts, groups: clip.groups, source: 'clip-probe' }); log(`clip ${p.slug} → ${clip.counts.total}`); }
       else { rec(p, 'clip', { error: `clip-probe exit ${s.code}: ${lastLine(s.err)}` }); log(`clip ${p.slug} → ERROR ${lastLine(s.err)}`); }
     }
-    const u = UNITS[p.slug];
-    if (u && u.units && u.units.length) {
-      const args = [join(DIFF_DIR, 'unit-geometry.mjs'), p.url, edsUrl(p), '--width', String(opts.width), '--tol', String(opts.unitTol), '--n', String(Math.max(...u.units.map((x) => x.n || 1))), '--json', join(d, 'units.json'), '--slug', p.slug];
-      for (const x of u.units) args.push('--unit', `${x.origin}=${x.eds || x.origin}`);
+    const units = unitsOf(p);
+    if (units.length) {
+      const args = [join(DIFF_DIR, 'unit-geometry.mjs'), p.url, edsUrl(p), '--width', String(opts.width), '--tol', String(opts.unitTol), '--n', String(Math.max(...units.map((x) => x.n))), '--json', join(d, 'units.json'), '--slug', p.slug];
+      for (const x of units) args.push('--unit', `${x.origin}=${x.eds}`);
       if (opts.warmup) args.push('--warmup', opts.warmup);
       const s = await run('node', args);
       const res = readJson(join(d, 'units.json'));
-      if (res && (s.code === 0 || s.code === 2)) { rec(p, 'units', { verdict: res.verdict, required: u.units.some((x) => x.required) }); log(`units ${p.slug} → off ${res.verdict.off} hidden ${res.verdict.hidden} missing ${res.verdict.missing}`); }
-      else { rec(p, 'units', { error: `unit-geometry exit ${s.code}: ${lastLine(s.err)}`, required: u.units.some((x) => x.required) }); log(`units ${p.slug} → ERROR ${lastLine(s.err)}`); }
+      const required = units.some((x) => x.required);
+      if (res && (s.code === 0 || s.code === 2)) { rec(p, 'units', { verdict: res.verdict, required }); log(`units ${p.slug} → off ${res.verdict.off} hidden ${res.verdict.hidden} missing ${res.verdict.missing}`); }
+      else { rec(p, 'units', { error: `unit-geometry exit ${s.code}: ${lastLine(s.err)}`, required }); log(`units ${p.slug} → ERROR ${lastLine(s.err)}`); }
     }
   }
   async function compare(p) {
@@ -245,14 +268,14 @@ async function main() {
 
   if (!opts.compareOnly) await Promise.all([pool(pages, opts.oc, captureOrigin), pool(pages, opts.ec, captureEds)]);
   else for (const p of pages) for (const side of ['origin', 'eds']) { const m = readJson(join(dir(p), `${side}.json`)); if (m) rec(p, side, m); }
-  if (opts.clip || opts.content || Object.keys(UNITS).length) await pool(pages, opts.pc, probe);
+  if (opts.clip || opts.content || FAMILIES || Object.keys(UNITS).length) await pool(pages, opts.pc, probe);
   await pool(pages, 4, compare);
 
   const rows = pages.map((p) => {
     const r = results[p.slug] || {}; const px = r.pixel || {};
     const v = verdict({ pixel: px, clip: r.clip && r.clip.counts ? r.clip : null, content: r.content || null, units: r.units || null, override: OVERRIDES[p.slug] || null, allowance: (CLIP_ALLOW[p.slug] || {}).max || 0 }, { threshold: opts.threshold, heightTol: opts.heightTol, clipMax: opts.clipMax, clipOn: opts.clip, contentOn: opts.content });
     return { slug: p.slug, path: p.deployedPath || new URL(p.liveUrl).pathname, template: p.template, tier: p.fidelityTier, origin: r.origin && r.origin.instrument, originAsymmetric: !!(r.origin && r.origin.asymmetric), eds: r.eds && r.eds.instrument,
-      pct: px.pct ?? null, textPct: px.textPct ?? null, unionPct: px.unionPct ?? null, heightDelta: px.heightDelta ?? null, ...v,
+      pct: px.pct ?? null, textPct: px.textPct ?? null, heightDelta: px.heightDelta ?? null, ...v,
       clipGroups: r.clip && r.clip.groups ? r.clip.groups.filter((g) => !g.advisory).slice(0, 6) : [], clipAllowReason: (CLIP_ALLOW[p.slug] || {}).reason || null,
       content: r.content && r.content.totals ? { missing: r.content.totals.missing, hidden: r.content.totals.hidden, controlState: r.content.totals.controlState, missingButtons: r.content.totals.missingButtons, hiddenButtons: r.content.totals.hiddenButtons, findings: r.content.totals.findings, scope: r.content.scope, variable: r.content.variable } : null,
       units: r.units && r.units.verdict ? r.units.verdict : null, unitsRequired: !!(r.units && r.units.required), unitsError: (r.units && r.units.error) || null,
@@ -264,7 +287,7 @@ async function main() {
     failPixel: n((r) => r.pct != null && !r.pixelPass), failHeight: n((r) => r.pct != null && !r.heightPass), failClip: n((r) => r.clipPass === false), failContent: n((r) => r.contentPass === false), failUnits: n((r) => r.unitPass === false), contentNA: n((r) => r.contentNA), asymmetricOrigins: n((r) => r.originAsymmetric) };
   totals.passWithOverrides = totals.pass + totals.overridePass;
   const originHost = (() => { try { return new URL(pages[0].url).origin; } catch { return null; } })();
-  const summary = { _provenance: { writtenBy: 'gate-all.mjs', writtenAt: new Date().toISOString(), breakpoint: opts.width, threshold: opts.threshold, heightTolerance: opts.heightTol, clipMax: opts.clipMax, unitTol: opts.unitTol, criteria: { pixel: true, height: true, clip: opts.clip, content: opts.content }, verdict: `overlap pixel % ≤ ${opts.threshold} AND |Δh| ≤ ${Math.round(opts.heightTol * 100)}% of origin height${opts.clip ? ` AND clipped ≤ ${opts.clipMax} (+ documented allowance)` : ''}${opts.content ? ' AND content MISSING + HIDDEN links/headings = 0' : ''}`, origin: originHost, eds: opts.edsHost || (() => { try { return new URL(pages[0].liveUrl).origin; } catch { return null; } })(), edsHostOverride: opts.edsHost || null, only: opts.only }, totals, rows };
+  const summary = { _provenance: { writtenBy: 'gate-all.mjs', writtenAt: new Date().toISOString(), stage: opts.stage, breakpoint: opts.width, threshold: opts.threshold, heightTolerance: opts.heightTol, clipMax: opts.clipMax, unitTol: opts.unitTol, criteria: { pixel: true, height: true, clip: opts.clip, content: opts.content }, verdict: `overlap pixel % ≤ ${opts.threshold} AND |Δh| ≤ ${Math.round(opts.heightTol * 100)}% of origin height${opts.clip ? ` AND clipped ≤ ${opts.clipMax} (+ documented allowance)` : ''}${opts.content ? ' AND content MISSING + HIDDEN links/headings = 0' : ''}`, origin: originHost, eds: opts.edsHost || (() => { try { return new URL(pages[0].liveUrl).origin; } catch { return null; } })(), edsHostOverride: opts.edsHost || null, only: opts.only }, totals, rows };
   const md = formatSummary(summary);
   if (opts.only) { mkdirSync(join(opts.out, 'runs'), { recursive: true }); const f = join(opts.out, 'runs', `${new Date().toISOString().replace(/[:.]/g, '-')}-${opts.only[0]}.json`); writeFileSync(f, JSON.stringify(summary, null, 2)); console.log(md); console.log(`run → ${f}`); }
   else { writeFileSync(join(opts.out, 'summary.json'), JSON.stringify(summary, null, 2)); writeFileSync(join(opts.out, 'summary.md'), md); console.log(md.split('\n').slice(0, 7).join('\n')); console.log(`summary → ${join(opts.out, 'summary.md')}`); }

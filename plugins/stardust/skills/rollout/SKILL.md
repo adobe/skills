@@ -526,11 +526,14 @@ Pages       <N> total · <v> verified · <d> deployed · <p> pending · <cp> con
 Templates   <T> (per-template delivered/total)
 Blocks      <B> total · <c> converted · <p> pending
 Quality     health <H>/100 · open P1 <n> / P2 <n> / P3 <n>
+Pixel table prototypes <p>/<P> PASS · deployed <d>/<D> PASS (pixel-only <x>/<D>) — gates/{prototypes,all}-1440/summary.md
 To deliver  <list of remaining slugs>
 Content     <cp> pages awaiting content track (block code deployed, document not yet pushed)
 ```
 
-Surface `pending`/`stale`/`failed` as the explicit "what's missing" list.
+Surface `pending`/`stale`/`failed` as the explicit "what's missing" list. The pixel-table
+line comes from the two `summary.json` totals (`pass`, `pixelOnlyPass`, `pages`); a deployed
+page missing from `all-1440/summary.json` is ungated and belongs in that list (#125).
 `content-pending` pages are listed separately — not failures; their block code is
 live and they advance to `pending` automatically when `migrate` emits their HTML
 and `inventory` is re-run.

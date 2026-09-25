@@ -237,6 +237,16 @@ regimes; what burns iteration caps is chasing prototype-regime numbers on a
 published-origin gate. Record which regime a number belongs to in the
 ledger, and judge each against its own regime's precedent.
 
+7. **In the pixel table (#125).** Every crafted prototype and every deployed page is a
+   row in `stardust/replica/gates/prototypes-<w>/summary.md` (gate-all `--stage
+   prototype`, run at the end of Phase 4) or `…/all-<w>/summary.md` (delivery), with
+   its measured number, height delta, clipped count, verdict and evidence dir.
+   `gate-evidence.mjs` reads the table as the source of record: a page without a row is
+   ungated, whatever its sidecar or a `gate.sh` log says. Inside a `--full` round the
+   element probes rule a PASS the way the overflow assert does: `clip-probe: Clipped: n`
+   with n > 0 (every regime), a `content-presence` MISSING / HIDDEN link or heading
+   (published regime), a required repeated unit off (`stardust/replica/units.json`).
+
 ## Reading the band breakdown
 
 The overall % hides WHERE drift starts. `pixel-compare.mjs` prints per-500px
@@ -754,8 +764,8 @@ clip.json [+ units.json]` and `summary.{json,md}`. **Verdict, per page — all f
 
 1. **pixel** — overlap % ≤ `--threshold` (default 10).
 2. **height** — |Δh| ≤ `--height-tol` × origin height (default 5 %). The overlap crop cannot see
-   a render thousands of px too tall; a padded/union metric was tried and rejected (white gaps
-   score as matches), so the guard is explicit and `pixel-compare --pad` stays auxiliary.
+   a render thousands of px too tall; a union (white-padded) metric was tried and rejected
+   (white gaps score as matches), so the guard is explicit.
 3. **clip** — served-side `clip-probe` count ≤ `--clip-max` (default 0) + the page's allowance
    in `clip-allow.json`. Counted: a text line cut across, whole lines behind an overflow-hidden
    ancestor without a line-clamp, a link or button outside or cut by its clipping ancestor.
@@ -770,8 +780,14 @@ clip.json [+ units.json]` and `summary.{json,md}`. **Verdict, per page — all f
    (+ **units** — `unit-geometry` off / hidden / missing = 0 for `units.json` entries marked
    `required: true`; others are advisory rows.)
 
-The pixel-only verdict (1 + 2) is recorded beside the full one per page and in the totals: every
-run is calibration data. Sidecars in the gate dir, each entry documented: `masks.json` (printed
+**The table rule.** `--stage prototype` (pages with a `prototypePath`, build = the served
+prototype dir, origin = the archetype round's cached `live.png` when present) writes
+`gates/prototypes-<w>/summary.{json,md}`; the default published stage writes
+`gates/all-<w>/`. Both are read by `gate-evidence.mjs`: with a table for the width, a
+page's row decides `pixel-gate-<w>` and a page without a row is `OPEN: no table row`;
+without any table the `gate.sh` logs stand in and `--check` names the missing table. The
+eval requires both summaries with a row per page. The pixel-only verdict (1 + 2) is
+recorded beside the full one per page and in the totals: every run is calibration data. Sidecars in the gate dir, each entry documented: `masks.json` (printed
 on the verdict, never reported unmasked), `overrides.json` (shown BESIDE the measured number,
 never replacing it), `clip-allow.json`, `presence.json`, `units.json`. Origin fallback: live
 stitch → previous origin (`--recapture-origin`) → crawl fullPage screenshot (`crawl-fullpage`,

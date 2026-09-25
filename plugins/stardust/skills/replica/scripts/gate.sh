@@ -40,13 +40,20 @@
 #   iteration. Only exit 1 is retried; 3 (bot challenge), 4 (identity) and
 #   124 (deadline) are final on the first attempt.
 #
-#   --full   the whole Phase 4 probe set in one round: after the pixel verdict the
-#            three other probes run IN PARALLEL, each under its own deadline —
-#            content-diff (structural 🔴 count), visual-diff (advisory flags),
-#            chrome-parity (header/footer deltas, live side cached) — and only
-#            their verdict lines are printed. Evidence per probe lands next to the
-#            pixel evidence: content-diff-<label>.txt, visual-diff-<label>.txt +
-#            vdiff-<label>/, chrome-parity-<label>.txt. Needs the diff skill's
+#   --full   the whole probe set in one round: after the pixel verdict the other
+#            probes run IN PARALLEL, each under its own deadline — content-diff
+#            (structural 🔴 count), visual-diff (advisory flags), chrome-parity
+#            (header/footer deltas, live side cached), clip-probe on the BUILD side
+#            (text / controls cut or hidden by an overflow ancestor — no live hit;
+#            #125, a fixed-height card clipped every link on a pixel-PASS page),
+#            content-presence live vs build in the PUBLISHED regime only (a build URL
+#            that is not localhost / 127.0.0.1 / file:; GATE_REGIME=published|prototype
+#            overrides), and unit-geometry when stardust/replica/units.json declares a
+#            repeated-unit family for the slug — and only their verdict lines are
+#            printed. Evidence per probe lands next to the pixel evidence:
+#            content-diff-<label>.txt, visual-diff-<label>.txt + vdiff-<label>/,
+#            chrome-parity-<label>.txt, clip-<label>.{txt,json},
+#            content-presence-<label>.{txt,json}, units-<label>.{txt,json}. Needs the diff skill's
 #            scripts at stardust/scripts/diff/ (Setup step 4). The build URL may be
 #            a served prototype or the published/preview origin — the published-
 #            origin gate is the same command with the preview URL (pass --marker
@@ -56,12 +63,12 @@
 #            identity) prints one "probes skipped" line and exits with that code —
 #            a round with no pixel verdict does not spend three Chromiums.
 #            Exit with --full: the pixel rc when it is not a verdict (above); 124 on
-#            any probe deadline; else the pixel verdict, then 2 on a structural 🔴
-#            or a chrome delta, 1 when a probe errored (it gave no verdict), 0 only
-#            when all four ran and passed.
-#            Concurrency: a --full round holds up to THREE Chromiums at its peak
-#            (the three probes in parallel), so run-bg's default three slots can
-#            hold nine; RUN_BG_SLOTS lowers that on a small machine. Start the
+#            any probe deadline; else the pixel verdict, then 2 on a structural 🔴,
+#            a chrome delta, a clipped count > 0, a content-presence MISSING / HIDDEN
+#            link or heading, or a required unit off; 1 when a probe errored (it gave
+#            no verdict), 0 only when every probe ran and passed.
+#            Concurrency: a --full round holds up to SIX Chromiums at its peak
+#            (the probes in parallel); RUN_BG_SLOTS lowers that on a small machine. Start the
 #            rounds all at once and let the slots pace them — no sleep staggering.
 #   --main <selector>   content root for the diff probes (default: main)
 #   --no-dismiss        do not dismiss consent/marketing overlays on the probes
@@ -158,7 +165,7 @@ retry_once() {
 if [ "$REAP_MIN" -gt 0 ] 2>/dev/null; then
   REAPED=$(ps -U "$(id -un)" -o pid=,etime=,command= 2>/dev/null \
     | grep -E '^ *[0-9]+ +[^ ]+ +([^ ]*/)?node ' \
-    | grep -E '/(stitch-shot|pixel-compare|chrome-parity|anchor|crop-compare|visual-diff|measure)\.mjs( |$)' \
+    | grep -E '/(stitch-shot|pixel-compare|chrome-parity|anchor|crop-compare|visual-diff|measure|clip-probe|content-presence|unit-geometry|measure-live)\.mjs( |$)' \
     | grep -v -E 'run-capped|grep|--inspect' \
     | while read -r pid etime cmd; do
         mins=$(printf '%s' "$etime" | awk -F'[-:]' '{ n=NF; m=(n>=2)?$(n-1):0; h=(n>=3)?$(n-2):0; d=(n>=4)?$(n-3):0; printf "%d", d*1440 + h*60 + m }')
@@ -276,6 +283,13 @@ if [ ! -f "$DIFF/content-diff.mjs" ] || [ ! -f "$DIFF/visual-diff.mjs" ]; then
   exit $PIXEL_RC
 fi
 CD="$DIR/content-diff-$LBL.txt"; VD="$DIR/visual-diff-$LBL.txt"; CP="$DIR/chrome-parity-$LBL.txt"
+CL="$DIR/clip-$LBL.txt"; PR="$DIR/content-presence-$LBL.txt"; UG="$DIR/units-$LBL.txt"
+# Regime (gate-evidence.mjs regimeOf semantics): localhost / 127.0.0.1 / file: build URL = prototype, else published.
+case "${GATE_REGIME:-auto}" in
+  prototype|published) REGIME=$GATE_REGIME ;;
+  *) case "$BUILD_URL" in http://localhost*|http://127.0.0.1*|file:*) REGIME=prototype ;; *) REGIME=published ;; esac ;;
+esac
+UNITS_FILE="stardust/replica/units.json"
 capped "$PROBE_TIMEOUT" "content-diff $SLUG@$W" node "$DIFF/content-diff.mjs" "$LIVE_URL" "$BUILD_URL" \
   --profile generic --width "$W" --main "$MAIN" $DISMISS > "$CD" 2>&1 &
 P_CD=$!
@@ -285,9 +299,25 @@ P_VD=$!
 capped "$PROBE_TIMEOUT" "chrome-parity $SLUG@$W" node "$HERE/chrome-parity.mjs" "$LIVE_URL" "$BUILD_URL" \
   --width "$W" --live-cache "$DIR/chrome-live.json" > "$CP" 2>&1 &
 P_CP=$!
+# clip-probe on the BUILD side (every regime, no live hit); content-presence live vs build in the published regime;
+# unit-geometry when the project declares repeated-unit families (a slug with none prints n/a, exit 0).
+capped "$PROBE_TIMEOUT" "clip-probe $SLUG@$W" node "$DIFF/clip-probe.mjs" "$BUILD_URL" --width "$W" --json "$DIR/clip-$LBL.json" > "$CL" 2>&1 &
+P_CL=$!
+P_PR=""; P_UG=""
+if [ "$REGIME" = published ]; then
+  capped "$PROBE_TIMEOUT" "content-presence $SLUG@$W" node "$DIFF/content-presence.mjs" "$LIVE_URL" "$BUILD_URL" --width "$W" --json "$DIR/content-presence-$LBL.json" > "$PR" 2>&1 &
+  P_PR=$!
+fi
+if [ -f "$UNITS_FILE" ] && [ -f "$DIFF/unit-geometry.mjs" ]; then
+  capped "$PROBE_TIMEOUT" "unit-geometry $SLUG@$W" node "$DIFF/unit-geometry.mjs" "$LIVE_URL" "$BUILD_URL" --families "$UNITS_FILE" --slug "$SLUG" --width "$W" --json "$DIR/units-$LBL.json" > "$UG" 2>&1 &
+  P_UG=$!
+fi
 wait $P_CD; RC_CD=$?
 wait $P_VD; RC_VD=$?
 wait $P_CP; RC_CP=$?
+wait $P_CL; RC_CL=$?
+RC_PR=0; [ -n "$P_PR" ] && { wait $P_PR; RC_PR=$?; }
+RC_UG=0; [ -n "$P_UG" ] && { wait $P_UG; RC_UG=$?; }
 
 verdict() { # $1 rc, $2 label, $3 line
   case "$1" in
@@ -304,15 +334,33 @@ FLAGS=$(awk '/red flags \(advisory\)/{f=1;next} f&&/^[[:space:]]*•/{n++} f&&/^
 verdict "$RC_VD" "visual-diff" "$FLAGS advisory flag(s) — $(awk '/red flags \(advisory\)/{f=1;next} f&&/^[[:space:]]*•/{sub(/^[[:space:]]*• /,""); printf "%s; ", substr($0,1,60)} f&&/^Full metrics/{exit}' "$VD")" "$VD"
 CHROME=$(grep -E '^(✗|✓)' "$CP" | tail -1 | cut -c1-120)
 verdict "$RC_CP" "chrome-parity" "${CHROME:-no summary line}" "$CP"
-echo "evidence: $CD $VD $CP $DIR/vdiff-$LBL/"
+CLIPPED=$(grep -E '^Clipped:' "$CL" | head -1 | cut -c1-160)
+verdict "$RC_CL" "clip-probe" "${CLIPPED:-no Clipped line}" "$CL"
+CLIP_N=$(printf '%s' "$CLIPPED" | grep -oE '^Clipped: [0-9]+' | grep -oE '[0-9]+$' || echo 0)
+PRESENCE_N=0
+if [ -n "$P_PR" ]; then
+  PRESENCE=$(grep -E '^Content:' "$PR" | head -1 | cut -c1-200)
+  verdict "$RC_PR" "content-presence" "${PRESENCE:-no Content line} [published regime]" "$PR"
+  PRESENCE_N=$(( $(printf '%s' "$PRESENCE" | grep -oE 'MISSING [0-9]+' | grep -oE '[0-9]+' || echo 0) + $(printf '%s' "$PRESENCE" | grep -oE 'HIDDEN [0-9]+' | grep -oE '[0-9]+' || echo 0) ))
+fi
+if [ -n "$P_UG" ]; then
+  UNITS=$(grep -E '^(Units:|unit-geometry: none declared)' "$UG" | head -1 | cut -c1-200)
+  verdict "$RC_UG" "unit-geometry" "${UNITS:-no Units line}" "$UG"
+fi
+echo "evidence: $CD $VD $CP $CL${P_PR:+ $PR}${P_UG:+ $UG} $DIR/vdiff-$LBL/"
 
 # Exit: any deadline → 124 (re-run); else the pixel verdict rules, and a structural
 # content 🔴 or a chrome delta fails the round the same way an over-threshold pixel diff does.
-for rc in "$RC_CD" "$RC_VD" "$RC_CP" "$PIXEL_RC"; do [ "$rc" = 124 ] && exit 124; done
+for rc in "$RC_CD" "$RC_VD" "$RC_CP" "$RC_CL" "$RC_PR" "$RC_UG" "$PIXEL_RC"; do [ "$rc" = 124 ] && exit 124; done
 [ "$PIXEL_RC" != 0 ] && exit $PIXEL_RC
 [ "${STRUCTURAL:-0}" -gt 0 ] 2>/dev/null && exit 2
 [ "$RC_CP" = 2 ] && exit 2
+# clipped text / controls, a MISSING / HIDDEN link or heading, a required unit off: element defects fail the
+# round like an over-threshold pixel diff (#125 — a pixel PASS with every card clipped).
+[ "${CLIP_N:-0}" -gt 0 ] 2>/dev/null && exit 2
+[ "${PRESENCE_N:-0}" -gt 0 ] 2>/dev/null && exit 2
+[ "$RC_UG" = 2 ] && exit 2
 # A probe that errored gave no verdict, so the round is not a pass: 3 (bot challenge) passes through,
 # anything else is the capture/compare error class (1). Only 0 and 2 carry a verdict.
-for rc in "$RC_CD" "$RC_VD" "$RC_CP"; do case "$rc" in 0|2) ;; 3) exit 3 ;; *) exit 1 ;; esac; done
+for rc in "$RC_CD" "$RC_VD" "$RC_CP" "$RC_CL" "$RC_PR" "$RC_UG"; do case "$rc" in 0|2) ;; 3) exit 3 ;; *) exit 1 ;; esac; done
 exit 0

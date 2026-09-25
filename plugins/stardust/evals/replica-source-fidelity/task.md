@@ -57,6 +57,8 @@ The stardust `replica` skill is invoked. It:
 - "Improving" the design outside the inconsistency register.
 - DOM-copying the source page instead of re-authoring.
 - Declaring fidelity without gate evidence on disk (metrics, diff artifacts).
+- A crafted prototype with no row in `stardust/replica/gates/prototypes-<width>/summary.json`
+  (the pixel table is the source of record; a sidecar claim alone is not evidence).
 - Only gating desktop (mobile is not free — the 360 pass is required).
 - Skipping the content-cap row — a container cap wider than 1440 is invisible to both pixel gates.
 - Rehosting a licensed brand font.

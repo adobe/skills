@@ -13,14 +13,19 @@
  * served page clips. Both sides settle the same way; the origin inventory caches per slug under
  * stardust/current/measure/<slug>-units.json.
  *
- * Usage: node skills/diff/scripts/unit-geometry.mjs <originUrl> <edsUrl> --unit "<selO>=<selE>" …
+ * Repeated-unit FAMILIES are declared once per project in stardust/replica/units.json —
+ *   { "<family>": { "origin": "<sel>", "build": "<sel>", "n": 2, "required": true, "pages": ["<slug>"], "templates": ["<tpl>"] } }
+ * — and resolved per page by `--families <file> --slug <s> [--template <t>]` (gate.sh and gate-all both do);
+ * a family the page does not belong to is skipped, a non-`required` family is advisory (never exit 2).
+ *
+ * Usage: node skills/diff/scripts/unit-geometry.mjs <originUrl> <edsUrl> (--unit "<selO>=<selE>" … | --families <f> --slug <s>)
  *        [--n 1] [--tol 4] [--width 1440] [--json [<file>]] [--slug <s>] [--force] [--advisory]
  *        [--plain] [--warmup <url>] [--locale en-US]
- * Exit: 0 within tolerance, 2 any element off / hidden / missing, 1 error, 3 bot challenge.
- * gate-all runs it for the units units.json declares. `unitInventoryInPage`, `alignUnit`,
- * `keyed`, `compareUnits`, `formatUnits`, `verdictOf` are exported.
+ * Exit: 0 within tolerance (or nothing declared), 2 a required unit off / hidden / missing, 1 error,
+ * 3 bot challenge. `unitInventoryInPage`, `alignUnit`, `keyed`, `compareUnits`, `formatUnits`,
+ * `verdictOf`, `unitsFor` are exported.
  */
-import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { inPage } from './clip-probe.mjs';
@@ -28,8 +33,10 @@ import { openBrowser, openPage, readCache, visit, writeCache } from './measure-l
 
 const HELP = `unit-geometry — per-element Δx/Δy/Δw/Δh of the first N repeated units, origin vs served (#125 D3)
 
-Usage: node unit-geometry.mjs <originUrl> <edsUrl> --unit "<selOrigin>=<selEds>" [options]
+Usage: node unit-geometry.mjs <originUrl> <edsUrl> (--unit "<selOrigin>=<selEds>" … | --families <file> --slug <s>) [options]
   --unit <selO>[=<selE>]  repeatable
+  --families <file>       stardust/replica/units.json: { family: { origin, build, n, required, pages[], templates[] } }
+  --template <t>          the page's template, for family matching (read from stardust/state.json when absent)
   --n <count>             units per selector (default 1)
   --tol <px>              per-element tolerance (default 4)
   --width <px>            viewport width (default 1440)
@@ -162,7 +169,7 @@ export function formatUnits(results, tol) {
   for (const res of results) {
     for (const u of res.units) {
       const { unit, summary } = u;
-      lines.push(`unit ${u.index + 1} of ${res.sel}: origin ${fmt(unit.origin)} vs served ${fmt(unit.eds)} → Δx ${sgn(unit.dx)} Δy ${sgn(unit.dy)} Δw ${sgn(unit.dw)} Δh ${sgn(unit.dh)}${summary.unitOff ? '  ✗ unit size' : ''}; ${summary.elements} elements: ${summary.within} within ${tol}px, ${summary.off} off, ${summary.hidden} hidden, ${summary.missing} missing, ${summary.extra} extra`);
+      lines.push(`unit ${u.index + 1} of ${res.family ? `${res.family} (${res.required ? 'required' : 'advisory'}) ` : ''}${res.sel}: origin ${fmt(unit.origin)} vs served ${fmt(unit.eds)} → Δx ${sgn(unit.dx)} Δy ${sgn(unit.dy)} Δw ${sgn(unit.dw)} Δh ${sgn(unit.dh)}${summary.unitOff ? '  ✗ unit size' : ''}; ${summary.elements} elements: ${summary.within} within ${tol}px, ${summary.off} off, ${summary.hidden} hidden, ${summary.missing} missing, ${summary.extra} extra`);
       lines.push('| element | origin x,y w×h | served x,y w×h | Δx | Δy | Δw | Δh | |', '|---|---|---|---|---|---|---|---|');
       for (const r of u.rows) lines.push(`| ${r.role} "${(r.text || r.key).slice(0, 36)}"${r.byPosition ? ` ≈ "${(r.edsText || '').slice(0, 20)}" (by position)` : ''} | ${fmt(r.origin)} | ${fmt(r.eds)}${r.eds.role !== r.role ? ` (${r.eds.role})` : ''} | ${sgn(r.dx)} | ${sgn(r.dy)} | ${sgn(r.dw)} | ${sgn(r.dh)} | ${r.hidden ? '✗ hidden (clipped)' : r.off ? '✗' : '✓'} |`);
       for (const m of u.missing) lines.push(`| ${m.role} "${(m.text || m.key).slice(0, 36)}" | ${fmt(m)} | — | | | | | ✗ missing |`);
@@ -177,10 +184,12 @@ export function formatUnits(results, tol) {
 export function parseArgs(argv) {
   const rest = argv.slice(2);
   if (!rest.length || rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
-  const opts = { origin: null, eds: null, units: [], n: 1, tol: 4, width: 1440, json: false, jsonFile: null, slug: null, force: false, advisory: false, plain: false, warmup: null, locale: 'en-US' };
+  const opts = { origin: null, eds: null, units: [], n: 1, tol: 4, width: 1440, json: false, jsonFile: null, slug: null, force: false, advisory: false, plain: false, warmup: null, locale: 'en-US', families: null, template: null };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--unit') { const [o, e] = rest[++i].split('='); opts.units.push({ origin: o.trim(), eds: (e || o).trim() }); }
+    else if (a === '--families') opts.families = rest[++i];
+    else if (a === '--template') opts.template = rest[++i];
     else if (a === '--n') opts.n = Number(rest[++i]);
     else if (a === '--tol') opts.tol = Number(rest[++i]);
     else if (a === '--width') opts.width = Number(rest[++i]);
@@ -194,7 +203,15 @@ export function parseArgs(argv) {
     else if (a.startsWith('--')) { console.error(`unknown flag ${a}\n\n${HELP}`); process.exit(1); }
     else if (!opts.origin) opts.origin = a; else if (!opts.eds) opts.eds = a;
   }
-  if (!opts.origin || !opts.eds || !opts.units.length) { console.error(`need <originUrl> <edsUrl> --unit <selO>=<selE>\n\n${HELP}`); process.exit(1); }
+  if (opts.families) {
+    if (!opts.slug) { console.error(`--families needs --slug\n\n${HELP}`); process.exit(1); }
+    const fam = JSON.parse(readFileSync(opts.families, 'utf8'));
+    let { template } = opts;
+    if (!template && existsSync('stardust/state.json')) { const pg = (JSON.parse(readFileSync('stardust/state.json', 'utf8')).pages || []).find((p) => p.slug === opts.slug); template = pg ? pg.template : null; }
+    opts.units.push(...unitsFor(fam, opts.slug, template));
+    opts.n = Math.max(opts.n, ...opts.units.map((u) => u.n || 1));
+  }
+  if (!opts.origin || !opts.eds || (!opts.units.length && !opts.families)) { console.error(`need <originUrl> <edsUrl> and --unit <selO>=<selE> or --families <file> --slug <s>\n\n${HELP}`); process.exit(1); }
   return opts;
 }
 
@@ -211,17 +228,25 @@ export async function measureUnits(browser, url, sels, { width, locale, warmup, 
 /** Compare two measurement results for one --unit pair. */
 export function compareUnits(oInv, eInv, pair, tol) {
   const o = oInv.bySel[pair.origin]; const e = eInv.bySel[pair.eds];
-  const res = { sel: `${pair.origin}=${pair.eds}`, originMatches: o.matches, edsMatches: e.matches, units: [] };
+  const res = { sel: `${pair.origin}=${pair.eds}`, family: pair.family || null, required: pair.required !== false, originMatches: o.matches, edsMatches: e.matches, units: [] };
   if (o.error || e.error) { res.error = o.error ? `origin: ${o.error}` : `served: ${e.error}`; return res; }
   if (!o.units.length || !e.units.length) { res.error = `no visible unit on the ${!o.units.length ? 'origin' : 'served'} side (${o.matches} / ${e.matches} DOM matches)`; return res; }
   for (let i = 0; i < Math.min(o.units.length, e.units.length); i += 1) res.units.push({ index: i, origin: { path: o.units[i].path }, eds: { path: e.units[i].path }, ...alignUnit(o.units[i], e.units[i], tol) });
   return res;
 }
 
-export const verdictOf = (results) => results.reduce((a, r) => { if (r.error) a.errors += 1; for (const u of r.units) { a.off += u.summary.off; a.hidden += u.summary.hidden; a.missing += u.summary.missing; a.within += u.summary.within; a.units += 1; } return a; }, { units: 0, within: 0, off: 0, hidden: 0, missing: 0, errors: 0 });
+// `required` counters only feed the exit code; advisory families are reported, never blocking.
+export const verdictOf = (results) => results.reduce((a, r) => { if (r.error) a.errors += 1; for (const u of r.units) { a.off += u.summary.off; a.hidden += u.summary.hidden; a.missing += u.summary.missing; a.within += u.summary.within; a.units += 1; if (r.required !== false) a.requiredOff += u.summary.off + u.summary.hidden + u.summary.missing; } return a; }, { units: 0, within: 0, off: 0, hidden: 0, missing: 0, errors: 0, requiredOff: 0 });
+
+/** Families a page belongs to (by slug or template) → [{ family, origin, eds, n, required }]. */
+export function unitsFor(families, slug, template = null) {
+  return Object.entries(families || {}).filter(([, f]) => (f.pages || []).includes(slug) || (template && (f.templates || []).includes(template)))
+    .map(([family, f]) => ({ family, origin: f.origin, eds: f.build || f.eds || f.origin, n: f.n || 1, required: f.required !== false }));
+}
 
 async function main() {
   const opts = parseArgs(process.argv);
+  if (!opts.units.length) { console.log(`unit-geometry: none declared for ${opts.slug} in ${opts.families} → n/a`); return; }
   const { chromium } = await import('playwright');
   const browser = await openBrowser(chromium, { tier: opts.plain ? 'plain' : 'stealth' });
   let oInv; let eInv;
@@ -240,10 +265,10 @@ async function main() {
   else {
     console.log(`unit-geometry @ ${opts.width}px, tol ${opts.tol}px — ${opts.origin} vs ${opts.eds}`);
     console.log(formatUnits(results, opts.tol));
-    console.log(`Units: ${v.units} compared; elements within ${v.within}, off ${v.off}, hidden ${v.hidden}, missing ${v.missing}${v.errors ? `; ${v.errors} selector error(s)` : ''} → ${v.off + v.hidden + v.missing + v.errors ? 'FAIL' : 'PASS'}`);
+    console.log(`Units: ${v.units} compared; elements within ${v.within}, off ${v.off}, hidden ${v.hidden}, missing ${v.missing}${v.errors ? `; ${v.errors} selector error(s)` : ''} → ${v.requiredOff + v.errors ? 'FAIL' : v.off + v.hidden + v.missing ? 'PASS (advisory deltas)' : 'PASS'}`);
     if (opts.jsonFile) { mkdirSync(dirname(opts.jsonFile) || '.', { recursive: true }); writeFileSync(opts.jsonFile, JSON.stringify(out, null, 1)); console.log(`json → ${opts.jsonFile}`); }
   }
-  process.exitCode = !opts.advisory && (v.off + v.hidden + v.missing + v.errors) > 0 ? 2 : 0;
+  process.exitCode = !opts.advisory && (v.requiredOff + v.errors) > 0 ? 2 : 0;
 }
 
 function safeRealpath(p) { try { return realpathSync(p); } catch { return p; } }
