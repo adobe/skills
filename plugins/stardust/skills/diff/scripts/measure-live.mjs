@@ -18,7 +18,9 @@
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { REAL_CHROME_UA, defaultWaitUntil, dismissOverlays, gotoLive, isLiveHttpUrl, launchStealthHeaded, newLiveContext } from './live-session.mjs';
+import { REAL_CHROME_UA, browserTier, defaultWaitUntil, dismissOverlays, gotoLive, isLiveHttpUrl, launchStealthHeaded, newLiveContext } from './live-session.mjs';
+
+export { browserTier };
 
 const HELP = `measure-live — settle a live page (window-free real Chrome) and print rect + computed type per selector
 
@@ -42,8 +44,8 @@ export function writeCache(slug, data) { mkdirSync(MEASURE_DIR, { recursive: tru
 /** Launch the measurement browser. 'stealth' = the window-free real-Chrome tier (default on BOTH sides
  * of a compare so the instrument is symmetric); 'plain' = bundled Chromium. */
 export async function openBrowser(chromium, { tier = 'stealth' } = {}) {
-  if (tier === 'plain') return chromium.launch();
-  return launchStealthHeaded(chromium);
+  if (tier === 'plain') { const b = await chromium.launch(); b.stardustTier = 'chromium'; return b; }
+  return launchStealthHeaded(chromium); // the best available: Chrome, else Chromium (tagged 'chromium-fallback')
 }
 
 export async function openPage(browser, { width = 1440, height = 900, locale = 'en-US', ua = REAL_CHROME_UA } = {}) {
@@ -190,7 +192,7 @@ async function main() {
     const { ctx, page } = await openPage(browser, { width: opts.width, locale: opts.locale });
     const v = await visit(page, opts.url, { warmup: opts.warmup });
     const data = await page.evaluate(measureInPage, { sels: opts.sels, all: opts.all });
-    const out = { url: opts.url, at: new Date().toISOString(), width: opts.width, status: v.status, docH: data.docH, settlePasses: v.passes, pendingImgs: v.pendingImgs, tier: opts.plain ? 'plain' : 'stealth', items: data.items };
+    const out = { url: opts.url, at: new Date().toISOString(), width: opts.width, status: v.status, docH: data.docH, settlePasses: v.passes, pendingImgs: v.pendingImgs, tier: browserTier(browser), items: data.items };
     if (opts.serialize) out.html = await page.evaluate(serializeInPage, { sel: opts.serialize });
     console.log(`docH ${data.docH} (settled in ${v.passes} pass${v.passes > 1 ? 'es' : ''}, HTTP ${v.status})`);
     for (const it of data.items) {

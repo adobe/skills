@@ -29,7 +29,7 @@ import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { inPage } from './clip-probe.mjs';
-import { openBrowser, openPage, readCache, visit, writeCache } from './measure-live.mjs';
+import { browserTier, openBrowser, openPage, readCache, visit, writeCache } from './measure-live.mjs';
 
 const HELP = `unit-geometry — per-element Δx/Δy/Δw/Δh of the first N repeated units, origin vs served (#125 D3)
 
@@ -249,8 +249,9 @@ async function main() {
   if (!opts.units.length) { console.log(`unit-geometry: none declared for ${opts.slug} in ${opts.families} → n/a`); return; }
   const { chromium } = await import('playwright');
   const browser = await openBrowser(chromium, { tier: opts.plain ? 'plain' : 'stealth' });
-  let oInv; let eInv;
+  let oInv; let eInv; let tier;
   try {
+    tier = browserTier(browser);
     const cacheKey = opts.slug ? `${opts.slug}-units` : null;
     const cached = cacheKey && !opts.force ? readCache(cacheKey) : null;
     const oSels = opts.units.map((u) => u.origin);
@@ -260,7 +261,7 @@ async function main() {
   } finally { await browser.close(); }
   const results = opts.units.map((pair) => compareUnits(oInv, eInv, pair, opts.tol));
   const v = verdictOf(results);
-  const out = { _provenance: { writtenBy: 'unit-geometry.mjs', at: new Date().toISOString(), tol: opts.tol, n: opts.n, width: opts.width }, origin: { url: opts.origin, at: oInv.at, docH: oInv.docH }, eds: { url: opts.eds, at: eInv.at, docH: eInv.docH }, results, verdict: v };
+  const out = { _provenance: { writtenBy: 'unit-geometry.mjs', at: new Date().toISOString(), tol: opts.tol, n: opts.n, width: opts.width, tier }, origin: { url: opts.origin, at: oInv.at, docH: oInv.docH }, eds: { url: opts.eds, at: eInv.at, docH: eInv.docH }, results, verdict: v };
   if (opts.json && !opts.jsonFile) console.log(JSON.stringify(out, null, 1));
   else {
     console.log(`unit-geometry @ ${opts.width}px, tol ${opts.tol}px — ${opts.origin} vs ${opts.eds}`);

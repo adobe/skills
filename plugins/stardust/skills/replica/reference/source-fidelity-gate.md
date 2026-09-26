@@ -791,7 +791,13 @@ recorded beside the full one per page and in the totals: every run is calibratio
 on the verdict, never reported unmasked), `overrides.json` (shown BESIDE the measured number,
 never replacing it), `clip-allow.json`, `presence.json`, `units.json`. Origin fallback: live
 stitch → previous origin (`--recapture-origin`) → crawl fullPage screenshot (`crawl-fullpage`,
-asymmetric, flagged). `--eds-host` gates a code branch against the same content (branch hosts
+asymmetric, flagged). **Browser tier: the best available, registered.** The probes elect real
+Chrome (`channel: 'chrome'`, window-free) and fall back to bundled Chromium when it is not
+installed; every probe writes the tier it actually ran (`chrome` | `chromium-fallback` |
+`chromium`) into its JSON, `summary.md` carries a `browser` column and the calibration line
+counts degraded pages — a run that quietly lost its origin measurements on a bot-managed site is
+visible in the artifact. Sites without bot management measure identically on both tiers.
+`--eds-host` gates a code branch against the same content (branch hosts
 serve the LITERAL branch name — `fix/x` → push a mirror `fix-x`). Read a finding with
 `sbs-crop.mjs origin.png eds.png out.png --y <px> --height <px>` — one crop per fact.
 

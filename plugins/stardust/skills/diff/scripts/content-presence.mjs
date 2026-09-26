@@ -33,7 +33,7 @@ import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { clipInventoryInPage, inPage, morePrelude, summarize } from './clip-probe.mjs';
-import { openBrowser, openPage, visit } from './measure-live.mjs';
+import { browserTier, openBrowser, openPage, visit } from './measure-live.mjs';
 
 const HELP = `content-presence — origin vs served page: visible headings / links / buttons / images / text per band + control state (#125 D2)
 
@@ -341,8 +341,9 @@ async function main() {
   const opts = parseArgs(process.argv);
   const { chromium } = await import('playwright');
   const browser = await openBrowser(chromium, { tier: opts.plain ? 'plain' : 'stealth' });
-  let o; let e;
+  let o; let e; let tier;
   try {
+    tier = browserTier(browser);
     // ORIGIN side fails loud on any HTTP ≥ 400 (a 403 page measured as the origin reads "100 EXTRA on the
     // build"); the SERVED side is measured with a warning (a 404 build before preview propagation is the
     // advisory contract).
@@ -351,10 +352,10 @@ async function main() {
   } finally { await browser.close(); }
   const res = diffPresence(o, e, { chrome: opts.chrome });
   const strip = (side) => ({ url: side.url, at: side.at, status: side.status, settlePasses: side.settlePasses, docH: side.docH, root: side.root, items: side.items, clip: { counts: side.clip.counts, groups: side.clip.groups } });
-  const out = { _provenance: { writtenBy: 'content-presence.mjs', at: new Date().toISOString(), width: opts.width, variable: opts.variable }, origin: strip(o), eds: { ...strip(e), clip: e.clip }, bands: res.bands, findings: res.findings, totals: res.totals, textBoxes: { origin: o.textBoxes, eds: e.textBoxes } };
+  const out = { _provenance: { writtenBy: 'content-presence.mjs', at: new Date().toISOString(), width: opts.width, variable: opts.variable, tier }, origin: strip(o), eds: { ...strip(e), clip: e.clip }, bands: res.bands, findings: res.findings, totals: res.totals, textBoxes: { origin: o.textBoxes, eds: e.textBoxes } };
   if (opts.json && !opts.jsonFile) console.log(JSON.stringify(out, null, 1));
   else {
-    console.log(`content-presence @ ${opts.width}px — origin ${opts.origin} (docH ${o.docH}, ${o.items.length} items, HTTP ${o.status}) vs served ${opts.eds} (docH ${e.docH}, ${e.items.length} items, HTTP ${e.status})`);
+    console.log(`content-presence @ ${opts.width}px (${tier}) — origin ${opts.origin} (docH ${o.docH}, ${o.items.length} items, HTTP ${o.status}) vs served ${opts.eds} (docH ${e.docH}, ${e.items.length} items, HTTP ${e.status})`);
     console.log(`scope: ${res.scope === 'root' ? `${o.root} vs ${e.root}` : 'whole page (one side has no <main> / --main root)'}${res.chrome ? ' + chrome' : ' (header/footer left to the chrome crop gate; --chrome to include)'}`);
     console.log(formatReport(res, { maxPerKind: opts.maxFindings }));
     console.log(`Clipped (served side): ${e.clip.counts.total} — origin side ${o.clip.counts.total}`);

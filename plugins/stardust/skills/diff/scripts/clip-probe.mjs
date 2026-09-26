@@ -28,7 +28,7 @@
 import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { openBrowser, openPage, visit } from './measure-live.mjs';
+import { browserTier, openBrowser, openPage, visit } from './measure-live.mjs';
 
 const HELP = `clip-probe — text and controls cut or hidden by an overflow ancestor on a served page (#125 D1)
 
@@ -349,12 +349,13 @@ async function main() {
   try {
     const { ctx, page } = await openPage(browser, { width: opts.width, locale: opts.locale });
     res = await probe(page, opts.url, opts);
+    res.tier = browserTier(browser);
     await ctx.close();
   } finally { await browser.close(); }
   const out = { ...res, textBoxes: res.textBoxes };
   if (opts.json && !opts.jsonFile) { console.log(JSON.stringify(out, null, 1)); }
   else {
-    console.log(`clip-probe ${opts.url} @ ${opts.width}px — docH ${res.docH}, ${res.counts.textNodes} text nodes, ${res.counts.controls} controls (HTTP ${res.status})`);
+    console.log(`clip-probe ${opts.url} @ ${opts.width}px — docH ${res.docH}, ${res.counts.textNodes} text nodes, ${res.counts.controls} controls (HTTP ${res.status}, ${res.tier})`);
     console.log(formatTable(res.groups, { advisory: opts.advisory }));
     console.log(verdictLine(res.counts));
     if (opts.jsonFile) { mkdirSync(dirname(opts.jsonFile) || '.', { recursive: true }); writeFileSync(opts.jsonFile, JSON.stringify(out, null, 1)); console.log(`json → ${opts.jsonFile}`); }

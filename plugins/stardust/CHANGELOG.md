@@ -55,7 +55,10 @@ legible". Element presence and legibility are checkable — so the gate checks t
   — replica recreation-procedure § Repeated-unit families); element lines fail the round and outrank a
   pixel PASS in gate-evidence the way the overflow assert does.
 - **Upstreamed feedback.** A1 `launchStealthHeaded` is WINDOW-FREE by default
-  (`STARDUST_HEADED_WINDOW=1` opts in; bundled-Chromium fallback with a warning). A2 Akamai's HTTP
+  (`STARDUST_HEADED_WINDOW=1` opts in). The tier is the BEST AVAILABLE and REGISTERED: Chrome when
+  installed, else bundled Chromium with a warning, and every probe records `tier` (`chrome` |
+  `chromium-fallback` | `chromium`) in its evidence; gate-all's summary has a `browser` column and
+  counts degraded pages. A2 Akamai's HTTP
   400 escalation is a challenge marker. A3 setup steps install `playwright pixelmatch pngjs cheerio`
   as devDependencies, never `--no-save`. `deploy-batch.mjs` appends the admin `x-error` header to
   4xx (the DA 200-images-per-document cap; protocol step 3a').

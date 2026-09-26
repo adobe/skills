@@ -338,13 +338,21 @@ export async function launchStealthHeaded(chromium) {
     ignoreDefaultArgs: ['--enable-automation'],
   };
   try {
-    return await chromium.launch(opts);
+    const b = await chromium.launch(opts);
+    b.stardustTier = visible ? 'chrome-window' : 'chrome';
+    return b;
   } catch (e) {
     console.error(`[live-session] WARNING: real Chrome (channel: chrome) failed to launch (${String(e.message).split('\n')[0]}) — falling back to bundled Chromium with the stealth args; bot-managed origins may still block this tier`);
     const { channel, ...rest } = opts;
-    return chromium.launch(rest);
+    const b = await chromium.launch(rest);
+    b.stardustTier = 'chromium-fallback';
+    return b;
   }
 }
+/** The tier a browser from launchStealthHeaded / chromium.launch actually runs: 'chrome' | 'chrome-window' |
+ * 'chromium-fallback' (Chrome elected, not installed) | 'chromium' (elected). Every probe records it in its
+ * evidence so a run that degraded is visible in the artifact, not only in a log line. */
+export const browserTier = (b) => b.stardustTier || 'chromium';
 
 // Consent-accept candidates (clicked, never DOM-removed, so consent-gated
 // layout settles the way a real visit does) — stitch-shot's proven list.
