@@ -4,6 +4,77 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.26.0 — published-origin gate hardened: element-level criteria beside the pixel number (#125)
+
+A 96-page rollout of a pharmacy retailer gated every deployed page on stitched captures and
+pixel-compare; its coupon-listing page PASSED at 6.7 % / Δh 69 px while all 284 cards were broken —
+a fixed-height card with `overflow: hidden`, the body ~30 px low, the description clipped mid-glyph,
+the details link pushed under the primary button, the sort control on another default. The links
+were in the served DOM: pure CSS geometry, which pixelmatch underweights (16.5 % over the text
+boxes alone). "PASS" meant "right shapes at the right places", not "every element present and
+legible". Element presence and legibility are checkable — so the gate checks them. Cross-references
+#115 (chrome crop gate), #124 (content-cap row) and the run's feedback items A1–A3.
+
+- **New `replica/scripts/gate-all.mjs` (D0)** — the all-pages published-origin gate: per deployed
+  page in `state.json`, stitched captures of both sides, `pixel-compare`, then the two DOM probes
+  below in the same window-free real-Chrome tier; per-page dir + `summary.{json,md}`, `runs/` for
+  `--only`. **Verdict = pixel % ≤ 10 AND |Δh| ≤ 5 % of origin height AND clipped ≤ 0 (+ documented
+  allowance) AND content MISSING + HIDDEN links / headings = 0** (+ required repeated units within
+  4 px); the pixel-only verdict is recorded beside it — every run is calibration data. Sidecars, each
+  entry documented: `masks.json`, `overrides.json` (shown beside the number, never replacing it),
+  `clip-allow.json`, `presence.json`, `units.json`. Origin fallback live → previous → crawl shot
+  (asymmetric, flagged); `--eds-host` gates a code branch; a union (white-padded) pixel metric was
+  tried as the height guard and rejected (white gaps score as matches) — the guard is explicit.
+- **New `diff/scripts/clip-probe.mjs` (D1)** — text lines and controls against every overflow-
+  clipping ancestor: TEXT CLIPPED / HIDDEN, CONTROL HIDDEN / CLIPPED counted (exit 2); line-clamp,
+  "read more" collapsibles (`--more-words`), scrollable containers, horizontal cuts advisory;
+  collapsed menus, sr-only, hidden subtrees, off-page boxes never reported. Emits the visible text
+  line boxes. Recorded page: 379; the live origin and two known-good pages: 0.
+- **New `diff/scripts/content-presence.mjs` (D2)** —
+  visible headings, links (visible text), buttons, images, text blocks per band (h1–h3 aligned by
+  LCS) + control state (`--count-words`); MISSING / HIDDEN LINK ×n and HEADING 🔴, buttons and
+  CONTROL STATE 🟠, MOVED / EXTRA / COUNT / HEADING AS TEXT 🟡; symmetric scope, chrome left to
+  the crop gate unless `--chrome`, `--variable` regions as counts (HIDDEN still counts), origin
+  HTTP ≥ 400 fails loud (exit 4). Recorded page: HIDDEN 284, CONTROL STATE 2.
+- **New `diff/scripts/unit-geometry.mjs` (D3) + `diff/scripts/measure-live.mjs`** (library) — the shared
+  settle / session / shadow-DOM measurement lifted from the project measure scripts; per-element
+  Δx / Δy / Δw / Δh of the first N repeated units relative to the unit, `hidden` where clipped,
+  origin cached per slug. Recorded card: body +28…+47 px, details link +28 and hidden, badge
+  70×70 at (−10,−10) vs 64×64 at (−27,−30), card 260 → 238.
+- **`pixel-compare.mjs --text-boxes` (D4, auxiliary)**; `textBoxPct` exported. (`--pad`, the rejected
+  union metric, is not shipped.)
+- **The pixel-table rule.** Every crafted prototype and every deployed page is a row:
+  `gate-all --stage prototype --proto-base <url>` writes `gates/prototypes-<w>/summary.{json,md}` at the
+  end of Phase 4 (reusing each archetype's cached `live.png`), the default stage writes `gates/all-<w>/`;
+  `gate-evidence.mjs` reads the tables as the source of record (`--tables`; a page without a row is
+  `OPEN: no table row`, `--check` names a missing table), the eval requires the prototype table, rollout
+  Phase H reports both totals. `gate.sh --full` runs clip-probe on the build side in every regime,
+  content-presence in the published regime, unit-geometry when `stardust/replica/units.json` declares a
+  repeated-unit family for the slug (`{ family: { origin, build, n, required, pages[], templates[] } }`
+  — replica recreation-procedure § Repeated-unit families); element lines fail the round and outrank a
+  pixel PASS in gate-evidence the way the overflow assert does.
+- **Coverage carries the verdict; the roster run is a recorded unit** (review notes on the PR).
+  `update-coverage.mjs --gate <summary.json>` writes each row into `delivery.gate` and flips a failing
+  page (no documented override) to `failed`; `verify.mjs` never marks a page `verified` while
+  `delivery.gate.pass` is false — completion derives from one place. Handoff contract § 3: each cluster
+  subagent runs `gate-all --only` over its own pages inside the fan-out; C-final's roster run is unit
+  `gate-all` (recorded `running` → `done`, resumable at its boundary) followed by `--gate`. Setup probes
+  the deps before installing them (a harness that resolves them leaves the code repo untouched).
+- **Upstreamed feedback.** A1 `launchStealthHeaded` is WINDOW-FREE by default
+  (`STARDUST_HEADED_WINDOW=1` opts in). The tier is the BEST AVAILABLE and REGISTERED: Chrome when
+  installed, else bundled Chromium with a warning, and every probe records `tier` (`chrome` |
+  `chromium-fallback` | `chromium`) in its evidence; gate-all's summary has a `browser` column and
+  counts degraded pages. A2 Akamai's HTTP
+  400 escalation is a challenge marker. A3 setup steps install `playwright pixelmatch pngjs cheerio`
+  as devDependencies, never `--no-save`. `deploy-batch.mjs` appends the admin `x-error` header to
+  4xx (the DA 200-images-per-document cap; protocol step 3a').
+- **Docs** — gate doc § The all-pages published-origin gate; replica Phase 5 + Setup; deploy
+  Step 10 item 7; rollout Phase E; diff SKILL § The published-origin probes; scripts index. **Tests**
+  for the four instruments (pure parts browser-free; clip-probe end-to-end on a fixture where
+  playwright resolves). Calibration on the recorded roster: pixel-only 66 PASS → full 28 PASS.
+- **Open** — default tolerances (`--clip-max 0`, `--unit-tol 4`, 25 % counts), how projects declare
+  repeated-unit block families, whether buttons / control state should block.
+
 ## 0.25.2 — content cap: the container sizing model is measured, persisted and gated at a derived wide width (#124)
 
 A hands-off replica run delivered a site whose live pages centre their content in two nested caps —

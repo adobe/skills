@@ -15,7 +15,7 @@ import { mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ACCEPTANCE, acceptanceFor, attribute, contentFileFor, daPath, deadline, detectIndent, nameOwner, pagePaths, parseCounts, parseFindings, parseLint, parseOverflow, parseVariance, parseVerdict, regimeOf } from '../gate-evidence.mjs';
+import { ACCEPTANCE, acceptanceFor, attribute, contentFileFor, daPath, deadline, detectIndent, loadTables, nameOwner, pagePaths, parseCounts, parseElements, parseFindings, parseLint, parseOverflow, parseVariance, parseVerdict, regimeOf } from '../gate-evidence.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'gate-evidence.mjs');
@@ -384,6 +384,37 @@ check('variance-probe: a probe that never printed the page\'s ■ line is OPEN: 
   for (const n of [2, 3, 4, 5, 6]) { rmSync(join(BG, `about-variance-${n}.json`)); rmSync(join(BG, `about-variance-${n}.log`)); }
   rmSync(sidePress); rmSync(join(MIG, 'about/press.html'));
 });
+// ---- #125: element lines outrank a pixel PASS; the pixel table is the source of record ----------------
+check('parseElements reads the --full element lines', () => {
+  const t = 'clip-probe: Clipped: 379 (text clipped 95, …)\ncontent-presence: Content: MISSING 0 (headings 0, links 0) / HIDDEN 284 (headings 0, links 284) / control-state 2 [published regime]\n';
+  assert.deepEqual(parseElements(t), { clipped: 379, missing: 0, hidden: 284 });
+  assert.deepEqual(parseElements('nothing'), { clipped: null, missing: null, hidden: null });
+});
+check('a --full round whose clip line counts > 0 is FAIL: clipped — over a PASS pixel line', () => {
+  job('home-1440-clip', GATE, ['home', `${LIVE}/`, `${PROTO}/home-proposed.html`, '1440', 'clip1', '--full'], { start: 200, end: 202, exit: 2, log: `${pixelLog(0, 69600, 5313600, '1.31', 'PASS')}\nclip-probe: Clipped: 7 (text clipped 0, text hidden 0, controls hidden 7, controls clipped 0)\n` });
+  const r = run('--dry-run', '--json', '--slug', 'home');
+  const home = JSON.parse(r.out)[0];
+  assert.match(home.gateEvidence['pixel-gate-1440'], /^FAIL: clipped 7 on the build \(clip-probe\)/);
+  rmSync(join(BG, 'home-1440-clip.json')); rmSync(join(BG, 'home-1440-clip.log'));
+});
+check('with a pixel table for the width, the row decides and a page without a row is OPEN: no table row', () => {
+  const dir = join(root, 'stardust/replica/gates/all-1440'); mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, 'summary.json'), JSON.stringify({ rows: [{ slug: 'tours-north', pct: 2.1, heightDelta: 3, clipped: 0, content: { missing: 0, hidden: 0 }, pass: true, reasons: [] }, { slug: 'about-history', pct: 6.7, heightDelta: 69, clipped: 379, content: { missing: 0, hidden: 284 }, pass: false, reasons: ['clipped 379', 'content MISSING 0 / HIDDEN 284'] }] }));
+  const rows = JSON.parse(run('--dry-run', '--json').out);
+  const by = Object.fromEntries(rows.map((r) => [r.slug, r]));
+  assert.ok(by['tours-north'].gatesPassed.includes('pixel-gate-1440'));
+  assert.match(by['tours-north'].gateEvidence['pixel-gate-1440'], /2\.1.*clipped 0.*all-1440\/summary\.md\) \[published regime\]/);
+  assert.match(by['about-history'].gateEvidence['pixel-gate-1440'], /^FAIL: clipped 379; content MISSING 0 \/ HIDDEN 284 — /);
+  assert.match(by.home.gateEvidence['pixel-gate-1440'], /^OPEN: no row in the pixel table \(all-1440\)/);
+  assert.ok(by.home.stale.includes('pixel-gate-1440'), 'the declared gate is kept but reported stale');
+  assert.ok(loadTables(join(root, 'stardust/replica/gates'), [1440, 360])[360].any === false);
+  rmSync(join(root, 'stardust/replica/gates'), { recursive: true, force: true });
+});
+check('without any table the log rule stands and --check notes the missing table', () => {
+  const r = run('--dry-run', '--check');
+  assert.match(r.out + r.err, /no pixel table for 1440 under stardust\/replica\/gates\//);
+});
+
 check('a malformed progress.json aborts (exit 1, named) before any sidecar is written; writes go through temp + rename', () => {
   const good = read(PROGRESS); writeFileSync(PROGRESS, '{ "pages": ');
   job('media-home', 'node', ['stardust/scripts/rollout/media-reconcile.mjs', '--file', 'stardust/migrated/index.html'], { start: 110, end: 111, log: 'media-reconcile\n\n3 keep' });
@@ -397,5 +428,6 @@ check('a malformed progress.json aborts (exit 1, named) before any sidecar is wr
 });
 
 rmSync(root, { recursive: true, force: true });
+
 console.log(failed ? `\n${failed} of ${checks} checks failing` : `\ngate-evidence: all ${checks} checks passed`);
 process.exit(failed ? 1 : 0);

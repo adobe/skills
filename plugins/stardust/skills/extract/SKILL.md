@@ -89,8 +89,9 @@ Additional checks for this sub-command:
    `npx playwright --version` succeeds. Verify the module is
    import-resolvable from the project root (probe:
    `node -e "import('playwright').then(()=>process.exit(0))"`); if it
-   isn't, run `npm i -D playwright --no-save --legacy-peer-deps` (or
-   use the Playwright MCP server) before crawling. The
+   isn't, run `npm i -D playwright pixelmatch pngjs cheerio --legacy-peer-deps`
+   (devDependencies, never `--no-save` — #125) or use the Playwright MCP
+   server, before crawling. The
    `--legacy-peer-deps` flag is required on `aem-boilerplate` targets
    (their pinned `eslint@8` makes a plain `npm i` exit `ERESOLVE`
    before playwright is even considered). Don't trust the CLI

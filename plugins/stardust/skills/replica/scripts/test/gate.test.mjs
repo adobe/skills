@@ -67,6 +67,20 @@ stub(diff, 'content-diff.mjs', `
   if (process.env.STUB_CD_RC) { console.error('content-diff error: build side answered HTTP 502'); process.exit(Number(process.env.STUB_CD_RC)); }
   const s = Number(process.env.STUB_STRUCTURAL || 0);
   console.log('  live: 12 headings'); console.log('Findings: ' + (s ? (s + 2) + ' (' + s + ' structural 🔴)' : 'none — content + roles match'));`);
+stub(diff, 'clip-probe.mjs', `
+  console.log('argv ' + process.argv.slice(2).join(' '));
+  const n = Number(process.env.STUB_CLIPPED || 0);
+  console.log('Clipped: ' + n + ' (text clipped ' + n + ', text hidden 0, controls hidden 0, controls clipped 0; advisory: clamped 0)');
+  process.exit(n ? 2 : 0);`);
+stub(diff, 'content-presence.mjs', `
+  console.log('argv ' + process.argv.slice(2).join(' '));
+  const h = Number(process.env.STUB_HIDDEN || 0);
+  console.log('Content: MISSING 0 (headings 0, links 0) / HIDDEN ' + h + ' (headings 0, links ' + h + ') / control-state 0');
+  process.exit(h ? 2 : 0);`);
+stub(diff, 'unit-geometry.mjs', `
+  console.log('argv ' + process.argv.slice(2).join(' '));
+  if (process.env.STUB_UNITS_RC === '2') { console.log('Units: 1 compared; elements within 2, off 3, hidden 1, missing 0 → FAIL'); process.exit(2); }
+  console.log('unit-geometry: none declared for home in stardust/replica/units.json → n/a');`);
 stub(diff, 'visual-diff.mjs', `
   console.log('Visual diff @ 1440px'); console.log('build red flags (advisory): ');
   console.log('  • HEADING COLOR: h2 differs'); console.log('  • IMAGE DIMS: hero'); console.log('Full metrics JSON:'); console.log('{}');`);
@@ -170,7 +184,8 @@ check('--full exits 0 when every probe passes', r.status === 0, `status ${r.stat
 check('--full prints one content-diff verdict', /^content-diff: none — content \+ roles match/m.test(r.stdout), r.stdout);
 check('--full prints the visual flag count and heads', /^visual-diff: 2 advisory flag\(s\) — HEADING COLOR: h2 differs; IMAGE DIMS: hero;/m.test(r.stdout), r.stdout);
 check('--full prints the chrome-parity summary', /^chrome-parity: ✓ chrome parity/m.test(r.stdout), r.stdout);
-check('--full writes the probe evidence files', ['content-diff-iter2.txt', 'visual-diff-iter2.txt', 'chrome-parity-iter2.txt'].every((f) => existsSync(join(root, 'stardust/replica/gates/home-1440', f))));
+check('--full prints the clip-probe verdict on the build side and skips content-presence in the prototype regime', /^clip-probe: Clipped: 0 /m.test(r.stdout) && !/^content-presence:/m.test(r.stdout) && !existsSync(join(root, 'stardust/replica/gates/home-1440/content-presence-iter2.txt')), r.stdout);
+check('--full writes the probe evidence files', ['content-diff-iter2.txt', 'visual-diff-iter2.txt', 'chrome-parity-iter2.txt', 'clip-iter2.txt'].every((f) => existsSync(join(root, 'stardust/replica/gates/home-1440', f))));
 check('--full keeps the full reports out of stdout', !/12 headings/.test(r.stdout) && !/Full metrics/.test(r.stdout));
 
 // --full, structural red → 2 even though pixels pass
@@ -215,8 +230,24 @@ const cd = existsSync(cdPath) ? readFileSync(cdPath, 'utf8') : `(missing ${cdPat
 check('--main is passed to the diff probes', /--main #content/.test(cd), cd);
 check('--no-dismiss drops the dismiss flag', !/--dismiss/.test(cd), cd);
 
-server.close();
+// #125: element defects fail a --full round; content-presence and unit-geometry join in the published regime / with a families file
+r = await gate(['home', 'https://live.example/', buildUrl, '1440', 'clip1', '--full'], { STUB_CLIPPED: '3' });
+check('--full: a clipped count > 0 on the build side fails the round (exit 2) with its verdict line', r.status === 2 && /^clip-probe: Clipped: 3 /m.test(r.stdout), `status ${r.status} ${r.stdout}`);
+r = await gate(['home', 'https://live.example/', buildUrl, '1440', 'pub1', '--full'], { GATE_REGIME: 'published', STUB_HIDDEN: '284' });
+check('--full in the published regime runs content-presence live vs build and a HIDDEN link fails the round', r.status === 2 && /^content-presence: Content: MISSING 0 .*HIDDEN 284/m.test(r.stdout) && existsSync(join(root, 'stardust/replica/gates/home-1440/content-presence-pub1.txt')), `status ${r.status} ${r.stdout}`);
+r = await gate(['home', 'https://live.example/', buildUrl, '1440', 'pub2', '--full'], { GATE_REGIME: 'published' });
+check('--full in the published regime passes when content-presence is clean', r.status === 0 && /^content-presence: Content: MISSING 0 .*HIDDEN 0/m.test(r.stdout), `status ${r.status} ${r.stdout}`);
+check('no unit-geometry line without a families file', !/^unit-geometry:/m.test(r.stdout));
+mkdirSync(join(root, 'stardust/replica'), { recursive: true });
+writeFileSync(join(root, 'stardust/replica/units.json'), JSON.stringify({ cards: { origin: '.a', build: '.b', pages: ['home'] } }));
+r = await gate(['home', 'https://live.example/', buildUrl, '1440', 'u1', '--full']);
+check('with stardust/replica/units.json the round runs unit-geometry --families --slug and prints its line', r.status === 0 && /^unit-geometry: unit-geometry: none declared/m.test(r.stdout) && /--families stardust\/replica\/units.json --slug home/.test(readFileSync(join(root, 'stardust/replica/gates/home-1440/units-u1.txt'), 'utf8')), `status ${r.status} ${r.stdout}`);
+r = await gate(['home', 'https://live.example/', buildUrl, '1440', 'u2', '--full'], { STUB_UNITS_RC: '2' });
+check('a required unit off (unit-geometry exit 2) fails the round', r.status === 2 && /^unit-geometry: Units: 1 compared/m.test(r.stdout), `status ${r.status} ${r.stdout}`);
+unlinkSync(join(root, 'stardust/replica/units.json'));
+
+process.exit(failures ? 1 : 0);server.close();
 if (process.env.GATE_TEST_KEEP) console.log(`sandbox kept at ${root} (build url was ${buildUrl})`);
 else rmSync(root, { recursive: true, force: true });
 console.log(failures ? `\n${failures} check(s) failed` : '\nall checks passed');
-process.exit(failures ? 1 : 0);
+

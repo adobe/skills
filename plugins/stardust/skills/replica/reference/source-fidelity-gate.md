@@ -237,6 +237,16 @@ regimes; what burns iteration caps is chasing prototype-regime numbers on a
 published-origin gate. Record which regime a number belongs to in the
 ledger, and judge each against its own regime's precedent.
 
+7. **In the pixel table (#125).** Every crafted prototype and every deployed page is a
+   row in `stardust/replica/gates/prototypes-<w>/summary.md` (gate-all `--stage
+   prototype`, run at the end of Phase 4) or `…/all-<w>/summary.md` (delivery), with
+   its measured number, height delta, clipped count, verdict and evidence dir.
+   `gate-evidence.mjs` reads the table as the source of record: a page without a row is
+   ungated, whatever its sidecar or a `gate.sh` log says. Inside a `--full` round the
+   element probes rule a PASS the way the overflow assert does: `clip-probe: Clipped: n`
+   with n > 0 (every regime), a `content-presence` MISSING / HIDDEN link or heading
+   (published regime), a required repeated unit off (`stardust/replica/units.json`).
+
 ## Reading the band breakdown
 
 The overall % hides WHERE drift starts. `pixel-compare.mjs` prints per-500px
@@ -730,6 +740,72 @@ none visible on a local harness):
   (`.section:has(.some-block)`) can silently never match the delivered
   page (recorded). Verify every `:has()` / block-class selector against the
   delivered `.plain.html` and rendered DOM, not the authored file.
+
+## The all-pages published-origin gate (gate-all) — four criteria (#125)
+
+**The recorded case.** A 96-page rollout of a pharmacy retailer gated its five archetypes and
+shipped the other pages unmeasured; the owner's first feedback was that they "don't look
+formatted as the original". A runner then gated every deployed page on stitched 1440 captures
+and pixel-compare, and a fix program took the roster from 3 to 67 PASS. Then the coupon-listing
+page PASSED at **6.7 % / Δh 69 px** while every one of its 284 cards was broken: a fixed-height
+card with `overflow: hidden`, the body ~30 px too low, the description clipped mid-glyph, the
+details link pushed under the primary button — and the sort control reading a different default
+than the origin. The links WERE in the served DOM; pure CSS geometry. Pixelmatch underweights
+small text inside otherwise matching shapes (the text-only number, `--text-boxes`, read 16.5 %).
+"PASS" meant "right shapes at the right places", not "every element present and legible".
+Element presence and legibility are checkable — so `gate-all.mjs` checks them.
+
+`node stardust/scripts/replica/gate-all.mjs` (project root; through `run-bg.mjs`) runs, for
+every `deployed` page in `stardust/state.json`, the stitched captures and pixel-compare of the
+archetype gate PLUS two DOM probes that load both pages in the same window-free real-Chrome tier
+and settle them the same way (`measure-live.mjs`), and writes
+`stardust/replica/gates/all-<width>/<slug>/{origin,eds,diff}.png + pixel.json + content.json +
+clip.json [+ units.json]` and `summary.{json,md}`. **Verdict, per page — all four:**
+
+1. **pixel** — overlap % ≤ `--threshold` (default 10).
+2. **height** — |Δh| ≤ `--height-tol` × origin height (default 5 %). The overlap crop cannot see
+   a render thousands of px too tall; a union (white-padded) metric was tried and rejected
+   (white gaps score as matches), so the guard is explicit.
+3. **clip** — served-side `clip-probe` count ≤ `--clip-max` (default 0) + the page's allowance
+   in `clip-allow.json`. Counted: a text line cut across, whole lines behind an overflow-hidden
+   ancestor without a line-clamp, a link or button outside or cut by its clipping ancestor.
+   Advisory: line-clamp, "read more" collapsibles, scrollable containers, horizontal cuts.
+4. **content** — `content-presence` MISSING + HIDDEN links and h1–h3 headings = 0. Visible
+   headings, links (by visible text), buttons, images, text blocks per band (h1–h3 sequence
+   aligned by text) plus control STATE. Clipped past 50 % = HIDDEN, not present. Buttons,
+   control state and count deltas are reported, not blocking. Regions declared in
+   `presence.json` (rails, coupon walls, reviews) compare as counts — HIDDEN still counts.
+   Origin not probeable (edge 403, bot challenge) → `content: n/a (<why>)`, never a fail,
+   never a silent pass.
+   (+ **units** — `unit-geometry` off / hidden / missing = 0 for `units.json` entries marked
+   `required: true`; others are advisory rows.)
+
+**The table rule.** `--stage prototype` (pages with a `prototypePath`, build = the served
+prototype dir, origin = the archetype round's cached `live.png` when present) writes
+`gates/prototypes-<w>/summary.{json,md}`; the default published stage writes
+`gates/all-<w>/`. Both are read by `gate-evidence.mjs`: with a table for the width, a
+page's row decides `pixel-gate-<w>` and a page without a row is `OPEN: no table row`;
+without any table the `gate.sh` logs stand in and `--check` names the missing table. The
+eval requires both summaries with a row per page. The pixel-only verdict (1 + 2) is
+recorded beside the full one per page and in the totals: every run is calibration data. Sidecars in the gate dir, each entry documented: `masks.json` (printed
+on the verdict, never reported unmasked), `overrides.json` (shown BESIDE the measured number,
+never replacing it), `clip-allow.json`, `presence.json`, `units.json`. Origin fallback: live
+stitch → previous origin (`--recapture-origin`) → crawl fullPage screenshot (`crawl-fullpage`,
+asymmetric, flagged). **Browser tier: the best available, registered.** The probes elect real
+Chrome (`channel: 'chrome'`, window-free) and fall back to bundled Chromium when it is not
+installed; every probe writes the tier it actually ran (`chrome` | `chromium-fallback` |
+`chromium`) into its JSON, `summary.md` carries a `browser` column and the calibration line
+counts degraded pages — a run that quietly lost its origin measurements on a bot-managed site is
+visible in the artifact. Sites without bot management measure identically on both tiers.
+`--eds-host` gates a code branch against the same content (branch hosts
+serve the LITERAL branch name — `fix/x` → push a mirror `fix-x`). Read a finding as one crop of
+the two captures at the row's band, never the whole pages.
+
+Calibration on the recorded roster (96 pages, same captures): pixel-only 66 PASS → full 28 PASS;
+failing by criterion pixel 30, height 6, clip 23, content 31; content n/a on 37 (edge-blocked
+origins). Open: the default tolerances (`--clip-max 0`, `--unit-tol 4`, the 25 % count
+tolerance), how a project declares repeated-unit block families (`units.json` per page today),
+and whether buttons and control state should block once session-variable labels are modelled.
 
 ## Residual logging format
 

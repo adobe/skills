@@ -390,6 +390,14 @@ decoration ran: the runtime's `body.appear` class is set (per
 `stardust/runtime-contract.json`), `main .section` count > 0,
 zero `pageerror` events, zero broken images.
 
+**Published-origin gate over the roster (#125).** `verify` proves the pages render; the
+DELIVERY verdict is replica's `gate-all.mjs` (pixel + height + clip + content per deployed page,
+`../replica/reference/source-fidelity-gate.md` § The all-pages published-origin gate).
+`update-coverage.mjs --gate stardust/replica/gates/all-<w>/summary.json` writes each row into
+`delivery.gate` and flips a failing page to `failed`; `verify` never marks it `verified` while the
+gate fails — completion derives from one place, never from the pixel number alone. In C-deliver
+the roster run is the recorded unit `gate-all` (handoff contract § 3, row C).
+
 ### Phase E2 — Link-audit completeness
 
 `verify.mjs` checks the links on delivered pages; this phase closes the set of
@@ -521,11 +529,14 @@ Pages       <N> total · <v> verified · <d> deployed · <p> pending · <cp> con
 Templates   <T> (per-template delivered/total)
 Blocks      <B> total · <c> converted · <p> pending
 Quality     health <H>/100 · open P1 <n> / P2 <n> / P3 <n>
+Pixel table prototypes <p>/<P> PASS · deployed <d>/<D> PASS (pixel-only <x>/<D>) — gates/{prototypes,all}-1440/summary.md
 To deliver  <list of remaining slugs>
 Content     <cp> pages awaiting content track (block code deployed, document not yet pushed)
 ```
 
-Surface `pending`/`stale`/`failed` as the explicit "what's missing" list.
+Surface `pending`/`stale`/`failed` as the explicit "what's missing" list. The pixel-table
+line comes from the two `summary.json` totals (`pass`, `pixelOnlyPass`, `pages`); a deployed
+page missing from `all-1440/summary.json` is ungated and belongs in that list (#125).
 `content-pending` pages are listed separately — not failures; their block code is
 live and they advance to `pending` automatically when `migrate` emits their HTML
 and `inventory` is re-run.

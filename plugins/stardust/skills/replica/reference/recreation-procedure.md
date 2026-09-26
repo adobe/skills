@@ -70,6 +70,17 @@ the chrome crop gate (`source-fidelity-gate.md` § Pass bar, item 5) against
 the NEW page's live chrome, and flag any page-level compensation for
 back-port into the canon files so later archetypes don't re-discover it.
 
+### Repeated-unit families (#125)
+
+A block that repeats a unit — cards, rail items, list rows, FAQ rows — is declared once in
+`stardust/replica/units.json` when it is authored: `{ "<family>": { "origin": "<live unit
+selector>", "build": "<block unit selector>", "n": 2, "required": true, "pages": ["<slug>"],
+"templates": ["<template>"] } }`. `gate.sh --full`, `gate-all.mjs` and `unit-geometry.mjs
+--families` resolve the page's families from it and compare the first N units element by
+element (Δx/Δy/Δw/Δh within 4 px, hidden where the build clips); `required: false` makes a
+family advisory. The pixel gate sees the grid of shapes, not whether the badge sits on the
+corner or the body starts 30 px low — the workstreams that converged measured exactly this.
+
 ## CSS lifting — fidelity values come from the original site's CSS, not the eye
 
 (Prior art: an earlier airport-site migration's improvement notes §3.6; re-confirmed in UC1-E1 where

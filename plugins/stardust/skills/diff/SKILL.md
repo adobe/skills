@@ -40,9 +40,10 @@ root carries the `placeholder` / `aria-label` / `title` values and the icons.
 ```bash
 # Prereq 0: playwright importable from the project root — probe
 #   node -e "import('playwright').then(()=>process.exit(0))"
-# and re-install (npm i -D playwright --no-save --legacy-peer-deps) on failure:
-# a --no-save install from extract is PRUNED by any later real npm i
-# (extract SKILL.md § Setup). Run the copied scripts from the project, not the plugin.
+# and on failure install it AS A devDependency (npm i -D playwright pixelmatch pngjs cheerio
+# --legacy-peer-deps — never --no-save: a --no-save install is PRUNED by the next real npm i,
+# recorded twice in one run; extract SKILL.md § Setup). Run the copied scripts from the project
+# root, not the plugin: ESM resolves `playwright` from the script's own location.
 # Copy the WHOLE skills/diff/scripts/ dir: content-diff imports its local diff-profiles.mjs
 # AND content-inventory.mjs. (The deploy gates #93/#94 now use their OWN synced copies in
 # skills/deploy/scripts/ — A6/A2 are independent of this skill; the two copies must stay in
@@ -109,6 +110,30 @@ aem.page before preview propagation** — is NOT fatal: the probe logs a loud wa
 measures the error page, and the flags (BLANK RENDER / content asymmetry) carry the
 signal with **exit 0**. That is the probes' advisory contract: 0 = ran (flags advisory),
 1 = probe error, 3 = bot challenge.
+
+## The published-origin probes (#125)
+
+`content-diff` reconciles a prototype with its build; against a LIVE commerce origin its per-node
+findings were false, and the pixel gate passed a page whose every card was clipped
+(`../replica/reference/source-fidelity-gate.md` § The all-pages published-origin gate). Three
+probes ask the checkable questions; all load both sides in the same window-free real-Chrome tier
+and settle them the same way (`scripts/measure-live.mjs`).
+
+```bash
+ORIGIN="https://www.example.com/<path>"; SERVED="https://main--repo--owner.aem.live/<path>"
+node stardust/scripts/diff/clip-probe.mjs "$SERVED" [--json clip.json]                       # D1: exit 2 on cut / hidden text or controls
+node stardust/scripts/diff/content-presence.mjs "$ORIGIN" "$SERVED" [--variable "<selO>=<selE>"]  # D2: exit 2 on MISSING/HIDDEN link or heading
+node stardust/scripts/diff/unit-geometry.mjs "$ORIGIN" "$SERVED" --unit "<selO>=<selE>" --n 2      # D3: exit 2 on an element off / hidden / missing
+```
+
+Reading: a 🔴 clip group names the clipper (a fixed-height box with `overflow: hidden`) — fix
+that block's CSS, never the content. HIDDEN LINK = in the DOM but clipped (CSS); MISSING LINK =
+not served (encoder); CONTROL STATE = same control, another value; COUNT … = session-variable
+region, confirm by eye. The origin side fails loud on HTTP ≥ 400 (exit 4) and a bot challenge
+(exit 3). Traps: an infinite-scroll origin keeps loading under the settle — mark the region
+`--variable`; a live origin without `<main>` compares whole page against whole page (the scope
+line says so), header / footer left to the chrome crop gate unless `--chrome`; the count-phrase
+and "read more" heuristics are English word lists (`--count-words`, `--more-words`).
 
 ## Reading content-diff
 

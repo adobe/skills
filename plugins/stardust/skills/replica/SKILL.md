@@ -51,11 +51,16 @@ eyeballing.
    § Flow keys): invoking `replica` is the choice.
 2. Verify Playwright is importable from the project root (extract needs it;
    so do the gate scripts).
-3. Install the gate's pixel deps in the project:
-   `npm i -D playwright pixelmatch pngjs --no-save --legacy-peer-deps`.
-   Same trap as diff's prereq 0: a `--no-save` install is PRUNED by any later
-   real `npm i` — re-probe before every gate run
-   (`node -e "import('pixelmatch').then(()=>process.exit(0))"`).
+3. Probe the gate's deps from the project root first —
+   `node -e "import('pixelmatch').then(()=>process.exit(0))"` (and playwright,
+   pngjs, cheerio) — and only on failure install them AS devDependencies,
+   never `--no-save`: `npm i -D playwright pixelmatch pngjs cheerio
+   --legacy-peer-deps` (a `--no-save` install is pruned by the next real
+   `npm i` — recorded twice in one run, #125). A harness that already
+   resolves them leaves the delivered code repo untouched; the
+   devDependencies otherwise land in the repo the skills push. Run every
+   probe from the project root: ESM resolves `playwright` from the script's
+   own location.
 4. Copy scripts into the project and run them from there, not from the
    plugin: this skill's whole `scripts/` dir to
    `stardust/scripts/replica/`, the master skill's `../stardust/scripts/`
@@ -253,6 +258,8 @@ node stardust/scripts/replica/anchor.mjs "$LIVE"  --width 1440 --cache $G/anchor
 node stardust/scripts/replica/anchor.mjs "$PROTO" --width 1440   # build-side runs are free
 # Chrome: computed-style parity BEFORE any pixel round on header/footer/strips
 node stardust/scripts/replica/chrome-parity.mjs "$LIVE" "$PROTO" --width 1440 --live-cache $G/chrome-live.json   # exit 0 = quiet, then crop-compare
+# --headed anywhere in these instruments = the WINDOW-FREE real-Chrome stealth tier (live-session
+# launchStealthHeaded, #125): it never opens a window; STARDUST_HEADED_WINDOW=1 is the only way to get one.
 # gate.sh: live.png cached, every step under a deadline (exit 124 = re-run, not FAIL). Rounds run in
 # the BACKGROUND: start every round at once (the slots pace the Chromiums — no `sleep N;` staggering),
 # then `wait` prints verdict lines only; exit 75 = still going → `wait` again as your NEXT step, never
@@ -278,12 +285,22 @@ a verdict; 0 only when all four ran and passed).
 - **content-cap row: `cap-probe.mjs … --against` prints `cap-probe: PASS`**
   (gate doc § Pass bar item 6 — every live cap held within ±20 px by kind,
   nothing capped only on the prototype; a ✗ names the sizing rule, no pixel iteration);
+- **clip-probe: `Clipped: 0`** on the build side (a `--full` round runs it; cut or hidden
+  text / controls fail the round like an over-threshold pixel diff — #125); a
+  declared repeated-unit family (`stardust/replica/units.json`, gate doc item 7)
+  within 4 px;
 - and, outside the bar and outside the cap, the horizontal-overflow assert:
   `document.documentElement.scrollWidth` within 4 px of the viewport
   (integer rounding; `GATE_OVERFLOW_TOLERANCE`) at every breakpoint on the
   build side — gate.sh fails the round on more whatever the pixel number
   says; a `capture failed (exit 1)` round (after gate.sh's one
   retry) is re-queued, never counted.
+
+**Every prototype is a row (#125).** When the archetypes pass, one run per width
+writes the prototype table — `node stardust/scripts/replica/gate-all.mjs --stage
+prototype --proto-base "$PROTO_BASE" --width 1440` (then 360) through `run-bg.mjs`;
+it reuses each archetype's cached `live.png`. `gate-evidence.mjs` reads it as the
+source of record: a prototype without a row is ungated.
 
 **Iteration discipline: hard cap 3 iterations per breakpoint.** Each
 iteration's fixes come off the instruments, never off eyeballing. After 3,
@@ -415,11 +432,29 @@ had one section for the whole run).
   `stardust/replica/gates/<slug>-<width>/` dir under the `pub<N>` label (a
   new dir would force a fresh live capture). Only the published number
   counts.
+- **The delivery gate is the ALL-PAGES run, four criteria — not the pixel
+  number alone** (`reference/source-fidelity-gate.md` § The all-pages
+  published-origin gate, #125): `node stardust/scripts/replica/gate-all.mjs
+  [--only <slug,…>] [--skip-existing] [--eds-host <host>]` through `run-bg.mjs`.
+  DELIVERED = pixel % ≤ 10 AND |Δh| ≤ 5 % AND 0 clipped text / controls
+  (`clip-probe`) AND 0 MISSING / HIDDEN links / headings (`content-presence`);
+  a recorded page passed the pixel bar with all of its cards clipped. Evidence
+  and sidecars: `stardust/replica/gates/all-<width>/`; with the Phase 4
+  `prototypes-<width>/` table it is the pair `gate-evidence.mjs` reads (a page
+  without a row is ungated). Each cluster subagent runs `--only` over its own
+  pages inside the fan-out; C-final's roster run is the recorded unit
+  `gate-all` (`--skip-existing`, captures reused) followed by
+  `update-coverage.mjs --gate` (handoff contract § 3, row C).
 
 **State:** replica writes its own state under `stardust/replica/` — the
 inconsistency register, `progress.json` (per page type: archetype slug,
 iterations used, per-breakpoint gate results, residuals, motion
 inventory), `motion/<slug>.json`, and `gates/<slug>-<width>/` evidence.
+The delivery gate (#125) adds `gates/all-<width>/` — one dir per deployed
+page (`origin.png`, `eds.png`, `diff.png`, `pixel.json`, `content.json`,
+`clip.json`, `units.json`), `summary.{json,md}`, `runs/` for `--only` runs and
+the documented sidecars (`masks.json`, `overrides.json`, `clip-allow.json`,
+`presence.json`, `units.json`).
 Phase 5 adds three files under `stardust/rollout/`: `progress.json` (the
 C-deliver unit ledger — status, gates and verdict per unit),
 `foundation-freeze.json` (the sha256 manifest of the frozen foundation) and
