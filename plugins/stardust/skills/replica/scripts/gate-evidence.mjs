@@ -25,8 +25,8 @@
  *                       residuals; the assert is the one no iteration cap waives). The line ends
  *                       with the round's REGIME, read from the
  *                       build URL argument: localhost / 127.0.0.1 / file: → `[prototype regime]`,
- *                       anything else → `[published regime]`. The prototype-regime bar screens
- *                       siblings before delivery; it never replaces the published-origin gate
+ *                       anything else → `[published regime]`. The prototype-regime bar is the
+ *                       archetype's; siblings are gated in the published regime only (#126); it never replaces the published-origin gate
  *                       (gate.sh header: "the published-origin gate is the same command with the
  *                       preview URL") — a reader who needs the published verdict looks for that word.
  *                       A --full round's element lines outrank its pixel PASS the way the overflow

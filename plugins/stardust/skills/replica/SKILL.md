@@ -387,11 +387,12 @@ had one section for the whole run).
   of them, then re-read the overflow, before its first Phase 5 output);
   fetch a cited section with `section.mjs` only when a step needs depth.
 - **Pages beyond the archetypes** go through the stardust `migrate` skill at
-  **sibling tier** (`../migrate/reference/fidelity-tiers.md`): structural
-  clone of the gated archetype + content-fidelity + delivery-lint +
-  media-reconcile (once the delivered content file exists). Siblings inherit
-  the archetype's source-fidelity gate —
-  never re-author one from scratch. **Template constancy is measured, not
+  **sibling tier** (`../migrate/reference/fidelity-tiers.md`) — and only
+  AFTER their archetype is live and gated at the published origin (contract
+  § 3 row C, unit `C-archetype`; #126): structural clone as the encoder's
+  input + content-fidelity + delivery-lint + media-reconcile; the sibling's
+  only counting number is its gate row after PUT + preview (no local pixel
+  bar). Siblings inherit the archetype's proven encoder — never re-author one. **Template constancy is measured, not
   assumed**: before cloning, run `stardust/scripts/replica/sibling-variance.mjs
   <archetype> <siblings…> --probe <block>=<sel> …` once per template and
   budget every delta as a block VARIANT class on the sibling's content (same
@@ -409,7 +410,10 @@ had one section for the whole run).
 - **C-deliver runs in units** (`reference/handoff-contract.md` § 3, row C +
   Fan-out discipline): C0 — ONE foundation subagent authors AND deploys the
   foundation; the main agent gates the shell on the published origin, then
-  `foundation-freeze.mjs freeze` + commit; C1…Cn — one subagent per template
+  `foundation-freeze.mjs freeze` + commit; C-archetype — per template, the
+  gated archetype is deployed and passes its full gate row on the preview URL
+  (cap 3 fix rounds, then the re-prototype decision) BEFORE its siblings
+  render; C1…Cn — one subagent per template
   cluster runs the whole chain, PUT → preview → published-origin gates
   included, with its own batch ledger (`deploy-batch.mjs --ledger …`,
   lock-safe) and reports one verdict line; the main agent only coordinates
@@ -419,19 +423,12 @@ had one section for the whole run).
   never by itself a reason to end the session; no frozen file is edited
   mid-wave.
 - **The final gate runs against the PUBLISHED origin — not the harness**
-  (`reference/source-fidelity-gate.md` § The published-origin gate): the
-  delivery pipeline transforms markup, so harness numbers understate.
-  Deploy the page first (`PUT → preview`), then gate it there — nothing
-  pixel-shaped runs on the local EDS harness before the first PUT (it feeds
-  `qa-gate`/`block-roundtrip` only; a recorded session spent its budget on a
-  harness diff and delivered no page). The published round is the same
-  command with the preview URL: `gate.sh <slug> "$LIVE" "<preview-url>"
+  (`reference/source-fidelity-gate.md` § The published-origin gate): deploy
+  first (`PUT → preview`), then `gate.sh <slug> "$LIVE" "<preview-url>"
   <width> pub1 --full --marker "<brand or domain string>"` through
-  `run-bg.mjs` — `--marker` is required (the slug lives in the prototype's
-  file name, not the preview page) — in the ordinary
-  `stardust/replica/gates/<slug>-<width>/` dir under the `pub<N>` label (a
-  new dir would force a fresh live capture). Only the published number
-  counts.
+  `run-bg.mjs`, in the ordinary `gates/<slug>-<width>/` dir under the `pub<N>`
+  label (a new dir would force a fresh live capture). Nothing pixel-shaped
+  runs on the local harness — it feeds `qa-gate`/`block-roundtrip` only.
 - **The delivery gate is the ALL-PAGES run, four criteria — not the pixel
   number alone** (`reference/source-fidelity-gate.md` § The all-pages
   published-origin gate, #125): `node stardust/scripts/replica/gate-all.mjs
