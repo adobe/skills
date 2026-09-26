@@ -25,19 +25,18 @@ legible". Element presence and legibility are checkable — so the gate checks t
   `clip-allow.json`, `presence.json`, `units.json`. Origin fallback live → previous → crawl shot
   (asymmetric, flagged); `--eds-host` gates a code branch; a union (white-padded) pixel metric was
   tried as the height guard and rejected (white gaps score as matches) — the guard is explicit.
-  `replica/scripts/sbs-crop.mjs` folds three side-by-side crop helpers.
 - **New `diff/scripts/clip-probe.mjs` (D1)** — text lines and controls against every overflow-
   clipping ancestor: TEXT CLIPPED / HIDDEN, CONTROL HIDDEN / CLIPPED counted (exit 2); line-clamp,
   "read more" collapsibles (`--more-words`), scrollable containers, horizontal cuts advisory;
   collapsed menus, sr-only, hidden subtrees, off-page boxes never reported. Emits the visible text
   line boxes. Recorded page: 379; the live origin and two known-good pages: 0.
-- **New `diff/scripts/content-presence.mjs` (D2)**, `content-diff.mjs --published` hands over —
+- **New `diff/scripts/content-presence.mjs` (D2)** —
   visible headings, links (visible text), buttons, images, text blocks per band (h1–h3 aligned by
   LCS) + control state (`--count-words`); MISSING / HIDDEN LINK ×n and HEADING 🔴, buttons and
   CONTROL STATE 🟠, MOVED / EXTRA / COUNT / HEADING AS TEXT 🟡; symmetric scope, chrome left to
   the crop gate unless `--chrome`, `--variable` regions as counts (HIDDEN still counts), origin
   HTTP ≥ 400 fails loud (exit 4). Recorded page: HIDDEN 284, CONTROL STATE 2.
-- **New `diff/scripts/unit-geometry.mjs` (D3) + `diff/scripts/measure-live.mjs`** — the shared
+- **New `diff/scripts/unit-geometry.mjs` (D3) + `diff/scripts/measure-live.mjs`** (library) — the shared
   settle / session / shadow-DOM measurement lifted from the project measure scripts; per-element
   Δx / Δy / Δw / Δh of the first N repeated units relative to the unit, `hidden` where clipped,
   origin cached per slug. Recorded card: body +28…+47 px, details link +28 and hidden, badge
@@ -54,6 +53,13 @@ legible". Element presence and legibility are checkable — so the gate checks t
   repeated-unit family for the slug (`{ family: { origin, build, n, required, pages[], templates[] } }`
   — replica recreation-procedure § Repeated-unit families); element lines fail the round and outrank a
   pixel PASS in gate-evidence the way the overflow assert does.
+- **Coverage carries the verdict; the roster run is a recorded unit** (review notes on the PR).
+  `update-coverage.mjs --gate <summary.json>` writes each row into `delivery.gate` and flips a failing
+  page (no documented override) to `failed`; `verify.mjs` never marks a page `verified` while
+  `delivery.gate.pass` is false — completion derives from one place. Handoff contract § 3: each cluster
+  subagent runs `gate-all --only` over its own pages inside the fan-out; C-final's roster run is unit
+  `gate-all` (recorded `running` → `done`, resumable at its boundary) followed by `--gate`. Setup probes
+  the deps before installing them (a harness that resolves them leaves the code repo untouched).
 - **Upstreamed feedback.** A1 `launchStealthHeaded` is WINDOW-FREE by default
   (`STARDUST_HEADED_WINDOW=1` opts in). The tier is the BEST AVAILABLE and REGISTERED: Chrome when
   installed, else bundled Chromium with a warning, and every probe records `tier` (`chrome` |

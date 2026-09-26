@@ -798,8 +798,8 @@ installed; every probe writes the tier it actually ran (`chrome` | `chromium-fal
 counts degraded pages — a run that quietly lost its origin measurements on a bot-managed site is
 visible in the artifact. Sites without bot management measure identically on both tiers.
 `--eds-host` gates a code branch against the same content (branch hosts
-serve the LITERAL branch name — `fix/x` → push a mirror `fix-x`). Read a finding with
-`sbs-crop.mjs origin.png eds.png out.png --y <px> --height <px>` — one crop per fact.
+serve the LITERAL branch name — `fix/x` → push a mirror `fix-x`). Read a finding as one crop of
+the two captures at the row's band, never the whole pages.
 
 Calibration on the recorded roster (96 pages, same captures): pixel-only 66 PASS → full 28 PASS;
 failing by criterion pixel 30, height 6, clip 23, content 31; content n/a on 37 (edge-blocked

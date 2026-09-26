@@ -124,7 +124,6 @@ ORIGIN="https://www.example.com/<path>"; SERVED="https://main--repo--owner.aem.l
 node stardust/scripts/diff/clip-probe.mjs "$SERVED" [--json clip.json]                       # D1: exit 2 on cut / hidden text or controls
 node stardust/scripts/diff/content-presence.mjs "$ORIGIN" "$SERVED" [--variable "<selO>=<selE>"]  # D2: exit 2 on MISSING/HIDDEN link or heading
 node stardust/scripts/diff/unit-geometry.mjs "$ORIGIN" "$SERVED" --unit "<selO>=<selE>" --n 2      # D3: exit 2 on an element off / hidden / missing
-node stardust/scripts/diff/measure-live.mjs "$ORIGIN" ".hero" --all [--slug <s>]                    # the shared settle + rect/type measurement
 ```
 
 Reading: a 🔴 clip group names the clipper (a fixed-height box with `overflow: hidden`) — fix

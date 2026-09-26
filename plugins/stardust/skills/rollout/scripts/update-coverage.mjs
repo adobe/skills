@@ -8,6 +8,12 @@
  *
  * Page:   node update-coverage.mjs <slug>  --status <s> [--url <deployedUrl>] [--error <msg>]
  * Block:  node update-coverage.mjs --block <id> --status <s> [--eds-name <name>]
+ * Gate:   node update-coverage.mjs --gate stardust/replica/gates/all-<w>/summary.json
+ *   writes each row's verdict into the page's `delivery.gate` {pass, pct, heightDelta, clipped, content,
+ *   reasons, table, at} and flips a failing page (no documented override) from deployed / verified to
+ *   `failed` (error `gate: <reasons>`), a passing one out of that failure back to `deployed`; verify.mjs
+ *   never marks a page `verified` while its `delivery.gate.pass` is false (#125 — completion derives
+ *   from one place: a page the pixel table failed cannot read as verified).
  * New:    node update-coverage.mjs --new <slug> --path </delivered/path> --template <id> --origin <origin> [--title <t>] [--status <s>]
  *   page  <status>: pending | converting | deployed | verified | stale | failed
  *   block <status>: pending | converted | deployed | verified | failed
@@ -179,10 +185,36 @@ if (blockId) {
   process.exit(0);
 }
 
+// Gate ingest (#125): the pixel table's rows into delivery.gate
+const gateFile = arg('gate', null);
+if (gateFile) {
+  const table = readJSON(gateFile);
+  if (!table || !Array.isArray(table.rows)) { console.error(`rollout: ${gateFile} is not a gate-all summary (no rows[])`); process.exit(1); }
+  const doc = readJSON(pagesPath);
+  if (!doc) { console.error(`rollout: ${pagesPath} not found — run inventory.mjs first.`); process.exit(1); }
+  let matched = 0; let flipped = 0;
+  for (const r of table.rows) {
+    const p = (doc.pages || []).find((x) => x.slug === r.slug || (r.path && x.path === r.path));
+    if (!p) continue;
+    matched += 1;
+    p.delivery = p.delivery || {};
+    const pass = !!(r.pass || r.override);
+    p.delivery.gate = { pass, pct: r.pct, heightDelta: r.heightDelta, clipped: r.clipped ?? null, content: r.content || null, reasons: r.reasons || [], override: r.override ? r.override.verdict : null, table: gateFile, at: now };
+    if (!pass && ['deployed', 'verified'].includes(p.delivery.status)) { p.delivery.status = 'failed'; p.delivery.error = `gate: ${(r.reasons || []).join('; ') || 'FAIL'}`; flipped += 1; }
+    else if (pass && p.delivery.status === 'failed' && /^gate: /.test(p.delivery.error || '')) { p.delivery.status = 'deployed'; p.delivery.error = null; flipped += 1; }
+  }
+  doc.generatedAt = now;
+  writeJSON(pagesPath, doc);
+  reRoll();
+  console.log(`gate ${gateFile} → ${matched} of ${table.rows.length} rows matched, ${flipped} status flip(s)`);
+  process.exit(0);
+}
+
 // Page update
 if (!slug || !status || !PAGE_STATUSES.includes(status)) {
   console.error(`usage: update-coverage.mjs <slug> --status <${PAGE_STATUSES.join('|')}> [--url <u>] [--error <m>]`);
   console.error('   or: update-coverage.mjs --block <id> --status <pending|converted|deployed|verified|failed> [--eds-name <n>]');
+  console.error('   or: update-coverage.mjs --gate stardust/replica/gates/all-<w>/summary.json');
   console.error('   or: update-coverage.mjs --new <slug> --path </path> --template <id> --origin <origin> [--title <t>] [--status <s>]');
   process.exit(2);
 }

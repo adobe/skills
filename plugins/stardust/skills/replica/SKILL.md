@@ -51,11 +51,16 @@ eyeballing.
    § Flow keys): invoking `replica` is the choice.
 2. Verify Playwright is importable from the project root (extract needs it;
    so do the gate scripts).
-3. Install the gate's deps in the project AS devDependencies, never
-   `--no-save`: `npm i -D playwright pixelmatch pngjs cheerio --legacy-peer-deps`
-   (a `--no-save` install is pruned by the next real `npm i` — recorded twice
-   in one run, #125). Run every probe from the project root: ESM resolves
-   `playwright` from the script's own location.
+3. Probe the gate's deps from the project root first —
+   `node -e "import('pixelmatch').then(()=>process.exit(0))"` (and playwright,
+   pngjs, cheerio) — and only on failure install them AS devDependencies,
+   never `--no-save`: `npm i -D playwright pixelmatch pngjs cheerio
+   --legacy-peer-deps` (a `--no-save` install is pruned by the next real
+   `npm i` — recorded twice in one run, #125). A harness that already
+   resolves them leaves the delivered code repo untouched; the
+   devDependencies otherwise land in the repo the skills push. Run every
+   probe from the project root: ESM resolves `playwright` from the script's
+   own location.
 4. Copy scripts into the project and run them from there, not from the
    plugin: this skill's whole `scripts/` dir to
    `stardust/scripts/replica/`, the master skill's `../stardust/scripts/`
@@ -436,7 +441,10 @@ had one section for the whole run).
   a recorded page passed the pixel bar with all of its cards clipped. Evidence
   and sidecars: `stardust/replica/gates/all-<width>/`; with the Phase 4
   `prototypes-<width>/` table it is the pair `gate-evidence.mjs` reads (a page
-  without a row is ungated).
+  without a row is ungated). Each cluster subagent runs `--only` over its own
+  pages inside the fan-out; C-final's roster run is the recorded unit
+  `gate-all` (`--skip-existing`, captures reused) followed by
+  `update-coverage.mjs --gate` (handoff contract § 3, row C).
 
 **State:** replica writes its own state under `stardust/replica/` — the
 inconsistency register, `progress.json` (per page type: archetype slug,

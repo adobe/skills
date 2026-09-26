@@ -171,8 +171,6 @@ const USAGE = `usage: node skills/diff/scripts/content-diff.mjs <sourceURL> <bui
                          sides; optional comma-separated extra selectors
   --headed               headed stealth real Chrome (escalation for bot-managed sites)
   --locale <tag>         pin Accept-Language + locale (e.g. en-GB) for geo determinism
-  --published            live ORIGIN vs SERVED page: hands over to content-presence.mjs (visible
-                         headings/links/buttons/images per band + control state; #125)
 exit codes: 0 ran (flags advisory; an HTTP-error side, e.g. a 404 build pre-propagation,
             is measured + flagged with a warning, not fatal), 1 error,
             3 bot challenge (live side blocked — fail loud)
@@ -480,15 +478,6 @@ async function grab(browser, url, opts, prof, roots) {
 }
 
 async function main() {
-  // --published: the PUBLISHED-ORIGIN case (live origin vs served page) is content-presence.mjs's job (#125 D2):
-  // this classifier is tuned to a prototype's DOM and read false per-node findings on live commerce origins.
-  // Hand the remaining arguments over unchanged so the older entry point keeps working in gate docs.
-  if (process.argv.includes('--published')) {
-    const { spawn } = await import('node:child_process');
-    const args = [fileURLToPath(new URL('./content-presence.mjs', import.meta.url)), ...process.argv.slice(2).filter((a) => a !== '--published')];
-    await new Promise((done) => { const ch = spawn(process.execPath, args, { stdio: 'inherit' }); ch.on('close', (code) => { process.exitCode = code ?? 1; done(); }); });
-    return;
-  }
   const { proto, eds, opts } = parseArgs(process.argv);
   if (!proto || !eds) {
     process.stderr.write(USAGE);

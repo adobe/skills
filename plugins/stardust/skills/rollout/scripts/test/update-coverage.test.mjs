@@ -222,5 +222,27 @@ await check('--help names the --new form', async () => {
   assert.equal(r.code, 0); assert.match(r.out, /--new <slug> --path <\/delivered\/path> --template <id> --origin <origin>/); assert.deepEqual(readdirSync(proj), []);
 });
 
+await check('--gate writes delivery.gate from a gate-all summary; a failing verified page flips to failed, a passing failed one back to deployed (#125)', async () => {
+  const { proj, out } = fixture();
+  for (const r of await Promise.all([run(['page-0', '--status', 'verified'], proj), run(['page-1', '--status', 'deployed'], proj), run(['page-2', '--status', 'failed', '--error', 'gate: clipped 3'], proj), run(['page-3', '--status', 'verified'], proj)])) assert.equal(r.code, 0, r.err);
+  const table = join(proj, 'summary.json');
+  writeFileSync(table, JSON.stringify({ rows: [
+    { slug: 'page-0', pct: 6.7, heightDelta: 69, clipped: 379, content: { missing: 0, hidden: 284 }, pass: false, reasons: ['clipped 379', 'content MISSING 0 / HIDDEN 284'] },
+    { slug: 'page-1', pct: 1.2, heightDelta: 0, clipped: 0, content: { missing: 0, hidden: 0 }, pass: true, reasons: [] },
+    { slug: 'page-2', pct: 2.0, heightDelta: 1, clipped: 0, content: null, pass: true, reasons: [] },
+    { slug: 'page-3', pct: 37, heightDelta: 3, clipped: 0, pass: false, reasons: ['pixel 37% > 10%'], override: { verdict: 'PASS (source capture)', reason: 'live drifted' } },
+    { slug: 'not-in-coverage', pct: 1, pass: true, reasons: [] },
+  ] }));
+  const r = await run(['--gate', table], proj);
+  assert.equal(r.code, 0, r.err); assert.match(r.out, /4 of 5 rows matched, 2 status flip\(s\)/);
+  const by = Object.fromEntries(JSON.parse(readFileSync(join(out, 'coverage', 'pages.json'), 'utf8')).pages.map((p) => [p.slug, p.delivery]));
+  assert.equal(by['page-0'].status, 'failed'); assert.equal(by['page-0'].error, 'gate: clipped 379; content MISSING 0 / HIDDEN 284'); assert.equal(by['page-0'].gate.pass, false); assert.equal(by['page-0'].gate.clipped, 379);
+  assert.equal(by['page-1'].status, 'deployed'); assert.equal(by['page-1'].gate.pass, true);
+  assert.equal(by['page-2'].status, 'deployed', 'a gate failure that now passes goes back to deployed'); assert.equal(by['page-2'].error, null);
+  assert.equal(by['page-3'].status, 'verified', 'a documented override keeps the page'); assert.equal(by['page-3'].gate.override, 'PASS (source capture)');
+  const bad = await run(['--gate', join(out, 'rollout.json')], proj);
+  assert.equal(bad.code, 1, 'a file without rows[] is refused');
+});
+
 console.log(failed ? `update-coverage: ${failed} check(s) failed` : 'update-coverage: all checks passed');
 process.exit(failed ? 1 : 0);

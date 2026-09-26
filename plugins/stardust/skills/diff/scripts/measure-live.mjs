@@ -10,31 +10,14 @@
  * with THIS routine — the instrument stays symmetric): openBrowser, openPage, visit, settle,
  * measureInPage, serializeInPage, cachePath / readCache / writeCache.
  *
- * Usage: node skills/diff/scripts/measure-live.mjs <url> [<selector> …] [--width 1440] [--all]
- *        [--serialize <sel>] [--warmup <url>] [--plain] [--locale en-US] [--slug <s>] [--force]
- *        [--json <out>]
- * Exit: 0 measured, 1 error, 3 bot challenge. Requires playwright (a project devDependency).
+ * Library only (no CLI): selectors are measured through the probes or `replica/measure.mjs`.
+ * Requires playwright (a project devDependency).
  */
-import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { REAL_CHROME_UA, browserTier, defaultWaitUntil, dismissOverlays, gotoLive, isLiveHttpUrl, launchStealthHeaded, newLiveContext } from './live-session.mjs';
 
 export { browserTier };
-
-const HELP = `measure-live — settle a live page (window-free real Chrome) and print rect + computed type per selector
-
-Usage: node measure-live.mjs <url> [<selector> …] [options]
-  --width <px>       viewport width (default 1440)
-  --all              every match per selector (capped at 60)
-  --serialize <sel>  deep-serialise this element (shadow roots expanded, data-r/data-t per element)
-  --warmup <url>     visit this URL first (home warm-up for bot-managed sites)
-  --plain            bundled Chromium instead of the stealth real-Chrome tier
-  --locale <tag>     Accept-Language + context locale (default en-US)
-  --slug <s>         cache at stardust/current/measure/<s>.json (--force to re-measure)
-  --json <out>       also write the result here
-  --help             this text
-Exit: 0 measured, 1 error, 3 bot challenge (escalation already applied — record the block).`;
 
 export const MEASURE_DIR = 'stardust/current/measure';
 export const cachePath = (slug) => join(MEASURE_DIR, `${slug}.json`);
@@ -153,61 +136,4 @@ export function serializeInPage({ sel, budget = 4000000 }) {
     return `<${tag}${attrs}${meta}>${inner}</${tag}>`;
   };
   return ser(root);
-}
-
-// ---- CLI ---------------------------------------------------------------------------------------------
-
-export function parseArgs(argv) {
-  const rest = argv.slice(2);
-  if (!rest.length || rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
-  const opts = { width: 1440, all: false, serialize: null, warmup: null, plain: false, locale: 'en-US', slug: null, force: false, json: null, url: null, sels: [] };
-  for (let i = 0; i < rest.length; i += 1) {
-    const a = rest[i];
-    if (a === '--width') opts.width = Number(rest[++i]);
-    else if (a === '--all') opts.all = true;
-    else if (a === '--serialize') opts.serialize = rest[++i];
-    else if (a === '--warmup') opts.warmup = rest[++i];
-    else if (a === '--plain') opts.plain = true;
-    else if (a === '--locale') opts.locale = rest[++i];
-    else if (a === '--slug') opts.slug = rest[++i];
-    else if (a === '--force') opts.force = true;
-    else if (a === '--json') opts.json = rest[++i];
-    else if (a.startsWith('--')) { console.error(`unknown flag ${a}\n\n${HELP}`); process.exit(1); }
-    else if (!opts.url) opts.url = a;
-    else opts.sels.push(a);
-  }
-  if (!opts.url) { console.error(`need <url>\n\n${HELP}`); process.exit(1); }
-  return opts;
-}
-
-async function main() {
-  const opts = parseArgs(process.argv);
-  if (opts.slug && !opts.force) {
-    const cached = readCache(opts.slug);
-    if (cached) { console.log(`cached ${cachePath(opts.slug)} (docH ${cached.docH}, ${cached.items?.length ?? 0} items) — --force to re-measure`); return; }
-  }
-  const { chromium } = await import('playwright');
-  const browser = await openBrowser(chromium, { tier: opts.plain ? 'plain' : 'stealth' });
-  try {
-    const { ctx, page } = await openPage(browser, { width: opts.width, locale: opts.locale });
-    const v = await visit(page, opts.url, { warmup: opts.warmup });
-    const data = await page.evaluate(measureInPage, { sels: opts.sels, all: opts.all });
-    const out = { url: opts.url, at: new Date().toISOString(), width: opts.width, status: v.status, docH: data.docH, settlePasses: v.passes, pendingImgs: v.pendingImgs, tier: browserTier(browser), items: data.items };
-    if (opts.serialize) out.html = await page.evaluate(serializeInPage, { sel: opts.serialize });
-    console.log(`docH ${data.docH} (settled in ${v.passes} pass${v.passes > 1 ? 'es' : ''}, HTTP ${v.status})`);
-    for (const it of data.items) {
-      if (it.missing) { console.log(`MISSING ${it.sel}`); continue; }
-      if (it.error) { console.log(`ERROR ${it.sel}: ${it.error}`); continue; }
-      console.log(`${it.sel}  <${it.tag}${it.cls ? `.${it.cls.split(/\s+/).join('.')}` : ''}>  y=${it.y} h=${it.h} x=${it.x} w=${it.w}  fs=${it.fs}/${it.lh} fw=${it.fw} ${it.ff}  color=${it.color} bg=${it.bg} pad=${it.pad} mar=${it.mar}${it.br !== '0px' ? ` br=${it.br}` : ''} "${it.text}"`);
-    }
-    if (opts.serialize) console.log(`serialised ${opts.serialize}: ${out.html ? `${out.html.length} chars` : 'no match'}`);
-    if (opts.slug) console.log(`cached → ${writeCache(opts.slug, out)}`);
-    if (opts.json) { mkdirSync(dirname(opts.json) || '.', { recursive: true }); writeFileSync(opts.json, JSON.stringify(out, null, 1)); console.log(`wrote ${opts.json}`); }
-    await ctx.close();
-  } finally { await browser.close(); }
-}
-
-function safeRealpath(p) { try { return realpathSync(p); } catch { return p; } }
-if (process.argv[1] && fileURLToPath(import.meta.url) === safeRealpath(process.argv[1])) {
-  main().catch((e) => { console.error(`measure-live error: ${e.message.split('\n')[0]}`); process.exit(e.name === 'BotChallengeError' ? 3 : 1); });
 }

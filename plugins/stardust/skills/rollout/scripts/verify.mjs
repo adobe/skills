@@ -13,8 +13,9 @@
  *                    tree or a local export) — checks existence + content
  *
  * Checks per page: reachable (HTTP 200 / file exists), body has no `about:error`
- * (#75 broken-image ingestion), and every internal href="/…" resolves to a page
- * in coverage.
+ * (#75 broken-image ingestion), every internal href="/…" resolves to a page
+ * in coverage, and `delivery.gate.pass` is not false (the pixel table's verdict,
+ * written by `update-coverage.mjs --gate` — #125).
  *
  * Usage: node skills/rollout/scripts/verify.mjs [--base <url> | --root <dir>] [--slug <s>] [--all] [--out <rolloutDir>]
  *   --out defaults to stardust/rollout
@@ -135,6 +136,8 @@ for (const p of target) {
   let status = 'verified'; let reason = null;
   if (!r.ok) { status = 'failed'; reason = r.reason; }
   else { reason = renderCheck(type, r.body); if (reason) status = 'failed'; }
+  // #125: a page the pixel table failed is not verified (update-coverage.mjs --gate wrote delivery.gate)
+  if (status === 'verified' && p.delivery && p.delivery.gate && p.delivery.gate.pass === false) { status = 'failed'; reason = `gate: ${(p.delivery.gate.reasons || []).join('; ') || 'FAIL'}`; }
   p.delivery = p.delivery || {};
   p.delivery.status = status;
   if (status === 'verified') { p.delivery.verifiedAt = now; p.delivery.error = null; }

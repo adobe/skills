@@ -19,12 +19,12 @@ Run the project copies under `stardust/scripts/<skill>/`. Read this before any `
 - `deploy/section-schema.mjs` — per-section role inventory — `<protoURL> [--out <f>] [--profile eds|generic]`
 - `deploy/style-fingerprint.mjs` — per-instance variation groups — `"file:///abs/<proto>.html"`
 - `diff/clip-probe.mjs` — text/controls cut or hidden by an overflow ancestor on a served page — `<url> [--width 1440] [--json [f]] [--advisory]`; exit 2 = clipped > 0
-- `diff/content-diff.mjs` — structural content + attribute/icon diff, main + chrome roots — `<protoURL> <edsURL> [--main <sel[,sel]>] [--no-chrome] [--profile generic] [--json]`; `--published` = content-presence
+- `diff/content-diff.mjs` — structural content + attribute/icon diff, main + chrome roots — `<protoURL> <edsURL> [--main <sel[,sel]>] [--no-chrome] [--profile generic] [--json]`
 - `diff/content-presence.mjs` — origin vs served: visible headings/links/buttons/images per band + control state — `<originURL> <servedURL> [--variable <selO=selE,…>] [--json [f]]`; exit 2 = MISSING/HIDDEN link or heading
 - `diff/content-inventory.mjs` — library (classifier copy), no CLI
 - `diff/diff-profiles.mjs` — library (profiles copy), no CLI
 - `diff/live-session.mjs` — library (hardened browser session; `--headed` tier is window-free real Chrome), no CLI
-- `diff/measure-live.mjs` — settle a live page (window-free real Chrome) + rect/computed type per selector; library for the gate probes — `<url> [<sel>…] [--all] [--serialize <sel>] [--slug <s>]`
+- `diff/measure-live.mjs` — library (settle + rect/type measurement for the gate probes), no CLI
 - `diff/unit-geometry.mjs` — per-element Δx/Δy/Δw/Δh of the first N repeated units — `<originURL> <servedURL> (--unit <selO>=<selE> | --families stardust/replica/units.json --slug <s>) [--n 1] [--tol 4]`; exit 2 = a required unit off/hidden/missing
 - `diff/visual-diff.mjs` — screenshot diff + flags — `<protoURL> <edsURL> [--out <dir>] [--width <px>] [--main <sel>]`
 - `dynamics/dynamics-check.mjs` — replay parity checks (search-query: count + top titles vs source) — `--origin <h> [--parity <json>] [--out stardust/qa]`
@@ -59,7 +59,6 @@ Run the project copies under `stardust/scripts/<skill>/`. Read this before any `
 - `replica/row-profile.mjs` — row luminance profile — `<a.png> [<b.png>] [--color #rrggbb]`
 - `replica/run-bg.mjs` — background jobs, bounded wait — `start --name <j> [--slots 3] -- <cmd>`; `wait [--max ≤110]`; `log <j>`
 - `replica/run-capped.mjs` — deadline wrapper, exit 124 — `--timeout <s> -- <cmd>`
-- `replica/sbs-crop.mjs` — the same region of two captures side by side — `<a.png> <b.png> <out.png> [--y --height] [--scale 4]`
 - `replica/section.mjs` — one Markdown section / outline — `<doc.md> --list | "<heading re>" [--all] [--max-lines]`
 - `replica/sibling-variance.mjs` — template deltas across siblings — `<archetypeURL> <siblingURL>… --probe name=<sel>`
 - `replica/stitch-shot.mjs` — stitched full-page capture — `<url> <out.png> [--width] [--vh 900] [--settle]`
