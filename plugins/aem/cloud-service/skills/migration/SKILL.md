@@ -89,6 +89,8 @@ Applies to **finding and editing the user's AEM project** (Java, bundles, config
 
 Do not transform **Java or HTL** until the pattern guide (or reference) is read (branch B). Branch A does not require `{code-assessment}` pattern guidance.
 
+**Behavior pinning (before-eligible Java patterns).** For `guavaCache`, `scheduler`, `resourceChangeListener`, and `eventListener`/`eventHandler`, **Step 5** pins a one-per-finding characterization test around each edit (green before → transform → green after) as a bounded, skip-fast regression net. Rules and skeletons: [references/characterization-tests.md](references/characterization-tests.md). `replication`, `assetApi`, and all non-Java patterns stay compile/build-only.
+
 **Branch C — Template Modernization** (no BPA): static → editable templates and/or AEM Modernize Tools rules (structure/component/policy). Three phases: context → per-template execute → validate. Start at [references/template-modernization/template-modernization-context.md](references/template-modernization/template-modernization-context.md); generators are [editable-template-creation.md](references/template-modernization/editable-template-creation.md) and [aem-modernization.md](references/template-modernization/aem-modernization.md); post-gen checks in [template-modernization-validation.md](references/template-modernization/template-modernization-validation.md). **Skip** branch B.
 
 **Branch D — Legacy UI Migration** (`legacy-ui/` sub-folders): If the user asks to convert Classic UI / ExtJS dialogs, upgrade Coral 2 dialogs, migrate custom ExtJS widgets, fix LUI or CDW BPA findings, or mentions `cq:Dialog` / `xtype` / `cq:Widget`:
@@ -377,11 +379,14 @@ heuristic `plaintext-secret` label without confirming.
 For **each finding in the returned batch only** (up to 5):
 
 1. Resolve the target **inside the IDE workspace** (see **Workspace scope (IDE)**).
-2. Read source → classify with the pattern guide (or reference) → apply steps **in order** → check lints → next file.
+2. **Pin behavior first (before-eligible patterns only).** If the active pattern is before-eligible in [references/characterization-tests.md](references/characterization-tests.md) (`guavaCache`, `scheduler`, `resourceChangeListener`, `eventListener`/`eventHandler`), write **one** characterization test for this finding and run it green **before** editing — this pins current behavior. Follow that file's **efficiency contract exactly**: one fill-in skeleton, matched to the module's JUnit 4/5 harness (add minimal test-scoped deps once per module only if none exists), one attempt, **skip-fast** (no stable seam / can't establish a harness / not green first run → discard the test, record `pin-skip: <no-stable-seam | no-test-harness | baseline-red>` respectively). Never debug a test; add dependencies only per that file's rule 2. All other patterns (including `replication`, `assetApi`, and every non-Java pattern) skip this step.
+3. Read source → classify with the pattern guide (or reference) → apply steps **in order** → check lints.
+4. **Re-run the pinned test (only if step 2 pinned one).** Green → behavior preserved, record `pinned`. Red after the edit → a real regression: **revert this finding's edit**, record `pin-fail → reverted`, and move on — do not retry or edit the test.
+5. Next file.
 
 ### Step 6: Report batch and wait
 
-After finishing the batch, summarise **for this batch only**: `paging.returned` of `paging.total` processed (with class names), files touched, and any skips/failures. If `paging.hasMore`, tell the user *"Processed batch of N (offset {offset}–{offset + returned − 1} of {total}). Reply `continue` for the next batch, or name specific classes."*; otherwise say the pattern is done and move to the session report.
+After finishing the batch, summarise **for this batch only**: `paging.returned` of `paging.total` processed (with class names), files touched, and any skips/failures. For before-eligible patterns, add each finding's pin outcome (`pinned` \| `pin-skip: <reason>` \| `pin-fail → reverted`) per [references/characterization-tests.md](references/characterization-tests.md) — omit this line entirely for patterns that are not before-eligible. If `paging.hasMore`, tell the user *"Processed batch of N (offset {offset}–{offset + returned − 1} of {total}). Reply `continue` for the next batch, or name specific classes."*; otherwise say the pattern is done and move to the session report.
 
 Then **stop and wait** — resume only when the user explicitly asks, per the Batched-processing rules.
 
