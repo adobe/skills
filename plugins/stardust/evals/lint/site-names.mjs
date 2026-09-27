@@ -37,6 +37,8 @@ const ALLOW = [
   'stardust.dev', 'da.org',
   // crawler user-agent patterns the AI-readability gate replays
   'openai.com', 'perplexity.ai',
+  // the System One decision endpoint the decision layer calls (decide.mjs, #127) — infrastructure, not a site
+  'typesafe.ai',
   // platforms and embeds named as DETECTION PATTERNS (dynamics / schema docs), not as sites
   'youtube.com', 'youtu.be', 'vimeo.com', 'x.com', 'twitter.com', 'linkedin.com', 'facebook.com', 'instagram.com',
   'google.com', 'shopify.com', 'linear.app', 'datawrapper.de', 'cloudflarestream.com', 'edgesuite.net',
