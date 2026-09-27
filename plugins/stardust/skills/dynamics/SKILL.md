@@ -47,6 +47,10 @@ Every finding gets a class from `L S F M V T A R X I18N CR D`; known vendors res
 through `scripts/vendors.json`; unknown third-party hosts stay visible as "inspect". When a target
 host exists, `dynamics-plan.mjs --target-origin <host>` probes every recorded first-party API path
 there and marks dead ones **host-bound** — the signal a pixel gate reports as "band shorter".
+   With `--decide` (decision layer, #127; `STARDUST_DECIDER=shadow`) every row also carries the
+   `dynamics-triage` battery's class, disposition and reproducibility with probabilities in the notes
+   column, and a confident class disagreement reads `REVIEW`; the catalogue's answers stand — only the
+   class axis has earned assist (`evals/jev-batteries/BASELINE.md`).
 
 ## Phase 3 — Triage (the gate output)
 

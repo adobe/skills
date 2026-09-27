@@ -53,7 +53,8 @@
 #            printed. Evidence per probe lands next to the pixel evidence:
 #            content-diff-<label>.txt, visual-diff-<label>.txt + vdiff-<label>/,
 #            chrome-parity-<label>.txt, clip-<label>.{txt,json},
-#            content-presence-<label>.{txt,json}, units-<label>.{txt,json}. Needs the diff skill's
+#            content-presence-<label>.{txt,json}, units-<label>.{txt,json}; with STARDUST_DECIDER set,
+#            gate-flags.mjs adds advisory `decide:` lines pre-sorting the flags (#127). Needs the diff skill's
 #            scripts at stardust/scripts/diff/ (Setup step 4). The build URL may be
 #            a served prototype or the published/preview origin — the published-
 #            origin gate is the same command with the preview URL (pass --marker
@@ -348,6 +349,11 @@ if [ -n "$P_UG" ]; then
   verdict "$RC_UG" "unit-geometry" "${UNITS:-no Units line}" "$UG"
 fi
 echo "evidence: $CD $VD $CP $CL${P_PR:+ $PR}${P_UG:+ $UG} $DIR/vdiff-$LBL/"
+# The decision layer (#127): pre-sort this round's flags when the run decides with it. Advisory lines
+# only (`decide: …`); never a verdict, never the exit code. Off, no key, or a failed call → one line.
+if [ "${STARDUST_DECIDER:-off}" != off ] && [ -f "$HERE/gate-flags.mjs" ]; then
+  capped "$PROBE_TIMEOUT" "gate-flags $SLUG@$W" node "$HERE/gate-flags.mjs" "$DIR" "$LBL" --regime "$REGIME" 2>>"$DIR/gate-flags-$LBL.err" || echo "decide: flags — gate-flags did not finish (see $DIR/gate-flags-$LBL.err); the verdicts above stand"
+fi
 
 # Exit: any deadline → 124 (re-run); else the pixel verdict rules, and a structural
 # content 🔴 or a chrome delta fails the round the same way an over-threshold pixel diff does.

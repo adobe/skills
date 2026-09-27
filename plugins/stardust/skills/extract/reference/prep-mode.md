@@ -58,6 +58,15 @@ Write the inferred type to `state.json.pages[].type`. The user
 confirms or refines during `direct --prep`. Discovery-mode runs
 leave `type` as `null`.
 
+**Decision layer (#127).** Once the roster is typed, run
+`node stardust/scripts/extract/type-pages.mjs` (project copy; the
+plugin path is `skills/extract/scripts/type-pages.mjs`). Under
+`STARDUST_DECIDER=shadow` it asks the `page-type` battery the same
+question with the same evidence and logs both answers; its one
+summary line names the pages where a confident answer disagrees
+with yours — re-read those before `direct --prep`, change nothing
+else. Under `off` it prints one skip line. It never blocks.
+
 ## 3. Module candidate detection
 
 After Phase 3 (brand-surface extraction), scan extracted pages for

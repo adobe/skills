@@ -29,13 +29,14 @@ Run the project copies under `stardust/scripts/<skill>/`. Read this before any `
 - `diff/visual-diff.mjs` — screenshot diff + flags — `<protoURL> <edsURL> [--out <dir>] [--width <px>] [--main <sel>]`
 - `dynamics/dynamics-check.mjs` — replay parity checks (search-query: count + top titles vs source) — `--origin <h> [--parity <json>] [--out stardust/qa]`
 - `dynamics/dynamics-detect.mjs` — detect dynamic features — `--urls a,b [--from-state stardust/state.json]`
-- `dynamics/dynamics-plan.mjs` — triage draft — `[--in <json>] [--out <dir>] [--target-origin <h>]`
+- `dynamics/dynamics-plan.mjs` — triage draft — `[--in <json>] [--out <dir>] [--target-origin <h>] [--decide [--mode]]` (decide = shadow the four axes with the `dynamics-triage` battery)
 - `dynamics/lib.mjs` — library, no CLI
 - `dynamics/snapshot-api.mjs` — record same-origin API calls — `--origin <h> --calls calls.json [--out <dir>]`
 - `dynamics/snapshot-forms.mjs` — record live forms — `--urls a,b [--out data/forms]`
 - `dynamics/sync-sheets.mjs` — sheet JSON → DA + preview — `--source <o> --org --repo --paths a.json,b.json`
 - `extract/crawl.mjs` — site crawler → pages, screenshots, `_crawl-log.json#captureGaps` — `--url <u> [--pages a,b] [--max 25] [--out stardust/current] [--dynamics]`
 - `extract/style-census.mjs` — computed-style census (one live pass) — `[--pages <dir>|--urls a,b] [--width <px>] [--headed]`
+- `extract/type-pages.mjs` — decision layer at prep § 2: `page-type` battery over the typed roster, both answers logged, confident disagreements listed — `[--dir stardust] [--only a,b] [--examples 3] [--mode] [--dry-run]` (off = one skip line)
 - `extract/thumb.mjs` — legible capture thumbnails ≤ --max-bytes (narrower first, then a crop ≥ --min-share; a share < 100 → the rest via --offset) — `<png|dir…> [--width 480] [--max-height <px>] [--max-bytes 150000] [--min-share 60] [--offset <px>]`
 - `migrate/migrate.mjs` — per-page render driver + sidecar — `render <slug…|--all>`; `gate|deviation|variant|modules <slug>`
 - `qa/lib.mjs` — library, no CLI
@@ -49,6 +50,7 @@ Run the project copies under `stardust/scripts/<skill>/`. Read this before any `
 - `replica/foundation-freeze.mjs` — frozen delivery foundation, sha256 manifest — `freeze [--paths a,b]`; `check`
 - `replica/gate-all.mjs` — the pixel tables: every deployed page (default) or every prototype (`--stage prototype --proto-base <url>`): pixel + height + clip [+ content, units] — `[--only <slug,…>] [--skip-existing] [--recapture-eds] [--eds-host <h>] [--no-probes]`; exit 2 = any FAIL
 - `replica/gate-evidence.mjs` — sidecar gates from the pixel tables + run-bg jobs — `[--slug <s>]… [--content <dir>] [--tables <dir>] [--check] [--dry-run]`
+- `replica/gate-flags.mjs` — decision layer in a gate round: pre-sort a round's flags with `flag-justify` (`decide:` lines, `flags-<label>.json`) — `<gate-dir> <label> [--regime] [--register] [--mode] [--dry-run]`; gate.sh --full calls it
 - `replica/gate.sh` — one gate round + overflow assert + probes (`--full`: content-diff, visual-diff, chrome-parity, clip-probe; + content-presence in the published regime, unit-geometry with units.json) — `<slug> <live> <build> <width> [iter] [--full] [--main <sel>]`
 - `replica/html-slice.mjs` — one element of captured HTML — `<page.html> header|footer|main|.cls [--text] [--all]`
 - `replica/json-query.mjs` — bounded view of JSON — `<f.json> [--path <p>] [--keys] [--match k=re] [--fields a,b]`

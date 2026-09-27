@@ -15,6 +15,14 @@
  *
  *   node dynamics-plan.mjs [--in stardust/current/_dynamics.json] [--out stardust/dynamics]
  *        [--target-origin https://…] [--auth-header "token …" | --token-env SITE_TOKEN] [--migrated stardust/migrated]
+ *        [--decide] [--mode off|shadow|assist|gate]
+ *
+ * --decide (#127): run the `dynamics-triage` battery over every row with the catalogue's answers as the
+ * agent's (class / disposition / reproducibility); shadow → each row gains `jev` {class, disposition,
+ * reproducibility, probabilities, route, review} and the notes column carries `jev: class L 0.93 …`;
+ * a confident class disagreement reads `review`. Only the class axis has earned assist (BASELINE.md);
+ * disposition and reproducibility stay the catalogue's in every mode. Mode: --mode, else
+ * $STARDUST_DECIDER, else off (one skip line). Never blocks; a failed call is counted.
  *
  * Writes (under --out, default stardust/dynamics):
  *   dynamic-features.generated-plan.json   one row per finding, the four axes pre-filled, with _provenance
@@ -23,7 +31,8 @@
  */
 /* eslint-disable no-await-in-loop, no-restricted-syntax, max-len */
 import { readdirSync, readFileSync, statSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { arg, readJSON, writeJSON, writeText, provenance, resolveAuthHeader, probe } from './lib.mjs';
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
@@ -107,7 +116,35 @@ const rows = d.findings.map((f) => {
   if (delivered[f.id]) { row.alreadyDelivered = delivered[f.id]; row.status = 'delivered-by-capture'; }
   return row;
 });
-const draft = { _provenance: provenance('plan', { input: IN, target: TARGET || null, migrated: MIGRATED || null }), rows };
+// ---- the decision layer (#127): shadow the catalogue's four axes with the dynamics-triage battery ----
+let decideLine = '';
+if (process.argv.includes('--decide')) {
+  const HERE = dirname(fileURLToPath(import.meta.url));
+  const cand = [join(HERE, '..', '..', 'stardust', 'scripts', 'decide.mjs'), join(HERE, '..', 'stardust', 'decide.mjs')].find((c) => existsSync(c));
+  const D = cand ? await import(cand) : null;
+  let mode = 'off'; try { mode = D ? (D.normaliseMode(arg('mode')) || D.wiredMode()) : 'off'; } catch (e) { console.error(`[dynamics] decide: ${e.message}`); }
+  const key = D ? process.env[D.DEFAULTS.keyEnv] : null;
+  if (!D) decideLine = ' · decide: decide.mjs not found beside this script';
+  else if (mode === 'off') decideLine = ' · decide: off';
+  else if (!key) decideLine = ` · decide: no $${D.DEFAULTS.keyEnv}`;
+  else {
+    const battery = D.loadBattery('dynamics-triage'); const client = D.createClient({ key, concurrency: 6 });
+    const sd = dirname(IN.replace(/\/current\/_dynamics\.json$/, '/current')); // <stardust>/current/_dynamics.json → <stardust>
+    const ledger = join(sd, 'decisions.jsonl'); const cacheDir = join(sd, '.work', 'decide'); const runId = D.resolveRunId(null, dirname(sd));
+    let agree = 0; let errors = 0; let review = 0;
+    await Promise.all(rows.map(async (row) => {
+      const state = { feature: { id: row.id, description: row.feature, signals: row.evidence, reach: `${row.pages}/${row.probed}` } };
+      try {
+        const r = await D.decide({ battery, state, client, cacheDir, ledger, ref: row.id, mode, agent: { class: row.class, disposition: row.disposition, reproducibility: row.reproducibility }, runId });
+        const a = r.answers;
+        row.jev = { class: a.class.choice, classP: a.class.confidence, disposition: a.disposition.choice, dispositionP: a.disposition.confidence, reproducibility: a.reproducibility.choice, reproducibilityP: a.reproducibility.confidence, regulatedPii: a.regulated_pii ? a.regulated_pii.noul : null, route: r.route.overall, review: !!(r.shadow && r.shadow.disagree.includes('class')) };
+        if (r.agreement && r.agreement.class) agree += 1; if (row.jev.review) review += 1;
+      } catch (e) { errors += 1; row.jev = { error: e.message }; }
+    }));
+    decideLine = ` · decide [${mode}]: class agrees ${agree}/${rows.length} · class review ${review}${errors ? ` · errors ${errors}` : ''}`;
+  }
+}
+const draft = { _provenance: provenance('plan', { input: IN, target: TARGET || null, migrated: MIGRATED || null, decide: decideLine ? decideLine.replace(/^ · /, '') : null }), rows };
 writeJSON(join(OUT, 'dynamic-features.generated-plan.json'), draft);
 
 const byPhase = {}; for (const r of rows) byPhase[r.phase] = (byPhase[r.phase] || 0) + 1;
@@ -118,7 +155,7 @@ const md = [
   '# Dynamic features — draft inventory (curate into `stardust/dynamic-features.md`)', '',
   'One row per detected finding. Merge duplicates, drop noise, keep every axis honest. Columns: disposition = what we do · reproducibility = what it needs · status = where it stands (reference/triage.md).', '',
   '| # | id | class | feature | pages | disposition | reproducibility | status | pattern | decision needed | notes |', '|---|---|---|---|---|---|---|---|---|---|---|',
-  ...rows.map((r, i) => `| ${i + 1} | ${r.id} | ${r.class} | ${r.feature.replace(/\|/g, '/')} | ${r.pages}/${r.probed}${r.reach ? ` (reach ${r.reach.pages}/${r.reach.of})` : ''} | ${r.disposition} | ${r.reproducibility} | ${r.status} | ${r.pattern} | ${r.decision} | ${[r.hostBound && `**${r.hostBound}**`, r.alreadyDelivered, ...(r.flags || [])].filter(Boolean).join('; ')} |`),
+  ...rows.map((r, i) => `| ${i + 1} | ${r.id} | ${r.class} | ${r.feature.replace(/\|/g, '/')} | ${r.pages}/${r.probed}${r.reach ? ` (reach ${r.reach.pages}/${r.reach.of})` : ''} | ${r.disposition} | ${r.reproducibility} | ${r.status} | ${r.pattern} | ${r.decision} | ${[r.hostBound && `**${r.hostBound}**`, r.alreadyDelivered, ...(r.flags || [])].filter(Boolean).join('; ')}  ${r.jev && !r.jev.error ? ` · jev: class ${r.jev.class} ${r.jev.classP.toFixed(2)}${r.jev.review ? ' REVIEW' : ''} · disp ${r.jev.disposition} ${r.jev.dispositionP.toFixed(2)} · repro ${r.jev.reproducibility} ${r.jev.reproducibilityP.toFixed(2)}` : ''} |`),
   '', '## Triage', '',
   `- **Ships autonomously (reproducibility \`self\`):** ${self.length} row(s) — ${[...new Set(self.map((r) => r.pattern))].join(', ') || 'none'}.`,
   `- **One owner decision batch:** ${batch.length} row(s) — ${[...new Set(batch.map((r) => r.decision))].slice(0, 6).join(' · ') || 'none'}.`,
@@ -127,4 +164,4 @@ const md = [
   '', '## Phases', '', ...Object.entries(byPhase).sort((a, b) => b[1] - a[1]).map(([k, n]) => `- **${k}** — ${n}`),
 ];
 writeText(join(OUT, 'dynamic-features.generated-plan.md'), md.join('\n'));
-console.error(`[dynamics] ${rows.length} rows → ${OUT}/dynamic-features.generated-plan.md · self ${self.length} · owner batch ${batch.length} · delivered ${Object.keys(delivered).length} · host-bound ${Object.values(hostBound).filter((v) => /dead/.test(v)).length}/${Object.keys(hostBound).length}`);
+console.error(`[dynamics] ${rows.length} rows → ${OUT}/dynamic-features.generated-plan.md · self ${self.length} · owner batch ${batch.length} · delivered ${Object.keys(delivered).length}${decideLine} · host-bound ${Object.values(hostBound).filter((v) => /dead/.test(v)).length}/${Object.keys(hostBound).length}`);

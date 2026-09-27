@@ -252,6 +252,14 @@ ledger, and judge each against its own regime's precedent.
 The overall % hides WHERE drift starts. `pixel-compare.mjs` prints per-500px
 bands (`--band` to change); read them top-down:
 
+**Decision layer (#127).** With `STARDUST_DECIDER` set, a `--full` round ends with advisory
+`decide:` lines from `gate-flags.mjs`: the round's content-diff and visual-diff flags pre-sorted by
+the `flag-justify` battery — decisive defects first (P ≥ 0.85), unsure in the middle, decisive
+artefacts last (P ≤ 0.15) — with the evidence in `flags-<label>.json`. Work the defects first;
+justify a decisive artefact in one line, never a round; an unsure flag is yours to judge as before.
+The lines never change the verdict or the exit code.
+
+
 - **The first hot band (◄◄, >15%) is the actionable one.** It points at the
   section whose height or geometry is wrong at that y-range.
 - **Every band below the first hot band is contaminated** by the vertical

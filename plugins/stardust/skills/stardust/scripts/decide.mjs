@@ -55,7 +55,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 
 export const DEFAULTS = {
   model: 'jev-1.13.0',
-  endpoint: 'https://api.typesafe.ai/v1/systemone',
+  endpoint: process.env.STARDUST_DECIDE_ENDPOINT || 'https://api.typesafe.ai/v1/systemone', // the env override exists for tests of wired steps
   keyEnv: 'TYPESAFE_API_KEY',
   decider: 'jev',
   retries: 5,
@@ -205,6 +205,10 @@ export function agreement(answers, agent) {
 // The confidence a line's question carries, on one scale: choice/score confidence, noul distance from 0.5 doubled.
 export const questionConfidence = (a) => (a.type === 'noul' ? Math.abs(a.noul - 0.5) * 2 : (a.confidence ?? 0));
 export const bin = (c) => (BINS.find(([, lo, hi]) => c >= lo && c < hi) || BINS[3])[0];
+
+// The run's decider mode for a wired step: $STARDUST_DECIDER, else off. A wired step never blocks:
+// off or no key → it prints one skip line and returns; a call failure is logged, never thrown up.
+export function wiredMode() { try { return normaliseMode(process.env.STARDUST_DECIDER) || 'off'; } catch { return 'off'; } }
 
 export function normaliseMode(raw) {
   if (raw == null || raw === '') return null;

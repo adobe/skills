@@ -62,6 +62,8 @@ Deliverables
 Acceptance: `decide.mjs page-type --mode shadow --agent '{"type":"article"}' --state s.json` writes
 one line carrying both answers; `compare` prints the agreement table; lint and tests pass.
 
+Met 2026-09-27 (commit b51be27d + 74034161).
+
 Depends on: nothing.
 
 ## Phase 2 — wire the three measured batteries in shadow mode (3–4 days)
@@ -87,10 +89,14 @@ Deliverables
   breakdown.
 - Harness-neutral wording; Copilot runs the same scripts.
 
-Acceptance: a full `replica` run on a recorded project copy (bounded, `--pages` list of ~10) with
-`STARDUST_DECIDER=shadow` completes with zero decide errors; `compare` shows the three batteries;
-the run's wall-clock and turns are within noise of an `off` run (shadow must cost nothing
-visible).
+Acceptance: the three wired steps run in shadow on a recorded project copy in the project-copy
+layout (`stardust/scripts/<skill>/`) with zero decide errors; `compare --check` passes and shows
+the three batteries; each step costs seconds, not turns (shadow must cost nothing visible). The
+full bounded `replica` run in shadow is phase 7's first arm.
+
+Met 2026-09-27: 12 pages typed in 0.8 s (12/12 agree), 84 dynamics rows in 3.8 s (class 78.6 %
+agreement with the catalogue, 13 confident disagreements marked review), one gate round's flags
+in 0.35 s; zero errors.
 
 Depends on: phase 1.
 

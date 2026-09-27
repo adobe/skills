@@ -61,10 +61,19 @@ battery against recorded decisions before any caller relies on it. Nothing gates
   `handsOff`, stamped by Setup step 3) and `decision <slug> --battery … --jev … [--agent …]`, the
   per-page roll-up `pages[].decisions.<battery>`; `summary` prints both. `run-status.md` documents
   the decisions ledger; `state-machine.md` the decider key.
-- **Not changed:** no skill calls the layer yet; every gate, bar and instrument is as in 0.26.0. The
-  wiring (a `decide` step beside the in-context judgment, compared in the ledger) follows for the
-  batteries whose replay shows agreement rising with confidence and ≥ 90 % agreement among `act`
-  items; today that is `page-type` and the class axis of `dynamics-triage`.
+- **Phase 2 — the three measured batteries wired in shadow.** `extract/scripts/type-pages.mjs` runs
+  `page-type` over the typed roster (per type, the paths + lead heading of up to three other pages,
+  archetypes first), logs both answers, writes the per-page roll-up and
+  `current/_page-types.json`, and names confident disagreements (prep-mode § 2).
+  `dynamics-plan.mjs --decide` shadows the catalogue's four axes with `dynamics-triage`; rows gain
+  `jev`, the notes column shows class / disposition / reproducibility with probabilities and `REVIEW`
+  on a confident class disagreement. `replica/scripts/gate-flags.mjs` pre-sorts a round's
+  content-diff and visual-diff flags with `flag-justify` (decisive defects ≥ 0.85 first, unsure,
+  decisive artefacts ≤ 0.15 last) into advisory `decide:` lines and `flags-<label>.json`;
+  `gate.sh --full` calls it when `STARDUST_DECIDER` is set. Every wired step: `off` = one skip line,
+  no key = skip, a failed call is counted — none blocks, none changes a verdict.
+- **Not changed:** every gate, bar and instrument is as in 0.27.0; no decision is taken for the agent
+  (shadow only). Assist follows per battery once two shadow runs show ≥ 90 % agreement on `act` items.
 ## 0.27.0 — archetype-first delivery: deploy and gate the archetype at the origin before its siblings render (#126)
 
 A recorded 96-page run migrated 78 siblings from archetypes whose EDS encoding had never been gated,
