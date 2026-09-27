@@ -36,3 +36,6 @@ steps, fix patterns, invalid rounds); read agreement on them as a separation tes
 fills the KPI table of the template from the two runs' ledgers and transcripts (wall-clock, phases,
 full-bar and pixel-only passes, gate cells and residuals, pre-sorted flags, decisions and Jev cost,
 phase-claim reviews, turns, tokens and API-equivalent cost).
+
+`RUNBOOK.md` is the step-by-step for the first real A/B: plugin install from the branch, the
+identical prompt for both arms, the site proposal, and how to fill the report.
