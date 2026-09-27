@@ -31,3 +31,8 @@ same 10–20 pages, same day, same prompt; the KPI rows come from the ledgers an
 Results are appended to `BASELINE.md` § A/B runs. `fixtures/` hold the hand-written negative
 classes the recorded runs do not contain (asserted claims, serial owner questions, out-of-order
 steps, fix patterns, invalid rounds); read agreement on them as a separation test.
+
+`collect-ab.mjs --off <project> --assist <project> [--off-transcripts <dir>] [--assist-transcripts <dir>]`
+fills the KPI table of the template from the two runs' ledgers and transcripts (wall-clock, phases,
+full-bar and pixel-only passes, gate cells and residuals, pre-sorted flags, decisions and Jev cost,
+phase-claim reviews, turns, tokens and API-equivalent cost).
