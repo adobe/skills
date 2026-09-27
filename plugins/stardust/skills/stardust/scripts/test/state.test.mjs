@@ -11,7 +11,7 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ORDER, SET_BY, TOP_ORDER, advance, classify, orderTopLevel, pluginVersion, stampProvenance, summarise } from '../state.mjs';
+import { DECIDER_MODES, ORDER, ROUTES, SET_BY, TOP_ORDER, advance, classify, orderTopLevel, pluginVersion, recordDecision, setDecider, stampProvenance, summarise } from '../state.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'state.mjs');
@@ -61,7 +61,7 @@ check('orderTopLevel: _provenance, site, direction, handsOff, pages, then the re
   assert.deepEqual(Object.keys(orderTopLevel({ pages: [], _provenance: {} })), ['_provenance', 'pages']);
 });
 check('orderTopLevel: the 0.23.0 flow keys sit between handsOff and pages; an unknown key keeps its place, never pushed behind pages', () => {
-  assert.deepEqual(TOP_ORDER, ['_provenance', 'site', 'direction', 'handsOff', 'flow', 'flowChosenAt', 'flowSource', 'pages']);
+  assert.deepEqual(TOP_ORDER, ['_provenance', 'site', 'direction', 'handsOff', 'decider', 'flow', 'flowChosenAt', 'flowSource', 'pages']);
   const canonical = ['_provenance', 'site', 'direction', 'handsOff', 'flow', 'flowChosenAt', 'flowSource', 'pages', 'migrate'];
   assert.deepEqual(Object.keys(orderTopLevel(Object.fromEntries(canonical.map((k) => [k, 1])))), canonical, 'a file already in order is untouched');
   const shuffled = { pages: [], flowSource: 'question', flow: 'replica', _provenance: {}, flowChosenAt: 't', site: {} };
@@ -195,5 +195,37 @@ check('usage: missing --to, bad --to, no slug, unknown command, unknown option, 
 });
 
 rmSync(root, { recursive: true, force: true });
+
+writeFileSync(file, JSON.stringify(FIXTURE, null, 2)); // fresh fixture: earlier checks remove the file
+check('decider: stamps the mode after handsOff, refuses an unknown mode, summary shows it on a second line', () => {
+  let r = run('decider', 'shadow'); assert.equal(r.code, 0, r.err); assert.match(r.out, /decider shadow/);
+  const keys = Object.keys(read()); assert.ok(keys.indexOf('decider') > keys.indexOf('handsOff') && keys.indexOf('decider') < keys.indexOf('pages'), `order: ${keys.join(',')}`);
+  assert.equal(read().decider, 'shadow');
+  r = run('decider', 'maybe'); assert.equal(r.code, 2); assert.match(r.err, /decider must be one of/);
+  assert.equal(read().decider, 'shadow', 'nothing written on a bad mode');
+  r = run('summary'); assert.equal(r.code, 0); assert.match(r.out, /^\s+decider shadow/m);
+  assert.deepEqual(DECIDER_MODES, ['off', 'shadow', 'assist', 'gate']);
+  assert.throws(() => setDecider({}, 'x'), /decider must be/);
+});
+
+check('decision: writes pages[].decisions.<battery> with agent agreement, confidence and route; validates inputs', () => {
+  const slug = read().pages[0].slug;
+  let r = run('decision', slug, '--battery', 'page-type', '--jev', 'article', '--agent', 'article', '--confidence', '0.93', '--route', 'act');
+  assert.equal(r.code, 0, r.err); assert.match(r.out, /agree/);
+  const d = page(slug).decisions['page-type'];
+  assert.equal(d.jev, 'article'); assert.equal(d.agent, 'article'); assert.equal(d.agree, true); assert.equal(d.confidence, 0.93); assert.equal(d.route, 'act'); assert.match(d.at, ISO_UTC);
+  r = run('decision', slug, '--battery', 'locale-shell', '--jev', 'false', '--agent', 'true'); assert.equal(r.code, 0, r.err);
+  const e = page(slug).decisions['locale-shell']; assert.equal(e.jev, false); assert.equal(e.agent, true); assert.equal(e.agree, false);
+  assert.ok('page-type' in page(slug).decisions, 'a second battery does not drop the first');
+  r = run('summary'); assert.match(r.out, /decisions 2 on 1 page\(s\)/);
+  assert.equal(run('decision', slug, '--battery', 'page-type').code, 2, 'jev required');
+  assert.equal(run('decision', slug, '--battery', 'Bad Name', '--jev', 'x').code, 2, 'battery name shape');
+  assert.equal(run('decision', slug, '--battery', 'b', '--jev', 'x', '--confidence', '7').code, 2, 'confidence range');
+  assert.equal(run('decision', slug, '--battery', 'b', '--jev', 'x', '--route', 'maybe').code, 2, 'route set');
+  assert.equal(run('decision', 'no-such-page', '--battery', 'b', '--jev', 'x').code, 2, 'unknown slug');
+  assert.throws(() => recordDecision({ pages: [] }, 'x', { battery: 'b', jev: 1 }), /unknown slug/);
+  assert.deepEqual(ROUTES, ['act', 'review', 'escalate']);
+});
+
 console.log(failed ? `\n${failed} failing` : '\nstate: all checks passed');
 process.exit(failed ? 1 : 0);

@@ -81,7 +81,7 @@ Run the project copies under `stardust/scripts/<skill>/`. Read this before any `
 - `rollout/section-fidelity.mjs` — authored vs source outline — `--file <html> --source <u>|--source-file <p>`
 - `rollout/update-coverage.mjs` — status writer — `<slug> --status <s> [--url]`; `--block <id> --status <s>`; `--new <slug> --path <p> --template <id> --origin <o>`
 - `rollout/verify.mjs` — full-site verify — `[--base <u>|--root <dir>] [--all]`
-- `stardust/decide.mjs` — the decision layer: one typed battery → one System One request → routed answers + a `decisions.jsonl` line — `<battery> --state <f|-> [--ref] [--model] [--decider jev|off] [--dry-run] [--no-cache]`; `batteries` lists them (exit 3 = decider off / no key)
+- `stardust/decide.mjs` — the decision layer: one typed battery → one System One request → routed answers + a `decisions.jsonl` line — `<battery> --state <f|-> [--mode off|shadow|assist|gate] [--agent '<json>'] [--ref] [--run-id] [--dry-run]`; `batteries`; `compare [--battery] [--run-id] [--check]` (exit 3 = off / no key)
 - `stardust/impeccable-version-check.mjs` — newer impeccable? — `[--offline] [--json]`; `--where`
 - `stardust/ledger.mjs` — status.jsonl writer — `<skill> <phase> start|end|blocked [--detail] [--strict]` (end needs an open start; journal.md checked on end); `tail`; `last`
-- `stardust/state.mjs` — page status writer — `advance <slug…> --to <status> [--by]`; `summary [--slugs]`
+- `stardust/state.mjs` — page status writer — `advance <slug…> --to <status> [--by]`; `summary [--slugs]`; `decider <mode>`; `decision <slug> --battery <b> --jev <v> [--agent <v>] [--confidence] [--route]`

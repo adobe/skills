@@ -52,6 +52,15 @@ battery against recorded decisions before any caller relies on it. Nothing gates
   the run's fix-or-justify outcome on the third of flags where it is decisive, unsure on the
   rest — go as a pre-sort. `residual-causes`: the harvestable state lacks the verdict lines; no
   verdict. `jev-preview` within a point of `jev-1.13.0` everywhere.
+- **Phase 1 of notes/jev-implementation-plan.md — the wiring contract.** `decide.mjs` gains modes
+  (`--mode off|shadow|assist|gate`, default `$STARDUST_DECIDER`), `--agent '<json>'` to log the
+  caller's own answer beside the model's with per-question agreement and a `shadow.review` flag on
+  a confident disagreement, `--run-id` (else `state.json#runId`, else `$STARDUST_RUN_ID`, else the
+  date) on every line, and `compare [--battery] [--run-id] [--check]` to read the ledger back per
+  battery, question and confidence bin. `state.mjs` gains `decider <mode>` (top-level key after
+  `handsOff`, stamped by Setup step 3) and `decision <slug> --battery … --jev … [--agent …]`, the
+  per-page roll-up `pages[].decisions.<battery>`; `summary` prints both. `run-status.md` documents
+  the decisions ledger; `state-machine.md` the decider key.
 - **Not changed:** no skill calls the layer yet; every gate, bar and instrument is as in 0.26.0. The
   wiring (a `decide` step beside the in-context judgment, compared in the ledger) follows for the
   batteries whose replay shows agreement rising with confidence and ≥ 90 % agreement among `act`

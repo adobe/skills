@@ -6,12 +6,29 @@
 // can be retuned later without re-inference. It never generates text: every option a battery offers
 // comes from the battery file or from the state the caller built.
 //
-//   node decide.mjs <battery> --state <file.json|-> [--ref <slug or id>] [--model jev-1.13.0]
-//                   [--decider jev|off] [--dry-run] [--pretty] [--no-cache] [--cache <dir>]
-//                   [--ledger <file>] [--key-env TYPESAFE_API_KEY] [--endpoint <url>]
-//                   [--batteries <dir>] [--retries 5] [--backoff-ms 500]
+//   node decide.mjs <battery> --state <file.json|-> [--ref <slug or id>] [--mode off|shadow|assist|gate]
+//                   [--agent '<json>'] [--run-id <id>] [--model jev-1.13.0] [--dry-run] [--pretty]
+//                   [--no-cache] [--cache <dir>] [--ledger <file>] [--no-ledger]
+//                   [--key-env TYPESAFE_API_KEY] [--endpoint <url>] [--batteries <dir>]
+//                   [--retries 5] [--backoff-ms 500]
 //   node decide.mjs batteries [--batteries <dir>]          list the shipped batteries
+//   node decide.mjs compare [--ledger <file>] [--battery <b>] [--run-id <id>] [--check] [--json]
 //   node decide.mjs --help
+//
+// Modes (`--mode`, default $STARDUST_DECIDER, else `shadow` for a direct call): `off` prints
+// {"decider":"off"} and exits 3 — the caller keeps its own judgment (the "without" arm); `shadow` —
+// the caller has decided already and passes its answer with --agent; both answers are logged, a
+// disagreement at or above the question's `act` bar sets `shadow.review: true`, nothing else changes;
+// `assist` — the caller asks first and confirms or overrides (its override, when given later with
+// --agent, is logged the same way); `gate` — the caller takes an `act` verdict without review (only
+// for batteries that earned it in evals/jev-batteries/BASELINE.md). `--decider jev|off` is the older
+// spelling (jev = assist). Every line carries `mode` and `runId` (--run-id, else
+// stardust/state.json#runId, else $STARDUST_RUN_ID, else the UTC date).
+// --agent '<json>': the caller's own answer per question id ({"type":"article","locale_shell":false});
+// choice compares the option, score the rounded level, noul the boolean; per-question `agreement`
+// lands in the line. `compare` reads the ledger back: per battery and question, items, items with an
+// agent answer, agreement overall and per confidence bin, route split; `--check` validates every
+// line's shape and exits 2 on the first bad one.
 //
 // Battery: `<batteries>/<name>.json` (default: the `batteries/` dir beside this script, so a project
 // copy under stardust/scripts/stardust/ carries them) or any path ending in .json. Shape and the
@@ -50,6 +67,9 @@ export const DEFAULTS = {
   batteriesDir: join(HERE, 'batteries'),
 };
 export const META_KEYS = ['criteriaFrom', 'appendNone', 'notes'];
+export const MODES = ['off', 'shadow', 'assist', 'gate'];
+export const LINE_KEYS = ['at', 'runId', 'mode', 'battery', 'version', 'model', 'answers', 'route'];
+export const BINS = [['≥0.9', 0.9, 1.01], ['0.7–0.9', 0.7, 0.9], ['0.5–0.7', 0.5, 0.7], ['<0.5', -1, 0.5]];
 export const PRIMITIVES = ['noul', 'choice', 'score'];
 export const VERDICTS = ['act', 'review', 'escalate'];
 const SEVERITY = { act: 0, review: 1, escalate: 2 };
@@ -167,6 +187,86 @@ export function route(battery, answers) {
 
 export function usage(message) { const e = new Error(message); e.exitCode = 2; return e; }
 
+// Compare the caller's answer with the model's, per question: choice → the option, score → the
+// rounded level, noul → the boolean at 0.5. Questions the caller did not answer are null.
+export function agreement(answers, agent) {
+  if (!agent || typeof agent !== 'object') return null;
+  const out = {};
+  for (const [id, a] of Object.entries(answers || {})) {
+    if (!(id in agent)) { out[id] = null; continue; }
+    const v = agent[id];
+    if (a.type === 'choice') out[id] = String(a.choice) === String(v);
+    else if (a.type === 'score') out[id] = Math.round(a.score) === Math.round(Number(v));
+    else out[id] = (a.noul >= 0.5) === (v === true || v === 'true' || v === 'yes' || v === 1);
+  }
+  return out;
+}
+
+// The confidence a line's question carries, on one scale: choice/score confidence, noul distance from 0.5 doubled.
+export const questionConfidence = (a) => (a.type === 'noul' ? Math.abs(a.noul - 0.5) * 2 : (a.confidence ?? 0));
+export const bin = (c) => (BINS.find(([, lo, hi]) => c >= lo && c < hi) || BINS[3])[0];
+
+export function normaliseMode(raw) {
+  if (raw == null || raw === '') return null;
+  const m = String(raw).toLowerCase();
+  if (m === 'jev') return 'assist';
+  if (!MODES.includes(m)) throw usage(`mode must be one of ${MODES.join('|')}, got "${raw}"`);
+  return m;
+}
+
+export function resolveRunId(explicit, cwd = process.cwd()) {
+  if (explicit) return String(explicit);
+  try { const st = JSON.parse(readFileSync(join(cwd, 'stardust', 'state.json'), 'utf8')); if (st && st.runId) return String(st.runId); } catch { /* no state */ }
+  if (process.env.STARDUST_RUN_ID) return process.env.STARDUST_RUN_ID;
+  return new Date().toISOString().slice(0, 10);
+}
+
+// Read a decisions ledger back into per-battery, per-question agreement tables.
+export function readLedger(file) {
+  if (!existsSync(file)) throw usage(`ledger not found: ${file}`);
+  const lines = readFileSync(file, 'utf8').split('\n').filter(Boolean);
+  const out = []; const bad = [];
+  lines.forEach((l, i) => { try { const j = JSON.parse(l); const missing = LINE_KEYS.filter((k) => !(k in j)); if (missing.length) bad.push({ line: i + 1, why: `missing ${missing.join(', ')}` }); else out.push(j); } catch (e) { bad.push({ line: i + 1, why: `not JSON: ${e.message}` }); } });
+  return { lines: out, bad };
+}
+
+export function compareLedger(lines, { battery = null, runId = null } = {}) {
+  const tables = {};
+  for (const l of lines) {
+    if (battery && l.battery !== battery) continue;
+    if (runId && l.runId !== runId) continue;
+    const B = (tables[l.battery] ||= { items: 0, withAgent: 0, modes: {}, route: { act: 0, review: 0, escalate: 0 }, shadowReview: 0, questions: {} });
+    B.items += 1; B.modes[l.mode] = (B.modes[l.mode] || 0) + 1;
+    if (l.route && l.route.overall) B.route[l.route.overall] = (B.route[l.route.overall] || 0) + 1;
+    if (l.shadow && l.shadow.review) B.shadowReview += 1;
+    if (l.agent) B.withAgent += 1;
+    for (const [q, a] of Object.entries(l.answers || {})) {
+      const Q = (B.questions[q] ||= { n: 0, withAgent: 0, agree: 0, bins: Object.fromEntries(BINS.map(([b]) => [b, { n: 0, agree: 0 }])) });
+      Q.n += 1;
+      const ag = l.agreement ? l.agreement[q] : null;
+      if (ag === null || ag === undefined) continue;
+      const c = bin(questionConfidence(a));
+      Q.withAgent += 1; Q.bins[c].n += 1;
+      if (ag) { Q.agree += 1; Q.bins[c].agree += 1; }
+    }
+  }
+  return tables;
+}
+
+export function formatCompare(tables) {
+  const pct = (a, n) => (n ? `${Math.round((a / n) * 1000) / 10}%` : '—');
+  const out = [];
+  for (const [b, B] of Object.entries(tables)) {
+    out.push(`${b}: ${B.items} decision(s), ${B.withAgent} with an agent answer; modes ${Object.entries(B.modes).map(([m, n]) => `${m} ${n}`).join(', ')}; route act ${B.route.act} / review ${B.route.review} / escalate ${B.route.escalate}; shadow review ${B.shadowReview}`);
+    out.push('  question            n  agent  agree   ≥0.9        0.7–0.9     0.5–0.7     <0.5');
+    for (const [q, Q] of Object.entries(B.questions)) {
+      const bins = BINS.map(([name]) => `${pct(Q.bins[name].agree, Q.bins[name].n).padStart(6)} (${String(Q.bins[name].n).padStart(3)})`).join(' ');
+      out.push(`  ${q.padEnd(18)} ${String(Q.n).padStart(4)} ${String(Q.withAgent).padStart(5)}  ${pct(Q.agree, Q.withAgent).padStart(6)} ${bins}`);
+    }
+  }
+  return out.join('\n') || 'no decisions match';
+}
+
 export function helpText() {
   return readFileSync(fileURLToPath(import.meta.url), 'utf8').split('\n').filter((l) => l.startsWith('//')).map((l) => l.replace(/^\/\/ ?/, '')).join('\n');
 }
@@ -210,7 +310,7 @@ export function createClient({ key, endpoint = DEFAULTS.endpoint, model = DEFAUL
 
 // ---- decide ----------------------------------------------------------------------------------------
 
-export async function decide({ battery, state, client, model = client.model, cacheDir = DEFAULTS.cacheDir, ledger = DEFAULTS.ledger, ref = null, noCache = false, now = () => new Date() }) {
+export async function decide({ battery, state, client, model = client.model, cacheDir = DEFAULTS.cacheDir, ledger = DEFAULTS.ledger, ref = null, noCache = false, mode = 'shadow', agent = null, runId = null, now = () => new Date() }) {
   const questions = buildQuestions(battery, state);
   const key = cacheKey(model, state, questions);
   const cacheFile = cacheDir ? join(cacheDir, `${key}.json`) : null;
@@ -225,7 +325,15 @@ export async function decide({ battery, state, client, model = client.model, cac
     if (cacheFile) { mkdirSync(dirname(cacheFile), { recursive: true }); writeFileSync(cacheFile, JSON.stringify({ at: now().toISOString(), model: response.model, response }, null, 0)); }
   }
   const routed = route(battery, response.answers || {});
-  const result = { battery: battery.name, version: battery.version ?? null, model: response.model || model, ref, answers: response.answers, route: routed, usage: response.usage || null, ms, cached };
+  const agree = agreement(response.answers || {}, agent);
+  const result = { runId: runId || resolveRunId(null), mode, battery: battery.name, version: battery.version ?? null, model: response.model || model, ref, answers: response.answers, route: routed, usage: response.usage || null, ms, cached };
+  if (agent) {
+    result.agent = agent; result.agreement = agree;
+    // shadow: a disagreement the model is confident about is worth a look — flag it, change nothing.
+    const rules = battery.route || {};
+    const disagree = Object.entries(agree).filter(([q, ok]) => ok === false).filter(([q]) => { const a = response.answers[q]; const r = rules[q] || {}; if (!a) return false; if (a.type === 'noul') return a.noul >= (r.yes ?? 0.8) || a.noul <= (r.no ?? 0.2); return (a.confidence ?? 0) >= (r.confident ?? 0.8); }).map(([q]) => q);
+    result.shadow = { disagree, review: disagree.length > 0 };
+  }
   if (ledger) {
     mkdirSync(dirname(ledger), { recursive: true });
     appendFileSync(ledger, `${JSON.stringify({ at: now().toISOString(), ...result, stateSha: sha(stable(state)).slice(0, 16) })}\n`);
@@ -236,14 +344,19 @@ export async function decide({ battery, state, client, model = client.model, cac
 // ---- CLI --------------------------------------------------------------------------------------------
 
 export function parseArgs(argv) {
-  const o = { positional: [], decider: process.env.STARDUST_DECIDER || DEFAULTS.decider, model: DEFAULTS.model, keyEnv: DEFAULTS.keyEnv, endpoint: DEFAULTS.endpoint, batteries: DEFAULTS.batteriesDir, cache: DEFAULTS.cacheDir, ledger: DEFAULTS.ledger, retries: DEFAULTS.retries, backoffMs: DEFAULTS.backoffMs, noCache: false, dryRun: false, pretty: false, ref: null, state: null };
+  const o = { positional: [], mode: null, agent: null, runId: null, battery: null, check: false, json: false, model: DEFAULTS.model, keyEnv: DEFAULTS.keyEnv, endpoint: DEFAULTS.endpoint, batteries: DEFAULTS.batteriesDir, cache: DEFAULTS.cacheDir, ledger: DEFAULTS.ledger, retries: DEFAULTS.retries, backoffMs: DEFAULTS.backoffMs, noCache: false, dryRun: false, pretty: false, ref: null, state: null };
   const val = (flag, v) => { if (v === undefined || v.startsWith('--')) throw usage(`${flag} needs a value`); return v; };
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === '--state') o.state = val(a, argv[++i]);
     else if (a === '--ref') o.ref = val(a, argv[++i]);
     else if (a === '--model') o.model = val(a, argv[++i]);
-    else if (a === '--decider') o.decider = val(a, argv[++i]);
+    else if (a === '--decider' || a === '--mode') o.mode = normaliseMode(val(a, argv[++i]));
+    else if (a === '--agent') { const raw = val(a, argv[++i]); try { o.agent = JSON.parse(raw); } catch (e) { throw usage(`--agent must be a JSON object: ${e.message}`); } if (!o.agent || typeof o.agent !== 'object' || Array.isArray(o.agent)) throw usage('--agent must be a JSON object of question id → answer'); }
+    else if (a === '--run-id') o.runId = val(a, argv[++i]);
+    else if (a === '--battery') o.battery = val(a, argv[++i]);
+    else if (a === '--check') o.check = true;
+    else if (a === '--json') o.json = true;
     else if (a === '--key-env') o.keyEnv = val(a, argv[++i]);
     else if (a === '--endpoint') o.endpoint = val(a, argv[++i]);
     else if (a === '--batteries') o.batteries = resolve(val(a, argv[++i]));
@@ -269,7 +382,15 @@ async function main(argv) {
     for (const b of listBatteries(o.batteries)) console.log(b.error ? `${b.name}  (${b.error})` : `${b.name}  v${b.version ?? '?'}  ${b.questions} question(s)  ${b.description}`);
     return 0;
   }
-  if (!cmd) throw usage('give a battery name (node decide.mjs batteries) or --help');
+  if (cmd === 'compare') {
+    const { lines, bad } = readLedger(o.ledger || DEFAULTS.ledger);
+    if (o.check) { for (const b of bad) console.error(`decide compare --check: line ${b.line}: ${b.why}`); if (bad.length) return 2; console.log(`decisions ledger ok: ${lines.length} line(s)`); }
+    else if (bad.length) console.error(`decide compare: ${bad.length} unreadable line(s) skipped (run --check)`);
+    const tables = compareLedger(lines, { battery: o.battery, runId: o.runId });
+    console.log(o.json ? JSON.stringify(tables, null, o.pretty ? 2 : 0) : formatCompare(tables));
+    return 0;
+  }
+  if (!cmd) throw usage('give a battery name (node decide.mjs batteries), compare, or --help');
   const battery = loadBattery(cmd, o.batteries);
   if (!o.state) throw usage('--state <file.json|-> is required');
   let state;
@@ -279,11 +400,12 @@ async function main(argv) {
     console.log(JSON.stringify({ battery: battery.name, model: o.model, state, questions: buildQuestions(battery, state), route: battery.route || {} }, null, o.pretty ? 2 : 0));
     return 0;
   }
-  if (o.decider === 'off') { console.log(JSON.stringify({ decider: 'off', battery: battery.name })); return 3; }
+  const mode = o.mode || normaliseMode(process.env.STARDUST_DECIDER) || 'shadow';
+  if (mode === 'off') { console.log(JSON.stringify({ decider: 'off', mode, battery: battery.name })); return 3; }
   const key = process.env[o.keyEnv];
   if (!key) { console.error(`decide: no key in $${o.keyEnv} — export it (never in a file the skills push) or run with --decider off`); return 3; }
   const client = createClient({ key, endpoint: o.endpoint, model: o.model, retries: o.retries, backoffMs: o.backoffMs });
-  const result = await decide({ battery, state, client, model: o.model, cacheDir: o.noCache ? null : o.cache, ledger: o.ledger, ref: o.ref, noCache: o.noCache });
+  const result = await decide({ battery, state, client, model: o.model, cacheDir: o.noCache ? null : o.cache, ledger: o.ledger, ref: o.ref, noCache: o.noCache, mode, agent: o.agent, runId: resolveRunId(o.runId) });
   console.log(JSON.stringify(result, null, o.pretty ? 2 : 0));
   return 0;
 }

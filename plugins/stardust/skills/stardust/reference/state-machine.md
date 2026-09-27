@@ -68,6 +68,16 @@ from `_crawl-log.json#captureGaps`): `[{ root, slug, linked, uncaptured:
 
 ---
 
+## Decider key
+
+`"decider": "off" | "shadow" | "assist" | "gate"` at top level, after `handsOff` — the
+decision-layer mode for the run, stamped by the master skill's Setup from `$STARDUST_DECIDER`
+(default `off`) with `state.mjs decider <mode>`. Wired steps read it: `off` = the agent decides
+alone; `shadow` = both decide, both are logged; `assist` = the model first, the agent confirms;
+`gate` = an `act` verdict is taken (supervisor batteries only). Per page,
+`pages[].decisions.<battery>` = `{ jev, agent?, agree?, confidence?, route?, at }` is the roll-up of
+`stardust/decisions.jsonl` (`run-status.md` § Decisions ledger).
+
 ## Hands-off keys
 
 When the run was activated hands-off (`skills/stardust/SKILL.md`

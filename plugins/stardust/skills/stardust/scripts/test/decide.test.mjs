@@ -13,7 +13,7 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildQuestions, cacheKey, createClient, decide, getPath, listBatteries, loadBattery, route, stable } from '../decide.mjs';
+import { MODES, agreement, buildQuestions, cacheKey, compareLedger, createClient, decide, formatCompare, getPath, listBatteries, loadBattery, normaliseMode, readLedger, resolveRunId, route, stable } from '../decide.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'decide.mjs');
@@ -154,6 +154,68 @@ await check('CLI: end to end against the fake endpoint writes cache + ledger und
   const r = await new Promise((resolve) => { execFile(process.execPath, [SCRIPT, 'page-type', '--state', join(root, 'state2.json'), '--endpoint', endpoint, '--backoff-ms', '1', '--ref', 'y'], { cwd, encoding: 'utf8', timeout: 20000, env: { ...process.env, TYPESAFE_API_KEY: 'test-key', STARDUST_DECIDER: '' } }, (err, out, errOut) => resolve({ code: err ? err.code : 0, out, err: errOut })); });
   assert.equal(r.code, 0, r.err); const j = JSON.parse(r.out); assert.equal(j.route.overall, 'act'); assert.equal(j.ref, 'y');
   assert.ok(existsSync(join(cwd, 'stardust', 'decisions.jsonl'))); assert.ok(existsSync(join(cwd, 'stardust', '.work', 'decide')));
+});
+
+
+await check('modes: normalisation, off exits 3 under --mode and $STARDUST_DECIDER, jev = assist', () => {
+  assert.deepEqual(MODES, ['off', 'shadow', 'assist', 'gate']);
+  assert.equal(normaliseMode('jev'), 'assist'); assert.equal(normaliseMode('GATE'), 'gate'); assert.equal(normaliseMode(''), null);
+  assert.throws(() => normaliseMode('maybe'), /mode must be one of/);
+  let r = run(['page-type', '--state', 'state.json', '--mode', 'off']); assert.equal(r.code, 3); assert.match(r.out, /"mode":"off"/);
+  r = run(['page-type', '--state', 'state.json'], { STARDUST_DECIDER: 'off' }); assert.equal(r.code, 3);
+  r = run(['page-type', '--state', 'state.json', '--mode', 'sideways']); assert.equal(r.code, 2);
+  r = run(['page-type', '--state', 'state.json', '--agent', 'not json']); assert.equal(r.code, 2);
+  r = run(['page-type', '--state', 'state.json', '--agent', '[1]']); assert.equal(r.code, 2);
+});
+
+await check('agreement(): choice by option, score by rounded level, noul by boolean; unanswered = null', () => {
+  const answers = { c: { type: 'choice', choice: 'a' }, s: { type: 'score', score: 1.6 }, n: { type: 'noul', noul: 0.8 }, u: { type: 'noul', noul: 0.1 } };
+  assert.deepEqual(agreement(answers, { c: 'a', s: 2, n: true }), { c: true, s: true, n: true, u: null });
+  assert.deepEqual(agreement(answers, { c: 'b', s: 1, n: 'false' }), { c: false, s: false, n: false, u: null });
+  assert.equal(agreement(answers, null), null);
+});
+
+await check('resolveRunId: explicit, state.json#runId, env, date', () => {
+  assert.equal(resolveRunId('r1'), 'r1');
+  const cwd = join(root, 'rid'); mkdirSync(join(cwd, 'stardust'), { recursive: true }); writeFileSync(join(cwd, 'stardust', 'state.json'), JSON.stringify({ runId: 'from-state', pages: [] }));
+  assert.equal(resolveRunId(null, cwd), 'from-state');
+  const prev = process.env.STARDUST_RUN_ID; process.env.STARDUST_RUN_ID = 'from-env';
+  assert.equal(resolveRunId(null, root), 'from-env');
+  delete process.env.STARDUST_RUN_ID; assert.match(resolveRunId(null, root), /^\d{4}-\d{2}-\d{2}$/);
+  if (prev) process.env.STARDUST_RUN_ID = prev;
+});
+
+await check('shadow: --agent lands agent + agreement + shadow.review on the line; compare reads it back; --check validates', async () => {
+  const battery = loadBattery('page-type', BATTERIES);
+  const client = createClient({ key: 'test-key', endpoint, backoffMs: 1, retries: 3 });
+  const state = { page: { path: '/z' }, types: ['a', 'b'] };
+  const ledger = join(root, 'shadow.jsonl');
+  const r1 = await decide({ battery, state, client, cacheDir: null, ledger, ref: 'z', mode: 'shadow', agent: { type: 'a', locale_shell: false }, runId: 'run-A' });
+  assert.equal(r1.mode, 'shadow'); assert.equal(r1.runId, 'run-A'); assert.deepEqual(r1.agreement, { type: true, locale_shell: true }); assert.equal(r1.shadow.review, false);
+  const r2 = await decide({ battery, state: { ...state, page: { path: '/z2' } }, client, cacheDir: null, ledger, ref: 'z2', mode: 'shadow', agent: { type: 'b' }, runId: 'run-A' });
+  assert.deepEqual(r2.agreement, { type: false, locale_shell: null }); assert.deepEqual(r2.shadow, { disagree: ['type'], review: true }, 'a confident (0.93) disagreement is flagged');
+  const { lines, bad } = readLedger(ledger); assert.equal(bad.length, 0); assert.equal(lines.length, 2); assert.equal(lines[1].shadow.review, true);
+  const tables = compareLedger(lines); const T = tables['page-type'];
+  assert.equal(T.items, 2); assert.equal(T.withAgent, 2); assert.equal(T.shadowReview, 1); assert.equal(T.questions.type.withAgent, 2); assert.equal(T.questions.type.agree, 1); assert.equal(T.questions.locale_shell.withAgent, 1);
+  assert.equal(T.questions.type.bins['≥0.9'].n, 2, 'confidence 0.93 bins at ≥0.9');
+  assert.match(formatCompare(tables), /page-type: 2 decision\(s\), 2 with an agent answer/);
+  assert.deepEqual(Object.keys(compareLedger(lines, { runId: 'nope' })), []);
+  // CLI compare + --check on a ledger with a broken line
+  let r = run(['compare', '--ledger', ledger]); assert.equal(r.code, 0, r.err); assert.match(r.out, /shadow review 1/);
+  r = run(['compare', '--ledger', ledger, '--check']); assert.equal(r.code, 0); assert.match(r.out, /ledger ok: 2 line/);
+  writeFileSync(ledger, `${readFileSync(ledger, 'utf8')}{"at":"x"}\nnot json\n`);
+  r = run(['compare', '--ledger', ledger, '--check']); assert.equal(r.code, 2); assert.match(r.err, /line 3: missing/); assert.match(r.err, /line 4: not JSON/);
+  r = run(['compare', '--ledger', ledger, '--json']); assert.equal(r.code, 0); assert.ok(JSON.parse(r.out)['page-type']);
+});
+
+await check('CLI shadow end to end: --mode shadow --agent writes both answers and a run id', async () => {
+  const cwd = join(root, 'proj2'); mkdirSync(join(cwd, 'stardust'), { recursive: true }); writeFileSync(join(cwd, 'stardust', 'state.json'), JSON.stringify({ runId: 'R-42', pages: [] }));
+  writeFileSync(join(root, 'state3.json'), JSON.stringify({ page: { path: '/q' }, types: ['a', 'b'] }));
+  const r = await new Promise((resolve) => { execFile(process.execPath, [SCRIPT, 'page-type', '--state', join(root, 'state3.json'), '--endpoint', endpoint, '--backoff-ms', '1', '--mode', 'shadow', '--agent', '{"type":"b"}', '--ref', 'q'], { cwd, encoding: 'utf8', timeout: 20000, env: { ...process.env, TYPESAFE_API_KEY: 'test-key', STARDUST_DECIDER: '' } }, (err, out, errOut) => resolve({ code: err ? err.code : 0, out, err: errOut })); });
+  assert.equal(r.code, 0, r.err); const j = JSON.parse(r.out);
+  assert.equal(j.mode, 'shadow'); assert.equal(j.runId, 'R-42'); assert.deepEqual(j.agent, { type: 'b' }); assert.equal(j.agreement.type, false); assert.equal(j.shadow.review, true);
+  const line = JSON.parse(readFileSync(join(cwd, 'stardust', 'decisions.jsonl'), 'utf8').trim().split('\n').pop());
+  assert.equal(line.runId, 'R-42'); assert.equal(line.mode, 'shadow'); assert.ok(line.agreement);
 });
 
 server.close();

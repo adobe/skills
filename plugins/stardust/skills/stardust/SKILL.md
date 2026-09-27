@@ -52,7 +52,8 @@ sub-commands that delegate the actual design work to **impeccable**.
    session's history.
 3. **Read stardust's state.** Read `stardust/state.json` if present
    (`reference/state-machine.md` defines the schema). Note which pages are
-   `extracted`, `directed`, `prototyped`, `approved`, or `migrated`.
+   `extracted`, `directed`, `prototyped`, `approved`, or `migrated`. When the file exists, stamp the decision-layer mode:
+   `node stardust/scripts/stardust/state.mjs decider ${STARDUST_DECIDER:-off}` (§ The decision layer).
 4. **Read impeccable's command registry.** Parse
    `<harness>/skills/impeccable/scripts/command-metadata.json`. This is the
    single source of truth for the 24 impeccable commands; never hardcode
@@ -338,11 +339,18 @@ alignment, a title or description picked from candidates — can be asked of a S
 through `skills/stardust/scripts/decide.mjs <battery> --state <json>` (batteries and their
 callers: `skills/stardust/scripts/batteries/README.md`). The answer is typed, carries a
 probability, and is routed `act` / `review` / `escalate` on the battery's thresholds; every
-call lands in `stardust/decisions.jsonl`. It never generates text: options come from the
-battery or from the state the caller built. Until a battery has been measured in
-`evals/jev-batteries/` it runs beside the agent's own judgment, never instead of it; without
-`$TYPESAFE_API_KEY` or under `STARDUST_DECIDER=off` the script exits 3 and the agent decides as
-before. Generation, vision and numbers stay with the agent and the instruments.
+call lands in `stardust/decisions.jsonl` (`reference/run-status.md` § Decisions ledger) and the
+page's roll-up in `state.json` (`state.mjs decision`). It never generates text: options come
+from the battery or from the state the caller built. **Mode** — Setup stamps
+`$STARDUST_DECIDER` (default `off`) with `node stardust/scripts/stardust/state.mjs decider
+<mode>`: `off`, the agent decides alone; `shadow`, the agent decides and the battery runs on the
+same state with `--agent '<the agent's answer>'`, both logged, a confident disagreement marked
+`review`; `assist`, the battery first, the agent confirms or overrides in one line; `gate`,
+supervisor batteries only. A battery moves from shadow to assist only after
+`evals/jev-batteries/BASELINE.md` shows ≥ 90 % agreement on its `act` items over two runs.
+Without `$TYPESAFE_API_KEY` or in `off` the script exits 3 and the agent decides as before; a
+decide failure never blocks a step. Generation, vision and numbers stay with the agent and the
+instruments.
 
 ## The "open and reasoned" principle
 

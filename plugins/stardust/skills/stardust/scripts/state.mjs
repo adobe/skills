@@ -8,6 +8,15 @@
 //   node state.mjs advance <slug…> --to <status> [--by <who>] [--prototype <path>] [--migrated <path>]
 //                  [--skill <name>] [--force | --history-only] [--dir <stardust dir>]
 //   node state.mjs summary [--slugs] [--dir <stardust dir>]
+//   node state.mjs decider <off|shadow|assist|gate> [--dir <stardust dir>]
+//   node state.mjs decision <slug> --battery <name> --jev <answer> [--agent <answer>] [--confidence <0-1>]
+//                  [--route act|review|escalate] [--dir <stardust dir>]
+//
+// decider stamps the decision-layer mode for the run at top level (`decider`, after handsOff — the
+// master skill's Setup writes it from $STARDUST_DECIDER, default off; skills/stardust/SKILL.md § The
+// decision layer). decision writes the per-page roll-up `pages[].decisions.<battery>` =
+// { agent, jev, confidence, route, at } so migrate and rollout read a page's typed decisions without
+// parsing stardust/decisions.jsonl (the ledger stays the record; this is the index).
 //
 // Lifecycle (state-machine.md § Page lifecycle states): extracted → directed → prototyped →
 // approved → migrated. Forward moves are legal, including jumps (a `directed` page can be migrated
@@ -40,7 +49,9 @@ export const SET_BY = { extracted: 'extract', directed: 'direct', prototyped: 'p
 export const CLEARS_STALE = new Set(['prototyped', 'approved', 'migrated']);
 // state-machine.md § File: top-level keys "always in that order"; handsOff sits after direction, the
 // 0.23.0 flow keys (§ Flow keys) between it and pages.
-export const TOP_ORDER = ['_provenance', 'site', 'direction', 'handsOff', 'flow', 'flowChosenAt', 'flowSource', 'pages'];
+export const TOP_ORDER = ['_provenance', 'site', 'direction', 'handsOff', 'decider', 'flow', 'flowChosenAt', 'flowSource', 'pages'];
+export const DECIDER_MODES = ['off', 'shadow', 'assist', 'gate'];
+export const ROUTES = ['act', 'review', 'escalate'];
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SELF = fileURLToPath(import.meta.url);
@@ -49,6 +60,8 @@ const HELP = `Usage:
   node state.mjs advance <slug…> --to <${ORDER.join('|')}> [--by <who>] [--prototype <path>]
                  [--migrated <path>] [--skill <name>] [--force | --history-only] [--dir <d>]
   node state.mjs summary [--slugs] [--dir <d>]
+  node state.mjs decider <${DECIDER_MODES.join('|')}> [--dir <d>]
+  node state.mjs decision <slug> --battery <name> --jev <answer> [--agent <answer>] [--confidence <0-1>] [--route <${ROUTES.join('|')}>] [--dir <d>]
   (--dir defaults to ${DEFAULT_DIR}; the file is <dir>/${FILE_NAME} and must already exist)
 
 advance  moves every named page to <status>: appends { status, at[, approvedBy] } to its history,
@@ -60,8 +73,12 @@ advance  moves every named page to <status>: appends { status, at[, approvedBy] 
          after approved does not demote — state-machine.md § Linearity rule); no direction check,
          stale untouched, paths still set. Not combinable with --force.
          A value flag followed by nothing or by another --flag is a usage error.
-summary  prints page counts by status (and the slugs per status with --slugs).
-Writes: advance rewrites <dir>/${FILE_NAME} in place (atomic temp file + rename); summary writes nothing.
+summary  prints page counts by status (and the slugs per status with --slugs), the decider mode and
+         how many pages carry decisions.
+decider  stamps the decision-layer mode at top level (\`decider\`); \`off\` removes nothing, it is a value.
+decision writes pages[].decisions.<battery> = { agent, jev, confidence, route, at } for one page
+         (the roll-up of stardust/decisions.jsonl; --agent is the caller's own answer when it decided too).
+Writes: advance / decider / decision rewrite <dir>/${FILE_NAME} in place (atomic temp file + rename); summary writes nothing.
 Exit codes: 0 ok, 2 usage / illegal transition.`;
 
 export class UsageError extends Error { constructor(msg, code = 2) { super(msg); this.code = code; } }
@@ -180,16 +197,42 @@ export function summarise(state) {
   const counts = Object.fromEntries(ORDER.map((s) => [s, []]));
   const other = {};
   const stale = [];
+  let withDecisions = 0; let decisions = 0;
   for (const p of state.pages) {
     (counts[p.status] || (other[p.status] = other[p.status] || [])).push(p.slug);
     if (p.stale) stale.push(p.slug);
+    if (p.decisions && typeof p.decisions === 'object') { const n = Object.keys(p.decisions).length; if (n) { withDecisions += 1; decisions += n; } }
   }
-  return { total: state.pages.length, counts, other, stale };
+  return { total: state.pages.length, counts, other, stale, decider: state.decider || null, withDecisions, decisions };
+}
+
+export function setDecider(state, mode) {
+  if (!DECIDER_MODES.includes(mode)) throw new UsageError(`decider must be one of ${DECIDER_MODES.join('|')}, got "${mode}"`);
+  state.decider = mode;
+  return state;
+}
+
+// One typed decision on one page: pages[].decisions.<battery>. Answers are kept as given (a choice
+// option, a rounded score level, or a noul boolean); confidence 0–1; route from the decide.mjs line.
+export function recordDecision(state, slug, { battery, jev, agent = null, confidence = null, route = null, at = nowIso() }) {
+  if (!battery || !/^[a-z][a-z0-9-]*$/.test(battery)) throw new UsageError('decision needs --battery <name> (lower-case, dashes)');
+  if (jev === null || jev === undefined) throw new UsageError('decision needs --jev <answer>');
+  if (confidence !== null && (Number.isNaN(Number(confidence)) || confidence < 0 || confidence > 1)) throw new UsageError('--confidence must be a number from 0 to 1');
+  if (route !== null && !ROUTES.includes(route)) throw new UsageError(`--route must be one of ${ROUTES.join('|')}`);
+  const page = state.pages.find((p) => p.slug === slug);
+  if (!page) throw new UsageError(`unknown slug "${slug}" — ${state.pages.length} page(s) in state.json`);
+  if (!page.decisions || typeof page.decisions !== 'object') page.decisions = {};
+  const entry = { jev, at };
+  if (agent !== null) { entry.agent = agent; entry.agree = String(agent) === String(jev); }
+  if (confidence !== null) entry.confidence = Number(confidence);
+  if (route !== null) entry.route = route;
+  page.decisions[battery] = entry;
+  return entry;
 }
 
 // ---- argv --------------------------------------------------------------------------------------
 function parseArgs(argv) {
-  const opts = { dir: DEFAULT_DIR, force: false, historyOnly: false, slugs: false, to: null, by: null, prototype: null, migrated: null, skill: null };
+  const opts = { dir: DEFAULT_DIR, force: false, historyOnly: false, slugs: false, to: null, by: null, prototype: null, migrated: null, skill: null, battery: null, jev: null, agent: null, confidence: null, route: null };
   const pos = [];
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
@@ -209,6 +252,11 @@ function parseArgs(argv) {
     else if (a === '--prototype') opts.prototype = need();
     else if (a === '--migrated') opts.migrated = need();
     else if (a === '--skill') opts.skill = need();
+    else if (a === '--battery') opts.battery = need();
+    else if (a === '--jev') opts.jev = need();
+    else if (a === '--agent') opts.agent = need();
+    else if (a === '--confidence') opts.confidence = Number(need());
+    else if (a === '--route') opts.route = need();
     else if (a === '--gate' || a === '--note') throw new UsageError(`${a} is not accepted: a state.json history entry carries status, at and approvedBy only (state-machine.md § File). Gate evidence belongs in the producing skill's own ledger; free-text notes belong in stardust/journal.md.`);
     else if (a.startsWith('-')) throw new UsageError(`unknown option ${a}`);
     else pos.push(a);
@@ -230,6 +278,7 @@ export function main(argv) {
     for (const [k, v] of Object.entries(s.other)) parts.push(`other(${k}) ${v.length}`);
     parts.push(`stale ${s.stale.length}`);
     console.log(`${s.total} page(s) · ${parts.join(' · ')}`);
+    if (s.decider || s.decisions) console.log(`  decider ${s.decider || 'unset'}${s.decisions ? ` · decisions ${s.decisions} on ${s.withDecisions} page(s)` : ''}`);
     if (opts.slugs) {
       const rows = [...ORDER.map((k) => [k, s.counts[k]]), ...Object.entries(s.other).map(([k, v]) => [`other(${k})`, v])].filter(([, v]) => v.length);
       for (const [k, v] of rows) console.log(`  ${k.padEnd(11)} ${String(v.length).padStart(3)}  ${v.join(', ')}`);
@@ -250,6 +299,29 @@ export function main(argv) {
     const moves = plan.map((m) => (m.kind === 'history-only' ? `${m.slug} (stays ${m.from}, ${opts.to} entry appended)` : `${m.slug} (${m.from}→${opts.to}${m.kind === 'reentry' ? ', again' : m.kind === 'forward' ? '' : ', forced'})`)).join(', ');
     const extras = [opts.by ? `approvedBy ${opts.by}` : null, opts.prototype ? `prototypePath set` : null, opts.migrated ? `migratedPath set` : null, cleared.length ? `stale cleared: ${cleared.join(', ')}` : null].filter(Boolean);
     console.log(`state: ${plan.length} page(s) ${opts.historyOnly ? 'history +=' : '→'} ${opts.to}: ${moves}${extras.length ? ` · ${extras.join(' · ')}` : ''} · written by ${writtenBy}`);
+    return 0;
+  }
+
+  if (cmd === 'decider') {
+    const [mode] = rest;
+    if (!mode) throw new UsageError(`decider needs a mode: ${DECIDER_MODES.join('|')}`);
+    const { state, file } = readState(opts.dir);
+    setDecider(state, mode);
+    state._provenance = stampProvenance(state._provenance, normaliseSkill(opts.skill || 'stardust'), nowIso());
+    writeState(file, state);
+    console.log(`state: decider ${mode}`);
+    return 0;
+  }
+
+  if (cmd === 'decision') {
+    const [slug] = rest;
+    if (!slug) throw new UsageError('decision needs a <slug>');
+    const { state, file } = readState(opts.dir);
+    const coerce = (v) => (v === null ? null : v === 'true' ? true : v === 'false' ? false : v);
+    const entry = recordDecision(state, slug, { battery: opts.battery, jev: coerce(opts.jev), agent: coerce(opts.agent), confidence: opts.confidence, route: opts.route });
+    state._provenance = stampProvenance(state._provenance, normaliseSkill(opts.skill || 'stardust'), entry.at);
+    writeState(file, state);
+    console.log(`state: ${slug} decisions.${opts.battery} = jev ${JSON.stringify(entry.jev)}${'agent' in entry ? ` · agent ${JSON.stringify(entry.agent)} (${entry.agree ? 'agree' : 'disagree'})` : ''}${entry.confidence != null ? ` · confidence ${entry.confidence}` : ''}${entry.route ? ` · ${entry.route}` : ''}`);
     return 0;
   }
 

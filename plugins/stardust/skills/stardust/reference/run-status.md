@@ -70,3 +70,31 @@ Unlike other stardust artifacts, `status.jsonl` carries no provenance
 block — each line is self-describing via `ts` + `skill`, and the
 append-only rule replaces the overwrite protection provenance
 normally provides.
+
+## Decisions ledger — `stardust/decisions.jsonl`
+
+The decision layer (`skills/stardust/SKILL.md` § The decision layer) appends one JSON line per
+typed decision, written by `skills/stardust/scripts/decide.mjs`. Same rules as the status
+ledger: append-only, created on first write, one line per decision (a cache hit with the same
+`ref` still writes, so the run's record is complete).
+
+| field | required | contents |
+|---|---|---|
+| `at` | yes | ISO 8601 timestamp |
+| `runId` | yes | `--run-id`, else `state.json#runId`, else `$STARDUST_RUN_ID`, else the UTC date |
+| `mode` | yes | `off` \| `shadow` \| `assist` \| `gate` — how the caller used the answer |
+| `battery` / `version` | yes | the battery file's `name` and `version` |
+| `model` | yes | the model that answered (`jev-1.13.0`) |
+| `ref` | no | what was decided about — a slug, a flag id, a unit name |
+| `answers` | yes | the API answers as returned, probabilities included |
+| `route` | yes | `{ overall, questions: { <id>: { verdict, … } }, weakest }` on the battery's thresholds |
+| `agent` / `agreement` | no | the caller's own answer per question, and per-question true/false/null against the model |
+| `shadow` | no | `{ disagree: [<id>…], review: bool }` — a confident disagreement worth a look; changes nothing |
+| `usage`, `ms`, `cached`, `stateSha` | yes | tokens, latency without queue wait, cache hit, first 16 hex of the state hash |
+
+`decide.mjs compare [--battery <b>] [--run-id <id>] [--check]` reads it back: per battery and
+question, items, items with an agent answer, agreement overall and per confidence bin, the route
+split and the shadow-review count; `--check` validates every line and exits 2 on a bad one. The
+per-page index of the same decisions is `state.json` `pages[].decisions.<battery>`
+(`state.mjs decision`), so migrate and rollout never parse this file.
+
