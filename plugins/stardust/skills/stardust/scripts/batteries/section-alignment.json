@@ -1,7 +1,7 @@
 {
   "name": "section-alignment",
   "version": 1,
-  "description": "Are two sections the same block? Entity-alignment shape: one three-level score plus one noul per structural field naming the disagreement. Serves rollout block dedup and the sibling variance probe (#126).",
+  "description": "Are two sections the same block? Entity-alignment shape: one three-level score plus one noul per structural field naming the disagreement. Serves rollout block dedup and the sibling variance probe (#127).",
   "state": { "fields": { "a": "{ page, name?, roles: ['heading','body','cta',...], repeats: [{count, uniform, unit}], counts: {headings, ctas, images, textRuns} }", "b": "the other section, same shape" } },
   "questions": {
     "relation": {

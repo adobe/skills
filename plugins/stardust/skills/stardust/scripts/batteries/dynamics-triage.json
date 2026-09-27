@@ -1,7 +1,7 @@
 {
   "name": "dynamics-triage",
   "version": 1,
-  "description": "The dynamics skill's four triage axes for one detected feature: class, disposition, reproducibility, plus the regulated-PII flag (#126).",
+  "description": "The dynamics skill's four triage axes for one detected feature: class, disposition, reproducibility, plus the regulated-PII flag (#127).",
   "state": { "fields": { "feature": "{ id, description, signals: [strings the detector saw], reach: 'n/m pages', evidence }" } },
   "questions": {
     "class": {

@@ -1,7 +1,7 @@
 {
   "name": "flow-routing",
   "version": 1,
-  "description": "Which migration flow the user's ask selects, and the arguments it states — the master skill's entry question (#126).",
+  "description": "Which migration flow the user's ask selects, and the arguments it states — the master skill's entry question (#127).",
   "state": { "fields": { "prompt": "the user's request, verbatim", "extract_summary": "optional: extract's one-paragraph summary of the captured site" } },
   "questions": {
     "flow": {

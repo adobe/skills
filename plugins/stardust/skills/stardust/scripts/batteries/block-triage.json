@@ -1,7 +1,7 @@
 {
   "name": "block-triage",
   "version": 1,
-  "description": "Deploy Step 2 per prototype section: block or default content, Block Collection match, reuse of an existing block, decode tier and component-model shape (#126). Rank stage — re-check the shortlist with block-fit.",
+  "description": "Deploy Step 2 per prototype section: block or default content, Block Collection match, reuse of an existing block, decode tier and component-model shape (#127). Rank stage — re-check the shortlist with block-fit.",
   "state": { "fields": { "section": "one section of the section schema: { name, items: [{role, text, href}], repeats: [{count, uniform, unit}] }", "registry": "the site's existing blocks: object of block name → one-line description (from the conversion log)" } },
   "questions": {
     "is_block": { "type": "noul", "instructions": { "question": "Should `section` become a block rather than default content?", "focus": "Default content is prose an author writes in place: headings, paragraphs, a single image, a single CTA. A block is a composition — repeated units, a layout with slots, a control, an embed." }, "criteria": { "true": "Repeated units (cards, tiles, FAQ rows), a multi-slot composition (hero with eyebrow, headline, actions, media), a control, a player or an embed.", "false": "Headings and paragraphs in reading order with at most a single image or CTA." } },

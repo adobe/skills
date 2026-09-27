@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// evals/jev-batteries/harvest.mjs — build the labelled decision set for the decision layer (#126)
+// evals/jev-batteries/harvest.mjs — build the labelled decision set for the decision layer (#127)
 // from recorded stardust runs. Reads project folders (each with a `stardust/` dir), turns recorded
 // decisions into replayable items {battery, ref, state, expected} and writes JSONL. The output names
 // real sites, so it lives under data/ (gitignored) and is never committed.

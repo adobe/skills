@@ -1,7 +1,7 @@
 {
   "name": "metadata-select",
   "version": 1,
-  "description": "Select, never write: pick a page's title or description from candidates code found on the captured page, or answer none (#126).",
+  "description": "Select, never write: pick a page's title or description from candidates code found on the captured page, or answer none (#127).",
   "state": { "fields": { "field": "'title' or 'description'", "page": "{ path, h1, headings: [text], first_paragraph, og_title, og_description, site_name }", "candidates": "array of candidate strings found on the page, in document order" } },
   "questions": {
     "pick": {

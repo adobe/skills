@@ -1,7 +1,7 @@
 {
   "name": "red-adjudication",
   "version": 1,
-  "description": "One content-diff structural finding: is content really lost, or is the red a join/split artefact, a covered deviation or an intended transformation? Cascade shape: every noul is 'is this wrong', gate on the maximum (#126).",
+  "description": "One content-diff structural finding: is content really lost, or is the red a join/split artefact, a covered deviation or an intended transformation? Cascade shape: every noul is 'is this wrong', gate on the maximum (#127).",
   "state": { "fields": { "finding": "{ kind, root, text: the diff line }", "source_slice": "the source-side text around the finding", "build_slice": "the build-side text around the finding", "deviations": "the page's logged contentDeviations[] (kind + reason), possibly empty" } },
   "questions": {
     "dropped": { "type": "noul", "instructions": "Is text present in `source_slice` absent from `build_slice` — dropped, not merely moved or re-wrapped?", "criteria": { "true": "Words or a whole element from the source do not appear on the build side at all.", "false": "Every source word appears on the build side, possibly in a different element or order." } },

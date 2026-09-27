@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// skills/stardust/scripts/decide.mjs — the decision layer (#126): one typed judgment battery, one
+// skills/stardust/scripts/decide.mjs — the decision layer (#127): one typed judgment battery, one
 // System One request, one ledger line. Code owns the state, the options and the thresholds; the model
 // (TypeSafe Jev by default) returns typed answers with probabilities; this script routes them
 // (`act` / `review` / `escalate`) and records everything to `stardust/decisions.jsonl` so a threshold

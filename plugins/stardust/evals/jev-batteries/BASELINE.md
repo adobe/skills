@@ -1,6 +1,6 @@
 # jev-batteries — baseline (2026-09-27)
 
-First replay of the decision layer (#126) against recorded decisions from 39 project folders
+First replay of the decision layer (#127) against recorded decisions from 39 project folders
 (Aug–Sep 2026 runs). Model `jev-1.13.0`, with `jev-preview` as a second column where noted.
 Raw runs live under `data/` (gitignored: they name sites). Read every number as agreement with
 what an agent or a person recorded at the time, not as truth.

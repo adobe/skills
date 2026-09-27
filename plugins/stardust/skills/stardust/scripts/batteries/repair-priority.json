@@ -1,7 +1,7 @@
 {
   "name": "repair-priority",
   "version": 1,
-  "description": "Grade one failing all-pages gate row (0.26.0) on what a reader would suffer, so code can order the repair queue and decide what ships with a documented residual. Composite-scoring shape: three independent scores, weights live in the caller (#126).",
+  "description": "Grade one failing all-pages gate row (0.26.0) on what a reader would suffer, so code can order the repair queue and decide what ships with a documented residual. Composite-scoring shape: three independent scores, weights live in the caller (#127).",
   "state": { "fields": { "row": "{ path, template, tier, pixelPct, textPct, heightDelta, clipped: {textClipped, textHidden, controlHidden, controlClipped}, content: {missing, hidden, examples: [text of up to 8 missing/hidden links and headings]}, reasons }" } },
   "questions": {
     "reader_harm": {

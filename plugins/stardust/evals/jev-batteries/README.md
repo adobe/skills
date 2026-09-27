@@ -1,7 +1,7 @@
 # jev-batteries — measuring the decision layer
 
 Replays recorded decisions from past stardust runs through `skills/stardust/scripts/decide.mjs`
-and reports agreement, so a battery earns its place before any caller gates on it (#126).
+and reports agreement, so a battery earns its place before any caller gates on it (#127).
 
 ```bash
 set -a; source ~/.claude/.env; set +a                     # TYPESAFE_API_KEY

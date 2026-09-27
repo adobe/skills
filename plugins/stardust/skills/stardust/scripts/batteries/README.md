@@ -1,7 +1,7 @@
 # Batteries — the decision layer's question files
 
 One JSON file per decision the pipeline delegates to a System One model through
-`../decide.mjs` (#126). Code builds the state, the battery names the judgments, the model
+`../decide.mjs` (#127). Code builds the state, the battery names the judgments, the model
 answers with probabilities, code routes. Nothing here generates text.
 
 ## Shape

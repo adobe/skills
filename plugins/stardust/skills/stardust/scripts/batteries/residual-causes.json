@@ -1,7 +1,7 @@
 {
   "name": "residual-causes",
   "version": 1,
-  "description": "Name the causes of a pixel residual after the iteration cap — multi-label, one noul per cause, from instrument output that code has already bucketed into words (#126).",
+  "description": "Name the causes of a pixel residual after the iteration cap — multi-label, one noul per cause, from instrument output that code has already bucketed into words (#127).",
   "state": { "fields": { "verdict": "{ pct, heightDelta, bands: ['y 0-500: 23 % hot', ...], anchors: ['section 4 (hero) is 48 px taller on the build', ...], chrome: 'header 1.2 % footer 4.4 %', notes: 'capture and instrument notes' }" } },
   "questions": {
     "font_fallback": { "type": "noul", "instructions": "Does `verdict` indicate a different typeface or font weight on the build than on the origin — a substitute face, thin glyph-edge noise across text-dense bands, differing line wraps?" },

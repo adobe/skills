@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// evals/jev-batteries/replay.mjs — replay a harvested decision set through the decision layer (#126)
+// evals/jev-batteries/replay.mjs — replay a harvested decision set through the decision layer (#127)
 // and report agreement with the recorded answers, per battery, per question and per confidence bin,
 // plus how the route would have dispatched them (act / review / escalate); the saved JSON carries one
 // record per judged question (ref, expected, chosen, confidence, route) for inspection. Every request is cached

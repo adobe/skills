@@ -1,7 +1,7 @@
 {
   "name": "block-fit",
   "version": 1,
-  "description": "Re-check stage after block-triage: does one shortlisted block really render this section? Run once per candidate; the highest fit below the bar means a new block (#126).",
+  "description": "Re-check stage after block-triage: does one shortlisted block really render this section? Run once per candidate; the highest fit below the bar means a new block (#127).",
   "state": { "fields": { "section": "the section as in block-triage", "candidate": "{ name, description, rows: 'what an author fills', excerpt: 'first lines of the block's decorate or its README' }" } },
   "questions": {
     "fit": { "type": "noul", "instructions": { "question": "Does `candidate` render `section` from the same authored rows — the same roles in the same order and the same repeat structure?", "focus": "A different visual treatment is fine (a variant class). A different row structure is not a fit." }, "criteria": { "true": "The candidate's rows carry every role the section has, in a compatible order and repeat structure.", "false": "The section has roles or a repeat structure the candidate's rows cannot carry, or the candidate carries roles the section lacks and needs." } }

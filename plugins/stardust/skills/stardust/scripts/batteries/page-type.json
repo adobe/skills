@@ -1,7 +1,7 @@
 {
   "name": "page-type",
   "version": 1,
-  "description": "Assign a captured page to one of the project's page types (archetypes); confidence maps onto the fidelity tier (#126).",
+  "description": "Assign a captured page to one of the project's page types (archetypes); confidence maps onto the fidelity tier (#127).",
   "state": { "fields": { "page": "{ path, title, description, headings: [{tag, text}], counts: {ctas, links, images, words}, signals }", "types": "the project's page types: an object of type → description, or an array of type names" } },
   "questions": {
     "type": {

@@ -330,7 +330,7 @@ validation, the validation loop, fidelity gates, delivery gates, and
 rollout's optimize gate all run unchanged. Hands-off changes *who
 answers*, not *what must pass*.
 
-## The decision layer (#126)
+## The decision layer (#127)
 
 Closed-set judgments the pipeline makes over text — page type, dynamics triage, block vs
 default content and block reuse, decode tier, a content-diff red, residual causes, section

@@ -1,7 +1,7 @@
 {
   "name": "flag-justify",
   "version": 1,
-  "description": "One gate flag (content-diff or visual-diff line) at a prototype or published gate: an artefact or an intended, documented difference — or a defect to fix? (#126)",
+  "description": "One gate flag (content-diff or visual-diff line) at a prototype or published gate: an artefact or an intended, documented difference — or a defect to fix? (#127)",
   "state": { "fields": { "flag": "{ probe: 'content'|'visual'|'chrome', line: the finding as printed, severity }", "gate": "{ page, width, regime: 'prototype'|'published', summary: the probe's header lines (node counts per side) }", "policy": "the run's capture-state and register policy in a few lines (what is known to vary between loads, what the inconsistency register permits)" } },
   "questions": {
     "artefact": { "type": "noul", "instructions": { "question": "Is `flag` an artefact of how the pages were captured or compared, rather than a difference a reader of the build would see?", "focus": "Artefacts: a heuristic false positive (object-fit images read as stretched, lazy images below the fold not yet loaded when sampled), machine-only text (JSON-LD or script bodies counted as body copy), the same words split or joined across elements, a count that differs by whitespace." }, "criteria": { "true": "A reader comparing the two pages would see no difference; the instrument or its heuristic reports one.", "false": "A reader would see the difference the flag names." } },
