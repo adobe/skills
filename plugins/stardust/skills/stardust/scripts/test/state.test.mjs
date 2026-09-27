@@ -196,7 +196,7 @@ check('usage: missing --to, bad --to, no slug, unknown command, unknown option, 
 
 rmSync(root, { recursive: true, force: true });
 
-writeFileSync(file, JSON.stringify(FIXTURE, null, 2)); // fresh fixture: earlier checks remove the file
+mkdirSync(dir, { recursive: true }); writeFileSync(file, JSON.stringify(FIXTURE, null, 2)); // fresh fixture: earlier checks remove the dir
 check('decider: stamps the mode after handsOff, refuses an unknown mode, summary shows it on a second line', () => {
   let r = run('decider', 'shadow'); assert.equal(r.code, 0, r.err); assert.match(r.out, /decider shadow/);
   const keys = Object.keys(read()); assert.ok(keys.indexOf('decider') > keys.indexOf('handsOff') && keys.indexOf('decider') < keys.indexOf('pages'), `order: ${keys.join(',')}`);
