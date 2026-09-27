@@ -26,6 +26,15 @@
 //   residual-causes    progress.json `residuals[]`: multi-label from the recorded `cause` text by keyword
 //                      (font, live variation, sticky widget, capture, chrome, pipeline, offset); the cause
 //                      text is withheld, the band/pct/region and the final pixel band table are the state.
+//   phase-claim        status.jsonl `end` lines joined to the journal section naming the phase; label
+//                      `cites_instrument_output` = the detail or section carries a measured number, a
+//                      PASS/FAIL word or an evidence path (a literal-presence label). The asserted class
+//                      lives in fixtures/phase-claim.jsonl (hand-written; recorded runs rarely contain it).
+//   brief-check        with --transcripts <dir of Claude Code project folders>: every Agent tool prompt
+//                      from the recorded sessions, labelled per checklist item by literal presence.
+//   decision-batch     "Decision batch" sections of dynamic-features.md as positives (one_batch = true).
+//   Fixtures under fixtures/*.jsonl are copied into the output as-is (--fixtures <dir>, default beside
+//   this script) so a single replay covers recorded and hand-written items.
 // Exit codes: 0 ok · 2 usage.
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
@@ -34,7 +43,7 @@ import { fileURLToPath } from 'node:url';
 const argv = process.argv.slice(2);
 if (argv.length === 0 || argv.includes('--help') || argv.includes('-h')) { console.log(readFileSync(fileURLToPath(import.meta.url), 'utf8').split('\n').filter((l) => l.startsWith('//')).map((l) => l.replace(/^\/\/ ?/, '')).join('\n')); process.exit(0); }
 const HERE = dirname(fileURLToPath(import.meta.url));
-const opt = { projects: null, out: join(HERE, 'data', 'items.jsonl'), batteries: ['page-type', 'dynamics-triage', 'section-alignment', 'flag-justify', 'residual-causes'], perProject: 40, seed: 1 };
+const opt = { projects: null, out: join(HERE, 'data', 'items.jsonl'), batteries: ['page-type', 'dynamics-triage', 'section-alignment', 'flag-justify', 'residual-causes', 'phase-claim', 'brief-check', 'decision-batch'], transcripts: null, fixtures: join(HERE, 'fixtures'), perProject: 40, seed: 1 };
 for (let i = 0; i < argv.length; i += 1) {
   const a = argv[i]; const v = () => { const x = argv[++i]; if (x === undefined || x.startsWith('--')) { console.error(`${a} needs a value`); process.exit(2); } return x; };
   if (a === '--projects') opt.projects = resolve(v());
@@ -42,6 +51,8 @@ for (let i = 0; i < argv.length; i += 1) {
   else if (a === '--batteries') opt.batteries = v().split(',').map((s) => s.trim()).filter(Boolean);
   else if (a === '--per-project') opt.perProject = Number(v());
   else if (a === '--seed') opt.seed = Number(v());
+  else if (a === '--transcripts') opt.transcripts = resolve(v());
+  else if (a === '--fixtures') opt.fixtures = resolve(v());
   else { console.error(`unknown flag ${a}`); process.exit(2); }
 }
 if (!opt.projects || !existsSync(opt.projects)) { console.error('--projects <dir> is required and must exist'); process.exit(2); }
@@ -225,13 +236,87 @@ function harvestResiduals(project) {
   })(prog, 'site');
 }
 
+
+// ---- phase-claim ------------------------------------------------------------------------------------
+const EVIDENCE = /\d+(\.\d+)?\s?%|Δ\s?-?\d|\bPASS\b|\bFAIL\b|🔴|\d+\/\d+|\.(txt|json|png|md|html)\b|stardust\/|\bexit \d\b|\b\d+ ?px\b/;
+function journalSections(text) {
+  const out = []; const re = /^## (.+)$/gm; let m; const idx = [];
+  while ((m = re.exec(text))) idx.push({ title: m[1], start: m.index });
+  for (let i = 0; i < idx.length; i += 1) out.push({ title: idx[i].title, body: text.slice(idx[i].start, idx[i + 1] ? idx[i + 1].start : undefined) });
+  return out;
+}
+function harvestPhaseClaims(project) {
+  const f = join(project, 'stardust', 'status.jsonl'); if (!existsSync(f)) return;
+  const journal = existsSync(join(project, 'stardust', 'journal.md')) ? journalSections(readFileSync(join(project, 'stardust', 'journal.md'), 'utf8')) : [];
+  const lines = readFileSync(f, 'utf8').split('\n').filter(Boolean).map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter((l) => l && l.event === 'end');
+  for (const l of lines) {
+    const norm = (x) => String(x || '').toLowerCase().replace(/[-_ ]+/g, ' ');
+    const sec = journal.find((s) => norm(s.title).includes(norm(l.phase).replace(/^[a-z]\d? /, '')) || norm(s.title).includes(norm(l.phase)));
+    const detail = l.detail || ''; const body = sec ? clip(sec.body, 2500) : '';
+    if (!detail && !body) continue;
+    const evidenced = EVIDENCE.test(detail) || EVIDENCE.test(body);
+    add('phase-claim', `${basename(project)}/${l.skill}/${l.phase}/${(l.ts || '').slice(0, 19)}`, { claim: { skill: l.skill, phase: l.phase, detail: clip(detail, 600), artifact: l.artifact || null, journal: body || null }, expects: 'an evidenced end of a stardust phase names instrument verdict lines (pixel %, Δh, PASS/FAIL, structural red counts), counts of pages or nodes, and paths to evidence files' }, { cites_instrument_output: evidenced });
+  }
+}
+
+// ---- brief-check (from Claude Code transcripts) -------------------------------------------------------
+const CHECK = {
+  names_owned_paths: /work only inside|may (only )?(write|touch|edit)|must not (touch|edit|write)|never (edit|touch|write)|owned paths|do not (touch|edit|modify)|files you may/i,
+  carries_gate_commands: /gate\.sh|run-bg\.mjs|pixel-compare|gate-all|block-roundtrip|content-diff\.mjs|qa-gate|deploy-batch|node stardust\/scripts/i,
+  cites_contract_sections: /EW\d|editability contract|david'?s model|§|section \d|reference\/[a-z-]+\.md|SKILL\.md/i,
+  requires_ledger_lines: /ledger\.mjs|status\.jsonl|progress\.json|verdict line|report back|one line (back|per)/i,
+  forbids_shortcuts: /never (copy|paste) the (live )?dom|no dom cop|never eyeball|measure(d)?,? not (by )?eye|never weaken|do not weaken|frozen|no fixed sleep|never sleep/i,
+  bounded_scope: /archetype|template|pages?:|slugs?|unit|only these|this page|cluster/i,
+};
+function harvestBriefs(dir) {
+  if (!dir || !existsSync(dir)) return;
+  const files = [];
+  (function walk(d, depth) { if (depth > 3) return; for (const n of readdirSync(d)) { const p = join(d, n); try { if (statSync(p).isDirectory()) walk(p, depth + 1); else if (p.endsWith('.jsonl')) files.push(p); } catch { /* skip */ } } })(dir, 0);
+  let n = 0;
+  for (const f of files) {
+    let text; try { text = readFileSync(f, 'utf8'); } catch { continue; }
+    if (!text.includes('"name":"Agent"')) continue;
+    for (const line of text.split('\n')) {
+      if (!line.includes('"name":"Agent"')) continue;
+      let j; try { j = JSON.parse(line); } catch { continue; }
+      const content = j && j.message && Array.isArray(j.message.content) ? j.message.content : [];
+      for (const c of content) {
+        if (!c || c.type !== 'tool_use' || c.name !== 'Agent' || !c.input || !c.input.prompt) continue;
+        const brief = String(c.input.prompt); if (brief.length < 300) continue;
+        const expected = Object.fromEntries(Object.entries(CHECK).map(([k, re]) => [k, re.test(brief)]));
+        const phase = /archetype|recreat|prototype/i.test(c.input.description || brief.slice(0, 300)) ? 'archetype' : /deploy|block|convert/i.test(c.input.description || '') ? 'deploy' : /cluster|deliver/i.test(c.input.description || '') ? 'cluster' : /foundation|canon/i.test(c.input.description || '') ? 'foundation' : 'other';
+        n += 1;
+        add('brief-check', `${basename(dirname(f)).replace(/^-Users-[a-z]+-stardust-\d{4}-\d{2}-/, '')}/${n}/${clip(c.input.description || 'brief', 30)}`, { brief: clip(brief, 6000), phase, checklist: Object.keys(CHECK) }, expected);
+      }
+    }
+  }
+}
+
+// ---- decision-batch (positives from the curated inventory) -------------------------------------------
+function harvestDecisionBatches(project) {
+  const f = join(project, 'stardust', 'dynamic-features.md'); if (!existsSync(f)) return;
+  const text = readFileSync(f, 'utf8'); const m = text.match(/^##+ .*decision batch[^\n]*\n([\s\S]*?)(?=^##+ |\n*$)/im);
+  if (!m || m[1].trim().length < 120) return;
+  const pending = [...text.matchAll(/\|\s*\d+\s*\|\s*([a-z0-9-]+)\s*\|[^\n]*\|\s*(needs-[a-z-]+)\s*\|/gi)].map((x) => `${x[1]} (${x[2]})`).slice(0, 12);
+  add('decision-batch', `${basename(project)}/decision-batch`, { message: clip(m[1].trim(), 3000), pending }, { one_batch: true });
+}
+
+function copyFixtures(dir) {
+  if (!dir || !existsSync(dir)) return;
+  for (const f of readdirSync(dir).filter((n) => n.endsWith('.jsonl'))) for (const line of readFileSync(join(dir, f), 'utf8').split('\n').filter(Boolean)) { try { const it = JSON.parse(line); if (opt.batteries.includes(it.battery) || !opt.batteries.length) add(it.battery, it.ref, it.state, it.expected); } catch { /* skip */ } }
+}
+
 for (const project of projects) {
   if (opt.batteries.includes('page-type')) harvestPageType(project);
   if (opt.batteries.includes('dynamics-triage')) harvestDynamics(project);
   if (opt.batteries.includes('section-alignment')) harvestAlignment(project);
   if (opt.batteries.includes('flag-justify')) harvestFlags(project);
   if (opt.batteries.includes('residual-causes')) harvestResiduals(project);
+  if (opt.batteries.includes('phase-claim')) harvestPhaseClaims(project);
+  if (opt.batteries.includes('decision-batch')) harvestDecisionBatches(project);
 }
+if (opt.batteries.includes('brief-check')) harvestBriefs(opt.transcripts);
+copyFixtures(opt.fixtures);
 mkdirSync(dirname(opt.out), { recursive: true });
 writeFileSync(opt.out, items.map((it) => JSON.stringify(it)).join('\n') + (items.length ? '\n' : ''));
 console.log(`harvest: ${projects.length} project(s) → ${items.length} item(s) in ${opt.out}`);

@@ -11,6 +11,7 @@ what an agent or a person recorded at the time, not as truth.
 |---|---|---|---|---|---|
 | all three batteries, v1 | 1,612 × 1 | 1.82 M | $0.08 | 254 ms / 310 ms | 0 |
 | flag-justify + residual-causes | 1,096 × 1 | 1.01 M | $0.04 | 263 ms / 310 ms | 0 |
+| supervisor batteries + fixtures | 1,454 × 1 | 1.83 M | $0.08 | 245 ms / 351 ms | 0 |
 | all three batteries, two models | 1,612 × 2 | 3.64 M | $0.15 | 254 ms / 310 ms | 0 |
 | page-type v2 (examples), two models | 869 × 2 | 3.29 M | $0.14 | 259 ms / 319 ms | 0 |
 
@@ -105,6 +106,39 @@ output as state: 68 graded, zero errors. Harm distribution: 15 cosmetic, 22 degr
 in part, 9 unusable. Ordered by the composite, the pages with missing links and clipped controls
 lead and the pages that fail only the pixel bar drop to the end. There is no recorded label to
 score against; the ordering is shown in the visual example for inspection.
+
+## Supervisor batteries (phase 3) — phase-claim passes its bar; the others run in shadow
+
+Cost of the whole supervisor replay: 1,454 requests, 1.83 M input tokens, $0.08, median 245 ms.
+
+**phase-claim (v2).** 40 hand-written fixtures (25 asserted or skipped claims in the corpus's
+style, 15 evidenced ones) plus 621 recorded `end` lines. The gate rule is "refuse when
+P(asserts without evidence) ≥ 0.85 or P(declares a skip) ≥ 0.85".
+
+| set | result |
+|---|---|
+| asserted fixtures caught at the bar | **20 / 25 (80 %)**; 21 / 25 at 0.80 |
+| evidenced fixtures falsely refused | **0 / 15**; the highest P on an evidenced claim was 0.28 |
+| recorded end lines that would be refused | **5 / 621 (0.8 %)** — a "PASS both widths" with no number, a "prepare-migration not run", three demo claims without instrument output |
+| `cites_instrument_output` vs a regex label on 636 recorded lines | 75 % overall, 98.6 % at confidence ≥ 0.9; the disagreements are lines naming artefacts without numbers, which the regex does not count |
+
+v1 read counted parkings ("383 parked") as skips and would have refused 4.5 % of recorded
+lines; v2 names parkings, residuals with a cause and pending owner decisions as not-skips and
+drops that to 0.8 % with the same fixture catch. **Go for `gate` + `--strict` on `ledger.mjs
+end`** at the 0.85 bar; the five recorded refusals read as fair.
+
+**decision-batch.** 14 items (9 recorded batches and fixtures): `one_batch` 92.9 %,
+`interim_recorded` 100 %. Small set; advisory in shadow, no gate.
+
+**plan-vs-flow.** 10 fixtures: `step` 5 / 5, `resume_from_memory` 1 / 1, `out_of_order` 4 / 7,
+`wrong_flow` 1 / 2. The misses are legal steps read as out of order and a redesign step in a
+replica run read as in-flow: the legal-step table needs preconditions written per step, and the
+fixture set is too small. Shadow only.
+
+**brief-check.** 769 recorded briefs labelled by literal presence (regex) per item: 58–69 %
+agreement, `forbids_shortcuts` 27 %, every miss the same direction — Jev reads an item as present
+where the regex found none of its keywords. Either reading could be right; the regex labels are
+too narrow to say. **No verdict** until ~50 briefs are hand-labelled; the script stays in shadow.
 
 ## What this says about the layer
 

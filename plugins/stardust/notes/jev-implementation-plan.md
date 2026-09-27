@@ -136,6 +136,11 @@ Acceptance: on the corpus, `phase-claim` catches ≥ 80 % of the labelled assert
 false-refusal rate ≤ 5 % on evidenced ones; `ledger.mjs end --strict` refuses a fabricated
 "gated by eye" line in the test and accepts a line that cites `pixel-final.txt`.
 
+Met 2026-09-27: phase-claim v2 catches 20/25 fixture claims at the 0.85 bar with 0/15 false
+refusals and 0.8 % refusals on 621 recorded end lines; the ledger test refuses the fabricated
+line and accepts the evidenced one. brief-check, plan-vs-flow and decision-batch are wired in
+shadow only (BASELINE.md): their labels are too thin for a gate.
+
 Depends on: phase 1. Independent of phase 2 (can run in parallel).
 
 ## Phase 4 — measure the remaining batteries (4–5 days, mostly harvesting)

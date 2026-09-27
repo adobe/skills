@@ -260,6 +260,9 @@ loops, Playwright captures, deploy batches) goes through `run-bg.mjs start`, and
 `wait` is the NEXT tool call — it returns within its `--max` (100 s by default); never two long instruments
 as parallel tool calls in one turn, never two `wait`s in one command.
 
+Every cluster brief goes through `brief-check.mjs` before dispatch (deploy Step 7, #127): a
+brief without the gate commands, the owned paths or the contract sections is fixed, not sent.
+
 ### Phase D — Site assembly (whole-site artifacts)
 
 ```bash

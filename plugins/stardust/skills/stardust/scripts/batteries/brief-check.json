@@ -1,0 +1,15 @@
+{
+  "name": "brief-check",
+  "version": 1,
+  "description": "Supervisor: does a subagent brief carry every item the phase's checklist requires? One noul per item; code computes missing_any and blocks the dispatch in gate mode (#127).",
+  "state": { "fields": { "brief": "the brief text as it would be sent (clipped)", "phase": "'archetype' | 'deploy' | 'cluster' | 'foundation' | 'other'", "checklist": "the items this phase requires, by name (from the caller)" } },
+  "questions": {
+    "names_owned_paths": { "type": "noul", "instructions": "Does `brief` name which files or directories the agent may write, or which it must not touch?", "criteria": { "true": "An explicit list or rule of paths the agent owns or must leave alone.", "false": "No file ownership stated." } },
+    "carries_gate_commands": { "type": "noul", "instructions": "Does `brief` give the exact gate or verification commands to run (a script invocation with its arguments), rather than asking to 'verify' or 'check' in general?" },
+    "cites_contract_sections": { "type": "noul", "instructions": "Does `brief` point at the contract the work must obey by name or section — an editability contract, a section schema, a reference document heading, numbered rules?" },
+    "requires_ledger_lines": { "type": "noul", "instructions": "Does `brief` require the agent to write ledger or progress entries (a phase start/end line, a progress file, a verdict line back to the coordinator)?" },
+    "forbids_shortcuts": { "type": "noul", "instructions": "Does `brief` forbid the shortcuts this work is prone to — DOM copying, eyeballing instead of measuring, weakening a gate, editing frozen files, fixed sleeps?" },
+    "bounded_scope": { "type": "noul", "instructions": "Does `brief` bound the work — a named page or template, a page list, a unit — so the agent knows when it is done?" }
+  },
+  "route": { "names_owned_paths": { "yes": 0.8, "no": 0.2 }, "carries_gate_commands": { "yes": 0.8, "no": 0.2 }, "cites_contract_sections": { "yes": 0.8, "no": 0.2 }, "requires_ledger_lines": { "yes": 0.8, "no": 0.2 }, "bounded_scope": { "yes": 0.8, "no": 0.2 } }
+}

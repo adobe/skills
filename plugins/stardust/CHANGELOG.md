@@ -72,6 +72,17 @@ battery against recorded decisions before any caller relies on it. Nothing gates
   decisive artefacts ≤ 0.15 last) into advisory `decide:` lines and `flags-<label>.json`;
   `gate.sh --full` calls it when `STARDUST_DECIDER` is set. Every wired step: `off` = one skip line,
   no key = skip, a failed call is counted — none blocks, none changes a verdict.
+- **Phase 3 — supervisor batteries for workflow reliability.** Four batteries read the agent's own
+  prose at the joints: `phase-claim` (an end line cites instrument output / asserts without it /
+  declares a skip), `brief-check` (owned paths, gate commands, contract sections, ledger lines,
+  shortcuts forbidden, bounded scope), `plan-vs-flow` (the proposed step vs the flow's legal steps
+  and the run state), `decision-batch` (one named batch with interims). Wired: `ledger.mjs end` runs
+  `phase-claim` when the decider is on — shadow / assist print one `ledger: decide:` line, `gate` +
+  `--strict` refuses a confident asserted or skipped claim like a missing start;
+  `stardust/scripts/brief-check.mjs`, `plan-check.mjs` and `dynamics/scripts/batch-check.mjs` print
+  the finding and exit 2 only in gate mode. Measured (BASELINE.md): hand-written fixtures under
+  `evals/jev-batteries/fixtures/` add the asserted, serial and out-of-order classes the recorded
+  runs do not contain.
 - **Not changed:** every gate, bar and instrument is as in 0.27.0; no decision is taken for the agent
   (shadow only). Assist follows per battery once two shadow runs show ≥ 90 % agreement on `act` items.
 ## 0.27.0 — archetype-first delivery: deploy and gate the archetype at the origin before its siblings render (#126)

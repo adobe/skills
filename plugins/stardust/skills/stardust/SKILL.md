@@ -350,7 +350,12 @@ supervisor batteries only. A battery moves from shadow to assist only after
 `evals/jev-batteries/BASELINE.md` shows ≥ 90 % agreement on its `act` items over two runs.
 Without `$TYPESAFE_API_KEY` or in `off` the script exits 3 and the agent decides as before; a
 decide failure never blocks a step. Generation, vision and numbers stay with the agent and the
-instruments.
+instruments. **Supervisors** read the agent's own prose at the joints: `ledger.mjs end` runs
+`phase-claim` (an end that asserts an outcome without instrument output, or names a skipped step,
+is refused under `gate` + `--strict`); `stardust/scripts/stardust/plan-check.mjs "<next step>"`
+runs `plan-vs-flow` on the first proposed command of a session and on every resume (a REVIEW
+means re-read the ledger and the flow table first); `brief-check.mjs <brief.md>` before any
+fan-out; `dynamics/batch-check.mjs` on the owner decision batch.
 
 ## The "open and reasoned" principle
 

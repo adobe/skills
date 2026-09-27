@@ -276,5 +276,39 @@ check('journal check on end: no journal → silent; "## " headings that do not n
 });
 
 rmSync(root, { recursive: true, force: true });
+
+// ---- the decision layer on `end` (#127): shadow prints a decide line; gate + --strict refuses an asserted claim
+{
+  const { createServer } = await import('node:http');
+  const { execFile } = await import('node:child_process');
+  const server = createServer((req, res) => { let b = ''; req.on('data', (c) => { b += c; }); req.on('end', () => {
+    const body = JSON.parse(b); const d = String(body.state.claim.detail || '');
+    const asserted = /by eye|looks|visually|assum/i.test(d) ? 0.93 : 0.05; const cites = /%|PASS|\.txt/.test(d) ? 0.96 : 0.08; const skips = /skip|defer|later/i.test(d) ? 0.9 : 0.04;
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ model: 'jev-9', answers: { cites_instrument_output: { type: 'noul', noul: cites }, asserts_without_evidence: { type: 'noul', noul: asserted }, declares_skip_or_deferral: { type: 'noul', noul: skips }, names_residual_with_cause: { type: 'noul', noul: 0.5 } }, usage: { input_tokens: 5, output_tokens: 1 } }));
+  }); });
+  await new Promise((r) => { server.listen(0, '127.0.0.1', r); });
+  const endpoint = `http://127.0.0.1:${server.address().port}/v1/systemone`;
+  const runAsync = (args, env) => new Promise((resolve) => { execFile(process.execPath, [SCRIPT, ...args, '--dir', dir], { encoding: 'utf8', timeout: 20000, env: { ...process.env, TYPESAFE_API_KEY: 'k', STARDUST_DECIDE_ENDPOINT: endpoint, ...env } }, (err, out, errOut) => resolve({ code: err ? err.code : 0, out, err: errOut })); });
+  mkdirSync(dir, { recursive: true }); if (!existsSync(join(dir, 'status.jsonl'))) writeFileSync(join(dir, 'status.jsonl'), '');
+  const before = lines().length;
+  let r = await runAsync(['replica', 'source-fidelity-gate', 'start'], { STARDUST_DECIDER: 'shadow' });
+  r = await runAsync(['replica', 'source-fidelity-gate', 'end', '--detail', 'home PASS @1440 1.31% Δ0 (pixel-final.txt)'], { STARDUST_DECIDER: 'shadow' });
+  check('decide on end (shadow): one ledger: decide line with the three probabilities, line written', () => { assert.equal(r.code, 0, r.err); assert.match(r.err, /ledger: decide \[shadow\]: phase-claim cites 0\.96 · asserts 0\.05 · skips 0\.04/); assert.equal(lines().length, before + 2); });
+  await runAsync(['replica', 'source-fidelity-gate', 'start'], { STARDUST_DECIDER: 'gate' });
+  r = await runAsync(['replica', 'source-fidelity-gate', 'end', '--detail', 'home gated visually, looks identical; 360 skipped for now', '--strict'], { STARDUST_DECIDER: 'gate' });
+  check('decide on end (gate + --strict): a confident asserted / skipped claim is refused, nothing written', () => { assert.equal(r.code, 2); assert.match(r.err, /strict: phase-claim: the end for stardust:replica source-fidelity-gate asserts an outcome without instrument output/); assert.equal(lines().length, before + 3, 'the start was written, the end was not'); });
+  r = await runAsync(['replica', 'source-fidelity-gate', 'end', '--detail', 'home PASS @1440 1.31% Δ0 (pixel-final.txt)', '--strict'], { STARDUST_DECIDER: 'gate' });
+  check('decide on end (gate + --strict): an evidenced claim is accepted', () => { assert.equal(r.code, 0, r.err); assert.match(r.err, /REVIEW/ === null ? /x/ : /phase-claim cites 0\.96/); assert.equal(lines().length, before + 4); });
+  r = await runAsync(['replica', 'source-fidelity-gate', 'end', '--detail', 'home gated visually, looks identical'], { STARDUST_DECIDER: 'gate' });
+  check('decide on end (gate without --strict): the REVIEW is printed, the line is still written', () => { assert.equal(r.code, 0, r.err); assert.match(r.err, /REVIEW/); });
+  r = await runAsync(['replica', 'source-fidelity-gate', 'end', '--detail', 'anything'], { STARDUST_DECIDER: 'off' });
+  check('decide on end (off): no decide line', () => { assert.equal(r.code, 0, r.err); assert.doesNotMatch(r.err, /decide/); });
+  const { journalSectionText } = await import('../ledger.mjs');
+  writeFileSync(join(dir, 'journal.md'), '# J\n\n## Extract — done (2026-01-01)\nbody A\n\n## Source-fidelity gate — home (2026-01-02)\nbody B\n');
+  check('journalSectionText returns the matching section only', () => { assert.match(journalSectionText(dir, 'source-fidelity-gate'), /body B/); assert.doesNotMatch(journalSectionText(dir, 'source-fidelity-gate'), /body A/); assert.equal(journalSectionText(dir, 'nothing-here'), null); });
+  server.close();
+}
+
 console.log(failed ? `\n${failed} failing` : '\nledger: all checks passed');
 process.exit(failed ? 1 : 0);

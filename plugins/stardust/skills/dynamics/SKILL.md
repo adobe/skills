@@ -60,6 +60,8 @@ reproducibility · status** — plus pattern, phase and the owner decision. Cura
 `stardust/dynamic-features.md` (subsumes the former dynamic-blocks map: § Listings contract +
 § Features + § Decision batch + § Register) and `stardust/dynamic-features-plan.md`.
 `reference/triage.md` is the contract. Rules that decide the shape of the phase:
+   Run `node stardust/scripts/dynamics/batch-check.mjs <message.md>` on the batch before sending it
+   (#127): one batch, every decision named, the interim recorded — a REVIEW means rewrite, not send.
 
 - **Reconcile against the migrated output** before scheduling anything.
 - Only reproducibility `self` ships autonomously; everything else is **one decision batch**.

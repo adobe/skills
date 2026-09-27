@@ -1,0 +1,13 @@
+{
+  "name": "decision-batch",
+  "version": 1,
+  "description": "Supervisor: is a message to the site owner one decision batch that names every decision and the interim shipped, not a serial question? (#127)",
+  "state": { "fields": { "message": "the message to the owner, verbatim (clipped)", "pending": "the run's pending owner decisions by name, from the dynamics inventory" } },
+  "questions": {
+    "one_batch": { "type": "noul", "instructions": "Does `message` present every open decision together, in one list, rather than asking one question and waiting?", "criteria": { "true": "Several decisions in one message, or one message that says it is the complete list.", "false": "A single question, or a message that promises more questions later." } },
+    "each_decision_named": { "type": "noul", "instructions": "Does `message` name each decision with what is needed from the owner (a credential, a backend, a choice) and why?" },
+    "interim_recorded": { "type": "noul", "instructions": "Does `message` say what ships meanwhile for each decision — the interim tier, snapshot or scaffold — so the run is not blocked on the answer?" },
+    "covers_pending": { "type": "noul", "instructions": "Does `message` cover every item in `pending`?", "criteria": { "true": "Every pending item is mentioned.", "false": "At least one pending item is absent, or `pending` is empty." } }
+  },
+  "route": { "one_batch": { "yes": 0.8, "no": 0.2 }, "each_decision_named": { "yes": 0.8, "no": 0.2 }, "interim_recorded": { "yes": 0.8, "no": 0.2 } }
+}

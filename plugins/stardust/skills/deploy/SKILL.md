@@ -608,6 +608,12 @@ Chrome is the canonical fragment use case (D12): **content** lives in two author
 
 ### 7. Blocks (parallel agents)
 
+**Before dispatch (#127):** save each brief to `stardust/.work/briefs/<agent>.md` and run
+`node stardust/scripts/stardust/brief-check.mjs stardust/.work/briefs/<agent>.md --phase deploy`;
+with `STARDUST_DECIDER` set it names the checklist items the brief lacks (owned paths, gate
+commands, contract sections, ledger lines, bounded scope) — add them, never dispatch a brief that
+is missing one under `gate`.
+
 Dispatch one agent per page-archetype cluster (utility pages, services, case studies, etc.). Each agent owns a non-overlapping set of new blocks and content pages. Three to four parallel agents is the sweet spot.
 
 **Brief size and reading discipline.** The brief points at files — `stardust/eds-schema/<page>.json`, the conversion log's triage rows for its pages, this document's §§ 7–8, `davids-model.md` — and never pastes reference text into the prompt. Each agent reads by section (list the headings, then read the range it needs), not the whole file: across twelve field migrations this document (~27k words) was read end to end about twenty times per run, once per dispatched agent; in one recorded run the two conversion agents the harness's no-progress watchdog killed carried the fattest briefs, while a re-dispatch with a lean brief and line-ranged reads finished the same pages. Long-running steps (captures, gates, batch pushes) run in the background with a progress file the agent appends to per page, so the coordinator can read progress instead of waiting blind. The coordinator's own waiting follows the master skill's wait discipline: nothing runs in the foreground past ~2 minutes, no single `sleep` reaches 5 minutes (the prompt-cache window — at deploy-phase context sizes each expiry re-writes the whole prefix), and progress is read from the file at most every 4 minutes.

@@ -71,6 +71,15 @@ block — each line is self-describing via `ts` + `skill`, and the
 append-only rule replaces the overwrite protection provenance
 normally provides.
 
+- **The claim is read (#127).** When `$STARDUST_DECIDER` is not `off`,
+  `ledger.mjs … end` runs the `phase-claim` battery over the `detail` and
+  the journal section: does the claim cite instrument output, assert an
+  outcome without it, or name a skipped or deferred step? `shadow` and
+  `assist` print one `ledger: decide:` line with the probabilities; under
+  `gate` with `--strict` a confident asserted or skipped claim (P ≥ 0.85)
+  is refused like a missing start — cite the verdict lines or the evidence
+  path in `--detail`, or run the step. A decide failure never blocks.
+
 ## Decisions ledger — `stardust/decisions.jsonl`
 
 The decision layer (`skills/stardust/SKILL.md` § The decision layer) appends one JSON line per

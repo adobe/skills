@@ -6,7 +6,7 @@
 // under data/cache/ so a re-run with new thresholds costs nothing; a second --models entry adds a
 // column (e.g. jev-preview) for the same items.
 //
-//   node replay.mjs [--items data/items.jsonl] [--models jev-1.13.0[,jev-preview]] [--battery <name>]
+//   node replay.mjs [--items data/items.jsonl[,more.jsonl]] [--models jev-1.13.0[,jev-preview]] [--battery <name>]
 //                   [--limit <n>] [--concurrency 6] [--out data/replay-<timestamp>.json]
 //                   [--key-env TYPESAFE_API_KEY] [--batteries <dir>]
 //   node replay.mjs --help
@@ -22,10 +22,10 @@ import { createClient, decide, loadBattery, DEFAULTS } from '../../skills/stardu
 const argv = process.argv.slice(2);
 if (argv.includes('--help') || argv.includes('-h')) { console.log(readFileSync(fileURLToPath(import.meta.url), 'utf8').split('\n').filter((l) => l.startsWith('//')).map((l) => l.replace(/^\/\/ ?/, '')).join('\n')); process.exit(0); }
 const HERE = dirname(fileURLToPath(import.meta.url));
-const opt = { items: join(HERE, 'data', 'items.jsonl'), models: [DEFAULTS.model], battery: null, limit: Infinity, concurrency: 6, out: join(HERE, 'data', `replay-${new Date().toISOString().replace(/[:.]/g, '-')}.json`), keyEnv: DEFAULTS.keyEnv, batteries: DEFAULTS.batteriesDir };
+const opt = { items: [join(HERE, 'data', 'items.jsonl')], models: [DEFAULTS.model], battery: null, limit: Infinity, concurrency: 6, out: join(HERE, 'data', `replay-${new Date().toISOString().replace(/[:.]/g, '-')}.json`), keyEnv: DEFAULTS.keyEnv, batteries: DEFAULTS.batteriesDir };
 for (let i = 0; i < argv.length; i += 1) {
   const a = argv[i]; const v = () => { const x = argv[++i]; if (x === undefined || x.startsWith('--')) { console.error(`${a} needs a value`); process.exit(2); } return x; };
-  if (a === '--items') opt.items = resolve(v());
+  if (a === '--items') opt.items = v().split(',').map((x) => resolve(x.trim()));
   else if (a === '--models') opt.models = v().split(',').map((s) => s.trim()).filter(Boolean);
   else if (a === '--battery') opt.battery = v();
   else if (a === '--limit') opt.limit = Number(v());
@@ -35,11 +35,11 @@ for (let i = 0; i < argv.length; i += 1) {
   else if (a === '--batteries') opt.batteries = resolve(v());
   else { console.error(`unknown flag ${a}`); process.exit(2); }
 }
-if (!existsSync(opt.items)) { console.error(`items not found: ${opt.items} (run harvest.mjs first)`); process.exit(2); }
+for (const f of opt.items) if (!existsSync(f)) { console.error(`items not found: ${f} (run harvest.mjs first)`); process.exit(2); }
 const key = process.env[opt.keyEnv];
 if (!key) { console.error(`replay: no key in $${opt.keyEnv}`); process.exit(3); }
 
-let items = readFileSync(opt.items, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
+let items = opt.items.flatMap((f) => readFileSync(f, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)));
 if (opt.battery) items = items.filter((it) => it.battery === opt.battery);
 const perBattery = {};
 items = items.filter((it) => { perBattery[it.battery] = (perBattery[it.battery] || 0) + 1; return perBattery[it.battery] <= opt.limit; });

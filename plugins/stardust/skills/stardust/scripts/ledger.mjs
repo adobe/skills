@@ -35,9 +35,15 @@
 // phase (case-insensitive; dashes, underscores and spaces are one separator), one warning on stderr —
 // never an exit-code change, even under --strict (a recorded run's journal began at its second session;
 // another's had one section for the whole run). An absent journal is not checked.
+// The phase-claim check (#127): on `end`, when $STARDUST_DECIDER is not off and $TYPESAFE_API_KEY is
+// set, the `phase-claim` battery reads the detail and the journal section and answers whether the claim
+// cites instrument output, asserts an outcome without evidence, or declares a skip / deferral. shadow
+// and assist print one `ledger: decide:` line with the probabilities and write the decisions ledger;
+// under `gate` + --strict a confident asserted or skipped claim (P ≥ 0.85) refuses the end (exit 2,
+// nothing written) the way a missing start does. A decide failure never blocks: one stderr line.
 // Exit codes: 0 ok · 2 usage or strict violation.
 import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync, openSync, readSync, closeSync, realpathSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const DEFAULT_DIR = 'stardust';
@@ -245,6 +251,35 @@ const foldName = (s) => String(s).toLowerCase().replace(/[\s_-]+/g, ' ').trim();
 // The journal check for `end`. Null when <dir>/journal.md is absent, or has a `## ` heading (exactly two
 // hashes) whose text names the phase; otherwise the warning text. A warning only — the caller never turns
 // it into an exit code.
+// The journal section's text for the phase-claim state (null when absent).
+export function journalSectionText(dir, phase) {
+  const file = journalPath(dir);
+  if (!existsSync(file)) return null;
+  const text = readFileSync(file, 'utf8'); const norm = (x) => String(x || '').toLowerCase().replace(/[-_ ]+/g, ' ');
+  const re = /^## (.+)$/gm; let m; const idx = [];
+  while ((m = re.exec(text))) idx.push({ title: m[1], start: m.index });
+  const i = idx.findIndex((h) => norm(h.title).includes(norm(phase)));
+  if (i < 0) return null;
+  return text.slice(idx[i].start, idx[i + 1] ? idx[i + 1].start : undefined).slice(0, 2500);
+}
+
+// The decision layer on an `end` (#127). Returns { line, refuse } — `line` for stderr, `refuse` when the
+// battery is confident the claim asserts without evidence or declares a skip AND the mode is gate.
+export async function phaseClaimCheck(dir, line, { mode, strict }) {
+  const D = await import(join(dirname(fileURLToPath(import.meta.url)), 'decide.mjs'));
+  const key = process.env[D.DEFAULTS.keyEnv];
+  if (!key) return { line: `ledger: decide: no $${D.DEFAULTS.keyEnv} — phase-claim not checked`, refuse: null };
+  const battery = D.loadBattery('phase-claim'); const client = D.createClient({ key, concurrency: 1, retries: 2 });
+  const state = { claim: { skill: line.skill, phase: line.phase, detail: line.detail || '', artifact: line.artifact || null, journal: journalSectionText(dir, line.phase) }, expects: 'an evidenced end of a stardust phase names instrument verdict lines (pixel %, Δh, PASS/FAIL, structural red counts), counts of pages or nodes, and paths to evidence files' };
+  const r = await D.decide({ battery, state, client, cacheDir: join(dir, '.work', 'decide'), ledger: join(dir, 'decisions.jsonl'), ref: `${line.skill} ${line.phase}`, mode, runId: D.resolveRunId(null, dirname(dir)) });
+  const a = r.answers; const P = (q) => (a[q] ? a[q].noul : null);
+  const asserted = P('asserts_without_evidence'); const skipped = P('declares_skip_or_deferral'); const cites = P('cites_instrument_output');
+  const bar = (battery.route.asserts_without_evidence && battery.route.asserts_without_evidence.yes) || 0.85;
+  const flagged = (asserted != null && asserted >= bar) || (skipped != null && skipped >= bar);
+  const text = `ledger: decide [${mode}]: phase-claim cites ${cites == null ? '?' : cites.toFixed(2)} · asserts ${asserted == null ? '?' : asserted.toFixed(2)} · skips ${skipped == null ? '?' : skipped.toFixed(2)}${flagged ? ' → REVIEW: the end claims an outcome without instrument output, or names a skipped step' : ''}`;
+  return { line: text, refuse: flagged && mode === 'gate' && strict ? `phase-claim: the end for ${line.skill} ${line.phase} ${asserted >= bar ? 'asserts an outcome without instrument output' : 'declares a skipped or deferred step'} (P ${Math.max(asserted || 0, skipped || 0).toFixed(2)}) — cite the verdict lines or the evidence path in --detail, or run the step` : null };
+}
+
 export function checkJournalSection(dir, phase) {
   const file = journalPath(dir);
   if (!existsSync(file)) return null;
@@ -315,7 +350,7 @@ function parseArgs(argv) {
 }
 
 // ---- main --------------------------------------------------------------------------------------
-export function main(argv) {
+export async function main(argv) {
   const { opts, pos } = parseArgs(argv);
   if (opts.help) { console.log(HELP); return 0; }
   if (pos.length === 0) throw new UsageError(HELP);
@@ -356,6 +391,17 @@ export function main(argv) {
   for (const w of warnings) console.error(`ledger: warning: ${w}`);
   // The journal check is advisory: printed after the strict gate, so a refused end stays one stderr line.
   if (event === 'end') { const j = checkJournalSection(opts.dir, line.phase); if (j) console.error(`ledger: warning: ${j}`); }
+  // The decision layer (#127): phase-claim on every end when the run decides with it.
+  if (event === 'end') {
+    const mode = (process.env.STARDUST_DECIDER || 'off').toLowerCase();
+    if (['shadow', 'assist', 'gate'].includes(mode)) {
+      try {
+        const r = await phaseClaimCheck(opts.dir, line, { mode, strict: opts.strict });
+        if (r.refuse) throw new UsageError(`strict: ${r.refuse} — nothing written`);
+        console.error(r.line);
+      } catch (e) { if (e instanceof UsageError) throw e; console.error(`ledger: decide: phase-claim not checked (${e.message})`); }
+    }
+  }
   appendLine(opts.dir, line);
   console.log(JSON.stringify(line));
   return 0;
@@ -364,8 +410,8 @@ export function main(argv) {
 // Compare by real path: a symlinked checkout or temp dir must not turn the CLI into a silent no-op.
 function safeRealpath(p) { try { return realpathSync(p); } catch { return p; } }
 if (process.argv[1] && SELF === safeRealpath(process.argv[1])) {
-  try { process.exit(main(process.argv.slice(2))); } catch (e) {
+  main(process.argv.slice(2)).then((code) => process.exit(code)).catch((e) => {
     if (e instanceof UsageError) { console.error(`ledger: ${e.message}`); process.exit(e.code); }
     console.error(`ledger: ${e.message}`); process.exit(1);
-  }
+  });
 }

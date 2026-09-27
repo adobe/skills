@@ -1,0 +1,68 @@
+{
+  "name": "phase-claim",
+  "version": 2,
+  "description": "Supervisor: does a phase-end claim cite instrument evidence, or assert, skip or defer? Run by ledger.mjs on every `end` when the decider is on (#127).",
+  "state": {
+    "fields": {
+      "claim": "{ skill, phase, detail: the ledger end line's detail, artifact, journal: the journal section for this phase (clipped) }",
+      "expects": "what an evidenced end of this phase names: instrument verdict lines, counts, paths, percentages, PASS/FAIL words"
+    }
+  },
+  "questions": {
+    "cites_instrument_output": {
+      "type": "noul",
+      "instructions": {
+        "question": "Does `claim` cite the output of an instrument or a count from a file — a pixel percentage, a height delta, a PASS or FAIL verdict, a structural-red count, N of M pages, a path to evidence?",
+        "focus": "Numbers and paths that could only come from running something count; adjectives do not."
+      },
+      "criteria": {
+        "true": "At least one measured number, verdict word or evidence path appears in the detail or the journal section.",
+        "false": "No measurement, verdict or path; only descriptions of what was done or how it looks."
+      }
+    },
+    "asserts_without_evidence": {
+      "type": "noul",
+      "instructions": {
+        "question": "Does `claim` declare a quality outcome — passed, matches, correct, verified, looks right, fine — without a measurement or verdict to back it?",
+        "focus": "A claim that names an instrument result is not an assertion. 'Visually verified', 'looks identical', 'eyeballed', 'should be fine', 'assumed' are."
+      },
+      "criteria": {
+        "true": "An outcome is declared and nothing measured supports it.",
+        "false": "Every declared outcome has a number, a verdict or a path beside it, or no outcome is declared at all."
+      }
+    },
+    "declares_skip_or_deferral": {
+      "type": "noul",
+      "instructions": {
+        "question": "Does `claim` say that a step this phase requires was not done — skipped, deferred to later, replaced by a manual look, done on one breakpoint only, or a probe not run — without a measured reason?",
+        "focus": "Words like skip, skipped, deferred, later, TODO, not run, only 1440, for now, will revisit. NOT a skip: pages parked or failed with a count and a stated reason, residuals with a cause and a size, owner decisions recorded as pending, work explicitly out of this phase's scope."
+      },
+      "criteria": {
+        "true": "A required step of this phase is named as not done and no measured reason is given.",
+        "false": "Every required step is reported done, or what is not done is a counted, reasoned parking, residual or owner decision."
+      }
+    },
+    "names_residual_with_cause": {
+      "type": "noul",
+      "instructions": "Where `claim` reports something over the bar or unresolved, does it give the residual a cause and a size?",
+      "criteria": {
+        "true": "Each unresolved item has a cause and a number (band, %, px, count).",
+        "false": "An unresolved item is mentioned without a cause or a size, or there is none to report."
+      }
+    }
+  },
+  "route": {
+    "asserts_without_evidence": {
+      "yes": 0.85,
+      "no": 0.3
+    },
+    "declares_skip_or_deferral": {
+      "yes": 0.85,
+      "no": 0.3
+    },
+    "cites_instrument_output": {
+      "yes": 0.7,
+      "no": 0.3
+    }
+  }
+}

@@ -27,6 +27,7 @@ Run the project copies under `stardust/scripts/<skill>/`. Read this before any `
 - `diff/measure-live.mjs` — library (settle + rect/type measurement for the gate probes), no CLI
 - `diff/unit-geometry.mjs` — per-element Δx/Δy/Δw/Δh of the first N repeated units — `<originURL> <servedURL> (--unit <selO>=<selE> | --families stardust/replica/units.json --slug <s>) [--n 1] [--tol 4]`; exit 2 = a required unit off/hidden/missing
 - `diff/visual-diff.mjs` — screenshot diff + flags — `<protoURL> <edsURL> [--out <dir>] [--width <px>] [--main <sel>]`
+- `dynamics/batch-check.mjs` — supervisor on the owner decision batch: `decision-batch` — `<message.md|-> [--inventory] [--mode]` (REVIEW; gate exit 2)
 - `dynamics/dynamics-check.mjs` — replay parity checks (search-query: count + top titles vs source) — `--origin <h> [--parity <json>] [--out stardust/qa]`
 - `dynamics/dynamics-detect.mjs` — detect dynamic features — `--urls a,b [--from-state stardust/state.json]`
 - `dynamics/dynamics-plan.mjs` — triage draft — `[--in <json>] [--out <dir>] [--target-origin <h>] [--decide [--mode]]` (decide = shadow the four axes with the `dynamics-triage` battery)
@@ -36,7 +37,7 @@ Run the project copies under `stardust/scripts/<skill>/`. Read this before any `
 - `dynamics/sync-sheets.mjs` — sheet JSON → DA + preview — `--source <o> --org --repo --paths a.json,b.json`
 - `extract/crawl.mjs` — site crawler → pages, screenshots, `_crawl-log.json#captureGaps` — `--url <u> [--pages a,b] [--max 25] [--out stardust/current] [--dynamics]`
 - `extract/style-census.mjs` — computed-style census (one live pass) — `[--pages <dir>|--urls a,b] [--width <px>] [--headed]`
-- `extract/type-pages.mjs` — decision layer at prep § 2: `page-type` battery over the typed roster, both answers logged, confident disagreements listed — `[--dir stardust] [--only a,b] [--examples 3] [--mode] [--dry-run]` (off = one skip line)
+- `extract/type-pages.mjs` — decision layer at prep § 2: `page-type` over the typed roster, both answers logged — `[--dir] [--only a,b] [--examples 3] [--mode] [--dry-run]`
 - `extract/thumb.mjs` — legible capture thumbnails ≤ --max-bytes (narrower first, then a crop ≥ --min-share; a share < 100 → the rest via --offset) — `<png|dir…> [--width 480] [--max-height <px>] [--max-bytes 150000] [--min-share 60] [--offset <px>]`
 - `migrate/migrate.mjs` — per-page render driver + sidecar — `render <slug…|--all>`; `gate|deviation|variant|modules <slug>`
 - `qa/lib.mjs` — library, no CLI
@@ -50,7 +51,7 @@ Run the project copies under `stardust/scripts/<skill>/`. Read this before any `
 - `replica/foundation-freeze.mjs` — frozen delivery foundation, sha256 manifest — `freeze [--paths a,b]`; `check`
 - `replica/gate-all.mjs` — the pixel tables: every deployed page (default) or every prototype (`--stage prototype --proto-base <url>`): pixel + height + clip [+ content, units] — `[--only <slug,…>] [--skip-existing] [--recapture-eds] [--eds-host <h>] [--no-probes]`; exit 2 = any FAIL
 - `replica/gate-evidence.mjs` — sidecar gates from the pixel tables + run-bg jobs — `[--slug <s>]… [--content <dir>] [--tables <dir>] [--check] [--dry-run]`
-- `replica/gate-flags.mjs` — decision layer in a gate round: pre-sort a round's flags with `flag-justify` (`decide:` lines, `flags-<label>.json`) — `<gate-dir> <label> [--regime] [--register] [--mode] [--dry-run]`; gate.sh --full calls it
+- `replica/gate-flags.mjs` — decision layer in a gate round: pre-sort the flags with `flag-justify` (`decide:` lines) — `<gate-dir> <label> [--regime] [--register] [--mode]`; gate.sh --full calls it
 - `replica/gate.sh` — one gate round + overflow assert + probes (`--full`: content-diff, visual-diff, chrome-parity, clip-probe; + content-presence in the published regime, unit-geometry with units.json) — `<slug> <live> <build> <width> [iter] [--full] [--main <sel>]`
 - `replica/html-slice.mjs` — one element of captured HTML — `<page.html> header|footer|main|.cls [--text] [--all]`
 - `replica/json-query.mjs` — bounded view of JSON — `<f.json> [--path <p>] [--keys] [--match k=re] [--fields a,b]`
@@ -83,7 +84,9 @@ Run the project copies under `stardust/scripts/<skill>/`. Read this before any `
 - `rollout/section-fidelity.mjs` — authored vs source outline — `--file <html> --source <u>|--source-file <p>`
 - `rollout/update-coverage.mjs` — status writer — `<slug> --status <s> [--url]`; `--block <id> --status <s>`; `--new <slug> --path <p> --template <id> --origin <o>`
 - `rollout/verify.mjs` — full-site verify — `[--base <u>|--root <dir>] [--all]`
-- `stardust/decide.mjs` — the decision layer: one typed battery → one System One request → routed answers + a `decisions.jsonl` line — `<battery> --state <f|-> [--mode off|shadow|assist|gate] [--agent '<json>'] [--ref] [--run-id] [--dry-run]`; `batteries`; `compare [--battery] [--run-id] [--check]` (exit 3 = off / no key)
+- `stardust/brief-check.mjs` — supervisor: `brief-check` battery over a saved brief — `<brief.md|-> [--phase] [--require a,b] [--mode]` (gate exit 2 = do not dispatch)
+- `stardust/decide.mjs` — the decision layer: battery → System One request → routed answers + `decisions.jsonl` line — `<battery> --state <f|-> [--mode] [--agent '<json>'] [--ref] [--run-id] [--dry-run]`; `batteries`; `compare [--battery] [--run-id] [--check]` (exit 3 = off / no key)
 - `stardust/impeccable-version-check.mjs` — newer impeccable? — `[--offline] [--json]`; `--where`
-- `stardust/ledger.mjs` — status.jsonl writer — `<skill> <phase> start|end|blocked [--detail] [--strict]` (end needs an open start; journal.md checked on end); `tail`; `last`
+- `stardust/ledger.mjs` — status.jsonl writer — `<skill> <phase> start|end|blocked [--detail] [--strict]` (end needs an open start; journal checked; decider on → `phase-claim` reads the end, gate + --strict refuses an asserted claim); `tail`; `last`
+- `stardust/plan-check.mjs` — supervisor at routing / resume: `plan-vs-flow` over a proposed step vs state — `"<step>" [--dir] [--mode]` (REVIEW; gate exit 2)
 - `stardust/state.mjs` — page status writer — `advance <slug…> --to <status> [--by]`; `summary [--slugs]`; `decider <mode>`; `decision <slug> --battery <b> --jev <v> [--agent <v>] [--confidence] [--route]`

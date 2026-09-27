@@ -1,0 +1,13 @@
+{
+  "name": "plan-vs-flow",
+  "version": 1,
+  "description": "Supervisor: is the agent's proposed next step legal for the run's flow and current state? Run at routing and on resume (#127).",
+  "state": { "fields": { "proposal": "the agent's stated next step or first command, verbatim", "run": "{ flow: 'replica'|'redesign'|'reskin'|null, handsOff, phaseSummary: page counts by status, units: rollout/migrate units and their status, lastLedger: the last ledger lines }", "legal": "the steps legal from this state, by name, with one line each (from the caller's flow table)" } },
+  "questions": {
+    "step": { "type": "choice", "instructions": { "question": "Which of the `legal` steps is `proposal` proposing?", "focus": "Match the intent of the proposal to a named step; a proposal that matches none is `none`." }, "criteriaFrom": "legal", "appendNone": { "none": "The proposal matches no legal step from this state." } },
+    "out_of_order": { "type": "noul", "instructions": { "question": "Given `run`, does `proposal` propose a step whose precondition is not met — rendering siblings before their archetype is gated, publishing before the pixel table, running a redesign step in a replica flow, re-extracting a captured site without a reason?", "focus": "Judge against the state given, not against what would usually be next." }, "criteria": { "true": "A named precondition in `run` is unmet for the proposed step.", "false": "The step's preconditions are met, or the proposal is a read-only or bookkeeping action." } },
+    "wrong_flow": { "type": "noul", "instructions": "Does `proposal` belong to a different flow than `run.flow` — prepare-migration, direct or prototype craft in a replica run; replica recreation in a redesign run?" },
+    "resume_from_memory": { "type": "noul", "instructions": "Does `proposal` describe continuing from memory or from an earlier session's understanding rather than from the ledger and state files?" }
+  },
+  "route": { "step": { "confident": 0.8, "review": 0.5, "noneIs": "none" }, "out_of_order": { "yes": 0.8, "no": 0.2 }, "wrong_flow": { "yes": 0.85, "no": 0.2 } }
+}
