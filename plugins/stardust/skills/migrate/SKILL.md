@@ -197,7 +197,9 @@ For 1-3 pages or `<slug>` invocation, skip the confirmation.
 
 ### Phase 2 — Per-page render
 
-For each page in scope, follow
+In the replica flow a sibling renders only after its archetype is deployed and gated at the
+published origin (`../replica/reference/handoff-contract.md` § 3 row C, unit `C-archetype`; #126);
+the render is the encoder's input, its gate is the row after PUT. For each page in scope, follow
 `reference/migration-procedure.md` and
 `reference/template-and-module-rendering.md`:
 

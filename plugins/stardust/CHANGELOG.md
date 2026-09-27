@@ -4,6 +4,29 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.27.0 — archetype-first delivery: deploy and gate the archetype at the origin before its siblings render (#126)
+
+A recorded 96-page run migrated 78 siblings from archetypes whose EDS encoding had never been gated,
+then re-deployed whole families in a five-workstream fix program; its sibling pixel bar ran on local
+renders whose numbers understated on every page. The flow now proves the archetype where it counts
+before anything inherits from it, and gates siblings once, where it counts.
+
+- **Order.** C-deliver gains unit `C-archetype`, one per template, between the foundation and its
+  cluster: convert the gated archetype (the encoder every sibling reuses) → PUT → preview → the full
+  gate row on the preview URL (`gate-all.mjs --only`, both widths) → fix rounds, cap 3 → `done`; only
+  then `migrate.mjs render` for the template's siblings. Handoff contract § 1 intro and § 3 row C,
+  `progress.json` kind `archetype`, replica Phase 5, rollout Phase C, migrate Phase 2, fidelity-tiers.
+- **Siblings gate once, at the published origin.** § 1 row 5 (the local prototype-regime sibling pixel
+  bar) is replaced by the gate row after PUT + preview; `gatesPassed` pixel gates come from the page's
+  row in `gates/all-<w>/summary.json`. Row 2: the structural clone is the encoder's INPUT, never a
+  gated prototype; where it flattens a composition the encoder reads the hydrated capture.
+- **What a failing row means** (gate doc): one block → fix the block, re-gate every sharing page;
+  content in the capture but missing → fix the encoder, re-render; a composition the archetype cannot
+  express → re-prototype (new archetype when two or more pages share it, else a standalone one). Cap
+  3 fix rounds per page at the published origin, then that decision — never a fourth round.
+- Not in this release: a scriptable per-template encoder in the plugin (today the deploy convert step,
+  proven on the archetype, plays that role); when it lands, migrate emits `content/<path>.html` directly.
+
 ## 0.26.0 — published-origin gate hardened: element-level criteria beside the pixel number (#125)
 
 A 96-page rollout of a pharmacy retailer gated every deployed page on stitched captures and
