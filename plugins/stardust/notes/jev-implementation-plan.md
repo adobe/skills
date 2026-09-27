@@ -197,6 +197,11 @@ Goal: fewer wasted gate rounds, consistent diagnosis across parallel archetype a
 Acceptance: on recorded rounds, `valid-round` flags ≥ 90 % of the rounds the runs later excluded;
 `fix-pattern` top-1 agrees with the hand label ≥ 70 % and the label is in the top-2 ≥ 85 %.
 
+Met 2026-09-27 on hand-written fixtures (the recorded runs keep no per-round exclusion label):
+valid-round 6/6 invalidated rounds caught, fix-pattern top-1 15/15. Wired as advisory
+`decide: round` / `decide: pattern` lines; real rounds from the first shadow run are the
+measurement that counts.
+
 Depends on: phases 1 and 4 (residual-causes v2).
 
 ## Phase 6 — repair queue in rollout (2 days)
@@ -214,6 +219,9 @@ queued for a documented override rather than a fix round.
 
 Acceptance: on the recorded 96-page table the queue reproduces the demo ordering; a rollout
 dry-run consumes it; tests for the script's pure parts.
+
+Met 2026-09-27: 68/68 rows graded, top-10 overlap with the demo 9/10 on fresh calls, tests pass;
+rollout Phase E/F and the handoff contract point at the queue.
 
 Depends on: phase 1; phase 4's repair-priority ranking check.
 
@@ -235,6 +243,10 @@ Goal: the A/B that answers the KPI question with numbers, not estimates.
 Acceptance for "ready to test": phases 1, 2 and 3 complete with their acceptance tests; phase 4
 tables exist for every battery in use; a shadow run on a recorded project copy completed clean.
 Phases 5 and 6 improve the assist arm but are not required to start the A/B.
+
+Status 2026-09-27: the protocol and `evals/jev-batteries/AB-TEMPLATE.md` are written; phases 1–6
+are implemented and measured; the two-arm runs on live sites are the next action and need a
+site, a day, and the plugin installed from this branch (`STARDUST_DECIDER=off` then `assist`).
 
 ## Order and milestones
 

@@ -253,8 +253,10 @@ VP=$(grep -oE 'viewport +[0-9]+' "$OVF" | head -1 | grep -oE '[0-9]+$')
 [ -z "$SW" ] && { echo "gate.sh: overflow probe printed no root line ($OVF) — re-copy measure.mjs from the plugin; the assert needs its root line" >&2; exit 1; }
 
 # pixel-compare supervises its own deadline (--timeout); exit 124 = no verdict.
-node "$HERE/pixel-compare.mjs" "$DIR/live.png" "$DIR/build.png" --out "$DIR/diff-$LBL.png" --timeout "$COMPARE_TIMEOUT"
+PIXOUT=$(node "$HERE/pixel-compare.mjs" "$DIR/live.png" "$DIR/build.png" --out "$DIR/diff-$LBL.png" --timeout "$COMPARE_TIMEOUT" 2>&1)
 PIXEL_RC=$?
+printf '%s\n' "$PIXOUT"
+printf '%s\n' "$PIXOUT" > "$DIR/pixel-$LBL.txt"   # the round's verdict + band table as evidence (gate-flags reads it, #127)
 # The overflow assert rules a PASS: a build wider than its viewport by more than the tolerance is a FAIL
 # (exit 2) whatever the pixel number says; a round with no pixel verdict (124 / 1 / 3 / 4) keeps that code —
 # the line is still printed. Within the tolerance (integer rounding of a subpixel width) the line says so.
@@ -320,13 +322,16 @@ wait $P_CL; RC_CL=$?
 RC_PR=0; [ -n "$P_PR" ] && { wait $P_PR; RC_PR=$?; }
 RC_UG=0; [ -n "$P_UG" ] && { wait $P_UG; RC_UG=$?; }
 
-verdict() { # $1 rc, $2 label, $3 line
+VERDICTS="$DIR/verdict-$LBL.txt"; : > "$VERDICTS"
+verdict() { # $1 rc, $2 label, $3 line — printed, and kept in verdict-<label>.txt for gate-flags (#127)
+  local line
   case "$1" in
-    0|2) echo "$2: $3" ;;
-    124) echo "$2: DEADLINE (exit 124) — re-run, not a verdict" ;;
-    3) echo "$2: BLOCKED (exit 3) — bot challenge on the live side, escalate --headed" ;;
-    *) echo "$2: ERROR (exit $1) — $(grep -iE 'error' "$4" | head -1 | cut -c1-160)" ;;
+    0|2) line="$2: $3" ;;
+    124) line="$2: DEADLINE (exit 124) — re-run, not a verdict" ;;
+    3) line="$2: BLOCKED (exit 3) — bot challenge on the live side, escalate --headed" ;;
+    *) line="$2: ERROR (exit $1) — $(grep -iE 'error' "$4" | head -1 | cut -c1-160)" ;;
   esac
+  echo "$line"; echo "$line" >> "$VERDICTS"
 }
 FINDINGS=$(grep -E '^Findings:' "$CD" | head -1 | sed -E 's/^Findings: //')
 STRUCTURAL=$(printf '%s' "$FINDINGS" | grep -oE '[0-9]+ structural' | grep -oE '^[0-9]+' || echo 0)
@@ -352,7 +357,7 @@ echo "evidence: $CD $VD $CP $CL${P_PR:+ $PR}${P_UG:+ $UG} $DIR/vdiff-$LBL/"
 # The decision layer (#127): pre-sort this round's flags when the run decides with it. Advisory lines
 # only (`decide: …`); never a verdict, never the exit code. Off, no key, or a failed call → one line.
 if [ "${STARDUST_DECIDER:-off}" != off ] && [ -f "$HERE/gate-flags.mjs" ]; then
-  capped "$PROBE_TIMEOUT" "gate-flags $SLUG@$W" node "$HERE/gate-flags.mjs" "$DIR" "$LBL" --regime "$REGIME" 2>>"$DIR/gate-flags-$LBL.err" || echo "decide: flags — gate-flags did not finish (see $DIR/gate-flags-$LBL.err); the verdicts above stand"
+  capped "$PROBE_TIMEOUT" "gate-flags $SLUG@$W" node "$HERE/gate-flags.mjs" "$DIR" "$LBL" --regime "$REGIME" --round 2>>"$DIR/gate-flags-$LBL.err" || echo "decide: flags — gate-flags did not finish (see $DIR/gate-flags-$LBL.err); the verdicts above stand"
 fi
 
 # Exit: any deadline → 124 (re-run); else the pixel verdict rules, and a structural

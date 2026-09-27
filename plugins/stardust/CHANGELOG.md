@@ -83,6 +83,18 @@ battery against recorded decisions before any caller relies on it. Nothing gates
   the finding and exit 2 only in gate mode. Measured (BASELINE.md): hand-written fixtures under
   `evals/jev-batteries/fixtures/` add the asserted, serial and out-of-order classes the recorded
   runs do not contain.
+- **Phase 5 — fix-loop assist.** Two batteries: `valid-round` (is this round a measurement that
+  should count against the cap — instrument invalidated, origin unsettled, fonts fallback, build
+  unchanged) and `fix-pattern` (which recreation-procedure pattern explains the first hot section,
+  from the anchor deltas bucketed into words). `gate.sh` now keeps the round's evidence —
+  `pixel-<label>.txt` (verdict + band table) and `verdict-<label>.txt` (the probe verdict lines) — and
+  `gate-flags.mjs --round` adds two advisory lines per `--full` round: `decide: round …` and
+  `decide: pattern …` (a hint for the next fix, never the fix). Measured on hand-written fixtures
+  (BASELINE.md).
+- **Phase 6 — the repair queue in rollout.** `rollout/scripts/repair-queue.mjs` grades every failing
+  row of the roster gate-all with `repair-priority` (reader harm · scope · template-wide) and writes
+  `stardust/rollout/repair-queue.{json,md}`; cosmetic rows are `overrides.json` candidates with their
+  reasons, never a silent skip. Rollout Phase E/F and the handoff contract point at it.
 - **Not changed:** every gate, bar and instrument is as in 0.27.0; no decision is taken for the agent
   (shadow only). Assist follows per battery once two shadow runs show ≥ 90 % agreement on `act` items.
 ## 0.27.0 — archetype-first delivery: deploy and gate the archetype at the origin before its siblings render (#126)

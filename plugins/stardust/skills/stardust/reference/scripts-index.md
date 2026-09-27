@@ -81,6 +81,7 @@ Run the project copies under `stardust/scripts/<skill>/`. Read this before any `
 - `rollout/media-reconcile.mjs` — per-image decision — `--file <html> --deploy-host <h> [--media-ledger <file>] [--apply]`
 - `rollout/optimize.mjs` — quality findings + gate; source-parity tagged — `[--base <u>|--root <dir>] [--all] [--current <captureDir>]`
 - `rollout/plan.mjs` — conversion plan — `[--out <dir>] [--pending-only]`
+- `rollout/repair-queue.mjs` — after the roster gate-all: `repair-priority` grades failing rows (harm · scope · template-wide) → `rollout/repair-queue.{json,md}`, cosmetic rows = override candidates — `[--gate] [--out] [--weights] [--mode]`
 - `rollout/section-fidelity.mjs` — authored vs source outline — `--file <html> --source <u>|--source-file <p>`
 - `rollout/update-coverage.mjs` — status writer — `<slug> --status <s> [--url]`; `--block <id> --status <s>`; `--new <slug> --path <p> --template <id> --origin <o>`
 - `rollout/verify.mjs` — full-site verify — `[--base <u>|--root <dir>] [--all]`

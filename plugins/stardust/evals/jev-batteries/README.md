@@ -23,3 +23,11 @@ recorded answers are themselves wrong. What matters is the shape — agreement r
 confidence, and a high agreement among `act`-routed items — because that is what confidence
 routing depends on. Level 1 of `section-alignment` (variant) is not in the labels; it shows
 up as `0→1` or `2→1` disagreement and should be judged by hand from the pairs it names.
+
+## A/B runs (phase 7)
+
+`AB-TEMPLATE.md` is the per-site report: two arms (`STARDUST_DECIDER=off` and `assist`) on the
+same 10–20 pages, same day, same prompt; the KPI rows come from the ledgers and the transcripts.
+Results are appended to `BASELINE.md` § A/B runs. `fixtures/` hold the hand-written negative
+classes the recorded runs do not contain (asserted claims, serial owner questions, out-of-order
+steps, fix patterns, invalid rounds); read agreement on them as a separation test.

@@ -13,6 +13,7 @@ what an agent or a person recorded at the time, not as truth.
 | flag-justify + residual-causes | 1,096 × 1 | 1.01 M | $0.04 | 263 ms / 310 ms | 0 |
 | supervisor batteries + fixtures | 1,454 × 1 | 1.83 M | $0.08 | 245 ms / 351 ms | 0 |
 | phase 4 batteries + metadata | 814 × 1 | 1.10 M | $0.05 | 249 ms / 313 ms | 0 |
+| fix-loop fixtures + repair queue rerun | 23 + 68 | 0.2 M | $0.01 | 265 ms / 534 ms | 0 |
 | all three batteries, two models | 1,612 × 2 | 3.64 M | $0.15 | 254 ms / 310 ms | 0 |
 | page-type v2 (examples), two models | 869 × 2 | 3.29 M | $0.14 | 259 ms / 319 ms | 0 |
 
@@ -163,6 +164,24 @@ the text (page type, feature class, flag defect, block reuse, hands-off intent) 
 are monotone in confidence; batteries whose recorded answer was a run's own trade-off (decode
 tier, disposition, title style, variant vs block) measure poorly against those labels and need
 either a rubric decision or hand labels before they can be trusted.
+
+## Phases 5 and 6 — fix-loop assist and the repair queue (2026-09-27)
+
+**fix-pattern** on 15 hand-written rounds (anchor deltas in words, one catalogue pattern each):
+**top-1 15 / 15**, confidence 0.56–1.00; `first_hot_section` 12 / 15 (three answered `none`
+where the section list was given). **valid-round** on 8 hand-written rounds:
+`instrument_invalidated` 6 / 6, `counts_as_iteration` 6 / 7, `origin_unsettled` 4 / 5,
+`fonts_fallback_loaded` 1 / 1. Both sets are fixtures in the corpus's style, so this is a
+separation test: the batteries read the evidence lines the way the gate doc reads them. Wired as
+two advisory `decide:` lines per `--full` round (`gate-flags.mjs --round`); gate.sh now keeps
+`pixel-<label>.txt` and `verdict-<label>.txt` as the evidence they read. Real rounds from the
+next shadow run are the measurement that counts.
+
+**repair-priority in rollout** (`rollout/scripts/repair-queue.mjs`): on the recorded 96-page
+table, 68 / 68 failing rows graded in one run (unusable 9 · broken in part 22 · degraded 22 ·
+cosmetic 15), top-10 overlap with the earlier demo ordering 9 / 10 on fresh calls; Spearman 0.56
+against the independent harm baseline (pixel order −0.19). Advisory; cosmetic rows are proposed
+as override candidates, never skipped.
 
 ## What this says about the layer
 

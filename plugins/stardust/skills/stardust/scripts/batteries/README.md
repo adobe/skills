@@ -63,6 +63,8 @@ there; until then callers run it beside their own judgment and compare.
 | `metadata-select` | title or description from found candidates | rollout optimize | rubric decision first |
 | `flag-justify` | a gate flag: artefact, intended per policy, or defect | replica Phase 4, published gate | pre-sort go — wired in gate.sh |
 | `repair-priority` | reader harm, scope and template-wide for a failing all-pages row | rollout after gate-all | demo (Spearman 0.56 vs baseline) |
+| `valid-round` | fix-loop: does this gate round count against the cap? | gate.sh --full via gate-flags --round | fixtures 6/6 invalidated caught; advisory |
+| `fix-pattern` | fix-loop: which catalogue pattern explains the first hot section | gate.sh --full via gate-flags --round | fixtures top-1 15/15; advisory |
 | `phase-claim` | supervisor: a phase-end claim cites evidence, or asserts / skips | `ledger.mjs end` | gate go — wired in ledger end |
 | `brief-check` | supervisor: a subagent brief carries the phase's checklist | before a fan-out | shadow, no verdict |
 | `plan-vs-flow` | supervisor: the proposed next step is legal for the flow and state | routing, resume | shadow |

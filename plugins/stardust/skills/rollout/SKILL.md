@@ -404,6 +404,11 @@ DELIVERY verdict is replica's `gate-all.mjs` (pixel + height + clip + content pe
 gate fails — completion derives from one place, never from the pixel number alone. In C-deliver
 the roster run is the recorded unit `gate-all` (handoff contract § 3, row C).
 
+With the decider on, `node stardust/scripts/rollout/repair-queue.mjs` grades every failing row
+(reader harm · scope · template-wide, from the probe output) into `stardust/rollout/repair-queue.md`
+(#127): fix rounds follow that order, template-wide rows go to the block owner once, and a row
+graded cosmetic is proposed as an `overrides.json` entry with its reasons — never skipped silently.
+
 ### Phase E2 — Link-audit completeness
 
 `verify.mjs` checks the links on delivered pages; this phase closes the set of

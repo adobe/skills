@@ -1,0 +1,27 @@
+{
+  "name": "fix-pattern",
+  "version": 1,
+  "description": "Fix-loop assist (#127): which recorded fix pattern from the recreation procedure applies to the first hot band, given the anchor deltas bucketed into words? Select from the catalogue; the agent applies the pattern. Never a patch.",
+  "state": { "fields": { "round": "{ page, width, pixelPct, heightDelta, hotBand: 'y 500–1000: 23 %', anchors: ['hero: build top +0 px, height +48 px vs live', …], chrome: parity summary lines, flags: the round's content / visual flag lines (few), notes }" } },
+  "questions": {
+    "pattern": {
+      "type": "choice",
+      "instructions": { "question": "Which fix pattern explains the first hot band in `round`?", "focus": "Read the anchor deltas top-down: the first section whose top or height differs names the cause; everything below it is offset. Pick the pattern for that section." },
+      "criteria": {
+        "sizing_model": { "what": "A container or module is a different width or cap than live: a fixed width where live is fluid, a missing max-width, a wrong cap at the probe width.", "signals": ["a section's height differs at one breakpoint only", "content-cap ✗", "widths differ while text is identical"] },
+        "wrap_junction_margins": { "what": "Collapsing or doubled margins where a card or band meets its neighbour: a section is taller or shorter by a margin-sized amount with identical content.", "signals": ["height delta of 16–64 px on a section whose inner boxes match", "cards-on-a-canvas layouts"] },
+        "span_face_fork": { "what": "Text renders in a different face or weight on inner spans: line wraps differ, glyph-edge noise across text-dense bands, a FONT FORK flag.", "signals": ["FONT FORK", "line count differs", "width probe ratio ≠ 1"] },
+        "scrim_luminance": { "what": "An overlay scrim, gradient or tint on imagery differs: the band is a uniform luminance offset over a hero or card image.", "signals": ["hero band hot with matching geometry", "diff is a wash, not edges"] },
+        "fixed_chrome_static": { "what": "Fixed or sticky chrome replicated in flow (or vice versa): the header, a banner or a strip repeats or is missing at stitch seams, pushing everything below.", "signals": ["header/footer band hot", "seam repeats", "every band offset by the chrome height"] },
+        "granularity_parity": { "what": "The build splits or joins elements differently from live: a list rendered as paragraphs, a heading and lede in one element, JOIN/SPLIT content-diff reds.", "signals": ["JOIN / SPLIT reds", "role swap flags", "structural count differs"] },
+        "chrome_generation": { "what": "A different header or footer generation than the one captured: nav rows, strips or store selectors present on one side only.", "signals": ["chrome-parity ✗ atoms differ", "header height differs"] },
+        "capture_state": { "what": "Live content that varies between loads — a carousel on another slide, a rotating offer, a hydration placeholder, lazy images not yet loaded — not a build defect.", "signals": ["the hot band moves between rounds", "MISSING CTA on a rotating hero", "IMAGE DID NOT LOAD"] },
+        "pipeline_transform": { "what": "The delivery pipeline changed the markup: paragraph-wrapped pictures, unwrapped paragraphs, empty metadata section padding, rewritten media paths (published regime only).", "signals": ["published round only", "a few px per section everywhere", "<p><picture>"] },
+        "media_geometry": { "what": "An image or video box renders at another size or crop: aspect ratio, object-fit, missing height attribute, a stretched or unloaded image.", "signals": ["STRETCHED IMAGE", "img dims differ", "hero height differs by the image delta"] }
+      },
+      "appendNone": { "none": "None of the catalogue patterns fits the first hot band." }
+    },
+    "first_hot_section": { "type": "choice", "instructions": { "question": "Which section in `round.anchors` is the first (top-most) whose top or height differs from live?", "focus": "Name the section as it appears in the anchor lines; if every section matches, answer none." }, "criteriaFrom": "round.sectionNames", "appendNone": { "none": "Every section matches, or the anchors are missing." } }
+  },
+  "route": { "pattern": { "confident": 0.7, "review": 0.45, "noneIs": "none" }, "first_hot_section": { "confident": 0.7, "review": 0.4, "noneIs": "none" } }
+}

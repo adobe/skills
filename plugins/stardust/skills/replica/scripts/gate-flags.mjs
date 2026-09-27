@@ -6,8 +6,15 @@
  * genuinely unsure. Called by gate.sh --full after the probes when $STARDUST_DECIDER is not off;
  * runnable by hand on any recorded round.
  *
- *   node gate-flags.mjs <gate-dir> <label> [--regime prototype|published] [--register <md>]
+ *   node gate-flags.mjs <gate-dir> <label> [--regime prototype|published] [--register <md>] [--round]
  *                       [--mode off|shadow|assist|gate] [--concurrency 6] [--json] [--dry-run]
+ *
+ * --round (fix-loop assist): also read the round's own evidence — pixel-<label>.txt (verdict + band
+ * table), verdict-<label>.txt (the probe verdict lines), anchor-live.txt + anchor-proto-<label>.txt,
+ * chrome-parity-<label>.txt — and print two more advisory lines: `decide: round …` (valid-round: is
+ * this a measurement that should count against the cap?) and `decide: pattern …` (fix-pattern: the
+ * catalogue pattern for the first hot section, with its probability). Missing evidence files skip the
+ * line they feed; nothing here is a verdict.
  *
  * Reads <gate-dir>/content-diff-<label>.txt and visual-diff-<label>.txt; one state per flag line
  * ({ flag: { probe, line, severity }, gate: { page, width, regime, summary }, policy }). The policy is
@@ -62,6 +69,25 @@ export function buildStates(dir, label, { regime = 'prototype', register = null 
   return out;
 }
 
+// ---- --round: the valid-round and fix-pattern states from the round's evidence files ----------------
+const readIf = (f) => (existsSync(f) ? readFileSync(f, 'utf8') : '');
+const parseAnchors = (t) => Object.fromEntries([...t.matchAll(/^\s*y\s+(\d+)\s+h\s+(\d+)\s+(\S+)/gm)].map((m) => [m[3], { y: Number(m[1]), h: Number(m[2]) }]));
+export function roundStates(dir, label, regime = 'prototype') {
+  const { page, width } = gateName(dir);
+  const pixel = readIf(join(dir, `pixel-${label}.txt`)); const verdicts = readIf(join(dir, `verdict-${label}.txt`)); const chrome = readIf(join(dir, `chrome-parity-${label}.txt`)).split('\n').filter((l) => /^(✗|✓)/.test(l)).slice(0, 4).join('\n');
+  const pctM = pixel.match(/= ([\d.]+)%/); const dhM = pixel.match(/height delta (-?\d+)px/);
+  const bands = pixel.split('\n').filter((l) => /^\s*y\s+\d+/.test(l)).map((l) => l.trim());
+  const hot = bands.map((l) => ({ l, pct: Number((l.match(/([\d.]+)%/) || [0, 0])[1]) })).find((b) => b.pct > 15);
+  const live = parseAnchors(readIf(join(dir, 'anchor-live.txt'))); const proto = parseAnchors(readIf(join(dir, `anchor-proto-${label}.txt`)) || readIf(join(dir, 'anchor-proto-final.txt')));
+  const anchors = Object.keys(proto).map((k) => (live[k] ? `${k}: build top ${proto[k].y - live[k].y >= 0 ? '+' : ''}${proto[k].y - live[k].y} px, height ${proto[k].h - live[k].h >= 0 ? '+' : ''}${proto[k].h - live[k].h} px vs live` : `${k}: on the build only`)).slice(0, 14);
+  const captureNotes = [...pixel.split('\n'), ...verdicts.split('\n')].filter((l) => /font|challenge|blocked|deadline|capture failed|stitched|wrap|seam|no verdict|BLANK/i.test(l)).slice(0, 8);
+  const exitCodes = Object.fromEntries([...verdicts.matchAll(/^([a-z-]+): .*?(?:exit (\d+))?/gm)].map((m) => [m[1], m[2] ? Number(m[2]) : (/(DEADLINE|BLOCKED|ERROR)/.test(m[0]) ? 1 : 0)]));
+  const valid = pixel || verdicts ? { round: { page, width, label, regime, verdict: [pixel.split('\n').find((l) => /differing pixels/.test(l)) || pixel.split('\n')[0], ...verdicts.split('\n').filter(Boolean)].filter(Boolean).slice(0, 12), captureNotes, exitCodes } } : null;
+  const fix = anchors.length || bands.length ? { round: { page, width, label, regime, pixelPct: pctM ? Number(pctM[1]) : null, heightDelta: dhM ? Number(dhM[1]) : null, hotBand: hot ? hot.l : (bands[0] || null), anchors, sectionNames: Object.keys(proto), chrome: chrome || undefined, flags: flagLines(readIf(join(dir, `content-diff-${label}.txt`))).slice(0, 4).concat(flagLines(readIf(join(dir, `visual-diff-${label}.txt`))).slice(0, 2)), notes: captureNotes.slice(0, 3).join(' · ') || undefined } } : null;
+  if (fix && !fix.round.sectionNames.length) fix.round.sectionNames = ['(no anchors)'];
+  return { valid, fix };
+}
+
 export function sortFlags(results) {
   const P = (r) => r.answers.defect.noul;
   const decisiveDefect = results.filter((r) => P(r) >= DECISIVE_YES).sort((a, b) => P(b) - P(a));
@@ -100,7 +126,28 @@ async function main() {
   for (const r of decisiveDefect) show('defect', r);
   for (const r of unsure) show('unsure', r);
   for (const r of notDefect) show('artefact', r);
+  if (argv.includes('--round')) await roundLines(dir, label, o, D, client, { cacheDir, ledger, mode, runId });
   return 0;
+}
+
+async function roundLines(dir, label, o, D, client, ctx) {
+  const { valid, fix } = roundStates(dir, label, o.regime);
+  if (valid) {
+    try {
+      const r = await D.decide({ battery: D.loadBattery('valid-round'), state: valid, client, cacheDir: ctx.cacheDir, ledger: ctx.ledger, ref: `${gateName(dir).page}@${gateName(dir).width}/${label}/round`, mode: ctx.mode, runId: ctx.runId });
+      const P = (q) => (r.answers[q] ? r.answers[q].noul.toFixed(2) : '?');
+      const counts = r.answers.counts_as_iteration ? r.answers.counts_as_iteration.noul : 1;
+      console.log(`decide: round — counts as an iteration ${P('counts_as_iteration')} · instrument invalidated ${P('instrument_invalidated')} · origin unsettled ${P('origin_unsettled')} · fonts fallback ${P('fonts_fallback_loaded')}${counts < 0.3 ? ' → likely NOT a valid round: name the cause in the ledger, do not spend the cap' : ''}`);
+    } catch (e) { console.log(`decide: round — not judged (${e.message})`); }
+  }
+  if (fix) {
+    try {
+      const r = await D.decide({ battery: D.loadBattery('fix-pattern'), state: fix, client, cacheDir: ctx.cacheDir, ledger: ctx.ledger, ref: `${gateName(dir).page}@${gateName(dir).width}/${label}/pattern`, mode: ctx.mode, runId: ctx.runId });
+      const p = r.answers.pattern; const sct = r.answers.first_hot_section;
+      const alt = Object.entries(p.probabilities || {}).sort((a, b) => b[1] - a[1]).slice(1, 3).map(([k, v]) => `${k} ${v.toFixed(2)}`).join(', ');
+      console.log(`decide: pattern — ${p.choice} (${p.confidence.toFixed(2)}${alt ? `; then ${alt}` : ''}) at ${sct ? `${sct.choice} (${sct.confidence.toFixed(2)})` : 'n/a'} — a hint for the next fix, never the fix itself`);
+    } catch (e) { console.log(`decide: pattern — not judged (${e.message})`); }
+  }
 }
 
 if (IS_MAIN) main().then((c) => process.exit(c)).catch((e) => { console.error(`gate-flags: ${e.message}`); process.exit(0); });

@@ -1,0 +1,13 @@
+{
+  "name": "valid-round",
+  "version": 1,
+  "description": "Fix-loop assist (#127): is this gate round a valid measurement, or did the instrument or the capture invalidate it? Runs on the round's verdict lines and capture notes; an invalidated round does not spend the iteration cap.",
+  "state": { "fields": { "round": "{ page, width, label, verdict: the gate.sh verdict lines, captureNotes: stitch / font / challenge warnings, exitCodes: { pixel, contentDiff, visualDiff, chromeParity, clip } }" } },
+  "questions": {
+    "instrument_invalidated": { "type": "noul", "instructions": { "question": "Do the lines in `round` show that an instrument failed to measure — a deadline, a capture error, a missing root line, a stitch seam or wrap, a compare that did not run?", "focus": "Exit 124, 'no verdict', 'capture failed', 'DEADLINE', 'ERROR', a doc height that changed between two reads, a stitched image shorter than the document." }, "criteria": { "true": "At least one instrument reported it could not measure.", "false": "Every instrument printed a verdict." } },
+    "origin_unsettled": { "type": "noul", "instructions": { "question": "Do the lines show the live origin was not in a steady state when captured — a bot challenge or 403, a consent or marketing overlay still open, hydration placeholders, a carousel mid-transition, a height that differs from the previous round's live capture?" }, "criteria": { "true": "The origin side changed or was blocked between or during captures.", "false": "The origin capture is the cached one or reads steady." } },
+    "fonts_fallback_loaded": { "type": "noul", "instructions": "Do the lines show a declared web font that failed to load or a fallback face rendered on either side (a FontFace status error, a font-fork warning, a 'fonts not loaded' note)?" },
+    "counts_as_iteration": { "type": "noul", "instructions": { "question": "Given `round`, should this round count against the three-iteration cap — a valid measurement of the prototype the agent changed?", "focus": "A round counts when the pixel verdict is real and the build was re-captured after a fix; it does not count when an instrument or the origin invalidated it, or when nothing changed on the build since the previous round." }, "criteria": { "true": "A real measurement of a changed build.", "false": "Invalidated by an instrument or the origin, or no build change since the last round." } }
+  },
+  "route": { "instrument_invalidated": { "yes": 0.8, "no": 0.2 }, "origin_unsettled": { "yes": 0.8, "no": 0.2 }, "counts_as_iteration": { "yes": 0.8, "no": 0.2 } }
+}
