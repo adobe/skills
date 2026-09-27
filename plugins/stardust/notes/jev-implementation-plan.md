@@ -168,6 +168,12 @@ Goal: every shipped battery has a BASELINE table or a written reason it cannot h
 Acceptance: BASELINE.md has a section per battery with go / pre-sort / not-yet, and the batteries
 README table carries the status column.
 
+Met 2026-09-27: every battery has a BASELINE row and the README a status column. Outcomes:
+block-triage reuse 89 % when confident (shadow candidate), flow hands_off 100 %, decode tier and
+metadata title style are rubric disagreements not model errors, alignment and residual causes
+still need hand labels or live state, red-adjudication has no label source in the corpus,
+repair-priority Spearman 0.56 against an independent baseline (pixel order −0.19).
+
 Depends on: phase 0 only; parallel to 2 and 3.
 
 ## Phase 5 — fix-loop assist (3–4 days)

@@ -12,6 +12,7 @@ what an agent or a person recorded at the time, not as truth.
 | all three batteries, v1 | 1,612 × 1 | 1.82 M | $0.08 | 254 ms / 310 ms | 0 |
 | flag-justify + residual-causes | 1,096 × 1 | 1.01 M | $0.04 | 263 ms / 310 ms | 0 |
 | supervisor batteries + fixtures | 1,454 × 1 | 1.83 M | $0.08 | 245 ms / 351 ms | 0 |
+| phase 4 batteries + metadata | 814 × 1 | 1.10 M | $0.05 | 249 ms / 313 ms | 0 |
 | all three batteries, two models | 1,612 × 2 | 3.64 M | $0.15 | 254 ms / 310 ms | 0 |
 | page-type v2 (examples), two models | 869 × 2 | 3.29 M | $0.14 | 259 ms / 319 ms | 0 |
 
@@ -139,6 +140,29 @@ fixture set is too small. Shadow only.
 agreement, `forbids_shortcuts` 27 %, every miss the same direction — Jev reads an item as present
 where the regex found none of its keywords. Either reading could be right; the regex labels are
 too narrow to say. **No verdict** until ~50 briefs are hand-labelled; the script stays in shadow.
+
+## Phase 4 — the remaining batteries measured (2026-09-27)
+
+Cost: 450 + 364 requests, 1.1 M input tokens, $0.05, median 249 ms, zero errors.
+
+| battery | items | result | verdict |
+|---|---|---|---|
+| `block-triage` · `reuse` | 107 sections from four runs' conversion-log registries | 70 % overall; **89 % (40 / 45) at confidence ≥ 0.7**; the misses are prose-like sections the run named as a block | **go for shadow at deploy Step 2**; assist after two shadow runs |
+| `block-triage` · `decode_tier` | 101 | 67 %; Jev prefers `reconstructive` where the run chose `template_slotted` (25 of 33 misses) | stays with the agent — the recorded tier is the run's own trade-off, not a fact of the section |
+| `block-triage` · `is_block` | 107 (positives only) | 77 %; 91 % at confidence 0.7–0.9 | advisory |
+| `flow-routing` · `flow` | 34 recorded first prompts + 12 fixtures | 70 % overall, 81 % at ≥ 0.9; the misses are recorded prompts that were not migration asks (labelled by the project's flow, not by the prompt) and one redesign project asked for as "migrate" | shadow at routing via `plan-check`; the label needs a prompt-level review |
+| `flow-routing` · `hands_off` | 46 | **100 %** | go |
+| `section-alignment` (v2 labels: same name + same unit shape = 2, same name = 1, different = 0) | 207 | 59 % overall, 75 % at ≥ 0.9; `1→0` ×47 — variants read as different blocks | not yet; the derived variant label is itself debatable, hand labels still needed |
+| `residual-causes` (v2 state: anchors on 51 / 247, chrome lines on 47, band tables on 26) | 247 | unchanged from v1 on the causes whose evidence the state still lacks (font 51 %, chrome 57 %); 85–98 % on the others | no verdict; the state must come from the live gate run, not be reconstructed |
+| `metadata-select` · `pick` | 364 authored titles / descriptions matched to a captured candidate | 50 %, flat across confidence; the disagreement is systematic — the run kept the site suffix ("… \| Brand"), the battery's rule says name the page, and Jev follows the rule | not a model error; decide the rubric (keep or drop the site pattern) and pass the site's title pattern in the state before measuring again |
+| `red-adjudication` | — | recorded published-regime rounds have one round per page, so no fixed / kept label exists | not measurable from the corpus; needs the deviation ledger as the label source |
+| `repair-priority` | 68 failing rows of the recorded all-pages table | Spearman 0.56 against an independent harm baseline (missing + hidden links, clipped controls, height share); the pixel-percent order scores −0.19 against the same baseline; top-10 overlap 5 vs 4 | direction confirmed, not validated; a hand ranking is still the missing label |
+
+Read with the earlier sections, the pattern holds: batteries whose recorded answer is a fact of
+the text (page type, feature class, flag defect, block reuse, hands-off intent) measure well and
+are monotone in confidence; batteries whose recorded answer was a run's own trade-off (decode
+tier, disposition, title style, variant vs block) measure poorly against those labels and need
+either a rubric decision or hand labels before they can be trusted.
 
 ## What this says about the layer
 

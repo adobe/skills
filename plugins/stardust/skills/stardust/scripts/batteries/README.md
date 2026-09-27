@@ -50,20 +50,20 @@ replays them: agreement with the recorded answer, agreement per confidence bin, 
 routed `act` / `review` / `escalate`. A battery gates nothing until it has been measured
 there; until then callers run it beside their own judgment and compare.
 
-| battery | decision it carries | caller |
-|---|---|---|
-| `flow-routing` | replica / redesign / reskin + stated arguments | master skill entry |
-| `page-type` | archetype per captured page; confidence → fidelity tier | extract prep, migrate |
-| `dynamics-triage` | class, disposition, reproducibility, PII flag | dynamics Phase 2 |
-| `block-triage` | block vs default content, collection, reuse, decode tier, shape | deploy Step 2 |
-| `block-fit` | re-check one shortlisted block | deploy Step 2 |
-| `red-adjudication` | one content-diff red: lost, transformed, covered | migrate, qa |
-| `residual-causes` | causes of an over-cap residual, multi-label | replica Phase 4 |
-| `section-alignment` | same block / variant / different | rollout B, sibling variance |
-| `metadata-select` | title or description from found candidates | rollout optimize |
-| `flag-justify` | a gate flag: artefact, intended per policy, or defect | replica Phase 4, published gate |
-| `repair-priority` | reader harm, scope and template-wide for a failing all-pages row | rollout after gate-all |
-| `phase-claim` | supervisor: a phase-end claim cites evidence, or asserts / skips | `ledger.mjs end` |
-| `brief-check` | supervisor: a subagent brief carries the phase's checklist | before a fan-out |
-| `plan-vs-flow` | supervisor: the proposed next step is legal for the flow and state | routing, resume |
-| `decision-batch` | supervisor: the owner message is one named batch with interims | dynamics decision batch |
+| battery | decision it carries | caller | status (BASELINE.md) |
+|---|---|---|---|
+| `flow-routing` | replica / redesign / reskin + stated arguments | master skill entry | shadow (hands_off go) |
+| `page-type` | archetype per captured page; confidence → fidelity tier | extract prep, migrate | go — shadow wired |
+| `dynamics-triage` | class, disposition, reproducibility, PII flag | dynamics Phase 2 | class go — shadow wired; other axes agent |
+| `block-triage` | block vs default content, collection, reuse, decode tier, shape | deploy Step 2 | reuse shadow candidate; tier agent |
+| `block-fit` | re-check one shortlisted block | deploy Step 2 | unmeasured |
+| `red-adjudication` | one content-diff red: lost, transformed, covered | migrate, qa | unmeasured (no label source) |
+| `residual-causes` | causes of an over-cap residual, multi-label | replica Phase 4 | no verdict (state) |
+| `section-alignment` | same block / variant / different | rollout B, sibling variance | not yet |
+| `metadata-select` | title or description from found candidates | rollout optimize | rubric decision first |
+| `flag-justify` | a gate flag: artefact, intended per policy, or defect | replica Phase 4, published gate | pre-sort go — wired in gate.sh |
+| `repair-priority` | reader harm, scope and template-wide for a failing all-pages row | rollout after gate-all | demo (Spearman 0.56 vs baseline) |
+| `phase-claim` | supervisor: a phase-end claim cites evidence, or asserts / skips | `ledger.mjs end` | gate go — wired in ledger end |
+| `brief-check` | supervisor: a subagent brief carries the phase's checklist | before a fan-out | shadow, no verdict |
+| `plan-vs-flow` | supervisor: the proposed next step is legal for the flow and state | routing, resume | shadow |
+| `decision-batch` | supervisor: the owner message is one named batch with interims | dynamics decision batch | shadow (small n) |

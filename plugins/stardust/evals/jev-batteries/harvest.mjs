@@ -33,6 +33,17 @@
 //   brief-check        with --transcripts <dir of Claude Code project folders>: every Agent tool prompt
 //                      from the recorded sessions, labelled per checklist item by literal presence.
 //   decision-batch     "Decision batch" sections of dynamic-features.md as positives (one_batch = true).
+//   block-triage       eds-conversion-log.md block table (name, description, tier) = the registry; every
+//                      eds-schema section whose name is a registry block → expected reuse = that block,
+//                      decode_tier = the table's tier, is_block = true.
+//   metadata-select    content/<page>.html metadata Title / Description vs candidates from the captured
+//                      page (title, og title, h1, description, og description, first paragraph); an item
+//                      only when the authored value equals a candidate (label = that candidate).
+//   flow-routing       with --transcripts: the first user prompt of every recorded session, labelled with
+//                      the project's state.json flow (or `replica` when stardust/replica/progress.json
+//                      exists); hands_off from the prompt's own words. Fixtures add redesign / reskin / none.
+//   section-alignment  (v2 labels) same block name + same unit composition → 2, same name otherwise → 1,
+//                      different names → 0; the state carries the per-unit composition and clipped texts.
 //   Fixtures under fixtures/*.jsonl are copied into the output as-is (--fixtures <dir>, default beside
 //   this script) so a single replay covers recorded and hand-written items.
 // Exit codes: 0 ok · 2 usage.
@@ -43,7 +54,7 @@ import { fileURLToPath } from 'node:url';
 const argv = process.argv.slice(2);
 if (argv.length === 0 || argv.includes('--help') || argv.includes('-h')) { console.log(readFileSync(fileURLToPath(import.meta.url), 'utf8').split('\n').filter((l) => l.startsWith('//')).map((l) => l.replace(/^\/\/ ?/, '')).join('\n')); process.exit(0); }
 const HERE = dirname(fileURLToPath(import.meta.url));
-const opt = { projects: null, out: join(HERE, 'data', 'items.jsonl'), batteries: ['page-type', 'dynamics-triage', 'section-alignment', 'flag-justify', 'residual-causes', 'phase-claim', 'brief-check', 'decision-batch'], transcripts: null, fixtures: join(HERE, 'fixtures'), perProject: 40, seed: 1 };
+const opt = { projects: null, out: join(HERE, 'data', 'items.jsonl'), batteries: ['page-type', 'dynamics-triage', 'section-alignment', 'flag-justify', 'residual-causes', 'phase-claim', 'brief-check', 'decision-batch', 'block-triage', 'metadata-select', 'flow-routing'], transcripts: null, fixtures: join(HERE, 'fixtures'), perProject: 40, seed: 1 };
 for (let i = 0; i < argv.length; i += 1) {
   const a = argv[i]; const v = () => { const x = argv[++i]; if (x === undefined || x.startsWith('--')) { console.error(`${a} needs a value`); process.exit(2); } return x; };
   if (a === '--projects') opt.projects = resolve(v());
@@ -135,8 +146,10 @@ function inventory(section, page) {
   const roles = items.map((it) => it.role);
   const counts = { headings: roles.filter((r) => r === 'heading').length, ctas: roles.filter((r) => r === 'cta').length, images: roles.filter((r) => r === 'image' || r === 'img').length, textRuns: roles.filter((r) => r === 'body').length };
   const repeats = (section.repeats || []).map((r) => ({ count: r.count, uniform: r.uniform, unit: r.unit }));
-  return { page, roles: roles.slice(0, 40), repeats, counts };
+  const sample = items.slice(0, 6).map((it) => `${it.role}: ${clip(String(it.text || ''), 50)}`);
+  return { page, roles: roles.slice(0, 40), repeats, counts, sample };
 }
+const unitShape = (inv) => JSON.stringify((inv.repeats || []).map((r) => r.unit));
 
 function harvestAlignment(project) {
   const dir = join(project, 'stardust', 'eds-schema'); if (!existsSync(dir)) return;
@@ -154,13 +167,16 @@ function harvestAlignment(project) {
   if (secs.length < 4) return;
   const same = []; const diff = [];
   const shuffled = shuffle(secs);
+  const variant = [];
   for (let i = 0; i < shuffled.length; i += 1) for (let j = i + 1; j < shuffled.length; j += 1) {
     const a = shuffled[i]; const b = shuffled[j]; if (a.page === b.page) continue;
-    (a.name === b.name ? same : diff).push([a, b]);
+    if (a.name !== b.name) diff.push([a, b]); else if (unitShape(a.inv) === unitShape(b.inv)) same.push([a, b]); else variant.push([a, b]);
   }
-  const n = Math.min(Math.floor(opt.perProject / 2), same.length, diff.length);
-  for (const [a, b] of shuffle(same).slice(0, n)) add('section-alignment', `${basename(project)}/${a.page}:${a.name}~${b.page}:${b.name}`, { a: a.inv, b: b.inv }, { relation: 2 });
-  for (const [a, b] of shuffle(diff).slice(0, n)) add('section-alignment', `${basename(project)}/${a.page}:${a.name}~${b.page}:${b.name}`, { a: a.inv, b: b.inv }, { relation: 0 });
+  const n = Math.min(Math.floor(opt.perProject / 3), same.length, diff.length);
+  const strip = (inv) => ({ ...inv });
+  for (const [a, b] of shuffle(same).slice(0, n)) add('section-alignment', `${basename(project)}/${a.page}:${a.name}~${b.page}:${b.name}`, { a: strip(a.inv), b: strip(b.inv) }, { relation: 2 });
+  for (const [a, b] of shuffle(variant).slice(0, n)) add('section-alignment', `${basename(project)}/${a.page}:${a.name}~${b.page}:${b.name}`, { a: strip(a.inv), b: strip(b.inv) }, { relation: 1 });
+  for (const [a, b] of shuffle(diff).slice(0, n)) add('section-alignment', `${basename(project)}/${a.page}:${a.name}~${b.page}:${b.name}`, { a: strip(a.inv), b: strip(b.inv) }, { relation: 0 });
 }
 
 
@@ -226,10 +242,20 @@ function harvestResiduals(project) {
       const expected = Object.fromEntries(Object.entries(CAUSE_KEYS).map(([k, re]) => [k, re.test(String(r.cause))]));
       if (!Object.values(expected).some(Boolean)) continue;
       const width = /360/.test(JSON.stringify(r)) ? 360 : 1440;
-      let table = '';
+      let table = ''; let anchors = ''; let chrome = ''; let fonts = '';
       const gd = join(gates, `${page}-${width}`);
-      if (existsSync(gd)) { for (const f of ['pixel-final.txt', 'pixel-iter3.txt', 'pixel-iter2.txt', 'pixel-iter1.txt']) { const p = join(gd, f); if (existsSync(p)) { table = readFileSync(p, 'utf8').split('\n').filter((l) => /^\s*(y\s|differing|A \d|height)/.test(l)).slice(0, 14).join('\n'); break; } } }
-      const verdict = { page, width, band: r.band || r.region || null, pct: r.pct ?? null, heightDelta: r.heightDelta ?? null, bands: table || undefined, notes: r.flaggedFor ? `flagged for ${r.flaggedFor}` : undefined };
+      if (existsSync(gd)) {
+        for (const f of ['pixel-final.txt', 'pixel-iter3.txt', 'pixel-iter2.txt', 'pixel-iter1.txt']) { const p = join(gd, f); if (existsSync(p)) { table = readFileSync(p, 'utf8').split('\n').filter((l) => /^\s*(y\s|differing|A \d|height)/.test(l)).slice(0, 14).join('\n'); break; } }
+        // anchors: live vs the latest proto probe → per-section top / height deltas in words
+        const live = existsSync(join(gd, 'anchor-live.txt')) ? readFileSync(join(gd, 'anchor-live.txt'), 'utf8') : '';
+        const protoFile = ['anchor-proto-final.txt', 'anchor-proto-iter3.txt', 'anchor-proto-iter2.txt', 'anchor-proto-iter1.txt'].map((f) => join(gd, f)).find(existsSync);
+        const proto = protoFile ? readFileSync(protoFile, 'utf8') : '';
+        const parse = (t) => Object.fromEntries([...t.matchAll(/^\s*y\s+(\d+)\s+h\s+(\d+)\s+(\S+)/gm)].map((m) => [m[3], { y: Number(m[1]), h: Number(m[2]) }]));
+        const L = parse(live); const Pp = parse(proto);
+        anchors = Object.keys(Pp).map((k) => (L[k] ? `${k}: build top ${Pp[k].y - L[k].y >= 0 ? '+' : ''}${Pp[k].y - L[k].y} px, height ${Pp[k].h - L[k].h >= 0 ? '+' : ''}${Pp[k].h - L[k].h} px vs live` : `${k}: on the build only`)).slice(0, 12).join('\n');
+        for (const f of readdirSync(gd)) { if (/^chrome-parity.*\.txt$/.test(f)) { chrome = readFileSync(join(gd, f), 'utf8').split('\n').filter((l) => /^(✗|✓)/.test(l)).slice(0, 4).join('\n'); } if (/^stitch|^pixel-/.test(f) && /\.txt$/.test(f)) { const t = readFileSync(join(gd, f), 'utf8'); const m = t.match(/font[^\n]*(fallback|error|not loaded|status)[^\n]*/i); if (m && !fonts) fonts = m[0].slice(0, 200); } }
+      }
+      const verdict = { page, width, band: r.band || r.region || null, pct: r.pct ?? null, heightDelta: r.heightDelta ?? null, bands: table || undefined, anchors: anchors || undefined, chrome: chrome || undefined, fonts: fonts || undefined, notes: r.flaggedFor ? `flagged for ${r.flaggedFor}` : undefined };
       add('residual-causes', `${basename(project)}/${page}@${width}/${Array.from(String(r.band || r.region || '')).slice(0, 24).join('')}`, { verdict }, expected);
     }
     for (const [k, v] of Object.entries(o)) if (v && typeof v === 'object' && k !== 'justified' && k !== 'residuals') walk(v, pageKey(o, k, page));
@@ -301,6 +327,99 @@ function harvestDecisionBatches(project) {
   add('decision-batch', `${basename(project)}/decision-batch`, { message: clip(m[1].trim(), 3000), pending }, { one_batch: true });
 }
 
+
+// ---- block-triage (conversion-log registry × schema sections) ----------------------------------------
+function blockRegistry(project) {
+  const f = join(project, 'stardust', 'eds-conversion-log.md'); if (!existsSync(f)) return null;
+  const lines = readFileSync(f, 'utf8').split('\n');
+  const reg = {}; const tiers = {};
+  for (let i = 0; i < lines.length; i += 1) {
+    if (!/^\|/.test(lines[i]) || !/\|\s*-{3}/.test(lines[i + 1] || '')) continue;
+    const cols = lines[i].split('|').slice(1, -1).map((c) => c.trim().toLowerCase());
+    const bi = cols.findIndex((c) => /^block/.test(c)); if (bi < 0) continue;
+    const ti = cols.findIndex((c) => c === 'tier' || /decode/.test(c)); const di = cols.findIndex((c, k) => k !== bi && /what|pattern|purpose|description|shape|variants/.test(c));
+    for (let j = i + 2; j < lines.length && /^\|/.test(lines[j]); j += 1) {
+      const cells = lines[j].split('|').slice(1, -1).map((c) => c.trim());
+      const name = (cells[bi] || '').replace(/`/g, '').trim(); if (!/^[a-z][a-z0-9-]*$/.test(name)) continue;
+      if (!reg[name]) reg[name] = clip((di >= 0 ? cells[di] : cells.filter((_, k) => k !== bi).join(' · ')).replace(/`/g, ''), 160);
+      const tierText = ti >= 0 ? cells[ti] : cells.join(' ');
+      if (/template-slotted/i.test(tierText)) tiers[name] = 'template_slotted'; else if (/reconstructive/i.test(tierText)) tiers[name] = 'reconstructive';
+    }
+  }
+  return Object.keys(reg).length >= 4 ? { reg, tiers } : null;
+}
+function harvestBlockTriage(project) {
+  const R = blockRegistry(project); if (!R) return;
+  const dir = join(project, 'stardust', 'eds-schema'); if (!existsSync(dir)) return;
+  let n = 0;
+  for (const f of shuffle(readdirSync(dir).filter((x) => x.endsWith('.json')))) {
+    const j = readJSON(join(dir, f)); if (!j || !Array.isArray(j.sections)) continue;
+    for (const s of j.sections) {
+      const name = String(s.section || '').replace(/\s+\d+$/, ''); if (!R.reg[name] || (s.items || []).length < 2) continue;
+      if (n >= opt.perProject) return;
+      const items = (s.items || []).slice(0, 12).map((it) => ({ role: it.role, text: clip(String(it.text || ''), 60), ...(it.href ? { href: clip(it.href, 60) } : {}) }));
+      const expected = { reuse: name, is_block: true }; if (R.tiers[name]) expected.decode_tier = R.tiers[name];
+      add('block-triage', `${basename(project)}/${basename(f, '.json')}/${name}`, { section: { items, repeats: (s.repeats || []).map((r) => ({ count: r.count, uniform: r.uniform, unit: r.unit })) }, registry: R.reg }, expected);
+      n += 1;
+    }
+  }
+}
+
+// ---- metadata-select (authored metadata vs candidates from the capture) -----------------------------
+const norm = (s) => String(s || '').replace(/\s+/g, ' ').replace(/&amp;/g, '&').replace(/&#39;|&rsquo;/g, "'").trim().toLowerCase();
+function harvestMetadata(project) {
+  const cdir = join(project, 'content'); if (!existsSync(cdir)) return;
+  const files = []; (function walk(d) { for (const e of readdirSync(d)) { const p = join(d, e); if (statSync(p).isDirectory()) walk(p); else if (/\.html$/.test(e) && !/^_/.test(e)) files.push(p); } })(cdir);
+  let n = 0;
+  for (const f of shuffle(files)) {
+    if (n >= opt.perProject) return;
+    const html = readFileSync(f, 'utf8'); const start = html.indexOf('<div class="metadata">'); if (start < 0) continue;
+    const rest = html.slice(start + 22); const stop = rest.search(/<div class="(?!metadata)[^"]*">|<\/main>/); const block = stop > 0 ? rest.slice(0, stop) : rest.slice(0, 4000);
+    const kv = Object.fromEntries([...block.matchAll(/<div>\s*<div>([^<]+)<\/div>\s*<div>([\s\S]*?)<\/div>\s*<\/div>/g)].map((m) => [m[1].trim().toLowerCase(), m[2].replace(/<[^>]+>/g, '').trim()]));
+    const slug = basename(f, '.html'); const cap = readJSON(join(project, 'stardust', 'current', 'pages', `${slug}.json`)); if (!cap) continue;
+    const h1 = (cap.headings || []).find((h) => h.tag === 'h1'); const firstPara = typeof cap.body === 'string' ? cap.body.split(/\n+/).find((x) => x.trim().length > 40) : Array.isArray(cap.body) ? cap.body.find((x) => String(x).trim().length > 40) : null;
+    const page = { path: (() => { try { return new URL(cap.finalUrl || cap.url).pathname; } catch { return slug; } })(), h1: h1 ? h1.text : null, headings: (cap.headings || []).slice(0, 8).map((h) => clip(h.text, 80)), first_paragraph: clip(firstPara, 300), og_title: cap.og && cap.og.title ? cap.og.title : null, og_description: cap.og && cap.og.description ? cap.og.description : null, site_name: null };
+    for (const field of ['title', 'description']) {
+      const authored = kv[field]; if (!authored) continue;
+      const cands = [...new Set([cap.title, cap.og && cap.og.title, h1 && h1.text, cap.description, cap.og && cap.og.description, firstPara, ...(cap.headings || []).slice(0, 4).map((h) => h.text)].filter((x) => x && String(x).trim().length > 3).map((x) => String(x).replace(/\s+/g, ' ').trim()))].slice(0, 12);
+      const hit = cands.find((c) => norm(c) === norm(authored)); if (!hit) continue;
+      add('metadata-select', `${basename(project)}/${slug}/${field}`, { field, page, candidates: cands }, { pick: hit });
+      n += 1;
+    }
+  }
+}
+
+// ---- flow-routing (first user prompt per session × the project's flow) ------------------------------
+function flowOf(project) {
+  const st = readJSON(join(project, 'stardust', 'state.json')); if (st && st.flow) return st.flow;
+  if (existsSync(join(project, 'stardust', 'replica', 'progress.json')) || existsSync(join(project, 'stardust', 'replica', 'inconsistency-register.md'))) return 'replica';
+  if (/redesign/i.test(basename(project))) return 'redesign';
+  return null;
+}
+function harvestFlowRouting(dir) {
+  if (!dir || !existsSync(dir)) return;
+  const byName = new Map(projects.map((p) => [basename(p), p]));
+  for (const d of readdirSync(dir)) {
+    const m = d.match(/^-Users-[a-z]+-stardust-\d{4}-\d{2}-(.+)$/); if (!m) continue;
+    const proj = byName.get(m[1]) || [...byName.entries()].find(([k]) => m[1].startsWith(k))?.[1]; if (!proj) continue;
+    const flow = flowOf(proj); if (!flow) continue;
+    for (const f of readdirSync(join(dir, d)).filter((x) => x.endsWith('.jsonl'))) {
+      let first = null;
+      for (const line of readFileSync(join(dir, d, f), 'utf8').split('\n')) {
+        if (!line.includes('"type":"user"')) continue;
+        let j; try { j = JSON.parse(line); } catch { continue; }
+        if (j.type !== 'user') continue;
+        const c = j.message && j.message.content; const text = typeof c === 'string' ? c : Array.isArray(c) && c[0] && c[0].type === 'text' ? c[0].text : '';
+        if (!text || /^<task-notification|^<system-reminder|^Base directory|^<local-command|^<command-name/.test(text.trim())) continue;
+        first = text.trim(); break;
+      }
+      if (!first || first.length < 40 || !/migrat|eds|stardust|replica|redesign|reskin/i.test(first)) continue;
+      const handsOff = /hands-?off|autonomous|no approval|without asking|don'?t ask|never ask|do not ask|run everything|end to end/i.test(first);
+      add('flow-routing', `${m[1]}/${basename(f, '.jsonl').slice(0, 8)}`, { prompt: clip(first, 1500) }, { flow, hands_off: handsOff });
+    }
+  }
+}
+
 function copyFixtures(dir) {
   if (!dir || !existsSync(dir)) return;
   for (const f of readdirSync(dir).filter((n) => n.endsWith('.jsonl'))) for (const line of readFileSync(join(dir, f), 'utf8').split('\n').filter(Boolean)) { try { const it = JSON.parse(line); if (opt.batteries.includes(it.battery) || !opt.batteries.length) add(it.battery, it.ref, it.state, it.expected); } catch { /* skip */ } }
@@ -314,8 +433,11 @@ for (const project of projects) {
   if (opt.batteries.includes('residual-causes')) harvestResiduals(project);
   if (opt.batteries.includes('phase-claim')) harvestPhaseClaims(project);
   if (opt.batteries.includes('decision-batch')) harvestDecisionBatches(project);
+  if (opt.batteries.includes('block-triage')) harvestBlockTriage(project);
+  if (opt.batteries.includes('metadata-select')) harvestMetadata(project);
 }
 if (opt.batteries.includes('brief-check')) harvestBriefs(opt.transcripts);
+if (opt.batteries.includes('flow-routing')) harvestFlowRouting(opt.transcripts);
 copyFixtures(opt.fixtures);
 mkdirSync(dirname(opt.out), { recursive: true });
 writeFileSync(opt.out, items.map((it) => JSON.stringify(it)).join('\n') + (items.length ? '\n' : ''));
