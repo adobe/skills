@@ -1,0 +1,15 @@
+{
+  "name": "red-adjudication",
+  "version": 1,
+  "description": "One content-diff structural finding: is content really lost, or is the red a join/split artefact, a covered deviation or an intended transformation? Cascade shape: every noul is 'is this wrong', gate on the maximum (#126).",
+  "state": { "fields": { "finding": "{ kind, root, text: the diff line }", "source_slice": "the source-side text around the finding", "build_slice": "the build-side text around the finding", "deviations": "the page's logged contentDeviations[] (kind + reason), possibly empty" } },
+  "questions": {
+    "dropped": { "type": "noul", "instructions": "Is text present in `source_slice` absent from `build_slice` — dropped, not merely moved or re-wrapped?", "criteria": { "true": "Words or a whole element from the source do not appear on the build side at all.", "false": "Every source word appears on the build side, possibly in a different element or order." } },
+    "reworded": { "type": "noul", "instructions": "Has the build changed the wording of text that `source_slice` carries — different words, not just different splitting into elements?" },
+    "reordered": { "type": "noul", "instructions": "Does `build_slice` present the same text as `source_slice` in a different reading order?" },
+    "joined_or_split": { "type": "noul", "instructions": "Is the difference between `source_slice` and `build_slice` only that lines or elements were joined or split, with the same words in the same order?", "criteria": { "true": "Same words, same order; one side has them in more or fewer elements.", "false": "Words differ, are missing, or are in another order." } },
+    "hidden": { "type": "noul", "instructions": "Does `finding` describe content that exists on the build side but is not visible to a reader (hidden, collapsed, moved off-page)?" },
+    "covered_by_deviation": { "type": "noul", "instructions": "Does one of `deviations` explain and intend the difference `finding` reports?", "criteria": { "true": "A logged deviation names this element or kind of change with a reason.", "false": "No deviation mentions it, or the deviation is about something else." } }
+  },
+  "route": { "dropped": { "yes": 0.7, "no": 0.3 }, "reworded": { "yes": 0.7, "no": 0.3 }, "hidden": { "yes": 0.7, "no": 0.3 }, "joined_or_split": { "yes": 0.7, "no": 0.3 }, "covered_by_deviation": { "yes": 0.8, "no": 0.3 } }
+}

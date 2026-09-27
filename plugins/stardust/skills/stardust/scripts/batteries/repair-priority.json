@@ -1,0 +1,29 @@
+{
+  "name": "repair-priority",
+  "version": 1,
+  "description": "Grade one failing all-pages gate row (0.26.0) on what a reader would suffer, so code can order the repair queue and decide what ships with a documented residual. Composite-scoring shape: three independent scores, weights live in the caller (#126).",
+  "state": { "fields": { "row": "{ path, template, tier, pixelPct, textPct, heightDelta, clipped: {textClipped, textHidden, controlHidden, controlClipped}, content: {missing, hidden, examples: [text of up to 8 missing/hidden links and headings]}, reasons }" } },
+  "questions": {
+    "reader_harm": {
+      "type": "score",
+      "instructions": { "question": "How badly would a reader of the build page in `row` be affected by the recorded failures?", "focus": "Judge from the failing criteria and the named elements; a pixel percentage alone with nothing missing, clipped or hidden is cosmetic." },
+      "criteria": [
+        { "summary": "Cosmetic: geometry or colour differs, nothing missing, clipped or hidden; every link and heading present.", "signals": ["pixel over the bar with clipped 0 and content 0", "small height delta"] },
+        { "summary": "Degraded: some text is clipped or a control is partly cut, but the page's purpose and every path through it remain usable.", "signals": ["a few clipped lines", "one hidden secondary link"] },
+        { "summary": "Broken in part: a section a reader came for is unusable — cards with clipped descriptions and hidden detail links, a hidden primary CTA, missing headings that structure the page.", "signals": ["many clipped text lines", "hidden links in a repeated unit", "missing h1–h3"] },
+        { "summary": "Unusable: the page's main content or navigation is missing or hidden, or the render is thousands of pixels off.", "signals": ["most links hidden", "height delta a large share of the page", "main content missing"] }
+      ]
+    },
+    "scope": {
+      "type": "score",
+      "instructions": { "question": "How much of the page in `row` do the failures touch?" },
+      "criteria": [
+        { "summary": "One element or one small band." },
+        { "summary": "One section or one repeated unit type." },
+        { "summary": "Most of the page or every repeated unit." }
+      ]
+    },
+    "template_wide": { "type": "noul", "instructions": "Do the failures in `row` look like a property of the page's template or shared block (every unit affected the same way, chrome geometry, a shared container) rather than of this page's own content?", "criteria": { "true": "Every repeated unit fails the same way, or the failing element is chrome or a shared container: fixing the block fixes every page of the template.", "false": "The failure is tied to this page's particular content or a one-off element." } }
+  },
+  "route": { "reader_harm": { "confident": 0.6, "review": 0.35 }, "template_wide": { "yes": 0.7, "no": 0.3 } }
+}

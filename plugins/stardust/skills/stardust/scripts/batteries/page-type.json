@@ -1,0 +1,16 @@
+{
+  "name": "page-type",
+  "version": 1,
+  "description": "Assign a captured page to one of the project's page types (archetypes); confidence maps onto the fidelity tier (#126).",
+  "state": { "fields": { "page": "{ path, title, description, headings: [{tag, text}], counts: {ctas, links, images, words}, signals }", "types": "the project's page types: an object of type → description, or an array of type names" } },
+  "questions": {
+    "type": {
+      "type": "choice",
+      "instructions": { "question": "Which of the listed page types does `page` belong to?", "focus": "Judge by the page's structure and role in the site (its path, headings and what it lists or presents), not by its topic. Two pages of the same type share a template." },
+      "criteriaFrom": "types",
+      "appendNone": { "none": "No listed type fits: the page has a structure none of the types describes." }
+    },
+    "locale_shell": { "type": "noul", "instructions": "Is `page` a duplicate-content locale or regional variant of another page — the same page in another language or market rather than a page of its own?", "criteria": { "true": "A language or region path prefix or suffix, a translated title of a page that also exists in the primary language.", "false": "A page that exists once, or a page whose content is specific to this locale." } }
+  },
+  "route": { "type": { "confident": 0.9, "review": 0.6, "noneIs": "none" }, "locale_shell": { "yes": 0.8, "no": 0.2 } }
+}

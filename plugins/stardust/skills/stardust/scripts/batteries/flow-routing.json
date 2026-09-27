@@ -1,0 +1,23 @@
+{
+  "name": "flow-routing",
+  "version": 1,
+  "description": "Which migration flow the user's ask selects, and the arguments it states — the master skill's entry question (#126).",
+  "state": { "fields": { "prompt": "the user's request, verbatim", "extract_summary": "optional: extract's one-paragraph summary of the captured site" } },
+  "questions": {
+    "flow": {
+      "type": "choice",
+      "instructions": { "question": "Which stardust flow does `prompt` ask for?", "focus": "Judge the platform move and the design intent as stated, not what would be a good idea. A request that never mentions the design keeps it." },
+      "criteria": {
+        "replica": { "what": "Move the site to a new platform keeping its current design, content and pages as they are — a same-design or 1:1 migration, a re-platform, 'pixel-perfect', 'as is'.", "not_for": "Any request to modernise, refresh, redesign or improve the look.", "examples": ["migrate this site to EDS keeping the current design", "1:1 migration of the site", "re-platform as is, same look"] },
+        "redesign": { "what": "Produce a new design for the site — from the user's intent, a brief, a mood or a reference — with or without a platform move.", "not_for": "Keeping the current design; adopting another live site's design.", "examples": ["redesign the site and migrate it", "modernise the look, then move to EDS", "make it feel like a premium brand"] },
+        "reskin": { "what": "Keep the site's content but lay it onto the design of another named site or of local prototypes (a donor design).", "not_for": "A new design invented from intent; keeping the current design.", "examples": ["put our content on the design of <donor site>", "reskin with the prototypes in this folder"] }
+      },
+      "appendNone": { "none": "The request is not a migration, redesign or reskin (an audit, a question, a single-page fix)." }
+    },
+    "hands_off": { "type": "noul", "instructions": "Does `prompt` ask to run without approval gates or human confirmation — autonomously, hands-off, end to end without waiting?", "criteria": { "true": "Words like hands-off, autonomously, no approval gates, run everything, do not ask me.", "false": "No such instruction, or an explicit request to confirm steps." } },
+    "keep_design": { "type": "noul", "instructions": "Does `prompt` state that the current design must be preserved unchanged?", "criteria": { "true": "Same design, keep the design, as is, 1:1, pixel-perfect, exact replica.", "false": "The design is to change, or nothing is said about it." } },
+    "stated_breakpoints": { "type": "noul", "instructions": "Does `prompt` name specific viewport widths or breakpoints to gate on?" },
+    "stated_page_cap": { "type": "noul", "instructions": "Does `prompt` name how many pages, or which pages, to migrate?" }
+  },
+  "route": { "flow": { "confident": 0.85, "review": 0.5, "noneIs": "none" }, "hands_off": { "yes": 0.8, "no": 0.2 }, "keep_design": { "yes": 0.8, "no": 0.2 } }
+}

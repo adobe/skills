@@ -4,6 +4,59 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.27.0 — the decision layer: typed judgment batteries behind one script, measured before they gate (#126)
+
+Research on running the same-design flow with a System One model (notes/jev-system-one-research.md)
+sorted the replica pipeline's 47 steps into scripts, narrow decisions, generation and human gates:
+about eighteen steps are closed-set judgments an agent makes in-context today (page type, dynamics
+triage, block-vs-default-content and block reuse, decode tier, content-diff red adjudication,
+residual causes, sibling variance, metadata drafts). Recorded runs diverged on exactly those
+(two same-brief runs: 7/10 vs 10/10 pages within bar; two agents naming the same block twice; a
+keep-design ask routed to the redesign flow). This release ships the layer that makes such a
+decision a typed call with a probability, a route and a ledger line — and the eval that measures a
+battery against recorded decisions before any caller relies on it. Nothing gates on it yet.
+
+- **New `stardust/scripts/decide.mjs` (D0)** — `<battery> --state <json>`: builds the request from
+  a battery file (options may come from the state via `criteriaFrom`, a no-match option is
+  appended), calls the System One endpoint (TypeSafe Jev, `jev-1.13.0` pinned; key from
+  `$TYPESAFE_API_KEY`, never a file), routes each answer on the battery's thresholds
+  (`act` / `review` / `escalate`; a noul `yes` / `no` / `review`; overall = the worst; `weakest`
+  named — one shaky judgment spoils the call), caches under `stardust/.work/decide/`, appends one
+  line with the full probability vector to `stardust/decisions.jsonl` so thresholds are retuned
+  without re-inference. `--decider off` / `STARDUST_DECIDER=off` exits 3 and the caller keeps its own
+  judgment; 429 / 529 / 5xx retried with backoff, Retry-After honoured; about eight concurrent
+  requests. `--dry-run` prints the built request and touches nothing.
+- **Eleven batteries** under `stardust/scripts/batteries/` (README there: shape, the vendor's
+  authoring rules, one row per battery and its caller): `flow-routing`, `page-type` (confidence →
+  fidelity tier), `dynamics-triage` (four axes + the regulated-PII flag), `block-triage` (rank
+  stage) + `block-fit` (re-check one shortlisted block), `red-adjudication` (cascade of "is this
+  wrong" nouls), `residual-causes` (multi-label), `section-alignment` (three-level score + field
+  nouls, for block dedup and the variance probe), `metadata-select` (pick a title or description
+  from candidates code found; never written), `flag-justify` (a gate flag: artefact, intended per
+  policy, or defect), `repair-priority` (reader harm, scope, template-wide for a failing all-pages
+  row — composite scoring for the repair queue).
+- **`evals/jev-batteries/`** — `harvest.mjs` turns recorded runs into a labelled set (page types
+  from `state.json` + captured pages, dynamics rows from `dynamic-features.md`, section pairs from
+  `eds-schema/`); `replay.mjs` reports agreement per question and per confidence bin, the route
+  split and agreement among `act`-routed items, with a second model as an extra column. The data
+  dir names real sites and is gitignored.
+- **Measured (evals/jev-batteries/BASELINE.md):** 1,612 recorded decisions from 39 project folders
+  replayed for $0.08, median latency 254 ms, zero errors at concurrency 6. `page-type` with each
+  option carrying the paths and lead heading of up to three other pages of that type: 74 %
+  agreement overall, **91 % on the 41 % of pages the route acts on alone**, monotone with
+  confidence — go for wiring beside the agent's own typing. `dynamics-triage`: class 72 % (86.5 %
+  when confident) — go; disposition 45 % and reproducibility 45 % with a flat confidence curve —
+  the recorded answers are run policy, not in the state; they stay with the agent.
+  `section-alignment`: 66 %, label noise from generic section names and a state that loses the
+  per-unit composition — not yet. `flag-justify` on 849 recorded gate flags: 93 % agreement with
+  the run's fix-or-justify outcome on the third of flags where it is decisive, unsure on the
+  rest — go as a pre-sort. `residual-causes`: the harvestable state lacks the verdict lines; no
+  verdict. `jev-preview` within a point of `jev-1.13.0` everywhere.
+- **Not changed:** no skill calls the layer yet; every gate, bar and instrument is as in 0.26.0. The
+  wiring (a `decide` step beside the in-context judgment, compared in the ledger) follows for the
+  batteries whose replay shows agreement rising with confidence and ≥ 90 % agreement among `act`
+  items; today that is `page-type` and the class axis of `dynamics-triage`.
+
 ## 0.26.0 — published-origin gate hardened: element-level criteria beside the pixel number (#125)
 
 A 96-page rollout of a pharmacy retailer gated every deployed page on stitched captures and

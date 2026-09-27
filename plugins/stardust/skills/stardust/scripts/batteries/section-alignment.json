@@ -1,0 +1,21 @@
+{
+  "name": "section-alignment",
+  "version": 1,
+  "description": "Are two sections the same block? Entity-alignment shape: one three-level score plus one noul per structural field naming the disagreement. Serves rollout block dedup and the sibling variance probe (#126).",
+  "state": { "fields": { "a": "{ page, name?, roles: ['heading','body','cta',...], repeats: [{count, uniform, unit}], counts: {headings, ctas, images, textRuns} }", "b": "the other section, same shape" } },
+  "questions": {
+    "relation": {
+      "type": "score",
+      "instructions": { "question": "How do `a` and `b` relate as authored blocks?", "focus": "Judge the rows an author would fill and how they repeat, not the words in them." },
+      "criteria": [
+        { "summary": "Different blocks: the authored rows differ in kind — one has repeated units and the other does not, or the roles carried are different.", "signals": ["one repeats, the other is a single composition", "roles present in one are absent in the other"] },
+        { "summary": "Variants of one block: the same rows and repeat structure with a difference an option or a class would express — a different unit count, an optional CTA or image present in one, a different alignment.", "signals": ["same roles, one optional role missing", "same unit shape, different count", "same rows, another arrangement"] },
+        { "summary": "The same block: the same roles in the same order and the same repeat structure.", "signals": ["identical role sequence", "identical unit composition"] }
+      ]
+    },
+    "same_roles": { "type": "noul", "instructions": "Do `a` and `b` carry the same set of content roles (heading, body, cta, image, eyebrow) at the section level?" },
+    "same_repeat_structure": { "type": "noul", "instructions": "Do `a` and `b` have the same repeat structure — both repeat units of the same composition, or neither repeats?" },
+    "same_cta_pattern": { "type": "noul", "instructions": "Do `a` and `b` place calls to action the same way — the same number of CTAs at the same level (per unit or per section)?" }
+  },
+  "route": { "relation": { "confident": 0.7, "review": 0.4 }, "same_repeat_structure": { "yes": 0.8, "no": 0.2 } }
+}

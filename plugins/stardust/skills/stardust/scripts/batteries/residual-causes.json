@@ -1,0 +1,17 @@
+{
+  "name": "residual-causes",
+  "version": 1,
+  "description": "Name the causes of a pixel residual after the iteration cap — multi-label, one noul per cause, from instrument output that code has already bucketed into words (#126).",
+  "state": { "fields": { "verdict": "{ pct, heightDelta, bands: ['y 0-500: 23 % hot', ...], anchors: ['section 4 (hero) is 48 px taller on the build', ...], chrome: 'header 1.2 % footer 4.4 %', notes: 'capture and instrument notes' }" } },
+  "questions": {
+    "font_fallback": { "type": "noul", "instructions": "Does `verdict` indicate a different typeface or font weight on the build than on the origin — a substitute face, thin glyph-edge noise across text-dense bands, differing line wraps?" },
+    "nondeterministic_live": { "type": "noul", "instructions": "Does `verdict` indicate content that varies between loads of the origin — a carousel on another slide, a rotating rail, personalised or A/B content, a ticker or date?" },
+    "sticky_widget": { "type": "noul", "instructions": "Does `verdict` indicate a fixed or sticky third-party widget (chat, feedback tab, cookie bar, back-to-top) present on one side only?" },
+    "capture_truncation": { "type": "noul", "instructions": "Does `verdict` indicate the capture itself failed — a truncated or wrapped screenshot, an unsettled page, a blocked or challenged origin, a missing image?" },
+    "chrome_generation": { "type": "noul", "instructions": "Does `verdict` indicate the header or footer geometry differs — a different height, a second chrome generation, a nav row or strip missing or added?" },
+    "pipeline_transform": { "type": "noul", "instructions": "Does `verdict` indicate a delivery-pipeline transformation — wrapped pictures, unwrapped paragraphs, an empty metadata section adding padding, rewritten media paths?" },
+    "offset_contamination": { "type": "noul", "instructions": "Does `verdict` indicate that bands below the first hot band are off only because everything above shifted them?" },
+    "unexplained": { "type": "noul", "instructions": "Is there a residual in `verdict` that none of these explains: font, live variation, sticky widget, capture failure, chrome geometry, pipeline transform, offset contamination?" }
+  },
+  "route": { "font_fallback": { "yes": 0.7, "no": 0.3 }, "nondeterministic_live": { "yes": 0.7, "no": 0.3 }, "sticky_widget": { "yes": 0.7, "no": 0.3 }, "capture_truncation": { "yes": 0.7, "no": 0.3 }, "chrome_generation": { "yes": 0.7, "no": 0.3 }, "pipeline_transform": { "yes": 0.7, "no": 0.3 }, "unexplained": { "yes": 0.6, "no": 0.3 } }
+}

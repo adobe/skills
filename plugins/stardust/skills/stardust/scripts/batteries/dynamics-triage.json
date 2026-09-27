@@ -1,0 +1,52 @@
+{
+  "name": "dynamics-triage",
+  "version": 1,
+  "description": "The dynamics skill's four triage axes for one detected feature: class, disposition, reproducibility, plus the regulated-PII flag (#126).",
+  "state": { "fields": { "feature": "{ id, description, signals: [strings the detector saw], reach: 'n/m pages', evidence }" } },
+  "questions": {
+    "class": {
+      "type": "choice",
+      "instructions": { "question": "What kind of dynamic feature is `feature`?", "focus": "One primary class. A listing fed by an API is a listing (L); the API is only the class when it renders content with no other shape." },
+      "criteria": {
+        "L": { "what": "Listing: a block that lists other pages or items — repeated same-site card groups, rails, teasers, dated cards." },
+        "S": { "what": "Search: site search, autocomplete, a results page, a search input or a hosted search vendor." },
+        "F": { "what": "Form: any submission — a form tag, a form-less control group, a newsletter or contact form, a form vendor." },
+        "M": { "what": "Modal or interactive chrome: overlays, dialogs, lightboxes, tabs, accordions, menus, toggles." },
+        "V": { "what": "Media: video or audio players, map embeds, iframes injected at runtime." },
+        "T": { "what": "Tag or consent: analytics, tag managers, consent managers, RUM, pixels, chat or review widgets loaded as third-party scripts." },
+        "A": { "what": "API, personalisation or settings: first-party XHR that renders content, experimentation, CMS settings objects, geo lookups, app bootstrap.", "not_for": "An API that only feeds a listing, search or form — classify those by their shape." },
+        "R": { "what": "Relationship: many-to-many listings keyed by taxonomy (related items by tag or category)." },
+        "X": { "what": "Auth or commerce: sign-in, account, cart, prices, session-bound features." },
+        "I18N": { "what": "Locale: language or region trees, hreflang alternates, language switchers." },
+        "CR": { "what": "Client-rendered: slots or whole pages filled after load — placeholders, skeletons, an empty main at load." },
+        "D": { "what": "Sheet or data file: copy and settings from spreadsheets or JSON files that are not APIs (placeholders, manifests)." }
+      }
+    },
+    "disposition": {
+      "type": "choice",
+      "instructions": { "question": "What should the migration do with `feature`?", "focus": "Prefer the cheapest disposition that keeps the visible behaviour for a real user of the migrated pages." },
+      "criteria": {
+        "rebuild-native": { "what": "Rebuild the behaviour in block or runtime JavaScript with no external data: modal loaders, chrome interactions, accordions, forms, clock strings." },
+        "index-backed": { "what": "Feed it from the site's own query index: listings, related rails, search." },
+        "data-fed": { "what": "Feed it from data outside the page kept reachable: a same-origin API, a snapshot served from the code bus or a sheet." },
+        "embed-passthrough": { "what": "Keep a third-party surface as-is: players, iframes, form services, tags and consent managers, re-authored from live ids." },
+        "client-only": { "what": "Pure client compute with no network: calculators, filters, comparisons." },
+        "static-snapshot": { "what": "Ship the settled DOM as content, with the reason and the unfreeze condition recorded; also the disposition for 'not decided yet'." },
+        "decided-out": { "what": "Cannot or must not exist off-origin: session-bound, regulated capture, no consumer on the migrated pages; links kept, a register row written." }
+      }
+    },
+    "reproducibility": {
+      "type": "choice",
+      "instructions": { "question": "What does `feature` need before it can ship on the new origin?", "focus": "Only `self` ships autonomously. Anything that needs an owner's credential, capture, backend or decision is not `self`, however small." },
+      "criteria": {
+        "self": { "what": "Nothing outside the repository and the captured content: the migration can ship it alone." },
+        "needs-credential": { "what": "A key, token, property id or account the owner must provide (a tag manager container, a consent property, an API key)." },
+        "needs-human-capture": { "what": "Something only a human session can capture (behind login, a paid flow, a device)." },
+        "needs-backend": { "what": "A backend or API that must be reachable from the new origin, or a data feed to be provisioned." },
+        "needs-business-decision": { "what": "A choice only the site owner can make (keep a player, licence a font, drop a feature)." }
+      }
+    },
+    "regulated_pii": { "type": "noul", "instructions": "Does `feature` capture regulated personal data — health, financial, identity documents, payment details — through a form or flow?", "criteria": { "true": "A form or flow asking for health, financial, identity or payment information.", "false": "No data capture, or only contact details for a newsletter or callback." } }
+  },
+  "route": { "class": { "confident": 0.8, "review": 0.5 }, "disposition": { "confident": 0.8, "review": 0.5 }, "reproducibility": { "confident": 0.9, "review": 0.6 }, "regulated_pii": { "yes": 0.7, "no": 0.3 } }
+}

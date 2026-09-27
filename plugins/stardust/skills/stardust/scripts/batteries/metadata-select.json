@@ -1,0 +1,16 @@
+{
+  "name": "metadata-select",
+  "version": 1,
+  "description": "Select, never write: pick a page's title or description from candidates code found on the captured page, or answer none (#126).",
+  "state": { "fields": { "field": "'title' or 'description'", "page": "{ path, h1, headings: [text], first_paragraph, og_title, og_description, site_name }", "candidates": "array of candidate strings found on the page, in document order" } },
+  "questions": {
+    "pick": {
+      "type": "choice",
+      "instructions": { "question": "Which of `candidates` is the best value for the page's `field`?", "rules": { "title": "Names this page, not the site or a section; 30 to 60 characters; the h1 wins when it is specific.", "description": "One or two sentences that summarise this page for a search result; 120 to 160 characters; not a navigation label, not boilerplate shared by every page." }, "focus": "Copy an existing candidate; never prefer a candidate because it is short if it does not describe this page." },
+      "criteriaFrom": "candidates",
+      "appendNone": { "none": "None of the candidates is a suitable value for this field." }
+    },
+    "boilerplate_risk": { "type": "noul", "instructions": "Would the best candidate for `field` be identical on most pages of this site (a site-wide slogan, a footer sentence, a cookie notice)?" }
+  },
+  "route": { "pick": { "confident": 0.8, "review": 0.5, "noneIs": "none" }, "boilerplate_risk": { "yes": 0.7, "no": 0.3 } }
+}

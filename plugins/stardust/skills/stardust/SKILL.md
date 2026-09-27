@@ -330,6 +330,20 @@ validation, the validation loop, fidelity gates, delivery gates, and
 rollout's optimize gate all run unchanged. Hands-off changes *who
 answers*, not *what must pass*.
 
+## The decision layer (#126)
+
+Closed-set judgments the pipeline makes over text — page type, dynamics triage, block vs
+default content and block reuse, decode tier, a content-diff red, residual causes, section
+alignment, a title or description picked from candidates — can be asked of a System One model
+through `skills/stardust/scripts/decide.mjs <battery> --state <json>` (batteries and their
+callers: `skills/stardust/scripts/batteries/README.md`). The answer is typed, carries a
+probability, and is routed `act` / `review` / `escalate` on the battery's thresholds; every
+call lands in `stardust/decisions.jsonl`. It never generates text: options come from the
+battery or from the state the caller built. Until a battery has been measured in
+`evals/jev-batteries/` it runs beside the agent's own judgment, never instead of it; without
+`$TYPESAFE_API_KEY` or under `STARDUST_DECIDER=off` the script exits 3 and the agent decides as
+before. Generation, vision and numbers stay with the agent and the instruments.
+
 ## The "open and reasoned" principle
 
 Stardust does not ship a closed `intent → commands` lookup. Every freeform

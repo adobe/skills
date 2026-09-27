@@ -1,0 +1,52 @@
+{
+  "name": "block-triage",
+  "version": 1,
+  "description": "Deploy Step 2 per prototype section: block or default content, Block Collection match, reuse of an existing block, decode tier and component-model shape (#126). Rank stage — re-check the shortlist with block-fit.",
+  "state": { "fields": { "section": "one section of the section schema: { name, items: [{role, text, href}], repeats: [{count, uniform, unit}] }", "registry": "the site's existing blocks: object of block name → one-line description (from the conversion log)" } },
+  "questions": {
+    "is_block": { "type": "noul", "instructions": { "question": "Should `section` become a block rather than default content?", "focus": "Default content is prose an author writes in place: headings, paragraphs, a single image, a single CTA. A block is a composition — repeated units, a layout with slots, a control, an embed." }, "criteria": { "true": "Repeated units (cards, tiles, FAQ rows), a multi-slot composition (hero with eyebrow, headline, actions, media), a control, a player or an embed.", "false": "Headings and paragraphs in reading order with at most a single image or CTA." } },
+    "collection": {
+      "type": "choice",
+      "instructions": { "question": "Which Block Collection shape does `section` match?", "focus": "Match the authoring shape (what rows an author fills), not the visual style." },
+      "criteria": {
+        "hero": "One lead composition: headline, optional eyebrow and text, actions, a media element.",
+        "cards": "Repeated units each with an image, a title, text and optionally a link.",
+        "columns": "Side-by-side content of unequal kinds (text beside media, two text columns).",
+        "carousel": "Repeated units shown one or a few at a time with navigation.",
+        "accordion": "Question/answer or title/body pairs that expand and collapse.",
+        "tabs": "Labelled panels, one visible at a time.",
+        "table": "Tabular data with a header row.",
+        "quote": "A quotation with attribution.",
+        "video": "A video player or poster with a play action.",
+        "embed": "A third-party surface by URL (map, social post, form service).",
+        "fragment": "Content reused from another document.",
+        "form": "Fields and a submit action."
+      },
+      "appendNone": { "none": "No Block Collection shape fits: a bespoke composition." }
+    },
+    "reuse": {
+      "type": "choice",
+      "instructions": { "question": "Which existing block in `registry` should render `section`, possibly with a variant class?", "focus": "Same authored rows and the same decorate shape means the same block; a different look on the same rows is a variant, still the same block." },
+      "criteriaFrom": "registry",
+      "appendNone": { "new-block": "No existing block takes these rows: author a new block." }
+    },
+    "decode_tier": {
+      "type": "choice",
+      "instructions": { "question": "Which decode tier fits `section`?" },
+      "criteria": {
+        "template_slotted": { "what": "A fixed composition whose structure never changes at authoring time; the block moves the authored elements into fixed slots.", "examples": ["a bespoke hero", "a stat or countdown band", "a cinematic strip"] },
+        "reconstructive": { "what": "Repeating or data-driven units that authors add or remove; the block classifies and segments rows.", "examples": ["cards", "FAQ rows", "listings", "menus"] }
+      }
+    },
+    "shape": {
+      "type": "choice",
+      "instructions": { "question": "Which component-model shape describes how an author fills `section`?" },
+      "criteria": {
+        "simple": "One property per row: a fixed set of rows, each a single value.",
+        "key_value": "Configuration rows of name and value.",
+        "container": "The block's own rows plus one row per child item."
+      }
+    }
+  },
+  "route": { "is_block": { "yes": 0.8, "no": 0.2 }, "collection": { "confident": 0.7, "review": 0.4, "noneIs": "none" }, "reuse": { "confident": 0.85, "review": 0.5, "noneIs": "new-block" }, "decode_tier": { "confident": 0.8, "review": 0.5 }, "shape": { "confident": 0.7, "review": 0.4 } }
+}
