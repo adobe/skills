@@ -195,6 +195,32 @@ as override candidates, never skipped.
 - The two models (`jev-1.13.0`, `jev-preview`) agree within a point everywhere measured; pin
   `jev-1.13.0` and re-run the tables when a new version ships.
 
+## A/B runs
+
+First live pair (2026-09-27/28), a 4-page sports-program microsite, clean origin; both arms hands-off, same prompt,
+same plugin and model. Deviation from the protocol: `shadow` vs `assist`, not `off` vs `assist`. Full report:
+`data/AB-sports-program-microsite-2026-09-28.md`.
+
+| KPI | shadow | assist |
+|---|---|---|
+| active time, prompt → final report | ≈ 5 h 27 min (+ 7 h 17 min idle after an API stream stop) | 4 h 33 min |
+| turns / tool calls / subagents | 2 322 / 1 361 / 12 | 1 369 / 927 / 3 |
+| API-equivalent cost (list, 5-min cache TTL) | ≈ $294 | ≈ $519 |
+| pages within the full bar (1440 / 360) | 3/4 · 3/4 | 3/4 · 2/4 |
+| independent mean pixel diff over 8 cells | 2.5 % (max 5.1 %) | 7.1 % (max 24.4 %) |
+| human touches | 1 (harness API error) | 0 |
+| supervisor refusals | 0 / 36 checks | 0 / 25 checks |
+| content decisions routed `act` by the layer | n/a | 0 (page-type 0/4, dynamics-triage 0/25) |
+| Jev cost | $0.14 | $0.004 |
+
+Result: nothing moved because of the layer. assist mode took no content decision (no `act`), Jev's page-type was wrong
+on both disagreements (home → `program`, 404 → `none`), and the two arms exercised different batteries (shadow: flag-justify
+×2 039 on 28 gate rounds; assist: page-type / dynamics-triage / brief-check, zero flag rounds). The fidelity gap is one
+agent judgment — the second program page delivered as a sibling with no prototype (24.8 % at 360 after the 3-round cap) —
+and the cost gap is orchestration shape (one long-lived main agent with heavy thinking vs a 12-subagent fan-out). Next
+pair: `off` vs `assist` with identical wiring, `promptCacheTtl: 1h`, and a prototype forced for every roster page.
+Experiment closed on this branch (2026-09-28); the branch is kept as an experimental record and not merged.
+
 ## Not measured yet
 
 `flow-routing`, `block-triage`, `block-fit`, `red-adjudication`, `metadata-select`: their
