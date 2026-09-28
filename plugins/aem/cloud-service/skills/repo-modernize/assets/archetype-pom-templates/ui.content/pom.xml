@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd" xmlns="http://maven.apache.org/POM/4.0.0"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>{{groupId}}</groupId>
+    <artifactId>{{artifactId}}</artifactId>
+    <version>{{version}}</version>
+  </parent>
+  <artifactId>{{artifactId}}.ui.content</artifactId>
+  <version>{{version}}</version>
+  <packaging>content-package</packaging>
+  <name>{{appTitle}} - UI content</name>
+  <description>UI content package for {{appTitle}}</description>
+  <dependencies>
+    <dependency>
+      <groupId>{{groupId}}</groupId>
+      <artifactId>{{artifactId}}.ui.apps</artifactId>
+      <version>{{version}}</version>
+      <type>zip</type>
+    </dependency>
+    <dependency>
+      <groupId>com.adobe.aem</groupId>
+      <artifactId>aem-sdk-api</artifactId>
+    </dependency>
+  </dependencies>
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.jackrabbit</groupId>
+        <artifactId>filevault-package-maven-plugin</artifactId>
+        <configuration>
+          <properties>
+            <cloudManagerTarget>none</cloudManagerTarget>
+          </properties>
+          <group>{{groupId}}</group>
+          <name>{{artifactId}}.ui.content</name>
+          <packageType>content</packageType>
+          <validatorsSettings>
+            <jackrabbit-filter>
+              <options>
+                <validRoots>/conf,/content,/content/experience-fragments,/content/dam</validRoots>
+              </options>
+            </jackrabbit-filter>
+          </validatorsSettings>
+          <dependencies>
+            <dependency>
+              <groupId>{{groupId}}</groupId>
+              <artifactId>{{artifactId}}.ui.apps</artifactId>
+              <version>{{version}}</version>
+            </dependency>
+          </dependencies>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>com.day.jcr.vault</groupId>
+        <artifactId>content-package-maven-plugin</artifactId>
+        <extensions>true</extensions>
+        <configuration>
+          <verbose>true</verbose>
+          <failOnError>true</failOnError>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd" xmlns="http://maven.apache.org/POM/4.0.0"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>{{groupId}}</groupId>
+    <artifactId>{{artifactId}}</artifactId>
+    <version>{{version}}</version>
+  </parent>
+  <artifactId>{{artifactId}}.ui.apps.structure</artifactId>
+  <version>{{version}}</version>
+  <packaging>content-package</packaging>
+  <name>{{appTitle}} - Repository Structure Package</name>
+  <description>Empty package that defines the structure of the Adobe Experience Manager repository the Code packages in this project deploy into.
+        Any roots in the Code packages of this project should have their parent enumerated in the Filters list below.</description>
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.jackrabbit</groupId>
+        <artifactId>filevault-package-maven-plugin</artifactId>
+        <configuration>
+          <properties>
+            <cloudManagerTarget>none</cloudManagerTarget>
+          </properties>
+          <filters />
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>
