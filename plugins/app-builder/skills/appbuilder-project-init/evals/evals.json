@@ -182,6 +182,18 @@
         {"type": "output_contains", "pattern": "aio-cli-plugin-certificate", "description": "Identifies the certificate plugin as the cause."},
         {"type": "output_contains", "pattern": "2.1.0", "description": "Pins it to the CommonJS 2.1.0 version."}
       ]
+    },
+    {
+      "id": 8,
+      "prompt": "Scaffold a Content Hub extension that adds a custom tab panel to the Asset Details Dialog.",
+      "expected_output": "Scaffolds via `aio app init --repo adobe/aem-uix-examples/aem-assets-contenthub-sample` (no generator template exists for aem/assets/contenthub/1), then post-init customization: set extensionId, populate allowedRepos, and prune the card/selectionBar namespaces if only assetDetails is needed.",
+      "files": [],
+      "assertions": [
+        {"type": "output_contains", "pattern": "aio app init --repo", "description": "Scaffolds from the sample repo — no generator template exists for this extension point."},
+        {"type": "output_contains", "pattern": "aem-assets-contenthub-sample", "description": "Uses the current unified sample, not the deprecated aem-contenthub-assets-details-sample."},
+        {"type": "output_contains", "pattern": "aem/assets/contenthub/1", "description": "Targets the unified Content Hub extension point."},
+        {"type": "output_contains", "pattern": "allowedRepos", "description": "Covers post-init customization (populate allowedRepos before Production)."}
+      ]
     }
   ]
 }
