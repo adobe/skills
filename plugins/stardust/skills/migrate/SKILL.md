@@ -72,9 +72,8 @@ inline, or run an impeccable command) and re-invoke migrate.
    run: print the two-flow table from the master skill § Two migration
    flows and hand back to its routing — the flow is chosen and stamped
    there before any sub-skill runs
-   (`skills/stardust/reference/state-machine.md` § Flow keys). Under
-   hands-off the master's default applies (keep-design phrase →
-   `replica`, otherwise `redesign`), recorded in `direction.md`.
+   (`skills/stardust/reference/state-machine.md` § Flow keys): `replica`
+   unless the ask names a redesign.
    (Recorded: `migrate <url>` as the first command of two same-design
    migrations led to a hand-built compiler tuned by eye instead of the
    replica gate.)
