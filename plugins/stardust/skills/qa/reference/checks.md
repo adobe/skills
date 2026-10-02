@@ -100,7 +100,7 @@ Flows, not presence — each check replays a user-visible flow through `skills/d
 | `jsonld-invalid` | error · `jsonld-no-type` warn | structured data must parse server-side |
 | `jsonld-visible-as-text` | error | `"@context"` in visible copy — JSON-LD row landed outside the metadata block |
 | `duplicate-title` / `duplicate-description` | warn | fleet-wide duplicates |
-| `favicon-broken` | warn | |
+| `favicon-broken` | error · `favicon-default` error · `favicon-mismatch` warn | the icon the home page links serves 200; is not the aem-boilerplate default (the site's icon never shipped — the recorded first-pass miss); matches `stardust/current/assets/favicon.<ext>` when present |
 
 ## links (G, delivery)
 

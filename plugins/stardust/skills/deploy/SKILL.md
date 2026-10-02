@@ -355,9 +355,11 @@ Extract captures the source site's favicon at
 3. Sandboxed/app runs (the `_eds/` bundle contract): write the file to
    `_eds/code/favicon.<ext>` instead — the host publisher pushes it with the
    code tree and injects the `head.html` link deterministically.
-4. Verify at the published origin as part of the atomic contract: a `HEAD`
-   request to `/favicon.<ext>` must return 200 — a repo-root file that never
-   made the code push ships the default icon silently.
+4. Verify at the published origin as part of the atomic contract:
+   `node skills/qa/scripts/qa.mjs --base <origin> --checks metadata --max-pages 1`
+   must report neither `favicon-broken` nor `favicon-default` — a 200 alone
+   proves nothing, the boilerplate's own icon answers it; a repo-root file
+   that never made the code push ships that default silently.
 
 If extract captured no favicon, **WARN LOUDLY and record it in the deploy
 log — never invent one, never skip silently.** A missing

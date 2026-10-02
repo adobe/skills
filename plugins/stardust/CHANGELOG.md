@@ -4,6 +4,24 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.27.2 — the favicon miss becomes a failing check: `favicon-default` (#128)
+
+Several recent first passes shipped the aem-boilerplate icon. The rule was already written in three
+places (deploy Step 3 § Favicon, replica's C0 foundation unit, prepare-migration assets prep) and
+extract had captured the icon every time; what was missing was an instrument — the QA check HEADed
+`/favicon.ico` and the boilerplate's own file answered 200, so every sweep passed. Prose repeated a
+fourth time would not have changed that. Touches #110–#112 (deploy favicon WARN), 0.19.1 (favicon
+HEAD at the origin).
+
+- **qa `metadata`**: resolves the icon the home page links (any `rel~=icon`, default `/favicon.ico`),
+  fetches the bytes and reports `favicon-broken` (error, was warn), `favicon-default` (error: sha256
+  equals the boilerplate's `favicon.ico` — the site's icon never shipped) or `favicon-mismatch`
+  (warn: differs from `stardust/current/assets/favicon.<ext>` when that capture exists — a format
+  conversion is legitimate). `lib.mjs fetchUrl` gains `binary: true`; `test/favicon.test.mjs`.
+- **rollout foundation-first gate** runs `qa.mjs --checks metadata` against the origin and names
+  `favicon-default` as the first-pass miss; **deploy Step 3 § Favicon** step 4 points at the same
+  check instead of a bare HEAD.
+
 ## 0.27.1 — site search is `self`, never decided-out by a hands-off assumption (#127)
 
 A recorded hands-off run of a 100-page medical-device site had the query index live and the plan
