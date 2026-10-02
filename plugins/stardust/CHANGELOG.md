@@ -4,6 +4,26 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.28.0 — a migration keeps its design unless the ask says to redesign it (#129)
+
+A recorded hands-off run resolved a bare "migrate" to the redesign flow (brand-faithful mode) because
+the ask carried no keep-design phrase; the owner expected a like-for-like move and got the prototype's
+reinterpretation — a static poster for the hero motion, a rebuilt mega-menu, pages that differed
+wholesale from the source. The master skill's third routing bucket ("anything else → ask; hands-off →
+redesign") was the root cause. Contract change, so a minor bump. Touches 0.23.0 (flow keys),
+0.19.1 (zero-movement hand-off).
+
+- **Routing** (master § Two migration flows): the redesign flow is selected only by an explicit
+  redesign phrase ("redesign", "modernise", "refresh", "new look", …); nothing is inferred. Every
+  other migration ask is `replica` with `flowSource: "default"`, no question, interactive and
+  hands-off alike; the first response carries replica's "Say `switch to redesign` now" line so the
+  one decision stays visible.
+- **Flow keys** (state-machine.md): `flowSource` is `user-phrase | default | question`;
+  `hands-off-default` is gone. `prepare-migration` Setup stamps `redesign` only on an explicit
+  phrase and hands anything else to `replica`; `migrate`'s flow guard reads the same default.
+- **Eval** `routing-migration-flow`: prompt 1 expects `replica` without a question and
+  `flowSource: "default"`.
+
 ## 0.27.2 — the favicon miss becomes a failing check: `favicon-default` (#128)
 
 Several recent first passes shipped the aem-boilerplate icon. The rule was already written in three

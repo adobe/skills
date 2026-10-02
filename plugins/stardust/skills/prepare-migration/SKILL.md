@@ -58,13 +58,12 @@ this site" a conscious gesture and keeps idempotency obvious.
    `prepare-migration` before or after `replica`" and the switch
    command (`$stardust prepare-migration --switch-flow`, which marks
    the replica artefacts stale — master skill § Two migration flows).
-   If `flow` is absent, resolve it first: a keep-design phrase in the
-   ask ("1:1", "exact replica", "same design", "faithful",
-   "re-platform") means this skill does not apply — say so and hand to
-   `replica`; a plain migration ask gets the one keep-vs-redesign
-   question (hands-off: default `redesign`, recorded in
-   `direction.md`); then stamp `flow: "redesign"`
-   (`skills/stardust/reference/state-machine.md` § Flow keys).
+   If `flow` is absent, resolve it first: only an explicit redesign
+   phrase ("redesign", "modernise", "refresh", "new look") selects this
+   skill — stamp `flow: "redesign"`
+   (`skills/stardust/reference/state-machine.md` § Flow keys). Any other
+   migration ask, keep-design phrase or plain "migrate", means this skill
+   does not apply — say so and hand to `replica`.
    (Recorded: "build a 1:1 migration plan" entered here on a plugin
    that already described both flows and ran the redesign cascade for
    two hours before `direct` was asked for an "exact replica".)

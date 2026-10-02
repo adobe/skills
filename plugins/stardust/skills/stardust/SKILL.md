@@ -138,8 +138,9 @@ Once setup is done, route on the user's input:
 ## Two migration flows — pick one, never mix
 
 When the user wants to migrate a site to AEM Edge Delivery (or any clean
-front end), the FIRST question is whether the design is kept or changed.
-That answer selects the flow; the downstream chain is shared.
+front end), the ask decides whether the design is kept or changed: a
+migration keeps its design unless the ask says to redesign it. That
+selects the flow; the downstream chain is shared.
 
 - **Redesign while migrating:** `extract` → `direct` → `prototype`, or in
   one orchestrated step `prepare-migration` (the prep cascade with
@@ -172,12 +173,15 @@ loads:
   (`ia-fidelity: verbatim` with palette, type and density all pinned).
 - **Redesign phrases select the redesign flow:** "redesign", "modernise",
   "refresh", "new look", "rethink", "reimagine" — any phrase that moves a
-  design axis.
+  design axis. Only an explicit phrase does; nothing is inferred.
 - **Anything else** ("migrate X to EDS", "build a migration plan for X")
-  asks the one keep-vs-redesign question — the only question this section
-  asks. Under hands-off it is not asked: a keep-design phrase selects
-  `replica`, otherwise `redesign`, recorded as a named assumption in
-  `direction.md`.
+  is a faithful migration: `replica`, `flowSource: "default"`, no
+  question, interactive and hands-off alike. The first response carries
+  replica's flow line ("Flow: replica — the design is kept. Say `switch to
+  redesign` now if it is to change."), so the one decision stays visible.
+  (Recorded: a hands-off run resolved a bare "migrate" to redesign and
+  delivered a brand-faithful reinterpretation where a like-for-like move
+  was expected — a static poster for the hero motion, a rebuilt mega-menu.)
 
 Stamp the choice in `state.json` as `flow` / `flowChosenAt` / `flowSource`
 (`reference/state-machine.md` § Flow keys) before delegating. The
