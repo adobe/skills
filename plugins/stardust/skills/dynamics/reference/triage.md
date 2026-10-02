@@ -37,7 +37,9 @@ network cannot reach a hand-off target).
 Only `self` ships autonomously. Everything else is emitted as **one decision batch** — one message
 listing every credential, capture, backend and business decision — never one question at a time.
 Under hands-off mode the batch is recorded, each decision becomes a named assumption, and the
-interim path ships (`interim` or `scaffolded-awaiting-owner`). On the finance-site case one of five
+interim path ships (`interim` or `scaffolded-awaiting-owner`). An assumption is the run's, never the
+owner's: it cannot set `decided-out` (a recorded run put a live-indexed site search out of scope by
+assumption and cited it as the owner's). On the finance-site case one of five
 gaps was `self`; the other four each gated on something external. Naming that up front is what turns
 dynamics from an open-ended stall into a bounded phase.
 
@@ -53,8 +55,10 @@ dynamics from an open-ended stall into a bounded phase.
    minors, document upload) → rebuild the UI with submission blocked until a human configures the
    secured endpoint; surface as a mandatory decision. Most intake help pages deep-link to an
    authenticated app — migrate the link, do not manufacture a form.
-4. **A search box implies a results page.** Emit the paired deliverable or mark the form
-   non-functional.
+4. **A search box implies a results page.** Class S over the site's own pages is `self` once the
+   index exists: it ships over the migrated corpus (a smaller corpus than the source's is a parity
+   note, not a reason to exclude). Emit the paired deliverable or mark the form non-functional;
+   the header form never keeps the source origin's results URL.
 5. **Source-live-check.** If the source surface fails for a real logged-in user, mark
    `skipped-source-broken`; there is nothing to reproduce.
 6. **Decided-out is explicit**, with reason and production statement, so "not migrated" and
@@ -67,10 +71,9 @@ dynamics from an open-ended stall into a bounded phase.
    listings.md § Getting an index at all. The sheet-backed interim index ships only when the
    code branch is not writable; a 403 from the configuration service is never the reason (a
    recorded hands-off run read one missing yaml file as "cannot be configured").
-9. **Search parity is count and titles.** Record the source's visible result count and top
-   titles per probe term at detect time (`expectCount`, `expectTitles` on the `search-query`
-   check in `parity.json`); the rebuilt search ranks title matches first, dedupes by title +
-   description and caps the dropdown at that count (patterns.md § search-index-backed).
+9. **Search parity is count and titles.** Record `expectCount` / `expectTitles` per probe term at
+   detect time on the `search-query` check in `parity.json`; ranking, dedupe and the dropdown cap
+   follow patterns.md § search-index-backed.
 
 ## `stardust/dynamic-features.md`
 

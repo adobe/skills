@@ -4,6 +4,26 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.27.1 — site search is `self`, never decided-out by a hands-off assumption (#127)
+
+A recorded hands-off run of a 100-page medical-device site had the query index live and the plan
+script drafting the header search as `index-backed` / `self`, then wrote "site search out of scope"
+into its own named assumptions, let the triage table cite that as the owner's decision (`decided-out`)
+and left the header form posting to the source origin's results page — the one query-index feature
+dropped while its three listing siblings shipped. The start prompt had named search as a dynamic
+surface to handle. Touches 0.20.0 (dynamics triage) and 0.25.1 § Index, sitemap, search.
+
+- **A hands-off assumption is the run's, never the owner's.** It may pick an interim tier; it cannot
+  set `decided-out`, which takes an owner's statement or a hard blocker. Dynamics SKILL.md Phase 3 and
+  § Hands-off resolutions, triage.md § Reproducibility, the hands-off table in the stardust skill.
+- **Search over the site's own pages is `self` once the index exists** and ships over the migrated
+  corpus; a corpus smaller than the source's is a parity note, not a reason to exclude. The header
+  form never keeps the source origin's results URL (triage.md rule 4, patterns.md § search-index-backed).
+- `dynamics-plan.mjs` no longer poses "results page scope" as the decision on the search row; it
+  reads `none (corpus = the migrated pages; second corpora stay out)`.
+- Folded: the search ranking summary repeated in dynamics SKILL.md Phase 4 and triage.md rule 9 now
+  points at patterns.md.
+
 ## 0.27.0 — archetype-first delivery: deploy and gate the archetype at the origin before its siblings render (#126)
 
 A recorded 96-page run migrated 78 siblings from archetypes whose EDS encoding had never been gated,

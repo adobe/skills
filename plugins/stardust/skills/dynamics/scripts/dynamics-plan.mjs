@@ -44,7 +44,7 @@ const probed = Object.keys(d.pages).length;
 // catalogue: first matching rule wins. disposition ∈ rebuild-native | index-backed | data-fed | embed-passthrough | client-only | static-snapshot | decided-out
 // reproducibility ∈ self | needs-credential | needs-human-capture | needs-backend | needs-business-decision (reference/triage.md)
 const RULES = [
-  { when: (f) => f.class === 'S' && /site search form/.test(f.feature), pattern: 'search-index-backed', disposition: 'index-backed', repro: 'self', phase: 'search', decision: 'results page scope (second corpora stay out)' },
+  { when: (f) => f.class === 'S' && /site search form/.test(f.feature), pattern: 'search-index-backed', disposition: 'index-backed', repro: 'self', phase: 'search', decision: 'none (corpus = the migrated pages; second corpora stay out)' },
   { when: (f) => f.class === 'S' && /first-party API/.test(f.feature), pattern: 'off-origin-data', disposition: 'data-fed', repro: 'needs-business-decision', phase: 'off-origin data', decision: 'datasource ownership / same-origin routing on production' },
   { when: (f) => f.class === 'S', pattern: 'search-index-backed', disposition: 'index-backed', repro: 'self', phase: 'search', decision: 'replace the hosted search service?' },
   { when: (f) => f.class === 'A' && /first-party API/.test(f.feature) && /auth|session|login|shortlist|cart|basket|account/i.test(f.feature), pattern: 'decided-out', disposition: 'decided-out', repro: 'needs-backend', phase: 'register', decision: 'none (session-bound off-origin)' },
