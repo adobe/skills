@@ -25,8 +25,8 @@ an existing library must be fed rather than forked.
 
 ## search-index-backed
 
-**Intent.** Search is a service, not a page. The header form's action must never become a
-root-relative link to nowhere. **Contract.** A `/search` page with the results block; the header
+**Intent.** Search is a service, not a page. The header form's action never becomes a
+root-relative link to nowhere, nor stays on the source origin's results page. **Contract.** A `/search` page with the results block; the header
 form posts `?q=` (accept the source's parameter name too). **Mechanism.** The query index comes
 from `helix-query.yaml` in the CODE branch (skeleton in listings.md § Getting an index at all):
 commit, push, publish the pages live, poll `/query-index.json` (no more often than every 5 s,
