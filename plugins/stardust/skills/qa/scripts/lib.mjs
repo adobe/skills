@@ -74,17 +74,19 @@ export function resolveAuthHeader() {
   return /^(token|bearer) /i.test(v) ? v : `token ${v}`;
 }
 
-export async function fetchUrl(url, { redirect = 'follow', method = 'GET', timeoutMs = 20000, retries = 1 } = {}) {
+export async function fetchUrl(url, { redirect = 'follow', method = 'GET', timeoutMs = 20000, retries = 1, binary = false } = {}) {
   for (let attempt = 0; ; attempt += 1) {
     const ctl = new AbortController();
     const timer = setTimeout(() => ctl.abort(), timeoutMs);
     try {
       const auth = originAuthFor(url);
       const res = await fetch(url, { method, redirect, signal: ctl.signal, headers: { 'user-agent': UA, ...(auth ? { authorization: auth } : {}) } });
-      const body = method === 'HEAD' ? '' : await res.text();
+      const bytes = binary && method !== 'HEAD' ? Buffer.from(await res.arrayBuffer()) : undefined;
+      const body = method === 'HEAD' || binary ? '' : await res.text();
       clearTimeout(timer);
       return {
         ok: res.ok,
+        ...(bytes ? { bytes } : {}),
         status: res.status,
         headers: Object.fromEntries(res.headers.entries()),
         location: res.headers.get('location'),
