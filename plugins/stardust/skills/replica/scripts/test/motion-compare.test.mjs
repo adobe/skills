@@ -2,7 +2,8 @@
 // skills/replica/scripts/test/motion-compare.test.mjs — the motion-compare.mjs contract on
 // synthetic motion-observe fixtures: parity, MISSING / EXTRA on build, the tolerance boundary
 // (timing and magnitude, inclusive), the dead-on-live exemption, the not-observed hover rule
-// (hovered: false / .error), probe pairing by order, the double-header defect, --json, the
+// (hovered: false / .error), probe pairing by order, the double-header defect, the media class
+// (a video playing on live must play on the build — the capture freeze is not the spec), --json, the
 // advisory exit policy (0 whenever both inputs parsed), usage (exit 2) and unreadable input
 // (exit 1). Run: node <this file>.
 import assert from 'node:assert/strict';
@@ -11,7 +12,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { headerProfile, hoverProfile, maxTimeMs, normaliseHoverKey, pairProbes, translateOf, widgetProfile } from '../motion-compare.mjs';
+import { compareMedia, headerProfile, hoverProfile, maxTimeMs, normaliseHoverKey, pairProbes, translateOf, widgetProfile } from '../motion-compare.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'motion-compare.mjs');
@@ -234,6 +235,35 @@ check('--json writes the verdicts, counts, findings and advisory: true (no pass 
   const j = JSON.parse(readFileSync(out, 'utf8'));
   assert.equal(j.advisory, true); assert.equal('pass' in j, false); assert.equal(j.findings, 1); assert.equal(j.counts.missing, 1); assert.equal(j.toleranceMs, 150);
   assert.ok(j.verdicts.some((v) => v.cls === 'entrance' && v.state === 'missing' && /MISSING on build/.test(v.line)));
+});
+
+// ---- media: the freeze is capture state, not the spec ---------------------------------------------------
+const video = (o = {}) => ({ src: 'https://cdn.example.test/hero-loop.mp4?v=3', autoplay: true, loop: true, muted: true, paused: false, currentTime: 0.4, currentTimeAfter: 1.9, readyState: 4, inViewport: true, playing: true, ...o });
+const media = (videos, idleClassMutationCount = 0) => ({ videos, idleClassMutations: [], idleClassMutationCount });
+check('the recorded defect: live autoplay loop, build poster + paused video → media MISSING on build', () => {
+  const r = cmp({ ...obs(), media: media([video()], 3) }, { ...obs(), media: media([video({ paused: true, currentTimeAfter: 0, currentTime: 0, playing: false })], 0) });
+  assert.equal(r.code, 0);
+  assert.match(r.out, /^motion media video#1 hero-loop\.mp4: MISSING on build \(live playing, build paused \(readyState 4\) — the capture freeze is not the spec\)$/m);
+  assert.match(r.out, /^motion media auto-advance: MISSING on build \(3 class mutation\(s\) fired unpoked on live \(timer-driven rotation\), none on build\)$/m);
+  assert.match(r.out, /^motion summary: \d+ parity, 2 missing, 0 extra/m);
+});
+check('no <video> on the build where live played is MISSING (poster only); both playing + both auto-advancing is parity', () => {
+  const none = compareMedia({ media: media([video()]) }, { media: media([]) });
+  assert.deepEqual(none.map((v) => [v.state, v.note]), [['missing', 'live playing, no <video> on build — poster only?']]);
+  const both = compareMedia({ media: media([video()], 2) }, { media: media([video()], 5) });
+  assert.deepEqual(both.map((v) => v.state), ['parity', 'parity']);
+});
+check('live autoplay attribute but paused at the sample (lazy, off-viewport) accepts a build that carries autoplay; paused on both is parity; build-only autoplay is advisory', () => {
+  const lazy = compareMedia({ media: media([video({ paused: true, playing: false, inViewport: false })]) }, { media: media([video({ paused: true, playing: false })]) });
+  assert.equal(lazy[0].state, 'parity'); assert.match(lazy[0].note, /live autoplay, paused at sample, build autoplay/);
+  const still = compareMedia({ media: media([video({ autoplay: false, paused: true, playing: false })]) }, { media: media([video({ autoplay: false, paused: true, playing: false })]) });
+  assert.deepEqual(still.map((v) => [v.state, v.note]), [['parity', 'paused on both']]);
+  const extra = compareMedia({ media: media([]) }, { media: media([video()]) });
+  assert.deepEqual(extra.map((v) => [v.state, v.note]), [['advisory', 'autoplay video on build only']]);
+});
+check('observations without a media block (older motion-observe) still load and compare as no media', () => {
+  const r = cmp(obs(), obs());
+  assert.equal(r.code, 0); assert.doesNotMatch(r.out, /^motion media/m);
 });
 
 // ---- CLI: bad input ------------------------------------------------------------------------------------

@@ -139,7 +139,10 @@ Walk `plan.json.steps` in order (representative pages first). For each page:
    editability contract** (deploy SKILL.md § 8, EW1–EW10): every converted block
    moves authored elements into wrappers (never rebuilds from text) and passes the
    EW gate (`block-roundtrip --ew`) before it counts as delivered — a brief without
-   it skipped the contract on 27/27 blocks of a real site.
+   it skipped the contract on 27/27 blocks of a real site. **The brief also carries
+   the archetype's `captureState[].restoreAtDelivery` list** (replica `progress.json`):
+   a freeze the gate needed (video at frame 0, carousel on slide 1) is a behaviour to
+   deliver, never the spec (`../replica/reference/recreation-procedure.md § Carousels`).
 
    **Deploy first, judge on the preview origin.** The local harness
    (`build-harness.mjs` → `qa-gate.mjs`, `block-roundtrip.mjs --ew`) serves the
@@ -394,7 +397,10 @@ chrome) are invisible to a text check. On the FIRST delivered page of each
 template (home included), load the live URL in a headless browser and assert
 decoration ran: the runtime's `body.appear` class is set (per
 `stardust/runtime-contract.json`), `main .section` count > 0,
-zero `pageerror` events, zero broken images.
+zero `pageerror` events, zero broken images, and every `restoreAtDelivery`
+entry of the template's archetype holds: an `autoplay` `<video>` at least a
+quarter visible is playing (`!paused`, `currentTime` advancing — not merely
+present), a rotating carousel advances without interaction.
 
 **Published-origin gate over the roster (#125).** `verify` proves the pages render; the
 DELIVERY verdict is replica's `gate-all.mjs` (pixel + height + clip + content per deployed page,

@@ -7,7 +7,9 @@
  *     main/sections (getBoundingClientRect().height — computed display lies
  *     inside display:none ancestors), broken/upscaled images, mobile
  *     horizontal overflow, stalled EDS section decoration, hover dropdowns
- *     unreachable along the pointer path (desktop, once per distinct header)
+ *     unreachable along the pointer path (desktop, once per distinct header),
+ *     autoplay videos that show a poster but never play (paused, not
+ *     advancing, or never buffered — the content.da.live 401 class)
  *   visual (E) — full-page screenshots vs committed baselines; first run
  *     creates baselines (info), later runs report % changed pixels. Diffs are
  *     computed in-browser in horizontal bands (no native image deps).
@@ -168,6 +170,47 @@ export async function probeDropdowns(page, { stepPx = 2, settleMs = 150, maxItem
   return out;
 }
 
+// Media playback probe: each <video> (first `maxItems`) scrolled to the viewport centre, read twice
+// `sampleMs` apart. Presence is not playback — a paused autoplay video shows its poster and looks
+// intentional, so only a currentTime delta tells. Returns one sample per video.
+export async function probeVideos(page, { maxItems = 6, settleMs = 1500, sampleMs = 800 } = {}) {
+  const count = await page.evaluate(() => document.querySelectorAll('video').length);
+  const read = (idx) => page.evaluate((i) => {
+    const v = document.querySelectorAll('video')[i];
+    if (!v) return null;
+    const r = v.getBoundingClientRect();
+    const visible = Math.max(0, Math.min(r.bottom, window.innerHeight) - Math.max(r.top, 0)) / (r.height || 1);
+    return {
+      src: (v.currentSrc || v.src || v.querySelector('source')?.src || '').slice(0, 250),
+      autoplay: v.hasAttribute('autoplay'), paused: v.paused, t: v.currentTime,
+      readyState: v.readyState, error: v.error ? v.error.code : null, visible: Math.round(visible * 100) / 100,
+    };
+  }, idx);
+  const out = [];
+  for (let i = 0; i < Math.min(count, maxItems); i += 1) {
+    await page.evaluate((idx) => document.querySelectorAll('video')[idx]?.scrollIntoView({ block: 'center' }), i);
+    await page.waitForTimeout(settleMs);
+    const a = await read(i);
+    if (!a) continue;
+    await page.waitForTimeout(sampleMs);
+    const b = (await read(i)) || a;
+    out.push({ src: a.src, autoplay: a.autoplay, visible: b.visible, readyState: b.readyState, error: b.error, paused: b.paused, dt: Math.round((b.t - a.t) * 100) / 100 });
+  }
+  return out;
+}
+
+// Pure verdict over probeVideos() samples: the autoplay videos at least a quarter visible that are
+// not playing, each with a `why`. Videos without autoplay (click-to-play) are the user's to start.
+export function judgeVideos(samples) {
+  return samples.filter((v) => v.autoplay && v.visible >= 0.25).flatMap((v) => {
+    if (v.readyState < 2 || v.error !== null) {
+      return [{ ...v, why: `never buffered (readyState ${v.readyState}${v.error !== null ? `, MediaError ${v.error}` : ''}) — poster only; check the src serves to anonymous visitors` }];
+    }
+    if (v.paused || v.dt <= 0) return [{ ...v, why: `is ${v.paused ? 'paused' : 'not advancing'} (Δt ${v.dt.toFixed(2)}s) while ≥ ¼ visible` }];
+    return [];
+  });
+}
+
 export async function run(ctx) {
   const { base, inventory, opts } = ctx;
   const findings = [];
@@ -292,6 +335,21 @@ export async function run(ctx) {
         findings.push(finding('rendered', 'zero-size-image', 'warn', p.path,
           `[${vp.name}] ${zeroSize.length} loaded image(s) render 0px wide (layout collapse — naturalWidth > 0 but clientWidth 0)`,
           { srcs: [...new Set(zeroSize.map((i) => i.src))].slice(0, 8) }));
+      }
+      // Presence is not playback: an autoplay <video> that is paused, never
+      // advances, or never buffers (readyState < 2 — the content.da.live 401
+      // class) shows its poster and looks intentional. Autoplay the source had
+      // and the capture froze is a captureState[].restoreAtDelivery promise, so
+      // a poster where live played is a defect, never a residual.
+      try {
+        for (const v of judgeVideos(await probeVideos(page))) {
+          findings.push(finding('rendered', 'video-not-playing', 'error', p.path,
+            `[${vp.name}] autoplay video ${v.why}`,
+            { src: v.src, readyState: v.readyState, paused: v.paused, dt: v.dt }));
+        }
+      } catch (e) {
+        findings.push(finding('rendered', 'video-probe-failed', 'info', p.path,
+          `[${vp.name}] video playback probe errored: ${String(e).slice(0, 200)}`));
       }
       if (vp.name === 'desktop') {
         for (const i of geo.imgs.filter((x) => x.nw > 0 && x.nw < 200 && x.rw > x.nw * 2 && x.rw - x.nw > 100)) {

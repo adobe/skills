@@ -115,8 +115,11 @@ export default async function openModal(href, { decorateMain, playerHosts = [] }
 account, player and video id, plus `#modal` for overlays; inline via the site's video/embed block.
 Ids come from the detector's V rows **per page and per locale** (six of fourteen locale twins
 carried a different id), never from copy, never reused by path. Drive the probe from every
-target-less CTA, not a hand-made list. **Verify.** Iframe present **and** a playback request to the
-vendor observed with status < 400; with auth scoped to the origin (parity-report.md).
+target-less CTA, not a hand-made list. **Verify.** Playback, not presence: a vendor iframe needs a
+playback request observed with status < 400; a native `<video>` must be PLAYING once at least a
+quarter visible (`!paused`, `currentTime` advancing) and paused under `prefers-reduced-motion` when
+the check sets `reducedMotionPauses` (`dynamics-check.mjs video-plays`); auth scoped to the origin
+(parity-report.md).
 
 ## client-compute
 

@@ -30,7 +30,13 @@
  *                  typeahead returned 10 entries (two home pages under one title) where the source returned 3.
  *                  Exported as `compareSearchResults(results, check)` for the unit test and the qa check.
  *   form-flow      { path*, form?, submit*, fill*, statusSelector?, endpointPattern?, successIncludes? } empty submit refused, filled submit arrives
- *   video-plays    { path*, trigger?, iframeSelector?, playbackHost* } iframe present AND a playback request to the vendor observed
+ *   video-plays    { path*, trigger?, iframeSelector?, videoSelector?, playbackHost?, reducedMotionPauses? }
+ *                  PLAYBACK, not presence: a vendor iframe must issue a playback request to playbackHost with
+ *                  status < 400; a native <video> (scrolled to ≥ ¼ visible) must be PLAYING — not paused,
+ *                  currentTime advancing between two samples; with reducedMotionPauses the page is reloaded
+ *                  under prefers-reduced-motion and the video must be paused. "Video elements present and
+ *                  controllable" passed 26/26 on a recorded run while nothing played — the capture freeze
+ *                  (video at t=0) had become the spec. Exported as `judgeVideoPlayback(sample, check)`.
  *   consent-gate   { path*, forbiddenHosts*[] }                    no request to those hosts before consent
  *   no-page-errors { paths*[] }                                    no uncaught exceptions
  * Every check also records the third-party request statuses it observed, so a
@@ -63,6 +69,40 @@ const DIALOG = 'dialog[open], [role=dialog]:not([hidden]), [aria-modal=true]';
  * are duplicates and fail. Pure — no browser, no network — so the unit test drives it directly.
  * Returns { pass, detail, reasons[] }.
  */
+// Two reads of the first matching <video>, 800 ms apart, after scrolling it to the viewport centre.
+// Null when the page has no such element.
+async function sampleVideo(page, selector) {
+  const read = () => page.evaluate((s) => {
+    const v = document.querySelector(s);
+    if (!v) return null;
+    const r = v.getBoundingClientRect();
+    const visible = Math.max(0, Math.min(r.bottom, window.innerHeight) - Math.max(r.top, 0)) / (r.height || 1);
+    return { autoplay: v.hasAttribute('autoplay'), paused: v.paused, t: v.currentTime, readyState: v.readyState, visible: Math.round(visible * 100) / 100, src: (v.currentSrc || v.src || '').slice(0, 160) };
+  }, selector);
+  const found = await page.evaluate((s) => { const v = document.querySelector(s); if (v) v.scrollIntoView({ block: 'center' }); return !!v; }, selector);
+  if (!found) return null;
+  await settle(1500);
+  const a = await read();
+  await settle(800);
+  const b = await read();
+  return { found: true, autoplay: a.autoplay, src: a.src, visible: b.visible, readyState: b.readyState, paused: b.paused, t0: a.t, t1: b.t };
+}
+
+// Pure verdict for `video-plays`: sample = { iframe, video, reduced, vendorOk, vendorRequests } where
+// video/reduced are sampleVideo() results (null = no <video>). Presence alone never passes.
+export function judgeVideoPlayback({ iframe = false, video = null, reduced = null, vendorOk = false, vendorRequests = 0 } = {}, check = {}) {
+  const reasons = [];
+  const playing = !!video && !video.paused && video.t1 > video.t0;
+  if (video && !playing) reasons.push(`video not playing (paused ${video.paused}, Δt ${(video.t1 - video.t0).toFixed(2)}s, readyState ${video.readyState}, ${Math.round((video.visible || 0) * 100)}% visible)`);
+  if (video && reduced && (!reduced.paused || reduced.t1 > reduced.t0)) reasons.push('video plays under prefers-reduced-motion');
+  if (check.playbackHost && !vendorOk) reasons.push(`no playback request to ${check.playbackHost} with status < 400 (${vendorRequests} seen)`);
+  if (!video && !iframe) reasons.push('no player: neither a vendor iframe nor a <video> found');
+  const detail = [`iframe/video: ${iframe}`, video ? `video ${playing ? 'playing' : 'NOT playing'} (Δt ${(video.t1 - video.t0).toFixed(2)}s)` : 'no <video>',
+    check.playbackHost ? `playback requests ${vendorRequests} (${vendorOk ? 'ok' : 'none ok'})` : null, reduced ? `reduced-motion: ${reduced.paused ? 'paused' : 'PLAYING'}` : null]
+    .filter(Boolean).join(' · ');
+  return { pass: reasons.length === 0, playing, reasons, detail: reasons.length ? `${detail} · ${reasons.join('; ')}` : detail };
+}
+
 export function compareSearchResults(results, { expectIncludes, expectCount, expectTitles, countTolerance = 0 } = {}) {
   const norm = (x) => String(x ?? '').toLowerCase().replace(/\s+/g, ' ').trim();
   const rows = (Array.isArray(results) ? results : []).map((r) => (typeof r === 'string' ? { title: norm(r), text: norm(r), href: '' } : { title: norm(r.title), text: norm(r.text), href: norm(r.href) }));
@@ -156,11 +196,22 @@ const RUNNERS = {
   async 'video-plays'(c, { ctx, origin }) {
     const { page, thirdParty } = await openPage(ctx, origin, c.path);
     if (c.trigger) { await page.click(c.trigger, { timeout: 8000 }); await settle(4000); } else await settle(3000);
-    const iframe = await page.evaluate((s) => !!document.querySelector(s), c.iframeSelector || 'iframe[src*="player" i], dialog iframe, [role=dialog] iframe, video');
+    const iframe = await page.evaluate((s) => !!document.querySelector(s), c.iframeSelector || 'iframe[src*="player" i], dialog iframe, [role=dialog] iframe');
+    const videoSel = c.videoSelector || 'video';
+    const video = await sampleVideo(page, videoSel);
+    let reduced = null;
+    if (video && c.reducedMotionPauses) {
+      await page.emulateMedia({ reducedMotion: 'reduce' });
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      if (c.trigger) { await page.click(c.trigger, { timeout: 8000 }); }
+      await settle(2000);
+      reduced = await sampleVideo(page, videoSel);
+    }
     await page.close();
-    const playback = thirdParty.filter((t) => new RegExp(c.playbackHost, 'i').test(t.host));
+    const playback = c.playbackHost ? thirdParty.filter((t) => new RegExp(c.playbackHost, 'i').test(t.host)) : [];
     const ok = playback.some((t) => t.status < 400); const failed = playback.filter((t) => t.status >= 400);
-    return { pass: iframe && ok, detail: `iframe/video: ${iframe} · playback requests ${playback.length} (${ok ? 'ok' : 'none ok'}${failed.length ? `, ${failed.length} ≥400 — check whether the probe leaked auth to the vendor` : ''})`, thirdParty };
+    const v = judgeVideoPlayback({ iframe, video, reduced, vendorOk: ok, vendorRequests: playback.length }, c);
+    return { pass: v.pass, detail: `${v.detail}${failed.length ? ` · ${failed.length} ≥400 — check whether the probe leaked auth to the vendor` : ''}`, thirdParty };
   },
   async 'consent-gate'(c, { ctx, origin }) {
     const { page, thirdParty } = await openPage(ctx, origin, c.path);
