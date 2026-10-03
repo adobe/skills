@@ -834,7 +834,11 @@ Per archetype per breakpoint, in `stardust/replica/progress.json`:
         { "band": "y 4500–5000", "pct": 6.2, "cause": "capture-state: 3 CDN-403 placeholder tiles", "flaggedFor": "delivery" },
         { "region": "footer", "pct": 4.8, "cause": "glyph-antialiasing", "parity": "gates/home-1440/chrome-parity-iter3.json", "texture": { "thickPct": 6.1 }, "flaggedFor": "user" }
       ],
-      "captureState": [ { "what": "product tiles 4–6 on placeholder data-URIs", "where": "carousel-2" } ]
+      "captureState": [
+        { "what": "product tiles 4–6 on placeholder data-URIs", "where": "carousel-2", "restoreAtDelivery": null },
+        { "what": "hero video paused at frame 0, carousel-2 held on slide 1 (stitch-shot freeze)", "where": "hero, carousel-2",
+          "restoreAtDelivery": "hero: autoplay muted loop playsinline, paused under prefers-reduced-motion; carousel-2: auto-rotate 5 s, pause on hover" }
+      ]
     },
     "360": { "...": "..." }
   }
@@ -844,6 +848,11 @@ Per archetype per breakpoint, in `stardust/replica/progress.json`:
 Rules: every residual names its band, its %, its cause, and who inherits it
 (`delivery` for capture-state items, `user` for accepted trade-offs). A
 residual without a cause is not a residual — it's an unfinished iteration;
-either diagnose it or spend the remaining budget on it. The rollout phase's
+either diagnose it or spend the remaining budget on it. Every `captureState`
+entry carries `restoreAtDelivery`: the live behaviour the freeze or mask hid,
+as observed (`null` only when live is static there too). A non-null entry is a
+PROMISE, not a closed item — C-deliver's brief carries the list verbatim and
+implements it, Phase E and qa's `video-not-playing` row assert it
+(`recreation-procedure.md § Carousels and animated sections`). The rollout phase's
 final report surfaces the residual list per page type so "gate passed"
 can't hide "passed with 6% unexplained".

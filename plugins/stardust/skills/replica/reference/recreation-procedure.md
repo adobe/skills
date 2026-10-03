@@ -460,9 +460,18 @@ Policy:
   compute the offset and reproduce it statically — stable across runs
   (UC1-E1: both mid-page carousels were centered tracks, reproduced at
   their computed offsets with zero JS).
-- **Autoplaying carousels / marquees**: freeze policy — capture and
-  recreate the t=0 state; the gate's animation-freeze injection keeps both
-  sides stable. Log the freeze.
+- **Autoplaying carousels / marquees / muted loop videos**: freeze policy
+  FOR THE CAPTURE ONLY — stitch-shot's animation freeze, timer clear and
+  video seek to t=0 keep both sides stable, so the recreation reproduces
+  slide 1 / frame 0 as its INITIAL state. The freeze is capture state, never
+  the deliverable: every freeze or mask the gate needs is one `captureState`
+  entry in `progress.json` whose `restoreAtDelivery` names the live
+  behaviour as observed (`autoplay muted loop`, `rotates every 5 s`,
+  `marquee 40 px/s`), and C-deliver implements that list before the page
+  counts as delivered (`source-fidelity-gate.md § Residual logging format`).
+  "Poster + paused video" or "static first slide" is a capture artefact,
+  not a spec — a recorded run passed 26/26 parity rows while nothing
+  played because the freeze had quietly become the brief.
 - **Loop clones are presentational**: when Splide/Swiper geometry needs
   `2×perView` clones before and after the track, clones carry no text nodes,
   `alt=""`, no `href`, no `role`/`aria-*` (`aria-hidden`/`inert` do not
@@ -497,7 +506,13 @@ Implement ONLY behaviors that measurably fired, with the recorded trigger
 mechanism, durations, and thresholds. Static source CSS is then the
 authority for the exact keyframe/easing VALUES of those fired animations.
 A behavior implemented without a runtime trace naming it is a fidelity bug
-— same severity as an unregistered design change.
+— same severity as an unregistered design change. **Timer-driven media IS
+a fired behavior** even though the capture instruments stop it: `autoplay`
+/ `loop` on a `<video>`, a `currentTime` that advances between two samples,
+a slide index that changes with no interaction — the observe JSON's `media`
+block records them before any freeze. "Dead" means never fired on live,
+never "stopped by the freeze"; a video or carousel the freeze paused is
+implemented and listed in `captureState[].restoreAtDelivery`.
 
 Static lifting INVENTS motion three distinct ways (all field-recorded, all
 caught in user review — this is why the evidence rule exists):

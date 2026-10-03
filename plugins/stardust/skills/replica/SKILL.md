@@ -354,7 +354,11 @@ pseudo-element mechanics) and resolved in the prototype or recorded as dead.
 Record
 `motion: {observed, implemented, dead[]}` in `progress.json`, and re-run
 pixel-compare — the number must return to the gated value.
-Widgets are implemented, not justified away. Fan-out briefs carry the
+Widgets are implemented, not justified away. Timer-driven media counts as
+fired (`autoplay`/`loop` video, auto-advancing slides — the observe JSON's
+`media` block): the capture freeze is logged as
+`captureState[].restoreAtDelivery` and delivered, never shipped as the spec
+("poster + paused" is not a deliverable). Fan-out briefs carry the
 evidence rule + instrument invocation verbatim.
 
 When all breakpoints pass, present the archetype + its gate metrics for

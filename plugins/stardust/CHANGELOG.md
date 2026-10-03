@@ -4,6 +4,43 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.29.0 — the capture freeze is capture state, never the spec: media must play (#130)
+
+A recorded replica run shipped "poster + paused video" and static first slides across a site while
+26/26 dynamics parity rows passed. Four causes, all in the skills: the gate defined truth as what the
+frozen instrument sees (stitch-shot pauses every `<video>` at t=0 and clears timers), so autoplay
+loops were masked as "nondeterministic media, permanent residual"; the interaction-parity rule
+"implement only behaviours that fired" read the frozen sampler's silence as dead; the freeze written
+as a deferral became the delivery brief verbatim; and parity's `video-plays` verified presence
+("video elements present and controllable"), as did qa's rendered sweep. Contract change (a mask is
+now a promise, `video-plays` passes on playback), so a minor bump.
+
+- **Capture state is a promise** (replica `recreation-procedure.md` § Carousels, § Interaction
+  parity; `source-fidelity-gate.md` § Residual logging format): every freeze or mask the gate needs
+  is a `captureState[]` entry whose `restoreAtDelivery` names the live behaviour as observed
+  (autoplay muted loop, rotation interval, marquee speed; `null` only when live is static too).
+  Timer-driven media IS a fired behaviour — "dead" means never fired on live, never "stopped by the
+  freeze". "Poster + paused" is a capture artefact, not a deliverable.
+- **The list travels with the brief** (`handoff-contract.md` fan-out discipline + Phase E row;
+  rollout `SKILL.md` Phase C step 1, Phase E render check): C-deliver's brief carries the
+  archetype's `restoreAtDelivery` list verbatim and implements it before `done`; Phase E asserts an
+  `autoplay` video ≥ ¼ visible is playing and a rotating carousel advances unpoked.
+- **The observer no longer blinds itself**: `motion-observe.mjs` samples a `media` block before
+  any scroll or poke — per `<video>` autoplay/loop/muted, paused and `currentTime` twice 1.5 s
+  apart (playing = advancing), plus class mutations that fire with nothing touched (timer
+  rotation). `motion-compare.mjs` gains the `media` class: live playing → build must play (a
+  paused/poster build is MISSING), unpoked live mutations → `auto-advance` MISSING when the build
+  has none; older observations without `media` still load.
+- **Parity means playback**: `dynamics-check.mjs video-plays` scrolls the `<video>` to ≥ ¼ visible
+  and requires `!paused` + advancing `currentTime`; `playbackHost` is now optional (native video)
+  and `reducedMotionPauses` reloads under `prefers-reduced-motion` and requires paused. Pure
+  `judgeVideoPlayback` is unit-tested; `patterns.md § media-as-url` and `parity-report.md` rule 1
+  say presence is not a pass.
+- **qa `video-not-playing`** (rendered, error): an autoplay `<video>` ≥ ¼ visible that is paused,
+  not advancing, or never buffered (`readyState < 2` — the `content.da.live` 401 class) with src,
+  readyState, paused and Δt as evidence; `video-probe-failed` (info) when the probe errors.
+  Fixture-tested (`judgeVideos`).
+
 ## 0.28.0 — a migration keeps its design unless the ask says to redesign it (#129)
 
 A recorded hands-off run resolved a bare "migrate" to the redesign flow (brand-faithful mode) because
