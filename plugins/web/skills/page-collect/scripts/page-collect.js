@@ -133,7 +133,7 @@ function parseArgs(argv) {
 // ─── Browser recipe ──────────────────────────────────────────────────────────
 
 function loadBrowserRecipe(recipePath) {
-  if (!recipePath) return { cliConfig: {}, stealthScript: null };
+  if (!recipePath) return { cliConfig: {}, stealthScript: null, persistent: false };
   let recipe;
   try {
     recipe = JSON.parse(readFileSync(recipePath, 'utf-8'));
@@ -141,7 +141,11 @@ function loadBrowserRecipe(recipePath) {
     process.stderr.write(`Failed to load browser recipe from ${recipePath}: ${err.message}\n`);
     process.exit(1);
   }
-  return { cliConfig: recipe.cliConfig || {}, stealthScript: recipe.stealthInitScript || null };
+  return {
+    cliConfig: recipe.cliConfig || {},
+    stealthScript: recipe.stealthInitScript || null,
+    persistent: recipe.persistent === true,
+  };
 }
 
 // ─── Envelope stripping ──────────────────────────────────────────────────────
@@ -263,7 +267,7 @@ async function main() {
   detectPlaywrightCli();
   await mkdir(output, { recursive: true });
 
-  const { cliConfig, stealthScript } = loadBrowserRecipe(browserRecipe);
+  const { cliConfig, stealthScript, persistent } = loadBrowserRecipe(browserRecipe);
   const scriptDir = dirname(require.resolve('./page-collect.js'));
   const bundlePath = join(scriptDir, 'page-collect-bundle.js');
   // playwright-cli restricts file access to the project root and .playwright-cli/.
@@ -300,7 +304,7 @@ async function main() {
     process.stderr.write(`Navigating to ${url}...\n`);
     const openResult = spawnSync(
       'playwright-cli',
-      ['open', url, `--config=${configPath}`],
+      ['open', url, `--config=${configPath}`, ...(persistent ? ['--persistent'] : [])],
       { encoding: 'utf-8', timeout: OPEN_TIMEOUT_MS }
     );
     if (openResult.error) {
