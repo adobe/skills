@@ -1,6 +1,6 @@
 {
   "name": "web",
-  "description": "Browser automation and web page analysis skills using playwright-cli: connect via CDP, probe CDN bot protection, dismiss overlays, capture spatial DOM trees, reduce pages to skeletons, and extract structured page resources.",
+  "description": "Browser automation and web page analysis skills: probe CDN bot protection, dismiss overlays, capture spatial DOM trees, reduce pages to skeletons, extract page resources, and detect page languages with playwright-cli; drive Chrome and test extensions over CDP; mask domains for demos.",
   "version": "1.0.0",
   "author": {
     "name": "Adobe"
