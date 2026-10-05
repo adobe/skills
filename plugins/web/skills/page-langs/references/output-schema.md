@@ -55,19 +55,3 @@ region subtags (`en-US`), script subtags (`zh-Hant`), or the special value `x-de
 - `und` → excluded
 
 Raw values are always preserved in the `declared` object.
-
-## cld3-asm dependency
-
-`cld3-asm` 4.0.0 is the WASM port of Google CLD3:
-- MIT licence
-- ~6.6 MB unpacked; WASM model is inlined into the JS glue — no runtime download
-- No native build required (emscripten WASM, not node-gyp)
-- Ships CJS + ESM; the ESM import path is resolved automatically by Node 22
-- API: `loadModule()` → factory; `factory.create(minBytes, maxBytes)` → identifier;
-  `identifier.findMostFrequentLanguages(text, n)` → results; `identifier.dispose()` — required
-
-page-langs is the first skill in this plugin with a runtime npm dependency. The model is
-loaded from the local `node_modules/` directory. If the plugin distribution pipeline does
-not run `npm install` per skill, the WASM glue (~5 MB) can be vendored into the `scripts/`
-directory and imported via a relative path — remove the npm dep and update the dynamic
-import in `page-langs.mjs` accordingly.
