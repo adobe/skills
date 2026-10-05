@@ -1,0 +1,36 @@
+{
+  "context": "Every probe configuration was blocked (Akamai Bot Manager). The right outcome is no recipe plus a clear report and alternatives. Judge the working directory and answer.md.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "no_recipe",
+      "max_score": 25,
+      "category": "MUST_NOT",
+      "description": "No browser-recipe.json (or other config presented as working) is written, because no configuration loaded the page."
+    },
+    {
+      "name": "all_configs_failed",
+      "max_score": 15,
+      "category": "INTENT",
+      "description": "States that all five probed configurations failed: default, stealth, stealth-ua, chrome (system Chrome) and persistent."
+    },
+    {
+      "name": "identifies_akamai",
+      "max_score": 20,
+      "category": "INTENT",
+      "description": "Identifies Akamai Bot Manager from the report's signals (AkamaiGHost / akamai-grn, _abck and bm_sz cookies)."
+    },
+    {
+      "name": "offers_alternatives",
+      "max_score": 25,
+      "category": "INTENT",
+      "description": "Offers concrete next steps: a headed browser for manual interaction, the user supplying pre-captured data (DOM snapshot or screenshots), and checking whether the URL needs authentication or VPN access. At least two of the three."
+    },
+    {
+      "name": "no_untested_fix",
+      "max_score": 15,
+      "category": "MUST_NOT",
+      "description": "Does not present an untested configuration (new User-Agent, extra stealth patches, proxies) as a working fix."
+    }
+  ]
+}
