@@ -56,29 +56,59 @@ function extractSelectors(matchers) {
   return { selectors, requiresVisible };
 }
 
-function extractHideSelectors(hideActions) {
-  const rules = [];
-  for (const action of toArray(hideActions)) {
-    if (action.type === 'hide' && action.target?.selector) {
-      rules.push(`${action.target.selector} { display:none!important }`);
-    }
-  }
-  return rules;
+// Consent-O-Matic rules list `methods` as [{ name, action }]. An action is
+// either a single step or { type: 'list', actions: [...] }.
+function methodSteps(rule, name) {
+  const method = toArray(rule.methods).find((m) => m.name === name);
+  const flatten = (action) => {
+    if (!action) return [];
+    if (action.type === 'list') return toArray(action.actions).flatMap(flatten);
+    return [action];
+  };
+  return flatten(method?.action);
 }
 
-function extractDismissActions(doConsent, saveConsent) {
+function quoteText(text) {
+  return JSON.stringify(String(text));
+}
+
+// Playwright selector for a Consent-O-Matic target: `parent` scopes the
+// target, `textFilter` (string or list of alternatives) narrows by text.
+function stepSelector(step) {
+  const target = step.target ?? {};
+  const base = step.parent?.selector
+    ? `${step.parent.selector} ${target.selector}`
+    : target.selector;
+  const texts = toArray(target.textFilter);
+  if (texts.length === 0) return base;
+  return texts.map((t) => `${base}:has-text(${quoteText(t)})`).join(', ');
+}
+
+const PAGE_ROOT_RE = /^(html|body)\b/i;
+
+function extractHideRules(rule, presentSelectors) {
+  const rules = methodSteps(rule, 'HIDE_CMP')
+    .filter((step) => step.type === 'hide' && step.target?.selector)
+    .map((step) => `${stepSelector(step)} { display:none!important }`);
+  if (rules.length > 0) return rules;
+  // No HIDE_CMP: hide the banner element itself, never <html>/<body>.
+  return presentSelectors
+    .filter((sel) => !PAGE_ROOT_RE.test(sel.trim()))
+    .map((sel) => `${sel} { display:none!important }`);
+}
+
+// Open the CMP's options and save. Per-purpose toggles (DO_CONSENT) and
+// conditional steps (ifcss, foreach) are skipped, so the CMP saves its
+// default choices.
+function extractDismissActions(rule) {
   const actions = [];
-  for (const action of toArray(doConsent)) {
-    if (action.type === 'click' && action.target?.selector) {
-      actions.push({ action: 'click', selector: action.target.selector });
-    }
-  }
-  for (const action of toArray(saveConsent)) {
-    if (action.type === 'wait' && action.waitTime) {
-      actions.push({ action: 'wait', ms: action.waitTime });
-    }
-    if (action.type === 'click' && action.target?.selector) {
-      actions.push({ action: 'click', selector: action.target.selector });
+  for (const name of ['OPEN_OPTIONS', 'SAVE_CONSENT']) {
+    for (const step of methodSteps(rule, name)) {
+      if (step.type === 'click' && step.target?.selector) {
+        actions.push({ action: 'click', selector: stepSelector(step) });
+      } else if (step.type === 'wait' && step.waitTime) {
+        actions.push({ action: 'wait', ms: step.waitTime });
+      }
     }
   }
   return actions;
@@ -96,7 +126,6 @@ function normalizeCmpRules(rawRules) {
 
   for (const [name, rule] of Object.entries(rawRules)) {
     const detector = rule.detectors?.[0];
-    const method = rule.methods?.[0];
     if (!detector) continue;
 
     const present = extractSelectors(detector.presentMatcher);
@@ -113,8 +142,8 @@ function normalizeCmpRules(rawRules) {
     cmps[name] = {
       detect: allSelectors,
       detect_requires_visible: present.requiresVisible || showing.requiresVisible,
-      hide: extractHideSelectors(method?.HIDE_CMP),
-      dismiss: extractDismissActions(method?.DO_CONSENT, method?.SAVE_CONSENT),
+      hide: extractHideRules(rule, present.selectors),
+      dismiss: extractDismissActions(rule),
     };
   }
 

@@ -5,7 +5,7 @@ compatibility: Requires playwright-cli on PATH. Run `playwright-cli --help` for 
 description: >-
   Detects and removes overlays that block a webpage (cookie and GDPR consent
   banners, modals, newsletter popups, paywalls, login walls) via playwright-cli,
-  using a database of 300+ known consent platforms plus DOM heuristics. Use
+  using Consent-O-Matic rules for known consent platforms plus DOM heuristics. Use
   before screenshotting, scraping, or automating a page that shows or may show
   such overlays, or when the user asks to dismiss cookie banners or popups.
 ---
@@ -57,7 +57,11 @@ Parse the detection report. Each overlay has a `source` field: `"cmp-match"` or 
 
 ### Step 4 — Resolve dismiss strategy per overlay
 
-- **cmp-match**: the report includes a complete `dismiss` recipe. Use it directly.
+- **cmp-match**: `dismiss` is a list of click/wait steps that open the
+  platform's options and save them without changing any toggle, which
+  usually means non-essential cookies are rejected. Steps are alternatives for
+  different platform versions: skip a click whose selector matches nothing.
+  `hide` holds CSS rules for the banner.
 - **heuristic** (`dismiss: null`): compose a dismiss sequence — try Escape key,
   then close buttons, then element removal (see Agent Fallback).
 
@@ -71,20 +75,23 @@ manifest (see Recipe Manifest Format). Include the global `scroll_fix` if
 
 **Thorough mode (default) — click-first:**
 
-1. For each **cmp-match** overlay: execute `dismiss.steps` sequentially.
-   Clicking sets consent cookies that persist across all tabs — overlay
-   will not reappear.
+1. For each **cmp-match** overlay: run its `dismiss` steps in order
+   (`playwright-cli click "<selector>"`). Saving sets consent cookies that
+   persist across tabs, so the overlay will not reappear.
 2. For each **heuristic** overlay (`dismiss: null`): run the Agent Fallback
    sequence (see below).
-3. Apply `scroll_fix` if `scroll_locked` is true.
-4. If any click fails or times out after 5 seconds: fall back to the hide
-   path for that overlay (batch-evaluate its `hide.js` rule).
+3. Apply `scroll_fix` if `scroll_locked` is true (inject it as in quick mode).
+4. If the clicks leave the overlay in place, or saving navigates to a
+   pay-or-accept wall, hide that overlay instead (see below).
 
 **Quick mode — hide-only:**
 
-1. Batch-evaluate all `hide.js` rules in one `playwright-cli eval` call.
-2. Apply `scroll_fix` if `scroll_locked` is true.
-3. Skip interactive dismiss entirely.
+1. Inject every overlay's `hide` rules, plus `scroll_fix` if `scroll_locked`
+   is true, as one stylesheet in a single call:
+   ```bash
+   playwright-cli eval "document.head.appendChild(Object.assign(document.createElement('style'), { textContent: '<all hide rules and scroll_fix, joined>' })) && 'ok'"
+   ```
+2. Skip interactive dismiss entirely.
 
 ### Step 7 — Verify the page is clean
 
