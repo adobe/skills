@@ -50,8 +50,11 @@ the absolute path of this skill's directory (the folder containing this
 SKILL.md) filled in:
 
 ```bash
-sudo node <skill-dir>/scripts/domain-mask.mjs <display-domain> <target-url>
+sudo env CAROOT="$(mkcert -CAROOT)" node "<skill-dir>/scripts/domain-mask.mjs" "<display-domain>" "<target-url>"
 ```
+
+`CAROOT` is resolved before `sudo`, so mkcert signs with the CA the user
+installed rather than one under root's home, which the browser would not trust.
 
 The script:
 
