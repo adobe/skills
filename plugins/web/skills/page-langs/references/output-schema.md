@@ -6,12 +6,12 @@
 {
   "url": "https://example.com/page",    // canonical URL as seen by the browser
   "wordCount": 1234,                     // words in visible body text (CLD3 input)
-  "detected": [                          // CLD3 results, sorted by proportion desc
+  "detected": [                          // CLD3 per-block results, top 5 by proportion
     {
       "language": "en",                  // ISO 639-1 code (CLD3 output)
-      "probability": 0.98,               // model confidence [0, 1]
+      "probability": 0.98,               // byte-weighted mean confidence [0, 1]
       "is_reliable": true,               // CLD3 reliability flag
-      "proportion": 0.62                 // fraction of body bytes in this language
+      "proportion": 0.62                 // share of classified text bytes in this language
     }
   ],
   "declared": {
@@ -38,7 +38,7 @@
 - `htmlLang`: `null` if the root element has no `lang` attribute.
 - `metaContentLanguage`: `null` if neither `http-equiv` nor `name="language"` meta exists.
 - `nestedLangs` / `hreflang`: empty arrays `[]` when none found.
-- `detected`: empty array `[]` when CLD3 returns `und` (text too short or undetermined).
+- `detected`: empty array `[]` when no text block of 50+ bytes is reliably classified.
 
 ## Language-code formats
 

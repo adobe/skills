@@ -59,16 +59,43 @@ try {
   process.exit(1);
 }
 
+// cld3-asm's findMostFrequentLanguages always returns a single language for
+// mixed text, so classify each text block on its own and weight by bytes.
+// Blocks CLD3 marks unreliable are ignored, and so are blocks under
+// MIN_BLOCK_BYTES: nav labels such as "DE" or "Garantie" get confident but
+// wrong codes (pt, nl, ga...) that would show up as undeclared languages.
+const MIN_BLOCK_BYTES = 50;
+
+function aggregate(results) {
+  const bytes = new Map();
+  const weighted = new Map();
+  let total = 0;
+  for (const { language, probability, is_reliable, size } of results) {
+    if (!is_reliable || language === 'und' || size < MIN_BLOCK_BYTES) continue;
+    bytes.set(language, (bytes.get(language) || 0) + size);
+    weighted.set(language, (weighted.get(language) || 0) + probability * size);
+    total += size;
+  }
+  return [...bytes.entries()]
+    .map(([language, b]) => ({
+      language,
+      probability: weighted.get(language) / b,
+      is_reliable: true,
+      proportion: b / total,
+    }))
+    .sort((a, b) => b.proportion - a.proportion)
+    .slice(0, 5);
+}
+
 const cldFactory = await loadModule();
 const identifier = cldFactory.create(0, 1000);
 let detected = [];
 try {
-  detected = identifier
-    .findMostFrequentLanguages(pageData.text || '', 5)
-    .filter((r) => r.language !== 'und')
-    .map(({ language, probability, is_reliable, proportion }) => ({
-      language, probability, is_reliable, proportion,
-    }));
+  const blocks = (pageData.text || '').split('\n').filter((b) => b.trim());
+  detected = aggregate(blocks.map((block) => ({
+    ...identifier.findLanguage(block),
+    size: Buffer.byteLength(block),
+  })));
 } finally {
   identifier.dispose();
 }
