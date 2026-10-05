@@ -1,6 +1,12 @@
 ---
 name: cdp-connect
-description: "Connect Claude Code to an existing Chrome browser via CDP (Chrome DevTools Protocol). Zero dependencies — uses Node 22 built-in WebSocket. Attach to any Chrome running with --remote-debugging-port, then navigate, click, type, screenshot, evaluate JS, read accessibility tree, and monitor console/network. Use when you need to interact with a browser the agent already started, control an existing Chrome instance, or drive browser automation without Playwright MCP. Triggers on: cdp connect, connect to browser, connect to chrome, attach to browser, interact with browser, drive browser, browser automation, control chrome, connect 9222."
+description: >-
+  Drives an already-running Chrome over the Chrome DevTools Protocol (CDP):
+  list tabs, navigate, click, type, evaluate JavaScript, take screenshots, read
+  the accessibility tree, and stream console and network events. Needs only
+  Node 22. Use when Chrome is running with --remote-debugging-port (9222 by
+  default), or when the user asks to attach to, connect to, or control an
+  existing browser.
 license: Apache-2.0
 ---
 
@@ -21,35 +27,23 @@ chrome --remote-debugging-port=9222
 npm run dev  # if it opens Chrome with --remote-debugging-port
 ```
 
-## Script
-
-```bash
-if [[ -n "${CLAUDE_SKILL_DIR:-}" ]]; then
-  CDP_JS="${CLAUDE_SKILL_DIR}/scripts/cdp.js"
-else
-  CDP_JS="$(command -v cdp.js 2>/dev/null || \
-    find ~/.claude -path "*/cdp-connect/scripts/cdp.js" -type f 2>/dev/null | head -1)"
-fi
-if [[ -z "$CDP_JS" || ! -f "$CDP_JS" ]]; then
-  echo "Error: cdp.js not found. Ask the user for the path." >&2
-fi
-```
-
-Store in `CDP_JS` and use for all commands below.
+Paths like `scripts/…` are relative to this skill's directory (the folder
+containing this SKILL.md). Run commands from the current working directory with
+those paths made absolute; don't `cd` into the skill directory.
 
 ## Commands
 
 ```bash
-node "$CDP_JS" list                            # Show all tabs with IDs
-node "$CDP_JS" navigate <url> [--id <tid>]     # Navigate to URL
-node "$CDP_JS" eval <expr> [--id <tid>]        # Evaluate JavaScript
-node "$CDP_JS" screenshot <path> [--id <tid>]  # Save screenshot as PNG
-node "$CDP_JS" ax-tree [--id <tid>]            # Accessibility tree (primary)
-node "$CDP_JS" dom [--id <tid>]                # Full HTML (fallback)
-node "$CDP_JS" click <selector> [--id <tid>]   # Click element
-node "$CDP_JS" type <sel> <text> [--id <tid>]  # Type into element
-node "$CDP_JS" console [--timeout 10]          # Stream console events
-node "$CDP_JS" network [--timeout 10]          # Stream network events
+node scripts/cdp.js list                            # Show all tabs with IDs
+node scripts/cdp.js navigate <url> [--id <tid>]     # Navigate to URL
+node scripts/cdp.js eval <expr> [--id <tid>]        # Evaluate JavaScript
+node scripts/cdp.js screenshot <path> [--id <tid>]  # Save screenshot as PNG
+node scripts/cdp.js ax-tree [--id <tid>]            # Accessibility tree (primary)
+node scripts/cdp.js dom [--id <tid>]                # Full HTML (fallback)
+node scripts/cdp.js click <selector> [--id <tid>]   # Click element
+node scripts/cdp.js type <sel> <text> [--id <tid>]  # Type into element
+node scripts/cdp.js console [--timeout 10]          # Stream console events
+node scripts/cdp.js network [--timeout 10]          # Stream network events
 ```
 
 All commands default to port 9222. Override with `--port N`.
@@ -60,14 +54,14 @@ Use `--id <target-id>` from `list` output to target a specific tab.
 1. **Discover** — `list` to see tabs and their unique IDs
 2. **Understand** — `ax-tree` for page structure (prefer over `dom`)
 3. **Interact** — `navigate`, `click`, `type`, `eval` as needed
-4. **Verify** — `screenshot /tmp/shot.png`, then Read the PNG
+4. **Verify** — `screenshot /tmp/shot.png`, then view the PNG
 5. **Debug** — `console` or `network` to stream events
 
 ## Tips
 
 - `ax-tree` is the primary way to understand page state — semantic
   roles and names are more useful than raw HTML for an agent
-- For screenshots, save to `/tmp/` and use the Read tool to view
+- For screenshots, save to `/tmp/` and then view the image
 - `eval` supports promises: `eval "await fetch('/api').then(r=>r.json())"`
 - Increase timeout for slow pages: `--timeout 15`
 - `CDP_TIMEOUT=10000` env var overrides default 5s timeout globally
