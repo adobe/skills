@@ -87,14 +87,34 @@ function aggregate(results) {
     .slice(0, 5);
 }
 
+// CLD3 reads at most MAX_CLD3_BYTES per call. Longer blocks are split at
+// spaces so every byte weighted toward a language was actually classified.
+const MAX_CLD3_BYTES = 1000;
+
+function chunks(block) {
+  const out = [];
+  let current = '';
+  for (const word of block.split(' ')) {
+    const next = current ? `${current} ${word}` : word;
+    if (current && Buffer.byteLength(next) > MAX_CLD3_BYTES) {
+      out.push(current);
+      current = word;
+    } else {
+      current = next;
+    }
+  }
+  if (current) out.push(current);
+  return out;
+}
+
 const cldFactory = await loadModule();
-const identifier = cldFactory.create(0, 1000);
+const identifier = cldFactory.create(0, MAX_CLD3_BYTES);
 let detected = [];
 try {
-  const blocks = (pageData.text || '').split('\n').filter((b) => b.trim());
-  detected = aggregate(blocks.map((block) => ({
-    ...identifier.findLanguage(block),
-    size: Buffer.byteLength(block),
+  const pieces = (pageData.text || '').split('\n').filter((b) => b.trim()).flatMap(chunks);
+  detected = aggregate(pieces.map((piece) => ({
+    ...identifier.findLanguage(piece),
+    size: Buffer.byteLength(piece),
   })));
 } finally {
   identifier.dispose();

@@ -47,3 +47,13 @@ test('reports nothing for text too short to classify', () => {
   const { detected } = detect({ ...page, text: 'DE\nFR\nGarantie' });
   assert.deepEqual(detected, []);
 });
+
+test('splits blocks longer than CLD3 reads at once', () => {
+  const en = 'The tent packs down small, pitches in minutes, and keeps you dry when the weather turns on the trail. ';
+  const es = 'La tienda se pliega en poco espacio, se monta en minutos y te mantiene seco cuando cambia el tiempo. ';
+  const block = en.repeat(15) + es.repeat(15);
+  const { detected } = detect({ ...page, nestedLangs: [], text: block });
+  const share = Object.fromEntries(detected.map((d) => [d.language, d.proportion]));
+  assert.deepEqual(Object.keys(share).sort(), ['en', 'es']);
+  assert.ok(share.es > 0.25 && share.en > 0.25, JSON.stringify(share));
+});

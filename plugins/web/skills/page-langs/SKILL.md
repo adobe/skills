@@ -91,8 +91,9 @@ normalisation: [references/output-schema.md](references/output-schema.md).
 ## Notes
 
 - **Short text:** each text block (paragraph, heading, list item) is classified
-  on its own; blocks under 50 bytes (nav labels, buttons) are skipped, so a page
-  with only short text returns no languages.
+  on its own, long blocks in pieces of up to 1,000 bytes. Pieces under 50 bytes
+  (nav labels, buttons) are skipped, so a page with only short text returns no
+  languages.
 - **Language codes:** CLD3 emits ~ISO 639-1 (`en`, `fr`). Structural signals may
   be BCP-47 (`en-US`, `x-default`). Reconciliation normalises on the primary
   subtag; raw values are preserved in `declared`.
