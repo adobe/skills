@@ -2,7 +2,7 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { normalizeCmpRules } = require('./overlay-db.js');
+const { normalizeCmpRules, parseReport, buildHideExpression } = require('./overlay-db.js');
 
 // Shapes taken from Consent-O-Matic Rules.json (methods: [{ name, action }]).
 const rules = {
@@ -27,6 +27,16 @@ const rules = {
       {
         name: 'SAVE_CONSENT',
         action: { type: 'click', parent: { selector: '.cmp-footer' }, target: { selector: 'button:first-child' } },
+      },
+    ],
+  },
+  conditionalSave: {
+    detectors: [{ presentMatcher: { type: 'css', target: { selector: '#klaro' } } }],
+    methods: [
+      { name: 'OPEN_OPTIONS', action: { type: 'click', target: { selector: '.klaro .cm-link' } } },
+      {
+        name: 'SAVE_CONSENT',
+        action: { type: 'ifcss', target: { selector: '.cm-btn-accept' }, trueAction: { type: 'click', target: { selector: '.cm-btn-accept' } } },
       },
     ],
   },
@@ -56,4 +66,39 @@ test('dismiss opens options then saves, skipping per-purpose toggles', () => {
 test('without HIDE_CMP, hides present selectors but never <html>/<body>', () => {
   assert.deepEqual(cmps.withoutHide.hide, []);
   assert.deepEqual(cmps.withoutHide.dismiss, [{ action: 'click', selector: '.cmp-save' }]);
+});
+
+test('no dismiss when the save step is conditional-only', () => {
+  assert.deepEqual(cmps.conditionalSave.dismiss, []);
+});
+
+const report = {
+  overlays: [
+    { id: 'overlay-0', hide: ["[data-widget='cookie-dialog'].toast { display:none!important }"] },
+    { id: 'overlay-1', hide: ['.a\\:b::after { content: "x" }'] },
+  ],
+  scroll_locked: true,
+  scroll_fix: 'html,body { overflow:auto!important }',
+};
+
+test('hide expression survives quotes and backslashes in selectors', () => {
+  let injected;
+  const doc = { head: { appendChild: (el) => { injected = el.textContent; return el; } }, createElement: () => ({}) };
+  const result = new Function('document', `return (${buildHideExpression(report, ['all'])})`)(doc);
+  assert.equal(result, 'ok');
+  assert.equal(injected, [...report.overlays.flatMap((o) => o.hide), report.scroll_fix].join('\n'));
+});
+
+test('hide expression selects overlays by id; no ids keeps only scroll_fix', () => {
+  let injected;
+  const doc = { head: { appendChild: (el) => { injected = el.textContent; return el; } }, createElement: () => ({}) };
+  new Function('document', `return (${buildHideExpression(report, ['overlay-1'])})`)(doc);
+  assert.equal(injected, `${report.overlays[1].hide[0]}\n${report.scroll_fix}`);
+  new Function('document', `return (${buildHideExpression(report, [])})`)(doc);
+  assert.equal(injected, report.scroll_fix);
+});
+
+test('reads the report from saved playwright-cli eval output', () => {
+  const saved = `### Result\n${JSON.stringify(JSON.stringify(report))}\n### Ran Playwright code\n`;
+  assert.deepEqual(parseReport(saved), report);
 });

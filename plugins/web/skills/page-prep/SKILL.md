@@ -44,11 +44,13 @@ Updates the local overlay database. Skips if cache < 7 days old; use `--force` t
 
 ### Step 2 — Detect overlays
 
-Bundle the injectable script and evaluate it in the active page. Returns a
-detection report.
+Bundle the injectable script, evaluate it in the active page, and save the
+detection report (Step 6 reads it back):
 
 ```bash
-playwright-cli eval "$(node scripts/overlay-db.js bundle)"
+mkdir -p .playwright-cli
+playwright-cli eval "$(node scripts/overlay-db.js bundle)" > .playwright-cli/page-prep-report.txt
+cat .playwright-cli/page-prep-report.txt
 ```
 
 ### Step 3 — Read the detection report
@@ -57,7 +59,8 @@ Parse the detection report. Each overlay has a `source` field: `"cmp-match"` or 
 
 ### Step 4 — Resolve dismiss strategy per overlay
 
-- **cmp-match**: `dismiss` is a list of click/wait steps that open the
+- **cmp-match**: `dismiss` is either null (no safe save sequence; treat like
+  heuristic) or a list of click/wait steps that open the
   platform's options and save them without changing any toggle, which
   usually means non-essential cookies are rejected. Steps are alternatives for
   different platform versions: skip a click whose selector matches nothing.
@@ -75,21 +78,26 @@ manifest (see Recipe Manifest Format). Include the global `scroll_fix` if
 
 **Thorough mode (default) — click-first:**
 
-1. For each **cmp-match** overlay: run its `dismiss` steps in order
+1. For each **cmp-match** overlay with a `dismiss` list: run its steps in order
    (`playwright-cli click "<selector>"`). Saving sets consent cookies that
    persist across tabs, so the overlay will not reappear.
-2. For each **heuristic** overlay (`dismiss: null`): run the Agent Fallback
-   sequence (see below).
-3. Apply `scroll_fix` if `scroll_locked` is true (inject it as in quick mode).
-4. If the clicks leave the overlay in place, or saving navigates to a
-   pay-or-accept wall, hide that overlay instead (see below).
+2. For each overlay with `dismiss: null` (heuristic, or a platform without a
+   safe save sequence): run the Agent Fallback sequence (see below).
+3. Hide the overlays still showing, by `id`, plus `scroll_fix` if
+   `scroll_locked` is true. Use this when clicks leave an overlay in place or
+   saving navigates to a pay-or-accept wall. With no ids it applies only
+   `scroll_fix`:
+   ```bash
+   playwright-cli eval "$(node scripts/overlay-db.js hide-expr .playwright-cli/page-prep-report.txt overlay-2 overlay-3)"
+   ```
 
 **Quick mode — hide-only:**
 
 1. Inject every overlay's `hide` rules, plus `scroll_fix` if `scroll_locked`
-   is true, as one stylesheet in a single call:
+   is true, as one stylesheet in a single call. `hide-expr` JSON-encodes the
+   CSS, so quotes in selectors are safe; don't hand-build this string.
    ```bash
-   playwright-cli eval "document.head.appendChild(Object.assign(document.createElement('style'), { textContent: '<all hide rules and scroll_fix, joined>' })) && 'ok'"
+   playwright-cli eval "$(node scripts/overlay-db.js hide-expr .playwright-cli/page-prep-report.txt all)"
    ```
 2. Skip interactive dismiss entirely.
 

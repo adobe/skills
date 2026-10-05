@@ -99,19 +99,19 @@ function extractHideRules(rule, presentSelectors) {
 
 // Open the CMP's options and save. Per-purpose toggles (DO_CONSENT) and
 // conditional steps (ifcss, foreach) are skipped, so the CMP saves its
-// default choices.
+// default choices. A CMP whose save step is conditional-only gets no dismiss
+// recipe: clicking "options" without saving would leave the banner up.
 function extractDismissActions(rule) {
-  const actions = [];
-  for (const name of ['OPEN_OPTIONS', 'SAVE_CONSENT']) {
-    for (const step of methodSteps(rule, name)) {
-      if (step.type === 'click' && step.target?.selector) {
-        actions.push({ action: 'click', selector: stepSelector(step) });
-      } else if (step.type === 'wait' && step.waitTime) {
-        actions.push({ action: 'wait', ms: step.waitTime });
-      }
+  const toActions = (name) => methodSteps(rule, name).flatMap((step) => {
+    if (step.type === 'click' && step.target?.selector) {
+      return [{ action: 'click', selector: stepSelector(step) }];
     }
-  }
-  return actions;
+    if (step.type === 'wait' && step.waitTime) return [{ action: 'wait', ms: step.waitTime }];
+    return [];
+  });
+  const save = toActions('SAVE_CONSENT');
+  if (!save.some((a) => a.action === 'click')) return [];
+  return [...toActions('OPEN_OPTIONS'), ...save];
 }
 
 function hasDroppedFilters(matchers) {
@@ -283,6 +283,39 @@ function cmdBundle() {
   process.stdout.write(buildBundle(patterns, detectScript));
 }
 
+// --- Hide expression ---
+
+// Accepts the detection report as raw JSON, as a JSON-encoded string, or as
+// saved `playwright-cli eval` output (### Result ... ### Ran Playwright code).
+function parseReport(text) {
+  const start = text.indexOf('### Result');
+  const end = text.lastIndexOf('### Ran Playwright code');
+  const body = start === -1 ? text : text.slice(start + '### Result'.length, end === -1 ? undefined : end);
+  const parsed = JSON.parse(body.trim());
+  return typeof parsed === 'string' ? JSON.parse(parsed) : parsed;
+}
+
+// One `playwright-cli eval` expression that injects the hide rules of the
+// selected overlays (ids, or 'all') plus scroll_fix as a stylesheet. The CSS is
+// JSON-encoded so quotes and backslashes in selectors cannot break the string.
+function buildHideExpression(report, ids) {
+  const selected = ids.includes('all')
+    ? report.overlays
+    : report.overlays.filter((o) => ids.includes(o.id));
+  const rules = selected.flatMap((o) => o.hide ?? []);
+  if (report.scroll_locked && report.scroll_fix) rules.push(report.scroll_fix);
+  const css = JSON.stringify(rules.join('\n'));
+  return `document.head.appendChild(Object.assign(document.createElement('style'), { textContent: ${css} })) && 'ok'`;
+}
+
+function cmdHideExpr(reportPath, ids) {
+  if (!reportPath) die('Usage: node overlay-db.js hide-expr <report-file> [all | overlay-id...]');
+  let report;
+  try { report = parseReport(fs.readFileSync(reportPath, 'utf8')); }
+  catch (err) { die(`Cannot read detection report ${reportPath}: ${err.message}`); }
+  process.stdout.write(buildHideExpression(report, ids));
+}
+
 async function main() {
   const args = process.argv.slice(2);
   const command = args[0];
@@ -292,12 +325,13 @@ async function main() {
     case 'status': cmdStatus(); break;
     case 'lookup': cmdLookup(args[1]); break;
     case 'bundle': cmdBundle(); break;
+    case 'hide-expr': cmdHideExpr(args[1], args.slice(2)); break;
     default:
-      console.error(['Usage: overlay-db.js <command> [options]', '', 'Commands:', '  refresh [--force]   Fetch/update pattern databases', '  status              Show cache age and stats', '  lookup <cmp-name>   Check if a CMP is in the database', '  bundle              Output injectable script with embedded patterns'].join('\n'));
+      console.error(['Usage: overlay-db.js <command> [options]', '', 'Commands:', '  refresh [--force]   Fetch/update pattern databases', '  status              Show cache age and stats', '  lookup <cmp-name>   Check if a CMP is in the database', '  bundle              Output injectable script with embedded patterns', '  hide-expr <report> [all | overlay-id...]', '                      Output an eval expression hiding those overlays (+ scroll_fix)'].join('\n'));
       process.exit(command ? 1 : 0);
   }
 }
 
 if (require.main === module) { main().catch((err) => die(err.message)); }
 
-module.exports = { parseAbpHideRules, normalizeCmpRules, isCacheStale, buildPatternsJson, buildBundle };
+module.exports = { parseAbpHideRules, normalizeCmpRules, isCacheStale, buildPatternsJson, buildBundle, parseReport, buildHideExpression };
