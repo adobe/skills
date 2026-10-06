@@ -100,3 +100,33 @@ axis honest) and writes `stardust/dynamic-features-plan.md`: phases with deliver
 contract, verification, owner decision, effort. The gate (prepare-migration 4.5, replica Phase 2,
 rollout B2) fails on a row without a disposition — "I don't know yet" is spelled `static-snapshot`
 with reason "undecided — revisit at rollout".
+
+## Martech
+
+Consent, tag-manager and analytics vendors are one feature routed by the source's own stack, not
+triaged per vendor. `dynamics-detect.mjs` records the evidence (`report.martech`: static script
+srcs, inline-snippet hosts, account ids, hosts fired before consent — the CMP banner is accepted
+after that list is taken); `dynamics-plan.mjs` writes `stardust/martech-contract.json` (`--contract`
+to relocate) and `stardust/martech-handoff.md`, and marks martech rows `martechStatus`. The
+contract is the only input to deploy Step 3b (`martech-scaffold.mjs`) and to the `martech`
+parity checks (parity-report.md).
+
+| source stack | route (`loader`) | fallback / upgrade |
+|---|---|---|
+| self-hosted Web SDK (alloy + datastream + org id) | `aem-martech` | source Launch URL as `url` |
+| Adobe Launch | `url` (the property URL) | upgrade `aem-martech` |
+| AppMeasurement / Target without Web SDK | `aem-martech`, off, `missing: datastreamId` | — |
+| direct GA4 (`gtag/js?id=G-…`) | `aem-gtm-martech` | source GTM container as `gtm` |
+| GTM container | `gtm` (container URL + dataLayer name) | upgrade `aem-gtm-martech` when GA4 rides it |
+| Tealium / other direct vendor script | `url`, category from vendors.json | — |
+
+- **Consent.** OneTrust and Cookiebot with a captured account id → policy `cmp`, categories mapped
+  to the CMP's groups. No CMP on the source, an unknown CMP or a missing id → `owner-decision`:
+  every route stays off until the owner sets `consent.policy` (`none-required` grants on load).
+  Tags the source fires before consent are flagged — the EDS site waits.
+- **Ids are captured, never invented.** A route missing its id is `scaffolded-awaiting-owner`,
+  `enabled: false`; the hand-off lists it with the field to fill.
+- **Production hosts gate everything.** Tags load only on `productionHosts` (the source's hosts);
+  preview and branch hosts need `?martech=on`, so a migration never double-counts traffic.
+- **Vendors behind the tag manager** (`via: tag-manager`) are not re-wired: they come with the
+  container once it loads.

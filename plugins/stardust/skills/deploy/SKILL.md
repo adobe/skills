@@ -25,7 +25,7 @@ If the user has prototypes but no EDS scaffolding, stop and ask whether to scaff
 
 ## Target runtime — vanilla aem-boilerplate (what the generated code can rely on)
 
-The stock boilerplate provides everything the conversion needs; the runtime is never modified. The load chain (`head.html` → `scripts.js` → `loadEager` → `loadLazy` → `loadDelayed`) gives you:
+The stock boilerplate provides everything the conversion needs; the runtime is never modified (Step 3b only fills the boilerplate's consent hooks). The load chain (`head.html` → `scripts.js` → `loadEager` → `loadLazy` → `loadDelayed`) gives you:
 
 - **Section DOM:** each `main > div` becomes `<div class="section">`; runs of default content are wrapped in `div.default-content-wrapper`; each block table gets a `div.<name>-wrapper` around `<div class="<name> block" data-block-name="<name>">`, and the section gains `.<name>-container`. Sections are hidden (`data-section-status` + inline `display:none`) until loaded — undecorated-content flash is handled by the runtime, not by foundation CSS.
 - **Cell normalization (`wrapTextNodes`, in `decorateBlock` — #104):** any block cell whose FIRST element child is not in `P/PRE/UL/OL/PICTURE/TABLE/H1–6` — or that leads with a `<picture>` followed by anything else — gets its ENTIRE content folded into **one `<p>`** before your `decorate()` runs. A media-led mixed cell (`<img> + <h3> + <p>`) therefore arrives as a single wrapper `<p>`; a collector reading `cell.children` sees ONE node and silently drops everything after the image. Decode with the wrapper-expanding collector (Step 8, #62/#104).
@@ -60,13 +60,17 @@ Boilerplate clones drift (button classes, wrapper names, buttonization rules dif
   "buttonClasses": ".button / .button.primary / .button.secondary / .button.accent, in p.button-wrapper",
   "buttonization": "formatted-only | bare-links-too",
   "fragmentScriptPolicy": "inert-innerHTML",
-  "emptySectionCollapse": true
+  "emptySectionCollapse": true,
+  "consentHook": "consent-check | delayed-js | none",
+  "martechPlugins": []
 }
 ```
 
 Block CSS/JS generation and the Local-QA harness read this contract instead of assuming. The values above are current `adobe/aem-boilerplate` main; the two known drift axes to verify per target:
 - **`buttonClasses`** — current main emits `a.button` (+ `.primary`/`.secondary`/`.accent`) inside `p.button-wrapper`; older clones emit `p.button-container`, and some buttonize a bare `<a>` alone in a paragraph (`buttonization: bare-links-too`) while current main requires authored `<strong>`/`<em>`. Style the wrong container class and spacing/group layout silently breaks; assume the wrong buttonization rule and plain text links ship as buttons (or CTAs ship as bare links).
 - **`blockWrapperClass`** — `decorateBlock` adds `.block` + `data-block-name` and wraps the block in `div.<name>-wrapper` (section gains `.<name>-container`). Scope block CSS under `.<name>` (the class every vintage sets); confirm empirically by asserting a grid container computes `display: grid` in a headless render — a wrong scoping guess makes every grid fall back to `display: block` ("mobile layout on desktop") while typography still looks fine.
+
+- **`consentHook` / `martechPlugins`** — where tags may load: `consent-check` when `scripts.js` already imports `consent-check.js` (current main, from `loadDelayed`), `delayed-js` when only `delayed.js` exists (older clones), `none` otherwise; `martechPlugins` lists the installed `plugins/martech` / `plugins/gtm-martech`. `martech-scaffold.mjs` (Step 3b) reads the same files and wires the hook it finds — never edit `aem.js`.
 
 When `emptySectionCollapse` is true (the page-metadata block leaves an empty padded section after its content is consumed into `<head>`), add `main .section:empty { display: none }` to the foundation — or an empty ~88px band sits between the header and the first real section.
 
@@ -368,6 +372,19 @@ log — never invent one, never skip silently.** A missing
 one crawl of the entry page (or a manual fetch of `link[rel~="icon"]` /
 `/favicon.ico`) recovers it; otherwise the deployed site ships the default
 icon, which reads as broken to the client.
+
+### 3b. Martech runtime — only when `stardust/martech-contract.json` exists
+
+Dynamics plan writes the contract when the source loads consent/tag/analytics vendors (`dynamics/reference/triage.md` § Martech). Wire it after the foundation, before blocks:
+
+```bash
+node skills/deploy/scripts/martech-scaffold.mjs --contract stardust/martech-contract.json --root .
+```
+
+- Generates `scripts/martech-config.js` (ids from the contract, never invented), `scripts/consent-check.js` (CMP adapter: OneTrust / Cookiebot / `none-required`), `scripts/consented.js` (category-gated `url`/`gtm` loaders) and, when a plugin route is on, `scripts/martech.js` (`aem-martech` Web SDK / `aem-gtm-martech`). It installs the plugins with `git subtree` (needs a clean tree); `--no-install` prints the command instead, and a route then runs on its contract `fallback` or stays off.
+- Hooks `consent-check.js` from `loadDelayed()` (or `delayed.js`) once; `aem.js` and `head.html` stay untouched. Re-runs are no-ops; a hand-written `consent-check.js`/`consented.js` is a conflict (exit 1) — merge by hand, `--force` only to discard it.
+- Tags load only on the contract's `productionHosts`. On preview/branch hosts verify with `?martech=on&consent=accept` (and `=reject`); the dynamics QA check replays both.
+- Routes marked `scaffolded-awaiting-owner` (missing datastream id, consent policy `owner-decision`) stay off — list them from `stardust/martech-handoff.md` in the hand-off message; the site owner fills the contract and re-runs the scaffold.
 
 ### 4. Self-host fonts and minimize CLS — never put font loads in `head.html`
 
@@ -1128,6 +1145,7 @@ Editable, but the look collapses the moment the author clicks: the editor re-ren
 - [ ] No block named after a reserved EDS class (`section`, `block`, `wrap`, `button`, or a name ending `-wrapper`/`-container`).
 - [ ] `head.html` is untouched **except** the single favicon `<link rel="icon">` line (Step 3 § Favicon). No font `<link>`, `<script>`, `<style>`, or `<link rel="preload" as="font">` lines added. Brand `@font-face` lives in `styles/fonts.css`; `-fallback` faces in `styles/styles.css`. Brand woff2(s) live in `fonts/`.
 - [ ] The site favicon is shipped (repo-root `favicon.<ext>` or `_eds/code/favicon.<ext>` in sandboxed runs) when extract captured one; when none was captured, the deploy log records a loud WARN (likely a bounded extract — recover the icon rather than shipping the default silently).
+- [ ] **Martech wired when a contract exists (Step 3b)** — `martech-scaffold.mjs` exits 0; no tag host is requested on the preview without `?martech=on`, and `?martech=on&consent=accept` loads each enabled route; awaiting-owner routes are named in the hand-off.
 - [ ] EVERY named brand face is self-hosted — including proprietary ones (#80); proprietary `.otf`/`.ttf` from the prototype were converted to woff2 with fontTools. If any proprietary face is shipped, the **licensing alert** exists in all three places (styles.css banner + `fonts/LICENSING.md` + conversion log) and the hand-off message flags "license required before `aem.live`".
 - [ ] Condensed/narrow display faces fall back to a **condensed** face, not plain Arial (#80): `"<Brand>", "Arial Narrow", arial, …` (or a self-hosted free condensed analog). Width-class is part of classification.
 - [ ] Every brand family's stack names its metric-matched `-fallback` face second (`"<Brand>", "<brand>-fallback", sans-serif`) — first paint renders the fallback until `loadFonts()` lands `fonts.css`.

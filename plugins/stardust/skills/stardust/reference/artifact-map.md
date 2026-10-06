@@ -64,6 +64,8 @@ stardust/
 ├── dynamic-features.md               # the dynamic-surface inventory: listings contract + one row per feature with class · disposition · reproducibility · status (dynamics Phase 3; prepare-migration 4.5 / replica Phase 2 / rollout B2)
 ├── dynamic-features-plan.md          # phases with deliverables, authoring contract, verification, owner decision (dynamics Phase 3)
 ├── dynamics/                         # dynamics working dir: generated-plan draft, parity.json (Phase 5), snapshot sync logs
+├── martech-contract.json             # tag stack, consent policy, routes, vendor inventory (dynamics plan); deploy Step 3b scaffolds it, qa replays it
+├── martech-handoff.md                # owner items for the tag stack: ids to fill, consent decision, upgrades (dynamics plan)
 ├── redirects.tsv                     # original→normalized path pairs from the path-safety gate (rollout Phase C)
 ├── runtime-contract.json             # EDS runtime probe result (deploy § Runtime-detection probe)
 ├── uplift-improvements.md            # >=3 specific weaknesses (cut, not padded) — load-bearing for uplift's variant A (written by the stardust `uplift` skill Phase 2a; absent otherwise)
@@ -153,6 +155,17 @@ reproducibility · status · pattern · decision), § Decision batch,
 disposition. `dynamics/parity.json` is Phase 5's replayable parity
 report; `qa` and `rollout` read it. Contract:
 `skills/dynamics/reference/triage.md`, `parity-report.md`.
+
+### `stardust/martech-contract.json` (+ `martech-handoff.md`)
+Owner: `$stardust dynamics` plan (`dynamics-plan.mjs`), from the
+`report.martech` evidence detect records. Production hosts, consent
+policy + CMP category map, one route per tag loader with its fallback,
+the vendor inventory; ids captured, never invented. `deploy` Step 3b
+(`martech-scaffold.mjs`) turns it into `scripts/consent-check.js`,
+`consented.js`, `martech-config.js` (+ `martech.js`); `qa`'s `dynamics`
+check replays its `martech` checks. The hand-off lists every route
+left off for an owner decision. Contract:
+`skills/dynamics/reference/triage.md` § Martech.
 
 ### `stardust/runtime-contract.json`
 Owner: `$stardust deploy` (runtime-detection probe, before Step 1).
@@ -374,7 +387,7 @@ excluded folders tracked deletes that line or adds a negation below it.
 | Path | Tracked | Owner | Notes |
 |---|---|---|---|
 | `state.json`, `status.jsonl`, `journal.md`, `learnings.md`, `direction.md` | yes | master / all | delivery state and decisions; a clone is dead without `state.json` |
-| `dynamic-features.md`, `dynamic-features-plan.md`, `dynamics/parity.json`, `trees.json` | yes | dynamics | dispositions and parity checks |
+| `dynamic-features.md`, `dynamic-features-plan.md`, `dynamics/parity.json`, `trees.json`, `martech-contract.json`, `martech-handoff.md` | yes | dynamics | dispositions, parity checks, the tag-stack contract |
 | `dynamics/` other (`*.generated-plan.*`, `sheets/_sync.json`) | yes | dynamics | small text; drafts superseded by the curated file |
 | `redirects.tsv`, `runtime-contract.json`, `eds-conversion-log.md`, `ai-readability-allowlist.json` | yes | rollout / deploy | |
 | `canon/**` | yes | prototype | the design canon |

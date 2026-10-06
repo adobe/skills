@@ -14,18 +14,24 @@
  *
  * Writes (under --out, default stardust/current):
  *   _dynamics.json                  per-page evidence + classified findings (+ `reach` with --reach)
+ *                                   + `martech`: static tags, reduced tag requests, ids, cookie names,
+ *                                     hosts firing before consent — input to the martech contract
  *   dynamic-features.generated.md   the findings as a table, one row per feature
  * Progress lines go to stderr. Exit 0 on completion, 2 on usage.
  *
  * Probes the SOURCE site. No auth header is sent (the source is public); the
- * target-host probe lives in dynamics-plan.mjs.
+ * target-host probe lives in dynamics-plan.mjs. Tag request URLs keep only
+ * account-id query parameters (martech.mjs reduceUrl).
  */
 /* eslint-disable no-await-in-loop, no-restricted-syntax, max-len */
 import { readdirSync, existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
-  arg, flag, list, readJSON, writeJSON, writeText, provenance, loadPlaywright, vendorFor, registrable, sameSite, pathPattern, settlePage, slug,
+  arg, flag, list, readJSON, writeJSON, writeText, provenance, loadPlaywright, vendorFor, registrable, sameSite, pathPattern, settlePage, acceptConsent, slug,
 } from './lib.mjs';
+import {
+  isMartechUrl, reduceUrl, rowFor, parseStaticHtml, fingerprint,
+} from './martech.mjs';
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
@@ -181,6 +187,12 @@ const add = (f) => {
   if (!x.pages.includes(f.page)) x.pages.push(f.page);
   if (f.evidence) x.evidence = [...new Set([...x.evidence, ...f.evidence.filter(Boolean)])].slice(0, 12);
 };
+const MARTECH_CAP = 120;
+const MARTECH_COOKIE = /^(?:AMCV_|kndctr_|_ga|_gcl|Optanon|CookieConsent|utag_main)/;
+const mt = {
+  hosts: new Set(), urls: new Set(), staticScripts: new Map(), inlineHosts: new Set(), inlineIds: new Set(), inlineConfigIds: new Set(), cookieNames: new Set(), preConsentHosts: new Set(),
+};
+const martechHosts = (hosts, own) => Object.keys(hosts).filter((h) => h !== own && rowFor(h)?.category);
 
 for (const url of URLS) {
   const { host, origin } = new URL(url);
@@ -189,7 +201,11 @@ for (const url of URLS) {
   await ctx.addInitScript(() => { window.__sdDomAfterLoad = 0; let loaded = false; window.addEventListener('load', () => setTimeout(() => { loaded = true; }, 300)); document.addEventListener('DOMContentLoaded', () => new MutationObserver((ms) => { if (loaded) for (const m of ms) window.__sdDomAfterLoad += m.addedNodes.length; }).observe(document.documentElement, { childList: true, subtree: true })); });
   const page = await ctx.newPage();
   const hosts = {}; const scripts = new Set(); const firstPartyApi = new Map(); const thirdPartyXhr = new Set(); const postBodies = [];
-  page.on('request', (r) => { if (r.method() === 'POST' && ['xhr', 'fetch'].includes(r.resourceType()) && postBodies.length < 12) postBodies.push({ url: r.url().slice(0, 200), body: (r.postData() || '').slice(0, 400) }); });
+  const martechUrls = new Set();
+  page.on('request', (r) => {
+    if (r.method() === 'POST' && ['xhr', 'fetch'].includes(r.resourceType()) && postBodies.length < 12) postBodies.push({ url: r.url().slice(0, 200), body: (r.postData() || '').slice(0, 400) });
+    if (martechUrls.size < MARTECH_CAP && isMartechUrl(r.url())) { const reduced = reduceUrl(r.url()); if (reduced) martechUrls.add(reduced); }
+  });
   page.on('response', (resp) => {
     try {
       const req = resp.request(); const u = new URL(resp.url()); const type = req.resourceType();
@@ -202,14 +218,27 @@ for (const url of URLS) {
       if (sameSite(u.host, host)) { const key = `${req.method()} ${u.host}${pathPattern(u.pathname)}`; if (!firstPartyApi.has(key)) firstPartyApi.set(key, { method: req.method(), host: u.host, path: pathPattern(u.pathname), query: [...new Set([...u.searchParams.keys()])].sort(), status: resp.status(), contentType: ct, example: `${u.origin}${u.pathname}` }); } else thirdPartyXhr.add(`${req.method()} ${u.host}${u.pathname.slice(0, 80)}`);
     } catch { /* evidence only */ }
   });
-  let status = 0; let textAtLoad = 0;
+  let status = 0; let textAtLoad = 0; let html = '';
   try {
     const resp = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
     status = resp?.status() || 0;
+    html = await resp?.text().catch(() => '') || '';
     textAtLoad = await page.evaluate(() => (document.querySelector('main') || document.body)?.innerText.replace(/\s+/g, ' ').trim().length || 0);
-    await settlePage(page, { settleMs: SETTLE });
+    await page.waitForTimeout(Math.min(SETTLE, 2500));
+    const preConsent = martechHosts(hosts, host);
+    const accepted = await acceptConsent(page);
+    await settlePage(page, { settleMs: SETTLE, accept: false });
+    if (accepted) preConsent.forEach((h) => mt.preConsentHosts.add(h));
   } catch (e) { report.pages[path] = { url, error: String(e.message).slice(0, 160) }; console.error(`[dynamics] FAIL ${path} ${e.message.slice(0, 100)}`); await ctx.close(); continue; }
   const dom = await page.evaluate(domCapture);
+  const statics = parseStaticHtml(html, url);
+  statics.staticScripts.forEach((s) => { if (!mt.staticScripts.has(s.src)) mt.staticScripts.set(s.src, s); });
+  statics.inlineHosts.forEach((h) => mt.inlineHosts.add(h));
+  statics.inlineIds.forEach((t) => mt.inlineIds.add(t));
+  statics.inlineConfigIds.forEach((t) => mt.inlineConfigIds.add(t));
+  martechUrls.forEach((u) => mt.urls.add(u));
+  martechHosts(hosts, host).forEach((h) => mt.hosts.add(h));
+  (await ctx.cookies().catch(() => [])).forEach((c) => { if (MARTECH_COOKIE.test(c.name)) mt.cookieNames.add(c.name); });
   const pageRec = {
     url, status, host, ...dom, hosts, thirdPartyHosts: Object.keys(hosts).filter((h) => h && !sameSite(h, host)), scripts: [...scripts].slice(0, 60),
     firstPartyApi: [...firstPartyApi.values()], thirdPartyXhr: [...thirdPartyXhr].slice(0, 40), postBodies, textAtLoad, mainEmptyAtLoad: textAtLoad < 200 && dom.mainText > 600,
@@ -220,6 +249,18 @@ for (const url of URLS) {
   await ctx.close();
 }
 await browser.close().catch(() => {});
+report.martech = {
+  sourceHosts: [...new Set(URLS.map((u) => new URL(u).host))],
+  hosts: [...mt.hosts],
+  urls: [...mt.urls].slice(0, 300),
+  staticScripts: [...mt.staticScripts.values()],
+  inlineHosts: [...mt.inlineHosts],
+  inlineIds: [...mt.inlineIds],
+  inlineConfigIds: [...mt.inlineConfigIds],
+  cookieNames: [...mt.cookieNames].slice(0, 40),
+  preConsentHosts: [...mt.preConsentHosts],
+};
+report.martech.stack = fingerprint(report.martech).stack;
 
 /* --------------------------------------------- reach from extract pages -- */
 if (arg('reach') && arg('reach') !== true) {
@@ -251,6 +292,7 @@ const md = [
   `# Dynamic features — detected (${report._provenance.writtenAt})`, '',
   `Pages probed: ${Object.keys(report.pages).join(', ')} · settle ${SETTLE} ms · width ${WIDTH}${report.reach ? ` · reach from ${report.reach.pagesWithEvidence}/${report.reach.of} crawled pages` : ''}`, '',
   'Evidence only. Every row must receive a disposition in `stardust/dynamic-features.md` (`dynamics-plan.mjs` drafts it).', '',
+  `Martech stack: ${report.martech.stack.join(' · ') || 'none detected'} (\`_dynamics.json#martech\`; \`dynamics-plan.mjs\` writes the martech contract).`, '',
   '| id | class | feature | pages | reach | evidence | hint |', '|---|---|---|---|---|---|---|',
   ...report.findings.map((f) => `| ${f.id} | ${f.class} ${CLASS_NAMES[f.class] || ''} | ${f.feature.replace(/\|/g, '/')} | ${f.pages.length}/${Object.keys(report.pages).length} | ${f.reach ? `${f.reach.pages}/${f.reach.of}` : ''} | ${(f.evidence || []).slice(0, 3).join('<br>').replace(/\|/g, '/')} | ${f.hint || ''} |`),
 ];

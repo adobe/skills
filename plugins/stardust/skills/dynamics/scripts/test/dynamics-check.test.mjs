@@ -5,6 +5,7 @@
 // results sharing title + text — not just the presence of one expected hit. Fixtures only: no browser, no
 // network. Also judgeVideoPlayback, the pure verdict of `video-plays`: presence is never a pass — a
 // native <video> must be PLAYING (currentTime advancing), a vendor iframe must request playback.
+// Also martechChecks (contract → martech feature) and judgeMartechRequests (gate/accept verdicts).
 // Also: --help prints the header and writes nothing.
 // Run: node plugins/stardust/skills/dynamics/scripts/test/dynamics-check.test.mjs
 import assert from 'node:assert/strict';
@@ -13,7 +14,7 @@ import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { compareSearchResults, judgeVideoPlayback } from '../dynamics-check.mjs';
+import { compareSearchResults, judgeVideoPlayback, martechChecks, judgeMartechRequests } from '../dynamics-check.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'dynamics-check.mjs');
@@ -114,6 +115,50 @@ check('vendor iframe: present but no playback request < 400 FAILS; one ok reques
   assert.equal(judgeVideoPlayback({ iframe: true, vendorOk: true, vendorRequests: 1 }, { playbackHost: 'players.brightcove.net' }).pass, true);
   const empty = judgeVideoPlayback({}, {});
   assert.equal(empty.pass, false); assert.deepEqual(empty.reasons, ['no player: neither a vendor iframe nor a <video> found']);
+});
+
+const CONTRACT = {
+  productionHosts: ['www.example.test'],
+  consent: { cmp: 'onetrust', policy: 'cmp', src: 'https://cmp.example.test/otSDKStub.js' },
+  routes: [
+    { id: 'adobe-launch', loader: 'aem-martech', src: null, enabled: true, fallback: { loader: 'url', src: 'https://assets.example.test/launch-1.min.js' } },
+    { id: 'pixel', loader: 'url', src: 'https://px.vendor.test/p.js', enabled: false, fallback: null },
+  ],
+  vendors: [
+    { id: 'onetrust', category: 'necessary', host: 'cmp.example.test' },
+    { id: 'chat', category: 'functional', host: 'chat.vendor.test' },
+    { id: 'google-ads', category: 'marketing', host: 'www.googleadservices.com' },
+  ],
+};
+
+check('martechChecks: gate on / and ?martech=on, accept only enabled routes, never the CMP or functional hosts', () => {
+  const f = martechChecks(CONTRACT);
+  assert.equal(f.id, 'martech'); assert.equal(f.class, 'T');
+  assert.deepEqual(f.checks.map((c) => `${c.mode} ${c.path}`), ['gate /', 'gate /?martech=on', 'accept /?martech=on&consent=accept']);
+  const [gate] = f.checks;
+  assert.deepEqual(gate.forbiddenHosts, ['adobedc.net', 'adobedtm.com', 'assets.example.test', 'px.vendor.test', 'www.googleadservices.com']);
+  assert.deepEqual(gate.productionHosts, ['www.example.test']);
+  assert.deepEqual(f.checks[2].expect, [{ id: 'adobe-launch', hosts: ['adobedc.net', 'adobedtm.com', 'assets.example.test'] }]);
+});
+
+check('martechChecks: none-required drops the QA gate; no enabled route drops accept', () => {
+  const f = martechChecks({ ...CONTRACT, consent: { policy: 'none-required' }, routes: [{ ...CONTRACT.routes[1] }] });
+  assert.deepEqual(f.checks.map((c) => `${c.mode} ${c.path}`), ['gate /']);
+});
+
+check('judgeMartechRequests: gate fails on a leaked host or subdomain, passes otherwise', () => {
+  const c = { mode: 'gate', forbiddenHosts: ['adobedc.net', 'px.vendor.test'] };
+  const bad = judgeMartechRequests(['edge.adobedc.net', 'cmp.example.test'], c);
+  assert.equal(bad.pass, false); assert.match(bad.detail, /edge\.adobedc\.net/);
+  assert.equal(judgeMartechRequests(['cmp.example.test', 'notadobedc.net'], c).pass, true);
+});
+
+check('judgeMartechRequests: accept needs one host per expected route', () => {
+  const c = { mode: 'accept', expect: [{ id: 'launch', hosts: ['example.test'] }, { id: 'gtm', hosts: ['googletagmanager.com'] }] };
+  assert.equal(judgeMartechRequests(['assets.example.test', 'www.googletagmanager.com'], c).pass, true);
+  const miss = judgeMartechRequests(['assets.example.test'], c);
+  assert.equal(miss.pass, false); assert.match(miss.detail, /gtm \(googletagmanager\.com\)/);
+  assert.equal(judgeMartechRequests([], { mode: 'accept', expect: [] }).pass, false);
 });
 
 check('--help prints the header (naming expectCount) and writes nothing', () => {

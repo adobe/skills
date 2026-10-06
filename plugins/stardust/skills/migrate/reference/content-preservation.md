@@ -62,10 +62,11 @@ reason }` so the user can audit.
 
 - **Inline analytics tags and tracking pixels** (Facebook pixel,
   Google Tag Manager, Hotjar, Segment, Linkedin Insight). The
-  migrated site is a static HTML deliverable; tracking is added back
-  during deploy by a separate concern.
-- **Cookie consent banners.** Same reason — re-add at deploy time
-  with the org's preferred CMP.
+  migrated site is a static HTML deliverable; the tag stack is
+  recorded by dynamics (`stardust/martech-contract.json`) and wired
+  site-wide at deploy Step 3b, gated on consent.
+- **Cookie consent banners.** Same reason — deploy Step 3b loads the
+  source's CMP with its captured id; never copy the banner markup.
 - **Embedded chat widgets** (Intercom, Drift, Zendesk Chat). Re-wire
   at deploy.
 - **Inline JS for polyfills, A/B testing harnesses, feature flags,

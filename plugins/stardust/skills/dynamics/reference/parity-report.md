@@ -27,9 +27,16 @@ site *do* now?".
 ```
 
 Check types (closed set, all replayable): `fetch-json` · `dom-count` · `click-dialog` ·
-`search-query` · `form-flow` · `video-plays` · `consent-gate` · `no-page-errors` — fields in the
-script header. A feature with no checks is listed under "features without checks" with its status
-and owner; `decided-out` rows belong there.
+`search-query` · `form-flow` · `video-plays` · `consent-gate` · `martech` · `no-page-errors` — fields
+in the script header. A feature with no checks is listed under "features without checks" with its
+status and owner; `decided-out` rows belong there.
+
+`martech` checks are not written into `parity.json`: the replay (and the qa `dynamics` check)
+derives them from `stardust/martech-contract.json` when it exists — a gate on `/` and on
+`/?martech=on` (no route, plugin or tracking-vendor host requested; the CMP's own host is allowed)
+and an accept on `/?martech=on&consent=accept` (each enabled route requests its src, fallback or
+plugin host). Every cross-site request is aborted after its host is recorded, so the replay never
+sends a hit to a production account; on a contract production host the checks skip.
 
 `search-query` compares with what the SOURCE showed for the same term, read at detect time and
 recorded on the check: `expectCount` (the visible result count — a mismatch FAILS), `expectTitles`

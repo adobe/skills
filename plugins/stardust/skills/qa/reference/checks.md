@@ -73,12 +73,12 @@ for a judgment pass without re-crawling.
 
 ## dynamics (H, browser; replay of `stardust/dynamics/parity.json`)
 
-Flows, not presence — each check replays a user-visible flow through `skills/dynamics/scripts/dynamics-check.mjs` (closed check set: `fetch-json`, `dom-count`, `click-dialog`, `search-query`, `form-flow`, `video-plays`, `consent-gate`, `no-page-errors`). Third-party request statuses are recorded per check so a probe-induced failure is distinguishable from a vendor restriction. Pass `--parity <file>` to point at another parity file; `--auth-header` / `--token-env` for protected origins (sent to the base origin only).
+Flows, not presence — each check replays a user-visible flow through `skills/dynamics/scripts/dynamics-check.mjs` (closed check set: `fetch-json`, `dom-count`, `click-dialog`, `search-query`, `form-flow`, `video-plays`, `consent-gate`, `martech`, `no-page-errors`). When `stardust/martech-contract.json` exists the `martech` checks (consent gate + tag routing, cross-site requests blocked) run too. Third-party request statuses are recorded per check so a probe-induced failure is distinguishable from a vendor restriction. Pass `--parity <file>` to point at another parity file; `--auth-header` / `--token-env` for protected origins (sent to the base origin only).
 
 | id | sev | what |
 |---|---|---|
 | `parity-missing` | info | no parity file — the migration never ran the stardust `dynamics` skill |
-| `parity-failed` | error | a replayed flow did not complete (empty form accepted, dialog did not open, query returned nothing, player never requested playback, video present but not playing) |
+| `parity-failed` | error | a replayed flow did not complete (empty form accepted, dialog did not open, query returned nothing, player never requested playback, video present but not playing, a tag fired without consent or a routed tag never fired) |
 | `parity-env-limit` | warn | a failed flow whose feature records an environment limit (geo-fenced hand-off target) |
 | `parity-unchecked` | info | a feature with a non-final status and no replayable check — an owner item |
 

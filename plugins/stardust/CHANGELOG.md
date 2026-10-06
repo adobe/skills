@@ -4,6 +4,39 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.30.0 — martech: the source's tag stack is routed, consent-gated and verified
+
+Martech was detection-only: dynamics listed tag and consent vendors, every one ended
+`scaffolded-awaiting-owner`, and a migrated site shipped with the boilerplate's empty
+`consent-check.js` / `consented.js` hooks — no analytics on launch day. The stack is now routed by
+what the source runs, with ids captured from the source and never invented. New artifact and check
+type, so a minor bump.
+
+- **Evidence** (`dynamics-detect.mjs`, `lib.mjs`, `vendors.json`): per page, static script srcs,
+  inline-snippet hosts, account-id parameters and the hosts fired before consent are recorded in
+  `report.martech`, then the CMP banner is accepted (`acceptConsent`) so post-consent tags fire.
+  Martech vendor rows carry an `id` and a consent `category`.
+- **Contract** (`dynamics/scripts/martech.mjs`, `dynamics-plan.mjs`): `stardust/martech-contract.json`
+  — production hosts, consent policy (`cmp` / `none-required` / `owner-decision`) with the CMP's
+  category map, one route per loader (`url`, `gtm`, `aem-martech`, `aem-gtm-martech`) with a
+  fallback, the vendor inventory — plus `stardust/martech-handoff.md` for the owner items. Self-hosted
+  Web SDK → `aem-martech`; Launch → `url` (upgrade noted); direct GA4 → `aem-gtm-martech`; GTM → `gtm`.
+  `triage.md` § Martech.
+- **Runtime** (deploy Step 3b, `deploy/scripts/martech-scaffold.mjs`): generates
+  `scripts/martech-config.js`, `consent-check.js` (OneTrust / Cookiebot adapters, `none-required`),
+  `consented.js` (category-gated loaders) and `martech.js` when a plugin route is on; installs
+  `adobe-rnd/aem-martech` / `aem-gtm-martech` with `git subtree` (`--no-install` prints the command
+  and the route runs on its fallback); hooks `loadDelayed()` once; idempotent, refuses to overwrite
+  hand-written files without `--force`. Tags run only on production hosts; preview needs
+  `?martech=on` (`&consent=accept|reject` for QA). The deploy runtime probe records `consentHook` and
+  `martechPlugins`.
+- **Verification** (`dynamics-check.mjs` `martech` check, qa `dynamics`): derived from the contract —
+  no route or tracking host before consent on `/` and `/?martech=on`, each enabled route requested on
+  `/?martech=on&consent=accept`. Every cross-site request is aborted after its host is recorded, so a
+  replay never sends a hit to a production account.
+- **Hands-off**: routes with captured ids ship enabled; `owner-decision` consent and missing ids stay
+  off and are listed by name in the hand-off — never an invented id.
+
 ## 0.29.1 — replica `--target-breakpoints`: deliver on the platform's steps, map by intent, gate the shift (#131)
 
 A recorded replica migration of a medical-technology site (about 105 pages) moved its breakpoints to

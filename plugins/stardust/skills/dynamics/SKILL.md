@@ -109,6 +109,7 @@ required; an interim tier that would capture regulated data (record as decided-o
 `stardust/current/_dynamics.json`, `dynamic-features.generated.md` · `stardust/dynamics/dynamic-features.generated-plan.{md,json}` ·
 `stardust/dynamic-features.md`, `stardust/dynamic-features-plan.md` (curated) · `helix-query.yaml` (listings + search, committed in the code branch) ·
 `data/<feature>/*.json` + `_provenance.json` (snapshots, code bus) · `scripts/site-config.js` (owner-facing integrations, disabled) ·
+`stardust/martech-contract.json` + `stardust/martech-handoff.md` (tag stack, consent, routes — triage.md § Martech; deploy Step 3b consumes it) ·
 `stardust/dynamics/parity.json` · `stardust/qa/dynamics-report.{md,json}` · register rows · journal + status lines.
 
 ## References
@@ -121,4 +122,4 @@ required; an interim tier that would capture regulated data (record as decided-o
 - `reference/forms.md` — controls not form tags; intake by content source; regulated data.
 - `reference/parity-report.md` — schema, check types, rules.
 - `reference/locale-trees.md` — I18N as a tree.
-- `scripts/` — `dynamics-detect.mjs`, `dynamics-plan.mjs`, `dynamics-check.mjs`, `snapshot-api.mjs`, `snapshot-forms.mjs`, `sync-sheets.mjs`, `vendors.json`, `lib.mjs`.
+- `scripts/` — `dynamics-detect.mjs`, `dynamics-plan.mjs`, `dynamics-check.mjs`, `martech.mjs`, `snapshot-api.mjs`, `snapshot-forms.mjs`, `sync-sheets.mjs`, `vendors.json`, `lib.mjs`.
