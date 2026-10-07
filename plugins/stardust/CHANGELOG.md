@@ -4,6 +4,41 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.29.1 — replica `--target-breakpoints`: deliver on the platform's steps, map by intent, gate the shift (#131)
+
+A recorded replica migration of a medical-technology site (about 105 pages) moved its breakpoints to
+the EDS steps 600 / 900 / 1200 after delivery. Reused boilerplate blocks already sat on those steps
+while recreated blocks copied the source's (the gate rewards matching them): about 20 distinct
+breakpoint values in one codebase, spotted at once in review. Moving about 250 rules was quick; the
+before/after re-gate (about 105 pages × 6 widths × 2 builds) took a night against a live CDN. At 900
+the pass count fell from 35 to 2, yet every failure checked was one of two intended changes (desktop
+header at 900 instead of 1024, about 40 px lower content; listings in their desktop row layout).
+Optional and off by default: without the flag, output, gate widths and register are unchanged.
+
+- **Input and state** (replica `SKILL.md` § Inputs): `--target-breakpoints <list>` (mobile-first
+  `min-width` steps; `--breakpoints` keeps meaning gate widths), persisted once as `DESIGN.json`
+  `extensions.breakpoints.target` — the one permitted addition to the promoted spec. The content cap
+  is untouched.
+- **Map in Phase 2, before any CSS** (`preserve-direction.md` § 4): source switch points from the
+  live stylesheets, mapped by intent (layout tier, not nearest number) into
+  `stardust/replica/breakpoint-map.md`; 1px pairs collapse, `max-width` becomes `min-width`. Phase 3
+  and C0 apply the map, CSS and JS alike, and never decide it. One register entry, evidenced by a
+  source | before | after strip.
+- **Gate** (`source-fidelity-gate.md` § Target breakpoints): widths add each target step; inside a
+  shifted band a failure is tier-shift (logged against the register entry, not iterated, outside the
+  cap; an `overrides.json` row at the delivery gate) or a defect (still fails). A noise check covers
+  widths outside every band.
+- **Lint** (`breakpoint-lint.mjs`, new): every `@media` width, `matchMedia` string and `innerWidth`
+  comparison under `blocks/ templates/ styles/ scripts/` must switch at a target step, all query
+  forms normalised to their switch width; skipped when no target is set. C0 wires it into
+  `npm run lint` (handoff contract § Boilerplate lint), so deploy and rollout run it before delivery.
+  `--inventory` lists a source's switch points for the map.
+- **`crop-compare.mjs --strip <out.png> [--c <c.png>]`** writes the bands side by side — the
+  register entry's image from the gate's own captures.
+- **Wording:** extract's content-cap line and recreation's cap rule no longer say the target keeps
+  its own two breakpoints (true of a redesign only); deploy's `--nav-height` rule follows the target
+  steps when set.
+
 ## 0.29.0 — the capture freeze is capture state, never the spec: media must play (#130)
 
 A recorded replica run shipped "poster + paused video" and static first slides across a site while
