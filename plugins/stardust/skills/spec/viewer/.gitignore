@@ -1,0 +1,5 @@
+node_modules/
+dist/
+.wrangler/
+# rendered from wrangler.template.jsonc; holds deployment ids
+wrangler.jsonc

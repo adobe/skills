@@ -4,6 +4,41 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.30.0 — new skill `spec`: the migration spec before the migration, as a database, a viewer and a document
+
+Scoping a migration was rebuilt by hand per engagement: a crawl, spreadsheets of templates and redirects, a
+block-reuse guess, a list of "things to ask". Two recorded runs made the method a skill. The first, on a
+medical-technology corporate site (about 2,900 sitemap URLs, AEM classic components), produced the method,
+the viewer and the spec. The second, on a sports-federation site (about 12,400 sitemap URLs, AEM Core
+Components), ran from the skill alone. It ended with 114 layout variants, 28 blocks (7 reuse, 5 variant, 16 new),
+27 dynamic features and 28 open questions, and no component left unmapped.
+
+- **Stages S1–S11** (`spec/SKILL.md`): inventory, resumable fetch (every redirect hop recorded), parse, link
+  check, optional real-user data, capture, mapping, layout variants, implementation, package, publish.
+  S1–S6 measure; S7 and S9 are judgement files under `judgement/` with a rationale per decision.
+- **Two parser profiles** (`reference/config.md`): `aem-classic` (`c-*` roots, colctrl rows) and `aem-core`
+  (grid members, column widths → rows; the root is the first non-`aem-` class). Lazy images
+  (`data-cmp-src`, `data-src`, `picture`) count as images.
+- **Template rules** cover body attribute, body class or meta, plus `pathSegments` for sites whose CMS has one
+  template for every page: the second run grouped by section, then by layout variant.
+- **Mapping rules engine** (`spec-map.mjs`): direct, layout, styled sections, nesting containers, carousel
+  slides, row heuristics, `dropIfEmpty` / `whenKids`. Re-run until nothing is unmapped. Measured against
+  the first run's hand-built mapping, 26 of 29 blocks came out identical and the variant clustering was
+  identical.
+- **Martech from public artefacts** (`spec-martech.mjs`): headers and CSP, vendor hosts via the dynamics
+  vendor table, tag-manager rules with path conditions, DOM selectors and the hosts their custom code loads,
+  data elements that read the DOM, consent geo rule sets and categories.
+- **Open questions ship a default** (`templates/open-questions.json`, 24 generic ones); findings carry
+  `{{SELECT …}}` for every number, so no figure is typed.
+- **Viewer** (`viewer/`): a Worker with D1, R2, a database chat that offers chat-built views, open questions
+  with recorded decisions, an onboarding tour, and the migration spec served live as `/api/spec.json` (agent
+  contract) and `/api/spec.md`. It reads; it never builds. Without telemetry it hides traffic instead of
+  showing zeros.
+- **Limits recorded**: bot protection answered 403 to the dynamics detector on 28 of 44 sample pages in the
+  second run (logged as a site-config item, not retried around). Content behind a role or rendered after load
+  can differ from the parsed HTML; the capture tagger maps paths at DOMContentLoaded and falls back to the
+  current DOM. A redirected locale tree is measured by final URL, not by the sitemap path.
+
 ## 0.29.1 — replica `--target-breakpoints`: deliver on the platform's steps, map by intent, gate the shift (#131)
 
 A recorded replica migration of a medical-technology site (about 105 pages) moved its breakpoints to

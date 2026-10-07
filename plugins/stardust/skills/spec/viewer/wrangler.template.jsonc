@@ -1,0 +1,33 @@
+// Template: render into wrangler.jsonc (see README.md) by replacing every __PLACEHOLDER__.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "__WORKER__",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*", "/media/*", "/report", "/report.html"]
+  },
+  "d1_databases": [
+    { "binding": "DB", "database_name": "__D1_NAME__", "database_id": "__D1_ID__" }
+  ],
+  "r2_buckets": [{ "binding": "MEDIA", "bucket_name": "__R2_BUCKET__" }],
+  "ratelimits": [
+    // namespace_id: any positive integer, unique per rate limiter in the account
+    { "name": "CHAT_LIMITER", "namespace_id": "71001", "simple": { "limit": 12, "period": 60 } }
+  ],
+  "vars": {
+    // Anthropic Messages API compatible endpoint (for example a Foundry deployment), ending in /v1/messages
+    "FOUNDRY_ENDPOINT": "__FOUNDRY_ENDPOINT__",
+    "CHAT_MODEL": "__CHAT_MODEL__",
+    "DAILY_TOKEN_BUDGET": "3000000"
+  }
+  // secrets (wrangler secret put <NAME>):
+  //   FOUNDRY_API_KEY  API key for FOUNDRY_ENDPOINT (required for chat and generated views)
+  //   EDITOR_KEY       shared key that allows recording answers to open questions
+  //   ADMIN_TOKEN      optional; enables PUT /api/admin/media/* for loading crops into R2; delete it after loading
+}

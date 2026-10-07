@@ -116,6 +116,7 @@ Once setup is done, route on the user's input:
   | `audit` | three-perspective site audit — design tensions, SEO/technical, LLM visibility — scored report + findings ledger |
   | `qa` | read-only post-deploy QA sweep of the live site — routing, fidelity, template conformance, rendering, visual regression, SEO, links, a11y, perf — findings report only, never fixes |
   | `uplift` | one-shot presales orchestrator (3 variants) |
+  | `spec` | pre-migration spec of a site — inventory, redirects, 404s, templates and layout variants, blocks per page with reuse verdicts, dynamic features, martech, locales, open questions with defaults — published as a read-only viewer with chat, plus the migration spec replica/migrate read |
 
   - `prototype` accepts `--cinematic` (or `--cinematic=<register>`)
     to layer a brand-faithful motion register on top of the static
