@@ -59,7 +59,7 @@ Column and key names are neutral; nothing in them names a site.
 
 Consumer-owned tables, created empty so a consumer can keep them across reloads: `question_answer` (id, question_id,
 answer, decided_option, answered_by, answered_at), `chat_log`, `usage`, `view_spec`. A reload replaces every other
-table and keeps these: a recorded answer replaces the question's default.
+table and keeps these.
 
 SQL views: `v_template_blocks(aem_template, block, urls)`, `v_block_usage(block, variant, instances, urls, templates)`,
 `v_url_blocks(path, aem_template, variant_code, pos, block, variant, kind, nested_in, section)`.
@@ -67,7 +67,3 @@ SQL views: `v_template_blocks(aem_template, block, urls)`, `v_block_usage(block,
 Media: `<dir>/media/<capture_key>/page.<media_ext>` for page captures and `<dir>/media/<crop>` for block crops; `crop`
 and `capture_key` in the tables are these relative paths.
 
-## Sharing
-
-The database is meant to be read by the customer and the implementer. Keep internal evaluations (reference/evaluation.md)
-out of it, and name no other migration or engagement in any text it carries.

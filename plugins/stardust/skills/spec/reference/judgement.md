@@ -4,10 +4,8 @@ The judgement turns measured component trees into EDS blocks. It is the part a s
 that decides whether the spec is right. Work from crops and data, write the rationale next to every decision.
 
 ## The blind rule
-Judge from the source site only. A context that has worked on a migration of the same site (its block names, its
-fixes) must not write `mapping.json` or `catalog.json`: hand the judgement to a fresh context with read bans on the
-migration's files. One measured case: the informed judge scored about 2 points of precision above a blind one —
-small, but enough to make an evaluation look better than it is (reference/evaluation.md).
+A context that has worked on a migration of the same site must not write `mapping.json` or `catalog.json`: hand the
+judgement to a fresh context with read bans on the migration's files (the measured effect: reference/evaluation.md).
 
 ## mapping.json (spec-map rules)
 ```json
@@ -25,8 +23,9 @@ small, but enough to make an evaluation look better than it is (reference/evalua
 - **dynamic** = rendered from data or client code (listings, search, people, calculators, client-rendered slots).
 - **rows** (grid rows / column controls): ≥ 3 columns with media → cards; image|text → columns with ratio; text-only →
   columns; a form inside → the form block with aside; a column holding another block → layout only.
+- **nesting**: EDS blocks do not nest; blocks inside a tabs/accordion keep their own rows with `nested_in` (fragments).
 - **Empty components** are authoring noise unless the rule says otherwise; client-rendered ones are kept (`dynamic`).
-- Iterate: `spec-map.mjs` until no component is unmapped; check the block page counts against `spec-profile.mjs`.
+- Check the block page counts against `spec-profile.mjs`.
 
 ## Deciding ambiguous components
 `spec-profile.mjs` gives pages, median text/images/links/forms, parents, children and an example URL.
@@ -40,8 +39,8 @@ server-rendered slot filled by script is a dynamic block whose content needs cap
   "reference": "<existing block or null>", "verdict": "reuse|variant|new", "rationale": "…",
   "variants": { "<variant>": { "verdict": "…", "rationale": "…" } } } } }
 ```
-**Families** (the neutral naming contract shared with the migration and the evaluation): hero, grid, marketo-form,
-contact-form, tag-links, sticky-nav, accordion, tabs, video, product-grid, table, map, news-cards, news-list,
+**Families** (the neutral naming contract shared with the migration and the evaluation): hero, grid, form,
+tag-links, sticky-nav, accordion, tabs, video, product-grid, table, map, news-cards, news-list,
 event-detail, event-list, statistics, panel, people, location-selector, embed, media-gallery, chart, social-share,
 promo-tile, contact-details, featured-product, search, other. Name blocks freely; the family is what scores compare.
 

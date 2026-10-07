@@ -27,5 +27,5 @@ template, use `{ "bodyClass": "^(.+)$" }` on a stable class, and let S8 variants
   main is usually the page's main container (`#mainContent`, `main`, `.root > .aem-Grid`).
 - Check with `spec-parse.mjs --fetch <40 rows>` and `spec-profile.mjs`: the vocabulary must be component types, not
   style classes, and `has_main` true on every page. A new CMS family is a new profile in `spec-parse.mjs` (root
-  rule + column rule) and the same rule in `spec-capture.mjs`'s tagger; the contract (reference/parsers in
-  spec-parse's header) does not change.
+  rule + column rule) and the same rule in `spec-capture.mjs`'s tagger; the node contract in spec-parse's header does not
+  change.

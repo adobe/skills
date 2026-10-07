@@ -33,4 +33,4 @@ Fetch two to four trees fully (S2–S3 with another scopePath) when coverage of 
 ## open_questions[]
 Start from `templates/open-questions.json`; keep what applies, add site-specific ones. Each:
 `{ id, area, owner: "stakeholder" | "implementer", blocking, question, context, options[], default, impact_rule, link }`.
-`impact_rule`: `sql:<SELECT one value>` or `value:<n>`. The default is what a hands-off migration ships.
+`impact_rule`: `sql:<SELECT one value>` or `value:<n>`.

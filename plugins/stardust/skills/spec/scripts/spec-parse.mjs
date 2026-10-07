@@ -6,9 +6,9 @@
  *
  *   node spec-parse.mjs [--config spec.config.json] [--fetch <jsonl>] [--html <dir>] [--out <dir>]
  *
- * Parser profiles (config.parser.profile, reference/parsers.md):
+ * Parser profiles (config.parser.profile, reference/config.md):
  *   aem-classic — component roots are `c-*` classes (not `*-content`) or `colctrl`; columns from colctrl rows.
- *   aem-core    — component roots are grid members (`aem-GridColumn`); the first class names the component;
+ *   aem-core    — component roots are grid members (`aem-GridColumn`); the first non-`aem-` class names the component;
  *                 consecutive members narrower than the grid form a `row` node with one column each.
  * config.parser.main: selector of the main region (comma = first match wins); chrome.{header,footer} selectors.
  * Node: { c, p (path id), mods, chars, imgs, videos, forms, links, h[], slides?, ncols?, cols?[[node]], kids?[node] }.
