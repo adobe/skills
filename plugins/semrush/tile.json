@@ -1,0 +1,9 @@
+{
+  "name": "adobe/semrush",
+  "version": "1.0.0",
+  "summary": "Third-party competitive SEO data via the Semrush MCP server (v2). Answers what a domain ranks for, which pages earn its traffic, who competes with it, where the keyword gaps are, and what its backlink profile looks like — for any site, not only your own. Complements first-party Search Console data.",
+  "private": false,
+  "skills": {
+    "semrush": { "path": "skills/semrush/SKILL.md" }
+  }
+}
