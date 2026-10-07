@@ -4,6 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, writeFileSync, unlinkSync, realpathSync } from 'node:fs';
 import { resolve, join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
+import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -18,6 +19,10 @@ const ERROR_TITLE_PATTERN =
   /error|denied|blocked|not satisfied|403|captcha|challenge|attention required|just a moment/i;
 
 const MIN_BODY_LENGTH = 100;
+
+// Unique per process so concurrent probes never share a playwright-cli
+// session, its browser profile, or a temp config file.
+const RUN_ID = randomUUID().slice(0, 8);
 
 // --- Exported helpers (used by tests and main) ---
 
@@ -153,7 +158,7 @@ function writeConfigFile(stepName, { channel, uaOverride, stealthInitPath } = {}
     config.browser.launchOptions.args = [`--user-agent=${REALISTIC_UA}`];
   }
   if (stealthInitPath) config.browser.initScript = [stealthInitPath];
-  const path = join(tmpdir(), `probe-${stepName}-config.json`);
+  const path = join(tmpdir(), `probe-${RUN_ID}-${stepName}-config.json`);
   writeFileSync(path, JSON.stringify(config));
   return path;
 }
@@ -191,7 +196,7 @@ function getDocumentHeaderLines(session, finalUrl) {
 }
 
 function runStep(url, stepDef) {
-  const session = `probe-${stepDef.name}`;
+  const session = `probe-${RUN_ID}-${stepDef.name}`;
   const start = Date.now();
   let configPath = null;
 
