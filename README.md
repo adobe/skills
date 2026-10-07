@@ -120,8 +120,9 @@ Solution-architecture guidance for Adobe Workfront Planning (WFP, also called Ma
 | Skill | Description |
 | ----- | ----------- |
 | `wf-planning-solution-architect` | Workspace and record-type design, connections and hierarchies, formula fields, tier limits, and API behavior for Workfront Planning<br>• `Design a Planning workspace for our marketing team`<br>• `A customer wants us to raise the 500 connected records limit`<br>• `Is the CASE function supported in Planning formulas?` |
+| `wf-planning-fusion-optimizer` | Read-only review of an exported Fusion scenario blueprint using the Workfront Planning connector: flags what's hurting run time, operations, and API call volume<br>• `Why is this Planning Fusion scenario so slow?`<br>• `Review this blueprint for rate-limit issues`<br>• `Reduce operations on our replication scenario` |
 
-See the [`wf-planning-solution-architect`](plugins/workfront/skills/wf-planning-solution-architect/README.md) doc for the routing model, reference layout, and documentation search script.
+See the [`wf-planning-solution-architect`](plugins/workfront/skills/wf-planning-solution-architect/README.md) and [`wf-planning-fusion-optimizer`](plugins/workfront/skills/wf-planning-fusion-optimizer/README.md) docs for the routing model, reference layout, and scripts.
 
 #### Adobe Experience Manager
 
@@ -460,9 +461,13 @@ plugins/
     ├── .cursor-plugin/
     │   └── plugin.json
     └── skills/
-        └── wf-planning-solution-architect/
+        ├── wf-planning-solution-architect/
+        │   ├── SKILL.md
+        │   ├── evals/
+        │   ├── references/
+        │   └── scripts/
+        └── wf-planning-fusion-optimizer/
             ├── SKILL.md
-            ├── evals/
             ├── references/
             └── scripts/
 ```
