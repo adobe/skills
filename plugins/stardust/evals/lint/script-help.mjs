@@ -38,6 +38,7 @@ const EXEMPT = {
   'dynamics/scripts/lib.mjs': 'library: shared arg/io/playwright helpers for the dynamics instruments; no CLI',
   'qa/scripts/lib.mjs': 'library: shared helpers for qa.mjs and its checks; no CLI',
   'rollout/scripts/lib.mjs': 'library: shared IO + roll-up helpers for the rollout scripts; no CLI',
+  'spec/scripts/lib.mjs': 'library: shared args, config, HTML tree reader and pool for the spec stages; no CLI',
 };
 
 const scripts = [];
