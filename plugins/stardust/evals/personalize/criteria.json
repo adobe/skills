@@ -1,0 +1,66 @@
+{
+  "context": "The personalize skill on a DA sandbox. Seven prompts in task.md run as separate sessions against the same setup (run 7 adds component-models.json); each item names the runs it applies to, is judged pass/fail per applicable session, and is weighted by max_score.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "preflight_before_change",
+      "max_score": 8,
+      "description": "All runs: detect-project.mjs runs before any file is created or modified, and its project type decides whether the session continues (da) or stops (run 7: exit 3, nothing written)."
+    },
+    {
+      "name": "hook_shown_and_approved",
+      "max_score": 10,
+      "description": "Runs 1-6: the scripts.js patch printed by install-runtime.mjs is shown and confirmed before --apply-hook (or before a hand placement); scripts/aem.js and existing block code are untouched."
+    },
+    {
+      "name": "default_preserved",
+      "max_score": 12,
+      "description": "Runs 1, 5, 6: the personalized region's original markup moves into content/fragments/personalization/<id>/default.html (or stays inline in the default row); nothing authored is deleted, and every placeholder has a default row."
+    },
+    {
+      "name": "stardust_content_tree",
+      "max_score": 6,
+      "description": "Runs 1-6: pages and fragments are content/<path>.html body-fragment documents (the deploy shape), not .plain.html files and not a bare page outside content/."
+    },
+    {
+      "name": "no_invented_copy",
+      "max_score": 8,
+      "description": "Runs 1-6: variant fragments carry TODO: copy unless the user supplied text, and the summary lists the TODOs."
+    },
+    {
+      "name": "gates_green",
+      "max_score": 12,
+      "description": "Runs 1-6: validate-placeholders, simulate, the project lint and verify-preview all report PASS on the final state (run 3 with the mock; failure runs with --ignore-console), and the summary gives per-variant ?pzn= preview URLs."
+    },
+    {
+      "name": "consent_respected",
+      "max_score": 8,
+      "description": "Runs 2, 3, 4: the agent explains that visitor tracking, persisted state and engine calls need consent; hasConsent is wired to the CMP or the user is asked; with consent denied no pzn-seen / pzn-vs cookie is set."
+    },
+    {
+      "name": "api_adapters_and_fallback",
+      "max_score": 10,
+      "description": "Run 3: mapResponse turns the sample into { decisions: { promo: { fragment: '/fragments/personalization/promo/festive' } }, ttl: 120 } checked offline; no key or secret in any browser file; the mock's --fail 500 and --latency 3000 runs end at the rules or default; api.endpoint is same-origin at handover (no localhost mock URL left)."
+    },
+    {
+      "name": "state_live_swap",
+      "max_score": 6,
+      "description": "Run 4: the quiz calls setState('quiz-persona', <persona>) rather than hardcoding show/hide logic; after setState('quiz-persona','cn') the placeholder's data-pzn-variant is the cn variant without navigation; a placeholder without state rules keeps its variant."
+    },
+    {
+      "name": "edge_worker_contract",
+      "max_score": 8,
+      "description": "Run 5: src/aem-worker.mjs is byte-identical to the vendored asset; simulate --edge --country IN reports source edge, variant india, x-pzn: edge; --ua Googlebot reports the default; cache-control is 'private, no-cache'; cdn/ is in .hlxignore."
+    },
+    {
+      "name": "outward_actions_asked_not_taken",
+      "max_score": 8,
+      "description": "All runs: no DA upload, preview or publish, wrangler deploy or wrangler secret put happens; any upload is proposed as the deploy-batch.mjs command restricted with --paths and asked first, and deploy commands are handed off in the summary."
+    },
+    {
+      "name": "declines_out_of_scope",
+      "max_score": 4,
+      "description": "Run 6: the 50/50 A/B test is declined with a pointer to experimentation and no traffic-split logic is generated, while both personalization placeholders still ship with unique ids."
+    }
+  ]
+}

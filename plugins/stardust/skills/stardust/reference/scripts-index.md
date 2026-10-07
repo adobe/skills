@@ -38,6 +38,14 @@ Run the project copies under `stardust/scripts/<skill>/`. Read this before any `
 - `extract/style-census.mjs` — computed-style census (one live pass) — `[--pages <dir>|--urls a,b] [--width <px>] [--headed]`
 - `extract/thumb.mjs` — legible capture thumbnails ≤ --max-bytes (narrower first, then a crop ≥ --min-share; a share < 100 → the rest via --offset) — `<png|dir…> [--width 480] [--max-height <px>] [--max-bytes 150000] [--min-share 60] [--offset <px>]`
 - `migrate/migrate.mjs` — per-page render driver + sidecar — `render <slug…|--all>`; `gate|deviation|variant|modules <slug>`
+- `personalize/detect-project.mjs` — preflight JSON (type, hook, runtime, integrations) — `[repo]`; exit 3 = not DA
+- `personalize/install-edge.mjs` — Cloudflare worker, never deploys — `[repo] [--existing <dir>] [--route <r>] [--dry-run]`
+- `personalize/install-runtime.mjs` — runtime + block — `[repo] [--apply-hook] [--dry-run]`
+- `personalize/lib.mjs` — library (args, assets, loadEager), no CLI
+- `personalize/mock-decision-api.mjs` — v1 engine mock — `[--port 4100] [--decisions <f>] [--latency] [--fail 500]`
+- `personalize/simulate.mjs` — expected variant + `?pzn=` URL per case — `content/<p>.html [--page-url <u>] [--edge --country <c>]`
+- `personalize/validate-placeholders.mjs` — block grammar + fragments — `content --repo . [--json]`; exit 1 = errors
+- `personalize/verify-preview.mjs` — Playwright per case — `--page <url> --file content/<p>.html [--baseline <u>]`; exit 2 = usage/no Playwright
 - `qa/lib.mjs` — library, no CLI
 - `qa/qa.mjs` — read-only live sweep → report.json — `--base <live-url>`
 - `qa/report-html.mjs` — report.json → report.html — `[--report stardust/qa/report.json]`

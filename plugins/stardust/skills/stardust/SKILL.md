@@ -114,6 +114,7 @@ Once setup is done, route on the user's input:
   | `dynamics` | the dynamic surface of a migration — detect, classify, triage, implement, verify (APIs, search, forms, modals, media, tags, client-rendered, sheet data); migration-bound, invoked by prepare-migration / replica / migrate / rollout or standalone on an already-migrated site |
   | `diff` | prototype ↔ build fidelity probes (pixel + structural) |
   | `audit` | three-perspective site audit — design tensions, SEO/technical, LLM visibility — scored report + findings ledger |
+  | `personalize` | placeholder personalization on a delivered DA page — rules (geo, device, visitor, param, state, audience) or a decision API pick an EDS fragment, client runtime + optional Cloudflare edge; on request only, never A/B tests or Target setup |
   | `qa` | read-only post-deploy QA sweep of the live site — routing, fidelity, template conformance, rendering, visual regression, SEO, links, a11y, perf — findings report only, never fixes |
   | `uplift` | one-shot presales orchestrator (3 variants) |
 

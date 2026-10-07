@@ -17,6 +17,7 @@ an existing library must be fed rather than forked.
 | `forms` | F | rebuild-native | forms.md | forms.md § existing library |
 | `client-compute` | F | client-only | one block: controls + inline logic | same |
 | `consent-gated-tags` | T, A | embed-passthrough | owner config, disabled | library martech behind a host guard |
+| `personalized-region` | A | rebuild-native | owner chose native over the vendor tag for a geo/device/returning-visitor region swap → the `personalize` skill after delivery (never A/B splits) | same |
 | `off-origin-data` | A, S, D | data-fed | snapshot + `Source` row | endpoint indirection + shim (off-origin-data.md) |
 | `sheet-sync` | D | data-fed | — | `scripts/sync-sheets.mjs` |
 | `client-rendered-page` | CR | static-snapshot | settled DOM; blank = human capture | same |

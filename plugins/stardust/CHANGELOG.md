@@ -4,6 +4,28 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.30.0 — `personalize`: placeholder personalization on delivered DA pages
+
+A new EDS-delivery skill, ported from an existing placeholder-personalization skill. A
+Personalization block maps conditions (geo, device, new/returning visitor, URL/UTM param, quiz or
+app state, custom audience) or a v1 decision-engine API to EDS fragments, with an authored default
+as the fallback. One rules engine runs unchanged in the browser runtime, the optional Cloudflare
+edge worker and the scripts (validator, simulator, Playwright preview check, mock engine), so every
+environment picks the same variant. New skill, so a minor bump.
+
+- **Fits the stardust content tree**: pages and fragments are `content/<path>.html` body-fragment
+  documents, the same shape `deploy` writes; `aem up` (16.21+) serves them at their real paths, so
+  variants render locally before any upload. DA upload is `deploy-batch.mjs` restricted with
+  `--paths` (and `--force`, since the page is usually already live), never a hand-rolled PUT.
+- **Ask-first gates kept**: the `scripts.js` hook, DA upload/preview/publish, `wrangler deploy`
+  and secrets, regions shared with Target or experimentation, H1/SEO copy. Never part of the
+  hands-off chain.
+- **Every CLI answers `--help`** before any I/O (the installers previously took `--help` as a
+  repo path), has a `scripts/test/<name>.test.mjs`, and resolves Playwright from the project;
+  assets resolve in the plugin tree and the `stardust/scripts/personalize/` copy.
+- **dynamics hand-off**: `patterns.md` names `personalize` for class-A rows whose source swaps a
+  region per geo, device or returning visitor; A/B experimentation stays out of scope.
+
 ## 0.29.0 — the capture freeze is capture state, never the spec: media must play (#130)
 
 A recorded replica run shipped "poster + paused video" and static first slides across a site while

@@ -33,6 +33,8 @@ const ALLOW = [
   'github.com', 'githubusercontent.com', 'github.io', 'npmjs.org', 'npmjs.com', 'jsdelivr.net', 'unpkg.com',
   'schema.org', 'json-schema.org', 'sitemaps.org', 'w3.org', 'googleapis.com', 'gstatic.com', 'fontsource.org',
   'opencollective.com', 'claude.com', 'anthropic.com', 'coolors.co', 'refero.design',
+  // personalize's vendored, unedited adobe/aem-cloudflare-prod-worker: its Apache-2.0 header and the CDN docs it links
+  'apache.org', 'cloudflare.com',
   // the plugin's own schema $id namespace, and a state.json field path (`site.da.org`) that reads like a host
   'stardust.dev', 'da.org',
   // crawler user-agent patterns the AI-readability gate replays
