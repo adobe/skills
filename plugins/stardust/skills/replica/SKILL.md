@@ -32,9 +32,12 @@ eyeballing.
 ## Inputs
 
 - `<URL>` — required. The site to migrate.
-- `--breakpoints <list>` — optional. Gate breakpoints, default `1440,360`.
-  Mobile is NOT free: the validation run's 1440-tuned prototype measured 24%
-  at 360. Each breakpoint gets its own gate pass.
+- `--breakpoints <list>` — optional. Gate widths, default `1440,360`; each
+  gets its own gate pass (mobile is not free — gate doc § Per-breakpoint).
+- `--target-breakpoints <list>` — optional. Mobile-first `min-width` steps
+  (e.g. `600,900,1200`) the delivered site switches layout at instead of the
+  source's. Absent = source breakpoints kept, every target step below
+  skipped. Persisted in `DESIGN.json` `extensions.breakpoints.target`.
 - `--register <file>` — optional. User-supplied inconsistency items to seed
   the register (see Phase 2). Without it and without an audit, the register
   is empty — a pure replica.
@@ -166,8 +169,13 @@ Full contract: `reference/preserve-direction.md`. Summary:
    and/or user-supplied items (`--register`). Every entry needs captured
    evidence + the minimal change + a status. **Empty register = pure
    replica** — that is a valid and common outcome, not a failure.
+4. **Target breakpoints (only with `--target-breakpoints`)**, before any
+   CSS exists (`reference/preserve-direction.md` § 4): persist the list, map
+   each source breakpoint to a step by intent in
+   `stardust/replica/breakpoint-map.md`, seed the ONE register entry. Phase 3
+   and C0 apply the map; they never decide it.
 
-4. **Dynamic surface (migration gate — the stardust `dynamics` skill Phases 1–3).**
+5. **Dynamic surface (migration gate — the stardust `dynamics` skill Phases 1–3).**
    Phase 1 must have run `extract --dynamics`. Run the detector on the
    archetypes, draft the triage (`--target-origin` when the EDS host is
    known), curate `stardust/dynamic-features.md` + `-plan.md`. Every row
@@ -203,6 +211,11 @@ as **clean semantic HTML/CSS** from three sources, in this order:
     probe.
 (c) **The captured screenshot as ground truth** for everything CSS doesn't
     name (composition, image crops, paint effects).
+
+**With a target set, every `@media` rule and JS width threshold
+(`matchMedia`, `innerWidth`) is authored on the target steps from the first
+line** per `breakpoint-map.md`, never fixed later (a retrofit costs a full
+re-gate); `breakpoint-lint.mjs` exits 0 on a prototype before its gate.
 
 **Every archetype gets its own standalone prototype — cumulative, never
 skipped.** Never skip to direct platform authoring for a new archetype:
@@ -295,6 +308,11 @@ a verdict; 0 only when all four ran and passed).
   build side — gate.sh fails the round on more whatever the pixel number
   says; a `capture failed (exit 1)` round (after gate.sh's one
   retry) is re-queued, never counted.
+
+**With a target set (#131):** gate widths add each target step; inside a
+shifted band a pixel failure is **tier-shift** (logged against the register
+entry, never iterated) or a **defect** (still fails) — gate doc § Target
+breakpoints.
 
 **Every prototype is a row (#125).** When the archetypes pass, one run per width
 writes the prototype table — `node stardust/scripts/replica/gate-all.mjs --stage
@@ -411,6 +429,10 @@ had one section for the whole run).
   node-slotting, never value-slotting) and pass `block-roundtrip --ew`.**
 - **Site-wide rollout** via the stardust `rollout` skill, unchanged — its block dedup
   is what implements "same blocks across the whole site".
+- **Target breakpoints:** C0 authors the foundation and reused blocks on
+  the target steps and wires `breakpoint-lint.mjs` into `npm run lint`
+  (`reference/handoff-contract.md`), so every deploy and rollout lint pass
+  enforces it.
 - **C-deliver runs in units** (`reference/handoff-contract.md` § 3, row C +
   Fan-out discipline): C0 — ONE foundation subagent authors AND deploys the
   foundation; the main agent gates the shell on the published origin, then
@@ -487,6 +509,7 @@ stardust/
 ├── prototypes/<slug>-proposed.html     ← gated archetypes (one per page type)
 ├── replica/
 │   ├── inconsistency-register.md       ← the ONLY permitted design deltas
+│   ├── breakpoint-map.md               ← source → target breakpoint map (only with --target-breakpoints)
 │   ├── progress.json                   ← per-page-type ledger: iterations, gate results, residuals, motion inventory
 │   ├── motion/<slug>.json              ← motion-observe evidence
 │   └── gates/<slug>-<width>/           ← live.png, proto.png, diff.png, probe outputs per iteration

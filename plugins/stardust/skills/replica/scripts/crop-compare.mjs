@@ -23,6 +23,11 @@
  *     --threshold <pct>  pass bar; exit 2 above it           (default 2)
  *     --pm-threshold <n> pixelmatch per-pixel color threshold (default 0.1)
  *     --json          machine-readable summary on stdout
+ *     --strip <path>  also write the bands side by side (A | B [| C]) — the
+ *                     evidence image for an inconsistency-register entry
+ *                     (replica target breakpoints: source | before | after)
+ *     --c <c.png>     third column for --strip; --y-c <px> its band top
+ *                     (default: --y-b). Never part of the diff or the verdict.
  *
  *   Also prints the diff TEXTURE (share of differing pixels with ≥5 differing
  *   neighbours): thin-edge = glyph-antialiasing noise, thick = blocks/bands.
@@ -71,6 +76,9 @@ const out = arg('out', 'crop-diff.png');
 const bar = Number(arg('threshold', 2));
 const pmThreshold = Number(arg('pm-threshold', 0.1));
 const asJson = process.argv.includes('--json');
+const strip = arg('strip', null);
+const fileC = arg('c', null);
+const y2 = Number(arg('y-c', y1));
 
 if (!fileA || !fileB || Number.isNaN(h) || h <= 0) {
   console.error('usage: crop-compare.mjs <a.png> <b.png> --height <px> [--y <px>] [--y-b <px>] [--out diff.png] [--threshold pct]');
@@ -79,15 +87,17 @@ if (!fileA || !fileB || Number.isNaN(h) || h <= 0) {
 
 let A;
 let B;
+let C = null;
 try {
   A = PNG.sync.read(fs.readFileSync(fileA));
   B = PNG.sync.read(fs.readFileSync(fileB));
+  if (strip && fileC) C = PNG.sync.read(fs.readFileSync(fileC));
 } catch (e) {
   console.error(`crop-compare error: ${e.message}`);
   process.exit(1);
 }
-const w = Math.min(A.width, B.width);
-for (const [img, y, name] of [[A, y0, fileA], [B, y1, fileB]]) {
+const w = Math.min(A.width, B.width, C ? C.width : Infinity);
+for (const [img, y, name] of [[A, y0, fileA], [B, y1, fileB], ...(C ? [[C, y2, fileC]] : [])]) {
   if (y + h > img.height) {
     console.error(`crop-compare error: band y ${y}+${h} exceeds ${name} height ${img.height}`);
     process.exit(1);
@@ -104,6 +114,14 @@ const cb = crop(B, y1);
 const diff = new PNG({ width: w, height: h });
 const n = pixelmatch(ca.data, cb.data, diff.data, w, h, { threshold: pmThreshold });
 fs.writeFileSync(out, PNG.sync.write(diff));
+if (strip) {
+  const cols = C ? [ca, cb, crop(C, y2)] : [ca, cb];
+  const GAP = 16;
+  const s = new PNG({ width: cols.length * w + (cols.length - 1) * GAP, height: h });
+  s.data.fill(255);
+  cols.forEach((c, k) => PNG.bitblt(c, s, 0, 0, w, h, k * (w + GAP), 0));
+  fs.writeFileSync(strip, PNG.sync.write(s));
+}
 
 // Diff TEXTURE — separates glyph-antialiasing noise from real misalignment.
 // A differing pixel is "thick" when ≥5 of its 8 neighbours also differ: blocks,
@@ -133,7 +151,7 @@ if (asJson) {
   console.log(JSON.stringify({
     a: fileA, b: fileB, y: y0, yB: y1, height: h, width: w,
     diffPixels: n, diffPct: +pct.toFixed(2), matchPct: +(100 - pct).toFixed(2),
-    threshold: bar, pass, diffImage: out,
+    threshold: bar, pass, diffImage: out, ...(strip ? { strip } : {}),
     texture: { thickPct: +thickPct.toFixed(1), label: texture },
   }));
 } else {

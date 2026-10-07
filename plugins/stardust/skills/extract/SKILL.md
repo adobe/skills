@@ -405,7 +405,8 @@ px, authored via, tier) into `extensions.breakpoints`: `containerMaxWidth`
 it), once DESIGN.json is authored (it merges). A cap on the shell or
 on every archetype is design intent whatever its value; `capRegister` lists
 single-module or archetype-divergent caps for the inconsistency register.
-Source breakpoints are never inherited — the target keeps its own two.
+The cap model never records layout breakpoints: a redesign target keeps its own two;
+replica keeps the source's, or maps them to `--target-breakpoints`.
 Captures:
 
 - **Logo** by the v1 priority chain: inline SVG → `<img>` with
