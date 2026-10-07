@@ -1,10 +1,11 @@
 # spec.config.json
 
-One file at the project root. Paths in the spec stages resolve against it; outputs go under `dir`.
+One file at the project root. Paths in the spec stages resolve against it; outputs go under `dir`. Keys not listed
+here are ignored, so a consumer (for example a viewer's deploy script) may keep its own settings in the same file.
 
 | key | required | meaning |
 |---|---|---|
-| `site` | yes | display name shown in the viewer and the spec |
+| `site` | yes | display name, written to `meta.site_name` |
 | `origin` | yes | `https://<host>` of the site under scope, no trailing slash |
 | `scopePath` | yes | path prefix of the scope, e.g. `/en/` or `/<country>/<lang>/` |
 | `dir` | no | output folder, default `stardust/spec` |
@@ -14,7 +15,6 @@ One file at the project root. Paths in the spec stages resolve against it; outpu
 | `parser` | yes | `{ "profile": "aem-classic" \| "aem-core", "main": "<selector>", "chrome": { "header": "<selector>", "footer": "<selector>" } }` |
 | `rum` | no | `{ "keyEnv": "RUM_DOMAIN_KEY", "domain": "<host>", "days": 90 }`; omit or null when no key exists |
 | `referenceBlocks` | no | `{ "name": "<library>", "count": <n>, "source": "<where the blocks live>" }` — what reuse verdicts compare against |
-| `viewer` | for S11 | `{ "worker", "d1", "r2", "url", "foundryEndpoint", "chatModel" }` |
 
 ## Choosing the template rule
 Open two pages of different kinds and read `<body>`. Classic AEM pages often carry `data-template`; editable-template

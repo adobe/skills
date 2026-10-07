@@ -93,8 +93,8 @@ Delivery Services.
 - `spec` measures a site before a migration (inventory, redirects, 404s,
   templates and layout variants, blocks per page with reuse verdicts against a
   block library, dynamic features, martech, locales) and records the
-  judgement calls and open questions with defaults; it publishes a read-only
-  viewer with a chat and a migration spec the migration flows read.
+  judgement calls and open questions with defaults, all in one SQLite database
+  with a documented contract that a separate viewer application serves.
 - `qa` sweeps the live EDS site read-only: routing, content fidelity against
   the capture, template conformance, rendered integrity, visual regression,
   metadata and JSON-LD, links, axe accessibility, performance budgets,

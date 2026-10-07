@@ -9,7 +9,7 @@
  *
  * The domain key is read from the environment variable named by --key-env or config.rum.keyEnv (never from a
  * file, never printed). Without a key the stage writes <dir>/rum/rum.json with { available: false } and exits 0:
- * every later stage and the viewer treat traffic as unavailable. Hourly files (daily files are downsampled).
+ * every later stage and every consumer treat traffic as unavailable. Hourly files (daily files are downsampled).
  */
 import { arg, helpAndExit, loadConfig, log, pool, writeJSON } from './lib.mjs';
 

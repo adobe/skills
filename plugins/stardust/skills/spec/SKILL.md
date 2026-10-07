@@ -1,8 +1,8 @@
 ---
 name: spec
-description: Build the pre-migration spec of a website — inventory, redirects, 404s, templates and layout variants, the EDS blocks each page needs with reuse verdicts against an existing block library, dynamic features, martech, data contracts, locales and the open decisions — publish it as an interactive viewer with a chat, and emit a migration spec an autonomous migration agent reads before it starts. Use when someone asks to scope, estimate or plan a migration, wants "which pages use block X / which blocks does page Y need", a redirect or 404 inventory, or a migration brief for a customer. Not the migration itself (replica, migrate, rollout).
+description: Build the pre-migration spec of a website — inventory, redirects, 404s, templates and layout variants, the EDS blocks each page needs with reuse verdicts against an existing block library, dynamic features, martech, data contracts, locales and the open decisions — packaged as one SQLite database with a documented contract, which a viewer application serves to people and an autonomous migration agent reads before it starts. Use when someone asks to scope, estimate or plan a migration, wants "which pages use block X / which blocks does page Y need", a redirect or 404 inventory, or a migration brief for a customer. Not the migration itself (replica, migrate, rollout).
 license: Apache-2.0
-compatibility: Requires Node 22.5+ (node:sqlite), Playwright with Chromium resolvable from the project for the capture stages, and wrangler for the viewer. Real-user data needs an AEM Operational Telemetry domain key.
+compatibility: Requires Node 22.5+ (node:sqlite), and Playwright with Chromium resolvable from the project for the capture stages. Real-user data needs an AEM Operational Telemetry domain key.
 ---
 
 # stardust:spec — the migration spec, before the migration
@@ -10,7 +10,8 @@ compatibility: Requires Node 22.5+ (node:sqlite), Playwright with Chromium resol
 A spec answers two audiences from one database: the people planning a migration (what has to be built, what can be
 reused, what is broken, what needs a decision) and the agent that will run it (archetypes, block backlog, metadata
 contract, indexes, dynamic features, martech, locales, redirects, and a default for every open question). The agent
-builds the spec here, stage by stage; the viewer only reads it.
+builds the spec here, stage by stage, into `spec.sqlite`. Showing it is not part of the skill: a separate viewer
+application reads the database and never crawls or judges.
 
 ## Principles
 
@@ -21,12 +22,12 @@ builds the spec here, stage by stage; the viewer only reads it.
 - **Variants, not templates.** CMS templates are loose; plan, capture and QA by layout variant (S8).
 - **Every open question ships a default.** Hands-off migration applies the default; a recorded answer replaces it.
 - **Speak the downstream contracts.** Dynamic features use the dynamics taxonomy (`../dynamics/reference/triage.md`);
-  the spec is the input replica/migrate read instead of re-detecting.
+  `spec.sqlite` is the input replica/migrate can read instead of re-detecting.
 
 ## Setup
 
 `spec.config.json` at the project root (reference/config.md): `origin`, `scopePath`, `template` rule, `parser`
-profile + main selector, optional `rum`, `referenceBlocks`, `viewer`. Copy the scripts to `stardust/scripts/spec/`.
+profile + main selector, optional `rum`, `referenceBlocks`. Copy the scripts to `stardust/scripts/spec/`.
 
 ## Stages
 
@@ -42,7 +43,6 @@ profile + main selector, optional `rum`, `referenceBlocks`, `viewer`. Copy the s
 | S8 | Variants + visuals | `spec-variants.mjs`, `spec-pick.mjs`, `spec-capture.mjs` | `judgement/variants.json`, `media/` |
 | S9 | Implementation | `../dynamics/scripts/dynamics-detect.mjs --urls <reps> --out <dir>/dynamics`, `spec-martech.mjs`; write `judgement/catalog.json`, `implementation.json`, `findings.json`, `search-probes.json` | `martech/`, `dynamics/`, `judgement/` |
 | S10 | Package | `spec-build.mjs` | `spec.sqlite` |
-| S11 | Publish | `spec-load.mjs` (render, data, deploy, media) | the viewer |
 
 Large sites: S2 runs at 4 parallel requests and is resumable — start it, then write config and judgement scaffolding
 while it runs. One browser job at a time (S6/S8/S9), two tabs.
@@ -63,21 +63,21 @@ reference/judgement.md has the method; `templates/` has the starting files. In s
 
 ## Outputs
 
-- `spec.sqlite` and the viewer (reference/viewer.md): explorer, implementation pages, chat with chat-built views,
-  open questions with recorded decisions, onboarding tour.
-- The migration spec, generated live by the viewer: `/api/spec.json` (agent contract) and `/api/spec.md` (people).
+- `<dir>/spec.sqlite`: every measurement and judgement, findings with computed numbers, open questions with defaults.
+  reference/database.md is the contract (meta keys, tables, consumer-owned tables a reload keeps).
+- `<dir>/media/`: page captures and block crops the tables point to.
 
 ## Gates
 
 - S7 passes when `spec-map.mjs` reports no unmapped component and every block in page-blocks is in `catalog.json`
   (`spec-build.mjs` warns otherwise).
 - S10 passes when every finding renders without `–` and every open question has a default.
-- Before sharing: no customer secret in the project or the viewer; the public viewer names no other migration.
+- Before sharing: no customer secret in the project or the database; nothing in the database names another migration.
 
 ## References
 
 - reference/config.md — `spec.config.json`, template rules, parser profiles.
 - reference/judgement.md — mapping rules, block families, reuse verdicts, contact sheets, the blind rule.
 - reference/implementation.md — features, martech, data layer, metadata, indexes, locales, open questions.
-- reference/viewer.md — tables, meta contract, deploy, secrets, chat guardrails.
+- reference/database.md — the output contract: meta keys, tables, media paths.
 - reference/evaluation.md — scoring a spec against a delivered migration; blind re-judgement.

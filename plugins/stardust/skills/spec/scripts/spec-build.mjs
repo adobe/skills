@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * spec-build.mjs — S10 package: assemble every stage's output into <dir>/spec.sqlite, the read-only database the
- * viewer serves (reference/viewer.md lists the tables). Numbers in findings are computed, never typed:
+ * consumers read (reference/database.md is the contract). Numbers in findings are computed, never typed:
  * judgement/findings.json entries may embed {{SELECT …}} which the build replaces with the query's value.
  *
  *   node --no-warnings spec-build.mjs [--config spec.config.json] [--out <sqlite>]

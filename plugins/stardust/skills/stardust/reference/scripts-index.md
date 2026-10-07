@@ -88,7 +88,6 @@ Run the project copies under `stardust/scripts/<skill>/`. Read this before any `
 - `spec/spec-fetch.mjs` — S2 resumable fetch — `[--urls <f>] [--out <jsonl>] [--workers 4]`
 - `spec/spec-inventory.mjs` — S1 robots + sitemaps
 - `spec/spec-links.mjs` — S4 link check — `[--max 20000]`
-- `spec/spec-load.mjs` — S11 viewer — `[--step render|data|media|deploy|all]`
 - `spec/spec-map.mjs` — S7 mapping → page blocks — `[--rules <json>]`
 - `spec/spec-martech.mjs` — S9 martech — `[--no-custom-code]`
 - `spec/spec-parse.mjs` — S3 trees + signals — `[--fetch <jsonl>] [--out <dir>]`
