@@ -4,6 +4,33 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.31.0 — publish always; done is one verdict
+
+Two contracts a hands-off run had to be told from outside the skill, because the skill left them open. Both
+are now the skill's own.
+
+- **Publish always** (contract change). The replica handoff contract said "Publish is a decision… stay
+  preview-only until it is made", while rollout Phase C says publish in the loop. Which rule won depended on
+  which document the agent read last, and nobody owned the decision under hands-off. Now every delivered page,
+  the redirects sheet and the chrome documents go live (`PUT → preview → live`). The decision step and its
+  `eds-conversion-log.md` record are gone, C0 and the cluster deploys no longer hold `--no-publish`, and the DA
+  protocol's publish step is the default rather than optional. `deploy-batch.mjs --no-publish` remains for an
+  explicit preview-only ask. Deploy's font-licensing hold (self-hosted proprietary faces) is unchanged.
+- **`done-check.mjs`** (new, rollout). One completion verdict from the ledgers the run already writes:
+  - `pages_unfinished`: coverage rows not verified.
+  - `pages_failed`: failed rows, or a failed published-origin gate.
+  - `pages_not_live`: delivered rows that do not answer 200 on the live host.
+  - `open_p1`: the optimize gate's own count, source parity excluded.
+  - `rollout_incomplete`: the last `I-dashboard` line is not an `end`.
+
+  Exit 0 complete, 1 gaps, 2 usage. `--offline` skips the live probe, and `--json` prints
+  `{ complete, gaps[], liveChecked }`. Every reader that needs "is the run done" previously re-derived it from
+  the same files.
+- **Replica handoff** writes `replica handoff end` only on `done-check.mjs` exit 0, and closes each gap with its
+  own remedy (handoff contract § 5). A gap only the owner can close is a `blocked` line.
+- **Bounded entry captures dynamics:** `extract --single --dynamics` (and `--pages … --dynamics`), because Phase 2's
+  dynamic-surface gate needs the per-page reach signals that `--single` alone does not record.
+
 ## 0.30.3 — spec: knowledge files instead of a database; one rule format instead of SQL
 
 `spec` ended at `spec.sqlite`, but no stardust skill read it. Its one client, a viewer application, loads it into

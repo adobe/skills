@@ -123,8 +123,8 @@ it rests on. `switch to redesign` runs `$stardust prepare-migration
 **Bounded/single-page entry (one-page or pilot runs).** `--prep` is the
 site-wide contract; it is NOT the only way in. When the ask is "replicate
 just this page" — or the user wants to pilot one archetype before committing
-to a full migration — invoke `$stardust extract <URL> --single` (or
-`--pages <slug,...>` for a short list) instead. This is a first-class entry,
+to a full migration — invoke `$stardust extract <URL> --single --dynamics`
+(or `--pages <slug,...> --dynamics` for a short list) instead. This is a first-class entry,
 not an improvisation: the recreation phase needs, per page, the captured
 page JSON (verbatim content), the per-page screenshot (ground truth), and
 the captured fonts — all of which a bounded extract provides; the source-CSS
