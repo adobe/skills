@@ -1,0 +1,26 @@
+{
+ "_about": "Starter rules for AEM Core Components sites (spec-map). Site components (custom resource types) are not here: profile them (spec-profile, spec-sheet) and add one rule each. Delete this key.",
+ "direct": {
+  "text": { "kind": "default", "block": "text" },
+  "title": { "kind": "default", "block": "heading" },
+  "image": { "kind": "default", "block": "image" },
+  "button": { "kind": "default", "block": "button" },
+  "separator": { "kind": "default", "block": "separator", "keepEmpty": true },
+  "breadcrumb": { "kind": "metadata", "block": "breadcrumb" },
+  "list": { "kind": "default", "block": "link-list" },
+  "teaser": { "kind": "block", "block": "cards", "variant": "teaser" },
+  "embed": { "kind": "block", "block": "embed" },
+  "video": { "kind": "block", "block": "video" },
+  "download": { "kind": "block", "block": "cards", "variant": "download" },
+  "form-container": { "kind": "block", "block": "form" },
+  "search": { "kind": "dynamic", "block": "search" },
+  "languagenavigation": { "kind": "metadata", "block": "language-navigation" },
+  "pdfviewer": { "kind": "block", "block": "embed", "variant": "pdf" },
+  "target": { "kind": "drop" }
+ },
+ "layout": ["container", "grid", "experiencefragment", "target"],
+ "sections": { "container": { "block": "section-style", "modsMatch": "(^bg-|background|theme|--dark|--light|inverse)" } },
+ "nesting": { "tabs": "tabs", "accordion": "accordion" },
+ "carousels": { "carousel": { "single": { "block": "hero", "variant": "image-slide" }, "multi": { "block": "carousel" } } },
+ "rows": { "cards": "cards", "columns": "columns", "video": "video", "form": ["form-container"] }
+}

@@ -1,0 +1,5 @@
+[
+ "<b>Plan by layout variant, not by template.</b> The largest template has {{SELECT url_count FROM template ORDER BY url_count DESC LIMIT 1}} pages in {{SELECT variant_count FROM template ORDER BY url_count DESC LIMIT 1}} layout variants.",
+ "<b>Reuse.</b> {{SELECT COUNT(*) FROM url u WHERE outcome='page' AND in_sitemap=1 AND NOT EXISTS (SELECT 1 FROM page_block pb JOIN block_variant bv ON bv.block=pb.block AND bv.variant IS pb.variant WHERE pb.url_id=u.id AND pb.kind IN ('block','dynamic') AND bv.verdict='new')}} of {{SELECT COUNT(*) FROM url WHERE outcome='page' AND in_sitemap=1}} live pages need no new block.",
+ "<b>Redirects:</b> <a href=\"/redirects?kind=migration\">{{SELECT COUNT(*) FROM redirect WHERE kind='migration'}} pages change path on EDS</a>; {{SELECT COUNT(*) FROM url WHERE in_sitemap=1 AND outcome='redirect-broken'}} sitemap URLs redirect into a 404 today."
+]
