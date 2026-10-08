@@ -117,6 +117,7 @@ Once setup is done, route on the user's input:
   | `personalize` | placeholder personalization on a delivered DA page — rules (geo, device, visitor, param, state, audience) or a decision API pick an EDS fragment, client runtime + optional Cloudflare edge; on request only, never A/B tests or Target setup |
   | `qa` | read-only post-deploy QA sweep of the live site — routing, fidelity, template conformance, rendering, visual regression, SEO, links, a11y, perf — findings report only, never fixes |
   | `uplift` | one-shot presales orchestrator (3 variants) |
+  | `spec` | pre-migration spec of a site — pages, blocks with reuse verdicts, dynamic features, martech, open decisions — as one SQLite database |
 
   - `prototype` accepts `--cinematic` (or `--cinematic=<register>`)
     to layer a brand-faithful motion register on top of the static

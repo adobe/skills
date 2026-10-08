@@ -24,7 +24,8 @@ false "looks fine".
 
 ## Per-breakpoint procedure
 
-Breakpoints: **1440 AND 360** by default (`--breakpoints`). **Mobile is not
+Breakpoints: **1440 AND 360** by default (`--breakpoints`; plus each target
+step when one is set — § Target breakpoints). **Mobile is not
 free**: UC1-E1's gate-passing 1440 prototype measured 24.2% / height Δ
 −1572px at 360. Each breakpoint is its own full gate pass with its own
 iteration budget. Gate 1440 first (the geometry lifted from desktop CSS),
@@ -246,6 +247,37 @@ ledger, and judge each against its own regime's precedent.
    element probes rule a PASS the way the overflow assert does: `clip-probe: Clipped: n`
    with n > 0 (every regime), a `content-presence` MISSING / HIDDEN link or heading
    (published regime), a required repeated unit off (`stardust/replica/units.json`).
+
+## Target breakpoints — shifted bands (#131)
+
+Only when `DESIGN.json` `extensions.breakpoints.target` is set (replica
+`--target-breakpoints`); otherwise nothing here applies.
+
+- **Widths:** `--breakpoints` plus every target step, each a full pass
+  (optionally step − 1: the band below a step is otherwise unmeasured).
+- **Shifted band:** per `breakpoint-map.md` row, the widths between the
+  source breakpoint and its step. There the build legitimately shows the
+  layout the source shows only past its own breakpoint.
+- **Classify every pixel / height failure at a width inside a shifted band:**
+  - **tier-shift** — the failing band matches the source captured at a width
+    in the build's tier (one extra live capture per shifted width, cached as
+    `live-tier.png` in the gate dir; compare by one crop each), or the only
+    difference is a uniform vertical offset from the chrome swap. Logged as
+    `tierShift[]` against the register entry (§ Residual logging format);
+    never iterated; outside the 3-iteration cap.
+  - **defect** — overflow, clipping, overlap, broken columns, missing
+    content. A hard failure as everywhere else: the overflow assert,
+    `clip-probe` and `content-presence` are never classified tier-shift.
+- **Reporting:** every report at a target step states pass / tier-shift /
+  defect separately (ledger `--detail`, progress.json). At the delivery gate
+  a tier-shift page gets an `overrides.json` row — `{"<slug>": {"verdict":
+  "tier-shift", "reason": "R-<nn>"}}` — only when clip and content pass; the
+  measured number stays beside it.
+- **Noise check:** a width outside every shifted band whose pass count
+  moves by more than a few pages is re-captured before reporting (recorded:
+  42 → 57 at an unaffected width was live retry noise).
+- **Header:** the desktop nav fits on one line at the lowest desktop step;
+  `--nav-height` is reserved per target step.
 
 ## Reading the band breakdown
 
@@ -840,6 +872,8 @@ Per archetype per breakpoint, in `stardust/replica/progress.json`:
           "restoreAtDelivery": "hero: autoplay muted loop playsinline, paused under prefers-reduced-motion; carousel-2: auto-rotate 5 s, pause on hover" }
       ]
     },
+    "900": { "...": "...", "tierShift": [
+        { "band": "y 0–5200", "pct": 14.2, "register": "R-07", "why": "desktop header at 900 (source: 1024); uniform +40 px offset below it" } ] },
     "360": { "...": "..." }
   }
 }

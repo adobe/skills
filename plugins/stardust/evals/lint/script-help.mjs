@@ -39,6 +39,7 @@ const EXEMPT = {
   'personalize/scripts/lib.mjs': 'library: shared args/asset-path/loadEager helpers for the personalize scripts; no CLI',
   'qa/scripts/lib.mjs': 'library: shared helpers for qa.mjs and its checks; no CLI',
   'rollout/scripts/lib.mjs': 'library: shared IO + roll-up helpers for the rollout scripts; no CLI',
+  'spec/scripts/lib.mjs': 'library: shared args, config, HTML tree reader and pool for the spec stages; no CLI',
 };
 
 const scripts = [];

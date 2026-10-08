@@ -4,7 +4,7 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
-## 0.30.0 — `personalize`: placeholder personalization on delivered DA pages
+## 0.31.0 — `personalize`: placeholder personalization on delivered DA pages
 
 A new EDS-delivery skill: placeholder personalization on delivered DA pages. A
 Personalization block maps conditions (geo, device, new/returning visitor, URL/UTM param, quiz or
@@ -32,6 +32,75 @@ environment picks the same variant. New skill, so a minor bump.
   `stardust/scripts/personalize/` copy.
 - **dynamics hand-off**: `patterns.md` names `personalize` for class-A rows whose source swaps a
   region per geo, device or returning visitor; A/B experimentation stays out of scope.
+
+## 0.30.0 — new skill `spec`: the migration spec before the migration, as one documented database
+
+Scoping a migration was rebuilt by hand per engagement: a crawl, spreadsheets of templates and redirects, a
+block-reuse guess, a list of "things to ask". Two recorded runs made the method a skill. The first, on a
+medical-technology corporate site (about 2,900 sitemap URLs, AEM classic components), produced the method
+and the database contract. The second, on a sports-federation site (about 12,400 sitemap URLs, AEM Core
+Components), ran from the skill alone. It ended with 114 layout variants, 28 blocks (7 reuse, 5 variant, 16 new),
+27 dynamic features and 28 open questions, and no component left unmapped.
+
+- **Stages S1–S10** (`spec/SKILL.md`): inventory, resumable fetch (every redirect hop recorded), parse, link
+  check, optional real-user data, capture, mapping, layout variants, implementation, package.
+  S1–S6 and S8 measure; S7 and S9 are judgement files under `judgement/` with a rationale per decision.
+- **Two parser profiles** (`reference/config.md`): `aem-classic` (`c-*` roots, colctrl rows) and `aem-core`
+  (grid members, column widths → rows; the root is the first non-`aem-` class). Lazy images
+  (`data-cmp-src`, `data-src`, `picture`) count as images.
+- **Template rules** cover body attribute, body class or meta, plus `pathSegments` for sites whose CMS has one
+  template for every page: the second run grouped by section, then by layout variant.
+- **Mapping rules engine** (`spec-map.mjs`): direct, layout, styled sections, nesting containers, carousel
+  slides, row heuristics, `dropIfEmpty` / `whenKids`. Re-run until nothing is unmapped. Measured against
+  the first run's hand-built mapping, 26 of 29 blocks came out identical and the variant clustering was
+  identical.
+- **Martech from public artefacts** (`spec-martech.mjs`): headers and CSP, vendor hosts via the dynamics
+  vendor table, tag-manager rules with path conditions, DOM selectors and the hosts their custom code loads,
+  data elements that read the DOM, consent geo rule sets and categories.
+- **Open questions ship a default** (`templates/open-questions.json`, 24 generic ones); findings carry
+  `{{SELECT …}}` for every number, so no figure is typed.
+- **One output, `spec.sqlite`** (`reference/database.md`): neutral meta keys and tables, plus consumer-owned
+  tables (recorded decisions, saved views) that a reload keeps. Showing it is a separate application's job:
+  the skill ships no viewer, and a consumer reads the database without crawling or judging.
+- **Limits recorded**: bot protection answered 403 to the dynamics detector on 28 of 44 sample pages in the
+  second run (logged as a site-config item, not retried around). Content behind a role or rendered after load
+  can differ from the parsed HTML; the capture tagger maps paths at DOMContentLoaded and falls back to the
+  current DOM. A redirected locale tree is measured by final URL, not by the sitemap path.
+
+## 0.29.1 — replica `--target-breakpoints`: deliver on the platform's steps, map by intent, gate the shift (#131)
+
+A recorded replica migration of a medical-technology site (about 105 pages) moved its breakpoints to
+the EDS steps 600 / 900 / 1200 after delivery. Reused boilerplate blocks already sat on those steps
+while recreated blocks copied the source's (the gate rewards matching them): about 20 distinct
+breakpoint values in one codebase, spotted at once in review. Moving about 250 rules was quick; the
+before/after re-gate (about 105 pages × 6 widths × 2 builds) took a night against a live CDN. At 900
+the pass count fell from 35 to 2, yet every failure checked was one of two intended changes (desktop
+header at 900 instead of 1024, about 40 px lower content; listings in their desktop row layout).
+Optional and off by default: without the flag, output, gate widths and register are unchanged.
+
+- **Input and state** (replica `SKILL.md` § Inputs): `--target-breakpoints <list>` (mobile-first
+  `min-width` steps; `--breakpoints` keeps meaning gate widths), persisted once as `DESIGN.json`
+  `extensions.breakpoints.target` — the one permitted addition to the promoted spec. The content cap
+  is untouched.
+- **Map in Phase 2, before any CSS** (`preserve-direction.md` § 4): source switch points from the
+  live stylesheets, mapped by intent (layout tier, not nearest number) into
+  `stardust/replica/breakpoint-map.md`; 1px pairs collapse, `max-width` becomes `min-width`. Phase 3
+  and C0 apply the map, CSS and JS alike, and never decide it. One register entry, evidenced by a
+  source | before | after strip.
+- **Gate** (`source-fidelity-gate.md` § Target breakpoints): widths add each target step; inside a
+  shifted band a failure is tier-shift (logged against the register entry, not iterated, outside the
+  cap; an `overrides.json` row at the delivery gate) or a defect (still fails). A noise check covers
+  widths outside every band.
+- **Lint** (`breakpoint-lint.mjs`, new): every `@media` width, `matchMedia` string and `innerWidth`
+  comparison under `blocks/ templates/ styles/ scripts/` must switch at a target step, all query
+  forms normalised to their switch width; skipped when no target is set. C0 wires it into
+  `npm run lint` (handoff contract § Boilerplate lint), so deploy and rollout run it before delivery.
+  `--inventory` lists a source's switch points for the map.
+- **`crop-compare.mjs --strip <out.png> [--c <c.png>]`** writes the bands side by side — the
+  register entry's image from the gate's own captures.
+- **Wording:** extract's content-cap line and recreation's cap rule no longer say the target keeps
+  its own two breakpoints (true of a redesign only); deploy's `--nav-height` rule follows the target
+  steps when set.
 
 ## 0.29.0 — the capture freeze is capture state, never the spec: media must play (#130)
 

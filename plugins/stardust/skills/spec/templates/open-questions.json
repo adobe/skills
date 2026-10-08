@@ -1,0 +1,376 @@
+{
+ "_about": "Generic open questions: copy the ones that apply into implementation.json#open_questions, make the context and default site-specific, add the site's own.",
+ "questions": [
+  {
+   "id": "Q-SCOPE-1",
+   "area": "Scope",
+   "owner": "stakeholder",
+   "blocking": false,
+   "question": "Should live pages with no sampled traffic in 90 days be migrated, redirected or retired?",
+   "context": "Retiring them shrinks the migration and the QA surface. Only applies when real-user data exists.",
+   "options": [
+    "Migrate all",
+    "Retire and redirect to the parent section",
+    "Archive (migrate with noindex)"
+   ],
+   "default": "Migrate all; flag them for a post-launch review.",
+   "impact_rule": "sql:SELECT COUNT(*) FROM url WHERE outcome='page' AND in_sitemap=1 AND pageviews_90d=0",
+   "link": "/urls?traffic=none"
+  },
+  {
+   "id": "Q-SCOPE-2",
+   "area": "Scope",
+   "owner": "stakeholder",
+   "blocking": false,
+   "question": "Should empty pages (header and footer only) be redirected instead of migrated?",
+   "context": "Typically section roots without content.",
+   "options": [
+    "Redirect to the closest useful page",
+    "Migrate as empty pages",
+    "Build a simple index page"
+   ],
+   "default": "Redirect each to its first child or parent landing page.",
+   "impact_rule": "sql:SELECT COUNT(*) FROM url WHERE in_sitemap=1 AND flag='empty'",
+   "link": "/urls?flag=empty"
+  },
+  {
+   "id": "Q-SCOPE-3",
+   "area": "Scope",
+   "owner": "stakeholder",
+   "blocking": false,
+   "question": "Are live pages that are not in the sitemap in scope?",
+   "context": "Found through internal links.",
+   "options": [
+    "In scope",
+    "Out of scope (redirect)",
+    "Decide per page"
+   ],
+   "default": "In scope when they have traffic; otherwise redirect.",
+   "impact_rule": "sql:SELECT COUNT(*) FROM url WHERE outcome='page' AND in_sitemap=0",
+   "link": "/urls?sitemap=0"
+  },
+  {
+   "id": "Q-SCOPE-4",
+   "area": "URLs",
+   "owner": "stakeholder",
+   "blocking": true,
+   "question": "Is the EDS URL format (lowercase, no .html) accepted, with redirects for every old URL?",
+   "context": "One rule covers .html; paths that also change case or characters need explicit entries. Campaign links, QR codes and tag-manager rules use the old paths.",
+   "options": [
+    "EDS format + redirects",
+    "Keep .html via CDN rewrite"
+   ],
+   "default": "EDS format with a .html rule plus explicit redirects.",
+   "impact_rule": "sql:SELECT COUNT(*) FROM redirect WHERE kind='migration'",
+   "link": "/redirects?kind=migration"
+  },
+  {
+   "id": "Q-SCOPE-5",
+   "area": "Redirects",
+   "owner": "stakeholder",
+   "blocking": false,
+   "question": "Where should broken legacy redirects and the most-hit 404s point?",
+   "context": "Existing redirects into dead pages and real-user 404s.",
+   "options": [
+    "Approve agent-proposed targets",
+    "Provide targets",
+    "Leave as 404"
+   ],
+   "default": "The agent proposes the closest live page; unmatched ones stay 404.",
+   "impact_rule": "sql:SELECT COUNT(*) FROM broken WHERE source IN ('rum','sitemap')",
+   "link": "/broken"
+  },
+  {
+   "id": "Q-I18N-1",
+   "area": "Multi-language",
+   "owner": "stakeholder",
+   "blocking": true,
+   "question": "Which locale trees follow the scoped tree, in what order?",
+   "context": "Applies to multi-language sites; see the locale inventory.",
+   "options": [
+    "Scoped tree only now",
+    "Waves by traffic",
+    "All trees at once"
+   ],
+   "default": "Scoped tree first; the code base is built locale-ready; trees follow by traffic.",
+   "impact_rule": "sql:SELECT SUM(urls) FROM locale_tree",
+   "link": null
+  },
+  {
+   "id": "Q-I18N-2",
+   "area": "Multi-language",
+   "owner": "stakeholder",
+   "blocking": true,
+   "question": "How is content inheritance between locales (live copies, masters) replaced?",
+   "context": "EDS document authoring has no live-copy inheritance.",
+   "options": [
+    "Copy at migration, then independent trees",
+    "Translation/localization workflow",
+    "Keep authoring in the CMS that has inheritance",
+    "Shared master tree with overrides"
+   ],
+   "default": "Copy at migration; trees become independent; translation via the stakeholder's vendor.",
+   "impact_rule": "value:0",
+   "link": null
+  },
+  {
+   "id": "Q-MT-1",
+   "area": "Martech",
+   "owner": "stakeholder",
+   "blocking": true,
+   "question": "Do the EDS hosts use the same tag-manager property (new environment) or a new one?",
+   "context": "Rules, data elements and custom code live in the property.",
+   "options": [
+    "Same property, new environment",
+    "New property"
+   ],
+   "default": "Same property with a new environment for the EDS hosts, production switched at go-live.",
+   "impact_rule": "sql:SELECT COUNT(*) FROM launch_rule",
+   "link": null
+  },
+  {
+   "id": "Q-MT-2",
+   "area": "Martech",
+   "owner": "stakeholder",
+   "blocking": true,
+   "question": "Must EDS reproduce the data-layer schema exactly?",
+   "context": "Data elements read named fields; changing names means editing the tag manager.",
+   "options": [
+    "Same schema",
+    "New schema + tag-manager update"
+   ],
+   "default": "Same schema, populated from page metadata and block events.",
+   "impact_rule": "sql:SELECT COUNT(*) FROM datalayer_field",
+   "link": null
+  },
+  {
+   "id": "Q-MT-3",
+   "area": "Martech",
+   "owner": "stakeholder",
+   "blocking": false,
+   "question": "Which page-specific campaign rules are still active, and who rewrites their conditions?",
+   "context": "Rules matching .html paths or DOM selectors break on EDS; rules whose page is gone are retire candidates.",
+   "options": [
+    "Analytics team rewrites all",
+    "Agent proposes rewrites for review",
+    "Retire expired campaigns first"
+   ],
+   "default": "The agent produces a rule-by-rule rewrite sheet; the analytics team applies it.",
+   "impact_rule": "sql:SELECT COUNT(*) FROM launch_rule WHERE needs_rewrite=1",
+   "link": null
+  },
+  {
+   "id": "Q-MT-4",
+   "area": "Martech",
+   "owner": "stakeholder",
+   "blocking": true,
+   "question": "Can the EDS hosts be added to the consent platform, and how does it load?",
+   "context": "The CMP must load before the tag manager and keep the geo rule sets.",
+   "options": [
+    "Direct load in head",
+    "Through the tag manager"
+   ],
+   "default": "Direct load in head with the existing configuration; the tag manager gated by consent.",
+   "impact_rule": "value:0",
+   "link": null
+  },
+  {
+   "id": "Q-MT-5",
+   "area": "Martech",
+   "owner": "implementer",
+   "blocking": false,
+   "question": "Do the analytics collector and report suites carry over unchanged?",
+   "context": "First-party collectors (CNAMEs) and environment-specific suites.",
+   "options": [
+    "Unchanged",
+    "New suites for EDS staging"
+   ],
+   "default": "Unchanged in production; a staging suite for the EDS environment.",
+   "impact_rule": "value:0",
+   "link": null
+  },
+  {
+   "id": "Q-FORM-1",
+   "area": "Forms",
+   "owner": "stakeholder",
+   "blocking": false,
+   "question": "Which form services and form ids are current, and should forms be consolidated?",
+   "context": "Hosted form vendors and embedded form ids found on pages.",
+   "options": [
+    "Keep as authored",
+    "Consolidate"
+   ],
+   "default": "Keep every page's form as authored.",
+   "impact_rule": "value:0",
+   "link": null
+  },
+  {
+   "id": "Q-FORM-2",
+   "area": "Forms",
+   "owner": "stakeholder",
+   "blocking": true,
+   "question": "Where do forms that post to the current CMS submit once it is gone?",
+   "context": "Server-side form handlers disappear with the CMS.",
+   "options": [
+    "Rebuild on a form service",
+    "EDS forms + submission service",
+    "Endpoint provided by the stakeholder"
+   ],
+   "default": "Rebuild the UI with submission disabled and contact details shown until the endpoint is decided.",
+   "impact_rule": "value:0",
+   "link": null
+  },
+  {
+   "id": "Q-ASSET-1",
+   "area": "Assets",
+   "owner": "stakeholder",
+   "blocking": true,
+   "question": "Does the current media delivery (DAM / dynamic media) remain after the CMS is decommissioned?",
+   "context": "Images and videos referenced from the DAM.",
+   "options": [
+    "Keep the DAM delivery (assets as links)",
+    "Move assets to EDS media"
+   ],
+   "default": "Keep the DAM delivery and author assets as links.",
+   "impact_rule": "value:0",
+   "link": null
+  },
+  {
+   "id": "Q-ASSET-2",
+   "area": "Assets",
+   "owner": "stakeholder",
+   "blocking": true,
+   "question": "Where will linked documents (PDFs, brochures) be hosted?",
+   "context": "Documents linked from pages; large files exceed EDS media limits.",
+   "options": [
+    "DAM / other storage",
+    "EDS content (size limits)",
+    "External storage + redirects"
+   ],
+   "default": "Keep them on the DAM delivery; redirect their paths if they move.",
+   "impact_rule": "sql:SELECT COUNT(*) FROM broken WHERE kind='asset'",
+   "link": null
+  },
+  {
+   "id": "Q-DATA-1",
+   "area": "Data",
+   "owner": "stakeholder",
+   "blocking": false,
+   "question": "Who owns the taxonomy that drives listings, related links and analytics?",
+   "context": "Tags and categories on pages.",
+   "options": [
+    "Taxonomy sheet + page metadata",
+    "External feed"
+   ],
+   "default": "A taxonomy sheet plus per-page metadata, seeded from the current tags.",
+   "impact_rule": "value:0",
+   "link": null
+  },
+  {
+   "id": "Q-DATA-2",
+   "area": "Search",
+   "owner": "stakeholder",
+   "blocking": false,
+   "question": "Is metadata-based search (query index) acceptable, or is full-text search required?",
+   "context": "EDS indexes give titles, descriptions and metadata.",
+   "options": [
+    "Query-index search",
+    "Hosted search service"
+   ],
+   "default": "Query-index search with title-first ranking, checked against the recorded probe counts.",
+   "impact_rule": "value:0",
+   "link": null
+  },
+  {
+   "id": "Q-DATA-3",
+   "area": "Data",
+   "owner": "stakeholder",
+   "blocking": false,
+   "question": "Can the stakeholder provide the source or data for client-rendered apps?",
+   "context": "Components with no server HTML.",
+   "options": [
+    "Provide source",
+    "Snapshot as content",
+    "Retire"
+   ],
+   "default": "Snapshot as content where possible; apps wait for the source.",
+   "impact_rule": "sql:SELECT COUNT(*) FROM feature WHERE reproducibility='needs-human-capture'",
+   "link": null
+  },
+  {
+   "id": "Q-SEO-1",
+   "area": "SEO",
+   "owner": "stakeholder",
+   "blocking": false,
+   "question": "Should the migration add structured data?",
+   "context": "Measure current JSON-LD coverage first.",
+   "options": [
+    "Add from metadata",
+    "Not now"
+   ],
+   "default": "Not in the like-for-like migration; listed as an improvement.",
+   "impact_rule": "value:0",
+   "link": null
+  },
+  {
+   "id": "Q-OPS-1",
+   "area": "Infrastructure",
+   "owner": "stakeholder",
+   "blocking": true,
+   "question": "Which CDN fronts the EDS site in production?",
+   "context": "The current CDN and its rules.",
+   "options": [
+    "Bring your own CDN",
+    "Adobe-managed CDN"
+   ],
+   "default": "Bring your own CDN with push invalidation.",
+   "impact_rule": "value:0",
+   "link": null
+  },
+  {
+   "id": "Q-OPS-2",
+   "area": "Infrastructure",
+   "owner": "implementer",
+   "blocking": false,
+   "question": "Who owns the security headers (CSP, HSTS, permissions policy) on the new stack?",
+   "context": "Today set by the origin.",
+   "options": [
+    "CDN config",
+    "EDS headers config"
+   ],
+   "default": "Carry the current headers over, adding the EDS hosts.",
+   "impact_rule": "value:0",
+   "link": null
+  },
+  {
+   "id": "Q-IMPL-1",
+   "area": "Implementation",
+   "owner": "implementer",
+   "blocking": false,
+   "question": "Are panels with nested blocks inside tabs/accordions authored as fragments?",
+   "context": "EDS blocks cannot nest.",
+   "options": [
+    "Fragments",
+    "Flatten into sections"
+   ],
+   "default": "Fragments, one per panel with nested blocks.",
+   "impact_rule": "sql:SELECT COUNT(DISTINCT pb.url_id) FROM page_block pb JOIN url u ON u.id=pb.url_id WHERE pb.nested_in IS NOT NULL AND u.in_sitemap=1",
+   "link": "/urls?nested=1"
+  },
+  {
+   "id": "Q-IMPL-2",
+   "area": "Implementation",
+   "owner": "stakeholder",
+   "blocking": false,
+   "question": "Is the target pixel parity, or consolidation onto a shared design system?",
+   "context": "Pixel parity turns many reuse verdicts into variants.",
+   "options": [
+    "Pixel parity",
+    "Consolidate"
+   ],
+   "default": "Pixel parity on archetypes; small differences consolidated with sign-off.",
+   "impact_rule": "value:0",
+   "link": null
+  }
+ ]
+}

@@ -197,8 +197,8 @@ captured instead of the layout MODEL (one wrapping flex row).
   `content` / `module`, px, authored via), `modules[]` (capped or full-bleed
   per section), `containerMaxWidth`, the derived `probeWidth`. Encode a
   wrapper cap as `main { max-width }`, a module cap on the section column —
-  never a resolved px, never a source breakpoint (the target keeps its own
-  two). For everything else diff a lift at 1440 against one at `probeWidth`:
+  never a resolved px, never a breakpoint (a cap is not a layout switch;
+  breakpoints are `preserve-direction.md` § 4's concern). For everything else diff a lift at 1440 against one at `probeWidth`:
   a box that scales is FLUID — encode its authored rule (`%` / `vw` /
   max-width model), never the px; a box that holds is fixed. Heights get the
   same test: a fixed-height hero gated pixel-perfect at 1440 read "10px
