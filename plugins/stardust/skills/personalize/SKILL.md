@@ -25,8 +25,8 @@ picks the same variant.
 It works on the EDS delivery side of stardust: on a page `deploy` or `rollout` already shipped
 (`content/<page>.html`), or on any DA project. On a migration, class-A rows in
 `stardust/dynamic-features.md` whose source swaps a region per geo, device or returning visitor are
-the candidate placeholders. It is never part of the hands-off chain: it runs on request, and every
-ask-first gate below stays a question.
+the candidate placeholders. It runs on request only (no stardust flow chains it), and it has no
+yes/no gates: the only questions are the choices in Step 1, each with a default.
 
 ## When to Use
 
@@ -39,7 +39,7 @@ ask-first gate below stays a question.
 **Do NOT use for:**
 - A/B tests, traffic splits, "50/50" → decline; point to aem-experimentation (an experimentation
   skill will reuse this runtime later)
-- Adobe Target / AJO activity setup, or regions already controlled by Target → decline or confirm
+- Adobe Target / AJO activity setup, or a region the user says Target controls → decline
 - Replacing text tokens such as `{name}` → placeholders sheet
 - Migrating the page itself → the stardust migration flow first (`replica` or `migrate`, then `deploy`)
 
@@ -50,9 +50,14 @@ ask-first gate below stays a question.
   alongside it. Every script answers `--help`.
 - **Never touch** `scripts/aem.js`, existing block code, the vendored `aem-worker.mjs`, or the
   authored default content (move it into the default fragment, never delete it).
-- **Ask first:** the `scripts.js` hook, any DA upload / preview / publish, any `wrangler deploy` or
-  secret, overrides on production, a third-party geo endpoint, a region also driven by Target or
-  experimentation, a placeholder that holds the H1 or main SEO copy.
+- **Choices, not gates:** ask only where there is a real choice (Step 1), always with its default.
+  No reply, or hands-off (`--hands-off`, "no approval gates", a non-interactive run; stardust
+  `SKILL.md` § Hands-off mode): take the defaults and list them as named assumptions in the
+  summary. Never ask a yes/no confirmation (hook, mode, H1 placeholder, worker wrap).
+- **Delivery follows `deploy`:** pushing the code branch and the DA upload, preview and publish are
+  on by default, once every gate passes (Step 7).
+- **Off unless chosen:** `wrangler deploy` / `wrangler secret put`, overrides on production, a
+  third-party geo endpoint. Hand off those commands.
 - **Never:** invent marketing copy (variant fragments are `TODO:` scaffolds unless the user gives
   copy), put API keys in browser code, send PII to the engine, ship a placeholder without `default`.
 - Keep the default meaningful: it is what bots, failures, timeouts and no-consent visitors see.
@@ -68,19 +73,26 @@ node skills/personalize/scripts/detect-project.mjs <project>
 | `projectType: da` | Continue |
 | `xwalk` / `doc` (exit 3) | Stop: "personalize supports DA projects only for now." |
 | `fragmentBlock.exportsLoadFragment: false` | The installer adds the stock fragment block; warn if one exists without `loadFragment` |
-| `integrations.target` / `experimentation` true | Ask which regions they control; never personalize the same region |
+| `integrations.target` / `experimentation` true | A Step 1 choice: which regions they control (default: none of the requested ones); never personalize a region named there |
 | `runtime.installed` true | Skip to Step 4 unless files `differ` (re-run the installer to update) |
 
 ## Step 1: Gather Inputs
 
-Ask in **one grouped list** (skip what the user already said):
-1. Page(s) and the region to personalize (an existing block or section).
-2. Per variant: the condition and the content (user-provided copy, or a `TODO` scaffold).
-3. The default (normally the current content) or `none`.
-4. Decision engine? Endpoint, a sample request/response, and whether it speaks the v1 contract.
-5. Consent: CMP in use (detect reports `integrations.consent`) and the consent category.
-6. CDN: Adobe-managed, or BYO Cloudflare that the customer can deploy a worker to?
-7. Analytics: Adobe Data Layer / Launch, Tealium, or none.
+Take what the prompt already says. Ask the rest in **one grouped list**, every question showing
+its default; no reply or hands-off takes the defaults (Critical Rules). Nothing else is asked.
+
+| Choice | Default |
+|---|---|
+| Page and region | The region the prompt names; if only a page is named, its first section (the hero) |
+| Variant content | `TODO:` scaffolds (user copy only when given) |
+| Default | The current region content, moved into the default fragment (`none` only when asked) |
+| Decision source | Rules; `source \| api` only when the prompt names an engine (then its endpoint and a sample request/response) |
+| Consent | No CMP: `hasConsent` denies, so `visitor:` rules, persisted state and engine calls stay off |
+| CDN | Own Cloudflare (client + edge) when detect reports `edge.cloudflare` or the prompt says so; otherwise Adobe-managed (client) |
+| Geo source | Edge meta / `pzn-geo` cookie when present, preview `?pzn-geo=` otherwise; no third-party endpoint |
+| Target / experimentation regions | None of the requested regions |
+| Analytics | None (`personalization:applied` still fires) |
+| DA delivery | On, like `deploy`: push the code branch, then upload, preview and publish the personalized page and its fragments (Step 7); `preview only` or `no upload` when asked |
 
 Criteria and syntax: `reference/criteria.md`. Authoring rules: `reference/authoring-model.md`.
 
@@ -88,28 +100,27 @@ Criteria and syntax: `reference/criteria.md`. Authoring rules: `reference/author
 
 | Situation | Mode |
 |---|---|
-| Below the fold, or device/state/audience criteria | Client (default) |
-| Above the fold **and** geo or API **and** BYO Cloudflare | Client + edge |
-| Above the fold geo on the Adobe-managed CDN | Client with a geo source (edge shim cookie or opt-in endpoint); warn about LCP |
+| `edge.cloudflare` true (a wrangler config or worker in the repo), or the prompt says the site fronts its own Cloudflare | Client + edge (default) |
+| Not detected (Adobe-managed CDN) | Client; above-the-fold geo needs a geo source (edge shim cookie or opt-in endpoint), so warn about LCP |
 | Decision engine needs a secret | Same-origin route: edge `/pzn/decide` or a CDN proxy. Never a key in the browser |
 
 The client runtime is always installed: it serves preview on `aem.page`, decides what the edge
-defers, and handles live state. Explain the recommendation and confirm it.
+defers, and handles live state. Take the recommended mode and say why in the summary; no confirmation.
 Details: `reference/client-mode.md`, `reference/edge-cloudflare.md`.
 
 ## Step 3: Install the Runtime
 
 ```bash
-node skills/personalize/scripts/install-runtime.mjs <project>
+node skills/personalize/scripts/install-runtime.mjs <project> --apply-hook
 ```
 
 - Copies `scripts/personalization/*`, `blocks/personalization/*` and, if missing,
   `blocks/fragment/fragment.js`. Site-owned files (`config.js`, `personalization.css`, fragment
   block) are never overwritten.
-- Prints the `scripts.js` patch (a 4-line lazy import before `decorateMain(main)` in `loadEager`).
-  **Show the patch, ask for approval**, then apply it with `--apply-hook`. If the hook is
-  `not-found` (non-boilerplate `scripts.js`), place it by hand per `reference/client-mode.md` and
-  show the diff.
+- Always pass `--apply-hook`: the `scripts.js` hook (a 4-line lazy import before
+  `decorateMain(main)` in `loadEager`) is applied without asking; show the patch in the summary.
+  If the hook is `not-found` (non-boilerplate `scripts.js`), place it by hand per
+  `reference/client-mode.md` and show the diff.
 - Edit `scripts/personalization/config.js`: wire `hasConsent` to the CMP (default denies),
   register custom audiences, set `api.endpoint` (Step 5), keep `overrides: 'preview'`.
 
@@ -125,9 +136,10 @@ For each placeholder (templates in `assets/content/`, conventions in `reference/
    the last path segment, cannot be `default`, and must be unique within the placeholder (two
    fragments with the same last segment are an error).
 
-Uploading to DA is outward-facing: **ask before uploading** and follow `reference/da-content.md`
-(`deploy`'s batch driver restricted to the personalized paths, bulk metadata `noindex` for
-`/fragments/**`).
+A placeholder may hold the H1 or main SEO copy: keep the H1 in the default and every variant,
+keep variants semantically equivalent, and note it in the summary (no question).
+
+Everything stays local until Step 7 passes; delivery to DA comes after it.
 
 ## Step 5: Decision Source
 
@@ -149,12 +161,12 @@ node skills/personalize/scripts/install-edge.mjs <project> [--route www.example.
 
 - Generates `cdn/cloudflare-worker/` from `adobe/aem-cloudflare-prod-worker` (vendored unchanged)
   plus the personalization wrapper; infers `ORIGIN_HOSTNAME` from the git remote; adds `cdn/` to
-  `.hlxignore`. For an existing worker use `--existing <dir>` and follow `reference/edge-cloudflare.md`.
+  `.hlxignore`. For an existing worker use `--existing <dir>`, wrap its entry point per
+  `reference/edge-cloudflare.md` and show the diff.
 - Keep `edge-config.js` `fragmentPrefixes` / `botsGetDefault` aligned with `config.js`.
 - `/pzn/decide` is public: it only forwards same-origin v1 requests with the `pzn-consent` cookie,
   but recommend the `PZN_RATE_LIMITER` binding (commented in `wrangler.toml`) before launch.
-- **Never** run `wrangler deploy` or `wrangler secret put` unless the user explicitly asks; hand off
-  the commands in the summary.
+- `wrangler deploy` / `wrangler secret put` are off unless chosen; hand off the commands in the summary.
 
 ## Step 7: Validate
 
@@ -174,10 +186,23 @@ for `visitor:` rules. API placeholders: the mock with `--api-decisions`, then `-
 `--ua Googlebot`, then `npx wrangler dev --local-protocol https`. Recipes and the test matrix:
 `reference/preview-and-testing.md`.
 
+**Deliver once every gate passes** (on by default, like `deploy`; `reference/da-content.md`):
+1. Commit the runtime, block, hook and config and push the code branch, so the branch preview
+   serves `blocks/personalization/personalization.js` (200) before any page that uses it.
+2. Run `deploy-batch.mjs` restricted with `--paths` to the personalized page(s) and their
+   fragments: PUT → preview → publish, fragments with their page.
+3. Re-run `verify-preview.mjs` against the branch preview URL.
+
+No DA coordinates or token, or a push that fails: deliver nothing, and hand off the commands with
+the reason. A published page without the block code shows its raw rule rows.
+
 ## Step 8: Summarize
 
 Report:
-- Files created/changed (runtime, hook, config, content, worker) and what still has `TODO:` copy.
+- Files created/changed (runtime, the `scripts.js` hook diff, config, content, worker) and what still has `TODO:` copy.
+- Named assumptions: every Step 1 default taken, and the mode chosen with its reason.
+- Delivered preview and live URLs, or the hand-off commands and reason when delivery did not run.
+- Hand-off commands for what stays off (`wrangler deploy`, `wrangler secret put`).
 - Preview URLs per variant (from `simulate.mjs --page-url`), e.g. `?pzn=home-hero:india`.
 - Author instructions: how to add a rule row or a new variant fragment in DA.
 - **Launch checklist** (`reference/cross-cutting.md`): consent hook wired; fragments `noindex`;

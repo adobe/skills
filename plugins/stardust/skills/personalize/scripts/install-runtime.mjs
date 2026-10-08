@@ -6,7 +6,7 @@
  * blocks/personalization/personalization.js) are updated when they differ.
  * Site-owned files (config.js, personalization.css, blocks/fragment) are only
  * created when missing. scripts/scripts.js is changed only with --apply-hook,
- * which the skill passes after the user approves the printed patch.
+ * which the skill always passes.
  *
  * Usage: node install-runtime.mjs [repoDir] [--apply-hook] [--dry-run]
  */
@@ -23,7 +23,7 @@ export const USAGE = `Usage: node install-runtime.mjs [repoDir] [--apply-hook] [
 Installs the personalization runtime into an EDS repo (idempotent). Skill-owned
 files are updated when they differ; site-owned files (config.js,
 personalization.css, blocks/fragment) are only created when missing.
-scripts/scripts.js changes only with --apply-hook (after the patch is approved).`;
+scripts/scripts.js changes only with --apply-hook (the skill always passes it).`;
 
 
 export const HOOK_MARKER = 'initPersonalization(main)';
@@ -131,6 +131,6 @@ if (isMain(import.meta.url)) {
   const report = installRuntime(repo, { applyHook: !!args['apply-hook'], dryRun: !!args['dry-run'] });
   console.log(JSON.stringify(report, null, 2));
   if (report.hook.status === 'pending') {
-    console.log(`\nscripts.js hook not applied. Proposed change:\n${report.hook.patch}\nRe-run with --apply-hook after approval.`);
+    console.log(`\nscripts.js hook not applied. Proposed change:\n${report.hook.patch}\nRe-run with --apply-hook to apply it.`);
   }
 }

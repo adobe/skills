@@ -8,9 +8,9 @@
       "description": "All runs: detect-project.mjs runs before any file is created or modified, and its project type decides whether the session continues (da) or stops (run 7: exit 3, nothing written)."
     },
     {
-      "name": "hook_shown_and_approved",
+      "name": "no_confirmation_gates",
       "max_score": 10,
-      "description": "Runs 1-6: the scripts.js patch printed by install-runtime.mjs is shown and confirmed before --apply-hook (or before a hand placement); scripts/aem.js and existing block code are untouched."
+      "description": "Runs 1-6: at most one grouped list of choices, each showing its default, and no yes/no confirmation (scripts.js hook, mode, H1 placeholder, worker wrap); install-runtime.mjs runs with --apply-hook (or the hook is placed by hand when not-found) and the scripts.js diff is in the summary; defaults taken are listed as named assumptions; scripts/aem.js and existing block code are untouched."
     },
     {
       "name": "default_preserved",
@@ -50,12 +50,12 @@
     {
       "name": "edge_worker_contract",
       "max_score": 8,
-      "description": "Run 5: src/aem-worker.mjs is byte-identical to the vendored asset; simulate --edge --country IN reports source edge, variant india, x-pzn: edge; --ua Googlebot reports the default; cache-control is 'private, no-cache'; cdn/ is in .hlxignore."
+      "description": "Runs 1-4, 6: client mode (no wrangler config in the sandbox). Run 5: src/aem-worker.mjs is byte-identical to the vendored asset; simulate --edge --country IN reports source edge, variant india, x-pzn: edge; --ua Googlebot reports the default; cache-control is 'private, no-cache'; cdn/ is in .hlxignore."
     },
     {
-      "name": "outward_actions_asked_not_taken",
+      "name": "delivery_follows_deploy",
       "max_score": 8,
-      "description": "All runs: no DA upload, preview or publish, wrangler deploy or wrangler secret put happens; any upload is proposed as the deploy-batch.mjs command restricted with --paths and asked first, and deploy commands are handed off in the summary."
+      "description": "Runs 1-6: delivery starts only after every gate passes: the code branch is pushed, then deploy-batch.mjs restricted with --paths uploads, previews and publishes the personalized page and its fragments only, and the summary gives the delivered URLs. All runs: wrangler deploy and wrangler secret put never run; their commands are handed off in the summary. Run 7: nothing is pushed or uploaded."
     },
     {
       "name": "declines_out_of_scope",

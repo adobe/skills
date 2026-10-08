@@ -22,7 +22,7 @@ node skills/personalize/scripts/install-edge.mjs <project> \
 - The worker dir's top folder is added to `.hlxignore` so it is not served by EDS.
 
 **Existing worker** (`--existing <dir>`): only `src/personalization/` is added and the wrap
-instructions are printed. Show the change to the entry point and get approval before editing it.
+instructions are printed. Apply the wrap to the entry point and show the diff in the summary.
 
 ## Request flow
 

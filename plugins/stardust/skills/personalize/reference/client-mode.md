@@ -32,7 +32,7 @@ also starts the single batched API request as early as possible. Pages without p
 one `querySelector` and load nothing.
 
 For non-boilerplate `scripts.js` (no `decorateMain(main)` in `loadEager`), place the same block
-right before the code that decorates blocks, show the diff, and get approval.
+right before the code that decorates blocks and show the diff in the summary (no approval needed).
 
 ## Lifecycle
 

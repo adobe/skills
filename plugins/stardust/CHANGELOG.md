@@ -17,9 +17,16 @@ environment picks the same variant. New skill, so a minor bump.
   documents, the same shape `deploy` writes; `aem up` (16.21+) serves them at their real paths, so
   variants render locally before any upload. DA upload is `deploy-batch.mjs` restricted with
   `--paths` (and `--force`, since the page is usually already live), never a hand-rolled PUT.
-- **Ask-first gates**: the `scripts.js` hook, DA upload/preview/publish, `wrangler deploy`
-  and secrets, regions shared with Target or experimentation, H1/SEO copy. Never part of the
-  hands-off chain.
+- **Choices, not gates**: one grouped list of choices, each with a default; no reply or hands-off
+  takes the defaults and reports them as named assumptions. No yes/no confirmations: the
+  `scripts.js` hook is applied and its diff reported, H1 placeholders proceed with the H1 kept in
+  every variant. Runs on request only; no stardust flow chains it.
+- **Edge by default when detected**: a wrangler config or worker in the repo (`detect-project`
+  `edge.cloudflare`), or a prompt naming the site's own Cloudflare, selects client + edge;
+  otherwise client mode.
+- **Delivery like `deploy`**: once every gate passes, the code branch is pushed and `deploy-batch`
+  uploads, previews and publishes the personalized pages and their fragments. `wrangler deploy`
+  and secrets stay off and are handed off as commands.
 - **Every CLI answers `--help`** before any I/O, has a `scripts/test/<name>.test.mjs`, and resolves
   Playwright from the project; assets resolve in the plugin tree and the
   `stardust/scripts/personalize/` copy.

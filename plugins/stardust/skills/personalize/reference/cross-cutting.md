@@ -14,7 +14,8 @@ rejects placeholders without `default`.
 - Variants must be **semantically equivalent** to the default (same topic, different emphasis or
   locale). Personalized content that contradicts what crawlers see is cloaking.
 - Fragments are `noindex` (bulk metadata `/fragments/**`, `da-content.md`).
-- The validator warns when a placeholder or its fragments contain the H1; ask before proceeding.
+- The validator warns when a placeholder or its fragments contain the H1: proceed, keep the H1 in
+  the default and every variant, and note it in the summary.
 
 ## Privacy and consent
 
@@ -46,8 +47,8 @@ For Tealium: map the data layer event, or listen for `personalization:applied` a
 ## Adobe Target / Web SDK
 
 Target applies propositions after decoration and costs LCP. Personalization and Target must not
-act on the same region. If detect reports `integrations.target`, ask which regions Target owns and
-keep placeholders elsewhere. A Target-backed decision can instead come through the decision API
+act on the same region. If detect reports `integrations.target`, which regions Target owns is a
+Step 1 choice (default: none of the requested ones); keep placeholders out of any region named. A Target-backed decision can instead come through the decision API
 with an adapter (server-side delivery), which is faster and flicker-free.
 
 ## Experimentation compatibility

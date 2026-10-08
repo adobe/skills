@@ -18,6 +18,10 @@ describe('detect', () => {
       assert.equal(before.scriptsJs.hookInstalled, false);
       assert.equal(before.runtime.installed, false);
       assert.deepEqual(before.content.pagesWithPlaceholders.sort(), ['content/index.html', 'content/offer.plain.html']);
+      assert.equal(before.edge.cloudflare, false);
+      writeFileSync(join(dir, 'wrangler.toml'), 'name = "site"\n');
+      assert.equal(detect(dir).edge.cloudflare, true);
+      rmSync(join(dir, 'wrangler.toml'));
       installRuntime(dir, { applyHook: true });
       const after = detect(dir);
       assert.equal(after.scriptsJs.hookInstalled, true);

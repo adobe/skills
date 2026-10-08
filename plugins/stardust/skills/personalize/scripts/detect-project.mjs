@@ -16,7 +16,8 @@ export const USAGE = `Usage: node detect-project.mjs [repoDir]
 Preflight report (JSON) of what personalize needs to know about an EDS repo:
 project type (da | xwalk | doc), scripts.js hook, fragment block, runtime files,
 integrations (Target, experimentation, martech, consent, data layer), content
-placeholders, edge worker, lint. Read-only. Exit 0 = DA project, 3 = unsupported.`;
+placeholders, edge worker (edge.cloudflare: a wrangler config or worker in the
+repo), lint. Read-only. Exit 0 = DA project, 3 = unsupported.`;
 
 
 function walk(dir, predicate, out = []) {
@@ -71,6 +72,7 @@ export function detect(repo) {
     .map((file) => relative(repo, file));
 
   const wranglers = walk(repo, (file) => /wrangler\.(toml|jsonc?)$/.test(file)).map((file) => relative(repo, file));
+  const personalizedWorker = existsSync(join(repo, 'cdn', 'cloudflare-worker', 'src', 'personalization', 'personalize.js'));
   const pkg = readJson(join(repo, 'package.json')) || {};
   const deps = { ...pkg.dependencies, ...pkg.devDependencies };
 
@@ -115,8 +117,10 @@ export function detect(repo) {
       pagesWithPlaceholders: withPlaceholders,
     },
     edge: {
+      // The site fronts its own Cloudflare: the skill's default mode is then client + edge.
+      cloudflare: wranglers.length > 0 || personalizedWorker,
       wranglerConfigs: wranglers,
-      personalizedWorker: existsSync(join(repo, 'cdn', 'cloudflare-worker', 'src', 'personalization', 'personalize.js')),
+      personalizedWorker,
       hlxignoresCdn: /^\/?cdn\/?(\*\*)?$/m.test(readText(join(repo, '.hlxignore')) || ''),
     },
     lint: {

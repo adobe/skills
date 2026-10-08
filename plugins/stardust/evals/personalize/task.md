@@ -1,8 +1,9 @@
 # Eval: placeholder personalization on a DA page
 
-Pins the `personalize` contract: preflight before any change, the ask-first gates (scripts.js
-hook, DA upload, wrangler), the authored default preserved, no invented copy, every script gate
-green, and the declines (A/B tests, non-DA projects). Seven prompts, one session each.
+Pins the `personalize` contract: preflight before any change, defaulted choices instead of yes/no
+gates (the scripts.js hook applied and reported), delivery like `deploy` once the gates pass
+(push, upload, publish) with wrangler off, the authored default preserved, no invented copy, every script gate green, and the
+declines (A/B tests, non-DA projects). Seven prompts, one session each.
 
 ## Setup
 
@@ -11,8 +12,10 @@ remote, a stardust-shaped content tree (`content/home.html` with a hero in its f
 a footer-adjacent last section, `content/quiz.html` with a quiz block that resolves a persona `cn`
 or `pc`), and `aem up` (aem-cli 16.21+) running on `http://localhost:3000`. Playwright is
 resolvable from the project. Run 7 adds `component-models.json` at the repo root (an xwalk
-project). No DA upload, preview, publish, `wrangler deploy` or `wrangler secret put` may happen
-in any session; the persona declines every such request.
+project). The sandbox has DA coordinates, a `DA_TOKEN` and a pushable branch, so delivery (push,
+DA upload, preview, publish) may run once the gates pass; no wrangler config is in the repo.
+`wrangler deploy` and `wrangler secret put` may not run in any session; the persona never
+chooses them.
 
 ## User prompt (run 1 — geo hero, client mode)
 
@@ -44,9 +47,9 @@ in any session; the persona declines every such request.
 
 ## Expected behavior
 
-**Run 1.** `detect-project.mjs` runs before any file change and reports `da`. The `scripts.js`
-patch is shown and confirmed before `install-runtime.mjs --apply-hook`. The hero region in
-`content/home.html` becomes one Personalization block (id, `geo: IN`, default) whose default
+**Run 1.** `detect-project.mjs` runs before any file change and reports `da`.
+`install-runtime.mjs --apply-hook` applies the `scripts.js` hook without a question and the
+summary shows its diff. The hero region in `content/home.html` becomes one Personalization block (id, `geo: IN`, default) whose default
 fragment `content/fragments/personalization/<id>/default.html` holds the original hero markup;
 the india fragment is a `TODO:` scaffold. `validate-placeholders`, `simulate`, lint and
 `verify-preview` all pass (`?pzn-geo=IN` → india, no context → default within budget).

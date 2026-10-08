@@ -20,26 +20,28 @@ The same `content/` tree `deploy` writes: one body-fragment document per DA path
 - Fragments carry no metadata block; `noindex` comes from bulk metadata (below).
 - Run `validate-placeholders.mjs` before any upload.
 
-## Uploading to DA (ask first)
+## Uploading to DA (on by default, like `deploy`)
 
-Uploading changes the site's content: **ask before uploading**, listing the exact paths. The upload
-is the deploy chain, not a hand-rolled PUT loop: `deploy`'s batch driver with the DA coordinates and
+Delivery runs once every Step 7 gate passes, after the code branch is pushed (`deploy` does the
+same); the user can ask for `preview only` or `no upload`. The upload is the deploy chain, not a
+hand-rolled PUT loop: `deploy`'s batch driver with the DA coordinates and
 token handling of `deploy` (`skills/deploy/SKILL.md` § DA_TOKEN lifecycle,
 `skills/deploy/da-deploy-protocol.md`), restricted to the personalized pages and their fragments:
 
 ```bash
 printf '%s\n' /fragments/personalization/<id>/default /fragments/personalization/<id>/<variant> /<page> > stardust/.work/pzn-paths.txt
 DA_TOKEN=… node skills/deploy/scripts/deploy-batch.mjs --org <org> --repo <repo> --branch <branch> \
-  --content content --paths stardust/.work/pzn-paths.txt --force --no-publish
+  --content content --paths stardust/.work/pzn-paths.txt --force
 ```
 
 - `--force`: the page is usually already live from `deploy`, and the ledger skips live pages; the
   path list keeps the forced run to the personalized set.
-- `--no-publish` stops at preview; publishing is a separate question to the user. Every fragment
-  is previewed and published together with its page, or variants 404 and fall back to the default.
+- Publishing is on, as in `deploy`; `--no-publish` stops at preview when the user asks for that.
+  Every fragment is previewed and published together with its page, or variants 404 and fall back
+  to the default.
 - The runtime and block (`scripts/personalization/`, `blocks/personalization/`) must be on the
-  pushed code branch before preview renders the placeholder; committing and pushing is the
-  user's call.
+  pushed code branch before preview renders the placeholder: the skill commits and pushes them
+  first (SKILL.md Step 7). No push, no upload.
 - Never hardcode, print or ask for a token in chat; a persistent `401` halts the driver (exit 3)
   with the re-run command.
 
