@@ -25,7 +25,9 @@ stage, into `spec.sqlite`; showing it is a separate viewer application's job.
 ## Setup
 
 `spec.config.json` at the project root (reference/config.md): `origin`, `scopePath`, `template` rule, `parser`
-profile + main selector, optional `rum`, `referenceBlocks`. Copy the scripts to `stardust/scripts/spec/`.
+profile (`aem-classic`, `aem-core`, or `generic` for any other site) + main selector, optional `maxPages`, `rum`,
+`referenceBlocks`. Copy the scripts to `stardust/scripts/spec/`, and the diff skill's to `stardust/scripts/diff/` (S1, S2 and
+S6 use its `live-session.mjs`).
 
 ## Stages
 
@@ -61,6 +63,10 @@ reference/implementation.md. `findings.json`: 6–10 headline findings, every nu
 - S7 passes when `spec-map.mjs` reports no unmapped component and every block in page-blocks is in `catalog.json`
   (`spec-build.mjs` warns otherwise).
 - S10 passes when every finding renders without `–` and every open question has a default.
+- A blocked origin (S1 or S2 exit 3: bot challenges or refusals on 10% or more) stops the build: ask the user to
+  allow-list the crawler, or to choose `--headed` (the plugin's stealth real-Chrome tier from the diff skill's
+  `live-session.mjs`, as replica uses) or `--archive <date>` (Internet Archive captures, which the provenance and a
+  finding must disclose). Never choose for them, and never work around a block another way.
 - Before sharing: no customer secret, internal evaluation or other migration's name in the project or the database.
 
 ## References

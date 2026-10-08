@@ -17,7 +17,11 @@ Column and key names are neutral; nothing in them names a site.
 | `reference_blocks_name`, `reference_blocks_count` | the block library reuse verdicts compare with |
 | `rum_available` | `"1"` or `"0"`; with `"0"` every traffic figure is unavailable, not zero |
 | `rum_window`, `rum_bundles` | telemetry window and sampled page views |
-| `sitemap_urls` | sitemap URL count |
+| `sitemap_urls` | URLs the spec covers (the sample when sampled) |
+| `inventory_total`, `inventory_source` | URLs found and where (`sitemap` or `crawl`) |
+| `sample_note` | set only when the inventory was capped: what the sample is |
+| `fetch_sources` | JSON counts of pages by source: `live`, `headed`, `archive` |
+| `evidence_note` | set only when pages came from the Internet Archive: how many and their capture dates |
 | `built_at`, `built_by` | build date and method |
 | `blind_rule` | what the judging agent was not allowed to read |
 | `variant_cut` | how layout variants were cut |

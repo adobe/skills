@@ -86,9 +86,9 @@ Run the project copies under `stardust/scripts/<skill>/`. Read this before any `
 - `rollout/verify.mjs` — full-site verify — `[--base <u>|--root <dir>] [--all]`
 - `spec/lib.mjs` — library, no CLI
 - `spec/spec-build.mjs` — S10 → spec.sqlite — `[--out <sqlite>]`
-- `spec/spec-capture.mjs` — S6/S8 page + component crops — `[--urls <f>] [--tabs 2]`
-- `spec/spec-fetch.mjs` — S2 resumable fetch — `[--urls <f>] [--out <jsonl>] [--workers 4]`
-- `spec/spec-inventory.mjs` — S1 robots + sitemaps
+- `spec/spec-capture.mjs` — S6/S8 page + component crops — `[--urls <f>] [--from-cache]`
+- `spec/spec-fetch.mjs` — S2 resumable fetch — `[--urls <f>] [--headed|--archive <date>]`; exit 3 = blocked
+- `spec/spec-inventory.mjs` — S1 robots + sitemaps, else a crawl — `[--max <n>] [--headed|--archive <date>]`; exit 3 = blocked
 - `spec/spec-links.mjs` — S4 link check — `[--max 20000]`
 - `spec/spec-map.mjs` — S7 mapping → page blocks — `[--rules <json>]`
 - `spec/spec-martech.mjs` — S9 martech — `[--no-custom-code] [--urls a,b --out stardust/martech]`
