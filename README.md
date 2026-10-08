@@ -64,6 +64,41 @@ cp -R plugins/app-builder/. ~/.cursor/plugins/local/app-builder/
 
 Verify the plugin loaded via **Cursor Settings → Plugins** (it should appear with the App Builder skills, including the grouped `appbuilder-workfront` suite). The skills are also visible in **Settings → Rules** under "Agent Decides".
 
+### Google Antigravity (`agy`)
+
+Antigravity uses the root `plugin.json` manifests in each plugin directory. To install plugins locally from this repository:
+
+```bash
+agy plugin install plugins/adobe-analytics
+agy plugin install plugins/adobe-cja
+agy plugin install plugins/aem/edge-delivery-services
+agy plugin install plugins/aem/project-management
+agy plugin install plugins/app-builder
+agy plugin install plugins/aem/cloud-service
+agy plugin install plugins/aem/6.5-lts
+agy plugin install plugins/aem/edge-delivery-services-content-ops
+agy plugin install plugins/workfront
+agy plugin install plugins/commerce/app-management
+agy plugin install plugins/commerce/app-migration
+agy plugin install plugins/commerce/app-review
+agy plugin install plugins/creative-cloud/adobe-for-creativity
+agy plugin install plugins/creative-cloud/run-workflow
+agy plugin install plugins/stardust
+agy plugin install plugins/web
+```
+
+Verify installed plugins:
+
+```bash
+agy plugin list
+```
+
+Alternatively, if you already installed the plugins in Claude Code, import them directly:
+
+```bash
+agy plugin import claude
+```
+
 ## Available Skills
 
 ### For Business
@@ -475,6 +510,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on adding or updating skil
 
 - [agentskills.io Specification](https://agentskills.io)
 - [Claude Code Plugins](https://code.claude.com/docs/en/discover-plugins)
+- [Google Antigravity](https://antigravity.google/docs)
 - [Vercel Skills](https://github.com/vercel-labs/skills)
 - [upskill GitHub Extension](https://github.com/ai-ecoverse/gh-upskill)
 - [#agentskills Slack Channel](https://adobe.enterprise.slack.com/archives/C0APTKDNPEY)
