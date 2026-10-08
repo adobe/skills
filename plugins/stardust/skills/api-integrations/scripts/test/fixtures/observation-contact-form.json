@@ -1,0 +1,46 @@
+{
+  "id": "obs-1",
+  "pageUrl": "https://www.example.com/contact-us",
+  "trigger": { "type": "submit", "selector": "#contact-form" },
+  "method": "POST",
+  "url": "https://www.example.com/api/form/contact-form",
+  "resourceType": "fetch",
+  "requestHeaderNames": ["authorization", "content-type"],
+  "authScheme": "Bearer",
+  "contentType": "application/json",
+  "body": "{\"formData\":{\"firstName\":\"<test:firstName>\",\"lastName\":\"<test:lastName>\",\"email\":\"<test:email>\",\"company\":\"<test:company>\",\"phoneNumber\":\"<test:phone>\",\"message\":\"<test:message>\",\"custom_params_conversion\":\"Contact Us\",\"custom_params_form\":\"\"},\"googleRecaptchaToken\":\"<recaptcha>\",\"hubspotContext\":{\"hutk\":\"<cookie:hubspotutk>\",\"pageName\":\"Contact Us | Example\",\"pageUri\":\"https://www.example.com/contact-us\"}}",
+  "graphql": null,
+  "kind": "rest-write",
+  "isWrite": true,
+  "aborted": true,
+  "response": null,
+  "correlation": {
+    "fieldMap": [
+      { "path": "formData.firstName", "selector": "#first-name", "name": "first-name", "value": "<test:firstName>" },
+      { "path": "formData.lastName", "selector": "#last-name", "name": "last-name", "value": "<test:lastName>" },
+      { "path": "formData.email", "selector": "#business-email", "name": "business-email", "value": "<test:email>" },
+      { "path": "formData.company", "selector": "#company", "name": "company", "value": "<test:company>" },
+      { "path": "formData.phoneNumber", "selector": "#phone", "name": "phone", "value": "<test:phone>" },
+      { "path": "formData.message", "selector": "#message", "name": "message", "value": "<test:message>" }
+    ],
+    "clientDeps": [
+      { "path": "googleRecaptchaToken", "from": "recaptcha", "siteKey": "site-key-x", "action": "FormSubmission" },
+      { "path": "hubspotContext.hutk", "from": "cookie", "name": "hubspotutk" },
+      { "path": "hubspotContext.pageName", "from": "title" },
+      { "path": "hubspotContext.pageUri", "from": "location" },
+      { "path": "formData.custom_params_form", "from": "constant", "value": "" }
+    ]
+  },
+  "dataLayerAfter": [
+    { "event": "form_submit_error", "form": "contact-form" }
+  ],
+  "uiAfter": { "text": "Blocked by detector", "reset": false },
+  "probe": {
+    "response": {
+      "status": 400,
+      "headers": { "content-type": "application/json" },
+      "body": "{\"message\":\"firstName must be at least 2 characters\"}"
+    },
+    "uiAfter": { "text": "firstName must be at least 2 characters", "reset": false }
+  }
+}

@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Rebuilt Contact</title></head>
+<body>
+  <main>
+    <form id="contact-form">
+      <label>First name <input id="first-name" name="first-name" autocomplete="given-name"></label>
+      <label>Last name <input id="last-name" name="last-name" autocomplete="family-name"></label>
+      <label>Email <input id="business-email" name="business-email" type="email"></label>
+      <label>Company <input id="company" name="company"></label>
+      <label>Phone <input id="phone" name="phone" type="tel"></label>
+      <label>Message <textarea id="message" name="message"></textarea></label>
+      <button type="submit">Send</button>
+    </form>
+    <p role="status"></p>
+  </main>
+  <script>
+    document.cookie = 'hubspotutk=abc123; path=/';
+    window.dataLayer = window.dataLayer || [];
+    window.grecaptcha = {
+      execute(siteKey, options) {
+        if (location.pathname.includes('recaptcha-error')) throw new Error('Failed to fetch');
+        return Promise.resolve(`token-${siteKey}-${options && options.action}`);
+      }
+    };
+    if (location.pathname.includes('track-load')) {
+      fetch('/api/track-load', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ event: 'load' }) }).catch(() => {});
+    }
+    if (location.pathname.includes('load-write')) {
+      fetch('/api/form/contact-form', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ event: 'load' }) }).catch(() => {});
+    }
+    if (location.pathname.includes('read')) {
+      fetch('/api/list').then((response) => response.json()).then((body) => {
+        status.textContent = body.message || `${(body.items || []).length} items`;
+      }).catch(() => { status.textContent = 'read failed'; });
+    }
+    const form = document.querySelector('#contact-form');
+    const status = document.querySelector('[role=status]');
+    const value = (selector) => document.querySelector(selector).value;
+    const cookie = (name) => document.cookie.split('; ').find((part) => part.startsWith(`${name}=`))?.split('=').slice(1).join('=') || null;
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const token = await window.grecaptcha.execute('site-key-x', { action: 'FormSubmission' });
+      const formData = {
+        lastName: value('#last-name'),
+        email: value('#business-email'),
+        company: value('#company'),
+        phoneNumber: value('#phone'),
+        message: value('#message'),
+        custom_params_conversion: 'Contact Us',
+        custom_params_form: ''
+      };
+      if (location.pathname.includes('fname')) formData.fname = value('#first-name');
+      else formData.firstName = value('#first-name');
+      const payload = {
+        formData,
+        googleRecaptchaToken: token,
+        hubspotContext: {
+          hutk: cookie('hubspotutk'),
+          pageName: document.title,
+          pageUri: location.href
+        }
+      };
+      try {
+        const response = await fetch('/api/form/contact-form', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', authorization: 'Bearer fixture-token' },
+          body: JSON.stringify(payload)
+        });
+        const body = await response.json().catch(() => ({}));
+        status.textContent = body.message || '';
+        if (response.ok && body.success !== false) {
+          window.dataLayer.push({ event: 'form_submit', form: 'contact-form' });
+          form.reset();
+        } else {
+          window.dataLayer.push({ event: 'form_submit_error', form: 'contact-form' });
+        }
+      } catch (error) {
+        status.textContent = 'Submission failed';
+        window.dataLayer.push({ event: 'form_submit_error', form: 'contact-form' });
+      }
+    });
+  </script>
+</body>
+</html>

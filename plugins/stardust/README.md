@@ -90,6 +90,9 @@ Delivery Services.
   classify, triage on four axes (class, disposition, reproducibility,
   status), implement from a pattern catalogue, replay parity. Default-on in
   both migration flows, never for redesign-only work.
+- `api-integrations` handles backend API wiring after dynamics or standalone:
+  detect calls, build redacted contracts, generate EDS client modules, probe
+  CORS and verify L1-L4 parity with write confirmations.
 - `spec` measures a site before a migration (inventory, redirects, 404s,
   templates and layout variants, blocks per page with reuse verdicts against a
   block library, dynamic features, martech, locales) and records the

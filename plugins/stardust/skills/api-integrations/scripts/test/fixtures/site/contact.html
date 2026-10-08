@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Contact Us | Example</title>
+</head>
+<body>
+  <main>
+    <form id="contact-form">
+      <label>First name <input id="first-name" name="first-name" autocomplete="given-name"></label>
+      <label>Last name <input id="last-name" name="last-name" autocomplete="family-name"></label>
+      <label>Business email <input id="business-email" name="business-email" type="email"></label>
+      <label>Company <input id="company" name="company"></label>
+      <label>Phone <input id="phone" name="phone" type="tel"></label>
+      <label>Message <textarea id="message" name="message"></textarea></label>
+      <button type="submit">Send</button>
+      <p id="contact-status" role="status"></p>
+    </form>
+
+    <form id="contact-form-alt">
+      <input id="again-first-name" name="first-name" aria-label="Again first name">
+      <input id="again-business-email" name="business-email" type="email" aria-label="Again business email">
+      <button type="submit">Send again</button>
+    </form>
+
+    <form id="legacy" method="post" action="/legacy">
+      <input name="legacy-email" type="email" aria-label="Legacy email">
+      <button type="submit">Legacy submit</button>
+    </form>
+
+    <section id="upload-widget">
+      <input id="upload-email" name="upload-email" type="email" aria-label="Upload email">
+      <textarea id="upload-message" name="upload-message" aria-label="Upload message"></textarea>
+      <button type="button">Upload</button>
+    </section>
+
+    <section id="profile-widget">
+      <input id="profile-first" name="profile-first" aria-label="Profile first name">
+      <input id="profile-email" name="profile-email" type="email" aria-label="Profile email">
+      <button type="button">Save profile</button>
+      <p id="profile-status" role="status"></p>
+    </section>
+  </main>
+
+  <script>
+    document.cookie = 'hubspotutk=abc123; path=/; SameSite=Lax';
+    window.dataLayer = window.dataLayer || [];
+    window.grecaptcha = {
+      execute(siteKey, options) {
+        return Promise.resolve(`token-${siteKey}-${options && options.action}`);
+      }
+    };
+
+    fetch('/api/list?token=abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMN&email=person@example.com').catch(() => {});
+    navigator.sendBeacon('/api/beacon', '{"email":"beacon@example.com"}');
+    window.open('/popup.html', '_blank');
+    fetch('/graphql', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        operationName: 'SaveLead',
+        query: 'mutation SaveLead($email:String!,$token:String!){ saveLead(email:"literal@real.test", token:"ZYXWVUTSRQPONMLKJIHGFEDCBA9876543210abcd") { ok } }',
+        variables: { email: 'someone@real.test', token: 'ZYXWVUTSRQPONMLKJIHGFEDCBA9876543210abcd' }
+      })
+    }).catch(() => {});
+    window.grecaptcha.execute('site-key-x', { action: 'FormSubmission' }).then((probeToken) => {
+      const params = new URLSearchParams({
+        operationName: 'Lookup',
+        query: 'query Lookup($hutk:String!,$token:String!){ viewer(hutk:$hutk, token:$token) { id } }',
+        variables: JSON.stringify({ hutk: 'abc123', token: probeToken })
+      });
+      fetch(`/graphql?${params}`).catch(() => {});
+    });
+
+    document.querySelector('#contact-form').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const form = event.currentTarget;
+      const fd = new FormData(form);
+      const token = await window.grecaptcha.execute('site-key-x', { action: 'FormSubmission' });
+      const hutk = (document.cookie.match(/(?:^|; )hubspotutk=([^;]*)/) || [])[1] || null;
+      const payload = {
+        formData: {
+          firstName: fd.get('first-name'),
+          lastName: fd.get('last-name'),
+          email: fd.get('business-email'),
+          company: fd.get('company'),
+          phoneNumber: fd.get('phone'),
+          message: fd.get('message'),
+          custom_params_conversion: '',
+          custom_params_form: ''
+        },
+        googleRecaptchaToken: token,
+        hubspotContext: {
+          hutk,
+          pageName: document.title,
+          pageUri: location.href
+        }
+      };
+
+      window.dataLayer.push({ event: 'form_submit', gtm: { elementId: 'contact-form' }, email: payload.formData.email });
+      try {
+        const response = await fetch('/api/form/contact-form', {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            authorization: 'Bearer example-token'
+          },
+          body: JSON.stringify(payload)
+        });
+        const json = await response.json().catch(() => ({}));
+        document.querySelector('#contact-status').textContent = json.message || (response.ok ? 'Thanks' : 'Error');
+      } catch (error) {
+        document.querySelector('#contact-status').textContent = 'Blocked by detector';
+      }
+    });
+
+
+    document.querySelector('#contact-form-alt').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      await fetch('/api/form/contact-form', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          formData: {
+            firstName: document.querySelector('#again-first-name').value,
+            email: document.querySelector('#again-business-email').value
+          }
+        })
+      }).catch(() => {});
+    });
+
+    document.querySelector('#upload-widget button').addEventListener('click', async () => {
+      const data = new FormData();
+      data.append('upload-email', document.querySelector('#upload-email').value);
+      data.append('upload-message', document.querySelector('#upload-message').value);
+      await fetch('/api/upload', { method: 'POST', body: data }).catch(() => {});
+    });
+
+    document.querySelector('#profile-widget button').addEventListener('click', async () => {
+      const response = await fetch('/api/group', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          firstName: document.querySelector('#profile-first').value,
+          email: document.querySelector('#profile-email').value
+        })
+      });
+      document.querySelector('#profile-status').textContent = response.ok ? 'Saved' : 'Not saved';
+    });
+  </script>
+</body>
+</html>

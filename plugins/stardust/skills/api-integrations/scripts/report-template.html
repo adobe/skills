@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>API Integrations Report</title>
+  <style>
+    body { font: 16px/1.45 system-ui, sans-serif; margin: 2rem; color: #222; }
+    table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+    th, td { border: 1px solid #ddd; padding: .45rem; text-align: left; vertical-align: top; }
+    th { background: #f6f6f6; }
+    code { background: #f6f6f6; padding: .1rem .25rem; border-radius: .2rem; }
+    .cards { display: flex; gap: 1rem; flex-wrap: wrap; }
+    .card { border: 1px solid #ddd; border-radius: .4rem; padding: .8rem; min-width: 12rem; }
+  </style>
+</head>
+<body>
+  <h1>API Integrations Report</h1>
+  <section>
+    <h2>Summary</h2>
+    <div id="summary" class="cards"></div>
+  </section>
+  <section>
+    <h2>Integrations</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Integration</th>
+          <th>Kind</th>
+          <th>Method</th>
+          <th>Endpoint</th>
+          <th>Pages</th>
+          <th>Auth</th>
+          <th>Block Party</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody id="integrations"></tbody>
+    </table>
+  </section>
+  <section>
+    <h2>Owner action items</h2>
+    <ul id="actions"></ul>
+  </section>
+  <script type="application/json" id="api-data">__API_DATA__</script>
+  <script>
+    const data = JSON.parse(document.getElementById('api-data').textContent);
+    const integrations = Array.isArray(data.integrations) ? data.integrations : [];
+    const by = (fn) => integrations.reduce((acc, item) => {
+      const key = fn(item) || 'unknown';
+      acc[key] = (acc[key] || 0) + 1;
+      return acc;
+    }, {});
+    const endpointText = (endpoint) => {
+      try {
+        const url = new URL(endpoint);
+        return `${url.pathname}${url.search}`;
+      } catch {
+        return endpoint || '';
+      }
+    };
+    const appendCard = (title, counts) => {
+      const card = document.createElement('div');
+      card.className = 'card';
+      const heading = document.createElement('strong');
+      heading.textContent = title;
+      card.append(heading);
+      const list = document.createElement('ul');
+      Object.entries(counts).sort().forEach(([key, count]) => {
+        const item = document.createElement('li');
+        item.textContent = `${key}: ${count}`;
+        list.append(item);
+      });
+      card.append(list);
+      document.getElementById('summary').append(card);
+    };
+    appendCard('By kind', by((item) => item.kind));
+    appendCard('By host', by((item) => {
+      try { return new URL(item.endpoint).host; } catch { return 'relative'; }
+    }));
+    if (data.blockPartyUnavailable) appendCard('Block Party', { unavailable: 1 });
+    const tbody = document.getElementById('integrations');
+    integrations.forEach((item) => {
+      const row = document.createElement('tr');
+      [
+        item.id,
+        item.kind,
+        item.method || '—',
+        endpointText(item.endpoint),
+        (item.pages || []).length,
+        item.auth && item.auth.scheme ? item.auth.scheme : 'none',
+        (item.blockParty || []).map((entry) => entry.title).join(', ') || '—',
+        item.status,
+      ].forEach((value) => {
+        const cell = document.createElement('td');
+        cell.textContent = String(value);
+        row.append(cell);
+      });
+      tbody.append(row);
+    });
+    const actions = document.getElementById('actions');
+    (data.ownerActions || []).forEach((text) => {
+      const item = document.createElement('li');
+      item.textContent = text;
+      actions.append(item);
+    });
+  </script>
+</body>
+</html>

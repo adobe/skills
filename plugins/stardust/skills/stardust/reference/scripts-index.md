@@ -2,6 +2,12 @@
 
 Run the project copies under `stardust/scripts/<skill>/`. Read this before any `--help`; ask `--help` only for a flag not named here. Full deploy/rollout/migrate invocations: `../../replica/reference/handoff-contract.md` § 4.
 
+- `api-integrations/api-check.mjs` — verify — `--origin`
+- `api-integrations/api-codegen.mjs` — codegen — `--out`
+- `api-integrations/api-contracts.mjs` — contracts — `--out`
+- `api-integrations/api-cors.mjs` — CORS — `--prod`
+- `api-integrations/api-detect.mjs` — detect — `--urls`
+- `api-integrations/api-static-scan.mjs` — scan — `--urls`
 - `deploy/ai-readability.mjs` — AI-readability gate — `--origin <o> [--paths <f>] [--min 98]`
 - `deploy/block-roundtrip.mjs` — block round-trip + editability — `<protoURL> content/<p>.html [--blocks a,b] --ew`
 - `deploy/build-harness.mjs` — local structural harness — `content/<p>.html <out.html> [--root <dir>]`

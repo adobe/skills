@@ -4,6 +4,25 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.31.0 — new skill `api-integrations`: backend API contracts, clients and parity for EDS Go-Live
+
+Go-Live migrations often reached the dynamic-surface gate with API rows known but not wired: source
+XHRs and form submissions were visible, yet the EDS build still needed contracts, client modules, CORS
+proof and live parity before launch. This skill is the companion to `dynamics` for that gap. It turns
+observed API calls into redacted contracts, ranks Block Party starting points, generates EDS-safe client
+modules, probes CORS from preview/live origins and verifies L1-L4 parity with write confirmations.
+
+- **Detection is safe by default**: static scan plus Playwright observation records reads while blocking
+  POST/PUT/PATCH/DELETE and GraphQL mutations unless a read-only POST pattern is explicitly supplied.
+- **Contracts redact evidence**: persisted artefacts keep header names, auth schemes, placeholders and
+  schemas, not secrets, PII, cookies or token values.
+- **Implementation is project-owned**: `api-codegen.mjs` writes `scripts/api-config.js` and
+  `scripts/api/<id>.js`, leaving block/form wiring to extension points.
+- **Verification is gated**: L1/L2 are local, L3 live reads/invalid writes require endpoint confirmation
+  for writes, and L4 sends one valid write only with a fresh `--confirm-live-write <id>`.
+- **Dynamics write-back is additive**: final API parity rows merge into `dynamic-features.md` and
+  `dynamics/parity.json` through the documented API report.
+
 ## 0.30.0 — new skill `spec`: the migration spec before the migration, as one documented database
 
 Scoping a migration was rebuilt by hand per engagement: a crawl, spreadsheets of templates and redirects, a

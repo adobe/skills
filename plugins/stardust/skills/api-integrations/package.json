@@ -1,0 +1,10 @@
+{
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "test": "node --test scripts/test/"
+  },
+  "devDependencies": {
+    "playwright": "1.56.1"
+  }
+}

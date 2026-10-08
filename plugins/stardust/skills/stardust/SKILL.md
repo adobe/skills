@@ -112,6 +112,7 @@ Once setup is done, route on the user's input:
   | `deploy` | one page → EDS blocks + DA delivery |
   | `rollout` | whole migrated site → EDS, with coverage + delivery gates |
   | `dynamics` | the dynamic surface of a migration — detect, classify, triage, implement, verify (APIs, search, forms, modals, media, tags, client-rendered, sheet data); migration-bound, invoked by prepare-migration / replica / migrate / rollout or standalone on an already-migrated site |
+  | `api-integrations` | backend API wiring for EDS migrations — detect API calls, build redacted contracts, generate client modules and verify L1–L4 parity; companion to dynamics |
   | `diff` | prototype ↔ build fidelity probes (pixel + structural) |
   | `audit` | three-perspective site audit — design tensions, SEO/technical, LLM visibility — scored report + findings ledger |
   | `qa` | read-only post-deploy QA sweep of the live site — routing, fidelity, template conformance, rendering, visual regression, SEO, links, a11y, perf — findings report only, never fixes |

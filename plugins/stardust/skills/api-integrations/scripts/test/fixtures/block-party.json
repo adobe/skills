@@ -1,0 +1,47 @@
+{
+  "total": 5,
+  "offset": 0,
+  "limit": 5,
+  "data": [
+    {
+      "category": "Block",
+      "title": "HubSpot Form",
+      "description": "A form block that submits to HubSpot CRM and supports reCAPTCHA.",
+      "githubUrl": "https://github.com/example/hubspot-form-block",
+      "showcaseUrl": "https://main--hubspot-form--example.aem.live/",
+      "approved": "TRUE"
+    },
+    {
+      "category": "Code snippet",
+      "title": "GraphQL Client",
+      "description": "Reusable GraphQL query and mutation fetch helper.",
+      "githubUrl": "https://github.com/example/graphql-client",
+      "showcaseUrl": "",
+      "approved": "TRUE"
+    },
+    {
+      "category": "Block",
+      "title": "Newsletter Signup",
+      "description": "Subscribe users through a newsletter API form.",
+      "githubUrl": "https://github.com/example/newsletter-signup",
+      "showcaseUrl": "",
+      "approved": "TRUE"
+    },
+    {
+      "category": "Block",
+      "title": "Map Locator",
+      "description": "Location search and map display block.",
+      "githubUrl": "https://github.com/example/map-locator",
+      "showcaseUrl": "https://main--map--example.aem.live/",
+      "approved": "TRUE"
+    },
+    {
+      "category": "Block",
+      "title": "Unapproved Form",
+      "description": "Unapproved HubSpot form experiment.",
+      "githubUrl": "https://github.com/example/unapproved-form",
+      "showcaseUrl": "",
+      "approved": "FALSE"
+    }
+  ]
+}

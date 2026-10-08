@@ -1,0 +1,101 @@
+{
+  "id": "contact-form",
+  "endpoint": "https://www.example.com/api/form/contact-form",
+  "method": "POST",
+  "contentType": "application/json",
+  "graphql": null,
+  "kind": "rest-write",
+  "origin": "first-party",
+  "trigger": { "type": "submit", "selector": "#contact-form" },
+  "pages": ["https://www.example.com/contact-us"],
+  "reach": 1,
+  "auth": { "scheme": "bearer", "headerNames": ["authorization", "content-type"] },
+  "requestSchema": {
+    "type": "object",
+    "properties": {
+      "formData": {
+        "type": "object",
+        "properties": {
+          "firstName": { "type": "string" },
+          "lastName": { "type": "string" },
+          "email": { "type": "string", "format": "email" },
+          "company": { "type": "string" },
+          "phoneNumber": { "type": "string", "format": "phone" },
+          "message": { "type": "string" },
+          "custom_params_conversion": { "type": "string" },
+          "custom_params_form": { "type": "string" }
+        },
+        "required": ["firstName", "lastName", "email", "company", "phoneNumber", "message", "custom_params_conversion"]
+      },
+      "googleRecaptchaToken": { "type": "string" },
+      "hubspotContext": {
+        "type": "object",
+        "properties": {
+          "hutk": { "type": "string" },
+          "pageName": { "type": "string" },
+          "pageUri": { "type": "string", "format": "uri" }
+        },
+        "required": ["hutk", "pageName", "pageUri"]
+      }
+    },
+    "required": ["formData", "googleRecaptchaToken", "hubspotContext"]
+  },
+  "requestExample": {
+    "formData": {
+      "firstName": "<test:firstName>",
+      "lastName": "<test:lastName>",
+      "email": "<test:email>",
+      "company": "<test:company>",
+      "phoneNumber": "<test:phone>",
+      "message": "<test:message>",
+      "custom_params_conversion": "Contact Us",
+      "custom_params_form": ""
+    },
+    "googleRecaptchaToken": "<recaptcha>",
+    "hubspotContext": {
+      "hutk": "<cookie:hubspotutk>",
+      "pageName": "<redacted>",
+      "pageUri": "https://www.example.com/contact-us"
+    }
+  },
+  "fieldMap": [
+    { "path": "formData.firstName", "selector": "#first-name", "name": "first-name", "value": "Testa" },
+    { "path": "formData.lastName", "selector": "#last-name", "name": "last-name", "value": "Probe" },
+    { "path": "formData.email", "selector": "#business-email", "name": "business-email", "value": "api-probe@example.com" },
+    { "path": "formData.company", "selector": "#company", "name": "company", "value": "Example Inc" },
+    { "path": "formData.phoneNumber", "selector": "#phone", "name": "phone", "value": "4155550123" },
+    { "path": "formData.message", "selector": "#message", "name": "message", "value": "api-integrations probe - please ignore" }
+  ],
+  "clientDeps": [
+    { "path": "googleRecaptchaToken", "from": "recaptcha", "siteKey": "site-key-x", "action": "FormSubmission" },
+    { "path": "hubspotContext.hutk", "from": "cookie", "name": "hubspotutk" },
+    { "path": "hubspotContext.pageName", "from": "title" },
+    { "path": "hubspotContext.pageUri", "from": "location" },
+    { "path": "formData.custom_params_form", "from": "constant", "value": "" }
+  ],
+  "responses": {
+    "success": null,
+    "error": {
+      "status": 400,
+      "headers": { "content-type": "application/json" },
+      "schema": {
+        "type": "object",
+        "properties": { "message": { "type": "string" } },
+        "required": ["message"]
+      },
+      "example": { "message": "firstName must be at least 2 characters" }
+    }
+  },
+  "uiBehavior": {
+    "success": null,
+    "error": {
+      "text": "firstName must be at least 2 characters",
+      "reset": false,
+      "dataLayer": [{ "event": "form_submit_error", "form": "contact-form" }]
+    }
+  },
+  "blockParty": [],
+  "status": "contracted",
+  "confirmed": true,
+  "cors": null
+}
