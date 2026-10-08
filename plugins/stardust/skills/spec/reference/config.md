@@ -33,6 +33,6 @@ template, use `{ "pathSegments": 1 }` and let S8 variants do the grouping.
   the body without header/footer/nav. Tune with `nameAttrs` (attributes the site uses for component names) and
   `stripPrefix` (a hash prefix that makes the same component look different per page).
 - Check with `spec-parse.mjs --fetch <40 rows>` and `spec-profile.mjs`: the vocabulary must be component types, not
-  style classes, and `has_main` true on every page. A new CMS family is a new profile in `spec-parse.mjs` (root
-  rule + column rule) and the same rule in `spec-capture.mjs`'s tagger; the node contract in spec-parse's header does not
-  change.
+  style classes, and `has_main` true on every page. A new CMS family is a new profile in `lib.mjs` `profileRules` (a root
+  rule or structural roots, optional columns and row widths): spec-parse and the spec-capture tagger both run it through
+  `componentLayout`, so path ids cannot drift; the node contract in spec-parse's header does not change.

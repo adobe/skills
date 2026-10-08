@@ -284,3 +284,87 @@ export function genericRules(A, opts = {}) {
   };
   return { name, roots };
 }
+
+/* ------------------------------------------------- profiles and layout ---- */
+/** Group aem-core grid members into rows: consecutive members narrower than 12 whose widths fill the grid. Pure. */
+export function groupRows(items, width, newline) {
+  const out = []; let row = []; let sum = 0;
+  const flush = () => { if (row.length > 1) out.push({ row }); else if (row.length) out.push(row[0]); row = []; sum = 0; };
+  for (const it of items) {
+    const w = width(it);
+    if (w >= 12 || newline(it)) { flush(); if (w >= 12) { out.push(it); continue; } }
+    if (sum + w > 12) flush();
+    row.push(it); sum += w;
+    if (sum >= 12) flush();
+  }
+  flush();
+  return out;
+}
+
+/**
+ * The rules of a parser profile over a node adapter `A` ({ tag, cls, attr, kids, parent, weight }; genericRules lists
+ * them). Self-contained apart from genericRules and groupRows, which spec-capture injects alongside, so the parser and
+ * the in-page tagger run the same rules.
+ *   aem-classic — a root is a `c-*` component (not `*-content`) or a `colctrl`, whose columns are its col-* children.
+ *   aem-core    — a root is a grid member (`aem-GridColumn`), named by its first non-`aem-` class (AEM writes the
+ *                 component type first; style-system classes follow); width and newline group members into rows.
+ *   generic     — structural roots and hinted names (genericRules).
+ * Returns { name(el), roots?(el, depth, isBody), isColumns?(el), columns?(el), width?(el), newline?(el) }: with
+ * `roots` the profile picks its roots itself; without it, `name` is the root test (null: not a root).
+ */
+export function profileRules(profile, A, opts = {}) {
+  if (profile === 'generic') return genericRules(A, opts);
+  if (profile === 'aem-classic') {
+    const R = {
+      name(el) {
+        for (const c of A.cls(el)) {
+          if (c === 'colctrl') { const w = (A.parent(el) ? A.cls(A.parent(el)) : [])[0] || 'cols'; return `colctrl:${w.startsWith('cols') ? w : 'cols'}`; }
+          if (c.startsWith('c-') && !c.endsWith('-content')) return c;
+        }
+        return null;
+      },
+      columns(el) {
+        const row = A.kids(el).find((c) => A.cls(c).includes('row')) || el;
+        return A.kids(row).filter((c) => A.cls(c).some((x) => x.startsWith('col-')));
+      },
+    };
+    R.isColumns = (el) => (R.name(el) || '').startsWith('colctrl'); // the name decides: a c-* class listed first wins
+    return R;
+  }
+  if (profile === 'aem-core') {
+    return {
+      name(el) {
+        const cl = A.cls(el);
+        if (!cl.includes('aem-GridColumn')) return null;
+        const n = cl.find((c) => !c.startsWith('aem-')) || 'grid';
+        return n === 'responsivegrid' ? 'container' : n;
+      },
+      width(el) { const m = A.cls(el).map((c) => c.match(/^aem-GridColumn--default--(\d+)$/)).find(Boolean); return m ? Number(m[1]) : 12; },
+      newline: (el) => A.cls(el).includes('aem-GridColumn--default--newline'),
+    };
+  }
+  throw new Error(`unknown parser profile: ${profile}`);
+}
+
+/**
+ * The component layout of a main region: every component with its path id and depth, grid rows (aem-core) and
+ * column controls (aem-classic). The one place path ids are assigned — spec-parse describes these nodes,
+ * spec-capture's tagger measures them. Self-contained apart from groupRows.
+ * Nodes: { el, p, depth, kids?: [node], cols?: [[node]] } or rows { row: true, p, widths, members: [node] }.
+ * Paths: top `i`, child `<p>.k<i>`, column-control column `<p>.c<ci>.<i>`, row member `<row p>.c<ci>.0`.
+ */
+export function componentLayout(main, R, A, isBody = false) {
+  const rootsBelow = (node) => { const out = []; for (const ch of A.kids(node)) { if (R.name(ch)) out.push(ch); else out.push(...rootsBelow(ch)); } return out; };
+  const level = (items, depth, pathOf) => (R.width ? groupRows(items, R.width, R.newline) : items).map((g, i) => (g.row
+    ? { row: true, p: pathOf(i), widths: g.row.map(R.width), members: g.row.map((m, ci) => comp(m, depth + 1, `${pathOf(i)}.c${ci}.0`)) }
+    : comp(g, depth, pathOf(i))));
+  function comp(el, depth, path) {
+    const n = { el, p: path, depth };
+    if (depth >= 6) return n;
+    if (R.isColumns && R.isColumns(el)) { n.cols = R.columns(el).map((c, ci) => rootsBelow(c).map((k, ki) => comp(k, depth + 1, `${path}.c${ci}.${ki}`))); return n; }
+    const kids = R.roots ? R.roots(el, depth + 1).map((k, ki) => comp(k, depth + 1, `${path}.k${ki}`)) : level(rootsBelow(el), depth + 1, (ki) => `${path}.k${ki}`);
+    if (kids.length) n.kids = kids;
+    return n;
+  }
+  return R.roots ? R.roots(main, 0, isBody).map((e, i) => comp(e, 0, String(i))) : level(rootsBelow(main), 0, String);
+}

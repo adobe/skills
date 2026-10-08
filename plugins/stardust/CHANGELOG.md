@@ -15,6 +15,10 @@ utility-class markup showed what a generic parser and a cap need.
   classes are only utilities; hash prefixes are dropped (`stripPrefix` for a site's own). One rule set
   (`lib.mjs genericRules`) runs in the parser and in the capture tagger: on 5 of 6 sampled pages the two found
   identical path ids. The AEM profiles are unchanged: a re-parse of 12,345 AEM Core pages was byte-identical.
+- **One rule set per profile, one layout walk** (`lib.mjs` `profileRules`, `componentLayout`): the capture tagger
+  ran a hand-written copy of the AEM rules; parse and capture now share them, so path ids cannot drift. Parse output
+  byte-identical on 12,345 AEM Core pages (5,192 grid rows), 200 AEM classic pages (651 column controls) and four
+  generic sites; capture path ids and rows identical on the sampled pages of each profile.
 - **Main region fallback** for sites without `main`: `[role=main]`, `#main`, `#content`, `#main-content`,
   `article`, then the body without header, footer and nav.
 - **Inventory**: stops when the origin redirects (two of three sampled sites were configured with the wrong host);

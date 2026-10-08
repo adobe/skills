@@ -21,7 +21,7 @@ import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
 import { join } from 'node:path';
 import {
-  arg, classes, genericRules, helpAndExit, isInside, loadConfig, log, parseHTML, query, queryAll, readJSONL, templateOf, textLen, walk, writeText,
+  arg, classes, componentLayout, groupRows, helpAndExit, isInside, loadConfig, log, parseHTML, profileRules, query, queryAll, readJSONL, templateOf, textLen, walk, writeText,
 } from './lib.mjs';
 
 helpAndExit(import.meta.url);
@@ -30,44 +30,18 @@ const MOD_RE = /^(bg-.*|.*-bg|.*background.*|theme-.*|.*-theme|inverse|dark|ligh
 const SPACING_RE = /^(aem-.*|col-.*|padding-.*|margin-.*|.*-padding-.*|phe-.*|parbase|section|container|responsivegrid|row|clearfix|hidden-.*|full-width.*|lazyload)$/;
 
 /* ------------------------------------------------------------ profiles --- */
-export const PROFILES = {
-  'aem-classic': {
-    rootName(el) {
-      for (const c of classes(el)) {
-        if (c === 'colctrl') { const w = classes(el.parent || {})[0] || 'cols'; return `colctrl:${w.startsWith('cols') ? w : 'cols'}`; }
-        if (c.startsWith('c-') && !c.endsWith('-content')) return c;
-      }
-      return null;
-    },
-    columns(el) {
-      const row = el.children.find((c) => c.tag && classes(c).includes('row')) || el;
-      return row.children.filter((c) => c.tag && classes(c).some((x) => x.startsWith('col-')));
-    },
-  },
-  'aem-core': {
-    rootName(el) {
-      const cl = classes(el);
-      if (!cl.includes('aem-GridColumn')) return null;
-      // AEM writes the component type first; style-system classes follow (they become mods)
-      const name = cl.find((c) => !c.startsWith('aem-')) || 'grid';
-      return name === 'responsivegrid' ? 'container' : name;
-    },
-    columns: null,
-    width(el) { const m = classes(el).map((c) => c.match(/^aem-GridColumn--default--(\d+)$/)).find(Boolean); return m ? Number(m[1]) : 12; },
-    newline(el) { return classes(el).includes('aem-GridColumn--default--newline'); },
-  },
-};
-
 const MEDIA = new Set(['img', 'picture', 'video', 'iframe', 'form', 'input', 'select', 'textarea', 'canvas', 'object', 'embed']);
-/** The generic profile over spec-parse's HTML tree (weights memoised: roots() asks for them level by level). */
-export function genericProfile(opts = {}) {
+/** The node adapter for profileRules over spec-parse's HTML tree (generic weights memoised: roots() asks level by level). */
+function nodeAdapter() {
   const w = new WeakMap();
   const weight = (el) => { if (w.has(el)) return w.get(el); let m = 0; for (const n of walk(el)) if (MEDIA.has(n.tag)) m += 1; const v = textLen(el) + m; w.set(el, v); return v; };
-  const g = genericRules({ tag: (el) => el.tag, cls: classes, attr: (el, a) => el.attrs?.[a], kids: (el) => (el.children || []).filter((c) => c.tag), weight }, opts);
-  return { rootName: g.name, roots: g.roots, columns: null };
+  return { tag: (el) => el.tag, cls: classes, attr: (el, a) => el.attrs?.[a], kids: (el) => (el.children || []).filter((c) => c.tag), parent: (el) => (el.parent?.tag ? el.parent : null), weight };
 }
-PROFILES.generic = genericProfile();
-export const profileFor = (cfg) => (cfg.parser?.profile === 'generic' ? genericProfile({ nameAttrs: cfg.parser.nameAttrs, stripPrefix: cfg.parser.stripPrefix }) : PROFILES[cfg.parser?.profile]);
+const rulesFor = (profile, opts) => { const A = nodeAdapter(); return { ...profileRules(profile, A, opts), A }; };
+export const PROFILES = { 'aem-classic': rulesFor('aem-classic'), 'aem-core': rulesFor('aem-core'), generic: rulesFor('generic') };
+export const genericProfile = (opts = {}) => rulesFor('generic', opts);
+export const profileFor = (cfg) => rulesFor(cfg.parser?.profile, { nameAttrs: cfg.parser?.nameAttrs, stripPrefix: cfg.parser?.stripPrefix });
+export { groupRows };
 export const MAIN_FALLBACK = ['main', '[role=main]', '#main', '#content', '#main-content', 'article'];
 /** The main region and whether it is the whole body (then header/footer/nav children are chrome, not content). */
 export function findMain(doc, sel) {
@@ -78,15 +52,6 @@ export function findMain(doc, sel) {
 }
 
 /* --------------------------------------------------------------- tree ---- */
-function rootsBelow(node, prof) {
-  const out = [];
-  for (const ch of node.children || []) {
-    if (!ch.tag) continue;
-    if (prof.rootName(ch)) out.push(ch); else out.push(...rootsBelow(ch, prof));
-  }
-  return out;
-}
-
 function stats(el) {
   const els = [...walk(el)];
   const d = {
@@ -109,52 +74,19 @@ function mods(el) {
   return [...new Set(toks.filter((t) => MOD_RE.test(t) && !SPACING_RE.test(t)))].sort();
 }
 
-/** Group aem-core grid members into rows: consecutive members narrower than 12 whose widths fill the grid. */
-export function groupRows(items, width, newline) {
-  const out = []; let row = []; let sum = 0;
-  const flush = () => { if (row.length > 1) out.push({ row }); else if (row.length) out.push(row[0]); row = []; sum = 0; };
-  for (const it of items) {
-    const w = width(it);
-    if (w >= 12 || newline(it)) { flush(); if (w >= 12) { out.push(it); continue; } }
-    if (sum + w > 12) flush();
-    row.push(it); sum += w;
-    if (sum >= 12) flush();
-  }
-  flush();
-  return out;
-}
-
-export function describe(el, prof, depth, path) {
-  const name = prof.rootName(el);
-  const d = { c: name, p: path, mods: mods(el), ...stats(el) };
-  if (name === 'c-autocarousel' || /carousel/.test(name)) d.slides = queryAll(el, '.carouselslide, .cmp-carousel__item').length || undefined;
-  if (depth >= 6) return d;
-  if (name.startsWith('colctrl') && prof.columns) {
-    const cols = prof.columns(el);
-    d.ncols = cols.length;
-    d.cols = cols.map((c, ci) => rootsBelow(c, prof).map((k, ki) => describe(k, prof, depth + 1, `${path}.c${ci}.${ki}`)));
-    return d;
-  }
-  const kids = prof.roots ? prof.roots(el, depth + 1).map((k, ki) => describe(k, prof, depth + 1, `${path}.k${ki}`)) : childNodes(el, prof, depth, path);
-  if (kids.length) d.kids = kids;
+/** One layout node (lib.mjs componentLayout) as the parse contract's node: name, mods, sizes, then cols or kids. */
+export function describe(n, R) {
+  if (n.row) return { c: 'row', p: n.p, mods: [], chars: 0, imgs: 0, videos: 0, forms: 0, links: 0, ncols: n.members.length, widths: n.widths, cols: n.members.map((m) => [describe(m, R)]) };
+  const name = R.name(n.el);
+  const d = { c: name, p: n.p, mods: mods(n.el), ...stats(n.el) };
+  if (name === 'c-autocarousel' || /carousel/.test(name)) d.slides = queryAll(n.el, '.carouselslide, .cmp-carousel__item').length || undefined;
+  if (n.cols) { d.ncols = n.cols.length; d.cols = n.cols.map((col) => col.map((k) => describe(k, R))); }
+  if (n.kids) d.kids = n.kids.map((k) => describe(k, R));
   return d;
 }
 
-function childNodes(el, prof, depth, path) {
-  const roots = rootsBelow(el, prof);
-  if (!prof.width) return roots.map((k, ki) => describe(k, prof, depth + 1, `${path}.k${ki}`));
-  return groupRows(roots, prof.width, prof.newline).map((g, ki) => {
-    if (!g.row) return describe(g, prof, depth + 1, `${path}.k${ki}`);
-    return { c: 'row', p: `${path}.k${ki}`, mods: [], chars: 0, imgs: 0, videos: 0, forms: 0, links: 0, ncols: g.row.length, widths: g.row.map(prof.width), cols: g.row.map((m, ci) => [describe(m, prof, depth + 2, `${path}.k${ki}.c${ci}.0`)]) };
-  });
-}
-
-export function topLevel(main, prof, isBody = false) {
-  if (prof.roots) return prof.roots(main, 0, isBody).map((e, i) => describe(e, prof, 0, String(i)));
-  if (!prof.width) return rootsBelow(main, prof).map((e, i) => describe(e, prof, 0, String(i)));
-  return groupRows(rootsBelow(main, prof), prof.width, prof.newline).map((g, i) => (g.row
-    ? { c: 'row', p: String(i), mods: [], chars: 0, imgs: 0, videos: 0, forms: 0, links: 0, ncols: g.row.length, widths: g.row.map(prof.width), cols: g.row.map((m, ci) => [describe(m, prof, 1, `${i}.c${ci}.0`)]) }
-    : describe(g, prof, 0, String(i))));
+export function topLevel(main, R, isBody = false) {
+  return componentLayout(main, R, R.A, isBody).map((n) => describe(n, R));
 }
 
 /* ------------------------------------------------------------ signals ---- */
@@ -201,8 +133,8 @@ function links(doc, main, origin, finalUrl) {
 /* --------------------------------------------------------------- main ---- */
 async function main() {
   const cfg = loadConfig();
+  if (!PROFILES[cfg.parser?.profile]) throw new Error(`config.parser.profile must be one of ${Object.keys(PROFILES).join(', ')}`);
   const prof = profileFor(cfg);
-  if (!prof) throw new Error(`config.parser.profile must be one of ${Object.keys(PROFILES).join(', ')}`);
   const fetchFile = arg('fetch', cfg.p('fetch', 'fetch.jsonl'));
   const htmlDir = arg('html', cfg.p('fetch', 'html'));
   const outDir = arg('out', cfg.p('parse'));
