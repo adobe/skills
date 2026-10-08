@@ -27,7 +27,8 @@ site *do* now?".
 ```
 
 Check types (closed set, all replayable): `fetch-json` · `dom-count` · `click-dialog` ·
-`search-query` · `form-flow` · `video-plays` · `consent-gate` · `no-page-errors` — fields in the
+`search-query` · `form-flow` · `video-plays` · `consent-gate` · `martech` (from the martech contract,
+`martech.md`) · `no-page-errors` — fields in the
 script header. A feature with no checks is listed under "features without checks" with its status
 and owner; `decided-out` rows belong there.
 

@@ -36,6 +36,7 @@ const EXEMPT = {
   'diff/scripts/live-session.mjs': 'library: live-site browser session helpers (UA, stealth launch, overlay dismissal); no CLI',
   'diff/scripts/measure-live.mjs': 'library: settle + rect/type measurement shared by clip-probe, content-presence, unit-geometry; no CLI',
   'dynamics/scripts/lib.mjs': 'library: shared arg/io/playwright helpers for the dynamics instruments; no CLI',
+  'dynamics/scripts/martech.mjs': 'library: martech contract + hand-off for dynamics-plan --martech; no CLI',
   'qa/scripts/lib.mjs': 'library: shared helpers for qa.mjs and its checks; no CLI',
   'rollout/scripts/lib.mjs': 'library: shared IO + roll-up helpers for the rollout scripts; no CLI',
   'spec/scripts/lib.mjs': 'library: shared args, config, HTML tree reader and pool for the spec stages; no CLI',

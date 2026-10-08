@@ -13,6 +13,7 @@ Run the project copies under `stardust/scripts/<skill>/`. Read this before any `
 - `deploy/file-lock.mjs` — library (lock + atomic ledger merge), no CLI
 - `deploy/ew-editability-probe.mjs` — rendered editability gate — `--content <p>.html | <url…> [--simulate-editor]`
 - `deploy/localize-links.mjs` — source hrefs → root-relative — `--source-host <h> [--content content] [--check]`
+- `deploy/martech-scaffold.mjs` — enabled martech contract → `scripts/martech.js` + hooks — `[--contract stardust/martech-contract.json] [--root .] [--dry-run] [--force]`; exit 1 = invalid / conflict / no hook
 - `deploy/qa-gate.mjs` — decoration asserts + cap at the derived width — `<harnessURL> --schema stardust/eds-schema/<p>.json [--design DESIGN.json]`
 - `deploy/render-harness.mjs` — screenshot local decoration — `content/<p>.html <out.png> [<block>…] [--ew]`
 - `deploy/sanitise.js` — non-ASCII → entities, in place — `content/<p>.html` (one file per call)
@@ -29,8 +30,9 @@ Run the project copies under `stardust/scripts/<skill>/`. Read this before any `
 - `diff/visual-diff.mjs` — screenshot diff + flags — `<protoURL> <edsURL> [--out <dir>] [--width <px>] [--main <sel>]`
 - `dynamics/dynamics-check.mjs` — replay parity checks (search-query: count + top titles vs source) — `--origin <h> [--parity <json>] [--out stardust/qa]`
 - `dynamics/dynamics-detect.mjs` — detect dynamic features — `--urls a,b [--from-state stardust/state.json]`
-- `dynamics/dynamics-plan.mjs` — triage draft — `[--in <json>] [--out <dir>] [--target-origin <h>]`
+- `dynamics/dynamics-plan.mjs` — triage draft — `[--in <json>] [--out <dir>] [--target-origin <h>] [--martech [dir]]`
 - `dynamics/lib.mjs` — library, no CLI
+- `dynamics/martech.mjs` — library (martech contract + hand-off), no CLI
 - `dynamics/snapshot-api.mjs` — record same-origin API calls — `--origin <h> --calls calls.json [--out <dir>]`
 - `dynamics/snapshot-forms.mjs` — record live forms — `--urls a,b [--out data/forms]`
 - `dynamics/sync-sheets.mjs` — sheet JSON → DA + preview — `--source <o> --org --repo --paths a.json,b.json`
@@ -89,7 +91,7 @@ Run the project copies under `stardust/scripts/<skill>/`. Read this before any `
 - `spec/spec-inventory.mjs` — S1 robots + sitemaps, else a crawl — `[--max <n>] [--headed|--archive <date>]`; exit 3 = blocked
 - `spec/spec-links.mjs` — S4 link check — `[--max 20000]`
 - `spec/spec-map.mjs` — S7 mapping → page blocks — `[--rules <json>]`
-- `spec/spec-martech.mjs` — S9 martech — `[--no-custom-code]`
+- `spec/spec-martech.mjs` — S9 martech — `[--no-custom-code] [--urls a,b --out stardust/martech]`
 - `spec/spec-parse.mjs` — S3 trees + signals — `[--fetch <jsonl>] [--out <dir>]`
 - `spec/spec-pick.mjs` — pages to capture — `[--components-only]`
 - `spec/spec-profile.mjs` — component profile — `[--json <out>]`

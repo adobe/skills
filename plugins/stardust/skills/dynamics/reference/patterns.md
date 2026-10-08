@@ -140,7 +140,8 @@ rest on its groups; a consented phase builds the data layer from page metadata, 
 manager, analytics, marketing, feedback vendors from config. RUM vendors recorded, not proposed.
 First-party collector subdomains need a CNAME on the new host — an owner item. Capture scripts keep
 suppressing the banner. Existing library: its martech already does this; keep it behind a hostname
-guard on sandbox hosts and document the config. **Verify.** Consent declined → no request to any
+guard on sandbox hosts and document the config. When the owner asks to carry the source CMP and tag
+managers over, `martech.md` is the contract. **Verify.** Consent declined → no request to any
 gated host; accepted → host-list parity with `_dynamics.json`. Status in the parity report reads
 `scaffolded-awaiting-owner`, never "dropped".
 

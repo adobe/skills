@@ -64,6 +64,8 @@ reproducibility · status** — plus pattern, phase and the owner decision. Cura
   exists); decided-out is explicit and owner-stated — a hands-off assumption never writes it.
 - **Gate:** a row without a disposition fails prepare-migration 4.5 / replica Phase 2 / rollout B2.
   The static migration continues regardless.
+- **Martech only on request:** when the owner asks to keep tags or consent, add `--martech`
+  (`reference/martech.md`); everything is scaffolded off.
 
 ## Phase 4 — Implement (per plan phase)
 
@@ -109,6 +111,7 @@ required; an interim tier that would capture regulated data (record as decided-o
 `stardust/current/_dynamics.json`, `dynamic-features.generated.md` · `stardust/dynamics/dynamic-features.generated-plan.{md,json}` ·
 `stardust/dynamic-features.md`, `stardust/dynamic-features-plan.md` (curated) · `helix-query.yaml` (listings + search, committed in the code branch) ·
 `data/<feature>/*.json` + `_provenance.json` (snapshots, code bus) · `scripts/site-config.js` (owner-facing integrations, disabled) ·
+`stardust/martech-contract.json`, `martech-handoff.md`, `scripts/martech.js` (opt-in) ·
 `stardust/dynamics/parity.json` · `stardust/qa/dynamics-report.{md,json}` · register rows · journal + status lines.
 
 ## References
@@ -121,4 +124,5 @@ required; an interim tier that would capture regulated data (record as decided-o
 - `reference/forms.md` — controls not form tags; intake by content source; regulated data.
 - `reference/parity-report.md` — schema, check types, rules.
 - `reference/locale-trees.md` — I18N as a tree.
-- `scripts/` — `dynamics-detect.mjs`, `dynamics-plan.mjs`, `dynamics-check.mjs`, `snapshot-api.mjs`, `snapshot-forms.mjs`, `sync-sheets.mjs`, `vendors.json`, `lib.mjs`.
+- `reference/martech.md` — opt-in martech contract, owner enablement, runtime, verification.
+- `scripts/` — `dynamics-detect.mjs`, `dynamics-plan.mjs`, `dynamics-check.mjs`, `snapshot-api.mjs`, `snapshot-forms.mjs`, `sync-sheets.mjs`, `vendors.json`, `lib.mjs`, `martech.mjs`.
