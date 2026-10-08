@@ -38,19 +38,19 @@ Run the project copies under `stardust/scripts/<skill>/`. Read this before any `
 - `dynamics/sync-sheets.mjs` — sheet JSON → DA + preview — `--source <o> --org --repo --paths a.json,b.json`
 - `extract/crawl.mjs` — site crawler → pages, screenshots, `_crawl-log.json#captureGaps` — `--url <u> [--pages a,b] [--max 25] [--out stardust/current] [--dynamics]`
 - `extract/style-census.mjs` — computed-style census (one live pass) — `[--pages <dir>|--urls a,b] [--width <px>] [--headed]`
-- `extract/thumb.mjs` — legible capture thumbnails ≤ --max-bytes (narrower first, then a crop ≥ --min-share; a share < 100 → the rest via --offset) — `<png|dir…> [--width 480] [--max-height <px>] [--max-bytes 150000] [--min-share 60] [--offset <px>]`
+- `extract/thumb.mjs` — capture thumbnails ≤ --max-bytes (narrower, then a crop ≥ --min-share; the rest via --offset) — `<png|dir…> [--width 480] [--max-height <px>] [--max-bytes 150000] [--min-share 60] [--offset <px>]`
 - `migrate/migrate.mjs` — per-page render driver + sidecar — `render <slug…|--all>`; `gate|deviation|variant|modules <slug>`
 - `qa/lib.mjs` — library, no CLI
 - `qa/qa.mjs` — read-only live sweep → report.json — `--base <live-url>`
 - `qa/report-html.mjs` — report.json → report.html — `[--report stardust/qa/report.json]`
-- `replica/breakpoint-lint.mjs` — every `@media` width / JS threshold on a target step (DESIGN.json `extensions.breakpoints.target`; none → skipped), or the source's switch points — `[--target 600,900,1200] [--root .] [--dirs blocks,templates,styles,scripts]` | `--inventory <file|dir…>`; exit 1 = off-target
+- `replica/breakpoint-lint.mjs` — `@media` widths / JS thresholds on target steps (DESIGN.json `breakpoints.target`), or the source's switch points — `[--target 600,900,1200] [--root .] [--dirs <list>]` | `--inventory <file|dir…>`; exit 1 = off-target
 - `replica/cap-probe.mjs` — content-cap model: capture (→ DESIGN.json) or live-vs-build row at the derived width — `<url…> [--write-design DESIGN.json]` | `<live> --against <build> [--design DESIGN.json] [--slug <s>] [--main <sel>]`; exit 2 = FAIL
 - `replica/anchor.mjs` — section anchors — `<url> [--width 1440] [--main <sel>] [--cache <json>]`
 - `replica/chrome-parity.mjs` — header/footer style parity — `<liveURL> <buildURL> [--width] [--live-cache <json>]`
 - `replica/crop-compare.mjs` — pixel diff of one band — `<a.png> <b.png> --height <px> [--y] [--y-b] [--threshold 2] [--strip <out.png> [--c <c.png>]]`
 - `replica/css-rules.mjs` — rule blocks by selector regex — `<f.css> "<re>" [--media <re>|--no-media] [--decl <re>]`
 - `replica/foundation-freeze.mjs` — frozen delivery foundation, sha256 manifest — `freeze [--paths a,b]`; `check`
-- `replica/gate-all.mjs` — the pixel tables: every deployed page (default) or every prototype (`--stage prototype --proto-base <url>`): pixel + height + clip [+ content, units] — `[--only <slug,…>] [--skip-existing] [--recapture-eds] [--eds-host <h>] [--no-probes]`; exit 2 = any FAIL
+- `replica/gate-all.mjs` — pixel tables: deployed pages (default) or prototypes (`--stage prototype --proto-base <url>`): pixel + height + clip [+ content, units] — `[--only <slug,…>] [--skip-existing] [--recapture-eds] [--eds-host <h>] [--no-probes]`; exit 2 = any FAIL
 - `replica/gate-evidence.mjs` — sidecar gates from the pixel tables + run-bg jobs — `[--slug <s>]… [--content <dir>] [--tables <dir>] [--check] [--dry-run]`
 - `replica/gate.sh` — one gate round + overflow assert + probes (`--full`: content-diff, visual-diff, chrome-parity, clip-probe; + content-presence in the published regime, unit-geometry with units.json) — `<slug> <live> <build> <width> [iter] [--full] [--main <sel>]`
 - `replica/html-slice.mjs` — one element of captured HTML — `<page.html> header|footer|main|.cls [--text] [--all]`
@@ -74,6 +74,7 @@ Run the project copies under `stardust/scripts/<skill>/`. Read this before any `
 - `rollout/autofix-aem.mjs` — fix findings in the EDS project — `--project <root> [--dry-run]`
 - `rollout/blocks.mjs` — block dedup ledger — `[--out <dir>]`
 - `rollout/dashboard.mjs` — progress dashboard — `[--out <dir>]`
+- `rollout/done-check.mjs` — run complete? exit 0 = yes — `[--live-host <h>|--offline] [--json]`
 - `rollout/delivery-lint.mjs` — pre-PUT static lint P0–P2 — `--file <html> [--path </da/path>] [--json]`
 - `rollout/findings.mjs` — record/resolve findings — `record --source --layer --check --severity`; `resolve <id> --status`
 - `rollout/inventory.mjs` — coverage from migrated tree; keeps `--new` rows — `[--migrated <dir>] [--site-url <u>] [--state <f>]`

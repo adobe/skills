@@ -584,6 +584,9 @@ findings shows a red count. Also a templates table + the quality scorecard.
 `dashboard/data.json` is the inspectable snapshot — regenerate at every iteration
 boundary. (`state.json` is read-only and optional.)
 
+**Done is one verdict:** the rollout is complete when `node skills/rollout/scripts/done-check.mjs`
+exits 0; otherwise it prints one gap per line.
+
 ## Inputs
 
 | Input | Source | Used for |
@@ -657,6 +660,7 @@ Normalize each one's output into the ledger via `findings.mjs record`. See
 - `scripts/findings.mjs` — record/resolve findings from the external audit sources.
 - `scripts/autofix-aem.mjs` — the AEM autofix engine (edits the EDS project).
 - `scripts/dashboard.mjs` — design-identity dashboard + `data.json` snapshot.
+- `scripts/done-check.mjs` — the completion verdict (Phase I); exit 0 = complete.
 - `scripts/lib.mjs` — shared IO + roll-up + page-loading + autofix-registry helpers.
 
 ## References
