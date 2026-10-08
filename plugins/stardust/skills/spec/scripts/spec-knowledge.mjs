@@ -14,7 +14,7 @@
 import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
 import { join } from 'node:path';
-import { arg, helpAndExit, loadConfig, log, readJSON, readJSONL, templateOf, urlKey, writeJSON, writeText } from './lib.mjs';
+import { arg, helpAndExit, loadConfig, loadSibling, log, readJSON, readJSONL, templateOf, urlKey, writeJSON, writeText } from './lib.mjs';
 import { evalRule, fillText, selectUrls, tokens } from './rules.mjs';
 
 helpAndExit(import.meta.url);
@@ -60,6 +60,16 @@ export function reachRule(rule) {
   return tokens(r);
 }
 
+/** Feature rows whose class, disposition, reproducibility or status is outside the dynamics vocabulary. Pure. */
+export function offVocabulary(features, taxonomy) {
+  const out = [];
+  for (const f of features) for (const k of ['class', 'disposition', 'reproducibility', 'status']) {
+    const v = k === 'status' ? (f.status || 'pending') : f[k];
+    if (!taxonomy[k].includes(v)) out.push(`${f.id}: ${k} "${v}" (one of ${taxonomy[k].join(', ')})`);
+  }
+  return out;
+}
+
 /** The latest recorded answer per question id, from judgement/answers.json. Pure. */
 export function latestAnswers(list) {
   const out = {};
@@ -67,7 +77,7 @@ export function latestAnswers(list) {
   return out;
 }
 
-function main() {
+async function main() {
   const cfg = loadConfig();
   const W = (...p) => cfg.w(...p); const J = (...p) => cfg.p('judgement', ...p); const OUT = (...p) => cfg.p('knowledge', ...p);
   const rum = readJSON(W('rum', 'rum.json'), { available: false });
@@ -99,7 +109,7 @@ function main() {
     const row = { id, url: r.url, path, section: segs[sp] ? segs[sp].replace('.html', '') : '(root)', depth: segs.length, in_sitemap: inSitemap, status: r.status ?? null,
       final_url: r.final_url ?? null, final_status: r.final_status ?? null, outcome: oc, template: isPage ? templateOf(r, cfg) : null,
       variant_code: isPage ? (varOf.get(r.final_url) || varOf.get(r.url) || null) : null, title: isPage ? (r.title || null) : null, eds_path: isPage ? e : null,
-      needs_migration_redirect: isPage && e !== (path.endsWith('.html') ? path.slice(0, -5) : path) ? 1 : 0, pageviews_90d: Math.round(pv.views || 0),
+      needs_migration_redirect: isPage && e !== path ? 1 : 0, pageviews_90d: Math.round(pv.views || 0),
       rum_bundles: pv.bundles || 0, traffic_band: rum.available ? band(pv.views) : null, block_count: nblocks, capture_key: isPage ? captured(r.url) : null,
       main_chars: c ? c.main_chars : null, flag };
     if (byUrl.has(r.url)) urls.splice(urls.indexOf(byUrl.get(r.url)), 1); // a URL listed twice keeps its last row
@@ -216,6 +226,10 @@ function main() {
   const K = { urls, pageBlocks, signals, blocks, variants: variantRows, templates, redirects, broken, badLinks, features: [] };
 
   // ---- features: reach in the rule format
+  // dynamics consumes these rows: they use its vocabulary (../../dynamics/reference/triage.md) or the stage stops
+  const { TAXONOMY } = await loadSibling('dynamics', 'lib.mjs');
+  const off = offVocabulary(impl.features || [], TAXONOMY);
+  if (off.length) throw new Error(`implementation.json features outside the dynamics vocabulary:\n  ${off.join('\n  ')}`);
   const nlive = live.length; const featByQ = {}; const features = [];
   for (const f of impl.features || []) {
     const set = selectUrls(K, reachRule(f.reach), f.reach); const sitewide = set.length >= 0.9 * nlive ? 1 : 0;
@@ -313,4 +327,4 @@ function main() {
   for (const [k, v] of Object.entries({ urls, pageBlocks, blocks, variants: variantRows, templates, redirects, broken, features, vendors, launchRules, openQuestions, locales })) log(`${k} ${v.length}`);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) { try { main(); } catch (e) { console.error(e.message); process.exit(1); } }
+if (import.meta.url === `file://${process.argv[1]}`) main().catch((e) => { console.error(e.message); process.exit(1); });

@@ -20,14 +20,13 @@ The spec answers the people planning a migration (what to build, reuse, fix or d
 - **Every open question ships a default.** A hands-off migration applies it; a recorded answer replaces it.
 - **Computed, never typed.** Every figure in findings, feature reach and question impact is a rule
   (reference/knowledge.md § Rules) the knowledge stage evaluates.
-- **Speak the downstream contracts.** Dynamic features use the dynamics taxonomy (`../dynamics/reference/triage.md`).
 
 ## Setup
 
 `stardust/spec/spec.config.json` (reference/config.md): `origin`, `scopePath`, `template` rule, `parser` profile
 (`aem-classic`, `aem-core`, or `generic` for any other site) + main selector, optional `maxPages`, `rum`,
 `referenceBlocks`. Copy the spec, diff and dynamics scripts to `stardust/scripts/spec/`, `stardust/scripts/diff/` and
-`stardust/scripts/dynamics/` (S1, S2 and S6 use diff's `live-session.mjs`; S9 the dynamics detector and vendor table).
+`stardust/scripts/dynamics/` (S1, S2, S6 and S9 import them).
 
 ## Stages
 
@@ -44,7 +43,7 @@ The spec answers the people planning a migration (what to build, reuse, fix or d
 | S9 | Implementation | `dynamics-detect.mjs --urls <reps> --out <work>/dynamics`, `spec-martech.mjs`; write `judgement/catalog.json`, `implementation.json`, `findings.json`, `search-probes.json` | `<work>/`, `judgement/` |
 | S10 | Knowledge | `spec-knowledge.mjs` | `knowledge/` |
 
-`<work>` is `stardust/.work/spec/`, never committed. Large sites: S2 runs at 4 parallel requests and is resumable —
+Each stage logs start and end to `stardust/status.jsonl` (`ledger.mjs spec s1-inventory start`). `<work>` is `stardust/.work/spec/`, never committed. Large sites: S2 runs at 4 parallel requests and is resumable —
 start it, then write config and judgement scaffolding while it runs. One browser job at a time (S6/S8/S9), two tabs.
 
 ## Judgement (S7, S9)

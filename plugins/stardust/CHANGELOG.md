@@ -4,6 +4,27 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.31.1 — spec knowledge, wave 1: complete redirects, the dynamics vocabulary, a scoping entry
+
+A review of how the other skills can read `stardust/spec/knowledge/` found gaps in spec's own output, and small
+readers that would fail on it.
+
+- **Redirects** (`spec-knowledge.mjs`): a migration row for every page whose delivered path differs from its
+  source path. A path that changed only by its `.html` had no row, yet EDS answers 404 on `.html` and rollout
+  wants a sheet row for each. On a sports-federation run (about 12,000 pages) the rows grow from 5,287 to 12,072.
+- **Feature vocabulary:** S10 checks class, disposition, reproducibility and status against the dynamics triage
+  vocabulary (`TAXONOMY`, exported by `dynamics/scripts/lib.mjs`) and stops naming each value outside it. The
+  field run's judgement used five values dynamics would have rejected later.
+- **Router:** a flow-neutral scoping entry ("scope / estimate / plan / spec the migration of X" → `spec`, never
+  stamps `flow`). "Build a migration plan" no longer routes to `replica`. A large site (1,000+ sitemap URLs, no
+  spec) gets a one-line offer to scope it first; it is never run unasked. The two copies of the wrong-flow anecdote
+  are folded.
+- **Ledger:** spec's stages are phases (`s1-inventory` … `s10-knowledge`); spec writes its status lines.
+- **`localize-links --redirects`** reads JSON Lines (`{src, target}`, spec's `knowledge/redirects.jsonl`) and the
+  published sheet (`{data:[{Source, Destination}]}`). It reported 0 pairs from the first and threw on the second.
+  First test file for the script.
+- **`crawl.mjs --max 0`** means no cap. It silently became 25, so a `--all` crawl translated to `--max 0` kept 25
+  pages.
 ## 0.31.0 — publish always; done is one verdict
 
 Two contracts a hands-off run had to be told from outside the skill, because the skill left them open. Both
