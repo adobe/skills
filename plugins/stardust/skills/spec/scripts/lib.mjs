@@ -80,6 +80,20 @@ export function templateOf(fetchRow, cfg) {
   return fetchRow.template || cfg.template.bodyAttr || cfg.template.bodyClass || cfg.template.meta ? `${t} · ${section}` : section;
 }
 
+/* ------------------------------------------------------ blocked origins --- */
+/** Interstitial text of the common bot walls (raw HTML head). */
+export const CHALLENGE = /cf-browser-verification|challenge-platform|cf-chl-|Just a moment\.\.\.|Attention Required|_Incapsula_Resource|px-captcha|perimeterx|Access Denied<\/title>|ak_bmsc|datadome|captcha-delivery/i;
+/**
+ * Why a response turns the client away, or null: a bot challenge (an edge signature by live-session's rules when
+ * `isChallenge` is given, or interstitial text), or a refusal of an HTML request. Pure.
+ */
+export function blockedBy(status, headers, head = '', url = '', isChallenge = null) {
+  const edge = isChallenge ? isChallenge({ status: () => status, headers: () => headers, url: () => url }) : headers['cf-mitigated'] === 'challenge';
+  if (edge || ([403, 429, 503].includes(status) && CHALLENGE.test(head))) return 'challenge';
+  if (status === 403 || status === 429) return 'refused';
+  return null;
+}
+
 /* ------------------------------------------------------------- misc ---- */
 export const urlKey = (u) => createHash('sha1').update(u).digest('hex').slice(0, 16);
 export const sleep = (ms) => new Promise((r) => { setTimeout(r, ms); });
@@ -252,13 +266,12 @@ export function genericRules(A, opts = {}) {
   const hashy = (t) => /\d/.test(t) || t.length <= 2 || !/[aeiouy]/i.test(t);
   const kebab = (s) => s.replace(/([a-z0-9])([A-Z])/g, '$1-$2').replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '').toLowerCase();
   const good = (n) => (/^[a-z][a-z0-9-]{2,}$/i.test(n) && !LAYOUT.test(n) && !UTIL.test(n) ? kebab(n) : null);
+  const blockStyle = (c) => (strip ? c.replace(strip, '') : c).match(/^wp-block-(.+)$|^elementor-widget-(.+)$|^paragraph--type--(.+)$|^block-(?:block-content-|views-block-)?(.+)$/);
   const fromClass = (c0) => {
     const c = strip ? c0.replace(strip, '') : c0;
-    if (!c) return null;
-    let m = c.match(/^wp-block-(.+)$/) || c.match(/^elementor-widget-(.+)$/) || c.match(/^paragraph--type--(.+)$/) || c.match(/^block-(?:block-content-|views-block-)?(.+)$/);
-    if (m) { const b = m[1].replace(/-is-layout-.*$/, ''); return LAYOUT.test(b) ? null : kebab(b); } // a CMS layout wrapper: named by its shape
+    if (!c || blockStyle(c)) return null; // block-style classes are read first, in name()
     if (UTIL.test(c) || LAYOUT.test(c)) return null;
-    m = c.match(/^([A-Za-z][A-Za-z0-9]*?)(?:-module)?_{1,2}[A-Za-z0-9]+_{0,3}[A-Za-z0-9-]*$/); // CSS modules: Hero_root__x1y2z → hero
+    const m = c.match(/^([A-Za-z][A-Za-z0-9]*?)(?:-module)?_{1,2}[A-Za-z0-9]+_{0,3}[A-Za-z0-9-]*$/); // CSS modules: Hero_root__x1y2z → hero
     if (m && /_/.test(c) && HASH.test(c.split('_').pop())) return good(m[1]);
     const toks = c.split('__')[0].split('--')[0].split('-'); // BEM block, then hash prefixes: qrk1f-w-hero → hero
     while (toks.length > 1 && hashy(toks[0])) toks.shift();
@@ -277,6 +290,8 @@ export function genericRules(A, opts = {}) {
   };
   const name = (el) => {
     for (const a of NAME_ATTRS) { const v = A.attr(el, a); if (v) return kebab(v.replace(/\.default$/, '')); }
+    // a block-style class wins over any other class (Drupal writes `paragraph` before `paragraph--type--<name>`)
+    for (const c of A.cls(el)) { const m = blockStyle(c); if (m) { const b = m.slice(1).find(Boolean).replace(/-is-layout-.*$/, ''); return LAYOUT.test(b) ? (CONTAINER.has(A.tag(el)) ? shape(el) : A.tag(el)) : kebab(b); } }
     for (const c of A.cls(el)) { const n = fromClass(c); if (n) return n; }
     return CONTAINER.has(A.tag(el)) ? shape(el) : A.tag(el);
   };

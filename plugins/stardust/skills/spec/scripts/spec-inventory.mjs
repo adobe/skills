@@ -70,10 +70,13 @@ export function sampleBySection(urls, max, scopePath) {
 
 const inScopeOf = (cfg) => (l) => { try { const x = new URL(l); return `${x.origin}` === cfg.origin && (x.pathname === cfg.scopePath || x.pathname.startsWith(`${cfg.scopePath.replace(/\/$/, '')}/`) || x.pathname.startsWith(cfg.scopePath)); } catch { return false; } };
 
+/** Links that are files, not pages: the crawl reads every href, so <link> icons, fonts and manifests reach it too. */
+export const NOT_PAGE = /\.(pdf|jpe?g|png|gif|svg|webp|avif|ico|zip|docx?|xlsx?|pptx?|mp4|webm|mov|mp3|css|js|xml|json|txt|webmanifest|woff2?|ttf|otf|eot)(\?|$)/i;
+
 /** Breadth-first same-origin crawl from the scope root, for sites without a usable sitemap. */
 async function crawl(cfg, max) {
   const ok = inScopeOf(cfg); const seen = new Set([`${cfg.origin}${cfg.scopePath}`]); let frontier = [...seen];
-  const skip = /\.(pdf|jpe?g|png|gif|svg|webp|zip|docx?|xlsx?|pptx?|mp4|mp3|css|js|xml|json)(\?|$)/i;
+  const skip = NOT_PAGE;
   while (frontier.length && seen.size < max * 2) {
     const pages = await pool(frontier.slice(0, 200), 4, get); const next = [];
     pages.forEach((html, i) => { for (const m of (html || '').matchAll(/href="([^"#]+)"/g)) { let u; try { u = new URL(m[1].replace(/&amp;/g, '&'), frontier[i]); } catch { continue; } u.hash = ''; u.search = ''; const h = u.href; if (ok(h) && !skip.test(h) && !seen.has(h)) { seen.add(h); next.push(h); } } });

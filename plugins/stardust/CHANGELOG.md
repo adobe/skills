@@ -31,6 +31,16 @@ at JSON files clients read, and knows no client. **Contract change** (released a
 - **Verified** on two recorded runs. Every rule from their judgement files (150) gives its SQL value on the same
   data, apart from an empty sum (0, not null). On the 13,000-URL run, `spec-knowledge.mjs` reproduces all 25 sets
   of its `spec.sqlite`, and a database rebuilt from `knowledge/` matches it table for table (meta aside).
+- **Field run** on a museum site behind bot protection (generic profile, headed tier, 300-URL sample): S1–S10 ran in
+  the new layout from the Setup copies, and a client database built from its knowledge. The CDN turned the headed
+  browser away after about 100 pages; the spec covers the 89 pages read, and a finding says so. It found three
+  0.30.1 bugs, fixed here:
+  - **Drupal names:** the generic namer took the first nameable class, so `paragraph` hid
+    `paragraph--type--<name>` and every paragraph became one component. Block-style classes now win (`lib.mjs`,
+    shared by parse and capture).
+  - **S4 refusals:** a bot wall's 403 on a link counted as a broken link. `spec-links` records it as `blocked`, not
+    a 404 (`blockedBy` moved to `lib.mjs`).
+  - **S1 crawl:** the crawl kept `<link>` icons, fonts and manifests as pages (`NOT_PAGE` widened).
 - **Existing projects:** move `<dir>/{inventory,fetch,parse,links,rum,martech,dynamics,media,sheets}` to
   `stardust/.work/spec/`, `judgement/page-blocks.jsonl` and `variants.json` to `.work/spec/map/`, the config into
   `stardust/spec/`, then rewrite `sql:` rules and HTML findings.

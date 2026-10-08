@@ -22,7 +22,7 @@
 import { gzipSync } from 'node:zlib';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { appendJSONL, arg, flag, helpAndExit, loadConfig, loadLiveSession, loadPlaywright, log, pool, readJSON, readJSONL, urlKey, writeJSON } from './lib.mjs';
+import { CHALLENGE, appendJSONL, arg, blockedBy, flag, helpAndExit, loadConfig, loadLiveSession, loadPlaywright, log, pool, readJSON, readJSONL, urlKey, writeJSON } from './lib.mjs';
 
 helpAndExit(import.meta.url);
 
@@ -40,17 +40,7 @@ export function readTemplate(html, rule = { bodyAttr: 'data-template' }) {
   return { template, bodyClass, title };
 }
 
-const CHALLENGE = /cf-browser-verification|challenge-platform|cf-chl-|Just a moment\.\.\.|Attention Required|_Incapsula_Resource|px-captcha|perimeterx|Access Denied<\/title>|ak_bmsc|datadome|captcha-delivery/i;
-/**
- * Why a response turns the client away, or null: a bot challenge (an edge signature by live-session's rules when
- * `isChallenge` is given, or interstitial text), or a refusal of an HTML request. Pure.
- */
-export function blockedBy(status, headers, head = '', url = '', isChallenge = null) {
-  const edge = isChallenge ? isChallenge({ status: () => status, headers: () => headers, url: () => url }) : headers['cf-mitigated'] === 'challenge';
-  if (edge || ([403, 429, 503].includes(status) && CHALLENGE.test(head))) return 'challenge';
-  if (status === 403 || status === 429) return 'refused';
-  return null;
-}
+export { blockedBy };
 let EDGE = null; // live-session's isChallengeResponse, set in main
 const isBlocked = (r) => !!r.blocked || (!!r.error && r.error !== 'redirect loop');
 

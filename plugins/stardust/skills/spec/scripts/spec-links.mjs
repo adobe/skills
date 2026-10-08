@@ -2,15 +2,16 @@
 /**
  * spec-links.mjs — S4 link check: every same-origin link found by spec-parse that is not a fetched page —
  * pages are fetched like S2 (redirect chain, template, HTML kept for parsing), assets (/content/dam, files)
- * get HEAD then GET. Records status, final URL and target status. Resumable.
+ * get HEAD then GET. Records status, final URL and target status; a bot wall or refusal is recorded as `blocked`,
+ * not as a broken link. Resumable.
  *
  *   node spec-links.mjs [--config <file>] [--links <links.jsonl>] [--workers 6] [--max 20000]
  *
  * Writes <work>/links/assets.jsonl and <work>/links/pages.txt (then run spec-fetch with
  * --urls <work>/links/pages.txt --out <work>/links/pages.jsonl to fetch the discovered pages).
  */
-import { existsSync, readFileSync } from 'node:fs';
-import { appendJSONL, arg, helpAndExit, loadConfig, log, pool, readJSONL, writeText } from './lib.mjs';
+import { existsSync } from 'node:fs';
+import { appendJSONL, arg, blockedBy, helpAndExit, loadConfig, log, pool, readJSONL, writeText } from './lib.mjs';
 
 helpAndExit(import.meta.url);
 
@@ -39,6 +40,9 @@ async function check(url) {
       if ([403, 405, 501].includes(res.status)) res = await fetch(cur, { method: 'GET', redirect: 'manual', headers: { 'user-agent': UA, range: 'bytes=0-1023' } });
     } catch (e) { return { url, error: String(e.message || e).slice(0, 200), chain }; }
     if ([301, 302, 303, 307, 308].includes(res.status) && res.headers.get('location')) { const next = new URL(res.headers.get('location'), cur).href; chain.push({ url: cur, status: res.status, location: next }); cur = next; continue; }
+    // a bot wall or refusal is not a broken link: recorded as blocked, left out of the 404s
+    const why = blockedBy(res.status, Object.fromEntries(res.headers), '', cur);
+    if (why) return { url, blocked: why, status: res.status, chain };
     return { url, status: chain.length ? chain[0].status : res.status, final_url: cur, final_status: res.status, chain, content_type: res.headers.get('content-type') || '', bytes: Number(res.headers.get('content-length')) || null };
   }
   return { url, error: 'redirect loop', chain };
@@ -55,7 +59,10 @@ async function main() {
   const todo = assets.filter((u) => !done.has(u)).slice(0, Number(arg('max', 20000)));
   log(`${pages.length} discovered pages (→ links/pages.txt), ${assets.length} assets, ${todo.length} to check`);
   await pool(todo, Number(arg('workers', 6)), async (u) => appendJSONL(out, await check(u)), (d, n) => { if (d % 500 === 0 || d === n) log(`${d}/${n}`); });
-  if (existsSync(out)) log(`${readFileSync(out, 'utf8').split('\n').filter(Boolean).length} assets checked`);
+  if (existsSync(out)) {
+    const rows = readJSONL(out); const blocked = rows.filter((r) => r.blocked).length;
+    log(`${rows.length} assets checked${blocked ? `; ${blocked} turned away (blocked, not counted as broken)` : ''}`);
+  }
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) main().catch((e) => { console.error(e.message); process.exit(1); });
