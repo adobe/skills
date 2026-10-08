@@ -132,20 +132,18 @@ modal-bearing into a generic block. **Verify.** Known input → known output.
 
 ## consent-gated-tags
 
-**Intent.** Re-wire the source's tag stack, gated on consent, with every id captured from the source
-— never invented. **Contract.** `stardust/martech-contract.json` (triage.md § Martech): production
-hosts, consent policy + CMP category map, one route per tag loader (`url`, `gtm`, `aem-martech`,
-`aem-gtm-martech`) with a fallback, the vendor inventory. No per-page authoring. **Mechanism.**
-deploy Step 3b `martech-scaffold.mjs`: `scripts/consent-check.js` loads the CMP and maps its groups
-to categories, `scripts/consented.js` loads each enabled route whose category is granted,
-`scripts/martech.js` initialises the Adobe or Google martech plugin; all hooked from `loadDelayed()`.
-Tags run only on production hosts (`?martech=on` elsewhere). A route without its ids, or a source
-without a supported CMP, is scaffolded off and listed in `stardust/martech-handoff.md`. RUM vendors
-recorded, not proposed. First-party collector subdomains need a CNAME on the new host — an owner
-item. Capture scripts keep suppressing the banner. Existing library: its martech already does this;
-keep it behind a hostname guard on sandbox hosts and document the config. **Verify.** `martech`
-parity checks: no tag host before consent, each enabled route fires after `?consent=accept`.
-Status in the parity report reads `host-gated` or `scaffolded-awaiting-owner`, never "dropped".
+**Intent.** Nothing about a tag stack can be re-wired autonomously (domain-bound CMP scripts, report
+suites, property ids), but everything observed can be pre-filled. **Contract.** One owner-facing
+`scripts/site-config.js`: every observed vendor with ids and endpoints, all `enabled: false`; no
+per-page authoring. **Mechanism.** A consent phase loads the CMP with the recorded id and gates the
+rest on its groups; a consented phase builds the data layer from page metadata, then loads the tag
+manager, analytics, marketing, feedback vendors from config. RUM vendors recorded, not proposed.
+First-party collector subdomains need a CNAME on the new host — an owner item. Capture scripts keep
+suppressing the banner. Existing library: its martech already does this; keep it behind a hostname
+guard on sandbox hosts and document the config. When the owner asks to carry the source CMP and tag
+managers over, `martech.md` is the contract. **Verify.** Consent declined → no request to any
+gated host; accepted → host-list parity with `_dynamics.json`. Status in the parity report reads
+`scaffolded-awaiting-owner`, never "dropped".
 
 ## forms → forms.md · off-origin-data → off-origin-data.md · listings → listings.md · locale → locale-trees.md
 

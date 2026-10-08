@@ -39,15 +39,15 @@
  *                  (video at t=0) had become the spec. Exported as `judgeVideoPlayback(sample, check)`.
  *   consent-gate   { path*, forbiddenHosts*[] }                    no request to those hosts before consent
  *   martech        { path*, mode*: gate|accept, forbiddenHosts?[], expect?[{ id, hosts[] }], productionHosts?[] }
- *                  gate: no forbiddenHosts host is requested; accept: each expected route requests one of its
- *                  hosts. Cross-site requests are aborted (only the host is recorded), so a replay never sends a
- *                  hit to a production account; skipped on a production host. Built by `martechChecks(contract)`.
+ *                  gate: no forbiddenHosts host is requested; accept: each expected id requests one of its hosts.
+ *                  Cross-site requests are aborted once their host is recorded, so a replay never sends a hit to a
+ *                  production account; skipped on a production host. Built by `martechChecks(contract)`.
  *   no-page-errors { paths*[] }                                    no uncaught exceptions
  * Every check also records the third-party request statuses it observed, so a
  * probe-induced failure is distinguishable from a vendor restriction.
  *
- * --contract stardust/martech-contract.json (default: that file when it exists) appends the martech
- * feature; with a contract and no parity file only the martech checks run.
+ * --contract (default: stardust/martech-contract.json when it exists, written only by `dynamics-plan --martech`)
+ * appends the martech feature; with a contract and no parity file only the martech checks run.
  */
 /* eslint-disable no-await-in-loop, no-restricted-syntax, max-len */
 import { readFileSync, existsSync } from 'node:fs';
@@ -141,22 +141,21 @@ export function compareSearchResults(results, { expectIncludes, expectCount, exp
 }
 
 const DEFAULT_CONTRACT = 'stardust/martech-contract.json';
-const PLUGIN_HOSTS = { 'aem-martech': ['adobedc.net', 'adobedtm.com'], 'aem-gtm-martech': ['googletagmanager.com', 'google-analytics.com'] };
-const TRACKING = new Set(['analytics', 'marketing', 'personalization']);
 const hostOf = (u) => { try { return new URL(u).host; } catch { return ''; } };
 
-/** the CMP's own host is never forbidden: it must load before consent to ask for it */
+/** off by default: nothing on `/`; with `?martech=on` a category-gated route waits for consent; enabled ones load on accept */
 export function martechChecks(contract) {
-  const routeHosts = (r) => [...(PLUGIN_HOSTS[r.loader] || []), hostOf(r.src), hostOf(r.fallback?.src)].filter(Boolean);
-  const cmpHost = hostOf(contract.consent?.src);
-  const vendorHosts = (contract.vendors || []).filter((v) => TRACKING.has(v.category)).map((v) => v.host);
-  const forbiddenHosts = [...new Set([...(contract.routes || []).flatMap(routeHosts), ...vendorHosts])].filter((h) => h && h !== cmpHost).sort();
-  const expect = (contract.routes || []).filter((r) => r.enabled).map((r) => ({ id: r.id, hosts: routeHosts(r) })).filter((g) => g.hosts.length);
+  const { cmp } = contract.consent || {};
+  const routes = contract.routes || [];
+  const enabled = routes.filter((r) => r.enabled);
   const base = { type: 'martech', productionHosts: contract.productionHosts || [] };
-  const checks = [{ ...base, path: '/', mode: 'gate', forbiddenHosts }];
-  if (contract.consent?.policy !== 'none-required') checks.push({ ...base, path: '/?martech=on', mode: 'gate', forbiddenHosts });
+  const host = (r) => hostOf(r.src);
+  const checks = [{ ...base, path: '/', mode: 'gate', forbiddenHosts: [...new Set([...routes.map(host), hostOf(cmp?.src)])].filter(Boolean).sort() }];
+  const gated = enabled.filter((r) => r.category).map(host);
+  if (gated.length) checks.push({ ...base, path: '/?martech=on', mode: 'gate', forbiddenHosts: [...new Set(gated)].sort() });
+  const expect = [...(cmp?.enabled ? [{ id: 'cmp', hosts: [hostOf(cmp.src)] }] : []), ...enabled.map((r) => ({ id: r.id, hosts: [host(r)] }))];
   if (expect.length) checks.push({ ...base, path: '/?martech=on&consent=accept', mode: 'accept', expect });
-  return { id: 'martech', feature: 'martech: consent + tag routing', class: 'T', status: 'host-gated', checks };
+  return { id: 'martech', feature: 'martech: consent + tag routing', class: 'T', status: enabled.length || cmp?.enabled ? 'owner-enabled' : 'scaffolded-off', checks };
 }
 
 export function judgeMartechRequests(hosts, c) {

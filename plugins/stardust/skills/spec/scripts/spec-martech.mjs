@@ -6,13 +6,17 @@
  * paths, custom-code files and the hosts they load); OneTrust geo rule sets and cookie categories when present.
  *
  *   node spec-martech.mjs [--config spec.config.json] [--no-custom-code]
+ *   node spec-martech.mjs --urls <url,url,...> [--out stardust/martech] [--no-custom-code]
  *
  * Writes <dir>/martech/headers.json, vendors.json, launch.json (+ launch.js, rc/ for custom code), onetrust.json.
+ * --urls runs without a spec: the first URL is the origin's home, each URL's server HTML gives its page signals.
  * Everything read here is public (what any browser downloads); no credential is used.
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { HERE, flag, helpAndExit, loadConfig, log, pool, readJSON, readJSONL, writeJSON } from './lib.mjs';
+import { join, resolve } from 'node:path';
+import {
+  HERE, arg, flag, helpAndExit, list, loadConfig, log, parseHTML, pool, readJSON, readJSONL, writeJSON,
+} from './lib.mjs';
 
 helpAndExit(import.meta.url);
 
@@ -62,22 +66,34 @@ export function parseLaunch(js) {
   return { build, extensions: [...new Set(extensions)], dataElements, rules };
 }
 
+async function sources() {
+  const urls = list(arg('urls'));
+  if (!urls.length) {
+    const cfg = loadConfig();
+    return { origin: cfg.origin, home: `${cfg.origin}${cfg.scopePath}`, out: cfg.p('martech'), sigs: readJSONL(cfg.p('parse', 'signals.jsonl')) };
+  }
+  // spec-parse prints its own usage at import time, so it loads only here and never on --help
+  const { pageSignals } = await import('./spec-parse.mjs');
+  const { origin } = new URL(urls[0]);
+  const pages = await pool(urls, 4, async (url) => { const html = await get(url); return html && { url, ...pageSignals(parseHTML(html), html, origin) }; });
+  return { origin, home: urls[0], out: resolve(arg('out', 'stardust/martech')), sigs: pages.filter(Boolean) };
+}
+
 async function main() {
-  const cfg = loadConfig(); const out = cfg.p('martech'); mkdirSync(out, { recursive: true });
+  const { origin, home, out, sigs } = await sources(); mkdirSync(out, { recursive: true });
   // headers
-  const h = await fetch(`${cfg.origin}${cfg.scopePath}`, { headers: { 'user-agent': UA }, redirect: 'follow' });
+  const h = await fetch(home, { headers: { 'user-agent': UA }, redirect: 'follow' });
   const headers = Object.fromEntries([...h.headers.entries()].filter(([k]) => /^(server|via|x-|content-security-policy|strict-transport|permissions-policy|referrer-policy|cache-control|x-frame)/i.test(k) && !/^x-amz-cf-id|^x-request-id/i.test(k)));
   const csp = headers['content-security-policy'] || '';
   writeJSON(join(out, 'headers.json'), headers);
   // vendors from page signals
-  const sigs = readJSONL(cfg.p('parse', 'signals.jsonl'));
   const table = vendorTable();
   const reach = {}; const inline = {};
   for (const s of sigs) {
     new Set([...s.scriptHosts, ...s.iframeHosts]).forEach((hst) => { reach[hst] = (reach[hst] || 0) + 1; });
     s.inline.forEach((k) => { inline[k] = (inline[k] || 0) + 1; });
   }
-  const own = new URL(cfg.origin).hostname;
+  const own = new URL(origin).hostname;
   const vendors = Object.entries(reach).map(([host, pages]) => {
     const v = table.find((t) => t.re.test(host));
     return { host, pages, firstParty: host === own || host.endsWith(`.${own.replace(/^www\./, '')}`), role: v?.role || null, class: v?.class || null, inCsp: csp.includes(host.split('.').slice(-2).join('.')) };

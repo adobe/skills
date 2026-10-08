@@ -4,6 +4,26 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.31.0 — opt-in martech: carry the source consent and tag managers over, switched off
+
+A migration dropped the source's CMP and tag managers silently, or left an agent to re-wire them by hand
+against accounts it does not own. Martech now has one contract, built only when the owner asks, from the
+evidence `spec-martech.mjs` already reads (`dynamics/reference/martech.md`).
+
+- **Evidence**: `spec-martech.mjs --urls … --out stardust/martech` runs standalone, without a spec.
+- **Contract** (`dynamics-plan.mjs --martech`): `stardust/martech-contract.json` and
+  `martech-handoff.md`. It holds the CMP with its id, the source consent model (`per-tag` or
+  `owner-decision`), the categories from the CMP configuration, one route per tag-manager loader, and
+  the Launch rules and data elements to rewrite. Every part is written disabled, and a rebuild keeps
+  the owner's choices. CMP scripts and loader patterns live in `vendors.json`; detection is unchanged.
+- **Runtime** (`deploy/scripts/martech-scaffold.mjs`): `scripts/martech.js` from the enabled parts. The
+  CMP loads in `loadEager()`, tag managers from `delayed.js`, and a route with a `category` waits for
+  that consent group. Tags load only on production hosts; on preview `?martech=on` (plus
+  `&consent=accept`) turns them on.
+- **Verification** (`dynamics-check.mjs`, qa `dynamics`): a `martech` check aborts cross-site requests
+  after recording the host. It asserts nothing loads by default, gated routes wait for consent, and
+  enabled hosts are requested after accept.
+
 ## 0.30.0 — new skill `spec`: the migration spec before the migration, as one documented database
 
 Scoping a migration was rebuilt by hand per engagement: a crawl, spreadsheets of templates and redirects, a

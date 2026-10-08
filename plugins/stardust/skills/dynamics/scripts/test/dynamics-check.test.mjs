@@ -5,7 +5,7 @@
 // results sharing title + text — not just the presence of one expected hit. Fixtures only: no browser, no
 // network. Also judgeVideoPlayback, the pure verdict of `video-plays`: presence is never a pass — a
 // native <video> must be PLAYING (currentTime advancing), a vendor iframe must request playback.
-// Also martechChecks (contract → martech feature) and judgeMartechRequests (gate/accept verdicts).
+// Also martechChecks (martech contract → checks) and judgeMartechRequests (gate/accept verdicts).
 // Also: --help prints the header and writes nothing.
 // Run: node plugins/stardust/skills/dynamics/scripts/test/dynamics-check.test.mjs
 import assert from 'node:assert/strict';
@@ -119,31 +119,28 @@ check('vendor iframe: present but no playback request < 400 FAILS; one ok reques
 
 const CONTRACT = {
   productionHosts: ['www.example.test'],
-  consent: { cmp: 'onetrust', policy: 'cmp', src: 'https://cmp.example.test/otSDKStub.js' },
+  consent: { cmp: { vendor: 'OneTrust', src: 'https://cmp.example.test/otSDKStub.js', enabled: false } },
   routes: [
-    { id: 'adobe-launch', loader: 'aem-martech', src: null, enabled: true, fallback: { loader: 'url', src: 'https://assets.example.test/launch-1.min.js' } },
-    { id: 'pixel', loader: 'url', src: 'https://px.vendor.test/p.js', enabled: false, fallback: null },
-  ],
-  vendors: [
-    { id: 'onetrust', category: 'necessary', host: 'cmp.example.test' },
-    { id: 'chat', category: 'functional', host: 'chat.vendor.test' },
-    { id: 'google-ads', category: 'marketing', host: 'www.googleadservices.com' },
+    { id: 'adobe-launch', src: 'https://assets.example.test/launch-1.min.js', category: null, enabled: false },
+    { id: 'gtm', src: 'https://tags.example.test/gtm.js?id=GTM-1', category: null, enabled: false },
   ],
 };
+const enable = (over) => ({ ...CONTRACT, consent: { cmp: { ...CONTRACT.consent.cmp, enabled: true } }, routes: CONTRACT.routes.map((r, i) => ({ ...r, ...over[i] })) });
 
-check('martechChecks: gate on / and ?martech=on, accept only enabled routes, never the CMP or functional hosts', () => {
+check('martechChecks: scaffolded off — only the gate on /, forbidding every route and the CMP', () => {
   const f = martechChecks(CONTRACT);
-  assert.equal(f.id, 'martech'); assert.equal(f.class, 'T');
-  assert.deepEqual(f.checks.map((c) => `${c.mode} ${c.path}`), ['gate /', 'gate /?martech=on', 'accept /?martech=on&consent=accept']);
-  const [gate] = f.checks;
-  assert.deepEqual(gate.forbiddenHosts, ['adobedc.net', 'adobedtm.com', 'assets.example.test', 'px.vendor.test', 'www.googleadservices.com']);
-  assert.deepEqual(gate.productionHosts, ['www.example.test']);
-  assert.deepEqual(f.checks[2].expect, [{ id: 'adobe-launch', hosts: ['adobedc.net', 'adobedtm.com', 'assets.example.test'] }]);
+  assert.deepEqual([f.id, f.class, f.status], ['martech', 'T', 'scaffolded-off']);
+  assert.deepEqual(f.checks.map((c) => `${c.mode} ${c.path}`), ['gate /']);
+  assert.deepEqual(f.checks[0].forbiddenHosts, ['assets.example.test', 'cmp.example.test', 'tags.example.test']);
+  assert.deepEqual(f.checks[0].productionHosts, ['www.example.test']);
 });
 
-check('martechChecks: none-required drops the QA gate; no enabled route drops accept', () => {
-  const f = martechChecks({ ...CONTRACT, consent: { policy: 'none-required' }, routes: [{ ...CONTRACT.routes[1] }] });
-  assert.deepEqual(f.checks.map((c) => `${c.mode} ${c.path}`), ['gate /']);
+check('martechChecks: enabled routes load on accept; a category-gated one waits for consent', () => {
+  const f = martechChecks(enable([{ enabled: true }, { enabled: true, category: 'C0004' }]));
+  assert.equal(f.status, 'owner-enabled');
+  assert.deepEqual(f.checks.map((c) => `${c.mode} ${c.path}`), ['gate /', 'gate /?martech=on', 'accept /?martech=on&consent=accept']);
+  assert.deepEqual(f.checks[1].forbiddenHosts, ['tags.example.test']);
+  assert.deepEqual(f.checks[2].expect.map((e) => e.id), ['cmp', 'adobe-launch', 'gtm']);
 });
 
 check('judgeMartechRequests: gate fails on a leaked host or subdomain, passes otherwise', () => {

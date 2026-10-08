@@ -1,126 +1,165 @@
 #!/usr/bin/env node
-// martech-scaffold.mjs CLI: hook placement, idempotence, overwrite protection, plugin fallback, --dry-run.
+// martech-scaffold: contract → scripts/martech.js + hooks (idempotent, conflict-safe, validated), and the generated
+// runtime against a stubbed window/document (host gate, ?martech=on / &consent=accept, category gating, boot).
+// Run: node plugins/stardust/skills/deploy/scripts/test/martech-scaffold.test.mjs
 import assert from 'node:assert/strict';
-import { existsSync } from 'node:fs';
-import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
-import { MARK, SCRIPTS, DELAYED, FAKE_MARTECH, contract, site, run, help, at, parses } from './martech-fixtures.mjs';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+
+const SCAFFOLD = join(dirname(fileURLToPath(import.meta.url)), '..', 'martech-scaffold.mjs');
+const TMP = mkdtempSync(join(tmpdir(), 'martech-scaffold-'));
+const SCRIPTS = `async function loadEager(doc) {
+  document.documentElement.lang = 'en';
+}
+
+function loadDelayed() {
+  // eslint-disable-next-line import/no-cycle
+  window.setTimeout(() => import('./delayed.js'), 3000);
+}
+`;
+const CMP = 'https://cmp.example.test/otSDKStub.js';
+const LAUNCH = 'https://assets.example.test/launch-1.min.js';
+const GTM = 'https://tags.example.test/gtm.js?id=GTM-TEST';
+const contract = (over = {}) => ({
+  productionHosts: ['www.example.test'],
+  consent: {
+    cmp: { vendor: 'OneTrust', src: CMP, attrs: { 'data-domain-script': 'test-id' }, groups: 'OnetrustActiveGroups', event: 'OneTrustGroupsUpdated', enabled: true },
+    model: 'per-tag',
+  },
+  routes: [
+    { id: 'adobe-launch', src: LAUNCH, boot: null, category: null, enabled: true },
+    { id: 'gtm', src: GTM, boot: 'gtm', category: 'C0004', enabled: true },
+    { id: 'off', src: 'https://off.example.test/x.js', boot: null, category: null, enabled: false },
+  ],
+  ...over,
+});
+
+let seq = 0;
+function site({ data = contract(), delayed = '// add delayed functionality here\n', scripts = SCRIPTS } = {}) {
+  seq += 1;
+  const root = join(TMP, `site-${seq}`);
+  mkdirSync(join(root, 'scripts'), { recursive: true });
+  mkdirSync(join(root, 'stardust'));
+  writeFileSync(join(root, 'scripts/scripts.js'), scripts);
+  if (delayed !== null) writeFileSync(join(root, 'scripts/delayed.js'), delayed);
+  writeFileSync(join(root, 'stardust/martech-contract.json'), JSON.stringify(data));
+  return root;
+}
+const run = (root, ...args) => spawnSync(process.execPath, [SCAFFOLD, '--root', root, ...args], { encoding: 'utf8' });
+const file = (root, p) => readFileSync(join(root, p), 'utf8');
 
 let failed = 0;
 const check = async (name, fn) => { try { await fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`); } };
-const config = async (root) => (await import(pathToFileURL(join(root, 'scripts/martech-config.js')).href)).default;
 
-await check('generates config, consent-check, consented; appends one import to delayed.js', async () => {
+await check('writes martech.js with enabled routes only, hooks loadEager + delayed.js; re-run is unchanged', () => {
   const root = site();
   const r = run(root);
   assert.equal(r.status, 0, r.stderr);
-  ['martech-config.js', 'consent-check.js', 'consented.js', 'delayed.js'].forEach((f) => assert.ok(parses(root, `scripts/${f}`), f));
-  assert.ok(at(root, 'scripts/consent-check.js').startsWith(`// ${MARK}`));
-  assert.equal(at(root, 'scripts/delayed.js'), `${DELAYED}\nimport('./consent-check.js');\n`);
-  assert.ok(!existsSync(join(root, 'scripts/martech.js')));
-  const cfg = await config(root);
-  assert.deepEqual(cfg.productionHosts, ['www.example.test']);
-  assert.equal(cfg.consent.cmpId, 'test-domain-id');
-  assert.deepEqual(cfg.routes[2], { id: 'websdk', loader: 'url', src: 'https://assets.example.test/alloy-launch.min.js', config: null, category: 'analytics', enabled: true });
-  assert.match(r.stdout, /websdk: runs on its fallback/);
-  assert.match(r.stdout, /git subtree add --squash --prefix plugins\/martech /);
+  const js = file(root, 'scripts/martech.js');
+  assert.ok(js.includes(LAUNCH) && js.includes(GTM) && !js.includes('off.example.test'));
+  assert.ok(!js.includes('"'), 'config is emitted with single quotes');
+  assert.match(file(root, 'scripts/scripts.js'), /function loadEager\(doc\) \{\n {2}import\('\.\/martech\.js'\)\.then\(\(m\) => m\.loadConsent\(\)\);/);
+  assert.match(file(root, 'scripts/delayed.js'), /m\.loadTags\(\)/);
+  const again = run(root);
+  assert.equal(again.status, 0);
+  assert.match(again.stdout, /unchanged/);
 });
 
-await check('rerun is a no-op', () => {
-  const root = site();
-  run(root);
-  const r = run(root);
-  assert.equal(r.status, 0, r.stderr);
-  assert.match(r.stdout, /delayed\.js imports consent-check\.js/);
-  assert.equal((r.stdout.match(/: unchanged/g) || []).length, 3);
-  assert.doesNotMatch(r.stdout, /: (create|update)$/m);
-  assert.equal((at(root, 'scripts/delayed.js').match(/consent-check/g) || []).length, 1);
-});
-
-await check('hand-written consent-check.js is a conflict; --force overwrites', () => {
-  const own = "export default function check() { loadScript('https://cmp.example.test/own.js'); }\n";
-  const root = site({ files: { 'scripts/consent-check.js': own } });
-  const r = run(root);
-  assert.equal(r.status, 1);
-  assert.match(r.stderr, /not overwriting scripts\/consent-check\.js/);
-  assert.equal(at(root, 'scripts/consent-check.js'), own);
-  assert.ok(!existsSync(join(root, 'scripts/martech-config.js')), 'nothing written on conflict');
-  assert.equal(run(root, '--force').status, 0);
-  assert.ok(at(root, 'scripts/consent-check.js').includes(MARK));
-});
-
-await check('boilerplate placeholder hooks are replaced and their exports kept as start() aliases', () => {
-  const placeholder = "/**\n * Checks consent before loading martech.\n */\nexport function waitForConsent() {\n  import('./consented.js');\n}\n";
-  const root = site({ files: { 'scripts/consent-check.js': placeholder, 'scripts/consented.js': '// consented martech goes here\n' } });
-  const r = run(root);
-  assert.equal(r.status, 0, r.stderr);
-  assert.match(r.stdout, /consent-check\.js: update/);
-  assert.match(at(root, 'scripts/consent-check.js'), /export \{ start as waitForConsent \};/);
-  assert.ok(parses(root, 'scripts/consent-check.js'));
-});
-
-await check('static named import in scripts.js: no self-start, the imported name is exported', () => {
-  const root = site({ scripts: `import { initConsent } from './consent-check.js';\n\n${SCRIPTS}initConsent();\n` });
-  const r = run(root);
-  assert.equal(r.status, 0, r.stderr);
-  assert.match(r.stdout, /hook: consent-check/);
-  const cc = at(root, 'scripts/consent-check.js');
-  assert.doesNotMatch(cc, /^start\(\);$/m);
-  assert.match(cc, /export \{ start as initConsent \};/);
-  assert.equal(at(root, 'scripts/delayed.js'), DELAYED);
-});
-
-await check('no delayed.js: import inserted into loadDelayed(); no hook at all exits 1', () => {
+await check('no delayed.js: loadTags goes into loadDelayed(); missing loadEager is a usage error', () => {
   const root = site({ delayed: null });
   assert.equal(run(root).status, 0);
-  assert.match(at(root, 'scripts/scripts.js'), /function loadDelayed\(\) \{\n {2}import\('\.\/consent-check\.js'\);\n/);
-  assert.ok(parses(root, 'scripts/scripts.js'));
-  const r = run(site({ scripts: 'export default 1;\n', delayed: null }));
-  assert.equal(r.status, 1);
-  assert.match(r.stderr, /no consent hook/);
+  assert.match(file(root, 'scripts/scripts.js'), /function loadDelayed\(\) \{\n {2}import\('\.\/martech\.js'\)\.then\(\(m\) => m\.loadTags\(\)\);/);
+  const bare = run(site({ scripts: 'export {};\n' }));
+  assert.equal(bare.status, 1); assert.match(bare.stderr, /no loadEager\(\)/);
 });
 
-await check('--dry-run writes nothing', () => {
+await check('--dry-run writes nothing; a foreign martech.js is a conflict unless --force', () => {
   const root = site();
-  const r = run(root, '--dry-run');
-  assert.equal(r.status, 0, r.stderr);
-  assert.match(r.stdout, /\(dry run\)/);
-  assert.ok(!existsSync(join(root, 'scripts/martech-config.js')));
-  assert.equal(at(root, 'scripts/delayed.js'), DELAYED);
+  assert.match(run(root, '--dry-run').stdout, /would write scripts\/martech\.js/);
+  assert.equal(file(root, 'scripts/scripts.js'), SCRIPTS);
+  writeFileSync(join(root, 'scripts/martech.js'), 'export default 1;\n');
+  const conflict = run(root);
+  assert.equal(conflict.status, 1); assert.match(conflict.stderr, /not written by this scaffold/);
+  assert.equal(run(root, '--force').status, 0);
+  assert.match(file(root, 'scripts/martech.js'), /^\/\/ Generated by stardust/);
 });
 
-await check('installed plugin: martech.js, runtime-contract + .eslintignore updated', () => {
-  const root = site({ files: { 'plugins/martech/src/index.js': FAKE_MARTECH, '.eslintignore': 'helix-importer-ui\n', 'stardust/runtime-contract.json': '{"runtime":"vanilla-eds"}\n' } });
-  const r = run(root);
-  assert.equal(r.status, 0, r.stderr);
-  assert.ok(parses(root, 'scripts/martech.js'));
-  assert.match(at(root, 'scripts/consented.js'), /import\('\.\/martech\.js'\)/);
-  assert.equal(at(root, '.eslintignore'), 'helix-importer-ui\nplugins/\n');
-  assert.deepEqual(JSON.parse(at(root, 'stardust/runtime-contract.json')), { runtime: 'vanilla-eds', consentHook: 'delayed-js', martechPlugins: ['plugins/martech'] });
+await check('invalid contract: enabled CMP without its id, or a category the CMP cannot gate', () => {
+  const noId = contract();
+  noId.consent.cmp.attrs['data-domain-script'] = null;
+  const a = run(site({ data: noId }));
+  assert.equal(a.status, 1); assert.match(a.stderr, /data-domain-script/);
+  const noGroups = contract();
+  Object.assign(noGroups.consent.cmp, { vendor: 'Cookiebot', groups: null, event: null });
+  const b = run(site({ data: noGroups }));
+  assert.equal(b.status, 1); assert.match(b.stderr, /route `gtm` has a category/);
 });
 
-await check('plugin route without fallback and url route without src stay off; ids never invented', async () => {
-  const routes = [
-    { id: 'ga', loader: 'aem-gtm-martech', config: { tags: ['G-TEST'], containers: { lazy: [], delayed: [] }, dataLayerInstanceName: 'dataLayer' }, category: 'analytics', enabled: true },
-    { id: 'aa', loader: 'aem-martech', config: { datastreamId: null, orgId: null, launchUrls: [] }, category: 'analytics', enabled: false },
-    { id: 'pixel', loader: 'url', category: 'marketing', enabled: true },
-  ];
-  const root = site({ data: contract({ routes }) });
-  const r = run(root);
-  assert.equal(r.status, 0, r.stderr);
-  assert.match(r.stdout, /ga: off until aem-gtm-martech is installed/);
-  assert.match(r.stdout, /pixel: off — loader "url" needs a src/);
-  const cfg = await config(root);
-  assert.deepEqual(cfg.routes.map((x) => x.enabled), [false, false, false]);
-  assert.deepEqual(cfg.routes[1].config, { datastreamId: null, orgId: null, launchUrls: [] });
+const SITE = site();
+run(SITE);
+async function boot({ host = 'main--site--org.aem.page', search = '', groups, root = SITE } = {}) {
+  const added = [];
+  const listeners = {};
+  globalThis.window = {
+    location: { host, search },
+    OnetrustActiveGroups: groups,
+    addEventListener: (type, fn) => { listeners[type] = fn; },
+    removeEventListener: (type) => { delete listeners[type]; },
+  };
+  globalThis.document = {
+    createElement: () => ({ attrs: {}, setAttribute(k, v) { this.attrs[k] = v; } }),
+    head: { append: (s) => added.push(s) },
+  };
+  seq += 1;
+  const m = await import(`${pathToFileURL(join(root, 'scripts/martech.js')).href}?${seq}`);
+  m.loadConsent();
+  m.loadTags();
+  return { win: globalThis.window, srcs: () => added.map((s) => s.src), added, fire: () => listeners.OneTrustGroupsUpdated?.() };
+}
+
+await check('runtime: off the production hosts nothing loads without ?martech=on', async () => {
+  assert.deepEqual((await boot()).srcs(), []);
 });
 
-await check('bad contract exits 1; --help prints usage', () => {
-  assert.equal(run(site({ data: { version: 2 } })).status, 1);
-  const h = help();
-  assert.equal(h.status, 0);
-  assert.match(h.stdout, /--contract/);
+await check('runtime: ?martech=on&consent=accept loads the CMP and every enabled route; gtm gets its bootstrap', async () => {
+  const b = await boot({ search: '?martech=on&consent=accept' });
+  assert.deepEqual(b.srcs(), [CMP, LAUNCH, GTM]);
+  assert.equal(b.added[0].attrs['data-domain-script'], 'test-id');
+  assert.equal(b.win.dataLayer[0].event, 'gtm.js');
 });
 
-if (failed) { console.log(`\n${failed} check(s) failed`); process.exit(1); }
-console.log('\nmartech-scaffold.test: all checks passed');
+await check('runtime: production — ungated route loads at once, the C0004 route waits for the CMP to grant it', async () => {
+  const b = await boot({ host: 'www.example.test', groups: ',C0001,' });
+  assert.deepEqual(b.srcs(), [CMP, LAUNCH]);
+  b.fire();
+  assert.deepEqual(b.srcs(), [CMP, LAUNCH]);
+  b.win.OnetrustActiveGroups = ',C0001,C0004,';
+  b.fire();
+  assert.deepEqual(b.srcs(), [CMP, LAUNCH, GTM]);
+});
+
+await check('runtime: consent=accept is ignored on a production host', async () => {
+  const b = await boot({ host: 'www.example.test', search: '?consent=accept', groups: ',C0001,' });
+  assert.deepEqual(b.srcs(), [CMP, LAUNCH]);
+});
+
+await check('runtime: a gtag route defines gtag and configures the id from its src', async () => {
+  const GTAG = 'https://www.googletagmanager.com/gtag/js?id=G-TEST';
+  const root = site({ data: contract({ routes: [{ id: 'gtag', src: GTAG, boot: 'gtag', category: null, enabled: true }] }) });
+  assert.equal(run(root).status, 0);
+  const b = await boot({ root, search: '?martech=on' });
+  assert.deepEqual(b.srcs(), [CMP, GTAG]);
+  assert.deepEqual(b.win.dataLayer.map((a) => [...a]), [['js', b.win.dataLayer[0][1]], ['config', 'G-TEST']]);
+});
+
+await check('--help prints the usage header', () => {
+  const r = spawnSync(process.execPath, [SCAFFOLD, '--help'], { encoding: 'utf8' });
+  assert.equal(r.status, 0); assert.match(r.stdout, /--dry-run/);
+});
+
+rmSync(TMP, { recursive: true, force: true });
+console.log(failed ? `\nmartech-scaffold: ${failed} check(s) failed` : '\nmartech-scaffold: all checks passed');
+process.exit(failed ? 1 : 0);

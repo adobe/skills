@@ -106,16 +106,9 @@ export const CONSENT_ACCEPT = [
   '[id*="accept-all" i]', '[id*="acceptAll" i]', 'button[aria-label*="accept" i]', 'button[title*="accept all" i]',
 ].join(', ');
 
-/** click the CMP's accept-all button; false when no dialog showed */
-export async function acceptConsent(page) {
-  try { await page.click(CONSENT_ACCEPT, { timeout: 3000 }); return true; } catch { return false; }
-}
-
 /** accept consent (so tags fire), settle, scroll (lazy bands/tags), settle again */
-export async function settlePage(page, {
-  settleMs = 5000, scrollStep = 800, maxScroll = 8000, accept = true,
-} = {}) {
-  if (accept) await acceptConsent(page);
+export async function settlePage(page, { settleMs = 5000, scrollStep = 800, maxScroll = 8000 } = {}) {
+  try { await page.click(CONSENT_ACCEPT, { timeout: 3000 }); } catch { /* no dialog */ }
   await page.waitForTimeout(settleMs);
   for (let y = 0; y < maxScroll; y += scrollStep) { await page.mouse.wheel(0, scrollStep); await page.waitForTimeout(80); }
   await page.waitForTimeout(1500);

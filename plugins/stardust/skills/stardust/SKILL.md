@@ -232,7 +232,6 @@ auto-resolves:
 | `prepare-migration` phase gates | behave as `--skip-confirm` |
 | `rollout` | runs full-auto end-to-end |
 | `dynamics` owner decisions (backend, tags on the new host, datasource ownership, locale scope) | ship the interim tier, record each decision by name in `dynamic-features.md` and the parity report, continue; regulated-pii forms stay blocked; a named assumption never sets `decided-out` |
-| martech (deploy Step 3b) | scaffold every route whose ids were captured; consent policy `owner-decision` and routes missing an id stay off, listed by name in `stardust/martech-handoff.md`; never invent an id or set `none-required` |
 
 Defaults under hands-off (override only when the invocation says
 otherwise):
