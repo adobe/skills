@@ -4,10 +4,10 @@
  * pages are fetched like S2 (redirect chain, template, HTML kept for parsing), assets (/content/dam, files)
  * get HEAD then GET. Records status, final URL and target status. Resumable.
  *
- *   node spec-links.mjs [--config spec.config.json] [--links <links.jsonl>] [--workers 6] [--max 20000]
+ *   node spec-links.mjs [--config <file>] [--links <links.jsonl>] [--workers 6] [--max 20000]
  *
- * Writes <dir>/links/assets.jsonl and <dir>/links/pages.txt (then run spec-fetch with
- * --urls <dir>/links/pages.txt --out <dir>/links/pages.jsonl to fetch the discovered pages).
+ * Writes <work>/links/assets.jsonl and <work>/links/pages.txt (then run spec-fetch with
+ * --urls <work>/links/pages.txt --out <work>/links/pages.jsonl to fetch the discovered pages).
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { appendJSONL, arg, helpAndExit, loadConfig, log, pool, readJSONL, writeText } from './lib.mjs';
@@ -46,11 +46,11 @@ async function check(url) {
 
 async function main() {
   const cfg = loadConfig();
-  const fetched = readJSONL(cfg.p('fetch', 'fetch.jsonl'));
+  const fetched = readJSONL(cfg.w('fetch', 'fetch.jsonl'));
   const known = new Set(fetched.flatMap((r) => [r.url, r.final_url]).filter(Boolean));
-  const { pages, assets } = splitLinks(readJSONL(arg('links', cfg.p('parse', 'links.jsonl'))), cfg.origin, known);
-  writeText(cfg.p('links', 'pages.txt'), pages.join('\n'));
-  const out = cfg.p('links', 'assets.jsonl');
+  const { pages, assets } = splitLinks(readJSONL(arg('links', cfg.w('parse', 'links.jsonl'))), cfg.origin, known);
+  writeText(cfg.w('links', 'pages.txt'), pages.join('\n'));
+  const out = cfg.w('links', 'assets.jsonl');
   const done = new Set(existsSync(out) ? readJSONL(out).map((r) => r.url) : []);
   const todo = assets.filter((u) => !done.has(u)).slice(0, Number(arg('max', 20000)));
   log(`${pages.length} discovered pages (→ links/pages.txt), ${assets.length} assets, ${todo.length} to check`);

@@ -5,31 +5,23 @@
  * present (extensions, rules with page-path conditions and DOM selectors, data elements with their data-layer
  * paths, custom-code files and the hosts they load); OneTrust geo rule sets and cookie categories when present.
  *
- *   node spec-martech.mjs [--config spec.config.json] [--no-custom-code]
+ *   node spec-martech.mjs [--config <file>] [--no-custom-code]
  *   node spec-martech.mjs --urls <url,url,...> [--out stardust/martech] [--no-custom-code]
  *
- * Writes <dir>/martech/headers.json, vendors.json, launch.json (+ launch.js, rc/ for custom code), onetrust.json.
+ * Writes <work>/martech/headers.json, vendors.json, launch.json (+ launch.js, rc/ for custom code), onetrust.json.
  * --urls runs without a spec: the first URL is the origin's home, each URL's server HTML gives its page signals.
  * Everything read here is public (what any browser downloads); no credential is used.
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import {
-  HERE, arg, flag, helpAndExit, list, loadConfig, log, parseHTML, pool, readJSON, readJSONL, writeJSON,
+  arg, flag, helpAndExit, list, loadConfig, loadSibling, log, parseHTML, pool, readJSONL, writeJSON,
 } from './lib.mjs';
 
 helpAndExit(import.meta.url);
 
 const UA = 'Mozilla/5.0 (Macintosh) stardust-spec/1.0';
 const get = async (u) => { const r = await fetch(u, { headers: { 'user-agent': UA } }); return r.ok ? r.text() : ''; };
-
-/** The dynamics vendor table, in the plugin tree or a project copy (stardust/scripts/<skill>/). */
-export function vendorTable() {
-  for (const p of [join(HERE, '..', '..', 'dynamics', 'scripts', 'vendors.json'), join(HERE, '..', 'dynamics', 'vendors.json')]) {
-    if (existsSync(p)) return readJSON(p).vendors.map((v) => ({ ...v, re: new RegExp(v.match, 'i') }));
-  }
-  return [];
-}
 
 /** Balanced {...} starting at index i. Pure. */
 const block = (s, i) => { let d = 0; for (let j = i; j < s.length; j += 1) { if (s[j] === '{') d += 1; else if (s[j] === '}') { d -= 1; if (d === 0) return s.slice(i, j + 1); } } return s.slice(i); };
@@ -70,7 +62,7 @@ async function sources() {
   const urls = list(arg('urls'));
   if (!urls.length) {
     const cfg = loadConfig();
-    return { origin: cfg.origin, home: `${cfg.origin}${cfg.scopePath}`, out: cfg.p('martech'), sigs: readJSONL(cfg.p('parse', 'signals.jsonl')) };
+    return { origin: cfg.origin, home: `${cfg.origin}${cfg.scopePath}`, out: cfg.w('martech'), sigs: readJSONL(cfg.w('parse', 'signals.jsonl')) };
   }
   // spec-parse prints its own usage at import time, so it loads only here and never on --help
   const { pageSignals } = await import('./spec-parse.mjs');
@@ -87,7 +79,8 @@ async function main() {
   const csp = headers['content-security-policy'] || '';
   writeJSON(join(out, 'headers.json'), headers);
   // vendors from page signals
-  const table = vendorTable();
+  // the dynamics vendor table (one table, read by the dynamics skill's own helpers; missing → the import fails)
+  const { vendorFor, registrable } = await loadSibling('dynamics', 'lib.mjs');
   const reach = {}; const inline = {};
   for (const s of sigs) {
     new Set([...s.scriptHosts, ...s.iframeHosts]).forEach((hst) => { reach[hst] = (reach[hst] || 0) + 1; });
@@ -95,8 +88,8 @@ async function main() {
   }
   const own = new URL(origin).hostname;
   const vendors = Object.entries(reach).map(([host, pages]) => {
-    const v = table.find((t) => t.re.test(host));
-    return { host, pages, firstParty: host === own || host.endsWith(`.${own.replace(/^www\./, '')}`), role: v?.role || null, class: v?.class || null, inCsp: csp.includes(host.split('.').slice(-2).join('.')) };
+    const v = vendorFor(host);
+    return { host, pages, firstParty: host === own || host.endsWith(`.${own.replace(/^www\./, '')}`), role: v?.role || null, class: v?.class || null, inCsp: csp.includes(registrable(host)) };
   }).sort((a, b) => b.pages - a.pages);
   writeJSON(join(out, 'vendors.json'), { pages: sigs.length, vendors, inline, cspHosts: (csp.match(/[\w*.-]+\.[a-z]{2,}/g) || []).filter((x) => !/^'/.test(x)) });
   // Adobe Launch

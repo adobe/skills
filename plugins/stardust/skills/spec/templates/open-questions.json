@@ -14,7 +14,7 @@
     "Archive (migrate with noindex)"
    ],
    "default": "Migrate all; flag them for a post-launch review.",
-   "impact_rule": "sql:SELECT COUNT(*) FROM url WHERE outcome='page' AND in_sitemap=1 AND pageviews_90d=0",
+   "impact": "urls live sitemap pageviews_90d=0",
    "link": "/urls?traffic=none"
   },
   {
@@ -30,7 +30,7 @@
     "Build a simple index page"
    ],
    "default": "Redirect each to its first child or parent landing page.",
-   "impact_rule": "sql:SELECT COUNT(*) FROM url WHERE in_sitemap=1 AND flag='empty'",
+   "impact": "urls sitemap flag=empty",
    "link": "/urls?flag=empty"
   },
   {
@@ -46,7 +46,7 @@
     "Decide per page"
    ],
    "default": "In scope when they have traffic; otherwise redirect.",
-   "impact_rule": "sql:SELECT COUNT(*) FROM url WHERE outcome='page' AND in_sitemap=0",
+   "impact": "urls live !sitemap",
    "link": "/urls?sitemap=0"
   },
   {
@@ -61,7 +61,7 @@
     "Keep .html via CDN rewrite"
    ],
    "default": "EDS format with a .html rule plus explicit redirects.",
-   "impact_rule": "sql:SELECT COUNT(*) FROM redirect WHERE kind='migration'",
+   "impact": "count redirects kind=migration",
    "link": "/redirects?kind=migration"
   },
   {
@@ -77,7 +77,7 @@
     "Leave as 404"
    ],
    "default": "The agent proposes the closest live page; unmatched ones stay 404.",
-   "impact_rule": "sql:SELECT COUNT(*) FROM broken WHERE source IN ('rum','sitemap')",
+   "impact": "count broken source=rum,sitemap",
    "link": "/broken"
   },
   {
@@ -93,7 +93,7 @@
     "All trees at once"
    ],
    "default": "Scoped tree first; the code base is built locale-ready; trees follow by traffic.",
-   "impact_rule": "sql:SELECT SUM(urls) FROM locale_tree",
+   "impact": "sum locales.urls",
    "link": null
   },
   {
@@ -110,7 +110,7 @@
     "Shared master tree with overrides"
    ],
    "default": "Copy at migration; trees become independent; translation via the stakeholder's vendor.",
-   "impact_rule": "value:0",
+   "impact": "value:0",
    "link": null
   },
   {
@@ -125,7 +125,7 @@
     "New property"
    ],
    "default": "Same property with a new environment for the EDS hosts, production switched at go-live.",
-   "impact_rule": "sql:SELECT COUNT(*) FROM launch_rule",
+   "impact": "count launch-rules",
    "link": null
   },
   {
@@ -140,7 +140,7 @@
     "New schema + tag-manager update"
    ],
    "default": "Same schema, populated from page metadata and block events.",
-   "impact_rule": "sql:SELECT COUNT(*) FROM datalayer_field",
+   "impact": "count datalayer",
    "link": null
   },
   {
@@ -156,7 +156,7 @@
     "Retire expired campaigns first"
    ],
    "default": "The agent produces a rule-by-rule rewrite sheet; the analytics team applies it.",
-   "impact_rule": "sql:SELECT COUNT(*) FROM launch_rule WHERE needs_rewrite=1",
+   "impact": "count launch-rules needs_rewrite=1",
    "link": null
   },
   {
@@ -171,7 +171,7 @@
     "Through the tag manager"
    ],
    "default": "Direct load in head with the existing configuration; the tag manager gated by consent.",
-   "impact_rule": "value:0",
+   "impact": "value:0",
    "link": null
   },
   {
@@ -186,7 +186,7 @@
     "New suites for EDS staging"
    ],
    "default": "Unchanged in production; a staging suite for the EDS environment.",
-   "impact_rule": "value:0",
+   "impact": "value:0",
    "link": null
   },
   {
@@ -201,7 +201,7 @@
     "Consolidate"
    ],
    "default": "Keep every page's form as authored.",
-   "impact_rule": "value:0",
+   "impact": "value:0",
    "link": null
   },
   {
@@ -217,7 +217,7 @@
     "Endpoint provided by the stakeholder"
    ],
    "default": "Rebuild the UI with submission disabled and contact details shown until the endpoint is decided.",
-   "impact_rule": "value:0",
+   "impact": "value:0",
    "link": null
   },
   {
@@ -232,7 +232,7 @@
     "Move assets to EDS media"
    ],
    "default": "Keep the DAM delivery and author assets as links.",
-   "impact_rule": "value:0",
+   "impact": "value:0",
    "link": null
   },
   {
@@ -248,7 +248,7 @@
     "External storage + redirects"
    ],
    "default": "Keep them on the DAM delivery; redirect their paths if they move.",
-   "impact_rule": "sql:SELECT COUNT(*) FROM broken WHERE kind='asset'",
+   "impact": "count broken kind=asset",
    "link": null
   },
   {
@@ -263,7 +263,7 @@
     "External feed"
    ],
    "default": "A taxonomy sheet plus per-page metadata, seeded from the current tags.",
-   "impact_rule": "value:0",
+   "impact": "value:0",
    "link": null
   },
   {
@@ -278,7 +278,7 @@
     "Hosted search service"
    ],
    "default": "Query-index search with title-first ranking, checked against the recorded probe counts.",
-   "impact_rule": "value:0",
+   "impact": "value:0",
    "link": null
   },
   {
@@ -294,7 +294,7 @@
     "Retire"
    ],
    "default": "Snapshot as content where possible; apps wait for the source.",
-   "impact_rule": "sql:SELECT COUNT(*) FROM feature WHERE reproducibility='needs-human-capture'",
+   "impact": "count features reproducibility=needs-human-capture",
    "link": null
   },
   {
@@ -309,7 +309,7 @@
     "Not now"
    ],
    "default": "Not in the like-for-like migration; listed as an improvement.",
-   "impact_rule": "value:0",
+   "impact": "value:0",
    "link": null
   },
   {
@@ -324,7 +324,7 @@
     "Adobe-managed CDN"
    ],
    "default": "Bring your own CDN with push invalidation.",
-   "impact_rule": "value:0",
+   "impact": "value:0",
    "link": null
   },
   {
@@ -339,7 +339,7 @@
     "EDS headers config"
    ],
    "default": "Carry the current headers over, adding the EDS hosts.",
-   "impact_rule": "value:0",
+   "impact": "value:0",
    "link": null
   },
   {
@@ -354,7 +354,7 @@
     "Flatten into sections"
    ],
    "default": "Fragments, one per panel with nested blocks.",
-   "impact_rule": "sql:SELECT COUNT(DISTINCT pb.url_id) FROM page_block pb JOIN url u ON u.id=pb.url_id WHERE pb.nested_in IS NOT NULL AND u.in_sitemap=1",
+   "impact": "urls sitemap nested",
    "link": "/urls?nested=1"
   },
   {
@@ -369,7 +369,7 @@
     "Consolidate"
    ],
    "default": "Pixel parity on archetypes; small differences consolidated with sign-off.",
-   "impact_rule": "value:0",
+   "impact": "value:0",
    "link": null
   }
  ]

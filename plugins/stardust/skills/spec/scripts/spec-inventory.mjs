@@ -3,13 +3,13 @@
  * spec-inventory.mjs — S1 inventory: robots.txt + sitemaps (index or urlset, nested) → the URL list of the
  * scope path, plus every other sitemap (locales, microsites) counted for the multi-language inventory.
  *
- *   node spec-inventory.mjs [--config spec.config.json] [--max <n>] [--headed | --archive <YYYY-MM-DD>]
+ *   node spec-inventory.mjs [--config <file>] [--max <n>] [--headed | --archive <YYYY-MM-DD>]
  *
  * Reads config: origin, scopePath, sitemaps? (default: robots.txt Sitemap lines, else /sitemap.xml), maxPages?.
  * Stops when the origin redirects elsewhere (set `origin` to the final one). Without sitemap URLs in scope, crawls
  * same-origin links from the scope root (breadth first, up to the cap). Above --max / maxPages, keeps an even
  * sample per first path segment (every section at least one URL).
- * Writes <dir>/inventory/urls.txt (the URLs every later stage reads, sorted), urls-all.txt (when sampled),
+ * Writes <work>/inventory/urls.txt (the URLs every later stage reads, sorted), urls-all.txt (when sampled),
  * summary.json ({ total, kept, source: sitemap|crawl, sampled }), sitemaps.json (every sitemap: url count, path
  * roots, hreflang count, lastmod years), robots.txt. Exit 0; 1 on a redirected origin; 2 on usage; 3 when the origin
  * turns this client away (a bot challenge on robots, sitemaps or pages, classified by the diff skill's
@@ -89,7 +89,7 @@ async function main() {
   const finalOrigin = probe.url ? new URL(probe.url).origin : null;
   if (finalOrigin && finalOrigin !== cfg.origin) { console.error(`origin ${cfg.origin} redirects to ${finalOrigin}: set "origin": "${finalOrigin}" in spec.config.json`); process.exit(1); }
   const robots = await get(`${cfg.origin}/robots.txt`);
-  writeText(cfg.p('inventory', 'robots.txt'), robots || '# none');
+  writeText(cfg.w('inventory', 'robots.txt'), robots || '# none');
   let roots = cfg.sitemaps || [...robots.matchAll(/^\s*sitemap:\s*(\S+)/gim)].map((m) => m[1]);
   if (!roots.length) roots = [`${cfg.origin}/sitemap.xml`];
   const seen = new Set(); const docs = {}; let queue = [...roots];
@@ -119,10 +119,10 @@ async function main() {
   }
   if (MODE.archive) source = `${source} (archive since ${MODE.archive})`;
   const urls = sampleBySection(all, max, cfg.scopePath);
-  writeText(cfg.p('inventory', 'urls.txt'), urls.join('\n'));
-  if (urls.length < all.length) writeText(cfg.p('inventory', 'urls-all.txt'), all.join('\n'));
-  writeJSON(cfg.p('inventory', 'summary.json'), { total: all.length, kept: urls.length, source, sampled: urls.length < all.length });
-  writeJSON(cfg.p('inventory', 'sitemaps.json'), summary);
+  writeText(cfg.w('inventory', 'urls.txt'), urls.join('\n'));
+  if (urls.length < all.length) writeText(cfg.w('inventory', 'urls-all.txt'), all.join('\n'));
+  writeJSON(cfg.w('inventory', 'summary.json'), { total: all.length, kept: urls.length, source, sampled: urls.length < all.length });
+  writeJSON(cfg.w('inventory', 'sitemaps.json'), summary);
   log(`${Object.keys(docs).length} sitemaps, ${Object.values(summary).reduce((a, s) => a + s.urls, 0)} urls total, ${all.length} in scope ${cfg.scopePath} (${source})${urls.length < all.length ? `, sampled ${urls.length}` : ''}`);
 }
 

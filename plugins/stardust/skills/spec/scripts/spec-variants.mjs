@@ -3,11 +3,11 @@
  * spec-variants.mjs — S8 layout variants: within each template, cluster pages by their EDS block set
  * (average-linkage agglomerative clustering on Jaccard distance over distinct sets, weighted by pages).
  *
- *   node spec-variants.mjs [--config spec.config.json] [--in <page-blocks.jsonl>] [--views <rum.json>] [--cut 0.5] [--keep-variant hero,carousel]
+ *   node spec-variants.mjs [--config <file>] [--in <page-blocks.jsonl>] [--views <rum.json>] [--cut 0.5] [--keep-variant hero,carousel]
  *
  * Tokens = block names; blocks listed in --keep-variant keep their variant (a single-slide hero and a page hero
  * are different builds). Core = block on ≥ 50% of a variant's pages; the representative is a page with the most
- * common exact set, highest traffic first when views exist. Writes <dir>/judgement/variants.json.
+ * common exact set, highest traffic first when views exist. Writes <work>/map/variants.json.
  */
 import { arg, helpAndExit, list, loadConfig, readJSON, readJSONL, writeJSON } from './lib.mjs';
 
@@ -34,8 +34,8 @@ export function cluster(sets, cut) {
 
 function main() {
   const cfg = loadConfig();
-  const rows = readJSONL(arg('in', cfg.p('judgement', 'page-blocks.jsonl')));
-  const views = readJSON(arg('views', cfg.p('rum', 'rum.json')), { pages: {} }).pages || {};
+  const rows = readJSONL(arg('in', cfg.w('map', 'page-blocks.jsonl')));
+  const views = readJSON(arg('views', cfg.w('rum', 'rum.json')), { pages: {} }).pages || {};
   const keep = new Set(list(arg('keep-variant', 'hero,carousel')));
   const cut = Number(arg('cut', 0.5));
   const seen = new Set(); const byT = new Map();
@@ -61,7 +61,7 @@ function main() {
         distinct_sets: keys.length, representative: [...sets.get(top).pages].sort((a, b) => vOf(b) - vOf(a))[0], urls });
     });
   }
-  writeJSON(arg('out', cfg.p('judgement', 'variants.json')), out);
+  writeJSON(arg('out', cfg.w('map', 'variants.json')), out);
   console.error(`[spec] ${out.length} variants across ${byT.size} templates`);
 }
 

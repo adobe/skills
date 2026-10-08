@@ -48,16 +48,20 @@ export const log = (...a) => process.stderr.write(`[spec] ${a.join(' ')}\n`);
 
 /* ------------------------------------------------------------ config --- */
 /**
- * spec.config.json at the project root (reference/config.md). `dir` defaults to stardust/spec.
- * Returns the config with resolved paths: { root, dir, origin, scopePath, ... }.
+ * stardust/spec/spec.config.json (reference/config.md); --config names another file. The project root is the folder
+ * above stardust/. `dir` (default stardust/spec) holds judgement/ and knowledge/, the committed output; `work`
+ * (default stardust/.work/spec) holds the raw material, local to the run.
+ * Returns the config with resolved paths: { root, dir, work, p(…) under dir, w(…) under work, origin, scopePath, … }.
  */
-export function loadConfig(path = arg('config', 'spec.config.json')) {
+export function loadConfig(path = arg('config', join('stardust', 'spec', 'spec.config.json'))) {
   const file = resolve(path);
   const cfg = readJSON(file);
   if (!cfg.origin || !cfg.scopePath) throw new Error(`${file}: origin and scopePath are required`);
-  const root = dirname(file);
+  const up = dirname(dirname(file));
+  const root = file.endsWith(join('stardust', 'spec', 'spec.config.json')) ? dirname(up) : dirname(file);
   const dir = resolve(root, cfg.dir || 'stardust/spec');
-  return { ...cfg, origin: cfg.origin.replace(/\/$/, ''), root, dir, p: (...parts) => join(dir, ...parts) };
+  const work = resolve(root, cfg.work || 'stardust/.work/spec');
+  return { ...cfg, origin: cfg.origin.replace(/\/$/, ''), root, dir, work, p: (...parts) => join(dir, ...parts), w: (...parts) => join(work, ...parts) };
 }
 
 /**
@@ -96,17 +100,20 @@ export async function pool(items, n, fn, onProgress) {
   return out;
 }
 
-/** Playwright from the project (the plugin tree ships none). */
-/**
- * The diff skill's live-session.mjs: the plugin's one hardened way to reach a live site (challenge detection, the
- * stealth real-Chrome `--headed` tier, document-only standard headers). Plugin tree or project copy, as replica.
- */
-export async function loadLiveSession() {
-  const p = [join(HERE, '..', '..', 'diff', 'scripts', 'live-session.mjs'), join(HERE, '..', 'diff', 'live-session.mjs')].find((x) => existsSync(x));
-  if (!p) throw new Error('live-session.mjs not found (../../diff/scripts/ or ../diff/): copy the diff skill\'s scripts next to these (spec SKILL.md § Setup)');
+/** A sibling skill's script module: the plugin tree (../../<skill>/scripts/) or a project copy (../<skill>/). */
+export async function loadSibling(skill, file) {
+  const p = [join(HERE, '..', '..', skill, 'scripts', file), join(HERE, '..', skill, file)].find((x) => existsSync(x));
+  if (!p) throw new Error(`${skill}/${file} not found (../../${skill}/scripts/ or ../${skill}/): copy the ${skill} skill's scripts next to these (spec SKILL.md § Setup)`);
   return import(pathToFileURL(p).href);
 }
 
+/**
+ * The diff skill's live-session.mjs: the plugin's one hardened way to reach a live site (challenge detection, the
+ * stealth real-Chrome `--headed` tier, document-only standard headers).
+ */
+export const loadLiveSession = () => loadSibling('diff', 'live-session.mjs');
+
+/** Playwright from the project (the plugin tree ships none). */
 export async function loadPlaywright() {
   try {
     const req = createRequire(join(process.cwd(), 'package.json'));

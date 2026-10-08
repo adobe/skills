@@ -1,5 +1,5 @@
 {
- "_about": "One entry per block or dynamic block the mapping emits (spec-build warns on any missing). family: the neutral list in reference/judgement.md. verdict vs config.referenceBlocks. Delete this key.",
+ "_about": "One entry per block or dynamic block the mapping emits (spec-knowledge warns on any missing). family: the neutral list in reference/judgement.md. verdict vs config.referenceBlocks. Delete this key.",
  "blocks": {
   "header": { "kind": "global", "family": "other", "description": "Site header and navigation.", "aem": [], "reference": "header", "verdict": "variant", "rationale": "" },
   "footer": { "kind": "global", "family": "other", "description": "Site footer.", "aem": [], "reference": "footer", "verdict": "variant", "rationale": "" },

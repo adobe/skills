@@ -5,10 +5,10 @@
  * and clicks, views per locale tree, site-search use. Views are estimates (sum of sampled bundle weights; bots and
  * un-activated prerenders excluded).
  *
- *   node spec-rum.mjs [--config spec.config.json] [--days 90] [--domain <host>] [--key-env RUM_DOMAIN_KEY] [--workers 6]
+ *   node spec-rum.mjs [--config <file>] [--days 90] [--domain <host>] [--key-env RUM_DOMAIN_KEY] [--workers 6]
  *
  * The domain key is read from the environment variable named by --key-env or config.rum.keyEnv (never from a
- * file, never printed). Without a key the stage writes <dir>/rum/rum.json with { available: false } and exits 0:
+ * file, never printed). Without a key the stage writes <work>/rum/rum.json with { available: false } and exits 0:
  * every later stage and every consumer treat traffic as unavailable. Hourly files (daily files are downsampled).
  */
 import { arg, helpAndExit, loadConfig, log, pool, writeJSON } from './lib.mjs';
@@ -51,7 +51,7 @@ async function main() {
   const keyEnv = arg('key-env', cfg.rum?.keyEnv || 'RUM_DOMAIN_KEY');
   const key = process.env[keyEnv];
   const domain = arg('domain', cfg.rum?.domain || new URL(cfg.origin).hostname);
-  const out = cfg.p('rum', 'rum.json');
+  const out = cfg.w('rum', 'rum.json');
   if (!key) { writeJSON(out, { available: false, reason: `no domain key in $${keyEnv}` }); log(`no RUM domain key ($${keyEnv}): traffic marked unavailable`); return; }
   const days = Number(arg('days', cfg.rum?.days || 90));
   const end = new Date(); end.setUTCMinutes(0, 0, 0);
