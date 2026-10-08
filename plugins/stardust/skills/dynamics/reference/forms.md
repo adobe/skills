@@ -15,7 +15,7 @@ Modern forms carry no action (endpoint injected at runtime) or no form tag at al
 → disposition heuristics that held across sites: `tel:amount,rate,term` = calculator
 (`client-only`); `select:score,issuer` = in-DOM filter (`client-only`); `text:q` / `role=search` =
 site search (`index-backed`, needs a results page); email + message = intake (`rebuild-native`,
-`needs-backend`). A form **inside an iframe** stays live on its origin: `embed-passthrough`, never a native copy.
+`needs-backend`). A form **inside an iframe** stays live on its origin: `patterns.md` § embedded-form, never a native copy.
 
 ## 3. Decide the intake by content source
 

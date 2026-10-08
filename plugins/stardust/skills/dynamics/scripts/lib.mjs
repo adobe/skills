@@ -121,6 +121,21 @@ export async function probe(url, { method = 'GET', headers = {}, timeoutMs = 150
   try {
     const r = await fetch(url, { method, headers, redirect: 'manual', signal: ctl.signal });
     const ct = r.headers.get('content-type') || '';
-    return { status: r.status, contentType: ct.split(';')[0], ok: r.status < 400 };
+    return { status: r.status, contentType: ct.split(';')[0], ok: r.status < 400, headers: Object.fromEntries(r.headers) };
   } catch (e) { return { status: 0, error: String(e.message || e).slice(0, 80), ok: false }; } finally { clearTimeout(t); }
+}
+
+// May `targetOrigin` frame a page that answered with these headers? CSP frame-ancestors wins over
+// X-Frame-Options (browsers ignore XFO when frame-ancestors is set). Pure.
+export function framingVerdict(headers = {}, targetOrigin = '') {
+  const h = Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), String(v)]));
+  const fa = /frame-ancestors\s+([^;]+)/i.exec(h['content-security-policy'] || '')?.[1].trim().split(/\s+/);
+  if (fa) {
+    const host = targetOrigin ? new URL(targetOrigin).host : '';
+    const ok = fa.some((src) => { const s = src.replace(/^https?:\/\//, '').replace(/\/$/, ''); return s === '*' || (host && (s === host || (s.startsWith('*.') && host.endsWith(s.slice(1))))); });
+    return { allowed: ok, reason: `frame-ancestors ${fa.join(' ')}` };
+  }
+  const xfo = (h['x-frame-options'] || '').trim().toUpperCase();
+  if (/DENY|SAMEORIGIN/.test(xfo)) return { allowed: false, reason: `X-Frame-Options ${xfo}` };
+  return { allowed: true, reason: 'no framing restriction' };
 }

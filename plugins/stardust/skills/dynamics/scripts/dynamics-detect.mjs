@@ -18,7 +18,7 @@
  * Progress lines go to stderr. Exit 0 on completion, 2 on usage.
  *
  * Forms inside child iframes (a demo or lead form embedded from the origin or a vendor)
- * are captured per frame and classified F with a `frame` ({ src, selector, scope }), so
+ * are captured per frame and classified F with a `frame` ({ src, selector, scope, height }), so
  * the plan keeps them embedded and drafts a `form-flow` check that runs inside the frame.
  *
  * Probes the SOURCE site. No auth header is sent (the source is public); the
@@ -150,7 +150,7 @@ async function frameForms(page) {
       if (cap.fields < 2) continue;
       const box = await (await fr.frameElement()).boundingBox();
       const key = u.pathname.length > 1 ? u.pathname.replace(/\/$/, '') : u.host;
-      out.push({ src: `${u.host}${u.pathname}`, selector: `iframe[src*="${key}"]`, scope: cap.hasForm ? 'form' : 'body', visible: !!(box && box.width > 1 && box.height > 1), ...cap });
+      out.push({ src: `${u.host}${u.pathname}`, selector: `iframe[src*="${key}"]`, scope: cap.hasForm ? 'form' : 'body', visible: !!(box && box.width > 1 && box.height > 1), height: box ? Math.round(box.height) : null, ...cap });
     } catch { /* detached or blocked frame: evidence only */ }
   }
   return out;
@@ -186,7 +186,7 @@ function classify(page, path, add) {
   for (const t of page.triggers) { const k = t.marker; const row = byMarker.get(k) || { n: 0, ex: [], targets: new Set(), titles: 0, chrome: 0 }; row.n += 1; if (row.ex.length < 4) row.ex.push(t.href || t.text); if (t.target) row.targets.add(`${t.target.role}:${t.target.hasForm ? 'form' : t.target.hasVideo ? 'video' : t.target.hasIframe ? 'iframe' : 'content'}`); if (t.titleOnTrigger) row.titles += 1; if (t.inChrome) row.chrome += 1; byMarker.set(k, row); }
   for (const [marker, r] of byMarker) add({ class: 'M', feature: `modal trigger ${marker}${r.chrome === r.n ? ' (chrome only)' : ''} → ${[...r.targets].join('/') || 'target outside DOM at capture'}`, page: path, evidence: [...r.ex, r.titles ? `${r.titles} triggers carry the title (data-*title)` : null].filter(Boolean), hint: r.chrome === r.n ? 'chrome-interaction' : 'modal' });
   for (const m of page.media) { const v = vendorFor(m.src || ''); if ((v && v.class === 'V') || m.videoId || m.tag === 'video-js') add({ class: 'V', feature: v ? v.role : `player element <${m.tag}>${m.inDialog ? ' in a dialog' : ''}`, page: path, evidence: [m.videoId ? `${m.account || '?'}/${m.player || 'default'}/${m.videoId}` : m.src], hint: 'media' }); }
-  for (const f of page.frameForms || []) add({ class: 'F', feature: `form in iframe → ${f.src} (${f.fields} fields${f.submit ? `, submit "${f.submit}"` : ''}${f.visible ? '' : ', hidden at capture'})`, page: path, evidence: [f.signature.join(','), f.selector], signature: f.signature, hint: 'embedded-form', frame: { src: f.src, selector: f.selector, scope: f.scope } });
+  for (const f of page.frameForms || []) add({ class: 'F', feature: `form in iframe → ${f.src} (${f.fields} fields${f.submit ? `, submit "${f.submit}"` : ''}${f.visible ? '' : ', hidden at capture'})`, page: path, evidence: [f.signature.join(','), f.selector], signature: f.signature, hint: 'embedded-form', frame: { src: f.src, selector: f.selector, scope: f.scope, height: f.height } });
   for (const f of page.iframes) if (!f.src) add({ class: 'V', feature: 'iframe without src (runtime-injected embed)', page: path, evidence: [f.title || `${f.w}×${f.h}`], hint: 'embed-runtime' });
   for (const mnt of page.mounts) add({ class: 'T', feature: `third-party mount <div ${mnt.attrs[0] || mnt.cls}> (tag-manager-injected widget)`, page: path, evidence: [mnt.attrs.join(' ') || mnt.cls], hint: 'tags' });
   if (page.auth.length) add({ class: 'X', feature: 'sign-in / account links', page: path, evidence: page.auth.slice(0, 4), hint: 'decided-out' });

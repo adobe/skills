@@ -15,6 +15,7 @@ an existing library must be fed rather than forked.
 | `chrome-interaction` | M | rebuild-native | motion-observe evidence → header/footer JS | keep |
 | `media-as-url` | V | embed-passthrough | player URL as content | same |
 | `forms` | F | rebuild-native | forms.md | forms.md § existing library |
+| `embedded-form` | F | embed-passthrough | link to the form URL → iframe | the site's embed block, if it frames any URL |
 | `client-compute` | F | client-only | one block: controls + inline logic | same |
 | `consent-gated-tags` | T, A | embed-passthrough | owner config, disabled | library martech behind a host guard |
 | `off-origin-data` | A, S, D | data-fed | snapshot + `Source` row | endpoint indirection + shim (off-origin-data.md) |
@@ -120,6 +121,26 @@ playback request observed with status < 400; a native `<video>` must be PLAYING 
 quarter visible (`!paused`, `currentTime` advancing) and paused under `prefers-reduced-motion` when
 the check sets `reducedMotionPauses` (`dynamics-check.mjs video-plays`); auth scoped to the origin
 (parity-report.md).
+
+## embedded-form
+
+**Intent.** A form in an iframe stays live on its origin: ship the frame, never a native copy.
+**Contract.** A link to the recorded `frame.src`; optional `Height` (default `frame.height`).
+**Mechanism.** Titled lazy `<iframe>`, full width, grows on a posted `{ height }`. **Precondition.**
+`dynamics-plan.mjs --target-origin` reads X-Frame-Options / frame-ancestors; refused = owner decision,
+link out meanwhile. **Verify.** The drafted `form-flow` (`frame`, `block`).
+
+```js
+// example — embedded form block
+export default function decorate(block) {
+  const a = block.querySelector('a[href]'); if (!a) return;
+  const height = Number([...block.children].find((r) => /^height$/i.test(r.textContent.trim().split(/\s/)[0]))?.lastElementChild.textContent) || 640;
+  const iframe = Object.assign(document.createElement('iframe'), { src: a.href, title: a.textContent.trim() || 'Form', loading: 'lazy' });
+  iframe.style.cssText = `width:100%;border:0;height:${height}px`;
+  window.addEventListener('message', (e) => { if (e.source === iframe.contentWindow && Number(e.data?.height)) iframe.style.height = `${e.data.height}px`; });
+  block.replaceChildren(iframe);
+}
+```
 
 ## client-compute
 

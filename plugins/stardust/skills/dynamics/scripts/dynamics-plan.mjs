@@ -14,7 +14,8 @@
  * The run curates the draft into `stardust/dynamic-features.md` (reference/triage.md).
  * Every form row (class F, except client-compute) carries a drafted `form-flow` check, so Phase 5 has a
  * flow to replay; a form found inside an iframe (`frame` on the finding) drafts `embed-passthrough` and
- * a check that requires the iframe and blocks the live submission.
+ * a check that requires the iframe and blocks the live submission; with --target-origin the form's
+ * origin is probed for X-Frame-Options / CSP frame-ancestors — refused framing is an owner decision.
  *
  *   node dynamics-plan.mjs [--in stardust/current/_dynamics.json] [--out stardust/dynamics]
  *        [--target-origin https://…] [--auth-header "token …" | --token-env SITE_TOKEN] [--migrated stardust/migrated]
@@ -27,7 +28,7 @@
 /* eslint-disable no-await-in-loop, no-restricted-syntax, max-len */
 import { readdirSync, readFileSync, statSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { arg, readJSON, writeJSON, writeText, provenance, resolveAuthHeader, probe } from './lib.mjs';
+import { arg, readJSON, writeJSON, writeText, provenance, resolveAuthHeader, probe, framingVerdict } from './lib.mjs';
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
@@ -60,7 +61,7 @@ const RULES = [
   { when: (f) => f.class === 'T' && /mount/.test(f.feature), pattern: 'embed-passthrough', disposition: 'embed-passthrough', repro: 'needs-credential', phase: 'embeds', decision: 'vendor account ids stay the owner\'s' },
   { when: (f) => f.class === 'T', pattern: 'consent-gated-tags', disposition: 'embed-passthrough', repro: 'needs-business-decision', phase: 'tags', decision: 'which tags run on the new host; property ids' },
   { when: (f) => f.class === 'F' && /client-compute/.test(f.hint || ''), pattern: 'client-compute', disposition: 'client-only', repro: 'self', phase: 'client tools', decision: 'none' },
-  { when: (f) => f.class === 'F' && f.frame, pattern: 'embed-passthrough', disposition: 'embed-passthrough', repro: 'self', phase: 'forms', decision: 'none (the form stays live on its origin: embed the iframe, never rebuild it natively)' },
+  { when: (f) => f.class === 'F' && f.frame, pattern: 'embedded-form', disposition: 'embed-passthrough', repro: 'self', phase: 'forms', decision: 'none (the form stays live on its origin: embed the iframe, never rebuild it natively)' },
   { when: (f) => f.class === 'F' && /form backend|form protection/.test(f.feature), pattern: 'forms', disposition: 'rebuild-native', repro: 'needs-backend', phase: 'forms', decision: 'production backend (vendor form id + field mapping)' },
   { when: (f) => f.class === 'F', pattern: 'forms', disposition: 'rebuild-native', repro: 'needs-backend', phase: 'forms', decision: 'production endpoint; interim capture ships now' },
   { when: (f) => f.class === 'M' && /chrome only/.test(f.feature), pattern: 'chrome-interaction', disposition: 'rebuild-native', repro: 'self', phase: 'interactive', decision: 'none (motion-observe evidence)' },
@@ -84,13 +85,18 @@ function draftChecks(f, rule) {
 const PII = /ssn|social.?security|dob|date.?of.?birth|passport|account.?number|iban|card.?number|cvv|minor|guardian|upload/i;
 
 /* ---------------------------------------------------- target-host probe -- */
-const hostBound = {};
+const hostBound = {}; const framing = {};
 if (TARGET && TARGET !== true) {
   const auth = resolveAuthHeader();
   const apis = d.findings.filter((f) => f.api);
   for (const f of apis) {
     const r = await probe(`${TARGET.replace(/\/$/, '')}${f.api.path.replace(/\{[a-z]+\}/g, '1')}`, { headers: auth ? { authorization: auth } : {} });
     hostBound[f.id] = r.ok ? `served (${r.status})` : `dead on target (${r.status || r.error})`;
+  }
+  for (const f of d.findings.filter((x) => x.frame)) {
+    const r = await probe(`https://${f.frame.src}`);
+    const v = r.status ? framingVerdict(r.headers, TARGET) : { allowed: null, reason: r.error };
+    framing[f.id] = v.allowed === false ? `framing refused for the target (${v.reason})` : v.allowed ? `framing allowed (${v.reason})` : `framing unknown (${v.reason})`;
   }
 }
 
@@ -117,6 +123,7 @@ const rows = d.findings.map((f) => {
   const checks = draftChecks(f, rule);
   if (checks.length) row.checks = checks;
   if (f.frame) row.frame = f.frame;
+  if (framing[f.id]) { row.framing = framing[f.id]; if (/refused/.test(row.framing)) Object.assign(row, { reproducibility: 'needs-business-decision', decision: 'the form origin must allow the new host in CSP frame-ancestors; until then link out' }); }
   if (pii) row.flags = ['regulated-pii: never auto-wire; submission blocked until a human configures the secured endpoint'];
   if (hostBound[f.id]) { row.hostBound = hostBound[f.id]; if (/dead/.test(row.hostBound)) row.disposition = 'data-fed'; }
   if (delivered[f.id]) { row.alreadyDelivered = delivered[f.id]; row.status = 'delivered-by-capture'; }
@@ -133,7 +140,7 @@ const md = [
   '# Dynamic features — draft inventory (curate into `stardust/dynamic-features.md`)', '',
   'One row per detected finding. Merge duplicates, drop noise, keep every axis honest. Columns: disposition = what we do · reproducibility = what it needs · status = where it stands (reference/triage.md).', '',
   '| # | id | class | feature | pages | disposition | reproducibility | status | pattern | decision needed | notes |', '|---|---|---|---|---|---|---|---|---|---|---|',
-  ...rows.map((r, i) => `| ${i + 1} | ${r.id} | ${r.class} | ${r.feature.replace(/\|/g, '/')} | ${r.pages}/${r.probed}${r.reach ? ` (reach ${r.reach.pages}/${r.reach.of})` : ''} | ${r.disposition} | ${r.reproducibility} | ${r.status} | ${r.pattern} | ${r.decision} | ${[r.hostBound && `**${r.hostBound}**`, r.alreadyDelivered, r.frame && `iframe ${r.frame.src}`, r.checks && `check: ${r.checks.map((c) => `${c.type}${c.frame ? ' in iframe' : ''}`).join(', ')}`, ...(r.flags || [])].filter(Boolean).join('; ')} |`),
+  ...rows.map((r, i) => `| ${i + 1} | ${r.id} | ${r.class} | ${r.feature.replace(/\|/g, '/')} | ${r.pages}/${r.probed}${r.reach ? ` (reach ${r.reach.pages}/${r.reach.of})` : ''} | ${r.disposition} | ${r.reproducibility} | ${r.status} | ${r.pattern} | ${r.decision} | ${[r.hostBound && `**${r.hostBound}**`, r.alreadyDelivered, r.frame && `iframe ${r.frame.src}`, r.framing && (/refused/.test(r.framing) ? `**${r.framing}**` : r.framing), r.checks && `check: ${r.checks.map((c) => `${c.type}${c.frame ? ' in iframe' : ''}`).join(', ')}`, ...(r.flags || [])].filter(Boolean).join('; ')} |`),
   '', '## Triage', '',
   `- **Ships autonomously (reproducibility \`self\`):** ${self.length} row(s) — ${[...new Set(self.map((r) => r.pattern))].join(', ') || 'none'}.`,
   `- **One owner decision batch:** ${batch.length} row(s) — ${[...new Set(batch.map((r) => r.decision))].slice(0, 6).join(' · ') || 'none'}.`,

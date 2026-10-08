@@ -4,6 +4,7 @@
 // check that requires the iframe and blocks the live submission; every other form row drafts a
 // `form-flow` check, so Phase 5 always has a flow to replay; client-compute forms draft none. A recorded
 // run planned the embed, shipped a dead native form, and nothing replayed it. CLI run in a tmpdir, no network.
+// Also framingVerdict (lib.mjs): may the target host frame the form origin (X-Frame-Options / frame-ancestors)?
 // Run: node plugins/stardust/skills/dynamics/scripts/test/dynamics-plan.test.mjs
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -11,6 +12,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { framingVerdict } from '../lib.mjs';
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', 'dynamics-plan.mjs');
 let failed = 0;
@@ -33,9 +35,9 @@ const md = r.status === 0 ? readFileSync(join(dir, 'out', 'dynamic-features.gene
 const byId = Object.fromEntries(plan.rows.map((x) => [x.id, x]));
 
 check('the CLI exits 0', () => assert.equal(r.status, 0, r.stderr));
-check('a form in an iframe → embed-passthrough, self, never rebuild-native', () => {
+check('a form in an iframe → embedded-form / embed-passthrough, self, never rebuild-native', () => {
   const x = byId['f-embedded'];
-  assert.equal(x.disposition, 'embed-passthrough'); assert.equal(x.reproducibility, 'self'); assert.deepEqual(x.frame, frame);
+  assert.equal(x.pattern, 'embedded-form'); assert.equal(x.disposition, 'embed-passthrough'); assert.equal(x.reproducibility, 'self'); assert.deepEqual(x.frame, frame);
 });
 check('…with a drafted form-flow check that requires the iframe and blocks the live submission (path without trailing slash)', () => {
   assert.deepEqual(byId['f-embedded'].checks, [{ type: 'form-flow', path: '/contact', submit: 'button[type=submit], input[type=submit], button:not([type])', fill: 'auto', frame: frame.selector, block: true }]);
@@ -49,6 +51,17 @@ check('client-compute forms and non-form rows draft no check', () => {
 check('the markdown names the iframe and the drafted checks', () => {
   assert.match(md, /iframe www\.example\.com\/demo-request; check: form-flow in iframe/);
   assert.match(md, /\*\*Drafted checks:\*\* 2 form row\(s\)/);
+});
+
+check('framingVerdict: no header → allowed; XFO DENY / SAMEORIGIN → refused; frame-ancestors wins over XFO', () => {
+  const T = 'https://main--site--org.aem.live';
+  assert.equal(framingVerdict({}, T).allowed, true);
+  assert.equal(framingVerdict({ 'X-Frame-Options': 'SAMEORIGIN' }, T).allowed, false);
+  assert.equal(framingVerdict({ 'x-frame-options': 'deny' }, T).reason, 'X-Frame-Options DENY');
+  assert.equal(framingVerdict({ 'content-security-policy': "default-src 'self'; frame-ancestors 'self' https://*.aem.live", 'x-frame-options': 'DENY' }, T).allowed, true);
+  assert.equal(framingVerdict({ 'content-security-policy': "frame-ancestors 'self' https://www.example.com" }, T).allowed, false);
+  assert.equal(framingVerdict({ 'content-security-policy': "frame-ancestors 'none'" }, T).allowed, false);
+  assert.equal(framingVerdict({ 'content-security-policy': 'frame-ancestors *' }, T).allowed, true);
 });
 
 rmSync(dir, { recursive: true, force: true });

@@ -67,7 +67,7 @@ reproducibility · status** — plus pattern, phase and the owner decision. Cura
 
 ## Phase 4 — Implement (per plan phase)
 
-From `reference/patterns.md` (catalogue + contracts + embedded example mechanisms),
+From `reference/patterns.md` (catalogue + contracts + embedded example mechanisms; a form in an iframe is § embedded-form),
 `reference/listings.md`, `reference/off-origin-data.md`, `reference/forms.md`,
 `reference/locale-trees.md`. Principles that held on three sites: static first, then wire ·
 authoring contract before code · no owner input, no waiting (ship the interim tier, name the

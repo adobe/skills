@@ -237,7 +237,8 @@ const RUNNERS = {
     if (block) await page.route('**/*', (route) => { const r = route.request(); if (isSubmission(asReq(r), { endpointPattern: c.endpointPattern, values: filled })) { blocked = true; return route.abort('blockedbyclient'); } return route.continue(); });
     let target = page;
     if (c.frame) {
-      const handle = await page.waitForSelector(c.frame, { timeout: 15000 }).catch(() => null);
+      const handle = await page.waitForSelector(c.frame, { state: 'attached', timeout: 15000 }).catch(() => null);
+      await handle?.scrollIntoViewIfNeeded().catch(() => {}); // a lazy iframe loads only near the viewport
       target = handle && await handle.contentFrame();
       if (!target) { await page.close(); return { ...judgeFormFlow({ frame: c.frame, frameFound: false }), thirdParty }; }
       await target.waitForSelector(scope, { timeout: 15000 });

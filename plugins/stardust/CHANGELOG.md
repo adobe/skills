@@ -14,9 +14,12 @@ no `parity.json` was written, and the qa gate reported that as `info`. Touches 0
 - **Detect looks inside child iframes** (`dynamics-detect.mjs`): a frame with ≥ 2 visible controls is an F finding
   `form in iframe → <host><path>` carrying `frame` (`src`, `selector`, `scope`). `snapshot-forms.mjs` falls back to
   the child frame when the page has no content controls and records `frame`.
-- **The plan drafts the check** (`dynamics-plan.mjs`): an iframe form is `embed-passthrough` / `self` ("embed the
-  iframe, never rebuild it natively"); every form row except client-compute carries a drafted `form-flow` check, so
-  Phase 5 always has a flow to replay.
+- **The plan drafts the check** (`dynamics-plan.mjs`): an iframe form is pattern `embedded-form`,
+  `embed-passthrough` / `self`; every form row except client-compute carries a drafted `form-flow` check, so Phase 5
+  always has a flow to replay. With `--target-origin` the form origin's X-Frame-Options / CSP frame-ancestors are
+  read (`lib.mjs framingVerdict`): refused framing becomes an owner decision instead of a blank embed.
+- **The build has a recipe** (`patterns.md` § embedded-form, linked from Phase 4 and `forms.md`): a link to the
+  recorded frame URL becomes a titled, lazy, full-width iframe at the captured height, growing on a posted height.
 - **`form-flow` runs inside the frame** (`dynamics-check.mjs`): `frame` (the iframe must exist — a native rebuild
   fails "iframe … not found"), `block` (default with `frame`: the submission is aborted in the browser, so a
   production form gets no test lead), `fill: "auto"` (type- and label-aware test values), fill keys by name, CSS
@@ -27,7 +30,7 @@ no `parity.json` was written, and the qa gate reported that as `info`. Touches 0
   exists; `parity-unchecked` is a **warn** for forms. Exported pure: `missingFinding`, `uncheckedFindings`.
 - Verified live: on the source contact page detect → plan → replay found the iframe form, drafted the check and
   PASSED (the real submission was blocked before the server); on the migrated page the same check FAILED "iframe
-  not found". Tests: `dynamics-check.test.mjs` (+4), new `dynamics-plan.test.mjs`, new qa `dynamics-gate.test.mjs`.
+  not found"; the migrated block rebuilt with the recipe PASSED the same check locally at 1440 and 390. Tests: `dynamics-check.test.mjs` (+4), new `dynamics-plan.test.mjs` (incl. `framingVerdict`), new qa `dynamics-gate.test.mjs`.
 
 ## 0.30.1 — spec: any website, a page cap, and blocked origins
 
