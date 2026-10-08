@@ -4,6 +4,14 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## Unreleased
+
+- **Progress-reader guidance (#132).** A progress reply suggested `ledger.mjs summary`,
+  but the reader supports only `tail` and `last`. Skill instructions and the run-status
+  reference now give existing commands: ledger transitions via `tail` / `last [<skill>]`,
+  page states via `state.mjs summary`. No CLI change; recorded status is not process liveness.
+  Touches the ledger writer/start-guard guidance in 0.25.0 and 0.25.1.
+
 ## 0.30.2 — opt-in martech: carry the source consent and tag managers over, switched off
 
 A migration dropped the source's CMP and tag managers silently, or left an agent to re-wire them by hand
