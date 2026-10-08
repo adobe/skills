@@ -29,7 +29,15 @@
  *                  set; no two results share title + text. A count mismatch FAILS — a recorded hands-off run's
  *                  typeahead returned 10 entries (two home pages under one title) where the source returned 3.
  *                  Exported as `compareSearchResults(results, check)` for the unit test and the qa check.
- *   form-flow      { path*, form?, submit*, fill*, statusSelector?, endpointPattern?, successIncludes? } empty submit refused, filled submit arrives
+ *   form-flow      { path*, form?, frame?, submit*, fill*, statusSelector?, endpointPattern?, successIncludes?, block? }
+ *                  empty submit refused, filled submit leaves the page as a POST / PUT / PATCH (beacons and
+ *                  analytics posts never count). frame = the iframe selector of an EMBEDDED form: the iframe must
+ *                  exist (a rebuilt native form fails) and the flow runs inside it. fill = { name | CSS selector |
+ *                  label: value } or "auto" (test values into every visible control). block (default: true with
+ *                  frame) aborts the submission in the browser, so a live production form gets no test lead.
+ *                  A submission must carry a filled value (beacons never count); a disabled submit refuses the
+ *                  empty attempt. A recorded run shipped a planned iframe as a native form that never posted.
+ *                  Exported as `judgeFormFlow`, `isSubmission`, `autoValue`.
  *   video-plays    { path*, trigger?, iframeSelector?, videoSelector?, playbackHost?, reducedMotionPauses? }
  *                  PLAYBACK, not presence: a vendor iframe must issue a playback request to playbackHost with
  *                  status < 400; a native <video> (scrolled to ≥ ¼ visible) must be PLAYING — not paused,
@@ -54,12 +62,58 @@ async function openPage(ctx, origin, path) {
   const errors = []; const thirdParty = [];
   page.on('pageerror', (e) => errors.push(String(e.message).slice(0, 160)));
   page.on('response', (r) => { try { const u = new URL(r.url()); if (!sameSite(u.host, new URL(origin).host) && thirdParty.length < 60) thirdParty.push({ host: u.host, status: r.status(), type: r.request().resourceType() }); } catch { /* ignore */ } });
-  await page.goto(origin + path, { waitUntil: 'networkidle', timeout: 60000 }).catch(async () => { await page.goto(origin + path, { waitUntil: 'domcontentloaded', timeout: 60000 }); });
+  const resp = await page.goto(origin + path, { waitUntil: 'networkidle', timeout: 60000 }).catch(() => page.goto(origin + path, { waitUntil: 'domcontentloaded', timeout: 60000 }));
   await settle(1200);
-  return { page, errors, thirdParty };
+  return { page, errors, thirdParty, status: resp?.status() || 0 };
 }
 const summarize = (tp) => { const m = {}; for (const t of tp) { const k = `${t.host}:${t.status}`; m[k] = (m[k] || 0) + 1; } return Object.entries(m).slice(0, 12).map(([k, n]) => `${k}×${n}`).join(' '); };
 const DIALOG = 'dialog[open], [role=dialog]:not([hidden]), [aria-modal=true]';
+
+// A form's submission: a write (xhr / fetch / document post) that carries at least one filled value.
+// Matching the body rather than the URL keeps RUM, tag-manager and APM beacons from counting — a recorded
+// run "passed" a dead form on a beacon. No values (the empty attempt): any non-beacon write counts.
+const BEACON = /\/cdn-cgi\/rum|\/collect\b|beacon|\/analytics\/|\/track(ing)?\b|pixel|telemetry|nr-data\.net|sentry|\/envelope\/|bugsnag|datadoghq|\/rum\b/i;
+export function isSubmission({ method = 'GET', type = '', url = '', body = '' } = {}, { endpointPattern = null, values = [] } = {}) {
+  if (!['POST', 'PUT', 'PATCH'].includes(method) || !['xhr', 'fetch', 'document'].includes(type)) return false;
+  if (endpointPattern) return new RegExp(endpointPattern).test(url);
+  if (BEACON.test(url)) return false;
+  const vals = values.map(String).filter((v) => v.length > 2);
+  if (!vals.length) return true;
+  const hay = `${url} ${body || ''}`;
+  return vals.some((v) => hay.includes(v) || hay.includes(encodeURIComponent(v)) || hay.includes(encodeURIComponent(v).replace(/%20/g, '+')));
+}
+
+// Test value for one control under `fill: "auto"`; null = leave it. Pure.
+export function autoValue({ tag = 'input', type = 'text', name = '', label = '', options = [] } = {}) {
+  const t = String(type).toLowerCase(); const hint = `${name} ${label}`.toLowerCase();
+  if (['hidden', 'submit', 'button', 'reset', 'file', 'password', 'search', 'image'].includes(t)) return null;
+  if (tag === 'select') return options.find((o) => o && !/^(select|choose|please|--)/i.test(o)) ?? null;
+  if (t === 'checkbox' || t === 'radio') return true;
+  if (t === 'email' || /e-?mail/.test(hint)) return 'parity-check@example.com';
+  if (t === 'tel' || /phone|mobile|tel\b/.test(hint)) return '4155550123';
+  if (t === 'number' || t === 'range') return '5';
+  if (t === 'url' || /website|url/.test(hint)) return 'https://example.com';
+  if (t === 'date') return '2030-01-15';
+  if (/zip|postal/.test(hint)) return '94103';
+  if (tag === 'textarea') return 'Parity check, please ignore.';
+  if (/company|organi[sz]ation/.test(hint)) return 'Example Inc';
+  if (/name/.test(hint)) return 'Parity';
+  return 'Parity check';
+}
+
+// Pure verdict for `form-flow`. Presence never passes: the empty submit must be refused and the
+// filled one must leave the page; with `frame`, the embed itself must have shipped.
+export function judgeFormFlow({ frame = null, frameFound = true, emptyPosted = 0, emptyDisabled = false, invalid = false, emptyStatus = '', arrived = false, lastPost = '', blocked = false, success = true } = {}) {
+  if (frame && !frameFound) return { pass: false, reasons: [`iframe ${frame} not found`], detail: `iframe ${frame} not found — the embedded form did not ship` };
+  if (emptyDisabled && !emptyStatus) emptyStatus = 'submit disabled until valid';
+  const emptyRefused = emptyPosted === 0 && (emptyDisabled || invalid || emptyStatus.length > 0);
+  const reasons = [];
+  if (!emptyRefused) reasons.push(emptyPosted ? 'empty submission was sent' : 'empty submission not visibly refused');
+  if (!arrived) reasons.push('filled submission never left the page');
+  if (!success) reasons.push('success copy missing');
+  const detail = `${frame ? `in iframe ${frame} · ` : ''}empty refused: ${emptyRefused}${emptyStatus ? ` ("${emptyStatus}")` : ''} · filled posted: ${arrived}${lastPost ? ` (${lastPost.slice(0, 80)})` : ''}${blocked ? ' · blocked in the browser, never reached the server' : ''} · success copy: ${blocked ? 'n/a (blocked)' : success}`;
+  return { pass: reasons.length === 0, reasons, detail };
+}
 
 /**
  * Compare a results list `[{ title, text, href }]` with the expectations recorded from the SOURCE
@@ -172,26 +226,58 @@ const RUNNERS = {
     return { pass, detail, thirdParty };
   },
   async 'form-flow'(c, { ctx, origin }) {
-    const { page, thirdParty } = await openPage(ctx, origin, c.path);
+    const { page, thirdParty, status } = await openPage(ctx, origin, c.path);
+    if (status >= 400) { await page.close(); return { pass: false, reasons: [`page ${status}`], detail: `${c.path} answered ${status} — no form to test`, thirdParty }; }
     const scope = c.form || 'form';
-    const posts = []; page.on('request', (r) => { if (['POST', 'PUT'].includes(r.method()) && ['xhr', 'fetch', 'document'].includes(r.resourceType())) posts.push(r.url()); });
-    await page.click(`${scope} ${c.submit}`, { timeout: 8000 });
-    await settle(600);
-    const emptyStatus = await page.evaluate((s) => (document.querySelector(s)?.textContent || '').trim().slice(0, 80), c.statusSelector || `${scope} [class*="status" i], ${scope} [class*="error" i], ${scope} [aria-live]`);
-    const emptyPosted = posts.length;
-    const invalid = await page.evaluate((s) => !!document.querySelector(`${s} :invalid`), scope);
-    const emptyRefused = emptyPosted === 0 && (invalid || emptyStatus.length > 0);
-    for (const [name, value] of Object.entries(c.fill || {})) {
-      const sel = `${scope} [name="${name}"]`;
-      const kind = await page.evaluate((s) => { const el = document.querySelector(s); return el ? `${el.tagName.toLowerCase()}:${el.type || ''}` : ''; }, sel);
-      if (kind.startsWith('select')) await page.selectOption(sel, String(value)).catch(() => {}); else if (/:(checkbox|radio)$/.test(kind)) await page.check(sel).catch(() => {}); else await page.fill(sel, String(value)).catch(() => {});
+    const submit = String(c.submit).split(',').map((x) => `${scope} ${x.trim()}`).join(', ');
+    const block = c.block ?? !!c.frame;
+    const posts = []; const filled = []; let blocked = false;
+    const asReq = (r) => ({ method: r.method(), type: r.resourceType(), url: r.url(), body: r.postData() || '' });
+    page.on('request', (r) => { if (isSubmission(asReq(r), { endpointPattern: c.endpointPattern, values: filled })) posts.push(r.url()); });
+    if (block) await page.route('**/*', (route) => { const r = route.request(); if (isSubmission(asReq(r), { endpointPattern: c.endpointPattern, values: filled })) { blocked = true; return route.abort('blockedbyclient'); } return route.continue(); });
+    let target = page;
+    if (c.frame) {
+      const handle = await page.waitForSelector(c.frame, { timeout: 15000 }).catch(() => null);
+      target = handle && await handle.contentFrame();
+      if (!target) { await page.close(); return { ...judgeFormFlow({ frame: c.frame, frameFound: false }), thirdParty }; }
+      await target.waitForSelector(scope, { timeout: 15000 });
     }
-    await page.click(`${scope} ${c.submit}`, { timeout: 8000 });
-    await settle(2000);
-    const arrived = c.endpointPattern ? posts.some((u) => new RegExp(c.endpointPattern).test(u)) : posts.length > emptyPosted;
-    const success = c.successIncludes ? (await page.evaluate(() => document.body.innerText)).toLowerCase().includes(c.successIncludes.toLowerCase()) : true;
+    const emptyDisabled = await target.$eval(submit, (el) => el.disabled || el.getAttribute('aria-disabled') === 'true').catch(() => false);
+    if (!emptyDisabled) await target.click(submit, { timeout: 8000 });
+    await settle(600);
+    const emptyStatus = await target.evaluate((s) => (document.querySelector(s)?.textContent || '').trim().slice(0, 80), c.statusSelector || `${scope} [class*="status" i], ${scope} [class*="error" i], ${scope} [aria-live]`);
+    const emptyPosted = posts.length;
+    const invalid = await target.evaluate((s) => !!document.querySelector(`${s} :invalid`), scope);
+    if (c.fill === 'auto') {
+      const controls = await target.evaluate((s) => [...document.querySelectorAll(`${s} input, ${s} select, ${s} textarea`)].filter((el) => !el.disabled && (el.offsetWidth || el.offsetHeight)).map((el, i) => {
+        el.setAttribute('data-dyn-fill', String(i));
+        const label = (el.id && document.querySelector(`label[for="${el.id}"]`)?.textContent) || el.closest('label')?.textContent || el.getAttribute('aria-label') || el.placeholder || '';
+        return { i, tag: el.tagName.toLowerCase(), type: el.type || 'text', name: el.name || '', label: label.trim(), options: el.tagName === 'SELECT' ? [...el.options].map((o) => o.value && o.textContent.trim()) : [] };
+      }), scope);
+      for (const ctl of controls) {
+        const value = autoValue(ctl); const sel = `[data-dyn-fill="${ctl.i}"]`;
+        if (value === null) continue;
+        if (value !== true) filled.push(value);
+        if (ctl.tag === 'select') await target.selectOption(sel, { label: value }).catch(() => {});
+        else if (value === true) await target.check(sel).catch(() => {});
+        else await target.fill(sel, value).catch(() => {});
+      }
+    } else {
+      for (const [key, value] of Object.entries(c.fill || {})) {
+        if (typeof value !== 'boolean') filled.push(String(value));
+        const byName = `${scope} [name="${key}"]`;
+        const sel = await target.$(byName) ? byName : /^[#.[]/.test(key) ? `${scope} ${key}` : null;
+        const loc = sel ? target.locator(sel).first() : target.getByLabel(key).first();
+        const kind = await loc.evaluate((el) => `${el.tagName.toLowerCase()}:${el.type || ''}`).catch(() => '');
+        if (kind.startsWith('select')) await loc.selectOption(String(value)).catch(() => {}); else if (/:(checkbox|radio)$/.test(kind)) await loc.check().catch(() => {}); else await loc.fill(String(value)).catch(() => {});
+      }
+    }
+    await target.click(submit, { timeout: 8000 });
+    await settle(2500);
+    const arrived = posts.length > emptyPosted;
+    const success = c.successIncludes && !blocked ? (await target.evaluate(() => document.body.innerText).catch(() => '')).toLowerCase().includes(c.successIncludes.toLowerCase()) : true;
     await page.close();
-    return { pass: emptyRefused && arrived && success, detail: `empty refused: ${emptyRefused}${emptyStatus ? ` ("${emptyStatus}")` : ''} · filled posted: ${arrived}${posts.length ? ` (${posts.slice(-1)[0].slice(0, 80)})` : ''} · success copy: ${success}`, thirdParty };
+    return { ...judgeFormFlow({ frame: c.frame, emptyPosted, emptyDisabled, invalid, emptyStatus, arrived, lastPost: posts.slice(-1)[0] || '', blocked, success }), thirdParty };
   },
   async 'video-plays'(c, { ctx, origin }) {
     const { page, thirdParty } = await openPage(ctx, origin, c.path);
@@ -229,6 +315,7 @@ const RUNNERS = {
 
 /** replay every check of every feature; returns results with per-check third-party statuses */
 export async function replay({ origin, parity, authHeader = null, headed = false }) {
+  if (!(parity.features || []).some((f) => (f.checks || []).length)) return [];
   const { chromium } = await loadPlaywright();
   const browser = await chromium.launch({ headless: !headed });
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });

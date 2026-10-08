@@ -5,6 +5,8 @@
 // results sharing title + text — not just the presence of one expected hit. Fixtures only: no browser, no
 // network. Also judgeVideoPlayback, the pure verdict of `video-plays`: presence is never a pass — a
 // native <video> must be PLAYING (currentTime advancing), a vendor iframe must request playback.
+// Also judgeFormFlow / isSubmission / autoValue, the pure parts of `form-flow`: an embedded form whose
+// iframe did not ship fails; a beacon never counts as the form arriving; `fill: "auto"` values by type.
 // Also: --help prints the header and writes nothing.
 // Run: node plugins/stardust/skills/dynamics/scripts/test/dynamics-check.test.mjs
 import assert from 'node:assert/strict';
@@ -13,7 +15,7 @@ import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { compareSearchResults, judgeVideoPlayback } from '../dynamics-check.mjs';
+import { compareSearchResults, judgeVideoPlayback, judgeFormFlow, isSubmission, autoValue } from '../dynamics-check.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'dynamics-check.mjs');
@@ -116,10 +118,45 @@ check('vendor iframe: present but no playback request < 400 FAILS; one ok reques
   assert.equal(empty.pass, false); assert.deepEqual(empty.reasons, ['no player: neither a vendor iframe nor a <video> found']);
 });
 
+check('form-flow, the recorded defect: a planned iframe form shipped as a native one → FAIL "iframe … not found"', () => {
+  const r = judgeFormFlow({ frame: 'iframe[src*="/demo-request"]', frameFound: false });
+  assert.equal(r.pass, false); assert.match(r.detail, /iframe iframe\[src\*="\/demo-request"\] not found — the embedded form did not ship/);
+});
+check('form-flow: the native rebuild that refuses empty but never posts → FAIL; disabled submit counts as refused', () => {
+  const dead = judgeFormFlow({ emptyStatus: 'Please fill in', arrived: false });
+  assert.equal(dead.pass, false); assert.deepEqual(dead.reasons, ['filled submission never left the page']);
+  const ok = judgeFormFlow({ frame: 'iframe#x', emptyDisabled: true, arrived: true, lastPost: 'https://example.com/graphql', blocked: true });
+  assert.equal(ok.pass, true, ok.detail); assert.match(ok.detail, /submit disabled until valid.*blocked in the browser.*success copy: n\/a \(blocked\)/);
+  const leaky = judgeFormFlow({ emptyPosted: 1, arrived: true });
+  assert.equal(leaky.pass, false); assert.deepEqual(leaky.reasons, ['empty submission was sent']);
+});
+check('isSubmission: beacons never count; a write carrying a filled value does; GETs and pings never do', () => {
+  const values = ['parity-check@example.com'];
+  const body = '{"operationName":"CreateDemoRequest","variables":{"email":"parity-check@example.com"}}';
+  assert.equal(isSubmission({ method: 'POST', type: 'fetch', url: 'https://example.com/graphql', body }, { values }), true);
+  assert.equal(isSubmission({ method: 'POST', type: 'xhr', url: 'https://telemetry.example.net/ins/1/x', body: 'parity-check@example.com' }, { values }), false);
+  assert.equal(isSubmission({ method: 'POST', type: 'fetch', url: 'https://errors.example.com/api/1/envelope/', body }, { values }), false);
+  assert.equal(isSubmission({ method: 'POST', type: 'xhr', url: 'https://example.com/cdn-cgi/rum?', body: '{}' }, { values: [] }), false);
+  assert.equal(isSubmission({ method: 'POST', type: 'fetch', url: 'https://example.com/graphql', body: '{"op":"Other"}' }, { values }), false);
+  assert.equal(isSubmission({ method: 'GET', type: 'fetch', url: 'https://example.com/graphql?email=parity-check%40example.com' }, { values }), false);
+  assert.equal(isSubmission({ method: 'POST', type: 'ping', url: 'https://example.com/form', body }, { values }), false);
+  assert.equal(isSubmission({ method: 'POST', type: 'document', url: 'https://example.com/form', body: 'email=parity-check%40example.com' }, { values }), true);
+  assert.equal(isSubmission({ method: 'POST', type: 'fetch', url: 'https://example.com/api/lead', body: '' }, { endpointPattern: '/api/lead' }), true);
+});
+check('autoValue: type- and label-appropriate test values; hidden / file / password left alone', () => {
+  assert.equal(autoValue({ type: 'email' }), 'parity-check@example.com');
+  assert.equal(autoValue({ type: 'text', label: 'Work email *' }), 'parity-check@example.com');
+  assert.equal(autoValue({ type: 'tel' }), '4155550123');
+  assert.equal(autoValue({ tag: 'select', options: ['', 'Select one', 'Germany'] }), 'Germany');
+  assert.equal(autoValue({ type: 'checkbox' }), true);
+  assert.equal(autoValue({ tag: 'textarea', type: 'textarea' }), 'Parity check, please ignore.');
+  for (const t of ['hidden', 'file', 'password', 'submit']) assert.equal(autoValue({ type: t }), null, t);
+});
+
 check('--help prints the header (naming expectCount) and writes nothing', () => {
   const cwd = mkdtempSync(join(tmpdir(), 'dynamics-check-help-'));
   const r = spawnSync(process.execPath, [SCRIPT, '--help'], { encoding: 'utf8', cwd });
-  assert.equal(r.status, 0, r.stderr); assert.match(r.stdout, /search-query/); assert.match(r.stdout, /expectCount/);
+  assert.equal(r.status, 0, r.stderr); assert.match(r.stdout, /search-query/); assert.match(r.stdout, /expectCount/); assert.match(r.stdout, /frame = the iframe selector/);
   assert.deepEqual(readdirSync(cwd), []);
   rmSync(cwd, { recursive: true, force: true });
 });

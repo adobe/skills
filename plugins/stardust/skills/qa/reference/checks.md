@@ -77,10 +77,10 @@ Flows, not presence — each check replays a user-visible flow through `skills/d
 
 | id | sev | what |
 |---|---|---|
-| `parity-missing` | info | no parity file — the migration never ran the stardust `dynamics` skill |
-| `parity-failed` | error | a replayed flow did not complete (empty form accepted, dialog did not open, query returned nothing, player never requested playback, video present but not playing) |
+| `parity-missing` | error / info | no parity file — error when `stardust/dynamic-features.md` exists (Phase 5 never ran). Fixture-tested: `scripts/test/dynamics-gate.test.mjs` |
+| `parity-failed` | error | a replayed flow did not complete (empty form accepted, embedded form's iframe missing, dialog did not open, query returned nothing, player never requested playback, video present but not playing) |
 | `parity-env-limit` | warn | a failed flow whose feature records an environment limit (geo-fenced hand-off target) |
-| `parity-unchecked` | info | a feature with a non-final status and no replayable check — an owner item |
+| `parity-unchecked` | warn / info | a non-final feature with no replayable check — warn for a form |
 
 ## visual (E, browser)
 

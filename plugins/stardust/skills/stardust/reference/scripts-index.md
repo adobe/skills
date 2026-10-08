@@ -27,12 +27,12 @@ Run the project copies under `stardust/scripts/<skill>/`. Read this before any `
 - `diff/measure-live.mjs` — library (settle + rect/type measurement for the gate probes), no CLI
 - `diff/unit-geometry.mjs` — per-element Δx/Δy/Δw/Δh of the first N repeated units — `<originURL> <servedURL> (--unit <selO>=<selE> | --families stardust/replica/units.json --slug <s>) [--n 1] [--tol 4]`; exit 2 = a required unit off/hidden/missing
 - `diff/visual-diff.mjs` — screenshot diff + flags — `<protoURL> <edsURL> [--out <dir>] [--width <px>] [--main <sel>]`
-- `dynamics/dynamics-check.mjs` — replay parity checks (search-query: count + top titles vs source) — `--origin <h> [--parity <json>] [--out stardust/qa]`
+- `dynamics/dynamics-check.mjs` — replay parity checks (search-query: count + top titles vs source; form-flow in iframes) — `--origin <h> [--parity <json>] [--out stardust/qa]`
 - `dynamics/dynamics-detect.mjs` — detect dynamic features — `--urls a,b [--from-state stardust/state.json]`
-- `dynamics/dynamics-plan.mjs` — triage draft — `[--in <json>] [--out <dir>] [--target-origin <h>]`
+- `dynamics/dynamics-plan.mjs` — triage draft + form checks — `[--in <json>] [--out <dir>] [--target-origin <h>]`
 - `dynamics/lib.mjs` — library, no CLI
 - `dynamics/snapshot-api.mjs` — record same-origin API calls — `--origin <h> --calls calls.json [--out <dir>]`
-- `dynamics/snapshot-forms.mjs` — record live forms — `--urls a,b [--out data/forms]`
+- `dynamics/snapshot-forms.mjs` — record live forms (or in an iframe) — `--urls a,b [--out data/forms]`
 - `dynamics/sync-sheets.mjs` — sheet JSON → DA + preview — `--source <o> --org --repo --paths a.json,b.json`
 - `extract/crawl.mjs` — site crawler → pages, screenshots, `_crawl-log.json#captureGaps` — `--url <u> [--pages a,b] [--max 25] [--out stardust/current] [--dynamics]`
 - `extract/style-census.mjs` — computed-style census (one live pass) — `[--pages <dir>|--urls a,b] [--width <px>] [--headed]`

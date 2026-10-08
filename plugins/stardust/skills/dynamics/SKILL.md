@@ -82,7 +82,7 @@ configuration-service write; the sheet-backed interim index only when the branch
 ## Phase 5 — Verify: dynamic parity
 
 Write `stardust/dynamics/parity.json` (`reference/parity-report.md`) with replayable checks from the
-closed set; `node skills/dynamics/scripts/dynamics-check.mjs --origin <published origin> [--auth-header … | --token-env SITE_TOKEN]`
+closed set, starting from the plan's drafted `form-flow` checks; `node skills/dynamics/scripts/dynamics-check.mjs --origin <published origin> [--auth-header … | --token-env SITE_TOKEN]`
 writes `stardust/qa/dynamics-report.md`. **Flows, not presence.** A `search-query` check compares the
 result COUNT and the top titles with the source's recorded values — a count mismatch fails. The site
 secret rides an origin-scoped route filter only; third-party request statuses are recorded next to

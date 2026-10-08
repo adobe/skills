@@ -29,7 +29,8 @@ site *do* now?".
 Check types (closed set, all replayable): `fetch-json` · `dom-count` · `click-dialog` ·
 `search-query` · `form-flow` · `video-plays` · `consent-gate` · `no-page-errors` — fields in the
 script header. A feature with no checks is listed under "features without checks" with its status
-and owner; `decided-out` rows belong there.
+and owner; `decided-out` rows belong there. Every form row carries the plan's drafted `form-flow`;
+an embedded form's adds `frame` (the iframe must exist — a native rebuild fails) and `block` (no live lead).
 
 `search-query` compares with what the SOURCE showed for the same term, read at detect time and
 recorded on the check: `expectCount` (the visible result count — a mismatch FAILS), `expectTitles`

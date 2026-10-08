@@ -12,6 +12,9 @@
  *                                tokens → `alreadyDelivered` (never rebuild what
  *                                the capture pipeline already shipped)
  * The run curates the draft into `stardust/dynamic-features.md` (reference/triage.md).
+ * Every form row (class F, except client-compute) carries a drafted `form-flow` check, so Phase 5 has a
+ * flow to replay; a form found inside an iframe (`frame` on the finding) drafts `embed-passthrough` and
+ * a check that requires the iframe and blocks the live submission.
  *
  *   node dynamics-plan.mjs [--in stardust/current/_dynamics.json] [--out stardust/dynamics]
  *        [--target-origin https://…] [--auth-header "token …" | --token-env SITE_TOKEN] [--migrated stardust/migrated]
@@ -57,6 +60,7 @@ const RULES = [
   { when: (f) => f.class === 'T' && /mount/.test(f.feature), pattern: 'embed-passthrough', disposition: 'embed-passthrough', repro: 'needs-credential', phase: 'embeds', decision: 'vendor account ids stay the owner\'s' },
   { when: (f) => f.class === 'T', pattern: 'consent-gated-tags', disposition: 'embed-passthrough', repro: 'needs-business-decision', phase: 'tags', decision: 'which tags run on the new host; property ids' },
   { when: (f) => f.class === 'F' && /client-compute/.test(f.hint || ''), pattern: 'client-compute', disposition: 'client-only', repro: 'self', phase: 'client tools', decision: 'none' },
+  { when: (f) => f.class === 'F' && f.frame, pattern: 'embed-passthrough', disposition: 'embed-passthrough', repro: 'self', phase: 'forms', decision: 'none (the form stays live on its origin: embed the iframe, never rebuild it natively)' },
   { when: (f) => f.class === 'F' && /form backend|form protection/.test(f.feature), pattern: 'forms', disposition: 'rebuild-native', repro: 'needs-backend', phase: 'forms', decision: 'production backend (vendor form id + field mapping)' },
   { when: (f) => f.class === 'F', pattern: 'forms', disposition: 'rebuild-native', repro: 'needs-backend', phase: 'forms', decision: 'production endpoint; interim capture ships now' },
   { when: (f) => f.class === 'M' && /chrome only/.test(f.feature), pattern: 'chrome-interaction', disposition: 'rebuild-native', repro: 'self', phase: 'interactive', decision: 'none (motion-observe evidence)' },
@@ -69,6 +73,14 @@ const RULES = [
   { when: (f) => f.class === 'CR' && /main empty at load/.test(f.feature), pattern: 'client-rendered-page', disposition: 'static-snapshot', repro: 'needs-human-capture', phase: 'capture', decision: 'human-browser capture; never migrate blank' },
   { when: (f) => f.class === 'CR', pattern: 'settled-dom-snapshot', disposition: 'static-snapshot', repro: 'self', phase: 'capture', decision: 'inspect the consumer' },
 ];
+// Drafted replayable check for a form row (reference/parity-report.md): the curated parity.json keeps it.
+function draftChecks(f, rule) {
+  if (f.class !== 'F' || rule.disposition === 'client-only' || !(f.pages || []).length) return [];
+  // trailing slash dropped: target paths carry none, a source redirects
+  const check = { type: 'form-flow', path: f.pages[0].length > 1 ? f.pages[0].replace(/\/$/, '') : f.pages[0], submit: 'button[type=submit], input[type=submit], button:not([type])', fill: 'auto' };
+  if (f.frame) Object.assign(check, { frame: f.frame.selector, block: true }, f.frame.scope && f.frame.scope !== 'form' ? { form: f.frame.scope } : {});
+  return [check];
+}
 const PII = /ssn|social.?security|dob|date.?of.?birth|passport|account.?number|iban|card.?number|cvv|minor|guardian|upload/i;
 
 /* ---------------------------------------------------- target-host probe -- */
@@ -102,6 +114,9 @@ const rows = d.findings.map((f) => {
     id: f.id, class: f.class, feature: f.feature, pages: f.pages.length, probed, reach: f.reach || null, evidence: (f.evidence || []).slice(0, 4),
     pattern: rule.pattern, disposition: rule.disposition, reproducibility: pii ? 'needs-business-decision' : rule.repro, status: 'pending', phase: rule.phase, decision: rule.decision,
   };
+  const checks = draftChecks(f, rule);
+  if (checks.length) row.checks = checks;
+  if (f.frame) row.frame = f.frame;
   if (pii) row.flags = ['regulated-pii: never auto-wire; submission blocked until a human configures the secured endpoint'];
   if (hostBound[f.id]) { row.hostBound = hostBound[f.id]; if (/dead/.test(row.hostBound)) row.disposition = 'data-fed'; }
   if (delivered[f.id]) { row.alreadyDelivered = delivered[f.id]; row.status = 'delivered-by-capture'; }
@@ -118,10 +133,11 @@ const md = [
   '# Dynamic features — draft inventory (curate into `stardust/dynamic-features.md`)', '',
   'One row per detected finding. Merge duplicates, drop noise, keep every axis honest. Columns: disposition = what we do · reproducibility = what it needs · status = where it stands (reference/triage.md).', '',
   '| # | id | class | feature | pages | disposition | reproducibility | status | pattern | decision needed | notes |', '|---|---|---|---|---|---|---|---|---|---|---|',
-  ...rows.map((r, i) => `| ${i + 1} | ${r.id} | ${r.class} | ${r.feature.replace(/\|/g, '/')} | ${r.pages}/${r.probed}${r.reach ? ` (reach ${r.reach.pages}/${r.reach.of})` : ''} | ${r.disposition} | ${r.reproducibility} | ${r.status} | ${r.pattern} | ${r.decision} | ${[r.hostBound && `**${r.hostBound}**`, r.alreadyDelivered, ...(r.flags || [])].filter(Boolean).join('; ')} |`),
+  ...rows.map((r, i) => `| ${i + 1} | ${r.id} | ${r.class} | ${r.feature.replace(/\|/g, '/')} | ${r.pages}/${r.probed}${r.reach ? ` (reach ${r.reach.pages}/${r.reach.of})` : ''} | ${r.disposition} | ${r.reproducibility} | ${r.status} | ${r.pattern} | ${r.decision} | ${[r.hostBound && `**${r.hostBound}**`, r.alreadyDelivered, r.frame && `iframe ${r.frame.src}`, r.checks && `check: ${r.checks.map((c) => `${c.type}${c.frame ? ' in iframe' : ''}`).join(', ')}`, ...(r.flags || [])].filter(Boolean).join('; ')} |`),
   '', '## Triage', '',
   `- **Ships autonomously (reproducibility \`self\`):** ${self.length} row(s) — ${[...new Set(self.map((r) => r.pattern))].join(', ') || 'none'}.`,
   `- **One owner decision batch:** ${batch.length} row(s) — ${[...new Set(batch.map((r) => r.decision))].slice(0, 6).join(' · ') || 'none'}.`,
+  `- **Drafted checks:** ${rows.filter((r) => r.checks).length} form row(s) carry a \`form-flow\` check — copy them into \`stardust/dynamics/parity.json\` (Phase 5).`,
   `- **Already delivered by the capture pipeline:** ${rows.filter((r) => r.alreadyDelivered).length} row(s) — no work.`,
   `- **Host-bound on the target:** ${rows.filter((r) => /dead/.test(r.hostBound || '')).length} of ${Object.keys(hostBound).length} probed API paths — the off-origin data work.`,
   '', '## Phases', '', ...Object.entries(byPhase).sort((a, b) => b[1] - a[1]).map(([k, n]) => `- **${k}** — ${n}`),

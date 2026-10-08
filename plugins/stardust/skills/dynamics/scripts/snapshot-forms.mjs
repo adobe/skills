@@ -5,7 +5,9 @@
  * URL: `<out>/<name>.json` — sections, fields (type, label, options, required,
  * conditional), submit label, hidden field names, intro — with `_provenance`.
  * Selects the server ships empty are read after settle (client-injected options).
- * Feeds the definition-driven form block (reference/forms.md).
+ * Feeds the definition-driven form block (reference/forms.md). A page whose only content
+ * form sits inside a child iframe is read from that frame; the definition records `frame`
+ * ({ src, selector }) — the form is embedded, not rebuilt (reference/forms.md).
  *
  *   node snapshot-forms.mjs --urls <url,url> [--out data/forms] [--exclude "<extra selectors to skip>"] [--settle 3000]
  *
@@ -36,7 +38,7 @@ for (const url of URLS) {
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
   await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
   await settlePage(page, { settleMs: SETTLE, maxScroll: 2400 });
-  const def = await page.evaluate((extra) => {
+  const capture = (extra) => {
     const norm = (t) => (t || '').replace(/\s+/g, ' ').trim();
     const root = document.querySelector('main, [role=main], .site-content') || document.body;
     const SKIP = `header, footer, nav, [role=navigation], [role=search], [role=banner], [role=contentinfo], [id*="onetrust" i], [class*="cookie" i], [class*="consent" i], [class*="login" i], [class*="signin" i], [class*="register" i], [class*="newsletter-footer" i]${extra ? `, ${extra}` : ''}`;
@@ -60,12 +62,17 @@ for (const url of URLS) {
       hidden: [...container.querySelectorAll('input[type=hidden]')].map((i) => i.name).filter(Boolean).slice(0, 20), submitLabel: norm(submit?.textContent) || norm(submit?.value) || 'Submit', fields: merged,
       piiSignals: merged.filter((f) => /ssn|social.?security|dob|birth|passport|account.?number|iban|card|cvv|minor|guardian|upload/i.test(`${f.name} ${f.label}`)).map((f) => f.name || f.label),
     };
-  }, EXCLUDE);
+  };
+  let def = await page.evaluate(capture, EXCLUDE);
+  for (const fr of def ? [] : page.frames().filter((x) => x.parentFrame() === page.mainFrame() && /^https?:/.test(x.url()))) {
+    const inner = await fr.evaluate(capture, EXCLUDE).catch(() => null);
+    if (inner?.fields.length >= 2) { const u = new URL(fr.url()); const key = u.pathname.length > 1 ? u.pathname.replace(/\/$/, '') : u.host; def = { ...inner, frame: { src: `${u.host}${u.pathname}`, selector: `iframe[src*="${key}"]` } }; break; }
+  }
   await page.close();
   if (!def) { console.error(`[forms] ${url}: no content-area controls`); continue; }
   const name = slug(new URL(url).pathname.replace(/\/$/, '').split('/').pop() || 'form');
   writeJSON(join(OUT, `${name}.json`), { _provenance: provenance('snapshot-forms', { source: url, settleMs: SETTLE }), ...def });
-  console.error(`[forms] ${name}: ${def.fields.length} fields (${def.fields.filter((f) => f.hiddenNow).length} conditional, ${def.fields.filter((f) => f.options?.length).length} with options) · submit "${def.submitLabel}" · form tag ${def.hasFormTag}${def.piiSignals.length ? ` · REGULATED-PII: ${def.piiSignals.join(',')}` : ''}`);
+  console.error(`[forms] ${name}: ${def.fields.length} fields (${def.fields.filter((f) => f.hiddenNow).length} conditional, ${def.fields.filter((f) => f.options?.length).length} with options) · submit "${def.submitLabel}" · form tag ${def.hasFormTag}${def.frame ? ` · in iframe ${def.frame.src}` : ''}${def.piiSignals.length ? ` · REGULATED-PII: ${def.piiSignals.join(',')}` : ''}`);
 }
 await browser.close().catch(() => {});
 setTimeout(() => process.exit(0), 200).unref();

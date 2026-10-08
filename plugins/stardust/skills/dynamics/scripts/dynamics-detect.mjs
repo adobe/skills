@@ -17,6 +17,10 @@
  *   dynamic-features.generated.md   the findings as a table, one row per feature
  * Progress lines go to stderr. Exit 0 on completion, 2 on usage.
  *
+ * Forms inside child iframes (a demo or lead form embedded from the origin or a vendor)
+ * are captured per frame and classified F with a `frame` ({ src, selector, scope }), so
+ * the plan keeps them embedded and drafts a `form-flow` check that runs inside the frame.
+ *
  * Probes the SOURCE site. No auth header is sent (the source is public); the
  * target-host probe lives in dynamics-plan.mjs.
  */
@@ -127,6 +131,31 @@ function domCapture() {
 }
 
 /* ------------------------------------------------------------ classify -- */
+// Runs inside each child frame: the content form it renders, if any (≥ 2 visible controls).
+function frameCapture() {
+  const vis = (el) => { const r = el.getBoundingClientRect(); return r.width > 1 && r.height > 1; };
+  const controls = [...document.querySelectorAll('input, select, textarea')].filter((i) => !['hidden', 'submit', 'button', 'reset', 'image'].includes((i.type || '').toLowerCase()) && vis(i));
+  const form = controls[0]?.closest('form');
+  const submit = [...(form || document).querySelectorAll('button, input[type=submit], [role=button]')].find((b) => vis(b) && /submit|send|request|book|get|contact|sign ?up|subscribe|continue|apply/i.test((b.textContent || b.value || '').trim()));
+  return { fields: controls.length, hasForm: !!form, signature: controls.map((i) => `${i.tagName === 'SELECT' ? 'select' : i.type || 'text'}:${i.name || ''}`).slice(0, 12), submit: submit ? (submit.textContent || submit.value || '').trim().slice(0, 40) : null };
+}
+
+async function frameForms(page) {
+  const out = [];
+  for (const fr of page.frames()) {
+    if (fr.parentFrame() !== page.mainFrame()) continue;
+    try {
+      const u = new URL(fr.url()); if (!/^https?:$/.test(u.protocol)) continue;
+      const cap = await fr.evaluate(frameCapture);
+      if (cap.fields < 2) continue;
+      const box = await (await fr.frameElement()).boundingBox();
+      const key = u.pathname.length > 1 ? u.pathname.replace(/\/$/, '') : u.host;
+      out.push({ src: `${u.host}${u.pathname}`, selector: `iframe[src*="${key}"]`, scope: cap.hasForm ? 'form' : 'body', visible: !!(box && box.width > 1 && box.height > 1), ...cap });
+    } catch { /* detached or blocked frame: evidence only */ }
+  }
+  return out;
+}
+
 function classify(page, path, add) {
   const host = page.host;
   const firstParty = (h) => sameSite(h, host);
@@ -157,6 +186,7 @@ function classify(page, path, add) {
   for (const t of page.triggers) { const k = t.marker; const row = byMarker.get(k) || { n: 0, ex: [], targets: new Set(), titles: 0, chrome: 0 }; row.n += 1; if (row.ex.length < 4) row.ex.push(t.href || t.text); if (t.target) row.targets.add(`${t.target.role}:${t.target.hasForm ? 'form' : t.target.hasVideo ? 'video' : t.target.hasIframe ? 'iframe' : 'content'}`); if (t.titleOnTrigger) row.titles += 1; if (t.inChrome) row.chrome += 1; byMarker.set(k, row); }
   for (const [marker, r] of byMarker) add({ class: 'M', feature: `modal trigger ${marker}${r.chrome === r.n ? ' (chrome only)' : ''} → ${[...r.targets].join('/') || 'target outside DOM at capture'}`, page: path, evidence: [...r.ex, r.titles ? `${r.titles} triggers carry the title (data-*title)` : null].filter(Boolean), hint: r.chrome === r.n ? 'chrome-interaction' : 'modal' });
   for (const m of page.media) { const v = vendorFor(m.src || ''); if ((v && v.class === 'V') || m.videoId || m.tag === 'video-js') add({ class: 'V', feature: v ? v.role : `player element <${m.tag}>${m.inDialog ? ' in a dialog' : ''}`, page: path, evidence: [m.videoId ? `${m.account || '?'}/${m.player || 'default'}/${m.videoId}` : m.src], hint: 'media' }); }
+  for (const f of page.frameForms || []) add({ class: 'F', feature: `form in iframe → ${f.src} (${f.fields} fields${f.submit ? `, submit "${f.submit}"` : ''}${f.visible ? '' : ', hidden at capture'})`, page: path, evidence: [f.signature.join(','), f.selector], signature: f.signature, hint: 'embedded-form', frame: { src: f.src, selector: f.selector, scope: f.scope } });
   for (const f of page.iframes) if (!f.src) add({ class: 'V', feature: 'iframe without src (runtime-injected embed)', page: path, evidence: [f.title || `${f.w}×${f.h}`], hint: 'embed-runtime' });
   for (const mnt of page.mounts) add({ class: 'T', feature: `third-party mount <div ${mnt.attrs[0] || mnt.cls}> (tag-manager-injected widget)`, page: path, evidence: [mnt.attrs.join(' ') || mnt.cls], hint: 'tags' });
   if (page.auth.length) add({ class: 'X', feature: 'sign-in / account links', page: path, evidence: page.auth.slice(0, 4), hint: 'decided-out' });
@@ -177,7 +207,7 @@ const findingsByKey = new Map();
 const add = (f) => {
   const key = `${f.class}|${f.feature}`;
   let x = findingsByKey.get(key);
-  if (!x) { x = { id: slug(`${f.class}-${f.feature}`), class: f.class, feature: f.feature, role: f.role, api: f.api, signature: f.signature, hint: f.hint, evidence: [], pages: [] }; findingsByKey.set(key, x); report.findings.push(x); }
+  if (!x) { x = { id: slug(`${f.class}-${f.feature}`), class: f.class, feature: f.feature, role: f.role, api: f.api, signature: f.signature, hint: f.hint, ...(f.frame ? { frame: f.frame } : {}), evidence: [], pages: [] }; findingsByKey.set(key, x); report.findings.push(x); }
   if (!x.pages.includes(f.page)) x.pages.push(f.page);
   if (f.evidence) x.evidence = [...new Set([...x.evidence, ...f.evidence.filter(Boolean)])].slice(0, 12);
 };
@@ -211,12 +241,12 @@ for (const url of URLS) {
   } catch (e) { report.pages[path] = { url, error: String(e.message).slice(0, 160) }; console.error(`[dynamics] FAIL ${path} ${e.message.slice(0, 100)}`); await ctx.close(); continue; }
   const dom = await page.evaluate(domCapture);
   const pageRec = {
-    url, status, host, ...dom, hosts, thirdPartyHosts: Object.keys(hosts).filter((h) => h && !sameSite(h, host)), scripts: [...scripts].slice(0, 60),
+    url, status, host, ...dom, frameForms: await frameForms(page), hosts, thirdPartyHosts: Object.keys(hosts).filter((h) => h && !sameSite(h, host)), scripts: [...scripts].slice(0, 60),
     firstPartyApi: [...firstPartyApi.values()], thirdPartyXhr: [...thirdPartyXhr].slice(0, 40), postBodies, textAtLoad, mainEmptyAtLoad: textAtLoad < 200 && dom.mainText > 600,
   };
   report.pages[path] = pageRec;
   classify(pageRec, path, add);
-  console.error(`[dynamics] ${status} ${path} · 3rd-party hosts ${pageRec.thirdPartyHosts.length} · 1st-party api ${pageRec.firstPartyApi.length} · forms ${dom.forms.length}+${dom.controlGroups.length} · triggers ${dom.triggers.length} · media ${dom.media.length} · client-rendered ${dom.clientRendered.length}${pageRec.mainEmptyAtLoad ? ' · MAIN-EMPTY-AT-LOAD' : ''}`);
+  console.error(`[dynamics] ${status} ${path} · 3rd-party hosts ${pageRec.thirdPartyHosts.length} · 1st-party api ${pageRec.firstPartyApi.length} · forms ${dom.forms.length}+${dom.controlGroups.length}${pageRec.frameForms.length ? ` (+${pageRec.frameForms.length} in iframes)` : ''} · triggers ${dom.triggers.length} · media ${dom.media.length} · client-rendered ${dom.clientRendered.length}${pageRec.mainEmptyAtLoad ? ' · MAIN-EMPTY-AT-LOAD' : ''}`);
   await ctx.close();
 }
 await browser.close().catch(() => {});

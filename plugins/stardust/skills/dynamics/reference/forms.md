@@ -15,7 +15,7 @@ Modern forms carry no action (endpoint injected at runtime) or no form tag at al
 → disposition heuristics that held across sites: `tel:amount,rate,term` = calculator
 (`client-only`); `select:score,issuer` = in-DOM filter (`client-only`); `text:q` / `role=search` =
 site search (`index-backed`, needs a results page); email + message = intake (`rebuild-native`,
-`needs-backend`).
+`needs-backend`). A form **inside an iframe** stays live on its origin: `embed-passthrough`, never a native copy.
 
 ## 3. Decide the intake by content source
 
@@ -45,5 +45,4 @@ deep-link to an authenticated app — migrate the link, do not manufacture a for
 
 ## 6. Verify (flow)
 
-Empty submit → refused with the live wording; filled submit → reaches the endpoint (capture count
-or backend row); success copy shown; no page errors. `dynamics-check.mjs` type `form-flow`.
+`form-flow`, drafted per form row by `dynamics-plan.mjs` (`reference/parity-report.md`).
