@@ -3,8 +3,9 @@
 `judgement/implementation.json` says how each part must be built on EDS. Start from `templates/implementation.json`.
 
 ## features[]
-`{ id, class, name, evidence, disposition, reproducibility, pattern, eds, decisions[], reach }` — class, disposition
-and reproducibility use the dynamics taxonomy (`../../dynamics/reference/classes-and-signals.md`, `triage.md`).
+`{ id, class, name, evidence, disposition, reproducibility, pattern, eds, decisions[], reach }` — class, disposition,
+reproducibility and status use the dynamics taxonomy (`../../dynamics/reference/classes-and-signals.md`, `triage.md`);
+S10 stops on any other value.
 Run the dynamics detector on the variant representatives (≥ 80% of each template) plus one page per data-driven
 block and form type, then curate its findings into features. `reach` selects the pages, in the rule format
 (knowledge.md § Rules), e.g. `live sitemap block:news-list,event-list` or `live sitemap signal:iframe:*forms*`.

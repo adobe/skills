@@ -143,6 +143,9 @@ front end), the ask decides whether the design is kept or changed: a
 migration keeps its design unless the ask says to redesign it. That
 selects the flow; the downstream chain is shared.
 
+- **Scoping, before either flow:** "scope / estimate / plan / spec the
+  migration of X", "which pages use block X", a redirect or 404 inventory →
+  `spec`. Flow-neutral: it never stamps `flow`.
 - **Redesign while migrating:** `extract` → `direct` → `prototype`, or in
   one orchestrated step `prepare-migration` (the prep cascade with
   confirmation gates) → `migrate` → `deploy` (one-page pilot) /
@@ -175,14 +178,12 @@ loads:
 - **Redesign phrases select the redesign flow:** "redesign", "modernise",
   "refresh", "new look", "rethink", "reimagine" — any phrase that moves a
   design axis. Only an explicit phrase does; nothing is inferred.
-- **Anything else** ("migrate X to EDS", "build a migration plan for X")
-  is a faithful migration: `replica`, `flowSource: "default"`, no
+- **Anything else** ("migrate X to EDS") is a faithful migration: `replica`, `flowSource: "default"`, no
   question, interactive and hands-off alike. The first response carries
   replica's flow line ("Flow: replica — the design is kept. Say `switch to
   redesign` now if it is to change."), so the one decision stays visible.
-  (Recorded: a hands-off run resolved a bare "migrate" to redesign and
-  delivered a brand-faithful reinterpretation where a like-for-like move
-  was expected — a static poster for the hero motion, a rebuilt mega-menu.)
+  With 1,000+ sitemap URLs and no spec, it adds "Large site: say `spec
+  first` to scope it." Offered only, never in hands-off mode.
 
 Stamp the choice in `state.json` as `flow` / `flowChosenAt` / `flowSource`
 (`reference/state-machine.md` § Flow keys) before delegating. The

@@ -16,12 +16,17 @@ const helpCheck = (script) => check(`${script} --help prints usage and writes no
   assert.equal(r.status, 0); assert.ok(r.stdout.includes(script), "usage names the script");
   assert.deepEqual(readdirSync(cwd), []); rmSync(cwd, { recursive: true });
 });
-import { band, edsPath, indexYaml, latestAnswers, outcome, reachRule } from "../spec-knowledge.mjs";
+import { band, edsPath, indexYaml, latestAnswers, offVocabulary, outcome, reachRule } from "../spec-knowledge.mjs";
 
 check("edsPath", () => { assert.equal(edsPath("/en/About_Us/Team--Page.html"), "/en/about-us/team-page"); assert.equal(edsPath("/en/index.html"), "/en/"); assert.equal(edsPath("/en/a/"), "/en/a/"); });
 check("band", () => { assert.equal(band(0), "none"); assert.equal(band(500), "low"); assert.equal(band(5000), "medium"); assert.equal(band(50000), "high"); });
 check("outcome", () => { assert.equal(outcome({ status: 200 }), "page"); assert.equal(outcome({ status: 301, final_status: 404 }), "redirect-broken"); assert.equal(outcome({ error: "redirect loop" }), "loop"); assert.equal(outcome({ status: 410 }), "http-410"); });
 check("reach: the rule format; sql:, url:, bvariant: are retired", () => { assert.deepEqual(reachRule("live sitemap block:hero"), ["live", "sitemap", "block:hero"]); assert.throws(() => reachRule("sql:SELECT 1"), /retired/); assert.throws(() => reachRule("url:/a"), /retired/); });
+check("offVocabulary: rows outside the dynamics vocabulary are named; status defaults to pending", () => {
+  const T = { class: ["V"], disposition: ["embed-passthrough"], reproducibility: ["self"], status: ["pending"] };
+  assert.deepEqual(offVocabulary([{ id: "ok", class: "V", disposition: "embed-passthrough", reproducibility: "self" }], T), []);
+  assert.match(offVocabulary([{ id: "x", class: "V", disposition: "rebuild", reproducibility: "self" }], T)[0], /^x: disposition "rebuild"/);
+});
 check("latestAnswers: the last answer per question wins", () => assert.deepEqual(latestAnswers([{ question: "Q1", answer: "a" }, { question: "Q1", answer: "b", by: "owner" }]), { Q1: { answer: "b", option: null, by: "owner", at: null } }));
 check("indexYaml follows the dynamics skeleton", () => {
   const y = indexYaml({ name: "default", include: ["/en/**"], exclude: ["/nav"], properties: ["title", "image", "publishDate"] }, "/en/");
@@ -56,7 +61,7 @@ put(W("map", "page-blocks.jsonl"), jl([
 put(W("map", "variants.json"), [{ template: "page", code: "page#1", pages: 2, core: ["hero"], optional: [], urls: [`${O}/en/a.html`, `${O}/en/b.html`], distinct_sets: 2, representative: `${O}/en/a.html` }]);
 put(D("judgement", "catalog.json"), { blocks: { hero: { kind: "block", family: "hero", description: "Hero", aem: ["banner"], reference: "hero", verdict: "reuse" }, cards: { kind: "block", family: "grid", description: "Cards", aem: ["tiles"], reference: "cards", verdict: "new" }, header: { kind: "global", family: "other", description: "Header", verdict: "variant" }, footer: { kind: "global", family: "other", description: "Footer", verdict: "variant" } } });
 put(D("judgement", "implementation.json"), {
-  features: [{ id: "player", class: "V", name: "Player", reach: "live sitemap signal:script:*player*", decisions: ["Q-1"] }],
+  features: [{ id: "player", class: "V", name: "Player", disposition: "embed-passthrough", reproducibility: "self", reach: "live sitemap signal:script:*player*", decisions: ["Q-1"] }],
   open_questions: [{ id: "Q-1", area: "Media", owner: "stakeholder", question: "Keep the player?", options: ["yes", "no"], default: "yes", impact: "features[player].reach_pages" },
     { id: "Q-2", area: "Scope", owner: "stakeholder", question: "Empty pages?", default: "migrate", impact: "urls sitemap flag=empty" }],
   query_indexes: [{ name: "default", include: ["/en/**"], exclude: ["/nav"], properties: ["title"] }],
@@ -79,6 +84,7 @@ check("answers replace the default; the default stays recorded", () => { const q
 check("findings: plain text with computed numbers", () => assert.deepEqual(KJ("findings.json"), [{ title: "Reuse.", text: "1 of 2 live pages need no new block.", numbers: [1, 2] }]));
 check("redirects, broken, bad links grouped by target", () => {
   assert.equal(KL("redirects.jsonl").filter((x) => x.kind === "legacy").length, 1);
+  assert.deepEqual(KL("redirects.jsonl").filter((x) => x.kind === "migration").map((x) => [x.src, x.target]), [["/en/a.html", "/en/a"], ["/en/b.html", "/en/b"], ["/en/c.html", "/en/c"]], "a .html path that EDS drops gets its row");
   assert.equal(KL("broken.jsonl")[0].note, "sitemap URL redirects into a dead page");
   assert.deepEqual(KL("bad-links.jsonl"), [{ to_url: `${O}/en/old.html`, main: [1], chrome: [2] }]);
 });

@@ -19,7 +19,7 @@ Large row sets are JSON Lines (`.jsonl`), the rest JSON. `url_id` is the `id` of
 | `variants.json` | code, template_id, rank, label, core[], optional[], url_count, pageviews_90d, distinct_sets, rep_url, rep_capture_key |
 | `templates.json` | id, label, url_count, pageviews_90d, variant_count, top_variants_share, rep_url |
 | `source-components.json` | name, url_count, instance_count, maps_to {block: instances} |
-| `redirects.jsonl` | src, target, status, hops, kind (`legacy` / `migration`), target_status, external, in_sitemap, inbound_pages, rum_views, note |
+| `redirects.jsonl` | src, target, status, hops, kind (`legacy`: redirects today; `migration`: every changed delivered path, `.html` included), target_status, external, in_sitemap, inbound_pages, rum_views, note |
 | `broken.jsonl` | url, status, source (`sitemap` / `link` / `rum`), kind, in_scope, inbound_pages, inbound_main, rum_views, rum_bundles, referrers, note |
 | `bad-links.jsonl` | per dead or redirected target: `to_url`, `main[]` and `chrome[]` (url ids of the pages linking to it) |
 | `redirect-landings.json` | path, views, bundles |

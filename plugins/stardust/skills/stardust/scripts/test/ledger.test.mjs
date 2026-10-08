@@ -151,7 +151,7 @@ check('usage errors exit 2: wrong arity, bad event, unknown option, missing valu
   assert.equal(run('migrate', 'render', 'start', '--bogus').code, 2);
   assert.equal(run('migrate', 'render', 'start', '--detail').code, 2);
   const none = spawnSync(process.execPath, [SCRIPT], { encoding: 'utf8' }); assert.equal(none.status, 2); assert.match(none.stderr, /Usage:/);
-  const h = run('--help'); assert.equal(h.code, 0); assert.match(h.out, /node ledger\.mjs <skill> <phase> <start\|end\|blocked>/); assert.match(h.out, /Known skills: stardust, extract, prototype, migrate, replica, dynamics, rollout, deploy/);
+  const h = run('--help'); assert.equal(h.code, 0); assert.match(h.out, /node ledger\.mjs <skill> <phase> <start\|end\|blocked>/); assert.match(h.out, /Known skills: stardust, extract, prototype, migrate, replica, dynamics, spec, rollout, deploy/);
   assert.match(h.out, /\[--next "…"\] \[--owner "…"\]/); assert.match(h.out, /explicit --dir must already exist/);
 });
 check('--help prints the phase table: every ledger-form phase and every alias of every skill, one line per skill', () => {

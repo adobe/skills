@@ -30,13 +30,14 @@
  *
  * Usage:
  *   node skills/deploy/scripts/localize-links.mjs --source-host <host[,host]> \
- *        [--content content] [--redirects stardust/redirects.tsv|redirects.json] \
+ *        [--content content] [--redirects stardust/redirects.tsv|.json|.jsonl] \
  *        [--dry-run] [--check] [--json]
  *
  *   --source-host  the live site's host(s); `www.` is matched either way
  *   --content      root of the authored content tree (default: content)
- *   --redirects    TSV `source<TAB>destination` (rollout's stardust/redirects.tsv)
- *                  or JSON ([{source,destination}] or {source: destination})
+ *   --redirects    TSV `source<TAB>destination` (rollout's stardust/redirects.tsv), JSON
+ *                  ([{source,destination}], {source: destination}, the DA sheet {data:[…]}),
+ *                  or JSON Lines ({src,target}: spec's knowledge/redirects.jsonl)
  *   --dry-run      report what would change, write nothing
  *   --check        gate mode: write nothing, exit 2 if ANY link would change
  *                  (run the plain pass first; --check is the pre-deploy assertion)
@@ -101,6 +102,32 @@ function collectHtml(dir, out = []) {
   return out;
 }
 
+/**
+ * [source, destination] pairs from a redirects file. Pure. Reads rollout's TSV (`source<TAB>destination`, `#`
+ * comments), JSON (`[{source,destination}]`, `{source: destination}`, or the published DA sheet
+ * `{data:[{Source,Destination}]}`), and JSON Lines (`{src,target}` rows as in spec knowledge/redirects.jsonl, or
+ * `{source,destination}`). Rows without both sides are skipped.
+ */
+export function redirectPairs(raw, file = '') {
+  const pairs = [];
+  const add = (r) => { if (!r || typeof r !== 'object') return; const s = r.source ?? r.Source ?? r.src; const d = r.destination ?? r.Destination ?? r.target; if (typeof s === 'string' && typeof d === 'string' && s && d) pairs.push([s, d]); };
+  if (/\.jsonl$/i.test(file)) raw.split(/\r?\n/).forEach((l) => { if (l.trim()) add(JSON.parse(l)); });
+  else if (/\.json$/i.test(file)) {
+    const j = JSON.parse(raw);
+    if (Array.isArray(j)) j.forEach(add);
+    else if (Array.isArray(j?.data)) j.data.forEach(add);
+    else Object.entries(j).forEach(([s, d]) => { if (typeof d === 'string') pairs.push([s, d]); });
+  } else {
+    raw.split(/\r?\n/).forEach((line) => {
+      const t = line.trim();
+      if (!t || t.startsWith('#')) return;
+      const [s, d] = t.split(/\t+|\s{2,}/);
+      if (s && d) pairs.push([s, d]);
+    });
+  }
+  return pairs;
+}
+
 function buildMap(files, root, redirectsFile) {
   const map = new Map(); // canonical source path → canonical served path
   for (const f of files) {
@@ -110,20 +137,8 @@ function buildMap(files, root, redirectsFile) {
   }
   let redirects = 0;
   if (redirectsFile) {
-    const raw = readFileSync(redirectsFile, 'utf8');
-    const pairs = [];
-    if (/\.json$/i.test(redirectsFile)) {
-      const j = JSON.parse(raw);
-      if (Array.isArray(j)) j.forEach((r) => r && r.source && r.destination && pairs.push([r.source, r.destination]));
-      else Object.entries(j).forEach(([s, d]) => pairs.push([s, d]));
-    } else {
-      raw.split(/\r?\n/).forEach((line) => {
-        const t = line.trim();
-        if (!t || t.startsWith('#')) return;
-        const [s, d] = t.split(/\t+|\s{2,}/);
-        if (s && d) pairs.push([s, d]);
-      });
-    }
+    const pairs = redirectPairs(readFileSync(redirectsFile, 'utf8'), redirectsFile);
+    if (!pairs.length) console.error(`localize-links: no redirect pairs read from ${redirectsFile}`);
     for (const [s, d] of pairs) {
       const src = canonicalPath(s.replace(/^https?:\/\/[^/]+/i, ''));
       const dst = canonicalPath(d.replace(/^https?:\/\/[^/]+/i, ''));
