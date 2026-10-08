@@ -10,7 +10,10 @@
  *   aem-classic — component roots are `c-*` classes (not `*-content`) or `colctrl`; columns from colctrl rows.
  *   aem-core    — component roots are grid members (`aem-GridColumn`); the first non-`aem-` class names the component;
  *                 consecutive members narrower than the grid form a `row` node with one column each.
- * config.parser.main: selector of the main region (comma = first match wins); chrome.{header,footer} selectors.
+ *   generic     — any other site: structural sections named from component hints (lib.mjs genericRules);
+ *                 config.parser.nameAttrs adds attributes that carry a component name; stripPrefix a hash prefix.
+ * config.parser.main: selector of the main region (comma = first match wins; default: main, [role=main], #main,
+ * #content, #main-content, article, else body without header/footer/nav); chrome.{header,footer} selectors.
  * Node: { c, p (path id), mods, chars, imgs, videos, forms, links, h[], slides?, ncols?, cols?[[node]], kids?[node] }.
  * Writes <out>/components.jsonl, links.jsonl, signals.jsonl (defaults under <dir>/parse/).
  */
@@ -18,7 +21,7 @@ import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
 import { join } from 'node:path';
 import {
-  arg, classes, helpAndExit, isInside, loadConfig, log, parseHTML, query, queryAll, readJSONL, templateOf, textLen, walk, writeText,
+  arg, classes, genericRules, helpAndExit, isInside, loadConfig, log, parseHTML, query, queryAll, readJSONL, templateOf, textLen, walk, writeText,
 } from './lib.mjs';
 
 helpAndExit(import.meta.url);
@@ -54,6 +57,25 @@ export const PROFILES = {
     newline(el) { return classes(el).includes('aem-GridColumn--default--newline'); },
   },
 };
+
+const MEDIA = new Set(['img', 'picture', 'video', 'iframe', 'form', 'input', 'select', 'textarea', 'canvas', 'object', 'embed']);
+/** The generic profile over spec-parse's HTML tree (weights memoised: roots() asks for them level by level). */
+export function genericProfile(opts = {}) {
+  const w = new WeakMap();
+  const weight = (el) => { if (w.has(el)) return w.get(el); let m = 0; for (const n of walk(el)) if (MEDIA.has(n.tag)) m += 1; const v = textLen(el) + m; w.set(el, v); return v; };
+  const g = genericRules({ tag: (el) => el.tag, cls: classes, attr: (el, a) => el.attrs?.[a], kids: (el) => (el.children || []).filter((c) => c.tag), weight }, opts);
+  return { rootName: g.name, roots: g.roots, columns: null };
+}
+PROFILES.generic = genericProfile();
+export const profileFor = (cfg) => (cfg.parser?.profile === 'generic' ? genericProfile({ nameAttrs: cfg.parser.nameAttrs, stripPrefix: cfg.parser.stripPrefix }) : PROFILES[cfg.parser?.profile]);
+export const MAIN_FALLBACK = ['main', '[role=main]', '#main', '#content', '#main-content', 'article'];
+/** The main region and whether it is the whole body (then header/footer/nav children are chrome, not content). */
+export function findMain(doc, sel) {
+  const list = sel ? sel.split(',').map((x) => x.trim()) : MAIN_FALLBACK;
+  for (const s of list) { const m = query(doc, s); if (m) return { main: m, isBody: false }; }
+  const body = sel ? null : query(doc, 'body');
+  return body ? { main: body, isBody: true } : { main: null, isBody: false };
+}
 
 /* --------------------------------------------------------------- tree ---- */
 function rootsBelow(node, prof) {
@@ -113,7 +135,7 @@ export function describe(el, prof, depth, path) {
     d.cols = cols.map((c, ci) => rootsBelow(c, prof).map((k, ki) => describe(k, prof, depth + 1, `${path}.c${ci}.${ki}`)));
     return d;
   }
-  const kids = childNodes(el, prof, depth, path);
+  const kids = prof.roots ? prof.roots(el, depth + 1).map((k, ki) => describe(k, prof, depth + 1, `${path}.k${ki}`)) : childNodes(el, prof, depth, path);
   if (kids.length) d.kids = kids;
   return d;
 }
@@ -127,7 +149,8 @@ function childNodes(el, prof, depth, path) {
   });
 }
 
-export function topLevel(main, prof) {
+export function topLevel(main, prof, isBody = false) {
+  if (prof.roots) return prof.roots(main, 0, isBody).map((e, i) => describe(e, prof, 0, String(i)));
   if (!prof.width) return rootsBelow(main, prof).map((e, i) => describe(e, prof, 0, String(i)));
   return groupRows(rootsBelow(main, prof), prof.width, prof.newline).map((g, i) => (g.row
     ? { c: 'row', p: String(i), mods: [], chars: 0, imgs: 0, videos: 0, forms: 0, links: 0, ncols: g.row.length, widths: g.row.map(prof.width), cols: g.row.map((m, ci) => [describe(m, prof, 1, `${i}.c${ci}.0`)]) }
@@ -178,7 +201,7 @@ function links(doc, main, origin, finalUrl) {
 /* --------------------------------------------------------------- main ---- */
 async function main() {
   const cfg = loadConfig();
-  const prof = PROFILES[cfg.parser?.profile];
+  const prof = profileFor(cfg);
   if (!prof) throw new Error(`config.parser.profile must be one of ${Object.keys(PROFILES).join(', ')}`);
   const fetchFile = arg('fetch', cfg.p('fetch', 'fetch.jsonl'));
   const htmlDir = arg('html', cfg.p('fetch', 'html'));
@@ -188,9 +211,9 @@ async function main() {
   rows.forEach((r, i) => {
     const html = gunzipSync(readFileSync(join(htmlDir, `${r.html_key}.html.gz`))).toString('utf8');
     const doc = parseHTML(html);
-    const main = cfg.parser.main ? cfg.parser.main.split(',').map((s) => query(doc, s.trim())).find(Boolean) : query(doc, 'main');
+    const { main, isBody } = findMain(doc, cfg.parser.main);
     const chrome = Object.fromEntries(Object.entries(cfg.parser.chrome || {}).map(([k, sel]) => [k, !!query(doc, sel)]));
-    const tree = main ? topLevel(main, prof) : [];
+    const tree = main ? topLevel(main, prof, isBody) : [];
     comps.push(JSON.stringify({ url: r.url, final_url: r.final_url, template: templateOf(r, cfg), title: r.title, chrome, comps: tree, main_chars: main ? textLen(main) : 0, has_main: !!main }));
     lnks.push(JSON.stringify({ url: r.url, links: links(doc, main, cfg.origin, r.final_url) }));
     sigs.push(JSON.stringify({ url: r.url, ...pageSignals(doc, html, cfg.origin) }));

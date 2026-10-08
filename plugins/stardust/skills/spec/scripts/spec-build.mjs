@@ -212,6 +212,16 @@ function main() {
     blind_rule: impl.provenance || 'built from the live site only; it uses no output from any migration work', variant_cut: 'Jaccard 0.5 average linkage',
     consent_summary: impl.consent_summary || null, loading_order: impl.loading_order ? J(impl.loading_order) : null, i18n_notes: J(impl.i18n_notes || []), media_ext: 'jpg',
   };
+  // where the evidence came from: live, the headed tier (S2 --headed) or Internet Archive captures (S2 --archive)
+  const src = {}; let arch = [];
+  fetchRows.forEach((r) => { src[r.source || 'live'] = (src[r.source || 'live'] || 0) + 1; if (r.archived_at) arch.push(r.archived_at); });
+  meta.fetch_sources = J(src);
+  if (arch.length) { arch = arch.sort(); meta.evidence_note = `${arch.length.toLocaleString('en-US')} pages come from Internet Archive captures (${arch[0]} to ${arch[arch.length - 1]}), not the live site`; }
+  const inv = readJSON(P('inventory', 'summary.json'), null);
+  if (inv) {
+    meta.inventory_total = inv.total; meta.inventory_source = inv.source;
+    if (inv.sampled) meta.sample_note = `a sample of ${inv.kept.toLocaleString('en-US')} of ${inv.total.toLocaleString('en-US')} ${inv.source === 'crawl' ? 'crawled' : 'sitemap'} URLs, even per section`;
+  }
   Object.entries(meta).forEach(([k, v]) => ins('meta', { key: k, value: v === null ? null : String(v) }));
   const findings = readJSON(P('judgement', 'findings.json'), []).map((f) => fillFinding(f, (sql) => one(sql)));
   ins('meta', { key: 'findings', value: J(findings) });

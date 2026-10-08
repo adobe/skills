@@ -8,7 +8,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
 
 export const HERE = dirname(fileURLToPath(import.meta.url));
@@ -70,8 +70,10 @@ export function templateOf(fetchRow, cfg) {
   const n = cfg.template?.pathSegments;
   if (!n) return t;
   let path; try { path = new URL(fetchRow.final_url || fetchRow.url).pathname; } catch { return t; }
-  const rest = path.slice(cfg.scopePath.length).replace(/\.html$/, '').split('/').filter(Boolean).slice(0, n);
-  return rest.length ? `${t} · ${rest.join('/')}` : `${t} · (root)`;
+  const rest = path.slice(cfg.scopePath.length).replace(/\.html?$/, '').split('/').filter(Boolean).slice(0, n);
+  const section = rest.length ? rest.join('/') : '(root)';
+  // a path-only rule (no body attribute, class or meta) names the template by its section alone
+  return fetchRow.template || cfg.template.bodyAttr || cfg.template.bodyClass || cfg.template.meta ? `${t} · ${section}` : section;
 }
 
 /* ------------------------------------------------------------- misc ---- */
@@ -95,6 +97,16 @@ export async function pool(items, n, fn, onProgress) {
 }
 
 /** Playwright from the project (the plugin tree ships none). */
+/**
+ * The diff skill's live-session.mjs: the plugin's one hardened way to reach a live site (challenge detection, the
+ * stealth real-Chrome `--headed` tier, document-only standard headers). Plugin tree or project copy, as replica.
+ */
+export async function loadLiveSession() {
+  const p = [join(HERE, '..', '..', 'diff', 'scripts', 'live-session.mjs'), join(HERE, '..', 'diff', 'live-session.mjs')].find((x) => existsSync(x));
+  if (!p) throw new Error('live-session.mjs not found (../../diff/scripts/ or ../diff/): copy the diff skill\'s scripts next to these (spec SKILL.md § Setup)');
+  return import(pathToFileURL(p).href);
+}
+
 export async function loadPlaywright() {
   try {
     const req = createRequire(join(process.cwd(), 'package.json'));
@@ -206,3 +218,69 @@ export function textOf(node) {
 }
 export const textLen = (node) => textOf(node).replace(/\s+/g, ' ').trim().length;
 export const isInside = (el, ancestor) => { for (let n = el.parent; n; n = n.parent) if (n === ancestor) return true; return false; };
+
+/* ------------------------------------------------------ generic profile ---- */
+/**
+ * Component rules for sites without AEM conventions. Self-contained (no outer references) so spec-capture can
+ * inject the same source into the page: the parser and the tagger must find the same roots. `A` adapts a node:
+ * { tag(el), cls(el) → [], attr(el, name), kids(el) → element children, weight(el) → text length + media count }.
+ * opts: { nameAttrs?: [attribute names that carry a component name, checked first], stripPrefix?: regex source removed
+ * from class names first (a site's hash prefix) }.
+ * Roots: below a container, single-child wrappers are skipped; at the top every significant child is a root (text
+ * elements too: they become default content); below a root only container children are, and only two or more.
+ * Names: a component attribute, a block-style class (wp-block-*, elementor-widget-*, paragraph--type--*), else the
+ * first class that is not a utility, a hash or a layout word (BEM and CSS-module names reduced to their block; hash-like
+ * leading tokens dropped), else a shape label from the structure: tag, first heading level, a repeated child, media
+ * (e.g. `section.h2.list` or `div.media`), stable across pages where class names are only utilities.
+ */
+export function genericRules(A, opts = {}) {
+  const SKIP = new Set(['script', 'style', 'link', 'meta', 'noscript', 'template', 'br', 'svg', 'path', 'head', 'title']);
+  const CHROME = new Set(['header', 'footer', 'nav']);
+  const CONTAINER = new Set(['div', 'section', 'article', 'aside', 'form', 'ul', 'ol', 'figure', 'details', 'dl', 'table', 'main', 'header', 'footer', 'nav']);
+  const NAME_ATTRS = [...(opts.nameAttrs || []), 'data-component', 'data-block-name', 'data-module', 'data-widget_type', 'data-section-type', 'data-block', 'data-cmp', 'data-component-name'];
+  const UTIL = /^-?(?:[a-z]+:)|[[\]/:!@]|^(?:uppercase|lowercase|capitalize|italic|underline|whitespace-[a-z-]+|break-[a-z]+|light-theme|dark-theme|relative|absolute|fixed|sticky|static|hidden|block|inline|inline-block|inline-flex|inline-grid|contents|flow-root|prose|not-prose|isolate|truncate|antialiased|group|peer|dark|light|visible|invisible|sr-only|container)$|^-?(?:p[xytblr]?|m[xytblr]?|w|h|min-w|max-w|min-h|max-h|gap|space-[xy]|flex|grid|grid-cols|col|col-span|row|row-span|items|justify|content|self|place|order|text|font|leading|tracking|bg|border|rounded|shadow|opacity|z|top|left|right|bottom|inset|overflow|object|aspect|d|align|float|pull|push|offset|order|g|gx|gy|ps|pe|ms|me|fs|fw|lh|basis|grow|shrink|fill|stroke|ring|outline|divide|blur|transition|duration|ease|delay|animate|transform|scale|rotate|translate|cursor|select|pointer-events|sr|visible|invisible|is|has|js|u|t|l|o|c|lg|md|sm|xl|xs|xxl)(?:-|$)/;
+  const LAYOUT = /^(container|container-fluid|wrapper|wrap|inner|outer|content|contents|section|block|row|column|columns|col|grid|flex|clearfix|cf|group|holder|box|layout|main|page|site|region|area|module|component|widget|element|item|items|list|body|entry|post|elementor|elementor-section|elementor-element|elementor-widget|elementor-container|elementor-column|elementor-widget-wrap|e-con|e-con-inner|e-flex|wp-block|is-layout-flow|is-layout-constrained|is-layout-flex|has-global-padding|alignfull|alignwide|alignnone|aligncenter)$/;
+  const HASH = /(?:^|[_-])(?=[a-z0-9]{5,}$)(?=[a-z0-9]*\d)(?=[a-z0-9]*[a-z])[a-z0-9]+$|^(?:css|sc|jsx|emotion|styled|svelte|astro|chakra|mantine|tw)-/i;
+  const strip = opts.stripPrefix ? new RegExp(opts.stripPrefix) : null;
+  const hashy = (t) => /\d/.test(t) || t.length <= 2 || !/[aeiouy]/i.test(t);
+  const kebab = (s) => s.replace(/([a-z0-9])([A-Z])/g, '$1-$2').replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '').toLowerCase();
+  const good = (n) => (/^[a-z][a-z0-9-]{2,}$/i.test(n) && !LAYOUT.test(n) && !UTIL.test(n) ? kebab(n) : null);
+  const fromClass = (c0) => {
+    const c = strip ? c0.replace(strip, '') : c0;
+    if (!c) return null;
+    let m = c.match(/^wp-block-(.+)$/) || c.match(/^elementor-widget-(.+)$/) || c.match(/^paragraph--type--(.+)$/) || c.match(/^block-(?:block-content-|views-block-)?(.+)$/);
+    if (m) { const b = m[1].replace(/-is-layout-.*$/, ''); return LAYOUT.test(b) ? null : kebab(b); } // a CMS layout wrapper: named by its shape
+    if (UTIL.test(c) || LAYOUT.test(c)) return null;
+    m = c.match(/^([A-Za-z][A-Za-z0-9]*?)(?:-module)?_{1,2}[A-Za-z0-9]+_{0,3}[A-Za-z0-9-]*$/); // CSS modules: Hero_root__x1y2z → hero
+    if (m && /_/.test(c) && HASH.test(c.split('_').pop())) return good(m[1]);
+    const toks = c.split('__')[0].split('--')[0].split('-'); // BEM block, then hash prefixes: qrk1f-w-hero → hero
+    while (toks.length > 1 && hashy(toks[0])) toks.shift();
+    const block = toks.join('-');
+    return HASH.test(block) ? null : good(block);
+  };
+  const shape = (el) => {
+    const parts = [A.tag(el)]; const seen = []; const stack = [[el, 0]];
+    while (stack.length) { const [n, d] = stack.shift(); for (const k of A.kids(n)) { seen.push(A.tag(k)); if (d < 2) stack.push([k, d + 1]); } }
+    const h = seen.find((t) => /^h[1-6]$/.test(t)); if (h) parts.push(h);
+    const ks = A.kids(el).map(A.tag); const rep = ks.find((t, i) => ks.indexOf(t) !== i && ks.filter((x) => x === t).length >= 3);
+    if (rep || seen.includes('li')) parts.push('list');
+    if (seen.some((t) => ['img', 'picture', 'video', 'iframe'].includes(t))) parts.push('media');
+    if (seen.includes('form')) parts.push('form');
+    return parts.join('.');
+  };
+  const name = (el) => {
+    for (const a of NAME_ATTRS) { const v = A.attr(el, a); if (v) return kebab(v.replace(/\.default$/, '')); }
+    for (const c of A.cls(el)) { const n = fromClass(c); if (n) return n; }
+    return CONTAINER.has(A.tag(el)) ? shape(el) : A.tag(el);
+  };
+  const significant = (el, top) => A.kids(el).filter((k) => !SKIP.has(A.tag(k)) && !(top && CHROME.has(A.tag(k))) && A.weight(k) > 0);
+  const roots = (container, depth, isBody) => {
+    let level = container;
+    for (let i = 0; i < 8; i += 1) { const ks = significant(level, isBody); if (ks.length === 1 && CONTAINER.has(A.tag(ks[0]))) level = ks[0]; else break; }
+    const ks = significant(level, isBody);
+    if (depth === 0) return ks;
+    const cont = ks.filter((k) => CONTAINER.has(A.tag(k)));
+    return cont.length >= 2 ? cont : [];
+  };
+  return { name, roots };
+}
