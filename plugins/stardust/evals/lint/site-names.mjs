@@ -43,6 +43,8 @@ const ALLOW = [
   'akamaized.net', 'cloudfront.net', 'wp.com', 'hubspot.com', 'typeform.com', 'calendly.com',
   // tag-manager and consent vendor hosts spec-martech reads public configuration from
   'adobedtm.com', 'cookielaw.org',
+  // the Internet Archive API spec-inventory and spec-fetch read captures from (--archive)
+  'archive.org',
 ];
 // Synthetic or runner-pinned eval sites — allowed under evals/ only.
 const EVAL_ALLOW = ['ledgerline.com', 'stripe.com'];

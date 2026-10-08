@@ -4,6 +4,35 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.30.1 — spec: any website, a page cap, and blocked origins
+
+`spec` parsed AEM sites only. A WordPress news site (2,061 sitemaps, about 412,000 URLs) and a Next.js site with
+utility-class markup showed what a generic parser and a cap need.
+
+- **`generic` parser profile** (`spec/reference/config.md`): below main, single-child wrappers are skipped and the
+  children are components, named from a component attribute, a block-style class (`wp-block-*`,
+  `elementor-widget-*`, `paragraph--type--*`), a BEM or CSS-module block, or a shape label (`section.h2.list`) where
+  classes are only utilities; hash prefixes are dropped (`stripPrefix` for a site's own). One rule set
+  (`lib.mjs genericRules`) runs in the parser and in the capture tagger: on 5 of 6 sampled pages the two found
+  identical path ids. The AEM profiles are unchanged: a re-parse of 12,345 AEM Core pages was byte-identical.
+- **One rule set per profile, one layout walk** (`lib.mjs` `profileRules`, `componentLayout`): the capture tagger
+  ran a hand-written copy of the AEM rules; parse and capture now share them, so path ids cannot drift. Parse output
+  byte-identical on 12,345 AEM Core pages (5,192 grid rows), 200 AEM classic pages (651 column controls) and four
+  generic sites; capture path ids and rows identical on the sampled pages of each profile.
+- **Main region fallback** for sites without `main`: `[role=main]`, `#main`, `#content`, `#main-content`,
+  `article`, then the body without header, footer and nav.
+- **Inventory**: stops when the origin redirects (two of three sampled sites were configured with the wrong host);
+  crawls links from the scope root when no sitemap URL is in scope; `--max` / `maxPages` keeps an even sample per
+  section and the database says so (`meta.sample_note`, `inventory_total`).
+- **Template**: a path-only rule (`{ "pathSegments": 1 }`) names templates by section alone.
+- **Blocked origins** (a museum site behind a bot challenge): S1 and S2 classify challenges with the diff skill's
+  `live-session.mjs` (the edge signatures replica's gate uses) and stop at 10% (exit 3) with the choice for the user —
+  allow-list the crawler, `--headed` (the plugin's stealth real-Chrome tier: 5 of 6 sampled pages on the first pass,
+  where bundled headless Chromium got 2), or `--archive <date>` (Internet Archive raw captures, recorded per page and
+  in `meta.evidence_note`). `fetch/technique.json` records the tier so later stages start in it, as extract's
+  `fetchTechnique` does. Pages not read plainly are captured from the fetched HTML with live assets; a page still
+  showing a challenge is an error, never a screenshot. Parse and capture agreed on every path id of the captured pages.
+
 ## 0.30.0 — new skill `spec`: the migration spec before the migration, as one documented database
 
 Scoping a migration was rebuilt by hand per engagement: a crawl, spreadsheets of templates and redirects, a
