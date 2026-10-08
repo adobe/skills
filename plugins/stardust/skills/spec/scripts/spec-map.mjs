@@ -3,7 +3,7 @@
  * spec-map.mjs — S7 block mapping: apply the agent's mapping rules (judgement/mapping.json) to every page's
  * component tree → ordered EDS block instances per page. Reports components the rules do not cover.
  *
- *   node spec-map.mjs [--config spec.config.json] [--rules <mapping.json>] [--in <components.jsonl>] [--out <jsonl>]
+ *   node spec-map.mjs [--config <file>] [--rules <mapping.json>] [--in <components.jsonl>] [--out <jsonl>]
  *
  * Rules (reference/judgement.md): direct { component: { kind, block, variant?, keepEmpty? } } with kind
  * block|dynamic|default|metadata|drop (options: dropIfEmpty — default true for default/metadata only; keepEmpty;
@@ -11,7 +11,7 @@
  * { component: { block, modsMatch } } (a styled wrapper → section-style row + its children); nesting
  * { component: block } (tabs/accordion: children become nested_in rows); carousels { component: { single, multi } };
  * rows { cards, columns, video, form: [components that dominate a row] }. Default-content runs merge into one row.
- * Output rows: { url, final_url, template, blocks: [{ pos, kind, block, variant, aem[], path, nested_in?, section? }] };
+ * Writes <work>/map/page-blocks.jsonl (or --out): { url, final_url, template, blocks: [{ pos, kind, block, variant, aem[], path, nested_in?, section? }] };
  * stderr lists unmapped components (kind "unmapped") with instance counts — iterate until it is empty.
  */
 import { arg, helpAndExit, loadConfig, log, readJSON, readJSONL, writeText } from './lib.mjs';
@@ -114,14 +114,14 @@ export function mapPage(comps, R) {
 function main() {
   const cfg = loadConfig();
   const rules = readJSON(arg('rules', cfg.p('judgement', 'mapping.json')));
-  const rows = readJSONL(arg('in', cfg.p('parse', 'components.jsonl')));
+  const rows = readJSONL(arg('in', cfg.w('parse', 'components.jsonl')));
   const unmapped = {}; const lines = [];
   for (const r of rows) {
     const blocks = mapPage(r.comps, rules);
     blocks.filter((b) => b.kind === 'unmapped').forEach((b) => { unmapped[b.block] = (unmapped[b.block] || 0) + 1; });
     lines.push(JSON.stringify({ url: r.url, final_url: r.final_url, template: r.template, blocks }));
   }
-  writeText(arg('out', cfg.p('judgement', 'page-blocks.jsonl')), lines.join('\n'));
+  writeText(arg('out', cfg.w('map', 'page-blocks.jsonl')), lines.join('\n'));
   const u = Object.entries(unmapped).sort((a, b) => b[1] - a[1]);
   log(`${rows.length} pages mapped; unmapped components: ${u.length ? u.map(([k, v]) => `${k}:${v}`).join(', ') : 'none'}`);
 }

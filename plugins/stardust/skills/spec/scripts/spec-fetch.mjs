@@ -3,10 +3,10 @@
  * spec-fetch.mjs — S2 fetch: GET every URL without auto-redirects (each hop recorded), keep the final HTML
  * gzipped, and read the page template. Resumable: URLs already in the output are skipped.
  *
- *   node spec-fetch.mjs [--config spec.config.json] [--urls <file>] [--out <jsonl>] [--html <dir>] [--workers 4]
+ *   node spec-fetch.mjs [--config <file>] [--urls <file>] [--out <jsonl>] [--html <dir>] [--workers 4]
  *        [--headed | --archive <YYYY-MM-DD>]
  *
- * Defaults: --urls <dir>/inventory/urls.txt, --out <dir>/fetch/fetch.jsonl, --html <dir>/fetch/html.
+ * Defaults: --urls <work>/inventory/urls.txt, --out <work>/fetch/fetch.jsonl, --html <work>/fetch/html.
  * Template rule (config.template): { "bodyAttr": "data-template" } or { "bodyClass": "<regex with one group>" }
  * or { "meta": "<name>" }. Output rows: url, status, final_url, final_status, external, chain[], template,
  * bodyClass, title, html_key, bytes, ms, source (live | headed | archive), tier?, archived_at? — or error ("redirect
@@ -17,12 +17,12 @@
  *                        waits out a JS challenge; replica and diff use the same tier); one page at a time
  *   --archive <date>     the blocked URLs from Internet Archive raw captures since <date> (stale: say so in provenance)
  * Either flag retries only blocked and failed rows and keeps one row per URL (the last). --headed is recorded in
- * <dir>/fetch/technique.json, so later runs (S4's discovered pages, re-runs) start in that tier.
+ * <work>/fetch/technique.json, so later runs (S4's discovered pages, re-runs) start in that tier.
  */
 import { gzipSync } from 'node:zlib';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { appendJSONL, arg, flag, helpAndExit, loadConfig, loadLiveSession, loadPlaywright, log, pool, readJSON, readJSONL, urlKey, writeJSON } from './lib.mjs';
+import { CHALLENGE, appendJSONL, arg, blockedBy, flag, helpAndExit, loadConfig, loadLiveSession, loadPlaywright, log, pool, readJSON, readJSONL, urlKey, writeJSON } from './lib.mjs';
 
 helpAndExit(import.meta.url);
 
@@ -40,17 +40,7 @@ export function readTemplate(html, rule = { bodyAttr: 'data-template' }) {
   return { template, bodyClass, title };
 }
 
-const CHALLENGE = /cf-browser-verification|challenge-platform|cf-chl-|Just a moment\.\.\.|Attention Required|_Incapsula_Resource|px-captcha|perimeterx|Access Denied<\/title>|ak_bmsc|datadome|captcha-delivery/i;
-/**
- * Why a response turns the client away, or null: a bot challenge (an edge signature by live-session's rules when
- * `isChallenge` is given, or interstitial text), or a refusal of an HTML request. Pure.
- */
-export function blockedBy(status, headers, head = '', url = '', isChallenge = null) {
-  const edge = isChallenge ? isChallenge({ status: () => status, headers: () => headers, url: () => url }) : headers['cf-mitigated'] === 'challenge';
-  if (edge || ([403, 429, 503].includes(status) && CHALLENGE.test(head))) return 'challenge';
-  if (status === 403 || status === 429) return 'refused';
-  return null;
-}
+export { blockedBy };
 let EDGE = null; // live-session's isChallengeResponse, set in main
 const isBlocked = (r) => !!r.blocked || (!!r.error && r.error !== 'redirect loop');
 
@@ -123,13 +113,13 @@ async function fetchArchive(url, since, cfg, htmlDir) {
 async function main() {
   const cfg = loadConfig();
   const archive = arg('archive', null);
-  const techFile = cfg.p('fetch', 'technique.json');
+  const techFile = cfg.w('fetch', 'technique.json');
   const headed = flag('headed') || (!archive && readJSON(techFile, {}).technique === 'headed');
   const ls = await loadLiveSession(); EDGE = ls.isChallengeResponse;
   if (archive && !/^\d{4}-\d{2}-\d{2}$/.test(archive)) throw new Error('--archive needs a date: YYYY-MM-DD');
-  const src = arg('urls', cfg.p('inventory', 'urls.txt'));
-  const out = arg('out', cfg.p('fetch', 'fetch.jsonl'));
-  const htmlDir = arg('html', cfg.p('fetch', 'html'));
+  const src = arg('urls', cfg.w('inventory', 'urls.txt'));
+  const out = arg('out', cfg.w('fetch', 'fetch.jsonl'));
+  const htmlDir = arg('html', cfg.w('fetch', 'html'));
   mkdirSync(htmlDir, { recursive: true });
   const urls = [...new Set(readFileSync(src, 'utf8').split('\n').map((s) => s.trim()).filter(Boolean))];
   const last = new Map((existsSync(out) ? readJSONL(out) : []).map((r) => [r.url, r]));

@@ -4,6 +4,47 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.30.3 — spec: knowledge files instead of a database; one rule format instead of SQL
+
+`spec` ended at `spec.sqlite`, but no stardust skill read it. Its one client, a viewer application, loads it into
+its own database, and the file carried that viewer's tables, onboarding text and HTML findings. The skill now ends
+at JSON files clients read, and knows no client. **Contract change** (released as a patch): `knowledge/` replaces
+`spec.sqlite`, and judgement rules replace SQL.
+
+- **Output** (`spec/reference/knowledge.md`): `stardust/spec/judgement/` (the agent's decisions) and
+  `stardust/spec/knowledge/` (computed by S10, `spec-knowledge.mjs`): urls, page blocks, blocks with variants,
+  templates, variants, redirects, broken links, bad links grouped by target, features with their pages, martech,
+  metadata, query indexes with a draft `helix-query.yaml`, locales, open questions, findings. Committed. Raw
+  material, captures and crops stay in `stardust/.work/spec/`. On a sports-federation site (about 13,000 URLs)
+  the folder is 37 MB, about 2.5 MB compressed.
+- **Rule format** (`rules.mjs`, knowledge.md § Rules) for feature `reach`, question `impact` and `{{…}}` in findings:
+  URL terms (`live`, `sitemap`, `block:`, `signal:`, `nested`, `verdict:`), filters with globs, `urls`, `count`,
+  `sum`, keyed and `max:` lookups. A rule that cannot be computed stops S10. `sql:`, `url:` and `bvariant:` are
+  retired; `block:` no longer implies the sitemap (write `sitemap block:x`). No SQL engine is left in the skill.
+- **Answers** in `judgement/answers.json` replace a question's default in `knowledge/open-questions.json`; the
+  default stays recorded.
+- **No viewer concerns:** no viewer tables, no tour or header label, findings as plain `{ title, text, numbers }`.
+- **Config** at `stardust/spec/spec.config.json`; `work` names the raw-material folder.
+- **Shared instruments:** spec-martech classifies hosts with the dynamics skill's `vendorFor` (a missing table now
+  fails instead of returning nothing); the index yaml follows the dynamics skeleton (description meta, image as a
+  path, robots, the chrome and search excludes); Setup copies the diff and dynamics scripts, which S1, S2 and S9 need.
+- **Verified** on two recorded runs. Every rule from their judgement files (150) gives its SQL value on the same
+  data, apart from an empty sum (0, not null). On the 13,000-URL run, `spec-knowledge.mjs` reproduces all 25 sets
+  of its `spec.sqlite`, and a database rebuilt from `knowledge/` matches it table for table (meta aside).
+- **Field run** on a museum site behind bot protection (generic profile, headed tier, 300-URL sample): S1–S10 ran in
+  the new layout from the Setup copies, and a client database built from its knowledge. The CDN turned the headed
+  browser away after about 100 pages; the spec covers the 89 pages read, and a finding says so. It found three
+  0.30.1 bugs, fixed here:
+  - **Drupal names:** the generic namer took the first nameable class, so `paragraph` hid
+    `paragraph--type--<name>` and every paragraph became one component. Block-style classes now win (`lib.mjs`,
+    shared by parse and capture).
+  - **S4 refusals:** a bot wall's 403 on a link counted as a broken link. `spec-links` records it as `blocked`, not
+    a 404 (`blockedBy` moved to `lib.mjs`).
+  - **S1 crawl:** the crawl kept `<link>` icons, fonts and manifests as pages (`NOT_PAGE` widened).
+- **Existing projects:** move `<dir>/{inventory,fetch,parse,links,rum,martech,dynamics,media,sheets}` to
+  `stardust/.work/spec/`, `judgement/page-blocks.jsonl` and `variants.json` to `.work/spec/map/`, the config into
+  `stardust/spec/`, then rewrite `sql:` rules and HTML findings.
+
 ## 0.30.2 — opt-in martech: carry the source consent and tag managers over, switched off
 
 A migration dropped the source's CMP and tag managers silently, or left an agent to re-wire them by hand

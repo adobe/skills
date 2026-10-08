@@ -4,7 +4,7 @@
  * contract every later stage reads), chrome flags, page signals (scripts, iframes, forms, metadata, hreflang,
  * JSON-LD) and links. No browser: server HTML only.
  *
- *   node spec-parse.mjs [--config spec.config.json] [--fetch <jsonl>] [--html <dir>] [--out <dir>]
+ *   node spec-parse.mjs [--config <file>] [--fetch <jsonl>] [--html <dir>] [--out <dir>]
  *
  * Parser profiles (config.parser.profile, reference/config.md):
  *   aem-classic — component roots are `c-*` classes (not `*-content`) or `colctrl`; columns from colctrl rows.
@@ -15,7 +15,7 @@
  * config.parser.main: selector of the main region (comma = first match wins; default: main, [role=main], #main,
  * #content, #main-content, article, else body without header/footer/nav); chrome.{header,footer} selectors.
  * Node: { c, p (path id), mods, chars, imgs, videos, forms, links, h[], slides?, ncols?, cols?[[node]], kids?[node] }.
- * Writes <out>/components.jsonl, links.jsonl, signals.jsonl (defaults under <dir>/parse/).
+ * Writes <out>/components.jsonl, links.jsonl, signals.jsonl (defaults under <work>/parse/).
  */
 import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
@@ -135,9 +135,9 @@ async function main() {
   const cfg = loadConfig();
   if (!PROFILES[cfg.parser?.profile]) throw new Error(`config.parser.profile must be one of ${Object.keys(PROFILES).join(', ')}`);
   const prof = profileFor(cfg);
-  const fetchFile = arg('fetch', cfg.p('fetch', 'fetch.jsonl'));
-  const htmlDir = arg('html', cfg.p('fetch', 'html'));
-  const outDir = arg('out', cfg.p('parse'));
+  const fetchFile = arg('fetch', cfg.w('fetch', 'fetch.jsonl'));
+  const htmlDir = arg('html', cfg.w('fetch', 'html'));
+  const outDir = arg('out', cfg.w('parse'));
   const comps = []; const lnks = []; const sigs = [];
   const rows = readJSONL(fetchFile).filter((r) => r.html_key);
   rows.forEach((r, i) => {

@@ -6,13 +6,13 @@
  * page script replaced falls back to the same path in the current DOM. A grid row's box is the union of its columns.
  * One browser, two tabs, third-party tag hosts blocked (they dominate load time, not layout).
  *
- *   node spec-capture.mjs [--config spec.config.json] [--urls <file>] [--out <dir>] [--width 1440] [--tabs 2] [--from-cache]
+ *   node spec-capture.mjs [--config <file>] [--urls <file>] [--out <dir>] [--width 1440] [--tabs 2] [--from-cache]
  *
  * When S2 needed the headed tier (fetch/technique.json), the browser is the diff skill's live-session stealth
  * real Chrome too. Pages S2 could not read plainly (source: headed or archive), or every page with --from-cache,
  * render from the HTML S2 kept: the page's own navigation is answered from the cache, its assets load live. A page
  * that still shows a bot challenge is recorded as an error, never captured as the page.
- * Default --urls: <dir>/judgement/capture-urls.txt (spec-pick writes it); default --out: <dir>/media.
+ * Default --urls: <work>/capture-urls.txt (spec-pick writes it); default --out: <work>/media.
  * Writes <out>/<key>/page.jpg, <out>/<key>/<path>.jpg, <out>/<key>/boxes.json. Skips keys already captured.
  * Needs playwright in the project.
  */
@@ -82,12 +82,12 @@ export function unionBox(boxes) {
 
 async function main() {
   const cfg = loadConfig();
-  const src = arg('urls', cfg.p('judgement', 'capture-urls.txt'));
-  const out = arg('out', cfg.p('media'));
+  const src = arg('urls', cfg.w('capture-urls.txt'));
+  const out = arg('out', cfg.w('media'));
   const width = Number(arg('width', 1440));
   const urls = readFileSync(src, 'utf8').split('\n').map((s) => s.trim()).filter(Boolean);
   const { chromium } = await loadPlaywright();
-  const headed = readJSON(cfg.p('fetch', 'technique.json'), {}).technique === 'headed';
+  const headed = readJSON(cfg.w('fetch', 'technique.json'), {}).technique === 'headed';
   const ls = headed ? await loadLiveSession() : null;
   const browser = headed ? await ls.launchStealthHeaded(chromium) : await chromium.launch({ args: ['--disable-dev-shm-usage'] });
   const ctx = headed ? await ls.newLiveContext(browser, { viewport: { width, height: 900 }, deviceScaleFactor: 1 }) : await browser.newContext({ viewport: { width, height: 900 }, deviceScaleFactor: 1 });
@@ -97,9 +97,9 @@ async function main() {
   await ctx.addInitScript({ content: `(() => {\n${[genericRules, groupRows, profileRules, componentLayout].map(String).join('\n')}\n(${tagger})(${JSON.stringify(args)});\n})();` });
   await ctx.route('**/*', (route) => { let h = ''; try { h = new URL(route.request().url()).hostname; } catch { /* keep */ } return BLOCK.test(h) ? route.abort() : route.fallback(); }); // fallback: live-session's document headers still apply
   // S2's rows (sitemap and discovered pages): which pages render from the cached HTML
-  const rows = [cfg.p('fetch', 'fetch.jsonl'), cfg.p('links', 'pages.jsonl')].filter((f) => existsSync(f)).flatMap((f) => readJSONL(f));
+  const rows = [cfg.w('fetch', 'fetch.jsonl'), cfg.w('links', 'pages.jsonl')].filter((f) => existsSync(f)).flatMap((f) => readJSONL(f));
   const cached = new Map(rows.filter((r) => r.html_key && (flag('from-cache') || (r.source && r.source !== 'live'))).map((r) => [r.url, r.html_key]));
-  const htmlDir = cfg.p('fetch', 'html');
+  const htmlDir = cfg.w('fetch', 'html');
   const queue = urls.filter((u) => !existsSync(join(out, urlKey(u), 'boxes.json')));
   log(`${urls.length} urls, ${queue.length} to capture`);
   let n = 0;

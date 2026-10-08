@@ -48,16 +48,20 @@ export const log = (...a) => process.stderr.write(`[spec] ${a.join(' ')}\n`);
 
 /* ------------------------------------------------------------ config --- */
 /**
- * spec.config.json at the project root (reference/config.md). `dir` defaults to stardust/spec.
- * Returns the config with resolved paths: { root, dir, origin, scopePath, ... }.
+ * stardust/spec/spec.config.json (reference/config.md); --config names another file. The project root is the folder
+ * above stardust/. `dir` (default stardust/spec) holds judgement/ and knowledge/, the committed output; `work`
+ * (default stardust/.work/spec) holds the raw material, local to the run.
+ * Returns the config with resolved paths: { root, dir, work, p(…) under dir, w(…) under work, origin, scopePath, … }.
  */
-export function loadConfig(path = arg('config', 'spec.config.json')) {
+export function loadConfig(path = arg('config', join('stardust', 'spec', 'spec.config.json'))) {
   const file = resolve(path);
   const cfg = readJSON(file);
   if (!cfg.origin || !cfg.scopePath) throw new Error(`${file}: origin and scopePath are required`);
-  const root = dirname(file);
+  const up = dirname(dirname(file));
+  const root = file.endsWith(join('stardust', 'spec', 'spec.config.json')) ? dirname(up) : dirname(file);
   const dir = resolve(root, cfg.dir || 'stardust/spec');
-  return { ...cfg, origin: cfg.origin.replace(/\/$/, ''), root, dir, p: (...parts) => join(dir, ...parts) };
+  const work = resolve(root, cfg.work || 'stardust/.work/spec');
+  return { ...cfg, origin: cfg.origin.replace(/\/$/, ''), root, dir, work, p: (...parts) => join(dir, ...parts), w: (...parts) => join(work, ...parts) };
 }
 
 /**
@@ -74,6 +78,20 @@ export function templateOf(fetchRow, cfg) {
   const section = rest.length ? rest.join('/') : '(root)';
   // a path-only rule (no body attribute, class or meta) names the template by its section alone
   return fetchRow.template || cfg.template.bodyAttr || cfg.template.bodyClass || cfg.template.meta ? `${t} · ${section}` : section;
+}
+
+/* ------------------------------------------------------ blocked origins --- */
+/** Interstitial text of the common bot walls (raw HTML head). */
+export const CHALLENGE = /cf-browser-verification|challenge-platform|cf-chl-|Just a moment\.\.\.|Attention Required|_Incapsula_Resource|px-captcha|perimeterx|Access Denied<\/title>|ak_bmsc|datadome|captcha-delivery/i;
+/**
+ * Why a response turns the client away, or null: a bot challenge (an edge signature by live-session's rules when
+ * `isChallenge` is given, or interstitial text), or a refusal of an HTML request. Pure.
+ */
+export function blockedBy(status, headers, head = '', url = '', isChallenge = null) {
+  const edge = isChallenge ? isChallenge({ status: () => status, headers: () => headers, url: () => url }) : headers['cf-mitigated'] === 'challenge';
+  if (edge || ([403, 429, 503].includes(status) && CHALLENGE.test(head))) return 'challenge';
+  if (status === 403 || status === 429) return 'refused';
+  return null;
 }
 
 /* ------------------------------------------------------------- misc ---- */
@@ -96,17 +114,20 @@ export async function pool(items, n, fn, onProgress) {
   return out;
 }
 
-/** Playwright from the project (the plugin tree ships none). */
-/**
- * The diff skill's live-session.mjs: the plugin's one hardened way to reach a live site (challenge detection, the
- * stealth real-Chrome `--headed` tier, document-only standard headers). Plugin tree or project copy, as replica.
- */
-export async function loadLiveSession() {
-  const p = [join(HERE, '..', '..', 'diff', 'scripts', 'live-session.mjs'), join(HERE, '..', 'diff', 'live-session.mjs')].find((x) => existsSync(x));
-  if (!p) throw new Error('live-session.mjs not found (../../diff/scripts/ or ../diff/): copy the diff skill\'s scripts next to these (spec SKILL.md § Setup)');
+/** A sibling skill's script module: the plugin tree (../../<skill>/scripts/) or a project copy (../<skill>/). */
+export async function loadSibling(skill, file) {
+  const p = [join(HERE, '..', '..', skill, 'scripts', file), join(HERE, '..', skill, file)].find((x) => existsSync(x));
+  if (!p) throw new Error(`${skill}/${file} not found (../../${skill}/scripts/ or ../${skill}/): copy the ${skill} skill's scripts next to these (spec SKILL.md § Setup)`);
   return import(pathToFileURL(p).href);
 }
 
+/**
+ * The diff skill's live-session.mjs: the plugin's one hardened way to reach a live site (challenge detection, the
+ * stealth real-Chrome `--headed` tier, document-only standard headers).
+ */
+export const loadLiveSession = () => loadSibling('diff', 'live-session.mjs');
+
+/** Playwright from the project (the plugin tree ships none). */
 export async function loadPlaywright() {
   try {
     const req = createRequire(join(process.cwd(), 'package.json'));
@@ -245,13 +266,12 @@ export function genericRules(A, opts = {}) {
   const hashy = (t) => /\d/.test(t) || t.length <= 2 || !/[aeiouy]/i.test(t);
   const kebab = (s) => s.replace(/([a-z0-9])([A-Z])/g, '$1-$2').replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '').toLowerCase();
   const good = (n) => (/^[a-z][a-z0-9-]{2,}$/i.test(n) && !LAYOUT.test(n) && !UTIL.test(n) ? kebab(n) : null);
+  const blockStyle = (c) => (strip ? c.replace(strip, '') : c).match(/^wp-block-(.+)$|^elementor-widget-(.+)$|^paragraph--type--(.+)$|^block-(?:block-content-|views-block-)?(.+)$/);
   const fromClass = (c0) => {
     const c = strip ? c0.replace(strip, '') : c0;
-    if (!c) return null;
-    let m = c.match(/^wp-block-(.+)$/) || c.match(/^elementor-widget-(.+)$/) || c.match(/^paragraph--type--(.+)$/) || c.match(/^block-(?:block-content-|views-block-)?(.+)$/);
-    if (m) { const b = m[1].replace(/-is-layout-.*$/, ''); return LAYOUT.test(b) ? null : kebab(b); } // a CMS layout wrapper: named by its shape
+    if (!c || blockStyle(c)) return null; // block-style classes are read first, in name()
     if (UTIL.test(c) || LAYOUT.test(c)) return null;
-    m = c.match(/^([A-Za-z][A-Za-z0-9]*?)(?:-module)?_{1,2}[A-Za-z0-9]+_{0,3}[A-Za-z0-9-]*$/); // CSS modules: Hero_root__x1y2z → hero
+    const m = c.match(/^([A-Za-z][A-Za-z0-9]*?)(?:-module)?_{1,2}[A-Za-z0-9]+_{0,3}[A-Za-z0-9-]*$/); // CSS modules: Hero_root__x1y2z → hero
     if (m && /_/.test(c) && HASH.test(c.split('_').pop())) return good(m[1]);
     const toks = c.split('__')[0].split('--')[0].split('-'); // BEM block, then hash prefixes: qrk1f-w-hero → hero
     while (toks.length > 1 && hashy(toks[0])) toks.shift();
@@ -270,6 +290,8 @@ export function genericRules(A, opts = {}) {
   };
   const name = (el) => {
     for (const a of NAME_ATTRS) { const v = A.attr(el, a); if (v) return kebab(v.replace(/\.default$/, '')); }
+    // a block-style class wins over any other class (Drupal writes `paragraph` before `paragraph--type--<name>`)
+    for (const c of A.cls(el)) { const m = blockStyle(c); if (m) { const b = m.slice(1).find(Boolean).replace(/-is-layout-.*$/, ''); return LAYOUT.test(b) ? (CONTAINER.has(A.tag(el)) ? shape(el) : A.tag(el)) : kebab(b); } }
     for (const c of A.cls(el)) { const n = fromClass(c); if (n) return n; }
     return CONTAINER.has(A.tag(el)) ? shape(el) : A.tag(el);
   };

@@ -1,14 +1,16 @@
 # spec.config.json
 
-One file at the project root. Paths in the spec stages resolve against it; outputs go under `dir`. Keys not listed
-here are ignored, so a consumer (for example a viewer's deploy script) may keep its own settings in the same file.
+`stardust/spec/spec.config.json`, committed with the output (`--config` names another file). Paths resolve against
+the project root; judgement and knowledge go under `dir`, the run's raw material under `work`. Keys not listed here
+are ignored.
 
 | key | required | meaning |
 |---|---|---|
-| `site` | yes | display name, written to `meta.site_name` |
+| `site` | yes | display name, written to `knowledge/site.json` |
 | `origin` | yes | `https://<host>` after redirects (S1 stops and names the final origin otherwise), no trailing slash |
 | `scopePath` | yes | path prefix of the scope, e.g. `/en/` or `/<country>/<lang>/` |
-| `dir` | no | output folder, default `stardust/spec` |
+| `dir` | no | output folder (judgement/, knowledge/), default `stardust/spec` |
+| `work` | no | raw material of the run, default `stardust/.work/spec` (never committed) |
 | `sitemaps` | no | sitemap URLs; default: robots.txt `Sitemap:` lines, else `/sitemap.xml`; none in scope → a link crawl from scopePath |
 | `maxPages` | no | cap on the URLs every stage covers; above it S1 keeps an even sample per section and the spec says so |
 | `workers` | no | parallel requests for fetch, default 4 (be polite: the source is production); `--headed` runs one page at a time, `--archive` two |

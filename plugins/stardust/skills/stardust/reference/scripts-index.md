@@ -85,19 +85,20 @@ Run the project copies under `stardust/scripts/<skill>/`. Read this before any `
 - `rollout/update-coverage.mjs` — status writer — `<slug> --status <s> [--url]`; `--block <id> --status <s>`; `--new <slug> --path <p> --template <id> --origin <o>`
 - `rollout/verify.mjs` — full-site verify — `[--base <u>|--root <dir>] [--all]`
 - `spec/lib.mjs` — library, no CLI
-- `spec/spec-build.mjs` — S10 → spec.sqlite — `[--out <sqlite>]`
-- `spec/spec-capture.mjs` — S6/S8 page + component crops — `[--urls <f>] [--from-cache]`
+- `spec/rules.mjs` — library (rules), no CLI
+- `spec/spec-capture.mjs` — S6/S8 page + block crops — `[--urls <f>] [--from-cache]`
 - `spec/spec-fetch.mjs` — S2 resumable fetch — `[--urls <f>] [--headed|--archive <date>]`; exit 3 = blocked
-- `spec/spec-inventory.mjs` — S1 robots + sitemaps, else a crawl — `[--max <n>] [--headed|--archive <date>]`; exit 3 = blocked
+- `spec/spec-inventory.mjs` — S1 robots + sitemaps, else crawl — `[--max <n>] [--headed|--archive <date>]`; exit 3 = blocked
 - `spec/spec-links.mjs` — S4 link check — `[--max 20000]`
+- `spec/spec-knowledge.mjs` — S10 → knowledge/
 - `spec/spec-map.mjs` — S7 mapping → page blocks — `[--rules <json>]`
 - `spec/spec-martech.mjs` — S9 martech — `[--no-custom-code] [--urls a,b --out <dir>]`
 - `spec/spec-parse.mjs` — S3 trees + signals — `[--fetch <jsonl>] [--out <dir>]`
-- `spec/spec-pick.mjs` — pages to capture — `[--components-only]`
-- `spec/spec-profile.mjs` — component profile — `[--json <out>]`
-- `spec/spec-rum.mjs` — S5 real-user data — `[--days 90] [--key-env <NAME>]`
+- `spec/spec-pick.mjs` — capture list — `[--components-only]`
+- `spec/spec-profile.mjs` — component stats — `[--json <out>]`
+- `spec/spec-rum.mjs` — S5 Optel — `[--days 90] [--key-env <NAME>]`
 - `spec/spec-sheet.mjs` — contact sheet — `<component|row-shape>`
-- `spec/spec-variants.mjs` — S8 layout variants — `[--cut 0.5]`
+- `spec/spec-variants.mjs` — S8 variants — `[--cut 0.5]`
 - `stardust/impeccable-version-check.mjs` — newer impeccable? — `[--offline] [--json]`; `--where`
 - `stardust/ledger.mjs` — status.jsonl writer — `<skill> <phase> start|end|blocked [--detail] [--strict]` (end needs an open start; journal.md checked on end); `tail`; `last`
 - `stardust/state.mjs` — page status writer — `advance <slug…> --to <status> [--by]`; `summary [--slugs]`
