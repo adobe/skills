@@ -86,11 +86,18 @@ These come from `<plugin>/AGENTS.md` and apply to every ticket:
 - **Known already?** Before proposing a rule, search `<plugin>/CHANGELOG.md` and the skill docs for
   it (`rg -n "<terms>"`) and list the terms you searched. An existing rule that was not followed is a
   `rule-salience` ticket (make it enforced or more visible), not a new rule.
-- **Fixed since the run?** Establish the run's plugin version: diff the project's script copies
-  against `<plugin>` (`diff -rq <project>/stardust/scripts/replica <plugin>/skills/replica/scripts`,
-  same for `diff`, `stardust`, `migrate`), and compare the run dates with the CHANGELOG headings.
-  Mark each ticket `open`, `fixed-since (<version>)` or `partly fixed`.
-- **Hand-edited script copies are findings.** A project copy that differs from every plugin version is
+- **Judge against the run's version.** Read it from `state.json` `_provenance.stardustVersion`
+  (stamped by `state.mjs`). In `<plugin>`, the commit that set it is the oldest one
+  `git log --format=%h -S '"version": "<v>"' -- .claude-plugin/plugin.json | tail -1` prints; it
+  and the commits up to the next version bump are the candidates. Check the first out in a
+  temporary worktree and read the skill text and scripts there. Confirm it with `diff -rq` of each
+  project copy (`stardust/scripts/{replica,diff,stardust,migrate}`) against that worktree. If the
+  version is missing or the copies match no candidate, report the version as `unknown` and do not
+  assign `agent-deviation` or `rule-salience` for rules that may postdate the run.
+- **Fixed since the run?** Compare the run's version with `<plugin>` today (CHANGELOG sections
+  after it, `git log <commit>..HEAD -- skills/<skill>`). Mark each ticket `open`,
+  `fixed-since (<version>)` or `partly fixed`.
+- **Hand-edited script copies are findings.** A project copy that differs from the run's version is
   a defect per `skills/replica/reference/source-fidelity-gate.md` § Script adaptations. Report what
   the edit worked around; that is usually the real instrument gap.
 - **No site names**, anywhere in the output: role names ("a commerce home page") and placeholders
@@ -123,7 +130,7 @@ report or transcript. Run the project's own helpers from `<project>` (copies und
 |---|---|
 | `status.jsonl` (ledger) | phase start/end order, durations, `blocked` lines, missing starts |
 | `journal.md` | one section per phase? decisions and their stated reasons |
-| `state.json` | `flow`, `flowSource`, page statuses, `approvedBy` |
+| `state.json` | `_provenance.stardustVersion`, `flow`, `flowSource`, page statuses, `approvedBy` |
 | `direction.md`, root `PRODUCT.md`/`DESIGN.md`/`DESIGN.json` | promotion branch and provenance |
 | `replica/inconsistency-register.md` | every design delta has an entry with evidence and status |
 | `replica/breakpoint-map.md` | target breakpoints decided before CSS (only with `--target-breakpoints`) |
@@ -135,7 +142,8 @@ report or transcript. Run the project's own helpers from `<project>` (copies und
 | `rollout/progress.json`, `foundation-freeze.json`, `foundation-requests.md` | Phase 5 units |
 | `learnings.md` | what the run itself already recorded |
 | `scripts/` copies | plugin version, hand-edits |
-| `migrated/**/_meta.json` (`gatesPassed`, `gateEvidence`) | per-page gate record after `gate-evidence.mjs` |
+| `migrated/**/_meta.json`, `migrated/**/<name>._meta.json` | per-page `gatesPassed`, `gateEvidence` |
+| `migrate/progress.json` | sibling render units: status and verdict per unit |
 | transcript | what was in context per decision, tool-output volume, errors, waits, interventions |
 
 ## Procedure
@@ -168,9 +176,10 @@ Section names refer to `skills/replica/SKILL.md` unless another file is given.
 
 **Setup**
 - Flow guard: `flow` stamped `replica` (or a refused redesign flow); flow line shown first after extract.
-- Gate deps probed before installing; installs as devDependencies, never `--no-save`.
-- Scripts copied to `stardust/scripts/<skill>/`, `replica/` and `diff/` siblings, nothing in the
-  project-root `scripts/`; no hand-edits.
+- Playwright importable from the project root; gate deps (pixelmatch, pngjs, cheerio) probed before
+  installing; installs as devDependencies, never `--no-save`.
+- All four script dirs copied (`stardust/scripts/{replica,stardust,migrate,diff}`), `replica/` and
+  `diff/` siblings, nothing in the project-root `scripts/`; no hand-edits.
 
 **Phase 1–2: extract, preserve direction**
 - Right extract mode for the ask; bounded runs took the bounded promotion branch
@@ -191,8 +200,9 @@ Section names refer to `skills/replica/SKILL.md` unless another file is given.
 - Every breakpoint gated; first and confirmation rounds `--full`; everything through `gate.sh` +
   `run-bg.mjs`; no hand-written wrapper, no foreground long instrument, no `sleep` loops.
 - Pass bar complete per breakpoint: structural, visual, pixel ≤ 10 % with bands explained,
-  |Δh| ≤ 8 px, cap-probe PASS, `Clipped: 0`, overflow assert (`reference/source-fidelity-gate.md`
-  § Pass bar).
+  |Δh| ≤ 8 px, `Clipped: 0`, overflow assert. Once per archetype, after the 1440 pass: the
+  content-cap row at the derived probe width prints `cap-probe: PASS`
+  (`reference/source-fidelity-gate.md` § Pass bar).
 - Iteration cap of 3 per breakpoint respected; residuals logged with band, %, cause and owner
   (§ Residual logging format).
 - One prototype server per project, probed with `curl` first; a foreign server never killed.
@@ -226,7 +236,12 @@ Section names refer to `skills/replica/SKILL.md` unless another file is given.
 - The main agent stayed coordinator during the wave: no page instrument, no CSS edit, no foundation
   fix of its own (handoff contract § 3, row C records the context growth when it did not).
 - `captureState[].restoreAtDelivery` promises implemented at delivery, not shipped frozen.
-- Rollout's report phase wrote `stardust/learnings.md`.
+- Sibling render units recorded in `stardust/migrate/progress.json`, each after its archetype's
+  C-archetype unit.
+- Every rollout phase A–I has its ledger start/end pair and the artifacts the "Produces" column of
+  `reference/handoff-contract.md` § 3 lists (D3 is `n/a` on a single-language site). A run that
+  stopped after C-final is a broken item for each missing phase, not a pass.
+- Rollout's report phase (H) wrote `stardust/learnings.md`.
 
 **Bookkeeping and discipline (all phases)**
 - Ledger `start` is the first command of each phase; `end` paired; a `journal.md` section per phase.
@@ -308,9 +323,10 @@ with numbers)
 
 ### 2. Draft learnings in `<project>/stardust/learnings.md`
 
-Append one entry per ticket with `scope: general`, in the exact shape of
-`skills/stardust/reference/learnings.md` § Entry shape, with `status: pending`. One failure class per
-entry; `proposed change` copied from the ticket. Never delete or rewrite existing entries. If one
+For each ticket whose `scope` is `general`, append one entry in the exact four-field shape of
+`skills/stardust/reference/learnings.md` § Entry shape, with `status: pending`; `scope` is a ticket
+field, not an entry field. Site-specific and unknown-scope tickets stay in the retrospective only.
+One failure class per entry; `proposed change` copied from the ticket. Never delete or rewrite existing entries. If one
 already covers a ticket, cite it in the ticket instead of duplicating.
 
 ### 3. Final reply
