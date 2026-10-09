@@ -255,9 +255,6 @@ or `gh skill update`.
 | Grok Build, Amp | | | expected to work (Claude plugin compatible), not run |
 | Codex, Cursor, Gemini CLI, OpenCode, Kiro and other `.agents/skills` adopters | | | installable through `npx skills add`; not run |
 
-`notes/multi-agent-distribution.md` has the reasoning behind the tiers and
-the work breakdown.
-
 ### Prerequisites
 
 Stardust's bundled scripts run under Node 22 or later and need Playwright with

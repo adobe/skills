@@ -350,8 +350,6 @@ canon-author prototype was re-iterated, etc.).
   `reference/listings.md` — Phase 4.5 is its Phases 1–3
 - `skills/migrate/SKILL.md` — the consumer of every data
   structure this cascade prepares
-- `notes/migrate-template-canon-refactor.md` — design plan and
-  rationale
 - `skills/stardust/reference/state-machine.md` — page typing,
   stale-flagging cascade
 - `skills/stardust/reference/artifact-map.md` — file structure,
