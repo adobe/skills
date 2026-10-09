@@ -16,9 +16,8 @@ const helpCheck = (script) => check(`${script} --help prints usage and writes no
   assert.equal(r.status, 0); assert.ok(r.stdout.includes(script), "usage names the script");
   assert.deepEqual(readdirSync(cwd), []); rmSync(cwd, { recursive: true });
 });
-import { band, edsPath, indexYaml, latestAnswers, offVocabulary, outcome, reachRule } from "../spec-knowledge.mjs";
+import { band, indexYaml, latestAnswers, offVocabulary, outcome, reachRule } from "../spec-knowledge.mjs";
 
-check("edsPath", () => { assert.equal(edsPath("/en/About_Us/Team--Page.html"), "/en/about-us/team-page"); assert.equal(edsPath("/en/index.html"), "/en/"); assert.equal(edsPath("/en/a/"), "/en/a/"); });
 check("band", () => { assert.equal(band(0), "none"); assert.equal(band(500), "low"); assert.equal(band(5000), "medium"); assert.equal(band(50000), "high"); });
 check("outcome", () => { assert.equal(outcome({ status: 200 }), "page"); assert.equal(outcome({ status: 301, final_status: 404 }), "redirect-broken"); assert.equal(outcome({ error: "redirect loop" }), "loop"); assert.equal(outcome({ status: 410 }), "http-410"); });
 check("reach: the rule format; sql:, url:, bvariant: are retired", () => { assert.deepEqual(reachRule("live sitemap block:hero"), ["live", "sitemap", "block:hero"]); assert.throws(() => reachRule("sql:SELECT 1"), /retired/); assert.throws(() => reachRule("url:/a"), /retired/); });

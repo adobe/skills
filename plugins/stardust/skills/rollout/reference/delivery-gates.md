@@ -85,7 +85,11 @@ links). Rules:
   as the `branch--repo--owner` host delimiter, so a `--` in a path 400s.
 
 Append each change to `stardust/redirects.tsv` (`source<TAB>destination`); wiring
-those into the EDS redirects config is a Phase D/assembly step.
+those into the EDS redirects config is a Phase D/assembly step. When a spec exists
+(`stardust/spec/knowledge/`), run `seed-redirects.mjs` first: it adds every source
+URL that changes on EDS and points the source's own redirects at the delivered
+page (`deploy/scripts/eds-path.mjs` is the path contract); rows already in the
+file win.
 
 ## Gate 4 — Source-content hygiene (a sitemap roster contains dead and bodyless URLs)
 

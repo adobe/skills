@@ -191,9 +191,8 @@ Walk `plan.json.steps` in order (representative pages first). For each page:
      source-fidelity gate, which runs on the published origin after `deployed`)
    - **Image-fidelity** — every authored `<img>` src must return 200 or be omitted;
      never ship `<img src="about:error">`. Run `media-reconcile.mjs` (step 2).
-   - **Path-safety** — normalize source paths to AEM-Edge-safe form (lowercase, no
-     trailing `-`/`_`, no `--` segment); record original→normalized in
-     `stardust/redirects.tsv`. (delivery-lint flags violations.)
+   - **Path-safety** — `reference/delivery-gates.md` § Gate 3; record
+     original→normalized in `stardust/redirects.tsv`. (delivery-lint flags violations.)
    - **Source-content hygiene** — skip dead source URLs; author bodyless/PDF-only
      sources thin and faithful (tier `thin`,
      `skills/migrate/reference/fidelity-tiers.md`), don't pad with invented prose.
