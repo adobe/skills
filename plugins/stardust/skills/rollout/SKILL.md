@@ -430,14 +430,12 @@ link **targets** a roster-driven batch misses
   tree after every wave**: earlier waves' pages gain newly valid targets only
   when a later wave ships them. `--check` is the gate (exit 2 = localizable
   links remain).
-- **Strip trailing slashes and `.html` from internal links.** EDS serves
-  extensionless documents with no trailing slash, so `/x/y/` and `/x/y.html`
-  both 404 (render the 404 block) while `.plain.html` still passes — nav reads
-  green, every link is dead. Normalize every internal `href` (keep bare `/`);
-  repoint `.html` links with no local page at the working source URL.
-- **The audit GETs each href against the LIVE tree.** Structural resolution
-  against the ledger misses trailing-slash and case defects that only
-  delivery exposes.
+- **Link every internal page at its served URL** (`deploy/scripts/eds-path.mjs`):
+  no `.html`, a slash only on a folder index (`/x/`). `.html` and a leaf's
+  slash 404 while `.plain.html` passes. Repoint `.html` links with no local
+  page at the working source URL.
+- **The audit GETs each href against the LIVE tree**: the ledger alone misses
+  slash and case defects.
 - **Targets missing from the capture.** Two cases, both recorded in
   `direction.md` as a named decision with the list: a target the direction's
   caps meant to include is a CAPTURE GAP — crawl it first (capture → migrate →

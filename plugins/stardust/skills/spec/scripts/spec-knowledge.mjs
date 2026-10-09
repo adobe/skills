@@ -46,6 +46,16 @@ export function indexYaml(ix, scopePath) {
     `    target: ${target}`, '    properties:', ...ix.properties.map((p) => prop(p.split(' ')[0]))].join('\n');
 }
 
+/**
+ * The URL each page is served at: its delivered URL, with the trailing slash of a folder index when other pages live
+ * below it (on EDS `/a` 404s and `/a/` serves the folder's index document). Pure given deliveredUrl.
+ */
+export function servedUrls(pagePaths, deliveredUrl) {
+  const parents = new Set();
+  for (const p of pagePaths) { const segs = deliveredUrl(p).split('/').filter(Boolean); for (let i = 1; i < segs.length; i += 1) parents.add(`/${segs.slice(0, i).join('/')}`); }
+  return new Map(pagePaths.map((p) => { const e = deliveredUrl(p); return [p, e !== '/' && !e.endsWith('/') && parents.has(e) ? `${e}/` : e]; }));
+}
+
 /** A reach rule from implementation.json: the rule format only; SQL and the retired kinds fail loudly. Pure. */
 export function reachRule(rule) {
   const r = String(rule || '').trim();
@@ -90,6 +100,8 @@ async function main() {
   const captured = (u) => (existsSync(join(media, urlKey(u), 'boxes.json')) && !readJSON(join(media, urlKey(u), 'boxes.json')).error ? urlKey(u) : null);
 
   // ---- urls
+  const livePaths = [...fetchRows, ...disc].filter((r) => outcome(r) === 'page').map((r) => { try { return new URL(r.url).pathname; } catch { return null; } }).filter(Boolean);
+  const served = servedUrls([...new Set(livePaths)], edsPath);
   const urls = []; const uid = new Map(); const byUrl = new Map(); let id = 0;
   const sp = cfg.scopePath.split('/').filter(Boolean).length;
   const addUrl = (r, inSitemap) => {
@@ -99,7 +111,7 @@ async function main() {
     const dyn = pb && pb.blocks.some((b) => b.kind === 'dynamic');
     let flag = null;
     if (isPage && /thank-?you/i.test(path)) flag = 'thank-you'; else if (isPage && c && c.main_chars < 50 && !nblocks && !dyn) flag = 'empty';
-    const e = edsPath(path);
+    const e = served.get(path) || edsPath(path);
     id += 1;
     const row = { id, url: r.url, path, section: segs[sp] ? segs[sp].replace('.html', '') : '(root)', depth: segs.length, in_sitemap: inSitemap, status: r.status ?? null,
       final_url: r.final_url ?? null, final_status: r.final_status ?? null, outcome: oc, template: isPage ? templateOf(r, cfg) : null,
