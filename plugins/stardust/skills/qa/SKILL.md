@@ -34,7 +34,8 @@ delivered HTML ≠ rendered correctly.
    (`site.liveHost`) or ask.
 3. Resolve the **inventory source** — what pages the sweep covers, merged from
    any of: `stardust/template-map.json` (also supplies template assignments for
-   conformance), a paths file, and the live `sitemap.xml` (always fetched;
+   conformance; `scripts/from-knowledge.mjs` writes it from a spec, plus allowlist
+   entries for 404s the source already had), a paths file, and the live `sitemap.xml` (always fetched;
    parity mismatches become findings, so a wrong sitemap can't silently shrink
    coverage).
 4. Optional inputs that unlock deeper checks:

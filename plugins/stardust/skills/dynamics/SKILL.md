@@ -38,8 +38,8 @@ other platforms later), not a redesign one.
 `dynamic-features.generated.md`. Evidence only. `reference/classes-and-signals.md`. For every
 search form found, run one probe term on the SOURCE and record what it shows — the visible result
 count, the top titles (≤ 3), one known hit — as `expectCount` / `expectTitles` / `expectIncludes`
-on the feature's `search-query` check (Phase 5); without them the rebuilt search can only be
-checked for presence.
+on the feature's `search-query` check (Phase 5; a spec's `knowledge/search-probes.json` already
+holds them); without them the rebuilt search can only be checked for presence.
 
 ## Phase 2 — Classify
 
@@ -50,9 +50,10 @@ there and marks dead ones **host-bound** — the signal a pixel gate reports as 
 
 ## Phase 3 — Triage (the gate output)
 
-`node skills/dynamics/scripts/dynamics-plan.mjs [--target-origin …] [--migrated stardust/migrated] --out stardust/dynamics`
+`node skills/dynamics/scripts/dynamics-plan.mjs [--target-origin …] [--migrated stardust/migrated] [--knowledge] --out stardust/dynamics`
 drafts one row per finding with the four axes pre-filled — **class · disposition ·
-reproducibility · status** — plus pattern, phase and the owner decision. Curate it into
+reproducibility · status** — plus pattern, phase and the owner decision; `--knowledge` adds a
+spec's curated features, decisions from its answered or default open questions. Curate it into
 `stardust/dynamic-features.md` (subsumes the former dynamic-blocks map: § Listings contract +
 § Features + § Decision batch + § Register) and `stardust/dynamic-features-plan.md`.
 `reference/triage.md` is the contract. Rules that decide the shape of the phase:

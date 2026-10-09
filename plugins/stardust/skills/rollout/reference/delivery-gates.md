@@ -96,7 +96,9 @@ file win.
 At ~1000-page scale the roster comes from the source sitemap, which includes URLs
 that **404 on the source** (stale entries) and pages with **no HTML body**
 (PDF-only publication entries — a title plus a PDF download). Two rules:
-- **Verify the source returns 200 before authoring.** A dead source URL is not a
+- **Verify the source returns 200 before authoring** (a spec's `knowledge/urls.jsonl`
+  already says: outcome `http-*`, `redirect-broken`, `loop` or `error` is dead;
+  `flag=empty` is bodyless). A dead source URL is not a
   page to fabricate — leave it un-authored and let it show as the lone gap in the
   dashboard (e.g. 814/815). Never invent a body to fill the slot.
 - **Bodyless/PDF-only source → author metadata + hero + the real download link,

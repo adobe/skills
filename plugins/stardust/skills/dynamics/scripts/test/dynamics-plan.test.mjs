@@ -29,6 +29,24 @@ function run(args, fn, dir = mkdtempSync(join(tmpdir(), 'sd-plan-'))) {
   } finally { rmSync(dir, { recursive: true, force: true }); }
 }
 
+check('--knowledge: spec features become rows with their axes and the open questions\' answers; works without --in', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'sd-plan-'));
+  try {
+    const k = join(dir, 'stardust', 'spec', 'knowledge'); mkdirSync(k, { recursive: true });
+    writeFileSync(join(k, 'features.json'), JSON.stringify([{ id: 'listing', class: 'L', name: 'News listing', evidence: 'view listing', disposition: 'index-backed', reproducibility: 'self', pattern: 'listing', reach_pages: 3, decisions: ['Q-1', 'Q-2'] }, { id: 'account', class: 'X', name: 'Account links', disposition: 'decided-out', reproducibility: 'needs-business-decision', reach_pages: 4, decisions: ['Q-1'] }]));
+    writeFileSync(join(k, 'open-questions.json'), JSON.stringify([{ id: 'Q-1', effective: 'index the news tree', answer: null }, { id: 'Q-2', effective: 'keep 12 per page', answer: { answer: 'keep 12 per page' } }]));
+    writeFileSync(join(k, 'urls.jsonl'), [1, 2, 3, 4].map((i) => JSON.stringify({ id: i, outcome: 'page', in_sitemap: 1 })).join('\n'));
+    const r = spawnSync(process.execPath, [SCRIPT, '--knowledge', '--out', 'plan'], { cwd: dir, encoding: 'utf8' });
+    assert.equal(r.status, 0, r.stderr);
+    const [row, out] = JSON.parse(readFileSync(join(dir, 'plan', 'dynamic-features.generated-plan.json'), 'utf8')).rows;
+    assert.match(out.flags[0], /decided-out without a recorded owner answer/);
+    assert.deepEqual([row.id, row.source, row.class, row.disposition, row.reproducibility, row.status], ['spec-listing', 'spec', 'L', 'index-backed', 'self', 'pending']);
+    assert.deepEqual(row.reach, { pages: 3, of: 4 });
+    assert.equal(row.decision, 'Q-1: index the news tree (default) · Q-2: keep 12 per page (answered)');
+    assert.equal(row.flags, undefined);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
 check('without --martech: no contract, no martech line, rows untouched', () => run([], ({ dir, read }) => {
   assert.ok(!existsSync(join(dir, 'stardust')));
   assert.doesNotMatch(read('plan/dynamic-features.generated-plan.md'), /Martech/);

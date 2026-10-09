@@ -4,6 +4,31 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.31.5 — spec knowledge seeds dynamics, qa, rollout and the archetype pickers
+
+Wave 2b of how the other skills use a spec's `stardust/spec/knowledge/`: each consumer reads it when present and
+never requires it. Reading adds no wall time.
+
+- **dynamics** (`dynamics-plan.mjs --knowledge [dir]`): the spec's curated features become draft rows. They keep
+  the axes as judged (S10 checks them against the dynamics vocabulary). Their decision is the linked open
+  questions' answer, or else the default. It also works without a detector run. A `decided-out` row with no
+  recorded owner answer is flagged (`triage.md`). Phase 1's search probes: a spec's `search-probes.json` already
+  holds them.
+- **qa** (`qa/scripts/from-knowledge.mjs`, new): writes two inputs.
+  - `stardust/template-map.json`: the inventory by layout variant at served URLs, delivered pages only when
+    rollout's coverage exists.
+  - Allowlist entries for links the source already had broken, as authored and as served.
+
+  On a sports-federation run (about 12,000 pages): 114 variants and 1,251 source-inherited 404s that would
+  otherwise read as migration defects.
+- **rollout:**
+  - D2 starts `helix-query.yaml` from the spec's draft;
+  - Gate 4 reads dead and bodyless source pages from `knowledge/urls.jsonl` instead of probing.
+- **Archetypes:** prototype `--prep`, replica Phase 3 and reskin default their representative page to the spec's
+  `rep_url` of the type's largest layout variant.
+- **Prose:** rollout's query-index paragraph restated `dynamics/reference/listings.md` § Getting an index at all
+  step by step; it now points there.
+
 ## 0.31.4 — a folder index lives at `/x/`: sitemap, probes and links follow EDS
 
 EDS serves a folder index (`x/index.html`) at `/x/`, and `/x` 404s on a plain site (one site seen adds a 301); a leaf page lives at `/x/y`, and
