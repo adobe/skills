@@ -32,7 +32,7 @@ under `stardust/current/` written by `$stardust extract`.
 ### `DESIGN.json.extensions`
 
 The `extensions` object grows with the migrate-template-canon
-refactor (see `notes/migrate-template-canon-refactor.md`):
+refactor:
 
 - **`extensions.canon`** — pinned token values, compositional moves
   (free-text), and references to `stardust/canon/*` chrome and CSS

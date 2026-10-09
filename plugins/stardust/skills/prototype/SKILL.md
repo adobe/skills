@@ -922,9 +922,7 @@ lazy-loaded LCP image is a P1 finding. Detection: the first `<img>`
 whose computed `getBoundingClientRect()` intersects the initial
 viewport must satisfy both attributes.
 
-**JS-dependent-hidden-state detector.** Per
-`notes/prototype-broken-by-default-detector-2026-04-29.md`, the
-audit catches initial-state CSS that hides content via `clip-path:
+**JS-dependent-hidden-state detector.** The audit catches initial-state CSS that hides content via `clip-path:
 inset(0 100% ...)`, `opacity: 0`, or `transform: translateX(-100%)`
 where the reveal depends on a JS class flip (typically an
 `IntersectionObserver` toggling `.in-view` / `.is-visible` /
@@ -1116,8 +1114,7 @@ Save clean-pass screenshots to `stardust/validation/<slug>/motion-<viewport>.png
 
 When N > 1 variants render, each `<slug>-<id>-shape.md` declares:
 
-- A distinct `dominantDimension` value (no two variants share it;
-  per `notes/variant-convergence.md` Tier 1).
+- A distinct `dominantDimension` value (no two variants share it).
 - A `compositionDelta` field listing ≥ 2 ways the variant's section
   sequence or layout strategy diverges from each sibling variant.
   Examples:

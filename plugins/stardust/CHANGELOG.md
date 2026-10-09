@@ -4,6 +4,22 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.31.2 — notes cleanup: two retired notes removed, dangling note citations dropped
+
+`notes/` held two documents nothing reads at run time, and six skill docs cited notes that were never in
+this repository.
+
+- **Removed** `notes/deploy-improvements-archive.md` (the frozen deploy ledger, findings #1–#80) and
+  `notes/multi-agent-distribution.md` (the 2026-09 multi-harness assessment). The `(#NN)` citations stay as
+  provenance; `deploy/SKILL.md` § References now says how to read the ledger from git
+  (`git show 940b8795:plugins/stardust/notes/deploy-improvements-archive.md`). The README and
+  `replica/reference/handoff-contract.md` no longer point at either file.
+- **Dropped citations of missing notes:** `notes/variant-convergence.md` (`prototype/SKILL.md`, the
+  `composition-delta-trivial` fixture), `notes/migrate-template-canon-refactor.md`
+  (`prepare-migration/SKILL.md`, `stardust/reference/artifact-map.md`,
+  `stardust/reference/data-attributes.md`) and `notes/prototype-broken-by-default-detector-2026-04-29.md`
+  (`prototype/SKILL.md`). The rules they backed are unchanged.
+
 ## 0.31.1 — spec knowledge, wave 1: complete redirects, the dynamics vocabulary, a scoping entry
 
 A review of how the other skills can read `stardust/spec/knowledge/` found gaps in spec's own output, and small
