@@ -75,7 +75,7 @@ export async function run(ctx) {
     });
 
     try {
-      await page.goto(pageUrl(base, p.path), { waitUntil: 'load', timeout: 60000 });
+      await page.goto(pageUrl(base, p.url || p.path), { waitUntil: 'load', timeout: 60000 });
     } catch {
       findings.push(finding('perf', 'load-timeout', sev('warn'), p.path, 'page did not fire load within 60s'));
       await context.close();

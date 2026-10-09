@@ -340,19 +340,11 @@ Index-backed listings ship **document-first** (authored rows, index for non-text
 `dynamics/reference/listings.md`); the deploy AI-readability gate runs on every listing page.
 
 **A missing query index is a code-branch gap, not a configuration-service problem.**
-`/query-index.json` answering 404 means the project ships no `helix-query.yaml` (the
-demo boilerplate does not). The FIRST remedy: author `helix-query.yaml` at the code
-branch root indexing the delivered content roots into `target: /query-index.json`
-(`title` from `og:title`, `description`, `image`, `lastModified`; chrome and search
-documents excluded — skeleton in `skills/dynamics/reference/listings.md` § Getting an
-index at all), push the branch, make sure the pages are published LIVE, then poll
-`/query-index.json` no more often than every 5 s for at most 10 minutes until `total`
-settles at the page count. No admin-configuration write is part of this — the indexer
-builds from live-published pages; a 403 from the configuration service with the
-migration token is expected and is not a reason to stop. Only when the code branch is
-NOT writable does the sheet-backed interim index ship (recorded `interim`, decision
-named). A recorded hands-off run probed the configuration service, read its 403 as "no
-index can be configured" and built the interim index — the fix was one committed yaml.
+`/query-index.json` answering 404 means the project ships no `helix-query.yaml`. Author it
+at the code branch root (a spec's `knowledge/helix-query.yaml` is the draft), publish the
+pages LIVE and poll: `skills/dynamics/reference/listings.md` § Getting an index at all. A
+403 from the configuration service is expected; only an unwritable code branch ships the
+sheet-backed interim index (recorded `interim`, decision named).
 
 **Search parity is count + titles, not presence.** The results block ranks title
 matches first and consults description, then body text, only while fewer than N title

@@ -28,12 +28,16 @@ const redirects = [
 check("migration rows, legacy to the target's delivered URL, skips counted", () => {
   const { rows, counts } = seedRows(redirects, urls, [], { pathKey });
   assert.deepEqual(rows, [["/en/a.html", "/en/a"], ["/en/news/index.html", "/en/news/"], ["/en/old-news", "/en/news/"]]);
-  assert.deepEqual(counts, { migration: 2, legacy: 1, present: 0, external: 1, "not-a-page": 1, loop: 1, cdn: 0 });
+  assert.deepEqual(counts, { migration: 2, legacy: 1, present: 0, external: 1, "not-a-page": 1, loop: 1, cdn: 0, "later-wave": 0 });
 });
 check("a source the sheet cannot match (`:`, `%`) goes to the CDN list", () => {
   assert.equal(sheetMatchable("/a/Upper_case.html"), true); assert.equal(sheetMatchable("/x/a:b"), false); assert.equal(sheetMatchable("/x/a%20b"), false);
   const { rows, cdn, counts } = seedRows([{ kind: "migration", src: "/x/a:b", target: "/x/a-b" }, { kind: "migration", src: "/x/Upper.html", target: "/x/upper" }], [], [], { pathKey });
   assert.deepEqual(cdn, [["/x/a:b", "/x/a-b"]]); assert.deepEqual(rows, [["/x/Upper.html", "/x/upper"]]); assert.equal(counts.cdn, 1);
+});
+check("with coverage, only redirects to delivered pages are written; the rest wait for their wave", () => {
+  const { rows, counts } = seedRows(redirects, urls, [], { pathKey }, new Set(["/en/news"]));
+  assert.deepEqual(rows, [["/en/news/index.html", "/en/news/"], ["/en/old-news", "/en/news/"]]); assert.equal(counts["later-wave"], 1);
 });
 check("a source already in redirects.tsv wins (by lookup key)", () => {
   const { rows, counts } = seedRows(redirects, urls, ["/en/A"], { pathKey });

@@ -186,7 +186,7 @@ export function pageUrl(base, path) {
 }
 export function plainUrl(base, path) {
   const b = base.replace(/\/$/, '');
-  return path === '/' ? `${b}/index.plain.html` : `${b}${path}.plain.html`;
+  return path.endsWith('/') ? `${b}${path}index.plain.html` : `${b}${path}.plain.html`;
 }
 export function pathSlug(path) {
   return path === '/' ? 'index' : path.replace(/^\//, '').replace(/\//g, '__');
@@ -275,10 +275,13 @@ export async function loadPlaywright() {
  */
 export async function buildInventory({ base, pathsFile, templateMap, fragments = ['/nav', '/footer'], mergeSitemap = true }) {
   const pages = new Map(); // path -> {path, sources:[], template}
+  // path is the key (no trailing slash); url is where EDS serves the page: a folder index at /x/, which a source
+  // listing it with its slash tells (/x 404s on a plain EDS site)
   const add = (path, source, template) => {
     const p = path.replace(/\/$/, '') || '/';
-    if (!pages.has(p)) pages.set(p, { path: p, sources: [], template: template || null });
+    if (!pages.has(p)) pages.set(p, { path: p, url: p, sources: [], template: template || null });
     const row = pages.get(p);
+    if (path !== p && path.endsWith('/')) row.url = path;
     if (!row.sources.includes(source)) row.sources.push(source);
     if (template && !row.template) row.template = template;
   };

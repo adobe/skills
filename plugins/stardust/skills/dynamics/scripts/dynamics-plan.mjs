@@ -11,11 +11,14 @@
  *   --migrated <dir>             scan migrated HTML for the feature's evidence
  *                                tokens → `alreadyDelivered` (never rebuild what
  *                                the capture pipeline already shipped)
+ *   --knowledge [dir]            a spec's knowledge (default stardust/spec/knowledge): its curated features become rows
+ *                                (`source: spec`, axes as judged, decision = the linked open questions' answer or
+ *                                default); with no --in file, the draft is the spec's rows alone
  * The run curates the draft into `stardust/dynamic-features.md` (reference/triage.md).
  *
  *   node dynamics-plan.mjs [--in stardust/current/_dynamics.json] [--out stardust/dynamics]
  *        [--target-origin https://…] [--auth-header "token …" | --token-env SITE_TOKEN] [--migrated stardust/migrated]
- *        [--martech [spec-martech dir, default stardust/martech]]
+ *        [--martech [spec-martech dir, default stardust/martech]] [--knowledge [dir]]
  *
  * Writes (under --out, default stardust/dynamics):
  *   dynamic-features.generated-plan.json   one row per finding, the four axes pre-filled, with _provenance
@@ -45,7 +48,8 @@ const TARGET = arg('target-origin');
 const MIGRATED = arg('migrated');
 const MARTECH = arg('martech') === true ? 'stardust/martech' : arg('martech');
 const CONTRACT = 'stardust/martech-contract.json';
-const d = readJSON(IN);
+const KNOWLEDGE = arg('knowledge') === true ? 'stardust/spec/knowledge' : arg('knowledge');
+const d = KNOWLEDGE && !existsSync(IN) ? { pages: {}, findings: [] } : readJSON(IN);
 const probed = Object.keys(d.pages).length;
 
 // catalogue: first matching rule wins. disposition ∈ rebuild-native | index-backed | data-fed | embed-passthrough | client-only | static-snapshot | decided-out
@@ -101,6 +105,20 @@ if (MIGRATED && MIGRATED !== true && existsSync(MIGRATED)) {
   }
 }
 
+/* ------------------------------------------------- spec knowledge rows -- */
+/** Rows from a spec's curated features: the axes as judged there, the decision from its open questions. */
+function knowledgeRows(dir) {
+  if (!dir || dir === true || !existsSync(join(dir, 'features.json'))) return [];
+  const qs = Object.fromEntries(readJSON(join(dir, 'open-questions.json'), []).map((q) => [q.id, q]));
+  const live = readFileSync(join(dir, 'urls.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)).filter((u) => u.outcome === 'page' && u.in_sitemap === 1).length;
+  return readJSON(join(dir, 'features.json')).map((f) => Object.assign({
+    id: `spec-${f.id}`, source: 'spec', class: f.class, feature: f.name, pages: f.reach_pages, probed: live, reach: { pages: f.reach_pages, of: live }, evidence: [f.evidence].flat().filter(Boolean).slice(0, 4),
+    pattern: f.pattern || 'inspect', disposition: f.disposition, reproducibility: f.reproducibility, status: f.status || 'pending', phase: 'spec',
+    decision: (f.decisions || []).map((q) => (qs[q] ? `${q}: ${qs[q].effective}${qs[q].answer ? ' (answered)' : ' (default)'}` : q)).join(' · ') || 'none',
+  }, f.disposition === 'decided-out' && !(f.decisions || []).some((q) => qs[q]?.answer)
+    ? { flags: ['decided-out without a recorded owner answer: confirm with the owner or pick another disposition (triage.md)'] } : {}));
+}
+
 /* ---------------------------------------------------------------- rows -- */
 const rows = d.findings.map((f) => {
   const rule = RULES.find((r) => r.when(f)) || { pattern: 'inspect', disposition: 'static-snapshot', repro: 'needs-human-capture', phase: 'detect', decision: 'inspect' };
@@ -114,7 +132,8 @@ const rows = d.findings.map((f) => {
   if (delivered[f.id]) { row.alreadyDelivered = delivered[f.id]; row.status = 'delivered-by-capture'; }
   return row;
 });
-const draft = { _provenance: provenance('plan', { input: IN, target: TARGET || null, migrated: MIGRATED || null }), rows };
+rows.push(...knowledgeRows(KNOWLEDGE));
+const draft = { _provenance: provenance('plan', { input: IN, target: TARGET || null, migrated: MIGRATED || null, knowledge: KNOWLEDGE || null }), rows };
 writeJSON(join(OUT, 'dynamic-features.generated-plan.json'), draft);
 
 const contract = MARTECH && buildContract({
@@ -129,7 +148,7 @@ const byPhase = {}; for (const r of rows) byPhase[r.phase] = (byPhase[r.phase] |
 const self = rows.filter((r) => r.reproducibility === 'self' && r.status === 'pending');
 const batch = rows.filter((r) => r.reproducibility !== 'self' && r.status === 'pending' && r.disposition !== 'decided-out');
 const md = [
-  `<!-- stardust provenance: skill=stardust:dynamics · phase=plan draft · ${draft._provenance.writtenAt} · input ${IN} (${probed} pages, ${rows.length} findings)${TARGET ? ` · target probe ${TARGET}` : ''}${MIGRATED ? ` · reconciled against ${MIGRATED}` : ''} -->`,
+  `<!-- stardust provenance: skill=stardust:dynamics · phase=plan draft · ${draft._provenance.writtenAt} · input ${IN} (${probed} pages, ${rows.length} findings)${TARGET ? ` · target probe ${TARGET}` : ''}${MIGRATED ? ` · reconciled against ${MIGRATED}` : ''}${KNOWLEDGE ? ` · spec knowledge ${KNOWLEDGE}` : ''} -->`,
   '# Dynamic features — draft inventory (curate into `stardust/dynamic-features.md`)', '',
   'One row per detected finding. Merge duplicates, drop noise, keep every axis honest. Columns: disposition = what we do · reproducibility = what it needs · status = where it stands (reference/triage.md).', '',
   '| # | id | class | feature | pages | disposition | reproducibility | status | pattern | decision needed | notes |', '|---|---|---|---|---|---|---|---|---|---|---|',
