@@ -53,6 +53,8 @@ For each extracted page, infer the `type` field from URL pattern
 and content shape (LLM judgment). Catalog from
 `skills/stardust/reference/state-machine.md` § Page types:
 `landing | article | listing | program | form | static | unique`.
+With a spec, the type is the page's in `stardust/spec/knowledge/archetypes.json`
+(one per layout variant group; its `rep_url` is the archetype).
 
 Write the inferred type to `state.json.pages[].type`. The user
 confirms or refines during `direct --prep`. Discovery-mode runs

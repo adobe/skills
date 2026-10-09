@@ -16,7 +16,7 @@ const helpCheck = (script) => check(`${script} --help prints usage and writes no
   assert.equal(r.status, 0); assert.ok(r.stdout.includes(script), "usage names the script");
   assert.deepEqual(readdirSync(cwd), []); rmSync(cwd, { recursive: true });
 });
-import { band, indexYaml, latestAnswers, offVocabulary, outcome, reachRule, servedUrls } from "../spec-knowledge.mjs";
+import { archetypes, band, indexYaml, latestAnswers, offVocabulary, outcome, reachRule, servedUrls } from "../spec-knowledge.mjs";
 import { deliveredUrl } from "../../../deploy/scripts/eds-path.mjs";
 
 check("band", () => { assert.equal(band(0), "none"); assert.equal(band(500), "low"); assert.equal(band(5000), "medium"); assert.equal(band(50000), "high"); });
@@ -31,6 +31,14 @@ check("servedUrls: a page with pages below it is a folder index, served at /x/",
   const m = servedUrls(["/en/news.html", "/en/news/story.html", "/en/about", "/en/index.html", "/"], deliveredUrl);
   assert.equal(m.get("/en/news.html"), "/en/news/"); assert.equal(m.get("/en/news/story.html"), "/en/news/story");
   assert.equal(m.get("/en/about"), "/en/about"); assert.equal(m.get("/en/index.html"), "/en/"); assert.equal(m.get("/"), "/");
+});
+check("archetypes: variants covering 80% of a template are types, the tail folds in, a one-page template is unique", () => {
+  const pg = (n, t, v) => ({ url: `https://e.com/${n}`, outcome: "page", in_sitemap: 1, template: t, variant_code: v });
+  const urls = [...Array.from({ length: 6 }, (_, i) => pg(`a${i}`, "news", "news#1")), pg("b0", "news", "news#2"), pg("b1", "news", "news#2"), pg("c0", "news", "news#3"), pg("d0", "news", null), pg("solo", "landing", "landing#1")];
+  const variants = [{ code: "news#1", template_id: "news", rank: 1, rep_url: "https://e.com/a0" }, { code: "news#2", template_id: "news", rank: 2, rep_url: "https://e.com/b0" }, { code: "news#3", template_id: "news", rank: 3, rep_url: "https://e.com/c0" }, { code: "landing#1", template_id: "landing", rank: 1, rep_url: "https://e.com/solo" }];
+  const a = archetypes(urls, variants);
+  assert.deepEqual(a.types.map((t) => [t.type, t.url_count, t.rep_url]), [["news", 8, "https://e.com/a0"], ["news-2", 2, "https://e.com/b0"], ["unique", 1, null]]);
+  assert.deepEqual(a.types[0].variant_codes, ["news#1", "news#3"]); assert.equal(a.types.reduce((n, t) => n + t.url_count, 0), urls.length);
 });
 check("latestAnswers: the last answer per question wins", () => assert.deepEqual(latestAnswers([{ question: "Q1", answer: "a" }, { question: "Q1", answer: "b", by: "owner" }]), { Q1: { answer: "b", option: null, by: "owner", at: null } }));
 check("indexYaml follows the dynamics skeleton", () => {

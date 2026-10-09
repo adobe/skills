@@ -56,6 +56,38 @@ export function servedUrls(pagePaths, deliveredUrl) {
   return new Map(pagePaths.map((p) => { const e = deliveredUrl(p); return [p, e !== '/' && !e.endsWith('/') && parents.has(e) ? `${e}/` : e]; }));
 }
 
+/**
+ * Page types for the archetype pickers (extract --prep, prototype --prep, replica, reskin): within each template the
+ * layout variants that cover `cut` of its pages (the largest always, then variants of two pages or more) are types,
+ * the tail folds into the template's largest type, a one-page template is `unique`. One representative per type,
+ * so migrate's one-archetype-per-type rule holds by construction. Pure.
+ */
+export function archetypes(urls, variants, cut = 0.8) {
+  const pages = urls.filter((u) => u.outcome === 'page' && u.in_sitemap === 1);
+  const byVariant = new Map(); pages.forEach((u) => { const k = u.variant_code || null; if (!byVariant.has(k)) byVariant.set(k, []); byVariant.get(k).push(u); });
+  const byTemplate = new Map(); pages.forEach((u) => { const t = u.template || '(none)'; byTemplate.set(t, (byTemplate.get(t) || 0) + 1); });
+  const slugOf = (t) => (String(t).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'other');
+  const types = []; const unique = { type: 'unique', template: null, variant_codes: [], rep_url: null, urls: [] };
+  for (const [t, n] of [...byTemplate].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))) {
+    const vs = variants.filter((v) => (v.template_id || '(none)') === t).sort((a, b) => a.rank - b.rank);
+    const members = (code) => (byVariant.get(code) || []).map((u) => u.url);
+    if (n === 1) { unique.urls.push(...pages.filter((u) => (u.template || '(none)') === t).map((u) => u.url)); continue; }
+    let covered = 0; let top = null;
+    for (const v of vs) {
+      const urlsOf = members(v.code);
+      if (top && (covered / n >= cut || urlsOf.length < 2)) { top.variant_codes.push(v.code); top.urls.push(...urlsOf); continue; }
+      const row = { type: top ? `${slugOf(t)}-${v.rank}` : slugOf(t), template: t, variant_codes: [v.code], rep_url: v.rep_url, urls: urlsOf };
+      types.push(row); top = top || row; covered += urlsOf.length;
+    }
+    const all = pages.filter((u) => (u.template || '(none)') === t).map((u) => u.url);
+    if (!top) { types.push({ type: slugOf(t), template: t, variant_codes: [], rep_url: all[0], urls: all }); continue; }
+    const placed = new Set(types.filter((x) => x.template === t).flatMap((x) => x.urls));
+    top.urls.push(...all.filter((u) => !placed.has(u))); // pages without a layout variant join the template's largest type
+  }
+  if (unique.urls.length) types.push(unique);
+  return { cut, types: types.map((x) => ({ ...x, url_count: x.urls.length })) };
+}
+
 /** A reach rule from implementation.json: the rule format only; SQL and the retired kinds fail loudly. Pure. */
 export function reachRule(rule) {
   const r = String(rule || '').trim();
@@ -331,6 +363,7 @@ async function main() {
   writeJSON(OUT('martech.json'), { consent_summary: impl.consent_summary || null, loading_order: impl.loading_order || null, vendors, launch_rules: launchRules, datalayer, evidence: { launch, onetrust: ot } });
   writeJSON(OUT('metadata.json'), metadata); writeJSON(OUT('query-indexes.json'), queryIndexes);
   if (queryIndexes.length) writeText(OUT('helix-query.yaml'), ['version: 1', 'indices:', ...queryIndexes.map((q) => q.yaml)].join('\n')); writeJSON(OUT('locales.json'), locales); writeJSON(OUT('site-config.json'), siteConfig);
+  writeJSON(OUT('archetypes.json'), archetypes(urls, variantRows));
   writeJSON(OUT('search-probes.json'), searchProbes); writeJSON(OUT('open-questions.json'), openQuestions); writeJSON(OUT('findings.json'), findings);
   for (const [k, v] of Object.entries({ urls, pageBlocks, blocks, variants: variantRows, templates, redirects, broken, features, vendors, launchRules, openQuestions, locales })) log(`${k} ${v.length}`);
 }

@@ -29,6 +29,7 @@ Large row sets are JSON Lines (`.jsonl`), the rest JSON. `url_id` is the `id` of
 | `query-indexes.json`, `helix-query.yaml` | name, include_paths, exclude_paths, filter, properties, consumers, source, yaml; the yaml file joins them (dynamics skeleton) |
 | `locales.json` | tree, country, language, urls, rum_views_90d, sitemap, … |
 | `site-config.json` | key, now, eds, decision |
+| `archetypes.json` | `cut`, `types[] {type, template, variant_codes[], rep_url, urls[], url_count}`: the layout variants covering `cut` of each template are page types (tail folded, one-page templates `unique`), one archetype each |
 | `search-probes.json` | term, expect_count, expect_titles[], expect_includes, feature (its S feature id), path and param (the source search URL) |
 | `open-questions.json` | id, area, owner (`stakeholder` / `implementer`), blocking, question, context, options[], default_assumption, impact_rule, impact, link, features[], answer {answer, option, by, at}, effective |
 | `findings.json` | `{ title, text, numbers[] }`, plain text, every number computed |

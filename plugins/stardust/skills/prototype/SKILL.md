@@ -1331,8 +1331,8 @@ open in browser, iterate, approve.
 
 Identify every page type in `state.json.pages[].type` that
 doesn't yet have an approved archetype. For each gap, prototype
-one representative page (the user picks which slug; by default a
-spec's `rep_url` for the type's largest layout variant, else the first page of that type):
+one representative page (the user picks which slug; by default the
+type's `rep_url` in a spec's `archetypes.json`, else its first page):
 
 - `article`-typed pages with no approved article: prototype one
 - `listing`-typed pages with no approved listing: prototype one
