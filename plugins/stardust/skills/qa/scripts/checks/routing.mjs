@@ -8,7 +8,25 @@
  * - sitemap parity: sitemap-only paths (published but untracked) and
  *   inventory-only paths (tracked but unlisted) are both surfaced
  */
+import { existsSync, readFileSync } from 'node:fs';
 import { fetchUrl, pMap, finding, pageUrl, plainUrl } from '../lib.mjs';
+
+/** The expected redirects: stardust/redirects.tsv (`source<TAB>destination`, `#` comments). */
+function readExpected(file) {
+  if (!file || !existsSync(file)) return [];
+  return readFileSync(file, 'utf8').split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith('#')).map((l) => l.split(/\t+|\s{2,}/)).filter(([s, d]) => s && d);
+}
+
+/** Expected redirects missing from the live sheet, or sending elsewhere. Pure. */
+export function expectedRedirectFindings(expected, rules) {
+  const live = new Map(rules.map((r) => [r.Source || r.source || r.from, r.Destination || r.destination || r.to]));
+  const out = [];
+  for (const [src, dst] of expected) {
+    if (!live.has(src)) out.push(finding('routing', 'redirect-missing', 'error', src, `expected redirect ${src} -> ${dst} (stardust/redirects.tsv) is not in /redirects.json`));
+    else if (live.get(src) !== dst) out.push(finding('routing', 'redirect-dest-differs', 'warn', src, `redirect ${src} goes to ${live.get(src)}; stardust/redirects.tsv expects ${dst}`));
+  }
+  return out;
+}
 
 export async function run(ctx) {
   const { base, inventory } = ctx;
@@ -40,9 +58,10 @@ export async function run(ctx) {
 
   // redirects sheet: verify each rule redirects and the destination is 200
   const sheet = await fetchUrl(`${base}/redirects.json`);
+  let rules = [];
+  if (sheet.status === 200) { try { rules = (JSON.parse(sheet.body).data || []); } catch { /* not a sheet */ } }
+  findings.push(...expectedRedirectFindings(readExpected(ctx.opts && ctx.opts.expectedRedirects), rules));
   if (sheet.status === 200) {
-    let rules = [];
-    try { rules = (JSON.parse(sheet.body).data || []); } catch { /* not a sheet */ }
     await pMap(rules, async (r) => {
       const from = r.Source || r.source || r.from;
       const to = r.Destination || r.destination || r.to;

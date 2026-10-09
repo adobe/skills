@@ -19,6 +19,8 @@ for a judgment pass without re-crawling.
 | `redirect-not-firing` | error | a /redirects.json rule doesn't redirect |
 | `redirect-dest-broken` | error | redirect lands on a non-200 |
 | `no-redirects-sheet` | info | no /redirects.json — verification skipped |
+| `redirect-missing` | error | an expected redirect (`stardust/redirects.tsv`, or `--redirects`) is not a row of the live `/redirects.json` |
+| `redirect-dest-differs` | warn | the live row sends the source elsewhere than the expected destination |
 | `trailing-slash-broken` | warn | a folder index (served at `/path/`) fails at `/path`: the redirect is missing |
 | `404-not-404` | error | unknown paths don't 404 (soft-404s poison crawlers) |
 | `404-page-empty` | warn | 404 body is near-empty (unstyled error page) |

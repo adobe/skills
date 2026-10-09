@@ -9,6 +9,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { inheritedEntries, templateMap } from '../from-knowledge.mjs';
 import { buildInventory, plainUrl } from '../lib.mjs';
+import { expectedRedirectFindings } from '../checks/routing.mjs';
 import { deliveredUrl } from '../../../deploy/scripts/eds-path.mjs';
 const HERE = dirname(fileURLToPath(import.meta.url));
 let failed = 0;
@@ -57,6 +58,10 @@ await check('qa keeps a folder index\'s served URL (/x/) next to its key, and fe
   assert.equal(news.url, '/en/news/'); assert.equal(inv.pages.find((x) => x.path === '/en/about').url, '/en/about');
   assert.equal(plainUrl('https://h', '/en/news/'), 'https://h/en/news/index.plain.html'); assert.equal(plainUrl('https://h', '/en/about'), 'https://h/en/about.plain.html'); assert.equal(plainUrl('https://h', '/'), 'https://h/index.plain.html');
   rmSync(cwd, { recursive: true });
+});
+await check('routing: an expected redirect missing from the live sheet is an error, a different destination a warning', () => {
+  const f = expectedRedirectFindings([['/about', '/about/'], ['/old', '/new'], ['/x', '/y']], [{ Source: '/about', Destination: '/about/' }, { Source: '/old', Destination: '/elsewhere' }]);
+  assert.deepEqual(f.map((x) => [x.id, x.severity, x.path]), [['redirect-dest-differs', 'warn', '/old'], ['redirect-missing', 'error', '/x']]);
 });
 await check('--help prints usage; a missing knowledge folder exits 1', () => {
   const cwd = mkdtempSync(join(tmpdir(), 'qa-fk-help-'));
