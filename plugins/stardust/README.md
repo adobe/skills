@@ -70,7 +70,7 @@ a redesign, a replica or a reskin as self-contained static HTML under
 Outputs: `stardust/current/`, `stardust/prototypes/`, `stardust/migrated/`,
 `stardust/state.json`, `stardust/status.jsonl`, `stardust/learnings.md`.
 
-**EDS delivery.** Six skills that take the migrated tree to AEM Edge
+**EDS delivery.** Four skills that take the migrated tree to AEM Edge
 Delivery Services.
 
 - `deploy` converts one page into EDS blocks under `blocks/` and Document
@@ -99,11 +99,6 @@ Delivery Services.
   the capture, template conformance, rendered integrity, visual regression,
   metadata and JSON-LD, links, axe accessibility, performance budgets,
   editability. It reports and never fixes.
-- `personalize` adds placeholder personalization to a delivered page: a
-  Personalization block whose rules (geo, device, returning visitor, URL
-  param, state, custom audience) or a decision API pick an EDS fragment, with
-  the authored default as fallback. Client runtime, optional Cloudflare edge
-  worker, a rules simulator and a Playwright preview check. On request only.
 
 Outputs: `blocks/`, `content/`, `stardust/rollout/` (ledger, coverage,
 findings, dashboard), `stardust/qa/`.
@@ -235,14 +230,14 @@ In Copilot CLI the skills are addressed by their bare names (`stardust`,
 Claude Code form, use the bare name.
 
 Other agents install the skills without plugin grouping. `npx skills add
-adobe/skills --list` shows all 110 skills in this repository as one flat
-list, so name stardust's seventeen explicitly, and install impeccable the same
+adobe/skills --list` shows all 109 skills in this repository as one flat
+list, so name stardust's sixteen explicitly, and install impeccable the same
 way:
 
 ```bash
 npx skills add adobe/skills -s stardust -s extract -s direct -s prototype \
   -s migrate -s prepare-migration -s replica -s reskin -s audit -s uplift \
-  -s diff -s deploy -s rollout -s dynamics -s qa -s spec -s personalize
+  -s diff -s deploy -s rollout -s dynamics -s qa -s spec
 npx skills add pbakaus/impeccable -s impeccable
 ```
 

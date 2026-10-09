@@ -15,8 +15,7 @@
     "skills/reskin",
     "skills/deploy",
     "skills/rollout",
-    "skills/diff",
-    "skills/personalize"
+    "skills/diff"
   ],
   "dependencies": [
     "impeccable"

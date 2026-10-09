@@ -15,7 +15,7 @@
       "name": "stardust",
       "source": "./plugins/stardust",
       "description": "Redesign an existing website to make it better. Higher-level guided flow on top of impeccable.",
-      "version": "0.31.0",
+      "version": "0.30.0",
       "category": "design",
       "keywords": [
         "design",
@@ -113,6 +113,27 @@
       "name": "aem-eds-content-ops",
       "source": "./plugins/aem/edge-delivery-services-content-ops",
       "description": "Content operations skills for AEM Edge Delivery Services: page auditing, SEO optimization, AI search (GEO), WCAG accessibility, bulk metadata, structured data, sitemap validation, and content diffing"
+    },
+    {
+      "name": "aem-eds-personalization",
+      "source": "./plugins/aem/edge-delivery-services-personalization",
+      "description": "Placeholder-based personalization for AEM Edge Delivery Services (DA) pages: rules or a decision API pick the EDS fragment to render, with an authored default as fallback; client runtime plus an optional Cloudflare edge worker.",
+      "version": "1.0.0",
+      "category": "aem",
+      "keywords": [
+        "adobe",
+        "aem",
+        "edge-delivery-services",
+        "da",
+        "personalization",
+        "cloudflare"
+      ],
+      "author": {
+        "name": "Adobe"
+      },
+      "homepage": "https://github.com/adobe/skills",
+      "repository": "https://github.com/adobe/skills",
+      "license": "Apache-2.0"
     },
     {
       "name": "adobe-analytics",

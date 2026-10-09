@@ -4,35 +4,6 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
-## 0.31.0 — `personalize`: placeholder personalization on delivered DA pages
-
-A new EDS-delivery skill: placeholder personalization on delivered DA pages. A
-Personalization block maps conditions (geo, device, new/returning visitor, URL/UTM param, quiz or
-app state, custom audience) or a v1 decision-engine API to EDS fragments, with an authored default
-as the fallback. One rules engine runs unchanged in the browser runtime, the optional Cloudflare
-edge worker and the scripts (validator, simulator, Playwright preview check, mock engine), so every
-environment picks the same variant. New skill, so a minor bump.
-
-- **Fits the stardust content tree**: pages and fragments are `content/<path>.html` body-fragment
-  documents, the same shape `deploy` writes; `aem up` (16.21+) serves them at their real paths, so
-  variants render locally before any upload. DA upload is `deploy-batch.mjs` restricted with
-  `--paths` (and `--force`, since the page is usually already live), never a hand-rolled PUT.
-- **Choices, not gates**: one grouped list of choices, each with a default; no reply or hands-off
-  takes the defaults and reports them as named assumptions. No yes/no confirmations: the
-  `scripts.js` hook is applied and its diff reported, H1 placeholders proceed with the H1 kept in
-  every variant. Runs on request only; no stardust flow chains it.
-- **Edge by default when detected**: a wrangler config or worker in the repo (`detect-project`
-  `edge.cloudflare`), or a prompt naming the site's own Cloudflare, selects client + edge;
-  otherwise client mode.
-- **Delivery like `deploy`**: once every gate passes, the code branch is pushed and `deploy-batch`
-  uploads, previews and publishes the personalized pages and their fragments. `wrangler deploy`
-  and secrets stay off and are handed off as commands.
-- **Every CLI answers `--help`** before any I/O, has a `scripts/test/<name>.test.mjs`, and resolves
-  Playwright from the project; assets resolve in the plugin tree and the
-  `stardust/scripts/personalize/` copy.
-- **dynamics hand-off**: `patterns.md` names `personalize` for class-A rows whose source swaps a
-  region per geo, device or returning visitor; A/B experimentation stays out of scope.
-
 ## 0.30.0 — new skill `spec`: the migration spec before the migration, as one documented database
 
 Scoping a migration was rebuilt by hand per engagement: a crawl, spreadsheets of templates and redirects, a
