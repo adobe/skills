@@ -26,7 +26,7 @@ migrations, three site shapes, the same finding).
 
 1. **Depth on archetypes.** `scripts/dynamics-detect.mjs --from-state stardust/state.json` probes one page per type plus the home page (or `--urls`). Per page it accepts consent, settles, scrolls, settles again — tags and lazy players fire late — and records the network log by host, first-party API paths with status, POST bodies, third-party XHR, scripts, forms and control groups, the trigger → dialog → content graph, media ids, iframes, mount divs, globals and settings keys, framework, auth/commerce/locale signals, client-rendered slots and listing candidates. Findings are deduped across pages and keyed `class|feature`.
 2. **Reach on every page.** `extract --dynamics` records cheap per-page signals in the crawl (endpoints, forms, triggers, players); `--reach stardust/current` folds them into each finding as `reach: pages/of`. Features come from archetypes; reach comes from the roster — the two are never the same pass.
-3. **Chrome once.** Header and footer interactions (dropdowns, search overlay, sticky banner, switcher) are M findings marked `chrome only`; their evidence is motion observation, not the detector.
+3. **Chrome once.** Header and footer interactions (dropdowns, search overlay, sticky banner, switcher) are M findings marked `chrome only`; their evidence is the header contract (`dynamics-plan --chrome`), not the detector.
 
 ## Vendor table
 

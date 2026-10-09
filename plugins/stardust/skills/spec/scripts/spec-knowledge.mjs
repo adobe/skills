@@ -365,6 +365,8 @@ async function main() {
   writeJSON(OUT('metadata.json'), metadata); writeJSON(OUT('query-indexes.json'), queryIndexes);
   if (queryIndexes.length) writeText(OUT('helix-query.yaml'), ['version: 1', 'indices:', ...queryIndexes.map((q) => q.yaml)].join('\n')); writeJSON(OUT('locales.json'), locales); writeJSON(OUT('site-config.json'), siteConfig);
   writeJSON(OUT('archetypes.json'), archetypes(urls, variantRows));
+  const chrome = readJSON(W('chrome', 'header.json'), null);
+  if (chrome) writeJSON(OUT('header.json'), { url: chrome.url, at: chrome.at, summary: (await loadSibling('diff', 'chrome-explore.mjs')).summarize(chrome) });
   writeJSON(OUT('search-probes.json'), searchProbes); writeJSON(OUT('open-questions.json'), openQuestions); writeJSON(OUT('findings.json'), findings);
   for (const [k, v] of Object.entries({ urls, pageBlocks, blocks, variants: variantRows, templates, redirects, broken, features, vendors, launchRules, openQuestions, locales })) log(`${k} ${v.length}`);
 }

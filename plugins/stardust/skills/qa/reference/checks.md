@@ -83,6 +83,11 @@ Flows, not presence — each check replays a user-visible flow through `skills/d
 | `parity-env-limit` | warn | a failed flow whose feature records an environment limit (geo-fenced hand-off target) |
 | `parity-unchecked` | info | a feature with a non-final status and no replayable check — an owner item |
 
+## chrome (L, browser; the header contract)
+
+The live header against `stardust/chrome/header-contract.json` (`../../diff/SKILL.md` § The header contract): comparer
+ids and severities, owner-decided ones info; `header-contract-missing` info, `header-explore-failed` error.
+
 ## visual (E, browser)
 
 | id | sev | what |

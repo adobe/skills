@@ -50,12 +50,12 @@ there and marks dead ones **host-bound** — the signal a pixel gate reports as 
 
 ## Phase 3 — Triage (the gate output)
 
-`node skills/dynamics/scripts/dynamics-plan.mjs [--target-origin …] [--migrated stardust/migrated] [--knowledge] --out stardust/dynamics`
+`node skills/dynamics/scripts/dynamics-plan.mjs [--target-origin …] [--migrated stardust/migrated] [--knowledge] [--chrome] --out stardust/dynamics`
 drafts one row per finding with the four axes pre-filled — **class · disposition ·
-reproducibility · status** — plus pattern, phase and the owner decision; `--knowledge` adds a
-spec's curated features, decisions from its answered or default open questions. Curate it into
-`stardust/dynamic-features.md` (subsumes the former dynamic-blocks map: § Listings contract +
-§ Features + § Decision batch + § Register) and `stardust/dynamic-features-plan.md`.
+reproducibility · status** — plus pattern, phase and the owner decision; `--knowledge` adds a spec's
+curated features, decisions from its open questions; `--chrome` a row per header-contract family (cart and
+account decide their backend, the UI ships). Curate it into `stardust/dynamic-features.md` (§ Listings
+contract + § Features + § Decision batch + § Register) and `stardust/dynamic-features-plan.md`.
 `reference/triage.md` is the contract. Rules that decide the shape of the phase:
 
 - **Reconcile against the migrated output** before scheduling anything.

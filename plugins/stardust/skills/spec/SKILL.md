@@ -39,7 +39,7 @@ The spec answers the people planning a migration (what to build, reuse, fix or d
 | S6 | First capture | `spec-pick.mjs --components-only`, `spec-capture.mjs` | `<work>/media/` |
 | S7 | Judgement: mapping | `spec-profile.mjs`, `spec-sheet.mjs <component>`, write `judgement/mapping.json`, `spec-map.mjs` | `<work>/map/page-blocks.jsonl` |
 | S8 | Variants + visuals | `spec-variants.mjs`, `spec-pick.mjs`, `spec-capture.mjs` | `<work>/map/variants.json`, `<work>/media/` |
-| S9 | Implementation | `dynamics-detect.mjs --urls <reps> --out <work>/dynamics`, `spec-martech.mjs`; write `judgement/catalog.json`, `implementation.json`, `findings.json`, `search-probes.json` | `<work>/`, `judgement/` |
+| S9 | Implementation | `dynamics-detect.mjs --urls <reps> --out <work>/dynamics`, `spec-martech.mjs`, `chrome-explore.mjs <home> <work>/chrome/header.json`; write `judgement/catalog.json`, `implementation.json`, `findings.json`, `search-probes.json` | `<work>/`, `judgement/` |
 | S10 | Knowledge | `spec-knowledge.mjs` | `knowledge/` |
 
 Each stage logs start and end to `stardust/status.jsonl` (`ledger.mjs spec s1-inventory start`). `<work>` is `stardust/.work/spec/`, never committed. Large sites: S2 runs at 4 parallel requests and is resumable —

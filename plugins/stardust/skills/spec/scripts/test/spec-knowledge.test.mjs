@@ -82,6 +82,7 @@ put(D("judgement", "implementation.json"), {
 });
 put(D("judgement", "findings.json"), [{ title: "Reuse.", text: "{{urls live sitemap !verdict:new}} of {{urls live sitemap}} live pages need no new block." }]);
 put(D("judgement", "search-probes.json"), [{ term: "tennis", expectCount: 12, expectTitles: ["A"], feature: "site-search", path: "/en/search", param: "q" }]);
+put(W("chrome", "header.json"), { url: `${O}/`, at: "2026-10-09T10:00:00Z", widths: { 1440: { controls: [{ role: "toggle", kind: "menu", actions: { hover: { opened: true, panel: { links: [{ text: "A", href: "/a" }] } } } }] } } });
 put(D("judgement", "answers.json"), [{ question: "Q-2", answer: "retire them", by: "owner", at: "2026-10-08" }]);
 const run = () => spawnSync(process.execPath, ["--no-warnings", join(HERE, "..", "spec-knowledge.mjs")], { cwd: root, encoding: "utf8" });
 const r1 = run();
@@ -104,6 +105,7 @@ check("redirects, broken, bad links grouped by target", () => {
   assert.equal(KL("broken.jsonl")[0].note, "sitemap URL redirects into a dead page");
   assert.deepEqual(KL("bad-links.jsonl"), [{ to_url: `${O}/en/old.html`, main: [1], chrome: [2] }]);
 });
+check("header.json: the size of the header S9 explored", () => assert.deepEqual(KJ("header.json").summary, ["1440: 1 controls (1 menu), 1 states, 1 links, depth 1"]));
 check("search probes keep their feature and source search URL", () => assert.deepEqual(KJ("search-probes.json"), [{ term: "tennis", expect_count: 12, expect_titles: ["A"], expect_includes: null, feature: "site-search", path: "/en/search", param: "q" }]));
 check("helix-query.yaml drafted from the query indexes", () => assert.match(K("helix-query.yaml"), /^version: 1\nindices:\n {2}default:/));
 check("no viewer concerns in the output", () => { const s = KJ("site.json"); assert.ok(!("scope_label" in s) && !("tour_steps" in s)); assert.ok(!readdirSync(D("knowledge")).some((f) => f.endsWith(".sqlite"))); });

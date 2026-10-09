@@ -10,7 +10,7 @@
  * Options:
  *   --base <url>            live host to sweep (required)
  *   --checks <list>         comma list: routing,content,templates,metadata,links,browse,perf,
- *                           editability,dynamics,ai-readability (default: all)
+ *                           editability,dynamics,chrome,ai-readability (default: all)
  *   --paths-file <txt>      inventory source: one path per line
  *   --template-map <json>   inventory + template assignments (stardust/template-map.json)
  *   --scrape <dir>          stardust scrape captures for verbatim fidelity
@@ -75,7 +75,7 @@ const BASE = (arg('base') || '').replace(/\/$/, '');
 if (!BASE) { console.error('qa: --base <live-url> is required'); process.exit(2); }
 
 const OUT = arg('out', 'stardust/qa');
-const CHECKS = (arg('checks', 'routing,content,templates,metadata,links,browse,perf,editability,dynamics,ai-readability')).split(',').map((s) => s.trim()).filter(Boolean);
+const CHECKS = (arg('checks', 'routing,content,templates,metadata,links,browse,perf,editability,dynamics,chrome,ai-readability')).split(',').map((s) => s.trim()).filter(Boolean);
 const opts = {
   outDir: OUT,
   scrapeDir: arg('scrape', null),
@@ -103,6 +103,7 @@ const MODULES = {
   perf: 'checks/perf.mjs',
   editability: 'checks/editability.mjs',
   dynamics: 'checks/dynamics.mjs',
+  chrome: 'checks/chrome.mjs',
   'ai-readability': 'checks/ai-readability.mjs',
 };
 

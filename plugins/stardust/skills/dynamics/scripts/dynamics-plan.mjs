@@ -16,11 +16,14 @@
  *                                default); with no --in file, the draft is the spec's rows alone; its search probes
  *                                become dynamic-features.generated-parity.json: one search-query check per probe with
  *                                the source's expectations (fill resultSelector, then curate it into parity.json)
+ *   --chrome [file]              the header contract (default stardust/chrome/header-contract.json): one row per
+ *                                control family it records (menus, drawer, search, cart, account, locale); the UI is
+ *                                rebuilt per the contract and gated by chrome-compare, the data side is the row's decision
  * The run curates the draft into `stardust/dynamic-features.md` (reference/triage.md).
  *
  *   node dynamics-plan.mjs [--in stardust/current/_dynamics.json] [--out stardust/dynamics]
  *        [--target-origin https://…] [--auth-header "token …" | --token-env SITE_TOKEN] [--migrated stardust/migrated]
- *        [--martech [spec-martech dir or a spec's knowledge dir, default stardust/martech]] [--knowledge [dir]]
+ *        [--martech [spec-martech dir or a spec's knowledge dir, default stardust/martech]] [--knowledge [dir]] [--chrome [file]]
  *
  * Writes (under --out, default stardust/dynamics):
  *   dynamic-features.generated-plan.json   one row per finding, the four axes pre-filled, with _provenance
@@ -51,7 +54,8 @@ const MIGRATED = arg('migrated');
 const MARTECH = arg('martech') === true ? 'stardust/martech' : arg('martech');
 const CONTRACT = 'stardust/martech-contract.json';
 const KNOWLEDGE = arg('knowledge') === true ? 'stardust/spec/knowledge' : arg('knowledge');
-const d = KNOWLEDGE && !existsSync(IN) ? { pages: {}, findings: [] } : readJSON(IN);
+const CHROME = arg('chrome') === true ? 'stardust/chrome/header-contract.json' : arg('chrome');
+const d = (KNOWLEDGE || CHROME) && !existsSync(IN) ? { pages: {}, findings: [] } : readJSON(IN);
 const probed = Object.keys(d.pages).length;
 
 // catalogue: first matching rule wins. disposition ∈ rebuild-native | index-backed | data-fed | embed-passthrough | client-only | static-snapshot | decided-out
@@ -72,7 +76,7 @@ const RULES = [
   { when: (f) => f.class === 'F' && /client-compute/.test(f.hint || ''), pattern: 'client-compute', disposition: 'client-only', repro: 'self', phase: 'client tools', decision: 'none' },
   { when: (f) => f.class === 'F' && /form backend|form protection/.test(f.feature), pattern: 'forms', disposition: 'rebuild-native', repro: 'needs-backend', phase: 'forms', decision: 'production backend (vendor form id + field mapping)' },
   { when: (f) => f.class === 'F', pattern: 'forms', disposition: 'rebuild-native', repro: 'needs-backend', phase: 'forms', decision: 'production endpoint; interim capture ships now' },
-  { when: (f) => f.class === 'M' && /chrome only/.test(f.feature), pattern: 'chrome-interaction', disposition: 'rebuild-native', repro: 'self', phase: 'interactive', decision: 'none (motion-observe evidence)' },
+  { when: (f) => f.class === 'M' && /chrome only/.test(f.feature), pattern: 'chrome-interaction', disposition: 'rebuild-native', repro: 'self', phase: 'interactive', decision: 'none (the header contract is the spec)' },
   { when: (f) => f.class === 'M', pattern: 'modal-loader', disposition: 'rebuild-native', repro: 'self', phase: 'interactive', decision: 'none' },
   { when: (f) => f.class === 'V' && /iframe without src/.test(f.feature), pattern: 'embed-passthrough', disposition: 'embed-passthrough', repro: 'needs-human-capture', phase: 'embeds', decision: 'resolve the runtime src from a rendered capture' },
   { when: (f) => f.class === 'V', pattern: 'media-as-url', disposition: 'embed-passthrough', repro: 'self', phase: 'media', decision: 'none (player ids are public)' },
@@ -137,6 +141,33 @@ function knowledgeParity(dir) {
   return { _provenance: provenance('plan', { knowledge: dir }), method: 'drafted from the spec\'s search probes: fill resultSelector (the rebuilt results\' item selector), check path against the rebuilt search page, then curate into parity.json', features: Object.values(byFeature) };
 }
 
+/* ---------------------------------------------------- header contract -- */
+const CHROME_ROWS = {
+  menu: { class: 'M', pattern: 'chrome-interaction', disposition: 'rebuild-native', repro: 'self', decision: 'none (the header contract is the spec)' },
+  drawer: { class: 'M', pattern: 'chrome-interaction', disposition: 'rebuild-native', repro: 'self', decision: 'none (the header contract is the spec)' },
+  search: { class: 'S', pattern: 'search-index-backed', disposition: 'index-backed', repro: 'self', decision: 'none (results from the query index; overlay and typeahead per the contract)' },
+  cart: { class: 'X', pattern: 'chrome-interaction', disposition: 'rebuild-native', repro: 'needs-backend', decision: 'the commerce backend on the new host (the drawer ships per the contract either way)' },
+  account: { class: 'X', pattern: 'chrome-interaction', disposition: 'rebuild-native', repro: 'needs-backend', decision: 'sign-in on the new host (the menu ships per the contract either way)' },
+  locale: { class: 'I18N', pattern: 'locale-tree', disposition: 'rebuild-native', repro: 'needs-business-decision', decision: 'which locales the switcher lists' },
+};
+/** One row per control family of the header contract, with what it opens at each width. */
+function chromeRows(contract) {
+  const fam = {};
+  for (const [w, wd] of Object.entries(contract.widths || {})) {
+    for (const c of wd.controls || []) {
+      const opens = ['hover', 'click', 'key'].filter((a) => c.actions && c.actions[a] && c.actions[a].opened);
+      if (!CHROME_ROWS[c.kind] || (!opens.length && !c.search && !(c.children || []).some((x) => x.search))) continue;
+      const f = (fam[c.kind] = fam[c.kind] || { names: new Set(), at: new Set() });
+      f.names.add(c.name || c.kind); f.at.add(`${w} ${opens.join('/') || 'type'}`);
+    }
+  }
+  return Object.entries(fam).map(([kind, f]) => {
+    const r = CHROME_ROWS[kind];
+    return { id: `chrome-${kind}`, source: 'header-contract', class: r.class, feature: `header ${kind}: ${[...f.names].join(', ')} (chrome only)`, pages: 1, probed: 1, reach: null, evidence: [...f.at],
+      pattern: r.pattern, disposition: r.disposition, reproducibility: r.repro, status: 'pending', phase: 'interactive', decision: r.decision };
+  });
+}
+
 /* ---------------------------------------------------------------- rows -- */
 const rows = d.findings.map((f) => {
   const rule = RULES.find((r) => r.when(f)) || { pattern: 'inspect', disposition: 'static-snapshot', repro: 'needs-human-capture', phase: 'detect', decision: 'inspect' };
@@ -151,9 +182,10 @@ const rows = d.findings.map((f) => {
   return row;
 });
 rows.push(...knowledgeRows(KNOWLEDGE));
+if (CHROME && existsSync(CHROME)) rows.push(...chromeRows(readJSON(CHROME)));
 const parityDraft = knowledgeParity(KNOWLEDGE);
 if (parityDraft) writeJSON(join(OUT, 'dynamic-features.generated-parity.json'), parityDraft);
-const draft = { _provenance: provenance('plan', { input: IN, target: TARGET || null, migrated: MIGRATED || null, knowledge: KNOWLEDGE || null }), rows };
+const draft = { _provenance: provenance('plan', { input: IN, target: TARGET || null, migrated: MIGRATED || null, knowledge: KNOWLEDGE || null, chrome: CHROME || null }), rows };
 writeJSON(join(OUT, 'dynamic-features.generated-plan.json'), draft);
 
 const contract = MARTECH && buildContract({
