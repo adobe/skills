@@ -1,6 +1,6 @@
 ---
 name: figma-to-eds
-description: Apply a design system defined in Figma — a component web kit or sample page designs — to an AEM Edge Delivery Services (EDS) site as reusable blocks, with design fidelity gated against Figma at the token and component level. Implements the capture half of the stardust:reskin Figma donor contract (donor-sources.md § 3, provenance class figma-mcp) and adds an EDS block target. Use when a site must adopt a Figma-defined design system ("make the blocks match the Figma web kit", "build these Figma pages as EDS blocks", "the design system source of truth is Figma"), the Figma file is reachable via the Figma MCP (desktop or remote server), and the output is an EDS code repo (styles + blocks). NOT for content migration (that's stardust extract/replica/migrate — content fidelity is gated upstream) and NOT for redesigning from intent (that's stardust direct/prototype).
+description: Apply a design system defined in Figma — a component web kit or sample page designs — to an AEM Edge Delivery Services (EDS) site as reusable blocks, with design fidelity gated against Figma at the token and component level. Implements the capture half of the stardust reskin skill's Figma donor contract (donor-sources.md § 3, provenance class figma-mcp) and adds an EDS block target. Use when a site must adopt a Figma-defined design system ("make the blocks match the Figma web kit", "build these Figma pages as EDS blocks", "the design system source of truth is Figma"), the Figma file is reachable via the Figma MCP (desktop or remote server), and the output is an EDS code repo (styles + blocks). NOT for content migration (that's stardust extract/replica/migrate — content fidelity is gated upstream) and NOT for redesigning from intent (that's stardust direct/prototype).
 license: Apache-2.0
 ---
 
@@ -12,7 +12,7 @@ stardust's canon-source artifacts, curates a probe-able token sheet,
 maps the Figma module vocabulary onto EDS blocks, applies it, and gates
 the result **against Figma, not against any live site**.
 
-The division of contracts mirrors stardust:reskin:
+The division of contracts mirrors the stardust `reskin` skill:
 
 - **Content is out of scope here.** Text, images, metadata fidelity are
   gated by the upstream migration (replica/reskin content gates). This
