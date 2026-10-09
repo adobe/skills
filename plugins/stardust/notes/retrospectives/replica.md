@@ -7,6 +7,9 @@ finding must therefore be a self-contained fix ticket: located, evidenced, repro
 The agent writes a report and draft learnings. It never edits the plugin source, the CHANGELOG or the
 run's delivered code.
 
+Only the contract checklist is replica-specific; the rest fits any stardust flow. The brief stays
+replica-only until a second flow needs a retrospective, then the shared part moves to its own file.
+
 ## Inputs
 
 | input | required | what |
@@ -91,15 +94,17 @@ These come from `<plugin>/AGENTS.md` and apply to every ticket:
   `git log --format=%h -S '"version": "<v>"' -- .claude-plugin/plugin.json | tail -1` prints; it
   and the commits up to the next version bump are the candidates. Check the first out in a
   temporary worktree and read the skill text and scripts there. Confirm it with `diff -rq` of each
-  project copy (`stardust/scripts/{replica,diff,stardust,migrate}`) against that worktree. If the
-  version is missing or the copies match no candidate, report the version as `unknown` and do not
-  assign `agent-deviation` or `rule-salience` for rules that may postdate the run.
+  project copy (`stardust/scripts/{replica,diff,stardust,migrate}`) against that worktree, setting
+  aside files adapted as documented (next rule). If the version is missing or the remaining copies
+  match no candidate, report the version as `unknown` and do not assign `agent-deviation` or
+  `rule-salience` for rules that may postdate the run.
 - **Fixed since the run?** Compare the run's version with `<plugin>` today (CHANGELOG sections
   after it, `git log <commit>..HEAD -- skills/<skill>`). Mark each ticket `open`,
   `fixed-since (<version>)` or `partly fixed`.
-- **Hand-edited script copies are findings.** A project copy that differs from the run's version is
-  a defect per `skills/replica/reference/source-fidelity-gate.md` § Script adaptations. Report what
-  the edit worked around; that is usually the real instrument gap.
+- **Script copies that differ.** `skills/replica/reference/source-fidelity-gate.md` § Script
+  adaptations decides: an adaptation with the documentation that section requires is legitimate,
+  and the instrument gap it works around is a ticket for upstreaming; an undocumented edit is a
+  defect. Either way, report what the edit worked around.
 - **No site names**, anywhere in the output: role names ("a commerce home page") and placeholders
   (`<site>`, `<slug>`). The output may become a CHANGELOG entry, where `evals/lint/site-names.mjs`
   will fail on them.
@@ -141,7 +146,7 @@ report or transcript. Run the project's own helpers from `<project>` (copies und
 | `dynamic-features.md`, `-plan.md` | every dynamic row has a disposition |
 | `rollout/progress.json`, `foundation-freeze.json`, `foundation-requests.md` | Phase 5 units |
 | `learnings.md` | what the run itself already recorded |
-| `scripts/` copies | plugin version, hand-edits |
+| `scripts/` copies | plugin version; adaptations, with their comments and ledger lines |
 | `migrated/**/_meta.json`, `migrated/**/<name>._meta.json` | per-page `gatesPassed`, `gateEvidence` |
 | `migrate/progress.json` | sibling render units: status and verdict per unit |
 | transcript | what was in context per decision, tool-output volume, errors, waits, interventions |
@@ -163,90 +168,62 @@ report or transcript. Run the project's own helpers from `<project>` (copies und
    detected it and when. No categories yet. Note what worked as you go.
 6. **Axial coding and recurrence.** Group the notes: chain downstream symptoms under their first
    failure, then give each group a category (ticket field below) and a count. Check each group
-   against the CHANGELOG, `learnings.md` entries and earlier retrospectives; a recurring group
-   gets `recurrence` filled and a higher priority.
-7. **Tickets.** One per group: trigger, contributing factors, proposed change. Rank by impact, cost
-   and recurrence.
+   against the CHANGELOG, `learnings.md` entries and earlier retrospectives. Write one Analysis
+   entry per group (template below); recurrence raises its priority.
+7. **Tickets.** One per Analysis entry that needs a plugin change, ranked by impact, cost and
+   recurrence. A ticket carries only what the fixing agent needs; the analysis stays in the report.
 8. **Write the outputs** (below), then review them: every claim has evidence; no blame or
    counterfactual wording; no vague verbs; no site names; every ticket has a verifiable end state.
 
 ## Contract checklist (replica)
 
-Section names refer to `skills/replica/SKILL.md` unless another file is given.
+Each check points at the skill section that defines the rule; read the rule there, at the run's
+version, never from this table. A pointer that no longer resolves is a finding against this file.
+Short names: `S` = `skills/replica/SKILL.md`, `G` = `skills/replica/reference/source-fidelity-gate.md`,
+`R` = `…/recreation-procedure.md`, `P` = `…/preserve-direction.md`, `H` = `…/handoff-contract.md`.
+Evidence paths are under `<project>/stardust/` unless they start with `<project>/`.
 
-**Setup**
-- Flow guard: `flow` stamped `replica` (or a refused redesign flow); flow line shown first after extract.
-- Playwright importable from the project root; gate deps (pixelmatch, pngjs, cheerio) probed before
-  installing; installs as devDependencies, never `--no-save`.
-- All four script dirs copied (`stardust/scripts/{replica,stardust,migrate,diff}`), `replica/` and
-  `diff/` siblings, nothing in the project-root `scripts/`; no hand-edits.
+| check | rule | evidence in the run |
+|---|---|---|
+| flow guard, flow line | S § Setup (step 1), § Phase 1 | `state.json` `flow`, `flowSource`; transcript |
+| deps and script copies | S § Setup (steps 2–4) | `<project>/package.json`; `scripts/*`; `<project>/scripts/` |
+| copies unmodified, or adapted as documented | G § Script adaptations | `diff -rq` against the run's version; for each differing file, its comment and ledger line |
+| extract entry mode | S § Phase 1 | ledger `extract` lines; `current/` contents |
+| promotion branch | P § 1. Promotion contract, § 1a | `direction.md`; root `PRODUCT.md`, `DESIGN.*` |
+| no redesign step | S § Phase 2, § What replica never does | transcript; ledger |
+| inconsistency register | P § 3. The inconsistency register | `replica/inconsistency-register.md`; prototype deltas |
+| target breakpoints | P § 4. Target breakpoints | `replica/breakpoint-map.md`; `DESIGN.json` |
+| dynamic surface | S § Phase 2 (step 5) | `dynamic-features.md`, `dynamic-features-plan.md` |
+| recreation, not copying | S § Phase 3; R § CSS-portation fallback | `prototypes/` |
+| lifted values | R § CSS lifting | transcript (`css-rules.mjs`, `measure.mjs` calls) |
+| fonts | R § Fonts policy | prototype `@font-face`; message to the user |
+| cumulative prototypes | R § Cumulative archetype prototypes | `prototypes/`; `replica/progress.json` |
+| capture state | R § Asset harvest and the capture-state policy | `replica/progress.json` `captureState` |
+| fixed and sticky chrome | R § Fixed and sticky chrome | prototype CSS; chrome-parity output |
+| gate procedure and server | G § Per-breakpoint procedure | run-bg job args and logs; transcript |
+| pass bar and content-cap row | G § Pass bar | `replica/gates/<slug>-<w>/`; `cap-probe` output |
+| iteration discipline | G § Iteration discipline | round labels in gate dirs; `progress.json` |
+| inner loop | G § Reading the band breakdown | order of anchor, chrome-parity and pixel runs |
+| hardening | G § Hardening rules | gate command flags in run-bg job args |
+| shifted bands | G § Target breakpoints — shifted bands | `progress.json` `tierShift` |
+| residuals | G § Residual logging format | `replica/progress.json` |
+| interaction parity | R § Interaction parity | `replica/motion/*.json`; `progress.json` `motion` |
+| prototype table, approval | S § Phase 4 (closing paragraphs) | `replica/gates/prototypes-<w>/`; `state.json` |
+| sibling tier | H § 1. Migrate | `migrate/progress.json`; `sibling-variance.mjs` output |
+| deploy per page | H § 2. Deploy | `block-roundtrip --ew` output; `_meta.json` sidecars |
+| C-deliver units, fan-out | H § 3 (row C, Fan-out discipline) | `rollout/progress.json`, `foundation-freeze.json`, `foundation-requests.md` |
+| published-origin gate | G § The published-origin gate | `replica/gates/<slug>-<w>/` `pub<N>` rounds |
+| delivery gate | G § The all-pages published-origin gate | `replica/gates/all-<w>/summary.md`; sidecars |
+| bookkeeping | H § 5. Bookkeeping; S § Phase 4 (ledger paragraph) | `status.jsonl`; `journal.md` |
+| reading discipline | `skills/replica/reference/reading-discipline.md` | transcript |
+| run learnings written | `skills/stardust/reference/learnings.md` § Who writes, who reads | `learnings.md` |
 
-**Phase 1–2: extract, preserve direction**
-- Right extract mode for the ask; bounded runs took the bounded promotion branch
-  (`reference/preserve-direction.md` § 1a), `--prep` runs promoted verbatim. Never mixed.
-- `direct` never invoked; no divergence, no palette or type re-selection.
-- Register exists (empty is valid); every non-register design change is a defect.
-- Dynamics triage ran; every row has a disposition.
+Checks only a retrospective makes, so they are stated here:
 
-**Phase 3: recreate**
-- Clean semantic HTML/CSS; no DOM copy, no page-level ported CSS; CSS portation only per section with
-  a recorded reason (`reference/recreation-procedure.md` § CSS-portation fallback).
-- Values lifted from source CSS and `measure.mjs`, not eyeballed; content verbatim from page JSON.
-- Fonts: same source or metric-matched substitute surfaced to the user; no rehosted licensed kit.
-- One standalone, cumulative prototype per archetype; none skipped straight to platform authoring.
-- With target breakpoints: authored on target steps from the first line; `breakpoint-lint.mjs` clean.
-
-**Phase 4: source-fidelity gate**
-- Every breakpoint gated; first and confirmation rounds `--full`; everything through `gate.sh` +
-  `run-bg.mjs`; no hand-written wrapper, no foreground long instrument, no `sleep` loops.
-- Pass bar complete per breakpoint: structural, visual, pixel ≤ 10 % with bands explained,
-  |Δh| ≤ 8 px, `Clipped: 0`, overflow assert. Once per archetype, after the 1440 pass: the
-  content-cap row at the derived probe width prints `cap-probe: PASS`
-  (`reference/source-fidelity-gate.md` § Pass bar).
-- Iteration cap of 3 per breakpoint respected; residuals logged with band, %, cause and owner
-  (§ Residual logging format).
-- One prototype server per project, probed with `curl` first; a foreign server never killed.
-- Inner loop as documented: chrome-parity before pixel rounds on header/footer/strips; anchor probe;
-  the first hot band fixed top-down (§ Reading the band breakdown); fixes taken from instrument
-  output, not screenshots.
-- Hardening honoured: `--main` symmetric (never `body`), `--dismiss`, challenge pages failed loud
-  rather than measured, `domcontentloaded`, fixed/sticky chrome replicated fixed.
-- With target breakpoints: shifted-band failures logged as tier-shift against the register entry,
-  never iterated (§ Target breakpoints — shifted bands).
-- No impeccable craft, critique or divergence step anywhere in the recreation.
-- Approval recorded with `state.mjs advance … --to approved` (`--by hands-off` when hands-off).
-- Interaction parity ran per archetype (observe live → implement fired behaviour → observe build →
-  `motion-compare.mjs`); `captureState[].restoreAtDelivery` filled.
-- Every prototype has a row in the `gate-all --stage prototype` table.
-
-**Phase 5: handoff**
-- `reference/handoff-contract.md` read instead of whole sibling SKILL.md files.
-- Units in order: C0 foundation (gated, frozen, committed) → C-archetype gated on the published
-  origin before its siblings → C1…Cn per template cluster → C-final.
-- `sibling-variance.mjs` run per template before cloning; content-fidelity measured at import.
-- Fixed-composition sections decoded template-slotted, repeat groups reconstructive; blocks pass
-  `block-roundtrip --ew`; no frozen file edited mid-wave; `foundation-requests.md` applied once at
-  C-final.
-- Cluster subagent briefs carried the evidence rule and instrument invocations verbatim; each
-  subagent reported one verdict line and kept its own batch ledger.
-- Published-origin gate in the ordinary gate dir under `pub<N>` with `--marker`; nothing
-  pixel-shaped on the local harness.
-- Delivery gate = `gate-all` on the published origin, four criteria; no page without a row;
-  `gate-evidence.mjs` filled the `_meta.json` sidecars; `update-coverage.mjs --gate` run at C-final.
-- The main agent stayed coordinator during the wave: no page instrument, no CSS edit, no foundation
-  fix of its own (handoff contract § 3, row C records the context growth when it did not).
-- `captureState[].restoreAtDelivery` promises implemented at delivery, not shipped frozen.
-- Sibling render units recorded in `stardust/migrate/progress.json`, each after its archetype's
-  C-archetype unit.
-- Every rollout phase A–I has its ledger start/end pair and the artifacts the "Produces" column of
-  `reference/handoff-contract.md` § 3 lists (D3 is `n/a` on a single-language site). A run that
-  stopped after C-final is a broken item for each missing phase, not a pass.
-- Rollout's report phase (H) wrote `stardust/learnings.md`.
-
-**Bookkeeping and discipline (all phases)**
-- Ledger `start` is the first command of each phase; `end` paired; a `journal.md` section per phase.
-- `state.mjs` / `ledger.mjs` used, never hand-built JSON or `node -e` edits of `state.json`.
-- Reading discipline: no whole-doc reads, no `cat` of captures or logs, one section per call.
+- **Phase coverage.** Every replica phase and every rollout phase A–I (H § 3) the run reached has a
+  ledger `start` written before its first script and a paired `end`. D3 is `n/a` on a
+  single-language site. A run that stopped early is `broken` once per missing phase, not a pass.
+- **Ordering.** Each sibling render unit starts after its archetype's C-archetype unit is `done`.
 
 ## Metrics table
 
@@ -288,29 +265,31 @@ Three to five lines: outcome, the biggest cost, the top two tickets.
 ## Where it got lucky
 - <near miss> — what would have happened — ticket T<n>
 
-## Tickets
-### T1 <imperative title of the fix>
-- priority: P0 (blocks delivery or ships defects) | P1 (large cost, recurs) | P2
-- category: doc-gap | doc-ambiguity | doc-conflict | rule-salience | instrument-bug |
-  instrument-gap | default-wrong | harness-env | site-edge-case | agent-deviation
-- failure class: <the `learnings.md` vocabulary, e.g. silent-render, capture-gap, dynamic-gap>
-- scope: general | site-specific | unknown; recurrence: <other runs/entries, or "first seen">
-- status vs plugin: open | fixed-since <version> | partly fixed
+## Analysis
+### A1 <what happened, one line>
 - expected vs actual: <contract line> vs <what happened>
-- evidence: <paths, ledger ts, transcript turns>
 - what the agent saw: <the doc sections and tool output in context at the trigger>
 - detected by: <instrument | gate | human | undetected>, <delay after the trigger>
 - impact: <what reached the deliverable>; cost: <minutes, rounds, characters, interventions>
-- trigger: <the step>; contributing factors: <each condition, each ending at a fixable cause>
 - downstream symptoms: <later failures this one explains>
-- already known: <CHANGELOG/doc refs, or "none" + search terms>
+- already known: <CHANGELOG/doc/learnings refs, or "none" + search terms>
+- recurrence: <other runs or entries, or "first seen">
+
+## Tickets
+### T1 <imperative title of the fix> (from A1)
+- priority: P0 (blocks delivery or ships defects) | P1 (large cost, recurs) | P2;
+  scope: general | site-specific | unknown; confidence: high | medium | low
+- category: doc-gap | doc-ambiguity | doc-conflict | rule-salience | instrument-bug |
+  instrument-gap | default-wrong | harness-env | site-edge-case | agent-deviation;
+  failure class: <the `learnings.md` vocabulary, e.g. silent-render, capture-gap>
+- status vs plugin: open | fixed-since <version> | partly fixed
+- evidence: <paths, ledger ts, transcript turns>
+- cause: <trigger step>; contributing factors: <each ending at a fixable cause>
 - proposed change: <file § section or script>; tier: script | lint | default | doc;
-  type: prevent | detect earlier | mitigate
-- sketch: <the rule text or behaviour change, short>
+  type: prevent | detect earlier | mitigate; sketch: <the rule or behaviour change, short>
 - prose budget: <what to fold or delete, or "script only">
-- done when: <verifiable end state: a test in `scripts/test/`, a criterion in
+- done when: <a test in `scripts/test/`, a criterion in
   `evals/replica-source-fidelity/criteria.json`, a lint, or a re-run step and its expected output>
-- confidence: high | medium | low
 
 ## Open questions
 - <question> — evidence that would settle it
