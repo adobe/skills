@@ -59,8 +59,8 @@ export function servedUrls(pagePaths, deliveredUrl) {
 /**
  * Page types for the archetype pickers (extract --prep, prototype --prep, replica, reskin): within each template the
  * layout variants that cover `cut` of its pages (the largest always, then variants of two pages or more) are types,
- * the tail folds into the template's largest type, a one-page template is `unique`. One representative per type,
- * so migrate's one-archetype-per-type rule holds by construction. Pure.
+ * the larger tail folds into the template's largest type; a one-page variant or template is `unique` (its own
+ * layout: rendered alone). One representative per type, so migrate's one-archetype-per-type rule holds. Pure.
  */
 export function archetypes(urls, variants, cut = 0.8) {
   const pages = urls.filter((u) => u.outcome === 'page' && u.in_sitemap === 1);
@@ -75,13 +75,14 @@ export function archetypes(urls, variants, cut = 0.8) {
     let covered = 0; let top = null;
     for (const v of vs) {
       const urlsOf = members(v.code);
-      if (top && (covered / n >= cut || urlsOf.length < 2)) { top.variant_codes.push(v.code); top.urls.push(...urlsOf); continue; }
+      if (top && urlsOf.length === 1) { unique.urls.push(...urlsOf); continue; }
+      if (top && covered / n >= cut) { top.variant_codes.push(v.code); top.urls.push(...urlsOf); continue; }
       const row = { type: top ? `${slugOf(t)}-${v.rank}` : slugOf(t), template: t, variant_codes: [v.code], rep_url: v.rep_url, urls: urlsOf };
       types.push(row); top = top || row; covered += urlsOf.length;
     }
     const all = pages.filter((u) => (u.template || '(none)') === t).map((u) => u.url);
     if (!top) { types.push({ type: slugOf(t), template: t, variant_codes: [], rep_url: all[0], urls: all }); continue; }
-    const placed = new Set(types.filter((x) => x.template === t).flatMap((x) => x.urls));
+    const placed = new Set([...types.filter((x) => x.template === t).flatMap((x) => x.urls), ...unique.urls]);
     top.urls.push(...all.filter((u) => !placed.has(u))); // pages without a layout variant join the template's largest type
   }
   if (unique.urls.length) types.push(unique);
