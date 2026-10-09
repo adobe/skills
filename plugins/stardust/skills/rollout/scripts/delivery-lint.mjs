@@ -116,7 +116,7 @@ for (const m of html.matchAll(/href="(\/[^"]*)"/gi)) {
     if (kind === 'leaf') add('P1', 'trailing-slash', `internal link to a page has a trailing slash (404s on EDS): ${href}`);
     else if (!kind) add('P2', 'trailing-slash', `internal link has a trailing slash; right only for a folder index, and its target is not in ${CONTENT || 'the content tree (pass --content)'}: ${href}`);
   } else if (kind === 'folder' && !/\.html$/i.test(bare)) {
-    add('P2', 'folder-index-slash', `internal link to a folder index without its trailing slash (EDS answers 301): ${href} → ${bare}/`);
+    add('P1', 'folder-index-slash', `internal link to a folder index without its trailing slash (404s on a plain EDS site): ${href} → ${bare}/`);
   }
   if (/\.html(\?|#|$)/i.test(href)) add('P1', 'html-extension', `internal link ends in .html (EDS serves extensionless): ${href}`);
 }

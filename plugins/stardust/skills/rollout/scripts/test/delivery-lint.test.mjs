@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// skills/rollout/scripts/test/delivery-lint.test.mjs — internal link hygiene judged by the target: a trailing slash on a leaf is P1 (404), on a folder index it is right, a folder index without it is P2 (301), an unknown target is a P2 advisory, .html stays P1.
+// skills/rollout/scripts/test/delivery-lint.test.mjs — internal link hygiene judged by the target: a trailing slash on a leaf is P1 (404), on a folder index it is right, a folder index without it is P1 (404), an unknown target is a P2 advisory, .html stays P1.
 // Run: node plugins/stardust/skills/rollout/scripts/test/delivery-lint.test.mjs
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -23,7 +23,7 @@ const by = (fs) => Object.fromEntries(fs.map((f) => [f.msg.match(/: (\/\S*)/)[1]
 
 check('with the content tree: each link judged by its target', () => {
   assert.deepEqual(by(lint()), {
-    '/en/news': 'P2 folder-index-slash',
+    '/en/news': 'P1 folder-index-slash',
     '/en/news/story/': 'P1 trailing-slash',
     '/en/other/': 'P2 trailing-slash',
     '/en/news/story.html': 'P1 html-extension',

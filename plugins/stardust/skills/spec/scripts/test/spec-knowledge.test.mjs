@@ -16,7 +16,8 @@ const helpCheck = (script) => check(`${script} --help prints usage and writes no
   assert.equal(r.status, 0); assert.ok(r.stdout.includes(script), "usage names the script");
   assert.deepEqual(readdirSync(cwd), []); rmSync(cwd, { recursive: true });
 });
-import { band, indexYaml, latestAnswers, offVocabulary, outcome, reachRule } from "../spec-knowledge.mjs";
+import { band, indexYaml, latestAnswers, offVocabulary, outcome, reachRule, servedUrls } from "../spec-knowledge.mjs";
+import { deliveredUrl } from "../../../deploy/scripts/eds-path.mjs";
 
 check("band", () => { assert.equal(band(0), "none"); assert.equal(band(500), "low"); assert.equal(band(5000), "medium"); assert.equal(band(50000), "high"); });
 check("outcome", () => { assert.equal(outcome({ status: 200 }), "page"); assert.equal(outcome({ status: 301, final_status: 404 }), "redirect-broken"); assert.equal(outcome({ error: "redirect loop" }), "loop"); assert.equal(outcome({ status: 410 }), "http-410"); });
@@ -25,6 +26,11 @@ check("offVocabulary: rows outside the dynamics vocabulary are named; status def
   const T = { class: ["V"], disposition: ["embed-passthrough"], reproducibility: ["self"], status: ["pending"] };
   assert.deepEqual(offVocabulary([{ id: "ok", class: "V", disposition: "embed-passthrough", reproducibility: "self" }], T), []);
   assert.match(offVocabulary([{ id: "x", class: "V", disposition: "rebuild", reproducibility: "self" }], T)[0], /^x: disposition "rebuild"/);
+});
+check("servedUrls: a page with pages below it is a folder index, served at /x/", () => {
+  const m = servedUrls(["/en/news.html", "/en/news/story.html", "/en/about", "/en/index.html", "/"], deliveredUrl);
+  assert.equal(m.get("/en/news.html"), "/en/news/"); assert.equal(m.get("/en/news/story.html"), "/en/news/story");
+  assert.equal(m.get("/en/about"), "/en/about"); assert.equal(m.get("/en/index.html"), "/en/"); assert.equal(m.get("/"), "/");
 });
 check("latestAnswers: the last answer per question wins", () => assert.deepEqual(latestAnswers([{ question: "Q1", answer: "a" }, { question: "Q1", answer: "b", by: "owner" }]), { Q1: { answer: "b", option: null, by: "owner", at: null } }));
 check("indexYaml follows the dynamics skeleton", () => {

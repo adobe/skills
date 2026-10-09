@@ -35,7 +35,7 @@ const pathOf = (p) => p.path || `/${p.slug}`;
 const listed = (paths) => (paths.length > LIST_MAX ? `${paths.slice(0, LIST_MAX).join(', ')}, … (+${paths.length - LIST_MAX})` : paths.join(', '));
 
 /** The rows that should answer on the live host. */
-// probed at the URL EDS serves (a folder index at `/a/`): `/a` answers 301, which the 200-only probe counts as not live
+// probed at the URL EDS serves (a folder index at `/a/`): `/a` 404s on a plain site (some add a 301; neither is 200)
 export const deliveredPaths = (pages) => pages.filter((p) => DELIVERED.has(statusOf(p))).map(publicUrl);
 
 /** Is the rollout's final phase ended? The LAST I-dashboard line decides (a later `start` re-opens it). */

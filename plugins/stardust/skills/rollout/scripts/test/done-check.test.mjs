@@ -37,10 +37,10 @@ check('publicUrl: a folder index is served at /a/ (its migrated file is …/inde
   assert.equal(publicUrl({ path: '/', source: { migratedHtml: 'stardust/migrated/index.html' } }), '/');
   assert.equal(publicUrl({ path: '/search', source: { migratedHtml: 'https://example.com:search' } }), '/search');
 });
-check('deliveredPaths probes a folder index at /a/, which a 200-only HEAD accepts (/a answers 301)', async () => {
+check('deliveredPaths probes a folder index at /a/, which a 200-only HEAD accepts (/a 404s)', async () => {
   const pages = [{ path: '/en/news', source: { migratedHtml: 'm/en/news/index.html' }, delivery: { status: 'verified' } }];
   assert.deepEqual(deliveredPaths(pages), ['/en/news/']);
-  const served = { '/en/news/': 200, '/en/news': 301 };
+  const served = { '/en/news/': 200, '/en/news': 404 };
   assert.deepEqual(await probeLive('https://example.com', deliveredPaths(pages), { fetchImpl: async (u) => ({ status: served[new URL(u).pathname] }) }), []);
 });
 check('a clean run is complete, with the live probe recorded as run', () => {

@@ -22,7 +22,7 @@
  *   2. Rewrites every <a href> whose host is a --source-host (with or without
  *      `www.`, http or https or protocol-relative) AND whose path resolves in
  *      the map to that root-relative URL (EDS 404s on `.html` and on a leaf's
- *      trailing slash; `/x` answers 301 for a folder index), preserving ?query
+ *      trailing slash; `/x` 404s for a folder index), preserving ?query
  *      and #fragment.
  *   3. Normalizes root-relative internal hrefs that resolve in the map to the
  *      same URL.
