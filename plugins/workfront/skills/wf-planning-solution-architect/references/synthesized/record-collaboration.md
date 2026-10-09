@@ -9,9 +9,18 @@ Sources:
 - **History**: system-recorded field changes
 
 ## Access for both
-- Contributor+ license
+- Contributor+ license for equal bundled quantities. Unequal quantities have no Planning Contributor; standalone uses Administrator/Standard. See `../release-and-access.md`.
 - View+ on workspace + record type
 - Light/Contributor users need a Planning-enabled layout template
+
+## Viewing, editing, and sharing
+
+- Open/Restricted defaults affect editing of newly created records across create paths, not existing records or viewing. Others retain View; system administrators/workspace managers retain Manage. The creator is always an editor and cannot be removed; added editors must already have Contribute or Manage on the record type; only Planning Standard users can hold Manage on records.
+- Record overrides grant View/Manage within type-level access. Removing an individual's direct grant does not remove inherited View in the documented model.
+- Field sharing (No Access, View, Manage) applies across views, details, connections and lookups, dashboards, the API, MCP tools, and exports/imports where rolled out. It does not apply to request forms or public views (see `../release-and-access.md`). Restricted value changes are not recorded in History. Hiding a column is not security.
+- Request sharing uses View/Contribute/Manage plus requester defaults. Its permissions are not record permissions.
+- Standalone sharing supports users/teams, not Workflow groups/roles/companies. Ownership transfer requires Planning Standard; previous owner retains Manage.
+- Public view sharing for global types is original-workspace only. See `../release-and-access.md` for phased October availability and canonical sources.
 
 ## Comments behavior
 

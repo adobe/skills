@@ -4,6 +4,8 @@ The canonical playbook for designing and building a Workfront Planning workspace
 
 When specifying a workspace build, treat this file as system-prompt-quality instruction. Read it first, work through the full design, and present it once at the end.
 
+Standalone Planning cannot connect/create Workfront objects or share with Workflow groups, roles, or companies; use Planning records and user/team sharing. See `release-and-access.md` for licensing and release dates.
+
 ## Object hierarchy
 
 ```
@@ -37,6 +39,13 @@ For mid-to-large customers, default to a multi-workspace design:
 - Combine `linkableWithAllWorkspaces` with `isGlobal: true` only when broadcasting everywhere is the deliberate intent (e.g., KPIs).
 
 This avoids duplicating reference data across workspaces and prevents drift.
+Connecting record types across workspaces, including this hub pattern, requires **Planning Prime or Ultimate** for both bundled and standalone Planning. On Planning Select, keep connected record types in the same workspace.
+
+Template bundles require **Workfront Workflow Prime or Ultimate**. Having Planning Prime or Ultimate does not, by itself, satisfy the template-bundle requirement.
+
+The **Sample workspaces** tab on the Planning landing page shows the same best-practice workspaces as the template bundle, read-only (workspace managers can modify views). It is visible to Standard users and system administrators. Use it to show customers the pattern; build from the template bundle only where Workflow Prime/Ultimate applies.
+
+Global record types can be added to another workspace from a direct list, one or several at a time.
 
 ## Record types
 
@@ -80,9 +89,11 @@ This avoids duplicating reference data across workspaces and prevents drift.
 ## Fields
 
 ### Field types available
-Single-line text, Paragraph, Single-select, Multi-select, Date, Number, Percentage, Currency, Checkbox, Formula, People, plus system fields (Created by, Created date, Last modified by, Last modified date, Approved by, Approved date, Record ID).
+Single-line text, Paragraph, Single-select, Multi-select, Date, Number, Percentage, Currency, Checkbox, Formula, People, plus system fields (Created by, Created date, Last modified by, Last modified date, Record ID).
 
 Reference and Lookup are also field types, materialized through connections (see Connections section).
+
+Approved by and Approved date were removed from the UI creation catalog on April 16, 2026. Obtain approval metadata through the Original Request connection and its lookups; this UI change does not establish removal of backend field enums.
 
 ### Field rules
 - Fields do not transfer between record types. Use lookups to surface data from connected records.
@@ -91,6 +102,9 @@ Reference and Lookup are also field types, materialized through connections (see
 - Up to 20 formula fields per record type, 50,000 chars per expression.
 - Up to 30 connection fields per record type.
 - Before creating or updating records programmatically, check the record type's field value schema to learn the exact format for each field.
+- Select and People fields can have default values. Defaults are not permission grants; configure record access separately.
+- Date fields can use a fixed display timezone for all collaborators. This does not change API date storage.
+- New select choices have friendly stored values; existing choices retain their alphanumeric IDs. Renaming a label does not change its stored value. Read the actual values rather than deriving integration values from labels.
 
 ### Field value formats (API surface)
 - Number, Percentage, Currency precision: 0 to 4 decimals is what the API accepts. Public docs say up to 6; trust the observed API limit.
@@ -145,17 +159,29 @@ Examples: Campaign > Region, Campaign > Audience, Launch > Product Line.
 
 Target ratio: roughly 1 lookup per reference. The Fréscopa Campaigns record type has 8 references and 8 lookups, which is the model.
 
+Planning People fields can be included in lookups. Workfront connections can expose reference fields (for example a project's Portfolio/Program/Group/Company) as lookups in eligible Workflow-enabled deployments. Check the source field and connection's available lookup choices rather than treating every field as supported.
+
 ### Connection rules
 - The target record type must differ from the source (no self-references).
 - Default to sensible cardinality; do not over-ask.
 - External connections (Workfront, AEM, GenStudio Brand) use `isExternal: true` on `referenceOptions`. Object type codes for Workfront: PROJ, TASK, PORT, PROG, COMP, GROUP.
 - Connection field cap per record type: 30.
+- Existing record types above 30 retain their connection fields but cannot add more.
+- Workfront connections and object-creating automations are unavailable in standalone Planning.
+- Where the new duplicate behavior is rolled out, duplicating records with one-to-one/one-to-many connections defaults to keeping the connection on the original. Moving it to the duplicate is an explicit alternative, not an extra copy of a constrained link.
+
+### Dependent connections and picker filtering
+Use dependencies only between Planning types that already have a connection relationship. Source and dependent fields must coexist on the same third (host) type; all fields in a dependency chain stay on that host. Each dependent field has at most 3 direct controllers; a dependency structure has at most 6 connections and 7 types.
+
+Changing a source clears dependent values automatically with a notification. Making a connection dependent automatically creates the corresponding field on the linked type, which counts toward its 500-field limit. Dependencies work across workspaces, not with Workfront or AEM objects. Fixed picker filtering rules are separate from dependencies, and neither changes hierarchy limits. Verify rollout in `release-and-access.md`.
 
 ### Sizing risk: 500-connected-records cap
 Multi-select non-hierarchy connections cap at 500 records connected to one record. If a customer's projected volume per parent exceeds this, the design is wrong, not the limit. Reframe as architecture before granting any exception, even at lower projected volume. Detail: see `references/customer-conversation-framings.md`.
 
 ### Hierarchy as a connection layer
 For deep parent-child structures, use hierarchies (4 record types max per hierarchy, 5 hierarchies per workspace). Inside a hierarchy, the parent-per-child cap drops from 500 to 10. If a roadmap may extend a hierarchy past 4 levels, leave headroom: build at 3 levels and use non-hierarchy connections for the next layer.
+
+The 10-parent cap counts records, not record types. A record type can only have one parent type per workspace; it can be a parent in several hierarchies, but not a parent in one and a child in another in the same workspace. Workfront Projects are always the last level.
 
 ## Views
 
@@ -176,6 +202,7 @@ Best for work over time, spotting overlaps and gaps, parent-child breakdown.
 - Always configure: Grouping (Region, Market, Owner), Breakdown (child record types if applicable), Date range.
 - Breakdown requires the child record type to also have date fields.
 - Only one breakdown at a time.
+- Swimlane grouping, breakdown filters, sorting, group collapse/expand, and resizing the grouping panel (Swimlane layout only) have feature-specific availability. Custom weeks are set in Setup > Custom Quarters, including for standalone Planning, and display only in Planning timelines.
 - Up to 5 connected record types shown.
 - Example names: "Q1 EMEA Campaign Roadmap", "2024 Product Launch Schedule".
 
@@ -183,11 +210,21 @@ Best for work over time, spotting overlaps and gaps, parent-child breakdown.
 Best for daily / weekly scheduling, time-specific moments.
 - **Requires 2 Date fields** (Start Date + End Date).
 - Filters only. No grouping, no sorting.
+- Week view initially displays 1,000 records across the visible week with Load more where rolled out; this is display paging, not a storage limit.
 - Example names: "Campaign Activation Calendar", "Social Content Schedule".
 
 ### Field visibility in views
 - Newly created fields auto-show in all existing views.
 - When adding fields after views exist, verify they appear where expected; use `update_view` to adjust column visibility.
+- Hiding a column is not field security. Field sharing (No Access, View, Manage) is a separate, phased capability enforced in views, details, connections and lookups, dashboards, the API, MCP tools, and exports/imports. It is not enforced on request forms or public views, and formula fields expose calculated values unless restricted too. Keep fields submitters must not see off the form. See `release-and-access.md`.
+
+### Record Details page views
+- The Details page supports custom views in addition to the built-in "all fields" and "table view fields" views. The old **Show all fields** setting is gone; do not instruct users to toggle it.
+- For work types with many fields, create a focused Details view per audience instead of relying on the all-fields view.
+
+### Record colors
+- Record colors can be customized (standard or custom colors) and shown in table, timeline, and calendar views and on the Details page.
+- Timeline and calendar bars can be color-coded by single-select, multi-select, or connected record field values; connected fields can display the linked record's color.
 
 ### Views cap
 100 views per record type per user.
@@ -204,11 +241,15 @@ Populate a new workspace with 3 to 5 records per record type using realistic val
 
 Bulk record operations are NOT atomic. Always check the response for per-record errors.
 
+Adobe recommends API v2 for direct integrations. PATCH and bulk operations are v2-only. See `api-contract.md` for PATCH and bulk operation guidance.
+
 ## Business rules
 
-Consider whether 1 or 2 rules would enforce useful invariants:
-- "Campaign Status cannot move to Complete unless End Date is in the past."
-- "Tactic Budget cannot exceed Campaign Total Budget minus other allocated Tactics."
+Consider whether 1 or 2 rules would enforce useful editing or deleting restrictions:
+- Allow editing only while Status is Draft.
+- Restrict deletion once Status is Approved.
+
+Workspace managers configure these conditions. Business rules are unavailable on global record types; Formula, Lookup, and Reference fields cannot be used in conditions (use `ARRAYLENGTH(field)=0` for connected fields). Rules don't block record creation and apply to existing records at their next edit or delete. See `release-and-access.md` for release dates.
 
 Do not skip business rules just because they are easy to defer. Even simple rules make the workspace feel mature.
 
