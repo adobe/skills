@@ -8,6 +8,8 @@ Source of truth: the Planning "Limitations overview" page on Adobe Experience Le
 
 Workfront Planning ships in three license tiers. Tier affects total record volume, not the per-object limits listed further down.
 
+Feature eligibility is separate from numeric limits. See `release-and-access.md` for standalone licensing and package requirements.
+
 | Tier | Records per workspace | Total records per WFP instance |
 |---|---|---|
 | Select | 25,000 | 500,000 |
@@ -29,7 +31,7 @@ The two limits in the table above are the only ones that vary by tier. Confirm t
 - Fields per record type or taxonomy: 500.
 - Paragraph fields per record type: 20.
 - Formula fields per record type: 20.
-- Connection fields per record type: 30.
+- Connection fields per record type: 30. Existing types above 30 retain their additional fields but cannot add more (Q1 2026 release notes).
 - Views per record type per user: 100.
 
 ### Field-level
@@ -41,6 +43,8 @@ The two limits in the table above are the only ones that vary by tier. Confirm t
 - Records connected to one record in a multi-select connection (no hierarchy): **500**. Past customer escalations have hit this limit. See `customer-conversation-framings.md` for the recommended reframe.
 - Parent records connected to one child record inside a hierarchy: 10.
 - Record types per hierarchy: 4.
+- A child has one parent **type** per workspace, distinct from its 10 parent **records**. Parent-in-one/child-in-another reuse in the same workspace is invalid.
+- Dependent connections: at most 3 controlling fields per dependent field, 6 dependency connections and 7 types in the structure. Cross-workspace supported; Workfront/AEM excluded. See `release-and-access.md` for rollout and prerequisites.
 
 ### Sharing-level
 - Sharing entities per WFP object: 100.
@@ -55,6 +59,9 @@ The two limits in the table above are the only ones that vary by tier. Confirm t
 - CSV/Excel size for record type creation: 5 MB.
 - Rows in import CSV/Excel: 25,000.
 - Columns in import CSV/Excel: 500.
+
+### Display paging, not capacity
+- Calendar week initially displays 1,000 records across the visible week, with Load more (Preview August 27 / fast September 17 / everyone October 15). This does not lower the storage limit.
 
 ## How to use this in SA conversations
 
@@ -79,7 +86,7 @@ These are backend server-side response times, not browser-perceived page loads, 
 ### When a customer asks about tier upgrade triggers
 Common triggers for moving from Select to Prime:
 - Approaching 25,000 records per workspace (the Select cap).
-- Heavy multi-workspace use with shared taxonomies (the central-hub pattern works better with Prime headroom).
+- Connecting record types across workspaces, including the central-hub pattern with shared taxonomies. This requires Planning Prime or Ultimate; Select supports same-workspace connections only.
 - Anticipated growth above 500,000 total records per instance.
 
 Common triggers for moving from Prime to Ultimate:
