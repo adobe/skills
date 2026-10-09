@@ -11,7 +11,7 @@
  * qa `dynamics` check.
  *
  *   node dynamics-check.mjs --origin https://main--site--org.aem.live [--parity stardust/dynamics/parity.json]
- *        [--out stardust/qa] [--auth-header "token …" | --token-env SITE_TOKEN] [--headed]
+ *        [--contract stardust/martech-contract.json] [--out stardust/qa] [--auth-header "token …" | --token-env SITE_TOKEN] [--headed]
  *
  * Writes (under --out, default stardust/qa):
  *   dynamics-report.md     one row per replayed check (PASS/FAIL, detail, third-party requests)
@@ -38,12 +38,19 @@
  *                  controllable" passed 26/26 on a recorded run while nothing played — the capture freeze
  *                  (video at t=0) had become the spec. Exported as `judgeVideoPlayback(sample, check)`.
  *   consent-gate   { path*, forbiddenHosts*[] }                    no request to those hosts before consent
+ *   martech        { path*, mode*: gate|accept, forbiddenHosts?[], expect?[{ id, hosts[] }], productionHosts?[] }
+ *                  gate: no forbiddenHosts host is requested; accept: each expected id requests one of its hosts.
+ *                  Cross-site requests are aborted once their host is recorded, so a replay never sends a hit to a
+ *                  production account; skipped on a production host. Built by `martechChecks(contract)`.
  *   no-page-errors { paths*[] }                                    no uncaught exceptions
  * Every check also records the third-party request statuses it observed, so a
  * probe-induced failure is distinguishable from a vendor restriction.
+ *
+ * --contract (default: stardust/martech-contract.json when it exists, written only by `dynamics-plan --martech`)
+ * appends the martech feature; with a contract and no parity file only the martech checks run.
  */
 /* eslint-disable no-await-in-loop, no-restricted-syntax, max-len */
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { arg, flag, readJSON, writeJSON, writeText, provenance, loadPlaywright, resolveAuthHeader, attachOriginAuth, sameSite } from './lib.mjs';
 
@@ -133,6 +140,35 @@ export function compareSearchResults(results, { expectIncludes, expectCount, exp
   return { pass: reasons.length === 0, detail: reasons.length ? `${summary} · ${reasons.join(' · ')}` : `${summary} · matches the source`, reasons };
 }
 
+const DEFAULT_CONTRACT = 'stardust/martech-contract.json';
+const hostOf = (u) => { try { return new URL(u).host; } catch { return ''; } };
+
+/** off by default: nothing on `/`; with `?martech=on` a category-gated route waits for consent; enabled ones load on accept */
+export function martechChecks(contract) {
+  const { cmp } = contract.consent || {};
+  const routes = contract.routes || [];
+  const enabled = routes.filter((r) => r.enabled);
+  const base = { type: 'martech', productionHosts: contract.productionHosts || [] };
+  const host = (r) => hostOf(r.src);
+  const checks = [{ ...base, path: '/', mode: 'gate', forbiddenHosts: [...new Set([...routes.map(host), hostOf(cmp?.src)])].filter(Boolean).sort() }];
+  const gated = enabled.filter((r) => r.category).map(host);
+  if (gated.length) checks.push({ ...base, path: '/?martech=on', mode: 'gate', forbiddenHosts: [...new Set(gated)].sort() });
+  const expect = [...(cmp?.enabled ? [{ id: 'cmp', hosts: [hostOf(cmp.src)] }] : []), ...enabled.map((r) => ({ id: r.id, hosts: [host(r)] }))];
+  if (expect.length) checks.push({ ...base, path: '/?martech=on&consent=accept', mode: 'accept', expect });
+  return { id: 'martech', feature: 'martech: consent + tag routing', class: 'T', status: enabled.length || cmp?.enabled ? 'owner-enabled' : 'scaffolded-off', checks };
+}
+
+export function judgeMartechRequests(hosts, c) {
+  const hits = (p) => hosts.filter((h) => h === p || h.endsWith(`.${p}`));
+  if (c.mode === 'gate') {
+    const leaked = [...new Set((c.forbiddenHosts || []).flatMap(hits))];
+    return { pass: leaked.length === 0, detail: leaked.length ? `tags fired without consent: ${leaked.join(', ')}` : `no tag host requested (${(c.forbiddenHosts || []).length} gated · ${hosts.length} cross-site host(s) blocked)` };
+  }
+  const expect = c.expect || [];
+  const missing = expect.filter((g) => !g.hosts.some((p) => hits(p).length));
+  return { pass: expect.length > 0 && missing.length === 0, detail: missing.length ? `not requested after consent: ${missing.map((g) => `${g.id} (${g.hosts.join(' | ')})`).join(', ')}` : `${expect.length} route(s) requested after consent` };
+}
+
 const RUNNERS = {
   async 'fetch-json'(c, { ctx, origin }) {
     const { page } = await openPage(ctx, origin, '/');
@@ -220,6 +256,25 @@ const RUNNERS = {
     const leaked = thirdParty.filter((t) => c.forbiddenHosts.some((h) => t.host.includes(h)));
     return { pass: leaked.length === 0, detail: leaked.length ? `fired before consent: ${[...new Set(leaked.map((t) => t.host))].join(', ')}` : `no request to ${c.forbiddenHosts.length} gated host pattern(s) before consent`, thirdParty };
   },
+  async martech(c, { ctx, origin }) {
+    const own = new URL(origin).host;
+    if ((c.productionHosts || []).includes(own)) return { pass: true, detail: `skipped — ${own} is a production host; replay on the preview origin` };
+    const page = await ctx.newPage();
+    const hosts = new Set();
+    try {
+      await page.route('**/*', (route) => {
+        const h = hostOf(route.request().url());
+        if (!h || sameSite(h, own)) return route.fallback();
+        hosts.add(h);
+        return route.abort();
+      });
+      await page.goto(origin + c.path, { waitUntil: 'domcontentloaded', timeout: 60000 });
+      await settle(c.waitMs || 6000);
+    } finally {
+      await page.close();
+    }
+    return judgeMartechRequests([...hosts], c);
+  },
   async 'no-page-errors'(c, { ctx, origin }) {
     const all = [];
     for (const p of c.paths) { const { page, errors } = await openPage(ctx, origin, p); await page.close(); all.push(...errors.map((e) => `${p}: ${e}`)); }
@@ -227,14 +282,17 @@ const RUNNERS = {
   },
 };
 
+const featuresOf = (parity, contract) => [...(parity?.features || []), ...(contract ? [martechChecks(contract)] : [])];
+
 /** replay every check of every feature; returns results with per-check third-party statuses */
-export async function replay({ origin, parity, authHeader = null, headed = false }) {
+export async function replay({ origin, parity, contract = null, authHeader = null, headed = false }) {
+  const features = featuresOf(parity, contract);
   const { chromium } = await loadPlaywright();
   const browser = await chromium.launch({ headless: !headed });
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   await attachOriginAuth(ctx, origin, authHeader);
   const results = [];
-  for (const f of parity.features || []) {
+  for (const f of features) {
     for (const c of f.checks || []) {
       const t0 = Date.now();
       const runner = RUNNERS[c.type];
@@ -261,20 +319,23 @@ if (process.argv[1] && process.argv[1].endsWith('dynamics-check.mjs')) {
   const origin = (arg('origin') || '').replace(/\/$/, '');
   if (!origin) { console.error('usage: dynamics-check.mjs --origin <published origin> [--parity stardust/dynamics/parity.json]'); process.exit(2); }
   const parityFile = arg('parity', 'stardust/dynamics/parity.json');
-  const parity = readJSON(parityFile);
-  const results = await replay({ origin, parity, authHeader: resolveAuthHeader(), headed: flag('headed') });
+  const contractFile = arg('contract') || (existsSync(DEFAULT_CONTRACT) ? DEFAULT_CONTRACT : null);
+  const contract = contractFile ? readJSON(contractFile) : null;
+  const parity = readJSON(parityFile, contract ? { features: [] } : undefined);
+  const results = await replay({ origin, parity, contract, authHeader: resolveAuthHeader(), headed: flag('headed') });
   const out = arg('out', 'stardust/qa');
   const pass = results.filter((r) => r.pass).length;
+  const features = featuresOf(parity, contract);
   const md = [
     `# Dynamics parity check — ${origin} — ${new Date().toISOString()}`, '',
-    `Replayed ${results.length} checks over ${(parity.features || []).length} features · pass ${pass} · fail ${results.length - pass}. Flows, not presence.`, '',
+    `Replayed ${results.length} checks over ${features.length} features · pass ${pass} · fail ${results.length - pass}. Flows, not presence.`, '',
     '| feature | class | status | check | result | detail | third-party requests |', '|---|---|---|---|---|---|---|',
     ...results.map((r) => `| ${r.feature} | ${r.class} | ${r.status || ''} | ${r.type} | ${r.pass ? 'PASS' : 'FAIL'} | ${String(r.detail).replace(/\|/g, '/')} | ${r.thirdParty} |`),
     '', '## Features without checks', '',
-    ...(parity.features || []).filter((f) => !(f.checks || []).length).map((f) => `- ${f.feature} (${f.class}) — ${f.status}${f.owner ? ` · owner: ${f.owner}` : ''}${f.environmentLimit ? ` · environment limit: ${f.environmentLimit}` : ''}`),
+    ...features.filter((f) => !(f.checks || []).length).map((f) => `- ${f.feature} (${f.class}) — ${f.status}${f.owner ? ` · owner: ${f.owner}` : ''}${f.environmentLimit ? ` · environment limit: ${f.environmentLimit}` : ''}`),
   ];
   writeText(join(out, 'dynamics-report.md'), md.join('\n'));
-  writeJSON(join(out, 'dynamics-report.json'), { _provenance: provenance('check', { origin, parity: parityFile }), results });
+  writeJSON(join(out, 'dynamics-report.json'), { _provenance: provenance('check', { origin, parity: parityFile, ...(contractFile && { contract: contractFile }) }), results });
   console.error(`[dynamics-check] ${pass}/${results.length} pass → ${join(out, 'dynamics-report.md')}`);
   setTimeout(() => process.exit(pass === results.length ? 0 : 1), 200).unref();
 }

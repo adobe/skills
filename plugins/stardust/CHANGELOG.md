@@ -4,6 +4,217 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.31.4 — a folder index lives at `/x/`: sitemap, probes and links follow EDS
+
+EDS serves a folder index (`x/index.html`) at `/x/`, and `/x` 404s on a plain site (one site seen adds a 301); a leaf page lives at `/x/y`, and
+`/x/y/` 404s (checked on a live origin). Stardust's rule was "never a trailing slash", which is right for leaves
+and wrong for folder indexes. Three consequences:
+- the rollout sitemap listed every folder index at a URL that 404s;
+- `done-check`'s live probe (`HEAD`, no redirects, 200 only) counted every delivered folder index as not live;
+- `localize-links` wrote folder-index links that 404, and delivery-lint flagged the correct `/x/` as a P1;
+- spec could not tell a folder index from its source path, so its redirects pointed at `/x`.
+
+- **Rollout** (`lib.mjs publicUrl`): `pages[].path` stays the key; a page whose migrated file is `…/index.html` is
+  published, fetched and probed at `path/` (`assemble.mjs` sitemap, `verify.mjs`, `loadPageHTML`, `done-check`).
+- **`localize-links`** writes the served URL (`eds-path.mjs deliveredUrl`): `/x/` for a folder index, `/x/y` for a
+  leaf; redirect destinations resolve the same way. Matching still uses the lookup key.
+- **delivery-lint** judges a trailing slash by its target, with the content tree (`--content`, default `./content`):
+  - a leaf's slash stays P1;
+  - a folder index's slash passes;
+  - a folder index without it is a new P1, `folder-index-slash` (it 404s);
+  - a target outside the tree is a P2 advisory.
+
+  First test file for the lint.
+- **Docs:** the rule ("no `.html`; a slash only on a folder index") replaces "EDS 404s on `/x/`" in deploy and
+  rollout.
+- **spec** (`servedUrls`): a page with pages below it is a folder index, so its `eds_path` is `/x/` and a migration
+  redirect `/x` → `/x/` is recorded (a plain EDS site 404s on `/x`).
+- **Field rollout** of 10 pages (4 folder indexes) on a new EDS site: every sitemap URL, `done-check` probe and
+  localised link answers 200; `/x` without the slash 404s, as above.
+
+## 0.31.3 — one delivered-path contract; spec redirects seed rollout
+
+Five path rules disagreed on the same input: spec's `edsPath`, rollout's path-safety lint, deploy's `canonicalPath`
+and its copy in `davids-model-lint`, and rollout's own delivered path. `/a/index.html` gave `/a/`, `/a/index.html`
+and `/a`. Checked on live EDS sites: a folder index is served at `/a/` (`/a` 404s on a plain site, `/a/index` too), a leaf
+page at `/a/b` (`/a/b/` 404s), and `.html` 404s.
+
+- **`deploy/scripts/eds-path.mjs`** (new, pure): `deliveredUrl` (spec's rule, now also collapsing `//`), `daPath`
+  (`/a/` ↔ `/a/index`) and `pathKey` (the lookup key). spec's knowledge, `localize-links` and `davids-model-lint`
+  import it, so the two `canonicalPath` copies are gone. spec's Setup copies the deploy scripts too.
+- **`rollout/scripts/seed-redirects.mjs`** (new): when a spec exists, Gate 3 first appends its redirects to
+  `stardust/redirects.tsv`:
+  - every source URL that changes on EDS;
+  - the source's own redirects, pointed at the delivered page.
+
+  Rows already there win; external targets, targets outside the knowledge and loops are counted and skipped. On a
+  sports-federation run (about 12,000 pages) it seeds 12,312 rows, 241 of them existing redirects made one hop; on a
+  museum run, 33.
+- **Prose:** rollout's path-safety rules are written once, in `delivery-gates.md` § Gate 3; two recorded anecdotes
+  in deploy's link-localisation paragraph are folded.
+- **A field rollout** (10 pages of a museum site on a new EDS site) found two more:
+  - `localize-links` rewrote links through any redirect, including the seeded ones to pages of later waves, so 8
+    links would have 404ed. A redirect now rewrites links only to a page of the content tree; the rest stay absolute.
+  - The redirects sheet never matches a source containing `:` or `%` (those requests 404 first; measured with probe
+    rows), and 31 of the museum site's 33 seeded rows had one. `seed-redirects` writes those to
+    `stardust/redirects-cdn.tsv`, as CDN rules.
+- **Open (next release):** rollout publishes a folder index at `/a`, which 404s on a plain EDS site, and the link
+  rules call a trailing slash a 404 although a folder index is served there.
+
+## 0.31.2 — notes cleanup: two retired notes removed, dangling note citations dropped
+
+`notes/` held two documents nothing reads at run time, and six skill docs cited notes that were never in
+this repository.
+
+- **Removed** `notes/deploy-improvements-archive.md` (the frozen deploy ledger, findings #1–#80) and
+  `notes/multi-agent-distribution.md` (the 2026-09 multi-harness assessment). The `(#NN)` citations stay as
+  provenance; `deploy/SKILL.md` § References now says how to read the ledger from git
+  (`git show 940b8795:plugins/stardust/notes/deploy-improvements-archive.md`). The README and
+  `replica/reference/handoff-contract.md` no longer point at either file.
+- **Dropped citations of missing notes:** `notes/variant-convergence.md` (`prototype/SKILL.md`, the
+  `composition-delta-trivial` fixture), `notes/migrate-template-canon-refactor.md`
+  (`prepare-migration/SKILL.md`, `stardust/reference/artifact-map.md`,
+  `stardust/reference/data-attributes.md`) and `notes/prototype-broken-by-default-detector-2026-04-29.md`
+  (`prototype/SKILL.md`). The rules they backed are unchanged.
+
+## 0.31.1 — spec knowledge, wave 1: complete redirects, the dynamics vocabulary, a scoping entry
+
+A review of how the other skills can read `stardust/spec/knowledge/` found gaps in spec's own output, and small
+readers that would fail on it.
+
+- **Redirects** (`spec-knowledge.mjs`): a migration row for every page whose delivered path differs from its
+  source path. A path that changed only by its `.html` had no row, yet EDS answers 404 on `.html` and rollout
+  wants a sheet row for each. On a sports-federation run (about 12,000 pages) the rows grow from 5,287 to 12,072.
+- **Feature vocabulary:** S10 checks class, disposition, reproducibility and status against the dynamics triage
+  vocabulary (`TAXONOMY`, exported by `dynamics/scripts/lib.mjs`) and stops naming each value outside it. The
+  field run's judgement used five values dynamics would have rejected later.
+- **Router:** a flow-neutral scoping entry ("scope / estimate / plan / spec the migration of X" → `spec`, never
+  stamps `flow`). "Build a migration plan" no longer routes to `replica`. A large site (1,000+ sitemap URLs, no
+  spec) gets a one-line offer to scope it first; it is never run unasked. The two copies of the wrong-flow anecdote
+  are folded.
+- **Ledger:** spec's stages are phases (`s1-inventory` … `s10-knowledge`); spec writes its status lines.
+- **`localize-links --redirects`** reads JSON Lines (`{src, target}`, spec's `knowledge/redirects.jsonl`) and the
+  published sheet (`{data:[{Source, Destination}]}`). It reported 0 pairs from the first and threw on the second.
+  First test file for the script.
+- **`crawl.mjs --max 0`** means no cap. It silently became 25, so a `--all` crawl translated to `--max 0` kept 25
+  pages.
+## 0.31.0 — publish always; done is one verdict
+
+Two contracts a hands-off run had to be told from outside the skill, because the skill left them open. Both
+are now the skill's own.
+
+- **Publish always** (contract change). The replica handoff contract said "Publish is a decision… stay
+  preview-only until it is made", while rollout Phase C says publish in the loop. Which rule won depended on
+  which document the agent read last, and nobody owned the decision under hands-off. Now every delivered page,
+  the redirects sheet and the chrome documents go live (`PUT → preview → live`). The decision step and its
+  `eds-conversion-log.md` record are gone, C0 and the cluster deploys no longer hold `--no-publish`, and the DA
+  protocol's publish step is the default rather than optional. `deploy-batch.mjs --no-publish` remains for an
+  explicit preview-only ask. Deploy's font-licensing hold (self-hosted proprietary faces) is unchanged.
+- **`done-check.mjs`** (new, rollout). One completion verdict from the ledgers the run already writes:
+  - `pages_unfinished`: coverage rows not verified.
+  - `pages_failed`: failed rows, or a failed published-origin gate.
+  - `pages_not_live`: delivered rows that do not answer 200 on the live host.
+  - `open_p1`: the optimize gate's own count, source parity excluded.
+  - `rollout_incomplete`: the last `I-dashboard` line is not an `end`.
+
+  Exit 0 complete, 1 gaps, 2 usage. `--offline` skips the live probe, and `--json` prints
+  `{ complete, gaps[], liveChecked }`. Every reader that needs "is the run done" previously re-derived it from
+  the same files.
+- **Replica handoff** writes `replica handoff end` only on `done-check.mjs` exit 0, and closes each gap with its
+  own remedy (handoff contract § 5). A gap only the owner can close is a `blocked` line.
+- **Bounded entry captures dynamics:** `extract --single --dynamics` (and `--pages … --dynamics`), because Phase 2's
+  dynamic-surface gate needs the per-page reach signals that `--single` alone does not record.
+
+## 0.30.3 — spec: knowledge files instead of a database; one rule format instead of SQL
+
+`spec` ended at `spec.sqlite`, but no stardust skill read it. Its one client, a viewer application, loads it into
+its own database, and the file carried that viewer's tables, onboarding text and HTML findings. The skill now ends
+at JSON files clients read, and knows no client. **Contract change** (released as a patch): `knowledge/` replaces
+`spec.sqlite`, and judgement rules replace SQL.
+
+- **Output** (`spec/reference/knowledge.md`): `stardust/spec/judgement/` (the agent's decisions) and
+  `stardust/spec/knowledge/` (computed by S10, `spec-knowledge.mjs`): urls, page blocks, blocks with variants,
+  templates, variants, redirects, broken links, bad links grouped by target, features with their pages, martech,
+  metadata, query indexes with a draft `helix-query.yaml`, locales, open questions, findings. Committed. Raw
+  material, captures and crops stay in `stardust/.work/spec/`. On a sports-federation site (about 13,000 URLs)
+  the folder is 37 MB, about 2.5 MB compressed.
+- **Rule format** (`rules.mjs`, knowledge.md § Rules) for feature `reach`, question `impact` and `{{…}}` in findings:
+  URL terms (`live`, `sitemap`, `block:`, `signal:`, `nested`, `verdict:`), filters with globs, `urls`, `count`,
+  `sum`, keyed and `max:` lookups. A rule that cannot be computed stops S10. `sql:`, `url:` and `bvariant:` are
+  retired; `block:` no longer implies the sitemap (write `sitemap block:x`). No SQL engine is left in the skill.
+- **Answers** in `judgement/answers.json` replace a question's default in `knowledge/open-questions.json`; the
+  default stays recorded.
+- **No viewer concerns:** no viewer tables, no tour or header label, findings as plain `{ title, text, numbers }`.
+- **Config** at `stardust/spec/spec.config.json`; `work` names the raw-material folder.
+- **Shared instruments:** spec-martech classifies hosts with the dynamics skill's `vendorFor` (a missing table now
+  fails instead of returning nothing); the index yaml follows the dynamics skeleton (description meta, image as a
+  path, robots, the chrome and search excludes); Setup copies the diff and dynamics scripts, which S1, S2 and S9 need.
+- **Verified** on two recorded runs. Every rule from their judgement files (150) gives its SQL value on the same
+  data, apart from an empty sum (0, not null). On the 13,000-URL run, `spec-knowledge.mjs` reproduces all 25 sets
+  of its `spec.sqlite`, and a database rebuilt from `knowledge/` matches it table for table (meta aside).
+- **Field run** on a museum site behind bot protection (generic profile, headed tier, 300-URL sample): S1–S10 ran in
+  the new layout from the Setup copies, and a client database built from its knowledge. The CDN turned the headed
+  browser away after about 100 pages; the spec covers the 89 pages read, and a finding says so. It found three
+  0.30.1 bugs, fixed here:
+  - **Drupal names:** the generic namer took the first nameable class, so `paragraph` hid
+    `paragraph--type--<name>` and every paragraph became one component. Block-style classes now win (`lib.mjs`,
+    shared by parse and capture).
+  - **S4 refusals:** a bot wall's 403 on a link counted as a broken link. `spec-links` records it as `blocked`, not
+    a 404 (`blockedBy` moved to `lib.mjs`).
+  - **S1 crawl:** the crawl kept `<link>` icons, fonts and manifests as pages (`NOT_PAGE` widened).
+- **Existing projects:** move `<dir>/{inventory,fetch,parse,links,rum,martech,dynamics,media,sheets}` to
+  `stardust/.work/spec/`, `judgement/page-blocks.jsonl` and `variants.json` to `.work/spec/map/`, the config into
+  `stardust/spec/`, then rewrite `sql:` rules and HTML findings.
+
+## 0.30.2 — opt-in martech: carry the source consent and tag managers over, switched off
+
+A migration dropped the source's CMP and tag managers silently, or left an agent to re-wire them by hand
+against accounts it does not own. Martech now has one contract, built only when the owner asks, from the
+evidence `spec-martech.mjs` already reads (`dynamics/reference/martech.md`).
+
+- **Evidence**: `spec-martech.mjs --urls … --out stardust/martech` runs standalone, without a spec.
+- **Contract** (`dynamics-plan.mjs --martech`): `stardust/martech-contract.json` and
+  `martech-handoff.md`. It holds the CMP with its id, the source consent model (`per-tag` or
+  `owner-decision`), the categories from the CMP configuration, one route per tag-manager loader, and
+  the Launch rules and data elements to rewrite. Every part is written disabled, and a rebuild keeps
+  the owner's choices. CMP scripts and loader patterns live in `vendors.json`; detection is unchanged.
+- **Runtime** (`deploy/scripts/martech-scaffold.mjs`): `scripts/martech.js` from the enabled parts. The
+  CMP loads in `loadEager()`, tag managers from `delayed.js`, and a route with a `category` waits for
+  that consent group. Tags load only on production hosts; on preview `?martech=on` (plus
+  `&consent=accept`) turns them on.
+- **Verification** (`dynamics-check.mjs`, qa `dynamics`): a `martech` check aborts cross-site requests
+  after recording the host. It asserts nothing loads by default, gated routes wait for consent, and
+  enabled hosts are requested after accept.
+
+## 0.30.1 — spec: any website, a page cap, and blocked origins
+
+`spec` parsed AEM sites only. A WordPress news site (2,061 sitemaps, about 412,000 URLs) and a Next.js site with
+utility-class markup showed what a generic parser and a cap need.
+
+- **`generic` parser profile** (`spec/reference/config.md`): below main, single-child wrappers are skipped and the
+  children are components, named from a component attribute, a block-style class (`wp-block-*`,
+  `elementor-widget-*`, `paragraph--type--*`), a BEM or CSS-module block, or a shape label (`section.h2.list`) where
+  classes are only utilities; hash prefixes are dropped (`stripPrefix` for a site's own). One rule set
+  (`lib.mjs genericRules`) runs in the parser and in the capture tagger: on 5 of 6 sampled pages the two found
+  identical path ids. The AEM profiles are unchanged: a re-parse of 12,345 AEM Core pages was byte-identical.
+- **One rule set per profile, one layout walk** (`lib.mjs` `profileRules`, `componentLayout`): the capture tagger
+  ran a hand-written copy of the AEM rules; parse and capture now share them, so path ids cannot drift. Parse output
+  byte-identical on 12,345 AEM Core pages (5,192 grid rows), 200 AEM classic pages (651 column controls) and four
+  generic sites; capture path ids and rows identical on the sampled pages of each profile.
+- **Main region fallback** for sites without `main`: `[role=main]`, `#main`, `#content`, `#main-content`,
+  `article`, then the body without header, footer and nav.
+- **Inventory**: stops when the origin redirects (two of three sampled sites were configured with the wrong host);
+  crawls links from the scope root when no sitemap URL is in scope; `--max` / `maxPages` keeps an even sample per
+  section and the database says so (`meta.sample_note`, `inventory_total`).
+- **Template**: a path-only rule (`{ "pathSegments": 1 }`) names templates by section alone.
+- **Blocked origins** (a museum site behind a bot challenge): S1 and S2 classify challenges with the diff skill's
+  `live-session.mjs` (the edge signatures replica's gate uses) and stop at 10% (exit 3) with the choice for the user —
+  allow-list the crawler, `--headed` (the plugin's stealth real-Chrome tier: 5 of 6 sampled pages on the first pass,
+  where bundled headless Chromium got 2), or `--archive <date>` (Internet Archive raw captures, recorded per page and
+  in `meta.evidence_note`). `fetch/technique.json` records the tier so later stages start in it, as extract's
+  `fetchTechnique` does. Pages not read plainly are captured from the fetched HTML with live assets; a page still
+  showing a challenge is an error, never a screenshot. Parse and capture agreed on every path id of the captured pages.
+
 ## 0.30.0 — new skill `spec`: the migration spec before the migration, as one documented database
 
 Scoping a migration was rebuilt by hand per engagement: a crawl, spreadsheets of templates and redirects, a

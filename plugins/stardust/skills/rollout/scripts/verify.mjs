@@ -26,7 +26,7 @@
  */
 import { readFileSync, existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { readJSON, writeJSON, rollupTemplates, rollupConfig } from './lib.mjs';
+import { readJSON, writeJSON, rollupTemplates, rollupConfig, publicUrl } from './lib.mjs';
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
@@ -70,7 +70,7 @@ async function fetchPage(p) {
     return { ok: true, body: readFileSync(f, 'utf8') };
   }
   try {
-    const res = await fetch(`${BASE}${p.path}`);
+    const res = await fetch(`${BASE}${publicUrl(p)}`);
     const body = await res.text();
     if (!res.ok) return { ok: false, reason: `HTTP ${res.status}` };
     return { ok: true, body };

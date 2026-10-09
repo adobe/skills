@@ -191,9 +191,8 @@ Walk `plan.json.steps` in order (representative pages first). For each page:
      source-fidelity gate, which runs on the published origin after `deployed`)
    - **Image-fidelity** — every authored `<img>` src must return 200 or be omitted;
      never ship `<img src="about:error">`. Run `media-reconcile.mjs` (step 2).
-   - **Path-safety** — normalize source paths to AEM-Edge-safe form (lowercase, no
-     trailing `-`/`_`, no `--` segment); record original→normalized in
-     `stardust/redirects.tsv`. (delivery-lint flags violations.)
+   - **Path-safety** — `reference/delivery-gates.md` § Gate 3; record
+     original→normalized in `stardust/redirects.tsv`. (delivery-lint flags violations.)
    - **Source-content hygiene** — skip dead source URLs; author bodyless/PDF-only
      sources thin and faithful (tier `thin`,
      `skills/migrate/reference/fidelity-tiers.md`), don't pad with invented prose.
@@ -431,14 +430,12 @@ link **targets** a roster-driven batch misses
   tree after every wave**: earlier waves' pages gain newly valid targets only
   when a later wave ships them. `--check` is the gate (exit 2 = localizable
   links remain).
-- **Strip trailing slashes and `.html` from internal links.** EDS serves
-  extensionless documents with no trailing slash, so `/x/y/` and `/x/y.html`
-  both 404 (render the 404 block) while `.plain.html` still passes — nav reads
-  green, every link is dead. Normalize every internal `href` (keep bare `/`);
-  repoint `.html` links with no local page at the working source URL.
-- **The audit GETs each href against the LIVE tree.** Structural resolution
-  against the ledger misses trailing-slash and case defects that only
-  delivery exposes.
+- **Link every internal page at its served URL** (`deploy/scripts/eds-path.mjs`):
+  no `.html`, a slash only on a folder index (`/x/`). `.html` and a leaf's
+  slash 404 while `.plain.html` passes. Repoint `.html` links with no local
+  page at the working source URL.
+- **The audit GETs each href against the LIVE tree**: the ledger alone misses
+  slash and case defects.
 - **Targets missing from the capture.** Two cases, both recorded in
   `direction.md` as a named decision with the list: a target the direction's
   caps meant to include is a CAPTURE GAP — crawl it first (capture → migrate →
@@ -584,6 +581,9 @@ findings shows a red count. Also a templates table + the quality scorecard.
 `dashboard/data.json` is the inspectable snapshot — regenerate at every iteration
 boundary. (`state.json` is read-only and optional.)
 
+**Done is one verdict:** the rollout is complete when `node skills/rollout/scripts/done-check.mjs`
+exits 0; otherwise it prints one gap per line.
+
 ## Inputs
 
 | Input | Source | Used for |
@@ -657,6 +657,7 @@ Normalize each one's output into the ledger via `findings.mjs record`. See
 - `scripts/findings.mjs` — record/resolve findings from the external audit sources.
 - `scripts/autofix-aem.mjs` — the AEM autofix engine (edits the EDS project).
 - `scripts/dashboard.mjs` — design-identity dashboard + `data.json` snapshot.
+- `scripts/done-check.mjs` — the completion verdict (Phase I); exit 0 = complete.
 - `scripts/lib.mjs` — shared IO + roll-up + page-loading + autofix-registry helpers.
 
 ## References

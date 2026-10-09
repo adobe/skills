@@ -1,5 +1,5 @@
 [
- "<b>Plan by layout variant, not by template.</b> The largest template has {{SELECT url_count FROM template ORDER BY url_count DESC LIMIT 1}} pages in {{SELECT variant_count FROM template ORDER BY url_count DESC LIMIT 1}} layout variants.",
- "<b>Reuse.</b> {{SELECT COUNT(*) FROM url u WHERE outcome='page' AND in_sitemap=1 AND NOT EXISTS (SELECT 1 FROM page_block pb JOIN block_variant bv ON bv.block=pb.block AND bv.variant IS pb.variant WHERE pb.url_id=u.id AND pb.kind IN ('block','dynamic') AND bv.verdict='new')}} of {{SELECT COUNT(*) FROM url WHERE outcome='page' AND in_sitemap=1}} live pages need no new block.",
- "<b>Redirects:</b> <a href=\"/redirects?kind=migration\">{{SELECT COUNT(*) FROM redirect WHERE kind='migration'}} pages change path on EDS</a>; {{SELECT COUNT(*) FROM url WHERE in_sitemap=1 AND outcome='redirect-broken'}} sitemap URLs redirect into a 404 today."
+ { "title": "Plan by layout variant, not by template.", "text": "The largest template has {{templates[max:url_count].url_count}} pages in {{templates[max:url_count].variant_count}} layout variants." },
+ { "title": "Reuse.", "text": "{{urls live sitemap !verdict:new}} of {{urls live sitemap}} live pages need no new block." },
+ { "title": "Redirects.", "text": "{{count redirects kind=migration}} pages change path on EDS; {{urls sitemap outcome=redirect-broken}} sitemap URLs redirect into a 404 today." }
 ]

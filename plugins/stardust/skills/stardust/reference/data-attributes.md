@@ -84,8 +84,7 @@ become consumers.
 ## Template, module, and slot vocabulary
 
 Page-level identity, module-instance identity, and content-slot
-identity. Added with the migrate-template-canon refactor (see
-`notes/migrate-template-canon-refactor.md`). These are the contract
+identity. Added with the migrate-template-canon refactor. These are the contract
 `migrate` consumes when forking an approved template's structure
 across sibling pages, and the contract downstream conversion plugins
 (EDS, CMS, framework) consume to rewrite stardust's HTML

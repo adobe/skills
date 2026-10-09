@@ -101,8 +101,8 @@ skill when § Two migration flows resolves; `replica` Setup (`replica`),
 `prepare-migration` Setup (`redesign`) and `reskin` Setup (`reskin`) when
 invoked directly; `direct` when a zero-movement phrase hands off
 (`replica`). Absent on redesign-only projects that never migrate (a bare
-`extract` for audit or uplift): the keys mean "a migration flow was
-chosen", not "this is a migration".
+`extract` for audit or uplift, or `spec`, which never stamps): the keys mean
+"a migration flow was chosen", not "this is a migration".
 
 **Guards that read it.** `migrate`, `deploy`, `rollout` and (for migration
 asks only) `extract` refuse to run a migration on a project that has

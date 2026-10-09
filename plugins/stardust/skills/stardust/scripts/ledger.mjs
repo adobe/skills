@@ -114,6 +114,11 @@ export const PHASES = {
     implement: [], // ## Phase 4 — Implement (per plan phase)
     verify: [], // ## Phase 5 — Verify: dynamic parity
   },
+  // skills/spec/SKILL.md — § Stages table, `s<N>-<first word of the stage>`
+  spec: {
+    's1-inventory': [], 's2-fetch': [], 's3-parse': [], 's4-links': [], 's5-real-user': ['s5-rum'], 's6-first': ['s6-capture'],
+    's7-judgement': ['s7-mapping'], 's8-variants': [], 's9-implementation': [], 's10-knowledge': [],
+  },
   // skills/rollout/SKILL.md — `<Letter>-<lower-case first word of the heading>`
   rollout: {
     'A-inventory': [], // ### Phase A — Inventory

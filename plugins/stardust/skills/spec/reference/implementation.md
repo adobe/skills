@@ -3,13 +3,14 @@
 `judgement/implementation.json` says how each part must be built on EDS. Start from `templates/implementation.json`.
 
 ## features[]
-`{ id, class, name, evidence, disposition, reproducibility, pattern, eds, decisions[], reach }` — class, disposition
-and reproducibility use the dynamics taxonomy (`../../dynamics/reference/classes-and-signals.md`, `triage.md`).
+`{ id, class, name, evidence, disposition, reproducibility, pattern, eds, decisions[], reach }` — class, disposition,
+reproducibility and status use the dynamics taxonomy (`../../dynamics/reference/classes-and-signals.md`, `triage.md`);
+S10 stops on any other value.
 Run the dynamics detector on the variant representatives (≥ 80% of each template) plus one page per data-driven
-block and form type, then curate its findings into features. `reach` is how spec-build finds the pages:
-`block:<name>`, `bvariant:<block>|<variant>`, `signal:<name>` (a page signal), `url:<path>`, `sql:<SELECT url ids>`.
+block and form type, then curate its findings into features. `reach` selects the pages, in the rule format
+(knowledge.md § Rules), e.g. `live sitemap block:news-list,event-list` or `live sitemap signal:iframe:*forms*`.
 `signals` in the same file adds regex signals over the raw HTML (`{ "hcp": "HCP_CONTENT" }`). A feature on ≥ 90%
-of pages is site-wide.
+of live sitemap pages is site-wide.
 
 ## Martech (spec-martech output → features, vendors, launch rules, data layer)
 - Tag manager: rules matching page paths with `.html`, or DOM selectors, break silently when URLs and markup change
@@ -32,5 +33,5 @@ Fetch two to four trees fully (S2–S3 with another scopePath) when coverage of 
 
 ## open_questions[]
 Start from `templates/open-questions.json`; keep what applies, add site-specific ones. Each:
-`{ id, area, owner: "stakeholder" | "implementer", blocking, question, context, options[], default, impact_rule, link }`.
-`impact_rule`: `sql:<SELECT one value>` or `value:<n>`.
+`{ id, area, owner: "stakeholder" | "implementer", blocking, question, context, options[], default, impact, link }`.
+`impact`: a number rule (knowledge.md § Rules), e.g. `urls sitemap flag=empty`, or `value:<n>`.

@@ -25,6 +25,8 @@ judgement to a fresh context with read bans on the migration's files (the measur
   columns; a form inside → the form block with aside; a column holding another block → layout only.
 - **nesting**: EDS blocks do not nest; blocks inside a tabs/accordion keep their own rows with `nested_in` (fragments).
 - **Empty components** are authoring noise unless the rule says otherwise; client-rendered ones are kept (`dynamic`).
+- **Generic sites**: shape labels (`section.h2.list`) group look-alike markup, not proven look-alike blocks — decide
+  them from contact sheets; row heuristics apply only to AEM grids.
 - Check the block page counts against `spec-profile.mjs`.
 
 ## Deciding ambiguous components

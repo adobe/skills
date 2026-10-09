@@ -15,16 +15,21 @@
  *
  *   node dynamics-plan.mjs [--in stardust/current/_dynamics.json] [--out stardust/dynamics]
  *        [--target-origin https://…] [--auth-header "token …" | --token-env SITE_TOKEN] [--migrated stardust/migrated]
+ *        [--martech [spec-martech dir, default stardust/martech]]
  *
  * Writes (under --out, default stardust/dynamics):
  *   dynamic-features.generated-plan.json   one row per finding, the four axes pre-filled, with _provenance
  *   dynamic-features.generated-plan.md     the same rows as a table + triage counts by phase
+ * With --martech only (the owner asked to carry the martech over — reference/martech.md):
+ *   stardust/martech-contract.json         CMP + tag-manager routes, all disabled (martech.mjs)
+ *   stardust/martech-handoff.md            how to enable, consent model, routes, rewrite sheet
  * The summary line goes to stderr. Exit 0 on completion; a missing --in file throws (exit 1).
  */
 /* eslint-disable no-await-in-loop, no-restricted-syntax, max-len */
 import { readdirSync, readFileSync, statSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { arg, readJSON, writeJSON, writeText, provenance, resolveAuthHeader, probe } from './lib.mjs';
+import { buildContract, readEvidence, renderHandoff } from './martech.mjs';
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
@@ -38,6 +43,8 @@ const IN = arg('in', 'stardust/current/_dynamics.json');
 const OUT = arg('out', 'stardust/dynamics');
 const TARGET = arg('target-origin');
 const MIGRATED = arg('migrated');
+const MARTECH = arg('martech') === true ? 'stardust/martech' : arg('martech');
+const CONTRACT = 'stardust/martech-contract.json';
 const d = readJSON(IN);
 const probed = Object.keys(d.pages).length;
 
@@ -110,6 +117,14 @@ const rows = d.findings.map((f) => {
 const draft = { _provenance: provenance('plan', { input: IN, target: TARGET || null, migrated: MIGRATED || null }), rows };
 writeJSON(join(OUT, 'dynamic-features.generated-plan.json'), draft);
 
+const contract = MARTECH && buildContract({
+  dynamics: d, martech: readEvidence(MARTECH), provenance: provenance('plan', { input: IN, martech: MARTECH }), previous: readJSON(CONTRACT, null),
+});
+if (contract) {
+  writeJSON(CONTRACT, contract);
+  writeText('stardust/martech-handoff.md', renderHandoff(contract));
+}
+
 const byPhase = {}; for (const r of rows) byPhase[r.phase] = (byPhase[r.phase] || 0) + 1;
 const self = rows.filter((r) => r.reproducibility === 'self' && r.status === 'pending');
 const batch = rows.filter((r) => r.reproducibility !== 'self' && r.status === 'pending' && r.disposition !== 'decided-out');
@@ -124,6 +139,7 @@ const md = [
   `- **One owner decision batch:** ${batch.length} row(s) — ${[...new Set(batch.map((r) => r.decision))].slice(0, 6).join(' · ') || 'none'}.`,
   `- **Already delivered by the capture pipeline:** ${rows.filter((r) => r.alreadyDelivered).length} row(s) — no work.`,
   `- **Host-bound on the target:** ${rows.filter((r) => /dead/.test(r.hostBound || '')).length} of ${Object.keys(hostBound).length} probed API paths — the off-origin data work.`,
+  ...(contract ? [`- **Martech:** ${contract.consent.cmp?.vendor || 'no CMP'} · ${contract.routes.filter((r) => r.enabled).length}/${contract.routes.length} route(s) enabled by the owner — \`stardust/martech-handoff.md\`.`] : []),
   '', '## Phases', '', ...Object.entries(byPhase).sort((a, b) => b[1] - a[1]).map(([k, n]) => `- **${k}** — ${n}`),
 ];
 writeText(join(OUT, 'dynamic-features.generated-plan.md'), md.join('\n'));
