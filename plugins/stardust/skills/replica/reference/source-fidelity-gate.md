@@ -44,8 +44,7 @@ LIVE="https://<site>/<path>"
 W=1440   # then 360
 GATE="stardust/replica/gates/<slug>-$W"
 
-# 1. structural — --dismiss keeps consent + timed marketing modals out of the
-#    inventory on both sides; add extra selectors for non-standard closers.
+# 1. structural — --dismiss: rule 6's overlay dismissal, both sides.
 #    The header and footer roots are compared beside --main BY DEFAULT — this is
 #    the whole command, no chrome flag; the report has one block per root and a
 #    finding reads "[header]" / "[footer]" where it sits (--no-chrome = main only)
@@ -57,7 +56,8 @@ node stardust/scripts/diff/content-diff.mjs "$LIVE" "$PROTO" --profile generic -
 node stardust/scripts/diff/visual-diff.mjs "$LIVE" "$PROTO" --profile generic --width $W \
   --main "<content-root>" --dismiss --out "$GATE/vdiff" | tee "$GATE/visual-diff-iter<N>.txt"
 
-# 3. pixel — stitched captures on BOTH sides (never fullPage:true)
+# 3. pixel — stitched captures on BOTH sides (never fullPage:true); a consent manager the
+#    built-in candidates miss: the same --consent "<accept selector>" on both (rule 6)
 node stardust/scripts/replica/stitch-shot.mjs "$LIVE"  "$GATE/live.png"  --width $W --settle
 node stardust/scripts/replica/stitch-shot.mjs "$PROTO" "$GATE/proto.png" --width $W
 node stardust/scripts/replica/pixel-compare.mjs "$GATE/live.png" "$GATE/proto.png" \
@@ -572,16 +572,20 @@ rather than erroring.
    Injection before the settle breaks some lazy loaders' swaps (recorded
    failure mode). stitch-shot.mjs orders this correctly.
 6. **Overlays dismissed — BOTH classes, by clicking, not DOM removal** (so
-   layout settles as a real visit does). Two classes, both handled by the
-   shared `dismissOverlays` (stitch-shot always; diff probes via
-   `--dismiss`): (a) cookie consent (clicked accept; `--consent <sel>` /
-   `--dismiss <sel,...>` for non-standard banners); (b) **timed
-   marketing/newsletter interstitials** — recorded (fashion retailer): an
-   undismissed "Sign up, stay updated!" modal fired ~5–9s after load and
-   baked a pixel-diff contributor into the LIVE capture, repeated at every
-   chunk seam, that no prototype fidelity could null out. These fire on a
-   timer, so the dismissal polls for late arrivals and stitch-shot sweeps
-   again after the settle pass.
+   layout settles as a real visit does). Two classes, one shared
+   `dismissOverlays` (stitch-shot and the diff probes alike; `gate.sh`
+   carries `--consent <sel>` / `--dismiss <sel,...>` to both captures AND
+   its probes, `--no-dismiss` turns it off everywhere in the round):
+   (a) cookie consent (clicked accept; the flags for a banner the built-in
+   candidates miss — a recorded hands-off run on a site with a consent
+   manager gated its first rounds against the banner and its scrim, 18–50 %
+   hot bands, because the probes dismissed while the capture could not be
+   told the selector); (b) **timed marketing/newsletter interstitials** —
+   recorded (fashion retailer): an undismissed "Sign up, stay updated!"
+   modal fired ~5–9s after load and baked a pixel-diff contributor into the
+   LIVE capture, repeated at every chunk seam, that no prototype fidelity
+   could null out. These fire on a timer, so the dismissal polls for late
+   arrivals and stitch-shot sweeps again after the settle pass.
 7. **Granularity parity for JOIN/SPLIT false-reds (#87)** — mirror live
    node granularity or confirm-justify per
    `recreation-procedure.md` § Granularity parity.
@@ -671,10 +675,8 @@ node stardust/scripts/diff/visual-diff.mjs "$LIVE" "$PROTO" --profile generic \
 #   --dismiss "#custom-close"    --locale en-GB    --headed
 ```
 
-Defaults when no flags are passed: real-Chrome UA + standard headers on
-every context; `domcontentloaded` for non-localhost http(s) URLs and
-`networkidle` for local ones (per side); no overlay dismissal (pass
-`--dismiss` for live pairs); exit 3 on a challenge (rule 12).
+Defaults without flags: rules 1, 2 and 12 as written; the diff probes
+dismiss no overlay unless passed `--dismiss` (gate.sh passes it for you).
 
 **A project copy re-implementing retired adaptations is a defect**, not
 diligence: the edits were 10 distinct changes across 2 files, and a partial
