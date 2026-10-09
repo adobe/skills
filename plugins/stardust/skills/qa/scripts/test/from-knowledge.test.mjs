@@ -27,7 +27,7 @@ const broken = [
 ];
 await check('templateMap: live sitemap pages by variant (else template) at their served URL; a filter keeps delivered ones', () => {
   assert.deepEqual(templateMap(urls), { templates: { 'news#1': { urls: ['/en/news/', '/en/news/a'] }, page: { urls: ['/en/about'] } } });
-  assert.deepEqual(templateMap(urls, (p) => p !== '/en/news/a'), { templates: { 'news#1': { urls: ['/en/news/'] }, page: { urls: ['/en/about'] } } });
+  assert.deepEqual(templateMap(urls, (u) => u.eds_path !== '/en/news/a'), { templates: { 'news#1': { urls: ['/en/news/'] }, page: { urls: ['/en/about'] } } });
 });
 await check('inheritedEntries: in-scope broken page links, as authored and as served; assets, other scopes and listed paths skipped', () => {
   const e = inheritedEntries(broken, [{ check: 'links', path: '/en/gone-page', reason: 'already known here' }], { deliveredUrl }, '2026-10-08T10:00:00');
@@ -40,10 +40,10 @@ await check('CLI: writes the template map, appends allowlist entries once, honou
   writeFileSync(join(k, 'urls.jsonl'), urls.map((u) => JSON.stringify(u)).join('\n'));
   writeFileSync(join(k, 'broken.jsonl'), broken.map((u) => JSON.stringify(u)).join('\n'));
   mkdirSync(join(cwd, 'stardust', 'rollout', 'coverage'), { recursive: true });
-  writeFileSync(join(cwd, 'stardust', 'rollout', 'coverage', 'pages.json'), JSON.stringify({ pages: [{ slug: 'en-news', path: '/en/news' }] }));
+  writeFileSync(join(cwd, 'stardust', 'rollout', 'coverage', 'pages.json'), JSON.stringify({ pages: [{ slug: 'en-news', path: '/en/news' }, { slug: 'renamed', path: '/en/who-we-are', source: { sourceUrl: `${O}/en/about` } }] }));
   const run = () => spawnSync(process.execPath, [join(HERE, '..', 'from-knowledge.mjs')], { cwd, encoding: 'utf8' });
   const r1 = run(); assert.equal(r1.status, 0, r1.stderr);
-  assert.deepEqual(JSON.parse(readFileSync(join(cwd, 'stardust', 'template-map.json'), 'utf8')), { templates: { 'news#1': { urls: ['/en/news/'] } } });
+  assert.deepEqual(JSON.parse(readFileSync(join(cwd, 'stardust', 'template-map.json'), 'utf8')), { templates: { 'news#1': { urls: ['/en/news/'] }, page: { urls: ['/en/about'] } } }); // /en/about by its source URL
   const n = JSON.parse(readFileSync(join(cwd, 'stardust', 'qa', 'allowlist.json'), 'utf8')).entries.length; assert.equal(n, 2);
   const r2 = run(); assert.match(r2.stdout, /0 source-inherited/);
   assert.equal(JSON.parse(readFileSync(join(cwd, 'stardust', 'qa', 'allowlist.json'), 'utf8')).entries.length, n);
