@@ -11,8 +11,11 @@ import { readJSON, registrable, slug, vendors } from './lib.mjs';
 
 const hostOf = (u) => { try { return new URL(u).host; } catch { return ''; } };
 
+/** spec-martech evidence: its raw folder (launch.json, onetrust.json) or a spec's knowledge (martech.json#evidence). */
 export function readEvidence(dir) {
   const read = (f) => (existsSync(join(dir, f)) ? readJSON(join(dir, f)) : null);
+  const knowledge = read('martech.json')?.evidence;
+  if (knowledge) return { launch: knowledge.launch || null, onetrust: knowledge.onetrust || [] };
   return { launch: read('launch.json'), onetrust: read('onetrust.json') || [] };
 }
 

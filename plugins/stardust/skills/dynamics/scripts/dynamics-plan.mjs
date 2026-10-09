@@ -20,7 +20,7 @@
  *
  *   node dynamics-plan.mjs [--in stardust/current/_dynamics.json] [--out stardust/dynamics]
  *        [--target-origin https://…] [--auth-header "token …" | --token-env SITE_TOKEN] [--migrated stardust/migrated]
- *        [--martech [spec-martech dir, default stardust/martech]] [--knowledge [dir]]
+ *        [--martech [spec-martech dir or a spec's knowledge dir, default stardust/martech]] [--knowledge [dir]]
  *
  * Writes (under --out, default stardust/dynamics):
  *   dynamic-features.generated-plan.json   one row per finding, the four axes pre-filled, with _provenance

@@ -24,7 +24,7 @@ Large row sets are JSON Lines (`.jsonl`), the rest JSON. `url_id` is the `id` of
 | `bad-links.jsonl` | per dead or redirected target: `to_url`, `main[]` and `chrome[]` (url ids of the pages linking to it) |
 | `redirect-landings.json` | path, views, bundles |
 | `features.json` | id, class, class_name, name, evidence, disposition, reproducibility, status, pattern, eds, decisions[], reach, sitewide, reach_pages, reach_templates, pageviews_90d, pages[] (empty when site-wide) |
-| `martech.json` | `consent_summary`, `loading_order[] {stage, what}`, `vendors[]`, `launch_rules[]`, `datalayer[]` |
+| `martech.json` | `consent_summary`, `loading_order[] {stage, what}`, `vendors[]`, `launch_rules[]`, `datalayer[]`, `evidence {launch, onetrust}` (spec-martech's files, unchanged: what `dynamics-plan --martech <knowledge dir>` reads) |
 | `metadata.json` | name, source, used_by[], coverage_pages, distinct_values, top_values |
 | `query-indexes.json`, `helix-query.yaml` | name, include_paths, exclude_paths, filter, properties, consumers, source, yaml; the yaml file joins them (dynamics skeleton) |
 | `locales.json` | tree, country, language, urls, rum_views_90d, sitemap, … |

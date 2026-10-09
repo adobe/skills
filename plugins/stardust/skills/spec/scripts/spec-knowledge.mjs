@@ -327,7 +327,8 @@ async function main() {
   writeJSON(OUT('blocks.json'), blocks); writeJSON(OUT('variants.json'), variantRows); writeJSON(OUT('templates.json'), templates); writeJSON(OUT('source-components.json'), sourceComponents);
   writeJSONL(OUT('redirects.jsonl'), redirects); writeJSONL(OUT('broken.jsonl'), broken); writeJSONL(OUT('bad-links.jsonl'), badLinks); writeJSON(OUT('redirect-landings.json'), redirectLandings);
   writeJSON(OUT('features.json'), features);
-  writeJSON(OUT('martech.json'), { consent_summary: impl.consent_summary || null, loading_order: impl.loading_order || null, vendors, launch_rules: launchRules, datalayer });
+  // evidence: spec-martech's own files, unchanged, so the dynamics martech contract builds from knowledge alone
+  writeJSON(OUT('martech.json'), { consent_summary: impl.consent_summary || null, loading_order: impl.loading_order || null, vendors, launch_rules: launchRules, datalayer, evidence: { launch, onetrust: ot } });
   writeJSON(OUT('metadata.json'), metadata); writeJSON(OUT('query-indexes.json'), queryIndexes);
   if (queryIndexes.length) writeText(OUT('helix-query.yaml'), ['version: 1', 'indices:', ...queryIndexes.map((q) => q.yaml)].join('\n')); writeJSON(OUT('locales.json'), locales); writeJSON(OUT('site-config.json'), siteConfig);
   writeJSON(OUT('search-probes.json'), searchProbes); writeJSON(OUT('open-questions.json'), openQuestions); writeJSON(OUT('findings.json'), findings);
