@@ -1,0 +1,59 @@
+{
+  "skill_name": "wf-planning-fusion-optimizer",
+  "evals": [
+    {
+      "id": 1,
+      "name": "Slow replication scenario",
+      "prompt": "This Fusion scenario replicates records between two Planning workspaces and takes 40 minutes to run. Here's the blueprint export. Why is it so slow?",
+      "expected_output": "Runs scripts/analyze_blueprint.py on the blueprint and presents the Markdown report, leading with the highest-impact read-path findings (schema fetch or per-record GET inside nested loops) framed as calls, operations, and run time.",
+      "files": [],
+      "assertions": [
+        "Runs scripts/analyze_blueprint.py against the provided blueprint rather than reviewing it from memory",
+        "Presents the script's report with findings in the order returned (highest impact first)",
+        "Explains loop nesting as the multiplier on call volume and operations",
+        "Does not invent percentages or time savings the script did not produce",
+        "Does not modify the blueprint"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "Rate-limit 429 errors",
+      "prompt": "Our Planning sync scenario keeps hitting 429 rate limit errors under load but works fine in test. Can you review the blueprint?",
+      "expected_output": "Treats 429s as a symptom of call volume, runs the analyzer, and recommends structural fixes (collapse per-record reads, use bulk writes, remove sleeps, split connections) rather than only adding delays.",
+      "files": [],
+      "assertions": [
+        "Frames 429s as a symptom of call volume and operations, not a separate problem",
+        "Runs scripts/analyze_blueprint.py on the blueprint",
+        "Recommends reducing calls (bulk writes, read collapsing) rather than only adding sleep or delay modules",
+        "Labels each finding with what it improves (calls, operations, run time, reliability, throughput)",
+        "Loads references/findings.md for rationale of reported finding codes when explaining fixes"
+      ]
+    },
+    {
+      "id": 3,
+      "name": "Non-Planning blueprint",
+      "prompt": "Can you make this Salesforce to Slack Fusion scenario faster? Blueprint attached.",
+      "expected_output": "Runs or recognizes the scope guard, reports that the blueprint has no Workfront Planning modules and lists the connectors found, and does not force a Planning review.",
+      "files": [],
+      "assertions": [
+        "States the skill is specific to the Workfront Planning connector and does not apply to this scenario",
+        "Lists the connectors actually found in the blueprint",
+        "Does not produce Planning-specific findings for a non-Planning scenario",
+        "May offer general Fusion advice separately, clearly outside this skill"
+      ]
+    },
+    {
+      "id": 4,
+      "name": "Instance-specific enrichment with MCP",
+      "prompt": "I have the Workfront Planning MCP connected. Review this blueprint and tell me which record types and fields the flagged reads actually touch.",
+      "expected_output": "Runs the analyzer first, then follows references/mcp-enrichment.md to resolve record-type and field ids to names and confirm read-collapse feasibility, using read-only MCP calls.",
+      "files": [],
+      "assertions": [
+        "Runs scripts/analyze_blueprint.py before any enrichment",
+        "Loads references/mcp-enrichment.md",
+        "Resolves opaque record-type and field ids to real names via read-only MCP calls",
+        "Does not write to or modify the workspace or the blueprint"
+      ]
+    }
+  ]
+}

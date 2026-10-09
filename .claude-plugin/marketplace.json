@@ -158,7 +158,7 @@
     {
       "name": "workfront",
       "source": "./plugins/workfront",
-      "description": "Adobe Workfront skills for AI agents, including Workfront Planning (WFP/Maestro) solution architecture",
+      "description": "Adobe Workfront skills for AI agents, including Workfront Planning (WFP/Maestro) solution architecture and a Fusion scenario optimizer",
       "version": "1.0.0",
       "category": "project-management",
       "keywords": [
@@ -166,7 +166,8 @@
         "workfront",
         "workfront-planning",
         "maestro",
-        "solution-architecture"
+        "solution-architecture",
+        "fusion"
       ],
       "author": {
         "name": "Adobe"
