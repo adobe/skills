@@ -1,12 +1,12 @@
 # The spec's output (knowledge/)
 
-`spec-knowledge.mjs` writes `stardust/spec/knowledge/` from the run's raw material and `judgement/`. With
-`judgement/` it is the skill's committed output and its contract with every client; clients read it, never crawl or
-judge. The folder is rewritten whole on each run, rows in a stable order. Names are neutral.
+`spec-knowledge.mjs` writes `stardust/spec/knowledge/` from the run's raw material and `judgement/`; clients read it,
+never crawl or judge. It is rewritten whole on each run, rows in a stable order, names neutral. A patch only adds
+fields, and clients ignore fields they do not know; removing or renaming one is a minor release.
 
 ## Files
 
-Large row sets are JSON Lines (`.jsonl`), the rest JSON. `url_id` is the `id` of a `urls.jsonl` row.
+`url_id` is the `id` of a `urls.jsonl` row.
 
 | File | Rows and main fields |
 |---|---|

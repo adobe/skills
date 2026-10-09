@@ -32,8 +32,8 @@ get from the committed knowledge.
 - **qa routing** checks every expected redirect: a `stardust/redirects.tsv` row absent from the live
   `/redirects.json` is `redirect-missing` (error); a different destination is `redirect-dest-differs` (warn).
   Live, a planted missing row was reported, and the real 5 rows passed.
-- **Viewer app:** the eds-scoping `build-db` drops knowledge fields it has no column for, and gains `url.blocked`
-  and the probe fields. Merge it before this release, or the viewer's current build rejects `blocked`.
+- **Additive fields:** `knowledge.md` now states that a patch only adds fields and clients ignore the ones they do
+  not know; removing or renaming a field is a minor release.
 
 ## 0.31.5 — spec knowledge seeds dynamics, qa, rollout and the archetype pickers
 
