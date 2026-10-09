@@ -2,8 +2,8 @@
  * skills/deploy/scripts/eds-path.mjs — the one delivered-path contract for EDS. Library, no CLI; pure, no I/O, nothing
  * runs on import (spec, rollout and deploy import it in both layouts: ../../deploy/scripts/ or ../deploy/).
  *
- * Observed on a live EDS origin: a folder index is served at `/a/` (`/a` answers 301 → `/a/`, `/a/index` 404); a leaf
- * page at `/a/b` (`/a/b/` 404); `.html` 404. Path segments are lower-case `[a-z0-9-]`.
+ * Observed on live EDS sites: a folder index is served at `/a/` (`/a` 404s on a plain site; some sites add a 301;
+ * `/a/index` 404s); a leaf page at `/a/b` (`/a/b/` 404s); `.html` 404s. Path segments are lower-case `[a-z0-9-]`.
  *   deliveredUrl(sourcePath) — the URL a source page is served at: segments sanitised, `.html` dropped, `/index` → `/a/`
  *   daPath(url)              — the DA document behind a delivered URL: `/a/` → `/a/index`, `/` → `/index`
  *   pathKey(path)            — the lookup key for matching links to pages (no query, `.html`, `/index` or trailing slash)

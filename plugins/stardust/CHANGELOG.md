@@ -8,7 +8,7 @@ git history only (plus the branch-scoped notes in
 
 Five path rules disagreed on the same input: spec's `edsPath`, rollout's path-safety lint, deploy's `canonicalPath`
 and its copy in `davids-model-lint`, and rollout's own delivered path. `/a/index.html` gave `/a/`, `/a/index.html`
-and `/a`. Checked on a live EDS origin: a folder index is served at `/a/` (`/a` 301s to it, `/a/index` 404s), a leaf
+and `/a`. Checked on live EDS sites: a folder index is served at `/a/` (`/a` 404s on a plain site, `/a/index` too), a leaf
 page at `/a/b` (`/a/b/` 404s), and `.html` 404s.
 
 - **`deploy/scripts/eds-path.mjs`** (new, pure): `deliveredUrl` (spec's rule, now also collapsing `//`), `daPath`
@@ -24,9 +24,15 @@ page at `/a/b` (`/a/b/` 404s), and `.html` 404s.
   museum run, 33.
 - **Prose:** rollout's path-safety rules are written once, in `delivery-gates.md` § Gate 3; two recorded anecdotes
   in deploy's link-localisation paragraph are folded.
-- **Open (a decision, not in this release):** rollout publishes a folder index at `/a` (its sitemap lists URLs
-  that 301), and delivery-lint and deploy's link rules call a trailing slash a 404 although a folder index is
-  served there.
+- **A field rollout** (10 pages of a museum site on a new EDS site) found two more:
+  - `localize-links` rewrote links through any redirect, including the seeded ones to pages of later waves, so 8
+    links would have 404ed. A redirect now rewrites links only to a page of the content tree; the rest stay absolute.
+  - The redirects sheet never matches a source containing `:` or `%` (those requests 404 first; measured with probe
+    rows), and 31 of the museum site's 33 seeded rows had one. `seed-redirects` writes those to
+    `stardust/redirects-cdn.tsv`, as CDN rules.
+- **Open (next release):** rollout publishes a folder index at `/a`, which 404s on a plain EDS site, and the link
+  rules call a trailing slash a 404 although a folder index is served there.
+
 ## 0.31.2 — notes cleanup: two retired notes removed, dangling note citations dropped
 
 `notes/` held two documents nothing reads at run time, and six skill docs cited notes that were never in
