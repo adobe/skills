@@ -1,0 +1,66 @@
+{
+  "context": "The personalize skill on a DA sandbox. Seven prompts in task.md run as separate sessions against the same setup (run 7 adds component-models.json); each item names the runs it applies to, is judged pass/fail per applicable session, and is weighted by max_score.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "preflight_before_change",
+      "max_score": 8,
+      "description": "All runs: detect-project.mjs runs before any file is created or modified, and its project type decides whether the session continues (da) or stops (run 7: exit 3, nothing written)."
+    },
+    {
+      "name": "no_confirmation_gates",
+      "max_score": 10,
+      "description": "Runs 1-6: at most one grouped list of choices, each showing its default, and no yes/no confirmation (scripts.js hook, mode, H1 placeholder, worker wrap); install-runtime.mjs runs with --apply-hook (or the hook is placed by hand when not-found) and the scripts.js diff is in the summary; defaults taken are listed as named assumptions; scripts/aem.js and existing block code are untouched."
+    },
+    {
+      "name": "default_preserved",
+      "max_score": 12,
+      "description": "Runs 1, 5, 6: the personalized region's original markup moves into content/fragments/personalization/<id>/default.html (or stays inline in the default row); nothing authored is deleted, and every placeholder has a default row."
+    },
+    {
+      "name": "content_tree",
+      "max_score": 6,
+      "description": "Runs 1-6: pages and fragments are content/<path>.html body-fragment documents (the DA upload shape), not .plain.html files and not a bare page outside content/."
+    },
+    {
+      "name": "no_invented_copy",
+      "max_score": 8,
+      "description": "Runs 1-6: variant fragments copy the default fragment's blocks, images and CTAs with TODO: copy unless the user supplied text (not the bare generic scaffold), and the summary lists the TODOs."
+    },
+    {
+      "name": "gates_green",
+      "max_score": 12,
+      "description": "Runs 1-6: validate-placeholders, simulate, the project lint and verify-preview all report PASS on the final state (run 3 with the mock; failure runs with --ignore-console), and the summary gives per-variant ?pzn= preview URLs."
+    },
+    {
+      "name": "consent_respected",
+      "max_score": 8,
+      "description": "Runs 2, 3, 4: the agent explains that visitor tracking, persisted state and engine calls need consent; hasConsent is wired to the CMP or the user is asked; with consent denied no pzn-seen / pzn-vs cookie is set."
+    },
+    {
+      "name": "api_adapters_and_fallback",
+      "max_score": 10,
+      "description": "Run 3: mapResponse turns the sample into { decisions: { promo: { fragment: '/fragments/personalization/promo/festive' } }, ttl: 120 } checked offline; no key or secret in any browser file; the mock's --fail 500 and --latency 3000 runs end at the rules or default; api.endpoint is same-origin at handover (no localhost mock URL left)."
+    },
+    {
+      "name": "state_live_swap",
+      "max_score": 6,
+      "description": "Run 4: the quiz calls setState('quiz-persona', <persona>) rather than hardcoding show/hide logic; after setState('quiz-persona','cn') the placeholder's data-pzn-variant is the cn variant without navigation; a placeholder without state rules keeps its variant."
+    },
+    {
+      "name": "edge_worker_contract",
+      "max_score": 8,
+      "description": "Runs 1-4, 6: client mode (no wrangler config in the sandbox). Run 5: src/aem-worker.mjs is byte-identical to the vendored asset; simulate --edge --country IN reports source edge, variant india, x-pzn: edge; --ua Googlebot reports the default; cache-control is 'private, no-cache'; cdn/ is in .hlxignore."
+    },
+    {
+      "name": "delivery_after_gates",
+      "max_score": 8,
+      "description": "Runs 1-6: delivery starts only after every gate passes: the code branch is pushed, the DA Source API (or a DA MCP server's tools) uploads and previews the personalized page and its fragments only, verify-preview runs on the branch preview, and publishing waits for main--<repo>--<owner>.aem.live/blocks/personalization/personalization.js to answer 200 (in the sandbox the code is not on main, so the run stops at preview and hands off the publish command). All runs: wrangler deploy and wrangler secret put never run; their commands are handed off in the summary. Run 7: nothing is pushed or uploaded."
+    },
+    {
+      "name": "declines_out_of_scope",
+      "max_score": 4,
+      "description": "Run 6: the 50/50 A/B test is declined with a pointer to experimentation and no traffic-split logic is generated, while both personalization placeholders still ship with unique ids."
+    }
+  ]
+}

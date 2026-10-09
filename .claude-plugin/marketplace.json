@@ -115,6 +115,27 @@
       "description": "Content operations skills for AEM Edge Delivery Services: page auditing, SEO optimization, AI search (GEO), WCAG accessibility, bulk metadata, structured data, sitemap validation, and content diffing"
     },
     {
+      "name": "aem-eds-personalization",
+      "source": "./plugins/aem/edge-delivery-services-personalization",
+      "description": "Placeholder-based personalization for AEM Edge Delivery Services (DA) pages: rules or a decision API pick the EDS fragment to render, with an authored default as fallback; client runtime plus an optional Cloudflare edge worker.",
+      "version": "1.0.0",
+      "category": "aem",
+      "keywords": [
+        "adobe",
+        "aem",
+        "edge-delivery-services",
+        "da",
+        "personalization",
+        "cloudflare"
+      ],
+      "author": {
+        "name": "Adobe"
+      },
+      "homepage": "https://github.com/adobe/skills",
+      "repository": "https://github.com/adobe/skills",
+      "license": "Apache-2.0"
+    },
+    {
       "name": "adobe-analytics",
       "source": "./plugins/adobe-analytics",
       "description": "Practitioner skills for Adobe Analytics via the AA MCP server",
