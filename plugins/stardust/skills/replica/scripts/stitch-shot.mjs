@@ -31,7 +31,13 @@
  *     that no prototype fidelity can null out). The mouse is PARKED
  *     afterwards (bottom-left): a dismissal click leaves the cursor over the
  *     page, and any :hover-styled element under it would be silently
- *     captured in hover state.
+ *     captured in hover state. --consent / --dismiss add a site's own
+ *     selectors; --no-dismiss turns both classes off (gate.sh passes all
+ *     three through to BOTH captures — a recorded hands-off run on a site
+ *     with a consent manager captured the live side with the banner and
+ *     its scrim up, and the first pixel rounds measured them as page
+ *     difference, because the gate had no way to hand the capture a
+ *     selector while its probes dismissed).
  *   - --locale pins Accept-Language + context locale: geo-redirecting sites
  *     (recorded: a car brand → /ch-de/, a fashion brand → /ww/) otherwise capture
  *     a different locale per run — nondeterministic live side.
@@ -64,6 +70,7 @@
  *                         built-in candidates (OneTrust, "Accept all", …)
  *     --dismiss <sel,...> extra overlay-dismiss selectors (marketing modals
  *                         with non-standard close controls)
+ *     --no-dismiss        dismiss no overlay at all (gate.sh --no-dismiss)
  *     --headed            escalation: headed stealth real Chrome
  *     --locale <tag>      pin Accept-Language + locale (e.g. en-GB)
  *     --ua <string>       user agent                        (default real-Chrome)
@@ -109,6 +116,7 @@ Usage: node stitch-shot.mjs <url> <out.png> [options]
   --settle          slow-scroll lazyload settle pass before capture
   --consent <sel>   extra consent-accept selector (clicked, not removed)
   --dismiss <sel,…> extra overlay-dismiss selectors (marketing modals etc.)
+  --no-dismiss      dismiss no overlay at all (gate.sh --no-dismiss pass-through)
   --headed          headed stealth real Chrome (escalation for bot-managed sites)
   --locale <tag>    pin Accept-Language + locale (e.g. en-GB) for geo determinism
   --ua <string>     user agent (default: real-Chrome desktop UA + standard headers)
@@ -123,7 +131,7 @@ function parseArgs(argv) {
   const rest = argv.slice(2);
   if (rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
   const pos = [];
-  const opts = { width: 1440, vh: 900, settle: false, consent: null, dismiss: [], headed: false, locale: null, ua: REAL_CHROME_UA, wait: null, timeout: 60000 };
+  const opts = { width: 1440, vh: 900, settle: false, consent: null, dismiss: [], noDismiss: false, headed: false, locale: null, ua: REAL_CHROME_UA, wait: null, timeout: 60000 };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--width') { opts.width = Number(rest[i += 1]); }
@@ -131,6 +139,7 @@ function parseArgs(argv) {
     else if (a === '--settle') { opts.settle = true; }
     else if (a === '--consent') { opts.consent = rest[i += 1]; }
     else if (a === '--dismiss') { opts.dismiss = (rest[i += 1] || '').split(',').map((s) => s.trim()).filter(Boolean); }
+    else if (a === '--no-dismiss') { opts.noDismiss = true; }
     else if (a === '--headed') { opts.headed = true; }
     else if (a === '--locale') { opts.locale = rest[i += 1]; }
     else if (a === '--ua') { opts.ua = rest[i += 1]; }
@@ -175,7 +184,9 @@ async function main() {
     // the solve loop would spend the Akamai block budget (1 hit vs up to 4).
     await gotoLive(page, url, { waitUntil: 'domcontentloaded', timeoutMs: opts.timeout, settleMs: 0, solveWindow: opts.headed });
     await page.waitForTimeout(opts.wait);
-    await dismissAndLog(page, url, opts);
+    // --no-dismiss: the capture shows whatever the site shows (the gate's --no-dismiss reaches both sides).
+    if (opts.noDismiss) console.log('overlays left as the page shows them (--no-dismiss)');
+    else await dismissAndLog(page, url, opts);
 
     if (opts.settle) {
       // Slow-scroll settle: fires scroll-triggered lazy loaders the way a real
@@ -193,7 +204,7 @@ async function main() {
       // Timed marketing/newsletter modals (CH-1) often fire DURING the settle
       // window — sweep again so a late interstitial isn't baked into the
       // stitched capture (recorded: a fashion retailer's "Sign up, stay updated!").
-      await dismissAndLog(page, url, opts);
+      if (!opts.noDismiss) await dismissAndLog(page, url, opts);
     }
 
     // Freeze animations/transitions/carets for stable chunks — AFTER settle.

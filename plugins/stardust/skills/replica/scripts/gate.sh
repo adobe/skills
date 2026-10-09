@@ -7,11 +7,12 @@
 # the verdict lines that drive the loop (size / height delta / differing % /
 # hot bands / overflow). The prototype/build side is re-captured every round;
 # the live side only when live.png is absent — delete it explicitly to re-take
-# (site changed, capture hardening changed).
+# (site changed, capture hardening changed, a new --consent / --dismiss selector).
 #
 # Usage:
 #   stardust/scripts/replica/gate.sh <slug> <live-url> <build-url> <width> [iter-label]
-#       [--marker <string>] [--full] [--main <selector>] [--no-dismiss] [--help]
+#       [--marker <string>] [--full] [--main <selector>] [--consent <sel>] [--dismiss <sel,…>]
+#       [--no-dismiss] [--help]
 #
 # Horizontal-overflow assert (every round, build side only — no live hit):
 #   after the build capture, measure.mjs reads document.documentElement's
@@ -39,6 +40,16 @@
 #   exit 1: "no verdict, re-queue the round" — never a FAIL, never a spent
 #   iteration. Only exit 1 is retried; 3 (bot challenge), 4 (identity) and
 #   124 (deadline) are final on the first attempt.
+#
+# Overlay dismissal (both captures AND the probes, one vocabulary): stitch-shot runs the shared
+#   dismissOverlays (live-session.mjs — the built-in consent candidates + timed marketing modals) on
+#   the live and the build capture alike, as the diff probes do under --dismiss; --consent <sel> and
+#   --dismiss <sel,…> hand a site's own selectors to every step; --no-dismiss turns dismissal off
+#   everywhere in the round. A recorded hands-off run on a site with a consent manager had the probes
+#   dismissing while the live capture could not be told the selector: live.png carried the banner and
+#   its scrim, and the first pixel rounds read 18–50 % hot bands that were the overlay, not the page,
+#   until live.png was re-taken by hand. Symmetric by construction — the build side has nothing to
+#   dismiss, so the same flags on both sides cannot bias the diff.
 #
 #   --full   the whole probe set in one round: after the pixel verdict the other
 #            probes run IN PARALLEL, each under its own deadline — content-diff
@@ -71,7 +82,11 @@
 #            (the probes in parallel); RUN_BG_SLOTS lowers that on a small machine. Start the
 #            rounds all at once and let the slots pace them — no sleep staggering.
 #   --main <selector>   content root for the diff probes (default: main)
-#   --no-dismiss        do not dismiss consent/marketing overlays on the probes
+#   --consent <sel>     site-specific consent-accept selector (clicked before the built-in candidates) —
+#                       reaches both captures, the diff probes and chrome-parity
+#   --dismiss <sel,…>   extra overlay-dismiss selectors (marketing modals with non-standard closers), same reach
+#   --no-dismiss        do not dismiss consent/marketing overlays — on the captures or the probes (exit 125
+#                       together with --consent / --dismiss: they contradict)
 #
 # Example (iteration 2 of the home archetype at 1440):
 #   stardust/scripts/replica/gate.sh home "https://<site>/" \
@@ -121,7 +136,9 @@ LBL=iter
 MARKER="$SLUG"
 FULL=0
 MAIN=main
-DISMISS=--dismiss
+DISMISS=1
+CONSENT=""
+DISMISS_EXTRA=""
 shift 4
 if [ $# -gt 0 ] && [ "${1#--}" = "$1" ]; then LBL=$1; shift; fi
 while [ $# -gt 0 ]; do
@@ -129,11 +146,30 @@ while [ $# -gt 0 ]; do
     --marker) MARKER=${2:?--marker needs a value}; shift 2 ;;
     --full) FULL=1; shift ;;
     --main) MAIN=${2:?--main needs a selector}; shift 2 ;;
-    --no-dismiss) DISMISS=""; shift ;;
+    --consent) CONSENT=${2:?--consent needs a selector}; shift 2 ;;
+    --dismiss) DISMISS_EXTRA=${2:?--dismiss needs a selector list}; shift 2 ;;
+    --no-dismiss) DISMISS=0; shift ;;
     --help|-h) sed -n '2,/^set -u$/p' "$0" | grep -E '^#' | sed -E 's/^# ?//'; exit 0 ;;
     *) echo "gate.sh: unknown argument $1 (see --help)" >&2; exit 125 ;;
   esac
 done
+
+if [ "$DISMISS" = 0 ] && { [ -n "$CONSENT" ] || [ -n "$DISMISS_EXTRA" ]; }; then
+  echo "gate.sh: --no-dismiss contradicts --consent / --dismiss — drop one (see --help)" >&2; exit 125
+fi
+# Overlay flags per step (header § Overlay dismissal). stitch-shot and chrome-parity take --consent <sel> and
+# --dismiss <sel,…>; the diff probes take one --dismiss [sel,…] (bare = the built-in candidates only), so the site's
+# selectors are joined for them. Arrays expand as ${a[@]+"${a[@]}"}: macOS /bin/bash is 3.2, where an empty array
+# under set -u is an unbound variable.
+STITCH_OPTS=(); PROBE_OPTS=(); CHROME_OPTS=()
+if [ "$DISMISS" = 1 ]; then
+  [ -n "$CONSENT" ] && { STITCH_OPTS+=(--consent "$CONSENT"); CHROME_OPTS+=(--consent "$CONSENT"); }
+  [ -n "$DISMISS_EXTRA" ] && { STITCH_OPTS+=(--dismiss "$DISMISS_EXTRA"); CHROME_OPTS+=(--dismiss "$DISMISS_EXTRA"); }
+  EXTRA="${CONSENT:+$CONSENT,}$DISMISS_EXTRA"; EXTRA=${EXTRA%,}
+  if [ -n "$EXTRA" ]; then PROBE_OPTS=(--dismiss "$EXTRA"); else PROBE_OPTS=(--dismiss); fi
+else
+  STITCH_OPTS=(--no-dismiss)
+fi
 
 HERE=$(cd "$(dirname "$0")" && pwd)
 DIR="stardust/replica/gates/$SLUG-$W"
@@ -216,18 +252,20 @@ if ! printf '%s' "$PAGE" | grep -qiF -- "$MARKER"; then
 fi
 
 # Live side: captured once per breakpoint per full gate run and reused
-# (--settle: live JS-heavy pages need the lazyload pass). Never swallow the
+# (--settle: live JS-heavy pages need the lazyload pass; STITCH_OPTS: the
+# round's overlay dismissal, header § Overlay dismissal). Never swallow the
 # output — exit 3 here means "blocked, escalate --headed", not "skip".
 if [ ! -f "$DIR/live.png" ]; then
-  capture_live() { rm -f "$DIR/live.png"; capped "$STITCH_TIMEOUT" "stitch-shot live $SLUG@$W" node "$HERE/stitch-shot.mjs" "$LIVE_URL" "$DIR/live.png" --width "$W" --settle; }
+  capture_live() { rm -f "$DIR/live.png"; capped "$STITCH_TIMEOUT" "stitch-shot live $SLUG@$W" node "$HERE/stitch-shot.mjs" "$LIVE_URL" "$DIR/live.png" --width "$W" --settle ${STITCH_OPTS[@]+"${STITCH_OPTS[@]}"}; }
   retry_once "live capture" capture_live
   rc=$?
   [ $rc -ne 0 ] && rm -f "$DIR/live.png"   # never leave a partial live capture to be reused
   [ $rc -ne 0 ] && { echo "gate.sh: live capture failed (exit $rc) — not comparing$([ $rc -eq 1 ] && printf ' (twice: no verdict — re-queue the round)')" >&2; exit $rc; }
 fi
 
-# Build side: re-captured every iteration; exit 1 retried once (header § Capture retry).
-capture_build() { capped "$STITCH_TIMEOUT" "stitch-shot build $SLUG@$W" node "$HERE/stitch-shot.mjs" "$BUILD_URL" "$DIR/build.png" --width "$W"; }
+# Build side: re-captured every iteration; exit 1 retried once (header § Capture retry); the same overlay flags as
+# the live side — a symmetric instrument (the build has nothing to dismiss, so the flags are no-ops there).
+capture_build() { capped "$STITCH_TIMEOUT" "stitch-shot build $SLUG@$W" node "$HERE/stitch-shot.mjs" "$BUILD_URL" "$DIR/build.png" --width "$W" ${STITCH_OPTS[@]+"${STITCH_OPTS[@]}"}; }
 retry_once "build capture" capture_build
 rc=$?
 [ $rc -ne 0 ] && { echo "gate.sh: build capture failed (exit $rc) — not comparing$([ $rc -eq 1 ] && printf ' (twice: no verdict — re-queue the round)')" >&2; exit $rc; }
@@ -291,13 +329,13 @@ case "${GATE_REGIME:-auto}" in
 esac
 UNITS_FILE="stardust/replica/units.json"
 capped "$PROBE_TIMEOUT" "content-diff $SLUG@$W" node "$DIFF/content-diff.mjs" "$LIVE_URL" "$BUILD_URL" \
-  --profile generic --width "$W" --main "$MAIN" $DISMISS > "$CD" 2>&1 &
+  --profile generic --width "$W" --main "$MAIN" ${PROBE_OPTS[@]+"${PROBE_OPTS[@]}"} > "$CD" 2>&1 &
 P_CD=$!
 capped "$PROBE_TIMEOUT" "visual-diff $SLUG@$W" node "$DIFF/visual-diff.mjs" "$LIVE_URL" "$BUILD_URL" \
-  --profile generic --width "$W" --main "$MAIN" $DISMISS --out "$DIR/vdiff-$LBL" > "$VD" 2>&1 &
+  --profile generic --width "$W" --main "$MAIN" ${PROBE_OPTS[@]+"${PROBE_OPTS[@]}"} --out "$DIR/vdiff-$LBL" > "$VD" 2>&1 &
 P_VD=$!
 capped "$PROBE_TIMEOUT" "chrome-parity $SLUG@$W" node "$HERE/chrome-parity.mjs" "$LIVE_URL" "$BUILD_URL" \
-  --width "$W" --live-cache "$DIR/chrome-live.json" > "$CP" 2>&1 &
+  --width "$W" --live-cache "$DIR/chrome-live.json" ${CHROME_OPTS[@]+"${CHROME_OPTS[@]}"} > "$CP" 2>&1 &
 P_CP=$!
 # clip-probe on the BUILD side (every regime, no live hit); content-presence live vs build in the published regime;
 # unit-geometry when the project declares repeated-unit families (a slug with none prints n/a, exit 0).
