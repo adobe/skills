@@ -4,6 +4,29 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.31.4 — a folder index lives at `/x/`: sitemap, probes and links follow EDS
+
+EDS serves a folder index (`x/index.html`) at `/x/`, and `/x` answers 301 to it; a leaf page lives at `/x/y`, and
+`/x/y/` 404s (checked on a live origin). Stardust's rule was "never a trailing slash", which is right for leaves
+and wrong for folder indexes. Three consequences:
+- the rollout sitemap listed every folder index at a URL that 301s;
+- `done-check`'s live probe (`HEAD`, no redirects, 200 only) counted every delivered folder index as not live;
+- `localize-links` wrote links that went through the 301, and delivery-lint flagged the correct `/x/` as a P1.
+
+- **Rollout** (`lib.mjs publicUrl`): `pages[].path` stays the key; a page whose migrated file is `…/index.html` is
+  published, fetched and probed at `path/` (`assemble.mjs` sitemap, `verify.mjs`, `loadPageHTML`, `done-check`).
+- **`localize-links`** writes the served URL (`eds-path.mjs deliveredUrl`): `/x/` for a folder index, `/x/y` for a
+  leaf; redirect destinations resolve the same way. Matching still uses the lookup key.
+- **delivery-lint** judges a trailing slash by its target, with the content tree (`--content`, default `./content`):
+  - a leaf's slash stays P1;
+  - a folder index's slash passes;
+  - a folder index without it is a new P2, `folder-index-slash`;
+  - a target outside the tree is a P2 advisory.
+
+  First test file for the lint.
+- **Docs:** the rule ("no `.html`; a slash only on a folder index") replaces "EDS 404s on `/x/`" in deploy and
+  rollout.
+
 ## 0.31.3 — one delivered-path contract; spec redirects seed rollout
 
 Five path rules disagreed on the same input: spec's `edsPath`, rollout's path-safety lint, deploy's `canonicalPath`

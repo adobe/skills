@@ -24,7 +24,7 @@
 import { readFileSync, existsSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { readJSON, isSourceParity } from './lib.mjs';
+import { readJSON, isSourceParity, publicUrl } from './lib.mjs';
 
 const UNFINISHED = new Set(['pending', 'content-pending', 'converting', 'deployed', 'stale']);
 const DELIVERED = new Set(['deployed', 'verified']);
@@ -35,7 +35,8 @@ const pathOf = (p) => p.path || `/${p.slug}`;
 const listed = (paths) => (paths.length > LIST_MAX ? `${paths.slice(0, LIST_MAX).join(', ')}, … (+${paths.length - LIST_MAX})` : paths.join(', '));
 
 /** The rows that should answer on the live host. */
-export const deliveredPaths = (pages) => pages.filter((p) => DELIVERED.has(statusOf(p))).map(pathOf);
+// probed at the URL EDS serves (a folder index at `/a/`): `/a` answers 301, which the 200-only probe counts as not live
+export const deliveredPaths = (pages) => pages.filter((p) => DELIVERED.has(statusOf(p))).map(publicUrl);
 
 /** Is the rollout's final phase ended? The LAST I-dashboard line decides (a later `start` re-opens it). */
 export function rolloutEnded(ledgerLines) {

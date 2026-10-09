@@ -132,6 +132,16 @@ export function edsName(id) {
 }
 
 /** Chrome ids deliver as site-wide authored documents (/nav, /footer), not per-page blocks. */
+/**
+ * The URL EDS serves a page at: its path, plus `/` when the page is a folder index (its migrated file is
+ * `…/index.html`; `/a` answers 301 → `/a/`). `path` stays the page's key. Pure.
+ */
+export function publicUrl(page) {
+  const p = page.path || `/${page.slug}`;
+  const src = (page.source && page.source.migratedHtml) || '';
+  return p !== '/' && !p.endsWith('/') && /(^|[/\\])index\.html$/.test(src) ? `${p}/` : p;
+}
+
 export const CHROME_IDS = new Set(['header', 'nav', 'footer']);
 export const kindOf = (id) => (CHROME_IDS.has(String(id).toLowerCase()) ? 'chrome' : 'module');
 
@@ -150,7 +160,7 @@ export async function loadPageHTML(page, { root, base }) {
     return { ok: true, body: readFileSync(f, 'utf8') };
   }
   try {
-    const res = await fetch(`${base}${page.path}`);
+    const res = await fetch(`${base}${publicUrl(page)}`);
     const body = await res.text();
     if (!res.ok) return { ok: false, reason: `HTTP ${res.status}` };
     return { ok: true, body };

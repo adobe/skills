@@ -11,7 +11,9 @@
  *
  * Usage:
  *   node skills/rollout/scripts/delivery-lint.mjs --file <html> [--path </da/path>]
- *        [--type page|fragment|index] [--json] [--optimizing-blocks a,b,c]
+ *        [--type page|fragment|index] [--content content] [--json] [--optimizing-blocks a,b,c]
+ * --content: the content tree (default ./content when present) — tells a folder index, served at /x/,
+ * from a leaf served at /x, so a trailing slash is judged by its target.
  * Exit: 0 = clean (no P0/P1), 1 = P0/P1 findings, 2 = bad invocation.
  * Writes: nothing — findings (text or --json) go to stdout.
  *
@@ -19,7 +21,11 @@
  * breakage risk) — extend per project via --optimizing-blocks a,b,c
  * (default cards,columns,hero).
  */
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+
+const HERE = dirname(fileURLToPath(import.meta.url));
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
@@ -36,6 +42,14 @@ const TYPE = arg('type', null); // page | fragment | index — inferred if absen
 const JSON_OUT = process.argv.includes('--json');
 const OPTIMIZING = (arg('optimizing-blocks', 'cards,columns,hero')).split(',').map((s) => s.trim()).filter(Boolean);
 if (!FILE) { console.error('delivery-lint: need --file <html>'); process.exit(2); }
+// the content tree tells a folder index (x/index.html, served at /x/) from a leaf (x.html, served at /x)
+const CONTENT = arg('content', existsSync('content') ? 'content' : null);
+const { pathKey } = await import(pathToFileURL([join(HERE, '..', '..', 'deploy', 'scripts', 'eds-path.mjs'), join(HERE, '..', 'deploy', 'eds-path.mjs')].find((x) => existsSync(x)) || join(HERE, '..', '..', 'deploy', 'scripts', 'eds-path.mjs')).href);
+const targetKind = (key) => {
+  if (!CONTENT) return null;
+  if (existsSync(join(CONTENT, key === '/' ? 'index.html' : `${key.slice(1)}/index.html`))) return 'folder';
+  return existsSync(join(CONTENT, `${key.slice(1)}.html`)) ? 'leaf' : null;
+};
 const html = readFileSync(FILE, 'utf8');
 
 function inferType(p) {
@@ -93,12 +107,16 @@ for (const blk of OPTIMIZING) {
   }
 }
 
-/* ---- internal link hygiene: no trailing slash, no .html ---- */
+/* ---- internal link hygiene: no .html; a trailing slash exactly on a folder index (eds-path.mjs) ---- */
 for (const m of html.matchAll(/href="(\/[^"]*)"/gi)) {
-  const href = m[1];
-  if (href === '/') continue;
-  if (/\/(#|$)/.test(href.replace(/[?#].*/, '')) && href.replace(/[?#].*/, '').endsWith('/')) {
-    add('P1', 'trailing-slash', `internal link has a trailing slash (404s on EDS): ${href}`);
+  const href = m[1]; const bare = href.replace(/[?#].*/, '');
+  if (bare === '/') continue;
+  const kind = targetKind(pathKey(bare));
+  if (bare.endsWith('/')) {
+    if (kind === 'leaf') add('P1', 'trailing-slash', `internal link to a page has a trailing slash (404s on EDS): ${href}`);
+    else if (!kind) add('P2', 'trailing-slash', `internal link has a trailing slash; right only for a folder index, and its target is not in ${CONTENT || 'the content tree (pass --content)'}: ${href}`);
+  } else if (kind === 'folder' && !/\.html$/i.test(bare)) {
+    add('P2', 'folder-index-slash', `internal link to a folder index without its trailing slash (EDS answers 301): ${href} → ${bare}/`);
   }
   if (/\.html(\?|#|$)/i.test(href)) add('P1', 'html-extension', `internal link ends in .html (EDS serves extensionless): ${href}`);
 }

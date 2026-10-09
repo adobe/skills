@@ -75,7 +75,7 @@ Run the project copies under `stardust/scripts/<skill>/`. Read this before any `
 - `rollout/autofix-aem.mjs` — fix findings in the EDS project — `--project <root> [--dry-run]`
 - `rollout/blocks.mjs` — block dedup ledger — `[--out <dir>]`
 - `rollout/dashboard.mjs` — progress dashboard — `[--out <dir>]`
-- `rollout/delivery-lint.mjs` — pre-PUT static lint P0–P2 — `--file <html> [--path </da/path>] [--json]`
+- `rollout/delivery-lint.mjs` — pre-PUT static lint P0–P2 — `--file <html> [--path </da/path>] [--content <dir>] [--json]`
 - `rollout/done-check.mjs` — run complete? exit 0 = yes — `[--live-host <h>|--offline] [--json]`
 - `rollout/findings.mjs` — record/resolve findings — `record --source --layer --check --severity`; `resolve <id> --status`
 - `rollout/inventory.mjs` — coverage from migrated tree; keeps `--new` rows — `[--migrated <dir>] [--site-url <u>] [--state <f>]`

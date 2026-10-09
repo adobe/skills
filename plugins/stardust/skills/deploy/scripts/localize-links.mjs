@@ -16,15 +16,16 @@
  * deploy, over the WHOLE tree, because earlier waves' pages gain newly valid
  * internal targets as later waves ship them):
  *   1. Builds the URL map from the content tree: every *.html under --content
- *      is a served path (extensionless; `x/index.html` → `/x`; root `/`), plus
- *      the entries of --redirects (source path → destination) when given.
+ *      is a page served at its URL (eds-path.mjs: extensionless; a folder index
+ *      `x/index.html` at `/x/`, a leaf at `/x/y`; root `/`), plus the entries of
+ *      --redirects (source path → destination) when given.
  *   2. Rewrites every <a href> whose host is a --source-host (with or without
  *      `www.`, http or https or protocol-relative) AND whose path resolves in
- *      the map to the canonical root-relative form — extensionless, no
- *      trailing slash (EDS 404s on `/x/` and `/x.html`) — preserving ?query
+ *      the map to that root-relative URL (EDS 404s on `.html` and on a leaf's
+ *      trailing slash; `/x` answers 301 for a folder index), preserving ?query
  *      and #fragment.
- *   3. Normalizes root-relative internal hrefs that resolve in the map but
- *      carry `.html` or a trailing slash to the same canonical form.
+ *   3. Normalizes root-relative internal hrefs that resolve in the map to the
+ *      same URL.
  *   4. Leaves everything else untouched: other hosts, mailto:/tel:, anchors,
  *      and source-host links whose path is NOT in the map (reported).
  *
@@ -52,7 +53,7 @@
  */
 import { readFileSync, writeFileSync, readdirSync, statSync, existsSync } from 'fs';
 import path from 'path';
-import { pathKey as canonicalPath } from './eds-path.mjs';
+import { deliveredUrl, pathKey as canonicalPath } from './eds-path.mjs';
 
 function parseArgs(argv) {
   const rest = argv.slice(2);
@@ -121,11 +122,10 @@ export function redirectPairs(raw, file = '') {
 }
 
 function buildMap(files, root, redirectsFile) {
-  const map = new Map(); // canonical source path → canonical served path
+  const map = new Map(); // lookup key → the URL EDS serves (a folder index at /a/, a leaf at /a/b: eds-path.mjs)
   for (const f of files) {
     const rel = `/${path.relative(root, f).split(path.sep).join('/')}`;
-    const served = canonicalPath(rel);
-    map.set(served, served);
+    map.set(canonicalPath(rel), deliveredUrl(rel));
   }
   let redirects = 0; let pending = 0;
   if (redirectsFile) {
