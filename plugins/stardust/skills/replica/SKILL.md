@@ -470,9 +470,10 @@ had one section for the whole run).
   `update-coverage.mjs --gate` (handoff contract § 3, row C).
 
 **State:** replica writes its own state under `stardust/replica/` — the
-inconsistency register, `progress.json` (per page type: archetype slug,
-iterations used, per-breakpoint gate results, residuals, motion
-inventory), `motion/<slug>.json`, and `gates/<slug>-<width>/` evidence.
+inconsistency register, `progress.json` (one map: `types.<archetype>` —
+page type, iterations used, per-breakpoint gate results, residuals, motion
+inventory — beside `gate-evidence.mjs`'s `siblings` / `migrate`; extended
+per entry, never replaced), `motion/<slug>.json`, and `gates/<slug>-<width>/` evidence.
 The delivery gate (#125) adds `gates/all-<width>/` — one dir per deployed
 page (`origin.png`, `eds.png`, `diff.png`, `pixel.json`, `content.json`,
 `clip.json`, `units.json`), `summary.{json,md}`, `runs/` for `--only` runs and

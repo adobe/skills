@@ -16,6 +16,14 @@ Fixes from a recorded hands-off replica run on a site with a consent manager, ve
   and `--consent <sel>` / `--dismiss <sel,…>` — stitch-shot's own vocabulary — reach both captures, the diff
   probes and chrome-parity; `--no-dismiss` with either is a usage error. `diff/scripts/live-session.mjs` knows
   the `cmp`-prefixed consent-manager buttons, so that manager needs no flag; its candidate list has a test.
+- **`stardust/replica/progress.json` is the map of every archetype — never one archetype's record.** The
+  residual-logging example in `replica/reference/source-fidelity-gate.md` showed a bare
+  `{pageType, archetype, breakpoints}` object, and the run wrote exactly that as the whole file, destroying the
+  `types` map, the `siblings` / `migrate` blocks `gate-evidence.mjs` writes and the `_provenance` block the resume
+  and unit-boundary readers depend on. The example now shows the record inside `types.<archetype>` beside those
+  blocks, with the rule that the file is extended per entry; `gate-evidence.mjs` refuses a ledger whose top level
+  is a single record (`breakpoints`, or `pageType` + `archetype`) and names the fix, with a test; `replica/SKILL.md`
+  names the keys.
 
 
 ## 0.34.1 — deploy: CSS never lands in the document — a per-item look is block CSS or a named variant (#134)

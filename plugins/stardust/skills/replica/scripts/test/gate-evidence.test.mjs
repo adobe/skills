@@ -5,7 +5,8 @@
 // ledger, --dry-run, --check against the width-aware acceptance set (a pixel gate per --widths entry) and against
 // stale gates, --slug, --json, --help, the delivery-lint fallback, the pixel regime (prototype vs published), deadline
 // and no-verdict jobs recorded OPEN, variance-probe only from the page's own ■ line, the name-fallback attribution
-// rule, a malformed progress.json aborting before any sidecar write, the overflow assert line outranking a PASS pixel
+// rule, a malformed progress.json aborting before any sidecar write, a progress.json that is one archetype's residual
+// record at its top level refused with the fix named (the `types` map survives a run), the overflow assert line outranking a PASS pixel
 // line (FAIL: horizontal overflow, `/ovf+<px>` on the row, `overflowX` in the ledger), media-reconcile `n/a:` and
 // dropped from the acceptance set until the page's delivered content file exists (`--content`).
 // Run: node plugins/stardust/skills/replica/scripts/test/gate-evidence.test.mjs   (about 2 s)
@@ -425,6 +426,27 @@ check('a malformed progress.json aborts (exit 1, named) before any sidecar is wr
   writeFileSync(PROGRESS, good);
   const ok = run('--slug', 'home'); assert.equal(ok.code, 0, ok.err); assert.equal(json(side.home).gateEvidence['media-reconcile'], '3 keep (media-home.log)');
   assert.equal(readdirSync(dirname(side.home)).some((f) => f.endsWith('.tmp')), false); assert.equal(readdirSync(dirname(PROGRESS)).some((f) => f.endsWith('.tmp')), false);
+});
+
+check('a progress.json that is one archetype\'s residual record (the documented example written as the whole file) aborts, names types.<archetype>, writes nothing', () => {
+  const good = read(PROGRESS);
+  writeFileSync(PROGRESS, `${JSON.stringify({ pageType: 'landing', archetype: 'home', breakpoints: { 1440: { iterations: 3 } } }, null, 2)}\n`);
+  const before = read(side.home);
+  const r = run('--slug', 'home'); assert.equal(r.code, 1, r.out + r.err);
+  assert.match(r.err, /^gate-evidence: .*progress\.json is one archetype's residual record at the top level \(breakpoints, pageType, archetype\), not the ledger .* types\.<archetype> .*Residual logging format\)$/m);
+  assert.doesNotMatch(r.err, /\n\s+at /);
+  assert.equal(read(side.home), before, 'no sidecar written'); assert.match(read(PROGRESS), /"pageType": "landing"/, 'the record is left for the human to move');
+  // `breakpoints` alone is enough; `pageType` + `archetype` without it too; a prior ledger with only `pageType` is not
+  writeFileSync(PROGRESS, '{ "breakpoints": {} }\n'); assert.equal(run('--slug', 'home').code, 1);
+  writeFileSync(PROGRESS, '{ "pageType": "landing", "archetype": "home" }\n'); assert.equal(run('--slug', 'home').code, 1);
+  writeFileSync(PROGRESS, '{ "pageType": "landing" }\n'); assert.equal(run('--slug', 'home').code, 0);
+  // the documented shape — the map under `types` beside _provenance — passes, and the map survives the run untouched
+  const map = { _provenance: { writtenBy: 'x' }, types: { home: { pageType: 'landing', archetype: 'home', breakpoints: { 1440: { iterations: 3 } } } } };
+  writeFileSync(PROGRESS, `${JSON.stringify(map, null, 2)}\n`);
+  const ok = run('--slug', 'home'); assert.equal(ok.code, 0, ok.err);
+  const after = json(PROGRESS); assert.deepEqual(after.types, map.types); assert.deepEqual(after._provenance, map._provenance); assert.deepEqual(after.siblings, {});
+  assert.deepEqual(Object.keys(after), ['_provenance', 'types', 'siblings'], 'the map keys stay first; this script appends its own');
+  writeFileSync(PROGRESS, good);
 });
 
 rmSync(root, { recursive: true, force: true });
