@@ -11,6 +11,11 @@
 //        [--crop top,right,bottom,left]  crop applied to the FIGMA image,
 //        in DESIGN px (scaled internally) — e.g. cut chrome baked into a
 //        kit component: --crop 118,0,0,0
+//        Left/right crops ALSO narrow the render viewport to
+//        width - right - left: they are for board margins around a
+//        component (--width 1568 --crop 64,64,64,64 renders a 1440 component
+//        at 1440). A crop that cuts INTO the component would render the
+//        block at the wrong breakpoint — pin a tighter Figma frame instead.
 // Env: NODE_MODULES_DIR — node_modules containing playwright, pixelmatch, pngjs.
 
 import { createRequire } from 'node:module';

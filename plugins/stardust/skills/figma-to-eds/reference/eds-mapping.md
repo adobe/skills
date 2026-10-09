@@ -47,6 +47,7 @@ One row per Figma module, joined against the existing block inventory
 | variants | the kit's variant axes → EDS block classes (`block-name (variant)` rows in the content model) |
 | atoms | which atom components it composes (buttons, cards, badges) — atoms map to shared CSS, not blocks |
 | gate frame | the Figma frame id the component diff will render against |
+| authoring | the block table the block reads (rows, cells, what each cell may hold) — the contract an author or importer writes to |
 
 Mapping rules validated in practice:
 
@@ -64,6 +65,12 @@ Mapping rules validated in practice:
   the divergence register with a proposed resolution (keep-as-is /
   retire / request-design). Silent restyling-by-taste is the failure
   mode this table exists to prevent.
+- **The authoring column is written for real content, not the
+  specimen.** A kit card shows an image and a title; migrated cards
+  also carry links, dates, excerpts and tags. List which of those the
+  block accepts and what it does with a missing image or a long
+  title. A block that only reads the specimen's shape is not reusable
+  for a content migration, however well it gates.
 - **One reference component per module** (reskin's pinned-reference
   rule transposed): when a module appears in several kit contexts
   with token disagreements, pick the component-set's main variant as
@@ -77,6 +84,22 @@ Mapping rules validated in practice:
 2. Shared atoms (buttons, cards, form controls).
 3. Blocks, one module family at a time, gating each with its
    component diff before starting the next family.
+
+Every block ships a `.js`, even a CSS-only one: `loadBlock` (aem.js)
+always imports `blocks/<name>/<name>.js`, so a missing file costs a 404
+and a console error on every page that uses the block. A one-line
+`export default function decorate() {}` is enough.
+
+## Breakpoints the kit doesn't draw
+
+A kit (or a sample page) often has desktop frames only. Tablet and
+mobile are then **authored, not mandated**: keep the boilerplate's
+responsive rules (mobile type ramp, section gutters, nav toggle)
+and adapt them to the tokens, rather than deleting them because no
+frame asks for them. Record each one in `mapping.md` as a divergence
+candidate to confirm with design. A desktop-only build with the
+responsive layer stripped is not a smaller result — it breaks every
+page below the desktop width.
 
 Fonts: the kit names families; licensing/serving (self-hosted,
 a hosted font service, fallback stacks) is a project decision recorded in the

@@ -147,17 +147,21 @@ Recipe notes:
 - **Port hygiene**: kill the server when the capture ends; a stale
   server on the port silently serves an old donor to a re-run.
 
-## 3. Figma (`--donor-figma <url>`) — adapter available: skills/figma-to-eds
+## 3. Figma (`--donor-figma <url>`) — FUTURE, contract defined
 
-The contract below is implemented by the `figma-to-eds` skill (capture
-+ curate phases produce these canon-source artifacts via the Figma
-desktop MCP; apply + gate phases add an EDS block target). Original
-contract text retained as the normative shape:
-
-**Not implemented.** When a user asks for a Figma donor, say exactly
+**Not implemented in reskin.** When a user asks for a Figma donor, say exactly
 what SKILL.md § Inputs prescribes (export as static HTML →
 `--donor-dir`, or a live staging URL → `--donor`) and stop. Do not
 improvise a partial capture from Figma screenshots.
+
+Related, not a substitute: the `figma-to-eds` skill
+(`../../figma-to-eds/SKILL.md`) implements the capture half of this
+contract — `canon-source/` artifacts with `figma-mcp` provenance — for
+a different job: restyling an EDS codebase from a Figma design system,
+gated against Figma, with no content pipeline. Its `donor-tokens.json`
+uses its own sheet shape (`tokens.colors["--name"].value`), which
+reskin's donor-probe does not read; do not run donor-probe on it. Its
+Figma MCP recipes and gates are the starting point for this adapter.
 
 The adapter contract, so round-2 implements against a fixed shape —
 it must produce the same `canon-source/` artifacts as the other two

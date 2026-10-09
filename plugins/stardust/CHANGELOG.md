@@ -434,13 +434,19 @@ learnings digest.
 
 ## figma-to-eds (new skill)
 
-Implements the reskin `--donor-figma` adapter contract
-(donor-sources.md § 3, provenance class `figma-mcp`) and extends it
-with an EDS apply/gate layer: token probe (byte-equality), geometry
-gate (variant matrix from Figma metadata with gap semantics), pixel
-gate (scaled component diffs with recorded crops), full-suite sweep,
-and a divergence-attribution register. Ships a synthetic self-eval
-(eval/run-eval.mjs, 4 checks, no Figma connection needed) and method
-references distilled from a full production validation run: 35 modules
-gated (~2,700 geometry checks, ~120 pixel gates, functional gates for
-interactive chrome), 13 page archetypes register-audited.
+Implements the capture half of the reskin `--donor-figma` contract
+(donor-sources.md § 3, provenance class `figma-mcp`) and adds an EDS
+apply/gate layer: token probe (byte-equality) plus a token-consumption
+scan (`token-literals.mjs`), geometry gate (variant matrix from Figma
+metadata with gap semantics), pixel gate (scaled component diffs with
+recorded crops), full-suite sweep (crashes reported as CRASH, never as
+the previous result), and a divergence-attribution register with a
+per-page stakeholder viewer (`divergence-viewer.mjs`). Reskin itself
+does not accept a Figma donor yet; donor-sources.md § 3 says so and
+points here. Ships a synthetic self-eval (eval/run-eval.mjs, 6 checks,
+no Figma connection needed) and method references distilled from a
+full production validation run (35 modules gated, ~2,700 geometry
+checks, ~120 pixel gates, functional gates for interactive chrome,
+13 page archetypes register-audited) and from a first sample-pages
+run (desktop vs remote MCP differences, instance-default traps,
+DA-delivered markup vs fixtures, desktop-only kits).

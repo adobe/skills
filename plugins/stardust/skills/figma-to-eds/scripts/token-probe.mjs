@@ -40,12 +40,12 @@ writeFileSync(join(dir, 'probe.html'), html);
 
 // family equivalences come from the token sheet's declared normalizations —
 // never hardcoded here (desktop font name vs licensed web font name)
-const FAMILY_EQ = new Set((T.typography.familyEquivalences || [[T.typography.families?.primary]])
+const FAMILY_EQ = new Set((T.typography?.familyEquivalences || [[T.typography?.families?.primary]])
   .flat().filter(Boolean).map((f) => f.toLowerCase()));
 
 const styleKey = (figmaName) => figmaName.toLowerCase().replace(/[/. ]+/g, '-');
-const pickStyle = (name) => T.typography.styles[styleKey(name)]
-  || T.typography.styles[styleKey(name) + '-book'];
+const pickStyle = (name) => T.typography.styles?.[styleKey(name)]
+  || T.typography.styles?.[styleKey(name) + '-book'];
 
 const failures = []; let checks = 0;
 const browser = await chromium.launch();
@@ -56,7 +56,8 @@ await page.goto('file://' + join(dir, 'probe.html'));
 const sections = ['colors', 'radii', 'borderWidths', 'shadows', 'spacing', 'sizing',
   'spaceSemantic', 'sizeSemantic', 'durations', 'easings'];
 const expected = {};
-for (const s of sections) for (const [p, e] of Object.entries(T[s])) expected[p] = { v: e.value, s };
+// sections a kit doesn't publish are simply absent from the sheet
+for (const s of sections) for (const [p, e] of Object.entries(T[s] || {})) expected[p] = { v: e.value, s };
 const actual = await page.evaluate((props) => {
   const cs = getComputedStyle(document.documentElement); const out = {};
   for (const p of props) out[p] = cs.getPropertyValue(p).trim();
@@ -68,8 +69,10 @@ for (const [p, e] of Object.entries(expected)) {
 }
 
 // --- B. element ramp per breakpoint ---
-const BREAKPOINTS = { mobile: 430, tablet: 1000, desktop: 1440 };
-const ELEMENTS = Object.entries(sheet.tokens.typography.htmlMapping)
+// probe widths per breakpoint key of the type styles; a sheet may declare
+// its own (`probeBreakpoints`) when the kit's canvases differ
+const BREAKPOINTS = sheet.probeBreakpoints || { mobile: 430, tablet: 1000, desktop: 1440 };
+const ELEMENTS = Object.entries(T.typography?.htmlMapping || {})
   .map(([el, style]) => ({ el, sel: el === 'p' ? 'p:not(.lead)' : el, style: pickStyle(style), styleName: style }))
   .filter((e) => e.style);
 for (const [bp, width] of Object.entries(BREAKPOINTS)) {

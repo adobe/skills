@@ -1,8 +1,10 @@
-# Figma desktop MCP — validated capture recipes
+# Figma MCP — validated capture recipes
 
 The Figma desktop MCP (`figma-desktop`) serves whatever file is open
-and focused in the desktop app. These recipes were validated against a
-real component web kit; follow them instead of improvising — the tool
+and focused in the desktop app; the remote MCP serves any file the
+signed-in account can open (differences: § Desktop vs remote server).
+These recipes were validated against a real component web kit and a
+sample-page file; follow them instead of improvising — the tool
 surface has sharp edges that silently under-report if used naively.
 
 Always pass `clientFrameworks` and `clientLanguages` on every call
@@ -12,7 +14,9 @@ Always pass `clientFrameworks` and `clientLanguages` on every call
 
 A no-argument `get_metadata` call is the health check. Success with no
 selection returns the file's **top-level page list** (id + name) — the
-inventory starting point. On error, relay to the user before anything
+inventory starting point. With a selection on the canvas it returns the
+**selection** instead, so clear the selection first (click empty canvas)
+when you want the inventory. On error, relay to the user before anything
 else: (1) paid seat with Dev Mode access, (2) file permissions,
 (3) file open AND focused in the desktop app, (4) "Enable local MCP
 Server" toggled in preferences (resets after some app updates),
@@ -52,12 +56,47 @@ selects any frame on the canvas often resolves a first-call failure.
    generated code references CSS custom properties *with fallback
    values*: `var(--global\/font\/fontsize\/28,28px)` — token name and
    resolved value in one string. Use as a cross-check for recipe 4.
+   The **fallback literal** and the response's "styles contained" list
+   are the reliable parts; variable names inside generated class names
+   (`text-[length:var(--tokens/font-size/5xl,46px)]`) can be wrong.
 6. **Screenshots follow the canvas.** `get_screenshot` renders the
    node as seen on canvas; pass `contentsOnly: true` only when page
    furniture (annotations, connectors) overlaps the frame. Screenshot
    image data lands in context — capture module screenshots in
    subagents or one at a time, never as a bulk fan-in to the main
    context.
+7. **`get_design_context` returns the library component's defaults,
+   not the page instance.** On a sample page, text overrides, the
+   selected variant and image aspect ratios come back as the main
+   component's defaults (every chip reads "Chip title"). Page-instance
+   truth is `get_metadata` geometry plus the screenshot; use
+   design context for structure and token values only.
+8. **Sections of a sample page are instances**, with nested ids of the
+   form `I<frame>;<instance>`. Node ids inside a design-context
+   response belong to the main component, so cite the queried page
+   node as the `src`, not the id the response mentions.
+9. **An instance that is one opaque slot has no per-child metadata**
+   (e.g. a chip row placed as a single slot). The geometry gate cannot
+   reach its children, so only the pixel gate covers them — and a
+   uniform per-child drift (+2px per chip) can stay under a pixel
+   threshold. Record such modules as pixel-only in `mapping.md`.
+
+## Desktop vs remote server
+
+The official Figma MCP runs as the desktop server (`figma-desktop`,
+file open and focused) or the remote server (OAuth). Differences seen
+on real runs:
+
+| behaviour | desktop | remote |
+|---|---|---|
+| instance-nested ids (`I…;…`) in `get_screenshot`, `get_variable_defs`, `get_design_context` | rejected (`^\d+[:-]\d+$` only) | accepted |
+| `get_screenshot` size | capped at 1024px per axis, ignores `maxDimension` | honours `maxDimension` (e.g. 4096) |
+| no-argument `get_metadata` | page list, or the selection if one exists | lists only the first (cover) page |
+
+Sample-page files are built from instances, so they usually need the
+remote server (or a mix: desktop for the inventory and variables,
+remote for nested-id screenshots and design context). Record which
+server answered each call in `_crawl-log.json`.
 
 ## Standard capture sequence
 
@@ -91,6 +130,9 @@ selects any frame on the canvas often resolves a first-call failure.
   kit's floored value or drift compounds per row.
 - **`.png` asset URLs may serve JPEG bytes** — check magic bytes
   before trusting the extension.
+- **Asset URLs expire** (about 7 days). Download every image/SVG the
+  build needs during capture and commit the files; a re-run that
+  relies on a recorded URL fails later.
 - **Instance exports can carry a canvas offset** relative to their own
   metadata (observed 60.5px) — verify the export against the node's
   metadata box before gating, crop accordingly.

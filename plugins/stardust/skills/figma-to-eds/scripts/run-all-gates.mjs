@@ -5,6 +5,8 @@
 // changes: run before and after, diff the summaries.
 //
 // Usage: node run-all-gates.mjs --gates <gates/components dir> [--only <slug-substr>] [--out <summary.json>]
+// Run from the directory the gates were recorded in: verdicts store the
+// page/figma paths as given at record time, often relative.
 // Env: NODE_MODULES_DIR — node_modules containing playwright, pixelmatch, pngjs.
 
 import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
@@ -18,6 +20,17 @@ if (!gatesDir) { console.error('usage: --gates <dir> [--only <substr>] [--out <j
 
 const here = dirname(fileURLToPath(import.meta.url));
 const rows = []; let fails = 0;
+// A gate exits 0 (pass) or 1 (fail) after writing its report — but node also
+// exits 1 on an uncaught exception, leaving the previous report on disk. So a
+// run only counts when the report was rewritten; anything else is a CRASH.
+const mtime = (p) => { try { return statSync(p).mtimeMs; } catch { return 0; } };
+const crashed = (r, file, before) => r.error || (r.status !== 0 && r.status !== 1)
+  || mtime(file) <= before;
+const crashReason = (r) => {
+  if (r.error) return r.error.message;
+  const lines = (r.stderr || '').split('\n').map((l) => l.trim()).filter(Boolean);
+  return (lines.find((l) => /\w*Error\b/.test(l)) || lines.pop() || `exit ${r.status ?? r.signal}`).slice(0, 140);
+};
 
 const findVerdicts = (dir) => {
   const out = [];
@@ -38,11 +51,18 @@ for (const mod of readdirSync(gatesDir).sort()) {
 
   const spec = join(mdir, 'geometry-spec.json');
   try { statSync(spec); } catch { continue; }
+  const report = join(mdir, 'geometry-report.json');
+  let before = mtime(report);
   let r = spawnSync('node', [join(here, 'geometry-gate.mjs'), '--spec', spec,
-    '--out', join(mdir, 'geometry-report.json')], { encoding: 'utf8' });
-  const geo = JSON.parse(readFileSync(join(mdir, 'geometry-report.json'), 'utf8'));
-  rows.push({ module: mod, gate: 'geometry', checks: geo.checks, result: geo.pass ? 'PASS' : `FAIL(${geo.failures})` });
-  if (!geo.pass) fails += 1;
+    '--out', report], { encoding: 'utf8' });
+  if (crashed(r, report, before)) {
+    rows.push({ module: mod, gate: 'geometry', checks: '-', result: `CRASH (${crashReason(r)})` });
+    fails += 1;
+  } else {
+    const geo = JSON.parse(readFileSync(report, 'utf8'));
+    rows.push({ module: mod, gate: 'geometry', checks: geo.checks, result: geo.pass ? 'PASS' : `FAIL(${geo.failures})` });
+    if (!geo.pass) fails += 1;
+  }
 
   for (const v of findVerdicts(mdir)) {
     const j = JSON.parse(readFileSync(v, 'utf8'));
@@ -51,12 +71,18 @@ for (const mod of readdirSync(gatesDir).sort()) {
       rows.push({ module: mod, gate: `pixel:${relative(mdir, dirname(v))}`, checks: '-', result: 'EXCLUDED (documented)' });
       continue;
     }
+    before = mtime(v);
     r = spawnSync('node', [join(here, 'component-diff.mjs'),
       '--figma', j.figma, '--page', j.page, '--width', String(j.designWidth),
       '--selector', j.selector, '--crop', j.crop || '0,0,0,0',
       '--out', dirname(v), '--threshold', String(j.thresholdPct)], { encoding: 'utf8' });
-    const nv = JSON.parse(readFileSync(v, 'utf8'));
     const name = relative(mdir, dirname(v)) || 'default';
+    if (crashed(r, v, before)) {
+      rows.push({ module: mod, gate: `pixel:${name}`, checks: '-', result: `CRASH (${crashReason(r)})` });
+      fails += 1;
+      continue;
+    }
+    const nv = JSON.parse(readFileSync(v, 'utf8'));
     rows.push({ module: mod, gate: `pixel:${name}`, checks: '-', result: nv.pass ? `PASS ${nv.diffPct}%` : `FAIL ${nv.diffPct}% (@${nv.thresholdPct})` });
     if (!nv.pass) fails += 1;
   }

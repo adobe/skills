@@ -71,6 +71,14 @@ for (const c of spec.cases) {
       checks += 1;
       const tol = (k.tol && (k.tol[prop] ?? k.tol.default)) ?? 1;
       const got = m[prop];
+      // a gap with no (or an unmatched) gapFrom, or an unknown expect key,
+      // measures nothing — NaN would compare false and pass silently
+      if (!Number.isFinite(got)) {
+        failures.push({ case: c.name, check: k.name, prop, error: prop === 'gap'
+          ? `gap not measurable (gapFrom ${k.gapFrom ? `"${k.gapFrom}" not found` : 'missing'})`
+          : `unknown expect key "${prop}"`, source: k.source });
+        continue;
+      }
       if (Math.abs(got - exp) > tol) {
         failures.push({ case: c.name, check: k.name, prop, expected: exp, actual: Number(got.toFixed(1)), tol, source: k.source });
       }
@@ -84,5 +92,6 @@ const report = { spec: specPath, checks, failures: failures.length, pass: failur
 mkdirSync(dirname(resolve(outPath)), { recursive: true });
 writeFileSync(outPath, JSON.stringify(report, null, 1));
 console.log(`${report.pass ? 'PASS' : 'FAIL'} — ${checks} geometry checks, ${failures.length} failures -> ${outPath}`);
-if (failures.length) console.log(failures.slice(0, 15).map((f) => `  ${f.case}/${f.check} ${f.prop || f.error}: expected ${f.expected} got ${f.actual} (tol ${f.tol})`).join('\n'));
+if (failures.length) console.log(failures.slice(0, 15).map((f) => (f.error ? `  ${f.case}/${f.check} ${f.prop || ''}: ${f.error}`
+  : `  ${f.case}/${f.check} ${f.prop}: expected ${f.expected} got ${f.actual} (tol ${f.tol})`)).join('\n'));
 process.exit(failures.length ? 1 : 0);

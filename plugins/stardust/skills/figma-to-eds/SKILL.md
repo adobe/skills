@@ -1,6 +1,6 @@
 ---
 name: figma-to-eds
-description: Apply a design system defined in Figma — a component web kit or sample page designs — to an AEM Edge Delivery Services (EDS) site as reusable blocks, with design fidelity gated against Figma at the token and component level. Implements the stardust:reskin Figma donor contract (donor-sources.md § 3, provenance class figma-mcp) and extends it with an EDS block target. Use when a site must adopt a Figma-defined design system ("make the blocks match the Figma web kit", "build these Figma pages as EDS blocks", "the design system source of truth is Figma"), the Figma file is reachable via the Figma desktop MCP, and the output is an EDS code repo (styles + blocks). NOT for content migration (that's stardust extract/replica/migrate — content fidelity is gated upstream) and NOT for redesigning from intent (that's stardust direct/prototype).
+description: Apply a design system defined in Figma — a component web kit or sample page designs — to an AEM Edge Delivery Services (EDS) site as reusable blocks, with design fidelity gated against Figma at the token and component level. Implements the capture half of the stardust:reskin Figma donor contract (donor-sources.md § 3, provenance class figma-mcp) and adds an EDS block target. Use when a site must adopt a Figma-defined design system ("make the blocks match the Figma web kit", "build these Figma pages as EDS blocks", "the design system source of truth is Figma"), the Figma file is reachable via the Figma MCP (desktop or remote server), and the output is an EDS code repo (styles + blocks). NOT for content migration (that's stardust extract/replica/migrate — content fidelity is gated upstream) and NOT for redesigning from intent (that's stardust direct/prototype).
 license: Apache-2.0
 ---
 
@@ -30,16 +30,22 @@ The division of contracts mirrors stardust:reskin:
   comes from the kit. The gate surface is per-component.
 - **`sample-pages`** — the Figma file contains full page designs.
   Composition AND surface come from Figma; the gate surface is
-  per-page frames plus per-component. (Contract defined; harden this
-  mode on its first real run.)
+  per-page frames plus per-component. First real run done on a
+  single-page file: sample pages are built from library instances, so
+  read `reference/figma-mcp-recipes.md` quirks 7–9 and § Desktop vs
+  remote server before capturing (design context returns component
+  defaults, not the page's overrides).
 
 ## Inputs
 
-- The Figma file **open and focused in the Figma desktop app** with
-  the local MCP server enabled (server `figma-desktop`). Verify with a
-  no-argument `get_metadata` call — it returns the file's page list.
-  If it errors, relay the seat/permission/file checklist in
-  `reference/figma-mcp-recipes.md` § Connection and stop.
+- A Figma MCP connection: the desktop server (`figma-desktop`, file
+  **open and focused in the Figma desktop app**, local MCP server
+  enabled) and/or the remote server. Verify with a no-argument
+  `get_metadata` call — with nothing selected, the desktop server
+  returns the file's page list. If it errors, relay the
+  seat/permission/file checklist in `reference/figma-mcp-recipes.md`
+  § Connection and stop. Sample-page files usually need the remote
+  server for nested instance ids (§ Desktop vs remote server).
 - An EDS project checkout (the target `styles/` + `blocks/` tree), or
   a decision to bootstrap one.
 - Optional: an explicit scope contract inside the kit (e.g. a
@@ -83,6 +89,19 @@ properties by a declared, mechanical naming transform (see
 `reference/eds-mapping.md` § Token transform) recorded in the file
 itself, so the probe can assert both name and value.
 
+Curate with a re-runnable project script, not by hand: the
+`canon-source/foundation/*.json` files are the input of record and
+the sheet is regenerated from them after every capture change. What
+is not mechanical is declared inside the sheet:
+- `normalizations[]` — value-form rules the probe applies (percent
+  line-height → unitless, kit weight names → the weights the licensed
+  web font actually serves, font smoothing);
+- `curations[]` — each decision with its evidence. A typo in a kit
+  spec table stays verbatim in the foundation file and is corrected
+  only here, citing the rule that proves it (e.g. the kit's own
+  naming formula); a value that looks wrong but has no second source
+  is kept and flagged as suspect, never silently fixed.
+
 ### 3. Map → `stardust/figma-to-eds/mapping.md`
 
 The module ↔ EDS block mapping brief: for each Figma module, the
@@ -105,15 +124,21 @@ a defect even if it renders identically.
 Three gates, in order:
 
 1. **Token probe** — computed styles of rendered blocks assert
-   byte-equal token values against `donor-tokens.json`.
+   byte-equal token values against `donor-tokens.json`; then
+   `scripts/token-literals.mjs` checks consumption (no block
+   hardcodes a value that exists as a token).
 2. **Component diff** — each block rendered at the Figma frame's
    width, screenshot-diffed against the exported Figma frame.
    Structural mismatch fails; anti-aliasing/text-raster noise is
    declared in a per-gate tolerance note, not silently absorbed.
+   The last round runs on the preview origin against DA-authored
+   documents — delivered markup differs from fixtures
+   (`reference/gates.md` § Real-content check).
 3. **Divergence attribution** — if there is a pre-existing live
    site: for each visual delta live-vs-new, a register row citing
    the Figma node id that mandates it. A delta with no node id is a
-   defect (unmandated drift).
+   defect (unmandated drift). `scripts/divergence-viewer.mjs` renders
+   the register per page for stakeholders.
 
 Details in `reference/gates.md`.
 
@@ -124,14 +149,18 @@ Details in `reference/gates.md`.
 | `stardust/canon-source/` | Figma capture: foundation JSONs, `_brand-extraction.json`, `donor-modules.md`, screenshots, `_crawl-log.json` (reskin donor contract, `figma-mcp`) |
 | `stardust/reskin/donor-tokens.json` | probe-able exact-string token sheet |
 | `stardust/figma-to-eds/mapping.md` | module ↔ block mapping brief |
-| `stardust/figma-to-eds/gates/` | token probe results, component diffs, divergence register |
+| `stardust/figma-to-eds/gates/` | token probe and token-literals results, component diffs, divergence register, divergence viewers |
 
 ## Relationship to stardust
 
-This skill is the implementation of reskin's `--donor-figma` adapter
-(capture + curate phases are upstreamable into `skills/reskin`
-verbatim) plus an EDS-target apply/gate layer. It assumes content
-fidelity is handled by the stardust migration flow it runs alongside.
+This skill implements the capture half of reskin's `--donor-figma`
+contract plus an EDS-target apply/gate layer; reskin itself does not
+accept a Figma donor yet. The capture phase is upstreamable into
+`skills/reskin` as is. The curate phase is not: its token sheet uses
+its own shape, which reskin's donor-probe does not read, so it has to
+be mapped onto reskin's `donor-tokens.json` shape when the adapter
+lands there. It assumes content fidelity is handled by the stardust
+migration flow it runs alongside.
 
 ## Eval policy
 
