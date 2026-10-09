@@ -118,7 +118,7 @@ async function main() {
       variant_code: isPage ? (varOf.get(r.final_url) || varOf.get(r.url) || null) : null, title: isPage ? (r.title || null) : null, eds_path: isPage ? e : null,
       needs_migration_redirect: isPage && e !== path ? 1 : 0, pageviews_90d: Math.round(pv.views || 0),
       rum_bundles: pv.bundles || 0, traffic_band: rum.available ? band(pv.views) : null, block_count: nblocks, capture_key: isPage ? captured(r.url) : null,
-      main_chars: c ? c.main_chars : null, flag };
+      main_chars: c ? c.main_chars : null, flag, blocked: r.blocked ?? null };
     if (byUrl.has(r.url)) urls.splice(urls.indexOf(byUrl.get(r.url)), 1); // a URL listed twice keeps its last row
     urls.push(row); byUrl.set(r.url, row); uid.set(r.url, id);
   };
@@ -287,7 +287,7 @@ async function main() {
   const rumTrees = Object.fromEntries((rum.trees || []).map(([k, v]) => [k, v.views]));
   const locales = Object.entries(trees).map(([t, v]) => ({ tree: t, country: t.split('/')[0], language: t.split('/')[1] || null, urls: v.urls, shared_with_scope: null, shared_pct: null, rum_views_90d: Math.round(rumTrees[t] || 0), deep_sampled: 0, live_pages: null, templates: null, blocks: null, unmapped: null, sitemap: v.file }));
   const siteConfig = (impl.site_config || []).map((s) => ({ key: s.key, now: s.now, eds: s.eds, decision: s.decision ?? null }));
-  const searchProbes = readJSON(J('search-probes.json'), []).map((p) => ({ term: p.term, expect_count: p.expectCount, expect_titles: p.expectTitles || [], expect_includes: p.expectIncludes ?? null }));
+  const searchProbes = readJSON(J('search-probes.json'), []).map((p) => ({ term: p.term, expect_count: p.expectCount, expect_titles: p.expectTitles || [], expect_includes: p.expectIncludes ?? null, feature: p.feature ?? null, path: p.path ?? null, param: p.param ?? null }));
   Object.assign(K, { vendors, launchRules, datalayer, metadata, queryIndexes, locales, siteConfig, searchProbes, sourceComponents });
 
   // ---- open questions: impact in the rule format, recorded answers applied

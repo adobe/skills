@@ -13,7 +13,9 @@
  *                                the capture pipeline already shipped)
  *   --knowledge [dir]            a spec's knowledge (default stardust/spec/knowledge): its curated features become rows
  *                                (`source: spec`, axes as judged, decision = the linked open questions' answer or
- *                                default); with no --in file, the draft is the spec's rows alone
+ *                                default); with no --in file, the draft is the spec's rows alone; its search probes
+ *                                become dynamic-features.generated-parity.json: one search-query check per probe with
+ *                                the source's expectations (fill resultSelector, then curate it into parity.json)
  * The run curates the draft into `stardust/dynamic-features.md` (reference/triage.md).
  *
  *   node dynamics-plan.mjs [--in stardust/current/_dynamics.json] [--out stardust/dynamics]
@@ -119,6 +121,22 @@ function knowledgeRows(dir) {
     ? { flags: ['decided-out without a recorded owner answer: confirm with the owner or pick another disposition (triage.md)'] } : {}));
 }
 
+/** search-query checks from a spec's probes, grouped by their S feature; resultSelector is the curator's to fill. */
+function knowledgeParity(dir) {
+  if (!dir || dir === true || !existsSync(join(dir, 'search-probes.json'))) return null;
+  const probes = readJSON(join(dir, 'search-probes.json'), []).filter((p) => p.term);
+  if (!probes.length) return null;
+  const byFeature = {};
+  for (const p of probes) {
+    const id = p.feature || 'search';
+    (byFeature[id] = byFeature[id] || { id, feature: id, class: 'S', status: 'pending', checks: [] }).checks.push(Object.fromEntries(Object.entries({
+      type: 'search-query', path: p.path || null, param: p.param || undefined, term: p.term, resultSelector: null,
+      expectCount: p.expect_count ?? undefined, expectTitles: p.expect_titles?.length ? p.expect_titles : undefined, expectIncludes: p.expect_includes ?? undefined,
+    }).filter(([, v]) => v !== undefined)));
+  }
+  return { _provenance: provenance('plan', { knowledge: dir }), method: 'drafted from the spec\'s search probes: fill resultSelector (the rebuilt results\' item selector), check path against the rebuilt search page, then curate into parity.json', features: Object.values(byFeature) };
+}
+
 /* ---------------------------------------------------------------- rows -- */
 const rows = d.findings.map((f) => {
   const rule = RULES.find((r) => r.when(f)) || { pattern: 'inspect', disposition: 'static-snapshot', repro: 'needs-human-capture', phase: 'detect', decision: 'inspect' };
@@ -133,6 +151,8 @@ const rows = d.findings.map((f) => {
   return row;
 });
 rows.push(...knowledgeRows(KNOWLEDGE));
+const parityDraft = knowledgeParity(KNOWLEDGE);
+if (parityDraft) writeJSON(join(OUT, 'dynamic-features.generated-parity.json'), parityDraft);
 const draft = { _provenance: provenance('plan', { input: IN, target: TARGET || null, migrated: MIGRATED || null, knowledge: KNOWLEDGE || null }), rows };
 writeJSON(join(OUT, 'dynamic-features.generated-plan.json'), draft);
 

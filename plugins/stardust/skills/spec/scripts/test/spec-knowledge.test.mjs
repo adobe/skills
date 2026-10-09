@@ -45,11 +45,12 @@ const put = (f, v) => { mkdirSync(dirname(f), { recursive: true }); writeFileSyn
 const jl = (rows) => rows.map((r) => JSON.stringify(r)).join("\n");
 const O = "https://example.com";
 put(D("spec.config.json"), { site: "Example", origin: O, scopePath: "/en/", template: { bodyAttr: "data-template" }, parser: { profile: "generic" } });
-put(W("inventory", "urls.txt"), [`${O}/en/a.html`, `${O}/en/b.html`, `${O}/en/old.html`].join("\n"));
+put(W("inventory", "urls.txt"), [`${O}/en/a.html`, `${O}/en/b.html`, `${O}/en/old.html`, `${O}/en/walled.html`].join("\n"));
 put(W("fetch", "fetch.jsonl"), jl([
   { url: `${O}/en/a.html`, status: 200, final_url: `${O}/en/a.html`, final_status: 200, title: "A", template: "page" },
   { url: `${O}/en/b.html`, status: 200, final_url: `${O}/en/b.html`, final_status: 200, title: "B", template: "page" },
   { url: `${O}/en/old.html`, status: 301, final_url: `${O}/en/gone.html`, final_status: 404, chain: [`${O}/en/gone.html`] },
+  { url: `${O}/en/walled.html`, error: "bot challenge", blocked: "challenge" },
 ]));
 put(W("links", "pages.jsonl"), jl([{ url: `${O}/en/c.html`, status: 200, final_url: `${O}/en/c.html`, final_status: 200, title: "C", template: "page" }]));
 put(W("parse", "components.jsonl"), jl([{ url: `${O}/en/a.html`, main_chars: 900, chrome: { header: true, footer: true } }, { url: `${O}/en/b.html`, main_chars: 10, chrome: {} }]));
@@ -72,6 +73,7 @@ put(D("judgement", "implementation.json"), {
   query_indexes: [{ name: "default", include: ["/en/**"], exclude: ["/nav"], properties: ["title"] }],
 });
 put(D("judgement", "findings.json"), [{ title: "Reuse.", text: "{{urls live sitemap !verdict:new}} of {{urls live sitemap}} live pages need no new block." }]);
+put(D("judgement", "search-probes.json"), [{ term: "tennis", expectCount: 12, expectTitles: ["A"], feature: "site-search", path: "/en/search", param: "q" }]);
 put(D("judgement", "answers.json"), [{ question: "Q-2", answer: "retire them", by: "owner", at: "2026-10-08" }]);
 const run = () => spawnSync(process.execPath, ["--no-warnings", join(HERE, "..", "spec-knowledge.mjs")], { cwd: root, encoding: "utf8" });
 const r1 = run();
@@ -79,7 +81,8 @@ const K = (f) => readFileSync(D("knowledge", f), "utf8");
 const KJ = (f) => JSON.parse(K(f)); const KL = (f) => K(f).split("\n").filter(Boolean).map((l) => JSON.parse(l));
 check("fixture run exits 0", () => assert.equal(r1.status, 0, r1.stderr));
 check("urls: sitemap rows, the discovered in-scope page, outcomes and flags", () => {
-  const u = KL("urls.jsonl"); assert.deepEqual(u.map((x) => [x.path, x.in_sitemap, x.outcome]), [["/en/a.html", 1, "page"], ["/en/b.html", 1, "page"], ["/en/old.html", 1, "redirect-broken"], ["/en/c.html", 0, "page"]]);
+  const u = KL("urls.jsonl"); assert.deepEqual(u.map((x) => [x.path, x.in_sitemap, x.outcome]), [["/en/a.html", 1, "page"], ["/en/b.html", 1, "page"], ["/en/old.html", 1, "redirect-broken"], ["/en/walled.html", 1, "error"], ["/en/c.html", 0, "page"]]);
+  assert.equal(u[3].blocked, "challenge"); assert.equal(u[0].blocked, null);
   assert.equal(u[1].flag, "empty"); assert.equal(u[0].eds_path, "/en/a");
 });
 check("page blocks carry chrome globals around the page's blocks", () => assert.deepEqual(KL("page-blocks.jsonl")[0].blocks.map((b) => b.block), ["header", "hero", "cards", "footer"]));
@@ -93,6 +96,7 @@ check("redirects, broken, bad links grouped by target", () => {
   assert.equal(KL("broken.jsonl")[0].note, "sitemap URL redirects into a dead page");
   assert.deepEqual(KL("bad-links.jsonl"), [{ to_url: `${O}/en/old.html`, main: [1], chrome: [2] }]);
 });
+check("search probes keep their feature and source search URL", () => assert.deepEqual(KJ("search-probes.json"), [{ term: "tennis", expect_count: 12, expect_titles: ["A"], expect_includes: null, feature: "site-search", path: "/en/search", param: "q" }]));
 check("helix-query.yaml drafted from the query indexes", () => assert.match(K("helix-query.yaml"), /^version: 1\nindices:\n {2}default:/));
 check("no viewer concerns in the output", () => { const s = KJ("site.json"); assert.ok(!("scope_label" in s) && !("tour_steps" in s)); assert.ok(!readdirSync(D("knowledge")).some((f) => f.endsWith(".sqlite"))); });
 check("a rerun writes the same files (apart from the build stamp)", () => {

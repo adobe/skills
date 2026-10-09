@@ -12,7 +12,7 @@ Large row sets are JSON Lines (`.jsonl`), the rest JSON. `url_id` is the `id` of
 | File | Rows and main fields |
 |---|---|
 | `site.json` | `site`, `origin`, `scope_path`, `reference_blocks {name, count}`, `rum {available, window, bundles}`, `sitemap_urls`, `inventory_total`, `inventory_source`, `sample_note` (only when capped), `fetch_sources {live, headed, archive}`, `evidence_note` (only with archive captures), `built_at`, `built_by`, `provenance`, `variant_cut`, `capture_format`, `i18n_notes[]` |
-| `urls.jsonl` | id, url, path, section, depth, in_sitemap, status, final_url, final_status, outcome, template, variant_code, title, eds_path, needs_migration_redirect, pageviews_90d, rum_bundles, traffic_band, block_count, capture_key, main_chars, flag |
+| `urls.jsonl` | id, url, path, section, depth, in_sitemap, status, final_url, final_status, outcome, template, variant_code, title, eds_path, needs_migration_redirect, pageviews_90d, rum_bundles, traffic_band, block_count, capture_key, main_chars, flag, blocked (why the page was not read: `challenge`, `refused`, `network`, `archive-miss`) |
 | `page-blocks.jsonl` | per page: `url_id`, `url`, `blocks[] {pos, block, variant, kind, source[], path, nested_in, section, crop}`; chrome globals first and last |
 | `signals.jsonl` | per live sitemap page: `url_id`, `url`, `signals[]` (`hreflang`, `script:<host>`, `iframe:<host>`, `jsonld:<type>`, and `implementation.json#signals` names) |
 | `blocks.json` | name, kind, family, description, source[], reference_block, verdict, rationale, url_count, instance_count, template_count, pageviews_90d, `variants[] {variant, verdict, rationale, url_count, instance_count, examples[] {url, crop}}` |
@@ -29,7 +29,7 @@ Large row sets are JSON Lines (`.jsonl`), the rest JSON. `url_id` is the `id` of
 | `query-indexes.json`, `helix-query.yaml` | name, include_paths, exclude_paths, filter, properties, consumers, source, yaml; the yaml file joins them (dynamics skeleton) |
 | `locales.json` | tree, country, language, urls, rum_views_90d, sitemap, … |
 | `site-config.json` | key, now, eds, decision |
-| `search-probes.json` | term, expect_count, expect_titles[], expect_includes |
+| `search-probes.json` | term, expect_count, expect_titles[], expect_includes, feature (its S feature id), path and param (the source search URL) |
 | `open-questions.json` | id, area, owner (`stakeholder` / `implementer`), blocking, question, context, options[], default_assumption, impact_rule, impact, link, features[], answer {answer, option, by, at}, effective |
 | `findings.json` | `{ title, text, numbers[] }`, plain text, every number computed |
 
