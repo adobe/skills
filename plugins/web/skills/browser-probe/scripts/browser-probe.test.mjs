@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, chmodSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -39,8 +39,12 @@ test('detectSignals maps akamai-grn to akamai-server', () => {
 
 // Fake playwright-cli: serves a healthy page behind one redirect. Only the final
 // document (#2) carries cf-ray. FAKE_FAIL=<command> makes that command exit 1.
+// FAKE_SESSION_LOG=<file> records the -s=<session> argument of every call.
 const FAKE_CLI = `#!/usr/bin/env node
 const [cmd, arg] = process.argv.slice(3);
+if (process.env.FAKE_SESSION_LOG) {
+  require('node:fs').appendFileSync(process.env.FAKE_SESSION_LOG, process.argv[2] + '\\n');
+}
 if (process.env.FAKE_FAIL && cmd === process.env.FAKE_FAIL) {
   console.error('Unknown command: ' + cmd);
   process.exit(1);
@@ -82,4 +86,16 @@ test('probe records header-collection failures instead of hiding them', () => {
   assert.equal(report.firstSuccess, 'default');
   assert.deepEqual(report.detectedSignals, []);
   assert.match(report.steps[0].headerError, /Failed to read main-document response headers/);
+});
+
+test('concurrent probes use distinct playwright-cli sessions', () => {
+  const sessionsOf = () => {
+    const log = join(mkdtempSync(join(tmpdir(), 'browser-probe-sessions-')), 'sessions.log');
+    writeFileSync(log, '');
+    runProbe({ FAKE_SESSION_LOG: log });
+    return new Set(readFileSync(log, 'utf-8').split('\n').filter((l) => l.startsWith('-s=')));
+  };
+  const [first, second] = [sessionsOf(), sessionsOf()];
+  assert.ok(first.size > 0 && [...first].every((s) => s.startsWith('-s=probe-')));
+  assert.equal([...first].filter((s) => second.has(s)).length, 0);
 });

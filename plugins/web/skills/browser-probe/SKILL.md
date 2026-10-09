@@ -3,14 +3,12 @@ name: browser-probe
 license: Apache-2.0
 compatibility: Requires playwright-cli on PATH. Run `playwright-cli --help` for usage.
 description: >-
-  Probe a URL with escalating headless browser configurations to detect CDN bot
-  protection (Akamai, Cloudflare, DataDome, AWS WAF) and produce a
-  browser-recipe.json that downstream playwright-cli consumers use to bypass
-  blocking. Runs an automated escalation ladder: default headless → stealth
-  script injection → system Chrome (TLS fingerprint fix) → persistent profile.
-  Use BEFORE any playwright-cli interaction with an untrusted domain. Triggers
-  on: browser probe, site blocked, headless blocked, CDN blocking, bot
-  detection, browser recipe, can't load page, 403 error page, access denied.
+  Detects CDN bot protection (Akamai, Cloudflare, DataDome, AWS WAF) by probing
+  a URL with escalating headless browser configurations, and writes a
+  browser-recipe.json that other playwright-cli skills use to load the page.
+  Use when a page is blocked, empty, or shows a 403, "access denied", or
+  captcha page in headless Chrome, or before automating a site known to block
+  bots.
 ---
 
 # Browser Probe
@@ -21,27 +19,20 @@ dependencies.
 
 ## When to Use
 
-Run **before** any `playwright-cli` interaction with an untested domain, or when
-a downstream script reports a blocked/empty page (403, "access denied", "captcha").
+Run when a `playwright-cli` page or a downstream script comes back blocked or
+empty (403, "access denied", "captcha"), or before automating a site known to
+block bots.
 
-## Script Location
-
-```bash
-if [[ -n "${CLAUDE_SKILL_DIR:-}" ]]; then
-  PROBE_DIR="${CLAUDE_SKILL_DIR}/scripts"
-else
-  PROBE_DIR="$(dirname "$(command -v browser-probe.js 2>/dev/null || \
-    find ~/.claude -path "*/browser-probe/scripts/browser-probe.js" \
-    -type f 2>/dev/null | head -1)")"
-fi
-```
+Paths like `scripts/…` are relative to this skill's directory (the folder
+containing this SKILL.md). Run commands from the current working directory with
+those paths made absolute; don't `cd` into the skill directory.
 
 ## Workflow
 
 ### Step 1 — Run the probe
 
 ```bash
-node "$PROBE_DIR/browser-probe.js" "$URL" "$OUTPUT_DIR"
+node scripts/browser-probe.js "$URL" "$OUTPUT_DIR"
 ```
 
 The script tries up to 5 browser configurations, stopping at the first success:
@@ -80,10 +71,13 @@ Write `browser-recipe.json` to `$OUTPUT_DIR`:
   "cliConfig": {
     "browser": {
       "browserName": "chromium",
-      "launchOptions": { "channel": "<from firstSuccess step>" }
+      "launchOptions": {
+        "channel": "<channel column, omit if —>",
+        "args": ["<args column, omit if —>"]
+      }
     }
   },
-  "stealthInitScript": "<full script from stealth-config.md if stealth was needed>",
+  "stealthInitScript": "<contents of scripts/stealth-init.js, or null>",
   "notes": "<1-2 sentence explanation of what was detected and why this config>"
 }
 ```
@@ -93,10 +87,13 @@ Write `browser-recipe.json` to `$OUTPUT_DIR`:
 | firstSuccess | channel | args | stealthInitScript |
 |---|---|---|---|
 | `default` | — | — | null |
-| `stealth` | — | — | from reference |
-| `stealth-ua` | — | `--user-agent=<realistic UA>` | from reference |
-| `chrome` | `chrome` | `--user-agent=<realistic UA>` | from reference |
-| `persistent` | `chrome` | `--user-agent=<realistic UA>` | from reference |
+| `stealth` | — | — | `scripts/stealth-init.js` |
+| `stealth-ua` | — | `--user-agent=<UA>` | `scripts/stealth-init.js` |
+| `chrome` | `chrome` | `--user-agent=<UA>` | `scripts/stealth-init.js` |
+| `persistent` | `chrome` | `--user-agent=<UA>` | `scripts/stealth-init.js` |
+
+`<UA>` is the User-Agent string under "User-Agent Override" in
+`references/stealth-config.md`. It is the same one the probe used.
 
 If `firstSuccess` is `persistent`, add `"persistent": true` to the recipe.
 
@@ -127,7 +124,10 @@ with a broken configuration.
 
 ## How Consumers Use the Recipe
 
-Pass `--config=<path-to-cliConfig>` to `playwright-cli open`. If the recipe has
-`stealthInitScript`, add it to `browser.initScript` in the config (not via `eval` —
-eval is expression-only). If `"persistent": true`, also pass `--persistent`.
-Run `playwright-cli --help` for the full command reference.
+`page-collect` accepts the recipe directly (`--browser-recipe <path>`). For
+other `playwright-cli` work, write the recipe's `cliConfig` object to a JSON
+file and pass it as `playwright-cli open --config=<file>`. If the recipe has
+`stealthInitScript`, save it to a `.js` file and list that path in
+`browser.initScript` in the same config (not via `eval`, which accepts a single
+expression only). If `"persistent": true`, also pass `--persistent`. Run
+`playwright-cli --help` for the full command reference.

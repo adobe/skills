@@ -56,32 +56,62 @@ function extractSelectors(matchers) {
   return { selectors, requiresVisible };
 }
 
-function extractHideSelectors(hideActions) {
-  const rules = [];
-  for (const action of toArray(hideActions)) {
-    if (action.type === 'hide' && action.target?.selector) {
-      rules.push(`${action.target.selector} { display:none!important }`);
-    }
-  }
-  return rules;
+// Consent-O-Matic rules list `methods` as [{ name, action }]. An action is
+// either a single step or { type: 'list', actions: [...] }.
+function methodSteps(rule, name) {
+  const method = toArray(rule.methods).find((m) => m.name === name);
+  const flatten = (action) => {
+    if (!action) return [];
+    if (action.type === 'list') return toArray(action.actions).flatMap(flatten);
+    return [action];
+  };
+  return flatten(method?.action);
 }
 
-function extractDismissActions(doConsent, saveConsent) {
-  const actions = [];
-  for (const action of toArray(doConsent)) {
-    if (action.type === 'click' && action.target?.selector) {
-      actions.push({ action: 'click', selector: action.target.selector });
+function quoteText(text) {
+  return JSON.stringify(String(text));
+}
+
+// Playwright selector for a Consent-O-Matic target: `parent` scopes the
+// target, `textFilter` (string or list of alternatives) narrows by text.
+function stepSelector(step) {
+  const target = step.target ?? {};
+  const base = step.parent?.selector
+    ? `${step.parent.selector} ${target.selector}`
+    : target.selector;
+  const texts = toArray(target.textFilter);
+  if (texts.length === 0) return base;
+  return texts.map((t) => `${base}:has-text(${quoteText(t)})`).join(', ');
+}
+
+const PAGE_ROOT_RE = /^(html|body)\b/i;
+
+function extractHideRules(rule, presentSelectors) {
+  const rules = methodSteps(rule, 'HIDE_CMP')
+    .filter((step) => step.type === 'hide' && step.target?.selector)
+    .map((step) => `${stepSelector(step)} { display:none!important }`);
+  if (rules.length > 0) return rules;
+  // No HIDE_CMP: hide the banner element itself, never <html>/<body>.
+  return presentSelectors
+    .filter((sel) => !PAGE_ROOT_RE.test(sel.trim()))
+    .map((sel) => `${sel} { display:none!important }`);
+}
+
+// Open the CMP's options and save. Per-purpose toggles (DO_CONSENT) and
+// conditional steps (ifcss, foreach) are skipped, so the CMP saves its
+// default choices. A CMP whose save step is conditional-only gets no dismiss
+// recipe: clicking "options" without saving would leave the banner up.
+function extractDismissActions(rule) {
+  const toActions = (name) => methodSteps(rule, name).flatMap((step) => {
+    if (step.type === 'click' && step.target?.selector) {
+      return [{ action: 'click', selector: stepSelector(step) }];
     }
-  }
-  for (const action of toArray(saveConsent)) {
-    if (action.type === 'wait' && action.waitTime) {
-      actions.push({ action: 'wait', ms: action.waitTime });
-    }
-    if (action.type === 'click' && action.target?.selector) {
-      actions.push({ action: 'click', selector: action.target.selector });
-    }
-  }
-  return actions;
+    if (step.type === 'wait' && step.waitTime) return [{ action: 'wait', ms: step.waitTime }];
+    return [];
+  });
+  const save = toActions('SAVE_CONSENT');
+  if (!save.some((a) => a.action === 'click')) return [];
+  return [...toActions('OPEN_OPTIONS'), ...save];
 }
 
 function hasDroppedFilters(matchers) {
@@ -96,7 +126,6 @@ function normalizeCmpRules(rawRules) {
 
   for (const [name, rule] of Object.entries(rawRules)) {
     const detector = rule.detectors?.[0];
-    const method = rule.methods?.[0];
     if (!detector) continue;
 
     const present = extractSelectors(detector.presentMatcher);
@@ -113,8 +142,8 @@ function normalizeCmpRules(rawRules) {
     cmps[name] = {
       detect: allSelectors,
       detect_requires_visible: present.requiresVisible || showing.requiresVisible,
-      hide: extractHideSelectors(method?.HIDE_CMP),
-      dismiss: extractDismissActions(method?.DO_CONSENT, method?.SAVE_CONSENT),
+      hide: extractHideRules(rule, present.selectors),
+      dismiss: extractDismissActions(rule),
     };
   }
 
@@ -254,6 +283,39 @@ function cmdBundle() {
   process.stdout.write(buildBundle(patterns, detectScript));
 }
 
+// --- Hide expression ---
+
+// Accepts the detection report as raw JSON, as a JSON-encoded string, or as
+// saved `playwright-cli eval` output (### Result ... ### Ran Playwright code).
+function parseReport(text) {
+  const start = text.indexOf('### Result');
+  const end = text.lastIndexOf('### Ran Playwright code');
+  const body = start === -1 ? text : text.slice(start + '### Result'.length, end === -1 ? undefined : end);
+  const parsed = JSON.parse(body.trim());
+  return typeof parsed === 'string' ? JSON.parse(parsed) : parsed;
+}
+
+// One `playwright-cli eval` expression that injects the hide rules of the
+// selected overlays (ids, or 'all') plus scroll_fix as a stylesheet. The CSS is
+// JSON-encoded so quotes and backslashes in selectors cannot break the string.
+function buildHideExpression(report, ids) {
+  const selected = ids.includes('all')
+    ? report.overlays
+    : report.overlays.filter((o) => ids.includes(o.id));
+  const rules = selected.flatMap((o) => o.hide ?? []);
+  if (report.scroll_locked && report.scroll_fix) rules.push(report.scroll_fix);
+  const css = JSON.stringify(rules.join('\n'));
+  return `document.head.appendChild(Object.assign(document.createElement('style'), { textContent: ${css} })) && 'ok'`;
+}
+
+function cmdHideExpr(reportPath, ids) {
+  if (!reportPath) die('Usage: node overlay-db.js hide-expr <report-file> [all | overlay-id...]');
+  let report;
+  try { report = parseReport(fs.readFileSync(reportPath, 'utf8')); }
+  catch (err) { die(`Cannot read detection report ${reportPath}: ${err.message}`); }
+  process.stdout.write(buildHideExpression(report, ids));
+}
+
 async function main() {
   const args = process.argv.slice(2);
   const command = args[0];
@@ -263,12 +325,13 @@ async function main() {
     case 'status': cmdStatus(); break;
     case 'lookup': cmdLookup(args[1]); break;
     case 'bundle': cmdBundle(); break;
+    case 'hide-expr': cmdHideExpr(args[1], args.slice(2)); break;
     default:
-      console.error(['Usage: overlay-db.js <command> [options]', '', 'Commands:', '  refresh [--force]   Fetch/update pattern databases', '  status              Show cache age and stats', '  lookup <cmp-name>   Check if a CMP is in the database', '  bundle              Output injectable script with embedded patterns'].join('\n'));
+      console.error(['Usage: overlay-db.js <command> [options]', '', 'Commands:', '  refresh [--force]   Fetch/update pattern databases', '  status              Show cache age and stats', '  lookup <cmp-name>   Check if a CMP is in the database', '  bundle              Output injectable script with embedded patterns', '  hide-expr <report> [all | overlay-id...]', '                      Output an eval expression hiding those overlays (+ scroll_fix)'].join('\n'));
       process.exit(command ? 1 : 0);
   }
 }
 
 if (require.main === module) { main().catch((err) => die(err.message)); }
 
-module.exports = { parseAbpHideRules, normalizeCmpRules, isCacheStale, buildPatternsJson, buildBundle };
+module.exports = { parseAbpHideRules, normalizeCmpRules, isCacheStale, buildPatternsJson, buildBundle, parseReport, buildHideExpression };

@@ -3,12 +3,11 @@ name: domain-mask
 license: Apache-2.0
 compatibility: macOS only. Requires mkcert and sudo (for port 443 and /etc/hosts modification).
 description: >-
-  Mask a URL behind a custom domain for demos and recordings. Adds a trusted
-  HTTPS reverse proxy so the browser shows a clean display domain with a green
-  padlock while serving content from the real target URL. Handles /etc/hosts,
-  mkcert certificates, and cleanup automatically. Triggers on: "domain mask",
-  "mask domain", "mock domain", "proxy URL", "demo URL", "fake domain",
-  "demo proxy", "mask URL for demo", "domain-mask".
+  Serves a real URL behind a custom display domain through a local
+  trusted-HTTPS reverse proxy (mkcert certificate, /etc/hosts entry), so demos
+  and recordings show a clean domain with a padlock. macOS only. Use when the
+  user wants to mask, alias, or fake a domain for a demo, recording, or
+  screenshot.
 ---
 
 # domain-mask
@@ -24,20 +23,6 @@ mkcert — no browser warnings.
 - Node 22+
 - mkcert (`brew install mkcert && mkcert -install`)
 - sudo access (for port 443 and /etc/hosts)
-
-## Script Location
-
-```bash
-if [[ -n "${CLAUDE_SKILL_DIR:-}" ]]; then
-  DOMAIN_MASK="${CLAUDE_SKILL_DIR}/scripts/domain-mask.mjs"
-else
-  DOMAIN_MASK="$(find ~/.claude -path "*/domain-mask/scripts/domain-mask.mjs" \
-    -type f 2>/dev/null | head -1)"
-fi
-if [[ -z "$DOMAIN_MASK" || ! -f "$DOMAIN_MASK" ]]; then
-  echo "Error: domain-mask.mjs not found." >&2
-fi
-```
 
 ## Workflow
 
@@ -57,13 +42,21 @@ which mkcert || echo "Install mkcert: brew install mkcert && mkcert -install"
 If mkcert is missing, tell the user to install it and run `mkcert -install`
 once to set up the local CA.
 
-### Step 3: Start the proxy
+### Step 3: Have the user start the proxy
+
+The command prompts for the sudo password and stays in the foreground until
+Ctrl+C, so the user runs it in their own terminal. Give them the command with
+the absolute path of this skill's directory (the folder containing this
+SKILL.md) filled in:
 
 ```bash
-sudo node "$DOMAIN_MASK" <display-domain> <target-url>
+sudo env CAROOT="$(mkcert -CAROOT)" node "<skill-dir>/scripts/domain-mask.mjs" "<display-domain>" "<target-url>"
 ```
 
-The script handles everything automatically:
+`CAROOT` is resolved before `sudo`, so mkcert signs with the CA the user
+installed rather than one under root's home, which the browser would not trust.
+
+The script:
 
 1. Adds `127.0.0.1 <display-domain>` to `/etc/hosts`
 2. Generates a trusted HTTPS certificate via mkcert
@@ -78,12 +71,18 @@ Tell the user:
 
 ### Step 4: Confirm cleanup
 
-After the user stops the proxy, verify cleanup succeeded by checking
-the script output. If it reports a warning about /etc/hosts cleanup,
-help the user remove the entry manually:
+After the user stops the proxy, check that the hosts entry is gone (no output
+means clean):
 
 ```bash
-sudo sed -i '' '/<display-domain>/d' /etc/hosts
+grep -Fx '127.0.0.1 <display-domain>' /etc/hosts
+```
+
+If the line is still there, have the user remove it. Escape the dots so `sed`
+matches only that line, e.g. for `wknd.adventures`:
+
+```bash
+sudo sed -i '' '/^127\.0\.0\.1 wknd\.adventures$/d' /etc/hosts
 ```
 
 ## Limitations

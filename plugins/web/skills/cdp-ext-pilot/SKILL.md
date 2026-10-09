@@ -3,17 +3,12 @@ name: cdp-ext-pilot
 license: Apache-2.0
 compatibility: Requires Node 22+. Depends on the cdp-connect skill as a sibling skill.
 description: >-
-  Launch Chrome with an unpacked extension and test its UI via CDP.
-  Auto-installs Chrome for Testing if needed. Loads the extension, opens
-  sidepanel/popup/options page, and hands off to cdp-connect for interaction
-  (click, type, screenshot, ax-tree). Handles Chrome 137+ branded build
-  restrictions (Extensions.loadUnpacked via pipe), sidepanel user gesture
-  requirements, and React input quirks. Use when you need to test a Chrome
-  extension's UI, automate extension interactions, or validate extension
-  behavior on a target page. Triggers on: chrome extension test, test
-  extension, load unpacked extension, extension sidepanel, extension popup,
-  test chrome extension, extension testing, chrome extension automation,
-  ext pilot, cdp extension.
+  Launches Chrome with an unpacked extension loaded (installing Chrome for
+  Testing if needed), opens the extension's side panel, popup, or options page,
+  and hands the target to cdp-connect for interaction. Handles the Chrome 137+
+  restriction on loading unpacked extensions and the side panel user-gesture
+  requirement. Use when testing, automating, or validating a Chrome extension's
+  UI.
 ---
 
 # CDP Extension Pilot
@@ -21,29 +16,16 @@ description: >-
 Launch Chrome with an unpacked extension, open its UI, interact via CDP.
 Composes on `cdp-connect` — load that skill first for `cdp.js` commands.
 
-## Scripts
-
-```bash
-# Locate cdp-ext-pilot.mjs
-if [[ -n "${CLAUDE_SKILL_DIR:-}" ]]; then
-  EXT_PILOT="${CLAUDE_SKILL_DIR}/scripts/cdp-ext-pilot.mjs"
-else
-  EXT_PILOT="$(command -v cdp-ext-pilot.mjs 2>/dev/null || \
-    find ~/.claude -path "*/cdp-ext-pilot/scripts/cdp-ext-pilot.mjs" -type f 2>/dev/null | head -1)"
-fi
-
-# Locate cdp.js (from cdp-connect skill)
-if [[ -n "${CLAUDE_SKILL_DIR:-}" ]]; then
-  CDP_JS="$(find "$(dirname "${CLAUDE_SKILL_DIR}")" -path "*/cdp-connect/scripts/cdp.js" -type f 2>/dev/null | head -1)"
-fi
-CDP_JS="${CDP_JS:-$(command -v cdp.js 2>/dev/null || \
-  find ~/.claude -path "*/cdp-connect/scripts/cdp.js" -type f 2>/dev/null | head -1)}"
-```
+Paths like `scripts/…` are relative to this skill's directory (the folder
+containing this SKILL.md). Run commands from the current working directory with
+those paths made absolute; don't `cd` into the skill directory.
+`<cdp-connect>` is the sibling `cdp-connect` skill's directory (`../cdp-connect`
+from this one).
 
 ## Phase 1: Setup
 
 ```bash
-node "$EXT_PILOT" launch <path-to-extension-dist> [--port 9222]
+node scripts/cdp-ext-pilot.mjs launch <path-to-extension-dist> [--port 9222]
 ```
 
 Returns JSON with `extensionId`, `port`, `chromeVariant`. Auto-installs
@@ -56,9 +38,9 @@ same port (`lsof -i :9222`), and retry after `close`.
 ## Phase 2: Open UI
 
 ```bash
-node "$EXT_PILOT" open sidepanel [--port 9222]   # Opens sidepanel, returns target ID
-node "$EXT_PILOT" open popup [--port 9222]        # Opens popup as tab
-node "$EXT_PILOT" open options [--port 9222]      # Opens options page as tab
+node scripts/cdp-ext-pilot.mjs open sidepanel [--port 9222]  # Opens sidepanel, returns target ID
+node scripts/cdp-ext-pilot.mjs open popup [--port 9222]      # Opens popup as tab
+node scripts/cdp-ext-pilot.mjs open options [--port 9222]    # Opens options page as tab
 ```
 
 For sidepanel: navigates to a page first if no page target exists.
@@ -68,26 +50,28 @@ For sidepanel: navigates to a page first if no page target exists.
 Use `cdp-connect` commands with `--id <target-id>` from Phase 2:
 
 ```bash
-node "$CDP_JS" ax-tree --id <target-id>           # Understand the UI
-node "$CDP_JS" screenshot /tmp/ext.png --id <tid>  # Visual check
-node "$CDP_JS" click "button" --id <tid>           # Click elements
-node "$CDP_JS" type "input" "text" --id <tid>      # Type into fields
-node "$CDP_JS" eval "expression" --id <tid>        # Run JS
+node <cdp-connect>/scripts/cdp.js ax-tree --id <target-id>            # Understand the UI
+node <cdp-connect>/scripts/cdp.js screenshot /tmp/ext.png --id <tid>  # Visual check
+node <cdp-connect>/scripts/cdp.js click "button" --id <tid>           # Click elements
+node <cdp-connect>/scripts/cdp.js type "input" "text" --id <tid>      # Type into fields
+node <cdp-connect>/scripts/cdp.js eval "expression" --id <tid>        # Run JS
 ```
 
 ## Cleanup
 
 ```bash
-node "$EXT_PILOT" status [--port 9222]   # Check session state
-node "$EXT_PILOT" close [--port 9222]    # Kill Chrome, remove profile
+node scripts/cdp-ext-pilot.mjs status [--port 9222]  # Check session state
+node scripts/cdp-ext-pilot.mjs close [--port 9222]   # Kill Chrome, remove profile
 ```
 
 ## Tips
 
-- **React inputs:** `cdp.js type` sets DOM `.value` which does not trigger
-  React state updates. Focus the element first with
-  `cdp.js eval "document.querySelector('input').focus()"`, then use
-  `Input.insertText` via eval to type character by character.
+- **React inputs:** `cdp.js type` assigns `.value` directly, which React's
+  change tracking ignores. Set the value through the native setter instead:
+  ```bash
+  node <cdp-connect>/scripts/cdp.js eval "(() => { const el = document.querySelector('input'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, 'text'); el.dispatchEvent(new Event('input', { bubbles: true })); return el.value; })()" --id <tid>
+  ```
+  Use `HTMLTextAreaElement.prototype` for a `<textarea>`.
 - **Port already in use:** If `launch` fails, another Chrome is on that port.
   Run `close` first, or pass `--port <other>`.
 - See [troubleshooting.md](references/troubleshooting.md) for popup context

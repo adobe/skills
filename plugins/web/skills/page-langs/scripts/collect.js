@@ -21,10 +21,13 @@ async page => {
     );
     const metaContentLanguage = metaEl ? metaEl.getAttribute('content') : null;
 
-    // Keep nav/footer — language switchers live there. Only strip non-content nodes.
-    const clone = document.documentElement.cloneNode(true);
-    clone.querySelectorAll('script, style, noscript').forEach((el) => el.remove());
-    const text = clone.textContent.replace(/\s+/g, ' ').trim();
+    // Visible body text, one line per block, so detect.mjs can classify each
+    // block separately. Nav/footer stay in: language switchers live there.
+    const text = document.body.innerText
+      .split('\n')
+      .map((line) => line.replace(/\s+/g, ' ').trim())
+      .filter(Boolean)
+      .join('\n');
 
     return {
       url: window.location.href,

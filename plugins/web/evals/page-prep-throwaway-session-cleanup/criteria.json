@@ -1,0 +1,48 @@
+{
+  "context": "The detection report lists two consent-platform matches (Didomi and one other), two heuristic modals, and scroll_locked: true with a CSS scroll_fix. Sessions are disposable, so hiding is preferred over clicking through consent. Judge cleanup.sh.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "hides_all_overlays",
+      "max_score": 25,
+      "category": "INTENT",
+      "description": "cleanup.sh applies the `hide` CSS rules for all four overlays in the report (#didomi-host/#didomi-notice, #cmp-container-id/.main--cmp, #didomi-popup, #dialog-menu)."
+    },
+    {
+      "name": "scroll_fix",
+      "max_score": 15,
+      "category": "INTENT",
+      "description": "Because scroll_locked is true, cleanup.sh also applies the report's scroll_fix (html,body overflow:auto)."
+    },
+    {
+      "name": "single_injection",
+      "max_score": 15,
+      "category": "MINIMALITY",
+      "description": "The rules are applied in one playwright-cli eval call (e.g. one injected <style> element), not one command per overlay."
+    },
+    {
+      "name": "no_consent_clicks",
+      "max_score": 15,
+      "category": "DESIGN",
+      "description": "Does not click through the consent platforms' dismiss steps, since the session is thrown away and clicking is slower."
+    },
+    {
+      "name": "valid_eval_expression",
+      "max_score": 10,
+      "category": "INTEGRATION",
+      "description": "Each playwright-cli eval argument is a single JavaScript expression (no top-level statements separated by semicolons, no bare `return`)."
+    },
+    {
+      "name": "residual_check",
+      "max_score": 15,
+      "category": "INTENT",
+      "description": "Includes a check for remaining viewport-covering elements, e.g. an eval that lists position:fixed elements with a high z-index that intersect the viewport, or a viewport screenshot to inspect."
+    },
+    {
+      "name": "page_not_broken",
+      "max_score": 5,
+      "category": "MUST_NOT",
+      "description": "Does not hide or remove <html> or <body>."
+    }
+  ]
+}

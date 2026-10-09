@@ -1,0 +1,82 @@
+{
+  "overlays": [
+    {
+      "id": "overlay-0",
+      "type": "cookie-consent",
+      "source": "cmp-match",
+      "cmp": "didomi.io",
+      "selector": "#didomi-host, #didomi-notice",
+      "confidence": 1,
+      "hide": [
+        "#didomi-host, #didomi-notice { display:none!important }"
+      ],
+      "dismiss": [
+        {
+          "action": "click",
+          "selector": ".didomi-popup-notice-buttons .didomi-button:not(.didomi-button-highlight), .didomi-notice-banner .didomi-learn-more-button"
+        },
+        {
+          "action": "click",
+          "selector": ".didomi-consent-popup-footer .didomi-consent-popup-actions .didomi-components-button:first-child"
+        }
+      ]
+    },
+    {
+      "id": "overlay-1",
+      "type": "cookie-consent",
+      "source": "cmp-match",
+      "cmp": "lemonde.fr",
+      "selector": "#cookie-banner, .main--cmp",
+      "confidence": 1,
+      "hide": [
+        "#cmp-container-id, .main--cmp { display:none!important }"
+      ],
+      "dismiss": [
+        {
+          "action": "click",
+          "selector": ".message__cookie-settings, .main--cmp"
+        },
+        {
+          "action": "click",
+          "selector": "#validate"
+        }
+      ]
+    },
+    {
+      "id": "overlay-2",
+      "type": "unknown-modal",
+      "source": "heuristic",
+      "selector": "#didomi-popup",
+      "confidence": 0.7,
+      "signals": [
+        "high-z-index",
+        "viewport-cover",
+        "keyword-match",
+        "scroll-lock-boost"
+      ],
+      "hide": [
+        "#didomi-popup { display:none!important }"
+      ],
+      "dismiss": null
+    },
+    {
+      "id": "overlay-3",
+      "type": "unknown-modal",
+      "source": "heuristic",
+      "selector": "#dialog-menu",
+      "confidence": 0.75,
+      "signals": [
+        "viewport-cover",
+        "aria-modal",
+        "keyword-match",
+        "scroll-lock-boost"
+      ],
+      "hide": [
+        "#dialog-menu { display:none!important }"
+      ],
+      "dismiss": null
+    }
+  ],
+  "scroll_locked": true,
+  "scroll_fix": "html,body { overflow:auto!important; height:auto!important }"
+}

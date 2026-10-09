@@ -1,0 +1,284 @@
+{
+  "url": "https://www.aem.live/",
+  "title": "Adobe Experience Manager",
+  "viewport": {
+    "width": 1280
+  },
+  "templateHash": "-922646321",
+  "sections": [
+    {
+      "sectionType": "unknown",
+      "xpath": "/html[1]/body[1]/header[1]/div[1]/div[3]/nav[1]/div[2]/div[1]/div[1]",
+      "xpathWithDetails": "//*[@id=\"navmenu-0\"]",
+      "tokenizedHtml": "<div class=\"submenu-wrapper\" id=\"navmenu-0\"><div class=\"submenu-content\">{TEXT}{TEXT}{TEXT}{TEXT}</div></div>",
+      "layout": {
+        "numCols": 0,
+        "numRows": 0
+      },
+      "features": [
+        "hasTexts",
+        "hasBackground",
+        "hasHeading",
+        "hasCTA",
+        "hasComplexHiddenElements",
+        "isInsideAHeaderLikeElement"
+      ],
+      "section": {
+        "xpath": "/html[1]/body[1]/header[1]/div[1]/div[3]/nav[1]/div[2]/div[1]/div[1]",
+        "background": "rgb(248, 248, 248) none repeat scroll 0% 0% / auto padding-box border-box"
+      },
+      "index": 0
+    },
+    {
+      "sectionType": "unknown",
+      "xpath": "/html[1]/body[1]/main[1]/div[1]/div[1]",
+      "xpathWithDetails": "/html/body/main/div[1]/div[1]",
+      "tokenizedHtml": "<div class=\"hero-wrapper\"><div class=\"hero inview-animation block colorful-bg\" data-block-name=\"hero\" data-block-status=\"loaded\"><div class=\"inner-content\"><h3 id=\"what-is-adobe-experience-manager\">{HEADING:3}</h3><h1 id=\"create-a-websiteseriously-fast\">{HEADING:1}</h1><p>{TEXT}</p>{CTA:Create your site}</div><div class=\"image-wrapper\"> {IMAGE:0x0} </div></div></div>",
+      "layout": {
+        "numCols": 0,
+        "numRows": 0
+      },
+      "features": [
+        "hasTexts",
+        "hasBackground",
+        "hasBackgroundImage",
+        "hasHeading",
+        "hasCTA",
+        "hasImages"
+      ],
+      "section": {
+        "xpath": "/html[1]/body[1]/main[1]/div[1]/div[1]/div[1]",
+        "background": "rgba(0, 0, 0, 0) url(\"https://www.aem.live/img/colorful-bg.jpg\") repeat scroll 50% 50% / cover padding-box border-box"
+      },
+      "index": 1
+    },
+    {
+      "sectionType": "unknown",
+      "xpath": "/html[1]/body[1]/main[1]/div[1]/div[2]",
+      "xpathWithDetails": "/html/body/main/div[1]/div[2]",
+      "tokenizedHtml": "<div class=\"doc-search-wrapper\"><div class=\"doc-search contained homepage block\" data-block-name=\"doc-search\" data-block-status=\"loaded\"><div><form>{ICON}{INPUT:search}<button type=\"reset\">{TEXT}</button></form><ul class=\"doc-search-results\" aria-hidden=\"true\"><li class=\"doc-search-no-result\" aria-hidden=\"true\">{TEXT}{CTA:Visit our documentation page}{TEXT}</li></ul></div></div></div>",
+      "layout": {
+        "numCols": 0,
+        "numRows": 0
+      },
+      "features": [
+        "hasTexts",
+        "hasImages",
+        "hasComplexHiddenElements"
+      ],
+      "section": null,
+      "index": 2
+    },
+    {
+      "sectionType": "default-content",
+      "xpath": "/html[1]/body[1]/main[1]/div[1]/div[3]",
+      "xpathWithDetails": "/html/body/main/div[1]/div[3]",
+      "tokenizedHtml": "<div class=\"logo-wall-wrapper\"><div class=\"logo-wall technology inview-animation block contained\" data-block-name=\"logo-wall\" data-block-status=\"loaded\"><div class=\"slide-reveal-wrapper\"><h2 id=\"use-the-technology-you-already-have\" class=\"logo-wall-title slide-reveal-up\">{HEADING:2}</h2></div><ul class=\"logo-wall-list fade-up\"><li class=\"logo-wall-list-item\">{TEXT}</li><li class=\"logo-wall-list-item\">{TEXT}</li><li class=\"logo-wall-list-item\">{TEXT}</li><li class=\"logo-wall-list-item\">{TEXT}</li><li class=\"logo-wall-list-item\">{TEXT}</li><li class=\"logo-wall-list-item\">{TEXT}</li><li class=\"logo-wall-list-item\">{TEXT}</li><li class=\"logo-wall-list-item\">{TEXT}</li><li class=\"logo-wall-list-item\">{TEXT}</li><li class=\"logo-wall-list-item\">{TEXT}</li><li class=\"logo-wall-list-item\">{TEXT}</li><li class=\"logo-wall-list-item\">{TEXT}</li></ul></div></div>",
+      "layout": {
+        "numCols": 0,
+        "numRows": 0
+      },
+      "features": [
+        "hasTexts",
+        "hasHeading"
+      ],
+      "section": null,
+      "index": 3
+    },
+    {
+      "sectionType": "columns",
+      "xpath": "/html[1]/body[1]/main[1]/div[2]/div[1]/div[1]/div[4]/div[2]/div[3]/ul[1]",
+      "xpathWithDetails": "/html/body/main/div[2]/div/div/div[4]/div[2]/div[3]/ul",
+      "tokenizedHtml": "<ul class=\"slide-reveal-up\"><li class=\"colored-tag-description\">{TEXT}<br>{TEXT}</li><li class=\"colored-tag-description\">{TEXT}<br>{TEXT}</li><li class=\"colored-tag-description\">{TEXT}<br>{TEXT}</li><li class=\"colored-tag-description\">{TEXT}<br>{TEXT}</li></ul>",
+      "layout": {
+        "numCols": 2,
+        "numRows": 1
+      },
+      "features": [
+        "hasTexts",
+        "hasMultipleColumns",
+        "isGridLayout"
+      ],
+      "section": null,
+      "index": 4
+    },
+    {
+      "sectionType": "default-content",
+      "xpath": "/html[1]/body[1]/main[1]/div[3]/div[1]/div[2]/h3[1]",
+      "xpathWithDetails": "//*[@id=\"made-to-meet-your-every-cms-need-and-more\"]",
+      "tokenizedHtml": "<h3 id=\"made-to-meet-your-every-cms-need-and-more\" class=\"main-headline slide-reveal-up\" style=\"transition-delay: 0.6s;\">{TEXT}</h3>",
+      "layout": {
+        "numCols": 0,
+        "numRows": 0
+      },
+      "features": [
+        "hasTexts",
+        "hasHeading"
+      ],
+      "section": null,
+      "index": 5
+    },
+    {
+      "sectionType": "unknown",
+      "xpath": "/html[1]/body[1]/main[1]/div[3]/div[2]",
+      "xpathWithDetails": "/html/body/main/div[3]/div[2]",
+      "tokenizedHtml": "<div class=\"columns-wrapper\"><div class=\"columns four contained icon-sm text-sm colored-icon center single-grid fade-up block\" data-block-name=\"columns\" data-block-status=\"loaded\"><div><div class=\"columns-left columns-content\"><div class=\"columns-content-wrapper\"><h3 id=\"unmatched-speed\">{HEADING:3}</h3><p>{TEXT}</p></div></div><div><h3 id=\"content-at-scale\">{HEADING:3}</h3><p>{TEXT}</p></div><div><h3 id=\"uncertainty-eliminated\">{HEADING:3}</h3><p>{TEXT}</p></div><div><h3 id=\"widen-the-talent-pool\">{HEADING:3}</h3><p>{TEXT}</p></div></div><div><div><h3 id=\"low-code-productivity\">{HEADING:3}</h3><p>{TEXT}</p></div><div><h3 id=\"composability-is-here\">{HEADING:3}</h3><p>{TEXT}</p></div><div><h3 id=\"content-first\">{HEADING:3}</h3><p>{TEXT}</p></div><div><h3 id=\"peak-performance\">{HEADING:3}</h3><p>{TEXT}</p></div></div></div></div>",
+      "layout": {
+        "numCols": 0,
+        "numRows": 0
+      },
+      "features": [
+        "hasTexts",
+        "hasHeading",
+        "hasComplexHiddenElements"
+      ],
+      "section": null,
+      "index": 6
+    },
+    {
+      "sectionType": "default-content",
+      "xpath": "/html[1]/body[1]/main[1]/div[4]",
+      "xpathWithDetails": "/html/body/main/div[4]",
+      "tokenizedHtml": "<div class=\"section logo-wall-container\" data-section-status=\"loaded\" style=\"\"><div class=\"logo-wall-wrapper\"><div class=\"logo-wall inview-animation meriative-height-adjustment block contained\" data-block-name=\"logo-wall\" data-block-status=\"loaded\"><div class=\"slide-reveal-wrapper\"><h2 id=\"go-live-with-trusted-digital-leaders\" class=\"logo-wall-title slide-reveal-up\">{HEADING:2}</h2></div><ul class=\"logo-wall-list fade-up\"><li class=\"logo-wall-list-item\">{TEXT}</li><li class=\"logo-wall-list-item\">{TEXT}</li><li class=\"logo-wall-list-item\">{TEXT}</li><li class=\"logo-wall-list-item\">{TEXT}</li><li class=\"logo-wall-list-item\">{TEXT}</li><li class=\"logo-wall-list-item\">{TEXT}</li><li class=\"logo-wall-list-item\">{TEXT}</li><li class=\"logo-wall-list-item\">{TEXT}</li></ul></div></div></div>",
+      "layout": {
+        "numCols": 0,
+        "numRows": 0
+      },
+      "features": [
+        "hasTexts",
+        "hasHeading"
+      ],
+      "section": null,
+      "index": 7
+    },
+    {
+      "sectionType": "default-content",
+      "xpath": "/html[1]/body[1]/main[1]/div[5]/div[1]/div[2]/h3[1]",
+      "xpathWithDetails": "//*[@id=\"making-an-impact-with-our-customers-from-the-start\"]",
+      "tokenizedHtml": "<h3 id=\"making-an-impact-with-our-customers-from-the-start\" class=\"main-headline slide-reveal-up\" style=\"transition-delay: 0.3s;\">{TEXT}</h3>",
+      "layout": {
+        "numCols": 0,
+        "numRows": 0
+      },
+      "features": [
+        "hasTexts",
+        "hasHeading"
+      ],
+      "section": null,
+      "index": 8
+    },
+    {
+      "sectionType": "unknown",
+      "xpath": "/html[1]/body[1]/main[1]/div[5]/div[2]",
+      "xpathWithDetails": "/html/body/main/div[5]/div[2]",
+      "tokenizedHtml": "<div class=\"testimonials-wrapper\"><div class=\"testimonials fade-up block\" data-block-name=\"testimonials\" data-block-status=\"loaded\"><div class=\"tab-list image-based\" role=\"tablist\"><div class=\"tablist-container\"><button role=\"tab\" id=\"tabs-0-tab-0\" aria-selected=\"true\" aria-controls=\"tabs-panel-0-tab-0\" aria-label=\"PGA Tour\" data-tab-id=\"0\">{IMAGE:0x0}</button><button role=\"tab\" id=\"tabs-0-tab-1\" aria-selected=\"false\" aria-controls=\"tabs-panel-0-tab-1\" aria-label=\"Airlessco\" data-tab-id=\"1\">{IMAGE:0x0}</button><button role=\"tab\" id=\"tabs-0-tab-2\" aria-selected=\"false\" aria-controls=\"tabs-panel-0-tab-2\" aria-label=\"Thinkingbox\" data-tab-id=\"2\">{IMAGE:0x0}</button></div></div><div class=\"tabcontent\"><div class=\"tabcontent-container\"><div id=\"tabs-panel-0-tab-0\" role=\"tabpanel\" class=\"tabpanel testimonial active\" aria-labelledby=\"tabs-0-tab-0\"><div class=\"image-side\"> {IMAGE:0x0} </div><div class=\"testimonial-info\"><p class=\"testimonial-quote\">{TEXT}</p><div class=\"customer-info\">{IMAGE:0x0}<div class=\"titles\"><p>{TEXT}</p><p>{TEXT}</p></div>{CTA:Visit Site}</div><ul><li><span class=\"testimonial-stats\">{TEXT}</span><span class=\"testimonial-stats-info\">{TEXT}</span></li><li><span class=\"testimonial-stats\">{TEXT}</span><span class=\"testimonial-stats-info\">{TEXT}</span></li><li><span class=\"testimonial-stats\">{TEXT}</span><span class=\"testimonial-stats-info\">{TEXT}</span></li></ul></div></div><div id=\"tabs-panel-0-tab-1\" role=\"tabpanel\" class=\"tabpanel testimonial\" aria-labelledby=\"tabs-0-tab-1\"><div class=\"image-side\"> {IMAGE:0x0} </div><div class=\"testimonial-info\"><p class=\"testimonial-quote\">{TEXT}</p><div class=\"customer-info\">{IMAGE:0x0}<div class=\"titles\"><p>{TEXT}</p><p>{TEXT}</p></div>{CTA:Visit Site}</div><ul><li><span class=\"testimonial-stats\">{TEXT}</span><span class=\"testimonial-stats-info\">{TEXT}</span></li><li><span class=\"testimonial-stats\">{TEXT}</span><span class=\"testimonial-stats-info\">{TEXT}</span></li><li><span class=\"testimonial-stats\">{TEXT}</span><span class=\"testimonial-stats-info\">{TEXT}</span></li></ul></div></div><div id=\"tabs-panel-0-tab-2\" role=\"tabpanel\" class=\"tabpanel testimonial\" aria-labelledby=\"tabs-0-tab-2\"><div class=\"image-side\"> {IMAGE:0x0} </div><div class=\"testimonial-info\"><p class=\"testimonial-quote\">{TEXT}</p><div class=\"customer-info\">{IMAGE:0x0}<div class=\"titles\"><p>{TEXT}</p><p>{TEXT}</p></div>{CTA:Visit Site}</div><ul><li><span class=\"testimonial-stats\">{TEXT}</span><span class=\"testimonial-stats-info\">{TEXT}</span></li><li><span class=\"testimonial-stats\">{TEXT}</span><span class=\"testimonial-stats-info\">{TEXT}</span></li><li><span class=\"testimonial-stats\">{TEXT}</span><span class=\"testimonial-stats-info\">{TEXT}</span></li></ul></div></div></div></div></div></div>",
+      "layout": {
+        "numCols": 0,
+        "numRows": 0
+      },
+      "features": [
+        "hasTexts",
+        "hasCTA",
+        "hasComplexHiddenElements"
+      ],
+      "section": null,
+      "index": 9
+    },
+    {
+      "sectionType": "default-content",
+      "xpath": "/html[1]/body[1]/main[1]/div[6]/div[1]/div[2]/h3[1]",
+      "xpathWithDetails": "//*[@id=\"creating-a-site-with-aem-is-easy-as\"]",
+      "tokenizedHtml": "<h3 id=\"creating-a-site-with-aem-is-easy-as\" class=\"main-headline slide-reveal-up\" style=\"transition-delay: 0.3s;\">{TEXT}</h3>",
+      "layout": {
+        "numCols": 0,
+        "numRows": 0
+      },
+      "features": [
+        "hasTexts",
+        "hasHeading"
+      ],
+      "section": null,
+      "index": 10
+    },
+    {
+      "sectionType": "unknown",
+      "xpath": "/html[1]/body[1]/main[1]/div[6]/div[2]",
+      "xpathWithDetails": "/html/body/main/div[6]/div[2]",
+      "tokenizedHtml": "<div class=\"columns-wrapper\"><div class=\"columns three contained icon-sm tall colored-number fade-up block\" data-block-name=\"columns\" data-block-status=\"loaded\"><div><div class=\"columns-left columns-image\"><h4 id=\"01\" class=\"colored-tag number-tag lightgreen\">{HEADING:4}</h4><h3 id=\"create-content-inmicrosoft-word-orgoogle-docs\">{HEADING:3}</h3><p>{TEXT}</p><p class=\"image-wrapper-el\"> {IMAGE:0x0} </p></div><div class=\"columns-image\"><h4 id=\"02\" class=\"colored-tag number-tag pink\">{HEADING:4}</h4><h3 id=\"share-your-folderwith-adobe\">{HEADING:3}</h3><p>{TEXT}</p><p class=\"image-wrapper-el\"> {IMAGE:0x0} </p></div><div class=\"columns-right columns-image\"><h4 id=\"03\" class=\"colored-tag number-tag purple\">{HEADING:4}</h4><h3 id=\"see-your-sitein-action\">{HEADING:3}</h3><p>{TEXT}</p><p class=\"image-wrapper-el\"> {IMAGE:0x0} </p></div></div></div></div>",
+      "layout": {
+        "numCols": 0,
+        "numRows": 0
+      },
+      "features": [
+        "hasTexts",
+        "hasHeading",
+        "hasComplexHiddenElements"
+      ],
+      "section": null,
+      "index": 11
+    },
+    {
+      "sectionType": "hero",
+      "xpath": "/html[1]/body[1]/main[1]/div[7]",
+      "xpathWithDetails": "/html/body/main/div[7]",
+      "tokenizedHtml": "<div class=\"section roi-calculator-container roi-calulator-outer-wrapper\" data-section-status=\"loaded\" style=\"\"><div class=\"roi-calculator-wrapper\"><div class=\"roi-calculator inview-animation block colorful-bg\" data-block-name=\"roi-calculator\" data-block-status=\"loaded\"><div class=\"inner-content contained-wrapper\"><div class=\"upper-content\"><h2 id=\"see-the-real-value-of-adobe-experience-manager\">{HEADING:2}</h2>{CTA:Create your site}</div></div></div></div></div>",
+      "layout": {
+        "numCols": 0,
+        "numRows": 0
+      },
+      "features": [
+        "hasTexts",
+        "hasBackground",
+        "hasBackgroundImage",
+        "hasHeading",
+        "hasCTA"
+      ],
+      "section": null,
+      "index": 12
+    },
+    {
+      "sectionType": "columns",
+      "xpath": "/html[1]/body[1]/footer[1]/div[1]/div[1]/div[1]",
+      "xpathWithDetails": "/html/body/footer/div/div/div[1]",
+      "tokenizedHtml": "<div class=\"footer-nav-section\"><div class=\"footer-nav-wrapper desktop\"><div><h3 id=\"adobe-experience-manager\">{HEADING:3}</h3></div><div><h3 id=\"guides\">{HEADING:3}</h3><ul><li>{CTA:Build}</li><li>{CTA:Publish}</li><li>{CTA:Launch}</li></ul></div><div><h3 id=\"resources\">{HEADING:3}</h3><ul><li>{CTA:Sidekick}</li><li>{CTA:FAQ}</li><li>{CTA:Admin API}</li><li>{CTA:CDN Selection Guide}</li><li>{CTA:AEM Status}</li><li>{CTA:AEM.live Blog}</li><li>{CTA:Report Abuse}</li></ul></div><div><h3 id=\"help\">{HEADING:3}</h3><ul><li>{CTA:Discord Community Chat}</li><li>{CTA:AEM Community Overview}</li></ul></div><div>{CTA:Let’s Connect!}</div></div><div class=\"footer-nav-wrapper mobile\"><div class=\"footer-nav-title-section\"><h3 id=\"adobe-experience-manager\">{HEADING:3}</h3></div><div class=\"footer-nav-title-section with-panel\"><h3 id=\"guides\">{HEADING:3}</h3></div><div class=\"panel\"><ul><li>{CTA:Build}</li><li>{CTA:Publish}</li><li>{CTA:Launch}</li></ul></div><div class=\"footer-nav-title-section with-panel\"><h3 id=\"resources\">{HEADING:3}</h3></div><div class=\"panel\"><ul><li>{CTA:Sidekick}</li><li>{CTA:FAQ}</li><li>{CTA:Admin API}</li><li>{CTA:CDN Selection Guide}</li><li>{CTA:AEM Status}</li><li>{CTA:AEM.live Blog}</li><li>{CTA:Report Abuse}</li></ul></div><div class=\"footer-nav-title-section with-panel\"><h3 id=\"help\">{HEADING:3}</h3></div><div class=\"panel\"><ul><li>{CTA:Discord Community Chat}</li><li>{CTA:AEM Community Overview}</li></ul></div></div></div>",
+      "layout": {
+        "numCols": 5,
+        "numRows": 1
+      },
+      "features": [
+        "hasTexts",
+        "hasBackground",
+        "hasHeading",
+        "hasCTA",
+        "hasMultipleColumns",
+        "hasComplexHiddenElements",
+        "isGridLayout",
+        "isInsideAFooterLikeElement"
+      ],
+      "section": {
+        "xpath": "/html[1]/body[1]/footer[1]",
+        "background": "rgb(248, 248, 248) none repeat scroll 0% 0% / auto padding-box border-box"
+      },
+      "index": 13
+    },
+    {
+      "sectionType": "default-content",
+      "xpath": "/html[1]/body[1]/footer[1]/div[1]/div[1]/div[2]",
+      "xpathWithDetails": "/html/body/footer/div/div/div[2]",
+      "tokenizedHtml": "<div class=\"footer-bottom\"><p>{TEXT}</p><p>{CTA:Privacy}{TEXT}{CTA:Terms of Use}{TEXT}{CTA:Do not sell my personal information}</p></div>",
+      "layout": {
+        "numCols": 0,
+        "numRows": 0
+      },
+      "features": [
+        "hasTexts",
+        "isInsideAFooterLikeElement"
+      ],
+      "section": {
+        "xpath": "/html[1]/body[1]/footer[1]",
+        "background": "rgb(248, 248, 248) none repeat scroll 0% 0% / auto padding-box border-box"
+      },
+      "index": 14
+    }
+  ]
+}

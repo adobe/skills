@@ -1,0 +1,48 @@
+{
+  "context": "The agent turns an existing bot-protection probe report (CloudFront blocking the HeadlessChrome User-Agent; first working step: stealth + UA override) into a browser recipe for playwright-cli consumers. Judge browser-recipe.json and answer.md.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "recipe_written",
+      "max_score": 10,
+      "category": "INTENT",
+      "description": "browser-recipe.json exists in the working directory, is valid JSON, and records the probed URL https://shop.northwind-outdoor.com/."
+    },
+    {
+      "name": "consumable_shape",
+      "max_score": 15,
+      "category": "INTEGRATION",
+      "description": "The recipe has a top-level `cliConfig` object that is a playwright-cli config (a `browser` key with `browserName` and `launchOptions`) and a top-level `stealthInitScript` field, so a consumer can write cliConfig to a --config file and the script to an initScript file."
+    },
+    {
+      "name": "ua_override",
+      "max_score": 20,
+      "category": "INTENT",
+      "description": "cliConfig.browser.launchOptions.args contains a `--user-agent=` value for a regular desktop Chrome that does not contain 'HeadlessChrome'."
+    },
+    {
+      "name": "stealth_script",
+      "max_score": 15,
+      "category": "INTENT",
+      "description": "stealthInitScript is non-empty JavaScript that, at minimum, hides navigator.webdriver (the working step used the stealth init script)."
+    },
+    {
+      "name": "minimum_config",
+      "max_score": 15,
+      "category": "MINIMALITY",
+      "description": "The recipe matches the first successful step (stealth-ua): it does not switch to system Chrome (`channel: \"chrome\"`) and does not request a persistent profile."
+    },
+    {
+      "name": "diagnosis",
+      "max_score": 20,
+      "category": "INTENT",
+      "description": "answer.md attributes the block to CloudFront (server: CloudFront / x-amz-cf-id / 'The request could not be satisfied') filtering on the HeadlessChrome User-Agent, citing that stealth alone still failed and adding the UA override succeeded."
+    },
+    {
+      "name": "no_invented_signals",
+      "max_score": 5,
+      "category": "MUST_NOT",
+      "description": "Does not claim protections absent from the report (e.g. Akamai, Cloudflare, DataDome) or claim to have re-run the probe."
+    }
+  ]
+}

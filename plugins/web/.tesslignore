@@ -1,0 +1,2 @@
+# ignore sem-rel artifacts
+**/CHANGELOG.md

@@ -5,6 +5,14 @@ Phase 1 already replaced content with tokens (`{TEXT}`, `{HEADING:n}`,
 `{IMAGE:WxH}`, `{CTA:label}`, `{LINK:label}`, `{INPUT:type}`, `{SELECT:N}`,
 `{VIDEO}`, `{ICON}`). Phase 2 focuses on **structural simplification**.
 
+## Contents
+
+- Token Vocabulary
+- Rules: 1 repeated patterns, 2 decorative wrappers, 3 layout containers,
+  4 utility classes, 5 tracking attributes, 6 forms, 7 navigation, 8 tables,
+  9 cookie/overlay panels, 10 re-typing sections
+- Output Format: skeleton.html, manifest.json schema
+
 ## Token Vocabulary
 
 Tokens you'll find in Phase 1 output (keep as-is unless a rule says to change them):

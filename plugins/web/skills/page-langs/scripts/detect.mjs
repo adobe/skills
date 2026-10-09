@@ -59,16 +59,63 @@ try {
   process.exit(1);
 }
 
+// cld3-asm's findMostFrequentLanguages always returns a single language for
+// mixed text, so classify each text block on its own and weight by bytes.
+// Blocks CLD3 marks unreliable are ignored, and so are blocks under
+// MIN_BLOCK_BYTES: nav labels such as "DE" or "Garantie" get confident but
+// wrong codes (pt, nl, ga...) that would show up as undeclared languages.
+const MIN_BLOCK_BYTES = 50;
+
+function aggregate(results) {
+  const bytes = new Map();
+  const weighted = new Map();
+  let total = 0;
+  for (const { language, probability, is_reliable, size } of results) {
+    if (!is_reliable || language === 'und' || size < MIN_BLOCK_BYTES) continue;
+    bytes.set(language, (bytes.get(language) || 0) + size);
+    weighted.set(language, (weighted.get(language) || 0) + probability * size);
+    total += size;
+  }
+  return [...bytes.entries()]
+    .map(([language, b]) => ({
+      language,
+      probability: weighted.get(language) / b,
+      is_reliable: true,
+      proportion: b / total,
+    }))
+    .sort((a, b) => b.proportion - a.proportion)
+    .slice(0, 5);
+}
+
+// CLD3 reads at most MAX_CLD3_BYTES per call. Longer blocks are split at
+// spaces so every byte weighted toward a language was actually classified.
+const MAX_CLD3_BYTES = 1000;
+
+function chunks(block) {
+  const out = [];
+  let current = '';
+  for (const word of block.split(' ')) {
+    const next = current ? `${current} ${word}` : word;
+    if (current && Buffer.byteLength(next) > MAX_CLD3_BYTES) {
+      out.push(current);
+      current = word;
+    } else {
+      current = next;
+    }
+  }
+  if (current) out.push(current);
+  return out;
+}
+
 const cldFactory = await loadModule();
-const identifier = cldFactory.create(0, 1000);
+const identifier = cldFactory.create(0, MAX_CLD3_BYTES);
 let detected = [];
 try {
-  detected = identifier
-    .findMostFrequentLanguages(pageData.text || '', 5)
-    .filter((r) => r.language !== 'und')
-    .map(({ language, probability, is_reliable, proportion }) => ({
-      language, probability, is_reliable, proportion,
-    }));
+  const pieces = (pageData.text || '').split('\n').filter((b) => b.trim()).flatMap(chunks);
+  detected = aggregate(pieces.map((piece) => ({
+    ...identifier.findLanguage(piece),
+    size: Buffer.byteLength(piece),
+  })));
 } finally {
   identifier.dispose();
 }

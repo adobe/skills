@@ -1,0 +1,42 @@
+{
+  "context": "The user wants a local HTTPS reverse proxy that shows wknd.adventures while serving https://main--wknd--hlxsites.aem.page, on macOS. Running it needs sudo (port 443, /etc/hosts), which the agent cannot type a password for. Judge answer.md and any files written.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "single_command",
+      "max_score": 25,
+      "category": "INTENT",
+      "description": "Gives the user one command to run that adds the hosts entry, creates a trusted certificate, and starts the HTTPS proxy for wknd.adventures \u2192 https://main--wknd--hlxsites.aem.page (a ready-made script is fine; it must name both values)."
+    },
+    {
+      "name": "user_runs_sudo",
+      "max_score": 20,
+      "category": "MUST_NOT",
+      "description": "Does not try to run sudo itself or leave a long-running proxy in its own shell; the sudo command is handed to the user to run in their terminal."
+    },
+    {
+      "name": "trusted_cert",
+      "max_score": 15,
+      "category": "INTENT",
+      "description": "Uses mkcert (or an equivalent locally trusted CA) and tells the user to install it and run `mkcert -install` once if missing."
+    },
+    {
+      "name": "cleanup",
+      "max_score": 20,
+      "category": "INTENT",
+      "description": "Explains how to stop and undo: Ctrl+C removes the hosts entry and temp certificates, plus how to check that `127.0.0.1 wknd.adventures` is gone from /etc/hosts and remove only that exact line if it is not."
+    },
+    {
+      "name": "limitations",
+      "max_score": 10,
+      "category": "EDGE_CASE",
+      "description": "Mentions at least one limitation: absolute links inside pages still point at the real host, port 443 must be free, or it only works on this Mac."
+    },
+    {
+      "name": "no_hosts_wildcard",
+      "max_score": 10,
+      "category": "MUST_NOT",
+      "description": "If the answer gives a manual /etc/hosts cleanup command, it matches only the exact `127.0.0.1 wknd.adventures` line (escaped dots, anchored), not a loose pattern that could delete other lines. Pass if no such command is given."
+    }
+  ]
+}
