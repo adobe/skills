@@ -12,7 +12,7 @@ an existing library must be fed rather than forked.
 | `search-index-backed` | S | index-backed | query index + results page + block | feed the library's search (off-origin-data.md) |
 | `listing-index-backed` | L, R | index-backed | listings.md | same |
 | `modal-loader` | M | rebuild-native | link marker + one runtime module | library's own dialog |
-| `chrome-interaction` | M | rebuild-native | motion-observe evidence → header/footer JS | keep |
+| `chrome-interaction` | M | rebuild-native | the header contract → header/footer JS | keep |
 | `media-as-url` | V | embed-passthrough | player URL as content | same |
 | `forms` | F | rebuild-native | forms.md | forms.md § existing library |
 | `client-compute` | F | client-only | one block: controls + inline logic | same |
@@ -161,10 +161,9 @@ export async function submit(form, endpoint) {
 
 ## chrome-interaction
 
-Header/footer behaviour (hover dropdowns, search overlay, sticky banner, back-to-top,
-time-of-day greeting) is M `chrome only`. Evidence is motion observation (replica's
-`motion-observe`), not the detector. Dropdown panels are captured as structure (columns → items
-{label, link, description, action}), via a hover probe, not as flat link lists. Clock-dependent
+Header behaviour (mega menus, dropdowns, search overlay, drawers, sticky states) is M `chrome
+only`, recorded and gated by the header contract (`../../diff/SKILL.md` § The header contract),
+not the detector; `dynamics-plan --chrome` adds a row per contract control family. Clock-dependent
 strings are behaviour: reproduce the function with thresholds read from the live JS, never the
 captured string.
 

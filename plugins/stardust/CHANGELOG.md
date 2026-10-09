@@ -4,6 +4,60 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.32.0 — the header is a contract: its behaviour is recorded from the source and gated before done (#132)
+
+Field learning: several runs shipped headers that passed every pixel and style gate while every menu was wrong. They
+had boilerplate one-level click dropdowns for hover mega menus, search and cart as plain links, and a static list for
+a drill-down drawer. Every visual instrument sees the header at rest, with the pointer parked and motion frozen. Deploy
+told the agent to keep the stock header's interaction code and treat the prototype's menu script as a visual reference.
+Nothing in the final verdict looked at the header.
+
+- **`diff/chrome-explore.mjs`** records the header by using it, at 1440 and 390. It hovers (desktop), clicks and
+  opens from the keyboard every control, and records each opened state: links, headings, crop, `aria-expanded`,
+  focus, scroll lock, motion, and close paths (Escape with focus return, outside click, toggle, pointer leave). It
+  descends into tabs, flyouts and drawer levels within a budget, and a hit is reported. It types into search to record
+  typeahead and the URL the submit lands on, and samples the header scrolled down, up and back. Navigations are
+  answered 204, so the page never leaves.
+- **`diff/chrome-compare.mjs`** is the header-parity gate. It exits 2 on any of these:
+  - a missing control or state (hover rebuilt as click included);
+  - missing panel links or headings;
+  - keyboard behaviour, `aria-expanded`, close paths or scroll lock that differ.
+
+  The `replica` profile adds open-state crops (2 % bar, with the crop gate's texture so a font substitution is
+  visible), motion (every duration within max(80 ms, 25 %)) and scroll states. `functional`, for redesign and reskin,
+  checks behaviour and content.
+- **Only the site owner clears a finding**, in `stardust/chrome/header-decisions.json`; an entry signed by an agent is
+  ignored and reported.
+- **Wiring:**
+  - extract `--prep` records the contract (`stardust/chrome/header-contract.json`) and puts its summary in the prep
+    summary;
+  - deploy Step 6 builds the header from the contract, with the stock code as the accessibility floor and large panels
+    as nav fragments;
+  - deploy Step 10 and replica C0 gate the foundation on it;
+  - `done-check` gains `header_parity` for migration projects (contract, a fresh comparison of the flow's profile at
+    every contract width on the live host, no undecided error);
+  - qa gains a `chrome` check;
+  - `dynamics-plan --chrome` adds a row per control family (cart and account decide their backend, the UI ships);
+  - spec S9 explores the home header and knowledge gains `header.json`, its size per width.
+- **The replica eval** gains `header_contract_recorded`.
+
+Field run (a museum network's home page, a new EDS site):
+- **The contract:** at desktop, 6 click mega menus and a search overlay (14 states, 35 links); at mobile, a drawer with
+  a search form and 6 accordion levels (14 states, 37 links). It took about 5 minutes for both widths.
+- **The stock EDS header** with the same nav content got 37 errors. Every accordion was flattened into one open list,
+  search was a link, nothing had motion, the header was 64 px instead of 201 px, and the crops differed by 62–91 %. It
+  correctly passed the desktop click, keyboard and close behaviour the source shares with the boilerplate.
+- **A header block built from the contract** reached 0 errors under `functional`. Under `replica`, 7 open-state crops
+  remain at 2.1–3.9 %. They come from the licensed brand face replaced by a system font: an owner decision.
+  `done-check` listed them as `header_parity:7` and qa reported the same.
+- **The field run fixed the explorer:**
+  - a `<nav>` carrying `aria-expanded` was taken for a control;
+  - items scrolled out of a scroll container read as hidden;
+  - icon words in `aria-label`s and transparent-font icons broke pairing;
+  - POST search forms were not followed to their results URL;
+  - crops took the links' parent instead of the panel box;
+  - one duration per property lost a second animated element.
+
 ## 0.31.6 — spec knowledge, wave 3: what a migration still had to recover from raw files
 
 Wave 3 of how other skills use a spec's `stardust/spec/knowledge/`. These are the facts consumers still could not

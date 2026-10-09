@@ -726,7 +726,7 @@ Two rules for that final run:
   campaign hero). A deploy gated against crawl-time captures ships
   yesterday's chrome. Immediately before the published-origin gate, re-run
   the chrome probes (anchor + crop gate, computed styles of matched
-  header/footer elements) against the live origin, never the crawl
+  header/footer elements, the header contract) against the live origin, never the crawl
   snapshot; mask live-content drift (campaign creatives, promo slots) out
   of the fidelity number — it is authored content, not conversion fidelity.
 - **Budget ONE anchors-driven reconcile round at the published origin.** The

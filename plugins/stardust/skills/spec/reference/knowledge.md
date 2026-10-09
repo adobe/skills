@@ -29,6 +29,7 @@ fields, and clients ignore fields they do not know; removing or renaming one is 
 | `locales.json` | tree, country, language, urls, rum_views_90d, sitemap, … |
 | `site-config.json` | key, now, eds, decision |
 | `archetypes.json` | `cut`, `types[] {type, template, variant_codes[], rep_url, urls[], url_count}`: one page type per variant covering `cut` of its template |
+| `header.json` | `url`, `at`, `summary[]`: the header's size per width (controls, states, links, depth), from S9's header exploration |
 | `search-probes.json` | term, expect_count, expect_titles[], expect_includes, feature, path, param |
 | `open-questions.json` | id, area, owner (`stakeholder` / `implementer`), blocking, question, context, options[], default_assumption, impact_rule, impact, link, features[], answer {answer, option, by, at}, effective |
 | `findings.json` | `{ title, text, numbers[] }`, plain text, every number computed |

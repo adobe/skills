@@ -540,16 +540,9 @@ caught in user review — this is why the evidence rule exists):
    element morphing, same class-state transitions, same restore
    thresholds — the observe JSON's headerTimeline and classMutations name
    them) — never as a different mechanism with a similar look.
-4. **Hover-path reachability.** The live site's dropdown either has no gap
-   between the trigger and its sub-list or bridges it (padding on the
-   item, a pseudo-element, or a mouseleave delay in JS); a replica that
-   lifts the sub-list rect but not the bridge reproduces the look and
-   loses the click — the pointer crosses a dead strip and `:hover` closes
-   the menu (recorded: every desktop dropdown of a deployed replica
-   unreachable while all crops passed). Reachability is part of the state
-   machine: verify pointer travel trigger link → first sub-link keeps the
-   menu open (qa's `dropdown-unreachable` rendered check does this on the
-   deployed page).
+4. **The header is a contract, not a look.** Menus, drawers, search and
+   their reachability are recorded and gated by `chrome-explore` /
+   `chrome-compare` (`../../diff/SKILL.md` § The header contract).
 
 The two probe patterns the instrument wraps (both cheap, generic, no source
 JS needed): **hover diff** (`--hover`) — computed
@@ -600,10 +593,8 @@ number must return to (± noise of) the gated value (recorded: 1.01% gated
 → 1.06% with invented motion → 1.01% exact after the evidence-only
 rewrite). The drift itself is the smell test: motion code that changes t=0
 is wrong. (2) **behavior match** — a headless run against the PROTOTYPE
-asserting, per page: tagged-element count == live fired count; chrome
-state at {top, scrolled-down, scrolled-up, back-to-top} == the live
-headerTimeline states; zero pageerrors. This is the motion analog of the
-anchor probe, trivial to script from the observe JSON.
+asserting, per page: tagged-element count == live fired count; zero
+pageerrors; the header's scroll states are chrome-compare's.
 
 Pitfalls (each field-recorded):
 
@@ -624,9 +615,7 @@ Pitfalls (each field-recorded):
   inconsistency-register item, not a freebie.
 
 Log each implemented interaction in the progress ledger the way a CSS
-portation is logged; the static gate is then re-run per the verification
-protocol above (markup rarely changes — hover CSS and trigger JS are
-capture-invisible under the freeze, and the pixel re-run proves it).
+portation is logged.
 
 ## Fixed and sticky chrome (headers, floating tabs × stitched capture)
 

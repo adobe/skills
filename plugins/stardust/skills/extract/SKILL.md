@@ -796,6 +796,8 @@ reference):
   runs captured `/ca/en` as a locale root while 15 `/ca/en/*` pages
   existed on the source, and found out six hours later, when 15 links
   answered 404 and the gap exceeded the 12-page deliver threshold.
+- **The header contract is recorded here** (`../diff/SKILL.md` § The header
+  contract); its summary line in the prep summary sizes the header.
 - The prep summary replaces the Phase 6 report; its
   `Provenance: <live>/<total> live` line is mandatory, and any
   ratio short of `<total>/<total>` means the run failed the

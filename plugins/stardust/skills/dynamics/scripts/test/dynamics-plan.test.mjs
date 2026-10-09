@@ -29,6 +29,23 @@ function run(args, fn, dir = mkdtempSync(join(tmpdir(), 'sd-plan-'))) {
   } finally { rmSync(dir, { recursive: true, force: true }); }
 }
 
+check('--chrome: one row per header-contract family (menus, drawer, search, cart), UI rebuilt, data side decided; works without --in', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'sd-plan-'));
+  try {
+    mkdirSync(join(dir, 'stardust', 'chrome'), { recursive: true });
+    const open = { opened: true, panel: { links: [] } };
+    writeFileSync(join(dir, 'stardust', 'chrome', 'header-contract.json'), JSON.stringify({ widths: {
+      1440: { controls: [{ name: 'Shop', kind: 'menu', role: 'toggle', actions: { hover: open } }, { name: 'About', kind: 'menu', role: 'toggle', actions: { click: open } }, { name: 'Search', kind: 'search', role: 'toggle', actions: { click: open }, children: [{ role: 'input', kind: 'search', search: { probe: 'x' } }] }, { name: 'Bag', kind: 'cart', role: 'toggle', actions: { click: open } }, { name: 'Contact', kind: 'link', role: 'link', actions: {} }] },
+      390: { controls: [{ name: 'Open menu', kind: 'drawer', role: 'toggle', actions: { click: open } }] },
+    } }));
+    const r = spawnSync(process.execPath, [SCRIPT, '--chrome', '--out', 'plan'], { cwd: dir, encoding: 'utf8' });
+    assert.equal(r.status, 0, r.stderr);
+    const rows = JSON.parse(readFileSync(join(dir, 'plan', 'dynamic-features.generated-plan.json'), 'utf8')).rows;
+    assert.deepEqual(rows.map((x) => [x.id, x.class, x.disposition, x.reproducibility]), [['chrome-drawer', 'M', 'rebuild-native', 'self'], ['chrome-menu', 'M', 'rebuild-native', 'self'], ['chrome-search', 'S', 'index-backed', 'self'], ['chrome-cart', 'X', 'rebuild-native', 'needs-backend']]);
+    assert.match(rows[1].feature, /^header menu: Shop, About/); assert.deepEqual(rows[1].evidence, ['1440 hover', '1440 click']);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
 check('--knowledge: spec features become rows with their axes and the open questions\' answers; works without --in', () => {
   const dir = mkdtempSync(join(tmpdir(), 'sd-plan-'));
   try {

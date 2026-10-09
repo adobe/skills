@@ -58,8 +58,7 @@ eyeballing.
    `node -e "import('pixelmatch').then(()=>process.exit(0))"` (and playwright,
    pngjs, cheerio) — and only on failure install them AS devDependencies,
    never `--no-save`: `npm i -D playwright pixelmatch pngjs cheerio
-   --legacy-peer-deps` (a `--no-save` install is pruned by the next real
-   `npm i` — recorded twice in one run, #125). A harness that already
+   --legacy-peer-deps` (`../extract/SKILL.md` § Setup). A harness that already
    resolves them leaves the delivered code repo untouched; the
    devDependencies otherwise land in the repo the skills push. Run every
    probe from the project root: ESM resolves `playwright` from the script's
@@ -356,17 +355,15 @@ copy carrying hand-edits is a defect
 
 **After the static gate passes, interaction parity is a REQUIRED gate
 output per archetype — not a post-pass**
-(`reference/recreation-procedure.md` § Interaction parity; optional, it was
-skipped on 5 of 7 archetypes — all shipped static). Motion is OBSERVED,
+(`reference/recreation-procedure.md` § Interaction parity). Motion is OBSERVED,
 never inferred from static classes or CSS: run
 `stardust/scripts/replica/motion-observe.mjs` per archetype live URL →
 `stardust/replica/motion/<slug>.json`, implement ONLY behaviors that
 fired (dead classes = NOT implemented), then observe the served prototype
 with the same `--click`/`--hover` pokes in the same order (→
 `stardust/replica/motion/<slug>-build.json`) and compare the two files with
-`stardust/scripts/replica/motion-compare.mjs` — one line per behavior
-(parity / MISSING on build / EXTRA on build / timing delta / advisory) and a
-summary line; it is a reporter, not a gate: a MISSING or EXTRA line is
+`stardust/scripts/replica/motion-compare.mjs`, a reporter, not a gate (the
+header's behaviour is the header contract's): a MISSING or EXTRA line is
 confirmed on the class lines (the sampler misses class-toggled and
 pseudo-element mechanics) and resolved in the prototype or recorded as dead.
 Record
@@ -435,8 +432,9 @@ had one section for the whole run).
   enforces it.
 - **C-deliver runs in units** (`reference/handoff-contract.md` § 3, row C +
   Fan-out discipline): C0 — ONE foundation subagent authors AND deploys the
-  foundation; the main agent gates the shell on the published origin, then
-  `foundation-freeze.mjs freeze` + commit; C-archetype — per template, the
+  foundation; the main agent gates the shell on the published origin, the
+  header contract included (`chrome-compare` exit 0, `../diff/SKILL.md`
+  § The header contract), then `foundation-freeze.mjs freeze` + commit; C-archetype — per template, the
   gated archetype is deployed and passes its full gate row on the preview URL
   (cap 3 fix rounds, then the re-prototype decision) BEFORE its siblings
   render; C1…Cn — one subagent per template
