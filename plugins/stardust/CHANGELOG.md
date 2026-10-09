@@ -4,6 +4,29 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.31.3 — one delivered-path contract; spec redirects seed rollout
+
+Five path rules disagreed on the same input: spec's `edsPath`, rollout's path-safety lint, deploy's `canonicalPath`
+and its copy in `davids-model-lint`, and rollout's own delivered path. `/a/index.html` gave `/a/`, `/a/index.html`
+and `/a`. Checked on a live EDS origin: a folder index is served at `/a/` (`/a` 301s to it, `/a/index` 404s), a leaf
+page at `/a/b` (`/a/b/` 404s), and `.html` 404s.
+
+- **`deploy/scripts/eds-path.mjs`** (new, pure): `deliveredUrl` (spec's rule, now also collapsing `//`), `daPath`
+  (`/a/` ↔ `/a/index`) and `pathKey` (the lookup key). spec's knowledge, `localize-links` and `davids-model-lint`
+  import it, so the two `canonicalPath` copies are gone. spec's Setup copies the deploy scripts too.
+- **`rollout/scripts/seed-redirects.mjs`** (new): when a spec exists, Gate 3 first appends its redirects to
+  `stardust/redirects.tsv`:
+  - every source URL that changes on EDS;
+  - the source's own redirects, pointed at the delivered page.
+
+  Rows already there win; external targets, targets outside the knowledge and loops are counted and skipped. On a
+  sports-federation run (about 12,000 pages) it seeds 12,312 rows, 241 of them existing redirects made one hop; on a
+  museum run, 33.
+- **Prose:** rollout's path-safety rules are written once, in `delivery-gates.md` § Gate 3; two recorded anecdotes
+  in deploy's link-localisation paragraph are folded.
+- **Open (a decision, not in this release):** rollout publishes a folder index at `/a` (its sitemap lists URLs
+  that 301), and delivery-lint and deploy's link rules call a trailing slash a 404 although a folder index is
+  served there.
 ## 0.31.2 — notes cleanup: two retired notes removed, dangling note citations dropped
 
 `notes/` held two documents nothing reads at run time, and six skill docs cited notes that were never in

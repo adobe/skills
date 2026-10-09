@@ -52,6 +52,7 @@
  */
 import { readFileSync, writeFileSync, readdirSync, statSync, existsSync } from 'fs';
 import path from 'path';
+import { pathKey as canonicalPath } from './eds-path.mjs';
 
 function parseArgs(argv) {
   const rest = argv.slice(2);
@@ -80,17 +81,8 @@ function usage() {
 
 const bareHost = (h) => h.toLowerCase().replace(/^www\./, '').replace(/:\d+$/, '');
 
-// Canonical lookup key for a path: no query/fragment, no .html/.htm, no
-// trailing slash (root stays "/"), collapsed slashes, lower-cased.
-export function canonicalPath(p) {
-  let s = (p || '').split(/[?#]/)[0].replace(/\/{2,}/g, '/');
-  if (!s.startsWith('/')) s = `/${s}`;
-  s = s.replace(/\.html?$/i, '');
-  if (s.length > 1) s = s.replace(/\/+$/, '');
-  if (s === '' || s === '/index') s = '/';
-  s = s.replace(/\/index$/, '');
-  return s.toLowerCase() || '/';
-}
+// Canonical lookup key for a path: eds-path.mjs pathKey (no query/fragment, .html, /index or trailing slash; lower case).
+export { canonicalPath };
 
 function collectHtml(dir, out = []) {
   for (const entry of readdirSync(dir)) {

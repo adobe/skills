@@ -21,13 +21,6 @@ helpAndExit(import.meta.url);
 
 const CLASS_NAMES = { L: 'listing', S: 'search', F: 'form', M: 'modal / interactive', V: 'media', T: 'tag / consent', A: 'API / settings', R: 'relationship', X: 'auth / commerce', I18N: 'locale', CR: 'client-rendered', D: 'data file' };
 
-/** EDS path for a source path: lowercase, no .html, /index → folder, runs of non [a-z0-9] → '-'. Pure. */
-export function edsPath(path) {
-  let p = path.endsWith('.html') ? path.slice(0, -5) : path;
-  if (p.endsWith('/index')) p = `${p.slice(0, -6)}/`;
-  const out = p.split('/').map((s) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')).join('/');
-  return out.startsWith('/') ? out : `/${out}`;
-}
 export const band = (v) => (!v ? 'none' : v >= 10000 ? 'high' : v >= 1000 ? 'medium' : 'low');
 export const outcome = (r) => (r.error ? (/loop/.test(r.error) ? 'loop' : 'error') : r.external ? 'redirect-external' : [301, 302, 303, 307, 308].includes(r.status) ? (r.final_status === 200 ? 'redirect' : 'redirect-broken') : r.status === 200 ? 'page' : `http-${r.status}`);
 const byText = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
@@ -79,6 +72,8 @@ export function latestAnswers(list) {
 
 async function main() {
   const cfg = loadConfig();
+  // the delivered URL of a source page: deploy's one path contract (../../deploy/scripts/eds-path.mjs)
+  const { deliveredUrl: edsPath } = await loadSibling('deploy', 'eds-path.mjs');
   const W = (...p) => cfg.w(...p); const J = (...p) => cfg.p('judgement', ...p); const OUT = (...p) => cfg.p('knowledge', ...p);
   const rum = readJSON(W('rum', 'rum.json'), { available: false });
   const views = rum.available ? rum.pages : {};
