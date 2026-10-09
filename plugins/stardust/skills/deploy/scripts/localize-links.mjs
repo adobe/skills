@@ -127,17 +127,20 @@ function buildMap(files, root, redirectsFile) {
     const served = canonicalPath(rel);
     map.set(served, served);
   }
-  let redirects = 0;
+  let redirects = 0; let pending = 0;
   if (redirectsFile) {
     const pairs = redirectPairs(readFileSync(redirectsFile, 'utf8'), redirectsFile);
     if (!pairs.length) console.error(`localize-links: no redirect pairs read from ${redirectsFile}`);
+    // a redirect rewrites links only to a page of this content tree: one whose page ships in a later wave stays
+    // absolute until then (a seeded spec covers every page of the site, a wave delivers a few)
     for (const [s, d] of pairs) {
       const src = canonicalPath(s.replace(/^https?:\/\/[^/]+/i, ''));
-      const dst = canonicalPath(d.replace(/^https?:\/\/[^/]+/i, ''));
+      const dst = map.get(canonicalPath(d.replace(/^https?:\/\/[^/]+/i, '')));
+      if (dst === undefined) { pending += 1; continue; }
       if (!map.has(src)) { map.set(src, dst); redirects += 1; }
     }
   }
-  return { map, redirects };
+  return { map, redirects, pending };
 }
 
 // ------------------------------------------------------------------ rewrite
@@ -191,7 +194,7 @@ function main() {
   const opts = parseArgs(process.argv);
   const hosts = opts.hosts.map(bareHost);
   const files = collectHtml(opts.content);
-  const { map, redirects } = buildMap(files, opts.content, opts.redirects);
+  const { map, redirects, pending } = buildMap(files, opts.content, opts.redirects);
   const ctx = { map, hosts };
 
   const perFile = {};
@@ -213,7 +216,7 @@ function main() {
     console.log(JSON.stringify({ ...summary, perFile, kept: keptSorted.map(([p, n]) => ({ path: p, links: n })) }, null, 2));
   } else {
     const verb = opts.dryRun ? 'would localize' : 'localized';
-    console.log(`localize-links: ${files.length} pages, ${map.size} map entries (${redirects} from redirects), hosts ${hosts.join(', ')}`);
+    console.log(`localize-links: ${files.length} pages, ${map.size} map entries (${redirects} from redirects${pending ? `; ${pending} redirect(s) to pages not in this tree kept for a later wave` : ""}), hosts ${hosts.join(', ')}`);
     console.log(`${verb} ${localized} source-host link(s) + normalized ${normalized} internal href(s) across ${filesChanged} file(s)${opts.dryRun ? ' [no writes]' : ''}`);
     for (const [p, c] of Object.entries(perFile)) console.log(`  ${p}: ${c.localized} localized, ${c.normalized} normalized`);
     if (keptSorted.length) {
