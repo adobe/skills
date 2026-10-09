@@ -16,16 +16,16 @@ export async function run(ctx) {
   const pages = inventory.pages;
 
   await pMap(pages, async (p) => {
-    const res = await ctx.fetchPage(pageUrl(base, p.path));
+    const res = await ctx.fetchPage(pageUrl(base, p.url || p.path));
     if (res.status !== 200) {
       findings.push(finding('routing', 'page-not-200', 'error', p.path,
-        `GET ${p.path} returned ${res.status || `network error: ${res.error}`}`, { url: pageUrl(base, p.path) }));
+        `GET ${p.path} returned ${res.status || `network error: ${res.error}`}`, { url: pageUrl(base, p.url || p.path) }));
       return;
     }
-    const plain = await ctx.fetchPage(plainUrl(base, p.path));
+    const plain = await ctx.fetchPage(plainUrl(base, p.url || p.path));
     if (plain.status !== 200) {
       findings.push(finding('routing', 'plain-not-200', 'error', p.path,
-        `.plain.html returned ${plain.status || `network error: ${plain.error}`}`, { url: plainUrl(base, p.path) }));
+        `.plain.html returned ${plain.status || `network error: ${plain.error}`}`, { url: plainUrl(base, p.url || p.path) }));
     }
   }, 8);
 
@@ -64,12 +64,13 @@ export async function run(ctx) {
       `no /redirects.json sheet (${sheet.status}) — skipping redirect verification`));
   }
 
-  // trailing-slash sample: 3 non-root paths should resolve (200 or redirect->200)
-  for (const p of pages.filter((x) => x.path !== '/').slice(0, 3)) {
-    const res = await fetchUrl(`${pageUrl(base, p.path)}/`);
+  // a folder index is served at /x/ and /x 404s on a plain EDS site: inbound /x links need the /x → /x/ redirect
+  // (a leaf's /x/y/ 404s by design, so leaves are not sampled)
+  for (const p of pages.filter((x) => x.path !== '/' && (x.url || '').endsWith('/'))) {
+    const res = await fetchUrl(pageUrl(base, p.path));
     if (res.status !== 200) {
       findings.push(finding('routing', 'trailing-slash-broken', 'warn', p.path,
-        `${p.path}/ (trailing slash) returned ${res.status}`));
+        `${p.path} (a folder index without its slash) returned ${res.status}: add the ${p.path} → ${p.url} redirect`));
     }
   }
 

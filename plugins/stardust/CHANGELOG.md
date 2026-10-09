@@ -23,11 +23,27 @@ never requires it. Reading adds no wall time.
   otherwise read as migration defects.
 - **rollout:**
   - D2 starts `helix-query.yaml` from the spec's draft;
-  - Gate 4 reads dead and bodyless source pages from `knowledge/urls.jsonl` instead of probing.
+  - Gate 4 reads dead (`http-*`, `redirect-broken`, `loop`) and bodyless source pages from `knowledge/urls.jsonl`
+    instead of probing them. An `error` row was never read (on the museum field run, 63 pages behind a bot wall),
+    so it is still probed.
 - **Archetypes:** prototype `--prep`, replica Phase 3 and reskin default their representative page to the spec's
   `rep_url` of the type's largest layout variant.
 - **Prose:** rollout's query-index paragraph restated `dynamics/reference/listings.md` § Getting an index at all
   step by step; it now points there.
+- **Field run** (10 pages of a museum site on a new EDS site, with these scripts):
+  - spec's draft `helix-query.yaml`, committed unchanged, indexed all 10 pages;
+  - `dynamics-plan --knowledge` added 8 spec rows to 46 detector rows, all within the dynamics vocabulary;
+  - qa's sweep with the derived template map ran on every delivered page.
+
+  It also found three bugs, fixed here:
+  - **qa missed the 0.31.4 folder-index rule.** It fetched `/x` and `/x.plain.html`, but a folder index lives at
+    `/x/` and `/x/index.plain.html`. The inventory now keeps each page's served `url` next to its key, and its
+    slash probe checks that a folder index still answers at `/x` (the redirect spec records) instead of expecting
+    a leaf's `/x/y/`, which 404s by design.
+  - **`seed-redirects` wrote redirects into pages of later waves.** qa reported 5 redirects landing on 404s. With
+    rollout's coverage, only redirects to delivered pages are written; re-run the seed after each wave.
+  - **Gate 4 would have dropped pages a bot wall hid.** It counted outcome `error` as dead, and all 63 such rows on
+    the museum site were pages behind the bot wall.
 
 ## 0.31.4 — a folder index lives at `/x/`: sitemap, probes and links follow EDS
 

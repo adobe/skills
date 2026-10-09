@@ -3,7 +3,8 @@
  * rollout/seed-redirects.mjs — seed stardust/redirects.tsv from a spec's knowledge (stardust/spec/knowledge/), so the
  * redirects sheet carries every source URL that changes on EDS before the path-safety gate adds its own rows.
  *
- *   node seed-redirects.mjs [--knowledge stardust/spec/knowledge] [--out stardust/redirects.tsv] [--dry-run]
+ *   node seed-redirects.mjs [--knowledge stardust/spec/knowledge] [--out stardust/redirects.tsv]
+ *        [--coverage stardust/rollout/coverage/pages.json] [--dry-run]
  *
  * Rows (source path → delivered URL, eds-path.mjs):
  *   migration  every page whose delivered URL differs from its source path (`.html` dropped, segments sanitised)
@@ -13,7 +14,9 @@
  * win (the path-safety gate's and the owner's decisions); comments and order are kept; new rows are appended under
  * one comment line. A source EDS never matches against the redirects sheet (a `:`, `%` or other character outside
  * `A-Za-z0-9._~/-`: the request 404s first, measured on a live site) goes to <out dir>/redirects-cdn.tsv instead:
- * a CDN rule's job. Exit 1 when the knowledge folder is missing.
+ * a CDN rule's job. With rollout's coverage (default path, when present) a row is written only when its destination
+ * is a delivered page — a redirect into a page of a later wave would 404; re-run the seed after each wave.
+ * Exit 1 when the knowledge folder is missing.
  */
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -38,15 +41,16 @@ export const sheetMatchable = (src) => !/[^A-Za-z0-9._~/-]/.test(src);
  * New [source, destination] rows from knowledge redirects and urls, minus sources already present (by lookup key).
  * Returns { rows, cdn, counts }: `cdn` holds the rows whose source the sheet cannot match. Pure given the path functions.
  */
-export function seedRows(redirects, urls, existingSources, { pathKey }) {
+export function seedRows(redirects, urls, existingSources, { pathKey }, delivered = null) {
   const have = new Set([...existingSources].map(pathKey));
   const pageAt = new Map();
   for (const u of urls) if (u.outcome === 'page' && u.eds_path) { pageAt.set(u.url, u.eds_path); if (u.final_url) pageAt.set(u.final_url, u.eds_path); }
-  const counts = { migration: 0, legacy: 0, present: 0, external: 0, 'not-a-page': 0, loop: 0, cdn: 0 };
+  const counts = { migration: 0, legacy: 0, present: 0, external: 0, 'not-a-page': 0, loop: 0, cdn: 0, 'later-wave': 0 };
   const rows = []; const cdn = []; const seen = new Set();
   const add = (src, dst, kind) => {
     const k = pathKey(src);
     if (have.has(k) || seen.has(k)) { counts.present += 1; return; }
+    if (delivered && !delivered.has(pathKey(dst))) { counts['later-wave'] += 1; return; }
     if (src === dst) return;
     seen.add(k);
     if (!sheetMatchable(src)) { cdn.push([src, dst]); counts.cdn += 1; return; }
@@ -72,9 +76,11 @@ async function main() {
   const { pathKey } = await edsPath();
   const existing = existsSync(out) ? readFileSync(out, 'utf8') : '';
   const sources = existing.split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith('#')).map((l) => l.split(/\t+|\s{2,}/)[0]);
-  const { rows, cdn, counts } = seedRows(jl('redirects.jsonl'), jl('urls.jsonl'), sources, { pathKey });
+  const coverage = arg('coverage', join('stardust', 'rollout', 'coverage', 'pages.json'));
+  const delivered = existsSync(coverage) ? new Set(JSON.parse(readFileSync(coverage, 'utf8')).pages.map((pg) => pathKey(pg.path || `/${pg.slug}`))) : null;
+  const { rows, cdn, counts } = seedRows(jl('redirects.jsonl'), jl('urls.jsonl'), sources, { pathKey }, delivered);
   const cdnOut = join(dirname(out), 'redirects-cdn.tsv');
-  const summary = `${rows.length} added (migration ${counts.migration}, legacy ${counts.legacy}); kept ${counts.present} already present or repeated; skipped external ${counts.external}, not-a-page ${counts['not-a-page']}, loop ${counts.loop}${counts.cdn ? `; ${counts.cdn} the sheet cannot match → ${cdnOut} (a CDN rule)` : ''}`;
+  const summary = `${rows.length} added (migration ${counts.migration}, legacy ${counts.legacy}); kept ${counts.present} already present or repeated; skipped external ${counts.external}, not-a-page ${counts['not-a-page']}, loop ${counts.loop}${delivered ? `, later wave ${counts['later-wave']}` : ''}${counts.cdn ? `; ${counts.cdn} the sheet cannot match → ${cdnOut} (a CDN rule)` : ''}`;
   if (rows.length && !argv.includes('--dry-run')) {
     mkdirSync(dirname(out), { recursive: true });
     const head = existing && !existing.endsWith('\n') ? `${existing}\n` : existing;

@@ -31,7 +31,7 @@ export async function run(ctx) {
   if (!pageBlocks) {
     pageBlocks = {};
     await pMap(withTemplate, async (p) => {
-      const res = await ctx.fetchPage(plainUrl(base, p.path));
+      const res = await ctx.fetchPage(plainUrl(base, p.url || p.path));
       if (res.status !== 200) return;
       const names = new Set();
       for (const m of res.body.matchAll(/<div class="([a-z][a-z0-9-]*)(?: [^"]*)?">/g)) {

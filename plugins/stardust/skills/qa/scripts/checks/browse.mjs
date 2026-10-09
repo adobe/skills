@@ -264,7 +264,7 @@ export async function run(ctx) {
       });
 
       try {
-        await page.goto(pageUrl(base, p.path), { waitUntil: 'domcontentloaded', timeout: 45000 });
+        await page.goto(pageUrl(base, p.url || p.path), { waitUntil: 'domcontentloaded', timeout: 45000 });
       } catch (e) {
         findings.push(finding('rendered', 'load-failed', 'error', p.path,
           `[${vp.name}] page failed to load: ${String(e).slice(0, 200)}`));
