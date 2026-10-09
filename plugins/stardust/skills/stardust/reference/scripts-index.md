@@ -99,5 +99,5 @@ Run the project copies under `stardust/scripts/<skill>/`. Read this before any `
 - `spec/spec-sheet.mjs` — contact sheet — `<component|row-shape>`
 - `spec/spec-variants.mjs` — S8 layout variants — `[--cut 0.5]`
 - `stardust/impeccable-version-check.mjs` — newer impeccable? — `[--offline] [--json]`; `--where`
-- `stardust/ledger.mjs` — status.jsonl writer — `<skill> <phase> start|end|blocked [--detail] [--strict]` (end needs an open start; journal.md checked on end); `tail`; `last`
+- `stardust/ledger.mjs` — writer — `<skill> <phase> start|end|blocked [--detail] [--strict]` (end checks start/journal); `tail [-n 5]`; `last [<skill>]`; **no `summary`**
 - `stardust/state.mjs` — page status writer — `advance <slug…> --to <status> [--by]`; `summary [--slugs]`
