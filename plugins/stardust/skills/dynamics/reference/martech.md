@@ -7,7 +7,7 @@ owner's accounts, so the scaffold writes everything disabled and the owner turns
 ## Flow
 
 1. **Evidence.** `node skills/spec/scripts/spec-martech.mjs --urls <home,archetypes…> --out stardust/martech`
-   (or reuse a spec's `martech/` directory): the OneTrust configuration (consent categories, geo rule
+   (or a spec's `stardust/spec/knowledge`): the OneTrust configuration (consent categories, geo rule
    sets) and the Launch library (rules with their consent groups, data elements).
 2. **Contract.** `node skills/dynamics/scripts/dynamics-plan.mjs … --martech [stardust/martech]` writes
    `stardust/martech-contract.json` and `stardust/martech-handoff.md`. Vendor knowledge (CMP script,

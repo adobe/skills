@@ -22,11 +22,11 @@ const argv = process.argv.slice(2);
 const arg = (k, d) => { const i = argv.indexOf(`--${k}`); return i >= 0 && argv[i + 1] && !argv[i + 1].startsWith('--') ? argv[i + 1] : d; };
 const pathOf = (u) => { try { return new URL(u).pathname; } catch { return String(u || ''); } };
 
-/** Live sitemap pages grouped by layout variant (else template), at their served URL; `keep(path)` filters. Pure. */
+/** Live sitemap pages grouped by layout variant (else template), at their served URL; `keep(row)` filters. Pure. */
 export function templateMap(urls, keep = () => true) {
   const templates = {};
   for (const u of urls) {
-    if (u.outcome !== 'page' || u.in_sitemap !== 1 || !u.eds_path || !keep(u.eds_path)) continue;
+    if (u.outcome !== 'page' || u.in_sitemap !== 1 || !u.eds_path || !keep(u)) continue;
     const t = u.variant_code || u.template || '(none)';
     (templates[t] = templates[t] || { urls: [] }).urls.push(u.eds_path);
   }
@@ -59,8 +59,11 @@ async function main() {
   const { deliveredUrl, pathKey } = await import(pathToFileURL(p).href);
   const jl = (f) => (existsSync(join(dir, f)) ? readFileSync(join(dir, f), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)) : []);
   const coverage = arg('coverage', join('stardust', 'rollout', 'coverage', 'pages.json'));
-  const delivered = existsSync(coverage) ? new Set(JSON.parse(readFileSync(coverage, 'utf8')).pages.map((pg) => pathKey(pg.path || `/${pg.slug}`))) : null;
-  const map = templateMap(jl('urls.jsonl'), delivered ? (e) => delivered.has(pathKey(e)) : undefined);
+  // a delivered page matches by its source URL (rollout records it) or, failing that, by its delivered path
+  const covered = existsSync(coverage) ? JSON.parse(readFileSync(coverage, 'utf8')).pages : null;
+  const delivered = covered && new Set(covered.map((pg) => pathKey(pg.path || `/${pg.slug}`)));
+  const sources = covered && new Set(covered.map((pg) => pg.source && pg.source.sourceUrl).filter(Boolean));
+  const map = templateMap(jl('urls.jsonl'), covered ? (u) => sources.has(u.url) || sources.has(u.final_url) || delivered.has(pathKey(u.eds_path)) : undefined);
   const allow = existsSync(allowFile) ? JSON.parse(readFileSync(allowFile, 'utf8')) : { entries: [] };
   const site = existsSync(join(dir, 'site.json')) ? JSON.parse(readFileSync(join(dir, 'site.json'), 'utf8')) : {};
   const added = inheritedEntries(jl('broken.jsonl'), allow.entries || [], { deliveredUrl }, site.built_at || '');

@@ -190,7 +190,7 @@ choice would "improve" something not registered, it is a fidelity bug.
 ### Phase 3 — RECREATE (one archetype per page type)
 
 Full method: `reference/recreation-procedure.md`. For each page type in the
-inventory (archetype: a spec's `rep_url` for the type's largest layout variant, when one exists), author `stardust/prototypes/<slug>-proposed.html` (+ per-page CSS)
+inventory (archetype: the type's `rep_url` in a spec's `archetypes.json`), author `stardust/prototypes/<slug>-proposed.html` (+ per-page CSS)
 as **clean semantic HTML/CSS** from three sources, in this order:
 
 (a) **Captured page JSON content — verbatim.** Headings, body, CTAs+hrefs,

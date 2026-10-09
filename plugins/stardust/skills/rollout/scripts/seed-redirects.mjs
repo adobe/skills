@@ -77,7 +77,13 @@ async function main() {
   const existing = existsSync(out) ? readFileSync(out, 'utf8') : '';
   const sources = existing.split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith('#')).map((l) => l.split(/\t+|\s{2,}/)[0]);
   const coverage = arg('coverage', join('stardust', 'rollout', 'coverage', 'pages.json'));
-  const delivered = existsSync(coverage) ? new Set(JSON.parse(readFileSync(coverage, 'utf8')).pages.map((pg) => pathKey(pg.path || `/${pg.slug}`))) : null;
+  // a delivered page by its delivered path, and by the knowledge row of its source URL (rollout records it)
+  let delivered = null;
+  if (existsSync(coverage)) {
+    const covered = JSON.parse(readFileSync(coverage, 'utf8')).pages; const sources = new Set(covered.map((pg) => pg.source && pg.source.sourceUrl).filter(Boolean));
+    delivered = new Set(covered.map((pg) => pathKey(pg.path || `/${pg.slug}`)));
+    jl('urls.jsonl').forEach((u) => { if (u.eds_path && (sources.has(u.url) || sources.has(u.final_url))) delivered.add(pathKey(u.eds_path)); });
+  }
   const { rows, cdn, counts } = seedRows(jl('redirects.jsonl'), jl('urls.jsonl'), sources, { pathKey }, delivered);
   const cdnOut = join(dirname(out), 'redirects-cdn.tsv');
   const summary = `${rows.length} added (migration ${counts.migration}, legacy ${counts.legacy}); kept ${counts.present} already present or repeated; skipped external ${counts.external}, not-a-page ${counts['not-a-page']}, loop ${counts.loop}${delivered ? `, later wave ${counts['later-wave']}` : ''}${counts.cdn ? `; ${counts.cdn} the sheet cannot match → ${cdnOut} (a CDN rule)` : ''}`;

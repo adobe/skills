@@ -143,6 +143,9 @@ const priorBySlug = new Map((priorPages.pages || []).map((p) => [p.slug, p]));
 
 // --- Inventory the migrated tree -----------------------------------------------
 const htmlFiles = walkHtml(MIGRATED).sort();
+// the source URL of each page (the join key with a spec's knowledge): the sidecar's, else state.json's by slug
+const stateFile = STATE || (existsSync('stardust/state.json') ? 'stardust/state.json' : null);
+const stateUrls = new Map((stateFile ? readJSON(stateFile, { pages: [] }).pages || [] : []).filter((p) => p && p.slug && p.url).map((p) => [p.slug, p.url]));
 const pages = [];
 
 for (const relHtml of htmlFiles) {
@@ -175,6 +178,7 @@ for (const relHtml of htmlFiles) {
       migratedHtml: join(MIGRATED, relHtml),
       metaJson: existsSync(join(MIGRATED, sidecarRel)) ? join(MIGRATED, sidecarRel) : null,
       sourceHash,
+      sourceUrl: (meta.source && meta.source.url) || meta.sourceUrl || stateUrls.get(slug) || null,
     },
     blocks: Array.isArray(meta.modules) ? meta.modules : [],
     delivery,
@@ -215,7 +219,7 @@ if (STATE) {
       title: sp.title || slug,
       templateId: rep ? rep.slug : (sp.type || 'untyped'),
       representative: rep ? rep.slug : null,
-      source: { migratedHtml: null, metaJson: null, sourceHash, currentStatePath: csPath },
+      source: { migratedHtml: null, metaJson: null, sourceHash, currentStatePath: csPath, sourceUrl: sp.url },
       blocks: rep ? rep.blocks.slice() : [],
       delivery,
     });

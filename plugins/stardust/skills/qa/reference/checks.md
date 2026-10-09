@@ -19,7 +19,8 @@ for a judgment pass without re-crawling.
 | `redirect-not-firing` | error | a /redirects.json rule doesn't redirect |
 | `redirect-dest-broken` | error | redirect lands on a non-200 |
 | `no-redirects-sheet` | info | no /redirects.json — verification skipped |
-| `trailing-slash-broken` | warn | a folder index (served at `/path/`) fails at `/path`: the redirect is missing |
+| `redirect-missing` / `redirect-dest-differs` | error / warn | a `stardust/redirects.tsv` row is absent from `/redirects.json` / points elsewhere |
+| `trailing-slash-broken` | warn | a folder index fails at `/path` (no redirect to `/path/`) |
 | `404-not-404` | error | unknown paths don't 404 (soft-404s poison crawlers) |
 | `404-page-empty` | warn | 404 body is near-empty (unstyled error page) |
 | `sitemap-missing` | error | no sitemap.xml |

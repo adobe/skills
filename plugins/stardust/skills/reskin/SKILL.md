@@ -53,7 +53,7 @@ regression check instead of a debugging tool.
     later release."* Do not improvise a partial Figma capture.
 - `--pages <slug,slug,...>` — optional. Restrict the content capture
   to specific pages. Default: the archetype set (one page per page
-  family, a spec's variant `rep_url` when one exists; scale to siblings happens in Phase 6 via `migrate`).
+  family; a spec's `archetypes.json` names them; scale to siblings happens in Phase 6 via `migrate`).
 - `--scope <selectors>` — optional. Pre-declare the content-root
   scope for a single-page run (comma-separated, `!` suffix keeps a
   scope whole; see `reference/content-model.md` § Scope declaration).

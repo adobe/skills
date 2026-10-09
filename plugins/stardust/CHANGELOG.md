@@ -4,6 +4,37 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.31.6 — spec knowledge, wave 3: what a migration still had to recover from raw files
+
+Wave 3 of how other skills use a spec's `stardust/spec/knowledge/`. These are the facts consumers still could not
+get from the committed knowledge.
+
+- **`urls.jsonl` `blocked`:** why an `error` row was not read (`challenge`, `refused`, `network`, `archive-miss`).
+  Gate 4 probes those instead of treating them as dead. On the museum field run: 61 `challenge`, 2 `network`, and
+  no `error` row without a reason.
+- **Search probes** carry `feature`, `path` and `param` (the source search URL). `dynamics-plan --knowledge` drafts
+  `dynamic-features.generated-parity.json`: one `search-query` check per probe, with the source's expectations and
+  `resultSelector` left to the curator.
+- **`martech.json` `evidence`:** spec-martech's `launch.json` and `onetrust.json`, unchanged. `martech.mjs
+  readEvidence` accepts a knowledge folder. On a sports-federation run (about 12,000 pages), the martech contract
+  from knowledge is identical to the one from the raw folder: OneTrust, 4 routes, 58 rewrite rules.
+- **`archetypes.json`** (decision P3, step 2):
+  - within each template, the layout variants covering 80% of its pages are page types;
+  - the larger tail folds into the template's largest type;
+  - a one-page variant or template is `unique`;
+  - each type has one `rep_url`, so migrate's one-archetype-per-type rule holds;
+  - extract `--prep` takes its types from it, and prototype `--prep`, replica and reskin take their representative.
+
+  Every live page is placed exactly once: 29 types for 12,072 pages; 11 for 89 on the museum run, where the
+  exhibitions listing became `unique` instead of borrowing the exhibition-page archetype.
+- **Rollout pages record `sourceUrl`** (from the sidecar, else `state.json` by slug; schema updated). qa
+  `from-knowledge` and `seed-redirects` join coverage by it, so a renamed page still matches.
+- **qa routing** checks every expected redirect: a `stardust/redirects.tsv` row absent from the live
+  `/redirects.json` is `redirect-missing` (error); a different destination is `redirect-dest-differs` (warn).
+  Live, a planted missing row was reported, and the real 5 rows passed.
+- **Additive fields:** `knowledge.md` now states that a patch only adds fields and clients ignore the ones they do
+  not know; removing or renaming a field is a minor release.
+
 ## 0.31.5 — spec knowledge seeds dynamics, qa, rollout and the archetype pickers
 
 Wave 2b of how the other skills use a spec's `stardust/spec/knowledge/`: each consumer reads it when present and

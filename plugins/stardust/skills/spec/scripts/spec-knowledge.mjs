@@ -56,6 +56,39 @@ export function servedUrls(pagePaths, deliveredUrl) {
   return new Map(pagePaths.map((p) => { const e = deliveredUrl(p); return [p, e !== '/' && !e.endsWith('/') && parents.has(e) ? `${e}/` : e]; }));
 }
 
+/**
+ * Page types for the archetype pickers (extract --prep, prototype --prep, replica, reskin): within each template the
+ * layout variants that cover `cut` of its pages (the largest always, then variants of two pages or more) are types,
+ * the larger tail folds into the template's largest type; a one-page variant or template is `unique` (its own
+ * layout: rendered alone). One representative per type, so migrate's one-archetype-per-type rule holds. Pure.
+ */
+export function archetypes(urls, variants, cut = 0.8) {
+  const pages = urls.filter((u) => u.outcome === 'page' && u.in_sitemap === 1);
+  const byVariant = new Map(); pages.forEach((u) => { const k = u.variant_code || null; if (!byVariant.has(k)) byVariant.set(k, []); byVariant.get(k).push(u); });
+  const byTemplate = new Map(); pages.forEach((u) => { const t = u.template || '(none)'; byTemplate.set(t, (byTemplate.get(t) || 0) + 1); });
+  const slugOf = (t) => (String(t).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'other');
+  const types = []; const unique = { type: 'unique', template: null, variant_codes: [], rep_url: null, urls: [] };
+  for (const [t, n] of [...byTemplate].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))) {
+    const vs = variants.filter((v) => (v.template_id || '(none)') === t).sort((a, b) => a.rank - b.rank);
+    const members = (code) => (byVariant.get(code) || []).map((u) => u.url);
+    if (n === 1) { unique.urls.push(...pages.filter((u) => (u.template || '(none)') === t).map((u) => u.url)); continue; }
+    let covered = 0; let top = null;
+    for (const v of vs) {
+      const urlsOf = members(v.code);
+      if (top && urlsOf.length === 1) { unique.urls.push(...urlsOf); continue; }
+      if (top && covered / n >= cut) { top.variant_codes.push(v.code); top.urls.push(...urlsOf); continue; }
+      const row = { type: top ? `${slugOf(t)}-${v.rank}` : slugOf(t), template: t, variant_codes: [v.code], rep_url: v.rep_url, urls: urlsOf };
+      types.push(row); top = top || row; covered += urlsOf.length;
+    }
+    const all = pages.filter((u) => (u.template || '(none)') === t).map((u) => u.url);
+    if (!top) { types.push({ type: slugOf(t), template: t, variant_codes: [], rep_url: all[0], urls: all }); continue; }
+    const placed = new Set([...types.filter((x) => x.template === t).flatMap((x) => x.urls), ...unique.urls]);
+    top.urls.push(...all.filter((u) => !placed.has(u))); // pages without a layout variant join the template's largest type
+  }
+  if (unique.urls.length) types.push(unique);
+  return { cut, types: types.map((x) => ({ ...x, url_count: x.urls.length })) };
+}
+
 /** A reach rule from implementation.json: the rule format only; SQL and the retired kinds fail loudly. Pure. */
 export function reachRule(rule) {
   const r = String(rule || '').trim();
@@ -118,7 +151,7 @@ async function main() {
       variant_code: isPage ? (varOf.get(r.final_url) || varOf.get(r.url) || null) : null, title: isPage ? (r.title || null) : null, eds_path: isPage ? e : null,
       needs_migration_redirect: isPage && e !== path ? 1 : 0, pageviews_90d: Math.round(pv.views || 0),
       rum_bundles: pv.bundles || 0, traffic_band: rum.available ? band(pv.views) : null, block_count: nblocks, capture_key: isPage ? captured(r.url) : null,
-      main_chars: c ? c.main_chars : null, flag };
+      main_chars: c ? c.main_chars : null, flag, blocked: r.blocked ?? null };
     if (byUrl.has(r.url)) urls.splice(urls.indexOf(byUrl.get(r.url)), 1); // a URL listed twice keeps its last row
     urls.push(row); byUrl.set(r.url, row); uid.set(r.url, id);
   };
@@ -287,7 +320,7 @@ async function main() {
   const rumTrees = Object.fromEntries((rum.trees || []).map(([k, v]) => [k, v.views]));
   const locales = Object.entries(trees).map(([t, v]) => ({ tree: t, country: t.split('/')[0], language: t.split('/')[1] || null, urls: v.urls, shared_with_scope: null, shared_pct: null, rum_views_90d: Math.round(rumTrees[t] || 0), deep_sampled: 0, live_pages: null, templates: null, blocks: null, unmapped: null, sitemap: v.file }));
   const siteConfig = (impl.site_config || []).map((s) => ({ key: s.key, now: s.now, eds: s.eds, decision: s.decision ?? null }));
-  const searchProbes = readJSON(J('search-probes.json'), []).map((p) => ({ term: p.term, expect_count: p.expectCount, expect_titles: p.expectTitles || [], expect_includes: p.expectIncludes ?? null }));
+  const searchProbes = readJSON(J('search-probes.json'), []).map((p) => ({ term: p.term, expect_count: p.expectCount, expect_titles: p.expectTitles || [], expect_includes: p.expectIncludes ?? null, feature: p.feature ?? null, path: p.path ?? null, param: p.param ?? null }));
   Object.assign(K, { vendors, launchRules, datalayer, metadata, queryIndexes, locales, siteConfig, searchProbes, sourceComponents });
 
   // ---- open questions: impact in the rule format, recorded answers applied
@@ -327,9 +360,11 @@ async function main() {
   writeJSON(OUT('blocks.json'), blocks); writeJSON(OUT('variants.json'), variantRows); writeJSON(OUT('templates.json'), templates); writeJSON(OUT('source-components.json'), sourceComponents);
   writeJSONL(OUT('redirects.jsonl'), redirects); writeJSONL(OUT('broken.jsonl'), broken); writeJSONL(OUT('bad-links.jsonl'), badLinks); writeJSON(OUT('redirect-landings.json'), redirectLandings);
   writeJSON(OUT('features.json'), features);
-  writeJSON(OUT('martech.json'), { consent_summary: impl.consent_summary || null, loading_order: impl.loading_order || null, vendors, launch_rules: launchRules, datalayer });
+  // evidence: spec-martech's own files, unchanged, so the dynamics martech contract builds from knowledge alone
+  writeJSON(OUT('martech.json'), { consent_summary: impl.consent_summary || null, loading_order: impl.loading_order || null, vendors, launch_rules: launchRules, datalayer, evidence: { launch, onetrust: ot } });
   writeJSON(OUT('metadata.json'), metadata); writeJSON(OUT('query-indexes.json'), queryIndexes);
   if (queryIndexes.length) writeText(OUT('helix-query.yaml'), ['version: 1', 'indices:', ...queryIndexes.map((q) => q.yaml)].join('\n')); writeJSON(OUT('locales.json'), locales); writeJSON(OUT('site-config.json'), siteConfig);
+  writeJSON(OUT('archetypes.json'), archetypes(urls, variantRows));
   writeJSON(OUT('search-probes.json'), searchProbes); writeJSON(OUT('open-questions.json'), openQuestions); writeJSON(OUT('findings.json'), findings);
   for (const [k, v] of Object.entries({ urls, pageBlocks, blocks, variants: variantRows, templates, redirects, broken, features, vendors, launchRules, openQuestions, locales })) log(`${k} ${v.length}`);
 }

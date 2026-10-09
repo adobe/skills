@@ -36,6 +36,7 @@ check('--knowledge: spec features become rows with their axes and the open quest
     writeFileSync(join(k, 'features.json'), JSON.stringify([{ id: 'listing', class: 'L', name: 'News listing', evidence: 'view listing', disposition: 'index-backed', reproducibility: 'self', pattern: 'listing', reach_pages: 3, decisions: ['Q-1', 'Q-2'] }, { id: 'account', class: 'X', name: 'Account links', disposition: 'decided-out', reproducibility: 'needs-business-decision', reach_pages: 4, decisions: ['Q-1'] }]));
     writeFileSync(join(k, 'open-questions.json'), JSON.stringify([{ id: 'Q-1', effective: 'index the news tree', answer: null }, { id: 'Q-2', effective: 'keep 12 per page', answer: { answer: 'keep 12 per page' } }]));
     writeFileSync(join(k, 'urls.jsonl'), [1, 2, 3, 4].map((i) => JSON.stringify({ id: i, outcome: 'page', in_sitemap: 1 })).join('\n'));
+    writeFileSync(join(k, 'search-probes.json'), JSON.stringify([{ term: 'tennis', expect_count: 12, expect_titles: ['A', 'B'], expect_includes: null, feature: 'site-search', path: '/en/search', param: 'q' }]));
     const r = spawnSync(process.execPath, [SCRIPT, '--knowledge', '--out', 'plan'], { cwd: dir, encoding: 'utf8' });
     assert.equal(r.status, 0, r.stderr);
     const [row, out] = JSON.parse(readFileSync(join(dir, 'plan', 'dynamic-features.generated-plan.json'), 'utf8')).rows;
@@ -44,6 +45,9 @@ check('--knowledge: spec features become rows with their axes and the open quest
     assert.deepEqual(row.reach, { pages: 3, of: 4 });
     assert.equal(row.decision, 'Q-1: index the news tree (default) · Q-2: keep 12 per page (answered)');
     assert.equal(row.flags, undefined);
+    const parity = JSON.parse(readFileSync(join(dir, 'plan', 'dynamic-features.generated-parity.json'), 'utf8'));
+    assert.deepEqual(parity.features.map((f) => [f.id, f.class]), [['site-search', 'S']]);
+    assert.deepEqual(parity.features[0].checks[0], { type: 'search-query', path: '/en/search', param: 'q', term: 'tennis', resultSelector: null, expectCount: 12, expectTitles: ['A', 'B'] });
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 

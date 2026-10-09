@@ -15,6 +15,8 @@
  *   --template-map <json>   inventory + template assignments (stardust/template-map.json)
  *   --scrape <dir>          stardust scrape captures for verbatim fidelity
  *   --expected-blocks <json> explicit per-template block expectations
+ *   --redirects <tsv>       the expected redirects (default stardust/redirects.tsv when present):
+ *                           each source must be a row of the live /redirects.json, to the same destination
  *   --allowlist <json>      documented non-defects (default: <out>/allowlist.json)
  *   --out <dir>             output dir (default: stardust/qa)
  *   --baselines <dir>       visual baselines (default: <out>/baselines)
@@ -53,7 +55,7 @@
  */
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { writeFileSync, readFileSync } from 'node:fs';
+import { existsSync, writeFileSync, readFileSync } from 'node:fs';
 import {
   arg, flag, provenance, writeJSON, ensureDir, loadAllowlist, applyAllowlist, buildInventory,
   createPageCache, resolveAuthHeader, setOriginAuth,
@@ -78,6 +80,7 @@ const opts = {
   outDir: OUT,
   scrapeDir: arg('scrape', null),
   expectedBlocks: arg('expected-blocks', null),
+  expectedRedirects: arg('redirects', existsSync('stardust/redirects.tsv') ? 'stardust/redirects.tsv' : null),
   baselineDir: arg('baselines', join(OUT, 'baselines')),
   perfPages: Number(arg('perf-pages', 10)),
   budgetTransferKb: Number(arg('budget-transfer-kb', 800)),

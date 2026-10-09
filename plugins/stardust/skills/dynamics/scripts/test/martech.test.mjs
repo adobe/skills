@@ -2,7 +2,10 @@
 // martech.mjs — contract from runtime scripts + spec-martech evidence: CMP, routes, consent model, rewrite sheet.
 // Run: node plugins/stardust/skills/dynamics/scripts/test/martech.test.mjs
 import assert from 'node:assert/strict';
-import { buildContract, renderHandoff } from '../martech.mjs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { buildContract, readEvidence, renderHandoff } from '../martech.mjs';
 
 let failures = 0;
 function check(name, fn) {
@@ -104,6 +107,18 @@ check('handoff: how to enable, the model, routes and the rewrite sheet', () => {
   assert.match(md, /rule `RL1` Page view — paths `\/en\/a\.html`/);
   assert.match(md, /data element `promoTitle`/);
   assert.match(renderHandoff(build([SCRIPTS.ot], { launch: null, onetrust: [] })), /not found — copy it from the CMP admin/);
+});
+
+check('readEvidence: a spec knowledge folder (martech.json#evidence) reads as the raw spec-martech folder', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'mt-ev-'));
+  try {
+    const launch = { rules: [{ name: 'r', consentGroups: ['C0002'], paths: [], selectors: [] }], dataElements: [] };
+    const onetrust = [{ domainScript: 'abc', ruleSets: [] }];
+    mkdirSync(join(dir, 'raw')); writeFileSync(join(dir, 'raw', 'launch.json'), JSON.stringify(launch)); writeFileSync(join(dir, 'raw', 'onetrust.json'), JSON.stringify(onetrust));
+    mkdirSync(join(dir, 'knowledge')); writeFileSync(join(dir, 'knowledge', 'martech.json'), JSON.stringify({ vendors: [], evidence: { launch, onetrust } }));
+    assert.deepEqual(readEvidence(join(dir, 'knowledge')), readEvidence(join(dir, 'raw')));
+    assert.deepEqual(readEvidence(join(dir, 'none')), { launch: null, onetrust: [] });
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
 if (failures) { console.error(`${failures} failure(s)`); process.exit(1); }
