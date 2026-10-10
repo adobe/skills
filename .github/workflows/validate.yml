@@ -50,6 +50,9 @@ jobs:
           git fetch --no-tags --depth=1 origin main
           node plugins/stardust/evals/lint/prose-delta.mjs --ref origin/main
 
+      - name: Stardust version agrees across plugin.json, marketplace.json and the Tessl manifest
+        run: node scripts/plugin-version.mjs plugins/stardust && node --test 'scripts/test/*.test.mjs'
+
   codeowners-coverage:
     runs-on: ubuntu-latest
     steps:
