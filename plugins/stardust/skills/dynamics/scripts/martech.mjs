@@ -2,8 +2,8 @@
  * martech.mjs — the martech contract (reference/martech.md). Library, no CLI.
  * Inputs: the runtime script URLs dynamics-detect recorded per page, plus spec-martech evidence when present
  * (onetrust.json for consent categories, launch.json for the consent model and the rewrite sheet).
- * Vendor knowledge comes from vendors.json (`cmp`, `loaders`). The CMP and every route are written disabled;
- * a previous contract's owner choices (`enabled`, `category`, CMP id) survive a rebuild.
+ * Vendor knowledge comes from vendors.json (`cmp`, `loaders`, `plugin`). The CMP, every route and the Web SDK
+ * (`aemMartech`) are written disabled; a previous contract's owner choices (`enabled`, `category`, ids) survive a rebuild.
  */
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -55,12 +55,39 @@ function routesOf(row, scripts, groups) {
 }
 
 function rewriteOf(launch) {
-  if (!launch) return { rules: [], dataElements: [] };
+  if (!launch) return { rules: [], dataElements: [], dataLayer: [] };
   return {
     rules: launch.rules
       .map((r) => ({ id: r.id, name: r.name, paths: (r.paths || []).filter((p) => /\.html?\b/.test(p)), selectors: r.selectors || [] }))
       .filter((r) => r.paths.length || r.selectors.length),
     dataElements: launch.dataElements.filter((d) => d.selectors?.length).map(({ name, selectors }) => ({ name, selectors })),
+    dataLayer: launch.rules.filter((r) => (r.events || []).some((e) => /datalayer/i.test(e))).map(({ id, name }) => ({ id, name })),
+  };
+}
+
+/** The Web SDK seen on the source (Launch extension or page-level alloy) → aem-martech config, or null. */
+function aemMartechOf(launch, scripts, routes) {
+  const row = vendors().find((v) => v.plugin);
+  const sdk = launch?.webSdk;
+  const inst = sdk?.instances?.[0];
+  if (!inst && !scripts.some((s) => row.re.test(s))) return null;
+  const ids = inst?.datastream?.ids || [];
+  const exts = launch?.extensions || [];
+  return {
+    plugin: row.plugin,
+    config: {
+      orgId: launch?.orgId || null,
+      datastreamId: ids.length === 1 ? ids[0] : null,
+      alloyInstanceName: inst?.name || 'alloy',
+      edgeDomain: inst?.edgeDomain || null,
+      defaultConsent: inst ? (inst.defaultConsent || row.plugin.sdkDefaultConsent) : null,
+      launchUrls: routes.filter((r) => r.vendor === 'Adobe Launch').map((r) => r.src),
+    },
+    candidates: { datastreamId: ids, stagingDatastreamId: inst?.stagingDatastream?.ids || [] },
+    extension: sdk ? { version: sdk.version, selfHostable: sdk.selfHostable, library: sdk.library } : null,
+    missingExtensions: launch ? row.plugin.launchExtensions.filter((e) => !exts.includes(e)) : [],
+    category: null,
+    enabled: false,
   };
 }
 
@@ -75,6 +102,11 @@ function keepOwnerChoices(contract, previous) {
     const p = (previous.routes || []).find((x) => x.id === r.id);
     if (p) Object.assign(r, { enabled: !!p.enabled, category: p.category ?? null });
   });
+  const am = contract.aemMartech; const wasAm = previous.aemMartech;
+  if (am && wasAm) {
+    Object.assign(am, { enabled: !!wasAm.enabled, category: wasAm.category ?? null });
+    Object.keys(am.config).forEach((k) => { if (wasAm.config?.[k] != null) am.config[k] = wasAm.config[k]; });
+  }
   return contract;
 }
 
@@ -94,6 +126,7 @@ export function buildContract({ dynamics, martech = { launch: null, onetrust: []
     routes,
     otherTags: seen.filter((v) => ['T', 'A'].includes(v.class) && v !== cmpRow && !routed.has(v.role.replace(/^tag manager: /, ''))).map((v) => v.role),
     rewrite: rewriteOf(martech.launch),
+    aemMartech: aemMartechOf(martech.launch, scripts, routes),
   };
   return previous ? keepOwnerChoices(contract, previous) : contract;
 }
@@ -102,6 +135,23 @@ const MODEL = {
   'per-tag': 'the source loads the tag manager ungated and gates each tag inside it by consent group. Keep it: leave every route `category` null.',
   'owner-decision': 'no evidence of consent gating inside the tag manager. Keep the source behaviour (route `category` null), or set a route `category` to a consent group id to load that tag manager only once the group is granted.',
 };
+
+function webSdkHandoff(a) {
+  if (!a) return [];
+  const { config: k, extension: x } = a;
+  const val = (v) => (v ? `\`${v}\`` : '**not found — fill it in the contract**');
+  return [
+    '', '## Web SDK (aem-martech)', '',
+    `The source runs the Adobe Experience Platform Web SDK${x ? ` from the Launch extension ${x.version} (${x.library} library${x.selfHostable ? ', self-hosted build supported' : ', no self-hosted option — upgrade the extension first'})` : ' outside Launch'}. The \`${a.plugin.name}\` plugin can load it on the migrated site instead. It is off; the routes above stay the default.`,
+    '',
+    `- **orgId:** ${val(k.orgId)} · **instance:** \`${k.alloyInstanceName}\` · **edge domain:** ${val(k.edgeDomain)}`,
+    `- **datastreamId:** ${k.datastreamId ? `\`${k.datastreamId}\`` : a.candidates.datastreamId.length ? `the Launch data element picks one of ${a.candidates.datastreamId.map((d) => `\`${d}\``).join(', ')} at runtime — choose one` : val(null)}`,
+    `- **defaultConsent:** source ${k.defaultConsent ? `\`${k.defaultConsent}\`` : 'unknown'}; the plugin defaults to \`pending\` and sends nothing until \`updateUserConsent\`. Keep the source value to keep its consent model.`,
+    ...(a.missingExtensions.length ? [`- **Missing Launch extension:** ${a.missingExtensions.join(', ')} — the plugin requires it.`] : []),
+    '',
+    'To switch: (1) `git subtree add --squash --prefix ' + `${a.plugin.path} ${a.plugin.repo} main\`; (2) in Launch, set the Web SDK extension to the self-hosted build with the same instance name and publish — otherwise the SDK loads twice; (3) set \`aemMartech.enabled\` and leave the \`adobe-launch\` route disabled (the plugin loads \`launchUrls\`); (4) re-run the scaffold. Personalization (Target) is not wired.`,
+  ];
+}
 
 export function renderHandoff(c) {
   const { cmp, model, categories, ruleSets } = c.consent;
@@ -134,7 +184,9 @@ export function renderHandoff(c) {
         ...c.rewrite.dataElements.map((d) => `- data element \`${d.name}\` — selectors ${d.selectors.map((s) => `\`${s}\``).join(', ')}`),
       ]
       : ['Nothing found (or no tag-manager library read).']),
-    '',
-    'Moving to the Adobe Experience Platform Web SDK instead? The `aem-martech` plugin replaces these routes; that is an owner project, not part of the migration.',
+    ...(c.rewrite.dataLayer?.length
+      ? ['', '## Data-layer rules', '', 'These fire on data-layer pushes; the migrated pages must push the same events:', ...c.rewrite.dataLayer.map((r) => `- rule \`${r.id}\` ${r.name}`)]
+      : []),
+    ...webSdkHandoff(c.aemMartech),
   ].join('\n');
 }

@@ -43,6 +43,8 @@ const ALLOW = [
   'akamaized.net', 'cloudfront.net', 'wp.com', 'hubspot.com', 'typeform.com', 'calendly.com',
   // tag-manager and consent vendor hosts spec-martech reads public configuration from
   'adobedtm.com', 'cookielaw.org', 'cookiebot.com', 'googletagmanager.com',
+  // Adobe Web SDK hosts: the vendors.json loader pattern and the aem-martech plugin's default edge
+  'adoberesources.net', 'adobedc.net',
   // the Internet Archive API spec-inventory and spec-fetch read captures from (--archive)
   'archive.org',
 ];

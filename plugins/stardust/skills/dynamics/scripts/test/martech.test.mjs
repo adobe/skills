@@ -109,6 +109,41 @@ check('handoff: how to enable, the model, routes and the rewrite sheet', () => {
   assert.match(renderHandoff(build([SCRIPTS.ot], { launch: null, onetrust: [] })), /not found — copy it from the CMP admin/);
 });
 
+const DS = ['11111111-2222-4333-8444-555555555555', '66666666-7777-4888-9999-aaaaaaaaaaaa'];
+const SDK = (ids = [DS[0]], defaultConsent = null) => ({
+  ...LAUNCH,
+  orgId: 'TEST@AdobeOrg',
+  extensions: ['Core', 'Adobe Experience Platform Web SDK'],
+  webSdk: { version: '2.34.2', selfHostable: true, library: 'managed', instances: [{ name: 'alloy', edgeDomain: null, defaultConsent, datastream: { ref: '%DS%', ids }, stagingDatastream: { ref: null, ids: [] } }] },
+  rules: [...LAUNCH.rules, { id: 'RL4', name: 'Cart add', events: ['datalayerPushListener'], paths: [], selectors: [], consentGroups: [] }],
+});
+
+check('aemMartech: off and null without Web SDK evidence; from the Launch extension otherwise', () => {
+  assert.equal(build([SCRIPTS.launch], { launch: LAUNCH, onetrust: [] }).aemMartech, null);
+  const a = build([SCRIPTS.launch], { launch: SDK(), onetrust: [] }).aemMartech;
+  assert.equal(a.enabled, false);
+  assert.deepEqual(a.config, { orgId: 'TEST@AdobeOrg', datastreamId: DS[0], alloyInstanceName: 'alloy', edgeDomain: null, defaultConsent: 'in', launchUrls: [SCRIPTS.launch] });
+  assert.deepEqual(a.missingExtensions, ['Adobe Client Data Layer']);
+  const two = build([SCRIPTS.launch], { launch: SDK(DS, 'pending'), onetrust: [] }).aemMartech;
+  assert.deepEqual([two.config.datastreamId, two.candidates.datastreamId, two.config.defaultConsent], [null, DS, 'pending']);
+  const page = build(['https://cdn.example.com/js/alloy.min.js'], { launch: null, onetrust: [] }).aemMartech;
+  assert.deepEqual([page.config.orgId, page.config.defaultConsent, page.extension], [null, null, null]);
+});
+
+check('aemMartech: a rebuild keeps the owner choices; the handoff lists data-layer rules and the switch steps', () => {
+  const first = build([SCRIPTS.launch], { launch: SDK(DS), onetrust: [] });
+  Object.assign(first.aemMartech, { enabled: true, category: 'C0002' }); first.aemMartech.config.datastreamId = DS[1];
+  const next = build([SCRIPTS.launch], { launch: SDK(DS), onetrust: [] }, first).aemMartech;
+  assert.deepEqual([next.enabled, next.category, next.config.datastreamId], [true, 'C0002', DS[1]]);
+  const md = renderHandoff(build([SCRIPTS.launch], { launch: SDK(DS), onetrust: [] }));
+  assert.match(md, /## Data-layer rules[\s\S]*rule `RL4` Cart add/);
+  assert.match(md, /extension 2\.34\.2 \(managed library, self-hosted build supported\)/);
+  assert.match(md, /choose one/);
+  assert.match(md, /git subtree add --squash --prefix plugins\/martech/);
+  assert.match(md, /Missing Launch extension:\*\* Adobe Client Data Layer/);
+  assert.doesNotMatch(renderHandoff(build([SCRIPTS.launch], { launch: LAUNCH, onetrust: [] })), /Web SDK|owner project/);
+});
+
 check('readEvidence: a spec knowledge folder (martech.json#evidence) reads as the raw spec-martech folder', () => {
   const dir = mkdtempSync(join(tmpdir(), 'mt-ev-'));
   try {

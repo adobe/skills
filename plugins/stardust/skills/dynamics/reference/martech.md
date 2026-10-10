@@ -38,8 +38,18 @@ and `&consent=accept` grants every category; neither override works on a product
 ## Before go-live
 
 The hand-off lists Launch rules and data elements that read old paths or selectors; the owner
-rewrites them in the tag manager. Collector CNAMEs on the new host are an owner item. The
-`aem-martech` plugin (Web SDK) is an upgrade path the owner chooses, not part of the migration.
+rewrites them in the tag manager, including the data-layer (`datalayerPushListener`) rules, which
+need the new pages to push the same events. Collector CNAMEs on the new host are an owner item.
+
+## Web SDK via `aem-martech` (owner switch)
+
+When the source runs the Launch Web SDK extension (or a page loads `alloy.js`), the contract gains
+`aemMartech`, off: orgId, datastream (or the candidates when a data element picks one), instance
+name, edge domain and the source's `defaultConsent` (the plugin defaults to `pending`). The hand-off
+gives the switch steps. Once `aemMartech.enabled`, the scaffold loads Web SDK eagerly after the CMP
+and the Launch property from `martechDelayed()`. The scaffold refuses an empty orgId, datastream or
+consent, a missing `plugins/martech`, or an enabled `adobe-launch` route for the same property.
+Personalization is not wired.
 
 ## Verification
 

@@ -2,8 +2,8 @@
 /**
  * spec-martech.mjs — S9 martech from public artefacts: security headers + CSP of the origin; script/iframe hosts
  * and their reach (spec-parse signals) classified with the dynamics vendor table; the Adobe Launch library when
- * present (extensions, rules with page-path conditions and DOM selectors, data elements with their data-layer
- * paths, custom-code files and the hosts they load); OneTrust geo rule sets and cookie categories when present.
+ * present (extensions, the Web SDK extension's instances and datastreams, rules with page-path conditions and DOM
+ * selectors, data elements with their data-layer paths, custom-code files and the hosts they load); OneTrust geo rule sets and cookie categories when present.
  *
  *   node spec-martech.mjs [--config <file>] [--no-custom-code]
  *   node spec-martech.mjs --urls <url,url,...> [--out stardust/martech] [--no-custom-code]
@@ -25,6 +25,41 @@ const get = async (u) => { const r = await fetch(u, { headers: { 'user-agent': U
 
 /** Balanced {...} starting at index i. Pure. */
 const block = (s, i) => { let d = 0; for (let j = i; j < s.length; j += 1) { if (s[j] === '{') d += 1; else if (s[j] === '}') { d -= 1; if (d === 0) return s.slice(i, j + 1); } } return s.slice(i); };
+
+const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g;
+
+/**
+ * The Web SDK extension (`adobe-alloy`) of a Launch container: version, whether it can use a self-hosted
+ * alloy.js ("preinstalled" library type), its library setting, and each instance with its datastream ids
+ * (a `%Data Element%` reference resolves to the ids its definition holds). Pure.
+ */
+function webSdkOf(js) {
+  const at = js.indexOf('"adobe-alloy":{displayName:');
+  if (at < 0) return null;
+  const ext = block(js, js.indexOf('{', at));
+  const s = ext.indexOf('settings:{');
+  const settings = s >= 0 ? block(ext, s + 'settings:'.length) : '';
+  const de = (name) => {
+    const i = [`${JSON.stringify(name)}:{`, `,${name}:{`].map((k) => js.indexOf(k)).find((x) => x >= 0);
+    return i === undefined ? '' : block(js, js.indexOf('{', i + 1));
+  };
+  const ids = (v) => { if (!v) return []; const ref = v.match(/^%(.+)%$/); return [...new Set((ref ? de(ref[1]) : v).match(UUID) || [])]; };
+  const instances = [...settings.matchAll(/\{name:"([^"]+)"/g)].map((m) => {
+    const b = block(settings, m.index);
+    const val = (k) => (b.match(new RegExp(`[{,]${k}:"([^"]*)"`)) || [])[1] || null;
+    return {
+      name: m[1], edgeDomain: val('edgeDomain'), defaultConsent: val('defaultConsent'),
+      datastream: { ref: val('edgeConfigId'), ids: ids(val('edgeConfigId')) },
+      stagingDatastream: { ref: val('stagingEdgeConfigId'), ids: ids(val('stagingEdgeConfigId')) },
+    };
+  });
+  return {
+    version: (ext.match(/\(\{version:"([\d.]+)"\}\)/) || [])[1] || null,
+    selfHostable: ext.includes('PREINSTALLED:"preinstalled"'),
+    library: (settings.match(/libraryCode:\{type:"([a-z]+)"/) || [])[1] || 'managed',
+    instances,
+  };
+}
 
 /** Parse a minified Adobe Launch container. Pure. */
 export function parseLaunch(js) {
@@ -55,7 +90,8 @@ export function parseLaunch(js) {
       consentGroups: [...new Set(b.match(/C000\d/g) || [])],
     };
   });
-  return { build, extensions: [...new Set(extensions)], dataElements, rules };
+  const orgId = (js.match(/company:\{orgId:"([^"]+)"/) || [])[1] || null;
+  return { build, orgId, extensions: [...new Set(extensions)], webSdk: webSdkOf(js), dataElements, rules };
 }
 
 async function sources() {

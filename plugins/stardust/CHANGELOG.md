@@ -4,6 +4,30 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.33.0 — martech: the source's Web SDK is read and offered as an `aem-martech` switch, off
+
+Field learning: a full run on a consumer-brand site on Launch + Web SDK carried the tag stack over, but
+the hand-off only said "aem-martech is an owner project". It gave the owner nothing to act on. The Launch library
+already held everything the plugin needs: orgId, the Web SDK instance, edge CNAME, datastreams (two, chosen
+by a data element per brand domain), and a self-hostable 2.34.2 extension. It also showed 129 data-layer rules
+that only fire if the new pages push the same events. None of it was read.
+
+- **`spec-martech.mjs`** reads the Launch orgId and the Web SDK extension: version, self-hosted support, library
+  type, and each instance's edge domain, `defaultConsent` and datastream ids (resolving a `%data element%` to the
+  ids it holds). Rules now record their event types.
+- **`vendors.json`** gains a Web SDK row (`adoberesources.net`, `alloy.js`) carrying the `aem-martech` plugin
+  facts: repo, path, default edge, the source's default consent, required Launch extensions.
+- **`martech-contract.json`** gains `aemMartech`, always `enabled: false`. Its config comes from that evidence.
+  Ambiguous datastreams stay null, with the candidates listed. A rebuild keeps the owner's choices.
+- **`martech-handoff.md`** adds a data-layer rule list and a Web SDK section: the values found, the consent default
+  to keep (`in` on the source, `pending` in the plugin), missing extensions, and the four switch steps.
+- **`martech-scaffold.mjs`**: with `aemMartech.enabled`, it loads the CMP, then `initMartech`/`martechEager`, with
+  lazy/delayed after. The Launch property comes through `launchUrls`. A category grants `collect` on consent.
+  The scaffold refuses missing values, a missing `plugins/martech`, or the same property also enabled as a route.
+  Off, the output is unchanged byte for byte.
+- **`dynamics-check`** treats the edge host as a route: forbidden on `/`, gated with a category, and expected on
+  accept once enabled.
+
 ## 0.32.0 — the header is a contract: its behaviour is recorded from the source and gated before done (#132)
 
 Field learning: several runs shipped headers that passed every pixel and style gate while every menu was wrong. They
