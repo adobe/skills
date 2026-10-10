@@ -6,6 +6,9 @@
  *   loadConsent()  the CMP, first thing in loadEager() of scripts/scripts.js
  *   loadTags()     each enabled route, from scripts/delayed.js (else loadDelayed() in scripts/scripts.js);
  *                  a route with a `category` waits until the CMP grants that consent group
+ *   aemMartech     when enabled, the Web SDK through the aem-martech plugin (plugins/martech, installed by the
+ *                  owner): initMartech + martechEager from loadConsent(), martechLazy + martechDelayed (which
+ *                  loads `launchUrls`) from loadTags(); a `category` sets Web SDK `collect` once granted
  * Nothing loads off the production hosts unless the URL has `?martech=on`; `&consent=accept` then grants
  * every category. A scripts/martech.js the scaffold did not write is a conflict unless --force.
  * Re-running on the same contract changes nothing.
@@ -13,7 +16,7 @@
  *   node skills/deploy/scripts/martech-scaffold.mjs [--contract stardust/martech-contract.json] [--root .]
  *        [--dry-run] [--force]
  *
- * Exit 0 written or unchanged; 1 usage error, invalid contract, conflict, or no hook point.
+ * Exit 0 written or unchanged; 1 usage error, invalid contract, conflict, missing plugin, or no hook point.
  */
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -51,6 +54,8 @@ function literal(v, pad = '') {
   return items.length ? `${open}\n${items.map((i) => `${inner}${i},\n`).join('')}${pad}${close}` : `${open}${close}`;
 }
 
+const pluginDir = (am) => am.plugin?.path || 'plugins/martech';
+
 function configOf(contract) {
   const cmp = contract.consent?.cmp || null;
   const routes = (contract.routes || []).filter((r) => r.enabled);
@@ -58,14 +63,57 @@ function configOf(contract) {
   if (missing) fail(`consent.cmp is enabled but \`${missing[0]}\` is empty — copy the id from the CMP admin into the contract`);
   const gated = routes.find((r) => r.category && !(cmp?.groups && cmp?.event));
   if (gated) fail(`route \`${gated.id}\` has a category but the CMP exposes no consent groups — clear the category or set consent.cmp.groups/event`);
+  const am = contract.aemMartech?.enabled ? contract.aemMartech : null;
+  if (am) {
+    const k = am.config || {};
+    const plugin = `${pluginDir(am)}/src/index.js`;
+    if (!existsSync(at(plugin))) fail(`aemMartech is enabled but ${plugin} is missing — install it: git subtree add --squash --prefix ${pluginDir(am)} ${am.plugin?.repo || 'https://github.com/adobe-rnd/aem-martech.git'} main`);
+    const unset = ['orgId', 'datastreamId', 'defaultConsent'].find((f) => !k[f]);
+    if (unset) fail(`aemMartech is enabled but config.${unset} is empty — fill it from the hand-off`);
+    const twice = routes.find((r) => (k.launchUrls || []).includes(r.src));
+    if (twice) fail(`route \`${twice.id}\` is enabled and also in aemMartech.config.launchUrls — disable the route; the plugin loads it`);
+    if (am.category && !(cmp?.groups && cmp?.event)) fail('aemMartech has a category but the CMP exposes no consent groups — clear the category or set consent.cmp.groups/event');
+    if (k.defaultConsent === 'pending' && !am.category) fail('aemMartech.config.defaultConsent is `pending` with no category — nothing would ever be sent');
+  }
   return {
     productionHosts: contract.productionHosts || [],
     cmp: cmp && {
       enabled: !!cmp.enabled, src: cmp.src, attrs: cmp.attrs || {}, groups: cmp.groups || null, event: cmp.event || null,
     },
     routes: routes.map(({ src, boot, category }) => ({ src, boot: boot || null, category: category || null })),
+    ...(am && {
+      aemMartech: {
+        module: `../${pluginDir(am)}/src/index.js`,
+        webSdk: Object.fromEntries(['orgId', 'datastreamId', 'edgeDomain', 'defaultConsent'].filter((f) => am.config[f]).map((f) => [f, am.config[f]])),
+        options: { alloyInstanceName: am.config.alloyInstanceName || 'alloy', launchUrls: am.config.launchUrls || [], personalization: false },
+        category: am.category || null,
+      },
+    }),
   };
 }
+
+const AM_CONSENT = `
+let webSdk = null;
+
+async function startWebSdk() {
+  const martech = await import(CONFIG.aemMartech.module);
+  await martech.initMartech(CONFIG.aemMartech.webSdk, CONFIG.aemMartech.options);
+  await martech.martechEager();
+  return martech;
+}
+
+export function loadConsent() {
+  if (!on) return;
+  if (CONFIG.cmp?.enabled) load(CONFIG.cmp.src, CONFIG.cmp.attrs);
+  webSdk = startWebSdk();
+}
+`;
+const AM_TAGS = `
+  webSdk?.then(async (martech) => {
+    if (CONFIG.aemMartech.category) whenGranted(CONFIG.aemMartech.category, () => martech.updateUserConsent({ collect: true }));
+    await martech.martechLazy();
+    await martech.martechDelayed();
+  });`;
 
 const runtime = (config) => `${MARK}
 const CONFIG = ${literal(config)};
@@ -111,11 +159,11 @@ function whenGranted(category, run) {
   window.addEventListener(CONFIG.cmp.event, retry);
 }
 
-export function loadConsent() {
+${config.aemMartech ? AM_CONSENT.slice(1) : `export function loadConsent() {
   if (!on || !CONFIG.cmp?.enabled) return;
   load(CONFIG.cmp.src, CONFIG.cmp.attrs);
 }
-
+`}
 export function loadTags() {
   if (!on) return;
   CONFIG.routes.forEach(({ src, boot, category }) => whenGranted(category, () => {
@@ -124,7 +172,7 @@ export function loadTags() {
       BOOT[boot](src);
     }
     load(src);
-  }));
+  }));${config.aemMartech ? AM_TAGS : ''}
 }
 `;
 
@@ -157,7 +205,7 @@ const current = read('scripts/martech.js');
 if (current !== null && !current.startsWith(MARK) && !FORCE) fail('scripts/martech.js exists and was not written by this scaffold — move it or pass --force');
 
 const changed = Object.entries(edits).filter(([p, text]) => read(p) !== text);
-const enabled = `${config.cmp?.enabled ? `CMP ${config.cmp.src}` : 'no CMP'} · ${config.routes.length} route(s) enabled`;
+const enabled = `${config.cmp?.enabled ? `CMP ${config.cmp.src}` : 'no CMP'} · ${config.routes.length} route(s) enabled${config.aemMartech ? ' · Web SDK via aem-martech' : ''}`;
 if (!changed.length) {
   console.log(`martech-scaffold: unchanged (${enabled})`);
   process.exit(0);

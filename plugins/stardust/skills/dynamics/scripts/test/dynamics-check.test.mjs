@@ -143,6 +143,15 @@ check('martechChecks: enabled routes load on accept; a category-gated one waits 
   assert.deepEqual(f.checks[2].expect.map((e) => e.id), ['cmp', 'adobe-launch', 'gtm']);
 });
 
+check('martechChecks: the Web SDK is gated on / by its edge host and expected on accept once enabled', () => {
+  const am = (over) => ({ ...CONTRACT, aemMartech: { plugin: { edge: 'edge.adobedc.net' }, config: { edgeDomain: null }, category: null, enabled: false, ...over } });
+  assert.ok(martechChecks(am()).checks[0].forbiddenHosts.includes('edge.adobedc.net'));
+  const on = martechChecks(am({ enabled: true, category: 'C0002', config: { edgeDomain: 'metrics.example.test' } }));
+  assert.equal(on.status, 'owner-enabled');
+  assert.deepEqual(on.checks[1].forbiddenHosts, ['metrics.example.test']);
+  assert.deepEqual(on.checks.at(-1).expect.at(-1), { id: 'aem-martech', hosts: ['metrics.example.test'] });
+});
+
 check('judgeMartechRequests: gate fails on a leaked host or subdomain, passes otherwise', () => {
   const c = { mode: 'gate', forbiddenHosts: ['adobedc.net', 'px.vendor.test'] };
   const bad = judgeMartechRequests(['edge.adobedc.net', 'cmp.example.test'], c);

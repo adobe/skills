@@ -155,6 +155,69 @@ await check('runtime: a gtag route defines gtag and configures the id from its s
   assert.deepEqual(b.win.dataLayer.map((a) => [...a]), [['js', b.win.dataLayer[0][1]], ['config', 'G-TEST']]);
 });
 
+const AM = (over = {}) => ({
+  plugin: { name: 'aem-martech', path: 'plugins/martech', repo: 'https://example.test/aem-martech.git' },
+  config: { orgId: 'TEST@AdobeOrg', datastreamId: 'ds-test', alloyInstanceName: 'alloy', edgeDomain: null, defaultConsent: 'in', launchUrls: [LAUNCH] },
+  category: null,
+  enabled: true,
+  ...over,
+});
+const STUB = `const log = (globalThis.martechCalls ||= []);
+export const initMartech = async (w, o) => { log.push(['init', w, o]); };
+export const martechEager = async () => { log.push(['eager']); };
+export const martechLazy = async () => { log.push(['lazy']); };
+export const martechDelayed = async () => { log.push(['delayed']); };
+export const updateUserConsent = async (c) => { log.push(['consent', c]); };
+`;
+const amSite = (am, routes = [{ id: 'adobe-launch', src: LAUNCH, boot: null, category: null, enabled: false }]) => {
+  const root = site({ data: contract({ routes, aemMartech: am }) });
+  mkdirSync(join(root, 'plugins/martech/src'), { recursive: true });
+  writeFileSync(join(root, 'plugins/martech/src/index.js'), STUB);
+  return root;
+};
+
+await check('aemMartech: missing plugin, empty ids, the Launch route still enabled, or pending with no category are errors', () => {
+  const noPlugin = run(site({ data: contract({ aemMartech: AM() }) }));
+  assert.equal(noPlugin.status, 1); assert.match(noPlugin.stderr, /git subtree add --squash --prefix plugins\/martech/);
+  const noDs = run(amSite(AM({ config: { ...AM().config, datastreamId: null } })));
+  assert.equal(noDs.status, 1); assert.match(noDs.stderr, /config\.datastreamId/);
+  const twice = run(amSite(AM(), [{ id: 'adobe-launch', src: LAUNCH, boot: null, category: null, enabled: true }]));
+  assert.equal(twice.status, 1); assert.match(twice.stderr, /route `adobe-launch` is enabled and also in aemMartech\.config\.launchUrls/);
+  const pending = run(amSite(AM({ config: { ...AM().config, defaultConsent: 'pending' } })));
+  assert.equal(pending.status, 1); assert.match(pending.stderr, /nothing would ever be sent/);
+});
+
+await check('aemMartech disabled: martech.js is byte-identical to a contract without it', () => {
+  const a = site(); const b = site({ data: contract({ aemMartech: AM({ enabled: false }) }) });
+  run(a); run(b);
+  assert.equal(file(a, 'scripts/martech.js'), file(b, 'scripts/martech.js'));
+});
+
+await check('runtime: aemMartech inits the Web SDK with the source consent, then lazy + delayed (which loads Launch)', async () => {
+  const root = amSite(AM());
+  const r = run(root);
+  assert.equal(r.status, 0, r.stderr); assert.match(r.stdout, /Web SDK via aem-martech/);
+  globalThis.martechCalls = [];
+  const b = await boot({ root, search: '?martech=on' });
+  await new Promise((done) => { setTimeout(done, 20); });
+  assert.deepEqual(b.srcs(), [CMP]);
+  const [init, ...rest] = globalThis.martechCalls;
+  assert.deepEqual(init, ['init', { orgId: 'TEST@AdobeOrg', datastreamId: 'ds-test', defaultConsent: 'in' }, { alloyInstanceName: 'alloy', launchUrls: [LAUNCH], personalization: false }]);
+  assert.deepEqual(rest.map((c) => c[0]), ['eager', 'lazy', 'delayed']);
+});
+
+await check('runtime: an aemMartech category sets collect only once the CMP grants it', async () => {
+  const root = amSite(AM({ category: 'C0002', config: { ...AM().config, defaultConsent: 'pending' } }));
+  assert.equal(run(root).status, 0);
+  globalThis.martechCalls = [];
+  const b = await boot({ root, host: 'www.example.test', groups: ',C0001,' });
+  await new Promise((done) => { setTimeout(done, 20); });
+  assert.ok(!globalThis.martechCalls.some((c) => c[0] === 'consent'));
+  b.win.OnetrustActiveGroups = ',C0001,C0002,';
+  b.fire();
+  assert.deepEqual(globalThis.martechCalls.find((c) => c[0] === 'consent'), ['consent', { collect: true }]);
+});
+
 await check('--help prints the usage header', () => {
   const r = spawnSync(process.execPath, [SCAFFOLD, '--help'], { encoding: 'utf8' });
   assert.equal(r.status, 0); assert.match(r.stdout, /--dry-run/);
