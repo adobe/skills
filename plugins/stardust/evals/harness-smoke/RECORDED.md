@@ -19,6 +19,9 @@ GitHub Copilot CLI 1.0.95 · stardust 0.32.0 · plugin: listing, load, setup, ru
   (20261012T074539Z); gate PASS (20261012T075514Z: blocked ledger line)
 ```
 
+Golden path A, Claude Code only (20261012T075728Z, 1273 s): extract (2 pages) → direct → prototype → diff,
+hands-off — PASS: pages 2/2, PRODUCT.md + DESIGN.md written, `index-proposed.html`, `diff.json`.
+
 First Claude run's gate scored FAIL on a verifier bug (a question ending in `?**` was not recognised); the
 recorded output re-verified as PASS and the rerun above passed on its own.
 

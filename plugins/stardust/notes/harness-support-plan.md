@@ -124,7 +124,7 @@ harness-notes. Called from Setup and before any renderer.
   move them under `scripts/` (with `--help`, index rows, tests) so the sync
   covers them.
 
-## M2 — Conformance kit — `evals/harness-smoke/` (in progress)
+## M2 — Conformance kit — `evals/harness-smoke/` (done; golden path B pending a sandbox EDS repo)
 
 `evals/harness-smoke/` replaces `evals/copilot-smoke/`:
 - `run.mjs --harness <id> [--plugin-dir|--skills-dir]` with one adapter per
