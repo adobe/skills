@@ -961,7 +961,7 @@ writing anything.
 - `skills/stardust/reference/impeccable-command-map.md` — when to
   reach for each impeccable command (used when building the plan).
 - `skills/stardust/reference/reference-research.md` — the
-  research-first anchor procedure (refero MCP → WebSearch → seed
+  research-first anchor procedure (refero MCP → web search → seed
   fallback) consumed by Mode B and Default mode; evidence shape and
   budgets.
 - `skills/stardust/reference/divergence-toolkit.md` — anti-mediocrity

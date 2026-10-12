@@ -87,7 +87,7 @@ captured surface or governed by the underlying skills' contracts.
    - `marketing-skills` plugin (`seo-audit`, `ai-seo` skills present?)
    - `modern-web-guidance` (`npx -y modern-web-guidance@latest search
      "<query>"` responds?)
-   - refero MCP (attempt `mcp__refero__refero_search_styles`; treat a
+   - refero MCP (attempt its `refero_search_styles` tool; treat a
      tool-not-found or timeout as unavailable)
    - PageSpeed Insights API (network-reachable without a key?)
    - rollout project (`stardust/rollout/rollout.json` present?)
@@ -135,10 +135,9 @@ folded into one set of design findings:
 
 1. **impeccable critique + audit.** Invoke impeccable through the
    harness's skill-invocation tool using the delegation mechanic in
-   `../prototype/SKILL.md` § Invoking impeccable (Claude Code form:
-   `Skill { skill: "impeccable:impeccable", args:
-   "critique <target>" }`, then `"audit <target>"` for the
-   accessibility / responsive / performance passes). Normalize its
+   `../prototype/SKILL.md` § Invoking impeccable: `critique <target>`,
+   then `audit <target>` for the accessibility / responsive /
+   performance passes. Normalize its
    findings into the audit's finding shape.
 2. **VISION pass.** Study the captured screenshots directly
    (`stardust/current/assets/screenshots/<slug>.png`) and name what a
@@ -225,7 +224,7 @@ inside the plan-card images"), not a category ("improve content").
 ### Phase 5 — Reference benchmarking (optional)
 
 Fires when the refero MCP tools are reachable — the Phase 0 probe
-attempted `mcp__refero__refero_search_styles`; `--benchmark` forces a
+attempted refero's `refero_search_styles`; `--benchmark` forces a
 re-probe. Skip gracefully when unavailable
 (`benchmarks: { status: "skipped", reason: … }`).
 
@@ -266,7 +265,7 @@ findings and in `audit.json#benchmarks.references`.
    mechanic as prototype, and the same rule: **never hand-template
    the report**. Run the post-render validation checklist; on
    failure re-invoke craft with the specific violation. Open the
-   result with `open stardust/audit/<domain-slug>/report.html`.
+   result (`stardust/audit/<domain-slug>/report.html`) in the browser.
 6. **Ledger recording (rollout projects only).** When
    `stardust/rollout/rollout.json` exists, record each finding into
    the delivery ledger via

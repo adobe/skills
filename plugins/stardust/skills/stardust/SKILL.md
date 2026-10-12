@@ -93,11 +93,9 @@ Once setup is done, route on the user's input:
   context remembered.)
 - **First word names a sub-skill.** Delegate to the matching sub-skill
   and pass remaining args through. Sub-skills are named by their bare
-  skill name below; how to address one depends on the harness. Claude
-  Code namespaces plugin skills as `stardust:<name>` (Skill tool);
-  GitHub Copilot and other harnesses that flatten plugin skills expose
-  the bare `<name>`. If the harness has no skill-invocation tool, read
-  the sub-skill's `SKILL.md` and follow it inline. Never confuse the
+  skill name below; each harness's form is in `reference/harness-notes.md`.
+  With no skill-invocation tool, read the sub-skill's `SKILL.md` and
+  follow it inline. Never confuse the
   stardust `extract` and `audit` skills with impeccable's `extract` and
   `audit` commands, which are always written `$impeccable <command>`.
   The master skill routes **all** sibling sub-skills:
@@ -288,16 +286,12 @@ otherwise):
   notification helps the user, not the cache: a notification that arrives
   after 5 minutes misses too (137 recorded), so prefer short checks for
   waits under ~45 minutes and end the turn only when the wait is longer
-  or the user should decide. (Claude Code: `run_in_background: true` on
-  the shell call, the harness posts a task notification when it exits;
-  `promptCacheTtl: "1h"` in settings.json stretches the window to an hour
-  at 1.6× write price — an owner setting, worth it for any multi-hour
-  session.)
+  or the user should decide. (Each harness's background flag, completion
+  notice and cache settings: `reference/harness-notes.md`.)
   The harness-neutral form of the same rule is replica's `run-bg.mjs`:
   `start` detaches the instrument, `wait` returns within `--max` (default
-  100 s, ceiling 110 s — inside the shell tool's ~2-minute default timeout,
-  which applies only to a call that declares none) with verdict lines
-  only, exit 75 = still going, `wait` again as the NEXT call — never in a
+  100 s, ceiling 110 s — under the harness's foreground limit, harness-notes)
+  with verdict lines only, exit 75 = still going, `wait` again as the NEXT call — never in a
   shell loop, never after a `sleep`. The rule binds the main agent as it
   binds subagents: one long instrument in the foreground, or two long
   instruments as parallel tool calls in one turn, is the same blocked step

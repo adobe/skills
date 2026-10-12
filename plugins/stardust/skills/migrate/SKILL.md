@@ -439,7 +439,7 @@ Missing assets: 2
 Output:  stardust/migrated/  (122 pages, 47 bundled assets, 4.2 MB) — self-contained, zip-and-deploy
 
 Next:
-  - Review:    open stardust/migrated/index.html in a browser
+  - Review:    stardust/migrated/index.html in a browser
   - Audit:     $impeccable critique stardust/migrated/
   - Deploy:    cd stardust/migrated && zip -r ../site.zip .
                upload the zip to any static host that serves at the host root

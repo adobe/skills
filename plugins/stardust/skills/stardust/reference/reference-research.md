@@ -24,7 +24,7 @@ documented fallback; it is no longer the default path.
 Probe once per run and record the resolved tier in the consuming
 artifact's provenance:
 
-1. **Refero MCP** (best) — the `mcp__refero__*` tools:
+1. **Refero MCP** (best) — the refero MCP server's `refero_*` tools:
    `refero_search_styles` (visual language of real marketing/product
    sites), `refero_search_screens` (concrete UI patterns),
    `refero_get_style` (full token system: colors + roles, type scale,
@@ -32,7 +32,7 @@ artifact's provenance:
    `refero_get_similar_screens`, `refero_search_flows`. Probe by
    issuing the first real search; a tool-not-found or auth error
    drops to tier 2.
-2. **WebSearch / WebFetch** — search *"best `<vertical>` website
+2. **Web search / fetch** — search *"best `<vertical>` website
    design `<year>`"*, *"`<register>` web design reference"*; fetch and
    study 2–3 results. Weaker evidence (no token systems), still named
    and citable.

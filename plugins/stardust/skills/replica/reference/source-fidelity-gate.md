@@ -485,9 +485,9 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
   default 3 slots, `RUN_BG_SLOTS` to move them, launch the rounds first come
   first served — each capture is a Chromium, a `--full` round three, and the
   slots replace the `sleep N;` staggering), then `run-bg.mjs
-  wait` (returns within `--max`, default 100 s, ceiling 110 s — inside the
-  shell tool's ~2-minute default timeout, which applies only to a call that
-  declares none) prints one
+  wait` (returns within `--max`, default 100 s, ceiling 110 s — under the
+  harness's foreground limit, `../../stardust/reference/harness-notes.md`)
+  prints one
   line per job plus its verdict lines; exit 75 means "still going — `wait`
   again as your NEXT step". Never wrap `wait` in a shell loop: that
   recreates the blocked step; between waits do independent work, and read

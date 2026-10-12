@@ -76,7 +76,7 @@ shape — this one or replica's `## <Phase name> — <what happened> (<date>)`
   *why*, not *how*.
 - Verbatim chat transcripts. Paraphrase prompts; record decisions.
 - Speculative future planning. The "Next" line is a recommendation, not a
-  plan. Plans live in plan mode or PRODUCT.md.
+  plan. Plans live in PRODUCT.md or the harness's own planning.
 - Ephemeral debugging chatter. Distill to the load-bearing fact.
 
 ## What "non-trivial write" means
@@ -141,10 +141,10 @@ or "what's next?" — but verify against state.json first. If the journal
 recommends an action that state.json indicates is already done, the
 journal is stale; surface the discrepancy.
 
-## Project-side CLAUDE.md companion
+## Project instructions companion (AGENTS.md / CLAUDE.md)
 
-When a project has a CLAUDE.md (impeccable's project instructions
-file), it's normal to also have a one-line reminder there:
+When a project has an instructions file (AGENTS.md, CLAUDE.md or the
+harness's own), it's normal to also have a one-line reminder there:
 
 > **Journal rule:** On every prompt execution that resulted in a
 > non-trivial write, append an entry to `stardust/journal.md`
@@ -152,5 +152,5 @@ file), it's normal to also have a one-line reminder there:
 
 This is project-side because each project might want to extend the
 default format (a custom rule, an additional field, a project-specific
-section). The reference here is the canonical format; project-side
-CLAUDE.md is where projects bind the rule + their extensions.
+section). The reference here is the canonical format; the project's
+instructions file is where projects bind the rule + their extensions.
