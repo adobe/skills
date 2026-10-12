@@ -2,7 +2,7 @@
 name: diff
 description: Reconcile a converted/built web page against its source prototype with two complementary probes — a PIXEL/layout diff (stretched images, dropped wraps, blank renders, colour flips) and a STRUCTURAL content+typography diff (dropped/mis-slotted headings, eyebrows, CTAs; rendered-face font forks). Stack-agnostic via profiles (eds | generic). Use after converting a prototype to EDS/AEM (the stardust `deploy` skill Step 10), or for any prototype↔build fidelity check; invocable as the stardust `diff` skill and from workflows.
 license: Apache-2.0
-compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, playwright-cli on PATH, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
+compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
 ---
 
 # stardust:diff — prototype ↔ build reconcile
@@ -40,9 +40,8 @@ root carries the `placeholder` / `aria-label` / `title` values and the icons.
 ```bash
 # Prereq 0: playwright importable from the project root (node -e "import('playwright')"), else
 # npm i -D playwright pixelmatch pngjs cheerio --legacy-peer-deps, never --no-save (extract
-# SKILL.md § Setup). Run the copied scripts from the project root: ESM resolves from the script.
-# Copy the WHOLE skills/diff/scripts/ dir: content-diff imports its local diff-profiles.mjs
-# AND content-inventory.mjs (deploy keeps its own synced copies for #93/#94).
+# SKILL.md § Setup). Run the project copies (stardust/scripts/diff/, synced by the master
+# skill's Setup) from the project root: ESM resolves from the script.
 # Prereq: a RENDERABLE source. Static → serve from its own dir (python3 -m http.server).
 # The build URL must be the DECORATED page (live/preview or a local harness), not raw markup.
 # ONE server, ONE port — probe before starting one (curl is always present, lsof is not):
@@ -50,15 +49,15 @@ curl -sI localhost:8791/ | head -1                   # 200/404 = something serve
 curl -sI localhost:8791/<prototype>.html | head -1   # 200 = it serves YOUR dir: reuse it
 command -v lsof >/dev/null && lsof -nP -iTCP:8791 -sTCP:LISTEN   # optional: names the pid
 # Nothing answered → start yours. A foreign server: never kill it; use a per-project port
-# (the traps: ../deploy/SKILL.md § Step 10).
+# (the traps: ../deploy/reference/reconcile.md).
 PROTO="http://localhost:8791/<prototype>.html"
 BUILD="https://<branch>--<repo>--<owner>.aem.page/<path>"   # or http://localhost:3000/<harness>
 
 # 1. PIXEL/layout
-node skills/diff/scripts/visual-diff.mjs   "$PROTO" "$BUILD" --profile eds --sections ".hero"
+node stardust/scripts/diff/visual-diff.mjs   "$PROTO" "$BUILD" --profile eds --sections ".hero"
 
 # 2. STRUCTURAL content + type
-node skills/diff/scripts/content-diff.mjs  "$PROTO" "$BUILD" --profile eds   # --json dumps both inventories
+node stardust/scripts/diff/content-diff.mjs  "$PROTO" "$BUILD" --profile eds   # --json dumps both inventories
 ```
 
 Flags (both tools): `--profile eds|generic` (default `eds`), `--width <px>` (default 1280),

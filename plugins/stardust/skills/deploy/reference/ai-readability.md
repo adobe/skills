@@ -105,7 +105,7 @@ driver in the hand-off.
 ## 6. The gate
 
 ```bash
-node skills/deploy/scripts/ai-readability.mjs --origin https://main--site--org.aem.live \
+node stardust/scripts/deploy/ai-readability.mjs --origin https://main--site--org.aem.live \
      [--paths stardust/rollout/pages.txt | /path …] [--min 98] [--token-env SITE_TOKEN] \
      [--exclude-blocks client-app,widget,form] [--allowlist stardust/ai-readability-allowlist.json] \
      [--json stardust/qa/ai-readability.json] [--verbose]

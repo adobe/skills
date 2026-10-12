@@ -2,7 +2,7 @@
 name: uplift
 description: One-shot brand-faithful presales redesign of a website page. The user provides only the URL; everything else — extraction, tension identification, three differentiated variants (one fully cinematic), validation — is derived from the captured brand surface. Use when the user asks to "uplift", "refresh", or "redesign a site for presales" without wanting to coordinate the extract / direct / prototype chain themselves.
 license: Apache-2.0
-compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, playwright-cli on PATH, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
+compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
 ---
 
 # stardust:uplift
@@ -397,17 +397,11 @@ keeps canon consistent across the B and C runs in either path.
 After all three prototypes mark `prototyped` in `state.json`:
 
 1. **Confirm all three are open in the browser** — each variant was
-   opened as it completed (Phase 5 step 3); open any that weren't,
-   using the `open` shell command (not `playwright-cli open`) so VFS
-   paths are served via the preview service worker:
-   ```
-   open stardust/prototypes/<slug>-A-proposed.html
-   open stardust/prototypes/<slug>-B-proposed.html
-   open stardust/prototypes/<slug>-C-cinematic.html
-   ```
-   `playwright-cli open` bypasses the preview service worker and produces
-   a FILE NOT FOUND error for VFS paths. Always use `open <vfs-path>` for
-   local prototype files.
+   opened as it completed (Phase 5 step 3); open any that weren't
+   (`stardust/prototypes/<slug>-A-proposed.html`, `-B-proposed.html`,
+   `-C-cinematic.html`) with the OS opener (`open`, `xdg-open`,
+   `start`), not `playwright-cli open`, which bypasses a harness
+   preview's service worker and shows FILE NOT FOUND for its paths.
 2. **Print the three-pitch summary** in the chat:
 
    ```

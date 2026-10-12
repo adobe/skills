@@ -2,7 +2,7 @@
 name: reskin
 description: Rebuild an existing site's pages with byte-faithful content on a separately-defined donor design system — another live site, or local static HTML prototypes (Figma donors are contract-defined, not yet implemented). Content fidelity is gated byte-level (text, ordered images, SEO metadata); design application is flexible (content re-laid-out onto donor modules). Use when the user says "reskin my site with this design", "apply this design system to my content", "restyle my site to look like <other site>", "new design, same content", "rebrand my site using these prototypes", or names a content site plus a design donor. NOT for redesigning from intent (that's the stardust core extract/direct/prototype chain) and NOT for keeping the current design while migrating (that's the replica flow).
 license: Apache-2.0
-compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, playwright-cli on PATH, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
+compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
 ---
 
 # stardust:reskin — same content, donor design
@@ -74,21 +74,11 @@ regression check instead of a debugging tool.
    `npm i -D playwright --no-save --legacy-peer-deps`. Re-run the
    probe at the start of every phase that renders — a `--no-save`
    install is pruned by any later real `npm i`.
-3. **Copy the scripts into the project.** ESM resolves
-   `import('playwright')` from the *script's* directory and the plugin
-   tree ships no `node_modules`. Copy `skills/reskin/scripts/*` (all
-   five files — `capture-content.mjs` and `dom-equality.mjs` import
-   `source-normalize.mjs` as a sibling) byte-identical to
-   `stardust/scripts/reskin/`, **and** `skills/diff/scripts/
-   live-session.mjs` to `stardust/scripts/diff/` — every reskin gate
-   script (capture-content, dom-equality, donor-probe, **and**
-   slot-coverage) imports it unconditionally at startup, regardless
-   of target type: without the copy each one exits 2 immediately,
-   even for `--help` or a local-file `--rendered` target. It supplies
-   ALL live-target hardening (real-Chrome UA + standard headers,
-   challenge detection, headed-stealth escalation), resolved from
-   `../diff/` next to `../reskin/`, so keep the two dirs siblings.
-   Run the copies.
+3. **Run the project copies** (`stardust/scripts/reskin/`, synced by
+   master Setup with every sibling's). Every reskin gate imports
+   `../diff/live-session.mjs` at startup for all live-target hardening
+   (real-Chrome UA, challenge detection, headed-stealth escalation); the
+   sync keeps the two dirs siblings.
 4. **Origin collision** — if `stardust/state.json` records a different
    `site.originUrl`, stop and ask before mixing sites, per
    `../extract/SKILL.md` § Setup.
@@ -379,7 +369,7 @@ pipeline, unchanged:
   inherited wholesale.
 - **Ship via the stardust `deploy` and `rollout` skills**, unchanged. Blocks
   written for donor modules obey the Experience Workspace editability
-  contract (deploy SKILL.md § 8, EW1–EW10) and pass the EW gate
+  contract (deploy reference/block-js.md § 8, EW1–EW10) and pass the EW gate
   (`block-roundtrip --ew`) before they are done.
 
 Reskin writes its own state under `stardust/reskin/` — `ledger.json`

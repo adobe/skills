@@ -485,9 +485,9 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
   default 3 slots, `RUN_BG_SLOTS` to move them, launch the rounds first come
   first served — each capture is a Chromium, a `--full` round three, and the
   slots replace the `sleep N;` staggering), then `run-bg.mjs
-  wait` (returns within `--max`, default 100 s, ceiling 110 s — inside the
-  shell tool's ~2-minute default timeout, which applies only to a call that
-  declares none) prints one
+  wait` (returns within `--max`, default 100 s, ceiling 110 s — under the
+  harness's foreground limit, `../../stardust/reference/harness-notes.md`)
+  prints one
   line per job plus its verdict lines; exit 75 means "still going — `wait`
   again as your NEXT step". Never wrap `wait` in a shell loop: that
   recreates the blocked step; between waits do independent work, and read
@@ -680,7 +680,8 @@ every context; `domcontentloaded` for non-localhost http(s) URLs and
 diligence: the edits were 10 distinct changes across 2 files, and a partial
 application silently mis-measured (e.g. one `main`-scoped selector left
 hardcoded in visual-diff). If you find `// replica ADAPTATION:` copies from
-an older run, re-copy the shipped scripts and pass flags instead.
+an older run, re-run the master Setup sync (it restores the shipped bytes)
+and pass flags instead.
 
 The narrow exception: **a documented instrument-bug fix is the correct
 move when the shipped instrument measures falsely** — fail-loud outranks

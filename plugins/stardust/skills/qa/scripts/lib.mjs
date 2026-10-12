@@ -18,9 +18,10 @@ export function flag(name) { return process.argv.includes(`--${name}`); }
 
 export const STARDUST_VERSION = (() => {
   try {
+    // project copy: stardust/scripts/VERSION (sync-scripts.mjs); skill tree, any layout: skills/stardust/VERSION
     const here = dirname(fileURLToPath(import.meta.url));
-    const pj = JSON.parse(readFileSync(join(here, '..', '..', '..', '.claude-plugin', 'plugin.json'), 'utf8'));
-    return pj.version || '0.0.0';
+    for (const p of [join(here, '..', 'VERSION'), join(here, '..', '..', 'stardust', 'VERSION')]) if (existsSync(p)) return readFileSync(p, 'utf8').trim() || '0.0.0';
+    return '0.0.0';
   } catch { return '0.0.0'; }
 })();
 

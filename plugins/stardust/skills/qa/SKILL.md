@@ -2,7 +2,7 @@
 name: qa
 description: Read-only automated QA sweep of a deployed stardust site on AEM Edge Delivery Services — validates routing, content fidelity vs the source capture, template conformance, rendered integrity (geometry, JS errors, broken images), visual regression vs baselines, metadata/SEO/JSON-LD, link integrity, accessibility (axe), and performance budgets, then emits a findings report with an allowlist for documented non-defects. Finds issues; never fixes them. Use when the user asks to "QA the site", "validate the migration", "check the live site for issues", "run a QA sweep/regression check", or invokes `$stardust qa` (`/stardust:qa` in Claude Code) <live-url>.
 license: Apache-2.0
-compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, playwright-cli on PATH, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
+compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
 ---
 
 # stardust:qa — read-only site QA sweep
@@ -61,7 +61,7 @@ delivered HTML ≠ rendered correctly.
 ### Phase 1 — deterministic sweep
 
 ```bash
-node <plugin>/skills/qa/scripts/qa.mjs \
+node stardust/scripts/qa/qa.mjs \
   --base https://main--<site>--<org>.aem.live \
   --template-map stardust/template-map.json \
   --scrape stardust/scrape
@@ -77,7 +77,7 @@ reproduces Adobe's AI Content Visibility Checker per page (served words ÷ rende
 attributes the gap per block (`deploy/reference/ai-readability.md`).
 
 The `editability` check is the post-deploy **Experience Workspace
-editability gate** (deploy SKILL.md § 8, EW1–EW10): per page it re-creates
+editability gate** (deploy reference/block-js.md § 8, EW1–EW10): per page it re-creates
 the da.live canvas's instrumentation on the served document, lets the live
 page decorate, and counts which authored texts still carry their editor
 index. `editability/dead-text` (error) = a block rebuilt authored text and

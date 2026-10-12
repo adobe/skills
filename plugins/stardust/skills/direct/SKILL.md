@@ -2,7 +2,7 @@
 name: direct
 description: Set a redesign direction for an existing website. Analyzes the user's intent, picks a palette and visual direction, and writes the target spec (PRODUCT.md, DESIGN.md, DESIGN.json) plus a reasoning trace at stardust/direction.md. Use when the user asks to redesign a site, refresh the design, set a new design direction, define a redesign target, or invokes `$stardust direct` (`/stardust:direct` in Claude Code).
 license: Apache-2.0
-compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, playwright-cli on PATH, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
+compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
 ---
 
 # stardust:direct
@@ -961,7 +961,7 @@ writing anything.
 - `skills/stardust/reference/impeccable-command-map.md` — when to
   reach for each impeccable command (used when building the plan).
 - `skills/stardust/reference/reference-research.md` — the
-  research-first anchor procedure (refero MCP → WebSearch → seed
+  research-first anchor procedure (refero MCP → web search → seed
   fallback) consumed by Mode B and Default mode; evidence shape and
   budgets.
 - `skills/stardust/reference/divergence-toolkit.md` — anti-mediocrity

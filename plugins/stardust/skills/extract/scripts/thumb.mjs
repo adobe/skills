@@ -59,8 +59,8 @@
  *   instead; `for --max-bytes` says the cap drove the scale or the crop.
  *
  * Example (every page capture at once, then read the thumbnails):
- *   node stardust/scripts/thumb.mjs stardust/current/assets/screenshots --width 480
- *   node stardust/scripts/thumb.mjs stardust/current/assets/screenshots/home.png --offset 2270
+ *   node stardust/scripts/extract/thumb.mjs stardust/current/assets/screenshots --width 480
+ *   node stardust/scripts/extract/thumb.mjs stardust/current/assets/screenshots/home.png --offset 2270
  *     — the rest of a page whose line read `cropped at 2270px of 3782 = 60%`; writes home-thumb-2270.png
  *
  * Writes:
@@ -109,7 +109,7 @@ async function loadPng() {
   try { return (await import('pngjs')).PNG; } catch (e) {
     if (e.code !== 'ERR_MODULE_NOT_FOUND') throw e;
     try { return createRequire(import.meta.url)('pngjs').PNG; } catch (e2) { if (e2.code !== 'MODULE_NOT_FOUND') throw e2; }
-    throw new Error(`${e.message.split('\n')[0]} — pngjs is a project devDependency; copy this script into the project (stardust/scripts/thumb.mjs, beside crawl.mjs) and run that copy, or set NODE_PATH=<project>/node_modules`);
+    throw new Error(`${e.message.split('\n')[0]} — pngjs is a project devDependency; run the project copy (stardust/scripts/extract/thumb.mjs, synced by stardust Setup), or set NODE_PATH=<project>/node_modules`);
   }
 }
 

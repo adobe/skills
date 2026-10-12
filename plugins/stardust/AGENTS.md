@@ -16,6 +16,6 @@ script you touch — playwright scripts from a project copy, the plugin tree shi
 - **Harness-neutral text**, and docs name only paths that exist (the existing lints).
 - **Field learnings** = one anonymised CHANGELOG entry + the rule in the skill doc, with the next
   deploy-improvement number and the numbers it touches.
-- **Releases** bump `plugins/stardust/.claude-plugin/plugin.json`, the stardust entry in the root
+- **Releases** bump `plugins/stardust/.claude-plugin/plugin.json`, `.tessl-plugin/plugin.json`, `skills/stardust/VERSION`, the stardust entry in the root
   `.claude-plugin/marketplace.json` and the CHANGELOG heading together — patch for follow-ups,
   minor for a new skill or a changed contract.

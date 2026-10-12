@@ -2,7 +2,7 @@
 name: prototype
 description: Render a proposed redesign of a page on the current website as a self-contained static HTML file, then iterate via the impeccable craft loop. Per-page, idempotent, stale-aware. Use when the user asks for a redesign prototype, a before/after comparison, a design preview, a page mockup, a visual diff of the redesign, or invokes `$stardust prototype` (`/stardust:prototype` in Claude Code).
 license: Apache-2.0
-compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, playwright-cli on PATH, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
+compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
 ---
 
 # stardust:prototype
@@ -135,21 +135,12 @@ HTML. Don't.
 ### Invoking impeccable
 
 Impeccable is a skill, not a CLI. Invoke it through the harness's
-skill-invocation tool, passing the sub-command and its args as the
-skill's argument string, mirroring the slash-command form. In Claude
-Code the plugin namespaces it as `impeccable:impeccable`:
-
-```
-Skill {
-  skill: "impeccable:impeccable",
-  args: "craft <feature-description>"
-}
-```
-
-In GitHub Copilot and other harnesses that flatten plugin skills the
-skill is named `impeccable` and takes the same argument string
-(`craft <feature-description>`). Every Claude Code `Skill { ... }`
-example in this skill translates the same way.
+skill mechanism with the sub-command and its args as the argument
+string, mirroring the slash-command form (`craft <feature-description>`).
+The skill is `impeccable` everywhere except in the Claude Code plugin, which namespaces it
+(`impeccable:impeccable` — Claude Code); each harness's call form is in
+`../stardust/reference/harness-notes.md`. "Invoke impeccable with
+`<args>`" below always means this call.
 
 Sub-commands referenced from this skill are all routed through the
 same skill: `craft`, `shape`, plus the iteration commands
@@ -783,16 +774,9 @@ quantifiable WCAG failures.
 Procedure:
 
 1. **Run both validators in parallel.** Invoke impeccable twice in one
-   batch of skill invocations (Claude Code form shown; see § Invoking
-   impeccable):
-
-   ```
-   Skill { skill: "impeccable:impeccable",
-           args: "critique stardust/prototypes/<slug>-proposed.html --json" }
-
-   Skill { skill: "impeccable:impeccable",
-           args: "audit stardust/prototypes/<slug>-proposed.html --json" }
-   ```
+   batch (§ Invoking impeccable), with
+   `critique stardust/prototypes/<slug>-proposed.html --json` and
+   `audit stardust/prototypes/<slug>-proposed.html --json`.
 
    Each returns a JSON findings list — each finding has
    `priority` (P0 / P1 / P2 / P3), `category` (hierarchy /
@@ -969,15 +953,8 @@ unchanged implementation.
 
 #### Adapt procedure
 
-Invoke impeccable adapt against the rendered file (Claude Code form;
-see § Invoking impeccable):
-
-```
-Skill {
-  skill: "impeccable:impeccable",
-  args: "adapt stardust/prototypes/<slug>-proposed.html"
-}
-```
+Invoke impeccable with `adapt stardust/prototypes/<slug>-proposed.html`
+(§ Invoking impeccable).
 
 Pass the captured viewport breakpoints from
 `DESIGN.json#extensions.breakpoints` if present; otherwise adapt
@@ -1465,7 +1442,7 @@ Default mode is unchanged.
   / scale-displacement), plus the § Extension rule for
   evidence-shaped new moves.
 - `skills/stardust/reference/reference-research.md` — sourcing
-  real-world design references (refero MCP with WebSearch fallback,
+  real-world design references (refero MCP with web-search fallback,
   graceful skip when unavailable); consumed by Discipline 2's
   reference-grounded alternatives.
 - `reference/approval-fold-back.md` — Phase 5 fold-back procedure

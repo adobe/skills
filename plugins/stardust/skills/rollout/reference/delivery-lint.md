@@ -14,7 +14,7 @@ to "the tool enforces".
 ## Run it
 
 ```bash
-node skills/rollout/scripts/delivery-lint.mjs --file <content.html> \
+node stardust/scripts/rollout/delivery-lint.mjs --file <content.html> \
   --path </da/target/path> [--type page|fragment|index] [--json]
 ```
 

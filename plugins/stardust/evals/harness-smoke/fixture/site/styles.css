@@ -1,0 +1,15 @@
+:root { --ink: #1f2a24; --paper: #f6f2ea; --moss: #4f6b4a; --font: Georgia, "Times New Roman", serif; }
+* { box-sizing: border-box; }
+body { margin: 0; font-family: var(--font); color: var(--ink); background: var(--paper); line-height: 1.5; }
+.site-header { display: flex; justify-content: space-between; align-items: center; padding: 1.25rem 2rem; border-bottom: 1px solid #d9d2c4; }
+.site-header nav a { margin-left: 1.5rem; color: var(--ink); text-decoration: none; }
+.brand { font-weight: 700; color: var(--ink); text-decoration: none; }
+main { max-width: 64rem; margin: 0 auto; padding: 0 2rem; }
+.hero { padding: 5rem 0 3rem; }
+.hero h1 { font-size: 3rem; line-height: 1.1; margin: 0.25rem 0 1rem; }
+.eyebrow { text-transform: uppercase; letter-spacing: 0.12em; font-size: 0.8rem; color: var(--moss); }
+.lede { font-size: 1.25rem; max-width: 36rem; }
+.button { display: inline-block; padding: 0.75rem 1.5rem; background: var(--moss); color: #fff; text-decoration: none; border-radius: 2px; }
+.cards ul { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem; }
+.cards li { background: #fff; padding: 1.5rem; border: 1px solid #e4ddd0; }
+.site-footer { margin-top: 4rem; padding: 2rem; text-align: center; border-top: 1px solid #d9d2c4; }

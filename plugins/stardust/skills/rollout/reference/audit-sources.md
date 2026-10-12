@@ -33,7 +33,7 @@ the gap — the baseline source always runs.
 The agent runs a source, then normalizes each of its findings:
 
 ```bash
-node skills/rollout/scripts/findings.mjs record \
+node stardust/scripts/rollout/findings.mjs record \
   --source <source> --layer <layer> --check <check-id> \
   --severity P1|P2|P3 --fixability platform-migration|design-pass|out-of-scope \
   --scope-level page|site --scope-ids <slug[,slug]> \

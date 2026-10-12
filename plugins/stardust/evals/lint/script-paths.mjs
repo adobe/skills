@@ -8,9 +8,9 @@
 // a wrong conclusion ("not installed") and a re-read of the doc. Paths are
 // checkable — so check them.
 //
-// Checked forms (plugin-internal only; impeccable's tree and project copies
-// such as `stardust/scripts/…` are out of scope):
+// Checked forms (impeccable's tree is out of scope):
 //   skills/<skill>/scripts/<file>       ../../<skill>/scripts/<file>
+//   stardust/scripts/<skill>/<file>     (the project copy sync-scripts.mjs makes of skills/<skill>/scripts/)
 //   skills/<skill>/reference/<file>.md  ../<skill>/reference/<file>.md
 // (a bare `reference/<file>.md` is not checked: docs use it for sibling and
 // impeccable references without a skill prefix, so it cannot be resolved)
@@ -30,6 +30,7 @@ const FILE = '[A-Za-z0-9_.-]+';
 const PATTERNS = [
   { re: new RegExp(`skills/(${SKILL})/scripts/(${FILE}\\.(?:mjs|js|sh|py|json))`, 'g'), to: (m) => `${m[1]}/scripts/${m[2]}` },
   { re: new RegExp(`\\.\\./\\.\\./(${SKILL})/scripts/(${FILE}\\.(?:mjs|js|sh|py|json))`, 'g'), to: (m) => `${m[1]}/scripts/${m[2]}` },
+  { re: new RegExp(`(?<![\\w/.-])stardust/scripts/(${SKILL})/((?:${SKILL}/)?${FILE}\\.(?:mjs|js|sh|py|json))`, 'g'), to: (m) => `${m[1]}/scripts/${m[2]}` },
   { re: new RegExp(`skills/(${SKILL})/reference/(${FILE}\\.md)`, 'g'), to: (m) => `${m[1]}/reference/${m[2]}` },
   { re: new RegExp(`(?<![./])\\.\\./(${SKILL})/reference/(${FILE}\\.md)`, 'g'), to: (m) => `${m[1]}/reference/${m[2]}` },
 ];

@@ -44,7 +44,8 @@ export const TOP_ORDER = ['_provenance', 'site', 'direction', 'handsOff', 'flow'
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SELF = fileURLToPath(import.meta.url);
-const PLUGIN_MANIFEST = join(HERE, '..', '..', '..', '.claude-plugin', 'plugin.json');
+// project copy: stardust/scripts/VERSION (sync-scripts.mjs); skill tree, any layout: skills/stardust/VERSION
+const VERSION_FILES = [join(HERE, '..', 'VERSION'), join(HERE, '..', '..', 'stardust', 'VERSION')];
 const HELP = `Usage:
   node state.mjs advance <slug…> --to <${ORDER.join('|')}> [--by <who>] [--prototype <path>]
                  [--migrated <path>] [--skill <name>] [--force | --history-only] [--dir <d>]
@@ -77,7 +78,8 @@ export function normaliseSkill(raw) {
 }
 
 export function pluginVersion() {
-  try { return JSON.parse(readFileSync(PLUGIN_MANIFEST, 'utf8')).version || null; } catch { return null; }
+  for (const p of VERSION_FILES) { try { const v = readFileSync(p, 'utf8').trim(); if (v) return v; } catch {} }
+  return null;
 }
 
 export function readState(dir) {

@@ -2,7 +2,7 @@
 name: migrate
 description: Apply DESIGN, canon, and modules to every page in the inventory, producing a deployable static HTML site. Use to migrate or render the whole captured site into the redesigned static tree ("migrate the pages", "render the migrated site", "apply the design to all pages", "build the deployable site", "convert the approved prototype into the full site") — the page-rendering step between prototype and deploy/rollout. Three render branches (approved page, template-applied sibling, unique render), with a declared fidelity tier per page. Per-page, incremental, idempotent, content-preserving by default.
 license: Apache-2.0
-compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, playwright-cli on PATH, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
+compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
 ---
 
 # stardust:migrate
@@ -283,7 +283,7 @@ the render is the encoder's input, its gate is the row after PUT. For each page 
   asset refs on this page) in `_meta.json`.
 
 The mechanics of this phase are scripted:
-`node skills/migrate/scripts/migrate.mjs render <slug…|--all>` (the
+`node stardust/scripts/migrate/migrate.mjs render <slug…|--all>` (the
 project copy runs from `stardust/scripts/migrate/`) builds the page
 map, places each page at its URL-literal path, rewrites internal
 links, bundles assets, composes `<head>` (provenance, `:root`,
@@ -439,7 +439,7 @@ Missing assets: 2
 Output:  stardust/migrated/  (122 pages, 47 bundled assets, 4.2 MB) — self-contained, zip-and-deploy
 
 Next:
-  - Review:    open stardust/migrated/index.html in a browser
+  - Review:    stardust/migrated/index.html in a browser
   - Audit:     $impeccable critique stardust/migrated/
   - Deploy:    cd stardust/migrated && zip -r ../site.zip .
                upload the zip to any static host that serves at the host root

@@ -2,7 +2,7 @@
 name: stardust
 description: Guided multi-page redesign of an existing website through a four-phase pipeline — extract (crawl and capture the current site), direct (set a visual direction), prototype (generate redesigned HTML), and migrate (emit a deployable static site). Tracks progress incrementally per page in stardust/state.json so redesigns are resumable. Delegates the per-page design craft (typography, spacing, color, layout, motion) to the impeccable skill. Use when the user wants to redesign, revamp, modernize, or restyle an existing site they can point to by URL, run the extract/direct/prototype/migrate flow, or resume a multi-page redesign or migration. Also routes the same-design migration flow (replica) and the donor-design flow (reskin). Not for designing a brand-new site from scratch or one-off single-component edits.
 license: Apache-2.0
-compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, playwright-cli on PATH, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
+compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
 ---
 
 # stardust
@@ -14,34 +14,40 @@ sub-commands that delegate the actual design work to **impeccable**.
 
 ## Setup (run before anything else)
 
+**Scripts first.** Every stardust command runs a project copy,
+`node stardust/scripts/<skill>/<script>.mjs`, made from the project root by
+`node <skills-root>/stardust/scripts/sync-scripts.mjs` — `<skills-root>` is
+the directory holding this skill's folder and its siblings (`<plugin>/skills/`
+in a plugin, the harness's skills directory in a loose install). It copies
+all sixteen skills' scripts and writes `stardust/scripts/VERSION`; re-run it
+when that file is missing or `--check` reports drift. The skill tree ships no
+`node_modules`, so a script resolves Playwright only from the copy: never run
+a script from the skill tree, never hand-edit a copy. Then run
+`node stardust/scripts/stardust/runtime-preflight.mjs --harness <id>` (ids:
+`reference/harness-notes.md`), again after installing Playwright: a `FAIL`
+line is the harness's sandbox, and ends with its fix — apply it or ask the
+user to before any phase that renders.
+
 1. **Verify impeccable is installed.** Stardust has a hard dependency on
-   impeccable and ships no fallbacks. Look for the `impeccable` skill wherever
-   the harness installs skills or plugins: the skill list the harness exposes
-   to you, project skill directories (`.claude/skills/`, `.agents/skills/`,
-   `.cursor/skills/`, `.github/skills/`), or the harness's plugin cache
-   (Claude Code: `~/.claude/plugins/cache/`; GitHub Copilot:
-   `~/.copilot/installed-plugins/*/impeccable/skills/impeccable`). If it is
-   not installed, stop and tell the user:
+   impeccable and ships no fallbacks. Run
+   `node stardust/scripts/stardust/impeccable-version-check.mjs --where`:
+   it searches every harness's plugin caches and project and user skills
+   directories and prints impeccable's skill directory (the one holding its
+   `SKILL.md` and `reference/`). Note that path once as `<impeccable-dir>` —
+   phases read impeccable's format specs (`reference/init.md`,
+   `reference/document.md`) from there by section, never after a filesystem
+   search. Exit 1 means not installed (or installed somewhere unusual: retry
+   with `--local <dir>`); stop and tell the user:
    > Stardust requires impeccable. Install it from
    > <https://github.com/pbakaus/impeccable> and re-run the command.
 
-   **Version hint (advisory, never blocking).** Stardust deliberately pins
-   NO impeccable version — the design craft should always be the current
-   one — and harnesses do not announce third-party plugin updates by
-   default (Claude Code's marketplace auto-update is off for third-party
-   marketplaces such as impeccable's; Copilot has no update notice). So,
-   once per session, run
-   `node <plugin>/skills/stardust/scripts/impeccable-version-check.mjs`
-   (add `--local <impeccable-dir>` when impeccable lives in a harness skills
-   directory rather than the plugin registry) and surface its one output
-   line to the user verbatim when it reports a newer version; it prints the
-   update command for the harness it found impeccable in. Any other outcome (current, unknown, offline) is
+   **Version hint (advisory, never blocking).** Stardust pins NO impeccable
+   version — the design craft should always be the current one — and no
+   harness announces third-party updates by default. Once per session run
+   the same script without `--where` and surface its output line to the user
+   verbatim when it reports a newer version (it names the update command for
+   the install it found). Any other outcome (current, unknown, offline) is
    noise — do not mention it, and never stop or degrade a run over it.
-   The same script with `--where` prints impeccable's skill directory
-   (the one holding its `SKILL.md` and `reference/`); note it once — the
-   phases that read impeccable's format specs (`reference/init.md`,
-   `reference/document.md`) read them from there by section, never after
-   a filesystem search.
 2. **Check the target-state files.** `PRODUCT.md` and `DESIGN.md` at the
    project root are the *target* state for stardust; check whether they
    exist (a directory listing is enough). Do not run impeccable's context
@@ -54,7 +60,7 @@ sub-commands that delegate the actual design work to **impeccable**.
    (`reference/state-machine.md` defines the schema). Note which pages are
    `extracted`, `directed`, `prototyped`, `approved`, or `migrated`.
 4. **Read impeccable's command registry.** Parse
-   `<harness>/skills/impeccable/scripts/command-metadata.json`. This is the
+   `<impeccable-dir>/scripts/command-metadata.json`. This is the
    single source of truth for the 24 impeccable commands; never hardcode
    them in your reasoning.
 5. **Status ledger.** Every stardust skill appends a phase-transition line
@@ -91,11 +97,9 @@ Once setup is done, route on the user's input:
   context remembered.)
 - **First word names a sub-skill.** Delegate to the matching sub-skill
   and pass remaining args through. Sub-skills are named by their bare
-  skill name below; how to address one depends on the harness. Claude
-  Code namespaces plugin skills as `stardust:<name>` (Skill tool);
-  GitHub Copilot and other harnesses that flatten plugin skills expose
-  the bare `<name>`. If the harness has no skill-invocation tool, read
-  the sub-skill's `SKILL.md` and follow it inline. Never confuse the
+  skill name below; each harness's form is in `reference/harness-notes.md`.
+  With no skill-invocation tool, read the sub-skill's `SKILL.md` and
+  follow it inline. Never confuse the
   stardust `extract` and `audit` skills with impeccable's `extract` and
   `audit` commands, which are always written `$impeccable <command>`.
   The master skill routes **all** sibling sub-skills:
@@ -222,6 +226,12 @@ append an activation line to `stardust/direction.md`. The mode removes
 still runs at full strength; what changes is who resolves the
 interactive pauses.
 
+An unattended session is not hands-off by itself. A headless run (the
+`-p` / `exec` / `run` forms in `reference/harness-notes.md`) without the
+flag or phrase stops at its first gate with a `blocked` ledger line naming
+the gate. An empty, timed-out or auto-resolved answer is no answer: stop at
+the gate, never read it as consent.
+
 Under hands-off, every interactive gate across the pipeline
 auto-resolves:
 
@@ -250,6 +260,13 @@ otherwise):
   `D3-multilingual` is for language trees that were never captured, not
   for skipping captured ones (a recorded run lost ten locale roots to an
   extract agent that hard-coded one locale).
+- **Fan-out is an optimisation, never a requirement.** Every "one agent
+  per cluster / wave / variant" step has a sequential form: the
+  coordinator runs the same briefs itself, one unit at a time, in the same
+  order, with the same progress file, unit ledger lines, commits, freeze
+  and gates. Use it when the harness has no subagents (harness-notes), when
+  you are a subagent yourself (a subagent never fans out further), or when
+  a spawn fails; say `sequential` in the phase's `--detail`.
 - **Delegate by file pointer, read by section.** A brief to a delegated
   agent names the files and sections it needs (`state.json`, the page's
   schema, the phase's SKILL.md sections); it never inlines reference docs.
@@ -286,16 +303,12 @@ otherwise):
   notification helps the user, not the cache: a notification that arrives
   after 5 minutes misses too (137 recorded), so prefer short checks for
   waits under ~45 minutes and end the turn only when the wait is longer
-  or the user should decide. (Claude Code: `run_in_background: true` on
-  the shell call, the harness posts a task notification when it exits;
-  `promptCacheTtl: "1h"` in settings.json stretches the window to an hour
-  at 1.6× write price — an owner setting, worth it for any multi-hour
-  session.)
+  or the user should decide. (Each harness's background flag, completion
+  notice and cache settings: `reference/harness-notes.md`.)
   The harness-neutral form of the same rule is replica's `run-bg.mjs`:
   `start` detaches the instrument, `wait` returns within `--max` (default
-  100 s, ceiling 110 s — inside the shell tool's ~2-minute default timeout,
-  which applies only to a call that declares none) with verdict lines
-  only, exit 75 = still going, `wait` again as the NEXT call — never in a
+  100 s, ceiling 110 s — under the harness's foreground limit, harness-notes)
+  with verdict lines only, exit 75 = still going, `wait` again as the NEXT call — never in a
   shell loop, never after a `sleep`. The rule binds the main agent as it
   binds subagents: one long instrument in the foreground, or two long
   instruments as parallel tool calls in one turn, is the same blocked step

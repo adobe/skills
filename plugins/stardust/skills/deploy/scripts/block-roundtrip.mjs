@@ -39,7 +39,7 @@
  *
  * Writes: nothing — the verdict (and the --json dump) goes to stdout.
  *
- * EW contract in two sentences (deploy SKILL.md § Experience Workspace editability
+ * EW contract in two sentences (deploy reference/block-js.md § Experience Workspace editability
  * contract, EW1–EW10): the workspace stamps an index on every authored text element,
  * runs the page's own decorate() over it, and can only attach an editor to an element
  * that still carries its index — so block JS must MOVE authored h1-h6/p/ul/ol/picture

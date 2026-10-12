@@ -26,7 +26,7 @@ for i in $(seq 1 60); do   # capped: ~3 min, then fail loud — never an unbound
 done
 
 # 1. sanitise non-ASCII to entities (in place, idempotent) — DA corrupts raw UTF-8
-node skills/deploy/scripts/sanitise.js content/$P.html
+node stardust/scripts/deploy/sanitise.js content/$P.html
 
 # 2. write the body fragment to DA (multipart, field name MUST be `data`, type text/html)
 curl -sS -X PUT -H "Authorization: Bearer $TOKEN" \

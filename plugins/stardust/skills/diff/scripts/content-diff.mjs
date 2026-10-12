@@ -397,12 +397,12 @@ export function diffRoot(root, srcInv, tgtInv, prof) {
   lines.push(`  ${S}: ${summarise(s)}`);
   lines.push(`  ${T}: ${summarise(t)}`);
   const { flags } = diffInventories(s.items || [], t.items || [], prof);
-  // Experience Workspace editability advisory (deploy SKILL.md § Experience Workspace editability contract): the canvas can
+  // Experience Workspace editability advisory (deploy reference/block-js.md § Experience Workspace editability contract): the canvas can
   // only attach an editor to an OUTERMOST h1-h6/p/ul/ol element that survives decorate(); fewer on the build than on the
   // source means authored elements were rebuilt/merged into wrappers or text.
   const srcEd = s.editable ? s.editable.count : 0; const tgtEd = t.editable ? t.editable.count : 0;
   lines.push(`  editable texts (outermost h*/p/ul/ol): ${S} ${srcEd} / ${T} ${tgtEd}`);
-  if (tgtEd < srcEd) flags.push({ sev: '🟡', kind: 'EDITABLE COUNT', msg: `${T} has ${tgtEd} outermost editable element(s) vs ${srcEd} in the ${S} — fewer outermost editable elements after decoration usually means authored elements were rebuilt/merged — see deploy SKILL.md § Experience Workspace editability contract (run ew-editability-probe.mjs on the build URL for the per-block verdict).` });
+  if (tgtEd < srcEd) flags.push({ sev: '🟡', kind: 'EDITABLE COUNT', msg: `${T} has ${tgtEd} outermost editable element(s) vs ${srcEd} in the ${S} — fewer outermost editable elements after decoration usually means authored elements were rebuilt/merged — see deploy reference/block-js.md § Experience Workspace editability contract (run ew-editability-probe.mjs on the build URL for the per-block verdict).` });
   const sA = s.attrs || { attrs: [], icons: [] }; const tA = t.attrs || { attrs: [], icons: [] };
   lines.push(`  attributes (placeholder/aria-label/title): ${S} ${sA.attrs.length} / ${T} ${tA.attrs.length}; icons: ${S} ${sA.icons.length} / ${T} ${tA.icons.length}`);
   flags.push(...diffAttributes(sA, tA, prof));

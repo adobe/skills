@@ -397,7 +397,7 @@ excluded folders tracked deletes that line or adds a negation below it.
 | `rollout/qa/**` | **no** | rollout | screenshots of the delivered site |
 | `qa/allowlist.json`, `qa/report.*`, `qa/inventory.json`, `qa/dynamics-report.*`, `qa/ai-readability.json` | yes | qa | judgement and last report |
 | `qa/shots/**`, `qa/baselines/**` | **no** | qa | screenshots; baselines are per machine, a clone re-creates them |
-| `scripts/**` | yes (for now) | extract / reskin / replica / spec | byte copies of plugin scripts so ESM resolves the project's `node_modules`; stale against the installed plugin — removing the copies is a planned change |
+| `scripts/**` | yes | master Setup (`sync-scripts.mjs`) | byte copies of every stardust skill's scripts so ESM resolves the project's `node_modules`, and `VERSION`; `sync-scripts.mjs --check` reports drift from the installed stardust |
 | `_pre-publish-backup/**`, `_palette-pick.html`, `*.generated.*` drafts | backup yes; picker no | prototype / direct / dynamics | |
 | `.work/**` | **no** | any | run residue: logs, harness page, pre-renders, probe dumps |
 | `*.log`, `*.err`, `*.out`, `last-run.json` anywhere | **no** | any | safety net until every writer routes to `.work/logs/` |

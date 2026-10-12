@@ -2,7 +2,7 @@
 name: replica
 description: Same-design migration — re-platform a site to AEM Edge Delivery (or any clean front end) keeping its current design near pixel-perfect. Recreates key pages (one archetype per page type) as clean re-authored HTML/CSS (never DOM copies), verifies each against the live site with a measured source-fidelity gate (structural + visual + stitched pixel diff per breakpoint), then hands off to migrate/deploy/rollout for site-wide delivery (subsumes prepare-migration's prep cascade — never chain the two). The only permitted design changes are entries in an explicit inconsistency register. Use when the user says "migrate this site keeping its current design", "same-design migration", "pixel-perfect replatform to AEM", or "keep the design, change the platform". NOT for redesigns — those are the stardust core pipeline (direct/prototype) or uplift.
 license: Apache-2.0
-compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, playwright-cli on PATH, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
+compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
 ---
 
 # stardust:replica — same-design migration
@@ -63,19 +63,12 @@ eyeballing.
    devDependencies otherwise land in the repo the skills push. Run every
    probe from the project root: ESM resolves `playwright` from the script's
    own location.
-4. Copy scripts into the project and run them from there, not from the
-   plugin: this skill's whole `scripts/` dir to
-   `stardust/scripts/replica/`, the master skill's `../stardust/scripts/`
-   (ledger.mjs, state.mjs) to `stardust/scripts/stardust/`, the migrate
-   skill's `../migrate/scripts/` (migrate.mjs) to `stardust/scripts/migrate/`,
-   AND the whole
-   `../diff/scripts/` dir to `stardust/scripts/diff/` (the diff scripts
-   import diff-profiles.mjs, and ALL live-target hardening — including
-   stitch-shot's — lives in its live-session.mjs; stitch-shot resolves it
-   from `stardust/scripts/diff/` next to `stardust/scripts/replica/`, so
-   keep the two dirs siblings). Never copy into the project-root
-   `scripts/` — that is the EDS boilerplate's directory (master skill
-   § Artifacts, the write boundary).
+4. Run every script from the project copies master Setup synced
+   (`stardust/scripts/<skill>/`), never from the plugin and never from the
+   project-root `scripts/` — that is the EDS boilerplate's directory
+   (master skill § Artifacts, the write boundary). stitch-shot and the
+   diff scripts resolve `live-session.mjs` from the sibling
+   `stardust/scripts/diff/`.
 
 **Reading and inspection discipline — the context is the budget**
 (`reference/reading-discipline.md`, read it once at Setup). Every byte a
@@ -349,7 +342,7 @@ scrims invisible to computed styles (recover by per-row luminance fitting).
 
 The live-target hardening ships as flags on the diff scripts (`--ua`,
 `--wait-until`, `--dismiss`, `--headed`, `--locale`, visual-diff `--main`)
-backed by `live-session.mjs` — copy the scripts and pass flags; a project
+backed by `live-session.mjs` — pass flags; a project
 copy carrying hand-edits is a defect
 (`reference/source-fidelity-gate.md` § Script adaptations).
 
@@ -441,7 +434,8 @@ had one section for the whole run).
   cluster runs the whole chain, PUT → preview → published-origin gates
   included, with its own batch ledger (`deploy-batch.mjs --ledger …`,
   lock-safe) and reports one verdict line; the main agent only coordinates
-  and records; C-final — `check`, the queued `foundation-requests.md` lines
+  and records (no subagents: the same units in sequence, master § Hands-off
+  mode, fan-out rule); C-final — `check`, the queued `foundation-requests.md` lines
   applied once, `C-deliver end`. Each unit is recorded in
   `stardust/rollout/progress.json` and committed — a safe resume point,
   never by itself a reason to end the session; no frozen file is edited

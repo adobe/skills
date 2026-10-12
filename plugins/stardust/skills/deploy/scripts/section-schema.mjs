@@ -20,7 +20,7 @@
  * the Experience Workspace gate: the number of OUTERMOST h1-h6/p/ul/ol/pre/
  * blockquote elements in the prototype section that carry visible text — the set
  * the da.live canvas stamps `data-prose-index` on and can attach an inline editor
- * to (deploy SKILL.md § Experience Workspace editability contract). ENCODE authors
+ * to (deploy reference/block-js.md § Experience Workspace editability contract). ENCODE authors
  * one such element per item (a list is ONE editable unit); after decorate() the
  * `--ew` gate (block-roundtrip / ew-editability-probe) must find the same number
  * of surviving instrumented elements — fewer means authored elements were rebuilt,

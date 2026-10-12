@@ -1,6 +1,29 @@
-# Recorded Copilot smoke runs
+# Recorded harness smoke runs
+
+One entry per run kept as release evidence, newest first. Full logs stay local under `results/`.
+Entries before 2026-10-12 come from the retired `copilot-smoke/run.sh` (three checks: listing, bare-name
+load, master Setup).
 
 One entry per run kept as release evidence. Full logs stay local under `results/`.
+
+## 2026-10-12 — branch stardust/harness-compat-analysis (M1), harness-smoke, seven checks
+
+Claude Code 2.1.296 and GitHub Copilot CLI 1.0.95, plugin layout (`--plugin-dir` on the checkout; the
+marketplace stardust disabled for the Claude session). Impeccable: Claude 4.5.2, Copilot 4.3.1. Each harness
+ran in two sessions (a session ended mid-run); every check passed once in a fresh workspace.
+
+```
+Claude Code 2.1.296 · stardust 0.32.0 · plugin: listing, load, setup, runtime, capture, vision PASS
+  (20261012T074027Z); gate PASS (20261012T074539Z: blocked ledger line + clarifying questions)
+GitHub Copilot CLI 1.0.95 · stardust 0.32.0 · plugin: listing, load, setup, runtime, capture, vision PASS
+  (20261012T074539Z); gate PASS (20261012T075514Z: blocked ledger line)
+```
+
+Golden path A, Claude Code only (20261012T075728Z, 1273 s): extract (2 pages) → direct → prototype → diff,
+hands-off — PASS: pages 2/2, PRODUCT.md + DESIGN.md written, `index-proposed.html`, `diff.json`.
+
+First Claude run's gate scored FAIL on a verifier bug (a question ending in `?**` was not recognised); the
+recorded output re-verified as PASS and the rerun above passed on its own.
 
 ## 2026-09-17 — branch stardust/copilot-4-smoke (stardust 0.22.0 + PRs #368–#371), impeccable 4.3.1
 

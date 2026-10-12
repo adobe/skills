@@ -2,7 +2,7 @@
 name: dynamics
 description: Find, classify, triage, re-implement and verify a source site's dynamic surface (APIs, search, forms, modals, media, tags, client-rendered and sheet-backed content) during a migration to a platform. Migration-bound — invoked by prepare-migration, replica, migrate and rollout, or standalone on an already-migrated site; never for redesign-only work.
 license: Apache-2.0
-compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, playwright-cli on PATH, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
+compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
 ---
 
 # stardust:dynamics — the dynamic surface of a migration
@@ -32,7 +32,7 @@ other platforms later), not a redesign one.
 
 ## Phase 1 — Detect
 
-`node skills/dynamics/scripts/dynamics-detect.mjs --from-state stardust/state.json --out stardust/current [--reach stardust/current]`
+`node stardust/scripts/dynamics/dynamics-detect.mjs --from-state stardust/state.json --out stardust/current [--reach stardust/current]`
 (or `--urls` one per archetype + the home page). Depth on archetypes, reach from the crawl's
 `extract --dynamics` per-page signals. Output `stardust/current/_dynamics.json` +
 `dynamic-features.generated.md`. Evidence only. `reference/classes-and-signals.md`. For every
@@ -50,7 +50,7 @@ there and marks dead ones **host-bound** — the signal a pixel gate reports as 
 
 ## Phase 3 — Triage (the gate output)
 
-`node skills/dynamics/scripts/dynamics-plan.mjs [--target-origin …] [--migrated stardust/migrated] [--knowledge] [--chrome] --out stardust/dynamics`
+`node stardust/scripts/dynamics/dynamics-plan.mjs [--target-origin …] [--migrated stardust/migrated] [--knowledge] [--chrome] --out stardust/dynamics`
 drafts one row per finding with the four axes pre-filled — **class · disposition ·
 reproducibility · status** — plus pattern, phase and the owner decision; `--knowledge` adds a spec's
 curated features, decisions from its open questions; `--chrome` a row per header-contract family (cart and
@@ -85,7 +85,7 @@ configuration-service write; the sheet-backed interim index only when the branch
 ## Phase 5 — Verify: dynamic parity
 
 Write `stardust/dynamics/parity.json` (`reference/parity-report.md`) with replayable checks from the
-closed set; `node skills/dynamics/scripts/dynamics-check.mjs --origin <published origin> [--auth-header … | --token-env SITE_TOKEN]`
+closed set; `node stardust/scripts/dynamics/dynamics-check.mjs --origin <published origin> [--auth-header … | --token-env SITE_TOKEN]`
 writes `stardust/qa/dynamics-report.md`. **Flows, not presence.** A `search-query` check compares the
 result COUNT and the top titles with the source's recorded values — a count mismatch fails. The site
 secret rides an origin-scoped route filter only; third-party request statuses are recorded next to

@@ -2,7 +2,7 @@
 name: audit
 description: Full three-perspective audit of an existing website from one URL — design (tensions + concrete improvement opportunities), SEO/technical, and LLM/AI-search visibility — plus Core Web Vitals, synthesized into a scored, evidence-bound report. Use when the user asks to "audit this site", "site audit", "design audit", "SEO audit", "why is my site underperforming", "LLM visibility", "how does my site look to AI", or invokes `$stardust audit` (`/stardust:audit` in Claude Code) <url>.
 license: Apache-2.0
-compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, playwright-cli on PATH, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
+compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
 ---
 
 # stardust:audit
@@ -87,7 +87,7 @@ captured surface or governed by the underlying skills' contracts.
    - `marketing-skills` plugin (`seo-audit`, `ai-seo` skills present?)
    - `modern-web-guidance` (`npx -y modern-web-guidance@latest search
      "<query>"` responds?)
-   - refero MCP (attempt `mcp__refero__refero_search_styles`; treat a
+   - refero MCP (attempt its `refero_search_styles` tool; treat a
      tool-not-found or timeout as unavailable)
    - PageSpeed Insights API (network-reachable without a key?)
    - rollout project (`stardust/rollout/rollout.json` present?)
@@ -135,10 +135,9 @@ folded into one set of design findings:
 
 1. **impeccable critique + audit.** Invoke impeccable through the
    harness's skill-invocation tool using the delegation mechanic in
-   `../prototype/SKILL.md` § Invoking impeccable (Claude Code form:
-   `Skill { skill: "impeccable:impeccable", args:
-   "critique <target>" }`, then `"audit <target>"` for the
-   accessibility / responsive / performance passes). Normalize its
+   `../prototype/SKILL.md` § Invoking impeccable: `critique <target>`,
+   then `audit <target>` for the accessibility / responsive /
+   performance passes. Normalize its
    findings into the audit's finding shape.
 2. **VISION pass.** Study the captured screenshots directly
    (`stardust/current/assets/screenshots/<slug>.png`) and name what a
@@ -225,7 +224,7 @@ inside the plan-card images"), not a category ("improve content").
 ### Phase 5 — Reference benchmarking (optional)
 
 Fires when the refero MCP tools are reachable — the Phase 0 probe
-attempted `mcp__refero__refero_search_styles`; `--benchmark` forces a
+attempted refero's `refero_search_styles`; `--benchmark` forces a
 re-probe. Skip gracefully when unavailable
 (`benchmarks: { status: "skipped", reason: … }`).
 
@@ -266,11 +265,11 @@ findings and in `audit.json#benchmarks.references`.
    mechanic as prototype, and the same rule: **never hand-template
    the report**. Run the post-render validation checklist; on
    failure re-invoke craft with the specific violation. Open the
-   result with `open stardust/audit/<domain-slug>/report.html`.
+   result (`stardust/audit/<domain-slug>/report.html`) in the browser.
 6. **Ledger recording (rollout projects only).** When
    `stardust/rollout/rollout.json` exists, record each finding into
    the delivery ledger via
-   `node skills/rollout/scripts/findings.mjs record` with source
+   `node stardust/scripts/rollout/findings.mjs record` with source
    namespace `audit:` — `--source audit:<dimension>`, `--layer` from
    the mapping below, severity carried through, `--fixability`
    normalized per `../rollout/reference/audit-sources.md`
