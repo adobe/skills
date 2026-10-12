@@ -434,7 +434,8 @@ had one section for the whole run).
   cluster runs the whole chain, PUT → preview → published-origin gates
   included, with its own batch ledger (`deploy-batch.mjs --ledger …`,
   lock-safe) and reports one verdict line; the main agent only coordinates
-  and records; C-final — `check`, the queued `foundation-requests.md` lines
+  and records (no subagents: the same units in sequence, master § Hands-off
+  mode, fan-out rule); C-final — `check`, the queued `foundation-requests.md` lines
   applied once, `C-deliver end`. Each unit is recorded in
   `stardust/rollout/progress.json` and committed — a safe resume point,
   never by itself a reason to end the session; no frozen file is edited

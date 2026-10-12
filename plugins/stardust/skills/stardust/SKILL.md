@@ -222,6 +222,12 @@ append an activation line to `stardust/direction.md`. The mode removes
 still runs at full strength; what changes is who resolves the
 interactive pauses.
 
+An unattended session is not hands-off by itself. A headless run (the
+`-p` / `exec` / `run` forms in `reference/harness-notes.md`) without the
+flag or phrase stops at its first gate with a `blocked` ledger line naming
+the gate. An empty, timed-out or auto-resolved answer is no answer: stop at
+the gate, never read it as consent.
+
 Under hands-off, every interactive gate across the pipeline
 auto-resolves:
 
@@ -250,6 +256,13 @@ otherwise):
   `D3-multilingual` is for language trees that were never captured, not
   for skipping captured ones (a recorded run lost ten locale roots to an
   extract agent that hard-coded one locale).
+- **Fan-out is an optimisation, never a requirement.** Every "one agent
+  per cluster / wave / variant" step has a sequential form: the
+  coordinator runs the same briefs itself, one unit at a time, in the same
+  order, with the same progress file, unit ledger lines, commits, freeze
+  and gates. Use it when the harness has no subagents (harness-notes), when
+  you are a subagent yourself (a subagent never fans out further), or when
+  a spawn fails; say `sequential` in the phase's `--detail`.
 - **Delegate by file pointer, read by section.** A brief to a delegated
   agent names the files and sections it needs (`state.json`, the page's
   schema, the phase's SKILL.md sections); it never inlines reference docs.

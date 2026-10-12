@@ -233,7 +233,8 @@ template's archetype is deployed and passes its full gate row on the preview URL
 (`gate-all.mjs --only`, cap 3 fix rounds) before any of its siblings is rendered
 or converted — the recorded unit `C-archetype` (handoff contract § 3, row C).
 
-**Execution model: waves.** Deliver in waves of parallel **author-only** agents
+**Execution model: waves** (no subagents: the same clusters in sequence,
+`../stardust/SKILL.md` § Hands-off mode, fan-out rule). Deliver in waves of parallel **author-only** agents
 — each agent curls its source pages and writes files only, never deploys or
 edits blocks — template clusters concurrently (non-overlapping pages),
 representative-first so blocks exist to be reused; then a **central deploy**
@@ -252,18 +253,9 @@ of 5 minutes or more (the prompt-cache window) — the master skill's wait
 discipline; recorded batch waits of 9–10 minutes re-wrote a ~650k prefix each time.
 After a transient blip, re-run the same command — it re-drives only the FAILs.
 Then reconcile the ledger into coverage with `update-coverage.mjs`.
-**Foundation first:** lint AND commit `styles.css`, header/footer CSS and the
-contract file BEFORE the first agent spawns; no token or custom-property rename
-after fan-out (a recorded rename under three running agents cost seven
-coordination messages). **Disjoint clusters spawn concurrently** — a wave waits
-only on a real dependency (a recorded second wave idled 14 min behind an
-unrelated first). **Every tool call stays under 4 minutes, the main agent's
-included** (the prompt cache holds 5; calls of 5.2 and 6.6 min re-wrote the whole
-context, and so did one 338 s foreground turn on the main agent that ran a pixel
-loop beside a deploy-batch start + wait): a long instrument (gate rounds, pixel
-loops, Playwright captures, deploy batches) goes through `run-bg.mjs start`, and
-`wait` is the NEXT tool call — it returns within its `--max` (100 s by default); never two long instruments
-as parallel tool calls in one turn, never two `wait`s in one command.
+Foundation first, disjoint clusters spawn concurrently, every tool call under
+4 minutes with long instruments through `run-bg.mjs`: the fan-out discipline in
+`../replica/reference/handoff-contract.md` § 3 binds rollout waves too.
 
 ### Phase D — Site assembly (whole-site artifacts)
 
