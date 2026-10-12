@@ -233,7 +233,7 @@ schema, 24 commands). Baseline = `main` at e1b0117 in a pristine worktree;
 after = the stack at PR #370's head. Runner SDK bumped to 0.3.274 for both
 (0.3.220's bundled Claude Code rejects the current default model). Raw runs
 under `runner/results/` (local only); the Copilot side is
-`copilot-smoke/RECORDED.md`.
+`harness-smoke/RECORDED.md`.
 
 ## direct-from-phrase (N=3 vs N=3, ~$8–12 per run)
 

@@ -257,8 +257,8 @@ or `gh skill update`.
 
 | Harness | Version | Date | What was run |
 |---|---|---|---|
-| Claude Code | 2.1.x plugin | continuous | `evals/runner` suite |
-| GitHub Copilot CLI | 1.0.85 | 2026-09-17 | `evals/copilot-smoke/run.sh`: skill listing, bare-name load, master Setup |
+| Claude Code | 2.1.296 plugin | 2026-10-12, and continuous | `evals/harness-smoke` (7 checks) and the `evals/runner` suite |
+| GitHub Copilot CLI | 1.0.95 | 2026-10-12 | `evals/harness-smoke` (7 checks) |
 | Grok Build | | | expected to work (Claude plugin compatible), not run |
 | Codex CLI, Cursor, OpenCode, Antigravity, Pi | | | installable through `npx skills add`; not run |
 

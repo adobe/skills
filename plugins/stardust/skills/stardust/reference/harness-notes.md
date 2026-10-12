@@ -3,7 +3,8 @@
 Skill text stays harness-neutral ("invoke impeccable with `craft …`", "ask
 the user", "run it in the background"). This card maps each neutral phrase
 to the harness running you. Read only your harness's row. Vendor facts as of
-2026-10: only the Claude Code and Copilot CLI rows are smoke-verified so far;
+2026-10: only the Claude Code and Copilot CLI rows are smoke-verified so far
+(`evals/harness-smoke/RECORDED.md`);
 *unverified* marks a fact the vendor docs leave open.
 
 ## Skills: loading a sibling, invoking impeccable
