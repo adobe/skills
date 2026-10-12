@@ -77,7 +77,7 @@ reproduces Adobe's AI Content Visibility Checker per page (served words ÷ rende
 attributes the gap per block (`deploy/reference/ai-readability.md`).
 
 The `editability` check is the post-deploy **Experience Workspace
-editability gate** (deploy SKILL.md § 8, EW1–EW10): per page it re-creates
+editability gate** (deploy reference/block-js.md § 8, EW1–EW10): per page it re-creates
 the da.live canvas's instrumentation on the served document, lets the live
 page decorate, and counts which authored texts still carry their editor
 index. `editability/dead-text` (error) = a block rebuilt authored text and

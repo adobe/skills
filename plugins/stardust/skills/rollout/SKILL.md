@@ -136,7 +136,7 @@ Walk `plan.json.steps` in order (representative pages first). For each page:
    `deploy` methodology. **Pass the plan step into deploy's brief**: create only the
    blocks in `convert`; for each block in `reuse`, REUSE the existing block by its
    `edsBlockName` (do not recreate). **The brief MUST carry the Experience Workspace
-   editability contract** (deploy SKILL.md § 8, EW1–EW10): every converted block
+   editability contract** (deploy reference/block-js.md § 8, EW1–EW10): every converted block
    moves authored elements into wrappers (never rebuilds from text) and passes the
    EW gate (`block-roundtrip --ew`) before it counts as delivered — a brief without
    it skipped the contract on 27/27 blocks of a real site. **The brief also carries
@@ -149,7 +149,7 @@ Walk `plan.json.steps` in order (representative pages first). For each page:
    structural asserts only; every pixel or visual judgment — replica's
    source-fidelity gate, the header/footer `crop-compare` bands, the deployed
    eyeball — runs against the page's preview URL after `PUT → preview`, never
-   against the harness before the first PUT (deploy SKILL.md § Local QA before
+   against the harness before the first PUT (deploy reference/local-qa.md § Local QA before
    deploy, § Step 10). A recorded delivery session iterated CSS against a local
    harness pixel diff for its whole budget and delivered no page.
 

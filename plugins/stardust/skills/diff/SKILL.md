@@ -49,7 +49,7 @@ curl -sI localhost:8791/ | head -1                   # 200/404 = something serve
 curl -sI localhost:8791/<prototype>.html | head -1   # 200 = it serves YOUR dir: reuse it
 command -v lsof >/dev/null && lsof -nP -iTCP:8791 -sTCP:LISTEN   # optional: names the pid
 # Nothing answered → start yours. A foreign server: never kill it; use a per-project port
-# (the traps: ../deploy/SKILL.md § Step 10).
+# (the traps: ../deploy/reference/reconcile.md).
 PROTO="http://localhost:8791/<prototype>.html"
 BUILD="https://<branch>--<repo>--<owner>.aem.page/<path>"   # or http://localhost:3000/<harness>
 
