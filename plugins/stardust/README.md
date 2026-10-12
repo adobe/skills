@@ -226,20 +226,27 @@ copilot plugin install impeccable@impeccable
 ```
 
 In Copilot CLI the skills are addressed by their bare names (`stardust`,
-`extract`, `deploy`), not as `stardust:extract`. Where a skill body uses the
-Claude Code form, use the bare name.
+`extract`, `deploy`), not as `stardust:extract`. Each harness's form is in
+`skills/stardust/reference/harness-notes.md`.
 
 Other agents install the skills without plugin grouping. `npx skills add
 adobe/skills --list` shows all 109 skills in this repository as one flat
-list, so name stardust's sixteen explicitly, and install impeccable the same
-way:
+list, so name stardust's sixteen explicitly, and pass `--copy` (a symlinked
+install shares one copy between harnesses). Impeccable's own installer
+covers every harness:
 
 ```bash
-npx skills add adobe/skills -s stardust -s extract -s direct -s prototype \
+npx skills add adobe/skills --copy -s stardust -s extract -s direct -s prototype \
   -s migrate -s prepare-migration -s replica -s reskin -s audit -s uplift \
   -s diff -s deploy -s rollout -s dynamics -s qa -s spec
-npx skills add pbakaus/impeccable -s impeccable
+npx impeccable install
 ```
+
+| Harness | Install route | Notes |
+|---|---|---|
+| Claude Code, GitHub Copilot | plugin marketplace (above) | verified |
+| Grok Build | reads Claude Code plugins and marketplaces | not yet run; impeccable: `grok plugin install pbakaus/impeccable#plugin --trust` |
+| Cursor, Codex CLI, OpenCode, Antigravity, Pi | `npx skills add` (above), project `.agents/skills/` | not yet run; Codex and Cursor sandboxes need network and Chromium allowed (the runtime preflight names the fix) |
 
 `gh skill install adobe/skills --all` (GitHub CLI 2.90 or later) is the
 equivalent for the agents it supports. Both paths copy loose skills: no
@@ -252,15 +259,18 @@ or `gh skill update`.
 |---|---|---|---|
 | Claude Code | 2.1.x plugin | continuous | `evals/runner` suite |
 | GitHub Copilot CLI | 1.0.85 | 2026-09-17 | `evals/copilot-smoke/run.sh`: skill listing, bare-name load, master Setup |
-| Grok Build, Amp | | | expected to work (Claude plugin compatible), not run |
-| Codex, Cursor, Gemini CLI, OpenCode, Kiro and other `.agents/skills` adopters | | | installable through `npx skills add`; not run |
+| Grok Build | | | expected to work (Claude plugin compatible), not run |
+| Codex CLI, Cursor, OpenCode, Antigravity, Pi | | | installable through `npx skills add`; not run |
 
 ### Prerequisites
 
 Stardust's bundled scripts run under Node 22 or later and need Playwright with
 Chromium resolvable from the project (`npm i -D playwright && npx playwright
-install chromium`). No harness installs these for you; the skills probe for
-them and print the install command when they are missing.
+install chromium`). No harness installs these for you. Setup copies every
+script into the project (`stardust/scripts/<skill>/`, so Playwright resolves
+from the project's `node_modules`) and runs `runtime-preflight.mjs`, which
+reports anything missing and names the fix when the harness's sandbox blocks
+Chromium, localhost or outbound network.
 
 ## Dependencies
 

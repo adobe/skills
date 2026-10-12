@@ -41,7 +41,7 @@ requested before M2 starts.
 | D5 | Models for open harnesses | OpenCode and Pi verified with one vision-capable frontier model each; recorded in RECORDED.md, others "may work". |
 | D6 | Harness accounts | Codex (ChatGPT plan), Cursor (`CURSOR_API_KEY`), Grok (SuperGrok / `XAI_API_KEY`), Antigravity (Google login), model keys for OpenCode and Pi. Needed before M2. |
 
-## M1 — Foundation (harness-agnostic, every harness benefits)
+## M1 — Foundation (harness-agnostic, every harness benefits) — done on `stardust/harness-compat-analysis`
 
 Each item is one PR with its tests; `npm run lint:stardust` green; prose
 moves quote `prose-delta.mjs`.

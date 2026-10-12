@@ -4,6 +4,31 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## Unreleased — stardust on eight harnesses: foundation (M1)
+
+Prepares stardust for Claude Code, GitHub Copilot, Grok Build, OpenCode, Cursor, Codex CLI, Antigravity and Pi
+(`notes/harness-support-plan.md`; the gap analysis is `notes/harness-compatibility.md`). Ships as a minor: script
+paths and the Setup contract change.
+
+- **One script location.** Master Setup runs `sync-scripts.mjs`, which copies every skill's scripts to
+  `stardust/scripts/<skill>/` with a `VERSION` file; every command runs that copy. Plugin-root paths
+  (`node skills/<x>/scripts/…`) did not exist in a loose install, and the per-skill copy lists drifted. Provenance
+  reads `VERSION`, which fixes the 0.0.0 stamp from project copies.
+- **Impeccable found on any harness.** `impeccable-version-check.mjs` searches project and user skills dirs of every
+  target harness and the Grok/Cursor plugin caches, reads the version from `SKILL.md` frontmatter, and falls back to
+  the upstream repo for the newer-version hint.
+- **Harness notes.** `skills/stardust/reference/harness-notes.md` maps the neutral phrases (invoke impeccable, ask the
+  user, delegate, background, read an image) to each harness; the harness-neutral lint now also catches Claude-only
+  call forms, settings, tool ids and macOS-only `open`.
+- **Fan-out has a sequential form**, and an unattended run without `--hands-off` stops at its first gate; an empty or
+  timed-out answer is never consent.
+- **Deploy card under every harness's size cap.** Step bodies moved to `deploy/reference/` (196 KB → 57 KB card); a
+  skill-size lint holds every `SKILL.md` ≤ 80 KB.
+- **Runtime preflight.** `runtime-preflight.mjs` checks Node, Playwright, Chromium, localhost and outbound network,
+  and names the harness's sandbox fix.
+- **Hygiene.** The tessl manifest is current again (16 skills), `playwright-cli` is no longer listed as a
+  requirement, and a manifests lint keeps every manifest and `skills/stardust/VERSION` on one version.
+
 ## 0.32.0 — the header is a contract: its behaviour is recorded from the source and gated before done (#132)
 
 Field learning: several runs shipped headers that passed every pixel and style gate while every menu was wrong. They
