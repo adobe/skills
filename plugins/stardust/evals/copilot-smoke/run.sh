@@ -55,7 +55,7 @@ MISSING=""
 for s in stardust extract direct prototype migrate prepare-migration replica reskin audit uplift diff deploy rollout dynamics qa spec impeccable; do
   echo "$R1" | command grep -qxE "\s*$s\s*" || MISSING="$MISSING $s"
 done
-[ -z "$MISSING" ]; check $? "listing: all 15 stardust skills and impeccable present${MISSING:+ (missing:$MISSING)}"
+[ -z "$MISSING" ]; check $? "listing: all 16 stardust skills and impeccable present${MISSING:+ (missing:$MISSING)}"
 
 # 2. bare-name load
 R2="$(cp_run -p "Using your skill tool, load the skill named exactly 'extract'. Do not run shell commands. Finish with one line exactly: SKILL_LOAD extract=ok if it loaded and its description mentions crawling a website, otherwise SKILL_LOAD extract=fail." --allow-all-tools 2>&1)"

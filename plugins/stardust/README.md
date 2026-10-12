@@ -259,9 +259,8 @@ or `gh skill update`.
 
 Stardust's bundled scripts run under Node 22 or later and need Playwright with
 Chromium resolvable from the project (`npm i -D playwright && npx playwright
-install chromium`). Several skills call `playwright-cli` from the adobe/skills
-`web` plugin. No harness installs these for you; the skills probe for them
-and print the install command when they are missing.
+install chromium`). No harness installs these for you; the skills probe for
+them and print the install command when they are missing.
 
 ## Dependencies
 

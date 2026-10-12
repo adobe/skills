@@ -2,7 +2,7 @@
 name: prepare-migration
 description: Prepare a whole site for migration by orchestrating the prep cascade — a full-inventory crawl (extract --prep), page-type and module-catalog confirmation (direct --prep), archetype prototypes plus design canon (prototype --prep), and asset preparation — with confirmation gates between phases. Builds the typed page inventory, confirmed module catalog, and canon that `migrate` consumes. Use when the user wants to prepare or set up a full-site migration, run migration prep, confirm page types and modules before migrating a site, get a large site ready to migrate, or invokes `$stardust prepare-migration`. Trigger phrases include "prepare the migration", "migration prep", "set up the migration data", "get the site ready to migrate". Redesign-flow only — for same-design migrations `replica` runs its own preserve-mode prep cascade; never chain prepare-migration with replica. Not for running the migration itself (`migrate`) or converting a single page (`deploy`).
 license: Apache-2.0
-compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, playwright-cli on PATH, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
+compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
 ---
 
 # stardust:prepare-migration
