@@ -30,7 +30,7 @@ const HIDE_CSS = '#onetrust-consent-sdk,#onetrust-banner-sdk,.onetrust-pc-dark-f
  * In-page tagger: spec-parse's profile rules and component layout (lib.mjs profileRules, componentLayout, injected
  * with their helpers), over a DOM adapter, so both find the same components under the same path ids.
  */
-function tagger({ profile, mainSel, nameAttrs, stripPrefix }) {
+function tagger({ profile, mainSel, nameAttrs, stripPrefix, extraRoots }) {
   const RAW = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE']);
   const MEDIA = 'img,picture,video,iframe,form,input,select,textarea,canvas,object,embed';
   const weight = (el) => {
@@ -40,7 +40,7 @@ function tagger({ profile, mainSel, nameAttrs, stripPrefix }) {
     return 0;
   };
   const A = { tag: (el) => el.tagName.toLowerCase(), cls: (el) => [...(el.classList || [])], attr: (el, a) => el.getAttribute(a), kids: (el) => [...el.children], parent: (el) => el.parentElement, weight };
-  const R = profileRules(profile, A, { nameAttrs, stripPrefix }); // eslint-disable-line no-undef -- injected with the tagger
+  const R = profileRules(profile, A, { nameAttrs, stripPrefix, extraRoots }); // eslint-disable-line no-undef -- injected with the tagger
   // assign(main) → { els: Map(path → element), rows: { rowPath: [memberPaths] } } on the DOM as it is now
   const assign = (main) => {
     const els = new Map(); const rows = {};
@@ -92,7 +92,7 @@ async function main() {
   const browser = headed ? await ls.launchStealthHeaded(chromium) : await chromium.launch({ args: ['--disable-dev-shm-usage'] });
   const ctx = headed ? await ls.newLiveContext(browser, { viewport: { width, height: 900 }, deviceScaleFactor: 1 }) : await browser.newContext({ viewport: { width, height: 900 }, deviceScaleFactor: 1 });
   if (headed) log(`headed tier (${ls.browserTier(browser)}), as S2`);
-  const args = { profile: cfg.parser.profile, mainSel: cfg.parser.main || null, nameAttrs: cfg.parser.nameAttrs || [], stripPrefix: cfg.parser.stripPrefix || null };
+  const args = { profile: cfg.parser.profile, mainSel: cfg.parser.main || null, nameAttrs: cfg.parser.nameAttrs || [], stripPrefix: cfg.parser.stripPrefix || null, extraRoots: cfg.parser.extraRoots || [] };
   // one closure: the shared rules and the tagger, nothing added to the page's globals but the two __spec hooks
   await ctx.addInitScript({ content: `(() => {\n${[genericRules, groupRows, profileRules, componentLayout].map(String).join('\n')}\n(${tagger})(${JSON.stringify(args)});\n})();` });
   await ctx.route('**/*', (route) => { let h = ''; try { h = new URL(route.request().url()).hostname; } catch { /* keep */ } return BLOCK.test(h) ? route.abort() : route.fallback(); }); // fallback: live-session's document headers still apply
