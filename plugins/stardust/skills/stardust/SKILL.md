@@ -15,33 +15,25 @@ sub-commands that delegate the actual design work to **impeccable**.
 ## Setup (run before anything else)
 
 1. **Verify impeccable is installed.** Stardust has a hard dependency on
-   impeccable and ships no fallbacks. Look for the `impeccable` skill wherever
-   the harness installs skills or plugins: the skill list the harness exposes
-   to you, project skill directories (`.claude/skills/`, `.agents/skills/`,
-   `.cursor/skills/`, `.github/skills/`), or the harness's plugin cache
-   (Claude Code: `~/.claude/plugins/cache/`; GitHub Copilot:
-   `~/.copilot/installed-plugins/*/impeccable/skills/impeccable`). If it is
-   not installed, stop and tell the user:
+   impeccable and ships no fallbacks. Run
+   `node <plugin>/skills/stardust/scripts/impeccable-version-check.mjs --where`:
+   it searches every harness's plugin caches and project and user skills
+   directories and prints impeccable's skill directory (the one holding its
+   `SKILL.md` and `reference/`). Note that path once as `<impeccable-dir>` —
+   phases read impeccable's format specs (`reference/init.md`,
+   `reference/document.md`) from there by section, never after a filesystem
+   search. Exit 1 means not installed (or installed somewhere unusual: retry
+   with `--local <dir>`); stop and tell the user:
    > Stardust requires impeccable. Install it from
    > <https://github.com/pbakaus/impeccable> and re-run the command.
 
-   **Version hint (advisory, never blocking).** Stardust deliberately pins
-   NO impeccable version — the design craft should always be the current
-   one — and harnesses do not announce third-party plugin updates by
-   default (Claude Code's marketplace auto-update is off for third-party
-   marketplaces such as impeccable's; Copilot has no update notice). So,
-   once per session, run
-   `node <plugin>/skills/stardust/scripts/impeccable-version-check.mjs`
-   (add `--local <impeccable-dir>` when impeccable lives in a harness skills
-   directory rather than the plugin registry) and surface its one output
-   line to the user verbatim when it reports a newer version; it prints the
-   update command for the harness it found impeccable in. Any other outcome (current, unknown, offline) is
+   **Version hint (advisory, never blocking).** Stardust pins NO impeccable
+   version — the design craft should always be the current one — and no
+   harness announces third-party updates by default. Once per session run
+   the same script without `--where` and surface its output line to the user
+   verbatim when it reports a newer version (it names the update command for
+   the install it found). Any other outcome (current, unknown, offline) is
    noise — do not mention it, and never stop or degrade a run over it.
-   The same script with `--where` prints impeccable's skill directory
-   (the one holding its `SKILL.md` and `reference/`); note it once — the
-   phases that read impeccable's format specs (`reference/init.md`,
-   `reference/document.md`) read them from there by section, never after
-   a filesystem search.
 2. **Check the target-state files.** `PRODUCT.md` and `DESIGN.md` at the
    project root are the *target* state for stardust; check whether they
    exist (a directory listing is enough). Do not run impeccable's context
@@ -54,7 +46,7 @@ sub-commands that delegate the actual design work to **impeccable**.
    (`reference/state-machine.md` defines the schema). Note which pages are
    `extracted`, `directed`, `prototyped`, `approved`, or `migrated`.
 4. **Read impeccable's command registry.** Parse
-   `<harness>/skills/impeccable/scripts/command-metadata.json`. This is the
+   `<impeccable-dir>/scripts/command-metadata.json`. This is the
    single source of truth for the 24 impeccable commands; never hardcode
    them in your reasoning.
 5. **Status ledger.** Every stardust skill appends a phase-transition line
