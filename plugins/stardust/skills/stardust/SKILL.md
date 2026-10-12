@@ -22,7 +22,11 @@ in a plugin, the harness's skills directory in a loose install). It copies
 all sixteen skills' scripts and writes `stardust/scripts/VERSION`; re-run it
 when that file is missing or `--check` reports drift. The skill tree ships no
 `node_modules`, so a script resolves Playwright only from the copy: never run
-a script from the skill tree, never hand-edit a copy.
+a script from the skill tree, never hand-edit a copy. Then run
+`node stardust/scripts/stardust/runtime-preflight.mjs --harness <id>` (ids:
+`reference/harness-notes.md`), again after installing Playwright: a `FAIL`
+line is the harness's sandbox, and ends with its fix — apply it or ask the
+user to before any phase that renders.
 
 1. **Verify impeccable is installed.** Stardust has a hard dependency on
    impeccable and ships no fallbacks. Run
