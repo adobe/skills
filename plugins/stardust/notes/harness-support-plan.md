@@ -118,6 +118,12 @@ fetch, outbound fetch. On failure it matches known sandbox signatures
 under a network allowlist) and prints the fix for the detected harness from
 harness-notes. Called from Setup and before any renderer.
 
+**Follow-ups found during M1.**
+- `migrate/fixtures/*.mjs` and `prototype/fixtures/mobile-nav-audit.mjs`
+  import Playwright yet run from the skill tree (`node skills/<x>/fixtures/…`);
+  move them under `scripts/` (with `--help`, index rows, tests) so the sync
+  covers them.
+
 ## M2 — Conformance kit
 
 `evals/harness-smoke/` replaces `evals/copilot-smoke/`:

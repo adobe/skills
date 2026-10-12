@@ -680,7 +680,8 @@ every context; `domcontentloaded` for non-localhost http(s) URLs and
 diligence: the edits were 10 distinct changes across 2 files, and a partial
 application silently mis-measured (e.g. one `main`-scoped selector left
 hardcoded in visual-diff). If you find `// replica ADAPTATION:` copies from
-an older run, re-copy the shipped scripts and pass flags instead.
+an older run, re-run the master Setup sync (it restores the shipped bytes)
+and pass flags instead.
 
 The narrow exception: **a documented instrument-bug fix is the correct
 move when the shipped instrument measures falsely** — fail-loud outranks

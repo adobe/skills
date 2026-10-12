@@ -45,7 +45,7 @@ For every authored image URL (`<img src>`, `srcset`, inline/`<style>` `url(...)`
 ## Run it
 
 ```bash
-node skills/rollout/scripts/media-reconcile.mjs --file <content.html> \
+node stardust/scripts/rollout/media-reconcile.mjs --file <content.html> \
   --deploy-host <branch>--<repo>--<owner>.aem.live \
   [--host-rewrite cdn.shopify.com/s/files=www.store.com/cdn/shop/files] \
   [--media-ledger <file>] \

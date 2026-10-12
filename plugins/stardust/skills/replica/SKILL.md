@@ -63,19 +63,12 @@ eyeballing.
    devDependencies otherwise land in the repo the skills push. Run every
    probe from the project root: ESM resolves `playwright` from the script's
    own location.
-4. Copy scripts into the project and run them from there, not from the
-   plugin: this skill's whole `scripts/` dir to
-   `stardust/scripts/replica/`, the master skill's `../stardust/scripts/`
-   (ledger.mjs, state.mjs) to `stardust/scripts/stardust/`, the migrate
-   skill's `../migrate/scripts/` (migrate.mjs) to `stardust/scripts/migrate/`,
-   AND the whole
-   `../diff/scripts/` dir to `stardust/scripts/diff/` (the diff scripts
-   import diff-profiles.mjs, and ALL live-target hardening — including
-   stitch-shot's — lives in its live-session.mjs; stitch-shot resolves it
-   from `stardust/scripts/diff/` next to `stardust/scripts/replica/`, so
-   keep the two dirs siblings). Never copy into the project-root
-   `scripts/` — that is the EDS boilerplate's directory (master skill
-   § Artifacts, the write boundary).
+4. Run every script from the project copies master Setup synced
+   (`stardust/scripts/<skill>/`), never from the plugin and never from the
+   project-root `scripts/` — that is the EDS boilerplate's directory
+   (master skill § Artifacts, the write boundary). stitch-shot and the
+   diff scripts resolve `live-session.mjs` from the sibling
+   `stardust/scripts/diff/`.
 
 **Reading and inspection discipline — the context is the budget**
 (`reference/reading-discipline.md`, read it once at Setup). Every byte a
@@ -349,7 +342,7 @@ scrims invisible to computed styles (recover by per-row luminance fitting).
 
 The live-target hardening ships as flags on the diff scripts (`--ua`,
 `--wait-until`, `--dismiss`, `--headed`, `--locale`, visual-diff `--main`)
-backed by `live-session.mjs` — copy the scripts and pass flags; a project
+backed by `live-session.mjs` — pass flags; a project
 copy carrying hand-edits is a defect
 (`reference/source-fidelity-gate.md` § Script adaptations).
 

@@ -6,16 +6,16 @@ owner's accounts, so the scaffold writes everything disabled and the owner turns
 
 ## Flow
 
-1. **Evidence.** `node skills/spec/scripts/spec-martech.mjs --urls <home,archetypes…> --out stardust/martech`
+1. **Evidence.** `node stardust/scripts/spec/spec-martech.mjs --urls <home,archetypes…> --out stardust/martech`
    (or a spec's `stardust/spec/knowledge`): the OneTrust configuration (consent categories, geo rule
    sets) and the Launch library (rules with their consent groups, data elements).
-2. **Contract.** `node skills/dynamics/scripts/dynamics-plan.mjs … --martech [stardust/martech]` writes
+2. **Contract.** `node stardust/scripts/dynamics/dynamics-plan.mjs … --martech [stardust/martech]` writes
    `stardust/martech-contract.json` and `stardust/martech-handoff.md`. Vendor knowledge (CMP script,
    id attribute, consent globals, tag-manager loaders) comes from `scripts/vendors.json`. A rebuild
    keeps the owner's `enabled`, `category` and CMP id.
 3. **Owner.** Hand over `martech-handoff.md`. The owner sets `enabled: true` on `consent.cmp` and on
    each route, and copies the CMP id if it was not found.
-4. **Runtime.** `node skills/deploy/scripts/martech-scaffold.mjs` writes `scripts/martech.js` from the
+4. **Runtime.** `node stardust/scripts/deploy/martech-scaffold.mjs` writes `scripts/martech.js` from the
    enabled parts: the CMP loads first in `loadEager()`, tag managers from `scripts/delayed.js`. Re-run it
    after every contract edit.
 5. **Verify.** `dynamics-check.mjs` adds a `martech` feature whenever the contract exists (below).

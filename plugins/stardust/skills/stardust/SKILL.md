@@ -14,9 +14,19 @@ sub-commands that delegate the actual design work to **impeccable**.
 
 ## Setup (run before anything else)
 
+**Scripts first.** Every stardust command runs a project copy,
+`node stardust/scripts/<skill>/<script>.mjs`, made from the project root by
+`node <skills-root>/stardust/scripts/sync-scripts.mjs` — `<skills-root>` is
+the directory holding this skill's folder and its siblings (`<plugin>/skills/`
+in a plugin, the harness's skills directory in a loose install). It copies
+all sixteen skills' scripts and writes `stardust/scripts/VERSION`; re-run it
+when that file is missing or `--check` reports drift. The skill tree ships no
+`node_modules`, so a script resolves Playwright only from the copy: never run
+a script from the skill tree, never hand-edit a copy.
+
 1. **Verify impeccable is installed.** Stardust has a hard dependency on
    impeccable and ships no fallbacks. Run
-   `node <plugin>/skills/stardust/scripts/impeccable-version-check.mjs --where`:
+   `node stardust/scripts/stardust/impeccable-version-check.mjs --where`:
    it searches every harness's plugin caches and project and user skills
    directories and prints impeccable's skill directory (the one holding its
    `SKILL.md` and `reference/`). Note that path once as `<impeccable-dir>` —

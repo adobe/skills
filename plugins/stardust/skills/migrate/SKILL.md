@@ -283,7 +283,7 @@ the render is the encoder's input, its gate is the row after PUT. For each page 
   asset refs on this page) in `_meta.json`.
 
 The mechanics of this phase are scripted:
-`node skills/migrate/scripts/migrate.mjs render <slug…|--all>` (the
+`node stardust/scripts/migrate/migrate.mjs render <slug…|--all>` (the
 project copy runs from `stardust/scripts/migrate/`) builds the page
 map, places each page at its URL-literal path, rewrites internal
 links, bundles assets, composes `<head>` (provenance, `:root`,

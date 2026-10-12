@@ -61,7 +61,7 @@ delivered HTML ≠ rendered correctly.
 ### Phase 1 — deterministic sweep
 
 ```bash
-node <plugin>/skills/qa/scripts/qa.mjs \
+node stardust/scripts/qa/qa.mjs \
   --base https://main--<site>--<org>.aem.live \
   --template-map stardust/template-map.json \
   --scrape stardust/scrape

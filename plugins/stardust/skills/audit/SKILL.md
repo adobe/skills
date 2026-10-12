@@ -270,7 +270,7 @@ findings and in `audit.json#benchmarks.references`.
 6. **Ledger recording (rollout projects only).** When
    `stardust/rollout/rollout.json` exists, record each finding into
    the delivery ledger via
-   `node skills/rollout/scripts/findings.mjs record` with source
+   `node stardust/scripts/rollout/findings.mjs record` with source
    namespace `audit:` — `--source audit:<dimension>`, `--layer` from
    the mapping below, severity carried through, `--fixability`
    normalized per `../rollout/reference/audit-sources.md`

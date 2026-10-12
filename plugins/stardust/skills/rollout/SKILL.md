@@ -67,10 +67,10 @@ least the archetype pages first. For a single page, use `stardust deploy` direct
 ### Phase A — Inventory (build the coverage)
 
 ```bash
-node skills/rollout/scripts/inventory.mjs --site-url <source-url>
+node stardust/scripts/rollout/inventory.mjs --site-url <source-url>
 # defaults: --migrated stardust/migrated  --out stardust/rollout
 # archetypes-only mode: add the full page roster from state.json
-node skills/rollout/scripts/inventory.mjs --site-url <source-url> --state stardust/state.json
+node stardust/scripts/rollout/inventory.mjs --site-url <source-url> --state stardust/state.json
 ```
 
 Writes `coverage/pages.json` (one row per page: slug, delivered `path`,
@@ -90,8 +90,8 @@ coordinates in `rollout.json` (`site.da.org`, `site.site`, `site.da.ref`,
 ### Phase B — Block dedup plan (FIRST-CLASS, before any conversion)
 
 ```bash
-node skills/rollout/scripts/blocks.mjs   # → coverage/blocks.json (the dedup unit)
-node skills/rollout/scripts/plan.mjs     # → plan.json + a readable conversion plan
+node stardust/scripts/rollout/blocks.mjs   # → coverage/blocks.json (the dedup unit)
+node stardust/scripts/rollout/plan.mjs     # → plan.json + a readable conversion plan
 ```
 
 - `blocks.mjs` collapses every block instance (per-page `modules` + chrome) into
@@ -173,8 +173,8 @@ Walk `plan.json.steps` in order (representative pages first). For each page:
    `about:error`) offline so a broken page never reaches preview. Mechanics in
    `reference/delivery-lint.md`. **A P0/P1 blocks the PUT.**
    ```bash
-   node skills/rollout/scripts/delivery-lint.mjs --file <html> --path </da/path>
-   node skills/rollout/scripts/media-reconcile.mjs --file <html> --deploy-host <branch>--<repo>--<owner>.aem.live [--media-ledger <file>] [--apply]
+   node stardust/scripts/rollout/delivery-lint.mjs --file <html> --path </da/path>
+   node stardust/scripts/rollout/media-reconcile.mjs --file <html> --deploy-host <branch>--<repo>--<owner>.aem.live [--media-ledger <file>] [--apply]
    ```
    `media-reconcile` resolves every non-hosted image on the network and decides
    optimize/keep/rewrite/omit (`skills/migrate/reference/media-reconciliation.md`)
@@ -186,7 +186,7 @@ Walk `plan.json.steps` in order (representative pages first). For each page:
 3. **Run the delivery gates** before flipping a page to `deployed`. Each is a
    one-line rule here; mechanics + helpers in `reference/delivery-gates.md`:
    - **Source-fidelity** — don't add sections the source lacks; never fabricate
-     facts. `node skills/rollout/scripts/section-fidelity.mjs --file <html> --source <url>`
+     facts. `node stardust/scripts/rollout/section-fidelity.mjs --file <html> --source <url>`
      (a static outline check on the authored file — not replica's pixel
      source-fidelity gate, which runs on the published origin after `deployed`)
    - **Image-fidelity** — every authored `<img>` src must return 200 or be omitted;
@@ -202,11 +202,11 @@ Walk `plan.json.steps` in order (representative pages first). For each page:
 
 4. **Record outcomes** with the state-writer (never hand-edit the ledger):
    ```bash
-   node skills/rollout/scripts/update-coverage.mjs <slug> --status converting
-   node skills/rollout/scripts/update-coverage.mjs --block <id> --status converted --eds-name <name>
-   node skills/rollout/scripts/update-coverage.mjs --block <id> --status converted --eds-name default-content   # maps to default content, no block
-   node skills/rollout/scripts/update-coverage.mjs <slug> --status deployed --url <branch-preview-url>
-   node skills/rollout/scripts/update-coverage.mjs <slug> --status content-pending   # no document push
+   node stardust/scripts/rollout/update-coverage.mjs <slug> --status converting
+   node stardust/scripts/rollout/update-coverage.mjs --block <id> --status converted --eds-name <name>
+   node stardust/scripts/rollout/update-coverage.mjs --block <id> --status converted --eds-name default-content   # maps to default content, no block
+   node stardust/scripts/rollout/update-coverage.mjs <slug> --status deployed --url <branch-preview-url>
+   node stardust/scripts/rollout/update-coverage.mjs <slug> --status content-pending   # no document push
    ```
    **Publish in the loop (`PUT → preview → live`), don't stop at preview** — any
    query-index (Phase D2) builds from the **live** tree, so a preview-only delivery
@@ -243,7 +243,7 @@ FAILs only. For clusters of 6–20+ siblings, the full flow is
 variant where cluster agents deploy themselves — replica's Phase 5 fan-out,
 per-cluster deploy ledgers, lock-safe shared ledgers). The central deploy step
 should run the bundled, resumable driver rather than a serial loop:
-`node skills/deploy/scripts/deploy-batch.mjs --org <org> --repo <repo>
+`node stardust/scripts/deploy/deploy-batch.mjs --org <org> --repo <repo>
 --branch <branch> --content <dir>` (concurrency pool, persistent ledger that skips
 already-live pages, retry/backoff, append-only log, delivered-`.plain.html` check).
 The driver and every batch run in the background; its log and ledger are the
@@ -268,8 +268,8 @@ as parallel tool calls in one turn, never two `wait`s in one command.
 ### Phase D — Site assembly (whole-site artifacts)
 
 ```bash
-node skills/rollout/scripts/assemble.mjs   # → rollout/site/{sitemap.xml,robots.txt,manifest.json} — the EXPECTED set
-node skills/rollout/scripts/assemble.mjs --verify-origin https://<branch>--<repo>--<owner>.aem.live   # vs the SERVED /sitemap.xml; exit 1 on a mismatch
+node stardust/scripts/rollout/assemble.mjs   # → rollout/site/{sitemap.xml,robots.txt,manifest.json} — the EXPECTED set
+node stardust/scripts/rollout/assemble.mjs --verify-origin https://<branch>--<repo>--<owner>.aem.live   # vs the SERVED /sitemap.xml; exit 1 on a mismatch
 ```
 
 Generates site-wide artifacts: `sitemap.xml` + `robots.txt` from delivered paths,
@@ -358,7 +358,7 @@ mismatch (`skills/dynamics/reference/patterns.md` § search-index-backed).
 has no inventory row, so it stays outside `verify.mjs --all`, `optimize.mjs` and the
 assembled sitemap unless registered:
 ```bash
-node skills/rollout/scripts/update-coverage.mjs --new search --path /search --template search --origin dynamics --title "Search"
+node stardust/scripts/rollout/update-coverage.mjs --new search --path /search --template search --origin dynamics --title "Search"
 ```
 then record its status like any page. `inventory.mjs` keeps such rows on a re-run (the
 origin marker in `source.migratedHtml` identifies them; status untouched), so the line
@@ -374,7 +374,7 @@ See `reference/multilingual.md`.
 ### Phase E — Full-site verify
 
 ```bash
-node skills/rollout/scripts/verify.mjs            # uses rollout.json site.liveHost
+node stardust/scripts/rollout/verify.mjs            # uses rollout.json site.liveHost
 # or: --base <url>   (explicit host)   |   --root <dir>   (offline, against a local export)
 ```
 
@@ -414,7 +414,7 @@ link **targets** a roster-driven batch misses
   committed but never published, their links 404, and the dashboard still
   reads 100%.
 - **Localize source-site bounce links** with the deploy stage, not by hand:
-  `node skills/deploy/scripts/localize-links.mjs --source-host <live-host>
+  `node stardust/scripts/deploy/localize-links.mjs --source-host <live-host>
   --content content --redirects stardust/redirects.tsv` rewrites every
   source-host href whose path exists in the content tree (header/footer/home
   included) to the canonical root-relative form and lists the ones it kept
@@ -450,7 +450,7 @@ tags each by **fixability**, and gates the rollout. Sources (full mapping in
 
 1. **`rollout:baseline`** — built-in deterministic detectors:
    ```bash
-   node skills/rollout/scripts/optimize.mjs        # uses rollout.json site.liveHost
+   node stardust/scripts/rollout/optimize.mjs        # uses rollout.json site.liveHost
    # or: --base <url> | --root <dir> | --slug <s> | --all
    ```
 2. **`impeccable:critique` + `impeccable:audit`** — design quality + a11y/perf.
@@ -471,11 +471,11 @@ hand. Everything else routes as before (`reference/checks.md` § Source parity).
 Normalize each source's findings into the ledger with the writer:
 
 ```bash
-node skills/rollout/scripts/findings.mjs record \
+node stardust/scripts/rollout/findings.mjs record \
   --source marketing:seo-audit --layer seo --check thin-content \
   --severity P2 --fixability platform-migration \
   --scope-ids blog/post --evidence "…" --recommend "…"
-node skills/rollout/scripts/findings.mjs resolve <id> --status accepted --note "…"
+node stardust/scripts/rollout/findings.mjs resolve <id> --status accepted --note "…"
 ```
 
 All sources share one id space, dedup, scorecard, and the **detect → fix → verify
@@ -499,7 +499,7 @@ not-assessed rather than faking a score.
 ### Phase G — AEM autofix (close the loop)
 
 ```bash
-node skills/rollout/scripts/autofix-aem.mjs --project <eds-root>   # [--dry-run] [--slug s] [--check c]
+node stardust/scripts/rollout/autofix-aem.mjs --project <eds-root>   # [--dry-run] [--slug s] [--check c]
 ```
 
 The platform autofix engine (AEM-EDS, v1 — aggressive). For every open finding
@@ -551,7 +551,7 @@ diffs — this is how a run's hard-won fixes stop being re-learned.
 ### Phase I — Dashboard
 
 ```bash
-node skills/rollout/scripts/dashboard.mjs    # → dashboard/index.html + data.json
+node stardust/scripts/rollout/dashboard.mjs    # → dashboard/index.html + data.json
 ```
 
 A **self-contained, no-external-JS** dashboard rendered in the **project's design
@@ -573,7 +573,7 @@ findings shows a red count. Also a templates table + the quality scorecard.
 `dashboard/data.json` is the inspectable snapshot — regenerate at every iteration
 boundary. (`state.json` is read-only and optional.)
 
-**Done is one verdict:** the rollout is complete when `node skills/rollout/scripts/done-check.mjs`
+**Done is one verdict:** the rollout is complete when `node stardust/scripts/rollout/done-check.mjs`
 exits 0; otherwise it prints one gap per line.
 
 ## Inputs

@@ -22,7 +22,7 @@ facts. This recurs as trailing **cross-link rails** (`related-*`, `*-teasers`),
 regardless of source.
 
 ```bash
-node skills/rollout/scripts/section-fidelity.mjs \
+node stardust/scripts/rollout/section-fidelity.mjs \
   --file <content.html> --source <sourceUrl>   # authored vs source, side-by-side
 ```
 
@@ -53,7 +53,7 @@ design); missing from the ledger fails the gate. The manual form, for a single
 image, is a 200 check:
 
 ```bash
-node skills/rollout/scripts/media-reconcile.mjs --file <html> --deploy-host <host>   # all images
+node stardust/scripts/rollout/media-reconcile.mjs --file <html> --deploy-host <host>   # all images
 curl -s -o /dev/null -w '%{http_code}' <url>                                          # one image
 ```
 

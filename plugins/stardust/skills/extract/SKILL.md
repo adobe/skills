@@ -106,8 +106,8 @@ Additional checks for this sub-command:
 
    **Script location matters.** ESM resolves `import 'playwright'`
    from the *script's* directory and the plugin tree ships no
-   `node_modules`: copy every script byte-identical into the project
-   (`stardust/scripts/…`) and run the copy.
+   `node_modules`: run the project copies master Setup syncs
+   (`stardust/scripts/<skill>/`).
 
    **Bundled crawler.** `skills/extract/scripts/crawl.mjs` is a
    runnable reference implementation of this whole sub-command —
@@ -332,8 +332,8 @@ model reads the image — and verify it against the extracted record:
   page, or blank SPA shell?
 
 Read the whole page through its thumbnail —
-`node stardust/scripts/thumb.mjs stardust/current/assets/screenshots/<slug>.png --width 480`
-(`skills/extract/scripts/thumb.mjs`, copied beside `crawl.mjs`; a
+`node stardust/scripts/extract/thumb.mjs stardust/current/assets/screenshots/<slug>.png --width 480`
+(`skills/extract/scripts/thumb.mjs`; a
 box-filter downscale, so 1-px rules and hairline borders survive; its
 `--max-bytes` cap, 150 KB by default, re-encodes a heavy page narrower
 first and crops only as a last resort, never below 60 % of the page) —
@@ -382,8 +382,7 @@ extracted pages** to avoid the home-page bias documented in
 `brand-surface.md` § Aggregation scope.
 
 **Computed-style census — run the shipped instrument; author no
-probe.** `node <plugin>/skills/extract/scripts/style-census.mjs`
-(copied into the project like `crawl.mjs`, § Setup) measures every
+probe.** `node stardust/scripts/extract/style-census.mjs` measures every
 captured page at 1440 and writes
 `stardust/current/_computed-styles.json`; add `--width 360` when the
 breakpoints include it. One more live pass over every page — run it
@@ -395,7 +394,7 @@ per-page detail sits under `pages[url][width]`.
 
 **Content-cap model — run the shipped probe; author no lift (#124).**
 `node stardust/scripts/replica/cap-probe.mjs <archetype-url>… --write-design
-stardust/current/DESIGN.json` (replica's script; copy it with `live-session.mjs`)
+stardust/current/DESIGN.json` (replica's script)
 renders each archetype at 1440 and at a DERIVED wide width —
 max(2560, largest cap × 1.25); a probe AT a cap's width cannot see it — and
 records every box that stops growing (kind `shell` / `content` / `module`,
@@ -470,7 +469,7 @@ The current-state PRODUCT.md and DESIGN.md are **descriptive, not
 authored** — there is no interview to run because the user is not
 defining intent here, the agent is describing the existing site. Write
 them directly using impeccable's format specs (impeccable's skill
-directory is what `node <plugin>/skills/stardust/scripts/impeccable-version-check.mjs --where`
+directory is what `node stardust/scripts/stardust/impeccable-version-check.mjs --where`
 prints; read each spec by section, not whole):
 
 - For PRODUCT.md, follow the section structure in impeccable's
