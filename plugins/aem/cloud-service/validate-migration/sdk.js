@@ -16,7 +16,7 @@ const DOWNLOAD_URL = 'https://experience.adobe.com/#/downloads/content/software-
 
 async function isReachable(url, timeoutMs = 3000) {
   try {
-    const res = await fetch(`${url}/system/console`, { redirect: 'manual', signal: AbortSignal.timeout(timeoutMs) });
+    const res = await fetch(`${url}/`, { redirect: 'manual', signal: AbortSignal.timeout(timeoutMs) });
     return res.status < 500;
   } catch { return false; }
 }

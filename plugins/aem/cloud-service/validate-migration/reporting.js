@@ -4,6 +4,7 @@
 const fs = require('fs');
 const path = require('path');
 const { FAILURE_CLASSES } = require('./failure-classes.js');
+const { ensureSdk, findRunningSdk } = require('./sdk.js');
 
 function writeLocalReport(record, cwd) {
   if (typeof record.run_id !== 'string' || !/^rvc-[0-9]+$/.test(record.run_id)) {
@@ -79,9 +80,6 @@ function finalizeReporting(record, receipt) {
 // ---- SDK config (never persisted to disk) ----
 // URL: honors --sdk / AEM_SDK_URL; otherwise probes common local ports so a
 // developer never has to configure anything when the SDK is on 4502/4602/4503.
-// Credentials: --user/--password / AEM_SDK_USER/AEM_SDK_PASS, default admin/admin.
-// admin/admin is refused for any URL that isn't localhost — keeps the default
-// safe if someone accidentally points validate-migration at a shared instance.
 async function resolveSdkUrl(args) {
   const explicit = args.sdk || process.env.AEM_SDK_URL;
   if (explicit) return explicit.replace(/\/$/, '');
@@ -209,6 +207,7 @@ module.exports = {
   writeLocalReport,
   renderLocalReport,
   finalizeReporting,
+  resolveSdkUrl,
   camReportingNote,
   normalizeBundleState,
   flattenChecks,

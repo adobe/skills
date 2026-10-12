@@ -26,7 +26,7 @@ node ../../validate-migration/init.js
 node ../../validate-migration/check.js --stage prepare
 
 #   2. the coding assistant now calls the AEM Quickstart MCP tool
-#      `diagnose-osgi-bundle` for each BSN and writes the raw text outputs to
+#      `diagnose-osgi-bundle` (argument `bundleSymbolicName`) for each BSN and writes the raw text outputs to
 #      <project>/.validate-migration/diagnosis-map.json as { "<BSN>": "..." }
 
 #   3. consume the diagnosis + emit outcome
@@ -167,8 +167,6 @@ Zero config for standard local dev. Overrides via env or CLI:
 |---|---|---|---|
 | `AEM_SDK_URL` | `--sdk <url>` | auto-discover on 4502 / 4602 / 4503 | first SDK to answer wins |
 | - | `--search <dir>` | current working directory | absolute SDK directory anywhere locally; confirm external JAR location before booting |
-| `AEM_SDK_USER` | `--user <name>` | `admin` | refused on non-localhost URLs |
-| `AEM_SDK_PASS` | `--password <pw>` | `admin` | refused on non-localhost URLs |
 | — | `--project-id <id>` | auto-loaded from nearest `migration-runbook.json` | explicit selection overrides inherited identity |
 | — | `--project-name <name>` | user-confirmed CAM project name | reporting MCP resolves the name; payload can be emitted without an ID |
 | — | `--diagnosis-map <file>` | `<project>/.validate-migration/diagnosis-map.json` | agent-supplied BSN → raw MCP text output |
@@ -182,12 +180,13 @@ No `~/.validate-migration/*`; SDK boot logs stay next to the selected JAR.
 
 ## Deploy strategy
 
-Prefers the customer project's `-PautoInstallBundle` (or `-PautoInstallPackage`)
-Maven profile — the AEM archetype standard, which uses whatever install plugin
-the project itself configures. Auto-falls-back to
-`sling-maven-plugin:install-file` if the profile install fails (e.g. WKND legacy
-pins `maven-sling-plugin:2.1.0` with a WebDAV config that returns 409). Both
-attempts are captured in the outcome log so the reviewer sees exactly what ran.
+Uses only the customer project's `-PautoInstallBundle` (or `-PautoInstallPackage`)
+Maven profile — the AEM archetype standard. The project's own pom and Maven
+settings own the install endpoint and credentials; the validator holds no SDK
+credentials and never calls the SDK console. Only `-Daem.host`/`-Daem.port` are
+passed so the deployment targets the selected local SDK. If the project has no
+such profile, prepare reports `deploy.failed` and the developer deploys the
+bundle with their usual workflow before re-running.
 
 ## Runtime verification via MCP
 
@@ -245,18 +244,13 @@ stop for safe SDK configuration; configuration changes require approval.
 `cdw` must be selected explicitly; auto-diff classifies shared dialog paths as
 `legacy-ui`. Dispatcher, unsupported-runmodes, and filevault-deps
 are not wired into this validator. Source-only patterns do not touch the SDK.
-`custom-templates` builds and installs the whole app (the archetype `all` single
-package via `-pl all -am`) on an isolated local SDK, then creates, authors,
-renders and deletes a page per editable template. Unrelated broken modules do
-not block; a broken dependency of the template is a `build.failed`. A missing
-page component (ui.apps not deployed) fails naming the component.
-Pass `--content-parent /content/<site>/<test-area> --allow-content-write true`
-on prepare and verify, and optionally `--template /conf/<site>/settings/wcm/templates/<name>`
-on prepare to narrow selection. Body authoring requires both
-`--authoring-container root/<editable-container>` and
-`--authoring-resource-type <approved-component>` on verify. A pass remains
-restricted: Sling POST does not establish AEM editor-policy enforcement. Each
-template gets its own payload, report, receipt and finalize invocation.
+`custom-templates` is source-only: it checks each editable template in the built
+content package for a `cq:Template` definition plus `structure` and `initial`
+content (`policies` is reported but optional). Optionally pass
+`--template /conf/<site>/settings/wcm/templates/<name>` on prepare to narrow
+selection. Page creation and rendering are not exercised, because no MCP tool
+covers content authoring yet. Each template gets its own payload, report,
+receipt and finalize invocation.
 
 ## Files that ship with this plugin
 
@@ -267,6 +261,5 @@ template gets its own payload, report, receipt and finalize invocation.
 - `plan.js` — branch-diff scoping. Includes committed, staged, unstaged, and
   untracked changes.
 - `build.js`, `deploy.js` — reusable helpers.
-- `template-runtime.js` — isolated, disposable WCM template page probe.
 - `failure-classes.js` — frozen failure taxonomy shared with the MCP tool and
   adoption-service.

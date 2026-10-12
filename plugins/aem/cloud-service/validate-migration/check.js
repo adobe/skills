@@ -14,9 +14,11 @@
  *
  * Config, all optional (never persisted to disk):
  *   AEM_SDK_URL      SDK base URL (default http://localhost:4502)
- *   AEM_SDK_USER     SDK admin user (default 'admin' — warns if used against a non-local URL)
- *   AEM_SDK_PASS     SDK admin password (default 'admin' — warns if used against a non-local URL)
- *   --sdk / --user / --password    CLI overrides
+ *   --sdk            CLI override
+ *
+ * The skill holds no SDK credentials and never calls the SDK console: deploy
+ * runs the project's own auto-install Maven profile, and runtime state comes
+ * from the AEM Quickstart MCP `diagnose-osgi-bundle` tool.
  *
  * Reads the CAM project (if any) from the nearest migration-runbook.json written by the
  * analyze / migration skill, and <cwd>/pom.xml as the default project root.
@@ -38,16 +40,37 @@ const { build } = require('./build.js');
 const { deploy } = require('./deploy.js');
 const { FAILURE_CLASSES } = require('./failure-classes.js');
 const { computeValidationPlan } = require('./plan.js');
-const { ensureSdk, findRunningSdk } = require('./sdk.js');
-const { discoverTemplates, assertSafeOptions, runTemplateProbe } = require('./template-runtime.js');
-const { writeLocalReport, renderLocalReport, finalizeReporting, camReportingNote, normalizeBundleState, buildMcpPayload, validationChecks, toClassEntry, truncate, stripEmpty } = require('./reporting.js');
+const { writeLocalReport, renderLocalReport, finalizeReporting, resolveSdkUrl, camReportingNote, normalizeBundleState, buildMcpPayload, validationChecks, toClassEntry, truncate, stripEmpty } = require('./reporting.js');
 
 // Each pattern entry defines how to find its migrated class in a built jar
 // (`discover`) and how to check the runtime contract on the SDK (`verify`).
 const PATTERNS = {
   'custom-templates': {
-    describe: 'Editable template page creation and authoring on isolated SDK',
-    mode: 'template-runtime',
+    describe: 'Editable templates (offline source check of the built content package)',
+    mode: 'source-only',
+    discover: (pkg, task) => {
+      const templates = discoverTemplates(pkg, task.template);
+      const changed = task.files?.map((f) => f.match(/(?:^|\/)conf\/[^/]+\/settings\/wcm\/templates\/[^/]+/))
+        .filter(Boolean).map((m) => '/' + m[0].replace(/^\//, ''));
+      const scoped = changed && !task.template ? templates.filter((t) => changed.includes(t)) : templates;
+      return scoped.length ? { templates: scoped } : null;
+    },
+    async verify({ artifactPath, discovered }) {
+      const entries = execFileSync('unzip', ['-Z1', artifactPath], { encoding: 'utf8' }).split('\n');
+      const find = (p) => entries.find((e) => e.replace(/^jcr_root\//, '') === p);
+      const node = (t, child) => find(`${t.slice(1)}/${child}/.content.xml`) || find(`${t.slice(1)}/${child}.xml`);
+      const t = discovered.template;
+      const definition = find(`${t.slice(1)}/.content.xml`);
+      const isTemplate = !!definition
+        && /jcr:primaryType\s*=\s*"cq:Template"/.test(execFileSync('unzip', ['-p', artifactPath, definition], { encoding: 'utf8' }));
+      const checks = { template_definition: isTemplate, structure: !!node(t, 'structure'), initial: !!node(t, 'initial'), policies: !!node(t, 'policies') };
+      const missing = ['template_definition', 'structure', 'initial'].filter((k) => !checks[k]);
+      if (missing.length) {
+        return { result: 'fail', failure_class: FAILURE_CLASSES.SOURCE_CONTRACT_MISMATCH, bundle_state: null, component_state: null,
+          evidence: `${t}: missing ${missing.join(', ')} in built content package`, checks };
+      }
+      return { result: 'pass', bundle_state: null, component_state: null, checks };
+    },
   },
   scheduler: {
     describe: 'Sling Scheduler (Cloud Service contract)',
@@ -459,7 +482,6 @@ async function main() {
     process.exit(finalized.reporting.status !== 'recorded' ? 3 : finalized.result === 'pass' ? 0 : 1);
   }
 
-  const setup = readSdkCreds(args);
   const context = readContext(args);
 
   // Local validation does not require a CAM project-id. When one is available
@@ -525,24 +547,14 @@ async function main() {
     tasks = plan.tasks;
   }
 
-  if (tasks.some((t) => t.pattern === 'custom-templates')) {
-    try { assertSafeOptions({ sdkUrl: args.sdk || 'http://localhost:4502', contentParent: args['content-parent'], allowContentWrite: args['allow-content-write'] }); }
-    catch (e) { fatal(e.message); }
-  }
   const anyNeedsSdk = tasks.some((t) => PATTERNS[t.pattern].mode !== 'source-only');
   const sdkUrl = anyNeedsSdk ? await resolveSdkUrl(args) : null;
   if (anyNeedsSdk && !sdkUrl) {
     fatal('no running SDK found on ports 4502 / 4602 / 4503 and none could be started from the workspace. Download the AEM SDK, or set AEM_SDK_URL / pass --sdk <url> (--search <dir> to locate the Quickstart jar).');
   }
-  if (tasks.some((t) => t.pattern === 'custom-templates')) {
-    try { assertSafeOptions({ sdkUrl, contentParent: args['content-parent'], allowContentWrite: args['allow-content-write'] }); }
-    catch (e) { fatal(e.message); }
-  }
-  const { user, password } = validateCreds(setup, sdkUrl);
-
   const prepared = [];
   for (const task of tasks) {
-    const p = await prepareTask(task, { sdkUrl, user, password });
+    const p = await prepareTask(task, { sdkUrl });
     if (p.pattern === 'custom-templates' && p.discovered?.templates) {
       for (const template of p.discovered.templates) {
         prepared.push({ ...p, discovered: { template } });
@@ -574,7 +586,7 @@ async function main() {
     console.log(`\n[validate-migration] prepare complete. ${prepared.length} task(s) staged.`);
     const bsns = [...new Set(prepared.map((p) => p.symbolicName).filter(Boolean))];
     if (bsns.length) {
-      console.log('Have the coding assistant call the AEM Quickstart MCP tool `diagnose-osgi-bundle` for each of these bundles:');
+      console.log('Have the coding assistant call the AEM Quickstart MCP tool `diagnose-osgi-bundle` (argument `bundleSymbolicName`) for each of these bundles:');
       for (const b of bsns) console.log(`  - ${b}`);
       console.log(`then write the raw tool outputs to ${path.relative(cwd, path.join(cwd, '.validate-migration', 'diagnosis-map.json'))} as a { "<BSN>": "<raw text>" } map,`);
       console.log(`and finally re-run:  node ${__filename} --stage verify`);
@@ -596,25 +608,12 @@ async function main() {
 // prepareTask: build → discover → (source-only verify | deploy). Returns a
 // serializable record persisted to .validate-migration/state.json and later
 // consumed by verifyPreparedTask.
-async function prepareTask(task, { sdkUrl, user, password }) {
+async function prepareTask(task, { sdkUrl }) {
   const pat = PATTERNS[task.pattern];
   console.log(`\n=== validate-migration prepare · ${task.pattern} ===`);
   console.log(task.jar ? `jar    : ${task.jar}` : `project: ${task.module}`);
   if (pat.mode !== 'source-only') console.log(`sdk    : ${sdkUrl}`);
   console.log(`pattern: ${pat.describe}\n`);
-  if (pat.mode === 'template-runtime') {
-    const b = build({ projectDir: task.module, artifact: 'content-package' });
-    if (!b.ok) return { pattern: task.pattern, module: task.module, failure: { result: 'fail', failure_class: FAILURE_CLASSES.BUILD_FAILED, evidence: b.log } };
-    const selected = task.files?.map((f) => f.match(/(?:^|\/)conf\/[^/]+\/settings\/wcm\/templates\/[^/]+/)).filter(Boolean).map((m) => '/' + m[0].replace(/^\//, ''));
-    const templates = discoverTemplates(b.artifactPath, task.template);
-    const scoped = selected && !task.template ? templates.filter((t) => selected.includes(t)) : templates;
-    if (!scoped.length) return { pattern: task.pattern, module: task.module, failure: { result: 'fail', failure_class: FAILURE_CLASSES.DISCOVERY_NO_MATCH, evidence: 'No selected editable templates in built content package' } };
-    // A template renders only with its app code (page-component HTL in ui.apps),
-    // so deploy the whole app — not just the content package — to the SDK.
-    const d = deployFullApp({ moduleDir: task.module, sdkUrl, user, password });
-    if (!d.ok) return { pattern: task.pattern, module: task.module, failure: { result: 'fail', failure_class: d.failure_class, evidence: d.evidence } };
-    return { pattern: task.pattern, module: task.module, mode: 'template-runtime', discovered: { templates: scoped }, sdkUrl };
-  }
 
   // 1. build (unless a pre-built jar was supplied)
   let artifactPath;
@@ -652,7 +651,7 @@ async function prepareTask(task, { sdkUrl, user, password }) {
 
   // 3. deploy the customer bundle
   step('deploy customer bundle');
-  const d = await deploy({ projectDir: task.module, artifactPath, sdkUrl, user, password });
+  const d = await deploy({ projectDir: task.module, artifactPath, sdkUrl });
   if (!d.ok) {
     return { pattern: task.pattern, module: task.module, artifactPath, discovered, mode: 'bundle-runtime',
       symbolicName: d.symbolicName || null,
@@ -670,19 +669,6 @@ async function verifyPreparedTask(prepared, args) {
     return { pattern: prepared.pattern, ...prepared.failure, discovered: prepared.discovered };
   }
   const pat = PATTERNS[prepared.pattern];
-  if (prepared.mode === 'template-runtime') {
-    const setup = readSdkCreds(args);
-    try {
-      const outcome = await runTemplateProbe({ sdkUrl: prepared.sdkUrl, ...setup, template: prepared.discovered.template,
-        contentParent: args['content-parent'], allowContentWrite: args['allow-content-write'],
-        authoringContainer: args['authoring-container'], authoringResourceType: args['authoring-resource-type'] });
-      return { pattern: prepared.pattern, ...outcome, discovered: prepared.discovered, verification_level: 'runtime' };
-    } catch (e) {
-      return { pattern: prepared.pattern, discovered: prepared.discovered, result: 'fail', failure_class: FAILURE_CLASSES.CONTRACT_MISMATCH,
-        evidence: e.message, verification_level: 'runtime' };
-    }
-  }
-
   if (prepared.mode === 'source-only') {
     step(`source verify · ${prepared.pattern}`);
     const outcome = await pat.verify({ artifactPath: prepared.artifactPath, discovered: prepared.discovered });
@@ -705,47 +691,15 @@ async function verifyPreparedTask(prepared, args) {
 
 // ---- helpers ----
 
-// Builds and installs the whole app to the SDK so a template's page component
-// (HTL in ui.apps) is present to render. Prefers the archetype `all` single
-// package via `-pl all -am` so unrelated broken modules (it.tests, dispatcher)
-// don't block; a broken *dependency* of the template surfaces as build.failed.
-function findReactorRoot(moduleDir) {
-  let dir = moduleDir;
-  const root = path.parse(dir).root;
-  while (dir && dir !== root) {
-    const pom = path.join(dir, 'pom.xml');
-    if (fs.existsSync(pom) && /<packaging>\s*pom\s*<\/packaging>/.test(fs.readFileSync(pom, 'utf8'))) return dir;
-    const parent = path.dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-  return null;
-}
+const TEMPLATE_PREFIX = /^\/conf\/[a-zA-Z0-9_-]+\/settings\/wcm\/templates\/[a-zA-Z0-9_-]+$/;
 
-function deployFullApp({ moduleDir, sdkUrl, user, password }) {
-  const sdk = new URL(sdkUrl);
-  const reactorRoot = findReactorRoot(moduleDir);
-  const allPom = reactorRoot && path.join(reactorRoot, 'all', 'pom.xml');
-  const hasAll = allPom && fs.existsSync(allPom);
-  const singlePackage = hasAll && /autoInstallSinglePackage/.test(fs.readFileSync(allPom, 'utf8'));
-  const base = ['-B', '-ntp', '-DskipTests', `-Daem.host=${sdk.hostname}`, `-Daem.port=${sdk.port || 4502}`, `-Dvault.user=${user}`, `-Dvault.password=${password}`];
-  const args = singlePackage
-    ? [...base, '-PautoInstallSinglePackage', '-pl', 'all', '-am', 'install']
-    : [...base, '-PautoInstallPackage', 'install'];
-  const cwd = singlePackage ? reactorRoot : moduleDir;
-  try {
-    execFileSync('mvn', args, { cwd, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });
-    return { ok: true };
-  } catch (e) {
-    const log = `${e.stdout || ''}${e.stderr || e.message || ''}`;
-    // A dependency that doesn't compile is a build.failed the developer must fix;
-    // a reachable-SDK install error is deploy.failed.
-    if (/COMPILATION ERROR|cannot find symbol|BUILD FAILURE[\s\S]*(compile|package)/i.test(log) && !/packmgr|crx\/packmgr|install-file/i.test(log)) {
-      const m = log.match(/\[ERROR\][^\n]*\.java:[^\n]*/);
-      return { ok: false, failure_class: FAILURE_CLASSES.BUILD_FAILED, evidence: `app build failed before deploy — fix the failing module, then re-validate${m ? ': ' + truncate(m[0], 300) : ''}` };
-    }
-    return { ok: false, failure_class: FAILURE_CLASSES.DEPLOY_FAILED, evidence: 'full-app install to SDK failed; inspect Maven output locally (credentials not persisted)' };
-  }
+// Lists editable template roots in a built content package, optionally narrowed to one path.
+function discoverTemplates(artifactPath, selected) {
+  const entries = execFileSync('unzip', ['-Z1', artifactPath], { encoding: 'utf8' });
+  const templates = [...new Set([...entries.matchAll(/(?:^|\n)(?:jcr_root\/)?(conf\/[^/\s]+\/settings\/wcm\/templates\/[^/\s]+)\/\.content\.xml(?=\n|$)/g)]
+    .map((m) => '/' + m[1]))].sort();
+  if (selected && !TEMPLATE_PREFIX.test(selected)) throw new Error('Invalid --template: expected /conf/<site>/settings/wcm/templates/<name>');
+  return selected ? templates.filter((p) => p === selected) : templates;
 }
 
 function jarDsDescriptors(jarPath) {
@@ -1095,21 +1049,6 @@ function parseArgs(argv) {
   return out;
 }
 
-function readSdkCreds(args) {
-  return {
-    user: args.user || process.env.AEM_SDK_USER || 'admin',
-    password: args.password || process.env.AEM_SDK_PASS || 'admin',
-  };
-}
-
-function validateCreds({ user, password }, sdkUrl) {
-  const isLocal = !sdkUrl || /^https?:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/i.test(sdkUrl);
-  if (!isLocal && user === 'admin' && password === 'admin') {
-    fatal(`refusing to send admin/admin to non-local SDK: ${sdkUrl}. Set AEM_SDK_USER and AEM_SDK_PASS.`);
-  }
-  return { user, password };
-}
-
 // ---- CAM project link (from migration-runbook.json written by the analyze / migration skill) ----
 // Shape in that file: { project: { id: string, name?: string }, ... }
 // Nearest migration-runbook.json wins, searching up from the project so a module (core/) finds the repo-root one.
@@ -1159,5 +1098,5 @@ module.exports = {
   referencesClassName,
   topicFromDescriptor,
   rclFlagsFromDescriptor,
-  findReactorRoot,
+  discoverTemplates,
 };

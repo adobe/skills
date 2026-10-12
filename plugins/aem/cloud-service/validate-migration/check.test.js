@@ -525,7 +525,7 @@ test('readBundleSymbolicName strips directives (singleton:=true)', () => {
   fs.rmSync(root, { recursive: true, force: true });
 });
 
-test('deploy forwards the selected SDK host and port to every Maven deployment path', (context) => {
+test('deploy uses only the project profile, with no console URL or credentials', (context) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'vm-deploy-'));
   const artifactPath = path.join(root, 'bundle.jar');
   fs.writeFileSync(artifactPath, '');
@@ -566,13 +566,19 @@ test('deploy forwards the selected SDK host and port to every Maven deployment p
     for (const target of targets) {
       commands.length = 0;
       const result = deploy({ projectDir: root, artifactPath, sdkUrl: target.url });
-      assert.strictEqual(result.ok, true);
-      assert.strictEqual(commands.length, scenario.reject ? 2 : 1);
-      for (const args of commands) {
-        assert.ok(args.includes(`-Dsling.url=${target.url.replace(/\/$/, '')}/system/console`));
-        assert.ok(args.includes(`-Daem.host=${target.host}`), `SDK host must reach Maven: ${args}`);
-        assert.ok(args.includes(`-Daem.port=${target.port}`), `SDK port must reach Maven: ${args}`);
+      if (!scenario.profile) {
+        assert.strictEqual(result.ok, false);
+        assert.strictEqual(result.mode, 'manual');
+        assert.strictEqual(commands.length, 0, 'no Maven call without a project profile');
+        continue;
       }
+      assert.strictEqual(result.ok, !scenario.reject);
+      assert.strictEqual(commands.length, 1, 'no fallback deployment path');
+      const args = commands[0];
+      assert.ok(args.includes(scenario.profile));
+      assert.ok(args.includes(`-Daem.host=${target.host}`), `SDK host must reach Maven: ${args}`);
+      assert.ok(args.includes(`-Daem.port=${target.port}`), `SDK port must reach Maven: ${args}`);
+      assert.ok(!args.some((a) => /system\/console|sling\.url|sling\.user|sling\.password|install-file/.test(a)), `no direct console access: ${args}`);
     }
   }
 });
@@ -866,7 +872,7 @@ test('findRunningSdk discovers an existing SDK on 4602 before considering startu
   });
   assert.strictEqual(await findRunningSdk(), 'http://localhost:4602');
   assert.deepStrictEqual(probes, [
-    'http://localhost:4502/system/console', 'http://localhost:4602/system/console',
+    'http://localhost:4502/', 'http://localhost:4602/',
   ]);
 });
 
@@ -878,7 +884,74 @@ test('findRunningSdk checks 4503 and returns null when no SDK answers', async (c
   });
   assert.strictEqual(await findRunningSdk(), null);
   assert.strictEqual(probes.length, 3);
-  assert.match(probes[2], /:4503\/system\/console$/);
+  assert.match(probes[2], /:4503\/$/);
+});
+
+test('custom-templates verifies template definition, structure and initial content offline', async () => {
+  const TEMPLATE = '/conf/wknd/settings/wcm/templates/content-page-template';
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vm-template-'));
+  try {
+    const write = (rel, body) => {
+      const f = path.join(dir, 'jcr_root', TEMPLATE.slice(1), rel);
+      fs.mkdirSync(path.dirname(f), { recursive: true });
+      fs.writeFileSync(f, body);
+    };
+    write('.content.xml', '<jcr:root jcr:primaryType="cq:Template"/>');
+    write('structure/.content.xml', '<jcr:root/>');
+    execFileSync('zip', ['-q', '-r', 'package.zip', 'jcr_root'], { cwd: dir });
+    const pkg = path.join(dir, 'package.zip');
+    const pat = PATTERNS['custom-templates'];
+    assert.strictEqual(pat.mode, 'source-only');
+    assert.deepStrictEqual(pat.discover(pkg, {}), { templates: [TEMPLATE] });
+
+    const missing = await pat.verify({ artifactPath: pkg, discovered: { template: TEMPLATE } });
+    assert.strictEqual(missing.result, 'fail');
+    assert.match(missing.evidence, /missing initial/);
+
+    write('initial/.content.xml', '<jcr:root/>');
+    execFileSync('zip', ['-q', '-r', 'package.zip', 'jcr_root'], { cwd: dir });
+    const ok = await pat.verify({ artifactPath: pkg, discovered: { template: TEMPLATE } });
+    assert.strictEqual(ok.result, 'pass');
+    assert.deepStrictEqual(ok.checks, { template_definition: true, structure: true, initial: true, policies: false });
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('discoverTemplates finds and selects editable templates in a content package', () => {
+  const { discoverTemplates } = require('./check.js');
+  const TEMPLATE = '/conf/wknd/settings/wcm/templates/content-page-template';
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vm-discover-'));
+  try {
+    const entry = path.join(dir, 'jcr_root', TEMPLATE.slice(1), '.content.xml');
+    fs.mkdirSync(path.dirname(entry), { recursive: true });
+    fs.writeFileSync(entry, '<jcr:root/>');
+    execFileSync('zip', ['-q', '-r', 'package.zip', 'jcr_root'], { cwd: dir });
+    const pkg = path.join(dir, 'package.zip');
+    assert.deepStrictEqual(discoverTemplates(pkg), [TEMPLATE]);
+    assert.deepStrictEqual(discoverTemplates(pkg, TEMPLATE), [TEMPLATE]);
+    assert.deepStrictEqual(discoverTemplates(pkg, TEMPLATE.replace('content-page', 'other')), []);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('verify emits independent payloads and reports for two templates', () => {
+  const TEMPLATE = '/conf/wknd/settings/wcm/templates/content-page-template';
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vm-template-reports-'));
+  try {
+    const state = path.join(dir, '.validate-migration');
+    fs.mkdirSync(state);
+    fs.writeFileSync(path.join(state, 'state.json'), JSON.stringify({ prepared: [TEMPLATE, TEMPLATE.replace('content-page', 'article-page')].map((template) => ({
+      pattern: 'custom-templates', discovered: { template }, failure: {
+        result: 'fail', failure_class: 'source.contract_mismatch', evidence: 'test fixture', verification_level: 'source-only',
+      },
+    })) }));
+    const execution = spawnSync(process.execPath, [path.join(__dirname, 'check.js'), '--stage', 'verify', '--project', dir, '--project-id', 'test-project'], { encoding: 'utf8' });
+    assert.strictEqual(execution.status, 1, execution.stderr);
+    const payloads = [...execution.stdout.matchAll(/=== report-migration-outcome payload ===\n([^\n]+)/g)].map((m) => JSON.parse(m[1]));
+    assert.strictEqual(payloads.length, 2);
+    assert.notStrictEqual(payloads[0].run_id, payloads[1].run_id);
+    assert.strictEqual(payloads[0].skill_pattern, 'custom-templates');
+    assert.strictEqual(payloads[0].summary.classes_total, 1);
+    assert.strictEqual(fs.readdirSync(state).filter((file) => /^rvc-\d+\.json$/.test(file)).length, 2);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
 test('writeLocalReport writes <run_id>.md and <run_id>.json under .validate-migration', () => {

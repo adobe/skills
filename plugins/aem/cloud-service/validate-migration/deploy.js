@@ -3,86 +3,53 @@
 /**
  * deploy.js — install an OSGi bundle on a running AEM Cloud SDK.
  *
- * Preferred path: use the customer project's own `autoInstallBundle` (or
- * `autoInstallPackage`) Maven profile — the AEM archetype standard, which
- * binds `sling-maven-plugin:install` into the Maven install lifecycle. This
- * respects whatever the customer's build already does (bnd, embedding rules,
- * feature flags), needs zero pinned plugin versions, and works for both
- * bundles and content packages via a single flag.
+ * Uses only the customer project's own `autoInstallBundle` (or
+ * `autoInstallPackage`) Maven profile — the AEM archetype standard. The
+ * project's pom/settings own the install endpoint and credentials; this skill
+ * never talks to the SDK console or holds credentials. Only the target host
+ * and port are passed so the project deploys to the selected local SDK.
  *
- * Fallback: if no profile is detected in the module or its pom ancestors,
- * we shell out to `sling-maven-plugin:install-file` directly against the
- * built artifact. Works for jar bundles even in projects without the
- * archetype convention.
+ * If no such profile exists, deploy returns `ok: false` and the developer
+ * deploys the bundle themselves before the MCP diagnosis step.
  *
  * Bundle/component *state* is not asserted here; that's the runtime verify
- * step's job (it re-checks via the diagnose-osgi-bundle MCP tool).
+ * step's job via the diagnose-osgi-bundle MCP tool.
  *
- * Input : { projectDir?, artifactPath, sdkUrl, user='admin', password='admin', timeoutMs=180000 }
+ * Input : { projectDir, artifactPath, sdkUrl, timeoutMs=180000 }
  * Output: { ok, symbolicName, mode, elapsedMs, log }
  */
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 
-// Fallback pin only — matches the version cq-quickstart-mcp-server builds with.
-const SLING_MAVEN_PLUGIN = 'org.apache.sling:sling-maven-plugin:3.0.4';
-
-function deploy({ projectDir, artifactPath, sdkUrl, user = 'admin', password = 'admin', timeoutMs = 180_000 } = {}) {
+function deploy({ projectDir, artifactPath, sdkUrl, timeoutMs = 180_000 } = {}) {
   const t0 = Date.now();
   if (!fs.existsSync(artifactPath)) return { ok: false, log: `artifact missing: ${artifactPath}` };
   const symbolicName = readBundleSymbolicName(artifactPath);
   if (!symbolicName) return { ok: false, log: 'could not read Bundle-SymbolicName from artifact' };
 
-  const slingUrl = sdkUrl.replace(/\/$/, '') + '/system/console';
-  const sdk = new URL(sdkUrl);
-  const targetArgs = [
-    '-Dsling.url=' + slingUrl,
-    '-Daem.host=' + sdk.hostname,
-    '-Daem.port=' + (sdk.port || (sdk.protocol === 'https:' ? '443' : '80')),
-  ];
   const profile = projectDir ? detectAutoInstallProfile(projectDir) : null;
-  let profileLog = '';
-
-  if (profile) {
-    // Customer's own profile — invoke `install` through the lifecycle. Package
-    // step is skipped by Maven if target/ artifact is already up-to-date.
-    const args = [
-      '-q', '-B', '-DskipTests',
-      '-P', profile,
-      ...targetArgs,
-      '-Dsling.user=' + user,
-      '-Dsling.password=' + password,
-      'install',
-    ];
-    try {
-      const log = execFileSync('mvn', args, { cwd: projectDir, encoding: 'utf8', timeout: timeoutMs, maxBuffer: 16 * 1024 * 1024 });
-      return { ok: true, symbolicName, mode: 'profile:' + profile, log, elapsedMs: Date.now() - t0 };
-    } catch (e) {
-      // Auto-fall-through to install-file so a project-specific quirk doesn't
-      // block validate-migration (e.g. WKND legacy pins maven-sling-plugin:2.1.0 with a WebDAV
-      // config that ignores our -Dsling.url override). Record the profile
-      // attempt so the reviewer can see we tried.
-      profileLog = '[deploy] profile:' + profile + ' failed, falling back to install-file:\n' + ((e.stdout || '') + (e.stderr || e.message)) + '\n---\n';
-    }
+  if (!profile) {
+    return {
+      ok: false, symbolicName, mode: 'manual', elapsedMs: Date.now() - t0,
+      log: 'No autoInstallBundle/autoInstallPackage Maven profile found in the project. '
+        + `Deploy ${symbolicName} to the local SDK with your project's usual deployment, then re-run.`,
+    };
   }
 
-  // Fallback: no archetype profile in this module's pom hierarchy, or the
-  // profile install failed. Use sling-maven-plugin standalone against the jar.
+  const sdk = new URL(sdkUrl);
   const args = [
-    '-q', '-B',
-    SLING_MAVEN_PLUGIN + ':install-file',
-    '-Dsling.file=' + artifactPath,
-    ...targetArgs,
-    '-Dsling.user=' + user,
-    '-Dsling.password=' + password,
+    '-q', '-B', '-DskipTests',
+    '-P', profile,
+    '-Daem.host=' + sdk.hostname,
+    '-Daem.port=' + (sdk.port || (sdk.protocol === 'https:' ? '443' : '80')),
+    'install',
   ];
   try {
-    const log = execFileSync('mvn', args, { encoding: 'utf8', timeout: timeoutMs, maxBuffer: 16 * 1024 * 1024 });
-    return { ok: true, symbolicName, mode: profile ? 'profile-fallback:install-file' : 'install-file', log: profileLog + log, elapsedMs: Date.now() - t0 };
+    const log = execFileSync('mvn', args, { cwd: projectDir, encoding: 'utf8', timeout: timeoutMs, maxBuffer: 16 * 1024 * 1024 });
+    return { ok: true, symbolicName, mode: 'profile:' + profile, log, elapsedMs: Date.now() - t0 };
   } catch (e) {
-    const log = profileLog + (e.stdout || '') + (e.stderr || e.message);
-    return { ok: false, symbolicName, mode: 'install-file', log, elapsedMs: Date.now() - t0 };
+    return { ok: false, symbolicName, mode: 'profile:' + profile, log: (e.stdout || '') + (e.stderr || e.message), elapsedMs: Date.now() - t0 };
   }
 }
 

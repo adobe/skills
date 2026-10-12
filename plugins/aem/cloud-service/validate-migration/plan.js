@@ -29,7 +29,7 @@ const RULES = [
 ];
 
 // legacy-ui is the only pattern that doesn't need a deployed bundle to verify.
-const SOURCE_ONLY_PATTERNS = new Set(['legacy-ui']);
+const SOURCE_ONLY_PATTERNS = new Set(['legacy-ui', 'custom-templates']);
 
 function resolveBaseRef(cwd) {
   for (const ref of ['origin/main', 'main']) {

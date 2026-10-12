@@ -26,29 +26,19 @@ a successful build or an emitted payload. Restricted passes retain their caveats
 ## Scope and paths
 
 Use `scheduler`, `asset-manager`, `event-migration`, `resource-change-listener`,
-`replication`, `legacy-ui`, `custom-templates`, or explicit `cdw`. The dialog patterns are source-only;
-they need no SDK or diagnosis. Do not use this skill for dispatcher,
-unsupported-runmodes or filevault-deps. Fixes belong to `migration`.
+`replication`, `legacy-ui`, `custom-templates`, or explicit `cdw`. The dialog and
+template patterns are source-only; they need no SDK or diagnosis. Do not use this
+skill for dispatcher, unsupported-runmodes or filevault-deps. Fixes belong to `migration`.
 
-For `custom-templates`, use an isolated local author SDK only. Obtain explicit
-approval for an existing disposable test parent beneath `/content/<site>/<test-area>`;
-never run this on customer content or a shared SDK. Pass `--content-parent <path>
---allow-content-write true` on BOTH prepare and verify. For one template add
+`custom-templates` checks each editable template in the built content package for a
+`cq:Template` definition plus `structure` and `initial` content. For one template add
 `--template /conf/<site>/settings/wcm/templates/<name>` to prepare (the exact
-selection is saved in state). For body-component authoring also pass
-`--authoring-container root/<editable-container> --authoring-resource-type <approved-component>`
-on verify; otherwise only page-title authoring is tested. Prepare builds and
-installs the whole app (the archetype `all` single package via `-pl all -am`, so
-unrelated broken modules do not block; a broken *dependency* of the template is a
-`build.failed` the developer must fix). A template renders only with its page
-component (HTL in `ui.apps`); if that component is absent the run fails naming the
-missing component rather than a generic render error. The WCM page-create,
-save/reopen, HTML render, and disposable-page cleanup are checked per template.
-Sling POST does not prove editor policy enforcement: every such pass is
-restricted and must retain that caveat. If cleanup fails, inspect the exact
-test page path reported before retrying. No bundle diagnosis is needed for
-template-only tasks. Submit and finalize EACH emitted template payload and
-receipt separately; a passing sibling never masks a failed template.
+selection is saved in state). Page creation and rendering are not exercised; report
+that limitation. Submit and finalize EACH emitted template payload and receipt
+separately; a passing sibling never masks a failed template.
+
+The validator holds no SDK credentials and never calls the SDK console. Runtime
+state comes only from the AEM Quickstart MCP.
 
 Resolve `$VALIDATOR` to the absolute path of `../../validate-migration` relative
 to this file. Run commands from the customer's project/module root. For a
@@ -110,8 +100,8 @@ SDK configuration. Do not change credentials or SDK configuration without approv
    Maven install profile, and saves `.validate-migration/state.json`. The build
    uses `-DskipTests`; do not claim customer unit tests passed.
 
-3. **Diagnose.** For each emitted BSN, call MCP `diagnose-osgi-bundle` against
-   the SAME SDK. Save the exact returned report in
+3. **Diagnose.** For each emitted BSN, call MCP `diagnose-osgi-bundle` with
+   `{ "bundleSymbolicName": "<BSN>" }` against the SAME SDK. Save the exact returned report in
    `.validate-migration/diagnosis-map.json` as `{ "<BSN>": "<raw report>" }`.
   If unavailable, stop recovery and follow the missing-diagnosis path below.
   Never substitute direct Felix calls.
