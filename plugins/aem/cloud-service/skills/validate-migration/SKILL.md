@@ -70,7 +70,7 @@ SDK configuration. Do not change credentials or SDK configuration without approv
 ## Workflow
 
 1. **Readiness.** Confirm `diagnose-osgi-bundle` (runtime patterns) and
-  `report-migration-outcome` are available before building. Confirm the reporting
+  `submit-migration-validation-result` are available before building. Confirm the reporting
    server's CAM URL configuration and intended environment when inspectable;
    tool availability alone does not prove configuration readiness. Never probe
   reporting by sending a fabricated outcome. Load the actual project ID from the
@@ -115,7 +115,7 @@ SDK configuration. Do not change credentials or SDK configuration without approv
   Before treating a runtime failure as final, follow **Bounded runtime recovery**
   below. The skill coordinates recovery; the validator does not poll the SDK.
 
-5. **Submit.** Forward the emitted `report-migration-outcome` payload through MCP
+5. **Submit.** Forward the emitted `submit-migration-validation-result` payload through MCP
    once on the final verification attempt, including failed validation outcomes.
    Require `ok: true` and a matching `run_id` before saying "outcome recorded".
   Save only the actual response's `ok`, `run_id`, `stored_at`, and `duplicate`

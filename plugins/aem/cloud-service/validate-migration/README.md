@@ -32,7 +32,7 @@ node ../../validate-migration/check.js --stage prepare
 #   3. consume the diagnosis + emit outcome
 node ../../validate-migration/check.js --stage verify
 
-#   4. the assistant submits the emitted payload through report-migration-outcome
+#   4. the assistant submits the emitted payload through submit-migration-validation-result
 #      and saves the actual MCP response to .validate-migration/<run_id>-receipt.json
 
 #   5. persist the acknowledgement or submission error in both local reports
@@ -117,7 +117,7 @@ flag, which takes precedence. If none is linked, ask for the actual CAM project
 name. Context files are not consumed. Only skip submission for an explicit local-only
 request, and do not label reporting complete.
 
-Forward the emitted payload once to `report-migration-outcome`, then save its
+Forward the emitted payload once to `submit-migration-validation-result`, then save its
 actual `ok`, `run_id`, `stored_at`, and `duplicate` fields as the receipt. Wrap
 errors as `{ "ok": false, "error": "<credential-free summary>" }`, not raw
 potentially sensitive text. Never put credentials in receipts. Finalization

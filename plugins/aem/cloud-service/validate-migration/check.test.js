@@ -288,7 +288,7 @@ test('normalizeState title-cases OSGi upper-case states', () => {
   assert.strictEqual(normalizeState(''), 'Unknown');
 });
 
-// ── Payload builders (report-migration-outcome schema) ──────────────────────
+// ── Payload builders (submit-migration-validation-result schema) ──────────────────────
 
 test('toClassEntry keeps failure_class on fail and omits it on pass', () => {
   const fail = toClassEntry({
@@ -831,7 +831,7 @@ test('explicit project name is not combined with an inherited runbook project id
       '--project-name', 'Requested Project',
     ], { encoding: 'utf8' });
     assert.strictEqual(execution.status, 1, execution.stderr);
-    const payloadText = execution.stdout.split('=== report-migration-outcome payload ===')[1].split('=== end payload ===')[0];
+    const payloadText = execution.stdout.split('=== submit-migration-validation-result payload ===')[1].split('=== end payload ===')[0];
     const payload = JSON.parse(payloadText);
     assert.strictEqual(payload.project_name, 'Requested Project');
     assert.ok(!('project_id' in payload));
@@ -945,7 +945,7 @@ test('verify emits independent payloads and reports for two templates', () => {
     })) }));
     const execution = spawnSync(process.execPath, [path.join(__dirname, 'check.js'), '--stage', 'verify', '--project', dir, '--project-id', 'test-project'], { encoding: 'utf8' });
     assert.strictEqual(execution.status, 1, execution.stderr);
-    const payloads = [...execution.stdout.matchAll(/=== report-migration-outcome payload ===\n([^\n]+)/g)].map((m) => JSON.parse(m[1]));
+    const payloads = [...execution.stdout.matchAll(/=== submit-migration-validation-result payload ===\n([^\n]+)/g)].map((m) => JSON.parse(m[1]));
     assert.strictEqual(payloads.length, 2);
     assert.notStrictEqual(payloads[0].run_id, payloads[1].run_id);
     assert.strictEqual(payloads[0].skill_pattern, 'custom-templates');

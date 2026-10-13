@@ -486,7 +486,7 @@ async function main() {
 
   // Local validation does not require a CAM project-id. When one is available
   // (either --project-id or auto-loaded from the nearest migration-runbook.json),
-  // we emit the report-migration-outcome payload; otherwise we skip that reporting
+  // we emit the submit-migration-validation-result payload; otherwise we skip that reporting
   // step and just print the local outcome.
   const explicitProject = args['project-id'] || args['project-name'];
   if (!explicitProject && context.projectId) {
@@ -995,7 +995,7 @@ function finishAll(records, args) {
       const report = writeLocalReport(record, args.project || process.cwd());
       console.log(`\n${outcome.discovered?.template || outcome.pattern}: ${outcome.result}; local report: ${report.mdPath}`);
       if (args['project-id'] || args['project-name']) {
-        console.log('\n=== report-migration-outcome payload ===');
+        console.log('\n=== submit-migration-validation-result payload ===');
         console.log(JSON.stringify(buildMcpPayload(record, args)));
         console.log('=== end payload ===');
       } else console.log(camReportingNote(args));
@@ -1020,11 +1020,11 @@ function finishAll(records, args) {
   const report = writeLocalReport(record, cwd);
   console.log(`\nlocal report: ${report.mdPath}`);
 
-  // Emit the report-migration-outcome payload when a CAM project (id or name) is available.
+  // Emit the submit-migration-validation-result payload when a CAM project (id or name) is available.
   // The agent submits this block through MCP and finalizes with its receipt.
   if (args && (args['project-id'] || args['project-name'])) {
     const payload = buildMcpPayload(record, args);
-    console.log('\n=== report-migration-outcome payload ===');
+    console.log('\n=== submit-migration-validation-result payload ===');
     console.log(JSON.stringify(payload));
     console.log('=== end payload ===');
   } else {

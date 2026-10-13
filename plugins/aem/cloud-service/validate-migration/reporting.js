@@ -154,7 +154,7 @@ function buildMcpPayload(record, args) {
   return stripEmpty(payload);
 }
 
-// Builds one `classes[]` entry (report-migration-outcome schema) from one task's outcome.
+// Builds one `classes[]` entry (submit-migration-validation-result schema) from one task's outcome.
 function validationChecks(outcome) {
   const contractFailed = [FAILURE_CLASSES.SOURCE_CONTRACT_MISMATCH, FAILURE_CLASSES.CONTRACT_MISMATCH].includes(outcome.failure_class);
   return {
