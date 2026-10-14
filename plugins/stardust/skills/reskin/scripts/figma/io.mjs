@@ -36,3 +36,16 @@ export function provenance({ at, readArtifacts = [], note } = {}) {
     ...(note ? { note } : {}),
   };
 }
+
+// The Markdown form (artifact-map.md § Provenance): an HTML comment on the first line.
+export function mdProvenance(prov) {
+  const lines = ['<!-- stardust:provenance'];
+  for (const [k, v] of Object.entries(prov)) {
+    if (Array.isArray(v)) {
+      lines.push(v.length ? `  ${k}:` : `  ${k}: []`);
+      for (const item of v) lines.push(`    - ${item}`);
+    } else lines.push(`  ${k}: ${v}`);
+  }
+  lines.push('-->');
+  return lines.join('\n');
+}

@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "reference": {
+    "pages": { "frame": "1:2", "mode": null, "breakpoint": 1440 }
+  },
+  "roles": {
+    "palette.pageBg": { "from": "colors/rgb-255-255-255", "evidence": "1:2" },
+    "palette.bodyFg": { "from": "colors/text-ink", "evidence": "1:6" },
+    "palette.headingFg": { "from": "colors/brand-navy", "evidence": "1:5" },
+    "palette.mutedFg": { "from": "colors/rgb-107-107-107", "evidence": "I1:7;5:8" },
+    "palette.darkBandBg": { "from": "colors/brand-navy", "evidence": "1:10" },
+    "palette.lightBandBg": { "from": "colors/rgb-247-247-245", "evidence": "1:7" },
+    "type.family": { "from": "typography/body-regular", "evidence": "1:6" },
+    "type.display": { "from": "typography/display-large", "evidence": "1:5" },
+    "type.h2": { "from": "typography/inter-display-40-700", "evidence": "I1:7;5:2" },
+    "type.body": { "from": "typography/body-regular", "evidence": "1:6" },
+    "buttons.primary": { "component": "button-primary", "evidence": "1:20" },
+    "buttons.secondary": { "component": "button-secondary", "evidence": "1:21" },
+    "layout.containerMaxWidth": { "from": "spacing/max-width-1200", "evidence": "1:4" },
+    "layout.sectionPaddingY": { "from": "spacing/pad-80", "evidence": "1:7" },
+    "radii.card": { "from": "radii/radius-12-12-0-0", "evidence": "I1:7;5:7" },
+    "radii.button": { "from": "radii/radius-8", "evidence": "1:20" },
+    "shadows.cardResting": { "from": "effects/elevation-card", "evidence": "I1:7;5:7" }
+  },
+  "normalizations": [
+    { "id": "display-lh", "kind": "lineHeightUnitless", "params": { "paths": ["type.display", "type.h2"] }, "why": "display and heading lines are set as ratios" },
+    { "id": "tracking-em", "kind": "letterSpacingEm", "params": {}, "why": "reskin expects tracking in em" },
+    { "id": "display-family", "kind": "familyEquivalence", "params": { "map": { "Inter Display": "Inter" } }, "why": "the web build serves Inter only" },
+    { "id": "semibold", "kind": "weightMap", "params": { "map": { "600": "500" } }, "why": "the served Inter has no 600" }
+  ],
+  "curations": [],
+  "suspect": [
+    { "path": "buttons.primary.color", "why": "one Primary instance overrides its label color (I1:7;5:6)" }
+  ],
+  "modules": [
+    { "id": "M1", "name": "Gradient hero", "frame": "1:3", "family": "pages", "anatomy": "display headline + lede + primary and secondary CTA", "variants": [], "components": ["Button"], "status": "include" },
+    { "id": "M2", "name": "Feature grid", "frame": "1:7", "family": "pages", "anatomy": "section title + feature copy + card (label, CTA)", "variants": ["Show heading"], "components": ["Feature Grid", "Button"], "status": "include" },
+    { "id": "M3", "name": "Footer band", "frame": "1:10", "family": "pages", "anatomy": "single note line on a dark band", "variants": [], "components": [], "status": "include" },
+    { "id": "M4", "name": "Article body", "frame": "2:1", "family": "pages", "anatomy": "title + paragraphs + inline link CTA in a 760px column", "variants": [], "components": ["Link CTA"], "status": "include" },
+    { "name": "Related", "frame": "2:8", "family": "pages", "status": "excluded", "why": "a second instance of the feature grid; M2 covers it" }
+  ],
+  "notesForReskin": "sentence-case headings; navy and off-white bands alternate; buttons are 8px rounded with semibold labels",
+  "motifs": ["calm vertical rhythm: every band pads 80px top and bottom"],
+  "design": {
+    "displayName": "Sample Kit",
+    "description": "A calm, navy-and-off-white system with one display face and one text face.",
+    "colorNames": { "brand-navy": "Navy", "text-ink": "Ink", "rgb-255-255-255": "White", "rgb-247-247-245": "Off-white", "rgb-107-107-107": "Muted" },
+    "typography": { "display": "page headlines", "body": "running copy and leads" },
+    "narrative": {
+      "northStar": "Quiet confidence: few colors, generous space.",
+      "overview": "Bands of navy and off-white carry a single readable column.",
+      "keyCharacteristics": ["two type families", "navy as the only accent", "80px band rhythm"],
+      "rules": ["one primary button per band"],
+      "dos": ["keep headings in sentence case"],
+      "donts": ["do not introduce a second accent color"]
+    }
+  }
+}

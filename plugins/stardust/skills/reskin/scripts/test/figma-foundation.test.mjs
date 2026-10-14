@@ -117,6 +117,10 @@ check('a same-size wrapper frame carries the box: values read through it', () =>
     { background: 'rgb(26, 26, 26)', borderRadius: '4px', padding: '8px 16px', color: 'rgb(255, 255, 255)', fontSize: '14px' },
   );
   assert.deepEqual(b.figma.box, ['2:9', 'I2:9;6:2']);
+  assert.equal(b.figma.fields.padding.node, 'I2:9;6:2', 'padding cites the wrapper frame that paints it');
+  assert.deepEqual(b.figma.fields.padding.raw, [8, 16, 8, 16]);
+  assert.equal(b.figma.fields.color.node, 'I2:9;6:3');
+  assert.equal(b.figma.fields.background.node, 'I2:9;6:2');
   assert.deepEqual(roleCandidates['buttons.primary.background'].map((c) => c.from), ['components/button-primary', 'components/button-secondary', 'components/link-cta']);
 });
 check('container and section padding candidates', () => {

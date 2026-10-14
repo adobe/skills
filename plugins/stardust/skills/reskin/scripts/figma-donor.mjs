@@ -3,6 +3,8 @@
 // contract: skills/reskin/reference/donor-sources.md § 3). One CLI, helpers in ./figma/:
 //   capture  Figma REST → raw cache (.work/reskin/figma/) → canon-source/ foundation, role and module
 //            candidates, spec tables, frame screenshots and the crawl log. Network only here.
+//   curate   offline: foundation + reskin/curation-rules.json → reskin/donor-tokens.json and
+//            reskin/donor-modules.md (figma/rules.mjs documents the rules, figma/curate.mjs the output).
 // The token comes from FIGMA_TOKEN only (never a flag, never logged), sent as X-Figma-Token to the
 // Figma API base (FIGMA_API_BASE overrides it for tests); image bytes come from signed storage URLs
 // fetched without it, and no signed URL is ever written to disk.
@@ -19,6 +21,7 @@ const SELF = fileURLToPath(import.meta.url);
 export const HELP = `Usage:
   node figma-donor.mjs capture <figma-url> [--frames <id,id>] [--max-frames 25] [--refresh]
                        [--max-wait 60] [--dir stardust]
+  node figma-donor.mjs curate [--dir stardust]
 
 Figma as a reskin design donor. Token: FIGMA_TOKEN, a Figma personal access token with the
 file_content:read scope (file_variables:read is optional; without it variables are recorded as
@@ -39,12 +42,44 @@ capture  reads one version of the file over the Figma REST API (files depth=2, t
          A re-run without --refresh rebuilds every output from the cache: no network, no token.
          --refresh fetches the file's current version into its own cache dir.
          --max-wait <s>: the longest Retry-After a 429 may impose before stopping (default 60).
+curate   offline and deterministic: canon-source/foundation + module-candidates.json + the agent-
+         authored <dir>/reskin/curation-rules.json → <dir>/reskin/donor-tokens.json (reskin's token
+         sheet; nodeRefs cite the Figma node behind every value; coverage lists asserted, absent and
+         suspect paths) and <dir>/reskin/donor-modules.md (the module vocabulary, one screenshot and
+         node per row). Every rule problem is listed at once (exit 1). Re-run after any capture or
+         rules change.
 --dir <d>  the stardust directory (default stardust).
+
+curation-rules.json:
+  { "version": 1,
+    "reference": { "<family>": { "frame": "<nodeId>", "mode": null, "breakpoint": 1440 } },
+    "roles": {
+      "<group>.<path>": { "from": "<foundationFile>/<key>", "field": "<optional>", "evidence": "<nodeId>" },
+      "buttons.primary": { "component": "<components key>", "evidence": "<nodeId>" },
+      "<group>.<path>": { "absent": "<why>" } },
+    "normalizations": [ { "id": "<id>", "kind": "lineHeightUnitless|letterSpacingEm|weightMap|
+                          familyEquivalence|fontSmoothing", "params": {}, "why": "<text>" } ],
+    "curations": [ { "path": "<token path>", "to": "<value>", "rule": "<proving rule>", "evidence": "<nodeId>" } ],
+    "suspect": [ { "path": "<token path>", "why": "<text>" } ],
+    "modules": [ { "id": "M1", "name": "<name>", "frame": "<frame or section nodeId>", "family": "<f>",
+                   "anatomy": "<slots>", "variants": [], "components": [], "status": "include" },
+                 { "name": "<name>", "frame": "<nodeId>", "status": "excluded", "why": "<reason>" } ],
+    "notesForReskin": "<casing, link glyphs, band rhythm>", "motifs": [ "<prose>" ],
+    "design": { "displayName": "<name>", ... } }
+  groups: palette, type, layout, buttons, radii, shadows. Roles apply shallow first; an object
+  record (typography, components) gives its field named by "field", by the probe path, or by the
+  path's last segment, else its whole object. The 13 default-probe paths (palette.pageBg|bodyFg|
+  headingFg, type.family, type.body.fontSize, type.display.fontWeight, buttons.primary.background|
+  color|borderRadius|padding|fontSize, layout.containerMaxWidth|sectionPaddingY) must each resolve
+  to a string or be marked absent with a why. lineHeightUnitless / letterSpacingEm take an optional
+  params.paths scope; weightMap / familyEquivalence take params.map { from: to }; fontSmoothing
+  takes params.value. Without radii.* or shadows.* roles every captured radius / shadow is listed.
 Exit codes: 0 ok · 1 validation or curate assertion failed · 2 usage, setup or not found (404)
             · 3 blocked (401/403, a 429 wait over --max-wait, 5xx after retries).`;
 
 const SPEC = {
   capture: { values: ['--frames', '--max-frames', '--max-wait', '--dir'], bools: ['--refresh'], positional: ['<figma-url>'] },
+  curate: { values: ['--dir'], bools: [], positional: [] },
 };
 
 export function parseArgs(argv, UsageError) {
@@ -109,6 +144,17 @@ export async function main(argv, { env = process.env, log = console.log, warn = 
     const status = manifest.endpoints.map((e) => `${e.name} ${e.status}`).join(', ');
     log(`capture: ${manifest.frames.length} frame(s) of file version ${manifest.version}${fromCache ? ' from cache (no network)' : ''} → ${written.length} files under ${dir}/canon-source/ · endpoints: ${status}${manifest.cut.length ? ` · cut ${manifest.cut.length}` : ''}`);
     log(`next: read ${dir}/canon-source/role-candidates.json and module-candidates.json, author ${dir}/reskin/curation-rules.json, then run curate`);
+    return 0;
+  }
+
+  if (cmd === 'curate') {
+    const { runCurate } = await helper('curate');
+    const { donorTokens, inputs, written } = runCurate({ dir });
+    const c = donorTokens.coverage;
+    const mods = inputs.rules.modules || [];
+    const excluded = mods.filter((m) => m.status === 'excluded').length;
+    log(`curate: ${c.asserted}/13 probe paths asserted (${c.absent.filter((a) => a.probe).length} absent, ${c.suspect.length} suspect) · ${mods.length - excluded} module(s), ${excluded} excluded → ${written.join(', ')}`);
+    for (const a of c.absent.filter((x) => x.probe)) log(`  absent ${a.path}: ${a.why}`);
     return 0;
   }
   return 2;

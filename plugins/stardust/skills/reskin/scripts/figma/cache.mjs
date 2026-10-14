@@ -2,12 +2,17 @@
 // <dir>/.work/reskin/figma/<fileKey>/<version>/: file.json, nodes.json, variables.json (when the plan
 // allows), images.json (frame id → cached PNG path or null; never a signed URL), images/<id>.png,
 // selection.json (the frames a partial run was fetching) and manifest.json (written last). latest.json
-// beside the version dirs points at the last complete capture: { version }.
+// beside the version dirs points at the last complete capture: { version }. current.json at
+// .work/reskin/figma/ names the capture whose outputs canon-source/ holds: { fileKey, version }.
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { readJsonIf, writeJson } from './io.mjs';
 
 const safe = (s) => String(s).replace(/[^A-Za-z0-9._-]+/g, '-');
+
+export const currentPath = (dir) => join(dir, '.work', 'reskin', 'figma', 'current.json');
+export const readCurrent = (dir) => readJsonIf(currentPath(dir));
+export const writeCurrent = (dir, fileKey, version) => writeJson(currentPath(dir), { fileKey, version });
 
 export function cacheFor(dir, fileKey) {
   const root = join(dir, '.work', 'reskin', 'figma', safe(fileKey));

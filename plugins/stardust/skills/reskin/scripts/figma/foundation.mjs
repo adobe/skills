@@ -179,15 +179,19 @@ function boxChain(n) {
   }
 }
 
+// value: the flattened CSS of the button; fields: for each non-null value, the node that paints it
+// and its raw Figma value (the composite-button convention: each property from its own layer).
 function buttonValue(n) {
   const chain = boxChain(n);
   const filled = chain.find((x) => solidFill(x.fills).kind !== 'NONE');
   const fill = solidFill(filled?.fills);
   const stroked = chain.find((x) => x.strokeWeight > 0 && solidFill(x.strokes).kind === 'SOLID');
   const padded = chain.find((x) => autoLayout(x) && pads(x).some((p) => p > 0)) ?? chain.find(autoLayout);
+  const rounded = chain.find((x) => radiusCss(x));
+  const shadowed = chain.find((x) => shadowCss(x.effects));
   const label = firstText(n);
   const st = label?.style || {};
-  return {
+  const value = {
     background: fill.css,
     backgroundKind: fill.kind,
     color: label ? solidFill(label.fills).css : null,
@@ -196,11 +200,26 @@ function buttonValue(n) {
     fontWeight: label && typeof st.fontWeight === 'number' ? weightCss(st.fontWeight) : null,
     lineHeight: label ? lineHeightCss(st) : null,
     letterSpacing: label ? letterSpacingCss(st) : null,
-    borderRadius: chain.map(radiusCss).find(Boolean) ?? null,
+    borderRadius: rounded ? radiusCss(rounded) : null,
     padding: padded ? paddingShorthand(pads(padded)) : null,
     border: stroked ? `${px(stroked.strokeWeight)} solid ${solidFill(stroked.strokes).css}` : null,
-    boxShadow: chain.map((x) => shadowCss(x.effects)).find(Boolean) ?? null,
+    boxShadow: shadowed ? shadowCss(shadowed.effects) : null,
   };
+  const at = (node, raw) => ({ node: node.id, raw });
+  const fields = {
+    background: filled && fill.css ? at(filled, topPaint(filled.fills)) : null,
+    color: label && value.color ? at(label, topPaint(label.fills)) : null,
+    fontFamily: label && value.fontFamily ? at(label, st.fontFamily) : null,
+    fontSize: label && value.fontSize ? at(label, st.fontSize) : null,
+    fontWeight: label && value.fontWeight ? at(label, st.fontWeight) : null,
+    lineHeight: label ? at(label, { lineHeightPx: st.lineHeightPx ?? null, lineHeightUnit: st.lineHeightUnit ?? null, fontSize: st.fontSize ?? null }) : null,
+    letterSpacing: label ? at(label, { letterSpacing: st.letterSpacing ?? 0, fontSize: st.fontSize ?? null }) : null,
+    borderRadius: rounded ? at(rounded, rounded.rectangleCornerRadii ?? rounded.cornerRadius) : null,
+    padding: padded ? at(padded, pads(padded)) : null,
+    border: stroked ? at(stroked, { strokeWeight: stroked.strokeWeight, paint: topPaint(stroked.strokes) }) : null,
+    boxShadow: shadowed ? at(shadowed, shadowed.effects.filter((e) => e && e.visible !== false && /SHADOW$/.test(e.type))) : null,
+  };
+  return { value, fields: Object.fromEntries(Object.entries(fields).filter(([, f]) => f)) };
 }
 
 // Aggregate role evidence: identity → { count, chars, evidence, order }.
@@ -303,20 +322,16 @@ export function buildFoundation({ file, nodes, frameIds }) {
       const info = componentInfo(n, maps, parentSet);
       if ([n.name, info.compName, info.setName].some((x) => BUTTON.test(x || ''))) {
         const variant = variantOf(n, info.compName);
-        const value = buttonValue(n);
+        const { value, fields: sources } = buttonValue(n);
         const identity = `component:${n.type === 'INSTANCE' ? n.componentId : n.id}`;
-        const label = firstText(n);
         const existing = g.components.byId.get(identity);
         const r = g.components.add(identity, {
           value, node: n.id,
           figma: {
             componentId: n.type === 'INSTANCE' ? n.componentId : n.id,
             componentProperties: propsOf(n, maps),
-            fills: n.fills ?? [], strokes: n.strokes ?? [], strokeWeight: n.strokeWeight ?? 0,
-            cornerRadius: n.cornerRadius ?? null, rectangleCornerRadii: n.rectangleCornerRadii ?? null,
-            padding: pads(n),
             box: boxChain(n).map((x) => x.id),
-            label: label ? { node: label.id, style: rawTextStyle(label.style), fills: label.fills ?? [] } : null,
+            fields: sources,
           },
           fallbackKey: slugify([info.setName ?? info.compName ?? n.name, ...Object.values(variant)].join(' ')),
           extra: { set: info.setName, variant, divergent: [] },

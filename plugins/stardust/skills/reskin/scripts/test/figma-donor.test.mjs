@@ -208,6 +208,51 @@ await check('a 429 with Retry-After 3600 → exit 3, cache of completed calls ke
   assert.equal(again.code, 0, again.stderr);
   assert.ok(!apiCalls().some((c) => c.path.endsWith('/nodes')), 'completed nodes call reused');
 });
+await check('curate: no capture → exit 2 naming capture; no rules → exit 2 naming curation-rules.json', async () => {
+  const none = await run(['curate'], { cwd: project() });
+  assert.equal(none.code, 2);
+  assert.match(none.stderr, /capture/);
+  const r = await run(['curate'], { cwd: P1, token: '' });
+  assert.equal(r.code, 2);
+  assert.match(r.stderr, /curation-rules\.json/);
+});
+await check('curate writes donor-tokens.json and donor-modules.md; 13/13 asserted; byte-identical on re-run', async () => {
+  mkdirSync(join(P1, 'stardust', 'reskin'), { recursive: true });
+  cpSync(join(KIT, 'curation-rules.json'), join(P1, 'stardust', 'reskin', 'curation-rules.json'));
+  reset();
+  const r = await run(['curate'], { cwd: P1, token: '' });
+  assert.equal(r.code, 0, r.stderr);
+  assert.match(r.stdout, /13\/13 probe paths asserted/);
+  assert.equal(fake.requests.length, 0);
+  const tokensPath = join(P1, 'stardust', 'reskin', 'donor-tokens.json');
+  const t = json(tokensPath);
+  assert.equal(t.donor, `https://www.figma.com/design/${KEY}?node-id=0-1`);
+  assert.equal(t.curatedFrom, 'reskin/curation-rules.json@v1; canon-source/foundation (figma version v2)');
+  assert.equal(t.palette.pageBg, 'rgb(255, 255, 255)');
+  const m = json(join(P1, 'stardust', '.work', 'reskin', 'figma', KEY, 'v2', 'manifest.json'));
+  assert.equal(t._provenance.writtenAt, m.capturedAt);
+  assert.match(readFileSync(join(P1, 'stardust', 'reskin', 'donor-modules.md'), 'utf8'), /\| M1 \| Gradient hero \|/);
+  const before = hashTree(join(P1, 'stardust', 'reskin'));
+  const again = await run(['curate'], { cwd: P1, token: '' });
+  assert.equal(again.code, 0);
+  assert.deepEqual(hashTree(join(P1, 'stardust', 'reskin')), before);
+});
+await check('curate with an unresolved from → exit 1 naming the rule; outputs left as they were', async () => {
+  const rulesPath = join(P1, 'stardust', 'reskin', 'curation-rules.json');
+  const good = readFileSync(rulesPath);
+  const before = hashTree(join(P1, 'stardust', 'reskin'));
+  const bad = JSON.parse(good); bad.roles['palette.bodyFg'] = { from: 'colors/missing' };
+  writeFileSync(rulesPath, JSON.stringify(bad));
+  const r = await run(['curate'], { cwd: P1, token: '' });
+  writeFileSync(rulesPath, good);
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /palette\.bodyFg.*colors\/missing/);
+  assert.deepEqual(hashTree(join(P1, 'stardust', 'reskin')), before);
+});
+await check('--help documents curate and the curation-rules.json schema', async () => {
+  const r = await run(['--help'], { cwd: project() });
+  for (const s of ['curate', 'curation-rules.json', '"roles"', 'normalizations', 'lineHeightUnitless', 'absent']) assert.ok(r.stdout.includes(s), `help lacks ${s}`);
+});
 await check('a copy without the figma/ helpers: --help still answers; a command exits 2 naming cp -R', async () => {
   const lone = join(scratch, 'lone');
   mkdirSync(lone, { recursive: true });

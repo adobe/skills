@@ -6,7 +6,7 @@
 // next run for the same selection reuses the cached nodes response and image bytes.
 import { readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { cacheFor } from './cache.mjs';
+import { cacheFor, writeCurrent } from './cache.mjs';
 import { FigmaError, UsageError } from './errors.mjs';
 import { buildFoundation, FOUNDATION_FILES } from './foundation.mjs';
 import { readJsonIf, provenance, writeFileAtomic, writeJson } from './io.mjs';
@@ -169,5 +169,6 @@ function writeOutputs({ dir, manifest, v }) {
     siblingCandidates: [],
     notBrowserRendered: Object.fromEntries([...written, crawlPath].map((p) => [p, NOT_RENDERED])),
   });
+  writeCurrent(dir, manifest.fileKey, manifest.version);
   return written;
 }
