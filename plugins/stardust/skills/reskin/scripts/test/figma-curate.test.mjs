@@ -161,5 +161,90 @@ check('every problem is reported at once', () => {
   } catch (e) { assert.ok(e.problems.length >= 2, e.message); }
 });
 
+// ---- DESIGN.{md,json} and _brand-extraction.json (shape of the direct-from-phrase fixture) --------
+const FX = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..', 'evals', 'direct-from-phrase', 'fixture', 'stardust', 'current');
+const fxDesign = JSON.parse(readFileSync(join(FX, 'DESIGN.json'), 'utf8'));
+const fxBrand = JSON.parse(readFileSync(join(FX, '_brand-extraction.json'), 'utf8'));
+const fxMd = readFileSync(join(FX, 'DESIGN.md'), 'utf8');
+const { designJson: dj, designMd: dm, brandExtraction: be } = out;
+
+check('DESIGN.json has every top-level and extensions key the fixture has', () => {
+  assert.deepEqual(Object.keys(dj), Object.keys(fxDesign));
+  assert.deepEqual(Object.keys(dj.extensions), Object.keys(fxDesign.extensions));
+  assert.deepEqual(Object.keys(dj.narrative), Object.keys(fxDesign.narrative));
+});
+check('DESIGN.json: colors with canonical hex, display names, roles; Figma has no breakpoints model', () => {
+  assert.deepEqual(dj.extensions.colorMeta['brand-navy'], { role: 'headingFg, darkBandBg', displayName: 'Navy', canonical: '#1f3a5f', tonalRamp: [] });
+  assert.equal(dj.extensions.colorMeta['rgb-255-212-0'].role, 'unassigned');
+  assert.equal(dj.extensions.breakpoints, null);
+  assert.deepEqual(dj.extensions.motion, []);
+  assert.equal(dj.extensions.voice, null);
+  assert.deepEqual(dj.extensions.typographyMeta, { display: { displayName: 'Inter', purpose: 'page headlines' }, body: { displayName: 'Inter', purpose: 'running copy and leads' } });
+  assert.deepEqual(dj.extensions.shadows, [{ name: 'cardResting', value: 'rgba(0, 0, 0, 0.12) 0px 4px 12px 0px', purpose: '' }]);
+  assert.equal(dj.extensions.componentStyle.buttons.primary.background, 'rgb(31, 58, 95)');
+  assert.equal(dj.extensions.componentStyle.buttons.ghost, null);
+  assert.deepEqual(dj.extensions.motifs.borderRadius, { primary: '8px', secondary: '12px 12px 0px 0px', pill: null });
+  assert.deepEqual(dj.extensions.motifs.gradients, [{ value: 'GRADIENT_LINEAR', uses: 'Hero (home, node 1:3)' }]);
+  assert.equal(dj.title, 'Design System: Sample Kit');
+});
+check('DESIGN.json components: the mapped buttons with refersTo and css', () => {
+  assert.deepEqual(dj.components.map((c) => [c.name, c.kind, c.refersTo]), [['Primary Button', 'button', 'button-primary'], ['Secondary Button', 'button', 'button-secondary']]);
+  assert.match(dj.components[0].css, /^background: rgb\(31, 58, 95\); color: rgb\(255, 255, 255\);/);
+  assert.equal(dj.components[0].html, null);
+  assert.match(dj.components[0].description, /node 1:20/);
+});
+check('DESIGN.json narrative: authored, rules normalized to { name, body, section }', () => {
+  assert.equal(dj.narrative.northStar, 'Quiet confidence: few colors, generous space.');
+  assert.deepEqual(dj.narrative.rules, [{ name: 'Rule 1', body: 'one primary button per band', section: 'Overview' }]);
+  assert.deepEqual(dj.narrative.dos, ['keep headings in sentence case']);
+});
+check('_brand-extraction.json top-level keys equal the fixture set; unfilled keys are null or []', () => {
+  assert.deepEqual(Object.keys(be), Object.keys(fxBrand));
+  for (const k of ['site', 'logo', 'spacing', 'componentStyle', 'iconFont', 'voice', 'voiceTable', 'crossPromo', 'register']) assert.equal(be[k], null, k);
+  assert.deepEqual(be.systemComponents, []);
+  assert.deepEqual(Object.keys(be.type), Object.keys(fxBrand.type));
+  assert.deepEqual(Object.keys(be.motifs), Object.keys(fxBrand.motifs));
+});
+check('_brand-extraction.json: palette, type and motifs from the capture', () => {
+  const navy = be.palette.find((p) => p.value === '#1f3a5f');
+  assert.deepEqual(Object.keys(navy), Object.keys(fxBrand.palette[0]));
+  assert.deepEqual(navy.usedAs, ['background', 'text', 'border']);
+  assert.equal(navy.role, 'headingFg, darkBandBg');
+  assert.deepEqual(be.type.headingFamily, { name: 'Inter Display', stack: 'Inter', weights: [700], sizes: ['56px', '40px'], lineHeights: [1.143, 1.2], letterSpacing: ['-1.12px', '-0.8px'], sourceSelectors: [] });
+  assert.equal(be.type.bodyFamily.name, 'Inter');
+  assert.deepEqual([be.type.files, be.type.loadStrategy, be.type.monoFamily], [[], null, null]);
+  assert.deepEqual(be.motifs.patterns.map((p) => p.name), ['Gradient hero', 'Feature grid', 'Footer band', 'Article body']);
+  assert.match(be.motifs.patterns[0].evidence, /home\.png · node 1:3/);
+});
+check('schemaVersion 2 and provenance first in both files; descriptive, not browser-rendered', () => {
+  assert.equal(Object.keys(dj)[0], '_provenance');
+  assert.equal(dj.schemaVersion, 2);
+  assert.equal(dj.generatedAt, '2026-01-02T03:04:05Z');
+  assert.match(dj._provenance.note, /not browser-rendered/);
+  assert.equal(Object.keys(be)[0], '_provenance');
+  assert.ok(dm.startsWith('<!-- stardust:provenance\n'));
+  assert.match(dm.split('-->')[0], /DESCRIPTIVE capture of a Figma design system \(REST\), not browser-rendered/);
+});
+check('DESIGN.md has the six fixture section headings in order, after YAML frontmatter', () => {
+  const heads = (md) => md.split('\n').filter((l) => /^## \d\. /.test(l));
+  assert.deepEqual(heads(dm), heads(fxMd));
+  const fm = dm.split('-->\n')[1];
+  assert.ok(fm.startsWith('---\nname: "Sample Kit"\n'), fm.slice(0, 80));
+  for (const key of ['description:', 'colors:', 'typography:', 'rounded:', 'spacing:', 'components:']) assert.ok(fm.split('\n---\n')[0].includes(`\n${key}`), key);
+  assert.ok(dm.includes('  brand-navy: "#1f3a5f"'));
+  assert.ok(dm.includes('    backgroundColor: "{colors.brand-navy}"'));
+  assert.ok(dm.includes('# Design System: Sample Kit'));
+  assert.ok(dm.includes('**Creative North Star: "Quiet confidence: few colors, generous space."**'));
+});
+check('origins[0].role is design-source', () => {
+  assert.deepEqual(be.origins, [{ origin: donorUrl, role: 'design-source', pagesCaptured: 2, contributedSignals: ['palette', 'type', 'motifs'] }]);
+});
+check('still byte-identical across two runs', () => assert.equal(JSON.stringify(curate(inputs())), JSON.stringify(out)));
+check('no design block: placeholders, never invented prose', () => {
+  const o = curate(inputs(rules((r) => { delete r.design; return r; })));
+  assert.deepEqual(o.designJson.narrative, { northStar: '', overview: '', keyCharacteristics: [], rules: [], dos: [], donts: [] });
+  assert.match(o.designMd, /_\(not authored: add design\.narrative to curation-rules\.json\)_/);
+});
+
 console.log(failed ? `\n${failed} check(s) failed` : '\nall checks passed');
 process.exit(failed ? 1 : 0);

@@ -3,8 +3,9 @@
 // contract: skills/reskin/reference/donor-sources.md § 3). One CLI, helpers in ./figma/:
 //   capture  Figma REST → raw cache (.work/reskin/figma/) → canon-source/ foundation, role and module
 //            candidates, spec tables, frame screenshots and the crawl log. Network only here.
-//   curate   offline: foundation + reskin/curation-rules.json → reskin/donor-tokens.json and
-//            reskin/donor-modules.md (figma/rules.mjs documents the rules, figma/curate.mjs the output).
+//   curate   offline: foundation + reskin/curation-rules.json → reskin/donor-tokens.json,
+//            reskin/donor-modules.md and canon-source/DESIGN.{md,json} + _brand-extraction.json
+//            (figma/rules.mjs documents the rules, figma/curate.mjs and figma/design.mjs the outputs).
 // The token comes from FIGMA_TOKEN only (never a flag, never logged), sent as X-Figma-Token to the
 // Figma API base (FIGMA_API_BASE overrides it for tests); image bytes come from signed storage URLs
 // fetched without it, and no signed URL is ever written to disk.
@@ -45,9 +46,10 @@ capture  reads one version of the file over the Figma REST API (files depth=2, t
 curate   offline and deterministic: canon-source/foundation + module-candidates.json + the agent-
          authored <dir>/reskin/curation-rules.json → <dir>/reskin/donor-tokens.json (reskin's token
          sheet; nodeRefs cite the Figma node behind every value; coverage lists asserted, absent and
-         suspect paths) and <dir>/reskin/donor-modules.md (the module vocabulary, one screenshot and
-         node per row). Every rule problem is listed at once (exit 1). Re-run after any capture or
-         rules change.
+         suspect paths), <dir>/reskin/donor-modules.md (the module vocabulary, one screenshot and
+         node per row) and the descriptive design files direct reads: <dir>/canon-source/DESIGN.json,
+         DESIGN.md and _brand-extraction.json (prose only from rules.design). Every rule problem is
+         listed at once (exit 1). Re-run after any capture or rules change.
 --dir <d>  the stardust directory (default stardust).
 
 curation-rules.json:

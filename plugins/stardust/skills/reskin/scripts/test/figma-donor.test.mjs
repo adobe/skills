@@ -232,10 +232,15 @@ await check('curate writes donor-tokens.json and donor-modules.md; 13/13 asserte
   const m = json(join(P1, 'stardust', '.work', 'reskin', 'figma', KEY, 'v2', 'manifest.json'));
   assert.equal(t._provenance.writtenAt, m.capturedAt);
   assert.match(readFileSync(join(P1, 'stardust', 'reskin', 'donor-modules.md'), 'utf8'), /\| M1 \| Gradient hero \|/);
-  const before = hashTree(join(P1, 'stardust', 'reskin'));
+  const cs = join(P1, 'stardust', 'canon-source');
+  assert.equal(json(join(cs, 'DESIGN.json')).schemaVersion, 2);
+  assert.equal(json(join(cs, '_brand-extraction.json')).origins[0].role, 'design-source');
+  assert.match(readFileSync(join(cs, 'DESIGN.md'), 'utf8'), /^<!-- stardust:provenance\n/);
+  assert.match(r.stdout, /canon-source\/DESIGN\.md/);
+  const before = { ...hashTree(join(P1, 'stardust', 'reskin')), ...hashTree(cs) };
   const again = await run(['curate'], { cwd: P1, token: '' });
   assert.equal(again.code, 0);
-  assert.deepEqual(hashTree(join(P1, 'stardust', 'reskin')), before);
+  assert.deepEqual({ ...hashTree(join(P1, 'stardust', 'reskin')), ...hashTree(cs) }, before);
 });
 await check('curate with an unresolved from → exit 1 naming the rule; outputs left as they were', async () => {
   const rulesPath = join(P1, 'stardust', 'reskin', 'curation-rules.json');

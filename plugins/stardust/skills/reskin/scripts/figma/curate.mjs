@@ -6,6 +6,7 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { cacheFor, readCurrent } from './cache.mjs';
+import { buildBrandExtraction, buildDesign } from './design.mjs';
 import { RulesError, UsageError } from './errors.mjs';
 import { FOUNDATION_FILES, PROBE_PATHS } from './foundation.mjs';
 import { mdProvenance, provenance, readJson, writeFileAtomic, writeJson } from './io.mjs';
@@ -101,7 +102,9 @@ export function curate({ foundation, moduleCandidates, rules, manifest, screensh
     '',
   ].join('\n');
 
-  return { donorTokens, donorModulesMd };
+  const { designJson, designMd } = buildDesign({ foundation, moduleCandidates, rules, manifest, donorTokens, dir });
+  const brandExtraction = buildBrandExtraction({ foundation, moduleCandidates, rules, resolvedModules: r.modules, manifest, donorTokens, donorUrl, dir });
+  return { donorTokens, donorModulesMd, designJson, designMd, brandExtraction };
 }
 
 const withoutMeta = (o) => Object.fromEntries(Object.entries(o).filter(([k]) => !k.startsWith('_')));
@@ -133,7 +136,16 @@ export function loadCurateInputs(dir) {
 export function runCurate({ dir = 'stardust' } = {}) {
   const inputs = loadCurateInputs(dir);
   const result = curate({ ...inputs, dir });
-  writeJson(join(dir, 'reskin', 'donor-tokens.json'), result.donorTokens);
-  writeFileAtomic(join(dir, 'reskin', 'donor-modules.md'), result.donorModulesMd);
-  return { ...result, inputs, written: [`${dir}/reskin/donor-tokens.json`, `${dir}/reskin/donor-modules.md`] };
+  const files = [
+    ['reskin/donor-tokens.json', result.donorTokens],
+    ['reskin/donor-modules.md', result.donorModulesMd],
+    ['canon-source/DESIGN.json', result.designJson],
+    ['canon-source/DESIGN.md', result.designMd],
+    ['canon-source/_brand-extraction.json', result.brandExtraction],
+  ];
+  for (const [rel, body] of files) {
+    if (typeof body === 'string') writeFileAtomic(join(dir, rel), body);
+    else writeJson(join(dir, rel), body);
+  }
+  return { ...result, inputs, written: files.map(([rel]) => `${dir}/${rel}`) };
 }

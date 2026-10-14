@@ -52,7 +52,7 @@
       "keyCharacteristics": ["two type families", "navy as the only accent", "80px band rhythm"],
       "rules": ["one primary button per band"],
       "dos": ["keep headings in sentence case"],
-      "donts": ["do not introduce a second accent color"]
+      "donts": ["introduce a second accent color"]
     }
   }
 }
