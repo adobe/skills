@@ -291,6 +291,37 @@
                     ]
                   }
                 ]
+              },
+              {
+                "id": "2:10", "name": "CTA Row", "type": "INSTANCE", "componentId": "6:5",
+                "componentProperties": {}, "overrides": [],
+                "absoluteBoundingBox": { "x": 1940, "y": 1130, "width": 760, "height": 42 },
+                "fills": [], "strokes": [], "effects": [],
+                "layoutMode": "HORIZONTAL",
+                "children": [
+                  {
+                    "id": "I2:10;6:6", "name": "Hug", "type": "FRAME",
+                    "absoluteBoundingBox": { "x": 1940, "y": 1130, "width": 84, "height": 42 },
+                    "fills": [], "strokes": [], "effects": [],
+                    "layoutMode": "HORIZONTAL", "paddingLeft": 16, "paddingRight": 16, "paddingTop": 8, "paddingBottom": 8,
+                    "children": [
+                      {
+                        "id": "I2:10;6:7", "name": "Background", "type": "FRAME", "layoutPositioning": "ABSOLUTE",
+                        "absoluteBoundingBox": { "x": 1940, "y": 1130, "width": 84, "height": 42 },
+                        "fills": [{ "blendMode": "NORMAL", "type": "SOLID", "color": { "r": 0.81568627, "g": 0, "b": 0.43529412, "a": 1 } }],
+                        "strokes": [{ "blendMode": "NORMAL", "type": "SOLID", "color": { "r": 0.81568627, "g": 0, "b": 0.43529412, "a": 1 } }],
+                        "strokeWeight": 1, "effects": [], "cornerRadius": 4, "children": []
+                      },
+                      {
+                        "id": "I2:10;6:8", "name": "Label", "type": "TEXT",
+                        "absoluteBoundingBox": { "x": 1956, "y": 1139, "width": 52, "height": 24 },
+                        "fills": [{ "blendMode": "NORMAL", "type": "SOLID", "color": { "r": 1, "g": 1, "b": 1, "a": 1 } }],
+                        "characters": "Go now",
+                        "style": { "fontFamily": "Inter", "fontPostScriptName": "Inter-SemiBold", "fontStyle": "SemiBold", "fontWeight": 600, "fontSize": 16, "letterSpacing": 0, "lineHeightPx": 24, "lineHeightUnit": "PIXELS" }
+                      }
+                    ]
+                  }
+                ]
               }
             ]
           },
@@ -317,7 +348,8 @@
       },
       "components": {
         "5:1": { "key": "ck-feature-grid", "name": "Feature Grid", "description": "", "remote": true },
-        "6:1": { "key": "ck-link-cta", "name": "Link CTA", "description": "", "remote": false }
+        "6:1": { "key": "ck-link-cta", "name": "Link CTA", "description": "", "remote": false },
+        "6:5": { "key": "ck-cta-row", "name": "CTA Row", "description": "", "remote": false }
       },
       "componentSets": {},
       "styles": {

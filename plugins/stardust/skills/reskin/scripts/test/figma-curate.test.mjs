@@ -183,7 +183,7 @@ check('DESIGN.json: colors with canonical hex, display names, roles; Figma has n
   assert.deepEqual(dj.extensions.shadows, [{ name: 'cardResting', value: 'rgba(0, 0, 0, 0.12) 0px 4px 12px 0px', purpose: '' }]);
   assert.equal(dj.extensions.componentStyle.buttons.primary.background, 'rgb(31, 58, 95)');
   assert.equal(dj.extensions.componentStyle.buttons.ghost, null);
-  assert.deepEqual(dj.extensions.motifs.borderRadius, { primary: '8px', secondary: '12px 12px 0px 0px', pill: null });
+  assert.deepEqual(dj.extensions.motifs.borderRadius, { primary: '8px', secondary: '4px', pill: null });
   assert.deepEqual(dj.extensions.motifs.gradients, [{ value: 'GRADIENT_LINEAR', uses: 'Hero (home, node 1:3)' }]);
   assert.equal(dj.title, 'Design System: Sample Kit');
 });

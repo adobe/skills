@@ -8,8 +8,9 @@
 //   typography and components), figma = the raw REST value, node = first node seen, nodes = ≤ 5 ids.
 // Colors add hex and usage {fill,text,stroke}; components add set, variant and divergent[] (later
 // instances whose computed values differ from the first: reported, never averaged). A component's box
-// values (fill, radius, padding, border, shadow) are read down its chain of single same-size children
-// (figma.box lists it). Keys are the
+// values (fill, radius, padding, border, shadow) come from the layers its label sits in, innermost
+// first, with their same-size background layers (figma.box lists them; figma.fields cites the node
+// behind each value). Keys are the
 // Figma style name slug when any use carries a style (the most frequent wins), else value-derived
 // (rgb-31-58-95, inter-16-400, radius-8, pad-24, gap-32, max-width-1200, width-760, shadow-0-4-12-0).
 //
@@ -165,24 +166,57 @@ function propsOf(n, maps) {
   return out;
 }
 
-// The visual box of a component: the node itself, then down a chain of single, same-size (±1px),
-// non-text children. Real kits often wrap the styled frame inside a bare instance.
+// The visual box of a component without a label: the node itself, then down a chain of single,
+// same-size (±1px), non-text children. Real kits often wrap the styled frame inside a bare instance.
 function boxChain(n) {
   const chain = [n];
   for (let cur = n; ;) {
     const kids = (cur.children || []).filter(visible);
     const k = kids[0];
-    const a = cur.absoluteBoundingBox; const b = k?.absoluteBoundingBox;
-    if (kids.length !== 1 || k.type === 'TEXT' || !a || !b || Math.abs(a.width - b.width) > 1 || Math.abs(a.height - b.height) > 1) return chain;
+    if (kids.length !== 1 || k.type === 'TEXT' || !sameSize(k, cur)) return chain;
     chain.push(k);
     cur = k;
   }
 }
 
+const sameSize = (a, b) => {
+  const x = a?.absoluteBoundingBox; const y = b?.absoluteBoundingBox;
+  return Boolean(x && y && Math.abs(x.width - y.width) <= 1 && Math.abs(x.height - y.height) <= 1);
+};
+
+// Nodes from n down to target's parent, or null when target is not under n.
+function pathTo(n, target) {
+  for (const c of (n.children || []).filter(visible)) {
+    if (c === target) return [n];
+    const sub = pathTo(c, target);
+    if (sub) return [n, ...sub];
+  }
+  return null;
+}
+
+// The layers that paint a button, innermost first: from the label's parent up to the component, each
+// level preceded by its background layers (same-size, text-free children, often absolutely
+// positioned). A full-width row instance around a hugging button frame is common in real kits.
+function boxLayers(n) {
+  const label = firstText(n);
+  if (!label) return boxChain(n).reverse();
+  const path = pathTo(n, label) || [n];
+  const layers = [];
+  for (let i = path.length - 1; i >= 0; i -= 1) {
+    const node = path[i];
+    const next = path[i + 1] ?? label;
+    for (const c of (node.children || []).filter(visible)) {
+      if (c !== next && c.type !== 'TEXT' && !firstText(c) && sameSize(c, node)) layers.push(c);
+    }
+    layers.push(node);
+  }
+  return layers;
+}
+
 // value: the flattened CSS of the button; fields: for each non-null value, the node that paints it
 // and its raw Figma value (the composite-button convention: each property from its own layer).
 function buttonValue(n) {
-  const chain = boxChain(n);
+  const chain = boxLayers(n);
   const filled = chain.find((x) => solidFill(x.fills).kind !== 'NONE');
   const fill = solidFill(filled?.fills);
   const stroked = chain.find((x) => x.strokeWeight > 0 && solidFill(x.strokes).kind === 'SOLID');
@@ -330,7 +364,7 @@ export function buildFoundation({ file, nodes, frameIds }) {
           figma: {
             componentId: n.type === 'INSTANCE' ? n.componentId : n.id,
             componentProperties: propsOf(n, maps),
-            box: boxChain(n).map((x) => x.id),
+            box: boxLayers(n).map((x) => x.id),
             fields: sources,
           },
           fallbackKey: slugify([info.setName ?? info.compName ?? n.name, ...Object.values(variant)].join(' ')),

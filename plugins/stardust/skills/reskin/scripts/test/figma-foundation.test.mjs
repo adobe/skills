@@ -116,12 +116,23 @@ check('a same-size wrapper frame carries the box: values read through it', () =>
     { background: b.value.background, borderRadius: b.value.borderRadius, padding: b.value.padding, color: b.value.color, fontSize: b.value.fontSize },
     { background: 'rgb(26, 26, 26)', borderRadius: '4px', padding: '8px 16px', color: 'rgb(255, 255, 255)', fontSize: '14px' },
   );
-  assert.deepEqual(b.figma.box, ['2:9', 'I2:9;6:2']);
+  assert.deepEqual(b.figma.box, ['I2:9;6:2', '2:9']);
   assert.equal(b.figma.fields.padding.node, 'I2:9;6:2', 'padding cites the wrapper frame that paints it');
   assert.deepEqual(b.figma.fields.padding.raw, [8, 16, 8, 16]);
   assert.equal(b.figma.fields.color.node, 'I2:9;6:3');
   assert.equal(b.figma.fields.background.node, 'I2:9;6:2');
-  assert.deepEqual(roleCandidates['buttons.primary.background'].map((c) => c.from), ['components/button-primary', 'components/button-secondary', 'components/link-cta']);
+  assert.deepEqual(roleCandidates['buttons.primary.background'].map((c) => c.from), ['components/button-primary', 'components/button-secondary', 'components/link-cta', 'components/cta-row']);
+});
+check('a full-width instance around a hug frame with an absolute background layer: values read from the layers the label sits in', () => {
+  const b = foundation.components['cta-row'];
+  assert.deepEqual(
+    { background: b.value.background, borderRadius: b.value.borderRadius, padding: b.value.padding, border: b.value.border, color: b.value.color },
+    { background: 'rgb(208, 0, 111)', borderRadius: '4px', padding: '8px 16px', border: '1px solid rgb(208, 0, 111)', color: 'rgb(255, 255, 255)' },
+  );
+  assert.equal(b.figma.fields.background.node, 'I2:10;6:7');
+  assert.equal(b.figma.fields.borderRadius.node, 'I2:10;6:7');
+  assert.equal(b.figma.fields.padding.node, 'I2:10;6:6');
+  assert.deepEqual(b.figma.box, ['I2:10;6:7', 'I2:10;6:6', '2:10']);
 });
 check('container and section padding candidates', () => {
   assert.deepEqual(roleCandidates['layout.containerMaxWidth'].map((c) => c.from), ['spacing/max-width-1200', 'spacing/width-1200', 'spacing/width-760']);
