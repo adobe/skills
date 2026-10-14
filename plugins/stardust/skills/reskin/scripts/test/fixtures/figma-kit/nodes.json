@@ -86,7 +86,7 @@
           {
             "id": "1:10", "name": "Footer", "type": "FRAME",
             "absoluteBoundingBox": { "x": 0, "y": 1440, "width": 1440, "height": 400 },
-            "fills": [{ "blendMode": "NORMAL", "type": "SOLID", "color": { "r": 0.12156863, "g": 0.22745098, "b": 0.37254903, "a": 1 } }],
+            "fills": [{ "blendMode": "NORMAL", "type": "SOLID", "color": { "r": 1, "g": 1, "b": 1, "a": 1 } }, { "blendMode": "NORMAL", "type": "SOLID", "color": { "r": 0.12156863, "g": 0.22745098, "b": 0.37254903, "a": 1 } }],
             "styles": { "fill": "S:navy" },
             "strokes": [], "effects": [],
             "layoutMode": "VERTICAL", "paddingLeft": 120, "paddingRight": 120, "paddingTop": 64, "paddingBottom": 64,

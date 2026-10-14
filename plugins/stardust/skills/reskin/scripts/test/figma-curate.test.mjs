@@ -89,6 +89,18 @@ check('explicit absent wins over an ancestor object', () => {
 check('a mapped component with no value for a probe field names the field and its kind', () => {
   rulesError(() => curate(inputs(rules((r) => { r.roles['buttons.primary'] = { component: 'button-secondary' }; return r; }))), /buttons\.primary\.background.*NONE/);
 });
+check('a button leaf can come from a single-value record (the fallback for unusual button layouts)', () => {
+  const t2 = curate(inputs(rules((r) => {
+    r.roles['buttons.primary'] = { component: 'button-secondary' };
+    r.roles['buttons.primary.background'] = { from: 'colors/brand-navy', evidence: '1:20' };
+    r.roles['buttons.primary.borderRadius'] = { from: 'radii/radius-8', evidence: '1:20' };
+    return r;
+  }))).donorTokens;
+  assert.equal(t2.buttons.primary.background, 'rgb(31, 58, 95)');
+  assert.equal(t2.buttons.primary.borderRadius, '8px');
+  assert.equal(t2.coverage.asserted, 13);
+  rulesError(() => curate(inputs(rules((r) => { r.roles['palette.pageBg'] = { from: 'colors/brand-navy', field: 'background' }; return r; }))), /single value/);
+});
 check('curations[] overrides value and records nodeRefs[path].curated', () => {
   const t2 = curate(inputs(rules((r) => { r.curations = [{ path: 'type.h2.fontWeight', to: '600', rule: 'kit spec table: h2 is semibold', evidence: '2:6' }]; return r; }))).donorTokens;
   assert.equal(t2.type.h2.fontWeight, '600');
@@ -159,6 +171,24 @@ check('every problem is reported at once', () => {
     curate(inputs(rules((r) => { r.roles['palette.bodyFg'] = { from: 'colors/x' }; delete r.roles['layout.sectionPaddingY']; return r; })));
     assert.fail('no throw');
   } catch (e) { assert.ok(e.problems.length >= 2, e.message); }
+});
+check('a curation on a path marked absent is a contradiction', () => {
+  rulesError(() => curate(inputs(rules((r) => {
+    r.roles['layout.sectionPaddingY'] = { absent: 'pads on inner frames' };
+    r.curations = [{ path: 'layout.sectionPaddingY', to: '80px', rule: 'kit spec table', evidence: '2:6' }];
+    return r;
+  }))), /curations\[0\].*absent/);
+});
+check('a pipe in a module name, anatomy or why does not break the table', () => {
+  const md = curate(inputs(rules((r) => { r.modules[0].name = 'Hero | dark'; r.modules[4].why = 'dup | of M2'; return r; }))).donorModulesMd;
+  assert.ok(md.includes('| M1 | Hero \\| dark |'));
+  assert.ok(md.includes('excluded — do not develop: dup \\| of M2 |'));
+});
+check('DESIGN.json refersTo matches the DESIGN.md frontmatter key whatever the component key', () => {
+  const o = curate(inputs(rules((r) => { r.roles['buttons.primary'] = { component: 'link-cta', evidence: '2:9' }; return r; })));
+  assert.equal(o.designJson.components[0].refersTo, 'button-primary');
+  assert.match(o.designJson.components[0].description, /link-cta/);
+  assert.ok(o.designMd.includes('  button-primary:\n'));
 });
 
 // ---- DESIGN.{md,json} and _brand-extraction.json (shape of the direct-from-phrase fixture) --------

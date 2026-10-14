@@ -149,7 +149,8 @@ check('frames: slug, size, sections sorted by y, hidden sections skipped', () =>
   assert.deepEqual(article.sections.map((s) => s.y), [0, 1200]);
 });
 check('sections: background kind, components used, instance properties without #ids', () => {
-  const [hero, features] = moduleCandidates.frames[0].sections;
+  const [hero, features, footer] = moduleCandidates.frames[0].sections;
+  assert.equal(footer.background, 'rgb(31, 58, 95)', 'two fills, white under navy: the last (top) paint is the one seen');
   assert.equal(hero.backgroundKind, 'GRADIENT_LINEAR');
   assert.equal(hero.background, null);
   assert.deepEqual(hero.components, ['Button']);

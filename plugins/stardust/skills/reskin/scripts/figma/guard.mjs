@@ -28,20 +28,25 @@ export const CURATE_OUTPUTS = [
 ];
 
 export function assertIgnored(outputs, { dir = 'stardust', cwd = process.cwd() } = {}) {
-  const tracked = [];
+  const exposed = [];
   for (const [rel, line] of outputs) {
     const path = join(dir, rel);
     const r = spawnSync('git', ['check-ignore', '-q', '--', path], { cwd, encoding: 'utf8' });
     if (r.error) throw new UsageError(`--confidential needs git to check that outputs are ignored (${r.error.code === 'ENOENT' ? 'git not found' : r.error.message})`);
     if (r.status === 128) throw new UsageError('not a git repository: --confidential needs one to check that every output is git-ignored');
-    if (r.status === 1) tracked.push({ path, line });
-    else if (r.status !== 0) throw new UsageError(`git check-ignore failed (exit ${r.status}): ${String(r.stderr).trim()}`);
+    if (r.status === 1) {
+      // check-ignore says "not ignored" for a tracked file even when a pattern matches it.
+      const tracked = spawnSync('git', ['ls-files', '--error-unmatch', '--', path], { cwd, encoding: 'utf8' }).status === 0;
+      exposed.push({ path, line, tracked });
+    } else if (r.status !== 0) throw new UsageError(`git check-ignore failed (exit ${r.status}): ${String(r.stderr).trim()}`);
   }
-  if (!tracked.length) return;
-  const lines = [...new Set(tracked.map((t) => t.line))];
+  if (!exposed.length) return;
+  const lines = [...new Set(exposed.map((t) => t.line))];
+  const tracked = exposed.filter((t) => t.tracked).map((t) => t.path);
   throw new UsageError([
-    `--confidential: ${tracked.length} output(s) would be tracked by git: ${tracked.map((t) => t.path).join(', ')}.`,
+    `--confidential: ${exposed.length} output(s) would be tracked by git: ${exposed.map((t) => t.path).join(', ')}.`,
     `Nothing was written. Add these lines to ${dir}/.gitignore (below the template; the project owns them), then re-run:`,
     ...lines,
+    ...(tracked.length ? [`Already tracked, so .gitignore alone will not do: git rm --cached -- ${tracked.join(' ')}`] : []),
   ].join('\n'));
 }

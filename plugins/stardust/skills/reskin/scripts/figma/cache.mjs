@@ -12,7 +12,7 @@ const safe = (s) => String(s).replace(/[^A-Za-z0-9._-]+/g, '-');
 
 export const currentPath = (dir) => join(dir, '.work', 'reskin', 'figma', 'current.json');
 export const readCurrent = (dir) => readJsonIf(currentPath(dir));
-export const writeCurrent = (dir, fileKey, version) => writeJson(currentPath(dir), { fileKey, version });
+export const writeCurrent = (dir, fileKey, version, confidential = false) => writeJson(currentPath(dir), { fileKey, version, ...(confidential ? { confidential: true } : {}) });
 
 export function cacheFor(dir, fileKey) {
   const root = join(dir, '.work', 'reskin', 'figma', safe(fileKey));

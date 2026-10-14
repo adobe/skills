@@ -161,6 +161,18 @@ await check('getBytes failure → FigmaError without the signed URL\'s query', a
     assert.ok(!/FIGMA_TOKEN/.test(e.message), 'storage refusals are not token advice');
   });
 });
+await check('a redirect on a token-bearing request is refused, never followed with the token', async () => {
+  reset();
+  fake.behaviors[FILE] = { status: 302, headers: { location: `${fake.base}/steal` }, body: '' };
+  await rejects(client().getJson(FILE), (e) => { assert.equal(e.exitCode, 3); assert.match(e.message, /redirect/i); });
+  assert.ok(!fake.requests.some((r) => r.path === '/steal'), 'redirect followed');
+});
+await check('FIGMA_API_BASE must be https or a loopback http URL', () => {
+  assert.throws(() => createClient({ token: TOKEN, base: 'http://example.com' }), (e) => e.code === 2 && /FIGMA_API_BASE/.test(e.message));
+  assert.throws(() => createClient({ token: TOKEN, base: 'not a url' }), (e) => e.code === 2);
+  createClient({ token: TOKEN, base: 'https://api.figma.com' });
+  createClient({ token: TOKEN, base: 'http://localhost:1234' });
+});
 await check('redact removes every occurrence of the token; empty token is a no-op', () => {
   const out = redact(`a ${TOKEN} b ${TOKEN}`, TOKEN);
   assert.ok(!out.includes(TOKEN));

@@ -4,7 +4,7 @@
 // outputs under <dir>/canon-source/. With a complete cache and no --refresh it rebuilds every output
 // from the cache: no request, no token. A run stopped part-way (a long 429) keeps what it fetched; the
 // next run for the same selection reuses the cached nodes response and image bytes.
-import { readFileSync, rmSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { cacheFor, writeCurrent } from './cache.mjs';
 import { FigmaError, UsageError } from './errors.mjs';
@@ -15,6 +15,9 @@ import { parseFigmaUrl } from './url.mjs';
 const FRAME_TYPES = new Set(['FRAME', 'SECTION', 'INSTANCE', 'COMPONENT']);
 const NOT_RENDERED = 'authored from Figma REST node data, not browser-rendered';
 const LARGE_BYTES = 5 * 1024 * 1024;
+// Frames per nodes / images request: a page frame is ~1 MB of node data and a large render.
+export const BATCH = 5;
+const batches = (ids) => Array.from({ length: Math.ceil(ids.length / BATCH) }, (_, i) => ids.slice(i * BATCH, (i + 1) * BATCH));
 
 // --frames wins; else the URL's node (a page → its top-level frames; anything else → itself); else
 // every top-level frame of every page, in document order.
@@ -31,7 +34,7 @@ function selectFrames(file, nodeId, frames) {
   return { all, discovered: all.length };
 }
 
-export async function runCapture({ url, frames = null, maxFrames = 25, refresh = false, dir = 'stardust', client, now = () => new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'), warn = (m) => process.stderr.write(`${m}\n`) }) {
+export async function runCapture({ url, frames = null, maxFrames = 25, refresh = false, confidential = false, dir = 'stardust', client, now = () => new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'), warn = (m) => process.stderr.write(`${m}\n`) }) {
   const { fileKey, mainFileKey, nodeId } = parseFigmaUrl(url);
   const cache = cacheFor(dir, fileKey);
   const request = { nodeId, frames, maxFrames };
@@ -44,7 +47,9 @@ export async function runCapture({ url, frames = null, maxFrames = 25, refresh =
     if (JSON.stringify(manifest.request) !== JSON.stringify(request)) {
       throw new UsageError(`the cache at ${cache.root} holds a different selection (node ${manifest.request.nodeId ?? 'none'}, frames ${manifest.request.frames?.join(',') ?? 'default'}, max ${manifest.request.maxFrames}); re-run with --refresh to fetch this one`);
     }
-    const written = writeOutputs({ dir, manifest, v });
+    const stalled = readdirSync(cache.root).filter((d) => d !== latest.version && existsSync(join(cache.root, d, 'selection.json')) && !existsSync(join(cache.root, d, 'manifest.json')));
+    if (stalled.length) warn(`figma-donor: a newer capture (version ${stalled.join(', ')}) stopped part-way; using the complete cached version ${latest.version}. Re-run with --refresh to finish it.`);
+    const written = writeOutputs({ dir, manifest, v, confidential });
     return { manifest, written, fromCache: true };
   }
 
@@ -64,12 +69,27 @@ export async function runCapture({ url, frames = null, maxFrames = 25, refresh =
   const resume = JSON.stringify(v.read('selection.json')) === JSON.stringify({ frames: selected });
   v.write('selection.json', { frames: selected });
 
+  // Frames go in batches; each batch is cached as it lands, so a stopped run resumes where it stopped.
   let nodes = resume ? v.read('nodes.json') : null;
-  if (nodes) endpoints.push({ name: 'nodes', status: 'ok (cached)' });
+  if (nodes) endpoints.push({ name: 'nodes', status: 'ok (cached)', calls: 0 });
   else {
-    nodes = await client.getJson(`/v1/files/${fileKey}/nodes`, { ids: selected, version });
+    let calls = 0;
+    nodes = null;
+    for (const [i, ids] of batches(selected).entries()) {
+      const part = `nodes.part-${i}.json`;
+      let got = v.read(part);
+      if (JSON.stringify(got?.ids) !== JSON.stringify(ids)) {
+        got = { ids, response: await client.getJson(`/v1/files/${fileKey}/nodes`, { ids, version }) };
+        v.write(part, got);
+        calls += 1;
+      }
+      const { nodes: some = {}, ...meta } = got.response;
+      nodes ??= { ...meta, nodes: {} };
+      for (const id of ids) nodes.nodes[id] = some[id] ?? null;
+    }
     v.write('nodes.json', nodes);
-    endpoints.push({ name: 'nodes', status: 'ok' });
+    for (let i = 0; existsSync(v.path(`nodes.part-${i}.json`)); i += 1) rmSync(v.path(`nodes.part-${i}.json`));
+    endpoints.push({ name: 'nodes', status: 'ok', calls });
   }
   const size = Buffer.byteLength(readFileSync(v.path('nodes.json')));
   if (size > LARGE_BYTES) warn(`figma-donor: the nodes response is ${(size / 1048576).toFixed(1)} MB; read it with bounded readers, or narrow --frames`);
@@ -80,28 +100,30 @@ export async function runCapture({ url, frames = null, maxFrames = 25, refresh =
     v.write('variables.json', await client.getJson(`/v1/files/${fileKey}/variables/local`, { version }));
     endpoints.push({ name: 'variables', status: 'ok' });
   } catch (e) {
-    if (!(e instanceof FigmaError) || (e.status !== 403 && e.status !== 404)) throw e;
+    // Optional and unused by curate: any API failure here is recorded, never fatal.
+    if (!(e instanceof FigmaError)) throw e;
     rmSync(v.path('variables.json'), { force: true });
-    endpoints.push({ name: 'variables', status: 'unavailable (plan)' });
+    const status = e.status === 403 ? 'unavailable (plan)' : `unavailable (${e.status ? `HTTP ${e.status}` : 'network'})`;
+    if (e.status !== 403) warn(`figma-donor: variables/local ${status}; continuing without it`);
+    endpoints.push({ name: 'variables', status });
   }
 
   const renderable = selected.filter((id) => !missing.includes(id));
   const imageMap = {};
   const pending = renderable.filter((id) => !(resume && v.has(v.imageFile(id))));
-  let urls = {};
-  if (pending.length) {
-    const res = await client.getJson(`/v1/images/${fileKey}`, { ids: pending, scale: 1, format: 'png', version });
+  let imageCalls = 0;
+  for (const ids of batches(pending)) {
+    const res = await client.getJson(`/v1/images/${fileKey}`, { ids, scale: 1, format: 'png', version });
+    imageCalls += 1;
     if (res.err) throw new FigmaError(`Figma could not render the frames: ${res.err}`, { exitCode: 3 });
-    urls = res.images || {};
+    for (const id of ids) {
+      const signed = res.images?.[id];
+      if (signed) writeFileAtomic(v.path(v.imageFile(id)), await client.getBytes(signed));
+    }
   }
-  for (const id of renderable) {
-    if (!pending.includes(id)) { imageMap[id] = v.imageFile(id); continue; }
-    if (!urls[id]) { imageMap[id] = null; continue; }
-    writeFileAtomic(v.path(v.imageFile(id)), await client.getBytes(urls[id]));
-    imageMap[id] = v.imageFile(id);
-  }
+  for (const id of renderable) imageMap[id] = v.has(v.imageFile(id)) ? v.imageFile(id) : null;
   v.write('images.json', imageMap);
-  endpoints.push({ name: 'images', status: 'ok' });
+  endpoints.push({ name: 'images', status: 'ok', calls: imageCalls });
   const notRenderable = renderable.filter((id) => !imageMap[id]);
   if (notRenderable.length) warn(`figma-donor: Figma rendered no image for ${notRenderable.join(', ')} (empty or invisible frames)`);
 
@@ -112,12 +134,12 @@ export async function runCapture({ url, frames = null, maxFrames = 25, refresh =
   };
   v.write('manifest.json', manifest);
   cache.setLatest(version);
-  const written = writeOutputs({ dir, manifest, v });
+  const written = writeOutputs({ dir, manifest, v, confidential });
   return { manifest, written, fromCache: false };
 }
 
 // Every output is a pure function of the cache: a cached re-run writes the same bytes.
-function writeOutputs({ dir, manifest, v }) {
+function writeOutputs({ dir, manifest, v, confidential = false }) {
   const file = v.read('file.json');
   const nodes = v.read('nodes.json');
   const imageMap = v.read('images.json') || {};
@@ -169,6 +191,6 @@ function writeOutputs({ dir, manifest, v }) {
     siblingCandidates: [],
     notBrowserRendered: Object.fromEntries([...written, crawlPath].map((p) => [p, NOT_RENDERED])),
   });
-  writeCurrent(dir, manifest.fileKey, manifest.version);
+  writeCurrent(dir, manifest.fileKey, manifest.version, confidential);
   return written;
 }

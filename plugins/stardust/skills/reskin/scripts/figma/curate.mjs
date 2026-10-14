@@ -81,13 +81,14 @@ export function curate({ foundation, moduleCandidates, rules, manifest, screensh
     coverage: { asserted, absent: r.absent, suspect: r.suspect },
   };
 
+  const cell = (s) => String(s ?? '').replace(/\|/g, '\\|').replace(/\s*\n\s*/g, ' ');
   const rows = r.modules.map((m) => {
     const where = `canon-source/assets/screenshots/${m.slug}.png · node ${m.frame}`;
-    if (m.status === 'excluded') return `| — | ${m.name} | ${where} | excluded — do not develop: ${m.why} |`;
+    if (m.status === 'excluded') return `| — | ${cell(m.name)} | ${where} | excluded — do not develop: ${cell(m.why)} |`;
     const parts = [`anatomy: ${m.anatomy}`];
     if (m.variants?.length) parts.push(`variants: ${m.variants.join(', ')}`);
     if (m.components?.length) parts.push(`components: ${m.components.join(', ')}`);
-    return `| ${m.id} | ${m.name} | ${where} | ${parts.join('; ')} |`;
+    return `| ${m.id} | ${cell(m.name)} | ${where} | ${cell(parts.join('; '))} |`;
   });
   const donorModulesMd = [
     mdProvenance(provenance({ at: manifest.capturedAt, readArtifacts: [`${dir}/reskin/curation-rules.json`, `${dir}/canon-source/module-candidates.json`] })),

@@ -78,8 +78,8 @@ export function buildDesign({ foundation, moduleCandidates, rules, manifest, don
     const rec = foundation.components[key];
     const variant = Object.entries(rec.variant || {}).map(([k, v]) => `${k}=${v}`).join(', ');
     components.push({
-      name, kind: 'button', refersTo: key,
-      description: `${rec.set || key}${variant ? ` (${variant})` : ''}, node ${rec.node}`,
+      name, kind: 'button', refersTo: `button-${path.split('.')[1]}`,
+      description: `${rec.set || key}${variant ? ` (${variant})` : ''}: foundation components/${key}, node ${rec.node}`,
       html: null,
       css: BUTTON_CSS.filter(([k]) => typeof css[k] === 'string').map(([k, prop]) => `${prop}: ${css[k]};`).join(' '),
     });

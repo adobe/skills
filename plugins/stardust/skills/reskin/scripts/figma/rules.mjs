@@ -142,7 +142,8 @@ export function resolveRules(rules, { foundation, moduleCandidates, screenshotIn
       if (!record) { problems.push(`roles["${path}"]: from "${src}" does not resolve to a foundation record`); return; }
       const { value, by } = normalized(file, record, path, norm);
       const last = path.split('.').at(-1);
-      const field = role.field ?? PROBE_SOURCES[path]?.field ?? (isObj(value) && last in value ? last : null);
+      // An explicit field must fit an object record; implied fields apply only to object records.
+      const field = role.field ?? (isObj(value) ? PROBE_SOURCES[path]?.field ?? (last in value ? last : null) : null);
       if (field) {
         if (!isObj(value)) { problems.push(`roles["${path}"]: ${src} is a single value; drop field "${field}"`); return; }
         if (value[field] == null) {
@@ -169,6 +170,8 @@ export function resolveRules(rules, { foundation, moduleCandidates, screenshotIn
     if (!isObj(c) || !nonEmpty(c.path) || !TOKEN_GROUPS.includes(c.path.split('.')[0])) { problems.push(`curations[${i}]: path must start with one of ${TOKEN_GROUPS.join(', ')}`); return; }
     if (typeof c.to !== 'string') { problems.push(`curations[${i}] (${c.path}): to must be a string`); return; }
     if (!nonEmpty(c.rule)) { problems.push(`curations[${i}] (${c.path}): needs the proving rule`); return; }
+    const marked = absent.find((a) => c.path === a.path || c.path.startsWith(`${a.path}.`));
+    if (marked) { problems.push(`curations[${i}] (${c.path}): the path is marked absent by roles["${marked.path}"]; keep one of them`); return; }
     curations.push({ path: c.path, to: c.to, rule: c.rule, evidence: c.evidence ?? null });
   });
 

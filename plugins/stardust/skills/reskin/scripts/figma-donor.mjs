@@ -60,8 +60,10 @@ stamp    sets <dir>/state.json designSource = { url, capturedAt, path: "<dir>/ca
          $stardust extract <content-url>) and canon-source/DESIGN.{md,json} (from curate); exit 2 otherwise.
 --confidential  for a design that must not reach git: capture and curate first check, with
          git check-ignore, every path they would write, and refuse (exit 2, nothing written, no
-         request) with the exact lines to add to <dir>/.gitignore; stamp stores designSource.url as
-         "figma:redacted" (state.json stays tracked). Needs a git repository.
+         request) with the exact lines to add to <dir>/.gitignore (or the git rm --cached a tracked
+         file needs); stamp stores designSource.url as "figma:redacted" (state.json stays tracked).
+         Sticky: after capture --confidential, curate, stamp and later captures in this dir apply it
+         too. Needs a git repository.
 --dir <d>  the stardust directory (default stardust).
 
 curation-rules.json:
@@ -150,6 +152,16 @@ async function stateLib() {
   throw err;
 }
 
+// --confidential is sticky: once a capture ran with it, curate, stamp and later captures in this
+// stardust dir behave as if it were passed (current.json records it).
+async function confidentialMode(dir, opts, log) {
+  if (opts.confidential) return true;
+  const { readCurrent } = await helper('cache');
+  if (!readCurrent(dir)?.confidential) return false;
+  log('confidential: on (set by an earlier capture --confidential)');
+  return true;
+}
+
 export async function main(argv, { env = process.env, log = console.log, warn = (m) => process.stderr.write(`${m}\n`) } = {}) {
   if (argv.includes('--help') || argv.includes('-h')) { log(HELP); return 0; }
   const { UsageError } = await helper('errors');
@@ -166,9 +178,10 @@ export async function main(argv, { env = process.env, log = console.log, warn = 
     }
     const maxFrames = intFlag(opts, 'max-frames', 25, UsageError);
     const maxWaitSec = intFlag(opts, 'max-wait', 60, UsageError);
-    if (opts.confidential) { const g = await helper('guard'); g.assertIgnored(g.CAPTURE_OUTPUTS, { dir }); }
+    const confidential = await confidentialMode(dir, opts, log);
+    if (confidential) { const g = await helper('guard'); g.assertIgnored(g.CAPTURE_OUTPUTS, { dir }); }
     const client = createClient({ token: env.FIGMA_TOKEN || '', base: env.FIGMA_API_BASE || undefined, maxWaitSec });
-    const { manifest, written, fromCache } = await runCapture({ url: positional[0], frames, maxFrames, refresh: Boolean(opts.refresh), dir, client, warn });
+    const { manifest, written, fromCache } = await runCapture({ url: positional[0], frames, maxFrames, refresh: Boolean(opts.refresh), confidential, dir, client, warn });
     const status = manifest.endpoints.map((e) => `${e.name} ${e.status}`).join(', ');
     log(`capture: ${manifest.frames.length} frame(s) of file version ${manifest.version}${fromCache ? ' from cache (no network)' : ''} → ${written.length} files under ${dir}/canon-source/ · endpoints: ${status}${manifest.cut.length ? ` · cut ${manifest.cut.length}` : ''}`);
     log(`next: read ${dir}/canon-source/role-candidates.json and module-candidates.json, author ${dir}/reskin/curation-rules.json, then run curate`);
@@ -177,7 +190,7 @@ export async function main(argv, { env = process.env, log = console.log, warn = 
 
   if (cmd === 'curate') {
     const { runCurate } = await helper('curate');
-    if (opts.confidential) { const g = await helper('guard'); g.assertIgnored(g.CURATE_OUTPUTS, { dir }); }
+    if (await confidentialMode(dir, opts, log)) { const g = await helper('guard'); g.assertIgnored(g.CURATE_OUTPUTS, { dir }); }
     const { donorTokens, inputs, written } = runCurate({ dir });
     const c = donorTokens.coverage;
     const mods = inputs.rules.modules || [];
@@ -193,7 +206,7 @@ export async function main(argv, { env = process.env, log = console.log, warn = 
     const manifest = current && cacheFor(dir, current.fileKey).version(current.version).read('manifest.json');
     if (!manifest) throw new UsageError(`no capture found under ${dir}/.work/reskin/figma/: run capture and curate before stamp`);
     const lib = await stateLib();
-    const { designSource } = stampDesignSource({ dir, donorUrl: canonicalFigmaUrl({ fileKey: manifest.fileKey, nodeId: manifest.nodeId }), capturedAt: manifest.capturedAt, confidential: Boolean(opts.confidential), stateLib: lib });
+    const { designSource } = stampDesignSource({ dir, donorUrl: canonicalFigmaUrl({ fileKey: manifest.fileKey, nodeId: manifest.nodeId }), capturedAt: manifest.capturedAt, confidential: await confidentialMode(dir, opts, log), stateLib: lib });
     log(`stamp: ${dir}/state.json designSource → ${designSource.url} (captured ${designSource.capturedAt}, path ${designSource.path})`);
     return 0;
   }

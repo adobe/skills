@@ -83,7 +83,17 @@ check('solidFill: a gradient is not a color', () => {
   assert.deepEqual(solidFill([{ type: 'GRADIENT_LINEAR', visible: true }]), { css: null, hex: null, kind: 'GRADIENT_LINEAR' });
   assert.deepEqual(solidFill([{ type: 'IMAGE', visible: true, imageRef: 'x' }]), { css: null, hex: null, kind: 'IMAGE' });
 });
-check('solidFill: the first visible paint wins; missing visible means visible', () => {
+check('solidFill: Figma lists paints bottom to top, so the last visible paint is the one seen', () => {
+  assert.equal(solidFill([{ type: 'SOLID', color: { r: 1, g: 1, b: 1, a: 1 } }, { type: 'SOLID', color: NAVY }]).css, 'rgb(31, 58, 95)');
+  assert.equal(solidFill([{ type: 'SOLID', color: BLACK }, { type: 'SOLID', visible: false, color: { r: 1, g: 0, b: 0, a: 1 } }]).css, 'rgb(0, 0, 0)');
+  assert.equal(solidFill([{ type: 'SOLID', color: NAVY }, { type: 'IMAGE', imageRef: 'x' }]).kind, 'IMAGE');
+  assert.equal(solidFill([{ type: 'GRADIENT_LINEAR' }, { type: 'SOLID', color: NAVY }]).css, 'rgb(31, 58, 95)', 'an opaque solid on top covers what is below');
+});
+check('solidFill: a translucent solid over another visible paint is a composite, not a color', () => {
+  assert.deepEqual(solidFill([{ type: 'IMAGE', imageRef: 'x' }, { type: 'SOLID', color: BLACK, opacity: 0.5 }]), { css: null, hex: null, kind: 'COMPOSITE' });
+  assert.equal(solidFill([{ type: 'SOLID', color: BLACK, opacity: 0.5 }]).css, 'rgba(0, 0, 0, 0.5)', 'alone it is a translucent color');
+});
+check('solidFill: missing visible means visible', () => {
   assert.equal(solidFill([{ type: 'SOLID', visible: false, color: { r: 1, g: 0, b: 0, a: 1 } }, { type: 'SOLID', color: BLACK }]).css, 'rgb(0, 0, 0)');
 });
 check('solidFill: paint opacity multiplies color alpha', () => {

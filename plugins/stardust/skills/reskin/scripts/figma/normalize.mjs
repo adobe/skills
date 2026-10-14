@@ -72,15 +72,24 @@ export function weightCss(n) {
   return String(Math.round(n));
 }
 
-// The first visible paint decides: a gradient or image on top is not a color, whatever lies below.
+// Figma lists paints bottom to top: the last visible paint is the one seen. A gradient or image on top
+// is not a color; a translucent solid over another visible paint is a composite, not a color either.
+export function topPaint(paints) {
+  const vis = (paints || []).filter((p) => p && p.visible !== false);
+  return vis.length ? vis[vis.length - 1] : null;
+}
+
 export function solidFill(paints) {
-  const paint = (paints || []).find((p) => p && p.visible !== false);
+  const vis = (paints || []).filter((p) => p && p.visible !== false);
+  const paint = vis[vis.length - 1];
   if (!paint) return { css: null, hex: null, kind: 'NONE' };
   if (paint.type !== 'SOLID') return { css: null, hex: null, kind: paint.type };
   const opacity = paint.opacity ?? 1;
+  const alpha = (paint.color?.a ?? 1) * opacity;
+  if (alpha < 1 && vis.length > 1) return { css: null, hex: null, kind: 'COMPOSITE' };
   return {
     css: colorToCss(paint.color, opacity),
-    hex: colorToHex({ ...paint.color, a: (paint.color?.a ?? 1) * opacity }),
+    hex: colorToHex({ ...paint.color, a: alpha }),
     kind: 'SOLID',
   };
 }

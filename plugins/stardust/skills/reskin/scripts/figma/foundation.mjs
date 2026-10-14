@@ -33,7 +33,7 @@
 // Each path: ≤ 5 candidates { from: "<file>/<key>", count, evidence: [≤ 5 node ids] }, ties by
 // document order.
 import {
-  px, paddingShorthand, radiusCss, shadowCss, lineHeightCss, letterSpacingCss, weightCss, solidFill,
+  px, paddingShorthand, radiusCss, shadowCss, lineHeightCss, letterSpacingCss, weightCss, solidFill, topPaint,
 } from './normalize.mjs';
 
 export const PROBE_PATHS = [
@@ -73,7 +73,6 @@ export function slugify(s) {
 
 const numSlug = (n) => slugify(String(Math.round(n * 100) / 100));
 const visible = (n) => n && n.visible !== false;
-const topPaint = (paints) => (paints || []).find((p) => p && p.visible !== false) || null;
 const cleanProp = (name) => String(name).replace(/#[^#]*$/, '');
 const pads = (n) => [n.paddingTop ?? 0, n.paddingRight ?? 0, n.paddingBottom ?? 0, n.paddingLeft ?? 0];
 const autoLayout = (n) => n.layoutMode && n.layoutMode !== 'NONE';

@@ -169,6 +169,46 @@ await check('no --frames, 30 top-level frames, --max-frames 25 → 5 in manifest
   assert.deepEqual(m.cut, ['9:26', '9:27', '9:28', '9:29', '9:30']);
   assert.match(r.stderr, /30 top-level frames.*25/s);
   assert.match(r.stderr, /9:26/);
+  const nodeCalls = apiCalls().filter((c) => c.path.endsWith('/nodes'));
+  const imageCalls = apiCalls().filter((c) => c.path.startsWith('/v1/images/'));
+  assert.equal(nodeCalls.length, 5, 'nodes in batches of 5');
+  assert.equal(imageCalls.length, 5, 'images in batches of 5');
+  assert.ok([...nodeCalls, ...imageCalls].every((c) => c.query.ids.split(',').length <= 5));
+  assert.equal(json(join(p, 'stardust', '.work', 'reskin', 'figma', KEY, 'v1', 'nodes.json')).nodes['9:25'].document.id, '9:25');
+});
+await check('a 429 on the third nodes batch → exit 3; the re-run fetches only the batches still missing', async () => {
+  reset();
+  fake.setFixtureDir(join(scratch, 'kit-many'));
+  fake.behaviors[`/v1/files/${KEY}/nodes`] = [{}, {}, { status: 429, headers: { 'retry-after': '3600' }, body: { status: 429, err: 'Rate limit exceeded' } }];
+  const p = project();
+  const first = await run(['capture', `https://www.figma.com/design/${KEY}/Kit`, '--max-frames', '25'], { cwd: p });
+  assert.equal(first.code, 3, first.stderr);
+  fake.requests.length = 0;
+  const again = await run(['capture', `https://www.figma.com/design/${KEY}/Kit`, '--max-frames', '25'], { cwd: p });
+  assert.equal(again.code, 0, again.stderr);
+  assert.deepEqual(apiCalls().filter((c) => c.path.endsWith('/nodes')).map((c) => c.query.ids.split(',')[0]), ['9:11', '9:16', '9:21']);
+  assert.ok(!readdirSync(join(p, 'stardust', '.work', 'reskin', 'figma', KEY, 'v1')).some((f) => f.startsWith('nodes.part-')), 'batch parts cleaned up');
+});
+await check('the optional variables call failing (HTTP 400) is recorded, not fatal', async () => {
+  reset();
+  fake.behaviors[`/v1/files/${KEY}/variables/local`] = { status: 400, body: { status: 400, err: 'Invalid scope' } };
+  const p = project();
+  const r = await run(['capture', URL_PAGE], { cwd: p });
+  assert.equal(r.code, 0, r.stderr);
+  assert.deepEqual(json(join(p, 'stardust', 'canon-source', '_crawl-log.json')).crawl.endpoints.find((e) => e.name === 'variables'), { name: 'variables', status: 'unavailable (HTTP 400)' });
+  assert.match(r.stderr, /variables\/local unavailable/);
+});
+await check('a --refresh that stopped part-way is reported on the next cached run', async () => {
+  reset();
+  const p = project();
+  assert.equal((await run(['capture', URL_PAGE], { cwd: p })).code, 0);
+  reset();
+  fake.setFixtureDir(join(scratch, 'kit-v2'));
+  fake.behaviors[`/v1/images/${KEY}`] = { status: 429, headers: { 'retry-after': '3600' }, body: { status: 429, err: 'Rate limit exceeded' } };
+  assert.equal((await run(['capture', URL_PAGE, '--refresh'], { cwd: p })).code, 3);
+  const r = await run(['capture', URL_PAGE], { cwd: p, token: '' });
+  assert.equal(r.code, 0, r.stderr);
+  assert.match(r.stderr, /version v2\) stopped part-way.*v1.*--refresh/s);
 });
 await check('missing FIGMA_TOKEN with no cache → exit 2 naming FIGMA_TOKEN and file_content:read', async () => {
   reset();
@@ -356,7 +396,7 @@ await check('--confidential in a repo that ignores nothing → exit 2, lists fou
   assert.deepEqual(walk(PC).filter((f) => !f.includes('/.git/')), []);
   assert.equal(fake.requests.length, 0);
 });
-await check('--confidential with the printed lines added → capture, curate succeed', async () => {
+await check('--confidential with the printed lines added → capture succeeds; a plain curate inherits it (sticky)', async () => {
   reset();
   const first = await run(['capture', URL_PAGE, '--confidential'], { cwd: PC, env: NOGLOBAL });
   mkdirSync(join(PC, 'stardust'), { recursive: true });
@@ -365,26 +405,42 @@ await check('--confidential with the printed lines added → capture, curate suc
   assert.equal(cap.code, 0, cap.stderr);
   mkdirSync(join(PC, 'stardust', 'reskin'), { recursive: true });
   cpSync(join(KIT, 'curation-rules.json'), join(PC, 'stardust', 'reskin', 'curation-rules.json'));
-  const blocked = await run(['curate', '--confidential'], { cwd: PC, token: '', env: NOGLOBAL });
+  assert.equal(json(join(PC, 'stardust', '.work', 'reskin', 'figma', 'current.json')).confidential, true);
+  const blocked = await run(['curate'], { cwd: PC, token: '', env: NOGLOBAL });
+  assert.match(blocked.stdout, /confidential: on/);
   assert.equal(blocked.code, 2, blocked.stderr);
   const more = printedLines(blocked.stderr);
   for (const l of ['reskin/curation-rules.json', 'reskin/donor-tokens.json', 'reskin/donor-modules.md', 'canon-source/DESIGN.md', 'canon-source/DESIGN.json', 'canon-source/_brand-extraction.json']) assert.ok(more.includes(l), `missing ${l}`);
   assert.ok(!existsSync(join(PC, 'stardust', 'reskin', 'donor-tokens.json')));
   writeFileSync(join(PC, 'stardust', '.gitignore'), `${readFileSync(join(PC, 'stardust', '.gitignore'), 'utf8')}${more.join('\n')}\n`);
-  const cur = await run(['curate', '--confidential'], { cwd: PC, token: '', env: NOGLOBAL });
+  const cur = await run(['curate'], { cwd: PC, token: '', env: NOGLOBAL });
   assert.equal(cur.code, 0, cur.stderr);
   const st = spawnSync('git', ['status', '--porcelain', '--untracked-files=all'], { cwd: PC, encoding: 'utf8', env: { ...process.env, ...NOGLOBAL } }).stdout;
   assert.deepEqual(st.trim().split('\n'), ['?? stardust/.gitignore'], st);
 });
-await check('stamp --confidential → designSource.url is "figma:redacted"; state.json stays tracked', async () => {
+await check('a plain stamp after capture --confidential → designSource.url is "figma:redacted"; state.json stays tracked', async () => {
   cpSync(PHRASE, join(PC, 'stardust'), { recursive: true, force: false, errorOnExist: false });
-  const r = await run(['stamp', '--confidential'], { cwd: PC, token: '', env: NOGLOBAL });
+  const r = await run(['stamp'], { cwd: PC, token: '', env: NOGLOBAL });
   assert.equal(r.code, 0, r.stderr);
   const s = json(join(PC, 'stardust', 'state.json'));
   assert.equal(s.designSource.url, 'figma:redacted');
   assert.ok(!JSON.stringify(s).includes(KEY));
   assert.ok(!r.stdout.includes(KEY));
   assert.equal(spawnSync('git', ['check-ignore', '-q', 'stardust/state.json'], { cwd: PC, env: { ...process.env, ...NOGLOBAL } }).status, 1);
+});
+await check('--confidential with an output already tracked → exit 2 naming git rm --cached', async () => {
+  reset();
+  const p = gitProject();
+  const g = (...a) => spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { cwd: p, env: { ...process.env, ...NOGLOBAL } });
+  mkdirSync(join(p, 'stardust', 'canon-source'), { recursive: true });
+  writeFileSync(join(p, 'stardust', 'canon-source', '_crawl-log.json'), '{}\n');
+  assert.equal(g('add', '-A').status, 0);
+  assert.equal(g('commit', '-q', '-m', 'x').status, 0);
+  writeFileSync(join(p, 'stardust', '.gitignore'), ['canon-source/foundation/', 'canon-source/role-candidates.json', 'canon-source/module-candidates.json', 'canon-source/spec-tables.json', 'canon-source/assets/screenshots/', 'canon-source/_crawl-log.json', '.work/', ''].join('\n'));
+  const r = await run(['capture', URL_PAGE, '--confidential'], { cwd: p, env: NOGLOBAL });
+  assert.equal(r.code, 2, r.stderr);
+  assert.match(r.stderr, /git rm --cached -- stardust\/canon-source\/_crawl-log\.json/);
+  assert.equal(fake.requests.length, 0);
 });
 await check('--confidential outside a git repo → exit 2', async () => {
   reset();
@@ -418,6 +474,16 @@ await check('canary: FIGMA_TOKEN=canary-<random> across capture, curate, stamp (
   assert.ok(cfake.requests.some((r) => r.headers['x-figma-token'] === CANARY), 'the canary was sent to the API');
 });
 
+await check('stamp refuses DESIGN files curate did not write for this capture', async () => {
+  const p = join(P2, 'stardust', 'canon-source', 'DESIGN.json');
+  const good = readFileSync(p);
+  const d = JSON.parse(good); d.generatedAt = '2020-01-01T00:00:00Z'; d._provenance.writtenBy = 'stardust:extract';
+  writeFileSync(p, JSON.stringify(d));
+  const r = await run(['stamp'], { cwd: P2, token: '' });
+  writeFileSync(p, good);
+  assert.equal(r.code, 2, r.stderr);
+  assert.match(r.stderr, /not written by curate for this capture.*stardust:extract/);
+});
 await check('e2e: extract fixture → capture → curate → stamp leaves everything reskin Phase 1 and direct need', async () => {
   const t = json(join(P2, 'stardust', 'reskin', 'donor-tokens.json'));
   const get = (o, p) => p.split('.').reduce((x, k) => x?.[k], o);

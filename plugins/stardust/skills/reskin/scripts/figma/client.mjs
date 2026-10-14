@@ -36,6 +36,12 @@ export function createClient({
   sleep = realSleep,
 } = {}) {
   const apiBase = String(base).replace(/\/+$/, '');
+  let parsed;
+  try { parsed = new URL(apiBase); } catch { parsed = null; }
+  const loopback = parsed && ['localhost', '127.0.0.1', '[::1]'].includes(parsed.hostname);
+  if (!parsed || !(parsed.protocol === 'https:' || (parsed.protocol === 'http:' && loopback))) {
+    throw new UsageError(`FIGMA_API_BASE must be an https URL (or http on localhost for tests), got "${apiBase}"`);
+  }
   const state = { planTier: null };
   const fail = (msg, opts) => {
     const info = Object.fromEntries(Object.entries(opts.info || {}).map(([k, v]) => [k, typeof v === 'string' ? redact(v, token) : v]));
@@ -47,7 +53,8 @@ export function createClient({
       const backoff = Math.min(1000 * 2 ** attempt, maxWaitSec * 1000);
       let res;
       try {
-        res = await fetchImpl(url, { headers: withToken ? { 'X-Figma-Token': token } : {} });
+        // Token-bearing requests never follow a redirect: fetch would forward X-Figma-Token.
+        res = await fetchImpl(url, withToken ? { headers: { 'X-Figma-Token': token }, redirect: 'manual' } : {});
       } catch (e) {
         if (attempt < maxRetries) { await sleep(backoff); continue; }
         throw fail(`Figma unreachable (${label}): ${e.cause?.code || e.message} after ${attempt + 1} attempt(s)`, { exitCode: 3, status: 0 });
@@ -57,6 +64,9 @@ export function createClient({
       if (res.ok) return res;
       const { status } = res;
       const reason = await reasonOf(res);
+      if (withToken && (res.type === 'opaqueredirect' || (status >= 300 && status < 400))) {
+        throw fail(`Figma answered ${label} with a redirect (HTTP ${status}); not followed, so the token is not forwarded. Check FIGMA_API_BASE.`, { exitCode: 3, status });
+      }
       if (!withToken && status < 500 && status !== 429) {
         throw fail(`Image download refused (HTTP ${status}) for ${label}: the signed render URL may have expired; re-run capture with --refresh.`, { exitCode: 3, status });
       }
