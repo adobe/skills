@@ -7,7 +7,7 @@
 // and no signed image URL or token in any written file or output.
 // Run: node <this file>.
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -334,6 +334,88 @@ await check('project-copy layout: figma-donor.mjs under stardust/scripts/reskin/
   });
   assert.equal(r.code, 0, r.err);
   assert.equal(json(join(P2, 'stardust', 'state.json')).designSource.path, 'stardust/canon-source/');
+});
+
+// ---- --confidential and the token canary ---------------------------------------------------------
+const NOGLOBAL = { GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' };
+const gitProject = () => {
+  const p = project();
+  const g = spawnSync('git', ['init', '-q'], { cwd: p, env: { ...process.env, ...NOGLOBAL } });
+  assert.equal(g.status, 0);
+  return p;
+};
+const printedLines = (stderr) => stderr.split('\n').filter((l) => /^(canon-source|reskin|\.work)\//.test(l));
+const PC = gitProject();
+await check('--confidential in a repo that ignores nothing → exit 2, lists foundation/, candidates, screenshots index, crawl log; nothing written', async () => {
+  reset();
+  const r = await run(['capture', URL_PAGE, '--confidential'], { cwd: PC, env: NOGLOBAL });
+  assert.equal(r.code, 2, r.stderr);
+  const lines = printedLines(r.stderr);
+  for (const l of ['canon-source/foundation/', 'canon-source/role-candidates.json', 'canon-source/module-candidates.json', 'canon-source/spec-tables.json', 'canon-source/assets/screenshots/', 'canon-source/_crawl-log.json', '.work/']) assert.ok(lines.includes(l), `missing ${l}`);
+  assert.match(r.stderr, /stardust\/\.gitignore/);
+  assert.deepEqual(walk(PC).filter((f) => !f.includes('/.git/')), []);
+  assert.equal(fake.requests.length, 0);
+});
+await check('--confidential with the printed lines added → capture, curate succeed', async () => {
+  reset();
+  const first = await run(['capture', URL_PAGE, '--confidential'], { cwd: PC, env: NOGLOBAL });
+  mkdirSync(join(PC, 'stardust'), { recursive: true });
+  writeFileSync(join(PC, 'stardust', '.gitignore'), `${printedLines(first.stderr).join('\n')}\n`);
+  const cap = await run(['capture', URL_PAGE, '--confidential'], { cwd: PC, env: NOGLOBAL });
+  assert.equal(cap.code, 0, cap.stderr);
+  mkdirSync(join(PC, 'stardust', 'reskin'), { recursive: true });
+  cpSync(join(KIT, 'curation-rules.json'), join(PC, 'stardust', 'reskin', 'curation-rules.json'));
+  const blocked = await run(['curate', '--confidential'], { cwd: PC, token: '', env: NOGLOBAL });
+  assert.equal(blocked.code, 2, blocked.stderr);
+  const more = printedLines(blocked.stderr);
+  for (const l of ['reskin/curation-rules.json', 'reskin/donor-tokens.json', 'reskin/donor-modules.md', 'canon-source/DESIGN.md', 'canon-source/DESIGN.json', 'canon-source/_brand-extraction.json']) assert.ok(more.includes(l), `missing ${l}`);
+  assert.ok(!existsSync(join(PC, 'stardust', 'reskin', 'donor-tokens.json')));
+  writeFileSync(join(PC, 'stardust', '.gitignore'), `${readFileSync(join(PC, 'stardust', '.gitignore'), 'utf8')}${more.join('\n')}\n`);
+  const cur = await run(['curate', '--confidential'], { cwd: PC, token: '', env: NOGLOBAL });
+  assert.equal(cur.code, 0, cur.stderr);
+  const st = spawnSync('git', ['status', '--porcelain', '--untracked-files=all'], { cwd: PC, encoding: 'utf8', env: { ...process.env, ...NOGLOBAL } }).stdout;
+  assert.deepEqual(st.trim().split('\n'), ['?? stardust/.gitignore'], st);
+});
+await check('stamp --confidential → designSource.url is "figma:redacted"; state.json stays tracked', async () => {
+  cpSync(PHRASE, join(PC, 'stardust'), { recursive: true, force: false, errorOnExist: false });
+  const r = await run(['stamp', '--confidential'], { cwd: PC, token: '', env: NOGLOBAL });
+  assert.equal(r.code, 0, r.stderr);
+  const s = json(join(PC, 'stardust', 'state.json'));
+  assert.equal(s.designSource.url, 'figma:redacted');
+  assert.ok(!JSON.stringify(s).includes(KEY));
+  assert.ok(!r.stdout.includes(KEY));
+  assert.equal(spawnSync('git', ['check-ignore', '-q', 'stardust/state.json'], { cwd: PC, env: { ...process.env, ...NOGLOBAL } }).status, 1);
+});
+await check('--confidential outside a git repo → exit 2', async () => {
+  reset();
+  const r = await run(['capture', URL_PAGE, '--confidential'], { cwd: project(), env: { ...NOGLOBAL, GIT_CEILING_DIRECTORIES: scratch } });
+  assert.equal(r.code, 2);
+  assert.match(r.stderr, /git repository/);
+  assert.equal(fake.requests.length, 0);
+});
+await check('canary: FIGMA_TOKEN=canary-<random> across capture, curate, stamp (success, 401 and 429 paths) appears in no stdout, stderr or file under the project', async () => {
+  const CANARY = `canary-${randomBytes(10).toString('hex')}`;
+  const cfake = await startFakeFigma({ fixtureDir: KIT, token: CANARY, behaviors: {} });
+  const seen = [];
+  const go = async (args, cwd, extra = {}) => { const r = await run(args, { cwd, token: CANARY, env: { FIGMA_API_BASE: cfake.base, ...extra } }); seen.push(r.stdout, r.stderr); return r; };
+  const ok = project();
+  cpSync(PHRASE, join(ok, 'stardust'), { recursive: true });
+  assert.equal((await go(['capture', URL_PAGE], ok)).code, 0);
+  mkdirSync(join(ok, 'stardust', 'reskin'), { recursive: true });
+  cpSync(join(KIT, 'curation-rules.json'), join(ok, 'stardust', 'reskin', 'curation-rules.json'));
+  assert.equal((await go(['curate'], ok)).code, 0);
+  assert.equal((await go(['stamp'], ok)).code, 0);
+  cfake.behaviors[`/v1/files/${KEY}`] = { status: 401, body: { status: 401, err: `token ${CANARY} is expired` } };
+  const denied = project();
+  assert.equal((await go(['capture', URL_PAGE], denied)).code, 3);
+  delete cfake.behaviors[`/v1/files/${KEY}`];
+  cfake.behaviors[`/v1/images/${KEY}`] = { status: 429, headers: { 'retry-after': '9999' }, body: { status: 429, err: `limit for ${CANARY}` } };
+  const limited = project();
+  assert.equal((await go(['capture', URL_PAGE], limited)).code, 3);
+  await cfake.close();
+  assert.ok(seen.every((s) => !s.includes(CANARY)), 'canary in output');
+  for (const p of [ok, denied, limited]) for (const f of walk(p)) assert.ok(!readFileSync(f).toString('latin1').includes(CANARY), `canary in ${relative(p, f)}`);
+  assert.ok(cfake.requests.some((r) => r.headers['x-figma-token'] === CANARY), 'the canary was sent to the API');
 });
 
 await check('a copy without the figma/ helpers: --help still answers; a command exits 2 naming cp -R', async () => {

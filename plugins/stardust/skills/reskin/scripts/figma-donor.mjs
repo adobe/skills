@@ -24,9 +24,9 @@ const HERE = dirname(SELF);
 
 export const HELP = `Usage:
   node figma-donor.mjs capture <figma-url> [--frames <id,id>] [--max-frames 25] [--refresh]
-                       [--max-wait 60] [--dir stardust]
-  node figma-donor.mjs curate [--dir stardust]
-  node figma-donor.mjs stamp [--dir stardust]
+                       [--max-wait 60] [--confidential] [--dir stardust]
+  node figma-donor.mjs curate [--confidential] [--dir stardust]
+  node figma-donor.mjs stamp [--confidential] [--dir stardust]
 
 Figma as a reskin design donor. Token: FIGMA_TOKEN, a Figma personal access token with the
 file_content:read scope (file_variables:read is optional; without it variables are recorded as
@@ -58,6 +58,10 @@ stamp    sets <dir>/state.json designSource = { url, capturedAt, path: "<dir>/ca
          nothing else, through the master skill's state.mjs (beside the scripts: the plugin tree, or
          stardust/scripts/stardust/state.mjs in a project copy). Needs state.json (from
          $stardust extract <content-url>) and canon-source/DESIGN.{md,json} (from curate); exit 2 otherwise.
+--confidential  for a design that must not reach git: capture and curate first check, with
+         git check-ignore, every path they would write, and refuse (exit 2, nothing written, no
+         request) with the exact lines to add to <dir>/.gitignore; stamp stores designSource.url as
+         "figma:redacted" (state.json stays tracked). Needs a git repository.
 --dir <d>  the stardust directory (default stardust).
 
 curation-rules.json:
@@ -88,9 +92,9 @@ Exit codes: 0 ok · 1 validation or curate assertion failed · 2 usage, setup or
             · 3 blocked (401/403, a 429 wait over --max-wait, 5xx after retries).`;
 
 const SPEC = {
-  capture: { values: ['--frames', '--max-frames', '--max-wait', '--dir'], bools: ['--refresh'], positional: ['<figma-url>'] },
-  curate: { values: ['--dir'], bools: [], positional: [] },
-  stamp: { values: ['--dir'], bools: [], positional: [] },
+  capture: { values: ['--frames', '--max-frames', '--max-wait', '--dir'], bools: ['--refresh', '--confidential'], positional: ['<figma-url>'] },
+  curate: { values: ['--dir'], bools: ['--confidential'], positional: [] },
+  stamp: { values: ['--dir'], bools: ['--confidential'], positional: [] },
 };
 
 export function parseArgs(argv, UsageError) {
@@ -162,6 +166,7 @@ export async function main(argv, { env = process.env, log = console.log, warn = 
     }
     const maxFrames = intFlag(opts, 'max-frames', 25, UsageError);
     const maxWaitSec = intFlag(opts, 'max-wait', 60, UsageError);
+    if (opts.confidential) { const g = await helper('guard'); g.assertIgnored(g.CAPTURE_OUTPUTS, { dir }); }
     const client = createClient({ token: env.FIGMA_TOKEN || '', base: env.FIGMA_API_BASE || undefined, maxWaitSec });
     const { manifest, written, fromCache } = await runCapture({ url: positional[0], frames, maxFrames, refresh: Boolean(opts.refresh), dir, client, warn });
     const status = manifest.endpoints.map((e) => `${e.name} ${e.status}`).join(', ');
@@ -172,6 +177,7 @@ export async function main(argv, { env = process.env, log = console.log, warn = 
 
   if (cmd === 'curate') {
     const { runCurate } = await helper('curate');
+    if (opts.confidential) { const g = await helper('guard'); g.assertIgnored(g.CURATE_OUTPUTS, { dir }); }
     const { donorTokens, inputs, written } = runCurate({ dir });
     const c = donorTokens.coverage;
     const mods = inputs.rules.modules || [];
@@ -187,7 +193,7 @@ export async function main(argv, { env = process.env, log = console.log, warn = 
     const manifest = current && cacheFor(dir, current.fileKey).version(current.version).read('manifest.json');
     if (!manifest) throw new UsageError(`no capture found under ${dir}/.work/reskin/figma/: run capture and curate before stamp`);
     const lib = await stateLib();
-    const { designSource } = stampDesignSource({ dir, donorUrl: canonicalFigmaUrl({ fileKey: manifest.fileKey, nodeId: manifest.nodeId }), capturedAt: manifest.capturedAt, stateLib: lib });
+    const { designSource } = stampDesignSource({ dir, donorUrl: canonicalFigmaUrl({ fileKey: manifest.fileKey, nodeId: manifest.nodeId }), capturedAt: manifest.capturedAt, confidential: Boolean(opts.confidential), stateLib: lib });
     log(`stamp: ${dir}/state.json designSource → ${designSource.url} (captured ${designSource.capturedAt}, path ${designSource.path})`);
     return 0;
   }
