@@ -418,6 +418,22 @@ await check('canary: FIGMA_TOKEN=canary-<random> across capture, curate, stamp (
   assert.ok(cfake.requests.some((r) => r.headers['x-figma-token'] === CANARY), 'the canary was sent to the API');
 });
 
+await check('e2e: extract fixture → capture → curate → stamp leaves everything reskin Phase 1 and direct need', async () => {
+  const t = json(join(P2, 'stardust', 'reskin', 'donor-tokens.json'));
+  const get = (o, p) => p.split('.').reduce((x, k) => x?.[k], o);
+  const PROBES = ['palette.pageBg', 'palette.bodyFg', 'palette.headingFg', 'type.family', 'type.body.fontSize', 'type.display.fontWeight', 'buttons.primary.background', 'buttons.primary.color', 'buttons.primary.borderRadius', 'buttons.primary.padding', 'buttons.primary.fontSize', 'layout.containerMaxWidth', 'layout.sectionPaddingY'];
+  for (const p of PROBES) assert.ok(typeof get(t, p) === 'string' || t.coverage.absent.some((a) => a.path === p), p);
+  for (const f of ['reskin/donor-modules.md', 'canon-source/DESIGN.md', 'canon-source/DESIGN.json', 'canon-source/_brand-extraction.json', 'canon-source/assets/screenshots/home.png']) assert.ok(existsSync(join(P2, 'stardust', f)), f);
+  const s = json(join(P2, 'stardust', 'state.json'));
+  assert.equal(s.designSource.path, 'stardust/canon-source/');
+  assert.ok(s.designSource.url.startsWith('https://www.figma.com/design/'));
+  for (const script of [SCRIPT, join(P2, 'stardust', 'scripts', 'reskin', 'figma-donor.mjs')]) {
+    const r = spawnSync(process.execPath, [script, '--help'], { cwd: P2, encoding: 'utf8' });
+    assert.equal(r.status, 0, script);
+    assert.match(r.stdout, /Usage:/);
+  }
+});
+
 await check('a copy without the figma/ helpers: --help still answers; a command exits 2 naming cp -R', async () => {
   const lone = join(scratch, 'lone');
   mkdirSync(lone, { recursive: true });
