@@ -258,6 +258,84 @@ await check('--help documents curate and the curation-rules.json schema', async 
   const r = await run(['--help'], { cwd: project() });
   for (const s of ['curate', 'curation-rules.json', '"roles"', 'normalizations', 'lineHeightUnitless', 'absent']) assert.ok(r.stdout.includes(s), `help lacks ${s}`);
 });
+// ---- stamp ---------------------------------------------------------------------------------------
+const PHRASE = join(HERE, '..', '..', '..', '..', 'evals', 'direct-from-phrase', 'fixture', 'stardust');
+const STATE_MJS = join(HERE, '..', '..', '..', 'stardust', 'scripts', 'state.mjs');
+const extracted = async () => {
+  reset();
+  const p = project();
+  cpSync(PHRASE, join(p, 'stardust'), { recursive: true });
+  assert.equal((await run(['capture', URL_PAGE], { cwd: p })).code, 0);
+  return p;
+};
+const curated = async () => {
+  const p = await extracted();
+  mkdirSync(join(p, 'stardust', 'reskin'), { recursive: true });
+  cpSync(join(KIT, 'curation-rules.json'), join(p, 'stardust', 'reskin', 'curation-rules.json'));
+  assert.equal((await run(['curate'], { cwd: p, token: '' })).code, 0);
+  return p;
+};
+await check('stamp: no state.json → exit 2 naming "extract <content-url>"', async () => {
+  const r = await run(['stamp'], { cwd: P1, token: '' });
+  assert.equal(r.code, 2, r.stderr);
+  assert.match(r.stderr, /extract <content-url>/);
+});
+await check('stamp: no DESIGN files → exit 2 naming curate', async () => {
+  const p = await extracted();
+  const before = readFileSync(join(p, 'stardust', 'state.json'));
+  const r = await run(['stamp'], { cwd: p, token: '' });
+  assert.equal(r.code, 2);
+  assert.match(r.stderr, /curate/);
+  assert.deepEqual(readFileSync(join(p, 'stardust', 'state.json')), before);
+});
+const P2 = await curated();
+const stateBefore = json(join(P2, 'stardust', 'state.json'));
+let stamped;
+await check('stamp writes designSource only; pages, site, flow, direction unchanged', async () => {
+  const r = await run(['stamp'], { cwd: P2, token: '' });
+  assert.equal(r.code, 0, r.stderr);
+  stamped = json(join(P2, 'stardust', 'state.json'));
+  const strip = ({ _provenance, designSource, ...rest }) => rest;
+  assert.deepEqual(strip(stamped), strip(stateBefore));
+  const m = json(join(P2, 'stardust', '.work', 'reskin', 'figma', KEY, 'v1', 'manifest.json'));
+  assert.deepEqual(stamped.designSource, { url: `https://www.figma.com/design/${KEY}?node-id=0-1`, capturedAt: m.capturedAt, path: 'stardust/canon-source/' });
+  assert.deepEqual(Object.keys(stamped).slice(0, 3), ['_provenance', 'site', 'designSource']);
+  assert.match(r.stdout, /designSource/);
+});
+await check('_provenance.writtenBy is stardust:reskin', () => {
+  assert.equal(stamped._provenance.writtenBy, 'stardust:reskin');
+  assert.notEqual(stamped._provenance.writtenAt, stateBefore._provenance.writtenAt);
+});
+await check('direct Setup preconditions hold: ≥1 extracted page, current/_brand-extraction.json, designSource.path resolves, both DESIGN files exist', () => {
+  assert.ok(stamped.pages.some((pg) => pg.status === 'extracted'));
+  assert.ok(existsSync(join(P2, 'stardust', 'current', '_brand-extraction.json')));
+  assert.ok(existsSync(join(P2, stamped.designSource.path)));
+  for (const f of ['DESIGN.md', 'DESIGN.json']) assert.ok(existsSync(join(P2, stamped.designSource.path, f)), f);
+});
+await check('stamp again: same designSource, exit 0', async () => {
+  const r = await run(['stamp'], { cwd: P2, token: '' });
+  assert.equal(r.code, 0, r.stderr);
+  assert.deepEqual(json(join(P2, 'stardust', 'state.json')).designSource, stamped.designSource);
+});
+await check('project-copy layout: figma-donor.mjs under stardust/scripts/reskin/ finds stardust/scripts/stardust/state.mjs', async () => {
+  const copy = join(P2, 'stardust', 'scripts', 'reskin');
+  cpSync(join(HERE, '..'), copy, { recursive: true });
+  const r0 = await new Promise((resolve) => {
+    const c = spawn(process.execPath, [join('stardust', 'scripts', 'reskin', 'figma-donor.mjs'), 'stamp'], { cwd: P2 });
+    let err = ''; c.stderr.on('data', (d) => { err += d; }); c.on('close', (code) => resolve({ code, err }));
+  });
+  assert.equal(r0.code, 2, 'no state.mjs copy yet');
+  assert.match(r0.err, /state\.mjs/);
+  mkdirSync(join(P2, 'stardust', 'scripts', 'stardust'), { recursive: true });
+  cpSync(STATE_MJS, join(P2, 'stardust', 'scripts', 'stardust', 'state.mjs'));
+  const r = await new Promise((resolve) => {
+    const c = spawn(process.execPath, [join('stardust', 'scripts', 'reskin', 'figma-donor.mjs'), 'stamp'], { cwd: P2 });
+    let err = ''; c.stderr.on('data', (d) => { err += d; }); c.on('close', (code) => resolve({ code, err }));
+  });
+  assert.equal(r.code, 0, r.err);
+  assert.equal(json(join(P2, 'stardust', 'state.json')).designSource.path, 'stardust/canon-source/');
+});
+
 await check('a copy without the figma/ helpers: --help still answers; a command exits 2 naming cp -R', async () => {
   const lone = join(scratch, 'lone');
   mkdirSync(lone, { recursive: true });
@@ -273,7 +351,9 @@ await check('a copy without the figma/ helpers: --help still answers; a command 
   rmSync(lone, { recursive: true, force: true });
 });
 await check('signed image URLs and the token appear in no written file and no output', () => {
-  const files = walk(scratch).filter((f) => !f.includes(`${'kit-'}`));
+  const ours = /\/stardust\/(canon-source|reskin|\.work)\/|\/stardust\/state\.json$/;
+  const files = walk(scratch).filter((f) => ours.test(f));
+  assert.ok(files.length > 20, `scanned ${files.length} files`);
   for (const f of files) {
     const s = readFileSync(f).toString('latin1');
     assert.ok(!s.includes('X-Amz-Signature') && !s.includes('fixture-signature') && !s.includes('/img/'), `signed URL in ${relative(scratch, f)}`);

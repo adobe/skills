@@ -6,6 +6,7 @@
 //   curate   offline: foundation + reskin/curation-rules.json → reskin/donor-tokens.json,
 //            reskin/donor-modules.md and canon-source/DESIGN.{md,json} + _brand-extraction.json
 //            (figma/rules.mjs documents the rules, figma/curate.mjs and figma/design.mjs the outputs).
+//   stamp    state.json designSource only, through the master skill's state.mjs (figma/stamp.mjs).
 // The token comes from FIGMA_TOKEN only (never a flag, never logged), sent as X-Figma-Token to the
 // Figma API base (FIGMA_API_BASE overrides it for tests); image bytes come from signed storage URLs
 // fetched without it, and no signed URL is ever written to disk.
@@ -14,15 +15,18 @@
 // --help answers before any helper import, so it works even from a partial copy of the scripts.
 // Exit codes: 0 ok · 1 validation or curate assertion failed · 2 usage, setup or 404 · 3 blocked
 // (401/403, a 429 wait over --max-wait, 5xx after retries).
-import { realpathSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { existsSync, realpathSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const SELF = fileURLToPath(import.meta.url);
+const HERE = dirname(SELF);
 
 export const HELP = `Usage:
   node figma-donor.mjs capture <figma-url> [--frames <id,id>] [--max-frames 25] [--refresh]
                        [--max-wait 60] [--dir stardust]
   node figma-donor.mjs curate [--dir stardust]
+  node figma-donor.mjs stamp [--dir stardust]
 
 Figma as a reskin design donor. Token: FIGMA_TOKEN, a Figma personal access token with the
 file_content:read scope (file_variables:read is optional; without it variables are recorded as
@@ -50,6 +54,10 @@ curate   offline and deterministic: canon-source/foundation + module-candidates.
          node per row) and the descriptive design files direct reads: <dir>/canon-source/DESIGN.json,
          DESIGN.md and _brand-extraction.json (prose only from rules.design). Every rule problem is
          listed at once (exit 1). Re-run after any capture or rules change.
+stamp    sets <dir>/state.json designSource = { url, capturedAt, path: "<dir>/canon-source/" } and
+         nothing else, through the master skill's state.mjs (beside the scripts: the plugin tree, or
+         stardust/scripts/stardust/state.mjs in a project copy). Needs state.json (from
+         $stardust extract <content-url>) and canon-source/DESIGN.{md,json} (from curate); exit 2 otherwise.
 --dir <d>  the stardust directory (default stardust).
 
 curation-rules.json:
@@ -82,6 +90,7 @@ Exit codes: 0 ok · 1 validation or curate assertion failed · 2 usage, setup or
 const SPEC = {
   capture: { values: ['--frames', '--max-frames', '--max-wait', '--dir'], bools: ['--refresh'], positional: ['<figma-url>'] },
   curate: { values: ['--dir'], bools: [], positional: [] },
+  stamp: { values: ['--dir'], bools: [], positional: [] },
 };
 
 export function parseArgs(argv, UsageError) {
@@ -125,6 +134,18 @@ async function helper(name) {
   }
 }
 
+// state.mjs lives in the master skill: the plugin tree (skills/stardust/scripts/) or, in a project
+// copy, stardust/scripts/stardust/ beside stardust/scripts/reskin/.
+async function stateLib() {
+  for (const rel of [['..', '..', 'stardust', 'scripts', 'state.mjs'], ['..', 'stardust', 'state.mjs']]) {
+    const p = join(HERE, ...rel);
+    if (existsSync(p)) return import(pathToFileURL(p).href);
+  }
+  const err = new Error('state.mjs not found beside the scripts: copy it with cp <plugin>/skills/stardust/scripts/state.mjs stardust/scripts/stardust/ (reskin Setup step 3)');
+  err.code = 2;
+  throw err;
+}
+
 export async function main(argv, { env = process.env, log = console.log, warn = (m) => process.stderr.write(`${m}\n`) } = {}) {
   if (argv.includes('--help') || argv.includes('-h')) { log(HELP); return 0; }
   const { UsageError } = await helper('errors');
@@ -157,6 +178,17 @@ export async function main(argv, { env = process.env, log = console.log, warn = 
     const excluded = mods.filter((m) => m.status === 'excluded').length;
     log(`curate: ${c.asserted}/13 probe paths asserted (${c.absent.filter((a) => a.probe).length} absent, ${c.suspect.length} suspect) · ${mods.length - excluded} module(s), ${excluded} excluded → ${written.join(', ')}`);
     for (const a of c.absent.filter((x) => x.probe)) log(`  absent ${a.path}: ${a.why}`);
+    return 0;
+  }
+
+  if (cmd === 'stamp') {
+    const [{ stampDesignSource }, { readCurrent, cacheFor }, { canonicalFigmaUrl }] = await Promise.all([helper('stamp'), helper('cache'), helper('url')]);
+    const current = readCurrent(dir);
+    const manifest = current && cacheFor(dir, current.fileKey).version(current.version).read('manifest.json');
+    if (!manifest) throw new UsageError(`no capture found under ${dir}/.work/reskin/figma/: run capture and curate before stamp`);
+    const lib = await stateLib();
+    const { designSource } = stampDesignSource({ dir, donorUrl: canonicalFigmaUrl({ fileKey: manifest.fileKey, nodeId: manifest.nodeId }), capturedAt: manifest.capturedAt, stateLib: lib });
+    log(`stamp: ${dir}/state.json designSource → ${designSource.url} (captured ${designSource.capturedAt}, path ${designSource.path})`);
     return 0;
   }
   return 2;

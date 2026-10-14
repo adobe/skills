@@ -72,7 +72,7 @@ Run the project copies under `stardust/scripts/<skill>/`. Read this before `--he
 - `reskin/capture-content.mjs` — capture source content model — `--url <u> --out <dir> [--scope 'a,b']`
 - `reskin/dom-equality.mjs` — content gate, source vs rendered — `--source <u|f> --rendered <u|f> --report <p>`
 - `reskin/donor-probe.mjs` — design-adoption gate — `--tokens <donor.json> --rendered <u|f> [--spec <json>]`
-- `reskin/figma-donor.mjs` — Figma donor capture — `capture <figma-url> [--frames <ids>] [--refresh]`
+- `reskin/figma-donor.mjs` — Figma donor — `capture <figma-url> [--frames <ids>] [--refresh]`; `curate`; `stamp`
 - `reskin/slot-coverage.mjs` — slot coverage gate — `--model <content-model.json> --rendered <u|f>`
 - `reskin/source-normalize.mjs` — default normalize ledger — no flags
 - `rollout/assemble.mjs` — sitemap, robots, manifest — `[--out stardust/rollout] [--canon <dir>] [--verify-origin <o>]`
