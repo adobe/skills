@@ -50,7 +50,7 @@ await check('--help: exit 0, usage, nothing written, no network', async () => {
   const r = await run(['--help'], { cwd });
   assert.equal(r.code, 0, r.stderr);
   assert.match(r.stdout, /usage/i);
-  for (const s of ['capture', '--frames', '--max-frames', '--refresh', '--max-wait', '--dir', 'FIGMA_TOKEN', 'Exit codes']) assert.ok(r.stdout.includes(s), `help lacks ${s}`);
+  for (const s of ['capture', '--frames', '--max-frames', '--refresh', '--list', '--max-wait', '--dir', 'FIGMA_TOKEN', 'Exit codes']) assert.ok(r.stdout.includes(s), `help lacks ${s}`);
   assert.deepEqual(walk(cwd), []);
   assert.equal(fake.requests.length, 0);
 });
@@ -150,7 +150,7 @@ await check('--frames picks frames by id in either form', async () => {
   assert.deepEqual(json(join(p, 'stardust', '.work', 'reskin', 'figma', KEY, 'v1', 'manifest.json')).frames, ['1:2']);
   assert.equal(apiCalls()[1].query.ids, '1:2');
 });
-await check('no --frames, 30 top-level frames, --max-frames 25 → 5 in manifest.cut and a stderr warning', async () => {
+await check('a page node-id with 30 top-level frames, --max-frames 25 → 5 in manifest.cut and a stderr warning', async () => {
   const many = join(scratch, 'kit-many');
   cpSync(KIT, many, { recursive: true });
   const frames = Array.from({ length: 30 }, (_, i) => ({ id: `9:${i + 1}`, name: `Page ${i + 1}`, type: 'FRAME', absoluteBoundingBox: { x: i * 1500, y: 0, width: 1440, height: 900 } }));
@@ -162,7 +162,7 @@ await check('no --frames, 30 top-level frames, --max-frames 25 → 5 in manifest
   reset();
   fake.setFixtureDir(many);
   const p = project();
-  const r = await run(['capture', `https://www.figma.com/design/${KEY}/Kit`, '--max-frames', '25'], { cwd: p });
+  const r = await run(['capture', `https://www.figma.com/design/${KEY}/Kit?node-id=0-1`, '--max-frames', '25'], { cwd: p });
   assert.equal(r.code, 0, r.stderr);
   const m = json(join(p, 'stardust', '.work', 'reskin', 'figma', KEY, 'v1', 'manifest.json'));
   assert.equal(m.frames.length, 25);
@@ -176,15 +176,51 @@ await check('no --frames, 30 top-level frames, --max-frames 25 → 5 in manifest
   assert.ok([...nodeCalls, ...imageCalls].every((c) => c.query.ids.split(',').length <= 5));
   assert.equal(json(join(p, 'stardust', '.work', 'reskin', 'figma', KEY, 'v1', 'nodes.json')).nodes['9:25'].document.id, '9:25');
 });
+await check('no node-id and no --frames on a file with more frames than --max-frames → exit 2 pointing at --list; nothing captured', async () => {
+  reset();
+  fake.setFixtureDir(join(scratch, 'kit-many'));
+  const p = project();
+  const r = await run(['capture', `https://www.figma.com/design/${KEY}/Kit`, '--max-frames', '25'], { cwd: p });
+  assert.equal(r.code, 2, r.stderr);
+  assert.match(r.stderr, /30 top-level frames/);
+  assert.match(r.stderr, /--list/);
+  assert.match(r.stderr, /--frames/);
+  assert.ok(!existsSync(join(p, 'stardust', 'canon-source')));
+  assert.deepEqual(apiCalls().map((c) => c.path), [`/v1/files/${KEY}`]);
+});
+await check('capture --list: one files call, every page and its top-level frames printed, nothing captured', async () => {
+  reset();
+  const p = project();
+  const r = await run(['capture', `https://www.figma.com/design/${KEY}/Kit`, '--list'], { cwd: p });
+  assert.equal(r.code, 0, r.stderr);
+  assert.deepEqual(apiCalls().map((c) => [c.path, c.query.depth]), [[`/v1/files/${KEY}`, '2']]);
+  const lines = r.stdout.split('\n');
+  assert.ok(lines.includes('0:1  Pages  (2)'), r.stdout);
+  assert.ok(lines.includes('  1:2  FRAME  1440x1840  Home'), r.stdout);
+  assert.ok(lines.includes('0:2  Components  (1)'), r.stdout);
+  assert.ok(lines.includes('  3:1  COMPONENT_SET  400x120  Button'), r.stdout);
+  assert.match(r.stdout, /2 pages, 3 top-level nodes, file version v1/);
+  assert.ok(!existsSync(join(p, 'stardust', 'canon-source')));
+  assert.ok(!existsSync(join(p, 'stardust', '.work', 'reskin', 'figma', 'current.json')));
+  assert.ok(!existsSync(join(p, 'stardust', '.work', 'reskin', 'figma', KEY, 'latest.json')));
+});
+await check('capture --list after a capture: from cache, no request, no token', async () => {
+  reset();
+  const r = await run(['capture', URL_PAGE, '--list'], { cwd: P1, token: '' });
+  assert.equal(r.code, 0, r.stderr);
+  assert.equal(fake.requests.length, 0);
+  assert.match(r.stdout, /from cache/);
+  assert.match(r.stdout, /  1:9  FRAME  1440x1800  Article/);
+});
 await check('a 429 on the third nodes batch → exit 3; the re-run fetches only the batches still missing', async () => {
   reset();
   fake.setFixtureDir(join(scratch, 'kit-many'));
   fake.behaviors[`/v1/files/${KEY}/nodes`] = [{}, {}, { status: 429, headers: { 'retry-after': '3600' }, body: { status: 429, err: 'Rate limit exceeded' } }];
   const p = project();
-  const first = await run(['capture', `https://www.figma.com/design/${KEY}/Kit`, '--max-frames', '25'], { cwd: p });
+  const first = await run(['capture', `https://www.figma.com/design/${KEY}/Kit?node-id=0-1`, '--max-frames', '25'], { cwd: p });
   assert.equal(first.code, 3, first.stderr);
   fake.requests.length = 0;
-  const again = await run(['capture', `https://www.figma.com/design/${KEY}/Kit`, '--max-frames', '25'], { cwd: p });
+  const again = await run(['capture', `https://www.figma.com/design/${KEY}/Kit?node-id=0-1`, '--max-frames', '25'], { cwd: p });
   assert.equal(again.code, 0, again.stderr);
   assert.deepEqual(apiCalls().filter((c) => c.path.endsWith('/nodes')).map((c) => c.query.ids.split(',')[0]), ['9:11', '9:16', '9:21']);
   assert.ok(!readdirSync(join(p, 'stardust', '.work', 'reskin', 'figma', KEY, 'v1')).some((f) => f.startsWith('nodes.part-')), 'batch parts cleaned up');

@@ -162,6 +162,12 @@ check('remote component listed, not chased', () => assert.deepEqual(moduleCandid
 check('a TEXT node holding a JSON token table is a spec table; plain text is not', () => {
   assert.deepEqual(specTables, [{ node: '2:6', name: 'Token table', json: { 'color/brand/primary': '#1f3a5f', 'space/section': '80px' } }]);
 });
+check('frames record the kit page they sit on; a deeper node has no page', () => {
+  assert.deepEqual(moduleCandidates.frames.map((f) => f.page), [{ node: '0:1', name: 'Pages' }, { node: '0:1', name: 'Pages' }]);
+  const container = nodes.nodes['1:2'].document.children[0].children[0];
+  const r = buildFoundation({ file, nodes: { ...nodes, nodes: { ...nodes.nodes, [container.id]: { document: container } } }, frameIds: [container.id] });
+  assert.equal(r.moduleCandidates.frames[0].page, null);
+});
 check('a frame missing from the nodes response is reported, not fatal', () => {
   const r = buildFoundation({ file, nodes: { ...nodes, nodes: { ...nodes.nodes, '1:9': null } }, frameIds: ['1:2', '1:9'] });
   assert.deepEqual(r.moduleCandidates.missing, ['1:9']);

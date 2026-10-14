@@ -63,6 +63,12 @@ export async function runCapture({ url, frames = null, maxFrames = 25, refresh =
 
   const { all, discovered } = selectFrames(file, nodeId, frames);
   if (!all.length) throw new UsageError('no top-level frames to capture: pass --frames <id,id> or a URL with a node-id');
+  // A whole file is only captured when it fits: a component kit has hundreds of documentation frames,
+  // and its first ones in document order are covers and trackers, not modules.
+  if (!frames?.length && !nodeId && all.length > maxFrames) {
+    const pages = (file.document?.children || []).length;
+    throw new UsageError(`${all.length} top-level frames across ${pages} pages, more than --max-frames ${maxFrames}: list them with capture <figma-url> --list, then pass the foundation frames and one representative frame per module with --frames <id,id> (or use a page's node-id URL)`);
+  }
   const selected = all.slice(0, maxFrames);
   const cut = all.slice(maxFrames);
   if (cut.length) warn(`figma-donor: ${discovered} top-level frames; capturing the first ${selected.length} (--max-frames ${maxFrames}). Cut: ${cut.join(', ')}`);
@@ -136,6 +142,35 @@ export async function runCapture({ url, frames = null, maxFrames = 25, refresh =
   cache.setLatest(version);
   const written = writeOutputs({ dir, manifest, v, confidential });
   return { manifest, written, fromCache: false };
+}
+
+// capture --list: every page and its visible top-level nodes, from the cached file when there is one
+// (no request, no token), else one files depth=2 call cached like a capture's. Writes no output.
+export async function listInventory({ url, refresh = false, dir = 'stardust', client }) {
+  const { fileKey } = parseFigmaUrl(url);
+  const cache = cacheFor(dir, fileKey);
+  const latest = cache.latest();
+  let file = latest && !refresh ? cache.version(latest.version).read('file.json') : null;
+  const fromCache = Boolean(file);
+  if (!file) {
+    file = await client.getJson(`/v1/files/${fileKey}`, { depth: 2 });
+    if (file.version) cache.version(String(file.version)).write('file.json', file);
+  }
+  const clean = (s) => String(s ?? '').replace(/\s+/g, ' ').trim();
+  const lines = [];
+  let count = 0;
+  const pages = file.document?.children || [];
+  for (const p of pages) {
+    const kids = (p.children || []).filter((c) => c.visible !== false);
+    count += kids.length;
+    lines.push(`${p.id}  ${clean(p.name)}  (${kids.length})`);
+    for (const c of kids) {
+      const b = c.absoluteBoundingBox || {};
+      lines.push(`  ${c.id}  ${c.type}  ${Math.round(b.width ?? 0)}x${Math.round(b.height ?? 0)}  ${clean(c.name)}`);
+    }
+  }
+  lines.push(`${pages.length} pages, ${count} top-level nodes, file version ${file.version}${fromCache ? ' (from cache, no network)' : ''}`);
+  return { lines, version: file.version, fromCache };
 }
 
 // Every output is a pure function of the cache: a cached re-run writes the same bytes.

@@ -281,6 +281,9 @@ export function buildFoundation({ file, nodes, frameIds }) {
   const frames = [];
   const missing = [];
   const usedSlugs = new Set();
+  // Top-level nodes → their page (CANVAS), so a component kit's modules map to the page that documents them.
+  const pageOf = new Map();
+  for (const p of file?.document?.children || []) for (const c of p.children || []) pageOf.set(c.id, { node: p.id, name: p.name });
 
   const addColor = (paints, node, usage, style) => {
     const f = solidFill(paints);
@@ -421,7 +424,7 @@ export function buildFoundation({ file, nodes, frameIds }) {
     let slug = base;
     for (let i = 2; usedSlugs.has(slug); i += 1) slug = `${base}-${i}`;
     usedSlugs.add(slug);
-    frames.push({ node: root.id, name: root.name, slug, width: root.absoluteBoundingBox?.width ?? 0, height: root.absoluteBoundingBox?.height ?? 0, sections });
+    frames.push({ node: root.id, name: root.name, page: pageOf.get(root.id) ?? null, slug, width: root.absoluteBoundingBox?.width ?? 0, height: root.absoluteBoundingBox?.height ?? 0, sections });
   }
 
   // ---- finalize records ---------------------------------------------------------------------------

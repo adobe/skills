@@ -23,7 +23,7 @@ const SELF = fileURLToPath(import.meta.url);
 const HERE = dirname(SELF);
 
 export const HELP = `Usage:
-  node figma-donor.mjs capture <figma-url> [--frames <id,id>] [--max-frames 25] [--refresh]
+  node figma-donor.mjs capture <figma-url> [--list] [--frames <id,id>] [--max-frames 25] [--refresh]
                        [--max-wait 60] [--confidential] [--dir stardust]
   node figma-donor.mjs curate [--confidential] [--dir stardust]
   node figma-donor.mjs stamp [--confidential] [--dir stardust]
@@ -42,8 +42,12 @@ capture  reads one version of the file over the Figma REST API (files depth=2, t
          <figma-url>: https://www.figma.com/design/<file-key>/<name>[?node-id=<a-b>] (also /file/,
          /proto/, /design/<key>/branch/<branch-key>/) or a bare file key.
          Frames: --frames <id,id> (12:34 or 12-34) wins; else the URL's node-id (a page → its
-         top-level frames; a frame → itself); else every top-level frame of every page. At most
-         --max-frames (default 25) are captured; the rest are listed as cut on stderr and in the log.
+         top-level frames; a frame → itself); else every top-level frame of every page, only when
+         that fits --max-frames (default 25; past it capture stops with exit 2). From a page, at
+         most --max-frames are captured; the rest are listed as cut on stderr and in the log.
+         --list prints every page and its top-level nodes (id, type, size, name) and writes no
+         output: for a component kit, pick the foundation frames (colour, type, spacing, the button
+         set) and one representative frame per module page, then capture them with --frames.
          A re-run without --refresh rebuilds every output from the cache: no network, no token.
          --refresh fetches the file's current version into its own cache dir.
          --max-wait <s>: the longest Retry-After a 429 may impose before stopping (default 60).
@@ -94,7 +98,7 @@ Exit codes: 0 ok · 1 validation or curate assertion failed · 2 usage, setup or
             · 3 blocked (401/403, a 429 wait over --max-wait, 5xx after retries).`;
 
 const SPEC = {
-  capture: { values: ['--frames', '--max-frames', '--max-wait', '--dir'], bools: ['--refresh', '--confidential'], positional: ['<figma-url>'] },
+  capture: { values: ['--frames', '--max-frames', '--max-wait', '--dir'], bools: ['--refresh', '--confidential', '--list'], positional: ['<figma-url>'] },
   curate: { values: ['--dir'], bools: ['--confidential'], positional: [] },
   stamp: { values: ['--dir'], bools: ['--confidential'], positional: [] },
 };
@@ -179,6 +183,15 @@ export async function main(argv, { env = process.env, log = console.log, warn = 
     const maxFrames = intFlag(opts, 'max-frames', 25, UsageError);
     const maxWaitSec = intFlag(opts, 'max-wait', 60, UsageError);
     const confidential = await confidentialMode(dir, opts, log);
+    if (opts.list) {
+      if (confidential) { const g = await helper('guard'); g.assertIgnored(g.CAPTURE_OUTPUTS.filter(([rel]) => rel.startsWith('.work/')), { dir }); }
+      const { listInventory } = await helper('capture');
+      const client = createClient({ token: env.FIGMA_TOKEN || '', base: env.FIGMA_API_BASE || undefined, maxWaitSec });
+      const { lines } = await listInventory({ url: positional[0], refresh: Boolean(opts.refresh), dir, client });
+      for (const l of lines) log(l);
+      log('next: capture <figma-url> --frames <id,id,…> with the foundation frames and one representative frame per module');
+      return 0;
+    }
     if (confidential) { const g = await helper('guard'); g.assertIgnored(g.CAPTURE_OUTPUTS, { dir }); }
     const client = createClient({ token: env.FIGMA_TOKEN || '', base: env.FIGMA_API_BASE || undefined, maxWaitSec });
     const { manifest, written, fromCache } = await runCapture({ url: positional[0], frames, maxFrames, refresh: Boolean(opts.refresh), confidential, dir, client, warn });
