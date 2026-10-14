@@ -162,8 +162,16 @@ environment only. Recipe:
    `.work/reskin/figma/`, then `canon-source/foundation/*.json`
    (normalized values, each citing its node), `role-candidates.json`
    (ranked sources for the 13 probe paths), `module-candidates.json`
-   (frames, sections by y, component sets, remote components),
-   `spec-tables.json`, frame screenshots and `_crawl-log.json`.
+   (frames with their page, sections by y, component sets, remote
+   components), `spec-tables.json`, frame screenshots and
+   `_crawl-log.json`. What to capture depends on the file's shape. A
+   file of **page designs**: the URL of the page or frame. A
+   **component kit** (one module per page, tokens on documentation
+   frames): `capture <figma-url> --list` prints every page's top-level
+   nodes; pass the foundation frames (colour, type, spacing, the button
+   set) and one representative frame per module page with
+   `--frames <id,…>`, raising `--max-frames` to fit. Without either,
+   a file larger than `--max-frames` stops and asks for this.
 3. Author `reskin/curation-rules.json`, the only non-mechanical
    input: reference pins (one frame, variable mode and breakpoint per
    module family; § Pin one reference page), roles, normalizations,

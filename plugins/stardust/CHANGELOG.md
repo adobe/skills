@@ -12,7 +12,9 @@ version, caches the raw responses and writes `canon-source/` foundation, role an
 every value citing its node id. `curate` turns the agent-authored `reskin/curation-rules.json` into `donor-tokens.json`,
 `donor-modules.md`, `DESIGN.{md,json}` and `_brand-extraction.json`, byte-identical for the same inputs. `stamp` sets
 `state.json.designSource`. `donor-sources.md` §3 is now the recipe, with `figma-rest` provenance. `--confidential`
-refuses to write anything git would track and redacts the stamped URL.
+refuses to write anything git would track and redacts the stamped URL. A component kit (one module per page) is captured
+by picking frames from `capture --list`; a whole file larger than `--max-frames` stops and asks for that instead of
+capturing its first frames in document order.
 
 - **Field learnings.** Instance children carry the resolved overrides and `overrides[]` was empty on every instance sampled,
   so values come from the children; a button's paint often sits on a same-size wrapper frame, so each property cites the

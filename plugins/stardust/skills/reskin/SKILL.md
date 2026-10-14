@@ -116,7 +116,9 @@ site, into `stardust/canon-source/`. Full recipes per donor type in
   `reference/donor-sources.md` § Local prototypes.
 - **Figma** (`--donor-figma <url>`): no browser, no crawl. Run
   `$stardust extract <content-url>` (it creates `state.json`), then
-  `node stardust/scripts/reskin/figma-donor.mjs capture <figma-url>`;
+  `node stardust/scripts/reskin/figma-donor.mjs capture <figma-url>`
+  (for a component kit, `--list` first, then `--frames` with the
+  foundation frames and one frame per module page);
   author `stardust/reskin/curation-rules.json` from
   `canon-source/role-candidates.json`, `module-candidates.json` and
   the frame screenshots (pin one reference frame, mode and breakpoint
