@@ -182,7 +182,7 @@ converting the live page straight into blocks.
 
 - `audit <url>` when you want the scorecard before deciding anything.
 - `reskin` when the content stays and the design comes from another live
-  site or from local prototypes. Content is gated byte for byte; the layout
+  site, local prototypes or a Figma file. Content is gated byte for byte; the layout
   adapts to the donor's modules. Delivery is the same EDS layer.
 - `uplift <url>` when you need a pitch: three differentiated variants, one of
   them cinematic, from the URL alone.
