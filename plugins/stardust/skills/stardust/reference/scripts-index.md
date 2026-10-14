@@ -6,9 +6,9 @@ Run the project copies under `stardust/scripts/<skill>/`. Read this before `--he
 - `deploy/block-roundtrip.mjs` — round-trip + editability — `<protoURL> content/<p>.html [--blocks a,b] --ew`
 - `deploy/build-harness.mjs` — local structural harness — `content/<p>.html <out.html> [--root <dir>]`
 - `deploy/content-inventory.mjs` — library (role classifier), no CLI
-- `deploy/da-media-upload.mjs` — rehost images to DA — `--org --repo --scope <s> --dir|--manifest [--dry-run]`; exit 3 = token halt
+- `deploy/da-media-upload.mjs` — rehost images to DA — `--org --repo --scope <s> --dir|--manifest [--token-env|--token-file] [--dry-run]`; exit 3 = token halt
 - `deploy/davids-model-lint.mjs` — content-model lint — `content/ | <page>.html [--json]`
-- `deploy/deploy-batch.mjs` — resumable PUT→preview→live — `--org --repo --branch --content content [--no-publish]`; exit 1 = failed, 3 = token halt
+- `deploy/deploy-batch.mjs` — resumable PUT→preview→live — `--org --repo --branch --content content [--no-publish] [--token-env|--token-file]`; exit 1 = failed, 3 = token halt
 - `deploy/diff-profiles.mjs` — library (profiles), no CLI
 - `deploy/file-lock.mjs` — library (ledger lock), no CLI
 - `deploy/eds-path.mjs` — library (path contract), no CLI
@@ -20,7 +20,7 @@ Run the project copies under `stardust/scripts/<skill>/`. Read this before `--he
 - `deploy/sanitise.js` — non-ASCII → entities, in place — `content/<p>.html` (one file per call)
 - `deploy/section-schema.mjs` — section role inventory — `<protoURL> [--out <f>] [--profile eds|generic]`
 - `deploy/style-fingerprint.mjs` — variation groups — `"file:///abs/<proto>.html"`
-- `diff/chrome-compare.mjs` — header parity vs contract — `<contract> <build> [--profile replica|functional] [--json f]`
+- `diff/chrome-compare.mjs` — header parity vs contract — `<contract> <build> [--profile replica|functional] [--json f]`; exit 2 = undecided error
 - `diff/chrome-explore.mjs` — header behaviour: states, close paths, motion — `<url> <out.json> [--width 1440,390]`
 - `diff/clip-probe.mjs` — text/controls clipped by overflow — `<url> [--width 1440] [--json [f]] [--advisory]`; exit 2 = clipped
 - `diff/content-diff.mjs` — structural diff, main + chrome — `<protoURL> <edsURL> [--main <sel>] [--no-chrome] [--json]`
@@ -54,7 +54,7 @@ Run the project copies under `stardust/scripts/<skill>/`. Read this before `--he
 - `replica/crop-compare.mjs` — pixel diff of one band — `<a.png> <b.png> --height <px> [--y] [--y-b] [--threshold 2]`
 - `replica/css-rules.mjs` — rule blocks by selector regex — `<f.css> "<re>" [--media <re>|--no-media] [--decl <re>]`
 - `replica/foundation-freeze.mjs` — frozen delivery foundation — `freeze [--paths a,b]`; `check`
-- `replica/gate-all.mjs` — pixel tables, deployed or `--stage prototype` — `[--only <slug,…>] [--skip-existing] [--recapture-eds]`; exit 2 = any FAIL
+- `replica/gate-all.mjs` — pixel tables, deployed or `--stage prototype` — `[--only <slug,…>] [--skip-existing] [--recapture-eds] [--no-probes]`; exit 2 = any FAIL
 - `replica/gate-evidence.mjs` — sidecar gates from pixel tables — `[--slug <s>]… [--check] [--dry-run]`
 - `replica/gate.sh` — one gate round + overflow + probes — `<slug> <live> <build> <width> [iter] [--full] [--main <sel>]`
 - `replica/html-slice.mjs` — one element of captured HTML — `<page.html> header|footer|main|.cls [--text]`

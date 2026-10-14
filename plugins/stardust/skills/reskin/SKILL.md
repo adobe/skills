@@ -45,7 +45,8 @@ regression check instead of a debugging tool.
     branch URL; a `node-id` scopes it to a page or frame), read
     headlessly over the REST API. Needs `FIGMA_TOKEN`, a personal
     access token with `file_content:read`. Optional `--frames <ids>`
-    and `--confidential` (refuses to write anything git would track).
+    and `--confidential` (refuses to write anything git would track;
+    sticky for `curate` and `stamp`).
     Flags, file schemas and exit codes: `figma-donor.mjs --help`.
 - `--pages <slug,slug,...>` — optional. Restrict the content capture
   to specific pages. Default: the archetype set (one page per page
@@ -73,8 +74,8 @@ regression check instead of a debugging tool.
 3. **Copy the scripts into the project.** ESM resolves
    `import('playwright')` from the *script's* directory and the plugin
    tree ships no `node_modules`. Copy `skills/reskin/scripts/`
-   recursively (`cp -R`: sibling imports and the `figma/` helpers
-   travel with it) byte-identical to `stardust/scripts/reskin/`,
+   recursively except `test/` (sibling imports and the `figma/`
+   helpers travel with it) byte-identical to `stardust/scripts/reskin/`,
    `skills/stardust/scripts/state.mjs` to `stardust/scripts/stardust/`
    (`figma-donor.mjs stamp` writes through it), **and** `skills/diff/scripts/
    live-session.mjs` to `stardust/scripts/diff/` — every reskin gate

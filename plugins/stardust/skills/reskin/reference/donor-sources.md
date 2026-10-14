@@ -176,7 +176,7 @@ environment only. Recipe:
 
 | Figma source | Maps to | Canon-source artifact |
 |---|---|---|
-| Fills and strokes (variable names and modes only on Enterprise plans; otherwise bound ids and style names) | palette roles | `foundation/colors.json` → `_brand-extraction.json#palette`, `DESIGN.json` colors |
+| Fills and strokes (keyed by style name, else by value; `variables/local` is cached when the plan allows but not used yet) | palette roles | `foundation/colors.json` → `_brand-extraction.json#palette`, `DESIGN.json` colors |
 | Text styles on TEXT nodes | type ramp (families, sizes, weights, line-heights) | `foundation/typography.json` → `_brand-extraction.json#type`, `DESIGN.json` typography |
 | Effects, corner radii | motifs (shadows, radii) | `foundation/{effects,radii}.json` → `_brand-extraction.json#motifs` |
 | Frame renders (per top-level frame) | vision references | `canon-source/assets/screenshots/<frame-slug>.png` + `index.json` — the module evidence and the side-by-side eyeball surface |
@@ -191,11 +191,13 @@ gap the contract acknowledges: Figma has no computed styles, so
 `donor-tokens.json` values are authored from node data rather than
 sampled — the probe still works because the tokens are exact strings
 either way. Flags, schemas and exit codes: `figma-donor.mjs --help`.
-A design that must not reach git: pass `--confidential` to every
-subcommand (writes refused unless git-ignored; the stamp redacts the
-URL). Variable names need the Enterprise variables endpoint; where a
-Figma MCP server is available it can name bound variable ids, and those
-names go into the rules with `"evidence": "mcp:<variable id>"`.
+`type.family` is the bare Figma family name; map it with a
+`familyEquivalence` normalization to the exact stack the renderer will
+emit (the probe compares the whole string). A design that must not reach
+git: pass `--confidential` to `capture` (sticky: `curate` and `stamp`
+inherit it; writes are refused unless git-ignored and the stamp redacts
+the URL). Color names come from styles or `design.colorNames` in the
+rules; a Figma MCP server, where available, can help name them.
 
 ## Pin one reference page (hard rule)
 
