@@ -20,7 +20,7 @@ const SCRIPT = join(HERE, '..', 'figma-donor.mjs');
 const KIT = join(HERE, 'fixtures', 'figma-kit');
 const KEY = 'AbCdEf1234567890';
 const URL_PAGE = `https://www.figma.com/design/${KEY}/Kit?node-id=0-1`;
-const TOKEN = `figd_${randomBytes(12).toString('hex')}`;
+const TOKEN = `tok-${randomBytes(12).toString('hex')}`;
 const scratch = mkdtempSync(join(tmpdir(), 'figma-donor-test-'));
 const outputs = [];
 let failed = 0;
