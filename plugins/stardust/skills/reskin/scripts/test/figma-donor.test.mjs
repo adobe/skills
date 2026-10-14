@@ -1,0 +1,238 @@
+#!/usr/bin/env node
+// skills/reskin/scripts/test/figma-donor.test.mjs — the figma-donor.mjs CLI, spawned against a local
+// fake of the Figma API (fixtures/figma-kit/fake-figma.mjs; no network) in temp project dirs:
+// --help, capture's outputs and its crawl log, one file version across every API call, variables
+// refused by plan, the cache re-run (no requests, no token, byte-identical), --refresh into a new
+// version, --max-frames cuts, missing token, bad URL, a long 429 (exit 3, completed calls kept),
+// and no signed image URL or token in any written file or output.
+// Run: node <this file>.
+import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
+import { createHash, randomBytes } from 'node:crypto';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, relative } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { startFakeFigma } from './fixtures/figma-kit/fake-figma.mjs';
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+const SCRIPT = join(HERE, '..', 'figma-donor.mjs');
+const KIT = join(HERE, 'fixtures', 'figma-kit');
+const KEY = 'AbCdEf1234567890';
+const URL_PAGE = `https://www.figma.com/design/${KEY}/Kit?node-id=0-1`;
+const TOKEN = `figd_${randomBytes(12).toString('hex')}`;
+const scratch = mkdtempSync(join(tmpdir(), 'figma-donor-test-'));
+const outputs = [];
+let failed = 0;
+const check = async (name, fn) => { try { await fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`); } };
+
+const fake = await startFakeFigma({ fixtureDir: KIT, token: TOKEN, behaviors: {} });
+let projN = 0;
+const project = () => { projN += 1; const p = join(scratch, `p${projN}`); mkdirSync(p, { recursive: true }); return p; };
+const run = (args, { cwd, token = TOKEN, env = {} } = {}) => new Promise((resolve) => {
+  const e = { ...process.env, FIGMA_API_BASE: fake.base, ...env };
+  if (token) e.FIGMA_TOKEN = token; else delete e.FIGMA_TOKEN;
+  const child = spawn(process.execPath, [SCRIPT, ...args], { cwd: cwd || scratch, env: e });
+  let stdout = ''; let stderr = '';
+  child.stdout.on('data', (d) => { stdout += d; });
+  child.stderr.on('data', (d) => { stderr += d; });
+  child.on('close', (code) => { outputs.push(stdout, stderr); resolve({ code, stdout, stderr }); });
+});
+const walk = (dir) => (existsSync(dir) ? readdirSync(dir).flatMap((f) => { const p = join(dir, f); return statSync(p).isDirectory() ? walk(p) : [p]; }) : []);
+const hashTree = (dir) => Object.fromEntries(walk(dir).map((p) => [relative(dir, p), createHash('sha256').update(readFileSync(p)).digest('hex')]));
+const json = (p) => JSON.parse(readFileSync(p, 'utf8'));
+const apiCalls = () => fake.requests.filter((r) => r.path.startsWith('/v1/'));
+const reset = () => { fake.requests.length = 0; for (const k of Object.keys(fake.behaviors)) delete fake.behaviors[k]; fake.setFixtureDir(KIT); };
+
+await check('--help: exit 0, usage, nothing written, no network', async () => {
+  reset();
+  const cwd = project();
+  const r = await run(['--help'], { cwd });
+  assert.equal(r.code, 0, r.stderr);
+  assert.match(r.stdout, /usage/i);
+  for (const s of ['capture', '--frames', '--max-frames', '--refresh', '--max-wait', '--dir', 'FIGMA_TOKEN', 'Exit codes']) assert.ok(r.stdout.includes(s), `help lacks ${s}`);
+  assert.deepEqual(walk(cwd), []);
+  assert.equal(fake.requests.length, 0);
+});
+
+const P1 = project();
+let first;
+await check('capture writes foundation, candidates, spec tables, screenshots, index, crawl log', async () => {
+  reset();
+  first = await run(['capture', URL_PAGE], { cwd: P1 });
+  assert.equal(first.code, 0, first.stderr);
+  const cs = join(P1, 'stardust', 'canon-source');
+  for (const f of ['colors', 'typography', 'effects', 'radii', 'spacing', 'components']) {
+    const j = json(join(cs, 'foundation', `${f}.json`));
+    assert.equal(Object.keys(j)[0], '_provenance');
+    assert.equal(j._provenance.writtenBy, 'stardust:reskin/figma-donor.mjs');
+  }
+  for (const f of ['role-candidates.json', 'module-candidates.json', 'spec-tables.json', '_crawl-log.json', 'assets/screenshots/index.json']) assert.ok(existsSync(join(cs, f)), f);
+  assert.equal(Object.keys(json(join(cs, 'role-candidates.json'))).length, 14);
+  assert.deepEqual(json(join(cs, 'spec-tables.json')).tables.map((t) => t.node), ['2:6']);
+  const index = json(join(cs, 'assets', 'screenshots', 'index.json'));
+  assert.deepEqual(index.home, { node: '1:2', width: 1440, height: 1840, version: 'v1', renderable: true });
+  assert.equal(index.article.node, '1:9');
+  assert.equal(readFileSync(join(cs, 'assets', 'screenshots', 'home.png')).subarray(1, 4).toString(), 'PNG');
+  const log = json(join(cs, '_crawl-log.json'));
+  assert.deepEqual(Object.keys(log), ['_provenance', 'discovery', 'consent', 'crawl', 'visionCheck', 'siblingCandidates', 'notBrowserRendered']);
+  assert.equal(log.discovery.method, 'figma-rest');
+  assert.equal(log.discovery.fetchTechnique, 'figma-rest');
+  assert.equal(log.discovery.version, 'v1');
+  assert.deepEqual(log.discovery.selected, ['1:2', '1:9']);
+  assert.equal(log.consent, null);
+  assert.ok(Object.values(log.notBrowserRendered).every((s) => s === 'authored from Figma REST node data, not browser-rendered'));
+  assert.ok('stardust/canon-source/foundation/colors.json' in log.notBrowserRendered);
+  assert.match(first.stdout, /capture: 2 frame/);
+});
+await check('every later API call carries version=<v>; files first with depth=2', () => {
+  const calls = apiCalls();
+  assert.equal(calls[0].path, `/v1/files/${KEY}`);
+  assert.equal(calls[0].query.depth, '2');
+  assert.ok(calls.slice(1).every((r) => r.query.version === 'v1'), calls.map((r) => r.rawUrl).join('\n'));
+  assert.deepEqual(calls.map((r) => r.path), [`/v1/files/${KEY}`, `/v1/files/${KEY}/nodes`, `/v1/files/${KEY}/variables/local`, `/v1/images/${KEY}`]);
+  assert.equal(calls[1].query.ids, '1:2,1:9');
+});
+await check('image bytes fetched without the token', () => {
+  const imgs = fake.requests.filter((r) => r.path.startsWith('/img/'));
+  assert.equal(imgs.length, 2);
+  assert.ok(imgs.every((r) => r.headers['x-figma-token'] === undefined));
+});
+await check('variables 403 → unavailable (plan), exit 0', () => {
+  const log = json(join(P1, 'stardust', 'canon-source', '_crawl-log.json'));
+  assert.deepEqual(log.crawl.endpoints.find((e) => e.name === 'variables'), { name: 'variables', status: 'unavailable (plan)' });
+  assert.equal(first.code, 0);
+});
+await check('cache: raw responses and a latest pointer, no signed URLs', () => {
+  const v = join(P1, 'stardust', '.work', 'reskin', 'figma', KEY, 'v1');
+  for (const f of ['file.json', 'nodes.json', 'images.json', 'manifest.json']) assert.ok(existsSync(join(v, f)), f);
+  assert.deepEqual(json(join(P1, 'stardust', '.work', 'reskin', 'figma', KEY, 'latest.json')), { version: 'v1' });
+  const m = json(join(v, 'manifest.json'));
+  assert.deepEqual([m.fileKey, m.mainFileKey, m.nodeId, m.version, m.frames, m.cut], [KEY, KEY, '0:1', 'v1', ['1:2', '1:9'], []]);
+});
+await check('second run: 0 requests, outputs byte-identical, FIGMA_TOKEN unset is fine', async () => {
+  const before = hashTree(join(P1, 'stardust'));
+  reset();
+  const r = await run(['capture', URL_PAGE], { cwd: P1, token: '' });
+  assert.equal(r.code, 0, r.stderr);
+  assert.equal(fake.requests.length, 0);
+  assert.deepEqual(hashTree(join(P1, 'stardust')), before);
+  assert.match(r.stdout, /from cache/);
+});
+await check('a cached run with a different selection asks for --refresh', async () => {
+  reset();
+  const r = await run(['capture', URL_PAGE, '--frames', '1:2'], { cwd: P1, token: '' });
+  assert.equal(r.code, 2);
+  assert.match(r.stderr, /--refresh/);
+  assert.equal(fake.requests.length, 0);
+});
+await check('--refresh after the file moved to v2: new v2 cache dir, v1 untouched, index version v2', async () => {
+  const v1 = hashTree(join(P1, 'stardust', '.work', 'reskin', 'figma', KEY, 'v1'));
+  const kit2 = join(scratch, 'kit-v2');
+  cpSync(KIT, kit2, { recursive: true });
+  for (const f of ['file.json', 'nodes.json']) { const j = json(join(kit2, f)); j.version = 'v2'; writeFileSync(join(kit2, f), JSON.stringify(j)); }
+  reset();
+  fake.setFixtureDir(kit2);
+  const r = await run(['capture', URL_PAGE, '--refresh'], { cwd: P1 });
+  assert.equal(r.code, 0, r.stderr);
+  assert.ok(existsSync(join(P1, 'stardust', '.work', 'reskin', 'figma', KEY, 'v2', 'manifest.json')));
+  assert.deepEqual(hashTree(join(P1, 'stardust', '.work', 'reskin', 'figma', KEY, 'v1')), v1);
+  assert.deepEqual(json(join(P1, 'stardust', '.work', 'reskin', 'figma', KEY, 'latest.json')), { version: 'v2' });
+  const index = json(join(P1, 'stardust', 'canon-source', 'assets', 'screenshots', 'index.json'));
+  assert.ok(Object.entries(index).filter(([k]) => !k.startsWith('_')).every(([, e]) => e.version === 'v2'));
+  assert.ok(apiCalls().slice(1).every((c) => c.query.version === 'v2'));
+});
+await check('--frames picks frames by id in either form', async () => {
+  reset();
+  const p = project();
+  const r = await run(['capture', `https://www.figma.com/design/${KEY}/Kit`, '--frames', '1-2'], { cwd: p });
+  assert.equal(r.code, 0, r.stderr);
+  assert.deepEqual(json(join(p, 'stardust', '.work', 'reskin', 'figma', KEY, 'v1', 'manifest.json')).frames, ['1:2']);
+  assert.equal(apiCalls()[1].query.ids, '1:2');
+});
+await check('no --frames, 30 top-level frames, --max-frames 25 → 5 in manifest.cut and a stderr warning', async () => {
+  const many = join(scratch, 'kit-many');
+  cpSync(KIT, many, { recursive: true });
+  const frames = Array.from({ length: 30 }, (_, i) => ({ id: `9:${i + 1}`, name: `Page ${i + 1}`, type: 'FRAME', absoluteBoundingBox: { x: i * 1500, y: 0, width: 1440, height: 900 } }));
+  const file = json(join(KIT, 'file.json'));
+  file.document.children = [{ id: '0:1', name: 'Pages', type: 'CANVAS', children: frames }];
+  writeFileSync(join(many, 'file.json'), JSON.stringify(file));
+  writeFileSync(join(many, 'nodes.json'), JSON.stringify({ version: 'v1', nodes: Object.fromEntries(frames.map((f) => [f.id, { document: { ...f, fills: [], children: [] }, components: {}, componentSets: {}, styles: {} }])) }));
+  writeFileSync(join(many, 'images.json'), JSON.stringify({ err: null, images: Object.fromEntries(frames.map((f) => [f.id, '{{base}}/img/frame-a.png'])) }));
+  reset();
+  fake.setFixtureDir(many);
+  const p = project();
+  const r = await run(['capture', `https://www.figma.com/design/${KEY}/Kit`, '--max-frames', '25'], { cwd: p });
+  assert.equal(r.code, 0, r.stderr);
+  const m = json(join(p, 'stardust', '.work', 'reskin', 'figma', KEY, 'v1', 'manifest.json'));
+  assert.equal(m.frames.length, 25);
+  assert.deepEqual(m.cut, ['9:26', '9:27', '9:28', '9:29', '9:30']);
+  assert.match(r.stderr, /30 top-level frames.*25/s);
+  assert.match(r.stderr, /9:26/);
+});
+await check('missing FIGMA_TOKEN with no cache → exit 2 naming FIGMA_TOKEN and file_content:read', async () => {
+  reset();
+  const r = await run(['capture', URL_PAGE], { cwd: project(), token: '' });
+  assert.equal(r.code, 2);
+  assert.match(r.stderr, /FIGMA_TOKEN/);
+  assert.match(r.stderr, /file_content:read/);
+  assert.equal(fake.requests.length, 0);
+});
+await check('a bad URL → exit 2 listing accepted forms', async () => {
+  reset();
+  const r = await run(['capture', 'https://example.com/x'], { cwd: project() });
+  assert.equal(r.code, 2);
+  assert.match(r.stderr, /figma\.com\/design/);
+});
+await check('a value flag with no value, an unknown flag or command → exit 2 naming it', async () => {
+  for (const [args, re] of [[['capture', URL_PAGE, '--frames'], /--frames/], [['capture', URL_PAGE, '--max-frames', '--refresh'], /--max-frames/], [['capture', URL_PAGE, '--bogus'], /--bogus/], [['nope'], /nope/], [['capture'], /figma-url/], [['capture', URL_PAGE, '--max-frames', '0'], /--max-frames/]]) {
+    const r = await run(args, { cwd: project() });
+    assert.equal(r.code, 2, `${args.join(' ')}: ${r.stderr}`);
+    assert.match(r.stderr, re);
+  }
+});
+await check('a 429 with Retry-After 3600 → exit 3, cache of completed calls kept', async () => {
+  reset();
+  fake.behaviors[`/v1/images/${KEY}`] = { status: 429, headers: { 'retry-after': '3600', 'x-figma-plan-tier': 'starter', 'x-figma-rate-limit-type': 'low' }, body: { status: 429, err: 'Rate limit exceeded' } };
+  const p = project();
+  const r = await run(['capture', URL_PAGE, '--max-wait', '30'], { cwd: p });
+  assert.equal(r.code, 3, r.stderr);
+  assert.match(r.stderr, /starter/);
+  const v = join(p, 'stardust', '.work', 'reskin', 'figma', KEY, 'v1');
+  assert.ok(existsSync(join(v, 'file.json')) && existsSync(join(v, 'nodes.json')));
+  assert.ok(!existsSync(join(p, 'stardust', '.work', 'reskin', 'figma', KEY, 'latest.json')));
+  assert.ok(!existsSync(join(p, 'stardust', 'canon-source')));
+  delete fake.behaviors[`/v1/images/${KEY}`];
+  fake.requests.length = 0;
+  const again = await run(['capture', URL_PAGE], { cwd: p });
+  assert.equal(again.code, 0, again.stderr);
+  assert.ok(!apiCalls().some((c) => c.path.endsWith('/nodes')), 'completed nodes call reused');
+});
+await check('a copy without the figma/ helpers: --help still answers; a command exits 2 naming cp -R', async () => {
+  const lone = join(scratch, 'lone');
+  mkdirSync(lone, { recursive: true });
+  cpSync(SCRIPT, join(lone, 'figma-donor.mjs'));
+  const help = await new Promise((resolve) => { const c = spawn(process.execPath, [join(lone, 'figma-donor.mjs'), '--help'], { cwd: lone }); c.on('close', resolve); });
+  assert.equal(help, 0);
+  const r = await new Promise((resolve) => {
+    const c = spawn(process.execPath, [join(lone, 'figma-donor.mjs'), 'capture', URL_PAGE], { cwd: lone });
+    let err = ''; c.stderr.on('data', (d) => { err += d; }); c.on('close', (code) => resolve({ code, err }));
+  });
+  assert.equal(r.code, 2);
+  assert.match(r.err, /cp -R/);
+  rmSync(lone, { recursive: true, force: true });
+});
+await check('signed image URLs and the token appear in no written file and no output', () => {
+  const files = walk(scratch).filter((f) => !f.includes(`${'kit-'}`));
+  for (const f of files) {
+    const s = readFileSync(f).toString('latin1');
+    assert.ok(!s.includes('X-Amz-Signature') && !s.includes('fixture-signature') && !s.includes('/img/'), `signed URL in ${relative(scratch, f)}`);
+    assert.ok(!s.includes(TOKEN), `token in ${relative(scratch, f)}`);
+  }
+  assert.ok(outputs.every((o) => !o.includes(TOKEN)));
+});
+
+await fake.close();
+rmSync(scratch, { recursive: true, force: true });
+console.log(failed ? `\n${failed} check(s) failed` : '\nall checks passed');
+process.exit(failed ? 1 : 0);
