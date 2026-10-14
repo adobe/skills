@@ -15,6 +15,8 @@ description: >-
   or "Select vs Prime vs Ultimate limits".
 metadata:
   category: solution-architecture
+  display_name: "workfront-planning-advisory"
+  title: "Workfront Planning Advisory"
 license: Apache-2.0
 ---
 
