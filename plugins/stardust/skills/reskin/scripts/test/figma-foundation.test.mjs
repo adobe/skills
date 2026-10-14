@@ -99,6 +99,21 @@ check('button values come from the instance and its label child', () => {
   assert.equal(b.count, 2);
   assert.deepEqual(b.variant, { Variant: 'Primary' });
 });
+check('a padded label wrapper inside a padded filled button: padding is the button box, not the wrapper', () => {
+  const b = foundation.components['button-primary'];
+  assert.equal(b.value.padding, '12px 24px');
+  assert.equal(b.figma.fields.padding.node, '1:20');
+});
+check('container candidates: desktop-scale widths rank before narrower text measures, whatever their count', () => {
+  const text = (id, mw) => ({ id, name: 'Copy', type: 'TEXT', maxWidth: mw, absoluteBoundingBox: { x: 0, y: 0, width: mw, height: 20 }, fills: [], characters: 'x', style: { fontFamily: 'Inter', fontSize: 16, fontWeight: 400, lineHeightPx: 24, lineHeightUnit: 'PIXELS' } });
+  const doc = { id: '8:1', name: 'Kit page', type: 'FRAME', absoluteBoundingBox: { x: 0, y: 0, width: 1440, height: 900 }, fills: [], children: [
+    { id: '8:2', name: 'Module', type: 'FRAME', absoluteBoundingBox: { x: 0, y: 0, width: 1440, height: 900 }, fills: [], children: [
+      { id: '8:3', name: 'Container', type: 'FRAME', absoluteBoundingBox: { x: 64, y: 0, width: 1312, height: 900 }, fills: [], children: [text('8:4', 780), text('8:5', 780), text('8:6', 780)] },
+    ] },
+  ] };
+  const r = buildFoundation({ file: { document: { children: [] } }, nodes: { nodes: { '8:1': { document: doc } } }, frameIds: ['8:1'] });
+  assert.deepEqual(r.roleCandidates['layout.containerMaxWidth'].map((c) => c.from), ['spacing/width-1312', 'spacing/max-width-780']);
+});
 check('overridden label color: the first instance wins, the override is reported divergent', () => {
   const b = foundation.components['button-primary'];
   assert.deepEqual(b.divergent, [{ node: 'I1:7;5:6', fields: ['color'] }]);

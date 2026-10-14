@@ -28,7 +28,8 @@
 //   display wt   text styles by font size, largest first
 //   buttons.*    components or instances named /button|btn|cta/i (node, component or set name);
 //                a /primary/i variant first, then by instance count
-//   container    maxWidth values, then widths of frames named /container|content|wrapper|grid/i
+//   container    maxWidth values and widths of frames named /container|content|wrapper|grid/i,
+//                desktop-scale (≥ 960px) first
 //   section pad  paddingTop of auto-layout sections (direct children of the top-level frames)
 // Each path: ≤ 5 candidates { from: "<file>/<key>", count, evidence: [≤ 5 node ids] }, ties by
 // document order.
@@ -66,6 +67,7 @@ const SECTION_TYPES = new Set(['FRAME', 'INSTANCE', 'COMPONENT', 'GROUP', 'SECTI
 const BUTTON = /button|btn|cta/i;
 const CONTAINER = /container|content|wrapper|grid/i;
 const MAX = 5;
+const CONTAINER_MIN = 960;
 
 export function slugify(s) {
   return String(s ?? '').normalize('NFKD').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'item';
@@ -219,8 +221,13 @@ function buttonValue(n) {
   const filled = chain.find((x) => solidFill(x.fills).kind !== 'NONE');
   const fill = solidFill(filled?.fills);
   const stroked = chain.find((x) => x.strokeWeight > 0 && solidFill(x.strokes).kind === 'SOLID');
-  const padded = chain.find((x) => autoLayout(x) && pads(x).some((p) => p > 0)) ?? chain.find(autoLayout);
-  const rounded = chain.find((x) => radiusCss(x));
+  // The painted box decides: padding is the auto-layout layer the same size as it (a padded label
+  // wrapper inside the button is inner spacing, not the button's padding).
+  const box = filled ?? stroked ?? null;
+  const padded = box
+    ? chain.find((x) => autoLayout(x) && sameSize(x, box))
+    : chain.find((x) => autoLayout(x) && pads(x).some((p) => p > 0)) ?? chain.find(autoLayout);
+  const rounded = (box && radiusCss(box) ? box : null) ?? chain.find((x) => radiusCss(x));
   const shadowed = chain.find((x) => shadowCss(x.effects));
   const label = firstText(n);
   const st = label?.style || {};
@@ -482,11 +489,13 @@ export function buildFoundation({ file, nodes, frameIds }) {
     .slice(0, MAX)
     .map(({ r }) => ({ from: `components/${shaped.components.keyOf.get(`component:${r.figma.componentId}`)}`, count: r.count, evidence: r.nodes }));
 
-  const container = ['max-width', 'width'].flatMap((kind) => [...g.spacing.byId.entries()]
-    .filter(([identity]) => identity.startsWith(`${kind}:`))
-    .map(([identity, r], order) => ({ identity, r, order }))
-    .sort((a, b) => b.r.count - a.r.count || a.order - b.order)
-    .map(({ identity, r }) => ({ from: ref('spacing', identity), count: r.count, evidence: r.nodes })));
+  // Desktop page containers are rarely narrower than 960px; narrower max-widths are usually text
+  // measures, which can outnumber the container by hundreds on a component kit.
+  const container = [...g.spacing.byId.entries()]
+    .filter(([identity]) => identity.startsWith('max-width:') || identity.startsWith('width:'))
+    .map(([identity, r], order) => ({ identity, r, order, wide: r.figma.px >= CONTAINER_MIN }))
+    .sort((a, b) => (b.wide - a.wide) || b.r.count - a.r.count || a.order - b.order)
+    .map(({ identity, r }) => ({ from: ref('spacing', identity), count: r.count, evidence: r.nodes }));
 
   const roleCandidates = {
     'palette.pageBg': rank(pageBg, 'colors', byCount),
