@@ -55,7 +55,8 @@
 
 /* eslint-disable import/no-extraneous-dependencies, import/extensions, no-await-in-loop, no-restricted-syntax, brace-style, object-curly-newline, max-len */
 /* standalone dev-tool library: sequential page ops use awaited loops by design */
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { dirname } from 'node:path';
 
 // Current stable Chrome on macOS. Chrome's UA reduction freezes the platform
 // token at 10_15_7 and the minor version at .0.0.0 — only the major matters,
@@ -505,4 +506,111 @@ export async function dismissOverlays(page, { extra = [], lateWindowMs = 6000 } 
   await page.mouse.move(0, (vp ? vp.height : 900) - 1).catch(() => {});
 
   return dismissed;
+}
+
+// ---- evidence freshness: when a source-side capture may be reused ------------------------------
+// One policy for every reuse of source-side evidence (an origin capture, a live inventory, the live
+// half of a diff probe). The default reuses only the run's OWN captures: a capture taken at or after
+// the run's opener line in the ledger is fresh ('same-run'); a new run recaptures once, then reuses
+// for its fix rounds. Cross-run reuse is opt-in via a max age in hours ('max-age <h>h'). Every verdict
+// carries the policy (fresh) or the reason (stale) so the caller records the reuse where it lands.
+
+export const LEDGER = 'stardust/status.jsonl';
+// (skill, phase) pairs whose `start` line opens a run: rollout's inventory opens every rollout (its
+// published stage runs later, inside C-deliver); replica's extract opens a replica run.
+export const RUN_OPENERS = [['stardust:rollout', 'A-inventory'], ['stardust:replica', 'extract']];
+const FUTURE_SLACK_MS = 5 * 60e3; // clock skew tolerated before a capture time counts as "in the future"
+
+/** The `ts` of the LAST opener `start` line in the ledger (`text` instead of the file, for tests);
+ * malformed lines are skipped; no ledger or no opener → null. */
+export function runStartAt({ ledger = LEDGER, text = null } = {}) {
+  let body = text;
+  if (body == null) {
+    try { body = readFileSync(ledger, 'utf8'); } catch { return null; }
+  }
+  let at = null;
+  for (const raw of String(body).split('\n')) {
+    let rec;
+    try { rec = JSON.parse(raw); } catch { continue; }
+    if (!rec || rec.event !== 'start' || typeof rec.ts !== 'string' || Number.isNaN(Date.parse(rec.ts))) continue;
+    const skill = String(rec.skill || '');
+    const full = skill.startsWith('stardust:') ? skill : `stardust:${skill}`;
+    if (RUN_OPENERS.some(([s, p]) => s === full && p === rec.phase)) at = rec.ts;
+  }
+  return at;
+}
+
+/** The opt-in cross-run max age in hours: a finite number > 0, else null (off). */
+export function maxAgeHours(v = process.env.STARDUST_ORIGIN_MAX_AGE_H) {
+  const n = Number(v); // '' / null → 0, junk → NaN: both off
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/**
+ * May a source-side capture (`meta.at`, ISO) be reused? → { fresh, policy, reason, runStart }.
+ * `runStart` undefined → runStartAt({ ledger }); `maxAgeH` undefined → the env (maxAgeHours()).
+ * Fresh: at >= runStart → 'same-run' (wins), else now - at <= maxAgeH hours → 'max-age <h>h'.
+ * Stale reasons: 'no capture time' | 'capture time in the future' (> 5 min ahead) |
+ * 'captured before this run (<runStart>)' | 'no run anchor in <ledger> (cross-run reuse is opt-in: …)',
+ * the last two with '; older than max-age <h>h' when a max age was set and exceeded.
+ */
+export function freshness(meta, { runStart, maxAgeH, now = Date.now(), ledger } = {}) {
+  const anchor = runStart === undefined ? runStartAt({ ledger }) : runStart;
+  const startMs = anchor ? Date.parse(anchor) : NaN;
+  const maxH = maxAgeHours(maxAgeH); // undefined falls through to the env default
+  const nowMs = typeof now === 'string' ? Date.parse(now) : Number(now);
+  const atMs = meta && meta.at ? Date.parse(meta.at) : NaN;
+  const stale = (reason) => ({ fresh: false, policy: null, reason, runStart: anchor });
+  if (Number.isNaN(atMs)) return stale('no capture time');
+  if (atMs > nowMs + FUTURE_SLACK_MS) return stale('capture time in the future');
+  if (!Number.isNaN(startMs) && atMs >= startMs) return { fresh: true, policy: 'same-run', reason: null, runStart: anchor };
+  if (maxH != null && nowMs - atMs <= maxH * 3600e3) return { fresh: true, policy: `max-age ${maxH}h`, reason: null, runStart: anchor };
+  const why = Number.isNaN(startMs)
+    ? `no run anchor in ${ledger || LEDGER} (cross-run reuse is opt-in: --origin-max-age / STARDUST_ORIGIN_MAX_AGE_H)`
+    : `captured before this run (${anchor})`;
+  return stale(maxH != null ? `${why}; older than max-age ${maxH}h` : why);
+}
+
+/** Boolean form of freshness() for callers that only branch on it. */
+export const isFreshCapture = (meta, opts) => freshness(meta, opts).fresh;
+
+/** What a caller records where a reuse lands (a row, origin.json, a probe's JSON). */
+export const reuseRecord = (from, meta, verdict) => ({ reused: true, from, at: meta.at, policy: verdict.policy });
+
+// Canonical form of a cache key: object keys sorted recursively, arrays kept in order.
+const canon = (v) => {
+  if (Array.isArray(v)) return v.map(canon);
+  if (v && typeof v === 'object') return Object.fromEntries(Object.keys(v).sort().map((k) => [k, canon(v[k])]));
+  return v;
+};
+const canonJson = (v) => JSON.stringify(canon(v));
+const firstDifference = (a, b) => {
+  if (!a || !b || typeof a !== 'object' || typeof b !== 'object' || Array.isArray(a) || Array.isArray(b)) return canonJson(a) === canonJson(b) ? null : 'key';
+  return [...new Set([...Object.keys(a), ...Object.keys(b)])].sort().find((k) => canonJson(a[k]) !== canonJson(b[k])) || null;
+};
+
+/**
+ * Side cache `{ key, at, writtenBy, data }`: a hit needs the canonical key equal AND `at` fresh per
+ * freshness(_, opts) → { hit: true, data, at, policy, file }; else { hit: false, reason } with reason
+ * 'absent' | 'unreadable (<msg>)' | 'key mismatch (<first differing field>)' | the freshness reason.
+ */
+export function readSideCache(file, key, opts = {}) {
+  if (!file || !existsSync(file)) return { hit: false, reason: 'absent' };
+  let doc;
+  try { doc = JSON.parse(readFileSync(file, 'utf8')); } catch (e) { return { hit: false, reason: `unreadable (${String(e.message).split('\n')[0]})` }; }
+  if (!doc || typeof doc !== 'object' || !('data' in doc)) return { hit: false, reason: 'unreadable (not a side-cache record)' };
+  const field = firstDifference(doc.key, key);
+  if (field) return { hit: false, reason: `key mismatch (${field})` };
+  const verdict = freshness({ at: doc.at }, opts);
+  if (!verdict.fresh) return { hit: false, reason: verdict.reason };
+  return { hit: true, data: doc.data, at: doc.at, policy: verdict.policy, file };
+}
+
+/** Write a side cache atomically (mkdir -p, `<file>.<pid>.tmp`, rename) → file. */
+export function writeSideCache(file, key, data, { at = new Date().toISOString(), writtenBy = null } = {}) {
+  mkdirSync(dirname(file), { recursive: true });
+  const tmp = `${file}.${process.pid}.tmp`;
+  writeFileSync(tmp, `${JSON.stringify({ key: canon(key), at, writtenBy, data }, null, 2)}\n`);
+  renameSync(tmp, file);
+  return file;
 }
