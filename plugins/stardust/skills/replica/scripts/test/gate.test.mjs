@@ -1,7 +1,8 @@
 #!/usr/bin/env node
-// gate.sh contract test: argument parsing, --help, the horizontal-overflow assert (measure.mjs root line → exit 2
-// over a PASS pixel line), the one capture retry on exit 1 (live, build, overflow probe; 3 / 4 / 124 final), the
-// --full probe fan-out and its exit-code rules, the overlay flags (--consent / --dismiss / --no-dismiss reaching both
+// gate.sh contract test: argument parsing, --help, the horizontal-overflow assert (the build capture's own
+// `overflow:` line → exit 2 over a PASS pixel line; no measure.mjs launched in a round), the one capture retry on
+// exit 1 (live, build; 3 / 4 / 124 final; the retried attempt's overflow line decides), the --full probe fan-out
+// and its exit-code rules, the overlay flags (--consent / --dismiss / --no-dismiss reaching both
 // captures, the diff probes and chrome-parity), with stub instruments (no browser, no network).
 // Run: node skills/replica/scripts/test/gate.test.mjs
 import { spawn } from 'node:child_process';
@@ -34,8 +35,11 @@ cpSync(join(scripts, 'run-capped.mjs'), join(replica, 'run-capped.mjs'));
 // Stubs read their behaviour from environment variables so one sandbox covers every case. stitch-shot: per side
 // (LIVE = the https://live.example URL, BUILD = anything else) an exit code (STUB_STITCH_RC_<side>) or a fail-ONCE
 // marker file (STUB_FAIL_ONCE_<side>: exit 1 while the marker is absent, create it); every call appends its side to
-// STUB_STITCH_COUNT so a test can count attempts, and its side + argv to STUB_STITCH_ARGS so a test can read the flags. measure: the root line gate.sh reads (STUB_OVERFLOW px over the
-// viewport, STUB_MEASURE_RC exit code, STUB_MEASURE_NO_ROOT drops the line).
+// STUB_STITCH_COUNT so a test can count attempts, and its side + argv to STUB_STITCH_ARGS so a test can read the flags.
+// The BUILD side prints the root line gate.sh reads, `overflow: scrollWidth=<w+o> viewport=<w> delta=<o>` (o =
+// STUB_OVERFLOW px over the --width viewport; STUB_NO_OVERFLOW_LINE drops it; a fail-once attempt prints o =
+// STUB_OVERFLOW_FIRST when set, before its exit 1). measure: a call counter only (STUB_MEASURE_COUNT) — a round
+// launches none.
 const stub = (dir, name, body) => writeFileSync(join(dir, name), `#!/usr/bin/env node\n${body}\n`);
 stub(replica, 'stitch-shot.mjs', `
   import { appendFileSync, existsSync, writeFileSync } from 'node:fs';
@@ -43,20 +47,17 @@ stub(replica, 'stitch-shot.mjs', `
   const side = /^https:\\/\\/live\\.example/.test(url) ? 'LIVE' : 'BUILD';
   if (process.env.STUB_STITCH_COUNT) appendFileSync(process.env.STUB_STITCH_COUNT, side + '\\n');
   if (process.env.STUB_STITCH_ARGS) appendFileSync(process.env.STUB_STITCH_ARGS, side + ' ' + process.argv.slice(2).join(' ') + '\\n');
+  const w = Number(process.argv[process.argv.indexOf('--width') + 1]);
+  const ovf = (o) => { if (side === 'BUILD' && !process.env.STUB_NO_OVERFLOW_LINE) console.log('overflow: scrollWidth=' + (w + o) + ' viewport=' + w + ' delta=' + o); };
   const once = process.env['STUB_FAIL_ONCE_' + side];
-  if (once && !existsSync(once)) { writeFileSync(once, '1'); console.error('stitch-shot error: Target page, context or browser has been closed'); process.exit(1); }
+  if (once && !existsSync(once)) { writeFileSync(once, '1'); if (process.env.STUB_OVERFLOW_FIRST) ovf(Number(process.env.STUB_OVERFLOW_FIRST)); console.error('stitch-shot error: Target page, context or browser has been closed'); process.exit(1); }
   const rc = Number(process.env['STUB_STITCH_RC_' + side] || 0);
   if (rc) { console.error('stitch-shot error: stub exit ' + rc); process.exit(rc); }
-  writeFileSync(out, 'png'); console.log('stitched ' + out);`);
+  writeFileSync(out, 'png'); ovf(Number(process.env.STUB_OVERFLOW || 0)); console.log('stitched ' + out);`);
 stub(replica, 'measure.mjs', `
   import { appendFileSync } from 'node:fs';
   if (process.env.STUB_MEASURE_COUNT) appendFileSync(process.env.STUB_MEASURE_COUNT, 'M\\n');
-  const rc = Number(process.env.STUB_MEASURE_RC || 0);
-  if (rc) { console.error('measure: ' + process.argv[2] + ' failed to load — stub exit ' + rc); process.exit(rc); }
-  const w = Number(process.argv[process.argv.indexOf('--width') + 1]); const o = Number(process.env.STUB_OVERFLOW || 0);
-  console.log('measure  ' + process.argv[2]); console.log('  widths ' + w + ' · 1 selector(s) · 1 props · first match'); console.log(''); console.log('@ ' + w + 'px');
-  if (!process.env.STUB_MEASURE_NO_ROOT) console.log('  root  scrollWidth ' + String(w + o).padStart(5) + '  viewport ' + w + '  scrollHeight   5410' + (o ? '  ◄◄ OVERFLOW +' + o + 'px' : ''));
-  console.log('  html'); console.log('       x     0  y      0  w  ' + w + '  h  5410  vis  ""'); console.log('      display: block');`);
+  console.log('measure  ' + process.argv[2]);`);
 stub(replica, 'pixel-compare.mjs', `
   console.log('height delta 0px'); console.log('differing 1.20%');
   process.exit(Number(process.env.STUB_PIXEL_RC || 0));`);
@@ -145,10 +146,16 @@ r = await gate(['home', 'https://live.example/', buildUrl, '1440', 'tol4'], { ST
 check('GATE_OVERFLOW_TOLERANCE=0 makes the assert exact: +1px fails', r.status === 2 && /\(\+1px\) → FAIL/.test(r.stdout), `status ${r.status}`);
 r = await gate(['home', 'https://live.example/', buildUrl, '1440', 'tol5'], { STUB_OVERFLOW: '0', GATE_OVERFLOW_TOLERANCE: 'four' });
 check('a non-numeric GATE_OVERFLOW_TOLERANCE is a usage error (exit 125) before any capture', r.status === 125 && /whole number of px/.test(r.stderr), `status ${r.status} ${r.stderr}`);
-r = await gate(['home', 'https://live.example/', buildUrl, '1440', 'ovf4'], { STUB_MEASURE_NO_ROOT: '1' });
-check('an overflow probe without a root line is exit 1 with the fix named (never a silent pass)', r.status === 1 && /printed no root line/.test(r.stderr), `status ${r.status} ${r.stderr}`);
-r = await gate(['home', 'https://live.example/', buildUrl, '1440', 'ovf5'], { STUB_MEASURE_RC: '124' });
-check('an overflow probe deadline is exit 124, no verdict', r.status === 124 && /overflow probe hit its deadline/.test(r.stderr), `status ${r.status} ${r.stderr}`);
+r = await gate(['home', 'https://live.example/', buildUrl, '1440', 'ovf4'], { STUB_NO_OVERFLOW_LINE: '1' });
+check('a build capture without an overflow line is exit 1 naming the fix (never a silent pass)', r.status === 1 && /^gate\.sh: the build capture printed no overflow line \(stardust\/replica\/gates\/home-1440\/overflow-ovf4\.txt\) — re-copy stitch-shot\.mjs from the plugin; the assert needs it$/m.test(r.stderr) && !/differing/.test(r.stdout), `status ${r.status} ${r.stderr}`);
+r = await gate(['home', 'https://live.example/', buildUrl, '1440', 'ovf5'], { STUB_STITCH_RC_BUILD: '124' });
+check('a build capture deadline is 124, no overflow line', r.status === 124 && /build capture failed \(exit 124\)/.test(r.stderr) && !/overflow assert|OVERFLOW/.test(r.stdout), `status ${r.status} ${r.stderr}`);
+// C6: the overflow numbers come from the build capture itself — no second page load through measure.mjs.
+const mCount = join(root, 'measure-count.txt');
+r = await gate(['home', 'https://live.example/', buildUrl, '1440', 'nom1'], { STUB_MEASURE_COUNT: mCount });
+check('a round launches no measure.mjs (the overflow line is the build capture\'s own)', r.status === 0 && !existsSync(mCount) && /^gate\.sh: overflow assert at 1440 — build scrollWidth 1440 = viewport → ok$/m.test(r.stdout), `status ${r.status} ${existsSync(mCount)}`);
+r = await gate(['home', 'https://live.example/', buildUrl, '1440', 'nom2', '--full'], { STUB_MEASURE_COUNT: mCount });
+check('a --full round launches no measure.mjs either', r.status === 0 && !existsSync(mCount), `status ${r.status} ${existsSync(mCount)}`);
 
 // Capture retry: exit 1 is retried once — on the build capture, the live capture and the overflow probe; 3 / 124 are final.
 const countFile = join(root, 'stitch-count.txt');
@@ -174,9 +181,11 @@ check('live attempted twice, then the build once', attempts().join(',') === 'LIV
 resetCount();
 r = await gate(['press', 'https://live.example/press', buildUrl, '1440', 'retry5', '--marker', 'home-proposed'], { STUB_STITCH_RC_LIVE: '1', STUB_STITCH_COUNT: countFile });
 check('two exit-1 live captures: exit 1, re-queue named, no partial live.png left to be reused', r.status === 1 && /live capture failed \(exit 1\) — not comparing \(twice: no verdict — re-queue the round\)/.test(r.stderr) && !existsSync(join(root, 'stardust/replica/gates/press-1440/live.png')) && attempts().join(',') === 'LIVE,LIVE', `status ${r.status} attempts ${attempts().join(',')} ${r.stderr}`);
-const mCount = join(root, 'measure-count.txt');
-r = await gate(['home', 'https://live.example/', buildUrl, '1440', 'retry6'], { STUB_MEASURE_RC: '1', STUB_MEASURE_COUNT: mCount });
-check('an overflow probe that exits 1 twice is exit 1 (no verdict) after one retry', r.status === 1 && /overflow probe exited 1 — retrying once/.test(r.stderr) && /overflow probe failed \(exit 1\) — no verdict, re-queue the round: measure: /.test(r.stderr) && readFileSync(mCount, 'utf8').trim().split('\n').length === 2, `status ${r.status} ${r.stderr}`);
+resetCount();
+r = await gate(['home', 'https://live.example/', buildUrl, '1440', 'retry6'], { STUB_FAIL_ONCE_BUILD: join(root, 'once-build-ovf'), STUB_OVERFLOW_FIRST: '40', STUB_STITCH_COUNT: countFile });
+check('a build capture that exits 1 once: the overflow line of the second attempt decides', r.status === 0 && attempts().join(',') === 'BUILD,BUILD'
+  && /^gate\.sh: overflow assert at 1440 — build scrollWidth 1440 = viewport → ok$/m.test(r.stdout) && !/OVERFLOW/.test(r.stdout)
+  && readFileSync(join(root, 'stardust/replica/gates/home-1440/overflow-retry6.txt'), 'utf8').trim() === 'overflow: scrollWidth=1440 viewport=1440 delta=0\nstitched stardust/replica/gates/home-1440/build.png', `status ${r.status} attempts ${attempts().join(',')} ${r.stdout}`);
 
 // Unknown flag
 r = await gate(['home', 'https://live.example/', buildUrl, '1440', '--bogus']);

@@ -2,22 +2,25 @@
 # skills/replica/scripts/gate.sh — one pixel-gate round in one command
 #
 # Stitches both sides (live capture CACHED across iterations — hit
-# minimization, source-fidelity-gate.md § Iteration discipline), runs the
-# horizontal-overflow assert on the build side, runs pixel-compare, and prints
-# the verdict lines that drive the loop (size / height delta / differing % /
-# hot bands / overflow). The prototype/build side is re-captured every round;
-# the live side only when live.png is absent — delete it explicitly to re-take
-# (site changed, capture hardening changed, a new --consent / --dismiss selector).
+# minimization, source-fidelity-gate.md § Iteration discipline), reads the
+# horizontal-overflow assert from the build capture's own overflow line, runs
+# pixel-compare, and prints the verdict lines that drive the loop (size /
+# height delta / differing % / hot bands / overflow). The prototype/build side
+# is re-captured every round; the live side only when live.png is absent —
+# delete it explicitly to re-take (site changed, capture hardening changed, a
+# new --consent / --dismiss selector).
 #
 # Usage:
 #   stardust/scripts/replica/gate.sh <slug> <live-url> <build-url> <width> [iter-label]
 #       [--marker <string>] [--full] [--main <selector>] [--consent <sel>] [--dismiss <sel,…>]
 #       [--no-dismiss] [--help]
 #
-# Horizontal-overflow assert (every round, build side only — no live hit):
-#   after the build capture, measure.mjs reads document.documentElement's
-#   scrollWidth at <width> on the build URL (overflow-<label>.txt in the
-#   evidence dir). A document wider than its viewport by more than
+# Horizontal-overflow assert (every round, build side only — no live hit, no
+#   extra page load): the build capture prints one root line,
+#   `overflow: scrollWidth=<n> viewport=<n> delta=<n>` — document.documentElement's
+#   scrollWidth at <width>, read on the same page, width and settle as the
+#   pixels; its stdout is overflow-<label>.txt in the evidence dir and the
+#   last such line decides. A document wider than its viewport by more than
 #   GATE_OVERFLOW_TOLERANCE px (default 4 — scrollWidth and clientWidth are
 #   integers, so a correct page whose widest box is 360.4 px reads +1; the qa
 #   skill's rendered sweep fails above the same 4 px) prints
@@ -29,10 +32,11 @@
 #   recorded hands-off run delivered two pages 373 and 400 px wide at a 360
 #   viewport and logged them as residuals. gate-evidence.mjs reads the same
 #   line, so a PASS pixel line never earns pixel-gate-<w> over an overflow.
-#   The probe follows the capture's exit classes (below); a missing
-#   measure.mjs or a probe without a root line is exit 1 (fix the copy).
+#   The line follows the build capture's exit classes (below); a build capture
+#   that printed no overflow line is exit 1 (a stale stitch-shot.mjs copy —
+#   re-copy it). measure.mjs stays the tool for finding the box that overflows.
 #
-# Capture retry: a capture (live, build, or the overflow probe) that exits 1
+# Capture retry: a capture (live or build) that exits 1
 #   is retried ONCE before the round declares anything — under parallel
 #   Chromium load (three rounds in flight, nine Chromiums with --full) a
 #   recorded run saw about 8 of 62 sibling rounds exit 1 from the build
@@ -90,7 +94,7 @@
 #     "http://localhost:8791/home-proposed.html" 1440 iter2
 #
 # Evidence lands in stardust/replica/gates/<slug>-<width>/
-# (live.png, build.png, diff-<label>.png, overflow-<label>.txt).
+# (live.png, build.png, diff-<label>.png, overflow-<label>.txt = the build capture's stdout).
 #
 # Fail-loud contract: a stitch-shot bot challenge (exit 3) or capture error
 # aborts the round — a missing/blocked side must never be compared. Exit
@@ -113,7 +117,7 @@
 # <path>/node) processes running one of the instrument scripts, never one
 # under `--inspect` (someone's debugger); SIGTERM first, SIGKILL only if still
 # alive ~2 s later. Overrides:
-#   GATE_STITCH_TIMEOUT  seconds per stitch-shot and per overflow probe (default 300)
+#   GATE_STITCH_TIMEOUT  seconds per stitch-shot              (default 300)
 #   GATE_OVERFLOW_TOLERANCE  px of build scrollWidth over the viewport still ok (default 4; 0 = exact)
 #   GATE_COMPARE_TIMEOUT seconds per pixel-compare        (default 120)
 #   GATE_REAP_MIN        stale-instrument age in minutes  (default 15; 0 disables)
@@ -261,30 +265,29 @@ if [ ! -f "$DIR/live.png" ]; then
 fi
 
 # Build side: re-captured every iteration; exit 1 retried once (header § Capture retry); the same overlay flags as
-# the live side — a symmetric instrument (the build has nothing to dismiss, so the flags are no-ops there).
-capture_build() { capped "$STITCH_TIMEOUT" "stitch-shot build $SLUG@$W" node "$HERE/stitch-shot.mjs" "$BUILD_URL" "$DIR/build.png" --width "$W" ${STITCH_OPTS[@]+"${STITCH_OPTS[@]}"}; }
+# the live side — a symmetric instrument (the build has nothing to dismiss, so the flags are no-ops there). Its stdout
+# is the overflow evidence (header § Horizontal-overflow assert): each attempt rewrites $OVF, so the last one decides.
+OVF="$DIR/overflow-$LBL.txt"
+capture_build() {
+  capped "$STITCH_TIMEOUT" "stitch-shot build $SLUG@$W" node "$HERE/stitch-shot.mjs" "$BUILD_URL" "$DIR/build.png" --width "$W" ${STITCH_OPTS[@]+"${STITCH_OPTS[@]}"} > "$OVF"
+  local rc=$?
+  cat "$OVF"
+  return $rc
+}
 retry_once "build capture" capture_build
 rc=$?
 [ $rc -ne 0 ] && { echo "gate.sh: build capture failed (exit $rc) — not comparing$([ $rc -eq 1 ] && printf ' (twice: no verdict — re-queue the round)')" >&2; exit $rc; }
 
-# Horizontal-overflow assert (header § Horizontal-overflow assert): measure.mjs on the BUILD side only —
-# no live hit — reads documentElement.scrollWidth at $W; its root line is the evidence. The verdict line
-# is printed after pixel-compare's so the loop reads pixels, then the assert.
-OVF="$DIR/overflow-$LBL.txt"
-[ -f "$HERE/measure.mjs" ] || { echo "gate.sh: $HERE/measure.mjs missing — the overflow assert cannot run; re-copy the replica scripts dir (replica SKILL.md § Setup)" >&2; exit 1; }
-probe_overflow() { capped "$STITCH_TIMEOUT" "measure build $SLUG@$W" node "$HERE/measure.mjs" "$BUILD_URL" --selectors html --props display --width "$W" > "$OVF" 2>&1; }
-retry_once "overflow probe" probe_overflow
-rc=$?
-case "$rc" in
-  0) ;;
-  124) echo "gate.sh: overflow probe hit its deadline (exit 124) — no verdict, re-run the round" >&2; exit 124 ;;
-  3) echo "gate.sh: overflow probe blocked (exit 3) on $BUILD_URL — escalate --headed" >&2; exit 3 ;;
-  *) echo "gate.sh: overflow probe failed (exit $rc) — no verdict, re-queue the round: $(grep -iE 'measure:' "$OVF" | head -1 | cut -c1-160)" >&2; exit 1 ;;
-esac
-OVER=$(grep -oE 'OVERFLOW \+[0-9]+px' "$OVF" | head -1 | grep -oE '[0-9]+')
-SW=$(grep -oE 'scrollWidth +[0-9]+' "$OVF" | head -1 | grep -oE '[0-9]+$')
-VP=$(grep -oE 'viewport +[0-9]+' "$OVF" | head -1 | grep -oE '[0-9]+$')
-[ -z "$SW" ] && { echo "gate.sh: overflow probe printed no root line ($OVF) — re-copy measure.mjs from the plugin; the assert needs its root line" >&2; exit 1; }
+# Horizontal-overflow assert (header § Horizontal-overflow assert): the build capture's own root line — BUILD side
+# only, no live hit, no second page load. The verdict line is printed after pixel-compare's so the loop reads
+# pixels, then the assert.
+LINE=$(grep -E '^overflow: scrollWidth=[0-9]+ viewport=[0-9]+ delta=[0-9]+' "$OVF" | tail -1)
+[ -z "$LINE" ] && { echo "gate.sh: the build capture printed no overflow line ($OVF) — re-copy stitch-shot.mjs from the plugin; the assert needs it" >&2; exit 1; }
+SW=$(printf '%s' "$LINE" | sed -E 's/^overflow: scrollWidth=([0-9]+) .*/\1/')
+VP=$(printf '%s' "$LINE" | sed -E 's/^.* viewport=([0-9]+) .*/\1/')
+D=$(printf '%s' "$LINE" | sed -E 's/^.* delta=([0-9]+).*/\1/')
+OVER=""
+[ "$D" -gt 0 ] && OVER=$D
 
 # pixel-compare supervises its own deadline (--timeout); exit 124 = no verdict.
 node "$HERE/pixel-compare.mjs" "$DIR/live.png" "$DIR/build.png" --out "$DIR/diff-$LBL.png" --timeout "$COMPARE_TIMEOUT"
