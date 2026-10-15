@@ -4,7 +4,7 @@
 // Browser checks skip with a printed line when playwright does not resolve. Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -24,6 +24,27 @@ await check('--help documents the new options and exits 0', () => {
   const r = run('--help');
   assert.equal(r.status, 0);
   for (const f of ['--viewport', '--no-sanity', '--json']) assert.ok(r.stdout.includes(f), `usage names ${f}`);
+});
+
+await check('a value flag never takes a following --flag or a missing value: exit 2, usage names the flag, nothing written', () => {
+  const cwd = mkdtempSync(join(tmpdir(), 'donor-probe-args-'));
+  try {
+    const base = ['--tokens', 'tokens.json', '--rendered', 'page.html'];
+    const cases = [
+      [['--json', '--no-sanity'], '--json'],
+      [['--json', '--report', 'r.md'], '--json'],
+      [['--json'], '--json'],
+      [['--viewport', '--no-sanity'], '--viewport'],
+      [['--report', '--headed'], '--report'],
+      [['--spec'], '--spec'],
+    ];
+    for (const [extra, flag] of cases) {
+      const r = spawnSync(process.execPath, [PROBE, ...base, ...extra], { encoding: 'utf8', cwd });
+      assert.equal(r.status, 2, extra.join(' '));
+      assert.match(r.stderr, new RegExp(`${flag} needs a value`), extra.join(' '));
+    }
+    assert.deepEqual(readdirSync(cwd), []);
+  } finally { rmSync(cwd, { recursive: true, force: true }); }
 });
 
 let pw = null;

@@ -94,7 +94,11 @@ function parseArgs(argv) {
     if (a === '--help' || a === '-h') opts.help = true;
     else if (a === '--headed') opts.headed = true;
     else if (a === '--no-sanity') opts.noSanity = true;
-    else if (a.startsWith('--') && VALUE_FLAGS.has(a.slice(2))) opts[a.slice(2)] = argv[++i];
+    else if (a.startsWith('--') && VALUE_FLAGS.has(a.slice(2))) {
+      const v = argv[i + 1];
+      if (v === undefined || v.startsWith('--')) { console.error(`[donor-probe] ${a} needs a value`); process.exit(2); }
+      opts[a.slice(2)] = v; i += 1;
+    }
     else { console.error(`[donor-probe] unknown arg: ${a}`); process.exit(2); }
   }
   return opts;
@@ -154,7 +158,7 @@ const collapse = (s) => String(s).replace(/\s+/g, ' ').trim();
 function compare(entry, got, want) {
   if (entry.compare === 'firstFamily') return firstFamily(got) === firstFamily(want);
   if (entry.property === 'fontFamily') return normFamily(got) === normFamily(want);
-  if (entry.property.startsWith('--')) { got = collapse(got); want = collapse(want); }
+  if (String(entry.property ?? '').startsWith('--')) { got = collapse(got); want = collapse(want); }
   if (entry.tolerancePx != null) {
     const nums = (v) => String(v).match(/-?\d+(\.\d+)?/g)?.map(Number) ?? [];
     const g = nums(got); const w = nums(want);
@@ -217,7 +221,7 @@ for (const entry of spec) {
   const got = await page.evaluate(([sel, prop]) => {
     const el = document.querySelector(sel);
     if (!el) return null;
-    return prop.startsWith('--') ? getComputedStyle(el).getPropertyValue(prop).trim() : getComputedStyle(el)[prop];
+    return String(prop ?? '').startsWith('--') ? getComputedStyle(el).getPropertyValue(prop).trim() : getComputedStyle(el)[prop];
   }, [entry.selector, entry.property]);
   if (got === null) {
     // A missing selector is a FAIL: either the renderer broke the documented
