@@ -145,7 +145,7 @@ function matchCompound(n, c, scope) {
     if (p.name === 'scope') { if (n !== scope) return false; }
     else if (p.name === 'not') { if (matches(n, p.arg, scope)) return false; }
     else if (p.name === 'is' || p.name === 'where') { if (!matches(n, p.arg, scope)) return false; }
-    else if (p.name === 'has') { if (![...walk(n)].some((d) => matches(d, p.arg, n))) return false; }
+    else if (p.name === 'has') { if (!hasRelative(n, p.arg)) return false; }
     else if (p.name === 'first-child') { if (sibs[0] !== n) return false; }
     else if (p.name === 'last-child') { if (sibs[sibs.length - 1] !== n) return false; }
     else if (p.name === 'first-of-type') { if (sibs.find((x) => x.tag === n.tag) !== n) return false; }
@@ -167,5 +167,15 @@ function matchComplex(n, parts, idx, scope) {
   return false;
 }
 export function matches(n, sel, scope = null) { return parseSelector(sel).some((parts) => parts.length && matchComplex(n, parts, parts.length - 1, scope)); }
+// :has() takes relative selectors, each anchored at the element: a leading > + ~ or (by default) the descendant
+// combinator; an argument that already starts with :scope is anchored as written
+function hasRelative(n, arg) {
+  return splitTop(arg, ',').some((rel) => {
+    const sel = /^:scope(?![\w-])/.test(rel) ? rel : `:scope ${rel}`;
+    let pool = [...walk(n)];
+    if (/^[+~]/.test(rel)) { const sibs = n.parent ? kids(n.parent) : []; pool = sibs.slice(sibs.indexOf(n) + 1).flatMap((s) => [s, ...walk(s)]); }
+    return pool.some((d) => matches(d, sel, n));
+  });
+}
 export function qsa(rootNode, sel) { const out = []; for (const d of walk(rootNode)) if (matches(d, sel, rootNode)) out.push(d); return out; }
 export const qs = (rootNode, sel) => qsa(rootNode, sel)[0] || null;

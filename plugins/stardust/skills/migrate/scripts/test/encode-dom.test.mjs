@@ -3,6 +3,8 @@
 //
 //   mini DOM sanity  implicit <li> close, textOf, combinators + [attr~=] + :last-child, selector lists,
 //                    :not(:first-child), :has().
+//   chained pseudo   :not(.a):not(.b) and friends — each argument ends at its own closing paren.
+//   :has() relative  a leading > + ~ anchors at the element (default: descendant); plain :has(x) unchanged.
 //
 // The mini DOM sanity block is ported from the `stardust/next` branch:
 // `skills/migrate/scripts/test/importer-skeleton.test.mjs` (commit 9aaeff4f).
@@ -33,6 +35,20 @@ import { parseHTML, qsa, matches, textOf } from '../encode/dom.mjs';
   assert.deepEqual(texts('div:not([title="(x)"]):not(.a)'), ['2', '4'], 'a paren inside a quoted value does not end the argument');
   assert.deepEqual(texts('div:not(.a).c'), ['3i'], 'a compound part after the argument still applies');
   assert.throws(() => qsa(d, 'div:not(.a'), /bad selector/, 'an unclosed argument fails loud');
+}
+
+// --- :has() takes relative selectors, anchored at the element ------------------------------------------------------
+{
+  const d = parseHTML('<main><div id="a"><div id="a1"><span class="x"></span></div></div><div id="b"><span class="x"></span></div>'
+    + '<p id="p1"></p><i class="x"></i><p id="p2"><em>e</em></p><b></b><i class="x"></i><p id="p3"></p><i class="y"></i></main>');
+  const ids = (sel) => qsa(d, sel).map((n) => n.attrs.id);
+  assert.deepEqual(ids('div:has(.x)'), ['a', 'a1', 'b'], 'plain :has(x) unchanged: any descendant');
+  assert.deepEqual(ids('div:has(> .x)'), ['a1', 'b'], ':has(> x): a child, not any descendant');
+  assert.deepEqual(ids('p:has(+ .x)'), ['p1'], ':has(+ x): the next sibling');
+  assert.deepEqual(ids('p:has(~ .x)'), ['p1', 'p2'], ':has(~ x): any following sibling');
+  assert.deepEqual(ids('p:has(> em, + .y)'), ['p2', 'p3'], 'a list of relative selectors, each with its own combinator');
+  assert.deepEqual(ids('div:has(main .x)'), [], 'the default descendant combinator is anchored too: main must be inside the div');
+  assert.deepEqual(ids('div:has(:scope > .x)'), ['a1', 'b'], 'an explicitly :scope-anchored argument keeps working');
 }
 
 console.log('encode-dom: ok');
