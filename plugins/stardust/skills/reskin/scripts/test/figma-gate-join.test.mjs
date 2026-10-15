@@ -46,6 +46,16 @@ await check('parseMapping: first table with Status and Donor module; split slots
   assert.throws(() => parseMapping('# brief\n\n**s01** → M1'), (e) => e.name === 'UsageError' && e.code === 2 && /reference\/mapping-brief\.md § Entry schema/.test(e.message));
 });
 
+await check('parseMapping: a Donor module cell may name the module after its id, "M3 (Card Row)" → M3', () => {
+  const md = '| # | Donor module | Status |\n|---|---|---|\n| s01 | M3 (Card Row) | mapped |\n| s02 | `M2` (Hero, dark) | mapped |\n| s03 | — (no donor module) | new-module |\n| s04 | Feature Grid | mapped |\n';
+  assert.deepEqual(parseMapping(md), [
+    { slot: 's01', module: 'M3', status: 'mapped' },
+    { slot: 's02', module: 'M2', status: 'mapped' },
+    { slot: 's03', module: null, status: 'new-module' },
+    { slot: 's04', module: 'Feature Grid', status: 'mapped' },
+  ]);
+});
+
 await check('anchors: first heading, else first ordered text, else the first 60 characters of visibleText; normalized', () => {
   assert.deepEqual([...a], [['s01', 'welcome to the kit'], ['s02', 'everything in one place'], ['s03', 'sample kit, all rights reserved.']]);
   const m = anchors({ sections: [

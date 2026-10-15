@@ -7,6 +7,8 @@ const NONE = new Set(['', '—', '–', '-']);
 // Rows of a markdown table: runs of consecutive lines starting with "|".
 const cells = (line) => line.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim());
 const plain = (c) => c.replace(/[`*_]/g, '').trim();
+// "M3 (Card Row)": the id, with the module's name after it in parentheses.
+const moduleId = (c) => plain(c).replace(/\s*\(.*\)$/, '');
 
 export const norm = (s) => String(s ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
 
@@ -26,7 +28,7 @@ export function parseMapping(md) {
         const row = cells(line);
         const slot = plain(row[0] ?? '');
         if (!SLOT.test(slot)) continue;
-        const module = plain(row[modCol] ?? '');
+        const module = moduleId(row[modCol] ?? '');
         rows.push({ slot, module: NONE.has(module) ? null : module, status: plain(row[statusCol] ?? '').toLowerCase() });
       }
       return rows;
