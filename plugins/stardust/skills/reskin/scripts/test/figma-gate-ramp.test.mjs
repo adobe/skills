@@ -178,12 +178,19 @@ if (playwrightOk) {
     assert.ok(!existsSync(join(p.dir, '.work', 'reskin', 'gates', 'home', 'figma', 'ramp.json')));
   });
 
-  await check('a probe that exits 2 is a crash: runRamp throws with its stderr and writes no ramp.json', async () => {
+  await check('a probe that exits 2 is a setup error: runRamp throws a UsageError with its stderr and writes no ramp.json', async () => {
     const p = project('crash');
     const stub = join(p.root, 'probe-stub.mjs');
     writeFileSync(stub, 'console.error("stub probe: no playwright"); process.exit(2);\n');
-    await assert.rejects(gate(p, { donorProbe: stub }), /stub probe: no playwright/);
+    await assert.rejects(gate(p, { donorProbe: stub }), (e) => e.name === 'UsageError' && e.code === 2 && /stub probe: no playwright/.test(e.message));
     assert.ok(!existsSync(join(p.dir, '.work', 'reskin', 'gates', 'home', 'figma', 'ramp.json')));
+  });
+
+  await check('a probe that exits 3 (bot challenge) makes runRamp throw an error with code 3', async () => {
+    const p = project('challenge');
+    const stub = join(p.root, 'probe-stub.mjs');
+    writeFileSync(stub, 'console.error("stub probe: bot challenge"); process.exit(3);\n');
+    await assert.rejects(gate(p, { donorProbe: stub }), (e) => e.code === 3 && e.name !== 'UsageError' && /stub probe: bot challenge/.test(e.message));
   });
 
   const nonSolid = (p) => {

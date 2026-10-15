@@ -9,6 +9,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { UsageError } from '../figma/errors.mjs';
 import { letterSpacingCss, lineHeightCss, px, weightCss } from '../figma/normalize.mjs';
 import { parseNormalizations } from '../figma/rules.mjs';
 import { rootTokens } from '../render/root-tokens.mjs';
@@ -172,7 +173,11 @@ export async function runRamp({ target, join: joined, checks, boxes, tokens, rul
     let probe = null;
     try { probe = JSON.parse(readFileSync(jsonFile, 'utf8')); } catch { /* reported below */ }
     if ((r.status !== 0 && r.status !== 1) || !probe) {
-      throw new Error(`donor-probe at ${width}px did not give a verdict (exit ${r.status}): ${(r.stderr || r.stdout || '').trim()}`);
+      const why = (r.stderr || r.stdout || '').trim();
+      if (r.status === 2) throw new UsageError(`donor-probe at ${width}px: ${why}`);
+      const err = new Error(`donor-probe at ${width}px did not give a verdict (exit ${r.status}): ${why}`);
+      if (r.status === 3) err.code = 3;
+      throw err;
     }
     perWidth.push({ width, exit: r.status, report });
     const byLabel = new Map(probe.results.map((p) => [p.label, p]));
