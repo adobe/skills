@@ -10,12 +10,13 @@
 //   pixel  B2: advisory pixel share of each section against its slice of the frame image, where the
 //          frame's copy is the page's copy (replica's pixel-compare.mjs).
 //   register  B4: the divergence register of the step results already on disk (no browser).
+//   all    join → geometry → ramp → pixel → register in one run, with summary.json and the ledger fragment.
 // Writes go only under <dir>/.work/reskin/gates/. Under a sticky --confidential capture, every
 // subcommand first checks that .work/ and reskin/figma-checks/ are git-ignored.
 // --help answers before any helper import, so it works even from a partial copy of the scripts.
 // Exit codes: 0 pass · 1 a blocking check failed · 2 usage or setup · 3 bot challenge on a live target
 // · 124 no verdict (a step crashed or timed out: re-run, never a fix iteration).
-import { realpathSync } from 'node:fs';
+import { realpathSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -28,6 +29,7 @@ export const HELP = `Usage:
   node figma-gate.mjs ramp --page <slug> --url <url|file> [--dir stardust]
   node figma-gate.mjs pixel --page <slug> --url <url|file> [--dir stardust]
   node figma-gate.mjs register --page <slug> [--dir stardust]
+  node figma-gate.mjs all --page <slug> --url <url|file> [--dir stardust]
 
 Figma checks on a reskin page, against the capture figma-donor.mjs made (offline: no token, no network).
 
@@ -99,6 +101,26 @@ register B4, the divergence register. Reads join.json and whichever of geometry.
          Writes register.json and register.md (counts, rows, a "Not run" line, then the pixel results as
          an advisory block with the uncalibrated reference classes) beside the step files, prints
          "register written: mandated 1 · unmandated 1 · …" and the register.md path; exit 0.
+all      The whole run: join, geometry, ramp, pixel, register. The page is joined and the checks file
+         validated once, and every step works from that result. First it deletes the previous geometry.json,
+         ramp.json, pixel.json, register.json, register.md and summary.json, so a drifted or crashed run never
+         feeds stale files to the register or the summary. A join drift ends in exit 1 with geometry, ramp
+         and pixel "not run: section drift" (the register still runs, with nothing mandated and "join drift"
+         under Not run). A step that throws anything but a usage error is "CRASH: <message>" (exit 124);
+         a usage error (a missing input, an invalid checks file) stops the run with exit 2. Prints one
+         verdict line per step (PASS, FAIL, advisory or CRASH, the lines run-bg's default filter matches), then
+         the ledger fragment as JSON, then the register.md path. Exit: the first present of 2, 124, 1, 0.
+         Writes <dir>/.work/reskin/gates/<slug>/figma/summary.json:
+           { _provenance, page, url, regime, figma: { version }, steps: { <step>: { verdict, exit, detail } },
+             ledgerFragment, invocation }
+         ledgerFragment is what the agent copies to ledger.json pages.<slug>.gates.figma (never a file key):
+           { regime, figmaVersion, join: PASS | FAIL, geometry: "PASS n/n" | "FAIL k/n", ramp (the same over
+             asserted results, " (k unasserted)" appended), pixel: "<slot> <pct>%, <slot> n/a: <why>, ...",
+             register: the counts line, literals: <token literals outside :root>, invocation }
+         A step that did not run carries its verdict instead ("not run: section drift", "CRASH: <message>").
+         Run it under run-bg when it may exceed a shell's limit:
+           run-bg start --name figma-<slug> --dir stardust/.work/reskin/bg -- node <scripts>/figma-gate.mjs all --page <slug> --url <url|file>
+           run-bg wait --name figma-<slug> --dir stardust/.work/reskin/bg
 --dir <d>  the stardust directory (default stardust).
 
 Checks file <dir>/reskin/figma-checks/<slug>.json (written by the agent from the boxes outlines):
@@ -128,6 +150,7 @@ const SPEC = {
   ramp: { values: ['--page', '--url', '--dir'], bools: [], positional: [] },
   pixel: { values: ['--page', '--url', '--dir'], bools: [], positional: [] },
   register: { values: ['--page', '--dir'], bools: [], positional: [] },
+  all: { values: ['--page', '--url', '--dir'], bools: [], positional: [] },
 };
 
 export function parseArgs(argv, UsageError) {
@@ -200,25 +223,26 @@ function logDrift(result, log) {
   for (const p of result.problems) log(`  ${p}`);
 }
 
+function logJoin(result, log) {
+  if (!result.pass) { logDrift(result, log); return; }
+  log(`PASS join: ${result.sections.length} section(s) joined to Figma modules (${result.sections.map((s) => `${s.slot} → ${s.module ?? 'new module'}`).join(', ')})`);
+}
+
 async function joinStep({ dir, opts, log, UsageError }) {
   if (!opts.page) throw new UsageError('join needs --page <slug>');
   if (!opts.url) throw new UsageError('join needs --url <url|file>: the page to join');
   const [{ readInputs, workDir }, { runJoin }, { localTarget }] = await Promise.all([helper('io'), helper('join'), helper('target')]);
   const inputs = readInputs(dir, opts.page, ['mapping', 'contentModel', 'rules']);
   const result = await runJoin({ target: localTarget(opts.url), inputs, out: workDir(dir, opts.page) });
-  if (result.pass) {
-    log(`PASS join: ${result.sections.length} section(s) joined to Figma modules (${result.sections.map((s) => `${s.slot} → ${s.module ?? 'new module'}`).join(', ')})`);
-    return 0;
-  }
-  logDrift(result, log);
-  return 1;
+  logJoin(result, log);
+  return result.pass ? 0 : 1;
 }
 
-async function geometryStep({ dir, opts, log, UsageError }) {
+async function geometryStep({ dir, opts, log, UsageError, ready: given }) {
   if (!opts.page) throw new UsageError('geometry needs --page <slug>');
   if (!opts.url) throw new UsageError('geometry needs --url <url|file>: the page to measure');
   const [{ prepare }, { runGeometry }] = await Promise.all([helper('prepare'), helper('geometry')]);
-  const ready = await prepare({ dir, slug: opts.page, url: opts.url });
+  const ready = given ?? await prepare({ dir, slug: opts.page, url: opts.url });
   if (ready.drift) {
     logDrift(ready.join, log);
     return 1;
@@ -230,11 +254,11 @@ async function geometryStep({ dir, opts, log, UsageError }) {
   return pass ? 0 : 1;
 }
 
-async function rampStep({ dir, opts, log, UsageError }) {
+async function rampStep({ dir, opts, log, UsageError, ready: given }) {
   if (!opts.page) throw new UsageError('ramp needs --page <slug>');
   if (!opts.url) throw new UsageError('ramp needs --url <url|file>: the page to probe');
   const [{ prepare }, { runRamp }] = await Promise.all([helper('prepare'), helper('ramp')]);
-  const ready = await prepare({ dir, slug: opts.page, url: opts.url });
+  const ready = given ?? await prepare({ dir, slug: opts.page, url: opts.url });
   if (ready.drift) {
     logDrift(ready.join, log);
     return 1;
@@ -254,11 +278,11 @@ async function rampStep({ dir, opts, log, UsageError }) {
   return pass ? 0 : 1;
 }
 
-async function pixelStep({ dir, opts, log, UsageError }) {
+async function pixelStep({ dir, opts, log, UsageError, ready: given }) {
   if (!opts.page) throw new UsageError('pixel needs --page <slug>');
   if (!opts.url) throw new UsageError('pixel needs --url <url|file>: the page to screenshot');
   const [{ prepare }, { REFERENCE_CLASSES, runPixel }] = await Promise.all([helper('prepare'), helper('pixel')]);
-  const ready = await prepare({ dir, slug: opts.page, url: opts.url });
+  const ready = given ?? await prepare({ dir, slug: opts.page, url: opts.url });
   if (ready.drift) {
     logDrift(ready.join, log);
     return 1;
@@ -311,16 +335,128 @@ async function registerStep({ dir, opts, log, UsageError }) {
   return 0;
 }
 
+const STALE_FILES = ['geometry.json', 'ramp.json', 'pixel.json', 'register.json', 'register.md', 'summary.json'];
+const NOT_RUN_DRIFT = 'not run: section drift';
+const VERDICT_WORDS = { geometry: { 0: 'PASS', 1: 'FAIL' }, ramp: { 0: 'PASS', 1: 'FAIL' }, pixel: { 0: 'advisory', 124: 'no verdict' }, register: { 0: 'written' } };
+
+function geometryFragment(file) {
+  const bad = file.results.filter((r) => r.status !== 'PASS').length;
+  return bad ? `FAIL ${bad}/${file.results.length}` : `PASS ${file.results.length}/${file.results.length}`;
+}
+
+function rampFragment(file) {
+  const unasserted = file.results.filter((r) => r.status === 'UNASSERTED').length;
+  const asserted = file.results.length - unasserted;
+  const bad = file.results.filter((r) => r.status === 'FAIL').length;
+  return `${bad ? `FAIL ${bad}` : `PASS ${asserted}`}/${asserted}${unasserted ? ` (${unasserted} unasserted)` : ''}`;
+}
+
+function pixelFragment(file) {
+  return file.results.map((r) => {
+    if (r.verdict === 'advisory') return `${r.slot} ${r.pct.toFixed(2)}%`;
+    return r.verdict === 'n/a' ? `${r.slot} n/a: ${r.reason}` : `${r.slot} no verdict`;
+  }).join(', ');
+}
+
+async function allStep({ dir, opts, env, log, warn, UsageError, steps }) {
+  if (!opts.page) throw new UsageError('all needs --page <slug>');
+  if (!opts.url) throw new UsageError('all needs --url <url|file>: the page to check');
+  const [{ prepare }, { workDir }, { countsLine }, { readCurrent }, { provenance, readJsonIf, writeJson }] = await Promise.all([
+    helper('prepare'), helper('io'), helper('register'), helper('cache', 'figma'), helper('io', 'figma'),
+  ]);
+  const out = workDir(dir, opts.page);
+  for (const f of STALE_FILES) rmSync(join(out, f), { force: true });
+
+  const isSetup = (e) => e instanceof UsageError || e?.code === 2;
+  const recorded = {};
+  const exits = [];
+  const record = (name, verdict, exit, detail = []) => {
+    recorded[name] = { verdict, exit, detail };
+    if (exit !== null) exits.push(exit);
+  };
+  const notRun = (name, why) => {
+    record(name, why, null);
+    log(`${name} ${why}`);
+  };
+  // Runs one step function; its own log lines are kept as the step's detail. Anything but a setup error is a crash.
+  const exec = async (name, fn, extra = {}, { hide } = {}) => {
+    const detail = [];
+    const stepLog = (m) => { detail.push(m); if (m !== hide) log(m); };
+    try {
+      const exit = await fn({ dir, opts, env, log: stepLog, warn, UsageError, ...extra });
+      record(name, VERDICT_WORDS[name]?.[exit] ?? `exit ${exit}`, exit, detail);
+    } catch (e) {
+      if (isSetup(e)) throw e;
+      const verdict = `CRASH: ${e?.message ?? e}`;
+      log(`${name} ${verdict}`);
+      record(name, verdict, 124, detail);
+    }
+  };
+
+  let ready = null;
+  try {
+    ready = await prepare({ dir, slug: opts.page, url: opts.url });
+    const detail = [];
+    logJoin(ready.join, (m) => { detail.push(m); log(m); });
+    record('join', ready.join.pass ? 'PASS' : 'FAIL', ready.join.pass ? 0 : 1, detail);
+  } catch (e) {
+    if (isSetup(e)) throw e;
+    const verdict = `CRASH: ${e?.message ?? e}`;
+    log(`join ${verdict}`);
+    record('join', verdict, 124);
+  }
+
+  const runnable = ready && !ready.drift;
+  for (const name of ['geometry', 'ramp', 'pixel']) {
+    if (runnable) await exec(name, steps[name], { ready });
+    else notRun(name, ready ? NOT_RUN_DRIFT : 'not run: join crashed');
+  }
+  const registerPath = join(out, 'register.md');
+  if (ready) await exec('register', steps.register, {}, { hide: registerPath });
+  else notRun('register', 'not run: join crashed');
+
+  const read = (name) => readJsonIf(join(out, name));
+  const files = { geometry: read('geometry.json'), ramp: read('ramp.json'), pixel: read('pixel.json'), register: read('register.json') };
+  const fragmentOf = (name, make) => (recorded[name].verdict.startsWith('CRASH') || recorded[name].exit === null || !files[name] ? recorded[name].verdict : make(files[name]));
+  const current = readCurrent(dir);
+  const invocation = `figma-gate.mjs all --page ${opts.page} --url ${opts.url} --dir ${dir}`;
+  const ledgerFragment = {
+    regime: ready?.join.regime ?? 'local',
+    figmaVersion: current?.version ?? null,
+    join: recorded.join.verdict,
+    geometry: fragmentOf('geometry', geometryFragment),
+    ramp: fragmentOf('ramp', rampFragment),
+    pixel: fragmentOf('pixel', pixelFragment),
+    register: fragmentOf('register', (f) => countsLine(f.counts)),
+    literals: files.ramp ? files.ramp.literals?.length ?? 0 : null,
+    invocation,
+  };
+  writeJson(join(out, 'summary.json'), {
+    _provenance: provenance({ at: new Date().toISOString(), readArtifacts: Object.keys(files).filter((k) => files[k]).map((k) => `${k}.json`), note: 'figma-gate.mjs all' }),
+    page: opts.page,
+    url: opts.url,
+    regime: ledgerFragment.regime,
+    figma: { version: ledgerFragment.figmaVersion },
+    steps: recorded,
+    ledgerFragment,
+    invocation,
+  });
+  log(`ledger fragment for pages.${opts.page}.gates.figma in ledger.json:`);
+  log(JSON.stringify(ledgerFragment, null, 2));
+  if (files.register) log(registerPath);
+  return [2, 124, 1].find((c) => exits.includes(c)) ?? 0;
+}
+
 // steps lets a test replace a step function.
 export async function main(argv, { env = process.env, log = console.log, warn = (m) => process.stderr.write(`${m}\n`), steps = {} } = {}) {
   if (argv.includes('--help') || argv.includes('-h')) { log(HELP); return 0; }
   const { UsageError } = await helper('errors', 'figma');
   const { cmd, opts } = parseArgs(argv, UsageError);
   const dir = opts.dir || 'stardust';
-  const run = { boxes: boxesStep, join: joinStep, geometry: geometryStep, ramp: rampStep, pixel: pixelStep, register: registerStep, ...steps }[cmd];
+  const table = { boxes: boxesStep, join: joinStep, geometry: geometryStep, ramp: rampStep, pixel: pixelStep, register: registerStep, all: allStep, ...steps };
   const { confidentialGuard } = await helper('io');
   confidentialGuard(dir);
-  return run({ dir, opts, env, log, warn, UsageError });
+  return table[cmd]({ dir, opts, env, log, warn, UsageError, steps: table });
 }
 
 function safeRealpath(p) { try { return realpathSync(p); } catch { return p; } }

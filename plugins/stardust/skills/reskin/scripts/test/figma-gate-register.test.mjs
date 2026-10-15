@@ -142,6 +142,15 @@ check('buildRegister: no geometry.json or ramp.json means "not run" and nothing 
   assert.equal(none.pixel, null);
 });
 
+check('buildRegister: a drifted join (pass false) mandates no section and lists "join drift" as not run', () => {
+  const reg = buildRegister({ ...base, join: { ...joined, pass: false } });
+  assert.equal(reg.counts.mandated, 0);
+  assert.deepEqual(reg.notRun, ['join drift']);
+  assert.equal(reg.counts.unmandated, 1);
+  assert.deepEqual(buildRegister({ ...base, join: { ...joined, pass: false }, geometry: null, ramp: null, pixel: null }).notRun, ['join drift', 'geometry', 'ramp', 'pixel']);
+  assert.equal(buildRegister({ ...base, join: { ...joined, pass: true } }).counts.mandated, 1);
+});
+
 check('buildRegister: a conflicting Figma text color in a joined root is a conflict row', () => {
   const bad = { roots: { '1:3': { box: frame(WHITE, [t(16, 400)]) }, '1:7': boxes.roots['1:7'] } };
   const reg = buildRegister({ ...base, boxes: bad });
@@ -233,6 +242,16 @@ check('register without geometry/ramp/pixel files: those steps are "not run", no
   const reg = JSON.parse(readFileSync(join(workDir(p.dir, p.slug), 'register.json'), 'utf8'));
   assert.deepEqual(reg.notRun, ['geometry', 'ramp', 'pixel']);
   assert.match(readFileSync(join(workDir(p.dir, p.slug), 'register.md'), 'utf8'), /Not run: geometry, ramp, pixel/);
+});
+
+check('register on a drifted join.json: nothing mandated, "Not run: join drift" in register.md, exit 0', () => {
+  const p = project();
+  seed(p);
+  put(p, 'join.json', { ...joined, pass: false, problems: ['section drift: s02 before s01'] });
+  const r = run(['register', '--page', 'home'], p.root);
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /mandated 0 /);
+  assert.match(readFileSync(join(workDir(p.dir, p.slug), 'register.md'), 'utf8'), /Not run: join drift/);
 });
 
 check('register under --confidential: node ids without file links', () => {

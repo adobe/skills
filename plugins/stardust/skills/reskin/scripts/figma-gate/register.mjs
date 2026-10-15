@@ -1,6 +1,6 @@
 // skills/reskin/scripts/figma-gate/register.mjs — B4, the divergence register: what the Figma checks say
 // about a page, in five classes. mandated (a joined module section whose geometry and type entries all
-// pass: the page follows Figma there), unmandated (each failing entry), out-of-kit (each new-module
+// pass: the page follows Figma there; none after a join drift), unmandated (each failing entry), out-of-kit (each new-module
 // mapping row: nothing in Figma to follow), conflict (a Figma text color that misses WCAG contrast on its
 // own ground, so following Figma would ship an unreadable page) and pre-existing (each ledger flag).
 // Pure: the CLI reads the step files and writes register.json and register.md.
@@ -54,12 +54,13 @@ export function buildRegister({ join, geometry, ramp, pixel, mapping, boxes, fla
   const row = (cls, slot, module, node, check, detail) => rows.push({ class: cls, slot, module, node, check, detail, link: node ? link(node) : null });
   const sections = join.sections || [];
   const moduleOf = (slot) => sections.find((s) => s.slot === slot)?.module ?? null;
-  const notRun = [['geometry', geometry], ['ramp', ramp], ['pixel', pixel]].filter(([, v]) => !v).map(([k]) => k);
+  const drifted = join.pass === false;
+  const notRun = [...(drifted ? ['join drift'] : []), ...[['geometry', geometry], ['ramp', ramp], ['pixel', pixel]].filter(([, v]) => !v).map(([k]) => k)];
 
   const geo = geometry?.results || [];
   const typ = ramp?.results || [];
 
-  if (geometry && ramp) {
+  if (geometry && ramp && !drifted) {
     for (const s of sections.filter((x) => x.module)) {
       const g = geo.filter((r) => r.slot === s.slot && asserted(r));
       const t = typ.filter((r) => r.slot === s.slot && asserted(r));
