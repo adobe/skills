@@ -17,7 +17,6 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { main } from '../encode.mjs';
 import { COMMENT_KEY, KEYS, LINT_KEYS, validateTransform, validateVocabulary } from '../encode/engine.mjs';
-import { PLAIN_CONTENT } from '../encode/lint.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const FX = join(HERE, 'fixtures', 'encode-lint');
@@ -279,7 +278,6 @@ const snapshot = (dir) => readdirSync(dir, { recursive: true }).sort().map((f) =
   assert.deepEqual(JSON.parse(r.out[0]).newKinds, [
     { slug: 'guides-beta', kind: 'div.', count: 1, visible: true }, { slug: 'guides-beta', kind: 'form.', count: 1, visible: true },
     { slug: 'guides-beta', kind: 'iframe.', count: 1, visible: true }]);
-  assert.ok(PLAIN_CONTENT.has('p') && !PLAIN_CONTENT.has('div') && !PLAIN_CONTENT.has('form'));
   root = project();
   editMap(root, (v) => { v.markers = {}; });
   r = await run(root, '--sweep', '--template', A);
@@ -394,11 +392,6 @@ const snapshot = (dir) => readdirSync(dir, { recursive: true }).sort().map((f) =
     assert.deepEqual(Object.keys(p).filter((k) => k !== COMMENT_KEY).sort(), [...KEYS[def]].sort(), `${def}: the schema's keys = the engine's KEYS.${def}`);
     assert.deepEqual(Object.keys(p).filter((k) => p[k]['x-lint']).sort(), [...(LINT_KEYS[def] || [])].sort(), `${def}: x-lint = LINT_KEYS.${def}`);
   }
-  // the PLAIN_CONTENT --sweep restates is the engine's census set (the engine keeps it private)
-  const engineSrc = readFileSync(join(HERE, '..', 'encode', 'engine.mjs'), 'utf8');
-  const plain = /const PLAIN_CONTENT = new Set\((\[[^\]]*\])\)/.exec(engineSrc);
-  assert.ok(plain, 'engine.mjs defines PLAIN_CONTENT');
-  assert.deepEqual([...PLAIN_CONTENT].sort(), JSON.parse(plain[1].replace(/'/g, '"')).sort(), 'lint.mjs PLAIN_CONTENT = the engine census set');
 
   // every key the fixture maps use is a schema key (the encoder's own fixture exercises every grammar v2 feature)
   const keysOk = (obj, def, where) => { for (const k of Object.keys(obj)) assert.ok(props[def][k], `${where}.${k} is in the schema (${def})`); };

@@ -7,7 +7,7 @@
  *
  * Every capture is seen as the encoder sees it, through the engine's own exports: prepareCapture, dropPredicate (a
  * marker's or the transform's `drop` is never a module, a dropped row never a row), moduleLevel / walkModules,
- * markerMatches, rowNodes, classTokens, GENERATED_TOKEN.
+ * markerMatches, rowNodes, classTokens, PLAIN_CONTENT (the census rule), GENERATED_TOKEN.
  *
  * --lint, at authoring time, against the archetype (reference/encode-map.schema.json documents every key):
  *   map        the engine's own validators (ctx.mapErrors: validateVocabulary / validateTransform — never a second
@@ -57,8 +57,6 @@ const CHECKS = ['map', 'inputs', 'archetype', 'C1', 'C2', 'C3', 'C4', 'C5', 'C6'
 const POSITION = new Set(['first-child', 'last-child', 'only-child', 'first-of-type', 'last-of-type', 'only-of-type', 'nth-child', 'nth-last-child', 'nth-of-type', 'nth-last-of-type']);
 const NESTED = new Set(['not', 'is', 'where', 'has']);
 const CHAINED = new Set(['marker', 'when', 'module']);
-// the engine's census rule (engine.mjs PLAIN_CONTENT, not exported): class-less plain content is never a component
-export const PLAIN_CONTENT = new Set(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'dl', 'blockquote', 'pre', 'table', 'figure', 'img', 'picture', 'hr', 'br', 'a', 'span', 'strong', 'em', 'b', 'i', 'small', 'code']);
 const ROLE = { heading: 'heading', cta: 'cta', body: 'body', eyebrow: 'body' };
 const ROLE_NAME = { heading: 'a heading', cta: 'a cta', body: 'body text' };
 const isBlock = (m) => String(m.emitter || '').startsWith('block:');
@@ -110,7 +108,7 @@ function setup(ctx) {
   // class-less plain content — visible or not (the census itself counts the visible ones)
   const unmarked = (cap) => {
     const out = [];
-    engine.walkModules(cap.prep, vocab, { skip: cap.skip, section: (n, descend) => { out.push(n); descend(); }, module: (n) => { if (!(PLAIN_CONTENT.has(n.tag) && !tokens(n).length)) out.push(n); } });
+    engine.walkModules(cap.prep, vocab, { skip: cap.skip, section: (n, descend) => { out.push(n); descend(); }, module: (n) => { if (!(engine.PLAIN_CONTENT.has(n.tag) && !tokens(n).length)) out.push(n); } });
     return out;
   };
   const rowNodes = (cap, mod, m) => engine.rowNodes(mod, m, cap.skip.within);
