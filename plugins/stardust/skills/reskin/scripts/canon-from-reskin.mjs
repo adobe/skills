@@ -9,7 +9,11 @@
  *   <dir>/canon/header.html, footer.html     <header|footer data-canon> lifted verbatim
  *   <dir>/canon/canon.css                    :root first (migrate strict 1) + class-based rules
  *                                            (canon-extraction.md § 2 selection rule), @media kept
- *   <dir>/canon/modules/<id>.html            section[data-module] skeleton, [data-slot-body] emptied
+ *   <dir>/canon/modules/<id>.html            section[data-module] skeleton, [data-slot-body] emptied;
+ *                                            the named archetype's modules first, then modules only
+ *                                            the other page types' approved archetypes render
+ *                                            (findings: mapped modules with no skeleton, modules the
+ *                                            mapping composes more than one way)
  *   <root>/DESIGN.md, DESIGN.json            fresh from donor-tokens.json; extensions.canon / modules
  *   <dir>/direction.md                       "Active <ISO>": the direction is the donor (reskin has no direct)
  *   <dir>/dynamic-features.md                one F row per page with form controls (triage.md shape)
@@ -37,7 +41,8 @@
  *     [--mapping <dir>/reskin/mapping.json] [--models <dir>/reskin/content-model]
  *     [--modules <dir>/reskin/donor-modules.md] [--visual-threshold 10] [--force]
  *
- * Reads: <dir>/state.json, the archetype's prototypePath, the tokens, mapping, content models, the module
+ * Reads: <dir>/state.json, the archetype's prototypePath (and the other types' approved archetypes'),
+ *        the tokens, mapping, content models, the module
  *        table, the previous <root>/DESIGN.json and migrate sidecars (stale flagging).
  * Writes: the files listed above; <dir>/reskin/approvals/*.png; <dir>/state.json only when a page is flagged stale.
  * Exit: 0 ok · 1 refused (archetype not approved, missing input, canon exists without --force) · 2 usage.
@@ -106,12 +111,46 @@ export function moduleSkeletons(html) {
   const out = new Map(); const findings = [];
   for (const m of html.matchAll(/<section\b[^>]*data-module="([^"]+)"[^>]*>[\s\S]*?<\/section>/gi)) {
     const id = m[1]; if (out.has(id)) continue;
-    let sk = m[0].replace(/(<(\w+)\b[^>]*\bdata-slot-body\b[^>]*>)[\s\S]*(<\/\2>\s*<\/div>\s*<\/div>\s*<\/section>)$/i, '$1$3');
+    // A split layout places its media image after the body, inside the panel.
+    let sk = m[0].replace(/(<(\w+)\b[^>]*\bdata-slot-body\b[^>]*>)[\s\S]*(<\/\2>\s*(?:<img\b[^>]*>\s*)?<\/div>\s*<\/div>\s*<\/section>)$/i, '$1$3');
     if (sk === m[0]) findings.push(`module ${id}: no [data-slot-body] container — skeleton lifted with archetype content (canon must not hold per-page content)`);
-    sk = sk.replace(/<img\b[^>]*class="band-img"[^>]*>/gi, '<img class="band-img" data-slot="media" alt="" src="">');
+    sk = sk.replace(/<img\b[^>]*class="(band-img|split-img)"[^>]*>/gi, '<img class="$1" data-slot="media" alt="" src="">');
     out.set(id, sk);
   }
   return { modules: out, findings };
+}
+
+// ---- pure: multi-archetype modules ----------------------------------------------------------------
+// The other page types' archetypes (first approved/migrated page per type, as reskin-preflight picks
+// them) that can contribute modules the named archetype does not render. Returns [{ slug, type, prototypePath }].
+export function otherArchetypes(pages, slug) {
+  const own = pages.find((p) => p.slug === slug)?.type;
+  const seen = new Set(own ? [own] : []); const out = [];
+  for (const p of pages) {
+    if (!p.type || seen.has(p.type) || p.slug === slug) continue;
+    if (p.status !== 'approved' && p.status !== 'migrated') continue;
+    seen.add(p.type);
+    if (p.prototypePath) out.push({ slug: p.slug, type: p.type, prototypePath: p.prototypePath });
+  }
+  return out;
+}
+
+// Modules the mapping references that have no canon skeleton, and modules the mapping composes in more
+// than one way (layout/width/tone — the section classes a skeleton keeps; columns live in the emptied
+// slot body) — the canon holds one skeleton per module id.
+export function mappingModuleIssues(mapping, moduleIds) {
+  const have = new Set(moduleIds); const comps = new Map();
+  for (const [ps, pm] of Object.entries(mapping?.pages || {})) {
+    for (const [s, m] of Object.entries(pm?.slots || {})) {
+      if (!m?.module) continue;
+      const c = [m.layout || 'stack', m.width || 'narrow', m.tone || ''].join('|');
+      if (!comps.has(m.module)) comps.set(m.module, new Map());
+      const byComp = comps.get(m.module); if (!byComp.has(c)) byComp.set(c, []); byComp.get(c).push(`${ps}:${s}`);
+    }
+  }
+  const missing = [...comps.keys()].filter((id) => !have.has(id));
+  const mixed = [...comps].filter(([, byComp]) => byComp.size > 1).map(([id, byComp]) => ({ id, compositions: [...byComp].map(([c, at]) => ({ composition: c, at })) }));
+  return { missing, mixed };
 }
 
 // ---- pure: stale flagging -------------------------------------------------------------------------
@@ -282,11 +321,22 @@ async function main(argv) {
 
   // 3. module skeletons
   const sk = moduleSkeletons(html); findings.push(...sk.findings);
-  const moduleRefs = {};
-  for (const [id, skel] of sk.modules) {
-    const p = join(canonDir, 'modules', `${id}.html`); const body = `${prov(`module:${id}`)}${skel}\n`;
-    moduleRefs[id] = { path: rel(p), sha: sha(writeStable(p, body)) };
+  const skeletons = new Map([...sk.modules].map(([id, skel]) => [id, { skel, from: slug }]));
+  // The named archetype wins; the other page types' archetypes fill in modules it does not render.
+  for (const o of otherArchetypes(state.pages || [], slug)) {
+    if (!existsSync(o.prototypePath)) { findings.push(`archetype ${o.slug} (${o.type}) has no prototype on disk — its modules are not in canon`); continue; }
+    const osk = moduleSkeletons(readFileSync(o.prototypePath, 'utf8'));
+    findings.push(...osk.findings.map((f) => `${o.slug}: ${f}`));
+    for (const [id, skel] of osk.modules) if (!skeletons.has(id)) skeletons.set(id, { skel, from: o.slug });
   }
+  const moduleRefs = {};
+  for (const [id, { skel, from }] of skeletons) {
+    const p = join(canonDir, 'modules', `${id}.html`); const body = `${prov(`module:${id}`)}${skel}\n`;
+    moduleRefs[id] = { path: rel(p), sha: sha(writeStable(p, body)), from };
+  }
+  const issues = mappingModuleIssues(mapping, Object.keys(moduleRefs));
+  if (issues.missing.length) findings.push(`mapping module(s) with no canon skeleton: ${issues.missing.join(', ')} — no approved archetype renders them; approve a page that does, or remap`);
+  for (const m of issues.mixed) findings.push(`module ${m.id} is composed ${m.compositions.length} ways (${m.compositions.map((c) => `${c.composition} @ ${c.at.join(',')}`).join(' · ')}) — canon keeps ${moduleRefs[m.id]?.from || 'one'}'s; give the others their own module id`);
 
   // 4. pinned tokens (measured)
   const pinned = {};

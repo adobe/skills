@@ -12,7 +12,7 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { canonDelta, compositionalMoves, liftCss, moduleSkeletons, previousShot, staleFlags, withoutStamp } from '../canon-from-reskin.mjs';
+import { canonDelta, compositionalMoves, liftCss, mappingModuleIssues, moduleSkeletons, otherArchetypes, previousShot, staleFlags, withoutStamp } from '../canon-from-reskin.mjs';
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', 'canon-from-reskin.mjs');
 let failed = 0;
@@ -55,6 +55,38 @@ check('moduleSkeletons: slot body emptied, band image blanked, per-page content 
 check('moduleSkeletons: a module without [data-slot-body] is a finding', () => {
   const { findings } = moduleSkeletons('<section data-module="M9"><p>x</p></section>');
   assert.match(findings[0], /module M9: no \[data-slot-body\]/);
+});
+check('moduleSkeletons: split layout (media after the body) is emptied and its image blanked', () => {
+  const { modules, findings } = moduleSkeletons(`<section class="band layout-split" data-slot="s01" data-module="M1">
+      <div class="container"><div class="panel"><div class="flow" data-slot-body>
+          <h1 class="heading">Hero</h1>
+      </div><img class="split-img" src="https://x.test/h.svg" alt="hero"></div></div>
+    </section>`);
+  assert.deepEqual(findings, []);
+  const m1 = modules.get('M1');
+  assert.match(m1, /<div class="flow" data-slot-body><\/div><img class="split-img" data-slot="media" alt="" src=""><\/div><\/div>\s*<\/section>$/);
+  assert.ok(!m1.includes('Hero') && !m1.includes('h.svg'));
+});
+check('otherArchetypes: first approved/migrated page per other type, own type and unapproved pages skipped', () => {
+  const pages = [
+    { slug: 'home', type: 'landing', status: 'approved', prototypePath: 'h.html' },
+    { slug: 'about', type: 'landing', status: 'approved', prototypePath: 'a.html' },
+    { slug: 'blog', type: 'listing', status: 'prototyped', prototypePath: 'b0.html' },
+    { slug: 'news', type: 'listing', status: 'migrated', prototypePath: 'n.html' },
+    { slug: 'faq', type: 'faq', status: 'approved' },
+    { slug: 'misc', status: 'approved', prototypePath: 'm.html' },
+  ];
+  assert.deepEqual(otherArchetypes(pages, 'home'), [{ slug: 'news', type: 'listing', prototypePath: 'n.html' }]);
+});
+check('mappingModuleIssues: modules without a skeleton and modules composed more than one way', () => {
+  const mapping = { pages: {
+    home: { slots: { s01: { module: 'M1', layout: 'split', width: 'wide' }, s02: { module: 'M1', layout: 'split', width: 'wide' }, s03: { module: 'M3', layout: 'cards', columns: 2 } } },
+    blog: { slots: { s01: { module: 'M2' }, s02: { module: 'M3', layout: 'stack' }, s03: { module: 'M1', layout: 'split', width: 'wide', columns: 3 } } },
+  } };
+  const r = mappingModuleIssues(mapping, ['M1', 'M3']);
+  assert.deepEqual(r.missing, ['M2']);
+  assert.deepEqual(r.mixed.map((m) => m.id), ['M3']);
+  assert.deepEqual(r.mixed[0].compositions.map((c) => c.at), [['home:s03'], ['blog:s02']]);
 });
 check('compositionalMoves: chrome line, one line per distinct module composition, button rule; at most 7', () => {
   const moves = compositionalMoves({ chrome: { header: ['s01'], footer: ['s02'] }, pages: { a: { slots: { s01: { module: 'M2', layout: 'media-band', width: 'narrow' } } }, b: { slots: { s01: { module: 'M2', layout: 'media-band', width: 'narrow' } } } } });

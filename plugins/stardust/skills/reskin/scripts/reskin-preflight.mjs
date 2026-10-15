@@ -14,6 +14,7 @@
  *   FAIL  DESIGN.json extensions.canon.files match the canon files on disk (no hand edit, no overwrite)
  *   FAIL  direction.md carries an "## Active" direction
  *   FAIL  dynamic-features.md exists and every feature row has a disposition
+ *   FAIL  every module a typed page's mapping uses has a canon skeleton (DESIGN.json extensions.modules)
  *   WARN  pages without a type (migrate renders them Path A, never from an archetype)
  *   WARN  stale pages (re-approve / re-migrate them, or migrate stale output knowingly)
  *   WARN  feature rows still awaiting an owner decision
@@ -96,6 +97,21 @@ export function preflight(read, { dir = 'stardust' } = {}) {
 
   const stale = state.pages.filter((p) => p.stale);
   if (stale.length) warn('stale', stale.map((p) => `${p.slug}: ${p.staleReason || 'stale'}`).join('; '));
+
+  // Every module a typed page's mapping uses needs a canon skeleton, or migrate has nothing to render it with.
+  const mapping = json(`${dir}/reskin/mapping.json`);
+  if (mapping && design) {
+    const canonMods = new Set((design.extensions?.modules || []).filter((m) => m.canonicalRendering?.path && read(m.canonicalRendering.path) != null).map((m) => m.id));
+    const typed = new Set(state.pages.filter((p) => p.type).map((p) => p.slug));
+    const used = new Map();
+    for (const [ps, pm] of Object.entries(mapping.pages || {})) {
+      if (!typed.has(ps)) continue;
+      for (const m of Object.values(pm?.slots || {})) if (m?.module) { if (!used.has(m.module)) used.set(m.module, new Set()); used.get(m.module).add(ps); }
+    }
+    const gaps = [...used].filter(([id]) => !canonMods.has(id));
+    if (gaps.length) fail('canon-modules', `mapped module(s) with no canon skeleton: ${gaps.map(([id, ps]) => `${id} (${[...ps].join(', ')})`).join('; ')} — approve an archetype that renders them, then re-run canon-from-reskin.mjs --force`);
+    else if (used.size) ok('canon-modules', `${used.size} mapped module(s) have canon skeletons`);
+  }
   return out;
 }
 

@@ -170,7 +170,15 @@ trimmed padding overrides and would fail the button spec spuriously).
 A renderer that breaks a convention fails the probe with
 `selector matched nothing` — a missing selector is a **FAIL, not a
 skip**, because silent skips fake passes. A token path absent from
-`donor-tokens.json` is a reported SKIP.
+`donor-tokens.json` is a reported SKIP. The one content-aware
+exception: with `--model <content-model.json>`, spec entries marked
+`"needs": "button"` (the default `main .btn` entries) are a reported
+SKIP when the page's content has nothing the renderer turns into a
+button (`stream-render.mjs` `rendersButton`: a cta with a button class
+or captured `buttonLike`,
+a submit/button control, text inside a `<button>`). The decision reads
+the source content, not the rendered page, so a renderer that drops a
+real button still fails.
 
 One default-spec blind spot to catch by eye: when the source's only
 heading is visually hidden (an sr-only a11y landmark — real sites do

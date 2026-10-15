@@ -10,7 +10,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { localSubpath, render, tokenVars } from '../stream-render.mjs';
+import { captureSmells, findRepeat, localSubpath, modelHasButton, render, rendersButton, tokenVars } from '../stream-render.mjs';
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', 'stream-render.mjs');
 let failed = 0;
@@ -90,8 +90,66 @@ check('unknown stream node kind throws; a page missing from mapping throws', () 
   assert.throws(() => render({ ...base, model: m2 }), /unhandled stream node kind "video"/);
   assert.throws(() => render({ ...base, slug: 'nope' }), /mapping\.json has no pages\.nope/);
 });
-check('localSubpath: host + path under img/, query dropped, unsafe characters folded, extension from content type', () => {
-  assert.equal(localSubpath('https://cdn.example.test/a/b.png?v=1'), 'img/cdn.example.test/a/b.png');
+check('findRepeat: intro, repeating items and tail; a shifted run loses the coverage tie; null when nothing repeats', () => {
+  const h = (level, text = 'x') => ({ kind: 'heading', level, text });
+  const p = { kind: 'paragraph', text: 'p' }; const im = { kind: 'image', src: 'i' }; const a = { kind: 'cta', text: 'c', href: '#' };
+  assert.deepEqual(findRepeat([h('h2'), p, im, h('h3'), p, im, h('h3'), p, im, h('h3'), p, a]), { start: 2, period: 3, count: 3 });
+  const t = (cls) => ({ kind: 'text', text: 't', parentClass: cls });
+  // intro (h2, p) then [num, title, p] x3: the run starting at the subtitle covers as many nodes but is shifted.
+  assert.deepEqual(findRepeat([h('h2'), p, t('n'), t('t'), p, t('n'), t('t'), p, t('n'), t('t'), p]), { start: 2, period: 3, count: 3 });
+  assert.equal(findRepeat([h('h2'), p, a, im]), null);
+});
+check('cards layout: items wrapped in .card inside .cards with columns; intro and tail outside; no repeat warns', () => {
+  const p = { kind: 'paragraph', text: 'Bio' };
+  const ordered = [{ kind: 'heading', level: 'h2', text: 'Team' }];
+  for (const n of ['Ann', 'Bo', 'Cy']) ordered.push({ kind: 'image', currentSrc: `https://cdn.example.test/${n}.png`, alt: n }, { kind: 'heading', level: 'h3', text: n }, p);
+  ordered.push({ kind: 'cta', text: 'All', absHref: 'https://example.test/all', classes: 'btn' });
+  const m2 = { metadata: {}, sections: [{ slot: 's01', ordered }] };
+  const map = { pages: { t: { slots: { s01: { layout: 'cards', tone: 'dark' } } } } };
+  const { html, warnings } = render({ ...base, slug: 't', model: m2, mapping: map });
+  assert.match(html, /class="band layout-cards width-narrow tone-dark"/);
+  assert.match(html, /<div class="cards" style="--cards-columns: 3">(<div class="card">[\s\S]*?<\/div>){3}<\/div>/);
+  assert.equal((html.match(/<div class="card">/g) || []).length, 3);
+  assert.ok(html.indexOf('>Team</h2>') < html.indexOf('class="cards"') && html.indexOf('>All</a>') > html.lastIndexOf('class="card"'));
+  assert.deepEqual(warnings, []);
+  const flat = render({ ...base, mapping: { pages: { login: { slots: { s01: { layout: 'cards', tone: 'neon' } } } } } });
+  assert.equal(flat.warnings.length, 2);
+  assert.doesNotMatch(flat.html, /class="cards"/);
+});
+check('content-driven: 3+ consecutive images are one logo row; split puts the first image beside the text', () => {
+  const ordered = ['a', 'b', 'c'].map((n) => ({ kind: 'image', currentSrc: `https://cdn.example.test/${n}.svg`, alt: n }));
+  const m2 = { metadata: {}, sections: [{ slot: 's01', ordered: [{ kind: 'heading', level: 'h1', text: 'Hi' }, ...ordered] }] };
+  const logos = render({ ...base, slug: 't', model: m2, mapping: { pages: { t: { slots: {} } } } }).html;
+  assert.match(logos, /<div class="logos">(<img [^>]+>){3}<\/div>/);
+  const split = render({ ...base, mapping: { pages: { login: { slots: { s01: { layout: 'split' } } } } } }).html;
+  assert.match(split, /<\/div><img class="split-img" src="https:\/\/cdn\.example\.test\/a\/b\.png\?v=1" alt="A"><\/div><\/div>/);
+});
+check('donor-conditional CSS: h2-h4 sizes and the label pill only when the tokens carry them; footerTone', () => {
+  assert.doesNotMatch(render(base).html, /h3\.heading|var\(--radii-label\)/);
+  const t2 = structuredClone(tokens); t2.type.h3 = { fontSize: '30px' }; t2.radii = { label: '7px' };
+  const { html } = render({ ...base, tokens: t2, mapping: { ...mapping, chrome: { footerTone: 'dark' } } });
+  assert.match(html, /\.site-main h3\.heading \{ font-size: var\(--type-h3-font-size\);/);
+  assert.match(html, /border-radius: var\(--radii-label\)/);
+  assert.match(html, /<footer class="site-footer tone-dark" data-canon="footer">/);
+});
+check('an image inside a link is kept inline (icon), alongside the link text', () => {
+  const ordered = [{ kind: 'cta', text: 'More', absHref: 'https://example.test/m', children: [
+    { kind: 'image', currentSrc: 'https://cdn.example.test/arrow.svg', alt: 'arrow' }, { kind: 'text', text: 'More', sep: '' }] }];
+  const { html, images } = render({ ...base, model: { metadata: {}, sections: [{ slot: 's01', ordered }] } });
+  assert.match(html, /<a class="link" href="https:\/\/example\.test\/m"><img class="icon" src="https:\/\/cdn\.example\.test\/arrow\.svg" alt="arrow">More<\/a>/);
+  assert.deepEqual(images, ['https://cdn.example.test/arrow.svg']);
+});
+check('text inside a button (inButton, e.g. an sr-only label of an icon button) renders as the slot button', () => {
+  const ordered = [{ kind: 'text', text: 'Search', parentTag: 'span', parentClass: 'sr-only', inButton: true }];
+  assert.match(render({ ...base, model: { metadata: {}, sections: [{ slot: 's01', ordered }] } }).html, /<button class="btn" type="submit">Search<\/button>/);
+});
+check('localSubpath: host + path under img/, query hashed into the name, unsafe characters folded, extension from content type', () => {
+  assert.match(localSubpath('https://cdn.example.test/a/b.png?v=1'), /^img\/cdn\.example\.test\/a\/b-[0-9a-f]{8}\.png$/);
+  assert.equal(localSubpath('https://cdn.example.test/a/b.png'), 'img/cdn.example.test/a/b.png');
+  const p1 = localSubpath('https://site.test/_image?href=%2Fa.svg&w=34', 'image/svg+xml');
+  const p2 = localSubpath('https://site.test/_image?href=%2Fb.svg&w=34', 'image/svg+xml');
+  assert.notEqual(p1, p2); assert.match(p1, /^img\/site\.test\/_image-[0-9a-f]{8}\.svg$/);
+  assert.equal(localSubpath('https://site.test/_image?href=%2Fa.svg&w=34', 'image/svg+xml'), p1);
   assert.equal(localSubpath('https://cdn.example.test/x%20y/img', 'image/webp'), 'img/cdn.example.test/x-y/img.webp');
   assert.equal(localSubpath('https://cdn.example.test/'), 'img/cdn.example.test/index');
 });
@@ -102,6 +160,33 @@ check('--help in an empty cwd: exit 0, usage on stdout; no slug: exit 2', () => 
   assert.equal(spawnSync(process.execPath, [SCRIPT], { cwd, encoding: 'utf8' }).status, 2);
   const m = spawnSync(process.execPath, [SCRIPT, 'login'], { cwd, encoding: 'utf8' });
   assert.equal(m.status, 2); assert.match(m.stderr, /missing mapping\.json/);
+});
+check('rendersButton / modelHasButton: button ctas, submit controls, text in a <button>; links are not', () => {
+  assert.ok(rendersButton({ kind: 'cta', classes: 'btn btn-lg', text: 'Go' }));
+  assert.ok(rendersButton({ kind: 'cta', classes: 'bg-green px-5 py-2.5 rounded-lg', buttonLike: true, text: 'Get Started' }));
+  assert.ok(!rendersButton({ kind: 'cta', classes: 'link', text: 'Read more' }));
+  assert.ok(rendersButton({ kind: 'formControl', inputType: 'submit' }));
+  assert.ok(!rendersButton({ kind: 'formControl', inputType: 'email' }));
+  assert.ok(rendersButton({ kind: 'text', parentTag: 'span', inButton: true, text: 'Search' }));
+  assert.ok(!rendersButton({ kind: 'text', parentTag: 'span', text: 'x' }));
+  assert.equal(modelHasButton({ sections: [{ ordered: [{ kind: 'heading' }, { kind: 'cta', classes: '' }] }] }), false);
+  assert.equal(modelHasButton({ sections: [{ ordered: [{ kind: 'heading' }] }, { ordered: [{ kind: 'formControl', inputType: 'button' }] }] }), true);
+  assert.equal(modelHasButton(null), false);
+});
+check('captureSmells: all-whole scopes and card-grid mega-slots are notes; a wrapper mega-slot and an h1 outside a normal scope warn', () => {
+  const card = [{ kind: 'heading', level: 'h3', text: 'a' }, { kind: 'paragraph', text: 'b' }];
+  const grid = { slot: 's02', visibleText: 'x'.repeat(80), ordered: [{ kind: 'heading', level: 'h2', text: 'T' }, ...card, ...card, ...card, ...card] };
+  const small = (slot) => ({ slot, visibleText: 'y'.repeat(10), ordered: [{ kind: 'paragraph', text: 'p' }] });
+  const base = { visibleTextNormalized: 'z'.repeat(100), coverage: { h1InScope: true }, scope: [{ sel: 'main', whole: false }] };
+  let r = captureSmells({ ...base, sections: [small('s01'), grid, small('s03')] });
+  assert.deepEqual(r.warnings, []); assert.match(r.notes[0], /s02 .*repeating run \(4 × 2 nodes\)/);
+  const wrapper = { ...grid, ordered: [{ kind: 'heading', level: 'h2' }, { kind: 'paragraph' }, { kind: 'image' }, { kind: 'listItem' }, { kind: 'cta' }] };
+  r = captureSmells({ ...base, sections: [small('s01'), wrapper, small('s03')] });
+  assert.match(r.warnings[0], /wrapper-scope smell/);
+  r = captureSmells({ ...base, sections: [small('s01')], coverage: { h1InScope: false } });
+  assert.equal(r.warnings.length, 2);
+  r = captureSmells({ ...base, scope: [{ sel: '.nav', whole: true }, { sel: '.footer', whole: true }], sections: [small('s01')], coverage: { h1InScope: false } });
+  assert.deepEqual(r.warnings, []); assert.equal(r.notes.length, 2);
 });
 
 console.log(failed ? `\n${failed} check(s) failed` : '\nall checks passed');

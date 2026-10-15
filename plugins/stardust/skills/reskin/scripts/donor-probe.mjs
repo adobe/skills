@@ -26,13 +26,19 @@
  * spuriously). A selector that resolves to nothing is a FAIL,
  * not a skip — silent skips fake passes. A token path absent from
  * donor-tokens.json is a SKIP (reported). Override or extend with --spec.
+ * With --model, a spec entry marked `"needs": "button"` (the default
+ * `main .btn` entries) is a SKIP when the page's content model has nothing
+ * the renderer turns into a button (stream-render's rendersButton) — a
+ * page with no button is not drift; without --model it stays a FAIL.
  *
  * Usage:
  *   node donor-probe.mjs --tokens <donor-tokens.json> --rendered <url|file>
  *       [--spec <probe-spec.json>]   JSON array of spec entries:
  *              { "label": "...", "selector": "...", "property": "backgroundColor",
  *                "token": "buttons.primary.background" | "value": "rgb(...)",
- *                "tolerancePx": 2 }        (property in camelCase)
+ *                "tolerancePx": 2, "needs": "button" }   (property in camelCase)
+ *       [--model <content-model.json>] the page's content model: button
+ *                                    probes are SKIP when it has no button
  *       [--report <path>]            markdown report
  *       [--shot <path>]              full-page screenshot at 1440 for the
  *                                    side-by-side eyeball vs donor screenshots
@@ -75,7 +81,7 @@ function parseArgs(argv) {
   const opts = { widths: '1440,360', 'wait-until': 'domcontentloaded' };
   // Enumerated value-taking flags — an unknown --flag (e.g. a typo like
   // --tokns) must be rejected, not silently stored and defaulted.
-  const VALUE_FLAGS = new Set(['tokens', 'rendered', 'spec', 'report', 'shot', 'widths', 'ua', 'wait-until', 'locale']);
+  const VALUE_FLAGS = new Set(['tokens', 'rendered', 'spec', 'model', 'report', 'shot', 'widths', 'ua', 'wait-until', 'locale']);
   for (let i = 2; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === '--help' || a === '-h') opts.help = true;
@@ -89,7 +95,7 @@ function parseArgs(argv) {
 const args = parseArgs(process.argv);
 if (args.help || !args.tokens || !args.rendered) {
   console.log('usage: node donor-probe.mjs --tokens <donor-tokens.json> --rendered <url|file>');
-  console.log('         [--spec <probe-spec.json>] [--report <path>] [--shot <path>] [--widths 1440,360]');
+  console.log('         [--spec <probe-spec.json>] [--model <content-model.json>] [--report <path>] [--shot <path>] [--widths 1440,360]');
   console.log('         [--ua <string>] [--wait-until domcontentloaded] [--headed] [--locale <tag>]');
   console.log('Asserts donor token values (computed styles) on the rendered reskin + overflow sanity.');
   console.log('Default spec expects: content in <main>, main .container measure, main .btn primary button.');
@@ -119,15 +125,20 @@ const DEFAULT_SPEC = [
   { label: 'body font size', selector: 'body', property: 'fontSize', token: 'type.body.fontSize' },
   { label: 'display weight', selector: 'main :is(h1, h2, h3)', property: 'fontWeight', token: 'type.display.fontWeight' },
   { label: 'heading color', selector: 'main :is(h1, h2, h3, h4, h5, h6)', property: 'color', token: 'palette.headingFg' },
-  { label: 'primary button bg', selector: 'main .btn', property: 'backgroundColor', token: 'buttons.primary.background' },
-  { label: 'primary button fg', selector: 'main .btn', property: 'color', token: 'buttons.primary.color' },
-  { label: 'primary button radius', selector: 'main .btn', property: 'borderRadius', token: 'buttons.primary.borderRadius' },
-  { label: 'primary button padding (±2px)', selector: 'main .btn', property: 'padding', token: 'buttons.primary.padding', tolerancePx: 2 },
-  { label: 'primary button font size', selector: 'main .btn', property: 'fontSize', token: 'buttons.primary.fontSize' },
+  { label: 'primary button bg', selector: 'main .btn', property: 'backgroundColor', token: 'buttons.primary.background', needs: 'button' },
+  { label: 'primary button fg', selector: 'main .btn', property: 'color', token: 'buttons.primary.color', needs: 'button' },
+  { label: 'primary button radius', selector: 'main .btn', property: 'borderRadius', token: 'buttons.primary.borderRadius', needs: 'button' },
+  { label: 'primary button padding (±2px)', selector: 'main .btn', property: 'padding', token: 'buttons.primary.padding', tolerancePx: 2, needs: 'button' },
+  { label: 'primary button font size', selector: 'main .btn', property: 'fontSize', token: 'buttons.primary.fontSize', needs: 'button' },
   { label: 'container max-width (±20px)', selector: 'main .container', property: 'maxWidth', token: 'layout.containerMaxWidth', tolerancePx: 20 },
   { label: 'section rhythm (±16px)', selector: 'main section', property: 'paddingTop', token: 'layout.sectionPaddingY', tolerancePx: 16 },
 ];
 const spec = args.spec ? JSON.parse(readFileSync(resolve(args.spec), 'utf8')) : DEFAULT_SPEC;
+let noButton = false;
+if (args.model) {
+  const { modelHasButton } = await import(pathToFileURL(resolve(HERE, 'stream-render.mjs')).href);
+  noButton = !modelHasButton(JSON.parse(readFileSync(resolve(args.model), 'utf8')));
+}
 
 const normFamily = (s) => (s || '').replace(/["']/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
 function compare(entry, got, want) {
@@ -189,6 +200,10 @@ for (const entry of spec) {
   const want = entry.value !== undefined ? entry.value : get(tokens, entry.token);
   if (want === undefined) {
     results.push({ check: entry.label, status: 'SKIP', detail: `token path "${entry.token}" absent from ${args.tokens}` });
+    continue;
+  }
+  if (entry.needs === 'button' && noButton) {
+    results.push({ check: entry.label, status: 'SKIP', detail: `the page's content (${args.model}) has no button` });
     continue;
   }
   const got = await page.evaluate(([sel, prop]) => {

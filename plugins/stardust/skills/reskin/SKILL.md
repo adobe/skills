@@ -346,8 +346,12 @@ every image) and asserts metadata carry-over field by field.
 node stardust/scripts/reskin/donor-probe.mjs \
   --tokens stardust/reskin/donor-tokens.json \
   --rendered stardust/reskin/pages/<slug>.html \
+  --model stardust/reskin/content-model/<slug>/content-model.json \
   --report stardust/reskin/reports/<slug>-donor-probe.md
 ```
+
+`--model` lets the button probes SKIP on a page whose content has no
+button (a sibling with only cards and links); without it they FAIL.
 
 Computed-style assertions of donor token values on the rendered page —
 bg/fg, font-family token string, display weight, button spec,

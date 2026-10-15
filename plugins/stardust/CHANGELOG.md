@@ -4,6 +4,27 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.35.0 — reskin → migrate hardened on two end-to-end runs
+
+Two full runs, a Figma donor reskinning each of two content sites (forms-only and multi-page marketing), surfaced the
+gaps below. Every fix is generic; per-site choices stay in config.
+
+- **Renderer layouts.** `stream-render` renders card grids, split media, tone bands, logo rows, label pills, a footer
+  tone and true heading levels, and emits `img.icon` inside links. Ctas render as `.btn` when capture flags them
+  `inButton` (text inside a `<button>`) or `buttonLike` (a link painted as a button with utility CSS: background or
+  visible border plus padding).
+- **Localized image collisions.** `--localize-images` keeps the query as an 8-hex hash in the file name, so image
+  proxies (`/_image?href=…`) no longer collapse onto one file. `localize` also refuses to give two URLs one path.
+- **Multi-archetype canon.** `canon-from-reskin` merges modules from every approved archetype, not just the named one,
+  and the split layout's skeleton blanks its media. `reskin-preflight` adds a `canon-modules` FAIL when a mapping uses
+  a module missing from the canon, or composes layout/width/tone inconsistently.
+- **donor-probe `--model`.** Probe entries marked `needs: 'button'` SKIP when the content has no button, so a page
+  with no buttons passes.
+- **Confidential hint.** Under `--confidential`, capture warns which `.gitignore` lines curate will need too, instead
+  of letting curate refuse later.
+- **Fewer false capture warnings.** All-whole (`!`) scopes skip the h1 and granularity checks, and a mega-slot that is
+  a repeating card grid is reported as a note, not a wrapper-scope warning (`captureSmells`).
+
 ## 0.34.0 — reskin hands off to migrate: generic renderer, canon bridge, preflight
 
 Reskin produced gated pages but none of the inputs `migrate` reads. Three scripts close that gap for any donor (URL or

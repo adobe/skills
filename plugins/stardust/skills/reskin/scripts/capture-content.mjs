@@ -406,6 +406,12 @@ const model = await page.evaluate(({ scopeSelList, imgVisibleSrc }) => {
         n.href = el.getAttribute('href') || '';
         n.absHref = el.href || '';
         n.classes = (typeof el.className === 'string' ? el.className : '');
+        // Styled as a button whatever its class names (utility-CSS sites): a painted background or a
+        // visible border, plus button-sized padding.
+        const cs = getComputedStyle(el); const px = (v) => parseFloat(v) || 0;
+        const painted = !/^(transparent|rgba\(\d+,\s*\d+,\s*\d+,\s*0\))$/.test(cs.backgroundColor)
+          || (cs.borderStyle !== 'none' && px(cs.borderTopWidth) > 0 && px(cs.borderLeftWidth) > 0);
+        if (painted && px(cs.paddingLeft) >= 8 && px(cs.paddingRight) >= 8 && px(cs.paddingTop) >= 4) n.buttonLike = true;
       }
       const children = streamOf(el);
       // Pure-text leaves need no children; keep them only when they add
@@ -443,6 +449,8 @@ const model = await page.evaluate(({ scopeSelList, imgVisibleSrc }) => {
                 text: t,
                 parentTag: el.tagName.toLowerCase(),
                 parentClass: (typeof el.className === 'string' ? el.className : '').slice(0, 60),
+                // An icon button's label sits in a nested span (often sr-only): the node is still the button.
+                ...(el.tagName !== 'BUTTON' && el.closest('button') ? { inButton: true } : {}),
               });
             }
             continue;
@@ -554,19 +562,20 @@ writeFileSync(out, JSON.stringify({
 const imgCount = model.sections.reduce((n, s) => n + s.images.length, 0);
 console.log(`[capture-content] slots=${model.sections.length} textLen=${model.visibleTextNormalized.length} images=${imgCount}`);
 console.log(`[capture-content] coverage: scope ${model.coverage.scopeTextLen} / body ${model.coverage.bodyTextLen} chars (ratio ${model.coverage.ratio}) — h1 in scope: ${model.coverage.h1InScope}`);
-if (model.coverage.h1InScope === false) {
-  console.log('[capture-content] WARNING: the page h1 is OUTSIDE the declared scope — the top failure mode (hero living in <header>). Widen --scope.');
-}
+
 // Slot-granularity smell (content-model.md § Scope discovery step 3b): a
 // whole page collapsing to ~2 slots, or one slot carrying most of the scope
 // text, means the scope sits on a page-wide wrapper (CMS parsys), not on
 // the real sections. Coverage ratio and h1InScope both pass in that state.
+// stream-render's captureSmells drops the known false positives (all-whole
+// scopes, a mega-slot that is a repeating card grid) to notes.
 const largestSlot = model.sections.reduce((m, s) => Math.max(m, s.visibleText.length), 0);
 const largestShare = model.visibleTextNormalized.length ? largestSlot / model.visibleTextNormalized.length : 0;
 console.log(`[capture-content] granularity: ${model.sections.length} slots — largest slot carries ${Math.round(largestShare * 100)}% of scope text`);
-if (model.sections.length < 3 || largestShare > 0.5) {
-  console.log('[capture-content] WARNING: wrapper-scope smell — fewer slots than visible sections, or one mega-slot. Scope DEEPER so the real sections become the scope\'s children (content-model.md § Scope discovery step 3b).');
-}
+const { captureSmells } = await import(pathToFileURL(resolvePath(dirname(fileURLToPath(import.meta.url)), 'stream-render.mjs')).href);
+const smells = captureSmells(model);
+for (const w of smells.warnings) console.log(`[capture-content] WARNING: ${w}`);
+for (const n of smells.notes) console.log(`[capture-content] note: ${n}`);
 const unverified = model.sections.filter((s) => !s.orderedVerified).map((s) => s.slot);
 if (unverified.length) {
   console.log(`[capture-content] WARNING: ordered stream did not tile visibleText for ${unverified.join(', ')} — renderers must not trust sep flags on those slots; inspect before rendering.`);

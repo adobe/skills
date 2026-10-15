@@ -73,6 +73,17 @@ check('stale and untyped pages warn but do not fail', () => {
   assert.deepEqual(fails(res), []); assert.deepEqual(levels(res, 'stale'), ['warn']); assert.deepEqual(levels(res, 'untyped'), ['warn']);
   assert.match(res.find((r) => r.check === 'stale').detail, /login: canon changed/);
 });
+check('a mapped module with no canon skeleton fails canon-modules; untyped pages are ignored', () => {
+  const d = JSON.parse(project()('DESIGN.json'));
+  d.extensions.modules = [{ id: 'M1', canonicalRendering: { path: 'stardust/canon/modules/M1.html', sha: 'x' } }, { id: 'M2', canonicalRendering: null }];
+  const mapping = JSON.stringify({ pages: { login: { slots: { s01: { module: 'M1' }, s02: { module: 'M2' } } }, misc: { slots: { s01: { module: 'M7' } } } } });
+  const base = { 'DESIGN.json': JSON.stringify(d), 'stardust/reskin/mapping.json': mapping, 'stardust/canon/modules/M1.html': '<section data-module="M1"></section>' };
+  const r = preflight(project(base)).find((x) => x.check === 'canon-modules');
+  assert.equal(r.level, 'fail'); assert.match(r.detail, /M2 \(login\)/); assert.doesNotMatch(r.detail, /M1|M7/);
+  const okMap = JSON.stringify({ pages: { login: { slots: { s01: { module: 'M1' } } } } });
+  assert.deepEqual(levels(preflight(project({ ...base, 'stardust/reskin/mapping.json': okMap })), 'canon-modules'), ['ok']);
+  assert.deepEqual(levels(preflight(project({ ...base, 'stardust/reskin/mapping.json': okMap, 'stardust/canon/modules/M1.html': null })), 'canon-modules'), ['fail']);
+});
 
 const run = (args, cwd) => spawnSync(process.execPath, [SCRIPT, ...args], { cwd, encoding: 'utf8' });
 check('--help prints usage and exits 0 without reading the project', () => {
