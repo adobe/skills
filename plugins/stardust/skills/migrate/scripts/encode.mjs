@@ -25,19 +25,22 @@
  * --dry-run, --roundtrip, --lint or --sweep; zero writes when nothing changed:
  *   stardust/encoded/<da-path>.html             the document (the root page: index.html)
  *   stardust/migrated/…/<name>._meta.json       migrate's sidecar for the page: `encode` (the provenance of the document
- *                                               on disk) and `audit.encode` (this run's status and report) — no other
- *                                               key; created migrate-shaped when the page has none
+ *                                               on disk) and `audit.encode` (this run's status and report; a clean
+ *                                               page's `shape` — encode/shape.mjs, C14) — no other key; created
+ *                                               migrate-shaped when the page has none
  *   stardust/import/<archetype>/manifest.json   each document path → the sha256 the encoder wrote there
  *   stardust/state.json                         migrate.generators[<archetype>] only (never created)
  *
  * Per page: the walk + grammar (encode/engine.mjs), media from the ledger, documents from the asset ledger, internal
  * links localised, nav/footer from the chrome map, the shape fingerprint against the archetype's (computed from the
  * archetype's capture in the same run), the offline content count (deploy's content-inventory.mjs), then sanitise's
- * encode() last — the output is finalisation-idempotent. Page status: clean · unmapped · flattened · variance
+ * encode() last — the output is finalisation-idempotent; a clean page's block shape (encode/shape.mjs: blocks with
+ * their variants, row counts and cell kinds) goes to audit.encode.shape, which decides whether a sibling inherits the
+ * archetype's local harness launches (C14). Page status: clean · unmapped · flattened · variance
  * (accept a reviewed print in vocabulary.json `variance.accept[]`) · incomplete (fix the map or declare a `drop:`) ·
  * hand-edit (the document on disk is not the encoder's last write: move the edit into stardust/patches/<slug>.json or
  * the map) · error. A stopped page's document is never written — an earlier one stays, its sidecar records the stop
- * and staging refuses it; the model handles that page as an exception. Unchanged inputs, map, encoder and document
+ * and staging skips it; the model handles that page as an exception. Unchanged inputs, map, encoder and document
  * skip the page (`unchanged`, nothing parsed).
  *   --roundtrip  encode the archetype in memory and compare it with its gated content/<da-path>.html (encode/compare.mjs;
  *                level text by default) — exit 0 equal, 2 not.
@@ -48,9 +51,15 @@
  *   --overwrite-hand-edit <slug…>  replace these pages' hand-edited documents with the encode — never passed in
  *                hands-off: the edit moves into stardust/patches/<slug>.json or the map first.
  *
- * Output: one status line per page, then the verdict line (stdout, last): `encoded N · unchanged N · stopped N`.
- * Exit: 0 every page encoded or unchanged · 1 usage, invalid map/transform, missing input · 2 any page stopped (2 wins
- * over 1). Exit 0 means "encoded", never "done": the gates still decide.
+ * Output: one line per page (or finding), then the verdict line (stdout, last), and the exit code, per mode:
+ *   encode       `encoded N · unchanged N · stopped N` — 0 every page encoded or unchanged · 1 usage, invalid
+ *                map/transform, missing input · 2 any page stopped (2 wins over 1). Exit 0 means "encoded", never
+ *                "done": the gates still decide.
+ *   --roundtrip  `roundtrip <archetype> at <level>: equal | not equal (N differences) — <content file>` — 0 equal ·
+ *                2 not equal (or the archetype stops) · 1 usage, no gated document
+ *   --lint       `lint <archetype>: N findings · N notes` — 0 no finding · 1 any finding (an invalid map included)
+ *   --sweep      `sweep <archetype>: N siblings · new kinds N · unknown modifiers N · zero-hit markers N` — 0 nothing
+ *                listed · 2 something listed · 1 usage, an invalid map or no usable archetype
  *
  * Ported from the `stardust/next` branch: `skills/migrate/scripts/importer-skeleton.mjs` (commits 9aaeff4f, d4a37277, 7662fda2).
  */
@@ -62,6 +71,7 @@ import * as dom from './encode/dom.mjs';
 import { loadSite } from './encode/site.mjs';
 import { loadDeploy } from './encode/deps.mjs';
 import * as prov from './encode/provenance.mjs';
+import { shapeOf } from './encode/shape.mjs';
 
 const USAGE = `Usage:
   node skills/migrate/scripts/encode.mjs --template <archetype-slug> [--slug <s>[,<s>…]] [--root <projectDir>]
@@ -79,8 +89,15 @@ manifest.json. A page that stops (unmapped · flattened · variance · incomplet
   --roundtrip  encode the archetype in memory, compare with its gated content/<da-path>.html (exit 0 equal, 2 not)
   --lint       the map's authoring checks · --sweep  a dry run over every sibling capture (both write nothing)
   --json       line 1 = the run summary as JSON; the verdict line stays last
-Verdict (last line): encoded N · unchanged N · stopped N
-Exit: 0 encoded/unchanged · 1 usage, invalid map/transform, missing input · 2 a page stopped (2 wins over 1)`;
+Verdict (last line) · exit, per mode:
+  encode       encoded N · unchanged N · stopped N
+               0 encoded/unchanged · 1 usage, invalid map/transform, missing input · 2 a page stopped (2 wins over 1)
+  --roundtrip  roundtrip <archetype> at <level>: equal | not equal (N differences) — <content file>
+               0 equal · 2 not equal or the archetype stops · 1 usage, no gated document
+  --lint       lint <archetype>: N findings · N notes
+               0 no finding · 1 any finding (an invalid map included)
+  --sweep      sweep <archetype>: N siblings · new kinds N · unknown modifiers N · zero-hit markers N
+               0 nothing listed · 2 something listed · 1 usage, an invalid map or no usable archetype`;
 
 const LEVELS = ['core', 'text', 'strict', 'byte'];
 class UsageError extends Error {}
@@ -154,7 +171,7 @@ function countKeysFor(site, base, pathKey) {
 
 /**
  * Encode one page in memory (nothing is written): its capture, page JSON and patches through the engine.
- * → { slug, role, status, output, html, report, prints, blocks, missingInput? }.
+ * → { slug, role, status, output, html, report (+ shape when clean), prints, blocks, missingInput? }.
  */
 export function encodeOne({ root, site, map, deps, slug, archetype, archetypePrints = null }) {
   const role = slug === archetype ? 'archetype' : 'sibling';
@@ -170,7 +187,8 @@ export function encodeOne({ root, site, map, deps, slug, archetype, archetypePri
   const page = { ...(site.pageJson(slug) || {}), url: info.url };
   const base = site.baseUrlFor(slug) || info.url; // relative URLs in the capture resolve where it was captured (R15)
   const res = engine.encodePage({ html: readFileSync(capFile, 'utf8'), page, base, vocab: map.vocab, tf: map.tf, site, archetypePrints, inventory: deps.inventory, countKeys: countKeysFor(site, base, deps.pathKey), patches: patches.value, finalise: deps.finalise });
-  return { slug, role, status: res.status, output: info.outputPath, html: res.html, report: res.report, prints: res.prints, blocks: res.blocks };
+  const report = res.status === 'clean' ? { ...res.report, shape: shapeOf(res.html) } : res.report;
+  return { slug, role, status: res.status, output: info.outputPath, html: res.html, report, prints: res.prints, blocks: res.blocks };
 }
 
 /**
@@ -260,7 +278,7 @@ function findings(r) {
   for (const f of rep.flattened || []) out.push(`flattened ${f.kind} at ${f.at}: ${(f.why || []).join('; ')}`);
   for (const v of rep.variance || []) out.push(`variance ${v.change} ${v.print}`);
   for (const m of rep.incomplete || []) out.push(`incomplete MISSING ${m.role} "${String(m.text || m.key).slice(0, 80)}"${m.reason ? ` (${m.reason})` : ''}`);
-  if (r.kept) out.push(`${r.output} (an earlier encode) is kept, not current — staging refuses it until the page encodes clean`);
+  if (r.kept) out.push(`${r.output} (an earlier encode) is kept, not current — staging skips it until the page encodes clean`);
   return out;
 }
 const summaryOf = (r) => ({ slug: r.slug, role: r.role, status: r.status, write: r.write || null, output: r.output, ...(r.skipped ? { skipped: true } : {}), ...(r.adopted ? { adopted: true } : {}), ...(r.overwrote ? { overwrote: true } : {}), ...(r.handEdit ? { handEdit: r.handEdit } : {}), ...(r.kept ? { kept: true } : {}), ...(r.missingInput ? { missingInput: true } : {}), report: r.report });
