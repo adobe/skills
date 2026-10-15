@@ -60,6 +60,9 @@ ramp     B3. Runs the join first (drift stops here, exit 1), validates the check
          or "ramp FAIL k/n" plus one indented line per failing entry ("<slot> <id> <property> (node <id>):
          16px vs 14px", ":root <name>: ..." for a custom property); writes ramp-spec.<w>.json, ramp.<w>.md,
          ramp.<w>.json and ramp.json under <dir>/.work/reskin/gates/<slug>/figma/; exit 1 on any FAIL.
+         A property the Figma node gives no value for (no font size, a fill that is not one visible solid
+         color, ...) is recorded as UNASSERTED in ramp.json, never failed: the verdict reads "ramp PASS n/n
+         (k unasserted)" with one indented "advisory" line per property.
          Token values written as literals outside :root (a color that equals a :root value) are listed in
          one "advisory" line and never change the exit code. A probe that cannot run is exit 124.
 --dir <d>  the stardust directory (default stardust).
@@ -201,9 +204,13 @@ async function rampStep({ dir, opts, log, UsageError }) {
     return 1;
   }
   const { pass, results, literals } = await runRamp({ target: ready.target, join: ready.join, checks: ready.checks, boxes: ready.boxes, tokens: ready.tokens, rules: ready.rules, out: ready.out });
-  const failing = results.filter((r) => r.status !== 'PASS');
-  log(pass ? `ramp PASS ${results.length}/${results.length}` : `ramp FAIL ${failing.length}/${results.length}`);
+  const failing = results.filter((r) => r.status === 'FAIL');
+  const unasserted = results.filter((r) => r.status === 'UNASSERTED');
+  const asserted = results.length - unasserted.length;
+  const note = unasserted.length ? ` (${unasserted.length} unasserted)` : '';
+  log(pass ? `ramp PASS ${asserted}/${asserted}${note}` : `ramp FAIL ${failing.length}/${asserted}${note}`);
   for (const r of failing) log(r.slot === null ? `  :root ${r.id}: ${r.detail}` : `  ${r.slot} ${r.id} ${r.property}${r.node ? ` (node ${r.node})` : ''}: ${r.detail}`);
+  for (const r of unasserted) log(`  ${r.slot} ${r.id} ${r.property} (node ${r.node}): advisory, ${r.detail}`);
   if (literals.length) {
     const shown = literals.slice(0, 5).map((l) => `line ${l.line} ${l.literal} → ${l.token}`).join('; ');
     log(`advisory ramp: ${literals.length} token literal(s) outside :root (${shown}${literals.length > 5 ? '; …' : ''}): use var(<token>)`);

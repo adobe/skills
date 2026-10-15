@@ -5,7 +5,7 @@
 // skip line otherwise). Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -66,6 +66,18 @@ await check('rampSpecs: an entry at another width goes to that width; :root stay
   assert.deepEqual([...specs.keys()], [1440, 390]);
   assert.equal(specs.get(390).length, 6);
   assert.ok(specs.get(1440).some((e) => e.selector === ':root'));
+});
+
+await check('rampSpecs: a Figma value that is absent is reported as an unasserted property, not dropped', () => {
+  const bare = structuredClone(boxes);
+  Object.assign(findBox(bare.roots['1:7'].box, 'I1:7;5:2').text, { color: null, fontSize: null });
+  const unasserted = [];
+  const at = rampSpecs({ join: join_, checks, boxes: bare, rootEntries, norm, unasserted }).get(1440);
+  assert.equal(at.filter((e) => e.selector !== ':root').length, 4 * 6 - 2);
+  assert.deepEqual(unasserted, [
+    { slot: 's02', id: 't1', node: 'I1:7;5:2', property: 'fontSize', status: 'UNASSERTED', detail: 'Figma has no font size' },
+    { slot: 's02', id: 't1', node: 'I1:7;5:2', property: 'color', status: 'UNASSERTED', detail: 'Figma has no solid color' },
+  ]);
 });
 
 await check('tokenLiterals: a color literal outside :root that equals a root value; px lengths only on request', () => {
@@ -172,6 +184,57 @@ if (playwrightOk) {
     writeFileSync(stub, 'console.error("stub probe: no playwright"); process.exit(2);\n');
     await assert.rejects(gate(p, { donorProbe: stub }), /stub probe: no playwright/);
     assert.ok(!existsSync(join(p.dir, '.work', 'reskin', 'gates', 'home', 'figma', 'ramp.json')));
+  });
+
+  const nonSolid = (p) => {
+    const dir = join(p.dir, '.work', 'reskin', 'figma');
+    const file = readdirSync(dir, { recursive: true }).find((f) => f.endsWith('nodes.json'));
+    const doc = JSON.parse(readFileSync(join(dir, file), 'utf8'));
+    const walk = (n) => {
+      if (n.id === 'I1:7;5:2') n.fills = [{ type: 'GRADIENT_LINEAR', blendMode: 'NORMAL', gradientStops: [] }];
+      (n.children || []).forEach(walk);
+    };
+    Object.values(doc.nodes).forEach((f) => walk(f.document ?? f));
+    writeFileSync(join(dir, file), JSON.stringify(doc));
+  };
+
+  await check('a TEXT node without a single solid fill: the color is UNASSERTED, not dropped; ramp.json lists it; pass stays true', async () => {
+    const p = project('unasserted');
+    nonSolid(p);
+    const r = await gate(p);
+    const skipped = r.results.filter((x) => x.status === 'UNASSERTED');
+    assert.deepEqual(skipped, [{ slot: 's02', id: 't1', node: 'I1:7;5:2', property: 'color', status: 'UNASSERTED', detail: 'Figma has no solid color' }]);
+    assert.equal(r.results.length, total);
+    assert.equal(r.pass, true);
+    assert.deepEqual(rampOf(p).results.filter((x) => x.status === 'UNASSERTED'), skipped);
+  });
+
+  await check('CLI ramp: "ramp PASS n/n (1 unasserted)" and an indented advisory line, exit 0', () => {
+    const p = project('cli-unasserted');
+    nonSolid(p);
+    const r = run(['ramp', '--page', p.slug, '--url', p.page, '--dir', p.dir], p.root);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, new RegExp(`^ramp PASS ${total - 1}/${total - 1} \\(1 unasserted\\)$`, 'm'));
+    assert.match(r.stdout, /^ {2}s02 t1 color \(node I1:7;5:2\): advisory, Figma has no solid color$/m);
+  });
+
+  await check('a probe that exits 1 without a fresh JSON is a crash; a ramp.<w>.json left by an earlier run is not read', async () => {
+    const p = project('stale');
+    const stub = join(p.root, 'probe-stub.mjs');
+    writeFileSync(stub, 'console.error("stub probe: bad selector"); process.exit(1);\n');
+    const figma = join(p.dir, '.work', 'reskin', 'gates', 'home', 'figma');
+    const ok = await gate(p);
+    assert.equal(ok.pass, true);
+    assert.ok(existsSync(join(figma, 'ramp.1440.json')));
+    await assert.rejects(gate(p, { donorProbe: stub }), /stub probe: bad selector/);
+    assert.ok(!existsSync(join(figma, 'ramp.1440.json')));
+  });
+
+  await check('a probe that exits with any code other than 0 or 1 is a crash even when a JSON is present', async () => {
+    const p = project('odd-exit');
+    const stub = join(p.root, 'probe-stub.mjs');
+    writeFileSync(stub, 'import { writeFileSync } from "node:fs"; writeFileSync(process.argv[process.argv.indexOf("--json") + 1], JSON.stringify({ results: [] })); console.error("stub probe: odd exit"); process.exit(4);\n');
+    await assert.rejects(gate(p, { donorProbe: stub }), /stub probe: odd exit/);
   });
 
   await check('CLI ramp: missing --page or --url exits 2', () => {

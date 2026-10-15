@@ -6,7 +6,7 @@
 // generated --spec, one run per width. tokenLiterals is advisory: it lists token values written as
 // literals outside the :root block. textExpect, rampSpecs and tokenLiterals are pure.
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { letterSpacingCss, lineHeightCss, px, weightCss } from '../figma/normalize.mjs';
@@ -33,10 +33,21 @@ export function textExpect(text, norm) {
   };
 }
 
+// Why a property has no Figma value to assert (a fact about the Figma node, not a page defect).
+const MISSING = {
+  fontSize: 'Figma has no font size',
+  fontWeight: 'Figma has no font weight',
+  lineHeight: 'Figma has no line height',
+  letterSpacing: 'Figma has no letter spacing',
+  fontFamily: 'Figma has no font family',
+  color: 'Figma has no solid color',
+};
+
 const TOLERANCE = { lineHeight: 0.1, letterSpacing: 0.1 };
 
-// → Map<width, ProbeEntry[]>. The :root entries go once, at the first section's width.
-export function rampSpecs({ join, checks, boxes, rootEntries, norm }) {
+// → Map<width, ProbeEntry[]>. The :root entries go once, at the first section's width. A property the
+// Figma node gives no value for is not asserted: it is pushed onto unasserted as an UNASSERTED result.
+export function rampSpecs({ join, checks, boxes, rootEntries, norm, unasserted = [] }) {
   const specs = new Map();
   const add = (width, entry) => {
     if (!specs.has(width)) specs.set(width, []);
@@ -55,7 +66,10 @@ export function rampSpecs({ join, checks, boxes, rootEntries, norm }) {
       const want = textExpect(box.text, norm);
       const selector = entry.selector === ':scope' ? s.selector : `${s.selector} ${entry.selector}`;
       for (const property of PROPERTIES) {
-        if (want[property] === null) continue;
+        if (want[property] === null) {
+          unasserted.push({ slot: s.slot, id: entry.id, node: entry.node, property, status: 'UNASSERTED', detail: MISSING[property] });
+          continue;
+        }
         add(entry.width, {
           label: `${s.slot} ${entry.id} ${property} (${entry.node})`,
           selector,
@@ -131,11 +145,14 @@ async function pageSource(url) {
 
 // checks is validateChecks(...).sections; join is runJoin's result; rules is curation-rules.json.
 // Writes ramp-spec.<w>.json, ramp.<w>.md, ramp.<w>.json and ramp.json under out. A probe that cannot
-// run (exit 2 or 3, or no JSON) throws with its stderr: no verdict, never a ramp failure.
+// run (any exit other than 0 or 1, or exit 1 without a fresh JSON) throws with its stderr: no verdict,
+// never a ramp failure. Properties Figma gives no value for are listed as UNASSERTED results; they do
+// not fail the ramp.
 export async function runRamp({ target, join: joined, checks, boxes, tokens, rules, out, donorProbe = DONOR_PROBE }) {
   const norm = parseNormalizations(rules?.normalizations, []);
   const rootEntries = rootTokens(tokens).entries;
-  const specs = rampSpecs({ join: joined, checks, boxes, rootEntries, norm });
+  const unasserted = [];
+  const specs = rampSpecs({ join: joined, checks, boxes, rootEntries, norm, unasserted });
   const nodeOf = new Map();
   for (const [slot, section] of Object.entries(checks)) for (const t of section.type) nodeOf.set(`${slot} ${t.id}`, t.node);
 
@@ -150,10 +167,11 @@ export async function runRamp({ target, join: joined, checks, boxes, tokens, rul
     const report = join(out, `ramp.${width}.md`);
     const jsonFile = join(out, `ramp.${width}.json`);
     writeFileSync(specFile, `${JSON.stringify(entries, null, 2)}\n`);
+    rmSync(jsonFile, { force: true });
     const r = spawnSync(process.execPath, [donorProbe, '--tokens', tokensFile, '--spec', specFile, '--rendered', target.url, '--viewport', String(width), '--no-sanity', '--report', report, '--json', jsonFile], { encoding: 'utf8' });
     let probe = null;
     try { probe = JSON.parse(readFileSync(jsonFile, 'utf8')); } catch { /* reported below */ }
-    if (r.status === 2 || r.status === 3 || r.status === null || !probe) {
+    if ((r.status !== 0 && r.status !== 1) || !probe) {
       throw new Error(`donor-probe at ${width}px did not give a verdict (exit ${r.status}): ${(r.stderr || r.stdout || '').trim()}`);
     }
     perWidth.push({ width, exit: r.status, report });
@@ -172,8 +190,9 @@ export async function runRamp({ target, join: joined, checks, boxes, tokens, rul
     }
   }
 
+  results.push(...unasserted);
   const literals = tokenLiterals(await pageSource(target.url), rootEntries);
-  const result = { pass: results.every((x) => x.status === 'PASS'), results, perWidth, literals };
+  const result = { pass: results.every((x) => x.status !== 'FAIL'), results, perWidth, literals };
   writeFileSync(join(out, 'ramp.json'), `${JSON.stringify(result, null, 2)}\n`);
   return result;
 }
