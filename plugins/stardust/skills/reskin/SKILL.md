@@ -384,13 +384,15 @@ node stardust/scripts/replica/run-bg.mjs start --name figma-<slug> \
   --dir stardust/.work/reskin/bg -- \
   node stardust/scripts/reskin/figma-gate.mjs all --page <slug> \
   --url stardust/reskin/pages/<slug>.html
-node stardust/scripts/replica/run-bg.mjs wait --dir stardust/.work/reskin/bg
+node stardust/scripts/replica/run-bg.mjs wait figma-<slug> --dir stardust/.work/reskin/bg
 ```
 
 B0 (section join), B1 (geometry) and B3 (`:root` tokens and type ramp)
 block; B2 (frame pixels) is advisory and B4 (the divergence register,
 `.work/reskin/gates/<slug>/figma/register.md`) informational. Exit 124
-is no verdict: re-run, never a fix iteration. Residuals carry
+is no verdict: re-run it once, never a fix iteration; the same 124
+twice is a residual (needs-owner). Exit 3 is a bot challenge on a live
+target, exit 2 a setup problem (fix the input, then re-run). Residuals carry
 `class` `figma.join` | `figma.geometry` | `figma.ramp`. Copy
 `summary.json`'s `ledgerFragment` into `ledger.json`
 `pages.<slug>.gates.figma`. UNASSERTED ramp lines and pixel numbers are

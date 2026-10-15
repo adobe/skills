@@ -72,7 +72,8 @@ ramp     B3. Runs the join first (drift stops here, exit 1), validates the check
          color, ...) is recorded as UNASSERTED in ramp.json, never failed: the verdict reads "ramp PASS n/n
          (k unasserted)" with one indented "advisory" line per property.
          Token values written as literals outside :root (a color that equals a :root value) are listed in
-         one "advisory" line and never change the exit code. A probe that cannot run is exit 124.
+         one "advisory" line and never change the exit code. A probe that cannot run is exit 124; one that exits 2 (its own setup error) is exit 2 with its message,
+         and a bot challenge is exit 3.
 pixel    B2, advisory. Runs the join first (drift stops here, exit 1), validates the checks file, then for
          every section crops its slice out of the cached frame image (the PNG figma-donor.mjs captured,
          taken at 1×; a size within 1px of the frame box fits, Figma rounds a fractional box up; any
@@ -82,7 +83,7 @@ pixel    B2, advisory. Runs the join first (drift stops here, exit 1), validates
          ignored): otherwise the section is "n/a: frame content differs". Also n/a: no frame image
          (re-run figma-donor.mjs capture), a PNG of another size, pixel mode off (needs why). Mode
          fixture screenshots the same selector on fixtureUrl instead of the page (a hand-made stand-in).
-         Prints "pixel advisory", the uncalibrated reference classes (light text 3%, inverted 3.5%,
+         Prints "pixel advisory" ("ERROR (exit 124) pixel no verdict" when a comparison hit its deadline), the uncalibrated reference classes (light text 3%, inverted 3.5%,
          raster ground 4%: orientation, not a bar) and one line per section: "<slot> 0.42% (text 1.10%,
          Δh 0)" (differing pixels overall and over the frame's text boxes, height delta Figma − page)
          or "<slot> n/a: <why>"; an indented line names each first font family the section uses
@@ -108,10 +109,14 @@ all      The whole run: join, geometry, ramp, pixel, register. The page is joine
          ramp.json, pixel.json, register.json, register.md and summary.json, so a drifted or crashed run never
          feeds stale files to the register or the summary. A join drift ends in exit 1 with geometry, ramp
          and pixel "not run: section drift" (the register still runs, with nothing mandated and "join drift"
-         under Not run). A step that throws anything but a usage error is "CRASH: <message>" (exit 124);
+         under Not run). A step that throws anything but a usage error or a bot challenge is "CRASH: <message>" (exit 124);
          a usage error (a missing input, an invalid checks file) stops the run with exit 2. Prints one
-         verdict line per step (PASS, FAIL, advisory or CRASH, the lines run-bg's default filter matches), then
-         the ledger fragment as JSON, then the register.md path. Exit: the first present of 2, 124, 1, 0.
+         verdict line per step: PASS, FAIL, advisory, or for a step with no verdict "ERROR (exit 124) <step> CRASH:
+         <message>", "ERROR (exit 3) <step> CHALLENGE: <message>", "FAIL <step> not run: section drift" (every line
+         matches run-bg's default verdict filter), then
+         the ledger fragment as JSON, then the register.md path. Exit: the first present of 2, 3, 124, 1, 0
+         (a step that throws code 3, a bot challenge, is verdict "CHALLENGE: <message>" and exit 3; the
+         other steps still run).
          Writes <dir>/.work/reskin/gates/<slug>/figma/summary.json:
            { _provenance, page, url, regime, figma: { version }, steps: { <step>: { verdict, exit, detail } },
              ledgerFragment, invocation }
@@ -121,8 +126,8 @@ all      The whole run: join, geometry, ramp, pixel, register. The page is joine
              register: the counts line, literals: <token literals outside :root>, invocation }
          A step that did not run carries its verdict instead ("not run: section drift", "CRASH: <message>").
          Run it under run-bg when it may exceed a shell's limit:
-           run-bg start --name figma-<slug> --dir stardust/.work/reskin/bg -- node <scripts>/figma-gate.mjs all --page <slug> --url <url|file>
-           run-bg wait --name figma-<slug> --dir stardust/.work/reskin/bg
+           run-bg.mjs start --name figma-<slug> --dir stardust/.work/reskin/bg -- node <scripts>/figma-gate.mjs all --page <slug> --url <url|file>
+           run-bg.mjs wait figma-<slug> --dir stardust/.work/reskin/bg
 --dir <d>  the stardust directory (default stardust).
 
 Checks file <dir>/reskin/figma-checks/<slug>.json (written by the agent from the boxes outlines):
@@ -143,7 +148,8 @@ Checks file <dir>/reskin/figma-checks/<slug>.json (written by the agent from the
 Writes go only under <dir>/.work/reskin/gates/. After a capture --confidential, every subcommand first
 asserts that <dir>/.work/ and <dir>/reskin/figma-checks/ are git-ignored (exit 2 with the lines to add).
 Exit codes: 0 pass · 1 a blocking check failed · 2 usage or setup (missing input or capture)
-            · 3 bot challenge on a live target · 124 no verdict: a step crashed or timed out, re-run.`;
+            · 3 bot challenge on a live target · 124 no verdict: a step crashed or timed out; re-run once, the
+            same 124 twice is a residual (needs-owner), never a fix iteration.`;
 
 const SPEC = {
   boxes: { values: ['--module', '--node', '--depth', '--dir'], bools: [], positional: [] },
@@ -283,15 +289,14 @@ async function rampStep({ dir, opts, log, UsageError, ready: given }) {
 async function pixelStep({ dir, opts, log, UsageError, ready: given }) {
   if (!opts.page) throw new UsageError('pixel needs --page <slug>');
   if (!opts.url) throw new UsageError('pixel needs --url <url|file>: the page to screenshot');
-  const [{ prepare }, { REFERENCE_CLASSES, runPixel }] = await Promise.all([helper('prepare'), helper('pixel')]);
+  const [{ prepare }, { pixelHeadline, runPixel }] = await Promise.all([helper('prepare'), helper('pixel')]);
   const ready = given ?? await prepare({ dir, slug: opts.page, url: opts.url });
   if (ready.drift) {
     logDrift(ready.join, log);
     return 1;
   }
   const { results } = await runPixel({ target: ready.target, join: ready.join, checks: ready.checks, boxes: ready.boxes, dir, out: ready.out });
-  const ref = REFERENCE_CLASSES;
-  log(`pixel advisory: ${results.length} section(s); uncalibrated reference: light text ${ref.lightText}%, inverted ${ref.inverted}%, raster ground ${ref.rasterGround}%`);
+  log(pixelHeadline(results));
   for (const r of results) {
     if (r.verdict === 'advisory') log(`  ${r.slot} ${r.pct.toFixed(2)}% (text ${r.textPct === null ? 'n/a' : `${r.textPct.toFixed(2)}%`}, Δh ${r.heightDelta})`);
     else log(`  ${r.slot} ${r.verdict === 'n/a' ? `n/a: ${r.reason}` : `no verdict: ${r.reason}`}`);
@@ -376,11 +381,17 @@ async function allStep({ dir, opts, env, log, warn, UsageError, steps }) {
     recorded[name] = { verdict, exit, detail };
     if (exit !== null) exits.push(exit);
   };
-  const notRun = (name, why) => {
+  // Lines of a step with no verdict start with a word run-bg's default filter matches (FAIL, ERROR (exit …)).
+  const notRun = (name, why, prefix) => {
     record(name, why, null);
-    log(`${name} ${why}`);
+    log(`${prefix} ${name} ${why}`);
   };
-  // Runs one step function; its own log lines are kept as the step's detail. Anything but a setup error is a crash.
+  // A step that threw: a bot challenge (code 3) is deterministic for the target, anything else but a setup error is a crash.
+  const failureLine = (name, verdict, exit) => `ERROR (exit ${exit}) ${name} ${verdict}`;
+  const failure = (e) => (e?.code === 3
+    ? { verdict: `CHALLENGE: ${e.message}`, exit: 3 }
+    : { verdict: `CRASH: ${e?.message ?? e}`, exit: 124 });
+  // Runs one step function; its own log lines are kept as the step's detail.
   const exec = async (name, fn, extra = {}, { hide } = {}) => {
     const detail = [];
     const stepLog = (m) => { detail.push(m); if (m !== hide) log(m); };
@@ -389,9 +400,9 @@ async function allStep({ dir, opts, env, log, warn, UsageError, steps }) {
       record(name, VERDICT_WORDS[name]?.[exit] ?? `exit ${exit}`, exit, detail);
     } catch (e) {
       if (isSetup(e)) throw e;
-      const verdict = `CRASH: ${e?.message ?? e}`;
-      log(`${name} ${verdict}`);
-      record(name, verdict, 124, detail);
+      const { verdict, exit } = failure(e);
+      log(failureLine(name, verdict, exit));
+      record(name, verdict, exit, detail);
     }
   };
 
@@ -403,23 +414,26 @@ async function allStep({ dir, opts, env, log, warn, UsageError, steps }) {
     record('join', ready.join.pass ? 'PASS' : 'FAIL', ready.join.pass ? 0 : 1, detail);
   } catch (e) {
     if (isSetup(e)) throw e;
-    const verdict = `CRASH: ${e?.message ?? e}`;
-    log(`join ${verdict}`);
-    record('join', verdict, 124);
+    const { verdict, exit } = failure(e);
+    log(failureLine('join', verdict, exit));
+    record('join', verdict, exit);
   }
 
+  const joinStopped = recorded.join.exit === 3 ? 'not run: join hit a bot challenge' : 'not run: join crashed';
+  const joinStoppedPrefix = `ERROR (exit ${recorded.join.exit})`;
   const runnable = ready && !ready.drift;
   for (const name of ['geometry', 'ramp', 'pixel']) {
     if (runnable) await exec(name, steps[name], { ready });
-    else notRun(name, ready ? NOT_RUN_DRIFT : 'not run: join crashed');
+    else if (ready) notRun(name, NOT_RUN_DRIFT, 'FAIL');
+    else notRun(name, joinStopped, joinStoppedPrefix);
   }
   const registerPath = join(out, 'register.md');
   if (ready) await exec('register', steps.register, {}, { hide: registerPath });
-  else notRun('register', 'not run: join crashed');
+  else notRun('register', joinStopped, joinStoppedPrefix);
 
   const read = (name) => readJsonIf(join(out, name));
   const files = { geometry: read('geometry.json'), ramp: read('ramp.json'), pixel: read('pixel.json'), register: read('register.json') };
-  const fragmentOf = (name, make) => (recorded[name].verdict.startsWith('CRASH') || recorded[name].exit === null || !files[name] ? recorded[name].verdict : make(files[name]));
+  const fragmentOf = (name, make) => (/^(CRASH|CHALLENGE)/.test(recorded[name].verdict) || recorded[name].exit === null || !files[name] ? recorded[name].verdict : make(files[name]));
   const current = readCurrent(dir);
   const invocation = `figma-gate.mjs all --page ${opts.page} --url ${opts.url} --dir ${dir}`;
   const ledgerFragment = {
@@ -434,7 +448,7 @@ async function allStep({ dir, opts, env, log, warn, UsageError, steps }) {
     invocation,
   };
   writeJson(join(out, 'summary.json'), {
-    _provenance: provenance({ at: new Date().toISOString(), readArtifacts: Object.keys(files).filter((k) => files[k]).map((k) => `${k}.json`), note: 'figma-gate.mjs all' }),
+    _provenance: provenance({ at: new Date().toISOString(), readArtifacts: Object.keys(files).filter((k) => files[k]).map((k) => `${k}.json`), note: 'figma-gate.mjs all', writtenBy: 'stardust:reskin/figma-gate.mjs' }),
     page: opts.page,
     url: opts.url,
     regime: ledgerFragment.regime,
@@ -446,7 +460,7 @@ async function allStep({ dir, opts, env, log, warn, UsageError, steps }) {
   log(`ledger fragment for pages.${opts.page}.gates.figma in ledger.json:`);
   log(JSON.stringify(ledgerFragment, null, 2));
   if (files.register) log(registerPath);
-  return [2, 124, 1].find((c) => exits.includes(c)) ?? 0;
+  return [2, 3, 124, 1].find((c) => exits.includes(c)) ?? 0;
 }
 
 // steps lets a test replace a step function.

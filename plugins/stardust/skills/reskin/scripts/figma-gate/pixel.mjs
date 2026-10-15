@@ -43,7 +43,7 @@ export function textBoxes(box) {
   return { boxes: textBoxesOf(box).filter((b) => b.w > 0 && b.h > 0).map(({ x, y, w, h }) => ({ x, y, w, h })) };
 }
 
-function pixelComparePath() {
+export function pixelComparePath() {
   const path = PIXEL_COMPARE.map((p) => resolve(HERE, p)).find((p) => existsSync(p));
   if (!path) throw new UsageError('pixel-compare.mjs not found (looked in ../../../replica/scripts/ and ../../replica/): copy the replica skill\'s scripts beside the reskin scripts (stardust/scripts/replica/)');
   return path;
@@ -91,6 +91,17 @@ const fontsIn = (page, selector) => page.evaluate((sel) => {
   }
   return [...families].map((family) => ({ family, served: GENERIC.has(family.toLowerCase()) || loaded.has(family.toLowerCase()) || installed(family) }));
 }, selector);
+
+// The first line of the pixel step. A comparison that hit its deadline leaves the section without a number: the
+// line then leads with ERROR (exit 124), which run-bg's default verdict filter matches, instead of "advisory".
+export function pixelHeadline(results) {
+  const ref = REFERENCE_CLASSES;
+  const classes = `uncalibrated reference: light text ${ref.lightText}%, inverted ${ref.inverted}%, raster ground ${ref.rasterGround}%`;
+  const lost = results.filter((r) => r.verdict === 'no verdict').length;
+  return lost
+    ? `ERROR (exit 124) pixel no verdict: ${lost} of ${results.length} section(s) hit a deadline, re-run; ${classes}`
+    : `pixel advisory: ${results.length} section(s); ${classes}`;
+}
 
 const na = (reason) => ({ verdict: 'n/a', reason, fonts: [] });
 

@@ -260,7 +260,9 @@ the section's margins there; check widths, gaps and paddings instead.
 - **UNASSERTED.** A property the Figma node gives no value for is
   listed in `ramp.json` and never fails.
 - **No verdict.** Exit 124 (a crashed step, a `pixel-compare`
-  deadline): re-run, never a fix iteration.
+  deadline): re-run once, never a fix iteration; the same 124 twice is
+  a residual (needs-owner). Exit 3 (bot challenge on a live target)
+  outranks 124 and 1 in `all`'s exit, and exit 2 outranks both.
 
 ## One fix iteration per gate family, then residuals
 

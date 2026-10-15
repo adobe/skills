@@ -12,7 +12,8 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { buildBoxes } from '../figma-gate/boxes.mjs';
 import { prepare } from '../figma-gate/prepare.mjs';
-import { REFERENCE_CLASSES, comparable, comparePngs, cropRect, runPixel, textBoxes, textOf } from '../figma-gate/pixel.mjs';
+import { REFERENCE_CLASSES, comparable, comparePngs, cropRect, pixelHeadline, runPixel, textBoxes, textOf } from '../figma-gate/pixel.mjs';
+import { VERDICT_RE } from '../../../replica/scripts/run-bg.mjs';
 import { KEY, VERSION, makeProject } from './fixtures/figma-gate/setup.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -28,6 +29,15 @@ const S02_TEXT = '  EVERYTHING in one place\nPlan the work with a shared board t
 
 await check('REFERENCE_CLASSES are the three uncalibrated reference percentages', () => {
   assert.deepEqual(REFERENCE_CLASSES, { lightText: 3, inverted: 3.5, rasterGround: 4 });
+});
+
+await check('pixelHeadline: advisory when every section has a number, "ERROR (exit 124) pixel no verdict" when a comparison hit its deadline', () => {
+  const ok = [{ verdict: 'advisory' }, { verdict: 'n/a' }];
+  assert.match(pixelHeadline(ok), /^pixel advisory: 2 section\(s\); uncalibrated reference: light text 3%, inverted 3.5%, raster ground 4%$/);
+  const lost = pixelHeadline([{ verdict: 'advisory' }, { verdict: 'no verdict' }]);
+  assert.match(lost, /^ERROR \(exit 124\) pixel no verdict: 1 of 2 section\(s\) hit a deadline, re-run; uncalibrated reference/);
+  assert.ok(!/advisory/.test(lost), lost);
+  assert.ok(VERDICT_RE.test(lost), 'run-bg\'s default filter matches it');
 });
 
 await check('cropRect: the section rectangle in the frame PNG, n/a unless the PNG is the rounded frame box', () => {

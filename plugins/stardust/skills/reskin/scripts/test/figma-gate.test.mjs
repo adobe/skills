@@ -12,6 +12,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { writeCurrent } from '../figma/cache.mjs';
 import { main } from '../figma-gate.mjs';
+import { VERDICT_RE } from '../../../replica/scripts/run-bg.mjs';
 import { makeProject, KEY, VERSION } from './fixtures/figma-gate/setup.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -33,6 +34,13 @@ check('--help from an empty cwd: exit 0, usage, nothing written', () => {
   assert.match(r.stdout, /usage/i);
   for (const s of ['boxes', '--module', '--node', '--depth', '--dir', 'Exit codes', '124']) assert.ok(r.stdout.includes(s), `help lacks ${s}`);
   assert.deepEqual(walk(cwd), []);
+});
+
+check('--help: run-bg is called as run-bg.mjs with its job name positional, and the line filter claim matches the lines printed', () => {
+  const r = run(['--help'], join(scratch, 'empty'));
+  assert.ok(r.stdout.includes('run-bg.mjs wait figma-<slug> --dir stardust/.work/reskin/bg'), 'wait takes the job name positionally');
+  assert.ok(!/wait --name/.test(r.stdout));
+  for (const doc of ['SKILL.md', join('reference', 'gates.md')]) assert.ok(!/run-bg\.mjs wait --name/.test(readFileSync(join(HERE, '..', '..', doc), 'utf8')), doc);
 });
 
 check('every setup hint in figma-gate installs to keep: no --no-save (a later npm i prunes it, reskin Setup step 2)', () => {
@@ -128,7 +136,7 @@ check('main with steps.boxes replaced returns its code and passes dir and opts',
 check('--help lists every subcommand with its flags and the run-bg launch hint', () => {
   const r = run(['--help'], join(scratch, 'empty'));
   assert.equal(r.status, 0, r.stderr);
-  for (const s of ['boxes', 'join', 'geometry', 'ramp', 'pixel', 'register', ' all ', '--page', '--url', '--dir', 'summary.json', 'ledgerFragment', 'run-bg start --name figma-<slug> --dir stardust/.work/reskin/bg -- node']) assert.ok(r.stdout.includes(s), `help lacks ${s}`);
+  for (const s of ['boxes', 'join', 'geometry', 'ramp', 'pixel', 'register', ' all ', '--page', '--url', '--dir', 'summary.json', 'ledgerFragment', 'run-bg.mjs start --name figma-<slug> --dir stardust/.work/reskin/bg -- node']) assert.ok(r.stdout.includes(s), `help lacks ${s}`);
 });
 
 check('all without --page or --url exits 2', () => {
@@ -157,6 +165,14 @@ await acheck('a step that throws a UsageError propagates (setup error), not CRAS
   await assert.rejects(
     main(['all', '--page', p.slug, '--url', p.page, '--dir', p.dir], { log: () => {}, warn: () => {}, steps: { ramp: async ({ UsageError }) => { throw new UsageError('bad checks'); } } }),
     /bad checks/,
+  );
+});
+
+await acheck('a per-step subcommand that hits a bot challenge exits 3 (the error keeps its code)', async () => {
+  const p = project();
+  await assert.rejects(
+    main(['geometry', '--page', p.slug, '--url', p.page, '--dir', p.dir], { log: () => {}, warn: () => {}, steps: { geometry: async () => { const e = new Error('challenge'); e.code = 3; throw e; } } }),
+    (e) => e.code === 3,
   );
 });
 
@@ -197,7 +213,7 @@ if (playwrightOk && pngOk) {
     for (const re of [/^PASS join/m, /^geometry PASS \d+\/\d+$/m, /^ramp PASS \d+\/\d+/m, /^pixel advisory/m, /^register written: /m]) assert.match(r.stdout, re);
     const s = summaryOf(p);
     assert.deepEqual(Object.keys(s), ['_provenance', 'page', 'url', 'regime', 'figma', 'steps', 'ledgerFragment', 'invocation']);
-    assert.equal(s._provenance.writtenBy, 'stardust:reskin/figma-donor.mjs');
+    assert.equal(s._provenance.writtenBy, 'stardust:reskin/figma-gate.mjs');
     assert.deepEqual([s.page, s.url, s.regime, s.figma], ['home', p.page, 'local', { version: VERSION }]);
     assert.deepEqual(Object.entries(s.steps).map(([k, v]) => [k, v.verdict, v.exit]), [['join', 'PASS', 0], ['geometry', 'PASS', 0], ['ramp', 'PASS', 0], ['pixel', 'advisory', 0], ['register', 'written', 0]]);
     assert.ok(Array.isArray(s.steps.geometry.detail));
@@ -248,6 +264,7 @@ if (playwrightOk && pngOk) {
     assert.equal(r.status, 1, r.stdout + r.stderr);
     assert.match(r.stdout, /^FAIL join/m);
     assert.match(r.stdout, /section drift: s02 before s01/);
+    for (const k of ['geometry', 'ramp', 'pixel']) assert.match(r.stdout, new RegExp(`^FAIL ${k} not run: section drift$`, 'm'));
     const s = summaryOf(p);
     assert.deepEqual(['geometry', 'ramp', 'pixel'].map((k) => s.steps[k].verdict), Array(3).fill('not run: section drift'));
     assert.deepEqual(['geometry', 'ramp', 'pixel'].map((k) => s.ledgerFragment[k]), Array(3).fill('not run: section drift'));
@@ -276,14 +293,32 @@ if (playwrightOk && pngOk) {
     const out = [];
     const code = await main(['all', '--page', p.slug, '--url', p.page, '--dir', p.dir], { log: (m) => out.push(m), warn: () => {}, steps: { geometry: async () => { throw new Error('boom'); } } });
     assert.equal(code, 124);
-    assert.ok(out.includes('geometry CRASH: boom'), out.join('\n'));
+    assert.ok(out.includes('ERROR (exit 124) geometry CRASH: boom'), out.join('\n'));
+    assert.ok(out.filter((l) => /CRASH/.test(l)).every((l) => VERDICT_RE.test(l)), 'run-bg\'s default filter matches every CRASH line');
     const s = summaryOf(p);
     assert.deepEqual([s.steps.geometry.verdict, s.steps.geometry.exit, s.ledgerFragment.geometry], ['CRASH: boom', 124, 'CRASH: boom']);
     assert.equal(s.steps.ramp.verdict, 'PASS');
     assert.equal(s.steps.register.verdict, 'written');
   });
 
-  await acheck('an earlier 1 does not hide a later 124: the exit is the first present of 2, 124, 1, 0', async () => {
+  await acheck('a step that throws code 3 (bot challenge): the other steps still run, the exit is 3, over a 124 and a 1', async () => {
+    const p = await framed();
+    edit(p, '.card { width: 560px;', '.card { width: 540px;');
+    const challenge = async () => { const e = new Error('challenge'); e.code = 3; throw e; };
+    const out = [];
+    const code = await main(['all', '--page', p.slug, '--url', p.page, '--dir', p.dir], { log: (m) => out.push(m), warn: () => {}, steps: { geometry: challenge } });
+    assert.equal(code, 3, out.join('\n'));
+    assert.deepEqual([summaryOf(p).steps.geometry.exit, summaryOf(p).steps.ramp.verdict, summaryOf(p).steps.register.verdict], [3, 'PASS', 'written']);
+    assert.match(summaryOf(p).ledgerFragment.geometry, /^CHALLENGE: challenge$/);
+    assert.ok(out.includes('ERROR (exit 3) geometry CHALLENGE: challenge'), out.join('\n'));
+    assert.ok(VERDICT_RE.test('ERROR (exit 3) geometry CHALLENGE: challenge'));
+    const both = await main(['all', '--page', p.slug, '--url', p.page, '--dir', p.dir], { log: () => {}, warn: () => {}, steps: { geometry: challenge, pixel: async () => 124 } });
+    assert.equal(both, 3, 'a 3 outranks a 124');
+    const crashOnly = await main(['all', '--page', p.slug, '--url', p.page, '--dir', p.dir], { log: () => {}, warn: () => {}, steps: { pixel: async () => 124 } });
+    assert.equal(crashOnly, 124);
+  });
+
+  await acheck('an earlier 1 does not hide a later 124: the exit is the first present of 2, 3, 124, 1, 0', async () => {
     const p = await framed();
     edit(p, '.card { width: 560px;', '.card { width: 540px;');
     const code = await main(['all', '--page', p.slug, '--url', p.page, '--dir', p.dir], { log: () => {}, warn: () => {}, steps: { pixel: async () => 124 } });
