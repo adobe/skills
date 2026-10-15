@@ -504,6 +504,9 @@ enc('tours/held/_meta.json', sib('tours-held'), 'tours/held.html', { status: 'va
 enc('tours/edited/_meta.json', sib('tours-edited'), 'tours/edited.html', { onDisk: '<main><h1>edited by hand</h1></main>' });
 put(join(root2, 'content/tours/edited.html'), '<main><h1>Edited</h1></main>\n');
 enc('tours/gone/_meta.json', sib('tours-gone'), 'tours/gone.html', { onDisk: null });
+// a source URL with unsanitised segments: migrate keeps About_Us/_meta.json, the encoder and stage-content use the eds-path form
+enc('About_Us/_meta.json', sib('about-us'), 'about-us.html', { status: 'variance' });
+put(join(root2, 'content/about-us.html'), '<main><h1>About</h1></main>\n');
 put(join(root2, 'stardust/import/tours/manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
 // The lint stub: a P0 for a file under stardust/migrated/ (a clone has no <h1>), clean for anything else.
 put(LINT2, `const a = process.argv; const file = a[a.indexOf('--file') + 1];
@@ -528,6 +531,9 @@ check('an encoded page is linted on its delivered content file, else on its enco
   assert.equal(east.gateEvidence['delivery-lint'], '0 P0 · 0 P1 · 0 P2 (delivery-lint --file content/tours/east.html --path /tours/east)', 'the clone beside it would fail P0');
   for (const m of [north, south, east]) assert.ok(m.gatesPassed.includes('delivery-lint'), m.slug);
   assert.equal(meta2('tours/edited/_meta.json').gateEvidence['delivery-lint'], '0 P0 · 0 P1 · 0 P2 (delivery-lint --file content/tours/edited.html --path /tours/edited)', 'the delivered file decides, whatever the encode');
+  const about = meta2('About_Us/_meta.json');
+  assert.equal(about.gateEvidence['delivery-lint'], '0 P0 · 0 P1 · 0 P2 (delivery-lint --file content/about-us.html --path /about-us)', 'the staged file (content/<encoded path>), though the page stopped');
+  assert.equal(about.gateEvidence['media-reconcile'], 'n/a: no delivered content file yet (content/About_Us.html) — media-reconcile runs in the delivery chain (row C)', 'the media signal is unchanged');
 });
 check('the archetype and a clone page (sidecar encode: null) keep today\'s subject, the migrated HTML', () => {
   assert.equal(meta2('tours/_meta.json').gateEvidence['delivery-lint'], 'FAIL: 1 P0 · 0 P1 · 1 P2 (delivery-lint --path /tours)', 'deploy converts the archetype from its migrated HTML; it is never staged');
@@ -552,13 +558,23 @@ check('the delivered signal is unchanged (media-reconcile n/a until the content 
   assert.equal(attribute(lj('content/tours/north.html'), north, { migrated: M2 }), true);
   assert.equal(attribute(lj('stardust/encoded/tours/north.html'), north, { migrated: M2 }), true);
   assert.equal(attribute(lj('stardust/migrated/tours/west/index.html'), west, { migrated: M2 }), true, 'a clone page by its migrated file, as before');
+  assert.equal(attribute(lj('stardust/migrated/tours/north/index.html'), north, { migrated: M2 }), false, 'an encoded page has no clone for a job to name');
   assert.equal(attribute(lj('content/tours/north.html'), west, { migrated: M2, pages: [north, west] }), false);
 });
 check('progress.json: an encoded sibling records its encoded document (migrated null); a clone sibling as before', () => {
   const s = json(join(root2, 'stardust/replica/progress.json')).siblings;
   assert.equal(s['tours-north'].migrated, null); assert.equal(s['tours-north'].encoded, 'stardust/encoded/tours/north.html');
   assert.equal(s['tours-west'].migrated, 'stardust/migrated/tours/west/index.html'); assert.equal('encoded' in s['tours-west'], false);
-  assert.equal(json(join(root2, 'stardust/replica/progress.json')).migrate.pages, 8);
+  assert.equal(json(join(root2, 'stardust/replica/progress.json')).migrate.pages, 9);
+});
+check('without a resolvable --lint an encoded page takes delivery-lint jobs on its own files only — a job on its would-be clone path is no one\'s', () => {
+  const missing = ['--lint', join(root2, 'missing-lint.mjs'), '--slug', 'tours-north', '--dry-run', '--json'];
+  job2('lint-c', ['stardust/scripts/rollout/delivery-lint.mjs', '--file', 'stardust/migrated/tours/north/index.html'], 'delivery-lint stardust/migrated/tours/north/index.html\n\n1 P0 · 0 P1 · 0 P2', 10);
+  let row = JSON.parse(run2(...missing).out)[0];
+  assert.equal(row.deliveryLint, null);
+  job2('lint-d', ['stardust/scripts/rollout/delivery-lint.mjs', '--file', 'content/tours/north.html'], 'delivery-lint content/tours/north.html\n\n0 P0 · 0 P1 · 1 P2', 11);
+  row = JSON.parse(run2(...missing).out)[0];
+  assert.equal(row.deliveryLint, '0 P0 · 0 P1 · 1 P2'); assert.equal(row.gateEvidence['delivery-lint'], '0 P0 · 0 P1 · 1 P2 (lint-d.log)');
 });
 rmSync(root2, { recursive: true, force: true });
 
