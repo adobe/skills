@@ -3,12 +3,13 @@
 // one template whose archetype guide-a has its gated document; guide-b a leaf and guide-f a folder index with encoded
 // documents and no delivered one; guide-c a folder index whose leaf form content/guides/c.html is already delivered;
 // guide-d an encoded page whose content/ document was authored by hand; guide-e not encoded; guide-g encoded clean
-// once, then stopped. Every encoded document has the encoder's provenance: a sidecar where migrate places it, with
+// once, then stopped; guide-h an extensionless source URL, whose sidecar is guides/h/_meta.json while its document is
+// guides/h.html. Every encoded document has the encoder's provenance: a sidecar where migrate places it, with
 // encode.output and audit.encode.status, and an entry in the template's manifest). Covers: the copy and the
 // changed-paths list in deploy-batch's --paths form; unchanged → zero writes; the hand-edit guard, adoption of an
-// identical document and the override; the record/re-stage cycle across a finaliser's rewrite; the alternate-form
-// refusal in both directions; the stale/stopped refusal; --help in an empty directory. No network, no browser.
-// Run: node <this file>.
+// identical document and the override; the record/re-stage cycle and --record's warning on a slipped-in edit; the
+// alternate-form refusal in both directions; a stopped page skipped, a stale document refused; --help in an empty
+// directory. No network, no browser. Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -106,23 +107,24 @@ check('copies the encoded documents into content/ and prints their paths in depl
   assert.deepEqual(readdirSync(join(dir, 'stardust', 'deploy')), ['stage-ledger.json'], 'no tmp file or lock left');
 });
 
-check('--template stages the siblings: skips the archetype and an unencoded page, refuses a duplicate and an unrecorded document (exit 2)', () => {
+check('--template stages the siblings: skips the archetype, an unencoded and a stopped page, refuses a duplicate and an unrecorded document (exit 2)', () => {
   const dir = project();
   const archetype = read(dir, 'content/guides/a.html'); const handMade = read(dir, 'content/guides/d.html');
   const r = run(['--template', 'guide-a'], dir);
   assert.equal(r.code, 2, r.err);
-  assert.equal(r.out, '/guides/b\n/guides/f/index\n', 'the refused pages are not in the list');
+  assert.equal(r.out, '/guides/b\n/guides/f/index\n/guides/h\n', 'the refused and skipped pages are not in the list');
+  assert.equal(read(dir, 'content/guides/h.html'), read(dir, 'stardust/encoded/guides/h.html'), 'an extensionless URL: its sidecar is guides/h/_meta.json');
   assert.equal(read(dir, 'content/guides/a.html'), archetype, 'the gated archetype document stays as authored');
   assert.match(r.err, /guide-a skipped: the archetype/);
   assert.match(r.err, /guide-e skipped: not encoded \(no stardust\/encoded\/guides\/e\.html\)/);
   assert.match(r.err, /guide-c duplicate: content\/guides\/c\.html .*content\/guides\/c\/index\.html/);
   assert.ok(!existsSync(join(dir, 'content/guides/c/index.html')), 'the second document is never written');
-  assert.match(r.err, /guide-d hand-edit: content\/guides\/d\.html .*never staged.*--overwrite-hand-edit guide-d/);
+  assert.match(r.err, /guide-d hand-edit: content\/guides\/d\.html .*never staged.*stardust\/patches\/guide-d\.json \(one page\) or the template's map \(all siblings\).*--overwrite-hand-edit guide-d/);
   assert.equal(read(dir, 'content/guides/d.html'), handMade, 'the hand-authored document is untouched');
-  assert.deepEqual(Object.keys(ledger(dir)), ['content/guides/b.html', 'content/guides/f/index.html']);
-  assert.match(r.err, /guide-g stopped: stardust\/migrated\/guides\/g\._meta\.json audit\.encode\.status is variance/);
+  assert.deepEqual(Object.keys(ledger(dir)), ['content/guides/b.html', 'content/guides/f/index.html', 'content/guides/h.html']);
+  assert.match(r.err, /guide-g skipped \(stopped: variance\)/);
   assert.ok(!existsSync(join(dir, 'content/guides/g.html')), 'the earlier encode of a stopped page is never staged');
-  assert.match(r.err, /^stage-content: staged 2 · pending 0 · unchanged 0 · skipped 2 · refused 3$/m);
+  assert.match(r.err, /^stage-content: staged 3 · pending 0 · unchanged 0 · skipped 3 · refused 2$/m);
 });
 
 check('the other delivered form refuses the page in both directions, whichever form the list names', () => {
@@ -177,13 +179,16 @@ check('record/re-stage cycle: the finalised form is kept while the encoding hold
   const dir = project();
   const doc = 'content/guides/b.html'; const enc = join(dir, 'stardust/encoded/guides/b.html');
   assert.equal(stage(dir, '/guides/b').code, 0);
-  // a finaliser rewrites the staged copy in place (sanitise-like: a character becomes an entity)
+  // the staged copy changes before --record (the chain is a no-op on an encoded document: a slipped-in edit)
   const finalised = read(dir, doc).replace('Guide B', 'Guide&#160;B');
   writeFileSync(join(dir, doc), finalised);
   const early = stage(dir, '/guides/b');
   assert.equal(early.code, 2, 'a change not yet recorded reads as a hand edit: --record runs right after the finalisers');
   assert.equal(read(dir, doc), finalised);
-  assert.equal(record(dir, '/guides/b').code, 0);
+  const warned = record(dir, '/guides/b');
+  assert.equal(warned.code, 0, 'a warning, not a refusal');
+  assert.match(warned.err, /guide-b recorded content\/guides\/b\.html .*warning: it differs from the staged bytes .*stardust\/patches\/guide-b\.json/);
+  assert.match(warned.err, /^stage-content --record: recorded 1 · unchanged 0 · skipped 0 · refused 0 · warning 1$/m);
   assert.deepEqual(ledger(dir)[doc], { finalised: sha(finalised), staged: sha(readFileSync(enc, 'utf8')) });
   const same = stage(dir, '/guides/b');
   assert.equal(same.code, 0, same.err); assert.equal(same.out, ''); assert.match(same.err, /guide-b unchanged/);
@@ -194,7 +199,8 @@ check('record/re-stage cycle: the finalised form is kept while the encoding hold
   assert.equal(restaged.code, 0, restaged.err); assert.equal(restaged.out, '/guides/b\n');
   assert.equal(read(dir, doc), readFileSync(enc, 'utf8'));
   assert.deepEqual(ledger(dir)[doc], { finalised: null, staged: sha(readFileSync(enc, 'utf8')) });
-  assert.equal(record(dir, '/guides/b').code, 0);
+  const quiet = record(dir, '/guides/b');
+  assert.equal(quiet.code, 0); assert.doesNotMatch(quiet.err, /warning/);
   assert.equal(ledger(dir)[doc].finalised, sha(readFileSync(enc, 'utf8')), 'a no-op chain records the staged bytes');
 });
 
@@ -219,7 +225,19 @@ check('guard: an edit after --record refuses the re-stage (exit 2) and --record 
   assert.equal(read(dir, 'content/guides/d.html'), read(dir, 'stardust/encoded/guides/d.html'), 'an unrecorded document is replaced too');
 });
 
-check('never a stale or stopped document: the bytes must match the sidecar and the manifest, the status must be clean (exit 2)', () => {
+check('a stopped page is skipped without failing the run (the encoder signalled it), and never staged', () => {
+  const dir = project();
+  const g = stage(dir, '/guides/g', '/guides/f/index');
+  assert.equal(g.code, 0, g.err); assert.equal(g.out, '/guides/f/index\n');
+  assert.match(g.err, /- guide-g skipped \(stopped: variance\): stardust\/migrated\/guides\/g\._meta\.json audit\.encode\.status is variance/);
+  assert.ok(!existsSync(join(dir, 'content/guides/g.html')));
+  editJson(dir, SIDECAR['guide-b'], (v) => { v.audit.encode.status = 'incomplete'; });
+  const b = run(['--paths', pathsFile(dir, '/guides/b'), '--overwrite-hand-edit', 'guide-b'], dir);
+  assert.equal(b.code, 0, b.err); assert.match(b.err, /guide-b skipped \(stopped: incomplete\)/);
+  assert.ok(!existsSync(join(dir, 'content/guides/b.html')), 'nothing staged, --overwrite-hand-edit notwithstanding');
+});
+
+check('never a stale document: the bytes must match the sidecar and the manifest (exit 2)', () => {
   const dir = project();
   const enc = join(dir, ENCODED['guide-b']);
   const refused = (re) => {
@@ -236,8 +254,6 @@ check('never a stale or stopped document: the bytes must match the sidecar and t
   editJson(dir, MANIFEST, (v) => { delete v[ENCODED['guide-b']]; });
   refused(/guide-b stale: stardust\/import\/guide-a\/manifest\.json has no entry for stardust\/encoded\/guides\/b\.html/);
   editJson(dir, MANIFEST, (v) => { v[ENCODED['guide-b']] = sha(html); });
-  editJson(dir, SIDECAR['guide-b'], (v) => { v.audit.encode.status = 'incomplete'; });
-  refused(/guide-b stopped: stardust\/migrated\/guides\/b\._meta\.json audit\.encode\.status is incomplete/);
   rmSync(join(dir, SIDECAR['guide-b']));
   refused(/guide-b stale: no sidecar stardust\/migrated\/guides\/b\._meta\.json/);
   assert.ok(!existsSync(join(dir, LEDGER)), 'nothing recorded');
