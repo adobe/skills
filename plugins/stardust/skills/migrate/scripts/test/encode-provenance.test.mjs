@@ -17,8 +17,8 @@
 //                 --force still refuses; --overwrite-hand-edit restores the clean bytes; the same edit as a patch passes;
 //                 a document the manifest does not list is refused when it differs, adopted when byte-equal; a
 //                 patch file holding JSON null is malformed (error), never "no patches"
-//   modules       sidecarWith keeps migrate's modules[] true on a clean encode: the sorted unique block names; the same
-//                 blocks write nothing, a new block shows up, a stop leaves the list as it was
+//   modules       a clean encode keeps migrate's modules[] true: the sorted unique block names (created sidecars
+//                 included); the same blocks write nothing, a block the map adds shows up, a stop leaves the list
 //   encodedPageOf the shared R30 rule: a sibling with an encode is encoded (old clone or not), the archetype only
 //                 without a migrated HTML; a render's encode: null, a path outside stardust/encoded/ or with .. → null
 //   currentEncode the shared reader's verdicts: current (by URL, or from the sidecar alone), stopped with a stale
@@ -78,6 +78,7 @@ try {
   assert.deepEqual([ss.slug, ss.type, ss.renderBranch, ss.fidelityTier, ss.template, ss.archetypeSource], [S1, 'trip', "A'", 'sibling', A, A], 'a created sibling sidecar: branch A\', tier sibling, the archetype as template');
   assert.deepEqual([ss.outputPath, ss.sidecar, ss.sourceCurrentSha], ['trips/forest-loop.html', 'trips/forest-loop._meta.json', null], 'migrate\'s place for it; sourceCurrentSha is never the encoder\'s');
   assert.deepEqual(ss.gatesPassed, []); assert.deepEqual(Object.keys(ss).slice(0, 3), ['slug', 'type', 'renderBranch']);
+  assert.deepEqual([sa.modules, ss.modules], [['facts', 'hero', 'links', 'tabs', 'tags', 'teaser'], ['facts', 'hero', 'links', 'tabs', 'tags', 'teaser']], 'modules[]: the blocks each page emitted (R36)');
   const enc = ss.encode;
   assert.deepEqual(Object.keys(enc), ['encoder', 'map', 'inputs', 'output', 'encodedAt']);
   assert.deepEqual([enc.encoder.script, enc.encoder.version], ['stardust/scripts/migrate/encode.mjs', '1']); assert.match(enc.encoder.sha, SHA);
@@ -159,6 +160,14 @@ try {
   write(VOCAB, vocabRaw);
   r = await run('--template', A);
   assert.equal(r.last, 'encoded 1 · unchanged 1 · stopped 0'); assert.equal(read(DOC[S1]), docS);
+  // a block the map adds shows up in modules[]; the restored map takes it out again
+  write(VOCAB, JSON.stringify({ ...vocab, markers: vocab.markers.map((m) => (m.sel === '.mod-image' ? { ...m, emitter: 'block:picture' } : m)) }, null, 2));
+  r = await run('--template', A);
+  assert.equal(r.code, 0, r.out); assert.equal(r.last, 'encoded 2 · unchanged 0 · stopped 0');
+  assert.deepEqual([json(SIDE[A]).modules, json(SIDE[S1]).modules].map((m) => m.includes('picture')), [true, true], 'a new block shows up in modules[]');
+  write(VOCAB, vocabRaw);
+  r = await run('--template', A);
+  assert.equal(r.last, 'encoded 2 · unchanged 0 · stopped 0'); assert.deepEqual(json(SIDE[S1]).modules, ss.modules); assert.equal(read(DOC[S1]), docS);
 
   // --- co-existence: migrate.mjs's sidecar subcommands between encodes --------------------------------------------
   const g = cli(MIGRATE, ['gate', S1, 'visual-parity', '--evidence', 'compared side by side']);
