@@ -25,7 +25,7 @@ const flat = (box) => [box, ...box.children.flatMap(flat)];
 const textBoxesOf = (box) => flat(box).filter((b) => b.type === 'TEXT' && b.text && b.text.characters.trim() !== '');
 
 // The section's rectangle inside the frame PNG, or { na } when the PNG is not the frame at 1×. Figma
-// exports a fractional frame box at its ceiling (2332.33 → 2333 px), so any size within 1px fits.
+// exports a fractional frame box at its ceiling (1840.13 → 1841 px), so any size within 1px fits.
 export function cropRect(root, png) {
   const { w: fw, h: fh } = root.frameBox;
   if (Math.abs(png.width - fw) >= 1 || Math.abs(png.height - fh) >= 1) return { na: `frame PNG is ${png.width}×${png.height}, box ${fw}×${fh}` };
