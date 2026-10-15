@@ -153,6 +153,14 @@ if (playwrightOk && pngOk) {
     assert.deepEqual(JSON.parse(readFileSync(join(work, 's02.text-boxes.json'), 'utf8')).boxes[0], { x: 120, y: 80, w: 1200, h: 48 });
   });
 
+  await check('runPixel: a family the page neither loads nor has installed is not served; a generic family is', async () => {
+    const p = await project('fonts');
+    writeFileSync(p.page, readFileSync(p.page, 'utf8').replace('</style>', '.hero, .hero * { font-family: "Nowhere Sans Synthetic", sans-serif !important; }\n.features, .features * { font-family: sans-serif !important; }\n</style>'));
+    const r = await gate(p);
+    assert.deepEqual(by(r, 's01').fonts, [{ family: 'Nowhere Sans Synthetic', served: false }]);
+    assert.deepEqual(by(r, 's02').fonts, [{ family: 'sans-serif', served: true }]);
+  });
+
   await check('runPixel: a section whose copy differs from the frame is n/a: frame content differs, with no screenshot', async () => {
     const p = await project('differs');
     writeFileSync(p.page, readFileSync(p.page, 'utf8').replace('A calm, readable', 'A live, readable'));

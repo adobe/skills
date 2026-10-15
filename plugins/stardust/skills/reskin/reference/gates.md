@@ -243,7 +243,8 @@ tolerance above 1px need a `why`.
   whose copy differs is n/a; geometry and ramp carry it. A `fixture`
   pixel mode screenshots a hand-made stand-in with the frame's copy.
 - **Fonts are recorded, not failed.** B2 names each font a section
-  uses that the page's font set does not serve; B3 compares the first
+  uses that the page does not render (no loaded `@font-face`, not
+  installed where it is measured; a generic family is served); B3 compares the first
   family of the computed `font-family`. A font the page cannot serve
   never fails a check.
 - **UNASSERTED.** A property the Figma node gives no value for is

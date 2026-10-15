@@ -73,15 +73,23 @@ function crop(PNG, png, rect) {
   return PNG.sync.write(out);
 }
 
-// The distinct first families the section computes, each with whether the page's font set serves it.
+// The distinct first families the section computes, each with whether the page renders it: a generic
+// family, a loaded @font-face of the page, or a family installed where the page is measured.
+// document.fonts.check() is no test: it answers true for a family no face declares.
 const fontsIn = (page, selector) => page.evaluate((sel) => {
+  const GENERIC = new Set(['serif', 'sans-serif', 'monospace', 'cursive', 'fantasy', 'system-ui', 'ui-serif', 'ui-sans-serif', 'ui-monospace', 'ui-rounded', 'math', 'emoji', 'fangsong']);
+  const unquote = (s) => s.trim().replace(/^["']|["']$/g, '');
+  const loaded = new Set([...document.fonts].filter((f) => f.status === 'loaded').map((f) => unquote(f.family).toLowerCase()));
+  const ctx = document.createElement('canvas').getContext('2d');
+  const widthIn = (font) => { ctx.font = font; return ctx.measureText('mmmmmmmmmmlli1WQ@#').width; };
+  const installed = (family) => ['monospace', 'serif', 'sans-serif'].some((base) => widthIn(`72px ${base}`) !== widthIn(`72px "${family}", ${base}`));
   const root = document.querySelector(sel);
   const families = new Set();
   for (const el of [root, ...root.querySelectorAll('*')]) {
-    const first = getComputedStyle(el).fontFamily.split(',')[0].trim().replace(/^["']|["']$/g, '');
+    const first = unquote(getComputedStyle(el).fontFamily.split(',')[0]);
     if (first) families.add(first);
   }
-  return [...families].map((family) => ({ family, served: document.fonts.check(`16px "${family}"`) }));
+  return [...families].map((family) => ({ family, served: GENERIC.has(family.toLowerCase()) || loaded.has(family.toLowerCase()) || installed(family) }));
 }, selector);
 
 const na = (reason) => ({ verdict: 'n/a', reason, fonts: [] });

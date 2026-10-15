@@ -85,8 +85,9 @@ pixel    B2, advisory. Runs the join first (drift stops here, exit 1), validates
          Prints "pixel advisory", the uncalibrated reference classes (light text 3%, inverted 3.5%,
          raster ground 4%: orientation, not a bar) and one line per section: "<slot> 0.42% (text 1.10%,
          Δh 0)" (differing pixels overall and over the frame's text boxes, height delta Figma − page)
-         or "<slot> n/a: <why>"; an indented line names each font the section uses that the page's
-         font set does not serve. Writes <slot>.figma.png, <slot>.page.png, <slot>.diff.png,
+         or "<slot> n/a: <why>"; an indented line names each first font family the section uses
+         that the page does not render (no loaded @font-face, not installed; a generic family is
+         served). Writes <slot>.figma.png, <slot>.page.png, <slot>.diff.png,
          <slot>.text-boxes.json and pixel.json under <dir>/.work/reskin/gates/<slug>/figma/. Exit 0,
          or 124 when a comparison hit its deadline (no verdict: re-run).
 register B4, the divergence register. Reads join.json and whichever of geometry.json, ramp.json and
