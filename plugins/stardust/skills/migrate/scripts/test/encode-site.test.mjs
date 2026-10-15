@@ -6,7 +6,7 @@
 //
 // Usage: node plugins/stardust/skills/migrate/scripts/test/encode-site.test.mjs  (exit 1 on failure)
 import assert from 'node:assert/strict';
-import { copyFileSync, cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, cpSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -16,7 +16,8 @@ import { loadSite } from '../encode/site.mjs';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ENCODE = join(HERE, '..', 'encode');
 const DEPLOY = join(HERE, '..', '..', '..', 'deploy', 'scripts');
-const SCRATCH = mkdtempSync(join(tmpdir(), 'encode-site-test-'));
+// real path: an imported module's URL is its real path, and the OS temp dir may sit behind a symlink (/var on macOS)
+const SCRATCH = realpathSync(mkdtempSync(join(tmpdir(), 'encode-site-test-')));
 process.on('exit', () => rmSync(SCRATCH, { recursive: true, force: true }));
 const FIXTURE = join(HERE, 'fixtures', 'encode-site', 'project');
 
