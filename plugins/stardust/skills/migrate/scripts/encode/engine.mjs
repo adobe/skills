@@ -48,14 +48,18 @@
  * <h1>, an exception) · unmapped (incl. a visible <video>/<audio> reached by rich text: map it as a block or drop: it)
  * · flattened (incl. a module nested inside rich content: a moduleSelectors match or a marker whose emitter is not
  * default-content/wrapper/drop/dynamics; a nested default-content marker keeps its own retag/drop) · variance (a
- * sibling whose SET of shape prints
- * differs from the archetype's, minus accepted prints) · incomplete (the offline content count finds a MISSING item).
+ * sibling whose SET of shape prints differs from the archetype's, minus accepted prints) · incomplete (the offline
+ * content count finds a MISSING item).
  *
  * Output: the delivered body fragment — <body><header></header><main>, the metadata block alone in the first section,
  * then one <div> per section (default content, blocks as <div class="name variant"> rows × cells, a section-metadata
  * `style` row), </main><footer></footer></body>. The engine normalises its own whitespace (ASCII runs collapse to one
  * space, trimmed at line starts/ends and around <br>; NBSP kept; pre/code/textarea byte-exact), so its output is
- * byte-stable; the finaliser (sanitise's encode()) runs last.
+ * byte-stable. Then, in this order: the page's patches (stardust/patches/<slug>.json, the skeleton's
+ * [{ selector, op: replace|attr|remove, name?, value? }] on the rendered document; recorded in patchesApplied[] with
+ * their match counts — a patch that matches nothing is recorded with matched 0 and stops nothing, as in the
+ * skeleton), the <h1> check, the content count, and the finaliser (sanitise's encode()) last. Patches never touch the
+ * fingerprint: variance is decided on the capture.
  *
  * Ported from the `stardust/next` branch: `skills/migrate/scripts/importer-skeleton.mjs` (commits 9aaeff4f, d4a37277, 7662fda2).
  */
@@ -558,6 +562,41 @@ function metaValue(expr, vars, ctx, key) {
   return '';
 }
 
+// ===================================================================================== patches (the skeleton's)
+const PATCH_OPS = ['replace', 'attr', 'remove'];
+/** Patch-file errors (empty = valid): an array of { selector, op: replace|attr|remove, name? (attr), value? }. */
+export function validatePatches(patches) {
+  if (!Array.isArray(patches)) return ['a patch file holds an array of { selector, op, name?, value? }'];
+  const errs = [];
+  patches.forEach((p, i) => {
+    if (!p || typeof p !== 'object' || Array.isArray(p)) { errs.push(`[${i}]: an object { selector, op, name?, value? }`); return; }
+    if (typeof p.selector !== 'string' || !p.selector.trim()) errs.push(`[${i}].selector: a selector string`); else { const e = selectorError(`[${i}].selector`, p.selector); if (e) errs.push(e); }
+    if (!PATCH_OPS.includes(p.op)) errs.push(`[${i}].op "${p.op}": use ${PATCH_OPS.join('|')}`);
+    if (p.op === 'attr' && (typeof p.name !== 'string' || !/^[a-z][a-z0-9:_-]*$/i.test(p.name))) errs.push(`[${i}].name: an attribute name`);
+    if (p.op === 'attr' && p.value !== undefined && p.value !== null && typeof p.value !== 'string') errs.push(`[${i}].value: a string, or null to remove the attribute`);
+    if (p.op === 'replace' && p.value !== undefined && typeof p.value !== 'string') errs.push(`[${i}].value: the replacement inner HTML as a string`);
+  });
+  return errs;
+}
+/**
+ * Apply validated patches, in order, to a rendered document: `replace` sets the inner HTML of every match (the value
+ * normalised like the engine's own output), `attr` sets (or with value null removes) an attribute, `remove` deletes the
+ * match. Returns { html, applied: [{ selector, op, matched }] }.
+ */
+export function applyPatches(html, patches) {
+  const doc = parseHTML(html); const applied = [];
+  for (const p of patches) {
+    const hits = qsa(doc, p.selector);
+    for (const h of hits) {
+      if (p.op === 'remove') remove(h);
+      else if (p.op === 'attr') { if (p.value === null || p.value === undefined) delete h.attrs[p.name]; else h.attrs[p.name] = p.value; }
+      else { h.children = parseHTML(tidy(p.value || '')).children; for (const c of h.children) c.parent = h; }
+    }
+    applied.push({ selector: p.selector, op: p.op, matched: hits.length });
+  }
+  return { html: doc.children.map(serializeTidy).join(''), applied };
+}
+
 // ===================================================================================== the walk + renderer
 /**
  * Encode one page. Arguments:
@@ -571,14 +610,16 @@ function metaValue(expr, vars, ctx, key) {
  *   archetypePrints the archetype's print set (siblings only; absent → no variance check)
  *   inventory       { offlineInventory, diffOffline } (deploy's content-inventory); absent → no content count
  *   countKeys       { mediaKey(absUrl), linkKey(absUrl) } for the content count
+ *   patches         the parsed stardust/patches/<slug>.json array (absent/empty → none); applied to the rendered
+ *                   document before the <h1> check and the content count; an invalid entry is an `error`
  *   finalise        string → string, applied last (sanitise's encode)
  * Returns { status, html, report, prints, sections, blocks }; `html` is null when the root was not found.
  */
-export function encodePage({ html, page = {}, base = null, vocab, tf = {}, site, archetypePrints = null, inventory = null, countKeys = null, finalise = null }) {
-  const report = { hiddenLive: 'unstamped', unmapped: [], flattened: [], variance: [], incomplete: [], dropped: [], hidden: [], deviations: [], literals: [], mediaUnresolved: [], linksUnresolved: [], errors: [] };
+export function encodePage({ html, page = {}, base = null, vocab, tf = {}, site, archetypePrints = null, inventory = null, countKeys = null, patches = null, finalise = null }) {
+  const report = { hiddenLive: 'unstamped', unmapped: [], flattened: [], variance: [], incomplete: [], dropped: [], hidden: [], deviations: [], literals: [], mediaUnresolved: [], linksUnresolved: [], patchesApplied: [], errors: [] };
   const result = { status: 'error', html: null, report, prints: [], sections: 0, blocks: [] };
   try {
-    encodeInto(result, { html, page, base: base || page.url || null, vocab, tf, site, archetypePrints, inventory, countKeys, finalise });
+    encodeInto(result, { html, page, base: base || page.url || null, vocab, tf, site, archetypePrints, inventory, countKeys, patches, finalise });
   } catch (e) {
     report.errors.push(`exception: ${e.message}`);
   }
@@ -592,7 +633,7 @@ export function statusOf(r) {
   return 'clean';
 }
 
-function encodeInto(result, { html, page, base, vocab, tf, site, archetypePrints, inventory, countKeys, finalise }) {
+function encodeInto(result, { html, page, base, vocab, tf, site, archetypePrints, inventory, countKeys, patches, finalise }) {
   const { report } = result;
   const prep = prepareCapture(html, vocab);
   report.hiddenLive = prep.stamped ? 'stamped' : 'unstamped';
@@ -708,11 +749,19 @@ function encodeInto(result, { html, page, base, vocab, tf, site, archetypePrints
   });
   const metaHtml = ['<div>', '<div class="metadata">', ...metaRows.map(([k, v]) => `<div><div>${escPlain(k)}</div><div>${v}</div></div>`), '</div>', '</div>'].join('\n');
   const body = ['<body>', '<header></header>', '<main>', metaHtml, ...sectionHtml, '</main>', '<footer></footer>', '</body>'].join('\n');
-  const prefinal = `${body}\n`;
+  let prefinal = `${body}\n`;
+
+  // the page's patches: on the rendered document, before the checks that judge it (the h1, the content count)
+  if (patches && patches.length) {
+    const errs = validatePatches(patches);
+    if (errs.length) { report.errors.push(...errs.map((e) => `stardust/patches: ${e}`)); return; }
+    const r = applyPatches(prefinal, patches);
+    prefinal = r.html; report.patchesApplied = r.applied;
+  }
 
   // h1 presence is a DOM fact: an inline-first or image-only heading counts, an empty one does not
   if (!content.length) report.errors.push('0 sections — an empty page is never written');
-  const h1El = qs(parseHTML(sectionHtml.join('\n')), 'h1');
+  const h1El = qs(parseHTML(prefinal), 'h1');
   if (vocab.requireH1 !== false && !(h1El && (!blankText(rawText(h1El)) || qs(h1El, 'img')))) report.errors.push('no <h1> in the encoded document');
 
   // L5: the offline content count of the capture's content root against the encoded document

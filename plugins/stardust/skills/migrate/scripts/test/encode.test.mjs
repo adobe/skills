@@ -14,6 +14,9 @@
 //                 section-break, a module nested in rich content → flattened, a component pattern → unmapped
 //   hard stops    unmapped · flattened · variance (fingerprint + census; accepted prints) · incomplete (L5) · error —
 //                 each exits 2 and writes nothing for the page; missing capture / invalid map → exit 1
+//   patches       the skeleton's stardust/patches/<slug>.json ops on the rendered document (engine level): replace,
+//                 attr, remove; a patch deleting counted content → incomplete; a no-match patch → recorded, no stop;
+//                 the h1 check judges the patched document; variance never moves; sanitise stays last
 //   writes        second run → zero writes (unchanged); --dry-run writes nothing; --lint/--sweep stub → exit 1
 //   determinism   two in-process runs + a child process with another TZ/LANG → identical sha256
 //   --help        in an empty dir: exit 0, usage on stdout, nothing written
@@ -250,6 +253,36 @@ try {
   assert.equal(child.status, 0, child.stderr);
   assert.equal([read('stardust', 'encoded', 'trips', 'river-walk.html'), read('stardust', 'encoded', 'trips', 'forest-loop.html')].map(sha).join(','), first, 'a child process with another TZ/LANG: identical bytes');
   assert.equal(read('stardust', 'encoded', 'trips', 'river-walk.html'), arch, '… and equal to the first run');
+
+  // --- patches: the skeleton's ops on the rendered document, before the h1 check and the count; sanitise stays last ---
+  const keysFor = (b) => ({ mediaKey: (u) => site.resolveMedia(u), linkKey: (u) => { const x = site.localizeHref(u, b); if (!x.internal || x.kind === 'doc') return null; const v = new URL(x.href, 'https://doc.invalid/'); return `${deps.pathKey(v.pathname)}${v.search}`; } });
+  const encodeSlug = (slug, patches, archetypePrints = null) => {
+    const b = site.baseUrlFor(slug);
+    return encodePage({ html: read('stardust', 'current', 'pages', `${slug}.html`), page: { ...site.pageJson(slug), url: site.page(slug).url }, base: b, vocab: map.vocab, tf: map.tf, site, archetypePrints, inventory: deps.inventory, countKeys: keysFor(b), patches, finalise: deps.finalise });
+  };
+  const plain = encodeSlug(A, null);
+  assert.equal(plain.html, arch, 'the engine called directly gives the CLI\'s bytes'); assert.deepEqual(plain.report.patchesApplied, []);
+  const noMatch = encodeSlug(A, [{ selector: '.no-such-block', op: 'remove' }]);
+  assert.equal(noMatch.status, 'clean', 'a patch that matches nothing stops nothing (the skeleton warned and went on)');
+  assert.deepEqual(noMatch.report.patchesApplied, [{ selector: '.no-such-block', op: 'remove', matched: 0 }], '… and is recorded with matched 0');
+  assert.equal(noMatch.html, arch, 'a patched render that changed nothing keeps every byte');
+  const patched = encodeSlug(A, [{ selector: '.hero > div > div:last-child > p:first-child', op: 'replace', value: '  <strong> Day   trip </strong> ' }, { selector: '.teaser', op: 'attr', name: 'class', value: 'teaser featured wide' }]);
+  assert.equal(patched.status, 'clean', JSON.stringify(patched.report.incomplete));
+  assert.match(patched.html, /<p><strong>Day trip<\/strong><\/p>\n<h1>River Walk<\/h1>/, 'replace sets the inner HTML, normalised like the engine\'s own');
+  assert.match(patched.html, /<div class="teaser featured wide">/, 'attr sets an attribute');
+  assert.deepEqual(patched.report.patchesApplied.map((x) => [x.op, x.matched]), [['replace', 1], ['attr', 1]]);
+  assert.ok(!/[^\x00-\x7f]/.test(patched.html) && sanitise(patched.html).output === patched.html, 'sanitise still runs last');
+  const removed = encodeSlug(A, [{ selector: '.facts', op: 'remove' }]);
+  assert.equal(removed.status, 'incomplete', 'a patch that deletes counted content is caught by the content count');
+  assert.ok(removed.report.incomplete.some((m) => /^Distance/.test(m.text)), JSON.stringify(removed.report.incomplete));
+  const noH1 = encodeSlug(A, [{ selector: 'h1', op: 'remove' }]);
+  assert.equal(noH1.status, 'error'); assert.match(noH1.report.errors.join(' '), /no <h1>/, 'the h1 check judges the patched document');
+  const badPatch = encodeSlug(A, [{ selector: '.teaser', op: 'rename' }]);
+  assert.equal(badPatch.status, 'error'); assert.match(badPatch.report.errors[0], /op "rename": use replace\|attr\|remove/); assert.equal(badPatch.html, null, 'an invalid patch file renders nothing');
+  const sibPatched = encodeSlug(S1, [{ selector: '.teaser', op: 'remove' }], plain.prints);
+  assert.deepEqual(sibPatched.report.variance, [], 'variance is decided on the capture: patches never move it');
+  assert.deepEqual(sibPatched.prints, encodeSlug(S1, null, plain.prints).prints);
+  assert.equal(sibPatched.status, 'incomplete', '… while the count still sees the removed teaser');
 
   // --- hidden-live: a stamped capture skips marked nodes (recorded), keeps <details>; an unstamped one says so -------
   const stub = { resolveMedia: () => null, resolveDoc: () => null, localizeHref: (h) => ({ href: h, internal: false }), chromeFor: () => ({ nav: '/nav', footer: '/footer' }) };
