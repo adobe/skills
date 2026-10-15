@@ -2,7 +2,8 @@
 /**
  * migrate/migrate.mjs — the migrate driver: places a page whose HTML is ready.
  *
- * It never decides content. The agent supplies one rendered HTML file per page (the
+ * It never decides content — except `encode` (encode.mjs), which applies a template's
+ * authored map. The agent supplies one rendered HTML file per page (the
  * prototype, or the sibling built from an archetype) and records its judgments; this
  * script does every generic step of reference/migration-procedure.md after the render
  * decision: page map (built once from every state page), output path (URL-literal rule),
@@ -52,7 +53,9 @@
  *
  * Writes:
  *   <out>/<output-path>              the migrated HTML (URL-literal rule; default stardust/migrated/)
- *   <out>/<dir>/_meta.json           sidecar next to index.html; <name>._meta.json next to <name>.html
+ *   <out>/<dir>/_meta.json           sidecar next to index.html; <name>._meta.json next to <name>.html;
+ *                                    a re-render carries the recorded judgments and encode.mjs's
+ *                                    `encode` / `audit` keys over (sourceCurrentSha stays this script's)
  *   <out>/assets/**                  every bundled asset (copied only when missing or changed)
  *   state.json.migrate               MERGED, never replaced: this script owns at, outputDir,
  *                                    selfContained, pageMap[], totalAssetsBundled, bundledAssets[],
@@ -82,9 +85,10 @@ export const RENDERABLE = new Set(['approved', 'migrated', 'directed']);
 // asset-bundling.md § Prefix resolution — the default set, longest first.
 export const ASSET_PREFIXES = ['../current/assets/', '../../../assets/', '../../assets/', '../assets/', './assets/', '/assets/', 'assets/'];
 const SKIP_SCHEMES = /^(#|mailto:|tel:|javascript:|data:)/i;
-const SIDECAR_KEYS = ['slug', 'type', 'renderBranch', 'template', 'modules', 'slotsFilled', 'canonShas', 'deviations', 'migrationDecisions', 'metadata', 'jsonLd', 'migratedAt', 'designMdSha', 'designJsonSha', 'sourceCurrentSha', 'sourceProposedSha',
-  'fidelityTier', 'archetypeSource', 'archetypeSha', 'variants', 'gatesPassed', 'gateEvidence', 'contentDeviations', 'assetsBundled', 'missingAssets', 'brokenInternalLinks', 'outputPath', 'outputPathDefault', 'sidecar', 'driverVersion'];
-const CARRIED = ['gatesPassed', 'gateEvidence', 'variants', 'contentDeviations', 'deviations'];
+// `encode` / `audit` are written by encode.mjs (encode/provenance.mjs creates a sidecar in this key order when none exists)
+export const SIDECAR_KEYS = ['slug', 'type', 'renderBranch', 'template', 'modules', 'slotsFilled', 'canonShas', 'deviations', 'migrationDecisions', 'metadata', 'jsonLd', 'migratedAt', 'designMdSha', 'designJsonSha', 'sourceCurrentSha', 'sourceProposedSha',
+  'fidelityTier', 'archetypeSource', 'archetypeSha', 'variants', 'gatesPassed', 'gateEvidence', 'contentDeviations', 'assetsBundled', 'missingAssets', 'brokenInternalLinks', 'outputPath', 'outputPathDefault', 'sidecar', 'driverVersion', 'encode', 'audit'];
+const CARRIED = ['gatesPassed', 'gateEvidence', 'variants', 'contentDeviations', 'deviations', 'encode', 'audit'];
 const SELF = fileURLToPath(import.meta.url);
 
 export class UsageError extends Error { constructor(msg) { super(msg); this.code = 1; } }
