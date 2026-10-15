@@ -35,6 +35,12 @@ check('--help from an empty cwd: exit 0, usage, nothing written', () => {
   assert.deepEqual(walk(cwd), []);
 });
 
+check('every setup hint in figma-gate installs to keep: no --no-save (a later npm i prunes it, reskin Setup step 2)', () => {
+  const sources = [SCRIPT, ...walk(join(HERE, '..', 'figma-gate'))].filter((p) => p.endsWith('.mjs'));
+  const offenders = sources.filter((p) => readFileSync(p, 'utf8').includes('--no-save')).map((p) => p.slice(join(HERE, '..').length + 1));
+  assert.deepEqual(offenders, []);
+});
+
 check('an unknown subcommand, no subcommand and boxes --module without a value exit 2', () => {
   const cwd = join(scratch, 'empty');
   assert.equal(run(['frobnicate'], cwd).status, 2);

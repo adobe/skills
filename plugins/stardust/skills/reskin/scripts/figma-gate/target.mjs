@@ -20,7 +20,7 @@ export async function loadMeasureLive() {
 
 export async function loadChromium() {
   try { return (await import('playwright')).chromium; } catch {
-    throw new UsageError('playwright is not importable from the reskin scripts: run npm i -D playwright --no-save --legacy-peer-deps in the project (reskin SKILL.md § Setup)');
+    throw new UsageError('playwright is not importable from the reskin scripts: run npm i -D playwright pixelmatch pngjs --legacy-peer-deps in the project (reskin SKILL.md § Setup)');
   }
 }
 
