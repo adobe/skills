@@ -25,7 +25,10 @@
  *                               contentPath}, or null without a URL; paths are POSIX, relative to projectRoot
  *   capturePath(slug)           stardust/current/pages/<slug>.html
  *   outputPathFor(slug)         stardust/encoded/<da-path>.html (the root page: index.html), or null
- *   contentPathFor(slug)        content/<da-path>.html, or null
+ *   contentPathFor(slug)        content/<da-path>.html, or null: the canonical path a staged document is written to
+ *   contentFileFor(slug)        the delivered document to READ (--roundtrip): content/<da-path>.html if it exists, else
+ *                               the other form gate-evidence accepts (a leaf's <path>/index.html, a folder index's
+ *                               <path>.html); null when neither exists
  *   resolveMedia(absUrl)        the ledger entry's contentUrl for a URL in its sources[] or source (a failed upload
  *                               never resolves), or null
  *   resolveDoc(absUrl)          the asset ledger's path for that URL, or null
@@ -45,7 +48,7 @@
  *                               pairs. Key order, upload timestamps and attempt counters never move it.
  */
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { readFileSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { loadDeploy } from './deps.mjs';
 
@@ -58,7 +61,10 @@ const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const str = (v) => (typeof v === 'string' && v ? v : null);
 const parseUrl = (u, base) => { try { return new URL(u, base); } catch { return null; } };
 const normUrl = (u) => parseUrl(u)?.href ?? String(u);
+// an image URL without its #fragment (ledger sources[] never carry one)
+const mediaKey = (u) => { const p = parseUrl(u); if (!p) return String(u); p.hash = ''; return p.href; };
 const bareHost = (u) => u.hostname.toLowerCase().replace(/^www\./, '');
+const isFile = (f) => { try { return statSync(f).isFile(); } catch { return false; } };
 
 function readText(file) {
   try { return readFileSync(file, 'utf8'); } catch (e) { if (e.code === 'ENOENT') return null; throw e; }
@@ -118,6 +124,14 @@ export async function loadSite(projectRoot) {
       outputPath: `stardust/encoded${da}.html`, contentPath: `content${da}.html`,
     };
   };
+  // canonical content/<da-path>.html first; then the form gate-evidence also reads (minus `/index` + .html or /index.html)
+  const contentFileFor = (slug) => {
+    const p = page(slug);
+    if (!p) return null;
+    const candidates = [p.contentPath];
+    if (p.daPath !== '/index') candidates.push(p.daPath.endsWith('/index') ? `content${p.daPath.slice(0, -'/index'.length)}.html` : `content${p.daPath}/index.html`);
+    return candidates.find((c) => isFile(join(root, c))) ?? null;
+  };
   const rosterUrls = slugs.map((s) => [s, pageUrl(s)]).filter(([, u]) => u);
   const sourceHosts = [...new Set(rosterUrls.map(([, u]) => bareHost(new URL(u))))].sort(byCodePoint);
 
@@ -128,11 +142,11 @@ export async function loadSite(projectRoot) {
     const e = mledger[key];
     if (!isObj(e) || !str(e.contentUrl) || e.status === 'failed') continue;
     for (const src of [...(Array.isArray(e.sources) ? e.sources : []), e.source].filter(str)) {
-      const k = normUrl(src);
+      const k = mediaKey(src);
       if (!media.has(k)) media.set(k, e.contentUrl);
     }
   }
-  const resolveMedia = (absUrl) => (str(absUrl) ? media.get(normUrl(absUrl)) ?? null : null);
+  const resolveMedia = (absUrl) => (str(absUrl) ? media.get(mediaKey(absUrl)) ?? null : null);
 
   // ---- documents: the asset ledger ----
   const docs = new Map();
@@ -210,6 +224,7 @@ export async function loadSite(projectRoot) {
     capturePath: (slug) => (safeSlug(slug) ? `stardust/current/pages/${slug}.html` : null),
     outputPathFor: (slug) => page(slug)?.outputPath ?? null,
     contentPathFor: (slug) => page(slug)?.contentPath ?? null,
+    contentFileFor,
     resolveMedia, resolveDoc, chromeFor, localizeHref, sourceHosts, siteSha,
   };
 }

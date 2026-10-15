@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 // Unit test: the encoder's site inputs — encode/deps.mjs (deploy's scripts in both layouts) and encode/site.mjs (roster,
 // page paths, media / document / chrome / link resolvers, siteSha) on the synthetic project fixtures/encode-site/project.
-// No browser, no network. Scratch projects (the project-copy layout, edited inputs) live in fixtures/encode-site/.scratch/
-// (git-ignored, removed afterwards).
+// No browser, no network. Scratch projects (the project-copy layout, edited inputs) live in one mkdtemp directory,
+// removed at the end.
 //
 // Usage: node plugins/stardust/skills/migrate/scripts/test/encode-site.test.mjs  (exit 1 on failure)
 import assert from 'node:assert/strict';
-import { copyFileSync, cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { deployCandidates, deployPath, loadDeploy } from '../encode/deps.mjs';
@@ -15,7 +16,8 @@ import { loadSite } from '../encode/site.mjs';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ENCODE = join(HERE, '..', 'encode');
 const DEPLOY = join(HERE, '..', '..', '..', 'deploy', 'scripts');
-const SCRATCH = join(HERE, 'fixtures', 'encode-site', '.scratch');
+const SCRATCH = mkdtempSync(join(tmpdir(), 'encode-site-test-'));
+process.on('exit', () => rmSync(SCRATCH, { recursive: true, force: true }));
 const FIXTURE = join(HERE, 'fixtures', 'encode-site', 'project');
 
 // --- deps.mjs, plugin tree ------------------------------------------------------------------------------------
@@ -30,8 +32,7 @@ const FIXTURE = join(HERE, 'fixtures', 'encode-site', 'project');
 }
 
 // --- deps.mjs, project copy: stardust/scripts/migrate/encode/ beside stardust/scripts/deploy/ --------------------
-rmSync(SCRATCH, { recursive: true, force: true });
-try {
+{
   const proj = join(SCRATCH, 'project', 'stardust', 'scripts');
   mkdirSync(join(proj, 'migrate', 'encode'), { recursive: true });
   mkdirSync(join(proj, 'deploy'), { recursive: true });
@@ -41,8 +42,6 @@ try {
   assert.equal(deps.deployPath('probe.mjs'), join(proj, 'deploy', 'probe.mjs'), 'the project-copy candidate resolves');
   assert.equal((await deps.loadDeploy('probe.mjs')).layout, 'project');
   await assert.rejects(deps.loadDeploy('eds-path.mjs'), /eds-path\.mjs.*stardust[/\\]scripts[/\\]deploy[/\\]eds-path\.mjs/, 'never falls back to the plugin tree');
-} finally {
-  rmSync(SCRATCH, { recursive: true, force: true });
 }
 
 // --- site.mjs: roster and template membership -------------------------------------------------------------------
@@ -79,12 +78,24 @@ const site = await loadSite(FIXTURE);
   assert.equal(p.template, 'story');
 }
 
+// --- site.mjs: the delivered document to READ (canonical path first, then the other form gate-evidence accepts) ---------
+{
+  assert.equal(site.contentFileFor('home'), 'content/index.html');
+  assert.equal(site.contentFileFor('news'), 'content/en/news.html', 'a folder index stored as <path>.html');
+  assert.equal(site.contentPathFor('news'), 'content/en/news/index.html', 'the write path stays canonical');
+  assert.equal(site.contentFileFor('story-first'), 'content/en/stories/first/index.html', 'a leaf stored as <path>/index.html');
+  assert.equal(site.contentFileFor('story-second'), 'content/en/stories/second-story.html', 'the canonical file wins when both exist');
+  assert.equal(site.contentFileFor('story-third'), null, 'no delivered document');
+  assert.equal(site.contentFileFor('nope'), null, 'no URL');
+}
+
 // --- site.mjs: media (ledger sources[] and source → contentUrl) ---------------------------------------------------
 {
   const hero = 'https://content.da.live/org/repo/media/site/hero-1a2b3c4d.jpg';
   assert.equal(site.resolveMedia('https://example.com/img/hero.jpg'), hero, 'sources[] entry');
   assert.equal(site.resolveMedia('https://www.example.com/img/hero.jpg?w=800'), hero, 'every URL in sources[]');
   assert.equal(site.resolveMedia('https://EXAMPLE.com/img/hero.jpg'), hero, 'URLs compare in their parsed form');
+  assert.equal(site.resolveMedia('https://example.com/img/hero.jpg#zoom'), hero, 'the #fragment is not part of the lookup');
   assert.equal(site.resolveMedia('https://example.com/img/logo.png'), 'https://content.da.live/org/repo/media/site/logo.png', 'a non-null source');
   assert.equal(site.resolveMedia('https://example.com/img/broken.jpg'), null, 'a failed upload never resolves');
   assert.equal(site.resolveMedia('https://example.com/img/unknown.jpg'), null, 'no entry → null (the caller records mediaUnresolved)');
@@ -128,8 +139,7 @@ const site = await loadSite(FIXTURE);
 }
 
 // --- site.mjs: siteSha (what the encoder reads from the site inputs, canonicalised) ------------------------------------
-rmSync(SCRATCH, { recursive: true, force: true });
-try {
+{
   assert.match(site.siteSha, /^sha256:[0-9a-f]{64}$/);
   assert.equal((await loadSite(FIXTURE)).siteSha, site.siteSha, 'stable across loads');
   const copy = join(SCRATCH, 'copy');
@@ -164,8 +174,6 @@ try {
   mkdirSync(join(empty, 'stardust', 'deploy'), { recursive: true });
   writeFileSync(join(empty, 'stardust', 'deploy', 'media-ledger.json'), '{ "media/x.png": ');
   await assert.rejects(loadSite(empty), /media-ledger\.json/);
-} finally {
-  rmSync(SCRATCH, { recursive: true, force: true });
 }
 
 console.log('encode-site: ok');
