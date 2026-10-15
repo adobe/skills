@@ -3,6 +3,8 @@
 // the Figma capture helpers of figma-donor.mjs in ./figma/:
 //   boxes  the Figma box trees of the included modules, built once from the cached capture
 //          (.work/reskin/figma/, never the network) and cached in .work/reskin/gates/figma-boxes/.
+//   join   B0: every mapping.md slot that renders as a module is one section of the page, in order, with
+//          its module's Figma frame; a page that drifted from the mapping stops here.
 // Writes go only under <dir>/.work/reskin/gates/. Under a sticky --confidential capture, every
 // subcommand first checks that .work/ and reskin/figma-checks/ are git-ignored.
 // --help answers before any helper import, so it works even from a partial copy of the scripts.
@@ -15,6 +17,7 @@ const SELF = fileURLToPath(import.meta.url);
 
 export const HELP = `Usage:
   node figma-gate.mjs boxes [--module Mn | --node <id>] [--depth 3] [--dir stardust]
+  node figma-gate.mjs join --page <slug> --url <url|file> [--dir stardust]
 
 Figma checks on a reskin page, against the capture figma-donor.mjs made (offline: no token, no network).
 
@@ -28,6 +31,14 @@ boxes    the Figma box trees of the modules curation-rules.json includes. Reads 
          --node <id>   print the outline of any captured node id, nested I…;… ids included
          --depth <n>   outline depth, 0 = the root only (default 3)
          neither       build the cache for every included module and print "<Mn> <frame id> <w>×<h>"
+join     B0, the section join. Opens the page (a file path, a file: or localhost URL, or an http(s) URL) in
+         plain Chromium at 1440 and reads its main section[data-slot] elements in document order. Every
+         mapping.md row that renders (status mapped or new-module) must be exactly one top-level section, in
+         the table's order, whose data-module is the row's Donor module and whose text holds the slot's first
+         heading (content-model.json); a Donor module must be included in curation-rules.json. Chrome and
+         carried-invisible rows need no section. Each problem starts "section drift:". Writes
+         <dir>/.work/reskin/gates/<slug>/figma/join.json (each section's slot, module, Figma frame, selector
+         and document index), prints one PASS or FAIL line and exits 1 on drift.
 --dir <d>  the stardust directory (default stardust).
 
 Checks file <dir>/reskin/figma-checks/<slug>.json (written by the agent from the boxes outlines):
@@ -52,6 +63,7 @@ Exit codes: 0 pass · 1 a blocking check failed · 2 usage or setup (missing inp
 
 const SPEC = {
   boxes: { values: ['--module', '--node', '--depth', '--dir'], bools: [], positional: [] },
+  join: { values: ['--page', '--url', '--dir'], bools: [], positional: [] },
 };
 
 export function parseArgs(argv, UsageError) {
@@ -119,13 +131,28 @@ async function boxesStep({ dir, opts, log, UsageError }) {
   return 0;
 }
 
+async function joinStep({ dir, opts, log, UsageError }) {
+  if (!opts.page) throw new UsageError('join needs --page <slug>');
+  if (!opts.url) throw new UsageError('join needs --url <url|file>: the page to join');
+  const [{ readInputs, workDir }, { runJoin }, { localTarget }] = await Promise.all([helper('io'), helper('join'), helper('target')]);
+  const inputs = readInputs(dir, opts.page, ['mapping', 'contentModel', 'rules']);
+  const result = await runJoin({ target: localTarget(opts.url), inputs, out: workDir(dir, opts.page) });
+  if (result.pass) {
+    log(`PASS join: ${result.sections.length} section(s) joined to Figma modules (${result.sections.map((s) => `${s.slot} → ${s.module ?? 'new module'}`).join(', ')})`);
+    return 0;
+  }
+  log(`FAIL join: ${result.problems.length} problem(s), the page drifted from mapping.md`);
+  for (const p of result.problems) log(`  ${p}`);
+  return 1;
+}
+
 // steps lets a test replace a step function.
 export async function main(argv, { env = process.env, log = console.log, warn = (m) => process.stderr.write(`${m}\n`), steps = {} } = {}) {
   if (argv.includes('--help') || argv.includes('-h')) { log(HELP); return 0; }
   const { UsageError } = await helper('errors', 'figma');
   const { cmd, opts } = parseArgs(argv, UsageError);
   const dir = opts.dir || 'stardust';
-  const run = { boxes: boxesStep, ...steps }[cmd];
+  const run = { boxes: boxesStep, join: joinStep, ...steps }[cmd];
   const { confidentialGuard } = await helper('io');
   confidentialGuard(dir);
   return run({ dir, opts, env, log, warn, UsageError });
