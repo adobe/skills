@@ -190,6 +190,8 @@ try {
   r = await run('--template', A, '--slug', 'not-a-member'); assert.equal(r.code, 1); assert.match(r.err, /not a page of template/);
   r = await run('--bogus'); assert.equal(r.code, 1); assert.match(r.err, /unknown flag --bogus/);
   r = await run('--lint', '--template', A); assert.equal(r.code, 1); assert.match(r.err, /--lint: not implemented/);
+  const lintCli = spawnSync(process.execPath, [SCRIPT, '--root', T, '--lint', '--template', A], { encoding: 'utf8', timeout: 15000 });
+  assert.equal(lintCli.status, 1, `--lint dispatches from the CLI process too\n${lintCli.stderr}`);
   r = await run('--sweep', '--template', A); assert.equal(r.code, 1); assert.match(r.err, /--sweep: not implemented/);
 
   // --- round-trip: the archetype reproduces its gated document at strict ------------------------------------------------

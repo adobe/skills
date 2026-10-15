@@ -7,7 +7,9 @@
  *   runSweep(ctx) → Promise<exit code>   a dry run over every sibling capture of the template; writes nothing
  *
  * ctx (built by encode.mjs): { root, template: {id, archetype, pages[]}, vocab, tf, vocabFile, transformFile,
- * mapErrors[], site, engine, dom, loadDeploy, readCapture(slug), json, out(line), err(line) }.
+ * mapErrors[], site, engine, dom, loadDeploy, readCapture(slug), encodeTemplate, loadEncoderDeps, json, out(line),
+ * err(line) }. Never import ../encode.mjs from here: the CLI is mid-evaluation (top-level await) when it loads this
+ * module, so that import would never settle — everything the checks need arrives in ctx.
  */
 
 export async function runLint(ctx) {

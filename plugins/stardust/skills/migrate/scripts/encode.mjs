@@ -237,7 +237,7 @@ export async function main(argv = process.argv.slice(2), io = { out: (s) => cons
       if (!map.vocab) throw new UsageError(map.errors.join('\n  '));
       const lint = await import('./encode/lint.mjs');
       const readCapture = (slug) => { const p = site.capturePath(slug); return p && existsSync(join(root, p)) ? readFileSync(join(root, p), 'utf8') : null; };
-      const ctx = { root, template, vocab: map.vocab, tf: map.tf || {}, vocabFile: map.vocabFile, transformFile: map.transformFile, mapErrors: map.errors, site, engine, dom, loadDeploy, readCapture, json: a.json, out: io.out, err: io.err };
+      const ctx = { root, template, vocab: map.vocab, tf: map.tf || {}, vocabFile: map.vocabFile, transformFile: map.transformFile, mapErrors: map.errors, site, engine, dom, loadDeploy, readCapture, encodeTemplate, loadEncoderDeps, json: a.json, out: io.out, err: io.err };
       return await (a.lint ? lint.runLint(ctx) : lint.runSweep(ctx));
     }
     if (map.errors.length) throw new UsageError(`invalid map for ${template.archetype}:\n  ${map.errors.join('\n  ')}`);
