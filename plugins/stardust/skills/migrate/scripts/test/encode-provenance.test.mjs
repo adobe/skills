@@ -17,6 +17,8 @@
 //                 --force still refuses; --overwrite-hand-edit restores the clean bytes; the same edit as a patch passes;
 //                 a document the manifest does not list is refused when it differs, adopted when byte-equal; a
 //                 patch file holding JSON null is malformed (error), never "no patches"
+//   modules       sidecarWith keeps migrate's modules[] true on a clean encode: the sorted unique block names; the same
+//                 blocks write nothing, a new block shows up, a stop leaves the list as it was
 //   encodedPageOf the shared R30 rule: a sibling with an encode is encoded (old clone or not), the archetype only
 //                 without a migrated HTML; a render's encode: null, a path outside stardust/encoded/ or with .. → null
 //   currentEncode the shared reader's verdicts: current (by URL, or from the sidecar alone), stopped with a stale
@@ -30,7 +32,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { main } from '../encode.mjs';
-import { currentEncode, encodedPageOf } from '../encode/provenance.mjs';
+import { currentEncode, encodedPageOf, saveSidecar, sidecarWith } from '../encode/provenance.mjs';
 
 const HERE = import.meta.dirname;
 const MIGRATE = join(HERE, '..', 'migrate.mjs');
@@ -103,6 +105,17 @@ try {
   assert.equal(encodedPageOf(bySlug, { hasHtml: true }), null, '… also when only its own encode.map.template names it');
   const at = (path) => ({ ...ss, encode: { ...ss.encode, output: { ...ss.encode.output, path } } });
   for (const [v, why] of [[{ ...ss, encode: null, audit: null }, 'a render leaves encode: null'], [at('stardust/migrated/trips/forest-loop.html'), 'outside stardust/encoded/'], [at('stardust/encoded/../content/x.html'), 'a .. segment'], [at('stardust/encoded/trips/forest-loop.json'), 'not a .html document'], [null, 'no sidecar']]) assert.equal(encodedPageOf(v), null, `encodedPageOf → null: ${why}`);
+  // modules[]: the block names the page emitted, on a clean encode (R36)
+  const page = { slug: S1, role: 'sibling', archetype: A, type: 'trip', url: 'https://www.example.com/trips/forest-loop.html' };
+  const clean = (old, blocks) => sidecarWith(old, { ...page, encode: ss.encode, audit: { status: 'clean' }, blocks });
+  const made = clean(null, ['teaser featured', 'hero', 'tabs', 'hero', 'links']);
+  assert.deepEqual(made.modules, ['hero', 'links', 'tabs', 'teaser'], 'a created sidecar lists its blocks: names only, sorted, unique');
+  const noWrite = { writeIfChanged: () => { throw new Error('written'); } };
+  assert.equal(saveSidecar(noWrite, T, SIDE[S1], made, clean(made, ['hero', 'links', 'tabs', 'tabs', 'teaser featured'])), false, 'the same blocks again: no write');
+  const more = clean({ ...made, modules: ['hero', 'links', 'tabs', 'teaser'] }, ['hero', 'links', 'quote', 'tabs', 'teaser featured']);
+  assert.deepEqual(more.modules, ['hero', 'links', 'quote', 'tabs', 'teaser'], 'a block the map adds shows up');
+  assert.deepEqual(sidecarWith(more, { ...page, encode: undefined, audit: { status: 'variance' }, blocks: ['hero'] }).modules, more.modules, 'a stop leaves modules as they were');
+  assert.deepEqual(sidecarWith(null, { ...page, encode: undefined, audit: { status: 'variance' }, blocks: ['hero'] }).modules, [], '… and records none on a sidecar it creates');
   let st = cli(STAGE, ['--template', A, '--root', T]);
   assert.equal(st.status, 0, `stage-content stages from these sidecars and this manifest\n${st.stderr}`); assert.equal(read('content/trips/forest-loop.html'), docS);
 

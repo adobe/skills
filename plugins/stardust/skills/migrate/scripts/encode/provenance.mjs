@@ -19,12 +19,17 @@
  *            against the archetype's capture; null on the archetype) }
  *
  * Sidecar — migrate's place for the page, stardust/migrated/<sidecarFor(outputPathFor(url))> (migrate.mjs's rule). Two
- * keys are the encoder's, and migrate's re-render carries both (SIDECAR_KEYS / CARRIED); no other key is touched:
+ * keys are the encoder's, and migrate's re-render carries both (SIDECAR_KEYS / CARRIED); one more is kept true; no
+ * other key is touched:
  *   encode        { encoder, map, inputs, output: { path, sha }, encodedAt } — the last clean encode, i.e. what the
  *                 document on disk was written from; encodedAt changes only when output.sha does
  *   audit.encode  { status, …the engine's report (patchesApplied[] included) } — the latest run's verdict for the page:
  *                 clean, or the stop (a page that stops keeps its earlier document and `encode`; staging reads the
  *                 status). Other audit.* keys are kept.
+ *   modules       migrate's list of the page's block ids: on every clean encode, the sorted unique names of the blocks
+ *                 the page emitted (modulesOf(blocks) — the engine's `blocks`, `block:<name>` emitters, variants
+ *                 dropped), so rollout's dedup and reports read the encoded page as they read a rendered one; a stop
+ *                 leaves it as it was.
  * A page without a sidecar gets a migrate-shaped one (SIDECAR_KEYS order): renderBranch A', fidelityTier sibling,
  * template and archetypeSource = the archetype (the archetype itself: A, archetype, null, null). A stop is recorded
  * only for a page that has a sidecar or a document — a page never encoded clean gets no sidecar from a stop.
@@ -190,21 +195,27 @@ export function encodeKeyOf({ current, docPath, outSha, old, now }) {
   return { encoder: current.encoder, map: current.map, inputs: current.inputs, output: { path: docPath, sha: outSha }, encodedAt: keep ? prev.encodedAt : now() };
 }
 
+/** migrate's modules[] from the engine's blocks ("<name>[ <variant>…]" per emitted block): sorted unique names. */
+export const modulesOf = (blocks) => [...new Set((Array.isArray(blocks) ? blocks : []).map((b) => String(b).trim().split(/\s+/)[0]).filter(Boolean))].sort();
+
 /**
- * The page's sidecar with this run's keys: `audit.encode` always, `encode` when given (a stop keeps the old one). An
+ * The page's sidecar with this run's keys: `audit.encode` always; on a clean encode (`encode` given) `encode` and —
+ * when the caller passes the engine's `blocks` — `modules`; a stop (`encode` undefined) keeps both as they were. An
  * existing sidecar keeps every other key and its key order; a missing one is created migrate-shaped.
  */
-export function sidecarWith(old, { slug, role, archetype, type = null, url, encode, audit }) {
+export function sidecarWith(old, { slug, role, archetype, type = null, url, encode, audit, blocks = null }) {
+  const modules = encode !== undefined && Array.isArray(blocks) ? modulesOf(blocks) : null;
   if (old) {
     const next = { ...old };
     if (encode !== undefined) next.encode = encode;
+    if (modules) next.modules = modules;
     next.audit = { ...(isObj(old.audit) ? old.audit : {}), encode: audit };
     return next;
   }
   const { outputPath, outputPathDefault } = outputPathFor(url);
   const sibling = role !== 'archetype';
   const base = {
-    slug, type, renderBranch: sibling ? "A'" : 'A', template: sibling ? archetype : null, modules: [], migrationDecisions: [],
+    slug, type, renderBranch: sibling ? "A'" : 'A', template: sibling ? archetype : null, modules: modules || [], migrationDecisions: [],
     fidelityTier: sibling ? 'sibling' : 'archetype', archetypeSource: sibling ? archetype : null,
     variants: [], gatesPassed: [], gateEvidence: {}, contentDeviations: [], deviations: [],
     outputPath, outputPathDefault, sidecar: sidecarFor(outputPath), encode: encode ?? null, audit: { encode: audit },
