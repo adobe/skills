@@ -21,11 +21,11 @@
  *   --root     the capture's content root selector (default: the map's root, else main)
  *   --exclude  more capture selectors to leave out, comma-separated (a stand-in for a map drop)
  *   --map      the template map, stardust/import/<archetype>/vocabulary.json (transform.json beside it is read too);
- *              markers as an object {"<selector>": {emitter, drop?}} or an array [{selector, emitter, drop?}]
- *   --url      the page URL (default: the sidecar's finalUrl, else url): resolves relative URLs; links on its host
- *              are keyed by their delivered path
+ *              markers in the encoder's form, an array [{sel, kind, emitter, drop?, …}] (an object is rejected)
+ *   --url      the page URL (default: the sidecar's finalUrl, else url — what the browser resolved against):
+ *              resolves relative URLs; links on its host are keyed by their delivered path
  *   --project  the project root: image identity from stardust/deploy/media-ledger.json (each entry's sources and
- *              source → its contentUrl), internal links through stardust/redirects.tsv
+ *              source → its contentUrl; a failed upload never resolves), internal links through stardust/redirects.tsv
  *   --json     the full result on stdout: { pass, counts, missing, extra, tolerated, excluded }
  * Exit: 0 = no MISSING item, 1 = at least one MISSING item, 2 = usage, unreadable input, invalid map or URL, or the
  *       capture root not found.
@@ -55,10 +55,15 @@ if (!DOM) {
 }
 const { parseHTML, qs, matches } = await import(pathToFileURL(DOM).href);
 
+// the encoder's grammar: markers is an ARRAY of { sel, kind, emitter, drop?, … }; array order is the only precedence
 const markerList = (map) => {
   const m = map && map.markers;
-  if (Array.isArray(m)) return m.filter((x) => x && typeof x.selector === 'string').map((x) => [x.selector, x]);
-  return m && typeof m === 'object' ? Object.entries(m) : [];
+  if (m === undefined || m === null) return [];
+  if (!Array.isArray(m)) throw new Error('invalid map — markers: an ARRAY of { sel, kind, emitter, … } (order is precedence; an object keyed by selector is the old form)');
+  return m.map((x, i) => {
+    if (!x || typeof x.sel !== 'string' || !x.sel.trim()) throw new Error(`invalid map — markers[${i}].sel: a selector string is required`);
+    return [x.sel, x];
+  });
 };
 
 /** The capture's exclusions under a map: Map(topmost excluded element → reason). Pure. */
@@ -86,19 +91,21 @@ export function mapExclusions(root, { map = null, transform = null, exclude = []
   return out;
 }
 
-/** mediaKey from the media ledger: every URL in an entry's `sources` (and a non-null `source`) → its contentUrl. Pure. */
+/**
+ * mediaKey from the media ledger, as the encoder's site loader reads it: every URL in an entry's `sources` (and a
+ * non-null `source`), without its #fragment, → its contentUrl; a failed upload never resolves. Pure.
+ */
 export function mediaIndex(ledger) {
+  const key = (u) => { try { const x = new URL(u); x.hash = ''; return x.href; } catch { return String(u); } };
   const by = new Map();
   for (const k of Object.keys(ledger || {}).sort()) {
     const e = ledger[k];
-    if (!e || typeof e.contentUrl !== 'string') continue;
+    if (!e || typeof e.contentUrl !== 'string' || !e.contentUrl || e.status === 'failed') continue;
     for (const s of [...(Array.isArray(e.sources) ? e.sources : []), e.source]) {
-      if (typeof s !== 'string' || !s) continue;
-      let u = s; try { u = new URL(s).href; } catch { /* keep as written */ }
-      if (!by.has(u)) by.set(u, e.contentUrl);
+      if (typeof s === 'string' && s && !by.has(key(s))) by.set(key(s), e.contentUrl);
     }
   }
-  return (abs) => by.get(abs) ?? null;
+  return (abs) => by.get(key(abs)) ?? null;
 }
 
 /** linkKey from redirect pairs: a same-site link whose delivered path is a redirect source keys as its destination. Pure. */

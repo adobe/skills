@@ -6,7 +6,7 @@
 // Run: node plugins/stardust/skills/deploy/scripts/test/content-count.test.mjs
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -60,12 +60,37 @@ check('a real loss exits 1 and names the item; --exclude (a declared drop) clear
   assert.equal(cli(['--capture', CAPTURE, '--doc', lossy, '--map', MAP, '--project', PROJECT, '--exclude', '.faq-answer']).status, 0);
 });
 
-check('the map\'s markers may be an array ({selector, …}) as well as an object', () => {
+check('markers are the encoder\'s array of {sel, …}; the old object form is rejected (exit 2), as the encoder rejects it', () => {
   const v = JSON.parse(readFileSync(MAP, 'utf8'));
-  const arrayMap = join(scratch, 'vocabulary.json');
-  writeFileSync(arrayMap, JSON.stringify({ ...v, markers: Object.entries(v.markers).map(([selector, m]) => ({ selector, ...m })) }));
-  writeFileSync(join(scratch, 'transform.json'), readFileSync(join(FX, 'transform.json')));
-  assert.equal(cli(['--capture', CAPTURE, '--doc', DOC, '--map', arrayMap, '--project', PROJECT]).status, 0);
+  assert.ok(Array.isArray(v.markers) && v.markers.every((m) => typeof m.sel === 'string'), 'the fixture map is in the encoder\'s form');
+  const objectMap = join(scratch, 'vocabulary.json');
+  writeFileSync(objectMap, JSON.stringify({ ...v, markers: Object.fromEntries(v.markers.map(({ sel, ...m }) => [sel, m])) }));
+  const r = cli(['--capture', CAPTURE, '--doc', DOC, '--map', objectMap, '--project', PROJECT]);
+  assert.equal(r.status, 2); assert.match(r.stderr, /markers: an ARRAY of \{ sel, kind, emitter, … \}/);
+  writeFileSync(objectMap, JSON.stringify({ ...v, markers: [...v.markers, { selector: '.x', emitter: 'drop:x' }] }));
+  assert.equal(cli(['--capture', CAPTURE, '--doc', DOC, '--map', objectMap]).status, 2, 'a marker without `sel`');
+});
+
+check('the media ledger as the encoder reads it: a failed upload never resolves; a #fragment is no part of the source', () => {
+  const ledger = JSON.parse(readFileSync(join(PROJECT, 'stardust', 'deploy', 'media-ledger.json'), 'utf8'));
+  const proj = join(scratch, 'project'); mkdirSync(join(proj, 'stardust', 'deploy'), { recursive: true });
+  writeFileSync(join(proj, 'stardust', 'redirects.tsv'), readFileSync(join(PROJECT, 'stardust', 'redirects.tsv')));
+  const write = (l) => writeFileSync(join(proj, 'stardust', 'deploy', 'media-ledger.json'), JSON.stringify(l));
+  const forest = 'media/guides/forest-loop-0a1b2c3d.jpg';
+  write({ ...ledger, [forest]: { ...ledger[forest], status: 'failed' } });
+  const r = cli(['--capture', CAPTURE, '--doc', DOC, '--map', MAP, '--project', proj, '--json']);
+  assert.equal(r.status, 1); assert.deepEqual(json(r).missing.map((m) => `${m.role}:${m.key}`), ['image:img_2041']);
+  write({ ...ledger, [forest]: { ...ledger[forest], sources: ['https://www.example.com/assets/IMG_2041.jpg#zoom'] } });
+  assert.equal(cli(['--capture', CAPTURE, '--doc', DOC, '--map', MAP, '--project', proj]).status, 0, 'a source with a #fragment still resolves');
+});
+
+check('relative URLs resolve against the page record\'s finalUrl, else its url (R15); --url overrides', () => {
+  const cap = join(scratch, 'page.html'); writeFileSync(cap, readFileSync(CAPTURE));
+  const final = 'https://www.example.com/en/guides/trail-running.html'; const other = 'https://old.example.net/guide.html';
+  const run = (rec, ...extra) => { writeFileSync(join(scratch, 'page.json'), JSON.stringify(rec)); return cli(['--capture', cap, '--doc', DOC, '--map', MAP, '--project', PROJECT, ...extra]).status; };
+  assert.equal(run({ url: other, finalUrl: final }), 0, 'finalUrl first');
+  assert.equal(run({ url: other }), 1, 'the relative image no longer resolves through the ledger');
+  assert.equal(run({ url: other }, '--url', final), 0);
 });
 
 check('bad input exits 2: no args, unreadable file, root not found, invalid map, invalid --url', () => {
