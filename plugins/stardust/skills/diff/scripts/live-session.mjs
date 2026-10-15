@@ -91,6 +91,37 @@ export function isLiveHttpUrl(url) {
 // inventory taken at domcontentloaded measures the undecorated page.
 const EDS_HOST_RE = /(^|\.)(aem|hlx)\.(page|live)$/i;
 
+/** Is this an EDS build/preview origin (http(s), hostname ends in .aem.page / .aem.live / .hlx.page / .hlx.live)? False on anything unparseable. */
+export function isEdsHost(url) {
+  try {
+    const u = new URL(url);
+    return (u.protocol === 'http:' || u.protocol === 'https:') && EDS_HOST_RE.test(u.hostname);
+  } catch { return false; }
+}
+
+/**
+ * The timed late-modal window for dismissOverlays: `liveMs` on live source sites, 0 on local targets AND on EDS
+ * build/preview hosts — neither serves timed third-party interstitials. The EDS page's own late phase (delayed.js,
+ * where a consent manager the build enables loads) is awaited once with waitEdsDelayedPhase, then ONE sweep runs.
+ */
+export const lateWindowFor = (url, liveMs = 6000) => (isLiveHttpUrl(url) && !isEdsHost(url) ? liveMs : 0);
+
+/**
+ * Wait until the EDS delayed phase has fired (aem.js loads delayed.js on a 3 s timer after `load`): resolves once
+ * the navigation entry's loadEventEnd is set and `afterLoadMs` have passed since it, or at `timeoutMs`. Never throws
+ * — a timeout or a closed page ends the wait and the caller's sweep runs anyway. Returns the ms waited.
+ */
+export async function waitEdsDelayedPhase(page, { afterLoadMs = 3200, timeoutMs = 6000 } = {}) {
+  const t0 = Date.now();
+  try {
+    await page.waitForFunction((after) => {
+      const nav = performance.getEntriesByType('navigation')[0];
+      return Boolean(nav) && nav.loadEventEnd > 0 && performance.now() - nav.loadEventEnd >= after;
+    }, afterLoadMs, { timeout: timeoutMs, polling: 100 });
+  } catch { /* timeout / closed page — never fatal */ }
+  return Date.now() - t0;
+}
+
 /**
  * The SINGLE default-waitUntil rule for every probe (--wait-until always
  * overrides). Three tiers:
@@ -105,9 +136,7 @@ const EDS_HOST_RE = /(^|\.)(aem|hlx)\.(page|live)$/i;
  */
 export function defaultWaitUntil(url) {
   if (!isLiveHttpUrl(url)) return 'networkidle';
-  try {
-    if (EDS_HOST_RE.test(new URL(url).hostname)) return 'networkidle';
-  } catch { /* unparseable — fall through to the live default */ }
+  if (isEdsHost(url)) return 'networkidle';
   return 'domcontentloaded';
 }
 
@@ -401,6 +430,8 @@ const MODAL_CLOSE_CANDIDATES = [
  *       gone. Because these fire on a TIMER (recorded: a fashion retailer's panel
  *       appears ~5–9s after load), the sweep polls for late arrivals for up
  *       to `lateWindowMs` (default 6000) when nothing was dismissed yet.
+ *       Callers pass `lateWindowFor(url, …)`: 0 on local targets and on EDS build/preview hosts, which get one
+ *       sweep (stitch-shot runs it after waitEdsDelayedPhase, so a consent manager the build enables is up).
  * `extra` selectors are site-specific dismissers, clicked first (each once).
  * Parks the mouse afterwards (bottom-left — dead space on virtually every
  * layout) so no :hover-styled element under the cursor captures hovered.

@@ -15,7 +15,7 @@
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { REAL_CHROME_UA, browserTier, defaultWaitUntil, dismissOverlays, gotoLive, isLiveHttpUrl, launchStealthHeaded, newLiveContext } from './live-session.mjs';
+import { REAL_CHROME_UA, browserTier, defaultWaitUntil, dismissOverlays, gotoLive, lateWindowFor, launchStealthHeaded, newLiveContext } from './live-session.mjs';
 
 export { browserTier };
 
@@ -75,7 +75,7 @@ export async function visit(page, url, { warmup = null, settle: settleOpts = {},
   }
   const resp = await gotoLive(page, url, { waitUntil: defaultWaitUntil(url), timeoutMs, settleMs: 0, solveWindow, httpError });
   await page.waitForTimeout(2500);
-  if (dismiss) { try { await dismissOverlays(page, { lateWindowMs: isLiveHttpUrl(url) ? 4000 : 0 }); } catch { /* none */ } }
+  if (dismiss) { try { await dismissOverlays(page, { lateWindowMs: lateWindowFor(url, 4000) }); } catch { /* none */ } }
   const s = await settle(page, settleOpts);
   if (dismiss) { try { await dismissOverlays(page, { lateWindowMs: 0 }); } catch { /* none */ } }
   return { status: resp ? resp.status() : null, ...s };
