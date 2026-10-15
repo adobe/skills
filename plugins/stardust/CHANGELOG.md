@@ -4,7 +4,7 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
-## Unreleased
+## 0.34.2 — consent overlays are dismissed on gate captures; the archetype ledger keeps its shape
 
 Fixes from a recorded hands-off replica run on a site with a consent manager, verified against its artifacts.
 
