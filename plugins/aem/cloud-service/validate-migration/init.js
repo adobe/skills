@@ -9,12 +9,15 @@
  *     search the workspace for the AEM SDK Quickstart jar and boot it; if none
  *     is found, point the user at Adobe Software Distribution to download it.
  *   • `mvn` and `unzip` are on PATH
+ *   • the AEM Quickstart MCP server is installed on the SDK and exposes
+ *     `diagnose-osgi-bundle` (checked with AEM_TARGET_AUTH, the user's SDK login)
  *
- * The MCP `diagnose-osgi-bundle` tool is invoked by the coding assistant
- * itself, not by this script. init.js does not speak MCP.
+ * The coding assistant still calls `diagnose-osgi-bundle` itself and must have
+ * the server in its own MCP config; this script cannot see that config.
  *
  * Config, all optional:
  *   AEM_SDK_URL      SDK base URL (default http://localhost:4502)
+ *   AEM_TARGET_AUTH  SDK login as user:password, set by the user (never stored)
  *   --sdk <url>      CLI override
  *   --search <dir>   where to look for the Quickstart jar (default: cwd)
  *   --no-start       detect only; do not boot the SDK
@@ -27,8 +30,7 @@ if (typeof fetch !== 'function') {
 
 const { execFileSync } = require('child_process');
 const { ensureSdk, findRunningSdk } = require('./sdk.js');
-
-const MCP_INSTALL_DOC = 'https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/ai-in-aem/local-development-with-ai-tools#aem-quickstart-mcp-server';
+const { checkMcpServer, mcpGuidance, REQUIRED_TOOL } = require('./mcp.js');
 
 function parseArgs(argv) {
   const out = {};
@@ -60,6 +62,8 @@ async function main() {
 
   const sdkUp = await ensureSdk(sdkUrl, { search: args.search, noStart: !!args['no-start'] });
   checks.push({ name: `SDK reachable (${sdkUrl})`, ok: sdkUp, hint: 'could not auto-start a local Cloud SDK — see messages above' });
+  const mcp = sdkUp ? await checkMcpServer(sdkUrl, process.env.AEM_TARGET_AUTH) : { status: 'unreachable', endpoint: `${sdkUrl}/bin/mcp` };
+  checks.push({ name: `AEM Quickstart MCP server with ${REQUIRED_TOOL}`, ok: mcp.status === 'ready', hint: mcpGuidance(mcp) });
 
   for (const c of checks) console.log(`  ${c.ok ? '✓' : '✗'} ${c.name}${c.ok ? '' : `  — ${c.hint}`}`);
 
@@ -67,8 +71,7 @@ async function main() {
   if (missing.length) fatal(`\n[validate-migration] ${missing.length} check(s) failed. Fix the above and retry.`);
 
   console.log(`\n[validate-migration] local prerequisites ready.`);
-  console.log(`Ensure your coding assistant has the AEM Quickstart MCP server configured — see:`);
-  console.log(`  ${MCP_INSTALL_DOC}`);
+  console.log(`MCP: ${mcpGuidance(mcp)}`);
   console.log(`Then run  node ../../validate-migration/check.js  from your project root.`);
 }
 

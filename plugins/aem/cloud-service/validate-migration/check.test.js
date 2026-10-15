@@ -876,6 +876,38 @@ test('findRunningSdk checks 4503 and returns null when no SDK answers', async (c
   assert.match(probes[2], /:4503\/$/);
 });
 
+test('checkMcpServer reports each AEM Quickstart MCP readiness state without leaking credentials', async (context) => {
+  const { checkMcpServer } = require('./mcp.js');
+  const SECRET = 'user:s3cret-value';
+  const tools = (names) => ({ status: 200, headers: new Headers({ 'content-type': 'application/json' }),
+    text: async () => JSON.stringify({ jsonrpc: '2.0', id: 2, result: { tools: names.map((name) => ({ name })) } }) });
+  const ok = { status: 200, headers: new Headers({ 'mcp-session-id': 'abc' }), text: async () => '{}' };
+
+  const noAuth = await checkMcpServer('http://localhost:4602', undefined);
+  assert.strictEqual(noAuth.status, 'credentials_missing');
+
+  const cases = [
+    [[{ status: 401 }], 'credentials_rejected'],
+    [[{ status: 404 }], 'not_installed'],
+    [[ok, tools(['aem-logs'])], 'tool_missing'],
+    [[ok, tools(['aem-logs', 'diagnose-osgi-bundle'])], 'ready'],
+  ];
+  for (const [responses, expected] of cases) {
+    const calls = [];
+    context.mock.method(globalThis, 'fetch', async (url, init) => {
+      calls.push({ url, init });
+      const r = responses.shift();
+      return { headers: new Headers(), text: async () => '', ...r };
+    });
+    const result = await checkMcpServer('http://localhost:4602/', SECRET);
+    assert.strictEqual(result.status, expected);
+    assert.strictEqual(calls[0].url, 'http://localhost:4602/bin/mcp');
+    assert.ok(!JSON.stringify(result).includes('s3cret'), 'result must not contain the password');
+    if (expected === 'ready') assert.strictEqual(calls[1].init.headers['Mcp-Session-Id'], 'abc');
+    context.mock.restoreAll();
+  }
+});
+
 test('custom-templates verifies template definition, structure and initial content offline', async () => {
   const TEMPLATE = '/conf/wknd/settings/wcm/templates/content-page-template';
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vm-template-'));

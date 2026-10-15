@@ -154,7 +154,9 @@ code failure, and must not be silently retried or presented as recorded.
   after the user confirms no local SDK exists, or provide setup guidance if
   the selected SDK fails to start. Never skip runtime validation.
 - [AEM Quickstart MCP server](https://github.com/adobe/cq-quickstart-mcp-server/)
-  configured in the coding assistant. See the
+  (`com.adobe.aem:com.adobe.aem.mcp-server-contribs-content`, on Maven Central) installed
+  on the SDK and configured in the coding assistant. `init.js` checks the SDK side with
+  `AEM_TARGET_AUTH`. See the
   [Adobe setup docs](https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/ai-in-aem/local-development-with-ai-tools#aem-quickstart-mcp-server).
 - `mvn` and `unzip` on `PATH`.
 - Node 18+.
@@ -264,7 +266,10 @@ directory's dependencies before use. Package-only checks remain independent of i
 
 ## Files that ship with this plugin
 
-- `init.js` — local readiness check; boots a workspace SDK if none is running (does NOT speak MCP).
+- `init.js` — local readiness check; boots a workspace SDK if none is running and checks
+  the AEM Quickstart MCP server on it.
+- `mcp.js` — probes `<sdk>/bin/mcp` (`initialize` + `tools/list`) for `diagnose-osgi-bundle`
+  and returns install/config guidance; never outputs credentials.
 - `sdk.js` — shared SDK detect / search / boot logic used by `init.js` and `check.js`.
 - `check.js` — orchestrator CLI: prepare = build/discover/deploy; verify = consume
   diagnosis and run each pattern's check; finalize = persist the reporting

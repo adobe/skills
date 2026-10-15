@@ -102,6 +102,16 @@ SDK configuration. Do not change credentials or SDK configuration without approv
     to start. Pin the selected `--sdk <url>` for deployment AND MCP
    diagnosis. Only skip submission when the user explicitly asks for local-only
    validation; state that end-to-end reporting remains incomplete.
+    **AEM Quickstart MCP (every runtime pattern).** `init.js` also checks that the
+    server package is installed on the pinned SDK and exposes `diagnose-osgi-bundle`;
+    it needs `AEM_TARGET_AUTH` set by the user. If it reports the package missing,
+    offer to install `com.adobe.aem:com.adobe.aem.mcp-server-contribs-content` from
+    Maven Central with Package Manager (`/crx/packmgr`), only after approval: pick the
+    release the [supported-versions table](https://github.com/adobe/cq-quickstart-mcp-server#supported-versions)
+    lists for this SDK version (ask if none is listed) and verify its `.sha1` first.
+    Then confirm your own session lists `diagnose-osgi-bundle`. If not, ask the user to
+    add `<sdk>/bin/mcp` to their assistant's MCP config (HTTP, `Authorization: Basic`
+    header from their SDK login) and reload; never write credentials into config files.
 
 2. **Prepare.** Run `node "$VALIDATOR/check.js" --stage prepare` with the selected
   scope/project/SDK flags. It builds, discovers, deploys bundle-runtime patterns
