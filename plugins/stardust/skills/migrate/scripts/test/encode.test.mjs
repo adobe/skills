@@ -12,7 +12,8 @@
 //   grammar v2    compound cell (parts), itemWrap + link → plain-text fallback (+ titleAttr), id-reference cell, one
 //                 cell per match, blank-container drop, metadata from a selector with fallback, markers as an array,
 //                 section-break, a module nested in rich content → flattened, a component pattern → unmapped
-//   hard stops    unmapped · flattened · variance (fingerprint + census; accepted prints) · incomplete (L5) · error —
+//   hard stops    unmapped · flattened · variance (fingerprint + census, one visibility rule; ignoreAncestors; accepts
+//                 per direction) · incomplete (L5) · error —
 //                 each exits 2 and writes nothing for the page; missing capture / invalid map → exit 1
 //   patches       the skeleton's stardust/patches/<slug>.json ops on the rendered document (engine level): replace,
 //                 attr, remove; a patch deleting counted content → incomplete; a no-match patch → recorded, no stop;
@@ -108,7 +109,7 @@ try {
   // --- the audit records what the walk dropped, deferred or could not resolve ---------------------------------------
   r = await run('--template', A, '--slug', A, '--json', '--dry-run');
   const rep0 = pageOf(r)[0].report;
-  assert.deepEqual(rep0.dropped.map((x) => [x.kind, x.reason]), [['newsletter', 'runtime form, delivered by a dynamics row']], 'drop: recorded');
+  assert.deepEqual(rep0.dropped, [{ kind: 'newsletter', reason: 'runtime form, delivered by a dynamics row', visible: true }, { kind: '.ui-sr-only', reason: 'selector drop (transform)', visible: true, at: 'span.ui-sr-only' }], 'drop: recorded, and the visible text a transform drop removed');
   assert.deepEqual(rep0.deviations, [{ kind: 'dynamic-dependency', row: 'DYN-1', module: 'chat' }], 'dynamics: recorded');
   assert.deepEqual(rep0.mediaUnresolved, ['https://www.example.com/media/old-bridge.jpg'], 'an image with no ledger entry is recorded, never invented');
   assert.deepEqual(rep0.linksUnresolved, ['https://www.example.com/trips/river-walk/book.html', 'https://www.example.com/shop/boots.html'], 'source-host links outside the roster are recorded');
@@ -163,8 +164,8 @@ try {
   await stopCase('stop-flattened', mutate('<span class="ui-facts__value">310 m</span>', ''), 'flattened', /cell 1 \(\.ui-facts__value\) empty/);
   await stopCase('stop-nested', mutate('<p>Benches and a view over three villages.</p>', '<p>Benches.</p></div></div><div class="mod-tags"><div class="ui-tags"><span class="ui-tags__item">Views</span></div></div><div class="mod-text"><div class="ui-text"><p>More.</p>'), 'flattened', /a module nested inside rich content/);
   await stopCase('stop-nested-unknown', mutate('<p>A steady climb on a wide forest road.</p>', '<p>A steady climb.</p></div></div><div class="mod-quiz"><div class="ui-quiz"><p>Q?</p></div></div><div><div><p>x</p>'), 'flattened', /"selector":"childClass/);
-  const v = await stopCase('stop-variance', mutate('mod-teaser mod-teaser--featured', 'mod-teaser'), 'variance', /"change":"added","print":"\.mod-teaser \| div\.mod-teaser \| mod-container>ui-container"/);
-  assert.deepEqual(v.report.variance.map((x) => x.change), ['added', 'removed'], 'a SET difference both ways');
+  const v = await stopCase('stop-variance', mutate('mod-teaser mod-teaser--featured', 'mod-teaser'), 'variance', /"change":"extra","print":"\.mod-teaser \| div\.mod-teaser \| mod-container>ui-container"/);
+  assert.deepEqual(v.report.variance.map((x) => x.change), ['extra', 'missing'], 'a SET difference both ways');
   await stopCase('stop-census', mutate('<div class="mod-image"', '<div class="promo-strip"><p>Members ride free on Sundays.</p></div><div class="mod-image"'), 'variance', /UNMARKED \| div\.promo-strip \| mod-container>ui-container/);
   await stopCase('stop-incomplete', mutate('<h3 class="ui-teaser__title">River Walk</h3>', '<h3 class="ui-teaser__title">River Walk</h3><p class="ui-teaser__desc">Two hours along the water, café at the bridge.</p>'), 'incomplete', /"role":"text","key":"two hours along the water, caf/);
   await stopCase('stop-noroot', mutate('<main id="main" class="page-main">', '<div id="main-x">').replace('</main>', '</div>'), 'error', /root selector \\"main#main\\" matched nothing/);
@@ -175,11 +176,15 @@ try {
   await stopCase('stop-audio', mutate('<p>Benches and a view over three villages.</p>', '<p>Benches and a view over three villages.</p><div class="player"><audio controls src="/media/birdsong.mp3"></audio></div>'), 'unmapped', /"kind":"audio","selector":"audio","at":"audio"/);
   await stopCase('stop-iframe', mutate('<p>A steady climb on a wide forest road.</p>', '<p>A steady climb on a wide forest road.</p><iframe src="https://player.example.net/embed/42" width="560" height="315" title="The climb"></iframe>'), 'unmapped', /"kind":"iframe","selector":"iframe","at":"iframe"/);
   // an accepted print never stops a page
-  writeFileSync(vocabFile, JSON.stringify({ ...vocab, variance: { accept: v.report.variance.map((x) => ({ print: x.print, reason: 'the teaser variant is an editorial choice' })) } }));
+  writeFileSync(vocabFile, JSON.stringify({ ...vocab, variance: { accept: v.report.variance.map((x) => ({ print: x.print, on: x.change, reason: 'the teaser variant is an editorial choice' })) } }));
   r = await run('--template', A, '--slug', 'stop-variance');
   assert.equal(r.code, 0, `accepted prints → clean\n${r.out}`); assert.equal(r.last, 'encoded 1 · unchanged 0 · stopped 0');
   writeFileSync(vocabFile, vocabRaw);
-  assert.deepEqual(varianceDelta(['a', 'b'], ['b', 'c'], [{ print: 'c', reason: 'r' }]), [{ change: 'added', print: 'a' }], 'varianceDelta: symmetric difference minus accepted');
+  assert.deepEqual(varianceDelta(['a', 'b'], ['b', 'c'], [{ print: 'c', on: 'missing', reason: 'r' }]), [{ change: 'extra', print: 'a' }], 'varianceDelta: symmetric difference minus accepted');
+  assert.deepEqual(varianceDelta(['a', 'b'], ['b', 'c'], [{ print: 'c', on: 'extra', reason: 'r' }, { print: 'a', on: 'missing', reason: 'r' }]), [{ change: 'extra', print: 'a' }, { change: 'missing', print: 'c' }], 'an accept covers one direction only: extra never hides missing');
+  for (const [va, re] of [[{ accept: [{ print: 'p', reason: 'r' }] }, /on: "extra"\|"missing"/], [{ accept: [{ print: 'p', on: 'extra', reason: ' ' }] }, /non-empty reason/], [{ ignoreAncestors: [{ class: '(', reason: 'r' }] }, /ignoreAncestors\[0\]\.class/], [{ ignoreAncestors: [{ class: 'x' }] }, /non-empty reason/]]) {
+    assert.match(validateVocabulary({ root: 'main', variance: va }).join(' '), re, JSON.stringify(va));
+  }
 
   // --- a whole run with stopped pages exits 2 and still writes the clean ones; missing input exits 1 ----------------------
   rmSync(P('stardust', 'encoded'), { recursive: true });
@@ -196,7 +201,7 @@ try {
   assert.deepEqual(nd.report.dropped, [{ kind: 'newsletter', reason: 'runtime form, delivered by a dynamics row', visible: true }, { kind: 'promo', reason: 'members-only offer, not migrated', visible: true, nested: true, at: 'div.mod-promo' }], 'the nested drop: is recorded, in document order');
   assert.deepEqual(nd.report.deviations, [{ kind: 'dynamic-dependency', row: 'DYN-2', module: 'live', nested: true, at: 'div.mod-live' }, { kind: 'dynamic-dependency', row: 'DYN-1', module: 'chat' }], 'the nested dynamics: is recorded');
   assert.deepEqual(nd.report.variance.map((x) => x.print.split(' | ')[0]), ['.mod-live', '.mod-promo'], 'the new modules still move the print set');
-  withMarkers({ variance: { accept: nd.report.variance.map((x) => ({ print: x.print, reason: 'a promo and a live widget, both declared' })) } });
+  withMarkers({ variance: { accept: nd.report.variance.map((x) => ({ print: x.print, on: x.change, reason: 'a promo and a live widget, both declared' })) } });
   r = await run('--template', A, '--slug', 'nested-drops');
   assert.equal(r.code, 0, `accepted → clean\n${r.out}`);
   assert.doesNotMatch(read('stardust', 'encoded', 'trips', 'nested-drops.html'), /Members save|Trail status/, 'neither reaches the document');
@@ -282,6 +287,8 @@ try {
   assert.equal(noH1.status, 'error'); assert.match(noH1.report.errors.join(' '), /no <h1>/, 'the h1 check judges the patched document');
   const badPatch = encodeSlug(A, [{ selector: '.teaser', op: 'rename' }]);
   assert.equal(badPatch.status, 'error'); assert.match(badPatch.report.errors[0], /op "rename": use replace\|attr\|remove/); assert.equal(badPatch.html, null, 'an invalid patch file renders nothing');
+  for (const notArray of [{}, 3, 'x']) assert.equal(encodeSlug(A, notArray).status, 'error', `a patch file holding ${JSON.stringify(notArray)} is an error, never ignored`);
+  assert.equal(encodeSlug(A, []).html, arch, '[] means no patches');
   const sibPatched = encodeSlug(S1, [{ selector: '.teaser', op: 'remove' }], plain.prints);
   assert.deepEqual(sibPatched.report.variance, [], 'variance is decided on the capture: patches never move it');
   assert.deepEqual(sibPatched.prints, encodeSlug(S1, null, plain.prints).prints);
@@ -315,6 +322,32 @@ try {
   // --- a default-content marker that IS a cell's own node keeps its own retag/drop too ------------------------------
   const rootScope = one('<div class="blk"><div class="mod-text"><p>A <b>bold</b> word<span class="note"> (aside)</span>.</p></div></div>', { root: 'main', markers: [{ sel: '.blk', kind: 'blk', emitter: 'block:blk', cells: [{ sel: '.mod-text', as: 'rich' }] }, { sel: '.mod-text', kind: 'text', emitter: 'default-content', drop: ['.note'], retag: { b: 'b' } }] });
   assert.equal(rootScope.status, 'clean'); assert.match(rootScope.html, /<div class="blk">\n<div><div><p>A <b>bold<\/b> word\.<\/p><\/div><\/div>/);
+
+  // --- the fingerprint: one visibility rule, ancestors ignored per class ---------------------------------------------
+  const pair = (archHtml, sibHtml, v) => { const a = one(archHtml, v); return [a, encodePage({ html: `<main><h1>T</h1>${sibHtml}</main>`, page: { url: 'https://www.example.com/s' }, vocab: v, site: stub, archetypePrints: a.prints })]; };
+  const cardMap = { root: 'main', wrappers: ['.page'], markers: [{ sel: 'div.mod-card', kind: 'card', emitter: 'block:card' }, { sel: 'div.mod-download', kind: 'download', emitter: 'wrapper' }, { sel: 'div.mod-sep', kind: 'separator', emitter: 'section-break:rule' }] };
+  let [, sibR] = pair('<div class="page"><div class="mod-card"><p>Card text</p></div></div>', '<div class="page"><div class="mod-card"><p>Card text</p></div><div class="mod-download">  </div></div>', cardMap);
+  assert.equal(sibR.status, 'clean', 'an empty marked placeholder adds no print, as an empty unmarked node adds no census entry'); assert.deepEqual(sibR.report.variance, []);
+  [, sibR] = pair('<div class="page"><div class="mod-card"><p>Card text</p></div><div class="mod-sep"><hr></div><p>After</p></div>', '<div class="page"><div class="mod-card"><p>Card text</p></div><p>After</p></div>', cardMap);
+  assert.deepEqual(sibR.report.variance, [{ change: 'missing', print: 'div.mod-sep | div.mod-sep | page' }], 'a section-break emits structure on its own: it keeps its print');
+  const gridMap = (extra) => ({ root: 'main', wrappers: ['.grid', '.col', '.box'], markers: [{ sel: 'div.mod-card', kind: 'card', emitter: 'block:card' }], ...extra });
+  const gridArch = '<div class="box"><div class="grid grid--12"><div class="col col--6 box-inner"><div class="mod-card"><p>A</p></div></div></div></div>';
+  const gridSib = '<div class="box"><div class="mod-card"><p>A</p></div></div>';
+  [, sibR] = pair(gridArch, gridSib, gridMap({}));
+  assert.deepEqual(sibR.report.variance.map((x) => x.change), ['extra', 'missing'], 'a missing layout layer moves the chain');
+  [, sibR] = pair(gridArch, gridSib, gridMap({ variance: { ignoreAncestors: [{ class: '^(grid|col)(--|$)', reason: 'the layout grid is not structure' }] } }));
+  assert.deepEqual(sibR.report.variance, [{ change: 'extra', print: 'div.mod-card | div.mod-card | box' }, { change: 'missing', print: 'div.mod-card | div.mod-card | box>box-inner' }], 'an ancestor keeping another class stays in the chain under it');
+  [, sibR] = pair(gridArch.replace(' box-inner', ''), gridSib, gridMap({ variance: { ignoreAncestors: [{ class: '^(grid|col)(--|$)', reason: 'the layout grid is not structure' }] } }));
+  assert.equal(sibR.status, 'clean', 'one ignoreAncestors entry accepts the whole chain-level class, archetype and sibling alike');
+
+  // --- selector drops that remove visible content are recorded (marker, transform, cell); invisible ones need not be ---
+  const fileDoc = '<div class="mod-file"><p class="label">Visible label text</p><p class="label"> </p><p class="value">Visible value text</p></div>';
+  const fileMap = (marker, extra = {}) => ({ root: 'main', markers: [{ sel: '.mod-file', kind: 'file', emitter: 'block:file', cells: [{ sel: '.value', as: 'text' }], ...marker }], ...extra });
+  const dropsOf = (v, tf = {}) => { const x = encodePage({ html: `<main><h1>T</h1>${fileDoc}</main>`, page: { url: 'https://www.example.com/f' }, vocab: v, tf, site: stub }); assert.equal(x.status, 'clean'); assert.doesNotMatch(x.html, /label/); return x.report.dropped; };
+  assert.deepEqual(dropsOf(fileMap({ drop: ['.label'] })), [{ kind: '.label', reason: 'selector drop (marker .mod-file)', visible: true, at: 'p.label' }], 'a marker drop');
+  assert.deepEqual(dropsOf(fileMap({}), { drop: ['.label'] }), [{ kind: '.label', reason: 'selector drop (transform)', visible: true, at: 'p.label' }], 'a transform drop');
+  assert.deepEqual(dropsOf(fileMap({ cells: [{ as: 'rich', drop: ['.label'] }] })), [{ kind: '.label', reason: 'selector drop (cell)', visible: true, at: 'p.label' }], 'a cell drop');
+  assert.deepEqual(dropsOf(fileMap({ drop: ['.label', 'p.label'] }), { drop: ['.label'] }), [{ kind: '.label', reason: 'selector drop (transform)', visible: true, at: 'p.label' }], 'one entry per node, whoever claims it first');
 
   // --- the engine on its own: a site context is all it needs ---------------------------------------------------------
   const bare = encodePage({ html: '<main><h1>Hi</h1><p>One\n  two</p></main>', page: { url: 'https://www.example.com/a', title: 'A' }, vocab: { root: 'main' }, site: stub });

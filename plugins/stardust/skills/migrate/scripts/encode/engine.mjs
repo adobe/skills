@@ -13,7 +13,12 @@
  *
  * vocabulary.json  { root, chrome[], wrappers[], moduleSelectors[], sectionTags[] (default ["section"]), walkSiblings,
  *                    requireH1 (default true), ignoreModifiers[] (class-token regexes the fingerprint ignores),
- *                    metadata: [[key, expr], …], variance: { accept: [{ print, reason }] }, markers: [Marker, …] }
+ *                    metadata: [[key, expr], …], variance: { ignoreAncestors, accept }, markers: [Marker, …] }
+ *   variance         ignoreAncestors: [{ class: "<regex>", reason }] — ancestor class tokens left out of every print's
+ *                    ancestor chain (archetype and sibling alike; an ancestor with nothing else left leaves the chain):
+ *                    one entry accepts a chain-level class such as a missing layout-grid layer.
+ *                    accept: [{ print: "<exact>", on: "extra"|"missing", reason }] — `extra` accepts a print only the
+ *                    sibling has, `missing` one only the archetype has; never the other direction. reason non-empty.
  *   moduleSelectors  a selector string, or a site-level component pattern { childClass: "<regex>" } (an element with
  *                    an element child whose class token matches: a wrapper around a component — anchor the regex on
  *                    the block class, e.g. "^x-[a-z]+(-[a-z]+)*$", so BEM element/modifier classes never match) or
@@ -44,6 +49,12 @@
  * transform.json   { imageParagraph (default true), imgAttrs (default [src, alt, title]), retag {}, headingsByClass {},
  *                    drop [], keepHashLinks, emptyP: drop|keep } — emptyP `drop` also drops a div/span that holds only
  *                    whitespace or NBSP (no image, no link).
+ *
+ * Shape prints: `<marker sel | UNMARKED> | <tag>.<sorted classes> | <ancestor chain>` for every VISIBLE marker match at
+ * any depth (or one that emits structure on its own: section-break) and every visible unmarked module-level node the
+ * walk reaches (the census) — one visibility rule for both halves; class tokens minus generated ones and
+ * ignoreModifiers. Selector drops (a marker's, the transform's or a cell's `drop`) that remove visible content are
+ * recorded in dropped[] as { kind: <selector>, reason: "selector drop (marker <sel> | transform | cell)", visible, at }.
  *
  * Hard stops (page status; the first that applies, in this order): error (root missing or a landmark, 0 sections, no
  * <h1>, an exception) · unmapped (incl. a showing <video>/<audio controls>/<iframe>/<object>/<embed> reached by rich
@@ -192,7 +203,17 @@ export function validateVocabulary(v) {
       }
     }
   }
-  if (v.variance !== undefined) { const acc = v.variance && v.variance.accept; if (!Array.isArray(acc) || !acc.every((a) => a && typeof a.print === 'string' && typeof a.reason === 'string' && a.reason.trim())) errs.push('variance.accept: an array of { print, reason } with a non-empty reason'); }
+  if (v.variance !== undefined) {
+    const va = v.variance; const why = (r) => typeof r === 'string' && r.trim();
+    if (!va || typeof va !== 'object' || Array.isArray(va)) errs.push('variance: an object { ignoreAncestors, accept }');
+    else {
+      if (va.accept !== undefined && !(Array.isArray(va.accept) && va.accept.every((a) => a && typeof a.print === 'string' && (a.on === 'extra' || a.on === 'missing') && why(a.reason)))) errs.push('variance.accept: an array of { print, on: "extra"|"missing", reason } with a non-empty reason');
+      if (va.ignoreAncestors !== undefined) {
+        if (!Array.isArray(va.ignoreAncestors)) errs.push('variance.ignoreAncestors: an array of { class: "<regex>", reason }');
+        else va.ignoreAncestors.forEach((x, i) => { if (!x || typeof x.class !== 'string' || !why(x.reason)) errs.push(`variance.ignoreAncestors[${i}]: { class: "<regex>", reason } with a non-empty reason`); else { const e = regexError(`variance.ignoreAncestors[${i}].class`, x.class); if (e) errs.push(e); } });
+      }
+    }
+  }
   for (const s of [v.root, ...(isStrArr(v.chrome) ? v.chrome : []), ...(isStrArr(v.wrappers) ? v.wrappers : [])]) { if (typeof s !== 'string') continue; const e = selectorError('selector', s); if (e) errs.push(e); }
   if (v.markers !== undefined && !Array.isArray(v.markers)) errs.push('markers: an ARRAY of { sel, kind, emitter, … } (order is precedence; an object keyed by selector is the old form)');
   (Array.isArray(v.markers) ? v.markers : []).forEach((m, i) => {
@@ -280,20 +301,29 @@ function moduleMatcher(vocab, rootEl) {
 // ===================================================================================== shape fingerprint
 function tokenFilter(vocab) {
   const ignore = (vocab.ignoreModifiers || []).map((s) => new RegExp(s));
-  return (n) => classList(n).filter((c) => !GENERATED_TOKEN.test(c) && !ignore.some((re) => re.test(c)));
+  const tokens = (n) => classList(n).filter((c) => !GENERATED_TOKEN.test(c) && !ignore.some((re) => re.test(c)));
+  const anc = ((vocab.variance && vocab.variance.ignoreAncestors) || []).map((x) => new RegExp(x.class));
+  // an ancestor's chain token: its smallest kept class; an ancestor whose classes are all ignored leaves the chain
+  tokens.chain = (p) => {
+    const kept = tokens(p).filter((c) => !anc.some((re) => re.test(c)));
+    if (!kept.length && classList(p).some((c) => anc.some((re) => re.test(c)))) return null;
+    return kept.sort()[0] || p.tag;
+  };
+  return tokens;
 }
 function printOf(label, n, rootEl, tokens) {
   const chain = [];
-  for (let p = n.parent; p && p !== rootEl && isEl(p); p = p.parent) chain.push([...tokens(p)].sort()[0] || p.tag);
+  for (let p = n.parent; p && p !== rootEl && isEl(p); p = p.parent) { const t = tokens.chain(p); if (t !== null) chain.push(t); }
   return `${label} | ${n.tag}.${[...tokens(n)].sort().join('.')} | ${chain.reverse().join('>')}`;
 }
-/** Every marker match at any depth under the given tops (first marker wins), as a print. */
+/** Every visible marker match at any depth under the given tops (first marker wins), as a print. */
 function markerPrints(tops, markers, rootEl, stamped, tokens) {
   const out = new Set();
   const visit = (n) => {
     if (!isEl(n) || hiddenLive(n, stamped)) return;
     const m = firstMarker(n, markers, rootEl);
-    if (m) out.add(printOf(m.sel, n, rootEl, tokens));
+    // one visibility rule with the census: an empty match emits nothing, so it is no shape (a section-break emits one)
+    if (m && (visible(n) || String(m.emitter || '').startsWith('section-break:'))) out.add(printOf(m.sel, n, rootEl, tokens));
     for (const c of n.children) visit(c);
   };
   for (const t of tops) visit(t);
@@ -301,15 +331,17 @@ function markerPrints(tops, markers, rootEl, stamped, tokens) {
 }
 
 /**
- * Variance of a sibling against the archetype: the symmetric difference of the two print SETS, minus accepted prints.
- * Returns [{ change: "added"|"removed", print }] sorted (added first).
+ * Variance of a sibling against the archetype: the symmetric difference of the two print SETS, minus accepted prints —
+ * an `extra` accept covers a print only the sibling has, a `missing` accept one only the archetype has. Returns
+ * [{ change: "extra"|"missing", print }] sorted (extra first); `change` is the `on` an accept entry would take.
  */
 export function varianceDelta(prints, archetypePrints, accept = []) {
-  const ok = new Set((accept || []).map((a) => a.print));
+  const ok = (on) => new Set((accept || []).filter((x) => x.on === on).map((x) => x.print));
+  const okExtra = ok('extra'); const okMissing = ok('missing');
   const a = new Set(archetypePrints); const s = new Set(prints);
-  const added = [...s].filter((p) => !a.has(p) && !ok.has(p)).sort().map((print) => ({ change: 'added', print }));
-  const removed = [...a].filter((p) => !s.has(p) && !ok.has(p)).sort().map((print) => ({ change: 'removed', print }));
-  return [...added, ...removed];
+  const extra = [...s].filter((p) => !a.has(p) && !okExtra.has(p)).sort().map((print) => ({ change: 'extra', print }));
+  const missing = [...a].filter((p) => !s.has(p) && !okMissing.has(p)).sort().map((print) => ({ change: 'missing', print }));
+  return [...extra, ...missing];
 }
 
 // ===================================================================================== whitespace (the engine's own)
@@ -538,7 +570,7 @@ function cellValue(row, spec, ctx, kind) {
   const as = spec.parts ? 'parts' : (spec.as || 'rich');
   const pick = (spec.all ?? as === 'rich') ? nodes : nodes.slice(0, 1);
   const sub = { ...ctx, retag: { ...(ctx.retag || {}), ...(spec.retag || {}) }, drop: [...(ctx.drop || []), ...(spec.drop || [])] };
-  for (const n of pick) for (const s of spec.drop || []) for (const x of qsa(n, s)) ctx.excluded.add(x);
+  for (const n of pick) ctx.excludeAll(n, spec.drop, 'cell');
   const vals = pick.map((n) => itemValue(n, spec, sub, kind)).filter((v) => v !== null && !isBlankHtml(v)).map((v) => (spec.itemWrap ? wrapIn(v, spec.itemWrap) : v));
   if (!vals.length) return null;
   return wrapIn(vals.join(spec.join ?? '\n'), spec.wrap);
@@ -634,8 +666,8 @@ export function applyPatches(html, patches) {
  *   archetypePrints the archetype's print set (siblings only; absent → no variance check)
  *   inventory       { offlineInventory, diffOffline } (deploy's content-inventory); absent → no content count
  *   countKeys       { mediaKey(absUrl), linkKey(absUrl) } for the content count
- *   patches         the parsed stardust/patches/<slug>.json array (absent/empty → none); applied to the rendered
- *                   document before the <h1> check and the content count; an invalid entry is an `error`
+ *   patches         the parsed stardust/patches/<slug>.json array (null/absent or [] → none); applied to the rendered
+ *                   document before the <h1> check and the content count; anything else invalid is an `error`
  *   finalise        string → string, applied last (sanitise's encode)
  * Returns { status, html, report, prints, sections, blocks }; `html` is null when the root was not found.
  */
@@ -674,7 +706,9 @@ function encodeInto(result, { html, page, base, vocab, tf, site, archetypePrints
   const ctx = { tf, site, report, base, stamped, doc, rootEl, markers, wrappers, isModule, excluded, declared, isDropped, cache: { media: new Set() } };
   const moduleLevel = new Set();
   const census = new Set();
-  const excludeAll = (scope, sels) => { for (const s of sels || []) for (const x of qsa(scope, s)) excluded.add(x); };
+  const selDrops = new Map(); // selector-dropped node → { selector, source }; the first claim wins
+  const excludeAll = (scope, sels, source) => { for (const s of sels || []) for (const x of qsa(scope, s)) { excluded.add(x); if (!selDrops.has(x)) selDrops.set(x, { selector: s, source }); } };
+  ctx.excludeAll = excludeAll;
 
   const sections = []; let cur = { style: null, nodes: [] };
   const closeSection = () => { if (cur.nodes.length) sections.push(cur); cur = { style: null, nodes: [] }; };
@@ -726,13 +760,17 @@ function encodeInto(result, { html, page, base, vocab, tf, site, archetypePrints
     const sibs = kids(rootEl.parent);
     for (const s of sibs.slice(sibs.indexOf(rootEl) + 1)) { if (matches(s, LANDMARK_STOP)) break; tops.push(s); }
   }
-  for (const t of tops) { excludeAll(t, tf.drop); if (t !== rootEl && tf.drop && tf.drop.some((s) => matches(t, s, rootEl))) excluded.add(t); }
+  for (const t of tops) {
+    excludeAll(t, tf.drop, 'transform');
+    const own = t !== rootEl && (tf.drop || []).find((s) => matches(t, s, rootEl));
+    if (own) { excluded.add(t); if (!selDrops.has(t)) selDrops.set(t, { selector: own, source: 'transform' }); }
+  }
   // pre-pass: every first-marker match at any depth — its own drops are not content, and a drop:/dynamics: match is
   // left out wherever it sits (a cell that never reaches it included)
   const prepass = (n) => {
     if (!isEl(n) || STRIP.has(n.tag) || hiddenLive(n, stamped) || excluded.has(n)) return;
     const m = firstMarker(n, markers, rootEl);
-    if (m) excludeAll(n, m.drop);
+    if (m) excludeAll(n, m.drop, `marker ${m.sel}`);
     const e = m && m.emitter ? String(m.emitter) : '';
     if (e.startsWith('drop:') || e.startsWith('dynamics:')) { declared.set(n, m); excluded.add(n); return; }
     for (const c of n.children) prepass(c);
@@ -748,7 +786,14 @@ function encodeInto(result, { html, page, base, vocab, tf, site, archetypePrints
     if (e.startsWith('drop:')) pre.dropped.push({ kind, reason: e.slice(5), visible: visible(n), ...where });
     else pre.deviations.push({ kind: 'dynamic-dependency', row: e.slice(9), module: kind, ...where });
   }
-  report.dropped = [...pre.dropped, ...report.dropped];
+  // selector drops that removed visible content, outermost only, in document order
+  const order = new Map(); let seq = 0;
+  const number = (x) => { for (const c of x.children) if (isEl(c)) { order.set(c, seq); seq += 1; number(c); } };
+  number(doc);
+  const covered = (x) => { for (let p = x; p && isEl(p); p = p.parent) if (declared.has(p) || hiddenLive(p, stamped) || (p !== x && selDrops.has(p))) return true; return false; };
+  const selectorDrops = [...selDrops].filter(([x]) => visible(x) && !covered(x)).sort((a, b) => order.get(a[0]) - order.get(b[0]))
+    .map(([x, d]) => ({ kind: d.selector, reason: `selector drop (${d.source})`, visible: true, at: describe(x) }));
+  report.dropped = [...pre.dropped, ...selectorDrops, ...report.dropped];
   report.deviations = [...pre.deviations, ...report.deviations];
 
   // shape prints: every marker match at any depth + the census of unmarked module-level nodes; a SET, sorted
@@ -776,11 +821,10 @@ function encodeInto(result, { html, page, base, vocab, tf, site, archetypePrints
   let prefinal = `${body}\n`;
 
   // the page's patches: on the rendered document, before the checks that judge it (the h1, the content count)
-  if (patches && patches.length) {
+  if (patches !== null && patches !== undefined) { // only [] means "no patches"; any other non-array is an error
     const errs = validatePatches(patches);
     if (errs.length) { report.errors.push(...errs.map((e) => `stardust/patches: ${e}`)); return; }
-    const r = applyPatches(prefinal, patches);
-    prefinal = r.html; report.patchesApplied = r.applied;
+    if (patches.length) { const r = applyPatches(prefinal, patches); prefinal = r.html; report.patchesApplied = r.applied; }
   }
 
   // h1 presence is a DOM fact: an inline-first or image-only heading counts, an empty one does not
