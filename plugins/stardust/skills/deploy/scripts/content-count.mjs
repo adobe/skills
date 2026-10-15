@@ -9,9 +9,12 @@
  * diffOffline, the engine the migrate encoder runs on every encoded page). Roles: headings by text, level ignored;
  * links by text + href identity (documents by file name; with --project, internal links through the redirects);
  * images by the media ledger's contentUrl (--project), then file stem, then alt; text runs. Exact matches first, then
- * the tolerant rules (merged, promoted/demoted, relabelled, duplicate, unlinked). Threshold: 0 MISSING in every role,
- * never a ratio; EXTRA and tolerated items are reported only. A MISSING item is fixed in the map (a cell selector, a
- * rich-text rule) or declared as a `drop:`. It cannot see HIDDEN content, CSS-generated text or layout (gate-all's).
+ * the tolerant rules (merged, promoted/demoted, relabelled, duplicate, unlinked, split). Threshold: 0 MISSING in every
+ * role, never a ratio; EXTRA and tolerated items are reported only. A MISSING item is fixed in the map (a cell selector,
+ * a rich-text rule) or declared as a `drop:`. It cannot see HIDDEN content, CSS-generated text or layout (gate-all's).
+ * A standalone approximation of the encoder's in-run count: it models neither `walkSiblings` (it can miss a loss in
+ * the root's following siblings) nor cell-level `drop` (it can only over-report MISSING) — the encoder's own
+ * `incomplete` stop is authoritative.
  *
  * Usage:
  *   node skills/deploy/scripts/content-count.mjs --capture <html> --doc <html> [--root <sel>] [--exclude <sel,…>]
