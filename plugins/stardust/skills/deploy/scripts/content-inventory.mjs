@@ -57,7 +57,8 @@
  *       heading — h1–h6 by text, level ignored;
  *       link    — a[href] with text, a label, or an image and a destination; href = identity: null for
  *                 #…/javascript:/empty (text only), mailto:/tel: by value, a non-page
- *                 file `asset:<file name to the first dot>` (re-hosted documents), else
+ *                 file `asset:<name>` (the re-hosted name: lower-case [a-z0-9-], no
+ *                 extension, no -<sha8> collision suffix), else
  *                 linkKey, else same-site `pathKey(deliveredUrl(path))` + query, else the URL;
  *       image   — img: ids (absolute URLs + mediaKey), stems (file name, the fetcher's
  *                 -<sha8> dropped), alt;
@@ -297,7 +298,8 @@ const isLink = (n) => n.tag === 'a' && attrOf(n, 'href') !== undefined;
 const fileOf = (u) => { let b = String(u || '').split(/[?#]/)[0].split('/').pop() || ''; try { b = decodeURIComponent(b); } catch { /* keep it encoded */ } return b; };
 // a media file's stem: the extract fetcher names files <name>-<sha1[0..8]>.<ext>, so the suffix is not identity
 const stemOf = (u) => fileOf(u).toLowerCase().replace(/\.[a-z0-9]+$/, '').replace(/-[0-9a-f]{8}$/, '');
-const slug = (s) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '');
+// a document's identity is the name rehost-docs.mjs gives it: lower-case [a-z0-9-], no extension, no -<sha8> collision suffix
+const assetKey = (file) => `asset:${file.toLowerCase().replace(/\.[a-z0-9]+$/, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').replace(/-[0-9a-f]{8}$/, '')}`;
 
 export function offlineInventory(root, opts = {}) {
   const base = opts.base || 'https://doc.invalid/';
@@ -346,7 +348,7 @@ export function offlineInventory(root, opts = {}) {
     let u; try { u = new URL(h, base); } catch { return h; }
     if (!/^https?:$/.test(u.protocol)) return u.href.toLowerCase();
     const file = fileOf(u.pathname);
-    if (/\.[a-z0-9]{2,5}$/i.test(file) && !PAGE_FILE.test(file)) return `asset:${slug(file.split('.')[0])}`;
+    if (/\.[a-z0-9]{2,5}$/i.test(file) && !PAGE_FILE.test(file)) return assetKey(file);
     const k = opts.linkKey ? opts.linkKey(u.href) : null;
     if (typeof k === 'string') return k;
     if (sameSite.has(u.host)) return `${pathKey(deliveredUrl(u.pathname))}${u.search}`;

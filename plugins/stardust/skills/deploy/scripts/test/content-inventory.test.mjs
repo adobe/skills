@@ -62,11 +62,11 @@ check('heading: matched by text — level, case and typographic quotes ignored; 
   assert.equal(fail.pass, false); assert.deepEqual(missing(fail), ['heading:why "trails"']);
 });
 
-check('link: text + href identity — same-site path vs delivered form, mailto by value, documents by file name', () => {
+check('link: text + href identity — same-site path vs delivered form, mailto by value, documents by their re-hosted name', () => {
   const cap = '<main><p><a href="https://www.example.com/en/guides/Gear_List.html?tab=2#top">Gear list</a> <a href="mailto:Guides@Example.com">Email us</a> '
     + '<a href="https://cdn.example.com/files/Trail%20Safety_Checklist.v2.pdf">Safety checklist</a> <a href="https://maps.example.org/trailhead/">Trailhead map</a></p></main>';
   const doc = '<main><p><a href="/en/guides/gear-list?tab=2">Gear list</a> <a href="mailto:guides@example.com">Email us</a> '
-    + '<a href="/docs/trail-safety-checklist.pdf">Safety checklist</a> <a href="https://maps.example.org/trailhead">Trailhead map</a></p></main>';
+    + '<a href="/docs/trail-safety-checklist-v2-0a1b2c3d.pdf">Safety checklist</a> <a href="https://maps.example.org/trailhead">Trailhead map</a></p></main>';
   const pass = run(cap, doc);
   assert.deepEqual(missing(pass), []); assert.equal(pass.counts.link.found, 4); assert.equal(pass.counts.text.capture, 0, 'a run made only of link text is the links\' item');
   const fail = run(cap, doc.replace('/en/guides/gear-list?tab=2', '/en/guides/other'));
