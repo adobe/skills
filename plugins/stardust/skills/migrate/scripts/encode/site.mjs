@@ -12,8 +12,8 @@
  *   rollout/chrome-map.json          {groups: {<id>: {nav, footer, lang, pages[]}}}; other keys ignored
  *   redirects.tsv                    parsed by deploy's localize-links.mjs (redirectPairs)
  * Path rules are deploy's: eds-path.mjs (deliveredUrl, daPath, pathKey), localize-links.mjs (localizeHref,
- * redirectPairs) and rehost-docs.mjs (DOC_EXT, what a document link is), loaded through deps.mjs in either layout. That
- * load is why loadSite is async.
+ * redirectPairs, addRedirects) and rehost-docs.mjs (DOC_EXT, what a document link is), loaded through deps.mjs in either
+ * layout. That load is why loadSite is async.
  *
  * const site = await loadSite(projectRoot) →
  *   projectRoot                 absolute
@@ -22,6 +22,8 @@
  *   templateOf(name)            the template whose archetype, else id, is `name`; null when none
  *   pageJson(slug)              the parsed page record, or null
  *   pageUrl(slug)               the absolute source URL, or null
+ *   baseUrlFor(slug)            what the capture's relative URLs resolve against: the page JSON's finalUrl (the URL
+ *                               captured after redirects), else pageUrl(slug); null without either
  *   page(slug)                  {slug, url, template, deliveredUrl, daPath, capturePath, pageJsonPath, outputPath,
  *                               contentPath}, or null without a URL; paths are POSIX, relative to projectRoot
  *   capturePath(slug)           stardust/current/pages/<slug>.html
@@ -39,10 +41,11 @@
  *                               page = any other http(s) link to a source host, external, or skip:
  *                                 asset-ledger hit → its path (+ #fragment), internal
  *                                 source-host page in the roster or redirected to one → the delivered URL, internal
- *                                 source-host link to anything else, or a document (.pdf …) on any host with no
- *                                 ledger entry → kept absolute, unresolved: true
- *                                 another host → kept as written (made absolute when it was not); #, mailto:,
- *                                 tel:, javascript:, data: and empty hrefs → untouched (skip)
+ *                                 any other source-host link (a page outside the roster, a document with no
+ *                                 ledger entry) → kept absolute, unresolved: true
+ *                                 another host → kept as written (made absolute when it was not), never unresolved;
+ *                                 kind doc for a document there, else external
+ *                                 #, mailto:, tel:, javascript:, data: and empty hrefs → untouched (skip)
  *   sourceHosts                 the roster pages' hosts, lower case, `www.` and port dropped, sorted
  *   siteSha                     "sha256:<hex>" over what the encoder reads from these inputs, canonicalised: the
  *                               roster (slug, template, URL), media and document maps, chrome entries and redirect
@@ -113,6 +116,11 @@ export async function loadSite(projectRoot) {
     }
     return null;
   };
+  const baseUrlFor = (slug) => {
+    const fin = str(pageJson(slug)?.finalUrl);
+    const abs = fin && parseUrl(fin, origin || undefined);
+    return abs && /^https?:$/.test(abs.protocol) ? abs.href : pageUrl(slug);
+  };
   const page = (slug) => {
     const url = safeSlug(slug) ? pageUrl(slug) : null;
     if (!url) return null;
@@ -171,8 +179,8 @@ export async function loadSite(projectRoot) {
   const chromeFor = (url) => ({ ...(chrome.get(pathKey(deliveredUrl(pathOf(url)))) || DEFAULT_CHROME) });
 
   // ---- internal links: localize-links' URL map, built from the roster instead of the content tree ----
-  // Delivered keys first (what localize-links keys a content tree by), then the source paths, then redirects whose
-  // destination is in the map and whose source is not (localize-links' own rule).
+  // Delivered keys first (what localize-links keys a content tree by), then the source paths, then redirects
+  // (localize-links' addRedirects: the destination is in the map, the source does not shadow a page).
   const linkMap = new Map();
   const delivered = rosterUrls.map(([, u]) => { const p = new URL(u).pathname; return [p, deliveredUrl(p)]; });
   for (const [, d] of delivered) if (!linkMap.has(pathKey(d))) linkMap.set(pathKey(d), d);
@@ -180,12 +188,7 @@ export async function loadSite(projectRoot) {
   const redirectsFile = S('redirects.tsv');
   const redirectsRaw = readText(redirectsFile);
   const redirects = redirectsRaw === null ? [] : links.redirectPairs(redirectsRaw, redirectsFile);
-  const stripOrigin = (s) => s.replace(/^https?:\/\/[^/]+/i, '');
-  for (const [s, d] of redirects) {
-    const dst = linkMap.get(pathKey(stripOrigin(d)));
-    const src = pathKey(stripOrigin(s));
-    if (dst !== undefined && !linkMap.has(src)) linkMap.set(src, dst);
-  }
+  links.addRedirects(linkMap, redirects);
   const linkCtx = { map: linkMap, hosts: sourceHosts };
 
   function localizeHref(href, baseUrl) {
@@ -201,10 +204,11 @@ export async function loadSite(projectRoot) {
     if (doc) return { href: `${doc}${hash}`, internal: true, kind: 'doc' };
     u.hash = hash;
     // an absolute URL: localize-links answers localized (source host, in the map), kept-absolute (source host) or skip
+    // (another host: never unresolved, a document there included — rehost-docs fetches same-site documents only)
     const r = links.localizeHref(u.href, linkCtx);
     if (r.action === 'localized') return { href: r.href, internal: true, kind: 'page' };
-    if (r.action === 'kept-absolute' || isDoc) return { href: abs, internal: false, unresolved: true, kind: isDoc ? 'doc' : 'page' };
-    return { href: abs, internal: false, kind: 'external' };
+    if (r.action === 'kept-absolute') return { href: abs, internal: false, unresolved: true, kind: isDoc ? 'doc' : 'page' };
+    return { href: abs, internal: false, kind: isDoc ? 'doc' : 'external' };
   }
 
   // ---- siteSha: the canonical form of everything above that can change an encoded document ----
@@ -220,7 +224,7 @@ export async function loadSite(projectRoot) {
 
   return {
     projectRoot: root, slugs, templates: templates.map((t) => ({ ...t, pages: [...t.pages] })), templateOf,
-    pageJson, pageUrl, page,
+    pageJson, pageUrl, baseUrlFor, page,
     capturePath: (slug) => (safeSlug(slug) ? `stardust/current/pages/${slug}.html` : null),
     outputPathFor: (slug) => page(slug)?.outputPath ?? null,
     contentPathFor: (slug) => page(slug)?.contentPath ?? null,

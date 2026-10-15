@@ -132,14 +132,26 @@ const site = await loadSite(FIXTURE);
   assert.deepEqual(L('/en/orphan'), { href: 'https://example.com/en/orphan', internal: false, unresolved: true, kind: 'page' }, 'not in the roster → absolute, unresolved');
   assert.deepEqual(L('https://example.com/files/guide.pdf#page=2'), { href: '/docs/guide.pdf#page=2', internal: true, kind: 'doc' }, 'asset ledger');
   assert.deepEqual(L('/files/missing.pdf'), { href: 'https://example.com/files/missing.pdf', internal: false, unresolved: true, kind: 'doc' }, 'a document with no ledger entry');
-  assert.deepEqual(L('https://other.example.org/report.pdf'), { href: 'https://other.example.org/report.pdf', internal: false, unresolved: true, kind: 'doc' }, 'on any host');
+  assert.deepEqual(L('https://other.example.org/report.pdf'), { href: 'https://other.example.org/report.pdf', internal: false, kind: 'doc' }, 'a document on another host is never unresolved');
   assert.deepEqual(L('https://other.example.org/page'), { href: 'https://other.example.org/page', internal: false, kind: 'external' });
   assert.deepEqual(L('https://other.example.org'), { href: 'https://other.example.org', internal: false, kind: 'external' }, 'an absolute external href is kept as written');
   const { DOC_EXT } = await loadDeploy('rehost-docs.mjs');
   for (const f of ['a.pdf', 'a.docx', 'a.zip', 'a.txt', 'a.mp4', 'a.html']) {
-    assert.equal(L(`https://other.example.org/${f}`).kind, DOC_EXT.test(f) ? 'doc' : 'external', `a document link is what rehost-docs re-hosts: ${f}`);
+    const doc = DOC_EXT.test(f); // a document link is what rehost-docs re-hosts
+    assert.deepEqual(L(`https://other.example.org/${f}`), { href: `https://other.example.org/${f}`, internal: false, kind: doc ? 'doc' : 'external' }, `another host, never unresolved: ${f}`);
+    assert.deepEqual(L(`/files/${f}`), { href: `https://example.com/files/${f}`, internal: false, unresolved: true, kind: doc ? 'doc' : 'page' }, `the source host, not localised → unresolved: ${f}`);
   }
   for (const h of ['#section', 'mailto:team@example.com', 'tel:+100', 'javascript:void(0)', '']) assert.deepEqual(L(h), { href: h, internal: false, kind: 'skip' }, `left alone: ${h || '(empty)'}`);
+}
+
+// --- site.mjs: the base a capture's relative URLs resolve against (the page JSON's finalUrl, else its url) ---------------
+{
+  assert.equal(site.baseUrlFor('home'), 'https://www.example.com/en/', 'finalUrl: the URL captured after redirects');
+  assert.equal(site.baseUrlFor('news'), 'https://example.com/en/news/', 'no finalUrl → url');
+  assert.equal(site.baseUrlFor('story-third'), 'https://example.com/en/stories/third', 'no page JSON → state.json');
+  assert.equal(site.baseUrlFor('nope'), null);
+  assert.deepEqual(site.localizeHref('news/', site.baseUrlFor('home')), { href: '/en/news/', internal: true, kind: 'page' });
+  assert.equal(site.outputPathFor('home'), 'stardust/encoded/index.html', 'the page path still follows url');
 }
 
 // --- site.mjs: siteSha (what the encoder reads from the site inputs, canonicalised) ------------------------------------
