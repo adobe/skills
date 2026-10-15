@@ -135,6 +135,10 @@ const site = await loadSite(FIXTURE);
   assert.deepEqual(L('https://other.example.org/report.pdf'), { href: 'https://other.example.org/report.pdf', internal: false, unresolved: true, kind: 'doc' }, 'on any host');
   assert.deepEqual(L('https://other.example.org/page'), { href: 'https://other.example.org/page', internal: false, kind: 'external' });
   assert.deepEqual(L('https://other.example.org'), { href: 'https://other.example.org', internal: false, kind: 'external' }, 'an absolute external href is kept as written');
+  const { DOC_EXT } = await loadDeploy('rehost-docs.mjs');
+  for (const f of ['a.pdf', 'a.docx', 'a.zip', 'a.txt', 'a.mp4', 'a.html']) {
+    assert.equal(L(`https://other.example.org/${f}`).kind, DOC_EXT.test(f) ? 'doc' : 'external', `a document link is what rehost-docs re-hosts: ${f}`);
+  }
   for (const h of ['#section', 'mailto:team@example.com', 'tel:+100', 'javascript:void(0)', '']) assert.deepEqual(L(h), { href: h, internal: false, kind: 'skip' }, `left alone: ${h || '(empty)'}`);
 }
 

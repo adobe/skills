@@ -11,8 +11,9 @@
  *   deploy/asset-ledger.json         {"<absolute source URL>": {path: "/docs/<file>", sha256, bytes}}
  *   rollout/chrome-map.json          {groups: {<id>: {nav, footer, lang, pages[]}}}; other keys ignored
  *   redirects.tsv                    parsed by deploy's localize-links.mjs (redirectPairs)
- * Path rules are deploy's: eds-path.mjs (deliveredUrl, daPath, pathKey) and localize-links.mjs (localizeHref,
- * redirectPairs), loaded through deps.mjs in either layout. That load is why loadSite is async.
+ * Path rules are deploy's: eds-path.mjs (deliveredUrl, daPath, pathKey), localize-links.mjs (localizeHref,
+ * redirectPairs) and rehost-docs.mjs (DOC_EXT, what a document link is), loaded through deps.mjs in either layout. That
+ * load is why loadSite is async.
  *
  * const site = await loadSite(projectRoot) →
  *   projectRoot                 absolute
@@ -34,8 +35,8 @@
  *   resolveDoc(absUrl)          the asset ledger's path for that URL, or null
  *   chromeFor(url)              {nav, footer, lang} of the chrome-map group holding the page (a source URL or a
  *                               delivered path, matched by pathKey of its delivered path); else /nav, /footer, null
- *   localizeHref(href, baseUrl) {href, internal, kind, unresolved?}; kind doc = a document link (.pdf …), page = any
- *                               other http(s) link to a source host, external, or skip:
+ *   localizeHref(href, baseUrl) {href, internal, kind, unresolved?}; kind doc = a document link (rehost-docs' DOC_EXT),
+ *                               page = any other http(s) link to a source host, external, or skip:
  *                                 asset-ledger hit → its path (+ #fragment), internal
  *                                 source-host page in the roster or redirected to one → the delivered URL, internal
  *                                 source-host link to anything else, or a document (.pdf …) on any host with no
@@ -53,8 +54,6 @@ import { join, resolve } from 'node:path';
 import { loadDeploy } from './deps.mjs';
 
 const DEFAULT_CHROME = { nav: '/nav', footer: '/footer', lang: null };
-// a non-page link: rehosted through the asset ledger, reported in linksUnresolved when it has no entry
-const DOC_EXT = /\.(pdf|docx?|xlsx?|pptx?|odt|ods|odp|rtf|txt|csv|zip|epub)$/i;
 const SKIP = /^(#|mailto:|tel:|javascript:|data:)/i;
 const byCodePoint = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -78,6 +77,7 @@ function readJson(file) {
 export async function loadSite(projectRoot) {
   const { deliveredUrl, daPath, pathKey } = await loadDeploy('eds-path.mjs');
   const links = await loadDeploy('localize-links.mjs');
+  const { DOC_EXT } = await loadDeploy('rehost-docs.mjs');
   const root = resolve(projectRoot);
   const S = (...p) => join(root, 'stardust', ...p);
 
