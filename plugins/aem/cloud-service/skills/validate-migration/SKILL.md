@@ -82,36 +82,36 @@ SDK configuration. Do not change credentials or SDK configuration without approv
   nearest `migration-runbook.json` (`project.id`), or use an explicit project
   flag. Explicit selection wins. If absent, ask once for the CAM project name;
   never guess or assume a context file is consumed.
-    For a pattern with a reference, run that reference's readiness checks first; a
-    Cloud SDK includes a Quickstart JAR, not a separate third instance. For
-    bundle-runtime patterns the SDK is mandatory;
-    never skip deployment or diagnosis
-    when discovery fails. Honor a user-provided SDK URL with `--sdk <url>` and
-    check it explicitly. Otherwise run
-    `node "$VALIDATOR/init.js" --search <workspace>`; it probes 4502/4602/4503
-    before searching for a Quickstart JAR.
-    A failed workspace search does not mean the SDK is missing. It may be stored
-    anywhere locally, outside all open workspace folders. Ask for the absolute
-    SDK directory before declaring it missing, then rerun
-    `node "$VALIDATOR/init.js" --search "<absolute-sdk-directory>"`, retaining
-    `--sdk <url>` if supplied. Select the directory containing the JAR: discovery
-    is depth-limited and skips build directories. Do not scan the entire machine.
-    Confirm the location before booting an external JAR. Ask for a narrower
-    `--search` directory when several JARs exist. Only give download/setup guidance
-    after the user confirms no local SDK is available, or the selected SDK fails
-    to start. Pin the selected `--sdk <url>` for deployment AND MCP
-   diagnosis. Only skip submission when the user explicitly asks for local-only
-   validation; state that end-to-end reporting remains incomplete.
-    **AEM Quickstart MCP (every runtime pattern).** `init.js` also checks that the
-    server package is installed on the pinned SDK and exposes `diagnose-osgi-bundle`;
-    it needs `AEM_TARGET_AUTH` set by the user. If it reports the package missing,
-    offer to install `com.adobe.aem:com.adobe.aem.mcp-server-contribs-content` from
-    Maven Central with Package Manager (`/crx/packmgr`), only after approval: pick the
-    release the [supported-versions table](https://github.com/adobe/cq-quickstart-mcp-server#supported-versions)
-    lists for this SDK version (ask if none is listed) and verify its `.sha1` first.
-    Then confirm your own session lists `diagnose-osgi-bundle`. If not, ask the user to
-    add `<sdk>/bin/mcp` to their assistant's MCP config (HTTP, `Authorization: Basic`
-    header from their SDK login) and reload; never write credentials into config files.
+Only skip submission when the user explicitly asks for local-only
+    validation; state that end-to-end reporting remains incomplete.
+
+    **Setup (always first, before any comparison).** Ask the user to export their
+    logins in the shell (`AEM_TARGET_AUTH` for the Cloud SDK, `AEM_SOURCE_AUTH` for
+    AEM 6.5, as `user:password`); never ask for them in chat. Then run
+    `node "$VALIDATOR/init.js" --search <workspace>` from the project root. It reads
+    each local instance's About page (`2026.x` = Cloud SDK, `6.5.x` = AEM 6.5),
+    checks the SDK, its AEM Quickstart MCP server, the editor MCP config and the
+    Quickstart, and saves the URLs to `.validate-migration/setup.json`; later
+    `check.js` runs reuse that SDK. Only items needed by the changed patterns block:
+    runtime patterns need SDK + MCP, `custom-templates` also needs AEM 6.5,
+    `legacy-ui`/`cdw` need none. Show the detected roles once and let the user
+    correct them with `--sdk <url>` / `--quickstart <url>`.
+    Fix each ✗ item, then rerun until it prints `setup ready`:
+    - SDK not found: ask for the absolute SDK directory and rerun with
+      `--search "<dir>"` (the JAR may sit outside the workspace; do not scan the
+      machine). Confirm before booting an external JAR; give download guidance
+      only after the user confirms no local SDK exists.
+    - MCP package missing on the SDK: offer to install
+      `com.adobe.aem:com.adobe.aem.mcp-server-contribs-content` from Maven Central
+      via Package Manager (`/crx/packmgr`), only after approval, picking the release
+      the [supported-versions table](https://github.com/adobe/cq-quickstart-mcp-server#supported-versions)
+      lists for this SDK (ask if none is listed) and verifying its `.sha1` first.
+    - MCP not in the editor: with approval, rerun with `--setup-mcp`; it adds
+      `<sdk>/bin/mcp` to the VS Code user `mcp.json` with a prompted password input
+      (no credential stored). Other assistants: ask the user to add it. Then
+      confirm your own session lists `diagnose-osgi-bundle`.
+    For a pattern with a reference, also run that reference's readiness checks.
+    Never skip deployment or diagnosis when setup fails.
 
 2. **Prepare.** Run `node "$VALIDATOR/check.js" --stage prepare` with the selected
   scope/project/SDK flags. It builds, discovers, deploys bundle-runtime patterns

@@ -17,8 +17,11 @@ drives the scripts via plugin-relative paths — there is no `npm link` and no
 global bin.
 
 ```bash
-# Per environment — check readiness (mvn/unzip); boots the SDK from the
-# workspace if it is not running
+# Once, from your project root — setup. Logins come from your shell only:
+#   export AEM_TARGET_AUTH=<sdk user:password> AEM_SOURCE_AUTH=<aem 6.5 user:password>
+# Detects which port is the Cloud SDK and which is AEM 6.5, checks the SDK, its MCP
+# server, your editor MCP config (--setup-mcp adds it) and saves
+# .validate-migration/setup.json (URLs only).
 node ../../validate-migration/init.js
 
 # Per branch, from your project root:
@@ -266,10 +269,13 @@ directory's dependencies before use. Package-only checks remain independent of i
 
 ## Files that ship with this plugin
 
-- `init.js` — local readiness check; boots a workspace SDK if none is running and checks
-  the AEM Quickstart MCP server on it.
-- `mcp.js` — probes `<sdk>/bin/mcp` (`initialize` + `tools/list`) for `diagnose-osgi-bundle`
-  and returns install/config guidance; never outputs credentials.
+- `init.js` — setup: detects the Cloud SDK and AEM 6.5 from their About pages, boots a
+  workspace SDK if none is running, checks the MCP server on the SDK and in the editor,
+  and saves the URLs to `.validate-migration/setup.json`.
+- `setup.js` — role detection, per-pattern required checks, and the saved setup file.
+- `mcp.js` — probes `<sdk>/bin/mcp` (`initialize` + `tools/list`) for `diagnose-osgi-bundle`,
+  detects the editor, and adds the server to VS Code `mcp.json` with a prompted
+  password input; never outputs or stores credentials.
 - `sdk.js` — shared SDK detect / search / boot logic used by `init.js` and `check.js`.
 - `check.js` — orchestrator CLI: prepare = build/discover/deploy; verify = consume
   diagnosis and run each pattern's check; finalize = persist the reporting

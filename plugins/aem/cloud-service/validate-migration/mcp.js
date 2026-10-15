@@ -75,4 +75,42 @@ function mcpGuidance(result, authVar = 'AEM_TARGET_AUTH') {
   }
 }
 
-module.exports = { checkMcpServer, mcpGuidance, MCP_PACKAGE, MCP_MAVEN_URL, MCP_VERSIONS_URL, MCP_DOC_URL, REQUIRED_TOOL };
+/** Which coding assistant launched this shell, or null. */
+function detectEditor(env) {
+  if (env.CLAUDECODE === '1') return 'claude';
+  if (env.TERM_PROGRAM !== 'vscode') return null;
+  const bundle = env.__CFBundleIdentifier || '';
+  if (bundle === 'com.microsoft.VSCodeInsiders') return 'vscode-insiders';
+  if (bundle === 'com.microsoft.VSCode') return 'vscode';
+  if (bundle.startsWith('com.todesktop.')) return 'cursor';
+  return null;
+}
+
+const MCP_SERVER_ID = 'aem-cs-sdk';
+const MCP_INPUT_ID = 'aem-sdk-auth';
+
+/**
+ * Adds the SDK MCP server to a VS Code mcp.json. The Authorization header is a
+ * prompted password input, so no credential is ever written to disk.
+ */
+function mergeEditorConfig(editor, existingText, sdkUrl) {
+  if (editor !== 'vscode' && editor !== 'vscode-insiders') {
+    return { error: `${editor}: no prompted secret inputs; add the server manually (see ${MCP_DOC_URL})` };
+  }
+  let config;
+  try {
+    config = existingText.trim() ? JSON.parse(existingText) : {};
+  } catch {
+    return { error: 'mcp.json is not plain JSON (comments or trailing commas); add the server manually' };
+  }
+  const server = { type: 'http', url: `${sdkUrl.replace(/\/$/, '')}/bin/mcp`, headers: { Authorization: `\${input:${MCP_INPUT_ID}}` } };
+  const inputs = config.inputs || [];
+  const hasInput = inputs.some((i) => i.id === MCP_INPUT_ID);
+  const servers = config.servers || {};
+  if (hasInput && JSON.stringify(servers[MCP_SERVER_ID]) === JSON.stringify(server)) return { changed: false, text: existingText };
+  const input = { id: MCP_INPUT_ID, type: 'promptString', description: 'AEM SDK Authorization header, e.g. Basic <base64 of user:password>', password: true };
+  const merged = { ...config, servers: { ...servers, [MCP_SERVER_ID]: server }, inputs: hasInput ? inputs : [...inputs, input] };
+  return { changed: true, text: JSON.stringify(merged, null, 2) + '\n' };
+}
+
+module.exports = { checkMcpServer, mcpGuidance, detectEditor, mergeEditorConfig, MCP_PACKAGE, MCP_MAVEN_URL, MCP_VERSIONS_URL, MCP_DOC_URL, REQUIRED_TOOL };

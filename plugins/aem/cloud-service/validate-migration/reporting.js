@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const { FAILURE_CLASSES } = require('./failure-classes.js');
 const { ensureSdk, findRunningSdk } = require('./sdk.js');
+const { readSetup } = require('./setup.js');
 
 function writeLocalReport(record, cwd) {
   if (typeof record.run_id !== 'string' || !/^rvc-[0-9]+$/.test(record.run_id)) {
@@ -101,6 +102,11 @@ function finalizeReporting(record, receipt) {
 async function resolveSdkUrl(args) {
   const explicit = args.sdk || process.env.AEM_SDK_URL;
   if (explicit) return explicit.replace(/\/$/, '');
+  const saved = readSetup(args.project || process.cwd()).sdk_url;
+  if (saved) {
+    console.log(`(setup) SDK      = ${saved}`);
+    return saved;
+  }
   const runningUrl = await findRunningSdk();
   if (runningUrl) {
     console.log(`(auto) SDK       = ${runningUrl}`);
