@@ -7,6 +7,8 @@
 //          its module's Figma frame; a page that drifted from the mapping stops here.
 //   geometry  B1: the sizes, offsets, gaps and paddings the checks file pairs with Figma nodes or tokens.
 //   ramp   B3: the :root token block and the type of every Type entry, through donor-probe.mjs.
+//   pixel  B2: advisory pixel share of each section against its slice of the frame image, where the
+//          frame's copy is the page's copy (replica's pixel-compare.mjs).
 // Writes go only under <dir>/.work/reskin/gates/. Under a sticky --confidential capture, every
 // subcommand first checks that .work/ and reskin/figma-checks/ are git-ignored.
 // --help answers before any helper import, so it works even from a partial copy of the scripts.
@@ -22,6 +24,7 @@ export const HELP = `Usage:
   node figma-gate.mjs join --page <slug> --url <url|file> [--dir stardust]
   node figma-gate.mjs geometry --page <slug> --url <url|file> [--dir stardust]
   node figma-gate.mjs ramp --page <slug> --url <url|file> [--dir stardust]
+  node figma-gate.mjs pixel --page <slug> --url <url|file> [--dir stardust]
 
 Figma checks on a reskin page, against the capture figma-donor.mjs made (offline: no token, no network).
 
@@ -65,6 +68,21 @@ ramp     B3. Runs the join first (drift stops here, exit 1), validates the check
          (k unasserted)" with one indented "advisory" line per property.
          Token values written as literals outside :root (a color that equals a :root value) are listed in
          one "advisory" line and never change the exit code. A probe that cannot run is exit 124.
+pixel    B2, advisory. Runs the join first (drift stops here, exit 1), validates the checks file, then for
+         every section crops its slice out of the cached frame image (the PNG figma-donor.mjs captured,
+         taken at 1×: any other size is n/a) and compares it with an element screenshot of the section
+         at its width through replica's pixel-compare.mjs (a = Figma slice, b = page; the number never
+         fails). Only where the frame's copy is the section's copy (visible text, whitespace and case
+         ignored): otherwise the section is "n/a: frame content differs". Also n/a: no frame image
+         (re-run figma-donor.mjs capture), a PNG of another size, pixel mode off (needs why). Mode
+         fixture screenshots the same selector on fixtureUrl instead of the page (a hand-made stand-in).
+         Prints "pixel advisory", the uncalibrated reference classes (light text 3%, inverted 3.5%,
+         raster ground 4%: orientation, not a bar) and one line per section: "<slot> 0.42% (text 1.10%,
+         Δh 0)" (differing pixels overall and over the frame's text boxes, height delta Figma − page)
+         or "<slot> n/a: <why>"; an indented line names each font the section uses that the page's
+         font set does not serve. Writes <slot>.figma.png, <slot>.page.png, <slot>.diff.png,
+         <slot>.text-boxes.json and pixel.json under <dir>/.work/reskin/gates/<slug>/figma/. Exit 0,
+         or 124 when a comparison hit its deadline (no verdict: re-run).
 --dir <d>  the stardust directory (default stardust).
 
 Checks file <dir>/reskin/figma-checks/<slug>.json (written by the agent from the boxes outlines):
@@ -92,6 +110,7 @@ const SPEC = {
   join: { values: ['--page', '--url', '--dir'], bools: [], positional: [] },
   geometry: { values: ['--page', '--url', '--dir'], bools: [], positional: [] },
   ramp: { values: ['--page', '--url', '--dir'], bools: [], positional: [] },
+  pixel: { values: ['--page', '--url', '--dir'], bools: [], positional: [] },
 };
 
 export function parseArgs(argv, UsageError) {
@@ -218,13 +237,34 @@ async function rampStep({ dir, opts, log, UsageError }) {
   return pass ? 0 : 1;
 }
 
+async function pixelStep({ dir, opts, log, UsageError }) {
+  if (!opts.page) throw new UsageError('pixel needs --page <slug>');
+  if (!opts.url) throw new UsageError('pixel needs --url <url|file>: the page to screenshot');
+  const [{ prepare }, { REFERENCE_CLASSES, runPixel }] = await Promise.all([helper('prepare'), helper('pixel')]);
+  const ready = await prepare({ dir, slug: opts.page, url: opts.url });
+  if (ready.drift) {
+    logDrift(ready.join, log);
+    return 1;
+  }
+  const { results } = await runPixel({ target: ready.target, join: ready.join, checks: ready.checks, boxes: ready.boxes, dir, out: ready.out });
+  const ref = REFERENCE_CLASSES;
+  log(`pixel advisory: ${results.length} section(s); uncalibrated reference: light text ${ref.lightText}%, inverted ${ref.inverted}%, raster ground ${ref.rasterGround}%`);
+  for (const r of results) {
+    if (r.verdict === 'advisory') log(`  ${r.slot} ${r.pct.toFixed(2)}% (text ${r.textPct === null ? 'n/a' : `${r.textPct.toFixed(2)}%`}, Δh ${r.heightDelta})`);
+    else log(`  ${r.slot} ${r.verdict === 'n/a' ? `n/a: ${r.reason}` : `no verdict: ${r.reason}`}`);
+    const unserved = r.fonts.filter((f) => !f.served).map((f) => f.family);
+    if (unserved.length) log(`  ${r.slot} advisory: font not served by the page: ${unserved.join(', ')}`);
+  }
+  return results.some((r) => r.verdict === 'no verdict') ? 124 : 0;
+}
+
 // steps lets a test replace a step function.
 export async function main(argv, { env = process.env, log = console.log, warn = (m) => process.stderr.write(`${m}\n`), steps = {} } = {}) {
   if (argv.includes('--help') || argv.includes('-h')) { log(HELP); return 0; }
   const { UsageError } = await helper('errors', 'figma');
   const { cmd, opts } = parseArgs(argv, UsageError);
   const dir = opts.dir || 'stardust';
-  const run = { boxes: boxesStep, join: joinStep, geometry: geometryStep, ramp: rampStep, ...steps }[cmd];
+  const run = { boxes: boxesStep, join: joinStep, geometry: geometryStep, ramp: rampStep, pixel: pixelStep, ...steps }[cmd];
   const { confidentialGuard } = await helper('io');
   confidentialGuard(dir);
   return run({ dir, opts, env, log, warn, UsageError });
