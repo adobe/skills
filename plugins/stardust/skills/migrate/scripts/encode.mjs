@@ -247,7 +247,7 @@ export function placeTemplate({ root, site, template, map, deps, slugs = null, f
     }
     const r = role === 'archetype' ? archetypeRecord() : encodeOne({ root, site, map, deps, slug, archetype, archetypePrints: archetypeRecord().prints });
     records.push(r);
-    const sidecar = (encode) => prov.sidecarWith(side.value, { slug, role, archetype, type: types.get(slug) ?? null, url: info.url, encode, audit: { status: r.status, ...r.report } });
+    const sidecar = (encode) => prov.sidecarWith(side.value, { slug, role, archetype, type: types.get(slug) ?? null, url: info.url, encode, audit: { status: r.status, ...r.report }, blocks: r.blocks });
     if (r.status !== 'clean') {
       // a stop leaves the document (and `encode`) as they are; the sidecar says the page is not current
       r.kept = docBytes !== null;
