@@ -1,0 +1,67 @@
+{
+  "archetype": "trips-river-walk",
+  "root": "main#main",
+  "chrome": ["header.site-header", "footer.site-footer", ".mod-breadcrumb"],
+  "wrappers": [".mod-container", ".ui-container"],
+  "moduleSelectors": [{ "childClass": "^ui-[a-z]+(-[a-z]+)*$" }],
+  "ignoreModifiers": ["^grid-col-"],
+  "metadata": [
+    ["Title", "$title"],
+    ["Description", "$description || text(.ui-hero__lede)"],
+    ["nav", "$nav"],
+    ["footer", "$footer"]
+  ],
+  "markers": [
+    { "sel": ".mod-container--highlight", "kind": "highlight-container", "emitter": "section-style:highlight" },
+    {
+      "sel": ".mod-hero", "kind": "hero", "emitter": "block:hero",
+      "cells": [
+        { "sel": ".ui-hero__media", "as": "image" },
+        {
+          "sel": ".ui-hero__body",
+          "parts": [
+            { "sel": ".ui-hero__kicker", "as": "text", "wrap": "p", "optional": true },
+            { "sel": ".ui-hero__title", "as": "rich" },
+            { "sel": ".ui-hero__lede", "as": "rich", "optional": true },
+            { "sel": "a.ui-hero__cta", "as": "link", "wrap": ["p", "strong"], "optional": true }
+          ]
+        }
+      ]
+    },
+    {
+      "sel": ".mod-facts", "kind": "facts", "emitter": "block:facts",
+      "rows": ".ui-facts__row",
+      "cells": [{ "sel": ".ui-facts__label", "as": "text" }, { "sel": ".ui-facts__value", "as": "inline" }]
+    },
+    { "sel": ".mod-tags", "kind": "tags", "emitter": "block:tags", "cells": { "each": ".ui-tags__item", "as": "text" } },
+    { "sel": ".mod-separator", "kind": "separator", "emitter": "section-break:rule" },
+    {
+      "sel": ".mod-tabs", "kind": "tabs", "emitter": "block:tabs",
+      "rows": ".ui-tabs__panel",
+      "cells": [{ "as": "idref", "wrap": "p" }, { "as": "rich" }]
+    },
+    {
+      "sel": ".mod-links", "kind": "links", "emitter": "block:links",
+      "cells": [{ "sel": ".ui-links__item", "as": "link", "all": true, "itemWrap": "li", "join": "", "wrap": "ul", "titleAttr": "aria-label" }]
+    },
+    {
+      "sel": ".mod-teaser", "kind": "teaser", "emitter": "block:teaser",
+      "variants": [{ "when": ".mod-teaser--featured", "add": "featured" }],
+      "cells": [
+        { "sel": ".ui-teaser__image", "as": "image" },
+        {
+          "sel": ".ui-teaser__content",
+          "parts": [
+            { "sel": ".ui-teaser__title", "as": "rich" },
+            { "sel": "a.ui-teaser__link", "as": "link", "wrap": ["p", "strong"] }
+          ]
+        }
+      ]
+    },
+    { "sel": ".mod-title", "kind": "title", "emitter": "default-content" },
+    { "sel": ".mod-text", "kind": "text", "emitter": "default-content" },
+    { "sel": ".mod-image", "kind": "image", "emitter": "default-content" },
+    { "sel": ".mod-newsletter", "kind": "newsletter", "emitter": "drop:runtime form, delivered by a dynamics row" },
+    { "sel": ".mod-chat", "kind": "chat", "emitter": "dynamics:DYN-1" }
+  ]
+}

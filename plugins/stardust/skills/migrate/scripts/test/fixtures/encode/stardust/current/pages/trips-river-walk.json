@@ -1,0 +1,8 @@
+{
+  "slug": "trips-river-walk",
+  "url": "https://www.example.com/trips/river-walk.html",
+  "title": "River Walk",
+  "description": "",
+  "og": { "title": "River Walk | Example Trails", "description": null, "image": null, "type": "website" },
+  "renderedHtml": "pages/trips-river-walk.html"
+}

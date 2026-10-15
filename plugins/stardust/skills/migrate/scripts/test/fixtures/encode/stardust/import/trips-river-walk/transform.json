@@ -1,0 +1,6 @@
+{
+  "imageParagraph": true,
+  "imgAttrs": ["src", "alt", "title"],
+  "drop": [".ui-sr-only"],
+  "emptyP": "drop"
+}

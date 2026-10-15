@@ -1,0 +1,26 @@
+{
+  "media/trips/forest-loop-card-5b0e7c21.jpg": {
+    "contentUrl": "https://content.da.live/example-org/example-site/media/trips/forest-loop-card-5b0e7c21.jpg",
+    "source": null,
+    "sources": ["https://www.example.com/media/forest-loop-card.jpg"],
+    "status": "uploaded"
+  },
+  "media/trips/forest-loop-hero-0c4d9e12.jpg": {
+    "contentUrl": "https://content.da.live/example-org/example-site/media/trips/forest-loop-hero-0c4d9e12.jpg",
+    "source": null,
+    "sources": ["https://www.example.com/media/forest-loop-hero.jpg"],
+    "status": "uploaded"
+  },
+  "media/trips/river-walk-card-6f2a8b30.jpg": {
+    "contentUrl": "https://content.da.live/example-org/example-site/media/trips/river-walk-card-6f2a8b30.jpg",
+    "source": null,
+    "sources": ["https://www.example.com/media/river-walk-card.jpg"],
+    "status": "uploaded"
+  },
+  "media/trips/river-walk-hero-3e9a1f04.jpg": {
+    "contentUrl": "https://content.da.live/example-org/example-site/media/trips/river-walk-hero-3e9a1f04.jpg",
+    "source": null,
+    "sources": ["https://www.example.com/media/river-walk-hero.jpg", "https://www.example.com/media/river-walk-hero.webp"],
+    "status": "uploaded"
+  }
+}
