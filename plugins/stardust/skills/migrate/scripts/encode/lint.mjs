@@ -5,6 +5,10 @@
  *   runLint(ctx)  → Promise<exit code>  0 no finding · 1 any finding
  *   runSweep(ctx) → Promise<exit code>  0 nothing listed · 2 something listed · 1 an invalid map or no usable archetype
  *
+ * Every capture is seen as the encoder sees it, through the engine's own exports: prepareCapture, dropPredicate (a
+ * marker's or the transform's `drop` is never a module, a dropped row never a row), moduleLevel / walkModules,
+ * markerMatches, rowNodes, classTokens, GENERATED_TOKEN.
+ *
  * --lint, at authoring time, against the archetype (reference/encode-map.schema.json documents every key):
  *   map        the engine's own validators (ctx.mapErrors: validateVocabulary / validateTransform — never a second
  *              validator) and `archetype` naming the template's archetype. An invalid map skips every other check.
@@ -15,7 +19,8 @@
  *       rows / cells, transform drop) uses a forbidden form: a generated id, class or attribute value (the engine's
  *       generated-token rule: 8+ hex digits or 5+ digits), a position pseudo-class, a class on no capture of the
  *       template (a prototype class; named when it is an eds-schema unitSelector), or — in a marker, variant or module
- *       selector — a chain through a layout container (a class of wrappers[] or of a wrapper / section marker).
+ *       selector — a chain through a layout container (a class of wrappers[] or of a wrapper / section marker; inside
+ *       :is() / :where() too, while a :has() / :not() predicate may name one).
  *   C2  every marker has a first-match hit on the archetype, or names evidence[] siblings and hits each of them.
  *   C3  every module the walk reaches is matched by exactly one marker selector (two: the array order decides
  *       silently; none: the engine's census lists it); a `unique` marker never matches twice on any capture.
@@ -29,10 +34,12 @@
  *       — the one sharing most of the block's text, never by section index.
  *   A missing optional input (units.json, the eds-schema, the gated document) skips its check with a note.
  *
- * --sweep, a dry run over every sibling capture (nothing is encoded or written), lists new kinds (a module the walk
- * reaches with no marker, carrying classes no unmarked archetype module has — visible or not), unknown modifiers (a
- * class on a sibling's marker match that the archetype's matches of that marker, its selectors and ignoreModifiers do
- * not account for) and zero-hit markers (no first-match hit on any capture of the template).
+ * --sweep, a dry run over every sibling capture (nothing is encoded or written), lists new kinds (an unmarked node the
+ * engine's census reads — a sectionTags node, or a module-level node that is not class-less plain content — whose
+ * shape `tag.classes` no unmarked archetype node has, visible or not: a class-less <div>, <form> or <iframe> is
+ * `div.`, `form.`, `iframe.`), unknown modifiers (a class on a sibling's marker match that the archetype's matches of
+ * that marker, its selectors and ignoreModifiers do not account for) and zero-hit markers (no first-match hit on any
+ * capture of the template).
  *
  * Output: `✗ <check> <where>: <message>` per finding, `· <check>: <message>` per note, then the verdict, last:
  * `lint <archetype>: N findings · N notes` / `sweep <archetype>: N siblings · new kinds N · unknown modifiers N ·
@@ -50,14 +57,10 @@ const CHECKS = ['map', 'inputs', 'archetype', 'C1', 'C2', 'C3', 'C4', 'C5', 'C6'
 const POSITION = new Set(['first-child', 'last-child', 'only-child', 'first-of-type', 'last-of-type', 'only-of-type', 'nth-child', 'nth-last-child', 'nth-of-type', 'nth-last-of-type']);
 const NESTED = new Set(['not', 'is', 'where', 'has']);
 const CHAINED = new Set(['marker', 'when', 'module']);
-// the engine's generated-token rule (engine.mjs GENERATED_TOKEN): content hashes and long numbers
-const GENERATED = /[0-9a-f]{8,}|\d{5,}/i;
-// where walkSiblings stops (engine.mjs LANDMARK_STOP)
-const LANDMARK_STOP = 'footer, nav, header, [role="contentinfo"]';
-const MEDIA = 'img, picture, video, audio, iframe, object, embed';
+// the engine's census rule (engine.mjs PLAIN_CONTENT, not exported): class-less plain content is never a component
+export const PLAIN_CONTENT = new Set(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'dl', 'blockquote', 'pre', 'table', 'figure', 'img', 'picture', 'hr', 'br', 'a', 'span', 'strong', 'em', 'b', 'i', 'small', 'code']);
 const ROLE = { heading: 'heading', cta: 'cta', body: 'body', eyebrow: 'body' };
 const ROLE_NAME = { heading: 'a heading', cta: 'a cta', body: 'body text' };
-const recurses = (e) => e === 'wrapper' || e === 'section' || e.startsWith('section-style:');
 const isBlock = (m) => String(m.emitter || '').startsWith('block:');
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const byCodePoint = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
@@ -73,76 +76,45 @@ function readJson(file) {
 const INPUT_PATHS = (a) => ({ capture: `stardust/current/pages/${a}.html`, edsSchema: `stardust/eds-schema/${a}.json`, units: 'stardust/replica/units.json', variance: null });
 
 // ===================================================================================== captures and the walk
-/** What the checks share: the map's markers, the class filters, and each page's prepared capture (memoised). */
+/**
+ * What the checks share: the map's markers, and each page's capture seen as the encoder sees it — prepared, its drops
+ * collected (engine dropPredicate), walked (engine moduleLevel / walkModules / markerMatches); memoised per page.
+ */
 function setup(ctx) {
   const { dom, engine, vocab } = ctx;
   const markers = Array.isArray(vocab.markers) ? vocab.markers : [];
-  const ignore = (Array.isArray(vocab.ignoreModifiers) ? vocab.ignoreModifiers : []).map((s) => new RegExp(s));
   const classList = (n) => String(dom.attr(n, 'class') || '').split(/\s+/).filter(Boolean);
-  const tokens = (n) => classList(n).filter((c) => !GENERATED.test(c) && !ignore.some((re) => re.test(c)));
+  const tokens = engine.classTokens(vocab);
   const describe = (n) => `${n.tag}${classList(n).slice(0, 3).map((c) => `.${c}`).join('')}`;
-  const hiddenLive = (n, stamped) => stamped && dom.attr(n, 'data-hidden-live') !== undefined && n.tag !== 'details';
-  const visible = (n) => /\S/.test(dom.decodeEntities(dom.textOf(n)).replace(/\u00a0/g, ' ')) || dom.qs(n, MEDIA) !== null;
   const caps = new Map();
   const capture = (slug) => {
     if (!caps.has(slug)) {
       const html = ctx.readCapture(slug);
-      let prep = null;
-      if (html !== null) try { prep = engine.prepareCapture(html, vocab); } catch (e) { prep = { error: `the capture cannot be prepared: ${e.message}` }; }
-      caps.set(slug, html === null ? null : { slug, html, prep });
+      let cap = null;
+      if (html !== null) {
+        cap = { slug, html, prep: null, skip: null };
+        try {
+          cap.prep = engine.prepareCapture(html, vocab);
+          if (!cap.prep.error) cap.skip = engine.dropPredicate(cap.prep, vocab, ctx.tf || {});
+        } catch (e) { cap.prep = { error: `the capture cannot be prepared: ${e.message}` }; }
+      }
+      caps.set(slug, cap);
     }
     return caps.get(slug);
   };
-  // the walked tops: the root, plus its following siblings up to the first landmark (walkSiblings)
-  const tops = (prep) => {
-    const out = [prep.rootEl];
-    if (vocab.walkSiblings && prep.rootEl.parent) {
-      const sibs = dom.kids(prep.rootEl.parent);
-      for (const s of sibs.slice(sibs.indexOf(prep.rootEl) + 1)) { if (dom.matches(s, LANDMARK_STOP)) break; out.push(s); }
-    }
+  // every first-marker match at any depth (the fingerprint's traversal), and the nodes the walk classifies
+  const matches = (cap) => (cap.matches ||= engine.markerMatches(cap.prep, vocab));
+  const hits = (cap) => { const h = new Map(markers.map((m) => [m, 0])); for (const { marker } of matches(cap)) h.set(marker, h.get(marker) + 1); return h; };
+  const walkLevel = (cap) => (cap.walk ||= engine.moduleLevel(cap.prep, vocab, { skip: cap.skip }));
+  // the unmarked nodes the engine's census reads: every sectionTags node, and every module-level node that is not
+  // class-less plain content — visible or not (the census itself counts the visible ones)
+  const unmarked = (cap) => {
+    const out = [];
+    engine.walkModules(cap.prep, vocab, { skip: cap.skip, section: (n, descend) => { out.push(n); descend(); }, module: (n) => { if (!(PLAIN_CONTENT.has(n.tag) && !tokens(n).length)) out.push(n); } });
     return out;
   };
-  // every first-marker match at any depth (the fingerprint's traversal): [{node, marker}] in document order
-  const matches = (cap) => {
-    if (!cap.matches) {
-      const { rootEl, stamped } = cap.prep; const out = [];
-      const visit = (n) => {
-        if (!dom.isEl(n) || hiddenLive(n, stamped)) return;
-        const m = engine.firstMarker(n, markers, rootEl);
-        if (m) out.push({ node: n, marker: m });
-        for (const c of n.children) visit(c);
-      };
-      for (const t of tops(cap.prep)) visit(t);
-      cap.matches = out;
-    }
-    return cap.matches;
-  };
-  const hits = (cap) => { const h = new Map(markers.map((m) => [m, 0])); for (const { marker } of matches(cap)) h.set(marker, h.get(marker) + 1); return h; };
-  // the nodes the walk classifies (rules 3 and 4): [{node, marker|null}]; it recurses through wrapper and section
-  // markers, sectionTags and wrappers[] (as encode/engine.mjs's walk does)
-  const walkLevel = (cap) => {
-    if (!cap.walk) {
-      const { rootEl, stamped } = cap.prep; const out = [];
-      const wrappers = Array.isArray(vocab.wrappers) ? vocab.wrappers : [];
-      const sectionTags = vocab.sectionTags || ['section'];
-      const visit = (n) => {
-        if (!dom.isEl(n) || hiddenLive(n, stamped)) return;
-        const m = engine.firstMarker(n, markers, rootEl);
-        if (m) { out.push({ node: n, marker: m }); if (recurses(String(m.emitter || ''))) dom.kids(n).forEach(visit); return; }
-        if (sectionTags.includes(n.tag) || wrappers.some((w) => dom.matches(n, w, rootEl))) { dom.kids(n).forEach(visit); return; }
-        out.push({ node: n, marker: null });
-      };
-      for (const t of tops(cap.prep)) for (const c of (t === cap.prep.rootEl ? dom.kids(t) : [t])) visit(c);
-      cap.walk = out;
-    }
-    return cap.walk;
-  };
-  // a block module's rows as the engine shapes them (no rows: the module is its one row)
-  const rowNodes = (mod, m) => {
-    const groups = Array.isArray(m.rows) ? m.rows : typeof m.rows === 'string' ? [{ sel: m.rows }] : [{}];
-    return groups.flatMap((g) => { const r = g && g.sel ? dom.qsa(mod, g.sel) : [mod]; return g && g.max ? r.slice(0, g.max) : r; });
-  };
-  return { markers, classList, tokens, describe, visible, capture, matches, hits, walkLevel, rowNodes };
+  const rowNodes = (cap, mod, m) => engine.rowNodes(mod, m, cap.skip.within);
+  return { markers, classList, tokens, describe, capture, matches, hits, walkLevel, unmarked, rowNodes };
 }
 
 // ===================================================================================== selectors of the map
@@ -183,13 +155,21 @@ function mapSelectors(vocab, tf) {
   return out;
 }
 
-/** Every compound of a selector, those inside :not() :is() :where() :has() included: [{c, top, subject}]. */
-function compounds(dom, sel, top = true) {
+/**
+ * Every compound of a selector, those inside :not() :is() :where() :has() included: [{c, top, subject}]. :is() and
+ * :where() are part of the selector itself (their compounds keep the caller's top/subject position); :has() and :not()
+ * are predicates (never `top`), so a structural test may name a layout class.
+ */
+function compounds(dom, sel, top = true, subjectCtx = true) {
   const out = [];
   for (const parts of dom.parseSelector(sel)) {
     parts.forEach((p, i) => {
-      out.push({ c: p.compound, top, subject: i === parts.length - 1 });
-      for (const ps of p.compound.pseudos) if (ps.arg && NESTED.has(ps.name)) out.push(...compounds(dom, ps.arg, false));
+      const subject = subjectCtx && i === parts.length - 1;
+      out.push({ c: p.compound, top, subject });
+      for (const ps of p.compound.pseudos) {
+        if (!ps.arg || !NESTED.has(ps.name)) continue;
+        out.push(...(ps.name === 'is' || ps.name === 'where' ? compounds(dom, ps.arg, top, subject) : compounds(dom, ps.arg, false)));
+      }
     });
   }
   return out;
@@ -231,13 +211,14 @@ function checkInputs(ctx, current, add, note) {
 
 /** C1: forbidden selector forms. `captures` = every capture of the template read; `units` = eds-schema class → unitSelector. */
 function checkC1(ctx, S, captures, units, add) {
-  const { dom, vocab, tf } = ctx;
+  const { dom, engine, vocab, tf } = ctx;
+  const GENERATED = engine.GENERATED_TOKEN;
   const present = new Set();
   for (const cap of captures) for (const n of dom.walk(dom.parseHTML(cap.html))) for (const c of S.classList(n)) present.add(c);
   const layout = new Set();
   const subjects = (sel) => { for (const parts of dom.parseSelector(sel)) { const last = parts[parts.length - 1]; if (last) for (const c of last.compound.classes) layout.add(c); } };
   for (const w of Array.isArray(vocab.wrappers) ? vocab.wrappers : []) subjects(w);
-  for (const m of S.markers) if (recurses(String(m.emitter || ''))) subjects(m.sel);
+  for (const m of S.markers) if (engine.recursesThrough(m)) subjects(m.sel);
   for (const { where, sel, role } of mapSelectors(vocab, tf)) {
     const msgs = [];
     const push = (m) => { if (!msgs.includes(m)) msgs.push(m); };
@@ -319,10 +300,10 @@ function checkCensus(ctx, rec, add) {
 function checkC4(ctx, S, arch, add, note) {
   const { dom, engine, template } = ctx; const a = template.archetype; const { rootEl } = arch.prep;
   const modules = new Map();
-  for (const { node, marker } of S.matches(arch)) if (isBlock(marker)) { if (!modules.has(marker)) modules.set(marker, []); modules.get(marker).push(node); }
+  for (const { node, marker } of S.matches(arch)) if (isBlock(marker) && !arch.skip.within(node)) { if (!modules.has(marker)) modules.set(marker, []); modules.get(marker).push(node); }
   for (const [m, mods] of modules) {
     if (m.rows === undefined) continue;
-    const empty = mods.filter((mod) => !S.rowNodes(mod, m).length);
+    const empty = mods.filter((mod) => !S.rowNodes(arch, mod, m).length);
     if (empty.length) add('C4', `markers[${S.markers.indexOf(m)}].rows`, `"${m.sel}": rows match no unit in ${empty.length} of its ${mods.length} module(s) (${S.describe(empty[0])})`);
   }
   const file = 'stardust/replica/units.json';
@@ -356,7 +337,7 @@ function checkC4(ctx, S, arch, add, note) {
     }
     if (loose) add('C4', `units.json "${name}"`, `${loose} of the family's ${origin.length} units (origin "${f.origin}") sit in no block module — the map renders them as default content`);
     for (const [m, e] of byMarker) {
-      const rows = new Set([...e.mods].flatMap((mod) => S.rowNodes(mod, m)));
+      const rows = new Set([...e.mods].flatMap((mod) => S.rowNodes(arch, mod, m)));
       const shared = [...rows].filter((r) => e.units.has(r)).length;
       if (shared === rows.size && shared === e.units.size) continue;
       add('C4', `markers[${S.markers.indexOf(m)}].rows`, `${m.rows === undefined ? `"${m.sel}" has no rows (each module is one row); ` : ''}rows select ${rows.size} node(s) where units.json family "${name}" origin "${f.origin}" selects ${e.units.size} (${shared} shared) — rows come from the capture; adopt the origin only when it selects the same nodes`);
@@ -536,9 +517,10 @@ export async function runSweep(ctx) {
   const S = setup(ctx);
   const arch = S.capture(a);
   if (!arch || arch.prep.error) { ctx.err(`encode --sweep: archetype ${a}: ${arch ? arch.prep.error : `no capture ${INPUT_PATHS(a).capture}`}`); return 1; }
-  const kindOf = (n) => { const t = S.tokens(n); return t.length ? `${n.tag}.${[...t].sort(byCodePoint).join('.')}` : null; };
+  // a kind is the census's shape: tag + sorted class tokens (a class-less <div>, <iframe>, <form> … is `div.`, `iframe.` …)
+  const kindOf = (n) => `${n.tag}.${[...S.tokens(n)].sort(byCodePoint).join('.')}`;
   const selClasses = (m) => [m.sel, ...(Array.isArray(m.variants) ? m.variants.map((v) => v && v.when) : [])].filter((s) => typeof s === 'string').flatMap((s) => compounds(ctx.dom, s).flatMap(({ c }) => c.classes));
-  const archUnmarked = new Set(S.walkLevel(arch).filter((x) => !x.marker).map((x) => kindOf(x.node)).filter(Boolean));
+  const archUnmarked = new Set(S.unmarked(arch).map(kindOf));
   const known = new Map(S.markers.map((m) => [m, new Set(selClasses(m))]));
   for (const { node, marker } of S.matches(arch)) for (const t of S.tokens(node)) known.get(marker).add(t);
   const hits = S.hits(arch);
@@ -549,11 +531,11 @@ export async function runSweep(ctx) {
     if (cap.prep.error) { notes.push(`${slug}: ${cap.prep.error} — the encoder stops it (error); skipped`); continue; }
     swept += 1;
     const kinds = new Map();
-    for (const { node, marker } of S.walkLevel(cap)) {
-      const k = marker ? null : kindOf(node);
-      if (!k || archUnmarked.has(k)) continue;
+    for (const node of S.unmarked(cap)) {
+      const k = kindOf(node);
+      if (archUnmarked.has(k)) continue;
       const e = kinds.get(k) || { count: 0, visible: false };
-      e.count += 1; e.visible = e.visible || S.visible(node); kinds.set(k, e);
+      e.count += 1; e.visible = e.visible || ctx.engine.isVisible(node); kinds.set(k, e);
     }
     for (const k of [...kinds.keys()].sort(byCodePoint)) newKinds.push({ slug, kind: k, ...kinds.get(k) });
     const mods = new Map();
