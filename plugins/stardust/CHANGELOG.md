@@ -27,6 +27,23 @@ step 2 installs `pixelmatch` and `pngjs` with `playwright` (`npm i -D … --lega
 - **`donor-probe` options.** Spec entries may name a custom property (`--name`), compared whitespace-collapsed, and
   `compare: "firstFamily"`; `--viewport <w>`, `--no-sanity` and `--json <path>` let `figma-gate` run it per width and read
   the results. A value flag no longer swallows a following `--flag`.
+- **Field run, a component kit.** The home page from 0.33.0's run, moved to the Phase 4 conventions, with eleven type
+  roles for the module text styles and the kit's mobile values (curations from its type and width tables). The join
+  passed once a Donor module cell may name the module after its id (`M3 (Card Row)`). First run: geometry FAIL
+  22/28, ramp FAIL 70/247 with every `:root` token passing; B3 named the card-title size (48px against the kit's 24px)
+  behind 0.33.0's 33px overflow at 360px. After one fix iteration (the renderer through the new roles, the kit's gaps
+  and paddings): geometry 2/28, ramp 8/257 (colours only: module variants and two blues outside the palette), no
+  overflow at 360px, content gates still byte-equal. The first `boxes` on the 219 MB capture took 1.2 s and 1.3 GB
+  peak; every later step read the 25 MB box cache. The kit's module frames are documentation frames (title block,
+  notation panels, three widths): checks name the desktop instance and set `width`, or the page opens at the frame's
+  width. Pixel was n/a throughout (the kit's copy is not the page's), as designed.
+- **Field run, a page-design file.** The frame's own copy, hand-mapped and rendered with the donor tokens: join PASS,
+  geometry 21/22, ramp 106/107. Every section was pixel n/a until a frame PNG within 1px of its fractional box fit.
+  With no font served, text sections read 0.2–6.5% and raster grounds with a flat stand-in 44–96%; serving the body
+  font brought two text sections to 4.8% and 3.3%. One auto-layout grid had grown past its stored box, so its slice was
+  1486px short. B2 stays advisory: served fonts and raster assets, not the renderer, decided its numbers. No ±1px
+  false FAIL from `measure-live`'s whole-pixel rounding across 50 geometry entries, fractional Figma widths included.
+  The served-font line now works: `document.fonts.check()` answers true for any family no `@font-face` declares.
 
 ## 0.33.0 — reskin takes a Figma donor: headless capture and deterministic curation
 
