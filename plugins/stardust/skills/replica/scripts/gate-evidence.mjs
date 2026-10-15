@@ -285,11 +285,13 @@ export function nameOwner(name, slugs) { return slugs.filter((s) => name.startsW
 
 // gate.sh: its first argument IS the slug. Other instruments: an argument names the page. The job-name fallback is
 // the last resort and only when no argument names ANY known page (ctx.pages) — a job called `tours-north-lint` whose
-// --file is about/history.html is about-history's, not tours-north's.
+// --file is about/history.html is about-history's, not tours-north's; nor is one whose --file is the migrated path an
+// encoded tours-north has no clone at (that job checked a file that is not delivered).
 export function attribute(job, page, ctx = {}) {
   if (job.kind === 'pixel') return job.instArgs[0] === page.slug;
   if (job.instArgs.some((a) => argNamesPage(a, page, job, ctx.migrated))) return true;
   if ((ctx.pages || []).some((p) => p !== page && job.instArgs.some((a) => argNamesPage(a, p, job, ctx.migrated)))) return false;
+  if (page.encoded && ctx.migrated && job.instArgs.some((a) => typeof a === 'string' && !isUrl(a) && resolve(job.cwd || process.cwd(), a) === resolve(ctx.migrated, page.outputPath))) return false;
   return ctx.slugs ? nameOwner(job.name, ctx.slugs) === page.slug : job.name.startsWith(`${page.slug}-`);
 }
 // The regime a gate.sh round ran in, from its build URL argument (gate.sh <slug> <live> <build> <width>): a served

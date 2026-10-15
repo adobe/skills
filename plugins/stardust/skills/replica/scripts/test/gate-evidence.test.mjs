@@ -575,6 +575,15 @@ check('without a resolvable --lint an encoded page takes delivery-lint jobs on i
   job2('lint-d', ['stardust/scripts/rollout/delivery-lint.mjs', '--file', 'content/tours/north.html'], 'delivery-lint content/tours/north.html\n\n0 P0 · 0 P1 · 1 P2', 11);
   row = JSON.parse(run2(...missing).out)[0];
   assert.equal(row.deliveryLint, '0 P0 · 0 P1 · 1 P2'); assert.equal(row.gateEvidence['delivery-lint'], '0 P0 · 0 P1 · 1 P2 (lint-d.log)');
+  // named after the page, but run on its would-be clone: the name fallback must not hand it over
+  job2('tours-north-lint', ['stardust/scripts/rollout/delivery-lint.mjs', '--file', 'stardust/migrated/tours/north/index.html'], 'delivery-lint stardust/migrated/tours/north/index.html\n\n1 P0 · 0 P1 · 0 P2', 12);
+  row = JSON.parse(run2(...missing).out)[0];
+  assert.equal(row.gateEvidence['delivery-lint'], '0 P0 · 0 P1 · 1 P2 (lint-d.log)', 'the newer clone-path job is no one\'s');
+  const north = { slug: 'tours-north', outputPath: 'tours/north/index.html', encoded: { files: [join(root2, 'stardust/encoded/tours/north.html'), join(root2, 'content/tours/north.html')] } };
+  const ctx = { migrated: M2, pages: [north], slugs: ['tours-north'] };
+  const named = (file) => ({ kind: 'delivery-lint', name: 'tours-north-lint', instArgs: ['--file', file], cwd: root2 });
+  assert.equal(attribute(named('stardust/migrated/tours/north/index.html'), north, ctx), false);
+  assert.equal(attribute(named('elsewhere.html'), north, ctx), true, 'the name fallback still serves an encoded page when no argument names a page file');
 });
 rmSync(root2, { recursive: true, force: true });
 
