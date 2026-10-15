@@ -229,6 +229,16 @@ node each is measured against (geometry) or whose text style it must
 match (type). Content-dependent measures (`top`, `height`) and any
 tolerance above 1px need a `why`.
 
+In a component kit the curated module frame is usually a documentation
+frame (a title block, notation panels, the module at desktop, tablet and
+mobile widths), and the module instance in it is content-width
+(narrower than the page). Point each section's `node` at the desktop
+instance (from the outline), `roots` at a smaller capture for entries
+that set `width`, and set `"width": 1440`: the default width is the
+root's, and the page is opened at it. The page section is full-bleed
+while the instance is not, so `left`, `right` and `top` are offset by
+the section's margins there; check widths, gaps and paddings instead.
+
 | Step | Class | Asserts | Tolerance |
 |---|---|---|---|
 | B0 join | blocks | `mapping.md`'s rendered rows are exactly the page's top-level `section[data-slot]`s, in order, with the mapped `data-module` and the slot's first heading | exact; drift names the slot |
