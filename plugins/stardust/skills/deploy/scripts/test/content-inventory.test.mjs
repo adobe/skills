@@ -75,6 +75,20 @@ check('link: text + href identity — same-site path vs delivered form, mailto b
   assert.deepEqual(missing(lost), ['link:gear list']); assert.match(lost.missing[0].reason, /text kept, link lost/);
 });
 
+check('link: a document keys by rehost-docs\' own name (cut at the first document extension; -<sha8> collision; empty stem)', () => {
+  const pairs = [
+    ['https://www.example.com/content/dam/site/Guide.pdf.coredownload.pdf', '/docs/guide.pdf'],
+    ['https://www.example.com/content/dam/site/guide.pdf.coredownload.inline.pdf', '/docs/guide-0a1b2c3d.pdf'],
+    ['https://www.example.com/files/---.pdf', '/docs/document.pdf'],
+    ['https://www.example.com/files/Price%20List_2026.XLSX', '/docs/price-list-2026.xlsx'],
+  ];
+  for (const [src, docPath] of pairs) {
+    const r = run(`<main><p><a href="${src}">Download</a></p></main>`, `<main><p><a href="${docPath}">Download</a></p></main>`);
+    assert.deepEqual(missing(r), [], `${src} → ${docPath}`);
+  }
+  assert.deepEqual(missing(run('<main><p><a href="https://www.example.com/a/guide.pdf.coredownload.pdf">Download</a></p></main>', '<main><p><a href="/docs/other-guide.pdf">Download</a></p></main>')), ['link:download']);
+});
+
 check('link: opts.linkKey keys internal links (a redirected path), the default keys the rest', () => {
   const redirects = (u) => (new URL(u).pathname === '/en/old-gear.html' ? '/en/guides/gear' : null);
   const cap = '<main><p><a href="/en/old-gear.html">Gear</a></p></main>'; const doc = '<main><p><a href="/en/guides/gear">Gear</a></p></main>';
@@ -146,6 +160,15 @@ check('duplicate: repeated copy (alternate tab panels) encoded once — set sema
 check('unlinked: a link without a destination (#…) is matched by its text only', () => {
   assert.deepEqual(rules(run('<main><p><a href="#top">Back to top</a></p></main>', '<main><p>Back to top</p></main>')), ['unlinked:link:back to top']);
   assert.deepEqual(missing(run('<main><p><a href="#top">Back to top</a></p></main>', '<main><p>Elsewhere</p></main>')), ['link:back to top']);
+});
+
+check('split: one capture run (adjacent inline elements, no space between) found as consecutive document runs', () => {
+  const spec = '<div class="spec"><span class="label">Size:</span><span class="value">2 MB</span></div>'; const cap = `<main>${spec}</main>`;
+  const r = run(cap, '<main><div class="specs"><div><div><p>Size:</p></div><div><p>2 MB</p></div></div></div></main>');
+  assert.deepEqual(missing(r), []); assert.deepEqual(rules(r), ['split:text:size:2 mb']); assert.deepEqual(r.extra, [], 'the document runs it consumed are not EXTRA');
+  assert.deepEqual(rules(run(`<main>${spec}${spec}</main>`, '<main><p>Size:</p><p>2 MB</p></main>')), ['split:text:size:2 mb', 'duplicate:text:size:2 mb']);
+  assert.deepEqual(missing(run(cap, '<main><p>Size:</p><p>3 MB</p></main>')), ['text:size:2 mb'], 'a different value');
+  assert.deepEqual(missing(run(cap, '<main><p>Size:</p><p>Format</p><p>2 MB</p></main>')), ['text:size:2 mb'], 'runs that are not consecutive');
 });
 
 // ------------------------------------------------------------------ exclusions, EXTRA, the result shape

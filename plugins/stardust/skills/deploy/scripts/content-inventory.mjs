@@ -56,9 +56,9 @@
  *     items: { role: heading|link|image|text, key (norm), text, …role fields }
  *       heading — h1–h6 by text, level ignored;
  *       link    — a[href] with text, a label, or an image and a destination; href = identity: null for
- *                 #…/javascript:/empty (text only), mailto:/tel: by value, a non-page
- *                 file `asset:<name>` (the re-hosted name: lower-case [a-z0-9-], no
- *                 extension, no -<sha8> collision suffix), else
+ *                 #…/javascript:/empty (text only), mailto:/tel: by value, a document
+ *                 (rehost-docs' DOC_EXT) `asset:<docFileName, no extension, no -<sha8>>`,
+ *                 another non-page file `asset:<its name folded the same way>`, else
  *                 linkKey, else same-site `pathKey(deliveredUrl(path))` + query, else the URL;
  *       image   — img: ids (absolute URLs + mediaKey), stems (file name, the fetcher's
  *                 -<sha8> dropped), alt;
@@ -72,7 +72,8 @@
  *     (text found as heading/link), merged (text found word-bounded in the joined text; a
  *     run of ≤ 3 words must occur as often), relabelled (same href, label containment,
  *     full text present), duplicate (set semantics: an identical item already matched),
- *     unlinked (a link with no destination found as text). Anything else is MISSING
+ *     unlinked (a link with no destination found as text), split (a run whose inline parts
+ *     touch, found as ≤ 8 consecutive unused document runs that concatenate to it). Anything else is MISSING
  *     {role, key, text, reason, href? (links), src? (images)}; pass = 0 MISSING in every role, never a
  *     ratio. extra (document items without a capture source) and tolerated {rule, role,
  *     key, text} are reported only. counts.<role> = {capture, found, tolerated, missing, extra}.
@@ -84,6 +85,7 @@
 
 /* eslint-disable no-plusplus, no-continue, max-len */
 import { deliveredUrl, pathKey } from './eds-path.mjs';
+import { DOC_EXT, docFileName } from './rehost-docs.mjs';
 
 // Runs IN the page (serialized by Playwright, so it takes ONE arg). args =
 // [rootSel, eyebrow{maxFontPx,maxLen}] — the content root + label classifier
@@ -298,7 +300,10 @@ const isLink = (n) => n.tag === 'a' && attrOf(n, 'href') !== undefined;
 const fileOf = (u) => { let b = String(u || '').split(/[?#]/)[0].split('/').pop() || ''; try { b = decodeURIComponent(b); } catch { /* keep it encoded */ } return b; };
 // a media file's stem: the extract fetcher names files <name>-<sha1[0..8]>.<ext>, so the suffix is not identity
 const stemOf = (u) => fileOf(u).toLowerCase().replace(/\.[a-z0-9]+$/, '').replace(/-[0-9a-f]{8}$/, '');
-// a document's identity is the name rehost-docs.mjs gives it: lower-case [a-z0-9-], no extension, no -<sha8> collision suffix
+// a document (rehost-docs' DOC_EXT) is identified by the name rehost-docs gives it, minus the extension and the
+// -<sha8> it adds on a name collision; any other non-page file by its own name folded the same way
+const unhash = (name) => name.replace(/\.[a-z0-9]+$/, '').replace(/-[0-9a-f]{8}$/, '');
+const docKey = (url) => { try { return `asset:${unhash(docFileName(url))}`; } catch { return null; } };
 const assetKey = (file) => `asset:${file.toLowerCase().replace(/\.[a-z0-9]+$/, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').replace(/-[0-9a-f]{8}$/, '')}`;
 
 export function offlineInventory(root, opts = {}) {
@@ -347,6 +352,8 @@ export function offlineInventory(root, opts = {}) {
     if (/^(mailto|tel):/i.test(h)) return h.toLowerCase();
     let u; try { u = new URL(h, base); } catch { return h; }
     if (!/^https?:$/.test(u.protocol)) return u.href.toLowerCase();
+    const doc = DOC_EXT.test(u.pathname) ? docKey(u.href) : null;
+    if (doc) return doc;
     const file = fileOf(u.pathname);
     if (/\.[a-z0-9]{2,5}$/i.test(file) && !PAGE_FILE.test(file)) return assetKey(file);
     const k = opts.linkKey ? opts.linkKey(u.href) : null;
@@ -411,6 +418,7 @@ export function offlineInventory(root, opts = {}) {
 }
 
 const SHORT_RUN = 3; // words: a short run found only inside other text must occur as often as in the capture
+const SPLIT_MAX = 8; // consecutive document runs one capture run may have been split into
 const escRe = (k) => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const occurrences = (hay, k) => (k ? (hay.match(new RegExp(`(?<![\\p{L}\\p{N}])${escRe(k)}(?![\\p{L}\\p{N}])`, 'gu')) || []).length : 0);
 
@@ -423,6 +431,21 @@ export function diffOffline(srcInv, docInv) {
   const byStem = (s, d) => s.stems.some((x) => d.stems.includes(x));
   const byAlt = (s, d) => !!s.alt && s.alt === d.alt;
   const contains = (s, d) => !!d.key && (s.key.includes(d.key) || d.key.includes(s.key));
+  // a capture run whose inline parts touch (no space between) and that the document split into consecutive runs
+  const splitKeys = new Set();
+  const takeSplit = (k) => {
+    const p = pools.text;
+    for (let a = 0; a < p.length; a += 1) {
+      let acc = '';
+      for (let b = a; b < p.length && b - a < SPLIT_MAX && !p[b].used; b += 1) {
+        acc += p[b].d.text;
+        const n = norm(acc);
+        if (b > a && n === k) { for (let x = a; x <= b; x += 1) p[x].used = true; splitKeys.add(k); return true; }
+        if (!k.startsWith(n)) break;
+      }
+    }
+    return false;
+  };
 
   const src = srcInv.items;
   const status = src.map(() => null); // 'found' | a tolerant rule | { reason } (MISSING)
@@ -442,8 +465,9 @@ export function diffOffline(srcInv, docInv) {
       else status[i] = { reason: inDoc(k) ? 'text present, not as its own heading or run' : 'absent' };
     } else if (s.role === 'text') {
       if (take(['heading', 'link'], (d) => d.key === k)) status[i] = 'promoted';
-      else if (usedLike(['text'], (d) => d.key === k)) status[i] = 'duplicate';
+      else if (splitKeys.has(k) || usedLike(['text'], (d) => d.key === k)) status[i] = 'duplicate';
       else if (inDoc(k) && (k.split(' ').length > SHORT_RUN || occurrences(docInv.joined, k) >= occurrences(srcInv.joined, k))) status[i] = 'merged';
+      else if (takeSplit(k)) status[i] = 'split';
       else status[i] = { reason: inDoc(k) ? `short run: ${occurrences(docInv.joined, k)} of ${occurrences(srcInv.joined, k)} occurrences` : 'absent' };
     } else if (s.role === 'link') {
       const same = (d) => d.href === s.href;
