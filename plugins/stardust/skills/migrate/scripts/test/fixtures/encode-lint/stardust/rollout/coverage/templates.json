@@ -1,0 +1,5 @@
+{
+  "templates": [
+    { "id": "guide", "representativeSlug": "guides-alpha", "pages": ["guides-alpha", "guides-beta", "guides-gamma"], "pageCount": 3, "blocks": ["cards", "faq"] }
+  ]
+}
