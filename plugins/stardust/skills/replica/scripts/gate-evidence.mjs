@@ -640,6 +640,7 @@ export function collect(o, { encoder = null } = {}) {
   ctx.c14 = (page) => {
     const a = page.encoded.archetype;
     if (!encoder || !encoder.encodedShape || !encoder.inherited) return { ok: false, why: 'migrate\'s encode/shape.mjs is not beside this script — copy the migrate scripts (stardust/scripts/migrate/) too' };
+    if (!a) return { ok: false, why: `${relative(project, page.file).split(sep).join('/')} names no template (encode.map.template)` };
     const k = encoder.keys && encoder.keys.get(a);
     if (!k || k.error) return { ok: false, why: `no harness key for ${a} (${k ? k.error : 'not computed'})` };
     const es = encoder.encodedShape({ root: project, sidecarPath: relative(project, page.file).split(sep).join('/'), archetype: a, manifests });
