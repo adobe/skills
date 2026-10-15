@@ -120,6 +120,9 @@ For every `<a href>`:
      on scoped runs.
 4. **Preserve** any href fragment (`#section-3`) and query string
    (`?ref=foo`) exactly when rewriting.
+5. **Keep the source.** Every rewritten link carries
+   `data-source-href="<absolute source URL>"`, so content gates run
+   on the migrated page match it like the prototype's link.
 
 ## Media references
 

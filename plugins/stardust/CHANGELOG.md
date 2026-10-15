@@ -24,6 +24,9 @@ gaps below. Every fix is generic; per-site choices stay in config.
   of letting curate refuse later.
 - **Fewer false capture warnings.** All-whole (`!`) scopes skip the h1 and granularity checks, and a mega-slot that is
   a repeating card grid is reported as a note, not a wrapper-scope warning (`captureSmells`).
+- **Gates re-pass on migrated pages.** `migrate` keeps `data-source-href` (the absolute source URL) on every link it
+  rewrites and marks the JSON-LD block it inserts with `data-migrate-default`. `slot-coverage` matches links by the
+  former and does not count the latter, so a migrated page passes the same content gates as its prototype.
 
 ## 0.34.0 — reskin hands off to migrate: generic renderer, canon bridge, preflight
 

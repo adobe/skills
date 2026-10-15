@@ -145,8 +145,13 @@ check('internal links: relative with explicit leaf, tracking stripped, broken fl
   assert.match(home, /href="https:\/\/example\.test\/contact\/" data-broken-link="true"/);
   assert.match(home, /href="\.\/nowhere\/index\.html" data-broken-link="true"/);
   assert.match(home, /href="mailto:a@example\.test"/); assert.match(home, /href="#top"/); assert.match(home, /href="https:\/\/elsewhere\.example\/x"/);
-  assert.match(home, /<header><a href="\.\/index\.html">/);
+  assert.match(home, /<header><a href="\.\/index\.html"[ >]/);
   assert.equal(homeMeta.brokenInternalLinks.length, 2);
+});
+check('rewritten links keep data-source-href (absolute source URL); untouched links get none', () => {
+  assert.match(home, /href="\.\/tours\/index\.html" data-source-href="https:\/\/example\.test\/tours\/"/);
+  assert.match(home, /data-broken-link="true" data-source-href="https:\/\/example\.test\/nowhere\/?"/);
+  assert.match(home, /href="mailto:a@example\.test">/); assert.match(home, /href="https:\/\/elsewhere\.example\/x">/);
 });
 check('depth-aware prefixes on nested pages', () => {
   const north = read(`${OUT}/tours/north/index.html`); const hist = read(`${OUT}/about/history.html`);
@@ -324,10 +329,11 @@ check('deployUrl → canonical and og:url point at the deployed URL form of the 
   assert.equal(json(`${OUT}/_meta.json`).metadata.canonical, 'https://www.example-live.test/');
 });
 check('default JSON-LD: WebPage for home, Article for an article page, an existing block is left alone', () => {
-  const ld = (html) => [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)].map((m) => JSON.parse(m[1]));
+  const ld = (html) => [...html.matchAll(/<script type="application\/ld\+json"( data-migrate-default)?>([\s\S]*?)<\/script>/g)].map((m) => ({ ...JSON.parse(m[2]), inserted: !!m[1] }));
   const h = ld(read(`${OUT}/index.html`)); assert.equal(h.length, 1); assert.equal(h[0]['@type'], 'WebPage'); assert.equal(h[0].name, 'Home'); assert.equal(h[0].url, 'https://www.example-live.test/');
   const p = ld(read(`${OUT}/news/post/index.html`)); assert.equal(p.length, 1); assert.equal(p[0]['@type'], 'Article'); assert.equal(p[0].headline, 'A post'); assert.equal(p[0].mainEntityOfPage, 'https://www.example-live.test/news/post/');
   const t = ld(read(`${OUT}/tours/index.html`)); assert.equal(t.length, 1); assert.equal(t[0]['@type'], 'CollectionPage');
+  assert.equal(h[0].inserted, true); assert.equal(t[0].inserted, false); // the inserted default is marked, the source block is not
   assert.equal(json(`${OUT}/_meta.json`).jsonLd?.['@type'], 'WebPage');
 });
 check('missing asset: reference left as is, warned, recorded in the sidecar and in state.json.migrate', () => {

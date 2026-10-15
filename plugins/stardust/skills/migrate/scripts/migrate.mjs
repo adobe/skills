@@ -178,6 +178,7 @@ export function rewriteLinks(html, ctx) {
     if (reason) broken.push({ href, reason });
     let a = attrs.replace(hm[0], `href=${hm[1]}${hadAmp ? next.replace(/&/g, '&amp;') : next}${hm[1]}`);
     if (reason && !/(?<![\w-])data-broken-link=/.test(a)) a += ' data-broken-link="true"';
+    if (!/(?<![\w-])data-source-href=/.test(a)) a += ` data-source-href="${new URL(href, ctx.base).href.replace(/&/g, '&amp;').replace(/"/g, '&quot;')}"`;
     return `<${tag}${a}>`;
   });
   return { html: out, links, broken };
@@ -351,7 +352,7 @@ export function composeHead(html, h) {
   }
   const parts = [h.prov, `<style>\n${h.rootBlock}${h.inlineCss ? `\n${h.inlineCss}` : ''}\n</style>`];
   if (h.canonLink) parts.push(`<link rel="stylesheet" href="${h.canonLink}">`);
-  if (insertedLd) parts.push(`<script type="application/ld+json">${JSON.stringify(insertedLd)}</script>`);
+  if (insertedLd) parts.push(`<script type="application/ld+json" data-migrate-default>${JSON.stringify(insertedLd)}</script>`);
   const at = headOpen.index + headOpen[0].length;
   return { html: `${html.slice(0, at)}\n${[...parts, ...inserts].join('\n')}${html.slice(at)}`, metadata: { title, description: description ?? null, canonical: canonical ?? null, lang }, jsonLd };
 }
