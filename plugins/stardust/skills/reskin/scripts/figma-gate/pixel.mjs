@@ -62,7 +62,7 @@ export function comparePngs(figmaPng, pagePng, { out, textBoxes: boxesFile, time
 
 async function loadPng() {
   try { return (await import('pngjs')).PNG; } catch {
-    throw new UsageError('pngjs is not importable from the reskin scripts: run npm i -D pngjs pixelmatch --no-save --legacy-peer-deps in the project (reskin SKILL.md § Setup)');
+    throw new UsageError('pngjs is not importable from the reskin scripts: run npm i -D pngjs pixelmatch --legacy-peer-deps in the project (reskin SKILL.md § Setup)');
   }
 }
 

@@ -64,10 +64,10 @@ regression check instead of a debugging tool.
    (`../stardust/reference/state-machine.md` § Flow keys); if another
    flow is set, print it and the switch command
    (`$stardust reskin --switch-flow`) instead of running.
-2. **Playwright import-resolvability probe** — same contract as
-   `../extract/SKILL.md` § Setup:
-   `node -e "import('playwright').then(()=>process.exit(0))"` from the
-   project root; on failure
+2. **Import-resolvability probe** — same contract as
+   `../extract/SKILL.md` § Setup, covering every gate dependency:
+   `node -e "Promise.all(['playwright','pixelmatch','pngjs'].map(m=>import(m))).then(()=>process.exit(0),()=>process.exit(1))"`
+   from the project root; on failure (any one missing)
    `npm i -D playwright pixelmatch pngjs --legacy-peer-deps` (never
    `--no-save`: a later real `npm i` prunes it; `pixelmatch` and `pngjs`
    serve the Figma pixel check). Re-run the probe at the start of every
