@@ -31,7 +31,8 @@
  *   resolveDoc(absUrl)          the asset ledger's path for that URL, or null
  *   chromeFor(url)              {nav, footer, lang} of the chrome-map group holding the page (a source URL or a
  *                               delivered path, matched by pathKey of its delivered path); else /nav, /footer, null
- *   localizeHref(href, baseUrl) {href, internal, kind, unresolved?}, kind = page | doc | external | skip:
+ *   localizeHref(href, baseUrl) {href, internal, kind, unresolved?}; kind doc = a document link (.pdf …), page = any
+ *                               other http(s) link to a source host, external, or skip:
  *                                 asset-ledger hit → its path (+ #fragment), internal
  *                                 source-host page in the roster or redirected to one → the delivered URL, internal
  *                                 source-host link to anything else, or a document (.pdf …) on any host with no
@@ -179,15 +180,16 @@ export async function loadSite(projectRoot) {
     const u = parseUrl(raw, baseUrl);
     if (!u || !/^https?:$/.test(u.protocol)) return { href: raw, internal: false, kind: 'skip' };
     const abs = /^https?:\/\//i.test(raw) ? raw : u.href;
-    const kind = DOC_EXT.test(u.pathname) ? 'doc' : 'page';
+    const isDoc = DOC_EXT.test(u.pathname);
     const hash = u.hash;
     u.hash = '';
     const doc = resolveDoc(u.href);
     if (doc) return { href: `${doc}${hash}`, internal: true, kind: 'doc' };
     u.hash = hash;
+    // an absolute URL: localize-links answers localized (source host, in the map), kept-absolute (source host) or skip
     const r = links.localizeHref(u.href, linkCtx);
-    if (r.action === 'localized' || r.action === 'normalized' || r.action === 'already') return { href: r.href, internal: true, kind };
-    if (r.action === 'kept-absolute' || kind === 'doc') return { href: abs, internal: false, unresolved: true, kind };
+    if (r.action === 'localized') return { href: r.href, internal: true, kind: 'page' };
+    if (r.action === 'kept-absolute' || isDoc) return { href: abs, internal: false, unresolved: true, kind: isDoc ? 'doc' : 'page' };
     return { href: abs, internal: false, kind: 'external' };
   }
 
