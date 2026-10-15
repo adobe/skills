@@ -149,33 +149,46 @@ const isStrArr = (v) => Array.isArray(v) && v.every((x) => typeof x === 'string'
 const isObj = (v) => Boolean(v) && typeof v === 'object' && !Array.isArray(v);
 const isTagMap = (v) => isObj(v) && Object.values(v).every((t) => typeof t === 'string' && TAG_RE.test(t));
 const isBool = (v) => v === true || v === false;
-// the keys each object of a map takes (R29): anything else is a typo and fails; `$comment` is free text everywhere.
-// x-lint keys ($schema, archetype, inputs, evidence, unique) are --lint's: the engine accepts them unread.
-const KEYS = {
+const CELL_KEYS = ['sel', 'as', 'all', 'wrap', 'itemWrap', 'join', 'optional', 'selfOk', 'retag', 'drop', 'attr', 'then', 'text', 'titleAttr', 'value', 'parts'];
+const freezeKeys = (o) => Object.freeze(Object.fromEntries(Object.entries(o).map(([k, v]) => [k, Object.freeze([...v])])));
+/**
+ * The keys each object of a map takes, exactly the sets the validators enforce (R29) — anything else is a typo and
+ * fails. Kinds are named after the schema's definitions: vocabulary (the root object), marker, variant, rowGroup,
+ * cellSpec, cellsEach (a CellSpec plus `each`), variance, accept (variance.accept[]), ignoreAncestors
+ * (variance.ignoreAncestors[]), childClass / class (the two moduleSelectors pattern objects: exactly that one key),
+ * transform, patch (an entry of stardust/patches/<slug>.json). COMMENT_KEY (`$comment`, free text, a string) is accepted
+ * on every one of them and listed in none. LINT_KEYS are the keys --lint reads and the engine accepts unread.
+ */
+export const KEYS = freezeKeys({
   vocabulary: ['$schema', 'archetype', 'inputs', 'root', 'chrome', 'wrappers', 'moduleSelectors', 'sectionTags', 'walkSiblings', 'requireH1', 'ignoreModifiers', 'metadata', 'variance', 'markers'],
   marker: ['sel', 'kind', 'emitter', 'style', 'sectionBefore', 'sectionAfter', 'sectionStyle', 'variants', 'merge', 'retag', 'drop', 'rows', 'cells', 'evidence', 'unique'],
   variant: ['when', 'add'],
   rowGroup: ['sel', 'cells', 'optional', 'max'],
-  cell: ['sel', 'as', 'all', 'wrap', 'itemWrap', 'join', 'optional', 'selfOk', 'retag', 'drop', 'attr', 'then', 'text', 'titleAttr', 'value', 'parts'],
+  cellSpec: CELL_KEYS,
+  cellsEach: [...CELL_KEYS, 'each'],
   variance: ['accept', 'ignoreAncestors'],
   accept: ['print', 'on', 'reason'],
   ignoreAncestors: ['class', 'reason'],
+  childClass: ['childClass'],
+  class: ['class'],
   transform: ['imageParagraph', 'imgAttrs', 'retag', 'headingsByClass', 'drop', 'keepHashLinks', 'emptyP'],
   patch: ['selector', 'op', 'name', 'value'],
-};
-function keysIn(obj, kind, where, errs, extra = []) {
-  const allowed = [...KEYS[kind], ...extra];
+});
+export const COMMENT_KEY = '$comment';
+export const LINT_KEYS = freezeKeys({ vocabulary: ['$schema', 'archetype', 'inputs'], marker: ['evidence', 'unique'] });
+function keysIn(obj, kind, where, errs) {
+  const allowed = KEYS[kind];
   for (const k of Object.keys(obj)) {
     const at = where ? `${where}.${k}` : k;
-    if (k === '$comment') { if (typeof obj[k] !== 'string') errs.push(`${at}: free text (a string)`); continue; }
+    if (k === COMMENT_KEY) { if (typeof obj[k] !== 'string') errs.push(`${at}: free text (a string)`); continue; }
     if (!allowed.includes(k)) errs.push(`${at}: unknown key — ${where || kind} takes ${allowed.join(', ')} (and $comment)`);
   }
 }
 const wrapOk = (w) => (typeof w === 'string' && TAG_RE.test(w)) || (Array.isArray(w) && w.length > 0 && w.every((t) => typeof t === 'string' && TAG_RE.test(t)));
 
-function validateCell(spec, where, errs, extra = []) {
+function validateCell(spec, where, errs, kind = 'cellSpec') {
   if (!isObj(spec)) { errs.push(`${where}: a CellSpec must be an object`); return; }
-  keysIn(spec, 'cell', where, errs, extra);
+  keysIn(spec, kind, where, errs);
   const as = spec.as;
   if (as !== undefined && !CELL_MODES.has(as)) errs.push(`${where}.as "${as}": use ${[...CELL_MODES].join('|')} (a mode the grammar lacks is a hard stop, never a per-template extension)`);
   if (spec.parts !== undefined) {
@@ -202,7 +215,7 @@ function validateCells(cells, where, errs) {
   if (Array.isArray(cells)) { cells.forEach((c, i) => validateCell(c, `${where}[${i}]`, errs)); return; }
   if (cells && typeof cells === 'object' && typeof cells.each === 'string') {
     const e = selectorError(`${where}.each`, cells.each); if (e) errs.push(e);
-    validateCell(cells, where, errs, ['each']);
+    validateCell(cells, where, errs, 'cellsEach');
     return;
   }
   errs.push(`${where}: an array of CellSpecs or { each: "<selector>", …CellSpec }`);
@@ -220,8 +233,9 @@ export function validateVocabulary(v) {
   if (v.moduleSelectors !== undefined) {
     if (!Array.isArray(v.moduleSelectors)) errs.push('moduleSelectors: an array of selectors or { childClass } / { class } patterns');
     else v.moduleSelectors.forEach((m, i) => {
-      const keys = isObj(m) ? Object.keys(m).filter((k) => k !== '$comment') : [];
-      const key = keys.length === 1 && ['childClass', 'class'].includes(keys[0]) && typeof m[keys[0]] === 'string' ? keys[0] : null;
+      const keys = isObj(m) ? Object.keys(m).filter((k) => k !== COMMENT_KEY) : [];
+      const pattern = ['childClass', 'class'].find((kind) => KEYS[kind].length === keys.length && KEYS[kind].every((k) => keys.includes(k)));
+      const key = pattern && typeof m[pattern] === 'string' ? pattern : null;
       if (typeof m === 'string') { const e = selectorError(`moduleSelectors[${i}]`, m); if (e) errs.push(e); } else if (key) { const e = regexError(`moduleSelectors[${i}].${key}`, m[key]); if (e) errs.push(e); if (m.$comment !== undefined && typeof m.$comment !== 'string') errs.push(`moduleSelectors[${i}].$comment: free text (a string)`); } else errs.push(`moduleSelectors[${i}]: a selector string, { childClass: "<regex>" } or { class: "<regex>" } (one key${keys.length ? `; got ${keys.join(', ')}` : ''})`);
     });
   }
@@ -336,6 +350,63 @@ const hiddenLive = (n, stamped) => stamped && attr(n, 'data-hidden-live') !== un
 
 /** The first marker (array order) that matches the element itself (rule 3), or null. */
 export function firstMarker(n, markers, rootEl) { for (const m of markers) if (matches(n, m.sel, rootEl)) return m; return null; }
+
+/**
+ * The drops of a prepared capture, before the walk (the encoder's pre-pass): the transform's `drop` matches under the
+ * content tops (a top that matches included) and every first-marker match's own `drop` matches at any depth are claimed
+ * as selector drops (node → { selector, source: "transform" | "marker <sel>" }; the first claim wins); a drop:/dynamics:
+ * match at any depth is `declared` (node → marker, document order) and not descended. `excluded` holds every node left
+ * out of the content count; `claim(scope, selectors, source)` adds more (the encoder's cell drops, source "cell").
+ */
+function collectDrops(prep, vocab, tf = {}) {
+  const { rootEl, stamped } = prep; const markers = vocab.markers || [];
+  const claims = new Map(); const declared = new Map(); const excluded = new Set();
+  const claim = (scope, sels, source) => { for (const s of sels || []) for (const x of qsa(scope, s)) { excluded.add(x); if (!claims.has(x)) claims.set(x, { selector: s, source }); } };
+  const tops = contentTops(prep, vocab);
+  for (const t of tops) {
+    claim(t, tf.drop, 'transform');
+    const own = t !== rootEl && (tf.drop || []).find((s) => matches(t, s, rootEl));
+    if (own) { excluded.add(t); if (!claims.has(t)) claims.set(t, { selector: own, source: 'transform' }); }
+  }
+  const prepass = (n) => {
+    if (!isEl(n) || STRIP.has(n.tag) || hiddenLive(n, stamped) || excluded.has(n)) return;
+    const m = firstMarker(n, markers, rootEl);
+    if (m) claim(n, m.drop, `marker ${m.sel}`);
+    const e = m && m.emitter ? String(m.emitter) : '';
+    if (e.startsWith('drop:') || e.startsWith('dynamics:')) { declared.set(n, m); excluded.add(n); return; }
+    for (const c of n.children) prepass(c);
+  };
+  for (const t of tops) for (const c of (t === rootEl ? kids(t) : [t])) prepass(c);
+  return { claims, declared, excluded, claim };
+}
+// the tests over collected drops: skip = a marker's or the transform's selector drop (every path; a cell's drop stays in
+// its cell); skip.within = the node or an ancestor is skipped or a declared drop:/dynamics: match
+function dropTests({ claims, declared }) {
+  const skip = (x) => { const d = claims.get(x); return Boolean(d) && d.source !== 'cell'; };
+  skip.within = (x) => { for (let p = x; p && isEl(p); p = p.parent) if (declared.has(p) || skip(p)) return true; return false; };
+  return skip;
+}
+/**
+ * What the encoder's walk skips on this capture: `skip(node)` — true for a node a marker's `drop` (its whole subtree) or
+ * the transform's `drop` removes — to pass to walkModules / moduleLevel as `skip`; `skip.within(node)` — the node or an
+ * ancestor is skipped or is a drop:/dynamics: match (the filter cells, rows and pickers use; pass it to rowNodes).
+ */
+export function dropPredicate(prep, vocab, tf = {}) { return dropTests(collectDrops(prep, vocab, tf)); }
+
+/**
+ * A marker's rows as the encoder selects them: per row group (rows "<sel>" → one group with the marker's cells; rows
+ * absent → the module is its one row) the module's matches of the group's sel, minus nodes `within` a drop, capped at
+ * max: [{ group, index, nodes }]. rowNodes = the same, flat.
+ */
+export function rowGroups(mod, marker, within = () => false) {
+  const groups = Array.isArray(marker.rows) ? marker.rows : (typeof marker.rows === 'string' ? [{ sel: marker.rows, cells: marker.cells }] : [{ cells: marker.cells }]);
+  return groups.map((group, index) => {
+    let nodes = (group.sel ? qsa(mod, group.sel) : [mod]).filter((x) => !within(x));
+    if (group.max) nodes = nodes.slice(0, group.max);
+    return { group, index, nodes };
+  });
+}
+export const rowNodes = (mod, marker, within) => rowGroups(mod, marker, within).flatMap((g) => g.nodes);
 
 // ===================================================================================== the walk's traversal (shared)
 // What --lint and --sweep need to see the capture as the encoder does; the encoder's own walk and fingerprint run on
@@ -713,14 +784,11 @@ function rowCells(rn, cells, ctx, kind, missing) {
 }
 
 function shapeRows(mod, m, ctx, kind) {
-  const groups = Array.isArray(m.rows) ? m.rows : (typeof m.rows === 'string' ? [{ sel: m.rows, cells: m.cells }] : [{ cells: m.cells }]);
   const rows = []; const missing = [];
-  groups.forEach((g, gi) => {
-    let rowNodes = (g.sel ? qsa(mod, g.sel) : [mod]).filter((x) => !ctx.isDropped(x));
-    if (g.max) rowNodes = rowNodes.slice(0, g.max);
-    if (!rowNodes.length) { if (!g.optional) missing.push(`row group ${gi} (${g.sel}) matched nothing`); return; }
-    for (const rn of rowNodes) { const cells = rowCells(rn, g.cells || [{}], ctx, kind, missing); if (cells.length) rows.push(cells); }
-  });
+  for (const { group: g, index: gi, nodes } of rowGroups(mod, m, ctx.isDropped)) {
+    if (!nodes.length) { if (!g.optional) missing.push(`row group ${gi} (${g.sel}) matched nothing`); continue; }
+    for (const rn of nodes) { const cells = rowCells(rn, g.cells || [{}], ctx, kind, missing); if (cells.length) rows.push(cells); }
+  }
   return { rows, missing };
 }
 
@@ -819,17 +887,14 @@ function encodeInto(result, { html, page, base, vocab, tf, site, archetypePrints
   const wrappers = vocab.wrappers || [];
   const isModule = moduleMatcher(vocab, rootEl);
   const tokens = tokenFilter(vocab);
-  const excluded = new Set();
-  const declared = new Map(); // drop:/dynamics: matches at any depth → their marker, in document order
-  const selDrops = new Map(); // selector-dropped node → { selector, source }; the first claim wins
-  // a marker's or the transform's selector drop holds for every path; a cell's only inside that cell
-  const globalDrop = (x) => { const d = selDrops.get(x); return Boolean(d) && d.source !== 'cell'; };
-  // a node a drop:/dynamics: match or a marker/transform selector drop removed (itself or an ancestor)
-  const isDropped = (x) => { for (let p = x; p && isEl(p); p = p.parent) if (declared.has(p) || globalDrop(p)) return true; return false; };
+  // the pre-pass (shared with dropPredicate): selector drops claimed, drop:/dynamics: matches declared, the count's exclusions
+  const drops = collectDrops(prep, vocab, tf);
+  const { excluded, declared, claims: selDrops, claim: excludeAll } = drops;
+  const globalDrop = dropTests(drops); // a marker's or the transform's selector drop: every path; a cell's stays in its cell
+  const isDropped = globalDrop.within; // the node or an ancestor dropped (selector drop or drop:/dynamics: match)
   const ctx = { tf, site, report, base, stamped, doc, rootEl, markers, wrappers, isModule, excluded, declared, isDropped, globalDrop, cache: { media: new Set() } };
   const walkedDrops = new Set(); // drop:/dynamics: matches the walk reached as modules
   const census = new Set();
-  const excludeAll = (scope, sels, source) => { for (const s of sels || []) for (const x of qsa(scope, s)) { excluded.add(x); if (!selDrops.has(x)) selDrops.set(x, { selector: s, source }); } };
   ctx.excludeAll = excludeAll;
 
   const sections = []; let cur = { style: null, nodes: [] };
@@ -875,22 +940,6 @@ function encodeInto(result, { html, page, base, vocab, tf, site, archetypePrints
     pushHtml(richText(n, ctx)); // rule 5: default content in document order
   };
   const tops = contentTops(prep, vocab); // the root, plus (walkSiblings) its following siblings up to a landmark
-  for (const t of tops) {
-    excludeAll(t, tf.drop, 'transform');
-    const own = t !== rootEl && (tf.drop || []).find((s) => matches(t, s, rootEl));
-    if (own) { excluded.add(t); if (!selDrops.has(t)) selDrops.set(t, { selector: own, source: 'transform' }); }
-  }
-  // pre-pass: every first-marker match at any depth — its own drops are not content, and a drop:/dynamics: match is
-  // left out wherever it sits (a cell that never reaches it included)
-  const prepass = (n) => {
-    if (!isEl(n) || STRIP.has(n.tag) || hiddenLive(n, stamped) || excluded.has(n)) return;
-    const m = firstMarker(n, markers, rootEl);
-    if (m) excludeAll(n, m.drop, `marker ${m.sel}`);
-    const e = m && m.emitter ? String(m.emitter) : '';
-    if (e.startsWith('drop:') || e.startsWith('dynamics:')) { declared.set(n, m); excluded.add(n); return; }
-    for (const c of n.children) prepass(c);
-  };
-  for (const t of tops) for (const c of (t === rootEl ? kids(t) : [t])) prepass(c);
   walkModules(prep, vocab, {
     skip: globalDrop, // a marker's or the transform's drop holds through wrapper and section recursion
     hidden: (n) => { report.hidden.push({ at: describe(n), reason: attr(n, 'data-hidden-live') || 'hidden' }); excluded.add(n); },

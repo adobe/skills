@@ -36,7 +36,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { main, encodeTemplate, loadMap, loadEncoderDeps } from '../encode.mjs';
-import { encodePage, tidy, validateVocabulary, validateTransform, validatePatches, varianceDelta, prepareCapture, contentTops, markerMatches, moduleLevel, walkModules, GENERATED_TOKEN, LANDMARK_STOP } from '../encode/engine.mjs';
+import { encodePage, tidy, validateVocabulary, validateTransform, validatePatches, varianceDelta, prepareCapture, contentTops, markerMatches, moduleLevel, walkModules, GENERATED_TOKEN, LANDMARK_STOP, KEYS, COMMENT_KEY, LINT_KEYS, dropPredicate, rowGroups, rowNodes } from '../encode/engine.mjs';
 import { parseHTML, qs, qsa, textOf, kids } from '../encode/dom.mjs';
 import { loadSite } from '../encode/site.mjs';
 import { encode as sanitise } from '../../../deploy/scripts/sanitise.js';
@@ -416,6 +416,52 @@ try {
   const seen = []; walkModules(prep, vocab, { marker: (n, m) => seen.push(m.kind) });
   assert.deepEqual(seen, ['hero', 'text', 'facts', 'tags', 'separator', 'title', 'tabs', 'image', 'newsletter', 'chat', 'highlight-container'], 'a marker hook that does not descend stops the recursion there');
   assert.ok(GENERATED_TOKEN.test('container-4f1c2a9e7b') && !GENERATED_TOKEN.test('ui-teaser')); assert.match(LANDMARK_STOP, /footer/);
+
+  // --- KEYS is exactly what the validators enforce, per object kind ($comment on all, in none) -------------------------
+  const at = { // place an object with the given extra keys at each kind's level
+    vocabulary: (x) => validateVocabulary({ ...base, ...x }), marker: (x) => validateVocabulary(mk(x)),
+    variant: (x) => validateVocabulary(mk({ variants: [{ when: '.x', add: 'x', ...x }] })), rowGroup: (x) => validateVocabulary(mk({ rows: [{ sel: '.r', ...x }] })),
+    cellSpec: (x) => validateVocabulary(cell(x)), cellsEach: (x) => validateVocabulary(mk({ cells: { each: '.x', ...x } })),
+    variance: (x) => validateVocabulary({ ...base, variance: { ...x } }), accept: (x) => validateVocabulary({ ...base, variance: { accept: [{ print: 'p', on: 'extra', reason: 'r', ...x }] } }),
+    ignoreAncestors: (x) => validateVocabulary({ ...base, variance: { ignoreAncestors: [{ class: 'g', reason: 'r', ...x }] } }),
+    childClass: (x) => validateVocabulary({ ...base, moduleSelectors: [{ childClass: '^a', ...x }] }), class: (x) => validateVocabulary({ ...base, moduleSelectors: [{ class: '^a', ...x }] }),
+    transform: (x) => validateTransform({ ...x }), patch: (x) => validatePatches([{ selector: 'h1', op: 'remove', ...x }]),
+  };
+  assert.deepEqual(Object.keys(at).sort(), Object.keys(KEYS).sort(), 'one probe per kind');
+  for (const [kind, probe] of Object.entries(at)) {
+    assert.ok(Object.isFrozen(KEYS) && Object.isFrozen(KEYS[kind]), `KEYS.${kind} is frozen`);
+    const every = Object.fromEntries(KEYS[kind].map((k) => [k, undefined]));
+    assert.ok(!probe(every).some((e) => /unknown key/.test(e)), `${kind}: every key KEYS lists is accepted`);
+    assert.ok(!probe({ [COMMENT_KEY]: 'a note' }).some((e) => /unknown key|\$comment/.test(e)), `${kind}: ${COMMENT_KEY} is accepted`);
+    assert.ok(probe({ zzz: 1 }).some((e) => /zzz/.test(e)), `${kind}: a key KEYS does not list is rejected`);
+  }
+  for (const [kind, keys] of Object.entries(LINT_KEYS)) for (const k of keys) assert.ok(KEYS[kind].includes(k) && !at[kind]({ [k]: { any: 'value' } }).some((e) => e.includes(k)), `${kind}.${k}: --lint's key, accepted unread`);
+
+  // --- dropPredicate: the walk's skip — marker drops (whole subtree) and transform drops; .within adds drop:/dynamics: ---
+  const dropHtml = '<main><h1>T</h1><div class="wrap"><div class="promo-strip"><p>Promo</p></div><div class="keep-strip"><p>Keep</p></div><div class="tf-strip"><p>TF</p></div><div class="mod-ad"><p>Ad <span class="x">y</span></p></div></div></main>';
+  const dropMap = { root: 'main', markers: [{ sel: '.wrap', kind: 'wrap', emitter: 'wrapper', drop: ['.promo-strip'] }, { sel: '.mod-ad', kind: 'ad', emitter: 'drop:an ad slot' }] };
+  const dropTf = { drop: ['.tf-strip'] };
+  const dprep = prepareCapture(dropHtml, dropMap); const dq = (sel) => dprep.doc && qsa(dprep.doc, sel)[0];
+  const skip = dropPredicate(dprep, dropMap, dropTf);
+  assert.deepEqual(['.promo-strip', '.tf-strip', '.keep-strip', '.mod-ad'].map((x) => skip(dq(x))), [true, true, false, false], 'skip: marker and transform selector drops, not a drop: match (the walk visits it)');
+  assert.deepEqual(['.promo-strip p', '.mod-ad .x', '.keep-strip p'].map((x) => skip.within(dq(x))), [true, true, false], 'within: inside a selector drop or a drop: match');
+  const kindsOf = (opts) => moduleLevel(dprep, dropMap, opts).map((x) => (x.marker ? x.marker.kind : String(x.node.attrs.class || x.node.tag).split(/\s+/)[0]));
+  assert.deepEqual(kindsOf({ skip }), ['h1', 'wrap', 'keep-strip', 'ad'], 'moduleLevel with the skip walks what the encoder walks');
+  assert.deepEqual(kindsOf({}), ['h1', 'wrap', 'promo-strip', 'keep-strip', 'tf-strip', 'ad'], '… and without it the dropped nodes come back');
+  const dropEnc = encodePage({ html: dropHtml, page: { url: 'https://www.example.com/d' }, vocab: dropMap, tf: dropTf, site: stub });
+  assert.deepEqual(dropEnc.prints.filter((x) => x.startsWith('UNMARKED')), ['UNMARKED | div.keep-strip | wrap'], 'the encoder\'s census sees the same unmarked modules');
+
+  // --- rowGroups / rowNodes: the encoder's row selection — groups, the drop filter, max ---------------------------------
+  const listHtml = '<main><h1>T</h1><div class="list"><p class="head">Heading</p><div class="item">i1</div><div class="item ad">ad</div><div class="item">i2</div><div class="item">i3</div><div class="item">i4</div></div></main>';
+  const listMap = { root: 'main', markers: [{ sel: '.list', kind: 'list', emitter: 'block:list', drop: ['.item.ad'], rows: [{ sel: '.head', cells: [{ as: 'text' }] }, { sel: '.item', max: 3, cells: [{ as: 'text' }] }] }] };
+  const lprep = prepareCapture(listHtml, listMap); const listMod = qsa(lprep.doc, '.list')[0]; const listSkip = dropPredicate(lprep, listMap, {});
+  const lg = rowGroups(listMod, listMap.markers[0], listSkip.within);
+  assert.deepEqual(lg.map((g) => [g.index, g.group.sel, g.nodes.map(textOf)]), [[0, '.head', ['Heading']], [1, '.item', ['i1', 'i2', 'i3']]], 'per group: the matches minus dropped nodes, then max');
+  assert.deepEqual(rowNodes(listMod, listMap.markers[0]).map(textOf), ['Heading', 'i1', 'ad', 'i2'], 'without a drop filter the ad is a row (max counts it)');
+  const listEnc = encodePage({ html: listHtml, page: { url: 'https://www.example.com/l' }, vocab: listMap, site: stub });
+  assert.deepEqual(qsa(docOf(listEnc.html), '.list > div').map(textOf), rowNodes(listMod, listMap.markers[0], listSkip.within).map(textOf), 'the encoder emits exactly those rows');
+  assert.deepEqual(rowGroups(listMod, { rows: '.item', cells: [{ as: 'text' }] }).map((g) => [g.group.cells.length, g.nodes.length]), [[1, 5]], 'rows as a selector: one group carrying the marker\'s cells');
+  assert.deepEqual(rowNodes(listMod, { cells: [{}] }), [listMod], 'no rows: the module is its one row');
 
   // --- the engine on its own: a site context is all it needs ---------------------------------------------------------
   const bare = encodePage({ html: '<main><h1>Hi</h1><p>One\n  two</p></main>', page: { url: 'https://www.example.com/a', title: 'A' }, vocab: { root: 'main' }, site: stub });
