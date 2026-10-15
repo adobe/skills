@@ -3,7 +3,8 @@
 Reskin accepts three donor types. All three converge on the same
 artifacts: a `stardust/canon-source/` capture (extract's
 `--design-source` shape, `../../extract/SKILL.md` § Cross-site brand
-sources) plus two reskin-owned curations — `donor-tokens.json` and
+sources; the Figma adapter writes the same files from REST node data)
+plus two reskin-owned curations — `donor-tokens.json` and
 `donor-modules.md` (§ below). Downstream phases never care which
 donor type produced them.
 
@@ -147,34 +148,64 @@ Recipe notes:
 - **Port hygiene**: kill the server when the capture ends; a stale
   server on the port silently serves an old donor to a re-run.
 
-## 3. Figma (`--donor-figma <url>`) — FUTURE, contract defined
+## 3. Figma (`--donor-figma <url>`)
 
-**Not implemented.** When a user asks for a Figma donor, say exactly
-what SKILL.md § Inputs prescribes (export as static HTML →
-`--donor-dir`, or a live staging URL → `--donor`) and stop. Do not
-improvise a partial capture from Figma screenshots.
+`scripts/figma-donor.mjs` reads a Figma file headlessly over the REST
+API: no browser, no crawl, no MCP server. The token is `FIGMA_TOKEN`
+(a personal access token with `file_content:read`), from the
+environment only. Recipe:
 
-The adapter contract, so round-2 implements against a fixed shape —
-it must produce the same `canon-source/` artifacts as the other two
-donor types:
+1. `$stardust extract <content-url>` — the content site, as for the
+   other donors (it creates `state.json`).
+2. `figma-donor.mjs capture <figma-url>` — one file version (every
+   call pinned with `version=`), raw responses cached under
+   `.work/reskin/figma/`, then `canon-source/foundation/*.json`
+   (normalized values, each citing its node), `role-candidates.json`
+   (ranked sources for the 13 probe paths), `module-candidates.json`
+   (frames with their page, sections by y, component sets, remote
+   components), `spec-tables.json`, frame screenshots and
+   `_crawl-log.json`. What to capture depends on the file's shape. A
+   file of **page designs**: the URL of the page or frame. A
+   **component kit** (one module per page, tokens on documentation
+   frames): `capture <figma-url> --list` prints every page's top-level
+   nodes; pass the foundation frames (colour, type, spacing, the button
+   set) and one representative frame per module page with
+   `--frames <id,…>`, raising `--max-frames` to fit. Without either,
+   a file larger than `--max-frames` stops and asks for this.
+3. Author `reskin/curation-rules.json`, the only non-mechanical
+   input: reference pins (one frame, variable mode and breakpoint per
+   module family; § Pin one reference page), roles, normalizations,
+   curations with their proving rule, suspects, section-level modules
+   and the DESIGN prose.
+4. `figma-donor.mjs curate` — deterministic: `donor-tokens.json`,
+   `donor-modules.md`, `canon-source/DESIGN.{md,json}` and
+   `_brand-extraction.json`. Re-run after any rules change.
+5. `figma-donor.mjs stamp` — `state.json.designSource`, nothing else.
 
 | Figma source | Maps to | Canon-source artifact |
 |---|---|---|
-| Variables (color collections) | palette roles | `_brand-extraction.json#palette` → `DESIGN.json` colors |
-| Text styles | type ramp (families, sizes, weights, line-heights) | `_brand-extraction.json#type` → `DESIGN.json` typography |
-| Effect styles / corner radii on components | motifs (shadows, radii) | `_brand-extraction.json#motifs` |
-| Frame screenshots (per top-level frame) | vision references | `canon-source/assets/screenshots/<frame-slug>.png` — the module vocabulary evidence and the side-by-side eyeball surface |
-| Components / component sets | module vocabulary candidates | rows in `donor-modules.md` |
+| Fills and strokes (keyed by style name, else by value; `variables/local` is cached when the plan allows but not used yet) | palette roles | `foundation/colors.json` → `_brand-extraction.json#palette`, `DESIGN.json` colors |
+| Text styles on TEXT nodes | type ramp (families, sizes, weights, line-heights) | `foundation/typography.json` → `_brand-extraction.json#type`, `DESIGN.json` typography |
+| Effects, corner radii | motifs (shadows, radii) | `foundation/{effects,radii}.json` → `_brand-extraction.json#motifs` |
+| Frame renders (per top-level frame) | vision references | `canon-source/assets/screenshots/<frame-slug>.png` + `index.json` — the module evidence and the side-by-side eyeball surface |
+| Frames, sections, components / sets | section-level module candidates | `module-candidates.json` → rows in `donor-modules.md` |
 
-Provenance class: **`figma-mcp`** — every derived value cites the
-Figma node id it came from, and `canon-source/_crawl-log.json`
-records `fetchTechnique: "figma-mcp"` in place of a crawl. Pages
-have no `renderedBy: "playwright"` — the adapter is exempt from the
-live-render contract but must say so explicitly per artifact, not
-silently. One gap the contract acknowledges: Figma has no computed
-styles, so `donor-tokens.json` values are authored from
-variables/text styles rather than sampled — the probe still works
-because the tokens are exact strings either way.
+Provenance class: **`figma-rest`** — `_crawl-log.json#discovery`
+records `fetchTechnique: "figma-rest"` in place of a crawl, with the
+file version and the frames selected and cut; `notBrowserRendered`
+says per artifact that it was authored from REST node data. Every token
+cites its node in `donor-tokens.json#nodeRefs` (`via: "rest"`). One
+gap the contract acknowledges: Figma has no computed styles, so
+`donor-tokens.json` values are authored from node data rather than
+sampled — the probe still works because the tokens are exact strings
+either way. Flags, schemas and exit codes: `figma-donor.mjs --help`.
+`type.family` is the bare Figma family name; map it with a
+`familyEquivalence` normalization to the exact stack the renderer will
+emit (the probe compares the whole string). A design that must not reach
+git: pass `--confidential` to `capture` (sticky: `curate` and `stamp`
+inherit it; writes are refused unless git-ignored and the stamp redacts
+the URL). Color names come from styles or `design.colorNames` in the
+rules; a Figma MCP server, where available, can help name them.
 
 ## Pin one reference page (hard rule)
 
@@ -197,6 +228,7 @@ on.
 ## donor-tokens.json — the probe-able token sheet
 
 `stardust/reskin/donor-tokens.json`, curated by the agent in Phase 1
+(or by `figma-donor.mjs curate` from the rules for a Figma donor)
 from `canon-source/DESIGN.json` + `_brand-extraction.json` + raw
 computed styles — or, on the bounded-donor path, from raw
 computed-style sampling alone (§ Two first-class token-sourcing

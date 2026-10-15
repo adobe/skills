@@ -4,6 +4,23 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.33.0 — reskin takes a Figma donor: headless capture and deterministic curation
+
+`reskin --donor-figma <url>` replaces the "not yet implemented" stop. The new `reskin/figma-donor.mjs` reads the file over
+the Figma REST API with a personal access token (`FIGMA_TOKEN`); no browser, no MCP server. `capture` pins one file
+version, caches the raw responses and writes `canon-source/` foundation, role and module candidates and frame screenshots,
+every value citing its node id. `curate` turns the agent-authored `reskin/curation-rules.json` into `donor-tokens.json`,
+`donor-modules.md`, `DESIGN.{md,json}` and `_brand-extraction.json`, byte-identical for the same inputs. `stamp` sets
+`state.json.designSource`. `donor-sources.md` §3 is now the recipe, with `figma-rest` provenance. `--confidential`
+refuses to write anything git would track and redacts the stamped URL. A component kit (one module per page) is captured
+by picking frames from `capture --list`; a whole file larger than `--max-frames` stops and asks for that instead of
+capturing its first frames in document order.
+
+- **Field learnings.** Instance children carry the resolved overrides and `overrides[]` was empty on every instance sampled,
+  so values come from the children; a button's paint often sits on a same-size wrapper frame, so each property cites the
+  layer that paints it. One MCP export capped renders at 1024px and rate limits follow the file's plan: REST with a cached
+  file version is the primary path. The capture recipes and curation method come from #315, kept open as the reference.
+
 ## 0.32.1 — spec knowledge, wave 4: what a reviewing client had to guess
 
 Wave 4 of how clients use a spec's `stardust/spec/knowledge/`. A spec viewer that lets people review the spec
