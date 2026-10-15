@@ -14,6 +14,11 @@
  * Comparison modes (see reference/gates.md § Tolerances):
  *   - default: exact string equality of the computed value
  *   - fontFamily: quote-stripped, case-insensitive family-string equality
+ *   - compare "firstFamily": only the first family of the computed
+ *     fontFamily, quote-stripped and case-folded, against the value treated
+ *     the same way (a generated spec names one family, not the fallback stack)
+ *   - custom property (property starts with `--`): the computed
+ *     getPropertyValue, trimmed, compared whitespace-collapsed
  *   - tolerancePx: componentwise numeric comparison (each px component of
  *     the computed value within ±tolerancePx of the token's component) —
  *     for paddings (±2), container width (±20), section rhythm (±16)
@@ -32,10 +37,18 @@
  *       [--spec <probe-spec.json>]   JSON array of spec entries:
  *              { "label": "...", "selector": "...", "property": "backgroundColor",
  *                "token": "buttons.primary.background" | "value": "rgb(...)",
- *                "tolerancePx": 2 }        (property in camelCase)
+ *                "tolerancePx": 2,         (property in camelCase, or a --custom-property)
+ *                "compare": "firstFamily" }
  *       [--report <path>]            markdown report
  *       [--shot <path>]              full-page screenshot at 1440 for the
  *                                    side-by-side eyeball vs donor screenshots
+ *       [--viewport <w>]             load the page at width <w> (positive
+ *                                    integer, default 1440) and measure the
+ *                                    assertions there
+ *       [--no-sanity]                skip the overflow sanity checks
+ *       [--json <path>]              write { pass, results: [{ check, label,
+ *                                    status, detail }] } — label is the spec
+ *                                    entry's label (null for overflow checks)
  *       [--widths 1440,360]          overflow-sanity viewport widths
  *       [--ua <string>]              user agent (default: live-session's
  *                                    real-Chrome UA + standard headers)
@@ -75,11 +88,12 @@ function parseArgs(argv) {
   const opts = { widths: '1440,360', 'wait-until': 'domcontentloaded' };
   // Enumerated value-taking flags — an unknown --flag (e.g. a typo like
   // --tokns) must be rejected, not silently stored and defaulted.
-  const VALUE_FLAGS = new Set(['tokens', 'rendered', 'spec', 'report', 'shot', 'widths', 'ua', 'wait-until', 'locale']);
+  const VALUE_FLAGS = new Set(['tokens', 'rendered', 'spec', 'report', 'shot', 'widths', 'ua', 'wait-until', 'locale', 'viewport', 'json']);
   for (let i = 2; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === '--help' || a === '-h') opts.help = true;
     else if (a === '--headed') opts.headed = true;
+    else if (a === '--no-sanity') opts.noSanity = true;
     else if (a.startsWith('--') && VALUE_FLAGS.has(a.slice(2))) opts[a.slice(2)] = argv[++i];
     else { console.error(`[donor-probe] unknown arg: ${a}`); process.exit(2); }
   }
@@ -90,6 +104,7 @@ const args = parseArgs(process.argv);
 if (args.help || !args.tokens || !args.rendered) {
   console.log('usage: node donor-probe.mjs --tokens <donor-tokens.json> --rendered <url|file>');
   console.log('         [--spec <probe-spec.json>] [--report <path>] [--shot <path>] [--widths 1440,360]');
+  console.log('         [--viewport <w>] [--no-sanity] [--json <path>]');
   console.log('         [--ua <string>] [--wait-until domcontentloaded] [--headed] [--locale <tag>]');
   console.log('Asserts donor token values (computed styles) on the rendered reskin + overflow sanity.');
   console.log('Default spec expects: content in <main>, main .container measure, main .btn primary button.');
@@ -97,6 +112,11 @@ if (args.help || !args.tokens || !args.rendered) {
   console.log('Exit: 0 pass, 1 fail, 2 setup error, 3 bot challenge / blocked live target (never probed).');
   process.exit(args.help ? 0 : 2);
 }
+if (Object.hasOwn(args, 'viewport') && !/^[1-9]\d*$/.test(args.viewport ?? '')) {
+  console.error(`[donor-probe] --viewport needs a positive integer width, got "${args.viewport ?? ''}"`);
+  process.exit(2);
+}
+const viewportWidth = args.viewport ? Number(args.viewport) : 1440;
 
 let chromium;
 try { ({ chromium } = await import('playwright')); } catch {
@@ -129,8 +149,12 @@ const DEFAULT_SPEC = [
 const spec = args.spec ? JSON.parse(readFileSync(resolve(args.spec), 'utf8')) : DEFAULT_SPEC;
 
 const normFamily = (s) => (s || '').replace(/["']/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
+const firstFamily = (s) => normFamily(String(s || '').split(',')[0]);
+const collapse = (s) => String(s).replace(/\s+/g, ' ').trim();
 function compare(entry, got, want) {
+  if (entry.compare === 'firstFamily') return firstFamily(got) === firstFamily(want);
   if (entry.property === 'fontFamily') return normFamily(got) === normFamily(want);
+  if (entry.property.startsWith('--')) { got = collapse(got); want = collapse(want); }
   if (entry.tolerancePx != null) {
     const nums = (v) => String(v).match(/-?\d+(\.\d+)?/g)?.map(Number) ?? [];
     const g = nums(got); const w = nums(want);
@@ -162,7 +186,7 @@ const browser = args.headed ? await launchStealthHeaded(chromium) : await chromi
 // UA + standard headers + webdriver spoof (live-session) — harmless on
 // local/file targets, mandatory on live ones (F-G/F-R1).
 const ctx = await newLiveContext(browser, {
-  ua: args.ua, locale: args.locale, viewport: { width: 1440, height: 900 },
+  ua: args.ua, locale: args.locale, viewport: { width: viewportWidth, height: 900 },
 });
 const page = await ctx.newPage();
 const renderedUrl = toUrl(args.rendered);
@@ -183,34 +207,35 @@ if (isLiveHttpUrl(renderedUrl)) {
 }
 await page.waitForTimeout(1500);
 
-const results = []; // { check, status: 'PASS'|'FAIL'|'SKIP', detail }
+const results = []; // { check, label, status: 'PASS'|'FAIL'|'SKIP', detail }
 for (const entry of spec) {
   const want = entry.value !== undefined ? entry.value : get(tokens, entry.token);
   if (want === undefined) {
-    results.push({ check: entry.label, status: 'SKIP', detail: `token path "${entry.token}" absent from ${args.tokens}` });
+    results.push({ check: entry.label, label: entry.label, status: 'SKIP', detail: `token path "${entry.token}" absent from ${args.tokens}` });
     continue;
   }
   const got = await page.evaluate(([sel, prop]) => {
     const el = document.querySelector(sel);
-    return el ? getComputedStyle(el)[prop] : null;
+    if (!el) return null;
+    return prop.startsWith('--') ? getComputedStyle(el).getPropertyValue(prop).trim() : getComputedStyle(el)[prop];
   }, [entry.selector, entry.property]);
   if (got === null) {
     // A missing selector is a FAIL: either the renderer broke the documented
     // conventions or the spec is stale — both need a human, not a silent skip.
-    results.push({ check: entry.label, status: 'FAIL', detail: `selector "${entry.selector}" matched nothing` });
+    results.push({ check: entry.label, label: entry.label, status: 'FAIL', detail: `selector "${entry.selector}" matched nothing` });
     continue;
   }
   const ok = compare(entry, got, want);
-  results.push({ check: `${entry.label} = ${want}`, status: ok ? 'PASS' : 'FAIL', detail: got });
+  results.push({ check: `${entry.label} = ${want}`, label: entry.label, status: ok ? 'PASS' : 'FAIL', detail: got });
 }
 
 // ---- overflow sanity ---------------------------------------------------------
-const widths = args.widths.split(',').map((w) => parseInt(w.trim(), 10)).filter(Boolean);
+const widths = args.noSanity ? [] : args.widths.split(',').map((w) => parseInt(w.trim(), 10)).filter(Boolean);
 for (const w of widths) {
   await page.setViewportSize({ width: w, height: 900 });
   await page.waitForTimeout(400);
   const over = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
-  results.push({ check: `no horizontal overflow @${w}`, status: over <= 0 ? 'PASS' : 'FAIL', detail: `overflow=${over}px` });
+  results.push({ check: `no horizontal overflow @${w}`, label: null, status: over <= 0 ? 'PASS' : 'FAIL', detail: `overflow=${over}px` });
 }
 
 if (args.shot) {
@@ -235,6 +260,10 @@ md += `> (stardust/canon-source/assets/screenshots/) per reference/gates.md.\n`;
 if (args.report) {
   mkdirSync(dirname(resolve(args.report)), { recursive: true });
   writeFileSync(args.report, md);
+}
+if (args.json) {
+  mkdirSync(dirname(resolve(args.json)), { recursive: true });
+  writeFileSync(args.json, `${JSON.stringify({ pass, results: results.map(({ check, label, status, detail }) => ({ check, label, status, detail })) }, null, 2)}\n`);
 }
 console.log(`[donor-probe] ${pass ? 'PASS' : 'FAIL'} — ${results.length - fails.length - skips.length}/${results.length - skips.length} assertions${skips.length ? `, ${skips.length} skipped` : ''}${args.report ? ` — report: ${args.report}` : ''}`);
 for (const f of fails.slice(0, 15)) console.log(`  FAIL ${f.check} — ${f.detail}`);
