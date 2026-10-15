@@ -5,6 +5,7 @@
 //          (.work/reskin/figma/, never the network) and cached in .work/reskin/gates/figma-boxes/.
 //   join   B0: every mapping.md slot that renders as a module is one section of the page, in order, with
 //          its module's Figma frame; a page that drifted from the mapping stops here.
+//   geometry  B1: the sizes, offsets, gaps and paddings the checks file pairs with Figma nodes or tokens.
 // Writes go only under <dir>/.work/reskin/gates/. Under a sticky --confidential capture, every
 // subcommand first checks that .work/ and reskin/figma-checks/ are git-ignored.
 // --help answers before any helper import, so it works even from a partial copy of the scripts.
@@ -18,6 +19,7 @@ const SELF = fileURLToPath(import.meta.url);
 export const HELP = `Usage:
   node figma-gate.mjs boxes [--module Mn | --node <id>] [--depth 3] [--dir stardust]
   node figma-gate.mjs join --page <slug> --url <url|file> [--dir stardust]
+  node figma-gate.mjs geometry --page <slug> --url <url|file> [--dir stardust]
 
 Figma checks on a reskin page, against the capture figma-donor.mjs made (offline: no token, no network).
 
@@ -39,6 +41,14 @@ join     B0, the section join. Opens the page (a file path, a file: or localhost
          carried-invisible rows need no section. Each problem starts "section drift:". Writes
          <dir>/.work/reskin/gates/<slug>/figma/join.json (each section's slot, module, Figma frame, selector
          and document index), prints one PASS or FAIL line and exits 1 on drift.
+geometry B1. Runs the join first (drift stops here, exit 1), validates the checks file, then measures every
+         geometry entry on the page (one page load per width) against the same measure taken from its Figma
+         node (relative to the module root) or its token: width, height, left, right, top, gapX, gapY and
+         the paddings, within tolerancePx (default 1: measure-live rounds to whole px, Figma has half pixels).
+         Prints "geometry PASS n/n" or "geometry FAIL k/n" plus one indented line per failing entry
+         ("<slot> <id> <measure> (node <id>): 540 vs 560 (±1)", or "unmeasurable: <why>" when the selector
+         matched nothing, a gap has fewer than two matches or the box has no size); writes
+         <dir>/.work/reskin/gates/<slug>/figma/geometry.json; exit 1 on any FAIL.
 --dir <d>  the stardust directory (default stardust).
 
 Checks file <dir>/reskin/figma-checks/<slug>.json (written by the agent from the boxes outlines):
@@ -64,6 +74,7 @@ Exit codes: 0 pass · 1 a blocking check failed · 2 usage or setup (missing inp
 const SPEC = {
   boxes: { values: ['--module', '--node', '--depth', '--dir'], bools: [], positional: [] },
   join: { values: ['--page', '--url', '--dir'], bools: [], positional: [] },
+  geometry: { values: ['--page', '--url', '--dir'], bools: [], positional: [] },
 };
 
 export function parseArgs(argv, UsageError) {
@@ -131,6 +142,11 @@ async function boxesStep({ dir, opts, log, UsageError }) {
   return 0;
 }
 
+function logDrift(result, log) {
+  log(`FAIL join: ${result.problems.length} problem(s), the page drifted from mapping.md`);
+  for (const p of result.problems) log(`  ${p}`);
+}
+
 async function joinStep({ dir, opts, log, UsageError }) {
   if (!opts.page) throw new UsageError('join needs --page <slug>');
   if (!opts.url) throw new UsageError('join needs --url <url|file>: the page to join');
@@ -141,9 +157,24 @@ async function joinStep({ dir, opts, log, UsageError }) {
     log(`PASS join: ${result.sections.length} section(s) joined to Figma modules (${result.sections.map((s) => `${s.slot} → ${s.module ?? 'new module'}`).join(', ')})`);
     return 0;
   }
-  log(`FAIL join: ${result.problems.length} problem(s), the page drifted from mapping.md`);
-  for (const p of result.problems) log(`  ${p}`);
+  logDrift(result, log);
   return 1;
+}
+
+async function geometryStep({ dir, opts, log, UsageError }) {
+  if (!opts.page) throw new UsageError('geometry needs --page <slug>');
+  if (!opts.url) throw new UsageError('geometry needs --url <url|file>: the page to measure');
+  const [{ prepare }, { runGeometry }] = await Promise.all([helper('prepare'), helper('geometry')]);
+  const ready = await prepare({ dir, slug: opts.page, url: opts.url });
+  if (ready.drift) {
+    logDrift(ready.join, log);
+    return 1;
+  }
+  const { pass, results } = await runGeometry({ target: ready.target, join: ready.join, checks: ready.checks, boxes: ready.boxes, tokens: ready.tokens, out: ready.out });
+  const failing = results.filter((r) => r.status !== 'PASS');
+  log(pass ? `geometry PASS ${results.length}/${results.length}` : `geometry FAIL ${failing.length}/${results.length}`);
+  for (const r of failing) log(`  ${r.slot} ${r.id} ${r.measure}${r.node ? ` (node ${r.node})` : ''}: ${r.detail}`);
+  return pass ? 0 : 1;
 }
 
 // steps lets a test replace a step function.
@@ -152,7 +183,7 @@ export async function main(argv, { env = process.env, log = console.log, warn = 
   const { UsageError } = await helper('errors', 'figma');
   const { cmd, opts } = parseArgs(argv, UsageError);
   const dir = opts.dir || 'stardust';
-  const run = { boxes: boxesStep, join: joinStep, ...steps }[cmd];
+  const run = { boxes: boxesStep, join: joinStep, geometry: geometryStep, ...steps }[cmd];
   const { confidentialGuard } = await helper('io');
   confidentialGuard(dir);
   return run({ dir, opts, env, log, warn, UsageError });
