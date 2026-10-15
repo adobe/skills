@@ -118,7 +118,9 @@ node skills/rollout/scripts/plan.mjs     # → plan.json + a readable conversion
 
 **Before Phase C.** `stardust/dynamic-features.md` (from prepare-migration 4.5 or replica
 Phase 2) must exist with a disposition on every row; verify it against fresh evidence here —
-`dynamics-detect.mjs --from-state … --reach stardust/current` and `dynamics-plan.mjs
+`dynamics-detect.mjs --from-state … --reach stardust/current --reuse-if-fresh` (a `_dynamics.json`
+written after this run's `A-inventory` start with the same URLs and roster is reused — the line
+says so; `--fresh` re-probes) and `dynamics-plan.mjs
 --target-origin <live host> --migrated stardust/migrated` (host-bound APIs, rows the capture
 already delivered). New evidence → new rows. The listings contract (per-type `<meta>` fields +
 `helix-query.yaml`) is emitted by Phase C's `deploy` brief per page: retrofitting metadata across

@@ -35,7 +35,8 @@ other platforms later), not a redesign one.
 `node skills/dynamics/scripts/dynamics-detect.mjs --from-state stardust/state.json --out stardust/current [--reach stardust/current]`
 (or `--urls` one per archetype + the home page). Depth on archetypes, reach from the crawl's
 `extract --dynamics` per-page signals. Output `stardust/current/_dynamics.json` +
-`dynamic-features.generated.md`. Evidence only. `reference/classes-and-signals.md`. For every
+`dynamic-features.generated.md`. Evidence only. `--reuse-if-fresh` (rollout B2) reuses a fresh
+`_dynamics.json` and `--fresh` re-probes — the rule is in `--help`. `reference/classes-and-signals.md`. For every
 search form found, run one probe term on the SOURCE and record what it shows — the visible result
 count, the top titles (≤ 3), one known hit — as `expectCount` / `expectTitles` / `expectIncludes`
 on the feature's `search-query` check (Phase 5; a spec's `knowledge/search-probes.json` already
