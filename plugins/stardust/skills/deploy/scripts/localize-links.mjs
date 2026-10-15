@@ -121,6 +121,23 @@ export function redirectPairs(raw, file = '') {
   return pairs;
 }
 
+/**
+ * Adds redirect pairs to a URL map (lookup key → served URL), in place. A redirect rewrites links only to a page already
+ * in the map: one whose page ships in a later wave stays absolute until then (a seeded spec covers every page of the
+ * site, a wave delivers a few); it never shadows a page of the map. Returns {redirects: added, pending: destination
+ * not in the map}. Pure apart from the map it fills; the sibling encoder builds its map from the roster the same way.
+ */
+export function addRedirects(map, pairs) {
+  let redirects = 0; let pending = 0;
+  for (const [s, d] of pairs) {
+    const src = canonicalPath(s.replace(/^https?:\/\/[^/]+/i, ''));
+    const dst = map.get(canonicalPath(d.replace(/^https?:\/\/[^/]+/i, '')));
+    if (dst === undefined) { pending += 1; continue; }
+    if (!map.has(src)) { map.set(src, dst); redirects += 1; }
+  }
+  return { redirects, pending };
+}
+
 function buildMap(files, root, redirectsFile) {
   const map = new Map(); // lookup key → the URL EDS serves (a folder index at /a/, a leaf at /a/b: eds-path.mjs)
   for (const f of files) {
@@ -131,14 +148,7 @@ function buildMap(files, root, redirectsFile) {
   if (redirectsFile) {
     const pairs = redirectPairs(readFileSync(redirectsFile, 'utf8'), redirectsFile);
     if (!pairs.length) console.error(`localize-links: no redirect pairs read from ${redirectsFile}`);
-    // a redirect rewrites links only to a page of this content tree: one whose page ships in a later wave stays
-    // absolute until then (a seeded spec covers every page of the site, a wave delivers a few)
-    for (const [s, d] of pairs) {
-      const src = canonicalPath(s.replace(/^https?:\/\/[^/]+/i, ''));
-      const dst = map.get(canonicalPath(d.replace(/^https?:\/\/[^/]+/i, '')));
-      if (dst === undefined) { pending += 1; continue; }
-      if (!map.has(src)) { map.set(src, dst); redirects += 1; }
-    }
+    ({ redirects, pending } = addRedirects(map, pairs));
   }
   return { map, redirects, pending };
 }
