@@ -243,21 +243,44 @@ stop for safe SDK configuration; configuration changes require approval.
 
 `cdw` must be selected explicitly; auto-diff classifies shared dialog paths as
 `legacy-ui`. Dispatcher, unsupported-runmodes, and filevault-deps
-are not wired into this validator. Source-only patterns do not touch the SDK.
-`custom-templates` is source-only: it checks each editable template in the built
+are not wired into this validator. Source-only CLI checks do not touch the SDK.
+By default, `custom-templates` checks each editable template in the built
 content package for a `cq:Template` definition plus `structure` and `initial`
 content (`policies` is reported but optional). Optionally pass
 `--template /conf/<site>/settings/wcm/templates/<name>` on prepare to narrow
-selection. Page creation and rendering are not exercised, because no MCP tool
-covers content authoring yet. Each template gets its own payload, report,
-receipt and finalize invocation.
+selection. Package-only checks do not create or render pages.
+For static-to-editable runtime comparison the skill orchestrates two-instance
+readiness, approved target-only package deployment, equivalent source/target pages,
+content preservation and reviewed desktop/mobile screenshots. Pass
+`--template-mode runtime` on prepare and `--template-evidence <absolute-json-path>`
+on verify. The runtime requirement persists in state, and missing evidence cannot
+silently pass as source-only. The CLI validates browser evidence; it does not run
+a browser, hold SDK credentials, create fixtures or deploy content ZIPs itself.
+See [Template runtime validation](../skills/validate-migration/references/patterns/custom-templates.md)
+for setup, approval, evidence schema and cleanup. Each template gets its own payload,
+report, receipt and finalize invocation. Other patterns are unchanged.
+Runtime screenshot verification uses the declared `pngjs` dependency; install this
+directory's dependencies before use. Package-only checks remain independent of it.
 
 ## Files that ship with this plugin
 
 - `init.js` — local readiness check; boots a workspace SDK if none is running (does NOT speak MCP).
 - `sdk.js` — shared SDK detect / search / boot logic used by `init.js` and `check.js`.
-- `check.js` — prepare = build/discover/deploy; verify = consume diagnosis and
-  emit outcome; finalize = persist the reporting acknowledgement or error.
+- `check.js` — orchestrator CLI: prepare = build/discover/deploy; verify = consume
+  diagnosis and run each pattern's check; finalize = persist the reporting
+  acknowledgement or error.
+- `check/patterns/` — one module per pattern, each exporting `discover` and `verify`;
+  `index.js` registers them. Add a pattern by adding one module and registering it.
+  - `custom-templates/` — `index.js` (pattern), `discover.js` (templates in a package),
+    `mapping.js` (offline check that every component of the pre-migration static
+    template, read from Git via `--static-template` / `--baseline-ref`, defaults
+    `/apps/<site>/templates/<name>` and `HEAD`, exists in the editable template),
+    `evidence.js` (agent-captured runtime evidence, PNG screenshots, content
+    preservation, run/package binding and fixture cleanup).
+- `check/lib/` — shared helpers: `jar.js` (jar contents and manifest),
+  `descriptor.js` (DS descriptors and contracts), `diagnosis.js` (MCP diagnosis map),
+  `runtime-gate.js` (shared bundle/component state checks), `dialogs.js` (dialog
+  discovery and classification).
 - `plan.js` — branch-diff scoping. Includes committed, staged, unstaged, and
   untracked changes.
 - `build.js`, `deploy.js` — reusable helpers.

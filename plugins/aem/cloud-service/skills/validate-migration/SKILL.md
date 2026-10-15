@@ -2,14 +2,14 @@
 name: validate-migration
 description: |
   [BETA] Use when asked to validate a migration, smoke-test a branch, check a
-  scheduler fix on the Cloud SDK, or verify supported code changes after the
+  scheduler fix on the Cloud SDK, compare static and editable template pages, or verify supported code changes after the
   migration or code-assessment skill. This skill is in beta. Verify all outputs
   before applying them to production projects.
 license: Apache-2.0
 metadata:
   status: beta
   author: AEM Cloud Service Team
-  version: "0.2"
+  version: "0.3"
   aem_version: "Cloud Service"
 ---
 
@@ -26,19 +26,21 @@ a successful build or an emitted payload. Restricted passes retain their caveats
 ## Scope and paths
 
 Use `scheduler`, `asset-manager`, `event-migration`, `resource-change-listener`,
-`replication`, `legacy-ui`, `custom-templates`, or explicit `cdw`. The dialog and
-template patterns are source-only; they need no SDK or diagnosis. Do not use this
+`replication`, `legacy-ui`, `custom-templates`, or explicit `cdw`. Do not use this
 skill for dispatcher, unsupported-runmodes or filevault-deps. Fixes belong to `migration`.
 
-`custom-templates` checks each editable template in the built content package for a
-`cq:Template` definition plus `structure` and `initial` content. For one template add
-`--template /conf/<site>/settings/wcm/templates/<name>` to prepare (the exact
-selection is saved in state). Page creation and rendering are not exercised; report
-that limitation. Submit and finalize EACH emitted template payload and receipt
-separately; a passing sibling never masks a failed template.
+This skill is the orchestrator: it runs the shared workflow below and, for each
+pattern in scope, that pattern's check (`validate-migration/check/patterns/`).
+When a pattern has a reference, read it before running that pattern; skip it otherwise.
 
-The validator holds no SDK credentials and never calls the SDK console. Runtime
-state comes only from the AEM Quickstart MCP.
+| Pattern | Checks | Needs SDK + MCP | Pattern reference |
+|---|---|---|---|
+| `scheduler`, `asset-manager`, `event-migration`, `resource-change-listener`, `replication` | Built DS contract, bundle/component state | Yes | none |
+| `legacy-ui`, `cdw` | Dialog files in the built package | No | none |
+| `custom-templates` | Offline component mapping, SDK health, side-by-side page compare | Yes | [custom-templates](references/patterns/custom-templates.md) |
+
+The validator holds no SDK credentials and never calls the SDK console. Bundle
+runtime state comes only from the AEM Quickstart MCP.
 
 Resolve `$VALIDATOR` to the absolute path of `../../validate-migration` relative
 to this file. Run commands from the customer's project/module root. For a
@@ -60,7 +62,10 @@ with the same pattern and class scope before diagnosis and verification.
 
 Do not invoke customer business actions, submit jobs, send email, change content,
 shorten schedules, add instrumentation/test endpoints, or modify customer source
-to obtain a pass. Existing customer tests may be run separately, unchanged, only
+to obtain a pass. Only a pattern reference may grant narrow, approved exceptions
+(for example the `custom-templates` target deployment and disposable fixtures).
+Existing comparison pages remain read-only;
+never overwrite or delete them. Existing customer tests may be run separately, unchanged, only
 with explicit authorization and a safe test environment; never infer their result.
 Before deployment, confirm the selected SDK is safe for automatic activation:
 installing a bundle can start scheduled work or listeners. If isolation from
@@ -69,7 +74,7 @@ SDK configuration. Do not change credentials or SDK configuration without approv
 
 ## Workflow
 
-1. **Readiness.** Confirm `diagnose-osgi-bundle` (runtime patterns) and
+1. **Readiness.** Confirm `diagnose-osgi-bundle` (bundle-runtime patterns) and
   `submit-migration-validation-result` are available before building. Confirm the reporting
    server's CAM URL configuration and intended environment when inspectable;
    tool availability alone does not prove configuration readiness. Never probe
@@ -77,7 +82,10 @@ SDK configuration. Do not change credentials or SDK configuration without approv
   nearest `migration-runbook.json` (`project.id`), or use an explicit project
   flag. Explicit selection wins. If absent, ask once for the CAM project name;
   never guess or assume a context file is consumed.
-    For runtime patterns the SDK is mandatory; never skip deployment or diagnosis
+    For a pattern with a reference, run that reference's readiness checks first; a
+    Cloud SDK includes a Quickstart JAR, not a separate third instance. For
+    bundle-runtime patterns the SDK is mandatory;
+    never skip deployment or diagnosis
     when discovery fails. Honor a user-provided SDK URL with `--sdk <url>` and
     check it explicitly. Otherwise run
     `node "$VALIDATOR/init.js" --search <workspace>`; it probes 4502/4602/4503
@@ -96,15 +104,16 @@ SDK configuration. Do not change credentials or SDK configuration without approv
    validation; state that end-to-end reporting remains incomplete.
 
 2. **Prepare.** Run `node "$VALIDATOR/check.js" --stage prepare` with the selected
-   scope/project/SDK flags. It builds, discovers, deploys through the project's
-   Maven install profile, and saves `.validate-migration/state.json`. The build
-   uses `-DskipTests`; do not claim customer unit tests passed.
-
+  scope/project/SDK flags. It builds, discovers, deploys bundle-runtime patterns
+  through the project's Maven install profile, and saves `.validate-migration/state.json`.
+   A pattern reference may add steps between prepare and verify; follow it.
+   The build uses `-DskipTests`; do not claim customer unit tests passed.
 3. **Diagnose.** For each emitted BSN, call MCP `diagnose-osgi-bundle` with
    `{ "bundleSymbolicName": "<BSN>" }` against the SAME SDK. Save the exact returned report in
    `.validate-migration/diagnosis-map.json` as `{ "<BSN>": "<raw report>" }`.
   If unavailable, stop recovery and follow the missing-diagnosis path below.
-  Never substitute direct Felix calls.
+  Never substitute direct Felix calls. Pattern references that deploy bundles use
+  this same diagnosis.
 
 4. **Verify.** Run `node "$VALIDATOR/check.js" --stage verify` with the same scope
   flags. It writes `.validate-migration/<run_id>.{md,json}` and emits one outcome
@@ -198,7 +207,8 @@ For failures, explain the root cause and next action briefly; do not dump raw
 evidence. A timeout-ending `deploy.failed` allows one deployment retry after
 5 seconds. Runtime recovery follows the bounded policy above; never blindly retry
 runtime/source contract failures. Source-only failures go back to `migration`
-without automatic repair in this runtime recovery loop.
+without automatic repair in this runtime recovery loop. Pattern references define
+any extra revalidation for their pattern.
 
 ## Guardrails and reference
 
@@ -208,6 +218,7 @@ without automatic repair in this runtime recovery loop.
   [the frozen taxonomy](../../validate-migration/failure-classes.js).
 - Only boot workspace SDK JARs or user-confirmed local SDK JARs outside the
   workspace. Never download an SDK or persist credentials in reports, receipts,
-  or the user's HOME.
+  or the user's HOME. Credentials a pattern needs come only from environment
+  variables the user sets (see the pattern reference); never assume a default.
 - Read [the validator reference](../../validate-migration/README.md) only for
   configuration, per-pattern contracts, deployment details, or setup guidance.

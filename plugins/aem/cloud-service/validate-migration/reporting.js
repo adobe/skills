@@ -14,12 +14,12 @@ function writeLocalReport(record, cwd) {
   fs.mkdirSync(dir, { recursive: true });
   const mdPath = path.join(dir, `${record.run_id}.md`);
   const jsonPath = path.join(dir, `${record.run_id}.json`);
-  fs.writeFileSync(mdPath, renderLocalReport(record), 'utf8');
+  fs.writeFileSync(mdPath, renderLocalReport(record, dir), 'utf8');
   fs.writeFileSync(jsonPath, JSON.stringify(record, null, 2), 'utf8');
   return { mdPath, jsonPath };
 }
 
-function renderLocalReport(record) {
+function renderLocalReport(record, reportDir) {
   const reporting = record.reporting || { status: 'pending' };
   const lines = [
     '# validate-migration report',
@@ -28,11 +28,11 @@ function renderLocalReport(record) {
     `- validation result: ${record.result}`,
     `- verification level: ${record.verification_level}`,
     record.classes.some((c) => c.pattern === 'custom-templates')
-      ? '- validation scope: disposable template page creation, authoring, rendering and cleanup'
+      ? record.classes.some((c) => c.checks?.template_comparison)
+        ? '- validation scope: template package contracts and source-to-target content/rendering comparison'
+        : '- validation scope: editable-template package contracts only; rendering not verified'
       : '- validation scope: migration contracts and activation only',
-    record.classes.some((c) => c.pattern === 'custom-templates')
-      ? '- business behavior: limited page authoring tested; editor policy not verified'
-      : '- business behavior: not tested',
+    '- business behavior: not tested',
     `- reporting: ${reporting.status}`,
     `- completion: ${reporting.status === 'recorded' ? 'complete' : 'incomplete'}`,
     '- event delivery: unconfirmed (outcome acknowledgement does not confirm downstream delivery)',
@@ -50,6 +50,24 @@ function renderLocalReport(record) {
     lines.push(
       `| ${c.pattern || '—'} | ${cls} | ${c.result || '—'} | ${bundle} | ${c.component_state || '—'} | ${c.failure_class || '—'} |`,
     );
+  }
+  for (const entry of record.classes.filter((item) => item.pattern === 'custom-templates')) {
+    const comparison = entry.checks?.template_comparison;
+    lines.push('', '## Template Comparison', '', `- template: ${entry.discovered?.template || entry.class_name}`);
+    if (!comparison) {
+      lines.push('- runtime comparison: not verified', ...(entry.evidence ? [`- evidence: ${entry.evidence}`] : []));
+      continue;
+    }
+    lines.push(`- source: ${comparison.source_url}`, `- target: ${comparison.target_url}`,
+      `- captured: ${comparison.captured_at}`, `- cleanup: ${comparison.cleanup?.status || 'not_verified'}`, `- coverage: ${comparison.coverage}`);
+    for (const capture of comparison.captures) {
+      const directory = path.resolve(reportDir || process.cwd());
+      const canonicalDirectory = fs.existsSync(directory) ? fs.realpathSync(directory)
+        : path.join(fs.realpathSync(path.dirname(directory)), path.basename(directory));
+      const screenshotLink = (file) => encodeURI(path.relative(canonicalDirectory, file).split(path.sep).join('/'));
+      lines.push(`- ${capture.viewport.width}x${capture.viewport.height}: ${capture.result}; [source screenshot](${screenshotLink(capture.source)}); [target screenshot](${screenshotLink(capture.target)})`);
+    }
+    for (const difference of comparison.differences) lines.push(`- ${difference}`);
   }
   const restricted = (record.classes || []).filter((entry) => entry.restricted || entry.checks?.restricted);
   if (restricted.length) {
@@ -159,10 +177,15 @@ function validationChecks(outcome) {
   const contractFailed = [FAILURE_CLASSES.SOURCE_CONTRACT_MISMATCH, FAILURE_CLASSES.CONTRACT_MISMATCH].includes(outcome.failure_class);
   return {
     ...outcome.checks,
+    ...(outcome.checks?.template_comparison ? {
+      template_screenshots: JSON.stringify(outcome.checks.template_comparison.captures.map((capture) => (
+        { ...capture, source: path.basename(capture.source), target: path.basename(capture.target) }))),
+      template_differences: JSON.stringify(outcome.checks.template_comparison.differences),
+      template_cleanup: JSON.stringify(outcome.checks.template_comparison.cleanup),
+      template_component_mapping: JSON.stringify(outcome.checks.template_comparison.component_mapping),
+    } : {}),
     migration_contract: outcome.result === 'pass' ? 'pass' : contractFailed ? 'fail' : 'not_verified',
-    business_behavior: outcome.pattern === 'custom-templates'
-      ? outcome.checks?.authoring_persisted ? 'page_authoring_tested' : 'not_tested'
-      : 'not_tested',
+    business_behavior: 'not_tested',
   };
 }
 

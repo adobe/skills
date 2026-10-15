@@ -7,30 +7,13 @@ const os = require('os');
 const path = require('path');
 const { execFileSync, spawnSync } = require('child_process');
 
-const {
-  parseBundleDiagnosticReport,
-  parseComponentsFromReport,
-  normalizeState,
-  mcpUnavailableOutcome,
-  buildMcpPayload,
-  renderLocalReport,
-  writeLocalReport,
-  finalizeReporting,
-  toClassEntry,
-  stripEmpty,
-  truncate,
-  parseArgs,
-  PATTERNS,
-  readContext,
-  camReportingNote,
-  classifyDialog,
-  clearDiagnosisMap,
-  prepareStopDecision,
-  manifestImportsPackage,
-  referencesClassName,
-  topicFromDescriptor,
-  rclFlagsFromDescriptor,
-} = require('./check.js');
+const { parseArgs, readContext, prepareStopDecision } = require('./check.js');
+const PATTERNS = require('./check/patterns');
+const { parseBundleDiagnosticReport, parseComponentsFromReport, normalizeState, mcpUnavailableOutcome, clearDiagnosisMap } = require('./check/lib/diagnosis.js');
+const { classifyDialog } = require('./check/lib/dialogs.js');
+const { manifestImportsPackage, referencesClassName } = require('./check/lib/jar.js');
+const { topicFromDescriptor, rclFlagsFromDescriptor } = require('./check/lib/descriptor.js');
+const { buildMcpPayload, renderLocalReport, writeLocalReport, finalizeReporting, toClassEntry, stripEmpty, truncate, camReportingNote } = require('./reporting.js');
 const { ALL_FAILURE_CLASSES, FAILURE_CLASSES, isFailureClass } = require('./failure-classes.js');
 const { changedFiles, RULES, SOURCE_ONLY_PATTERNS } = require('./plan.js');
 const { selectArtifact } = require('./build.js');
@@ -606,7 +589,13 @@ test('prepareStopDecision: --stage all with an explicit map does not stop', () =
 
 test('every failure_class named in SKILL.md is in the taxonomy and emitted by check.js', () => {
   const skill = fs.readFileSync(path.join(__dirname, '..', 'skills', 'validate-migration', 'SKILL.md'), 'utf8');
-  const checkSrc = fs.readFileSync(path.join(__dirname, 'check.js'), 'utf8');
+  const sources = [path.join(__dirname, 'check.js')];
+  const walk = (dir) => fs.readdirSync(dir, { withFileTypes: true }).forEach((e) => {
+    const p = path.join(dir, e.name);
+    if (e.isDirectory()) walk(p); else if (e.name.endsWith('.js')) sources.push(p);
+  });
+  walk(path.join(__dirname, 'check'));
+  const checkSrc = sources.map((f) => fs.readFileSync(f, 'utf8')).join('\n');
   const keyOf = Object.fromEntries(Object.entries(FAILURE_CLASSES).map(([k, v]) => [v, k]));
   const named = new Set((skill.match(/`([a-z]+\.[a-z_]+)`/g) || []).map((s) => s.replace(/`/g, '')));
   for (const token of named) {
@@ -896,8 +885,19 @@ test('custom-templates verifies template definition, structure and initial conte
       fs.mkdirSync(path.dirname(f), { recursive: true });
       fs.writeFileSync(f, body);
     };
+    const staticFile = path.join(dir, 'ui.apps/src/main/content/jcr_root/apps/wknd/templates/content-page-template/.content.xml');
+    fs.mkdirSync(path.dirname(staticFile), { recursive: true });
+    fs.writeFileSync(staticFile, '<jcr:root jcr:primaryType="cq:Template"><jcr:content sling:resourceType="wknd/components/page">'
+      + '<root sling:resourceType="wknd/components/container"><par sling:resourceType="wcm/foundation/components/parsys">'
+      + '<title sling:resourceType="wknd/components/title"/><text sling:resourceType="wknd/components/text"/></par></root></jcr:content></jcr:root>');
+    const git = (...args) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', ...args], { cwd: dir });
+    git('init', '-q');
+    git('add', 'ui.apps');
+    git('commit', '-q', '-m', 'static template');
+    const page = (children) => '<jcr:root jcr:primaryType="cq:Page"><jcr:content sling:resourceType="wknd/components/page">'
+      + `<root sling:resourceType="wknd/components/container">${children}</root></jcr:content></jcr:root>`;
     write('.content.xml', '<jcr:root jcr:primaryType="cq:Template"/>');
-    write('structure/.content.xml', '<jcr:root/>');
+    write('structure/.content.xml', page('<container sling:resourceType="wknd/components/container" editable="{Boolean}true"/>'));
     execFileSync('zip', ['-q', '-r', 'package.zip', 'jcr_root'], { cwd: dir });
     const pkg = path.join(dir, 'package.zip');
     const pat = PATTERNS['custom-templates'];
@@ -908,16 +908,158 @@ test('custom-templates verifies template definition, structure and initial conte
     assert.strictEqual(missing.result, 'fail');
     assert.match(missing.evidence, /missing initial/);
 
-    write('initial/.content.xml', '<jcr:root/>');
+    write('initial/.content.xml', page('<container sling:resourceType="wknd/components/container"><title sling:resourceType="wknd/components/title"/></container>'));
     execFileSync('zip', ['-q', '-r', 'package.zip', 'jcr_root'], { cwd: dir });
-    const ok = await pat.verify({ artifactPath: pkg, discovered: { template: TEMPLATE } });
+    const lost = await pat.verify({ artifactPath: pkg, discovered: { template: TEMPLATE }, projectDir: dir });
+    assert.strictEqual(lost.result, 'fail');
+    assert.match(lost.evidence, /text \(wknd\/components\/text\)/);
+
+    write('initial/.content.xml', page('<container sling:resourceType="wknd/components/container">'
+      + '<title sling:resourceType="wknd/components/title"/><text sling:resourceType="wknd/components/text"/></container>'));
+    execFileSync('zip', ['-q', '-r', 'package.zip', 'jcr_root'], { cwd: dir });
+    const ok = await pat.verify({ artifactPath: pkg, discovered: { template: TEMPLATE }, projectDir: dir });
     assert.strictEqual(ok.result, 'pass');
-    assert.deepStrictEqual(ok.checks, { template_definition: true, structure: true, initial: true, policies: false });
+    assert.deepStrictEqual(ok.checks, { template_definition: true, structure: true, initial: true, policies: false, component_mapping: true });
+
+    const noBaseline = await pat.verify({ artifactPath: pkg, discovered: { template: TEMPLATE }, projectDir: dir, staticTemplate: '/apps/wknd/templates/missing' });
+    const optionRef = await pat.verify({ artifactPath: pkg, discovered: { template: TEMPLATE }, projectDir: dir, baselineRef: '--output=/tmp/vm-injected' });
+    assert.strictEqual(optionRef.checks.component_mapping, 'not_verified');
+    assert.ok(!fs.existsSync('/tmp/vm-injected'));
+    assert.strictEqual(noBaseline.result, 'pass');
+    assert.strictEqual(noBaseline.restricted, true);
+    assert.strictEqual(noBaseline.checks.component_mapping, 'not_verified');
+    const noBaselineRuntime = await pat.verify({ artifactPath: pkg, discovered: { template: TEMPLATE }, projectDir: dir,
+      staticTemplate: '/apps/wknd/templates/missing', requireRuntime: true });
+    assert.strictEqual(noBaselineRuntime.result, 'fail');
+
+    const runtime = await pat.verify({ artifactPath: pkg, discovered: { template: TEMPLATE }, projectDir: dir, requireRuntime: true });
+    assert.strictEqual(runtime.result, 'fail');
+    assert.strictEqual(runtime.checks.runtime_evidence, false);
+
+    const { createHash } = require('crypto');
+    const { PNG } = require('pngjs');
+    const evidencePath = path.join(dir, 'template-evidence.json');
+    const captures = [
+      { viewport: { width: 1440, height: 900 }, source: 'source-desktop.png', target: 'target-desktop.png', result: 'pass', differences: [] },
+      { viewport: { width: 390, height: 844 }, source: 'source-mobile.png', target: 'target-mobile.png', result: 'pass', differences: [] },
+    ];
+    for (const capture of captures) {
+      const png = PNG.sync.write(new PNG({ width: capture.viewport.width, height: capture.viewport.height }));
+      fs.writeFileSync(path.join(dir, capture.source), png);
+      fs.writeFileSync(path.join(dir, capture.target), png);
+    }
+    const evidence = {
+      template: TEMPLATE,
+      artifact_sha256: createHash('sha256').update(fs.readFileSync(pkg)).digest('hex'),
+      captured_at: new Date().toISOString(),
+      deployment: { target_origin: 'http://localhost:4602', status: 'succeeded',
+        bundles: [{ symbolic_name: 'com.adobe.aem.guides.aem-guides-wknd.core', state: 'Active' }] },
+      source: { url: 'http://localhost:4502/content/wknd/test.html?wcmmode=disabled', template: '/apps/wknd/templates/content-page', status: 200,
+        components: ['legacy/topnav', 'legacy/hero', 'legacy/hero'], texts: ['WKND Adventures'], images: ['/content/dam/wknd/hero.jpg'] },
+      target: { url: 'http://localhost:4602/content/wknd/test.html?wcmmode=disabled', template: TEMPLATE, status: 200,
+        components: ['modern/topnav', 'legacy/hero', 'legacy/hero'], texts: ['WKND Adventures'], images: ['/content/dam/wknd/hero.jpg'] },
+      component_mapping: { 'legacy/topnav': 'modern/topnav' },
+      captures,
+      cleanup: { status: 'not_required', created_pages: [] },
+    };
+    const verifyEvidence = async (value) => {
+      fs.writeFileSync(evidencePath, JSON.stringify(value));
+      return pat.verify({ artifactPath: pkg, discovered: { template: TEMPLATE }, projectDir: dir, requireRuntime: true, runtimeEvidencePath: evidencePath });
+    };
+    const compared = await verifyEvidence(evidence);
+    assert.strictEqual(compared.result, 'pass');
+    assert.strictEqual(compared.verification_level, 'runtime');
+    assert.strictEqual(compared.checks.component_parity, true);
+    assert.strictEqual(compared.checks.bundles_active, true);
+    assert.strictEqual(compared.checks.business_behavior, 'not_tested');
+
+    const record = { run_id: 'template-runtime-test', result: compared.result, verification_level: compared.verification_level,
+      started_at: evidence.captured_at, finished_at: evidence.captured_at,
+      classes: [{ pattern: 'custom-templates', discovered: { template: TEMPLATE }, ...compared }] };
+    const markdown = renderLocalReport(record, path.join(dir, '.validate-migration'));
+    assert.match(markdown, /## Template Comparison/);
+    assert.match(markdown, /\(\.\.\/source-desktop\.png\)/);
+    assert.match(markdown, /authoring and business behavior not tested/);
+    const payload = buildMcpPayload(record, { pattern: 'custom-templates', 'project-id': 'template-test' });
+    assert.strictEqual(payload.verification_level, 'runtime');
+    assert.ok(JSON.stringify(payload).includes('target-mobile.png'));
+    assert.ok(!JSON.stringify(payload).includes(dir) && !JSON.stringify(payload).includes(fs.realpathSync(dir)), 'payload must not leak local paths');
+
+    const { spawnSync } = require('child_process');
+    const prepare = spawnSync(process.execPath, [require.resolve('./check.js'), '--stage', 'prepare', '--pattern', 'custom-templates',
+      '--project', dir, '--jar', pkg, '--template', TEMPLATE, '--template-mode', 'runtime'], { encoding: 'utf8' });
+    assert.ok([0, 3].includes(prepare.status), prepare.stderr || prepare.stdout);
+    const state = JSON.parse(fs.readFileSync(path.join(dir, '.validate-migration/state.json'), 'utf8'));
+    assert.strictEqual(state.prepared[0].requireRuntime, true);
+    const withoutEvidence = spawnSync(process.execPath, [require.resolve('./check.js'), '--stage', 'verify', '--project', dir], { encoding: 'utf8' });
+    assert.strictEqual(withoutEvidence.status, 1, withoutEvidence.stderr || withoutEvidence.stdout);
+    evidence.captured_at = new Date().toISOString();
+    for (const capture of captures) {
+      const png = PNG.sync.write(new PNG({ width: capture.viewport.width, height: capture.viewport.height }));
+      fs.writeFileSync(path.join(dir, capture.source), png);
+      fs.writeFileSync(path.join(dir, capture.target), png);
+    }
+    fs.writeFileSync(evidencePath, JSON.stringify(evidence));
+    const withEvidence = spawnSync(process.execPath, [require.resolve('./check.js'), '--stage', 'verify', '--project', dir,
+      '--template-evidence', evidencePath], { encoding: 'utf8' });
+    assert.strictEqual(withEvidence.status, 3, withEvidence.stderr || withEvidence.stdout);
+    const reports = fs.readdirSync(path.join(dir, '.validate-migration')).filter((name) => /^rvc-.*\.json$/.test(name));
+    assert.ok(reports.some((name) => {
+      const report = JSON.parse(fs.readFileSync(path.join(dir, '.validate-migration', name), 'utf8'));
+      return report.result === 'pass' && report.verification_level === 'runtime';
+    }));
+
+    const invalidCases = [
+      ['missing duplicate component', (value) => value.target.components.pop()],
+      ['missing text', (value) => { value.target.texts = []; }],
+      ['missing image', (value) => { value.target.images = []; }],
+      ['visual difference', (value) => { value.captures[0].result = 'fail'; value.captures[0].differences = ['Hero overlaps the title']; }],
+      ['visual check not performed', (value) => { value.captures[0].result = 'not_verified'; }],
+      ['missing mobile capture', (value) => { value.captures.pop(); }],
+      ['wrong artifact', (value) => { value.artifact_sha256 = '0'.repeat(64); }],
+      ['stale evidence', (value) => { value.captured_at = '2000-01-01T00:00:00.000Z'; }],
+      ['wrong template', (value) => { value.target.template = '/conf/wknd/settings/wcm/templates/other'; }],
+      ['same instance', (value) => { value.target.url = value.source.url; }],
+      ['credentials in URL', (value) => { value.source.url = 'http://user:private@localhost:4502/content/source.html'; }],
+      ['failed page render', (value) => { value.target.status = 500; }],
+      ['failed deployment', (value) => { value.deployment.status = 'failed'; }],
+      ['bundle state not checked', (value) => { delete value.deployment.bundles; }],
+      ['different page', (value) => { value.target.url = 'http://localhost:4602/content/wknd/other.html?wcmmode=disabled'; }],
+      ['bundle not active', (value) => { value.deployment.bundles[0].state = 'Resolved'; }],
+      ['cleanup failure', (value) => { value.cleanup = { status: 'failed', created_pages: ['/content/rv-test/page'] }; }],
+      ['unconfirmed cleanup', (value) => { value.cleanup.created_pages = ['/content/rv-test/page']; }],
+      ['empty inventory', (value) => { value.source.components = []; }],
+      ['malformed source template', (value) => { value.source.template = {}; }],
+      ['malformed capture', (value) => { value.captures = [null, null]; }],
+    ];
+    for (const [name, mutate] of invalidCases) {
+      const invalid = structuredClone(evidence);
+      mutate(invalid);
+      const outcome = await verifyEvidence(invalid);
+      assert.strictEqual(outcome.result, 'fail', name);
+    }
+    await verifyEvidence(evidence);
+    const stale = await pat.verify({ artifactPath: pkg, discovered: { template: TEMPLATE }, projectDir: dir, requireRuntime: true,
+      runtimeEvidencePath: evidencePath, runStartedAt: new Date(Date.now() + 60_000).toISOString() });
+    assert.strictEqual(stale.result, 'fail', 'evidence from before the prepared run');
+    const missingCleanup = structuredClone(evidence);
+    delete missingCleanup.cleanup;
+    const failedCleanup = await verifyEvidence(missingCleanup);
+    assert.strictEqual(failedCleanup.result, 'fail');
+    assert.doesNotThrow(() => renderLocalReport({ ...record, result: 'fail', classes: [{ pattern: 'custom-templates', ...failedCleanup }] }));
+    await verifyEvidence(evidence);
+    fs.writeFileSync(path.join(dir, captures[0].source), Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), Buffer.alloc(25)]));
+    assert.strictEqual((await verifyEvidence(evidence)).result, 'fail', 'corrupt PNG screenshot');
+    const tiny = PNG.sync.write(new PNG({ width: 1, height: 1 }));
+    fs.writeFileSync(path.join(dir, captures[0].source), tiny);
+    assert.strictEqual((await verifyEvidence(evidence)).result, 'fail', 'screenshot dimensions must match the viewport');
+    fs.unlinkSync(path.join(dir, captures[0].source));
+    assert.strictEqual((await verifyEvidence(evidence)).result, 'fail', 'missing screenshot artifact');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
 test('discoverTemplates finds and selects editable templates in a content package', () => {
-  const { discoverTemplates } = require('./check.js');
+  const { discoverTemplates } = require('./check/patterns/custom-templates/discover.js');
   const TEMPLATE = '/conf/wknd/settings/wcm/templates/content-page-template';
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vm-discover-'));
   try {
