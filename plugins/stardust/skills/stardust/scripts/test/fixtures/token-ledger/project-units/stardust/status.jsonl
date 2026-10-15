@@ -1,0 +1,5 @@
+{ "ts": "2026-09-11T09:00:00Z", "skill": "stardust:migrate", "phase": "plan", "event": "start" }
+{ "ts": "2026-09-11T09:05:00Z", "skill": "stardust:migrate", "phase": "plan", "event": "end", "detail": "4 pages in scope" }
+{ "ts": "2026-09-11T09:05:10Z", "skill": "stardust:migrate", "phase": "render", "event": "start" }
+{ "ts": "2026-09-11T09:20:00Z", "skill": "stardust:migrate", "phase": "render", "event": "end", "detail": "4/4 pages rendered" }
+{ "ts": "2026-09-11T10:00:00Z", "skill": "stardust:rollout", "phase": "C-deliver", "event": "start" }

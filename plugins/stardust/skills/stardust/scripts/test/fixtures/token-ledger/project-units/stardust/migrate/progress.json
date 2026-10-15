@@ -1,0 +1,6 @@
+{
+  "units": {
+    "plan": { "status": "done", "kind": "plan", "templates": [], "pages": 4, "startedAt": "2026-09-11T09:00:05Z", "endedAt": "2026-09-11T09:04:50Z", "verdict": "4 pages planned" },
+    "page": { "status": "done", "kind": "render", "templates": ["page"], "pages": 4, "startedAt": "2026-09-11T09:05:20Z", "endedAt": "2026-09-11T09:19:40Z", "verdict": "rendered 4, unchanged 0, refused 0, passthrough 0" }
+  }
+}

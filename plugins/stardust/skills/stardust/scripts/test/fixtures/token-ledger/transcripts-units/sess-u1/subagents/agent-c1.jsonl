@@ -1,0 +1,1 @@
+{"type":"assistant","timestamp":"2026-09-11T10:35:30.000Z","cwd":"/work/example-project","requestId":"req_S1","message":{"id":"msg_S1","role":"assistant","model":"model-x","usage":{"input_tokens":1000,"cache_creation_input_tokens":0,"cache_read_input_tokens":100000,"output_tokens":2000}}}

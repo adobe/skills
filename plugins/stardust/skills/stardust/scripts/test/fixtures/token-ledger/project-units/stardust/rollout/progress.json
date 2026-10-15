@@ -1,0 +1,10 @@
+{
+  "units": {
+    "foundation": { "status": "done", "kind": "foundation", "templates": [], "startedAt": "2026-09-11T10:00:10Z", "endedAt": "2026-09-11T10:15:00Z", "verdict": "foundation: live, gate passed" },
+    "home": { "status": "done", "kind": "archetype", "templates": ["home"], "pages": 1, "startedAt": "2026-09-11T10:15:10Z", "endedAt": "2026-09-11T10:25:00Z", "verdict": "home: pages 1/1 live" },
+    "cluster-a": { "status": "done", "kind": "cluster", "templates": ["article"], "pages": 2, "startedAt": "2026-09-11T10:25:10Z", "endedAt": "2026-09-11T10:45:00Z", "verdict": "cluster-a: pages 2/2 live" },
+    "cluster-b": { "status": "done", "kind": "cluster", "templates": ["product"], "pages": 1, "startedAt": "2026-09-11T10:30:00Z", "endedAt": "2026-09-11T10:50:00Z", "verdict": "cluster-b: pages 1/1 live" },
+    "cluster-c": { "status": "pending", "kind": "cluster", "templates": ["landing"], "pages": 3 },
+    "final": { "status": "running", "kind": "final", "templates": [], "startedAt": "2026-09-11T10:50:10Z" }
+  }
+}
