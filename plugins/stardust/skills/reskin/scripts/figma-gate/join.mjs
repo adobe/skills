@@ -24,6 +24,7 @@ export function matchSections({ dom, mapping, anchors: anchorOf, modules, select
   const parentChecked = new Set();
   for (const row of mapping.filter((r) => RENDERED.has(r.status))) {
     const { slot, module } = row;
+    if (row.status === 'mapped' && !module) drift(`${slot} is mapped but names no Donor module`);
     if (module && !modules.has(module)) drift(`${module} is not an included module in curation-rules.json (mapping.md maps ${slot} to it)`);
     const hits = dom.flatMap((d, index) => (d.slot === slot ? [{ d, index }] : []));
     if (!hits.length) { drift(`${slot} has no section: add <section data-slot="${slot}"> inside <main>`); continue; }

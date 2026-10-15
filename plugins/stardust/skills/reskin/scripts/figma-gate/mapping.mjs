@@ -3,6 +3,7 @@
 import { UsageError } from '../figma/errors.mjs';
 
 const SLOT = /^s\d+(-[a-z0-9-]+)?$/;
+export const STATUSES = ['mapped', 'new-module', 'chrome', 'carried-invisible'];
 const NONE = new Set(['', '—', '–', '-']);
 // Rows of a markdown table: runs of consecutive lines starting with "|".
 const cells = (line) => line.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim());
@@ -29,7 +30,9 @@ export function parseMapping(md) {
         const slot = plain(row[0] ?? '');
         if (!SLOT.test(slot)) continue;
         const module = moduleId(row[modCol] ?? '');
-        rows.push({ slot, module: NONE.has(module) ? null : module, status: plain(row[statusCol] ?? '').toLowerCase() });
+        const status = plain(row[statusCol] ?? '').toLowerCase();
+        if (!STATUSES.includes(status)) throw new UsageError(`mapping.md: ${slot} has Status "${status}"; use one of ${STATUSES.join(' | ')}`);
+        rows.push({ slot, module: NONE.has(module) ? null : module, status });
       }
       return rows;
     }

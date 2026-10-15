@@ -56,6 +56,22 @@ await check('parseMapping: a Donor module cell may name the module after its id,
   ]);
 });
 
+await check('parseMapping: an unknown Status is a usage error naming the four statuses', () => {
+  const md = (status) => `| Slot | Donor module | Status |\n|---|---|---|\n| s01 | M1 | ${status} |\n`;
+  for (const typo of ['new module', 'maped', '']) {
+    assert.throws(() => parseMapping(md(typo)), (e) => e.name === 'UsageError' && e.code === 2 && /s01/.test(e.message) && /mapped \| new-module \| chrome \| carried-invisible/.test(e.message), typo);
+  }
+  assert.doesNotThrow(() => parseMapping(md('Carried-Invisible')));
+});
+
+await check('matchSections: a mapped row that names no Donor module is section drift', () => {
+  const r = matchSections({ dom, mapping: [{ slot: 's01', module: null, status: 'mapped' }, mapping[1]], anchors: a, modules });
+  assert.equal(r.pass, false);
+  assert.ok(r.problems.includes('section drift: s01 is mapped but names no Donor module'), r.problems.join('\n'));
+  const fresh = matchSections({ dom, mapping: [{ slot: 's01', module: null, status: 'new-module' }, mapping[1]], anchors: a, modules });
+  assert.equal(fresh.pass, true, fresh.problems.join('\n'));
+});
+
 await check('anchors: first heading, else first ordered text, else the first 60 characters of visibleText; normalized', () => {
   assert.deepEqual([...a], [['s01', 'welcome to the kit'], ['s02', 'everything in one place'], ['s03', 'sample kit, all rights reserved.']]);
   const m = anchors({ sections: [
