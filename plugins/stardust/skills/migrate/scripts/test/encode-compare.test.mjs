@@ -140,4 +140,19 @@ const levels = (got, expected = BASE) => compareDocs(expected, got).levels;
   assert.equal(compareDocs(both, edit('<div class="cards three-up"><div>', '<div class="cards three-up"><div>Stray')).levels.core, false, 'stray text compares as a unit');
 }
 
+// --- an NBSP-only run is content at text and above (D0: only ASCII whitespace is blank); core folds it like a space -----
+{
+  const sec = compareDocs('<main><div>&nbsp;<p>x</p></div></main>', '<main><div><p>x</p></div></main>', { level: 'strict' });
+  assert.deepEqual(sec.levels, { core: true, text: false, strict: false, byte: false }, 'directly in a section');
+  assert.deepEqual(sec.diffs, [{ where: 's0.0 dc:#text', kind: 'text-exact', level: 'text', expected: '\u00a0', got: null }]);
+  assert.equal(compareDocs('<main><div>&nbsp;<p>x</p></div></main>', '<main><div>&#160;<p>x</p></div></main>', { level: 'strict' }).equal, true, 'the same NBSP run on both sides');
+  assert.deepEqual(compareDocs('<main><div>&nbsp;<p>x</p></div></main>', '<main><div><p>x</p>&nbsp;</div></main>').diffs.map((d) => d.where), ['s0.0 dc:#text', 's0.1 dc:#text'], 'placed before the item it precedes');
+  assert.deepEqual(compareDocs('<main><div>&nbsp;<p>x</p><p>y</p>&nbsp;</div></main>', '<main><div><p>x</p><p>y</p>&nbsp;</div></main>').diffs.map((d) => d.where), ['s0.0 dc:#text'], 'each run keyed by its own place');
+  assert.deepEqual(levels(`<body><main>&nbsp;${META}${BODY}</main></body>`), { core: true, text: false, strict: false, byte: false }, 'directly in <main>');
+  const row = compareDocs(BASE, edit('<div class="cards three-up"><div>', '<div class="cards three-up"><div>&nbsp;'));
+  assert.deepEqual(row.levels, { core: true, text: false, strict: false, byte: false }, 'stray in a row');
+  assert.deepEqual(row.diffs, [{ where: 's0.2 block:cards.three-up r0 stray0', kind: 'stray-text', level: 'text', expected: null, got: '\u00a0' }]);
+  assert.equal(compareDocs(BASE, edit('class="cards three-up"', 'class="cards\u00a0three-up"')).levels.core, false, 'class names split on ASCII whitespace only');
+}
+
 console.log('encode-compare: ok');

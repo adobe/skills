@@ -13,7 +13,8 @@
  * <main>; a section holding only the metadata block is not one. Items are blocks (`div` with a class: block:<name>.
  * <variants>) and default content (dc:<tag>; a run of non-whitespace text directly in a section is dc:#text, directly in
  * <main> a section of its own); units are default-content items, block cells and stray text (a run of non-whitespace text
- * in a block or a row outside its cells).
+ * in a block or a row outside its cells). Whitespace here is ASCII (D0): a run of NBSP alone is no item at core, which
+ * folds NBSP like a space, but it is a unit at its place from `text` up (text-exact, or stray-text at level text).
  *   core    the same sections, section styles (lower case), item sequence and rows × cells, stray text in the same
  *           places; every unit's text equal after decoding entities, NFC and collapsing all whitespace, NBSP included
  *           kinds: section-count, missing-item, extra-item, section-style, rows-cells, stray-text, text, text-missing,
@@ -128,7 +129,9 @@ function markup(toks) {
 }
 
 const unit = (toks) => ({ core: coreText(toks), text: exactText(toks), markup: markup(toks), byte: toks.filter((k) => k.t === 'text').map((k) => k.s).join('') });
-const classes = (n) => String(attr(n, 'class') || '').split(/\s+/).filter(Boolean);
+// HTML's whitespace is ASCII: class names split on it, and a text run of it alone is blank. NBSP is content (D0).
+const ASCII_BLANK = /^[\t\n\f\r ]*$/;
+const classes = (n) => String(attr(n, 'class') || '').split(/[\t\n\f\r ]+/).filter(Boolean);
 
 // a key/value block (metadata, section-metadata) → Map(lower-case key → value unit); a later row wins, as in EDS
 function readRows(block, into) {
@@ -138,7 +141,7 @@ function readRows(block, into) {
   }
 }
 
-// a node's children as elements and text runs (consecutive text nodes); a run of whitespace only is dropped
+// a node's children as elements and text runs (consecutive text nodes); a run of ASCII whitespace only is dropped
 function childParts(n) {
   const parts = [];
   for (const c of n.children) {
@@ -147,7 +150,7 @@ function childParts(n) {
     const last = parts[parts.length - 1];
     if (Array.isArray(last)) last.push(c); else parts.push([c]);
   }
-  return parts.filter((p) => !Array.isArray(p) || /\S/.test(decode(p.map((t) => t.text).join(''))));
+  return parts.filter((p) => !Array.isArray(p) || !ASCII_BLANK.test(decode(p.map((t) => t.text).join(''))));
 }
 const runUnit = (run) => unit(run.map((t) => ({ t: 'text', s: decode(t.text), pre: false })));
 // text a block holds outside its rows, and each row outside its cells: [{at: '' | ' r<row>', unit}] → keyed `<at> stray<n>`
@@ -159,16 +162,27 @@ function strays(block) {
   return out;
 }
 
+// A text run blank only at core (NBSP, other non-ASCII spaces) is no item — core folds it like a space — but is kept in
+// `blanks`, keyed by the place it sits (before section n of <main>, before item i of section s), for `text` and up.
 function normalise(html) {
   const doc = parseHTML(numericRefs(String(html ?? '')));
   const main = qs(doc, 'main') || qs(doc, 'body') || doc;
   const meta = new Map();
   const sections = [];
+  const blanks = [];
+  const seen = new Map();
+  const blank = (place, unit) => { const n = seen.get(place) || 0; seen.set(place, n + 1); blanks.push({ key: `${place} dc:#text${n ? `#${n}` : ''}`, unit }); };
   for (const sec of childParts(main)) {
+    if (Array.isArray(sec) && !runUnit(sec).core) { blank(`main.${sections.length}`, runUnit(sec)); continue; }
     const s = { meta: new Map(), style: null, items: [] };
+    const own = [];
     let hadMeta = false;
     for (const c of Array.isArray(sec) ? [sec] : childParts(sec)) {
-      if (Array.isArray(c)) { s.items.push({ sig: 'dc:#text', unit: runUnit(c) }); continue; }
+      if (Array.isArray(c)) {
+        const u = runUnit(c);
+        if (u.core) s.items.push({ sig: 'dc:#text', unit: u }); else own.push({ at: s.items.length, unit: u });
+        continue;
+      }
       const cls = classes(c);
       if (c.tag === 'div' && cls.length) {
         if (cls[0] === 'metadata') { hadMeta = true; readRows(c, meta); continue; }
@@ -177,9 +191,11 @@ function normalise(html) {
       } else s.items.push({ sig: `dc:${c.tag}`, unit: unit(tokens(c, true)) });
     }
     if (s.meta.has('style')) s.style = s.meta.get('style').core.toLowerCase();
-    if (s.items.length || s.meta.size || !hadMeta) sections.push(s);
+    const kept = s.items.length || s.meta.size || !hadMeta;
+    own.forEach((b) => blank(kept ? `s${sections.length}.${b.at}` : `main.${sections.length}`, b.unit));
+    if (kept) sections.push(s);
   }
-  return { meta, sections };
+  return { meta, sections, blanks };
 }
 
 // longest common subsequence of two lists by key → [['=' | '-' | '+', item]]
@@ -196,7 +212,7 @@ function lcs(a, b, key) {
   return ops;
 }
 
-const itemUnits = (it, where) => (it.unit ? [{ where, ...it.unit }] : [...it.rows.flatMap((r, ri) => r.map((c, ci) => ({ where: `${where} r${ri}c${ci}`, ...c }))), ...it.strays.map((x) => ({ where: `${where}${x.key}`, ...x.unit }))]);
+const itemUnits = (it, where) => (it.unit ? [{ where, ...it.unit }] : [...it.rows.flatMap((r, ri) => r.map((c, ci) => ({ where: `${where} r${ri}c${ci}`, ...c }))), ...it.strays.filter((x) => x.unit.core).map((x) => ({ where: `${where}${x.key}`, ...x.unit }))]);
 const docUnits = (d) => d.sections.flatMap((s, si) => s.items.flatMap((it, ii) => itemUnits(it, `s${si}.${ii} ${it.sig}`)));
 
 export function compareDocs(expectedHtml, gotHtml, { level = 'text' } = {}) {
@@ -215,6 +231,13 @@ export function compareDocs(expectedHtml, gotHtml, { level = 'text' } = {}) {
       if (e.markup !== g.markup) add('strict', 'markup', where, e.markup, g.markup);
       if (e.byte !== g.byte) add('byte', 'text-byte', where, e.byte, g.byte);
     }
+  };
+  // two keyed unit lists: the same key → compareUnit; a key on one side only → oneSide(where, expectedUnit, gotUnit)
+  const compareKeyed = (eList, gList, prefix, oneSide) => {
+    const got = new Map(gList.map((x) => [x.key, x.unit]));
+    const keys = new Set(eList.map((x) => x.key));
+    for (const x of eList) if (got.has(x.key)) compareUnit(x.unit, got.get(x.key), `${prefix}${x.key}`); else oneSide(`${prefix}${x.key}`, x.unit, null);
+    for (const x of gList) if (!keys.has(x.key)) oneSide(`${prefix}${x.key}`, null, x.unit);
   };
   const compareRows = (e, g, prefix, kind) => {
     for (const k of [...new Set([...e.keys(), ...g.keys()])].sort()) {
@@ -239,12 +262,10 @@ export function compareDocs(expectedHtml, gotHtml, { level = 'text' } = {}) {
         const shape = (rows) => rows.map((r) => r.length).join(',');
         if (shape(it.rows) !== shape(gi.rows)) { add('core', 'rows-cells', where, shape(it.rows), shape(gi.rows)); textDiffs(itemUnits(it, where), itemUnits(gi, where)); return; }
         it.rows.forEach((r, ri) => r.forEach((c, ci) => compareUnit(c, gi.rows[ri][ci], `${where} r${ri}c${ci}`)));
-        const gotStrays = new Map(gi.strays.map((x) => [x.key, x.unit]));
-        for (const x of it.strays) if (gotStrays.has(x.key)) compareUnit(x.unit, gotStrays.get(x.key), `${where}${x.key}`); else add('core', 'stray-text', `${where}${x.key}`, x.unit.core, null);
-        const expectedKeys = new Set(it.strays.map((x) => x.key));
-        for (const x of gi.strays) if (!expectedKeys.has(x.key)) add('core', 'stray-text', `${where}${x.key}`, null, x.unit.core);
+        compareKeyed(it.strays, gi.strays, where, (w, e, g) => { const lv = (e || g).core ? 'core' : 'text'; add(lv, 'stray-text', w, e ? e[lv] : null, g ? g[lv] : null); });
       });
     });
+    compareKeyed(E.blanks, G.blanks, '', (w, e, g) => add('text', 'text-exact', w, e ? e.text : null, g ? g.text : null));
   } else {
     for (const [op, x] of lcs(es, gs, (y) => y.sig)) if (op !== '=') add('core', op === '-' ? 'missing-item' : 'extra-item', x.where, op === '-' ? x.sig : null, op === '+' ? x.sig : null);
     textDiffs(docUnits(E), docUnits(G));
