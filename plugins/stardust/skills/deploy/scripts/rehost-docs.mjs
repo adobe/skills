@@ -54,7 +54,10 @@ Exit 0 = no failures, 1 = any FAIL, 2 = usage.`;
 const USAGE_EXIT = 2;
 const PAGES = 'stardust/current/pages';
 const LEDGER = 'stardust/deploy/asset-ledger.json';
-const DOC_EXT = /\.(pdf|docx?|xlsx?|pptx?|od[tsp]|rtf|csv|epub|zip)$/i;
+// The document extensions a migration carries over — the one list the encoder classifies links by (it imports this).
+// No .txt: a linked .txt is the site's plain-text plumbing (robots, llms, ads, humans, security), which the new
+// origin serves itself; a copy frozen under /docs/ would be stale. Such a link stays absolute and is reported.
+export const DOC_EXT = /\.(pdf|docx?|xlsx?|pptx?|od[tsp]|rtf|csv|epub|zip)$/i;
 const DOC_PATH = /^\/docs\/[a-z0-9][a-z0-9-]*\.[a-z0-9]+$/;
 const HREF = /<a\b[^>]*?\shref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/gi;
 const byCodePoint = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
