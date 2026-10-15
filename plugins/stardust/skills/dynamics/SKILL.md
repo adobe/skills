@@ -60,6 +60,10 @@ contract + § Features + § Decision batch + § Register) and `stardust/dynamic-
 
 - **Reconcile against the migrated output** before scheduling anything.
 - Only reproducibility `self` ships autonomously; everything else is **one decision batch**.
+- **Read the source's code before asking for it.** A client-compute row (calculator, filter, finder)
+  is never parked as `needs-human-capture` for its logic, and a widget whose numbers come from the
+  source's own API is never parked as `needs-backend`, until `client-logic.mjs capture` has run on
+  it — the locus it reports decides the row (`reference/client-logic-recovery.md`).
 - Never fabricate copy for a blank client-rendered capture; never auto-wire a `regulated-pii` form;
   a search box implies a results page (class S over the site's own pages is `self` once the index
   exists); decided-out is explicit and owner-stated — a hands-off assumption never writes it.
@@ -76,7 +80,8 @@ From `reference/patterns.md` (catalogue + contracts + embedded example mechanism
 authoring contract before code · no owner input, no waiting (ship the interim tier, name the
 decision) · existing library first (feed it, do not fork it) · decided-out is explicit. Each phase
 ends with the flow verified on the published origin at 1440 and 360, a parity row, a journal entry
-and a commit. Tooling: `snapshot-api.mjs`, `snapshot-forms.mjs`, `sync-sheets.mjs`. **The query index
+and a commit. Tooling: `snapshot-api.mjs`, `snapshot-forms.mjs`, `sync-sheets.mjs`, `client-logic.mjs`
+(recover → re-implement → `vectors` on source and target → `diff`; `reference/client-logic-recovery.md`). **The query index
 comes from `helix-query.yaml` in the code branch** — commit, push, publish live, poll — never from a
 configuration-service write; the sheet-backed interim index only when the branch is not writable
 (`reference/listings.md` § Getting an index at all). **Search** follows `reference/patterns.md`
@@ -113,6 +118,7 @@ required; an interim tier that would capture regulated data (record as decided-o
 `stardust/dynamic-features.md`, `stardust/dynamic-features-plan.md` (curated) · `helix-query.yaml` (listings + search, committed in the code branch) ·
 `data/<feature>/*.json` + `_provenance.json` (snapshots, code bus) · `scripts/site-config.js` (owner-facing integrations, disabled) ·
 `stardust/martech-contract.json`, `martech-handoff.md`, `scripts/martech.js` (opt-in) ·
+`stardust/dynamics/client-logic/<id>/` (logic.md, pretty/, sources/, vectors tables) ·
 `stardust/dynamics/parity.json` · `stardust/qa/dynamics-report.{md,json}` · register rows · journal + status lines.
 
 ## References
@@ -122,8 +128,9 @@ required; an interim tier that would capture regulated data (record as decided-o
 - `reference/patterns.md` — catalogue: contracts + verification per pattern, example mechanisms.
 - `reference/listings.md` — metadata contract + query-index mechanics (formerly rollout's dynamic-listings).
 - `reference/off-origin-data.md` — feeding an existing library off-origin; sheet-backed data; chrome URL space.
+- `reference/client-logic-recovery.md` — calculators/filters/finders: recover the logic from the source's JS, decide the locus, verify with recorded vectors.
 - `reference/forms.md` — controls not form tags; intake by content source; regulated data.
 - `reference/parity-report.md` — schema, check types, rules.
 - `reference/locale-trees.md` — I18N as a tree.
 - `reference/martech.md` — opt-in martech contract, owner enablement, runtime, verification.
-- `scripts/` — `dynamics-detect.mjs`, `dynamics-plan.mjs`, `dynamics-check.mjs`, `snapshot-api.mjs`, `snapshot-forms.mjs`, `sync-sheets.mjs`, `vendors.json`, `lib.mjs`, `martech.mjs`.
+- `scripts/` — `dynamics-detect.mjs`, `dynamics-plan.mjs`, `dynamics-check.mjs`, `snapshot-api.mjs`, `snapshot-forms.mjs`, `sync-sheets.mjs`, `client-logic.mjs`, `vendors.json`, `lib.mjs`, `martech.mjs`.

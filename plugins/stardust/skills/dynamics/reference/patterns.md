@@ -128,7 +128,10 @@ the check sets `reducedMotionPauses` (`dynamics-check.mjs video-plays`); auth sc
 **Contract.** One block per tool; inputs as rows where they are content (labels, ranges, options),
 logic in block JS. **Rule.** Never flatten a client-compute section into a prose block — the
 deploy/rollout block triage must refuse to convert a section the inventory marks `client-only` or
-modal-bearing into a generic block. **Verify.** Known input → known output.
+modal-bearing into a generic block. **Logic.** Recovered from the source's own JavaScript with
+`client-logic.mjs` (client-logic-recovery.md) — never guessed from screenshots or captured example
+values. **Verify.** Known input → known output: a `vectors` table recorded on the source, replayed on
+the target, `diff` clean.
 
 ## consent-gated-tags
 
