@@ -11,11 +11,14 @@
 //                 the output bytes; generators follow the map, every other state.json byte stays
 //   co-existence  migrate.mjs gate between two encodes: not refused, gatesPassed kept; sourceCurrentSha never touched
 //   stale output  a page that stops after a clean encode keeps its document and manifest entry, its sidecar records the
-//                 stop, staging refuses it; once it encodes clean again the sidecar says so
+//                 stop, staging skips it (exit 0, content/ untouched) while a stale, hand-edited document is refused
+//                 (exit 2); once it encodes clean again the sidecar says so
 //   guard         a hand-edited document → hand-edit (exit 2, nothing written, the message names the path and the fix);
 //                 --force still refuses; --overwrite-hand-edit restores the clean bytes; the same edit as a patch passes;
 //                 a document the manifest does not list is refused when it differs, adopted when byte-equal; a
 //                 patch file holding JSON null is malformed (error), never "no patches"
+//   encodedPageOf the shared R30 rule: a sibling with an encode is encoded (old clone or not), the archetype only
+//                 without a migrated HTML; a render's encode: null, a path outside stardust/encoded/ or with .. → null
 //   currentEncode the shared reader's verdicts: current (by URL, or from the sidecar alone), stopped with a stale
 //                 document, stale (a hand edit under a clean status), missing (no document; a render's encode: null)
 //
@@ -27,7 +30,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { main } from '../encode.mjs';
-import { currentEncode } from '../encode/provenance.mjs';
+import { currentEncode, encodedPageOf } from '../encode/provenance.mjs';
 
 const HERE = import.meta.dirname;
 const MIGRATE = join(HERE, '..', 'migrate.mjs');
@@ -92,6 +95,14 @@ try {
   assert.equal(currentEncode({ root: T, sidecarPath: SIDE[S1] }).kind, 'current', 'from the sidecar alone: document and template come from encode');
   write('stardust/migrated/elsewhere._meta.json', pretty({ slug: 'elsewhere', renderBranch: "A'", encode: null, audit: null }));
   assert.deepEqual([currentEncode({ root: T, sidecarPath: 'stardust/migrated/elsewhere._meta.json' }).kind, currentEncode({ root: T, sidecarPath: 'stardust/migrated/elsewhere._meta.json' }).ok], ['missing', false], 'a rendered sidecar (encode: null) is no encoded page');
+  assert.deepEqual(encodedPageOf(ss), { docPath: DOC[S1], rel: 'trips/forest-loop.html', archetype: A, isArchetype: false }, 'encodedPageOf: a sibling');
+  assert.deepEqual(encodedPageOf(ss, { hasHtml: true }), encodedPageOf(ss), '… still encoded beside an old clone HTML');
+  assert.deepEqual(encodedPageOf(sa), { docPath: DOC[A], rel: 'trips/river-walk.html', archetype: A, isArchetype: true }, 'the archetype without a migrated HTML is encoded');
+  assert.equal(encodedPageOf(sa, { hasHtml: true }), null, 'the archetype beside its migrated HTML stays a migrated page');
+  const bySlug = { ...sa, fidelityTier: null, renderBranch: null };
+  assert.equal(encodedPageOf(bySlug, { hasHtml: true }), null, '… also when only its own encode.map.template names it');
+  const at = (path) => ({ ...ss, encode: { ...ss.encode, output: { ...ss.encode.output, path } } });
+  for (const [v, why] of [[{ ...ss, encode: null, audit: null }, 'a render leaves encode: null'], [at('stardust/migrated/trips/forest-loop.html'), 'outside stardust/encoded/'], [at('stardust/encoded/../content/x.html'), 'a .. segment'], [at('stardust/encoded/trips/forest-loop.json'), 'not a .html document'], [null, 'no sidecar']]) assert.equal(encodedPageOf(v), null, `encodedPageOf → null: ${why}`);
   let st = cli(STAGE, ['--template', A, '--root', T]);
   assert.equal(st.status, 0, `stage-content stages from these sidecars and this manifest\n${st.stderr}`); assert.equal(read('content/trips/forest-loop.html'), docS);
 
@@ -150,14 +161,17 @@ try {
   write(CAPTURE(S1), cap.replace('<div class="mod-image"', '<div class="mod-poll"><div class="ui-poll"><p>Which trail next?</p></div></div><div class="mod-image"'));
   r = await run('--template', A);
   assert.equal(r.code, 2); assert.equal(r.last, 'encoded 0 · unchanged 1 · stopped 1');
-  assert.match(r.out, new RegExp(`✗ ${S1} unmapped[\\s\\S]*${DOC[S1]} \\(an earlier encode\\) is kept, not current`), 'the run says the document on disk is stale');
+  assert.match(r.out, new RegExp(`✗ ${S1} unmapped[\\s\\S]*${DOC[S1]} \\(an earlier encode\\) is kept`), 'the run says the document on disk is an earlier encode');
   assert.equal(read(DOC[S1]), docS, 'the earlier document stays'); assert.equal(read(MANIFEST), manifestBefore, 'the manifest still records what the encoder wrote');
   let side = json(SIDE[S1]);
   assert.equal(side.audit.encode.status, 'unmapped', 'the sidecar records the stop'); assert.equal(side.audit.encode.unmapped.length, 1);
   assert.deepEqual(side.encode, encBefore, 'encode still describes the document on disk'); assert.deepEqual(side.gatesPassed, ['visual-parity']);
   assert.deepEqual([verdict().kind, verdict().ok, verdict().sha], ['stopped', false, sha256(docS)], 'currentEncode: stopped, the document stale');
+  const staged = statSync(P('content/trips/forest-loop.html'));
   st = cli(STAGE, ['--template', A, '--root', T]);
-  assert.equal(st.status, 2, `staging refuses the stopped page's document\n${st.stderr}`);
+  assert.equal(st.status, 0, `a stopped page is skipped and leaves the exit code alone (R28)\n${st.stderr}`);
+  assert.match(st.stderr, new RegExp(`^- ${S1} skipped \\(stopped: unmapped\\)`, 'm')); assert.equal(st.stdout, '', 'nothing to deliver');
+  assert.deepEqual([statSync(P('content/trips/forest-loop.html')).ino, statSync(P('content/trips/forest-loop.html')).mtimeMs], [staged.ino, staged.mtimeMs], 'its content/ document is not touched');
   rmSync(P(CAPTURE(S1)));
   r = await run('--template', A);
   assert.equal(r.code, 1, 'a missing capture is missing input'); assert.equal(json(SIDE[S1]).audit.encode.status, 'error', '… recorded as an error stop');
@@ -176,6 +190,9 @@ try {
   write(DOC[S1], edited);
   assert.equal(json(SIDE[S1]).audit.encode.status, 'clean');
   assert.equal(verdict().kind, 'stale', 'currentEncode: a hand edit under a clean status is stale'); assert.match(verdict().why, /encode\.output\.sha .*a hand edit/);
+  st = cli(STAGE, ['--template', A, '--root', T]);
+  assert.equal(st.status, 2, `staging refuses a stale (hand-edited) encoded document\n${st.stderr}`);
+  assert.equal(read('content/trips/forest-loop.html'), docS, '… and writes nothing');
   const s3 = stamp();
   r = await run('--template', A);
   assert.equal(r.code, 2); assert.equal(r.last, 'encoded 0 · unchanged 1 · stopped 1');

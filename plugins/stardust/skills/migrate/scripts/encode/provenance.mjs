@@ -36,8 +36,9 @@
  *   timestamp): state.json is re-read, only this key is merged, tmp + rename, only when the value differs; an absent
  *   state.json is never created.
  *
- * Readers (deploy staging, rollout inventory, gate evidence) decide "is this the current clean encode?" with
- *   currentEncode() only (below; reads only, synchronous, import-safe) — never by re-deriving these checks.
+ * Readers (deploy staging, rollout inventory, gate evidence) decide "is this sidecar an encoded page?" with
+ *   encodedPageOf() and "is this the current clean encode?" with currentEncode() only (below; synchronous,
+ *   import-safe) — never by re-deriving these checks.
  *
  * Skip (no encode, no write): the document exists, its sha equals the manifest's and the sidecar's encode.output, the
  *   sidecar's encode.{encoder, map, inputs} equal the current key, and audit.encode.status is clean. The caller's
@@ -242,7 +243,37 @@ export function saveManifest(io, root, archetype, updates) {
   return io.writeIfChanged(join(root, manifestPathFor(archetype)), io.stableJSON(m));
 }
 
-// ---- the shared reader: is this page's encoded document a current, clean encode? --------------------------------
+// ---- the shared readers: is this sidecar an encoded page? is its document the current, clean encode? -------------
+export const ENCODED = 'stardust/encoded/';
+
+/**
+ * Is this sidecar an encoded page (R30)? The one rule for the readers that walk sidecars (rollout inventory, gate
+ * evidence) — pure, no I/O:
+ *
+ *   encodedPageOf(sidecar, { hasHtml = false } = {}) → { docPath, rel, archetype, isArchetype } | null
+ *
+ *   sidecar   the parsed _meta.json (anything else → null)
+ *   hasHtml   the sidecar sits beside a migrated HTML file (stardust/migrated/…/<name>.html exists)
+ *
+ * An encoded page records encode.output.path = stardust/encoded/<…>.html (project-relative, no `..`); a migrate render
+ * leaves `encode: null`, so the key alone never makes a page encoded. A sibling with an encode is encoded even when an
+ * old clone HTML is still on disk; the archetype — fidelityTier `archetype`, renderBranch `A`, or the slug its own
+ * encode.map.template names — keeps today's behaviour: with a migrated HTML it is a migrated page (null), without one
+ * (a sidecar the encoder created) it is encoded.
+ *   docPath      encode.output.path              rel          docPath under stardust/encoded/
+ *   archetype    encode.map.template (the manifest's key; null when absent)
+ *   isArchetype  the archetype test above
+ */
+export function encodedPageOf(sidecar, { hasHtml = false } = {}) {
+  if (!isObj(sidecar) || !isObj(sidecar.encode) || !isObj(sidecar.encode.output)) return null;
+  const p = sidecar.encode.output.path;
+  if (typeof p !== 'string' || !p.startsWith(ENCODED) || !p.endsWith('.html') || p.split(/[\\/]/).includes('..')) return null;
+  const archetype = isObj(sidecar.encode.map) && typeof sidecar.encode.map.template === 'string' ? sidecar.encode.map.template : null;
+  const isArchetype = sidecar.fidelityTier === 'archetype' || sidecar.renderBranch === 'A' || (typeof sidecar.slug === 'string' && sidecar.slug !== '' && sidecar.slug === archetype);
+  if (isArchetype && hasHtml) return null;
+  return { docPath: p, rel: p.slice(ENCODED.length), archetype, isArchetype };
+}
+
 const readJsonFile = (root, rel) => {
   let b;
   try { b = readBytes(join(root, rel)); } catch (e) { return { error: `unreadable (${e.code || e.message})` }; }
