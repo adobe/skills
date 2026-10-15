@@ -4,9 +4,10 @@
  * the code repository, so a migrated link keeps working when the source site is gone.
  *
  * Input: every <a href> in the committed captures (stardust/current/pages/<slug>.html, resolved against the
- *   record's `url` in <slug>.json) whose path ends in a document extension and whose host is the site's own —
- *   the captured pages' hosts, `www.` either way, plus --source-host. Other hosts are external documents: left
- *   absolute and counted. Links inside <script>, <style>, <template> and comments are not links.
+ *   record's `finalUrl || url` in <slug>.json) whose path ends in a document extension and whose host is the site's
+ *   own — the captured pages' hosts (url and finalUrl), `www.` either way, plus --source-host. Other hosts are
+ *   external documents: left absolute and counted. Links inside <script>, <style>, <template> and comments are not
+ *   links.
  * Fetch: each document once, with da-media-upload.mjs's source fetch (the same browser-shaped request, capped
  *   retries, and verdicts: 401/403 = bot wall, NOT missing; 404/410 = missing at origin; an HTML answer is not a
  *   document). Deploy-time network, gated like the uploader: --dry-run lists the plan and sends nothing.
@@ -28,10 +29,11 @@
  * Exit codes: 0 no failures (or nothing to do), 1 any FAIL, 2 usage error.
  */
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { fetchSource } from './da-media-upload.mjs';
+import { byCodePoint, stableJSON, writeIfChanged } from './chrome-map.mjs';
+import { fetchSource, pageBase } from './da-media-upload.mjs';
 import { readLedger, withLock } from './file-lock.mjs';
 
 const HELP = `rehost-docs — re-host the site's linked documents (pdf, office files…) into the code repository's docs/
@@ -60,7 +62,6 @@ const LEDGER = 'stardust/deploy/asset-ledger.json';
 export const DOC_EXT = /\.(pdf|docx?|xlsx?|pptx?|od[tsp]|rtf|csv|epub|zip)$/i;
 const DOC_PATH = /^\/docs\/[a-z0-9][a-z0-9-]*\.[a-z0-9]+$/;
 const HREF = /<a\b[^>]*?\shref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/gi;
-const byCodePoint = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 
 function usage(msg) { console.error(`rehost-docs error: ${msg}\n\n${HELP}`); process.exit(USAGE_EXIT); }
 
@@ -119,34 +120,27 @@ const hashedFileName = (url) => docFileName(url).replace(/(\.[a-z0-9]+)$/, `-${c
 const hostKey = (h) => h.toLowerCase().replace(/^www\./, '');
 const sha256 = (b) => createHash('sha256').update(b).digest('hex');
 const fileSha = (p) => (existsSync(p) && statSync(p).isFile() ? sha256(readFileSync(p)) : null);
-const sortKeys = (v) => (Array.isArray(v) ? v.map(sortKeys)
-  : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v).sort(byCodePoint).map((k) => [k, sortKeys(v[k])])) : v);
-const stableJSON = (obj) => `${JSON.stringify(sortKeys(obj), null, 2)}\n`;
-function writeIfChanged(path, data) {
-  if (existsSync(path) && readFileSync(path).equals(Buffer.from(data))) return false;
-  mkdirSync(dirname(path), { recursive: true });
-  const tmp = `${path}.${process.pid}.tmp`;
-  writeFileSync(tmp, data);
-  renameSync(tmp, path);
-  return true;
-}
 
-/** The same-site document links of every capture (sorted) and the count of external ones. */
+/** The same-site document links of every capture (sorted) and the count of external ones. Relative hrefs resolve
+ *  against the record's `finalUrl || url` (where the browser was when it captured); both hosts are the site's own. */
 export function collectDocLinks(pagesDir, extraHosts = []) {
   const records = [];
   if (existsSync(pagesDir) && statSync(pagesDir).isDirectory()) {
     for (const name of readdirSync(pagesDir).filter((f) => f.endsWith('.json')).sort(byCodePoint)) {
       const html = join(pagesDir, `${name.slice(0, -5)}.html`);
-      let url;
-      try { url = new URL(JSON.parse(readFileSync(join(pagesDir, name), 'utf8')).url); } catch { continue; }
-      if (/^https?:$/.test(url.protocol)) records.push({ url, html });
+      let rec;
+      try { rec = JSON.parse(readFileSync(join(pagesDir, name), 'utf8')); } catch { continue; }
+      const base = pageBase(rec);
+      if (!base) continue;
+      const pageHosts = [rec.url, rec.finalUrl].map((u) => pageBase({ url: u })).filter(Boolean).map((u) => new URL(u).host);
+      records.push({ base, html, pageHosts });
     }
   }
-  const hosts = new Set([...records.map((r) => hostKey(r.url.host)), ...extraHosts.map(hostKey)]);
+  const hosts = new Set([...records.flatMap((r) => r.pageHosts.map(hostKey)), ...extraHosts.map(hostKey)]);
   const own = new Set(); const external = new Set();
   for (const r of records) {
     if (!existsSync(r.html)) continue;
-    for (const u of docLinks(readFileSync(r.html, 'utf8'), r.url.href)) (hosts.has(hostKey(new URL(u).host)) ? own : external).add(u);
+    for (const u of docLinks(readFileSync(r.html, 'utf8'), r.base)) (hosts.has(hostKey(new URL(u).host)) ? own : external).add(u);
   }
   return { pages: records.length, links: [...own].sort(byCodePoint), external: external.size };
 }

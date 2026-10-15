@@ -248,8 +248,18 @@ export function sourceUrl(u, base) {
 /** Sorted, unique absolute URLs from any mix of strings and string lists (non-URLs dropped). */
 export const sourceList = (items, base) => [...new Set(items.flat().map((u) => sourceUrl(u, base)).filter(Boolean))].sort();
 
+/** The URL a capture's relative URLs resolve against: the record's `finalUrl || url` (where the browser ended up),
+ *  http(s) only; null when neither parses. Shared with rehost-docs.mjs. */
+export function pageBase(rec) {
+  for (const u of [rec && rec.finalUrl, rec && rec.url]) {
+    if (typeof u !== 'string' || !u) continue;
+    try { const x = new URL(u); if (/^https?:$/.test(x.protocol)) return x.href; } catch { /* the next one */ }
+  }
+  return null;
+}
+
 /** The extract mapping: recorded localPath → the captured URLs of that file, from every page record's media
- *  entries (`images`/`imgs` src + currentSrc, `cssBackgrounds` url), relative srcs resolved against the page url. */
+ *  entries (`images`/`imgs` src + currentSrc, `cssBackgrounds` url), relative srcs resolved against pageBase(record). */
 export function captureSources(pagesDir) {
   const byPath = new Map();
   if (!existsSync(pagesDir) || !statSync(pagesDir).isDirectory()) return byPath;
@@ -260,7 +270,7 @@ export function captureSources(pagesDir) {
     for (const list of [media.images, media.imgs, media.cssBackgrounds]) {
       for (const m of Array.isArray(list) ? list : []) {
         if (!m || typeof m.localPath !== 'string' || !m.localPath) continue;
-        const urls = sourceList([m.src, m.currentSrc, m.url], rec.url);
+        const urls = sourceList([m.src, m.currentSrc, m.url], pageBase(rec));
         if (!urls.length) continue;
         const key = posix.normalize(m.localPath.split(sep).join('/'));
         byPath.set(key, sourceList([byPath.get(key) || [], urls]));

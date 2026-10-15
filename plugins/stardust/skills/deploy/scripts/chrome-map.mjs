@@ -50,7 +50,7 @@ const OUT = 'stardust/rollout/chrome-map.json';
 const PAGES = 'stardust/current/pages';
 const FLAT = /^(nav|footer)-([a-z0-9][a-z0-9-]*)\.html$/;
 const LANG = /<html\b[^>]*?\slang\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i;
-const byCodePoint = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+export const byCodePoint = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 
 function usage(msg) { console.error(`chrome-map error: ${msg}\n\n${HELP}`); process.exit(USAGE_EXIT); }
 
@@ -167,6 +167,17 @@ const sortKeys = (v) => (Array.isArray(v) ? v.map(sortKeys)
 /** Deterministic JSON text: keys sorted at every level, two-space indent, trailing newline. */
 export const stableJSON = (obj) => `${JSON.stringify(sortKeys(obj), null, 2)}\n`;
 
+/** Write `data` (string or bytes) via a sibling tmp file + rename, only when the file's bytes differ; true = written. */
+export function writeIfChanged(path, data) {
+  const bytes = Buffer.from(data);
+  if (existsSync(path) && readFileSync(path).equals(bytes)) return false;
+  mkdirSync(dirname(path), { recursive: true });
+  const tmp = `${path}.${process.pid}.tmp`;
+  writeFileSync(tmp, bytes);
+  renameSync(tmp, path);
+  return true;
+}
+
 function main() {
   const o = parseArgs(process.argv);
   const root = resolve(o.root);
@@ -185,15 +196,9 @@ function main() {
   const { map, notes } = buildChromeMap({ docs, pages, contentRel });
   const text = stableJSON(map);
   const out = join(root, OUT);
-  const same = existsSync(out) && readFileSync(out, 'utf8') === text;
-  let verdict = same ? 'unchanged' : 'written';
-  if (o.dryRun) verdict = same ? 'dry-run: unchanged' : 'dry-run: would write';
-  else if (!same) {
-    mkdirSync(dirname(out), { recursive: true });
-    const tmp = `${out}.${process.pid}.tmp`;
-    writeFileSync(tmp, text);
-    renameSync(tmp, out);
-  }
+  let verdict;
+  if (o.dryRun) verdict = existsSync(out) && readFileSync(out, 'utf8') === text ? 'dry-run: unchanged' : 'dry-run: would write';
+  else verdict = writeIfChanged(out, text) ? 'written' : 'unchanged';
   const groups = Object.entries(map.groups);
   for (const [id, g] of groups) console.log(`  ${id}  nav ${g.nav}  footer ${g.footer}  lang ${g.lang ?? '-'}  ${g.pages.length} page(s)`);
   for (const line of notes) console.log(line);

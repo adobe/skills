@@ -23,7 +23,7 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { classify, jwtExpiry, readManifest } from '../da-media-upload.mjs';
+import { captureSources, classify, jwtExpiry, pageBase, readManifest } from '../da-media-upload.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'da-media-upload.mjs');
@@ -132,6 +132,14 @@ await check('jwtExpiry: reads exp from a JWT payload; null for a non-JWT, a JWT 
   assert.equal(jwtExpiry(jwt({ sub: 'x' })), null);
   assert.equal(jwtExpiry(TOKEN), null); assert.equal(jwtExpiry('a.b.c'), null); assert.equal(jwtExpiry('a.b'), null); assert.equal(jwtExpiry(undefined), null);
   assert.equal(jwtExpiry(`x.${Buffer.from('not json').toString('base64url')}.y`), null);
+});
+await check('captureSources: a relative src resolves against the record\'s finalUrl || url (where the browser ended up)', () => {
+  const pages = join(proj, 'base-pages'); mkdirSync(pages);
+  writeFileSync(join(pages, 'a.json'), JSON.stringify({ url: 'https://example.com/old/a.html', finalUrl: 'https://www.example.com/new/a/', media: { images: [{ src: 'img/x.png', localPath: 'm/x.png' }] } }));
+  writeFileSync(join(pages, 'b.json'), JSON.stringify({ url: 'https://example.com/b/', finalUrl: 'not a url', media: { imgs: [{ src: 'y.png', localPath: 'm/y.png' }] } }));
+  assert.deepEqual(Object.fromEntries(captureSources(pages)), { 'm/x.png': ['https://www.example.com/new/a/img/x.png'], 'm/y.png': ['https://example.com/b/y.png'] });
+  assert.equal(pageBase({ url: 'https://example.com/b/' }), 'https://example.com/b/'); assert.equal(pageBase({ url: 'mailto:x@example.com' }), null);
+  rmSync(pages, { recursive: true });
 });
 await check('readManifest: array, map and extract § Media shapes all reduce to {file, source, name, sources}', () => {
   const p = join(proj, 'm.json');

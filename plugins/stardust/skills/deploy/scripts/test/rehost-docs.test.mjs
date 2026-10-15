@@ -17,7 +17,7 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { DOC_EXT, docFileName, docLinks, rehostDocs } from '../rehost-docs.mjs';
+import { DOC_EXT, collectDocLinks, docFileName, docLinks, rehostDocs } from '../rehost-docs.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'rehost-docs.mjs');
@@ -70,6 +70,13 @@ await check('docLinks: <a href> to documents, resolved against the page url, ent
   assert.deepEqual(docLinks('<a href=files/a.docx>x</a><A HREF="b.pdf">y</A>', 'https://example.com/x/y.html'), ['https://example.com/x/b.pdf', 'https://example.com/x/files/a.docx']);
   assert.deepEqual(docLinks('<a href="/robots.txt">r</a><a href="/llms.txt">l</a><a href="/a.html">p</a>', 'https://example.com/'), [], 'plain-text plumbing and pages are not documents');
   assert.ok(['/a.pdf', '/a.XLSX', '/a.odp', '/a.epub'].every((p) => DOC_EXT.test(p)) && !DOC_EXT.test('/robots.txt'), 'the exported list the encoder classifies by');
+});
+await check('collectDocLinks: a relative href resolves against the record\'s finalUrl || url; the final host is the site\'s own too', () => {
+  const pages = join(scratch, 'base-pages'); mkdirSync(pages);
+  writeFileSync(join(pages, 'a.json'), JSON.stringify({ url: 'https://example.com/old/a.html', finalUrl: 'https://example.net/new/a/' }));
+  writeFileSync(join(pages, 'a.html'), '<a href="report.pdf">r</a><a href="https://example.com/files/x.pdf">x</a><a href="https://example.org/y.pdf">y</a>');
+  assert.deepEqual(collectDocLinks(pages), { pages: 1, links: ['https://example.com/files/x.pdf', 'https://example.net/new/a/report.pdf'], external: 1 });
+  rmSync(pages, { recursive: true });
 });
 await check('docFileName: the last segment up to its first document extension, lower-case, [a-z0-9-] stem', () => {
   assert.equal(docFileName('https://example.com/content/dam/site/en/guide.pdf.coredownload.pdf'), 'guide.pdf');
