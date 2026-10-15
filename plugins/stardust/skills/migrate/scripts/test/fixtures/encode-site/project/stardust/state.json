@@ -1,0 +1,8 @@
+{
+  "site": { "originUrl": "https://example.com" },
+  "pages": [
+    { "slug": "home", "url": "https://example.com/old-home" },
+    { "slug": "story-third", "url": "/en/stories/third" },
+    { "slug": "orphan", "url": "https://example.com/en/orphan" }
+  ]
+}

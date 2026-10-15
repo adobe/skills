@@ -1,0 +1,8 @@
+{
+  "_provenance": { "writtenBy": "test", "writtenAt": "2026-01-01T00:00:00Z", "stardustVersion": "0.0.0" },
+  "templates": [
+    { "id": "story", "representativeSlug": "story-first", "pages": ["story-third", "story-first", "story-second"], "pageCount": 3 },
+    { "id": "listing", "representativeSlug": "news", "pages": ["news"], "pageCount": 1 },
+    { "id": "home", "representativeSlug": "home", "pages": ["home"], "pageCount": 1 }
+  ]
+}

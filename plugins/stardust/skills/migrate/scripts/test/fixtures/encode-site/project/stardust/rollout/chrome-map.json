@@ -1,0 +1,8 @@
+{
+  "_provenance": { "writtenBy": "test" },
+  "groups": {
+    "/": { "nav": "/nav", "footer": "/footer", "lang": "en", "pages": ["/"], "navFile": "content/nav.html", "footerFile": "content/footer.html" },
+    "/en": { "nav": "/en/nav", "footer": "/en/footer", "lang": "en", "pages": ["/en/news/", "/en/stories/first", "/en/stories/second-story"] }
+  },
+  "pages": { "ignored": true }
+}
