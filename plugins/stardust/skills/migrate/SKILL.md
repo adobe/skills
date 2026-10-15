@@ -196,9 +196,14 @@ For 1-3 pages or `<slug>` invocation, skip the confirmation.
 
 ### Phase 2 — Per-page render
 
-In the replica flow a sibling renders only after its archetype is deployed and gated at the
-published origin (`../replica/reference/handoff-contract.md` § 3 row C, unit `C-archetype`; #126);
-the render is the encoder's input, its gate is the row after PUT. For each page in scope, follow
+In the replica flow a sibling encodes or renders only after its archetype is deployed and gated at
+the published origin (`../replica/reference/handoff-contract.md` § 3 row C, unit `C-archetype`;
+#126); its gate is the row after PUT. **Encoded sibling:** a template whose map passes the plan
+gate (`reference/fidelity-tiers.md` § Encoded siblings) is not rendered —
+`skills/migrate/scripts/encode.mjs --template <archetype>` writes each sibling's document
+(`reference/importer-recipe.md` § Encoder contract); only the pages it stops on reach the model.
+Path A′ is the fallback for a template whose map does not round-trip and for an exception page.
+For each other page in scope, follow
 `reference/migration-procedure.md` and
 `reference/template-and-module-rendering.md`:
 
@@ -288,10 +293,11 @@ project copy runs from `stardust/scripts/migrate/`) builds the page
 map, places each page at its URL-literal path, rewrites internal
 links, bundles assets, composes `<head>` (provenance, `:root`,
 canonical and JSON-LD defaults), validates strictly and writes the
-sidecar, skipping pages whose input shas are unchanged. The judgments
-it cannot make are recorded on the sidecar with `gate`, `deviation`,
-`decision`, `variant` and `modules` on the same script; it never
-advances `pages[].status`.
+sidecar, skipping pages whose input shas are unchanged. Migrate's scripts
+never decide content — except `encode.mjs`, which applies a template's
+authored map. The judgments the driver cannot make are recorded on the
+sidecar with `gate`, `deviation`, `decision`, `variant` and `modules` on
+the same script; it never advances `pages[].status`.
 
 **Recorded units.** A whole-site render is bookkept as units in
 `stardust/migrate/progress.json`, the shape of rollout's C-deliver unit
@@ -305,10 +311,7 @@ cluster's slug list), one `assets` unit when Phase 3 rehosts media, one
 write → the checkpoint commit → the next unit; a unit end is a safe
 resume point, not a stop. A session resumed inside migrate reads the file
 and runs only the units not `done`; a unit left `running` re-renders its
-slugs — the driver is idempotent, unchanged pages are skipped. A recorded
-run rendered 31 siblings through five parallel builders as one unit in
-one session — its most expensive — with no resume point between the plan
-and the final report.
+slugs — the driver is idempotent, unchanged pages are skipped.
 
 ### Phase 3 — Sitewide assets and bundle finalisation
 
@@ -454,6 +457,7 @@ Next:
 | _meta.json sidecar                                | Lives next to each migrated page. For `<dir>/index.html` the sidecar is `<dir>/_meta.json`; for `<dir>/<name>.html` the sidecar is `<dir>/<name>._meta.json` so multiple `.html` siblings don't collide. Per `reference/migration-procedure.md` § `_meta.json` sidecar. |
 | `stardust/migrated/index.html`                    | The home page (special case).                          |
 | `stardust/migrated/_meta.json`                    | Home sidecar.                                          |
+| `stardust/encoded/<da-path>.html`                 | An encoded sibling's delivered document (`encode.mjs`), with its provenance in the sidecar (`encode`, `audit.encode`), `stardust/import/<archetype>/manifest.json` and `state.json` `migrate.generators`. `deploy` stages it into `content/`. |
 | `stardust/migrated/assets/logo.<ext>`             | Brand logo (sitewide).                                 |
 | `stardust/migrated/assets/<subpath>`              | Every asset referenced by any migrated page, bundled. Source subdir structure preserved verbatim. |
 | `stardust/migrated/assets/favicon.<ext>` + variants| Favicon and apple-touch-icon, manifest icons.         |
@@ -546,10 +550,12 @@ work, they just mark it as out-of-step.
 - Critique or audit the migrated output. Run
   `$impeccable critique stardust/migrated/` after migration if
   you want a quality assessment.
-- Deploy. Stardust does not push, upload, or modify origin.
-- Generate AEM EDS, a CMS payload, or framework components. The
-  output is platform-agnostic static HTML; downstream conversion
-  is a separate plugin's job.
+- Deploy, or write the EDS project: the encoder's documents stay in
+  `stardust/encoded/` until `deploy` stages them. Stardust does not
+  push, upload, or modify origin.
+- Generate AEM EDS (beyond the encoder's delivered form), a CMS payload,
+  or framework components. The output is platform-agnostic static
+  HTML; downstream conversion is a separate plugin's job.
 - Re-fetch the live site. Offline after extract Phase 1.
 - Run any iteration loop. Iteration belongs to `prototype`;
   migrate consumes the result.
@@ -562,6 +568,8 @@ work, they just mark it as out-of-step.
 - `reference/template-and-module-rendering.md` — three render
   branches in detail, slot injection, deviation policy,
   validation contracts.
+- `reference/importer-recipe.md` — the encoded path: a template's
+  map, the encoder's contract and its hard stops.
 - `reference/metadata-and-jsonld.md` — head composition, JSON-LD
   per page-type, canonical strategy.
 - `reference/content-preservation.md` — what's kept,

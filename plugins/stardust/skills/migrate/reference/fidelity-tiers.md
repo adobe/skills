@@ -17,16 +17,16 @@ trade so a reviewer can see, per page, what was and wasn't checked.
 | Tier | Render branch | Gates it MUST pass | When |
 |---|---|---|---|
 | **archetype** | Path A (approved prototype) | Full `prototype` gate stack: critique, audit, mobile-adapt, anti-template, content-sourcing, `:root` + data-attribute contracts | One representative page **per template**. The design canon. |
-| **sibling** | Path A′ (canon-fork) | **Variance-probed** (§ Sibling variance probe — run once per template BEFORE cloning) + structural clone of the archetype + **content-fidelity** (verbatim source copy, no fabrication, **measured** — § Content-count acceptance) + **delivery-lint** + **media-reconcile**. NOT full craft. | Every other page of a template the archetype already covers. **The cheap default for breadth.** |
+| **sibling** | Encoded (the template's map, § Encoded siblings), else Path A′ (canon-fork) | **Variance-probed** (§ Sibling variance probe — run once per template BEFORE cloning) + the archetype's map or a structural clone of it + **content-fidelity** (verbatim source copy, no fabrication, **measured** — § Content-count acceptance) + **delivery-lint** + **media-reconcile**. NOT full craft. | Every other page of a template the archetype already covers. **The cheap default for breadth.** |
 | **thin** | unique (graceful) | delivery-lint + media-reconcile + a declared `contentGap`. Renders metadata + hero + whatever real content exists (e.g. a PDF link). No fabricated filler. | Pages with little/no body content (PDF-only, redirect stubs, bodyless landing). |
 
 The point of the table: **archetype is craft-gated once per template, deployed and gated at the
 published origin BEFORE its siblings render (#126); siblings inherit that proven structure and
 encoder and only re-check the things that vary per page (content + media + the delivery contract
 + their own gate row after PUT).** That keeps breadth affordable
-without dropping to zero gates. Make sibling-clone the path of least resistance —
-the reflex for "page N of an established template" should be *fork the archetype*,
-never *re-author from scratch*.
+without dropping to zero gates. Make the sibling tier the path of least resistance —
+the reflex for "page N of an established template" should be *encode it with the
+archetype's map, else fork the archetype*, never *re-author from scratch*.
 
 ## Sibling variance probe (template constancy is measured, not assumed)
 
@@ -82,7 +82,8 @@ this failure class, so make it part of the per-page acceptance:
   CTAs (+hrefs), images — between the captured source
   (`stardust/current/pages/<slug>.json`; migrate is offline after extract,
   so the captured page is the reference, never a fresh live hit) and the
-  rendered result. When both sides are renderable URLs (e.g. an imported
+  rendered result (an encoded sibling: its encoded document, § Encoded
+  siblings). When both sides are renderable URLs (e.g. an imported
   page on a preview origin vs the extract capture served locally), a scoped
   `content-diff` run gives the same summary with per-node detail.
 - **A count drop in any role class fails the page's acceptance** unless a
@@ -98,6 +99,35 @@ gate); the counts catch the dropped-content class those would only see
 later. Any block JS written for a sibling or archetype obeys the
 Experience Workspace editability contract (deploy SKILL.md § 8, EW1–EW10)
 and passes the EW gate (`block-roundtrip --ew`) before the page is done.
+
+## Encoded siblings
+
+A template whose map round-trips encodes its siblings instead of cloning
+them (`importer-recipe.md` § Encoder contract). **Per-template plan gate,**
+before any sibling encodes: the archetype gated (unit `C-archetype`), then
+`encode.mjs --lint` and `--roundtrip` exit 0 on it. A template that fails
+it stays on Path A′ — the round-trip is the only guard against a map that
+silently omits a derived column (such a map encodes clean, and wrong).
+
+- **Content count — the subject is the encoded document**, counted by the
+  encoder offline against the capture's content root minus the map's
+  chrome and declared drops: 0 MISSING in every role, never a ratio, else
+  the page stops `incomplete`. A `drop:` marker, listed in the page's
+  audit, stands where a `contentDeviations[]` entry stands on a clone.
+- **Local launches — the skip rule.** An encoded sibling skips all three
+  (`section-schema`, the whole-page `block-roundtrip --ew`, `qa-gate`) only
+  when all of these hold: the template's map round-trips; the archetype
+  passed the launches under a harness key — a hash of the encoder, the
+  map, the block JS/CSS the map emits and the frozen foundation — that has
+  not moved; the encoder exits 0 on the sibling; every block variant, row
+  count and cell shape on it (`audit.encode.shape`) was already exercised
+  by the archetype or an earlier sibling; no block code was written for
+  it. Each pass is recorded right after the launches with `migrate.mjs
+  harness <slug>` (the archetype's `passedOn`); rollout's `plan.mjs` marks
+  every page `needsHarness` from it. Its gate-all row, the lints,
+  media-reconcile and `localize-links --check` still run on every sibling;
+  a change to a block, the map, the encoder or the foundation moves the key
+  and re-arms the launches.
 
 ## Declaration (per page)
 
@@ -129,11 +159,3 @@ re-forking its siblings).
 > without an approved archetype because the template was never prototyped),
 > `log()` it as a coverage gap. An ungated page that reads as "deployed" is the
 > failure this tier model exists to make visible.
-
-## Why declared, not inferred
-
-A tier the reviewer can read is a tier the reviewer can challenge. The migration
-prompt's "invoke prototype, never hand-author" rule is really "every page is at
-least sibling-tier — forked from a craft-gated archetype". Declaring the tier per
-page turns that from a hope into an auditable record, and turns the
-quality/coverage trade from an accident into a decision.
