@@ -18,7 +18,10 @@
 //   patches       the skeleton's stardust/patches/<slug>.json ops on the rendered document (engine level): replace,
 //                 attr, remove; a patch deleting counted content → incomplete; a no-match patch → recorded, no stop;
 //                 the h1 check judges the patched document; variance never moves; sanitise stays last
-//   writes        second run → zero writes (unchanged); --dry-run writes nothing; --lint/--sweep stub → exit 1
+//   writes        second run → zero writes (unchanged); --dry-run writes nothing; --lint on the fixture exits per its
+//                 findings (the fixture map is lint-clean); --sweep from a CLI process settles
+//   validation    unknown keys fail at every level ($comment allowed), every key the engine reads is type-checked,
+//                 --lint's own keys pass through; the walk's traversal is exported and is the engine's own
 //   determinism   two in-process runs + a child process with another TZ/LANG → identical sha256
 //   --help        in an empty dir: exit 0, usage on stdout, nothing written
 //
@@ -33,7 +36,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { main, encodeTemplate, loadMap, loadEncoderDeps } from '../encode.mjs';
-import { encodePage, tidy, validateVocabulary, varianceDelta } from '../encode/engine.mjs';
+import { encodePage, tidy, validateVocabulary, validateTransform, validatePatches, varianceDelta, prepareCapture, contentTops, markerMatches, moduleLevel, walkModules, GENERATED_TOKEN, LANDMARK_STOP } from '../encode/engine.mjs';
 import { parseHTML, qs, qsa, textOf, kids } from '../encode/dom.mjs';
 import { loadSite } from '../encode/site.mjs';
 import { encode as sanitise } from '../../../deploy/scripts/sanitise.js';
@@ -71,6 +74,13 @@ try {
   assert.ok(existsSync(P('stardust', 'encoded', 'trips', 'river-walk.html')) && existsSync(P('stardust', 'encoded', 'trips', 'forest-loop.html')), 'stardust/encoded/<da-path>.html per page');
   const arch = read('stardust', 'encoded', 'trips', 'river-walk.html');
   const sib = read('stardust', 'encoded', 'trips', 'forest-loop.html');
+
+  // --- --lint dispatches to encode/lint.mjs (its checks are tested there): on the fixture it exits per its findings ----
+  r = await run('--lint', '--template', A);
+  const lintVerdict = /^lint trips-river-walk: (\d+) findings? · (\d+) notes?$/.exec(r.last);
+  assert.ok(lintVerdict, `--lint prints its verdict last\n${r.out}\n${r.err}`);
+  assert.equal(r.code, Number(lintVerdict[1]) ? 1 : 0, '--lint exits per its findings');
+  assert.equal(Number(lintVerdict[1]), 0, `the fixture map is lint-clean\n${r.out}`);
 
   // --- second run: zero writes; --dry-run writes nothing ------------------------------------------------------------
   r = await run('--template', A);
@@ -233,10 +243,9 @@ try {
   r = await run('--template', 'no-such-template'); assert.equal(r.code, 1); assert.match(r.err, /no template/);
   r = await run('--template', A, '--slug', 'not-a-member'); assert.equal(r.code, 1); assert.match(r.err, /not a page of template/);
   r = await run('--bogus'); assert.equal(r.code, 1); assert.match(r.err, /unknown flag --bogus/);
-  r = await run('--lint', '--template', A); assert.equal(r.code, 1); assert.match(r.err, /--lint: not implemented/);
-  const lintCli = spawnSync(process.execPath, [SCRIPT, '--root', T, '--lint', '--template', A], { encoding: 'utf8', timeout: 15000 });
-  assert.equal(lintCli.status, 1, `--lint dispatches from the CLI process too\n${lintCli.stderr}`);
-  r = await run('--sweep', '--template', A); assert.equal(r.code, 1); assert.match(r.err, /--sweep: not implemented/);
+  // --sweep from a CLI process settles (encode/lint.mjs imports nothing back from encode.mjs's evaluation)
+  const sweepCli = spawnSync(process.execPath, [SCRIPT, '--root', T, '--sweep', '--template', A], { encoding: 'utf8', timeout: 15000 });
+  assert.ok([0, 1, 2].includes(sweepCli.status) && !/unsettled top-level await/.test(sweepCli.stderr), `--sweep dispatches from a CLI process and settles (${sweepCli.status})\n${sweepCli.stderr}`);
 
   // --- round-trip: the archetype reproduces its gated document at strict ------------------------------------------------
   r = await run('--roundtrip', '--template', A, '--level', 'strict');
@@ -340,6 +349,32 @@ try {
   [, sibR] = pair(gridArch.replace(' box-inner', ''), gridSib, gridMap({ variance: { ignoreAncestors: [{ class: '^(grid|col)(--|$)', reason: 'the layout grid is not structure' }] } }));
   assert.equal(sibR.status, 'clean', 'one ignoreAncestors entry accepts the whole chain-level class, archetype and sibling alike');
 
+  // an empty match that still changes the document keeps its print: section flags, an attr cell
+  const sectMap = { root: 'main', markers: [{ sel: '.mod-div', kind: 'div', emitter: 'wrapper', sectionBefore: true }] };
+  const [sectArch, sectSib] = pair('<p>A</p><div class="mod-div"></div><p>B</p>', '<p>A</p><p>B</p>', sectMap);
+  assert.equal(sectArch.sections, 2, 'the empty marker opens a section');
+  assert.deepEqual(sectSib.report.variance, [{ change: 'missing', print: '.mod-div | div.mod-div | ' }], 'so the sibling without it is variance, not clean');
+  const embedMap = { root: 'main', markers: [{ sel: '.mod-embed', kind: 'embed', emitter: 'block:embed', cells: [{ as: 'attr', attr: 'data-video-id' }] }] };
+  const [embedArch, embedSib] = pair('<p>A</p><div class="mod-embed" data-video-id="v-42"></div>', '<p>A</p>', embedMap);
+  assert.match(embedArch.html, /<div class="embed">\n<div><div>v-42<\/div><\/div>/, 'an empty placeholder emits through its attr cell');
+  assert.deepEqual(embedSib.report.variance, [{ change: 'missing', print: '.mod-embed | div.mod-embed | ' }]);
+
+  // a text-less rule that styles and closes the section before it keeps its print (sample-run defect 3)
+  const rulePage = (rule) => `<div class="page"><div class="mod-text"><p>First part</p></div>${rule ? '<div class="mod-rule"><hr></div>' : ''}<div class="mod-text"><p>Second part</p></div></div>`;
+  const ruleMap = { root: 'main', wrappers: ['.page'], moduleSelectors: [{ class: '^mod-[a-z]+$' }], markers: [{ sel: 'div.mod-rule', emitter: 'drop:visual rule', sectionStyle: 'intro', sectionAfter: true }, { sel: 'div.mod-text', emitter: 'default-content' }] };
+  const [ruleArch, ruleSib] = pair(rulePage(true), rulePage(false), ruleMap);
+  assert.match(ruleArch.html, /<div><div>style<\/div><div>intro<\/div><\/div>/, 'the rule styles a section');
+  assert.equal(ruleSib.status, 'variance'); assert.deepEqual(ruleSib.report.variance, [{ change: 'missing', print: 'div.mod-rule | div.mod-rule | page' }]);
+
+  // --- a marker's drop holds through wrapper and section recursion: document, audit and count agree ------------------
+  const nested = '<p>Keep</p><p class="note">Gone</p><div class="inner"><p>Deep keep</p><p class="note">Deep gone</p></div>';
+  for (const [emitter, label] of [['wrapper', 'wrapper'], ['section-style:dark', 'section-style']]) {
+    const x = one(`<div class="wrap">${nested}</div>`, { root: 'main', markers: [{ sel: '.wrap', kind: 'wrap', emitter, drop: ['.note'] }] });
+    assert.equal(x.status, 'clean'); assert.match(x.html, /Keep[\s\S]*Deep keep/); assert.doesNotMatch(x.html, /Gone|Deep gone/, `${label}: the drop applies at every depth`);
+    assert.ok(!x.prints.some((pr) => pr.includes('p.note')), `${label}: a dropped node is no shape either (the walk skips it)`);
+    assert.deepEqual(x.report.dropped.map((d) => [d.kind, d.reason, d.at]), [['.note', 'selector drop (marker .wrap)', 'p.note'], ['.note', 'selector drop (marker .wrap)', 'p.note']], `${label}: and the audit says so`);
+  }
+
   // --- selector drops that remove visible content are recorded (marker, transform, cell); invisible ones need not be ---
   const fileDoc = '<div class="mod-file"><p class="label">Visible label text</p><p class="label"> </p><p class="value">Visible value text</p></div>';
   const fileMap = (marker, extra = {}) => ({ root: 'main', markers: [{ sel: '.mod-file', kind: 'file', emitter: 'block:file', cells: [{ sel: '.value', as: 'text' }], ...marker }], ...extra });
@@ -348,6 +383,39 @@ try {
   assert.deepEqual(dropsOf(fileMap({}), { drop: ['.label'] }), [{ kind: '.label', reason: 'selector drop (transform)', visible: true, at: 'p.label' }], 'a transform drop');
   assert.deepEqual(dropsOf(fileMap({ cells: [{ as: 'rich', drop: ['.label'] }] })), [{ kind: '.label', reason: 'selector drop (cell)', visible: true, at: 'p.label' }], 'a cell drop');
   assert.deepEqual(dropsOf(fileMap({ drop: ['.label', 'p.label'] }), { drop: ['.label'] }), [{ kind: '.label', reason: 'selector drop (transform)', visible: true, at: 'p.label' }], 'one entry per node, whoever claims it first');
+
+  // --- R29: unknown keys fail at every level; `$comment` is free text everywhere; every key the engine reads is typed ---
+  const base = { root: 'main', markers: [{ sel: '.a', emitter: 'block:a' }] };
+  const mk = (x) => ({ ...base, markers: [{ sel: '.a', emitter: 'block:a', ...x }] });
+  const cell = (x) => mk({ cells: [x] });
+  for (const [v, re] of [
+    [{ ...base, markerz: [] }, /^markerz: unknown key/], [mk({ varaints: [] }), /markers\[0\]\.varaints: unknown key/],
+    [mk({ variants: [{ whn: '.x', when: '.x', add: 'x' }] }), /variants\[0\]\.whn: unknown key/], [mk({ rows: [{ selector: '.r' }] }), /rows\[0\]\.selector: unknown key/],
+    [cell({ wrapp: 'p' }), /cells\[0\]\.wrapp: unknown key/], [mk({ cells: { each: '.x', ass: 'text' } }), /cells\.ass: unknown key/],
+    [cell({ parts: [{ sell: '.x' }] }), /parts\[0\]\.sell: unknown key/], [{ ...base, variance: { acept: [] } }, /variance\.acept: unknown key/],
+    [{ ...base, variance: { accept: [{ print: 'p', on: 'extra', reason: 'r', onn: 'x' }] } }, /accept\[0\]\.onn: unknown key/],
+    [{ ...base, variance: { ignoreAncestors: [{ class: 'g', reason: 'r', klass: 'g' }] } }, /ignoreAncestors\[0\]\.klass: unknown key/],
+    [{ ...base, moduleSelectors: [{ childClass: '^a', class: '^b' }] }, /moduleSelectors\[0\]: .*one key/],
+    [{ ...base, walkSiblings: 'yes' }, /^walkSiblings: true\|false/], [{ ...base, requireH1: 0 }, /^requireH1: true\|false/],
+    [mk({ kind: 7 }), /kind: a string/], [mk({ sectionBefore: 'yes' }), /sectionBefore: true\|false/], [mk({ sectionAfter: 1 }), /sectionAfter: true\|false/],
+    [mk({ merge: 'no' }), /merge: true\|false/], [mk({ retag: { b: 'Strong!' } }), /retag: an object tag → tag name/], [mk({ rows: [{ sel: '.r', optional: 'yes' }] }), /rows\[0\]\.optional: true\|false/],
+    [cell({ all: 'yes' }), /cells\[0\]\.all: true\|false/], [cell({ selfOk: 1 }), /cells\[0\]\.selfOk: true\|false/], [cell({ $comment: 3 }), /\$comment: free text/],
+  ]) assert.match(validateVocabulary(v).join('\n'), re, JSON.stringify(v));
+  const commented = { $comment: 'the trip template', ...base, markers: [{ $comment: 'one block', sel: '.a', emitter: 'block:a', variants: [{ $comment: 'c', when: '.x', add: 'x' }], rows: [{ $comment: 'c', sel: '.r', cells: [{ $comment: 'c', parts: [{ $comment: 'c', sel: '.p' }] }] }] }, { sel: '.b', emitter: 'block:b', cells: { $comment: 'c', each: '.c' } }], moduleSelectors: [{ $comment: 'c', childClass: '^x-' }], variance: { $comment: 'c', accept: [{ $comment: 'c', print: 'p', on: 'missing', reason: 'r' }], ignoreAncestors: [{ $comment: 'c', class: 'g', reason: 'r' }] } };
+  assert.deepEqual(validateVocabulary(commented), [], '$comment is accepted on every object');
+  assert.deepEqual(validateVocabulary({ ...base, $schema: 7, archetype: 7, inputs: 7, markers: [{ sel: '.a', emitter: 'block:a', evidence: 7, unique: 'yes' }] }), [], '--lint\'s own keys pass through unread');
+  assert.match(validateTransform({ dorp: ['.x'] }).join(), /^dorp: unknown key/); assert.deepEqual(validateTransform({ $comment: 'c', drop: ['.x'] }), []);
+  assert.match(validatePatches([{ selector: 'h1', op: 'replace', vaule: 'x' }]).join(), /\[0\]\.vaule: unknown key/);
+  assert.deepEqual(validateVocabulary(JSON.parse(vocabRaw)), [], 'the fixture map stays valid');
+
+  // --- the walk's traversal is exported (what --lint enumerates is what the encoder walks) -----------------------------
+  const prep = prepareCapture(read('stardust', 'current', 'pages', `${A}.html`), vocab);
+  assert.deepEqual(contentTops(prep, vocab), [prep.rootEl]);
+  assert.deepEqual(moduleLevel(prep, vocab).map((x) => x.marker && x.marker.kind), ['hero', 'text', 'facts', 'tags', 'separator', 'title', 'tabs', 'image', 'newsletter', 'chat', 'highlight-container', 'title', 'text', 'links', 'teaser'], 'module-level nodes in walk order, through wrappers and the section-style container');
+  assert.equal(markerMatches(prep, vocab).filter((x) => x.marker.kind === 'text').length, 4, 'every first-marker match at any depth (the two text components inside the tab panels too)');
+  const seen = []; walkModules(prep, vocab, { marker: (n, m) => seen.push(m.kind) });
+  assert.deepEqual(seen, ['hero', 'text', 'facts', 'tags', 'separator', 'title', 'tabs', 'image', 'newsletter', 'chat', 'highlight-container'], 'a marker hook that does not descend stops the recursion there');
+  assert.ok(GENERATED_TOKEN.test('container-4f1c2a9e7b') && !GENERATED_TOKEN.test('ui-teaser')); assert.match(LANDMARK_STOP, /footer/);
 
   // --- the engine on its own: a site context is all it needs ---------------------------------------------------------
   const bare = encodePage({ html: '<main><h1>Hi</h1><p>One\n  two</p></main>', page: { url: 'https://www.example.com/a', title: 'A' }, vocab: { root: 'main' }, site: stub });

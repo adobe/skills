@@ -50,11 +50,13 @@
  *                    drop [], keepHashLinks, emptyP: drop|keep } — emptyP `drop` also drops a div/span that holds only
  *                    whitespace or NBSP (no image, no link).
  *
- * Shape prints: `<marker sel | UNMARKED> | <tag>.<sorted classes> | <ancestor chain>` for every VISIBLE marker match at
- * any depth (or one that emits structure on its own: section-break) and every visible unmarked module-level node the
- * walk reaches (the census) — one visibility rule for both halves; class tokens minus generated ones and
- * ignoreModifiers. Selector drops (a marker's, the transform's or a cell's `drop`) that remove visible content are
- * recorded in dropped[] as { kind: <selector>, reason: "selector drop (marker <sel> | transform | cell)", visible, at }.
+ * Shape prints: `<marker sel | UNMARKED> | <tag>.<sorted classes> | <ancestor chain>` for every marker match at any
+ * depth that can change the document (visible, or able to emit when empty: section flags, section emitters, blocks,
+ * default-content with cells) and every visible unmarked module-level node the walk reaches (the census) — one rule for
+ * both halves: what emits nothing is no shape; class tokens minus generated ones and ignoreModifiers. Selector drops: a
+ * marker's `drop` holds for its whole subtree and the transform's everywhere, on every path (walk, rich text, text,
+ * cells), a cell's within that cell; each that removes visible content is recorded in dropped[] as
+ * { kind: <selector>, reason: "selector drop (marker <sel> | transform | cell)", visible, at }.
  *
  * Hard stops (page status; the first that applies, in this order): error (root missing or a landmark, 0 sections, no
  * <h1>, an exception) · unmapped (incl. a showing <video>/<audio controls>/<iframe>/<object>/<embed> reached by rich
@@ -144,10 +146,36 @@ function splitTop(s, sep) {
 const selectorError = (where, s) => { try { parseSelector(s); return null; } catch (e) { return `${where}: ${e.message}`; } };
 const regexError = (where, s) => { try { new RegExp(s); return null; } catch (e) { return `${where}: ${e.message}`; } }; // eslint-disable-line no-new
 const isStrArr = (v) => Array.isArray(v) && v.every((x) => typeof x === 'string');
+const isObj = (v) => Boolean(v) && typeof v === 'object' && !Array.isArray(v);
+const isTagMap = (v) => isObj(v) && Object.values(v).every((t) => typeof t === 'string' && TAG_RE.test(t));
+const isBool = (v) => v === true || v === false;
+// the keys each object of a map takes (R29): anything else is a typo and fails; `$comment` is free text everywhere.
+// x-lint keys ($schema, archetype, inputs, evidence, unique) are --lint's: the engine accepts them unread.
+const KEYS = {
+  vocabulary: ['$schema', 'archetype', 'inputs', 'root', 'chrome', 'wrappers', 'moduleSelectors', 'sectionTags', 'walkSiblings', 'requireH1', 'ignoreModifiers', 'metadata', 'variance', 'markers'],
+  marker: ['sel', 'kind', 'emitter', 'style', 'sectionBefore', 'sectionAfter', 'sectionStyle', 'variants', 'merge', 'retag', 'drop', 'rows', 'cells', 'evidence', 'unique'],
+  variant: ['when', 'add'],
+  rowGroup: ['sel', 'cells', 'optional', 'max'],
+  cell: ['sel', 'as', 'all', 'wrap', 'itemWrap', 'join', 'optional', 'selfOk', 'retag', 'drop', 'attr', 'then', 'text', 'titleAttr', 'value', 'parts'],
+  variance: ['accept', 'ignoreAncestors'],
+  accept: ['print', 'on', 'reason'],
+  ignoreAncestors: ['class', 'reason'],
+  transform: ['imageParagraph', 'imgAttrs', 'retag', 'headingsByClass', 'drop', 'keepHashLinks', 'emptyP'],
+  patch: ['selector', 'op', 'name', 'value'],
+};
+function keysIn(obj, kind, where, errs, extra = []) {
+  const allowed = [...KEYS[kind], ...extra];
+  for (const k of Object.keys(obj)) {
+    const at = where ? `${where}.${k}` : k;
+    if (k === '$comment') { if (typeof obj[k] !== 'string') errs.push(`${at}: free text (a string)`); continue; }
+    if (!allowed.includes(k)) errs.push(`${at}: unknown key — ${where || kind} takes ${allowed.join(', ')} (and $comment)`);
+  }
+}
 const wrapOk = (w) => (typeof w === 'string' && TAG_RE.test(w)) || (Array.isArray(w) && w.length > 0 && w.every((t) => typeof t === 'string' && TAG_RE.test(t)));
 
-function validateCell(spec, where, errs) {
-  if (!spec || typeof spec !== 'object' || Array.isArray(spec)) { errs.push(`${where}: a CellSpec must be an object`); return; }
+function validateCell(spec, where, errs, extra = []) {
+  if (!isObj(spec)) { errs.push(`${where}: a CellSpec must be an object`); return; }
+  keysIn(spec, 'cell', where, errs, extra);
   const as = spec.as;
   if (as !== undefined && !CELL_MODES.has(as)) errs.push(`${where}.as "${as}": use ${[...CELL_MODES].join('|')} (a mode the grammar lacks is a hard stop, never a per-template extension)`);
   if (spec.parts !== undefined) {
@@ -158,13 +186,15 @@ function validateCell(spec, where, errs) {
   for (const k of ['sel', 'text']) if (spec[k] !== undefined) { if (typeof spec[k] !== 'string') errs.push(`${where}.${k}: a selector string`); else { const e = selectorError(`${where}.${k}`, spec[k]); if (e) errs.push(e); } }
   for (const k of ['wrap', 'itemWrap']) if (spec[k] !== undefined && !wrapOk(spec[k])) errs.push(`${where}.${k}: a tag name or an array of tag names`);
   if (spec.join !== undefined && typeof spec.join !== 'string') errs.push(`${where}.join: a string`);
+  for (const k of ['all', 'selfOk']) if (spec[k] !== undefined && !isBool(spec[k])) errs.push(`${where}.${k}: true|false`);
   if (spec.optional !== undefined && spec.optional !== true && spec.optional !== false && spec.optional !== 'empty') errs.push(`${where}.optional: true, false or "empty"`);
   if (as === 'literal' && typeof spec.value !== 'string') errs.push(`${where}: a literal cell needs a string value`);
+  else if (spec.value !== undefined && typeof spec.value !== 'string') errs.push(`${where}.value: a string`);
   if (as === 'attr' && typeof spec.attr !== 'string') errs.push(`${where}: an attr cell needs attr: "<name>"`);
-  if (as === 'link' && spec.attr !== undefined && typeof spec.attr !== 'string') errs.push(`${where}.attr: the attribute that holds the URL`);
-  if (as === 'idref' && spec.then !== undefined && !['text', 'inline', 'rich'].includes(spec.then)) errs.push(`${where}.then: text|inline|rich`);
+  else if (spec.attr !== undefined && typeof spec.attr !== 'string') errs.push(`${where}.attr: an attribute name`);
+  if (spec.then !== undefined && !['text', 'inline', 'rich'].includes(spec.then)) errs.push(`${where}.then: text|inline|rich`);
   if (spec.titleAttr !== undefined && typeof spec.titleAttr !== 'string') errs.push(`${where}.titleAttr: an attribute name`);
-  if (spec.retag !== undefined && (typeof spec.retag !== 'object' || Array.isArray(spec.retag))) errs.push(`${where}.retag: an object tag → tag`);
+  if (spec.retag !== undefined && !isTagMap(spec.retag)) errs.push(`${where}.retag: an object tag → tag name`);
   if (spec.drop !== undefined) { if (!isStrArr(spec.drop)) errs.push(`${where}.drop: an array of selectors`); else for (const s of spec.drop) { const e = selectorError(`${where}.drop`, s); if (e) errs.push(e); } }
 }
 
@@ -172,24 +202,27 @@ function validateCells(cells, where, errs) {
   if (Array.isArray(cells)) { cells.forEach((c, i) => validateCell(c, `${where}[${i}]`, errs)); return; }
   if (cells && typeof cells === 'object' && typeof cells.each === 'string') {
     const e = selectorError(`${where}.each`, cells.each); if (e) errs.push(e);
-    const { each, ...spec } = cells; validateCell(spec, where, errs);
+    validateCell(cells, where, errs, ['each']);
     return;
   }
   errs.push(`${where}: an array of CellSpecs or { each: "<selector>", …CellSpec }`);
 }
 
-/** Map errors (empty = valid). Unknown keys are left to `--lint`'s schema. */
+/** Map errors (empty = valid): unknown keys at every level, the type of every key the engine reads, selectors, regexes. */
 export function validateVocabulary(v) {
   const errs = [];
-  if (!v || typeof v !== 'object' || Array.isArray(v)) return ['vocabulary.json is not an object'];
+  if (!isObj(v)) return ['vocabulary.json is not an object'];
+  keysIn(v, 'vocabulary', '', errs);
   if (typeof v.root !== 'string' || !v.root.trim()) errs.push('root: a selector string is required');
+  for (const k of ['walkSiblings', 'requireH1']) if (v[k] !== undefined && !isBool(v[k])) errs.push(`${k}: true|false`);
   for (const k of ['chrome', 'wrappers']) if (v[k] !== undefined && !isStrArr(v[k])) errs.push(`${k}: an array of selector strings`);
   if (v.sectionTags !== undefined && !(isStrArr(v.sectionTags) && v.sectionTags.every((t) => TAG_RE.test(t)))) errs.push('sectionTags: an array of tag names');
   if (v.moduleSelectors !== undefined) {
     if (!Array.isArray(v.moduleSelectors)) errs.push('moduleSelectors: an array of selectors or { childClass } / { class } patterns');
     else v.moduleSelectors.forEach((m, i) => {
-      const key = m && typeof m === 'object' ? ['childClass', 'class'].find((k) => typeof m[k] === 'string') : null;
-      if (typeof m === 'string') { const e = selectorError(`moduleSelectors[${i}]`, m); if (e) errs.push(e); } else if (key) { const e = regexError(`moduleSelectors[${i}].${key}`, m[key]); if (e) errs.push(e); } else errs.push(`moduleSelectors[${i}]: a selector string, { childClass: "<regex>" } or { class: "<regex>" }`);
+      const keys = isObj(m) ? Object.keys(m).filter((k) => k !== '$comment') : [];
+      const key = keys.length === 1 && ['childClass', 'class'].includes(keys[0]) && typeof m[keys[0]] === 'string' ? keys[0] : null;
+      if (typeof m === 'string') { const e = selectorError(`moduleSelectors[${i}]`, m); if (e) errs.push(e); } else if (key) { const e = regexError(`moduleSelectors[${i}].${key}`, m[key]); if (e) errs.push(e); if (m.$comment !== undefined && typeof m.$comment !== 'string') errs.push(`moduleSelectors[${i}].$comment: free text (a string)`); } else errs.push(`moduleSelectors[${i}]: a selector string, { childClass: "<regex>" } or { class: "<regex>" } (one key${keys.length ? `; got ${keys.join(', ')}` : ''})`);
     });
   }
   if (v.ignoreModifiers !== undefined) { if (!isStrArr(v.ignoreModifiers)) errs.push('ignoreModifiers: an array of regex strings'); else v.ignoreModifiers.forEach((s, i) => { const e = regexError(`ignoreModifiers[${i}]`, s); if (e) errs.push(e); }); }
@@ -205,12 +238,22 @@ export function validateVocabulary(v) {
   }
   if (v.variance !== undefined) {
     const va = v.variance; const why = (r) => typeof r === 'string' && r.trim();
-    if (!va || typeof va !== 'object' || Array.isArray(va)) errs.push('variance: an object { ignoreAncestors, accept }');
+    if (!isObj(va)) errs.push('variance: an object { ignoreAncestors, accept }');
     else {
-      if (va.accept !== undefined && !(Array.isArray(va.accept) && va.accept.every((a) => a && typeof a.print === 'string' && (a.on === 'extra' || a.on === 'missing') && why(a.reason)))) errs.push('variance.accept: an array of { print, on: "extra"|"missing", reason } with a non-empty reason');
+      keysIn(va, 'variance', 'variance', errs);
+      if (va.accept !== undefined) {
+        if (!Array.isArray(va.accept)) errs.push('variance.accept: an array of { print, on: "extra"|"missing", reason }');
+        else va.accept.forEach((a, i) => {
+          if (isObj(a)) keysIn(a, 'accept', `variance.accept[${i}]`, errs);
+          if (!isObj(a) || typeof a.print !== 'string' || (a.on !== 'extra' && a.on !== 'missing') || !why(a.reason)) errs.push(`variance.accept[${i}]: { print, on: "extra"|"missing", reason } with a non-empty reason`);
+        });
+      }
       if (va.ignoreAncestors !== undefined) {
         if (!Array.isArray(va.ignoreAncestors)) errs.push('variance.ignoreAncestors: an array of { class: "<regex>", reason }');
-        else va.ignoreAncestors.forEach((x, i) => { if (!x || typeof x.class !== 'string' || !why(x.reason)) errs.push(`variance.ignoreAncestors[${i}]: { class: "<regex>", reason } with a non-empty reason`); else { const e = regexError(`variance.ignoreAncestors[${i}].class`, x.class); if (e) errs.push(e); } });
+        else va.ignoreAncestors.forEach((x, i) => {
+          if (isObj(x)) keysIn(x, 'ignoreAncestors', `variance.ignoreAncestors[${i}]`, errs);
+          if (!isObj(x) || typeof x.class !== 'string' || !why(x.reason)) errs.push(`variance.ignoreAncestors[${i}]: { class: "<regex>", reason } with a non-empty reason`); else { const e = regexError(`variance.ignoreAncestors[${i}].class`, x.class); if (e) errs.push(e); }
+        });
       }
     }
   }
@@ -218,24 +261,30 @@ export function validateVocabulary(v) {
   if (v.markers !== undefined && !Array.isArray(v.markers)) errs.push('markers: an ARRAY of { sel, kind, emitter, … } (order is precedence; an object keyed by selector is the old form)');
   (Array.isArray(v.markers) ? v.markers : []).forEach((m, i) => {
     const w = `markers[${i}]`;
-    if (!m || typeof m !== 'object' || Array.isArray(m)) { errs.push(`${w}: an object { sel, kind, emitter, … }`); return; }
+    if (!isObj(m)) { errs.push(`${w}: an object { sel, kind, emitter, … }`); return; }
+    keysIn(m, 'marker', w, errs);
     if (typeof m.sel !== 'string' || !m.sel.trim()) errs.push(`${w}.sel: a selector string is required`); else { const e = selectorError(`${w}.sel`, m.sel); if (e) errs.push(e); }
+    if (m.kind !== undefined && typeof m.kind !== 'string') errs.push(`${w}.kind: a string`);
+    for (const k of ['sectionBefore', 'sectionAfter', 'merge']) if (m[k] !== undefined && !isBool(m[k])) errs.push(`${w}.${k}: true|false`);
     if (m.emitter !== undefined && m.emitter !== null && !EMITTER_RE.test(String(m.emitter))) errs.push(`${w}.emitter "${m.emitter}": use block:<name>[ variants] · default-content · wrapper · section · section-style:<style> · section-break:<style> · drop:<reason> · dynamics:<row>`);
-    if (m.emitter === 'section' && m.style !== undefined && typeof m.style !== 'string') errs.push(`${w}.style: a string`);
+    if (m.style !== undefined && typeof m.style !== 'string') errs.push(`${w}.style: a string`);
     if (m.sectionStyle !== undefined && typeof m.sectionStyle !== 'string') errs.push(`${w}.sectionStyle: a string`);
     if (m.variants !== undefined) {
       if (!Array.isArray(m.variants)) errs.push(`${w}.variants: an array of { when, add }`);
       else m.variants.forEach((x, j) => {
+        if (isObj(x)) keysIn(x, 'variant', `${w}.variants[${j}]`, errs);
         if (!x || typeof x.when !== 'string' || typeof x.add !== 'string' || !x.add.split(' ').every((t) => TOKEN_RE.test(t))) { errs.push(`${w}.variants[${j}]: { when: "<selector>", add: "<token>[ <token>…]" }`); return; }
         const e = selectorError(`${w}.variants[${j}].when`, x.when); if (e) errs.push(e);
       });
     }
     if (m.drop !== undefined) { if (!isStrArr(m.drop)) errs.push(`${w}.drop: an array of selectors`); else for (const s of m.drop) { const e = selectorError(`${w}.drop`, s); if (e) errs.push(e); } }
-    if (m.retag !== undefined && (typeof m.retag !== 'object' || Array.isArray(m.retag))) errs.push(`${w}.retag: an object tag → tag`);
+    if (m.retag !== undefined && !isTagMap(m.retag)) errs.push(`${w}.retag: an object tag → tag name`);
     if (m.rows !== undefined) {
       if (typeof m.rows === 'string') { const e = selectorError(`${w}.rows`, m.rows); if (e) errs.push(e); } else if (Array.isArray(m.rows)) {
         m.rows.forEach((g, j) => {
-          if (!g || typeof g !== 'object') { errs.push(`${w}.rows[${j}]: { sel, cells, optional, max }`); return; }
+          if (!isObj(g)) { errs.push(`${w}.rows[${j}]: { sel, cells, optional, max }`); return; }
+          keysIn(g, 'rowGroup', `${w}.rows[${j}]`, errs);
+          if (g.optional !== undefined && !isBool(g.optional)) errs.push(`${w}.rows[${j}].optional: true|false`);
           if (g.sel !== undefined) { const e = typeof g.sel === 'string' ? selectorError(`${w}.rows[${j}].sel`, g.sel) : `${w}.rows[${j}].sel: a selector string`; if (e) errs.push(e); }
           if (g.max !== undefined && !(Number.isInteger(g.max) && g.max > 0)) errs.push(`${w}.rows[${j}].max: a positive integer`);
           if (g.cells !== undefined) validateCells(g.cells, `${w}.rows[${j}].cells`, errs);
@@ -250,8 +299,9 @@ export function validateVocabulary(v) {
 
 /** Transform errors (empty = valid). */
 export function validateTransform(tf) {
-  if (!tf || typeof tf !== 'object' || Array.isArray(tf)) return ['transform.json is not an object'];
+  if (!isObj(tf)) return ['transform.json is not an object'];
   const errs = [];
+  keysIn(tf, 'transform', '', errs);
   if (tf.imageParagraph !== undefined && typeof tf.imageParagraph !== 'boolean') errs.push('imageParagraph: true|false');
   if (tf.keepHashLinks !== undefined && typeof tf.keepHashLinks !== 'boolean') errs.push('keepHashLinks: true|false');
   if (tf.emptyP !== undefined && !['drop', 'keep'].includes(tf.emptyP)) errs.push('emptyP: "drop" or "keep"');
@@ -287,6 +337,72 @@ const hiddenLive = (n, stamped) => stamped && attr(n, 'data-hidden-live') !== un
 /** The first marker (array order) that matches the element itself (rule 3), or null. */
 export function firstMarker(n, markers, rootEl) { for (const m of markers) if (matches(n, m.sel, rootEl)) return m; return null; }
 
+// ===================================================================================== the walk's traversal (shared)
+// What --lint and --sweep need to see the capture as the encoder does; the encoder's own walk and fingerprint run on
+// these same functions, so the two never drift.
+export { GENERATED_TOKEN, LANDMARK_STOP };
+/** visible = text other than whitespace/NBSP, or media (an image, a showing player). */
+export const isVisible = (n) => visible(n);
+/** a node the walk skips on a stamped capture (never <details>). */
+export const isHiddenLive = (n, stamped) => hiddenLive(n, stamped);
+/** the class tokens the fingerprint reads: generated tokens and the map's ignoreModifiers left out. */
+export const classTokens = (vocab) => tokenFilter(vocab);
+/** a marker whose emitter the walk recurses through (wrapper, section, section-style:). */
+export const recursesThrough = (m) => { const e = String((m && m.emitter) || ''); return e === 'wrapper' || e === 'section' || e.startsWith('section-style:'); };
+
+/** The walked tops of a prepared capture: the root, plus (walkSiblings) its following siblings up to a landmark. */
+export function contentTops(prep, vocab) {
+  const out = [prep.rootEl];
+  if (vocab.walkSiblings && prep.rootEl.parent) {
+    const sibs = kids(prep.rootEl.parent);
+    for (const s of sibs.slice(sibs.indexOf(prep.rootEl) + 1)) { if (matches(s, LANDMARK_STOP)) break; out.push(s); }
+  }
+  return out;
+}
+
+/** Every first-marker match at any depth under the tops (hidden-live skipped), in document order: [{ node, marker }]. */
+export function markerMatches(prep, vocab) {
+  const markers = vocab.markers || []; const { rootEl, stamped } = prep; const out = [];
+  const visit = (n) => {
+    if (!isEl(n) || hiddenLive(n, stamped)) return;
+    const m = firstMarker(n, markers, rootEl);
+    if (m) out.push({ node: n, marker: m });
+    for (const c of n.children) visit(c);
+  };
+  for (const t of contentTops(prep, vocab)) visit(t);
+  return out;
+}
+
+/**
+ * The walk (rules 3/4/5): visits each module-level node in document order — the root's children, then the walked
+ * siblings — recursing through wrapper/section markers (by default), sectionTags and wrappers[]. Hooks, all optional:
+ *   skip(node) → true leaves a node and its subtree out · hidden(node) a hidden-live node on a stamped capture ·
+ *   marker(node, marker, descend) a marker hit (default: descend when recursesThrough(marker)) ·
+ *   section(node, descend) a sectionTags node (default: descend) · module(node) anything else (rule 5).
+ */
+export function walkModules(prep, vocab, hooks = {}) {
+  const markers = vocab.markers || []; const wrappers = vocab.wrappers || []; const sectionTags = vocab.sectionTags || ['section'];
+  const { rootEl, stamped } = prep;
+  const visit = (n) => {
+    if (!isEl(n) || STRIP.has(n.tag) || (hooks.skip && hooks.skip(n))) return;
+    if (hiddenLive(n, stamped)) { if (hooks.hidden) hooks.hidden(n); return; }
+    const descend = () => { for (const c of kids(n)) visit(c); };
+    const m = firstMarker(n, markers, rootEl); // rule 3: the element itself, never a descendant
+    if (m) { if (hooks.marker) hooks.marker(n, m, descend); else if (recursesThrough(m)) descend(); return; }
+    if (sectionTags.includes(n.tag)) { if (hooks.section) hooks.section(n, descend); else descend(); return; }
+    if (wrappers.some((w) => matches(n, w, rootEl))) { descend(); return; } // rule 4: recurse only through declared wrappers
+    if (hooks.module) hooks.module(n);
+  };
+  for (const t of contentTops(prep, vocab)) for (const c of (t === rootEl ? kids(t) : [t])) visit(c);
+}
+
+/** The module-level nodes the walk classifies: [{ node, marker | null }] (marker null: rule 5, default content). */
+export function moduleLevel(prep, vocab, { skip } = {}) {
+  const out = [];
+  walkModules(prep, vocab, { skip, marker: (node, marker, descend) => { out.push({ node, marker }); if (recursesThrough(marker)) descend(); }, module: (node) => out.push({ node, marker: null }) });
+  return out;
+}
+
 function moduleMatcher(vocab, rootEl) {
   const list = vocab.moduleSelectors || DEFAULT_MODULE_SELECTORS;
   const tests = list.map((m) => {
@@ -316,18 +432,21 @@ function printOf(label, n, rootEl, tokens) {
   for (let p = n.parent; p && p !== rootEl && isEl(p); p = p.parent) { const t = tokens.chain(p); if (t !== null) chain.push(t); }
   return `${label} | ${n.tag}.${[...tokens(n)].sort().join('.')} | ${chain.reverse().join('>')}`;
 }
-/** Every visible marker match at any depth under the given tops (first marker wins), as a print. */
-function markerPrints(tops, markers, rootEl, stamped, tokens) {
-  const out = new Set();
-  const visit = (n) => {
-    if (!isEl(n) || hiddenLive(n, stamped)) return;
-    const m = firstMarker(n, markers, rootEl);
-    // one visibility rule with the census: an empty match emits nothing, so it is no shape (a section-break emits one)
-    if (m && (visible(n) || String(m.emitter || '').startsWith('section-break:'))) out.add(printOf(m.sel, n, rootEl, tokens));
-    for (const c of n.children) visit(c);
-  };
-  for (const t of tops) visit(t);
-  return out;
+/**
+ * Can this marker match change the document although it holds nothing visible? Section flags and section emitters move
+ * section boundaries, a block (or a default-content marker with cells) can emit attr/literal/link/"empty" cells; only an
+ * empty wrapper, plain default-content, drop:, dynamics: or unmapped match emits nothing.
+ */
+const emitsWhenEmpty = (m) => {
+  const e = String(m.emitter || '');
+  if (m.sectionBefore || m.sectionAfter || m.sectionStyle) return true;
+  if (!e || e === 'wrapper' || e.startsWith('drop:') || e.startsWith('dynamics:')) return false;
+  return e !== 'default-content' || Boolean(m.cells);
+};
+/** Every marker match at any depth (first marker wins), as a print — unless it emits nothing. */
+function markerPrints(prep, vocab, tokens) {
+  // one visibility rule with the census: a match that emits nothing (empty, and nothing to emit when empty) is no shape
+  return markerMatches(prep, vocab).filter(({ node, marker }) => visible(node) || emitsWhenEmpty(marker)).map(({ node, marker }) => printOf(marker.sel, node, prep.rootEl, tokens));
 }
 
 /**
@@ -434,7 +553,7 @@ function plainText(n, ctx) {
   const dropSel = [...(ctx.tf.drop || []), ...(ctx.drop || [])];
   const t = (x) => {
     if (x.type === 'text') return x.text.replace(/\{\{[^}]*\}\}/g, '');
-    if (!isEl(x) || STRIP.has(x.tag) || PLAYERS.has(x.tag) || ctx.declared.has(x)) return '';
+    if (!isEl(x) || STRIP.has(x.tag) || PLAYERS.has(x.tag) || ctx.declared.has(x) || ctx.globalDrop(x)) return '';
     if (x.tag === 'br') return ' ';
     if (dropSel.some((s) => matches(x, s, ctx.rootEl)) || hiddenLive(x, ctx.stamped)) { ctx.excluded.add(x); return ''; }
     return x.children.map(t).join('');
@@ -455,7 +574,7 @@ function richText(n, ctx, { inline = false, nested = true, childrenOnly = false 
   // sc: the retag/drop scope of the subtree — a nested default-content marker brings its own
   const clean = (node, top = false, isRoot = false, sc = base) => {
     if (node.type === 'text') return escText(node.text.replace(/\{\{[^}]*\}\}/g, ''));
-    if (!isEl(node) || STRIP.has(node.tag) || ctx.declared.has(node)) return '';
+    if (!isEl(node) || STRIP.has(node.tag) || ctx.declared.has(node) || ctx.globalDrop(node)) return '';
     if (sc.drop.some((s) => matches(node, s, ctx.rootEl))) { ctx.excluded.add(node); return ''; }
     if (hiddenLive(node, ctx.stamped)) { ctx.report.hidden.push({ at: describe(node), reason: attr(node, 'data-hidden-live') || 'hidden' }); ctx.excluded.add(node); return ''; }
     const kidsOf = (t = false) => node.children.map((c) => clean(c, t, false, sc));
@@ -625,7 +744,8 @@ export function validatePatches(patches) {
   if (!Array.isArray(patches)) return ['a patch file holds an array of { selector, op, name?, value? }'];
   const errs = [];
   patches.forEach((p, i) => {
-    if (!p || typeof p !== 'object' || Array.isArray(p)) { errs.push(`[${i}]: an object { selector, op, name?, value? }`); return; }
+    if (!isObj(p)) { errs.push(`[${i}]: an object { selector, op, name?, value? }`); return; }
+    keysIn(p, 'patch', `[${i}]`, errs);
     if (typeof p.selector !== 'string' || !p.selector.trim()) errs.push(`[${i}].selector: a selector string`); else { const e = selectorError(`[${i}].selector`, p.selector); if (e) errs.push(e); }
     if (!PATCH_OPS.includes(p.op)) errs.push(`[${i}].op "${p.op}": use ${PATCH_OPS.join('|')}`);
     if (p.op === 'attr' && (typeof p.name !== 'string' || !/^[a-z][a-z0-9:_-]*$/i.test(p.name))) errs.push(`[${i}].name: an attribute name`);
@@ -697,16 +817,18 @@ function encodeInto(result, { html, page, base, vocab, tf, site, archetypePrints
   const { doc, rootEl, stamped } = prep;
   const markers = vocab.markers || [];
   const wrappers = vocab.wrappers || [];
-  const sectionTags = vocab.sectionTags || ['section'];
   const isModule = moduleMatcher(vocab, rootEl);
   const tokens = tokenFilter(vocab);
   const excluded = new Set();
   const declared = new Map(); // drop:/dynamics: matches at any depth → their marker, in document order
-  const isDropped = (x) => { for (let p = x; p && isEl(p); p = p.parent) if (declared.has(p)) return true; return false; };
-  const ctx = { tf, site, report, base, stamped, doc, rootEl, markers, wrappers, isModule, excluded, declared, isDropped, cache: { media: new Set() } };
-  const moduleLevel = new Set();
-  const census = new Set();
   const selDrops = new Map(); // selector-dropped node → { selector, source }; the first claim wins
+  // a marker's or the transform's selector drop holds for every path; a cell's only inside that cell
+  const globalDrop = (x) => { const d = selDrops.get(x); return Boolean(d) && d.source !== 'cell'; };
+  // a node a drop:/dynamics: match or a marker/transform selector drop removed (itself or an ancestor)
+  const isDropped = (x) => { for (let p = x; p && isEl(p); p = p.parent) if (declared.has(p) || globalDrop(p)) return true; return false; };
+  const ctx = { tf, site, report, base, stamped, doc, rootEl, markers, wrappers, isModule, excluded, declared, isDropped, globalDrop, cache: { media: new Set() } };
+  const walkedDrops = new Set(); // drop:/dynamics: matches the walk reached as modules
+  const census = new Set();
   const excludeAll = (scope, sels, source) => { for (const s of sels || []) for (const x of qsa(scope, s)) { excluded.add(x); if (!selDrops.has(x)) selDrops.set(x, { selector: s, source }); } };
   ctx.excludeAll = excludeAll;
 
@@ -718,23 +840,20 @@ function encodeInto(result, { html, page, base, vocab, tf, site, archetypePrints
     if (merge && last && last.kind === 'block' && last.name === name && last.variants.join(' ') === variants.join(' ')) { last.rows.push(...rows); return; }
     cur.nodes.push({ kind: 'block', name, variants, rows });
   };
-  const visit = (n) => {
-    if (!isEl(n) || STRIP.has(n.tag)) return;
-    if (hiddenLive(n, stamped)) { report.hidden.push({ at: describe(n), reason: attr(n, 'data-hidden-live') || 'hidden' }); excluded.add(n); return; }
-    const m = firstMarker(n, markers, rootEl); // rule 3: the element itself, never a descendant
-    if (m) {
+  const onMarker = (n, m, descend) => {
+    {
       const emitter = m.emitter || null; const kind = m.kind || m.sel;
       if (m.sectionBefore) closeSection();
       if (m.sectionStyle) cur.style = m.sectionStyle;
       const after = () => { if (m.sectionAfter) closeSection(); };
       const sub = { ...ctx, retag: m.retag, drop: m.drop };
       if (!emitter) { if (visible(n)) report.unmapped.push({ kind, selector: m.sel, at: describe(n) }); pushHtml(richText(n, ctx, { nested: false })); return after(); }
-      if (emitter.startsWith('drop:') || emitter.startsWith('dynamics:')) { if (!declared.has(n)) declared.set(n, m); moduleLevel.add(n); excluded.add(n); return after(); } // recorded after the walk
-      if (emitter === 'wrapper') { for (const c of kids(n)) visit(c); return after(); }
+      if (emitter.startsWith('drop:') || emitter.startsWith('dynamics:')) { if (!declared.has(n)) declared.set(n, m); walkedDrops.add(n); excluded.add(n); return after(); } // recorded after the walk
+      if (emitter === 'wrapper') { descend(); return after(); }
       if (emitter.startsWith('section-break:')) { closeSection(); sections.push({ style: emitter.slice(14), nodes: [] }); return after(); }
       if (emitter === 'section' || emitter.startsWith('section-style:')) {
         closeSection(); cur.style = emitter.startsWith('section-style:') ? emitter.slice(14) : (m.style || null);
-        const style = cur.style; for (const c of kids(n)) visit(c); if (!cur.style) cur.style = style; closeSection();
+        const style = cur.style; descend(); if (!cur.style) cur.style = style; closeSection();
         return after();
       }
       if (emitter === 'default-content') { pushHtml(m.cells ? (cellValue(n, m.cells[0], sub, kind) || '') : richText(n, sub)); return after(); }
@@ -747,19 +866,15 @@ function encodeInto(result, { html, page, base, vocab, tf, site, archetypePrints
       pushBlock(name, variants, rows, m.merge !== false);
       return after();
     }
-    if (sectionTags.includes(n.tag)) { if (visible(n)) census.add(printOf('UNMARKED', n, rootEl, tokens)); closeSection(); for (const c of kids(n)) visit(c); closeSection(); return; }
-    if (wrappers.some((w) => matches(n, w, rootEl))) { for (const c of kids(n)) visit(c); return; } // rule 4: recurse only through declared wrappers
+  };
+  const onSection = (n, descend) => { if (visible(n)) census.add(printOf('UNMARKED', n, rootEl, tokens)); closeSection(); descend(); closeSection(); };
+  const onModule = (n) => {
     if (visible(n) && !(PLAIN_CONTENT.has(n.tag) && !tokens(n).length)) census.add(printOf('UNMARKED', n, rootEl, tokens));
     const ms = isModule(n);
     if (ms && visible(n)) { report.unmapped.push({ kind: attr(n, 'data-module') || attr(n, 'data-component') || attr(n, 'data-tpl') || attr(n, 'data-block') || classList(n)[0] || n.tag, selector: ms, at: describe(n) }); pushHtml(richText(n, ctx, { nested: false })); return; }
     pushHtml(richText(n, ctx)); // rule 5: default content in document order
   };
-  const tops = [rootEl];
-  // following siblings of the root up to the first chrome landmark (content some templates place beside the root)
-  if (vocab.walkSiblings && rootEl.parent) {
-    const sibs = kids(rootEl.parent);
-    for (const s of sibs.slice(sibs.indexOf(rootEl) + 1)) { if (matches(s, LANDMARK_STOP)) break; tops.push(s); }
-  }
+  const tops = contentTops(prep, vocab); // the root, plus (walkSiblings) its following siblings up to a landmark
   for (const t of tops) {
     excludeAll(t, tf.drop, 'transform');
     const own = t !== rootEl && (tf.drop || []).find((s) => matches(t, s, rootEl));
@@ -776,13 +891,16 @@ function encodeInto(result, { html, page, base, vocab, tf, site, archetypePrints
     for (const c of n.children) prepass(c);
   };
   for (const t of tops) for (const c of (t === rootEl ? kids(t) : [t])) prepass(c);
-  for (const c of kids(rootEl)) visit(c);
-  for (const t of tops.slice(1)) visit(t);
+  walkModules(prep, vocab, {
+    skip: globalDrop, // a marker's or the transform's drop holds through wrapper and section recursion
+    hidden: (n) => { report.hidden.push({ at: describe(n), reason: attr(n, 'data-hidden-live') || 'hidden' }); excluded.add(n); },
+    marker: onMarker, section: onSection, module: onModule,
+  });
   closeSection();
   // drop:/dynamics: records in document order; `nested` (+ where) for a match the walk did not reach as a module
   const pre = { dropped: [], deviations: [] };
   for (const [n, m] of declared) {
-    const e = String(m.emitter); const kind = m.kind || m.sel; const where = moduleLevel.has(n) ? {} : { nested: true, at: describe(n) };
+    const e = String(m.emitter); const kind = m.kind || m.sel; const where = walkedDrops.has(n) ? {} : { nested: true, at: describe(n) };
     if (e.startsWith('drop:')) pre.dropped.push({ kind, reason: e.slice(5), visible: visible(n), ...where });
     else pre.deviations.push({ kind: 'dynamic-dependency', row: e.slice(9), module: kind, ...where });
   }
@@ -797,7 +915,7 @@ function encodeInto(result, { html, page, base, vocab, tf, site, archetypePrints
   report.deviations = [...pre.deviations, ...report.deviations];
 
   // shape prints: every marker match at any depth + the census of unmarked module-level nodes; a SET, sorted
-  result.prints = [...new Set([...markerPrints(tops, markers, rootEl, stamped, tokens), ...census])].sort();
+  result.prints = [...new Set([...markerPrints(prep, vocab, tokens), ...census])].sort();
   if (archetypePrints) report.variance = varianceDelta(result.prints, archetypePrints, vocab.variance && vocab.variance.accept);
 
   // metadata (its own first section, delivered form; no lang row)

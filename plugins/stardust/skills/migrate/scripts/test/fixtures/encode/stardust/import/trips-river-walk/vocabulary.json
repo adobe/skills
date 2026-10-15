@@ -1,5 +1,6 @@
 {
   "archetype": "trips-river-walk",
+  "inputs": { "capture": { "path": "stardust/current/pages/trips-river-walk.html", "sha": "sha256:703239c3b95cec36816e815d50336f958f4a75566cde724b614e6933d02389f5" } },
   "root": "main#main",
   "chrome": ["header.site-header", "footer.site-footer", ".mod-breadcrumb"],
   "wrappers": [".mod-container", ".ui-container"],
