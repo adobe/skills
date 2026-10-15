@@ -2,7 +2,9 @@
 // skills/deploy/scripts/test/deploy-batch.test.mjs — the deploy-batch.mjs contract against a local fake
 // of its three hosts (one node http server on a random port standing in for the DA source API, the
 // admin API and the delivered origin; no network): PUT → preview → live → .plain.html verify with the
-// multipart field, the Authorization header and the ledger row; the already-live skip on re-run;
+// multipart field, the Authorization header and the ledger row (`contentSha` + `verifiedAt`); the
+// content-hash skip on re-run (an unchanged live page sends nothing within --verify-max-age, one pooled
+// GET after it; a changed document, a legacy row without contentSha or a failed re-verify re-drives);
 // --no-publish; the 401 policy (an expired JWT exits 3 before any request; a 401 burst on a valid token
 // is retried on PUT, preview and live and the page lands; a 401 that persists through its retries on
 // any page or step halts the batch with exit 3 — nothing new starts, pages in flight finish, the ledger
@@ -13,7 +15,7 @@
 // Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
@@ -41,6 +43,7 @@ const requests = [];
 const count = { put: {}, preview: {}, live: {}, verify: {} };
 const bump = (kind, p) => { count[kind][p] = (count[kind][p] || 0) + 1; return count[kind][p]; };
 const putOk = new Set(); // pages whose fragment landed: the delivered origin answers 200 for these only
+const verifyGets = { delayMs: 0, inFlight: 0, maxInFlight: 0 }; // a slow delivered origin shows whether the GETs overlap
 function parseMultipart(body, contentType) {
   const m = /boundary=(?:"([^"]+)"|([^;]+))/.exec(contentType || ''); if (!m) return [];
   const delim = Buffer.from(`--${m[1] || m[2]}`);
@@ -99,7 +102,11 @@ const server = createServer((req, res) => {
     if (req.method === 'GET' && url.endsWith('.plain.html')) {
       const p = url.slice(0, -'.plain.html'.length);
       bump('verify', p);
-      return putOk.has(p) ? reply(200, '<div><p>delivered</p></div>', { 'content-type': 'text/html' }) : reply(404, 'not found');
+      const answer = () => (putOk.has(p) ? reply(200, '<div><p>delivered</p></div>', { 'content-type': 'text/html' }) : reply(404, 'not found'));
+      if (!verifyGets.delayMs) return answer();
+      verifyGets.inFlight += 1; verifyGets.maxInFlight = Math.max(verifyGets.maxInFlight, verifyGets.inFlight);
+      setTimeout(() => { verifyGets.inFlight -= 1; answer(); }, verifyGets.delayMs);
+      return undefined;
     }
     return reply(405, `unexpected ${req.method} ${url}`);
   });
@@ -126,6 +133,10 @@ const run = (args, { token = TOKEN, tokenEnv = 'DA_TOKEN' } = {}) => new Promise
   p.on('close', (code) => { allOutput.push(out, err); resolve({ code, out, err }); });
 });
 const ledgerOf = (dir) => JSON.parse(readFileSync(join(proj, dir, '.deploy-ledger.json'), 'utf8'));
+const writeLedger = (dir, l) => writeFileSync(join(proj, dir, '.deploy-ledger.json'), `${JSON.stringify(l, null, 2)}\n`);
+const sha256 = (s) => createHash('sha256').update(s).digest('hex');
+const ISO_RE = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/;
+const skipLine = (a, b, n, c, d, e, tail = '') => new RegExp(`^\\[deploy-batch\\] skip: ${a} unchanged \\(contentSha; ${b} verified ≤ ${n} min ago, ${c} re-verified by GET\\); re-drive: ${d} changed since live, ${e} ledger rows without contentSha${tail}$`, 'm');
 const logOf = (dir) => readFileSync(join(proj, dir, '.deploy-log.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
 const since = (from) => requests.slice(from);
 const touching = (reqs, p) => reqs.filter((q) => q.url.includes(p));
@@ -163,21 +174,43 @@ await check('happy path: PUT (multipart `data`, text/html, Authorization) → pr
   const l = ledgerOf('site-a');
   assert.deepEqual(Object.keys(l).sort(), ['/a1', '/nested/a2']);
   assert.equal(l['/a1'].status, 'live'); assert.equal(l['/a1'].put, 201); assert.equal(l['/a1'].preview, 200); assert.equal(l['/a1'].live, 200); assert.equal(l['/a1'].verify, 'ok'); assert.equal(l['/a1'].attempts, 1);
+  for (const p of ['/a1', '/nested/a2']) {
+    assert.equal(l[p].contentSha, sha256(FRAG[p]), `${p}: contentSha = sha256 of the bytes PUT`);
+    assert.match(l[p].verifiedAt, ISO_RE); assert.ok(Date.now() - Date.parse(l[p].verifiedAt) < 60000);
+  }
   assert.ok(readFileSync(join(proj, 'site-a', '.deploy-ledger.json'), 'utf8').endsWith('}\n'), 'trailing newline');
   assert.deepEqual(readdirSync(join(proj, 'site-a')).filter((f) => f.startsWith('.')).sort(), ['.deploy-ledger.json', '.deploy-log.jsonl'], 'no tmp file, no lock dir left');
   const log = logOf('site-a');
   assert.equal(log.length, 2); assert.ok(log.every((e) => e.step === 'verify' && e.ok === true && e.t));
 });
-await check('re-run skips pages already live (re-verified on the delivered origin, no admin call); --force re-drives them', async () => {
+await check('re-run on an unchanged tree sends 0 requests (unchanged contentSha, verified ≤ 60 min ago); --verify-max-age 0 re-verifies with pooled GETs and no admin call, refreshing verifiedAt; --force re-drives them', async () => {
+  const before = ledgerOf('site-a');
   const from = requests.length;
   const r = await run(['--content', 'site-a']);
   assert.equal(r.code, 0, r.out + r.err);
-  assert.match(r.err, /^\[deploy-batch\] 2 pages, 2 already live, 0 to drive/m); assert.match(r.err, /done\. 0 ok, 0 failed\./);
-  assert.deepEqual(since(from).map((q) => `${q.method} ${q.url}`).sort(), ['GET /a1.plain.html', 'GET /nested/a2.plain.html']);
+  assert.match(r.err, /^\[deploy-batch\] 2 pages, 2 already live, 0 to drive \(concurrency 4, publish=true\)$/m); assert.match(r.err, /done\. 0 ok, 0 failed\./);
+  assert.match(r.err, skipLine(2, 2, 60, 0, 0, 0));
+  assert.equal(requests.length, from, 'no request at all: no PUT, no admin call, no .plain.html GET');
+  assert.deepEqual(ledgerOf('site-a'), before, 'a skip without a request leaves the rows as they were');
+  // --verify-max-age 0: always re-verify — one GET per page, run inside the pool (the slow origin shows them overlap)
+  Object.assign(verifyGets, { delayMs: 150, maxInFlight: 0 });
+  const from1 = requests.length;
+  const r1 = await run(['--content', 'site-a', '--verify-max-age', '0']);
+  verifyGets.delayMs = 0;
+  assert.equal(r1.code, 0, r1.out + r1.err);
+  assert.match(r1.err, /^\[deploy-batch\] 2 pages, 2 already live, 0 to drive/m);
+  assert.match(r1.err, skipLine(2, 0, 0, 2, 0, 0));
+  assert.deepEqual(since(from1).map((q) => `${q.method} ${q.url}`).sort(), ['GET /a1.plain.html', 'GET /nested/a2.plain.html']);
+  assert.equal(verifyGets.maxInFlight, 2, 'the two re-verify GETs ran concurrently, not one after the other');
+  const after = ledgerOf('site-a');
+  for (const p of ['/a1', '/nested/a2']) {
+    assert.ok(after[p].verifiedAt > before[p].verifiedAt, `${p}: verifiedAt refreshed by the GET`);
+    assert.deepEqual({ ...after[p], verifiedAt: 0 }, { ...before[p], verifiedAt: 0 }, `${p}: nothing else in the row changes`);
+  }
   const from2 = requests.length;
   const r2 = await run(['--content', 'site-a', '--force']);
   assert.equal(r2.code, 0, r2.out + r2.err);
-  assert.match(r2.err, /2 pages, 0 already live, 2 to drive/);
+  assert.match(r2.err, /2 pages, 0 already live, 2 to drive/); assert.doesNotMatch(r2.err, /skip:/);
   assert.equal(since(from2).filter((q) => q.method === 'PUT').length, 2);
   assert.equal(ledgerOf('site-a')['/a1'].attempts, 1, '--force starts a fresh ledger');
 });
@@ -189,6 +222,74 @@ await check('--no-publish: PUT → preview → verify only, ledger `previewed`, 
   assert.match(r.err, /^\[1\/1\] OK {3}\/np1 \(previewed\)$/m);
   assert.deepEqual(since(from).map((q) => `${q.method} ${q.url}`), [`PUT ${SRC}/np1.html`, `POST ${PREVIEW}/np1`, 'GET /np1.plain.html']);
   assert.equal(ledgerOf('site-np')['/np1'].status, 'previewed'); assert.equal(ledgerOf('site-np')['/np1'].live, undefined);
+  assert.equal(ledgerOf('site-np')['/np1'].contentSha, sha256(FRAG['/np1'])); assert.match(ledgerOf('site-np')['/np1'].verifiedAt, ISO_RE);
+});
+
+// ---- (a2) the content-hash skip ------------------------------------------------------------------------
+await check('one byte changed in one page re-deploys only that page (PUT → preview → live → GET, no --force); the unchanged page sends 0 requests; the row carries the new contentSha', async () => {
+  site('site-h', ['h1', 'h2']);
+  const r0 = await run(['--content', 'site-h']);
+  assert.equal(r0.code, 0, r0.out + r0.err);
+  const before = ledgerOf('site-h');
+  const changed = FRAG['/h2'].replace('<h1>h2</h1>', '<h1>h3</h1>');
+  assert.equal(changed.length, FRAG['/h2'].length);
+  writeFileSync(join(proj, 'site-h', 'h2.html'), changed);
+  const from = requests.length;
+  const r = await run(['--content', 'site-h']);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.match(r.err, /^\[deploy-batch\] 2 pages, 1 already live, 1 to drive/m);
+  assert.match(r.err, skipLine(1, 1, 60, 0, 1, 0));
+  assert.match(r.err, /^\[1\/1\] OK {3}\/h2 \(live\)$/m);
+  const reqs = since(from);
+  assert.deepEqual(reqs.map((q) => `${q.method} ${q.url}`), [`PUT ${SRC}/h2.html`, `POST ${PREVIEW}/h2`, `POST ${LIVE}/h2`, 'GET /h2.plain.html']);
+  assert.equal(reqs[0].parts[0].data.toString('utf8'), changed, 'the changed bytes were PUT');
+  const l = ledgerOf('site-h');
+  assert.deepEqual(l['/h1'], before['/h1'], 'the unchanged page row is untouched');
+  assert.equal(l['/h2'].contentSha, sha256(changed)); assert.notEqual(l['/h2'].contentSha, before['/h2'].contentSha);
+  assert.equal(l['/h2'].attempts, 2); assert.ok(l['/h2'].verifiedAt > before['/h2'].verifiedAt);
+});
+await check('a ledger row without contentSha (written before this version) re-drives once, then carries the hash and is skipped', async () => {
+  site('site-k', ['k1', 'k2']);
+  assert.equal((await run(['--content', 'site-k'])).code, 0);
+  const l0 = ledgerOf('site-k');
+  delete l0['/k1'].contentSha; delete l0['/k1'].verifiedAt;
+  writeLedger('site-k', l0);
+  const from = requests.length;
+  const r = await run(['--content', 'site-k']);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.match(r.err, /^\[deploy-batch\] 2 pages, 1 already live, 1 to drive/m);
+  assert.match(r.err, skipLine(1, 1, 60, 0, 0, 1));
+  assert.deepEqual(since(from).map((q) => `${q.method} ${q.url}`), [`PUT ${SRC}/k1.html`, `POST ${PREVIEW}/k1`, `POST ${LIVE}/k1`, 'GET /k1.plain.html']);
+  assert.equal(ledgerOf('site-k')['/k1'].contentSha, sha256(FRAG['/k1']));
+  const from2 = requests.length;
+  const r2 = await run(['--content', 'site-k']);
+  assert.equal(r2.code, 0, r2.out + r2.err);
+  assert.match(r2.err, skipLine(2, 2, 60, 0, 0, 0)); assert.equal(requests.length, from2, 'the legacy row re-drives once only');
+});
+await check('re-verify: a row verified longer than --verify-max-age ago gets one GET (200 ⇒ skipped, verifiedAt refreshed); a failed re-verify (age 0, delivered 404) re-drives the page', async () => {
+  site('site-v', ['v1', 'v2', 'v3']);
+  assert.equal((await run(['--content', 'site-v'])).code, 0);
+  const l0 = ledgerOf('site-v');
+  l0['/v1'].verifiedAt = new Date(Date.now() - 2 * 3600e3).toISOString(); // older than the default 60 min
+  writeLedger('site-v', l0);
+  const from = requests.length;
+  const r = await run(['--content', 'site-v']);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.match(r.err, /^\[deploy-batch\] 3 pages, 3 already live, 0 to drive/m);
+  assert.match(r.err, skipLine(3, 2, 60, 1, 0, 0));
+  assert.deepEqual(since(from).map((q) => `${q.method} ${q.url}`), ['GET /v1.plain.html']);
+  assert.ok(Date.now() - Date.parse(ledgerOf('site-v')['/v1'].verifiedAt) < 60000, 'verifiedAt refreshed by the GET');
+  putOk.delete('/v2'); // the delivered origin lost v2: its re-verify answers 404
+  const from2 = requests.length;
+  const r2 = await run(['--content', 'site-v', '--verify-max-age', '0']);
+  assert.equal(r2.code, 0, r2.out + r2.err);
+  assert.match(r2.err, /^\[deploy-batch\] 3 pages, 2 already live, 1 to drive/m);
+  assert.match(r2.err, skipLine(2, 0, 0, 2, 0, 0, ', 1 failed the re-verify GET'));
+  assert.match(r2.err, /^\[1\/1\] OK {3}\/v2 \(live\)$/m);
+  const reqs = since(from2);
+  assert.deepEqual(touching(reqs, '/v2').map((q) => `${q.method} ${q.url}`), ['GET /v2.plain.html', `PUT ${SRC}/v2.html`, `POST ${PREVIEW}/v2`, `POST ${LIVE}/v2`, 'GET /v2.plain.html']);
+  assert.deepEqual(reqs.filter((q) => !q.url.includes('/v2')).map((q) => `${q.method} ${q.url}`).sort(), ['GET /v1.plain.html', 'GET /v3.plain.html']);
+  assert.equal(ledgerOf('site-v')['/v2'].status, 'live'); assert.equal(ledgerOf('site-v')['/v2'].attempts, 2);
 });
 
 // ---- (b) a 401 burst on a valid token ------------------------------------------------------------------
@@ -337,6 +438,9 @@ await check('usage errors exit 2 (unknown flag, missing --org/--repo/--branch, n
   await bad(['--content', 'site-a', '--bogus'], /^\[deploy-batch\] fatal: unknown arg: --bogus$/m);
   await bad(['--content', 'site-a'], /fatal: missing token in env DA_TOKEN/, { token: null });
   await bad(['--content', 'site-a', '--token-env', 'OTHER'], /fatal: missing token in env OTHER/);
+  await bad(['--content', 'site-a', '--verify-max-age', 'x'], /^\[deploy-batch\] fatal: --verify-max-age takes minutes, a number ≥ 0 \(got x\)$/m);
+  await bad(['--content', 'site-a', '--verify-max-age', '-5'], /fatal: --verify-max-age takes minutes, a number ≥ 0 \(got -5\)$/m);
+  await bad(['--content', 'site-a', '--verify-max-age'], /fatal: --verify-max-age takes minutes, a number ≥ 0 \(got nothing\)$/m);
   const p = spawn(process.execPath, [SCRIPT, '--repo', REPO, '--branch', BRANCH], { cwd: proj, env: { ...process.env, DA_TOKEN: TOKEN } });
   const noOrg = await new Promise((resolve) => { let err = ''; p.stderr.on('data', (d) => { err += d; }); p.on('close', (code) => resolve({ code, err })); });
   assert.equal(noOrg.code, 2); assert.match(noOrg.err, /--org, --repo and --branch are required/); allOutput.push(noOrg.err);
@@ -346,6 +450,7 @@ await check('usage errors exit 2 (unknown flag, missing --org/--repo/--branch, n
   const help = await new Promise((resolve) => { let out = ''; h.stdout.on('data', (d) => { out += d; }); h.on('close', (code) => resolve({ code, out })); });
   assert.equal(help.code, 0); assert.match(help.out, /^deploy-batch\.mjs — resumable, concurrent PUT → preview → live driver for DA\./);
   assert.match(help.out, /Exit codes: 0 every page live/); assert.match(help.out, /3 token halt/); assert.match(help.out, /DA_SOURCE_BASE/); assert.match(help.out, /--backoff-ms/);
+  assert.match(help.out, /\[--verify-max-age 60\]/); assert.match(help.out, /^--verify-max-age {2}minutes/m); assert.match(help.out, /contentSha/);
   assert.deepEqual(readdirSync(scratch), [], '--help wrote nothing'); rmSync(scratch, { recursive: true, force: true });
 });
 

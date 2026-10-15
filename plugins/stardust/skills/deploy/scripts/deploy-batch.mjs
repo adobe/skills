@@ -11,14 +11,32 @@
  *
  * This driver:
  *   - reads/writes a PERSISTENT ledger (default content/.deploy-ledger.json) so
- *     a re-run skips pages already LIVE (verified on the delivery tree), and
- *     only re-drives the failures;
+ *     a re-run skips a LIVE page only when its document is byte-identical to
+ *     the one it delivered (`contentSha`), re-deploys a changed document without
+ *     --force, and re-drives the failures;
+ *   - trusts a skipped page's delivered check for --verify-max-age minutes
+ *     (`verifiedAt`, default 60) and re-verifies an older one with one GET
+ *     inside the concurrency pool — never a serial GET per page;
  *   - runs PUT → preview → live with a bounded concurrency pool;
  *   - retries 000 / 408 / 429 / 5xx with capped exponential backoff — and, on
  *     the admin calls (PUT source, POST preview, POST live), a 401 the same way;
  *   - APPENDS to its log (never truncates), so the record survives a restart;
  *   - verifies the delivered .plain.html (200 + 0 about:error) before flipping a
  *     page to `live` — admin 200 != delivered (guardrail #6/#13).
+ *
+ * Content-hash skip — a page that reaches `live` (`previewed` with --no-publish)
+ * records `contentSha` (hex sha256 of the exact bytes PUT) and `verifiedAt`
+ * (ISO time of the delivered check) in its ledger row; a failed or halted page
+ * never touches them. A re-run classifies every page whose row is `live`:
+ *   changed  — the file's sha256 differs from `contentSha`: re-deployed;
+ *   legacy   — a row without `contentSha` (written before it existed): re-deployed
+ *              once, since an unchanged document cannot be proven without the hash;
+ *   fresh    — unchanged and `verifiedAt` within --verify-max-age: skipped, no request;
+ *   stale    — unchanged, verified longer ago: one .plain.html GET in the pool;
+ *              200 ⇒ skipped and `verifiedAt` refreshed, anything else ⇒ re-deployed.
+ * One stderr line after the batch line counts them:
+ *   [deploy-batch] skip: <n> unchanged (contentSha; <f> verified ≤ <N> min ago, <g> re-verified by GET); re-drive: <c> changed since live, <l> ledger rows without contentSha
+ * (with ", <k> failed the re-verify GET" appended when one did).
  *
  * 401 policy — the same as da-media-upload.mjs (an expired token once left an
  * 894-row batch failing file by file for hours; a valid token can be answered
@@ -53,15 +71,20 @@
  * Usage:
  *   DA_TOKEN=… node deploy-batch.mjs --org <org> --repo <repo> --branch <branch> \
  *     --content content [--paths list.txt] [--concurrency 4] [--no-publish] \
- *     [--force] [--ledger path] [--log path] [--retries 4] [--backoff-ms 500] \
- *     [--token-env DA_TOKEN | --token-file <path>]
+ *     [--force] [--verify-max-age 60] [--ledger path] [--log path] [--retries 4] \
+ *     [--backoff-ms 500] [--token-env DA_TOKEN | --token-file <path>]
  *
  * --content   dir of *.html body-fragment files (default: content). Each file's
  *             path relative to this dir, minus .html, is its DA/web path.
  * --paths     optional newline-delimited file of web paths (no extension) to
  *             restrict the run to a subset (re-drive only these).
  * --no-publish  preview only; do not POST /live/ (query-index won't build — see #2).
- * --force     ignore the ledger; re-drive every page.
+ * --force     ignore the ledger; re-drive every page — re-publishes identical
+ *             documents too (a changed document re-deploys without it).
+ * --verify-max-age  minutes a live page's delivered check stays trusted
+ *             (default 60): an unchanged page verified within it is skipped with
+ *             no request, an older one is re-verified by one GET in the pool;
+ *             0 = always re-verify. Not a number ≥ 0 is a usage error (exit 2).
  * --concurrency  parallel pages in flight (default 4; DA admin tolerates ~4-6).
  * --retries   attempts after the first for 000/408/429/5xx and 401 (default 4).
  * --backoff-ms  base delay of the capped exponential backoff (default 500).
@@ -79,6 +102,7 @@
  * No external deps — uses Node's global fetch/FormData/Blob (Node 18+).
  */
 import { readFile, appendFile, readdir, stat } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { readFileSync } from 'node:fs';
@@ -98,9 +122,10 @@ const DA_SRC = process.env.DA_SOURCE_BASE || 'https://admin.da.live/source';
 const ADMIN = process.env.AEM_ADMIN_BASE || 'https://admin.hlx.page';
 const VERIFY_ORIGIN = process.env.DEPLOY_VERIFY_ORIGIN || '';
 const TOKEN_EXIT = 3;
+const sha256 = (buf) => createHash('sha256').update(buf).digest('hex');
 
 function parseArgs(argv) {
-  const a = { content: 'content', concurrency: 4, publish: true, force: false, retries: 4, backoffMs: 500 };
+  const a = { content: 'content', concurrency: 4, publish: true, force: false, retries: 4, backoffMs: 500, verifyMaxAge: 60 };
   for (let i = 2; i < argv.length; i += 1) {
     const k = argv[i];
     const next = () => argv[(i += 1)];
@@ -116,6 +141,11 @@ function parseArgs(argv) {
     else if (k === '--backoff-ms') a.backoffMs = Math.max(0, +next() || 500);
     else if (k === '--no-publish') a.publish = false;
     else if (k === '--force') a.force = true;
+    else if (k === '--verify-max-age') {
+      const v = next();
+      if (!/^\d+(\.\d+)?$/.test(v ?? '')) throw new Error(`--verify-max-age takes minutes, a number ≥ 0 (got ${v ?? 'nothing'})`);
+      a.verifyMaxAge = Number(v);
+    }
     else if (k === '--token-env') a.tokenEnv = next();
     else if (k === '--token-file') a.tokenFile = next();
     else throw new Error(`unknown arg: ${k}`);
@@ -229,6 +259,7 @@ async function deployOne(page, args, ledger, logLine) {
 
   // 1. PUT body fragment (multipart, field name MUST be `data`, type text/html)
   const buf = await readFile(page.file);
+  const contentSha = sha256(buf);
   const fd = new FormData();
   fd.append('data', new Blob([buf], { type: 'text/html' }), path.basename(page.file));
   const put = await call('PUT', `${DA_SRC}/${org}/${repo}${enc}.html`, { token, body: fd }, args);
@@ -269,6 +300,7 @@ async function deployOne(page, args, ledger, logLine) {
   const v = await deliveredOk({ org, repo, branch, webPath: page.webPath, tld: publish ? 'aem.live' : 'aem.page' });
   rec.verify = v.ok ? 'ok' : v.why;
   rec.status = v.ok ? (publish ? 'live' : 'previewed') : 'verify-fail';
+  if (v.ok) { rec.contentSha = contentSha; rec.verifiedAt = new Date().toISOString(); }
   if (!v.ok) rec.lastError = v.why;
   await logLine({ path: page.webPath, step: 'verify', ok: v.ok, why: v.why });
   return { rec, halt: null };
@@ -284,7 +316,7 @@ async function pool(items, n, worker, stop = () => false) {
 
 async function main() {
   const args = parseArgs(process.argv);
-  // Preflight: an expired JWT never reaches the network — not even the already-live check below.
+  // Preflight: an expired JWT never reaches the network — not even the already-live re-verify below.
   // Anything that is not a JWT with an exp is simply tried.
   const exp = jwtExpiry(args.token);
   if (exp !== null && exp * 1000 <= Date.now()) {
@@ -301,17 +333,30 @@ async function main() {
   const ledger = (!args.force && existsSync(args.ledger))
     ? JSON.parse(await readFile(args.ledger, 'utf8')) : {};
 
-  // Skip pages already live AND still delivering 200 (verify, don't trust the ledger blindly).
-  const todo = [];
-  let skipped = 0;
+  // Skip a live page only when its document is byte-identical to the one it delivered (contentSha); trust
+  // its delivered check for --verify-max-age minutes, then re-verify it with one GET inside the pool.
+  const maxAgeMs = args.verifyMaxAge * 60000;
+  const why = { fresh: 0, reverified: 0, reverifyFail: 0, changed: 0, legacy: 0 };
+  const redrive = new Set();
+  const reverify = [];
   for (const p of pages) {
     const rec = ledger[p.webPath];
-    if (!args.force && rec && rec.status === 'live') {
-      const v = await deliveredOk({ ...args, webPath: p.webPath });
-      if (v.ok) { skipped += 1; continue; }
+    if (args.force || !rec || rec.status !== 'live') redrive.add(p);
+    else if (!rec.contentSha) { why.legacy += 1; redrive.add(p); }
+    else if (rec.contentSha !== sha256(await readFile(p.file))) { why.changed += 1; redrive.add(p); }
+    else {
+      const age = Date.now() - Date.parse(rec.verifiedAt);
+      if (maxAgeMs > 0 && age >= 0 && age <= maxAgeMs) why.fresh += 1;
+      else reverify.push(p);
     }
-    todo.push(p);
   }
+  await pool(reverify, args.concurrency, async (p) => {
+    const v = await deliveredOk({ ...args, webPath: p.webPath });
+    if (v.ok) { why.reverified += 1; ledger[p.webPath].verifiedAt = new Date().toISOString(); }
+    else { why.reverifyFail += 1; redrive.add(p); }
+  });
+  const todo = pages.filter((p) => redrive.has(p));
+  const skipped = why.fresh + why.reverified;
 
   // Shared file: lock + re-read + merge (this run's rows win) + tmp/rename, so a second batch or a
   // kill mid-write never loses rows or leaves a ledger the next run refuses to parse.
@@ -322,6 +367,9 @@ async function main() {
   const logLine = async (o) => appendFile(args.log, `${JSON.stringify({ t: new Date().toISOString(), ...o })}\n`);
 
   console.error(`[deploy-batch] ${pages.length} pages, ${skipped} already live, ${todo.length} to drive (concurrency ${args.concurrency}, publish=${args.publish})`);
+  if (skipped + why.reverifyFail + why.changed + why.legacy > 0) {
+    console.error(`[deploy-batch] skip: ${skipped} unchanged (contentSha; ${why.fresh} verified ≤ ${args.verifyMaxAge} min ago, ${why.reverified} re-verified by GET); re-drive: ${why.changed} changed since live, ${why.legacy} ledger rows without contentSha${why.reverifyFail ? `, ${why.reverifyFail} failed the re-verify GET` : ''}`);
+  }
   let done = 0;
   let halted = null; // { path, step, attempts } — the first page whose 401 persisted through its retries
   const results = [];
