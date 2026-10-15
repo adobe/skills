@@ -54,6 +54,16 @@
  *   delivery-lint       --lint run per page (`--file <html> --path </da/path>`), pass on
  *                       `0 P0 · 0 P1`; when --lint does not resolve, the latest delivery-lint.mjs
  *                       job for the page; P0/P1 → FAIL:
+ *                       An encoded page — its sidecar's `encode.output.path` names
+ *                       `stardust/encoded/<da-path>.html` (resolved from the project holding
+ *                       --migrated), on a sibling or on any page with no migrated HTML; the
+ *                       archetype is converted from its migrated HTML and stays as above — is
+ *                       linted on what is delivered: its content file (the one media-reconcile
+ *                       reads) once it exists, else that encoded document while it is the current
+ *                       clean encode (migrate's encode/provenance.mjs decides), never on a migrated
+ *                       HTML (a clone failed P0 where the delivered document was clean). The line
+ *                       names the file: `(delivery-lint --file <f> --path </da/path>)`, the path
+ *                       from the encoded document; neither → a note, no evidence.
  *   variance-probe      siblings only: latest sibling-variance.mjs job that named this page's URL
  *                       or its archetype's. ONLY the page's own `■ <url>` line is evidence: 0 deltas
  *                       pass, deltas pass only with a declared `variants[]`, deltas with an empty
@@ -71,7 +81,8 @@
  *   • a sibling-variance probe with an exit other than 0 or 2 → the same `OPEN: no verdict`.
  *
  * Attribution: gate.sh by its slug argument; other instruments by an argument that names the page
- * (URL path, `<slug>-proposed.html`, a file resolved from the job's cwd). The job-name fallback
+ * (URL path, `<slug>-proposed.html`, a file resolved from the job's cwd — for an encoded page also its encoded
+ * document and its content file). The job-name fallback
  * (`<slug>-…`) applies only when NO argument names ANY known page — a job whose arguments name
  * another page is that page's, whatever it was called.
  *
@@ -115,7 +126,7 @@
  * missing{<slug>: [<gates>]}} and `siblings{<slug>: {archetype, variants, pixel{<width>:
  * {pct, px, heightDelta, overflowX, verdict, label, regime}}, contentDiff, deliveryLint, media,
  * gatesPassed, migrated}}` (`overflowX`: px over the viewport, 0 when the assert ran clean,
- * null when the round predates it), other keys
+ * null when the round predates it; an encoded page: `migrated` null and `encoded` = its document), other keys
  * preserved. progress.json is read and parsed BEFORE the first sidecar is touched (a malformed
  * ledger aborts the run with nothing written). A ledger with no `types` map whose top level is one
  * archetype's record (`breakpoints`, or `pageType` + `archetype` — the old documented example) is
@@ -128,7 +139,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { listJobs, logPath } from './run-bg.mjs';
 
 export const DEFAULTS = { tables: 'stardust/replica/gates', migrated: 'stardust/migrated', bg: 'stardust/.work/replica/bg', progress: 'stardust/replica/progress.json', lint: 'stardust/scripts/rollout/delivery-lint.mjs', content: 'content', widths: [1440, 360], heightTolerance: 8 };
@@ -191,8 +202,22 @@ const serialize = (data, indent, eol) => JSON.stringify(data, null, indent) + (e
 // Temp file + rename: a crash mid-write never leaves a half-written sidecar or ledger behind.
 function writeAtomic(file, text) { const tmp = `${file}.${process.pid}.tmp`; writeFileSync(tmp, text); renameSync(tmp, file); }
 
+// An encoded page: the sidecar's `encode.output.path` (migrate's encoder: `stardust/encoded/<da-path>.html`, project-
+// relative; a migrate render leaves `encode: null`) on a sibling, or on any page with no migrated HTML. The archetype's
+// delivered document is converted from its migrated HTML (deploy never stages its encode), so it stays a migrated page.
+const ENCODED = 'stardust/encoded/';
+export function encodedOf(meta, project, hasHtml) {
+  const p = meta && meta.encode && meta.encode.output && meta.encode.output.path;
+  if (typeof p !== 'string' || !p.startsWith(ENCODED) || !p.endsWith('.html') || p.split('/').includes('..')) return null;
+  const archetype = meta.fidelityTier === 'archetype' || meta.renderBranch === 'A' || (Boolean(meta.slug) && meta.encode.map?.template === meta.slug);
+  return hasHtml && archetype ? null : { path: p, file: join(project, p), rel: p.slice(ENCODED.length) };
+}
+// The project an encoded path is relative to: the directory holding stardust/migrated, else the cwd.
+const projectOf = (migrated) => (basename(migrated) === 'migrated' && basename(dirname(migrated)) === 'stardust' ? dirname(dirname(migrated)) : process.cwd());
+
 export function findSidecars(migrated) {
   const out = [];
+  const project = projectOf(migrated);
   const walk = (dir) => {
     for (const f of readdirSync(dir).sort()) {
       const p = join(dir, f);
@@ -200,7 +225,8 @@ export function findSidecars(migrated) {
       const html = sidecarHtml(p);
       if (!html) continue;
       const j = readJson(p);
-      out.push({ file: p, meta: j.data, text: j.text, indent: j.indent, eol: j.eol, slug: j.data.slug, htmlFile: join(dir, html), outputPath: relative(migrated, join(dir, html)).split(sep).join('/') });
+      const htmlFile = join(dir, html);
+      out.push({ file: p, meta: j.data, text: j.text, indent: j.indent, eol: j.eol, slug: j.data.slug, htmlFile, outputPath: relative(migrated, htmlFile).split(sep).join('/'), encoded: encodedOf(j.data, project, existsSync(htmlFile)) });
     }
   };
   if (existsSync(migrated)) walk(migrated);
@@ -251,8 +277,10 @@ export function argNamesPage(arg, page, job, migrated) {
   if (typeof arg !== 'string') return false;
   if (isUrl(arg)) { const p = urlPath(arg); return p !== null && pagePaths(page.outputPath).includes(p); }
   if (new RegExp(`(^|[^A-Za-z0-9_-])${escapeRe(page.slug)}-proposed\\.html`).test(arg)) return true;
+  const at = resolve(job.cwd || process.cwd(), arg);
+  if (page.encoded && (page.encoded.files || [page.encoded.file]).includes(at)) return true;
   if (!migrated) return false;
-  return resolve(job.cwd || process.cwd(), arg) === resolve(migrated, page.outputPath);
+  return at === resolve(migrated, page.outputPath);
 }
 // The slug a job name `<slug>-…` belongs to: the LONGEST known slug that prefixes it (`tours-north-1440` is tours-north's, not tours').
 export function nameOwner(name, slugs) { return slugs.filter((s) => name.startsWith(`${s}-`)).sort((a, b) => b.length - a.length)[0] || null; }
@@ -350,8 +378,8 @@ export function contentFileFor(contentDir, outputPath) {
   return { file: join(contentDir, hit || rel[0]), exists: Boolean(hit) };
 }
 
-export function runLint(lint, page) {
-  const args = [lint, '--file', page.htmlFile, '--path', daPath(page.outputPath)];
+export function runLint(lint, page, subject = { file: page.htmlFile, path: daPath(page.outputPath) }) {
+  const args = [lint, '--file', subject.file, '--path', subject.path];
   let out = ''; let code = 0;
   try { out = execFileSync(process.execPath, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 60000 }); }
   catch (e) { out = String(e.stdout || ''); code = typeof e.status === 'number' ? e.status : 1; if (!out.trim()) return { ok: false, line: `delivery-lint gave no output (exit ${code}): ${String(e.stderr || e.message).trim().split('\n')[0].slice(0, 160)}` }; }
@@ -436,7 +464,18 @@ export function derive(page, jobs, o, ctx) {
     evidence['media-reconcile'] = `n/a: no delivered content file yet (${delivered.file}) — media-reconcile runs in the delivery chain (row C)${latest_}`;
   }
 
-  if (ctx.lint) {
+  if (ctx.lint && page.encoded) {
+    // what is delivered: the content file once it exists, else the encoded document while it is the current clean encode
+    const st = page.encoded.state || null;
+    const file = delivered.exists && delivered.file ? delivered.file : st && st.ok ? relative(process.cwd(), page.encoded.file).split(sep).join('/') : null;
+    const path = daPath(page.encoded.rel);
+    if (!file) notes.push(`${page.slug}: delivery-lint skipped — no delivered content file (${delivered.file}) and ${page.encoded.path} is not a current encode (${st ? `${st.kind}: ${st.why}` : 'migrate\'s encode/provenance.mjs not found'})`);
+    else {
+      const r = runLint(ctx.lint, page, { file, path }); facts.deliveryLint = r.line;
+      const line = `${r.line} (delivery-lint --file ${file} --path ${path})`;
+      if (r.ok) pass('delivery-lint', line); else open('delivery-lint', line, 'FAIL');
+    }
+  } else if (ctx.lint) {
     if (!existsSync(page.htmlFile)) notes.push(`${page.slug}: ${page.htmlFile} missing — delivery-lint skipped`);
     else {
       const r = runLint(ctx.lint, page); facts.deliveryLint = r.line;
@@ -486,7 +525,7 @@ export function buildProgress(existing, rows, { partial = false } = {}) {
   const out = { ...existing };
   const sib = rows.filter((r) => r.tier === 'sibling');
   out.siblings = { ...(existing.siblings || {}) };
-  for (const r of sib) out.siblings[r.slug] = { archetype: r.archetype, variants: r.variants, pixel: r.pixel, contentDiff: r.contentDiff, deliveryLint: r.deliveryLint, media: r.media, gatesPassed: r.gatesPassed, migrated: r.migrated };
+  for (const r of sib) out.siblings[r.slug] = { archetype: r.archetype, variants: r.variants, pixel: r.pixel, contentDiff: r.contentDiff, deliveryLint: r.deliveryLint, media: r.media, gatesPassed: r.gatesPassed, migrated: r.migrated, ...(r.encoded ? { encoded: r.encoded } : {}) };
   if (partial) return out;
   const gates = {}; for (const r of rows) for (const g of r.gatesPassed) gates[g] = (gates[g] || 0) + 1;
   const missing = {}; for (const r of sib) if (r.missing.length) missing[r.slug] = r.missing;
@@ -510,7 +549,15 @@ function resolveLint(o) {
   return candidates.find((p) => existsSync(p) && statSync(p).isFile()) || null;
 }
 
-export function collect(o) {
+// migrate's shared "current clean encode" predicate (encode/provenance.mjs), in either layout; null when it is absent.
+export async function loadEncodeState() {
+  const f = [resolve(HERE, '../../migrate/scripts/encode/provenance.mjs'), resolve(HERE, '../migrate/encode/provenance.mjs')].find((x) => existsSync(x));
+  if (!f) return null;
+  const m = await import(pathToFileURL(f).href);
+  return typeof m.currentEncode === 'function' ? m.currentEncode : null;
+}
+
+export function collect(o, { encodeState = null } = {}) {
   const migrated = resolve(o.migrated);
   const notes = [];
   const pages = findSidecars(migrated).filter((s) => { if (s.slug) return true; notes.push(`${relative(process.cwd(), s.file)}: no slug — skipped`); return false; });
@@ -524,6 +571,13 @@ export function collect(o) {
   const tables = loadTables(o.tables, o.widths);
   if (o.check) for (const w of o.widths) if (!tables[w].any) notes.push(`no pixel table for ${w} under ${o.tables}/ (prototypes-${w} or all-${w}/summary.json) — the #125 rule wants every prototype and deployed page as a row: run gate-all.mjs [--stage prototype]; the gate.sh logs stand in until then`);
   const ctx = { tables, migrated, pages, slugs: pages.map((p) => p.slug), lint, contentFile: (page) => { const c = contentFileFor(contentDir, page.outputPath); return { ...c, file: relative(process.cwd(), c.file).split(sep).join('/') }; } };
+  // an encoded page's own files (its jobs name them) and whether its encoded document is the current clean encode
+  const project = projectOf(migrated); const manifests = new Map();
+  for (const p of pages) {
+    if (!p.encoded) continue;
+    p.encoded.files = [...new Set([p.encoded.file, join(contentDir, p.encoded.rel), contentFileFor(contentDir, p.outputPath).file])];
+    p.encoded.state = encodeState ? encodeState({ root: project, sidecarPath: relative(project, p.file).split(sep).join('/'), manifests }) : null;
+  }
   const acceptance = acceptanceFor(o.widths);
   // The ledger is parsed before any sidecar is touched: a malformed progress.json aborts with nothing written.
   const prior = existsSync(o.progress) ? readJson(o.progress) : { data: {}, indent: 2, eol: true };
@@ -552,7 +606,7 @@ export function collect(o) {
     const tier = meta.fidelityTier || null;
     // A sibling is not held to media-reconcile before its delivered content file exists (derive() recorded `n/a:` for it).
     const required = acceptance.filter((g) => g !== 'media-reconcile' || d.facts.delivered !== false);
-    rows.push({ slug: page.slug, tier, archetype: meta.archetypeSource || meta.template || null, variants: Array.isArray(meta.variants) ? meta.variants : [], outputPath: page.outputPath, migrated: join(o.migrated, page.outputPath), ...d.facts, gatesPassed: meta.gatesPassed, gateEvidence: meta.gateEvidence, missing: tier === 'sibling' ? required.filter((g) => !meta.gatesPassed.includes(g)) : [], stale });
+    rows.push({ slug: page.slug, tier, archetype: meta.archetypeSource || meta.template || null, variants: Array.isArray(meta.variants) ? meta.variants : [], outputPath: page.outputPath, migrated: page.encoded ? null : join(o.migrated, page.outputPath), ...(page.encoded ? { encoded: page.encoded.path } : {}), ...d.facts, gatesPassed: meta.gatesPassed, gateEvidence: meta.gateEvidence, missing: tier === 'sibling' ? required.filter((g) => !meta.gatesPassed.includes(g)) : [], stale });
   }
   if (rows.length && !o.dryRun) {
     mkdirSync(dirname(resolve(o.progress)), { recursive: true });
@@ -562,10 +616,11 @@ export function collect(o) {
 }
 
 // ---- cli ---------------------------------------------------------------------------------------
-function cli(argv) {
+async function cli(argv) {
   if (argv.includes('--help') || argv.includes('-h')) { console.log(help()); return 0; }
   const o = parseArgs(argv);
-  const r = collect(o);
+  // migrate's code is loaded only when a sidecar records an encode
+  const r = collect(o, { encodeState: findSidecars(resolve(o.migrated)).some((p) => p.encoded) ? await loadEncodeState() : null });
   for (const n of r.notes) console.error(`gate-evidence: ${n}`);
   if (!r.rows.length) { console.log(`gate-evidence: no _meta.json sidecars${o.slugs.length ? ` for --slug ${o.slugs.join(', ')}` : ''} under ${o.migrated} — nothing to collect`); return 0; }
   const short = r.rows.filter((row) => row.missing.length);
@@ -584,6 +639,5 @@ function cli(argv) {
 // Compare by real path: a symlinked checkout or temp dir must not turn the CLI into a silent no-op.
 function safeRealpath(p) { try { return realpathSync(p); } catch { return p; } }
 if (process.argv[1] && SELF === safeRealpath(process.argv[1])) {
-  try { process.exitCode = cli(process.argv.slice(2)); }
-  catch (e) { console.error(e instanceof UsageError ? e.message : `gate-evidence: ${e.stack || e.message}`); process.exitCode = 1; }
+  cli(process.argv.slice(2)).then((code) => { process.exitCode = code; }, (e) => { console.error(e instanceof UsageError ? e.message : `gate-evidence: ${e.stack || e.message}`); process.exitCode = 1; });
 }
