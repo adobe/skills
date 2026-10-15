@@ -1,0 +1,56 @@
+{
+  "_provenance": {
+    "readArtifacts": [
+      "content/",
+      "stardust/current/pages/"
+    ],
+    "writtenBy": "stardust:deploy chrome-map.mjs"
+  },
+  "groups": {
+    "/": {
+      "footer": "/footer",
+      "footerFile": "content/footer.html",
+      "lang": "en-US",
+      "nav": "/nav",
+      "navFile": "content/nav.html",
+      "pages": [
+        "/",
+        "/us/en",
+        "/us/en/about-us"
+      ]
+    },
+    "/ca/en": {
+      "footer": "/footer-ca-en",
+      "footerFile": "content/footer-ca-en.html",
+      "lang": "en-CA",
+      "nav": "/nav-ca-en",
+      "navFile": "content/nav-ca-en.html",
+      "pages": [
+        "/ca/en",
+        "/ca/en/about-us",
+        "/ca/en/faqs"
+      ]
+    },
+    "/de/de": {
+      "footer": "/footer-de-de",
+      "footerFile": "content/footer-de-de.html",
+      "lang": "de-DE",
+      "nav": "/nav",
+      "navFile": "content/nav.html",
+      "pages": [
+        "/de/de/start"
+      ]
+    },
+    "/fr": {
+      "footer": "/fr/footer",
+      "footerFile": "content/fr/footer.html",
+      "lang": "fr-FR",
+      "nav": "/fr/nav",
+      "navFile": "content/fr/nav.html",
+      "pages": [
+        "/fr/",
+        "/fr/contact"
+      ]
+    }
+  }
+}
