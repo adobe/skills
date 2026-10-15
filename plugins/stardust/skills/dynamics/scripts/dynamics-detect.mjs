@@ -11,20 +11,31 @@
  *        [--from-state stardust/state.json]   one URL per page type + the home page, from extract's inventory
  *        [--reach stardust/current]           roll per-page `dynamic` sections (extract --dynamics) into feature reach
  *        [--settle 5000] [--width 1440] [--headed]
+ *        [--reuse-if-fresh] [--fresh]         rollout B2: reuse a fresh _dynamics.json instead of loading pages
+ *        [--status stardust/status.jsonl] [--roster stardust/rollout/coverage/pages.json]
  *
  * Writes (under --out, default stardust/current):
  *   _dynamics.json                  per-page evidence + classified findings (+ `reach` with --reach)
  *   dynamic-features.generated.md   the findings as a table, one row per feature
  * Progress lines go to stderr. Exit 0 on completion, 2 on usage.
  *
+ * Freshness (--reuse-if-fresh): the previous <out>/_dynamics.json is reused — no page is loaded, no
+ * browser starts — only when it was written after the last rollout `A-inventory` `start` line of
+ * --status and its URL set, settle, width, roster (the sorted unique `source.sourceUrl` values of
+ * --roster's rows, hashed) and --reach source equal this call's. A reuse appends `{ at, runStart, urls }`
+ * to `_provenance.reuses` (`writtenAt` stays the live run's) and prints one `[dynamics] reused …` line;
+ * otherwise one `[dynamics] not reused: <why>` line and the live run. --fresh forces the live run.
+ * Every live run records `_provenance.roster` (when --roster exists) for the next comparison.
+ *
  * Probes the SOURCE site. No auth header is sent (the source is public); the
  * target-host probe lives in dynamics-plan.mjs.
  */
 /* eslint-disable no-await-in-loop, no-restricted-syntax, max-len */
 import { readdirSync, existsSync, readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import {
-  arg, flag, list, readJSON, writeJSON, writeText, provenance, loadPlaywright, vendorFor, registrable, sameSite, pathPattern, settlePage, slug,
+  arg, flag, list, readJSON, writeJSON, writeText, provenance, loadPlaywright, vendorFor, registrable, sameSite, pathPattern, settlePage, slug, detectReuse,
 } from './lib.mjs';
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
@@ -46,6 +57,44 @@ if (!URLS.length && arg('from-state')) {
   URLS = [...new Set([st.site?.url || st.site?.origin, ...byType.values()].filter(Boolean))];
 }
 if (!URLS.length) { console.error('usage: dynamics-detect.mjs --urls <url,…> | --from-state stardust/state.json [--out dir]'); process.exit(2); }
+
+/* ------------------------------------------- reuse a fresh _dynamics.json -- */
+const PREV_FILE = join(OUT, '_dynamics.json');
+const REACH_DIR = arg('reach') && arg('reach') !== true ? join(arg('reach'), 'pages') : null;
+/** `{ sha256, n }` of the roster's sorted unique source URLs; null when the file is absent or unreadable */
+function rosterOf(file) {
+  try {
+    const doc = readJSON(file, null);
+    if (!doc) return null;
+    const urls = [...new Set((Array.isArray(doc) ? doc : doc.pages || []).map((p) => p?.source?.sourceUrl).filter(Boolean))].sort();
+    return { sha256: createHash('sha256').update(urls.join('\n')).digest('hex'), n: urls.length };
+  } catch { return null; }
+}
+/** ts of the ledger's last rollout `A-inventory` `start` line — this rollout run's start */
+function inventoryStart(file) {
+  let ts = null;
+  if (!existsSync(file)) return ts;
+  for (const line of readFileSync(file, 'utf8').split('\n')) {
+    let r; try { r = JSON.parse(line); } catch { continue; }
+    if (/^(stardust:)?rollout$/.test(r?.skill) && r.phase === 'A-inventory' && r.event === 'start') ts = r.ts;
+  }
+  return ts;
+}
+const ROSTER = rosterOf(arg('roster', 'stardust/rollout/coverage/pages.json'));
+if (flag('fresh')) console.error('[dynamics] not reused: --fresh');
+else if (flag('reuse-if-fresh')) {
+  const runStart = inventoryStart(arg('status', 'stardust/status.jsonl'));
+  let prev = null;
+  try { prev = readJSON(PREV_FILE, null); } catch { /* unreadable ⇒ live run */ }
+  const { reuse, why } = detectReuse({ prev, urls: URLS, settleMs: SETTLE, width: WIDTH, runStart, roster: ROSTER, reachSource: REACH_DIR && existsSync(REACH_DIR) ? REACH_DIR : null });
+  if (!reuse) console.error(`[dynamics] not reused: ${why}`);
+  else {
+    prev._provenance.reuses = [...(prev._provenance.reuses || []), { at: new Date().toISOString(), runStart, urls: URLS.length }];
+    writeJSON(PREV_FILE, prev);
+    console.error(`[dynamics] reused ${PREV_FILE} (written ${prev._provenance.writtenAt}, after A-inventory start ${runStart}; ${URLS.length} URLs, ${ROSTER ? 'roster unchanged' : 'no roster'}) — --fresh to re-probe`);
+    process.exit(0);
+  }
+}
 
 const CLASS_NAMES = { L: 'listing', S: 'search', F: 'form', M: 'modal / interactive', V: 'media', T: 'tag / consent', A: 'API / personalisation / settings', R: 'relationship', X: 'auth / commerce', I18N: 'locale', CR: 'client-rendered', D: 'sheet / data file' };
 const API_PATH = /\/(api|graphql|ajax|json|search|autocomplete|typeahead|suggest|client\/|webservices|_next\/data|wp-json|\.rest|odata)/i;
@@ -172,7 +221,7 @@ function classify(page, path, add) {
 /* ---------------------------------------------------------------- main -- */
 const { chromium } = await loadPlaywright();
 const browser = await chromium.launch({ headless: !flag('headed'), args: ['--disable-blink-features=AutomationControlled'] });
-const report = { _provenance: provenance('detect', { settleMs: SETTLE, width: WIDTH, urls: URLS }), pages: {}, findings: [] };
+const report = { _provenance: provenance('detect', { settleMs: SETTLE, width: WIDTH, urls: URLS, ...(ROSTER && { roster: ROSTER }) }), pages: {}, findings: [] };
 const findingsByKey = new Map();
 const add = (f) => {
   const key = `${f.class}|${f.feature}`;

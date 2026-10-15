@@ -133,3 +133,28 @@ export async function probe(url, { method = 'GET', headers = {}, timeoutMs = 150
     return { status: r.status, contentType: ct.split(';')[0], ok: r.status < 400 };
   } catch (e) { return { status: 0, error: String(e.message || e).slice(0, 80), ok: false }; } finally { clearTimeout(t); }
 }
+
+/* ------------------------------------------------------------- reuse ---- */
+/**
+ * May a previous `_dynamics.json` stand in for a live detect run (rollout B2, `--reuse-if-fresh`)?
+ * Only when it was written after this run's `A-inventory` start (`runStart`, compared as time) with
+ * the same URL set (order ignored), settle and width, the same rollout roster (`{ sha256, n }` of
+ * the roster's sorted unique source URLs; present on one side only ⇒ changed) and, when `--reach`
+ * is asked, the same reach source. Returns `{ reuse, why }`; `why` names the first failed condition.
+ */
+export function detectReuse({
+  prev, urls, settleMs, width, runStart, roster = null, reachSource = null,
+}) {
+  const p = prev?._provenance;
+  if (!p) return { reuse: false, why: 'no previous _dynamics.json (or no _provenance in it)' };
+  if (!runStart) return { reuse: false, why: 'no rollout A-inventory start line in the ledger' };
+  if (!(Date.parse(p.writtenAt) > Date.parse(runStart))) return { reuse: false, why: `written ${p.writtenAt} — not after A-inventory start ${runStart}` };
+  const was = new Set(p.urls || []); const now = new Set(urls);
+  if (was.size !== now.size || [...now].some((u) => !was.has(u))) return { reuse: false, why: `URL set changed (${was.size} → ${now.size} URLs)` };
+  if (p.settleMs !== settleMs) return { reuse: false, why: `settle changed (${p.settleMs} → ${settleMs} ms)` };
+  if (p.width !== width) return { reuse: false, why: `width changed (${p.width} → ${width})` };
+  const r0 = p.roster || null; const r1 = roster || null;
+  if (r0?.sha256 !== r1?.sha256 || r0?.n !== r1?.n) return { reuse: false, why: `roster changed (${r0 ? r0.n : 'none'} → ${r1 ? r1.n : 'none'} source URLs)` };
+  if (reachSource && p.reachSource !== reachSource) return { reuse: false, why: `reach from ${reachSource} not in the previous run` };
+  return { reuse: true, why: 'fresh' };
+}
