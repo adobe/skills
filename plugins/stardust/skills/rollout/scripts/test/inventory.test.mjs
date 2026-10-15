@@ -224,6 +224,21 @@ check('--state (archetypes-only): an encoded sibling keeps its template and its 
   assert.equal(rows.tours.templateId, 'tours');
 });
 
+check('--state: a content-pending roster page advances to pending on the re-run after its document appears — encoded or a clone', () => {
+  const state = join(proj, 'stardust', 'state.json'); const out3 = join(proj, 'rollout-pending');
+  put(state, JSON.stringify({ pages: [{ slug: 'tours', url: 'https://example.com/tours/', type: 'tour' }, { slug: 'tours-new', url: 'https://example.com/tours/new', representative: 'tours' }, { slug: 'tours-old', url: 'https://example.com/tours/old/', representative: 'tours' }] }));
+  const inv = () => spawnSync(process.execPath, [SCRIPT, '--migrated', PM, '--out', out3, '--state', state], { encoding: 'utf8' });
+  let r = inv(); assert.equal(r.status, 0, r.stderr);
+  for (const s of ['tours-new', 'tours-old']) assert.equal(rowsOf(out3)[s].delivery.status, 'content-pending', s);
+  encoded('tours/new/_meta.json', 'tours/new.html', sib('tours-new'), '<main>new</main>');
+  put(join(PM, 'tours/old/index.html'), '<html><main>old clone</main></html>'); put(join(PM, 'tours/old/_meta.json'), JSON.stringify(sib('tours-old')));
+  r = inv(); assert.equal(r.status, 0, r.stderr);
+  const rows = rowsOf(out3);
+  assert.equal(rows['tours-new'].delivery.status, 'pending'); assert.equal(rows['tours-new'].source.encodedHtml, join(proj, 'stardust/encoded/tours/new.html')); assert.equal(rows['tours-new'].templateId, 'tours');
+  assert.equal(rows['tours-old'].delivery.status, 'pending'); assert.equal(rows['tours-old'].source.migratedHtml, join(PM, 'tours/old/index.html'));
+  assert.deepEqual(pjson('coverage/pages.json', out3).pages.filter((p) => p.delivery.status === 'content-pending').map((p) => p.slug), [], 'a folder URL (/tours/old/, /tours/) is the page its migrated index.html lists — no second row');
+});
+
 rmSync(root, { recursive: true, force: true });
 console.log(failed ? `\n${failed} check(s) failed` : '\nall checks passed');
 process.exitCode = failed ? 1 : 0;
