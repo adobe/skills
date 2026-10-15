@@ -7,6 +7,7 @@
   "required": ["archetype", "inputs", "root"],
   "additionalProperties": false,
   "properties": {
+    "$comment": { "type": "string", "description": "free text for the map's author. Every object of the map takes $comment and only the keys documented here: the engine rejects any other key (R29)" },
     "$schema": { "type": "string", "x-lint": "ignored", "description": "an editor hint; ignored" },
     "archetype": { "type": "string", "minLength": 1, "x-lint": "map", "description": "the template's archetype slug (representativeSlug in stardust/rollout/coverage/templates.json); --lint fails when it names another page" },
     "inputs": { "$ref": "#/$defs/inputs", "x-lint": "inputs" },
@@ -32,6 +33,7 @@
       "required": ["path", "sha"],
       "additionalProperties": false,
       "properties": {
+        "$comment": { "type": "string", "description": "free text for the map's author" },
         "path": { "type": "string", "minLength": 1, "description": "project-relative" },
         "sha": { "$ref": "#/$defs/sha", "description": "sha256 of the file's bytes when the map was last checked against it" }
       }
@@ -42,6 +44,7 @@
       "required": ["capture"],
       "additionalProperties": false,
       "properties": {
+        "$comment": { "type": "string", "description": "free text for the map's author" },
         "capture": { "$ref": "#/$defs/input", "description": "stardust/current/pages/<archetype>.html — the authority for every selector" },
         "edsSchema": { "anyOf": [{ "$ref": "#/$defs/input" }, { "type": "null" }], "description": "stardust/eds-schema/<archetype>.json — roles and cell order only (C6)" },
         "units": { "anyOf": [{ "$ref": "#/$defs/input" }, { "type": "null" }], "description": "stardust/replica/units.json — origin selectors anchor rows (C4)" },
@@ -51,8 +54,8 @@
     "moduleSelector": {
       "oneOf": [
         { "$ref": "#/$defs/selector" },
-        { "type": "object", "required": ["childClass"], "additionalProperties": false, "properties": { "childClass": { "$ref": "#/$defs/regex", "description": "an element with an element child whose class token matches (a wrapper around a component); anchor it on the block class, e.g. ^x-[a-z]+(-[a-z]+)*$, so element and modifier classes never match" } } },
-        { "type": "object", "required": ["class"], "additionalProperties": false, "properties": { "class": { "$ref": "#/$defs/regex", "description": "an element whose own class token matches" } } }
+        { "type": "object", "required": ["childClass"], "additionalProperties": false, "properties": { "$comment": { "type": "string" }, "childClass": { "$ref": "#/$defs/regex", "description": "an element with an element child whose class token matches (a wrapper around a component); anchor it on the block class, e.g. ^x-[a-z]+(-[a-z]+)*$, so element and modifier classes never match" } } },
+        { "type": "object", "required": ["class"], "additionalProperties": false, "properties": { "$comment": { "type": "string" }, "class": { "$ref": "#/$defs/regex", "description": "an element whose own class token matches" } } }
       ]
     },
     "metadataRow": {
@@ -69,6 +72,7 @@
       "additionalProperties": false,
       "description": "reviewed shape differences: a sibling whose set of shape prints differs from the archetype's stops as `variance` unless the difference is accepted here",
       "properties": {
+        "$comment": { "type": "string", "description": "free text for the map's author" },
         "accept": {
           "type": "array",
           "items": {
@@ -76,6 +80,7 @@
             "required": ["print", "on", "reason"],
             "additionalProperties": false,
             "properties": {
+              "$comment": { "type": "string", "description": "free text for the map's author" },
               "print": { "type": "string", "description": "the exact print the encoder reported" },
               "on": { "enum": ["extra", "missing"], "description": "extra: a sibling carries it and the archetype does not; missing: the reverse" },
               "reason": { "type": "string", "pattern": "\\S", "description": "why this difference is fine" }
@@ -89,6 +94,7 @@
             "required": ["class", "reason"],
             "additionalProperties": false,
             "properties": {
+              "$comment": { "type": "string", "description": "free text for the map's author" },
               "class": { "$ref": "#/$defs/regex", "description": "ancestor class tokens left out of every print's ancestor chain" },
               "reason": { "type": "string", "pattern": "\\S" }
             }
@@ -108,6 +114,7 @@
       "required": ["sel"],
       "additionalProperties": false,
       "properties": {
+        "$comment": { "type": "string", "description": "free text for the map's author" },
         "sel": { "$ref": "#/$defs/selector", "description": "matched against the element itself, never a descendant search" },
         "kind": { "type": "string", "description": "the module's name in reports (default: sel)" },
         "emitter": { "$ref": "#/$defs/emitter" },
@@ -130,6 +137,7 @@
       "required": ["when", "add"],
       "additionalProperties": false,
       "properties": {
+        "$comment": { "type": "string", "description": "free text for the map's author" },
         "when": { "$ref": "#/$defs/selector", "description": "matched against the module element; always from the source DOM" },
         "add": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*( [a-z0-9][a-z0-9-]*)*$", "description": "the token(s) added to the block's class" }
       }
@@ -146,6 +154,7 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
+        "$comment": { "type": "string", "description": "free text for the map's author" },
         "sel": { "$ref": "#/$defs/selector", "description": "absent: the module itself is the row" },
         "cells": { "$ref": "#/$defs/cells" },
         "optional": { "type": "boolean", "description": "a group that matches nothing is not `flattened`" },
@@ -177,6 +186,7 @@
       "type": "object",
       "description": "a required cell that resolves to nothing is `flattened`",
       "properties": {
+        "$comment": { "type": "string", "description": "free text for the map's author" },
         "sel": { "$ref": "#/$defs/selector", "description": "relative to the row; absent: the row itself" },
         "as": { "enum": ["rich", "inline", "text", "image", "link", "attr", "literal", "idref"], "default": "rich", "description": "a mode the grammar lacks is a hard stop, never a per-template extension" },
         "all": { "type": "boolean", "description": "use every match (default: true for rich, else the first)" },
@@ -201,6 +211,7 @@
       "description": "rich-text rules (optional file)",
       "additionalProperties": false,
       "properties": {
+        "$comment": { "type": "string", "description": "free text for the map's author" },
         "imageParagraph": { "type": "boolean", "default": true, "description": "a block-level image is wrapped in <p>" },
         "imgAttrs": { "type": "array", "items": { "enum": ["src", "alt", "title"] }, "default": ["src", "alt", "title"] },
         "retag": { "type": "object", "additionalProperties": { "$ref": "#/$defs/tagName" } },
