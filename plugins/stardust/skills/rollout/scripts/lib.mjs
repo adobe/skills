@@ -133,12 +133,13 @@ export function edsName(id) {
 
 /** Chrome ids deliver as site-wide authored documents (/nav, /footer), not per-page blocks. */
 /**
- * The URL EDS serves a page at: its path, plus `/` when the page is a folder index (its migrated file is
- * `…/index.html`; `/a` 404s on a plain EDS site). `path` stays the page's key. Pure.
+ * The URL EDS serves a page at: its path, plus `/` when the page is a folder index — its migrated file is
+ * `…/index.html` (`/a` 404s on a plain EDS site), or, for an encoded page with no migrated file, its encoded
+ * document `stardust/encoded/…/index.html` (the DA path `/a/index`). `path` stays the page's key. Pure.
  */
 export function publicUrl(page) {
   const p = page.path || `/${page.slug}`;
-  const src = (page.source && page.source.migratedHtml) || '';
+  const src = (page.source && (page.source.migratedHtml || page.source.encodedHtml)) || '';
   return p !== '/' && !p.endsWith('/') && /(^|[/\\])index\.html$/.test(src) ? `${p}/` : p;
 }
 
