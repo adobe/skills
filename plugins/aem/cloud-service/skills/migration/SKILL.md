@@ -7,7 +7,8 @@ description: |
   blockers: scheduler, ResourceChangeListener, replication, EventListener, OSGi EventHandler,
   DAM AssetManager, HTL data-sly-test lint, Classic UI / ExtJS / Coral 2 → Coral 3 dialog migration (lui),
   Custom Design Widgets (cdw), Vault package install-time dependencies (vault-package-dependencies),
-  Guava cache → Caffeine swaps (guavaCache), and static→editable template modernization. Also
+  Guava cache → Caffeine swaps (guavaCache), java.io.InputStream usage triage (inputStream), and
+  static→editable template modernization. Also
   externalizes OSGi config secrets to Cloud Manager (scans ui.config/.cfg.json for $[secret:]/$[env:]
   placeholders) and converts AMS/on-prem Dispatcher configs to AEMaaCS (Branch E).
 license: Apache-2.0
@@ -38,6 +39,7 @@ This skill drives the **migration workflow**: BPA data, CAM/MCP, **one pattern p
 | **Dialog migration** | *"Convert my Classic UI / ExtJS dialogs to Touch UI."* / *"Upgrade Coral 2 dialogs to Coral 3."* / *"Fix LUI dialog findings."* | Agent reads [references/legacy-ui/dialog/context.md](references/legacy-ui/dialog/context.md) — filters BPA LUI to dialog sub-types, converts via [extjs-to-coral3.md](references/legacy-ui/dialog/extjs-to-coral3.md) or [coral2-to-coral3.md](references/legacy-ui/dialog/coral2-to-coral3.md), validates via [validation.md](references/legacy-ui/dialog/validation.md). BPA pattern id: `lui`. |
 | **Custom widget migration** | *"Fix my CDW findings."* / *"Migrate custom ExtJS widgets to Coral 3."* | Agent reads [references/legacy-ui/cdw/context.md](references/legacy-ui/cdw/context.md) — inventories xtypes, maps or scaffolds Granite UI components via [conversion.md](references/legacy-ui/cdw/conversion.md), validates via [validation.md](references/legacy-ui/cdw/validation.md). BPA pattern id: `cdw`. Run CDW before dialog migration when both are needed. |
 | **Guava cache warnings** | *"Fix **guavaCache** findings using BPA CSV."* / *"Swap Guava cache for Caffeine."* | Agent reads [references/guava-cache.md](references/guava-cache.md) — BPA is the source of truth (subtype `custom.guava.cache`); one finding per **bundle**, not per Guava-internal class row. BPA pattern id: `guavaCache`. Not a `code-assessment` pattern — Guava cache usage only occurs in pre-migration code, never native AEMaaCS code. |
+| **InputStream advisories** | *"Fix **inputStream** findings."* / *"Triage the `java.io.InputStream` warnings in my BPA report."* | Agent reads [references/input-stream.md](references/input-stream.md) and runs the deterministic scanner `scripts/input-stream-runner.js` (pure Node). Adobe documents the risk as binary data streamed through the JVM, fixed by direct binary upload and CDN delivery. The scanner produces one finding per file, ordered by risk, with every stream site pre-classified (F deserialization / E binary streamed or processed in the JVM / D local filesystem / C unbounded read / B unclosed stream or undisposed `Binary` / A benign) and tagged with a fix kind (`decision` / `review` / `auto`). A BPA CSV (subtype `java.io.inputstream`) is optional: its rows are merged in, and classes outside the workspace collapse to one informational row per bundle (customer code kept elsewhere, platform-provided AEM Forms add-on, or third-party). The agent proposes tier-aware fixes for D/E/F, fixes unclosed streams, and verifies each edit with a `--files` re-scan. BPA pattern id: `inputStream`. Works without CAM (the CAM MCP tool doesn't return this pattern). Not a `code-assessment` pattern, since BPA only raises it for code carried over from legacy AEM. |
 | **Dispatcher conversion** | *"Convert my AMS / on-prem Dispatcher config to AEM as a Cloud Service."* | Agent reads [references/dispatcher/context.md](references/dispatcher/context.md) — detects the config **mode**, generates the tool config, runs Adobe's `dispatcher-converter`, **verifies** output (filter/ACL hard-gate), and validates. **Branch E.** Runbook pattern id: `dispatcherConversion` (heuristic). |
 
 **Starter prompts (copy-paste)** — the Quick start table above covers each pattern individually; these add the whole-project entry point, source-specific invocations (CSV / CAM / manual), and multi-step combinations:
@@ -48,6 +50,7 @@ This skill drives the **migration workflow**: BPA data, CAM/MCP, **one pattern p
 - *"**Manual:** **event listener** migration for `.../Listener.java`."*
 - *"Fix all Classic UI and custom widget findings — CDW first, then dialogs."*
 - *"Fix **guavaCache** findings using BPA CSV at `./reports/bpa.csv`."*
+- *"Fix **inputStream** findings using BPA CSV at `./reports/bpa.csv`."*
 
 
 ## Path convention (Adobe Skills monorepo)
@@ -85,6 +88,7 @@ Applies to **finding and editing the user's AEM project** (Java, bundles, config
    - `htlLint` → **`{code-assessment}/references/data-sly-test-redundant-constant.md`** *(reference — HTL lint is a single shared reference, not a dedicated pattern guide)*
    - `vault-package-dependencies` → **[references/vault-package-dependencies.md](references/vault-package-dependencies.md)** *(reference — heuristic pom.xml scan; lives under `migration` only, not `code-assessment`, since this dependency shape never occurs in native AEMaaCS code)*
    - `guavaCache` → **[references/guava-cache.md](references/guava-cache.md)** *(reference — Guava cache → Caffeine swap; lives under `migration` only, not `code-assessment`, since Guava cache usage does not occur in native AEMaaCS code, only in code carried over from legacy AEM)*
+   - `inputStream` → **[references/input-stream.md](references/input-stream.md)** *(reference — `java.io.InputStream` triage and remediation for the `DG` / `java.io.inputstream` advisory; lives under `migration` only, not `code-assessment`, because BPA raises it only for code carried over from legacy AEM. Detection is the migration-local scanner `scripts/input-stream-runner.js`, not the code-assessment analyzer)*
 3. When code uses SCR, `ResourceResolver`, or console logging, read **`{code-assessment}/references/scr-to-osgi-ds.md`** and **`{code-assessment}/references/resource-resolver-logging.md`** (or the hub **`{code-assessment}/references/aem-cloud-service-pattern-prerequisites.md`**).
 
 Do not transform **Java or HTL** until the pattern guide (or reference) is read (branch B). Branch A does not require `{code-assessment}` pattern guidance.
@@ -124,6 +128,7 @@ If the user asks to **convert / migrate a Dispatcher configuration** to AEM as a
 - Fix **HTL (Sightly)** lint warnings (`data-sly-test: redundant constant value comparison`)
 - Fix **Vault package install-time dependencies** (`day/cq60/product:*`) blocking package installation on AEMaaCS
 - Swap **Guava cache** (`com.google.common.cache.*`) for **Caffeine** (`guavaCache`)
+- Triage and fix **`java.io.InputStream`** advisories (`inputStream`, BPA `DG` / `java.io.inputstream`)
 - **OSGi → Cloud Manager** secret/variable externalization (Branch A), **Template Modernization** (Branch C), **Legacy UI** dialog/CDW migration (Branch D)
 - Drive work from **BPA** (CSV or cached collection) or **CAM via MCP**, **one pattern per session**
 - **Dispatcher Conversion:** **Branch E** — convert AMS / on-premise Apache+Dispatcher configs to AEMaaCS via Adobe's `dispatcher-converter`, with mode detection, config generation, output verification (filter/ACL hard-gate), cross-boundary handoff, and SDK validation. References: [references/dispatcher/](references/dispatcher/).
@@ -162,7 +167,9 @@ Use **`fetch-cam-bpa-findings-by-pattern`** for code-transformer pattern flows (
 assetApi, eventListener, resourceChangeListener, eventHandler, guavaCache, lui, cdw) and
 **`fetch-cam-bpa-findings-by-importance`** when the user instead asks "what are the
 critical/major/advisory/info findings?" (returns the latest BPA report's authoritative
-`_COUNT_<code>` rows at one importance level, sorted by descending count). Either tool
+`_COUNT_<code>` rows at one importance level, sorted by descending count). `inputStream`
+(`java.io.inputstream`) is **not** one of the patterns the CAM tool returns; its local source scanner
+covers it (add a BPA CSV for the bundle-level view). Either tool
 requires **explicit user confirmation** of the project before being called — ask the user
 for their CAM project name or ID; the tools resolve it internally (prefer **`projectId`**
 when known). Do not pass an unconfirmed project name string. **Full tool schemas, REST notes, retries, and error handling:**
@@ -248,9 +255,10 @@ The runbook covers **every pattern the migration skill can address**. Each patte
 | `vault-package-dependencies` | `pom-scan` | Prefers Maven's **effective POM** (`mvn help:effective-pom`, one call per reactor root — `<pluginManagement>` inheritance and per-execution vs plugin-level `<configuration>` are Maven's problem, not ours). Falls back to a raw `pom.xml` text-scan when Maven can't resolve a module (dead parent repos, offline — common for legacy AEM 6.x / AMS codebases). No BPA subtype and no analyzer — a `pom.xml` install-time dependency declaration is invisible to a deployed-artifact BPA scan and there is no compiled detector for it. Every effective-POM failure surfaces as a warning so a degraded scan is never silently reported as clean. |
 | `lui`, `cdw`, `templateModernization` | BPA `cascade` → `content-scan` fallback | When a BPA CSV/CAM source is present, these come from BPA (subtypes `custom.classic.widget`; `legacy.dialog.classic`/`.coral2`; `legacy.static.template` + `custom.static.template`). With no BPA source, a heuristic `.content.xml` scan is the fallback — for `templateModernization` it walks `apps/<appId>/templates/**` at **any depth** (nested/grouped templates included) and classifies each static template as `custom.static.template` or `legacy.static.template` from its page-component resource type, so the custom-vs-legacy distinction survives even without a BPA report. Sample prompts route to **Branch D** (legacy-ui) / **Branch C** (templates), not code-assessment |
 | `guavaCache` | `bpa-only` (no analyzer, no content-scan) | BPA is the **sole** source of truth (subtype `custom.guava.cache`), one finding per **bundle** — `identifier` on this subtype is a Guava-internal class, not a customer class, so raw rows are deduped to the bundle named in the message, not surfaced per row. With no BPA source, `guavaCache` has no deterministic fallback and surfaces under **Tier 4 — LLM scan**: the agent greps `.java` files for `import com.google.common.cache` per module, per [references/guava-cache.md](references/guava-cache.md), and tags the result `confidence: llm`. There is deliberately no compiled analyzer detector for this pattern — it does not run inside `code-assessment`'s own discovery. |
+| `inputStream` | `java-scan` (pure-Node source scan, BPA merged in) | `input-stream-runner.js` scans `src/main/java` and emits **one finding per file**, ordered by risk. Every stream site is pre-classified (A–F) with a fix kind (`decision` / `review` / `auto`); files with only benign sites are informational. BPA CSV rows (subtype `java.io.inputstream`) are merged in. Classes in the workspace mark their file BPA-confirmed. Unresolved classes collapse to **one informational row per bundle**: `missing-source` (plus a warning) for customer code kept in another repository or module, `platform-provided` for AEM Forms add-on bundles that Adobe provides on AEM as a Cloud Service, and `not-in-workspace` for third-party code to upgrade or replace. The scan always runs, so this pattern never needs the LLM tier or CAM. |
 | `dispatcherConversion` | `content-scan` | Heuristic scan for an AMS / on-prem Dispatcher config layout (a monolithic `dispatcher.any` + `conf.vhost.d/`, or `conf.dispatcher.d/` AMS trees). Detected by `dispatcher-inventory.js`; the sample prompt routes to **Branch E**. |
 
-`htlLint`, `osgiConfig`, `vault-package-dependencies`, and the content-scan **fallback** for `lui`/`cdw`/`templateModernization` are **heuristic** (tagged `confidence: heuristic` in the cache) — candidate matches, not compiler-validated. BPA-sourced `lui`/`cdw`/`templateModernization`/`replication`/`guavaCache` findings are authoritative. Out of scope: `inject-in-sling-model` and `outdated-dependencies` (those belong to code-assessment's own runbook, not migration).
+`htlLint`, `osgiConfig`, `vault-package-dependencies`, `inputStream`, and the content-scan **fallback** for `lui`/`cdw`/`templateModernization` are **heuristic** (tagged `confidence: heuristic` in the cache) — candidate matches, not compiler-validated. BPA-sourced `lui`/`cdw`/`templateModernization`/`replication`/`guavaCache` findings are authoritative. Out of scope: `inject-in-sling-model` and `outdated-dependencies` (those belong to code-assessment's own runbook, not migration).
 
 **BPA is the source of truth when a report is available.** `lui`/`cdw`/`templateModernization`/`replication` are read from the BPA CSV/CAM (the parser now extracts these subtypes and excludes `_COUNT_*`/`_STAT` summary rows), so the runbook counts match your BPA report's LUI-dialog / CDW / static-template / REP tallies. `lui` keeps only the dialog sub-types (`legacy.custom.component` → create-component; `legacy.static.template` is counted under `templateModernization`). The `.content.xml` scan is only the fallback when no BPA source is present — and it can **undercount** relative to BPA when the flagged legacy nodes live in packages (e.g. acs-commons) not in the project source. `replication`: BPA `replication.agent` findings when a report is present, else the analyzer detects `Replicator` usage from source.
 
@@ -307,11 +315,11 @@ First check the non-Java branches (routed in full under **Required delegation**)
 
 If the request is **dispatcher conversion** — convert or migrate an AMS or on-premise Dispatcher configuration to AEM as a Cloud Service — follow **Branch E**. No Java pattern module is needed. **Skip** Branch B.
 
-Otherwise map the request to a pattern id: `scheduler`, `resourceChangeListener`, `replication`, `eventListener`, `eventHandler`, `assetApi`, `htlLint`, `lui`, `cdw`. If unclear, use **Manual Pattern Hints** in **`{code-assessment}/SKILL.md`** or ask the user to pick one of those.
+Otherwise map the request to a pattern id: `scheduler`, `resourceChangeListener`, `replication`, `eventListener`, `eventHandler`, `assetApi`, `htlLint`, `lui`, `cdw`, `inputStream`. If unclear, use **Manual Pattern Hints** in **`{code-assessment}/SKILL.md`** or ask the user to pick one of those.
 
 ### Step 2: Availability
 
-If the id is missing from the code-assessment catalog ([`{code-assessment}/references/patterns.md`](../code-assessment/references/patterns.md)), say the pattern is not supported yet.
+If the id is missing from the code-assessment catalog ([`{code-assessment}/references/patterns.md`](../code-assessment/references/patterns.md)), say the pattern is not supported yet. **Exception:** the migration-only references routed in **Branch B step 2** (`vault-package-dependencies`, `guavaCache`, `inputStream`) are supported even though they aren't in that catalog.
 
 ### Step 3: Targets
 
@@ -326,7 +334,9 @@ is non-empty, reuse it instead of re-deriving findings:
   source was `mcp`/`csv` (BPA-sourced findings never carry line/snippet; only the `analyzer`,
   `html-scan`, and `config-scan` sources do). `osgiConfig` findings additionally carry a `kind`
   and, for `already-placeholdered` rows, `informational: true` — skip those when building the fix
-  work list.
+  work list. The same applies to `inputStream` informational rows (benign-only files,
+  `bpa-unmatched`, `missing-source`, `platform-provided`, `not-in-workspace`); its file findings
+  carry `line`/`snippet` plus a `sites` array, so no re-detection is needed.
 - Slice the batch with the same paginate helper used elsewhere in this file:
   ```javascript
   const { paginate } = require('./scripts/unified-collection-reader.js');
@@ -351,6 +361,8 @@ is non-empty, reuse it instead of re-deriving findings:
 For `lui` findings, the `identifier` in each target is the **JCR component path** (e.g. `/apps/myapp/components/content/mycomp`) — not a Java class name. Resolve it to the filesystem path using the [JCR → filesystem mapping](references/legacy-ui/dialog/context.md#jcr-path--filesystem-path) before opening files. **Note:** `luiCoral2` is not a standalone BPA pattern id — Coral 2 dialogs appear as the `legacy.dialog.coral2` sub-type within `lui` results. Do not call `getBpaFindings('luiCoral2', …)` independently; call `getBpaFindings('lui', …)` and filter by sub-type inside Branch D.
 
 For **`dispatcherConversion`**, targets are the Dispatcher config root(s) and detected mode from the `dispatcher-inventory.js` scan (surfaced in the Step 0 runbook), not from BPA — go straight to **Branch E**.
+
+For **`inputStream`**, targets come from the runbook cache (above) or, with no usable cache, from one scanner run: `node scripts/input-stream-runner.js <workspaceRoot> [--csv <bpa.csv>] --json`. A BPA CSV is optional and CAM is not needed. Do **not** use `getBpaFindings` rows or `analyze.sh` for this pattern. The scanner already resolves BPA classes to files, collapses third-party rows per bundle and gives line-level sites. A batch is **five non-informational file findings** in the scanner's (risk) order. After editing a batch, verify with `--files <touched files>`. Full loop: [references/input-stream.md](references/input-stream.md).
 
 `getBpaFindings` returns **a batch of 5 findings** (default `limit=5`) along with a `paging`
 envelope. The agent processes that batch only; it does **not** request the next batch until
