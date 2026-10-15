@@ -173,8 +173,10 @@ skip**, because silent skips fake passes. A token path absent from
 `donor-tokens.json` is a reported SKIP.
 
 One default-spec blind spot to catch by eye: when the source's only
-h1 is visually hidden (an sr-only a11y landmark — real sites do
-this), the `main h1` display-weight assertion holds a token on an
+heading is visually hidden (an sr-only a11y landmark — real sites do
+this), the display-weight assertion (first `h1`–`h3` in `main`; the
+heading colour takes the first heading of any level, since form pages
+often carry no h1/h2) holds a token on an
 **invisible** element and proves nothing about the page's display
 face. Add a `--spec` entry asserting the display tokens on the
 element that actually renders as the display headline (the hero h2,

@@ -4,6 +4,28 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.34.0 — reskin hands off to migrate: generic renderer, canon bridge, preflight
+
+Reskin produced gated pages but none of the inputs `migrate` reads. Three scripts close that gap for any donor (URL or
+Figma) and any content site; every per-site choice stays in `mapping.json` and the content models.
+
+- **`reskin/stream-render.mjs`** renders a page from its content model's ordered stream and the donor tokens. It replaces
+  the per-archetype renderer as the default. `--localize-images` downloads images into `prototypes/assets/img/` with
+  browser headers and keeps `data-source-src`, which `dom-equality` and `slot-coverage` now prefer, so the content gate
+  still compares source URLs.
+- **`reskin/canon-from-reskin.mjs`** derives `canon/` (header, footer, `canon.css` with `:root` first, module skeletons),
+  donor-sourced `DESIGN.{md,json}`, `direction.md` and `dynamic-features.md` from the approved archetype. A `--force`
+  re-run with identical content leaves every file untouched; a changed canon flags approved pages, and migrated pages
+  whose sidecar hashes no longer match, as stale. Each changed canon is captured with replica's `stitch-shot` and
+  pixel-compared with the previous approval; the % lands in the canon history and warns above `--visual-threshold`.
+- **`reskin/reskin-preflight.mjs`** is the read-only readiness check before `migrate` (exit 0 ready).
+  `prepare-migration` now refuses under `flow: reskin`, because its cascade rewrites the donor-sourced `DESIGN.*`.
+- **Fixes found on the way.** Migrate merges the reskin gate reports into its handoff gates and tags sections by
+  `data-slot`. The donor-probe heading probes cover h1–h3 (weight) and h1–h6 (colour), not h1 only. Crawl and the
+  default normalize remove cookie, consent and GDPR overlays by id or class inside a fixed, sticky or high-z ancestor,
+  outside `main article`. The Figma curation derives `type.display.textAlign` from the display role's text alignment,
+  weighted by characters, and the renderer aligns headings with it (left when absent).
+
 ## 0.33.0 — reskin takes a Figma donor: headless capture and deterministic curation
 
 `reskin --donor-figma <url>` replaces the "not yet implemented" stop. The new `reskin/figma-donor.mjs` reads the file over

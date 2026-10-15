@@ -86,7 +86,9 @@ regression check instead of a debugging tool.
    ALL live-target hardening (real-Chrome UA + standard headers,
    challenge detection, headed-stealth escalation), resolved from
    `../diff/` next to `../reskin/`, so keep the two dirs siblings.
-   Run the copies.
+   Copy `skills/replica/scripts/` (except `test/`) to
+   `stardust/scripts/replica/` too — the Phase 6 bridge captures and
+   pixel-compares approvals with them. Run the copies.
 4. **Origin collision** — if `stardust/state.json` records a different
    `site.originUrl`, stop and ask before mixing sites, per
    `../extract/SKILL.md` § Setup.
@@ -251,9 +253,11 @@ regions) are split into atomic slots in the brief — section ≠ slot.
 ### Phase 4 — PROGRAMMATIC RENDER
 
 The decisive validated rule: **the page is GENERATED from
-`content-model.json` — never retyped by hand.** Write a renderer
-script per archetype (`stardust/reskin/renderers/<archetype>.mjs`,
-modeled on the experiment's `render-reskin.mjs`) that:
+`content-model.json` — never retyped by hand.** The generic renderer
+`scripts/stream-render.mjs <slug> [--mapping <mapping.json>]
+[--localize-images]` covers any donor and site; write a per-archetype
+renderer (`stardust/reskin/renderers/<archetype>.mjs`) only where it
+falls short. Either way the renderer:
 
 - reads the page's `content-model.json` and interpolates **every**
   visible string, href, and image URL from the model (HTML-escaped) —
@@ -366,18 +370,25 @@ one for design-adoption/sanity. On a failure in a family, fix once,
 re-run all gates (a fix for one gate can break another). Residual
 failures after a family's iteration is spent are logged in
 `stardust/reskin/ledger.json` under the page's `residuals[]` — never
-silently absorbed, never looped on indefinitely. (Both field runs
-support the budget: the validation experiment spent one iteration on
-360px chrome; the smoke run spent exactly one per family — a
-content-side separator emission fix and a sanity-side 360px chrome
-fix. A single shared iteration would have forced a false residual;
-per-family keeps the loop bounded without absorbing real failures.)
+silently absorbed, never looped on indefinitely.
 
 ### Phase 6 — HANDOFF
 
 Reskin owns the archetype pages; scale and shipping are the existing
 pipeline, unchanged:
 
+- **Bridge, then check.** After a human approves the archetype
+  (`state.mjs advance --to approved`), run
+  `scripts/canon-from-reskin.mjs <archetype-slug>` — it writes
+  migrate's inputs (`canon/`, donor-sourced `DESIGN.*`, `direction.md`,
+  `dynamic-features.md`) and, on a re-run with `--force`, flags
+  approved/migrated pages stale where the canon change reaches them.
+  A changed canon is captured to `stardust/reskin/approvals/` and
+  pixel-compared with the previous approval (warn above
+  `--visual-threshold`, default 10 %; recorded in the canon history).
+  Then `scripts/reskin-preflight.mjs` must exit 0. Never run
+  `prepare-migration` or `direct` under `flow: reskin` — they rewrite
+  the donor-sourced DESIGN.*.
 - **Scale via the stardust `migrate` skill** (`../migrate/SKILL.md`) with the
   donor-pinned target (the `state.json.designSource` stamp Phase 1
   wrote is what `direct` reads for donor pinning;

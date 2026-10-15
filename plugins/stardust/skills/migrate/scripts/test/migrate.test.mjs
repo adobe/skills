@@ -9,7 +9,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { foldPath } from '../migrate.mjs';
+import { foldPath, tagSections } from '../migrate.mjs';
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', 'migrate.mjs');
 const tmp = mkdtempSync(join(tmpdir(), 'migrate-test-'));
@@ -337,6 +337,22 @@ check('missing asset: reference left as is, warned, recorded in the sidecar and 
   assert.match(read(`${OUT}/news/post/index.html`), /src="assets\/img\/missing\.png"/);
   assert.deepEqual(json(STATE).migrate.missingAssets, [{ subpath: 'img/missing.png', referencedBy: ['news-post'] }]);
   assert.ok(!json(STATE).migrate.bundledAssets.includes('img/missing.png'));
+});
+
+// ---- flow: reskin (data-slot names, gate handoff from reskin/ledger.json) ---------------------
+console.log('flow: reskin');
+check('tagSections names a slot by its data-slot, else its first class, else its tag', () => {
+  const t = tagSections('<main><section class="band x" data-slot="s01">a</section><div class="grid">b</div><p>c</p></main>', 'home');
+  assert.deepEqual(t.slots, ['s01', 'grid', 'p']);
+});
+check('flow reskin: gates recorded in reskin/ledger.json handoff land in the first sidecar; recorded evidence wins over the ledger', () => {
+  const s = json(STATE); const keep = s.flow; s.flow = 'reskin'; write(STATE, `${JSON.stringify(s, null, 2)}\n`);
+  write('stardust/reskin/ledger.json', JSON.stringify({ handoff: { listing: { archetype: 'tours', gates: { tours: { 'reskin-content-gate': 'dom-equality PASS', links: 'from ledger' } } } } }));
+  const r = run(['render', 'tours', '--force']); assert.equal(r.status, 0, r.err);
+  const m = json(`${OUT}/tours/_meta.json`);
+  assert.ok(m.gatesPassed.includes('reskin-content-gate')); assert.equal(m.gateEvidence['reskin-content-gate'], 'dom-equality PASS');
+  rmSync(join(tmp, 'stardust/reskin'), { recursive: true, force: true });
+  const back = json(STATE); back.flow = keep; write(STATE, `${JSON.stringify(back, null, 2)}\n`);
 });
 
 // ---- --help ---------------------------------------------------------------------------------

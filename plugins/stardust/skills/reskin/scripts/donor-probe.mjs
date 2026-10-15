@@ -110,14 +110,15 @@ const toUrl = (p) => (/^(https?|file):/.test(p) ? p : pathToFileURL(resolve(p)).
 const tokens = JSON.parse(readFileSync(resolve(args.tokens), 'utf8'));
 const get = (obj, path) => path.split('.').reduce((o, k) => (o == null ? undefined : o[k]), obj);
 
-// Default spec — donor-tokens.json paths × rendered-page conventions.
+// Default spec — donor-tokens.json paths × rendered-page conventions. Heading probes take the first heading
+// of any level: form and auth pages often have no h1/h2 (a card titled with an h3).
 const DEFAULT_SPEC = [
   { label: 'page bg', selector: 'body', property: 'backgroundColor', token: 'palette.pageBg' },
   { label: 'body fg', selector: 'body', property: 'color', token: 'palette.bodyFg' },
   { label: 'font-family token string', selector: 'body', property: 'fontFamily', token: 'type.family' },
   { label: 'body font size', selector: 'body', property: 'fontSize', token: 'type.body.fontSize' },
-  { label: 'display weight', selector: 'main h1', property: 'fontWeight', token: 'type.display.fontWeight' },
-  { label: 'heading color', selector: 'main h2', property: 'color', token: 'palette.headingFg' },
+  { label: 'display weight', selector: 'main :is(h1, h2, h3)', property: 'fontWeight', token: 'type.display.fontWeight' },
+  { label: 'heading color', selector: 'main :is(h1, h2, h3, h4, h5, h6)', property: 'color', token: 'palette.headingFg' },
   { label: 'primary button bg', selector: 'main .btn', property: 'backgroundColor', token: 'buttons.primary.background' },
   { label: 'primary button fg', selector: 'main .btn', property: 'color', token: 'buttons.primary.color' },
   { label: 'primary button radius', selector: 'main .btn', property: 'borderRadius', token: 'buttons.primary.borderRadius' },

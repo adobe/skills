@@ -202,8 +202,10 @@ export function tagSections(main, template) {
     if (RAW.has(tag)) { if (!self) { const c = inner.toLowerCase().indexOf(`</${tag}>`, re.lastIndex); if (c >= 0) re.lastIndex = c + tag.length + 3; } continue; }
     if (depth === 0) {
       n += 1;
+      // an explicit data-slot (reskin renderer, module canon) names the slot; else the first class, else the tag
+      const ds = a.match(/(?<![\w-])data-slot\s*=\s*(["'])(.*?)\1/s);
       const cls = a.match(/(?<![\w-])class\s*=\s*(["'])(.*?)\1/s);
-      slots.push(cls && cls[2].trim() ? cls[2].trim().split(/\s+/)[0] : tag);
+      slots.push(ds && ds[2].trim() ? ds[2].trim() : cls && cls[2].trim() ? cls[2].trim().split(/\s+/)[0] : tag);
       if (!/(?<![\w-])data-section=/.test(a)) { out += `${inner.slice(last, m.index)}<${tagRaw}${a.replace(/\s+$/, '')} data-section="${n}"${self}>`; last = m.index + full.length; }
     }
     if (!VOID.has(tag) && !self) depth += 1;
@@ -452,6 +454,8 @@ export function renderPage(run, page, entry) {
     fidelityTier: tier, archetypeSource: archetype ? archetype.slug : null, assetsBundled: report.refs.size, missingAssets: report.missing, brokenInternalLinks: linked.broken, outputPath, outputPathDefault, sidecar: sideRel };
   const defaults = { gatesPassed: [], gateEvidence: {}, variants: [], contentDeviations: [], deviations: [] };
   for (const k of CARRIED) meta[k] = old?.[k] ?? defaults[k];
+  // flow: reskin — gates passed before the first render live in reskin/ledger.json handoff (they have no sidecar yet)
+  for (const [g, ev] of Object.entries(run.reskinGates?.[slug] || {})) { meta.gatesPassed = pushUnique([...meta.gatesPassed], g); meta.gateEvidence = { ...meta.gateEvidence, [g]: meta.gateEvidence[g] || ev }; }
   const sidecar = Object.fromEntries(SIDECAR_KEYS.map((k) => [k, meta[k] ?? null]));
   validatePage(slug, html, sidecar, run.outDir, report.refs);
   mkdirSync(dirname(outFile), { recursive: true });
@@ -472,6 +476,13 @@ function writeMigrateBlock(file, state, block) {
   const prev = state.migrate && typeof state.migrate === 'object' && !Array.isArray(state.migrate) ? state.migrate : {};
   state.migrate = { ...prev, ...block };
   const tmp = `${file}.${process.pid}.tmp`; writeFileSync(tmp, `${JSON.stringify(state, null, 2)}\n`); renameSync(tmp, file);
+}
+// reskin/ledger.json `handoff.<type>.gates.<slug>.<gate> = evidence` → { slug: { gate: evidence } }
+export function reskinHandoffGates(stateFile) {
+  const ledger = readJson(join(dirname(stateFile), 'reskin', 'ledger.json'));
+  const out = {};
+  for (const t of Object.values(ledger?.handoff || {})) for (const [slug, gates] of Object.entries(t?.gates || {})) if (gates && typeof gates === 'object') out[slug] = { ...out[slug], ...gates };
+  return out;
 }
 function directionLine(stateFile) {
   const f = toPosix(join(dirname(stateFile), 'direction.md'));
@@ -510,6 +521,7 @@ export function renderRun(o) {
   if (state.site?.deployUrl) { try { deployHost = new URL(/^[a-z]+:\/\//i.test(state.site.deployUrl) ? state.site.deployUrl : `https://${state.site.deployUrl}`).host; } catch { deployHost = state.site.deployUrl; } }
   const bundler = new Bundler({ protoDir: o.protoDir, currentDir: o.current, outDir: o.out, seed: state.migrate?.bundledAssets || [] });
   const run = { stateFile: o.state, pages, bySlug, pageMap, bundler, canon, inlineCanon: o.inlineCanon, force: o.force, sources: new Map(Object.entries(o.sources || {})), archetypes: new Map(Object.entries(o.archetypes || {})), branchB: o.branchB instanceof Set ? o.branchB : new Set(o.branchB || []), protoDir: o.protoDir, currentDir: o.current, outDir: o.out, originUrl, origin, originHosts, deployHost,
+    reskinGates: state.flow === 'reskin' ? reskinHandoffGates(o.state) : null,
     designMdSha: fsha('DESIGN.md'), designJsonSha: fsha('DESIGN.json'), direction: directionLine(o.state), stardustVersion: o.stardustVersion || process.env.STARDUST_VERSION || 'local',
     available: (e) => isFile(join(o.out, e.outputPath)) || (renderSet.has(e.slug) && !e.passthrough) };
   const missing = []; const modulesEmpty = []; const rendered = new Map();

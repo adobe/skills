@@ -16,7 +16,8 @@
  *                     href) pair: an <a> whose href equals absHref and
  *                     whose text contains the captured label.
  *   (3) IMAGES      — each captured image src is present, URL-normalized
- *                     to host+path.
+ *                     to host+path. A localized image (stream-render
+ *                     --localize-images) is matched by its data-source-src.
  *   (3b) PAINT      — each present content image actually RENDERS
  *                     (naturalWidth > 0 after a lazy-load scroll pass).
  *                     The src check compares URL strings; an origin-locked
@@ -174,7 +175,7 @@ const rendered = await page.evaluate((scopeSel) => {
     text: norm(scope.innerText),
     hrefs: Array.from(scope.querySelectorAll('a[href]')).map((a) => ({ href: a.href, text: norm(a.innerText) })),
     imgs: Array.from(scope.querySelectorAll('img')).map((i) => ({
-      src: i.currentSrc || i.src,
+      src: i.dataset.sourceSrc || i.currentSrc || i.src,
       painted: i.complete && i.naturalWidth > 0,
     })),
   };
