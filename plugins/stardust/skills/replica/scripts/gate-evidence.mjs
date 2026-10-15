@@ -42,6 +42,12 @@
  *   content-count       latest content-diff.mjs job for the page (`Findings: none …` or
  *                       `Findings: N (0 structural 🔴)`); when no such job exists, the newest
  *                       gate.sh --full round's `content-diff:` line; structural 🔴 > 0 → OPEN:
+ *                       An encoded sibling whose encoded document is the current clean encode was
+ *                       counted by the encoder (L5: a MISSING item stops it `incomplete`): that
+ *                       count passes the gate — `encoder L5: 0 MISSING (h a/b · links a/b · images
+ *                       a/b · text a/b) — audit.encode (<encoded document>)`, the counts from
+ *                       audit.encode.count when recorded — with a content-diff line, when there is
+ *                       one, after it; a FAIL/OPEN from that run wins.
  *   media-reconcile     latest media-reconcile.mjs job whose counts line has no `omit` and no
  *                       `unresolved` (the instrument's own exit-1 rule); either → OPEN: — but only once
  *                       the page's DELIVERED content file exists (`<--content>/<da-path>.html`, or
@@ -385,6 +391,16 @@ export function parseVariance(text, paths = []) {
 }
 
 // ---- derivation --------------------------------------------------------------------------------
+// The encoder's own content count (L5) of a clean encode, as an evidence line; null when the audit records a MISSING
+// item or no clean status. audit.encode.count.counts.<role> = { capture, missing, … } (deploy's diffOffline).
+export function encoderCount(meta, doc) {
+  const a = meta && meta.audit && meta.audit.encode;
+  if (!a || a.status !== 'clean' || (Array.isArray(a.incomplete) && a.incomplete.length)) return null;
+  const c = a.count && a.count.counts;
+  const part = ([role, label]) => (c && c[role] && Number.isInteger(c[role].capture) && Number.isInteger(c[role].missing) ? `${label} ${c[role].capture - c[role].missing}/${c[role].capture}` : null);
+  const parts = [['heading', 'h'], ['link', 'links'], ['image', 'images'], ['text', 'text']].map(part).filter(Boolean);
+  return `encoder L5: 0 MISSING${parts.length ? ` (${parts.join(' · ')})` : ''} — audit.encode (${doc})`;
+}
 const latest = (items, at = (x) => jobAt(x.j)) => items.reduce((best, x) => (!best || at(x) > at(best) ? x : best), null);
 const fmtPct = (n) => `${n.toFixed(2)}%`;
 // The `--path` delivery-lint expects: the output path without `.html` and without a trailing `/index`; the root page is `/`.
@@ -469,6 +485,13 @@ export function derive(page, jobs, o, ctx) {
     if (cd.v.structural === 0) pass('content-count', line); else open('content-count', line);
   }
 
+  // An encoded sibling's current clean encode was counted by the encoder (L5); a content-diff FAIL/OPEN still wins.
+  const l5 = c14Page(page) && page.encoded.state && page.encoded.state.ok ? encoderCount(page.meta, page.encoded.path) : null;
+  if (l5 && !/^(FAIL|OPEN): /.test(evidence['content-count'] || '')) {
+    if (gates.includes('content-count')) evidence['content-count'] = `${l5}; ${evidence['content-count']}`;
+    else pass('content-count', l5);
+  }
+
   const md = pick(ofKind('media-reconcile'), parseCounts, 'media-reconcile');
   if (md) {
     facts.media = md.v.line;
@@ -531,6 +554,7 @@ export function derive(page, jobs, o, ctx) {
   if (c14Page(page)) {
     // C14: the page's own launch decides when there is one (a failing run is never covered); else the archetype's
     // passedOn under the current harness key, when it covers the page's shape
+    // R37: an own run from before a key change still counts — a job log carries no harness key
     const c14 = ctx.c14 ? ctx.c14(page) : { ok: false, why: 'migrate\'s encode/shape.mjs is not loaded' };
     for (const g of HARNESS) {
       const newest = latest(ofKind(g).filter(HARNESS_RUN[g]).map((j) => ({ j })));
