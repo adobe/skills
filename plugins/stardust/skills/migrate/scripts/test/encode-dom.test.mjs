@@ -22,4 +22,17 @@ import { parseHTML, qsa, matches, textOf } from '../encode/dom.mjs';
   assert.equal(qsa(d, 'div:has(img)').length, 1);
 }
 
+// --- chained functional pseudo-classes: each argument ends at ITS closing paren ----------------------------------
+{
+  const d = parseHTML('<main><div class="a">1</div><div class="b">2</div><div class="c" title="(x)">3<em>i</em></div><div>4</div></main>');
+  const texts = (sel) => qsa(d, sel).map(textOf);
+  assert.deepEqual(texts('div:not(.a):not(.b)'), ['3i', '4'], 'chained :not() excludes both');
+  assert.deepEqual(texts('div:not(.a):not(.b):not(.c)'), ['4'], 'three chained :not()');
+  assert.deepEqual(texts('div:is(.a, .c):not(.a)'), ['3i'], ':is() then :not()');
+  assert.deepEqual(texts('div:not(:has(em)):not(.a)'), ['2', '4'], 'nested parens inside the first argument');
+  assert.deepEqual(texts('div:not([title="(x)"]):not(.a)'), ['2', '4'], 'a paren inside a quoted value does not end the argument');
+  assert.deepEqual(texts('div:not(.a).c'), ['3i'], 'a compound part after the argument still applies');
+  assert.throws(() => qsa(d, 'div:not(.a'), /bad selector/, 'an unclosed argument fails loud');
+}
+
 console.log('encode-dom: ok');

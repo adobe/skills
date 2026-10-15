@@ -103,9 +103,11 @@ export function parseSelector(sel) {
   selCache.set(sel, list);
   return list;
 }
+// index of the ')' that closes the '(' just before `i` (nesting and quotes honoured); -1 when unclosed
+function closeParen(s, i) { let d = 1; let q = null; for (let k = i; k < s.length; k += 1) { const c = s[k]; if (q) { if (c === q) q = null; } else if (c === '"' || c === "'") q = c; else if (c === '(') d += 1; else if (c === ')') { d -= 1; if (d === 0) return k; } } return -1; }
 function parseCompound(s) {
   const c = { tag: null, id: null, classes: [], attrs: [], pseudos: [] };
-  const re = /^(\*|[a-zA-Z][\w-]*)|#([\w-]+)|\.([\w-]+)|\[\s*([\w:-]+)\s*(?:([~|^$*]?=)\s*(?:"([^"]*)"|'([^']*)'|([^\]\s]+)))?\s*\]|:([\w-]+)(?:\((.*)\))?/g;
+  const re = /^(\*|[a-zA-Z][\w-]*)|#([\w-]+)|\.([\w-]+)|\[\s*([\w:-]+)\s*(?:([~|^$*]?=)\s*(?:"([^"]*)"|'([^']*)'|([^\]\s]+)))?\s*\]|:([\w-]+)(\()?/g;
   let m; let last = 0;
   while ((m = re.exec(s))) {
     if (m.index !== last) throw new Error(`bad selector near "${s.slice(last)}"`);
@@ -114,7 +116,11 @@ function parseCompound(s) {
     else if (m[2] !== undefined) c.id = m[2];
     else if (m[3] !== undefined) c.classes.push(m[3]);
     else if (m[4] !== undefined) c.attrs.push({ name: m[4].toLowerCase(), op: m[5] || null, value: m[6] ?? m[7] ?? m[8] ?? null });
-    else if (m[9] !== undefined) c.pseudos.push({ name: m[9], arg: m[10] !== undefined ? m[10] : null });
+    else if (m[9] !== undefined) {
+      let arg = null;
+      if (m[10] !== undefined) { const end = closeParen(s, last); if (end === -1) throw new Error(`bad selector near "${s.slice(m.index)}"`); arg = s.slice(last, end); last = end + 1; re.lastIndex = last; }
+      c.pseudos.push({ name: m[9], arg });
+    }
   }
   if (last !== s.length) throw new Error(`bad selector "${s}"`);
   return c;
