@@ -24,10 +24,22 @@
  *   node migrate.mjs decision <slug> --kind <k> [--json '{…}']        → migrationDecisions[]
  *   node migrate.mjs variant <slug> <class…>                          → variants[] (one entry)
  *   node migrate.mjs modules <slug> <id…> | --clear                   → modules[]
+ *   node migrate.mjs harness <slug> [--content content]               → the archetype's passedOn (C14)
  *   node migrate.mjs summary [--json]                                 one row per state page
  *   node migrate.mjs pagemap                                          prints the page map, writes nothing
  *   (every form takes --state / --out; paths are project-relative from the project root; a value
  *   flag followed by nothing or by another --flag is a usage error naming the flag)
+ *
+ * harness — record that <slug>, an encoded page, passed the local harness launches (section-schema, the
+ *   whole-page block-roundtrip --ew, qa-gate) on its current document: its encode's block shape joins
+ *   the archetype's `passedOn` {key, shapes[{slug, shape}]} under the template's current harness key
+ *   (encode/shape.mjs: encoder + map + the map's block JS/CSS + the frozen foundation); a pass under
+ *   another key replaces the record — any key change re-arms. Run it right after the launches pass,
+ *   before any block edit. Refused (exit 2, nothing written) unless the page's encode is the current
+ *   clean encode under this encoder and map, and — for the archetype — its gated document
+ *   (<content>/<da-path>.html) has the same shape as its encode (the map round-trips). An equal record
+ *   is not rewritten. Siblings whose shape passedOn covers inherit the launches (rollout plan.mjs
+ *   needsHarness, gate-evidence.mjs).
  *
  * Flow guard (state-machine.md § Flow keys, plugin 0.23.0): `render` refuses (exit 2) when the state
  *   file exists but has no top-level `flow` — the master skill stamps flow / flowChosenAt / flowSource
@@ -54,8 +66,9 @@
  * Writes:
  *   <out>/<output-path>              the migrated HTML (URL-literal rule; default stardust/migrated/)
  *   <out>/<dir>/_meta.json           sidecar next to index.html; <name>._meta.json next to <name>.html;
- *                                    a re-render carries the recorded judgments and encode.mjs's
- *                                    `encode` / `audit` keys over (sourceCurrentSha stays this script's)
+ *                                    a re-render carries the recorded judgments, encode.mjs's
+ *                                    `encode` / `audit` keys and `passedOn` over (sourceCurrentSha stays
+ *                                    this script's)
  *   <out>/assets/**                  every bundled asset (copied only when missing or changed)
  *   state.json.migrate               MERGED, never replaced: this script owns at, outputDir,
  *                                    selfContained, pageMap[], totalAssetsBundled, bundledAssets[],
@@ -63,8 +76,9 @@
  *                                    key already in `migrate` (e.g. generators) is kept as is. No
  *                                    other top-level key is touched.
  *   gate/deviation/decision/variant/modules rewrite one sidecar (a malformed sidecar is a usage
- *   error naming the file, not overwritten); summary and pagemap write nothing.
- * Exit: 0 clean · 2 any page refused or the flow guard · 1 usage error (message on stderr).
+ *   error naming the file, not overwritten); harness rewrites the archetype's sidecar (passedOn)
+ *   only when the record changes; summary and pagemap write nothing.
+ * Exit: 0 clean · 2 any page refused, the flow guard or a refused harness record · 1 usage error (message on stderr).
  */
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
@@ -85,10 +99,11 @@ export const RENDERABLE = new Set(['approved', 'migrated', 'directed']);
 // asset-bundling.md § Prefix resolution — the default set, longest first.
 export const ASSET_PREFIXES = ['../current/assets/', '../../../assets/', '../../assets/', '../assets/', './assets/', '/assets/', 'assets/'];
 const SKIP_SCHEMES = /^(#|mailto:|tel:|javascript:|data:)/i;
-// `encode` / `audit` are written by encode.mjs (encode/provenance.mjs creates a sidecar in this key order when none exists)
+// `encode` / `audit` are written by encode.mjs (encode/provenance.mjs creates a sidecar in this key order when none exists);
+// `passedOn` (the archetype's) by `harness`
 export const SIDECAR_KEYS = ['slug', 'type', 'renderBranch', 'template', 'modules', 'slotsFilled', 'canonShas', 'deviations', 'migrationDecisions', 'metadata', 'jsonLd', 'migratedAt', 'designMdSha', 'designJsonSha', 'sourceCurrentSha', 'sourceProposedSha',
-  'fidelityTier', 'archetypeSource', 'archetypeSha', 'variants', 'gatesPassed', 'gateEvidence', 'contentDeviations', 'assetsBundled', 'missingAssets', 'brokenInternalLinks', 'outputPath', 'outputPathDefault', 'sidecar', 'driverVersion', 'encode', 'audit'];
-const CARRIED = ['gatesPassed', 'gateEvidence', 'variants', 'contentDeviations', 'deviations', 'encode', 'audit'];
+  'fidelityTier', 'archetypeSource', 'archetypeSha', 'variants', 'gatesPassed', 'gateEvidence', 'contentDeviations', 'assetsBundled', 'missingAssets', 'brokenInternalLinks', 'outputPath', 'outputPathDefault', 'sidecar', 'driverVersion', 'encode', 'audit', 'passedOn'];
+const CARRIED = ['gatesPassed', 'gateEvidence', 'variants', 'contentDeviations', 'deviations', 'encode', 'audit', 'passedOn'];
 const SELF = fileURLToPath(import.meta.url);
 
 export class UsageError extends Error { constructor(msg) { super(msg); this.code = 1; } }
@@ -587,6 +602,38 @@ export function modulesCmd(o, slug, ids) {
   sidecar.modules = o.clear ? [] : [...new Set([...(sidecar.modules || []), ...ids])];
   saveSidecar(file, sidecar); console.log(`modules ${slug}: [${sidecar.modules.join(', ')}]`); return 0;
 }
+// C14: <slug> passed the local harness launches → the archetype's passedOn (encode/shape.mjs, loaded only here)
+const projectOf = (out) => { const m = posix.normalize(toPosix(out)).replace(/\/+$/, ''); return posix.basename(m) === 'migrated' && posix.basename(posix.dirname(m)) === 'stardust' ? posix.dirname(posix.dirname(m)) || '.' : '.'; };
+export async function harnessCmd(o, slug) {
+  if (!slug) throw new UsageError('harness <slug> [--content <dir>]');
+  const { file, sidecar } = sidecarPath(o, slug);
+  const refuse = (what, fix) => { throw new RunRefusal(`harness ${slug}: refused — ${what} — ${fix}`); };
+  const archetype = typeof sidecar.encode?.map?.template === 'string' ? sidecar.encode.map.template : null;
+  if (!archetype) refuse(`${toPosix(file)} records no encode`, 'passedOn belongs to an encoded template: encode the page first (encode.mjs --template <archetype>)');
+  const shape = await import('./encode/shape.mjs');
+  const root = projectOf(o.out);
+  const enc = shape.encodedShape({ root, sidecarPath: toPosix(relative(root, file)), archetype });
+  if (!enc.ok) refuse(enc.why, 'record the launches of the current clean encode only');
+  if (slug === archetype) {
+    const contentFile = join(o.content ?? join(root, 'content'), sidecar.encode.output.path.slice('stardust/encoded/'.length));
+    if (!isFile(contentFile)) refuse(`no gated document ${toPosix(contentFile)}`, 'the archetype\'s launches run on its gated document: deliver it first');
+    const gated = shape.shapeOf(readFileSync(contentFile, 'utf8'));
+    if (JSON.stringify(gated) !== JSON.stringify(enc.shape)) {
+      const gap = shape.covers(enc.shape, [gated]).gaps[0] || shape.covers(gated, [enc.shape]).gaps[0] || 'the blocks differ in order or number';
+      refuse(`${toPosix(contentFile)} and the archetype's encode differ in shape (encode vs gated: ${gap})`, `the map does not round-trip: encode.mjs --roundtrip --template ${archetype}`);
+    }
+  }
+  let key;
+  try { ({ key } = await shape.harnessKey(root, archetype)); } catch (e) { refuse(`no harness key: ${e.message}`, 'fix it, then re-run'); }
+  const arch = slug === archetype ? { file, sidecar } : sidecarPath(o, archetype);
+  const old = arch.sidecar.passedOn ?? null;
+  const next = shape.passedOnWith(old, { key, slug, shape: enc.shape });
+  const unchanged = JSON.stringify(old) === JSON.stringify(next);
+  if (!unchanged) { arch.sidecar.passedOn = next; saveSidecar(arch.file, arch.sidecar); }
+  const moved = shape.isPassedOn(old) && old.key !== key;
+  console.log(`harness ${slug}: ${unchanged ? 'unchanged' : 'recorded'} — ${archetype} passedOn under ${key.slice(0, 19)}…: ${next.shapes.map((e) => e.slug).join(', ')}${moved ? ' (the key moved: the earlier record is replaced)' : ''}`);
+  return 0;
+}
 export function summaryCmd(o) {
   const state = loadState(o.state); const rows = [];
   for (const p of state.pages) {
@@ -614,7 +661,7 @@ export function pagemapCmd(o) {
 const BOOL = new Set(['all', 'force', 'inline-canon', 'json', 'clear']);
 const REPEAT = new Set(['source', 'archetype']); // slug=value pairs on render; --source is free text elsewhere
 export function parseArgs(argv) {
-  const o = { ...DEFAULTS, slugs: [], sources: {}, archetypes: {}, branchB: new Set(), all: false, force: false, inlineCanon: false, json: false, clear: false, evidence: null, kind: null, source: null, target: null, reason: null, stardustVersion: null };
+  const o = { ...DEFAULTS, slugs: [], sources: {}, archetypes: {}, branchB: new Set(), all: false, force: false, inlineCanon: false, json: false, clear: false, evidence: null, content: null, kind: null, source: null, target: null, reason: null, stardustVersion: null };
   const positional = []; const raw = { source: [], archetype: [] };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -646,6 +693,7 @@ export function main(argv) {
     case 'decision': return decisionCmd(o, rest[0]);
     case 'variant': return variantCmd(o, rest[0], rest.slice(1));
     case 'modules': return modulesCmd(o, rest[0], rest.slice(1));
+    case 'harness': return harnessCmd(o, rest[0]);
     case 'summary': return summaryCmd(o);
     case 'pagemap': return pagemapCmd(o);
     default: throw new UsageError(`unknown command: ${cmd || '(none)'} — see --help`);
@@ -655,9 +703,11 @@ export function main(argv) {
 function safeRealpath(p) { try { return realpathSync(p); } catch { return p; } }
 if (process.argv[1] && safeRealpath(SELF) === safeRealpath(process.argv[1])) {
   if (process.argv.includes('--help') || process.argv.includes('-h') || process.argv.length < 3) { console.log(help()); process.exit(0); }
-  try { process.exit(main(process.argv.slice(2))); } catch (e) {
+  const fail = (e) => {
     if (e instanceof UsageError) { console.error(`usage error: ${e.message}`); process.exit(1); }
     if (e instanceof Refusal || e instanceof RunRefusal) { console.error(e.message); process.exit(2); }
     throw e;
-  }
+  };
+  // every subcommand is synchronous except harness (it loads the encoder's modules)
+  try { const code = main(process.argv.slice(2)); if (code instanceof Promise) code.then((c) => process.exit(c), fail); else process.exit(code); } catch (e) { fail(e); }
 }

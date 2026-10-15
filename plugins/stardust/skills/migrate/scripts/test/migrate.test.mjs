@@ -243,17 +243,19 @@ check('--force rewrites every page and carries the recorded judgments over', () 
   assert.deepEqual(json(`${OUT}/_meta.json`).modules, ['cards'], 'data-module in the HTML wins');
   assert.equal(json(STATE).migrate.lastRun.rendered.length, 5);
 });
-check('render --force carries the encoder\'s sidecar keys (encode, audit) and keeps generators; sourceCurrentSha stays sha1/12 of the page JSON', () => {
+check('render --force carries the encoder\'s sidecar keys (encode, audit), the harness record (passedOn) and keeps generators; sourceCurrentSha stays sha1/12 of the page JSON', () => {
   const side = `${OUT}/tours/north/_meta.json`; const sha = (c) => `sha256:${c.repeat(64)}`;
   const encode = { encoder: { script: 'stardust/scripts/migrate/encode.mjs', version: '1', sha: sha('a') }, map: { template: 'tours', vocabularySha: sha('b'), transformSha: null },
     inputs: { captureSha: sha('c'), pageJsonSha: sha('d'), siteSha: sha('e'), patchesSha: null, archetypeCaptureSha: sha('f') }, output: { path: 'stardust/encoded/tours/north.html', sha: sha('0') }, encodedAt: '2026-10-01T00:00:00Z' };
   const audit = { encode: { status: 'clean', unmapped: [], flattened: [], patchesApplied: [] }, other: { kept: true } };
-  write(side, `${JSON.stringify({ ...json(side), encode, audit }, null, 2)}\n`);
+  const passedOn = { key: sha('9'), shapes: [{ slug: 'tours-north', shape: [{ block: 'cards', rows: 1, cells: ['image,text'] }] }] };
+  write(side, `${JSON.stringify({ ...json(side), encode, audit, passedOn }, null, 2)}\n`);
   const s = json(STATE); const generators = { tours: { script: encode.encoder.script, sha: sha('a'), version: '1', vocabularySha: sha('b'), transformSha: null } };
   s.migrate.generators = generators; write(STATE, `${JSON.stringify(s, null, 2)}\n`);
   const r = run(['render', 'tours-north', '--force']); assert.equal(r.status, 0, r.err); assert.match(r.out, /^A' tours-north → /m);
   const after = json(side);
   assert.deepEqual(after.encode, encode, 'encode survives the re-render'); assert.deepEqual(after.audit, audit, 'audit survives, every sub-key');
+  assert.deepEqual(after.passedOn, passedOn, 'passedOn survives');
   assert.deepEqual(json(STATE).migrate.generators, generators, 'generators kept as is');
   assert.equal(after.sourceCurrentSha, createHash('sha1').update(readFileSync(join(tmp, 'stardust/current/pages/tours-north.json'))).digest('hex').slice(0, 12), 'migrate\'s own key: sha1/12 of the page JSON');
   const t = json(STATE); delete t.migrate.generators; write(STATE, `${JSON.stringify(t, null, 2)}\n`);
