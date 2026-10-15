@@ -16,8 +16,11 @@ judgment arbitrary enough to require a human.
 
 ## Entry schema
 
-One table row (or block) per slot, for **every** slot in the content
-model — no slot may be absent from the brief:
+One table row per slot, for **every** slot in the content model — no
+slot may be absent from the brief. For a Figma donor the table form is
+required: the section join reads the first table whose header has
+`Donor module` and `Status`, slot ids (`s01`, `s07-news`) in the first
+column:
 
 | Field | Contract |
 |---|---|

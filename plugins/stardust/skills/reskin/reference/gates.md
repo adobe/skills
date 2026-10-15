@@ -1,15 +1,15 @@
 # The reskin gates — commands, pass bars, tolerances, failure modes
 
-Three gate families per page, run in Phase 5 after the programmatic
-render. All scripts are run as project-local copies
+Three gate families per page, plus (d) for a Figma donor, run in
+Phase 5 after the programmatic render. All scripts are run as project-local copies
 (`stardust/scripts/reskin/`, per SKILL.md § Setup) — never from the
 plugin tree (ESM playwright resolution). `--rendered` accepts a URL or
 a file path (auto-converted to `file://`).
 
 Run order: content gate first (a design-adopted page with dropped
-content is worthless), then design adoption, then sanity. **One fix
-iteration per gate family** — content; design-adoption/sanity — then
-residuals are logged (§ Residual logging).
+content is worthless), then design adoption, then sanity, then (d).
+**One fix iteration per gate family** — content; design-adoption/sanity;
+Figma fidelity — then residuals are logged (§ Residual logging).
 
 ## (a) Content gate
 
@@ -215,25 +215,60 @@ classic first-pass failure and it is usually chrome (the experiment's
 was a fixed nav CTA), so the fix iteration typically touches
 responsive chrome, not content or tokens.
 
+## (d) Figma fidelity (Figma donor)
+
+`figma-gate.mjs` checks the rendered page against the capture
+`figma-donor.mjs` made, offline. Flags, the checks file schema, exit
+codes (0 / 1 / 2 / 3 / 124) and outputs: `figma-gate.mjs --help`; the
+run command is SKILL.md Phase 5 (d).
+
+**The checks file.** `stardust/reskin/figma-checks/<slug>.json` is the
+agent's reading of the frames, taken from `figma-gate.mjs boxes
+--module Mn` outlines: per section, the page selectors and the Figma
+node each is measured against (geometry) or whose text style it must
+match (type). Content-dependent measures (`top`, `height`) and any
+tolerance above 1px need a `why`.
+
+| Step | Class | Asserts | Tolerance |
+|---|---|---|---|
+| B0 join | blocks | `mapping.md`'s rendered rows are exactly the page's top-level `section[data-slot]`s, in order, with the mapped `data-module` and the slot's first heading | exact; drift names the slot |
+| B1 geometry | blocks | width, height, left, right, top, gaps, paddings of page boxes against Figma nodes (relative to the module root) or a token | ±1px (Figma has half pixels, `measure-live` rounds) unless an entry says why |
+| B3 ramp | blocks | the `:root` block `donor-tokens.json` yields, and per type entry fontSize, fontWeight, lineHeight, letterSpacing, first fontFamily, color against the Figma text node | exact; lineHeight and letterSpacing ±0.1px |
+| B2 pixel | advisory | the section's slice of the frame image against the section's screenshot | none: orientation only; reference classes (light text 3%, inverted 3.5%, raster ground 4%) are uncalibrated |
+| B4 register | informational | mandated, unmandated, out-of-kit, conflict and pre-existing divergences, with Figma node links | none |
+
+- **`n/a: frame content differs`.** B2 compares pixels only where the
+  frame's copy is the section's copy (visible text, whitespace and
+  case ignored). Reskin keeps the *source's* bytes, so a section
+  whose copy differs is n/a; geometry and ramp carry it. A `fixture`
+  pixel mode screenshots a hand-made stand-in with the frame's copy.
+- **Fonts are recorded, not failed.** B2 names each font a section
+  uses that the page's font set does not serve; B3 compares the first
+  family of the computed `font-family`. A font the page cannot serve
+  never fails a check.
+- **UNASSERTED.** A property the Figma node gives no value for is
+  listed in `ramp.json` and never fails.
+- **No verdict.** Exit 124 (a crashed step, a `pixel-compare`
+  deadline): re-run, never a fix iteration.
+
 ## One fix iteration per gate family, then residuals
 
 The budget is **one fix iteration per gate family**: one for the
 content gate (dom-equality + slot-coverage), one for
-design-adoption/sanity (donor-probe + overflow). On a failure:
-diagnose, fix once, **re-run all three gate families** (a fix for one
-gate can break another). When a family's iteration is spent and it
-still fails, stop iterating that family and log.
+design-adoption/sanity (donor-probe + overflow), and for a Figma donor
+one for (d) (B0, B1, B3 failures). On a failure: diagnose, fix once,
+**re-run every gate family** (a fix for one gate can break another).
+When a family's iteration is spent and it still fails, stop iterating
+that family and log.
 
-Why per family, not per page: the two families fail for unrelated
+Why per family, not per page: the families fail for unrelated
 reasons — content failures are renderer emission bugs, sanity
-failures are almost always responsive chrome — and both field runs
-bear this out. The validation experiment needed exactly one sanity
-iteration (360px nav CTA); the smoke run needed exactly one of
-*each* (a separator-emission fix for the content gate, then the same
-360px chrome class for sanity). A single per-page budget would have
-forced the smoke's second, independent, one-edit fix to be logged as
-a residual; per-family keeps the loop just as bounded without
-absorbing real, cheap fixes.
+failures are almost always responsive chrome, Figma failures are
+section drift or measure mismatches — and the field runs bear this
+out (the validation experiment needed one sanity iteration, the smoke
+run one of each). A single per-page budget would force independent,
+one-edit fixes to be logged as residuals; per-family keeps the loop
+just as bounded without absorbing real, cheap fixes.
 
 ### Residual logging
 
@@ -244,7 +279,8 @@ absorbing real, cheap fixes.
   "pages": {
     "<slug>": {
       "status": "gated",
-      "gates": { "domEquality": "PASS", "slotCoverage": "PASS", "donorProbe": "PASS", "eyeball": "adopted", "sanity": "PASS" },
+      "gates": { "domEquality": "PASS", "slotCoverage": "PASS", "donorProbe": "PASS", "eyeball": "adopted", "sanity": "PASS",
+                 "figma": "<summary.json ledgerFragment, Figma donor only>" },
       "fixIteration": "hid nav CTA + lang switch below 560px; stacked hero form",
       "residuals": [ { "gate": "donorProbe", "check": "section rhythm", "detail": "72px vs 96px on s05 — donor's own short sections do this too", "verdict": "accepted" } ],
       "flags": [ "source JSON-LD Organization URLs are broken upstream — carried verbatim, needs owner decision" ]
@@ -253,8 +289,9 @@ absorbing real, cheap fixes.
 }
 ```
 
-Residuals are never silently absorbed: each names the gate, the
-check, and a human-readable verdict (`accepted` | `needs-owner` |
+A Figma residual also carries `class` (`figma.join` | `figma.geometry` |
+`figma.ramp`). Residuals are never silently absorbed:
+each names the gate, the check, and a human-readable verdict (`accepted` | `needs-owner` |
 `blocked`). The Phase 6 handoff report lists every residual and flag.
 
 ## Failure modes

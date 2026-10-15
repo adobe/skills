@@ -199,6 +199,10 @@ HTML file. When the user gives feedback during iteration:
   proposed page's `<style>`. Refuses without it.
 - **`migrate`** writes the same block on every migrated page,
   re-derived from the latest DESIGN.md so token edits propagate.
+- **`reskin`** writes the block on every Figma-donor page from
+  `donor-tokens.json` through `rootTokens`
+  (`reskin/scripts/render/root-tokens.mjs`), first in the first
+  `<style>`; names the donor does not supply are left out and flagged.
 - **`extract`** does not touch this block (extract describes the
   current site, which has its own arbitrary tokens).
 - Downstream consumers (e.g., the stardust `deploy` skill) read the block from

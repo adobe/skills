@@ -4,6 +4,30 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.34.0 — reskin checks a page against its Figma donor: section join, geometry, type ramp, frame pixels, divergence register
+
+A Figma-donor reskin used to stop at the token probe: nothing compared the rendered page with the frames it was built
+from. The new `reskin/figma-gate.mjs` does, offline (no token, no network), from the capture `figma-donor.mjs` made. B0
+joins the page's top-level `section[data-slot]` elements to `mapping.md` and the curated modules. B1 measures geometry
+against Figma nodes or tokens. B3 asserts the generated `:root` block and each text style's computed size, weight, line
+height, letter spacing, family and color. B2 compares each section with its slice of the frame image through replica's
+`pixel-compare`, advisory, and only where the frame's copy is the section's copy. B4 writes a divergence register
+(mandated, unmandated, out-of-kit, conflict, pre-existing). The agent authors `reskin/figma-checks/<slug>.json` from
+`figma-gate.mjs boxes` outlines. `all` runs under `run-bg`, exits 0 / 1 / 2 / 3 / 124 and writes a `ledgerFragment` for
+`ledger.json` `pages.<slug>.gates.figma`. Phase 5 gains **(d) Figma fidelity**, with its own fix iteration; B0, B1 and B3
+block, B2 is advisory, B4 informational. The instruments are reused, not rebuilt: `diff`'s `measure-live` and replica's
+`pixel-compare`, `run-capped` and `run-bg`, so Setup step 3 now copies all of `skills/diff/scripts/` and those three, and
+step 2 installs `pixelmatch` and `pngjs` with `playwright` (`npm i -D … --legacy-peer-deps`, never `--no-save`).
+
+- **The `:root` block (D10).** `reskin/render/root-tokens.mjs` renders the token-contract block from `donor-tokens.json`,
+  plus `--type-*` names for per-module text styles. Renderers emit it first in the first `<style>` and style through
+  `var(--…)`; names the donor lacks are left out and go to the page's `flags[]`. Phase 4 also renders every `mapped` or
+  `new-module` slot as one top-level `<section data-slot data-module>`, which the join reads, and `mapping.md` needs the
+  table form of the entry schema.
+- **`donor-probe` options.** Spec entries may name a custom property (`--name`), compared whitespace-collapsed, and
+  `compare: "firstFamily"`; `--viewport <w>`, `--no-sanity` and `--json <path>` let `figma-gate` run it per width and read
+  the results. A value flag no longer swallows a following `--flag`.
+
 ## 0.33.0 — reskin takes a Figma donor: headless capture and deterministic curation
 
 `reskin --donor-figma <url>` replaces the "not yet implemented" stop. The new `reskin/figma-donor.mjs` reads the file over

@@ -181,6 +181,10 @@ environment only. Recipe:
    `donor-modules.md`, `canon-source/DESIGN.{md,json}` and
    `_brand-extraction.json`. Re-run after any rules change.
 5. `figma-donor.mjs stamp` — `state.json.designSource`, nothing else.
+6. After Phase 4, `figma-gate.mjs` checks the page against this capture
+   (`reference/gates.md` § (d)); it reads `.work/reskin/figma/`, so
+   keep it, and the rules' `weightMap` and `familyEquivalence` apply to
+   the Figma side of its type ramp.
 
 | Figma source | Maps to | Canon-source artifact |
 |---|---|---|
