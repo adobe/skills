@@ -1,0 +1,11 @@
+{
+  "slug": "about",
+  "url": "https://www.example.com/about.html",
+  "media": {
+    "imgs": [
+      { "src": "https://www.example.com/img/hero.jpg#top", "alt": "Hero", "localPath": "stardust/current/assets/media/hero-1a2b3c4d.jpg" },
+      { "src": "img/logo-b.png", "alt": "Logo B", "localPath": "stardust/current/assets/media/b/logo.png" },
+      { "src": "data:image/gif;base64,R0lGODlhAQABAAAAACw=", "alt": "", "localPath": "stardust/current/assets/media/pixel.gif" }
+    ]
+  }
+}

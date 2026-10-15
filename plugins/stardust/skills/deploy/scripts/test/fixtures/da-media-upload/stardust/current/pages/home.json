@@ -1,0 +1,15 @@
+{
+  "slug": "home",
+  "url": "https://example.com/",
+  "media": {
+    "images": [
+      { "src": "https://example.com/img/hero.jpg?w=1200", "currentSrc": "https://example.com/img/hero.jpg?w=2400", "alt": "Hero", "localPath": "stardust/current/assets/media/hero-1a2b3c4d.jpg" },
+      { "src": "/img/team.png", "alt": "Team", "localPath": "stardust/current/assets/media/team-5e6f7a8b.png" },
+      { "src": "https://example.com/img/gone.png", "alt": "Gone", "localPath": null, "downloadError": "404" },
+      { "src": "https://example.com/img/logo-a.png", "alt": "Logo A", "localPath": "stardust/current/assets/media/a/logo.png" }
+    ],
+    "cssBackgrounds": [
+      { "url": "https://example.com/img/band.webp", "domPath": "main > section.band", "localPath": "stardust/current/assets/media/band-9c0d1e2f.webp" }
+    ]
+  }
+}
