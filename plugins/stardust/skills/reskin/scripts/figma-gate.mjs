@@ -9,12 +9,14 @@
 //   ramp   B3: the :root token block and the type of every Type entry, through donor-probe.mjs.
 //   pixel  B2: advisory pixel share of each section against its slice of the frame image, where the
 //          frame's copy is the page's copy (replica's pixel-compare.mjs).
+//   register  B4: the divergence register of the step results already on disk (no browser).
 // Writes go only under <dir>/.work/reskin/gates/. Under a sticky --confidential capture, every
 // subcommand first checks that .work/ and reskin/figma-checks/ are git-ignored.
 // --help answers before any helper import, so it works even from a partial copy of the scripts.
 // Exit codes: 0 pass · 1 a blocking check failed · 2 usage or setup · 3 bot challenge on a live target
 // · 124 no verdict (a step crashed or timed out: re-run, never a fix iteration).
 import { realpathSync } from 'node:fs';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const SELF = fileURLToPath(import.meta.url);
@@ -25,6 +27,7 @@ export const HELP = `Usage:
   node figma-gate.mjs geometry --page <slug> --url <url|file> [--dir stardust]
   node figma-gate.mjs ramp --page <slug> --url <url|file> [--dir stardust]
   node figma-gate.mjs pixel --page <slug> --url <url|file> [--dir stardust]
+  node figma-gate.mjs register --page <slug> [--dir stardust]
 
 Figma checks on a reskin page, against the capture figma-donor.mjs made (offline: no token, no network).
 
@@ -83,6 +86,19 @@ pixel    B2, advisory. Runs the join first (drift stops here, exit 1), validates
          font set does not serve. Writes <slot>.figma.png, <slot>.page.png, <slot>.diff.png,
          <slot>.text-boxes.json and pixel.json under <dir>/.work/reskin/gates/<slug>/figma/. Exit 0,
          or 124 when a comparison hit its deadline (no verdict: re-run).
+register B4, the divergence register. Reads join.json and whichever of geometry.json, ramp.json and
+         pixel.json the earlier steps left under <dir>/.work/reskin/gates/<slug>/figma/ (no browser, no
+         --url; a missing join.json is exit 2: run the join first). A step with no file is "not run":
+         the register lists it, and no section is mandated unless both geometry.json and ramp.json exist.
+         Five classes: mandated (a joined module section whose geometry and type entries all pass;
+         UNASSERTED ignored), unmandated (each failing entry, a failing :root token included),
+         out-of-kit (each new-module mapping row), conflict (a Figma text color below WCAG contrast
+         on its own solid ground: 4.5, or 3 for large text; gradient and image grounds are skipped)
+         and pre-existing (each flag in ledger.json pages.<slug>.flags, the ledger being optional).
+         Rows carry the Figma node and a file link; under --confidential the links are left out.
+         Writes register.json and register.md (counts, rows, a "Not run" line, then the pixel results as
+         an advisory block with the uncalibrated reference classes) beside the step files, prints
+         "register written: mandated 1 · unmandated 1 · …" and the register.md path; exit 0.
 --dir <d>  the stardust directory (default stardust).
 
 Checks file <dir>/reskin/figma-checks/<slug>.json (written by the agent from the boxes outlines):
@@ -111,6 +127,7 @@ const SPEC = {
   geometry: { values: ['--page', '--url', '--dir'], bools: [], positional: [] },
   ramp: { values: ['--page', '--url', '--dir'], bools: [], positional: [] },
   pixel: { values: ['--page', '--url', '--dir'], bools: [], positional: [] },
+  register: { values: ['--page', '--dir'], bools: [], positional: [] },
 };
 
 export function parseArgs(argv, UsageError) {
@@ -258,13 +275,49 @@ async function pixelStep({ dir, opts, log, UsageError }) {
   return results.some((r) => r.verdict === 'no verdict') ? 124 : 0;
 }
 
+async function registerStep({ dir, opts, log, UsageError }) {
+  if (!opts.page) throw new UsageError('register needs --page <slug>');
+  const [{ readInputs, workDir }, { loadBoxes }, { buildRegister, countsLine, registerMd }, { readCurrent }, { canonicalFigmaUrl }, { readJsonIf, writeFileAtomic, writeJson }] = await Promise.all([
+    helper('io'), helper('boxes'), helper('register'), helper('cache', 'figma'), helper('url', 'figma'), helper('io', 'figma'),
+  ]);
+  const out = workDir(dir, opts.page);
+  const read = (name) => {
+    try { return readJsonIf(join(out, name)); } catch (e) { throw new UsageError(`${join(out, name)} is not valid JSON: ${e.message}`); }
+  };
+  const joinResult = read('join.json');
+  if (!joinResult) throw new UsageError(`no ${join(out, 'join.json')}: run the join first (node figma-gate.mjs all --page ${opts.page} --url <url|file>, or join)`);
+  const { mapping: mappingMd, ledger } = readInputs(dir, opts.page, ['mapping', 'ledger']);
+  const current = readCurrent(dir);
+  const sectionNodes = [...new Set((joinResult.sections || []).map((s) => s.node).filter(Boolean))];
+  const boxes = sectionNodes.length ? loadBoxes(dir, sectionNodes) : { roots: {} };
+  const link = (nodeId) => (current?.confidential || !current?.fileKey ? null : canonicalFigmaUrl({ fileKey: current.fileKey, nodeId }));
+  const register = {
+    page: opts.page,
+    ...buildRegister({
+      join: joinResult,
+      geometry: read('geometry.json'),
+      ramp: read('ramp.json'),
+      pixel: read('pixel.json'),
+      mapping: (await helper('mapping')).parseMapping(mappingMd),
+      boxes,
+      flags: ledger?.pages?.[opts.page]?.flags || [],
+      link,
+    }),
+  };
+  writeJson(join(out, 'register.json'), register);
+  writeFileAtomic(join(out, 'register.md'), registerMd(register));
+  log(`register written: ${countsLine(register.counts)}`);
+  log(join(out, 'register.md'));
+  return 0;
+}
+
 // steps lets a test replace a step function.
 export async function main(argv, { env = process.env, log = console.log, warn = (m) => process.stderr.write(`${m}\n`), steps = {} } = {}) {
   if (argv.includes('--help') || argv.includes('-h')) { log(HELP); return 0; }
   const { UsageError } = await helper('errors', 'figma');
   const { cmd, opts } = parseArgs(argv, UsageError);
   const dir = opts.dir || 'stardust';
-  const run = { boxes: boxesStep, join: joinStep, geometry: geometryStep, ramp: rampStep, pixel: pixelStep, ...steps }[cmd];
+  const run = { boxes: boxesStep, join: joinStep, geometry: geometryStep, ramp: rampStep, pixel: pixelStep, register: registerStep, ...steps }[cmd];
   const { confidentialGuard } = await helper('io');
   confidentialGuard(dir);
   return run({ dir, opts, env, log, warn, UsageError });
