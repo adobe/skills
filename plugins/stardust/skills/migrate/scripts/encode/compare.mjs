@@ -6,7 +6,7 @@
  * compareDocs(expectedHtml, gotHtml, {level = 'text'}) → {equal, level, levels, diffs}
  *   levels  {core, text, strict, byte}: the verdict at every level
  *   diffs   [{where, kind, level, expected, got}] at the levels `level` includes (equal ⇔ no diffs); where is
- *           `s<section>.<item> <sig>[ r<row>c<cell>]`, `… [r<row> ]stray<n>`, `metadata:<key>`,
+ *           `s<section>.<item> <sig>[ r<row>c<cell>]`, `… [r<row> ]stray<n>|blank@<e>`, `metadata:<key>`,
  *           `s<n> section-metadata:<key>` or `doc`
  *
  * Levels (design § 2, tightened by decision D0): core ⊂ text ⊂ strict; byte extends text. Sections are the children of
@@ -153,10 +153,19 @@ function childParts(n) {
   return parts.filter((p) => !Array.isArray(p) || !ASCII_BLANK.test(decode(p.map((t) => t.text).join(''))));
 }
 const runUnit = (run) => unit(run.map((t) => ({ t: 'text', s: decode(t.text), pre: false })));
-// text a block holds outside its rows, and each row outside its cells: [{at: '' | ' r<row>', unit}] → keyed `<at> stray<n>`
+// text a block holds outside its rows, and each row outside its cells, keyed `[ r<row>] stray<n>` (n counts the runs with
+// core text) or, for a run blank at core (NBSP …), `[ r<row>] blank@<e>` (it sits before element e): an NBSP run never
+// shifts the keys of the real ones
 function strays(block) {
   const out = [];
-  const collect = (n, at) => childParts(n).filter(Array.isArray).forEach((run, i) => out.push({ key: `${at} stray${i}`, unit: runUnit(run) }));
+  const collect = (n, at) => {
+    let real = 0; let el = 0;
+    for (const part of childParts(n)) {
+      if (!Array.isArray(part)) { el += 1; continue; }
+      const u = runUnit(part);
+      out.push({ key: u.core ? `${at} stray${real++}` : `${at} blank@${el}`, unit: u });
+    }
+  };
   collect(block, '');
   kids(block).forEach((r, ri) => collect(r, ` r${ri}`));
   return out;

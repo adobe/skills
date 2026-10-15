@@ -151,7 +151,11 @@ const levels = (got, expected = BASE) => compareDocs(expected, got).levels;
   assert.deepEqual(levels(`<body><main>&nbsp;${META}${BODY}</main></body>`), { core: true, text: false, strict: false, byte: false }, 'directly in <main>');
   const row = compareDocs(BASE, edit('<div class="cards three-up"><div>', '<div class="cards three-up"><div>&nbsp;'));
   assert.deepEqual(row.levels, { core: true, text: false, strict: false, byte: false }, 'stray in a row');
-  assert.deepEqual(row.diffs, [{ where: 's0.2 block:cards.three-up r0 stray0', kind: 'stray-text', level: 'text', expected: null, got: '\u00a0' }]);
+  assert.deepEqual(row.diffs, [{ where: 's0.2 block:cards.three-up r0 blank@0', kind: 'stray-text', level: 'text', expected: null, got: '\u00a0' }], 'keyed by its place: before element 0 of row 0');
+  const shift = (nbsp) => `<main><div><div class="cards"><div><div>a</div></div>${nbsp}<div><div>b</div></div>loose</div></div></main>`;
+  const r = compareDocs(shift('&nbsp;'), shift(''));
+  assert.deepEqual(r.levels, { core: true, text: false, strict: false, byte: false }, 'an NBSP stray never shifts the keys of the real ones');
+  assert.deepEqual(r.diffs, [{ where: 's0.0 block:cards blank@1', kind: 'stray-text', level: 'text', expected: '\u00a0', got: null }]);
   assert.equal(compareDocs(BASE, edit('class="cards three-up"', 'class="cards\u00a0three-up"')).levels.core, false, 'class names split on ASCII whitespace only');
 }
 
