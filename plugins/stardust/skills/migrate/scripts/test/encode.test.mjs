@@ -36,7 +36,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { main, encodeTemplate, loadMap, loadEncoderDeps } from '../encode.mjs';
-import { encodePage, tidy, validateVocabulary, validateTransform, validatePatches, varianceDelta, prepareCapture, contentTops, markerMatches, moduleLevel, walkModules, GENERATED_TOKEN, LANDMARK_STOP, KEYS, COMMENT_KEY, LINT_KEYS, dropPredicate, rowGroups, rowNodes } from '../encode/engine.mjs';
+import { encodePage, tidy, validateVocabulary, validateTransform, validatePatches, varianceDelta, prepareCapture, contentTops, markerMatches, moduleLevel, walkModules, GENERATED_TOKEN, LANDMARK_STOP, KEYS, COMMENT_KEY, LINT_KEYS, dropPredicate, rowGroups, rowNodes, PLAIN_CONTENT } from '../encode/engine.mjs';
 import { parseHTML, qs, qsa, textOf, kids } from '../encode/dom.mjs';
 import { loadSite } from '../encode/site.mjs';
 import { encode as sanitise } from '../../../deploy/scripts/sanitise.js';
@@ -440,6 +440,12 @@ try {
     assert.ok(probe({ zzz: 1 }).some((e) => /zzz/.test(e)), `${kind}: a key KEYS does not list is rejected`);
   }
   for (const [kind, keys] of Object.entries(LINT_KEYS)) for (const k of keys) assert.ok(KEYS[kind].includes(k) && !at[kind]({ [k]: { any: 'value' } }).some((e) => e.includes(k)), `${kind}.${k}: --lint's key, accepted unread`);
+
+  // --- PLAIN_CONTENT is the census rule: a class-less plain-content node is no shape; a classed one, or another tag, is --
+  const census = (html) => one(html).prints.filter((x) => x.startsWith('UNMARKED'));
+  assert.ok(PLAIN_CONTENT.has('blockquote') && !PLAIN_CONTENT.has('aside'));
+  assert.deepEqual(census('<blockquote>q</blockquote><aside>a</aside><blockquote class="pull">q2</blockquote>'), ['UNMARKED | aside. | ', 'UNMARKED | blockquote.pull | ']);
+  for (const tag of ['p', 'ul', 'span', 'a', 'pre', 'table']) assert.ok(PLAIN_CONTENT.has(tag) && census(`<${tag}>x</${tag}>`).length === 0, `${tag}: plain content`);
 
   // --- dropPredicate: the walk's skip — marker drops (whole subtree) and transform drops; .within adds drop:/dynamics: ---
   const dropHtml = '<main><h1>T</h1><div class="wrap"><div class="promo-strip"><p>Promo</p></div><div class="keep-strip"><p>Keep</p></div><div class="tf-strip"><p>TF</p></div><div class="mod-ad"><p>Ad <span class="x">y</span></p></div></div></main>';

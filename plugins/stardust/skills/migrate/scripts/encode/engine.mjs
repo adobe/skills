@@ -99,7 +99,7 @@ const LANDMARK_STOP = 'footer, nav, header, [role="contentinfo"]';
 const DEFAULT_METADATA = [['Title', '$title'], ['Description', '$description'], ['nav', '$nav'], ['footer', '$footer']];
 const META_VARS = ['$title', '$description', '$nav', '$footer', '$h1', '$ogtitle'];
 // census: class-less plain content at module level is default content by nature, never a component
-const PLAIN_CONTENT = new Set(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'dl', 'blockquote', 'pre', 'table', 'figure', 'img', 'picture', 'hr', 'br', 'a', 'span', 'strong', 'em', 'b', 'i', 'small', 'code']);
+export const PLAIN_CONTENT = new Set(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'dl', 'blockquote', 'pre', 'table', 'figure', 'img', 'picture', 'hr', 'br', 'a', 'span', 'strong', 'em', 'b', 'i', 'small', 'code']);
 const CELL_MODES = new Set(['rich', 'inline', 'text', 'image', 'link', 'attr', 'literal', 'idref']);
 const EMITTER_RE = /^(block:[a-z0-9][a-z0-9-]*(?: [a-z0-9][a-z0-9-]*)*|section-style:[a-z0-9][a-z0-9 ,-]*|section-break:[a-z0-9][a-z0-9 ,-]*|section|wrapper|default-content|drop:.+|dynamics:.+)$/;
 const TOKEN_RE = /^[a-z0-9][a-z0-9-]*$/;
