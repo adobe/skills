@@ -99,13 +99,14 @@ try {
 
   const ok = (shape) => ({ ok: true, why: 'the current clean encode', shape });
   const pages = [
-    { slug: 'a', isArchetype: true, encoded: ok(arch) },
+    { slug: 'a', isArchetype: true, encoded: ok(arch), convert: ['cards', 'hero'] },
     { slug: 's1', encoded: ok(same) },
     { slug: 's2', encoded: ok(fresh) },
     { slug: 's3', encoded: ok(fresh) },
     { slug: 's4', encoded: { ok: false, why: 'encode stopped: variance' } },
     { slug: 's5', encoded: null },
-    { slug: 's6', encoded: ok(same), convert: ['quote'] },
+    { slug: 's6', encoded: ok([...same, b('quote', 1)]), convert: ['quote'] },
+    { slug: 's7', encoded: ok(same), convert: ['cards'] },
   ];
   const plan = (o) => Object.fromEntries([...planHarness({ pages, ...o })].map(([s, v]) => [s, `${v.needsHarness ? 'RUN' : 'skip'}: ${v.why}`]));
   assert.deepEqual(plan({ key: K, passedOn: passed }), {
@@ -116,7 +117,8 @@ try {
     s4: 'RUN: encode stopped: variance',
     s5: 'RUN: not an encoded page: it runs the launches',
     s6: 'RUN: block code is written for it (converts quote)',
-  }, 'a new shape runs once, on its first page; a later page with it is covered once that page passes');
+    s7: 'skip: covered by passedOn under sha256:111111111111… (a)',
+  }, 'a new shape runs once, on its first page; a later page with it is covered once that page passes; a page whose block code passed under the key needs no re-run');
   assert.deepEqual(plan({ key: K2, passedOn: passed }), {
     a: 'RUN: the harness key moved since the recorded pass (sha256:111111111111… → sha256:222222222222…)',
     s1: 'skip: covered once a pass the launches',
@@ -125,8 +127,10 @@ try {
     s4: 'RUN: encode stopped: variance',
     s5: 'RUN: not an encoded page: it runs the launches',
     s6: 'RUN: block code is written for it (converts quote)',
+    s7: 'RUN: block code is written for it (converts cards)',
   }, 'a key change re-arms the archetype and the representatives; the rest wait for them');
-  assert.equal(plan({ key: K, passedOn: null }).a, 'RUN: the archetype: no harness pass recorded under the current key');
+  assert.deepEqual([plan({ key: K, passedOn: null }).a, plan({ key: K, passedOn: null }).s1], ['RUN: the archetype records no harness pass (passedOn)', 'skip: covered once a pass the launches']);
+  assert.equal(planHarness({ key: K, passedOn: null, pages: pages.slice(1, 2) }).get('s1').why, 'the archetype records no harness pass (passedOn)', 'no pass and no representative: the plain reason');
   assert.deepEqual(Object.values(plan({ key: null, keyError: 'no map', passedOn: passed })).every((v) => v.startsWith('RUN: no harness key (no map)')), true, 'no key: every page runs');
 
   // --- harness key --------------------------------------------------------------------------------------------------

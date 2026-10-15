@@ -128,9 +128,10 @@ export function inherited({ key, passedOn, shape }) {
 
 /**
  * needsHarness for one template's pages, in delivery order (the archetype first). A page runs the launches unless
- * passedOn under the current key covers its shape, or the pages flagged before it in this plan will once they pass
- * (an earlier sibling with a new shape becomes that shape's representative). Every page that is not a current clean
- * encode under the template's map, that converts a block (block code is written for it), or has no key, runs them.
+ * passedOn under the current key covers its shape, or — a sibling that converts no block (no block code is written for
+ * it) — the pages flagged before it in this plan will once they pass (an earlier sibling with a new shape becomes that
+ * shape's representative). A page that is not a current clean encode under the template's map, or with no key, runs
+ * them.
  *   key, keyError  the current harness key, or null and why it could not be computed
  *   passedOn       the archetype's record
  *   pages          [{ slug, isArchetype, encoded: encodedShape()'s { ok, why, shape } | null, convert: [<block>…] }]
@@ -146,13 +147,14 @@ export function planHarness({ key, keyError = null, passedOn, pages }) {
     if (!key) { run(`no harness key (${keyError || 'unknown'})`); continue; }
     if (!p.encoded) { run('not an encoded page: it runs the launches'); continue; }
     if (!p.encoded.ok) { run(p.encoded.why); continue; }
-    if (p.convert && p.convert.length) { run(`block code is written for it (converts ${p.convert.join(', ')})`); continue; }
     const now = inherited({ key, passedOn, shape: p.encoded.shape });
     if (now.ok) { out.set(p.slug, { needsHarness: false, why: now.why }); continue; }
+    if (p.isArchetype) { run(now.why); continue; }
+    if (p.convert && p.convert.length) { run(`block code is written for it (converts ${p.convert.join(', ')})`); continue; }
+    if (!passed.length && !pending.length) { run(now.why); continue; }
     const later = covers(p.encoded.shape, [...passed, ...pending].map((e) => e.shape));
     if (later.covered && pending.length) { out.set(p.slug, { needsHarness: false, why: `covered once ${pending.map((e) => e.slug).join(', ')} pass the launches` }); continue; }
-    if (p.isArchetype) run(moved ? now.why : 'the archetype: no harness pass recorded under the current key');
-    else run(`new shape: ${later.gaps.join('; ')}${moved ? ` (${now.why})` : ''}`);
+    run(`new shape: ${later.gaps.join('; ')}${moved ? ` (${now.why})` : ''}`);
   }
   return out;
 }
