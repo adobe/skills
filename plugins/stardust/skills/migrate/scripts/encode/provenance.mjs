@@ -36,6 +36,9 @@
  *   timestamp): state.json is re-read, only this key is merged, tmp + rename, only when the value differs; an absent
  *   state.json is never created.
  *
+ * Readers (deploy staging, rollout inventory, gate evidence) decide "is this the current clean encode?" with
+ *   currentEncode() only (below; reads only, synchronous, import-safe) — never by re-deriving these checks.
+ *
  * Skip (no encode, no write): the document exists, its sha equals the manifest's and the sidecar's encode.output, the
  *   sidecar's encode.{encoder, map, inputs} equal the current key, and audit.encode.status is clean. The caller's
  *   --force bypasses it; the byte gate still decides every write.
@@ -48,7 +51,7 @@
  * `skills/migrate/scripts/importer-skeleton.mjs` (commits 9aaeff4f, d4a37277, 7662fda2), reworked for main's sidecar contract.
  */
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { SIDECAR_KEYS, outputPathFor, sidecarFor } from '../migrate.mjs';
@@ -60,12 +63,12 @@ export const MIGRATED = 'stardust/migrated';
 const SCRIPTS = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
-const byCodePoint = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 const safeSlug = (s) => typeof s === 'string' && /^[^/\\]+$/.test(s) && !s.startsWith('.');
 const short = (h) => (typeof h === 'string' ? `${h.slice(0, 19)}…` : 'none');
 const pretty = (v) => `${JSON.stringify(v, null, 2)}\n`;
-// deep equality that ignores object key order (a sidecar rewritten by another tool may order its keys differently)
-const canon = (v) => (Array.isArray(v) ? v.map(canon) : isObj(v) ? Object.fromEntries(Object.keys(v).sort(byCodePoint).map((k) => [k, canon(v[k])])) : v);
+// deep equality that ignores object key order (a sidecar rewritten by another tool may order its keys differently);
+// an equality test only, so any fixed key order serves: the default sort (UTF-16 code units, never the locale)
+const canon = (v) => (Array.isArray(v) ? v.map(canon) : isObj(v) ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, canon(v[k])])) : v);
 const same = (a, b) => JSON.stringify(canon(a ?? null)) === JSON.stringify(canon(b ?? null));
 
 export const sha256 = (data) => `sha256:${createHash('sha256').update(data).digest('hex')}`;
@@ -77,17 +80,9 @@ const jsonSha = (bytes) => {
   try { return sha256(JSON.stringify(JSON.parse(bytes.toString('utf8')))); } catch { return sha256(bytes); }
 };
 
-/** Write `data` to `file` (tmp + rename, parent dirs created) only when the bytes differ; true when written. */
-export function writeIfChanged(file, data) {
-  const buf = Buffer.isBuffer(data) ? data : Buffer.from(data);
-  const old = readBytes(file);
-  if (old && Buffer.compare(old, buf) === 0) return false;
-  mkdirSync(dirname(file), { recursive: true });
-  const tmp = `${file}.tmp-${process.pid}`;
-  writeFileSync(tmp, buf);
-  renameSync(tmp, file);
-  return true;
-}
+// Every write goes through deploy's chrome-map.mjs writer (tmp + rename, only when the bytes differ), handed in by the
+// caller as `io` = { writeIfChanged, stableJSON } (encode.mjs loadEncoderDeps, either layout); this module stays
+// synchronous and import-safe for the readers of currentEncode.
 
 // ---- the run's key -------------------------------------------------------------------------------------------------
 const IMPORTS = /\bfrom\s*['"](\.\.?\/[^'"]+)['"]|\bimport\s*['"](\.\.?\/[^'"]+)['"]/g;
@@ -114,7 +109,7 @@ export function encoderKey() {
     for (const m of src.matchAll(DEPLOY_LOADS)) { let t = null; try { t = deployPath(m[1]); } catch { /* not a deploy file */ } if (t) walk(t); }
   };
   walk(join(SCRIPTS, 'encode.mjs'));
-  const lines = [...seen].map(([abs, s]) => `${nameOf(abs)} ${s}`).sort(byCodePoint);
+  const lines = [...seen].map(([abs, s]) => `${nameOf(abs)} ${s}`).sort(); // UTF-16 code-unit order, locale-free
   encoderCache = { script: ENCODER_SCRIPT, version: ENCODER_VERSION, sha: sha256(lines.join('\n')) };
   return encoderCache;
 }
@@ -142,11 +137,14 @@ export function pageInputs({ root, site, slug, archetype }) {
   };
 }
 
-/** The page's patches for the engine: { value: array|null, error? } (absent → null; the engine validates the shape). */
+/**
+ * The page's patches: { present, value, error? } — absent → { present: false, value: null }; present → the parsed
+ * value as it is (JSON `null` or any other non-array included: the caller rejects it, never reads it as "no patches").
+ */
 export function readPatches(root, slug) {
   const b = safeSlug(slug) ? readBytes(join(root, patchPath(slug))) : null;
-  if (b === null) return { value: null };
-  try { return { value: JSON.parse(b.toString('utf8')) }; } catch (e) { return { value: null, error: `${patchPath(slug)}: invalid JSON (${e.message})` }; }
+  if (b === null) return { present: false, value: null };
+  try { return { present: true, value: JSON.parse(b.toString('utf8')) }; } catch (e) { return { present: true, value: null, error: `${patchPath(slug)}: invalid JSON (${e.message})` }; }
 }
 
 // ---- sidecar -------------------------------------------------------------------------------------------------------
@@ -213,10 +211,13 @@ export function sidecarWith(old, { slug, role, archetype, type = null, url, enco
   return Object.fromEntries(SIDECAR_KEYS.map((k) => [k, base[k] ?? null]));
 }
 
-/** Write the sidecar when its content changed (a semantically equal sidecar is left as its owner formatted it). */
-export function saveSidecar(root, rel, old, next) {
+/**
+ * Write the sidecar when its content changed (a semantically equal sidecar is left as its owner formatted it). Plain
+ * two-space JSON, not stableJSON: a sidecar keeps migrate's key order (SIDECAR_KEYS), state.json its own.
+ */
+export function saveSidecar(io, root, rel, old, next) {
   if (old && same(old, next)) return false;
-  return writeIfChanged(join(root, rel), pretty(next));
+  return io.writeIfChanged(join(root, rel), pretty(next));
 }
 
 // ---- manifest ------------------------------------------------------------------------------------------------------
@@ -233,12 +234,76 @@ export function readManifest(root, archetype) {
   return v;
 }
 
-/** Re-read the manifest, lay `updates` (Map docPath → sha) over it, write it when its bytes change. */
-export function saveManifest(root, archetype, updates) {
+/** Re-read the manifest, lay `updates` (Map docPath → sha) over it, write it (stableJSON: sorted) when its bytes change. */
+export function saveManifest(io, root, archetype, updates) {
   if (!updates.size) return false;
   const m = readManifest(root, archetype);
   for (const [k, v] of updates) m[k] = v;
-  return writeIfChanged(join(root, manifestPathFor(archetype)), pretty(Object.fromEntries(Object.keys(m).sort(byCodePoint).map((k) => [k, m[k]]))));
+  return io.writeIfChanged(join(root, manifestPathFor(archetype)), io.stableJSON(m));
+}
+
+// ---- the shared reader: is this page's encoded document a current, clean encode? --------------------------------
+const readJsonFile = (root, rel) => {
+  let b;
+  try { b = readBytes(join(root, rel)); } catch (e) { return { error: `unreadable (${e.code || e.message})` }; }
+  if (b === null) return { error: 'missing' };
+  try { return { value: JSON.parse(b.toString('utf8')) }; } catch (e) { return { error: `invalid JSON (${e.message})` }; }
+};
+
+/**
+ * The one predicate for every reader of the encoder's output (deploy staging, rollout inventory, gate evidence): is
+ * the page's encoded document the current, clean encode? Reads only; synchronous; never throws on project data.
+ *
+ *   currentEncode({ root, url?, sidecarPath?, docPath?, archetype?, manifests? }) →
+ *     { ok, kind: 'current'|'stopped'|'stale'|'missing', why, docPath, sha, sidecarPath, manifestPath }
+ *
+ *   root         the project root (absolute, or relative to the cwd)
+ *   url          the page's source URL → its sidecar (sidecarPathFor); or pass sidecarPath (project-relative) directly
+ *   docPath      the document expected (stardust/encoded/<da-path>.html, site.outputPathFor); default: the sidecar's
+ *                encode.output.path
+ *   archetype    the template's archetype → its manifest (manifestPathFor); default: the sidecar's encode.map.template
+ *   manifests    an optional Map (manifest path → parsed) shared across calls, so a template's manifest is read once
+ *
+ * kind, in the order checked:
+ *   missing  no document is known (no docPath and no encode.output.path — the page was never encoded clean; note
+ *            migrate's render writes `"encode": null` into every sidecar it renders) or the document is not on disk
+ *   stale    no readable sidecar for an existing document, or encode.output is not this document
+ *   stopped  audit.encode.status is not `clean`: the document is an earlier encode, the page is the model's
+ *   stale    the document's sha256 is not encode.output.sha (a hand edit, or an older encode), or the manifest has no
+ *            entry for it, a different one, or cannot be read
+ *   current  ok: status clean, and the bytes' sha = encode.output.sha = the manifest's entry
+ * `sha` is "sha256:<64hex>" of the document when it exists, else null.
+ */
+export function currentEncode({ root, url = null, sidecarPath = null, docPath = null, archetype = null, manifests = null }) {
+  const sideRel = sidecarPath || (url ? sidecarPathFor(url) : null);
+  const side = sideRel ? readJsonFile(root, sideRel) : { error: 'missing' };
+  const meta = isObj(side.value) ? side.value : null;
+  const enc = meta && isObj(meta.encode) ? meta.encode : null;
+  const out = enc && isObj(enc.output) ? enc.output : null;
+  const doc = docPath || (out && typeof out.path === 'string' ? out.path : null);
+  const tmpl = archetype || (enc && isObj(enc.map) && typeof enc.map.template === 'string' ? enc.map.template : null);
+  const manifestPath = tmpl ? manifestPathFor(tmpl) : null;
+  const verdict = (kind, why, sha = null) => ({ ok: kind === 'current', kind, why, docPath: doc, sha, sidecarPath: sideRel, manifestPath });
+  const rerun = (what, sha) => verdict('stale', `${what} — re-encode it${tmpl ? ` (encode.mjs --template ${tmpl})` : ''}`, sha);
+  if (!doc) return verdict('missing', `no encoded document recorded${!sideRel ? '' : meta ? ` (${sideRel} has no encode.output.path)` : ` (${sideRel}: ${side.error})`}`);
+  if (isAbsolute(doc) || doc.split(/[\\/]/).includes('..')) return rerun(`${doc} is not a project-relative document path`);
+  let bytes;
+  try { bytes = readBytes(join(root, doc)); } catch (e) { return rerun(`${doc} is unreadable (${e.code || e.message})`); }
+  if (bytes === null) return verdict('missing', `no ${doc}`);
+  const sha = sha256(bytes);
+  if (!meta) return rerun(side.error === 'missing' || !sideRel ? `no sidecar${sideRel ? ` ${sideRel}` : ''} for ${doc}` : `${sideRel} ${side.error || 'is not a JSON object'}`, sha);
+  if (!out || out.path !== doc) return rerun(`${sideRel} encode.output.path is ${out?.path ?? 'absent'}, not ${doc}`, sha);
+  const status = isObj(meta.audit) && isObj(meta.audit.encode) ? meta.audit.encode.status : undefined;
+  if (status !== 'clean') return verdict('stopped', `${sideRel} audit.encode.status is ${status ?? 'absent'} — ${doc} is an earlier encode; the page is the model's until it encodes clean`, sha);
+  if (out.sha !== sha) return rerun(`${doc} is ${short(sha)} but ${sideRel} encode.output.sha is ${short(out.sha)} (a hand edit, or an older encode)`, sha);
+  if (!manifestPath) return rerun(`${sideRel} names no template (encode.map.template)`, sha);
+  let m = manifests && manifests.get(manifestPath);
+  if (!m) { m = readJsonFile(root, manifestPath); if (manifests) manifests.set(manifestPath, m); }
+  if (m.error) return rerun(m.error === 'missing' ? `no manifest ${manifestPath}` : `${manifestPath} ${m.error}`, sha);
+  const recorded = isObj(m.value) ? m.value[doc] : undefined;
+  if (recorded === undefined) return rerun(`${manifestPath} has no entry for ${doc}`, sha);
+  if (recorded !== sha) return rerun(`${manifestPath} records ${short(recorded)} for ${doc}, the file is ${short(sha)}`, sha);
+  return verdict('current', `${doc} is the current clean encode`, sha);
 }
 
 // ---- state.json ----------------------------------------------------------------------------------------------------
@@ -255,12 +320,12 @@ export function stateTypes(root) {
 }
 
 /** Merge state.json.migrate.generators[<archetype>] = value; true when written. */
-export function saveGenerators(root, archetype, value) {
+export function saveGenerators(io, root, archetype, value) {
   const s = readState(root);
   if (!isObj(s)) return false;
   const mig = isObj(s.migrate) ? s.migrate : {};
   const gens = isObj(mig.generators) ? mig.generators : {};
   if (same(gens[archetype], value)) return false;
   s.migrate = { ...mig, generators: { ...gens, [archetype]: value } };
-  return writeIfChanged(join(root, 'stardust', 'state.json'), pretty(s));
+  return io.writeIfChanged(join(root, 'stardust', 'state.json'), pretty(s));
 }

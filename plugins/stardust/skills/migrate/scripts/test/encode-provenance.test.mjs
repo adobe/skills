@@ -14,7 +14,10 @@
 //                 stop, staging refuses it; once it encodes clean again the sidecar says so
 //   guard         a hand-edited document → hand-edit (exit 2, nothing written, the message names the path and the fix);
 //                 --force still refuses; --overwrite-hand-edit restores the clean bytes; the same edit as a patch passes;
-//                 a document the manifest does not list is refused when it differs, adopted when byte-equal
+//                 a document the manifest does not list is refused when it differs, adopted when byte-equal; a
+//                 patch file holding JSON null is malformed (error), never "no patches"
+//   currentEncode the shared reader's verdicts: current (by URL, or from the sidecar alone), stopped with a stale
+//                 document, stale (a hand edit under a clean status), missing (no document; a render's encode: null)
 //
 // Usage: node plugins/stardust/skills/migrate/scripts/test/encode-provenance.test.mjs  (exit 1 on failure)
 import assert from 'node:assert/strict';
@@ -24,6 +27,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { main } from '../encode.mjs';
+import { currentEncode } from '../encode/provenance.mjs';
 
 const HERE = import.meta.dirname;
 const MIGRATE = join(HERE, '..', 'migrate.mjs');
@@ -46,6 +50,7 @@ const SIDE = { [A]: 'stardust/migrated/trips/river-walk._meta.json', [S1]: 'star
 const MANIFEST = `stardust/import/${A}/manifest.json`; const STATE = 'stardust/state.json'; const VOCAB = `stardust/import/${A}/vocabulary.json`;
 const CAPTURE = (slug) => `stardust/current/pages/${slug}.html`;
 const PATCH = `stardust/patches/${S1}.json`;
+const verdict = () => currentEncode({ root: T, url: 'https://www.example.com/trips/forest-loop.html', docPath: DOC[S1], archetype: A });
 // a write is a new inode (tmp + rename) or a new mtime
 const stamp = () => Object.fromEntries([...Object.values(DOC), ...Object.values(SIDE), MANIFEST, STATE].map((f) => { const s = statSync(P(f)); return [f, `${s.ino}:${s.mtimeMs}`]; }));
 
@@ -83,6 +88,10 @@ try {
   const gen = { script: enc.encoder.script, sha: enc.encoder.sha, version: '1', vocabularySha: enc.map.vocabularySha, transformSha: enc.map.transformSha };
   assert.equal(read(STATE), withGenerators(gen), 'generators[<template>] merged in; every other state.json byte kept');
   assert.deepEqual(r.pages.map((p) => [p.slug, p.write]), [[A, 'encoded'], [S1, 'encoded']]);
+  assert.deepEqual(verdict(), { ok: true, kind: 'current', why: `${DOC[S1]} is the current clean encode`, docPath: DOC[S1], sha: sha256(docS), sidecarPath: SIDE[S1], manifestPath: MANIFEST });
+  assert.equal(currentEncode({ root: T, sidecarPath: SIDE[S1] }).kind, 'current', 'from the sidecar alone: document and template come from encode');
+  write('stardust/migrated/elsewhere._meta.json', pretty({ slug: 'elsewhere', renderBranch: "A'", encode: null, audit: null }));
+  assert.deepEqual([currentEncode({ root: T, sidecarPath: 'stardust/migrated/elsewhere._meta.json' }).kind, currentEncode({ root: T, sidecarPath: 'stardust/migrated/elsewhere._meta.json' }).ok], ['missing', false], 'a rendered sidecar (encode: null) is no encoded page');
   let st = cli(STAGE, ['--template', A, '--root', T]);
   assert.equal(st.status, 0, `stage-content stages from these sidecars and this manifest\n${st.stderr}`); assert.equal(read('content/trips/forest-loop.html'), docS);
 
@@ -146,6 +155,7 @@ try {
   let side = json(SIDE[S1]);
   assert.equal(side.audit.encode.status, 'unmapped', 'the sidecar records the stop'); assert.equal(side.audit.encode.unmapped.length, 1);
   assert.deepEqual(side.encode, encBefore, 'encode still describes the document on disk'); assert.deepEqual(side.gatesPassed, ['visual-parity']);
+  assert.deepEqual([verdict().kind, verdict().ok, verdict().sha], ['stopped', false, sha256(docS)], 'currentEncode: stopped, the document stale');
   st = cli(STAGE, ['--template', A, '--root', T]);
   assert.equal(st.status, 2, `staging refuses the stopped page's document\n${st.stderr}`);
   rmSync(P(CAPTURE(S1)));
@@ -164,6 +174,8 @@ try {
   const edited = docS.replace('<div class="teaser featured">', '<div class="teaser featured wide">');
   assert.notEqual(edited, docS);
   write(DOC[S1], edited);
+  assert.equal(json(SIDE[S1]).audit.encode.status, 'clean');
+  assert.equal(verdict().kind, 'stale', 'currentEncode: a hand edit under a clean status is stale'); assert.match(verdict().why, /encode\.output\.sha .*a hand edit/);
   const s3 = stamp();
   r = await run('--template', A);
   assert.equal(r.code, 2); assert.equal(r.last, 'encoded 0 · unchanged 1 · stopped 1');
@@ -183,6 +195,12 @@ try {
   assert.equal(side.encode.output.sha, sha256(edited)); assert.match(side.encode.inputs.patchesSha, SHA);
   assert.deepEqual(side.audit.encode.patchesApplied, [{ selector: '.teaser', op: 'attr', matched: 1 }]);
   assert.equal(side.sourceCurrentSha, sourceCurrentSha, 'sourceCurrentSha is never the encoder\'s to change'); assert.deepEqual(side.gatesPassed, ['visual-parity']);
+  const patch = read(PATCH);
+  write(PATCH, 'null');
+  r = await run('--template', A, '--slug', S1, '--json');
+  assert.equal(r.code, 2, 'a patch file holding JSON null is malformed'); assert.equal(r.pages[0].status, 'error');
+  assert.match(r.pages[0].report.errors[0], new RegExp(`^stardust/patches/${S1}\\.json: a patch file holds an array`));
+  write(PATCH, patch);
 
   // --- documents the manifest does not list: refused when they differ, adopted when byte-equal --------------------
   rmSync(P(MANIFEST));
@@ -194,6 +212,8 @@ try {
   r = await run('--template', A);
   assert.equal(r.code, 0); assert.equal(r.last, 'encoded 0 · unchanged 2 · stopped 0'); assert.deepEqual(Object.keys(json(MANIFEST)), [DOC[S1], DOC[A]]);
 
+  rmSync(P(DOC[S1]));
+  assert.deepEqual([verdict().kind, verdict().sha], ['missing', null], 'currentEncode: no document');
   r = await run('--template', A, '--overwrite-hand-edit', 'not-a-page');
   assert.equal(r.code, 1); assert.match(r.err, /--overwrite-hand-edit not-a-page: not a page of template/);
   assert.ok(!existsSync(P('stardust/migrated/trips/not-a-page._meta.json')));

@@ -127,14 +127,16 @@ export function loadMap(root, archetype) {
   return { vocab: v.value ?? null, tf: t.value ?? null, vocabFile, transformFile, errors };
 }
 
-/** deploy's finaliser and offline content count, in either layout. */
+/** deploy's finaliser, offline content count and file writer (chrome-map.mjs: writeIfChanged, stableJSON), in either layout. */
 export async function loadEncoderDeps() {
   const sanitise = await loadDeploy('sanitise.js');
   const inventory = await loadDeploy('content-inventory.mjs');
   const eds = await loadDeploy('eds-path.mjs');
+  const files = await loadDeploy('chrome-map.mjs');
   if (typeof sanitise.encode !== 'function') throw new UsageError('deploy/sanitise.js exports no encode() — update the project copy of the deploy scripts');
   if (typeof inventory.offlineInventory !== 'function' || typeof inventory.diffOffline !== 'function') throw new UsageError('deploy/content-inventory.mjs has no offlineInventory/diffOffline — update the project copy of the deploy scripts');
-  return { finalise: (s) => sanitise.encode(s).output, inventory, pathKey: eds.pathKey };
+  if (typeof files.writeIfChanged !== 'function' || typeof files.stableJSON !== 'function') throw new UsageError('deploy/chrome-map.mjs has no writeIfChanged/stableJSON — update the project copy of the deploy scripts');
+  return { finalise: (s) => sanitise.encode(s).output, inventory, pathKey: eds.pathKey, writeIfChanged: files.writeIfChanged, stableJSON: files.stableJSON };
 }
 
 // the content count's identities: media by the ledger's contentUrl, internal links by their localised path
@@ -163,6 +165,8 @@ export function encodeOne({ root, site, map, deps, slug, archetype, archetypePri
   if (!existsSync(capFile)) return stop(`no capture ${info.capturePath} — run extract; the encoder never fetches the live page`);
   const patches = prov.readPatches(root, slug);
   if (patches.error) return stop(patches.error, false);
+  // a patch file must hold an array: JSON null (or any other non-array) is malformed, never "no patches"
+  if (patches.present && !Array.isArray(patches.value)) return stop(`${prov.patchPath(slug)}: ${engine.validatePatches(patches.value).join('; ')}`, false);
   const page = { ...(site.pageJson(slug) || {}), url: info.url };
   const base = site.baseUrlFor(slug) || info.url; // relative URLs in the capture resolve where it was captured (R15)
   const res = engine.encodePage({ html: readFileSync(capFile, 'utf8'), page, base, vocab: map.vocab, tf: map.tf, site, archetypePrints, inventory: deps.inventory, countKeys: countKeysFor(site, base, deps.pathKey), patches: patches.value, finalise: deps.finalise });
@@ -229,7 +233,7 @@ export function placeTemplate({ root, site, template, map, deps, slugs = null, f
     if (r.status !== 'clean') {
       // a stop leaves the document (and `encode`) as they are; the sidecar says the page is not current
       r.kept = docBytes !== null;
-      if (!dryRun && (side.value || r.kept)) prov.saveSidecar(root, sideRel, side.value, sidecar(undefined));
+      if (!dryRun && (side.value || r.kept)) prov.saveSidecar(deps, root, sideRel, side.value, sidecar(undefined));
       continue;
     }
     const outSha = prov.sha256(r.html);
@@ -238,12 +242,12 @@ export function placeTemplate({ root, site, template, map, deps, slugs = null, f
     Object.assign(r, { write: g.write ? 'encoded' : 'unchanged', adopted: Boolean(g.adopt), overwrote: Boolean(g.overwrote) });
     if (manifest[docPath] !== outSha) updates.set(docPath, outSha);
     if (dryRun) continue;
-    if (g.write) prov.writeIfChanged(join(root, docPath), r.html);
-    prov.saveSidecar(root, sideRel, side.value, sidecar(prov.encodeKeyOf({ current, docPath, outSha, old: side.value, now })));
+    if (g.write) deps.writeIfChanged(join(root, docPath), r.html);
+    prov.saveSidecar(deps, root, sideRel, side.value, sidecar(prov.encodeKeyOf({ current, docPath, outSha, old: side.value, now })));
   }
   if (!dryRun) {
-    prov.saveManifest(root, archetype, updates);
-    prov.saveGenerators(root, archetype, { script: key.encoder.script, sha: key.encoder.sha, version: key.encoder.version, vocabularySha: key.map.vocabularySha, transformSha: key.map.transformSha });
+    prov.saveManifest(deps, root, archetype, updates);
+    prov.saveGenerators(deps, root, archetype, { script: key.encoder.script, sha: key.encoder.sha, version: key.encoder.version, vocabularySha: key.map.vocabularySha, transformSha: key.map.transformSha });
   }
   return records;
 }
