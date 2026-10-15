@@ -400,9 +400,13 @@ try {
     [mk({ kind: 7 }), /kind: a string/], [mk({ sectionBefore: 'yes' }), /sectionBefore: true\|false/], [mk({ sectionAfter: 1 }), /sectionAfter: true\|false/],
     [mk({ merge: 'no' }), /merge: true\|false/], [mk({ retag: { b: 'Strong!' } }), /retag: an object tag → tag name/], [mk({ rows: [{ sel: '.r', optional: 'yes' }] }), /rows\[0\]\.optional: true\|false/],
     [cell({ all: 'yes' }), /cells\[0\]\.all: true\|false/], [cell({ selfOk: 1 }), /cells\[0\]\.selfOk: true\|false/], [cell({ $comment: 3 }), /\$comment: free text/],
+    [mk({ emitter: ['wrapper'] }), /markers\[0\]\.emitter \["wrapper"\] is not a string/], [mk({ emitter: 7 }), /markers\[0\]\.emitter 7 is not a string/], [mk({ emitter: { block: 'a' } }), /markers\[0\]\.emitter \{"block":"a"\} is not a string/],
   ]) assert.match(validateVocabulary(v).join('\n'), re, JSON.stringify(v));
   const commented = { $comment: 'the trip template', ...base, markers: [{ $comment: 'one block', sel: '.a', emitter: 'block:a', variants: [{ $comment: 'c', when: '.x', add: 'x' }], rows: [{ $comment: 'c', sel: '.r', cells: [{ $comment: 'c', parts: [{ $comment: 'c', sel: '.p' }] }] }] }, { sel: '.b', emitter: 'block:b', cells: { $comment: 'c', each: '.c' } }], moduleSelectors: [{ $comment: 'c', childClass: '^x-' }], variance: { $comment: 'c', accept: [{ $comment: 'c', print: 'p', on: 'missing', reason: 'r' }], ignoreAncestors: [{ $comment: 'c', class: 'g', reason: 'r' }] } };
   assert.deepEqual(validateVocabulary(commented), [], '$comment is accepted on every object');
+  // what passes validation never crashes the walk: an array emitter used to coerce to "wrapper" and throw at startsWith
+  const arrayEmitter = { root: 'main', markers: [{ sel: '.w', emitter: ['wrapper'] }] };
+  assert.ok(validateVocabulary(arrayEmitter).length, 'rejected before any page is encoded');
   assert.deepEqual(validateVocabulary({ ...base, $schema: 7, archetype: 7, inputs: 7, markers: [{ sel: '.a', emitter: 'block:a', evidence: 7, unique: 'yes' }] }), [], '--lint\'s own keys pass through unread');
   assert.match(validateTransform({ dorp: ['.x'] }).join(), /^dorp: unknown key/); assert.deepEqual(validateTransform({ $comment: 'c', drop: ['.x'] }), []);
   assert.match(validatePatches([{ selector: 'h1', op: 'replace', vaule: 'x' }]).join(), /\[0\]\.vaule: unknown key/);

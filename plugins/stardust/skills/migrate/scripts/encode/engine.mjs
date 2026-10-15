@@ -280,7 +280,7 @@ export function validateVocabulary(v) {
     if (typeof m.sel !== 'string' || !m.sel.trim()) errs.push(`${w}.sel: a selector string is required`); else { const e = selectorError(`${w}.sel`, m.sel); if (e) errs.push(e); }
     if (m.kind !== undefined && typeof m.kind !== 'string') errs.push(`${w}.kind: a string`);
     for (const k of ['sectionBefore', 'sectionAfter', 'merge']) if (m[k] !== undefined && !isBool(m[k])) errs.push(`${w}.${k}: true|false`);
-    if (m.emitter !== undefined && m.emitter !== null && !EMITTER_RE.test(String(m.emitter))) errs.push(`${w}.emitter "${m.emitter}": use block:<name>[ variants] · default-content · wrapper · section · section-style:<style> · section-break:<style> · drop:<reason> · dynamics:<row>`);
+    if (m.emitter !== undefined && m.emitter !== null && (typeof m.emitter !== 'string' || !EMITTER_RE.test(m.emitter))) errs.push(`${w}.emitter ${typeof m.emitter === 'string' ? `"${m.emitter}"` : `${JSON.stringify(m.emitter)} is not a string`}: use block:<name>[ variants] · default-content · wrapper · section · section-style:<style> · section-break:<style> · drop:<reason> · dynamics:<row>`);
     if (m.style !== undefined && typeof m.style !== 'string') errs.push(`${w}.style: a string`);
     if (m.sectionStyle !== undefined && typeof m.sectionStyle !== 'string') errs.push(`${w}.sectionStyle: a string`);
     if (m.variants !== undefined) {
