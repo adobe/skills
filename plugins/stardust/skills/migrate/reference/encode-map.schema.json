@@ -1,0 +1,214 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://stardust.dev/schemas/encode-map.schema.json",
+  "title": "stardust import/<archetype>/vocabulary.json and transform.json",
+  "description": "The per-template map of the shipped sibling encoder (migrate/scripts/encode.mjs). vocabulary.json validates against this schema's root, transform.json against #/$defs/transform. The contract the encoder applies is its own validators (encode/engine.mjs validateVocabulary and validateTransform); this schema documents the same keys, and test/encode-lint.test.mjs keeps the two in step. Keys marked x-lint are read by `encode.mjs --lint` only; the engine passes them through. Every selector is evaluated by encode/dom.mjs (tag, #id, .class, [attr op value], combinators, :scope :not :is :where :has :first-child :last-child :first-of-type :empty) and is taken from the committed archetype capture. `--lint` (C1) rejects generated ids and class tokens, position pseudo-classes, classes found on no capture of the template (prototype classes, the eds-schema unitSelector) and chains through layout wrappers.",
+  "type": "object",
+  "required": ["archetype", "inputs", "root"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string", "x-lint": "ignored", "description": "an editor hint; ignored" },
+    "archetype": { "type": "string", "minLength": 1, "x-lint": "map", "description": "the template's archetype slug (representativeSlug in stardust/rollout/coverage/templates.json); --lint fails when it names another page" },
+    "inputs": { "$ref": "#/$defs/inputs", "x-lint": "inputs" },
+    "root": { "$ref": "#/$defs/selector", "description": "the content root (rule 5): never body, html or a chrome landmark" },
+    "chrome": { "type": "array", "items": { "$ref": "#/$defs/selector" }, "description": "removed before the walk: header, footer, breadcrumb …" },
+    "wrappers": { "type": "array", "items": { "$ref": "#/$defs/selector" }, "description": "layout containers the walk recurses through (rule 4); a marker never chains through one" },
+    "moduleSelectors": { "type": "array", "items": { "$ref": "#/$defs/moduleSelector" }, "description": "what a component is: a visible match with no marker is `unmapped`, one inside rich content is `flattened`. Default: [data-module] [data-component] [data-tpl] [data-block]" },
+    "sectionTags": { "type": "array", "items": { "$ref": "#/$defs/tagName" }, "default": ["section"], "description": "tags that open and close a section of their own" },
+    "walkSiblings": { "type": "boolean", "default": false, "description": "also walk the root's following siblings, up to the first footer/nav/header landmark" },
+    "requireH1": { "type": "boolean", "default": true, "description": "a page without an <h1> stops as `error`" },
+    "ignoreModifiers": { "type": "array", "items": { "$ref": "#/$defs/regex" }, "description": "class-token regexes the shape fingerprint ignores (layout-grid classes, modifiers that never become a token); generated tokens are always ignored" },
+    "metadata": { "type": "array", "items": { "$ref": "#/$defs/metadataRow" }, "description": "the metadata block's rows, in order. Default: Title $title, Description $description, nav $nav, footer $footer" },
+    "variance": { "$ref": "#/$defs/variance" },
+    "markers": { "type": "array", "items": { "$ref": "#/$defs/marker" }, "description": "what each source module is. Array order is the only precedence: the first marker matching the element itself wins (rule 3); --lint (C3) wants each module matched by exactly one" }
+  },
+  "$defs": {
+    "selector": { "type": "string", "minLength": 1, "description": "a CSS selector over the capture (encode/dom.mjs)" },
+    "regex": { "type": "string", "format": "regex" },
+    "tagName": { "type": "string", "pattern": "^[a-z][a-z0-9]*$" },
+    "sha": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "input": {
+      "type": "object",
+      "required": ["path", "sha"],
+      "additionalProperties": false,
+      "properties": {
+        "path": { "type": "string", "minLength": 1, "description": "project-relative" },
+        "sha": { "$ref": "#/$defs/sha", "description": "sha256 of the file's bytes when the map was last checked against it" }
+      }
+    },
+    "inputs": {
+      "type": "object",
+      "description": "what the map was authored and last linted against. --lint fails while a recorded sha differs from the file (re-check the map, then record the new sha it prints) and while an existing input is not recorded; a recorded optional input that is missing is only a note",
+      "required": ["capture"],
+      "additionalProperties": false,
+      "properties": {
+        "capture": { "$ref": "#/$defs/input", "description": "stardust/current/pages/<archetype>.html — the authority for every selector" },
+        "edsSchema": { "anyOf": [{ "$ref": "#/$defs/input" }, { "type": "null" }], "description": "stardust/eds-schema/<archetype>.json — roles and cell order only (C6)" },
+        "units": { "anyOf": [{ "$ref": "#/$defs/input" }, { "type": "null" }], "description": "stardust/replica/units.json — origin selectors anchor rows (C4)" },
+        "variance": { "anyOf": [{ "$ref": "#/$defs/input" }, { "type": "null" }], "description": "a kept sibling-variance JSON: which siblings need a token, never selector text" }
+      }
+    },
+    "moduleSelector": {
+      "oneOf": [
+        { "$ref": "#/$defs/selector" },
+        { "type": "object", "required": ["childClass"], "additionalProperties": false, "properties": { "childClass": { "$ref": "#/$defs/regex", "description": "an element with an element child whose class token matches (a wrapper around a component); anchor it on the block class, e.g. ^x-[a-z]+(-[a-z]+)*$, so element and modifier classes never match" } } },
+        { "type": "object", "required": ["class"], "additionalProperties": false, "properties": { "class": { "$ref": "#/$defs/regex", "description": "an element whose own class token matches" } } }
+      ]
+    },
+    "metadataRow": {
+      "type": "array",
+      "prefixItems": [
+        { "type": "string", "description": "the row key" },
+        { "type": "string", "description": "alternatives joined by ||, the first non-empty wins: a template over $title $description $nav $footer $h1 $ogtitle, or text(<selector>) on the capture; an alternative with neither is a literal (recorded)" }
+      ],
+      "minItems": 2,
+      "items": false
+    },
+    "variance": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "reviewed shape differences: a sibling whose set of shape prints differs from the archetype's stops as `variance` unless the difference is accepted here",
+      "properties": {
+        "accept": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["print", "on", "reason"],
+            "additionalProperties": false,
+            "properties": {
+              "print": { "type": "string", "description": "the exact print the encoder reported" },
+              "on": { "enum": ["extra", "missing"], "description": "extra: a sibling carries it and the archetype does not; missing: the reverse" },
+              "reason": { "type": "string", "pattern": "\\S", "description": "why this difference is fine" }
+            }
+          }
+        },
+        "ignoreAncestors": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["class", "reason"],
+            "additionalProperties": false,
+            "properties": {
+              "class": { "$ref": "#/$defs/regex", "description": "ancestor class tokens left out of every print's ancestor chain" },
+              "reason": { "type": "string", "pattern": "\\S" }
+            }
+          }
+        }
+      }
+    },
+    "emitter": {
+      "anyOf": [
+        { "type": "string", "pattern": "^(block:[a-z0-9][a-z0-9-]*(?: [a-z0-9][a-z0-9-]*)*|section-style:[a-z0-9][a-z0-9 ,-]*|section-break:[a-z0-9][a-z0-9 ,-]*|section|wrapper|default-content|drop:.+|dynamics:.+)$" },
+        { "type": "null" }
+      ],
+      "description": "block:<name>[ <variant>…] · default-content · wrapper · section (with style) · section-style:<style> · section-break:<style> (an empty styled section) · drop:<reason> · dynamics:<row>. Absent or null: a known kind not mapped yet, `unmapped` when visible (there is no \"none\")"
+    },
+    "marker": {
+      "type": "object",
+      "required": ["sel"],
+      "additionalProperties": false,
+      "properties": {
+        "sel": { "$ref": "#/$defs/selector", "description": "matched against the element itself, never a descendant search" },
+        "kind": { "type": "string", "description": "the module's name in reports (default: sel)" },
+        "emitter": { "$ref": "#/$defs/emitter" },
+        "style": { "type": "string", "description": "the section style of a `section` emitter" },
+        "sectionBefore": { "type": "boolean", "description": "close the current section before this module" },
+        "sectionAfter": { "type": "boolean", "description": "close the current section after this module" },
+        "sectionStyle": { "type": "string", "description": "sets the current section's style" },
+        "variants": { "type": "array", "items": { "$ref": "#/$defs/variant" }, "description": "block variant tokens predicted by the source DOM; the token names come from the gated archetype document (C5)" },
+        "merge": { "type": "boolean", "default": true, "description": "adjacent runs of the same block merge into one block, one row per run (rule 10)" },
+        "retag": { "$ref": "#/$defs/retag" },
+        "drop": { "type": "array", "items": { "$ref": "#/$defs/selector" }, "description": "left out of this module (never counted as missing content)" },
+        "rows": { "$ref": "#/$defs/rows" },
+        "cells": { "$ref": "#/$defs/cells" },
+        "evidence": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true, "x-lint": "C2", "description": "sibling slugs this marker was widened from; a marker with no hit on the archetype must hit each of them" },
+        "unique": { "type": "boolean", "x-lint": "C3", "description": "matches at most once per page (the h1 title, a page container)" }
+      }
+    },
+    "variant": {
+      "type": "object",
+      "required": ["when", "add"],
+      "additionalProperties": false,
+      "properties": {
+        "when": { "$ref": "#/$defs/selector", "description": "matched against the module element; always from the source DOM" },
+        "add": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*( [a-z0-9][a-z0-9-]*)*$", "description": "the token(s) added to the block's class" }
+      }
+    },
+    "retag": { "type": "object", "additionalProperties": { "type": "string" }, "description": "tag → tag" },
+    "rows": {
+      "anyOf": [
+        { "$ref": "#/$defs/selector", "description": "one row per match, with the marker's cells" },
+        { "type": "array", "items": { "$ref": "#/$defs/rowGroup" }, "description": "row groups in order" }
+      ],
+      "description": "absent: the module is one row. With a stardust/replica/units.json family, rows select exactly the family's origin units (C4)"
+    },
+    "rowGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sel": { "$ref": "#/$defs/selector", "description": "absent: the module itself is the row" },
+        "cells": { "$ref": "#/$defs/cells" },
+        "optional": { "type": "boolean", "description": "a group that matches nothing is not `flattened`" },
+        "max": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "cells": {
+      "anyOf": [
+        { "type": "array", "items": { "$ref": "#/$defs/cellSpec" } },
+        { "$ref": "#/$defs/cellsEach" }
+      ],
+      "description": "a row's cells in order; their order agrees with the eds-schema roles (C6)"
+    },
+    "cellsEach": {
+      "type": "object",
+      "required": ["each"],
+      "properties": { "each": { "$ref": "#/$defs/selector", "description": "one cell per match: a variable-width row" } },
+      "allOf": [{ "$ref": "#/$defs/cellSpecKeys" }],
+      "unevaluatedProperties": false
+    },
+    "cellSpec": { "allOf": [{ "$ref": "#/$defs/cellSpecKeys" }], "unevaluatedProperties": false },
+    "wrap": {
+      "anyOf": [
+        { "$ref": "#/$defs/tagName" },
+        { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/tagName" } }
+      ]
+    },
+    "cellSpecKeys": {
+      "type": "object",
+      "description": "a required cell that resolves to nothing is `flattened`",
+      "properties": {
+        "sel": { "$ref": "#/$defs/selector", "description": "relative to the row; absent: the row itself" },
+        "as": { "enum": ["rich", "inline", "text", "image", "link", "attr", "literal", "idref"], "default": "rich", "description": "a mode the grammar lacks is a hard stop, never a per-template extension" },
+        "all": { "type": "boolean", "description": "use every match (default: true for rich, else the first)" },
+        "wrap": { "$ref": "#/$defs/wrap" },
+        "itemWrap": { "$ref": "#/$defs/wrap", "description": "wraps each matched node's value before join" },
+        "join": { "type": "string", "default": "\n" },
+        "optional": { "enum": [true, false, "empty"], "description": "true: the cell may be left out; \"empty\": an empty cell stands in" },
+        "selfOk": { "type": "boolean", "description": "the row itself may be the match" },
+        "retag": { "$ref": "#/$defs/retag" },
+        "drop": { "type": "array", "items": { "$ref": "#/$defs/selector" } },
+        "attr": { "type": "string", "description": "attr: the attribute read; idref: the attribute holding the id (default aria-labelledby); link: the attribute holding the URL (an iframe's src)" },
+        "then": { "enum": ["text", "inline", "rich"], "description": "idref: how the referenced node renders" },
+        "text": { "$ref": "#/$defs/selector", "description": "link: the label inside the anchor" },
+        "titleAttr": { "type": "string", "description": "link: the attribute that becomes the link title" },
+        "value": { "type": "string", "description": "literal: the value (recorded in literals[])" },
+        "parts": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/cellSpec" }, "description": "a compound cell, each part relative to the matched node; exclusive with as" }
+      }
+    },
+    "transform": {
+      "type": "object",
+      "title": "stardust import/<archetype>/transform.json",
+      "description": "rich-text rules (optional file)",
+      "additionalProperties": false,
+      "properties": {
+        "imageParagraph": { "type": "boolean", "default": true, "description": "a block-level image is wrapped in <p>" },
+        "imgAttrs": { "type": "array", "items": { "enum": ["src", "alt", "title"] }, "default": ["src", "alt", "title"] },
+        "retag": { "type": "object", "additionalProperties": { "$ref": "#/$defs/tagName" } },
+        "headingsByClass": { "type": "object", "additionalProperties": { "$ref": "#/$defs/tagName" }, "description": "class → tag" },
+        "drop": { "type": "array", "items": { "$ref": "#/$defs/selector" }, "description": "left out everywhere" },
+        "keepHashLinks": { "type": "boolean", "description": "keep href=\"#\"" },
+        "emptyP": { "enum": ["drop", "keep"], "default": "drop", "description": "drop also drops a div or span holding only whitespace or NBSP" }
+      }
+    }
+  }
+}
