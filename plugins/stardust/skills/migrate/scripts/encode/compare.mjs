@@ -6,14 +6,18 @@
  * compareDocs(expectedHtml, gotHtml, {level = 'text'}) → {equal, level, levels, diffs}
  *   levels  {core, text, strict, byte}: the verdict at every level
  *   diffs   [{where, kind, level, expected, got}] at the levels `level` includes (equal ⇔ no diffs); where is
- *           `s<section>.<item> <sig>[ r<row>c<cell>]`, `metadata:<key>`, `s<n> section-metadata:<key>` or `doc`
+ *           `s<section>.<item> <sig>[ r<row>c<cell>]`, `… [r<row> ]stray<n>`, `metadata:<key>`,
+ *           `s<n> section-metadata:<key>` or `doc`
  *
  * Levels (design § 2, tightened by decision D0): core ⊂ text ⊂ strict; byte extends text. Sections are the children of
  * <main>; a section holding only the metadata block is not one. Items are blocks (`div` with a class: block:<name>.
- * <variants>) and default content (dc:<tag>); units are default-content items and block cells.
- *   core    the same sections, section styles (lower case), item sequence and rows × cells; every unit's text equal
- *           after decoding entities, NFC and collapsing all whitespace, NBSP included        kinds: section-count,
- *           missing-item, extra-item, section-style, rows-cells, text, text-missing, text-extra
+ * <variants>) and default content (dc:<tag>; a run of non-whitespace text directly in a section is dc:#text, directly in
+ * <main> a section of its own); units are default-content items, block cells and stray text (a run of non-whitespace text
+ * in a block or a row outside its cells).
+ *   core    the same sections, section styles (lower case), item sequence and rows × cells, stray text in the same
+ *           places; every unit's text equal after decoding entities, NFC and collapsing all whitespace, NBSP included
+ *           kinds: section-count, missing-item, extra-item, section-style, rows-cells, stray-text, text, text-missing,
+ *           text-extra
  *   text    + every code point equal after decoding (NBSP kept, no NFC); only runs of ASCII whitespace collapse to one
  *           space and a unit's edges are trimmed (none ≠ one); inside pre / code / textarea nothing collapses
  *           kind: text-exact
@@ -22,8 +26,10 @@
  *   byte    + each unit's raw text nodes equal after decoding, no whitespace rule at all (reported; not an acceptance
  *           level)                                                                    kind: text-byte
  * Block boundaries (p, li, div, td, br …) separate text, so `</li><li>` and `</li>\n<li>` read the same and whitespace
- * beside them is never content. Entities decode with sanitise.js's own table (+ numeric references), so a document
- * compares the same before and after sanitise: `&eacute;`, `&#233;` and `é` are one code point.
+ * beside them is never content. Entities decode once, with sanitise.js's own table (+ numeric references), so a document
+ * compares the same before and after sanitise: `&eacute;`, `&#233;` and `é` are one code point, `&amp;eacute;` is not.
+ * Attribute values are dom.mjs's own single decoding, after sanitise's named references outside dom's table have been
+ * rewritten as numeric ones.
  */
 import { readFileSync } from 'node:fs';
 import { attr, isEl, kids, parseHTML, qs } from './dom.mjs';
@@ -59,6 +65,18 @@ function decode(s) {
   });
 }
 
+// dom.mjs decodes attribute values once, numeric references and these names only: rewrite sanitise's other named
+// references as numeric ones first, so its single decoding is complete (`&amp;eacute;` stays the text `&eacute;`)
+const DOM_NAMES = new Set(['amp', 'lt', 'gt', 'quot', 'apos', 'nbsp']);
+function numericRefs(html) {
+  const table = entityTable();
+  return html.replace(/&([a-z][a-z0-9]*);/gi, (m, name) => {
+    if (DOM_NAMES.has(name.toLowerCase())) return m;
+    const ch = table.get(name);
+    return ch ? `&#${ch.codePointAt(0)};` : m;
+  });
+}
+
 // ---- a unit as tokens: text (decoded; `pre` inside a whitespace-preserving element), open / close (`sep` = boundary) ----
 function tokens(node, withSelf) {
   const out = [];
@@ -66,7 +84,7 @@ function tokens(node, withSelf) {
     if (n.type === 'text') { out.push({ t: 'text', s: decode(n.text), pre }); return; }
     if (!isEl(n) || HIDDEN.has(n.tag)) return;
     const sep = !pre && SEPARATORS.has(n.tag);
-    out.push({ t: 'open', tag: n.tag, sep, attrs: MARKUP_ATTRS.filter((k) => attr(n, k) !== undefined).map((k) => [k, decode(attr(n, k))]) });
+    out.push({ t: 'open', tag: n.tag, sep, attrs: MARKUP_ATTRS.filter((k) => attr(n, k) !== undefined).map((k) => [k, attr(n, k)]) });
     if (VOID.has(n.tag)) return;
     for (const c of n.children) visit(c, pre || PRESERVE.has(n.tag));
     out.push({ t: 'close', tag: n.tag, sep });
@@ -120,20 +138,42 @@ function readRows(block, into) {
   }
 }
 
+// a node's children as elements and text runs (consecutive text nodes); a run of whitespace only is dropped
+function childParts(n) {
+  const parts = [];
+  for (const c of n.children) {
+    if (isEl(c)) { parts.push(c); continue; }
+    if (c.type !== 'text') continue;
+    const last = parts[parts.length - 1];
+    if (Array.isArray(last)) last.push(c); else parts.push([c]);
+  }
+  return parts.filter((p) => !Array.isArray(p) || /\S/.test(decode(p.map((t) => t.text).join(''))));
+}
+const runUnit = (run) => unit(run.map((t) => ({ t: 'text', s: decode(t.text), pre: false })));
+// text a block holds outside its rows, and each row outside its cells: [{at: '' | ' r<row>', unit}] → keyed `<at> stray<n>`
+function strays(block) {
+  const out = [];
+  const collect = (n, at) => childParts(n).filter(Array.isArray).forEach((run, i) => out.push({ key: `${at} stray${i}`, unit: runUnit(run) }));
+  collect(block, '');
+  kids(block).forEach((r, ri) => collect(r, ` r${ri}`));
+  return out;
+}
+
 function normalise(html) {
-  const doc = parseHTML(String(html ?? ''));
+  const doc = parseHTML(numericRefs(String(html ?? '')));
   const main = qs(doc, 'main') || qs(doc, 'body') || doc;
   const meta = new Map();
   const sections = [];
-  for (const sec of kids(main)) {
+  for (const sec of childParts(main)) {
     const s = { meta: new Map(), style: null, items: [] };
     let hadMeta = false;
-    for (const c of kids(sec)) {
+    for (const c of Array.isArray(sec) ? [sec] : childParts(sec)) {
+      if (Array.isArray(c)) { s.items.push({ sig: 'dc:#text', unit: runUnit(c) }); continue; }
       const cls = classes(c);
       if (c.tag === 'div' && cls.length) {
         if (cls[0] === 'metadata') { hadMeta = true; readRows(c, meta); continue; }
         if (cls[0] === 'section-metadata') { readRows(c, s.meta); continue; }
-        s.items.push({ sig: `block:${cls.join('.')}`, rows: kids(c).map((r) => kids(r).map((cell) => unit(tokens(cell, false)))) });
+        s.items.push({ sig: `block:${cls.join('.')}`, rows: kids(c).map((r) => kids(r).map((cell) => unit(tokens(cell, false)))), strays: strays(c) });
       } else s.items.push({ sig: `dc:${c.tag}`, unit: unit(tokens(c, true)) });
     }
     if (s.meta.has('style')) s.style = s.meta.get('style').core.toLowerCase();
@@ -156,7 +196,7 @@ function lcs(a, b, key) {
   return ops;
 }
 
-const itemUnits = (it, where) => (it.unit ? [{ where, ...it.unit }] : it.rows.flatMap((r, ri) => r.map((c, ci) => ({ where: `${where} r${ri}c${ci}`, ...c }))));
+const itemUnits = (it, where) => (it.unit ? [{ where, ...it.unit }] : [...it.rows.flatMap((r, ri) => r.map((c, ci) => ({ where: `${where} r${ri}c${ci}`, ...c }))), ...it.strays.map((x) => ({ where: `${where}${x.key}`, ...x.unit }))]);
 const docUnits = (d) => d.sections.flatMap((s, si) => s.items.flatMap((it, ii) => itemUnits(it, `s${si}.${ii} ${it.sig}`)));
 
 export function compareDocs(expectedHtml, gotHtml, { level = 'text' } = {}) {
@@ -199,6 +239,10 @@ export function compareDocs(expectedHtml, gotHtml, { level = 'text' } = {}) {
         const shape = (rows) => rows.map((r) => r.length).join(',');
         if (shape(it.rows) !== shape(gi.rows)) { add('core', 'rows-cells', where, shape(it.rows), shape(gi.rows)); textDiffs(itemUnits(it, where), itemUnits(gi, where)); return; }
         it.rows.forEach((r, ri) => r.forEach((c, ci) => compareUnit(c, gi.rows[ri][ci], `${where} r${ri}c${ci}`)));
+        const gotStrays = new Map(gi.strays.map((x) => [x.key, x.unit]));
+        for (const x of it.strays) if (gotStrays.has(x.key)) compareUnit(x.unit, gotStrays.get(x.key), `${where}${x.key}`); else add('core', 'stray-text', `${where}${x.key}`, x.unit.core, null);
+        const expectedKeys = new Set(it.strays.map((x) => x.key));
+        for (const x of gi.strays) if (!expectedKeys.has(x.key)) add('core', 'stray-text', `${where}${x.key}`, null, x.unit.core);
       });
     });
   } else {

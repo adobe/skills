@@ -90,6 +90,11 @@ const levels = (got, expected = BASE) => compareDocs(expected, got).levels;
   assert.deepEqual(levels(edit('with a <a', 'with <em>a</em> <a')), { core: true, text: true, strict: false, byte: true }, 'an added inline tag');
   assert.deepEqual(levels(edit('<a href="/about" title="About us">link</a>.', '<a href="/about" title="About us">link.</a>')), { core: true, text: true, strict: false, byte: true }, 'a tag boundary moved');
   assert.equal(compareDocs(BASE, edit('alt="Card A"', 'alt="Card X"'), { level: 'byte' }).equal, true, 'byte extends text, not strict');
+  // attribute values decode exactly once: an escaped entity is text, a named or numeric reference is its character
+  assert.deepEqual(levels(edit('href="/about"', 'href="/x?a=1&amp;amp;b=2"'), doc(BODY.replace('href="/about"', 'href="/x?a=1&amp;b=2"'))), { core: true, text: true, strict: false, byte: true }, '&amp;amp; is not &amp;');
+  assert.deepEqual(levels(edit('title="About us"', 'title="&amp;eacute;"'), doc(BODY.replace('title="About us"', 'title="é"'))), { core: true, text: true, strict: false, byte: true }, '&amp;eacute; is not é');
+  const cafe = doc(BODY.replace('alt="Card A"', 'alt="Caf&eacute; &frac14;"'));
+  for (const v of ['Café ¼', 'Caf&#233; &#xBC;']) assert.equal(compareDocs(cafe, doc(BODY.replace('alt="Card A"', `alt="${v}"`)), { level: 'strict' }).equal, true, `sanitise's names in an attribute: ${v}`);
 }
 
 // --- strict: metadata and section-metadata rows ------------------------------------------------------------------------
@@ -114,6 +119,25 @@ const levels = (got, expected = BASE) => compareDocs(expected, got).levels;
   assert.deepEqual(gone.diffs.map((d) => [d.kind, d.expected]), [['missing-item', 'dc:h1'], ['text-missing', 'Heading']]);
   assert.equal(compareDocs(BASE, edit('<div class="cards three-up">', '</div><div><div class="cards three-up">')).levels.core, false, 'a split section');
   assert.equal(compareDocs(BASE, edit('<h1>Heading</h1>', '<h2>Heading</h2>')).levels.core, false, 'default content by tag');
+}
+
+// --- text outside any element the model reads: directly in a section or <main>, or in a block outside its cells -------
+{
+  const probe = compareDocs('<main><div>Hello world<p>x</p></div></main>', '<main><div><p>x</p></div></main>', { level: 'strict' });
+  assert.equal(probe.levels.core, false, 'text directly in a section is content');
+  assert.deepEqual(probe.diffs.map((d) => [d.kind, d.expected]), [['missing-item', 'dc:#text'], ['text-missing', 'Hello world']]);
+  const changed = compareDocs('<main><div>Hello world<p>x</p></div></main>', '<main><div>Hello there<p>x</p></div></main>');
+  assert.deepEqual(changed.diffs.map((d) => [d.where, d.kind]), [['s0.0 dc:#text', 'text']], 'a section text run is a default-content unit');
+  assert.equal(compareDocs('<main><div>Hello <!-- c -->world<p>x</p></div></main>', '<main><div>Hello world<p>x</p></div></main>', { level: 'strict' }).equal, true, 'one run, whatever splits its text nodes');
+  assert.deepEqual(levels(edit('</h1><p>', '</h1>\n  <p>')), { core: true, text: true, strict: true, byte: true }, 'whitespace between items is not a unit');
+  assert.equal(compareDocs(`<main>Intro${META}${BODY}</main>`, `<main>${META}${BODY}</main>`).levels.core, false, 'text directly in <main>');
+  const row = compareDocs(BASE, edit('<div class="cards three-up"><div>', '<div class="cards three-up"><div>stray'));
+  assert.deepEqual(row.diffs, [{ where: 's0.2 block:cards.three-up r0 stray0', kind: 'stray-text', level: 'core', expected: null, got: 'stray' }], 'text in a row outside its cells');
+  const block = compareDocs(edit('<div class="cards three-up">', '<div class="cards three-up">loose'), BASE);
+  assert.deepEqual(block.diffs, [{ where: 's0.2 block:cards.three-up stray0', kind: 'stray-text', level: 'core', expected: 'loose', got: null }], 'text in a block outside its rows');
+  const both = edit('<div class="cards three-up"><div>', '<div class="cards three-up"><div>stray');
+  assert.equal(compareDocs(both, both, { level: 'strict' }).equal, true, 'the same stray text on both sides');
+  assert.equal(compareDocs(both, edit('<div class="cards three-up"><div>', '<div class="cards three-up"><div>Stray')).levels.core, false, 'stray text compares as a unit');
 }
 
 console.log('encode-compare: ok');
