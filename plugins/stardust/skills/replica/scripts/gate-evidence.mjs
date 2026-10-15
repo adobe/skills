@@ -73,6 +73,18 @@
  *                       summary says.
  *   content-fidelity    NEVER added here — it is the agent's declaration
  *                       (`migrate.mjs gate <slug> content-fidelity --evidence …`)
+ *   section-schema, block-roundtrip, qa-gate
+ *                       an ENCODED sibling only (C14; clone pages and archetypes get none): its own
+ *                       local harness launches — the latest section-schema.mjs, whole-page
+ *                       block-roundtrip.mjs with the EW gate (no --blocks, no --no-ew) and qa-gate.mjs
+ *                       job: exit 0 → `ran: …`, another exit → FAIL:, a deadline → OPEN:. With no
+ *                       such job the gate is inherited only when its archetype's `passedOn` (migrate.mjs
+ *                       harness) under the CURRENT harness key covers the page's current clean encode's
+ *                       shape (audit.encode.shape; migrate's encode/shape.mjs decides: the key, the
+ *                       coverage) — `inherited from <archetype> (C14): covered by passedOn under
+ *                       sha256:… (<pages>)` — else OPEN: naming why (the key moved, the shape not
+ *                       covered and how, no pass recorded, the encode not current). A key change
+ *                       re-arms: an inherited gate turns OPEN and reads stale under --check.
  *
  * The NEWEST ended job per page × instrument (× width) decides, and only a verdict can pass:
  *   • run-bg state `timedOut: true` or `exit 124` (the instrument's deadline) →
@@ -82,8 +94,8 @@
  *   • a sibling-variance probe with an exit other than 0 or 2 → the same `OPEN: no verdict`.
  *
  * Attribution: gate.sh by its slug argument; other instruments by an argument that names the page
- * (URL path, `<slug>-proposed.html`, a file resolved from the job's cwd — for an encoded page its encoded document
- * or its content file, never a migrated path). The job-name fallback
+ * (URL path, `<slug>-proposed.html`, its section schema `…/eds-schema/<slug>.json`, a file resolved from the job's
+ * cwd — for an encoded page its encoded document or its content file, never a migrated path). The job-name fallback
  * (`<slug>-…`) applies only when NO argument names ANY known page — a job whose arguments name
  * another page is that page's, whatever it was called.
  *
@@ -103,7 +115,8 @@
  *   --check      exit 2 when a sibling lacks a gate of the acceptance set: variance-probe,
  *                pixel-gate-<w> for EVERY --widths entry, delivery-lint, media-reconcile (only once
  *                the page's delivered content file exists — above), content-fidelity,
- *                content-count. The pixel gates belong to the set: a recorded
+ *                content-count; an encoded sibling also section-schema, block-roundtrip and
+ *                qa-gate (ran, or inherited under C14 — above). The pixel gates belong to the set: a recorded
  *                run published eleven siblings that had never been compared at 360, and they
  *                read 17–27 % against the ≤ 10 % bar on the published origin. Archetypes and
  *                thin pages are not held to this set here (their `missing` is always empty).
@@ -118,8 +131,8 @@
  * `gate-evidence: <n> pages, <n> sidecars updated`.
  * Exit 0; 1 usage error (a malformed sidecar or progress.json included, a progress.json whose
  * top level is one archetype's record naming no archetype — below — and sidecars that record an
- * encode with no migrate encode/provenance.mjs beside this script); 2 --check found a sibling short
- * of the acceptance set or a stale gate.
+ * encode with no migrate encode/provenance.mjs beside this script; without encode/shape.mjs the C14
+ * gates stay OPEN); 2 --check found a sibling short of the acceptance set or a stale gate.
  *
  * Writes: each page's sidecar (`_meta.json` / `<name>._meta.json`): `gatesPassed[]` =
  * existing ∪ derived (existing first) and `gateEvidence{}` merged (derived lines overwrite
@@ -152,7 +165,13 @@ export const acceptanceFor = (widths) => ['variance-probe', ...widths.map((w) =>
 export const ACCEPTANCE = acceptanceFor(DEFAULTS.widths);
 // Instrument script → job kind. The instrument is the first cmd/arg token with one of these basenames
 // (a wrapper such as bash or run-capped may precede it); its own arguments follow.
-export const INSTRUMENTS = { 'gate.sh': 'pixel', 'content-diff.mjs': 'content-diff', 'media-reconcile.mjs': 'media-reconcile', 'delivery-lint.mjs': 'delivery-lint', 'sibling-variance.mjs': 'variance' };
+export const INSTRUMENTS = { 'gate.sh': 'pixel', 'content-diff.mjs': 'content-diff', 'media-reconcile.mjs': 'media-reconcile', 'delivery-lint.mjs': 'delivery-lint', 'sibling-variance.mjs': 'variance', 'section-schema.mjs': 'section-schema', 'block-roundtrip.mjs': 'block-roundtrip', 'qa-gate.mjs': 'qa-gate' };
+// The local harness launches (C14): an encoded sibling earns each from its own run, or inherits it from its archetype's
+// passedOn under the current harness key. block-roundtrip counts only as the whole-page run with the EW gate.
+export const HARNESS = ['section-schema', 'block-roundtrip', 'qa-gate'];
+const HARNESS_RUN = { 'section-schema': () => true, 'block-roundtrip': (j) => !j.instArgs.includes('--blocks') && !j.instArgs.includes('--no-ew'), 'qa-gate': () => true };
+// held to C14's gates: an encoded page that is not its template's archetype, a sibling by its tier
+export const c14Page = (page) => Boolean(page.encoded && !page.encoded.isArchetype && page.meta && page.meta.fidelityTier === 'sibling');
 const SELF = fileURLToPath(import.meta.url);
 const HERE = dirname(SELF);
 
@@ -214,7 +233,7 @@ export const recordsEncode = (meta) => typeof meta?.encode?.output?.path === 'st
 export function findSidecars(migrated, { encodedPageOf = null } = {}) {
   const out = [];
   const project = projectOf(migrated);
-  const encodedOf = (meta, hasHtml) => { const e = encodedPageOf && encodedPageOf(meta, { hasHtml }); return e ? { path: e.docPath, file: join(project, e.docPath), rel: e.rel } : null; };
+  const encodedOf = (meta, hasHtml) => { const e = encodedPageOf && encodedPageOf(meta, { hasHtml }); return e ? { path: e.docPath, file: join(project, e.docPath), rel: e.rel, archetype: e.archetype, isArchetype: e.isArchetype } : null; };
   const walk = (dir) => {
     for (const f of readdirSync(dir).sort()) {
       const p = join(dir, f);
@@ -269,11 +288,13 @@ const isUrl = (s) => /^https?:\/\//i.test(s);
 const urlPath = (s) => { try { return decodeURIComponent(new URL(s).pathname) || '/'; } catch { return null; } };
 
 // Does one argument name the page? A URL by its path, the prototype file `<slug>-proposed.html` (slug at a word
-// boundary, so `north` does not claim `tours-north-proposed.html`), or a file by where it resolves from the job's cwd.
+// boundary, so `north` does not claim `tours-north-proposed.html`), its section schema `…/eds-schema/<slug>.json`, or a
+// file by where it resolves from the job's cwd.
 export function argNamesPage(arg, page, job, migrated) {
   if (typeof arg !== 'string') return false;
   if (isUrl(arg)) { const p = urlPath(arg); return p !== null && pagePaths(page.outputPath).includes(p); }
   if (new RegExp(`(^|[^A-Za-z0-9_-])${escapeRe(page.slug)}-proposed\\.html`).test(arg)) return true;
+  if (new RegExp(`(^|[\\\\/])eds-schema[\\\\/]${escapeRe(page.slug)}\\.json$`).test(arg)) return true; // section-schema --out, qa-gate --schema
   const at = resolve(job.cwd || process.cwd(), arg);
   // an encoded page has no clone for a job to name: its encoded document and its content file are its files
   if (page.encoded) return (page.encoded.files || [page.encoded.file]).includes(at);
@@ -506,6 +527,23 @@ export function derive(page, jobs, o, ctx) {
       else pass('variance-probe', line);
     }
   }
+
+  if (c14Page(page)) {
+    // C14: the page's own launch decides when there is one (a failing run is never covered); else the archetype's
+    // passedOn under the current harness key, when it covers the page's shape
+    const c14 = ctx.c14 ? ctx.c14(page) : { ok: false, why: 'migrate\'s encode/shape.mjs is not loaded' };
+    for (const g of HARNESS) {
+      const newest = latest(ofKind(g).filter(HARNESS_RUN[g]).map((j) => ({ j })));
+      const name = g === 'block-roundtrip' ? 'block-roundtrip --ew' : g;
+      if (newest) {
+        const { j } = newest;
+        if (deadline(j)) open(g, `deadline ${cite(j)} — re-run`);
+        else if (j.exit === 0) pass(g, `ran: ${name} exit 0 ${cite(j)}`);
+        else open(g, `${name} exit ${j.exit} ${cite(j)}`, 'FAIL');
+      } else if (c14.ok) pass(g, c14.why);
+      else open(g, `no local ${name} run, and C14 does not cover it — ${c14.why}`);
+    }
+  }
   return { gates, evidence, facts, notes };
 }
 
@@ -552,12 +590,28 @@ function resolveLint(o) {
   return candidates.find((p) => existsSync(p) && statSync(p).isFile()) || null;
 }
 
-// migrate's shared readers (encode/provenance.mjs: encodedPageOf, currentEncode), in either layout; null when absent.
+// migrate's shared readers (encode/provenance.mjs: encodedPageOf, currentEncode; encode/shape.mjs beside it: harnessKey,
+// encodedShape, inherited — C14), in either layout; null when provenance.mjs is absent, no C14 reader without shape.mjs.
 export async function loadEncoderReaders() {
   const f = [resolve(HERE, '../../migrate/scripts/encode/provenance.mjs'), resolve(HERE, '../migrate/encode/provenance.mjs')].find((x) => existsSync(x));
   if (!f) return null;
   const { encodedPageOf, currentEncode } = await import(pathToFileURL(f).href);
-  return { encodedPageOf, currentEncode };
+  const shapeFile = join(dirname(f), 'shape.mjs');
+  const shape = existsSync(shapeFile) ? await import(pathToFileURL(shapeFile).href) : null;
+  return { encodedPageOf, currentEncode, ...(shape ? { harnessKey: shape.harnessKey, encodedShape: shape.encodedShape, inherited: shape.inherited } : {}) };
+}
+
+// The current harness key of every template an encoded sibling names (C14): Map archetype → { key } | { error }.
+export async function harnessKeys(encoder, migrated) {
+  const keys = new Map();
+  if (!encoder || !encoder.harnessKey) return keys;
+  const project = projectOf(migrated);
+  for (const p of findSidecars(migrated, { encodedPageOf: encoder.encodedPageOf })) {
+    const a = c14Page(p) ? p.encoded.archetype : null;
+    if (!a || keys.has(a)) continue;
+    try { keys.set(a, { key: (await encoder.harnessKey(project, a)).key }); } catch (e) { keys.set(a, { error: e.message }); }
+  }
+  return keys;
 }
 
 export function collect(o, { encoder = null } = {}) {
@@ -582,6 +636,18 @@ export function collect(o, { encoder = null } = {}) {
     p.encoded.files = [...new Set([p.encoded.file, p.encoded.content, contentFileFor(contentDir, p.outputPath).file])];
     p.encoded.state = encoder.currentEncode({ root: project, sidecarPath: relative(project, p.file).split(sep).join('/'), manifests });
   }
+  // C14: may this encoded sibling inherit its archetype's launches? (the key per template comes from harnessKeys())
+  ctx.c14 = (page) => {
+    const a = page.encoded.archetype;
+    if (!encoder || !encoder.encodedShape || !encoder.inherited) return { ok: false, why: 'migrate\'s encode/shape.mjs is not beside this script — copy the migrate scripts (stardust/scripts/migrate/) too' };
+    const k = encoder.keys && encoder.keys.get(a);
+    if (!k || k.error) return { ok: false, why: `no harness key for ${a} (${k ? k.error : 'not computed'})` };
+    const es = encoder.encodedShape({ root: project, sidecarPath: relative(project, page.file).split(sep).join('/'), archetype: a, manifests });
+    if (!es.ok) return { ok: false, why: es.why };
+    const arch = pages.find((p) => p.slug === a);
+    const v = encoder.inherited({ key: k.key, passedOn: arch ? arch.meta.passedOn : null, shape: es.shape });
+    return v.ok ? { ok: true, why: `inherited from ${a} (C14): ${v.why}` } : { ok: false, why: `${v.why}${arch ? '' : ` (no sidecar for ${a})`}` };
+  };
   const acceptance = acceptanceFor(o.widths);
   // The ledger is parsed before any sidecar is touched: a malformed progress.json aborts with nothing written.
   const prior = existsSync(o.progress) ? readJson(o.progress) : { data: {}, indent: 2, eol: true };
@@ -609,7 +675,7 @@ export function collect(o, { encoder = null } = {}) {
     if (text !== page.text) { updated += 1; if (!o.dryRun) writeAtomic(page.file, text); }
     const tier = meta.fidelityTier || null;
     // A sibling is not held to media-reconcile before its delivered content file exists (derive() recorded `n/a:` for it).
-    const required = acceptance.filter((g) => g !== 'media-reconcile' || d.facts.delivered !== false);
+    const required = [...acceptance, ...(c14Page(page) ? HARNESS : [])].filter((g) => g !== 'media-reconcile' || d.facts.delivered !== false);
     rows.push({ slug: page.slug, tier, archetype: meta.archetypeSource || meta.template || null, variants: Array.isArray(meta.variants) ? meta.variants : [], outputPath: page.outputPath, migrated: page.encoded ? null : join(o.migrated, page.outputPath), ...(page.encoded ? { encoded: page.encoded.path } : {}), ...d.facts, gatesPassed: meta.gatesPassed, gateEvidence: meta.gateEvidence, missing: tier === 'sibling' ? required.filter((g) => !meta.gatesPassed.includes(g)) : [], stale });
   }
   if (rows.length && !o.dryRun) {
@@ -628,6 +694,7 @@ async function cli(argv) {
   if (findSidecars(resolve(o.migrated)).some((p) => recordsEncode(p.meta))) {
     encoder = await loadEncoderReaders();
     if (!encoder) throw new UsageError(`gate-evidence: sidecars under ${o.migrated} record an encode, but migrate's encode/provenance.mjs is not beside this script — copy the migrate scripts (stardust/scripts/migrate/) too`);
+    encoder.keys = await harnessKeys(encoder, resolve(o.migrated));
   }
   const r = collect(o, { encoder });
   for (const n of r.notes) console.error(`gate-evidence: ${n}`);

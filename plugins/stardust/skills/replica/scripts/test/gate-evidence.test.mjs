@@ -11,7 +11,9 @@
 // line (FAIL: horizontal overflow, `/ovf+<px>` on the row, `overflowX` in the ledger), media-reconcile `n/a:` and
 // dropped from the acceptance set until the page's delivered content file exists (`--content`); an encoded page (its
 // sidecar's encode.output.path, no clone needed) linted on its delivered content file, else on its current encoded
-// document — never on a migrated HTML — and its jobs attributed by those files.
+// document — never on a migrated HTML — and its jobs attributed by those files; an encoded sibling's local harness gates
+// (C14: section-schema, block-roundtrip --ew, qa-gate) from its own runs, else inherited only while its archetype's
+// passedOn under the current harness key covers its shape — a key change or a new shape re-arms them.
 // Run: node plugins/stardust/skills/replica/scripts/test/gate-evidence.test.mjs   (about 2 s)
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -21,6 +23,8 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ACCEPTANCE, acceptanceFor, attribute, contentFileFor, daPath, deadline, detectIndent, loadTables, nameOwner, pagePaths, parseCounts, parseElements, parseFindings, parseLint, parseOverflow, parseVariance, parseVerdict, regimeOf } from '../gate-evidence.mjs';
+import { encoderKey, mapKey } from '../../../migrate/scripts/encode/provenance.mjs';
+import { harnessKey, shapeOf } from '../../../migrate/scripts/encode/shape.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'gate-evidence.mjs');
@@ -586,6 +590,83 @@ check('without a resolvable --lint an encoded page takes delivery-lint jobs on i
   assert.equal(attribute(named('elsewhere.html'), north, ctx), true, 'the name fallback still serves an encoded page when no argument names a page file');
 });
 rmSync(root2, { recursive: true, force: true });
+
+// ---- C14 (B12): an encoded sibling's local harness launches ------------------------------------------------------
+// One encoded template (a map emitting block:cards, its block code, the archetype's passedOn under the current harness
+// key): a sibling the archetype's shape covers (no runs), one with a new shape (cards ×4, no runs), one with the same
+// new shape and its own runs, a covered one whose own qa-gate run failed, a clone sibling. Pages built with migrate's
+// provenance and shape readers.
+const root3 = realpathSync(mkdtempSync(join(tmpdir(), 'gate-evidence-c14-')));
+const M3 = join(root3, 'stardust/migrated'); const BG3 = join(root3, 'stardust/.work/replica/bg'); const A3 = 'trip-a';
+const html3 = (n) => `<body><header></header><main><div><h1>Trip</h1><div class="cards">${'<div><div><img src="/x.jpg" alt=""></div><div><p>Card</p></div></div>'.repeat(n)}</div></div></main><footer></footer></body>\n`;
+put(join(root3, `stardust/import/${A3}/vocabulary.json`), JSON.stringify({ root: 'main', markers: [{ sel: '.mod-cards', kind: 'cards', emitter: 'block:cards' }] }));
+put(join(root3, 'blocks/cards/cards.js'), 'export default function decorate() {}\n');
+put(join(root3, 'lint-stub.mjs'), "console.log('\\n0 P0 · 0 P1 · 0 P2');\n");
+const keys3 = { encoder: encoderKey(), map: mapKey(root3, A3) }; const manifest3 = {};
+const page3 = (slug, rows, archetype = false) => {
+  const doc = `stardust/encoded/trips/${slug}.html`; manifest3[doc] = sha(html3(rows)); put(join(root3, doc), html3(rows));
+  if (archetype) put(join(M3, `trips/${slug}.html`), '<html><body><main><h1>Trip</h1></main></body></html>\n');
+  put(join(M3, `trips/${slug}._meta.json`), `${JSON.stringify({ slug, renderBranch: archetype ? 'A' : "A'", fidelityTier: archetype ? 'archetype' : 'sibling', template: archetype ? null : A3, archetypeSource: archetype ? null : A3, variants: [],
+    encode: { encoder: keys3.encoder, map: keys3.map, inputs: {}, output: { path: doc, sha: sha(html3(rows)) }, encodedAt: '2026-10-01T00:00:00Z' }, audit: { encode: { status: 'clean', shape: shapeOf(html3(rows)) } } }, null, 2)}\n`);
+};
+page3(A3, 2, true); page3('trip-b', 2); page3('trip-c', 4); page3('trip-d', 4); page3('trip-f', 2);
+put(join(M3, 'trips/trip-e.html'), '<html><body><main><h1>Clone</h1></main></body></html>\n');
+put(join(M3, 'trips/trip-e._meta.json'), `${JSON.stringify({ slug: 'trip-e', renderBranch: "A'", fidelityTier: 'sibling', template: A3, archetypeSource: A3, variants: [], encode: null, audit: null }, null, 2)}\n`);
+put(join(root3, `stardust/import/${A3}/manifest.json`), `${JSON.stringify(manifest3, null, 2)}\n`);
+const archSide = join(M3, `trips/${A3}._meta.json`);
+const passOn = (key) => put(archSide, `${JSON.stringify({ ...json(archSide), passedOn: { key, shapes: [{ slug: A3, shape: shapeOf(html3(2)) }] } }, null, 2)}\n`);
+const k3 = (await harnessKey(root3, A3)).key; passOn(k3);
+mkdirSync(BG3, { recursive: true });
+const job3 = (name, args, min, exit = 0) => {
+  writeFileSync(join(BG3, `${name}.json`), JSON.stringify({ name, cmd: 'node', args, cwd: root3, timeoutSec: 900, slots: 3, queuedAt: iso(min), wrapperPid: 4242, launchedAt: iso(min + 0.1), endedAt: iso(min + 1), exit, timedOut: false }, null, 1));
+  writeFileSync(join(BG3, `${name}.log`), `exit ${exit}\n`);
+};
+job3('d-schema', ['stardust/scripts/deploy/section-schema.mjs', `${PUBLISHED}/trips/trip-d`, '--out', 'stardust/eds-schema/trip-d.json'], 1);
+job3('d-rt', ['stardust/scripts/deploy/block-roundtrip.mjs', `${PUBLISHED}/trips/trip-d`, 'content/trips/trip-d.html', '--ew'], 2);
+job3('d-rt-cards', ['stardust/scripts/deploy/block-roundtrip.mjs', `${PUBLISHED}/trips/trip-d`, 'content/trips/trip-d.html', '--blocks', 'cards'], 3, 2);
+job3('d-qa', ['stardust/scripts/deploy/qa-gate.mjs', 'http://localhost:3000/stardust/.work/harness/page.html', '--schema', 'stardust/eds-schema/trip-d.json'], 4, 1);
+job3('f-qa', ['stardust/scripts/deploy/qa-gate.mjs', 'http://localhost:3000/stardust/.work/harness/page.html', '--schema', 'stardust/eds-schema/trip-f.json'], 5, 1);
+const run3 = (...args) => { const r = spawnSync(process.execPath, [SCRIPT, '--lint', join(root3, 'lint-stub.mjs'), ...args], { cwd: root3, encoding: 'utf8' }); return { code: r.status, out: r.stdout, err: r.stderr }; };
+const meta3 = (slug) => json(join(M3, `trips/${slug}._meta.json`));
+const HARNESS3 = ['section-schema', 'block-roundtrip', 'qa-gate'];
+const ev3 = (slug) => HARNESS3.map((g) => meta3(slug).gateEvidence[g]);
+const c14a = run3('--check');
+check('C14 skip rule: a sibling with no local runs inherits the launches when passedOn under the current key covers its shape', () => {
+  assert.equal(c14a.code, 2, c14a.err);
+  const line = `inherited from ${A3} (C14): covered by passedOn under ${k3.slice(0, 19)}… (${A3})`;
+  assert.deepEqual(ev3('trip-b'), [line, line, line]);
+  assert.ok(HARNESS3.every((g) => meta3('trip-b').gatesPassed.includes(g)));
+  assert.match(c14a.out, /^trip-b: missing [^\n]*content-count$/m, 'required, and not missing');
+});
+check('C14: a new shape with no local runs stays OPEN, required, naming the shape gap; the page\'s own runs decide where they exist (a failing one is never covered)', () => {
+  const gap = 'no local section-schema run, and C14 does not cover it — shape not covered: "cards" has 4 rows (exercised 2)';
+  assert.equal(meta3('trip-c').gateEvidence['section-schema'], `OPEN: ${gap}`);
+  assert.equal(meta3('trip-c').gateEvidence['block-roundtrip'], `OPEN: ${gap.replace('section-schema', 'block-roundtrip --ew')}`);
+  assert.match(c14a.out, /^trip-c: missing (.*, )?section-schema, block-roundtrip, qa-gate$/m);
+  assert.deepEqual(ev3('trip-d'), ['ran: section-schema exit 0 (d-schema.log)', 'ran: block-roundtrip --ew exit 0 (d-rt.log)', 'FAIL: qa-gate exit 1 (d-qa.log)'], 'the per-block round-trip (--blocks) is no whole-page evidence');
+  assert.match(c14a.out, /^trip-d: missing (.*, )?qa-gate$/m);
+  assert.deepEqual(ev3('trip-f').map((e) => e.split(':')[0]), ['inherited from trip-a (C14)', 'inherited from trip-a (C14)', 'FAIL'], 'a covered page whose own qa-gate failed keeps the FAIL');
+});
+check('C14: the archetype and a clone sibling behave as before — no harness gate derived or required', () => {
+  for (const s of [A3, 'trip-e']) assert.deepEqual(HARNESS3.filter((g) => g in meta3(s).gateEvidence), [], s);
+  const rows = Object.fromEntries(JSON.parse(run3('--dry-run', '--json').out).map((r) => [r.slug, r]));
+  assert.deepEqual(rows['trip-e'].missing.filter((g) => HARNESS3.includes(g)), []);
+  assert.deepEqual(rows[A3].missing, []);
+});
+put(join(root3, 'blocks/cards/cards.css'), '.cards { display: grid; }\n');
+const k3b = (await harnessKey(root3, A3)).key;
+check('C14: a block edit moves the harness key — the inherited gates turn OPEN naming the keys, read stale, and come back only under a pass recorded with the new key', () => {
+  assert.notEqual(k3b, k3);
+  const r = run3('--check');
+  assert.equal(r.code, 2);
+  assert.equal(meta3('trip-b').gateEvidence['qa-gate'], `OPEN: no local qa-gate run, and C14 does not cover it — the harness key moved since the recorded pass (${k3.slice(0, 19)}… → ${k3b.slice(0, 19)}…)`);
+  assert.match(r.out, /^trip-b: stale section-schema, block-roundtrip, qa-gate — /m);
+  passOn(k3b);
+  const again = run3('--check');
+  assert.equal(meta3('trip-b').gateEvidence['qa-gate'], `inherited from ${A3} (C14): covered by passedOn under ${k3b.slice(0, 19)}… (${A3})`);
+  assert.doesNotMatch(again.out, /^trip-b: stale/m); assert.match(again.out, /^trip-b: missing [^\n]*content-count$/m);
+});
+rmSync(root3, { recursive: true, force: true });
 
 rmSync(root, { recursive: true, force: true });
 
