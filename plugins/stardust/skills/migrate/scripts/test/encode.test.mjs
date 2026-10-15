@@ -49,9 +49,9 @@ const cells = (row) => kids(row).map((c) => c);
 const docOf = (html) => parseHTML(html);
 const SIB = read('stardust', 'current', 'pages', `${S1}.html`);
 // a mutated sibling: its capture + page record, a member of the template
-function addPage(slug, html) {
+function addPage(slug, html, record = {}) {
   writeFileSync(P('stardust', 'current', 'pages', `${slug}.html`), html);
-  writeFileSync(P('stardust', 'current', 'pages', `${slug}.json`), JSON.stringify({ slug, url: `https://www.example.com/trips/${slug}.html`, title: slug, description: 'A sibling.' }));
+  writeFileSync(P('stardust', 'current', 'pages', `${slug}.json`), JSON.stringify({ slug, url: `https://www.example.com/trips/${slug}.html`, title: slug, description: 'A sibling.', ...record }));
   const t = json('stardust', 'rollout', 'coverage', 'templates.json');
   if (!t.templates[0].pages.includes(slug)) t.templates[0].pages.push(slug);
   writeFileSync(P('stardust', 'rollout', 'coverage', 'templates.json'), JSON.stringify(t));
@@ -141,6 +141,8 @@ try {
   assert.equal(r.code, 1); assert.match(r.err, /as "derived": use rich\|inline/, 'a cell mode the grammar lacks is invalid, never an extension');
   writeFileSync(vocabFile, vocabRaw);
   assert.deepEqual(validateVocabulary({ root: 'main', metadata: [['Title', '$nope']] }), ['metadata "Title": unknown variable $nope ($title $description $nav $footer $h1 $ogtitle)']);
+  assert.deepEqual(validateVocabulary({ root: 'main', markers: [{ sel: '.known', kind: 'known' }, { sel: '.k2', emitter: null }] }), [], 'no emitter (absent or null) = a known kind not mapped yet');
+  assert.match(validateVocabulary({ root: 'main', markers: [{ sel: '.x', emitter: 'none' }] })[0], /emitter "none": use block:/, 'there is no "none" emitter');
 
   // --- hard stops: each exits 2, the page is not written ------------------------------------------------------------------
   const stopCase = async (slug, html, status, re) => {
@@ -164,6 +166,8 @@ try {
   await stopCase('stop-incomplete', mutate('<h3 class="ui-teaser__title">River Walk</h3>', '<h3 class="ui-teaser__title">River Walk</h3><p class="ui-teaser__desc">Two hours along the water, café at the bridge.</p>'), 'incomplete', /"role":"text","key":"two hours along the water, caf/);
   await stopCase('stop-noroot', mutate('<main id="main" class="page-main">', '<div id="main-x">').replace('</main>', '</div>'), 'error', /root selector \\"main#main\\" matched nothing/);
   await stopCase('stop-noh1', mutate('<h1 class="ui-hero__title">Forest Loop</h1>', ''), 'error', /no <h1>/);
+  // a showing <video> reached by rich text has no delivered form: unmapped, never a silent src-less element (R18)
+  await stopCase('stop-video', mutate('<p>Benches and a view over three villages.</p>', '<p>Benches and a view over three villages.</p><video src="/media/lookout.mp4" poster="/media/lookout-poster.jpg" controls></video>'), 'unmapped', /"kind":"video","selector":"video","at":"video","remedy":"map it as a block or drop: it/);
   // an accepted print never stops a page
   writeFileSync(vocabFile, JSON.stringify({ ...vocab, variance: { accept: v.report.variance.map((x) => ({ print: x.print, reason: 'the teaser variant is an editorial choice' })) } }));
   r = await run('--template', A, '--slug', 'stop-variance');
@@ -174,8 +178,37 @@ try {
   // --- a whole run with stopped pages exits 2 and still writes the clean ones; missing input exits 1 ----------------------
   rmSync(P('stardust', 'encoded'), { recursive: true });
   r = await run('--template', A);
-  assert.equal(r.code, 2); assert.equal(r.last, 'encoded 2 · unchanged 0 · stopped 9', 'the archetype and the sibling written; nine stops');
+  assert.equal(r.code, 2); assert.equal(r.last, 'encoded 2 · unchanged 0 · stopped 10', 'the archetype and the sibling written; ten stops');
   assert.match(r.out, /✗ stop-incomplete incomplete\n {4}incomplete MISSING text "Two hours along the water/, 'per-page status line + findings');
+  // drop:/dynamics: hold at any depth: inside a block, where no cell reaches them, they are left out and recorded
+  const withMarkers = (extra, edit = (m) => m) => writeFileSync(vocabFile, JSON.stringify({ ...vocab, ...extra, markers: [{ sel: '.mod-promo', kind: 'promo', emitter: 'drop:members-only offer, not migrated' }, { sel: '.mod-live', kind: 'live', emitter: 'dynamics:DYN-2' }, ...vocab.markers.map(edit)] }));
+  withMarkers({});
+  addPage('nested-drops', mutate('<div class="ui-teaser__content">', '<div class="mod-promo"><p>Members save 10% this month.</p></div><div class="ui-teaser__content">').replace('<ol class="ui-tabs__list" role="tablist">', '<div class="mod-live"><p>Trail status: open</p></div><ol class="ui-tabs__list" role="tablist">'));
+  r = await run('--template', A, '--slug', 'nested-drops', '--json', '--dry-run');
+  const nd = pageOf(r)[0];
+  assert.deepEqual(nd.report.incomplete, [], 'a drop:/dynamics: match no cell reaches is never missing content');
+  assert.deepEqual(nd.report.dropped, [{ kind: 'newsletter', reason: 'runtime form, delivered by a dynamics row', visible: true }, { kind: 'promo', reason: 'members-only offer, not migrated', visible: true, nested: true, at: 'div.mod-promo' }], 'the nested drop: is recorded, in document order');
+  assert.deepEqual(nd.report.deviations, [{ kind: 'dynamic-dependency', row: 'DYN-2', module: 'live', nested: true, at: 'div.mod-live' }, { kind: 'dynamic-dependency', row: 'DYN-1', module: 'chat' }], 'the nested dynamics: is recorded');
+  assert.deepEqual(nd.report.variance.map((x) => x.print.split(' | ')[0]), ['.mod-live', '.mod-promo'], 'the new modules still move the print set');
+  withMarkers({ variance: { accept: nd.report.variance.map((x) => ({ print: x.print, reason: 'a promo and a live widget, both declared' })) } });
+  r = await run('--template', A, '--slug', 'nested-drops');
+  assert.equal(r.code, 0, `accepted → clean\n${r.out}`);
+  assert.doesNotMatch(read('stardust', 'encoded', 'trips', 'nested-drops.html'), /Members save|Trail status/, 'neither reaches the document');
+  // a nested default-content marker keeps its own drop and retag inside a rich cell
+  withMarkers({}, (m) => (m.sel === '.mod-text' ? { ...m, drop: ['.ui-text__note'], retag: { b: 'b' } } : m));
+  addPage('nested-scope', mutate('<p>Benches and a view over three villages.</p>', '<p>Benches and a <b>view</b> over three villages<span class="ui-text__note"> (seasonal)</span>.</p>'));
+  r = await run('--template', A, '--slug', 'nested-scope');
+  assert.equal(r.code, 0, `nested scope encodes clean\n${r.out}`);
+  assert.match(read('stardust', 'encoded', 'trips', 'nested-scope.html'), /<p>Benches and a <b>view<\/b> over three villages\.<\/p>/, 'the panel text component applies its own retag and drop');
+  writeFileSync(vocabFile, vocabRaw);
+  // relative URLs resolve against the URL the capture was taken at (finalUrl), never the requested one (R15)
+  addPage('redirected', mutate('<img src="/media/forest-loop-hero.jpg"', '<img src="../media/forest-loop-hero.jpg"').replace('<a href="/trips/river-walk.html">River Walk</a>', '<a href="river-walk.html">River Walk</a>'), { url: 'https://www.example.com/go/to/forest.html', finalUrl: 'https://www.example.com/trips/forest-loop.html' });
+  r = await run('--template', A, '--slug', 'redirected');
+  assert.equal(r.code, 0, `redirected page encodes clean\n${r.out}`);
+  const redirected = read('stardust', 'encoded', 'go', 'to', 'forest.html');
+  assert.match(redirected, /<img src="https:\/\/content\.da\.live\/example-org\/example-site\/media\/trips\/forest-loop-hero-0c4d9e12\.jpg"/, 'a relative image resolves against finalUrl');
+  assert.match(redirected, /<a href="\/trips\/river-walk">River Walk<\/a>/, 'a relative link resolves against finalUrl');
+
   // a declared drop no cell reaches is not content either (the count never asks for what the map dropped)
   addPage('drop-unreached', mutate('<a class="ui-teaser__link"', '<span class="ui-sr-only">Opens the trip page</span><a class="ui-teaser__link"'));
   r = await run('--template', A, '--slug', 'drop-unreached', '--dry-run');

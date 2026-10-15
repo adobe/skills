@@ -147,7 +147,8 @@ export async function encodeTemplate({ root, site, template, map, deps, slugs = 
     const capFile = join(root, info.capturePath);
     if (!existsSync(capFile)) return stop(`no capture ${info.capturePath} — run extract; the encoder never fetches the live page`);
     const page = { ...(site.pageJson(slug) || {}), url: info.url };
-    const res = engine.encodePage({ html: readFileSync(capFile, 'utf8'), page, vocab, tf, site, archetypePrints, inventory: deps.inventory, countKeys: countKeysFor(site, info.url, deps.pathKey), finalise: deps.finalise });
+    const base = site.baseUrlFor(slug) || info.url; // relative URLs in the capture resolve where it was captured (R15)
+    const res = engine.encodePage({ html: readFileSync(capFile, 'utf8'), page, base, vocab, tf, site, archetypePrints, inventory: deps.inventory, countKeys: countKeysFor(site, base, deps.pathKey), finalise: deps.finalise });
     return { slug, role, status: res.status, output: info.outputPath, html: res.html, report: res.report, prints: res.prints, blocks: res.blocks };
   };
   const arch = one(template.archetype, null);
@@ -178,7 +179,7 @@ export function writePage({ root, output, html, dryRun = false }) {
 function findings(r) {
   const rep = r.report; const out = [];
   for (const e of rep.errors || []) out.push(`error ${e}`);
-  for (const u of rep.unmapped || []) out.push(`unmapped ${u.kind} at ${u.at} — map it, or drop:<reason> in vocabulary.json`);
+  for (const u of rep.unmapped || []) out.push(`unmapped ${u.kind} at ${u.at} — ${u.remedy || 'map it, or drop:<reason> in vocabulary.json'}`);
   for (const f of rep.flattened || []) out.push(`flattened ${f.kind} at ${f.at}: ${(f.why || []).join('; ')}`);
   for (const v of rep.variance || []) out.push(`variance ${v.change} ${v.print}`);
   for (const m of rep.incomplete || []) out.push(`incomplete MISSING ${m.role} "${String(m.text || m.key).slice(0, 80)}"${m.reason ? ` (${m.reason})` : ''}`);
@@ -251,4 +252,4 @@ export async function main(argv = process.argv.slice(2), io = { out: (s) => cons
 }
 
 const isMain = (() => { try { return Boolean(process.argv[1]) && pathToFileURL(realpathSync(process.argv[1])).href === import.meta.url; } catch { return false; } })();
-if (isMain) process.exitCode = await main();
+if (isMain) main().then((code) => { process.exitCode = code; });

@@ -27,7 +27,9 @@
  *                    precedence, JSON key order never is.
  *   emitters         block:<name>[ <variant>…] · default-content · wrapper · section (with `style`) ·
  *                    section-style:<style> · section-break:<style> (an empty styled section) · drop:<reason> ·
- *                    dynamics:<row> · none (a known kind with no emitter: `unmapped` when visible)
+ *                    dynamics:<row>; no emitter (absent or null) = a known kind not mapped yet: `unmapped` when
+ *                    visible. drop:/dynamics: hold at any depth: a match inside a module, reached by a cell or not,
+ *                    is left out, recorded, and never counted as missing content.
  *   rows             "<selector>" (with `cells`) | [{ sel, cells, optional, max }, …] (row groups in order; no sel =
  *                    the module itself is the row) | absent (the module is one row)
  *   cells            [CellSpec, …] | { each: "<selector>", …CellSpec } (one cell per match: a variable-width row)
@@ -43,8 +45,10 @@
  *                    whitespace or NBSP (no image, no link).
  *
  * Hard stops (page status; the first that applies, in this order): error (root missing or a landmark, 0 sections, no
- * <h1>, an exception) · unmapped · flattened (incl. a module nested inside rich content: a moduleSelectors match or a
- * marker whose emitter is not default-content/wrapper/drop/dynamics) · variance (a sibling whose SET of shape prints
+ * <h1>, an exception) · unmapped (incl. a visible <video>/<audio> reached by rich text: map it as a block or drop: it)
+ * · flattened (incl. a module nested inside rich content: a moduleSelectors match or a marker whose emitter is not
+ * default-content/wrapper/drop/dynamics; a nested default-content marker keeps its own retag/drop) · variance (a
+ * sibling whose SET of shape prints
  * differs from the archetype's, minus accepted prints) · incomplete (the offline content count finds a MISSING item).
  *
  * Output: the delivered body fragment — <body><header></header><main>, the metadata block alone in the first section,
@@ -339,7 +343,7 @@ export function tidy(html) {
 
 // ===================================================================================== content: media, links, rich text
 function imgHtml(n, ctx) {
-  const img = n.tag === 'img' ? n : qs(n, 'img');
+  const img = n.tag === 'img' ? n : qsa(n, 'img').find((x) => !ctx.isDropped(x)) || null;
   let cands = []; let alt = ''; let title;
   if (img) {
     const firstOfSet = (v) => String(v || '').split(',').map((s) => s.trim().split(/\s+/)[0]);
@@ -348,7 +352,7 @@ function imgHtml(n, ctx) {
     if (pic) for (const s of qsa(pic, 'source')) cands.push(...firstOfSet(attr(s, 'srcset')));
     alt = attr(img, 'alt') || ''; title = attr(img, 'title');
   } else {
-    const holder = bgUrl(n) ? n : qsa(n, '[style]').find((d) => bgUrl(d));
+    const holder = bgUrl(n) ? n : qsa(n, '[style]').find((d) => bgUrl(d) && !ctx.isDropped(d));
     if (!holder) return null;
     cands = [bgUrl(holder)];
   }
@@ -381,7 +385,7 @@ function plainText(n, ctx) {
   const dropSel = [...(ctx.tf.drop || []), ...(ctx.drop || [])];
   const t = (x) => {
     if (x.type === 'text') return x.text.replace(/\{\{[^}]*\}\}/g, '');
-    if (!isEl(x) || STRIP.has(x.tag)) return '';
+    if (!isEl(x) || STRIP.has(x.tag) || ctx.declared.has(x)) return '';
     if (x.tag === 'br') return ' ';
     if (dropSel.some((s) => matches(x, s, ctx.rootEl)) || hiddenLive(x, ctx.stamped)) { ctx.excluded.add(x); return ''; }
     return x.children.map(t).join('');
@@ -392,30 +396,39 @@ function plainText(n, ctx) {
 /**
  * The rich-text pass: one module subtree → delivered HTML (block-level unless `inline`). Nested modules inside it
  * (a moduleSelectors match, or a marker that is not default-content/wrapper) are recorded as `flattened`; nested
- * drop:/dynamics: markers are honoured as in the walk.
+ * drop:/dynamics: matches are left out (the pre-pass recorded them); a nested default-content marker's subtree is
+ * serialised with its own retag/drop; a showing <video>/<audio> is `unmapped`.
  */
 function richText(n, ctx, { inline = false, nested = true, childrenOnly = false } = {}) {
   const tf = ctx.tf; const headingsByClass = tf.headingsByClass || {};
-  const retag = { b: 'strong', i: 'em', ...(tf.retag || {}), ...(ctx.retag || {}) };
-  const dropSel = [...(tf.drop || []), ...(ctx.drop || [])];
+  const base = { retag: { b: 'strong', i: 'em', ...(tf.retag || {}), ...(ctx.retag || {}) }, drop: [...(tf.drop || []), ...(ctx.drop || [])] };
   const emptyP = tf.emptyP !== 'keep';
-  const clean = (node, top = false, isRoot = false) => {
+  // sc: the retag/drop scope of the subtree — a nested default-content marker brings its own
+  const clean = (node, top = false, isRoot = false, sc = base) => {
     if (node.type === 'text') return escText(node.text.replace(/\{\{[^}]*\}\}/g, ''));
-    if (!isEl(node) || STRIP.has(node.tag)) return '';
-    if (dropSel.some((s) => matches(node, s, ctx.rootEl))) { ctx.excluded.add(node); return ''; }
+    if (!isEl(node) || STRIP.has(node.tag) || ctx.declared.has(node)) return '';
+    if (sc.drop.some((s) => matches(node, s, ctx.rootEl))) { ctx.excluded.add(node); return ''; }
     if (hiddenLive(node, ctx.stamped)) { ctx.report.hidden.push({ at: describe(node), reason: attr(node, 'data-hidden-live') || 'hidden' }); ctx.excluded.add(node); return ''; }
-    if (isRoot && childrenOnly) return node.children.map((c) => clean(c)).join('');
-    if (!isRoot && nested && !ctx.wrappers.some((w) => matches(node, w, ctx.rootEl))) {
+    const kidsOf = (t = false) => node.children.map((c) => clean(c, t, false, sc));
+    if (isRoot && childrenOnly) return kidsOf().join('');
+    if (!isRoot && nested && sc.owner !== node && !ctx.wrappers.some((w) => matches(node, w, ctx.rootEl))) {
       const m = firstMarker(node, ctx.markers, ctx.rootEl);
       const e = m ? String(m.emitter || '') : null;
-      if (m && e.startsWith('drop:')) { ctx.report.dropped.push({ kind: m.kind || m.sel, reason: e.slice(5), visible: visible(node), nested: true }); ctx.excluded.add(node); return ''; }
-      if (m && e.startsWith('dynamics:')) { ctx.report.deviations.push({ kind: 'dynamic-dependency', row: e.slice(9), module: m.kind || m.sel, nested: true }); ctx.excluded.add(node); return ''; }
+      if (m && e.startsWith('drop:')) { ctx.report.dropped.push({ kind: m.kind || m.sel, reason: e.slice(5), visible: visible(node), nested: true, at: describe(node) }); ctx.excluded.add(node); return ''; }
+      if (m && e.startsWith('dynamics:')) { ctx.report.deviations.push({ kind: 'dynamic-dependency', row: e.slice(9), module: m.kind || m.sel, nested: true, at: describe(node) }); ctx.excluded.add(node); return ''; }
+      if (m && e === 'default-content' && (m.retag || m.drop)) return clean(node, top, false, { retag: { ...sc.retag, ...(m.retag || {}) }, drop: [...sc.drop, ...(m.drop || [])], owner: node });
       if (m && e !== 'default-content' && e !== 'wrapper' && visible(node)) ctx.report.flattened.push({ kind: m.kind || m.sel, selector: m.sel, at: describe(node), why: ['a module nested inside rich content'] });
       else if (!m) { const ms = ctx.isModule(node); if (ms && visible(node)) ctx.report.flattened.push({ kind: classList(node)[0] || node.tag, selector: ms, at: describe(node), why: ['a module nested inside rich content'] }); }
     }
     let tag = node.tag;
     for (const c of classList(node)) if (headingsByClass[c]) tag = headingsByClass[c];
-    if (retag[tag]) tag = retag[tag];
+    if (sc.retag[tag]) tag = sc.retag[tag];
+    if (node.tag === 'video' || node.tag === 'audio') { // no rich-text form: a hard stop when it shows (D4: map it or drop: it)
+      const shows = attr(node, 'hidden') === undefined && (node.tag === 'video' || attr(node, 'controls') !== undefined);
+      if (shows && !ctx.cache.media.has(node)) { ctx.cache.media.add(node); ctx.report.unmapped.push({ kind: node.tag, selector: node.tag, at: describe(node), remedy: `map it as a block or drop: it — <${node.tag}> has no rich-text form` }); }
+      ctx.excluded.add(node);
+      return '';
+    }
     if (tag === 'img' || tag === 'picture') { const h = imgHtml(node, ctx); return h ? ((tf.imageParagraph !== false && top) ? `<p>${h}</p>` : h) : ''; }
     if (tag === 'br') return '<br>';
     if (tag === 'hr') return '';
@@ -423,11 +436,11 @@ function richText(n, ctx, { inline = false, nested = true, childrenOnly = false 
     if (emptyP && (tag === 'p' || tag === 'div' || (tag === 'span' && top)) && isBlankNode(node)) return '';
     if (UNWRAP.has(tag) || tag === 'unwrap') {
       const blockish = (c) => isEl(c) && !STRIP.has(c.tag) && (BLOCKLVL.has(c.tag) || c.tag === 'img' || c.tag === 'picture' || (UNWRAP.has(c.tag) && qs(c, 'p, h1, h2, h3, h4, h5, h6, ul, ol, table, img, picture, blockquote') !== null));
-      if (inline || !node.children.some(blockish)) return node.children.map((c) => clean(c)).join('');
+      if (inline || !node.children.some(blockish)) return kidsOf().join('');
       const chunks = []; let run = '';
       const flush = () => { if (!blankText(run.replace(/<br>/g, ''))) chunks.push(`<p>${run}</p>`); run = ''; };
       for (const c of node.children) {
-        if (blockish(c)) { flush(); const v = clean(c, true); if (v && !isBlankHtml(v)) chunks.push(v); } else run += clean(c);
+        if (blockish(c)) { flush(); const v = clean(c, true, false, sc); if (v && !isBlankHtml(v)) chunks.push(v); } else run += clean(c, false, false, sc);
       }
       flush();
       return chunks.join('\n');
@@ -435,12 +448,12 @@ function richText(n, ctx, { inline = false, nested = true, childrenOnly = false 
     if (/^h[1-6]$/.test(tag) && blankText(rawText(node)) && !qs(node, 'img')) return ''; // rule 6: an empty heading
     if (tag === 'a') {
       const href = linkHref(attr(node, 'href'), ctx);
-      const inner = node.children.map((c) => clean(c)).join('');
+      const inner = kidsOf().join('');
       return href === null ? inner : `<a href="${esc(href)}">${inner}</a>`;
     }
     const attrs = KEEP_GENERIC.filter((k) => attr(node, k) !== undefined).map((k) => ` ${k}="${esc(attr(node, k))}"`).join('');
     if (VOID.has(tag)) return `<${tag}${attrs}>`;
-    return `<${tag}${attrs}>${node.children.map((c) => clean(c)).join('')}</${tag}>`;
+    return `<${tag}${attrs}>${kidsOf().join('')}</${tag}>`;
   };
   const html = asciiTrim(clean(n, true, true));
   if (!html || isBlankHtml(html)) return '';
@@ -478,7 +491,7 @@ function itemValue(n, spec, ctx, kind) {
     return escText(plainText(target, ctx));
   }
   if (as === 'link') {
-    const a = n.tag === 'a' && attr(n, 'href') !== undefined ? n : qs(n, 'a[href]');
+    const a = n.tag === 'a' && attr(n, 'href') !== undefined ? n : qsa(n, 'a[href]').find((x) => !ctx.isDropped(x)) || null;
     if (!a) return escText(plainText(n, ctx)); // no anchor: the plain text stands in
     const label = spec.text ? qs(a, spec.text) || (matches(a, spec.text, ctx.rootEl) ? a : null) : null;
     const text = label ? escText(plainText(label, ctx)) : richText(a, ctx, { inline: true, childrenOnly: true });
@@ -493,7 +506,7 @@ function itemValue(n, spec, ctx, kind) {
 
 function cellValue(row, spec, ctx, kind) {
   if (spec.as === 'literal') { ctx.report.literals.push({ kind, value: spec.value }); return spec.value; }
-  const nodes = spec.sel ? (spec.selfOk && matches(row, spec.sel, ctx.rootEl) ? [row] : qsa(row, spec.sel)) : [row];
+  const nodes = (spec.sel ? (spec.selfOk && matches(row, spec.sel, ctx.rootEl) ? [row] : qsa(row, spec.sel)) : [row]).filter((x) => !ctx.isDropped(x));
   const as = spec.parts ? 'parts' : (spec.as || 'rich');
   const pick = (spec.all ?? as === 'rich') ? nodes : nodes.slice(0, 1);
   const sub = { ...ctx, retag: { ...(ctx.retag || {}), ...(spec.retag || {}) }, drop: [...(ctx.drop || []), ...(spec.drop || [])] };
@@ -507,7 +520,7 @@ function rowCells(rn, cells, ctx, kind, missing) {
   const out = [];
   if (!Array.isArray(cells)) { // { each: sel, …CellSpec }: one cell per match
     const { each, ...spec } = cells;
-    for (const node of qsa(rn, each)) { const v = cellValue(node, spec, ctx, kind); if (v !== null) out.push(v); else if (spec.optional === 'empty') out.push(''); }
+    for (const node of qsa(rn, each).filter((x) => !ctx.isDropped(x))) { const v = cellValue(node, spec, ctx, kind); if (v !== null) out.push(v); else if (spec.optional === 'empty') out.push(''); }
     if (!out.length && !spec.optional) missing.push(`no cell for each "${each}" at ${describe(rn)}`);
     return out;
   }
@@ -524,7 +537,7 @@ function shapeRows(mod, m, ctx, kind) {
   const groups = Array.isArray(m.rows) ? m.rows : (typeof m.rows === 'string' ? [{ sel: m.rows, cells: m.cells }] : [{ cells: m.cells }]);
   const rows = []; const missing = [];
   groups.forEach((g, gi) => {
-    let rowNodes = g.sel ? qsa(mod, g.sel) : [mod];
+    let rowNodes = (g.sel ? qsa(mod, g.sel) : [mod]).filter((x) => !ctx.isDropped(x));
     if (g.max) rowNodes = rowNodes.slice(0, g.max);
     if (!rowNodes.length) { if (!g.optional) missing.push(`row group ${gi} (${g.sel}) matched nothing`); return; }
     for (const rn of rowNodes) { const cells = rowCells(rn, g.cells || [{}], ctx, kind, missing); if (cells.length) rows.push(cells); }
@@ -549,7 +562,8 @@ function metaValue(expr, vars, ctx, key) {
 /**
  * Encode one page. Arguments:
  *   html            the committed capture (stardust/current/pages/<slug>.html)
- *   page            its page JSON ({ url, title, description, og })
+ *   page            its page JSON ({ url, title, description, og }); `page.url` names the page (chrome map)
+ *   base            what the capture's relative URLs resolve against (the page JSON's finalUrl, else page.url)
  *   vocab, tf       the template's map (validated)
  *   site            { resolveMedia(absUrl) → contentUrl|null, chromeFor(url) → { nav, footer },
  *                     localizeHref(href, base) → { href, internal, kind, unresolved? } — pages through the roster and
@@ -560,11 +574,11 @@ function metaValue(expr, vars, ctx, key) {
  *   finalise        string → string, applied last (sanitise's encode)
  * Returns { status, html, report, prints, sections, blocks }; `html` is null when the root was not found.
  */
-export function encodePage({ html, page = {}, vocab, tf = {}, site, archetypePrints = null, inventory = null, countKeys = null, finalise = null }) {
+export function encodePage({ html, page = {}, base = null, vocab, tf = {}, site, archetypePrints = null, inventory = null, countKeys = null, finalise = null }) {
   const report = { hiddenLive: 'unstamped', unmapped: [], flattened: [], variance: [], incomplete: [], dropped: [], hidden: [], deviations: [], literals: [], mediaUnresolved: [], linksUnresolved: [], errors: [] };
   const result = { status: 'error', html: null, report, prints: [], sections: 0, blocks: [] };
   try {
-    encodeInto(result, { html, page, vocab, tf, site, archetypePrints, inventory, countKeys, finalise });
+    encodeInto(result, { html, page, base: base || page.url || null, vocab, tf, site, archetypePrints, inventory, countKeys, finalise });
   } catch (e) {
     report.errors.push(`exception: ${e.message}`);
   }
@@ -578,7 +592,7 @@ export function statusOf(r) {
   return 'clean';
 }
 
-function encodeInto(result, { html, page, vocab, tf, site, archetypePrints, inventory, countKeys, finalise }) {
+function encodeInto(result, { html, page, base, vocab, tf, site, archetypePrints, inventory, countKeys, finalise }) {
   const { report } = result;
   const prep = prepareCapture(html, vocab);
   report.hiddenLive = prep.stamped ? 'stamped' : 'unstamped';
@@ -590,7 +604,10 @@ function encodeInto(result, { html, page, vocab, tf, site, archetypePrints, inve
   const isModule = moduleMatcher(vocab, rootEl);
   const tokens = tokenFilter(vocab);
   const excluded = new Set();
-  const ctx = { tf, site, report, base: page.url || null, stamped, doc, rootEl, markers, wrappers, isModule, excluded, cache: {} };
+  const declared = new Map(); // drop:/dynamics: matches at any depth → their marker, in document order
+  const isDropped = (x) => { for (let p = x; p && isEl(p); p = p.parent) if (declared.has(p)) return true; return false; };
+  const ctx = { tf, site, report, base, stamped, doc, rootEl, markers, wrappers, isModule, excluded, declared, isDropped, cache: { media: new Set() } };
+  const moduleLevel = new Set();
   const census = new Set();
   const excludeAll = (scope, sels) => { for (const s of sels || []) for (const x of qsa(scope, s)) excluded.add(x); };
 
@@ -612,10 +629,8 @@ function encodeInto(result, { html, page, vocab, tf, site, archetypePrints, inve
       if (m.sectionStyle) cur.style = m.sectionStyle;
       const after = () => { if (m.sectionAfter) closeSection(); };
       const sub = { ...ctx, retag: m.retag, drop: m.drop };
-      excludeAll(n, m.drop);
       if (!emitter) { if (visible(n)) report.unmapped.push({ kind, selector: m.sel, at: describe(n) }); pushHtml(richText(n, ctx, { nested: false })); return after(); }
-      if (emitter.startsWith('drop:')) { report.dropped.push({ kind, reason: emitter.slice(5), visible: visible(n) }); excluded.add(n); return after(); }
-      if (emitter.startsWith('dynamics:')) { report.deviations.push({ kind: 'dynamic-dependency', row: emitter.slice(9), module: kind }); excluded.add(n); return after(); }
+      if (emitter.startsWith('drop:') || emitter.startsWith('dynamics:')) { if (!declared.has(n)) declared.set(n, m); moduleLevel.add(n); excluded.add(n); return after(); } // recorded after the walk
       if (emitter === 'wrapper') { for (const c of kids(n)) visit(c); return after(); }
       if (emitter.startsWith('section-break:')) { closeSection(); sections.push({ style: emitter.slice(14), nodes: [] }); return after(); }
       if (emitter === 'section' || emitter.startsWith('section-style:')) {
@@ -647,9 +662,29 @@ function encodeInto(result, { html, page, vocab, tf, site, archetypePrints, inve
     for (const s of sibs.slice(sibs.indexOf(rootEl) + 1)) { if (matches(s, LANDMARK_STOP)) break; tops.push(s); }
   }
   for (const t of tops) { excludeAll(t, tf.drop); if (t !== rootEl && tf.drop && tf.drop.some((s) => matches(t, s, rootEl))) excluded.add(t); }
+  // pre-pass: every first-marker match at any depth — its own drops are not content, and a drop:/dynamics: match is
+  // left out wherever it sits (a cell that never reaches it included)
+  const prepass = (n) => {
+    if (!isEl(n) || STRIP.has(n.tag) || hiddenLive(n, stamped) || excluded.has(n)) return;
+    const m = firstMarker(n, markers, rootEl);
+    if (m) excludeAll(n, m.drop);
+    const e = m && m.emitter ? String(m.emitter) : '';
+    if (e.startsWith('drop:') || e.startsWith('dynamics:')) { declared.set(n, m); excluded.add(n); return; }
+    for (const c of n.children) prepass(c);
+  };
+  for (const t of tops) for (const c of (t === rootEl ? kids(t) : [t])) prepass(c);
   for (const c of kids(rootEl)) visit(c);
   for (const t of tops.slice(1)) visit(t);
   closeSection();
+  // drop:/dynamics: records in document order; `nested` (+ where) for a match the walk did not reach as a module
+  const pre = { dropped: [], deviations: [] };
+  for (const [n, m] of declared) {
+    const e = String(m.emitter); const kind = m.kind || m.sel; const where = moduleLevel.has(n) ? {} : { nested: true, at: describe(n) };
+    if (e.startsWith('drop:')) pre.dropped.push({ kind, reason: e.slice(5), visible: visible(n), ...where });
+    else pre.deviations.push({ kind: 'dynamic-dependency', row: e.slice(9), module: kind, ...where });
+  }
+  report.dropped = [...pre.dropped, ...report.dropped];
+  report.deviations = [...pre.deviations, ...report.deviations];
 
   // shape prints: every marker match at any depth + the census of unmarked module-level nodes; a SET, sorted
   result.prints = [...new Set([...markerPrints(tops, markers, rootEl, stamped, tokens), ...census])].sort();
@@ -683,7 +718,7 @@ function encodeInto(result, { html, page, vocab, tf, site, archetypePrints, inve
   // L5: the offline content count of the capture's content root against the encoded document
   if (inventory && content.length) {
     const keys = countKeys || {};
-    const opts = { mediaKey: keys.mediaKey || (() => null), linkKey: keys.linkKey || (() => null), base: page.url || null };
+    const opts = { mediaKey: keys.mediaKey || (() => null), linkKey: keys.linkKey || (() => null), base };
     const walked = new Set(tops);
     const countRoot = tops.length > 1 ? rootEl.parent : rootEl;
     const srcInv = inventory.offlineInventory(countRoot, { ...opts, exclude: (x) => excluded.has(x) || (x.parent === countRoot && tops.length > 1 && !walked.has(x)) });
