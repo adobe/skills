@@ -21,6 +21,7 @@ export function matchSections({ dom, mapping, anchors: anchorOf, modules, select
   }
 
   const sections = [];
+  const parentChecked = new Set();
   for (const row of mapping.filter((r) => RENDERED.has(r.status))) {
     const { slot, module } = row;
     if (module && !modules.has(module)) drift(`${module} is not an included module in curation-rules.json (mapping.md maps ${slot} to it)`);
@@ -31,7 +32,18 @@ export function matchSections({ dom, mapping, anchors: anchorOf, modules, select
     if (d.nested) drift(`${slot} is nested inside another data-slot section`);
     if (module && d.module !== module) drift(`${slot} carries data-module="${d.module ?? ''}", mapping.md says ${module}`);
     const anchor = anchorOf.get(slot);
-    if (anchor && !norm(d.text).includes(anchor)) drift(`${slot}: anchor "${anchor}" not in the section`);
+    if (anchor) {
+      if (!norm(d.text).includes(anchor)) drift(`${slot}: anchor "${anchor}" not in the section`);
+    } else {
+      // A split sub-slot has no content-model entry: its parent's anchor must sit in one of the parent's sections.
+      const parent = /^(s\d+)-/.exec(slot)?.[1];
+      const parentAnchor = parent && anchorOf.get(parent);
+      if (parentAnchor && !parentChecked.has(parent)) {
+        parentChecked.add(parent);
+        const family = dom.filter((x) => x.slot === parent || x.slot.startsWith(`${parent}-`));
+        if (!family.some((x) => norm(x.text).includes(parentAnchor))) drift(`${parent}-*: anchor "${parentAnchor}" not in any ${parent}-* section`);
+      }
+    }
     sections.push({ slot, module, node: (module && modules.get(module)) || null, selector: selector(slot), index });
   }
 

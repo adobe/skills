@@ -87,11 +87,18 @@ await check('matchSections: whitespace and case in the section text do not matte
   assert.deepEqual(r.problems, []);
 });
 
-await check('matchSections: split sub-slots map to one module; a slot without an anchor has no anchor check', () => {
+await check('matchSections: split sub-slots map to one module; the parent anchor may sit in any one of them', () => {
   const sub = [{ slot: 's02-a', module: 'M2', status: 'mapped' }, { slot: 's02-b', module: 'M2', status: 'mapped' }];
   const r = matchSections({ dom: [{ slot: 's02-a', module: 'M2', text: 'x', nested: false }, { slot: 's02-b', module: 'M2', text: 'Everything in one place', nested: false }], mapping: sub, anchors: a, modules });
   assert.equal(r.pass, true);
   assert.deepEqual(r.sections.map((s) => s.slot), ['s02-a', 's02-b']);
+});
+
+await check("matchSections: split sub-slots check their parent's anchor across all parent-* sections, failing once", () => {
+  const sub = [{ slot: 's02-a', module: 'M2', status: 'mapped' }, { slot: 's02-b', module: 'M2', status: 'mapped' }];
+  const r = matchSections({ dom: [{ slot: 's02-a', module: 'M2', text: 'x', nested: false }, { slot: 's02-b', module: 'M2', text: 'y', nested: false }], mapping: sub, anchors: a, modules });
+  assert.equal(r.pass, false);
+  assert.deepEqual(r.problems, ['section drift: s02-*: anchor "everything in one place" not in any s02-* section']);
 });
 
 await check('matchSections: a new-module row has no frame to join; carried-invisible needs no section', () => {
