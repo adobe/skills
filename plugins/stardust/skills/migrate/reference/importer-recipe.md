@@ -88,8 +88,9 @@ node skills/migrate/scripts/encode.mjs --lint|--sweep|--roundtrip --template <ar
   round-trip, stays on the A′ clone path (`skills/migrate/reference/template-and-module-rendering.md` § Path A′).
 - **Inputs.** The map, the roster (`stardust/rollout/coverage/templates.json`), each page's committed capture + page
   JSON and patches, and the site inputs: `stardust/deploy/media-ledger.json`, `stardust/deploy/asset-ledger.json`,
-  `stardust/rollout/chrome-map.json`, `stardust/redirects.tsv`. Never the row-2 clone, never `content/` (only
-  `--roundtrip` reads the archetype's). No browser, network, clock or locale: the same inputs give the same bytes.
+  `stardust/rollout/chrome-map.json`, `stardust/redirects.tsv`. Never the row-2 clone, never a sibling's `content/`
+  document (`--roundtrip` and `--lint` C5 read the archetype's). No browser, network, clock or locale: the same inputs
+  give the same bytes.
 - **Hidden-live** content is honoured when the capture marks it (`data-hidden-live-stamp` on `<html>`/`<body>`, or any
   `[data-hidden-live]` node): skipped and listed in `hidden[]`; an unmarked capture skips nothing and records
   `hiddenLive: "unstamped"`.
