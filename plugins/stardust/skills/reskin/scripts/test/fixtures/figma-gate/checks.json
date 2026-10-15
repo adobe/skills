@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "page": "home",
+  "sections": {
+    "s01": {
+      "geometry": [
+        { "id": "g1", "selector": ".container", "node": "1:4", "measure": "width" },
+        { "id": "g2", "selector": ".container", "node": "1:4", "measure": "left" },
+        { "id": "g3", "selector": ".btn", "node": "1:20", "measure": "width" },
+        { "id": "g4", "selector": ".btn", "nodes": ["1:20", "1:21"], "measure": "gapX" },
+        { "id": "g5", "selector": ":scope", "node": "1:3", "measure": "paddingTop" },
+        { "id": "g6", "selector": ":scope", "node": "1:3", "measure": "paddingLeft" }
+      ],
+      "type": [
+        { "id": "t1", "selector": "h1", "node": "1:5" },
+        { "id": "t2", "selector": ".btn", "node": "I1:20;3:5" }
+      ]
+    },
+    "s02": {
+      "geometry": [
+        { "id": "g1", "selector": ".card", "node": "I1:7;5:7", "measure": "width" },
+        { "id": "g2", "selector": ".card", "node": "I1:7;5:7", "measure": "paddingLeft" },
+        { "id": "g3", "selector": ".feature", "nodes": ["I1:7;5:3", "I1:7;5:4"], "measure": "gapX" },
+        { "id": "g4", "selector": ":scope", "node": "1:7", "measure": "paddingTop" }
+      ],
+      "type": [
+        { "id": "t1", "selector": "h2", "node": "I1:7;5:2" },
+        { "id": "t2", "selector": ".card-label", "node": "I1:7;5:8" }
+      ]
+    }
+  }
+}

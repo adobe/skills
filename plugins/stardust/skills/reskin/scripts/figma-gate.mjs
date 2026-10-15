@@ -29,6 +29,22 @@ boxes    the Figma box trees of the modules curation-rules.json includes. Reads 
          --depth <n>   outline depth, 0 = the root only (default 3)
          neither       build the cache for every included module and print "<Mn> <frame id> <w>×<h>"
 --dir <d>  the stardust directory (default stardust).
+
+Checks file <dir>/reskin/figma-checks/<slug>.json (written by the agent from the boxes outlines):
+  { "version": 1, "page": "<slug>", "sections": { "<slot>": {
+      "node"?: "<id>"                    the section root, default the join's module frame
+      "width"?: 1440                     default the root's width
+      "roots"?: { "<width>": "<id>" }    another capture of the module, for entries with that width
+      "skip"?: "<why>"                   replaces the required geometry and type entries
+      "geometry": [ { id, selector, measure, node | nodes: [a, b] | token, index?: 0, width?, tolerancePx?: 1, why? } ],
+      "type": [ { id, selector, node, width? } ],
+      "pixel"?: { "mode": "auto" | "fixture" | "off", "fixtureUrl"?, "why"? } } } }
+  selector is scoped to the section, ":scope" is the section itself; ids are g1.. and t1.. per section.
+  measure: width left right top height gapX gapY paddingTop paddingRight paddingBottom paddingLeft.
+  gapX and gapY take exactly two nodes; token is a path in donor-tokens.json holding one px value.
+  top and height are content-dependent: they need tolerancePx and why. tolerancePx above 1 needs why.
+  A padding measure needs an auto-layout node; a type node must be TEXT; every node sits inside the root
+  of its width. fixture needs fixtureUrl, off needs why. Every problem is listed at once (exit 2).
 Writes go only under <dir>/.work/reskin/gates/. After a capture --confidential, every subcommand first
 asserts that <dir>/.work/ and <dir>/reskin/figma-checks/ are git-ignored (exit 2 with the lines to add).
 Exit codes: 0 pass · 1 a blocking check failed · 2 usage or setup (missing input or capture)
