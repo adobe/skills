@@ -62,7 +62,11 @@ sub-commands that delegate the actual design work to **impeccable**.
    `reference/run-status.md` — written with `skills/stardust/scripts/ledger.mjs
    <skill> <phase> <start|end|blocked> [--detail …]` (it knows each skill's
    phase names and warns on an unknown one; `--strict` refuses it), never
-   with a hand-built `printf`. Page status moves with
+   with a hand-built `printf`. At a phase end, when the session transcripts
+   are reachable, `skills/stardust/scripts/token-ledger.mjs` renders
+   `stardust/usage.{md,json}` — tokens per phase and per recorded unit
+   (`--transcripts <dir>` names the directory); `usage: unknown` is not a
+   failure. Page status moves with
    `skills/stardust/scripts/state.mjs advance <slug…> --to <status>`; a
    resuming agent orients with `ledger.mjs tail` and `state.mjs summary`.
 6. **Project hygiene** (idempotent). Write `stardust/.gitignore` from
