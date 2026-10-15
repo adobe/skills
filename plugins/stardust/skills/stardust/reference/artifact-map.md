@@ -305,10 +305,8 @@ provenance block as the first child of `<head>`, the `:root` block
 exposing the current DESIGN.md tokens, structural data attributes on
 every section, and asset references rewritten to root-relative
 paths of the form `/assets/<subpath>` (per
-`skills/migrate/reference/asset-bundling.md`). The full bundle —
-HTML + every referenced asset — is self-contained: `cd
-stardust/migrated && zip -r out.zip .` produces a deploy-ready
-archive.
+`skills/migrate/reference/asset-bundling.md`), so the tree zips and
+deploys as is.
 
 The migrated tree is **incremental and idempotent**. Re-running
 migrate writes only pages whose source has changed (sha-compared in
@@ -394,6 +392,9 @@ excluded folders tracked deletes that line or adds a negation below it.
 | `spec/**` (`spec.config.json`, `judgement/`, `knowledge/`) | yes | spec | judgement and computed knowledge; raw material stays in `.work/spec/` |
 | `eds-schema/**` | yes | deploy | small JSON |
 | `rollout/` except `qa/` | yes | rollout | `rollout.json`, `coverage/`, `optimize/`, `plan.json`, `site/`, `dashboard/` |
+| `rollout/chrome-map.json` | yes | deploy | nav/footer pair + lang per page prefix (`chrome-map.mjs`, Step 6); an encoder input |
+| `deploy/media-ledger.json` | yes | deploy | DA media path → `contentUrl` + `sources[]` (`da-media-upload.mjs`); an encoder input |
+| `deploy/asset-ledger.json` | yes | deploy | source document URL → `/docs/<file>` (`rehost-docs.mjs`); an encoder input. Schemas of all three: `skills/deploy/schemas/` |
 | `rollout/qa/**` | **no** | rollout | screenshots of the delivered site |
 | `qa/allowlist.json`, `qa/report.*`, `qa/inventory.json`, `qa/dynamics-report.*`, `qa/ai-readability.json` | yes | qa | judgement and last report |
 | `qa/shots/**`, `qa/baselines/**` | **no** | qa | screenshots; baselines are per machine, a clone re-creates them |

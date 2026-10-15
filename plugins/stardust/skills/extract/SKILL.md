@@ -294,7 +294,8 @@ free, reproducible, and provenance — instead of re-running live
 probes per selector guess (recorded: 4+ live round-trips per page
 family before the switch). Live probes stay for what the static DOM
 cannot answer: geometry and computed styles. Save referenced media to `stardust/current/assets/media/`
-preserving basename plus a short content hash.
+preserving basename plus a short content hash, recorded as the media entry's `localPath` (deploy maps
+each upload back to its source URLs through it).
 
 **Live-render evidence (synthesis is forbidden).** Refuse to mark
 a page `extracted` in `state.json` unless its `_provenance`
