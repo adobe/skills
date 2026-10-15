@@ -2,7 +2,8 @@
 // figma-gate. A kit capture can reach hundreds of MB, so nodes.json is parsed once per file version:
 // box trees are built for the roots asked for and cached under
 // <dir>/.work/reskin/gates/figma-boxes/<fileKey>/<version>.json, and every later question (any step,
-// any run) is answered from that file, even after nodes.json is gone.
+// any run) is answered from that file, even after nodes.json is gone. The cache file carries the
+// capture stamp (manifest capturedAt and frames, plus a schema number) and is dropped when it differs.
 // Box: { id, name, type, x, y, w, h, layout, text, fill, fillKind, children } with x and y relative
 // to the root's absoluteBoundingBox, rounded to 2 decimals; hidden subtrees are dropped.
 import { join } from 'node:path';
@@ -11,6 +12,7 @@ import { UsageError } from '../figma/errors.mjs';
 import { readJsonIf, writeJson } from '../figma/io.mjs';
 import { solidFill } from '../figma/normalize.mjs';
 
+const SCHEMA = 1;
 const round = (n) => Math.round((n ?? 0) * 100) / 100 || 0;
 const safe = (s) => String(s).replace(/[^A-Za-z0-9._-]+/g, '-');
 const absBox = (node) => node.absoluteBoundingBox || { x: 0, y: 0, width: 0, height: 0 };
@@ -118,7 +120,13 @@ export function loadBoxes(dir, roots) {
   if (!current) throw noCapture(dir);
   const { fileKey, version } = current;
   const cachePath = join(dir, '.work', 'reskin', 'gates', 'figma-boxes', safe(fileKey), `${safe(version)}.json`);
-  const cached = readJsonIf(cachePath) || { fileKey, version, roots: {}, missing: [] };
+  // A re-capture of the same version (another frame selection) rewrites nodes.json, so the cache
+  // follows the manifest it was built from; a Box-shape change bumps SCHEMA.
+  const manifest = cacheFor(dir, fileKey).version(version).read('manifest.json');
+  const stamp = { schema: SCHEMA, capturedAt: manifest?.capturedAt ?? null, frames: manifest?.frames ?? null };
+  const onDisk = readJsonIf(cachePath);
+  const fresh = onDisk && JSON.stringify(onDisk.stamp) === JSON.stringify(stamp);
+  const cached = fresh ? onDisk : { fileKey, version, stamp, roots: {}, missing: [] };
   const answer = () => ({
     fileKey,
     version,

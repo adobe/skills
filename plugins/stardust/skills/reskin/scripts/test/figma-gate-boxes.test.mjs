@@ -93,6 +93,23 @@ check('loadBoxes: builds from the capture, caches, and still answers without nod
   assert.throws(() => loadBoxes(p.dir, ['2:1']), (e) => e.code === 2 && /figma-donor\.mjs capture/.test(e.message));
 });
 
+check('loadBoxes: a same-version re-capture of another frame replaces cached roots and missing ids', () => {
+  const p = makeProject(join(scratch, 'recapture'));
+  const v = join(p.dir, '.work', 'reskin', 'figma', KEY, VERSION);
+  const first = loadBoxes(p.dir, ['1:7', '1:9']);
+  assert.ok(first.roots['1:7']);
+  const other = JSON.parse(readFileSync(join(v, 'nodes.json'), 'utf8'));
+  const moved = { ...other, nodes: { '1:9': other.nodes['1:9'] } };
+  const manifest = JSON.parse(readFileSync(join(v, 'manifest.json'), 'utf8'));
+  writeFileSync(join(v, 'nodes.json'), JSON.stringify(moved));
+  writeFileSync(join(v, 'manifest.json'), JSON.stringify({ ...manifest, capturedAt: '2026-02-02T00:00:00Z', frames: ['1:9'] }));
+  assert.ok(!loadBoxes(p.dir, ['1:7']).roots['1:7'], 'the old selection must not be served');
+  const swapped = { ...other, nodes: { '1:2': other.nodes['1:2'] } };
+  writeFileSync(join(v, 'nodes.json'), JSON.stringify(swapped));
+  writeFileSync(join(v, 'manifest.json'), JSON.stringify({ ...manifest, capturedAt: '2026-03-03T00:00:00Z', frames: ['1:2'] }));
+  assert.ok(loadBoxes(p.dir, ['1:7']).roots['1:7'], 'a frame that was missing before the re-capture is found');
+});
+
 check('loadBoxes without a capture: setup error naming capture, the frames and the API cost', () => {
   const p = makeProject(join(scratch, 'bare'));
   rmSync(join(p.dir, '.work'), { recursive: true });
