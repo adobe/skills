@@ -486,7 +486,11 @@ had one section for the whole run).
   while the capture pair holds; an EDS capture not proven current (changed
   key, or unknown key whose `gate-key.json` record differs; without a local
   `content/<page>.html` nothing compares — every run, slower) is re-shot;
-  rows say `reused` (handoff § 3, C).
+  rows say `reused` (handoff § 3, C). Between fix rounds,
+  `node stardust/scripts/replica/gate-triage.mjs [--unit <name>]`
+  (advisory) groups the failing rows by shared cause in
+  `gates/all-<width>/triage.md` — fix each cause once and re-gate the scope it
+  names; the rows stay the verdict and the 3-round cap stays.
 
 **State:** replica writes its own state under `stardust/replica/` — the
 inconsistency register, `progress.json` (one map: `types.<archetype>` —

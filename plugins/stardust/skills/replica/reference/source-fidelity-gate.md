@@ -871,6 +871,9 @@ template — the variance probe across the template's other pages decides a new 
 more share the composition: craft, gate, deploy, migrate its siblings) or a standalone prototype
 (an archetype of one); tier and template change in `state.json`, the redirect row stays. Cap: 3
 fix rounds per page at the published origin, then this decision — never a fourth round.
+`gate-triage.mjs` applies this paragraph across the rows: `triage.md` lists the groups and the
+re-gate scope (never smaller than the rows), and frozen-foundation causes become
+`foundation-requests.md` lines — it fixes nothing.
 Calibration on the recorded roster (96 pages): pixel-only 66 PASS → full 28 PASS; failing by
 criterion pixel 30, height 6, clip 23, content 31; content n/a on 37 (edge-blocked origins).
 
