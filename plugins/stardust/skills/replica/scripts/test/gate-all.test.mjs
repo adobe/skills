@@ -4,15 +4,18 @@
 // units, pixelOnlyPass vs pass (the calibration pair), reasons text, overrides shown beside the number;
 // formatSummary (header, calibration line, one row per page, asymmetric-origin flag, the reused cell); parseArgs
 // defaults and --out derived from --width; --help in an empty cwd; pixel-compare's textBoxPct over a synthetic diff.
-// Reuse under --skip-existing: probeReuse (the capture pair rule); then the CLI over stub instruments in a sandbox project.
+// Reuse under --skip-existing: probeReuse (the capture pair rule), the gate key (stable across key order, changed by
+// one block / content / frozen-file byte or a mask edit, null on a freeze mismatch), the deploy-state guard's
+// content half; then the CLI over stub instruments in a sandbox project with a git remote and a deploy ledger.
 // Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { formatSummary, parseArgs, probeReuse, verdict } from '../gate-all.mjs';
+import { contentDeployed, deployedShas, formatSummary, gateKeyOf, gateKeyParts, keyChanged, parseArgs, probeReuse, skipCapture, verdict } from '../gate-all.mjs';
 
 // pixel-compare imports pngjs at module level (a project devDependency, absent in the plugin checkout):
 // import it lazily and skip its one check where it does not resolve, like the other browser/dep-bound tests.
@@ -95,7 +98,7 @@ check('formatSummary: the reused cell per row and the head clause only when some
   assert.doesNotMatch(plain, /reused:/); assert.match(plain, /\| - \|$/m);
 });
 
-// ---- reuse under --skip-existing: probes while the capture pair holds
+// ---- reuse under --skip-existing: probes while the capture pair holds, PASS rows while the gate key holds
 const T = (m) => `2026-01-01T00:${String(m).padStart(2, '0')}:00.000Z`;
 const inputs0 = () => ({ origin: 'https://o.test/', eds: 'https://e.test/', width: 1440, warmup: null, stage: 'published', content: true, clip: true, presence: { variable: ['.rail'] }, units: [], unitTol: 4 });
 const reuseArgs = (over = {}) => ({ sidecar: { at: T(5), inputs: inputs0(), results: { content: 'ok', clip: 'ok', units: null }, ats: { content: T(4), clip: T(4), units: null } }, inputs: inputs0(), originMeta: { at: T(1) }, edsMeta: { at: T(2) }, files: { content: { _provenance: { at: T(4) } }, clip: { at: T(4) } }, opts: { skip: true }, ...over });
@@ -115,6 +118,60 @@ check('probeReuse: replays only while both captures are the ones the probes were
   assert.match(probeReuse(reuseArgs({ opts: { skip: false } })).why, /--skip-existing/);
   assert.equal(probeReuse(reuseArgs({ sidecar: null })).reuse, false, 'a legacy dir without probes.json');
 });
+check('gateKeyOf / gateKeyParts: stable across key order; one block CSS byte, content byte, frozen-file hash or mask edit changes it; a freeze mismatch → null', () => {
+  const root = mkdtempSync(join(tmpdir(), 'gate-all-key-'));
+  const put = (f, s) => { mkdirSync(dirname(join(root, f)), { recursive: true }); writeFileSync(join(root, f), s); };
+  put('styles/styles.css', 'body{}'); put('blocks/cards/cards.css', '.cards{}'); put('blocks/cards/cards.js', 'export default 1;');
+  put('content/index.html', '<main><div><div class="cards one"></div></div></main>'); put('content/nav.html', '<nav></nav>');
+  const opts = parseArgs(['node', 'x']); const page = { slug: 'home', url: 'https://o.test/', liveUrl: 'https://main--s--o.aem.page/' };
+  const parts = (ctx = {}) => gateKeyParts(page, { root, opts, ...ctx });
+  const key = (ctx) => gateKeyOf(parts(ctx).parts);
+  const k0 = key();
+  assert.match(k0, /^[0-9a-f]{64}$/); assert.equal(key(), k0);
+  assert.deepEqual(Object.keys(parts().parts.content), ['content/index.html', 'content/nav.html']); assert.deepEqual(Object.keys(parts().parts.blocks), ['cards']);
+  const shuffled = Object.fromEntries(Object.entries(parts().parts).reverse().map(([k, v]) => [k, v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).reverse()) : v]));
+  assert.equal(gateKeyOf(shuffled), k0, 'key order');
+  put('blocks/cards/cards.css', '.cards{ }'); assert.notEqual(key(), k0, 'one CSS byte'); put('blocks/cards/cards.css', '.cards{}'); assert.equal(key(), k0);
+  put('content/index.html', '<main><div><div class="cards one"></div></div> </main>'); assert.notEqual(key(), k0, 'one content byte'); put('content/index.html', '<main><div><div class="cards one"></div></div></main>');
+  assert.notEqual(key({ masks: { home: { masks: ['0-80'], reason: 'banner' } } }), k0, 'a mask edit');
+  const freeze = () => assert.equal(spawnSync(process.execPath, [join(HERE, '..', 'foundation-freeze.mjs'), 'freeze'], { cwd: root }).status, 0);
+  freeze(); const kf = key();
+  put('styles/styles.css', 'body{ }'); freeze(); assert.notEqual(key(), kf, 'a frozen file hash in the manifest');
+  assert.equal(gateKeyParts({ ...page, liveUrl: 'https://main--s--o.aem.page/missing/' }, { root, opts }).why, 'no content/missing/index.html');
+  put('styles/styles.css', 'body{  }');
+  assert.deepEqual(parts(), { parts: null, why: 'foundation changed since freeze' });
+  rmSync(root, { recursive: true, force: true });
+});
+check('deploy-state guard (content half): every hashed document must be the deployed one — the newest ledger row wins', () => {
+  const root = mkdtempSync(join(tmpdir(), 'gate-all-ledger-'));
+  mkdirSync(join(root, 'content')); mkdirSync(join(root, 'stardust/deploy'), { recursive: true });
+  writeFileSync(join(root, 'content/.deploy-ledger.json'), JSON.stringify({ '/index': { status: 'live', ts: T(1), contentSha: 'old' }, '/nav': { status: 'live', ts: T(1), contentSha: 'n' } }));
+  writeFileSync(join(root, 'stardust/deploy/ledger-c1.json'), JSON.stringify({ '/index': { status: 'live', ts: T(3), contentSha: 'new' } }));
+  const shas = deployedShas(root);
+  assert.equal(shas['/index'], 'new');
+  assert.equal(contentDeployed({ 'content/index.html': 'new', 'content/nav.html': 'n' }, shas), null);
+  assert.match(contentDeployed({ 'content/index.html': 'old' }, shas), /content\/index\.html differs from the deployed document/);
+  assert.match(contentDeployed({ 'content/footer.html': 'f' }, shas), /no deploy-ledger contentSha for \/footer/);
+  rmSync(root, { recursive: true, force: true });
+});
+check('keyChanged / skipCapture: a changed known key re-shoots the EDS side only; a legacy dir or an unknown key does not', () => {
+  assert.equal(keyChanged(null, 'K'), false, 'no gate-key.json = legacy dir'); assert.equal(keyChanged({ gateKey: 'K' }, null), false, 'unknown now');
+  assert.equal(keyChanged({ gateKey: null }, 'K'), true, 'captured while unknown'); assert.equal(keyChanged({ gateKey: 'K' }, 'K2'), true); assert.equal(keyChanged({ gateKey: 'K' }, 'K'), false);
+  const ctx = (opts, changed = false) => ({ opts, has: () => true, keyChanged: () => changed });
+  assert.equal(skipCapture({}, 'eds', ctx({ skip: true })), true); assert.equal(skipCapture({}, 'eds', ctx({ skip: true }, true)), false);
+  assert.equal(skipCapture({}, 'origin', ctx({ skip: true }, true)), true); assert.equal(skipCapture({}, 'origin', ctx({ skip: true, recaptureOrigin: true })), false);
+  assert.equal(skipCapture({}, 'eds', ctx({ skip: false })), false);
+});
+if (textBoxPct) check('pixel-compare textBoxPct: differing pixels counted inside the boxes only, masked rows skipped', () => {
+  const w = 10; const h = 10; const data = Buffer.alloc(w * h * 4);
+  const red = (x, y) => { const i = (y * w + x) * 4; data[i] = 255; data[i + 1] = 0; data[i + 2] = 0; data[i + 3] = 255; };
+  red(1, 1); red(2, 1); red(8, 8);
+  const masked = new Uint8Array(h); masked[1] = 0;
+  const r = textBoxPct({ data }, [{ x: 0, y: 0, w: 4, h: 4 }], w, h, masked);
+  assert.equal(r.boxes, 1); assert.equal(r.pixels, 16); assert.equal(r.pct, 12.5);
+  masked[1] = 1;
+  assert.equal(textBoxPct({ data }, [{ x: 0, y: 0, w: 4, h: 4 }], w, h, masked).pct, 0);
+});
 check('--help exits 0 in an empty cwd and writes nothing', () => {
   const cwd = mkdtempSync(join(tmpdir(), 'gate-all-help-'));
   const r = spawnSync(process.execPath, [SCRIPT, '--help'], { cwd, encoding: 'utf8' });
@@ -123,12 +180,12 @@ check('--help exits 0 in an empty cwd and writes nothing', () => {
 });
 
 // ---- CLI over stub instruments (no browser, no network): the gate.test.mjs sandbox pattern — a realpath'd project
-// with stardust/scripts/{replica,diff}.
+// with stardust/scripts/{replica,diff}, a git remote the site's code is pushed to, and a deploy ledger with contentSha.
 const base = realpathSync(mkdtempSync(join(tmpdir(), 'gate-all-reuse-')));
 const root = join(base, 'site'); const replica = join(root, 'stardust/scripts/replica'); const diffDir = join(root, 'stardust/scripts/diff');
 const COUNT = join(base, 'count.txt'); const OUT = join(root, 'stardust/replica/gates/all-1440');
 mkdirSync(replica, { recursive: true }); mkdirSync(diffDir, { recursive: true });
-cpSync(SCRIPT, join(replica, 'gate-all.mjs'));
+cpSync(SCRIPT, join(replica, 'gate-all.mjs')); cpSync(join(HERE, '..', 'foundation-freeze.mjs'), join(replica, 'foundation-freeze.mjs'));
 // Every instrument appends one line to STUB_COUNT; pixel-compare fails the slugs listed in STUB_FAIL.
 writeFileSync(join(replica, 'stitch-shot.mjs'), `import { appendFileSync, writeFileSync } from 'node:fs';
 const [url, out] = process.argv.slice(2);
@@ -150,9 +207,21 @@ writeFileSync(join(diffDir, 'unit-geometry.mjs'), `import { appendFileSync } fro
 export function unitsFor() { return []; }
 if (process.argv[1] && process.argv[1].endsWith('unit-geometry.mjs')) appendFileSync(process.env.STUB_COUNT, 'PROBE units\\n');`);
 const put = (f, s) => { mkdirSync(dirname(join(root, f)), { recursive: true }); writeFileSync(join(root, f), s); };
+put('.gitignore', 'stardust/\n'); put('head.html', '<script src="/scripts/scripts.js" type="module"></script>'); put('scripts/scripts.js', '// site');
+put('styles/styles.css', 'body { margin: 0; }'); put('blocks/hero/hero.css', '.hero { color: red; }'); put('blocks/cards/cards.css', '.cards { gap: 1rem; }');
+put('content/index.html', '<main><div><div class="hero"></div></div></main>'); put('content/about.html', '<main><div><div class="cards"></div></div></main>');
+put('content/nav.html', '<main><div><p>nav</p></div></main>'); put('content/footer.html', '<main><div><p>footer</p></div></main>');
+const sha = (f) => createHash('sha256').update(readFileSync(join(root, f))).digest('hex');
+put('content/.deploy-ledger.json', JSON.stringify(Object.fromEntries(['index', 'about', 'nav', 'footer'].map((n) => [`/${n}`, { status: 'live', ts: '2026-01-01T00:00:00.000Z', contentSha: sha(`content/${n}.html`) }]))));
 put('stardust/state.json', JSON.stringify({ pages: [
   { slug: 'home', url: 'https://origin.test/', liveUrl: 'https://main--site--org.aem.page/', status: 'deployed', template: 'home' },
   { slug: 'about', url: 'https://origin.test/about', liveUrl: 'https://main--site--org.aem.page/about', status: 'deployed', template: 'page' }] }));
+const sh = (cwd, cmd, args) => { const r = spawnSync(cmd, args, { cwd, encoding: 'utf8' }); if (r.status !== 0) throw new Error(`${cmd} ${args.join(' ')}: ${r.stderr}`); return r.stdout; };
+const git = (...args) => sh(root, 'git', ['-c', 'user.email=t@example.com', '-c', 'user.name=t', '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null', ...args]);
+const CODE = ['.gitignore', 'head.html', 'scripts', 'styles', 'blocks', 'content'];
+sh(root, process.execPath, [join(replica, 'foundation-freeze.mjs'), 'freeze']);
+sh(base, 'git', ['init', '-q', '--bare', 'remote.git']);
+git('init', '-q'); git('add', '--', ...CODE); git('commit', '-qm', 'site'); git('remote', 'add', 'origin', join(base, 'remote.git')); git('push', '-q', '-u', 'origin', 'HEAD');
 
 const gateAll = (args = [], env = {}) => {
   writeFileSync(COUNT, '');
@@ -164,34 +233,66 @@ const gateAll = (args = [], env = {}) => {
 const summary = () => JSON.parse(readFileSync(join(OUT, 'summary.json'), 'utf8'));
 const row = (s, slug) => s.rows.find((x) => x.slug === slug);
 const pageFile = (slug, f) => join(OUT, slug, f);
+const storedKey = (slug) => JSON.parse(readFileSync(pageFile(slug, 'gate-key.json'), 'utf8')).gateKey;
 // summary.json apart from the reuse fields and timestamps (§ 9 item 1: byte-identical apart from reused / at).
 const strip = (v) => JSON.parse(JSON.stringify(v, (k, x) => (['reused', 'reusedRows', 'reusedProbes', 'reuse', 'at', 'writtenAt'].includes(k) ? undefined : x)));
+const HEX = /^[0-9a-f]{64}$/;
 
 let r = gateAll([], { STUB_FAIL: 'about' });
 const run1 = existsSync(join(OUT, 'summary.json')) ? summary() : null;
-check('run 1 (fresh): per page 2 stitches, 1 content probe, 1 compare; probes.json per page; rows reused null', () => {
+check('run 1 (fresh): per page 2 stitches, 1 content probe, 1 compare; probes.json + gate-key.json; rows carry gateKey', () => {
   assert.equal(r.status, 2, r.stderr); assert.deepEqual(r.n, { origin: 2, eds: 2, probes: 2, compares: 2 });
-  for (const slug of ['home', 'about']) { assert.ok(existsSync(pageFile(slug, 'probes.json')), slug); assert.equal(row(run1, slug).reused, null); }
-  assert.deepEqual(run1._provenance.reuse, { rows: 0, probes: 0 });
+  for (const slug of ['home', 'about']) { assert.ok(existsSync(pageFile(slug, 'probes.json')), slug); assert.match(storedKey(slug), HEX); assert.equal(row(run1, slug).gateKey, storedKey(slug)); assert.equal(row(run1, slug).reused, null); }
+  assert.equal(row(run1, 'about').pass, false); assert.deepEqual(run1._provenance.reuse, { rows: 0, probes: 0 });
 });
 r = gateAll(['--skip-existing'], { STUB_FAIL: 'about' });
-check('run 2 --skip-existing: 0 stitches, 0 probes (replayed: the capture pair is unchanged), compares only; summary.json equal apart from reused/at', () => {
-  assert.equal(r.status, 2, r.stderr); assert.deepEqual(r.n, { origin: 0, eds: 0, probes: 0, compares: 2 });
+check('run 2 --skip-existing: the PASS row reused whole, the FAIL page re-compared on replayed probes — 0 stitches, 0 probes; summary.json equal apart from reused/at', () => {
+  assert.equal(r.status, 2, r.stderr); assert.deepEqual(r.n, { origin: 0, eds: 0, probes: 0, compares: 1 });
   const s = summary();
-  for (const slug of ['home', 'about']) assert.equal(row(s, slug).reused.what, 'probes');
-  assert.equal(s.totals.reusedProbes, 2); assert.deepEqual(strip(s), strip(run1));
-  assert.match(readFileSync(join(OUT, 'summary.md'), 'utf8'), /· reused: 0 rows, 2 probe sets/);
+  assert.deepEqual(row(s, 'home').reused, { what: 'row', from: 'summary.json', at: run1._provenance.writtenAt, gateKey: row(run1, 'home').gateKey });
+  assert.equal(row(s, 'about').reused.what, 'probes'); assert.equal(s.totals.reusedRows, 1); assert.equal(s.totals.reusedProbes, 1);
+  assert.deepEqual(strip(s), strip(run1));
+  assert.match(readFileSync(join(OUT, 'summary.md'), 'utf8'), /· reused: 1 rows, 1 probe sets/);
 });
 r = gateAll(['--skip-existing', '--recapture-eds']);
-check('--recapture-eds: the EDS side only — EDS stitches + probes + compares, 0 origin stitches, nothing replayed', () => {
+const run3 = summary();
+check('--recapture-eds: the EDS side only — EDS stitches + probes + compares, 0 origin stitches, no row reused', () => {
   assert.equal(r.status, 0, r.stderr); assert.deepEqual(r.n, { origin: 0, eds: 2, probes: 2, compares: 2 });
-  assert.equal(summary().totals.reusedProbes, 0);
+  assert.equal(run3.totals.reusedRows + run3.totals.reusedProbes, 0);
 });
-for (const slug of ['home', 'about']) unlinkSync(pageFile(slug, 'probes.json'));
 r = gateAll(['--skip-existing']);
-check('a legacy gate dir (no probes.json): today\'s behaviour — captures reused, probes run', () => {
+check('a second --skip-existing run over all-PASS rows launches nothing: 0 stitches, 0 probes, 0 compares; summary.json equal apart from reused/at', () => {
+  assert.equal(r.status, 0, r.stderr); assert.deepEqual(r.n, { origin: 0, eds: 0, probes: 0, compares: 0 });
+  assert.equal(summary().totals.reusedRows, 2); assert.deepEqual(strip(summary()), strip(run3));
+});
+const keys4 = { home: storedKey('home'), about: storedKey('about') };
+put('blocks/cards/cards.css', '.cards { gap: 2rem; }'); git('add', '--', 'blocks/cards/cards.css'); git('commit', '-qm', 'cards gap'); git('push', '-q');
+r = gateAll(['--skip-existing']);
+check('one byte in blocks/cards/cards.css, committed + pushed: that page re-shoots EDS + probes + compares under a new key, the other page is reused', () => {
+  assert.equal(r.status, 0, r.stderr); assert.deepEqual(r.n, { origin: 0, eds: 1, probes: 1, compares: 1 });
+  const s = summary();
+  assert.equal(row(s, 'home').reused.what, 'row'); assert.equal(row(s, 'about').reused, null);
+  assert.notEqual(storedKey('about'), keys4.about); assert.equal(row(s, 'about').gateKey, storedKey('about')); assert.equal(storedKey('home'), keys4.home);
+});
+const keys5 = { home: storedKey('home'), about: storedKey('about') };
+put('blocks/cards/cards.css', '.cards { gap: 3rem; }');
+r = gateAll(['--skip-existing']);
+check('the same edit NOT pushed: key null (the reason names the file), no row reused, no forced re-shoot, probes replayed', () => {
+  assert.equal(r.status, 0, r.stderr); assert.deepEqual(r.n, { origin: 0, eds: 0, probes: 0, compares: 2 });
+  assert.match(r.stdout, /gate key n\/a .*blocks\/cards\/cards\.css/);
+  const s = summary();
+  assert.equal(s.totals.reusedRows, 0); assert.equal(s.totals.reusedProbes, 2);
+  assert.equal(row(s, 'about').gateKey, keys5.about, 'the row keeps the key of its evidence'); assert.equal(storedKey('about'), keys5.about);
+});
+git('checkout', '--', 'blocks/cards/cards.css');
+for (const slug of ['home', 'about']) for (const f of ['probes.json', 'gate-key.json']) unlinkSync(pageFile(slug, f));
+const legacy = summary(); for (const x of legacy.rows) { delete x.gateKey; delete x.reused; } writeFileSync(join(OUT, 'summary.json'), JSON.stringify(legacy, null, 2));
+r = gateAll(['--skip-existing']);
+check('a legacy gate dir (no probes.json / gate-key.json, rows without gateKey): today\'s behaviour — captures reused, probes run, rows fresh', () => {
   assert.equal(r.status, 0, r.stderr); assert.deepEqual(r.n, { origin: 0, eds: 0, probes: 2, compares: 2 });
-  assert.equal(summary().totals.reusedProbes, 0);
+  const s = summary();
+  assert.equal(s.totals.reusedRows + s.totals.reusedProbes, 0); assert.equal(row(s, 'home').gateKey, null);
+  assert.ok(!existsSync(pageFile('home', 'gate-key.json')), 'no key is issued for evidence captured before keys existed');
 });
 rmSync(base, { recursive: true, force: true });
 console.log(failed ? `\n${failed} failed` : '\nall passed');

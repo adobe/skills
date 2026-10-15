@@ -13,8 +13,8 @@
  * — clip-probe on the served side (D1, both stages), content-presence (D2, published stage; the
  * prototype is authored from the same capture content-diff already reconciles) and unit-geometry (D3)
  * for the repeated-unit families stardust/replica/units.json declares for the page. Writes
- * <out>/<slug>/{origin,eds,diff}.png + pixel.json + clip.json [+ content.json, units.json] + probes.json,
- * <out>/summary.{json,md}; --only runs write <out>/runs/<ts>-<slug>.json instead.
+ * <out>/<slug>/{origin,eds,diff}.png + pixel.json + clip.json [+ content.json, units.json] + probes.json
+ * [+ gate-key.json], <out>/summary.{json,md}; --only runs write <out>/runs/<ts>-<slug>.json instead.
  *
  * VERDICT (all four): pixel % ≤ --threshold AND |Δh| ≤ --height-tol × origin height (a union metric
  * was tried and rejected — white gaps score as matches) AND served clipped ≤ --clip-max +
@@ -32,7 +32,14 @@
  * page dir are reused as before. Probes are replayed from <slug>/probes.json while the capture pair they were
  * taken against is the one on disk — same inputs, every probe ok and its JSON the recorded one, origin.json and
  * eds.json no newer than the probes — so the same-minute origin/build pairing holds because the pair is
- * unchanged; --recapture-eds / --recapture-origin invalidate them.
+ * unchanged; --recapture-eds / --recapture-origin invalidate them. Published stage: every row carries `gateKey`,
+ * sha256 over the frozen-foundation manifest (else the default foundation set) + icons/ and plugins/, the
+ * page's block dirs, its content documents (page, nav, footer, linked fragments), the gate settings and the
+ * page's sidecar entries — issued only while that tree is what is deployed (code: no difference from the
+ * upstream branch and no untracked file; documents: the deploy ledgers' contentSha), else null with the reason.
+ * A PASS row whose key is unchanged is reused whole (no stitch, probe or compare); a changed key re-shoots the
+ * EDS side. <slug>/gate-key.json records the key of the EDS capture taken in that run; a dir without one
+ * (legacy) keeps today's behaviour until its next EDS capture.
  *
  * Usage: node skills/replica/scripts/gate-all.mjs [--stage published|prototype] [--proto-base <url>]
  *        [--state f] [--out dir] [--width 1440] [--only <slug,…>] [--skip-existing] [--recapture-eds] [--recapture-origin] [--eds-host <h>]
@@ -40,15 +47,18 @@
  *        [--eds-concurrency 4] [--probe-concurrency 2] [--threshold 10] [--height-tol 0.05]
  *        [--clip-max 0] [--unit-tol 4] [--no-clip] [--no-content] [--no-probes] [--units <f>]
  *        [--compare-only] [--warmup <url>] [--vh <px>]
- * Requires playwright, pixelmatch, pngjs (project devDependencies); stitch-shot.mjs and
- * pixel-compare.mjs next to this file; the diff skill's scripts dir alongside. Exit: 0 all PASS
+ * Requires playwright, pixelmatch, pngjs (project devDependencies); stitch-shot.mjs, pixel-compare.mjs
+ * and foundation-freeze.mjs next to this file; the diff skill's scripts dir alongside. Exit: 0 all PASS
  * (overrides count), 2 any FAIL, 1 error. `verdict`, `formatSummary`, `parseArgs` and the reuse helpers
- * (`probeInputs`, `probeReuse`, `canon`) are exported.
+ * (`probeInputs`, `probeReuse`, `canon`, `gateKeyParts`, `gateKeyOf`, `foundationPart`, `codeDeployed`,
+ * `deployedShas`, `contentDeployed`, `keyChanged`, `skipCapture`, `latestRows`, `rowReuse`) are exported.
  */
-import { spawn } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { execFileSync, spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { DEFAULT_OUT as FREEZE_MANIFEST, DEFAULT_PATHS as FOUNDATION_PATHS, snapshot } from './foundation-freeze.mjs';
 
 const HELP = `gate-all — published-origin gate over every deployed page: pixel + height + clip + content (#125)
 
@@ -60,7 +70,8 @@ Usage: node gate-all.mjs [options]   (from the project root)
   --out <dir>               stardust/replica/gates/all-<width>
   --width <px>              1440
   --only <slug,…>           subset → runs/<ts>-<slug>.json (summary.* untouched)
-  --skip-existing           reuse captures; probes while the capture pair is unchanged (rows say reused)
+  --skip-existing           reuse captures; probes while the capture pair is unchanged; PASS rows
+                            while the gate key is unchanged (rows say reused)
   --recapture-eds           (with --skip-existing) re-shoot eds.png only
   --recapture-origin        re-shoot origin.png (previous kept on failure)
   --eds-host <host>         gate a code branch host against the same content
@@ -77,7 +88,7 @@ Usage: node gate-all.mjs [options]   (from the project root)
   --help                    this text
 Verdict = pixel % ≤ threshold AND |Δh| ≤ height-tol × origin height AND clipped ≤ clip-max(+allowance) AND content MISSING+HIDDEN = 0.
 Sidecars in <out>/: masks.json, overrides.json, clip-allow.json, presence.json, units.json (see the header).
-Reuse sidecar per page: probes.json (see the header).
+Reuse sidecars per page: probes.json, gate-key.json (see the header).
 Exit: 0 all PASS (overrides count), 2 any FAIL, 1 error.`;
 
 export function parseArgs(argv) {
@@ -185,6 +196,121 @@ export function probeReuse({ sidecar, inputs, originMeta, edsMeta, files = {}, o
   return { reuse: true, at: sidecar.at, why: null };
 }
 
+const sha256 = (s) => createHash('sha256').update(s).digest('hex');
+// EDS runtime dirs outside the frozen foundation that still change a render (decorated icons, plugins).
+const RUNTIME_PATHS = ['icons/', 'plugins/'];
+const NAME = /^[a-z0-9][a-z0-9-]*$/;
+// The DA document behind a delivered path — deploy/scripts/eds-path.mjs daPath, inlined (no cross-skill import).
+const daPathOf = (pathname) => (pathname.endsWith('/') ? `${pathname}index` : pathname);
+/**
+ * The foundation part of the gate key. With stardust/rollout/foundation-freeze.json: the hash of its `files` while a
+ * fresh snapshot equals them (else null — `foundation changed since freeze`); without one: the hash of the default
+ * foundation set on disk. `runtime` = the hash of RUNTIME_PATHS; `paths` = the foundation paths the deploy-state
+ * guard diffs against the upstream branch.
+ */
+export function foundationPart(root = '.') {
+  const manifest = join(root, FREEZE_MANIFEST); const runtime = sha256(canon(snapshot(root, RUNTIME_PATHS)));
+  if (!existsSync(manifest)) return { hash: sha256(canon(snapshot(root, FOUNDATION_PATHS.filter((x) => existsSync(join(root, x)))))), runtime, paths: FOUNDATION_PATHS, why: null };
+  const m = JSON.parse(readFileSync(manifest, 'utf8')); const paths = Array.isArray(m.paths) ? m.paths : FOUNDATION_PATHS;
+  if (canon(snapshot(root, paths)) !== canon(m.files || {})) return { hash: null, runtime, paths, why: 'foundation changed since freeze' };
+  return { hash: sha256(canon(m.files)), runtime, paths, why: null };
+}
+/**
+ * gateKeyParts(p, ctx) → { parts, why }: what a published row's verdict depends on, or parts null + why.
+ * ctx = { root, opts, edsUrl, masks, clipAllow, presence, unitsOf, foundation, coverage (slug → block names) }.
+ * blocks: coverage/pages.json `blocks` ∪ the first class token of every `<div class>` in the page's documents that
+ * names a blocks/<name>/ dir — every file in the dir hashed. content: content<daPath>.html, nav, footer and the
+ * /fragments/ documents they link. build: the EDS origin, the source URL, the width, the gate settings and the
+ * page's sidecar entries (a mask or allowance edit is a key change).
+ */
+export function gateKeyParts(p, { root = '.', opts, edsUrl = (x) => x.liveUrl, masks = {}, clipAllow = {}, presence = {}, unitsOf = () => [], foundation = foundationPart(root), coverage = {} }) {
+  if (foundation.why) return { parts: null, why: foundation.why };
+  const url = new URL(edsUrl(p)); const page = `content${daPathOf(url.pathname)}.html`;
+  if (!existsSync(join(root, page))) return { parts: null, why: `no ${page}` };
+  const docs = [page, 'content/nav.html', 'content/footer.html']; const content = {};
+  const names = new Set((coverage[p.slug] || []).filter((n) => NAME.test(n)));
+  for (let i = 0; i < docs.length; i += 1) {
+    if (!existsSync(join(root, docs[i]))) continue;
+    const buf = readFileSync(join(root, docs[i])); const html = buf.toString('utf8'); content[docs[i]] = sha256(buf);
+    for (const m of html.matchAll(/<div\s+class="\s*([^"\s]+)/gi)) if (NAME.test(m[1]) && existsSync(join(root, 'blocks', m[1]))) names.add(m[1]);
+    for (const m of html.matchAll(/href="(?:https?:\/\/[^/"]+)?(\/fragments\/[\w/-]+?)(?:\.html)?(?:[?#][^"]*)?"/gi)) if (!docs.includes(`content${m[1]}.html`)) docs.push(`content${m[1]}.html`);
+  }
+  const blocks = Object.fromEntries([...names].sort().map((n) => [n, snapshot(root, [`blocks/${n}/`])]));
+  const settings = { threshold: opts.threshold, heightTol: opts.heightTol, clipMax: opts.clipMax, unitTol: opts.unitTol, clip: opts.clip, content: opts.content };
+  const sidecars = { masks: masks[p.slug] ?? null, clipAllow: clipAllow[p.slug] ?? null, presence: presence[p.slug] ?? null, units: unitsOf(p) };
+  return { parts: { v: 1, foundation: foundation.hash, runtime: foundation.runtime, blocks, content, build: { origin: url.origin, source: p.url, width: opts.width, settings, sidecars } }, why: null };
+}
+/** gateKeyOf(parts) → hex sha256 of the canonical (sorted-key) JSON of the parts (they carry `v`), or null. */
+export const gateKeyOf = (parts) => (parts ? sha256(canon(parts)) : null);
+/**
+ * Deploy-state guard, code half (once per run): an upstream branch exists, `git diff @{u}` over the hashed code
+ * paths is empty (nothing uncommitted or unpushed) and none of them holds an untracked file → { ok, why }.
+ */
+export function codeDeployed(paths, root = '.') {
+  const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).split('\n').filter(Boolean);
+  const named = (l) => `${l.slice(0, 3).join(', ')}${l.length > 3 ? ` (+${l.length - 3})` : ''}`;
+  let up;
+  try { [up] = git('rev-parse', '--abbrev-ref', '@{u}'); } catch { return { ok: false, why: 'no upstream branch (git rev-parse @{u}) — the deployed code cannot be proven' }; }
+  try {
+    const changed = git('diff', '--name-only', '@{u}', '--', ...paths);
+    if (changed.length) return { ok: false, why: `code differs from ${up} (not pushed, so not deployed): ${named(changed)}` };
+    const added = git('ls-files', '--others', '--exclude-standard', '--', ...paths);
+    if (added.length) return { ok: false, why: `untracked code, not deployed: ${named(added)}` };
+  } catch (e) { return { ok: false, why: `git: ${String(e.message).split('\n')[0]}` }; }
+  return { ok: true, why: null };
+}
+/** webPath → contentSha of the newest row (by `ts`) across content/.deploy-ledger.json and stardust/deploy/ledger-*.json. */
+export function deployedShas(root = '.') {
+  const dl = join(root, 'stardust/deploy');
+  const files = [join(root, 'content/.deploy-ledger.json'), ...(existsSync(dl) ? readdirSync(dl).filter((f) => /^ledger-.*\.json$/.test(f)).map((f) => join(dl, f)) : [])];
+  const newest = {};
+  for (const f of files) {
+    let ledger; try { ledger = JSON.parse(readFileSync(f, 'utf8')); } catch { continue; }
+    for (const [path, row] of Object.entries(ledger || {})) if (row && typeof row === 'object' && (!newest[path] || String(row.ts || '') > String(newest[path].ts || ''))) newest[path] = row;
+  }
+  return Object.fromEntries(Object.entries(newest).map(([path, row]) => [path, row.contentSha || null]));
+}
+/** Deploy-state guard, content half: every hashed document is the deployed one (its ledger contentSha) → null, else why. */
+export function contentDeployed(content, shas) {
+  for (const [f, hash] of Object.entries(content)) {
+    const web = f.replace(/^content/, '').replace(/\.html$/, '');
+    if (!shas[web]) return `${f}: no deploy-ledger contentSha for ${web}`;
+    if (shas[web] !== hash) return `${f} differs from the deployed document (ledger ${web})`;
+  }
+  return null;
+}
+/** A stored key (gate-key.json) that differs from a known current key; no file (legacy dir) or an unknown current key → false. */
+export const keyChanged = (stored, current) => !!stored && current != null && stored.gateKey !== current;
+/** --skip-existing reuse of one side's capture: on disk, not that side's --recapture-*, for EDS not a changed key. ctx = { opts, has(p, side), keyChanged(p) }. */
+export function skipCapture(p, side, { opts, has, keyChanged: changed }) {
+  return !!opts.skip && !opts[side === 'eds' ? 'recaptureEds' : 'recaptureOrigin'] && !(side === 'eds' && changed(p)) && has(p, side);
+}
+/** Latest row per slug (by _provenance.writtenAt) across <out>/summary.json and <out>/runs/*.json at this width → { slug: { row, from, at } }. */
+export function latestRows(out, width) {
+  const runs = join(out, 'runs');
+  const files = ['summary.json', ...(existsSync(runs) ? readdirSync(runs).filter((f) => f.endsWith('.json')).sort().map((f) => `runs/${f}`) : [])];
+  const latest = {};
+  for (const f of files) {
+    let s; try { s = JSON.parse(readFileSync(join(out, f), 'utf8')); } catch { continue; }
+    const at = s && s._provenance && s._provenance.writtenAt;
+    if (!at || s._provenance.breakpoint !== width || !Array.isArray(s.rows)) continue;
+    for (const row of s.rows) if (row && row.slug && (!latest[row.slug] || at > latest[row.slug].at)) latest[row.slug] = { row, from: f, at };
+  }
+  return latest;
+}
+/**
+ * rowReuse({ prior, gateKey, edsPng, override, opts }) → the prior row again, marked `reused`, or null. Only under
+ * --skip-existing on the published stage without --recapture-*, with a known current key equal to the row's, a
+ * PASS (not an override) and the page's eds.png on disk. `at` stays the time the row was measured.
+ */
+export function rowReuse({ prior, gateKey, edsPng, override = null, opts }) {
+  if (!opts.skip || opts.stage !== 'published' || opts.recaptureEds || opts.recaptureOrigin || !gateKey || !prior || !edsPng) return null;
+  const { row } = prior;
+  if (row.gateKey !== gateKey || row.pass !== true) return null;
+  const at = row.reused && row.reused.what === 'row' ? row.reused.at : prior.at;
+  return { ...row, override, passWithOverride: row.pass || !!override, reused: { what: 'row', from: prior.from, at, gateKey } };
+}
+
 // ---- runner ---------------------------------------------------------------------------------------------
 const HERE = dirname(fileURLToPath(import.meta.url));
 const firstExisting = (cands) => cands.map((p) => resolve(HERE, p)).find((p) => existsSync(p));
@@ -208,6 +334,7 @@ const lastLine = (s) => (s || '').trim().split('\n').filter(Boolean).pop() || ''
 
 async function main() {
   const opts = parseArgs(process.argv);
+  const runStart = new Date().toISOString();
   if (!existsSync(opts.state)) { console.error(`gate-all: ${opts.state} not found — run from the project root or pass --state`); process.exit(1); }
   if ((opts.clip || opts.content) && !DIFF_DIR) { console.error('gate-all: the diff skill\'s scripts dir was not found next to this one (../../diff/scripts or ../diff) — copy it (replica SKILL.md § Setup) or pass --no-probes'); process.exit(1); }
   const state = readJson(opts.state);
@@ -233,7 +360,7 @@ async function main() {
   async function captureOrigin(p) {
     const d = dir(p); mkdirSync(d, { recursive: true });
     const out = join(d, 'origin.png'); const meta = join(d, 'origin.json');
-    if (opts.skip && !opts.recaptureOrigin && existsSync(out) && existsSync(meta)) { rec(p, 'origin', readJson(meta)); return; }
+    if (skipCapture(p, 'origin', capCtx)) { rec(p, 'origin', readJson(meta)); return; }
     const crawlShot = join(opts.crawlShots, `${p.slug}.png`);
     const cachedLive = join('stardust/replica/gates', `${p.slug}-${opts.width}`, 'live.png');
     let r;
@@ -254,7 +381,7 @@ async function main() {
   async function captureEds(p) {
     const d = dir(p); mkdirSync(d, { recursive: true });
     const out = join(d, 'eds.png'); const meta = join(d, 'eds.json');
-    if (opts.skip && !opts.recaptureEds && existsSync(out) && existsSync(meta)) { rec(p, 'eds', readJson(meta)); return; }
+    if (skipCapture(p, 'eds', capCtx)) { rec(p, 'eds', readJson(meta)); return; }
     const s = await run('node', stitchArgs(edsUrl(p), out));
     const r = s.code === 0 ? { instrument: 'stitch-live', url: edsUrl(p) } : { instrument: 'none', url: edsUrl(p), error: `stitch exit ${s.code}: ${lastLine(s.err)}` };
     r.at = new Date().toISOString(); writeFileSync(meta, JSON.stringify(r, null, 2)); rec(p, 'eds', r);
@@ -262,6 +389,24 @@ async function main() {
   }
   const readSafe = (f) => { try { return readJson(f); } catch { return null; } };
   const probeCtx = { opts, edsUrl, presence: PRESENCE, unitsOf };
+  // Gate keys (published stage), once per run before any capture; the deploy-state guard's code half is one git call set.
+  const KEYS = {};
+  if (opts.stage === 'published') {
+    let foundation;
+    try { foundation = foundationPart('.'); } catch (e) { foundation = { hash: null, paths: FOUNDATION_PATHS, why: `foundation: ${e.message}` }; }
+    const code = codeDeployed([...foundation.paths, 'blocks/', ...RUNTIME_PATHS]); const shas = deployedShas('.');
+    const coverage = Object.fromEntries(((readSafe('stardust/rollout/coverage/pages.json') || {}).pages || []).filter((x) => x && x.slug && Array.isArray(x.blocks)).map((x) => [x.slug, x.blocks]));
+    for (const p of pages) {
+      let k; try { k = gateKeyParts(p, { ...probeCtx, masks: MASKS, clipAllow: CLIP_ALLOW, foundation, coverage }); } catch (e) { k = { parts: null, why: `gate key: ${e.message}` }; }
+      const why = k.why || code.why || contentDeployed(k.parts.content, shas);
+      KEYS[p.slug] = { gateKey: why ? null : gateKeyOf(k.parts), why, parts: k.parts };
+    }
+    const na = pages.filter((p) => !KEYS[p.slug].gateKey);
+    if (na.length) log(`gate key n/a for ${na.length}/${pages.length} page(s) — ${[...new Set(na.map((p) => KEYS[p.slug].why))].slice(0, 3).join('; ')} (no row reuse for them; captures and probes reuse as before)`);
+  }
+  const storedKey = (p) => readSafe(join(dir(p), 'gate-key.json'));
+  const currentKey = (p) => (KEYS[p.slug] ? KEYS[p.slug].gateKey : null);
+  const capCtx = { opts, has: (p, side) => existsSync(join(dir(p), `${side}.png`)) && existsSync(join(dir(p), `${side}.json`)), keyChanged: (p) => keyChanged(storedKey(p), currentKey(p)) };
   // The post-spawn record of each probe, shared by the fresh and the replayed path so both build the same row.
   function recordContent(p, content, pr) {
     const d = dir(p);
@@ -341,12 +486,27 @@ async function main() {
     log(`pixel ${p.slug} → ${px.error ? `ERROR ${px.error}` : `${px.pct}% Δh ${px.heightDelta}${px.textPct != null ? ` text ${px.textPct}%` : ''} ${px.pass ? 'PASS' : 'FAIL'}${px.maskedRows ? ` [MASKED ${px.maskedRows} rows: ${px.maskReason}]` : ''}`}`);
   }
 
-  if (!opts.compareOnly) await Promise.all([pool(pages, opts.oc, captureOrigin), pool(pages, opts.ec, captureEds)]);
-  else for (const p of pages) for (const side of ['origin', 'eds']) { const m = readJson(join(dir(p), `${side}.json`)); if (m) rec(p, side, m); }
-  if (opts.clip || opts.content || FAMILIES || Object.keys(UNITS).length) await pool(pages, opts.pc, probe);
-  await pool(pages, 4, compare);
+  // A PASS row whose gate key holds is reused whole: the page leaves all three pools.
+  const REUSED = {};
+  const prior = opts.skip && opts.stage === 'published' ? latestRows(opts.out, opts.width) : {};
+  for (const p of pages) {
+    const row = rowReuse({ prior: prior[p.slug], gateKey: currentKey(p), edsPng: existsSync(join(dir(p), 'eds.png')), override: OVERRIDES[p.slug] ?? null, opts });
+    if (row) { REUSED[p.slug] = row; log(`row ${p.slug} → reused (gate key ${row.gateKey.slice(0, 12)} unchanged; measured ${row.reused.at}, ${row.reused.from})`); }
+  }
+  const todo = pages.filter((p) => !REUSED[p.slug]);
+  if (!opts.compareOnly) {
+    await Promise.all([pool(todo, opts.oc, captureOrigin), pool(todo, opts.ec, captureEds)]);
+    // gate-key.json = the key of the EDS capture taken in this run (null while unknown or when the capture failed).
+    for (const p of todo) {
+      const k = KEYS[p.slug]; const m = readSafe(join(dir(p), 'eds.json'));
+      if (k && m && m.at >= runStart) writeFileSync(join(dir(p), 'gate-key.json'), JSON.stringify({ gateKey: m.error ? null : k.gateKey, why: m.error ? `EDS capture failed: ${m.error}` : k.why, parts: k.parts, at: m.at }, null, 1));
+    }
+  } else for (const p of todo) for (const side of ['origin', 'eds']) { const m = readJson(join(dir(p), `${side}.json`)); if (m) rec(p, side, m); }
+  if (opts.clip || opts.content || FAMILIES || Object.keys(UNITS).length) await pool(todo, opts.pc, probe);
+  await pool(todo, 4, compare);
 
   const rows = pages.map((p) => {
+    if (REUSED[p.slug]) return REUSED[p.slug];
     const r = results[p.slug] || {}; const px = r.pixel || {};
     const v = verdict({ pixel: px, clip: r.clip && r.clip.counts ? r.clip : null, content: r.content || null, units: r.units || null, override: OVERRIDES[p.slug] || null, allowance: (CLIP_ALLOW[p.slug] || {}).max || 0 }, { threshold: opts.threshold, heightTol: opts.heightTol, clipMax: opts.clipMax, clipOn: opts.clip, contentOn: opts.content });
     return { slug: p.slug, path: p.deployedPath || new URL(p.liveUrl).pathname, template: p.template, tier: p.fidelityTier, origin: r.origin && r.origin.instrument, originAsymmetric: !!(r.origin && r.origin.asymmetric), eds: r.eds && r.eds.instrument,
@@ -357,7 +517,7 @@ async function main() {
       browser: (r.content && r.content.tier) || (r.clip && r.clip.tier) || null,
       override: OVERRIDES[p.slug] || null, masked: !!px.maskedRows, maskedRows: px.maskedRows || 0, maskReason: px.maskReason || null,
       hotBands: (px.bands || []).filter((b) => b.pct > 15).map((b) => `${b.y0}-${b.y1}:${b.pct}%`), error: px.error || (r.origin && r.origin.error) || (r.eds && r.eds.error) || null,
-      reused: r.probesReused ? { what: 'probes', at: r.probesReused } : null };
+      gateKey: opts.stage === 'published' ? ((storedKey(p) || {}).gateKey ?? null) : null, reused: r.probesReused ? { what: 'probes', at: r.probesReused } : null };
   });
   const n = (f) => rows.filter(f).length;
   const totals = { pages: rows.length, pass: n((r) => r.pass), pixelOnlyPass: n((r) => r.pixelOnlyPass), overridePass: n((r) => !r.pass && r.override), fail: n((r) => !r.pass && r.pct != null), error: n((r) => r.pct == null),
