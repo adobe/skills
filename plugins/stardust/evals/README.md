@@ -62,6 +62,16 @@ rescoping before the suite is run against 0.14.0:
   runner can start; the script's own tests use one
   (`skills/reskin/scripts/test/fixtures/figma-kit/fake-figma.mjs`).
 
+### 0.35.0 notes
+
+- **`standard_handoff_no_core_changes` was rescoped in 0.35.0.** The
+  reskin → migrate bridge (M3) legitimately writes `approved`, `flow`,
+  `designSource` and stale flags in `state.json`, and the migrate /
+  rollout / replica / direct skills gained `flow: reskin` guards. The
+  criterion now scores whether the *run* stays inside those documented
+  writes (and `reskin-preflight` gates the siblings), not whether core
+  files are untouched.
+
 Evaluation suite for the four-phase redesign pipeline plus the
 "open and reasoned" intent-reasoning principle that governs the
 master skill.

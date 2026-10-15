@@ -56,6 +56,12 @@ least the archetype pages first. For a single page, use `stardust deploy` direct
    gate's, unchanged. (Recorded: 2,207 pages published at 24–28 % diff from
    an archetype that never passed; a 3,366-page re-import after a random
    review found what a gate would have.)
+   **Gated-archetype precondition (`flow: reskin`).** `node
+   skills/reskin/scripts/reskin-preflight.mjs` must exit 0 (the predicate
+   over `stardust/reskin/ledger.json`, `skills/reskin/reference/handoff.md`);
+   a type whose archetype it fails is blocked exactly as above, and a
+   migrated sibling whose own gate (`--stage migrated`) is not `gated` is
+   not published. Hands-off is not a bypass.
 3. Verify the EDS/AEM target is ready exactly as `deploy` requires (project
    scaffolding, `DA_TOKEN`, code branch pushable). `rollout` adds no new transport.
 4. If `state.json.handsOff` is true (`skills/stardust/SKILL.md` § Hands-off

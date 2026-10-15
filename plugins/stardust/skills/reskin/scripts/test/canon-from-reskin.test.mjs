@@ -77,6 +77,12 @@ check('otherArchetypes: first approved/migrated page per other type, own type an
     { slug: 'misc', status: 'approved', prototypePath: 'm.html' },
   ];
   assert.deepEqual(otherArchetypes(pages, 'home'), [{ slug: 'news', type: 'listing', prototypePath: 'n.html' }]);
+  // first page of a type has no prototype: the next one with a prototype stands in, never the type dropped
+  const gap = [{ slug: 'about', type: 'landing', status: 'migrated' }, { slug: 'blog', type: 'listing', status: 'migrated', prototypePath: 'b.html' }, { slug: 'index', type: 'landing', status: 'migrated', prototypePath: 'i.html' }];
+  assert.deepEqual(otherArchetypes(gap, 'blog'), [{ slug: 'index', type: 'landing', prototypePath: 'i.html' }]);
+  // the ledger's handoff archetype wins over list order
+  assert.deepEqual(otherArchetypes(pages, 'news', { landing: { archetype: 'about' } }), [{ slug: 'about', type: 'landing', prototypePath: 'a.html' }]);
+  assert.deepEqual(otherArchetypes(pages, 'news', { landing: { archetype: 'nope' } }), [{ slug: 'home', type: 'landing', prototypePath: 'h.html' }]);
 });
 check('mappingModuleIssues: modules without a skeleton and modules composed more than one way', () => {
   const mapping = { pages: {
@@ -107,6 +113,9 @@ check('previousShot: the latest history entry with a capture, else null', () => 
   assert.equal(previousShot([]), null); assert.equal(previousShot(undefined), null);
   const h = [{ at: '1', shot: 'a.png' }, { at: '2', shot: 'b.png' }, { at: '3' }];
   assert.equal(previousShot(h).shot, 'b.png');
+  // multi-archetype canon: compare an archetype only with its own previous capture
+  const m = [{ from: 'home', shot: 'h1.png' }, { from: 'news', shot: 'n1.png' }];
+  assert.equal(previousShot(m, 'home').shot, 'h1.png'); assert.equal(previousShot(m, 'faq'), null);
 });
 check('staleFlags: approved non-archetype pages on any change; migrated pages only when their sidecar no longer matches', () => {
   const next = { files: { header: { sha: 'h' }, footer: { sha: 'f' }, css: { sha: 'c2' } }, archetypeSha: 'a2' };

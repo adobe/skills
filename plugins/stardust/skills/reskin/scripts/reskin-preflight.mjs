@@ -15,6 +15,10 @@
  *   FAIL  direction.md carries an "## Active" direction
  *   FAIL  dynamic-features.md exists and every feature row has a disposition
  *   FAIL  every module a typed page's mapping uses has a canon skeleton (DESIGN.json extensions.modules)
+ *   FAIL  no agent approval outside hands-off (approvedBy hands-off/autopilot/agent needs state.handsOff and "hands-off")
+ *   FAIL  the reskin predicate: each type's archetype is gated in reskin/ledger.json (reskin-ledger.mjs) —
+ *         gates PASS or residual accepted, no open residual, eyeball pass, prototype unchanged, deployed PASS if run
+ *   WARN  migrated pages whose migrate output has no passing sibling gate (reskin-ledger.mjs record --stage migrated)
  *   WARN  pages without a type (migrate renders them Path A, never from an archetype)
  *   WARN  stale pages (re-approve / re-migrate them, or migrate stale output knowingly)
  *   WARN  feature rows still awaiting an owner decision
@@ -54,7 +58,48 @@ export function preflight(read, { dir = 'stardust' } = {}) {
   const missing = [...types].filter(([, ps]) => !ps.some((p) => p.status === 'approved' || p.status === 'migrated'));
   if (!types.size) fail('archetypes', 'no page has a type: classify pages before migrating');
   else if (missing.length) fail('archetypes', `no approved archetype for ${missing.map(([t, ps]) => `${t} (${ps.map((p) => p.slug).join(', ')})`).join('; ')} — approve one page per type with state.mjs advance --to approved`);
-  else ok('archetypes', [...types].map(([t, ps]) => `${t}: ${ps.filter((p) => p.status === 'approved' || p.status === 'migrated').map((p) => p.slug)[0]}`).join(', '));
+  else {
+    const handoff = json(`${dir}/reskin/ledger.json`)?.handoff || {};
+    ok('archetypes', [...types].map(([t, ps]) => `${t}: ${handoff[t]?.archetype || ps.find((p) => p.status === 'approved' || p.status === 'migrated').slug}`).join(', '));
+  }
+  // D3: `approved` is the user's approval; an agent may approve only under hands-off (approvedBy "hands-off").
+  const AGENT = new Set(['hands-off', 'autopilot', 'agent', 'auto', 'auto-mode']);
+  const approvals = state.pages.flatMap((p) => (p.history || []).filter((h) => h.status === 'approved').slice(-1).map((h) => ({ slug: p.slug, by: h.approvedBy })));
+  const agentApproved = approvals.filter((a) => a.by && AGENT.has(String(a.by).toLowerCase()) && !(state.handsOff === true && a.by === 'hands-off'));
+  if (agentApproved.length) fail('approval', `agent approval outside hands-off: ${agentApproved.map((a) => `${a.slug} (by ${a.by})`).join(', ')} — the user approves, or the run is hands-off (state.json handsOff: true) and the approval is --by hands-off`);
+  else if (approvals.length) ok('approval', `${approvals.length} approval(s): ${[...new Set(approvals.map((a) => a.by || 'user'))].join(', ')}`);
+
+  // The flow: reskin predicate (spec § 4.6): each type's archetype is gated in reskin/ledger.json —
+  // every gate PASS or a residual accepted, no needs-owner/blocked residual, the eyeball recorded and
+  // passing, the recorded prototype still the file on disk, and gates.deployed PASS when M2 ran.
+  const ledger = json(`${dir}/reskin/ledger.json`);
+  if (types.size && !missing.length) {
+    if (!ledger) fail('archetype-gates', `${dir}/reskin/ledger.json ${ledger === undefined ? 'is missing' : 'is not valid JSON'} — run reskin-ledger.mjs record <archetype> after the Phase 5 gates`);
+    else {
+      const problems = []; const good = [];
+      for (const [t, ps] of types) {
+        const a = ledger.handoff?.[t]?.archetype || ps.find((p) => p.status === 'approved' || p.status === 'migrated').slug;
+        const e = ledger.pages?.[a]; const page = state.pages.find((p) => p.slug === a);
+        if (!e || !ledger.handoff?.[t]) { problems.push(`${t}/${a}: not recorded (reskin-ledger.mjs record ${a})`); continue; }
+        const accepted = (g) => (e.residuals || []).some((r) => r.gate === g && r.verdict === 'accepted');
+        const bad = Object.entries(e.gates || {}).filter(([g, v]) => v.verdict !== 'PASS' && !accepted(g)).map(([g, v]) => `${g} ${v.verdict}`);
+        if (e.status !== 'gated' || bad.length) problems.push(`${t}/${a}: ${bad.join(', ') || e.status}`);
+        const open = (e.residuals || []).filter((r) => r.verdict !== 'accepted');
+        if (open.length) problems.push(`${t}/${a}: residual(s) ${open.map((r) => `${r.gate} ${r.verdict}`).join(', ')}`);
+        if (!e.eyeball) problems.push(`${t}/${a}: no eyeball verdict (reskin-ledger.mjs eyeball ${a} --verdict pass|fail)`);
+        else if (e.eyeball.verdict !== 'pass') problems.push(`${t}/${a}: eyeball ${e.eyeball.verdict}`);
+        const proto = page?.prototypePath && read(page.prototypePath);
+        if (proto != null && e.prototypeSha && sha(proto) !== e.prototypeSha) problems.push(`${t}/${a}: prototype changed since it was recorded — re-run the gates and reskin-ledger.mjs record ${a}`);
+        if (e.gates?.deployed && e.gates.deployed.verdict !== 'PASS') problems.push(`${t}/${a}: deployed gate ${e.gates.deployed.verdict}`);
+        if (!problems.some((x) => x.startsWith(`${t}/`))) good.push(`${t}: ${a}`);
+      }
+      if (problems.length) fail('archetype-gates', problems.join('; '));
+      else ok('archetype-gates', good.join(', '));
+    }
+  }
+  const ungated = state.pages.filter((p) => p.status === 'migrated' && ledger?.pages?.[p.slug]?.migratedStatus !== 'gated');
+  if (ungated.length) warn('sibling-gates', `migrated page(s) without a passing gate on migrate's output: ${ungated.map((p) => p.slug).join(', ')} — gate them (reskin/gates/<slug>/migrated/) and reskin-ledger.mjs record <slug> --stage migrated`);
+
   const untyped = state.pages.filter((p) => !p.type);
   if (untyped.length) warn('untyped', `${untyped.map((p) => p.slug).join(', ')} — migrate renders untyped pages Path A`);
 

@@ -114,6 +114,28 @@ export function findRepeat(ordered, { maxStart = 6, maxPeriod = 12 } = {}) {
   return best && { start: best.start, period: best.period, count: best.count };
 }
 
+// WCAG contrast of two CSS colours (#rgb, #rrggbb, rgb()/rgba()); null when either is unparseable.
+export function contrast(a, b) {
+  const rgb = (c) => {
+    const s = String(c || '').trim();
+    let m = s.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+    if (m) {
+      const h = m[1].length === 3 ? [...m[1]].map((x) => x + x).join('') : m[1];
+      return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16));
+    }
+    m = s.match(/^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)/i);
+    return m ? m.slice(1, 4).map(Number) : null;
+  };
+  const lum = (c) => {
+    const [r, g, bl] = c.map((x) => { const s = x / 255; return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; });
+    return 0.2126 * r + 0.7152 * g + 0.0722 * bl;
+  };
+  const x = rgb(a); const y = rgb(b);
+  if (!x || !y) return null;
+  const [hi, lo] = [lum(x), lum(y)].sort((p, q) => q - p);
+  return (hi + 0.05) / (lo + 0.05);
+}
+
 // Pure: one page's HTML. resolveImg(url) → { src, source? } lets the CLI localize; the default hot-links.
 export function render({ slug, model, tokens, mapping, chromeModel = null, now = new Date().toISOString(), resolveImg = (u) => ({ src: u }) }) {
   const pageMap = mapping?.pages?.[slug];
@@ -121,6 +143,10 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
   const vars = tokenVars(tokens);
   const has = (name) => vars.some(([n]) => n === name);
   const v = (name, fallback) => (has(name) ? `var(${name})` : fallback);
+  const val = (name) => vars.find(([n]) => n === name)?.[1];
+  // An accent that fails 4.5:1 on the light grounds it sits on stays a decoration, never the text colour.
+  const accentRatios = ['--palette-page-bg', '--palette-light-band-bg'].map((g) => contrast(val('--palette-accent'), val(g) ?? (g === '--palette-page-bg' ? '#fff' : null))).filter((r) => r != null);
+  const accentText = !has('--palette-accent') || !accentRatios.length || Math.min(...accentRatios) >= 4.5;
   const images = [];
   const img = (u) => {
     if (u && !images.includes(u)) images.push(u);
@@ -273,7 +299,7 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
   body:has(> .site-header, > .site-main, > .site-footer) { margin: 0; background: ${v('--palette-page-bg', '#fff')}; color: ${v('--palette-body-fg', 'inherit')}; font-family: ${v('--type-family', 'sans-serif')}; font-size: ${v('--type-body-font-size', '16px')}; line-height: ${v('--type-body-line-height', '1.5')}; }
   .container { max-width: ${v('--layout-container-max-width', '1200px')}; margin: 0 auto; padding: ${v('--layout-container-padding', '0 24px')}; }
   :where(.site-header, .site-main, .site-footer) a { color: inherit; }
-  .link { color: ${v('--palette-accent', 'inherit')}; text-decoration: underline; }
+  .link { ${accentText ? `color: ${v('--palette-accent', 'inherit')}; text-decoration: underline;` : `color: inherit; text-decoration: underline; text-decoration-color: var(--palette-accent); text-decoration-thickness: 2px; text-underline-offset: 3px;`} }
   :where(.site-header, .site-main, .site-footer) img { max-width: 100%; height: auto; }
   .site-header .chrome-row { border-bottom: 1px solid ${v('--palette-light-band-bg', '#eee')}; }
   .site-header .chrome-row .container { display: flex; align-items: center; justify-content: space-between; gap: 24px; min-height: 56px; flex-wrap: wrap; }
@@ -295,10 +321,10 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
   .site-main p { margin: 0 0 16px; }
   .site-main .field { display: flex; flex-direction: column; gap: 8px; margin-bottom: 24px; }
   .site-main .field label { font-weight: ${v('--type-label-font-weight', '600')}; }
-  .site-main .req { color: ${v('--palette-accent', 'inherit')}; }
+  .site-main .req { color: ${accentText ? v('--palette-accent', 'inherit') : 'inherit'}; }
   .site-main input:not([type=checkbox]):not([type=radio]), .site-main select, .site-main textarea { font: inherit; min-height: 48px; padding: 0 16px; width: 100%; border: 1px solid ${v('--palette-light-band-bg', '#ccc')}; border-radius: ${v('--radii-control', '4px')}; color: inherit; background: ${v('--palette-page-bg', '#fff')}; }
   .site-main .check { display: flex; gap: 12px; align-items: center; margin-bottom: 12px; }
-  .site-main .check input { width: 20px; height: 20px; accent-color: ${v('--palette-accent', 'auto')}; }
+  .site-main .check input { flex: none; width: 20px; height: 20px; accent-color: ${v('--palette-accent', 'auto')}; }
   .site-main .actions { margin: 24px 0 0; }
   .site-main .btn { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; background: ${v('--buttons-primary-background', 'currentColor')}; color: ${v('--buttons-primary-color', '#fff')}; border: ${v('--buttons-primary-border', '0')}; border-radius: ${v('--buttons-primary-border-radius', '4px')}; padding: ${v('--buttons-primary-padding', '8px 16px')}; font-family: inherit; font-size: ${v('--buttons-primary-font-size', 'inherit')}; font-weight: ${v('--buttons-primary-font-weight', '700')}; text-decoration: none; cursor: pointer; }
   .site-main .btn-secondary { background: ${v('--buttons-secondary-background', 'transparent')}; color: ${v('--buttons-secondary-color', 'inherit')}; border: ${v('--buttons-secondary-border', '1px solid currentColor')}; }
@@ -339,6 +365,7 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
   @media (max-width: 640px) {
     .site-main section { padding-top: 24px; padding-bottom: 24px; }
     .site-main .layout-media-band .panel { padding: 24px; }
+    .site-main .tone-dark .panel, .site-main .tone-light .panel, .site-main .tone-accent .panel { padding: 32px 20px; }
     .site-footer ul { columns: 1; }
   }`;
 

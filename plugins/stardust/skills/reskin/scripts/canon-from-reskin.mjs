@@ -11,7 +11,9 @@
  *                                            (canon-extraction.md § 2 selection rule), @media kept
  *   <dir>/canon/modules/<id>.html            section[data-module] skeleton, [data-slot-body] emptied;
  *                                            the named archetype's modules first, then modules only
- *                                            the other page types' approved archetypes render
+ *                                            the other page types' archetypes render (the ledger's
+ *                                            handoff.<type>.archetype, else the type's first approved
+ *                                            page with a prototype)
  *                                            (findings: mapped modules with no skeleton, modules the
  *                                            mapping composes more than one way)
  *   <root>/DESIGN.md, DESIGN.json            fresh from donor-tokens.json; extensions.canon / modules
@@ -32,7 +34,7 @@
  *
  * Visual record: on a first approval and on every re-approval that changes the canon, the archetype is
  * captured with replica's stitch-shot.mjs into <dir>/reskin/approvals/<slug>.<ts>.png; a re-approval is
- * then pixel-compared (replica's pixel-compare.mjs) with the previous capture and the % lands in the
+ * then pixel-compared (replica's pixel-compare.mjs) with that archetype's previous capture and the % lands in the
  * DESIGN.json canon history entry. Informational: above --visual-threshold it prints a FINDING, never
  * refuses. Without the replica scripts, playwright, pngjs or pixelmatch it is skipped as a finding.
  *
@@ -121,16 +123,19 @@ export function moduleSkeletons(html) {
 }
 
 // ---- pure: multi-archetype modules ----------------------------------------------------------------
-// The other page types' archetypes (first approved/migrated page per type, as reskin-preflight picks
-// them) that can contribute modules the named archetype does not render. Returns [{ slug, type, prototypePath }].
-export function otherArchetypes(pages, slug) {
+// The other page types' archetypes that can contribute modules the named archetype does not render.
+// The ledger's handoff.<type>.archetype wins (the page the reskin predicate registered); otherwise the
+// first approved/migrated page of the type that has a prototype. Returns [{ slug, type, prototypePath }].
+export function otherArchetypes(pages, slug, handoff = {}) {
   const own = pages.find((p) => p.slug === slug)?.type;
-  const seen = new Set(own ? [own] : []); const out = [];
+  const ok = (p) => p && p.type && p.type !== own && p.slug !== slug && (p.status === 'approved' || p.status === 'migrated') && p.prototypePath;
+  const out = []; const seen = new Set(own ? [own] : []);
   for (const p of pages) {
-    if (!p.type || seen.has(p.type) || p.slug === slug) continue;
-    if (p.status !== 'approved' && p.status !== 'migrated') continue;
+    if (!p.type || seen.has(p.type)) continue;
+    const named = handoff?.[p.type]?.archetype;
+    const pick = (named && pages.find((q) => q.slug === named && ok(q))) || pages.find((q) => q.type === p.type && ok(q));
     seen.add(p.type);
-    if (p.prototypePath) out.push({ slug: p.slug, type: p.type, prototypePath: p.prototypePath });
+    if (pick) out.push({ slug: pick.slug, type: pick.type, prototypePath: pick.prototypePath });
   }
   return out;
 }
@@ -205,8 +210,8 @@ export function compositionalMoves(mapping) {
 }
 
 // The most recent history entry carrying a capture, or null.
-export function previousShot(history = []) {
-  return [...history].reverse().find((h) => h?.shot) ?? null;
+export function previousShot(history = [], slug = null) {
+  return [...(history || [])].reverse().find((h) => h?.shot && (!slug || h.from === slug)) ?? null;
 }
 
 // ---- CLI ----------------------------------------------------------------------------------------
@@ -323,7 +328,9 @@ async function main(argv) {
   const sk = moduleSkeletons(html); findings.push(...sk.findings);
   const skeletons = new Map([...sk.modules].map(([id, skel]) => [id, { skel, from: slug }]));
   // The named archetype wins; the other page types' archetypes fill in modules it does not render.
-  for (const o of otherArchetypes(state.pages || [], slug)) {
+  const ledgerPath = join(opt.dir, 'reskin', 'ledger.json');
+  const handoff = existsSync(ledgerPath) ? (JSON.parse(readFileSync(ledgerPath, 'utf8')).handoff || {}) : {};
+  for (const o of otherArchetypes(state.pages || [], slug, handoff)) {
     if (!existsSync(o.prototypePath)) { findings.push(`archetype ${o.slug} (${o.type}) has no prototype on disk — its modules are not in canon`); continue; }
     const osk = moduleSkeletons(readFileSync(o.prototypePath, 'utf8'));
     findings.push(...osk.findings.map((f) => `${o.slug}: ${f}`));
@@ -372,7 +379,7 @@ async function main(argv) {
   const changed = canonDelta(prevCanon, next);
   const prevHistory = prevDesign?.extensions?.canon?.history || [];
   const entry = { at, from: slug, kind: prevCanon ? 're-approval' : 'first-approval', via: 'reskin' };
-  const prevShotEntry = previousShot(prevHistory);
+  const prevShotEntry = previousShot(prevHistory, slug);
   if (!prevShotEntry || (changed && changed.length)) {
     const out = join(opt.dir, 'reskin', 'approvals', `${slug}.${at.replace(/[:]/g, '-')}.png`);
     Object.assign(entry, visualRecord({ prototypePath: page.prototypePath, out, prev: prevShotEntry, threshold: opt.visualThreshold, findings, rel, root }) || {});

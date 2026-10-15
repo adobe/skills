@@ -27,6 +27,23 @@ gaps below. Every fix is generic; per-site choices stay in config.
 - **Gates re-pass on migrated pages.** `migrate` keeps `data-source-href` (the absolute source URL) on every link it
   rewrites and marks the JSON-LD block it inserts with `data-migrate-default`. `slot-coverage` matches links by the
   former and does not count the latter, so a migrated page passes the same content gates as its prototype.
+- **Reskin handoff predicate.** New `reskin-ledger` (`record`, `eyeball`, `residual`, `show`) writes
+  `stardust/reskin/ledger.json` from gate reports, the static and runtime mobile-adapt checks and the two human
+  judgments; `handoff.<type>` names the archetype, its prototype sha, the claimed/passed/waived tier and the PASS-only
+  gates migrate merges into sidecars. `reskin-preflight` is now the predicate: `approval` (an agent approval FAILs unless
+  hands-off), `archetype-gates` (gates PASS or residual accepted, eyeball pass, prototype unchanged) and a
+  `sibling-gates` WARN for migrated pages without migrated-stage gates. Contract in `reskin/reference/handoff.md`.
+- **Flow guards.** `replica` and `direct` refuse under `flow: reskin`; master routing recognises donor phrases and
+  `reskin --switch-flow`; `state-machine.md` names the writers of `approved`/`designSource`, stales reskin-registered
+  approvals on a switch and adds a reskin State-report branch; `migrate`/`rollout` require `reskin-preflight` exit 0.
+  `ledger.mjs` knows the reskin phases. The eval `standard_handoff_no_core_changes` is rescoped.
+- **Contrast-aware accent.** `stream-render` keeps an accent that fails 4.5:1 on the page or light band as an underline
+  colour only (links and required markers take body ink); compact tone-band padding and fixed-size checkboxes at 640px.
+- **Canon across archetypes.** `canon-from-reskin` takes another type's archetype from the ledger's handoff (else the
+  type's first approved page with a prototype, instead of dropping the type) and compares a re-approval's capture
+  only with the same archetype's previous capture, so two archetypes no longer diff against each other.
+- **Third run, URL donor.** A bounded URL donor (sampled live site) reskinned the forms-only site end to end: prototype
+  and migrated gates PASS, preflight ready, no donor-specific code.
 
 ## 0.34.0 — reskin hands off to migrate: generic renderer, canon bridge, preflight
 

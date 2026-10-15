@@ -10,7 +10,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { captureSmells, findRepeat, localSubpath, modelHasButton, render, rendersButton, tokenVars } from '../stream-render.mjs';
+import { captureSmells, contrast, findRepeat, localSubpath, modelHasButton, render, rendersButton, tokenVars } from '../stream-render.mjs';
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', 'stream-render.mjs');
 let failed = 0;
@@ -187,6 +187,17 @@ check('captureSmells: all-whole scopes and card-grid mega-slots are notes; a wra
   assert.equal(r.warnings.length, 2);
   r = captureSmells({ ...base, scope: [{ sel: '.nav', whole: true }, { sel: '.footer', whole: true }], sections: [small('s01')], coverage: { h1InScope: false } });
   assert.deepEqual(r.warnings, []); assert.equal(r.notes.length, 2);
+});
+
+check('contrast: WCAG ratio; a low-contrast accent stays an underline, never link or required-marker text', () => {
+  assert.equal(Math.round(contrast('#000', '#fff')), 21);
+  assert.equal(contrast('rgb(255, 0, 0)', 'nope'), null);
+  assert.ok(contrast('rgb(185, 255, 102)', 'rgb(255, 255, 255)') < 1.5);
+  const sheet = (accent) => ({ palette: { pageBg: '#ffffff', bodyFg: '#000000', accent } });
+  const mk = (accent) => render({ slug: 'p', tokens: sheet(accent), mapping: { pages: { p: { sections: {} } } }, model: { sections: [{ slot: 's01', ordered: [{ kind: 'paragraph', text: 'x' }] }] } }).html;
+  assert.match(mk('#b9ff66'), /\.link \{ color: inherit;[^}]*text-decoration-color: var\(--palette-accent\)/);
+  assert.match(mk('#b9ff66'), /\.req \{ color: inherit; \}/);
+  assert.match(mk('#1a4d8f'), /\.link \{ color: var\(--palette-accent\)/);
 });
 
 console.log(failed ? `\n${failed} check(s) failed` : '\nall checks passed');

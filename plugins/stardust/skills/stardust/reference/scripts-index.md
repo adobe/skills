@@ -74,6 +74,7 @@ Run the project copies under `stardust/scripts/<skill>/`. Read this before `--he
 - `reskin/dom-equality.mjs` — content gate, source vs rendered — `--source <u|f> --rendered <u|f> --report <p>`
 - `reskin/donor-probe.mjs` — design-adoption gate — `--tokens <donor.json> --rendered <u|f> [--spec <json>]`
 - `reskin/figma-donor.mjs` — Figma donor capture/curate/stamp — `capture <url> [--list] [--frames a,b] [--refresh] | curate | stamp [--confidential]`; exit 3 = blocked
+- `reskin/reskin-ledger.mjs` — writes reskin/ledger.json from gate reports + mobile audit — `record <slug> [--stage prototype|migrated] | eyeball <slug> --verdict pass|fail | residual <slug> --gate --cause --verdict | show`
 - `reskin/reskin-preflight.mjs` — ready to migrate? exit 0 = yes, read-only — `[--dir stardust] [--root .] [--json]`
 - `reskin/slot-coverage.mjs` — slot coverage gate — `--model <content-model.json> --rendered <u|f>`
 - `reskin/source-normalize.mjs` — default normalize ledger — no flags

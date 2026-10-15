@@ -121,8 +121,12 @@ check('unknown phase: warning on stderr, line still written (exit 0); phase writ
   assert.equal(lines().length, before + 1); assert.equal(lines().at(-1).phase, 'Paint');
 });
 check('unknown skill: warning, still written', () => {
-  const r = run('reskin', 'tokens', 'start');
-  assert.equal(r.code, 0); assert.match(r.err, /warning: unknown skill stardust:reskin/); assert.equal(lines().at(-1).skill, 'stardust:reskin');
+  const r = run('nope', 'tokens', 'start');
+  assert.equal(r.code, 0); assert.match(r.err, /warning: unknown skill stardust:nope/); assert.equal(lines().at(-1).skill, 'stardust:nope');
+});
+check('reskin is a known skill: its six phases and aliases pass, an unknown reskin phase warns', () => {
+  assert.equal(checkPhase('stardust:reskin', 'handoff'), null); assert.equal(checkPhase('stardust:reskin', 'Gate'), null);
+  assert.match(checkPhase('stardust:reskin', 'tokens'), /unknown phase "tokens" for stardust:reskin \(known: ingest-donor, content-model-capture, mapping-brief, programmatic-render, gates, handoff\)/);
 });
 check('--strict refuses an unknown phase with exit 2 and writes nothing', () => {
   const before = lines().length;
@@ -151,7 +155,7 @@ check('usage errors exit 2: wrong arity, bad event, unknown option, missing valu
   assert.equal(run('migrate', 'render', 'start', '--bogus').code, 2);
   assert.equal(run('migrate', 'render', 'start', '--detail').code, 2);
   const none = spawnSync(process.execPath, [SCRIPT], { encoding: 'utf8' }); assert.equal(none.status, 2); assert.match(none.stderr, /Usage:/);
-  const h = run('--help'); assert.equal(h.code, 0); assert.match(h.out, /node ledger\.mjs <skill> <phase> <start\|end\|blocked>/); assert.match(h.out, /Known skills: stardust, extract, prototype, migrate, replica, dynamics, spec, rollout, deploy/);
+  const h = run('--help'); assert.equal(h.code, 0); assert.match(h.out, /node ledger\.mjs <skill> <phase> <start\|end\|blocked>/); assert.match(h.out, /Known skills: stardust, extract, prototype, migrate, replica, reskin, dynamics, spec, rollout, deploy/);
   assert.match(h.out, /\[--next "…"\] \[--owner "…"\]/); assert.match(h.out, /explicit --dir must already exist/);
 });
 check('--help prints the phase table: every ledger-form phase and every alias of every skill, one line per skill', () => {
