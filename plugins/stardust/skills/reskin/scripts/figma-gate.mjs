@@ -6,6 +6,7 @@
 //   join   B0: every mapping.md slot that renders as a module is one section of the page, in order, with
 //          its module's Figma frame; a page that drifted from the mapping stops here.
 //   geometry  B1: the sizes, offsets, gaps and paddings the checks file pairs with Figma nodes or tokens.
+//   ramp   B3: the :root token block and the type of every Type entry, through donor-probe.mjs.
 // Writes go only under <dir>/.work/reskin/gates/. Under a sticky --confidential capture, every
 // subcommand first checks that .work/ and reskin/figma-checks/ are git-ignored.
 // --help answers before any helper import, so it works even from a partial copy of the scripts.
@@ -20,6 +21,7 @@ export const HELP = `Usage:
   node figma-gate.mjs boxes [--module Mn | --node <id>] [--depth 3] [--dir stardust]
   node figma-gate.mjs join --page <slug> --url <url|file> [--dir stardust]
   node figma-gate.mjs geometry --page <slug> --url <url|file> [--dir stardust]
+  node figma-gate.mjs ramp --page <slug> --url <url|file> [--dir stardust]
 
 Figma checks on a reskin page, against the capture figma-donor.mjs made (offline: no token, no network).
 
@@ -49,6 +51,17 @@ geometry B1. Runs the join first (drift stops here, exit 1), validates the check
          ("<slot> <id> <measure> (node <id>): 540 vs 560 (±1)", or "unmeasurable: <why>" when the selector
          matched nothing, a gap has fewer than two matches or the box has no size); writes
          <dir>/.work/reskin/gates/<slug>/figma/geometry.json; exit 1 on any FAIL.
+ramp     B3. Runs the join first (drift stops here, exit 1), validates the checks file, then asserts through
+         donor-probe.mjs (one run per width, no overflow sanity): the :root block that donor-tokens.json
+         yields (every custom property verbatim, at the first section's width) and, for every type entry,
+         six computed styles of the section's selector against the Figma text node: fontSize, fontWeight,
+         lineHeight and letterSpacing in px (the last two within 0.1px), fontFamily (first family) and
+         color; the rules' weightMap and familyEquivalence apply to the Figma side. Prints "ramp PASS n/n"
+         or "ramp FAIL k/n" plus one indented line per failing entry ("<slot> <id> <property> (node <id>):
+         16px vs 14px", ":root <name>: ..." for a custom property); writes ramp-spec.<w>.json, ramp.<w>.md,
+         ramp.<w>.json and ramp.json under <dir>/.work/reskin/gates/<slug>/figma/; exit 1 on any FAIL.
+         Token values written as literals outside :root (a color that equals a :root value) are listed in
+         one "advisory" line and never change the exit code. A probe that cannot run is exit 124.
 --dir <d>  the stardust directory (default stardust).
 
 Checks file <dir>/reskin/figma-checks/<slug>.json (written by the agent from the boxes outlines):
@@ -75,6 +88,7 @@ const SPEC = {
   boxes: { values: ['--module', '--node', '--depth', '--dir'], bools: [], positional: [] },
   join: { values: ['--page', '--url', '--dir'], bools: [], positional: [] },
   geometry: { values: ['--page', '--url', '--dir'], bools: [], positional: [] },
+  ramp: { values: ['--page', '--url', '--dir'], bools: [], positional: [] },
 };
 
 export function parseArgs(argv, UsageError) {
@@ -177,13 +191,33 @@ async function geometryStep({ dir, opts, log, UsageError }) {
   return pass ? 0 : 1;
 }
 
+async function rampStep({ dir, opts, log, UsageError }) {
+  if (!opts.page) throw new UsageError('ramp needs --page <slug>');
+  if (!opts.url) throw new UsageError('ramp needs --url <url|file>: the page to probe');
+  const [{ prepare }, { runRamp }] = await Promise.all([helper('prepare'), helper('ramp')]);
+  const ready = await prepare({ dir, slug: opts.page, url: opts.url });
+  if (ready.drift) {
+    logDrift(ready.join, log);
+    return 1;
+  }
+  const { pass, results, literals } = await runRamp({ target: ready.target, join: ready.join, checks: ready.checks, boxes: ready.boxes, tokens: ready.tokens, rules: ready.rules, out: ready.out });
+  const failing = results.filter((r) => r.status !== 'PASS');
+  log(pass ? `ramp PASS ${results.length}/${results.length}` : `ramp FAIL ${failing.length}/${results.length}`);
+  for (const r of failing) log(r.slot === null ? `  :root ${r.id}: ${r.detail}` : `  ${r.slot} ${r.id} ${r.property}${r.node ? ` (node ${r.node})` : ''}: ${r.detail}`);
+  if (literals.length) {
+    const shown = literals.slice(0, 5).map((l) => `line ${l.line} ${l.literal} → ${l.token}`).join('; ');
+    log(`advisory ramp: ${literals.length} token literal(s) outside :root (${shown}${literals.length > 5 ? '; …' : ''}): use var(<token>)`);
+  }
+  return pass ? 0 : 1;
+}
+
 // steps lets a test replace a step function.
 export async function main(argv, { env = process.env, log = console.log, warn = (m) => process.stderr.write(`${m}\n`), steps = {} } = {}) {
   if (argv.includes('--help') || argv.includes('-h')) { log(HELP); return 0; }
   const { UsageError } = await helper('errors', 'figma');
   const { cmd, opts } = parseArgs(argv, UsageError);
   const dir = opts.dir || 'stardust';
-  const run = { boxes: boxesStep, join: joinStep, geometry: geometryStep, ...steps }[cmd];
+  const run = { boxes: boxesStep, join: joinStep, geometry: geometryStep, ramp: rampStep, ...steps }[cmd];
   const { confidentialGuard } = await helper('io');
   confidentialGuard(dir);
   return run({ dir, opts, env, log, warn, UsageError });

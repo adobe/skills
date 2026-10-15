@@ -9,8 +9,8 @@ import { readInputs, workDir } from './io.mjs';
 import { runJoin } from './join.mjs';
 import { localTarget } from './target.mjs';
 
-// → { drift: true, join, out } or { drift: false, target, join, boxes, tokens, checks, out }, where
-// checks is validateChecks(...).sections.
+// → { drift: true, join, out } or { drift: false, target, join, boxes, tokens, rules, checks, out }, where
+// rules is curation-rules.json and checks is validateChecks(...).sections.
 export async function prepare({ dir, slug, url }) {
   const inputs = readInputs(dir, slug, ['mapping', 'contentModel', 'rules', 'donorTokens', 'checks']);
   const out = workDir(dir, slug);
@@ -22,5 +22,5 @@ export async function prepare({ dir, slug, url }) {
   if (problems.length) {
     throw new UsageError(`${dir}/reskin/figma-checks/${slug}.json has ${problems.length} problem(s):\n${problems.map((p) => `  ${p}`).join('\n')}`);
   }
-  return { drift: false, target, join, boxes, tokens: inputs.donorTokens, checks: sections, out };
+  return { drift: false, target, join, boxes, tokens: inputs.donorTokens, rules: inputs.rules, checks: sections, out };
 }
