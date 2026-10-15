@@ -472,6 +472,62 @@ test('a BPA report with no workspace matches warns instead of silently reporting
   assert.ok(r.warnings.some(w => /none of the 1 BPA rows resolve/.test(w)));
 });
 
+test('precedence: with BPA rows only the reported files are in scope; without them every file is scanned', () => {
+  const root = fixtureWorkspace();
+  const bpa = runInputStreamScan(root, { bpaTargets: [{ className: 'com.acme.core.Leaky', identifier: 'java.io.InputStream' }] });
+  assert.strictEqual(bpa.stats.mode, 'bpa');
+  assert.deepStrictEqual(bpa.rawFindings.map(f => path.basename(f.file)), ['Leaky.java'], 'Danger.java uses streams but is not in the BPA report');
+  assert.ok(bpa.stats.filesScanned < bpa.stats.filesIndexed, 'only the reported files are scanned');
+
+  const local = runInputStreamScan(root);
+  assert.strictEqual(local.stats.mode, 'local');
+  assert.deepStrictEqual(local.rawFindings.map(f => path.basename(f.file)), ['Danger.java', 'Leaky.java', 'PassThrough.java']);
+});
+
+test('rows without a bundle name (CAM data) group by package; AEM Forms packages are platform-provided', () => {
+  const root = fixtureWorkspace();
+  const r = runInputStreamScan(root, {
+    bpaTargets: [
+      { className: 'com.adobe.fd.signatures.SigUtil', identifier: 'java.io.InputStream' },
+      { className: 'com.adobe.xfa.Document', identifier: 'java.io.InputStream' },
+      { className: 'com.google.common.io.ByteSource', identifier: 'java.io.InputStream' },
+      { className: 'com.acme.shared.Csv', identifier: 'java.io.InputStream' },
+    ],
+  });
+  assert.deepStrictEqual(r.rawFindings.filter(f => f.file === null).map(g => `${g.kind}:${g.group}`), [
+    'missing-source:package com.acme.shared',
+    'not-in-workspace:package com.google.common',
+    'platform-provided:package com.adobe.fd',
+    'platform-provided:package com.adobe.xfa',
+  ]);
+});
+
+test('CLI: CAM targets (--bpa-json) come before the CSV, the CSV before the local scan', () => {
+  const root = fixtureWorkspace();
+  const runner = path.join(__dirname, 'input-stream-runner.js');
+  const csv = write(root, 'bpa.csv', [
+    'code,type,subtype,importance,identifier,other,message,moreInfo,context',
+    'DG,development.guideline,java.io.inputstream,ADVISORY,com.acme.core.Danger,java.io.ObjectInputStream,The com.acme.core.Danger class in the com.acme.core bundle uses java.io.ObjectInputStream.,x,ctx',
+  ].join('\n') + '\n');
+  const cam = write(root, 'cam.json', JSON.stringify({ inputStream: [{ pattern: 'inputStream', className: 'com.acme.core.Leaky', identifier: 'java.io.InputStream' }] }));
+  const empty = write(root, 'empty.json', JSON.stringify({ inputStream: [] }));
+  const run = (...extra) => JSON.parse(execFileSync(process.execPath,
+    [runner, root, '--json', '--collections', path.join(root, `uc-${extra.length}-${Math.random()}`), ...extra], { encoding: 'utf8' }));
+  const files = out => out.findings.filter(f => f.kind === 'source').map(f => path.basename(f.file));
+
+  const camFirst = run('--bpa-json', cam, '--csv', csv);
+  assert.strictEqual(camFirst.source, 'cam');
+  assert.deepStrictEqual(files(camFirst), ['Leaky.java']);
+
+  const csvNext = run('--bpa-json', empty, '--csv', csv);
+  assert.strictEqual(csvNext.source, 'csv');
+  assert.deepStrictEqual(files(csvNext), ['Danger.java']);
+
+  const local = run();
+  assert.strictEqual(local.source, 'local-scan');
+  assert.deepStrictEqual(files(local), ['Danger.java', 'Leaky.java', 'PassThrough.java']);
+});
+
 test('--files mode re-scans only the given files (apply-time verification)', () => {
   const root = fixtureWorkspace();
   const leaky = path.join(root, 'core/src/main/java/com/acme/core/Leaky.java');

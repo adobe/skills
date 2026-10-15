@@ -12,31 +12,31 @@
  * the sites that carry that risk (and related AEM as a Cloud Service problems)
  * from harmless uses.
  *
- * Why a scanner instead of BPA rows alone:
- *   - BPA names a class, never a line, and many rows usually belong to bundles
- *     that aren't in the project source (third-party or platform-provided).
- *   - `inputStream` is not one of the patterns the CAM MCP tool returns, so
- *     without a local scan the pattern would need an LLM scan.
+ * Precedence, as for the other migration patterns: BPA findings first (CAM via
+ * the MCP tool, then a BPA CSV); local detection only when BPA has none.
+ *   - With BPA rows, they define the scope. BPA names a class, never a line, so
+ *     each flagged class is resolved to its workspace file and only those files
+ *     are scanned, for line-level sites. Classes outside the workspace collapse
+ *     to one row per bundle (customer code kept elsewhere, platform-provided,
+ *     or third-party); rows without a bundle name group by package.
+ *   - Without BPA rows, every `src/main/java` file is scanned.
  *
  * What it does (pure Node, no JDK, no `rg`):
  *   1. Indexes `src/main/java` sources (FQCN → file).
- *   2. Finds every stream acquisition site; comments and string literals are
- *      blanked first so they can't produce matches.
+ *   2. Finds every stream acquisition site in the files in scope; comments and
+ *      string literals are blanked first so they can't produce matches.
  *   3. Pre-classifies each site (A–F, see CATEGORY) and assigns a fix kind:
  *      `decision` (needs the user), `review` (confirm a read limit), `auto`
  *      (apply the recipe) or `none` (benign).
- *   4. Merges BPA targets (optional): resolves each flagged class to its file
- *      and collapses rows that don't resolve into one row per bundle: customer
- *      code kept elsewhere, platform-provided, or third-party.
- *   5. Emits ONE finding per file — the unit an agent edits — ordered by risk.
+ *   4. Emits ONE finding per file — the unit an agent edits — ordered by risk.
  *
  * Classification is heuristic (regex over code, not a compiler): the agent
  * re-confirms each site against the reference before editing, and re-runs with
  * `--files` after editing to verify the fix.
  *
  * Usage (CLI):
- *   node input-stream-runner.js <workspaceRoot> [--csv <bpa.csv>] [--collections <dir>]
- *                               [--files <a.java,b.java>] [--json]
+ *   node input-stream-runner.js <workspaceRoot> [--bpa-json <cam-targets.json>] [--csv <bpa.csv>]
+ *                               [--collections <dir>] [--files <a.java,b.java>] [--json]
  */
 
 'use strict';
@@ -113,6 +113,9 @@ const NOT_A_TYPE = '(?!(?:return|throw|new|case|else|instanceof|assert|yield|fin
 // AEM Forms add-on bundles: on AEM as a Cloud Service, Adobe provides them when
 // the Forms add-on is enabled in Cloud Manager, so customers don't deploy them.
 const PLATFORM_PROVIDED_BUNDLES = [/^adobe-aemfd-/, /^adobe-aemds-/, /^forms-foundation-/, /^xfa4j$/];
+// The same add-on's own packages, for rows that carry no bundle name. Libraries
+// embedded in those bundles can't be recognised by package and are grouped as such.
+const PLATFORM_PROVIDED_PACKAGES = /^com\.adobe\.(?:fd|aemfd|aemds|xfa|pdfg|forms)\./;
 // Package roots too generic to identify a customer namespace on their own.
 const SHARED_ROOTS = new Set([
   'java', 'javax', 'com.adobe', 'com.day', 'org.apache', 'com.google', 'org.osgi', 'org.eclipse',
@@ -787,13 +790,20 @@ function summarizeSites(sites) {
 const GROUP_ORDER = { 'missing-source': 0, 'not-in-workspace': 1, 'platform-provided': 2 };
 
 /**
- * Scan the workspace's `src/main/java` sources for java.io.InputStream usage and
- * merge BPA targets.
+ * Scan the workspace's `src/main/java` sources for java.io.InputStream usage.
+ *
+ * Precedence matches the other migration patterns: BPA first, local detection
+ * only when BPA has nothing.
+ *   - `bpa` mode (BPA targets given): the BPA rows define the scope. Each
+ *     flagged class is resolved to its workspace file and only those files are
+ *     scanned, for line-level sites; classes outside the workspace collapse to
+ *     one row per bundle (or package, when the rows carry no bundle name).
+ *   - `local` mode (no BPA targets): every `src/main/java` file is scanned.
  *
  * @param {string} workspaceRoot
  * @param {{ bpaTargets?: Array<{className: string, identifier?: string, bundle?: string}>, files?: string[] }} [options]
- *   `files` restricts the scan (apply-time verification); BPA rows are not
- *   merged in that mode.
+ *   `files` restricts the scan to the given files (apply-time verification);
+ *   BPA rows are ignored in that mode.
  * @returns {{ ok: boolean, findings: object[], rawFindings: object[], warnings: string[], stats: object, error?: string }}
  */
 function runInputStreamScan(workspaceRoot, options = {}) {
@@ -801,19 +811,28 @@ function runInputStreamScan(workspaceRoot, options = {}) {
   if (!workspaceRoot) {
     return { ok: false, findings: [], rawFindings: [], warnings: [], stats: {}, error: 'no workspaceRoot' };
   }
+  const mode = !onlyFiles && bpaTargets.length > 0 ? 'bpa' : 'local';
 
   const files = onlyFiles
     ? onlyFiles.map(f => (path.isAbsolute(f) ? f : path.join(workspaceRoot, f)))
     : collectJavaFiles(workspaceRoot);
 
+  // Index every file (FQCN → file) so BPA classes can be resolved.
   const index = new Map();
-  const perFile = new Map();
+  const sources = new Map();
   for (const file of files) {
     let src;
     try { src = fs.readFileSync(file, 'utf8'); } catch { continue; }
+    sources.set(file, src);
     const { pkg, types } = declaredTypes(stripCommentsAndStrings(src));
     for (const t of types) index.set(pkg ? `${pkg}.${t}` : t, file);
-    const scan = scanJavaSource(src);
+  }
+
+  const scanCache = new Map();
+  const sitesOfFile = (file) => {
+    if (scanCache.has(file)) return scanCache.get(file);
+    const src = sources.get(file);
+    const scan = src === undefined ? { sites: [], typeRefLine: null } : scanJavaSource(src);
     if (scan.sites.length === 0 && scan.typeRefLine) {
       scan.sites.push({
         line: scan.typeRefLine,
@@ -822,13 +841,14 @@ function runInputStreamScan(workspaceRoot, options = {}) {
         severity: 'info', variable: null, note: 'java.io stream type used only as a parameter/return/field type',
       });
     }
-    if (scan.sites.length > 0) perFile.set(file, scan.sites);
-  }
+    scanCache.set(file, scan.sites);
+    return scan.sites;
+  };
 
-  // BPA merge.
+  // Resolve BPA rows.
   const bpaByFile = new Map();
   const groups = new Map();
-  if (!onlyFiles) {
+  if (mode === 'bpa') {
     const workspaceBundles = new Set();
     const unresolved = [];
     for (const t of bpaTargets) {
@@ -859,11 +879,21 @@ function runInputStreamScan(workspaceRoot, options = {}) {
     const workspaceRoots = new Set([...index.keys()].map(namespaceRoot).filter(Boolean));
     for (const g of groups.values()) {
       const shared = [...g.classes].filter(c => workspaceRoots.has(namespaceRoot(c))).length;
+      const platform = g.bundle
+        ? PLATFORM_PROVIDED_BUNDLES.some(re => re.test(g.bundle))
+        : [...g.classes].every(c => PLATFORM_PROVIDED_PACKAGES.test(c));
       if (g.bundle && workspaceBundles.has(g.bundle)) g.kind = 'missing-source';
-      else if (g.bundle && PLATFORM_PROVIDED_BUNDLES.some(re => re.test(g.bundle))) g.kind = 'platform-provided';
+      else if (platform) g.kind = 'platform-provided';
       else if (shared * 2 >= g.classes.size) g.kind = 'missing-source';
       else g.kind = 'not-in-workspace';
     }
+  }
+
+  // In bpa mode only the BPA-reported files are in scope; local mode scans everything.
+  const perFile = new Map();
+  for (const file of mode === 'bpa' ? [...bpaByFile.keys()] : [...sources.keys()]) {
+    const sites = sitesOfFile(file);
+    if (sites.length > 0) perFile.set(file, sites);
   }
 
   const findings = [];
@@ -903,16 +933,19 @@ function runInputStreamScan(workspaceRoot, options = {}) {
     );
   }
 
-  // BPA classes that resolve to a file with no detectable stream usage.
-  const siteDirs = new Map();
-  for (const e of fileEntries) {
-    if (e.actionable.length === 0) continue;
-    const dir = path.dirname(e.file);
-    siteDirs.set(dir, [...(siteDirs.get(dir) || []), path.basename(e.file)]);
-  }
+  // BPA classes that resolve to a file with no detectable stream usage. The
+  // hint names same-directory files that do use streams (scanned on demand).
+  const siblingsWithStreams = (file) => {
+    const dir = path.dirname(file);
+    return [...sources.keys()]
+      .filter(f => f !== file && path.dirname(f) === dir && sitesOfFile(f).some(s => s.primary !== 'A'))
+      .map(f => path.basename(f))
+      .sort()
+      .slice(0, 3);
+  };
   for (const [file, bpa] of [...bpaByFile.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
     if (perFile.has(file)) continue;
-    const siblings = (siteDirs.get(path.dirname(file)) || []).slice(0, 3);
+    const siblings = siblingsWithStreams(file);
     const hint = 'BPA analyses compiled classes, so a use may not be visible in source (for example a stream passed straight from one library call to another)'
       + (siblings.length ? `; also check same-package files that use streams: ${siblings.join(', ')}` : '; if the file no longer uses streams, the report predates the change');
     add(
@@ -949,14 +982,16 @@ function runInputStreamScan(workspaceRoot, options = {}) {
   const rowsOf = kind => ordered.filter(g => g.kind === kind).reduce((n, g) => n + g.rows, 0);
   const missingSourceGroups = ordered.filter(g => g.kind === 'missing-source');
   const stats = {
-    filesScanned: files.length,
+    mode,
+    filesScanned: mode === 'bpa' ? scanCache.size : files.length,
+    filesIndexed: files.length,
     filesWithStreams: fileEntries.length,
     actionableFiles: fileEntries.filter(e => e.actionable.length > 0).length,
     sites: allSites.length,
     byCategory,
     fix: fixTotals,
     bpa: {
-      rows: bpaTargets.length,
+      rows: mode === 'bpa' ? bpaTargets.length : 0,
       resolvedFiles: bpaByFile.size,
       unmatchedFiles: [...bpaByFile.keys()].filter(f => !perFile.has(f)).length,
       missingSourceRows: rowsOf('missing-source'),
@@ -967,9 +1002,9 @@ function runInputStreamScan(workspaceRoot, options = {}) {
   };
 
   const warnings = [];
-  if (!onlyFiles && bpaTargets.length > 0 && files.length === 0) {
+  if (mode === 'bpa' && files.length === 0) {
     warnings.push(`inputStream: BPA reports ${bpaTargets.length} java.io.inputstream rows but the workspace has no src/main/java sources — open the AEM project root so they can be resolved.`);
-  } else if (bpaTargets.length > 0 && bpaByFile.size === 0) {
+  } else if (mode === 'bpa' && bpaByFile.size === 0) {
     warnings.push(`inputStream: none of the ${bpaTargets.length} BPA rows resolve to workspace source — they belong to bundles outside this workspace (or the report is for a different project).`);
   }
   for (const g of missingSourceGroups) {
@@ -984,10 +1019,11 @@ function runInputStreamScan(workspaceRoot, options = {}) {
 // ── CLI ─────────────────────────────────────────────────────────────────────
 
 function parseCliArgs(argv) {
-  const args = { workspaceRoot: null, csv: null, collections: './unified-collections', files: null, json: false };
+  const args = { workspaceRoot: null, csv: null, bpaJson: null, collections: './unified-collections', files: null, json: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--csv') args.csv = argv[++i];
+    else if (a === '--bpa-json') args.bpaJson = argv[++i];
     else if (a === '--collections') args.collections = argv[++i];
     else if (a === '--files') args.files = String(argv[++i] || '').split(',').map(s => s.trim()).filter(Boolean);
     else if (a === '--json') args.json = true;
@@ -996,15 +1032,24 @@ function parseCliArgs(argv) {
   return args;
 }
 
-async function main() {
-  const args = parseCliArgs(process.argv.slice(2));
-  if (!args.workspaceRoot) {
-    console.error('Usage: node input-stream-runner.js <workspaceRoot> [--csv <bpa.csv>] [--collections <dir>] [--files <a.java,b.java>] [--json]');
-    process.exit(1);
+/** inputStream targets from a `--bpa-json` file: `[targets]` or `{ "inputStream": [targets], … }`. */
+function readBpaJson(file) {
+  const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+  const targets = Array.isArray(data) ? data : data && data.inputStream;
+  return Array.isArray(targets) ? targets : [];
+}
+
+/**
+ * BPA targets in the migration skill's precedence: CAM targets (`--bpa-json`)
+ * first, then the BPA CSV. Returns `{ targets, source }`; no targets means the
+ * caller falls back to the local scan.
+ */
+async function loadBpaTargets(args) {
+  if (args.bpaJson) {
+    const targets = readBpaJson(args.bpaJson);
+    if (targets.length > 0) return { targets, source: 'cam' };
   }
-  const root = path.resolve(args.workspaceRoot);
-  let bpaTargets = [];
-  if (args.csv && !args.files) {
+  if (args.csv) {
     const { getBpaFindings } = require('./bpa-findings-helper.js');
     const log = console.log;
     console.log = () => {};
@@ -1014,19 +1059,31 @@ async function main() {
     } finally {
       console.log = log;
     }
-    if (res.success) bpaTargets = res.targets;
-    else if (!res.availablePatterns) console.error(`BPA read failed: ${res.error || res.message}`);
+    if (res.success && res.targets.length > 0) return { targets: res.targets, source: 'csv' };
+    if (!res.success && !res.availablePatterns) console.error(`BPA read failed: ${res.error || res.message}`);
   }
+  return { targets: [], source: null };
+}
+
+async function main() {
+  const args = parseCliArgs(process.argv.slice(2));
+  if (!args.workspaceRoot) {
+    console.error('Usage: node input-stream-runner.js <workspaceRoot> [--bpa-json <cam-targets.json>] [--csv <bpa.csv>] [--collections <dir>] [--files <a.java,b.java>] [--json]');
+    process.exit(1);
+  }
+  const root = path.resolve(args.workspaceRoot);
+  const bpa = args.files ? { targets: [], source: null } : await loadBpaTargets(args);
+  const bpaTargets = bpa.targets;
 
   const result = runInputStreamScan(root, { bpaTargets, files: args.files });
   const rel = f => (f ? path.relative(root, f) : f);
   if (args.json) {
     const findings = result.rawFindings.map(r => ({ ...r, file: rel(r.file) }));
-    process.stdout.write(`${JSON.stringify({ workspaceRoot: root, stats: result.stats, warnings: result.warnings, findings }, null, 2)}\n`);
+    process.stdout.write(`${JSON.stringify({ workspaceRoot: root, source: bpa.source || 'local-scan', stats: result.stats, warnings: result.warnings, findings }, null, 2)}\n`);
     return;
   }
   const s = result.stats;
-  console.log(`inputStream scan — ${s.filesScanned} Java files, ${s.actionableFiles} actionable file(s), ${s.sites} stream site(s)`);
+  console.log(`inputStream scan (${bpa.source ? `BPA ${bpa.source === 'cam' ? 'from CAM' : 'CSV'} first` : 'local — no BPA findings'}) — ${s.filesScanned} Java files scanned, ${s.actionableFiles} actionable file(s), ${s.sites} stream site(s)`);
   console.log(`  fix kinds: decision ${s.fix.decision}, review ${s.fix.review}, auto ${s.fix.auto}`);
   if (s.bpa.rows) {
     console.log(`  BPA: ${s.bpa.rows} rows → ${s.bpa.resolvedFiles} workspace file(s); outside the workspace: `
@@ -1046,6 +1103,6 @@ if (require.main === module) {
 }
 
 module.exports = {
-  runInputStreamScan, scanJavaSource, stripCommentsAndStrings, collectJavaFiles, declaredTypes,
-  CATEGORY, JAVA_IO_STREAM_TYPES, PLATFORM_PROVIDED_BUNDLES,
+  runInputStreamScan, scanJavaSource, stripCommentsAndStrings, collectJavaFiles, declaredTypes, readBpaJson,
+  CATEGORY, JAVA_IO_STREAM_TYPES, PLATFORM_PROVIDED_BUNDLES, PLATFORM_PROVIDED_PACKAGES,
 };

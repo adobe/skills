@@ -15,27 +15,37 @@ So the finding is mainly about **binaries passing through the JVM**. BPA reports
 
 In BPA reports, the `other` column names the stream type, for example `java.io.InputStream`, `java.io.FileInputStream`, `java.io.ObjectInputStream` or `java.io.InputStreamReader`.
 
-## Discovery: run the scanner once
+## Discovery: BPA first, local scan as the fallback
 
-Findings come from the **Step 0 runbook cache** (`migration-runbook.json`, `findingsByPattern.inputStream`) when it exists. Otherwise run the scanner from the skill's `scripts/` folder:
+The precedence is the same as for the other migration patterns:
+1. The **Step 0 runbook cache** (`migration-runbook.json`, `findingsByPattern.inputStream`), when it exists.
+2. **BPA findings:** CAM via `fetch-cam-bpa-findings-by-pattern` with `pattern: "inputStream"`, then a BPA CSV.
+3. The **local scan** of the whole workspace, only when BPA has no `inputStream` findings (no BPA source, or none reported).
+
+BPA names classes, never lines, so the scanner runs in every case. Run it from the skill's `scripts/` folder:
 
 ```bash
-# With a BPA CSV (recommended): BPA rows are merged into the source scan
+# CAM targets: write the tool's targets to a JSON file ([targets] or { "inputStream": [targets] })
+node scripts/input-stream-runner.js <workspaceRoot> --bpa-json ./cam-input-stream.json --json > input-stream.json
+# BPA CSV (used when there are no CAM targets)
 node scripts/input-stream-runner.js <workspaceRoot> --csv ./reports/bpa.csv --json > input-stream.json
-# Without a CSV (inputStream is not a pattern the CAM MCP tool returns): the source scan alone
+# Neither: the local scan of every src/main/java file
 node scripts/input-stream-runner.js <workspaceRoot> --json > input-stream.json
 ```
 
+Both options can be passed at once: CAM targets win over the CSV, and the CSV over the local scan. The JSON output's `source` field (`cam`, `csv` or `local-scan`) says which one was used.
+
 The scanner:
-1. Scans every `src/main/java/**/*.java` in the workspace, skipping `src/test`, `target/` and `node_modules`. Comments and string literals can't produce matches.
-2. Finds each **stream acquisition site** and pre-classifies it (**A–F**, below) with a **fix kind**: `decision`, `review`, `auto` or `none`.
-3. Emits **one finding per file** (the unit you edit), ordered by risk. Each finding carries `sites: [{ line, snippet, categories, primary, fix, severity, source, variable, note, handoff? }]` and `fix: { decision, review, auto }` totals.
-4. Merges the BPA rows:
-   - **Class in the workspace:** the file's finding is marked `bpa`. Nested classes (`Foo$1`) resolve to `Foo.java`.
+1. Puts files in scope. **With BPA rows**, only the files of the reported classes. Nested classes (`Foo$1`) resolve to `Foo.java`, and stream usage elsewhere in the workspace is out of scope. **Without BPA rows**, every `src/main/java/**/*.java` file. Either way it skips `src/test`, `target/` and `node_modules`, and comments and string literals can't produce matches.
+2. Finds each **stream acquisition site** in those files and pre-classifies it (**A–F**, below) with a **fix kind**: `decision`, `review`, `auto` or `none`.
+3. Emits **one finding per file** (the unit you edit), ordered by risk. Each finding carries `sites: [{ line, snippet, categories, primary, fix, severity, source, variable, note, handoff? }]` and `fix: { decision, review, auto }` totals. Files of BPA-reported classes are marked `bpa`.
+4. Reports BPA rows it can't turn into file findings:
    - **Customer code not in the workspace** (`kind: "missing-source"`, plus a warning): the bundle has other classes in the workspace, or its packages share the workspace's package namespace. Fix it in the repository that builds it: open that repository and re-scan.
-   - **Platform-provided** (`kind: "platform-provided"`): AEM Forms add-on bundles (`adobe-aemfd-*`, `adobe-aemds-*`, `forms-foundation-*`, `xfa4j`). On AEM as a Cloud Service, Adobe provides them when the Forms add-on is enabled in Cloud Manager ([onboarding](https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/forms/setup-configure-migrate/setup-forms-cloud-service)). Don't deploy or edit them.
-   - **Third-party** (`kind: "not-in-workspace"`): other vendor bundles. Upgrade to a release that supports AEM as a Cloud Service, or replace it. For ACS AEM Commons, that's the `acs-aem-commons-all` package with the `cloud` classifier ([setup](https://adobe-consulting-services.github.io/acs-aem-commons/pages/maven.html)). Never edit vendored code.
+   - **Platform-provided** (`kind: "platform-provided"`): AEM Forms add-on bundles (`adobe-aemfd-*`, `adobe-aemds-*`, `forms-foundation-*`, `xfa4j`) or, for rows without a bundle name, its packages (`com.adobe.fd`, `com.adobe.aemfd`, `com.adobe.aemds`, `com.adobe.xfa`, `com.adobe.pdfg`, `com.adobe.forms`). On AEM as a Cloud Service, Adobe provides them when the Forms add-on is enabled in Cloud Manager ([onboarding](https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/forms/setup-configure-migrate/setup-forms-cloud-service)). Don't deploy or edit them.
+   - **Third-party** (`kind: "not-in-workspace"`): other vendor code. Upgrade to a release that supports AEM as a Cloud Service, or replace it. For ACS AEM Commons, that's the `acs-aem-commons-all` package with the `cloud` classifier ([setup](https://adobe-consulting-services.github.io/acs-aem-commons/pages/maven.html)). Never edit vendored code.
    - **BPA class found, but no stream usage in its source** (`kind: "bpa-unmatched"`): BPA analyses compiled classes, so a use may not be visible in source (for example a stream passed straight from one library call to another). The hint names same-package files that use streams.
+
+   Rows from a BPA CSV are grouped per bundle. CAM rows carry class names only, so they're grouped per package, and libraries embedded in a vendor or add-on bundle appear under their own package.
 
 Rows with `informational: true` (benign-only files and the BPA-only kinds above) are **not** outstanding work. Report them, but don't build edit batches from them.
 

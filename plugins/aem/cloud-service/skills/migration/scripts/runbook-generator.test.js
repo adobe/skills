@@ -1492,9 +1492,23 @@ test('inputStream: a workspace with no Java sources is clean, not LLM-scanned, a
   assert.ok(!gathered.analyzerWarnings.some(w => /inputStream/.test(w)));
 });
 
-test('inputStream: CSV rows merge into the scan — workspace classes become per-file findings, third-party rows collapse per bundle', async () => {
+function writeLocalOnlyStreamFile(root) {
+  // Uses streams, but isn't in the BPA report.
+  return write(root, 'core/src/main/java/com/acme/core/LocalOnly.java', [
+    'package com.acme.core;',
+    'import java.io.InputStream;',
+    'public class LocalOnly {',
+    '    void run(Resource res) { InputStream in = res.adaptTo(InputStream.class); use(in); }',
+    '    void use(InputStream in) {}',
+    '}',
+    '',
+  ].join('\n'));
+}
+
+test('inputStream: BPA rows take precedence — only BPA-reported classes become findings; third-party rows collapse per bundle', async () => {
   const root = mkworkspace();
   writeDownloadServlet(root);
+  writeLocalOnlyStreamFile(root);
   const csv = writeInputStreamBpaCsv(root);
   const gathered = await gatherFindings({
     workspaceRoot: root,
@@ -1502,11 +1516,12 @@ test('inputStream: CSV rows merge into the scan — workspace classes become per
     collectionsDir: path.join(root, 'uc'),
     analyzeScript: path.join(root, 'missing-analyze.sh'),
   });
-  assert.strictEqual(gathered.sourceByPattern.inputStream, 'csv+source-scan');
+  assert.strictEqual(gathered.sourceByPattern.inputStream, 'csv', 'BPA owns the pattern, like the other BPA patterns');
 
   const raw = gathered.rawFindingsByPattern.inputStream;
+  const sourceFiles = raw.filter(r => r.kind === 'source').map(r => path.basename(r.file));
+  assert.deepStrictEqual(sourceFiles, ['DownloadServlet.java'], 'LocalOnly.java is not in the BPA report, so it is out of scope');
   const fileFinding = raw.find(r => r.kind === 'source');
-  assert.ok(fileFinding.file.endsWith('DownloadServlet.java'));
   assert.deepStrictEqual(fileFinding.bpa.apis, ['java.io.FileInputStream', 'java.io.InputStream']);
   const cats = fileFinding.sites.map(s => `${s.line}:${s.categories.join('+')}`);
   assert.deepStrictEqual(cats, ['9:E+B', '14:D'], 'E (proxied binary) + B (unclosed) on L9, D (local file) on L14');
@@ -1519,6 +1534,50 @@ test('inputStream: CSV rows merge into the scan — workspace classes become per
   // Only the workspace file counts as outstanding work.
   const actionable = gathered.findingsByPattern.inputStream.filter(f => !f.informational);
   assert.strictEqual(actionable.length, 1);
+});
+
+test('inputStream: a BPA report without inputStream rows falls back to the local scan', async () => {
+  const root = mkworkspace();
+  writeDownloadServlet(root);
+  writeLocalOnlyStreamFile(root);
+  const csv = path.join(root, 'other.csv');
+  fs.writeFileSync(csv, [
+    'code,type,subtype,importance,identifier,message,context',
+    'GC,development.guideline,custom.guava.cache,INFO,com.google.common.cache.Cache,The com.google.common.cache.Cache class in the b bundle uses com.google.common.cache.Cache.,ctx',
+  ].join('\n') + '\n', 'utf8');
+  const gathered = await gatherFindings({
+    workspaceRoot: root, bpaFilePath: csv, collectionsDir: path.join(root, 'uc'),
+    analyzeScript: path.join(root, 'missing-analyze.sh'),
+  });
+  assert.strictEqual(gathered.bpaMode, 'csv');
+  assert.strictEqual(gathered.sourceByPattern.inputStream, 'source-scan');
+  const files = gathered.rawFindingsByPattern.inputStream.filter(r => r.kind === 'source').map(r => path.basename(r.file)).sort();
+  assert.deepStrictEqual(files, ['DownloadServlet.java', 'LocalOnly.java']);
+});
+
+test('inputStream: CAM targets (no bundle names) take precedence and group Forms classes by package', async () => {
+  const root = mkworkspace();
+  writeDownloadServlet(root);
+  writeLocalOnlyStreamFile(root);
+  const gathered = await gatherFindings({
+    workspaceRoot: root,
+    collectionsDir: path.join(root, 'nocollections'),
+    preFetchedBpa: {
+      inputStream: [
+        { pattern: 'inputStream', className: 'com.acme.core.servlets.DownloadServlet', identifier: 'java.io.InputStream' },
+        { pattern: 'inputStream', className: 'com.adobe.fd.signatures.SigUtil', identifier: 'java.io.InputStream' },
+        { pattern: 'inputStream', className: 'org.jsoup.helper.DataUtil', identifier: 'java.io.InputStream' },
+      ],
+    },
+    analyzeScript: path.join(root, 'missing-analyze.sh'),
+  });
+  assert.strictEqual(gathered.sourceByPattern.inputStream, 'mcp');
+  const raw = gathered.rawFindingsByPattern.inputStream;
+  assert.deepStrictEqual(raw.filter(r => r.kind === 'source').map(r => path.basename(r.file)), ['DownloadServlet.java']);
+  assert.deepStrictEqual(raw.filter(r => r.file === null).map(g => `${g.kind}:${g.group}`), [
+    'not-in-workspace:package org.jsoup.helper',
+    'platform-provided:package com.adobe.fd',
+  ]);
 });
 
 test('inputStream: rendered runbook + cache stay workspace-relative and carry site-level detail', async () => {
