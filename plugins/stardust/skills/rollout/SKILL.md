@@ -237,7 +237,8 @@ template's archetype is deployed and passes its full gate row on the preview URL
 (`gate-all.mjs --only`, cap 3 fix rounds) before any of its siblings is rendered
 or converted — the recorded unit `C-archetype` (handoff contract § 3, row C).
 An encoded template's C-archetype also drafts and round-trips its map; its cluster
-unit is then the map plus the exceptions (handoff contract § 3, row C;
+unit is then the map plus the exceptions, and the rollout lead alone re-runs
+`inventory.mjs` once the wave's clusters have encoded and staged (handoff contract § 3, row C;
 `skills/migrate/reference/importer-recipe.md` § Encoder contract).
 
 **Execution model: waves.** Deliver in waves of parallel **author-only** agents

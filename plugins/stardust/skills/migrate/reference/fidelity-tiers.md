@@ -112,8 +112,9 @@ silently omits a derived column (such a map encodes clean, and wrong).
 - **Content count — the subject is the encoded document**, counted by the
   encoder offline against the capture's content root minus the map's
   chrome and declared drops: 0 MISSING in every role, never a ratio, else
-  the page stops `incomplete`. A `drop:` marker, listed in the page's
-  audit, stands where a `contentDeviations[]` entry stands on a clone.
+  the page stops `incomplete`; that count is the sibling's `content-count`
+  gate. A `drop:` marker, listed in the page's audit, stands where a
+  `contentDeviations[]` entry stands on a clone.
 - **Local launches — the skip rule.** An encoded sibling skips all three
   (`section-schema`, the whole-page `block-roundtrip --ew`, `qa-gate`) only
   when all of these hold: the template's map round-trips; the archetype
@@ -124,7 +125,9 @@ silently omits a derived column (such a map encodes clean, and wrong).
   by the archetype or an earlier sibling; no block code was written for
   it. Each pass is recorded right after the launches with `migrate.mjs
   harness <slug>` (the archetype's `passedOn`); rollout's `plan.mjs` marks
-  every page `needsHarness` from it. Its gate-all row, the lints,
+  every page `needsHarness` from it, and gate-evidence enforces it: a
+  sibling's own runs count, else the three gates are inherited only while
+  `passedOn` under the current key covers its shape. Its gate-all row, the lints,
   media-reconcile and `localize-links --check` still run on every sibling;
   a change to a block, the map, the encoder or the foundation moves the key
   and re-arms the launches.
