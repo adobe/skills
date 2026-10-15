@@ -449,11 +449,14 @@ had one section for the whole run).
   mid-wave.
 - **The final gate runs against the PUBLISHED origin — not the harness**
   (`reference/source-fidelity-gate.md` § The published-origin gate): deploy
-  first (`PUT → preview`), then `gate.sh <slug> "$LIVE" "<preview-url>"
-  <width> pub1 --full --marker "<brand or domain string>"` through
-  `run-bg.mjs`, in the ordinary `gates/<slug>-<width>/` dir under the `pub<N>`
-  label (a new dir would force a fresh live capture). Nothing pixel-shaped
-  runs on the local harness — it feeds `qa-gate`/`block-roundtrip` only.
+  first (`PUT → preview`); the archetype's published row of record is the
+  C-archetype unit's `gate-all.mjs --only <archetype> --eds-host <preview
+  host>` row — the evidence the roster later reuses. `gate.sh <slug> "$LIVE"
+  "<preview-url>" <width> pub<N> --full --marker "<brand or domain string>"`
+  through `run-bg.mjs` stays the fix-round instrument inside that unit, never
+  a second verdict, in the ordinary `gates/<slug>-<width>/` dir (a new dir
+  would force a fresh live capture). Nothing pixel-shaped runs on the local
+  harness — it feeds `qa-gate`/`block-roundtrip` only.
 - **The delivery gate is the ALL-PAGES run, four criteria — not the pixel
   number alone** (`reference/source-fidelity-gate.md` § The all-pages
   published-origin gate, #125): `node stardust/scripts/replica/gate-all.mjs
@@ -464,9 +467,12 @@ had one section for the whole run).
   and sidecars: `stardust/replica/gates/all-<width>/`; with the Phase 4
   `prototypes-<width>/` table it is the pair `gate-evidence.mjs` reads (a page
   without a row is ungated). Each cluster subagent runs `--only` over its own
-  pages inside the fan-out; C-final's roster run is the recorded unit
-  `gate-all` (`--skip-existing`, captures reused) followed by
-  `update-coverage.mjs --gate` (handoff contract § 3, row C).
+  pages inside the fan-out; cluster re-runs and C-final's roster run (the
+  recorded unit `gate-all`, then `update-coverage.mjs --gate`) pass
+  `--skip-existing` with the clusters' `--eds-host`: a PASS row is reused
+  while its gate key (foundation, blocks, content, settings; deployed tree
+  only) holds, probes while the capture pair holds, a key change re-shoots
+  the EDS side; rows say `reused` (handoff contract § 3, row C).
 
 **State:** replica writes its own state under `stardust/replica/` — the
 inconsistency register, `progress.json` (one map: `types.<archetype>` —
@@ -475,7 +481,8 @@ inventory — beside `gate-evidence.mjs`'s `siblings` / `migrate`; extended
 per entry, never replaced), `motion/<slug>.json`, and `gates/<slug>-<width>/` evidence.
 The delivery gate (#125) adds `gates/all-<width>/` — one dir per deployed
 page (`origin.png`, `eds.png`, `diff.png`, `pixel.json`, `content.json`,
-`clip.json`, `units.json`), `summary.{json,md}`, `runs/` for `--only` runs and
+`clip.json`, `units.json`, `probes.json`, `gate-key.json` — the reuse
+records), `summary.{json,md}`, `runs/` for `--only` runs and
 the documented sidecars (`masks.json`, `overrides.json`, `clip-allow.json`,
 `presence.json`, `units.json`).
 Phase 5 adds three files under `stardust/rollout/`: `progress.json` (the
