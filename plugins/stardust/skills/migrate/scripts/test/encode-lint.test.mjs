@@ -16,7 +16,8 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { main } from '../encode.mjs';
-import { validateTransform, validateVocabulary } from '../encode/engine.mjs';
+import { COMMENT_KEY, KEYS, LINT_KEYS, validateTransform, validateVocabulary } from '../encode/engine.mjs';
+import { PLAIN_CONTENT } from '../encode/lint.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const FX = join(HERE, 'fixtures', 'encode-lint');
@@ -146,6 +147,14 @@ const snapshot = (dir) => readdirSync(dir, { recursive: true }).sort().map((f) =
   await only(root, 'C1', /markers\[5\]\.sel.*chains through \.x-band/);
   root = project(); editMap(root, (v) => { marker(v, '.x-notice').sel = '.x-grid > .x-notice'; });
   await only(root, 'C1', /markers\[6\]\.sel.*chains through \.x-grid/);
+  // :is() / :where() are the selector itself, not a predicate: a chain inside them is still a chain
+  for (const sel of [':is(.x-band > .x-faq)', '.x-faq:where(.x-band > *)', ':is(.x-band) > .x-faq']) {
+    root = project(); editMap(root, (v) => { marker(v, '.x-faq').sel = sel; });
+    await only(root, 'C1', /markers\[5\]\.sel.*chains through \.x-band/);
+  }
+  // a structural predicate may name a layout class (:has, :not)
+  root = project(); editMap(root, (v) => { marker(v, '.x-faq').sel = '.x-faq:not(:has(.x-grid))'; });
+  assert.equal((await lint(root)).code, 0, 'a layout class inside :not(:has()) is a predicate, not a chain');
   // a selector the encoder's matcher cannot evaluate is a finding, never a crash; C1 still names its form
   root = project(); editMap(root, (v) => { v.chrome[0] = 'header.site-header:nth-child(2)'; });
   const r = await lint(root);
@@ -187,6 +196,14 @@ const snapshot = (dir) => readdirSync(dir, { recursive: true }).sort().map((f) =
   root = project();
   editText(root, CAPTURE('guides-beta'), '<h2 class="x-title__text">Questions</h2>', '<h1 class="x-title__text">Questions</h1>');
   await only(root, 'C3', /unique.*2 matches on guides-beta/);
+  // a node the transform drops is never a module: two markers on it are no overlap (the encoder's own drop predicate)
+  root = project();
+  editText(root, CAPTURE(A), '    <div class="x-text x-grid__col" id="text-2a4c6e8b0d">', '    <div class="x-text x-promo"><p>Members save on guided days.</p></div>\n    <div class="x-text x-grid__col" id="text-2a4c6e8b0d">');
+  editMap(root, (v) => { v.markers.unshift({ sel: '.x-promo', kind: 'promo', emitter: 'default-content' }); });
+  writeJ(root, ['stardust', 'import', A, 'transform.json'], { imageParagraph: true, emptyP: 'drop', drop: ['.x-promo'] });
+  syncInputs(root);
+  const dropped = await lint(root);
+  assert.equal(dropped.code, 0, `a dropped node raises no overlap\n${dropped.text}`);
 }
 
 // ===================================================================================== C4: rows and units.json
@@ -251,6 +268,18 @@ const snapshot = (dir) => readdirSync(dir, { recursive: true }).sort().map((f) =
   assert.ok(s.notes.some((n) => /guides-gamma/.test(n)), 'a sibling with no capture is skipped with a note');
   assert.equal(r.last, `sweep ${A}: 1 sibling · new kinds 1 · unknown modifiers 1 · zero-hit markers 2`);
   assert.equal(snapshot(root), before, '--sweep writes nothing');
+  // the census rule: a class-less <div>, <form> or showing <iframe> is a kind (`div.`); class-less plain content and a
+  // node the transform drops are not
+  root = project();
+  editText(root, CAPTURE('guides-beta'), '<div class="x-band', ['<div><p>Ask at the hut.</p></div>', '<form action="/subscribe"><button>Subscribe</button></form>',
+    '<iframe src="https://player.example.net/embed/7" title="Route map"></iframe>', '<p>Plain words.</p>', '<div class="x-promo"><p>Members save.</p></div>', '<div class="x-band'].join('\n    '));
+  writeJ(root, ['stardust', 'import', A, 'transform.json'], { imageParagraph: true, emptyP: 'drop', drop: ['.x-promo'] });
+  r = await run(root, '--sweep', '--template', A, '--json');
+  assert.equal(r.code, 2, r.out.join('\n'));
+  assert.deepEqual(JSON.parse(r.out[0]).newKinds, [
+    { slug: 'guides-beta', kind: 'div.', count: 1, visible: true }, { slug: 'guides-beta', kind: 'form.', count: 1, visible: true },
+    { slug: 'guides-beta', kind: 'iframe.', count: 1, visible: true }]);
+  assert.ok(PLAIN_CONTENT.has('p') && !PLAIN_CONTENT.has('div') && !PLAIN_CONTENT.has('form'));
   root = project();
   editMap(root, (v) => { v.markers = {}; });
   r = await run(root, '--sweep', '--template', A);
@@ -264,69 +293,81 @@ const snapshot = (dir) => readdirSync(dir, { recursive: true }).sort().map((f) =
   walk(SCHEMA);
   for (const ref of refs) { const def = ref.replace(/^#\/\$defs\//, ''); assert.ok(SCHEMA.$defs[def], `${ref} resolves`); }
   const D = SCHEMA.$defs;
-  const props = { vocabulary: SCHEMA.properties, marker: D.marker.properties, variant: D.variant.properties, rowGroup: D.rowGroup.properties, cellSpec: D.cellSpecKeys.properties, cellsEach: D.cellsEach.properties, transform: D.transform.properties, accept: D.variance.properties.accept.items.properties, ignoreAncestors: D.variance.properties.ignoreAncestors.items.properties, childClass: D.moduleSelector.oneOf[1].properties, class: D.moduleSelector.oneOf[2].properties };
+  const props = { vocabulary: SCHEMA.properties, marker: D.marker.properties, variant: D.variant.properties, rowGroup: D.rowGroup.properties, cellSpec: D.cellSpecKeys.properties, cellsEach: D.cellsEach.properties, transform: D.transform.properties, accept: D.variance.properties.accept.items.properties, ignoreAncestors: D.variance.properties.ignoreAncestors.items.properties, childClass: D.moduleSelector.oneOf[1].properties, class: D.moduleSelector.oneOf[2].properties, variance: D.variance.properties };
 
-  // one probe per schema key: a wrong value the engine must reject ('reject'), a key the engine passes through because
-  // --lint owns it ('lint', x-lint in the schema), or a key the engine reads without checking it ('gap' — the
-  // validator is laxer than the schema there; when it learns the check, move the key to 'reject')
+  // one probe per schema key: a wrong value the engine must reject naming the key ('reject'), or a key the engine
+  // accepts unread because --lint owns it ('lint', x-lint in the schema); plus, per object, an unknown key the engine
+  // must reject (R29: the engine is strict, the schema says additionalProperties: false)
   const V = (x = {}) => ({ root: 'main', markers: [{ sel: '.a', emitter: 'block:a' }], ...x });
   const M = (x) => V({ markers: [{ sel: '.a', emitter: 'block:a', ...x }] });
   const C = (x) => M({ cells: [x] });
   const T = (x) => ({ transform: x });
+  const AC = (x) => V({ variance: { accept: [{ print: 'p', on: 'extra', reason: 'r', ...x }] } });
+  const IA = (x) => V({ variance: { ignoreAncestors: [{ class: '^grid', reason: 'r', ...x }] } });
   const PROBES = {
     vocabulary: {
-      $schema: ['lint', V({ $schema: 42 })], archetype: ['lint', V({ archetype: 42 })], inputs: ['lint', V({ inputs: 42 })],
+      $comment: ['reject', V({ $comment: 42 })], $schema: ['lint', V({ $schema: 42 })], archetype: ['lint', V({ archetype: 42 })], inputs: ['lint', V({ inputs: 42 })],
       root: ['reject', V({ root: 42 })], chrome: ['reject', V({ chrome: '.x' })], wrappers: ['reject', V({ wrappers: '.x' })],
       moduleSelectors: ['reject', V({ moduleSelectors: '.x' })], sectionTags: ['reject', V({ sectionTags: ['Section!'] })],
-      walkSiblings: ['gap', V({ walkSiblings: 'yes' })], requireH1: ['gap', V({ requireH1: 'no' })],
+      walkSiblings: ['reject', V({ walkSiblings: 'yes' })], requireH1: ['reject', V({ requireH1: 'no' })],
       ignoreModifiers: ['reject', V({ ignoreModifiers: ['('] })], metadata: ['reject', V({ metadata: [['Title']] })],
       variance: ['reject', V({ variance: 42 })], markers: ['reject', V({ markers: { '.a': {} } })],
+      zzz: ['unknown', V({ zzz: 1 })],
     },
     marker: {
-      sel: ['reject', M({ sel: 42 })], kind: ['gap', M({ kind: 42 })], emitter: ['reject', M({ emitter: 'none' })],
-      style: ['reject', M({ emitter: 'section', style: 42 })], sectionBefore: ['gap', M({ sectionBefore: 'yes' })],
-      sectionAfter: ['gap', M({ sectionAfter: 'yes' })], sectionStyle: ['reject', M({ sectionStyle: 42 })],
-      variants: ['reject', M({ variants: '.x' })], merge: ['gap', M({ merge: 'no' })], retag: ['reject', M({ retag: 'b' })],
+      $comment: ['reject', M({ $comment: 42 })], sel: ['reject', M({ sel: 42 })], kind: ['reject', M({ kind: 42 })], emitter: ['reject', M({ emitter: 'none' })],
+      style: ['reject', M({ emitter: 'section', style: 42 })], sectionBefore: ['reject', M({ sectionBefore: 'yes' })],
+      sectionAfter: ['reject', M({ sectionAfter: 'yes' })], sectionStyle: ['reject', M({ sectionStyle: 42 })],
+      variants: ['reject', M({ variants: '.x' })], merge: ['reject', M({ merge: 'no' })], retag: ['reject', M({ retag: 'b' })],
       drop: ['reject', M({ drop: '.x' })], rows: ['reject', M({ rows: 42 })], cells: ['reject', M({ cells: 42 })],
-      evidence: ['lint', M({ evidence: 42 })], unique: ['lint', M({ unique: 'yes' })],
+      evidence: ['lint', M({ evidence: 42 })], unique: ['lint', M({ unique: 'yes' })], zzz: ['unknown', M({ zzz: 1 })],
     },
-    variant: { when: ['reject', M({ variants: [{ when: 42, add: 'x' }] })], add: ['reject', M({ variants: [{ when: '.x', add: 'Not A Token' }] })] },
+    variant: {
+      $comment: ['reject', M({ variants: [{ when: '.x', add: 'x', $comment: 42 }] })], when: ['reject', M({ variants: [{ when: 42, add: 'x' }] })],
+      add: ['reject', M({ variants: [{ when: '.x', add: 'Not A Token' }] })], zzz: ['unknown', M({ variants: [{ when: '.x', add: 'x', zzz: 1 }] })],
+    },
     rowGroup: {
-      sel: ['reject', M({ rows: [{ sel: 42 }] })], cells: ['reject', M({ rows: [{ sel: '.r', cells: 42 }] })],
-      optional: ['gap', M({ rows: [{ sel: '.r', optional: 'yes' }] })], max: ['reject', M({ rows: [{ sel: '.r', max: 0 }] })],
+      $comment: ['reject', M({ rows: [{ sel: '.r', $comment: 42 }] })], sel: ['reject', M({ rows: [{ sel: 42 }] })], cells: ['reject', M({ rows: [{ sel: '.r', cells: 42 }] })],
+      optional: ['reject', M({ rows: [{ sel: '.r', optional: 'yes' }] })], max: ['reject', M({ rows: [{ sel: '.r', max: 0 }] })],
+      zzz: ['unknown', M({ rows: [{ sel: '.r', zzz: 1 }] })],
     },
     cellSpec: {
-      sel: ['reject', C({ sel: 42 })], as: ['reject', C({ as: 'bogus' })], all: ['gap', C({ all: 'yes' })], wrap: ['reject', C({ wrap: 42 })],
+      $comment: ['reject', C({ $comment: 42 })], sel: ['reject', C({ sel: 42 })], as: ['reject', C({ as: 'bogus' })], all: ['reject', C({ all: 'yes' })], wrap: ['reject', C({ wrap: 42 })],
       itemWrap: ['reject', C({ itemWrap: 'P!' })], join: ['reject', C({ join: 42 })], optional: ['reject', C({ optional: 'maybe' })],
-      selfOk: ['gap', C({ selfOk: 'yes' })], retag: ['reject', C({ retag: 'b' })], drop: ['reject', C({ drop: '.x' })],
+      selfOk: ['reject', C({ selfOk: 'yes' })], retag: ['reject', C({ retag: 'b' })], drop: ['reject', C({ drop: '.x' })],
       attr: ['reject', C({ as: 'attr', attr: 42 })], then: ['reject', C({ as: 'idref', then: 'html' })], text: ['reject', C({ as: 'link', text: 42 })],
       titleAttr: ['reject', C({ as: 'link', titleAttr: 42 })], value: ['reject', C({ as: 'literal', value: 42 })], parts: ['reject', C({ parts: [] })],
+      zzz: ['unknown', C({ zzz: 1 })],
     },
-    cellsEach: { each: ['reject', M({ cells: { each: 42 } })] },
+    cellsEach: { each: ['reject', M({ cells: { each: 42 } })], zzz: ['unknown', M({ cells: { each: '.x', zzz: 1 } })] },
+    variance: {
+      $comment: ['reject', V({ variance: { $comment: 42 } })], accept: ['reject', V({ variance: { accept: 'p' } })],
+      ignoreAncestors: ['reject', V({ variance: { ignoreAncestors: 'grid' } })], zzz: ['unknown', V({ variance: { zzz: 1 } })],
+    },
     accept: {
-      print: ['reject', V({ variance: { accept: [{ print: 42, on: 'extra', reason: 'r' }] } })],
-      on: ['reject', V({ variance: { accept: [{ print: 'p', on: 'sometimes', reason: 'r' }] } })],
-      reason: ['reject', V({ variance: { accept: [{ print: 'p', on: 'extra', reason: ' ' }] } })],
+      $comment: ['reject', AC({ $comment: 42 })], print: ['reject', AC({ print: 42 })], on: ['reject', AC({ on: 'sometimes' })],
+      reason: ['reject', AC({ reason: ' ' })], zzz: ['unknown', AC({ zzz: 1 })],
     },
     ignoreAncestors: {
-      class: ['reject', V({ variance: { ignoreAncestors: [{ class: '(', reason: 'r' }] } })],
-      reason: ['reject', V({ variance: { ignoreAncestors: [{ class: '^grid', reason: '' }] } })],
+      $comment: ['reject', IA({ $comment: 42 })], class: ['reject', IA({ class: '(' })], reason: ['reject', IA({ reason: '' })], zzz: ['unknown', IA({ zzz: 1 })],
     },
-    childClass: { childClass: ['reject', V({ moduleSelectors: [{ childClass: '(' }] })] },
-    class: { class: ['reject', V({ moduleSelectors: [{ class: '(' }] })] },
+    childClass: { $comment: ['reject', V({ moduleSelectors: [{ childClass: '^x', $comment: 42 }] })], childClass: ['reject', V({ moduleSelectors: [{ childClass: '(' }] })], zzz: ['unknown', V({ moduleSelectors: [{ childClass: '^x', zzz: 1 }] })] },
+    class: { $comment: ['reject', V({ moduleSelectors: [{ class: '^x', $comment: 42 }] })], class: ['reject', V({ moduleSelectors: [{ class: '(' }] })], zzz: ['unknown', V({ moduleSelectors: [{ class: '^x', zzz: 1 }] })] },
     transform: {
-      imageParagraph: ['reject', T({ imageParagraph: 'yes' })], imgAttrs: ['reject', T({ imgAttrs: ['srcset'] })],
+      $comment: ['reject', T({ $comment: 42 })], imageParagraph: ['reject', T({ imageParagraph: 'yes' })], imgAttrs: ['reject', T({ imgAttrs: ['srcset'] })],
       retag: ['reject', T({ retag: { b: 'B!' } })], headingsByClass: ['reject', T({ headingsByClass: 'x' })], drop: ['reject', T({ drop: '.x' })],
-      keepHashLinks: ['reject', T({ keepHashLinks: 'yes' })], emptyP: ['reject', T({ emptyP: 'maybe' })],
+      keepHashLinks: ['reject', T({ keepHashLinks: 'yes' })], emptyP: ['reject', T({ emptyP: 'maybe' })], zzz: ['unknown', T({ zzz: 1 })],
     },
   };
   for (const [def, table] of Object.entries(PROBES)) {
-    assert.deepEqual(Object.keys(table).sort(), Object.keys(props[def]).sort(), `${def}: one probe per schema key, no probe for a key the schema lacks`);
+    const keys = Object.keys(table).filter((k) => table[k][0] !== 'unknown');
+    assert.deepEqual(keys.sort(), Object.keys(props[def]).sort(), `${def}: one probe per schema key, no probe for a key the schema lacks`);
     for (const [key, [expect, probe]] of Object.entries(table)) {
       const errs = probe.transform ? validateTransform(probe.transform) : validateVocabulary(probe);
+      if (expect === 'unknown') { assert.ok(errs.some((e) => e.includes(key)), `${def}: the engine rejects an unknown key, naming it (got ${JSON.stringify(errs)})`); continue; }
       assert.equal(Boolean(props[def][key]['x-lint']), expect === 'lint', `${def}.${key}: x-lint in the schema ⇔ the key is --lint's`);
       if (expect === 'reject') assert.ok(errs.some((e) => e.includes(key)), `${def}.${key}: the engine rejects ${JSON.stringify(probe)} naming the key (got ${JSON.stringify(errs)})`);
-      else assert.deepEqual(errs, [], `${def}.${key} (${expect}): the engine passes it through`);
+      else assert.deepEqual(errs, [], `${def}.${key} (${expect}): the engine accepts it unread`);
     }
   }
   // the base probes are valid, and so is every value the schema's enums allow
@@ -342,6 +383,22 @@ const snapshot = (dir) => readdirSync(dir, { recursive: true }).sort().map((f) =
     assert.equal(validateVocabulary(M({ emitter: e })).length === 0, EMITTER.test(e), `emitter "${e}": the schema pattern and the engine agree`);
   }
   assert.deepEqual(validateVocabulary(M({ emitter: null })), [], 'a null emitter is valid (a known kind, not mapped yet)');
+
+  // the engine → schema direction: each kind's key set (engine KEYS, what the validators enforce) equals the schema
+  // definition's properties minus $comment, which every definition documents; LINT_KEYS ⇔ x-lint. `patch` is the
+  // patches file's (stardust/patches/<slug>.json), not the map's.
+  const defs = { ...props, cellsEach: { ...D.cellSpecKeys.properties, ...D.cellsEach.properties } };
+  assert.deepEqual(Object.keys(KEYS).filter((k) => k !== 'patch').sort(), Object.keys(defs).sort(), 'one schema definition per engine kind');
+  for (const [def, p] of Object.entries(defs)) {
+    assert.ok(p[COMMENT_KEY], `${def}: the schema documents ${COMMENT_KEY}`);
+    assert.deepEqual(Object.keys(p).filter((k) => k !== COMMENT_KEY).sort(), [...KEYS[def]].sort(), `${def}: the schema's keys = the engine's KEYS.${def}`);
+    assert.deepEqual(Object.keys(p).filter((k) => p[k]['x-lint']).sort(), [...(LINT_KEYS[def] || [])].sort(), `${def}: x-lint = LINT_KEYS.${def}`);
+  }
+  // the PLAIN_CONTENT --sweep restates is the engine's census set (the engine keeps it private)
+  const engineSrc = readFileSync(join(HERE, '..', 'encode', 'engine.mjs'), 'utf8');
+  const plain = /const PLAIN_CONTENT = new Set\((\[[^\]]*\])\)/.exec(engineSrc);
+  assert.ok(plain, 'engine.mjs defines PLAIN_CONTENT');
+  assert.deepEqual([...PLAIN_CONTENT].sort(), JSON.parse(plain[1].replace(/'/g, '"')).sort(), 'lint.mjs PLAIN_CONTENT = the engine census set');
 
   // every key the fixture maps use is a schema key (the encoder's own fixture exercises every grammar v2 feature)
   const keysOk = (obj, def, where) => { for (const k of Object.keys(obj)) assert.ok(props[def][k], `${where}.${k} is in the schema (${def})`); };
