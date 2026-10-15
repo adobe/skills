@@ -1,0 +1,8 @@
+{
+  "stardust/encoded/guides/a.html": "sha256:9aeac0a2d9328128419ec26296c0918d38bb8a83f3e552a82384ee8fca69e404",
+  "stardust/encoded/guides/b.html": "sha256:9be55e1a07155b207ba85800d92aaf886b5d85a17940c0edefef3fa55e315b48",
+  "stardust/encoded/guides/c/index.html": "sha256:65b8300a9512d57d89f63bf8920d1289004f269209eb11b06a4aef0aad4f66b1",
+  "stardust/encoded/guides/d.html": "sha256:a77854f431e3efcaccb24d38a66aed534fe54fd98ad02b4e58d4945ae49a7df6",
+  "stardust/encoded/guides/f/index.html": "sha256:cd0c5e27c99d9b3e178642c366363b22bdba585881a73d50f1787b5d16aeb58e",
+  "stardust/encoded/guides/g.html": "sha256:60f0b1cce6a66c07d5eaf8af4b759edf113b224fe2e7776598624d5602e113bf"
+}
