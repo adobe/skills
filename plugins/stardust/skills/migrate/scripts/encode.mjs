@@ -19,21 +19,34 @@
  *
  * Reads (never the row-2 clone, never content/ except --roundtrip): the map under stardust/import/<archetype>/, the
  * roster (stardust/rollout/coverage/templates.json), each page's capture + page JSON under stardust/current/pages/,
- * deploy/media-ledger.json (sources → contentUrl), deploy/asset-ledger.json, rollout/chrome-map.json, redirects.tsv.
- * Writes: stardust/encoded/<da-path>.html per page (the root page: index.html), only when its bytes change; nothing
- * with --dry-run, --roundtrip, --lint or --sweep.
+ * stardust/patches/<slug>.json (the page's patches), deploy/media-ledger.json (sources → contentUrl),
+ * deploy/asset-ledger.json, rollout/chrome-map.json, redirects.tsv.
+ * Writes (encode/provenance.mjs has the shapes) — each file only when its bytes change, tmp + rename; nothing with
+ * --dry-run, --roundtrip, --lint or --sweep; zero writes when nothing changed:
+ *   stardust/encoded/<da-path>.html             the document (the root page: index.html)
+ *   stardust/migrated/…/<name>._meta.json       migrate's sidecar for the page: `encode` (the provenance of the document
+ *                                               on disk) and `audit.encode` (this run's status and report) — no other
+ *                                               key; created migrate-shaped when the page has none
+ *   stardust/import/<archetype>/manifest.json   each document path → the sha256 the encoder wrote there
+ *   stardust/state.json                         migrate.generators[<archetype>] only (never created)
  *
  * Per page: the walk + grammar (encode/engine.mjs), media from the ledger, documents from the asset ledger, internal
  * links localised, nav/footer from the chrome map, the shape fingerprint against the archetype's (computed from the
  * archetype's capture in the same run), the offline content count (deploy's content-inventory.mjs), then sanitise's
  * encode() last — the output is finalisation-idempotent. Page status: clean · unmapped · flattened · variance
  * (accept a reviewed print in vocabulary.json `variance.accept[]`) · incomplete (fix the map or declare a `drop:`) ·
- * hand-edit · error. A stopped page is never written; the model handles that page as an exception.
+ * hand-edit (the document on disk is not the encoder's last write: move the edit into stardust/patches/<slug>.json or
+ * the map) · error. A stopped page's document is never written — an earlier one stays, its sidecar records the stop
+ * and staging refuses it; the model handles that page as an exception. Unchanged inputs, map, encoder and document
+ * skip the page (`unchanged`, nothing parsed).
  *   --roundtrip  encode the archetype in memory and compare it with its gated content/<da-path>.html (encode/compare.mjs;
  *                level text by default) — exit 0 equal, 2 not.
  *   --lint/--sweep  the map's authoring checks (encode/lint.mjs).
  *   --json       line 1: the run summary as one JSON object; the verdict line stays last.
- *   --force / --overwrite-hand-edit  carried to the page writer (the skip predicate and the hand-edit guard).
+ *   --force      re-encode a page the skip would pass over (the byte gate still decides each write); never overrides
+ *                the hand-edit guard.
+ *   --overwrite-hand-edit <slug…>  replace these pages' hand-edited documents with the encode — never passed in
+ *                hands-off: the edit moves into stardust/patches/<slug>.json or the map first.
  *
  * Output: one status line per page, then the verdict line (stdout, last): `encoded N · unchanged N · stopped N`.
  * Exit: 0 every page encoded or unchanged · 1 usage, invalid map/transform, missing input · 2 any page stopped (2 wins
@@ -41,13 +54,14 @@
  *
  * Ported from the `stardust/next` branch: `skills/migrate/scripts/importer-skeleton.mjs` (commits 9aaeff4f, d4a37277, 7662fda2).
  */
-import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import * as engine from './encode/engine.mjs';
 import * as dom from './encode/dom.mjs';
 import { loadSite } from './encode/site.mjs';
 import { loadDeploy } from './encode/deps.mjs';
+import * as prov from './encode/provenance.mjs';
 
 const USAGE = `Usage:
   node skills/migrate/scripts/encode.mjs --template <archetype-slug> [--slug <s>[,<s>…]] [--root <projectDir>]
@@ -57,7 +71,11 @@ const USAGE = `Usage:
 
 Applies the template's map (stardust/import/<archetype>/vocabulary.json + transform.json) to each page's committed
 capture and writes stardust/encoded/<da-path>.html in deploy's delivered form (sanitised; written only when the bytes
-change). A page that stops (unmapped · flattened · variance · incomplete · hand-edit · error) is not written.
+change), with provenance in the page's migrate sidecar (encode, audit.encode) and stardust/import/<archetype>/
+manifest.json. A page that stops (unmapped · flattened · variance · incomplete · hand-edit · error) is not written.
+  --force      re-encode pages whose inputs, map and document are unchanged (never overrides the hand-edit guard)
+  --overwrite-hand-edit <slug>[,…]  replace these hand-edited documents (never in hands-off: move the edit into
+               stardust/patches/<slug>.json or the map first)
   --roundtrip  encode the archetype in memory, compare with its gated content/<da-path>.html (exit 0 equal, 2 not)
   --lint       the map's authoring checks · --sweep  a dry run over every sibling capture (both write nothing)
   --json       line 1 = the run summary as JSON; the verdict line stays last
@@ -133,24 +151,31 @@ function countKeysFor(site, base, pathKey) {
 }
 
 /**
- * Encode the template's pages in memory (nothing is written). The archetype is always encoded first: its print set is
- * the reference every sibling's fingerprint is checked against. Returns { template, records[] } with one record per
- * selected page: { slug, role, status, output, html, report, prints, missingInput? }.
+ * Encode one page in memory (nothing is written): its capture, page JSON and patches through the engine.
+ * → { slug, role, status, output, html, report, prints, blocks, missingInput? }.
+ */
+export function encodeOne({ root, site, map, deps, slug, archetype, archetypePrints = null }) {
+  const role = slug === archetype ? 'archetype' : 'sibling';
+  const info = site.page(slug);
+  const stop = (msg, missingInput = true) => ({ slug, role, status: 'error', output: info ? info.outputPath : null, html: null, prints: [], ...(missingInput ? { missingInput } : {}), report: { errors: [msg] } });
+  if (!info) return stop(`no source URL for ${slug} (its page JSON url, or state.json pages[].url)`);
+  const capFile = join(root, info.capturePath);
+  if (!existsSync(capFile)) return stop(`no capture ${info.capturePath} — run extract; the encoder never fetches the live page`);
+  const patches = prov.readPatches(root, slug);
+  if (patches.error) return stop(patches.error, false);
+  const page = { ...(site.pageJson(slug) || {}), url: info.url };
+  const base = site.baseUrlFor(slug) || info.url; // relative URLs in the capture resolve where it was captured (R15)
+  const res = engine.encodePage({ html: readFileSync(capFile, 'utf8'), page, base, vocab: map.vocab, tf: map.tf, site, archetypePrints, inventory: deps.inventory, countKeys: countKeysFor(site, base, deps.pathKey), patches: patches.value, finalise: deps.finalise });
+  return { slug, role, status: res.status, output: info.outputPath, html: res.html, report: res.report, prints: res.prints, blocks: res.blocks };
+}
+
+/**
+ * Encode the template's pages in memory (nothing is written, nothing skipped). The archetype is always encoded first:
+ * its print set is the reference every sibling's fingerprint is checked against. Returns { template, archetype,
+ * records[] } with one record per selected page (encodeOne's shape).
  */
 export async function encodeTemplate({ root, site, template, map, deps, slugs = null }) {
-  const { vocab, tf } = map;
-  const one = (slug, archetypePrints) => {
-    const role = slug === template.archetype ? 'archetype' : 'sibling';
-    const info = site.page(slug);
-    const stop = (msg) => ({ slug, role, status: 'error', output: info ? info.outputPath : null, html: null, prints: [], missingInput: true, report: { errors: [msg] } });
-    if (!info) return stop(`no source URL for ${slug} (its page JSON url, or state.json pages[].url)`);
-    const capFile = join(root, info.capturePath);
-    if (!existsSync(capFile)) return stop(`no capture ${info.capturePath} — run extract; the encoder never fetches the live page`);
-    const page = { ...(site.pageJson(slug) || {}), url: info.url };
-    const base = site.baseUrlFor(slug) || info.url; // relative URLs in the capture resolve where it was captured (R15)
-    const res = engine.encodePage({ html: readFileSync(capFile, 'utf8'), page, base, vocab, tf, site, archetypePrints, inventory: deps.inventory, countKeys: countKeysFor(site, base, deps.pathKey), finalise: deps.finalise });
-    return { slug, role, status: res.status, output: info.outputPath, html: res.html, report: res.report, prints: res.prints, blocks: res.blocks };
-  };
+  const one = (slug, archetypePrints) => encodeOne({ root, site, map, deps, slug, archetype: template.archetype, archetypePrints });
   const arch = one(template.archetype, null);
   // without the archetype's capture there is no reference print set: the whole run is missing input
   if (arch.missingInput) throw new UsageError(`archetype ${template.archetype}: ${arch.report.errors[0]}`);
@@ -160,53 +185,101 @@ export async function encodeTemplate({ root, site, template, map, deps, slugs = 
   return { template, archetype: arch, records };
 }
 
+const nowIso = () => new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+
 /**
- * The one page write: stardust/encoded/<da-path>.html, only when its bytes change (tmp + rename). Returns
- * 'encoded' | 'unchanged'; with dryRun nothing is written and 'encoded' means "would be written". The caller also
- * passes `force` and `overwriteHandEdit` (this page's slug was named) for the skip predicate and the hand-edit guard.
+ * Encode and place the template's pages with provenance (encode/provenance.mjs): per page the skip predicate, else the
+ * encode, then — clean — the hand-edit guard, the document, the sidecar's encode + audit.encode, or — stopped — the stop
+ * in audit.encode; at the end the manifest and state.json.migrate.generators. Nothing is written with dryRun.
+ * Returns the records (encodeOne's shape + write: 'encoded'|'unchanged', skipped, adopted, overwrote, handEdit, kept).
  */
-export function writePage({ root, output, html, dryRun = false }) {
-  const file = join(root, output);
-  if (existsSync(file) && readFileSync(file, 'utf8') === html) return 'unchanged';
-  if (dryRun) return 'encoded';
-  mkdirSync(dirname(file), { recursive: true });
-  const tmp = `${file}.tmp-${process.pid}`;
-  writeFileSync(tmp, html);
-  renameSync(tmp, file);
-  return 'encoded';
+export function placeTemplate({ root, site, template, map, deps, slugs = null, force = false, overwrite = [], dryRun = false, now = nowIso }) {
+  const { archetype } = template;
+  const key = { encoder: prov.encoderKey(), map: prov.mapKey(root, archetype) };
+  const manifest = prov.readManifest(root, archetype);
+  const types = prov.stateTypes(root);
+  const order = [archetype, ...template.pages.filter((s) => s !== archetype)];
+  const selected = slugs ? order.filter((s) => slugs.includes(s)) : order;
+  // the archetype is encoded only when a page needs it: as itself, or for a sibling's reference prints
+  let arch = null;
+  const archetypeRecord = () => {
+    if (!arch) arch = encodeOne({ root, site, map, deps, slug: archetype, archetype });
+    if (arch.missingInput) throw new UsageError(`archetype ${archetype}: ${arch.report.errors[0]}`);
+    return arch;
+  };
+  const records = []; const updates = new Map();
+  for (const slug of selected) {
+    const role = slug === archetype ? 'archetype' : 'sibling';
+    const info = site.page(slug);
+    if (!info) { records.push(encodeOne({ root, site, map, deps, slug, archetype })); continue; }
+    const docPath = info.outputPath; const sideRel = prov.sidecarPathFor(info.url);
+    const side = prov.readSidecar(root, sideRel);
+    if (side.error) { records.push({ slug, role, status: 'error', output: docPath, html: null, prints: [], report: { errors: [side.error] } }); continue; }
+    const docBytes = prov.readBytes(join(root, docPath));
+    const docSha = docBytes === null ? null : prov.sha256(docBytes);
+    const current = { ...key, inputs: prov.pageInputs({ root, site, slug, archetype }) };
+    if (!force && prov.skipPage({ current, sidecar: side.value, docPath, docSha, manifestSha: manifest[docPath] })) {
+      const { status, ...report } = side.value.audit.encode;
+      records.push({ slug, role, status, output: docPath, html: null, prints: [], report, write: 'unchanged', skipped: true });
+      continue;
+    }
+    const r = role === 'archetype' ? archetypeRecord() : encodeOne({ root, site, map, deps, slug, archetype, archetypePrints: archetypeRecord().prints });
+    records.push(r);
+    const sidecar = (encode) => prov.sidecarWith(side.value, { slug, role, archetype, type: types.get(slug) ?? null, url: info.url, encode, audit: { status: r.status, ...r.report } });
+    if (r.status !== 'clean') {
+      // a stop leaves the document (and `encode`) as they are; the sidecar says the page is not current
+      r.kept = docBytes !== null;
+      if (!dryRun && (side.value || r.kept)) prov.saveSidecar(root, sideRel, side.value, sidecar(undefined));
+      continue;
+    }
+    const outSha = prov.sha256(r.html);
+    const g = prov.guardPage({ docSha, manifestSha: manifest[docPath], newSha: outSha, overwrite: overwrite.includes(slug), docPath, slug, archetype });
+    if (g.handEdit) { r.status = 'hand-edit'; r.handEdit = g.handEdit; continue; }
+    Object.assign(r, { write: g.write ? 'encoded' : 'unchanged', adopted: Boolean(g.adopt), overwrote: Boolean(g.overwrote) });
+    if (manifest[docPath] !== outSha) updates.set(docPath, outSha);
+    if (dryRun) continue;
+    if (g.write) prov.writeIfChanged(join(root, docPath), r.html);
+    prov.saveSidecar(root, sideRel, side.value, sidecar(prov.encodeKeyOf({ current, docPath, outSha, old: side.value, now })));
+  }
+  if (!dryRun) {
+    prov.saveManifest(root, archetype, updates);
+    prov.saveGenerators(root, archetype, { script: key.encoder.script, sha: key.encoder.sha, version: key.encoder.version, vocabularySha: key.map.vocabularySha, transformSha: key.map.transformSha });
+  }
+  return records;
 }
 
 function findings(r) {
   const rep = r.report; const out = [];
+  if (r.handEdit) out.push(`hand-edit ${r.handEdit}`);
   for (const e of rep.errors || []) out.push(`error ${e}`);
   for (const u of rep.unmapped || []) out.push(`unmapped ${u.kind} at ${u.at} — ${u.remedy || 'map it, or drop:<reason> in vocabulary.json'}`);
   for (const f of rep.flattened || []) out.push(`flattened ${f.kind} at ${f.at}: ${(f.why || []).join('; ')}`);
   for (const v of rep.variance || []) out.push(`variance ${v.change} ${v.print}`);
   for (const m of rep.incomplete || []) out.push(`incomplete MISSING ${m.role} "${String(m.text || m.key).slice(0, 80)}"${m.reason ? ` (${m.reason})` : ''}`);
+  if (r.kept) out.push(`${r.output} (an earlier encode) is kept, not current — staging refuses it until the page encodes clean`);
   return out;
 }
-const summaryOf = (r) => ({ slug: r.slug, role: r.role, status: r.status, write: r.write || null, output: r.output, ...(r.missingInput ? { missingInput: true } : {}), report: r.report });
+const summaryOf = (r) => ({ slug: r.slug, role: r.role, status: r.status, write: r.write || null, output: r.output, ...(r.skipped ? { skipped: true } : {}), ...(r.adopted ? { adopted: true } : {}), ...(r.overwrote ? { overwrote: true } : {}), ...(r.handEdit ? { handEdit: r.handEdit } : {}), ...(r.kept ? { kept: true } : {}), ...(r.missingInput ? { missingInput: true } : {}), report: r.report });
+const wroteNote = (r, a) => {
+  if (r.write !== 'encoded') return r.adopted ? `unchanged; adopted into ${prov.manifestPathFor(a.template)}` : 'unchanged';
+  return `${a.dryRun ? 'would write' : 'written'}${r.overwrote ? '; the hand edit is overwritten' : ''}`;
+};
 
 async function runEncode(a, { root, site, template, map, deps }, io) {
-  const { records } = await encodeTemplate({ root, site, template, map, deps, slugs: a.slugs });
+  const records = placeTemplate({ root, site, template, map, deps, slugs: a.slugs, force: a.force, overwrite: a.overwriteHandEdit, dryRun: a.dryRun });
   const counts = { encoded: 0, unchanged: 0, stopped: 0 };
-  let missing = false;
-  for (const r of records) {
-    if (r.status !== 'clean') { counts.stopped += 1; if (r.missingInput) missing = true; continue; }
-    r.write = writePage({ root, output: r.output, html: r.html, dryRun: a.dryRun, force: a.force, overwriteHandEdit: a.overwriteHandEdit.includes(r.slug) });
-    counts[r.write] += 1;
-  }
+  for (const r of records) counts[r.status === 'clean' ? r.write : 'stopped'] += 1;
   if (a.json) io.out(JSON.stringify({ template: template.archetype, templateId: template.id, dryRun: a.dryRun, counts, pages: records.map(summaryOf) }));
   else {
     for (const r of records) {
-      if (r.status === 'clean') io.out(`${r.write === 'encoded' ? '✓' : '·'} ${r.slug} clean → ${r.output} (${r.write === 'encoded' ? (a.dryRun ? 'would write' : 'written') : 'unchanged'})`);
+      if (r.status === 'clean') io.out(`${r.write === 'encoded' ? '✓' : '·'} ${r.slug} clean → ${r.output} (${wroteNote(r, { template: template.archetype, dryRun: a.dryRun })})`);
       else { io.out(`✗ ${r.slug} ${r.status}`); for (const f of findings(r)) io.out(`    ${f}`); }
     }
     if (a.dryRun) io.out('dry run: nothing written');
   }
   io.out(`encoded ${counts.encoded} · unchanged ${counts.unchanged} · stopped ${counts.stopped}`);
   const stopped = records.some((r) => r.status !== 'clean' && !r.missingInput);
-  return stopped ? 2 : missing ? 1 : 0;
+  return stopped ? 2 : records.some((r) => r.missingInput) ? 1 : 0;
 }
 
 async function runRoundtrip(a, { root, site, template, map, deps }, io) {
@@ -233,6 +306,7 @@ export async function main(argv = process.argv.slice(2), io = { out: (s) => cons
     const template = site.templateOf(a.template);
     if (!template) throw new UsageError(`no template with archetype (or id) "${a.template}" in stardust/rollout/coverage/templates.json`);
     if (a.slugs) { const stray = a.slugs.filter((s) => !template.pages.includes(s)); if (stray.length) throw new UsageError(`--slug ${stray.join(',')}: not a page of template ${template.archetype}`); }
+    { const stray = a.overwriteHandEdit.filter((s) => !template.pages.includes(s)); if (stray.length) throw new UsageError(`--overwrite-hand-edit ${stray.join(',')}: not a page of template ${template.archetype}`); }
     const map = loadMap(root, template.archetype);
     if (a.lint || a.sweep) {
       if (!map.vocab) throw new UsageError(map.errors.join('\n  '));
