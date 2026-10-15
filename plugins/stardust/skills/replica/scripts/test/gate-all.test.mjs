@@ -15,7 +15,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, 
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { contentDeployed, deployedShas, formatSummary, gateKeyOf, gateKeyParts, keyChanged, parseArgs, probeReuse, skipCapture, verdict } from '../gate-all.mjs';
+import { contentDeployed, deployedDocs, formatSummary, gateKeyOf, gateKeyParts, keyChanged, parseArgs, probeReuse, skipCapture, verdict } from '../gate-all.mjs';
 
 // pixel-compare imports pngjs at module level (a project devDependency, absent in the plugin checkout):
 // import it lazily and skip its one check where it does not resolve, like the other browser/dep-bound tests.
@@ -142,16 +142,19 @@ check('gateKeyOf / gateKeyParts: stable across key order; one block CSS byte, co
   assert.deepEqual(parts(), { parts: null, why: 'foundation changed since freeze' });
   rmSync(root, { recursive: true, force: true });
 });
-check('deploy-state guard (content half): every hashed document must be the deployed one — the newest ledger row wins', () => {
+check('deploy-state guard (content half): every hashed document is the one the gated host serves — the newest ledger row, delivered', () => {
   const root = mkdtempSync(join(tmpdir(), 'gate-all-ledger-'));
   mkdirSync(join(root, 'content')); mkdirSync(join(root, 'stardust/deploy'), { recursive: true });
-  writeFileSync(join(root, 'content/.deploy-ledger.json'), JSON.stringify({ '/index': { status: 'live', ts: T(1), contentSha: 'old' }, '/nav': { status: 'live', ts: T(1), contentSha: 'n' } }));
-  writeFileSync(join(root, 'stardust/deploy/ledger-c1.json'), JSON.stringify({ '/index': { status: 'live', ts: T(3), contentSha: 'new' } }));
-  const shas = deployedShas(root);
-  assert.equal(shas['/index'], 'new');
-  assert.equal(contentDeployed({ 'content/index.html': 'new', 'content/nav.html': 'n' }, shas), null);
-  assert.match(contentDeployed({ 'content/index.html': 'old' }, shas), /content\/index\.html differs from the deployed document/);
-  assert.match(contentDeployed({ 'content/footer.html': 'f' }, shas), /no deploy-ledger contentSha for \/footer/);
+  writeFileSync(join(root, 'content/.deploy-ledger.json'), JSON.stringify({ '/index': { status: 'live', ts: T(1), contentSha: 'old' }, '/nav': { status: 'live', ts: T(1), contentSha: 'n' }, '/footer': { status: 'previewed', ts: T(1), contentSha: 'f' } }));
+  writeFileSync(join(root, 'stardust/deploy/ledger-c1.json'), JSON.stringify({ '/index': { status: 'live', ts: T(3), contentSha: 'new' }, '/about': { status: 'preview-fail', ts: T(3), contentSha: 'a' } }));
+  const docs = deployedDocs(root); const live = 'main--s--o.aem.live'; const preview = 'main--s--o.aem.page';
+  assert.deepEqual(docs['/index'], { contentSha: 'new', status: 'live' });
+  assert.equal(contentDeployed({ 'content/index.html': 'new', 'content/nav.html': 'n' }, docs, live), null);
+  assert.match(contentDeployed({ 'content/index.html': 'old' }, docs, live), /content\/index\.html differs from the deployed document/);
+  assert.match(contentDeployed({ 'content/x.html': 'x' }, docs, live), /no deploy-ledger contentSha for \/x/);
+  assert.equal(contentDeployed({ 'content/footer.html': 'f' }, docs, preview), null, 'previewed is what a preview host serves');
+  assert.match(contentDeployed({ 'content/footer.html': 'f' }, docs, live), /is previewed, not live/);
+  assert.match(contentDeployed({ 'content/about.html': 'a' }, docs, preview), /is preview-fail/, 'the newest attempt failed: the delivered document is unknown');
   rmSync(root, { recursive: true, force: true });
 });
 check('keyChanged / skipCapture: a changed known key re-shoots the EDS side only; a legacy dir or an unknown key does not', () => {

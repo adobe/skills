@@ -36,7 +36,8 @@
  * sha256 over the frozen-foundation manifest (else the default foundation set) + icons/ and plugins/, the
  * page's block dirs, its content documents (page, nav, footer, linked fragments), the gate settings and the
  * page's sidecar entries — issued only while that tree is what is deployed (code: no difference from the
- * upstream branch and no untracked file; documents: the deploy ledgers' contentSha), else null with the reason.
+ * upstream branch and no untracked file; documents: the newest deploy-ledger row delivered with the same
+ * contentSha), else null with the reason.
  * A PASS row whose key is unchanged is reused whole (no stitch, probe or compare); a changed key re-shoots the
  * EDS side. <slug>/gate-key.json records the key of the EDS capture taken in that run; a dir without one
  * (legacy) keeps today's behaviour until its next EDS capture.
@@ -51,7 +52,7 @@
  * and foundation-freeze.mjs next to this file; the diff skill's scripts dir alongside. Exit: 0 all PASS
  * (overrides count), 2 any FAIL, 1 error. `verdict`, `formatSummary`, `parseArgs` and the reuse helpers
  * (`probeInputs`, `probeReuse`, `canon`, `gateKeyParts`, `gateKeyOf`, `foundationPart`, `codeDeployed`,
- * `deployedShas`, `contentDeployed`, `keyChanged`, `skipCapture`, `latestRows`, `rowReuse`) are exported.
+ * `deployedDocs`, `contentDeployed`, `keyChanged`, `skipCapture`, `latestRows`, `rowReuse`) are exported.
  */
 import { execFileSync, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -259,8 +260,8 @@ export function codeDeployed(paths, root = '.') {
   } catch (e) { return { ok: false, why: `git: ${String(e.message).split('\n')[0]}` }; }
   return { ok: true, why: null };
 }
-/** webPath → contentSha of the newest row (by `ts`) across content/.deploy-ledger.json and stardust/deploy/ledger-*.json. */
-export function deployedShas(root = '.') {
+/** webPath → { contentSha, status } of the newest row (by `ts`) across content/.deploy-ledger.json and stardust/deploy/ledger-*.json. */
+export function deployedDocs(root = '.') {
   const dl = join(root, 'stardust/deploy');
   const files = [join(root, 'content/.deploy-ledger.json'), ...(existsSync(dl) ? readdirSync(dl).filter((f) => /^ledger-.*\.json$/.test(f)).map((f) => join(dl, f)) : [])];
   const newest = {};
@@ -268,14 +269,19 @@ export function deployedShas(root = '.') {
     let ledger; try { ledger = JSON.parse(readFileSync(f, 'utf8')); } catch { continue; }
     for (const [path, row] of Object.entries(ledger || {})) if (row && typeof row === 'object' && (!newest[path] || String(row.ts || '') > String(newest[path].ts || ''))) newest[path] = row;
   }
-  return Object.fromEntries(Object.entries(newest).map(([path, row]) => [path, row.contentSha || null]));
+  return Object.fromEntries(Object.entries(newest).map(([path, row]) => [path, { contentSha: row.contentSha || null, status: row.status || null }]));
 }
-/** Deploy-state guard, content half: every hashed document is the deployed one (its ledger contentSha) → null, else why. */
-export function contentDeployed(content, shas) {
+/**
+ * Deploy-state guard, content half: every hashed document is the one the gated host serves — its newest ledger row
+ * delivered (`live`; `previewed` too on an .aem.page host) with contentSha = the file's sha256 → null, else why.
+ */
+export function contentDeployed(content, docs, host = '') {
+  const delivered = /\.aem\.page$/.test(host) ? ['live', 'previewed'] : ['live'];
   for (const [f, hash] of Object.entries(content)) {
-    const web = f.replace(/^content/, '').replace(/\.html$/, '');
-    if (!shas[web]) return `${f}: no deploy-ledger contentSha for ${web}`;
-    if (shas[web] !== hash) return `${f} differs from the deployed document (ledger ${web})`;
+    const web = f.replace(/^content/, '').replace(/\.html$/, ''); const row = docs[web];
+    if (!row || !row.contentSha) return `${f}: no deploy-ledger contentSha for ${web}`;
+    if (!delivered.includes(row.status)) return `${f}: the newest ledger row for ${web} is ${row.status}, not ${delivered.join(' / ')}`;
+    if (row.contentSha !== hash) return `${f} differs from the deployed document (ledger ${web})`;
   }
   return null;
 }
@@ -394,11 +400,11 @@ async function main() {
   if (opts.stage === 'published') {
     let foundation;
     try { foundation = foundationPart('.'); } catch (e) { foundation = { hash: null, paths: FOUNDATION_PATHS, why: `foundation: ${e.message}` }; }
-    const code = codeDeployed([...foundation.paths, 'blocks/', ...RUNTIME_PATHS]); const shas = deployedShas('.');
+    const code = codeDeployed([...foundation.paths, 'blocks/', ...RUNTIME_PATHS]); const docs = deployedDocs('.');
     const coverage = Object.fromEntries(((readSafe('stardust/rollout/coverage/pages.json') || {}).pages || []).filter((x) => x && x.slug && Array.isArray(x.blocks)).map((x) => [x.slug, x.blocks]));
     for (const p of pages) {
       let k; try { k = gateKeyParts(p, { ...probeCtx, masks: MASKS, clipAllow: CLIP_ALLOW, foundation, coverage }); } catch (e) { k = { parts: null, why: `gate key: ${e.message}` }; }
-      const why = k.why || code.why || contentDeployed(k.parts.content, shas);
+      const why = k.why || code.why || contentDeployed(k.parts.content, docs, new URL(k.parts.build.origin).host);
       KEYS[p.slug] = { gateKey: why ? null : gateKeyOf(k.parts), why, parts: k.parts };
     }
     const na = pages.filter((p) => !KEYS[p.slug].gateKey);
