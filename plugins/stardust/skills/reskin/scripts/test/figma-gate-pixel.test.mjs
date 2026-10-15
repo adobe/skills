@@ -36,6 +36,15 @@ await check('cropRect: the section rectangle in the frame PNG, n/a unless the PN
   assert.deepEqual(cropRect({ ...r7, frameBox: { x: 0, y: 0, w: 1439.6, h: 1840.4 } }, { width: 1440, height: 1840 }), { x: 0, y: 640, w: 1440, h: 800 });
 });
 
+await check('cropRect: a fractional frame box exports at its ceiling (1840.13 → 1841 px), not n/a', () => {
+  const frac = { ...r7, frameBox: { x: 0, y: 0, w: 1440, h: 1840.13 } };
+  assert.deepEqual(cropRect(frac, { width: 1440, height: 1841 }), { x: 0, y: 640, w: 1440, h: 800 });
+  assert.deepEqual(cropRect({ ...r7, frameBox: { x: 0, y: 0, w: 1440, h: 1840.67 } }, { width: 1440, height: 1840 }), { x: 0, y: 640, w: 1440, h: 800 });
+  assert.match(cropRect(frac, { width: 1440, height: 1842 }).na, /frame PNG is 1440×1842, box 1440×1840\.13/);
+  const bottom = { ...r7, frameBox: { x: 0, y: 0, w: 1440, h: 1840.67 }, offset: { x: 0, y: 1040.6 }, box: { ...r7.box, h: 800 } };
+  assert.deepEqual(cropRect(bottom, { width: 1440, height: 1840 }), { x: 0, y: 1041, w: 1440, h: 799 });
+});
+
 await check('textOf: visible TEXT characters in tree order, space-joined', () => {
   assert.equal(textOf(r7.box), 'Everything in one place Plan the work with a shared board that everyone on the team can read. Ship each change behind a review, and keep the history of every decision. New Try it');
   assert.equal(textOf({ ...r7.box, children: [] }), '');

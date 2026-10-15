@@ -75,7 +75,8 @@ ramp     B3. Runs the join first (drift stops here, exit 1), validates the check
          one "advisory" line and never change the exit code. A probe that cannot run is exit 124.
 pixel    B2, advisory. Runs the join first (drift stops here, exit 1), validates the checks file, then for
          every section crops its slice out of the cached frame image (the PNG figma-donor.mjs captured,
-         taken at 1×: any other size is n/a) and compares it with an element screenshot of the section
+         taken at 1×; a size within 1px of the frame box fits, Figma rounds a fractional box up; any
+         other size is n/a) and compares it with an element screenshot of the section
          at its width through replica's pixel-compare.mjs (a = Figma slice, b = page; the number never
          fails). Only where the frame's copy is the section's copy (visible text, whitespace and case
          ignored): otherwise the section is "n/a: frame content differs". Also n/a: no frame image

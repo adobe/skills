@@ -24,12 +24,13 @@ export const REFERENCE_CLASSES = { lightText: 3, inverted: 3.5, rasterGround: 4 
 const flat = (box) => [box, ...box.children.flatMap(flat)];
 const textBoxesOf = (box) => flat(box).filter((b) => b.type === 'TEXT' && b.text && b.text.characters.trim() !== '');
 
-// The section's rectangle inside the frame PNG, or { na } when the PNG is not the frame at 1×.
+// The section's rectangle inside the frame PNG, or { na } when the PNG is not the frame at 1×. Figma
+// exports a fractional frame box at its ceiling (2332.33 → 2333 px), so any size within 1px fits.
 export function cropRect(root, png) {
   const { w: fw, h: fh } = root.frameBox;
-  const [bw, bh] = [Math.round(fw), Math.round(fh)];
-  if (png.width !== bw || png.height !== bh) return { na: `frame PNG is ${png.width}×${png.height}, box ${bw}×${bh}` };
-  return { x: Math.round(root.offset.x), y: Math.round(root.offset.y), w: Math.round(root.box.w), h: Math.round(root.box.h) };
+  if (Math.abs(png.width - fw) >= 1 || Math.abs(png.height - fh) >= 1) return { na: `frame PNG is ${png.width}×${png.height}, box ${fw}×${fh}` };
+  const [x, y] = [Math.round(root.offset.x), Math.round(root.offset.y)];
+  return { x, y, w: Math.min(Math.round(root.box.w), png.width - x), h: Math.min(Math.round(root.box.h), png.height - y) };
 }
 
 export const textOf = (box) => textBoxesOf(box).map((b) => b.text.characters.trim()).join(' ');
