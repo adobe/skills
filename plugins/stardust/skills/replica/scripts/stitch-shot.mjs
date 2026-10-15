@@ -56,6 +56,21 @@
  *   - page height is measured AFTER the settle pass: entrance-animated
  *     sites inflate scrollHeight until elements go inview, so the
  *     pre-settle height is fake.
+ *   - the OVERFLOW root line: one `overflow: scrollWidth=<n> viewport=<n>
+ *     delta=<n>` line right before the `stitched` line — the document's
+ *     scrollWidth, the viewport (window.innerWidth) and delta = scrollWidth
+ *     minus the root's clientWidth (never below 0; measure.mjs semantics),
+ *     read after the settle/dismissal block and again after the chunk loop,
+ *     the larger kept (late lazy content). Same page, width and settle as the
+ *     pixels: gate.sh's horizontal-overflow assert reads it from the build
+ *     capture instead of loading the page a second time.
+ *   - no timed late-modal poll on EDS build/preview hosts (*.aem.page|live,
+ *     *.hlx.page|live — live-session lateWindowFor): they serve no timed
+ *     third-party interstitials. ONE sweep still runs, after the EDS delayed
+ *     phase (its 3 s timer after `load`, where a consent manager the build
+ *     enables loads; waitEdsDelayedPhase), so such a banner is dismissed as
+ *     on the live side. Live source sites keep the 6 s poll; local targets
+ *     had none already. Both sides still stitch the same way.
  *
  * Usage:
  *   node skills/replica/scripts/stitch-shot.mjs <url> <out.png> [options]
@@ -78,17 +93,16 @@
  *   node skills/replica/scripts/stitch-shot.mjs https://www.example.com \
  *     stardust/replica/gates/home-1440/live.png --width 1440 --settle
  *
- * Requires: playwright, pngjs (project devDependencies), and the diff skill's
- * scripts dir alongside (live-session.mjs — the replica Setup copies both).
+ * Requires: playwright, pngjs (project devDependencies; imported lazily, so
+ * --help needs neither), and the diff skill's scripts dir alongside
+ * (live-session.mjs — the replica Setup copies both).
  * Exit codes: 0 written, 1 error, 3 bot challenge (live side blocked — fail
  * loud, never captured).
  */
 
 /* eslint-disable import/no-extraneous-dependencies, import/extensions, no-await-in-loop, no-restricted-syntax, brace-style, object-curly-newline, max-len */
 /* standalone dev tool: sequential page ops use awaited loops by design */
-import { chromium } from 'playwright';
-import { PNG } from 'pngjs';
-import { writeFileSync, mkdirSync, existsSync } from 'fs';
+import { writeFileSync, mkdirSync, existsSync, realpathSync } from 'fs';
 import { dirname, resolve as resolvePath } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 
@@ -103,7 +117,7 @@ if (!LIVE_SESSION) {
   console.error('stitch-shot error: live-session.mjs not found (looked in ../../diff/scripts/ and ../diff/). Copy the diff skill\'s scripts dir alongside this one (replica SKILL.md § Setup).');
   process.exit(1);
 }
-const { REAL_CHROME_UA, isLiveHttpUrl, launchStealthHeaded, newLiveContext, gotoLive, dismissOverlays } = await import(pathToFileURL(LIVE_SESSION).href);
+const { REAL_CHROME_UA, isEdsHost, lateWindowFor, waitEdsDelayedPhase, launchStealthHeaded, newLiveContext, gotoLive, dismissOverlays } = await import(pathToFileURL(LIVE_SESSION).href);
 
 const HELP = `stitch-shot — scroll-and-stitch full-page screenshot (symmetric capture instrument)
 
@@ -121,6 +135,11 @@ Usage: node stitch-shot.mjs <url> <out.png> [options]
   --timeout <ms>    goto timeout (default 60000)
   --help            this text
 
+Prints \`overflow: scrollWidth=<n> viewport=<n> delta=<n>\` right before the \`stitched\` line: the document width
+vs the viewport at --width (delta = px over, 0 when it fits), the larger of the reads after the settle and after
+the chunk loop — gate.sh's horizontal-overflow assert reads it from the build capture.
+EDS build/preview hosts (*.aem.page|live, *.hlx.page|live) get no timed late-modal poll: one dismissal sweep,
+after the EDS delayed phase (live source sites keep the 6 s poll, local targets have none).
 Run the SAME command shape against the live page and the served prototype.
 Exit codes: 0 written, 1 error, 3 bot challenge (live side blocked — fail loud).`;
 
@@ -156,17 +175,26 @@ function parseArgs(argv) {
 // dismissOverlays itself (bottom-left — rule 10).
 async function dismissAndLog(page, url, opts) {
   const extra = [...(opts.consent ? [opts.consent] : []), ...opts.dismiss];
-  // late-modal poll window only on live targets — the served prototype's
-  // overlays are not timed third-party scripts, they render immediately.
-  const d = await dismissOverlays(page, { extra, lateWindowMs: isLiveHttpUrl(url) ? 6000 : 0 });
+  // late-modal poll window only on live source sites — the served prototype's
+  // overlays are not timed third-party scripts, they render immediately, and
+  // an EDS build/preview host gets one sweep after its delayed phase (main()).
+  const d = await dismissOverlays(page, { extra, lateWindowMs: lateWindowFor(url, 6000) });
   if (d.consent) console.log(`consent dismissed via ${d.consent}`);
   for (const sel of d.extra) console.log(`overlay dismissed via extra selector ${sel}`);
   for (const sel of d.marketing) console.log(`marketing modal dismissed via ${sel}`);
   return d;
 }
 
+// The root line gate.sh's horizontal-overflow assert reads (measure.mjs root-line semantics: viewport =
+// window.innerWidth, delta = scrollWidth − the root's clientWidth, never below 0).
+export function overflowLine({ scrollWidth, innerWidth, clientWidth }) {
+  return `overflow: scrollWidth=${scrollWidth} viewport=${innerWidth} delta=${Math.max(0, scrollWidth - clientWidth)}`;
+}
+
 async function main() {
   const { url, out, opts } = parseArgs(process.argv);
+  // Lazy: --help (inside parseArgs) answers without playwright / pngjs installed.
+  const [{ chromium }, { PNG }] = await Promise.all([import('playwright'), import('pngjs')]);
   const browser = opts.headed ? await launchStealthHeaded(chromium) : await chromium.launch();
   try {
     // UA + standard headers + webdriver spoof on the context (live-session).
@@ -183,7 +211,15 @@ async function main() {
     await page.waitForTimeout(opts.wait);
     // --no-dismiss: the capture shows whatever the site shows (the gate's --no-dismiss reaches both sides).
     if (opts.noDismiss) console.log('overlays left as the page shows them (--no-dismiss)');
-    else await dismissAndLog(page, url, opts);
+    else {
+      // EDS build/preview host: no timed poll (lateWindowFor → 0) but the sweep waits for the EDS delayed phase,
+      // where a consent manager the build enables loads; under --settle the post-settle sweep comes later anyway.
+      if (isEdsHost(url)) {
+        if (!opts.settle) await waitEdsDelayedPhase(page);
+        console.log('late-modal window skipped on an EDS host (one sweep after the delayed phase)');
+      }
+      await dismissAndLog(page, url, opts);
+    }
 
     if (opts.settle) {
       // Slow-scroll settle: fires scroll-triggered lazy loaders the way a real
@@ -203,6 +239,10 @@ async function main() {
       // stitched capture (recorded: a fashion retailer's "Sign up, stay updated!").
       if (!opts.noDismiss) await dismissAndLog(page, url, opts);
     }
+
+    // Overflow root line (header): read here — same settle as the pixels — and again after the chunk loop.
+    const readRoot = () => page.evaluate(() => ({ scrollWidth: document.documentElement.scrollWidth, clientWidth: document.documentElement.clientWidth, innerWidth: window.innerWidth }));
+    const rootSettled = await readRoot();
 
     // Freeze animations/transitions/carets for stable chunks — AFTER settle.
     await page.addStyleTag({ content: '*,*::before,*::after{animation-play-state:paused!important;transition:none!important;caret-color:transparent!important;scroll-behavior:auto!important;}html{scroll-behavior:auto!important}' });
@@ -314,6 +354,8 @@ async function main() {
       chunks.push({ y: actualY, buf });
       y += opts.vh;
     }
+    const rootAfter = await readRoot();
+    const root = rootAfter.scrollWidth > rootSettled.scrollWidth ? rootAfter : rootSettled;
 
     const outPng = new PNG({ width: opts.width, height: totalH });
     for (const { y: cy, buf } of chunks) {
@@ -326,6 +368,7 @@ async function main() {
     }
     mkdirSync(dirname(out), { recursive: true });
     writeFileSync(out, PNG.sync.write(outPng));
+    console.log(overflowLine(root));
     console.log(`stitched ${out}: ${opts.width}x${totalH} from ${chunks.length} chunks`);
   } finally {
     await browser.close();
@@ -334,4 +377,8 @@ async function main() {
 
 // exit 3 = bot challenge on the live side (distinct from generic errors, so a
 // gate runner can tell "blocked — escalate with --headed" from "capture broke").
-main().catch((e) => { console.error(`stitch-shot error: ${e.message}`); process.exit(e.name === 'BotChallengeError' ? 3 : 1); });
+// Main-module guard: importing the module (tests, an in-process driver) runs nothing.
+function safeRealpath(p) { try { return realpathSync(p); } catch { return p; } }
+if (process.argv[1] && fileURLToPath(import.meta.url) === safeRealpath(process.argv[1])) {
+  main().catch((e) => { console.error(`stitch-shot error: ${e.message}`); process.exit(e.name === 'BotChallengeError' ? 3 : 1); });
+}
