@@ -167,6 +167,10 @@ Walk `plan.json.steps` in order (representative pages first). For each page:
    as "awaiting content track." Their block code is already deployed via the
    archetype.
 
+   **Encoded pages** (`source.encodedHtml`, migrate's `stardust/encoded/`): no
+   convert — deploy's `stage-content.mjs` copies the document into `content/`
+   (deploy SKILL.md § Deploy, the Stage row), then steps 2–4 as for any page.
+
 2. **Static contract lint (pre-PUT, deterministic).** Before the push, run the
    delivery-contract linter — it catches the cheap, deterministic failures
    (wrapper, one-CTA-per-`<p>`, trailing-slash, path-safety, `/img/` src,
@@ -232,6 +236,9 @@ icon while `/favicon.ico` answered 200. **Archetype first, per template (#126):*
 template's archetype is deployed and passes its full gate row on the preview URL
 (`gate-all.mjs --only`, cap 3 fix rounds) before any of its siblings is rendered
 or converted — the recorded unit `C-archetype` (handoff contract § 3, row C).
+An encoded template's C-archetype also drafts and round-trips its map; its cluster
+unit is then the map plus the exceptions (handoff contract § 3, row C;
+`skills/migrate/reference/importer-recipe.md` § Encoder contract).
 
 **Execution model: waves.** Deliver in waves of parallel **author-only** agents
 — each agent curls its source pages and writes files only, never deploys or
@@ -259,8 +266,7 @@ coordination messages). **Disjoint clusters spawn concurrently** — a wave wait
 only on a real dependency (a recorded second wave idled 14 min behind an
 unrelated first). **Every tool call stays under 4 minutes, the main agent's
 included** (the prompt cache holds 5; calls of 5.2 and 6.6 min re-wrote the whole
-context, and so did one 338 s foreground turn on the main agent that ran a pixel
-loop beside a deploy-batch start + wait): a long instrument (gate rounds, pixel
+context): a long instrument (gate rounds, pixel
 loops, Playwright captures, deploy batches) goes through `run-bg.mjs start`, and
 `wait` is the NEXT tool call — it returns within its `--max` (100 s by default); never two long instruments
 as parallel tool calls in one turn, never two `wait`s in one command.
@@ -581,6 +587,7 @@ exits 0; otherwise it prints one gap per line.
 | Input | Source | Used for |
 |---|---|---|
 | `stardust/migrated/*.html` | `migrate` | the pages to deliver (read-only) |
+| `stardust/encoded/**/*.html` | `migrate` (`encode.mjs`) | an encoded sibling's delivered document — staged by deploy, never edited (read-only) |
 | `stardust/migrated/**/_meta.json` | `migrate` | `templateId` (`template`; an archetype with `template: null` groups under its own slug; else `type`), `blocks` (`modules` — the inventory report counts sidecars with an empty list: fill them before Phase B), `title` |
 | `stardust/state.json` | stardust core | *(archetypes-only mode)* full page roster + `type` for pages not yet migrated |
 | `stardust/rollout/rollout.json` | rollout / user | DA target coordinates |
@@ -603,7 +610,7 @@ exits 0; otherwise it prints one gap per line.
 
 `rollout` writes under `stardust/rollout/` and — only via `autofix-aem` — to the
 **EDS project** it delivers to. It never modifies the agnostic core, `state.json`,
-or `migrated/` — those are read-only inputs.
+`migrated/` or `encoded/` — those are read-only inputs.
 
 ## Dependencies (audit sources — referenced, not vendored)
 
