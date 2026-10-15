@@ -170,7 +170,10 @@ try {
   await stopCase('stop-noroot', mutate('<main id="main" class="page-main">', '<div id="main-x">').replace('</main>', '</div>'), 'error', /root selector \\"main#main\\" matched nothing/);
   await stopCase('stop-noh1', mutate('<h1 class="ui-hero__title">Forest Loop</h1>', ''), 'error', /no <h1>/);
   // a showing <video> reached by rich text has no delivered form: unmapped, never a silent src-less element (R18)
-  await stopCase('stop-video', mutate('<p>Benches and a view over three villages.</p>', '<p>Benches and a view over three villages.</p><video src="/media/lookout.mp4" poster="/media/lookout-poster.jpg" controls></video>'), 'unmapped', /"kind":"video","selector":"video","at":"video","remedy":"map it as a block or drop: it/);
+  await stopCase('stop-video', mutate('<p>Benches and a view over three villages.</p>', '<p>Benches and a view over three villages.</p><video src="/media/lookout.mp4" poster="/media/lookout-poster.jpg" controls></video>'), 'unmapped', /"kind":"video","selector":"video","at":"video","remedy":"map it as a block \(e\.g\. an embed block with a link cell: as link, attr src\) or drop: it/);
+  // … and so are a player wrapped in a container that holds nothing else, and an embedded frame (R22)
+  await stopCase('stop-audio', mutate('<p>Benches and a view over three villages.</p>', '<p>Benches and a view over three villages.</p><div class="player"><audio controls src="/media/birdsong.mp3"></audio></div>'), 'unmapped', /"kind":"audio","selector":"audio","at":"audio"/);
+  await stopCase('stop-iframe', mutate('<p>A steady climb on a wide forest road.</p>', '<p>A steady climb on a wide forest road.</p><iframe src="https://player.example.net/embed/42" width="560" height="315" title="The climb"></iframe>'), 'unmapped', /"kind":"iframe","selector":"iframe","at":"iframe"/);
   // an accepted print never stops a page
   writeFileSync(vocabFile, JSON.stringify({ ...vocab, variance: { accept: v.report.variance.map((x) => ({ print: x.print, reason: 'the teaser variant is an editorial choice' })) } }));
   r = await run('--template', A, '--slug', 'stop-variance');
@@ -181,7 +184,7 @@ try {
   // --- a whole run with stopped pages exits 2 and still writes the clean ones; missing input exits 1 ----------------------
   rmSync(P('stardust', 'encoded'), { recursive: true });
   r = await run('--template', A);
-  assert.equal(r.code, 2); assert.equal(r.last, 'encoded 2 · unchanged 0 · stopped 10', 'the archetype and the sibling written; ten stops');
+  assert.equal(r.code, 2); assert.equal(r.last, 'encoded 2 · unchanged 0 · stopped 12', 'the archetype and the sibling written; twelve stops');
   assert.match(r.out, /✗ stop-incomplete incomplete\n {4}incomplete MISSING text "Two hours along the water/, 'per-page status line + findings');
   // drop:/dynamics: hold at any depth: inside a block, where no cell reaches them, they are left out and recorded
   const withMarkers = (extra, edit = (m) => m) => writeFileSync(vocabFile, JSON.stringify({ ...vocab, ...extra, markers: [{ sel: '.mod-promo', kind: 'promo', emitter: 'drop:members-only offer, not migrated' }, { sel: '.mod-live', kind: 'live', emitter: 'dynamics:DYN-2' }, ...vocab.markers.map(edit)] }));
@@ -293,6 +296,25 @@ try {
   // --- blank-container drop inside blocks the walk keeps (li, blockquote); a blank span inside a line keeps its space ----
   const blank = encodePage({ html: '<main><h1>T</h1><ul><li>One<span> </span>two</li><li><div>&#160;</div>Three</li></ul><blockquote><p>Q</p><p>&nbsp;</p></blockquote></main>', page: { url: 'https://www.example.com/b' }, vocab: { root: 'main' }, site: stub });
   assert.match(blank.html, /<ul><li>One two<\/li><li>Three<\/li><\/ul>\n<blockquote><p>Q<\/p><\/blockquote>/);
+
+  // --- embedded players: a showing one reached by rich text stops (unmapped); a non-showing one is stripped ----------
+  const one = (html, v = { root: 'main' }) => encodePage({ html: `<main><h1>T</h1>${html}</main>`, page: { url: 'https://www.example.com/p' }, vocab: v, site: stub });
+  for (const [html, kind] of [['<p><audio controls src="/a.mp3"></audio></p>', 'audio'], ['<div class="player"><audio controls src="/a.mp3"></audio></div>', 'audio'], ['<p>See <object data="/m.swf" width="300" height="200"></object></p>', 'object'], ['<embed src="/m.swf" width="300" height="200">', 'embed'], ['<iframe src="https://player.example.net/embed/1"></iframe>', 'iframe']]) {
+    const x = one(html);
+    assert.equal(x.status, 'unmapped', `${html} → unmapped`); assert.equal(x.report.unmapped[0].kind, kind);
+  }
+  assert.ok(one('<div class="player"><audio controls src="/a.mp3"></audio></div>').prints.includes('UNMARKED | div.player | '), 'a container holding only a player is visible to the census');
+  for (const html of ['<iframe hidden src="https://t.example.net/p"></iframe>', '<iframe width="0" height="0" src="https://t.example.net/p"></iframe>', '<iframe style="display: none" src="https://t.example.net/p"></iframe>', '<p><audio src="/a.mp3"></audio></p>', '<embed style="visibility:hidden" src="/x">', '<video hidden src="/v.mp4"></video>']) {
+    const x = one(html);
+    assert.equal(x.status, 'clean', `${html} is not shown → stripped`); assert.doesNotMatch(x.html, /iframe|audio|embed|video|<p><\/p>/);
+  }
+  // the remedy is expressible: an embed block whose link cell takes its URL from the frame's src
+  const embed = one('<div class="mod-video"><iframe src="https://player.example.net/embed/42" title="The climb"></iframe></div>', { root: 'main', markers: [{ sel: '.mod-video', kind: 'video', emitter: 'block:embed', cells: [{ sel: 'iframe', as: 'link', attr: 'src' }] }] });
+  assert.equal(embed.status, 'clean'); assert.match(embed.html, /<div class="embed">\n<div><div><a href="https:\/\/player\.example\.net\/embed\/42">https:\/\/player\.example\.net\/embed\/42<\/a><\/div><\/div>\n<\/div>/);
+
+  // --- a default-content marker that IS a cell's own node keeps its own retag/drop too ------------------------------
+  const rootScope = one('<div class="blk"><div class="mod-text"><p>A <b>bold</b> word<span class="note"> (aside)</span>.</p></div></div>', { root: 'main', markers: [{ sel: '.blk', kind: 'blk', emitter: 'block:blk', cells: [{ sel: '.mod-text', as: 'rich' }] }, { sel: '.mod-text', kind: 'text', emitter: 'default-content', drop: ['.note'], retag: { b: 'b' } }] });
+  assert.equal(rootScope.status, 'clean'); assert.match(rootScope.html, /<div class="blk">\n<div><div><p>A <b>bold<\/b> word\.<\/p><\/div><\/div>/);
 
   // --- the engine on its own: a site context is all it needs ---------------------------------------------------------
   const bare = encodePage({ html: '<main><h1>Hi</h1><p>One\n  two</p></main>', page: { url: 'https://www.example.com/a', title: 'A' }, vocab: { root: 'main' }, site: stub });

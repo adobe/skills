@@ -36,7 +36,8 @@
  *   CellSpec         { sel (relative to the row; absent = the row), as: rich|inline|text|image|link|attr|literal|idref,
  *                    all (default: true for rich), wrap, itemWrap (wraps each matched node's value before join), join
  *                    (default "\n"), optional: true|"empty", selfOk, retag, drop, attr (attr; idref, default
- *                    aria-labelledby), then (idref: text|inline|rich), text + titleAttr (link), value (literal),
+ *                    aria-labelledby; link: the attribute holding the URL, e.g. an iframe's src), then (idref:
+ *                    text|inline|rich), text + titleAttr (link), value (literal),
  *                    parts: [CellSpec, …] (a compound cell: each part relative to the matched node) }
  *                    `link` with no usable anchor falls back to the node's plain text. A required cell that resolves
  *                    to nothing, or a required row group that matches nothing, is `flattened`.
@@ -45,7 +46,8 @@
  *                    whitespace or NBSP (no image, no link).
  *
  * Hard stops (page status; the first that applies, in this order): error (root missing or a landmark, 0 sections, no
- * <h1>, an exception) · unmapped (incl. a visible <video>/<audio> reached by rich text: map it as a block or drop: it)
+ * <h1>, an exception) · unmapped (incl. a showing <video>/<audio controls>/<iframe>/<object>/<embed> reached by rich
+ * text: map it as a block or drop: it; non-showing ones — hidden, display:none, zero width/height — are stripped)
  * · flattened (incl. a module nested inside rich content: a moduleSelectors match or a marker whose emitter is not
  * default-content/wrapper/drop/dynamics; a nested default-content marker keeps its own retag/drop) · variance (a
  * sibling whose SET of shape prints differs from the archetype's, minus accepted prints) · incomplete (the offline
@@ -68,7 +70,12 @@ import { decodeEntities, parseHTML, isEl, kids, attr, remove, esc, parseSelector
 export const STATUSES = ['clean', 'unmapped', 'flattened', 'variance', 'incomplete', 'hand-edit', 'error'];
 const STOP_ORDER = ['error', 'unmapped', 'flattened', 'variance', 'incomplete'];
 
-const STRIP = new Set(['script', 'style', 'noscript', 'template', 'iframe', 'svg', 'canvas', 'object', 'embed', 'link', 'meta', 'input', 'select']);
+const STRIP = new Set(['script', 'style', 'noscript', 'template', 'svg', 'canvas', 'link', 'meta', 'input', 'select']);
+// embedded players have no rich-text form: a showing one reached by rich text is `unmapped` (map it as a block or
+// drop: it); a non-showing one (hidden, display:none / visibility:hidden, zero width or height, audio without
+// controls) is stripped like a script
+const PLAYERS = new Set(['video', 'audio', 'iframe', 'object', 'embed']);
+const ZERO = /^\s*0+(\.0+)?(px)?\s*$/i;
 const BLOCKLVL = new Set(['address', 'article', 'aside', 'blockquote', 'div', 'dl', 'fieldset', 'figure', 'footer', 'form', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'header', 'hr', 'main', 'nav', 'ol', 'p', 'pre', 'section', 'table', 'ul', 'details', 'summary', 'figcaption', 'li']);
 const UNWRAP = new Set(['div', 'section', 'article', 'span', 'button', 'figure', 'label', 'time', 'header', 'aside', 'nav', 'font', 'center', 'small']);
 const KEEP_GENERIC = ['colspan', 'rowspan', 'start'];
@@ -99,7 +106,12 @@ const escPlain = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').r
 const wrapIn = (v, wrap) => (wrap ? [].concat(wrap).reduceRight((acc, t) => `<${t}>${acc}</${t}>`, v) : v);
 const blankText = (raw) => !decodeEntities(raw).replace(/[\s\u00a0]+/g, '');
 const rawText = (n) => (n.type === 'text' ? n.text : (n.children || []).map(rawText).join(''));
-const hasMedia = (n) => qs(n, 'img, picture, video') !== null || n.tag === 'img' || n.tag === 'picture' || n.tag === 'video';
+function playerShows(n) {
+  if (attr(n, 'hidden') !== undefined || /(^|;)\s*(display\s*:\s*none|visibility\s*:\s*hidden)/i.test(attr(n, 'style') || '')) return false;
+  if (['width', 'height'].some((k) => attr(n, k) !== undefined && ZERO.test(attr(n, k)))) return false;
+  return n.tag !== 'audio' || attr(n, 'controls') !== undefined;
+}
+const hasMedia = (n) => qs(n, 'img, picture') !== null || n.tag === 'img' || n.tag === 'picture' || [n, ...qsa(n, 'video, audio, iframe, object, embed')].some((x) => PLAYERS.has(x.tag) && playerShows(x));
 const visible = (n) => !blankText(rawText(n)) || hasMedia(n);
 const isBlankNode = (n) => blankText(rawText(n)) && !hasMedia(n) && qs(n, 'a[href]') === null;
 const isBlankHtml = (h) => !h || (!/<(img|picture|video)\b/i.test(h) && blankText(h.replace(/<[^>]*>/g, '')));
@@ -138,6 +150,7 @@ function validateCell(spec, where, errs) {
   if (spec.optional !== undefined && spec.optional !== true && spec.optional !== false && spec.optional !== 'empty') errs.push(`${where}.optional: true, false or "empty"`);
   if (as === 'literal' && typeof spec.value !== 'string') errs.push(`${where}: a literal cell needs a string value`);
   if (as === 'attr' && typeof spec.attr !== 'string') errs.push(`${where}: an attr cell needs attr: "<name>"`);
+  if (as === 'link' && spec.attr !== undefined && typeof spec.attr !== 'string') errs.push(`${where}.attr: the attribute that holds the URL`);
   if (as === 'idref' && spec.then !== undefined && !['text', 'inline', 'rich'].includes(spec.then)) errs.push(`${where}.then: text|inline|rich`);
   if (spec.titleAttr !== undefined && typeof spec.titleAttr !== 'string') errs.push(`${where}.titleAttr: an attribute name`);
   if (spec.retag !== undefined && (typeof spec.retag !== 'object' || Array.isArray(spec.retag))) errs.push(`${where}.retag: an object tag → tag`);
@@ -238,7 +251,7 @@ export function prepareCapture(html, vocab) {
   // the mark is the evidence, whoever wrote it: the stamp attribute OR any marked node makes the capture `stamped`
   const stamped = Boolean((htmlEl && attr(htmlEl, 'data-hidden-live-stamp') !== undefined) || attr(body, 'data-hidden-live-stamp') !== undefined || qs(body, '[data-hidden-live]'));
   const out = { doc, rootEl: null, stamped, error: null };
-  const strip = []; const collect = (n) => { for (const c of n.children) if (isEl(c)) { if (STRIP.has(c.tag)) strip.push(c); else collect(c); } };
+  const strip = []; const collect = (n) => { for (const c of n.children) if (isEl(c)) { if (STRIP.has(c.tag) || (PLAYERS.has(c.tag) && !playerShows(c))) strip.push(c); else collect(c); } };
   collect(doc); for (const s of strip) remove(s);
   for (const sel of vocab.chrome || []) for (const c of qsa(doc, sel)) remove(c);
   const rootEl = qs(doc, vocab.root);
@@ -389,7 +402,7 @@ function plainText(n, ctx) {
   const dropSel = [...(ctx.tf.drop || []), ...(ctx.drop || [])];
   const t = (x) => {
     if (x.type === 'text') return x.text.replace(/\{\{[^}]*\}\}/g, '');
-    if (!isEl(x) || STRIP.has(x.tag) || ctx.declared.has(x)) return '';
+    if (!isEl(x) || STRIP.has(x.tag) || PLAYERS.has(x.tag) || ctx.declared.has(x)) return '';
     if (x.tag === 'br') return ' ';
     if (dropSel.some((s) => matches(x, s, ctx.rootEl)) || hiddenLive(x, ctx.stamped)) { ctx.excluded.add(x); return ''; }
     return x.children.map(t).join('');
@@ -415,21 +428,25 @@ function richText(n, ctx, { inline = false, nested = true, childrenOnly = false 
     if (hiddenLive(node, ctx.stamped)) { ctx.report.hidden.push({ at: describe(node), reason: attr(node, 'data-hidden-live') || 'hidden' }); ctx.excluded.add(node); return ''; }
     const kidsOf = (t = false) => node.children.map((c) => clean(c, t, false, sc));
     if (isRoot && childrenOnly) return kidsOf().join('');
+    if (nested && sc.owner !== node && !ctx.wrappers.some((w) => matches(node, w, ctx.rootEl))) {
+      const m = firstMarker(node, ctx.markers, ctx.rootEl);
+      const e = m ? String(m.emitter || '') : null;
+      // a default-content marker brings its own retag/drop — nested in the cell, or the cell's own node
+      if (m && e === 'default-content' && (m.retag || m.drop)) return clean(node, top, isRoot, { retag: { ...sc.retag, ...(m.retag || {}) }, drop: [...sc.drop, ...(m.drop || [])], owner: node });
+    }
     if (!isRoot && nested && sc.owner !== node && !ctx.wrappers.some((w) => matches(node, w, ctx.rootEl))) {
       const m = firstMarker(node, ctx.markers, ctx.rootEl);
       const e = m ? String(m.emitter || '') : null;
       if (m && e.startsWith('drop:')) { ctx.report.dropped.push({ kind: m.kind || m.sel, reason: e.slice(5), visible: visible(node), nested: true, at: describe(node) }); ctx.excluded.add(node); return ''; }
       if (m && e.startsWith('dynamics:')) { ctx.report.deviations.push({ kind: 'dynamic-dependency', row: e.slice(9), module: m.kind || m.sel, nested: true, at: describe(node) }); ctx.excluded.add(node); return ''; }
-      if (m && e === 'default-content' && (m.retag || m.drop)) return clean(node, top, false, { retag: { ...sc.retag, ...(m.retag || {}) }, drop: [...sc.drop, ...(m.drop || [])], owner: node });
       if (m && e !== 'default-content' && e !== 'wrapper' && visible(node)) ctx.report.flattened.push({ kind: m.kind || m.sel, selector: m.sel, at: describe(node), why: ['a module nested inside rich content'] });
       else if (!m) { const ms = ctx.isModule(node); if (ms && visible(node)) ctx.report.flattened.push({ kind: classList(node)[0] || node.tag, selector: ms, at: describe(node), why: ['a module nested inside rich content'] }); }
     }
     let tag = node.tag;
     for (const c of classList(node)) if (headingsByClass[c]) tag = headingsByClass[c];
     if (sc.retag[tag]) tag = sc.retag[tag];
-    if (node.tag === 'video' || node.tag === 'audio') { // no rich-text form: a hard stop when it shows (D4: map it or drop: it)
-      const shows = attr(node, 'hidden') === undefined && (node.tag === 'video' || attr(node, 'controls') !== undefined);
-      if (shows && !ctx.cache.media.has(node)) { ctx.cache.media.add(node); ctx.report.unmapped.push({ kind: node.tag, selector: node.tag, at: describe(node), remedy: `map it as a block or drop: it — <${node.tag}> has no rich-text form` }); }
+    if (PLAYERS.has(node.tag)) { // no rich-text form: a hard stop when it shows (D4: map it as a block or drop: it)
+      if (playerShows(node) && !ctx.cache.media.has(node)) { ctx.cache.media.add(node); ctx.report.unmapped.push({ kind: node.tag, selector: node.tag, at: describe(node), remedy: `map it as a block (e.g. an embed block with a link cell: as link, attr src) or drop: it — <${node.tag}> has no rich-text form` }); }
       ctx.excluded.add(node);
       return '';
     }
@@ -493,6 +510,13 @@ function itemValue(n, spec, ctx, kind) {
     if (then === 'rich') return richText(target, ctx);
     if (then === 'inline') return richText(target, ctx, { inline: true });
     return escText(plainText(target, ctx));
+  }
+  if (as === 'link' && spec.attr) { // the URL is an attribute of the matched node (an iframe's src); text = `text`, else the URL
+    const raw = attr(n, spec.attr);
+    const href = raw === undefined ? null : linkHref(raw, ctx);
+    if (href === null) return '';
+    const label = spec.text ? qs(n, spec.text) : null;
+    return `<a href="${esc(href)}">${label ? escText(plainText(label, ctx)) : escPlain(href)}</a>`;
   }
   if (as === 'link') {
     const a = n.tag === 'a' && attr(n, 'href') !== undefined ? n : qsa(n, 'a[href]').find((x) => !ctx.isDropped(x)) || null;
