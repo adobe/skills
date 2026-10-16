@@ -21,13 +21,16 @@
  *
  * Usage: node skills/diff/scripts/clip-probe.mjs <url> [--width 1440] [--min-cut 2] [--main <sel>]
  *        [--json [<file>]] [--max-findings 400] [--advisory] [--more-words <regex>] [--plain]
- *        [--warmup <url>] [--locale en-US]
+ *        [--warmup <url>] [--locale en-US] [--hide <sel,…>]
+ * `--hide` (live-session hideRegions) removes in-flow per-visitor regions after the settle, before the inventory;
+ * a set list prints one `hidden: <sel> ×<n> (<h>px) [--hide]` line and the JSON carries `hidden: [...]`.
  * Exit: 0 nothing counted, 2 counted findings, 1 error, 3 bot challenge. Requires playwright.
  * `clipInventoryInPage`, `IN_PAGE_LIB`, `inPage`, `summarize`, `formatTable`, `clipReport` are exported.
  */
 import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { formatHidden, parseHideList } from './live-session.mjs';
 import { browserTier, openBrowser, openPage, visit } from './measure-live.mjs';
 
 const HELP = `clip-probe — text and controls cut or hidden by an overflow ancestor on a served page (#125 D1)
@@ -43,6 +46,7 @@ Usage: node clip-probe.mjs <url> [options]
   --plain             bundled Chromium instead of the window-free real-Chrome tier
   --warmup <url>      visit this URL first (bot-managed sites)
   --locale <tag>      default en-US
+  --hide <sel,…>      hide in-flow regions (a per-visitor bar) before the inventory; repeatable
   --help              this text
 Counted (exit 2): TEXT CLIPPED, TEXT HIDDEN, CONTROL HIDDEN, CONTROL CLIPPED. Exit 3 = bot challenge.`;
 
@@ -314,7 +318,7 @@ export const verdictLine = (counts) => `Clipped: ${counts.total} (text clipped $
 export function parseArgs(argv) {
   const rest = argv.slice(2);
   if (!rest.length || rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
-  const opts = { url: null, width: 1440, minCut: 2, main: null, json: false, jsonFile: null, maxFindings: 400, advisory: false, plain: false, warmup: null, locale: 'en-US', moreWords: null };
+  const opts = { url: null, width: 1440, minCut: 2, main: null, json: false, jsonFile: null, maxFindings: 400, advisory: false, plain: false, warmup: null, locale: 'en-US', moreWords: null, hide: [] };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--width') opts.width = Number(rest[++i]);
@@ -327,6 +331,7 @@ export function parseArgs(argv) {
     else if (a === '--plain') opts.plain = true;
     else if (a === '--warmup') opts.warmup = rest[++i];
     else if (a === '--locale') opts.locale = rest[++i];
+    else if (a === '--hide') { const v = rest[++i]; if (v === undefined || v.startsWith('--')) { console.error(`--hide needs a selector list\n\n${HELP}`); process.exit(1); } opts.hide = parseHideList(opts.hide, v); }
     else if (a.startsWith('--')) { console.error(`unknown flag ${a}\n\n${HELP}`); process.exit(1); }
     else if (!opts.url) opts.url = a;
   }
@@ -335,16 +340,17 @@ export function parseArgs(argv) {
 }
 
 /** The CLI's JSON object for one inventory ({ docH, pageW, counts, findings, textBoxes }); gate-all --one-load builds
- * clip.json with it from a stitch's inventory. `tier` undefined keeps its slot for main to fill. */
-export function clipReport(inv, { url, width, status = null, settlePasses = null, tier, at = new Date().toISOString() } = {}) {
-  return { url, at, width, status, settlePasses, ...inv, groups: summarize(inv.findings), tier };
+ * clip.json with it from a stitch's inventory. `tier` undefined keeps its slot for main to fill; `hidden` (the hide
+ * records) is a last key only when given. */
+export function clipReport(inv, { url, width, status = null, settlePasses = null, tier, at = new Date().toISOString(), hidden = null } = {}) {
+  return { url, at, width, status, settlePasses, ...inv, groups: summarize(inv.findings), tier, ...(hidden ? { hidden } : {}) };
 }
 
 /** Load + settle a page and run the inventory (shared with gate-all's --no-content path). */
 export async function probe(page, url, opts) {
-  const v = await visit(page, url, { warmup: opts.warmup });
+  const v = await visit(page, url, { warmup: opts.warmup, hide: opts.hide });
   const inv = await page.evaluate(inPage(clipInventoryInPage, { minCut: opts.minCut, rootSel: opts.main, maxFindings: opts.maxFindings }, morePrelude(opts.moreWords)));
-  return clipReport(inv, { url, width: opts.width, status: v.status, settlePasses: v.passes });
+  return clipReport(inv, { url, width: opts.width, status: v.status, settlePasses: v.passes, hidden: v.hidden });
 }
 
 async function main() {
@@ -362,6 +368,7 @@ async function main() {
   if (opts.json && !opts.jsonFile) { console.log(JSON.stringify(out, null, 1)); }
   else {
     console.log(`clip-probe ${opts.url} @ ${opts.width}px — docH ${res.docH}, ${res.counts.textNodes} text nodes, ${res.counts.controls} controls (HTTP ${res.status}, ${res.tier})`);
+    if (res.hidden) console.log(`hidden: ${formatHidden(res.hidden)}`);
     console.log(formatTable(res.groups, { advisory: opts.advisory }));
     console.log(verdictLine(res.counts));
     if (opts.jsonFile) { mkdirSync(dirname(opts.jsonFile) || '.', { recursive: true }); writeFileSync(opts.jsonFile, JSON.stringify(out, null, 1)); console.log(`json → ${opts.jsonFile}`); }

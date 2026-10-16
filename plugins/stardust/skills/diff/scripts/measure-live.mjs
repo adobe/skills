@@ -15,7 +15,7 @@
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { REAL_CHROME_UA, browserTier, defaultWaitUntil, dismissOverlays, gotoLive, lateWindowFor, launchStealthHeaded, newLiveContext } from './live-session.mjs';
+import { REAL_CHROME_UA, browserTier, defaultWaitUntil, dismissOverlays, gotoLive, hideRegions, lateWindowFor, launchStealthHeaded, newLiveContext } from './live-session.mjs';
 
 export { browserTier };
 
@@ -67,8 +67,10 @@ export async function settle(page, { passes = 4, step = 400, dwell = 250, emptyS
 /**
  * Navigate (fail-loud live-session contract: a challenge throws BotChallengeError, a 404 build is measured
  * with a warning), dismiss overlays, settle. `warmup` visits another URL first in the same context.
+ * `hide` (selectors, live-session hideRegions) removes in-flow regions after the settle; its records come back
+ * as `hidden` (absent without a hide list).
  */
-export async function visit(page, url, { warmup = null, settle: settleOpts = {}, dismiss = true, solveWindow = true, timeoutMs = 90000, httpError = 'measure' } = {}) {
+export async function visit(page, url, { warmup = null, settle: settleOpts = {}, dismiss = true, solveWindow = true, timeoutMs = 90000, httpError = 'measure', hide = [] } = {}) {
   if (warmup) {
     await gotoLive(page, warmup, { waitUntil: 'domcontentloaded', timeoutMs, settleMs: 0, solveWindow, httpError: 'measure' });
     await page.waitForTimeout(2500);
@@ -78,7 +80,8 @@ export async function visit(page, url, { warmup = null, settle: settleOpts = {},
   if (dismiss) { try { await dismissOverlays(page, { lateWindowMs: lateWindowFor(url, 4000) }); } catch { /* none */ } }
   const s = await settle(page, settleOpts);
   if (dismiss) { try { await dismissOverlays(page, { lateWindowMs: 0 }); } catch { /* none */ } }
-  return { status: resp ? resp.status() : null, ...s };
+  const hidden = await hideRegions(page, hide);
+  return { status: resp ? resp.status() : null, ...s, ...(hidden.length ? { hidden } : {}) };
 }
 
 // ---- in-page functions (Playwright-serialised; ONE argument object) --------------------------------
