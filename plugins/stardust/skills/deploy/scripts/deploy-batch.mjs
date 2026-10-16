@@ -25,18 +25,25 @@
  *     page to `live` — admin 200 != delivered (guardrail #6/#13).
  *
  * Content-hash skip — a page that reaches `live` (`previewed` with --no-publish)
- * records `contentSha` (hex sha256 of the exact bytes PUT) and `verifiedAt`
- * (ISO time of the delivered check) in its ledger row; a failed or halted page
- * never touches them. A re-run classifies every page whose row is `live`:
- *   changed  — the file's sha256 differs from `contentSha`: re-deployed;
+ * records `contentSha` (hex sha256 of the exact bytes PUT), `verifiedAt` (ISO
+ * time of the delivered check) and `verifiedOn` (`<org>/<repo>` it was delivered
+ * to; the branch is left out, content is shared across branches) in its ledger
+ * row; a failed or halted page never touches them. A re-run classifies every
+ * page whose row is `live`:
  *   legacy   — a row without `contentSha` (written before it existed): re-deployed
  *              once, since an unchanged document cannot be proven without the hash;
+ *   changed  — the file's sha256 differs from `contentSha`: re-deployed;
+ *   elsewhere — `verifiedOn` is not this run's org/repo (a copied project, another
+ *              environment, a recreated repo): re-deployed — a 200 there proves some
+ *              document is delivered, not this one. One content folder feeding
+ *              several repos keeps every repo fresh with one --ledger per repo;
  *   fresh    — unchanged and `verifiedAt` within --verify-max-age: skipped, no request;
  *   stale    — unchanged, verified longer ago: one .plain.html GET in the pool;
  *              200 ⇒ skipped and `verifiedAt` refreshed, anything else ⇒ re-deployed.
  * One stderr line after the batch line counts them:
  *   [deploy-batch] skip: <n> unchanged (contentSha; <f> verified ≤ <N> min ago, <g> re-verified by GET); re-drive: <c> changed since live, <l> ledger rows without contentSha
- * (with ", <k> failed the re-verify GET" appended when one did).
+ * (with ", <e> verified on another org/repo" and ", <k> failed the re-verify GET"
+ * appended when there are any).
  *
  * 401 policy — the same as da-media-upload.mjs (an expired token once left an
  * 894-row batch failing file by file for hours; a valid token can be answered
@@ -300,7 +307,7 @@ async function deployOne(page, args, ledger, logLine) {
   const v = await deliveredOk({ org, repo, branch, webPath: page.webPath, tld: publish ? 'aem.live' : 'aem.page' });
   rec.verify = v.ok ? 'ok' : v.why;
   rec.status = v.ok ? (publish ? 'live' : 'previewed') : 'verify-fail';
-  if (v.ok) { rec.contentSha = contentSha; rec.verifiedAt = new Date().toISOString(); }
+  if (v.ok) { rec.contentSha = contentSha; rec.verifiedAt = new Date().toISOString(); rec.verifiedOn = `${org}/${repo}`; }
   if (!v.ok) rec.lastError = v.why;
   await logLine({ path: page.webPath, step: 'verify', ok: v.ok, why: v.why });
   return { rec, halt: null };
@@ -333,10 +340,12 @@ async function main() {
   const ledger = (!args.force && existsSync(args.ledger))
     ? JSON.parse(await readFile(args.ledger, 'utf8')) : {};
 
-  // Skip a live page only when its document is byte-identical to the one it delivered (contentSha); trust
-  // its delivered check for --verify-max-age minutes, then re-verify it with one GET inside the pool.
+  // Skip a live page only when its document is byte-identical to the one it delivered (contentSha) to THIS
+  // org/repo (verifiedOn); trust its delivered check for --verify-max-age minutes, then re-verify it with
+  // one GET inside the pool.
+  const target = `${args.org}/${args.repo}`;
   const maxAgeMs = args.verifyMaxAge * 60000;
-  const why = { fresh: 0, reverified: 0, reverifyFail: 0, changed: 0, legacy: 0 };
+  const why = { fresh: 0, reverified: 0, reverifyFail: 0, changed: 0, legacy: 0, elsewhere: 0 };
   const redrive = new Set();
   const reverify = [];
   for (const p of pages) {
@@ -344,6 +353,7 @@ async function main() {
     if (args.force || !rec || rec.status !== 'live') redrive.add(p);
     else if (!rec.contentSha) { why.legacy += 1; redrive.add(p); }
     else if (rec.contentSha !== sha256(await readFile(p.file))) { why.changed += 1; redrive.add(p); }
+    else if (rec.verifiedOn !== target) { why.elsewhere += 1; redrive.add(p); }
     else {
       const age = Date.now() - Date.parse(rec.verifiedAt);
       if (maxAgeMs > 0 && age >= 0 && age <= maxAgeMs) why.fresh += 1;
@@ -367,8 +377,8 @@ async function main() {
   const logLine = async (o) => appendFile(args.log, `${JSON.stringify({ t: new Date().toISOString(), ...o })}\n`);
 
   console.error(`[deploy-batch] ${pages.length} pages, ${skipped} already live, ${todo.length} to drive (concurrency ${args.concurrency}, publish=${args.publish})`);
-  if (skipped + why.reverifyFail + why.changed + why.legacy > 0) {
-    console.error(`[deploy-batch] skip: ${skipped} unchanged (contentSha; ${why.fresh} verified ≤ ${args.verifyMaxAge} min ago, ${why.reverified} re-verified by GET); re-drive: ${why.changed} changed since live, ${why.legacy} ledger rows without contentSha${why.reverifyFail ? `, ${why.reverifyFail} failed the re-verify GET` : ''}`);
+  if (skipped + why.reverifyFail + why.changed + why.legacy + why.elsewhere > 0) {
+    console.error(`[deploy-batch] skip: ${skipped} unchanged (contentSha; ${why.fresh} verified ≤ ${args.verifyMaxAge} min ago, ${why.reverified} re-verified by GET); re-drive: ${why.changed} changed since live, ${why.legacy} ledger rows without contentSha${why.elsewhere ? `, ${why.elsewhere} verified on another org/repo` : ''}${why.reverifyFail ? `, ${why.reverifyFail} failed the re-verify GET` : ''}`);
   }
   let done = 0;
   let halted = null; // { path, step, attempts } — the first page whose 401 persisted through its retries

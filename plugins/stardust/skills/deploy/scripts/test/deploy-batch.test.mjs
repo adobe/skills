@@ -61,6 +61,10 @@ function parseMultipart(body, contentType) {
   return parts;
 }
 const SRC = `/source/${ORG}/${REPO}`; const PREVIEW = `/preview/${ORG}/${REPO}/${BRANCH}`; const LIVE = `/live/${ORG}/${REPO}/${BRANCH}`;
+// A second repo of the same org: its own source and admin paths, and its own delivered origin (under ORIGIN_B).
+const REPO_B = 'test-repo-b'; const ORIGIN_B = '/origin-b';
+const SRC_B = `/source/${ORG}/${REPO_B}`; const PREVIEW_B = `/preview/${ORG}/${REPO_B}/${BRANCH}`; const LIVE_B = `/live/${ORG}/${REPO_B}/${BRANCH}`;
+const putOkB = new Set();
 const server = createServer((req, res) => {
   const url = decodeURIComponent(req.url);
   const chunks = [];
@@ -72,6 +76,11 @@ const server = createServer((req, res) => {
     const valid = auth === `Bearer ${TOKEN}` || auth === `Bearer ${FRESH_TOKEN}`;
     const fresh = auth === `Bearer ${FRESH_TOKEN}`;
     const reply = (status, text = '', headers = {}) => { res.writeHead(status, headers); res.end(text); };
+    if (req.method === 'PUT' && url.startsWith(`${SRC_B}/`)) { putOkB.add(url.slice(SRC_B.length, -'.html'.length)); return reply(valid ? 201 : 401, '{}'); }
+    if (req.method === 'POST' && (url.startsWith(`${PREVIEW_B}/`) || url.startsWith(`${LIVE_B}/`))) return reply(valid ? 200 : 401, '{}');
+    if (req.method === 'GET' && url.startsWith(`${ORIGIN_B}/`)) {
+      return putOkB.has(url.slice(ORIGIN_B.length, -'.plain.html'.length)) ? reply(200, '<div><p>delivered</p></div>') : reply(404, 'not found');
+    }
     if (req.method === 'PUT' && url.startsWith(`${SRC}/`) && url.endsWith('.html')) {
       const p = url.slice(SRC.length, -'.html'.length);
       const n = bump('put', p);
@@ -124,8 +133,8 @@ const site = (dir, names) => {
     writeFileSync(f, FRAG[`/${n}`]);
   }
 };
-const run = (args, { token = TOKEN, tokenEnv = 'DA_TOKEN' } = {}) => new Promise((resolve) => {
-  const env = { ...process.env, DA_SOURCE_BASE: `${BASE}/source`, AEM_ADMIN_BASE: BASE, DEPLOY_VERIFY_ORIGIN: BASE };
+const run = (args, { token = TOKEN, tokenEnv = 'DA_TOKEN', origin = BASE } = {}) => new Promise((resolve) => {
+  const env = { ...process.env, DA_SOURCE_BASE: `${BASE}/source`, AEM_ADMIN_BASE: BASE, DEPLOY_VERIFY_ORIGIN: origin };
   delete env.DA_TOKEN; if (token) env[tokenEnv] = token;
   const p = spawn(process.execPath, [SCRIPT, '--org', ORG, '--repo', REPO, '--branch', BRANCH, '--backoff-ms', '1', ...args], { cwd: proj, env });
   let out = ''; let err = '';
@@ -176,6 +185,7 @@ await check('happy path: PUT (multipart `data`, text/html, Authorization) → pr
   assert.equal(l['/a1'].status, 'live'); assert.equal(l['/a1'].put, 201); assert.equal(l['/a1'].preview, 200); assert.equal(l['/a1'].live, 200); assert.equal(l['/a1'].verify, 'ok'); assert.equal(l['/a1'].attempts, 1);
   for (const p of ['/a1', '/nested/a2']) {
     assert.equal(l[p].contentSha, sha256(FRAG[p]), `${p}: contentSha = sha256 of the bytes PUT`);
+    assert.equal(l[p].verifiedOn, `${ORG}/${REPO}`, `${p}: verifiedOn = the org/repo it was delivered to`);
     assert.match(l[p].verifiedAt, ISO_RE); assert.ok(Date.now() - Date.parse(l[p].verifiedAt) < 60000);
   }
   assert.ok(readFileSync(join(proj, 'site-a', '.deploy-ledger.json'), 'utf8').endsWith('}\n'), 'trailing newline');
@@ -290,6 +300,35 @@ await check('re-verify: a row verified longer than --verify-max-age ago gets one
   assert.deepEqual(touching(reqs, '/v2').map((q) => `${q.method} ${q.url}`), ['GET /v2.plain.html', `PUT ${SRC}/v2.html`, `POST ${PREVIEW}/v2`, `POST ${LIVE}/v2`, 'GET /v2.plain.html']);
   assert.deepEqual(reqs.filter((q) => !q.url.includes('/v2')).map((q) => `${q.method} ${q.url}`).sort(), ['GET /v1.plain.html', 'GET /v3.plain.html']);
   assert.equal(ledgerOf('site-v')['/v2'].status, 'live'); assert.equal(ledgerOf('site-v')['/v2'].attempts, 2);
+});
+
+await check('a skip is tied to the org/repo the page was delivered to (verifiedOn): the same content folder pointed at another repo re-deploys there with 0 requests to the first; fresh for it afterwards; a document changed and delivered to the second still reaches the first, whose stale copy answers 200', async () => {
+  const fmt = (q) => `${q.method} ${q.url}`;
+  const onB = { origin: `${BASE}${ORIGIN_B}` };
+  site('site-t', ['t1', 't2']);
+  assert.equal((await run(['--content', 'site-t'])).code, 0);
+  const from = requests.length;
+  const r = await run(['--content', 'site-t', '--repo', REPO_B], onB);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.match(r.err, /^\[deploy-batch\] 2 pages, 0 already live, 2 to drive/m);
+  assert.match(r.err, skipLine(0, 0, 60, 0, 0, 0, ', 2 verified on another org/repo'));
+  for (const p of ['t1', 't2']) assert.deepEqual(touching(since(from), `/${p}`).map(fmt), [`PUT ${SRC_B}/${p}.html`, `POST ${PREVIEW_B}/${p}`, `POST ${LIVE_B}/${p}`, `GET ${ORIGIN_B}/${p}.plain.html`]);
+  assert.equal(since(from).length, 8, 'nothing sent to the first repo or its origin');
+  for (const p of ['/t1', '/t2']) { assert.equal(ledgerOf('site-t')[p].verifiedOn, `${ORG}/${REPO_B}`); assert.equal(ledgerOf('site-t')[p].contentSha, sha256(FRAG[p])); }
+  const from2 = requests.length;
+  const r2 = await run(['--content', 'site-t', '--repo', REPO_B], onB);
+  assert.match(r2.err, skipLine(2, 2, 60, 0, 0, 0)); assert.equal(requests.length, from2, 'fresh for the second repo');
+  const changed = FRAG['/t1'].replace('<h1>t1</h1>', '<h1>t9</h1>');
+  writeFileSync(join(proj, 'site-t', 't1.html'), changed);
+  assert.equal((await run(['--content', 'site-t', '--repo', REPO_B], onB)).code, 0);
+  const from3 = requests.length;
+  const r3 = await run(['--content', 'site-t']); // the first repo still delivers its old t1 with a 200
+  assert.equal(r3.code, 0, r3.out + r3.err);
+  assert.match(r3.err, skipLine(0, 0, 60, 0, 0, 0, ', 2 verified on another org/repo'));
+  const reqs = since(from3);
+  assert.equal(reqs.find((q) => q.method === 'PUT' && q.url === `${SRC}/t1.html`).parts[0].data.toString('utf8'), changed, 'the first repo receives the changed document');
+  assert.equal(reqs.filter((q) => q.url.includes(REPO_B) || q.url.startsWith(ORIGIN_B)).length, 0);
+  assert.equal(ledgerOf('site-t')['/t1'].verifiedOn, `${ORG}/${REPO}`);
 });
 
 // ---- (b) a 401 burst on a valid token ------------------------------------------------------------------
