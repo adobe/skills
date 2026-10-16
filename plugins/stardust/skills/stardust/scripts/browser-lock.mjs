@@ -2,7 +2,8 @@
 /**
  * skills/stardust/scripts/browser-lock.mjs — the machine-wide browser semaphore.
  *
- * Ported from the `stardust/next` branch (commits 2a8a596f, a970535a, 890e09d3).
+ * Ported from the `stardust/next` branch (commits 2a8a596f, a970535a, 890e09d3); adapted: atomic slot write
+ * (temp file + rename — a census never reads a half-written slot as corrupt and deletes it).
  * On this branch the holder is `replica/scripts/run-bg.mjs`'s job wrapper: one slot per browser job.
  *
  * Parallel gate rounds across projects on one machine were killed by the OS for
@@ -53,7 +54,7 @@
  *             error. No network. Never reaps a dev server (ports are the port
  *             allocator's, by pidfile only).
  */
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync, appendFileSync, utimesSync, realpathSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync, appendFileSync, utimesSync, realpathSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 import { homedir, hostname } from 'node:os';
 import { spawnSync } from 'node:child_process';
@@ -130,9 +131,11 @@ export async function acquire({ pid = process.pid, script = basename(process.arg
     const { held } = census(cfg);
     if (held.length < cfg.slots) {
       const file = join(cfg.dir, `${pid}-${Date.now().toString(36)}.json`);
-      writeFileSync(file, `${JSON.stringify({ pid, host: hostname().split('.')[0], project: resolve(project), script, since: new Date().toISOString() })}\n`);
+      // atomic: a census lists only *.json, so it never reads this file empty and deletes it as corrupt
+      writeFileSync(`${file}.tmp`, `${JSON.stringify({ pid, host: hostname().split('.')[0], project: resolve(project), script, since: new Date().toISOString() })}\n`);
+      renameSync(`${file}.tmp`, file);
       const after = census(cfg).held; // re-census: a simultaneous acquire may have taken the same last slot
-      if (after.length <= cfg.slots || !surplus(after, cfg.slots).includes(file)) {
+      if (existsSync(file) && (after.length <= cfg.slots || !surplus(after, cfg.slots).includes(file))) {
         const touch = () => { try { const n = new Date(); utimesSync(file, n, n); } catch { /* gone */ } };
         const timer = setInterval(touch, Math.max(50, Math.floor(cfg.ttlMs / 3)));
         timer.unref?.(); // never keeps the holder's process alive
