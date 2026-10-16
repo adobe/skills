@@ -9,6 +9,7 @@
 //                   [--next "…"] [--owner "…"] [--dir <stardust dir>] [--strict]
 //   node ledger.mjs tail [-n 5] [--dir <stardust dir>]
 //   node ledger.mjs last [<skill>] [--dir <stardust dir>]
+//   node ledger.mjs check [--dir <stardust dir>] [--json]
 //
 // `--next` (what the next phase or the human does now) and `--owner` (who does it) are optional
 // and land in the line as `next` / `owner` when given — an `end` line without `--next` is still
@@ -35,7 +36,13 @@
 // phase (case-insensitive; dashes, underscores and spaces are one separator), one warning on stderr —
 // never an exit-code change, even under --strict (a recorded run's journal began at its second session;
 // another's had one section for the whole run). An absent journal is not checked.
-// Exit codes: 0 ok · 2 usage or strict violation.
+// `check` reads the whole ledger with the start guard's own pairing rule and lists every `end` line
+// that had no open start, with its 1-based physical line number (blank and malformed lines counted).
+// The ledger is append-only, so a missing start can never be inserted: an unpaired end counts as
+// re-recorded when a later start followed by a later end of the same skill + phase exists — the only
+// repair. Exit 1 while any unpaired end is not re-recorded. `--json` prints {ends, open, unpaired[]}.
+// Exit codes: 0 ok · 1 `check` found an end without an open start that was never re-recorded ·
+// 2 usage or strict violation.
 import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync, openSync, readSync, closeSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -164,6 +171,7 @@ const HELP = `Usage:
                   [--next "…"] [--owner "…"] [--dir <d>] [--strict]
   node ledger.mjs tail [-n ${DEFAULT_TAIL}] [--dir <d>]
   node ledger.mjs last [<skill>] [--dir <d>]
+  node ledger.mjs check [--dir <d>] [--json]
   (--dir defaults to ${DEFAULT_DIR}; the ledger is <dir>/${FILE_NAME}, created on first write;
    an explicit --dir must already exist)
 
@@ -172,10 +180,17 @@ prints it. --next / --owner are optional (an end line without --next is fine). A
 by nothing or by another flag is a usage error.
 <skill> may be given as "extract" or "stardust:extract". A known <phase> is written in the table's
 own form (aliases and case are normalised). Unknown skill/phase → warning on stderr, line still
-written; with --strict → exit 2, nothing written. Exit codes: 0 ok, 2 usage/strict.
+written; with --strict → exit 2, nothing written. Exit codes: 0 ok, 1 check found an end without an
+open start that was never re-recorded, 2 usage/strict.
 An end needs an open start (same skill + phase, no later end): missing → warning, or exit 2 under
 --strict. Write the start line FIRST, before any script of the phase runs. On end, a <dir>/${JOURNAL_NAME}
 without a "## " heading naming the phase gets a warning (never an exit-code change).
+check: reads the ledger (writes nothing) and prints one line per end without an open start,
+  "unpaired end: <ts> <skill> <phase> (line <n>)" (n = physical line, blank and malformed lines
+  counted; " — re-recorded later" when a later start + end of the same skill and phase exists),
+  then one summary line. --json prints {"ends", "open", "unpaired": [{line, ts, skill, phase,
+  reRecorded}]} (open = unpaired and not re-recorded). An absent ledger → "no lines", exit 0.
+  Exit 0 when every end is paired or re-recorded, 1 when one is not, 2 usage.
 Known skills: ${Object.keys(PHASES).join(', ')}
 Known phases per skill (ledger form; accepted aliases in parentheses):
 ${phaseTableText()}`;
@@ -226,20 +241,50 @@ export function buildLine({ skill, phase, event, detail, artifact, next, owner, 
   return line;
 }
 
+// The pairing rule — ONE piece of code behind the start guard (`checkOpenStart`) and `check`
+// (`unpairedEnds`). A line's pair is its skill (case-folded) + its phase in the table's canonical form
+// (case-folded), so a hand-written alias or a differently-cased phase still pairs with its end. In file
+// order a `start` opens its pair, an `end` closes it, `blocked` (or any other event) leaves it as it is.
+// Entries that are not objects are skipped but keep their positions. `onEnd(line, index, wasOpen, key)`
+// sees every end with whether its pair was open just before it. Returns the keys still open at the end.
+const isLine = (l) => l != null && typeof l === 'object';
+const pairKey = (skill, phase) => {
+  const s = String(skill || '').toLowerCase();
+  return `${s}\n${String(canonicalPhase(s, String(phase || ''))).toLowerCase()}`;
+};
+function walkPairs(lines, onEnd = () => {}) {
+  const open = new Set();
+  for (let index = 0; index < lines.length; index += 1) {
+    const l = lines[index];
+    if (!isLine(l)) continue;
+    const key = pairKey(l.skill, l.phase);
+    if (l.event === 'start') open.add(key);
+    else if (l.event === 'end') { onEnd(l, index, open.has(key), key); open.delete(key); }
+  }
+  return open;
+}
+
 // The start guard. Null when the ledger holds an open `start` for (skill, phase) — a start line for that
 // pair with no end line for it afterwards (a `blocked` in between keeps it open); otherwise the warning
-// text, naming the start command that is missing. Lines are compared in their canonical forms, so a
-// hand-written alias or a differently-cased phase still pairs with its end.
+// text, naming the start command that is missing.
 export function checkOpenStart(lines, skill, phase) {
-  const want = String(phase).toLowerCase();
-  let open = false;
-  for (const l of lines) {
-    if (!l || String(l.skill || '').toLowerCase() !== skill) continue;
-    if (String(canonicalPhase(skill, String(l.phase || ''))).toLowerCase() !== want) continue;
-    if (l.event === 'start') open = true;
-    else if (l.event === 'end') open = false;
-  }
-  return open ? null : `end for ${skill} ${phase} has no matching start (no earlier start line for this skill and phase without a later end) — the start line is the FIRST command of a phase, before any script runs: node ledger.mjs ${bareSkill(skill)} ${phase} start`;
+  return walkPairs(lines).has(pairKey(skill, phase)) ? null : `end for ${skill} ${phase} has no matching start (no earlier start line for this skill and phase without a later end) — the start line is the FIRST command of a phase, before any script runs: node ledger.mjs ${bareSkill(skill)} ${phase} start`;
+}
+
+// Every `end` with no open start before it, in file order: [{ index, ts, skill, phase, reRecorded }] —
+// `index` is the position in `lines`, ts / skill / phase are the line's own values (null when absent).
+// `reRecorded`: a later start followed by a later end of the same pair exists — the ledger is
+// append-only, so that later complete pair is the only repair. After an unpaired end its pair is
+// closed, so any later end that finds its pair open had a start after it: the re-record.
+export function unpairedEnds(lines) {
+  const ends = [];
+  walkPairs(lines, (line, index, wasOpen, key) => ends.push({ line, index, wasOpen, key }));
+  const lastPaired = new Map();
+  for (const e of ends) if (e.wasOpen) lastPaired.set(e.key, e.index);
+  return ends.filter((e) => !e.wasOpen).map(({ line, index, key }) => ({
+    index, ts: line.ts ?? null, skill: line.skill ?? null, phase: line.phase ?? null,
+    reRecorded: (lastPaired.get(key) ?? -1) > index,
+  }));
 }
 
 export const journalPath = (dir) => join(dir, JOURNAL_NAME);
@@ -261,14 +306,16 @@ export function checkJournalSection(dir, phase) {
 
 export const ledgerPath = (dir) => join(dir, FILE_NAME);
 
-export function readLines(dir) {
+// Parsed ledger lines in file order; blank and malformed lines are dropped and counted. With
+// `keepPositions` each of them stays as a null placeholder instead, so `lines[i]` is physical line i + 1.
+export function readLines(dir, { keepPositions = false } = {}) {
   const file = ledgerPath(dir);
   if (!existsSync(file)) return { lines: [], malformed: 0, file };
   let malformed = 0;
   const lines = [];
   for (const raw of readFileSync(file, 'utf8').split('\n')) {
-    if (!raw.trim()) continue;
-    try { lines.push(JSON.parse(raw)); } catch { malformed += 1; }
+    if (!raw.trim()) { if (keepPositions) lines.push(null); continue; }
+    try { lines.push(JSON.parse(raw)); } catch { malformed += 1; if (keepPositions) lines.push(null); }
   }
   return { lines, malformed, file };
 }
@@ -291,10 +338,11 @@ export function appendLine(dir, line) {
 }
 
 export const formatTail = (l) => [l.ts, l.skill, l.phase, l.event, l.detail ? (l.detail.length > DETAIL_HEAD ? `${l.detail.slice(0, DETAIL_HEAD - 1)}…` : l.detail) : ''].join(' ').trimEnd();
+export const formatUnpaired = (u) => `unpaired end: ${u.ts ?? '?'} ${u.skill ?? '?'} ${u.phase ?? '?'} (line ${u.index + 1})${u.reRecorded ? ' — re-recorded later' : ''}`;
 
 // ---- argv --------------------------------------------------------------------------------------
 function parseArgs(argv) {
-  const opts = { dir: DEFAULT_DIR, dirGiven: false, strict: false, n: DEFAULT_TAIL, detail: null, artifact: null, next: null, owner: null };
+  const opts = { dir: DEFAULT_DIR, dirGiven: false, strict: false, json: false, n: DEFAULT_TAIL, detail: null, artifact: null, next: null, owner: null };
   const pos = [];
   const isFlag = (v) => v.startsWith('--') || v === '-n' || v === '-h';
   for (let i = 0; i < argv.length; i += 1) {
@@ -307,6 +355,7 @@ function parseArgs(argv) {
     };
     if (a === '--help' || a === '-h') opts.help = true;
     else if (a === '--strict') opts.strict = true;
+    else if (a === '--json') opts.json = true;
     else if (a === '--dir') { opts.dir = need(); opts.dirGiven = true; }
     else if (a === '--detail') opts.detail = need();
     else if (a === '--artifact') opts.artifact = need();
@@ -321,11 +370,34 @@ function parseArgs(argv) {
 
 // ---- main --------------------------------------------------------------------------------------
 export function main(argv) {
+  if (argv.includes('--help') || argv.includes('-h')) { console.log(HELP); return 0; }
   const { opts, pos } = parseArgs(argv);
-  if (opts.help) { console.log(HELP); return 0; }
   if (pos.length === 0) throw new UsageError(HELP);
   if (opts.dirGiven && !(existsSync(opts.dir) && statSync(opts.dir).isDirectory())) throw new UsageError(`--dir ${opts.dir} is not an existing directory (a mistyped --dir must not start a second ledger; omit it for ${DEFAULT_DIR}/)`);
   const [cmd] = pos;
+  if (opts.json && cmd !== 'check') throw new UsageError('--json applies to check only');
+
+  if (cmd === 'check') {
+    if (pos.length > 1) throw new UsageError(`check takes no arguments, got: ${pos.slice(1).join(' ')}`);
+    const { lines, malformed, file } = readLines(opts.dir, { keepPositions: true });
+    if (malformed) console.error(`ledger: ${malformed} malformed line(s) skipped in ${file}`);
+    const ends = lines.filter((l) => isLine(l) && l.event === 'end').length;
+    const unpaired = unpairedEnds(lines);
+    const reRecorded = unpaired.filter((u) => u.reRecorded).length;
+    const open = unpaired.length - reRecorded;
+    const empty = !lines.some(isLine);
+    if (opts.json) {
+      console.log(JSON.stringify({ ends, open, unpaired: unpaired.map((u) => ({ line: u.index + 1, ts: u.ts, skill: u.skill, phase: u.phase, reRecorded: u.reRecorded })) }));
+      if (empty) console.error(`ledger check: no lines in ${file}`);
+    } else if (empty) console.log(`ledger check: no lines in ${file}`);
+    else {
+      for (const u of unpaired) console.log(formatUnpaired(u));
+      console.log(unpaired.length
+        ? `ledger check: ${unpaired.length} end line(s) without an open start (${reRecorded} re-recorded) of ${ends}`
+        : `ledger check: every end has an open start (${ends} end lines)`);
+    }
+    return open ? 1 : 0;
+  }
 
   if (cmd === 'tail') {
     const { lines, malformed, file } = readLines(opts.dir);
