@@ -41,9 +41,10 @@ re-measuring evidence they already hold, and skip it only while it is provably u
   `A-inventory` start, with the same probed URLs and rollout roster and every page loaded without error; `--fresh`
   re-probes; every reuse is appended to its provenance.
 
-Patch: no threshold, criterion or pairing rule changes; the new row fields, sidecars and ledger fields are additive
-(`gateKey`, `reused`, `probes.json`, `gate-key.json`, `contentSha`, `verifiedAt`, `verifiedOn`); every skip is
-recorded where it happened.
+Minor: one contract step is new — C-final re-freezes the foundation after applying `foundation-requests.md`, before
+the C-final roster gate. No threshold, criterion or pairing rule changes; the new row fields, sidecars and ledger
+fields stay additive (`gateKey`, `reused`, `probes.json`, `gate-key.json`, `contentSha`, `verifiedAt`, `verifiedOn`);
+every skip is recorded where it happened.
 
 ## 0.33.1 — consent overlays are dismissed on gate captures; the archetype ledger keeps its shape
 
