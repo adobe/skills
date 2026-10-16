@@ -66,7 +66,7 @@ eyeballing.
 4. Copy scripts into the project and run them from there, not from the
    plugin: this skill's whole `scripts/` dir to
    `stardust/scripts/replica/`, the master skill's `../stardust/scripts/`
-   (ledger.mjs, state.mjs, browser-lock.mjs) to `stardust/scripts/stardust/`, the migrate
+   (ledger.mjs, state.mjs, browser-lock.mjs, unit-commit.mjs) to `stardust/scripts/stardust/`, the migrate
    skill's `../migrate/scripts/` (migrate.mjs) to `stardust/scripts/migrate/`,
    AND the whole
    `../diff/scripts/` dir to `stardust/scripts/diff/` (the diff scripts
@@ -284,8 +284,8 @@ node stardust/scripts/replica/chrome-parity.mjs "$LIVE" "$PROTO" --width 1440 --
 # deadline (exit 124 = re-run, not FAIL). Rounds run in the BACKGROUND: start every round at once
 # (the slots pace the Chromiums — no `sleep N;` staggering), then `wait` prints verdict lines only;
 # exit 75 = still going → `wait` again as your NEXT step, never in a shell loop, never after a `sleep`
-# (gate doc § Iteration discipline). A propagation wait is a bounded inline poll (`curl -sf` ≤ 5 s
-# apart, capped), never a fixed sleep.
+# (gate doc § Iteration discipline). A propagation wait is deploy's `fresh-check.mjs <url> --grep
+# '<marker>'` (checks ≤ 5 s apart, capped; exit 3 stale), never a fixed sleep.
 node stardust/scripts/replica/run-bg.mjs start --name <slug>-1440-iter2 -- stardust/scripts/replica/gate.sh <slug> "$LIVE" "$PROTO" 1440 iter2
 node stardust/scripts/replica/run-bg.mjs start --name <slug>-360-iter2  -- stardust/scripts/replica/gate.sh <slug> "$LIVE" "$PROTO" 360  iter2
 node stardust/scripts/replica/run-bg.mjs wait      # returns within 100 s; full output: run-bg.mjs log <job> --grep <re>

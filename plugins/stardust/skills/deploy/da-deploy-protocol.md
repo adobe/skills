@@ -15,15 +15,13 @@ ORG=<daOrg>; REPO=<daRepo>; BRANCH=<branch>; P=<path-without-extension>   # e.g.
 TOKEN="$DA_TOKEN"
 
 # 0. force Code Sync (webhook may not fire for a scripted push) — then wait for
-#    your edited blocks to be live before previewing. Assets gzip → curl --compressed.
+#    your edited blocks to be live before previewing: capped at ~3 min, then fail loud —
+#    never an unbounded wait. Assets gzip: a raw fallback must use curl --compressed.
 curl -sS -X POST -H "Authorization: Bearer $TOKEN" \
   "https://admin.hlx.page/code/$ORG/$REPO/$BRANCH/*"          # expect 202
-for i in $(seq 1 60); do   # capped: ~3 min, then fail loud — never an unbounded wait
-  curl -s --compressed "https://$BRANCH--$REPO--$ORG.aem.page/blocks/<edited-block>/<edited-block>.js" \
-    | grep -q "<a marker string from your edit>" && break
-  [ "$i" = 60 ] && { echo "code sync did not land in 3 min — check the POST above / Code Sync installation" >&2; exit 1; }
-  sleep 3
-done
+node skills/deploy/scripts/fresh-check.mjs "https://$BRANCH--$REPO--$ORG.aem.page/blocks/<edited-block>/<edited-block>.js" \
+  --grep "<a marker string from your edit>" --max-s 180 --every-s 3 \
+  || { echo "code sync did not land in 3 min — check the POST above / Code Sync installation" >&2; exit 1; }
 
 # 1. sanitise non-ASCII to entities (in place, idempotent) — DA corrupts raw UTF-8
 node skills/deploy/scripts/sanitise.js content/$P.html

@@ -364,13 +364,13 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
   element whose source rule was lifted on live); the re-check ran through a
   CACHED stylesheet (DevTools showed the old rule at its old line number
   while both hosts already served the fix) — verify serving out-of-band
-  (`curl --compressed <css-url> | grep '<new-rule>'`; the CSS is
-  gzip-encoded, a bare `curl | grep` scans binary and silently matches
-  nothing) and re-render in a fresh headless context; and a reviewer's
-  screenshot encodes their zoom — back-compute their CSS viewport from any
-  element with a known percentage rule (a card at 851px under `width: 50%`
-  → viewport 1702px) and reproduce THAT viewport headlessly before letting
-  their numbers overturn a fix.
+  (`fresh-check.mjs <css-url> --grep '<new-rule>'` decodes the gzip-encoded
+  CSS; a raw fallback is `curl --compressed`, a bare `curl | grep` scans
+  compressed bytes and silently matches nothing) and re-render in a fresh
+  headless context; and a reviewer's screenshot encodes their zoom —
+  back-compute their CSS viewport from any element with a known percentage
+  rule (a card at 851px under `width: 50%` → viewport 1702px) and reproduce
+  THAT viewport headlessly before letting their numbers overturn a fix.
 - Probe schedule per fix round: **pixels every round; content-diff +
   visual-diff at milestones** — iteration 1, after any fix that touched
   content or markup (not pure CSS values), and once at final. Across ~25
