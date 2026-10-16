@@ -34,9 +34,10 @@
  * REUSE (--skip-existing only; every reuse is printed in the row as `reused`, never silent). Origin captures in the
  * page dir are reused as before; an EDS capture only while its <slug>/gate-key.json proves it current (below).
  * Probes are replayed from <slug>/probes.json while the capture pair they were taken against is the one on disk —
- * same inputs, every probe ok and its JSON the recorded one, origin.json and eds.json no newer than the probes —
- * so the same-minute origin/build pairing holds because the pair is unchanged; --recapture-eds /
- * --recapture-origin invalidate them. Published stage: every row carries `gateKey`, sha256 over the frozen
+ * same inputs, every probe ok and its JSON the recorded one, origin.json and eds.json no newer than the probes, a
+ * reused origin (it keeps its first capture time) the one probes.json recorded in `pair` — so the same-minute
+ * origin/build pairing holds because the pair is unchanged; --recapture-eds / --recapture-origin invalidate them.
+ * Published stage: every row carries `gateKey`, sha256 over the frozen
  * foundation's snapshot + icons/ and plugins/, the shared blocks (no document authors them, or foundation code
  * loads them), the page's blocks with every block they import, its content document plus every nav*, footer* and
  * fragments/ document under content/ (any locale), and the build: EDS origin, source URL, width, criteria and
@@ -197,7 +198,8 @@ const PROBE_AT = { content: (j) => j && j._provenance && j._provenance.at, clip:
  * `files` = the probe JSONs on disk { content, clip, units }. Replays only under --skip-existing, without
  * --recapture-eds (and without --recapture-origin when a probe loads the origin), with the same inputs, every
  * enabled probe recorded ok and its JSON still the recorded one, and BOTH captures no newer than the probes —
- * the capture pair the probes were taken against is the pair on disk.
+ * the capture pair the probes were taken against is the pair on disk; a reused capture must be the one the
+ * sidecar's `pair` ({ origin, eds } capture times) recorded.
  */
 export function probeReuse({ sidecar, inputs, originMeta, edsMeta, files = {}, opts }) {
   const no = (why) => ({ reuse: false, at: null, why });
@@ -216,6 +218,8 @@ export function probeReuse({ sidecar, inputs, originMeta, edsMeta, files = {}, o
   for (const [side, m] of [['origin', originMeta], ['eds', edsMeta]]) {
     if (!m || m.error || !m.at) return no(`no ${side} capture`);
     if (!(sidecar.at >= m.at)) return no(`${side} captured after the probes`);
+    // a reused capture keeps its first capture time, so time order alone cannot prove it is the one the probes saw
+    if (m.reused && !(sidecar.pair && sidecar.pair[side] === m.at)) return no(`${side} is a reused capture the probes were not taken against`);
   }
   return { reuse: true, at: sidecar.at, why: null };
 }
@@ -707,7 +711,8 @@ async function main() {
     const r = results[p.slug] || {}; const state = (x) => (x ? (x.error ? 'error' : 'ok') : null);
     const done = { content: state(r.content), clip: state(r.clip), units: state(r.units) };
     const ats = Object.fromEntries(Object.keys(done).map((k) => [k, done[k] === 'ok' ? PROBE_AT[k](readSafe(join(d, `${k}.json`))) || null : null]));
-    writeFileSync(join(d, 'probes.json'), JSON.stringify({ at, inputs, results: done, ats }, null, 1));
+    const pair = Object.fromEntries(['origin', 'eds'].map((side) => [side, (readSafe(join(d, `${side}.json`)) || {}).at || null]));
+    writeFileSync(join(d, 'probes.json'), JSON.stringify({ at, inputs, results: done, ats, pair }, null, 1));
     if (Object.values(done).some(Boolean)) rec(p, 'probedAt', at);
   }
   async function compare(p) {

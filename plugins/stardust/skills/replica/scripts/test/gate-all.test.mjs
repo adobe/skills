@@ -121,6 +121,15 @@ check('probeReuse: replays only while both captures are the ones the probes were
   assert.match(probeReuse(reuseArgs({ opts: { skip: false } })).why, /--skip-existing/);
   assert.equal(probeReuse(reuseArgs({ sidecar: null })).reuse, false, 'a legacy dir without probes.json');
 });
+check('probeReuse: a reused origin (its first capture time kept) replays only when it is the capture the probes recorded in pair', () => {
+  const paired = (pair, originMeta) => { const a = reuseArgs({ originMeta }); a.sidecar.pair = pair; return probeReuse(a); };
+  const kept = { at: T(1), reused: true, from: 'g/home/origin.png', policy: 'skip-existing' };
+  assert.equal(paired({ origin: T(1), eds: T(2) }, kept).reuse, true, '--skip-existing keeps the origin the probes were taken against');
+  assert.equal(paired({ origin: T(1), eds: T(2) }, { at: T(1) }).reuse, true, 'a plain capture keeps the time-order rule');
+  const copied = { at: T(0), reused: true, from: 'gates/home-1440/live.png', policy: 'same-run' };
+  assert.match(paired({ origin: T(1), eds: T(2) }, copied).why, /origin is a reused capture the probes were not taken against/, 'live.png copied in after the probes, older than them');
+  assert.equal(paired(undefined, kept).reuse, false, 'probes.json without a recorded pair: a reused origin cannot be proven');
+});
 check('gateKeyOf / gateKeyParts: stable across key order; one block CSS byte, content byte, frozen-file hash or mask edit changes it; a freeze mismatch → null', () => {
   const root = mkdtempSync(join(tmpdir(), 'gate-all-key-'));
   const put = (f, s) => { mkdirSync(dirname(join(root, f)), { recursive: true }); writeFileSync(join(root, f), s); };
@@ -336,6 +345,10 @@ check('run 1 (fresh): per page 2 stitches, 1 content probe, 1 compare; probes.js
   assert.equal(r.status, 2, r.stderr); assert.deepEqual(r.n, { origin: 2, eds: 2, probes: 2, compares: 2 });
   for (const slug of ['home', 'about']) { assert.ok(existsSync(pageFile(slug, 'probes.json')), slug); assert.match(storedKey(slug), HEX); assert.equal(row(run1, slug).gateKey, storedKey(slug)); assert.equal(row(run1, slug).reused, null); }
   assert.equal(row(run1, 'about').pass, false); assert.deepEqual(run1._provenance.reuse, { rows: 0, probes: 0 });
+});
+check('probes.json records the capture pair it was taken against (origin.json / eds.json at)', () => {
+  const at = (slug, side) => JSON.parse(readFileSync(pageFile(slug, `${side}.json`), 'utf8')).at;
+  for (const slug of ['home', 'about']) assert.deepEqual(JSON.parse(readFileSync(pageFile(slug, 'probes.json'), 'utf8')).pair, { origin: at(slug, 'origin'), eds: at(slug, 'eds') }, slug);
 });
 r = gateAll(['--skip-existing'], { STUB_FAIL: 'about' });
 check('run 2 --skip-existing: the PASS row reused whole, the FAIL page re-compared on replayed probes — 0 stitches, 0 probes; summary.json equal apart from reused/at and the recorded origin reuse', () => {
