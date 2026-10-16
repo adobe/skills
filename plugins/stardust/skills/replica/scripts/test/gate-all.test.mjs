@@ -457,7 +457,7 @@ check('originReusePlan: url / width / vh / locale mismatches and crawl / error o
   assert.equal(originReusePlan(ask, legacy, fr(legacy)).reuse, true);
   assert.equal(originReusePlan({ ...ask, vh: 900 }, legacy, fr(legacy)).reuse, false, 'a legacy capture had no --vh');
 });
-check('liveReusePlan: the archetype round\'s live.png is reused only with a matching, fresh live.json', () => {
+check('liveReusePlan: the archetype round\'s live.png is reused only when live.json matches every capture parameter of gate-all\'s own stitch and is fresh', () => {
   const live = { writtenBy: 'gate.sh', url: U, width: 1440, locale: 'en-US', settle: true, dismiss: { off: false, consent: null, extra: null }, headed: false, at: AT };
   const la = { stage: 'published', recaptureOrigin: false, url: U, width: 1440 };
   assert.deepEqual(liveReusePlan(la, live, fr(live)), { reuse: true, why: 'same-run' });
@@ -468,6 +468,14 @@ check('liveReusePlan: the archetype round\'s live.png is reused only with a matc
   const old = { ...live, at: '2026-10-16T07:00:00.000Z' };
   assert.match(liveReusePlan(la, old, fr(old)).why, /captured before this run/);
   assert.equal(liveReusePlan({ ...la, recaptureOrigin: true }, live, fr(live)).reuse, false); assert.equal(liveReusePlan({ ...la, stage: 'prototype' }, live, fr(live)).reuse, false);
+  // symmetric capture: --vh, settle, the dismissal set and the UA must be the ones gate-all's stitch would use
+  assert.deepEqual(liveReusePlan({ ...la, vh: 1200 }, live, fr(live)), { reuse: false, why: '--vh set (live.png uses the default viewport)' });
+  assert.equal(liveReusePlan({ ...la, vh: 1200 }, { ...live, vh: 1200 }, fr(live)).reuse, true);
+  assert.equal(liveReusePlan(la, { ...live, vh: 1200 }, fr(live)).reuse, false);
+  assert.equal(liveReusePlan(la, { ...live, settle: false }, fr(live)).reuse, false);
+  assert.match(liveReusePlan(la, { ...live, dismiss: { off: false, consent: '#accept', extra: null } }, fr(live)).why, /consent/);
+  assert.equal(liveReusePlan(la, { ...live, dismiss: { off: false, consent: null, extra: '.modal' } }, fr(live)).reuse, false);
+  assert.equal(liveReusePlan(la, { ...live, ua: 'custom' }, fr(live)).reuse, false);
 });
 check('parseArgs: --origin-max-age <h>; pools 4 / 2 without a machine browser slot, 6 / 4 with STARDUST_BROWSER_SLOT, origin stays 2, explicit flags win', () => {
   assert.equal(parseArgs(['node', 'x'], {}).originMaxAge, null); assert.equal(parseArgs(['node', 'x', '--origin-max-age', '6'], {}).originMaxAge, 6);
@@ -489,10 +497,13 @@ const RS = join(root, 'stardust/scripts/replica'); const DS = join(root, 'stardu
 mkdirSync(RS, { recursive: true }); cpSync(SCRIPT, join(RS, 'gate-all.mjs')); cpSync(DIFF, DS, { recursive: true });
 const STITCH_LOG = join(root, 'stitch.log'); const CP_LOG = join(root, 'cp.log');
 const stub = (dir, name, body) => writeFileSync(join(dir, name), `#!/usr/bin/env node\n${body}\n`);
-// stitch-shot: one line per call (ORIGIN = the www.example.com side, EDS = anything else), writes a PNG stand-in.
+// stitch-shot: one line per call (ORIGIN = the www.example.com side, EDS = anything else), writes a PNG stand-in;
+// STUB_ORIGIN_RC makes the origin capture fail with that exit code.
 stub(RS, 'stitch-shot.mjs', `import { appendFileSync, writeFileSync } from 'node:fs';
   const side = /www\\.example\\.com/.test(process.argv[2]) ? 'ORIGIN' : 'EDS';
-  appendFileSync(${JSON.stringify(STITCH_LOG)}, side + ' ' + process.argv.slice(2).join(' ') + '\\n'); writeFileSync(process.argv[3], 'png');`);
+  appendFileSync(${JSON.stringify(STITCH_LOG)}, side + ' ' + process.argv.slice(2).join(' ') + '\\n');
+  if (side === 'ORIGIN' && process.env.STUB_ORIGIN_RC) { console.error('stitch-shot error: stub exit ' + process.env.STUB_ORIGIN_RC); process.exit(Number(process.env.STUB_ORIGIN_RC)); }
+  writeFileSync(process.argv[3], 'png');`);
 stub(RS, 'pixel-compare.mjs', `console.log(JSON.stringify({ pct: 1.5, heightDelta: 0, compared: { width: 1440, height: 3000 }, pass: true }));`);
 // content-presence: records its argv, whether --origin-cache existed at start and the max-age env it inherited;
 // writes the cache when absent (like the real probe) and a canned content.json.
@@ -576,6 +587,8 @@ check('sandbox 6: the published stage reuses the archetype round\'s fresh live.p
   assert.equal(r.status, 0, r.stderr + r.stdout); assert.equal(r.origin, 0); assert.equal(r.eds, 1);
   assert.deepEqual(r.row('about').originReused, { from: 'stardust/replica/gates/about-1440/live.png', at: liveAt, policy: 'same-run', stale: null });
   const m = read('stardust/replica/gates/all-1440/about/origin.json'); assert.equal(m.headed, false); assert.equal(m.locale, 'en-US'); assert.equal(m.url, live.url);
+  const vh = gate(['--only', 'about', '--vh', '1200']);
+  assert.equal(vh.origin, 1, 'a --vh round never takes the default-viewport live.png'); assert.match(runLog(), /origin about → live\.png not reused \(--vh set/);
   writeFileSync(join(g, 'live.json'), JSON.stringify({ ...live, locale: null }));
   opener(new Date().toISOString());
   assert.equal(gate(['--only', 'about']).origin, 1);
@@ -588,18 +601,37 @@ check('sandbox 7: --skip-existing keeps a stale origin (never a recapture) but r
   assert.match(runLog(), /origin home → reused \(--skip-existing\) WARN captured before this run/);
   assert.equal(read('stardust/replica/gates/all-1440/home/origin.json').policy, 'skip-existing');
 });
-check('sandbox 8: the prototype stage records the archetype round\'s live.png as a reuse with its capture time (live.json, else the PNG mtime)', () => {
+check('sandbox 8: the prototype stage records the archetype round\'s live.png as a reuse with its capture time (live.json, else the PNG mtime), stale when it predates the run', () => {
   const g = join(root, 'stardust/replica/gates/home-1440'); mkdirSync(g, { recursive: true }); writeFileSync(join(g, 'live.png'), 'png');
-  const liveAt = '2026-10-16T07:30:00.000Z'; writeFileSync(join(g, 'live.json'), JSON.stringify({ writtenBy: 'gate.sh', url: 'https://www.example.com/', width: 1440, at: liveAt }));
   const args = ['--stage', 'prototype', '--proto-base', 'http://localhost:9', '--no-probes'];
+  const row = () => read('stardust/replica/gates/prototypes-1440/summary.json').rows.find((x) => x.slug === 'home');
+  const oldAt = new Date(Date.now() - 3600e3).toISOString();
+  writeFileSync(join(g, 'live.json'), JSON.stringify({ writtenBy: 'gate.sh', url: 'https://www.example.com/', width: 1440, at: oldAt }));
   const r = gate(args);
   assert.equal(r.origin, 0, r.stderr + r.stdout);
-  const rw = read('stardust/replica/gates/prototypes-1440/summary.json').rows.find((x) => x.slug === 'home');
-  assert.deepEqual(rw.originReused, { from: 'stardust/replica/gates/home-1440/live.png', at: liveAt, policy: 'prototype-stage', stale: null });
-  assert.equal(read('stardust/replica/gates/prototypes-1440/home/origin.json').at, liveAt);
-  rmSync(join(g, 'live.json')); const mt = new Date('2026-10-16T06:00:00.000Z'); utimesSync(join(g, 'live.png'), mt, mt);
+  const o = row().originReused; assert.equal(o.from, 'stardust/replica/gates/home-1440/live.png'); assert.equal(o.at, oldAt); assert.equal(o.policy, 'prototype-stage'); assert.match(o.stale, /captured before this run/);
+  assert.equal(read('stardust/replica/gates/prototypes-1440/home/origin.json').at, oldAt);
+  assert.match(readFileSync(join(root, 'stardust/replica/gates/prototypes-1440/_run.log'), 'utf8'), /origin home → stitch-live reused .*prototype-stage\) WARN captured before this run/);
+  const nowAt = new Date().toISOString(); writeFileSync(join(g, 'live.json'), JSON.stringify({ writtenBy: 'gate.sh', url: 'https://www.example.com/', width: 1440, at: nowAt }));
+  gate(args); assert.deepEqual(row().originReused, { from: 'stardust/replica/gates/home-1440/live.png', at: nowAt, policy: 'prototype-stage', stale: null });
+  rmSync(join(g, 'live.json')); const mt = new Date(Math.floor((Date.now() - 7200e3) / 1000) * 1000); utimesSync(join(g, 'live.png'), mt, mt);
   gate(args);
   assert.equal(read('stardust/replica/gates/prototypes-1440/home/origin.json').at, mt.toISOString()); assert.equal(statSync(join(g, 'live.png')).mtime.toISOString(), mt.toISOString());
+});
+check('sandbox 9: a failed --recapture-origin keeps the previous origin AND says so — policy recapture-failed + stale when it predates the run, a WARN line, the presence inventory stays with it', () => {
+  assert.equal(gate(['--only', 'home', '--recapture-origin']).origin, 1);
+  const reused = gate(['--only', 'home']); assert.equal(reused.row('home').originReused.policy, 'same-run', 'origin.json now holds a same-run reuse record');
+  const at = read('stardust/replica/gates/all-1440/home/origin.json').at;
+  opener(new Date().toISOString());
+  const a = gate(['--only', 'home', '--recapture-origin'], { STUB_ORIGIN_RC: '1' });
+  assert.equal(a.status, 0, a.stderr + a.stdout); assert.equal(a.origin, 1);
+  const ra = a.row('home').originReused; assert.equal(ra.policy, 'recapture-failed'); assert.equal(ra.at, at); assert.match(ra.stale, /captured before this run/);
+  assert.match(runLog(), /origin home → stitch-live reused .*origin\.png \(captured .*; recapture-failed\) WARN re-shoot failed \(exit 1: .*\) — previous origin kept; captured before this run/);
+  assert.equal(a.cp[0].had, true, 'the kept origin keeps its presence inventory (the probe judges its freshness)');
+  assert.equal(gate(['--only', 'home', '--recapture-origin']).origin, 1);
+  const b = gate(['--only', 'home', '--recapture-origin'], { STUB_ORIGIN_RC: '1' });
+  assert.deepEqual(b.row('home').originReused, { from: 'stardust/replica/gates/all-1440/home/origin.png', at: read('stardust/replica/gates/all-1440/home/origin.json').at, policy: 'same-run', stale: null }, 'a kept plain capture is a recorded reuse, never silent');
+  assert.match(runLog(), /same-run\) WARN re-shoot failed/); assert.equal(b.cp[0].had, true);
 });
 rmSync(root, { recursive: true, force: true });
 console.log(failed ? `\n${failed} failed` : '\nall passed');

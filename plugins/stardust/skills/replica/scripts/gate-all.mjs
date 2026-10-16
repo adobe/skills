@@ -490,15 +490,25 @@ export function originReusePlan({ stage, only, recaptureEds, recaptureOrigin, ur
   if (!fresh || !fresh.fresh) return no((fresh && fresh.reason) || 'no freshness verdict');
   return { reuse: true, why: fresh.policy };
 }
-/** May the published stage take the archetype round's gates/<slug>-<w>/live.png? `liveMeta` = its live.json (gate.sh). */
-export function liveReusePlan({ stage, recaptureOrigin, url, width }, liveMeta, fresh) {
+/**
+ * May the published stage take the archetype round's gates/<slug>-<w>/live.png? `liveMeta` = its live.json (gate.sh).
+ * Symmetric capture: every parameter must be the one gate-all's own origin stitch would use (url, width, --vh, en-US,
+ * --settle, the built-in dismissal only — no site consent / extra selectors —, the default UA). The one deliberate
+ * difference: live.png is headless bundled Chromium (the EDS side's tier), recorded as `headed: false` in origin.json.
+ */
+export function liveReusePlan({ stage, recaptureOrigin, url, width, vh }, liveMeta, fresh) {
   const no = (why) => ({ reuse: false, why });
   if (stage !== 'published') return no(`${stage} stage`);
   if (recaptureOrigin) return no('--recapture-origin');
   if (!liveMeta) return no('no live.json');
   if (liveMeta.url !== url || liveMeta.width !== width) return no('live.json url / width differ');
+  if ((liveMeta.vh ?? null) !== (vh ?? null)) return no(vh != null ? '--vh set (live.png uses the default viewport)' : `live.json vh ${liveMeta.vh}`);
   if (liveMeta.locale !== 'en-US') return no(`live.json locale ${liveMeta.locale}`);
-  if (!liveMeta.dismiss || liveMeta.dismiss.off !== false) return no('live.json overlays not dismissed');
+  if (liveMeta.settle !== true) return no('live.json not settled');
+  const dm = liveMeta.dismiss;
+  if (!dm || dm.off !== false) return no('live.json overlays not dismissed');
+  if (dm.consent != null || dm.extra != null) return no(`live.json dismissed site selectors (consent ${dm.consent}, extra ${dm.extra}) gate-all's stitch does not use`);
+  if (liveMeta.ua != null) return no('live.json custom user agent');
   if (!fresh || !fresh.fresh) return no((fresh && fresh.reason) || 'no freshness verdict');
   return { reuse: true, why: fresh.policy };
 }
@@ -569,9 +579,14 @@ async function main() {
     const crawlShot = join(opts.crawlShots, `${p.slug}.png`);
     const cachedLive = join('stardust/replica/gates', `${p.slug}-${opts.width}`, 'live.png');
     const lm = existsSync(cachedLive) ? tryJson(cachedLive.replace(/\.png$/, '.json')) : null;
-    const lp = liveReusePlan({ stage: opts.stage, recaptureOrigin: opts.recaptureOrigin, url: p.url, width: opts.width }, lm, lm && fresh(lm));
-    let r;
-    if (opts.stage === 'prototype' && existsSync(cachedLive)) { copyFileSync(cachedLive, out); r = { instrument: 'stitch-live', note: `reused ${cachedLive} (the archetype round's capture — hit minimisation)`, ...reuseOf(cachedLive, { at: (lm && lm.at) || statSync(cachedLive).mtime.toISOString() }, 'prototype-stage') }; }
+    const lp = liveReusePlan({ stage: opts.stage, recaptureOrigin: opts.recaptureOrigin, url: p.url, width: opts.width, vh: opts.vh }, lm, lm && fresh(lm));
+    if (opts.stage === 'published' && existsSync(cachedLive) && !lp.reuse) log(`origin ${p.slug} → live.png not reused (${lp.why})`);
+    let r; let warn = null;
+    if (opts.stage === 'prototype' && existsSync(cachedLive)) {
+      copyFileSync(cachedLive, out);
+      const lat = { at: (lm && lm.at) || statSync(cachedLive).mtime.toISOString() }; const f = fresh(lat);
+      r = { instrument: 'stitch-live', note: `reused ${cachedLive} (the archetype round's capture — hit minimisation)`, ...reuseOf(cachedLive, lat, 'prototype-stage'), stale: f.fresh ? undefined : f.reason };
+    }
     else if (lp.reuse) { copyFileSync(cachedLive, out); r = { instrument: 'stitch-live', url: p.url, width: opts.width, locale: 'en-US', headed: false, ...reuseOf(cachedLive, lm, lp.why), note: 'archetype round capture (gate.sh; bundled Chromium — the EDS side\'s tier in legacy mode)' }; }
     else if (opts.blocked && opts.blocked.test(p.url) && !opts.tryBlocked) {
       if (existsSync(crawlShot)) { copyFileSync(crawlShot, out); r = { instrument: 'crawl-fullpage', asymmetric: true, note: `origin matches --blocked ${opts.blocked}; crawl screenshot used (lazy rails may be placeholders)` }; }
@@ -579,14 +594,20 @@ async function main() {
     } else {
       const s = await run('node', [...stitchArgs(p.url, out), '--headed']);
       if (s.code === 0) r = { instrument: 'stitch-live', url: p.url, width: opts.width, locale: 'en-US', vh: opts.vh || null, headed: true, log: s.out.trim().split('\n').slice(-2) };
-      else if (existsSync(out) && existsSync(meta) && opts.recaptureOrigin) r = { ...readJson(meta), note: `re-shoot failed (exit ${s.code}: ${lastLine(s.err)}) — previous origin kept` };
+      else if (existsSync(out) && existsSync(meta) && opts.recaptureOrigin) {
+        // the previous origin stays in use: a recorded reuse (stale when it predates the run), never a silent one
+        const kept = readJson(meta); const f = fresh(kept);
+        warn = `re-shoot failed (exit ${s.code}: ${lastLine(s.err)}) — previous origin kept`;
+        r = { ...kept, ...reuseOf(out, kept, f.fresh ? f.policy : 'recapture-failed'), stale: f.fresh ? undefined : f.reason, note: warn };
+      }
       else if (existsSync(crawlShot)) { copyFileSync(crawlShot, out); r = { instrument: 'crawl-fullpage', asymmetric: true, note: `stitch exit ${s.code}: ${lastLine(s.err)} — crawl screenshot used` }; }
       else r = { instrument: 'none', error: `stitch exit ${s.code}: ${lastLine(s.err)}` };
     }
-    if (!r.at) r.at = new Date().toISOString(); // a reuse keeps its capture time: the evidence time
+    if (!r.at && !r.reused) r.at = new Date().toISOString(); // a reuse keeps its capture time: the evidence time
     if (!r.reused) rmSync(join(d, 'presence-origin.json'), { force: true }); // a new origin capture → a new presence inventory
     writeFileSync(meta, JSON.stringify(r, null, 2)); rec(p, 'origin', r);
-    log(`origin ${p.slug} → ${r.instrument}${r.reused ? ` reused ${r.from} (captured ${r.at}; ${r.policy})` : ''}${r.error ? ` ERROR ${r.error}` : ''}`);
+    const warns = [warn, r.stale].filter(Boolean);
+    log(`origin ${p.slug} → ${r.instrument}${r.reused ? ` reused ${r.from} (captured ${r.at}; ${r.policy})` : ''}${warns.length ? ` WARN ${warns.join('; ')}` : ''}${r.error ? ` ERROR ${r.error}` : ''}`);
   }
   async function captureEds(p) {
     const d = dir(p); mkdirSync(d, { recursive: true });
