@@ -258,10 +258,13 @@ check('(g) --help in an empty dir: exit 0, usage on stdout, nothing written', ()
     assert.equal(r.status, 0); assert.match(r.stdout, /usage/i); assert.deepEqual(readdirSync(cwd), []);
   } finally { rmSync(cwd, { recursive: true, force: true }); }
 });
-check('(h) P3/P4 fields (reused, at, gateKey, origin {instrument: reused}) change nothing', () => {
+check('(h) P3/P4 fields (reused, at, gateKey, originReused, presenceReused, oneLoad, origin {instrument: reused}) change nothing', () => {
   let base = null;
   withProject(A, {}, (root) => { ok(run(root, ['--no-parity'])); base = readT(root).groups; });
-  const p34 = { ...A, rows: A.rows.map((r) => ({ ...r, reused: true, at: T1, gateKey: 'k', origin: { instrument: 'reused', from: `stardust/replica/gates/${r.slug}-1440/live.png`, at: T1 } })) };
+  const from = (r) => `stardust/replica/gates/all-1440/${r.slug}/origin.png`;
+  const p34 = { ...A, rows: A.rows.map((r, i) => ({ ...r, at: T1, gateKey: 'k', origin: { instrument: 'reused', from: `stardust/replica/gates/${r.slug}-1440/live.png`, at: T1 },
+    reused: i ? { what: 'probes', at: T1 } : true, originReused: { from: from(r), at: T1, policy: 'fix-round', stale: null },
+    presenceReused: { from: `stardust/replica/gates/all-1440/${r.slug}/presence-origin.json`, at: T1, policy: 'fix-round' }, oneLoad: { via: 'probes', fallback: 'no inventory' } })) };
   withProject(p34, { summary: { reused: true, at: T1, gateKey: 'k' } }, (root) => { ok(run(root, ['--no-parity'])); assert.deepEqual(readT(root).groups, base); });
 });
 check('(i) runs/: the newest row per page wins, gateRuns counts every row; --no-runs reads summary.json only', () => {
