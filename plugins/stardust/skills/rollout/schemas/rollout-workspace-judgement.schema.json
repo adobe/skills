@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://stardust.dev/schemas/rollout-workspace-judgement.schema.json",
+  "title": "stardust rollout/workspace/judgement.json",
+  "description": "Optional, model-authored judgement rollout applies to coverage: a template's name and one-sentence description go into its templates.json row (inventory.mjs and blocks.mjs); a block's base type, purpose, reuse guidance and colour scheme go into its blocks.json row (blocks.mjs). workspace-manifest.mjs --draft-judgement writes it once, only when absent, with every field to fill empty and, under defaults, the default values at draft time. A value counts as judged when it is non-empty after trimming (reuseGuidance: at least one non-empty list). An empty or missing field is not judged: the template row carries no name or description, and the block row gets the base type its name matches (else unknown) and no purpose, reuse guidance or colour scheme. The file may be partial; toFill is informational. Lenient because a model writes it: every object allows additional properties and nothing inside an entry is required.",
+  "type": "object",
+  "required": ["templates", "blocks"],
+  "additionalProperties": true,
+  "properties": {
+    "_provenance": { "$ref": "#/$defs/provenance" },
+    "templates": {
+      "type": "object",
+      "description": "Judged template fields, keyed by template id (coverage templates.json id).",
+      "additionalProperties": { "$ref": "#/$defs/template" }
+    },
+    "blocks": {
+      "type": "object",
+      "description": "Judged block fields, keyed by EDS block name (a module row's delivery.edsBlockName in coverage blocks.json).",
+      "additionalProperties": { "$ref": "#/$defs/block" }
+    },
+    "defaults": {
+      "type": "object",
+      "description": "For reference only: the default values as of the draft. No script reads it; an empty field is simply not judged.",
+      "additionalProperties": true,
+      "properties": {
+        "templates": {
+          "type": "object",
+          "description": "Keyed by template id.",
+          "additionalProperties": { "$ref": "#/$defs/templateDefault" }
+        },
+        "blocks": {
+          "type": "object",
+          "description": "Keyed by block name.",
+          "additionalProperties": { "$ref": "#/$defs/blockDefault" }
+        }
+      }
+    },
+    "toFill": {
+      "type": "array",
+      "description": "Informational: dotted paths of the fields the draft left empty, sorted. No script reads it; a field counts as judged by its value alone.",
+      "uniqueItems": true,
+      "items": { "type": "string" },
+      "examples": [["blocks.teaser.baseType", "blocks.teaser.purpose", "templates.t1.description"]]
+    }
+  },
+  "$defs": {
+    "provenance": {
+      "type": "object",
+      "required": ["writtenBy", "writtenAt", "stardustVersion"],
+      "additionalProperties": true,
+      "properties": {
+        "writtenBy": { "type": "string", "examples": ["stardust:rollout/workspace-manifest"] },
+        "writtenAt": { "type": "string", "format": "date-time" },
+        "readArtifacts": { "type": "array", "items": { "type": "string" } },
+        "stardustVersion": { "type": ["string", "null"] }
+      }
+    },
+    "template": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Kebab-case template name; empty = not judged.",
+          "examples": ["article", "landing"]
+        },
+        "description": {
+          "type": "string",
+          "description": "One sentence on what the template's pages are for; empty = not judged."
+        }
+      }
+    },
+    "block": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "baseType": {
+          "type": "string",
+          "description": "Standard block the block behaves as, or unknown; empty = not judged.",
+          "examples": ["accordion", "cards", "carousel", "columns", "embed", "form", "fragment", "hero", "modal", "quote", "search", "table", "tabs", "video", "breadcrumbs", "unknown"]
+        },
+        "purpose": { "type": "string", "description": "What the block is for; empty = not judged." },
+        "reuseGuidance": {
+          "type": "object",
+          "description": "Where the block fits and where it does not; judged when at least one list is non-empty.",
+          "additionalProperties": true,
+          "properties": {
+            "suitableFor": { "type": "array", "items": { "type": "string" } },
+            "notSuitableFor": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "colorScheme": {
+          "type": "string",
+          "description": "Colour scheme the block is designed for; empty = not judged.",
+          "examples": ["light", "dark"]
+        }
+      }
+    },
+    "templateDefault": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "name": { "type": "string", "description": "Default kebab-case name." },
+        "description": { "type": "string", "description": "Generated summary of page count and blocks." }
+      }
+    },
+    "blockDefault": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "baseType": { "type": "string", "description": "The standard block the name matches, else unknown." }
+      }
+    }
+  }
+}

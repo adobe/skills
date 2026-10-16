@@ -90,6 +90,7 @@ Run the copies in `stardust/scripts/<skill>/`; ask `--help` only for a flag not 
 - `rollout/seed-redirects.mjs` — knowledge → redirects.tsv — `[--dry-run]`
 - `rollout/update-coverage.mjs` — status writer — `<slug> --status <s> [--url]`; `--block <id> --status <s>`; `--new <slug> --path <p> --template <id> --origin <o>`
 - `rollout/verify.mjs` — full-site verify — `[--base <u>|--root <dir>] [--all]`
+- `rollout/workspace-manifest.mjs` — migration manifest + judgement draft — `[--out <dir>] [--draft-judgement] [--force] [--dry-run]`
 - `spec/lib.mjs` — library, no CLI
 - `spec/rules.mjs` — library (rules), no CLI
 - `spec/spec-capture.mjs` — S6/S8 page + block crops — `[--urls <f>] [--from-cache]`
