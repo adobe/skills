@@ -4,7 +4,7 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
-## 0.34.0 — encoded siblings: the template's map, applied to each capture, replaces the row-2 clone (#NNN)
+## 0.35.0 — encoded siblings: the template's map, applied to each capture, replaces the row-2 clone (#NNN)
 
 Minor: the row-2 and encoder contract change. A recorded hands-off run showed the clone is not needed: every sibling
 encodes from its committed capture and the site's ledgers, while the clone was each sibling's heaviest copy and the
