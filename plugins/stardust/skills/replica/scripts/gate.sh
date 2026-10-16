@@ -13,7 +13,7 @@
 # Usage:
 #   stardust/scripts/replica/gate.sh <slug> <live-url> <build-url> <width> [iter-label]
 #       [--marker <string>] [--full] [--main <selector>] [--consent <sel>] [--dismiss <sel,…>]
-#       [--no-dismiss] [--help]
+#       [--no-dismiss] [--hide <sel,…>] [--help]
 #
 # Horizontal-overflow assert (every round, build side only — no live hit, no
 #   extra page load): the build capture prints one root line,
@@ -100,6 +100,10 @@
 #   --dismiss <sel,…>   extra overlay-dismiss selectors (marketing modals with non-standard closers), same reach
 #   --no-dismiss        do not dismiss consent/marketing overlays — on the captures or the probes (exit 125
 #                       together with --consent / --dismiss: they contradict)
+#   --hide <sel,…>      in-flow per-visitor regions (a location-suggestion strip above the header) that
+#                       chrome-parity removes on both sides before measuring — --full, chrome-parity only;
+#                       --dismiss is for overlays and cannot remove an in-flow bar. gate-all's presence.json
+#                       (gates/all-<w>/ or prototypes-<w>/, this regime's first) reaches chrome-parity too.
 #
 # Example (iteration 2 of the home archetype at 1440):
 #   stardust/scripts/replica/gate.sh home "https://<site>/" \
@@ -152,6 +156,7 @@ MAIN=main
 DISMISS=1
 CONSENT=""
 DISMISS_EXTRA=""
+HIDE=""
 shift 4
 if [ $# -gt 0 ] && [ "${1#--}" = "$1" ]; then LBL=$1; shift; fi
 while [ $# -gt 0 ]; do
@@ -162,6 +167,7 @@ while [ $# -gt 0 ]; do
     --consent) CONSENT=${2:?--consent needs a selector}; shift 2 ;;
     --dismiss) DISMISS_EXTRA=${2:?--dismiss needs a selector list}; shift 2 ;;
     --no-dismiss) DISMISS=0; shift ;;
+    --hide) case "${2:-}" in ''|--*) echo "gate.sh: --hide needs a selector list (see --help)" >&2; exit 125 ;; esac; HIDE=$2; shift 2 ;;
     --help|-h) sed -n '2,/^set -u$/p' "$0" | grep -E '^#' | sed -E 's/^# ?//'; exit 0 ;;
     *) echo "gate.sh: unknown argument $1 (see --help)" >&2; exit 125 ;;
   esac
@@ -184,6 +190,8 @@ else
   STITCH_OPTS=(--no-dismiss)
 fi
 STITCH_OPTS+=(--locale en-US)
+# --hide (in-flow per-visitor regions) reaches chrome-parity only; it is independent of the overlay flags.
+[ -n "$HIDE" ] && CHROME_OPTS+=(--hide "$HIDE")
 
 HERE=$(cd "$(dirname "$0")" && pwd)
 DIR="stardust/replica/gates/$SLUG-$W"
@@ -350,6 +358,13 @@ case "${GATE_REGIME:-auto}" in
   *) case "$BUILD_URL" in http://localhost*|http://127.0.0.1*|file:*) REGIME=prototype ;; *) REGIME=published ;; esac ;;
 esac
 UNITS_FILE="stardust/replica/units.json"
+# gate-all's presence.json (per-slug variable regions) reaches chrome-parity: this regime's sidecar first
+# (published → gates/all-<w>/, prototype → gates/prototypes-<w>/), then the other stage's at the same width.
+if [ "$REGIME" = published ]; then STAGES="all prototypes"; else STAGES="prototypes all"; fi
+for st in $STAGES; do
+  PRES_FILE="stardust/replica/gates/$st-$W/presence.json"
+  [ -f "$PRES_FILE" ] && { CHROME_OPTS+=(--presence "$PRES_FILE" --slug "$SLUG"); break; }
+done
 capped "$PROBE_TIMEOUT" "content-diff $SLUG@$W" node "$DIFF/content-diff.mjs" "$LIVE_URL" "$BUILD_URL" \
   --profile generic --width "$W" --live-cache "$DIR/content-live.json" --main "$MAIN" ${PROBE_OPTS[@]+"${PROBE_OPTS[@]}"} > "$CD" 2>&1 &
 P_CD=$!

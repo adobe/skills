@@ -3,7 +3,8 @@
 // `overflow:` line → exit 2 over a PASS pixel line; no measure.mjs launched in a round), the one capture retry on
 // exit 1 (live, build; 3 / 4 / 124 final; the retried attempt's overflow line decides), the --full probe fan-out
 // and its exit-code rules, the overlay flags (--consent / --dismiss / --no-dismiss reaching both
-// captures, the diff probes and chrome-parity), with stub instruments (no browser, no network).
+// captures, the diff probes and chrome-parity), --hide and gate-all's presence.json reaching chrome-parity only,
+// with stub instruments (no browser, no network).
 // Run: node skills/replica/scripts/test/gate.test.mjs
 import { spawn } from 'node:child_process';
 import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
@@ -116,6 +117,7 @@ check('--help exits 0', r.status === 0, `status ${r.status}`);
 check('--help prints the usage block', /Usage:/.test(r.stdout) && /--full/.test(r.stdout));
 check('--help names the overflow assert and the capture retry', /Horizontal-overflow assert/.test(r.stdout) && /Capture retry/.test(r.stdout) && /overflow-<label>\.txt/.test(r.stdout));
 check('--help documents the overlay flags', /Overlay dismissal/.test(r.stdout) && /--consent <sel>/.test(r.stdout) && /--dismiss <sel,…>/.test(r.stdout) && /--no-dismiss/.test(r.stdout), r.stdout.slice(0, 400));
+check('--help documents --hide and presence.json reaching chrome-parity', /\[--hide <sel,…>\]/.test(r.stdout) && /^ {2}--hide <sel,…> /m.test(r.stdout) && /presence\.json/.test(r.stdout));
 
 // Plain pixel round (no --full): verdict lines, evidence, exit = pixel rc.
 r = await gate(['home', 'https://live.example/', buildUrl, '1440', 'iter1']);
@@ -335,6 +337,39 @@ check('a cached live.png round keeps the probes\' live caches', r.status === 0 &
 unlinkSync(join(root, gdir('lj5'), 'live.png'));
 r = await gate(['lj5', 'https://live.example/lj5', buildUrl, '1440', 'j9', '--marker', 'home-proposed']);
 check('retaking live.png drops content-, visual- and presence-live.json; chrome-live.json is left alone', r.status === 0 && present('lj5').join(',') === 'chrome-live.json', present('lj5').join(','));
+
+// --hide (in-flow per-visitor regions) reaches chrome-parity only — never the captures or the diff probes — and is
+// independent of --no-dismiss; gate-all's presence.json reaches chrome-parity as --presence <file> --slug <slug>: this
+// regime's sidecar first (prototype → gates/prototypes-<w>/, published → gates/all-<w>/), then the other stage's.
+const HIDE = '.geo-bar, .location-bar';
+resetArgs();
+r = await gate(['hide1', 'https://live.example/hide1', buildUrl, '1440', 'h1', '--full', '--marker', 'home-proposed', '--hide', HIDE], { STUB_STITCH_ARGS: argsFile });
+check('--hide reaches chrome-parity as one --hide "<list>" (value intact), not the captures or the diff probes', r.status === 0
+  && new RegExp(`--live-cache \\S+ --hide ${HIDE}$`, 'm').test(evidence('hide1', 'chrome-parity-h1.txt'))
+  && stitchArgs().length === 2 && stitchArgs().every((l) => !/--hide|geo-bar/.test(l))
+  && ['content-diff-h1.txt', 'visual-diff-h1.txt', 'clip-h1.txt'].every((f) => /^argv /m.test(evidence('hide1', f)) && !/--hide|geo-bar/.test(evidence('hide1', f))), `status ${r.status} | ${stitchArgs().join(' | ')} | ${evidence('hide1', 'chrome-parity-h1.txt')}`);
+r = await gate(['hide1', 'https://live.example/hide1', buildUrl, '1440', 'h2', '--full', '--marker', 'home-proposed', '--no-dismiss', '--hide', '.geo-bar']);
+check('--hide is independent of --no-dismiss: no contradiction, chrome-parity still gets it', r.status === 0 && /--live-cache \S+ --hide \.geo-bar$/m.test(evidence('hide1', 'chrome-parity-h2.txt')), `status ${r.status} ${r.stderr}`);
+r = await gate(['hide1', 'https://live.example/hide1', buildUrl, '1440', 'h3', '--full', '--marker', 'home-proposed', '--dismiss', EXTRA, '--hide', '.geo-bar']);
+check('--hide joins the overlay flags on chrome-parity\'s argv', r.status === 0 && new RegExp(`--live-cache \\S+ --dismiss ${EXTRA} --hide \\.geo-bar$`, 'm').test(evidence('hide1', 'chrome-parity-h3.txt')), evidence('hide1', 'chrome-parity-h3.txt'));
+r = await gate(['hide1', 'https://live.example/hide1', buildUrl, '1440', 'h4', '--hide']);
+check('--hide without a selector list is a usage error (exit 125)', r.status === 125 && /--hide needs a selector list/.test(r.stderr), `status ${r.status} ${r.stderr}`);
+r = await gate(['hide1', 'https://live.example/hide1', buildUrl, '1440', 'h5', '--hide', '--full']);
+check('--hide followed by a flag is a usage error too (the flag is not taken as a selector)', r.status === 125 && /--hide needs a selector list/.test(r.stderr), `status ${r.status} ${r.stderr}`);
+const presenceFile = (stage) => `stardust/replica/gates/${stage}-1440/presence.json`;
+const writePresence = (stage) => { mkdirSync(join(root, dirname(presenceFile(stage))), { recursive: true }); writeFileSync(join(root, presenceFile(stage)), JSON.stringify({ pres1: { variable: ['.geo-bar'] } })); };
+writePresence('prototypes'); writePresence('all');
+r = await gate(['pres1', 'https://live.example/pres1', buildUrl, '1440', 'p1', '--full', '--marker', 'home-proposed']);
+check('prototype regime: gates/prototypes-<w>/presence.json reaches chrome-parity as --presence <file> --slug <slug>', r.status === 0 && new RegExp(`--live-cache \\S+ --presence ${presenceFile('prototypes')} --slug pres1$`, 'm').test(evidence('pres1', 'chrome-parity-p1.txt')), evidence('pres1', 'chrome-parity-p1.txt'));
+r = await gate(['pres1', 'https://live.example/pres1', buildUrl, '1440', 'p2', '--full', '--marker', 'home-proposed'], { GATE_REGIME: 'published' });
+check('published regime: gates/all-<w>/presence.json is preferred', r.status === 0 && new RegExp(`--presence ${presenceFile('all')} --slug pres1$`, 'm').test(evidence('pres1', 'chrome-parity-p2.txt')), evidence('pres1', 'chrome-parity-p2.txt'));
+unlinkSync(join(root, presenceFile('prototypes')));
+r = await gate(['pres1', 'https://live.example/pres1', buildUrl, '1440', 'p3', '--full', '--marker', 'home-proposed', '--hide', '.promo-strip']);
+check('prototype regime with only gates/all-<w>/presence.json: the other stage\'s file is passed (after --hide)', r.status === 0 && new RegExp(`--hide \\.promo-strip --presence ${presenceFile('all')} --slug pres1$`, 'm').test(evidence('pres1', 'chrome-parity-p3.txt')), evidence('pres1', 'chrome-parity-p3.txt'));
+check('presence.json reaches chrome-parity only', ['content-diff-p3.txt', 'visual-diff-p3.txt', 'clip-p3.txt'].every((f) => /^argv /m.test(evidence('pres1', f)) && !/--presence/.test(evidence('pres1', f))));
+unlinkSync(join(root, presenceFile('all')));
+r = await gate(['pres1', 'https://live.example/pres1', buildUrl, '1440', 'p4', '--full', '--marker', 'home-proposed']);
+check('no presence.json: no --presence flag', r.status === 0 && /^argv /m.test(evidence('pres1', 'chrome-parity-p4.txt')) && !/--presence|--slug/.test(evidence('pres1', 'chrome-parity-p4.txt')), evidence('pres1', 'chrome-parity-p4.txt'));
 
 server.close();
 if (process.env.GATE_TEST_KEEP) console.log(`sandbox kept at ${root} (build url was ${buildUrl})`);
