@@ -56,7 +56,8 @@
  *                map/transform, missing input · 2 any page stopped (2 wins over 1). Exit 0 means "encoded", never
  *                "done": the gates still decide.
  *   --roundtrip  `roundtrip <archetype> at <level>: equal | not equal (N differences) — <content file>` — 0 equal ·
- *                2 not equal (or the archetype stops) · 1 usage, no gated document
+ *                2 not equal; `roundtrip <archetype>: no (the archetype stops: <status>)` — 2; no gated document —
+ *                one stderr line, no verdict, 1 (as for usage)
  *   --lint       `lint <archetype>: N findings · N notes` — 0 no finding · 1 any finding (an invalid map included)
  *   --sweep      `sweep <archetype>: N siblings · new kinds N · unknown modifiers N · zero-hit markers N` — 0 nothing
  *                listed · 2 something listed · 1 usage, an invalid map or no usable archetype
@@ -93,7 +94,9 @@ Verdict (last line) · exit, per mode:
   encode       encoded N · unchanged N · stopped N
                0 encoded/unchanged · 1 usage, invalid map/transform, missing input · 2 a page stopped (2 wins over 1)
   --roundtrip  roundtrip <archetype> at <level>: equal | not equal (N differences) — <content file>
-               0 equal · 2 not equal or the archetype stops · 1 usage, no gated document
+               0 equal · 2 not equal
+               roundtrip <archetype>: no (the archetype stops: <status>) — 2
+               no gated document: one stderr line, no verdict — 1 (as for usage)
   --lint       lint <archetype>: N findings · N notes
                0 no finding · 1 any finding (an invalid map included)
   --sweep      sweep <archetype>: N siblings · new kinds N · unknown modifiers N · zero-hit markers N
