@@ -251,7 +251,7 @@ async function main() {
     }
 
     // --inventory: the probes read this settled page (read only, before the freeze; a failure never fails the capture).
-    if (opts.inventory) await import(pathToFileURL(resolvePath(dirname(LIVE_SESSION), 'content-presence.mjs')).href).then((m) => m.inventoryToFile(page, opts.inventory, { url }), (e) => console.error(`stitch-shot WARNING: --inventory not taken (${e.message}) — the capture continues`));
+    if (opts.inventory) await import(pathToFileURL(resolvePath(dirname(LIVE_SESSION), 'content-presence.mjs')).href).then((m) => m.inventoryToFile(page, opts.inventory, { url })).catch((e) => console.error(`stitch-shot WARNING: --inventory not taken (${e.message}) — the capture continues`));
 
     // Freeze animations/transitions/carets for stable chunks — AFTER settle.
     await page.addStyleTag({ content: '*,*::before,*::after{animation-play-state:paused!important;transition:none!important;caret-color:transparent!important;scroll-behavior:auto!important;}html{scroll-behavior:auto!important}' });
