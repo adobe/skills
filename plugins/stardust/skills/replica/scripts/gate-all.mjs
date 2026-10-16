@@ -28,23 +28,25 @@
  * <out>/units.json per page still reads). Origin fallback: live stitch → previous origin
  * (--recapture-origin) → <crawl-shots>/<slug>.png (`crawl-fullpage`, asymmetric, flagged).
  *
- * REUSE (--skip-existing only; every reuse is printed in the row as `reused`, never silent). Captures in the
- * page dir are reused as before. Probes are replayed from <slug>/probes.json while the capture pair they were
- * taken against is the one on disk — same inputs, every probe ok and its JSON the recorded one, origin.json and
- * eds.json no newer than the probes — so the same-minute origin/build pairing holds because the pair is
- * unchanged; --recapture-eds / --recapture-origin invalidate them. Published stage: every row carries `gateKey`,
- * sha256 over the frozen-foundation manifest (else the default foundation set) + icons/ and plugins/, the
- * shared blocks (no document authors them, or foundation code loads them), the page's blocks with every block
- * they import, its content documents (page, nav, footer, linked fragments), and the build: EDS origin, source
- * URL, width, criteria and thresholds, the page's sidecar entries and the gate's instrument files. It is issued
- * only while that tree is what the gated host serves (code: no difference from the upstream branch, no untracked
- * file, host <ref>--<repo>--<owner> = that branch and remote; documents: the newest deploy-ledger row delivered
- * to that <owner>/<repo> (`verifiedOn`) with the same contentSha), else null with the reason in the run log.
+ * REUSE (--skip-existing only; every reuse is printed in the row as `reused`, never silent). Origin captures in the
+ * page dir are reused as before; an EDS capture only while its <slug>/gate-key.json proves it current (below).
+ * Probes are replayed from <slug>/probes.json while the capture pair they were taken against is the one on disk —
+ * same inputs, every probe ok and its JSON the recorded one, origin.json and eds.json no newer than the probes —
+ * so the same-minute origin/build pairing holds because the pair is unchanged; --recapture-eds /
+ * --recapture-origin invalidate them. Published stage: every row carries `gateKey`, sha256 over the frozen
+ * foundation's snapshot + icons/ and plugins/, the shared blocks (no document authors them, or foundation code
+ * loads them), the page's blocks with every block they import, its content document plus every nav*, footer* and
+ * fragments/ document under content/ (any locale), and the build: EDS origin, source URL, width, criteria and
+ * thresholds, the page's sidecar entries and the gate's instrument files with every local module they load. It is
+ * issued only while that tree is what the gated host serves (code: no changed or untracked file under a path
+ * hashed into THIS key, against the upstream branch; host <ref>--<repo>--<owner> = that branch and remote;
+ * documents: the newest deploy-ledger row delivered to that <owner>/<repo> (`verifiedOn`) with the same
+ * contentSha), else null with the reason in the run log (a frozen-file edit since the freeze: null until re-frozen).
  * A PASS row whose key holds, from a table written under the same criteria, is reused whole (no stitch, probe or
- * compare); a changed key — or any frozen-file edit since the freeze — re-shoots the EDS side. A fresh row keeps
- * the key of its evidence only while that key is current (unknown now: same build part, probes not re-run).
- * <slug>/gate-key.json records the key of the EDS capture taken in that run; a dir without one (legacy) keeps
- * today's behaviour until its next EDS capture.
+ * compare). The EDS side is re-shot unless gate-key.json holds the same known key — or, the key unknown now, the
+ * same parts, the same reason and the same ledger rows; a dir without gate-key.json (legacy) is re-shot once. A
+ * fresh row keeps the key of its evidence only while that key is current (unknown now: same build part, probes
+ * not re-run).
  *
  * Usage: node skills/replica/scripts/gate-all.mjs [--stage published|prototype] [--proto-base <url>]
  *        [--state f] [--out dir] [--width 1440] [--only <slug,…>] [--skip-existing] [--recapture-eds] [--recapture-origin] [--eds-host <h>]
@@ -56,13 +58,13 @@
  * and foundation-freeze.mjs next to this file; the diff skill's scripts dir alongside. Exit: 0 all PASS
  * (overrides count), 2 any FAIL, 1 error. `verdict`, `formatSummary`, `parseArgs` and the reuse helpers
  * (`probeInputs`, `probeReuse`, `canon`, `gateKeyParts`, `gateKeyOf`, `foundationPart`, `sharedBlocks`,
- * `blockRefs`, `edsHostOf`, `codeDeployed`, `hostServes`, `deployedDocs`, `contentDeployed`, `keyChanged`,
- * `skipCapture`, `rowKey`, `latestRows`, `rowReuse`) are exported.
+ * `blockRefs`, `chromeDocs`, `instrumentFiles`, `edsHostOf`, `codeDeployed`, `codePushed`, `hostServes`,
+ * `deployedDocs`, `contentDeployed`, `keyChanged`, `skipCapture`, `rowKey`, `latestRows`, `rowReuse`) are exported.
  */
 import { execFileSync, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
-import { basename, dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { DEFAULT_OUT as FREEZE_MANIFEST, DEFAULT_PATHS as FOUNDATION_PATHS, snapshot } from './foundation-freeze.mjs';
 
@@ -237,7 +239,7 @@ function blockClosure(root, start) {
  * The shared blocks part (once per run, the same for every page): every blocks/<name>/ dir no content document
  * authors (`<div class>` anywhere under content/, or a coverage row) — auto-blocks, fragment loaders — plus every
  * block the foundation or runtime code loads (imports, `buildBlock`), with what those load. An edit there changes
- * every key (rare; errs safe). Authored blocks stay per page.
+ * every key (rare; errs safe). Authored blocks stay per page. `authored` = every block name a document or coverage row names.
  */
 export function sharedBlocks(root = '.', coverage = {}) {
   const dir = join(root, 'blocks');
@@ -247,54 +249,78 @@ export function sharedBlocks(root = '.', coverage = {}) {
   const loaded = [];
   for (const f of filesUnder(root, [...FOUNDATION_PATHS, ...RUNTIME_PATHS])) if (/\.(m?js|css|html)$/.test(f)) loaded.push(...blockRefs(readFileSync(join(root, f), 'utf8'), f.startsWith('blocks/')));
   const names = blockClosure(root, [...all.filter((n) => !authored.has(n)), ...loaded]);
-  return { hash: sha256(canon(Object.fromEntries(names.map((n) => [n, blockFiles(root, n)])))), names };
+  return { hash: sha256(canon(Object.fromEntries(names.map((n) => [n, blockFiles(root, n)])))), names, authored: [...authored].filter((n) => NAME.test(n)).sort() };
 }
-// The gate's own instruments (this file, stitch-shot, pixel-compare, the diff probes): a new verdict or probe is a key change.
+// The gate's instruments (this file, stitch-shot, pixel-compare, the diff probes) and every local module they load —
+// a new verdict, probe or capture engine is a key change. A relative `.mjs` / `.js` string literal that resolves to a
+// file counts as a load (static and dynamic imports, candidate lists such as stitch-shot's live-session paths).
+export function instrumentFiles(roots) {
+  const seen = new Set(); const queue = roots.filter((f) => existsSync(f)).map((f) => resolve(f));
+  while (queue.length) {
+    const f = queue.shift();
+    if (!seen.has(f)) {
+      seen.add(f);
+      for (const m of readFileSync(f, 'utf8').matchAll(/['"`](\.{1,2}\/[^'"`\s]+\.m?js)['"`]/g)) { const dep = resolve(dirname(f), m[1]); if (existsSync(dep)) queue.push(dep); }
+    }
+  }
+  return [...seen].sort();
+}
 let instrumentsMemo = null;
 function instrumentsHash() {
   if (!instrumentsMemo) {
-    const files = [fileURLToPath(import.meta.url), STITCH, PIXEL, ...(DIFF_DIR ? ['content-presence.mjs', 'clip-probe.mjs', 'unit-geometry.mjs'].map((f) => join(DIFF_DIR, f)) : [])];
-    instrumentsMemo = sha256(canon(Object.fromEntries(files.filter((f) => existsSync(f)).map((f) => [basename(f), sha256(readFileSync(f))]))));
+    const roots = [fileURLToPath(import.meta.url), STITCH, PIXEL, ...(DIFF_DIR ? ['content-presence.mjs', 'clip-probe.mjs', 'unit-geometry.mjs'].map((f) => join(DIFF_DIR, f)) : [])];
+    instrumentsMemo = sha256(canon(Object.fromEntries(instrumentFiles(roots).map((f) => [relative(HERE, f).split(sep).join('/'), sha256(readFileSync(f))]))));
   }
   return instrumentsMemo;
 }
 /**
- * The foundation part of the gate key. With stardust/rollout/foundation-freeze.json: the hash of its `files` while a
- * fresh snapshot equals them (else null — `foundation changed since freeze`); without one: the hash of the default
- * foundation set on disk. `runtime` = the hash of RUNTIME_PATHS; `paths` = the foundation paths the deploy-state
- * guard diffs against the upstream branch.
+ * The foundation part of the gate key: the hash of the frozen paths' snapshot (= of the manifest's `files` while
+ * `foundation-freeze check` passes; without a manifest, of the default foundation set). `why` = `foundation changed
+ * since freeze` when the snapshot left the manifest (no key, but the parts still say what changed). `runtime` = the
+ * hash of RUNTIME_PATHS; `paths` = the foundation paths the deploy-state guard diffs against the upstream branch.
  */
 export function foundationPart(root = '.') {
   const manifest = join(root, FREEZE_MANIFEST); const runtime = sha256(canon(snapshot(root, RUNTIME_PATHS)));
-  if (!existsSync(manifest)) return { hash: sha256(canon(snapshot(root, FOUNDATION_PATHS.filter((x) => existsSync(join(root, x)))))), runtime, paths: FOUNDATION_PATHS, why: null };
-  const m = JSON.parse(readFileSync(manifest, 'utf8')); const paths = Array.isArray(m.paths) ? m.paths : FOUNDATION_PATHS;
-  if (canon(snapshot(root, paths)) !== canon(m.files || {})) return { hash: null, runtime, paths, why: FREEZE_WHY };
-  return { hash: sha256(canon(m.files)), runtime, paths, why: null };
+  const m = existsSync(manifest) ? JSON.parse(readFileSync(manifest, 'utf8')) : null;
+  const paths = m && Array.isArray(m.paths) ? m.paths : FOUNDATION_PATHS;
+  const now = canon(snapshot(root, paths.filter((x) => existsSync(join(root, x)))));
+  return { hash: sha256(now), runtime, paths, why: m && now !== canon(m.files || {}) ? FREEZE_WHY : null };
 }
 /**
- * gateKeyParts(p, ctx) → { parts, why }: what a published row's verdict depends on, or parts null + why.
- * ctx = { root, opts, edsUrl, masks, clipAllow, presence, unitsOf, foundation, coverage (slug → block names), shared,
- * instruments }. blocks: coverage/pages.json `blocks` ∪ the first class token of every `<div class>` in the page's
- * documents, with every block dir those load — each file hashed; shared: sharedBlocks(). content: content<daPath>.html,
- * nav, footer and the /fragments/ documents they link. build: the EDS origin, the source URL, the width, the gate
- * settings, the page's sidecar entries (a mask or allowance edit is a key change) and the instruments' hash.
+ * Chrome documents for every key (once per run): every nav*.html and footer*.html anywhere under content/ and every
+ * document under a fragments/ dir at any depth — per-locale navs and fragments included (an edit to any re-gates every
+ * page; errs safe). → { files: { path: sha256 }, names: block names they author }.
  */
-export function gateKeyParts(p, { root = '.', opts, edsUrl = (x) => x.liveUrl, masks = {}, clipAllow = {}, presence = {}, unitsOf = () => [], foundation = foundationPart(root), coverage = {}, shared = sharedBlocks(root, coverage), instruments = instrumentsHash() }) {
-  if (foundation.why) return { parts: null, why: foundation.why };
-  const url = new URL(edsUrl(p)); const page = `content${daPathOf(url.pathname)}.html`;
-  if (!existsSync(join(root, page))) return { parts: null, why: `no ${page}` };
-  const docs = [page, 'content/nav.html', 'content/footer.html']; const content = {};
-  const named = new Set(coverage[p.slug] || []);
-  for (let i = 0; i < docs.length; i += 1) {
-    if (!existsSync(join(root, docs[i]))) continue;
-    const buf = readFileSync(join(root, docs[i])); const html = buf.toString('utf8'); content[docs[i]] = sha256(buf);
-    for (const m of html.matchAll(BLOCK_CLASS)) named.add(m[1]);
-    for (const m of html.matchAll(/href="(?:https?:\/\/[^/"]+)?(\/fragments\/[\w/-]+?)(?:\.html)?(?:[?#][^"]*)?"/gi)) if (!docs.includes(`content${m[1]}.html`)) docs.push(`content${m[1]}.html`);
+export function chromeDocs(root = '.') {
+  const files = {}; const names = new Set();
+  for (const f of filesUnder(root, ['content/'])) {
+    if (!f.endsWith('.html') || !(/^(nav|footer)/.test(basename(f)) || f.split('/').slice(1, -1).includes('fragments'))) continue;
+    const buf = readFileSync(join(root, f)); files[f] = sha256(buf);
+    for (const m of buf.toString('utf8').matchAll(BLOCK_CLASS)) names.add(m[1]);
   }
-  const blocks = Object.fromEntries(blockClosure(root, named).map((n) => [n, blockFiles(root, n)]));
+  return { files, names: [...names].sort() };
+}
+/**
+ * gateKeyParts(p, ctx) → { parts, why, blockNames }: what a published row's verdict depends on (parts null + why
+ * only when the page's document is missing; a stale freeze gives parts + why). ctx = { root, opts, edsUrl, masks,
+ * clipAllow, presence, unitsOf, foundation, coverage (slug → block names), shared, chrome, instruments }.
+ * blocks: coverage/pages.json `blocks` ∪ the first class token of every `<div class>` in the page's document and the
+ * chrome documents, with every block dir those load — each file hashed; shared: sharedBlocks(). content: the page's
+ * content<daPath>.html + chromeDocs(). build: the EDS origin, the source URL, the width, the gate settings, the
+ * page's sidecar entries (a mask or allowance edit is a key change) and the instruments' hash. `blockNames` = every
+ * block name the page names or loads (dir or not) — the deploy-state guard checks them.
+ */
+export function gateKeyParts(p, { root = '.', opts, edsUrl = (x) => x.liveUrl, masks = {}, clipAllow = {}, presence = {}, unitsOf = () => [], foundation = foundationPart(root), coverage = {}, shared = sharedBlocks(root, coverage), chrome = chromeDocs(root), instruments = instrumentsHash() }) {
+  const url = new URL(edsUrl(p)); const page = `content${daPathOf(url.pathname)}.html`;
+  if (!existsSync(join(root, page))) return { parts: null, why: `no ${page}`, blockNames: [] };
+  const buf = readFileSync(join(root, page));
+  const named = new Set([...(coverage[p.slug] || []), ...chrome.names, ...[...buf.toString('utf8').matchAll(BLOCK_CLASS)].map((m) => m[1])]);
+  const closure = blockClosure(root, named);
+  const blocks = Object.fromEntries(closure.map((n) => [n, blockFiles(root, n)]));
   const settings = { threshold: opts.threshold, heightTol: opts.heightTol, clipMax: opts.clipMax, unitTol: opts.unitTol, clip: opts.clip, content: opts.content };
   const sidecars = { masks: masks[p.slug] ?? null, clipAllow: clipAllow[p.slug] ?? null, presence: presence[p.slug] ?? null, units: unitsOf(p) };
-  return { parts: { v: 1, foundation: foundation.hash, runtime: foundation.runtime, shared: shared.hash, blocks, content, build: { origin: url.origin, source: p.url, width: opts.width, settings, sidecars, instruments } }, why: null };
+  const parts = { v: 1, foundation: foundation.hash, runtime: foundation.runtime, shared: shared.hash, blocks, content: { [page]: sha256(buf), ...chrome.files }, build: { origin: url.origin, source: p.url, width: opts.width, settings, sidecars, instruments } };
+  return { parts, why: foundation.why || null, blockNames: [...new Set([...named, ...closure])].filter((n) => NAME.test(n)).sort() };
 }
 /** gateKeyOf(parts) → hex sha256 of the canonical (sorted-key) JSON of the parts (they carry `v`), or null. */
 export const gateKeyOf = (parts) => (parts ? sha256(canon(parts)) : null);
@@ -304,14 +330,14 @@ export function edsHostOf(host) {
   return m ? { ref: m[1].toLowerCase(), repo: m[2].toLowerCase(), owner: m[3].toLowerCase(), tier: m[4].toLowerCase() } : null;
 }
 /**
- * Deploy-state guard, code half (once per run): an upstream branch exists, `git diff @{u}` over the hashed code
- * paths is empty (nothing uncommitted or unpushed) and none of them holds an untracked file → { ok, why, branch,
- * ref, owner, repo } (ref / owner / repo = the upstream branch and remote repo in EDS host-label form).
+ * Deploy-state guard, code half (one git call set per run): the upstream branch and remote, and every changed
+ * (`git diff --relative @{u}`) or untracked file under the hashed code paths → { ok, why, changed, added, branch,
+ * ref, owner, repo } (ref / owner / repo in EDS host-label form). `ok` is false only when the upstream cannot be
+ * read; codePushed() decides per page.
  */
 export function codeDeployed(paths, root = '.') {
   const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).split('\n').filter(Boolean);
-  const named = (l) => `${l.slice(0, 3).join(', ')}${l.length > 3 ? ` (+${l.length - 3})` : ''}`;
-  let up; let branch; let remoteUrl;
+  let up; let branch; let remoteUrl; let changed; let added;
   try { [up] = git('rev-parse', '--abbrev-ref', '@{u}'); } catch { return { ok: false, why: 'no upstream branch (git rev-parse @{u}) — the deployed code cannot be proven' }; }
   try {
     const [head] = git('symbolic-ref', '--short', 'HEAD');
@@ -319,13 +345,24 @@ export function codeDeployed(paths, root = '.') {
     [remoteUrl] = git('remote', 'get-url', git('config', '--get', `branch.${head}.remote`)[0]);
   } catch { return { ok: false, why: `cannot read the branch and remote behind ${up}` }; }
   try {
-    const changed = git('diff', '--name-only', '@{u}', '--', ...paths);
-    if (changed.length) return { ok: false, why: `code differs from ${up} (not pushed, so not deployed): ${named(changed)}` };
-    const added = git('ls-files', '--others', '--exclude-standard', '--', ...paths);
-    if (added.length) return { ok: false, why: `untracked code, not deployed: ${named(added)}` };
+    changed = git('diff', '--name-only', '--relative', '@{u}', '--', ...paths);
+    added = git('ls-files', '--others', '--exclude-standard', '--', ...paths);
   } catch (e) { return { ok: false, why: `git: ${String(e.message).split('\n')[0]}` }; }
   const [owner, repo] = remoteUrl.replace(/\/+$/, '').replace(/\.git$/, '').split(/[/:]/).slice(-2).map(hostLabel);
-  return { ok: true, why: null, branch, ref: hostLabel(branch), owner, repo };
+  return { ok: true, why: null, upstream: up, changed, added, branch, ref: hostLabel(branch), owner, repo };
+}
+/**
+ * Deploy-state guard, code half per page: no changed or untracked file under a path hashed into THIS key — the
+ * foundation and runtime paths and all of blocks/ except the dirs only other pages author (`others`), so a deleted
+ * or unpushed block this page names still counts → null, else why.
+ */
+export function codePushed(code, paths, others = []) {
+  const mine = (f) => paths.some((x) => (x.endsWith('/') ? f.startsWith(x) : f === x)) && !others.some((n) => f.startsWith(`blocks/${n}/`));
+  const named = (l) => `${l.slice(0, 3).join(', ')}${l.length > 3 ? ` (+${l.length - 3})` : ''}`;
+  const changed = code.changed.filter(mine); const added = code.added.filter(mine);
+  if (changed.length) return `code differs from ${code.upstream} (not pushed, so not deployed): ${named(changed)}`;
+  if (added.length) return `untracked code, not deployed: ${named(added)}`;
+  return null;
 }
 /** Deploy-state guard, per page: the gated host serves the pushed branch of the pushed repo → null, else why. */
 export function hostServes(host, code) {
@@ -335,7 +372,7 @@ export function hostServes(host, code) {
   if (h.repo !== code.repo || h.owner !== code.owner) return `gated host serves ${h.owner}/${h.repo}, the upstream remote is ${code.owner}/${code.repo}`;
   return null;
 }
-/** webPath → { contentSha, status, verifiedOn } of the newest row (by `ts`) across content/.deploy-ledger.json and stardust/deploy/ledger-*.json. */
+/** webPath → { contentSha, status, verifiedOn, ts } of the newest row (by `ts`) across content/.deploy-ledger.json and stardust/deploy/ledger-*.json. */
 export function deployedDocs(root = '.') {
   const dl = join(root, 'stardust/deploy');
   const files = [join(root, 'content/.deploy-ledger.json'), ...(existsSync(dl) ? readdirSync(dl).filter((f) => /^ledger-.*\.json$/.test(f)).map((f) => join(dl, f)) : [])];
@@ -344,7 +381,7 @@ export function deployedDocs(root = '.') {
     let ledger; try { ledger = JSON.parse(readFileSync(f, 'utf8')); } catch { continue; }
     for (const [path, row] of Object.entries(ledger || {})) if (row && typeof row === 'object' && (!newest[path] || String(row.ts || '') > String(newest[path].ts || ''))) newest[path] = row;
   }
-  return Object.fromEntries(Object.entries(newest).map(([path, row]) => [path, { contentSha: row.contentSha || null, status: row.status || null, verifiedOn: row.verifiedOn || null }]));
+  return Object.fromEntries(Object.entries(newest).map(([path, row]) => [path, { contentSha: row.contentSha || null, status: row.status || null, verifiedOn: row.verifiedOn || null, ts: row.ts || null }]));
 }
 /**
  * Deploy-state guard, content half: every hashed document is the one the gated host serves — its newest ledger row
@@ -365,11 +402,19 @@ export function contentDeployed(content, docs, host = '') {
   return null;
 }
 /**
- * keyChanged(stored, current, foundationMoved) — the EDS side must be re-shot: a stored key (gate-key.json) that
- * differs from a known current key, or — while the foundation changed since its freeze — any evidence captured
- * under a known key. No file (legacy dir) or an otherwise unknown current key → false.
+ * keyChanged(stored, current) — the stored EDS capture is NOT provably of what the gated host serves now, so it is
+ * re-shot. `stored` = gate-key.json, `current` = this run's { gateKey, why, parts, deployed } (absent: prototype
+ * stage, no keys → false). Reused only with the same known key, or — the key unknown now — the same hashed tree
+ * (parts), the same reason it is unknown and the same deploy-ledger rows for the page's documents. No record
+ * (a legacy dir) proves nothing → re-shot.
  */
-export const keyChanged = (stored, current, foundationMoved = false) => (foundationMoved ? !!(stored && stored.gateKey) : !!stored && current != null && stored.gateKey !== current);
+export function keyChanged(stored, current) {
+  if (!current) return false;
+  if (!stored) return true;
+  if (current.gateKey) return stored.gateKey !== current.gateKey;
+  const same = stored.parts && current.parts && canon(stored.parts) === canon(current.parts) && stored.why === current.why && canon(stored.deployed ?? null) === canon(current.deployed ?? null);
+  return !same;
+}
 /** --skip-existing reuse of one side's capture: on disk, not that side's --recapture-*, for EDS not a changed key. ctx = { opts, has(p, side), keyChanged(p) }. */
 export function skipCapture(p, side, { opts, has, keyChanged: changed }) {
   return !!opts.skip && !opts[side === 'eds' ? 'recaptureEds' : 'recaptureOrigin'] && !(side === 'eds' && changed(p)) && has(p, side);
@@ -493,26 +538,29 @@ async function main() {
   const readSafe = (f) => { try { return readJson(f); } catch { return null; } };
   const probeCtx = { opts, edsUrl, presence: PRESENCE, unitsOf };
   // Gate keys (published stage), once per run before any capture; the deploy-state guard's code half is one git call set.
-  const KEYS = {}; let foundationMoved = false;
+  const KEYS = {};
   if (opts.stage === 'published') {
-    let foundation; let shared;
-    try { foundation = foundationPart('.'); } catch (e) { foundation = { hash: null, paths: FOUNDATION_PATHS, why: `foundation: ${e.message}` }; }
-    foundationMoved = foundation.why === FREEZE_WHY;
-    const code = codeDeployed([...foundation.paths, 'blocks/', ...RUNTIME_PATHS]); const docs = deployedDocs('.');
+    let foundation; let shared; let chrome; let broken = null;
+    try { foundation = foundationPart('.'); } catch (e) { foundation = { paths: FOUNDATION_PATHS }; broken = `foundation: ${e.message}`; }
+    const codePaths = [...foundation.paths, ...RUNTIME_PATHS, 'blocks/'];
+    const code = codeDeployed(codePaths); const docs = deployedDocs('.');
     const coverage = Object.fromEntries(((readSafe('stardust/rollout/coverage/pages.json') || {}).pages || []).filter((x) => x && x.slug && Array.isArray(x.blocks)).map((x) => [x.slug, x.blocks]));
-    try { shared = sharedBlocks('.', coverage); } catch (e) { foundation = { ...foundation, why: foundation.why || `shared blocks: ${e.message}` }; }
+    try { shared = sharedBlocks('.', coverage); chrome = chromeDocs('.'); } catch (e) { broken = broken || `blocks / chrome documents: ${e.message}`; }
     for (const p of pages) {
-      let k; try { k = gateKeyParts(p, { ...probeCtx, masks: MASKS, clipAllow: CLIP_ALLOW, foundation, coverage, shared }); } catch (e) { k = { parts: null, why: `gate key: ${e.message}` }; }
+      let k = { parts: null, why: broken, blockNames: [] };
+      if (!broken) try { k = gateKeyParts(p, { ...probeCtx, masks: MASKS, clipAllow: CLIP_ALLOW, foundation, coverage, shared, chrome }); } catch (e) { k = { parts: null, why: `gate key: ${e.message}`, blockNames: [] }; }
       const host = k.parts && new URL(k.parts.build.origin).host;
-      const why = k.why || code.why || hostServes(host, code) || contentDeployed(k.parts.content, docs, host);
-      KEYS[p.slug] = { gateKey: why ? null : gateKeyOf(k.parts), why, parts: k.parts };
+      const others = shared ? shared.authored.filter((n) => !k.blockNames.includes(n) && !shared.names.includes(n)) : [];
+      const why = k.why || code.why || codePushed(code, codePaths, others) || hostServes(host, code) || contentDeployed(k.parts.content, docs, host);
+      const deployed = k.parts ? Object.fromEntries(Object.keys(k.parts.content).map((f) => { const web = f.replace(/^content/, '').replace(/\.html$/, ''); return [web, docs[web] || null]; })) : null;
+      KEYS[p.slug] = { gateKey: why ? null : gateKeyOf(k.parts), why, parts: k.parts, deployed };
     }
     const na = pages.filter((p) => !KEYS[p.slug].gateKey);
-    if (na.length) log(`gate key n/a for ${na.length}/${pages.length} page(s) — ${[...new Set(na.map((p) => KEYS[p.slug].why))].slice(0, 3).join('; ')} (no row reuse for them; captures and probes reuse as before)`);
+    if (na.length) log(`gate key n/a for ${na.length}/${pages.length} page(s) — ${[...new Set(na.map((p) => KEYS[p.slug].why))].slice(0, 3).join('; ')} (no row reuse; their EDS side is re-shot unless gate-key.json records the same tree, reason and ledger rows)`);
   }
   const storedKey = (p) => readSafe(join(dir(p), 'gate-key.json'));
   const currentKey = (p) => (KEYS[p.slug] ? KEYS[p.slug].gateKey : null);
-  const capCtx = { opts, has: (p, side) => existsSync(join(dir(p), `${side}.png`)) && existsSync(join(dir(p), `${side}.json`)), keyChanged: (p) => keyChanged(storedKey(p), currentKey(p), foundationMoved) };
+  const capCtx = { opts, has: (p, side) => existsSync(join(dir(p), `${side}.png`)) && existsSync(join(dir(p), `${side}.json`)), keyChanged: (p) => keyChanged(storedKey(p), KEYS[p.slug]) };
   // The post-spawn record of each probe, shared by the fresh and the replayed path so both build the same row.
   function recordContent(p, content, pr) {
     const d = dir(p);
@@ -606,7 +654,7 @@ async function main() {
     // gate-key.json = the key of the EDS capture taken in this run (null while unknown or when the capture failed).
     for (const p of todo) {
       const k = KEYS[p.slug]; const m = readSafe(join(dir(p), 'eds.json'));
-      if (k && m && m.at >= runStart) writeFileSync(join(dir(p), 'gate-key.json'), JSON.stringify({ gateKey: m.error ? null : k.gateKey, why: m.error ? `EDS capture failed: ${m.error}` : k.why, parts: k.parts, at: m.at }, null, 1));
+      if (k && m && m.at >= runStart) writeFileSync(join(dir(p), 'gate-key.json'), JSON.stringify({ gateKey: m.error ? null : k.gateKey, why: m.error ? `EDS capture failed: ${m.error}` : k.why, parts: k.parts, deployed: k.deployed, at: m.at }, null, 1));
     }
   } else for (const p of todo) for (const side of ['origin', 'eds']) { const m = readJson(join(dir(p), `${side}.json`)); if (m) rec(p, side, m); }
   if (opts.clip || opts.content || FAMILIES || Object.keys(UNITS).length) await pool(todo, opts.pc, probe);

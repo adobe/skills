@@ -15,7 +15,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, 
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { contentDeployed, deployedDocs, edsHostOf, formatSummary, gateKeyOf, gateKeyParts, hostServes, keyChanged, parseArgs, probeReuse, rowKey, sharedBlocks, skipCapture, verdict } from '../gate-all.mjs';
+import { codePushed, contentDeployed, deployedDocs, edsHostOf, formatSummary, gateKeyOf, gateKeyParts, hostServes, instrumentFiles, keyChanged, parseArgs, probeReuse, rowKey, sharedBlocks, skipCapture, verdict } from '../gate-all.mjs';
 
 // pixel-compare imports pngjs at module level (a project devDependency, absent in the plugin checkout):
 // import it lazily and skip its one check where it does not resolve, like the other browser/dep-bound tests.
@@ -139,9 +139,14 @@ check('gateKeyOf / gateKeyParts: stable across key order; one block CSS byte, co
   const freeze = () => assert.equal(spawnSync(process.execPath, [join(HERE, '..', 'foundation-freeze.mjs'), 'freeze'], { cwd: root }).status, 0);
   freeze(); const kf = key();
   put('styles/styles.css', 'body{ }'); freeze(); assert.notEqual(key(), kf, 'a frozen file hash in the manifest');
-  assert.equal(gateKeyParts({ ...page, liveUrl: 'https://main--s--o.aem.page/missing/' }, { root, opts }).why, 'no content/missing/index.html');
-  put('styles/styles.css', 'body{  }');
-  assert.deepEqual(parts(), { parts: null, why: 'foundation changed since freeze' });
+  assert.deepEqual(gateKeyParts({ ...page, liveUrl: 'https://main--s--o.aem.page/missing/' }, { root, opts }), { parts: null, why: 'no content/missing/index.html', blockNames: [] });
+  const frozen = parts().parts.foundation; put('styles/styles.css', 'body{  }');
+  assert.equal(parts().why, 'foundation changed since freeze', 'no key'); assert.notEqual(parts().parts.foundation, frozen, 'the parts still say what moved');
+  put('styles/styles.css', 'body{ }'); assert.equal(parts().parts.foundation, frozen, 'the snapshot hash equals the manifest\'s while check passes');
+  for (const f of ['content/fr/nav.html', 'content/de/footer-alt.html', 'content/fr/fragments/promo.html', 'content/fragments/deep/x.html']) {
+    const k1 = key(); put(f, '<p>chrome</p>'); assert.notEqual(key(), k1, `${f} is in every key`); assert.match(parts().why || '', /^$/);
+  }
+  put('content/fr/about.html', '<p>another page</p>'); const k2 = key(); put('content/fr/about.html', '<p>edited</p>'); assert.equal(key(), k2, 'another page\'s document is not');
   rmSync(root, { recursive: true, force: true });
 });
 check('blocks not authored by the page still key it: auto-blocks and foundation-loaded blocks (shared part), blocks its blocks import; another page\'s block does not', () => {
@@ -171,13 +176,19 @@ check('deploy-state guard: the gated host serves the pushed branch and repo; eve
   assert.match(hostServes('main--site--org.aem.page', code), /serves ref main, the upstream branch is feature\/Hero/);
   assert.match(hostServes('feature-hero--fork--org.aem.page', code), /serves org\/fork, the upstream remote is org\/site/);
   assert.match(hostServes('www.example.com', code), /not an EDS/);
+  const git = { upstream: 'origin/main', changed: ['blocks/tabs/tabs.css'], added: [] }; const paths = ['styles/', 'head.html', 'icons/', 'blocks/'];
+  assert.equal(codePushed(git, paths, ['tabs']), null, 'another page\'s block is dirty: this key still holds');
+  assert.match(codePushed(git, paths, []), /not pushed, so not deployed\): blocks\/tabs\/tabs\.css/, 'its own (or a shared) block');
+  assert.match(codePushed({ ...git, changed: ['head.html'] }, paths, ['tabs']), /head\.html/); assert.match(codePushed({ ...git, changed: ['blocks/README.md'] }, paths, ['tabs']), /README/, 'outside every block dir: every key');
+  assert.match(codePushed({ ...git, changed: [], added: ['blocks/new/new.js'] }, paths, ['tabs']), /untracked code, not deployed: blocks\/new\/new\.js/);
+  assert.equal(codePushed({ ...git, changed: ['content/x.html', 'stardust/a.json'] }, paths, []), null, 'not a code path');
   const root = mkdtempSync(join(tmpdir(), 'gate-all-ledger-'));
   mkdirSync(join(root, 'content')); mkdirSync(join(root, 'stardust/deploy'), { recursive: true });
   const row = (status, ts, contentSha, verifiedOn = 'Org/Site') => ({ status, ts, contentSha, verifiedOn });
   writeFileSync(join(root, 'content/.deploy-ledger.json'), JSON.stringify({ '/index': row('live', T(1), 'old'), '/nav': row('live', T(1), 'n'), '/footer': row('previewed', T(1), 'f'), '/x': { status: 'live', ts: T(1), contentSha: 'x' }, '/y': row('live', T(1), 'y', 'org/other') }));
   writeFileSync(join(root, 'stardust/deploy/ledger-c1.json'), JSON.stringify({ '/index': row('live', T(3), 'new'), '/about': row('preview-fail', T(3), 'a') }));
   const docs = deployedDocs(root); const live = 'main--site--org.aem.live'; const preview = 'main--site--org.aem.page';
-  assert.deepEqual(docs['/index'], { contentSha: 'new', status: 'live', verifiedOn: 'Org/Site' });
+  assert.deepEqual(docs['/index'], { contentSha: 'new', status: 'live', verifiedOn: 'Org/Site', ts: T(3) });
   assert.equal(contentDeployed({ 'content/index.html': 'new', 'content/nav.html': 'n' }, docs, live), null);
   assert.match(contentDeployed({ 'content/index.html': 'old' }, docs, live), /content\/index\.html differs from the deployed document/);
   assert.match(contentDeployed({ 'content/z.html': 'z' }, docs, live), /no deploy-ledger contentSha for \/z/);
@@ -189,10 +200,23 @@ check('deploy-state guard: the gated host serves the pushed branch and repo; eve
   assert.match(contentDeployed({ 'content/index.html': 'new' }, docs, 'www.example.com'), /not an EDS/);
   rmSync(root, { recursive: true, force: true });
 });
-check('keyChanged / skipCapture / rowKey: a changed known key or a foundation edit since the freeze re-shoots the EDS side; a row keeps a key only for evidence measured under it', () => {
-  assert.equal(keyChanged(null, 'K'), false, 'no gate-key.json = legacy dir'); assert.equal(keyChanged({ gateKey: 'K' }, null), false, 'unknown now');
-  assert.equal(keyChanged({ gateKey: null }, 'K'), true, 'captured while unknown'); assert.equal(keyChanged({ gateKey: 'K' }, 'K2'), true); assert.equal(keyChanged({ gateKey: 'K' }, 'K'), false);
-  assert.equal(keyChanged({ gateKey: 'K' }, null, true), true, 'foundation changed since freeze'); assert.equal(keyChanged({ gateKey: null }, null, true), false, 'already captured after the change');
+check('instrumentFiles: the gate\'s instruments and every local module they load are hashed — a new local import cannot escape the key', () => {
+  const files = instrumentFiles([SCRIPT, join(HERE, '..', 'stitch-shot.mjs'), join(HERE, '..', 'pixel-compare.mjs'), ...['content-presence.mjs', 'clip-probe.mjs', 'unit-geometry.mjs'].map((f) => join(HERE, '../../../diff/scripts', f))]);
+  const names = files.map((f) => f.split(/[\\/]/).slice(-1)[0]);
+  for (const n of ['live-session.mjs', 'measure-live.mjs', 'run-capped.mjs', 'foundation-freeze.mjs', 'clip-probe.mjs']) assert.ok(names.includes(n), n);
+  for (const f of files) for (const m of readFileSync(f, 'utf8').matchAll(/(?:from\s*|import\s*\(\s*|import\s+)['"`](\.{1,2}\/[^'"`]+)['"`]/g)) assert.ok(files.includes(join(dirname(f), m[1])), `${f} imports ${m[1]}, not hashed`);
+});
+check('keyChanged / skipCapture / rowKey: an EDS capture is reused only while gate-key.json proves it current; a row keeps a key only for evidence measured under it', () => {
+  const P = { blocks: { cards: { 'blocks/cards/cards.css': 'a' } } }; const D = { '/index': { contentSha: 'c', ts: T(1) } };
+  const cur = (gateKey, over = {}) => ({ gateKey, why: gateKey ? null : 'why', parts: P, deployed: D, ...over });
+  assert.equal(keyChanged(null, undefined), false, 'prototype stage: no keys'); assert.equal(keyChanged(null, cur('K')), true, 'no gate-key.json (legacy): nothing proves the capture');
+  assert.equal(keyChanged({ gateKey: 'K' }, cur('K')), false); assert.equal(keyChanged({ gateKey: 'K' }, cur('K2')), true); assert.equal(keyChanged({ gateKey: null, parts: P }, cur('K')), true, 'captured while unknown');
+  const proven = { gateKey: 'K', why: 'why', parts: P, deployed: D };
+  assert.equal(keyChanged(proven, cur(null)), false, 'unknown now: same tree, same reason, same ledger rows');
+  assert.equal(keyChanged(proven, cur(null, { parts: { blocks: { cards: { 'blocks/cards/cards.css': 'b' } } } })), true, 'unknown now and the tree moved');
+  assert.equal(keyChanged(proven, cur(null, { why: 'other' })), true, 'another reason (a push, a deploy) since the capture');
+  assert.equal(keyChanged(proven, cur(null, { deployed: { '/index': { contentSha: 'c', ts: T(2) } } })), true, 'a document re-deployed since the capture');
+  assert.equal(keyChanged({ gateKey: null, why: 'why' }, cur(null, { parts: null })), true, 'parts unknown');
   const ctx = (opts, changed = false) => ({ opts, has: () => true, keyChanged: () => changed });
   assert.equal(skipCapture({}, 'eds', ctx({ skip: true })), true); assert.equal(skipCapture({}, 'eds', ctx({ skip: true }, true)), false);
   assert.equal(skipCapture({}, 'origin', ctx({ skip: true }, true)), true); assert.equal(skipCapture({}, 'origin', ctx({ skip: true, recaptureOrigin: true })), false);
@@ -331,12 +355,17 @@ check('one byte in blocks/cards/cards.css, committed + pushed: that page re-shoo
 const keys5 = { home: storedKey('home'), about: storedKey('about') };
 put('blocks/cards/cards.css', '.cards { gap: 3rem; }');
 r = gateAll(['--skip-existing']);
-check('the same edit NOT pushed: key null (the reason names the file), no row reused, no forced re-shoot, probes replayed', () => {
-  assert.equal(r.status, 0, r.stderr); assert.deepEqual(r.n, { origin: 0, eds: 0, probes: 0, compares: 2 });
-  assert.match(r.stdout, /gate key n\/a .*blocks\/cards\/cards\.css/);
+check('the same edit NOT pushed: only that page\'s key is unknown (the reason names the file) — its EDS side is re-shot and re-probed, the other page\'s row is still reused', () => {
+  assert.equal(r.status, 0, r.stderr); assert.deepEqual(r.n, { origin: 0, eds: 1, probes: 1, compares: 1 });
+  assert.match(r.stdout, /gate key n\/a for 1\/2 page\(s\) — code differs from origin\/main \(not pushed, so not deployed\): blocks\/cards\/cards\.css/);
   const s = summary();
-  assert.equal(s.totals.reusedRows, 0); assert.equal(s.totals.reusedProbes, 2);
-  assert.equal(row(s, 'about').gateKey, keys5.about, 'the row keeps the key of its evidence'); assert.equal(storedKey('about'), keys5.about);
+  assert.equal(row(s, 'home').reused.what, 'row'); assert.equal(row(s, 'home').gateKey, keys5.home); assert.equal(row(s, 'about').reused, null);
+  assert.equal(row(s, 'about').gateKey, null, 'evidence of an unproven build carries no key'); assert.equal(storedKey('about'), null);
+});
+r = gateAll(['--skip-existing']);
+check('… run again with nothing changed: the unknown-key capture is reused (same tree, same reason, same ledger rows), probes replayed', () => {
+  assert.equal(r.status, 0, r.stderr); assert.deepEqual(r.n, { origin: 0, eds: 0, probes: 0, compares: 1 });
+  assert.equal(row(summary(), 'about').reused.what, 'probes');
 });
 git('checkout', '--', 'blocks/cards/cards.css');
 put('styles/styles.css', 'body { margin: 1px; }'); git('add', '--', 'styles/styles.css'); git('commit', '-qm', 'foundation request'); git('push', '-q');
@@ -358,11 +387,10 @@ check('… and the next run launches nothing', () => { assert.equal(r.status, 0,
 for (const slug of ['home', 'about']) for (const f of ['probes.json', 'gate-key.json']) unlinkSync(pageFile(slug, f));
 const legacy = summary(); for (const x of legacy.rows) { delete x.gateKey; delete x.reused; } writeFileSync(join(OUT, 'summary.json'), JSON.stringify(legacy, null, 2));
 r = gateAll(['--skip-existing']);
-check('a legacy gate dir (no probes.json / gate-key.json, rows without gateKey): today\'s behaviour — captures reused, probes run, rows fresh', () => {
-  assert.equal(r.status, 0, r.stderr); assert.deepEqual(r.n, { origin: 0, eds: 0, probes: 2, compares: 2 });
+check('a legacy gate dir (no probes.json / gate-key.json, rows without gateKey): nothing records what its EDS capture shows — re-shot and re-probed once, then keyed', () => {
+  assert.equal(r.status, 0, r.stderr); assert.deepEqual(r.n, { origin: 0, eds: 2, probes: 2, compares: 2 });
   const s = summary();
-  assert.equal(s.totals.reusedRows + s.totals.reusedProbes, 0); assert.equal(row(s, 'home').gateKey, null);
-  assert.ok(!existsSync(pageFile('home', 'gate-key.json')), 'no key is issued for evidence captured before keys existed');
+  assert.equal(s.totals.reusedRows + s.totals.reusedProbes, 0); assert.match(storedKey('home'), HEX); assert.equal(row(s, 'home').gateKey, storedKey('home'));
 });
 rmSync(base, { recursive: true, force: true });
 console.log(failed ? `\n${failed} failed` : '\nall passed');
