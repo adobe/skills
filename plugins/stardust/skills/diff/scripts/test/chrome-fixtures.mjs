@@ -112,13 +112,36 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape') document.q
 
 const doc = (body, style, js) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>fixture</title><style>${style}</style></head><body>${body}<main><h1>Page</h1><p>Body text.</p></main><footer><a href="/privacy">Privacy</a></footer><script>${js}</script></body></html>`;
 
-export const PAGES = { rich: doc(RICH_BODY, RICH_CSS, RICH_JS), stock: doc(STOCK_BODY, STOCK_CSS, STOCK_JS) };
+// GEO = a per-visitor location-suggestion bar in flow at the top of the header root (88 px, 268 px below 768) with its
+// own button, above a click disclosure: what --hide / presence.json `hide` remove before the header is explored.
+// "Updates" opens a note nothing closes, so the explorer reloads the page (each reload must hide the bar again).
+const GEO_BODY = `<header><div class="geo-bar"><span>Shop from your region?</span><button class="geo-switch">Change location</button></div>
+<div class="bar"><a href="/" class="logo">Brand</a>
+<nav><ul><li class="dd"><button aria-expanded="false" aria-controls="geo-about">About</button><ul id="geo-about" class="sub" hidden><li><a href="/about/mission">Mission</a></li><li><a href="/about/history">History</a></li></ul></li></ul></nav>
+<button class="updates">Updates</button></div>
+<div class="note" hidden><a href="/updates">Read the latest updates</a></div></header>`;
 
-/** Serve /rich, /rich2 (an identical copy) and /stock; every other path answers 404 text. Resolves { origin, close }. */
+const GEO_CSS = `${css} .geo-bar{display:flex;align-items:center;gap:16px;height:88px;padding:0 32px;background:#eee;color:#123}
+.geo-bar button{background:#123;color:#fff;border:0;padding:8px} .dd{position:relative}
+.sub{position:absolute;top:100%;left:0;background:#fff;color:#123;list-style:none;padding:12px;margin:0;width:180px}
+@media (max-width:767px){ .geo-bar{height:268px;flex-direction:column;justify-content:center;padding:0 16px} }`;
+
+const GEO_JS = `
+const b = document.querySelector('.dd > button'); const l = document.getElementById('geo-about');
+const set = (o) => { b.setAttribute('aria-expanded', String(o)); l.hidden = !o; };
+b.addEventListener('click', () => set(l.hidden));
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !l.hidden) { set(false); b.focus(); } });
+document.addEventListener('click', (e) => { if (!e.target.closest('.dd')) set(false); });
+document.querySelector('.updates').addEventListener('click', () => { document.querySelector('.note').hidden = false; });
+`;
+
+export const PAGES = { rich: doc(RICH_BODY, RICH_CSS, RICH_JS), stock: doc(STOCK_BODY, STOCK_CSS, STOCK_JS), geo: doc(GEO_BODY, GEO_CSS, GEO_JS) };
+
+/** Serve /rich, /rich2 (an identical copy), /stock and /geo; every other path answers 404 text. Resolves { origin, close }. */
 export function serve() {
   const srv = createServer((req, res) => {
     const p = req.url.split('?')[0];
-    const html = p === '/rich' || p === '/rich2' ? PAGES.rich : p === '/stock' ? PAGES.stock : null;
+    const html = p === '/rich' || p === '/rich2' ? PAGES.rich : p === '/stock' ? PAGES.stock : p === '/geo' ? PAGES.geo : null;
     res.writeHead(html ? 200 : 404, { 'content-type': 'text/html' }); res.end(html || 'not here');
   });
   return new Promise((resolve) => { srv.listen(0, '127.0.0.1', () => resolve({ origin: `http://127.0.0.1:${srv.address().port}`, close: () => srv.close() })); });

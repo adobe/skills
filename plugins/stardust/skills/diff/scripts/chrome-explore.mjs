@@ -25,12 +25,17 @@
  *   --shots <dir>        open-state crops (default stardust/.work/chrome/<out name>)
  *   --plain              bundled Chromium instead of the window-free real-Chrome tier
  *   --warmup <url>       visit first (bot-managed sites)   --locale <tag>  default en-US
- * Exit: 0 written · 1 error · 3 bot challenge. `summarize`, `controlKind`, `normName` are exported.
+ *   --hide <sel,…>       hide in-flow regions (a location bar above the header) after every load; repeatable
+ *   --presence <file> --slug <slug>   also hide the gate's presence.json `hide` ("*", then the slug)
+ * A hide list is recorded as `hide: { list, presence, perWidth }` with one `<w>: hidden …` line per width.
+ * Exit: 0 written · 1 error · 3 bot challenge. `summarize`, `controlKind`, `normName`, `hideArgs`,
+ * `effectiveHide` are exported.
  */
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { formatHidden, hideEntries, hideRegions, parseHideList, readPresenceFile } from './live-session.mjs';
 
 const TOUCH_BELOW = 768;
 
@@ -72,6 +77,26 @@ export function summarize(doc) {
     const k = Object.entries(kinds).map(([n, c]) => `${c} ${n}`).join(', ');
     return `${w}: ${(d.controls || []).filter(opens).length} controls (${k || 'none'}), ${states} states, ${links.size} links, depth ${depth}${d.truncated ? `, TRUNCATED at ${d.truncated}` : ''}`;
   });
+}
+
+/** argv → { hide: [<sel>…] (every --hide, comma lists), presence, slug }. Pure; a usage error throws (chrome-compare
+ * reads the same flags). */
+export function hideArgs(argv) {
+  const values = (k, what) => argv.flatMap((a, i) => (a === k ? [argv[i + 1]] : [])).map((v) => { if (!v || v.startsWith('--')) throw new Error(`${k} needs ${what}`); return v; });
+  const hide = parseHideList(values('--hide', 'a selector list'));
+  const [presence = null] = values('--presence', 'a file');
+  const [slug = null] = values('--slug', 'a value');
+  if (presence && !slug) throw new Error('--presence needs --slug <slug> (the page\'s key in presence.json)');
+  return { hide, presence, slug };
+}
+
+/** hideArgs → the effective list: --hide entries, then presence.json's `hide` ("*", then the slug; only `hide` — a
+ * `variable` region inside the header can be a control the contract records), de-duplicated →
+ * { entries: [{ sel, source }], presence: <file> | null, found, note }. Malformed presence.json throws. */
+export function effectiveHide({ hide = [], presence = null, slug = null } = {}) {
+  const p = presence ? readPresenceFile(presence, slug) : null;
+  const entries = hideEntries([...hideEntries(hide, '--hide'), ...hideEntries(p ? p.hide : [], 'presence.json')]);
+  return { entries, presence: presence || null, found: p ? p.found : null, note: p ? p.note : null };
 }
 
 // ---- in-page library (installed once per document; ONE argument object per call) ------------------
@@ -257,10 +282,13 @@ async function loadPlaywright() {
 // null = the document was replaced (a navigation slipped through) or is being replaced
 const call = async (page, fn, arg = {}) => { try { return await page.evaluate(async ({ f, a }) => (window.__sdtc ? { v: await window.__sdtc[f](a) } : null), { f: fn, a: arg }); } catch { return null; } };
 
-/** Explore one width. Returns { root, controls[], scroll[], truncated, states, probe }. */
-export async function exploreWidth(page, { url, width, rootSel, maxStates, maxDepth, probe, shotsDir, settleMs = 250, visitOpts = {}, gotoFn }) {
+/** Explore one width. Returns { root, controls[], scroll[], truncated, states, probe } (+ `hidden`, the first load's
+ * hide records, when `hide` is set: applied after every load, before the baseline). */
+export async function exploreWidth(page, { url, width, rootSel, maxStates, maxDepth, probe, shotsDir, settleMs = 250, visitOpts = {}, gotoFn, hide = [] }) {
   const touch = width < TOUCH_BELOW;
   const vh = page.viewportSize().height;
+  const hideList = hideEntries(hide);
+  let hidden = null;
   let nav = null; let armed = true; let states = 0; let truncated = null; let shotN = 0;
   await page.route('**/*', (route) => {
     const r = route.request();
@@ -273,6 +301,9 @@ export async function exploreWidth(page, { url, width, rootSel, maxStates, maxDe
   const load = async () => {
     armed = false;
     if (loads++ === 0) { await gotoFn(page, url, visitOpts); at = page.url(); } else { await page.goto(at, { waitUntil: 'load', timeout: 60000 }); await page.waitForTimeout(400); }
+    // an in-flow bar above the header is gone before the root, its controls and the closed baseline are read
+    const recs = await hideRegions(page, hideList, { settleMs });
+    if (!hidden) hidden = recs;
     await page.evaluate(installInPage, { rootSel }); await call(page, 'snapshot', { root: true });
     armed = true;
   };
@@ -383,7 +414,7 @@ export async function exploreWidth(page, { url, width, rootSel, maxStates, maxDe
     }
   }
   await page.unroute('**/*');
-  return { root: rootPath, controls, scroll, states, truncated, loads };
+  return { root: rootPath, controls, scroll, states, truncated, loads, ...(hideList.length ? { hidden } : {}) };
 }
 
 async function main() {
@@ -392,6 +423,9 @@ async function main() {
   const arg = (k, d) => { const i = argv.indexOf(`--${k}`); return i >= 0 && argv[i + 1] && !argv[i + 1].startsWith('--') ? argv[i + 1] : d; };
   const [url, out] = argv.filter((a, i) => !a.startsWith('--') && !(i > 0 && argv[i - 1].startsWith('--') && !['--plain'].includes(argv[i - 1])));
   if (!url || !out) { console.error('usage: chrome-explore.mjs <url> <out.json> [--width 1440,390] [--root <sel>] [--max-states 400] [--max-depth 4] [--probe <term>] [--shots <dir>] [--plain]'); process.exit(1); }
+  let hide;
+  try { hide = effectiveHide(hideArgs(argv)); } catch (e) { console.error(`chrome-explore: ${e.message}`); process.exit(1); }
+  if (hide.found === false) console.error(`chrome-explore: ${hide.note}`);
   const widths = arg('width', '1440,390').split(',').map(Number).filter(Boolean);
   const shotsDir = arg('shots', join('stardust', '.work', 'chrome', basename(out, '.json')));
   mkdirSync(shotsDir, { recursive: true }); mkdirSync(dirname(out), { recursive: true });
@@ -402,7 +436,7 @@ async function main() {
   const { openBrowser, openPage, visit } = await import(pathToFileURL(join(here, 'measure-live.mjs')).href);
   const { chromium } = await loadPlaywright();
   const browser = await openBrowser(chromium, { tier: argv.includes('--plain') ? 'plain' : 'stealth' });
-  const doc = { tool: 'chrome-explore', url, at: new Date().toISOString(), shots: shotsDir, widths: {} };
+  const doc = { tool: 'chrome-explore', url, at: new Date().toISOString(), shots: shotsDir, ...(hide.entries.length ? { hide: { list: hide.entries.map((x) => x.sel), presence: hide.presence, perWidth: {} } } : {}), widths: {} };
   try {
     for (const width of widths) {
       const { ctx, page } = await openPage(browser, { width, height: width < TOUCH_BELOW ? 844 : 900, locale: arg('locale', 'en-US') });
@@ -410,10 +444,13 @@ async function main() {
       const gotoFn = (p, u) => visit(p, u, { warmup: arg('warmup', null), settle: { passes: 1, quietMs: 800 } });
       if (!probe) {
         await gotoFn(page, url);
+        await hideRegions(page, hide.entries);
         probe = await page.evaluate(() => ((document.querySelector('header nav,header') || document.body).innerText.match(/\p{L}{4,}/u) || ['news'])[0].toLowerCase());
       }
       doc.probe = probe;
-      doc.widths[width] = await exploreWidth(page, { url, width, rootSel: arg('root', null), maxStates: Number(arg('max-states', 400)), maxDepth: Number(arg('max-depth', 4)), probe, shotsDir, gotoFn });
+      const { hidden, ...record } = await exploreWidth(page, { url, width, rootSel: arg('root', null), maxStates: Number(arg('max-states', 400)), maxDepth: Number(arg('max-depth', 4)), probe, shotsDir, gotoFn, hide: hide.entries });
+      doc.widths[width] = record;
+      if (doc.hide) doc.hide.perWidth[width] = hidden;
       await ctx.close();
     }
   } catch (e) {
@@ -424,6 +461,7 @@ async function main() {
   await browser.close();
   writeFileSync(out, `${JSON.stringify(doc, null, 1)}\n`);
   for (const line of summarize(doc)) console.log(`chrome-explore ${line}`);
+  for (const [w, recs] of Object.entries(doc.hide ? doc.hide.perWidth : {})) console.log(`chrome-explore ${w}: hidden ${formatHidden(recs)}`);
   console.log(`→ ${out} (crops in ${shotsDir})`);
 }
 
