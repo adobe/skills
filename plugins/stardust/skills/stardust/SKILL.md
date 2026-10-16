@@ -377,8 +377,11 @@ Stardust state lives under `stardust/`. Impeccable's `PRODUCT.md` /
 files at the project root, and the EDS project (only via `deploy`,
 `rollout`, `dynamics`). Run-only files — logs, harness page, pre-renders,
 script copies, drafts — go under `stardust/.work/<skill>/`; the root
-`scripts/` and `qa/` are not stardust's. Anything written elsewhere is a
-bug in that skill.
+`scripts/` and `qa/` are not stardust's. One machine-level exception:
+`browser-lock.mjs`'s slot files in `~/.stardust/locks/browser/`
+(`STARDUST_BROWSER_LOCK_DIR` moves them) — browser contention is
+cross-project; each holds a pid, the project path and a script name, and
+goes when its job ends. Anything written elsewhere is a bug in that skill.
 
 **Versioning.** Everything under `stardust/` is committed except what
 `reference/stardust.gitignore` lists: screenshots, four heavy folders
