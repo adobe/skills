@@ -205,9 +205,11 @@ check('deploy-state guard, code half: ANY unpushed, deleted, renamed or untracke
   assert.equal(spawnSync(process.execPath, [join(HERE, '..', 'foundation-freeze.mjs'), 'freeze', '--paths', 'styles,scripts'], { cwd: root }).status, 0);
   const paths = [...foundationPart(root).paths, 'icons/', 'plugins/', 'blocks/'];
   assert.deepEqual(foundationPart(root).paths, ['styles', 'scripts'], 'slash-less manifest entries');
-  assert.deepEqual(codeDeployed(paths, root), { ok: true, why: null, branch: 'main', ref: 'main', owner: 'org', repo: 'site' });
+  const head = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).stdout.trim();
+  assert.deepEqual(codeDeployed(paths, root), { ok: true, why: null, upstream: head, branch: 'main', ref: 'main', owner: 'org', repo: 'site' });
   rmSync(join(root, 'blocks/carousel'), { recursive: true });
   assert.match(codeDeployed(paths, root).why, /not pushed, so not deployed\): blocks\/carousel\/carousel\.js/, 'a deleted dependency the hero block imports');
+  assert.equal(codeDeployed(paths, root).upstream, head, 'the upstream commit is recorded with an unknown key too');
   run(root, 'checkout', '--', 'blocks'); run(root, 'mv', 'blocks/hero', 'blocks/hero-banner');
   assert.match(codeDeployed(paths, root).why, /blocks\/hero-banner\/hero\.js, blocks\/hero\/hero\.js/, 'a rename names both sides');
   run(root, 'mv', 'blocks/hero-banner', 'blocks/hero');
@@ -224,14 +226,15 @@ check('instrumentFiles: the gate\'s instruments and every local module they load
 });
 check('keyChanged / skipCapture / rowKey: an EDS capture is reused only while gate-key.json proves it current; a row keeps a key only for evidence measured under it', () => {
   const P = { blocks: { cards: { 'blocks/cards/cards.css': 'a' } } }; const D = { '/index': { contentSha: 'c', ts: T(1) } };
-  const cur = (gateKey, over = {}) => ({ gateKey, why: gateKey ? null : 'why', parts: P, deployed: D, ...over });
+  const cur = (gateKey, over = {}) => ({ gateKey, why: gateKey ? null : 'why', parts: P, upstream: 'u1', deployed: D, ...over });
   assert.equal(keyChanged(null, undefined), false, 'prototype stage: no keys'); assert.equal(keyChanged(null, cur('K')), true, 'no gate-key.json (legacy): nothing proves the capture');
   assert.equal(keyChanged({ gateKey: 'K' }, cur('K')), false); assert.equal(keyChanged({ gateKey: 'K' }, cur('K2')), true); assert.equal(keyChanged({ gateKey: null, parts: P }, cur('K')), true, 'captured while unknown');
-  const proven = { gateKey: 'K', why: 'why', parts: P, deployed: D };
+  const proven = { gateKey: 'K', why: 'why', parts: P, upstream: 'u1', deployed: D };
   assert.equal(keyChanged(proven, cur(null)), false, 'unknown now: same tree, same reason, same ledger rows');
   assert.equal(keyChanged(proven, cur(null, { parts: { blocks: { cards: { 'blocks/cards/cards.css': 'b' } } } })), true, 'unknown now and the tree moved');
   assert.equal(keyChanged(proven, cur(null, { why: 'other' })), true, 'another reason (a push, a deploy) since the capture');
   assert.equal(keyChanged(proven, cur(null, { deployed: { '/index': { contentSha: 'c', ts: T(2) } } })), true, 'a document re-deployed since the capture');
+  assert.equal(keyChanged(proven, cur(null, { upstream: 'u2' })), true, 'a push since the capture, the reason unchanged');
   assert.equal(keyChanged({ gateKey: null, why: 'why' }, cur(null, { parts: null })), true, 'parts unknown');
   const ctx = (opts, changed = false) => ({ opts, has: () => true, keyChanged: () => changed });
   assert.equal(skipCapture({}, 'eds', ctx({ skip: true })), true); assert.equal(skipCapture({}, 'eds', ctx({ skip: true }, true)), false);
@@ -378,9 +381,16 @@ check('the same edit NOT pushed: every key is unknown (the reason names the file
   for (const slug of ['home', 'about']) { assert.equal(row(s, slug).gateKey, null, 'evidence of an unproven build carries no key'); assert.equal(storedKey(slug), null); }
 });
 r = gateAll(['--skip-existing']);
-check('… run again with nothing changed: the unknown-key captures are reused (same tree, same reason, same ledger rows), probes replayed', () => {
+check('… run again with nothing changed: the unknown-key captures are reused (same tree, reason, upstream commit and ledger rows), probes replayed', () => {
   assert.equal(r.status, 0, r.stderr); assert.deepEqual(r.n, { origin: 0, eds: 0, probes: 0, compares: 2 });
   assert.equal(summary().totals.reusedProbes, 2);
+});
+put('blocks/cards/cards.css', '.cards { gap: 4rem; }'); git('add', '--', 'blocks/cards/cards.css'); git('commit', '-qm', 'cards v1'); git('push', '-q');
+put('blocks/cards/cards.css', '.cards { gap: 3rem; }');
+r = gateAll(['--skip-existing']);
+check('a push in between (v1 committed and pushed, v2 still dirty): the reason, tree and ledger rows read the same, the upstream commit moved — every EDS side re-shot', () => {
+  assert.equal(r.status, 0, r.stderr); assert.match(r.stdout, /gate key n\/a for 2\/2 page\(s\) — code differs from origin\/main \(not pushed, so not deployed\): blocks\/cards\/cards\.css \(/);
+  assert.deepEqual(r.n, { origin: 0, eds: 2, probes: 2, compares: 2 });
 });
 git('checkout', '--', 'blocks/cards/cards.css');
 put('styles/styles.css', 'body { margin: 1px; }'); git('add', '--', 'styles/styles.css'); git('commit', '-qm', 'foundation request'); git('push', '-q');

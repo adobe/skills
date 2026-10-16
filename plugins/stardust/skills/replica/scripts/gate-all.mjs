@@ -44,7 +44,7 @@
  * contentSha), else null with the reason in the run log (a frozen-file edit since the freeze: null until re-frozen).
  * A PASS row whose key holds, from a table written under the same criteria, is reused whole (no stitch, probe or
  * compare). The EDS side is re-shot unless gate-key.json holds the same known key — or, the key unknown now, the
- * same parts, the same reason and the same ledger rows; a dir without gate-key.json (legacy) is re-shot once. A
+ * same parts, reason, upstream commit and ledger rows; a dir without gate-key.json (legacy) is re-shot once. A
  * fresh row keeps the key of its evidence only while that key is current (unknown now: same build part, probes
  * not re-run).
  *
@@ -331,26 +331,27 @@ export function edsHostOf(host) {
  * Deploy-state guard, code half (one git call set per run, for every page): an upstream branch exists and NO file
  * under any hashed code path (git pathspecs, so a manifest entry without a trailing slash covers its whole dir)
  * differs from it — `git diff --no-renames @{u}` lists both sides of a rename and every deletion — and none is
- * untracked → { ok, why, branch, ref, owner, repo } (ref / owner / repo in EDS host-label form).
+ * untracked → { ok, why, upstream, branch, ref, owner, repo } (ref / owner / repo in EDS host-label form;
+ * `upstream` = the upstream commit, recorded even when the key is unknown, so any push re-shoots unproven pages).
  */
 export function codeDeployed(paths, root = '.') {
   const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).split('\n').filter(Boolean);
   const named = (l) => `${l.slice(0, 3).join(', ')}${l.length > 3 ? ` (+${l.length - 3})` : ''}`;
-  let up; let branch; let remoteUrl;
-  try { [up] = git('rev-parse', '--abbrev-ref', '@{u}'); } catch { return { ok: false, why: 'no upstream branch (git rev-parse @{u}) — the deployed code cannot be proven' }; }
+  let up; let upstream; let branch; let remoteUrl;
+  try { [up] = git('rev-parse', '--abbrev-ref', '@{u}'); [upstream] = git('rev-parse', '@{u}'); } catch { return { ok: false, why: 'no upstream branch (git rev-parse @{u}) — the deployed code cannot be proven', upstream: null }; }
   try {
     const [head] = git('symbolic-ref', '--short', 'HEAD');
     branch = git('config', '--get', `branch.${head}.merge`)[0].replace(/^refs\/heads\//, '');
     [remoteUrl] = git('remote', 'get-url', git('config', '--get', `branch.${head}.remote`)[0]);
-  } catch { return { ok: false, why: `cannot read the branch and remote behind ${up}` }; }
+  } catch { return { ok: false, why: `cannot read the branch and remote behind ${up}`, upstream }; }
   try {
     const changed = git('diff', '--name-only', '--no-renames', '--relative', '@{u}', '--', ...paths);
-    if (changed.length) return { ok: false, why: `code differs from ${up} (not pushed, so not deployed): ${named(changed)}` };
+    if (changed.length) return { ok: false, why: `code differs from ${up} (not pushed, so not deployed): ${named(changed)}`, upstream };
     const added = git('ls-files', '--others', '--exclude-standard', '--', ...paths);
-    if (added.length) return { ok: false, why: `untracked code, not deployed: ${named(added)}` };
-  } catch (e) { return { ok: false, why: `git: ${String(e.message).split('\n')[0]}` }; }
+    if (added.length) return { ok: false, why: `untracked code, not deployed: ${named(added)}`, upstream };
+  } catch (e) { return { ok: false, why: `git: ${String(e.message).split('\n')[0]}`, upstream }; }
   const [owner, repo] = remoteUrl.replace(/\/+$/, '').replace(/\.git$/, '').split(/[/:]/).slice(-2).map(hostLabel);
-  return { ok: true, why: null, branch, ref: hostLabel(branch), owner, repo };
+  return { ok: true, why: null, upstream, branch, ref: hostLabel(branch), owner, repo };
 }
 /** Deploy-state guard, per page: the gated host serves the pushed branch of the pushed repo → null, else why. */
 export function hostServes(host, code) {
@@ -391,16 +392,17 @@ export function contentDeployed(content, docs, host = '') {
 }
 /**
  * keyChanged(stored, current) — the stored EDS capture is NOT provably of what the gated host serves now, so it is
- * re-shot. `stored` = gate-key.json, `current` = this run's { gateKey, why, parts, deployed } (absent: prototype
- * stage, no keys → false). Reused only with the same known key, or — the key unknown now — the same hashed tree
- * (parts), the same reason it is unknown and the same deploy-ledger rows for the page's documents. No record
+ * re-shot. `stored` = gate-key.json, `current` = this run's { gateKey, why, parts, upstream, deployed } (absent:
+ * prototype stage, no keys → false). Reused only with the same known key, or — the key unknown now — the same hashed
+ * tree (parts), the same reason it is unknown, the same upstream commit (any push re-shoots) and the same
+ * deploy-ledger rows for the page's documents. No record
  * (a legacy dir) proves nothing → re-shot.
  */
 export function keyChanged(stored, current) {
   if (!current) return false;
   if (!stored) return true;
   if (current.gateKey) return stored.gateKey !== current.gateKey;
-  const same = stored.parts && current.parts && canon(stored.parts) === canon(current.parts) && stored.why === current.why && canon(stored.deployed ?? null) === canon(current.deployed ?? null);
+  const same = stored.parts && current.parts && canon(stored.parts) === canon(current.parts) && stored.why === current.why && (stored.upstream ?? null) === (current.upstream ?? null) && canon(stored.deployed ?? null) === canon(current.deployed ?? null);
   return !same;
 }
 /** --skip-existing reuse of one side's capture: on disk, not that side's --recapture-*, for EDS not a changed key. ctx = { opts, has(p, side), keyChanged(p) }. */
@@ -540,10 +542,10 @@ async function main() {
       const host = k.parts && new URL(k.parts.build.origin).host;
       const why = k.why || code.why || hostServes(host, code) || contentDeployed(k.parts.content, docs, host);
       const deployed = k.parts ? Object.fromEntries(Object.keys(k.parts.content).map((f) => { const web = f.replace(/^content/, '').replace(/\.html$/, ''); return [web, docs[web] || null]; })) : null;
-      KEYS[p.slug] = { gateKey: why ? null : gateKeyOf(k.parts), why, parts: k.parts, deployed };
+      KEYS[p.slug] = { gateKey: why ? null : gateKeyOf(k.parts), why, parts: k.parts, upstream: code.upstream || null, deployed };
     }
     const na = pages.filter((p) => !KEYS[p.slug].gateKey);
-    if (na.length) log(`gate key n/a for ${na.length}/${pages.length} page(s) — ${[...new Set(na.map((p) => KEYS[p.slug].why))].slice(0, 3).join('; ')} (no row reuse; their EDS side is re-shot unless gate-key.json records the same tree, reason and ledger rows)`);
+    if (na.length) log(`gate key n/a for ${na.length}/${pages.length} page(s) — ${[...new Set(na.map((p) => KEYS[p.slug].why))].slice(0, 3).join('; ')} (no row reuse; their EDS side is re-shot unless gate-key.json records the same tree, reason, upstream commit and ledger rows)`);
   }
   const storedKey = (p) => readSafe(join(dir(p), 'gate-key.json'));
   const currentKey = (p) => (KEYS[p.slug] ? KEYS[p.slug].gateKey : null);
@@ -641,7 +643,7 @@ async function main() {
     // gate-key.json = the key of the EDS capture taken in this run (null while unknown or when the capture failed).
     for (const p of todo) {
       const k = KEYS[p.slug]; const m = readSafe(join(dir(p), 'eds.json'));
-      if (k && m && m.at >= runStart) writeFileSync(join(dir(p), 'gate-key.json'), JSON.stringify({ gateKey: m.error ? null : k.gateKey, why: m.error ? `EDS capture failed: ${m.error}` : k.why, parts: k.parts, deployed: k.deployed, at: m.at }, null, 1));
+      if (k && m && m.at >= runStart) writeFileSync(join(dir(p), 'gate-key.json'), JSON.stringify({ gateKey: m.error ? null : k.gateKey, why: m.error ? `EDS capture failed: ${m.error}` : k.why, parts: k.parts, upstream: k.upstream, deployed: k.deployed, at: m.at }, null, 1));
     }
   } else for (const p of todo) for (const side of ['origin', 'eds']) { const m = readJson(join(dir(p), `${side}.json`)); if (m) rec(p, side, m); }
   if (opts.clip || opts.content || FAMILIES || Object.keys(UNITS).length) await pool(todo, opts.pc, probe);
