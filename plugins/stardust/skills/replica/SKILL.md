@@ -473,8 +473,9 @@ had one section for the whole run).
   `--eds-host`: a PASS row is reused only while its gate key (foundation,
   blocks, content, criteria) is proven served and unchanged, probes only
   while the capture pair holds; an EDS capture not proven current (changed
-  or unprovable key — always without a local `content/<page>.html`, so
-  slower there) is re-shot; rows say `reused` (handoff § 3, C).
+  key, or unknown key whose `gate-key.json` record differs; without a local
+  `content/<page>.html` nothing compares — every run, slower) is re-shot;
+  rows say `reused` (handoff § 3, C).
 
 **State:** replica writes its own state under `stardust/replica/` — the
 inconsistency register, `progress.json` (one map: `types.<archetype>` —
