@@ -11,6 +11,7 @@
 // EDS single sweep — no timed poll
 // (lateWindowFor → 0) but one dismissOverlays pass after waitEdsDelayedPhase still clicks a consent banner that
 // appears 3 s after `load` (the EDS delayed phase), which an immediate sweep misses. Prints a skip line otherwise.
+// --inventory (gate-all --one-load): named in --help; an unreadable spec still writes the PNG, exit 0, one warning.
 // Run: node plugins/stardust/skills/replica/scripts/test/stitch-shot.test.mjs
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
@@ -157,6 +158,26 @@ if (chromium) {
     rmSync(work, { recursive: true, force: true });
   }
 }
+
+// ---- --inventory (gate-all --one-load): named in --help; an inventory problem never fails the capture -------------
+await check('--inventory: --help names it; with an unreadable spec the stitch still writes the PNG and exits 0 with one stderr warning', async () => {
+  const cwd = mkdtempSync(join(tmpdir(), 'stitch-inventory-'));
+  const srv = createServer((req, res) => { res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); res.end('<!doctype html><html><body style="margin:0"><main><h1>Inventory</h1><section style="height:1200px;background:#ddd"></section></main></body></html>'); });
+  try {
+    const h = spawnSync(process.execPath, [SCRIPT, '--help'], { cwd, encoding: 'utf8', timeout: 15000 });
+    assert.equal(h.status, 0); assert.match(h.stdout, /--inventory <f> .*gate-all --one-load/);
+    if (!chromium) { console.log('skip  e2e --inventory with an unreadable spec (playwright / pngjs not importable here)'); return; }
+    await new Promise((r) => { srv.listen(0, '127.0.0.1', r); });
+    const r = await new Promise((done) => {
+      const child = spawn(process.execPath, [SCRIPT, `http://127.0.0.1:${srv.address().port}/`, 'inv.png', '--settle', '--inventory', join(cwd, 'missing-spec.json')], { cwd });
+      let stdout = ''; let stderr = ''; child.stdout.on('data', (d) => { stdout += d; }); child.stderr.on('data', (d) => { stderr += d; });
+      child.on('close', (status) => done({ status, stdout, stderr }));
+    });
+    assert.equal(r.status, 0, r.stderr); assert.ok(statSync(join(cwd, 'inv.png')).size > 0); assert.match(r.stdout, /^stitched inv\.png: 1440x\d+/m);
+    const warnings = r.stderr.split('\n').filter((l) => /WARNING/.test(l));
+    assert.equal(warnings.length, 1, r.stderr); assert.match(warnings[0], /missing-spec\.json/);
+  } finally { srv.close(); rmSync(cwd, { recursive: true, force: true }); }
+});
 
 console.log(failed ? `\n${failed} check(s) failing` : '\nstitch-shot: all checks passed');
 process.exit(failed ? 1 : 0);

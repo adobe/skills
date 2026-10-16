@@ -9,13 +9,14 @@
 // playwright is importable an e2e write-then-read of the origin side (0 origin requests on a hit, a key mismatch
 // measures; a blank origin render is measured but never cached). One load (gate-all --one-load): presenceReport has
 // main's keys, blankRender, inventoryPage / inventoryToFile (the hook's scroll protocol, the file, failures never
-// throw) over a stand-in page. Run: node <this file>.
+// throw) over a stand-in page; e2e symmetry (playwright + pngjs + stitch-shot alongside): a fixture page's inventory
+// taken standalone equals the one stitch-shot --inventory takes, and the hook changes no pixel. Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { alignHeadings, blankRender, diffPresence, formatReport, inventoryPage, inventorySide, inventoryToFile, originCacheKey, parseArgs, presenceReport } from '../content-presence.mjs';
 
@@ -224,6 +225,57 @@ else {
   });
   server.close(); rmSync(cwd, { recursive: true, force: true });
 
+  // ---- C8 symmetry: the inventory of one fixture page taken standalone (inventorySide) equals the one stitch-shot
+  // --inventory takes in its own load; the hook changes no pixel (same stitch without it).
+  const STITCH = ['../../../replica/scripts/stitch-shot.mjs', '../../replica/stitch-shot.mjs'].map((x) => resolve(HERE, x)).find((x) => existsSync(x));
+  let PNG = null; try { ({ PNG } = await import('pngjs')); } catch { PNG = null; }
+  if (!STITCH || !PNG) console.log(`skip  e2e symmetry (${!STITCH ? 'stitch-shot.mjs not found next to the diff scripts' : 'pngjs not importable here'})`);
+  else {
+    const FIXTURE = `<!doctype html><html><head><meta charset="utf-8"><style>
+      body{margin:0;font:16px/22px Arial} header{position:fixed;top:0;left:0;right:0;height:60px;background:#222;z-index:2} header a{color:#fff}
+      main{padding:80px 40px 40px} section{height:1200px} img{display:block;width:400px;height:200px;margin:20px 0}
+      .card{position:relative;width:355px;height:238px;overflow:hidden;box-shadow:0 0 2px #999;margin:40px 0}
+      .card-body{padding:12px;overflow:hidden;height:170px} .desc{margin:0;height:30px;overflow:hidden} .details{margin:160px 0 0}
+    </style></head><body><header><a href="/">Home</a> <a href="/shop">Shop</a></header><main><h1>Fixture offers</h1><p>Intro text for the fixture page.</p><a href="/all">All offers</a>
+      <section><h2>Below the fold</h2><img loading="lazy" src="/img/a.svg" alt="first"><img loading="lazy" src="/img/b.svg" alt="second"></section>
+      <div class="card"><div class="card-body"><p class="desc">First line of the description<br>second line cut mid-glyph by the 30px box<br>third</p><p class="details"><a href="/d">View details</a></p></div></div>
+      <div class="card"><div class="card-body"><h3>Card two</h3><p>Body two</p></div></div>
+    </main><footer><a href="/legal">Legal</a></footer></body></html>`;
+    const SVG = (c) => `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="200"><rect width="400" height="200" fill="${c}"/></svg>`;
+    const srv = createServer((req, res) => {
+      const p = req.url.split('?')[0];
+      if (p.startsWith('/img/')) { res.setHeader('content-type', 'image/svg+xml'); res.end(SVG(p.includes('a.svg') ? '#c33' : '#3c3')); return; }
+      res.setHeader('content-type', 'text/html'); res.end(FIXTURE);
+    });
+    await new Promise((r) => { srv.listen(0, '127.0.0.1', r); });
+    const url = `http://127.0.0.1:${srv.address().port}/fixture`;
+    const wd = mkdtempSync(join(tmpdir(), 'content-presence-sym-'));
+    const units = { sels: ['.card'], n: 2 };
+    const spec = join(wd, 'spec.json');
+    writeFileSync(spec, JSON.stringify({ out: join(wd, 'inv.json'), side: 'origin', presence: { rootSel: null, variableSels: [], countWords: null, moreWords: null, minCut: 2 }, clip: { minCut: 2, maxFindings: 400, moreWords: null }, units }));
+    const stitch = (args) => new Promise((done) => {
+      const ch = spawn(process.execPath, [STITCH, url, ...args, '--width', '1440', '--settle', '--locale', 'en-US'], { cwd: wd });
+      let out = ''; let err = ''; ch.stdout.on('data', (d) => { out += d; }); ch.stderr.on('data', (d) => { err += d; }); ch.on('close', (code) => done({ code, out, err }));
+    });
+    const pick = (x) => x.items.map(({ kind, text, state, inChrome, x: px, y, w, h }) => ({ kind, text, state, inChrome, x: px, y, w, h }));
+    await acheck('e2e symmetry: standalone inventorySide and stitch-shot --inventory read the same items, clip counts and unit geometry; the hook changes no pixel', async () => {
+      const { chromium } = await import('playwright');
+      const { openBrowser } = await import('../measure-live.mjs');
+      const browser = await openBrowser(chromium, { tier: 'plain' });
+      let a; try { a = await inventorySide(browser, url, { width: 1440, locale: 'en-US', warmup: null, rootSel: null, variableSels: [], minCut: 2, units }); } finally { await browser.close(); }
+      const [withInv, without] = await Promise.all([stitch([join(wd, 's.png'), '--inventory', spec]), stitch([join(wd, 'plain.png')])]);
+      assert.equal(withInv.code, 0, withInv.err); assert.equal(without.code, 0, without.err);
+      const b = JSON.parse(readFileSync(join(wd, 'inv.json'), 'utf8'));
+      assert.equal(b.error, undefined, b.error); assert.equal(b.settle, 'stitch'); assert.equal(b.tier, 'chromium');
+      assert.ok(a.items.some((x) => x.kind === 'image' && x.text === 'second'), 'the lazy images below the fold are loaded standalone');
+      assert.ok(a.items.some((x) => x.inChrome), 'the fixed header is chrome');
+      assert.deepEqual(pick(b), pick(a)); assert.deepEqual(b.clip.counts, a.clip.counts); assert.ok(a.clip.counts.controlHidden >= 1, 'the cut card link');
+      assert.deepEqual(b.units.bySel, a.units.bySel); assert.equal(a.units.bySel['.card'].units.length, 2);
+      const p1 = PNG.sync.read(readFileSync(join(wd, 's.png'))); const p2 = PNG.sync.read(readFileSync(join(wd, 'plain.png')));
+      assert.deepEqual([p1.width, p1.height], [p2.width, p2.height]); assert.ok(p1.data.equals(p2.data), 'identical pixels with and without the hook');
+    });
+    srv.close(); rmSync(wd, { recursive: true, force: true });
+  }
 }
 console.log(failed ? `\n${failed} failed` : '\nall passed');
 process.exit(failed ? 1 : 0);

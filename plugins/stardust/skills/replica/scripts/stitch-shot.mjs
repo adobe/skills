@@ -94,6 +94,8 @@
  *     --ua <string>       user agent                        (default real-Chrome)
  *     --wait <ms>         initial post-load wait            (default 1200; 3000 with --settle)
  *     --timeout <ms>      goto timeout                      (default 60000)
+ *     --inventory <spec>  also write the presence / clip / unit inventories of
+ *                         the settled page, before the freeze (gate-all --one-load)
  *
  * Example:
  *   node skills/replica/scripts/stitch-shot.mjs https://www.example.com \
@@ -139,6 +141,7 @@ Usage: node stitch-shot.mjs <url> <out.png> [options]
   --ua <string>     user agent (default: real-Chrome desktop UA + standard headers)
   --wait <ms>       initial post-load wait (default 1200; 3000 with --settle)
   --timeout <ms>    goto timeout (default 60000)
+  --inventory <f>   also write the probes' inventories of the settled page, before the freeze (gate-all --one-load)
   --help            this text
 
 Prints \`overflow: scrollWidth=<n> viewport=<n> delta=<n>\` right before the \`stitched\` line: the document width
@@ -167,6 +170,7 @@ function parseArgs(argv) {
     else if (a === '--ua') { opts.ua = rest[i += 1]; }
     else if (a === '--wait') { opts.wait = Number(rest[i += 1]); }
     else if (a === '--timeout') { opts.timeout = Number(rest[i += 1]); }
+    else if (a === '--inventory') { opts.inventory = rest[i += 1]; }
     else if (a.startsWith('--')) { console.error(`unknown flag ${a}\n\n${HELP}`); process.exit(1); }
     else pos.push(a);
   }
@@ -245,6 +249,9 @@ async function main() {
       // stitched capture (recorded: a fashion retailer's "Sign up, stay updated!").
       if (!opts.noDismiss) await dismissAndLog(page, url, opts);
     }
+
+    // --inventory: the probes read this settled page (read only, before the freeze; a failure never fails the capture).
+    if (opts.inventory) await import(pathToFileURL(resolvePath(dirname(LIVE_SESSION), 'content-presence.mjs')).href).then((m) => m.inventoryToFile(page, opts.inventory, { url }), (e) => console.error(`stitch-shot WARNING: --inventory not taken (${e.message}) — the capture continues`));
 
     // Freeze animations/transitions/carets for stable chunks — AFTER settle.
     await page.addStyleTag({ content: '*,*::before,*::after{animation-play-state:paused!important;transition:none!important;caret-color:transparent!important;scroll-behavior:auto!important;}html{scroll-behavior:auto!important}' });
