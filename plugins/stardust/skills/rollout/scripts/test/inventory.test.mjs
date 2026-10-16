@@ -262,21 +262,31 @@ check('--state: a roster row a cluster marked deployed (no document yet) stays d
   r = inv(); assert.equal(r.status, 0, r.stderr);
   row = rowsOf(out4)['tours-late']; assert.equal(row.delivery.status, 'stale'); assert.equal(row.source.sourceHash, hash('<main>late v2</main>'));
 });
-// inventory rewrites pages.json, templates.json and rollout.json: it waits for update-coverage's lock and releases it
+// inventory rewrites pages.json, templates.json and rollout.json: it takes update-coverage's lock BEFORE it reads the old
+// coverage — a status a cluster records while inventory waits for the lock survives the run — and releases it
 {
-  const out5 = join(proj, 'rollout-lock'); const lock = join(out5, '.coverage.lock');
-  mkdirSync(lock, { recursive: true }); writeFileSync(join(lock, 'owner'), '4242 a cluster writer\n');
+  const out5 = join(proj, 'rollout-lock'); const lock = join(out5, '.coverage.lock'); const pj = join(out5, 'coverage', 'pages.json');
+  const base = spawnSync(process.execPath, [SCRIPT, '--migrated', PM, '--out', out5], { encoding: 'utf8' });
+  const baseline = readFileSync(pj, 'utf8');
+  mkdirSync(lock); writeFileSync(join(lock, 'owner'), '4242 a cluster writer\n');
   const p = spawn(process.execPath, [SCRIPT, '--migrated', PM, '--out', out5], { stdio: ['ignore', 'pipe', 'pipe'] });
   let err = ''; p.stderr.on('data', (d) => { err += d; });
   const done = new Promise((res) => p.on('close', res));
   await new Promise((res) => setTimeout(res, 600));
-  const whileHeld = existsSync(join(out5, 'coverage', 'pages.json'));
+  const untouchedWhileHeld = readFileSync(pj, 'utf8') === baseline;
+  // the lock holder (a cluster's update-coverage) records an encoded page deployed, then releases the lock
+  const doc = JSON.parse(baseline);
+  for (const row of doc.pages) if (row.slug === 'tours-north') row.delivery = { ...row.delivery, status: 'deployed', deployedUrl: 'https://x.test/tours/north', deployedAt: 'now' };
+  writeFileSync(pj, `${JSON.stringify(doc, null, 2)}\n`);
   rmSync(lock, { recursive: true, force: true });
   const code = await done;
-  check('the coverage lock (<out>/.coverage.lock, update-coverage\'s) is taken: nothing written while another writer holds it; written and released after', () => {
-    assert.equal(whileHeld, false, 'pages.json written under a held lock');
+  check('the coverage lock (<out>/.coverage.lock, update-coverage\'s) is taken before the old coverage is read: a status recorded while inventory waits survives; nothing written while held; released after', () => {
+    assert.equal(base.status, 0, base.stderr);
+    assert.equal(untouchedWhileHeld, true, 'pages.json written under a held lock');
     assert.equal(code, 0, err);
-    assert.ok(existsSync(join(out5, 'coverage', 'pages.json')));
+    const north = JSON.parse(readFileSync(pj, 'utf8')).pages.find((r) => r.slug === 'tours-north');
+    assert.equal(north.delivery.status, 'deployed', 'the status recorded under the lock was lost: the old coverage was read before the lock');
+    assert.equal(north.delivery.deployedUrl, 'https://x.test/tours/north');
     assert.deepEqual(readdirSync(out5).sort(), ['coverage', 'rollout.json'], 'no lock dir or tmp file left');
     assert.deepEqual(readdirSync(join(out5, 'coverage')).sort(), ['pages.json', 'templates.json']);
   });
