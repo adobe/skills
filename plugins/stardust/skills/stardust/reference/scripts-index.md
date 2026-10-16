@@ -54,7 +54,7 @@ Run the project copies under `stardust/scripts/<skill>/`. Ask `--help` only for 
 - `replica/crop-compare.mjs` — pixel diff of one band — `<a.png> <b.png> --height <px> [--y] [--y-b] [--threshold 2] [--strip <out.png>]`
 - `replica/css-rules.mjs` — rule blocks by selector regex — `<f.css> "<re>" [--media <re>|--no-media] [--decl <re>]`
 - `replica/foundation-freeze.mjs` — frozen delivery foundation, sha256 manifest — `freeze [--paths a,b]`; `check`
-- `replica/gate-all.mjs` — pixel tables, deployed or `--stage prototype`; reuses unchanged rows — `[--only <s,…>] [--skip-existing] [--recapture-eds] [--eds-host <h>] [--no-probes] [--origin-max-age <h>] [--one-load]`; exit 2 = FAIL
+- `replica/gate-all.mjs` — pixel tables, deployed or `--stage prototype`; reuses unchanged rows — `[--only <s,…>] [--skip-existing] [--recapture-eds] [--eds-host <h>] [--no-probes] [--origin-max-age <h>] [--one-load]`; exit 2 = FAIL or refused start
 - `replica/gate-evidence.mjs` — sidecar gates from pixel tables + run-bg jobs — `[--slug <s>]… [--content <dir>] [--tables <dir>] [--check] [--dry-run]`
 - `replica/gate-triage.mjs` — failing rows by shared cause + re-gate scope — `[--gate <dir>]… [--unit <u>] [--no-parity] [--dry-run]`
 - `replica/gate.sh` — one gate round + overflow assert + probes (`--full`: + diff probes) — `<slug> <live> <build> <width> [iter] [--full] [--main <sel>] [--consent <sel>] [--dismiss <sel,…>]`

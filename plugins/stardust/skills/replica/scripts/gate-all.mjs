@@ -69,6 +69,14 @@
  * words (and how many of them lack the source url), what --only matched, and the hint to pass --state from the project
  * root or deploy first; exit 1, nothing written.
  *
+ * Roster estimate: each run's first status line (stdout and _run.log) is `roster: <n> page(s) × 1 width @<w> (<stage>) —
+ * estimated <s> s (25 s per page per width)` (`ESTIMATE_SEC_PER_PAGE` × pages × widths; one width per process) plus
+ * `; run-bg deadline <d> s` when one is known — a recorded 99-page roster at one width needed 2152 s and was killed by
+ * run-bg's 900 s default deadline. Deadline guard: RUN_BG_DEADLINE_SEC (env, seconds — the job's --timeout, exported by
+ * run-bg; absent or ≤ 0 = none) below the estimate → gate-all refuses to start, before the out dir and any capture,
+ * probe, gate key or table write: one stderr line (`no verdict`, the roster, the estimate, the deadline and the remedy
+ * `--timeout <estimate>`), exit 2.
+ *
  * Usage: node skills/replica/scripts/gate-all.mjs [--stage published|prototype] [--proto-base <url>]
  *        [--state f] [--out dir] [--width 1440] [--only <slug,…>] [--skip-existing] [--recapture-eds] [--recapture-origin] [--eds-host <h>]
  *        [--blocked <re>] [--try-blocked] [--crawl-shots <dir>] [--origin-max-age <h>] [--origin-concurrency 2]
@@ -81,7 +89,9 @@
  * defaults hold with or without one; the flags raise them.
  * Requires playwright, pixelmatch, pngjs (project devDependencies); stitch-shot.mjs, pixel-compare.mjs
  * and foundation-freeze.mjs next to this file; the diff skill's scripts dir alongside. Exit: 0 all PASS
- * (overrides count), 2 any FAIL, 1 error. `verdict`, `formatSummary`, `parseArgs`, `emptySelection` and the reuse helpers
+ * (overrides count), 2 any FAIL or a refused start (no verdict), 1 error or an empty selection. `verdict`,
+ * `formatSummary`, `parseArgs`, `emptySelection`, the roster helpers for run-bg (`ESTIMATE_SEC_PER_PAGE`, `selectPages`,
+ * `rosterEstimate`) and the reuse helpers
  * (`probeInputs`, `probeReuse`, `canon`, `gateKeyParts`, `gateKeyOf`, `foundationPart`, `sharedBlocks`,
  * `blockRefs`, `chromeDocs`, `instrumentFiles`, `edsHostOf`, `codeDeployed`, `hostServes`,
  * `deployedDocs`, `contentDeployed`, `keyChanged`, `skipCapture`, `rowKey`, `latestRows`, `rowReuse`) are exported.
@@ -133,7 +143,11 @@ Sidecars in <out>/: masks.json, overrides.json, clip-allow.json, presence.json, 
 Reuse sidecars per page: probes.json, gate-key.json (see the header).
 Empty selection → one stderr line: the absolute state path, its page count, how many are deployed with a liveUrl /
   have a prototypePath (and how many of those lack a source url), what --only matched, the hint; exit 1.
-Exit: 0 all PASS (overrides count), 2 any FAIL, 1 error.`;
+First status line (stdout, _run.log): roster: <n> page(s) × 1 width @<w> (<stage>) — estimated <25·n> s (25 s per
+  page per width)[; run-bg deadline <d> s]. RUN_BG_DEADLINE_SEC (env, seconds: the job's --timeout, exported by
+  run-bg; absent or ≤ 0 = none) below the estimate → refused before the out dir or any capture: one stderr line
+  "no verdict" naming --timeout <estimate>; exit 2.
+Exit: 0 all PASS (overrides count), 2 any FAIL or a refused start (no verdict), 1 error or an empty selection.`;
 
 export function parseArgs(argv, env = process.env) {
   const rest = argv.slice(2);
@@ -156,13 +170,41 @@ export function parseArgs(argv, env = process.env) {
     else if (a.startsWith('--')) { console.error(`unknown flag ${a}\n\n${HELP}`); process.exit(1); }
   }
   o.browserSlot = Boolean(env.STARDUST_BROWSER_SLOT); // run-bg holds a machine-wide browser slot for this job (logged; pools unchanged)
+  const deadline = Number(env.RUN_BG_DEADLINE_SEC); o.deadlineSec = deadline > 0 ? deadline : null; // run-bg exports the job's --timeout (s); absent / ≤ 0 = none
   if (o.stage === 'prototype' && o.content) o.content = false; // content-diff already reconciles the prototype's text
   if (!o.out) o.out = `stardust/replica/gates/${o.stage === 'prototype' ? 'prototypes' : 'all'}-${o.width}`;
   return o;
 }
 
-// ---- pure: the roster -------------------------------------------------------------------------------------------
+// ---- the roster: selection + estimate (pure; rosterEstimate also reads the state file) ------------------------------
+export const ESTIMATE_SEC_PER_PAGE = 25;
 const pagesOf = (state) => (state && state.pages) || [];
+/** selectPages(state, { stage, protoBase, only }) → the pages this run gates (main() selects with it; run-bg counts with it). */
+export function selectPages(state, { stage = 'published', protoBase = null, only = null } = {}) {
+  const pages = stage === 'prototype'
+    ? pagesOf(state).filter((p) => p.prototypePath && p.url).map((p) => ({ ...p, liveUrl: `${protoBase || 'http://localhost:8791'}/${basename(p.prototypePath)}` }))
+    : pagesOf(state).filter((p) => p.status === 'deployed' && p.liveUrl && p.url);
+  return only ? pages.filter((p) => only.includes(p.slug)) : pages;
+}
+// One width per process: widths stays 1 here, explicit so run-bg can sum invocations (pages × widths).
+const roster = (pages, { width, stage }) => { const widths = 1; return { pages, widths, width, stage, estimatedSeconds: ESTIMATE_SEC_PER_PAGE * pages * widths }; };
+const rosterText = (r) => `${r.pages} page(s) × ${r.widths} width${r.widths === 1 ? '' : 's'} @${r.width} (${r.stage})`;
+/**
+ * rosterEstimate(argv, { cwd }) → { pages, widths: 1, width, stage, state, estimatedSeconds } | { error } for gate-all's own
+ * argv (no node / script path): reads only --state, --stage, --proto-base, --only, --width (other flags and --help are
+ * skipped, never an exit or a print) and the state file resolved against cwd — no other I/O.
+ */
+export function rosterEstimate(argv, { cwd = process.cwd() } = {}) {
+  const o = { state: 'stardust/state.json', stage: 'published', protoBase: null, only: null, width: 1440 };
+  const KEY = { '--state': 'state', '--stage': 'stage', '--proto-base': 'protoBase', '--only': 'only', '--width': 'width' };
+  const a = argv || [];
+  for (let i = 0; i < a.length; i += 1) if (KEY[a[i]] && a[i + 1] != null) { o[KEY[a[i]]] = String(a[i + 1]); i += 1; }
+  if (!['published', 'prototype'].includes(o.stage)) return { error: `--stage must be published or prototype (got ${o.stage})` };
+  const only = o.only == null ? null : o.only.split(',').map((s) => s.trim()).filter(Boolean); const width = Number(o.width);
+  const state = resolve(cwd, o.state); let json;
+  try { json = JSON.parse(readFileSync(state, 'utf8')); } catch (e) { return { error: e.code === 'ENOENT' ? `${state} not found` : `${state} unreadable: ${e.message}` }; }
+  return { ...roster(selectPages(json, { stage: o.stage, protoBase: o.protoBase && o.protoBase.replace(/\/$/, ''), only }).length, { width, stage: o.stage }), state };
+}
 /** emptySelection(state, { stage, only, statePath }) → the one stderr line naming why no page was selected. */
 export function emptySelection(state, { stage = 'published', only = null, statePath }) {
   const all = pagesOf(state); const proto = stage === 'prototype';
@@ -599,12 +641,12 @@ async function main() {
   if (!existsSync(opts.state)) { console.error(`gate-all: ${opts.state} not found — run from the project root or pass --state`); process.exit(1); }
   if ((opts.clip || opts.content) && !DIFF_DIR) { console.error('gate-all: the diff skill\'s scripts dir was not found next to this one (../../diff/scripts or ../diff) — copy it (replica SKILL.md § Setup) or pass --no-probes'); process.exit(1); }
   const state = readJson(opts.state);
-  let pages = opts.stage === 'prototype'
-    ? (state.pages || []).filter((p) => p.prototypePath && p.url).map((p) => ({ ...p, liveUrl: `${opts.protoBase || 'http://localhost:8791'}/${basename(p.prototypePath)}` }))
-    : (state.pages || []).filter((p) => p.status === 'deployed' && p.liveUrl && p.url);
+  const pages = selectPages(state, opts);
   if (opts.stage === 'prototype' && !opts.protoBase) console.error('gate-all: --stage prototype without --proto-base — assuming http://localhost:8791 (serve the prototypes dir there, replica SKILL.md § Phase 4)');
-  if (opts.only) pages = pages.filter((p) => opts.only.includes(p.slug));
   if (!pages.length) { console.error(emptySelection(state, { stage: opts.stage, only: opts.only, statePath: resolve(opts.state) })); process.exit(1); }
+  // Deadline guard: a run-bg deadline below the estimate would kill the job mid-roster — refuse before any write.
+  const R = roster(pages.length, opts);
+  if (opts.deadlineSec && opts.deadlineSec < R.estimatedSeconds) { console.error(`gate-all: refused to start, no verdict — ${rosterText(R)} need an estimated ${R.estimatedSeconds} s (${ESTIMATE_SEC_PER_PAGE} s per page per width), above this job's run-bg deadline of ${opts.deadlineSec} s (RUN_BG_DEADLINE_SEC); re-start the job with run-bg.mjs start --timeout ${R.estimatedSeconds} …, or omit --timeout: run-bg sizes a gate-all job's deadline to this estimate`); process.exit(2); }
   mkdirSync(opts.out, { recursive: true });
   const MASKS = readJson(join(opts.out, 'masks.json'), {}); const OVERRIDES = readJson(join(opts.out, 'overrides.json'), {});
   const CLIP_ALLOW = readJson(join(opts.out, 'clip-allow.json'), {}); const PRESENCE = readJson(join(opts.out, 'presence.json'), {});
@@ -612,6 +654,7 @@ async function main() {
   const UNITS = readJson(opts.units || join(opts.out, 'units.json'), {});
   const unitsOf = (p) => (FAMILIES ? unitsFor(FAMILIES, p.slug, p.template) : ((UNITS[p.slug] || {}).units || []).map((x) => ({ origin: x.origin, eds: x.eds || x.origin, n: x.n || 1, required: x.required !== false })));
   const log = (s) => { const line = `${new Date().toISOString()} ${s}`; console.log(line); writeFileSync(join(opts.out, '_run.log'), `${line}\n`, { flag: 'a' }); };
+  log(`roster: ${rosterText(R)} — estimated ${R.estimatedSeconds} s (${ESTIMATE_SEC_PER_PAGE} s per page per width)${opts.deadlineSec ? `; run-bg deadline ${opts.deadlineSec} s` : ''}`);
   // One run anchor per process (every row of the run judged against it); --origin-max-age reaches the probes via the env.
   const ledger = join(dirname(opts.state), 'status.jsonl');
   const runStart = FRESH ? FRESH.runStartAt({ ledger }) : null;

@@ -4,7 +4,8 @@
 // units, pixelOnlyPass vs pass (the calibration pair), reasons text, overrides shown beside the number;
 // formatSummary (header, calibration line, one row per page, asymmetric-origin flag, the reused cell); parseArgs
 // defaults and --out derived from --width; --help in an empty cwd; pixel-compare's textBoxPct over a synthetic diff;
-// an empty selection names its cause (emptySelection table, the CLI exits 1 writing nothing).
+// an empty selection names its cause (emptySelection table, the CLI exits 1 writing nothing); the roster (selectPages /
+// rosterEstimate table, the RUN_BG_DEADLINE_SEC deadline).
 // Reuse under --skip-existing: probeReuse (the capture pair rule), the gate key (stable across key order, changed by
 // one block / content / frozen-file byte or a mask edit, null on a freeze mismatch), the deploy-state guard's
 // content half; then the CLI over stub instruments in a sandbox project with a git remote and a deploy ledger.
@@ -22,7 +23,7 @@ import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { codeDeployed, contentDeployed, deployedDocs, edsHostOf, emptySelection, foundationPart, formatSummary, gateKeyOf, gateKeyParts, hostServes, instrumentFiles, inventoryWhy, keyChanged, liveReusePlan, oneLoadKeep, originReusePlan, parseArgs, probeReuse, rowKey, sharedBlocks, skipCapture, verdict } from '../gate-all.mjs';
+import { codeDeployed, contentDeployed, deployedDocs, edsHostOf, emptySelection, foundationPart, formatSummary, gateKeyOf, gateKeyParts, hostServes, instrumentFiles, inventoryWhy, keyChanged, liveReusePlan, oneLoadKeep, originReusePlan, parseArgs, probeReuse, rosterEstimate, rowKey, selectPages, sharedBlocks, skipCapture, verdict } from '../gate-all.mjs';
 
 // pixel-compare imports pngjs at module level (a project devDependency, absent in the plugin checkout):
 // import it lazily and skip its one check where it does not resolve, like the other browser/dep-bound tests.
@@ -300,6 +301,26 @@ check('CLI: a state with zero deployed pages → exit 1, one stderr line naming 
   assert.deepEqual(readdirSync(cwd, { recursive: true }).sort(), ['stardust', join('stardust', 'state.json')]);
   rmSync(cwd, { recursive: true, force: true });
 });
+// ---- the roster: selectPages / rosterEstimate (run-bg sizes a gate-all job's deadline with them), the deadline env ---
+check('selectPages / rosterEstimate: published vs prototype, --only, the state resolved against cwd, other flags and --help tolerated, a missing or unreadable state → error; RUN_BG_DEADLINE_SEC > 0 is the deadline', () => {
+  const cwd = realpathSync(mkdtempSync(join(tmpdir(), 'gate-all-roster-'))); mkdirSync(join(cwd, 'stardust'));
+  const st = { pages: [{ slug: 'a', url: 'https://o.test/a', status: 'deployed', liveUrl: 'https://e.test/a', prototypePath: 'stardust/prototypes/a.html' },
+    { slug: 'b', url: 'https://o.test/b', status: 'deployed', liveUrl: 'https://e.test/b' }, { slug: 'c', url: 'https://o.test/c', status: 'pending', prototypePath: 'stardust/prototypes/c.html' },
+    { slug: 'd', status: 'deployed', liveUrl: 'https://e.test/d', prototypePath: 'stardust/prototypes/d.html' }] };
+  writeFileSync(join(cwd, 'stardust/state.json'), JSON.stringify(st)); writeFileSync(join(cwd, 'gate.json'), JSON.stringify({ pages: st.pages.slice(0, 1) })); writeFileSync(join(cwd, 'bad.json'), '{');
+  const slugs = (o) => selectPages(st, o).map((p) => p.slug);
+  assert.deepEqual(slugs({ stage: 'published' }), ['a', 'b']); assert.deepEqual(slugs({ stage: 'published', only: ['b', 'z'] }), ['b']);
+  assert.deepEqual(selectPages(st, { stage: 'prototype', protoBase: 'http://localhost:9' }).map((p) => [p.slug, p.liveUrl]), [['a', 'http://localhost:9/a.html'], ['c', 'http://localhost:9/c.html']]);
+  assert.equal(selectPages(st, { stage: 'prototype' })[0].liveUrl, 'http://localhost:8791/a.html'); assert.deepEqual(selectPages({}, { stage: 'published' }), []);
+  const state = join(cwd, 'stardust/state.json');
+  assert.deepEqual(rosterEstimate([], { cwd }), { pages: 2, widths: 1, width: 1440, stage: 'published', state, estimatedSeconds: 50 });
+  assert.deepEqual(rosterEstimate(['--stage', 'prototype', '--width', '360', '--proto-base', 'http://localhost:9/', '--only', 'c,z'], { cwd }), { pages: 1, widths: 1, width: 360, stage: 'prototype', state, estimatedSeconds: 25 });
+  assert.deepEqual(rosterEstimate(['--skip-existing', '--out', 'x', '--bogus', 'y', '--help', '--state', 'gate.json', '--threshold', '5'], { cwd }), { pages: 1, widths: 1, width: 1440, stage: 'published', state: join(cwd, 'gate.json'), estimatedSeconds: 25 });
+  assert.match(rosterEstimate(['--state', 'nope.json'], { cwd }).error, /nope\.json not found/); assert.match(rosterEstimate(['--state', 'bad.json'], { cwd }).error, /bad\.json unreadable/);
+  assert.match(rosterEstimate(['--stage', 'draft'], { cwd }).error, /--stage must be published or prototype/);
+  assert.deepEqual(['900', '0', '-5', 'x', undefined].map((v) => parseArgs(['node', 'x'], v === undefined ? {} : { RUN_BG_DEADLINE_SEC: v }).deadlineSec), [900, null, null, null, null]);
+  rmSync(cwd, { recursive: true, force: true });
+});
 
 // ---- CLI over stub instruments (no browser, no network): the gate.test.mjs sandbox pattern — a realpath'd project
 // with stardust/scripts/{replica,diff}, a git remote the site's code is pushed to, and a deploy ledger with contentSha.
@@ -351,7 +372,7 @@ git('remote', 'add', 'origin', join(base, 'org', 'site.git')); git('push', '-q',
 
 const gateAll = (args = [], env = {}) => {
   writeFileSync(COUNT, '');
-  const r = spawnSync(process.execPath, [join(replica, 'gate-all.mjs'), ...args], { cwd: reuseRoot, encoding: 'utf8', env: { ...process.env, STUB_COUNT: COUNT, STUB_FAIL: '', ...env } });
+  const r = spawnSync(process.execPath, [join(replica, 'gate-all.mjs'), ...args], { cwd: reuseRoot, encoding: 'utf8', env: { ...process.env, STUB_COUNT: COUNT, STUB_FAIL: '', RUN_BG_DEADLINE_SEC: '', ...env } });
   const lines = readFileSync(COUNT, 'utf8').split('\n').filter(Boolean);
   const n = (f) => lines.filter(f).length;
   return { ...r, n: { origin: n((l) => l === 'STITCH origin'), eds: n((l) => l === 'STITCH eds'), probes: n((l) => l.startsWith('PROBE')), compares: n((l) => l === 'COMPARE') } };
@@ -564,7 +585,7 @@ const read = (p) => JSON.parse(readFileSync(join(root, p), 'utf8'));
 const lines = (f) => (existsSync(f) ? readFileSync(f, 'utf8').trim().split('\n').filter(Boolean) : []);
 const gate = (args, env = {}) => {
   for (const f of [STITCH_LOG, CP_LOG]) rmSync(f, { force: true });
-  const e = { ...process.env, ...env }; for (const k of ['STARDUST_ORIGIN_MAX_AGE_H', 'STARDUST_BROWSER_SLOT']) if (!(k in env)) delete e[k];
+  const e = { ...process.env, ...env }; for (const k of ['STARDUST_ORIGIN_MAX_AGE_H', 'STARDUST_BROWSER_SLOT', 'RUN_BG_DEADLINE_SEC']) if (!(k in env)) delete e[k];
   const r = spawnSync(process.execPath, [join(RS, 'gate-all.mjs'), '--width', '1440', ...args], { cwd: root, env: e, encoding: 'utf8', timeout: 60e3 });
   const st = lines(STITCH_LOG); const run = (r.stdout.match(/run → (.*)/) || [])[1];
   return { ...r, origin: st.filter((l) => l.startsWith('ORIGIN')).length, eds: st.filter((l) => l.startsWith('EDS')).length, cp: lines(CP_LOG).map((l) => JSON.parse(l)), row: (slug) => (run ? read(run) : read('stardust/replica/gates/all-1440/summary.json')).rows.find((x) => x.slug === slug) };
@@ -572,8 +593,16 @@ const gate = (args, env = {}) => {
 const runLog = () => readFileSync(join(OUT, '_run.log'), 'utf8');
 const presence = (slug) => `stardust/replica/gates/all-1440/${slug}/presence-origin.json`;
 let homeAt = null;
+check('deadline guard: RUN_BG_DEADLINE_SEC 49 s below the estimate (2 pages × 25 s) → exit 2, one stderr line "no verdict" naming the roster, the estimate, the deadline and --timeout 50; no out dir, no capture, nothing written', () => {
+  const before = readdirSync(root, { recursive: true }).sort();
+  const r = gate([], { RUN_BG_DEADLINE_SEC: '49' });
+  assert.equal(r.status, 2, r.stderr + r.stdout); assert.equal(r.stdout, ''); assert.equal(r.stderr.trim().split('\n').length, 1, r.stderr);
+  assert.match(r.stderr, /no verdict/); assert.match(r.stderr, /2 page\(s\) × 1 width @1440 \(published\)/); assert.match(r.stderr, /estimated 50 s/); assert.match(r.stderr, /deadline of 49 s/); assert.match(r.stderr, /--timeout 50 /);
+  assert.equal(r.origin + r.eds, 0); assert.equal(r.cp.length, 0); assert.equal(existsSync(OUT), false); assert.deepEqual(readdirSync(root, { recursive: true }).sort(), before);
+});
+let first = null;
 check('sandbox 1: a full round captures both sides of every page; origin.json records width, locale, vh, headed and at', () => {
-  const r = gate([]);
+  const r = gate([], { RUN_BG_DEADLINE_SEC: '50' }); first = r;
   assert.equal(r.status, 0, r.stderr + r.stdout); assert.equal(r.origin, 2); assert.equal(r.eds, 2);
   const m = read('stardust/replica/gates/all-1440/home/origin.json');
   assert.equal(m.width, 1440); assert.equal(m.locale, 'en-US'); assert.equal(m.vh, null); assert.equal(m.headed, true); assert.ok(m.at); assert.equal(m.reused, undefined);
@@ -581,6 +610,11 @@ check('sandbox 1: a full round captures both sides of every page; origin.json re
   assert.equal(r.row('home').originReused, null); assert.equal(read('stardust/replica/gates/all-1440/summary.json').totals.originReused, 0);
   assert.match(runLog(), /origin reuse: same run since .*; pools origin 2 \/ eds 4 \/ probe 2/);
   assert.ok(r.cp.every((c) => !c.had), 'a fresh origin capture is paired with a fresh presence inventory');
+});
+check('roster estimate: the run\'s first status line — stdout and _run.log — is the roster with its estimate (2 pages → 50 s) and the run-bg deadline; a deadline equal to the estimate starts', () => {
+  const want = /^\S+ roster: 2 page\(s\) × 1 width @1440 \(published\) — estimated 50 s \(25 s per page per width\); run-bg deadline 50 s$/;
+  assert.equal(first.status, 0); assert.match(first.stdout.split('\n')[0], want); assert.match(runLog().split('\n')[0], want);
+  assert.match(runLog().split('\n')[1], / origin reuse: /);
 });
 check('sandbox 2: --only home is a fix round — 0 origin navigations, the row / origin.json / _run.log record the reuse, presence cache passed; a held browser slot leaves the pools at 2 / 4 / 2', () => {
   const r = gate(['--only', 'home'], { STARDUST_BROWSER_SLOT: join(root, 'slot-1.json') });
