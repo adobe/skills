@@ -12,18 +12,22 @@
 //   grammar v2    compound cell (parts), itemWrap + link → plain-text fallback (+ titleAttr), id-reference cell, one
 //                 cell per match, blank-container drop, metadata from a selector with fallback, markers as an array,
 //                 section-break, a module nested in rich content → flattened, a component pattern → unmapped
-//   hard stops    unmapped · flattened · variance (fingerprint + census, one visibility rule; ignoreAncestors; accepts
-//                 per direction) · incomplete (L5) · error —
-//                 each exits 2 and writes nothing for the page; missing capture / invalid map → exit 1
+//   hard stops    unmapped · flattened (a missing cell, a row group matching nothing, a nested module) · variance
+//                 (fingerprint + census, one visibility rule; ignoreAncestors; accepts per direction) · incomplete (L5)
+//                 · error — each exits 2 and writes nothing (no file in the project moves); missing capture / invalid
+//                 map → exit 1
 //   patches       the skeleton's stardust/patches/<slug>.json ops on the rendered document (engine level): replace,
 //                 attr, remove; a patch deleting counted content → incomplete; a no-match patch → recorded, no stop;
-//                 the h1 check judges the patched document; variance never moves; sanitise stays last
+//                 the h1 check judges the patched document; variance never moves; sanitise stays last (a patch's
+//                 non-ASCII is entity-encoded too)
 //   writes        second run → zero writes (unchanged); --dry-run writes nothing; --lint on the fixture exits per its
 //                 findings (the fixture map is lint-clean); --sweep from a CLI process settles
 //   validation    unknown keys fail at every level ($comment allowed), every key the engine reads is type-checked,
 //                 --lint's own keys pass through; the walk's traversal is exported and is the engine's own
-//   determinism   two in-process runs + a child process with another TZ/LANG → identical sha256
-//   --help        in an empty dir: exit 0, usage on stdout, nothing written
+//   determinism   two in-process runs + a child process with another TZ/LANG → identical sha256; input order (the
+//                 roster's pages, the media ledger's keys, the chrome map's groups — one source and one page claimed
+//                 twice) never moves a byte
+//   --help        in an empty dir: exit 0 within 15 s, usage on stdout, nothing written
 //
 // The hard-stop cases follow the importer skeleton's test on the `stardust/next` branch
 // (`skills/migrate/scripts/test/importer-skeleton.test.mjs`, commit 9aaeff4f), rewritten for the encoder.
@@ -31,7 +35,7 @@
 // Usage: node plugins/stardust/skills/migrate/scripts/test/encode.test.mjs  (exit 1 on failure)
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -65,6 +69,14 @@ function addPage(slug, html, record = {}) {
 }
 const mutate = (from, to) => { assert.ok(SIB.includes(from), `fixture holds ${from}`); return SIB.replace(from, to); };
 const pageOf = (r) => JSON.parse(r.out.split('\n')[0]).pages;
+// every file of the scratch project → inode:mtime (a write is a new file, a new inode (tmp + rename) or a new mtime)
+const tree = (dir = T, out = {}) => {
+  for (const e of readdirSync(dir, { withFileTypes: true })) {
+    const f = join(dir, e.name);
+    if (e.isDirectory()) tree(f, out); else { const s = statSync(f); out[f.slice(T.length + 1)] = `${s.ino}:${s.mtimeMs}`; }
+  }
+  return out;
+};
 
 try {
   // --- encode the template: both pages clean, written, verdict last --------------------------------------------------
@@ -158,20 +170,24 @@ try {
   assert.deepEqual(validateVocabulary({ root: 'main', markers: [{ sel: '.known', kind: 'known' }, { sel: '.k2', emitter: null }] }), [], 'no emitter (absent or null) = a known kind not mapped yet');
   assert.match(validateVocabulary({ root: 'main', markers: [{ sel: '.x', emitter: 'none' }] })[0], /emitter "none": use block:/, 'there is no "none" emitter');
 
-  // --- hard stops: each exits 2, the page is not written ------------------------------------------------------------------
+  // --- hard stops: each exits 2 and writes nothing — no document, no sidecar, no manifest entry (a page never encoded) --
   const stopCase = async (slug, html, status, re) => {
     addPage(slug, html);
+    const before = tree();
     const res = await run('--template', A, '--slug', slug, '--json');
     assert.equal(res.code, 2, `${slug}: exit 2\n${res.err}\n${res.out}`);
     const [rec] = pageOf(res);
     assert.equal(rec.status, status, `${slug}: status ${status} (${JSON.stringify(rec.report)})`);
     if (re) assert.match(JSON.stringify(rec.report), re);
     assert.equal(res.last, 'encoded 0 · unchanged 0 · stopped 1');
-    assert.ok(!existsSync(P('stardust', 'encoded', 'trips', `${slug}.html`)), `${slug}: nothing written`);
+    assert.deepEqual(tree(), before, `${slug}: nothing written`);
     return rec;
   };
   await stopCase('stop-unmapped', mutate('<div class="mod-image"', '<div class="mod-poll"><div class="ui-poll"><p>Which trail next?</p></div></div><div class="mod-image"'), 'unmapped', /"selector":"childClass/);
   await stopCase('stop-flattened', mutate('<span class="ui-facts__value">310 m</span>', ''), 'flattened', /cell 1 \(\.ui-facts__value\) empty/);
+  // a block whose rows match nothing (an accordion with zero items) is flattened, never an empty block
+  const factRows = SIB.match(/ *<div class="ui-facts__row">.*\n/g).join('');
+  await stopCase('stop-zero-rows', mutate(factRows, '<p>Facts to follow.</p>\n'), 'flattened', /"kind":"facts"[^}]*"why":\["row group 0 \(\.ui-facts__row\) matched nothing"\]/);
   await stopCase('stop-nested', mutate('<p>Benches and a view over three villages.</p>', '<p>Benches.</p></div></div><div class="mod-tags"><div class="ui-tags"><span class="ui-tags__item">Views</span></div></div><div class="mod-text"><div class="ui-text"><p>More.</p>'), 'flattened', /a module nested inside rich content/);
   await stopCase('stop-nested-unknown', mutate('<p>A steady climb on a wide forest road.</p>', '<p>A steady climb.</p></div></div><div class="mod-quiz"><div class="ui-quiz"><p>Q?</p></div></div><div><div><p>x</p>'), 'flattened', /"selector":"childClass/);
   const v = await stopCase('stop-variance', mutate('mod-teaser mod-teaser--featured', 'mod-teaser'), 'variance', /"change":"extra","print":"\.mod-teaser \| div\.mod-teaser \| mod-container>ui-container"/);
@@ -199,7 +215,7 @@ try {
   // --- a whole run with stopped pages exits 2 and still writes the clean ones; missing input exits 1 ----------------------
   rmSync(P('stardust', 'encoded'), { recursive: true });
   r = await run('--template', A);
-  assert.equal(r.code, 2); assert.equal(r.last, 'encoded 2 · unchanged 0 · stopped 12', 'the archetype and the sibling written; twelve stops');
+  assert.equal(r.code, 2); assert.equal(r.last, 'encoded 2 · unchanged 0 · stopped 13', 'the archetype and the sibling written; thirteen stops');
   assert.match(r.out, /✗ stop-incomplete incomplete\n {4}incomplete MISSING text "Two hours along the water/, 'per-page status line + findings');
   // drop:/dynamics: hold at any depth: inside a block, where no cell reaches them, they are left out and recorded
   const withMarkers = (extra, edit = (m) => m) => writeFileSync(vocabFile, JSON.stringify({ ...vocab, ...extra, markers: [{ sel: '.mod-promo', kind: 'promo', emitter: 'drop:members-only offer, not migrated' }, { sel: '.mod-live', kind: 'live', emitter: 'dynamics:DYN-2' }, ...vocab.markers.map(edit)] }));
@@ -270,6 +286,21 @@ try {
   assert.equal(child.status, 0, child.stderr);
   assert.equal([read('stardust', 'encoded', 'trips', 'river-walk.html'), read('stardust', 'encoded', 'trips', 'forest-loop.html')].map(sha).join(','), first, 'a child process with another TZ/LANG: identical bytes');
   assert.equal(read('stardust', 'encoded', 'trips', 'river-walk.html'), arch, '… and equal to the first run');
+  // input order never moves a byte, also where it could decide: one source two uploads share, one page two chrome
+  // groups claim (the roster's pages, the ledger's keys and the chrome map's groups reversed)
+  const inputs = [['stardust', 'deploy', 'media-ledger.json'], ['stardust', 'rollout', 'chrome-map.json'], ['stardust', 'rollout', 'coverage', 'templates.json']];
+  const raws = inputs.map((f) => read(...f));
+  const ledger = { ...JSON.parse(raws[0]), 'media/site/river-walk-hero-3e9a1f04.jpg': { ...JSON.parse(raws[0])['media/trips/river-walk-hero-3e9a1f04.jpg'], contentUrl: 'https://content.da.live/example-org/example-site/media/site/river-walk-hero-3e9a1f04.jpg' } };
+  const groups = { ...JSON.parse(raws[1]).groups, site: { nav: '/nav', footer: '/footer', lang: 'en', pages: ['/trips/river-walk'] } };
+  const inOrder = async (reversed) => {
+    const order = (o) => (reversed ? Object.fromEntries(Object.entries(o).reverse()) : o);
+    const roster = JSON.parse(raws[2]); if (reversed) roster.templates[0].pages.reverse();
+    [order(ledger), { groups: order(groups) }, roster].forEach((v, i) => writeFileSync(P(...inputs[i]), JSON.stringify(v)));
+    const s = await loadSite(T);
+    return (await encodeTemplate({ root: T, site: s, template: s.templateOf(A), map, deps, slugs: reversed ? [S1, A] : [A, S1] })).records.map((x) => sha(x.html)).join(',');
+  };
+  assert.equal(await inOrder(true), await inOrder(false), 'input order never moves a byte');
+  raws.forEach((raw, i) => writeFileSync(P(...inputs[i]), raw));
 
   // --- patches: the skeleton's ops on the rendered document, before the h1 check and the count; sanitise stays last ---
   const keysFor = (b) => ({ mediaKey: (u) => site.resolveMedia(u), linkKey: (u) => { const x = site.localizeHref(u, b); if (!x.internal || x.kind === 'doc') return null; const v = new URL(x.href, 'https://doc.invalid/'); return `${deps.pathKey(v.pathname)}${v.search}`; } });
@@ -289,6 +320,8 @@ try {
   assert.match(patched.html, /<div class="teaser featured wide">/, 'attr sets an attribute');
   assert.deepEqual(patched.report.patchesApplied.map((x) => [x.op, x.matched]), [['replace', 1], ['attr', 1]]);
   assert.ok(!/[^\x00-\x7f]/.test(patched.html) && sanitise(patched.html).output === patched.html, 'sanitise still runs last');
+  const accented = encodeSlug(A, [{ selector: '.hero > div > div:last-child > p:first-child', op: 'replace', value: 'Caf\u00e9\u00a0\u2014 day trip' }]);
+  assert.match(accented.html, /<p>Caf&eacute;&nbsp;&mdash; day trip<\/p>/, '… after the patches: a patch\'s non-ASCII is entity-encoded like the capture\'s');
   const removed = encodeSlug(A, [{ selector: '.facts', op: 'remove' }]);
   assert.equal(removed.status, 'incomplete', 'a patch that deletes counted content is caught by the content count');
   assert.ok(removed.report.incomplete.some((m) => /^Distance/.test(m.text)), JSON.stringify(removed.report.incomplete));
@@ -477,10 +510,10 @@ try {
   const bare = encodePage({ html: '<main><h1>Hi</h1><p>One\n  two</p></main>', page: { url: 'https://www.example.com/a', title: 'A' }, vocab: { root: 'main' }, site: stub });
   assert.equal(bare.status, 'clean'); assert.match(bare.html, /<div>\n<h1>Hi<\/h1>\n<p>One two<\/p>\n<\/div>/);
 
-  // --- --help in an empty dir: exit 0, usage on stdout, nothing written ------------------------------------------------
+  // --- --help in an empty dir: exit 0 within 15 s, usage on stdout, nothing written -----------------------------------
   const empty = mkdtempSync(join(tmpdir(), 'encode-help-'));
-  const h = spawnSync(process.execPath, [SCRIPT, '--help'], { cwd: empty, encoding: 'utf8' });
-  assert.equal(h.status, 0); assert.match(h.stdout, /^Usage:/); assert.deepEqual(readdirSync(empty), [], '--help writes nothing');
+  const h = spawnSync(process.execPath, [SCRIPT, '--help'], { cwd: empty, encoding: 'utf8', timeout: 15000 });
+  assert.equal(h.status, 0, `exit 0 within 15 s (${h.signal || h.status})`); assert.match(h.stdout, /^Usage:/); assert.deepEqual(readdirSync(empty), [], '--help writes nothing');
   rmSync(empty, { recursive: true, force: true });
 } finally {
   rmSync(T, { recursive: true, force: true });
