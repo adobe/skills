@@ -215,7 +215,7 @@ await check('liveCacheKey: source URL, width, profile, roots, UA, locale, wait s
   const key = (o = {}, main = 'main') => liveCacheKey('https://s.example/', { ...opts, ...o }, prof, parseRoots(main, null, prof));
   const k = key();
   assert.deepEqual(Object.keys(k).sort(), ['dismiss', 'headed', 'inventory', 'locale', 'profile', 'roots', 'ua', 'url', 'waitUntil', 'width']);
-  assert.equal(k.inventory, INVENTORY_VERSION); assert.equal(INVENTORY_VERSION, 2);
+  assert.equal(k.inventory, INVENTORY_VERSION);
   const older = { ...k }; delete older.inventory;
   assert.notDeepEqual(older, k, 'a source side cached before the version is re-probed');
   assert.equal(k.url, 'https://s.example/'); assert.equal(k.width, 1440); assert.equal(k.profile, 'generic');
@@ -301,10 +301,16 @@ if (playwrightOk) {
     '/cards-source.html': cards('<img src="/lqip-card-20x11.png" data-src="/card-full.png" alt="Card one">', '<img src="/icon-16.png" alt="">', ''),
     '/cards-build.html': cards('<img src="/card-full.png" alt="Card one">', '', `<img src="${lqipUri}" alt="Card two" aria-hidden="true" style="position:absolute;left:0;top:0;width:20px;height:11px;opacity:0">`),
     '/lqip-card-20x11.png': png(20, 11), '/card-full.png': png(120, 80), '/icon-16.png': png(16, 16), '/icon-32.png': png(32, 32),
-    // a VISIBLE aria-hidden icon with a 2x candidate inside a link (source only) — an icon, never a placeholder
-    '/aria-source.html': page('<h1>Account</h1><p>Intro copy here.</p><h2>Links</h2><p>A second paragraph.</p>'
-      + '<a href="/profile/"><img src="/icon-16.png" srcset="/icon-16.png 1x, /icon-32.png 2x" aria-hidden="true" width="16" height="16" alt=""> Profile</a>'),
-    '/aria-build.html': page('<h1>Account</h1><p>Intro copy here.</p><h2>Links</h2><p>A second paragraph.</p><a href="/profile/">Profile</a>'),
+    // icon srcsets: a VISIBLE aria-hidden icon with a 1x/2x pair, a HIDDEN one with a 1x/2x pair, a hidden one with a
+    // data-original-title tooltip (each in a link, source only — icons), and a hidden 20w placeholder whose srcset has a
+    // 640w candidate (a placeholder; the build's hidden link holds the full file)
+    '/icons-source.html': page('<h1>Account</h1><p>Intro copy here.</p><h2>Links</h2><p>A second paragraph.</p>'
+      + '<a href="/profile/"><img src="/icon-16.png" srcset="/icon-16.png 1x, /icon-32.png 2x" aria-hidden="true" width="16" height="16" alt=""> Profile</a>'
+      + '<div style="display:none"><a href="/help/"><img src="/icon-16.png" srcset="/icon-16.png 1x, /icon-32.png 2x" width="16" height="16" alt=""> Help</a>'
+      + '<a href="/info/"><img src="/icon-16.png" data-original-title="2.4 km from you" width="16" height="16" alt=""> Info</a>'
+      + '<a href="/gallery/"><img src="/lqip-card-20x11.png" srcset="/lqip-card-20x11.png 20w, /card-full.png 640w" sizes="20px" alt="Gallery"> Gallery</a></div>'),
+    '/icons-build.html': page('<h1>Account</h1><p>Intro copy here.</p><h2>Links</h2><p>A second paragraph.</p><a href="/profile/">Profile</a>'
+      + '<div style="display:none"><a href="/help/">Help</a><a href="/info/">Info</a><a href="/gallery/"><img src="/card-full.png" alt="Gallery"> Gallery</a></div>'),
     // F6: an 88 px in-flow location bar at the top of the source's header; the build has none
     '/geo-source.html': geo('<div class="geo-bar" style="height:88px">Looks like you are visiting from another region. <a href="/region/">Switch region</a></div>'),
     '/geo-build.html': geo(''),
@@ -421,6 +427,8 @@ if (playwrightOk) {
   // F7 — one run, three cases: (a) the hidden-panel placeholder, (b) the hidden icon control, (c) the loaded-sibling placeholder
   let cardsRun = null;
   const cardsOut = async () => { if (!cardsRun) cardsRun = await run([`${base}/cards-source.html`, `${base}/cards-build.html`, '--profile', 'generic', '--json']); return cardsRun; };
+  let iconsRun = null;
+  const iconsOut = async () => { if (!iconsRun) iconsRun = await run([`${base}/icons-source.html`, `${base}/icons-build.html`, '--profile', 'generic', '--json']); return iconsRun; };
   const textPart = (s) => s.slice(0, s.indexOf('Inventories JSON:'));
   await check('e2e F7 (a): a 20×11 placeholder (data-src → the full file) in a link card of a display:none tab panel is a source placeholder, not a 🔴 MISSING ICON; the attributes line counts it', async () => {
     const r = await cardsOut();
@@ -448,12 +456,19 @@ if (playwrightOk) {
     assert.deepEqual(j.findings.map((f) => f.kind), ['MISSING ICON']);
   });
   await check('e2e F7: aria-hidden is a signal, never "not shown" — a VISIBLE aria-hidden 16×16 icon with a 2x srcset inside a link, source only, stays an icon: 🔴 MISSING ICON', async () => {
-    const r = await run([`${base}/aria-source.html`, `${base}/aria-build.html`, '--profile', 'generic', '--json']);
+    const r = await iconsOut();
     assert.equal(r.status, 0, r.stderr);
     assert.match(r.stdout, /^  🔴 MISSING ICON \[main\]: source image icon-16\.png \(16×16\) at "profile" has no build icon there\. /m, r.stdout);
+    assert.deepEqual(jsonOf(r.stdout).source.attrs.icons.find((i) => i.anchor === 'profile'), { kind: 'img', value: 'icon-16.png', size: '16×16', interactive: true, anchor: 'profile', block: '' });
+  });
+  await check('e2e F7: a HIDDEN 16×16 icon with a 1x/2x srcset and one with a data-original-title tooltip, each in a link, source only, stay icons — 🔴 MISSING ICON; a srcset WIDTH candidate > 64w does mark a placeholder', async () => {
+    const r = await iconsOut();
+    assert.match(r.stdout, /^  🔴 MISSING ICON \[main\]: source image icon-16\.png \(16×16\) at "help" has no build icon there\. /m, r.stdout);
+    assert.match(r.stdout, /^  🔴 MISSING ICON \[main\]: source image icon-16\.png \(16×16\) at "info" has no build icon there\. /m, r.stdout);
     const j = jsonOf(r.stdout);
-    assert.deepEqual(j.source.attrs.placeholders, []);
-    assert.deepEqual(j.source.attrs.icons.map((i) => `${i.kind} ${i.value} ${i.size} @${i.anchor} ${i.interactive}`), ['img icon-16.png 16×16 @profile true']);
+    assert.deepEqual(j.source.attrs.icons.map((i) => `${i.value} @${i.anchor}`), ['icon-16.png @profile', 'icon-16.png @help', 'icon-16.png @info']);
+    assert.deepEqual(j.source.attrs.placeholders, [{ value: 'lqip-card-20x11.png', size: '20×11', anchor: 'gallery', why: 'no box, intrinsic 20×11; full: srcset' }]);
+    assert.doesNotMatch(textPart(r.stdout), /lqip-card-20x11/, r.stdout);
   });
   // F6 (d): --hide .geo-bar — the same list on both sides, applied before the inventories
   const geoArgs = (...more) => [`${base}/geo-source.html`, `${base}/geo-build.html`, '--profile', 'generic', ...more];

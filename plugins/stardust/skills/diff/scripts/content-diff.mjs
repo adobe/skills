@@ -57,8 +57,9 @@
  * a visible aria-hidden icon is diffed), carries a placeholder
  * signal (data: URI, intrinsic ≤ 64×64, aria-hidden, a loaded sibling image with
  * the same alt or file stem) and whose full image is present (that sibling rendered
- * > 64 px wide, or data-src / data-srcset / data-lazy* / data-original* / another
- * srcset or <picture> candidate on the element) is listed as a placeholder with its
+ * > 64 px wide, or data-src / data-srcset / data-lazy* / data-original(-src|-srcset)
+ * on the element, or a srcset / <picture><source> WIDTH candidate > 64w — a 1x/2x
+ * pair is a real icon's retina file) is listed as a placeholder with its
  * reasons and never paired. A recorded hands-off run read 2 × MISSING ICON 🔴 on
  * low-quality placeholders (~20×11, data-src → the full rendition) inside link cards
  * of display:none tab panels — invisible on both sides; the build's hidden panels
@@ -251,8 +252,9 @@ findings:   text/role layer — MISSING CTA|HEADING|EYEBROW|BODY, ROLE SWAP, EXT
 //          clipped away or opacity 0; aria-hidden alone is not) AND has a placeholder signal (a data: URI, an intrinsic size ≤ 64×64,
 //          aria-hidden, or a loaded sibling image — same parent, picture, figure or link — with the same alt or file stem)
 //          AND whose full image is present (that sibling rendered with a natural width > 64, or a full source declared on
-//          the element: data-src, data-srcset, data-lazy*, data-original*, a srcset / <picture><source> candidate other
-//          than the current one). Reported (why = the signals), never diffed. A hidden small image with no full image (an
+//          the element: data-src, data-srcset, data-lazy*, data-original, data-original-src, data-original-srcset with a
+//          candidate other than the current one, or a srcset / <picture><source srcset> WIDTH candidate > 64w — density
+//          1x/2x candidates never count). Reported (why = the signals), never diffed. A hidden small image with no full image (an
 //          icon in a collapsed menu) stays an icon; so does one with no current source (an unloaded lazy icon).
 /* eslint-disable no-undef */
 export function attributeInventory(args) {
@@ -295,7 +297,8 @@ export function attributeInventory(args) {
   // at its natural ~20×11 — read as an icon, the source alone held it: a MISSING ICON 🔴 nobody can see.
   const abs = (u) => { try { return new URL(u, location.href).href; } catch { return u; } };
   const stemOf = (src) => (/^data:/i.test(src || '') ? '' : fileOf(src).replace(/\.[a-z0-9]+$/i, '').toLowerCase());
-  const candidates = (v) => String(v || '').trim().split(/,\s+/).map((c) => c.trim().split(/\s+/)[0]).filter((c) => /^data:/i.test(c) || /[./]/.test(c));
+  // a srcset-style value → [{ url, desc }] (only URL-looking candidates: a boolean flag or a tooltip text is none)
+  const candidates = (v) => String(v || '').trim().split(/,\s+/).map((c) => { const [url = '', desc = ''] = c.trim().split(/\s+/); return { url, desc }; }).filter((c) => /^data:/i.test(c.url) || /[./]/.test(c.url));
   const clippedAway = (el, r) => {
     for (let a = el; a && a !== document.documentElement; a = a.parentElement) {
       const s = getComputedStyle(a);
@@ -337,11 +340,16 @@ export function attributeInventory(args) {
     const big = sibs.find((m) => m.im.getClientRects().length > 0 && m.im.getBoundingClientRect().width > 0 && m.im.naturalWidth > 64);
     if (big) full.push(`loaded ${fileOf(big.im.currentSrc || big.im.src)}`);
     const cur = abs(src);
-    const other = (v) => candidates(v).some((c) => abs(c) !== cur);
-    for (const a of el.attributes) if (/^data-(?:src|srcset|lazy[\w-]*|original[\w-]*)$/i.test(a.name) && other(a.value)) full.push(a.name);
-    if (other(el.getAttribute('srcset'))) full.push('srcset');
+    // a lazy declaration (data-src, data-srcset, data-lazy*, data-original, data-original-src, data-original-srcset —
+    // never a data-original-title tooltip): any candidate other than the current source
+    const other = (v) => candidates(v).some((c) => abs(c.url) !== cur);
+    // a native srcset (on the element or a <picture><source>): only a WIDTH candidate > 64 (`NNNw`) — a 1x/2x pair is
+    // how a real icon ships its retina file, not a full image
+    const wider = (v) => candidates(v).some((c) => { const m = /^(\d+)w$/i.exec(c.desc); return Boolean(m) && Number(m[1]) > 64 && abs(c.url) !== cur; });
+    for (const a of el.attributes) if (/^data-(?:src|srcset|lazy[\w-]*|original(?:-src|-srcset)?)$/i.test(a.name) && other(a.value)) full.push(a.name);
+    if (wider(el.getAttribute('srcset'))) full.push('srcset');
     const pic = el.parentElement && el.parentElement.tagName === 'PICTURE' ? el.parentElement : null;
-    if (pic && [...pic.querySelectorAll('source')].some((s) => other(s.getAttribute('srcset')) || other(s.getAttribute('data-srcset')))) full.push('picture source');
+    if (pic && [...pic.querySelectorAll('source')].some((s) => wider(s.getAttribute('srcset')) || other(s.getAttribute('data-srcset')))) full.push('picture source');
     if (!full.length) return '';
     return `${[...new Set([...hidden, ...signals])].join(', ')}; full: ${full.join(', ')}`;
   };
