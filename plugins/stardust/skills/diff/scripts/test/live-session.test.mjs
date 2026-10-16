@@ -3,7 +3,8 @@
 // surface every instrument imports, the consent-accept candidate list (the cmp-prefixed candidates are present,
 // no duplicates, the OneTrust id first), isLiveHttpUrl, defaultWaitUntil, isEdsHost and lateWindowFor (no timed
 // late-modal poll on EDS build/preview hosts), waitEdsDelayedPhase never throwing (stub page), and the one
-// navigation timeout (env → the crawl's p95 × 2 → the caller's default; gotoLive and visit take it per call). No browser:
+// navigation timeout (env → the crawl's p95 × 2 → the caller's default; gotoLive and visit take it per call), and the
+// per-width deadline helpers (withDeadline, isContextDestroyed). No browser:
 // dismissOverlays itself runs inside stitch-shot / the diff probes against a page (stitch-shot.test.mjs runs the
 // EDS single sweep against a late consent banner).
 // Run: node plugins/stardust/skills/diff/scripts/test/live-session.test.mjs
@@ -19,9 +20,9 @@ const check = (name, fn) => { checks += 1; try { fn(); console.log(`✓ ${name}`
 
 check('the exported surface the instruments import', () => {
   for (const name of ['REAL_CHROME_UA', 'CONSENT_CANDIDATES', 'isLiveHttpUrl', 'isEdsHost', 'lateWindowFor', 'waitEdsDelayedPhase', 'defaultWaitUntil', 'newLiveContext', 'gotoLive', 'dismissOverlays', 'launchStealthHeaded', 'browserTier',
-    'NAV_TIMEOUT_ENV', 'CRAWL_LOG', 'NAV_TIMEOUT_DEFAULT_MS', 'NAV_TIMEOUT_MIN_MS', 'NAV_TIMEOUT_MAX_MS', 'navTimeout', 'resolveNavTimeoutMs']) assert.ok(name in session, `${name} exported`);
+    'NAV_TIMEOUT_ENV', 'CRAWL_LOG', 'NAV_TIMEOUT_DEFAULT_MS', 'NAV_TIMEOUT_MIN_MS', 'NAV_TIMEOUT_MAX_MS', 'navTimeout', 'resolveNavTimeoutMs', 'withDeadline', 'isContextDestroyed']) assert.ok(name in session, `${name} exported`);
   assert.equal(typeof session.dismissOverlays, 'function');
-  for (const name of ['navTimeout', 'resolveNavTimeoutMs']) assert.equal(typeof session[name], 'function', name);
+  for (const name of ['navTimeout', 'resolveNavTimeoutMs', 'withDeadline', 'isContextDestroyed']) assert.equal(typeof session[name], 'function', name);
   assert.equal(typeof session.waitEdsDelayedPhase, 'function');
 });
 check('consent candidates: OneTrust first, the cmp-prefixed consent-manager buttons present, text fallbacks last, no duplicates', () => {
@@ -180,6 +181,56 @@ await checkAsync('gotoLive and measure-live visit take the navigation timeout pe
     await withProcessEnv('4321', () => session.gotoLive(page, url, { settleMs: 0, timeoutMs: 1000 }));
     assert.deepEqual(timeouts, [1000], 'an explicit timeoutMs always wins');
   } finally { process.chdir(cwd); rmSync(dir, { recursive: true, force: true }); }
+});
+
+// Per-width deadlines (D1): withDeadline bounds a whole width read; isContextDestroyed picks the one retryable failure.
+const later = (ms, fn) => new Promise((resolve) => { setTimeout(() => resolve(fn()), ms); });
+const timers = () => process.getActiveResourcesInfo().filter((r) => r === 'Timeout').length;
+
+await checkAsync('withDeadline: a fast promise resolves (or rejects) as itself and its timer is cleared', async () => {
+  const before = timers();
+  assert.equal(await session.withDeadline(later(10, () => 7), 60000, 'measure @390'), 7);
+  assert.equal(timers(), before, 'no deadline timer left running after the promise settled');
+  await assert.rejects(session.withDeadline(Promise.reject(new Error('boom')), 60000), (e) => e.message === 'boom' && e.name === 'Error');
+  assert.equal(timers(), before, 'cleared on a rejection too');
+});
+await checkAsync('withDeadline: a slow promise rejects with a DeadlineError naming the label and the ms', async () => {
+  await assert.rejects(session.withDeadline(later(300, () => 'late'), 20, 'measure https://www.example.com/ @390'), (e) => {
+    assert.equal(e.name, 'DeadlineError');
+    assert.equal(e.message, 'measure https://www.example.com/ @390: deadline 20 ms exceeded');
+    assert.ok(e instanceof Error);
+    return true;
+  });
+  await assert.rejects(session.withDeadline(new Promise(() => {}), 5), { name: 'DeadlineError', message: 'step: deadline 5 ms exceeded' }, 'default label; a never-settling promise');
+});
+await checkAsync('withDeadline: the abandoned promise rejecting after the deadline is not an unhandled rejection', async () => {
+  const unhandled = [];
+  const onUnhandled = (reason) => { unhandled.push(reason); };
+  process.on('unhandledRejection', onUnhandled);
+  try {
+    const abandoned = new Promise((_, reject) => { setTimeout(() => reject(new Error('Execution context was destroyed')), 40); });
+    await assert.rejects(session.withDeadline(abandoned, 5, 'read'), { name: 'DeadlineError' });
+    await later(80, () => null);
+    assert.deepEqual(unhandled.map((e) => e.message), []);
+  } finally { process.off('unhandledRejection', onUnhandled); }
+});
+check('withDeadline: ms not a finite number > 0 returns the promise unchanged', () => {
+  const p = later(1, () => 1);
+  for (const ms of [0, undefined, null, -5, NaN, Infinity, '5000']) assert.equal(session.withDeadline(p, ms, 'x'), p, String(ms));
+});
+check('isContextDestroyed: the three playwright navigation-teardown messages — not a timeout, an HTTP error, a deadline or a bot challenge', () => {
+  for (const msg of ['page.evaluate: Execution context was destroyed, most likely because of a navigation',
+    'Protocol error (Runtime.callFunctionOn): Cannot find context with specified id',
+    'frame.evaluate: Frame was detached', 'locator.boundingBox: Navigating frame was detached', 'elementHandle.evaluate: frame got detached']) {
+    assert.equal(session.isContextDestroyed(new Error(msg)), true, msg);
+  }
+  const named = (name, message) => Object.assign(new Error(message), { name });
+  for (const err of [named('TimeoutError', 'page.goto: Timeout 60000ms exceeded.'), named('LiveHTTPError', 'HTTP 503 at https://www.example.com/ — not a challenge marker, but not the page either; refusing to measure it'),
+    named('BotChallengeError', 'bot challenge at https://www.example.com/: cf-mitigated: challenge — the live side served an edge interstitial, NOT the page'),
+    named('BotChallengeError', 'bot challenge after the frame was detached'), named('DeadlineError', 'read Execution context was destroyed: deadline 5 ms exceeded'),
+    new Error('net::ERR_CONNECTION_RESET'), null, undefined]) {
+    assert.equal(session.isContextDestroyed(err), false, err ? `${err.name}: ${err.message}` : String(err));
+  }
 });
 
 // Evidence freshness (D5): the run anchor from the ledger, the same-run default, the opt-in max age and the

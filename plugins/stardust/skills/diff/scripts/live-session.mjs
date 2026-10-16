@@ -57,6 +57,8 @@
  * measured origin latency (stardust/current/_crawl-log.json crawl.navMs.p95
  * × 2, clamped 20–180 s) → 60000. Callers pass their own fallback (their
  * current default) for the last step; an explicit timeout always wins.
+ * withDeadline bounds a whole per-width read; isContextDestroyed names the
+ * one failure worth a retry on a fresh page.
  */
 
 /* eslint-disable import/no-extraneous-dependencies, import/extensions, no-await-in-loop, no-restricted-syntax, brace-style, object-curly-newline, max-len */
@@ -321,6 +323,42 @@ export function navTimeout({ env = process.env, crawlLog = CRAWL_LOG, fallback =
 /** navTimeout(opts).ms — the default every navigation helper takes when its caller passes no timeout. */
 export function resolveNavTimeoutMs(opts = {}) {
   return navTimeout(opts).ms;
+}
+
+// ---- per-width deadlines: a navigation timeout bounds the goto, not the reads after it --------------
+// The recorded 900 s hangs were in the reads after the goto (one page reused across widths on a site that
+// navigates after load). Instruments race each width's whole read against a deadline and retry only a
+// destroyed context (isContextDestroyed), once, on a fresh page.
+
+/**
+ * Race `promise` against `ms`: on expiry reject with an Error named 'DeadlineError', message
+ * `${label}: deadline ${ms} ms exceeded`. The timer is cleared when the promise settles first; the abandoned
+ * promise gets a no-op catch (its late rejection is not an unhandled rejection). `ms` not a finite number > 0
+ * → `promise` itself, unchanged (no deadline).
+ */
+export function withDeadline(promise, ms, label = 'step') {
+  if (!(Number.isFinite(ms) && ms > 0)) return promise;
+  const work = Promise.resolve(promise);
+  work.catch(() => {});
+  let timer;
+  const expiry = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      const err = new Error(`${label}: deadline ${ms} ms exceeded`);
+      err.name = 'DeadlineError';
+      reject(err);
+    }, ms);
+  });
+  return Promise.race([work, expiry]).finally(() => clearTimeout(timer));
+}
+
+// The playwright messages for "the page's execution context / frame went away under a navigation".
+const CONTEXT_DESTROYED_RE = /Execution context was destroyed|Cannot find context with specified id|[Ff]rame (?:was|got) detached/;
+
+/** Did this playwright error come from the page navigating away under a read (the one retryable failure)? A
+ * BotChallengeError or a DeadlineError never is, whatever its message quotes — neither is ever retried. */
+export function isContextDestroyed(err) {
+  if (!err || err.name === 'BotChallengeError' || err.name === 'DeadlineError') return false;
+  return CONTEXT_DESTROYED_RE.test(String(err.message ?? err));
 }
 
 /**
