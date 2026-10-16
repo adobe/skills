@@ -18,6 +18,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'gate-triage.mjs');
 const FREEZE = join(HERE, '..', 'foundation-freeze.mjs');
 const GATE = 'stardust/replica/gates/all-1440';
+const GATE360 = 'stardust/replica/gates/all-360';
 const T1 = '2026-10-01T00:00:00.000Z';
 let failed = 0;
 const check = (name, fn) => { try { fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${String(e.stack || e.message).split('\n').slice(0, 8).join('\n  ')}`); } };
@@ -61,14 +62,15 @@ const E = {
 const merge = (...parts) => ({ rows: parts.flatMap((p) => p.rows), files: Object.assign({}, ...parts.map((p) => p.files)), pages: parts.flatMap((p) => p.pages), captures: Object.assign({}, ...parts.map((p) => p.captures || {})) });
 
 // chrome-parity stand-in: logs its argv, prints parity-out/<slug>.json (slug = the build URL's last segment)
-const STUB = `import { appendFileSync, readFileSync } from 'node:fs';
+const STUB = `import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 const here = dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
 appendFileSync(join(here, 'parity-calls.jsonl'), JSON.stringify(args) + '\\n');
 const slug = new URL(args[1]).pathname.split('/').filter(Boolean).pop();
-const out = JSON.parse(readFileSync(join(here, 'parity-out', slug + '.json'), 'utf8'));
+const perWidth = join(here, 'parity-out', slug + '-' + args[args.indexOf('--width') + 1] + '.json');
+const out = JSON.parse(readFileSync(existsSync(perWidth) ? perWidth : join(here, 'parity-out', slug + '.json'), 'utf8'));
 out.liveCache = { file: args[args.indexOf('--live-cache') + 1], probedAt: new Date().toISOString() };
 console.log(JSON.stringify(out));
 process.exit(out.regions.some((r) => r.findings.length) ? 2 : 0);
@@ -79,12 +81,17 @@ const PARITY_E = {
   p10: parityResult('p10', [['footer', [{ kind: 'PAIR', text: 'Privacy', msg: 'fontSize 14px → 16px; fontFamily arial → helvetica' }]]]),
 };
 
-function mkProject(spec, { summary = {}, runs = [], parityOut = null } = {}) {
+// one gate table dir: summary.json (+ runs/), per-page evidence, origin.json / eds.json with the page URLs
+function writeGate(root, dir, width, spec, { summary = {}, runs = [] } = {}) {
+  put(root, `${dir}/summary.json`, { _provenance: { writtenBy: 'gate-all.mjs', writtenAt: T1, stage: 'published', breakpoint: width, threshold: 10, heightTolerance: 0.05, clipMax: 0, unitTol: 4, origin: 'https://www.example.com', eds: 'https://main--site--org.aem.page', edsHostOverride: null, only: null }, totals: {}, rows: spec.rows, ...summary });
+  for (const [rel, data] of Object.entries(spec.files)) put(root, `${dir}/${rel}`, data);
+  for (const r of spec.rows) { put(root, `${dir}/${r.slug}/origin.json`, { instrument: 'stitch-live', url: live(r.slug), at: T1 }); put(root, `${dir}/${r.slug}/eds.json`, { instrument: 'stitch-live', url: build(r.slug), at: T1 }); }
+  for (const { name, writtenAt, rows, edsHostOverride = null } of runs) put(root, `${dir}/runs/${name}`, { _provenance: { writtenBy: 'gate-all.mjs', writtenAt, breakpoint: width, heightTolerance: 0.05, edsHostOverride, only: rows.map((r) => r.slug) }, totals: {}, rows });
+}
+function mkProject(spec, { summary = {}, runs = [], parityOut = null, mobile = null } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'gate-triage-'));
-  put(root, `${GATE}/summary.json`, { _provenance: { writtenBy: 'gate-all.mjs', writtenAt: T1, stage: 'published', breakpoint: 1440, threshold: 10, heightTolerance: 0.05, clipMax: 0, unitTol: 4, origin: 'https://www.example.com', eds: 'https://main--site--org.aem.page', edsHostOverride: null, only: null }, totals: {}, rows: spec.rows, ...summary });
-  for (const [rel, data] of Object.entries(spec.files)) put(root, `${GATE}/${rel}`, data);
-  for (const r of spec.rows) { put(root, `${GATE}/${r.slug}/origin.json`, { instrument: 'stitch-live', url: live(r.slug), at: T1 }); put(root, `${GATE}/${r.slug}/eds.json`, { instrument: 'stitch-live', url: build(r.slug), at: T1 }); }
-  for (const { name, writtenAt, rows } of runs) put(root, `${GATE}/runs/${name}`, { _provenance: { writtenBy: 'gate-all.mjs', writtenAt, breakpoint: 1440, heightTolerance: 0.05, only: rows.map((r) => r.slug) }, totals: {}, rows });
+  writeGate(root, GATE, 1440, spec, { summary, runs });
+  if (mobile) writeGate(root, GATE360, 360, mobile);
   put(root, 'stardust/rollout/coverage/blocks.json', { blocks: [{ id: 'cards', label: 'Cards', kind: 'module', usedByTemplates: ['t1'], usedByPages: ['p1', 'p2', 'p3'], instanceCount: 3, delivery: { status: 'pending', edsBlockName: 'cards' } }] });
   put(root, 'stardust/rollout/coverage/pages.json', { pages: spec.pages.map(([slug, templateId]) => ({ slug, path: `/${slug}`, templateId, source: { sourceUrl: live(slug) }, blocks: [], delivery: { status: 'deployed', deployedUrl: build(slug) } })) });
   for (const [slug, html] of Object.entries(spec.captures || {})) put(root, `stardust/current/pages/${slug}.html`, html);
@@ -176,8 +183,8 @@ check('(e) frozen footer + a shared token → two request lines byte-for-byte; t
   const t = readT(root);
   assert.deepEqual(t.groups.map((g) => [g.id, g.cause, g.score, g.route]), [['G1', 'token:fontFamily:arial→helvetica', 12, 'foundation-request'], ['G2', 'block:cards', 6, 'cluster'], ['G3', 'block:footer', 2, 'foundation-request']]);
   const expected = `${[
-    '- cluster-a | token fontFamily arial → helvetica (styles/) | gate-triage token:fontFamily:arial→helvetica: 4 failing rows (1440 ×4), pixel 2, clip 2; chrome-parity in 2 groups (block:cards, block:footer) | landing, t1',
-    '- cluster-a | footer block (blocks/footer/): fontFamily arial → helvetica ×1; fontSize 14px → 16px ×1 | gate-triage block:footer: 2 failing rows (1440 ×2), pixel 2; chrome-parity p10@1440: findings 1 | landing',
+    '- cluster-a | token fontFamily arial → helvetica (styles/) | gate-triage token:fontFamily:arial→helvetica@1440: 4 failing rows (1440 ×4), pixel 2, clip 2; chrome-parity in 2 groups (block:cards, block:footer) | landing, t1',
+    '- cluster-a | footer block (blocks/footer/): fontFamily arial → helvetica ×1; fontSize 14px → 16px ×1 | gate-triage block:footer@1440: 2 failing rows (1440 ×2), pixel 2; chrome-parity p10@1440: findings 1 | landing',
   ].join('\n')}\n`;
   const queue = readFileSync(join(root, 'stardust/rollout/foundation-requests.md'), 'utf8');
   assert.equal(queue, expected);
@@ -197,7 +204,9 @@ check('(e) frozen footer + a shared token → two request lines byte-for-byte; t
   assert.deepEqual(['triage.json', 'triage.md'].map((f) => readFileSync(join(root, GATE, f), 'utf8')), before);
   assert.equal(readFileSync(join(root, 'stardust/rollout/foundation-requests.md'), 'utf8'), expected);
   assert.equal(calls(root).length, 2, 'stored parity results reused — no new spawn');
-  assert.match(r2.stdout, /request already queued: block:footer/); assert.match(r2.stdout, /parity p10@1440: reused/);
+  assert.match(r2.stdout, /request already queued: block:footer@1440/); assert.match(r2.stdout, /parity p10@1440: reused/);
+  ok(run(root, ['--unit', 'cluster-b']));
+  assert.equal(readFileSync(join(root, 'stardust/rollout/foundation-requests.md'), 'utf8'), expected, 'another unit never queues a copy of the same cause@width');
 }));
 check('(f) --dry-run writes nothing and spawns nothing; prints triage.md and the lines it would append', () => withProject(merge(A, E), { parityOut: PARITY_E }, (root) => {
   const before = treeHash(root);
@@ -205,8 +214,43 @@ check('(f) --dry-run writes nothing and spawns nothing; prints triage.md and the
   assert.equal(treeHash(root), before);
   assert.equal(existsSync(join(root, 'parity-calls.jsonl')), false);
   assert.match(r.stdout, /^# Gate triage — 4 failing rows/m);
-  assert.match(r.stdout, /would append: - cluster-a \| footer block \(blocks\/footer\/\): no property diff \| gate-triage block:footer: 2 failing rows \(1440 ×2\), pixel 2 \| landing\n/);
+  assert.match(r.stdout, /would append: - cluster-a \| footer block \(blocks\/footer\/\): no property diff \| gate-triage block:footer@1440: 2 failing rows \(1440 ×2\), pixel 2 \| landing\n/);
 }));
+check('(k) one frozen cause at two widths → one request line per width with its own deltas; --parity-max is one budget per run', () => withProject(E, { mobile: E, parityOut: { p10: PARITY_E.p10, 'p10-360': parityResult('p10', [['footer', [{ kind: 'PAIR', text: 'Privacy', msg: 'fontSize 13px → 15px' }]]]) } }, (root) => {
+  ok(run(root, ['--unit', 'cluster-a', '--parity-max', '1', '--no-route']));
+  assert.equal(calls(root).length, 1, 'one live navigation over both widths');
+  const m = JSON.parse(readFileSync(join(root, GATE360, 'triage.json'), 'utf8'));
+  assert.deepEqual(m.groups.map((g) => [g.cause, g.parity]), [['block:footer', { skipped: 'over --parity-max 1' }]]);
+  assert.equal(existsSync(join(root, 'stardust/rollout/foundation-requests.md')), false);
+  const r = ok(run(root, ['--unit', 'cluster-a']));
+  assert.equal(calls(root).length, 2, '1440 reused, 360 probed');
+  assert.equal(readFileSync(join(root, 'stardust/rollout/foundation-requests.md'), 'utf8'), `${[
+    '- cluster-a | footer block (blocks/footer/): fontFamily arial → helvetica ×1; fontSize 14px → 16px ×1 | gate-triage block:footer@1440: 2 failing rows (1440 ×2), pixel 2; chrome-parity p10@1440: findings 1 | landing',
+    '- cluster-a | footer block (blocks/footer/): fontSize 13px → 15px ×1 | gate-triage block:footer@360: 2 failing rows (360 ×2), pixel 2; chrome-parity p10@360: findings 1 | landing',
+  ].join('\n')}\n`);
+  assert.match(r.stdout, /request appended: block:footer@1440\nrequest appended: block:footer@360/);
+}));
+check('(l) re-gate commands keep each page\'s own --eds-host (its newest row\'s table), one command per host', () => {
+  const host = (b) => `https://${b}--site--org.aem.page`;
+  const clipFail = (s) => row(s, { pct: 5, clipped: 3, clipPass: false, pass: false, clipGroups: [CARD_GROUP] });
+  const spec = { rows: [row('p1'), row('p2'), row('p3')], files: {}, pages: A.pages };
+  const runs = [
+    { name: '2026-10-02T00-00-00-000Z-p1.json', writtenAt: '2026-10-02T00:00:00.000Z', edsHostOverride: host('fix-a'), rows: [clipFail('p1')] },
+    { name: '2026-10-03T00-00-00-000Z-p2.json', writtenAt: '2026-10-03T00:00:00.000Z', edsHostOverride: host('fix-b'), rows: [clipFail('p2')] },
+    { name: '2026-10-04T00-00-00-000Z-p9.json', writtenAt: '2026-10-04T00:00:00.000Z', rows: [row('p9')] },
+  ];
+  const cmd = (only, h) => `node stardust/scripts/replica/gate-all.mjs --only ${only} --width 1440${h ? ` --eds-host ${h}` : ''}`;
+  withProject(spec, { runs }, (root) => {
+    ok(run(root, ['--no-parity'])); const { scope } = readT(root).groups[0];
+    assert.deepEqual(scope.commands, [cmd('p3,p4'), cmd('p1', host('fix-a')), cmd('p2', host('fix-b'))], 'the newest table (no host) decides nothing');
+    assert.match(scope.note, /p4 .*2 eds hosts/);
+  });
+  withProject(spec, { runs: [{ ...runs[0], rows: [clipFail('p1'), clipFail('p2')] }, runs[2]] }, (root) => {
+    ok(run(root, ['--no-parity'])); const { scope } = readT(root).groups[0];
+    assert.deepEqual(scope.commands, [cmd('p3'), cmd('p1,p2,p4', host('fix-a'))], 'a page without a row takes the group\'s single host');
+    assert.equal(scope.note, undefined);
+  });
+});
 check('(g) --help in an empty dir: exit 0, usage on stdout, nothing written', () => {
   const cwd = mkdtempSync(join(tmpdir(), 'gate-triage-help-'));
   try {
