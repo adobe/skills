@@ -10,7 +10,10 @@
  *
  * Idempotent + incremental: existing delivery status is preserved. When a page's
  * migrated HTML changed (sourceHash differs) after it was already deployed/verified,
- * it is re-flagged `stale` so the delivery loop re-delivers just that page.
+ * it is re-flagged `stale` so the delivery loop re-delivers just that page. The whole
+ * read-modify-write runs under update-coverage.mjs's lock (`<out>/.coverage.lock`, taken
+ * before the prior coverage is read; each file tmp + rename), so a status a cluster
+ * records meanwhile is never lost.
  *
  * Encoded pages: a sidecar whose `encode.output.path` names the encoder's document
  * (`stardust/encoded/<da-path>.html`, resolved from the project that holds
@@ -42,8 +45,9 @@
  * `content-pending` siblings — keyed to the archetype their `type` names, inheriting
  * that archetype's blocks, pushing no document. Block code ships from the archetypes;
  * sibling content is populated later by a separate content track. Once such a page has
- * its document (migrated HTML or an encode), a re-run lists it from that document and a
- * prior `content-pending` becomes `pending`.
+ * its document (migrated HTML or an encode), a re-run lists it from that document: a
+ * prior `content-pending` becomes `pending`, any other status (`deployed` recorded by
+ * update-coverage.mjs) is kept — the roster row's hash was never the document's.
  *
  * Rows added by `update-coverage.mjs --new` (a page built outside the migrated tree —
  * a search results page from the dynamics phase; `source.migratedHtml` carries the
@@ -57,10 +61,11 @@
  *   node skills/rollout/scripts/inventory.mjs [--migrated <dir>] [--out <rolloutDir>] [--site-url <url>] [--state <state.json>]
  *   defaults: --migrated stardust/migrated  --out stardust/rollout
  */
-import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join, dirname, relative, basename, normalize, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { acquireLock, writeJSON } from './lib.mjs';
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
@@ -166,18 +171,23 @@ const pagesPath = join(coverageDir, 'pages.json');
 const templatesPath = join(coverageDir, 'templates.json');
 const configPath = join(OUT, 'rollout.json');
 
+// update-coverage.mjs's lock for the same files (cluster writers record rows under it): taken before the first read,
+// released at exit, so a status recorded meanwhile is never lost.
+try { acquireLock(join(OUT, '.coverage')); } catch (e) { console.error(`rollout inventory: ${e.message}`); process.exit(1); }
 const priorPages = readJSON(pagesPath, { pages: [] });
 const priorBySlug = new Map((priorPages.pages || []).map((p) => [p.slug, p]));
 
 /**
  * Delivery state carried by slug for a row that has a document (migrated HTML or encoded): a delivered page whose
  * source bytes changed is re-flagged `stale`; a `content-pending` page (a --state roster page that had none) now has
- * its document and advances to `pending`.
+ * its document and advances to `pending`; any other status a roster row carried (a cluster recorded `deployed` with
+ * update-coverage before this re-run) stays — its hash was the roster's, never this document's.
  */
 function deliveryFor(slug, sourceHash) {
   const prior = priorBySlug.get(slug);
   if (!prior || !prior.delivery) return { status: 'pending', deployedUrl: null, deployedAt: null, verifiedAt: null, error: null };
   if (prior.delivery.status === 'content-pending') return { ...prior.delivery, status: 'pending' };
+  if (!prior.source || (!prior.source.migratedHtml && !prior.source.encodedHtml)) return prior.delivery;
   // no hash to compare (an encode record without a sha): the status stays, the report names the page
   const changed = sourceHash !== null && prior.source && prior.source.sourceHash !== sourceHash;
   return changed && ['deployed', 'verified'].includes(prior.delivery.status) ? { ...prior.delivery, status: 'stale' } : prior.delivery;
@@ -380,15 +390,14 @@ const counts = {
 
 // --- Write ---------------------------------------------------------------------
 const now = new Date().toISOString();
-mkdirSync(coverageDir, { recursive: true });
 
 const encodedRead = pages.some((p) => p.source && p.source.encodedHtml) ? [join(PROJECT, 'stardust', 'encoded')] : [];
 const prov = (writtenBy) => ({
   writtenBy, writtenAt: now, readArtifacts: [MIGRATED, ...encodedRead, ...(STATE ? [STATE] : [])], stardustVersion: STARDUST_VERSION,
 });
 
-writeFileSync(pagesPath, `${JSON.stringify({ _provenance: prov('stardust:rollout/inventory'), generatedAt: now, pages }, null, 2)}\n`);
-writeFileSync(templatesPath, `${JSON.stringify({ _provenance: prov('stardust:rollout/inventory'), generatedAt: now, templates }, null, 2)}\n`);
+writeJSON(pagesPath, { _provenance: prov('stardust:rollout/inventory'), generatedAt: now, pages });
+writeJSON(templatesPath, { _provenance: prov('stardust:rollout/inventory'), generatedAt: now, templates });
 
 const priorConfig = readJSON(configPath, null);
 const config = {
@@ -401,7 +410,7 @@ const config = {
   },
   lastRun: { at: now, pages: counts, blocks: { total: 0, converted: 0, pending: 0 }, verifyFailures: 0 },
 };
-writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
+writeJSON(configPath, config);
 
 // --- Report --------------------------------------------------------------------
 console.log(`rollout inventory → ${OUT}`);

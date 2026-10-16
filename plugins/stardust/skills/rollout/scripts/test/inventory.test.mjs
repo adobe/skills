@@ -8,11 +8,13 @@
 // listed once from the sidecar, sourceHash over the encoded document (a re-encode with new bytes
 // marks a delivered page stale; a stopped, hand-edited or missing one keeps its last clean hash),
 // publicUrl from the encoded path; the archetype and clone pages keep their migrated-HTML rows.
+// --state: a roster row (no document) carries its status when its document appears — content-pending
+// advances to pending, a status update-coverage recorded stays; the coverage lock is taken.
 // Run: node plugins/stardust/skills/rollout/scripts/test/inventory.test.mjs
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -238,6 +240,44 @@ check('--state: a content-pending roster page advances to pending on the re-run 
   assert.equal(rows['tours-old'].delivery.status, 'pending'); assert.equal(rows['tours-old'].source.migratedHtml, join(PM, 'tours/old/index.html'));
   assert.deepEqual(pjson('coverage/pages.json', out3).pages.filter((p) => p.delivery.status === 'content-pending').map((p) => p.slug), [], 'a folder URL (/tours/old/, /tours/) is the page its migrated index.html lists — no second row');
 });
+
+check('--state: a roster row a cluster marked deployed (no document yet) stays deployed when its encode appears; a later re-encode marks it stale', () => {
+  const state = join(proj, 'stardust', 'state.json'); const out4 = join(proj, 'rollout-roster');
+  put(state, JSON.stringify({ pages: [{ slug: 'tours', url: 'https://example.com/tours/', type: 'tour' }, { slug: 'tours-late', url: 'https://example.com/tours/late', representative: 'tours' }] }));
+  const inv = () => spawnSync(process.execPath, [SCRIPT, '--migrated', PM, '--out', out4, '--state', state], { encoding: 'utf8' });
+  let r = inv(); assert.equal(r.status, 0, r.stderr);
+  assert.equal(rowsOf(out4)['tours-late'].delivery.status, 'content-pending'); assert.equal(rowsOf(out4)['tours-late'].source.migratedHtml, null);
+  const u = spawnSync(process.execPath, [join(HERE, '..', 'update-coverage.mjs'), 'tours-late', '--status', 'deployed', '--url', 'https://x.test/tours/late', '--out', out4], { encoding: 'utf8' });
+  assert.equal(u.status, 0, u.stderr);
+  encoded('tours/late/_meta.json', 'tours/late.html', sib('tours-late'), '<main>late v1</main>');
+  r = inv(); assert.equal(r.status, 0, r.stderr);
+  let row = rowsOf(out4)['tours-late'];
+  assert.equal(row.delivery.status, 'deployed', 'the roster hash is not the document\'s: no re-flag'); assert.equal(row.delivery.deployedUrl, 'https://x.test/tours/late');
+  assert.equal(row.source.sourceHash, hash('<main>late v1</main>'));
+  r = inv(); assert.equal(rowsOf(out4)['tours-late'].delivery.status, 'deployed', 'an unchanged re-run');
+  encoded('tours/late/_meta.json', 'tours/late.html', sib('tours-late'), '<main>late v2</main>');
+  r = inv(); assert.equal(r.status, 0, r.stderr);
+  row = rowsOf(out4)['tours-late']; assert.equal(row.delivery.status, 'stale'); assert.equal(row.source.sourceHash, hash('<main>late v2</main>'));
+});
+// inventory rewrites pages.json, templates.json and rollout.json: it waits for update-coverage's lock and releases it
+{
+  const out5 = join(proj, 'rollout-lock'); const lock = join(out5, '.coverage.lock');
+  mkdirSync(lock, { recursive: true }); writeFileSync(join(lock, 'owner'), '4242 a cluster writer\n');
+  const p = spawn(process.execPath, [SCRIPT, '--migrated', PM, '--out', out5], { stdio: ['ignore', 'pipe', 'pipe'] });
+  let err = ''; p.stderr.on('data', (d) => { err += d; });
+  const done = new Promise((res) => p.on('close', res));
+  await new Promise((res) => setTimeout(res, 600));
+  const whileHeld = existsSync(join(out5, 'coverage', 'pages.json'));
+  rmSync(lock, { recursive: true, force: true });
+  const code = await done;
+  check('the coverage lock (<out>/.coverage.lock, update-coverage\'s) is taken: nothing written while another writer holds it; written and released after', () => {
+    assert.equal(whileHeld, false, 'pages.json written under a held lock');
+    assert.equal(code, 0, err);
+    assert.ok(existsSync(join(out5, 'coverage', 'pages.json')));
+    assert.deepEqual(readdirSync(out5).sort(), ['coverage', 'rollout.json'], 'no lock dir or tmp file left');
+    assert.deepEqual(readdirSync(join(out5, 'coverage')).sort(), ['pages.json', 'templates.json']);
+  });
+}
 
 rmSync(root, { recursive: true, force: true });
 console.log(failed ? `\n${failed} check(s) failed` : '\nall checks passed');
