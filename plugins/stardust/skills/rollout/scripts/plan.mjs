@@ -17,7 +17,8 @@
  * section-schema, the whole-page block-roundtrip --ew and qa-gate unless it is an encoded page of a
  * template with a map (stardust/import/<archetype>/vocabulary.json) whose current clean encode's
  * shape (sidecar audit.encode.shape) the archetype's passedOn covers under the template's current
- * harness key — or will cover once the pages flagged before it in this plan pass (the first page with
+ * harness key (a record holding the archetype's own pass; the archetype re-runs first after a key
+ * change) — or will cover once the pages flagged before it in this plan pass (the first page with
  * a new shape is its representative). A sibling that converts a block (until it passes under the
  * current key), a stopped or stale encode, a clone and any page of a template without a map run
  * them; a key change (encoder, map, the map's block JS/CSS, the frozen foundation) re-arms the
@@ -127,7 +128,7 @@ for (const t of orderedTemplates) {
     const step = steps.find((x) => x.slug === slug);
     return { slug, isArchetype: slug === a, encoded, convert: step ? step.convert.map((c) => c.edsBlockName || c.id) : [] };
   });
-  for (const [slug, v] of shapeLib.planHarness({ key, keyError, passedOn: archMeta && archMeta.passedOn, pages: pagesIn })) if (!harness.has(slug)) harness.set(slug, v);
+  for (const [slug, v] of shapeLib.planHarness({ key, keyError, passedOn: archMeta && archMeta.passedOn, pages: pagesIn, archetype: a })) if (!harness.has(slug)) harness.set(slug, v);
 }
 for (const s of steps) {
   const h = harness.get(s.slug) || { needsHarness: true, why: 'in no template: it runs the launches' };

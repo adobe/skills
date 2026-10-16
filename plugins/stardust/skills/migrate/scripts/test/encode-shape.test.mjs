@@ -6,13 +6,14 @@
 //                 kinds (empty, image, text, image+text); whitespace never changes it; the encoder records it as
 //                 audit.encode.shape on a clean page, equal to the shape of the document it wrote
 //   coverage      covers: a block, its variants, a row count within the range seen, every row's cells seen
-//   skip rule     inherited: only a passedOn under the current key that covers the shape; a key change or a new shape
-//                 re-arms; planHarness: needsHarness per page in delivery order (representatives, key moved)
+//   skip rule     inherited: only a passedOn under the current key that holds the archetype's pass and covers the
+//                 shape; a key change or a new shape re-arms; planHarness: needsHarness per page in delivery order
+//                 (representatives, key moved)
 //   harness key   the encoder, the map (compact JSON), every file of a block the map emits, the frozen foundation
 //                 (recomputed from disk): a block or foundation edit moves it, a re-freeze of the same files does not
-//   passedOn      migrate.mjs harness: recorded under the key, an equal record never rewritten, a pass under a moved key
-//                 replaces the record; refused for a stopped page and for an archetype whose gated document has
-//                 another shape than its encode
+//   passedOn      migrate.mjs harness: the archetype records first under every key (a sibling before it is refused), an
+//                 equal record never rewritten, the archetype's pass under a moved key replaces the record; refused for
+//                 a stopped page and for an archetype whose gated document differs from its encode at core, or in shape
 //
 // Usage: node plugins/stardust/skills/migrate/scripts/test/encode-shape.test.mjs  (exit 1 on failure)
 import assert from 'node:assert/strict';
@@ -87,14 +88,16 @@ try {
   const passed = passedOnWith(null, { key: K, slug: 'a', shape: arch });
   assert.deepEqual(passed, { key: K, shapes: [{ slug: 'a', shape: arch }] });
   const same = [b('hero', 1, 'image,text'), b('cards', 2, 'image,text', 'image,text')]; const fresh = [b('cards', 3, 'image,text', 'image,text', 'image,text')];
-  assert.equal(inherited({ key: K, passedOn: passed, shape: same }).ok, true, 'skip: passedOn under the current key covers the shape');
-  assert.match(inherited({ key: K, passedOn: passed, shape: same }).why, /^covered by passedOn under sha256:111111111111… \(a\)$/);
-  assert.deepEqual(inherited({ key: K2, passedOn: passed, shape: same }), { ok: false, why: 'the harness key moved since the recorded pass (sha256:111111111111… → sha256:222222222222…)' }, 'a key change re-arms');
-  assert.deepEqual(inherited({ key: K, passedOn: passed, shape: fresh }), { ok: false, why: 'shape not covered: "cards" has 3 rows (exercised 2)' }, 'a new shape re-arms');
-  assert.equal(inherited({ key: K, passedOn: null, shape: same }).ok, false, 'no passedOn: nothing to inherit');
+  assert.equal(inherited({ key: K, passedOn: passed, shape: same, archetype: 'a' }).ok, true, 'skip: passedOn under the current key covers the shape');
+  assert.match(inherited({ key: K, passedOn: passed, shape: same, archetype: 'a' }).why, /^covered by passedOn under sha256:111111111111… \(a\)$/);
+  assert.deepEqual(inherited({ key: K2, passedOn: passed, shape: same, archetype: 'a' }), { ok: false, why: 'the harness key moved since the recorded pass (sha256:111111111111… → sha256:222222222222…)' }, 'a key change re-arms');
+  assert.deepEqual(inherited({ key: K, passedOn: passed, shape: fresh, archetype: 'a' }), { ok: false, why: 'shape not covered: "cards" has 3 rows (exercised 2)' }, 'a new shape re-arms');
+  assert.equal(inherited({ key: K, passedOn: null, shape: same, archetype: 'a' }).ok, false, 'no passedOn: nothing to inherit');
+  const noArchetype = { key: K, shapes: [{ slug: 's9', shape: arch }] }; // a hand-edited record: a sibling's pass alone
+  assert.deepEqual(inherited({ key: K, passedOn: noArchetype, shape: same, archetype: 'a' }), { ok: false, why: 'passedOn under sha256:111111111111… lacks the archetype\'s own pass (a) — record it first: migrate.mjs harness a' }, 'only the archetype\'s pass opens a key');
   const both = passedOnWith(passed, { key: K, slug: '0-first', shape: fresh });
   assert.deepEqual(both.shapes.map((e) => e.slug), ['0-first', 'a'], 'a pass under the same key joins, sorted by slug');
-  assert.equal(inherited({ key: K, passedOn: both, shape: fresh }).ok, true, '… and covers its shape from then on');
+  assert.equal(inherited({ key: K, passedOn: both, shape: fresh, archetype: 'a' }).ok, true, '… and covers its shape from then on');
   assert.deepEqual(passedOnWith(both, { key: K2, slug: 'a', shape: arch }), { key: K2, shapes: [{ slug: 'a', shape: arch }] }, 'a pass under another key replaces the record');
 
   const ok = (shape) => ({ ok: true, why: 'the current clean encode', shape });
@@ -130,7 +133,8 @@ try {
     s7: 'RUN: block code is written for it (converts cards)',
   }, 'a key change re-arms the archetype and the representatives; the rest wait for them');
   assert.deepEqual([plan({ key: K, passedOn: null }).a, plan({ key: K, passedOn: null }).s1], ['RUN: the archetype records no harness pass (passedOn)', 'skip: covered once a pass the launches']);
-  assert.equal(planHarness({ key: K, passedOn: null, pages: pages.slice(1, 2) }).get('s1').why, 'the archetype records no harness pass (passedOn)', 'no pass and no representative: the plain reason');
+  assert.equal(plan({ key: K, passedOn: { key: K, shapes: [{ slug: 's9', shape: fresh }] } }).s2, 'RUN: new shape: "cards" has 3 rows (exercised 2)', 'a record without the archetype\'s pass counts for nothing in the plan either');
+  assert.equal(planHarness({ key: K, passedOn: null, pages: pages.slice(1, 2), archetype: 'a' }).get('s1').why, 'the archetype records no harness pass (passedOn)', 'no pass and no representative: the plain reason');
   assert.deepEqual(Object.values(plan({ key: null, keyError: 'no map', passedOn: passed })).every((v) => v.startsWith('RUN: no harness key (no map)')), true, 'no key: every page runs');
 
   // --- harness key --------------------------------------------------------------------------------------------------
@@ -165,7 +169,11 @@ try {
   assert.equal(await key(), k3, '… and reverting it restores the key');
 
   // --- passedOn: migrate.mjs harness ----------------------------------------------------------------------------------
-  let r = cli(MIGRATE, ['harness', A]);
+  let r = cli(MIGRATE, ['harness', S1]);
+  assert.equal(r.status, 2, 'a sibling cannot open a key');
+  assert.equal(r.stderr, `harness ${S1}: refused — ${A} has no harness pass under the current key (${k3.slice(0, 19)}…) — record the archetype's pass first: run its launches, then migrate.mjs harness ${A}\n`);
+  assert.equal(json(SIDE[A]).passedOn, null, 'nothing written');
+  r = cli(MIGRATE, ['harness', A]);
   assert.equal(r.status, 0, r.stderr);
   assert.equal(r.stdout, `harness ${A}: recorded — ${A} passedOn under ${k3.slice(0, 19)}…: ${A}\n`);
   assert.deepEqual(json(SIDE[A]).passedOn, { key: k3, shapes: [{ slug: A, shape: shapeA }] }, 'the archetype\'s pass under the current key');
@@ -174,24 +182,34 @@ try {
   assert.equal(r.status, 0); assert.match(r.stdout, /: unchanged — /); assert.equal(stamp(SIDE[A]), s0, 'an equal record is never rewritten');
   await encode();
   assert.deepEqual(json(SIDE[A]).passedOn.key, k3, 'an encode run keeps passedOn');
-  assert.equal(inherited({ key: await key(), passedOn: json(SIDE[A]).passedOn, shape: shapeS }).ok, false, 'the fixture sibling\'s shape is new to the template (tabs 3 rows, tags 2 cells)');
+  assert.equal(inherited({ key: await key(), passedOn: json(SIDE[A]).passedOn, shape: shapeS, archetype: A }).ok, false, 'the fixture sibling\'s shape is new to the template (tabs 3 rows, tags 2 cells)');
   r = cli(MIGRATE, ['harness', S1]);
   assert.equal(r.status, 0, r.stderr);
   assert.deepEqual(json(SIDE[A]).passedOn.shapes.map((e) => e.slug), [S1, A], 'the sibling that ran the launches joins');
-  assert.equal(inherited({ key: k3, passedOn: json(SIDE[A]).passedOn, shape: shapeS }).ok, true);
+  assert.equal(inherited({ key: k3, passedOn: json(SIDE[A]).passedOn, shape: shapeS, archetype: A }).ok, true);
   write('blocks/hero/hero.js', 'export default function decorate(block) { block.dataset.ok = "2"; }\n');
   const k4 = await key();
-  assert.equal(inherited({ key: k4, passedOn: json(SIDE[A]).passedOn, shape: shapeA }).ok, false, 'a block edit re-arms even the archetype');
+  assert.equal(inherited({ key: k4, passedOn: json(SIDE[A]).passedOn, shape: shapeA, archetype: A }).ok, false, 'a block edit re-arms even the archetype');
   r = cli(MIGRATE, ['harness', S1]);
+  assert.equal(r.status, 2, 'after a key change a sibling waits for the archetype'); assert.match(r.stderr, new RegExp(`^harness ${S1}: refused — ${A} has no harness pass under the current key \\(${k4.slice(0, 19)}…\\)`));
+  r = cli(MIGRATE, ['harness', A]);
   assert.equal(r.status, 0, r.stderr); assert.match(r.stdout, /\(the key moved: the earlier record is replaced\)\n$/);
-  assert.deepEqual(json(SIDE[A]).passedOn, { key: k4, shapes: [{ slug: S1, shape: shapeS }] }, 'a pass under the moved key replaces the record');
+  assert.deepEqual(json(SIDE[A]).passedOn, { key: k4, shapes: [{ slug: A, shape: shapeA }] }, 'the archetype\'s pass under the moved key replaces the record');
+  r = cli(MIGRATE, ['harness', S1]);
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(json(SIDE[A]).passedOn.shapes.map((e) => e.slug), [S1, A], '… then the sibling joins');
 
   // refusals: nothing written
   const s1 = stamp(SIDE[A]); const gated = read(GATED);
   write(GATED, gated.replace('<div class="teaser featured">', '<div class="teaser">'));
   r = cli(MIGRATE, ['harness', A]);
   assert.equal(r.status, 2); assert.equal(r.stdout, '');
-  assert.equal(r.stderr, `harness ${A}: refused — ${GATED} and the archetype's encode differ in shape (encode vs gated: block "teaser featured" is new) — the map does not round-trip: encode.mjs --roundtrip --template ${A}\n`);
+  assert.match(r.stderr, new RegExp(`^harness ${A}: refused — ${GATED} and ${DOC[A]} differ at core \\(2 difference\\(s\\), first: (missing|extra)-item at s\\d+\\.\\d+ block:teaser(\\.featured)?\\) — the map does not round-trip: encode\\.mjs --roundtrip --template ${A} --level core\n$`), 'the round-trip check is encode/compare.mjs at core');
+  assert.equal(stamp(SIDE[A]), s1);
+  write(GATED, gated.replace(/<img src="https:\/\/content\.da\.live[^>]*hero[^>]*>/, ''));
+  r = cli(MIGRATE, ['harness', A]);
+  assert.equal(r.status, 2);
+  assert.equal(r.stderr, `harness ${A}: refused — ${GATED} and the archetype's encode differ in block shape (encode vs gated: "hero" has a row of cells [image,text] (new)) — the recorded shape would not be the one the launches ran on — align the map with the gated document (encode.mjs --roundtrip --template ${A} --level strict)\n`, 'equal at core (no image there), not in shape');
   assert.equal(stamp(SIDE[A]), s1);
   write(GATED, gated);
   const side = json(SIDE[S1]); write(SIDE[S1], pretty({ ...side, audit: { ...side.audit, encode: { ...side.audit.encode, status: 'variance' } } }));

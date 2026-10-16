@@ -36,9 +36,12 @@
  *   (encode/shape.mjs: encoder + map + the map's block JS/CSS + the frozen foundation); a pass under
  *   another key replaces the record — any key change re-arms. Run it right after the launches pass,
  *   before any block edit. Refused (exit 2, nothing written) unless the page's encode is the current
- *   clean encode under this encoder and map, and — for the archetype — its gated document
- *   (<content>/<da-path>.html) has the same shape as its encode (the map round-trips). An equal record
- *   is not rewritten. Siblings whose shape passedOn covers inherit the launches (rollout plan.mjs
+ *   clean encode under this encoder and map; for the archetype, unless its gated document
+ *   (<content>/<da-path>.html) and its encoded document compare equal at `core` (encode/compare.mjs:
+ *   sections, section styles, items, rows × cells, normalised text — the map round-trips) and have
+ *   the same block shape; for a sibling, unless passedOn under the current key already holds the
+ *   archetype's pass (the archetype records first, after every key change). An equal record is not
+ *   rewritten. Siblings whose shape passedOn covers inherit the launches (rollout plan.mjs
  *   needsHarness, gate-evidence.mjs).
  *
  * Flow guard (state-machine.md § Flow keys, plugin 0.23.0): `render` refuses (exit 2) when the state
@@ -615,18 +618,26 @@ export async function harnessCmd(o, slug) {
   const enc = shape.encodedShape({ root, sidecarPath: toPosix(relative(root, file)), archetype });
   if (!enc.ok) refuse(enc.why, 'record the launches of the current clean encode only');
   if (slug === archetype) {
+    // the map round-trips: the gated document the launches ran on and the encoded document compare equal at core
     const contentFile = join(o.content ?? join(root, 'content'), sidecar.encode.output.path.slice('stardust/encoded/'.length));
     if (!isFile(contentFile)) refuse(`no gated document ${toPosix(contentFile)}`, 'the archetype\'s launches run on its gated document: deliver it first');
-    const gated = shape.shapeOf(readFileSync(contentFile, 'utf8'));
+    const gatedHtml = readFileSync(contentFile, 'utf8'); const encodedHtml = readFileSync(join(root, sidecar.encode.output.path), 'utf8');
+    const { compareDocs } = await import('./encode/compare.mjs');
+    const cmp = compareDocs(gatedHtml, encodedHtml, { level: 'core' });
+    if (!cmp.equal) refuse(`${toPosix(contentFile)} and ${sidecar.encode.output.path} differ at core (${cmp.diffs.length} difference(s), first: ${cmp.diffs[0].kind} at ${cmp.diffs[0].where})`, `the map does not round-trip: encode.mjs --roundtrip --template ${archetype} --level core`);
+    const gated = shape.shapeOf(gatedHtml);
     if (JSON.stringify(gated) !== JSON.stringify(enc.shape)) {
       const gap = shape.covers(enc.shape, [gated]).gaps[0] || shape.covers(gated, [enc.shape]).gaps[0] || 'the blocks differ in order or number';
-      refuse(`${toPosix(contentFile)} and the archetype's encode differ in shape (encode vs gated: ${gap})`, `the map does not round-trip: encode.mjs --roundtrip --template ${archetype}`);
+      refuse(`${toPosix(contentFile)} and the archetype's encode differ in block shape (encode vs gated: ${gap}) — the recorded shape would not be the one the launches ran on`, `align the map with the gated document (encode.mjs --roundtrip --template ${archetype} --level strict)`);
     }
   }
   let key;
   try { ({ key } = await shape.harnessKey(root, archetype)); } catch (e) { refuse(`no harness key: ${e.message}`, 'fix it, then re-run'); }
   const arch = slug === archetype ? { file, sidecar } : sidecarPath(o, archetype);
   const old = arch.sidecar.passedOn ?? null;
+  if (slug !== archetype && !(shape.isPassedOn(old) && old.key === key && old.shapes.some((e) => e.slug === archetype))) {
+    refuse(`${archetype} has no harness pass under the current key (${key.slice(0, 19)}…)`, `record the archetype's pass first: run its launches, then migrate.mjs harness ${archetype}`);
+  }
   const next = shape.passedOnWith(old, { key, slug, shape: enc.shape });
   const unchanged = JSON.stringify(old) === JSON.stringify(next);
   if (!unchanged) { arch.sidecar.passedOn = next; saveSidecar(arch.file, arch.sidecar); }

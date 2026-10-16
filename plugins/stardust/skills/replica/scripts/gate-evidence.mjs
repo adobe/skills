@@ -85,7 +85,8 @@
  *                       block-roundtrip.mjs with the EW gate (no --blocks, no --no-ew) and qa-gate.mjs
  *                       job: exit 0 → `ran: …`, another exit → FAIL:, a deadline → OPEN:. With no
  *                       such job the gate is inherited only when its archetype's `passedOn` (migrate.mjs
- *                       harness) under the CURRENT harness key covers the page's current clean encode's
+ *                       harness) under the CURRENT harness key holds the archetype's own pass and covers
+ *                       the page's current clean encode's
  *                       shape (audit.encode.shape; migrate's encode/shape.mjs decides: the key, the
  *                       coverage) — `inherited from <archetype> (C14): covered by passedOn under
  *                       sha256:… (<pages>)` — else OPEN: naming why (the key moved, the shape not
@@ -670,7 +671,7 @@ export function collect(o, { encoder = null } = {}) {
     const es = encoder.encodedShape({ root: project, sidecarPath: relative(project, page.file).split(sep).join('/'), archetype: a, manifests });
     if (!es.ok) return { ok: false, why: es.why };
     const arch = pages.find((p) => p.slug === a);
-    const v = encoder.inherited({ key: k.key, passedOn: arch ? arch.meta.passedOn : null, shape: es.shape });
+    const v = encoder.inherited({ key: k.key, passedOn: arch ? arch.meta.passedOn : null, shape: es.shape, archetype: a });
     return v.ok ? { ok: true, why: `inherited from ${a} (C14): ${v.why}` } : { ok: false, why: `${v.why}${arch ? '' : ` (no sidecar for ${a})`}` };
   };
   const acceptance = acceptanceFor(o.widths);

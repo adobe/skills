@@ -31,10 +31,12 @@
  *
  * passedOn — the archetype's sidecar key (migrate.mjs harness <slug> records it; migrate's re-render carries it):
  *   { key, shapes: [{ slug, shape }] } sorted by slug — the pages that passed the launches under `key`, each with the
- *   shape of its current clean encode; a pass under another key replaces the whole record.
+ *   shape of its current clean encode; a pass under another key replaces the whole record. The archetype's own pass
+ *   opens a key: a record under the current key that lacks the archetype (a hand edit) counts for nothing.
  *
  * Readers: rollout plan.mjs (planHarness: needsHarness per page), replica gate-evidence.mjs (inherited: a sibling with
- *   no local-harness evidence is accepted only when passedOn under the current key covers its shape).
+ *   no local-harness evidence is accepted only when passedOn under the current key holds the archetype's pass and
+ *   covers its shape).
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
@@ -113,13 +115,15 @@ export function passedOnWith(old, { key, slug, shape }) {
 
 /**
  * The skip rule's coverage half: may a page with this shape inherit the launches? → { ok, why }. Only a passedOn under
- * the current key counts (any key change re-arms); the rest of the rule — a current clean encode under this map and
- * encoder — is encodedShape()'s.
+ * the current key that holds the archetype's own pass counts (any key change re-arms; the archetype re-runs first); the
+ * rest of the rule — a current clean encode under this map and encoder — is encodedShape()'s.
  */
-export function inherited({ key, passedOn, shape }) {
+export function inherited({ key, passedOn, shape, archetype }) {
   if (!key) return { ok: false, why: 'no harness key' };
+  if (!safeSlug(archetype)) return { ok: false, why: 'no archetype named for the template' };
   if (!isPassedOn(passedOn)) return { ok: false, why: 'the archetype records no harness pass (passedOn)' };
   if (passedOn.key !== key) return { ok: false, why: `the harness key moved since the recorded pass (${short(passedOn.key)} → ${short(key)})` };
+  if (!passedOn.shapes.some((e) => e.slug === archetype)) return { ok: false, why: `passedOn under ${short(key)} lacks the archetype's own pass (${archetype}) — record it first: migrate.mjs harness ${archetype}` };
   if (!isShape(shape)) return { ok: false, why: 'no shape recorded' };
   const c = covers(shape, passedOn.shapes.map((e) => e.shape));
   if (!c.covered) return { ok: false, why: `shape not covered: ${c.gaps.join('; ')}` };
@@ -133,12 +137,14 @@ export function inherited({ key, passedOn, shape }) {
  * shape's representative). A page that is not a current clean encode under the template's map, or with no key, runs
  * them.
  *   key, keyError  the current harness key, or null and why it could not be computed
- *   passedOn       the archetype's record
+ *   passedOn       the archetype's record (counted only when it holds the archetype's pass under `key`)
  *   pages          [{ slug, isArchetype, encoded: encodedShape()'s { ok, why, shape } | null, convert: [<block>…] }]
+ *   archetype      the template's archetype slug (default: the page marked isArchetype)
  * → Map slug → { needsHarness, why }
  */
-export function planHarness({ key, keyError = null, passedOn, pages }) {
-  const passed = key && isPassedOn(passedOn) && passedOn.key === key ? passedOn.shapes : [];
+export function planHarness({ key, keyError = null, passedOn, pages, archetype = null }) {
+  const arch = archetype || (pages.find((p) => p.isArchetype) || {}).slug || null;
+  const passed = key && isPassedOn(passedOn) && passedOn.key === key && passedOn.shapes.some((e) => e.slug === arch) ? passedOn.shapes : [];
   const moved = Boolean(key) && isPassedOn(passedOn) && passedOn.key !== key;
   const pending = [];
   const out = new Map();
@@ -147,7 +153,7 @@ export function planHarness({ key, keyError = null, passedOn, pages }) {
     if (!key) { run(`no harness key (${keyError || 'unknown'})`); continue; }
     if (!p.encoded) { run('not an encoded page: it runs the launches'); continue; }
     if (!p.encoded.ok) { run(p.encoded.why); continue; }
-    const now = inherited({ key, passedOn, shape: p.encoded.shape });
+    const now = inherited({ key, passedOn, shape: p.encoded.shape, archetype: arch });
     if (now.ok) { out.set(p.slug, { needsHarness: false, why: now.why }); continue; }
     if (p.isArchetype) { run(now.why); continue; }
     if (p.convert && p.convert.length) { run(`block code is written for it (converts ${p.convert.join(', ')})`); continue; }
