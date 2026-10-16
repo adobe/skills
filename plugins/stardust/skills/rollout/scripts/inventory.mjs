@@ -37,8 +37,11 @@
  * holds a file for its slug, or a migrated page owns its path.
  *
  * Usage:
- *   node skills/rollout/scripts/inventory.mjs [--migrated <dir>] [--out <rolloutDir>] [--site-url <url>] [--state <state.json>]
+ *   node skills/rollout/scripts/inventory.mjs [--migrated <dir>] [--out <rolloutDir>] [--site-url <url>] [--state <state.json>] [--export <name>]
  *   defaults: --migrated stardust/migrated  --out stardust/rollout
+ *   --export migration-workspace opts this project into rollout's migration workspace (Phase I: manifest and
+ *   judgement draft under stardust/rollout/workspace/); the name is added once to rollout.json `exports`, which
+ *   survives every re-run. Another name exits 2 before any write.
  */
 import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync, statSync } from 'node:fs';
 import { createHash } from 'node:crypto';
@@ -62,6 +65,20 @@ const MIGRATED = arg('migrated', 'stardust/migrated');
 const OUT = arg('out', 'stardust/rollout');
 const SITE_URL = arg('site-url', null);
 const STATE = arg('state', null);
+
+/** Every value of a repeatable flag, in order; a flag with no value yields ''. */
+function args(name) {
+  return process.argv.flatMap((a, i) => (a === `--${name}` ? [process.argv[i + 1] || ''] : []));
+}
+
+// Opt-in exports (rollout.json `exports`, schemas/rollout-config.schema.json); `migration-workspace-files` is reserved.
+const EXPORT_NAMES = ['migration-workspace', 'migration-workspace-files'];
+const EXPORTS = args('export');
+for (const name of EXPORTS) {
+  if (EXPORT_NAMES.includes(name)) continue;
+  console.error(`rollout inventory: --export needs one of ${EXPORT_NAMES.join(', ')}${name ? ` (got "${name}")` : ''}.`);
+  process.exit(2);
+}
 
 const STARDUST_VERSION = (() => {
   try {
@@ -300,6 +317,8 @@ writeFileSync(pagesPath, `${JSON.stringify({ _provenance: prov('stardust:rollout
 writeFileSync(templatesPath, `${JSON.stringify({ _provenance: prov('stardust:rollout/inventory'), generatedAt: now, templates }, null, 2)}\n`);
 
 const priorConfig = readJSON(configPath, null);
+// The opt-in `exports` key is not derived from the tree: carry it forward (strings, once each, in order), then add --export.
+const priorExports = priorConfig && Array.isArray(priorConfig.exports) ? priorConfig.exports.filter((e) => typeof e === 'string') : [];
 const config = {
   _provenance: { writtenBy: 'stardust:rollout/inventory', writtenAt: now, stardustVersion: STARDUST_VERSION },
   target: 'aem-eds',
@@ -308,6 +327,7 @@ const config = {
     da: (priorConfig && priorConfig.site && priorConfig.site.da) || { org: '', site: '', ref: 'main' },
     liveHost: (priorConfig && priorConfig.site && priorConfig.site.liveHost) || null,
   },
+  exports: [...new Set([...priorExports, ...EXPORTS])],
   lastRun: { at: now, pages: counts, blocks: { total: 0, converted: 0, pending: 0 }, verifyFailures: 0 },
 };
 writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);

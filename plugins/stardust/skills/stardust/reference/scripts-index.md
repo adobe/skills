@@ -81,7 +81,7 @@ Run the copies in `stardust/scripts/<skill>/`; ask `--help` only for a flag not 
 - `rollout/delivery-lint.mjs` — pre-PUT static lint P0–P2 — `--file <html> [--path </da/path>] [--content <dir>] [--json]`
 - `rollout/done-check.mjs` — run complete? exit 0 = yes — `[--live-host <h>|--offline] [--json]`
 - `rollout/findings.mjs` — record/resolve findings — `record --source --layer --check --severity`; `resolve <id> --status`
-- `rollout/inventory.mjs` — coverage from migrated tree; keeps `--new` rows — `[--migrated <dir>] [--site-url <u>] [--state <f>]`
+- `rollout/inventory.mjs` — coverage from migrated tree; keeps `--new` rows — `[--migrated <dir>] [--site-url <u>] [--state <f>] [--export <name>]`
 - `rollout/lib.mjs` — library, no CLI
 - `rollout/media-reconcile.mjs` — per-image decision — `--file <html> --deploy-host <h> [--media-ledger <file>] [--apply]`
 - `rollout/optimize.mjs` — quality findings + gate; source-parity tagged — `[--base <u>|--root <dir>] [--all] [--current <dir>]`

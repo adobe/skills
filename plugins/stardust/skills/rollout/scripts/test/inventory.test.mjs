@@ -2,8 +2,10 @@
 // skills/rollout/scripts/test/inventory.test.mjs — the inventory.mjs contract: template grouping
 // from the sidecars (an archetype with `template: null` groups under its own slug, with the
 // siblings that name it; `type` last), the archetype as representative, the empty-modules
-// report, delivery state preserved across re-runs, and a row added by `update-coverage.mjs --new`
-// (origin marker in source.migratedHtml) kept across a re-run until the migrated tree holds it.
+// report, delivery state preserved across re-runs, a row added by `update-coverage.mjs --new`
+// (origin marker in source.migratedHtml) kept across a re-run until the migrated tree holds it, and
+// the opt-in `exports` key in rollout.json (carried across re-runs; `--export <name>` adds a name
+// once; an unknown name exits 2 before any write).
 // Run: node plugins/stardust/skills/rollout/scripts/test/inventory.test.mjs
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -40,6 +42,11 @@ page('faq/index.html', { slug: 'faq', type: 'unique', renderBranch: 'B', templat
 check('--help prints the usage header (with the grouping rule) and writes nothing', () => {
   const r = spawnSync(process.execPath, [SCRIPT, '--help'], { encoding: 'utf8', cwd: root });
   assert.equal(r.status, 0, r.stderr); assert.match(r.stdout, /Template grouping/); assert.match(r.stdout, /--site-url/);
+  assert.deepEqual(readdirSync(root).sort(), ['migrated']);
+});
+check('--help names the --export opt-in and still wins over a bad --export value, writing nothing', () => {
+  const r = spawnSync(process.execPath, [SCRIPT, '--export', 'nope', '--help'], { encoding: 'utf8', cwd: root });
+  assert.equal(r.status, 0, r.stderr); assert.match(r.stdout, /\[--export <name>\]/); assert.match(r.stdout, /--export migration-workspace opts/);
   assert.deepEqual(readdirSync(root).sort(), ['migrated']);
 });
 
@@ -116,6 +123,45 @@ check('sourceUrl: the sidecar\'s source URL, else state.json\'s by slug, else nu
   assert.equal(r.status, 0, r.stderr);
   const bySlug = Object.fromEntries(json('coverage/pages.json').pages.map((p) => [p.slug, p.source.sourceUrl]));
   assert.equal(bySlug.about, 'https://example.com/about-us'); assert.equal(bySlug['tours-bali'], 'https://example.com/tours/bali.html'); assert.equal(bySlug.faq, null);
+});
+
+// The opt-in `exports` key: inventory rebuilds rollout.json from named fields on every run, so the key
+// must be carried forward explicitly — it is always written (empty when nothing is opted in).
+const configPath = join(out, 'rollout.json');
+const seedConfig = (patch) => writeFileSync(configPath, JSON.stringify({ ...json('rollout.json'), ...patch }));
+check('rollout.json always carries exports, empty when nothing is opted in, between site and lastRun', () => {
+  assert.deepEqual(json('rollout.json').exports, []);
+  assert.deepEqual(Object.keys(json('rollout.json')), ['_provenance', 'target', 'site', 'exports', 'lastRun']);
+});
+check('exports written into rollout.json survives a re-run, with the other site fields', () => {
+  const site = { sourceUrl: 'https://example.com', da: { org: 'org', site: 'site', ref: 'main' }, liveHost: 'main--site--org.aem.live' };
+  seedConfig({ site, exports: ['migration-workspace'] });
+  const r = run();
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(json('rollout.json').exports, ['migration-workspace']); assert.deepEqual(json('rollout.json').site, site);
+});
+check('the carry-forward keeps string entries only, once each, in order', () => {
+  seedConfig({ exports: ['migration-workspace-files', 7, null, 'migration-workspace', 'migration-workspace-files'] });
+  const r = run();
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(json('rollout.json').exports, ['migration-workspace-files', 'migration-workspace']);
+});
+check('--export migration-workspace adds the name once (twice with the flag, and repeated in one run → one entry)', () => {
+  const legacy = json('rollout.json'); delete legacy.exports; writeFileSync(configPath, JSON.stringify(legacy)); // a rollout.json from before the key
+  const a = run('--export', 'migration-workspace');
+  assert.equal(a.status, 0, a.stderr); assert.deepEqual(json('rollout.json').exports, ['migration-workspace']);
+  const b = run('--export', 'migration-workspace', '--export', 'migration-workspace');
+  assert.equal(b.status, 0, b.stderr); assert.deepEqual(json('rollout.json').exports, ['migration-workspace']);
+  const c = run('--export', 'migration-workspace-files');
+  assert.equal(c.status, 0, c.stderr); assert.deepEqual(json('rollout.json').exports, ['migration-workspace', 'migration-workspace-files']);
+});
+check('an unknown --export value, or --export with no value, exits 2 and writes nothing', () => {
+  const before = readFileSync(configPath); const pagesBefore = readFileSync(join(out, 'coverage', 'pages.json'));
+  for (const extra of [['--export', 'site-archive'], ['--export']]) {
+    const r = run(...extra);
+    assert.equal(r.status, 2, `${extra.join(' ')}: ${r.stdout}${r.stderr}`); assert.match(r.stderr, /--export needs one of migration-workspace, migration-workspace-files/);
+    assert.ok(readFileSync(configPath).equals(before), 'rollout.json byte-identical'); assert.ok(readFileSync(join(out, 'coverage', 'pages.json')).equals(pagesBefore), 'pages.json byte-identical');
+  }
 });
 
 rmSync(root, { recursive: true, force: true });
