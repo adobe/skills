@@ -21,8 +21,9 @@ Fixes from a recorded hands-off replica run on a site with a consent manager, ve
   `{pageType, archetype, breakpoints}` object, and the run wrote exactly that as the whole file, destroying the
   `types` map, the `siblings` / `migrate` blocks `gate-evidence.mjs` writes and the `_provenance` block the resume
   and unit-boundary readers depend on. The example now shows the record inside `types.<archetype>` beside those
-  blocks, with the rule that the file is extended per entry; `gate-evidence.mjs` refuses a ledger whose top level
-  is a single record (`breakpoints`, or `pageType` + `archetype`) and names the fix, with a test; `replica/SKILL.md`
+  blocks, with the rule that the file is extended per entry; `gate-evidence.mjs` wraps a ledger whose top level
+  is one archetype's record under `types.<archetype>` (lossless, noted in its output) and refuses only a record
+  that names no archetype; a ledger with a `types` map is never second-guessed; with a test; `replica/SKILL.md`
   names the keys.
 
 
