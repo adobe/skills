@@ -15,6 +15,14 @@
  * for the repeated-unit families stardust/replica/units.json declares for the page. Writes
  * <out>/<slug>/{origin,eds,diff}.png + pixel.json + clip.json [+ content.json, units.json] + probes.json
  * [+ gate-key.json], <out>/summary.{json,md}; --only runs write <out>/runs/<ts>-<slug>.json instead.
+ * --one-load (opt-in): ONE navigation per side — each side's stitch (both headed real Chrome) also takes the presence,
+ * clip and unit inventories of the page it loaded (stitch-shot --inventory: after its settle, at the top, before the
+ * freeze; <slug>/<side>-inventory[.spec].json) and content.json / clip.json / units.json are built from the two with
+ * the probes' own report builders (content.json `_provenance.via: one-load`); a needed side without a usable inventory
+ * (blocked / failed origin, --warmup, a kept capture taken without one) runs the probes instead, logged `one-load <slug>
+ * → fallback: <why>`; the row says which (`oneLoad`). A fix round keeps only a one-load origin; live.png is not taken
+ * (`inventoryWhy`, `oneLoadKeep` are exported).
+ * A content-presence origin-inventory cache hit is a recorded reuse too (`presenceReused`, _run.log).
  *
  * VERDICT (all four): pixel % ≤ --threshold AND |Δh| ≤ --height-tol × origin height (a union metric
  * was tried and rejected — white gaps score as matches) AND served clipped ≤ --clip-max +
@@ -57,7 +65,7 @@
  *        [--blocked <re>] [--try-blocked] [--crawl-shots <dir>] [--origin-max-age <h>] [--origin-concurrency 2]
  *        [--eds-concurrency 4|6] [--probe-concurrency 2|4] [--threshold 10] [--height-tol 0.05]
  *        [--clip-max 0] [--unit-tol 4] [--no-clip] [--no-content] [--no-probes] [--units <f>]
- *        [--compare-only] [--warmup <url>] [--vh <px>]
+ *        [--compare-only] [--warmup <url>] [--vh <px>] [--one-load]
  * Two browser budgets: the origin pool stays 2 (the source's bot budget); the EDS / probe pools widen from 4 / 2
  * to 6 / 4 when the job holds a machine-wide browser slot (run-bg sets STARDUST_BROWSER_SLOT).
  * Requires playwright, pixelmatch, pngjs (project devDependencies); stitch-shot.mjs, pixel-compare.mjs
@@ -105,6 +113,8 @@ Usage: node gate-all.mjs [options]   (from the project root)
   --units <file>            repeated-unit declarations (default <out>/units.json)
   --compare-only            no captures; recompute from existing PNGs
   --warmup <url>            origin warm-up for the probes
+  --one-load                one navigation per side: each stitch also takes the presence / clip / unit inventories
+                            (both sides headed real Chrome, live.png not reused); a side without one → the probes, logged
   --vh <px>                 stitch chunk height
   --help                    this text
 Verdict = pixel % ≤ threshold AND |Δh| ≤ height-tol × origin height AND clipped ≤ clip-max(+allowance) AND content MISSING+HIDDEN = 0.
@@ -128,6 +138,7 @@ export function parseArgs(argv, env = process.env) {
     else if (a === '--origin-concurrency') o.oc = Number(v()); else if (a === '--eds-concurrency') o.ec = Number(v()); else if (a === '--probe-concurrency') o.pc = Number(v());
     else if (a === '--threshold') o.threshold = Number(v()); else if (a === '--height-tol') o.heightTol = Number(v()); else if (a === '--clip-max') o.clipMax = Number(v()); else if (a === '--unit-tol') o.unitTol = Number(v());
     else if (a === '--no-clip') o.clip = false; else if (a === '--no-content') o.content = false; else if (a === '--no-probes') { o.clip = false; o.content = false; }
+    else if (a === '--one-load') o.oneLoad = true;
     else if (a === '--units') o.units = v(); else if (a === '--compare-only') o.compareOnly = true; else if (a === '--warmup') o.warmup = v(); else if (a === '--vh') o.vh = Number(v());
     else if (a.startsWith('--')) { console.error(`unknown flag ${a}\n\n${HELP}`); process.exit(1); }
   }
@@ -517,6 +528,36 @@ export function liveReusePlan({ stage, recaptureOrigin, url, width, vh }, liveMe
   return { reuse: true, why: fresh.policy };
 }
 
+// ---- one load (--one-load, pure): each side's stitch takes the probes' inventories (stitch-shot --inventory) -------
+/**
+ * Why a side's <side>-inventory.json cannot stand in for its probes (null = usable): `meta` = origin.json / eds.json,
+ * `inv` = the inventory, `want` = this run's spec blocks for the side. It must be the one taken with that very capture
+ * (meta.inventoryAt = inv.at), of this URL, without error, every block `want` asks for taken with the same settings.
+ */
+export function inventoryWhy(meta, inv, url, want = {}) {
+  if (!meta) return 'no capture';
+  if (meta.error) return `capture failed: ${meta.error}`;
+  if (meta.instrument !== 'stitch-live') return `${meta.instrument} capture`;
+  if (!meta.inventory || !meta.inventoryAt) return meta.inventoryError ? `not taken: ${meta.inventoryError}` : 'captured without one';
+  if (!inv) return `${meta.inventory} missing`;
+  if (inv.error) return `inventory failed: ${inv.error}`;
+  if (inv.at !== meta.inventoryAt) return 'the inventory on disk is not the one taken with this capture';
+  if (inv.url !== url) return `taken of ${inv.url}`;
+  const other = ['presence', 'clip', 'units'].find((k) => want[k] && canon((inv.spec || {})[k] ?? null) !== canon(want[k]));
+  return other ? `taken with other ${other} settings` : null;
+}
+/** --one-load: a kept origin must be a one-load capture too — headed real Chrome with its inventory (`invWhy` null). */
+export function oneLoadKeep(plan, prev, invWhy) {
+  if (!plan.reuse) return plan;
+  if (!prev || prev.headed !== true) return { reuse: false, why: `one-load: not a headed real-Chrome capture (headed: ${prev ? prev.headed : 'unknown'})` };
+  return invWhy ? { reuse: false, why: `one-load: no inventory (${invWhy})` } : plan;
+}
+/** The probes' own report builders, loaded only under --one-load (gate-all composes content / clip / units in-process). */
+async function oneLoadLib() {
+  const [cp, clip, ug] = await Promise.all(['content-presence.mjs', 'clip-probe.mjs', 'unit-geometry.mjs'].map((f) => import(pathToFileURL(join(DIFF_DIR, f)).href)));
+  return { presenceReport: cp.presenceReport, clipReport: clip.clipReport, unitsReport: ug.unitsReport };
+}
+
 const readJson = (p, d = null) => (existsSync(p) ? JSON.parse(readFileSync(p, 'utf8')) : d);
 
 function run(cmd, args, { timeoutMs = 480000 } = {}) {
@@ -563,7 +604,35 @@ async function main() {
   const edsUrl = (p) => (opts.edsHost ? p.liveUrl.replace(/^https?:\/\/[^/]+/, opts.edsHost) : p.liveUrl);
   const results = {};
   const rec = (p, k, v) => { results[p.slug] = { ...(results[p.slug] || {}), [k]: v }; };
-  const stitchArgs = (url, out) => [STITCH, url, out, '--width', String(opts.width), '--settle', '--locale', 'en-US', ...(opts.vh ? ['--vh', String(opts.vh)] : [])];
+  const stitchArgs = (url, out, { inventory } = {}) => [STITCH, url, out, '--width', String(opts.width), '--settle', '--locale', 'en-US', ...(opts.vh ? ['--vh', String(opts.vh)] : []), ...(inventory ? ['--inventory', inventory] : [])];
+  // --one-load: every stitch (both sides headed real Chrome) also takes the probes' inventories of the page it loaded;
+  // --warmup needs a navigation of its own, so it turns the captures back to the probes' path.
+  const OL = !!opts.oneLoad && !opts.warmup && !!DIFF_DIR;
+  const LIB = OL ? await oneLoadLib() : null;
+  if (opts.oneLoad && !OL) log(`one-load: off for this run (${opts.warmup ? '--warmup needs its own navigation' : 'no diff scripts dir'}) — the probes run as without --one-load`);
+  /** A side's inventory spec blocks — the split content-presence's --main / --variable and unit-geometry's --unit make. */
+  function specFor(p, side) {
+    const pr = PRESENCE[p.slug] || {}; const units = unitsOf(p);
+    const half = (s) => { const [o, e] = String(s).split('='); return side === 'origin' ? o : e || o; };
+    return {
+      presence: opts.content ? { rootSel: pr.main ? half(pr.main) : null, variableSels: (pr.variable || []).join(',').split(',').map((x) => x.trim()).filter(Boolean).map(half), countWords: null, moreWords: null, minCut: 2 } : null,
+      clip: opts.clip || opts.content ? { minCut: 2, maxFindings: 400, moreWords: null } : null,
+      units: units.length ? { sels: units.map((u) => (side === 'origin' ? u.origin : u.eds).trim()), n: Math.max(...units.map((u) => u.n)) } : null,
+    };
+  }
+  function inventorySpec(p, side) {
+    const f = join(dir(p), `${side}-inventory.spec.json`);
+    writeFileSync(f, JSON.stringify({ out: join(dir(p), `${side}-inventory.json`), side, ...specFor(p, side) }, null, 1));
+    return f;
+  }
+  // The capture meta's record of its inventory: only one written by this stitch (at or after `since`) and without error.
+  function inventoryMeta(p, side, since) {
+    const f = `${side}-inventory.json`; const inv = tryJson(join(dir(p), f));
+    if (inv && !inv.error && inv.at >= since) return { inventory: f, inventoryAt: inv.at };
+    return { inventoryError: !inv ? `${f} not written` : inv.error || `${f} predates this capture` };
+  }
+  const sideInventory = (p, side, url) => { const inv = readSafe(join(dir(p), `${side}-inventory.json`)); return { inv, why: inventoryWhy(readSafe(join(dir(p), `${side}.json`)), inv, url, specFor(p, side)) }; };
+  const keepOneLoad = (plan, p, prev) => (OL ? oneLoadKeep(plan, prev, plan.reuse && prev ? sideInventory(p, 'origin', p.url).why : null) : plan);
 
   async function captureOrigin(p) {
     const d = dir(p); mkdirSync(d, { recursive: true });
@@ -577,16 +646,18 @@ async function main() {
     }
     // a fix round keeps this run's origin (originReusePlan); the capture time `at` is kept, the reuse added
     const prev = existsSync(out) && existsSync(meta) ? tryJson(meta) : null;
-    const plan = originReusePlan({ stage: opts.stage, only: opts.only, recaptureEds: opts.recaptureEds, recaptureOrigin: opts.recaptureOrigin, url: p.url, width: opts.width, vh: opts.vh }, prev, prev && fresh(prev));
+    const plan = keepOneLoad(originReusePlan({ stage: opts.stage, only: opts.only, recaptureEds: opts.recaptureEds, recaptureOrigin: opts.recaptureOrigin, url: p.url, width: opts.width, vh: opts.vh }, prev, prev && fresh(prev)), p, prev);
     if (plan.reuse) { keep({ ...prev, stale: undefined, ...reuseOf(out, prev, plan.why) }, `origin ${p.slug} → reused ${out} (captured ${prev.at}; ${plan.why})`); return; }
     if (prev && (opts.only || opts.recaptureEds) && opts.stage === 'published') log(`origin ${p.slug} → not reused (${plan.why})`);
     const crawlShot = join(opts.crawlShots, `${p.slug}.png`);
     const cachedLive = join('stardust/replica/gates', `${p.slug}-${opts.width}`, 'live.png');
     const lm = existsSync(cachedLive) ? tryJson(cachedLive.replace(/\.png$/, '.json')) : null;
-    const lp = liveReusePlan({ stage: opts.stage, recaptureOrigin: opts.recaptureOrigin, url: p.url, width: opts.width, vh: opts.vh }, lm, lm && fresh(lm));
+    const lp = keepOneLoad(liveReusePlan({ stage: opts.stage, recaptureOrigin: opts.recaptureOrigin, url: p.url, width: opts.width, vh: opts.vh }, lm, lm && fresh(lm)), p, lm);
     if (opts.stage === 'published' && existsSync(cachedLive) && !lp.reuse) log(`origin ${p.slug} → live.png not reused (${lp.why})`);
     let r; let warn = null;
-    if (opts.stage === 'prototype' && existsSync(cachedLive)) {
+    // --one-load: the archetype round's live.png is headless bundled Chromium, not a one-load capture (both stages)
+    if (OL && opts.stage === 'prototype' && existsSync(cachedLive)) log(`origin ${p.slug} → live.png not reused (one-load: not a headed real-Chrome capture)`);
+    if (opts.stage === 'prototype' && existsSync(cachedLive) && !OL) {
       copyFileSync(cachedLive, out);
       const lat = { at: (lm && lm.at) || statSync(cachedLive).mtime.toISOString() }; const f = fresh(lat);
       r = { instrument: 'stitch-live', note: `reused ${cachedLive} (the archetype round's capture — hit minimisation)`, ...reuseOf(cachedLive, lat, 'prototype-stage'), stale: f.fresh ? undefined : f.reason };
@@ -596,8 +667,9 @@ async function main() {
       if (existsSync(crawlShot)) { copyFileSync(crawlShot, out); r = { instrument: 'crawl-fullpage', asymmetric: true, note: `origin matches --blocked ${opts.blocked}; crawl screenshot used (lazy rails may be placeholders)` }; }
       else r = { instrument: 'none', error: `origin blocked and no crawl shot at ${crawlShot}` };
     } else {
-      const s = await run('node', [...stitchArgs(p.url, out), '--headed']);
-      if (s.code === 0) r = { instrument: 'stitch-live', url: p.url, width: opts.width, locale: 'en-US', vh: opts.vh || null, headed: true, log: s.out.trim().split('\n').slice(-2) };
+      const t0 = new Date().toISOString();
+      const s = await run('node', [...stitchArgs(p.url, out, OL ? { inventory: inventorySpec(p, 'origin') } : {}), '--headed']);
+      if (s.code === 0) r = { instrument: 'stitch-live', url: p.url, width: opts.width, locale: 'en-US', vh: opts.vh || null, headed: true, log: s.out.trim().split('\n').slice(-2), ...(OL ? inventoryMeta(p, 'origin', t0) : {}) };
       else if (existsSync(out) && existsSync(meta) && opts.recaptureOrigin) {
         // the previous origin stays in use: a recorded reuse (stale when it predates the run), never a silent one
         const kept = readJson(meta); const f = fresh(kept);
@@ -617,8 +689,9 @@ async function main() {
     const d = dir(p); mkdirSync(d, { recursive: true });
     const out = join(d, 'eds.png'); const meta = join(d, 'eds.json');
     if (skipCapture(p, 'eds', capCtx)) { rec(p, 'eds', readJson(meta)); return; }
-    const s = await run('node', stitchArgs(edsUrl(p), out));
-    const r = s.code === 0 ? { instrument: 'stitch-live', url: edsUrl(p) } : { instrument: 'none', url: edsUrl(p), error: `stitch exit ${s.code}: ${lastLine(s.err)}` };
+    const t0 = new Date().toISOString();
+    const s = await run('node', [...stitchArgs(edsUrl(p), out, OL ? { inventory: inventorySpec(p, 'eds') } : {}), ...(OL ? ['--headed'] : [])]);
+    const r = s.code === 0 ? { instrument: 'stitch-live', url: edsUrl(p), ...(OL ? { headed: true, ...inventoryMeta(p, 'eds', t0) } : {}) } : { instrument: 'none', url: edsUrl(p), error: `stitch exit ${s.code}: ${lastLine(s.err)}` };
     r.at = new Date().toISOString(); writeFileSync(meta, JSON.stringify(r, null, 2)); rec(p, 'eds', r);
     log(`eds ${p.slug} → ${r.instrument}${r.error ? ` ERROR ${r.error}` : ''}`);
   }
@@ -655,9 +728,44 @@ async function main() {
     writeFileSync(join(d, 'clip.json'), JSON.stringify({ url: edsUrl(p), at: content._provenance.at, source: 'content-presence', counts: content.eds.clip.counts, groups: content.eds.clip.groups, origin: { counts: content.origin.clip.counts } }, null, 1));
     if (content.textBoxes && content.textBoxes.origin) writeFileSync(join(d, 'text-boxes.json'), JSON.stringify({ side: 'origin', boxes: content.textBoxes.origin }));
     log(`content ${p.slug} → MISSING ${content.totals.missing} HIDDEN ${content.totals.hidden} state ${content.totals.controlState}; clipped ${content.eds.clip.counts.total}`);
+    const oc = content._provenance && content._provenance.originCache; // content-presence --origin-cache hit: a recorded reuse
+    if (oc) { rec(p, 'presenceReused', { from: oc.file, at: oc.at, policy: oc.policy }); log(`content ${p.slug} → origin inventory reused ${oc.file} (probed ${oc.at}; ${oc.policy})`); }
   }
   function recordClip(p, clip) { rec(p, 'clip', { counts: clip.counts, groups: clip.groups, source: 'clip-probe', tier: clip.tier || null }); log(`clip ${p.slug} → ${clip.counts.total}`); }
   function recordUnits(p, res, required) { rec(p, 'units', { verdict: res.verdict, required }); log(`units ${p.slug} → off ${res.verdict.off} hidden ${res.verdict.hidden} missing ${res.verdict.missing}`); }
+  /**
+   * --one-load: content.json / clip.json / units.json from the two stitches' inventories with the probes' own report
+   * builders, recorded through the same recorders → true. A needed side without a usable inventory (or --warmup)
+   * → false, logged `one-load <slug> → fallback: <why>`, and the probes run as without --one-load.
+   */
+  function oneLoadProbe(p, units) {
+    const needO = opts.content || units.length > 0; const needE = needO || opts.clip;
+    if (!needE) return false;
+    const fallback = (why) => { rec(p, 'oneLoad', { via: 'probes', fallback: why }); log(`one-load ${p.slug} → fallback: ${why}`); return false; };
+    if (!OL) return fallback(opts.warmup ? '--warmup set (the warm-up needs its own navigation)' : 'no diff scripts dir');
+    const o = needO ? sideInventory(p, 'origin', p.url) : { inv: null, why: null };
+    if (o.why) return fallback(`no origin inventory (${o.why})`);
+    const e = sideInventory(p, 'eds', edsUrl(p));
+    if (e.why) return fallback(`no EDS inventory (${e.why})`);
+    const d = dir(p); const tier = !o.inv || o.inv.tier === e.inv.tier ? e.inv.tier : `${o.inv.tier}/${e.inv.tier}`;
+    const pairs = units.map((u) => ({ origin: u.origin.trim(), eds: u.eds.trim() })); // unit-geometry --unit's pairs
+    const unitInv = (inv) => ({ url: inv.url, at: inv.at, docH: inv.docH, bySel: inv.units.bySel });
+    let rep;
+    try {
+      rep = {
+        content: opts.content ? LIB.presenceReport(o.inv, e.inv, { width: opts.width, variable: specFor(p, 'origin').presence.variableSels, chrome: false, tier, via: 'one-load' }) : null,
+        clip: opts.clip && !opts.content ? LIB.clipReport({ docH: e.inv.docH, pageW: e.inv.pageW, counts: e.inv.clip.counts, findings: e.inv.clip.findings, textBoxes: e.inv.textBoxes }, { url: edsUrl(p), width: opts.width, tier: e.inv.tier, at: e.inv.at }) : null,
+        units: pairs.length ? LIB.unitsReport(unitInv(o.inv), unitInv(e.inv), pairs, { tol: opts.unitTol, n: Math.max(...units.map((u) => u.n)), width: opts.width, tier }) : null,
+      };
+    } catch (err) { return fallback(`inventories not composable (${String(err.message).split('\n')[0]})`); }
+    const write = (k) => writeFileSync(join(d, `${k}.json`), JSON.stringify(rep[k], null, 1));
+    if (rep.content) { write('content'); recordContent(p, rep.content, PRESENCE[p.slug] || {}); }
+    if (rep.clip) { write('clip'); recordClip(p, rep.clip); }
+    if (rep.units) { write('units'); recordUnits(p, rep.units, units.some((x) => x.required)); }
+    rec(p, 'oneLoad', { via: 'one-load', origin: o.inv ? o.inv.at : null, eds: e.inv.at });
+    log(`one-load ${p.slug} → probes from the stitches' inventories (origin ${o.inv ? o.inv.at : 'not needed'}, EDS ${e.inv.at}; ${tier})`);
+    return true;
+  }
   async function probe(p) {
     const d = dir(p); mkdirSync(d, { recursive: true });
     const pr = PRESENCE[p.slug] || {};
@@ -676,7 +784,8 @@ async function main() {
       }
     }
     const at = new Date().toISOString();
-    if (opts.content) {
+    const oneLoaded = opts.oneLoad && oneLoadProbe(p, units); // --one-load: the stitches' inventories, else the probes below
+    if (!oneLoaded && opts.content) {
       const args = [join(DIFF_DIR, 'content-presence.mjs'), p.url, edsUrl(p), '--width', String(opts.width), '--json', join(d, 'content.json')];
       if (pr.variable && pr.variable.length) args.push('--variable', pr.variable.join(','));
       if (pr.main) args.push('--main', pr.main);
@@ -691,13 +800,13 @@ async function main() {
         log(`content ${p.slug} → n/a (${why})`);
       }
     }
-    if (opts.clip && !(results[p.slug] && results[p.slug].clip)) {
+    if (!oneLoaded && opts.clip && !(results[p.slug] && results[p.slug].clip)) {
       const s = await run('node', [join(DIFF_DIR, 'clip-probe.mjs'), edsUrl(p), '--width', String(opts.width), '--json', join(d, 'clip.json')]);
       const clip = readJson(join(d, 'clip.json'));
       if (clip && (s.code === 0 || s.code === 2)) recordClip(p, clip);
       else { rec(p, 'clip', { error: `clip-probe exit ${s.code}: ${lastLine(s.err)}` }); log(`clip ${p.slug} → ERROR ${lastLine(s.err)}`); }
     }
-    if (units.length) {
+    if (!oneLoaded && units.length) {
       const args = [join(DIFF_DIR, 'unit-geometry.mjs'), p.url, edsUrl(p), '--width', String(opts.width), '--tol', String(opts.unitTol), '--n', String(Math.max(...units.map((x) => x.n))), '--json', join(d, 'units.json'), '--slug', p.slug];
       for (const x of units) args.push('--unit', `${x.origin}=${x.eds}`);
       if (opts.warmup) args.push('--warmup', opts.warmup);
@@ -754,6 +863,7 @@ async function main() {
     const v = verdict({ pixel: px, clip: r.clip && r.clip.counts ? r.clip : null, content: r.content || null, units: r.units || null, override: OVERRIDES[p.slug] || null, allowance: (CLIP_ALLOW[p.slug] || {}).max || 0 }, { threshold: opts.threshold, heightTol: opts.heightTol, clipMax: opts.clipMax, clipOn: opts.clip, contentOn: opts.content });
     return { slug: p.slug, path: p.deployedPath || new URL(p.liveUrl).pathname, template: p.template, tier: p.fidelityTier, origin: r.origin && r.origin.instrument, originAsymmetric: !!(r.origin && r.origin.asymmetric), eds: r.eds && r.eds.instrument,
       originReused: r.origin && r.origin.reused ? { from: r.origin.from, at: r.origin.at, policy: r.origin.policy, stale: r.origin.stale || null } : null,
+      presenceReused: r.presenceReused || null, ...(opts.oneLoad ? { oneLoad: r.oneLoad || null } : {}),
       pct: px.pct ?? null, textPct: px.textPct ?? null, heightDelta: px.heightDelta ?? null, ...v,
       clipGroups: r.clip && r.clip.groups ? r.clip.groups.filter((g) => !g.advisory).slice(0, 6) : [], clipAllowReason: (CLIP_ALLOW[p.slug] || {}).reason || null,
       content: r.content && r.content.totals ? { missing: r.content.totals.missing, hidden: r.content.totals.hidden, controlState: r.content.totals.controlState, missingButtons: r.content.totals.missingButtons, hiddenButtons: r.content.totals.hiddenButtons, findings: r.content.totals.findings, scope: r.content.scope, variable: r.content.variable } : null,

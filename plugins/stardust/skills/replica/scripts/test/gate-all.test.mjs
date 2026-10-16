@@ -9,7 +9,9 @@
 // content half; then the CLI over stub instruments in a sandbox project with a git remote and a deploy ledger.
 // Origin reuse (originReusePlan / liveReusePlan tables, --origin-max-age, the split pool budgets) and a sandbox
 // runner with stub instruments (no browser): fix rounds reuse this run's origin, a new run recaptures, every reuse
-// is in the row, origin.json and _run.log.
+// is in the row, origin.json and _run.log. --one-load (C8): inventoryWhy / oneLoadKeep tables, then the sandbox with a
+// stitch stub that writes a canned inventory: one stitch per side per page, no probe spawns, fix rounds 0 origin / 1 EDS,
+// fallbacks (blocked origin, --warmup) logged, legacy unchanged, and a content-presence cache hit recorded in the row.
 // Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -18,7 +20,7 @@ import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { codeDeployed, contentDeployed, deployedDocs, edsHostOf, foundationPart, formatSummary, gateKeyOf, gateKeyParts, hostServes, instrumentFiles, keyChanged, liveReusePlan, originReusePlan, parseArgs, probeReuse, rowKey, sharedBlocks, skipCapture, verdict } from '../gate-all.mjs';
+import { codeDeployed, contentDeployed, deployedDocs, edsHostOf, foundationPart, formatSummary, gateKeyOf, gateKeyParts, hostServes, instrumentFiles, inventoryWhy, keyChanged, liveReusePlan, oneLoadKeep, originReusePlan, parseArgs, probeReuse, rowKey, sharedBlocks, skipCapture, verdict } from '../gate-all.mjs';
 
 // pixel-compare imports pngjs at module level (a project devDependency, absent in the plugin checkout):
 // import it lazily and skip its one check where it does not resolve, like the other browser/dep-bound tests.
@@ -645,6 +647,129 @@ check('sandbox 9: a failed --recapture-origin keeps the previous origin AND says
   const b = gate(['--only', 'home', '--recapture-origin'], { STUB_ORIGIN_RC: '1' });
   assert.deepEqual(b.row('home').originReused, { from: 'stardust/replica/gates/all-1440/home/origin.png', at: read('stardust/replica/gates/all-1440/home/origin.json').at, policy: 'same-run', stale: null }, 'a kept plain capture is a recorded reuse, never silent');
   assert.match(runLog(), /same-run\) WARN re-shoot failed/); assert.equal(b.cp[0].had, true);
+});
+// ---- --one-load (C8): one navigation per side — the pure deciders, then the same sandbox ----------------------------
+const invMeta = { instrument: 'stitch-live', headed: true, inventory: 'origin-inventory.json', inventoryAt: AT };
+const invFile = { url: U, at: AT, items: [], spec: { presence: { rootSel: null, variableSels: [] }, clip: { minCut: 2 }, units: null } };
+check('inventoryWhy: only the inventory taken with this very capture, of this URL, with this run\'s blocks, stands in for the probes', () => {
+  const want = { presence: { rootSel: null, variableSels: [] }, clip: { minCut: 2 }, units: null };
+  assert.equal(inventoryWhy(invMeta, invFile, U, want), null);
+  assert.equal(inventoryWhy(invMeta, invFile, U, { ...want, presence: null }), null, 'a block this run does not need is not compared');
+  const table = [
+    ['no capture', null, invFile, /^no capture$/], ['failed capture', { error: 'stitch exit 3' }, invFile, /capture failed: stitch exit 3/],
+    ['crawl shot', { instrument: 'crawl-fullpage' }, invFile, /crawl-fullpage capture/], ['legacy capture', { instrument: 'stitch-live', headed: true }, invFile, /captured without one/],
+    ['not taken', { instrument: 'stitch-live', inventoryError: 'origin-inventory.json not written' }, invFile, /not taken: origin-inventory\.json not written/],
+    ['file gone', invMeta, null, /origin-inventory\.json missing/], ['inventory error', invMeta, { ...invFile, error: 'page crashed' }, /inventory failed: page crashed/],
+    ['another capture\'s inventory', invMeta, { ...invFile, at: '2026-10-16T08:31:00.000Z' }, /not the one taken with this capture/],
+    ['another url', invMeta, { ...invFile, url: `${U}x` }, /taken of /], ['other presence settings', invMeta, { ...invFile, spec: { ...invFile.spec, presence: { rootSel: 'main', variableSels: [] } } }, /other presence settings/],
+  ];
+  for (const [name, m, inv, re] of table) assert.match(String(inventoryWhy(m, inv, U, want)), re, name);
+  assert.match(inventoryWhy(invMeta, invFile, U, { ...want, units: { sels: ['.card'], n: 2 } }), /other units settings/, 'units declared since the capture');
+});
+check('oneLoadKeep: under --one-load a kept origin must be headed real Chrome with its inventory; a refused plan stays refused', () => {
+  const plan = { reuse: true, why: 'same-run' };
+  assert.deepEqual(oneLoadKeep(plan, invMeta, null), plan);
+  assert.deepEqual(oneLoadKeep({ reuse: false, why: 'full round' }, invMeta, 'x'), { reuse: false, why: 'full round' });
+  assert.match(oneLoadKeep(plan, { headed: false }, null).why, /^one-load: not a headed real-Chrome capture \(headed: false\)/);
+  assert.match(oneLoadKeep(plan, invMeta, 'captured without one').why, /^one-load: no inventory \(captured without one\)/);
+  assert.equal(parseArgs(['n', 'x', '--one-load']).oneLoad, true); assert.ok(!parseArgs(['n', 'x']).oneLoad, 'opt-in');
+});
+// The sandbox's diff modules become importable stubs (gate-all loads the report builders in-process under --one-load);
+// the stitch stub writes a canned inventory to the spec's `out` when given --inventory; a units family on home.
+const UG_LOG = join(root, 'ug.log');
+cpSync(join(DIFF, 'content-presence.mjs'), join(DS, 'content-presence-real.mjs')); cpSync(join(DIFF, 'unit-geometry.mjs'), join(DS, 'unit-geometry-real.mjs'));
+stub(DS, 'content-presence.mjs', `export * from './content-presence-real.mjs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'; import { dirname } from 'node:path';
+if (process.argv[1] && process.argv[1].endsWith('content-presence.mjs')) {
+  const a = process.argv.slice(2); const val = (f) => (a.includes(f) ? a[a.indexOf(f) + 1] : null);
+  const cache = val('--origin-cache'); const had = !!cache && existsSync(cache);
+  appendFileSync(${JSON.stringify(CP_LOG)}, JSON.stringify({ argv: a, had, maxAge: process.env.STARDUST_ORIGIN_MAX_AGE_H || null }) + '\\n');
+  if (cache && !had) { mkdirSync(dirname(cache), { recursive: true }); writeFileSync(cache, JSON.stringify({ key: {}, at: new Date().toISOString(), data: {} })); }
+  const originCache = had ? { file: cache, at: JSON.parse(readFileSync(cache, 'utf8')).at, policy: 'same-run' } : null;
+  const clip = { counts: { total: 0, textClipped: 0, textHidden: 0, controlHidden: 0, controlClipped: 0 }, groups: [] };
+  writeFileSync(val('--json'), JSON.stringify({ _provenance: { at: new Date().toISOString(), tier: 'chrome', originCache }, totals: { missing: 0, hidden: 0, controlState: 0 }, eds: { clip }, origin: { clip }, textBoxes: { origin: [] } }));
+}`);
+stub(DS, 'unit-geometry.mjs', `export * from './unit-geometry-real.mjs';
+import { appendFileSync, writeFileSync } from 'node:fs';
+if (process.argv[1] && process.argv[1].endsWith('unit-geometry.mjs')) {
+  const a = process.argv.slice(2); appendFileSync(${JSON.stringify(UG_LOG)}, a.join(' ') + '\\n');
+  writeFileSync(a[a.indexOf('--json') + 1], JSON.stringify({ _provenance: { at: new Date().toISOString(), tier: 'chrome' }, results: [], verdict: { units: 1, within: 1, off: 0, hidden: 0, missing: 0, errors: 0, requiredOff: 0 } }));
+}`);
+stub(RS, 'stitch-shot.mjs', `import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
+  const a = process.argv.slice(2); const side = /www\\.example\\.com/.test(a[0]) ? 'ORIGIN' : 'EDS';
+  appendFileSync(${JSON.stringify(STITCH_LOG)}, side + ' ' + a.join(' ') + '\\n');
+  if (side === 'ORIGIN' && process.env.STUB_ORIGIN_RC) { console.error('stitch-shot error: stub exit ' + process.env.STUB_ORIGIN_RC); process.exit(Number(process.env.STUB_ORIGIN_RC)); }
+  if (a.includes('--inventory')) {
+    const spec = JSON.parse(readFileSync(a[a.indexOf('--inventory') + 1], 'utf8'));
+    const item = (kind, text, y, extra = {}) => ({ kind, text, y, x: 0, w: 100, h: 20, state: 'visible', variable: false, inRoot: true, inChrome: false, path: 'main > p', ...extra });
+    const items = [item('heading', 'Offers', 10, { level: 1 }), item('text', 'Weekly offers for every store', 40), item('link', 'All offers', 70, { href: '/a' })];
+    if (side === 'EDS') items.push(item('link', 'Newsroom', 100, { href: '/n' }));
+    const unit = { index: 0, path: 'div.card', rect: { x: 0, y: 200, w: 300, h: 200 }, elements: [{ role: 'heading', tag: 'h3', sel: 'h3', text: 'card', x: 10, y: 10, w: 100, h: 20, absY: 210, hidden: false, fs: 16, lh: 20, fw: '700' }] };
+    const units = spec.units ? { n: spec.units.n, bySel: Object.fromEntries(spec.units.sels.map((s) => [s, { sel: s, matches: 1, visibleMatches: 1, units: [unit] }])) } : undefined;
+    writeFileSync(spec.out, JSON.stringify({ url: a[0], side: spec.side, at: new Date().toISOString(), docH: 3000, tier: 'chrome', settle: 'stitch', status: null, settlePasses: null, pageW: 1440, root: 'main', items,
+      clip: { counts: { total: 0, textClipped: 0, textHidden: 0, controlHidden: 0, controlClipped: 0 }, groups: [], findings: [] }, textBoxes: [{ x: 0, y: 40, w: 100, h: 20 }], units, spec: { presence: spec.presence, clip: spec.clip, units: spec.units } }));
+  }
+  writeFileSync(a[1], 'png');`);
+writeFileSync(join(root, 'stardust/replica/units.json'), JSON.stringify({ cards: { origin: '.card', build: '.card', n: 2, pages: ['home'] } }));
+mkdirSync(join(root, 'stardust/current/assets/screenshots'), { recursive: true }); writeFileSync(join(root, 'stardust/current/assets/screenshots/about.png'), 'png');
+const olGate = (args, env) => { rmSync(UG_LOG, { force: true }); const g = gate(args, env); const st = lines(STITCH_LOG); return { ...g, ug: lines(UG_LOG).length, argv: (s) => st.filter((l) => l.startsWith(s)) }; };
+const pageJson = (slug, f) => read(`stardust/replica/gates/all-1440/${slug}/${f}`);
+let olOriginAt = null;
+check('one-load 1: a full --one-load round — one stitch per side per page (both --headed --inventory), 0 content-presence / unit-geometry spawns, content.json / clip.json / text-boxes.json / units.json from the inventories', () => {
+  const r = olGate(['--one-load']);
+  assert.equal(r.status, 0, r.stderr + r.stdout); assert.equal(r.origin, 2); assert.equal(r.eds, 2); assert.equal(r.cp.length, 0); assert.equal(r.ug, 0);
+  for (const l of [...r.argv('ORIGIN'), ...r.argv('EDS')]) { assert.match(l, / --headed/); assert.match(l, / --inventory \S+-inventory\.spec\.json/); }
+  const c = pageJson('home', 'content.json');
+  assert.equal(c._provenance.via, 'one-load'); assert.equal(c._provenance.tier, 'chrome'); assert.equal(c.origin.settle, 'stitch');
+  assert.equal(c.totals.missing, 0); assert.equal(c.totals.hidden, 0); assert.equal(c.totals.extraLinks, 1, 'the served-only link');
+  assert.equal(pageJson('home', 'clip.json').source, 'content-presence'); assert.deepEqual(pageJson('home', 'text-boxes.json'), { side: 'origin', boxes: [{ x: 0, y: 40, w: 100, h: 20 }] });
+  const u = pageJson('home', 'units.json'); assert.equal(u._provenance.writtenBy, 'unit-geometry.mjs'); assert.equal(u.verdict.units, 1); assert.equal(u.results[0].sel, '.card=.card');
+  const o = pageJson('home', 'origin.json'); const e = pageJson('home', 'eds.json');
+  assert.equal(o.headed, true); assert.equal(o.inventory, 'origin-inventory.json'); assert.equal(o.inventoryAt, pageJson('home', 'origin-inventory.json').at);
+  assert.equal(e.headed, true); assert.equal(e.inventory, 'eds-inventory.json');
+  olOriginAt = o.inventoryAt;
+  const row = r.row('home'); assert.equal(row.oneLoad.via, 'one-load'); assert.equal(row.oneLoad.origin, olOriginAt); assert.equal(row.content.missing, 0); assert.equal(row.units.units, 1); assert.equal(row.pass, true);
+  assert.match(runLog(), /one-load home → probes from the stitches' inventories \(origin \S+, EDS \S+; chrome\)/);
+  assert.equal(pageJson('home', 'probes.json').results.content, 'ok', 'P3\'s probes.json records the one-load probes');
+});
+check('one-load 2: --one-load --only home is a fix round — 0 origin stitches, 1 EDS, 0 probe spawns; the kept origin\'s own inventory', () => {
+  const r = olGate(['--one-load', '--only', 'home']);
+  assert.equal(r.status, 0, r.stderr + r.stdout); assert.equal(r.origin, 0); assert.equal(r.eds, 1); assert.equal(r.cp.length, 0); assert.equal(r.ug, 0);
+  const row = r.row('home'); assert.equal(row.originReused.policy, 'same-run'); assert.equal(row.oneLoad.via, 'one-load'); assert.equal(row.oneLoad.origin, olOriginAt);
+  assert.equal(pageJson('home', 'content.json')._provenance.via, 'one-load');
+});
+check('one-load 3: a --blocked origin (crawl shot) has no inventory — content-presence runs for that page, the row and _run.log say why', () => {
+  const r = olGate(['--one-load', '--only', 'about', '--recapture-origin', '--blocked', 'example\\.com/about']);
+  assert.equal(r.status, 0, r.stderr + r.stdout); assert.equal(r.origin, 0); assert.equal(r.eds, 1); assert.equal(r.cp.length, 1);
+  assert.match(runLog(), /one-load about → fallback: no origin inventory \(crawl-fullpage capture\)/);
+  assert.deepEqual(r.row('about').oneLoad, { via: 'probes', fallback: 'no origin inventory (crawl-fullpage capture)' });
+});
+check('one-load 4: --one-load --warmup falls back — the captures run as without --one-load, every page runs the probes, logged', () => {
+  const r = olGate(['--one-load', '--warmup', 'https://www.example.com/']);
+  assert.equal(r.status, 0, r.stderr + r.stdout); assert.equal(r.cp.length, 2); assert.equal(r.ug, 1);
+  assert.ok(r.argv('ORIGIN').concat(r.argv('EDS')).every((l) => !l.includes('--inventory')), 'no inventory taken');
+  assert.ok(r.argv('EDS').every((l) => !l.includes('--headed')), 'the EDS capture keeps its tier');
+  assert.match(runLog(), /one-load: off for this run \(--warmup needs its own navigation\)/); assert.match(runLog(), /one-load home → fallback: --warmup set/);
+  assert.equal(r.row('home').oneLoad.fallback, '--warmup set (the warm-up needs its own navigation)');
+});
+check('one-load 5: without --one-load nothing changes — legacy counts, argv and row shape (no oneLoad field)', () => {
+  const r = olGate([]);
+  assert.equal(r.status, 0, r.stderr + r.stdout); assert.equal(r.origin, 2); assert.equal(r.eds, 2); assert.equal(r.cp.length, 2); assert.equal(r.ug, 1);
+  assert.ok(r.argv('ORIGIN').every((l) => l.endsWith(' --headed') && !l.includes('--inventory'))); assert.ok(r.argv('EDS').every((l) => !l.includes('--headed') && !l.includes('--inventory')));
+  assert.equal('oneLoad' in r.row('home'), false); assert.equal(r.row('home').presenceReused, null);
+  assert.equal(pageJson('home', 'eds.json').headed, undefined); assert.equal(pageJson('home', 'origin.json').inventory, undefined);
+});
+check('presence cache: a content-presence origin-inventory cache hit reaches the row (presenceReused) and _run.log', () => {
+  const r = olGate(['--only', 'home']);
+  assert.equal(r.status, 0, r.stderr + r.stdout); assert.equal(r.cp.length, 1); assert.equal(r.cp[0].had, true);
+  const pr = r.row('home').presenceReused; assert.equal(pr.from, presence('home')); assert.equal(pr.policy, 'same-run'); assert.ok(pr.at);
+  assert.match(runLog(), /content home → origin inventory reused \S+presence-origin\.json \(probed \S+; same-run\)/);
+});
+check('one-load 6: a fix round keeps only a one-load origin — a legacy capture (no inventory) is re-shot once with one', () => {
+  const r = olGate(['--one-load', '--only', 'home']);
+  assert.equal(r.status, 0, r.stderr + r.stdout); assert.equal(r.origin, 1); assert.equal(r.cp.length, 0);
+  assert.match(runLog(), /origin home → not reused \(one-load: no inventory \(captured without one\)\)/);
+  assert.equal(olGate(['--one-load', '--only', 'home']).origin, 0, 'the next fix round keeps it');
 });
 rmSync(root, { recursive: true, force: true });
 console.log(failed ? `\n${failed} failed` : '\nall passed');
