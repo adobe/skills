@@ -401,7 +401,7 @@ r = await gate(['hide1', 'https://live.example/hide1', buildUrl, '1440', 'h5', '
 check('--hide followed by a flag is a usage error too (the flag is not taken as a selector)', r.status === 125 && /--hide needs a selector list/.test(r.stderr), `status ${r.status} ${r.stderr}`);
 // live.json's `hide` and the retake: a live.png taken hiding a different list (ordered, after the same dedupe; a missing
 // field = []) is retaken with one line and the probes' live caches go with it; the same list reuses it; no live.json →
-// reused as before.
+// reused as before when the round hides nothing, retaken when it hides something.
 const rtLine = (o, n) => `gate.sh: live.png was taken hiding [${o}]; this round hides [${n}] — retaking it`;
 const rtHide = () => JSON.stringify((JSON.parse(liveJson('rt1') || '{}')).hide);
 const rt = (lbl, extra = []) => gate(['rt1', 'https://live.example/rt1', buildUrl, '1440', lbl, '--marker', 'home-proposed', ...extra], { STUB_STITCH_COUNT: countFile, STUB_STITCH_ARGV: argvFile });
@@ -430,8 +430,13 @@ r = await rt('r6', ['--hide', '.geo-bar']);
 check('… and a round with hides retakes it', r.status === 0 && r.stderr.includes(rtLine('', '.geo-bar')) && attempts().join(',') === 'LIVE,BUILD', `${attempts().join(',')} ${r.stderr}`);
 unlinkSync(join(root, gdir('rt1'), 'live.json'));
 resetCount();
-r = await rt('r7', ['--hide', '.location-bar']);
-check('no live.json: live.png is reused as before (no retake)', r.status === 0 && !/retaking/.test(r.stderr) && attempts().join(',') === 'BUILD', `${attempts().join(',')} ${r.stderr}`);
+r = await rt('r7');
+check('no live.json and no hides: live.png is reused as before (no line, build only)', r.status === 0 && !/retaking/.test(r.stderr) && attempts().join(',') === 'BUILD' && liveJson('rt1') === null, `${attempts().join(',')} ${r.stderr}`);
+resetCount(); resetArgv();
+r = await rt('r8', ['--hide', '.location-bar']);
+check('no live.json and a hide list: live.png is retaken with one line, the list recorded', r.status === 0
+  && r.stderr.includes('gate.sh: live.png has no live.json record; this round hides [.location-bar] — retaking it') && (r.stderr.match(/retaking/g) || []).length === 1
+  && attempts().join(',') === 'LIVE,BUILD' && stitchArgv().every((a) => hideArg(a) === '.location-bar') && rtHide() === '[".location-bar"]', `${attempts().join(',')} ${r.stderr} ${liveJson('rt1')}`);
 const presenceFile = (stage) => `stardust/replica/gates/${stage}-1440/presence.json`;
 const writePresence = (stage) => { mkdirSync(join(root, dirname(presenceFile(stage))), { recursive: true }); writeFileSync(join(root, presenceFile(stage)), JSON.stringify({ pres1: { variable: ['.geo-bar'] } })); };
 writePresence('prototypes'); writePresence('all');

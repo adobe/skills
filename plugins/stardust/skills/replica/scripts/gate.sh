@@ -106,7 +106,8 @@
 #                       unit-geometry, the same list live and build; repeatable. gate-all's presence.json
 #                       (gates/all-<w>/ or prototypes-<w>/, this regime's first; malformed = exit 1) adds its "*"
 #                       then <slug> `hide` after it; chrome-parity reads that file itself (--presence). live.json
-#                       records the list; a round with a different list retakes live.png and says so.
+#                       records the list; a round with a different list (or with hides and no live.json) retakes
+#                       live.png and says so.
 #
 # Example (iteration 2 of the home archetype at 1440):
 #   stardust/scripts/replica/gate.sh home "https://<site>/" \
@@ -318,9 +319,13 @@ fi
 # before reusing live.png; it goes with live.png when the capture is retaken (live.png keeps its delete-to-retake rule),
 # and so do the --full probes' live caches (content-, visual-, presence-live.json; chrome-live.json keeps its own rule).
 # A live.png whose live.json records a different hide list (missing field or unreadable record = []; ordered lists after
-# the same dedupe) is retaken; no live.json → reused as before.
+# the same dedupe) is retaken. No live.json: reused as before when this round hides nothing, retaken when it hides
+# something (nothing says the bar was hidden on that capture).
 RETAKE=0
-if [ -f "$DIR/live.png" ] && [ -f "$DIR/live.json" ]; then
+if [ -f "$DIR/live.png" ] && [ ! -f "$DIR/live.json" ] && [ -n "$EFF_HIDE" ]; then
+  echo "gate.sh: live.png has no live.json record; this round hides [${EFF_HIDE//,/, }] — retaking it" >&2
+  RETAKE=1
+elif [ -f "$DIR/live.png" ] && [ -f "$DIR/live.json" ]; then
   OLD_HIDE=$(node -e "$HIDE_JS"'let h = [];
     try { const j = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")); h = j && typeof j === "object" ? j.hide : []; } catch (e) { h = []; }
     process.stdout.write(hideList(h).join(","));' -- "$DIR/live.json")
