@@ -70,10 +70,8 @@ bot-managed site that exits 3, escalate with `--headed` (§ Hardening rule 1).
 
 The live capture is taken ONCE per breakpoint per full gate run and reused
 across iterations — re-take it only if it is genuinely stale (site changed,
-capture hardening changed). This is a bot-block control, not just a cost
-note: content-diff + visual-diff each navigate the live URL per run, so a
-full 3-iter, 2-breakpoint gate is already ≈12–18 live hits, and hard-CDN
-sites (recorded: an Akamai-defended luggage retailer) escalate to an IP block after a handful.
+capture hardening changed); it is a bot-block control, not just a cost note
+(§ Iteration discipline, Hit minimization).
 The prototype capture is re-taken every iteration.
 
 ## Pass bar (all five per breakpoint, plus the content-cap row)
@@ -440,13 +438,14 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
   the ledger. This legitimizes the exclusion without weakening the cap — an
   unnamed "the instrument felt wrong" is still a spent iteration.
 - **Hit minimization: ONE live navigation per instrument per breakpoint per
-  full gate run.** The live stitch PNG is captured once and reused across
-  iterations; only the prototype side re-captures. The two other live-side
-  instruments cache the same way: `chrome-parity.mjs --live-cache
-  <gates-dir>/chrome-live.json` and `anchor.mjs --cache
-  <gates-dir>/anchor-live.json` (live URL only) write the live measurement
-  on the first run and reuse it while URL, width and selectors match —
-  delete the file to re-probe. Recorded without it: a chrome-parity round
+  full gate run.** Beside the live stitch PNG (§ Per-breakpoint procedure),
+  the live-side instruments write the live measurement on the first run and
+  reuse it while URL, width and selectors match — delete the file to
+  re-probe: `chrome-parity.mjs --live-cache <gates-dir>/chrome-live.json`,
+  `anchor.mjs --cache <gates-dir>/anchor-live.json` (live URL only), and in
+  `gate.sh --full` content-diff and visual-diff (`--live-cache`) and
+  content-presence (`--origin-cache`) — these three only within the run
+  (next item), and retaking `live.png` drops them. Recorded without it: a chrome-parity round
   on an AEM site cost 5½ minutes of live settle per iteration, ×3
   iterations ×4 archetypes. On hard-CDN sites
   (Akamai-class), take the live captures with `--headed` and treat further
@@ -457,6 +456,19 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
   `BotChallengeError` on the first challenge-classified response (the
   wait+reload solve window runs only under `--headed`, where clearance can
   actually land) — so the block budget is still intact when you escalate.
+- **Evidence freshness: a run measures against its own source captures.**
+  Source-side evidence is reused only while it was captured in this run — at
+  or after the last rollout `A-inventory` or replica `extract` start in
+  `stardust/status.jsonl`; older captures are retaken once. A gate-all fix
+  round (`--only`, `--recapture-eds`) reuses the page's `origin.png` and
+  origin presence inventory; `--recapture-origin` forces a new capture, and
+  `--origin-max-age <h>` (env `STARDUST_ORIGIN_MAX_AGE_H`) opts into older
+  ones. The caches hold inventories, never verdicts — the build side is
+  measured every time — and a blank or failed source render is measured but
+  never cached. No reuse is silent: the gate-all row carries `originReused
+  { from, at, policy }` (also in `origin.json`) and `presenceReused`, and
+  `_run.log` names each; every probe prints the cache it read and records it
+  (`liveCache` / `originCache`), and replayed rows and probes say `reused`.
 - **Instrument deadlines are the gate's, not yours.** `gate.sh` runs each
   capture under `run-capped.mjs` (stitch 300 s, compare 120 s —
   `GATE_STITCH_TIMEOUT` / `GATE_COMPARE_TIMEOUT`) and reaps this user's
@@ -480,9 +492,9 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
   gap, more than the rounds it waited for**, while every other gap in that
   session stayed under 184 s at a 96 % cache-hit ratio. So: `run-bg.mjs
   start --name <slug>-<w>-<iter> -- gate.sh …` for every round at once (the
-  default 3 slots, `RUN_BG_SLOTS` to move them, launch the rounds first come
-  first served — each capture is a Chromium, a `--full` round three, and the
-  slots replace the `sleep N;` staggering), then `run-bg.mjs
+  slots launch them first come first served — 3 per project, `RUN_BG_SLOTS`,
+  inside one machine-wide browser budget, replica SKILL.md § Setup — and
+  replace the `sleep N;` staggering), then `run-bg.mjs
   wait` (returns within `--max`, default 100 s, ceiling 110 s — inside the
   shell tool's ~2-minute default timeout, which applies only to a call that
   declares none) prints one
@@ -796,7 +808,8 @@ Element presence and legibility are checkable — so `gate-all.mjs` checks them.
 `node stardust/scripts/replica/gate-all.mjs` (project root; through `run-bg.mjs`) runs, for
 every `deployed` page in `stardust/state.json`, the stitched captures and pixel-compare of the
 archetype gate PLUS two DOM probes that load both pages in the same window-free real-Chrome tier
-and settle them the same way (`measure-live.mjs`), and writes
+and settle them the same way (`measure-live.mjs`; under the opt-in `--one-load`, taken from the stitched
+page itself — one navigation per side, both sides on real Chrome), and writes
 `stardust/replica/gates/all-<width>/<slug>/{origin,eds,diff}.png + pixel.json + content.json +
 clip.json [+ units.json]` and `summary.{json,md}`. **Verdict, per page — all four:**
 
@@ -827,10 +840,11 @@ without any table the `gate.sh` logs stand in and `--check` names the missing ta
 eval requires both summaries with a row per page. The pixel-only verdict (1 + 2) is
 recorded beside the full one per page and in the totals: every run is calibration data. Sidecars in the gate dir, each entry documented: `masks.json` (printed
 on the verdict, never reported unmasked), `overrides.json` (shown BESIDE the measured number,
-never replacing it), `clip-allow.json`, `presence.json`, `units.json`. Origin fallback: live
+never replacing it), `clip-allow.json`, `presence.json`, `units.json`. Origin: a fix round reuses
+this run's (row `originReused`, § Iteration discipline, Evidence freshness); fallback: live
 stitch → previous origin (`--recapture-origin`) → crawl fullPage screenshot (`crawl-fullpage`,
 asymmetric, flagged). **Reuse (`--skip-existing`) — proven, never silent.** Origin captures in the
-page dir are reused; probes are replayed (`<slug>/probes.json`) only while the capture pair they were
+page dir are reused (`stale` in the row when older than the run); probes are replayed (`<slug>/probes.json`) only while the capture pair they were
 taken against is on disk; a PASS row is reused whole only while its `gateKey` holds — a hash of
 what the verdict rests on, issued only while the gated host provably serves the hashed tree
 (pushed code; every document delivered to that org/repo with the same `contentSha`), else `null`

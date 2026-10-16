@@ -66,7 +66,7 @@ eyeballing.
 4. Copy scripts into the project and run them from there, not from the
    plugin: this skill's whole `scripts/` dir to
    `stardust/scripts/replica/`, the master skill's `../stardust/scripts/`
-   (ledger.mjs, state.mjs) to `stardust/scripts/stardust/`, the migrate
+   (ledger.mjs, state.mjs, browser-lock.mjs) to `stardust/scripts/stardust/`, the migrate
    skill's `../migrate/scripts/` (migrate.mjs) to `stardust/scripts/migrate/`,
    AND the whole
    `../diff/scripts/` dir to `stardust/scripts/diff/` (the diff scripts
@@ -75,7 +75,13 @@ eyeballing.
    from `stardust/scripts/diff/` next to `stardust/scripts/replica/`, so
    keep the two dirs siblings). Never copy into the project-root
    `scripts/` — that is the EDS boilerplate's directory (master skill
-   § Artifacts, the write boundary).
+   § Artifacts, the write boundary). `run-bg.mjs` takes one slot of a
+   machine-wide browser budget per browser job (`browser-lock.mjs`, slot
+   files in `~/.stardust/locks/browser/`): `STARDUST_BROWSER_SLOTS` (default
+   3, `0` = off) is the machine budget, `RUN_BG_SLOTS` paces one project's
+   jobs inside it. No slot within `STARDUST_BROWSER_WAIT` (600 s) → exit
+   124: no verdict, re-run, never a FAIL. In one recorded parallel run,
+   contention between jobs, not the origin, was the dominant delay.
 
 **Reading and inspection discipline — the context is the budget**
 (`reference/reading-discipline.md`, read it once at Setup). Every byte a
@@ -273,11 +279,12 @@ node stardust/scripts/replica/anchor.mjs "$PROTO" --width 1440   # build-side ru
 # Chrome: computed-style parity BEFORE any pixel round on header/footer/strips
 node stardust/scripts/replica/chrome-parity.mjs "$LIVE" "$PROTO" --width 1440 --live-cache $G/chrome-live.json   # exit 0 = quiet, then crop-compare
 # --headed in any instrument = the window-free real-Chrome stealth tier (#125); STARDUST_HEADED_WINDOW=1 is the only way to a window.
-# gate.sh: live.png cached, every step under a deadline (exit 124 = re-run, not FAIL). Rounds run in
-# the BACKGROUND: start every round at once (the slots pace the Chromiums — no `sleep N;` staggering),
-# then `wait` prints verdict lines only; exit 75 = still going → `wait` again as your NEXT step, never
-# in a shell loop, never after a `sleep` (gate doc § Iteration discipline). A propagation wait is a
-# bounded inline poll (`curl -sf` ≤ 5 s apart, capped), never a fixed sleep.
+# gate.sh: live.png cached (a --full round's live probes too, within the run), every step under a
+# deadline (exit 124 = re-run, not FAIL). Rounds run in the BACKGROUND: start every round at once
+# (the slots pace the Chromiums — no `sleep N;` staggering), then `wait` prints verdict lines only;
+# exit 75 = still going → `wait` again as your NEXT step, never in a shell loop, never after a `sleep`
+# (gate doc § Iteration discipline). A propagation wait is a bounded inline poll (`curl -sf` ≤ 5 s
+# apart, capped), never a fixed sleep.
 node stardust/scripts/replica/run-bg.mjs start --name <slug>-1440-iter2 -- stardust/scripts/replica/gate.sh <slug> "$LIVE" "$PROTO" 1440 iter2
 node stardust/scripts/replica/run-bg.mjs start --name <slug>-360-iter2  -- stardust/scripts/replica/gate.sh <slug> "$LIVE" "$PROTO" 360  iter2
 node stardust/scripts/replica/run-bg.mjs wait      # returns within 100 s; full output: run-bg.mjs log <job> --grep <re>
@@ -461,6 +468,9 @@ had one section for the whole run).
   number alone** (`reference/source-fidelity-gate.md` § The all-pages
   published-origin gate, #125): `node stardust/scripts/replica/gate-all.mjs
   [--only <slug,…>] [--skip-existing] [--eds-host <host>]` through `run-bg.mjs`.
+  A `--only` fix round reuses this run's origin capture (`--recapture-origin`
+  when the source changed; reference § Iteration discipline, Evidence
+  freshness); opt-in `--one-load` reads the probes off the stitched pages.
   DELIVERED = pixel % ≤ 10 AND |Δh| ≤ 5 % AND 0 clipped text / controls
   (`clip-probe`) AND 0 MISSING / HIDDEN links / headings (`content-presence`);
   a recorded page passed the pixel bar with all of its cards clipped. Evidence
