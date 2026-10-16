@@ -380,7 +380,7 @@ Then four principles, applied in this order on every project:
 **1. Leave `head.html` untouched. No font lines, period.**
 No Google Fonts `<link>`. No CDN `<link rel="stylesheet">` for type. No `<style>` blocks declaring `@font-face`. **No `<link rel="preload" as="font">`** either — even self-hosted preloads belong out of `head.html`. **Brand `@font-face` declarations live in `styles/fonts.css`** (the file `loadFonts()` loads — eagerly on desktop and repeat views via the `fonts-loaded` session flag, always in `loadLazy`); **the metric-matched `-fallback` faces live in `styles/styles.css`** (they must be available at first paint). The fallback split (principle 3) eliminates the CLS that preloading is normally meant to prevent.
 
-**2. Self-host EVERY brand face — including proprietary ones — and emit a licensing alert (#80).**
+**2. Self-host EVERY brand face — including proprietary ones — and emit a licensing alert (#80).** `replica` follows this rule from the archetype on (#133).
 Inspect the prototype to identify each font family and its license:
 - SIL OFL 1.1 (Inter, JetBrains Mono, Fraunces, Roboto, Open Sans, IBM Plex, Source Sans, etc.) → self-host. License permits redistribution, including embedding on the served domain.
 - Apache 2.0 (some Google Fonts) → self-host.

@@ -80,9 +80,10 @@ The prototype capture is re-taken every iteration.
    roots (`header`, `footer`), which the default run covers on every gate
    page; each finding line names its root.** 🟡 (body/EXTRA, a missing
    `title`, an `ICON MOVED` — the same icon at another anchor, e.g. inside a
-   text-less accordion button) and 🟠 (font fork) confirmed intended — a
-   substituted licensed font is a permanent justified 🟠; record it once in
-   the ledger.
+   text-less accordion button) confirmed intended. A 🟠 font fork is a
+   defect to fix — the brand faces are self-hosted (#133), so it is usually
+   a face that did not load (Hardening rule 14), never a justified
+   substitute.
 2. **visual-diff: flags none or justified.** A live page's own quirks are
    justified when the prototype mirrors them (e.g. a 1×1 SEO h1 at x0, a
    carousel tile at a negative offset — both real UC1-E1 justifications).
@@ -900,8 +901,7 @@ breakpoint:
           "result": { "structuralRed": 0, "visualFlags": "3 justified",
                        "pixelPct": 1.31, "heightDelta": 0, "pass": true },
           "justified": [
-            { "probe": "visual", "flag": "1x1 h1 at x0", "why": "mirrors live SEO h1" },
-            { "probe": "content", "flag": "🟠 font fork ×2", "why": "licensed kit substituted, R-policy fonts", "permanent": true }
+            { "probe": "visual", "flag": "1x1 h1 at x0", "why": "mirrors live SEO h1" }
           ],
           "residuals": [
             { "band": "y 4500–5000", "pct": 6.2, "cause": "capture-state: 3 CDN-403 placeholder tiles", "flaggedFor": "delivery" },

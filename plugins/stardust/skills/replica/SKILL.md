@@ -40,7 +40,7 @@ eyeballing.
   skipped. Persisted in `DESIGN.json` `extensions.breakpoints.target`.
 - `--register <file>` — optional. User-supplied inconsistency items to seed
   the register (see Phase 2). Without it and without an audit, the register
-  is empty — a pure replica.
+  holds no design delta — a pure replica.
 
 ## Setup
 
@@ -236,11 +236,14 @@ Impeccable's redesign gates (critique, anti-template, divergence) do not
 apply; the source-fidelity gate (Phase 4) replaces them entirely. A
 "tastefully improved" section is a failing section.
 
-**Fonts:** use the same public source when available (extract's intercepted
-woff2 for open/self-hostable faces). For licensed commercial kits: never
-rehost on the new domain — pick a metric-matched substitute, keep the brand
-family name first in the font stack so a licensed drop-in later wins, and
-surface the substitution to the user. (Prior art: an earlier airport-site migration's improvement notes, §3.7.)
+**Fonts (#133, extends deploy #80):** self-host the source's own brand faces
+as-is — extract's `stardust/current/assets/fonts/`, same weights and styles,
+`@font-face` in the shared canon CSS. The brand family stays first in every
+stack; a metric-matched substitute is only the fallback entry after it, never
+a calibrated stand-in. A proprietary face gets deploy § 4's licensing alert
+plus one register entry. A substitute costs calibration work and still
+changes line counts; the owner's license question exists either way.
+Details: `reference/recreation-procedure.md` § Fonts policy.
 
 **CSS-portation is the per-section fallback only** — paint-level effects not
 recoverable from computed styles, JS-hydrated commerce widgets, video or

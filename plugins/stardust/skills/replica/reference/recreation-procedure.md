@@ -308,20 +308,26 @@ un-floating override.
 
 ## Fonts policy
 
-- **Same public source when available.** Extract intercepts the page's own
-  font loads; woff2 files that are freely licensed or already self-hostable
-  are self-hosted in the prototype (UC1-E1: same-source fonts, zero
-  substitutes needed, which is why the type matched exactly).
-- **Licensed commercial kits: substitute, never rehost** (prior art: the airport-site migration —
-  e.g. a domain-locked Monotype kit). Rules:
-  - Never re-host a commercial font on the new public domain.
-  - Pick a **metric-matched** substitute (or have the user supply their
-    licensed kit).
-  - Keep the brand family name FIRST in the font stack so a licensed
-    drop-in later wins without a code change.
-  - Surface the substitution to the user and log it in the progress ledger —
-    a substituted face is a permanent, justified gate residual (the width
-    probe will fork; record it as expected).
+Deploy § 4 principle 2 (#80) applies from the first archetype on (#133):
+
+- **Self-host the source's own brand faces as-is** (that is how UC1-E1's
+  type matched exactly). Extract saves every font response under
+  `stardust/current/assets/fonts/`; ship those files, the same weights and
+  styles, `@font-face` in the shared canon CSS (at delivery:
+  `styles/fonts.css`, metric-matched `-fallback` faces in
+  `styles/styles.css`, per deploy § 4).
+- **Brand family FIRST in every stack.** A metric-matched substitute is only
+  the fallback entry after it — never a calibrated stand-in for the brand
+  face: no derived font files, no hand-tuned digit widths or ascent/descent
+  overrides to imitate it.
+- **A proprietary face raises deploy's licensing alert:** the
+  `⚠️ FONT LICENSING REQUIRED BEFORE GOING LIVE` banner at the top of the
+  canon CSS (at delivery `styles/styles.css`) naming the type vendor per
+  family and "do not publish to the live origin before the license is
+  cleared"; `fonts/LICENSING.md` at delivery; the hand-off message; plus ONE
+  register entry (`preserve-direction.md` § 3). Remove path if the license
+  is not confirmed: delete the woff2 + its `@font-face`, and the stack falls
+  back to the metric-matched fallback.
 
 ## Asset harvest and the capture-state policy
 
