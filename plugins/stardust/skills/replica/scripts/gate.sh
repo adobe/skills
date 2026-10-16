@@ -45,11 +45,8 @@
 #   dismissOverlays (live-session.mjs — the built-in consent candidates + timed marketing modals) on
 #   the live and the build capture alike, as the diff probes do under --dismiss; --consent <sel> and
 #   --dismiss <sel,…> hand a site's own selectors to every step; --no-dismiss turns dismissal off
-#   everywhere in the round. A recorded hands-off run on a site with a consent manager had the probes
-#   dismissing while the live capture could not be told the selector: live.png carried the banner and
-#   its scrim, and the first pixel rounds read 18–50 % hot bands that were the overlay, not the page,
-#   until live.png was re-taken by hand. Symmetric by construction — the build side has nothing to
-#   dismiss, so the same flags on both sides cannot bias the diff.
+#   everywhere in the round. Symmetric by construction — the build side has nothing to dismiss, so
+#   the same flags on both sides cannot bias the diff.
 #
 #   --full   the whole probe set in one round: after the pixel verdict the other
 #            probes run IN PARALLEL, each under its own deadline — content-diff

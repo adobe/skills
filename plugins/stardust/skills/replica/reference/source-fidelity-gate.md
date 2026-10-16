@@ -576,11 +576,8 @@ rather than erroring.
    `dismissOverlays` (stitch-shot and the diff probes alike; `gate.sh`
    carries `--consent <sel>` / `--dismiss <sel,...>` to both captures AND
    its probes, `--no-dismiss` turns it off everywhere in the round):
-   (a) cookie consent (clicked accept; the flags for a banner the built-in
-   candidates miss — a recorded hands-off run on a site with a consent
-   manager gated its first rounds against the banner and its scrim, 18–50 %
-   hot bands, because the probes dismissed while the capture could not be
-   told the selector); (b) **timed marketing/newsletter interstitials** —
+   (a) cookie consent (clicked accept; the flags above for a banner the
+   built-in candidates miss); (b) **timed marketing/newsletter interstitials** —
    recorded (fashion retailer): an undismissed "Sign up, stay updated!"
    modal fired ~5–9s after load and baked a pixel-diff contributor into the
    LIVE capture, repeated at every chunk seam, that no prototype fidelity
@@ -853,9 +850,9 @@ criterion pixel 30, height 6, clip 23, content 31; content n/a on 37 (edge-block
 `types` (this section's record per archetype, keyed by its slug) beside the `siblings` and `migrate`
 blocks `gate-evidence.mjs` writes and the `_provenance` block every stardust JSON artifact carries.
 Extend YOUR archetype's entry in place — read, merge, write back (`gate-evidence.mjs` preserves every
-key it does not own). Never write one archetype's record as the file: a recorded hands-off run did,
-and the resume and unit-boundary readers lost every other archetype; `gate-evidence.mjs` refuses a
-ledger whose top level is a single record. Per archetype per breakpoint:
+key it does not own). Never write one archetype's record as the file; `gate-evidence.mjs` wraps such
+a file under `types.<archetype>` and refuses only a record that names no archetype. Per archetype per
+breakpoint:
 
 ```json
 {

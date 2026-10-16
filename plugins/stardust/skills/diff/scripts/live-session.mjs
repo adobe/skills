@@ -361,9 +361,7 @@ export const browserTier = (b) => b.stardustTier || 'chromium';
 export const CONSENT_CANDIDATES = [
   '#onetrust-accept-btn-handler',
   // cmp-prefixed consent managers: the welcome box's "yes" button, its box
-  // variant and the button's text span (a recorded hands-off run on a site
-  // with one measured the banner and its scrim as page difference until
-  // the selector reached the capture)
+  // variant and the button's text span
   '#cmpwelcomebtnyes',
   '.cmpboxbtnyes',
   '#cmpbntyestxt',
