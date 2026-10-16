@@ -15,7 +15,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, 
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { codePushed, contentDeployed, deployedDocs, edsHostOf, formatSummary, gateKeyOf, gateKeyParts, hostServes, instrumentFiles, keyChanged, parseArgs, probeReuse, rowKey, sharedBlocks, skipCapture, verdict } from '../gate-all.mjs';
+import { codeDeployed, contentDeployed, deployedDocs, edsHostOf, foundationPart, formatSummary, gateKeyOf, gateKeyParts, hostServes, instrumentFiles, keyChanged, parseArgs, probeReuse, rowKey, sharedBlocks, skipCapture, verdict } from '../gate-all.mjs';
 
 // pixel-compare imports pngjs at module level (a project devDependency, absent in the plugin checkout):
 // import it lazily and skip its one check where it does not resolve, like the other browser/dep-bound tests.
@@ -139,7 +139,7 @@ check('gateKeyOf / gateKeyParts: stable across key order; one block CSS byte, co
   const freeze = () => assert.equal(spawnSync(process.execPath, [join(HERE, '..', 'foundation-freeze.mjs'), 'freeze'], { cwd: root }).status, 0);
   freeze(); const kf = key();
   put('styles/styles.css', 'body{ }'); freeze(); assert.notEqual(key(), kf, 'a frozen file hash in the manifest');
-  assert.deepEqual(gateKeyParts({ ...page, liveUrl: 'https://main--s--o.aem.page/missing/' }, { root, opts }), { parts: null, why: 'no content/missing/index.html', blockNames: [] });
+  assert.deepEqual(gateKeyParts({ ...page, liveUrl: 'https://main--s--o.aem.page/missing/' }, { root, opts }), { parts: null, why: 'no content/missing/index.html' });
   const frozen = parts().parts.foundation; put('styles/styles.css', 'body{  }');
   assert.equal(parts().why, 'foundation changed since freeze', 'no key'); assert.notEqual(parts().parts.foundation, frozen, 'the parts still say what moved');
   put('styles/styles.css', 'body{ }'); assert.equal(parts().parts.foundation, frozen, 'the snapshot hash equals the manifest\'s while check passes');
@@ -176,12 +176,6 @@ check('deploy-state guard: the gated host serves the pushed branch and repo; eve
   assert.match(hostServes('main--site--org.aem.page', code), /serves ref main, the upstream branch is feature\/Hero/);
   assert.match(hostServes('feature-hero--fork--org.aem.page', code), /serves org\/fork, the upstream remote is org\/site/);
   assert.match(hostServes('www.example.com', code), /not an EDS/);
-  const git = { upstream: 'origin/main', changed: ['blocks/tabs/tabs.css'], added: [] }; const paths = ['styles/', 'head.html', 'icons/', 'blocks/'];
-  assert.equal(codePushed(git, paths, ['tabs']), null, 'another page\'s block is dirty: this key still holds');
-  assert.match(codePushed(git, paths, []), /not pushed, so not deployed\): blocks\/tabs\/tabs\.css/, 'its own (or a shared) block');
-  assert.match(codePushed({ ...git, changed: ['head.html'] }, paths, ['tabs']), /head\.html/); assert.match(codePushed({ ...git, changed: ['blocks/README.md'] }, paths, ['tabs']), /README/, 'outside every block dir: every key');
-  assert.match(codePushed({ ...git, changed: [], added: ['blocks/new/new.js'] }, paths, ['tabs']), /untracked code, not deployed: blocks\/new\/new\.js/);
-  assert.equal(codePushed({ ...git, changed: ['content/x.html', 'stardust/a.json'] }, paths, []), null, 'not a code path');
   const root = mkdtempSync(join(tmpdir(), 'gate-all-ledger-'));
   mkdirSync(join(root, 'content')); mkdirSync(join(root, 'stardust/deploy'), { recursive: true });
   const row = (status, ts, contentSha, verifiedOn = 'Org/Site') => ({ status, ts, contentSha, verifiedOn });
@@ -199,6 +193,28 @@ check('deploy-state guard: the gated host serves the pushed branch and repo; eve
   assert.match(contentDeployed({ 'content/y.html': 'y' }, docs, live), /delivered to org\/other, not org\/site/);
   assert.match(contentDeployed({ 'content/index.html': 'new' }, docs, 'www.example.com'), /not an EDS/);
   rmSync(root, { recursive: true, force: true });
+});
+check('deploy-state guard, code half: ANY unpushed, deleted, renamed or untracked file under a hashed code path leaves every key unknown', () => {
+  const base = realpathSync(mkdtempSync(join(tmpdir(), 'gate-all-git-'))); const root = join(base, 'site');
+  const put = (f, s) => { mkdirSync(dirname(join(root, f)), { recursive: true }); writeFileSync(join(root, f), s); };
+  const run = (cwd, ...args) => { const r = spawnSync('git', ['-c', 'user.email=t@example.com', '-c', 'user.name=t', '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null', ...args], { cwd, encoding: 'utf8' }); assert.equal(r.status, 0, r.stderr); };
+  put('styles/styles.css', 'body{}'); put('scripts/scripts.js', '//'); put('blocks/hero/hero.js', "import { c } from '../carousel/carousel.js';"); put('blocks/carousel/carousel.js', 'export const c = 1;');
+  mkdirSync(join(base, 'org')); run(join(base, 'org'), 'init', '-q', '--bare', 'site.git');
+  run(root, 'init', '-q'); run(root, 'symbolic-ref', 'HEAD', 'refs/heads/main'); run(root, 'add', '--', 'styles', 'scripts', 'blocks'); run(root, 'commit', '-qm', 'site');
+  run(root, 'remote', 'add', 'origin', join(base, 'org', 'site.git')); run(root, 'push', '-q', '-u', 'origin', 'HEAD');
+  assert.equal(spawnSync(process.execPath, [join(HERE, '..', 'foundation-freeze.mjs'), 'freeze', '--paths', 'styles,scripts'], { cwd: root }).status, 0);
+  const paths = [...foundationPart(root).paths, 'icons/', 'plugins/', 'blocks/'];
+  assert.deepEqual(foundationPart(root).paths, ['styles', 'scripts'], 'slash-less manifest entries');
+  assert.deepEqual(codeDeployed(paths, root), { ok: true, why: null, branch: 'main', ref: 'main', owner: 'org', repo: 'site' });
+  rmSync(join(root, 'blocks/carousel'), { recursive: true });
+  assert.match(codeDeployed(paths, root).why, /not pushed, so not deployed\): blocks\/carousel\/carousel\.js/, 'a deleted dependency the hero block imports');
+  run(root, 'checkout', '--', 'blocks'); run(root, 'mv', 'blocks/hero', 'blocks/hero-banner');
+  assert.match(codeDeployed(paths, root).why, /blocks\/hero-banner\/hero\.js, blocks\/hero\/hero\.js/, 'a rename names both sides');
+  run(root, 'mv', 'blocks/hero-banner', 'blocks/hero');
+  assert.equal(codeDeployed(paths, root).ok, true);
+  put('styles/styles.css', 'body{ }'); assert.match(codeDeployed(paths, root).why, /styles\/styles\.css/, 'a slash-less manifest entry covers its whole dir');
+  run(root, 'checkout', '--', 'styles'); put('scripts/new.js', '//'); assert.match(codeDeployed(paths, root).why, /untracked code, not deployed: scripts\/new\.js/);
+  rmSync(base, { recursive: true, force: true });
 });
 check('instrumentFiles: the gate\'s instruments and every local module they load are hashed — a new local import cannot escape the key', () => {
   const files = instrumentFiles([SCRIPT, join(HERE, '..', 'stitch-shot.mjs'), join(HERE, '..', 'pixel-compare.mjs'), ...['content-presence.mjs', 'clip-probe.mjs', 'unit-geometry.mjs'].map((f) => join(HERE, '../../../diff/scripts', f))]);
@@ -352,20 +368,19 @@ check('one byte in blocks/cards/cards.css, committed + pushed: that page re-shoo
   assert.equal(row(s, 'home').reused.what, 'row'); assert.equal(row(s, 'about').reused, null);
   assert.notEqual(storedKey('about'), keys4.about); assert.equal(row(s, 'about').gateKey, storedKey('about')); assert.equal(storedKey('home'), keys4.home);
 });
-const keys5 = { home: storedKey('home'), about: storedKey('about') };
 put('blocks/cards/cards.css', '.cards { gap: 3rem; }');
 r = gateAll(['--skip-existing']);
-check('the same edit NOT pushed: only that page\'s key is unknown (the reason names the file) — its EDS side is re-shot and re-probed, the other page\'s row is still reused', () => {
-  assert.equal(r.status, 0, r.stderr); assert.deepEqual(r.n, { origin: 0, eds: 1, probes: 1, compares: 1 });
-  assert.match(r.stdout, /gate key n\/a for 1\/2 page\(s\) — code differs from origin\/main \(not pushed, so not deployed\): blocks\/cards\/cards\.css/);
+check('the same edit NOT pushed: every key is unknown (the reason names the file) — no row reused, every EDS side re-shot and re-probed (its gate-key.json recorded a proven key, now a different reason)', () => {
+  assert.equal(r.status, 0, r.stderr); assert.deepEqual(r.n, { origin: 0, eds: 2, probes: 2, compares: 2 });
+  assert.match(r.stdout, /gate key n\/a for 2\/2 page\(s\) — code differs from origin\/main \(not pushed, so not deployed\): blocks\/cards\/cards\.css/);
   const s = summary();
-  assert.equal(row(s, 'home').reused.what, 'row'); assert.equal(row(s, 'home').gateKey, keys5.home); assert.equal(row(s, 'about').reused, null);
-  assert.equal(row(s, 'about').gateKey, null, 'evidence of an unproven build carries no key'); assert.equal(storedKey('about'), null);
+  assert.equal(s.totals.reusedRows + s.totals.reusedProbes, 0);
+  for (const slug of ['home', 'about']) { assert.equal(row(s, slug).gateKey, null, 'evidence of an unproven build carries no key'); assert.equal(storedKey(slug), null); }
 });
 r = gateAll(['--skip-existing']);
-check('… run again with nothing changed: the unknown-key capture is reused (same tree, same reason, same ledger rows), probes replayed', () => {
-  assert.equal(r.status, 0, r.stderr); assert.deepEqual(r.n, { origin: 0, eds: 0, probes: 0, compares: 1 });
-  assert.equal(row(summary(), 'about').reused.what, 'probes');
+check('… run again with nothing changed: the unknown-key captures are reused (same tree, same reason, same ledger rows), probes replayed', () => {
+  assert.equal(r.status, 0, r.stderr); assert.deepEqual(r.n, { origin: 0, eds: 0, probes: 0, compares: 2 });
+  assert.equal(summary().totals.reusedProbes, 2);
 });
 git('checkout', '--', 'blocks/cards/cards.css');
 put('styles/styles.css', 'body { margin: 1px; }'); git('add', '--', 'styles/styles.css'); git('commit', '-qm', 'foundation request'); git('push', '-q');

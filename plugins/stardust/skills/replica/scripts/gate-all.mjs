@@ -38,8 +38,8 @@
  * loads them), the page's blocks with every block they import, its content document plus every nav*, footer* and
  * fragments/ document under content/ (any locale), and the build: EDS origin, source URL, width, criteria and
  * thresholds, the page's sidecar entries and the gate's instrument files with every local module they load. It is
- * issued only while that tree is what the gated host serves (code: no changed or untracked file under a path
- * hashed into THIS key, against the upstream branch; host <ref>--<repo>--<owner> = that branch and remote;
+ * issued only while that tree is what the gated host serves (code: no changed, deleted, renamed or untracked file
+ * under any hashed code path against the upstream branch; host <ref>--<repo>--<owner> = that branch and remote;
  * documents: the newest deploy-ledger row delivered to that <owner>/<repo> (`verifiedOn`) with the same
  * contentSha), else null with the reason in the run log (a frozen-file edit since the freeze: null until re-frozen).
  * A PASS row whose key holds, from a table written under the same criteria, is reused whole (no stitch, probe or
@@ -58,7 +58,7 @@
  * and foundation-freeze.mjs next to this file; the diff skill's scripts dir alongside. Exit: 0 all PASS
  * (overrides count), 2 any FAIL, 1 error. `verdict`, `formatSummary`, `parseArgs` and the reuse helpers
  * (`probeInputs`, `probeReuse`, `canon`, `gateKeyParts`, `gateKeyOf`, `foundationPart`, `sharedBlocks`,
- * `blockRefs`, `chromeDocs`, `instrumentFiles`, `edsHostOf`, `codeDeployed`, `codePushed`, `hostServes`,
+ * `blockRefs`, `chromeDocs`, `instrumentFiles`, `edsHostOf`, `codeDeployed`, `hostServes`,
  * `deployedDocs`, `contentDeployed`, `keyChanged`, `skipCapture`, `rowKey`, `latestRows`, `rowReuse`) are exported.
  */
 import { execFileSync, spawn } from 'node:child_process';
@@ -239,7 +239,7 @@ function blockClosure(root, start) {
  * The shared blocks part (once per run, the same for every page): every blocks/<name>/ dir no content document
  * authors (`<div class>` anywhere under content/, or a coverage row) — auto-blocks, fragment loaders — plus every
  * block the foundation or runtime code loads (imports, `buildBlock`), with what those load. An edit there changes
- * every key (rare; errs safe). Authored blocks stay per page. `authored` = every block name a document or coverage row names.
+ * every key (rare; errs safe). Authored blocks stay per page.
  */
 export function sharedBlocks(root = '.', coverage = {}) {
   const dir = join(root, 'blocks');
@@ -249,7 +249,7 @@ export function sharedBlocks(root = '.', coverage = {}) {
   const loaded = [];
   for (const f of filesUnder(root, [...FOUNDATION_PATHS, ...RUNTIME_PATHS])) if (/\.(m?js|css|html)$/.test(f)) loaded.push(...blockRefs(readFileSync(join(root, f), 'utf8'), f.startsWith('blocks/')));
   const names = blockClosure(root, [...all.filter((n) => !authored.has(n)), ...loaded]);
-  return { hash: sha256(canon(Object.fromEntries(names.map((n) => [n, blockFiles(root, n)])))), names, authored: [...authored].filter((n) => NAME.test(n)).sort() };
+  return { hash: sha256(canon(Object.fromEntries(names.map((n) => [n, blockFiles(root, n)])))), names };
 }
 // The gate's instruments (this file, stitch-shot, pixel-compare, the diff probes) and every local module they load —
 // a new verdict, probe or capture engine is a key change. A relative `.mjs` / `.js` string literal that resolves to a
@@ -301,26 +301,24 @@ export function chromeDocs(root = '.') {
   return { files, names: [...names].sort() };
 }
 /**
- * gateKeyParts(p, ctx) → { parts, why, blockNames }: what a published row's verdict depends on (parts null + why
+ * gateKeyParts(p, ctx) → { parts, why }: what a published row's verdict depends on (parts null + why
  * only when the page's document is missing; a stale freeze gives parts + why). ctx = { root, opts, edsUrl, masks,
  * clipAllow, presence, unitsOf, foundation, coverage (slug → block names), shared, chrome, instruments }.
  * blocks: coverage/pages.json `blocks` ∪ the first class token of every `<div class>` in the page's document and the
  * chrome documents, with every block dir those load — each file hashed; shared: sharedBlocks(). content: the page's
  * content<daPath>.html + chromeDocs(). build: the EDS origin, the source URL, the width, the gate settings, the
- * page's sidecar entries (a mask or allowance edit is a key change) and the instruments' hash. `blockNames` = every
- * block name the page names or loads (dir or not) — the deploy-state guard checks them.
+ * page's sidecar entries (a mask or allowance edit is a key change) and the instruments' hash.
  */
 export function gateKeyParts(p, { root = '.', opts, edsUrl = (x) => x.liveUrl, masks = {}, clipAllow = {}, presence = {}, unitsOf = () => [], foundation = foundationPart(root), coverage = {}, shared = sharedBlocks(root, coverage), chrome = chromeDocs(root), instruments = instrumentsHash() }) {
   const url = new URL(edsUrl(p)); const page = `content${daPathOf(url.pathname)}.html`;
-  if (!existsSync(join(root, page))) return { parts: null, why: `no ${page}`, blockNames: [] };
+  if (!existsSync(join(root, page))) return { parts: null, why: `no ${page}` };
   const buf = readFileSync(join(root, page));
   const named = new Set([...(coverage[p.slug] || []), ...chrome.names, ...[...buf.toString('utf8').matchAll(BLOCK_CLASS)].map((m) => m[1])]);
-  const closure = blockClosure(root, named);
-  const blocks = Object.fromEntries(closure.map((n) => [n, blockFiles(root, n)]));
+  const blocks = Object.fromEntries(blockClosure(root, named).map((n) => [n, blockFiles(root, n)]));
   const settings = { threshold: opts.threshold, heightTol: opts.heightTol, clipMax: opts.clipMax, unitTol: opts.unitTol, clip: opts.clip, content: opts.content };
   const sidecars = { masks: masks[p.slug] ?? null, clipAllow: clipAllow[p.slug] ?? null, presence: presence[p.slug] ?? null, units: unitsOf(p) };
   const parts = { v: 1, foundation: foundation.hash, runtime: foundation.runtime, shared: shared.hash, blocks, content: { [page]: sha256(buf), ...chrome.files }, build: { origin: url.origin, source: p.url, width: opts.width, settings, sidecars, instruments } };
-  return { parts, why: foundation.why || null, blockNames: [...new Set([...named, ...closure])].filter((n) => NAME.test(n)).sort() };
+  return { parts, why: foundation.why || null };
 }
 /** gateKeyOf(parts) → hex sha256 of the canonical (sorted-key) JSON of the parts (they carry `v`), or null. */
 export const gateKeyOf = (parts) => (parts ? sha256(canon(parts)) : null);
@@ -330,14 +328,15 @@ export function edsHostOf(host) {
   return m ? { ref: m[1].toLowerCase(), repo: m[2].toLowerCase(), owner: m[3].toLowerCase(), tier: m[4].toLowerCase() } : null;
 }
 /**
- * Deploy-state guard, code half (one git call set per run): the upstream branch and remote, and every changed
- * (`git diff --relative @{u}`) or untracked file under the hashed code paths → { ok, why, changed, added, branch,
- * ref, owner, repo } (ref / owner / repo in EDS host-label form). `ok` is false only when the upstream cannot be
- * read; codePushed() decides per page.
+ * Deploy-state guard, code half (one git call set per run, for every page): an upstream branch exists and NO file
+ * under any hashed code path (git pathspecs, so a manifest entry without a trailing slash covers its whole dir)
+ * differs from it — `git diff --no-renames @{u}` lists both sides of a rename and every deletion — and none is
+ * untracked → { ok, why, branch, ref, owner, repo } (ref / owner / repo in EDS host-label form).
  */
 export function codeDeployed(paths, root = '.') {
   const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).split('\n').filter(Boolean);
-  let up; let branch; let remoteUrl; let changed; let added;
+  const named = (l) => `${l.slice(0, 3).join(', ')}${l.length > 3 ? ` (+${l.length - 3})` : ''}`;
+  let up; let branch; let remoteUrl;
   try { [up] = git('rev-parse', '--abbrev-ref', '@{u}'); } catch { return { ok: false, why: 'no upstream branch (git rev-parse @{u}) — the deployed code cannot be proven' }; }
   try {
     const [head] = git('symbolic-ref', '--short', 'HEAD');
@@ -345,24 +344,13 @@ export function codeDeployed(paths, root = '.') {
     [remoteUrl] = git('remote', 'get-url', git('config', '--get', `branch.${head}.remote`)[0]);
   } catch { return { ok: false, why: `cannot read the branch and remote behind ${up}` }; }
   try {
-    changed = git('diff', '--name-only', '--relative', '@{u}', '--', ...paths);
-    added = git('ls-files', '--others', '--exclude-standard', '--', ...paths);
+    const changed = git('diff', '--name-only', '--no-renames', '--relative', '@{u}', '--', ...paths);
+    if (changed.length) return { ok: false, why: `code differs from ${up} (not pushed, so not deployed): ${named(changed)}` };
+    const added = git('ls-files', '--others', '--exclude-standard', '--', ...paths);
+    if (added.length) return { ok: false, why: `untracked code, not deployed: ${named(added)}` };
   } catch (e) { return { ok: false, why: `git: ${String(e.message).split('\n')[0]}` }; }
   const [owner, repo] = remoteUrl.replace(/\/+$/, '').replace(/\.git$/, '').split(/[/:]/).slice(-2).map(hostLabel);
-  return { ok: true, why: null, upstream: up, changed, added, branch, ref: hostLabel(branch), owner, repo };
-}
-/**
- * Deploy-state guard, code half per page: no changed or untracked file under a path hashed into THIS key — the
- * foundation and runtime paths and all of blocks/ except the dirs only other pages author (`others`), so a deleted
- * or unpushed block this page names still counts → null, else why.
- */
-export function codePushed(code, paths, others = []) {
-  const mine = (f) => paths.some((x) => (x.endsWith('/') ? f.startsWith(x) : f === x)) && !others.some((n) => f.startsWith(`blocks/${n}/`));
-  const named = (l) => `${l.slice(0, 3).join(', ')}${l.length > 3 ? ` (+${l.length - 3})` : ''}`;
-  const changed = code.changed.filter(mine); const added = code.added.filter(mine);
-  if (changed.length) return `code differs from ${code.upstream} (not pushed, so not deployed): ${named(changed)}`;
-  if (added.length) return `untracked code, not deployed: ${named(added)}`;
-  return null;
+  return { ok: true, why: null, branch, ref: hostLabel(branch), owner, repo };
 }
 /** Deploy-state guard, per page: the gated host serves the pushed branch of the pushed repo → null, else why. */
 export function hostServes(host, code) {
@@ -547,11 +535,10 @@ async function main() {
     const coverage = Object.fromEntries(((readSafe('stardust/rollout/coverage/pages.json') || {}).pages || []).filter((x) => x && x.slug && Array.isArray(x.blocks)).map((x) => [x.slug, x.blocks]));
     try { shared = sharedBlocks('.', coverage); chrome = chromeDocs('.'); } catch (e) { broken = broken || `blocks / chrome documents: ${e.message}`; }
     for (const p of pages) {
-      let k = { parts: null, why: broken, blockNames: [] };
-      if (!broken) try { k = gateKeyParts(p, { ...probeCtx, masks: MASKS, clipAllow: CLIP_ALLOW, foundation, coverage, shared, chrome }); } catch (e) { k = { parts: null, why: `gate key: ${e.message}`, blockNames: [] }; }
+      let k = { parts: null, why: broken };
+      if (!broken) try { k = gateKeyParts(p, { ...probeCtx, masks: MASKS, clipAllow: CLIP_ALLOW, foundation, coverage, shared, chrome }); } catch (e) { k = { parts: null, why: `gate key: ${e.message}` }; }
       const host = k.parts && new URL(k.parts.build.origin).host;
-      const others = shared ? shared.authored.filter((n) => !k.blockNames.includes(n) && !shared.names.includes(n)) : [];
-      const why = k.why || code.why || codePushed(code, codePaths, others) || hostServes(host, code) || contentDeployed(k.parts.content, docs, host);
+      const why = k.why || code.why || hostServes(host, code) || contentDeployed(k.parts.content, docs, host);
       const deployed = k.parts ? Object.fromEntries(Object.keys(k.parts.content).map((f) => { const web = f.replace(/^content/, '').replace(/\.html$/, ''); return [web, docs[web] || null]; })) : null;
       KEYS[p.slug] = { gateKey: why ? null : gateKeyOf(k.parts), why, parts: k.parts, deployed };
     }
