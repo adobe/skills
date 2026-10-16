@@ -32,14 +32,12 @@ advisory (surfaced, never blocks).
 | `one-cta-per-p` | P1 | `decorateButtons` only buttonizes a link that is the **sole** content of its `<p>`. Two emphasized links in one paragraph ship as unstyled text — invisible on light grounds, glaring on a photo hero. Split each CTA into its own `<p>`. |
 | `about-error` | P0 | `about:error` in the source means a broken image rendition already shipped. |
 | `img-path` | P0 | A `/img/...` src 404s at delivery. |
-| `cross-origin-optimize` | P2 | An external `<img>` inside a block that runs `createOptimizedPicture` (cards/columns/hero) may be corrupted (dropped `?v=`, added `&format=webply`). Advisory — the authoritative resolve is `media-reconcile.mjs`. |
+| `cross-origin-optimize` | P2 | An external `<img>` inside a block that runs `createOptimizedPicture` (cards/columns/hero; `--optimizing-blocks a,b,c` overrides) may be corrupted (dropped `?v=`, added `&format=webply`). Advisory — the authoritative resolve is `media-reconcile.mjs`. |
 | `trailing-slash` / `html-extension` | P1 | `.html`, or a slash on a leaf, 404s; a folder index lives at `/x/` (`--content` tells them apart; unresolved → P2). |
 | `folder-index-slash` | P1 | A folder-index link without its slash: `/x` 404s on a plain EDS site. |
 | `path-safety` | P0 | The target DA path must be lowercase, hyphenated, no `_`, no `//`. A double slash makes the PUT 400 while preview/live still 200 — a silent partial. Normalize and record the original → safe mapping in `redirects.tsv`. |
 | `metadata` | P2 | No metadata block → thin query-index rows (no description/og:image at import time). |
-
-`--optimizing-blocks a,b,c` overrides the block list for the cross-origin check
-(default `cards,columns,hero`) when a project's block set differs.
+| `spacer-whitespace` | P2 | A `<p>`/`<h1>`–`<h6>` of only whitespace, `&nbsp;` or `<br>` (or a `<div>` of only `<br>`) is dropped by the content pipeline: model the source's spacer height as spacing CSS (deploy SKILL.md § The ENCODE contract, #112). |
 
 ## Where it sits in Phase C
 

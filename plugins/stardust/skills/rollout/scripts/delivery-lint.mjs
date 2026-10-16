@@ -3,7 +3,7 @@
  * rollout/delivery-lint.mjs — PRE-deploy static linter for the EDS/DA delivery
  * contract. Encodes the deterministic rendering rules the pipeline otherwise
  * re-learns by failing (one-CTA-per-<p>, wrapper, trailing-slash, path-safety,
- * cross-origin image optimization, metadata). Run BEFORE PUT; a P0 blocks deploy.
+ * cross-origin image optimization, metadata, whitespace-only spacers). Run BEFORE PUT; a P0 blocks deploy.
  *
  * This is the static half of the delivery gates (the dynamic half — does it
  * actually render — is verify.mjs § renderer-truth). Reference:
@@ -88,6 +88,19 @@ for (const m of html.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)) {
   // a buttonizable paragraph wraps its link(s) in strong/em; >1 link there breaks buttonization
   if (links > 1 && emphasized) {
     add('P1', 'one-cta-per-p', 'paragraph contains >1 emphasized link — split each CTA into its own <p> or they ship unstyled');
+  }
+}
+
+/* ---- spacer whitespace (#112): the content pipeline drops a <p>/<h1>–<h6> holding only whitespace,
+   non-breaking spaces and <br>, and a <div> holding only <br> — the source's spacer height must be
+   modelled as spacing CSS (deploy SKILL.md § The ENCODE contract). Advisory. ---- */
+if (type !== 'index') {
+  const SPACER = '(?:\\s|&nbsp;|&#160;|&#xa0;|\\u00a0|<br\\b[^>]*>)*'; // \s already covers U+00A0; listed for the reader
+  const spacers = new Map(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'div'].map((t) => [t, 0]));
+  for (const m of html.matchAll(new RegExp(`<(p|h[1-6])\\b[^>]*>${SPACER}</\\1\\s*>`, 'gi'))) spacers.set(m[1].toLowerCase(), spacers.get(m[1].toLowerCase()) + 1);
+  for (const m of html.matchAll(new RegExp(`<div\\b[^>]*>(${SPACER})</div\\s*>`, 'gi'))) if (/<br\b/i.test(m[1])) spacers.set('div', spacers.get('div') + 1);
+  for (const [tag, n] of spacers) {
+    if (n) add('P2', 'spacer-whitespace', `${n} whitespace-only <${tag}> — dropped by the content pipeline: model the height as spacing CSS (deploy SKILL.md § The ENCODE contract, #112)`);
   }
 }
 
