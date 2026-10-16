@@ -105,7 +105,7 @@ Run the project copies under `stardust/scripts/<skill>/`. Ask `--help` only for 
 - `spec/spec-rum.mjs` — S5 Optel — `[--days 90] [--key-env <NAME>]`
 - `spec/spec-sheet.mjs` — contact sheet — `<component|row-shape>`
 - `spec/spec-variants.mjs` — S8 variants — `[--cut 0.5]`
-- `stardust/browser-lock.mjs` — machine-wide browser slots — `status|release|reap`; exit 124 = no slot
+- `stardust/browser-lock.mjs` — machine-wide browser slots — `acquire|status|release|reap`; 124 = no slot
 - `stardust/impeccable-version-check.mjs` — newer impeccable? — `[--offline] [--json]`; `--where`
 - `stardust/ledger.mjs` — status.jsonl writer — `<skill> <phase> start|end|blocked [--detail] [--strict]`; `tail`; `last`
 - `stardust/state.mjs` — page status writer — `advance <slug…> --to <status> [--by]`; `summary [--slugs]`
