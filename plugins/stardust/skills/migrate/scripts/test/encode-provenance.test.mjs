@@ -8,7 +8,8 @@
 //   zero writes   a second run, --force and a whitespace-only map edit rewrite no document, sidecar, manifest or
 //                 state.json; --dry-run writes nothing
 //   precision     a map edit scoped to one page by its id rewrites only that page's document; encodedAt moves only with
-//                 the output bytes; generators follow the map, every other state.json byte stays
+//                 the output bytes; generators follow the map, every other state.json byte stays; a site input (the
+//                 media ledger) is in the key: its edit re-encodes, rewriting only the page whose bytes change
 //   co-existence  migrate.mjs gate between two encodes: not refused, gatesPassed kept; sourceCurrentSha never touched
 //   stale output  a page that stops after a clean encode keeps its document and manifest entry, its sidecar records the
 //                 stop, staging skips it (exit 0, content/ untouched) while a stale, hand-edited document is refused
@@ -175,6 +176,18 @@ try {
   write(VOCAB, vocabRaw);
   r = await run('--template', A);
   assert.equal(r.last, 'encoded 2 · unchanged 0 · stopped 0'); assert.deepEqual(json(SIDE[S1]).modules, ss.modules); assert.equal(read(DOC[S1]), docS);
+  // a site input is in the key (siteSha): a media ledger edit is never "unchanged input"; only the page whose bytes
+  // change is rewritten
+  const LEDGER = 'stardust/deploy/media-ledger.json'; const ledgerRaw = read(LEDGER);
+  const heroUrl = 'https://content.da.live/example-org/example-site/media/trips/forest-loop-hero-0c4d9e12.jpg'; const movedUrl = heroUrl.replace('.jpg', '-v2.jpg');
+  write(LEDGER, ledgerRaw.replace(heroUrl, movedUrl));
+  const s4 = stamp();
+  r = await run('--template', A);
+  assert.equal(r.code, 0, r.out); assert.equal(r.last, 'encoded 1 · unchanged 1 · stopped 0', 'a ledger edit re-encodes');
+  assert.ok(read(DOC[S1]).includes(movedUrl), 'the sibling carries the new contentUrl'); assert.equal(stamp()[DOC[A]], s4[DOC[A]], 'the archetype\'s document is not rewritten');
+  write(LEDGER, ledgerRaw);
+  r = await run('--template', A);
+  assert.equal(r.last, 'encoded 1 · unchanged 1 · stopped 0'); assert.equal(read(DOC[S1]), docS);
 
   // --- co-existence: migrate.mjs's sidecar subcommands between encodes --------------------------------------------
   const g = cli(MIGRATE, ['gate', S1, 'visual-parity', '--evidence', 'compared side by side']);
