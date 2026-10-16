@@ -4,6 +4,50 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.34.0 — encoded siblings: the template's map, applied to each capture, replaces the row-2 clone (#NNN)
+
+Minor: the row-2 and encoder contract change. A recorded hands-off run showed the clone is not needed: every sibling
+encodes from its committed capture and the site's ledgers, while the clone was each sibling's heaviest copy and the
+file two gates checked in place of the delivered document.
+
+- **Row 2 becomes "Encoded sibling — the template's map applied to the capture; no clone"** for a template whose map
+  round-trips on its gated archetype; any other template keeps the A′ clone. `migrate/scripts/encode.mjs` writes
+  `stardust/encoded/<path>.html` in deploy's delivered form; `deploy/scripts/stage-content.mjs` stages it into
+  `content/<path>.html` behind a hand-edit guard (`stardust/deploy/stage-ledger.json`) and prints the paths for
+  `deploy-batch.mjs --force --paths`. No write-boundary change: `content/` keeps one owner, deploy. The handoff
+  contract's rows 2, 4 and 6–9 and row C follow; exit 0 means "encoded", never "done".
+- **The encoder** (`encode.mjs` + `encode/`): the importer's walk, grammar v2 (compound cells, per-item wrap,
+  id-reference cells, one cell per match, blank-container drops, metadata from a selector) and sanitise's `encode()`
+  applied last, so the finalisers are no-ops on the staged file. No executable per-template code: what the grammar
+  cannot express stops the page for the model. Hard stops (exit 2): `unmapped`, `flattened`, `variance` (a shape
+  fingerprint against the archetype plus a census of unmarked modules, accepted per class in the map), `incomplete`
+  (the L5 content count on the encoded document), `hand-edit`, `error`. Provenance in the sidecar (`encode`,
+  `audit.encode`) and a per-template manifest; nothing is rewritten unless its bytes change. Verdict:
+  `encoded N · unchanged N · stopped N`.
+- **The map** (`stardust/import/<archetype>/vocabulary.json` + `transform.json`, schema
+  `migrate/reference/encode-map.schema.json`, rules `migrate/reference/importer-recipe.md`): `--roundtrip` at `text`
+  (every code point equal after sanitise, only ASCII whitespace runs collapsed) or `strict`, `--lint` (the authoring
+  checks) and `--sweep` (a dry run over every sibling capture).
+- **Offline content count:** deploy's `content-inventory.mjs` gains `offlineInventory` / `diffOffline`, the count the
+  `incomplete` stop runs; `content-count.mjs` is its standalone CLI.
+- **Site inputs, each with a deterministic writer and a schema:** `chrome-map.mjs` (`stardust/rollout/chrome-map.json`,
+  the nav/footer each page uses), `sources[]` on every `da-media-upload.mjs` ledger entry, and `rehost-docs.mjs`
+  (linked documents into `docs/`, `stardust/deploy/asset-ledger.json`).
+- **Consumers:** rollout `inventory.mjs` lists encoded pages from their sidecars; `gate-evidence.mjs` lints an encoded
+  page on its staged `content/` file, never a clone, and takes row 4 from the encoder's count; `publicUrl` reads the
+  encoded path; `modules[]` comes from the encode.
+- **C14 skip rule:** the encode records each page's block shape; under a harness key (encoder, map, block code, frozen
+  foundation) a sibling whose shape the archetype passed inherits its local launches (`migrate.mjs harness` records
+  `passedOn`, `plan.mjs` marks `needsHarness`, `gate-evidence.mjs` verifies); any key change re-arms.
+- **Opt-in per template** until a second recorded run, preferably on a hand-built DOM, clears the same thresholds.
+- **Yield** (a recorded run, 64 pages, 8 templates): 7 templates round-trip at `text`, 6 at `strict`, the 8th is an
+  exception by design; after one widening round 62 of 64 pages encode clean, 60 match at `text`; re-runs write nothing.
+- **Finding:** on two pages the encoder kept a paragraph the delivered documents had dropped — there it was more
+  faithful than the delivered documents. The published gate stays the arbiter.
+- **Port:** ported from the `stardust/next` branch (skills/migrate/scripts/importer-skeleton.mjs,
+  reference/importer-recipe.md and their test fixtures; commits 9aaeff4f, 1080f2b6, d4a37277, 7662fda2), rewritten
+  for the archetype-first order; the ported files keep their provenance header.
+
 ## 0.33.1 — consent overlays are dismissed on gate captures; the archetype ledger keeps its shape
 
 Fixes from a recorded hands-off replica run on a site with a consent manager, verified against its artifacts.
