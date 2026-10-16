@@ -65,7 +65,9 @@ node stardust/scripts/replica/pixel-compare.mjs "$GATE/live.png" "$GATE/proto.pn
 ```
 
 On a geo-redirecting site add `--locale <tag>` to all three (a live side that
-redirects to a different locale per run is a nondeterministic source); on a
+redirects to a different locale per run is a nondeterministic source); an
+in-flow per-visitor bar takes the same `--hide <sel>` on all three, both
+stitches included (§ The all-pages published-origin gate, *Hide or mask*); on a
 bot-managed site that exits 3, escalate with `--headed` (§ Hardening rule 1).
 
 The live capture is taken ONCE per breakpoint per full gate run and reused
@@ -862,10 +864,10 @@ never replacing it), `clip-allow.json`, `presence.json`, `units.json`.
 **Hide or mask.** An in-flow per-visitor region (a location-suggestion bar above the header) is
 hidden: removed before measuring, on both sides, via `--hide <sel,…>` or presence.json `hide`;
 declare a site-wide bar once as `"*": { "hide": ["<sel>"] }`. gate-all reads only presence.json;
-gate.sh merges its `--hide` with it. Every capture and probe of either, triage's parity runs and the
-header-contract tools take the list; unit-geometry alone takes none. A capture or cache taken with
-another list is never reused. An authored-volatile band (a campaign hero) is masked: still
-measured, masked on the verdict (`masks.json`).
+gate.sh merges its `--hide` with it. Every capture and probe of either but unit-geometry (under
+`--one-load` it reads the hidden capture), triage's parity runs and the header-contract tools take the
+list. A capture or cache taken with another list is not reused automatically. An authored-volatile
+band (a campaign hero) is masked: still measured, masked on the verdict (`masks.json`).
 
 Origin: a fix round reuses this run's (row `originReused`, § Iteration discipline, Evidence
 freshness); fallback: live
