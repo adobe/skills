@@ -1,7 +1,8 @@
 // Contract test for migrate.mjs — a mkdtemp project with seven state pages, prototypes, captures and a
 // canon; every subcommand is driven through the CLI (execFileSync/spawnSync); foldPath is imported for
 // the pure check. Also: importing the module is silent, the flow guard, the merged state.json.migrate
-// block, AEM-folded output-path collisions, a malformed sidecar refused, the value-flag swallow rule.
+// block, AEM-folded output-path collisions, a malformed sidecar refused, the value-flag swallow rule, the A′ fork
+// from the archetype's typed slots (media map, media ledger, refusals) and the sibling-variance gate.
 // Run: node skills/migrate/scripts/test/migrate.test.mjs
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -308,6 +309,8 @@ check('a value flag followed by another flag (or nothing) is a usage error namin
 });
 check('unknown slug and no command are usage errors (exit 1)', () => {
   assert.equal(run(['render', 'ghost']).status, 1); assert.equal(run(['frobnicate']).status, 1);
+  const noState = run(['render', '--all', '--state', 'nope.json']); assert.equal(noState.status, 1);
+  assert.match(noState.err, /^usage error: nope\.json does not exist — create it with state\.mjs init --pages <urls> after the crawl/);
 });
 s1.pages = s1.pages.filter((p) => !['draft', 'untitled', 'dup-a', 'dup-b'].includes(p.slug));
 

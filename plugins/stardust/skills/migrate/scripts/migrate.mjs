@@ -770,7 +770,7 @@ export function varianceGate(run, page, archetype, old = null) {
 
 // ---- the run -----------------------------------------------------------------------------------
 export function loadState(file) {
-  if (!isFile(file)) throw new UsageError(`${file} does not exist — extract creates it (pass --state <file>)`);
+  if (!isFile(file)) throw new UsageError(`${file} does not exist — create it with state.mjs init --pages <urls> after the crawl (or pass --state <file>)`);
   const state = readJson(file);
   if (!state || !Array.isArray(state.pages)) throw new UsageError(`${file} is not valid JSON with a pages[] array`);
   return state;
