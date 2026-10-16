@@ -22,7 +22,9 @@
  * (blocked / failed origin, --warmup, a kept capture taken without one) runs the probes instead, logged `one-load <slug>
  * → fallback: <why>`; the row says which (`oneLoad`). A fix round keeps only a one-load origin; live.png is not taken
  * (`inventoryWhy`, `oneLoadKeep` are exported).
- * A content-presence origin-inventory cache hit is a recorded reuse too (`presenceReused`, _run.log).
+ * A content-presence origin-inventory cache hit is a recorded reuse too (`presenceReused`, _run.log); the origin-side
+ * probe caches (<slug>/presence-origin.json, unit-geometry's <slug>-units-<w>.json) are dropped whenever the origin
+ * capture changes (origin.json `at`: a new stitch, a crawl shot, a copied live.png), never reused across captures.
  *
  * VERDICT (all four): pixel % ≤ --threshold AND |Δh| ≤ --height-tol × origin height (a union metric
  * was tried and rejected — white gaps score as matches) AND served clipped ≤ --clip-max +
@@ -638,6 +640,7 @@ async function main() {
     const d = dir(p); mkdirSync(d, { recursive: true });
     const out = join(d, 'origin.png'); const meta = join(d, 'origin.json');
     const keep = (r, line) => { writeFileSync(meta, JSON.stringify(r, null, 2)); rec(p, 'origin', r); log(line); };
+    const prevAt = (tryJson(meta) || {}).at ?? null; // the origin capture's identity before this run touches it
     if (skipCapture(p, 'origin', capCtx)) {
       // --skip-existing never recaptures; the reuse is recorded, with a WARN when the capture predates the run
       const kept = readJson(meta); const f = fresh(kept);
@@ -680,7 +683,9 @@ async function main() {
       else r = { instrument: 'none', error: `stitch exit ${s.code}: ${lastLine(s.err)}` };
     }
     if (!r.at && !r.reused) r.at = new Date().toISOString(); // a reuse keeps its capture time: the evidence time
-    if (!r.reused) rmSync(join(d, 'presence-origin.json'), { force: true }); // a new origin capture → a new presence inventory
+    // another origin capture (its `at` changed — a new stitch, a crawl shot or a copied live.png) → the origin-side probe
+    // caches belong to the previous one: its presence inventory, and its unit inventory (unit-geometry --slug's cache)
+    if (r.at !== prevAt) for (const f of [join(d, 'presence-origin.json'), ...(unitsOf(p).length ? [join('stardust/current/measure', `${p.slug}-units-${opts.width}.json`)] : [])]) rmSync(f, { force: true });
     writeFileSync(meta, JSON.stringify(r, null, 2)); rec(p, 'origin', r);
     const warns = [warn, r.stale].filter(Boolean);
     log(`origin ${p.slug} → ${r.instrument}${r.reused ? ` reused ${r.from} (captured ${r.at}; ${r.policy})` : ''}${warns.length ? ` WARN ${warns.join('; ')}` : ''}${r.error ? ` ERROR ${r.error}` : ''}`);
@@ -782,6 +787,7 @@ async function main() {
         log(`probes ${p.slug} → reused (taken ${reuse.at}; origin ${originMeta.at}, eds ${edsMeta.at})`);
         return;
       }
+      log(`probes ${p.slug} → re-run (${reuse.why})`);
     }
     const at = new Date().toISOString();
     const oneLoaded = opts.oneLoad && oneLoadProbe(p, units); // --one-load: the stitches' inventories, else the probes below

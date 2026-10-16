@@ -771,6 +771,24 @@ check('one-load 6: a fix round keeps only a one-load origin — a legacy capture
   assert.match(runLog(), /origin home → not reused \(one-load: no inventory \(captured without one\)\)/);
   assert.equal(olGate(['--one-load', '--only', 'home']).origin, 0, 'the next fix round keeps it');
 });
+check('--skip-existing with origin.png gone and a fresh live.png older than the probes: the replay is refused and logged, the probes re-run against the new origin — not from the old origin\'s presence / units caches', () => {
+  opener(new Date().toISOString());
+  const g = join(root, 'stardust/replica/gates/home-1440'); mkdirSync(g, { recursive: true }); writeFileSync(join(g, 'live.png'), 'png');
+  const liveAt = new Date().toISOString();
+  writeFileSync(join(g, 'live.json'), JSON.stringify({ writtenBy: 'gate.sh', url: 'https://www.example.com/', width: 1440, locale: 'en-US', settle: true, dismiss: { off: false, consent: null, extra: null }, headed: false, at: liveAt }));
+  const first = olGate(['--only', 'home', '--recapture-origin']); // a stitched origin, then probes (presence cache written)
+  assert.equal(first.status, 0, first.stderr + first.stdout); assert.equal(first.origin, 1); assert.ok(pageJson('home', 'probes.json').at > liveAt);
+  assert.ok(existsSync(join(root, presence('home'))));
+  const unitsCache = join(root, 'stardust/current/measure/home-units-1440.json'); mkdirSync(dirname(unitsCache), { recursive: true }); writeFileSync(unitsCache, '{}');
+  rmSync(join(OUT, 'home/origin.png'));
+  const r = olGate(['--only', 'home', '--skip-existing']);
+  assert.equal(r.status, 0, r.stderr + r.stdout); assert.equal(r.origin, 0); assert.equal(r.eds, 0);
+  assert.equal(r.row('home').originReused.from, 'stardust/replica/gates/home-1440/live.png');
+  assert.match(runLog(), /probes home → re-run \(origin is a reused capture the probes were not taken against\)/);
+  assert.equal(r.cp.length, 1, 'content-presence re-ran'); assert.equal(r.cp[0].had, false, 'the old origin\'s presence inventory was dropped with it');
+  assert.equal(r.ug, 1); assert.equal(existsSync(unitsCache), false, 'and the old origin\'s unit inventory');
+  assert.equal(r.row('home').reused, null, 'no probe replay in the row');
+});
 rmSync(root, { recursive: true, force: true });
 console.log(failed ? `\n${failed} failed` : '\nall passed');
 process.exit(failed ? 1 : 0);
