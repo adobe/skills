@@ -55,14 +55,18 @@
  * missing on the build, or a build cap over a fluid live, is ✗), `module i/n` per section (same
  * rule; advisory when the section counts differ — fix structure first) and, when neither side has
  * a wrapper, `content cap` (the shared module cap). Outer shell caps beyond the wrapper cap are
- * informational. The verdict line:
- * `cap-probe: PASS|FAIL at <probeWidth> — <n> of <m> rows…`. A ✗ names the sizing rule to fix
- * (deploy Step 3 scaffold); never iterate pixels on it.
+ * informational. A module pair whose widths differ by > 40 % AND whose cap elements differ (tag or
+ * role) compared two different things: `○ unpaired` — listed, not scored. The verdict line:
+ * `cap-probe: PASS|FAIL|INCONCLUSIVE at <probeWidth> — <f> of <r> rows failed; modules scored <s>
+ * of <n>[, <u> unpaired]`. INCONCLUSIVE: fewer than half the modules pair, so no module row is
+ * scored (a note says to check --main / --build-main); a failing wrapper/content-cap row still
+ * FAILs. A ✗ names the sizing rule to fix (deploy Step 3 scaffold); never iterate pixels on it.
  *
- * Exit codes: 0 pass / measured, 2 compare FAIL, 1 a page failed to load or playwright missing,
- * 3 bot challenge on the live side (escalate --headed), 125 usage. probePage and the pure
- * functions (classifyCaps, deriveProbeWidth, aggregateCaps, compareCaps, formatCapture,
- * formatCompare, parseArgs) are exported — the contract test runs them without a browser.
+ * Exit codes: 0 pass / INCONCLUSIVE / measured, 2 compare FAIL, 1 a page failed to load or
+ * playwright missing, 3 bot challenge on the live side (escalate --headed), 125 usage. probePage
+ * and the pure functions (classifyCaps, deriveProbeWidth, aggregateCaps, pairPlausible,
+ * compareCaps, formatCapture, formatCompare, parseArgs) are exported — the contract test runs
+ * them without a browser.
  * Requires playwright importable from this file's location and the diff skill's live-session.mjs
  * (../../diff/scripts/ or ../diff/ — replica SKILL.md § Setup copies both dirs as siblings).
  */
@@ -84,6 +88,7 @@ export const MIN_PROBE_WIDTH = 2560;
 export const PROBE_FACTOR = 1.25;
 export const CAP_TOLERANCE = 20;
 export const WRAPPER_SHARE = 0.9;
+export const PAIR_WIDTH_RATIO = 0.4;
 const VIEWPORT_H = 900;
 const EDGE = 8; // px: a box this close to the viewport is full width
 
@@ -203,7 +208,7 @@ function probePassInPage() {
     if (aboveRoot) held = leaves.length; else if (inRoot) for (const l of leaves) if (el.contains(l)) held += 1;
     const contentBearing = held > 0 || !!el.querySelector('img, picture, video, svg, canvas');
     boxes.push({
-      i, selector: cssPath(el), tag: el.tagName.toLowerCase(),
+      i, selector: cssPath(el), tag: el.tagName.toLowerCase(), role: el.getAttribute('role') || null,
       w1: S.base[i], w2: Math.round(r.width), h2: Math.round(r.height),
       maxWidth: cs.maxWidth, boxSizing: cs.boxSizing, padL: parseFloat(cs.paddingLeft) || 0, padR: parseFloat(cs.paddingRight) || 0,
       parent: p ? { i: idx.has(p) ? idx.get(p) : -1, w2: Math.round(pr.width), padL: parseFloat(pcs.paddingLeft) || 0, padR: parseFloat(pcs.paddingRight) || 0 } : null,
@@ -259,7 +264,7 @@ export function classifyCaps(pass, { baseWidth = BASE_WIDTH, probeWidth = MIN_PR
       const parentContent = b.parent.w2 - b.parent.padL - b.parent.padR;
       if (b.w2 >= parentContent - 2 || via === 'other') continue; // inherited width, or padding/margins — layout, not a cap
     }
-    origins.push({ kind: null, px: b.w2, via, selector: b.selector, tier: b.tier, share: Math.round(b.share * 100) / 100, section: b.section, w1: b.w1, maxWidth: b.maxWidth });
+    origins.push({ kind: null, px: b.w2, via, selector: b.selector, tag: b.tag, role: b.role ?? null, tier: b.tier, share: Math.round(b.share * 100) / 100, section: b.section, w1: b.w1, maxWidth: b.maxWidth });
   }
   // Wrappers: hold ≥ 90 % of the root's text (ancestors of the root hold all of it). Outermost first.
   const wrappers = origins.filter((o) => o.share >= WRAPPER_SHARE || o.tier <= 0).sort((a, b) => a.tier - b.tier || b.px - a.px);
@@ -269,7 +274,7 @@ export function classifyCaps(pass, { baseWidth = BASE_WIDTH, probeWidth = MIN_PR
   const modules = pass.sections.map((s, index) => {
     const inSection = origins.filter((o) => o.kind === 'module' && o.section === index);
     const top = inSection.sort((a, b) => b.px - a.px)[0] || null;
-    return { index, selector: s.selector, px: top ? top.px : null, capSelector: top ? top.selector : null };
+    return { index, selector: s.selector, px: top ? top.px : null, capSelector: top ? top.selector : null, capTag: top ? top.tag : null, capRole: top ? top.role : null };
   });
   const shell = wrappers[0] || null;
   const innerWrapper = wrappers[wrappers.length - 1] || null;
@@ -327,10 +332,22 @@ export function aggregateCaps(perUrl, tol = CAP_TOLERANCE) {
   return { containerMaxWidth: content.value === null ? null : `${content.value}px`, contentMaxWidth: content.value, shellMaxWidth: shell.value, consistent: content.consistent && shell.consistent && !register.length, probeWidth: deriveProbeWidth(maxCap), caps, modules, register };
 }
 
+// A module pair by section index is plausible unless both sides are capped, their widths differ by
+// more than PAIR_WIDTH_RATIO of the wider one AND the cap elements differ (tag or role) — then the
+// index paired two different things (a pager list against a media column). Without capTag (older
+// models) the elements cannot be compared: plausible.
+export function pairPlausible(a, b) {
+  if (a.px === null || b.px === null || !a.capTag || !b.capTag) return true;
+  const sameElement = a.capTag === b.capTag && (a.capRole ?? null) === (b.capRole ?? null);
+  return sameElement || Math.abs(a.px - b.px) / Math.max(a.px, b.px) <= PAIR_WIDTH_RATIO;
+}
+
 // Live model vs build model → rows and a verdict. Pairing is by KIND and by section order: the
 // wrapper row (innermost shell/content cap) first, then one module row per top-level section; when
 // neither side has a wrapper the module-derived content cap gets its own row so a section-count
-// mismatch (advisory module rows) still leaves one deciding row.
+// mismatch (advisory module rows) still leaves one deciding row. An implausible module pair is
+// listed unpaired, not scored; when fewer than half the pairs are plausible no module row is scored
+// (INCONCLUSIVE unless the wrapper/content-cap row fails).
 export function compareCaps(live, build, tol = CAP_TOLERANCE) {
   const rows = [];
   const row = (ok, label, detail, advisory = false) => rows.push({ ok, label, detail, advisory });
@@ -354,16 +371,24 @@ export function compareCaps(live, build, tol = CAP_TOLERANCE) {
   const advisory = live.modules.length !== build.modules.length;
   if (advisory) row(true, 'sections', `live ${live.modules.length} vs build ${build.modules.length} top-level sections — module rows compared by order up to the shorter side, advisory until the structure matches`, true);
   const n = Math.min(live.modules.length, build.modules.length);
+  const plausible = live.modules.slice(0, n).map((a, i) => pairPlausible(a, build.modules[i]));
+  const paired = plausible.filter(Boolean).length;
+  const inconclusive = n > 0 && paired * 2 < n;
+  const soft = advisory || inconclusive;
+  const capEl = (m) => `<${m.capTag}${m.capRole ? ` role="${m.capRole}"` : ''}>`;
   for (let i = 0; i < n; i += 1) {
     const a = live.modules[i]; const b = build.modules[i]; const label = `module ${i + 1}/${live.modules.length}`;
-    if (a.px === null && b.px === null) row(true, label, 'full-bleed on both');
-    else if (a.px !== null && b.px === null) row(advisory, label, `live ${a.px}px (${a.capSelector}) → build full-bleed (${b.selector})`, advisory);
-    else if (a.px === null && b.px !== null) row(advisory, label, `live full-bleed (${a.selector}) → build ${b.px}px (${b.capSelector})`, advisory);
+    if (!plausible[i]) rows.push({ ok: true, label, detail: `unpaired — live ${a.px}px ${capEl(a)} (${a.capSelector}) vs build ${b.px}px ${capEl(b)} (${b.capSelector}): widths differ by ${Math.round((Math.abs(a.px - b.px) / Math.max(a.px, b.px)) * 100)}% and the elements differ — listed, not scored`, advisory: true, unpaired: true });
+    else if (a.px === null && b.px === null) row(true, label, 'full-bleed on both');
+    else if (a.px !== null && b.px === null) row(soft, label, `live ${a.px}px (${a.capSelector}) → build full-bleed (${b.selector})`, soft);
+    else if (a.px === null && b.px !== null) row(soft, label, `live full-bleed (${a.selector}) → build ${b.px}px (${b.capSelector})`, soft);
     else if (Math.abs(a.px - b.px) <= tol) row(true, label, `${a.px}px = ${b.px}px`);
-    else row(advisory, label, `live ${a.px}px → build ${b.px}px, Δ${b.px - a.px}px (${b.capSelector})`, advisory);
+    else row(soft, label, `live ${a.px}px → build ${b.px}px, Δ${b.px - a.px}px (${b.capSelector})`, soft);
   }
   const fails = rows.filter((r) => !r.ok).length;
-  return { probeWidth: live.probeWidth, rows, fails, pass: fails === 0 };
+  const verdict = fails ? 'FAIL' : (inconclusive ? 'INCONCLUSIVE' : 'PASS');
+  const note = inconclusive ? `fewer than half the modules paired (${paired} of ${n}): module rows not scored; check that --main / --build-main name matching content roots` : null;
+  return { probeWidth: live.probeWidth, rows, fails, pass: verdict !== 'FAIL', verdict, modules: { total: n, scored: inconclusive ? 0 : paired, unpaired: n - paired }, note };
 }
 
 // ---- formatting (pure) ----------------------------------------------------------------------------
@@ -392,8 +417,10 @@ export function formatCapture(result) {
 }
 export function formatCompare(result) {
   const out = [`cap-probe  base ${result.live.baseWidth} → probe ${result.live.probeWidth} (${result.probeNote})`, `live   ${result.urls[0]}`, formatModel(result.live), `build  ${result.urls[1]}`, formatModel(result.build), 'rows'];
-  for (const r of result.compare.rows) out.push(`  ${r.ok ? (r.advisory ? '⚠' : '✓') : '✗'} ${r.label}: ${r.detail}`);
-  out.push(`cap-probe: ${result.compare.pass ? 'PASS' : 'FAIL'} at ${result.live.probeWidth} — ${result.compare.fails} of ${result.compare.rows.length} rows failed${result.evidence ? ` (evidence ${result.evidence})` : ''}`);
+  const c = result.compare;
+  for (const r of c.rows) out.push(`  ${r.unpaired ? '○' : (r.ok ? (r.advisory ? '⚠' : '✓') : '✗')} ${r.label}: ${r.detail}`);
+  const mods = c.modules ? `; modules scored ${c.modules.scored} of ${c.modules.total}${c.modules.unpaired ? `, ${c.modules.unpaired} unpaired` : ''}` : '';
+  out.push(`cap-probe: ${c.verdict || (c.pass ? 'PASS' : 'FAIL')} at ${result.live.probeWidth} — ${c.fails} of ${c.rows.length} rows failed${mods}${c.note ? ` — ${c.note}` : ''}${result.evidence ? ` (evidence ${result.evidence})` : ''}`);
   return out.join('\n');
 }
 

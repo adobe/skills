@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 // skills/replica/scripts/test/cap-probe.test.mjs — the cap-probe.mjs contract. Part (a): the pure
 // classification (capped vs fluid, cap origins, kinds, the content cap, the derived probe width, the
-// cross-archetype aggregate and register items, the live-vs-build rows), argument parsing and the
-// DESIGN.json merge — no browser. Part (b): end-to-end against fixture pages served from this process
-// (a live-like page with a 1920 shell + 1600 article + 1180 module, a fluid build, a fixed build) —
+// cross-archetype aggregate and register items, the live-vs-build rows, module pairing and the
+// verdict), argument parsing and the DESIGN.json merge — no browser. Part (b): end-to-end against
+// fixture pages served from this process (a live-like page with a 1920 shell + 1600 article + 1180
+// module, a fluid build, a fixed build, a build ending in a pagination list) —
 // runs only where playwright is importable, prints a skip line otherwise. Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
@@ -14,7 +15,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   isCapped, capVia, classifyCaps, deriveProbeWidth, groupPx, aggregateCaps, compareCaps, formatCompare, formatCapture,
-  parseArgs, UsageError, mergeDesign, readDesignSizing, MIN_PROBE_WIDTH,
+  parseArgs, UsageError, mergeDesign, readDesignSizing, MIN_PROBE_WIDTH, pairPlausible, PAIR_WIDTH_RATIO,
 } from '../cap-probe.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -91,7 +92,7 @@ await check('classifyCaps: nested shell + content, module column, inherited/inse
   assert.equal(m.contentMaxWidth, 1600);
   assert.equal(m.contentFrom, 'content');
   assert.equal(m.maxCap, 1920);
-  assert.deepEqual(m.modules, [{ index: 0, selector: 'main > div.shell', px: 1180, capSelector: 'div.inner > div.container' }]);
+  assert.deepEqual(m.modules, [{ index: 0, selector: 'main > div.shell', px: 1180, capSelector: 'div.inner > div.container', capTag: 'div', capRole: null }]);
 });
 await check('classifyCaps: a module-only site takes the shared module cap; a fluid page has none', () => {
   const m = classifyCaps(modulePass(), { baseWidth: 1440, probeWidth: 2560 });
@@ -101,6 +102,12 @@ await check('classifyCaps: a module-only site takes the shared module cap; a flu
   assert.deepEqual(m.modules.map((x) => x.px), [1280, 1280, 1280, null]);
   const f = classifyCaps(fluidPass(), { baseWidth: 1440, probeWidth: 2560 });
   assert.equal(f.contentMaxWidth, null); assert.equal(f.fluid, true);
+});
+await check('classifyCaps: each module carries its cap element\'s tag and role (null when full-bleed)', () => {
+  const pass = modulePass(); Object.assign(pass.boxes.find((b) => b.i === 20), { tag: 'ul', role: 'list' });
+  const m = classifyCaps(pass, { baseWidth: 1440, probeWidth: 2560 });
+  assert.deepEqual(m.modules.map((x) => [x.capTag, x.capRole]), [['ul', 'list'], ['div', null], ['div', null], [null, null]]);
+  assert.deepEqual([m.origins[0].tag, m.origins[0].role], ['ul', 'list']);
 });
 await check('deriveProbeWidth: max(2560, cap × 1.25); groupPx groups within the tolerance', () => {
   assert.equal(deriveProbeWidth(0), MIN_PROBE_WIDTH);
@@ -149,14 +156,68 @@ await check('compareCaps: a build cap over a fluid live fails; module mismatches
   assert.equal(r2.pass, false); assert.match(r2.rows.find((x) => !x.ok).detail, /live full-bleed .* → build 900px/);
   assert.match(compareCaps(fluidPass() && classifyCaps(fluidPass(), { probeWidth: 2560 }), classifyCaps(fluidPass(), { probeWidth: 2560 })).rows[0].detail, /fluid on both sides/);
 });
+// Plain models for the pairing rule: a 1600 wrapper (null = none) and module caps [px, tag, role] (px null = full-bleed).
+const capModel = (mods, wrapper = 1600) => ({
+  probeWidth: 2560, root: { selector: 'main', w2: 2560 }, contentMaxWidth: wrapper, contentFrom: wrapper ? 'shell' : null, shellMaxWidth: wrapper,
+  origins: wrapper ? [{ kind: 'shell', px: wrapper, via: 'max-width', selector: 'main', tier: 0, share: 1 }] : [],
+  modules: mods.map(([px, capTag, capRole = null], index) => ({ index, selector: `main > div:nth-child(${index + 1})`, px, capSelector: px === null ? null : `${capTag}.cap${index + 1}`, capTag: px === null ? null : capTag, capRole })),
+});
+const cols = [[1180, 'div'], [1180, 'div'], [1180, 'div']];
+await check('pairPlausible: implausible only when both are capped, widths differ by > 40 % AND the tag or role differs', () => {
+  const m = (px, capTag, capRole) => ({ px, capTag, capRole });
+  assert.equal(PAIR_WIDTH_RATIO, 0.4);
+  assert.equal(pairPlausible(m(552, 'ul'), m(280, 'div')), false);
+  assert.equal(pairPlausible(m(552, 'div', 'list'), m(280, 'div')), false, 'same tag, different role');
+  assert.equal(pairPlausible(m(552, 'div', null), m(280, 'div')), true, 'missing role compares as null');
+  assert.equal(pairPlausible(m(1000, 'ul'), m(600, 'div')), true, 'exactly 40 % is not more than 40 %');
+  assert.equal(pairPlausible(m(552, 'ul'), m(null, null)), true, 'a full-bleed side is not subject to the rule');
+  assert.equal(pairPlausible(m(552, 'ul'), { px: 280 }), true, 'no capTag (older data): cannot compare');
+});
+await check('compareCaps: an implausible module pair is listed unpaired, not scored — the verdict counts the scored modules', () => {
+  const r = compareCaps(capModel([...cols, [552, 'ul']]), capModel([...cols, [280, 'div']]));
+  assert.deepEqual([r.verdict, r.pass, r.fails, r.modules, r.note], ['PASS', true, 0, { total: 4, scored: 3, unpaired: 1 }, null]);
+  const row4 = r.rows.find((x) => x.label === 'module 4/4');
+  assert.deepEqual([row4.ok, row4.advisory, row4.unpaired], [true, true, true]);
+  assert.match(row4.detail, /^unpaired — live 552px <ul> \(ul\.cap4\) vs build 280px <div> \(div\.cap4\): widths differ by 49% and the elements differ — listed, not scored$/);
+  const same = compareCaps(capModel([...cols, [552, 'div']]), capModel([...cols, [280, 'div']]));
+  assert.deepEqual([same.verdict, same.pass, same.fails, same.modules], ['FAIL', false, 1, { total: 4, scored: 4, unpaired: 0 }], 'the same element at another width is a real cap mismatch');
+  const old = capModel([...cols, [280, 'div']]); delete old.modules[3].capTag;
+  const legacy = compareCaps(capModel([...cols, [552, 'ul']]), old);
+  assert.deepEqual([legacy.verdict, legacy.fails, legacy.modules.scored], ['FAIL', 1, 4], 'without capTag on one side the pair is scored as before');
+});
+await check('compareCaps: fewer than half the modules pair → INCONCLUSIVE (no module row scored, exit 0); a failing wrapper row still FAILs', () => {
+  const live = capModel([[1180, 'div'], [552, 'ul'], [552, 'ul'], [552, 'ul']]);
+  const build = capModel([[900, 'div'], [280, 'div'], [280, 'div'], [280, 'div']]);
+  const r = compareCaps(live, build);
+  assert.deepEqual([r.verdict, r.pass, r.fails, r.modules], ['INCONCLUSIVE', true, 0, { total: 4, scored: 0, unpaired: 3 }]);
+  assert.match(r.note, /fewer than half the modules paired \(1 of 4\): module rows not scored; check that --main \/ --build-main name matching content roots/);
+  const m1 = r.rows.find((x) => x.label === 'module 1/4');
+  assert.deepEqual([m1.ok, m1.advisory], [true, true], 'the paired 1180 → 900 row cannot fail');
+  const w = compareCaps(live, capModel([[900, 'div'], [280, 'div'], [280, 'div'], [280, 'div']], 1200));
+  assert.deepEqual([w.verdict, w.pass, w.fails, w.rows.find((x) => !x.ok).label], ['FAIL', false, 1, 'wrapper cap']);
+  assert.match(w.note, /fewer than half the modules paired/);
+  const half = compareCaps(capModel([[1180, 'div'], [1180, 'div'], [552, 'ul'], [552, 'ul']]), capModel([[900, 'div'], [1180, 'div'], [280, 'div'], [280, 'div']]));
+  assert.deepEqual([half.verdict, half.fails, half.modules], ['FAIL', 1, { total: 4, scored: 2, unpaired: 2 }], 'exactly half paired: scored as today');
+});
 await check('formatCompare / formatCapture: verdict line, evidence pointer, consistency line', () => {
   const live = classifyCaps(livePass(), { probeWidth: 2560 }); const build = classifyCaps(fluidPass(), { probeWidth: 2560 });
   const text = formatCompare({ urls: ['https://s/', 'http://localhost:1/'], probeNote: 'derived', live: { ...live, baseWidth: 1440 }, build, compare: compareCaps(live, build), evidence: 'stardust/replica/gates/home-2560/cap-iter1.json' });
   assert.match(text, /^cap-probe {2}base 1440 → probe 2560 \(derived\)/);
   assert.match(text, /✗ wrapper cap: live 1600px/);
-  assert.match(text, /cap-probe: FAIL at 2560 — \d+ of \d+ rows failed \(evidence stardust\/replica\/gates\/home-2560\/cap-iter1.json\)$/);
+  assert.match(text, /cap-probe: FAIL at 2560 — \d+ of \d+ rows failed; modules scored 1 of 1 \(evidence stardust\/replica\/gates\/home-2560\/cap-iter1.json\)$/);
   const cap = formatCapture({ pages: { 'https://s/': { ...live, baseWidth: 1440, probeNote: 'derived: max(2560, largest cap × 1.25)' } }, aggregate: aggregateCaps({ 'https://s/': live }) });
   assert.match(cap, /shell {5}1920px {2}max-width/); assert.match(cap, /contentMaxWidth: 1600px {2}shellMaxWidth: 1920px {2}probeWidth: 2560 {2}consistent: yes/);
+});
+await check('formatCompare: unpaired rows get ○, the verdict line names the scored modules and the INCONCLUSIVE note; older compare JSON still prints', () => {
+  const fmt = (live, build, compare = compareCaps(live, build)) => formatCompare({ urls: ['https://s/', 'http://localhost:1/'], probeNote: 'derived', live: { ...live, baseWidth: 1440 }, build, compare });
+  const t = fmt(capModel([...cols, [552, 'ul']]), capModel([...cols, [280, 'div']]));
+  assert.match(t, /\n {2}○ module 4\/4: unpaired — live 552px <ul>/);
+  assert.match(t, /\ncap-probe: PASS at 2560 — 0 of 5 rows failed; modules scored 3 of 4, 1 unpaired$/);
+  const i = fmt(capModel([[1180, 'div'], [552, 'ul'], [552, 'ul'], [552, 'ul', 'list']]), capModel([[1180, 'div'], [280, 'div'], [280, 'div'], [280, 'div']]));
+  assert.match(i, /○ module 4\/4: unpaired — live 552px <ul role="list"> \(ul\.cap4\)/);
+  assert.match(i, /\ncap-probe: INCONCLUSIVE at 2560 — 0 of 5 rows failed; modules scored 0 of 4, 3 unpaired — fewer than half the modules paired \(1 of 4\): module rows not scored; check that --main \/ --build-main name matching content roots$/);
+  const m = capModel(cols);
+  assert.match(fmt(m, m, { rows: [{ ok: true, label: 'wrapper cap', detail: 'x' }], fails: 0, pass: true }), /\ncap-probe: PASS at 2560 — 0 of 1 rows failed$/);
 });
 await check('parseArgs: defaults and the usage errors (exit 125)', () => {
   const o = parseArgs(['https://s/', 'https://s/p', '--write-design', 'D.json']);
@@ -199,7 +260,9 @@ if (pwProbe.status !== 0) {
   const fluidBuild = page('fluid', { css: '.container{width:1180px;margin:0 auto}', html: [1, 2, 3].map((n) => `<div class="section">${sectionHtml(n)}</div>`).join('') });
   const percentBuild = page('percent', { css: '.container{max-width:90%;margin:0 auto}', html: `<div class="wrap"><div class="inner">${[1, 2, 3].map((n) => `<div class="section">${sectionHtml(n)}</div>`).join('')}</div></div>` });
   const fixedBuild = page('fixed', { css: 'main{max-width:1600px;margin:0 auto}.container{width:1180px;margin:0 auto}', html: [1, 2, 3].map((n) => `<div class="section">${sectionHtml(n)}</div>`).join('') });
-  const pages = { '/live': liveLike, '/fluid': fluidBuild, '/fixed': fixedBuild, '/percent': percentBuild };
+  // The third section's widest cap is a 280 px pagination list — not the live 1180 column at the same index.
+  const pagerBuild = page('pager', { css: 'main{max-width:1600px;margin:0 auto}.container{width:1180px;margin:0 auto}.pager{width:280px;box-sizing:border-box;margin:0 auto}', html: `${[1, 2].map((n) => `<div class="section">${sectionHtml(n)}</div>`).join('')}<div class="section"><section class="s3"><ul class="pager" role="list">${[1, 2, 3, 4, 5].map((k) => `<li>Page ${k}</li>`).join('')}</ul></section></div>` });
+  const pages = { '/live': liveLike, '/fluid': fluidBuild, '/fixed': fixedBuild, '/percent': percentBuild, '/pager': pagerBuild };
   const server = createServer((req, res) => { const body = pages[req.url.split('?')[0]]; if (!body) { res.writeHead(404); res.end(); return; } res.writeHead(200, { 'content-type': 'text/html' }); res.end(body); });
   await new Promise((r) => { server.listen(0, '127.0.0.1', r); });
   const base = `http://127.0.0.1:${server.address().port}`;
@@ -227,11 +290,20 @@ if (pwProbe.status !== 0) {
       const r = await runAsync([`${base}/live`, '--against', `${base}/fluid`, '--slug', 'home', '--label', 'iter1']);
       assert.equal(r.code, 2, r.out + r.err);
       assert.match(r.out, /✗ wrapper cap: live 1600px \(content, .*article\) → build NONE: content runs 2560px wide at 2560 \(module caps only: 1180px ×3\)/);
-      assert.match(r.out, /cap-probe: FAIL at 2560 — 1 of \d+ rows failed \(evidence stardust\/replica\/gates\/home-2560\/cap-iter1.json\)/);
+      assert.match(r.out, /cap-probe: FAIL at 2560 — 1 of \d+ rows failed; modules scored 3 of 3 \(evidence stardust\/replica\/gates\/home-2560\/cap-iter1.json\)/);
       assert.ok(existsSync(join(root, 'stardust/replica/gates/home-2560/cap-iter1.json')) && existsSync(join(root, 'stardust/replica/gates/home-2560/cap-iter1.txt')));
       const ok = await runAsync([`${base}/live`, '--against', `${base}/fixed`, '--design', join(root, 'DESIGN.json')]);
       assert.equal(ok.code, 0, ok.out + ok.err);
       assert.match(ok.out, /probe 2560 \(from .*DESIGN.json\)/); assert.match(ok.out, /✓ wrapper cap: live 1600px = build 1600px/); assert.match(ok.out, /cap-probe: PASS at 2560/);
+    });
+    await check('e2e compare: a pagination list paired by index with a content column is listed unpaired, not failed (exit 0)', async () => {
+      const out = join(root, 'pager.json');
+      const r = await runAsync([`${base}/live`, '--against', `${base}/pager`, '--out', out]);
+      assert.equal(r.code, 0, r.out + r.err);
+      assert.match(r.out, /○ module 3\/3: unpaired — live 1180px <div> \(.*container\) vs build 280px <ul role="list"> \(.*ul\.pager\): widths differ by 76% and the elements differ — listed, not scored/);
+      assert.match(r.out, /cap-probe: PASS at 2560 — 0 of \d+ rows failed; modules scored 2 of 3, 1 unpaired/);
+      const j = JSON.parse(readFileSync(out, 'utf8'));
+      assert.deepEqual([j.compare.verdict, j.compare.modules, j.build.modules[2].capTag, j.build.modules[2].capRole], ['PASS', { total: 3, scored: 2, unpaired: 1 }, 'ul', 'list']);
     });
   } finally {
     server.close();
