@@ -3,14 +3,15 @@
 // keyed() stable keys (role:text, role:selector#ordinal, #2 for duplicates), alignUnit pairs by key, by text
 // prefix, across relaxed roles (link ↔ button), images by order whatever their alt, leftover text by position
 // (the session-variable badge), reports Δx/Δy/Δw/Δh relative to the unit, flags off / hidden / missing / extra
-// and the unit size; verdictOf totals; parseArgs; --help in an empty cwd. Run: node <this file>.
+// and the unit size; verdictOf totals; parseArgs; originCacheUsable (the per-width origin cache: URL, width, locale,
+// unit count, selectors, freshness); --help in an empty cwd. Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { alignUnit, compareUnits, formatUnits, keyed, parseArgs, verdictOf } from '../unit-geometry.mjs';
+import { alignUnit, compareUnits, formatUnits, keyed, originCacheUsable, parseArgs, verdictOf } from '../unit-geometry.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'unit-geometry.mjs');
@@ -60,10 +61,30 @@ check('parseArgs: repeatable --unit with and without the served selector', () =>
   const o = parseArgs(['node', 'x', 'https://o/', 'https://e/', '--unit', '.a=.b', '--unit', '.c', '--n', '3', '--tol', '2', '--slug', 's']);
   assert.deepEqual(o.units, [{ origin: '.a', eds: '.b' }, { origin: '.c', eds: '.c' }]); assert.equal(o.n, 3); assert.equal(o.tol, 2); assert.equal(o.slug, 's');
 });
+check('originCacheUsable: the origin cache is used only for the same URL, width and locale, enough units, every selector, and a fresh capture', () => {
+  const opts = { origin: 'https://o.example/', width: 1440, locale: 'en-US', n: 2, units: [{ origin: '.card', eds: '.c' }, { origin: '.row', eds: '.r' }] };
+  const cached = { url: 'https://o.example/', width: 1440, locale: 'en-US', n: 2, at: '2026-10-16T08:00:00.000Z', bySel: { '.card': { matches: 3, units: [] }, '.row': { matches: 1, units: [] } } };
+  const fresh = { fresh: true, policy: 'same-run' }; const stale = { fresh: false, reason: 'captured before this run (2026-10-16T09:00:00.000Z)' };
+  const table = [
+    ['match', cached, fresh, true],
+    ['more units cached than asked', { ...cached, n: 3 }, fresh, true],
+    ['no locale recorded reads as the en-US default', { ...cached, locale: undefined }, fresh, true],
+    ['width mismatch (a 360 round against the 1440 inventory)', { ...cached, width: 360 }, fresh, false],
+    ['url mismatch', { ...cached, url: 'https://o.example/other' }, fresh, false],
+    ['locale mismatch', { ...cached, locale: 'de-DE' }, fresh, false],
+    ['fewer units cached than asked', { ...cached, n: 1 }, fresh, false],
+    ['no n recorded reads as 1', { ...cached, n: undefined }, fresh, false],
+    ['a selector not in the cache', { ...cached, bySel: { '.card': cached.bySel['.card'] } }, fresh, false],
+    ['stale', cached, stale, false],
+    ['no cache', null, fresh, false],
+  ];
+  for (const [name, c, v, want] of table) assert.equal(originCacheUsable(c, opts, v), want, name);
+});
 check('--help exits 0 in an empty cwd and writes nothing', () => {
   const cwd = mkdtempSync(join(tmpdir(), 'unit-geometry-help-'));
   const r = spawnSync(process.execPath, [SCRIPT, '--help'], { cwd, encoding: 'utf8' });
   assert.equal(r.status, 0); assert.match(r.stdout, /Usage: node unit-geometry\.mjs/); assert.deepEqual(readdirSync(cwd), []);
+  assert.match(r.stdout, /<s>-units-<width>\.json/);
   rmSync(cwd, { recursive: true, force: true });
 });
 console.log(failed ? `\n${failed} failed` : '\nall passed');

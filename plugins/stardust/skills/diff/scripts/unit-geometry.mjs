@@ -10,8 +10,12 @@
  * inner elements (role + text, shadow-DOM aware) relative to the unit's corner, aligned (key, text
  * prefix, relaxed link ↔ button, images by order, leftover text by position) and reported as
  * Δx / Δy / Δw / Δh against --tol, plus the unit's own size / position delta; `hidden` where the
- * served page clips. Both sides settle the same way; the origin inventory caches per slug under
- * stardust/current/measure/<slug>-units.json.
+ * served page clips. Both sides settle the same way; the origin inventory caches per slug AND width under
+ * stardust/current/measure/<slug>-units-<width>.json (a legacy <slug>-units.json is no longer read) and is
+ * reused only for the same URL, width and locale, at least as many units and every selector, while fresh
+ * under live-session.mjs's policy: measured at/after this run's opener line in ./stardust/status.jsonl,
+ * or within STARDUST_ORIGIN_MAX_AGE_H hours (`--force` re-measures). One `origin: cached <key> (<at>,
+ * <policy>)` / `origin: measured (<reason>)` line says which, and the JSON records it as originCache.
  *
  * Repeated-unit FAMILIES are declared once per project in stardust/replica/units.json —
  *   { "<family>": { "origin": "<sel>", "build": "<sel>", "n": 2, "required": true, "pages": ["<slug>"], "templates": ["<tpl>"] } }
@@ -23,13 +27,14 @@
  *        [--plain] [--warmup <url>] [--locale en-US]
  * Exit: 0 within tolerance (or nothing declared), 2 a required unit off / hidden / missing, 1 error,
  * 3 bot challenge. `unitInventoryInPage`, `alignUnit`, `keyed`, `compareUnits`, `formatUnits`,
- * `verdictOf`, `unitsFor` are exported.
+ * `verdictOf`, `unitsFor`, `originCacheUsable` are exported.
  */
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { inPage } from './clip-probe.mjs';
-import { browserTier, openBrowser, openPage, readCache, visit, writeCache } from './measure-live.mjs';
+import { browserTier, cachePath, openBrowser, openPage, readCache, visit, writeCache } from './measure-live.mjs';
+import { LEDGER, freshness, runStartAt } from './live-session.mjs';
 
 const HELP = `unit-geometry — per-element Δx/Δy/Δw/Δh of the first N repeated units, origin vs served (#125 D3)
 
@@ -41,7 +46,9 @@ Usage: node unit-geometry.mjs <originUrl> <edsUrl> (--unit "<selOrigin>=<selEds>
   --tol <px>              per-element tolerance (default 4)
   --width <px>            viewport width (default 1440)
   --json [<file>]         JSON on stdout or to <file>
-  --slug <s>              cache the origin inventory at stardust/current/measure/<s>-units.json (--force to redo)
+  --slug <s>              cache the origin inventory at stardust/current/measure/<s>-units-<width>.json, reused
+                          for the same URL / width / locale while fresh (this run; STARDUST_ORIGIN_MAX_AGE_H
+                          for older); --force re-measures
   --advisory              report only, exit 0
   --plain                 bundled Chromium instead of the window-free real-Chrome tier
   --warmup <url>          visit this URL first on the origin side
@@ -221,7 +228,7 @@ export async function measureUnits(browser, url, sels, { width, locale, warmup, 
     const v = await visit(page, url, { warmup });
     const bySel = {};
     for (const sel of sels) bySel[sel] = await page.evaluate(inPage(unitInventoryInPage, { sel, n }));
-    return { url, at: new Date().toISOString(), status: v.status, docH: v.docH, bySel };
+    return { url, at: new Date().toISOString(), width, locale, n, status: v.status, docH: v.docH, bySel };
   } finally { await ctx.close(); }
 }
 
@@ -244,24 +251,51 @@ export function unitsFor(families, slug, template = null) {
     .map(([family, f]) => ({ family, origin: f.origin, eds: f.build || f.eds || f.origin, n: f.n || 1, required: f.required !== false }));
 }
 
+// Why a cached origin inventory may not stand in for this run's (null = usable): the same URL, width and locale
+// (none recorded = the en-US default), at least as many units, every origin selector, and fresh (`verdict` =
+// live-session freshness(cached)).
+function originCacheMiss(cached, opts, verdict) {
+  if (!cached) return 'no cache';
+  const field = [
+    ['selectors', opts.units.every((u) => cached.bySel && cached.bySel[u.origin])],
+    ['url', cached.url === opts.origin], ['width', cached.width === opts.width],
+    ['locale', (cached.locale || 'en-US') === opts.locale], ['n', (cached.n || 1) >= opts.n],
+  ].find(([, ok]) => !ok);
+  if (field) return `key mismatch (${field[0]})`;
+  return verdict && verdict.fresh ? null : (verdict && verdict.reason) || 'not fresh';
+}
+export const originCacheUsable = (cached, opts, verdict) => !originCacheMiss(cached, opts, verdict);
+
 async function main() {
   const opts = parseArgs(process.argv);
   if (!opts.units.length) { console.log(`unit-geometry: none declared for ${opts.slug} in ${opts.families} → n/a`); return; }
   const { chromium } = await import('playwright');
   const browser = await openBrowser(chromium, { tier: opts.plain ? 'plain' : 'stealth' });
-  let oInv; let eInv; let tier;
+  let oInv; let eInv; let tier; let originCache = null;
   try {
     tier = browserTier(browser);
-    const cacheKey = opts.slug ? `${opts.slug}-units` : null;
+    // per slug AND width; the run anchor is read once, from the project root's ledger (cwd, like the cache dir)
+    const cacheKey = opts.slug ? `${opts.slug}-units-${opts.width}` : null;
     const cached = cacheKey && !opts.force ? readCache(cacheKey) : null;
-    const oSels = opts.units.map((u) => u.origin);
-    if (cached && oSels.every((s) => cached.bySel && cached.bySel[s])) { oInv = cached; console.log(`origin: cached ${cacheKey} (${cached.at})`); }
-    else { oInv = await measureUnits(browser, opts.origin, oSels, { width: opts.width, locale: opts.locale, warmup: opts.warmup, n: opts.n }); if (cacheKey) writeCache(cacheKey, oInv); }
+    const verdict = cached ? freshness(cached, { runStart: runStartAt({ ledger: resolve(LEDGER) }) }) : null;
+    const say = opts.json && !opts.jsonFile ? console.error : console.log; // JSON on stdout stays parseable
+    if (originCacheUsable(cached, opts, verdict)) {
+      oInv = cached; originCache = { file: cachePath(cacheKey), hit: true, at: cached.at, policy: verdict.policy };
+      say(`origin: cached ${cacheKey} (${cached.at}, ${verdict.policy})`);
+    } else {
+      const why = !cacheKey ? 'no --slug — not cached' : opts.force ? '--force' : originCacheMiss(cached, opts, verdict);
+      oInv = await measureUnits(browser, opts.origin, opts.units.map((u) => u.origin), { width: opts.width, locale: opts.locale, warmup: opts.warmup, n: opts.n });
+      // an HTTP-error origin is measured but never cached; a failed cache write never fails the probe
+      let unsaved = cacheKey && oInv.status >= 400 ? `HTTP ${oInv.status}` : null;
+      if (cacheKey && !unsaved) { try { writeCache(cacheKey, oInv); } catch (e) { unsaved = `write failed: ${String(e.message).split('\n')[0]}`; } }
+      if (cacheKey) originCache = { file: cachePath(cacheKey), hit: false, at: oInv.at, reason: why, ...(unsaved ? { notCached: unsaved } : {}) };
+      say(`origin: measured (${why})${unsaved ? ` — not cached (${unsaved})` : ''}`);
+    }
     eInv = await measureUnits(browser, opts.eds, opts.units.map((u) => u.eds), { width: opts.width, locale: opts.locale, warmup: null, n: opts.n });
   } finally { await browser.close(); }
   const results = opts.units.map((pair) => compareUnits(oInv, eInv, pair, opts.tol));
   const v = verdictOf(results);
-  const out = { _provenance: { writtenBy: 'unit-geometry.mjs', at: new Date().toISOString(), tol: opts.tol, n: opts.n, width: opts.width, tier }, origin: { url: opts.origin, at: oInv.at, docH: oInv.docH }, eds: { url: opts.eds, at: eInv.at, docH: eInv.docH }, results, verdict: v };
+  const out = { _provenance: { writtenBy: 'unit-geometry.mjs', at: new Date().toISOString(), tol: opts.tol, n: opts.n, width: opts.width, tier }, origin: { url: opts.origin, at: oInv.at, docH: oInv.docH }, originCache, eds: { url: opts.eds, at: eInv.at, docH: eInv.docH }, results, verdict: v };
   if (opts.json && !opts.jsonFile) console.log(JSON.stringify(out, null, 1));
   else {
     console.log(`unit-geometry @ ${opts.width}px, tol ${opts.tol}px — ${opts.origin} vs ${opts.eds}`);
