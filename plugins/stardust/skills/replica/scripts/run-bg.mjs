@@ -43,8 +43,11 @@
  *        fan-out (several subagents and the main agent on one pool) still queued
  *        84 of its 272 jobs for more than 10 s (90th percentile 78 s, longest
  *        210 s) with no memory pressure. So 3 is the default; RUN_BG_SLOTS lowers
- *        it on a small machine or raises it on a large one. Start the jobs all at
- *        once and let the slots pace them — no `sleep N;` staggering.
+ *        it on a small machine. On a large one raise STARDUST_BROWSER_SLOTS (the
+ *        machine budget, and this default while RUN_BG_SLOTS is unset): browser
+ *        jobs are bounded by the machine budget too, so RUN_BG_SLOTS above it adds
+ *        no browser jobs. Start the jobs all at once and let the slots pace them
+ *        — no `sleep N;` staggering.
  *        Two budgets: --slots paces THIS project's jobs (one run-bg dir); the
  *        machine budget bounds browser jobs across projects. Before it launches
  *        a browser instrument (an argv token naming one of BROWSER_SCRIPTS —
@@ -123,8 +126,8 @@ export const DEFAULT_DIR = 'stardust/.work/replica/bg';
 export const DEFAULT_TIMEOUT_SEC = 900;
 // Each capture is a Chromium and a `gate.sh --full` round holds up to six at its peak, so the cap bounds the Chromiums at
 // six per slot — yet at 3 slots a recorded hands-off fan-out still queued 84 of 272 jobs for more than 10 s (90th
-// percentile 78 s), so 3 is the default. RUN_BG_SLOTS, else STARDUST_BROWSER_SLOTS, lowers it on a small machine or
-// raises it on a large one.
+// percentile 78 s), so 3 is the default. RUN_BG_SLOTS, else STARDUST_BROWSER_SLOTS, lowers it on a small machine. On a
+// large one raise STARDUST_BROWSER_SLOTS — the machine budget bounds browser jobs too, so RUN_BG_SLOTS above it adds none.
 export const DEFAULT_SLOTS = 3;
 export const DEFAULT_MAX_SEC = 100;
 // The agent's shell tool's default timeout is about two minutes and applies only to a call that declares none: 110 s
@@ -156,14 +159,18 @@ const POLL_MS = Number(process.env.RUN_BG_POLL_MS) || 2000;
 const SELF = fileURLToPath(import.meta.url);
 // The machine-wide browser lock: beside a project copy (stardust/scripts/stardust/), else in the plugin tree.
 const LOCK_CANDIDATES = [resolve(dirname(SELF), '../stardust/browser-lock.mjs'), resolve(dirname(SELF), '../../stardust/scripts/browser-lock.mjs')];
-// The instruments that launch a browser (a script importing playwright, lib.mjs libraries aside) plus gate.sh and
-// gate-all.mjs, which spawn them. A job whose argv names one takes a machine-wide slot unless --no-lock.
+// The instruments that launch a browser — a script importing playwright, or calling its skill's lib.mjs loadPlaywright()
+// itself or in a module it names (qa.mjs's checks); lib.mjs libraries aside — plus gate.sh and gate-all.mjs, which spawn
+// them. A job whose argv names one takes a machine-wide slot unless --no-lock.
 export const BROWSER_SCRIPTS = new Set([
   'ai-readability.mjs', 'block-roundtrip.mjs', 'ew-editability-probe.mjs', 'qa-gate.mjs', 'render-harness.mjs', 'section-schema.mjs', 'style-fingerprint.mjs', // deploy
   'chrome-explore.mjs', 'clip-probe.mjs', 'content-diff.mjs', 'content-presence.mjs', 'unit-geometry.mjs', 'visual-diff.mjs', // diff
+  'dynamics-check.mjs', 'dynamics-detect.mjs', 'snapshot-api.mjs', 'snapshot-forms.mjs', // dynamics
   'crawl.mjs', 'style-census.mjs', // extract
+  'qa.mjs', // qa
   'anchor.mjs', 'cap-probe.mjs', 'chrome-parity.mjs', 'gate-all.mjs', 'gate.sh', 'measure.mjs', 'motion-observe.mjs', 'sibling-variance.mjs', 'stitch-shot.mjs', // replica
   'capture-content.mjs', 'dom-equality.mjs', 'donor-probe.mjs', 'slot-coverage.mjs', // reskin
+  'spec-capture.mjs', 'spec-fetch.mjs', 'spec-inventory.mjs', 'spec-sheet.mjs', // spec
 ]);
 // Any argv token (or a word of a `sh -c` string) whose basename is a browser instrument.
 export function isBrowserJob(cmd, args = []) {
@@ -180,7 +187,8 @@ const HELP = `Usage:
   Two budgets: --slots paces this project's jobs (env RUN_BG_SLOTS, else STARDUST_BROWSER_SLOTS); a browser job (gate.sh,
   gate-all.mjs, stitch-shot.mjs, the diff probes …; --lock forces, --no-lock skips) first takes a machine-wide slot from
   browser-lock.mjs — STARDUST_BROWSER_SLOTS (default 3, 0 = off) across projects, slot files in ~/.stardust/locks/browser/
-  (STARDUST_BROWSER_LOCK_DIR); no slot within STARDUST_BROWSER_WAIT (600 s) = exit 124, no verdict.`;
+  (STARDUST_BROWSER_LOCK_DIR); no slot within STARDUST_BROWSER_WAIT (600 s) = exit 124, no verdict. On a large machine
+  raise STARDUST_BROWSER_SLOTS (the machine budget): RUN_BG_SLOTS above it adds no browser jobs.`;
 
 class UsageError extends Error { constructor(msg, code = 125) { super(msg); this.code = code; } }
 const sleep = (ms) => new Promise((r) => { setTimeout(r, ms); });

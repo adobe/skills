@@ -224,18 +224,30 @@ const SLOT_JOB = (ms) => `const fs=require('fs'),d=process.env.STARDUST_BROWSER_
 // The most [launchedAt, endedAt] intervals open at one instant (an end before a start at the same ms).
 const peak = (sts) => { let n = 0; let m = 0; for (const [, d] of sts.flatMap((s) => [[Date.parse(s.launchedAt), 1], [Date.parse(s.endedAt), -1]]).sort((a, b) => a[0] - b[0] || a[1] - b[1])) { n += d; m = Math.max(m, n); } return m; };
 
-await check('BROWSER_SCRIPTS = every skills/*/scripts/*.mjs that imports playwright (lib.mjs libraries aside) + gate.sh + gate-all.mjs', () => {
+await check('BROWSER_SCRIPTS = every skills/*/scripts/*.mjs that launches a browser (imports playwright, or calls its skill\'s lib.mjs loadPlaywright() itself or in a module it names) + gate.sh + gate-all.mjs', () => {
   const SKILLS = join(HERE, '..', '..', '..');
+  const PW = /from ['"]playwright['"]|import\(\s*['"]playwright['"]\s*\)/;
+  // loadPlaywright imported from the skill's lib.mjs (static or dynamic import) and awaited
+  const VIA_LIB = (s) => (/import\s*\{[^}]*\bloadPlaywright\b[^}]*\}\s*from\s*['"]\.{1,2}\/lib\.mjs['"]/.test(s) || /\{\s*loadPlaywright\s*\}\s*=\s*await\s+import\(\s*['"]\.{1,2}\/lib\.mjs['"]\s*\)/.test(s)) && /await\s+loadPlaywright\s*\(/.test(s);
+  const launches = (s) => PW.test(s) || VIA_LIB(s);
   const derived = new Set(['gate.sh', 'gate-all.mjs']);
   for (const skill of readdirSync(SKILLS)) {
     const d = join(SKILLS, skill, 'scripts'); if (!existsSync(d)) continue;
-    for (const f of readdirSync(d)) if (f.endsWith('.mjs') && f !== 'lib.mjs' && /from ['"]playwright['"]|import\(\s*['"]playwright['"]\s*\)/.test(readFileSync(join(d, f), 'utf8'))) derived.add(f);
+    for (const f of readdirSync(d)) {
+      if (!f.endsWith('.mjs') || f === 'lib.mjs') continue;
+      const src = readFileSync(join(d, f), 'utf8');
+      // a module the script names by a relative path inside its scripts dir (qa.mjs's 'checks/browse.mjs')
+      const named = [...src.matchAll(/['"]((?:\.\/)?[\w-]+\/[\w.-]+\.mjs)['"]/g)].map((m) => join(d, m[1])).filter((p) => existsSync(p));
+      if (launches(src) || named.some((p) => launches(readFileSync(p, 'utf8')))) derived.add(f);
+    }
   }
+  for (const f of ['qa.mjs', 'dynamics-detect.mjs', 'spec-capture.mjs', 'stitch-shot.mjs']) assert.ok(derived.has(f), `the derivation finds ${f}`);
   assert.deepEqual([...BROWSER_SCRIPTS].sort(), [...derived].sort(), 'a script that starts or stops launching a browser updates BROWSER_SCRIPTS');
 });
 await check('isBrowserJob: an argv token naming a browser instrument by basename (also inside a shell -c string); deploy-batch, pixel-compare, crop-compare, gate-evidence are not', () => {
   for (const argv of [['stardust/scripts/replica/gate.sh', 'home', 'LIVE', 'PROTO', '1440', 'iter1'], ['node', 'stardust/scripts/replica/gate-all.mjs', '--only', 'home'],
-    [process.execPath, '/abs/stardust/scripts/replica/stitch-shot.mjs', 'LIVE', 'o.png'], ['bash', '-c', 'node stardust/scripts/diff/content-diff.mjs a b > out.txt']]) assert.equal(isBrowserJob(argv[0], argv.slice(1)), true, argv.join(' '));
+    [process.execPath, '/abs/stardust/scripts/replica/stitch-shot.mjs', 'LIVE', 'o.png'], ['bash', '-c', 'node stardust/scripts/diff/content-diff.mjs a b > out.txt'],
+    ['node', 'stardust/scripts/qa/qa.mjs', '--checks', 'browse']]) assert.equal(isBrowserJob(argv[0], argv.slice(1)), true, argv.join(' '));
   for (const argv of [['node', 'stardust/scripts/deploy/deploy-batch.mjs', '--all'], ['node', 'stardust/scripts/replica/pixel-compare.mjs', 'a.png', 'b.png'], ['node', 'crop-compare.mjs'],
     ['node', 'stardust/scripts/replica/gate-evidence.mjs'], [process.execPath, '-e', 'setTimeout(()=>{},1)'], ['true']]) assert.equal(isBrowserJob(argv[0], argv.slice(1)), false, argv.join(' '));
 });
