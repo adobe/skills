@@ -8,7 +8,7 @@
 // placeholder, a flag image inside a locale link and an icon-font glyph inside a social link, against a build that
 // dropped the placeholder, swapped the flag and left the social box empty (the three defects a recorded hands-off
 // run shipped on every page while this probe read 0 🔴), and --live-cache (write, reuse with no source request,
-// same-run vs max-age freshness, key mismatch). The end-to-end part runs where playwright is importable
+// same-run vs max-age freshness, key mismatch, a blank source never cached). The end-to-end part runs where playwright is importable
 // and prints a skip line otherwise. Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
@@ -235,13 +235,15 @@ if (playwrightOk) {
     </style></head><body><main>${body}</main></body></html>`;
   const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="16"><rect width="24" height="16" fill="#888"/></svg>';
   const pages = {
-    '/source.html': page('<h1>Welcome</h1><form><input type="search" placeholder="Suche…" aria-label="Suche"></form><p>Body copy here.</p>'
+    // (a second section on both sides: a primary root with < 3 items is a blank render, which --live-cache never caches)
+    '/source.html': page('<h1>Welcome</h1><form><input type="search" placeholder="Suche…" aria-label="Suche"></form><p>Body copy here.</p><h2>More</h2><p>A second paragraph.</p>'
       + '<a href="/de/" class="lang"><img class="flag" src="/flag-de.svg" alt=""> Deutsch</a>'
       + '<ul class="social"><li><a href="https://social.example/x" aria-label="Facebook"><i class="fa fa-facebook"></i></a></li></ul>'),
-    '/build.html': page('<h1>Welcome</h1><form><input type="search" aria-label="Suche"></form><p>Body copy here.</p>'
+    '/build.html': page('<h1>Welcome</h1><form><input type="search" aria-label="Suche"></form><p>Body copy here.</p><h2>More</h2><p>A second paragraph.</p>'
       + '<a href="/de/" class="lang"><img class="flag" src="/flag-en.svg" alt=""> Deutsch</a>'
       + '<ul class="social"><li><a href="https://social.example/x" aria-label="Facebook"><span class="icon"></span></a></li></ul>'),
     '/flag-de.svg': svg, '/flag-en.svg': svg,
+    '/blank.html': page('<p></p>'),
   };
   const hits = {};
   const server = createServer((req, res) => {
@@ -324,6 +326,17 @@ if (playwrightOk) {
     r = await run(cacheArgs('--main', 'header'), maxAge);
     assert.equal(r.status, 0, r.stderr); assert.equal(hits['/source.html'], src + 1);
     assert.match(r.stdout, /^source side probed \(cache: key mismatch \(roots\)\) → /m, r.stdout);
+  });
+  await check('e2e --live-cache: a blank source render (the ⚠ almost-no-content case) is measured but never cached — the next run probes it again', async () => {
+    const blankCache = join(tmp, 'blank.json');
+    const args = [`${base}/blank.html`, `${base}/build.html`, '--profile', 'generic', '--live-cache', blankCache];
+    const src = hits['/blank.html'] || 0;
+    let r = await run(args, maxAge);
+    assert.equal(r.status, 0, r.stderr); assert.match(r.stdout, /almost no content/);
+    assert.match(r.stdout, /^source side probed \(cache: absent\) — not cached \(blank render\)$/m, r.stdout);
+    assert.equal(existsSync(blankCache), false);
+    r = await run(args, maxAge);
+    assert.equal(r.status, 0, r.stderr); assert.equal(hits['/blank.html'], src + 2);
   });
   rmSync(tmp, { recursive: true, force: true });
   server.close();

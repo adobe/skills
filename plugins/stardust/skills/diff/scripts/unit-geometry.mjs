@@ -14,8 +14,9 @@
  * stardust/current/measure/<slug>-units-<width>.json (a legacy <slug>-units.json is no longer read) and is
  * reused only for the same URL, width and locale, at least as many units and every selector, while fresh
  * under live-session.mjs's policy: measured at/after this run's opener line in ./stardust/status.jsonl,
- * or within STARDUST_ORIGIN_MAX_AGE_H hours (`--force` re-measures). One `origin: cached <key> (<at>,
- * <policy>)` / `origin: measured (<reason>)` line says which, and the JSON records it as originCache.
+ * or within STARDUST_ORIGIN_MAX_AGE_H hours (`--force` re-measures); an HTTP-error origin or one where a
+ * selector found no visible unit is measured but never cached. One `origin: cached <key> (<at>, <policy>)` /
+ * `origin: measured (<reason>)` line says which, and the JSON records it as originCache.
  *
  * Repeated-unit FAMILIES are declared once per project in stardust/replica/units.json —
  *   { "<family>": { "origin": "<sel>", "build": "<sel>", "n": 2, "required": true, "pages": ["<slug>"], "templates": ["<tpl>"] } }
@@ -285,8 +286,10 @@ async function main() {
     } else {
       const why = !cacheKey ? 'no --slug — not cached' : opts.force ? '--force' : originCacheMiss(cached, opts, verdict);
       oInv = await measureUnits(browser, opts.origin, opts.units.map((u) => u.origin), { width: opts.width, locale: opts.locale, warmup: opts.warmup, n: opts.n });
-      // an HTTP-error origin is measured but never cached; a failed cache write never fails the probe
-      let unsaved = cacheKey && oInv.status >= 400 ? `HTTP ${oInv.status}` : null;
+      // an HTTP-error origin or an empty inventory (a selector with no visible unit — a failed render) is measured but
+      // never cached, so the next run measures it again; a failed cache write never fails the probe
+      const empty = opts.units.map((u) => u.origin).find((sel) => { const b = oInv.bySel[sel]; return !b || b.error || !b.units.length; });
+      let unsaved = !cacheKey ? null : oInv.status >= 400 ? `HTTP ${oInv.status}` : empty ? `empty inventory: ${empty}` : null;
       if (cacheKey && !unsaved) { try { writeCache(cacheKey, oInv); } catch (e) { unsaved = `write failed: ${String(e.message).split('\n')[0]}`; } }
       if (cacheKey) originCache = { file: cachePath(cacheKey), hit: false, at: oInv.at, reason: why, ...(unsaved ? { notCached: unsaved } : {}) };
       say(`origin: measured (${why})${unsaved ? ` — not cached (${unsaved})` : ''}`);

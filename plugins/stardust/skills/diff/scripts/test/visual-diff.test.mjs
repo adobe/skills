@@ -3,7 +3,8 @@
 // written), importing the module starts no probe, liveCacheKey (the --live-cache key); then end-to-end against two fixture
 // pages served from a temp dir: --live-cache writes the source side's metrics + screenshots once, a second run with another
 // --out makes no source request, copies the source screenshots and prints the same red flags; a missing cached screenshot
-// is named. The end-to-end part runs where playwright is importable and prints a skip line otherwise. Run: node <this file>.
+// is named; a blank source render is never cached. The end-to-end part runs where playwright is importable and prints a
+// skip line otherwise. Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, unlinkSync } from 'node:fs';
@@ -50,7 +51,7 @@ try { await import('playwright'); playwrightOk = true; } catch { console.log('sk
 if (playwrightOk) {
   const page = (body) => `<!doctype html><html><head><meta charset="utf-8"><style>main{max-width:900px;margin:0 auto;padding:24px}</style></head><body><main>${body}</main></body></html>`;
   const h2s = (n) => Array.from({ length: n }, (_, i) => `<section class="band"><h2>Topic ${i + 1}</h2><p>Some body copy for topic ${i + 1}, long enough to read as text.</p></section>`).join('');
-  const pages = { '/source.html': page(`<h1>Welcome</h1>${h2s(6)}`), '/build.html': page(`<h1>Welcome</h1>${h2s(1)}`) };
+  const pages = { '/source.html': page(`<h1>Welcome</h1>${h2s(6)}`), '/build.html': page(`<h1>Welcome</h1>${h2s(1)}`), '/blank.html': page('') };
   const hits = {};
   const server = createServer((req, res) => {
     const path = req.url.split('?')[0]; hits[path] = (hits[path] || 0) + 1;
@@ -61,8 +62,8 @@ if (playwrightOk) {
   const base = `http://127.0.0.1:${server.address().port}`;
   const tmp = realpathSync(mkdtempSync(join(tmpdir(), 'visual-diff-cache-')));
   const cacheFile = join(tmp, 'vd.json');
-  const run = (out) => new Promise((resolve) => {
-    const child = spawn(process.execPath, [SCRIPT, `${base}/source.html`, `${base}/build.html`, '--profile', 'generic', '--sections', '.band,.absent', '--out', join(tmp, out), '--live-cache', cacheFile], { cwd: tmp, env: { ...process.env, STARDUST_ORIGIN_MAX_AGE_H: '1' } });
+  const run = (out, src = 'source', cache = cacheFile) => new Promise((resolve) => {
+    const child = spawn(process.execPath, [SCRIPT, `${base}/${src}.html`, `${base}/build.html`, '--profile', 'generic', '--sections', '.band,.absent', '--out', join(tmp, out), '--live-cache', cache], { cwd: tmp, env: { ...process.env, STARDUST_ORIGIN_MAX_AGE_H: '1' } });
     let stdout = ''; let stderr = '';
     child.stdout.on('data', (d) => { stdout += d; }); child.stderr.on('data', (d) => { stderr += d; });
     child.on('close', (status) => resolve({ status, stdout, stderr }));
@@ -98,6 +99,15 @@ if (playwrightOk) {
     assert.equal(r.status, 0, r.stderr); assert.equal(hits['/source.html'], 1);
     assert.match(r.stdout, new RegExp(`^ {2}source screenshot\\(s\\) not found in ${join(tmp, 'v1')}: proto-full\\.png$`, 'm'), r.stdout);
     assert.deepEqual(flagLines(r.stdout), flagLines(first.stdout));
+  });
+  await check('e2e --live-cache: a blank source render (BLANK RENDER on the source metrics) is measured but never cached — the next run captures it again', async () => {
+    const blankCache = join(tmp, 'blank.json');
+    let r = await run('b1', 'blank', blankCache);
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, /^source side probed \(cache: absent\) — not cached \(blank render\)$/m, r.stdout);
+    assert.equal(existsSync(blankCache), false); assert.equal(metricsJson(r.stdout).source.blankRender, true);
+    r = await run('b2', 'blank', blankCache);
+    assert.equal(r.status, 0, r.stderr); assert.equal(hits['/blank.html'], 2);
   });
   rmSync(tmp, { recursive: true, force: true });
   server.close();

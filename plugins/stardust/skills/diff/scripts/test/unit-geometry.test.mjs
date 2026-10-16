@@ -4,10 +4,12 @@
 // prefix, across relaxed roles (link ↔ button), images by order whatever their alt, leftover text by position
 // (the session-variable badge), reports Δx/Δy/Δw/Δh relative to the unit, flags off / hidden / missing / extra
 // and the unit size; verdictOf totals; parseArgs; originCacheUsable (the per-width origin cache: URL, width, locale,
-// unit count, selectors, freshness); --help in an empty cwd. Run: node <this file>.
+// unit count, selectors, freshness); --help in an empty cwd; end-to-end (skips without playwright): the origin cache is
+// written per width and reused while fresh, an empty origin inventory is never cached. Run: node <this file>.
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { spawn, spawnSync } from 'node:child_process';
+import { existsSync, mkdtempSync, readdirSync, realpathSync, rmSync } from 'node:fs';
+import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -87,5 +89,38 @@ check('--help exits 0 in an empty cwd and writes nothing', () => {
   assert.match(r.stdout, /<s>-units-<width>\.json/);
   rmSync(cwd, { recursive: true, force: true });
 });
+// ---- end-to-end (needs playwright) -----------------------------------------------------------------
+let playwrightOk = false;
+try { await import('playwright'); playwrightOk = true; } catch { console.log('skip  end-to-end unit-geometry (playwright not importable here; run this test in an environment that has it)'); }
+if (playwrightOk) {
+  const card = (n) => `<div class="card" style="width:300px;padding:10px"><h3>Card ${n}</h3><p>Body ${n}</p><a href="/x">More</a></div>`;
+  const pages = { '/cards.html': `<!doctype html><html><body><main>${card(1)}${card(2)}</main></body></html>`, '/empty.html': '<!doctype html><html><body><main><p>No cards here.</p></main></body></html>' };
+  const hits = {};
+  const server = createServer((req, res) => { hits[req.url] = (hits[req.url] || 0) + 1; res.writeHead(pages[req.url] ? 200 : 404, { 'content-type': 'text/html' }); res.end(pages[req.url] || 'nope'); });
+  await new Promise((r) => { server.listen(0, '127.0.0.1', r); });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const cwd = realpathSync(mkdtempSync(join(tmpdir(), 'unit-geometry-cache-')));
+  const run = (origin, width) => new Promise((resolve) => {
+    const child = spawn(process.execPath, [SCRIPT, `${base}/${origin}.html`, `${base}/cards.html`, '--unit', '.card', '--slug', 'home', '--width', String(width), '--plain'], { cwd, env: { ...process.env, STARDUST_ORIGIN_MAX_AGE_H: '1' } });
+    let out = ''; child.stdout.on('data', (d) => { out += d; }); child.stderr.on('data', (d) => { out += d; });
+    child.on('close', (status) => resolve({ status, out }));
+  });
+  const cacheFile = (w) => join(cwd, `stardust/current/measure/home-units-${w}.json`);
+  try {
+    let r = await run('empty', 1440);
+    assert.match(r.out, /^origin: measured \(no cache\) — not cached \(empty inventory: \.card\)$/m, r.out);
+    assert.equal(existsSync(cacheFile(1440)), false, 'an empty origin inventory is never cached');
+    r = await run('cards', 1440);
+    assert.match(r.out, /^origin: measured \(no cache\)$/m, r.out); assert.equal(existsSync(cacheFile(1440)), true);
+    const n = hits['/cards.html'];
+    r = await run('cards', 1440);
+    assert.match(r.out, /^origin: cached home-units-1440 \(\S+, max-age 1h\)$/m, r.out); assert.equal(hits['/cards.html'], n + 1, 'only the served side');
+    r = await run('cards', 360);
+    assert.match(r.out, /^origin: measured \(no cache\)$/m, r.out); assert.equal(existsSync(cacheFile(360)), true);
+    console.log('✓ e2e: the origin cache is written per width, reused while fresh (served side only), never written for an empty inventory');
+  } catch (e) { failed += 1; console.log(`✗ e2e unit-geometry origin cache\n  ${String(e.message).split('\n').join('\n  ')}`); }
+  rmSync(cwd, { recursive: true, force: true });
+  server.close();
+}
 console.log(failed ? `\n${failed} failed` : '\nall passed');
 process.exit(failed ? 1 : 0);

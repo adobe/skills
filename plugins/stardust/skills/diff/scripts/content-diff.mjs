@@ -119,7 +119,9 @@
  * fresh = probed at/after this run's opener line in ./stardust/status.jsonl (cwd = the project root, as
  * under gate.sh), or within STARDUST_ORIGIN_MAX_AGE_H hours (live-session.mjs freshness). A hit or a miss
  * prints one line after the header and lands in the --json object as liveCache; a source side that
- * answered an HTTP error is measured but never cached; a failed cache write never fails the probe.
+ * answered an HTTP error or rendered almost nothing (the ⚠ blank-render line: < 3 items in the primary
+ * root) is measured but never cached, so the next run probes it again; a failed cache write never fails
+ * the probe.
  *
  * Every context gets the real-Chrome UA + the standard request headers via
  * live-session.mjs (UA alone still 403s on Akamai — F-R1). A bot-management
@@ -526,8 +528,9 @@ async function main() {
       srcInvs = await grab(browser, proto, opts, prof, roots, nav);
       if (cache) {
         liveCache = { file: opts.liveCache, hit: false, at, policy: null, reason: cache.reason };
-        // an error page is measured (advisory contract) but never reused; a failed write never fails the probe
-        let unsaved = nav.status >= 400 ? `HTTP ${nav.status}` : null;
+        // an error page or a blank render (the ⚠ below) is measured (advisory contract) but never reused — replayed, it
+        // would mute every structural 🔴 for the rest of the run; a failed write never fails the probe
+        let unsaved = nav.status >= 400 ? `HTTP ${nav.status}` : (srcInvs[roots[0].name].items || []).length < 3 ? 'blank render' : null;
         if (!unsaved) { try { writeSideCache(opts.liveCache, key, srcInvs, { at, writtenBy: 'content-diff.mjs' }); } catch (e) { unsaved = `write failed: ${String(e.message).split('\n')[0]}`; } }
         cacheLine = `source side probed (cache: ${cache.reason}) ${unsaved ? `— not cached (${unsaved})` : `→ ${opts.liveCache}`}`;
       }
