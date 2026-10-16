@@ -29,11 +29,26 @@
  *     --tolerance <px>   ignore rect/size deltas ≤ this        (default 1)
  *     --consent <sel>    extra consent-accept selector (live side)
  *     --dismiss <sel,…>  extra overlay-dismiss selectors (live side)
+ *     --hide <sel,…>     in-flow per-visitor regions to remove on BOTH sides before
+ *                        measuring (repeatable) — e.g. a geo-IP location-suggestion
+ *                        bar in flow above the header, which shifts every live chrome
+ *                        rect; --dismiss stays for overlays (it cannot remove an
+ *                        in-flow bar). After the overlay dismissal and the settle,
+ *                        every match gets display:none !important; per side and
+ *                        selector its match count and summed height are recorded
+ *                        (×0 = a stale selector, an invalid one is an error entry)
+ *     --presence <file> --slug <slug>
+ *                        the same for the slug's "variable" regions in gate-all's
+ *                        presence.json (stardust/replica/gates/{all,prototypes}-<w>/):
+ *                        { "<slug>": { "variable": ["<sel>[=<buildSel>]", …] } } — the
+ *                        live side hides <sel>, the build side <buildSel> or <sel>;
+ *                        "main" is ignored; a missing file or slug hides nothing
  *     --headed           headed stealth real Chrome (bot-managed live sites)
  *     --locale <tag>     pin Accept-Language + locale (e.g. en-GB)
  *     --json             machine-readable output
  *     --live-cache <f>   reuse the live side's measurement from <f> (JSON) when it
- *                        exists for the same URL, width and region selectors; probe
+ *                        exists for the same URL, width, region selectors and live
+ *                        hide list (keyed only when non-empty); probe
  *                        and write it otherwise. Same contract as gate.sh's live.png:
  *                        one live navigation per breakpoint per full gate run, delete
  *                        the file to re-probe. Convention:
@@ -43,7 +58,11 @@
  *   node stardust/scripts/replica/chrome-parity.mjs "https://<site>/" "http://localhost:8791/home-proposed.html" \
  *     --region header=header --region strip=".quick-links|.quicklinks" --region footer=footer
  *
- * Output per region: the region box delta, then one line per paired element
+ * Output: after the live/build lines, `hidden live:` / `hidden build:` lines
+ * (`<sel> ×<n> (<h>px) [--hide|presence.json]`) when a hide list is set, and
+ * one `presence:` line with --presence; --json carries `hidden: { live, build }`
+ * (entries { sel, source, n, h, error? }) and `presence: { file, slug, regions,
+ * note } | null`. Per region: the region box delta, then one line per paired element
  * listing only the properties that differ, then MISSING (live-only) / EXTRA
  * (build-only) texts and the icon inventory. Exit 0 = parity within tolerance,
  * 2 = deltas printed (fix them, re-run), 1 = error, 3 = bot challenge on the
@@ -52,7 +71,7 @@
  * Requires: playwright, and the diff skill's scripts dir alongside
  * (live-session.mjs — the replica Setup copies both); both are imported
  * inside main(), so --help and the exported pure functions (parseArgs,
- * cacheKey, compareRegion) need neither. Each run is one live
+ * readPresence, hideLists, cacheKey, compareRegion) need neither. Each run is one live
  * navigation — budget it like any live probe; --json records both sides as
  * the round's evidence.
  */
@@ -80,7 +99,12 @@ Usage: node chrome-parity.mjs <liveURL> <buildURL> [options]
   --width <px>       viewport width (default 1440)
   --tolerance <px>   ignore rect/size deltas ≤ this (default 1)
   --consent <sel>    extra consent-accept selector (live side)
-  --dismiss <sel,…>  extra overlay-dismiss selectors (live side)
+  --dismiss <sel,…>  extra overlay-dismiss selectors (live side) — overlays only
+  --hide <sel,…>     hide in-flow per-visitor regions (a location-suggestion bar above the header) on
+                     BOTH sides after the settle, before measuring (repeatable; count + height printed)
+  --presence <file> --slug <slug>
+                     hide the slug's "variable" regions from gate-all's presence.json the same way
+                     (stardust/replica/gates/{all,prototypes}-<w>/; "<sel>=<buildSel>" halves)
   --headed           headed stealth real Chrome (bot-managed live sites)
   --locale <tag>     pin Accept-Language + locale
   --json             machine-readable output
@@ -89,10 +113,13 @@ Usage: node chrome-parity.mjs <liveURL> <buildURL> [options]
 
 Exit codes: 0 parity within tolerance, 2 deltas printed, 1 error, 3 bot challenge (live side).`;
 
+const splitList = (s) => String(s || '').split(',').map((x) => x.trim()).filter(Boolean);
+const need = (v, msg) => { if (!v || v.startsWith('--')) throw new UsageError(msg); return v; };
+
 /** argv after the script path → { live, build, opts }; throws UsageError. --help is answered by main() before this. */
 export function parseArgs(rest) {
   const pos = [];
-  const opts = { regions: [], noDefaults: false, width: 1440, tolerance: 1, consent: null, dismiss: [], headed: false, locale: null, json: false, liveCache: null };
+  const opts = { regions: [], noDefaults: false, width: 1440, tolerance: 1, consent: null, dismiss: [], hide: [], presence: null, slug: null, headed: false, locale: null, json: false, liveCache: null };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--region') {
@@ -106,6 +133,9 @@ export function parseArgs(rest) {
     else if (a === '--tolerance') { opts.tolerance = Number(rest[i += 1]); }
     else if (a === '--consent') { opts.consent = rest[i += 1]; }
     else if (a === '--dismiss') { opts.dismiss = (rest[i += 1] || '').split(',').map((s) => s.trim()).filter(Boolean); }
+    else if (a === '--hide') { opts.hide.push(...splitList(need(rest[i += 1], '--hide needs a selector list'))); }
+    else if (a === '--presence') { opts.presence = need(rest[i += 1], '--presence needs a file'); }
+    else if (a === '--slug') { opts.slug = need(rest[i += 1], '--slug needs a value'); }
     else if (a === '--headed') { opts.headed = true; }
     else if (a === '--locale') { opts.locale = rest[i += 1]; }
     else if (a === '--json') { opts.json = true; }
@@ -119,10 +149,41 @@ export function parseArgs(rest) {
     opts.regions = [defaults[0], ...opts.regions, ...defaults.slice(1)].filter(Boolean);
   }
   if (!opts.regions.length) throw new UsageError('--no-defaults needs at least one --region');
+  if (opts.presence && !opts.slug) throw new UsageError('--presence needs --slug <slug> (the page\'s key in presence.json)');
   const [live, build] = pos;
   if (!live || !build) throw new UsageError('need <liveURL> and <buildURL>');
   return { live, build, opts };
 }
+
+// ------------------------------------------------- in-flow per-visitor regions
+
+/**
+ * gate-all's presence.json — { "<slug>": { "main": …, "variable": ["<sel>[=<buildSel>]", …] } } — read as
+ * gate-all's specFor reads it: the variable entries joined on ',' and split again, each half pair split on '=',
+ * live = <sel>, build = <buildSel> || <sel>; "main" is ignored. A missing file or slug hides nothing (the note says so).
+ */
+export function readPresence(file, slug) {
+  if (!existsSync(file)) return { file, slug, regions: [], note: `${file} not found — nothing hidden` };
+  let all;
+  try { all = JSON.parse(readFileSync(file, 'utf8')); } catch (e) { throw new Error(`--presence ${file} unreadable (${e.message})`); }
+  const variable = [].concat((all && all[slug] && all[slug].variable) || []);
+  const regions = splitList(variable.join(',')).map((s) => { const [o, e = ''] = s.split('='); return { live: o.trim(), build: e.trim() || o.trim() }; });
+  return { file, slug, regions, note: regions.length ? `${file} → ${slug}: ${regions.length} variable region(s)` : `${file} has no variable regions for ${slug} — nothing hidden` };
+}
+
+/** Per-side hide lists: --hide on both sides, then the presence regions (live / build half); a repeated selector keeps its first source. */
+export function hideLists(hide, presence) {
+  const side = (k) => {
+    const out = [];
+    const add = (sel, source) => { if (sel && !out.some((x) => x.sel === sel)) out.push({ sel, source }); };
+    hide.forEach((sel) => add(sel, '--hide'));
+    ((presence && presence.regions) || []).forEach((r) => add(r[k], 'presence.json'));
+    return out;
+  };
+  return { live: side('live'), build: side('build') };
+}
+
+const hiddenText = (rows) => rows.map((x) => `${x.sel} ${x.error ? `error: ${x.error}` : `×${x.n}${x.n ? ` (${x.h}px)` : ''}`} [${x.source}]`).join('; ');
 
 // ---------------------------------------------------------------- in-page probe
 
@@ -159,6 +220,20 @@ function probeRegion(sel) {
   }));
   const cs = getComputedStyle(root);
   return { found: true, sel, rect: rect(root), position: cs.position, backgroundColor: cs.backgroundColor, atoms, icons };
+}
+
+// Every selector's matches are measured before any is hidden (nested selectors read their rendered size), then
+// hidden inline; an invalid selector is an error entry. Two frames (or 250 ms when frames are throttled) let layout settle.
+async function hideInPage(list) {
+  const rows = list.map(({ sel, source }) => {
+    try {
+      const els = [...document.querySelectorAll(sel)];
+      return { row: { sel, source, n: els.length, h: Math.round(els.reduce((s, el) => s + el.getBoundingClientRect().height, 0)) }, els };
+    } catch (e) { return { row: { sel, source, n: 0, h: 0, error: String(e.message || e).split('\n')[0] }, els: [] }; }
+  });
+  for (const { els } of rows) for (const el of els) el.style.setProperty('display', 'none', 'important');
+  await new Promise((r) => { requestAnimationFrame(() => requestAnimationFrame(r)); setTimeout(r, 250); });
+  return rows.map((x) => x.row);
 }
 /* eslint-enable no-undef */
 
@@ -245,28 +320,34 @@ async function settleTop(page) {
   await page.waitForTimeout(500);
 }
 
-async function probeSide(browser, session, url, opts, isLive) {
+async function probeSide(browser, session, url, opts, isLive, hides) {
   const { isLiveHttpUrl, newLiveContext, gotoLive, dismissOverlays, defaultWaitUntil } = session;
   const ctx = await newLiveContext(browser, { locale: opts.locale, viewport: { width: opts.width, height: 900 } });
   const page = await ctx.newPage();
   await gotoLive(page, url, { waitUntil: defaultWaitUntil(url), settleMs: isLiveHttpUrl(url) ? 2500 : 1200, solveWindow: opts.headed && isLive });
   await dismissOverlays(page, { extra: isLive ? [...(opts.consent ? [opts.consent] : []), ...opts.dismiss] : [], lateWindowMs: isLiveHttpUrl(url) ? 6000 : 0 });
   await settleTop(page);
+  const hidden = hides.length ? await page.evaluate(hideInPage, hides) : [];
   const out = {};
   for (const reg of opts.regions) out[reg.name] = await page.evaluate(probeRegion, isLive ? reg.live : reg.build);
   await ctx.close();
-  return out;
+  return { data: out, hidden };
 }
 
 // --live-cache: the live side's probe result keyed on URL + width + live
-// selectors. A key mismatch re-probes and overwrites (never measures a stale
-// site or the wrong breakpoint silently).
-export function cacheKey(live, opts) { return { url: live, width: opts.width, regions: opts.regions.map((r) => `${r.name}=${r.live}`) }; }
-function readLiveCache(file, live, opts) {
+// selectors (+ the live hide list, only when non-empty — a cache written
+// without hides stays valid for a run without them). A key mismatch re-probes
+// and overwrites (never measures a stale site or the wrong breakpoint silently).
+export function cacheKey(live, opts, hideLive = []) {
+  const key = { url: live, width: opts.width, regions: opts.regions.map((r) => `${r.name}=${r.live}`) };
+  if (hideLive.length) key.hide = hideLive.map(({ sel, source }) => ({ sel, source }));
+  return key;
+}
+function readLiveCache(file, live, opts, hideLive) {
   if (!file || !existsSync(file)) return null;
   try {
     const c = JSON.parse(readFileSync(file, 'utf8'));
-    if (JSON.stringify(c.key) !== JSON.stringify(cacheKey(live, opts))) { console.error(`chrome-parity: --live-cache ${file} was probed for a different url/width/regions — re-probing live`); return null; }
+    if (JSON.stringify(c.key) !== JSON.stringify(cacheKey(live, opts, hideLive))) { console.error(`chrome-parity: --live-cache ${file} was probed for a different url/width/regions/hides — re-probing live`); return null; }
     return c;
   } catch (e) { console.error(`chrome-parity: --live-cache ${file} unreadable (${e.message}) — re-probing live`); return null; }
 }
@@ -274,26 +355,32 @@ function readLiveCache(file, live, opts) {
 async function main(args) {
   if (args.includes('--help') || args.includes('-h')) { console.log(HELP); return 0; }
   const { live, build, opts } = parseArgs(args);
+  const presence = opts.presence ? readPresence(opts.presence, opts.slug) : null;
+  const hides = hideLists(opts.hide, presence);
   let chromium;
   try { ({ chromium } = await import('playwright')); } catch (e) { throw new Error(`playwright is not importable from ${HERE} (${e.code || e.message}) — replica SKILL.md § Setup: copy the scripts dir into the project and run the copy`); }
   const session = await loadLiveSession();
   const browser = opts.headed ? await session.launchStealthHeaded(chromium) : await chromium.launch();
   let total = 0;
   try {
-    const cached = readLiveCache(opts.liveCache, live, opts);
-    const L = cached ? cached.data : await probeSide(browser, session, live, opts, true);
+    const cached = readLiveCache(opts.liveCache, live, opts, hides.live);
+    const liveSide = cached ? { data: cached.data, hidden: cached.hidden || [] } : await probeSide(browser, session, live, opts, true, hides.live);
     if (opts.liveCache && !cached) {
       mkdirSync(dirname(opts.liveCache), { recursive: true });
-      writeFileSync(opts.liveCache, JSON.stringify({ key: cacheKey(live, opts), probedAt: new Date().toISOString(), data: L }, null, 2));
+      writeFileSync(opts.liveCache, JSON.stringify({ key: cacheKey(live, opts, hides.live), probedAt: new Date().toISOString(), data: liveSide.data, hidden: liveSide.hidden }, null, 2));
     }
     const liveNote = cached ? ` (live side from cache ${opts.liveCache}, probed ${cached.probedAt} — delete the file to re-probe)` : '';
-    const B = await probeSide(browser, session, build, opts, false);
+    const buildSide = await probeSide(browser, session, build, opts, false, hides.build);
+    const L = liveSide.data; const B = buildSide.data;
+    const hidden = { live: liveSide.hidden, build: buildSide.hidden };
     const regions = opts.regions.map((reg) => compareRegion(reg.name, L[reg.name], B[reg.name], opts.tolerance));
     total = regions.reduce((n, r) => n + r.findings.length, 0);
     if (opts.json) {
-      console.log(JSON.stringify({ live, build, width: opts.width, tolerance: opts.tolerance, liveCache: cached ? { file: opts.liveCache, probedAt: cached.probedAt } : null, regions, raw: { live: L, build: B } }, null, 2));
+      console.log(JSON.stringify({ live, build, width: opts.width, tolerance: opts.tolerance, liveCache: cached ? { file: opts.liveCache, probedAt: cached.probedAt } : null, hidden, presence, regions, raw: { live: L, build: B } }, null, 2));
     } else {
       console.log(`chrome-parity @ ${opts.width}px, tolerance ${opts.tolerance}px\n  live:  ${live}${liveNote}\n  build: ${build}`);
+      if (hidden.live.length || hidden.build.length) console.log(`  hidden live:  ${hiddenText(hidden.live)}\n  hidden build: ${hiddenText(hidden.build)}`);
+      if (presence) console.log(`  presence: ${presence.note}`);
       for (const r of regions) {
         const inv = r.inventory ? ` — ${r.pairs} paired of ${r.inventory.live.atoms}/${r.inventory.build.atoms} texts, ${r.inventory.live.icons}/${r.inventory.build.icons} icons` : '';
         console.log(`\n■ ${r.name}: ${r.findings.length ? `${r.findings.length} delta(s)` : '✓ parity'}${inv}`);
