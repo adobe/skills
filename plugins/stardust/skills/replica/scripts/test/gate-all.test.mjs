@@ -15,7 +15,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, 
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { contentDeployed, deployedDocs, formatSummary, gateKeyOf, gateKeyParts, keyChanged, parseArgs, probeReuse, skipCapture, verdict } from '../gate-all.mjs';
+import { contentDeployed, deployedDocs, edsHostOf, formatSummary, gateKeyOf, gateKeyParts, hostServes, keyChanged, parseArgs, probeReuse, rowKey, sharedBlocks, skipCapture, verdict } from '../gate-all.mjs';
 
 // pixel-compare imports pngjs at module level (a project devDependency, absent in the plugin checkout):
 // import it lazily and skip its one check where it does not resolve, like the other browser/dep-bound tests.
@@ -134,6 +134,8 @@ check('gateKeyOf / gateKeyParts: stable across key order; one block CSS byte, co
   put('blocks/cards/cards.css', '.cards{ }'); assert.notEqual(key(), k0, 'one CSS byte'); put('blocks/cards/cards.css', '.cards{}'); assert.equal(key(), k0);
   put('content/index.html', '<main><div><div class="cards one"></div></div> </main>'); assert.notEqual(key(), k0, 'one content byte'); put('content/index.html', '<main><div><div class="cards one"></div></div></main>');
   assert.notEqual(key({ masks: { home: { masks: ['0-80'], reason: 'banner' } } }), k0, 'a mask edit');
+  assert.notEqual(key({ opts: { ...opts, threshold: 12 } }), k0, 'a criterion'); assert.notEqual(key({ opts: { ...opts, clip: false, content: false } }), k0, '--no-probes');
+  assert.notEqual(key({ instruments: 'other' }), k0, 'another verdict or probe version');
   const freeze = () => assert.equal(spawnSync(process.execPath, [join(HERE, '..', 'foundation-freeze.mjs'), 'freeze'], { cwd: root }).status, 0);
   freeze(); const kf = key();
   put('styles/styles.css', 'body{ }'); freeze(); assert.notEqual(key(), kf, 'a frozen file hash in the manifest');
@@ -142,28 +144,65 @@ check('gateKeyOf / gateKeyParts: stable across key order; one block CSS byte, co
   assert.deepEqual(parts(), { parts: null, why: 'foundation changed since freeze' });
   rmSync(root, { recursive: true, force: true });
 });
-check('deploy-state guard (content half): every hashed document is the one the gated host serves — the newest ledger row, delivered', () => {
+check('blocks not authored by the page still key it: auto-blocks and foundation-loaded blocks (shared part), blocks its blocks import; another page\'s block does not', () => {
+  const root = mkdtempSync(join(tmpdir(), 'gate-all-blocks-'));
+  const put = (f, s) => { mkdirSync(dirname(join(root, f)), { recursive: true }); writeFileSync(join(root, f), s); };
+  put('scripts/scripts.js', "import { buildBlock } from './aem.js';\nbuildBlock('embed', []);");
+  put('blocks/header/header.js', "import { loadFragment } from '../fragment/fragment.js';");
+  put('blocks/fragment/fragment.js', 'export const loadFragment = 1;'); put('blocks/embed/embed.css', '.embed{}'); put('blocks/video/video.css', '.video{}');
+  put('blocks/cards/cards.js', "import { carousel } from '../carousel/carousel.js';\nimport { x } from '../../scripts/aem.js';"); put('blocks/carousel/carousel.js', 'export const carousel = 1;');
+  put('blocks/tabs/tabs.css', '.tabs{}');
+  put('content/index.html', '<div class="cards"></div>'); put('content/other.html', '<div class="tabs"></div><div class="carousel"></div><div class="fragment"></div><div class="embed"></div>');
+  const opts = parseArgs(['node', 'x']); const page = { slug: 'home', url: 'https://o.test/', liveUrl: 'https://main--s--o.aem.page/' };
+  const key = () => gateKeyOf(gateKeyParts(page, { root, opts, instruments: 'i' }).parts);
+  assert.deepEqual(gateKeyParts(page, { root, opts, instruments: 'i' }).parts.blocks.carousel, { 'blocks/carousel/carousel.js': createHash('sha256').update('export const carousel = 1;').digest('hex') }, 'imported by cards');
+  assert.deepEqual(sharedBlocks(root).names, ['embed', 'fragment', 'header', 'video'], 'unauthored or loaded by the foundation');
+  const k0 = key();
+  for (const [f, edit] of [['blocks/embed/embed.css', '.embed{ }'], ['blocks/fragment/fragment.js', 'export const loadFragment = 2;'], ['blocks/video/video.css', '.video{ }'], ['blocks/carousel/carousel.js', 'export const carousel = 2;']]) {
+    const before = readFileSync(join(root, f), 'utf8'); put(f, edit); assert.notEqual(key(), k0, f); put(f, before);
+  }
+  put('blocks/tabs/tabs.css', '.tabs{ }'); assert.equal(key(), k0, 'a block only another page authors');
+  rmSync(root, { recursive: true, force: true });
+});
+check('deploy-state guard: the gated host serves the pushed branch and repo; every document is its newest ledger row, delivered to that org/repo', () => {
+  const code = { ok: true, branch: 'feature/Hero', ref: 'feature-hero', owner: 'org', repo: 'site' };
+  assert.equal(edsHostOf('feature-hero--site--org.aem.page').ref, 'feature-hero');
+  assert.equal(hostServes('feature-hero--site--org.aem.page', code), null);
+  assert.match(hostServes('main--site--org.aem.page', code), /serves ref main, the upstream branch is feature\/Hero/);
+  assert.match(hostServes('feature-hero--fork--org.aem.page', code), /serves org\/fork, the upstream remote is org\/site/);
+  assert.match(hostServes('www.example.com', code), /not an EDS/);
   const root = mkdtempSync(join(tmpdir(), 'gate-all-ledger-'));
   mkdirSync(join(root, 'content')); mkdirSync(join(root, 'stardust/deploy'), { recursive: true });
-  writeFileSync(join(root, 'content/.deploy-ledger.json'), JSON.stringify({ '/index': { status: 'live', ts: T(1), contentSha: 'old' }, '/nav': { status: 'live', ts: T(1), contentSha: 'n' }, '/footer': { status: 'previewed', ts: T(1), contentSha: 'f' } }));
-  writeFileSync(join(root, 'stardust/deploy/ledger-c1.json'), JSON.stringify({ '/index': { status: 'live', ts: T(3), contentSha: 'new' }, '/about': { status: 'preview-fail', ts: T(3), contentSha: 'a' } }));
-  const docs = deployedDocs(root); const live = 'main--s--o.aem.live'; const preview = 'main--s--o.aem.page';
-  assert.deepEqual(docs['/index'], { contentSha: 'new', status: 'live' });
+  const row = (status, ts, contentSha, verifiedOn = 'Org/Site') => ({ status, ts, contentSha, verifiedOn });
+  writeFileSync(join(root, 'content/.deploy-ledger.json'), JSON.stringify({ '/index': row('live', T(1), 'old'), '/nav': row('live', T(1), 'n'), '/footer': row('previewed', T(1), 'f'), '/x': { status: 'live', ts: T(1), contentSha: 'x' }, '/y': row('live', T(1), 'y', 'org/other') }));
+  writeFileSync(join(root, 'stardust/deploy/ledger-c1.json'), JSON.stringify({ '/index': row('live', T(3), 'new'), '/about': row('preview-fail', T(3), 'a') }));
+  const docs = deployedDocs(root); const live = 'main--site--org.aem.live'; const preview = 'main--site--org.aem.page';
+  assert.deepEqual(docs['/index'], { contentSha: 'new', status: 'live', verifiedOn: 'Org/Site' });
   assert.equal(contentDeployed({ 'content/index.html': 'new', 'content/nav.html': 'n' }, docs, live), null);
   assert.match(contentDeployed({ 'content/index.html': 'old' }, docs, live), /content\/index\.html differs from the deployed document/);
-  assert.match(contentDeployed({ 'content/x.html': 'x' }, docs, live), /no deploy-ledger contentSha for \/x/);
+  assert.match(contentDeployed({ 'content/z.html': 'z' }, docs, live), /no deploy-ledger contentSha for \/z/);
   assert.equal(contentDeployed({ 'content/footer.html': 'f' }, docs, preview), null, 'previewed is what a preview host serves');
   assert.match(contentDeployed({ 'content/footer.html': 'f' }, docs, live), /is previewed, not live/);
   assert.match(contentDeployed({ 'content/about.html': 'a' }, docs, preview), /is preview-fail/, 'the newest attempt failed: the delivered document is unknown');
+  assert.match(contentDeployed({ 'content/x.html': 'x' }, docs, live), /no verifiedOn/, 'a row without verifiedOn proves nothing');
+  assert.match(contentDeployed({ 'content/y.html': 'y' }, docs, live), /delivered to org\/other, not org\/site/);
+  assert.match(contentDeployed({ 'content/index.html': 'new' }, docs, 'www.example.com'), /not an EDS/);
   rmSync(root, { recursive: true, force: true });
 });
-check('keyChanged / skipCapture: a changed known key re-shoots the EDS side only; a legacy dir or an unknown key does not', () => {
+check('keyChanged / skipCapture / rowKey: a changed known key or a foundation edit since the freeze re-shoots the EDS side; a row keeps a key only for evidence measured under it', () => {
   assert.equal(keyChanged(null, 'K'), false, 'no gate-key.json = legacy dir'); assert.equal(keyChanged({ gateKey: 'K' }, null), false, 'unknown now');
   assert.equal(keyChanged({ gateKey: null }, 'K'), true, 'captured while unknown'); assert.equal(keyChanged({ gateKey: 'K' }, 'K2'), true); assert.equal(keyChanged({ gateKey: 'K' }, 'K'), false);
+  assert.equal(keyChanged({ gateKey: 'K' }, null, true), true, 'foundation changed since freeze'); assert.equal(keyChanged({ gateKey: null }, null, true), false, 'already captured after the change');
   const ctx = (opts, changed = false) => ({ opts, has: () => true, keyChanged: () => changed });
   assert.equal(skipCapture({}, 'eds', ctx({ skip: true })), true); assert.equal(skipCapture({}, 'eds', ctx({ skip: true }, true)), false);
   assert.equal(skipCapture({}, 'origin', ctx({ skip: true }, true)), true); assert.equal(skipCapture({}, 'origin', ctx({ skip: true, recaptureOrigin: true })), false);
   assert.equal(skipCapture({}, 'eds', ctx({ skip: false })), false);
+  const build = { origin: 'https://h', settings: { threshold: 10 } }; const stored = { gateKey: 'K', parts: { build } };
+  assert.equal(rowKey(stored, { gateKey: 'K', parts: { build } }), 'K'); assert.equal(rowKey(stored, { gateKey: 'K2', parts: { build } }), null, 'measured under another key');
+  assert.equal(rowKey(stored, { gateKey: null, parts: { build } }), 'K', 'unknown now, same criteria, probes replayed');
+  assert.equal(rowKey(stored, { gateKey: null, parts: { build } }, true), null, 'probed afresh against an unproven deploy');
+  assert.equal(rowKey(stored, { gateKey: null, parts: { build: { ...build, settings: { threshold: 12 } } } }), null, 'other criteria');
+  assert.equal(rowKey(stored, { gateKey: null, parts: null }), null); assert.equal(rowKey(null, { gateKey: 'K' }), null);
 });
 if (textBoxPct) check('pixel-compare textBoxPct: differing pixels counted inside the boxes only, masked rows skipped', () => {
   const w = 10; const h = 10; const data = Buffer.alloc(w * h * 4);
@@ -215,7 +254,7 @@ put('styles/styles.css', 'body { margin: 0; }'); put('blocks/hero/hero.css', '.h
 put('content/index.html', '<main><div><div class="hero"></div></div></main>'); put('content/about.html', '<main><div><div class="cards"></div></div></main>');
 put('content/nav.html', '<main><div><p>nav</p></div></main>'); put('content/footer.html', '<main><div><p>footer</p></div></main>');
 const sha = (f) => createHash('sha256').update(readFileSync(join(root, f))).digest('hex');
-put('content/.deploy-ledger.json', JSON.stringify(Object.fromEntries(['index', 'about', 'nav', 'footer'].map((n) => [`/${n}`, { status: 'live', ts: '2026-01-01T00:00:00.000Z', contentSha: sha(`content/${n}.html`) }]))));
+put('content/.deploy-ledger.json', JSON.stringify(Object.fromEntries(['index', 'about', 'nav', 'footer'].map((n) => [`/${n}`, { status: 'live', ts: '2026-01-01T00:00:00.000Z', contentSha: sha(`content/${n}.html`), verifiedOn: 'org/site' }]))));
 put('stardust/state.json', JSON.stringify({ pages: [
   { slug: 'home', url: 'https://origin.test/', liveUrl: 'https://main--site--org.aem.page/', status: 'deployed', template: 'home' },
   { slug: 'about', url: 'https://origin.test/about', liveUrl: 'https://main--site--org.aem.page/about', status: 'deployed', template: 'page' }] }));
@@ -223,8 +262,10 @@ const sh = (cwd, cmd, args) => { const r = spawnSync(cmd, args, { cwd, encoding:
 const git = (...args) => sh(root, 'git', ['-c', 'user.email=t@example.com', '-c', 'user.name=t', '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null', ...args]);
 const CODE = ['.gitignore', 'head.html', 'scripts', 'styles', 'blocks', 'content'];
 sh(root, process.execPath, [join(replica, 'foundation-freeze.mjs'), 'freeze']);
-sh(base, 'git', ['init', '-q', '--bare', 'remote.git']);
-git('init', '-q'); git('add', '--', ...CODE); git('commit', '-qm', 'site'); git('remote', 'add', 'origin', join(base, 'remote.git')); git('push', '-q', '-u', 'origin', 'HEAD');
+// The remote's last two path segments are its <owner>/<repo> and the branch is main: the host main--site--org serves it.
+mkdirSync(join(base, 'org')); sh(join(base, 'org'), 'git', ['init', '-q', '--bare', 'site.git']);
+git('init', '-q'); git('symbolic-ref', 'HEAD', 'refs/heads/main'); git('add', '--', ...CODE); git('commit', '-qm', 'site');
+git('remote', 'add', 'origin', join(base, 'org', 'site.git')); git('push', '-q', '-u', 'origin', 'HEAD');
 
 const gateAll = (args = [], env = {}) => {
   writeFileSync(COUNT, '');
@@ -268,6 +309,16 @@ check('a second --skip-existing run over all-PASS rows launches nothing: 0 stitc
   assert.equal(r.status, 0, r.stderr); assert.deepEqual(r.n, { origin: 0, eds: 0, probes: 0, compares: 0 });
   assert.equal(summary().totals.reusedRows, 2); assert.deepEqual(strip(summary()), strip(run3));
 });
+r = gateAll(['--compare-only', '--no-probes']);
+check('--compare-only --no-probes: a pixel-only row never carries the full-criteria key', () => {
+  assert.equal(r.status, 0, r.stderr); assert.deepEqual(r.n, { origin: 0, eds: 0, probes: 0, compares: 2 });
+  for (const slug of ['home', 'about']) assert.equal(row(summary(), slug).gateKey, null, slug);
+});
+r = gateAll(['--skip-existing']);
+check('… so the next --skip-existing run reuses no row: it re-compares on replayed probes and keys the rows again', () => {
+  assert.equal(r.status, 0, r.stderr); assert.deepEqual(r.n, { origin: 0, eds: 0, probes: 0, compares: 2 });
+  const s = summary(); assert.equal(s.totals.reusedRows, 0); assert.equal(s.totals.reusedProbes, 2); assert.equal(row(s, 'home').gateKey, storedKey('home'));
+});
 const keys4 = { home: storedKey('home'), about: storedKey('about') };
 put('blocks/cards/cards.css', '.cards { gap: 2rem; }'); git('add', '--', 'blocks/cards/cards.css'); git('commit', '-qm', 'cards gap'); git('push', '-q');
 r = gateAll(['--skip-existing']);
@@ -288,6 +339,22 @@ check('the same edit NOT pushed: key null (the reason names the file), no row re
   assert.equal(row(s, 'about').gateKey, keys5.about, 'the row keeps the key of its evidence'); assert.equal(storedKey('about'), keys5.about);
 });
 git('checkout', '--', 'blocks/cards/cards.css');
+put('styles/styles.css', 'body { margin: 1px; }'); git('add', '--', 'styles/styles.css'); git('commit', '-qm', 'foundation request'); git('push', '-q');
+r = gateAll(['--skip-existing']);
+check('a frozen file edited after the freeze (pushed): every key unknown, yet the EDS side is re-shot and re-probed — no row reused, rows unkeyed', () => {
+  assert.equal(r.status, 0, r.stderr); assert.deepEqual(r.n, { origin: 0, eds: 2, probes: 2, compares: 2 });
+  assert.match(r.stdout, /gate key n\/a for 2\/2 page\(s\) — foundation changed since freeze/);
+  const s = summary(); assert.equal(s.totals.reusedRows + s.totals.reusedProbes, 0);
+  for (const slug of ['home', 'about']) { assert.equal(row(s, slug).gateKey, null); assert.equal(storedKey(slug), null); }
+});
+sh(root, process.execPath, [join(replica, 'foundation-freeze.mjs'), 'freeze']);
+r = gateAll(['--skip-existing']);
+check('re-frozen: the new keys differ from the unknown ones the evidence was captured under — EDS re-shot once more, rows keyed', () => {
+  assert.equal(r.status, 0, r.stderr); assert.deepEqual(r.n, { origin: 0, eds: 2, probes: 2, compares: 2 });
+  for (const slug of ['home', 'about']) { assert.match(storedKey(slug), HEX); assert.equal(row(summary(), slug).gateKey, storedKey(slug)); }
+});
+r = gateAll(['--skip-existing']);
+check('… and the next run launches nothing', () => { assert.equal(r.status, 0, r.stderr); assert.deepEqual(r.n, { origin: 0, eds: 0, probes: 0, compares: 0 }); });
 for (const slug of ['home', 'about']) for (const f of ['probes.json', 'gate-key.json']) unlinkSync(pageFile(slug, f));
 const legacy = summary(); for (const x of legacy.rows) { delete x.gateKey; delete x.reused; } writeFileSync(join(OUT, 'summary.json'), JSON.stringify(legacy, null, 2));
 r = gateAll(['--skip-existing']);
