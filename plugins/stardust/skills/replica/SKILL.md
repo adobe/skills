@@ -467,12 +467,13 @@ had one section for the whole run).
   and sidecars: `stardust/replica/gates/all-<width>/`; with the Phase 4
   `prototypes-<width>/` table it is the pair `gate-evidence.mjs` reads (a page
   without a row is ungated). Each cluster subagent runs `--only` over its own
-  pages inside the fan-out; cluster re-runs and C-final's roster run (the
-  recorded unit `gate-all`, then `update-coverage.mjs --gate`) pass
-  `--skip-existing` with the clusters' `--eds-host`: a PASS row is reused
-  while its gate key (foundation, blocks, content, settings; deployed tree
-  only) holds, probes while the capture pair holds, a key change re-shoots
-  the EDS side; rows say `reused` (handoff contract § 3, row C).
+  pages inside the fan-out; cluster re-runs and C-final's roster run (unit
+  `gate-all`, after re-freezing the foundation the requests changed; then
+  `update-coverage.mjs --gate`) pass `--skip-existing` with the clusters'
+  `--eds-host`: a PASS row is reused only while its gate key (foundation,
+  blocks, content, criteria) is proven served and unchanged, probes only
+  while the capture pair holds; a changed key or a frozen-file edit since
+  the freeze re-shoots the EDS side; rows say `reused` (handoff § 3, C).
 
 **State:** replica writes its own state under `stardust/replica/` — the
 inconsistency register, `progress.json` (one map: `types.<archetype>` —
