@@ -4,6 +4,50 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.34.0 — coverage is the contract: the delivered block structure, versioned coverage files and one shared page-block shape (#133)
+
+Field learning: a hands-off replica of a travel-brand site (64 pages in 11 locales, 8 templates, 12 blocks) ended
+with a working site but nothing a catalog-driven migration tool could continue from. That tool would analyse the
+live source again, generate blocks next to the delivered ones and restyle the site. Everything it needed except
+screenshots and source selectors was already in the run's committed artifacts, but scattered, and in shapes only
+stardust reads.
+
+The fix extends the coverage rollout already commits, for three reasons. No client has shipped against these files
+yet, so they are versioned 0.x (`formatVersion` 0.1.0); the rule that a minor release only adds fields applies from
+1.0.0, declared once a client ships. Nothing is restated in a parallel file: the new data, each page's blocks in
+document order with their option classes and sections, read from `content/`, lands in coverage. And there is one
+shape: a page's blocks use the spec skill's record (`pos`, `block`, `variant`, `kind`, `section`, as in its
+`page-blocks.jsonl`), with rollout's extras (`sectionPos`, `classes`, `variantId`, `rows`, `cells`).
+
+- **`pages.json` `delivered`** (`inventory.mjs`, `--content <dir>`): per page, the blocks in document order, each
+  block with its option classes, variant id and row and cell counts, and the default content between blocks as one
+  `default` record; the sections with their style; `lang`, the source snapshot and a content hash. It is null while a
+  page has no content file. Existing fields are unchanged.
+- **`templates.json`** rows gain `type`, `representativeUrl` and `urls` (the template's source URLs, representative
+  first).
+- **`blocks.json`** module rows gain option classes (the delivered ones and those in the block's CSS), variants with
+  stable ids (a hash of the block name and its classes; an id from the prior coverage is carried forward), a
+  description from the block's JSDoc, its contract from the conversion log and a base type (`unknown` when none
+  matches); `blocks.mjs --blocks <dir>`.
+- **`formatVersion` on every coverage file**, documented in `reference/coverage-contract.md`: clients ignore fields
+  they do not know, ignore identity fields and resolve identity from the repository they open. Unchanged inputs
+  rewrite nothing, so two runs leave coverage byte-identical.
+- **Opt-in `workspace-manifest.mjs`** writes `stardust/rollout/workspace/manifest.json`: hashes of the coverage files
+  and of what they were built from (content, block code, judgement), and the handover state. It refuses coverage
+  older than its inputs (content, block code or the judgement changed since inventory or blocks ran). Once the content
+  is no longer tracked, because a client took the project over, it writes nothing and exits 3; `--force` overrides.
+- **One short judgement** (`judgement.json`, drafted by `--draft-judgement`): template names and descriptions, base
+  types, purpose and reuse guidance for custom blocks (8 templates and 8 custom blocks on that site). Its names and
+  base types land in coverage; without it the page type and `unknown` stand.
+- **Opt-in, non-gating:** runs in Phase I after `dashboard.mjs` only when `rollout.json` `exports` lists
+  `migration-workspace` (`inventory.mjs --export migration-workspace`). There is no new ledger phase, `done-check`
+  is unchanged, and a failure goes into the `I-dashboard` end line. It also runs alone on any delivered repo before
+  handover.
+- Folded: the dashboard's stage rules, legend and badges move to `dashboard.mjs --help`.
+- Tests cover the `delivered` parse (sections, merged default content, chrome skipped), variant ids and their carry
+  forward, the new template and block fields, every coverage file against its schema, no new identity, byte-identical
+  re-runs, the stale-coverage and handover refusals, atomic writes and the opt-in key.
+
 ## 0.33.0 — martech: the source's Web SDK is read and offered as an `aem-martech` switch, off
 
 Field learning: a full run on a consumer-brand site on Launch + Web SDK carried the tag stack over, but
