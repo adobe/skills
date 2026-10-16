@@ -4,14 +4,16 @@
 // (at, approvedBy), prototypePath / migratedPath, stale clearing per status, _provenance
 // re-stamp with extra keys preserved, top-level key order (flow keys, unknown keys anchored in
 // place), --history-only, the value-flag swallow rule, summary counts and --slugs, usage errors and
-// the rejected --gate / --note flags. Run: node <this file>.
+// the rejected --gate / --note flags; init (line list, JSON array, stdin, --types, --site-url, the
+// record index, provenance refusals, exists / --force, captureGaps), set (--representative /
+// --type, refusals) and the summary representative lines. Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ORDER, SET_BY, TOP_ORDER, advance, classify, orderTopLevel, pluginVersion, stampProvenance, summarise } from '../state.mjs';
+import { ORDER, SET_BY, TOP_ORDER, advance, classify, crawlSlug, orderTopLevel, pluginVersion, stampProvenance, summarise, urlKey, validateProvenance } from '../state.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'state.mjs');
@@ -193,6 +195,217 @@ check('usage: missing --to, bad --to, no slug, unknown command, unknown option, 
   const missing = spawnSync(process.execPath, [SCRIPT, 'summary', '--dir', join(root, 'nowhere')], { encoding: 'utf8' }); assert.equal(missing.status, 2); assert.match(missing.stderr, /does not exist — create it with `state\.mjs init --pages <urls>` after the crawl/);
   const h = run('--help'); assert.equal(h.code, 0); assert.match(h.out, /node state\.mjs advance <slug…> --to </); assert.match(h.out, /node state\.mjs summary \[--slugs\]/); assert.match(h.out, /--history-only/);
 });
+check('advance and summary still refuse the init / set flags as unknown options', () => {
+  for (const f of ['--pages', '--types', '--site-url', '--current', '--representative', '--type']) {
+    const r = run('advance', 'home', '--to', 'directed', f, 'x'); assert.equal(r.code, 2, f); assert.match(r.err, new RegExp(`^state: unknown option ${f}$`, 'm'));
+  }
+  assert.equal(run('summary', '--type', 'x').code, 2);
+});
+
+// ---- init / set / summary representatives -------------------------------------------------------
+const initRoot = mkdtempSync(join(tmpdir(), 'state-init-test-'));
+const prov = (o = {}) => ({ renderedBy: 'playwright', fetchedAt: '2026-01-01T00:00:00.000Z', waitMode: 'medium', waitMs: 2500, httpStatus: 200, ...o });
+const record = (slug, url, { p = {}, finalUrl = url, title = `Title ${slug}` } = {}) => ({ _provenance: prov(p), slug, url, finalUrl, title, renderedBy: 'playwright', fetchedAt: prov(p).fetchedAt, renderedHtml: '<html></html>' });
+// The crawl's records: `about-us-1a2b` is a collision suffix only the URL index can find
+// (/about/us slugifies to about-us); `old` redirected, so only its finalUrl names /new-home.
+const RECORDS = [
+  record('index', 'https://www.example.com/', { title: 'Home' }),
+  record('about-us', 'https://www.example.com/about-us'),
+  record('about-us-1a2b', 'https://www.example.com/about/us'),
+  record('de-produkte', 'https://www.example.com/de/produkte/'),
+  record('old', 'https://www.example.com/old', { finalUrl: 'https://www.example.com/new-home' }),
+  record('blog', 'https://www.example.com/blog', { title: '' }),
+];
+let projects = 0;
+const project = (records = RECORDS) => {
+  const d = join(initRoot, `p${(projects += 1)}`, 'stardust');
+  const pagesDir = join(d, 'current', 'pages'); mkdirSync(pagesDir, { recursive: true });
+  for (const r of records) writeFileSync(join(pagesDir, `${r.slug}.json`), JSON.stringify(r, null, 2));
+  return { d, pagesDir, stateFile: join(d, 'state.json'), list: (name, text) => { const f = join(d, '..', name); writeFileSync(f, text); return f; } };
+};
+const runIn = (d, args, input) => { const r = spawnSync(process.execPath, [SCRIPT, ...args, '--dir', d], { encoding: 'utf8', input }); return { code: r.status, out: r.stdout, err: r.stderr }; };
+const readIn = (d) => JSON.parse(readFileSync(join(d, 'state.json'), 'utf8'));
+
+check('crawlSlug mirrors the crawl slug rule; urlKey folds www, trailing slash and fragment, keeps the query', () => {
+  assert.equal(crawlSlug('https://example.com/'), 'index'); assert.equal(crawlSlug('https://example.com/About/Team/'), 'about-team'); assert.equal(crawlSlug('https://example.com/a__b//c.html?x=1'), 'a-b-c-html');
+  assert.equal(urlKey('https://WWW.Example.com/about/?q=1#top'), 'https://example.com/about?q=1'); assert.equal(urlKey('https://example.com/'), 'https://example.com');
+  assert.notEqual(urlKey('http://example.com/a'), urlKey('https://example.com/a'), 'the scheme is part of the origin');
+});
+check('validateProvenance: a crawl record passes; each condition fails on its own, naming the field', () => {
+  const now = Date.parse('2026-01-01T00:10:00Z');
+  assert.deepEqual(validateProvenance(record('x', 'https://example.com/x'), { now }), []);
+  for (const waitMode of ['slow', 'spec', 'networkidle', 'domcontentloaded(fallback)']) assert.deepEqual(validateProvenance({ _provenance: prov({ waitMode }) }, { now }), [], waitMode);
+  assert.deepEqual(validateProvenance({ _provenance: prov({ fetchedAt: '2026-01-01T00:14:00Z' }) }, { now }), [], 'up to 5 min ahead is clock skew');
+  const one = (o) => validateProvenance({ _provenance: prov(o) }, { now });
+  assert.match(one({ renderedBy: 'fetch' }).join(), /^renderedBy: "fetch" is not "playwright"$/);
+  assert.match(one({ fetchedAt: 'yesterday' }).join(), /^fetchedAt: "yesterday" does not parse as ISO 8601$/);
+  assert.match(one({ fetchedAt: '2026-01-01T00:16:00Z' }).join(), /^fetchedAt: .* is more than 5 min in the future$/);
+  assert.match(one({ waitMs: 0 }).join(), /^waitMs: 0 is not an integer > 0$/); assert.match(one({ waitMs: 2.5 }).join(), /^waitMs/);
+  assert.match(one({ waitMode: 'quick' }).join(), /^waitMode: "quick" does not match/);
+  assert.match(one({ httpStatus: 404 }).join(), /^httpStatus: 404 is not an integer in \[200, 399\]$/); assert.match(one({ httpStatus: '200' }).join(), /^httpStatus/);
+  assert.match(validateProvenance({ slug: 'x' }).join(), /^_provenance: missing, not an object$/);
+});
+check('init from a line list: index lookup (www, trailing slash, collision suffix, finalUrl), page rows, site, key order, stdout', () => {
+  const p = project();
+  const list = p.list('pages.txt', '# pages to carry\nhttps://example.com\n\nhttps://www.example.com/about/us/\n  https://example.com/new-home  \nhttps://www.example.com/blog\n');
+  const r = runIn(p.d, ['init', '--pages', list]);
+  assert.equal(r.code, 0, r.err);
+  assert.equal(r.out, `state: init 4 page(s) from ${list} · 0 typed · written by stardust:extract\n`);
+  const s = readIn(p.d);
+  assert.deepEqual(Object.keys(s), ['_provenance', 'site', 'pages']);
+  assert.equal(s._provenance.writtenBy, 'stardust:extract'); assert.match(s._provenance.writtenAt, ISO_UTC);
+  assert.deepEqual(s.site, { originUrl: 'https://www.example.com', deployUrl: null, extractedAt: s._provenance.writtenAt, crawled: 4 });
+  assert.deepEqual(s.pages.map((x) => x.slug), ['index', 'about-us-1a2b', 'old', 'blog'], 'input order; collision suffix and finalUrl found through the index');
+  assert.deepEqual(s.pages[0], { slug: 'index', url: 'https://www.example.com/', title: 'Home', type: null, status: 'extracted', history: [{ status: 'extracted', at: s._provenance.writtenAt }], stale: false, staleReason: null, currentStatePath: `${p.d}/current/pages/index.json`, prototypePath: null, migratedPath: null });
+  assert.equal(s.pages[2].url, 'https://www.example.com/old', 'url is the record url'); assert.equal(s.pages[3].title, 'blog', 'an empty title falls back to the slug');
+  assert.ok(readFileSync(p.stateFile, 'utf8').endsWith('}\n'));
+});
+check('init from a JSON array and from stdin; --types sets type and counts typed pages', () => {
+  const p = project();
+  const json = p.list('pages.json', JSON.stringify(['https://www.example.com/', 'https://www.example.com/about-us']));
+  const r = runIn(p.d, ['init', '--pages', json, '--types', 'index=landing, about-us=article']);
+  assert.equal(r.code, 0, r.err); assert.match(r.out, / · 2 typed · /);
+  assert.deepEqual(readIn(p.d).pages.map((x) => [x.slug, x.type]), [['index', 'landing'], ['about-us', 'article']]);
+  const q = project();
+  const sin = runIn(q.d, ['init', '--pages', '-', '--types', 'blog=article'], 'https://www.example.com/blog\nhttps://www.example.com/about-us\n');
+  assert.equal(sin.code, 0, sin.err); assert.equal(sin.out, 'state: init 2 page(s) from stdin · 1 typed · written by stardust:extract\n');
+  assert.deepEqual(readIn(q.d).pages.map((x) => [x.slug, x.type]), [['blog', 'article'], ['about-us', null]]);
+});
+check('init --types: a slug not in the input or a bad type is a usage error, nothing written', () => {
+  const p = project(); const list = p.list('pages.txt', 'https://www.example.com/blog\n');
+  const ghost = runIn(p.d, ['init', '--pages', list, '--types', 'blog=article,about-us=article']); assert.equal(ghost.code, 2); assert.match(ghost.err, /--types names "about-us", which is not among the input pages \(blog\)/);
+  const bad = runIn(p.d, ['init', '--pages', list, '--types', 'blog=Article']); assert.equal(bad.code, 2); assert.match(bad.err, /"Article" is not a page type/);
+  assert.equal(runIn(p.d, ['init', '--pages', list, '--types', 'blog']).code, 2);
+  assert.ok(!existsSync(p.stateFile));
+});
+check('init --site-url resolves path lines and sets originUrl; a path line without it is a usage error naming the line', () => {
+  const p = project(); const list = p.list('pages.txt', '/de/produkte\n/about/us\n');
+  const no = runIn(p.d, ['init', '--pages', list]); assert.equal(no.code, 2); assert.match(no.err, /--pages line 1 "\/de\/produkte" is a path; pass --site-url <url>/); assert.ok(!existsSync(p.stateFile));
+  const r = runIn(p.d, ['init', '--pages', list, '--site-url', 'https://www.example.com/en/']);
+  assert.equal(r.code, 0, r.err); const s = readIn(p.d);
+  assert.deepEqual(s.pages.map((x) => [x.slug, x.url]), [['de-produkte', 'https://www.example.com/de/produkte/'], ['about-us-1a2b', 'https://www.example.com/about/us']]);
+  assert.equal(s.site.originUrl, 'https://www.example.com');
+  assert.equal(runIn(project().d, ['init', '--pages', list, '--site-url', 'example.com']).code, 2, 'a bare host is not a --site-url');
+});
+check('init refuses a URL with no page record: exit 2, names the crawl slug and the file, nothing written', () => {
+  const p = project(); const list = p.list('pages.txt', 'https://www.example.com/blog\nhttps://www.example.com/Kontakt/Form/\n');
+  const r = runIn(p.d, ['init', '--pages', list]);
+  assert.equal(r.code, 2); assert.equal(r.out, '');
+  assert.match(r.err, /^state: init refused — 1 of 2 page\(s\) have no valid crawl record under .*; nothing written$/m);
+  assert.match(r.err, new RegExp(`^page kontakt-form lacks live-render evidence \\(file exists: no page record for https://www\\.example\\.com/Kontakt/Form/\\) — ${p.d}/current/pages/kontakt-form\\.json; re-crawl it$`, 'm'));
+  assert.ok(!existsSync(p.stateFile));
+});
+check('init refuses a record at the fallback slug that belongs to another URL', () => {
+  const p = project(); const list = p.list('pages.txt', 'https://other.example.com/blog\n');
+  const r = runIn(p.d, ['init', '--pages', list]); assert.equal(r.code, 2); assert.match(r.err, /page blog lacks live-render evidence \(url: the record is https:\/\/www\.example\.com\/blog, not https:\/\/other\.example\.com\/blog\)/);
+  assert.ok(!existsSync(p.stateFile));
+});
+check('init refuses a record without live-render evidence (renderedBy, waitMs, httpStatus): one line per slug naming slug + condition + file, nothing written', () => {
+  const p = project([...RECORDS.slice(0, 2), record('a', 'https://www.example.com/a', { p: { renderedBy: 'synthesized' } }), record('b', 'https://www.example.com/b', { p: { waitMs: 0 } }), record('c', 'https://www.example.com/c', { p: { httpStatus: 404 } })]);
+  const list = p.list('pages.txt', ['', 'about-us', 'a', 'b', 'c'].map((x) => `https://www.example.com/${x}`).join('\n'));
+  const r = runIn(p.d, ['init', '--pages', list]);
+  assert.equal(r.code, 2); assert.match(r.err, /init refused — 3 of 5 page\(s\)/);
+  const lines = r.err.trim().split('\n').slice(1);
+  assert.deepEqual(lines, [
+    `page a lacks live-render evidence (renderedBy: "synthesized" is not "playwright") — ${p.d}/current/pages/a.json; re-crawl it`,
+    `page b lacks live-render evidence (waitMs: 0 is not an integer > 0) — ${p.d}/current/pages/b.json; re-crawl it`,
+    `page c lacks live-render evidence (httpStatus: 404 is not an integer in [200, 399]) — ${p.d}/current/pages/c.json; re-crawl it`,
+  ]);
+  assert.ok(!existsSync(p.stateFile));
+});
+check('init: duplicate slugs in the input are a usage error; an existing state.json is refused byte-identical', () => {
+  const p = project();
+  const dup = runIn(p.d, ['init', '--pages', p.list('dup.txt', 'https://www.example.com/blog\nhttps://example.com/blog/\n')]);
+  assert.equal(dup.code, 2); assert.match(dup.err, /duplicate slug "blog": --pages line 1 \(https:\/\/www\.example\.com\/blog\) and line 2/); assert.ok(!existsSync(p.stateFile));
+  const list = p.list('pages.txt', 'https://www.example.com/blog\n');
+  assert.equal(runIn(p.d, ['init', '--pages', list]).code, 0);
+  const before = readFileSync(p.stateFile, 'utf8');
+  const again = runIn(p.d, ['init', '--pages', list]); assert.equal(again.code, 2); assert.match(again.err, /state\.json already exists — init never overwrites it; pass --force/);
+  assert.equal(readFileSync(p.stateFile, 'utf8'), before);
+});
+check('init --force re-inits while every page is extracted, keeping handsOff / flow / unknown keys in place; refused once a page advanced', () => {
+  const p = project(); const list = p.list('pages.txt', 'https://www.example.com/blog\n');
+  writeFileSync(p.stateFile, JSON.stringify({ _provenance: { writtenBy: 'stardust:extract', writtenAt: 'old', readArtifacts: ['x'] }, site: { originUrl: 'https://old.example.com', pageCap: 25 }, direction: null, handsOff: true, flow: 'replica', reskin: { a: 1 }, pages: [mkPage('home', 'extracted')], trailer: 1 }, null, 2));
+  const r = runIn(p.d, ['init', '--pages', list, '--force']);
+  assert.equal(r.code, 0, r.err); const s = readIn(p.d);
+  assert.deepEqual(Object.keys(s), ['_provenance', 'site', 'direction', 'handsOff', 'flow', 'reskin', 'pages', 'trailer']);
+  assert.equal(s.handsOff, true); assert.equal(s.flow, 'replica'); assert.deepEqual(s.reskin, { a: 1 }); assert.equal(s.trailer, 1);
+  assert.deepEqual(Object.keys(s._provenance), ['writtenBy', 'writtenAt', 'stardustVersion'], 'a fresh provenance block');
+  assert.equal(s.site.originUrl, 'https://www.example.com'); assert.ok(!('pageCap' in s.site)); assert.deepEqual(s.pages.map((x) => x.slug), ['blog']);
+  assert.equal(runIn(p.d, ['advance', 'blog', '--to', 'directed']).code, 0);
+  const before = readFileSync(p.stateFile, 'utf8');
+  const no = runIn(p.d, ['init', '--pages', list, '--force']); assert.equal(no.code, 2); assert.match(no.err, /--force re-inits only while every page is extracted; 1 of 1 page\(s\) moved on: blog \(directed\)/);
+  assert.equal(readFileSync(p.stateFile, 'utf8'), before);
+});
+check('init copies _crawl-log.json#captureGaps.roots (only the roots) into site.captureGaps', () => {
+  const p = project(); const roots = [{ root: '/de', slug: 'de', linked: 3, uncaptured: ['/de/a', '/de/b'] }];
+  writeFileSync(join(p.d, 'current', '_crawl-log.json'), JSON.stringify({ discovery: 'sitemap', captureGaps: { roots, detail: 'locale roots', scope: { entryLocale: '/en' } } }));
+  assert.equal(runIn(p.d, ['init', '--pages', p.list('pages.txt', 'https://www.example.com/blog\n')]).code, 0);
+  assert.deepEqual(readIn(p.d).site.captureGaps, roots);
+  const q = project(); writeFileSync(join(q.d, 'current', '_crawl-log.json'), JSON.stringify({ captureGaps: { roots: [], detail: '' } }));
+  assert.equal(runIn(q.d, ['init', '--pages', q.list('pages.txt', 'https://www.example.com/blog\n')]).code, 0);
+  assert.ok(!('captureGaps' in readIn(q.d).site), 'no roots, no key');
+});
+check('init: --current points at another crawl dir; flags init does not read are usage errors; --pages is required', () => {
+  const p = project(); const other = join(p.d, '..', 'crawl'); mkdirSync(join(other, 'pages'), { recursive: true });
+  writeFileSync(join(other, 'pages', 'blog.json'), JSON.stringify(record('blog', 'https://www.example.com/blog')));
+  const r = runIn(p.d, ['init', '--pages', p.list('pages.txt', 'https://www.example.com/blog\n'), '--current', other]);
+  assert.equal(r.code, 0, r.err); assert.equal(readIn(p.d).pages[0].currentStatePath, `${other}/pages/blog.json`);
+  const q = project();
+  const stray = runIn(q.d, ['init', '--pages', 'x', '--to', 'directed']); assert.equal(stray.code, 2); assert.match(stray.err, /--to does not apply to init/);
+  assert.equal(runIn(q.d, ['init']).code, 2); assert.equal(runIn(q.d, ['init', '--pages', join(q.d, 'nope.txt')]).code, 2);
+  const flag = runIn(q.d, ['init', '--pages', '--force']); assert.equal(flag.code, 2); assert.match(flag.err, /--pages needs a value \(got --force, which is a flag\)/);
+  assert.ok(!existsSync(q.stateFile));
+});
+check('set --representative / --type: all named pages, keys placed after type, provenance re-stamped (stardust:direct, --skill overrides)', () => {
+  const p = project();
+  assert.equal(runIn(p.d, ['init', '--pages', p.list('pages.txt', ['', 'about-us', 'about/us', 'blog', 'de/produkte'].map((x) => `https://www.example.com/${x}`).join('\n'))]).code, 0);
+  const r = runIn(p.d, ['set', 'about-us-1a2b', 'blog', '--representative', 'about-us', '--type', 'article']);
+  assert.equal(r.code, 0, r.err); assert.equal(r.out, 'state: 2 page(s) set representative=about-us, type=article: about-us-1a2b, blog · written by stardust:direct\n');
+  const s = readIn(p.d); const pg = (slug) => s.pages.find((x) => x.slug === slug);
+  assert.deepEqual(Object.keys(pg('blog')).slice(0, 6), ['slug', 'url', 'title', 'type', 'representative', 'status']);
+  assert.equal(pg('blog').type, 'article'); assert.equal(pg('blog').representative, 'about-us'); assert.ok(!('representative' in pg('about-us')));
+  assert.equal(s._provenance.writtenBy, 'stardust:direct');
+  const t = runIn(p.d, ['set', 'about-us', '--type', 'article', '--skill', 'prototype']); assert.equal(t.code, 0, t.err);
+  assert.equal(t.out, 'state: 1 page(s) set type=article: about-us · written by stardust:prototype\n'); assert.equal(readIn(p.d)._provenance.writtenBy, 'stardust:prototype');
+});
+check('set refuses an unknown slug, an unknown representative, a self-representative, a bad type and a missing value — nothing written', () => {
+  const p = project();
+  assert.equal(runIn(p.d, ['init', '--pages', p.list('pages.txt', 'https://www.example.com/blog\nhttps://www.example.com/about-us\n')]).code, 0);
+  const before = readFileSync(p.stateFile, 'utf8');
+  const cases = [
+    [['set', 'blog', 'ghost', '--representative', 'about-us'], /unknown slug\(s\): ghost/],
+    [['set', 'blog', '--representative', 'ghost'], /unknown representative "ghost"/],
+    [['set', 'blog', 'about-us', '--representative', 'about-us'], /about-us cannot be its own representative/],
+    [['set', 'blog', '--type', 'Article'], /--type "Article" is not a page type/],
+    [['set', 'blog'], /set needs --representative <archetype-slug> and\/or --type <type>/],
+    [['set', '--type', 'article'], /set needs at least one <slug>/],
+    [['set', 'blog', '--representative', '--type', 'x'], /--representative needs a value/],
+    [['set', 'blog', '--type', 'x', '--to', 'directed'], /--to does not apply to set/],
+  ];
+  for (const [args, re] of cases) { const r = runIn(p.d, args); assert.equal(r.code, 2, args.join(' ')); assert.equal(r.out, ''); assert.match(r.err, re, args.join(' ')); }
+  assert.equal(readFileSync(p.stateFile, 'utf8'), before);
+});
+check('summary prints one representative line per archetype (sorted), with and without --slugs, before the --slugs rows', () => {
+  const p = project();
+  assert.equal(runIn(p.d, ['init', '--pages', p.list('pages.txt', ['', 'about-us', 'about/us', 'blog', 'de/produkte'].map((x) => `https://www.example.com/${x}`).join('\n'))]).code, 0);
+  assert.equal(runIn(p.d, ['summary']).out, '5 page(s) · extracted 5 · directed 0 · prototyped 0 · approved 0 · migrated 0 · stale 0\n', 'no representative, no line');
+  assert.equal(runIn(p.d, ['set', 'de-produkte', 'about-us-1a2b', '--representative', 'index']).code, 0);
+  assert.equal(runIn(p.d, ['set', 'blog', '--representative', 'about-us']).code, 0);
+  const r = runIn(p.d, ['summary']);
+  assert.equal(r.out, '5 page(s) · extracted 5 · directed 0 · prototyped 0 · approved 0 · migrated 0 · stale 0\n  representative about-us 1  blog\n  representative index 2  about-us-1a2b, de-produkte\n');
+  const sl = runIn(p.d, ['summary', '--slugs']).out.split('\n');
+  assert.deepEqual(sl.slice(1, 4), ['  representative about-us 1  blog', '  representative index 2  about-us-1a2b, de-produkte', '  extracted     5  index, about-us, about-us-1a2b, blog, de-produkte']);
+});
+check('--help lists init and set, from an empty cwd, exit 0', () => {
+  const empty = mkdtempSync(join(tmpdir(), 'state-help-'));
+  const h = spawnSync(process.execPath, [SCRIPT, '--help'], { encoding: 'utf8', cwd: empty });
+  assert.equal(h.status, 0); assert.match(h.stdout, /node state\.mjs init --pages <file\|->/); assert.match(h.stdout, /node state\.mjs set <slug…> \(--representative <archetype-slug> \| --type <type>\)/);
+  assert.match(h.stdout, /representative <archetype> <n>/); assert.match(h.stdout, /Exit codes: 0 ok, 2 usage/);
+  assert.deepEqual(readdirSync(empty), [], 'nothing written'); rmSync(empty, { recursive: true, force: true });
+});
+
+rmSync(initRoot, { recursive: true, force: true });
 
 rmSync(root, { recursive: true, force: true });
 console.log(failed ? `\n${failed} failing` : '\nstate: all checks passed');
