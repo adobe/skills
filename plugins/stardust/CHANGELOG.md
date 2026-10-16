@@ -27,15 +27,17 @@ file two gates checked in place of the delivered document.
 - **The map** (`stardust/import/<archetype>/vocabulary.json` + `transform.json`, schema
   `migrate/reference/encode-map.schema.json`, rules `migrate/reference/importer-recipe.md`): `--roundtrip` at `text`
   (every code point equal after sanitise, only ASCII whitespace runs collapsed) or `strict`, `--lint` (the authoring
-  checks) and `--sweep` (a dry run over every sibling capture).
+  checks) and `--sweep` (a dry run over every sibling capture); the encoder refuses a template's siblings until the
+  archetype encodes clean and round-trips at `text`.
 - **Offline content count:** deploy's `content-inventory.mjs` gains `offlineInventory` / `diffOffline`, the count the
   `incomplete` stop runs; `content-count.mjs` is its standalone CLI.
 - **Site inputs, each with a deterministic writer and a schema:** `chrome-map.mjs` (`stardust/rollout/chrome-map.json`,
   the nav/footer each page uses), `sources[]` on every `da-media-upload.mjs` ledger entry, and `rehost-docs.mjs`
   (linked documents into `docs/`, `stardust/deploy/asset-ledger.json`).
-- **Consumers:** rollout `inventory.mjs` lists encoded pages from their sidecars; `gate-evidence.mjs` lints an encoded
-  page on its staged `content/` file, never a clone, and takes row 4 from the encoder's count; `publicUrl` reads the
-  encoded path; `modules[]` comes from the encode.
+- **Consumers:** rollout `inventory.mjs` lists encoded pages from their sidecars, and a sibling that stopped and went
+  the A′ path beside its clone is read as a clone page, so the exception stays deliverable; `gate-evidence.mjs` finds
+  an encoded page's delivered file at its eds-path, lints it there, never a clone, and takes row 4 from the encoder's
+  count; `publicUrl` reads the encoded path; `modules[]` comes from the encode.
 - **C14 skip rule:** the encode records each page's block shape; under a harness key (encoder, map, block code, frozen
   foundation) a sibling whose shape the archetype passed inherits its local launches (`migrate.mjs harness` records
   `passedOn`, `plan.mjs` marks `needsHarness`, `gate-evidence.mjs` verifies); any key change re-arms.
