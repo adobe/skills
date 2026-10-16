@@ -602,11 +602,12 @@ export function forkFromArchetype(archetypeHtml, capture, { slug = 'page', arche
       placed.add(name); const list = values.get(name);
       if (!list.length) empty.add(name);
       els.forEach((e, i) => {
-        let out = i < list.length ? fill(work, e, list[i], name) : '';
+        const parts = [i < list.length ? fill(work, e, list[i], name) : ''];
         if (i === els.length - 1 && list.length > els.length) {
-          const proto = work.slice(e.start, e.end); const sep = (work.slice(0, e.start).match(/\s*$/) || [''])[0];
-          for (const v of list.slice(els.length)) out += sep + fill(proto, elementsOf(proto)[0], v, name);
+          const proto = work.slice(e.start, e.end);
+          for (const v of list.slice(els.length)) parts.push(fill(proto, elementsOf(proto)[0], v, name));
         }
+        const out = parts.filter(Boolean).join((work.slice(0, e.start).match(/\s*$/) || [''])[0]); // clones keep the indentation
         edits.push([out ? e.start : e.start - ((work.slice(0, e.start).match(/\r?\n[ \t]*$/) || [''])[0].length), e.end, out]);
       });
     }
