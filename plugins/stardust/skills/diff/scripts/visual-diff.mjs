@@ -37,6 +37,19 @@
  *                           (consent + timed marketing modals + optional extras)
  *     --headed              escalation: headed stealth real Chrome (bot-managed sites)
  *     --locale <tag>        pin Accept-Language + context locale (geo-redirect determinism)
+ *     --live-cache <f>      reuse the SOURCE side's metrics + screenshots from <f> while fresh
+ *                           (this run; STARDUST_ORIGIN_MAX_AGE_H for older) and the key matches;
+ *                           probe and write it otherwise (gate.sh --full: <gate dir>/visual-live.json)
+ *
+ * Live-side cache (--live-cache). The file holds the source side's metrics and where its screenshots
+ * were written ({ metrics, outDir, shots }), never a verdict: the build side is captured every run and
+ * the red flags are recomputed from (cached source, fresh build). A hit copies the source screenshots
+ * into --out (a missing one is named) so <out>/ stays complete. Key = source URL + width + --main +
+ * --sections + profile + UA + locale + wait state + dismiss set + tier; fresh = captured at/after this
+ * run's opener line in ./stardust/status.jsonl (cwd = the project root, as under gate.sh), or within
+ * STARDUST_ORIGIN_MAX_AGE_H hours (live-session.mjs freshness). A hit or a miss prints one line after
+ * the header and lands in the metrics JSON as liveCache; a source side that answered an HTTP error is
+ * measured but never cached; a failed cache write never fails the probe.
  *
  * Every context gets the real-Chrome UA + the standard request headers via
  * live-session.mjs (UA alone still 403s on Akamai — F-R1). A bot-management
@@ -53,7 +66,8 @@
  *
  * Prereq: a RENDERABLE prototype. Static prototypes serve directly (python3 -m
  * http.server from the dir so relative ../assets resolve); JSX prototypes must be
- * pre-rendered first (skill #24/#27). Requires playwright (project devDependency).
+ * pre-rendered first (skill #24/#27). Requires playwright (project devDependency),
+ * imported lazily in main — `liveCacheKey` is exported and importing the module runs no probe.
  *
  * Exit codes: 0 ran (report on stdout; red flags do NOT fail the run — they are
  * advisory for the agent, and an HTTP-error side is measured + flagged, not
@@ -62,12 +76,12 @@
  */
 
 /* eslint-disable import/no-extraneous-dependencies, import/extensions, no-await-in-loop, no-restricted-syntax, brace-style, object-curly-newline, max-len */
-/* standalone dev tool: playwright is a devDependency; sequential page ops use awaited loops by design */
-import { chromium } from 'playwright';
-import { mkdirSync } from 'fs';
-import { resolve } from 'path';
+/* standalone dev tool: playwright is a devDependency (imported lazily in main); sequential page ops use awaited loops by design */
+import { copyFileSync, existsSync, mkdirSync, realpathSync } from 'fs';
+import { dirname, join, resolve } from 'path';
+import { fileURLToPath } from 'url';
 import { resolveProfile } from './diff-profiles.mjs';
-import { REAL_CHROME_UA, isLiveHttpUrl, defaultWaitUntil, launchStealthHeaded, newLiveContext, gotoLive, dismissOverlays } from './live-session.mjs';
+import { REAL_CHROME_UA, isLiveHttpUrl, defaultWaitUntil, launchStealthHeaded, newLiveContext, gotoLive, dismissOverlays, LEDGER, runStartAt, readSideCache, writeSideCache } from './live-session.mjs';
 
 const USAGE = `usage: node skills/diff/scripts/visual-diff.mjs <sourceURL> <buildURL> [options]
   --profile eds|generic  stack profile (default eds)
@@ -85,6 +99,9 @@ const USAGE = `usage: node skills/diff/scripts/visual-diff.mjs <sourceURL> <buil
                          sides; optional comma-separated extra selectors
   --headed               headed stealth real Chrome (escalation for bot-managed sites)
   --locale <tag>         pin Accept-Language + locale (e.g. en-GB) for geo determinism
+  --live-cache <f>       reuse the SOURCE side's metrics + screenshots from <f> while fresh (this
+                         run; STARDUST_ORIGIN_MAX_AGE_H for older) and the key matches; probe and
+                         write it otherwise (gate.sh --full: <gate dir>/visual-live.json)
 writes (under --out; created if absent): proto-full.png and eds-full.png (the two full-page
             captures, source side = proto, build side = eds) plus proto-<section>.png /
             eds-<section>.png per --sections entry. The report goes to stdout.
@@ -113,9 +130,17 @@ function parseArgs(argv) {
     }
     else if (a === '--headed') { opts.headed = true; }
     else if (a === '--locale') { opts.locale = rest[i += 1]; }
+    else if (a === '--live-cache') { opts.liveCache = rest[i += 1]; }
   }
   return { proto, eds, opts };
 }
+
+// The --live-cache key: everything that shapes the SOURCE side's capture (a change re-probes); --out is not in it.
+export const liveCacheKey = (src, opts) => ({
+  url: src, width: opts.width, main: opts.main, sections: opts.sections, profile: opts.profile,
+  ua: opts.ua, locale: opts.locale, waitUntil: opts.waitUntil, dismiss: opts.dismiss, headed: opts.headed,
+});
+const sectionShot = (tag, sel) => `${tag}-${sel.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '')}.png`;
 
 // Runs IN the page. Returns the structured metric set + intra-page red flags.
 // mainSel = --main content-root override (live sites often have no <main>;
@@ -232,7 +257,8 @@ function analyse(mainSel) {
 }
 /* eslint-enable no-undef */
 
-async function capture(browser, url, tag, opts) {
+// `rec` (optional) receives the navigation's HTTP status and the screenshot files written.
+async function capture(browser, url, tag, opts, rec = {}) {
   // UA + standard headers on EVERY context (live-session; F-R1 — UA alone
   // still 403s on Akamai), webdriver spoof included for the --headed tier.
   const ctx = await newLiveContext(browser, {
@@ -247,7 +273,8 @@ async function capture(browser, url, tag, opts) {
   // aem.page before preview propagation — the flags carry the signal, exit 0.
   // solveWindow only under --headed: headless clearance never lands, and the
   // solve loop would spend the Akamai block budget (1 hit vs up to 4).
-  await gotoLive(page, url, { waitUntil: opts.waitUntil || defaultWaitUntil(url), timeoutMs: 60000, settleMs: 0, httpError: 'measure', solveWindow: opts.headed });
+  const resp = await gotoLive(page, url, { waitUntil: opts.waitUntil || defaultWaitUntil(url), timeoutMs: 60000, settleMs: 0, httpError: 'measure', solveWindow: opts.headed });
+  rec.status = resp ? resp.status() : null; // eslint-disable-line no-param-reassign
   await page.waitForTimeout(2000);
   // late-modal poll window only on live targets — local prototypes' overlays
   // are not timed third-party scripts, they render immediately.
@@ -261,13 +288,13 @@ async function capture(browser, url, tag, opts) {
   });
   await page.waitForTimeout(800);
   await page.screenshot({ path: `${opts.out}/${tag}-full.png`, fullPage: true });
+  rec.shots = [`${tag}-full.png`]; // eslint-disable-line no-param-reassign
   for (const sel of opts.sections) {
     const loc = page.locator(sel).first();
     if (await loc.count()) {
       await loc.scrollIntoViewIfNeeded().catch(() => {});
       await page.waitForTimeout(200);
-      const safe = sel.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '');
-      await loc.screenshot({ path: `${opts.out}/${tag}-${safe}.png` }).catch(() => {});
+      await loc.screenshot({ path: `${opts.out}/${sectionShot(tag, sel)}` }).then(() => rec.shots.push(sectionShot(tag, sel)), () => {});
     }
   }
   const metrics = await page.evaluate(analyse, opts.main);
@@ -344,6 +371,16 @@ function redFlags(eds, proto, prof) {
   return flags;
 }
 
+// A cache hit's source screenshots → --out (nothing to copy when it is the same dir); returns the names that are gone.
+function copyShots({ outDir, shots = [] }, out) {
+  const same = Boolean(outDir) && resolve(outDir) === resolve(out);
+  return shots.filter((f) => {
+    if (!outDir || !existsSync(join(outDir, f))) return true;
+    if (!same) copyFileSync(join(outDir, f), join(out, f));
+    return false;
+  });
+}
+
 async function main() {
   const { proto, eds, opts } = parseArgs(process.argv);
   if (!proto || !eds) {
@@ -351,11 +388,36 @@ async function main() {
     process.exit(1);
   }
   const prof = resolveProfile(opts.profile);
+  // --live-cache: the run anchor is read once, from the project root's ledger (cwd, as under gate.sh)
+  const key = opts.liveCache ? liveCacheKey(proto, opts) : null;
+  const cache = opts.liveCache ? readSideCache(opts.liveCache, key, { runStart: runStartAt({ ledger: resolve(LEDGER) }) }) : null;
+  let chromium;
+  try { ({ chromium } = await import('playwright')); } catch (e) {
+    throw new Error(`playwright is not importable from ${dirname(fileURLToPath(import.meta.url))} (${e.code || e.message}) — copy the diff skill's scripts dir into the project and run the copy`);
+  }
   mkdirSync(resolve(opts.out), { recursive: true });
   const browser = opts.headed ? await launchStealthHeaded(chromium) : await chromium.launch();
-  let report;
+  let report; let liveCache = null; const cacheLines = [];
   try {
-    const [protoM, edsM] = [await capture(browser, proto, 'proto', opts), await capture(browser, eds, 'eds', opts)];
+    let protoM;
+    if (cache && cache.hit) {
+      protoM = cache.data.metrics;
+      const gone = copyShots(cache.data, opts.out);
+      liveCache = { file: opts.liveCache, hit: true, at: cache.at, policy: cache.policy };
+      cacheLines.push(`source side from cache ${opts.liveCache} (probed ${cache.at}, ${cache.policy})`);
+      if (gone.length) cacheLines.push(`  source screenshot(s) not found in ${cache.data.outDir}: ${gone.join(', ')}`);
+    } else {
+      const at = new Date().toISOString(); const rec = {};
+      protoM = await capture(browser, proto, 'proto', opts, rec);
+      if (cache) {
+        liveCache = { file: opts.liveCache, hit: false, at, policy: null, reason: cache.reason };
+        // an error page is measured (advisory contract) but never reused; a failed write never fails the probe
+        let unsaved = rec.status >= 400 ? `HTTP ${rec.status}` : null;
+        if (!unsaved) { try { writeSideCache(opts.liveCache, key, { metrics: protoM, outDir: resolve(opts.out), shots: rec.shots }, { at, writtenBy: 'visual-diff.mjs' }); } catch (e) { unsaved = `write failed: ${String(e.message).split('\n')[0]}`; } }
+        cacheLines.push(`source side probed (cache: ${cache.reason}) ${unsaved ? `— not cached (${unsaved})` : `→ ${opts.liveCache}`}`);
+      }
+    }
+    const edsM = await capture(browser, eds, 'eds', opts);
     report = { viewport: opts.width, out: opts.out, proto: protoM, eds: edsM, redFlags: redFlags(edsM, protoM, prof) };
   } finally {
     await browser.close();
@@ -363,12 +425,18 @@ async function main() {
 
   const f = report.redFlags;
   process.stdout.write(`\nVisual diff @ ${opts.width}px (profile "${prof.name}") — screenshots in ${opts.out}/\n`);
+  cacheLines.forEach((l) => process.stdout.write(`${l}\n`));
   process.stdout.write(`\n${prof.target} red flags (advisory): ${f.length ? '' : 'none'}\n`);
   f.forEach((x) => process.stdout.write(`  • ${x}\n`));
   process.stdout.write(`\nFull metrics JSON (compare ${prof.source} vs ${prof.target}: heading colors, eyebrow colors, image dims, full-bleed):\n`);
-  process.stdout.write(`${JSON.stringify({ [prof.source]: report.proto, [prof.target]: report.eds }, null, 1)}\n`);
+  process.stdout.write(`${JSON.stringify({ [prof.source]: report.proto, [prof.target]: report.eds, ...(liveCache ? { liveCache } : {}) }, null, 1)}\n`);
 }
 
 // exit 3 = bot challenge on a live side (distinct from generic errors, so a
 // gate runner can tell "blocked — escalate with --headed" from "probe broke").
-main().catch((e) => { process.stderr.write(`visual-diff error: ${e.message}\n`); process.exit(e.name === 'BotChallengeError' ? 3 : 1); });
+// Main-module guard by real path (a symlinked checkout or temp dir must not turn the CLI into a no-op), so the
+// contract test can import liveCacheKey without running a probe.
+function safeRealpath(p) { try { return realpathSync(p); } catch { return p; } }
+if (process.argv[1] && fileURLToPath(import.meta.url) === safeRealpath(process.argv[1])) {
+  main().catch((e) => { process.stderr.write(`visual-diff error: ${e.message}\n`); process.exit(e.name === 'BotChallengeError' ? 3 : 1); });
+}
