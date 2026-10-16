@@ -19,16 +19,6 @@
         "/xx/aa/team"
       ]
     },
-    "/de/de": {
-      "footer": "/footer-de-de",
-      "footerFile": "content/footer-de-de.html",
-      "lang": "de-DE",
-      "nav": "/nav",
-      "navFile": "content/nav.html",
-      "pages": [
-        "/de/de/start"
-      ]
-    },
     "/fr": {
       "footer": "/fr/footer",
       "footerFile": "content/fr/footer.html",
@@ -38,6 +28,16 @@
       "pages": [
         "/fr/",
         "/fr/contact"
+      ]
+    },
+    "/ww/dd": {
+      "footer": "/footer-ww-dd",
+      "footerFile": "content/footer-ww-dd.html",
+      "lang": "dd-WW",
+      "nav": "/nav",
+      "navFile": "content/nav.html",
+      "pages": [
+        "/ww/dd/start"
       ]
     },
     "/yy/bb": {

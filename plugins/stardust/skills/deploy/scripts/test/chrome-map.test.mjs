@@ -49,7 +49,7 @@ check('writes the expected map: one group per resolved chrome pair, longest deli
   assert.equal(readFileSync(MAP(dir), 'utf8'), EXPECTED, 'byte-equal to the expected map (sorted keys, trailing newline, no timestamp)');
   assert.match(r.out, /^chrome-map: 4 group\(s\), 9 page\(s\) → stardust\/rollout\/chrome-map\.json \(written\)$/m);
   assert.match(r.out, /^NOTE \/yy\/bb: lang bb-YY on 2 page\(s\), cc-YY on 1 — the most common is recorded$/m);
-  assert.match(r.out, /^NOTE \/de\/de: nav \/nav and footer \/footer-de-de resolve from different prefixes/m);
+  assert.match(r.out, /^NOTE \/ww\/dd: nav \/nav and footer \/footer-ww-dd resolve from different prefixes/m);
   assert.match(r.out, /^NOTE \/nav-minimal: no captured page resolves to it/m);
   assert.doesNotMatch(r.out, /products|team\.html/, 'a mega-menu fragment and a content page are not chrome documents');
   assert.deepEqual(readdirSync(dirname(MAP(dir))), ['chrome-map.json'], 'no tmp file left');
