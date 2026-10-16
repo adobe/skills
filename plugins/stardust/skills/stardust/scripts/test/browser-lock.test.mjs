@@ -14,8 +14,10 @@
 //   (g) a non-numeric --wait / --slots / --min / --pid is usage (exit 2, at once) — never a NaN deadline that
 //       spins forever; `surplus()` names the newest holders past the budget (race repair after a write);
 //   (h) acquireProcess() hands the same slot to a second caller; a 124 rejection clears the memo;
-//   (i) adapted on this branch: the slot file is written atomically (temp + rename), so a census in the instant of
-//       the write never deletes it and the returned slot always exists (no job past the budget).
+//   (i) adapted on this branch: a census in the instant a slot file is being written counts it as a holder (unparseable,
+//       younger than 5 s) and never deletes it, so the returned slot always exists (no job past the budget);
+//   (j) an acquirer that runs while the last slot's file appears gets no slot — never more slot files than SLOTS;
+//   (k) an unparseable slot file is held below 5 s and reaped above.
 // Run: node plugins/stardust/skills/stardust/scripts/test/browser-lock.test.mjs   (about 10 s)
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
@@ -164,10 +166,10 @@ try {
     assert.deepEqual(surplus(held, 0), ['/l/a.json', '/l/b.json', '/l/c.json']);
   });
 
-  await check('(i) adapted: a census in the instant a slot file is being written never deletes it — the returned slot exists (atomic write)', () => {
+  await check('(i) adapted: a census in the instant a slot file is being written holds it, never deletes it — the returned slot exists', () => {
     run(['release', '--all']);
     // Another acquirer's census, in-process: a write into the lock dir opens the file (it exists, empty), the census
-    // runs in that instant, then the data lands — the window a non-atomic write leaves open.
+    // runs in that instant, then the data lands — the window a census must not treat as garbage.
     const code = `import fs from 'node:fs'; import { syncBuiltinESMExports } from 'node:module';
       const dir = ${JSON.stringify(dir)}; const real = fs.writeFileSync; let lock = null;
       fs.writeFileSync = function (p, data, ...rest) {
@@ -180,7 +182,44 @@ try {
       console.log(slot?.file && fs.existsSync(slot.file) ? 'slot file present' : \`slot file lost (\${JSON.stringify(slot)})\`); slot?.release?.();`;
     const r = spawnSync(process.execPath, ['--input-type=module', '-e', code], { encoding: 'utf8', env: apiEnv });
     assert.equal(r.stdout.trim(), 'slot file present', `a slot whose file a concurrent census deleted lets one job past the budget\n${r.stdout}${r.stderr}`);
-    assert.deepEqual(readdirSync(dir), [], 'released, no temp file left');
+    assert.deepEqual(readdirSync(dir), [], 'released');
+  });
+
+  await check('(j) adapted: an acquirer that runs while the last slot\'s file is appearing sees it held — X gets no slot, Y keeps it, never more files than SLOTS', () => {
+    run(['release', '--all']);
+    assert.equal(run(['acquire', '--pid', String(holders[0].pid)]).status, 0); // one live holder: SLOTS=2 leaves one slot
+    // Y = this child; X = another acquirer (a live foreign pid) whose whole acquire runs at the instant Y's slot becomes
+    // visible — inside Y's write right after the file appears, or right before a rename into place.
+    const code = `import fs from 'node:fs'; import { syncBuiltinESMExports } from 'node:module';
+      const dir = ${JSON.stringify(dir)}; const real = { w: fs.writeFileSync, r: fs.renameSync }; let lock = null; let fired = false; let x = null;
+      const runX = () => { fired = true; x = lock.acquire({ pid: ${holders[1].pid}, script: 'X', dir, slots: 2, waitS: 0 }); };
+      const slotPath = (p) => lock && !fired && String(p).startsWith(dir) && String(p).endsWith('.json');
+      fs.writeFileSync = function (p, data, ...rest) {
+        if (!slotPath(p)) return real.w.call(this, p, data, ...rest);
+        const fd = fs.openSync(p, 'w'); runX(); fs.writeSync(fd, String(data)); fs.closeSync(fd);
+      };
+      fs.renameSync = function (a, b) { if (slotPath(b)) runX(); return real.r.call(this, a, b); };
+      syncBuiltinESMExports();
+      lock = await import(${JSON.stringify(pathToFileURL(CLI).href)});
+      const y = await lock.acquire({ script: 'Y', dir, slots: 2, waitS: 0 }).catch((e) => ({ code: e.code }));
+      const xr = await (x ?? Promise.resolve({ code: 'never ran' })).catch((e) => ({ code: e.code }));
+      const show = (s) => (s?.file ? (fs.existsSync(s.file) ? 'slot' : 'slot (file gone)') : String(s?.code));
+      const n = fs.readdirSync(dir).filter((f) => f.endsWith('.json')).length;
+      console.log('X: ' + show(xr) + ' Y: ' + show(y) + ' held ' + n + '/2'); y?.release?.(); xr?.release?.();`;
+    const r = spawnSync(process.execPath, ['--input-type=module', '-e', code], { encoding: 'utf8', env: apiEnv });
+    assert.equal(r.stdout.trim(), 'X: 124 Y: slot held 2/2', `over budget or a vanished slot\n${r.stdout}${r.stderr}`);
+    run(['release', '--all']);
+  });
+
+  await check('(k) adapted: an unparseable slot file younger than 5 s is a holder being written (held, kept); older, it is reaped', () => {
+    run(['release', '--all']);
+    const f = join(dir, '424242-writing.json'); writeFileSync(f, '');
+    let s = JSON.parse(run(['status', '--json']).stdout);
+    assert.equal(s.held.length, 1, 'counted as a holder'); assert.equal(s.reapedStale, 0); assert.ok(existsSync(f), 'not deleted');
+    assert.match(run(['status']).stdout, /^browser-lock: 1\/2 slot\(s\) held \(424242-writing\.json \(being written\)\)/);
+    const old = new Date(Date.now() - 6_000); utimesSync(f, old, old);
+    s = JSON.parse(run(['status', '--json']).stdout);
+    assert.equal(s.reapedStale, 1, 'an old unparseable file is garbage'); assert.deepEqual(s.held, []); assert.ok(!existsSync(f));
   });
 
   await check('(h) acquireProcess is memoised per process and released at exit; a 124 rejection clears the memo', () => {

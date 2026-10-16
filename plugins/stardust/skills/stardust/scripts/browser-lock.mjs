@@ -2,8 +2,9 @@
 /**
  * skills/stardust/scripts/browser-lock.mjs — the machine-wide browser semaphore.
  *
- * Ported from the `stardust/next` branch (commits 2a8a596f, a970535a, 890e09d3); adapted: atomic slot write
- * (temp file + rename — a census never reads a half-written slot as corrupt and deletes it).
+ * Ported from the `stardust/next` branch (commits 2a8a596f, a970535a, 890e09d3); adapted: an unparseable slot file
+ * younger than 5 s is a holder still being written — counted and kept, deleted only when older — and acquire keeps a
+ * slot only while its file exists after the re-census (the file is written in place, so its mtime is when it appeared).
  * On this branch the holder is `replica/scripts/run-bg.mjs`'s job wrapper: one slot per browser job.
  *
  * Parallel gate rounds across projects on one machine were killed by the OS for
@@ -15,7 +16,8 @@
  *   <dir>/<pid>-<ts>.json   { pid, host, project, script, since }
  *
  * A slot is HELD while its file exists, the recorded pid is alive (`kill -0`) and
- * the file's mtime is younger than STARDUST_BROWSER_TTL_MIN (20); otherwise it is
+ * the file's mtime is younger than STARDUST_BROWSER_TTL_MIN (20) — or while it is
+ * still being written (unparseable, younger than 5 s); otherwise it is
  * stale, deleted and re-used. Above budget `acquire` WAITS — one stderr line at
  * 0:00 and every 30 s, `waiting-slot` appended to $STARDUST_PROGRESS_LOG when set
  * (an append-only progress log) — and after STARDUST_BROWSER_WAIT (600 s) exits
@@ -54,7 +56,7 @@
  *             error. No network. Never reaps a dev server (ports are the port
  *             allocator's, by pidfile only).
  */
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync, appendFileSync, utimesSync, realpathSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync, appendFileSync, utimesSync, realpathSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 import { homedir, hostname } from 'node:os';
 import { spawnSync } from 'node:child_process';
@@ -65,6 +67,8 @@ export const DEFAULTS = { slots: 3, ttlMin: 20, waitS: 600, reapMin: 15 };
 export const DEFAULT_LOCK_DIR = join(homedir(), '.stardust', 'locks', 'browser');
 const POLL_MS = Number(process.env.STARDUST_BROWSER_POLL_MS) || 1000; // tests shorten the tick
 const NOTE_EVERY_MS = 30_000;
+// An unparseable slot file younger than this is a holder still being written (counted, kept); older, it is garbage.
+export const WRITE_GRACE_MS = 5_000;
 
 const num = (v, d) => (v === undefined || v === '' || Number.isNaN(Number(v)) ? d : Number(v));
 export function settings(env = process.env, over = {}) {
@@ -93,7 +97,8 @@ function readSlots(dir) {
 export function census({ dir, ttlMs }, now = Date.now()) {
   const held = []; const reaped = [];
   for (const s of readSlots(dir)) {
-    const stale = s.corrupt || !pidAlive(s.pid) || now - s.mtime > ttlMs;
+    const writing = s.corrupt && now - s.mtime < WRITE_GRACE_MS; // caught between create and write: held, never deleted
+    const stale = !writing && (s.corrupt || !pidAlive(s.pid) || now - s.mtime > ttlMs);
     if (stale) { try { unlinkSync(s.file); } catch { /* raced */ } reaped.push(s); } else held.push(s);
   }
   return { held, reaped };
@@ -103,7 +108,7 @@ export function census({ dir, ttlMs }, now = Date.now()) {
 export function surplus(held, slots) {
   return [...held].sort((a, b) => a.mtime - b.mtime || (a.file < b.file ? -1 : 1)).slice(Math.max(0, slots)).map((h) => h.file);
 }
-const describe = (held) => held.map((h) => `pid ${h.pid} ${h.script ?? '?'} ${basename(h.project ?? '?')}`).join(', ');
+const describe = (held) => held.map((h) => (h.corrupt ? `${basename(h.file)} (being written)` : `pid ${h.pid} ${h.script ?? '?'} ${basename(h.project ?? '?')}`)).join(', ');
 const mmss = (ms) => `${Math.floor(ms / 60_000)}:${String(Math.floor((ms % 60_000) / 1000)).padStart(2, '0')}`;
 const sleep = (ms) => new Promise((r) => { setTimeout(r, ms); });
 function note(cfg, line) {
@@ -131,9 +136,9 @@ export async function acquire({ pid = process.pid, script = basename(process.arg
     const { held } = census(cfg);
     if (held.length < cfg.slots) {
       const file = join(cfg.dir, `${pid}-${Date.now().toString(36)}.json`);
-      // atomic: a census lists only *.json, so it never reads this file empty and deletes it as corrupt
-      writeFileSync(`${file}.tmp`, `${JSON.stringify({ pid, host: hostname().split('.')[0], project: resolve(project), script, since: new Date().toISOString() })}\n`);
-      renameSync(`${file}.tmp`, file);
+      // written in place, so its mtime is the moment it appeared (the order surplus() relies on); a census that catches it
+      // half-written counts it as a holder being written instead of deleting it
+      writeFileSync(file, `${JSON.stringify({ pid, host: hostname().split('.')[0], project: resolve(project), script, since: new Date().toISOString() })}\n`);
       const after = census(cfg).held; // re-census: a simultaneous acquire may have taken the same last slot
       if (existsSync(file) && (after.length <= cfg.slots || !surplus(after, cfg.slots).includes(file))) {
         const touch = () => { try { const n = new Date(); utimesSync(file, n, n); } catch { /* gone */ } };
