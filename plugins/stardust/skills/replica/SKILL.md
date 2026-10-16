@@ -446,10 +446,10 @@ had one section for the whole run).
   § The header contract), then `foundation-freeze.mjs freeze` + commit; C-archetype — per template, the
   gated archetype is deployed and passes its full gate row on the preview URL
   (cap 3 fix rounds, then the re-prototype decision) BEFORE its siblings
-  render; C1…Cn — one subagent per template
-  cluster runs the whole chain, PUT → preview → published-origin gates
-  included, with its own batch ledger (`deploy-batch.mjs --ledger …`,
-  lock-safe) and reports one verdict line; the main agent only coordinates
+  render; C1…Cn — one subagent per template cluster runs the whole chain
+  with its own batch ledger (`deploy-batch.mjs --ledger …`, lock-safe) and
+  reports one verdict line, `first pass 360: x/y` from
+  `gate-triage.mjs --unit <cluster>` included; the main agent only coordinates
   and records; C-final — `check`, the queued `foundation-requests.md` lines
   applied once, `C-deliver end`. Each unit is recorded in
   `stardust/rollout/progress.json` and committed — a safe resume point,
