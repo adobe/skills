@@ -522,7 +522,7 @@ export const RUN_OPENERS = [['stardust:rollout', 'A-inventory'], ['stardust:repl
 const FUTURE_SLACK_MS = 5 * 60e3; // clock skew tolerated before a capture time counts as "in the future"
 
 /** The `ts` of the LAST opener `start` line in the ledger (`text` instead of the file, for tests);
- * malformed lines are skipped; no ledger or no opener → null. */
+ * malformed lines are skipped; an opener whose ts does not parse drops the anchor; no ledger or no opener → null. */
 export function runStartAt({ ledger = LEDGER, text = null } = {}) {
   let body = text;
   if (body == null) {
@@ -532,10 +532,13 @@ export function runStartAt({ ledger = LEDGER, text = null } = {}) {
   for (const raw of String(body).split('\n')) {
     let rec;
     try { rec = JSON.parse(raw); } catch { continue; }
-    if (!rec || rec.event !== 'start' || typeof rec.ts !== 'string' || Number.isNaN(Date.parse(rec.ts))) continue;
+    if (!rec || rec.event !== 'start') continue;
     const skill = String(rec.skill || '');
     const full = skill.startsWith('stardust:') ? skill : `stardust:${skill}`;
-    if (RUN_OPENERS.some(([s, p]) => s === full && p === rec.phase)) at = rec.ts;
+    if (!RUN_OPENERS.some(([s, p]) => s === full && p === rec.phase)) continue;
+    // an opener whose ts does not parse still opened a new run: drop the anchor rather than fall
+    // back to the previous run's (its captures must not count as same-run)
+    at = typeof rec.ts === 'string' && !Number.isNaN(Date.parse(rec.ts)) ? rec.ts : null;
   }
   return at;
 }
