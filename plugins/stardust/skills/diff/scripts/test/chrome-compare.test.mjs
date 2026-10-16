@@ -1,10 +1,16 @@
 #!/usr/bin/env node
 // skills/diff/scripts/test/chrome-compare.test.mjs — the header-parity verdict from two chrome-explore records (no browser):
 // pairing by name then family, a hover menu rebuilt as click-only, missing panel links, keyboard and close paths,
-// motion and scroll states under `replica` only, search typeahead, and site-owner decisions (agents cannot sign).
+// motion and scroll states under `replica` only, search typeahead, and site-owner decisions (agents cannot sign);
+// hide lists: records explored with different ones (or not the expected --hide / presence.json one) are one error.
 // Run: node plugins/stardust/skills/diff/scripts/test/chrome-compare.test.mjs
 import assert from 'node:assert/strict';
-import { applyDecisions, compareDocs, findingKey, pairControls } from '../chrome-compare.mjs';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { applyDecisions, compareDocs, compareHide, findingKey, pairControls } from '../chrome-compare.mjs';
 
 let failed = 0;
 const check = (name, fn) => { try { fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`); } };
@@ -65,4 +71,68 @@ check('decisions: a site-owner entry clears its finding (exact or prefix*); an a
   assert.equal(out[0].decided.decision, 'decided-out'); assert.equal(out[1].decided, undefined);
   assert.equal(out.filter((x) => x.id === 'decision-invalid').length, 2);
 });
+
+const hid = (d, list) => ({ ...structuredClone(d), hide: { list, presence: null, perWidth: {} } });
+check('hide: equal lists (any order) → no finding, hide.consistent true, with or without the expected list', () => {
+  const r = compareDocs(hid(source, ['.geo-bar', '.promo-strip']), hid(source, ['.promo-strip', '.geo-bar']), { expectedHide: ['.geo-bar', '.promo-strip'] });
+  assert.deepEqual(r.findings, []);
+  assert.deepEqual(r.hide, { source: ['.geo-bar', '.promo-strip'], build: ['.promo-strip', '.geo-bar'], expected: ['.geo-bar', '.promo-strip'], consistent: true });
+  assert.deepEqual(compareDocs(hid(source, ['.geo-bar']), hid(source, ['.geo-bar'])).hide, { source: ['.geo-bar'], build: ['.geo-bar'], expected: null, consistent: true });
+});
+check('hide: the source hid the bar, the build did not → one hide-mismatch error naming both lists', () => {
+  const r = compareDocs(hid(source, ['.geo-bar']), structuredClone(source));
+  assert.equal(r.findings.length, 1);
+  const [f] = r.findings;
+  assert.deepEqual([f.id, f.severity, findingKey(f)], ['hide-mismatch', 'error', 'hide-mismatch@0 (hide)']);
+  assert.match(f.detail, /not explored on the same page — hide lists: source \[\.geo-bar\], build \[\]; re-explore the build with chrome-explore --hide \.geo-bar$/);
+  assert.deepEqual(r.hide, { source: ['.geo-bar'], build: [], expected: null, consistent: false });
+});
+check('hide: an expected list that differs from both records → finding; expected but no record hid anything → finding', () => {
+  const { hide, finding } = compareHide(hid(source, ['.geo-bar']), hid(source, ['.geo-bar']), ['.geo-bar', '.promo-strip']);
+  assert.equal(hide.consistent, false);
+  assert.match(finding.detail, /expected \[\.geo-bar, \.promo-strip\]; re-explore both sides with chrome-explore --hide \.geo-bar,\.promo-strip$/);
+  assert.match(compareHide(hid(source, ['.geo-bar']), hid(source, ['.geo-bar']), []).finding.detail, /re-explore both sides with chrome-explore without --hide$/);
+  assert.equal(compareHide(source, source, ['.geo-bar']).finding.id, 'hide-mismatch');
+  assert.equal(compareDocs(source, structuredClone(source), { expectedHide: ['.geo-bar'] }).findings[0].id, 'hide-mismatch');
+});
+check('hide: none anywhere → compareDocs returns { findings, visual } as before (an empty expected list changes nothing)', () => {
+  assert.deepEqual(Object.keys(compareDocs(source, structuredClone(source))), ['findings', 'visual']);
+  assert.deepEqual(compareDocs(source, structuredClone(source), { expectedHide: [] }), { findings: [], visual: [] });
+  assert.deepEqual(compareHide(source, source, []), { hide: null, finding: null });
+});
+
+const COMPARE = fileURLToPath(new URL('../chrome-compare.mjs', import.meta.url));
+const dir = mkdtempSync(join(tmpdir(), 'chrome-compare-'));
+const put = (name, d) => { const f = join(dir, name); writeFileSync(f, JSON.stringify(d)); return f; };
+const cli = (...args) => spawnSync(process.execPath, [COMPARE, ...args], { cwd: dir, encoding: 'utf8' });
+const plain = put('plain.json', source); const geo = put('geo.json', hid(source, ['.geo-bar']));
+check('CLI: source hides, build does not → exit 2, the 🔴 line, the hide line and the verdict\'s hide', () => {
+  const v = join(dir, 'v1.json');
+  const r = cli(geo, plain, '--json', v);
+  assert.equal(r.status, 2, r.stderr);
+  assert.match(r.stdout, /^🔴 hide-mismatch@0 \(hide\) — the records were not explored on the same page/m);
+  assert.match(r.stdout, /^chrome-compare hide: source \[\.geo-bar\] · build \[\] · expected not given → INCONSISTENT$/m);
+  const verdict = JSON.parse(readFileSync(v, 'utf8'));
+  assert.deepEqual(verdict.hide, { source: ['.geo-bar'], build: [], expected: null, consistent: false });
+  assert.equal(verdict.counts.error, 1);
+});
+check('CLI: --presence {"*": {"hide": [".geo-bar"]}} --slug home is the expected list; --presence without --slug exits 1', () => {
+  const pf = put('presence.json', { '*': { hide: ['.geo-bar'] } });
+  const v = join(dir, 'v2.json');
+  const r = cli(geo, put('geo-build.json', hid(source, ['.geo-bar'])), '--presence', pf, '--slug', 'home', '--json', v);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout, /^chrome-compare hide: source \[\.geo-bar\] · build \[\.geo-bar\] · expected \[\.geo-bar\] → consistent$/m);
+  assert.deepEqual(JSON.parse(readFileSync(v, 'utf8')).hide, { source: ['.geo-bar'], build: ['.geo-bar'], expected: ['.geo-bar'], consistent: true });
+  assert.equal(cli(geo, geo, '--hide', '.geo-bar,.promo-strip').status, 2);
+  const u = cli(geo, geo, '--presence', pf);
+  assert.equal(u.status, 1); assert.match(u.stderr, /--presence needs --slug/);
+});
+check('CLI: no hide anywhere → the output and the verdict\'s fields as before', () => {
+  const v = join(dir, 'v3.json');
+  const r = cli(plain, put('plain-build.json', source), '--json', v);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stdout, `chrome-compare: 0 error(s), 0 warning(s), 0 decided (profile replica, widths 1440) → ${v}\n`);
+  assert.deepEqual(Object.keys(JSON.parse(readFileSync(v, 'utf8'))), ['tool', 'at', 'source', 'build', 'profile', 'bar', 'widths', 'counts', 'findings']);
+});
+rmSync(dir, { recursive: true });
 process.exit(failed ? 1 : 0);

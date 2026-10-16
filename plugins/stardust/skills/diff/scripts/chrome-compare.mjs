@@ -20,13 +20,17 @@
  *   --decisions <file>             default stardust/chrome/header-decisions.json
  *   --json <file>                  write the verdict (stardust/chrome/header-parity.json is what done-check reads)
  *   --src-shots <dir> / --build-shots <dir>   crop folders when not where the records say
- * Exit: 0 no undecided error · 2 errors · 1 usage. `compareDocs`, `applyDecisions`, `findingKey` are exported.
+ *   --hide <sel,…>                 the hide list both records must carry (chrome-explore --hide); repeatable
+ *   --presence <file> --slug <slug>   the same from the gate's presence.json `hide` ("*", then the slug)
+ * Records explored with different hide lists (or not the expected one) are not the same page: one error
+ * `hide-mismatch`; `hide: { source, build, expected, consistent }` is printed and in the verdict when any is set.
+ * Exit: 0 no undecided error · 2 errors · 1 usage. `compareDocs`, `compareHide`, `applyDecisions`, `findingKey` are exported.
  */
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { normName } from './chrome-explore.mjs';
+import { effectiveHide, hideArgs, normName } from './chrome-explore.mjs';
 
 const TOUCH_BELOW = 768;
 const FAMILIES = new Set(['search', 'cart', 'account', 'locale', 'drawer']);
@@ -124,10 +128,29 @@ function walk(src, bld, ctx, path) {
   }
 }
 
-/** All findings except the crop pixels (returned as `visual` pairs for the image pass). Pure. */
-export function compareDocs(src, bld, { profile = 'replica' } = {}) {
+/** The hide lists the records were explored with (`hide.list`, absent = []) against each other and, when given, the
+ * expected list (order-free) → { hide: { source, build, expected, consistent } | null (none set), finding | null }. Pure. */
+export function compareHide(src, bld, expected = null) {
+  const listOf = (d) => [...((d && d.hide && d.hide.list) || [])];
+  const source = listOf(src); const build = listOf(bld);
+  if (!source.length && !build.length && !(expected && expected.length)) return { hide: null, finding: null };
+  const same = (a, b) => JSON.stringify([...new Set(a)].sort()) === JSON.stringify([...new Set(b)].sort());
+  const target = expected || [...new Set([...source, ...build])];
+  const off = [['source', source], ['build', build]].filter(([, l]) => !same(l, target)).map(([k]) => k);
+  const hide = { source, build, expected, consistent: !off.length };
+  if (!off.length) return { hide, finding: null };
+  const show = (l) => `[${l.join(', ')}]`;
+  const detail = `the records were not explored on the same page — hide lists: source ${show(source)}, build ${show(build)}${expected ? `, expected ${show(expected)}` : ''}; re-explore ${off.length > 1 ? 'both sides' : `the ${off[0]}`} with chrome-explore ${target.length ? `--hide ${target.join(',')}` : 'without --hide'}`;
+  return { hide, finding: { width: 0, path: '(hide)', id: 'hide-mismatch', severity: 'error', detail } };
+}
+
+/** All findings except the crop pixels (returned as `visual` pairs for the image pass); `hide` when a hide list is
+ * set on either record or expected (`expectedHide`). Pure. */
+export function compareDocs(src, bld, { profile = 'replica', expectedHide = null } = {}) {
   const findings = []; const visual = [];
   const add = (f) => findings.push(f);
+  const { hide, finding } = compareHide(src, bld, expectedHide);
+  if (finding) add(finding);
   for (const [w, sw] of Object.entries(src.widths || {})) {
     const width = Number(w);
     const bw = (bld.widths || {})[w];
@@ -153,7 +176,7 @@ export function compareDocs(src, bld, { profile = 'replica' } = {}) {
     if (sw.truncated) add({ width, path: '(source)', id: 'budget-truncated', severity: 'warn', detail: `the source record stopped at ${sw.truncated}: raise --max-states/--max-depth for full coverage` });
     if (bw.truncated) add({ width, path: '(build)', id: 'budget-truncated', severity: 'warn', detail: `the build record stopped at ${bw.truncated}` });
   }
-  return { findings, visual: profile === 'replica' ? visual : [] };
+  return { findings, visual: profile === 'replica' ? visual : [], ...(hide ? { hide } : {}) };
 }
 
 /** Mark findings cleared by a valid site-owner decision; invalid entries become warnings. Pure. */
@@ -209,18 +232,28 @@ async function main() {
   const arg = (k, d) => { const i = argv.indexOf(`--${k}`); return i >= 0 && argv[i + 1] && !argv[i + 1].startsWith('--') ? argv[i + 1] : d; };
   const [sf, bf] = argv.filter((a, i) => !a.startsWith('--') && !(i > 0 && argv[i - 1].startsWith('--')));
   if (!sf || !bf || !existsSync(sf) || !existsSync(bf)) { console.error('usage: chrome-compare.mjs <source.json> <build.json> [--profile replica|functional] [--bar 0.02] [--decisions f] [--json f]'); process.exit(1); }
+  let expected = null;
+  try {
+    const h = hideArgs(argv);
+    if (h.hide.length || h.presence) {
+      const e = effectiveHide(h);
+      if (e.found === false) console.error(`chrome-compare: ${e.note}`);
+      expected = e.entries.map((x) => x.sel);
+    }
+  } catch (e) { console.error(`chrome-compare: ${e.message}`); process.exit(1); }
   const src = JSON.parse(readFileSync(sf, 'utf8')); const bld = JSON.parse(readFileSync(bf, 'utf8'));
   const profile = arg('profile', 'replica'); const bar = Number(arg('bar', 0.02));
-  const { findings, visual } = compareDocs(src, bld, { profile });
+  const { findings, visual, hide } = compareDocs(src, bld, { profile, expectedHide: expected });
   findings.push(...await visualFindings(visual, { srcDir: arg('src-shots', src.shots || '.'), buildDir: arg('build-shots', bld.shots || '.'), bar }));
   const df = arg('decisions', join('stardust', 'chrome', 'header-decisions.json'));
   const all = applyDecisions(findings, existsSync(df) ? (JSON.parse(readFileSync(df, 'utf8')).decisions || []) : []);
   const errors = all.filter((f) => f.severity === 'error' && !f.decided); const warns = all.filter((f) => f.severity === 'warn'); const decided = all.filter((f) => f.decided);
   for (const f of [...errors, ...warns]) console.log(`${f.severity === 'error' ? '🔴' : '🟡'} ${findingKey(f)} — ${f.detail}`);
   const widths = Object.keys(src.widths || {}).map(Number);
-  const verdict = { tool: 'chrome-compare', at: new Date().toISOString(), source: src.url, build: bld.url, profile, bar, widths, counts: { error: errors.length, warn: warns.length, decided: decided.length }, findings: all.map((f) => ({ key: findingKey(f), ...f })) };
+  const verdict = { tool: 'chrome-compare', at: new Date().toISOString(), source: src.url, build: bld.url, profile, bar, widths, ...(hide ? { hide } : {}), counts: { error: errors.length, warn: warns.length, decided: decided.length }, findings: all.map((f) => ({ key: findingKey(f), ...f })) };
   const out = arg('json', null);
   if (out) { mkdirSync(dirname(out), { recursive: true }); writeFileSync(out, `${JSON.stringify(verdict, null, 1)}\n`); }
+  if (hide) { const show = (l) => `[${l.join(', ')}]`; console.log(`chrome-compare hide: source ${show(hide.source)} · build ${show(hide.build)} · expected ${hide.expected ? show(hide.expected) : 'not given'} → ${hide.consistent ? 'consistent' : 'INCONSISTENT'}`); }
   console.log(`chrome-compare: ${errors.length} error(s), ${warns.length} warning(s), ${decided.length} decided (profile ${profile}, widths ${widths.join(',')})${out ? ` → ${out}` : ''}`);
   process.exit(errors.length ? 2 : 0);
 }
