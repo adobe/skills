@@ -4,10 +4,14 @@
 // no duplicates, the OneTrust id first), isLiveHttpUrl, defaultWaitUntil, isEdsHost and lateWindowFor (no timed
 // late-modal poll on EDS build/preview hosts), and waitEdsDelayedPhase never throwing (stub page). No browser:
 // dismissOverlays itself runs inside stitch-shot / the diff probes against a page (stitch-shot.test.mjs runs the
-// EDS single sweep against a late consent banner).
+// EDS single sweep against a late consent banner). The hide helpers: parseHideList, presenceHide, readPresenceFile,
+// hideEntries, formatHidden and hideRegions' empty / argument contract (stub page); where playwright is importable
+// (a project copy), hideRegions end-to-end on fixture pages served from this process — an 88 px in-flow bar above
+// the header, a bar inserted 400 ms after load (hidden by the style rule), an invalid selector, a second call.
 // Run: node plugins/stardust/skills/diff/scripts/test/live-session.test.mjs
 import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as session from '../live-session.mjs';
@@ -175,6 +179,144 @@ check('side cache: write → hit; one key field changed → miss naming it; key 
     assert.ok(existsSync(file));
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+// ---- the hide vocabulary: --hide lists, presence.json `hide` ("*" then the slug), records and their text ----------
+check('hide: the exported surface', () => {
+  for (const name of ['parseHideList', 'presenceHide', 'readPresenceFile', 'hideEntries', 'hideRegions', 'formatHidden']) assert.equal(typeof session[name], 'function', `${name} exported`);
+});
+check('parseHideList: comma lists and arrays, repeatable, trimmed, empties dropped, de-duplicated in order', () => {
+  assert.deepEqual(session.parseHideList('.geo-bar, .location-bar', ' .promo ,, ', ['.news', '.geo-bar, .x'], '.location-bar'), ['.geo-bar', '.location-bar', '.promo', '.news', '.x']);
+  assert.deepEqual(session.parseHideList([['.a'], ['.b, .a']]), ['.a', '.b'], 'nested arrays');
+  assert.deepEqual(session.parseHideList(), []);
+  assert.deepEqual(session.parseHideList(undefined, null, '', ' , ', [], 5, {}), [], 'empty and non-string values hide nothing');
+});
+check('presenceHide: "*" then the slug, comma-list entries, de-duplicated; main / variable and "*".variable ignored', () => {
+  const json = {
+    '*': { hide: ['.geo-bar'], main: 'main', variable: ['.star-var'] },
+    home: { main: 'main', variable: ['.promo=.build-promo'], hide: ['.cookie-strip, .geo-bar', '.location-bar'] },
+    plain: { main: 'main', variable: ['.promo'] },
+  };
+  assert.deepEqual(session.presenceHide(json, 'home'), ['.geo-bar', '.cookie-strip', '.location-bar']);
+  assert.deepEqual(session.presenceHide(json, 'plain'), ['.geo-bar'], 'a slug without hide gets "*" only');
+  assert.deepEqual(session.presenceHide(json, 'absent'), ['.geo-bar'], 'a slug absent from the file gets "*" only');
+  assert.deepEqual(session.presenceHide({ home: { hide: ['.a', '.b,.a'] } }, 'home'), ['.a', '.b'], 'no "*"');
+  assert.deepEqual(session.presenceHide({ home: { hide: '.a, .b' } }, 'home'), ['.a', '.b'], 'a string entry is a comma list');
+  assert.deepEqual(session.presenceHide({ '*': { main: 'main', variable: ['.v'] }, home: { main: 'main', variable: ['.v'] } }, 'home'), [], 'main / variable are no hide lists');
+  for (const j of [null, undefined, {}, [], 'x']) assert.deepEqual(session.presenceHide(j, 'home'), [], JSON.stringify(j));
+});
+check('readPresenceFile: variable halves (joined entries, first "="), hide with "*", notes; missing file; malformed throws', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'live-session-presence-'));
+  try {
+    const file = join(dir, 'presence.json');
+    writeFileSync(file, JSON.stringify({
+      '*': { hide: ['.geo-bar'], variable: ['.star-var'] },
+      home: { main: 'main=#main', variable: ['.promo=.build-promo, .hero', ' .news = .build-news ', '.slot=[data-slot="a"]'], hide: ['.location-bar, .geo-bar'] },
+    }));
+    const r = session.readPresenceFile(file, 'home');
+    assert.deepEqual(r.variable, [{ live: '.promo', build: '.build-promo' }, { live: '.hero', build: '.hero' }, { live: '.news', build: '.build-news' }, { live: '.slot', build: '[data-slot="a"]' }]);
+    assert.deepEqual([r.file, r.slug, r.found, r.hide], [file, 'home', true, ['.geo-bar', '.location-bar']]);
+    assert.equal(r.note, `${file} → home: 4 variable region(s), 2 hide selector(s)`);
+    const star = session.readPresenceFile(file, 'about');
+    assert.deepEqual([star.found, star.variable, star.hide], [true, [], ['.geo-bar']], '"*".variable is not read');
+    assert.equal(star.note, `${file} → about: 0 variable region(s), 1 hide selector(s)`);
+    const old = join(dir, 'old.json');
+    writeFileSync(old, JSON.stringify({ home: { variable: '.promo' } }));
+    assert.equal(session.readPresenceFile(old, 'home').note, `${old} → home: 1 variable region(s)`, 'without hide the note keeps its old form');
+    assert.equal(session.readPresenceFile(old, 'about').note, `${old} has no variable regions for about — nothing hidden`);
+    const gone = join(dir, 'absent.json');
+    assert.deepEqual(session.readPresenceFile(gone, 'home'), { file: gone, slug: 'home', found: false, variable: [], hide: [], note: `${gone} not found — nothing hidden` });
+    const bad = join(dir, 'bad.json');
+    writeFileSync(bad, '{"home": {');
+    assert.throws(() => session.readPresenceFile(bad, 'home'), (e) => e.message.startsWith(`presence.json ${bad} unreadable (`) && e.message.endsWith(')'));
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+check('hideEntries: strings are comma lists tagged with the source, objects keep theirs, the first entry of a selector wins', () => {
+  assert.deepEqual(session.hideEntries(['.a, .b', '.a'], 'presence.json'), [{ sel: '.a', source: 'presence.json' }, { sel: '.b', source: 'presence.json' }]);
+  assert.deepEqual(session.hideEntries([{ sel: '.geo-bar', source: 'presence.json' }, '.geo-bar, .x', { sel: ' .y ' }, { sel: '' }]), [{ sel: '.geo-bar', source: 'presence.json' }, { sel: '.x', source: '--hide' }, { sel: '.y', source: '--hide' }]);
+  assert.deepEqual(session.hideEntries('.a', '--hide'), [{ sel: '.a', source: '--hide' }], 'a bare string');
+  for (const v of [[], null, undefined, '']) assert.deepEqual(session.hideEntries(v, '--hide'), []);
+});
+check('formatHidden: ×n (hpx), ×0, error, joined with "; ", empty → ""', () => {
+  assert.equal(session.formatHidden([{ sel: '.geo-bar', source: '--hide', n: 1, h: 88 }]), '.geo-bar ×1 (88px) [--hide]');
+  assert.equal(session.formatHidden([{ sel: '.late', source: 'presence.json', n: 0, h: 0 }]), '.late ×0 [presence.json]');
+  assert.equal(session.formatHidden([{ sel: 'div[[', source: '--hide', n: 0, h: 0, error: 'not a valid selector' }]), 'div[[ error: not a valid selector [--hide]');
+  assert.equal(session.formatHidden([{ sel: '.a', source: '--hide', n: 2, h: 120 }, { sel: '.b', source: 'presence.json', n: 0, h: 0 }]), '.a ×2 (120px) [--hide]; .b ×0 [presence.json]');
+  for (const v of [[], null, undefined]) assert.equal(session.formatHidden(v), '');
+});
+await checkAsync('hideRegions without a browser: [] → [] with no page work; one evaluate with the normalised list and settleMs', async () => {
+  const untouched = new Proxy({}, { get: (_, k) => { throw new Error(`page.${String(k)} touched`); } });
+  for (const v of [[], null, undefined, ['', ' , ']]) assert.deepEqual(await session.hideRegions(untouched, v), []);
+  const calls = [];
+  const page = { evaluate: async (fn, arg) => { calls.push({ fn, arg }); return ['records']; } };
+  assert.deepEqual(await session.hideRegions(page, ['.a, .b', { sel: '.c', source: 'presence.json' }]), ['records']);
+  assert.deepEqual(calls[0].arg, { list: [{ sel: '.a', source: '--hide' }, { sel: '.b', source: '--hide' }, { sel: '.c', source: 'presence.json' }], settleMs: 250 });
+  assert.match(String(calls[0].fn), /data-stardust-hide/);
+  await session.hideRegions(page, '.a', { settleMs: 40 });
+  assert.equal(calls[1].arg.settleMs, 40);
+});
+
+// ---- hideRegions end-to-end (only where playwright is importable — a project copy) --------------------------------
+let chromium = null;
+try { ({ chromium } = await import('playwright')); } catch { chromium = null; }
+if (!chromium) { console.log('skip  end-to-end (playwright not importable here)'); }
+else {
+  const head = '<!doctype html><html><head><style>body{margin:0;font:16px/20px Arial} .geo-bar{height:88px;background:#eee} header{height:60px;background:#333;color:#fff}</style>';
+  const PAGES = {
+    '/bar': `${head}</head><body><div class="geo-bar">Use the site for your region?</div><header>Header</header><main><p>Content</p></main></body></html>`,
+    // a geo script re-rendering its bar after the hide pass: inserted 400 ms after load, display set inline
+    '/late': `${head}<script>addEventListener('load', () => setTimeout(() => { const d = document.createElement('div'); d.className = 'geo-bar'; d.style.display = 'block'; d.textContent = 'Use the site for your region?'; document.body.prepend(d); }, 400));</script></head><body><header>Header</header><main><p>Content</p></main></body></html>`,
+  };
+  const server = createServer((req, res) => { res.setHeader('content-type', 'text/html'); res.end(PAGES[req.url] || PAGES['/bar']); });
+  await new Promise((r) => { server.listen(0, '127.0.0.1', r); });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const browser = await chromium.launch();
+  const open = async (path) => { const page = await browser.newPage({ viewport: { width: 1440, height: 900 } }); await page.goto(`${base}${path}`, { waitUntil: 'load' }); return page; };
+  const state = (page) => page.evaluate(() => {
+    const bar = document.querySelector('.geo-bar'); const tags = document.querySelectorAll('style[data-stardust-hide]');
+    return { headerTop: document.querySelector('header').getBoundingClientRect().top, bar: bar ? getComputedStyle(bar).display : null, tags: tags.length, rules: tags.length ? [...tags[0].sheet.cssRules].map((r) => r.cssText) : [] };
+  });
+  try {
+    await checkAsync('e2e: an 88 px in-flow bar above <header> → ×1 (88px), the header moves to 0, one style tag with its rule', async () => {
+      const page = await open('/bar');
+      assert.equal((await state(page)).headerTop, 88, 'the bar pushes the header down before the hide');
+      const rec = await session.hideRegions(page, ['.geo-bar']);
+      assert.deepEqual(rec, [{ sel: '.geo-bar', source: '--hide', n: 1, h: 88 }]);
+      assert.deepEqual(await state(page), { headerTop: 0, bar: 'none', tags: 1, rules: ['.geo-bar { display: none !important; }'] });
+      assert.equal(session.formatHidden(rec), '.geo-bar ×1 (88px) [--hide]');
+      await page.close();
+    });
+    await checkAsync('e2e: a bar inserted 400 ms after the hide pass is hidden by the style rule (record ×0, header stays at 0)', async () => {
+      const page = await open('/late');
+      const rec = await session.hideRegions(page, [{ sel: '.geo-bar', source: 'presence.json' }]);
+      assert.deepEqual(rec, [{ sel: '.geo-bar', source: 'presence.json', n: 0, h: 0 }], 'nothing to hide yet');
+      await page.waitForTimeout(800);
+      const s = await state(page);
+      assert.equal(s.bar, 'none', 'the late bar is in the DOM and computes display: none over its inline display: block');
+      assert.equal(s.headerTop, 0);
+      await page.close();
+    });
+    await checkAsync('e2e: an invalid selector beside a valid one is an error record, the valid one still hides, no throw', async () => {
+      const page = await open('/bar');
+      const rec = await session.hideRegions(page, ['div[[', '.geo-bar /*', '.geo-bar']);
+      assert.equal(rec[0].sel, 'div[['); assert.equal(rec[0].n, 0); assert.ok(rec[0].error, 'error recorded');
+      assert.deepEqual([rec[1].n, /valid style rule/.test(rec[1].error)], [0, true], 'the query accepts an unterminated comment, a style sheet would not: an error, never a broken sheet');
+      assert.deepEqual(rec[2], { sel: '.geo-bar', source: '--hide', n: 1, h: 88 });
+      assert.deepEqual(await state(page), { headerTop: 0, bar: 'none', tags: 1, rules: ['.geo-bar { display: none !important; }'] });
+      assert.match(session.formatHidden(rec), /^div\[\[ error: .+ \[--hide\]; \.geo-bar \/\* error: .+ \[--hide\]; \.geo-bar ×1 \(88px\) \[--hide\]$/);
+      await page.close();
+    });
+    await checkAsync('e2e: hideRegions twice → still one style[data-stardust-hide], its rules the union', async () => {
+      const page = await open('/bar');
+      await session.hideRegions(page, ['.geo-bar']);
+      const again = await session.hideRegions(page, ['.geo-bar', 'main p']);
+      assert.deepEqual(again.map((x) => [x.sel, x.n]), [['.geo-bar', 1], ['main p', 1]]);
+      const s = await state(page);
+      assert.equal(s.tags, 1);
+      assert.deepEqual(s.rules, ['.geo-bar { display: none !important; }', 'main p { display: none !important; }']);
+      await page.close();
+    });
+  } finally { await browser.close(); server.close(); }
+}
 
 console.log(failed ? `\n${failed} of ${checks} checks failing` : `\nlive-session: all ${checks} checks passed`);
 process.exit(failed ? 1 : 0);

@@ -47,6 +47,11 @@
  *   - `--locale` determinism: geo-redirecting sites (a car brand → /ch-de/,
  *     a fashion brand → /ww/) capture a different locale per run unless
  *     Accept-Language + context locale are pinned.
+ *   - In-flow per-visitor regions (a geo-IP location bar above the header) are
+ *     no overlay — dismissal cannot remove them and they push every box below
+ *     them down — so `--hide` / presence.json `hide` reach every instrument
+ *     through hideRegions: measured, hidden inline AND by a
+ *     `<style data-stardust-hide>` rule that also hides a bar rendered later.
  *
  * Escalation ladder (documented in replica/reference/source-fidelity-gate.md):
  *   headers+UA (default) → --headed (launchStealthHeaded) → if STILL blocked,
@@ -507,6 +512,121 @@ export async function dismissOverlays(page, { extra = [], lateWindowMs = 6000 } 
 
   return dismissed;
 }
+
+// ---- in-flow per-visitor regions: one hide vocabulary for every live instrument ----------------
+// `--hide <sel,…>` and presence.json `hide` (`"*"` for every slug, then the slug's own) name the regions; two-sided
+// instruments apply the SAME list to both sides (the build has nothing to hide, like overlay dismissal).
+
+/** `--hide` values → selectors: each value a comma list string or an array of them; trimmed, empty dropped,
+ * de-duplicated in order. Anything that is not a string or an array is ignored. */
+export function parseHideList(...values) {
+  const out = [];
+  const add = (v) => {
+    if (Array.isArray(v)) { v.forEach(add); return; }
+    if (typeof v !== 'string') return;
+    for (const part of v.split(',')) { const sel = part.trim(); if (sel && !out.includes(sel)) out.push(sel); }
+  };
+  values.forEach(add);
+  return out;
+}
+
+/** A slug's effective presence.json `hide` list: `"*".hide` then `<slug>.hide` (each entry may be a comma list),
+ * de-duplicated. Only `hide` is read from `"*"`; `main` / `variable` are not hide lists. null / {} json or a missing
+ * key → []. */
+export function presenceHide(json, slug) {
+  const hideOf = (k) => (json && typeof json === 'object' && json[k] && typeof json[k] === 'object' ? json[k].hide : null);
+  return parseHideList(hideOf('*'), hideOf(slug));
+}
+
+/**
+ * gate-all's presence.json for one slug → { file, slug, found, variable: [{ live, build }], hide, note }.
+ * `variable` as gate-all's specFor reads it: the entries joined on ',' and split again, trimmed, each split on the
+ * first '=' → live = left, build = right || left. `hide` = presenceHide. A missing file → found: false, empty
+ * lists and a note; malformed JSON throws `presence.json <file> unreadable (<msg>)`.
+ */
+export function readPresenceFile(file, slug) {
+  if (!file || !existsSync(file)) return { file, slug, found: false, variable: [], hide: [], note: `${file} not found — nothing hidden` };
+  let all;
+  try { all = JSON.parse(readFileSync(file, 'utf8')); } catch (e) { throw new Error(`presence.json ${file} unreadable (${e.message})`); }
+  const entry = (all && typeof all === 'object' && all[slug]) || {};
+  const variable = [].concat(entry.variable || []).join(',').split(',').map((s) => s.trim()).filter(Boolean).map((s) => {
+    const i = s.indexOf('=');
+    const live = (i < 0 ? s : s.slice(0, i)).trim();
+    return { live, build: (i < 0 ? '' : s.slice(i + 1)).trim() || live };
+  });
+  const hide = presenceHide(all, slug);
+  const note = !variable.length && !hide.length ? `${file} has no variable regions for ${slug} — nothing hidden`
+    : `${file} → ${slug}: ${variable.length} variable region(s)${hide.length ? `, ${hide.length} hide selector(s)` : ''}`;
+  return { file, slug, found: true, variable, hide, note };
+}
+
+/** A hide list → [{ sel, source }]: strings are comma lists (parseHideList) tagged `source`; { sel, source }
+ * objects keep their own source. A repeated selector keeps its first entry. */
+export function hideEntries(list, source = '--hide') {
+  const out = [];
+  const add = (sel, src) => { if (sel && !out.some((x) => x.sel === sel)) out.push({ sel, source: src }); };
+  for (const x of [].concat(list || [])) {
+    if (x && typeof x === 'object' && !Array.isArray(x)) add(typeof x.sel === 'string' ? x.sel.trim() : '', x.source || source);
+    else parseHideList(x).forEach((sel) => add(sel, source));
+  }
+  return out;
+}
+
+/* eslint-disable no-undef */
+// Runs in the page (Playwright serialises it — no outer-scope references). Every selector's matches are measured
+// before any is hidden (nested selectors read their rendered size), then hidden inline; ONE <style data-stardust-hide>
+// carries one rule per valid selector (the union across calls), so an element inserted later is hidden too. Each
+// rule is parsed alone first and kept in the browser's own serialisation: a selector the query accepts but a style
+// sheet would not (an unterminated comment) is an error that hides nothing, never a broken sheet. Then two frames or
+// `settleMs`, whichever comes first.
+async function hideInPage({ list, settleMs }) {
+  const rows = list.map(({ sel, source }) => {
+    try {
+      const els = [...document.querySelectorAll(sel)];
+      let rule = `${sel} { display: none !important; }`;
+      let probe = null;
+      try { probe = new CSSStyleSheet(); } catch { /* no constructable style sheets — keep the plain rule */ }
+      if (probe) {
+        probe.replaceSync(rule);
+        if (probe.cssRules.length !== 1) throw new Error(`'${sel}' is not a valid style rule selector`);
+        rule = probe.cssRules[0].cssText;
+      }
+      return { row: { sel, source, n: els.length, h: Math.round(els.reduce((s, el) => s + el.getBoundingClientRect().height, 0)) }, els, rule };
+    } catch (e) { return { row: { sel, source, n: 0, h: 0, error: String(e.message || e).split('\n')[0] }, els: [], rule: null }; }
+  });
+  for (const { els } of rows) for (const el of els) el.style.setProperty('display', 'none', 'important');
+  let tag = document.querySelector('style[data-stardust-hide]');
+  if (!tag) {
+    tag = document.createElement('style');
+    tag.setAttribute('data-stardust-hide', '');
+    (document.head || document.documentElement).appendChild(tag);
+  }
+  const rules = tag.textContent.split('\n').filter(Boolean);
+  for (const { rule } of rows) if (rule && !rules.includes(rule)) rules.push(rule);
+  tag.textContent = `${rules.join('\n')}\n`;
+  await new Promise((r) => { requestAnimationFrame(() => requestAnimationFrame(r)); setTimeout(r, settleMs); });
+  return rows.map((x) => x.row);
+}
+/* eslint-enable no-undef */
+
+/**
+ * Hide in-flow per-visitor regions on a Playwright `page` — after the instrument's dismissal + settle, before it
+ * measures / inventories / captures. `entries` = [{ sel, source }] or plain strings (source `--hide`), normalised by
+ * hideEntries. One page.evaluate: measure every selector (match count n, summed rendered height h, px rounded),
+ * hide every match inline (`display: none !important`) and add one rule per valid selector to the page's single
+ * `<style data-stardust-hide>` (idempotent: re-applying keeps one tag, its rules the union), then wait two animation
+ * frames or `settleMs`, whichever comes first. → records [{ sel, source, n, h, error? }] in input order; an invalid
+ * selector is a record with `error`, never a throw. An empty list → [] without touching the page.
+ */
+export async function hideRegions(page, entries, { settleMs = 250 } = {}) {
+  const list = hideEntries(entries, '--hide');
+  if (!list.length) return [];
+  return page.evaluate(hideInPage, { list, settleMs });
+}
+
+/** Records → one text line's worth: `<sel> ×<n> (<h>px) [<source>]`, `<sel> ×0 [<source>]`,
+ * `<sel> error: <msg> [<source>]`, joined with '; ' ('' for none). */
+export const formatHidden = (records) => (records || []).map((x) => `${x.sel} ${x.error ? `error: ${x.error}` : `×${x.n}${x.n ? ` (${x.h}px)` : ''}`} [${x.source}]`).join('; ');
 
 // ---- evidence freshness: when a source-side capture may be reused ------------------------------
 // One policy for every reuse of source-side evidence (an origin capture, a live inventory, the live
