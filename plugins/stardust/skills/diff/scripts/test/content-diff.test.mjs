@@ -3,20 +3,21 @@
 // placeholder / aria-label / title pairing by value, icons pairing by anchor then by identity + order (ICON MOVED), 🔴 on
 // interactive elements and 🟡 otherwise, title / EXTRA / ICON KIND / ICON MOVED advisory, glyph labels), the roots layer
 // (parseRoots — --main lists + the chrome roots; diffRoot / formatFinding — per-root findings tagged with their root),
-// --help in an empty cwd, importing the module runs no probe;
+// liveCacheKey (the --live-cache key), --help in an empty cwd, importing the module runs no probe;
 // then end-to-end against two small fixture pages served from a temp dir — a source with a localized search
 // placeholder, a flag image inside a locale link and an icon-font glyph inside a social link, against a build that
 // dropped the placeholder, swapped the flag and left the social box empty (the three defects a recorded hands-off
-// run shipped on every page while this probe read 0 🔴). The end-to-end part runs where playwright is importable
+// run shipped on every page while this probe read 0 🔴), and --live-cache (write, reuse with no source request,
+// same-run vs max-age freshness, key mismatch). The end-to-end part runs where playwright is importable
 // and prints a skip line otherwise. Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ATTRIBUTE_HINTS, attributeInventory, diffAttributes, diffRoot, formatFinding, glyphLabel, parseRoots } from '../content-diff.mjs';
+import { ATTRIBUTE_HINTS, attributeInventory, diffAttributes, diffRoot, formatFinding, glyphLabel, liveCacheKey, parseRoots } from '../content-diff.mjs';
 import { resolveProfile } from '../diff-profiles.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -197,6 +198,21 @@ await check('diffRoot: a root absent on both sides is one line and no findings; 
   assert.equal(diffRoot(ftr, undefined, null, prof).lines.length, 1);
 });
 
+// ---- pure: the live-side cache key ----------------------------------------------------------------
+await check('liveCacheKey: source URL, width, profile, roots, UA, locale, wait state, dismiss set and tier — a --main, width or dismiss change changes it', () => {
+  const opts = { width: 1440, ua: 'UA', locale: null, waitUntil: null, dismiss: [], headed: false };
+  const key = (o = {}, main = 'main') => liveCacheKey('https://s.example/', { ...opts, ...o }, prof, parseRoots(main, null, prof));
+  const k = key();
+  assert.deepEqual(Object.keys(k).sort(), ['dismiss', 'headed', 'locale', 'profile', 'roots', 'ua', 'url', 'waitUntil', 'width']);
+  assert.equal(k.url, 'https://s.example/'); assert.equal(k.width, 1440); assert.equal(k.profile, 'generic');
+  assert.equal(k.roots[0], 'main=main'); assert.equal(k.roots.length, 3); assert.match(k.roots[1], /^header=/);
+  assert.deepEqual(key(), k, 'deterministic');
+  const differs = (o, main) => JSON.stringify(key(o, main)) !== JSON.stringify(k);
+  assert.ok(differs({}, 'header'), '--main'); assert.ok(differs({}, 'main,#promo'), 'a second root');
+  assert.ok(differs({ width: 360 }), 'width'); assert.ok(differs({ dismiss: ['.promo-close'] }), 'extra dismiss selector');
+  assert.ok(differs({ dismiss: null }), 'dismissal off'); assert.ok(differs({ locale: 'de-DE' }), 'locale'); assert.ok(differs({ headed: true }), 'tier');
+});
+
 // ---- cli -----------------------------------------------------------------------------------------
 await check('--help: exit 0, usage on stdout naming the attribute layer, ICON MOVED, --main lists and --chrome/--no-chrome, nothing written in an empty cwd; two missing args → usage on stderr, exit 1', () => {
   const cwd = mkdtempSync(join(tmpdir(), 'content-diff-help-'));
@@ -204,6 +220,7 @@ await check('--help: exit 0, usage on stdout naming the attribute layer, ICON MO
   const wrote = readdirSync(cwd); rmSync(cwd, { recursive: true, force: true });
   assert.equal(r.status, 0, r.stderr); assert.match(r.stdout, /^usage: node skills\/diff\/scripts\/content-diff\.mjs/); assert.match(r.stdout, /MISSING ICON, ICON DIFF, ICON KIND, EXTRA ICON, ICON MOVED/); assert.deepEqual(wrote, []);
   assert.match(r.stdout, /--main <sel\[,sel…\]>/); assert.match(r.stdout, /--chrome \| --no-chrome/); assert.match(r.stdout, /MISSING TITLE, ICON MOVED, ICON KIND and every EXTRA are 🟡/); assert.match(r.stdout, /\[<root>\]/);
+  assert.match(r.stdout, /--live-cache <f>/);
   const u = spawnSync(process.execPath, [SCRIPT], { encoding: 'utf8' });
   assert.equal(u.status, 1); assert.match(u.stderr, /^usage:/);
 });
@@ -226,15 +243,17 @@ if (playwrightOk) {
       + '<ul class="social"><li><a href="https://social.example/x" aria-label="Facebook"><span class="icon"></span></a></li></ul>'),
     '/flag-de.svg': svg, '/flag-en.svg': svg,
   };
+  const hits = {};
   const server = createServer((req, res) => {
     const path = req.url.split('?')[0]; const body = pages[path];
+    hits[path] = (hits[path] || 0) + 1;
     if (!body) { res.writeHead(404); res.end('nope'); return; }
     res.writeHead(200, { 'content-type': path.endsWith('.svg') ? 'image/svg+xml' : 'text/html; charset=utf-8' }); res.end(body);
   });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   const base = `http://127.0.0.1:${server.address().port}`;
-  const run = (args) => new Promise((resolve) => {
-    const child = spawn(process.execPath, [SCRIPT, ...args], { encoding: 'utf8' });
+  const run = (args, { cwd, env } = {}) => new Promise((resolve) => {
+    const child = spawn(process.execPath, [SCRIPT, ...args], { cwd, env: env ? { ...process.env, ...env } : process.env });
     let stdout = ''; let stderr = '';
     child.stdout.on('data', (d) => { stdout += d; }); child.stderr.on('data', (d) => { stderr += d; });
     child.on('close', (status) => resolve({ status, stdout, stderr }));
@@ -265,6 +284,48 @@ if (playwrightOk) {
     assert.match(r.stdout, /^Findings: none — content \+ roles match$/m, r.stdout);
     assert.match(r.stdout, /icons: source 2 \/ build 2$/m);
   });
+  // --live-cache: the source side's inventories are probed once and reused while fresh; the build side is always probed.
+  const tmp = realpathSync(mkdtempSync(join(tmpdir(), 'content-diff-cache-')));
+  const cacheFile = join(tmp, 'cd.json');
+  const findingsLine = (s) => (s.match(/^Findings: .*$/m) || [''])[0];
+  const jsonOf = (s) => JSON.parse(s.slice(s.indexOf('Inventories JSON:') + 'Inventories JSON:'.length));
+  const cacheArgs = (...more) => [`${base}/source.html`, `${base}/build.html`, '--profile', 'generic', '--live-cache', cacheFile, '--json', ...more];
+  const maxAge = { cwd: tmp, env: { STARDUST_ORIGIN_MAX_AGE_H: '1' } };
+  let first;
+  await check('e2e --live-cache: run 1 probes the source and writes the cache (key, probe time, data); the JSON records the miss', async () => {
+    const before = hits['/source.html'] || 0;
+    first = await run(cacheArgs(), maxAge);
+    assert.equal(first.status, 0, first.stderr);
+    assert.equal(hits['/source.html'], before + 1);
+    assert.match(first.stdout, new RegExp(`^source side probed \\(cache: absent\\) → ${cacheFile}$`, 'm'), first.stdout);
+    const c = JSON.parse(readFileSync(cacheFile, 'utf8'));
+    assert.equal(c.writtenBy, 'content-diff.mjs'); assert.equal(c.key.url, `${base}/source.html`); assert.ok(c.data.main && c.data.main.items.length, 'the primary root inventory');
+    const lc = jsonOf(first.stdout).liveCache;
+    assert.equal(lc.file, cacheFile); assert.equal(lc.hit, false); assert.equal(lc.at, c.at); assert.equal(lc.reason, 'absent');
+  });
+  await check('e2e --live-cache: run 2 reuses it — no source request, the build probed, the same Findings line, the hit printed and recorded', async () => {
+    const src = hits['/source.html']; const bld = hits['/build.html'];
+    const r = await run(cacheArgs(), maxAge);
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(hits['/source.html'], src, 'no source navigation'); assert.equal(hits['/build.html'], bld + 1, 'the build side is always re-measured');
+    assert.equal(findingsLine(r.stdout), findingsLine(first.stdout)); assert.match(findingsLine(r.stdout), /^Findings: 3 \(3 structural 🔴\)$/);
+    const at = JSON.parse(readFileSync(cacheFile, 'utf8')).at;
+    assert.match(r.stdout, new RegExp(`^source side from cache ${cacheFile} \\(probed ${at}, max-age 1h\\)$`, 'm'), r.stdout);
+    assert.deepEqual(jsonOf(r.stdout).liveCache, { file: cacheFile, hit: true, at, policy: 'max-age 1h' });
+  });
+  await check('e2e --live-cache: a same-run ledger line makes it fresh without a max age; --main header is a key mismatch → probed again', async () => {
+    mkdirSync(join(tmp, 'stardust'), { recursive: true });
+    writeFileSync(join(tmp, 'stardust/status.jsonl'), `${JSON.stringify({ ts: new Date(Date.now() - 3600e3).toISOString(), skill: 'stardust:replica', phase: 'extract', event: 'start' })}\n`);
+    let src = hits['/source.html'];
+    let r = await run(cacheArgs(), { cwd: tmp, env: { STARDUST_ORIGIN_MAX_AGE_H: '' } });
+    assert.equal(r.status, 0, r.stderr); assert.equal(hits['/source.html'], src);
+    assert.match(r.stdout, /^source side from cache .* same-run\)$/m, r.stdout);
+    src = hits['/source.html'];
+    r = await run(cacheArgs('--main', 'header'), maxAge);
+    assert.equal(r.status, 0, r.stderr); assert.equal(hits['/source.html'], src + 1);
+    assert.match(r.stdout, /^source side probed \(cache: key mismatch \(roots\)\) → /m, r.stdout);
+  });
+  rmSync(tmp, { recursive: true, force: true });
   server.close();
 }
 

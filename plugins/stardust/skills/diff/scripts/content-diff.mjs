@@ -109,6 +109,17 @@
  *                           site-specific selectors (optional)
  *     --headed              escalation: headed stealth real Chrome (bot-managed sites)
  *     --locale <tag>        pin Accept-Language + context locale (geo-redirect determinism)
+ *     --live-cache <f>      reuse the SOURCE side's inventories from <f> while fresh (this
+ *                           run; STARDUST_ORIGIN_MAX_AGE_H for older) and the key matches;
+ *                           probe and write it otherwise (gate.sh --full: <gate dir>/content-live.json)
+ *
+ * Live-side cache (--live-cache). The file holds the source side's INVENTORIES, never a verdict: the
+ * build side is probed every run and the findings are recomputed from (cached source, fresh build). Key =
+ * source URL + width + profile + roots (--main, chrome) + UA + locale + wait state + dismiss set + tier;
+ * fresh = probed at/after this run's opener line in ./stardust/status.jsonl (cwd = the project root, as
+ * under gate.sh), or within STARDUST_ORIGIN_MAX_AGE_H hours (live-session.mjs freshness). A hit or a miss
+ * prints one line after the header and lands in the --json object as liveCache; a source side that
+ * answered an HTTP error is measured but never cached; a failed cache write never fails the probe.
  *
  * Every context gets the real-Chrome UA + the standard request headers via
  * live-session.mjs (UA alone still 403s on Akamai — F-R1). A bot-management
@@ -131,7 +142,7 @@
  * (the first root), roots: { <other root>: { [source]: inv, [build]: inv } },
  * findings: [{ sev, kind, root, msg }] }.
  *
- * attributeInventory (in-page) and diffAttributes, parseRoots, diffRoot, formatFinding
+ * attributeInventory (in-page) and diffAttributes, parseRoots, diffRoot, formatFinding, liveCacheKey
  * (pure) are exported; playwright is imported lazily in main, so the contract test runs
  * the differ without a browser.
  */
@@ -139,7 +150,7 @@
 /* eslint-disable import/no-extraneous-dependencies, import/extensions, no-await-in-loop, no-restricted-syntax, brace-style, object-curly-newline, max-len, no-plusplus, newline-per-chained-call, no-continue, no-multi-spaces */
 /* standalone dev tool: playwright is a devDependency (imported lazily in main); sequential page ops use awaited loops by design */
 import { realpathSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 // NOTE: deploy's gates (#93/#94) now use their OWN synced copies in skills/deploy/scripts/
 // (so A6/A2 are independent of this skill). This probe keeps its local copies; the two
@@ -149,7 +160,7 @@ import { resolveProfile } from './diff-profiles.mjs';
 // editableInventory = the Experience Workspace outermost-editable classifier, shared
 // with the deploy gates (section-schema editableTexts, block-roundtrip --ew).
 import { inventory, diffInventories, summarise, editableInventory } from './content-inventory.mjs';
-import { REAL_CHROME_UA, isLiveHttpUrl, defaultWaitUntil, launchStealthHeaded, newLiveContext, gotoLive, dismissOverlays } from './live-session.mjs';
+import { REAL_CHROME_UA, isLiveHttpUrl, defaultWaitUntil, launchStealthHeaded, newLiveContext, gotoLive, dismissOverlays, LEDGER, runStartAt, readSideCache, writeSideCache } from './live-session.mjs';
 
 const USAGE = `usage: node skills/diff/scripts/content-diff.mjs <sourceURL> <buildURL> [options]
   --profile eds|generic  stack profile (default eds)
@@ -171,6 +182,9 @@ const USAGE = `usage: node skills/diff/scripts/content-diff.mjs <sourceURL> <bui
                          sides; optional comma-separated extra selectors
   --headed               headed stealth real Chrome (escalation for bot-managed sites)
   --locale <tag>         pin Accept-Language + locale (e.g. en-GB) for geo determinism
+  --live-cache <f>       reuse the SOURCE side's inventories from <f> while fresh (this run;
+                         STARDUST_ORIGIN_MAX_AGE_H for older) and the key matches; probe and
+                         write it otherwise (gate.sh --full: <gate dir>/content-live.json)
 exit codes: 0 ran (flags advisory; an HTTP-error side, e.g. a 404 build pre-propagation,
             is measured + flagged with a warning, not fatal), 1 error,
             3 bot challenge (live side blocked — fail loud)
@@ -431,11 +445,18 @@ function parseArgs(argv) {
     }
     else if (a === '--headed') { opts.headed = true; }
     else if (a === '--locale') { opts.locale = rest[i += 1]; }
+    else if (a === '--live-cache') { opts.liveCache = rest[i += 1]; }
   }
   return { proto, eds, opts };
 }
 
-async function grab(browser, url, opts, prof, roots) {
+// The --live-cache key: everything that shapes the SOURCE side's inventories (a change re-probes).
+export const liveCacheKey = (src, opts, prof, roots) => ({
+  url: src, width: opts.width, profile: prof.name, roots: roots.map((r) => `${r.name}=${r.sel}`),
+  ua: opts.ua, locale: opts.locale, waitUntil: opts.waitUntil, dismiss: opts.dismiss, headed: opts.headed,
+});
+
+async function grab(browser, url, opts, prof, roots, nav = {}) {
   // UA + standard headers on EVERY context (live-session; F-R1 — UA alone
   // still 403s on Akamai), webdriver spoof included for the --headed tier.
   const ctx = await newLiveContext(browser, {
@@ -450,7 +471,8 @@ async function grab(browser, url, opts, prof, roots) {
   // aem.page before preview propagation — the flags carry the signal, exit 0.
   // solveWindow only under --headed: headless clearance never lands, and the
   // solve loop would spend the Akamai block budget (1 hit vs up to 4).
-  await gotoLive(page, url, { waitUntil: opts.waitUntil || defaultWaitUntil(url), timeoutMs: 60000, settleMs: 0, httpError: 'measure', solveWindow: opts.headed });
+  const resp = await gotoLive(page, url, { waitUntil: opts.waitUntil || defaultWaitUntil(url), timeoutMs: 60000, settleMs: 0, httpError: 'measure', solveWindow: opts.headed });
+  nav.status = resp ? resp.status() : null; // eslint-disable-line no-param-reassign
   await page.waitForTimeout(1500);
   // late-modal poll window only on live targets — local prototypes' overlays
   // are not timed third-party scripts, they render immediately.
@@ -485,20 +507,38 @@ async function main() {
   }
   const prof = resolveProfile(opts.profile);
   const roots = parseRoots(opts.main, opts.chrome, prof);
+  // --live-cache: the run anchor is read once, from the project root's ledger (cwd, as under gate.sh)
+  const key = opts.liveCache ? liveCacheKey(proto, opts, prof, roots) : null;
+  const cache = opts.liveCache ? readSideCache(opts.liveCache, key, { runStart: runStartAt({ ledger: resolve(LEDGER) }) }) : null;
   let chromium;
   try { ({ chromium } = await import('playwright')); } catch (e) {
     throw new Error(`playwright is not importable from ${dirname(fileURLToPath(import.meta.url))} (${e.code || e.message}) — copy the diff skill's scripts dir into the project and run the copy`);
   }
   const browser = opts.headed ? await launchStealthHeaded(chromium) : await chromium.launch();
-  let srcInvs; let tgtInvs;
+  let srcInvs; let tgtInvs; let liveCache = null; let cacheLine = '';
   try {
-    srcInvs = await grab(browser, proto, opts, prof, roots);
+    if (cache && cache.hit) {
+      srcInvs = cache.data;
+      liveCache = { file: opts.liveCache, hit: true, at: cache.at, policy: cache.policy };
+      cacheLine = `source side from cache ${opts.liveCache} (probed ${cache.at}, ${cache.policy})`;
+    } else {
+      const at = new Date().toISOString(); const nav = {};
+      srcInvs = await grab(browser, proto, opts, prof, roots, nav);
+      if (cache) {
+        liveCache = { file: opts.liveCache, hit: false, at, policy: null, reason: cache.reason };
+        // an error page is measured (advisory contract) but never reused; a failed write never fails the probe
+        let unsaved = nav.status >= 400 ? `HTTP ${nav.status}` : null;
+        if (!unsaved) { try { writeSideCache(opts.liveCache, key, srcInvs, { at, writtenBy: 'content-diff.mjs' }); } catch (e) { unsaved = `write failed: ${String(e.message).split('\n')[0]}`; } }
+        cacheLine = `source side probed (cache: ${cache.reason}) ${unsaved ? `— not cached (${unsaved})` : `→ ${opts.liveCache}`}`;
+      }
+    }
     tgtInvs = await grab(browser, eds, opts, prof, roots);
   } finally {
     await browser.close();
   }
 
   process.stdout.write(`\nContent diff @ ${opts.width}px (profile "${prof.name}", roots: ${roots.map((r) => r.name).join(', ')})\n`);
+  if (cacheLine) process.stdout.write(`${cacheLine}\n`);
   const flags = [];
   for (const root of roots) {
     const { flags: rf, lines } = diffRoot(root, srcInvs[root.name], tgtInvs[root.name], prof);
@@ -521,7 +561,7 @@ async function main() {
     const others = {};
     roots.slice(1).forEach((r) => { others[r.name] = { [prof.source]: srcInvs[r.name], [prof.target]: tgtInvs[r.name] }; });
     process.stdout.write('\nInventories JSON:\n');
-    process.stdout.write(`${JSON.stringify({ primaryRoot: primary, [prof.source]: srcInvs[primary], [prof.target]: tgtInvs[primary], roots: others, findings: flags }, null, 1)}\n`);
+    process.stdout.write(`${JSON.stringify({ primaryRoot: primary, [prof.source]: srcInvs[primary], [prof.target]: tgtInvs[primary], roots: others, findings: flags, ...(liveCache ? { liveCache } : {}) }, null, 1)}\n`);
   }
 }
 
