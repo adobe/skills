@@ -7,7 +7,7 @@
 // Reuse under --skip-existing: probeReuse (the capture pair rule), the gate key (stable across key order, changed by
 // one block / content / frozen-file byte or a mask edit, null on a freeze mismatch), the deploy-state guard's
 // content half; then the CLI over stub instruments in a sandbox project with a git remote and a deploy ledger.
-// Origin reuse (originReusePlan / liveReusePlan tables, --origin-max-age, the split pool budgets) and a sandbox
+// Origin reuse (originReusePlan / liveReusePlan tables, --origin-max-age, the pool defaults a browser slot keeps) and a sandbox
 // runner with stub instruments (no browser): fix rounds reuse this run's origin, a new run recaptures, every reuse
 // is in the row, origin.json and _run.log. --one-load (C8): inventoryWhy / oneLoadKeep tables, then the sandbox with a
 // stitch stub that writes a canned inventory: one stitch per side per page, no probe spawns, fix rounds 0 origin / 1 EDS,
@@ -492,11 +492,11 @@ check('liveReusePlan: the archetype round\'s live.png is reused only when live.j
   assert.equal(liveReusePlan(la, { ...live, dismiss: { off: false, consent: null, extra: '.modal' } }, fr(live)).reuse, false);
   assert.equal(liveReusePlan(la, { ...live, ua: 'custom' }, fr(live)).reuse, false);
 });
-check('parseArgs: --origin-max-age <h>; pools 4 / 2 without a machine browser slot, 6 / 4 with STARDUST_BROWSER_SLOT, origin stays 2, explicit flags win', () => {
+check('parseArgs: --origin-max-age <h>; pools origin 2 / EDS 4 / probe 2 with or without a machine browser slot (STARDUST_BROWSER_SLOT — it bounds jobs, not browsers), explicit flags win', () => {
   assert.equal(parseArgs(['node', 'x'], {}).originMaxAge, null); assert.equal(parseArgs(['node', 'x', '--origin-max-age', '6'], {}).originMaxAge, 6);
   const plain = parseArgs(['node', 'x'], {}); assert.deepEqual([plain.oc, plain.ec, plain.pc], [2, 4, 2]);
-  const held = parseArgs(['node', 'x'], { STARDUST_BROWSER_SLOT: '/locks/slot-1' }); assert.deepEqual([held.oc, held.ec, held.pc], [2, 6, 4]);
-  const own = parseArgs(['node', 'x', '--eds-concurrency', '3', '--probe-concurrency', '1', '--origin-concurrency', '1'], { STARDUST_BROWSER_SLOT: '/locks/slot-1' }); assert.deepEqual([own.oc, own.ec, own.pc], [1, 3, 1]);
+  const held = parseArgs(['node', 'x'], { STARDUST_BROWSER_SLOT: '/locks/slot-1' }); assert.deepEqual([held.oc, held.ec, held.pc], [2, 4, 2]); assert.equal(held.browserSlot, true);
+  const own = parseArgs(['node', 'x', '--eds-concurrency', '6', '--probe-concurrency', '4', '--origin-concurrency', '1'], { STARDUST_BROWSER_SLOT: '/locks/slot-1' }); assert.deepEqual([own.oc, own.ec, own.pc], [1, 6, 4]);
   for (const bad of ['x', '-1']) {
     const cwd = mkdtempSync(join(tmpdir(), 'gate-all-maxage-'));
     const r = spawnSync(process.execPath, [SCRIPT, '--origin-max-age', bad], { cwd, encoding: 'utf8' });
@@ -559,9 +559,10 @@ check('sandbox 1: a full round captures both sides of every page; origin.json re
   assert.match(runLog(), /origin reuse: same run since .*; pools origin 2 \/ eds 4 \/ probe 2/);
   assert.ok(r.cp.every((c) => !c.had), 'a fresh origin capture is paired with a fresh presence inventory');
 });
-check('sandbox 2: --only home is a fix round — 0 origin navigations, the row / origin.json / _run.log record the reuse, presence cache passed', () => {
-  const r = gate(['--only', 'home']);
+check('sandbox 2: --only home is a fix round — 0 origin navigations, the row / origin.json / _run.log record the reuse, presence cache passed; a held browser slot leaves the pools at 2 / 4 / 2', () => {
+  const r = gate(['--only', 'home'], { STARDUST_BROWSER_SLOT: join(root, 'slot-1.json') });
   assert.equal(r.status, 0, r.stderr + r.stdout); assert.equal(r.origin, 0); assert.equal(r.eds, 1);
+  assert.match(runLog(), /; pools origin 2 \/ eds 4 \/ probe 2 \(machine browser slot held\)/);
   assert.deepEqual(r.row('home').originReused, { from: 'stardust/replica/gates/all-1440/home/origin.png', at: homeAt, policy: 'same-run', stale: null });
   const m = read('stardust/replica/gates/all-1440/home/origin.json');
   assert.equal(m.at, homeAt, 'the capture time is kept'); assert.ok(m.reusedAt >= homeAt); assert.equal(m.reused, true); assert.equal(m.policy, 'same-run');

@@ -65,11 +65,13 @@
  * Usage: node skills/replica/scripts/gate-all.mjs [--stage published|prototype] [--proto-base <url>]
  *        [--state f] [--out dir] [--width 1440] [--only <slug,…>] [--skip-existing] [--recapture-eds] [--recapture-origin] [--eds-host <h>]
  *        [--blocked <re>] [--try-blocked] [--crawl-shots <dir>] [--origin-max-age <h>] [--origin-concurrency 2]
- *        [--eds-concurrency 4|6] [--probe-concurrency 2|4] [--threshold 10] [--height-tol 0.05]
+ *        [--eds-concurrency 4] [--probe-concurrency 2] [--threshold 10] [--height-tol 0.05]
  *        [--clip-max 0] [--unit-tol 4] [--no-clip] [--no-content] [--no-probes] [--units <f>]
  *        [--compare-only] [--warmup <url>] [--vh <px>] [--one-load]
- * Two browser budgets: the origin pool stays 2 (the source's bot budget); the EDS / probe pools widen from 4 / 2
- * to 6 / 4 when the job holds a machine-wide browser slot (run-bg sets STARDUST_BROWSER_SLOT).
+ * Two browser budgets, kept apart: the origin pool (2) is the source's bot budget; the EDS / probe pools (4 / 2) carry
+ * no bot risk, but each of their slots is a Chromium — raising them raises this job's Chromium peak (measured: 6 / 4
+ * took an 8-page job from 6 to 8 at once). A machine-wide browser slot (run-bg) bounds jobs, not browsers, so the
+ * defaults hold with or without one; the flags raise them.
  * Requires playwright, pixelmatch, pngjs (project devDependencies); stitch-shot.mjs, pixel-compare.mjs
  * and foundation-freeze.mjs next to this file; the diff skill's scripts dir alongside. Exit: 0 all PASS
  * (overrides count), 2 any FAIL, 1 error. `verdict`, `formatSummary`, `parseArgs` and the reuse helpers
@@ -107,9 +109,9 @@ Usage: node gate-all.mjs [options]   (from the project root)
   --blocked <regex>         origins the edge denies → crawl shot unless --try-blocked
   --try-blocked             attempt the live stitch on --blocked origins too
   --crawl-shots <dir>       stardust/current/assets/screenshots (fallback origin PNGs)
-  --origin-concurrency <n>  2 — the source's bot budget (a browser slot does not widen it)
-  --eds-concurrency <n>     4, 6 when the job holds a machine browser slot (run-bg: STARDUST_BROWSER_SLOT)
-  --probe-concurrency <n>   2, 4 with a machine browser slot
+  --origin-concurrency <n>  2 — the source's bot budget
+  --eds-concurrency <n>     4      --probe-concurrency <n>  2 — no bot risk, but each is a Chromium:
+                            raising them raises this job's Chromium peak (a browser slot bounds jobs)
   --threshold <pct>         10     --height-tol <frac>    0.05   --clip-max <n>  0   --unit-tol <px>  4
   --no-clip | --no-content | --no-probes   drop criteria 3 / 4 / both (pixel-only verdict)
   --units <file>            repeated-unit declarations (default <out>/units.json)
@@ -127,7 +129,7 @@ Exit: 0 all PASS (overrides count), 2 any FAIL, 1 error.`;
 export function parseArgs(argv, env = process.env) {
   const rest = argv.slice(2);
   if (rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
-  const o = { stage: 'published', protoBase: null, state: 'stardust/state.json', out: null, width: 1440, only: null, skip: false, recaptureEds: false, recaptureOrigin: false, edsHost: null, blocked: null, tryBlocked: false, crawlShots: 'stardust/current/assets/screenshots', oc: 2, ec: null, pc: null, originMaxAge: null, threshold: 10, heightTol: 0.05, clipMax: 0, unitTol: 4, clip: true, content: true, units: null, compareOnly: false, warmup: null, vh: null };
+  const o = { stage: 'published', protoBase: null, state: 'stardust/state.json', out: null, width: 1440, only: null, skip: false, recaptureEds: false, recaptureOrigin: false, edsHost: null, blocked: null, tryBlocked: false, crawlShots: 'stardust/current/assets/screenshots', oc: 2, ec: 4, pc: 2, originMaxAge: null, threshold: 10, heightTol: 0.05, clipMax: 0, unitTol: 4, clip: true, content: true, units: null, compareOnly: false, warmup: null, vh: null };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i]; const v = () => rest[++i];
     if (a === '--stage') { o.stage = v(); if (!['published', 'prototype'].includes(o.stage)) { console.error(`--stage must be published or prototype\n\n${HELP}`); process.exit(1); } }
@@ -144,9 +146,7 @@ export function parseArgs(argv, env = process.env) {
     else if (a === '--units') o.units = v(); else if (a === '--compare-only') o.compareOnly = true; else if (a === '--warmup') o.warmup = v(); else if (a === '--vh') o.vh = Number(v());
     else if (a.startsWith('--')) { console.error(`unknown flag ${a}\n\n${HELP}`); process.exit(1); }
   }
-  o.browserSlot = Boolean(env.STARDUST_BROWSER_SLOT); // run-bg holds a machine-wide browser slot for this job
-  if (o.ec == null) o.ec = o.browserSlot ? 6 : 4;
-  if (o.pc == null) o.pc = o.browserSlot ? 4 : 2;
+  o.browserSlot = Boolean(env.STARDUST_BROWSER_SLOT); // run-bg holds a machine-wide browser slot for this job (logged; pools unchanged)
   if (o.stage === 'prototype' && o.content) o.content = false; // content-diff already reconciles the prototype's text
   if (!o.out) o.out = `stardust/replica/gates/${o.stage === 'prototype' ? 'prototypes' : 'all'}-${o.width}`;
   return o;
