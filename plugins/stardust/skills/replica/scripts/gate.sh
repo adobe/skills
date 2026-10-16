@@ -73,7 +73,8 @@
 #            content-diff, visual-diff and content-presence is cached like chrome-parity's
 #            chrome-live.json: content-live.json, visual-live.json, presence-live.json — live
 #            side probed once per run, later rounds reuse it; older only under
-#            STARDUST_ORIGIN_MAX_AGE_H; delete to re-probe. Needs the diff skill's
+#            STARDUST_ORIGIN_MAX_AGE_H; delete to re-probe (retaking live.png drops
+#            them too). Needs the diff skill's
 #            scripts at stardust/scripts/diff/ (Setup step 4). The build URL may be
 #            a served prototype or the published/preview origin — the published-
 #            origin gate is the same command with the preview URL (pass --marker
@@ -268,9 +269,10 @@ fi
 # round's overlay dismissal, header § Overlay dismissal). Never swallow the
 # output — exit 3 here means "blocked, escalate --headed", not "skip".
 # live.json records how live.png was taken (url, width, locale, settle, dismissal, at) — gate-all reads it before
-# reusing live.png; it goes with live.png when the capture is retaken (live.png keeps its delete-to-retake rule).
+# reusing live.png; it goes with live.png when the capture is retaken (live.png keeps its delete-to-retake rule), and
+# so do the --full probes' live caches (content-, visual-, presence-live.json; chrome-live.json keeps its own rule).
 if [ ! -f "$DIR/live.png" ]; then
-  capture_live() { rm -f "$DIR/live.png" "$DIR/live.json"; LIVE_AT=$(node -e 'process.stdout.write(new Date().toISOString())'); capped "$STITCH_TIMEOUT" "stitch-shot live $SLUG@$W" node "$HERE/stitch-shot.mjs" "$LIVE_URL" "$DIR/live.png" --width "$W" --settle ${STITCH_OPTS[@]+"${STITCH_OPTS[@]}"}; }
+  capture_live() { rm -f "$DIR/live.png" "$DIR/live.json" "$DIR/content-live.json" "$DIR/visual-live.json" "$DIR/presence-live.json"; LIVE_AT=$(node -e 'process.stdout.write(new Date().toISOString())'); capped "$STITCH_TIMEOUT" "stitch-shot live $SLUG@$W" node "$HERE/stitch-shot.mjs" "$LIVE_URL" "$DIR/live.png" --width "$W" --settle ${STITCH_OPTS[@]+"${STITCH_OPTS[@]}"}; }
   retry_once "live capture" capture_live
   rc=$?
   [ $rc -ne 0 ] && rm -f "$DIR/live.png" "$DIR/live.json"   # never leave a partial live capture to be reused

@@ -325,6 +325,16 @@ r = await gate(['lj1', 'https://live.example/lj1', buildUrl, '1440', 'j5', '--ma
 check('a failed live (re)capture leaves neither live.png nor live.json', r.status === 1 && !existsSync(join(root, gdir('lj1'), 'live.png')) && liveJson('lj1') === null, `status ${r.status} ${liveJson('lj1')}`);
 r = await gate(['lj4', 'https://live.example/lj4', buildUrl, '1440', 'j6', '--marker', 'home-proposed'], { STUB_STITCH_RC_LIVE: '3' });
 check('a blocked first live capture (exit 3) writes no live.json', r.status === 3 && !existsSync(join(root, gdir('lj4'), 'live.png')) && liveJson('lj4') === null, `status ${r.status}`);
+// Retaking live.png (delete it) also drops the probes' live caches; chrome-live.json keeps its own rule; a cached round keeps them.
+const probeCaches = ['content-live.json', 'visual-live.json', 'presence-live.json'];
+const present = (slug) => [...probeCaches, 'chrome-live.json'].filter((f) => existsSync(join(root, gdir(slug), f)));
+r = await gate(['lj5', 'https://live.example/lj5', buildUrl, '1440', 'j7', '--marker', 'home-proposed']);
+[...probeCaches, 'chrome-live.json'].forEach((f) => writeFileSync(join(root, gdir('lj5'), f), '{}'));
+r = await gate(['lj5', 'https://live.example/lj5', buildUrl, '1440', 'j8', '--marker', 'home-proposed']);
+check('a cached live.png round keeps the probes\' live caches', r.status === 0 && present('lj5').length === 4, present('lj5').join(','));
+unlinkSync(join(root, gdir('lj5'), 'live.png'));
+r = await gate(['lj5', 'https://live.example/lj5', buildUrl, '1440', 'j9', '--marker', 'home-proposed']);
+check('retaking live.png drops content-, visual- and presence-live.json; chrome-live.json is left alone', r.status === 0 && present('lj5').join(',') === 'chrome-live.json', present('lj5').join(','));
 
 server.close();
 if (process.env.GATE_TEST_KEEP) console.log(`sandbox kept at ${root} (build url was ${buildUrl})`);
