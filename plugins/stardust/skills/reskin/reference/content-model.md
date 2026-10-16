@@ -144,7 +144,12 @@ Node shape:
   formControl | text`.
   `text` nodes are the stream's leftovers — bare text runs
   (eyebrows, dates, photo credits) with `parentTag`/`parentClass`
-  for context.
+  for context, and `inButton: true` when the run sits inside a
+  `<button>` below its direct parent (an icon button's sr-only label).
+  A `cta` carries `buttonLike: true` when it is styled as a button
+  whatever its class names: a painted background or visible border plus
+  button-sized padding (≥8px sides, ≥4px top). The renderer gives it the
+  donor `.btn`.
 - `text` — normalized **rendered-case** innerText. Stream `text`
   nodes are built on an **innerText-consistent basis**: a text node
   enters the stream only if its text occurs in its parent's rendered
@@ -304,6 +309,15 @@ Procedure, per page:
    outside-the-wrapper units as extra `!` scopes). The field run
    needed three scope iterations to get from 2 slots to 11 real
    ones.
+   The capturer downgrades two known false positives to `note:`
+   lines. (a) **All-whole scopes** (every part ends in `!`, e.g. a
+   chrome capture or a single-form page) are one slot per element
+   by design, so it skips the granularity check and treats an h1
+   outside the scope as expected. (b) A **mega-slot that is a
+   repeating run** (`findRepeat` covers ≥60% of its stream) is a
+   card grid, not a wrapper: a listing page whose grid carries most
+   of the text is correctly scoped. A `WARNING:` means neither
+   exception applies.
 4. **Widen with multi-scope selectors**, comma-separated, captured
    in order: `'.stage.section!,.banner-slider.section!,#content'`.
    The `!` suffix keeps a scope **whole** as one slot (use it for

@@ -27,7 +27,8 @@ export const CURATE_OUTPUTS = [
   ['canon-source/_brand-extraction.json', 'canon-source/_brand-extraction.json'],
 ];
 
-export function assertIgnored(outputs, { dir = 'stardust', cwd = process.cwd() } = {}) {
+// The outputs git would track. Throws only when git cannot answer.
+export function exposedOutputs(outputs, { dir = 'stardust', cwd = process.cwd() } = {}) {
   const exposed = [];
   for (const [rel, line] of outputs) {
     const path = join(dir, rel);
@@ -40,8 +41,20 @@ export function assertIgnored(outputs, { dir = 'stardust', cwd = process.cwd() }
       exposed.push({ path, line, tracked });
     } else if (r.status !== 0) throw new UsageError(`git check-ignore failed (exit ${r.status}): ${String(r.stderr).trim()}`);
   }
+  return exposed;
+}
+
+// The .gitignore lines still missing for later steps (capture → curate), so one edit covers the pipeline.
+export function laterLines(later, opts = {}) {
+  return later?.length ? [...new Set(exposedOutputs(later, opts).map((t) => t.line))] : [];
+}
+
+// later: outputs of the steps that follow (capture passes CURATE_OUTPUTS) — their missing lines join the
+// refusal, so the user fixes .gitignore once instead of once per step.
+export function assertIgnored(outputs, { dir = 'stardust', cwd = process.cwd(), later = [] } = {}) {
+  const exposed = exposedOutputs(outputs, { dir, cwd });
   if (!exposed.length) return;
-  const lines = [...new Set(exposed.map((t) => t.line))];
+  const lines = [...new Set([...exposed.map((t) => t.line), ...laterLines(later, { dir, cwd })])];
   const tracked = exposed.filter((t) => t.tracked).map((t) => t.path);
   throw new UsageError([
     `--confidential: ${exposed.length} output(s) would be tracked by git: ${exposed.map((t) => t.path).join(', ')}.`,

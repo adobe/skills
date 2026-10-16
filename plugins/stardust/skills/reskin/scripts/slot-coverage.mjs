@@ -14,9 +14,11 @@
  *                     present in the rendered scope's normalized text.
  *   (2) CTAs        — each captured CTA is present as a (text, ABSOLUTE
  *                     href) pair: an <a> whose href equals absHref and
- *                     whose text contains the captured label.
+ *                     whose text contains the captured label. A link
+ *                     migrate rewrote is matched by its data-source-href.
  *   (3) IMAGES      — each captured image src is present, URL-normalized
- *                     to host+path.
+ *                     to host+path. A localized image (stream-render
+ *                     --localize-images) is matched by its data-source-src.
  *   (3b) PAINT      — each present content image actually RENDERS
  *                     (naturalWidth > 0 after a lazy-load scroll pass).
  *                     The src check compares URL strings; an origin-locked
@@ -27,7 +29,8 @@
  *                     with a recorded reason.
  *   (4) METADATA    — title, description, canonical, every OG tag, every
  *                     Twitter tag carried VERBATIM; JSON-LD block count
- *                     matches. Fidelity over repair: broken source values
+ *                     matches (migrate's inserted data-migrate-default
+ *                     block is not counted). Fidelity over repair: broken source values
  *                     must be carried too (flag them, don't fix them).
  *
  * Live --rendered targets (a staged deploy, a served page on a real host)
@@ -172,9 +175,9 @@ const rendered = await page.evaluate((scopeSel) => {
   if (!scope) return { error: `rendered scope not found: ${scopeSel}` };
   return {
     text: norm(scope.innerText),
-    hrefs: Array.from(scope.querySelectorAll('a[href]')).map((a) => ({ href: a.href, text: norm(a.innerText) })),
+    hrefs: Array.from(scope.querySelectorAll('a[href]')).map((a) => ({ href: a.dataset.sourceHref || a.href, text: norm(a.innerText) })),
     imgs: Array.from(scope.querySelectorAll('img')).map((i) => ({
-      src: i.currentSrc || i.src,
+      src: i.dataset.sourceSrc || i.currentSrc || i.src,
       painted: i.complete && i.naturalWidth > 0,
     })),
   };
@@ -221,7 +224,7 @@ const meta = await page.evaluate(() => {
   return {
     title: document.title, description,
     canonical: document.querySelector('link[rel="canonical"]')?.getAttribute('href') || null,
-    og, tw, jsonLdCount: document.querySelectorAll('script[type="application/ld+json"]').length,
+    og, tw, jsonLdCount: document.querySelectorAll('script[type="application/ld+json"]:not([data-migrate-default])').length,
   };
 });
 const md0 = model.metadata;

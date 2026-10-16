@@ -65,7 +65,9 @@ stamp    sets <dir>/state.json designSource = { url, capturedAt, path: "<dir>/ca
 --confidential  for a design that must not reach git: capture and curate first check, with
          git check-ignore, every path they would write, and refuse (exit 2, nothing written, no
          request) with the exact lines to add to <dir>/.gitignore (or the git rm --cached a tracked
-         file needs); stamp stores designSource.url as "figma:redacted" (state.json stays tracked).
+         file needs; capture's refusal also lists curate's lines, so one edit covers both, and a
+         capture that passes warns when curate's are still missing); stamp stores designSource.url
+         as "figma:redacted" (state.json stays tracked).
          Sticky: after capture --confidential, curate, stamp and later captures in this dir apply it
          too. Needs a git repository.
 --dir <d>  the stardust directory (default stardust).
@@ -192,7 +194,11 @@ export async function main(argv, { env = process.env, log = console.log, warn = 
       log('next: capture <figma-url> --frames <id,id,…> with the foundation frames and one representative frame per module');
       return 0;
     }
-    if (confidential) { const g = await helper('guard'); g.assertIgnored(g.CAPTURE_OUTPUTS, { dir }); }
+    if (confidential) {
+      const g = await helper('guard'); g.assertIgnored(g.CAPTURE_OUTPUTS, { dir, later: g.CURATE_OUTPUTS });
+      const missing = g.laterLines(g.CURATE_OUTPUTS, { dir });
+      if (missing.length) warn(`--confidential: curate will refuse until ${dir}/.gitignore also has: ${missing.join(' · ')}`);
+    }
     const client = createClient({ token: env.FIGMA_TOKEN || '', base: env.FIGMA_API_BASE || undefined, maxWaitSec });
     const { manifest, written, fromCache } = await runCapture({ url: positional[0], frames, maxFrames, refresh: Boolean(opts.refresh), confidential, dir, client, warn });
     const status = manifest.endpoints.map((e) => `${e.name} ${e.status}`).join(', ');

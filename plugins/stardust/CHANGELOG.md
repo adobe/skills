@@ -4,6 +4,72 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.36.0 — reskin → migrate hardened on two end-to-end runs
+
+Two full runs, a Figma donor reskinning each of two content sites (forms-only and multi-page marketing), surfaced the
+gaps below. Every fix is generic; per-site choices stay in config.
+
+- **Renderer layouts.** `stream-render` renders card grids, split media, tone bands, logo rows, label pills, a footer
+  tone and true heading levels, and emits `img.icon` inside links. Ctas render as `.btn` when capture flags them
+  `inButton` (text inside a `<button>`) or `buttonLike` (a link painted as a button with utility CSS: background or
+  visible border plus padding).
+- **Localized image collisions.** `--localize-images` keeps the query as an 8-hex hash in the file name, so image
+  proxies (`/_image?href=…`) no longer collapse onto one file. `localize` also refuses to give two URLs one path.
+- **Multi-archetype canon.** `canon-from-reskin` merges modules from every approved archetype, not just the named one,
+  and the split layout's skeleton blanks its media. `reskin-preflight` adds a `canon-modules` FAIL when a mapping uses
+  a module missing from the canon, or composes layout/width/tone inconsistently.
+- **donor-probe `--model`.** Probe entries marked `needs: 'button'` SKIP when the content has no button, so a page
+  with no buttons passes.
+- **Confidential hint.** Under `--confidential`, capture warns which `.gitignore` lines curate will need too, instead
+  of letting curate refuse later.
+- **Fewer false capture warnings.** All-whole (`!`) scopes skip the h1 and granularity checks, and a mega-slot that is
+  a repeating card grid is reported as a note, not a wrapper-scope warning (`captureSmells`).
+- **Gates re-pass on migrated pages.** `migrate` keeps `data-source-href` (the absolute source URL) on every link it
+  rewrites and marks the JSON-LD block it inserts with `data-migrate-default`. `slot-coverage` matches links by the
+  former and does not count the latter, so a migrated page passes the same content gates as its prototype.
+- **Reskin handoff predicate.** New `reskin-ledger` (`record`, `eyeball`, `residual`, `show`) writes
+  `stardust/reskin/ledger.json` from gate reports, the static and runtime mobile-adapt checks and the two human
+  judgments; `handoff.<type>` names the archetype, its prototype sha, the claimed/passed/waived tier and the PASS-only
+  gates migrate merges into sidecars. `reskin-preflight` is now the predicate: `approval` (an agent approval FAILs unless
+  hands-off), `archetype-gates` (gates PASS or residual accepted, eyeball pass, prototype unchanged) and a
+  `sibling-gates` WARN for migrated pages without migrated-stage gates. Contract in `reskin/reference/handoff.md`.
+- **Flow guards.** `replica` and `direct` refuse under `flow: reskin`; master routing recognises donor phrases and
+  `reskin --switch-flow`; `state-machine.md` names the writers of `approved`/`designSource`, stales reskin-registered
+  approvals on a switch and adds a reskin State-report branch; `migrate`/`rollout` require `reskin-preflight` exit 0.
+  `ledger.mjs` knows the reskin phases. The eval `standard_handoff_no_core_changes` is rescoped.
+- **M2 gates in the predicate.** `reskin-ledger record` ingests 0.34.0's `figma-gate all` and M2a's `deployed-gate all`
+  `summary.json` fragments into `gates.figma` / `gates.deployed`; `reskin-preflight` requires figma join/geometry/ramp
+  and the deployed families (plus its figma re-run) to pass; a `deployed.sanity` residual is never accepted.
+- **Contrast-aware accent.** `stream-render` keeps an accent that fails 4.5:1 on the page or light band as an underline
+  colour only (links and required markers take body ink); compact tone-band padding and fixed-size checkboxes at 640px.
+- **Canon across archetypes.** `canon-from-reskin` takes another type's archetype from the ledger's handoff (else the
+  type's first approved page with a prototype, instead of dropping the type) and compares a re-approval's capture
+  only with the same archetype's previous capture, so two archetypes no longer diff against each other.
+- **Third run, URL donor.** A bounded URL donor (sampled live site) reskinned the forms-only site end to end: prototype
+  and migrated gates PASS, preflight ready, no donor-specific code.
+
+## 0.35.0 — reskin hands off to migrate: generic renderer, canon bridge, preflight
+
+Reskin produced gated pages but none of the inputs `migrate` reads. Three scripts close that gap for any donor (URL or
+Figma) and any content site; every per-site choice stays in `mapping.json` and the content models.
+
+- **`reskin/stream-render.mjs`** renders a page from its content model's ordered stream and the donor tokens. It replaces
+  the per-archetype renderer as the default. `--localize-images` downloads images into `prototypes/assets/img/` with
+  browser headers and keeps `data-source-src`, which `dom-equality` and `slot-coverage` now prefer, so the content gate
+  still compares source URLs.
+- **`reskin/canon-from-reskin.mjs`** derives `canon/` (header, footer, `canon.css` with `:root` first, module skeletons),
+  donor-sourced `DESIGN.{md,json}`, `direction.md` and `dynamic-features.md` from the approved archetype. A `--force`
+  re-run with identical content leaves every file untouched; a changed canon flags approved pages, and migrated pages
+  whose sidecar hashes no longer match, as stale. Each changed canon is captured with replica's `stitch-shot` and
+  pixel-compared with the previous approval; the % lands in the canon history and warns above `--visual-threshold`.
+- **`reskin/reskin-preflight.mjs`** is the read-only readiness check before `migrate` (exit 0 ready).
+  `prepare-migration` now refuses under `flow: reskin`, because its cascade rewrites the donor-sourced `DESIGN.*`.
+- **Fixes found on the way.** Migrate merges the reskin gate reports into its handoff gates and tags sections by
+  `data-slot`. The donor-probe heading probes cover h1–h3 (weight) and h1–h6 (colour), not h1 only. Crawl and the
+  default normalize remove cookie, consent and GDPR overlays by id or class inside a fixed, sticky or high-z ancestor,
+  outside `main article`. The Figma curation derives `type.display.textAlign` from the display role's text alignment,
+  weighted by characters, and the renderer aligns headings with it (left when absent).
+
 ## 0.34.0 — reskin checks a page against its Figma donor: section join, geometry, type ramp, frame pixels, divergence register
 
 A Figma-donor reskin used to stop at the token probe: nothing compared the rendered page with the frames it was built

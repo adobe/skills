@@ -320,12 +320,18 @@ export function buildFoundation({ file, nodes, frameIds }) {
     if (n.type === 'TEXT' && n.style) {
       const st = n.style;
       const identity = [st.fontFamily, st.fontSize, st.fontWeight, st.lineHeightUnit, st.lineHeightPx, st.letterSpacing ?? 0].join('|');
-      g.typography.add(identity, {
+      const typo = g.typography.add(identity, {
         value: { fontFamily: st.fontFamily, fontSize: px(st.fontSize), fontWeight: weightCss(st.fontWeight), lineHeight: lineHeightCss(st), letterSpacing: letterSpacingCss(st) },
         figma: rawTextStyle(st), node: n.id, style: styleName(s.text),
         fallbackKey: slugify(`${st.fontFamily} ${st.fontSize} ${st.fontWeight}`),
       });
       const chars = (n.characters || '').length;
+      // Horizontal alignment per text style, weighted by characters: curate derives
+      // type.display.textAlign from the display record's majority (renderers fall back to left).
+      if (typeof st.textAlignHorizontal === 'string') {
+        const a = { LEFT: 'left', CENTER: 'center', RIGHT: 'right', JUSTIFIED: 'justify' }[st.textAlignHorizontal];
+        if (a) { typo.align ??= {}; typo.align[a] = (typo.align[a] || 0) + Math.max(chars, 1); }
+      }
       texts.push({ node: n.id, chars, size: st.fontSize, family: st.fontFamily, typo: identity, color: fillCss });
       const raw = (n.characters || '').trim();
       if (raw.startsWith('{')) {
