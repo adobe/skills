@@ -27,18 +27,19 @@ things, and content-diff read hidden image placeholders as missing icons.
 - **The hide is a style rule too.** live-session's shared `hideRegions` hides every match inline AND injects one
   `<style data-stardust-hide>` rule per selector (one adopted stylesheet when a CSP blocks inline styles), so a bar
   the page re-renders after the hide pass stays hidden; chrome-parity uses it. Hardening: a bar the page renders
-  after the hide pass escaped the inline removal.
+  after the hide pass escapes an inline-only removal.
 - **One hide list for the captures, the probes and the header contract.** stitch-shot, content-diff, visual-diff,
   content-presence and clip-probe take `--hide <sel,…>` (two-sided probes apply the same list to both sides) and
   print/record what was hidden; presence.json gains `hide` per slug and `"*": { "hide": [...] }` for a site-wide
   bar. gate.sh merges its `--hide` with presence.json `hide` (its own regime's table first) for both captures and
   every probe but unit-geometry (chrome-parity: `--hide` + `--presence`), records the list in `live.json` and
-  retakes `live.png` when it changed; gate-all reads only presence.json `hide` (both stitches, content-presence,
-  clip-probe; rows record `hide`, origin/eds.json the stitch's hidden line). chrome-explore hides the list after
-  every load and records it (`--hide`, `--presence --slug`); chrome-compare takes the expected list and raises one
-  `hide-mismatch` error when the records differ; qa's header check re-explores with the contract's list. A
-  capture, probe or cache taken with another list is not reused automatically; keys gain the list only when it is
-  non-empty. content-diff removes the matches from the DOM (its inventories read `display:none` text).
+  retakes `live.png` when it changed (or, hiding regions, when no `live.json` records it); gate-all reads only
+  presence.json `hide` (both stitches, content-presence, clip-probe; rows record `hide`, origin/eds.json the
+  stitch's hidden line). chrome-explore hides the list after every load and records it (`--hide`,
+  `--presence --slug`); chrome-compare takes the expected list and raises one `hide-mismatch` error when the
+  records differ; qa's header check re-explores with the contract's list. A capture, probe or cache taken with
+  another list is not reused automatically; keys gain the list only when it is non-empty. content-diff removes
+  the matches from the DOM (its inventories read `display:none` text).
   Recorded: the first delivered page passed only through a documented override — 1440 7.82 % / Δh 88 px, 360
   22.78 % / Δh 268 px, both the bar — and the header contract could not be compared at 360 because the bar hid
   the header from chrome-explore.
@@ -64,7 +65,7 @@ Minor in substance: the replica font rule changes behaviour (a substitute become
 licensing alert). Numbered 0.34.5 provisionally — 0.35.0 is reserved; renumber at PR time if main moved.
 Without hides, captures are unchanged (a malformed presence.json now stops a gate.sh round, exit 1) and verdicts
 move only through content-diff's placeholder rule, cap-probe's unpaired rows / INCONCLUSIVE and chrome-parity:
-`gate.sh --full` (since F2) and gate-triage pass an existing presence.json to it, which hides that slug's
+`gate.sh --full` and gate-triage pass an existing presence.json to it, which hides that slug's
 `variable` regions — its argv, its `chrome-live.json` / stored-result key and its verdict can change. Records gain
 `hide` / `presence` fields (gate.sh's `live.json` always records `hide`, `triage.json` its
 `_provenance.presence`); content-diff's live cache re-probes once (inventory version) and its JSON `attrs` gains
