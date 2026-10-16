@@ -4,6 +4,45 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.34.1 — replica speed instruments: measure the run, stop paying for the same evidence twice
+
+One new instrument shows where a run's tokens go; the gate, the deploy batch and the B2 dynamics probe stop
+re-measuring evidence they already hold, and skip it only while it is provably unchanged.
+
+- **`stardust/token-ledger.mjs` (ported from the `stardust/next` branch): advisory token usage per phase and per
+  recorded unit.** It reads the session transcripts and writes `stardust/usage.{md,json}`: one row per ledger phase
+  and per recorded C-deliver / migrate unit (unit timestamps read as instants, any ISO offset). `usage: unknown` when
+  no transcripts are reachable; exit 0 except usage errors (exit 2).
+- **gate-all `--skip-existing` replays a page's probes while its capture pair is unchanged.** Content presence, clip
+  and unit geometry are replayed from `<slug>/probes.json` only while both captures they were taken against are the
+  ones on disk; `--recapture-eds` / `--recapture-origin` invalidate them; the row says `reused`.
+- **One published gate per unchanged build.** Rows carry a `gateKey` (frozen-foundation manifest, shared and page
+  blocks with what they import, the page's content documents, the gate's criteria, sidecar entries and instrument
+  files), issued only while the gated host serves that tree (pushed code on the host's branch and repo; documents
+  equal to their delivered deploy-ledger `contentSha` for that org/repo). Under `--skip-existing` a PASS row with the
+  same key is reused whole; a changed key or a frozen-file edit since the freeze re-shoots the EDS side
+  (`<slug>/gate-key.json`). The C-archetype unit's `gate-all --only` row is the archetype's published row of record;
+  cluster and C-final runs pass `--skip-existing`, and C-final re-freezes the foundation after applying the queued
+  requests, before the roster gate.
+- **The overflow assert reads the stitched build capture's own output.** `stitch-shot.mjs` prints an
+  `overflow: scrollWidth=… viewport=… delta=…` line and `gate.sh` reads it instead of launching `measure.mjs` — one
+  Chromium launch and navigation fewer per gate round; the verdict lines and `GATE_OVERFLOW_TOLERANCE` are unchanged,
+  and `measure.mjs` stays the diagnosis tool. `stitch-shot.mjs` answers `--help` without playwright installed.
+- **No timed late-modal window on EDS build and preview hosts.** One dismissal sweep, after the EDS delayed phase has
+  fired, so a consent manager the build enables is still dismissed; live source sites keep their poll.
+- **deploy-batch skips a live page only when its document is byte-identical to the one it delivered to the same
+  org/repo** (`contentSha`, `verifiedOn` in the ledger). A changed document, or a page last delivered to another
+  org/repo, re-deploys without `--force`, which now only means re-publishing identical documents. A page verified
+  within `--verify-max-age` minutes (default 60) is skipped without a request; older ones are re-verified inside the
+  pool. Ledger rows written before this version re-drive once.
+- **B2 reuses a fresh `_dynamics.json`** (`dynamics-detect.mjs --reuse-if-fresh`): written after the run's
+  `A-inventory` start, with the same probed URLs and rollout roster and every page loaded without error; `--fresh`
+  re-probes; every reuse is appended to its provenance.
+
+Patch: no threshold, criterion or pairing rule changes; the new row fields, sidecars and ledger fields are additive
+(`gateKey`, `reused`, `probes.json`, `gate-key.json`, `contentSha`, `verifiedAt`, `verifiedOn`); every skip is
+recorded where it happened.
+
 ## 0.33.1 — consent overlays are dismissed on gate captures; the archetype ledger keeps its shape
 
 Fixes from a recorded hands-off replica run on a site with a consent manager, verified against its artifacts.
