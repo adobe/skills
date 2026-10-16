@@ -12,7 +12,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { blockOf, classifyRow, parsePairMsg } from '../gate-triage.mjs';
+import { blockOf, classifyRow, parsePairMsg, requestLine } from '../gate-triage.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'gate-triage.mjs');
@@ -199,6 +199,10 @@ check('(e) frozen footer + a shared token → two request lines byte-for-byte; t
   assert.match(r1.stdout, /request appended: token:fontFamily:arial→helvetica/); assert.match(r1.stdout, /parity p1@1440: ran exit 2/);
   const fc = spawnSync(process.execPath, [FREEZE, 'check', '--root', root, '--manifest', manifest], { encoding: 'utf8' });
   assert.equal(fc.status, 0, fc.stdout);
+  assert.deepEqual(t.groups.map((g) => g.scope.when ?? null), ['C-final, after the queue is applied', null, 'C-final, after the queue is applied']);
+  const md1 = readFileSync(join(root, GATE, 'triage.md'), 'utf8');
+  assert.match(md1, /\| G3 \| `block:footer` .*\| C-final: 6 pages \|/); assert.match(md1, /- re-gate scope \(C-final, after the queue is applied — not a cluster step\): 6 pages/);
+  assert.match(md1, /act on causes with rows on your own pages/);
   const before = ['triage.json', 'triage.md'].map((f) => readFileSync(join(root, GATE, f), 'utf8'));
   const r2 = ok(run(root, ['--unit', 'cluster-a']));
   assert.deepEqual(['triage.json', 'triage.md'].map((f) => readFileSync(join(root, GATE, f), 'utf8')), before);
@@ -214,7 +218,7 @@ check('(f) --dry-run writes nothing and spawns nothing; prints triage.md and the
   assert.equal(treeHash(root), before);
   assert.equal(existsSync(join(root, 'parity-calls.jsonl')), false);
   assert.match(r.stdout, /^# Gate triage — 4 failing rows/m);
-  assert.match(r.stdout, /would append: - cluster-a \| footer block \(blocks\/footer\/\): no property diff \| gate-triage block:footer@1440: 2 failing rows \(1440 ×2\), pixel 2 \| landing\n/);
+  assert.match(r.stdout, /would append: - cluster-a \| footer block \(blocks\/footer\/\): property diff not run \(dry-run: no stored result\) \| gate-triage block:footer@1440: 2 failing rows \(1440 ×2\), pixel 2 \| landing\n/);
 }));
 check('(k) one frozen cause at two widths → one request line per width with its own deltas; --parity-max is one budget per run', () => withProject(E, { mobile: E, parityOut: { p10: PARITY_E.p10, 'p10-360': parityResult('p10', [['footer', [{ kind: 'PAIR', text: 'Privacy', msg: 'fontSize 13px → 15px' }]]]) } }, (root) => {
   ok(run(root, ['--unit', 'cluster-a', '--parity-max', '1', '--no-route']));
@@ -251,6 +255,36 @@ check('(l) re-gate commands keep each page\'s own --eds-host (its newest row\'s 
     assert.equal(scope.note, undefined);
   });
 });
+check('(m) a request whose property diff did not run says so; a later real diff is queued once beside it, then nothing', () => {
+  const g = { route: 'foundation-request', kind: 'block', name: 'footer', cause: 'block:footer', rows: [{ width: 360 }], criteria: { pixel: 1 }, templates: ['t'] };
+  const what = (parity) => requestLine({ ...g, parity }, { unit: 'u' }).split(' | ')[1];
+  assert.equal(what(null), 'footer block (blocks/footer/): property diff not run (parity off)');
+  assert.equal(what({ skipped: 'over --parity-max 4' }), 'footer block (blocks/footer/): property diff not run (over --parity-max 4)');
+  assert.equal(what({ error: 'chrome-parity exit 3: bot challenge' }), 'footer block (blocks/footer/): property diff not run (chrome-parity exit 3: bot challenge)');
+  assert.equal(what({ page: 'p@360', exit: 0, total: 0, deltas: [], kinds: {} }), 'footer block (blocks/footer/): no property diff');
+  withProject(E, { parityOut: PARITY_E }, (root) => {
+    const queue = () => readFileSync(join(root, 'stardust/rollout/foundation-requests.md'), 'utf8').trim().split('\n');
+    ok(run(root, ['--unit', 'cluster-a', '--no-parity']));
+    assert.deepEqual(queue().map((l) => l.split(' | ')[1]), ['footer block (blocks/footer/): property diff not run (parity off)']);
+    const r = ok(run(root, ['--unit', 'cluster-a']));
+    assert.match(r.stdout, /request appended \(property diff now run\): block:footer@1440/);
+    assert.deepEqual(queue().map((l) => l.split(' | ')[1]), ['footer block (blocks/footer/): property diff not run (parity off)', 'footer block (blocks/footer/): fontFamily arial → helvetica ×1; fontSize 14px → 16px ×1']);
+    const before = queue();
+    ok(run(root, ['--unit', 'cluster-a'])); ok(run(root, ['--unit', 'cluster-b', '--no-parity']));
+    assert.deepEqual(queue(), before, 'idempotent: a real line for the cause@width exists');
+  });
+});
+check('(n) with stardust/rollout/units/<unit>.paths, a group with no row on the unit\'s pages reads another unit\'s', () => withProject(merge(A, E), {}, (root) => {
+  put(root, 'stardust/rollout/units/cluster-a.paths', '/p1\n/p2.html\n');
+  ok(run(root, ['--unit', 'cluster-a', '--no-parity', '--no-route']));
+  const t = readT(root);
+  assert.deepEqual(t.groups.map((g) => [g.cause, g.unitRows]), [['block:cards', 2], ['block:footer', 0]]);
+  assert.deepEqual(t._provenance.unit, { name: 'cluster-a', paths: 'stardust/rollout/units/cluster-a.paths', pages: 2 });
+  const md = readFileSync(join(root, GATE, 'triage.md'), 'utf8');
+  assert.match(md, /## G2 `block:footer` — .* — another unit's \(no row on cluster-a's pages\)\n/); assert.doesNotMatch(md, /## G1 [^\n]*another unit's/);
+  ok(run(root, ['--unit', 'cluster-z', '--no-parity', '--no-route']));
+  assert.equal(readT(root).groups[0].unitRows, undefined, 'no paths file → no marking');
+}));
 check('(g) --help in an empty dir: exit 0, usage on stdout, nothing written', () => {
   const cwd = mkdtempSync(join(tmpdir(), 'gate-triage-help-'));
   try {
