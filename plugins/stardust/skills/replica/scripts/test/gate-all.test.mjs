@@ -11,7 +11,8 @@
 // runner with stub instruments (no browser): fix rounds reuse this run's origin, a new run recaptures, every reuse
 // is in the row, origin.json and _run.log. --one-load (C8): inventoryWhy / oneLoadKeep tables, then the sandbox with a
 // stitch stub that writes a canned inventory: one stitch per side per page, no probe spawns, fix rounds 0 origin / 1 EDS,
-// fallbacks (blocked origin, --warmup) logged, legacy unchanged, and a content-presence cache hit recorded in the row.
+// fallbacks (blocked origin, --warmup) logged, legacy unchanged, and content-presence / unit-geometry cache hits
+// recorded in the row (presenceReused, unitsReused — fresh and replayed).
 // Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -695,7 +696,11 @@ stub(DS, 'unit-geometry.mjs', `export * from './unit-geometry-real.mjs';
 import { appendFileSync, writeFileSync } from 'node:fs';
 if (process.argv[1] && process.argv[1].endsWith('unit-geometry.mjs')) {
   const a = process.argv.slice(2); appendFileSync(${JSON.stringify(UG_LOG)}, a.join(' ') + '\\n');
-  writeFileSync(a[a.indexOf('--json') + 1], JSON.stringify({ _provenance: { at: new Date().toISOString(), tier: 'chrome' }, results: [], verdict: { units: 1, within: 1, off: 0, hidden: 0, missing: 0, errors: 0, requiredOff: 0 } }));
+  const at = new Date().toISOString(); const val = (f) => a[a.indexOf(f) + 1];
+  // like the real probe's units.json: originCache { file, hit, at, … } — STUB_UG_HIT = the cached inventory's time
+  const file = 'stardust/current/measure/' + val('--slug') + '-units-' + val('--width') + '.json';
+  const originCache = process.env.STUB_UG_HIT ? { file, hit: true, at: process.env.STUB_UG_HIT, policy: 'same-run' } : { file, hit: false, at, reason: 'stub: measured' };
+  writeFileSync(val('--json'), JSON.stringify({ _provenance: { at, tier: 'chrome' }, originCache, results: [], verdict: { units: 1, within: 1, off: 0, hidden: 0, missing: 0, errors: 0, requiredOff: 0 } }));
 }`);
 stub(RS, 'stitch-shot.mjs', `import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
   const a = process.argv.slice(2); const side = /www\\.example\\.com/.test(a[0]) ? 'ORIGIN' : 'EDS';
@@ -758,7 +763,7 @@ check('one-load 5: without --one-load nothing changes — legacy counts, argv an
   const r = olGate([]);
   assert.equal(r.status, 0, r.stderr + r.stdout); assert.equal(r.origin, 2); assert.equal(r.eds, 2); assert.equal(r.cp.length, 2); assert.equal(r.ug, 1);
   assert.ok(r.argv('ORIGIN').every((l) => l.endsWith(' --headed') && !l.includes('--inventory'))); assert.ok(r.argv('EDS').every((l) => !l.includes('--headed') && !l.includes('--inventory')));
-  assert.equal('oneLoad' in r.row('home'), false); assert.equal(r.row('home').presenceReused, null);
+  assert.equal('oneLoad' in r.row('home'), false); assert.equal(r.row('home').presenceReused, null); assert.equal(r.row('home').unitsReused, null, 'a unit-geometry cache miss is no reuse');
   assert.equal(pageJson('home', 'eds.json').headed, undefined); assert.equal(pageJson('home', 'origin.json').inventory, undefined);
 });
 check('presence cache: a content-presence origin-inventory cache hit reaches the row (presenceReused) and _run.log', () => {
@@ -766,6 +771,16 @@ check('presence cache: a content-presence origin-inventory cache hit reaches the
   assert.equal(r.status, 0, r.stderr + r.stdout); assert.equal(r.cp.length, 1); assert.equal(r.cp[0].had, true);
   const pr = r.row('home').presenceReused; assert.equal(pr.from, presence('home')); assert.equal(pr.policy, 'same-run'); assert.ok(pr.at);
   assert.match(runLog(), /content home → origin inventory reused \S+presence-origin\.json \(probed \S+; same-run\)/);
+});
+check('units cache: a unit-geometry origin-cache hit reaches the row (unitsReused) and _run.log — fresh, and replayed from probes.json', () => {
+  const hitAt = new Date(Date.now() - 5e3).toISOString();
+  const r = olGate(['--only', 'home'], { STUB_UG_HIT: hitAt });
+  assert.equal(r.status, 0, r.stderr + r.stdout); assert.equal(r.ug, 1);
+  const ur = r.row('home').unitsReused; assert.deepEqual(ur, { from: 'stardust/current/measure/home-units-1440.json', at: hitAt, policy: 'same-run' });
+  assert.match(runLog(), /units home → origin inventory reused stardust\/current\/measure\/home-units-1440\.json \(probed \S+; same-run\)/);
+  const again = olGate(['--only', 'home', '--skip-existing', '--compare-only']); // no capture: the probes replay, no unit-geometry spawn
+  assert.equal(again.status, 0, again.stderr + again.stdout); assert.equal(again.ug, 0); assert.equal(again.row('home').reused.what, 'probes');
+  assert.deepEqual(again.row('home').unitsReused, ur);
 });
 check('one-load 6: a fix round keeps only a one-load origin — a legacy capture (no inventory) is re-shot once with one', () => {
   const r = olGate(['--one-load', '--only', 'home']);

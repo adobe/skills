@@ -24,7 +24,9 @@
  * (`inventoryWhy`, `oneLoadKeep` are exported).
  * A content-presence origin-inventory cache hit is a recorded reuse too (`presenceReused`, _run.log); that inventory
  * (<slug>/presence-origin.json) belongs to one origin capture — its text boxes weight origin.png's compare — and is
- * dropped whenever the capture changes (origin.json `at`: a new stitch, a crawl shot, a copied live.png).
+ * dropped whenever the capture changes (origin.json `at`: a new stitch, a crawl shot, a copied live.png). A
+ * unit-geometry origin-cache hit (units.json `originCache`) is recorded likewise (`unitsReused`, _run.log; fresh or
+ * replayed); that per-width cache keeps its own freshness rule.
  *
  * VERDICT (all four): pixel % ≤ --threshold AND |Δh| ≤ --height-tol × origin height (a union metric
  * was tried and rejected — white gaps score as matches) AND served clipped ≤ --clip-max +
@@ -738,7 +740,11 @@ async function main() {
     if (oc) { rec(p, 'presenceReused', { from: oc.file, at: oc.at, policy: oc.policy }); log(`content ${p.slug} → origin inventory reused ${oc.file} (probed ${oc.at}; ${oc.policy})`); }
   }
   function recordClip(p, clip) { rec(p, 'clip', { counts: clip.counts, groups: clip.groups, source: 'clip-probe', tier: clip.tier || null }); log(`clip ${p.slug} → ${clip.counts.total}`); }
-  function recordUnits(p, res, required) { rec(p, 'units', { verdict: res.verdict, required }); log(`units ${p.slug} → off ${res.verdict.off} hidden ${res.verdict.hidden} missing ${res.verdict.missing}`); }
+  function recordUnits(p, res, required) {
+    rec(p, 'units', { verdict: res.verdict, required }); log(`units ${p.slug} → off ${res.verdict.off} hidden ${res.verdict.hidden} missing ${res.verdict.missing}`);
+    const oc = res.originCache; // unit-geometry's per-width origin cache hit: a recorded reuse
+    if (oc && oc.hit) { rec(p, 'unitsReused', { from: oc.file, at: oc.at, policy: oc.policy }); log(`units ${p.slug} → origin inventory reused ${oc.file} (probed ${oc.at}; ${oc.policy})`); }
+  }
   /**
    * --one-load: content.json / clip.json / units.json from the two stitches' inventories with the probes' own report
    * builders, recorded through the same recorders → true. A needed side without a usable inventory (or --warmup)
@@ -870,7 +876,7 @@ async function main() {
     const v = verdict({ pixel: px, clip: r.clip && r.clip.counts ? r.clip : null, content: r.content || null, units: r.units || null, override: OVERRIDES[p.slug] || null, allowance: (CLIP_ALLOW[p.slug] || {}).max || 0 }, { threshold: opts.threshold, heightTol: opts.heightTol, clipMax: opts.clipMax, clipOn: opts.clip, contentOn: opts.content });
     return { slug: p.slug, path: p.deployedPath || new URL(p.liveUrl).pathname, template: p.template, tier: p.fidelityTier, origin: r.origin && r.origin.instrument, originAsymmetric: !!(r.origin && r.origin.asymmetric), eds: r.eds && r.eds.instrument,
       originReused: r.origin && r.origin.reused ? { from: r.origin.from, at: r.origin.at, policy: r.origin.policy, stale: r.origin.stale || null } : null,
-      presenceReused: r.presenceReused || null, ...(opts.oneLoad ? { oneLoad: r.oneLoad || null } : {}),
+      presenceReused: r.presenceReused || null, unitsReused: r.unitsReused || null, ...(opts.oneLoad ? { oneLoad: r.oneLoad || null } : {}),
       pct: px.pct ?? null, textPct: px.textPct ?? null, heightDelta: px.heightDelta ?? null, ...v,
       clipGroups: r.clip && r.clip.groups ? r.clip.groups.filter((g) => !g.advisory).slice(0, 6) : [], clipAllowReason: (CLIP_ALLOW[p.slug] || {}).reason || null,
       content: r.content && r.content.totals ? { missing: r.content.totals.missing, hidden: r.content.totals.hidden, controlState: r.content.totals.controlState, missingButtons: r.content.totals.missingButtons, hiddenButtons: r.content.totals.hiddenButtons, findings: r.content.totals.findings, scope: r.content.scope, variable: r.content.variable } : null,
