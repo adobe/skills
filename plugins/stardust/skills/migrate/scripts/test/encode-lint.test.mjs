@@ -139,7 +139,24 @@ const snapshot = (dir) => readdirSync(dir, { recursive: true }).sort().map((f) =
   root = project(); cards(root, '#cards-0b1c2d3e4f');
   await only(root, 'C1', /generated id #cards-0b1c2d3e4f/);
   root = project(); cards(root, '.x-cards--featured');
-  await only(root, 'C1', /class \.x-cards--featured is on no capture of the template/);
+  await only(root, 'C1', /class \.x-cards--featured is on no capture of the site — a prototype or invented class/);
+  // a class only another template's captures carry is said to be that, not invented
+  root = project();
+  writeFileSync(join(root, ...CAPTURE('home')), '<html><body><main class="page-main"><div class="y-rail"><p>Latest guides</p></div></main></body></html>');
+  { const t = readJ(root, ['stardust', 'rollout', 'coverage', 'templates.json']); t.templates.push({ id: 'home', representativeSlug: 'home', pages: ['home'] }); writeJ(root, ['stardust', 'rollout', 'coverage', 'templates.json'], t); }
+  cards(root, '.y-rail');
+  await only(root, 'C1', /class \.y-rail is on no capture of this template, only on other templates' captures — it never matches here/);
+  // R42: position among a module's own rows and items is allowed (a row group, a cell); on a marker it is not
+  root = project();
+  editMap(root, (v) => {
+    const faq = marker(v, '.x-faq'); const cells = faq.cells; delete faq.cells;
+    faq.rows = [{ sel: '.x-faq__entry:first-child', cells }, { sel: '.x-faq__entry:not(:first-child)', cells }];
+    marker(v, '.x-cards').cells[0].sel = '.x-cards__title:first-child';
+  });
+  const positioned = await lint(root);
+  assert.equal(positioned.code, 0, `position inside rows and cells is the module's structure (R42)\n${positioned.text}`);
+  root = project(); editMap(root, (v) => { marker(v, '.x-title:has(h1)').sel = '.x-title:has(h1):first-child'; });
+  await only(root, 'C1', /markers\[1\]\.sel.*position pseudo-class :first-child/);
   root = project(); cards(root, ':has(.guide-card)');
   await only(root, 'C1', /eds-schema unitSelector DIV\.guide-card/);
   root = project(); editMap(root, (v) => { marker(v, '.x-faq').sel = '.x-band > .x-faq'; });
@@ -267,6 +284,13 @@ const snapshot = (dir) => readdirSync(dir, { recursive: true }).sort().map((f) =
   assert.ok(s.notes.some((n) => /guides-gamma/.test(n)), 'a sibling with no capture is skipped with a note');
   assert.equal(r.last, `sweep ${A}: 1 sibling · new kinds 1 · unknown modifiers 1 · zero-hit markers 2`);
   assert.equal(snapshot(root), before, '--sweep writes nothing');
+  // a marker only siblings match: the archetype's classes beside its selected class are no modifier, a new one is
+  root = project();
+  editText(root, CAPTURE(A), 'x-band x-band--muted x-grid__col', 'x-band x-surface x-band--muted x-grid__col');
+  editText(root, CAPTURE('guides-beta'), 'x-band x-band--muted x-grid__col', 'x-band x-surface x-band--wide x-grid__col');
+  editMap(root, (v) => { v.markers.unshift({ sel: '.x-band:not(.x-band--muted)', kind: 'band-plain', emitter: 'section-style:plain', evidence: ['guides-beta'] }); });
+  r = await run(root, '--sweep', '--template', A, '--json');
+  assert.deepEqual(JSON.parse(r.out[0]).unknownModifiers, [{ slug: 'guides-beta', marker: 0, sel: '.x-band:not(.x-band--muted)', class: 'x-band--wide' }], 'x-surface (beside x-band on the archetype) is no modifier; x-band--wide is');
   // the census rule: a class-less <div>, <form> or showing <iframe> is a kind (`div.`); class-less plain content and a
   // node the transform drops are not
   root = project();

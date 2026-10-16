@@ -17,8 +17,10 @@
  *   archetype  its capture exists, its root is found, it encodes (ctx.encodeTemplate, in memory) and does not stop.
  *   C1  no selector of the map (root, chrome, wrappers, moduleSelectors, metadata text(), markers' sel / when / drop /
  *       rows / cells, transform drop) uses a forbidden form: a generated id, class or attribute value (the engine's
- *       generated-token rule: 8+ hex digits or 5+ digits), a position pseudo-class, a class on no capture of the
- *       template (a prototype class; named when it is an eds-schema unitSelector), or — in a marker, variant or module
+ *       generated-token rule: 8+ hex digits or 5+ digits), a position pseudo-class outside a row group's or a cell's
+ *       selector (R42: position among a module's own rows and items is its structure), a class on no capture of the
+ *       template (said apart: only on other templates' captures, or on no capture of the site — a prototype class,
+ *       named when it is an eds-schema unitSelector), or — in a marker, variant or module
  *       selector — a chain through a layout container (a class of wrappers[] or of a wrapper / section marker; inside
  *       :is() / :where() too, while a :has() / :not() predicate may name one).
  *   C2  every marker has a first-match hit on the archetype, or names evidence[] siblings and hits each of them.
@@ -39,7 +41,8 @@
  * shape `tag.classes` no unmarked archetype node has, visible or not: a class-less <div>, <form> or <iframe> is
  * `div.`, `form.`, `iframe.`), unknown modifiers (a class on a sibling's marker match that the archetype's matches of
  * that marker, its selectors and ignoreModifiers do not account for) and zero-hit markers (no first-match hit on any
- * capture of the template).
+ * capture of the template). A marker the archetype never matches takes as its reference the classes archetype nodes
+ * carry beside the class(es) it selects on.
  *
  * Output: `✗ <check> <where>: <message>` per finding, `· <check>: <message>` per note, then the verdict, last:
  * `lint <archetype>: N findings · N notes` / `sweep <archetype>: N siblings · new kinds N · unknown modifiers N ·
@@ -57,6 +60,8 @@ const CHECKS = ['map', 'inputs', 'archetype', 'C1', 'C2', 'C3', 'C4', 'C5', 'C6'
 const POSITION = new Set(['first-child', 'last-child', 'only-child', 'first-of-type', 'last-of-type', 'only-of-type', 'nth-child', 'nth-last-child', 'nth-of-type', 'nth-last-of-type']);
 const NESTED = new Set(['not', 'is', 'where', 'has']);
 const CHAINED = new Set(['marker', 'when', 'module']);
+// R42: a row group's or a cell's position among the module's own rows / items is that module's structure
+const POSITION_OK = new Set(['rows', 'cell']);
 const ROLE = { heading: 'heading', cta: 'cta', body: 'body', eyebrow: 'body' };
 const ROLE_NAME = { heading: 'a heading', cta: 'a cta', body: 'body text' };
 const isBlock = (m) => String(m.emitter || '').startsWith('block:');
@@ -207,12 +212,17 @@ function checkInputs(ctx, current, add, note) {
   }
 }
 
-/** C1: forbidden selector forms. `captures` = every capture of the template read; `units` = eds-schema class → unitSelector. */
-function checkC1(ctx, S, captures, units, add) {
+/**
+ * C1: forbidden selector forms. `captures` = every capture of the template read; `others` = the HTML of the site's other
+ * captures (where a class absent from this template is found); `units` = eds-schema class → unitSelector.
+ */
+function checkC1(ctx, S, captures, others, units, add) {
   const { dom, engine, vocab, tf } = ctx;
   const GENERATED = engine.GENERATED_TOKEN;
-  const present = new Set();
-  for (const cap of captures) for (const n of dom.walk(dom.parseHTML(cap.html))) for (const c of S.classList(n)) present.add(c);
+  const classesOf = (htmls) => { const out = new Set(); for (const h of htmls) for (const n of dom.walk(dom.parseHTML(h))) for (const c of S.classList(n)) out.add(c); return out; };
+  const present = classesOf(captures.map((cap) => cap.html));
+  let onSite = null; // read only when a class is missing from the template
+  const elsewhere = (cls) => (onSite ||= classesOf(others())).has(cls);
   const layout = new Set();
   const subjects = (sel) => { for (const parts of dom.parseSelector(sel)) { const last = parts[parts.length - 1]; if (last) for (const c of last.compound.classes) layout.add(c); } };
   for (const w of Array.isArray(vocab.wrappers) ? vocab.wrappers : []) subjects(w);
@@ -221,12 +231,15 @@ function checkC1(ctx, S, captures, units, add) {
     const msgs = [];
     const push = (m) => { if (!msgs.includes(m)) msgs.push(m); };
     for (const { c, top, subject } of compounds(dom, sel)) {
-      for (const p of c.pseudos) if (POSITION.has(p.name)) push(`a position pseudo-class :${p.name} — select by class or structure (:has, +, an ancestor), never by position`);
+      for (const p of c.pseudos) if (POSITION.has(p.name) && !POSITION_OK.has(role)) push(`a position pseudo-class :${p.name} — select by class or structure (:has, +, an ancestor); position is allowed only among a module's own rows and cells`);
       if (c.id && GENERATED.test(c.id)) push(`a generated id #${c.id} — it differs on every page`);
       for (const a of c.attrs) if (a.value && GENERATED.test(a.value)) push(`a generated ${a.name === 'id' ? 'id' : 'attribute value'} [${a.name}${a.op}"${a.value}"] — it differs on every page`);
       for (const cls of c.classes) {
         if (GENERATED.test(cls)) push(`a generated class .${cls} — it differs on every page`);
-        else if (!present.has(cls)) push(units.has(cls) ? `class .${cls} is the eds-schema unitSelector ${units.get(cls)}, a prototype selector — take selectors from the capture` : `class .${cls} is on no capture of the template — a prototype or invented class; take selectors from the capture`);
+        else if (!present.has(cls)) {
+          if (elsewhere(cls)) push(`class .${cls} is on no capture of this template, only on other templates' captures — it never matches here`);
+          else push(units.has(cls) ? `class .${cls} is the eds-schema unitSelector ${units.get(cls)}, on no capture of the site — a prototype selector; take selectors from the capture` : `class .${cls} is on no capture of the site — a prototype or invented class; take selectors from the capture`);
+        }
         if (top && !subject && CHAINED.has(role) && layout.has(cls)) push(`chains through .${cls}, a layout container — match the module itself; the walk recurses through wrappers (rule 4)`);
       }
     }
@@ -462,6 +475,7 @@ export async function runLint(ctx) {
   const S = setup(ctx);
   const arch = S.capture(a);
   const siblings = template.pages.filter((s) => s !== a).map((s) => S.capture(s)).filter(Boolean);
+  const otherCaptures = () => (ctx.site.slugs || []).filter((s) => !template.pages.includes(s)).map((s) => ctx.readCapture(s)).filter((h) => h !== null);
   const edsFile = INPUT_PATHS(a).edsSchema;
   const eds = readJson(join(ctx.root, edsFile));
   const edsOk = !eds.missing && !eds.error && isObj(eds.value) && Array.isArray(eds.value.sections);
@@ -469,13 +483,13 @@ export async function runLint(ctx) {
   for (const s of edsOk ? eds.value.sections : []) for (const r of (s && Array.isArray(s.repeats) ? s.repeats : [])) { const m = /^[a-z0-9-]*\.([\w-]+)$/i.exec(String(r && r.unitSelector)); if (m) unitSelectors.set(m[1], r.unitSelector); }
   if (!arch || arch.prep.error) {
     add('archetype', arch ? 'root' : INPUT_PATHS(a).capture, arch ? arch.prep.error : 'no capture — run extract; every selector comes from it');
-    if (arch) checkC1(ctx, S, [arch, ...siblings], unitSelectors, add); // C1 reads the capture's text only
+    if (arch) checkC1(ctx, S, [arch, ...siblings], otherCaptures, unitSelectors, add); // C1 reads the capture's text only
     note('archetype', `${arch ? 'C2' : 'C1'}–C6 are skipped: no usable archetype capture`);
     return finish();
   }
 
   try {
-    checkC1(ctx, S, [arch, ...siblings], unitSelectors, add);
+    checkC1(ctx, S, [arch, ...siblings], otherCaptures, unitSelectors, add);
     checkC2(ctx, S, arch, add);
     checkC3(ctx, S, arch, siblings.filter((c) => !c.prep.error), add);
     checkC4(ctx, S, arch, add, note);
@@ -522,6 +536,15 @@ export async function runSweep(ctx) {
   const known = new Map(S.markers.map((m) => [m, new Set(selClasses(m))]));
   for (const { node, marker } of S.matches(arch)) for (const t of S.tokens(node)) known.get(marker).add(t);
   const hits = S.hits(arch);
+  // a marker the archetype never matches has no matches of its own to compare with: its reference is what the archetype
+  // carries beside the class(es) the marker selects on (a container's other base classes), so only a class the
+  // archetype never shows with that base is a modifier
+  const archNodes = ctx.engine.contentTops(arch.prep, vocab).flatMap((t) => [t, ...ctx.dom.walk(t)]);
+  for (const m of S.markers) {
+    if (hits.get(m)) continue;
+    const bases = ctx.dom.parseSelector(m.sel).map((parts) => parts[parts.length - 1].compound.classes).filter((b) => b.length);
+    for (const n of archNodes) { const cl = S.classList(n); if (bases.some((b) => b.every((c) => cl.includes(c)))) for (const t of S.tokens(n)) known.get(m).add(t); }
+  }
   const newKinds = []; const unknownModifiers = []; const notes = []; let swept = 0;
   for (const slug of template.pages.filter((s) => s !== a)) {
     const cap = S.capture(slug);
