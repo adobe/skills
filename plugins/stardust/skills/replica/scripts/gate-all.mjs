@@ -41,8 +41,10 @@
  * CSS selectors) names in-flow per-visitor regions removed on BOTH sides before anything measures — both stitches,
  * content-presence and clip-probe get `--hide <list>` (unit-geometry does not) — and only a non-empty list is recorded
  * (origin.json / eds.json / the row `hide`, probes.json inputs, the gate key), so no capture taken with another list is
- * reused as if equal (fix rounds, live.png, --skip-existing). Origin fallback: live stitch → previous origin
- * (--recapture-origin) → <crawl-shots>/<slug>.png (`crawl-fullpage`, asymmetric, flagged).
+ * reused as if equal (fix rounds, live.png, --skip-existing); each stitch's `hidden:` line is origin.json / eds.json
+ * `hidden` (text), and a selector that matched nothing (×0) or is invalid is one _run.log line per side. Origin
+ * fallback: live stitch → previous origin (--recapture-origin) → <crawl-shots>/<slug>.png (`crawl-fullpage`,
+ * asymmetric, flagged).
  * Origin reuse: fix rounds (--only, --recapture-eds) and the published stage (gates/<slug>-<w>/live.png + a matching
  * live.json) reuse origin captures of THIS run — at or after the last rollout A-inventory / replica extract start in
  * stardust/status.jsonl (--origin-max-age: older ones too); the row (`originReused`), origin.json and _run.log record it.
@@ -275,6 +277,16 @@ const hideRecord = (h) => [...new Set([].concat(h ?? []).flatMap((s) => (typeof 
 const sameHide = (recorded, list) => canon(hideRecord(recorded)) === canon(hideRecord(list));
 /** `{ hide }` only for a non-empty list — absent = none, so records without hides stay as they were. */
 const hideField = (list) => (list && list.length ? { hide: list } : {});
+/** stitch-shot's `hidden: <sel> ×<n> (<h>px) [<source>]; …` stdout line (printed only with --hide) → that text, else null. */
+const hiddenText = (out) => { const l = String(out || '').split('\n').map((x) => x.trim()).filter((x) => x.startsWith('hidden: ')).pop(); return l ? l.slice('hidden: '.length) : null; };
+/** A hidden text's selectors that matched nothing (×0) or were invalid (error) → one short log clause, else null. */
+function hiddenMisses(text) {
+  const entries = String(text || '').split('; ');
+  const zero = entries.map((e) => /^(.+) ×0 \[[^\]]*\]$/.exec(e)).filter(Boolean).map((m) => m[1]);
+  const bad = entries.map((e) => /^(.+?) error: .*\[[^\]]*\]$/.exec(e)).filter(Boolean).map((m) => m[1]);
+  const parts = [zero.length ? `matched nothing: ${zero.join(', ')}` : '', bad.length ? `invalid: ${bad.join(', ')}` : ''].filter(Boolean);
+  return parts.length ? `hide ${parts.join('; ')}` : null;
+}
 /**
  * What a page's probes were taken with — any change re-runs them. ctx = { opts, edsUrl, presence, unitsOf, hideOf }
  * (hideOf(p) = the page's presence.json hide list; `hide` is an input only when non-empty).
@@ -694,6 +706,12 @@ async function main() {
   const HIDE_OK = !!FRESH && typeof FRESH.presenceHide === 'function';
   const hideOf = (p) => (HIDE_OK ? FRESH.presenceHide(PRESENCE, p.slug) : []);
   const hideArgs = (p) => { const h = hideOf(p); return h.length ? ['--hide', h.join(',')] : []; };
+  // a stitch run with a list: its `hidden:` line → origin.json / eds.json `hidden`; ×0 / invalid selectors → one log line per side
+  const stitchHidden = (p, side, s, hide) => {
+    const h = hide.length ? hiddenText(s.out) : null; if (!h) return {};
+    const miss = hiddenMisses(h); if (miss) log(`${side} ${p.slug} → ${miss}`);
+    return { hidden: h };
+  };
   if (!HIDE_OK && Object.values(PRESENCE || {}).some((e) => e && typeof e === 'object' && e.hide != null)) log('presence hide: not honoured — the diff scripts dir has no live-session.mjs with presenceHide; captures and probes run without hides');
   const dir = (p) => join(opts.out, p.slug);
   const edsUrl = (p) => (opts.edsHost ? p.liveUrl.replace(/^https?:\/\/[^/]+/, opts.edsHost) : p.liveUrl);
@@ -770,7 +788,7 @@ async function main() {
     } else {
       const t0 = new Date().toISOString();
       const s = await run('node', [...stitchArgs(p.url, out, { hide, ...(OL ? { inventory: inventorySpec(p, 'origin') } : {}) }), '--headed']);
-      if (s.code === 0) r = { instrument: 'stitch-live', url: p.url, width: opts.width, locale: 'en-US', vh: opts.vh || null, headed: true, log: s.out.trim().split('\n').slice(-2), ...(OL ? inventoryMeta(p, 'origin', t0) : {}), ...hideField(hide) };
+      if (s.code === 0) r = { instrument: 'stitch-live', url: p.url, width: opts.width, locale: 'en-US', vh: opts.vh || null, headed: true, log: s.out.trim().split('\n').slice(-2), ...(OL ? inventoryMeta(p, 'origin', t0) : {}), ...hideField(hide), ...stitchHidden(p, 'origin', s, hide) };
       else if (existsSync(out) && existsSync(meta) && opts.recaptureOrigin) {
         // the previous origin stays in use: a recorded reuse (stale when it predates the run), never a silent one
         const kept = readJson(meta); const f = fresh(kept);
@@ -796,7 +814,7 @@ async function main() {
     if (hideMoved(p, 'eds')) log(`eds ${p.slug} → not reused (--skip-existing: hide list differs)`);
     const t0 = new Date().toISOString(); const hide = hideOf(p);
     const s = await run('node', [...stitchArgs(edsUrl(p), out, { hide, ...(OL ? { inventory: inventorySpec(p, 'eds') } : {}) }), ...(OL ? ['--headed'] : [])]);
-    const r = s.code === 0 ? { instrument: 'stitch-live', url: edsUrl(p), ...(OL ? { headed: true, ...inventoryMeta(p, 'eds', t0) } : {}), ...hideField(hide) } : { instrument: 'none', url: edsUrl(p), error: `stitch exit ${s.code}: ${lastLine(s.err)}` };
+    const r = s.code === 0 ? { instrument: 'stitch-live', url: edsUrl(p), ...(OL ? { headed: true, ...inventoryMeta(p, 'eds', t0) } : {}), ...hideField(hide), ...stitchHidden(p, 'eds', s, hide) } : { instrument: 'none', url: edsUrl(p), error: `stitch exit ${s.code}: ${lastLine(s.err)}` };
     r.at = new Date().toISOString(); writeFileSync(meta, JSON.stringify(r, null, 2)); rec(p, 'eds', r);
     log(`eds ${p.slug} → ${r.instrument}${r.error ? ` ERROR ${r.error}` : ''}`);
   }

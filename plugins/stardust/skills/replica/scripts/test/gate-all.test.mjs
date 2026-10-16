@@ -943,6 +943,10 @@ cpSync(SCRIPT, join(HRS, 'gate-all.mjs')); cpSync(join(HERE, '..', 'foundation-f
 const argvLog = (name) => `appendFileSync(${JSON.stringify(HLOG)}, ${name} + ' ' + process.argv.slice(2).join(' ') + '\\n');`;
 stub(HRS, 'stitch-shot.mjs', `import { appendFileSync, writeFileSync } from 'node:fs';
 ${argvLog("(/www\\.example\\.com/.test(process.argv[2]) ? 'ORIGIN' : 'EDS')")}
+// with --hide, stitch-shot's hidden: line — the origin: .promo-strip ×0, .cookie-strip invalid, the rest ×1; the build: all ×0
+const a = process.argv.slice(2); const origin = /www\\.example\\.com/.test(a[0]);
+const entry = (s) => (!origin || s === '.promo-strip' ? s + ' ×0 [--hide]' : s === '.cookie-strip' ? s + " error: '" + s + "' is not a valid style rule selector [--hide]" : s + ' ×1 (88px) [--hide]');
+if (a.includes('--hide')) console.log('hidden: ' + a[a.indexOf('--hide') + 1].split(',').map(entry).join('; '));
 writeFileSync(process.argv[3], 'png');`);
 stub(HRS, 'pixel-compare.mjs', 'console.log(JSON.stringify({ pct: 1.5, heightDelta: 0, compared: { width: 1440, height: 3000 }, pass: true }));');
 stub(HDS, 'content-presence.mjs', `import { appendFileSync, writeFileSync } from 'node:fs';
@@ -978,6 +982,12 @@ check('hide 1: presence.json "*" + a slug\'s hide → both stitches and content-
   }
   assert.match(r.by('ORIGIN', 'home')[0], / --locale en-US --hide \.geo-bar,\.promo-strip --headed$/);
   assert.equal(r.by('CLIP', 'home').length, 0, 'content-presence carries the clip counts');
+  // the stitch's hidden: line → origin.json / eds.json `hidden`; a ×0 selector is one _run.log line per page and side
+  assert.equal(hjson('home', 'origin.json').hidden, '.geo-bar ×1 (88px) [--hide]; .promo-strip ×0 [--hide]');
+  assert.equal(hjson('home', 'eds.json').hidden, '.geo-bar ×0 [--hide]; .promo-strip ×0 [--hide]');
+  assert.equal(hjson('about', 'origin.json').hidden, '.geo-bar ×1 (88px) [--hide]');
+  assert.equal((r.stdout.match(/ origin home → hide /g) || []).length, 1, r.stdout); assert.match(r.stdout, / origin home → hide matched nothing: \.promo-strip$/m);
+  assert.match(r.stdout, / eds home → hide matched nothing: \.geo-bar, \.promo-strip$/m); assert.doesNotMatch(r.stdout, / origin about → hide /, 'every selector matched');
 });
 check('hide 2: a fix round (--only) with the list unchanged reuses the origin; the EDS stitch hides the same list', () => {
   const r = hgate(['--only', 'home']);
@@ -995,6 +1005,7 @@ check('hide 4: a fix round with a changed list re-stitches the origin (not reuse
   assert.equal(r.status, 0, r.stderr + r.stdout);
   const o = r.by('ORIGIN', 'home'); assert.equal(o.length, 1); assert.equal(hideArg(o[0]), want.join(','));
   assert.match(hlog(), /origin home → not reused \(hide list differs\)/);
+  assert.match(r.stdout, / origin home → hide matched nothing: \.promo-strip; invalid: \.cookie-strip$/m);
   assert.equal(r.row('home').originReused, null); assert.deepEqual(hjson('home', 'origin.json').hide, want); assert.deepEqual(r.row('home').hide, want);
   assert.equal(hgate(['--only', 'home']).by('ORIGIN', 'home').length, 0);
 });
@@ -1041,7 +1052,8 @@ check('hide 8: no hide entries → no --hide in any argv and no hide field in or
   const r = hgate(['--only', 'home']);
   assert.equal(r.status, 0, r.stderr + r.stdout); assert.equal(r.all.length, 3, r.all.join('\n')); assert.ok(r.all.every((l) => !l.includes('--hide')), r.all.join('\n'));
   assert.equal(r.by('ORIGIN', 'home').length, 1); assert.match(hlog(), /origin home → not reused \(hide list differs\)/);
-  for (const f of ['origin.json', 'eds.json']) assert.equal('hide' in hjson('home', f), false, f);
+  for (const f of ['origin.json', 'eds.json']) { assert.equal('hide' in hjson('home', f), false, f); assert.equal('hidden' in hjson('home', f), false, f); }
+  assert.doesNotMatch(r.stdout, /→ hide /);
   assert.equal('hide' in hjson('home', 'probes.json').inputs, false); assert.equal('hide' in r.row('home'), false);
 });
 check('hide 9: a diff scripts dir whose live-session.mjs lacks presenceHide → one log line, captures and probes run without hides', () => {
