@@ -33,8 +33,8 @@ compared two different things.
 
 Minor in substance: the replica font rule changes behaviour (a substitute becomes a self-hosted brand face with a
 licensing alert). Numbered 0.34.5 provisionally — 0.35.0 is reserved; renumber at PR time if main moved.
-chrome-parity and gate.sh add flags and output fields; cap-probe stops failing implausible pairs and gains
-INCONCLUSIVE; no threshold or capture change.
+chrome-parity adds flags and output fields, gate.sh adds `--hide`; cap-probe stops failing implausible pairs and
+gains INCONCLUSIVE; no threshold or capture change.
 
 ## 0.34.4 — roster gates sized to their deadline; an older gate table never reverts a newer verdict
 

@@ -156,8 +156,9 @@ The prototype capture is re-taken every iteration.
    (both sides, after the settle; the output records what was hidden) or
    declare it `variable` in gate-all's `presence.json`, which
    `--presence <f> --slug <s>` reads and `gate.sh --full` passes
-   automatically. A chrome offset from such a bar is fixed this way, never
-   logged as a residual.
+   automatically — a direct run passes the same flags, as the shared live
+   cache is keyed on them. A chrome offset from such a bar is fixed this
+   way, never logged as a residual.
 
    ```bash
    node stardust/scripts/replica/chrome-parity.mjs "$LIVE" "$PROTO" --width $W \

@@ -284,6 +284,7 @@ node stardust/scripts/replica/anchor.mjs "$LIVE"  --width 1440 --cache $G/anchor
 node stardust/scripts/replica/anchor.mjs "$PROTO" --width 1440   # build-side runs are free
 # Chrome: computed-style parity BEFORE any pixel round on header/footer/strips
 node stardust/scripts/replica/chrome-parity.mjs "$LIVE" "$PROTO" --width 1440 --live-cache $G/chrome-live.json   # exit 0 = quiet, then crop-compare
+# (pass gate.sh's --hide / --presence <file> --slug <slug> here too: the shared live cache is keyed on them)
 # --headed in any instrument = the window-free real-Chrome stealth tier (#125); STARDUST_HEADED_WINDOW=1 is the only way to a window.
 # gate.sh: live.png cached (a --full round's live probes too, within the run), every step under a
 # deadline (exit 124 = re-run, not FAIL). Rounds run in the BACKGROUND: start every round at once
