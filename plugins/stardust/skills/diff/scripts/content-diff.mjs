@@ -249,7 +249,7 @@ findings:   text/role layer — MISSING CTA|HEADING|EYEBROW|BODY, ROLE SWAP, EXT
 //          AND whose full image is present (that sibling rendered with a natural width > 64, or a full source declared on
 //          the element: data-src, data-srcset, data-lazy*, data-original*, a srcset / <picture><source> candidate other
 //          than the current one). Reported (why = the signals), never diffed. A hidden small image with no full image (an
-//          icon in a collapsed menu) stays an icon.
+//          icon in a collapsed menu) stays an icon; so does one with no current source (an unloaded lazy icon).
 /* eslint-disable no-undef */
 export function attributeInventory(args) {
   const [rootSel] = args;
@@ -314,6 +314,7 @@ export function attributeInventory(args) {
     if (el.getAttribute('aria-hidden') === 'true') hidden.push('aria-hidden');
     if (!hidden.length) return '';
     const src = el.currentSrc || el.src || el.getAttribute('src') || '';
+    if (!src) return ''; // no current source: an unloaded lazy image (a hidden icon waiting for data-src), not a placeholder
     const signals = [];
     if (/^data:/i.test(el.getAttribute('src') || src)) signals.push('data: URI');
     const nat = el.naturalWidth > 0 && el.naturalHeight > 0;

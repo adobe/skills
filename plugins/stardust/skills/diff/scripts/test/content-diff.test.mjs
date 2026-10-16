@@ -281,7 +281,7 @@ if (playwrightOk) {
   // opacity-0 aria-hidden data-URI placeholder beside its loaded full image, same alt (build only).
   const cards = (panelImg, menuIcon, figureExtra) => page('<h1>Cards</h1><p>Intro copy here.</p><h2>Tabs</h2>'
     + `<div role="tabpanel" style="display:none"><a href="/cards/one" class="card">${panelImg}<span>Card one</span></a></div>`
-    + `<div class="menu" style="display:none"><button type="button">${menuIcon} Menu</button></div>`
+    + `<div class="menu" style="display:none"><button type="button">${menuIcon} Menu</button><button type="button"><img data-src="/icon-16.png" width="16" height="16" alt=""> Account</button></div>`
     + `<figure style="position:relative"><img src="/card-full.png" alt="Card two" width="120" height="80">${figureExtra}</figure>`);
   const geo = (bar) => `<!doctype html><html><head><meta charset="utf-8"></head><body><header>${bar}<nav><a href="/">Home</a> <a href="/about">About</a></nav></header>`
     + '<main><h1>Welcome</h1><p>Body copy here.</p><h2>More</h2><p>A second paragraph.</p></main></body></html>';
@@ -403,22 +403,24 @@ if (playwrightOk) {
     const r = await cardsOut();
     assert.equal(r.status, 0, r.stderr);
     assert.doesNotMatch(textPart(r.stdout), /lqip-card-20x11/, r.stdout);
-    assert.match(r.stdout, /^  attributes \(placeholder\/aria-label\/title\): source 0 \/ build 0; icons: source 1 \/ build 0; placeholder images: source 1 \/ build 1$/m, r.stdout);
+    assert.match(r.stdout, /^  attributes \(placeholder\/aria-label\/title\): source 0 \/ build 0; icons: source 2 \/ build 1; placeholder images: source 1 \/ build 1$/m, r.stdout);
     const j = jsonOf(r.stdout);
     assert.deepEqual(j.source.attrs.placeholders, [{ value: 'lqip-card-20x11.png', size: '20×11', anchor: 'card one', why: 'no box, intrinsic 20×11; full: data-src' }]);
     assert.ok(!j.source.attrs.icons.some((i) => i.value === 'lqip-card-20x11.png'), JSON.stringify(j.source.attrs.icons));
   });
-  await check('e2e F7 (b): a hidden 16×16 icon inside a button with no full image (no lazy source, no sibling) stays an icon — 🔴 MISSING ICON when the build lacks it', async () => {
+  await check('e2e F7 (b): a hidden 16×16 icon inside a button with no full image (no lazy source, no sibling) stays an icon — 🔴 MISSING ICON when the build lacks it; a hidden lazy icon with no current source (data-src only) is no placeholder either', async () => {
     const r = await cardsOut();
     assert.match(r.stdout, /^Findings: 1 \(1 structural 🔴\)$/m, r.stdout);
     assert.match(r.stdout, /^  🔴 MISSING ICON \[main\]: source image icon-16\.png \(16×16\) at "menu" has no build icon there\. /m, r.stdout);
-    assert.deepEqual(jsonOf(r.stdout).source.attrs.icons.map((i) => `${i.kind} ${i.value} ${i.size} @${i.anchor} ${i.interactive}`), ['img icon-16.png 16×16 @menu true']);
+    const j = jsonOf(r.stdout);
+    assert.deepEqual(j.source.attrs.icons.map((i) => `${i.kind} ${i.value} ${i.size} @${i.anchor} ${i.interactive}`), ['img icon-16.png 16×16 @menu true', 'img  16×16 @account true']);
+    assert.deepEqual(j.build.attrs.icons.map((i) => `${i.kind} ${i.value} ${i.size} @${i.anchor}`), ['img  16×16 @account']);
   });
   await check('e2e F7 (c): an opacity-0 aria-hidden data-URI placeholder beside its loaded full image (same alt), build only, is a build placeholder — no EXTRA ICON', async () => {
     const r = await cardsOut();
     assert.doesNotMatch(textPart(r.stdout), /EXTRA ICON|data:image/, r.stdout);
     const j = jsonOf(r.stdout);
-    assert.deepEqual(j.build.attrs.icons, []);
+    assert.deepEqual(j.build.attrs.icons.filter((i) => i.value), []);
     assert.deepEqual(j.build.attrs.placeholders.map((p) => `${p.value} ${p.size} | ${p.why}`), ['data:image/png… 20×11 | opacity 0, aria-hidden, data: URI, intrinsic 20×11, same alt; full: loaded card-full.png']);
     assert.deepEqual(j.findings.map((f) => f.kind), ['MISSING ICON']);
   });
