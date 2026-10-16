@@ -575,10 +575,10 @@ export function hideEntries(list, source = '--hide') {
 /* eslint-disable no-undef */
 // Runs in the page (Playwright serialises it — no outer-scope references). Every selector's matches are measured
 // before any is hidden (nested selectors read their rendered size), then hidden inline; ONE <style data-stardust-hide>
-// carries one rule per valid selector (the union across calls), so an element inserted later is hidden too. Each
-// rule is parsed alone first and kept in the browser's own serialisation: a selector the query accepts but a style
-// sheet would not (an unterminated comment) is an error that hides nothing, never a broken sheet. Then two frames or
-// `settleMs`, whichever comes first.
+// carries one rule per valid selector (the union across calls), so an element inserted later is hidden too — or, when
+// a CSP blocks inline styles, one adopted constructed sheet carries them. Each rule is parsed alone first and kept in
+// the browser's own serialisation: a selector the query accepts but a style sheet would not (an unterminated comment)
+// is an error that hides nothing, never a broken sheet. Then two frames or `settleMs`, whichever comes first.
 async function hideInPage({ list, settleMs }) {
   const rows = list.map(({ sel, source }) => {
     try {
@@ -604,6 +604,19 @@ async function hideInPage({ list, settleMs }) {
   const rules = tag.textContent.split('\n').filter(Boolean);
   for (const { rule } of rows) if (rule && !rules.includes(rule)) rules.push(rule);
   tag.textContent = `${rules.join('\n')}\n`;
+  // A CSP without 'unsafe-inline' leaves the tag without a sheet: the same rules then ride ONE constructed sheet
+  // adopted by the document (not CSP-gated), found again by its marker and replaced with the union on every call.
+  if (!tag.sheet) {
+    try {
+      let sheet = document.adoptedStyleSheets.find((s) => s.stardustHide);
+      if (!sheet) {
+        sheet = new CSSStyleSheet();
+        sheet.stardustHide = true;
+        document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
+      }
+      sheet.replaceSync(rules.join('\n'));
+    } catch { /* no adoptable style sheets — the inline hide still holds for the matches measured above */ }
+  }
   await new Promise((r) => { requestAnimationFrame(() => requestAnimationFrame(r)); setTimeout(r, settleMs); });
   return rows.map((x) => x.row);
 }
@@ -614,8 +627,9 @@ async function hideInPage({ list, settleMs }) {
  * measures / inventories / captures. `entries` = [{ sel, source }] or plain strings (source `--hide`), normalised by
  * hideEntries. One page.evaluate: measure every selector (match count n, summed rendered height h, px rounded),
  * hide every match inline (`display: none !important`) and add one rule per valid selector to the page's single
- * `<style data-stardust-hide>` (idempotent: re-applying keeps one tag, its rules the union), then wait two animation
- * frames or `settleMs`, whichever comes first. → records [{ sel, source, n, h, error? }] in input order; an invalid
+ * `<style data-stardust-hide>` (idempotent: re-applying keeps one tag, its rules the union; under a CSP that blocks
+ * inline styles the same rules ride one adopted constructed sheet), then wait two animation frames or `settleMs`,
+ * whichever comes first. → records [{ sel, source, n, h, error? }] in input order; an invalid
  * selector is a record with `error`, never a throw. An empty list → [] without touching the page.
  */
 export async function hideRegions(page, entries, { settleMs = 250 } = {}) {

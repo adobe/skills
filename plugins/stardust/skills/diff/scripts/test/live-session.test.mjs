@@ -7,7 +7,8 @@
 // EDS single sweep against a late consent banner). The hide helpers: parseHideList, presenceHide, readPresenceFile,
 // hideEntries, formatHidden and hideRegions' empty / argument contract (stub page); where playwright is importable
 // (a project copy), hideRegions end-to-end on fixture pages served from this process — an 88 px in-flow bar above
-// the header, a bar inserted 400 ms after load (hidden by the style rule), an invalid selector, a second call.
+// the header, a bar inserted 400 ms after load (hidden by the style rule), an invalid selector, a second call, and a
+// late bar under a CSP that blocks inline <style> (hidden by the adopted sheet).
 // Run: node plugins/stardust/skills/diff/scripts/test/live-session.test.mjs
 import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -260,13 +261,22 @@ let chromium = null;
 try { ({ chromium } = await import('playwright')); } catch { chromium = null; }
 if (!chromium) { console.log('skip  end-to-end (playwright not importable here)'); }
 else {
-  const head = '<!doctype html><html><head><style>body{margin:0;font:16px/20px Arial} .geo-bar{height:88px;background:#eee} header{height:60px;background:#333;color:#fff}</style>';
+  const css = 'body{margin:0;font:16px/20px sans-serif} .geo-bar{height:88px;background:#eee} header{height:60px;background:#333;color:#fff}';
+  const head = `<!doctype html><html><head><style>${css}</style>`;
+  // a geo script re-rendering its bar after the hide pass: inserted 400 ms after load, display set inline
+  const lateBar = '<script>addEventListener(\'load\', () => setTimeout(() => { const d = document.createElement(\'div\'); d.className = \'geo-bar\'; d.style.display = \'block\'; d.textContent = \'Use the site for your region?\'; document.body.prepend(d); }, 400));</script>';
+  const NONCE = 'fixture-nonce';
   const PAGES = {
     '/bar': `${head}</head><body><div class="geo-bar">Use the site for your region?</div><header>Header</header><main><p>Content</p></main></body></html>`,
-    // a geo script re-rendering its bar after the hide pass: inserted 400 ms after load, display set inline
-    '/late': `${head}<script>addEventListener('load', () => setTimeout(() => { const d = document.createElement('div'); d.className = 'geo-bar'; d.style.display = 'block'; d.textContent = 'Use the site for your region?'; document.body.prepend(d); }, 400));</script></head><body><header>Header</header><main><p>Content</p></main></body></html>`,
+    '/late': `${head}${lateBar}</head><body><header>Header</header><main><p>Content</p></main></body></html>`,
+    // served with a CSP that blocks inline <style> without the nonce — the page's own styles carry it, the injected tag cannot
+    '/csp': `<!doctype html><html><head><style nonce="${NONCE}">${css}</style>${lateBar}</head><body><header>Header</header><main><p>Content</p></main></body></html>`,
   };
-  const server = createServer((req, res) => { res.setHeader('content-type', 'text/html'); res.end(PAGES[req.url] || PAGES['/bar']); });
+  const server = createServer((req, res) => {
+    res.setHeader('content-type', 'text/html');
+    if (req.url === '/csp') res.setHeader('content-security-policy', `style-src 'self' 'nonce-${NONCE}'`);
+    res.end(PAGES[req.url] || PAGES['/bar']);
+  });
   await new Promise((r) => { server.listen(0, '127.0.0.1', r); });
   const base = `http://127.0.0.1:${server.address().port}`;
   const browser = await chromium.launch();
@@ -313,6 +323,25 @@ else {
       const s = await state(page);
       assert.equal(s.tags, 1);
       assert.deepEqual(s.rules, ['.geo-bar { display: none !important; }', 'main p { display: none !important; }']);
+      assert.equal(await page.evaluate(() => document.adoptedStyleSheets.length), 0, 'without a CSP the tag carries the rules alone');
+      await page.close();
+    });
+    await checkAsync('e2e: a CSP blocking inline <style> → the rules ride ONE adopted sheet; a bar inserted 400 ms later is still hidden', async () => {
+      const page = await open('/csp');
+      assert.equal((await state(page)).headerTop, 0, 'the nonce-carrying page styles load (no bar yet)');
+      const rec = await session.hideRegions(page, ['.geo-bar']);
+      assert.deepEqual(rec, [{ sel: '.geo-bar', source: '--hide', n: 0, h: 0 }]);
+      await session.hideRegions(page, ['.geo-bar', 'main p']);
+      await page.waitForTimeout(800);
+      const s = await page.evaluate(() => {
+        const bar = document.querySelector('.geo-bar'); const tag = document.querySelector('style[data-stardust-hide]');
+        const adopted = document.adoptedStyleSheets.filter((x) => [...x.cssRules].some((r) => /display: none !important/.test(r.cssText)));
+        return { bar: bar ? getComputedStyle(bar).display : null, headerTop: document.querySelector('header').getBoundingClientRect().top, tagSheet: Boolean(tag && tag.sheet), adopted: adopted.map((x) => [...x.cssRules].map((r) => r.cssText)) };
+      });
+      assert.equal(s.tagSheet, false, 'the CSP left the injected tag without a sheet');
+      assert.equal(s.bar, 'none', 'the late bar computes display: none');
+      assert.equal(s.headerTop, 0);
+      assert.deepEqual(s.adopted, [['.geo-bar { display: none !important; }', 'main p { display: none !important; }']], 'one adopted sheet, its rules the union');
       await page.close();
     });
   } finally { await browser.close(); server.close(); }
