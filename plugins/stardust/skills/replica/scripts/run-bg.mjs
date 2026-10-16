@@ -19,7 +19,7 @@
  * the full output belongs in a log file the agent reads by `log --grep`.
  *
  * Usage:
- *   node run-bg.mjs start --name <job> [--timeout <s>] [--slots <n>] -- <cmd> [args…]
+ *   node run-bg.mjs start --name <job> [--timeout <s>] [--slots <n>] [--lock|--no-lock] -- <cmd> [args…]
  *   node run-bg.mjs wait   [--max <s>] [--tail <n>] [--grep <re>] [<job>…]
  *   node run-bg.mjs status [--tail <n>] [--grep <re>] [<job>…]
  *   node run-bg.mjs log    <job> [--tail <n>] [--grep <re>]
@@ -36,14 +36,30 @@
  *        --slots (default 3; env RUN_BG_SLOTS, else STARDUST_BROWSER_SLOTS) is a
  *        soft concurrency cap: a job waits, first come first served, until fewer
  *        than that many jobs are running. Both sides of the number: each capture
- *        is a Chromium and one `gate.sh --full` round holds three of them at its
- *        peak (the three probes run in parallel), so the cap bounds the Chromiums
- *        at three per slot; yet at 3 slots a recorded hands-off fan-out (several
- *        subagents and the main agent on one pool) still queued 84 of its 272 jobs
- *        for more than 10 s (90th percentile 78 s, longest 210 s) with no memory
- *        pressure. So 3 is the default; RUN_BG_SLOTS lowers it on a small machine
- *        or raises it on a large one. Start the jobs all at once and let the
- *        slots pace them — no `sleep N;` staggering.
+ *        is a Chromium and one `gate.sh --full` round holds up to SIX of them at
+ *        its peak (content-diff, visual-diff, chrome-parity, clip-probe,
+ *        content-presence and unit-geometry run in parallel), so the cap bounds
+ *        the Chromiums at six per slot; yet at 3 slots a recorded hands-off
+ *        fan-out (several subagents and the main agent on one pool) still queued
+ *        84 of its 272 jobs for more than 10 s (90th percentile 78 s, longest
+ *        210 s) with no memory pressure. So 3 is the default; RUN_BG_SLOTS lowers
+ *        it on a small machine or raises it on a large one. Start the jobs all at
+ *        once and let the slots pace them — no `sleep N;` staggering.
+ *        Two budgets: --slots paces THIS project's jobs (one run-bg dir); the
+ *        machine budget bounds browser jobs across projects. Before it launches
+ *        a browser instrument (an argv token naming one of BROWSER_SCRIPTS —
+ *        gate.sh, gate-all.mjs, stitch-shot.mjs, the diff probes …; --lock
+ *        forces, --no-lock skips) the job takes a machine-wide slot from
+ *        browser-lock.mjs (`../stardust/` beside a project copy, else the
+ *        plugin's `skills/stardust/scripts/`): one slot file per job under
+ *        ~/.stardust/locks/browser/ (env STARDUST_BROWSER_LOCK_DIR), at most
+ *        STARDUST_BROWSER_SLOTS (default 3; 0 = off) at once, released when the
+ *        job ends. While it waits the job stays queued (later jobs of its dir
+ *        queue behind it); no slot within STARDUST_BROWSER_WAIT (600 s) ends it
+ *        with exit 124 — no verdict, the command never ran. The command and its
+ *        children run inside the job's slot (env STARDUST_BROWSER_SLOTS=0,
+ *        STARDUST_BROWSER_SLOT=<slot file>). Without browser-lock.mjs the job
+ *        runs unlocked after one log line saying so.
  * wait   polls until the named jobs (default: every job unfinished when the
  *        wait began; if none, the latest batch — jobs ended within 10 min of the
  *        newest; --all: every job on disk) have ended, or --max seconds pass
@@ -90,22 +106,23 @@
  * an orphaned instrument — the wrapper's own group is still killed.
  *
  * Per-job exit codes are the instrument's (gate.sh: 0 PASS, 2 FAIL, 3 bot
- * challenge, 4 identity, 1 error); 124 = deadline, no verdict — re-run.
+ * challenge, 4 identity, 1 error); 124 = deadline, or no machine-wide browser
+ * slot in time — no verdict, re-run.
  *
- * Also importable: start(), wait(), status(), alive(), phase(), report helpers — see the tests.
+ * Also importable: start(), wait(), status(), alive(), phase(), isBrowserJob(), BROWSER_SCRIPTS, report helpers — see the tests.
  */
 
 /* eslint-disable no-restricted-syntax, brace-style, object-curly-newline, max-len */
 import { spawn, spawnSync } from 'node:child_process';
 import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, unlinkSync, writeFileSync, realpathSync } from 'node:fs';
-import { join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { basename, dirname, join, resolve } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { DEADLINE_EXIT, runCapped } from './run-capped.mjs';
 
 export const DEFAULT_DIR = 'stardust/.work/replica/bg';
 export const DEFAULT_TIMEOUT_SEC = 900;
-// Each capture is a Chromium and a `gate.sh --full` round holds three at its peak, so the cap bounds the Chromiums at
-// three per slot — yet at 3 slots a recorded hands-off fan-out still queued 84 of 272 jobs for more than 10 s (90th
+// Each capture is a Chromium and a `gate.sh --full` round holds up to six at its peak, so the cap bounds the Chromiums at
+// six per slot — yet at 3 slots a recorded hands-off fan-out still queued 84 of 272 jobs for more than 10 s (90th
 // percentile 78 s), so 3 is the default. RUN_BG_SLOTS, else STARDUST_BROWSER_SLOTS, lowers it on a small machine or
 // raises it on a large one.
 export const DEFAULT_SLOTS = 3;
@@ -137,14 +154,33 @@ export const VERDICT_RE = /differing pixels|height delta|hot band|\bPASS\b|\bFAI
 const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9_.-]*$/;
 const POLL_MS = Number(process.env.RUN_BG_POLL_MS) || 2000;
 const SELF = fileURLToPath(import.meta.url);
+// The machine-wide browser lock: beside a project copy (stardust/scripts/stardust/), else in the plugin tree.
+const LOCK_CANDIDATES = [resolve(dirname(SELF), '../stardust/browser-lock.mjs'), resolve(dirname(SELF), '../../stardust/scripts/browser-lock.mjs')];
+// The instruments that launch a browser (a script importing playwright, lib.mjs libraries aside) plus gate.sh and
+// gate-all.mjs, which spawn them. A job whose argv names one takes a machine-wide slot unless --no-lock.
+export const BROWSER_SCRIPTS = new Set([
+  'ai-readability.mjs', 'block-roundtrip.mjs', 'ew-editability-probe.mjs', 'qa-gate.mjs', 'render-harness.mjs', 'section-schema.mjs', 'style-fingerprint.mjs', // deploy
+  'chrome-explore.mjs', 'clip-probe.mjs', 'content-diff.mjs', 'content-presence.mjs', 'unit-geometry.mjs', 'visual-diff.mjs', // diff
+  'crawl.mjs', 'style-census.mjs', // extract
+  'anchor.mjs', 'cap-probe.mjs', 'chrome-parity.mjs', 'gate-all.mjs', 'gate.sh', 'measure.mjs', 'motion-observe.mjs', 'sibling-variance.mjs', 'stitch-shot.mjs', // replica
+  'capture-content.mjs', 'dom-equality.mjs', 'donor-probe.mjs', 'slot-coverage.mjs', // reskin
+]);
+// Any argv token (or a word of a `sh -c` string) whose basename is a browser instrument.
+export function isBrowserJob(cmd, args = []) {
+  return [cmd, ...args].some((t) => String(t ?? '').split(/[\s;&|()<>'"`]+/).some((w) => BROWSER_SCRIPTS.has(basename(w))));
+}
 
 const HELP = `Usage:
-  node run-bg.mjs start --name <job> [--timeout <s>=${DEFAULT_TIMEOUT_SEC}] [--slots <n>=${DEFAULT_SLOTS}] -- <cmd> [args…]
+  node run-bg.mjs start --name <job> [--timeout <s>=${DEFAULT_TIMEOUT_SEC}] [--slots <n>=${DEFAULT_SLOTS}] [--lock|--no-lock] -- <cmd> [args…]
   node run-bg.mjs wait   [--max <s>=${DEFAULT_MAX_SEC}] [--tail <n>=${DEFAULT_TAIL}] [--grep <re>] [--all] [<job>…]
   node run-bg.mjs status [--tail <n>] [--grep <re>] [--all] [<job>…]
   node run-bg.mjs log    <job> [--tail <n>=40] [--grep <re>]
   node run-bg.mjs clean  [--all]
-  (all: [--dir <d>], default ${DEFAULT_DIR})`;
+  (all: [--dir <d>], default ${DEFAULT_DIR})
+  Two budgets: --slots paces this project's jobs (env RUN_BG_SLOTS, else STARDUST_BROWSER_SLOTS); a browser job (gate.sh,
+  gate-all.mjs, stitch-shot.mjs, the diff probes …; --lock forces, --no-lock skips) first takes a machine-wide slot from
+  browser-lock.mjs — STARDUST_BROWSER_SLOTS (default 3, 0 = off) across projects, slot files in ~/.stardust/locks/browser/
+  (STARDUST_BROWSER_LOCK_DIR); no slot within STARDUST_BROWSER_WAIT (600 s) = exit 124, no verdict.`;
 
 class UsageError extends Error { constructor(msg, code = 125) { super(msg); this.code = code; } }
 const sleep = (ms) => new Promise((r) => { setTimeout(r, ms); });
@@ -219,16 +255,17 @@ const isPending = (st) => ['queued', 'running'].includes(phase(st));
 const isOrphan = (st) => phase(st) === 'lost' && childAlive(st);
 
 // ---- start -------------------------------------------------------------------------------------
-export function start(dir, name, cmd, args, { timeoutSec = DEFAULT_TIMEOUT_SEC, slots = DEFAULT_SLOTS } = {}) {
+export function start(dir, name, cmd, args, { timeoutSec = DEFAULT_TIMEOUT_SEC, slots = DEFAULT_SLOTS, lock = 'auto' } = {}) {
   if (!name || !NAME_RE.test(name)) throw new UsageError(`run-bg: --name must match ${NAME_RE} (got "${name}")\n${HELP}`);
   if (!cmd) throw new UsageError(`run-bg: start needs a command after --\n${HELP}`);
   if (!Number.isFinite(timeoutSec) || timeoutSec < 0) throw new UsageError(`run-bg: --timeout must be a number of seconds (0 disables)\n${HELP}`);
   if (!Number.isInteger(slots) || slots < 1) throw new UsageError(`run-bg: --slots must be a positive integer\n${HELP}`);
+  if (!['auto', 'on', 'off'].includes(lock)) throw new UsageError(`run-bg: lock must be auto, on or off (got "${lock}")\n${HELP}`);
   mkdirSync(dir, { recursive: true });
   const prev = readState(dir, name);
   if (prev && isPending(prev)) throw new UsageError(`run-bg: ${name} is still ${phase(prev)} (wrapper pid ${prev.wrapperPid}) — pick another --name, or \`clean --all\` to stop it`, 2);
   // Written once, before the spawn; from here on the wrapper is the file's only writer.
-  const st = { name, cmd, args, cwd: process.cwd(), timeoutSec, slots, queuedAt: new Date().toISOString(), wrapperPid: null, wrapperStart: null, launchedAt: null, childPid: null, childStart: null, endedAt: null, exit: null, timedOut: false };
+  const st = { name, cmd, args, cwd: process.cwd(), timeoutSec, slots, lock, queuedAt: new Date().toISOString(), wrapperPid: null, wrapperStart: null, launchedAt: null, childPid: null, childStart: null, endedAt: null, exit: null, timedOut: false };
   writeState(dir, st);
   const fd = openSync(logPath(dir, name), 'w');
   const child = spawn(process.execPath, [SELF, '__run', '--dir', dir, '--name', name], { detached: true, stdio: ['ignore', fd, fd], cwd: process.cwd(), env: process.env });
@@ -237,7 +274,31 @@ export function start(dir, name, cmd, args, { timeoutSec = DEFAULT_TIMEOUT_SEC, 
   return { name, log: logPath(dir, name), wrapperPid: child.pid };
 }
 
-// The detached wrapper: record its identity, take a slot (FIFO), run the command under run-capped, record the exit.
+// The machine-wide browser slot for a browser job (lock on, or auto and the argv names a browser instrument).
+// Resolves { st, slot } (slot null = unlocked: not a browser job, STARDUST_BROWSER_SLOTS=0, browser-lock.mjs absent or
+// failing) or { st, timedOut: true } when browser-lock gave up (exit 124). Records lockWaitFrom / lockFile / lockWaitSec.
+async function machineSlot(dir, st) {
+  const lock = st.lock ?? 'auto';
+  if (lock === 'off' || (lock === 'auto' && !isBrowserJob(st.cmd, st.args))) return { st, slot: null };
+  const mod = LOCK_CANDIDATES.find((p) => existsSync(p));
+  if (!mod) { console.log(`run-bg: browser-lock.mjs not found (looked in ${LOCK_CANDIDATES.join(', ')}) — ${st.name} runs without a machine-wide browser slot`); return { st, slot: null }; }
+  st = writeState(dir, { ...st, lockWaitFrom: new Date().toISOString() });
+  let slot = null;
+  try {
+    const { acquire } = await import(pathToFileURL(mod).href);
+    slot = await acquire({ pid: process.pid, script: st.name, project: st.cwd }); // an API holder: keeps its file fresh itself
+  } catch (e) {
+    if (e?.code !== DEADLINE_EXIT) { console.log(`run-bg: browser-lock.mjs failed (${e?.message ?? e}) — ${st.name} runs without a machine-wide browser slot`); return { st, slot: null }; }
+    console.error(e.message);
+    const endedAt = new Date().toISOString();
+    return { st: writeState(dir, { ...st, endedAt, exit: DEADLINE_EXIT, lockTimeout: true, lockWaitSec: secondsBetween(st.lockWaitFrom, endedAt) }), timedOut: true };
+  }
+  if (slot) st = writeState(dir, { ...st, lockFile: slot.file, lockWaitSec: secondsBetween(st.lockWaitFrom) });
+  return { st, slot };
+}
+
+// The detached wrapper: record its identity, take a slot (FIFO), then a machine-wide browser slot for a browser job, run
+// the command under run-capped, record the exit, release the machine slot.
 async function runWrapper(dir, name) {
   let st = readState(dir, name);
   if (!st) throw new Error(`run-bg: state for ${name} vanished from ${dir}`);
@@ -249,12 +310,18 @@ async function runWrapper(dir, name) {
     if (running < st.slots && ahead === 0) break;
     await sleep(Math.min(POLL_MS, 1000));
   }
+  const held = await machineSlot(dir, st);
+  st = held.st;
+  if (held.timedOut) { console.log(`run-bg: ${name} ended exit=${DEADLINE_EXIT} (no machine-wide browser slot)`); process.exitCode = DEADLINE_EXIT; return; }
+  // The command spawns with this env: its children run inside the job's slot and never take a second one.
+  if (held.slot) { process.env.STARDUST_BROWSER_SLOTS = '0'; process.env.STARDUST_BROWSER_SLOT = held.slot.file; }
   const run = runCapped(st.cmd, st.args, { timeoutSec: st.timeoutSec, label: name }); // spawns synchronously
   const child = childOf(process.pid);
   st = writeState(dir, { ...st, launchedAt: new Date().toISOString(), childPid: child?.pid ?? null, childStart: child?.start ?? null });
   console.log(`run-bg: ${name} launched ${st.launchedAt} (timeout ${st.timeoutSec || 'none'}s): ${[st.cmd, ...st.args].join(' ')}`);
   const code = await run;
   writeState(dir, { ...st, endedAt: new Date().toISOString(), exit: code, timedOut: code === DEADLINE_EXIT });
+  held.slot?.release(); // a wrapper killed hard leaves a dead-pid slot file the next census reaps
   console.log(`run-bg: ${name} ended exit=${code}`);
   process.exitCode = code;
 }
@@ -275,9 +342,10 @@ export function verdictLines(p, { tail = DEFAULT_TAIL, grep = null } = {}) {
 
 export function describe(st) {
   const ph = phase(st);
-  if (ph === 'queued') return `${st.name}  queued ${secondsBetween(st.queuedAt)}s (waiting for a slot)`;
+  if (ph === 'queued') return `${st.name}  queued ${secondsBetween(st.queuedAt)}s (${st.lockWaitFrom ? 'waiting for a machine-wide browser slot — browser-lock.mjs status' : 'waiting for a slot'})`;
   if (ph === 'running') return `${st.name}  running ${secondsBetween(st.launchedAt)}s`;
   if (ph === 'lost') return `${st.name}  lost — wrapper gone without an exit (kill -9? reboot?)${isOrphan(st) ? `; its instrument (pid ${st.childPid}) still runs — \`clean --all\` stops it` : ''} — re-run`;
+  if (st.lockTimeout) return `${st.name}  no machine-wide browser slot within ${st.lockWaitSec ?? secondsBetween(st.lockWaitFrom, st.endedAt)}s (exit ${DEADLINE_EXIT}: no verdict — re-run)`;
   const took = st.launchedAt ? ` in ${secondsBetween(st.launchedAt, st.endedAt)}s` : '';
   return st.timedOut ? `${st.name}  deadline ${st.timeoutSec}s exceeded (exit ${DEADLINE_EXIT}: no verdict — re-run, or raise --timeout for a legitimately huge page)${took}` : `${st.name}  done exit=${st.exit}${took}`;
 }
@@ -376,7 +444,7 @@ export async function clean(dir, { all = false } = {}) {
 // ---- cli ---------------------------------------------------------------------------------------
 function parse(argv) {
   const [sub, ...rest] = argv;
-  const o = { dir: process.env.RUN_BG_DIR || DEFAULT_DIR, names: [], name: null, timeoutSec: DEFAULT_TIMEOUT_SEC, slots: Number(process.env.RUN_BG_SLOTS) || Number(process.env.STARDUST_BROWSER_SLOTS) || DEFAULT_SLOTS, maxSec: DEFAULT_MAX_SEC, tail: undefined, grep: null, all: false, cmd: [] };
+  const o = { dir: process.env.RUN_BG_DIR || DEFAULT_DIR, names: [], name: null, timeoutSec: DEFAULT_TIMEOUT_SEC, slots: Number(process.env.RUN_BG_SLOTS) || Number(process.env.STARDUST_BROWSER_SLOTS) || DEFAULT_SLOTS, lock: 'auto', maxSec: DEFAULT_MAX_SEC, tail: undefined, grep: null, all: false, cmd: [] };
   const num = (flag, v) => { const n = Number(v); if (!Number.isFinite(n)) throw new UsageError(`run-bg: ${flag} needs a number (got ${v})\n${HELP}`); return n; };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
@@ -391,6 +459,8 @@ function parse(argv) {
     else if (a === '--tail') o.tail = num(a, value());
     else if (a === '--grep') { const v = value(); try { o.grep = new RegExp(v); } catch (e) { throw new UsageError(`run-bg: bad --grep ${v}: ${e.message}`); } }
     else if (a === '--all') o.all = true;
+    else if (a === '--lock') o.lock = 'on';
+    else if (a === '--no-lock') o.lock = 'off';
     else if (a.startsWith('--')) throw new UsageError(`run-bg: unknown flag ${a}\n${HELP}`);
     else o.names.push(a);
   }
@@ -405,7 +475,7 @@ async function cli(argv) {
   switch (sub) {
     case 'start': {
       const [cmd, ...args] = o.cmd;
-      const r = start(o.dir, o.name, cmd, args, { timeoutSec: o.timeoutSec, slots: o.slots });
+      const r = start(o.dir, o.name, cmd, args, { timeoutSec: o.timeoutSec, slots: o.slots, lock: o.lock });
       console.log(`run-bg: queued ${r.name} → ${r.log}   (next step: node stardust/scripts/replica/run-bg.mjs wait)`);
       return 0;
     }
