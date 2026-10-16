@@ -48,10 +48,10 @@ check('writes the expected map: one group per resolved chrome pair, longest deli
   assert.equal(r.code, 0, r.out + r.err);
   assert.equal(readFileSync(MAP(dir), 'utf8'), EXPECTED, 'byte-equal to the expected map (sorted keys, trailing newline, no timestamp)');
   assert.match(r.out, /^chrome-map: 4 group\(s\), 9 page\(s\) → stardust\/rollout\/chrome-map\.json \(written\)$/m);
-  assert.match(r.out, /^NOTE \/ca\/en: lang en-CA on 2 page\(s\), fr-CA on 1 — the most common is recorded$/m);
+  assert.match(r.out, /^NOTE \/yy\/bb: lang bb-YY on 2 page\(s\), cc-YY on 1 — the most common is recorded$/m);
   assert.match(r.out, /^NOTE \/de\/de: nav \/nav and footer \/footer-de-de resolve from different prefixes/m);
   assert.match(r.out, /^NOTE \/nav-minimal: no captured page resolves to it/m);
-  assert.doesNotMatch(r.out, /products|about-us\.html/, 'a mega-menu fragment and a content page are not chrome documents');
+  assert.doesNotMatch(r.out, /products|team\.html/, 'a mega-menu fragment and a content page are not chrome documents');
   assert.deepEqual(readdirSync(dirname(MAP(dir))), ['chrome-map.json'], 'no tmp file left');
 });
 
@@ -62,15 +62,15 @@ check('a re-run with the same inputs leaves the file untouched; a changed input 
   const again = run([], dir);
   assert.equal(again.code, 0, again.err); assert.match(again.out, /\(unchanged\)$/m);
   assert.equal(statSync(MAP(dir)).mtimeMs, before, 'not rewritten');
-  writeFileSync(join(dir, 'content', 'nav-us-es.html'), '<body><main><div><p>nav</p></div></main></body>\n');
-  writeFileSync(join(dir, 'content', 'footer-us-es.html'), '<body><main><div><p>footer</p></div></main></body>\n');
-  writeFileSync(join(dir, 'stardust', 'current', 'pages', 'us-es.json'), JSON.stringify({ slug: 'us-es', url: 'https://example.com/us/es.html' }));
-  writeFileSync(join(dir, 'stardust', 'current', 'pages', 'us-es.html'), '<html lang="es-US"><body></body></html>');
+  writeFileSync(join(dir, 'content', 'nav-zz-cc.html'), '<body><main><div><p>nav</p></div></main></body>\n');
+  writeFileSync(join(dir, 'content', 'footer-zz-cc.html'), '<body><main><div><p>footer</p></div></main></body>\n');
+  writeFileSync(join(dir, 'stardust', 'current', 'pages', 'zz-cc.json'), JSON.stringify({ slug: 'zz-cc', url: 'https://example.com/zz/cc.html' }));
+  writeFileSync(join(dir, 'stardust', 'current', 'pages', 'zz-cc.html'), '<html lang="cc-ZZ"><body></body></html>');
   const changed = run([], dir);
   assert.equal(changed.code, 0, changed.err); assert.match(changed.out, /5 group\(s\), 10 page\(s\) .* \(written\)$/m);
   const map = JSON.parse(readFileSync(MAP(dir), 'utf8'));
-  assert.deepEqual(map.groups['/us/es'], { footer: '/footer-us-es', footerFile: 'content/footer-us-es.html', lang: 'es-US', nav: '/nav-us-es', navFile: 'content/nav-us-es.html', pages: ['/us/es'] });
-  assert.deepEqual(map.groups['/'].pages, ['/', '/us/en', '/us/en/about-us'], '/us/es left the site-wide group');
+  assert.deepEqual(map.groups['/zz/cc'], { footer: '/footer-zz-cc', footerFile: 'content/footer-zz-cc.html', lang: 'cc-ZZ', nav: '/nav-zz-cc', navFile: 'content/nav-zz-cc.html', pages: ['/zz/cc'] });
+  assert.deepEqual(map.groups['/'].pages, ['/', '/xx/aa', '/xx/aa/team'], '/zz/cc left the site-wide group');
 });
 
 check('--dry-run prints the summary and writes nothing', () => {
@@ -116,8 +116,8 @@ check('pure: the map does not depend on input order; a folder pair beats a flat 
   const b = buildChromeMap({ docs: [...docs].reverse(), pages: [...pages].reverse(), contentRel: 'content' });
   assert.equal(stableJSON(a.map), stableJSON(b.map)); assert.deepEqual(a.notes, b.notes);
   assert.equal(stableJSON(a.map), EXPECTED);
-  const both = [...docs, { kind: 'nav', file: 'ca/en/nav.html', daPath: '/ca/en/nav', folder: 'ca/en', flat: null }];
-  assert.equal(buildChromeMap({ docs: both, pages, contentRel: 'content' }).map.groups['/ca/en'].nav, '/ca/en/nav');
+  const both = [...docs, { kind: 'nav', file: 'yy/bb/nav.html', daPath: '/yy/bb/nav', folder: 'yy/bb', flat: null }];
+  assert.equal(buildChromeMap({ docs: both, pages, contentRel: 'content' }).map.groups['/yy/bb'].nav, '/yy/bb/nav');
 });
 
 check('schema-shaped: every group carries the required keys and only the schema\'s properties', () => {

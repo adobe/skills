@@ -8,12 +8,12 @@
  * Inputs (local files only; no network):
  *   chrome documents under --content: `nav.html` + `footer.html` at the root (the site-wide pair),
  *     `<prefix>/nav.html` + `<prefix>/footer.html` (a locale folder, served at /fr/nav) and `nav-<id>.html` +
- *     `footer-<id>.html` at the root (a flat per-locale pair, /nav-ca-en, matched on the delivered path's
+ *     `footer-<id>.html` at the root (a flat per-locale pair, /nav-yy-bb, matched on the delivered path's
  *     segments joined by `-`). Anything else — a mega-menu fragment under content/nav/, a page — is not chrome.
  *   captured pages: stardust/current/pages/<slug>.json (`url`) and its <slug>.html sidecar (`<html lang>`).
  * Rule: each page's delivered path (eds-path deliveredUrl) takes the nav and the footer of its LONGEST matching
  *   prefix, each on its own (a folder document beats a flat one at the same depth). Pages sharing the deeper of
- *   the two prefixes form one group, keyed by that prefix (`/`, `/ca/en`); the group's `lang` is the most common
+ *   the two prefixes form one group, keyed by that prefix (`/`, `/yy/bb`); the group's `lang` is the most common
  *   captured lang of its pages (a tie → the first in code-point order; none → null).
  * Output: stardust/rollout/chrome-map.json —
  *   {_provenance, groups: {<prefix>: {nav, footer, lang, pages[], navFile?, footerFile?}}}; sorted keys, no

@@ -15,7 +15,7 @@
     },
     "groups": {
       "type": "object",
-      "description": "Keyed by group id: the delivered-path prefix the group's documents were matched on ('/' for the site-wide pair, '/ca/en' for a locale). Readers treat the id as opaque.",
+      "description": "Keyed by group id: the delivered-path prefix the group's documents were matched on ('/' for the site-wide pair, '/yy/bb' for a locale). Readers treat the id as opaque.",
       "additionalProperties": { "$ref": "#/$defs/group" }
     }
   },
@@ -24,7 +24,7 @@
       "type": "object",
       "required": ["nav", "footer", "lang", "pages"],
       "properties": {
-        "nav": { "type": "string", "pattern": "^/", "description": "DA path of the nav document, e.g. /nav, /nav-ca-en, /fr/nav (the value of the page's nav metadata row)" },
+        "nav": { "type": "string", "pattern": "^/", "description": "DA path of the nav document, e.g. /nav, /nav-yy-bb, /fr/nav (the value of the page's nav metadata row)" },
         "footer": { "type": "string", "pattern": "^/", "description": "DA path of the footer document" },
         "lang": { "type": ["string", "null"], "description": "the most common captured <html lang> of the group's pages; null when none was captured" },
         "pages": { "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^/" }, "description": "delivered URL paths (eds-path deliveredUrl), sorted; readers match them with pathKey" },

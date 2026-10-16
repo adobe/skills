@@ -10,25 +10,13 @@
     "/": {
       "footer": "/footer",
       "footerFile": "content/footer.html",
-      "lang": "en-US",
+      "lang": "aa-XX",
       "nav": "/nav",
       "navFile": "content/nav.html",
       "pages": [
         "/",
-        "/us/en",
-        "/us/en/about-us"
-      ]
-    },
-    "/ca/en": {
-      "footer": "/footer-ca-en",
-      "footerFile": "content/footer-ca-en.html",
-      "lang": "en-CA",
-      "nav": "/nav-ca-en",
-      "navFile": "content/nav-ca-en.html",
-      "pages": [
-        "/ca/en",
-        "/ca/en/about-us",
-        "/ca/en/faqs"
+        "/xx/aa",
+        "/xx/aa/team"
       ]
     },
     "/de/de": {
@@ -50,6 +38,18 @@
       "pages": [
         "/fr/",
         "/fr/contact"
+      ]
+    },
+    "/yy/bb": {
+      "footer": "/footer-yy-bb",
+      "footerFile": "content/footer-yy-bb.html",
+      "lang": "bb-YY",
+      "nav": "/nav-yy-bb",
+      "navFile": "content/nav-yy-bb.html",
+      "pages": [
+        "/yy/bb",
+        "/yy/bb/help",
+        "/yy/bb/team"
       ]
     }
   }
