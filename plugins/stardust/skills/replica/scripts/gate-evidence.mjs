@@ -55,7 +55,8 @@
  *   media-reconcile     latest media-reconcile.mjs job whose counts line has no `omit` and no
  *                       `unresolved` (the instrument's own exit-1 rule); either → OPEN: — but only once
  *                       the page's DELIVERED content file exists (`<--content>/<da-path>.html`, or
- *                       `<da-path>/index.html`; the root page is `index.html`). Before that the gate is
+ *                       `<da-path>/index.html`; the root page is `index.html`; an encoded page's da-path
+ *                       is its encoded path, the eds-path stage-content writes). Before that the gate is
  *                       not required: the evidence reads `n/a: no delivered content file yet (<file>) —
  *                       media-reconcile runs in the delivery chain (row C)`, the sibling acceptance set
  *                       skips it, and a passing job still passes. A recorded run demanded it on
@@ -668,7 +669,8 @@ export function collect(o, { encoder = null } = {}) {
   const contentDir = resolve(o.content);
   const tables = loadTables(o.tables, o.widths);
   if (o.check) for (const w of o.widths) if (!tables[w].any) notes.push(`no pixel table for ${w} under ${o.tables}/ (prototypes-${w} or all-${w}/summary.json) — the #125 rule wants every prototype and deployed page as a row: run gate-all.mjs [--stage prototype]; the gate.sh logs stand in until then`);
-  const ctx = { tables, migrated, pages, slugs: pages.map((p) => p.slug), lint, contentFile: (page) => { const c = contentFileFor(contentDir, page.outputPath); return { ...c, file: relative(process.cwd(), c.file).split(sep).join('/') }; } };
+  // an encoded page is delivered where stage-content writes it, at its eds-path (encode.output.path under stardust/encoded/)
+  const ctx = { tables, migrated, pages, slugs: pages.map((p) => p.slug), lint, contentFile: (page) => { const c = contentFileFor(contentDir, page.encoded ? page.encoded.rel : page.outputPath); return { ...c, file: relative(process.cwd(), c.file).split(sep).join('/') }; } };
   // an encoded page's own files (its jobs name them) and whether its encoded document is the current clean encode
   const project = projectOf(migrated); const manifests = new Map();
   for (const p of pages) {

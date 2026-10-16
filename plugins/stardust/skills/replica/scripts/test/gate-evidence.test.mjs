@@ -9,7 +9,8 @@
 // record at its top level wrapped under types.<archetype> and refused only when it names no archetype (a ledger with
 // a `types` map is never second-guessed), the overflow assert line outranking a PASS pixel
 // line (FAIL: horizontal overflow, `/ovf+<px>` on the row, `overflowX` in the ledger), media-reconcile `n/a:` and
-// dropped from the acceptance set until the page's delivered content file exists (`--content`); an encoded page (its
+// dropped from the acceptance set until the page's delivered content file exists (`--content`; an encoded page's at its
+// eds-path, a non-canonical source URL included); an encoded page (its
 // sidecar's encode.output.path, no clone needed) linted on its delivered content file, else on its current encoded
 // document — never on a migrated HTML — and its jobs attributed by those files; an encoded sibling's local harness gates
 // (C14: section-schema, block-roundtrip --ew, qa-gate) from its own runs, else inherited only while its archetype's
@@ -538,7 +539,7 @@ check('an encoded page is linted on its delivered content file, else on its enco
   assert.equal(meta2('tours/edited/_meta.json').gateEvidence['delivery-lint'], '0 P0 · 0 P1 · 0 P2 (delivery-lint --file content/tours/edited.html --path /tours/edited)', 'the delivered file decides, whatever the encode');
   const about = meta2('About_Us/_meta.json');
   assert.equal(about.gateEvidence['delivery-lint'], '0 P0 · 0 P1 · 0 P2 (delivery-lint --file content/about-us.html --path /about-us)', 'the staged file (content/<encoded path>), though the page stopped');
-  assert.equal(about.gateEvidence['media-reconcile'], 'n/a: no delivered content file yet (content/About_Us.html) — media-reconcile runs in the delivery chain (row C)', 'the media signal is unchanged');
+  assert.equal('media-reconcile' in about.gateEvidence, false, 'delivered as content/about-us.html (never content/About_Us.html): media-reconcile is no n/a');
 });
 check('the archetype and a clone page (sidecar encode: null) keep today\'s subject, the migrated HTML', () => {
   assert.equal(meta2('tours/_meta.json').gateEvidence['delivery-lint'], 'FAIL: 1 P0 · 0 P1 · 1 P2 (delivery-lint --path /tours)', 'deploy converts the archetype from its migrated HTML; it is never staged');
@@ -557,6 +558,8 @@ check('the delivered signal is unchanged (media-reconcile n/a until the content 
   assert.equal(rows['tours-south'].delivered, false); assert.equal(rows['tours-south'].missing.includes('media-reconcile'), false);
   assert.equal(rows['tours-north'].delivered, true); assert.equal(rows['tours-north'].missing.includes('media-reconcile'), false, 'passed');
   assert.equal(rows['tours-west'].missing.includes('media-reconcile'), false, 'not delivered either');
+  assert.equal(rows['about-us'].delivered, true, 'an encoded page is delivered at its eds-path content file (stage-content\'s), not at the source URL\'s literal path');
+  assert.ok(rows['about-us'].missing.includes('media-reconcile'), 'so --check requires media-reconcile on it');
   const north = { slug: 'tours-north', outputPath: 'tours/north/index.html', encoded: { files: [join(root2, 'stardust/encoded/tours/north.html'), join(root2, 'content/tours/north.html')] } };
   const west = { slug: 'tours-west', outputPath: 'tours/west/index.html' };
   const lj = (file) => ({ kind: 'delivery-lint', name: 'lint-1', instArgs: ['--file', file], cwd: root2 });
