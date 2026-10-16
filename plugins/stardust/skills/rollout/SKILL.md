@@ -237,10 +237,10 @@ or converted — the recorded unit `C-archetype` (handoff contract § 3, row C).
 **Cluster sub-units (#134):** in C-deliver a template cluster of more than 16
 siblings is delivered as recorded sub-units `cluster-<template>-1..n` — at most
 16 pages each, near-equal, cut in sibling order, run one after another — each
-with its own `stardust/rollout/progress.json` entry, checkpoint commit and
-boundary ask; fix rounds (cap 3) and the `gate-all.mjs --only` scope are per
-sub-unit. Target: no C-deliver unit runs longer than 90 minutes (handoff
-contract § 3, row C). A fan-out subagent honours the pause file
+with its own `stardust/rollout/progress.json` entry (same shape), checkpoint
+commit and boundary ask; fix rounds (cap 3) and the `gate-all.mjs --only` scope
+are per sub-unit. Target: no C-deliver unit runs longer than 90 minutes
+(handoff contract § 3, row C). A fan-out subagent honours the pause file
 `STARDUST_PAUSE_FILE` (handoff contract § Fan-out discipline).
 
 **Execution model: waves.** Deliver in waves of parallel **author-only** agents
