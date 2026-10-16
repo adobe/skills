@@ -160,9 +160,8 @@ Walk `plan.json.steps` in order (representative pages first). For each page:
    locale shell that is not a page get one more metadata block row at write time —
    `<div><div>Robots</div><div>noindex</div></div>` (renders
    `<meta name="robots" content="noindex">`). Without it the platform's index of
-   published documents, and the `/sitemap.xml` it serves, list them as pages: a
-   recorded hands-off run served 58 sitemap urls for a 36-page site (every page
-   plus 22 chrome documents). Phase D verifies the served sitemap.
+   published documents, and the `/sitemap.xml` it serves, list them as pages;
+   Phase D verifies the served sitemap.
 
    **`content-pending` pages** (archetypes-only): no migrated HTML — skip the
    document push entirely (no shell/placeholder), record `content-pending`, surface
