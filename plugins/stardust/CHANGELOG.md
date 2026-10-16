@@ -15,7 +15,7 @@ file two gates checked in place of the delivered document.
   `stardust/encoded/<path>.html` in deploy's delivered form; `deploy/scripts/stage-content.mjs` stages it into
   `content/<path>.html` behind a hand-edit guard (`stardust/deploy/stage-ledger.json`) and prints the paths for
   `deploy-batch.mjs --force --paths`. No write-boundary change: `content/` keeps one owner, deploy. The handoff
-  contract's rows 2, 4 and 6–9 and row C follow; exit 0 means "encoded", never "done".
+  contract's per-page rows and row C follow; exit 0 means "encoded", never "done".
 - **The encoder** (`encode.mjs` + `encode/`): the importer's walk, grammar v2 (compound cells, per-item wrap,
   id-reference cells, one cell per match, blank-container drops, metadata from a selector) and sanitise's `encode()`
   applied last, so the finalisers are no-ops on the staged file. No executable per-template code: what the grammar
