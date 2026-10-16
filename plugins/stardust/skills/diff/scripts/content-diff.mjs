@@ -53,7 +53,8 @@
  *     unpaired source icon of the same identity (🟡)
  *
  * Image PLACEHOLDERS are not icons. An icon-sized <img> that is not shown (no box,
- * visibility:hidden, clipped away, opacity 0, aria-hidden), carries a placeholder
+ * visibility:hidden, clipped away, opacity 0 — aria-hidden alone is not "not shown":
+ * a visible aria-hidden icon is diffed), carries a placeholder
  * signal (data: URI, intrinsic ≤ 64×64, aria-hidden, a loaded sibling image with
  * the same alt or file stem) and whose full image is present (that sibling rendered
  * > 64 px wide, or data-src / data-srcset / data-lazy* / data-original* / another
@@ -119,7 +120,7 @@
  *     --dismiss [sel,...]   dismiss overlays on both sides via live-session
  *                           (consent + timed marketing modals), plus these extra
  *                           site-specific selectors (optional)
- *     --hide <sel,…>        hide in-flow per-visitor regions on both sides before the inventories (repeatable)
+ *     --hide <sel,…>        in-flow per-visitor regions: hidden, then removed from the DOM, on both sides before the inventories (repeatable)
  *     --headed              escalation: headed stealth real Chrome (bot-managed sites)
  *     --locale <tag>        pin Accept-Language + context locale (geo-redirect determinism)
  *     --live-cache <f>      reuse the SOURCE side's inventories from <f> while fresh (this
@@ -129,6 +130,8 @@
  * Live-side cache (--live-cache). The file holds the source side's INVENTORIES, never a verdict: the
  * build side is probed every run and the findings are recomputed from (cached source, fresh build). Key =
  * source URL + width + profile + roots (--main, chrome) + UA + locale + wait state + dismiss set + tier
+ * + inventory version (`inventory: 2` since hidden image placeholders stopped being icons — a source side cached
+ * before reads `key mismatch (inventory)` and is re-probed once)
  * (+ the --hide list, only when non-empty — a cache taken without hides stays valid for runs without them;
  * with hides the data is { roots, hidden }, so a hit prints the probe's own `hidden live:` records);
  * fresh = probed at/after this run's opener line in ./stardust/status.jsonl (cwd = the project root, as
@@ -142,8 +145,9 @@
  * IN FLOW above the header — not an overlay, so dismissal cannot remove it. `--hide <sel,…>` (comma list,
  * repeatable) applies the SAME list to both sides with live-session's hideRegions after the dismissal +
  * settle, before the inventories (the build has nothing to hide, like overlay dismissal). The inventories
- * read the DOM, not the rendering, so every match of a valid hide selector is also detached from the page
- * right before each root's inventories (a bar a script re-inserts after the hide pass included).
+ * read the DOM, not the rendering (display:none text is still inventoried), so content-diff then REMOVES every
+ * match of a valid hide selector from the DOM right before each root's inventories (a bar a script re-inserts
+ * after the hide pass included); the records are the hide pass's own.
  * Printed after the header lines: `  hidden live:  <sel> ×<n> (<h>px) [--hide]; …` and `  hidden build: …`
  * (`×0` when nothing matched, `error: <msg>` for an invalid selector); --json carries
  * hidden: { live, build } ([{ sel, source, n, h, error? }]). Without --hide nothing changes.
@@ -170,7 +174,7 @@
  * (the first root), roots: { <other root>: { [source]: inv, [build]: inv } },
  * findings: [{ sev, kind, root, msg }] } — each inv's attrs carries placeholders: [{ value, size, anchor, why }].
  *
- * attributeInventory (in-page) and diffAttributes, parseRoots, diffRoot, formatFinding, liveCacheKey, parseArgs
+ * attributeInventory (in-page) and diffAttributes, parseRoots, diffRoot, formatFinding, liveCacheKey, INVENTORY_VERSION, parseArgs
  * (pure) are exported; playwright is imported lazily in main, so the contract test runs
  * the differ without a browser.
  */
@@ -208,7 +212,7 @@ const USAGE = `usage: node skills/diff/scripts/content-diff.mjs <sourceURL> <bui
                          other live http(s) (never reach networkidle).
   --dismiss [sel,...]    dismiss overlays (consent + timed marketing modals) on both
                          sides; optional comma-separated extra selectors
-  --hide <sel,…>         hide in-flow per-visitor regions on both sides before the inventories (repeatable)
+  --hide <sel,…>         in-flow per-visitor regions: hidden, then removed from the DOM, on both sides before the inventories (repeatable)
   --headed               headed stealth real Chrome (escalation for bot-managed sites)
   --locale <tag>         pin Accept-Language + locale (e.g. en-GB) for geo determinism
   --live-cache <f>       reuse the SOURCE side's inventories from <f> while fresh (this run;
@@ -244,7 +248,7 @@ findings:   text/role layer — MISSING CTA|HEADING|EYEBROW|BODY, ROLE SWAP, EXT
 //   block  the nearest block-ish ancestor (section, article, nav, aside, form, header, footer, .block, .section,
 //          [data-block-name]) keyed by its first heading's text, '' when none — the scope the ICON MOVED pass pairs within first.
 //   placeholders  an icon-sized <img> that is NOT SHOWN (no box — display:none on it or an ancestor —, visibility:hidden,
-//          clipped away, opacity 0 or aria-hidden) AND has a placeholder signal (a data: URI, an intrinsic size ≤ 64×64,
+//          clipped away or opacity 0; aria-hidden alone is not) AND has a placeholder signal (a data: URI, an intrinsic size ≤ 64×64,
 //          aria-hidden, or a loaded sibling image — same parent, picture, figure or link — with the same alt or file stem)
 //          AND whose full image is present (that sibling rendered with a natural width > 64, or a full source declared on
 //          the element: data-src, data-srcset, data-lazy*, data-original*, a srcset / <picture><source> candidate other
@@ -311,8 +315,7 @@ export function attributeInventory(args) {
     if (/^(?:hidden|collapse)$/.test(getComputedStyle(el).visibility)) hidden.push('visibility:hidden');
     for (let a = el; a && a.nodeType === 1; a = a.parentElement) if (parseFloat(getComputedStyle(a).opacity) === 0) { hidden.push('opacity 0'); break; }
     if (boxed && clippedAway(el, r)) hidden.push('clipped');
-    if (el.getAttribute('aria-hidden') === 'true') hidden.push('aria-hidden');
-    if (!hidden.length) return '';
+    if (!hidden.length) return ''; // aria-hidden is a signal below, never "not shown": a visible aria-hidden icon is diffed
     const src = el.currentSrc || el.src || el.getAttribute('src') || '';
     if (!src) return ''; // no current source: an unloaded lazy image (a hidden icon waiting for data-src), not a placeholder
     const signals = [];
@@ -556,11 +559,15 @@ export function parseArgs(argv) {
   return { proto, eds, opts };
 }
 
+// The in-page inventories' version, part of the --live-cache key: bump it when what they record changes, so a source
+// side cached by an older classifier is re-probed once (2: hidden image placeholders are no longer icons).
+export const INVENTORY_VERSION = 2;
 // The --live-cache key: everything that shapes the SOURCE side's inventories (a change re-probes). The --hide list joins
 // it only when non-empty, so a cache taken without hides stays valid for runs without them.
 export const liveCacheKey = (src, opts, prof, roots) => ({
   url: src, width: opts.width, profile: prof.name, roots: roots.map((r) => `${r.name}=${r.sel}`),
   ua: opts.ua, locale: opts.locale, waitUntil: opts.waitUntil, dismiss: opts.dismiss, headed: opts.headed,
+  inventory: INVENTORY_VERSION,
   ...(opts.hide && opts.hide.length ? { hide: opts.hide } : {}),
 });
 
