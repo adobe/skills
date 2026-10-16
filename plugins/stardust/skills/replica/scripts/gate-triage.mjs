@@ -16,7 +16,8 @@
  * Inputs per gate dir: summary.json + runs/*.json (newest row per page, each row's source recorded),
  * per-page pixel / clip / content / units / origin / eds JSON; optional coverage blocks.json +
  * pages.json (share map, templates), state.json, replica units.json (families), capture pages, the
- * foundation-freeze manifest (frozen paths; DEFAULT_PATHS when absent). Causes: block:<name>,
+ * foundation-freeze manifest (frozen paths; DEFAULT_PATHS when absent), the gate's presence.json (passed to
+ * chrome-parity as --presence --slug <rep>, with the rep row's `hide` list as --hide). Causes: block:<name>,
  * selector:<sel>, encoder:<template>, layout:<template> (re-prototype candidate), capture:<slug>,
  * page:<slug>@<w>, and token:<prop>:<from>→<to> from the property diff. Same inputs ⇒ byte-identical
  * outputs and no new request line; run-dependent status goes to stdout only, as does the unit view (--unit with
@@ -58,6 +59,7 @@ Usage: node stardust/scripts/replica/gate-triage.mjs [options]   (from the proje
   --refresh-parity          re-run parity although a stored result matches
   --region <cause>=<liveSel>[|<buildSel>]   explicit parity region for one cause (repeatable)
   --locale <tag> (en-US) --headed --consent <sel> --dismiss <sel,…>   passed to chrome-parity
+                            + the gate's presence.json (--presence --slug) and the row's hide list (--hide)
   --no-route                compute request lines, append nothing
   --dry-run                 print triage.md + the lines it would append; write and spawn nothing
   --json                    print {totals, triages[]} (each = triage.json) instead of the md head
@@ -306,6 +308,8 @@ const criteriaCounts = (rows) => Object.fromEntries(CRITERIA.map((c) => [c, rows
 const textMatch = (a, b) => { if (!a || !b) return false; if (a === b) return true; const [s, l] = a.length <= b.length ? [a, b] : [b, a]; return s.length >= 12 && l.includes(s); };
 const isFrozenBlock = (name, frozen) => frozen.some((p) => { const q = String(p).replace(/^\.\/+/, '').replace(/\/+$/, ''); const b = `blocks/${name}/`; return b === `${q}/` || b.startsWith(`${q}/`); });
 const regionOf = (g, overrides) => (overrides[g.cause] != null ? g.cause.replace(/[^\w-]+/g, '-') : g.kind === 'block' && (g.name === 'header' || g.name === 'footer') ? g.name : 'main');
+/** A gate row's hide list (gate-all's `hide: [sel, …]`; absent = none): trimmed, empty dropped, de-duplicated in order. */
+const rowHide = (r) => [...new Set((Array.isArray(r && r.hide) ? r.hide : []).filter((s) => typeof s === 'string').map((s) => s.trim()).filter(Boolean))];
 
 /** The deltas of one parity result that concern one group (header/footer/override: the whole region; main: text anchors). */
 function groupFindings(g, result, { region, items = [], docH = 0, names = [], clipGroups = [] } = {}) {
@@ -407,12 +411,14 @@ function regateCommands(pages, rows, { width, hostOf, hasRow }) {
  * buildTriage(input, runParity) — the pure core over one gate table dir. input = { gate (root-relative dir),
  * sources [{ file, writtenAt, prov, rows }] in read order, ev(slug, kind) → parsed JSON | null (kind: pixel,
  * clip, content, units, origin, eds), capture(slug) → normalized text | null, blocks, covPages, statePages,
- * families, frozen, hot, regions {cause: spec}, parity (bool), unit, coverageFiles }.
- * runParity({ slug, width, live, build, regions, rowAt }) → { file, exit, result } | { error } | { skipped } (it owns the
- * --parity-max budget, one per run). Re-gate commands keep each page's own --eds-host (its newest row's table).
+ * families, frozen, hot, regions {cause: spec}, parity (bool), unit, coverageFiles, presence (root-relative
+ * <gate>/presence.json | null) }.
+ * runParity({ slug, width, live, build, regions, rowAt, hide, presence }) → { file, exit, result } | { error } | { skipped }
+ * (it owns the --parity-max budget, one per run; hide = the rep row's list, presence = the file or null). Re-gate commands
+ * keep each page's own --eds-host (its newest row's table).
  */
 export function buildTriage(input, runParity = null) {
-  const { gate, sources = [], ev = () => null, capture = () => null, blocks = [], covPages = [], statePages = [], families = null, frozen = DEFAULT_PATHS, hot = 15, regions = {}, parity = false, unit = 'gate-triage', coverageFiles = { blocks: null, pages: null } } = input;
+  const { gate, sources = [], ev = () => null, capture = () => null, blocks = [], covPages = [], statePages = [], families = null, frozen = DEFAULT_PATHS, hot = 15, regions = {}, parity = false, unit = 'gate-triage', coverageFiles = { blocks: null, pages: null }, presence = null } = input;
   const merged = mergeRows(sources);
   const newest = [...sources].map((s, i) => ({ s, i })).sort((a, b) => cmp(String(a.s.writtenAt || ''), String(b.s.writtenAt || '')) || a.i - b.i).map((x) => x.s).pop();
   const width = (newest && newest.prov && newest.prov.breakpoint) ?? (Number((String(gate).match(/-(\d+)\/?$/) || [])[1]) || null);
@@ -466,12 +472,14 @@ export function buildTriage(input, runParity = null) {
       const regs = new Map();
       for (const g of gs) { const name = regionOf(g, regions); regs.set(name, regions[g.cause] ?? (name === 'main' ? `${o.root || 'body'}|${e.root || 'body'}` : name)); }
       const list = [...regs.entries()].sort((a, b) => cmp(a[0], b[0])).map(([name, spec]) => ({ name, spec }));
-      const rec = runParity({ slug: rep.slug, width, live, build, regions: list, rowAt: merged.get(rep.slug).src.writtenAt || null }) || { skipped: 'not run' };
+      // the gate's in-flow hides reach the run (a per-visitor bar above the header would offset every box)
+      const hideList = rowHide(row); const hide = hideList.length || presence ? { list: hideList, presence: presence || null } : null;
+      const rec = runParity({ slug: rep.slug, width, live, build, regions: list, rowAt: merged.get(rep.slug).src.writtenAt || null, hide: hideList, presence: presence || null }) || { skipped: 'not run' };
       for (const g of gs) {
-        if (rec.error || rec.skipped) { g.parity = rec.error ? { error: rec.error } : { skipped: rec.skipped }; continue; }
+        if (rec.error || rec.skipped) { g.parity = rec.error ? { error: rec.error, ...(hide ? { hide } : {}) } : { skipped: rec.skipped }; continue; }
         const f = groupFindings(g, rec.result, { region: regionOf(g, regions), items: e.items || [], docH: e.docH, names, clipGroups: clipGroupsOf(row) });
         g.allDeltas = f.all;
-        g.parity = { page: rep.row, file: rec.file, regions: list.map((r) => r.name), exit: rec.exit, total: f.total, deltas: f.deltas, kinds: f.kinds, ...(f.note ? { note: f.note } : {}) };
+        g.parity = { page: rep.row, file: rec.file, regions: list.map((r) => r.name), exit: rec.exit, total: f.total, deltas: f.deltas, kinds: f.kinds, ...(f.note ? { note: f.note } : {}), ...(hide ? { hide } : {}) };
       }
     }
   }
@@ -492,7 +500,7 @@ export function buildTriage(input, runParity = null) {
   const ungrouped = failing.flatMap((id) => rowCauses.get(id).filter((c) => !groupCauses.has(c.cause)).map((c) => ({ row: id, cause: c.cause, criteria: c.criteria, evidence: c.evidence, source: c.source })));
   const grouped = new Set(out.flatMap((g) => g.rows.map((r) => r.row))).size;
   return {
-    _provenance: { writtenBy: 'gate-triage.mjs', gate, width, inputs: sources.map((s) => ({ file: s.file, writtenAt: s.writtenAt ?? null, width: (s.prov && s.prov.breakpoint) ?? null, edsHost: (s.prov && s.prov.edsHostOverride) || null, rows: (s.rows || []).length })), coverage: coverageFiles, frozen: [...frozen], hot, parity: parity ? 'on' : 'off' },
+    _provenance: { writtenBy: 'gate-triage.mjs', gate, width, inputs: sources.map((s) => ({ file: s.file, writtenAt: s.writtenAt ?? null, width: (s.prov && s.prov.breakpoint) ?? null, edsHost: (s.prov && s.prov.edsHostOverride) || null, rows: (s.rows || []).length })), coverage: coverageFiles, frozen: [...frozen], hot, parity: parity ? 'on' : 'off', presence: (parity && presence) || null },
     totals: { rows: tableRows.length, failing: failing.length, errors: errors.length, grouped, share: failing.length ? Math.round((grouped / failing.length) * 1000) / 1000 : null, groups: out.length, routed: out.filter((g) => g.route === 'foundation-request').length },
     groups: out, ungrouped, errors,
   };
@@ -521,13 +529,14 @@ const cell = (s) => String(s ?? '-').replace(/\|/g, '\\|').replace(/[\r\n]+/g, '
 const fmtDelta = (d) => (d.from == null ? `${d.prop} ${d.to} ×${d.n}` : `${d.prop} ${d.from} → ${d.to} ×${d.n}`);
 const fmtCrit = (c) => CRITERIA.filter((k) => c[k]).map((k) => `${k} ${c[k]}`).join(', ') || '-';
 const listSome = (xs, n = 6) => (xs.length > n ? `${xs.slice(0, n).join(', ')} +${xs.length - n}` : xs.join(', '));
+const hideText = (h) => `hiding ${[h.list.join(', '), h.presence ? 'presence.json regions' : ''].filter(Boolean).join(' + ')}`;
 function parityText(p) {
   if (!p) return null;
   if (p.skipped) return `skipped (${p.skipped})`;
-  if (p.error) return `error (${p.error})`;
+  if (p.error) return `error (${p.error})${p.hide ? `; ${hideText(p.hide)}` : ''}`;
   if (p.fromGroups) return `${p.deltas.map(fmtDelta).join('; ')} shared by ${p.fromGroups.join(', ')}`;
   const kinds = Object.entries(p.kinds || {}).map(([k, n]) => `${k} ${n}`).join(', ');
-  return `chrome-parity on ${p.page} (regions ${p.regions.join(', ')}; exit ${p.exit}; ${p.file}): ${p.total} finding(s)${kinds ? ` (${kinds})` : ''}${p.note ? ` — ${p.note}` : ''}${p.deltas.length ? `; ${p.deltas.map(fmtDelta).join('; ')}` : ''}`;
+  return `chrome-parity on ${p.page} (regions ${p.regions.join(', ')}; exit ${p.exit}; ${p.file}${p.hide ? `; ${hideText(p.hide)}` : ''}): ${p.total} finding(s)${kinds ? ` (${kinds})` : ''}${p.note ? ` — ${p.note}` : ''}${p.deltas.length ? `; ${p.deltas.map(fmtDelta).join('; ')}` : ''}`;
 }
 const deltaCell = (p) => (!p ? '-' : p.skipped ? `skipped: ${p.skipped}` : p.error ? 'parity error' : (p.deltas || []).slice(0, 3).map(fmtDelta).join('; ') || (p.note || 'no property diff'));
 
@@ -583,15 +592,15 @@ function discoverGates(rootAbs, noRuns) {
 }
 
 /** The chrome-parity spawn behind buildTriage: one --parity-max budget per run, stored result reused on an equal key,
- * own live cache (never the gate's). */
+ * own live cache (never the gate's); the gate's presence.json and the rep row's hide list ride in the argv (= the key). */
 function parityRunner({ rootAbs, gateAbs, rel, opts, say, budget }) {
   const script = opts.parityScript ? resolve(opts.parityScript) : join(HERE, 'chrome-parity.mjs');
-  return ({ slug, width, live, build, regions, rowAt }) => {
+  return ({ slug, width, live, build, regions, rowAt, hide = [], presence = null }) => {
     if (budget.left <= 0) { say(`parity ${slug}@${width}: skipped (over --parity-max ${opts.parityMax})`); return { skipped: `over --parity-max ${opts.parityMax}` }; }
     budget.left -= 1;
     const dir = join(gateAbs, 'triage-parity'); const base = `${String(slug).replace(/[^\w.-]+/g, '-')}-${width}`;
     const stored = join(dir, `${base}.json`); const file = rel(stored);
-    const args = [live, build, '--no-defaults', ...regions.flatMap((r) => ['--region', `${r.name}=${r.spec}`]), '--width', String(width), '--json', '--live-cache', rel(join(dir, `${base}.live.json`)), '--locale', opts.locale, ...(opts.headed ? ['--headed'] : []), ...(opts.consent ? ['--consent', opts.consent] : []), ...(opts.dismiss ? ['--dismiss', opts.dismiss] : [])];
+    const args = [live, build, '--no-defaults', ...regions.flatMap((r) => ['--region', `${r.name}=${r.spec}`]), '--width', String(width), '--json', '--live-cache', rel(join(dir, `${base}.live.json`)), '--locale', opts.locale, ...(opts.headed ? ['--headed'] : []), ...(opts.consent ? ['--consent', opts.consent] : []), ...(opts.dismiss ? ['--dismiss', opts.dismiss] : []), ...(hide.length ? ['--hide', hide.join(',')] : []), ...(presence ? ['--presence', presence, '--slug', String(slug)] : [])];
     const key = { argv: ['chrome-parity.mjs', ...args], rowAt };
     if (!opts.refreshParity || opts.dryRun) {
       let s = null; try { s = existsSync(stored) ? JSON.parse(readFileSync(stored, 'utf8')) : null; } catch { s = null; }
@@ -641,7 +650,8 @@ function main(argv) {
     const ev = (slug, kind) => { const k = `${slug}\u0000${kind}`; if (!cache.has(k)) cache.set(k, readJson(join(g, String(slug), `${kind}.json`))); return cache.get(k); };
     const capture = (slug) => { const f = join(P.captures, `${slug}.html`); return existsSync(f) && statSync(f).isFile() ? captureText(readFileSync(f, 'utf8')) : null; };
     const gateLog = [];
-    const t = buildTriage({ gate: rel(g), sources, ev, capture, blocks: (blocksDoc && blocksDoc.blocks) || [], covPages: (pagesDoc && pagesDoc.pages) || [], statePages: (stateDoc && stateDoc.pages) || [], families, frozen, hot: opts.hot, regions: opts.regions, parity: !opts.noParity, unit: opts.unit, coverageFiles: { blocks: blocksDoc ? rel(P.blocks) : null, pages: pagesDoc ? rel(P.pages) : null } },
+    const presAbs = join(g, 'presence.json'); const presence = existsSync(presAbs) && statSync(presAbs).isFile() ? rel(presAbs) : null;
+    const t = buildTriage({ gate: rel(g), sources, ev, capture, blocks: (blocksDoc && blocksDoc.blocks) || [], covPages: (pagesDoc && pagesDoc.pages) || [], statePages: (stateDoc && stateDoc.pages) || [], families, frozen, hot: opts.hot, regions: opts.regions, parity: !opts.noParity, unit: opts.unit, coverageFiles: { blocks: blocksDoc ? rel(P.blocks) : null, pages: pagesDoc ? rel(P.pages) : null }, presence },
       parityRunner({ rootAbs, gateAbs: g, rel, opts, say: (s) => gateLog.push(s), budget }));
     // the unit view (stdout only — concurrent clusters share triage.{json,md}): groups with a row on the unit's pages,
     // then the unit's first pass at this width (the cluster verdict's `first pass 360: x/y`)

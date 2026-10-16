@@ -3,7 +3,8 @@
 // block share + scope, encoder vs capture, layout (asymmetric origins excluded), group ordering + share,
 // the routed request lines byte-for-byte under a real foundation freeze + idempotent re-runs, --dry-run
 // writes nothing, --help in an empty dir, P3/P4 row fields tolerated, runs/ merge (newest row per page),
-// parsePairMsg on chrome-parity's message shapes, the unit view's first pass (firstPass). Fixtures are built in a temp project per check.
+// parsePairMsg on chrome-parity's message shapes, the unit view's first pass (firstPass), the gate's presence.json and
+// a row's hide list reaching chrome-parity (argv = stored-result key). Fixtures are built in a temp project per check.
 // Run: node <this file>   (TMPDIR may point at a scratch dir)
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -181,6 +182,8 @@ check('(e) frozen footer + a shared token → two request lines byte-for-byte; t
   assert.equal(existsSync(join(root, 'styles/requests.md')), false); assert.equal(existsSync(join(root, GATE, 'triage.json')), false); assert.deepEqual(calls(root), []);
   const r1 = ok(run(root, ['--unit', 'cluster-a']));
   const t = readT(root);
+  assert.equal(t._provenance.presence, null, 'no presence.json in the gate dir');
+  assert.ok(t.groups.every((g) => !g.parity || !('hide' in g.parity)), 'no hide record without presence.json or row hides');
   assert.deepEqual(t.groups.map((g) => [g.id, g.cause, g.score, g.route]), [['G1', 'token:fontFamily:arial→helvetica', 12, 'foundation-request'], ['G2', 'block:cards', 6, 'cluster'], ['G3', 'block:footer', 2, 'foundation-request']]);
   const expected = `${[
     '- cluster-a | token fontFamily arial → helvetica (styles/) | gate-triage token:fontFamily:arial→helvetica@1440: 4 failing rows (1440 ×4), pixel 2, clip 2; chrome-parity in 2 groups (block:cards, block:footer) | landing, t1',
@@ -202,7 +205,7 @@ check('(e) frozen footer + a shared token → two request lines byte-for-byte; t
   assert.deepEqual(t.groups.map((g) => g.scope.when ?? null), ['C-final, after the queue is applied', null, 'C-final, after the queue is applied']);
   const md1 = readFileSync(join(root, GATE, 'triage.md'), 'utf8');
   assert.match(md1, /\| G3 \| `block:footer` .*\| C-final: 6 pages \|/); assert.match(md1, /- re-gate scope \(C-final, after the queue is applied — not a cluster step\): 6 pages/);
-  assert.match(md1, /act on causes with rows on your own pages/);
+  assert.match(md1, /act on causes with rows on your own pages/); assert.doesNotMatch(md1, /hiding/);
   const before = ['triage.json', 'triage.md'].map((f) => readFileSync(join(root, GATE, f), 'utf8'));
   const r2 = ok(run(root, ['--unit', 'cluster-a']));
   assert.deepEqual(['triage.json', 'triage.md'].map((f) => readFileSync(join(root, GATE, f), 'utf8')), before);
@@ -309,6 +312,50 @@ check('(p) firstPass: the oldest row decides (a whole-row reuse dates from reuse
   const fp = firstPass(sources, { unitKeys: new Set(['/a', '/b', '/arch', '/c', '/d', '/e']), covPages: [{ slug: 'e', path: '/E/index.html' }] });
   assert.deepEqual(fp, { x: 3, y: 5, pages: [{ slug: 'a', at: T0, pass: true }, { slug: 'b', at: T2, pass: false }, { slug: 'c', at: T3, pass: true }, { slug: 'd', at: T2, pass: false }, { slug: 'e', at: T2, pass: true }] });
   assert.deepEqual(firstPass(sources, { unitKeys: new Set(['/nope']) }), { x: 0, y: 0, pages: [] });
+});
+check('(q) the gate\'s presence.json and the rep row\'s hide list reach chrome-parity; triage records them; an equal list reuses, a changed one re-runs', () => {
+  const PRES = `${GATE}/presence.json`;
+  const spec = merge(A, E); spec.rows = spec.rows.map((r) => (r.slug === 'p1' ? { ...r, hide: ['.geo-bar'] } : r));
+  const base = (s, region) => [live(s), build(s), '--no-defaults', '--region', region, '--width', '1440', '--json', '--live-cache', `${GATE}/triage-parity/${s}-1440.live.json`, '--locale', 'en-US'];
+  const parityOf = (t, cause) => t.groups.find((g) => g.cause === cause).parity;
+  const shared = (root) => ['triage.json', 'triage.md'].map((f) => readFileSync(join(root, GATE, f), 'utf8'));
+  withProject(spec, { parityOut: PARITY_E }, (root) => {
+    put(root, PRES, { '*': { hide: ['.geo-bar'] } });
+    ok(run(root, ['--no-route']));
+    assert.deepEqual(calls(root), [
+      [...base('p1', 'main=main|main'), '--hide', '.geo-bar', '--presence', PRES, '--slug', 'p1'],
+      [...base('p10', 'footer=footer'), '--presence', PRES, '--slug', 'p10'],
+    ]);
+    const t = readT(root);
+    assert.deepEqual(parityOf(t, 'block:cards').hide, { list: ['.geo-bar'], presence: PRES });
+    assert.deepEqual(parityOf(t, 'block:footer').hide, { list: [], presence: PRES });
+    assert.equal(t._provenance.presence, PRES);
+    const md = shared(root)[1];
+    assert.match(md, /- property diff: chrome-parity on p1@1440 \(regions main; exit 2; [^)]*; hiding \.geo-bar \+ presence\.json regions\): /);
+    assert.match(md, /- property diff: chrome-parity on p10@1440 \(regions footer; exit 2; [^)]*; hiding presence\.json regions\): /);
+    const before = shared(root);
+    const r2 = ok(run(root, ['--no-route']));
+    assert.deepEqual(shared(root), before, 'a re-run with hides is byte-identical');
+    assert.equal(calls(root).length, 2); assert.match(r2.stdout, /parity p1@1440: reused/); assert.match(r2.stdout, /parity p10@1440: reused/);
+    // the row's list changes (same table timestamp): its stored result is not reused
+    const s = JSON.parse(readFileSync(join(root, GATE, 'summary.json'), 'utf8'));
+    put(root, `${GATE}/summary.json`, { ...s, rows: s.rows.map((r) => (r.slug === 'p1' ? { ...r, hide: ['.geo-bar', '.promo-strip'] } : r)) });
+    const r3 = ok(run(root, ['--no-route']));
+    assert.deepEqual(calls(root).slice(2), [[...base('p1', 'main=main|main'), '--hide', '.geo-bar,.promo-strip', '--presence', PRES, '--slug', 'p1']]);
+    assert.match(r3.stdout, /parity p1@1440: ran exit 2/); assert.match(r3.stdout, /parity p10@1440: reused/);
+    assert.deepEqual(parityOf(readT(root), 'block:cards').hide.list, ['.geo-bar', '.promo-strip']);
+    ok(run(root, ['--no-route', '--no-parity']));
+    assert.equal(readT(root)._provenance.presence, null, 'parity off: no presence file used');
+    // presence.json gone: the row's list alone; the footer run is today's argv again
+    rmSync(join(root, PRES));
+    ok(run(root, ['--no-route']));
+    assert.deepEqual(calls(root).slice(3), [[...base('p1', 'main=main|main'), '--hide', '.geo-bar,.promo-strip'], base('p10', 'footer=footer')]);
+    const t4 = readT(root);
+    assert.equal(t4._provenance.presence, null);
+    assert.deepEqual(parityOf(t4, 'block:cards').hide, { list: ['.geo-bar', '.promo-strip'], presence: null });
+    assert.equal('hide' in parityOf(t4, 'block:footer'), false);
+    assert.match(shared(root)[1], /; hiding \.geo-bar, \.promo-strip\): /);
+  });
 });
 check('(g) --help in an empty dir: exit 0, usage on stdout, nothing written', () => {
   const cwd = mkdtempSync(join(tmpdir(), 'gate-triage-help-'));
