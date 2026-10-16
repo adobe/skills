@@ -55,12 +55,13 @@
  * missing on the build, or a build cap over a fluid live, is ✗), `module i/n` per section (same
  * rule; advisory when the section counts differ — fix structure first) and, when neither side has
  * a wrapper, `content cap` (the shared module cap). Outer shell caps beyond the wrapper cap are
- * informational. A module pair whose widths differ by > 40 % AND whose cap elements differ (tag or
- * role) compared two different things: `○ unpaired` — listed, not scored. The verdict line:
- * `cap-probe: PASS|FAIL|INCONCLUSIVE at <probeWidth> — <f> of <r> rows failed; modules scored <s>
- * of <n>[, <u> unpaired]`. INCONCLUSIVE: fewer than half the modules pair, so no module row is
- * scored (a note says to check --main / --build-main); a failing wrapper/content-cap row still
- * FAILs. A ✗ names the sizing rule to fix (deploy Step 3 scaffold); never iterate pixels on it.
+ * informational. A module pair whose widths differ by > 40 % of the wider AND whose cap elements
+ * differ (tag or role) compared two different things: `○ unpaired` — listed, not scored. The
+ * verdict line: `cap-probe: PASS|FAIL|INCONCLUSIVE at <probeWidth> — <f> of <r> rows failed;
+ * modules scored <s> of <n>[, <u> unpaired]`. INCONCLUSIVE: fewer than half the modules pair, so
+ * no module row is scored (a note says to check --main / --build-main); a failing
+ * wrapper/content-cap row still FAILs. A ✗ names the sizing rule to fix (deploy Step 3 scaffold);
+ * never iterate pixels on it.
  *
  * Exit codes: 0 pass / INCONCLUSIVE / measured, 2 compare FAIL, 1 a page failed to load or
  * playwright missing, 3 bot challenge on the live side (escalate --headed), 125 usage. probePage

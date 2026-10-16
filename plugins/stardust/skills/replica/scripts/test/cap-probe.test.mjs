@@ -15,7 +15,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   isCapped, capVia, classifyCaps, deriveProbeWidth, groupPx, aggregateCaps, compareCaps, formatCompare, formatCapture,
-  parseArgs, UsageError, mergeDesign, readDesignSizing, MIN_PROBE_WIDTH, pairPlausible, PAIR_WIDTH_RATIO,
+  parseArgs, UsageError, mergeDesign, readDesignSizing, MIN_PROBE_WIDTH, pairPlausible,
 } from '../cap-probe.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -165,7 +165,6 @@ const capModel = (mods, wrapper = 1600) => ({
 const cols = [[1180, 'div'], [1180, 'div'], [1180, 'div']];
 await check('pairPlausible: implausible only when both are capped, widths differ by > 40 % AND the tag or role differs', () => {
   const m = (px, capTag, capRole) => ({ px, capTag, capRole });
-  assert.equal(PAIR_WIDTH_RATIO, 0.4);
   assert.equal(pairPlausible(m(552, 'ul'), m(280, 'div')), false);
   assert.equal(pairPlausible(m(552, 'div', 'list'), m(280, 'div')), false, 'same tag, different role');
   assert.equal(pairPlausible(m(552, 'div', null), m(280, 'div')), true, 'missing role compares as null');
