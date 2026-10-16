@@ -10,7 +10,11 @@
 // measures; a blank origin render is measured but never cached). One load (gate-all --one-load): presenceReport has
 // main's keys, blankRender, inventoryPage / inventoryToFile (the hook's scroll protocol, the file, failures never
 // throw) over a stand-in page; e2e symmetry (playwright + pngjs + stitch-shot alongside): a fixture page's inventory
-// taken standalone equals the one stitch-shot --inventory takes, and the hook changes no pixel. Run: node <this file>.
+// taken standalone equals the one stitch-shot --inventory takes, and the hook changes no pixel. --hide: parseArgs
+// (repeatable comma lists; a missing value is a usage error), originCacheKey gains the list only when set,
+// presenceReport's last `hidden` key; e2e: an 88 px in-flow .geo-bar on the origin only reads MISSING LINK without
+// --hide and nothing with it, the hidden lines are printed, the origin cache keeps the records and is keyed on the
+// list. Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -111,6 +115,23 @@ check('--origin-cache: parseArgs takes the file (default null); originCacheKey h
   assert.equal(originCacheKey(parseArgs(argv('--plain'))).tier, 'plain');
   assert.notDeepEqual(originCacheKey(parseArgs(argv('--width', '360'))), originCacheKey(parseArgs(argv())));
 });
+check('--hide: repeatable comma lists (default none), named in --help; originCacheKey gains `hide` last only when set; a missing value is a usage error', () => {
+  const argv = (...a) => ['node', 'x', 'https://o.example/p', 'https://e.example/p', ...a];
+  const base = parseArgs(argv('--variable', '.promo=.promo-e'));
+  assert.deepEqual(base.hide, []);
+  const o = parseArgs(argv('--hide', '.geo-bar, .location-bar', '--variable', '.promo=.promo-e', '--hide', '.location-bar,.promo-strip'));
+  assert.deepEqual(o.hide, ['.geo-bar', '.location-bar', '.promo-strip']);
+  assert.deepEqual([o.variable, o.variableEds], [['.promo'], ['.promo-e']], '--variable halves are untouched');
+  assert.equal(JSON.stringify(originCacheKey(parseArgs(argv('--variable', '.promo=.promo-e', '--hide', ' , ')))), JSON.stringify(originCacheKey(base)), 'an empty list keys like none');
+  const k = originCacheKey(o);
+  assert.deepEqual(Object.keys(k), [...Object.keys(originCacheKey(base)), 'hide']); assert.deepEqual(k.hide, o.hide);
+  assert.notDeepEqual(k, originCacheKey(base));
+  for (const tail of [['--hide'], ['--hide', '--chrome']]) {
+    const r = spawnSync(process.execPath, [SCRIPT, 'https://o.example/p', 'https://e.example/p', ...tail], { encoding: 'utf8', timeout: 15000 });
+    assert.equal(r.status, 1, tail.join(' ')); assert.match(r.stderr, /^--hide needs a selector list/);
+  }
+  assert.match(spawnSync(process.execPath, [SCRIPT, '--help'], { encoding: 'utf8' }).stdout, /^ {2}--hide <sel,…> /m);
+});
 
 // ---- one load (gate-all --one-load): the report and inventory exports ------------------------------------------
 const sideInv = (items, extra = {}) => ({ url: 'https://x.test/', at: '2026-01-01T00:00:00.000Z', status: 200, settlePasses: 2, ...inv(items), clip: { counts: { total: 0 }, groups: [], findings: [] }, textBoxes: [], ...extra });
@@ -124,6 +145,17 @@ check('presenceReport: exactly the keys main writes (via content-presence by def
   assert.deepEqual(r.totals, diffPresence(o, e).totals); assert.deepEqual(r.eds.clip, e.clip, 'the served side keeps its findings');
   const s = presenceReport({ ...o, settle: 'stitch' }, { ...e, settle: 'stitch' }, { width: 1440, via: 'one-load' });
   assert.equal(s._provenance.via, 'one-load'); assert.equal(s.origin.settle, 'stitch'); assert.equal(s.eds.settle, 'stitch');
+});
+check('presenceReport with hide records: `hidden: { live, build }` is one last key (from the sides, or as given); the existing keys and sides are unchanged', () => {
+  const o = sideInv([it('heading', 'H', 10, { level: 1 })]); const e = sideInv([it('heading', 'H', 10, { level: 1 })]);
+  const live = [{ sel: '.geo-bar', source: '--hide', n: 1, h: 88 }]; const build = [{ sel: '.geo-bar', source: '--hide', n: 0, h: 0 }];
+  const plain = presenceReport(o, e, { width: 1440 });
+  const r = presenceReport({ ...o, hidden: live }, { ...e, hidden: build }, { width: 1440 });
+  assert.deepEqual(Object.keys(r), [...Object.keys(plain), 'hidden']); assert.deepEqual(r.hidden, { live, build });
+  assert.deepEqual(Object.keys(r.origin), Object.keys(plain.origin), 'a side does not carry its records'); assert.deepEqual(r.totals, plain.totals);
+  assert.deepEqual(presenceReport({ ...o, hidden: live }, e, { width: 1440 }).hidden, { live, build: [] });
+  assert.deepEqual(presenceReport(o, e, { width: 1440, hidden: { live, build } }).hidden, { live, build }, 'given explicitly');
+  assert.equal('hidden' in presenceReport({ ...o, hidden: live }, e, { width: 1440, hidden: null }), false, 'null: none');
 });
 check('blankRender: fewer than 3 visible in-scope items (root when there is one, chrome left out) is a blank render', () => {
   const three = [it('heading', 'H', 10, { level: 1 }), it('text', 'Body text', 20), it('link', 'A', 30, { href: '/a' })];
@@ -184,7 +216,9 @@ else {
   const acheck = async (name, fn) => { try { await fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${String(e.message).split('\n').join('\n  ')}`); } };
   const PAGE = (extra) => `<!doctype html><html><body style="margin:0;font:16px Arial"><header><a href="/">Home</a></header><main><h1>Offers</h1><p>Weekly offers for every store.</p><a href="/a">All offers</a>${extra}</main><footer>f</footer></body></html>`;
   const hits = {};
-  const server = createServer((req, res) => { const p = req.url.split('?')[0]; hits[p] = (hits[p] || 0) + 1; res.setHeader('content-type', 'text/html'); res.end(p === '/origin' ? PAGE('<a href="/b">Store finder</a>') : p === '/blank' ? '<!doctype html><html><body></body></html>' : PAGE('')); });
+  // an 88 px in-flow per-visitor bar above the content on the origin only (no <main>, no header: the whole page is in scope)
+  const GEO = (bar) => `<!doctype html><html><body style="margin:0;font:16px Arial">${bar ? '<div class="geo-bar" style="height:88px;background:#eee"><p style="margin:0">You seem to be in another region.</p><a href="/region">Switch region</a></div>' : ''}<h1>Offers</h1><p>Weekly offers for every store.</p><a href="/a">All offers</a></body></html>`;
+  const server = createServer((req, res) => { const p = req.url.split('?')[0]; hits[p] = (hits[p] || 0) + 1; res.setHeader('content-type', 'text/html'); res.end(p === '/origin' ? PAGE('<a href="/b">Store finder</a>') : p === '/blank' ? '<!doctype html><html><body></body></html>' : p.startsWith('/geo-') ? GEO(p === '/geo-origin') : PAGE('')); });
   await new Promise((r) => { server.listen(0, '127.0.0.1', r); });
   const base = `http://127.0.0.1:${server.address().port}`;
   const cwd = mkdtempSync(join(tmpdir(), 'content-presence-cache-'));
@@ -222,6 +256,32 @@ else {
     assert.equal(existsSync(blankCache), false);
     const r5 = await run(['--origin-cache', blankCache], 'blank');
     assert.match(r5.out, /origin side measured \(cache: absent\) — not cached/); assert.equal(hits['/blank'], 2);
+  });
+  const geoCache = join(cwd, 'geo.json');
+  const geo = (args) => new Promise((done) => {
+    const ch = spawn(process.execPath, [SCRIPT, `${base}/geo-origin`, `${base}/geo-eds`, '--plain', '--width', '900', '--settle-passes', '1', ...args], { cwd, env: { ...process.env, STARDUST_ORIGIN_MAX_AGE_H: '1' } });
+    let out = ''; let err = ''; ch.stdout.on('data', (d) => { out += d; }); ch.stderr.on('data', (d) => { err += d; }); ch.on('close', (code) => done({ code, out, err }));
+  });
+  const HIDDEN_LINES = /^content-presence @ .*\nscope: .*\n {2}hidden live: {2}\.geo-bar ×1 \(88px\) \[--hide\]\n {2}hidden build: \.geo-bar ×0 \[--hide\]\n/m;
+  await acheck('e2e --hide: without it the origin-only 88 px .geo-bar reads MISSING LINK (exit 2, no hidden lines); with --hide .geo-bar nothing is missing and both hidden lines follow the scope line', async () => {
+    const r0 = await geo([]);
+    assert.equal(r0.code, 2, r0.err); assert.match(r0.out, /MISSING LINK: "switch region"/, r0.out); assert.doesNotMatch(r0.out, /hidden live:/);
+    const r1 = await geo(['--hide', '.geo-bar', '--origin-cache', geoCache, '--json', join(cwd, 'g1.json')]);
+    assert.equal(r1.code, 0, `${r1.out}\n${r1.err}`); assert.match(r1.out, /^Content: MISSING 0 /m); assert.match(r1.out, HIDDEN_LINES, r1.out);
+    const j = JSON.parse(readFileSync(join(cwd, 'g1.json'), 'utf8'));
+    assert.deepEqual(j.hidden, { live: [{ sel: '.geo-bar', source: '--hide', n: 1, h: 88 }], build: [{ sel: '.geo-bar', source: '--hide', n: 0, h: 0 }] });
+    assert.equal(Object.keys(j).pop(), 'hidden'); assert.equal(j.totals.missing, 0);
+    const doc = JSON.parse(readFileSync(geoCache, 'utf8'));
+    assert.deepEqual(doc.key.hide, ['.geo-bar'], 'the origin cache is keyed on the list'); assert.deepEqual(doc.data.hidden, j.hidden.live, 'and keeps the records');
+  });
+  await acheck('e2e --hide + --origin-cache: the same list reuses the origin (0 requests) and still prints its records; no --hide is a key mismatch and measures again', async () => {
+    const n = hits['/geo-origin'];
+    const r2 = await geo(['--hide', '.geo-bar', '--origin-cache', geoCache]);
+    assert.equal(r2.code, 0, r2.err); assert.equal(hits['/geo-origin'], n, 'no origin request on a hit');
+    assert.match(r2.out, /origin side from cache /); assert.match(r2.out, HIDDEN_LINES, r2.out);
+    const r3 = await geo(['--origin-cache', geoCache]);
+    assert.equal(r3.code, 2, r3.err); assert.equal(hits['/geo-origin'], n + 1);
+    assert.match(r3.out, /origin side measured \(cache: key mismatch \(hide\)\)/, r3.out); assert.doesNotMatch(r3.out, /hidden live:/);
   });
   server.close(); rmSync(cwd, { recursive: true, force: true });
 

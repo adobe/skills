@@ -29,10 +29,14 @@
  * ("— not cached (blank render)"): replayed, an empty origin would mute every MISSING for the rest of the run.
  * One load (gate-all --one-load): stitch-shot --inventory calls inventoryToFile on the page it stitches — after its
  * settle and dismissal, at the top, before the freeze — and gate-all builds content.json with presenceReport.
+ * `--hide <sel,…>` removes in-flow per-visitor regions (a location-suggestion bar) on BOTH sides, the same list, after
+ * the settle and before the inventory (live-session hideRegions); a set list prints `  hidden live:  …` /
+ * `  hidden build: …` after the scope line, adds `hidden: { live, build }` to the JSON and joins originCacheKey.
  *
  * Usage: node skills/diff/scripts/content-presence.mjs <originUrl> <edsUrl> [--width 1440]
  *        [--main <sel>[=<selEds>]] [--variable <sel,…>] [--chrome] [--json [<file>]] [--min-cut 2]
  *        [--settle-passes 4] [--max-findings 40] [--count-words <w,…>] [--plain] [--warmup <url>] [--origin-cache <f>]
+ *        [--hide <sel,…>]
  * `presenceInventoryInPage`, `alignHeadings`, `diffPresence`, `formatReport`, `norm`, `originCacheKey`, `blankRender`,
  * `inventorySide`, `inventoryPage`, `inventoryToFile`, `presenceReport` are exported.
  */
@@ -40,7 +44,7 @@ import { mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { clipInventoryInPage, inPage, morePrelude, summarize } from './clip-probe.mjs';
-import { readSideCache, writeSideCache } from './live-session.mjs';
+import { formatHidden, parseHideList, readSideCache, writeSideCache } from './live-session.mjs';
 import { browserTier, openBrowser, openPage, visit } from './measure-live.mjs';
 import { unitInventoryInPage } from './unit-geometry.mjs';
 
@@ -63,6 +67,7 @@ Usage: node content-presence.mjs <originUrl> <edsUrl> [options]
   --locale <tag>           default en-US
   --origin-cache <f>       reuse the origin side's inventory from <f> while fresh (this run; STARDUST_ORIGIN_MAX_AGE_H for
                            older) and the key matches; measure and write it otherwise
+  --hide <sel,…>           hide in-flow regions (a per-visitor bar) on both sides before the inventory; repeatable
   --help                   this text
 Exit: 0 clean, 2 any MISSING/HIDDEN link or heading, 1 error, 3 bot challenge, 4 origin HTTP >= 400.`;
 
@@ -314,7 +319,7 @@ export function formatReport(res, { maxPerKind = 40 } = {}) {
 export function parseArgs(argv) {
   const rest = argv.slice(2);
   if (rest.length < 2 || rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(rest.includes('--help') || rest.includes('-h') || !rest.length ? 0 : 1); }
-  const opts = { origin: null, eds: null, width: 1440, main: null, mainEds: null, variable: [], variableEds: [], json: false, jsonFile: null, minCut: 2, maxFindings: 40, plain: false, warmup: null, locale: 'en-US', chrome: false, settlePasses: 4, countWords: null, moreWords: null, originCache: null };
+  const opts = { origin: null, eds: null, width: 1440, main: null, mainEds: null, variable: [], variableEds: [], json: false, jsonFile: null, minCut: 2, maxFindings: 40, plain: false, warmup: null, locale: 'en-US', chrome: false, settlePasses: 4, countWords: null, moreWords: null, originCache: null, hide: [] };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--width') opts.width = Number(rest[++i]);
@@ -331,6 +336,7 @@ export function parseArgs(argv) {
     else if (a === '--warmup') opts.warmup = rest[++i];
     else if (a === '--locale') opts.locale = rest[++i];
     else if (a === '--origin-cache') opts.originCache = rest[++i];
+    else if (a === '--hide') { const v = rest[++i]; if (v === undefined || v.startsWith('--')) { console.error(`--hide needs a selector list\n\n${HELP}`); process.exit(1); } opts.hide = parseHideList(opts.hide, v); }
     else if (a.startsWith('--')) { console.error(`unknown flag ${a}\n\n${HELP}`); process.exit(1); }
     else if (!opts.origin) opts.origin = a; else if (!opts.eds) opts.eds = a;
   }
@@ -338,8 +344,9 @@ export function parseArgs(argv) {
   return opts;
 }
 
-/** The origin side's cache key: everything that shapes its inventory (fixed field order). */
-export const originCacheKey = (opts) => ({ url: opts.origin, width: opts.width, locale: opts.locale, rootSel: opts.main, variableSels: opts.variable, countWords: opts.countWords, moreWords: opts.moreWords, minCut: opts.minCut, settlePasses: opts.settlePasses, tier: opts.plain ? 'plain' : 'stealth', warmup: opts.warmup });
+/** The origin side's cache key: everything that shapes its inventory (fixed field order); the hide list last, only
+ * when set (a cache written without hides stays valid for a run without them). */
+export const originCacheKey = (opts) => ({ url: opts.origin, width: opts.width, locale: opts.locale, rootSel: opts.main, variableSels: opts.variable, countWords: opts.countWords, moreWords: opts.moreWords, minCut: opts.minCut, settlePasses: opts.settlePasses, tier: opts.plain ? 'plain' : 'stealth', warmup: opts.warmup, ...(opts.hide && opts.hide.length ? { hide: opts.hide } : {}) });
 
 /** An origin inventory that rendered almost nothing (an app that did not hydrate, a soft block the challenge detector
  * misses): fewer than 3 visible items in scope (the root when there is one; header / footer left out). */
@@ -369,13 +376,14 @@ export async function inventoryPage(page, { presence = null, clip = null, units 
   return out;
 }
 
-/** Inventory one side: visit + settle, presence inventory, clip inventory (+ unit inventories when `units` is given). */
-export async function inventorySide(browser, url, { width, locale, warmup, rootSel, variableSels, minCut, settlePasses = 4, httpError = 'measure', countWords = null, moreWords = null, units = null }) {
+/** Inventory one side: visit + settle (+ the `hide` list, its records as a last `hidden` key), presence inventory, clip
+ * inventory (+ unit inventories when `units` is given). */
+export async function inventorySide(browser, url, { width, locale, warmup, rootSel, variableSels, minCut, settlePasses = 4, httpError = 'measure', countWords = null, moreWords = null, units = null, hide = [] }) {
   const { ctx, page } = await openPage(browser, { width, locale });
   try {
-    const v = await visit(page, url, { warmup, settle: { passes: settlePasses }, httpError });
+    const v = await visit(page, url, { warmup, settle: { passes: settlePasses }, httpError, hide });
     const inv = await inventoryPage(page, { presence: { rootSel, variableSels, countWords, moreWords }, clip: { minCut, maxFindings: 400, moreWords }, units });
-    return { url, at: new Date().toISOString(), status: v.status, settlePasses: v.passes, ...inv };
+    return { url, at: new Date().toISOString(), status: v.status, settlePasses: v.passes, ...inv, ...(v.hidden ? { hidden: v.hidden } : {}) };
   } finally { await ctx.close(); }
 }
 
@@ -412,11 +420,12 @@ export async function inventoryToFile(page, specFile, { url }) {
 /**
  * The content.json object main writes, for two side inventories: _provenance (via 'content-presence' from the CLI,
  * 'one-load' from gate-all), both sides (a side taken in a stitch says settle: 'stitch'), bands, findings, totals,
- * textBoxes. `res` = diffPresence(o, e, { chrome }) unless given.
+ * textBoxes, and — only with hide records — `hidden: { live, build }` last (from the sides' `hidden` unless given).
+ * `res` = diffPresence(o, e, { chrome }) unless given.
  */
-export function presenceReport(o, e, { width, variable = [], chrome = false, tier = null, via = 'content-presence', originCache = null, res = diffPresence(o, e, { chrome }) } = {}) {
+export function presenceReport(o, e, { width, variable = [], chrome = false, tier = null, via = 'content-presence', originCache = null, res = diffPresence(o, e, { chrome }), hidden = o.hidden || e.hidden ? { live: o.hidden || [], build: e.hidden || [] } : null } = {}) {
   const strip = (side) => ({ url: side.url, at: side.at, status: side.status, settlePasses: side.settlePasses, docH: side.docH, root: side.root, items: side.items, clip: { counts: side.clip.counts, groups: side.clip.groups }, ...(side.settle ? { settle: side.settle } : {}) });
-  return { _provenance: { writtenBy: 'content-presence.mjs', at: new Date().toISOString(), width, variable, tier, originCache, via }, origin: strip(o), eds: { ...strip(e), clip: e.clip }, bands: res.bands, findings: res.findings, totals: res.totals, textBoxes: { origin: o.textBoxes, eds: e.textBoxes } };
+  return { _provenance: { writtenBy: 'content-presence.mjs', at: new Date().toISOString(), width, variable, tier, originCache, via }, origin: strip(o), eds: { ...strip(e), clip: e.clip }, bands: res.bands, findings: res.findings, totals: res.totals, textBoxes: { origin: o.textBoxes, eds: e.textBoxes }, ...(hidden ? { hidden } : {}) };
 }
 
 async function main() {
@@ -436,7 +445,7 @@ async function main() {
     // A cache hit skips the origin's navigation and warm-up; an origin that fails (exit 3 / 4) writes no cache.
     if (c && c.hit) o = c.data;
     else {
-      o = await inventorySide(browser, opts.origin, { width: opts.width, locale: opts.locale, warmup: opts.warmup, rootSel: opts.main, variableSels: opts.variable, minCut: opts.minCut, settlePasses: opts.settlePasses, httpError: 'throw', countWords: opts.countWords, moreWords: opts.moreWords });
+      o = await inventorySide(browser, opts.origin, { width: opts.width, locale: opts.locale, warmup: opts.warmup, rootSel: opts.main, variableSels: opts.variable, minCut: opts.minCut, settlePasses: opts.settlePasses, httpError: 'throw', countWords: opts.countWords, moreWords: opts.moreWords, hide: opts.hide });
       // a blank render is measured (it still diffs) but never cached: replayed, it would mute every MISSING for the run
       if (opts.originCache && blankRender(o)) say(`origin side measured (cache: ${c.reason}) — not cached (blank render)`);
       else if (opts.originCache) {
@@ -444,14 +453,16 @@ async function main() {
         catch (err) { console.error(`content-presence: --origin-cache ${opts.originCache} not written (${String(err.message).split('\n')[0]}) — the probe result stands`); }
       }
     }
-    e = await inventorySide(browser, opts.eds, { width: opts.width, locale: opts.locale, warmup: null, rootSel: opts.mainEds, variableSels: opts.variableEds, minCut: opts.minCut, settlePasses: opts.settlePasses, countWords: opts.countWords, moreWords: opts.moreWords });
+    e = await inventorySide(browser, opts.eds, { width: opts.width, locale: opts.locale, warmup: null, rootSel: opts.mainEds, variableSels: opts.variableEds, minCut: opts.minCut, settlePasses: opts.settlePasses, countWords: opts.countWords, moreWords: opts.moreWords, hide: opts.hide });
   } finally { await browser.close(); }
   const res = diffPresence(o, e, { chrome: opts.chrome });
-  const out = presenceReport(o, e, { width: opts.width, variable: opts.variable, chrome: opts.chrome, tier, originCache: c && c.hit ? { file: c.file, at: c.at, policy: c.policy } : null, res });
+  const hidden = opts.hide.length ? { live: o.hidden || [], build: e.hidden || [] } : null;
+  const out = presenceReport(o, e, { width: opts.width, variable: opts.variable, chrome: opts.chrome, tier, originCache: c && c.hit ? { file: c.file, at: c.at, policy: c.policy } : null, res, hidden });
   if (opts.json && !opts.jsonFile) console.log(JSON.stringify(out, null, 1));
   else {
     console.log(`content-presence @ ${opts.width}px (${tier}) — origin ${opts.origin} (docH ${o.docH}, ${o.items.length} items, HTTP ${o.status}) vs served ${opts.eds} (docH ${e.docH}, ${e.items.length} items, HTTP ${e.status})`);
     console.log(`scope: ${res.scope === 'root' ? `${o.root} vs ${e.root}` : 'whole page (one side has no <main> / --main root)'}${res.chrome ? ' + chrome' : ' (header/footer left to the chrome crop gate; --chrome to include)'}`);
+    if (hidden) console.log(`  hidden live:  ${formatHidden(hidden.live)}\n  hidden build: ${formatHidden(hidden.build)}`);
     console.log(formatReport(res, { maxPerKind: opts.maxFindings }));
     console.log(`Clipped (served side): ${e.clip.counts.total} — origin side ${o.clip.counts.total}`);
     if (opts.jsonFile) { mkdirSync(dirname(opts.jsonFile) || '.', { recursive: true }); writeFileSync(opts.jsonFile, JSON.stringify(out, null, 1)); console.log(`json → ${opts.jsonFile}`); }
