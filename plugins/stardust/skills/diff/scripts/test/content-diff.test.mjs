@@ -10,7 +10,9 @@
 // run shipped on every page while this probe read 0 🔴), and --live-cache (write, reuse with no source request,
 // same-run vs max-age freshness, key mismatch, a blank source never cached); image placeholders (F7): a 20×11
 // placeholder in a hidden tab panel's link card with data-src, an opacity-0 data-URI one beside its loaded full image —
-// listed, never MISSING / EXTRA ICON — against a hidden 16×16 icon with no full image (still 🔴 MISSING ICON). The end-to-end part runs where playwright is importable
+// listed, never MISSING / EXTRA ICON — against a hidden 16×16 icon with no full image (still 🔴 MISSING ICON); --hide (F6):
+// parseArgs and the cache key (no hide field without hides), an 88 px in-flow bar in the source's header read as MISSING
+// without it and gone from both inventories with it (the hidden lines, JSON hidden), and the cache round trip with hides. The end-to-end part runs where playwright is importable
 // and prints a skip line otherwise. Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
@@ -20,7 +22,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { deflateSync } from 'node:zlib';
-import { ATTRIBUTE_HINTS, attributeInventory, diffAttributes, diffRoot, formatFinding, glyphLabel, liveCacheKey, parseRoots } from '../content-diff.mjs';
+import { ATTRIBUTE_HINTS, attributeInventory, diffAttributes, diffRoot, formatFinding, glyphLabel, liveCacheKey, parseArgs, parseRoots } from '../content-diff.mjs';
 import { resolveProfile } from '../diff-profiles.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -221,6 +223,26 @@ await check('liveCacheKey: source URL, width, profile, roots, UA, locale, wait s
   assert.ok(differs({ width: 360 }), 'width'); assert.ok(differs({ dismiss: ['.promo-close'] }), 'extra dismiss selector');
   assert.ok(differs({ dismiss: null }), 'dismissal off'); assert.ok(differs({ locale: 'de-DE' }), 'locale'); assert.ok(differs({ headed: true }), 'tier');
 });
+await check('liveCacheKey: no hide field without hides (an empty list included) — old caches stay valid; a non-empty --hide list joins the key', () => {
+  const opts = { width: 1440, ua: 'UA', locale: null, waitUntil: null, dismiss: [], headed: false };
+  const roots = parseRoots('main', null, prof);
+  const plain = liveCacheKey('https://s.example/', opts, prof, roots);
+  assert.deepEqual(liveCacheKey('https://s.example/', { ...opts, hide: [] }, prof, roots), plain);
+  assert.ok(!('hide' in plain));
+  const hid = liveCacheKey('https://s.example/', { ...opts, hide: ['.geo-bar', '.location-bar'] }, prof, roots);
+  assert.deepEqual(hid, { ...plain, hide: ['.geo-bar', '.location-bar'] });
+});
+
+// ---- pure: argv ----------------------------------------------------------------------------------
+await check('parseArgs --hide: comma lists, repeatable, trimmed, empties dropped, de-duplicated in order; default []; a missing list throws', () => {
+  const argv = (...rest) => ['node', 'content-diff.mjs', 'https://s.example/', 'http://localhost:3000/', ...rest];
+  assert.deepEqual(parseArgs(argv('--json')).opts.hide, []);
+  const { proto, eds, opts } = parseArgs(argv('--hide', ' .geo-bar , .location-bar,', '--json', '--hide', '.location-bar,#promo-strip'));
+  assert.equal(proto, 'https://s.example/'); assert.equal(eds, 'http://localhost:3000/'); assert.equal(opts.json, true);
+  assert.deepEqual(opts.hide, ['.geo-bar', '.location-bar', '#promo-strip']);
+  assert.throws(() => parseArgs(argv('--hide')), /--hide needs a selector list/);
+  assert.throws(() => parseArgs(argv('--hide', '--json')), /--hide needs a selector list/);
+});
 
 // ---- cli -----------------------------------------------------------------------------------------
 await check('--help: exit 0, usage on stdout naming the attribute layer, ICON MOVED, --main lists and --chrome/--no-chrome, nothing written in an empty cwd; two missing args → usage on stderr, exit 1', () => {
@@ -230,6 +252,7 @@ await check('--help: exit 0, usage on stdout naming the attribute layer, ICON MO
   assert.equal(r.status, 0, r.stderr); assert.match(r.stdout, /^usage: node skills\/diff\/scripts\/content-diff\.mjs/); assert.match(r.stdout, /MISSING ICON, ICON DIFF, ICON KIND, EXTRA ICON, ICON MOVED/); assert.deepEqual(wrote, []);
   assert.match(r.stdout, /--main <sel\[,sel…\]>/); assert.match(r.stdout, /--chrome \| --no-chrome/); assert.match(r.stdout, /MISSING TITLE, ICON MOVED, ICON KIND and every EXTRA are 🟡/); assert.match(r.stdout, /\[<root>\]/);
   assert.match(r.stdout, /--live-cache <f>/);
+  assert.match(r.stdout, /--hide <sel,…>/);
   const u = spawnSync(process.execPath, [SCRIPT], { encoding: 'utf8' });
   assert.equal(u.status, 1); assert.match(u.stderr, /^usage:/);
 });
@@ -260,6 +283,8 @@ if (playwrightOk) {
     + `<div role="tabpanel" style="display:none"><a href="/cards/one" class="card">${panelImg}<span>Card one</span></a></div>`
     + `<div class="menu" style="display:none"><button type="button">${menuIcon} Menu</button></div>`
     + `<figure style="position:relative"><img src="/card-full.png" alt="Card two" width="120" height="80">${figureExtra}</figure>`);
+  const geo = (bar) => `<!doctype html><html><head><meta charset="utf-8"></head><body><header>${bar}<nav><a href="/">Home</a> <a href="/about">About</a></nav></header>`
+    + '<main><h1>Welcome</h1><p>Body copy here.</p><h2>More</h2><p>A second paragraph.</p></main></body></html>';
   const pages = {
     // (a second section on both sides: a primary root with < 3 items is a blank render, which --live-cache never caches)
     '/source.html': page('<h1>Welcome</h1><form><input type="search" placeholder="Suche…" aria-label="Suche"></form><p>Body copy here.</p><h2>More</h2><p>A second paragraph.</p>'
@@ -273,6 +298,9 @@ if (playwrightOk) {
     '/cards-source.html': cards('<img src="/lqip-card-20x11.png" data-src="/card-full.png" alt="Card one">', '<img src="/icon-16.png" alt="">', ''),
     '/cards-build.html': cards('<img src="/card-full.png" alt="Card one">', '', `<img src="${lqipUri}" alt="Card two" aria-hidden="true" style="position:absolute;left:0;top:0;width:20px;height:11px;opacity:0">`),
     '/lqip-card-20x11.png': png(20, 11), '/card-full.png': png(120, 80), '/icon-16.png': png(16, 16),
+    // F6: an 88 px in-flow location bar at the top of the source's header; the build has none
+    '/geo-source.html': geo('<div class="geo-bar" style="height:88px">Looks like you are visiting from another region. <a href="/region/">Switch region</a></div>'),
+    '/geo-build.html': geo(''),
   };
   const hits = {};
   const server = createServer((req, res) => {
@@ -393,6 +421,44 @@ if (playwrightOk) {
     assert.deepEqual(j.build.attrs.icons, []);
     assert.deepEqual(j.build.attrs.placeholders.map((p) => `${p.value} ${p.size} | ${p.why}`), ['data:image/png… 20×11 | opacity 0, aria-hidden, data: URI, intrinsic 20×11, same alt; full: loaded card-full.png']);
     assert.deepEqual(j.findings.map((f) => f.kind), ['MISSING ICON']);
+  });
+  // F6 (d): --hide .geo-bar — the same list on both sides, applied before the inventories
+  const geoArgs = (...more) => [`${base}/geo-source.html`, `${base}/geo-build.html`, '--profile', 'generic', ...more];
+  await check('e2e --hide (d): without it the source\'s in-flow bar reads 🔴 MISSING CTA [header] + MISSING BODY; with --hide .geo-bar its text and link are gone from both inventories, the hidden lines follow the header, --json carries hidden', async () => {
+    const plain = await run(geoArgs());
+    assert.equal(plain.status, 0, plain.stderr);
+    assert.match(plain.stdout, /^  🔴 MISSING CTA \[header\]: source cta "Switch region" → \/region\/ has no build link\. /m, plain.stdout);
+    assert.match(plain.stdout, /^Findings: 2 \(1 structural 🔴\)$/m, plain.stdout);
+    assert.doesNotMatch(plain.stdout, /hidden live:|hidden build:/);
+    const r = await run(geoArgs('--hide', '.geo-bar', '--json'));
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, /^Content diff @ 1280px \(profile "generic", roots: main, header, footer\)\n {2}hidden live: {2}\.geo-bar ×1 \(88px\) \[--hide\]\n {2}hidden build: \.geo-bar ×0 \[--hide\]$/m, r.stdout);
+    assert.match(r.stdout, /^Findings: none — content \+ roles match$/m, r.stdout);
+    assert.doesNotMatch(textPart(r.stdout), /Switch region|another region/, r.stdout);
+    const j = jsonOf(r.stdout);
+    assert.deepEqual(j.hidden, { live: [{ sel: '.geo-bar', source: '--hide', n: 1, h: 88 }], build: [{ sel: '.geo-bar', source: '--hide', n: 0, h: 0 }] });
+    assert.deepEqual(j.roots.header.source.items.map((i) => i.text), ['Home', 'About']);
+  });
+  await check('e2e --hide + --live-cache: a cache taken without hides is a key mismatch (hide) for a run with them; that run caches { roots, hidden } under a key with the list; the next run reuses it and prints the cached hidden live record', async () => {
+    const hideCache = join(tmp, 'hide.json');
+    const args = (...more) => geoArgs('--live-cache', hideCache, ...more);
+    let r = await run(args(), maxAge);
+    assert.equal(r.status, 0, r.stderr);
+    let c = JSON.parse(readFileSync(hideCache, 'utf8'));
+    assert.ok(!('hide' in c.key) && c.data.main && !('hidden' in c.data), 'without hides: key and data shape as before');
+    let src = hits['/geo-source.html'];
+    r = await run(args('--hide', '.geo-bar'), maxAge);
+    assert.equal(r.status, 0, r.stderr); assert.equal(hits['/geo-source.html'], src + 1);
+    assert.match(r.stdout, /^source side probed \(cache: key mismatch \(hide\)\) → /m, r.stdout);
+    c = JSON.parse(readFileSync(hideCache, 'utf8'));
+    assert.deepEqual(c.key.hide, ['.geo-bar']); assert.ok(c.data.roots.main.items.length, 'the roots map');
+    assert.deepEqual(c.data.hidden, [{ sel: '.geo-bar', source: '--hide', n: 1, h: 88 }]);
+    src = hits['/geo-source.html'];
+    r = await run(args('--hide', '.geo-bar', '--json'), maxAge);
+    assert.equal(r.status, 0, r.stderr); assert.equal(hits['/geo-source.html'], src, 'no source navigation');
+    assert.match(r.stdout, /^source side from cache .*\n {2}hidden live: {2}\.geo-bar ×1 \(88px\) \[--hide\]\n {2}hidden build: \.geo-bar ×0 \[--hide\]$/m, r.stdout);
+    assert.match(r.stdout, /^Findings: none — content \+ roles match$/m, r.stdout);
+    assert.deepEqual(jsonOf(r.stdout).hidden.live, c.data.hidden);
   });
   rmSync(tmp, { recursive: true, force: true });
   server.close();

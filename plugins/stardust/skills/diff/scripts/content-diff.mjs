@@ -119,6 +119,7 @@
  *     --dismiss [sel,...]   dismiss overlays on both sides via live-session
  *                           (consent + timed marketing modals), plus these extra
  *                           site-specific selectors (optional)
+ *     --hide <sel,…>        hide in-flow per-visitor regions on both sides before the inventories (repeatable)
  *     --headed              escalation: headed stealth real Chrome (bot-managed sites)
  *     --locale <tag>        pin Accept-Language + context locale (geo-redirect determinism)
  *     --live-cache <f>      reuse the SOURCE side's inventories from <f> while fresh (this
@@ -127,13 +128,25 @@
  *
  * Live-side cache (--live-cache). The file holds the source side's INVENTORIES, never a verdict: the
  * build side is probed every run and the findings are recomputed from (cached source, fresh build). Key =
- * source URL + width + profile + roots (--main, chrome) + UA + locale + wait state + dismiss set + tier;
+ * source URL + width + profile + roots (--main, chrome) + UA + locale + wait state + dismiss set + tier
+ * (+ the --hide list, only when non-empty — a cache taken without hides stays valid for runs without them;
+ * with hides the data is { roots, hidden }, so a hit prints the probe's own `hidden live:` records);
  * fresh = probed at/after this run's opener line in ./stardust/status.jsonl (cwd = the project root, as
  * under gate.sh), or within STARDUST_ORIGIN_MAX_AGE_H hours (live-session.mjs freshness). A hit or a miss
  * prints one line after the header and lands in the --json object as liveCache; a source side that
  * answered an HTTP error or rendered almost nothing (the ⚠ blank-render line: < 3 items in the primary
  * root) is measured but never cached, so the next run probes it again; a failed cache write never fails
  * the probe.
+ *
+ * In-flow per-visitor regions (--hide). A recorded hands-off run's source rendered a geo-IP location bar
+ * IN FLOW above the header — not an overlay, so dismissal cannot remove it. `--hide <sel,…>` (comma list,
+ * repeatable) applies the SAME list to both sides with live-session's hideRegions after the dismissal +
+ * settle, before the inventories (the build has nothing to hide, like overlay dismissal). The inventories
+ * read the DOM, not the rendering, so every match of a valid hide selector is also detached from the page
+ * right before each root's inventories (a bar a script re-inserts after the hide pass included).
+ * Printed after the header lines: `  hidden live:  <sel> ×<n> (<h>px) [--hide]; …` and `  hidden build: …`
+ * (`×0` when nothing matched, `error: <msg>` for an invalid selector); --json carries
+ * hidden: { live, build } ([{ sel, source, n, h, error? }]). Without --hide nothing changes.
  *
  * Every context gets the real-Chrome UA + the standard request headers via
  * live-session.mjs (UA alone still 403s on Akamai — F-R1). A bot-management
@@ -157,7 +170,7 @@
  * (the first root), roots: { <other root>: { [source]: inv, [build]: inv } },
  * findings: [{ sev, kind, root, msg }] } — each inv's attrs carries placeholders: [{ value, size, anchor, why }].
  *
- * attributeInventory (in-page) and diffAttributes, parseRoots, diffRoot, formatFinding, liveCacheKey
+ * attributeInventory (in-page) and diffAttributes, parseRoots, diffRoot, formatFinding, liveCacheKey, parseArgs
  * (pure) are exported; playwright is imported lazily in main, so the contract test runs
  * the differ without a browser.
  */
@@ -175,7 +188,7 @@ import { resolveProfile } from './diff-profiles.mjs';
 // editableInventory = the Experience Workspace outermost-editable classifier, shared
 // with the deploy gates (section-schema editableTexts, block-roundtrip --ew).
 import { inventory, diffInventories, summarise, editableInventory } from './content-inventory.mjs';
-import { REAL_CHROME_UA, isLiveHttpUrl, defaultWaitUntil, launchStealthHeaded, newLiveContext, gotoLive, dismissOverlays, LEDGER, runStartAt, readSideCache, writeSideCache } from './live-session.mjs';
+import { REAL_CHROME_UA, isLiveHttpUrl, defaultWaitUntil, launchStealthHeaded, newLiveContext, gotoLive, dismissOverlays, parseHideList, hideRegions, formatHidden, LEDGER, runStartAt, readSideCache, writeSideCache } from './live-session.mjs';
 
 const USAGE = `usage: node skills/diff/scripts/content-diff.mjs <sourceURL> <buildURL> [options]
   --profile eds|generic  stack profile (default eds)
@@ -195,6 +208,7 @@ const USAGE = `usage: node skills/diff/scripts/content-diff.mjs <sourceURL> <bui
                          other live http(s) (never reach networkidle).
   --dismiss [sel,...]    dismiss overlays (consent + timed marketing modals) on both
                          sides; optional comma-separated extra selectors
+  --hide <sel,…>         hide in-flow per-visitor regions on both sides before the inventories (repeatable)
   --headed               headed stealth real Chrome (escalation for bot-managed sites)
   --locale <tag>         pin Accept-Language + locale (e.g. en-GB) for geo determinism
   --live-cache <f>       reuse the SOURCE side's inventories from <f> while fresh (this run;
@@ -509,10 +523,11 @@ export function diffRoot(root, srcInv, tgtInv, prof) {
 }
 export const formatFinding = (f) => `  ${f.sev} ${f.kind}${f.root ? ` [${f.root}]` : ''}: ${f.msg}`;
 
-function parseArgs(argv) {
+// Pure: argv (process.argv form) → { proto, eds, opts }; --help prints the usage and exits; --hide without a selector list throws.
+export function parseArgs(argv) {
   const [, , proto, eds, ...rest] = argv;
   if (rest.includes('--help') || proto === '--help' || proto === '-h') { process.stdout.write(USAGE); process.exit(0); }
-  const opts = { main: null, chrome: null, width: 1280, json: false, profile: 'eds', ua: REAL_CHROME_UA, waitUntil: null, dismiss: null, headed: false, locale: null };
+  const opts = { main: null, chrome: null, width: 1280, json: false, profile: 'eds', ua: REAL_CHROME_UA, waitUntil: null, dismiss: null, hide: [], headed: false, locale: null };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--main') { opts.main = rest[i += 1]; }
@@ -529,17 +544,37 @@ function parseArgs(argv) {
       opts.dismiss = (next && !next.startsWith('--')) ? rest[i += 1].split(',').map((s) => s.trim()).filter(Boolean) : [];
     }
     else if (a === '--headed') { opts.headed = true; }
+    else if (a === '--hide') {
+      const v = rest[i += 1];
+      if (v === undefined || v.startsWith('--')) throw new Error('--hide needs a selector list (see --help)');
+      opts.hide = parseHideList(opts.hide, v);
+    }
     else if (a === '--locale') { opts.locale = rest[i += 1]; }
     else if (a === '--live-cache') { opts.liveCache = rest[i += 1]; }
   }
   return { proto, eds, opts };
 }
 
-// The --live-cache key: everything that shapes the SOURCE side's inventories (a change re-probes).
+// The --live-cache key: everything that shapes the SOURCE side's inventories (a change re-probes). The --hide list joins
+// it only when non-empty, so a cache taken without hides stays valid for runs without them.
 export const liveCacheKey = (src, opts, prof, roots) => ({
   url: src, width: opts.width, profile: prof.name, roots: roots.map((r) => `${r.name}=${r.sel}`),
   ua: opts.ua, locale: opts.locale, waitUntil: opts.waitUntil, dismiss: opts.dismiss, headed: opts.headed,
+  ...(opts.hide && opts.hide.length ? { hide: opts.hide } : {}),
 });
+
+/* eslint-disable no-undef */
+// Runs IN the page: detach every match of the hide pass's valid selectors. The inventories read the DOM, not the
+// rendering, so a display:none region would still be inventoried; called before each root, it also catches a bar a
+// script re-inserted after the hide pass (the hide records already carry an invalid selector's error).
+function detachHidden(sels) {
+  let n = 0;
+  for (const sel of sels) {
+    try { document.querySelectorAll(sel).forEach((el) => { if (el.isConnected) { el.remove(); n += 1; } }); } catch { /* recorded by the hide pass */ }
+  }
+  return n;
+}
+/* eslint-enable no-undef */
 
 async function grab(browser, url, opts, prof, roots, nav = {}) {
   // UA + standard headers on EVERY context (live-session; F-R1 — UA alone
@@ -568,10 +603,14 @@ async function grab(browser, url, opts, prof, roots, nav = {}) {
     window.scrollTo(0, 0);
   });
   await page.waitForTimeout(400);
+  // --hide: in-flow per-visitor regions, after the dismissal + settle, before the inventories (an empty list touches nothing)
+  nav.hidden = await hideRegions(page, opts.hide || []); // eslint-disable-line no-param-reassign
+  const detach = nav.hidden.filter((x) => !x.error).map((x) => x.sel);
   // One inventory set per root. Presence first: a non-primary root the page lacks is measured as EMPTY ({ absent: true })
   // and its root line says so; the primary root keeps the in-page fallback (→ <main> → <body>) and reports it (fellBack).
   const invs = {};
   for (const root of roots) {
+    if (detach.length) await page.evaluate(detachHidden, detach);
     const found = await page.evaluate((sel) => (document.querySelector(sel) ? 'yes' : document.querySelector('main') ? 'main' : 'body'), root.sel);
     if (found !== 'yes' && !root.primary) { invs[root.name] = { ...EMPTY_INVENTORY(), absent: true }; continue; }
     const inv = await page.evaluate(inventory, [root.sel, prof.eyebrow]);
@@ -601,30 +640,39 @@ async function main() {
   }
   const browser = opts.headed ? await launchStealthHeaded(chromium) : await chromium.launch();
   let srcInvs; let tgtInvs; let liveCache = null; let cacheLine = '';
+  const hidden = { live: [], build: [] };
   try {
     if (cache && cache.hit) {
-      srcInvs = cache.data;
+      // with hides the cached data is { roots, hidden } (the probe's own records); without, the roots map as before
+      const d = cache.data;
+      srcInvs = opts.hide.length && d && d.roots ? d.roots : d;
+      hidden.live = (opts.hide.length && d && d.hidden) || [];
       liveCache = { file: opts.liveCache, hit: true, at: cache.at, policy: cache.policy };
       cacheLine = `source side from cache ${opts.liveCache} (probed ${cache.at}, ${cache.policy})`;
     } else {
       const at = new Date().toISOString(); const nav = {};
       srcInvs = await grab(browser, proto, opts, prof, roots, nav);
+      hidden.live = nav.hidden;
       if (cache) {
         liveCache = { file: opts.liveCache, hit: false, at, policy: null, reason: cache.reason };
         // an error page or a blank render (the ⚠ below) is measured (advisory contract) but never reused — replayed, it
         // would mute every structural 🔴 for the rest of the run; a failed write never fails the probe
         let unsaved = nav.status >= 400 ? `HTTP ${nav.status}` : (srcInvs[roots[0].name].items || []).length < 3 ? 'blank render' : null;
-        if (!unsaved) { try { writeSideCache(opts.liveCache, key, srcInvs, { at, writtenBy: 'content-diff.mjs' }); } catch (e) { unsaved = `write failed: ${String(e.message).split('\n')[0]}`; } }
+        const data = opts.hide.length ? { roots: srcInvs, hidden: nav.hidden } : srcInvs;
+        if (!unsaved) { try { writeSideCache(opts.liveCache, key, data, { at, writtenBy: 'content-diff.mjs' }); } catch (e) { unsaved = `write failed: ${String(e.message).split('\n')[0]}`; } }
         cacheLine = `source side probed (cache: ${cache.reason}) ${unsaved ? `— not cached (${unsaved})` : `→ ${opts.liveCache}`}`;
       }
     }
-    tgtInvs = await grab(browser, eds, opts, prof, roots);
+    const tnav = {};
+    tgtInvs = await grab(browser, eds, opts, prof, roots, tnav);
+    hidden.build = tnav.hidden;
   } finally {
     await browser.close();
   }
 
   process.stdout.write(`\nContent diff @ ${opts.width}px (profile "${prof.name}", roots: ${roots.map((r) => r.name).join(', ')})\n`);
   if (cacheLine) process.stdout.write(`${cacheLine}\n`);
+  if (opts.hide.length) process.stdout.write(`  hidden live:  ${formatHidden(hidden.live)}\n  hidden build: ${formatHidden(hidden.build)}\n`);
   const flags = [];
   for (const root of roots) {
     const { flags: rf, lines } = diffRoot(root, srcInvs[root.name], tgtInvs[root.name], prof);
@@ -647,7 +695,7 @@ async function main() {
     const others = {};
     roots.slice(1).forEach((r) => { others[r.name] = { [prof.source]: srcInvs[r.name], [prof.target]: tgtInvs[r.name] }; });
     process.stdout.write('\nInventories JSON:\n');
-    process.stdout.write(`${JSON.stringify({ primaryRoot: primary, [prof.source]: srcInvs[primary], [prof.target]: tgtInvs[primary], roots: others, findings: flags, ...(liveCache ? { liveCache } : {}) }, null, 1)}\n`);
+    process.stdout.write(`${JSON.stringify({ primaryRoot: primary, [prof.source]: srcInvs[primary], [prof.target]: tgtInvs[primary], roots: others, findings: flags, ...(opts.hide.length ? { hidden } : {}), ...(liveCache ? { liveCache } : {}) }, null, 1)}\n`);
   }
 }
 
