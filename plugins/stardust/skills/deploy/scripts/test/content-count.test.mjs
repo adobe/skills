@@ -84,7 +84,7 @@ check('the media ledger as the encoder reads it: a failed upload never resolves;
   assert.equal(cli(['--capture', CAPTURE, '--doc', DOC, '--map', MAP, '--project', proj]).status, 0, 'a source with a #fragment still resolves');
 });
 
-check('relative URLs resolve against the page record\'s finalUrl, else its url (R15); --url overrides', () => {
+check('relative URLs resolve against the page record\'s finalUrl, else its url; --url overrides', () => {
   const cap = join(scratch, 'page.html'); writeFileSync(cap, readFileSync(CAPTURE));
   const final = 'https://www.example.com/en/guides/trail-running.html'; const other = 'https://old.example.net/guide.html';
   const run = (rec, ...extra) => { writeFileSync(join(scratch, 'page.json'), JSON.stringify(rec)); return cli(['--capture', cap, '--doc', DOC, '--map', MAP, '--project', PROJECT, ...extra]).status; };

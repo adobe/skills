@@ -152,7 +152,7 @@ const isBool = (v) => v === true || v === false;
 const CELL_KEYS = ['sel', 'as', 'all', 'wrap', 'itemWrap', 'join', 'optional', 'selfOk', 'retag', 'drop', 'attr', 'then', 'text', 'titleAttr', 'value', 'parts'];
 const freezeKeys = (o) => Object.freeze(Object.fromEntries(Object.entries(o).map(([k, v]) => [k, Object.freeze([...v])])));
 /**
- * The keys each object of a map takes, exactly the sets the validators enforce (R29) — anything else is a typo and
+ * The keys each object of a map takes, exactly the sets the validators enforce — anything else is a typo and
  * fails. Kinds are named after the schema's definitions: vocabulary (the root object), marker, variant, rowGroup,
  * cellSpec, cellsEach (a CellSpec plus `each`), variance, accept (variance.accept[]), ignoreAncestors
  * (variance.ignoreAncestors[]), childClass / class (the two moduleSelectors pattern objects: exactly that one key),

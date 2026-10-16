@@ -146,7 +146,7 @@ const snapshot = (dir) => readdirSync(dir, { recursive: true }).sort().map((f) =
   { const t = readJ(root, ['stardust', 'rollout', 'coverage', 'templates.json']); t.templates.push({ id: 'home', representativeSlug: 'home', pages: ['home'] }); writeJ(root, ['stardust', 'rollout', 'coverage', 'templates.json'], t); }
   cards(root, '.y-rail');
   await only(root, 'C1', /class \.y-rail is on no capture of this template, only on other templates' captures — it never matches here/);
-  // R42: position among a module's own rows and items is allowed (a row group, a cell); on a marker it is not
+  // position among a module's own rows and items is allowed (a row group, a cell); on a marker it is not
   root = project();
   editMap(root, (v) => {
     const faq = marker(v, '.x-faq'); const cells = faq.cells; delete faq.cells;
@@ -154,7 +154,7 @@ const snapshot = (dir) => readdirSync(dir, { recursive: true }).sort().map((f) =
     marker(v, '.x-cards').cells[0].sel = '.x-cards__title:first-child';
   });
   const positioned = await lint(root);
-  assert.equal(positioned.code, 0, `position inside rows and cells is the module's structure (R42)\n${positioned.text}`);
+  assert.equal(positioned.code, 0, `position inside rows and cells is the module's structure\n${positioned.text}`);
   root = project(); editMap(root, (v) => { marker(v, '.x-title:has(h1)').sel = '.x-title:has(h1):first-child'; });
   await only(root, 'C1', /markers\[1\]\.sel.*position pseudo-class :first-child/);
   root = project(); cards(root, ':has(.guide-card)');
@@ -319,7 +319,7 @@ const snapshot = (dir) => readdirSync(dir, { recursive: true }).sort().map((f) =
 
   // one probe per schema key: a wrong value the engine must reject naming the key ('reject'), or a key the engine
   // accepts unread because --lint owns it ('lint', x-lint in the schema); plus, per object, an unknown key the engine
-  // must reject (R29: the engine is strict, the schema says additionalProperties: false)
+  // must reject (the engine is strict, the schema says additionalProperties: false)
   const V = (x = {}) => ({ root: 'main', markers: [{ sel: '.a', emitter: 'block:a' }], ...x });
   const M = (x) => V({ markers: [{ sel: '.a', emitter: 'block:a', ...x }] });
   const C = (x) => M({ cells: [x] });

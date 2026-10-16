@@ -617,7 +617,7 @@ const page3 = (slug, rows, archetype = false, audit = { incomplete: [], count: {
     encode: { encoder: keys3.encoder, map: keys3.map, inputs: {}, output: { path: doc, sha: sha(html3(rows)) }, encodedAt: '2026-10-01T00:00:00Z' }, audit: { encode: { status: 'clean', ...audit, shape: shapeOf(html3(rows)) } } }, null, 2)}\n`);
 };
 page3(A3, 2, true); page3('trip-b', 2); page3('trip-c', 4, false, { incomplete: [] }); page3('trip-d', 4); page3('trip-f', 2); page3('trip-g', 2, false, { status: 'incomplete', incomplete: [{ role: 'text', text: 'Lost' }] }); page3('trip-h', 2);
-// R41: delivered content files — one byte-identical to the encode (staged or adopted), one that lost a paragraph and
+// delivered content files — one byte-identical to the encode (staged or adopted), one that lost a paragraph and
 // was never staged, one that differs but has a passing content-diff run
 for (const slug of ['trip-i', 'trip-j', 'trip-k']) page3(slug, 2);
 put(join(root3, 'content/trips/trip-i.html'), html3(2));
@@ -669,7 +669,7 @@ check('C14: the archetype and a clone sibling behave as before — no harness ga
   assert.deepEqual(rows['trip-e'].missing.filter((g) => HARNESS3.includes(g)), []);
   assert.deepEqual(rows[A3].missing, []);
 });
-check('R35: an encoded sibling\'s current clean encode passes content-count on the encoder\'s L5 count; a content-diff run shows beside it and its OPEN wins; a stopped encode and a clone as before', () => {
+check('an encoded sibling\'s current clean encode passes content-count on the encoder\'s L5 count; a content-diff run shows beside it and its OPEN wins; a stopped encode and a clone as before', () => {
   const doc = (slug) => `audit.encode (stardust/encoded/trips/${slug}.html)`;
   assert.equal(meta3('trip-b').gateEvidence['content-count'], `encoder L5: 0 MISSING (h 1/1 · links 0/0 · images 2/2 · text 3/3) — ${doc('trip-b')}`);
   assert.ok(meta3('trip-b').gatesPassed.includes('content-count'));
@@ -682,7 +682,7 @@ check('R35: an encoded sibling\'s current clean encode passes content-count on t
   assert.equal('content-count' in meta3('trip-h').gateEvidence, false, 'nor does a hand-edited document under a clean status (not the current encode)');
   for (const s of [A3, 'trip-e']) assert.equal('content-count' in meta3(s).gateEvidence, false, `${s}: as before`);
 });
-check('R41: the encoder\'s count stands for the delivered document only while it is absent or byte-identical to the encode; a differing one is OPEN, a content-diff pass still stands', () => {
+check('the encoder\'s count stands for the delivered document only while it is absent or byte-identical to the encode; a differing one is OPEN, a content-diff pass still stands', () => {
   assert.equal(meta3('trip-i').gateEvidence['content-count'], 'encoder L5: 0 MISSING (h 1/1 · links 0/0 · images 2/2 · text 3/3) — audit.encode (stardust/encoded/trips/trip-i.html)', 'identical: staged or adopted');
   assert.equal(meta3('trip-j').gateEvidence['content-count'], 'OPEN: content/trips/trip-j.html is not the current encode (stardust/encoded/trips/trip-j.html) — re-stage it, or run content-diff on the delivered page');
   assert.equal(meta3('trip-j').gatesPassed.includes('content-count'), false);

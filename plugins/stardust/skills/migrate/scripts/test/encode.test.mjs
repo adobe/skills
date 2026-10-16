@@ -199,9 +199,9 @@ try {
   await stopCase('stop-incomplete', mutate('<h3 class="ui-teaser__title">River Walk</h3>', '<h3 class="ui-teaser__title">River Walk</h3><p class="ui-teaser__desc">Two hours along the water, café at the bridge.</p>'), 'incomplete', /"role":"text","key":"two hours along the water, caf/);
   await stopCase('stop-noroot', mutate('<main id="main" class="page-main">', '<div id="main-x">').replace('</main>', '</div>'), 'error', /root selector \\"main#main\\" matched nothing/);
   await stopCase('stop-noh1', mutate('<h1 class="ui-hero__title">Forest Loop</h1>', ''), 'error', /no <h1>/);
-  // a showing <video> reached by rich text has no delivered form: unmapped, never a silent src-less element (R18)
+  // a showing <video> reached by rich text has no delivered form: unmapped, never a silent src-less element
   await stopCase('stop-video', mutate('<p>Benches and a view over three villages.</p>', '<p>Benches and a view over three villages.</p><video src="/media/lookout.mp4" poster="/media/lookout-poster.jpg" controls></video>'), 'unmapped', /"kind":"video","selector":"video","at":"video","remedy":"map it as a block \(e\.g\. an embed block with a link cell: as link, attr src\) or drop: it/);
-  // … and so are a player wrapped in a container that holds nothing else, and an embedded frame (R22)
+  // … and so are a player wrapped in a container that holds nothing else, and an embedded frame
   await stopCase('stop-audio', mutate('<p>Benches and a view over three villages.</p>', '<p>Benches and a view over three villages.</p><div class="player"><audio controls src="/media/birdsong.mp3"></audio></div>'), 'unmapped', /"kind":"audio","selector":"audio","at":"audio"/);
   await stopCase('stop-iframe', mutate('<p>A steady climb on a wide forest road.</p>', '<p>A steady climb on a wide forest road.</p><iframe src="https://player.example.net/embed/42" width="560" height="315" title="The climb"></iframe>'), 'unmapped', /"kind":"iframe","selector":"iframe","at":"iframe"/);
   // an accepted print never stops a page
@@ -241,7 +241,7 @@ try {
   assert.equal(r.code, 0, `nested scope encodes clean\n${r.out}`);
   assert.match(read('stardust', 'encoded', 'trips', 'nested-scope.html'), /<p>Benches and a <b>view<\/b> over three villages\.<\/p>/, 'the panel text component applies its own retag and drop');
   writeFileSync(vocabFile, vocabRaw);
-  // relative URLs resolve against the URL the capture was taken at (finalUrl), never the requested one (R15)
+  // relative URLs resolve against the URL the capture was taken at (finalUrl), never the requested one
   addPage('redirected', mutate('<img src="/media/forest-loop-hero.jpg"', '<img src="../media/forest-loop-hero.jpg"').replace('<a href="/trips/river-walk.html">River Walk</a>', '<a href="river-walk.html">River Walk</a>'), { url: 'https://www.example.com/go/to/forest.html', finalUrl: 'https://www.example.com/trips/forest-loop.html' });
   r = await run('--template', A, '--slug', 'redirected');
   assert.equal(r.code, 0, `redirected page encodes clean\n${r.out}`);
@@ -451,7 +451,7 @@ try {
   assert.deepEqual(dropsOf(fileMap({ cells: [{ as: 'rich', drop: ['.label'] }] })), [{ kind: '.label', reason: 'selector drop (cell)', visible: true, at: 'p.label' }], 'a cell drop');
   assert.deepEqual(dropsOf(fileMap({ drop: ['.label', 'p.label'] }), { drop: ['.label'] }), [{ kind: '.label', reason: 'selector drop (transform)', visible: true, at: 'p.label' }], 'one entry per node, whoever claims it first');
 
-  // --- R29: unknown keys fail at every level; `$comment` is free text everywhere; every key the engine reads is typed ---
+  // --- unknown keys fail at every level; `$comment` is free text everywhere; every key the engine reads is typed --------
   const base = { root: 'main', markers: [{ sel: '.a', emitter: 'block:a' }] };
   const mk = (x) => ({ ...base, markers: [{ sel: '.a', emitter: 'block:a', ...x }] });
   const cell = (x) => mk({ cells: [x] });

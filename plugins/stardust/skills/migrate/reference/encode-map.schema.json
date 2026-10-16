@@ -7,7 +7,7 @@
   "required": ["archetype", "inputs", "root"],
   "additionalProperties": false,
   "properties": {
-    "$comment": { "type": "string", "description": "free text for the map's author. Every object of the map takes $comment and only the keys documented here: the engine rejects any other key (R29)" },
+    "$comment": { "type": "string", "description": "free text for the map's author. Every object of the map takes $comment and only the keys documented here: the engine rejects any other key" },
     "$schema": { "type": "string", "x-lint": "ignored", "description": "an editor hint; ignored" },
     "archetype": { "type": "string", "minLength": 1, "x-lint": "map", "description": "the template's archetype slug (representativeSlug in stardust/rollout/coverage/templates.json); --lint fails when it names another page" },
     "inputs": { "$ref": "#/$defs/inputs", "x-lint": "inputs" },

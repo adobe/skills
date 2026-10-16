@@ -197,7 +197,7 @@ export function encodeOne({ root, site, map, deps, slug, archetype, archetypePri
   // a patch file must hold an array: JSON null (or any other non-array) is malformed, never "no patches"
   if (patches.present && !Array.isArray(patches.value)) return stop(`${prov.patchPath(slug)}: ${engine.validatePatches(patches.value).join('; ')}`, false);
   const page = { ...(site.pageJson(slug) || {}), url: info.url };
-  const base = site.baseUrlFor(slug) || info.url; // relative URLs in the capture resolve where it was captured (R15)
+  const base = site.baseUrlFor(slug) || info.url; // relative URLs in the capture resolve where it was captured (finalUrl)
   const res = engine.encodePage({ html: readFileSync(capFile, 'utf8'), page, base, vocab: map.vocab, tf: map.tf, site, archetypePrints, inventory: deps.inventory, countKeys: countKeysFor(site, base, deps.pathKey), patches: patches.value, finalise: deps.finalise });
   const report = res.status === 'clean' ? { ...res.report, shape: shapeOf(res.html) } : res.report;
   return { slug, role, status: res.status, output: info.outputPath, html: res.html, report, prints: res.prints, blocks: res.blocks };

@@ -20,7 +20,7 @@
 //                 patch file holding JSON null is malformed (error), never "no patches"
 //   modules       a clean encode keeps migrate's modules[] true: the sorted unique block names (created sidecars
 //                 included); the same blocks write nothing, a block the map adds shows up, a stop leaves the list;
-//                 the archetype's non-empty list is the model's and stays (R40) — an empty one is filled
+//                 the archetype's non-empty list is the model's and stays — an empty one is filled
 //   encodedPageOf the shared rule: a sibling with an encode is encoded — beside a clone HTML only while its status is
 //                 clean (a stopped one is the A′ exception: a clone page); the archetype only without a migrated
 //                 HTML; a render's encode: null, a path outside stardust/encoded/ or with .. → null
@@ -81,7 +81,7 @@ try {
   assert.deepEqual([ss.slug, ss.type, ss.renderBranch, ss.fidelityTier, ss.template, ss.archetypeSource], [S1, 'trip', "A'", 'sibling', A, A], 'a created sibling sidecar: branch A\', tier sibling, the archetype as template');
   assert.deepEqual([ss.outputPath, ss.sidecar, ss.sourceCurrentSha], ['trips/forest-loop.html', 'trips/forest-loop._meta.json', null], 'migrate\'s place for it; sourceCurrentSha is never the encoder\'s');
   assert.deepEqual(ss.gatesPassed, []); assert.deepEqual(Object.keys(ss).slice(0, 3), ['slug', 'type', 'renderBranch']);
-  assert.deepEqual([sa.modules, ss.modules], [['facts', 'hero', 'links', 'tabs', 'tags', 'teaser'], ['facts', 'hero', 'links', 'tabs', 'tags', 'teaser']], 'modules[]: the blocks each page emitted (R36)');
+  assert.deepEqual([sa.modules, ss.modules], [['facts', 'hero', 'links', 'tabs', 'tags', 'teaser'], ['facts', 'hero', 'links', 'tabs', 'tags', 'teaser']], 'modules[]: the blocks each page emitted');
   const enc = ss.encode;
   assert.deepEqual(Object.keys(enc), ['encoder', 'map', 'inputs', 'output', 'encodedAt']);
   assert.deepEqual([enc.encoder.script, enc.encoder.version], ['stardust/scripts/migrate/encode.mjs', '1']); assert.match(enc.encoder.sha, SHA);
@@ -112,7 +112,7 @@ try {
   assert.equal(encodedPageOf(bySlug, { hasHtml: true }), null, '… also when only its own encode.map.template names it');
   const at = (path) => ({ ...ss, encode: { ...ss.encode, output: { ...ss.encode.output, path } } });
   for (const [v, why] of [[{ ...ss, encode: null, audit: null }, 'a render leaves encode: null'], [at('stardust/migrated/trips/forest-loop.html'), 'outside stardust/encoded/'], [at('stardust/encoded/../content/x.html'), 'a .. segment'], [at('stardust/encoded/trips/forest-loop.json'), 'not a .html document'], [null, 'no sidecar']]) assert.equal(encodedPageOf(v), null, `encodedPageOf → null: ${why}`);
-  // modules[]: the block names the page emitted, on a clean encode (R36)
+  // modules[]: the block names the page emitted, on a clean encode
   const page = { slug: S1, role: 'sibling', archetype: A, type: 'trip', url: 'https://www.example.com/trips/forest-loop.html' };
   const clean = (old, blocks) => sidecarWith(old, { ...page, encode: ss.encode, audit: { status: 'clean' }, blocks });
   const made = clean(null, ['teaser featured', 'hero', 'tabs', 'hero', 'links']);
@@ -125,7 +125,7 @@ try {
   assert.deepEqual(sidecarWith(null, { ...page, encode: undefined, audit: { status: 'variance' }, blocks: ['hero'] }).modules, [], '… and records none on a sidecar it creates');
   const arch = { ...page, slug: A, role: 'archetype' };
   const archClean = (old) => sidecarWith(old, { ...arch, encode: sa.encode, audit: { status: 'clean' }, blocks: ['hero', 'quote'] });
-  assert.deepEqual(archClean({ ...sa, modules: ['river-hero', 'trail-facts'] }).modules, ['river-hero', 'trail-facts'], 'the archetype\'s recorded modules are the model\'s: kept (R40)');
+  assert.deepEqual(archClean({ ...sa, modules: ['river-hero', 'trail-facts'] }).modules, ['river-hero', 'trail-facts'], 'the archetype\'s recorded modules are the model\'s: kept');
   assert.deepEqual(archClean({ ...sa, modules: [] }).modules, ['hero', 'quote'], '… an empty archetype list is filled');
   assert.deepEqual(sidecarWith({ ...ss, renderBranch: 'A', modules: ['cards'] }, { ...page, encode: ss.encode, audit: { status: 'clean' }, blocks: ['hero'] }).modules, ['cards'], '… an archetype known by its sidecar (renderBranch A) too');
   let st = cli(STAGE, ['--template', A, '--root', T]);
@@ -180,7 +180,7 @@ try {
   r = await run('--template', A);
   assert.equal(r.code, 0, r.out); assert.equal(r.last, 'encoded 1 · unchanged 1 · stopped 0');
   assert.ok(json(SIDE[S1]).modules.includes('picture'), 'a new block shows up in a sibling\'s modules[]');
-  assert.deepEqual(json(SIDE[A]).modules, sa.modules, 'the archetype\'s non-empty list is never replaced (R40)');
+  assert.deepEqual(json(SIDE[A]).modules, sa.modules, 'the archetype\'s non-empty list is never replaced');
   write(VOCAB, vocabRaw); write(GATED, gatedRaw);
   r = await run('--template', A);
   assert.equal(r.last, 'encoded 2 · unchanged 0 · stopped 0'); assert.deepEqual(json(SIDE[S1]).modules, ss.modules); assert.equal(read(DOC[S1]), docS);
@@ -205,7 +205,7 @@ try {
   r = await run('--template', A);
   assert.equal(r.code, 0, `the guard covers the document only: a sidecar rewritten by migrate.mjs is never a hand edit\n${r.out}`);
   assert.deepEqual(json(SIDE[S1]).gatesPassed, ['visual-parity']);
-  // R40: the archetype's modules[] (migrate.mjs modules records the model's ids) — an empty list is filled, a recorded
+  // the archetype's modules[] (migrate.mjs modules records the model's ids) — an empty list is filled, a recorded
   // one is never replaced
   assert.equal(cli(MIGRATE, ['modules', A, '--clear']).status, 0);
   r = await run('--template', A, '--force'); assert.equal(r.code, 0, r.out);
@@ -227,7 +227,7 @@ try {
   assert.deepEqual([verdict().kind, verdict().ok, verdict().sha], ['stopped', false, sha256(docS)], 'currentEncode: stopped, the document stale');
   const staged = statSync(P('content/trips/forest-loop.html'));
   st = cli(STAGE, ['--template', A, '--root', T]);
-  assert.equal(st.status, 0, `a stopped page is skipped and leaves the exit code alone (R28)\n${st.stderr}`);
+  assert.equal(st.status, 0, `a stopped page is skipped and leaves the exit code alone\n${st.stderr}`);
   assert.match(st.stderr, new RegExp(`^- ${S1} skipped \\(stopped: unmapped\\)`, 'm')); assert.equal(st.stdout, '', 'nothing to deliver');
   assert.deepEqual([statSync(P('content/trips/forest-loop.html')).ino, statSync(P('content/trips/forest-loop.html')).mtimeMs], [staged.ino, staged.mtimeMs], 'its content/ document is not touched');
   rmSync(P(CAPTURE(S1)));

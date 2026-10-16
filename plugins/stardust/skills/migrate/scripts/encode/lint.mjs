@@ -18,7 +18,7 @@
  *   C1  no selector of the map (root, chrome, wrappers, moduleSelectors, metadata text(), markers' sel / when / drop /
  *       rows / cells, transform drop) uses a forbidden form: a generated id, class or attribute value (the engine's
  *       generated-token rule: 8+ hex digits or 5+ digits), a position pseudo-class outside a row group's or a cell's
- *       selector (R42: position among a module's own rows and items is its structure), a class on no capture of the
+ *       selector (position among a module's own rows and items is its structure), a class on no capture of the
  *       template (said apart: only on other templates' captures, or on no capture of the site — a prototype class,
  *       named when it is an eds-schema unitSelector), or — in a marker, variant or module
  *       selector — a chain through a layout container (a class of wrappers[] or of a wrapper / section marker; inside
@@ -60,7 +60,7 @@ const CHECKS = ['map', 'inputs', 'archetype', 'C1', 'C2', 'C3', 'C4', 'C5', 'C6'
 const POSITION = new Set(['first-child', 'last-child', 'only-child', 'first-of-type', 'last-of-type', 'only-of-type', 'nth-child', 'nth-last-child', 'nth-of-type', 'nth-last-of-type']);
 const NESTED = new Set(['not', 'is', 'where', 'has']);
 const CHAINED = new Set(['marker', 'when', 'module']);
-// R42: a row group's or a cell's position among the module's own rows / items is that module's structure
+// a row group's or a cell's position among the module's own rows / items is that module's structure
 const POSITION_OK = new Set(['rows', 'cell']);
 const ROLE = { heading: 'heading', cta: 'cta', body: 'body', eyebrow: 'body' };
 const ROLE_NAME = { heading: 'a heading', cta: 'a cta', body: 'body text' };

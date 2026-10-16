@@ -500,7 +500,7 @@ export function derive(page, jobs, o, ctx) {
   }
 
   // An encoded sibling's current clean encode was counted by the encoder (L5); a content-diff FAIL/OPEN still wins.
-  // R41: that count stands for the delivered document only while it is absent or byte-identical to the encoded one.
+  // that count stands for the delivered document only while it is absent or byte-identical to the encoded one.
   const l5 = c14Page(page) && page.encoded.state && page.encoded.state.ok ? encoderCount(page.meta, page.encoded.path) : null;
   if (l5 && !/^(FAIL|OPEN): /.test(evidence['content-count'] || '')) {
     const live = deliveredContent(page, ctx);
@@ -572,7 +572,7 @@ export function derive(page, jobs, o, ctx) {
   if (c14Page(page)) {
     // C14: the page's own launch decides when there is one (a failing run is never covered); else the archetype's
     // passedOn under the current harness key, when it covers the page's shape
-    // R37: an own run from before a key change still counts — a job log carries no harness key
+    // an own run from before a key change still counts — a job log carries no harness key
     const c14 = ctx.c14 ? ctx.c14(page) : { ok: false, why: 'migrate\'s encode/shape.mjs is not loaded' };
     for (const g of HARNESS) {
       const newest = latest(ofKind(g).filter(HARNESS_RUN[g]).map((j) => ({ j })));
