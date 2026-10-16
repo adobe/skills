@@ -57,7 +57,7 @@ export function matchSections({ dom, mapping, anchors: anchorOf, modules, select
 }
 
 // Opens the target at the module width, joins it, and writes <out>/join.json (out = the page's work dir).
-export async function runJoin({ target, inputs, out }) {
+export async function runJoin({ target, inputs, out, page }) {
   const [chromium, { openBrowser }] = await Promise.all([loadChromium(), loadMeasureLive()]);
   const browser = await openBrowser(chromium, { tier: 'plain' });
   let dom;
@@ -67,7 +67,7 @@ export async function runJoin({ target, inputs, out }) {
   } finally { await browser.close(); }
   const matched = matchSections({
     dom,
-    mapping: parseMapping(inputs.mapping),
+    mapping: parseMapping(inputs.mapping, page),
     anchors: anchors(inputs.contentModel),
     modules: includedModules(inputs.rules),
     selector: target.join.selector,

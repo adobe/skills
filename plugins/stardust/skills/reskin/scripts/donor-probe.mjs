@@ -8,7 +8,8 @@
  *
  * Reads stardust/reskin/donor-tokens.json (shape documented in
  * skills/reskin/reference/donor-sources.md § donor-tokens.json) and asserts
- * each spec entry: querySelector(selector) → getComputedStyle()[property]
+ * each spec entry: querySelector(selector) → getComputedStyle()[property]; an optional `exclude`
+ *   selector skips elements that carry a declared override (SKIP when every match does)
  * compared to the token value.
  *
  * Comparison modes (see reference/gates.md § Tolerances):
@@ -154,7 +155,7 @@ const DEFAULT_SPEC = [
   { label: 'primary button radius', selector: 'main .btn', property: 'borderRadius', token: 'buttons.primary.borderRadius', needs: 'button' },
   { label: 'primary button padding (±2px)', selector: 'main .btn', property: 'padding', token: 'buttons.primary.padding', tolerancePx: 2, needs: 'button' },
   { label: 'primary button font size', selector: 'main .btn', property: 'fontSize', token: 'buttons.primary.fontSize', needs: 'button' },
-  { label: 'container max-width (±20px)', selector: 'main .container', property: 'maxWidth', token: 'layout.containerMaxWidth', tolerancePx: 20 },
+  { label: 'container max-width (±20px)', selector: 'main .container', exclude: '.inset > .container', property: 'maxWidth', token: 'layout.containerMaxWidth', tolerancePx: 20 },
   { label: 'section rhythm (±16px)', selector: 'main section', property: 'paddingTop', token: 'layout.sectionPaddingY', tolerancePx: 16 },
 ];
 const spec = args.spec ? JSON.parse(readFileSync(resolve(args.spec), 'utf8')) : DEFAULT_SPEC;
@@ -234,11 +235,18 @@ for (const entry of spec) {
     results.push({ check: entry.label, status: 'SKIP', detail: `the page's content (${args.model}) has no button` });
     continue;
   }
-  const got = await page.evaluate(([sel, prop]) => {
-    const el = document.querySelector(sel);
-    if (!el) return null;
+  const got = await page.evaluate(([sel, prop, exclude]) => {
+    const all = [...document.querySelectorAll(sel)];
+    const el = exclude ? all.find((e) => !e.matches(exclude)) : all[0];
+    if (!el) return all.length ? { excluded: all.length } : null;
     return String(prop ?? '').startsWith('--') ? getComputedStyle(el).getPropertyValue(prop).trim() : getComputedStyle(el)[prop];
-  }, [entry.selector, entry.property]);
+  }, [entry.selector, entry.property, entry.exclude]);
+  if (got && typeof got === 'object') {
+    // Every match carries a declared per-slot override (e.g. mapping.json `inset`), which
+    // figma-gate geometry measures instead; the token has no undeclared surface to check.
+    results.push({ check: entry.label, label: entry.label, status: 'SKIP', detail: `all ${got.excluded} match(es) declare an override (${entry.exclude})` });
+    continue;
+  }
   if (got === null) {
     // A missing selector is a FAIL: either the renderer broke the documented
     // conventions or the spec is stale — both need a human, not a silent skip.

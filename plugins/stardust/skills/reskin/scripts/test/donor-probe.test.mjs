@@ -110,6 +110,23 @@ h1 { font-size: 56px } @media (max-width: 600px) { h1 { font-size: 32px } }
       assert.ok(!/FAIL pad/.test(r.stdout) && !/FAIL tol/.test(r.stdout), r.stdout);
     });
 
+    await check('exclude skips declared overrides: measures the first other match, SKIPs when every match is excluded', () => {
+      const pg = join(dir, 'inset.html');
+      writeFileSync(pg, '<!doctype html><html><body><main><section class="inset"><div class="container" style="max-width:none">a</div></section><section><div class="container" style="max-width:1180px">b</div></section></main></body></html>');
+      const s4 = join(dir, 'spec4.json');
+      const entry = { label: 'measure', selector: 'main .container', exclude: '.inset > .container', property: 'maxWidth', value: '1180px', tolerancePx: 20 };
+      writeFileSync(s4, JSON.stringify([entry]));
+      const r = run('--tokens', tokens, '--rendered', pg, '--spec', s4, '--no-sanity');
+      assert.equal(r.status, 0, r.stdout);
+      const pg2 = join(dir, 'inset2.html');
+      writeFileSync(pg2, '<!doctype html><html><body><main><section class="inset"><div class="container" style="max-width:none">a</div></section></main></body></html>');
+      const jp = join(dir, 'inset2.json');
+      const r2 = run('--tokens', tokens, '--rendered', pg2, '--spec', s4, '--no-sanity', '--json', jp);
+      assert.equal(r2.status, 0, r2.stdout);
+      const got = JSON.parse(readFileSync(jp, 'utf8')).results.find((x) => x.label === 'measure');
+      assert.equal(got.status, 'SKIP'); assert.match(got.detail, /all 1 match\(es\) declare an override/);
+    });
+
     await check('firstFamily compares only the first family, quote-stripped and case-folded', () => {
       const s3 = join(dir, 'spec3.json');
       writeFileSync(s3, JSON.stringify([

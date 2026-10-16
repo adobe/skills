@@ -15,7 +15,7 @@ export async function prepare({ dir, slug, url }) {
   const inputs = readInputs(dir, slug, ['mapping', 'contentModel', 'rules', 'donorTokens', 'checks']);
   const out = workDir(dir, slug);
   const target = localTarget(url);
-  const join = await runJoin({ target, inputs, out });
+  const join = await runJoin({ target, inputs, out, page: slug });
   if (!join.pass) return { drift: true, join, out };
   const boxes = loadBoxes(dir, rootsNamed(inputs.checks, join));
   const { sections, problems } = validateChecks(inputs.checks, { join, boxes, tokens: inputs.donorTokens });

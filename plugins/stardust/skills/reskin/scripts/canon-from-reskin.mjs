@@ -343,7 +343,7 @@ async function main(argv) {
   }
   const issues = mappingModuleIssues(mapping, Object.keys(moduleRefs));
   if (issues.missing.length) findings.push(`mapping module(s) with no canon skeleton: ${issues.missing.join(', ')} — no approved archetype renders them; approve a page that does, or remap`);
-  for (const m of issues.mixed) findings.push(`module ${m.id} is composed ${m.compositions.length} ways (${m.compositions.map((c) => `${c.composition} @ ${c.at.join(',')}`).join(' · ')}) — canon keeps ${moduleRefs[m.id]?.from || 'one'}'s; give the others their own module id`);
+  for (const m of issues.mixed) findings.push(`module ${m.id} is composed ${m.compositions.length} ways (${m.compositions.map((c) => `${c.composition} @ ${c.at.join(',')}`).join(' · ')}) — canon keeps ${moduleRefs[m.id]?.from || 'one'}'s; give the others their own module id (curation-rules.json modules[] with variantOf, reference/mapping-brief.md § Composition variants)`);
 
   // 4. pinned tokens (measured)
   const pinned = {};

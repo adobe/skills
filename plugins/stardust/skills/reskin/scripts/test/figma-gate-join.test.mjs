@@ -43,6 +43,9 @@ await check('parseMapping: first table with Status and Donor module; split slots
   const md = '| a | b |\n|---|---|\n| s09 | x |\n\n| Slot | Donor module | Status |\n|---|---|---|\n| **s07-news** | `M3` | mapped |\n| note | M1 | mapped |\n| s08 | — | new-module |\n';
   assert.deepEqual(parseMapping(md), [{ slot: 's07-news', module: 'M3', status: 'mapped' }, { slot: 's08', module: null, status: 'new-module' }]);
   assert.throws(() => parseMapping('# brief\n\n**s01** → M1'), /no slot table/);
+  const multi = '| Page | Slot | Donor module | Status |\n|---|---|---|---|\n| a | s01 | M1 | mapped |\n| b | s01 | M2 (Hero) | mapped |\n| b | s02 | — | new-module |';
+  assert.deepEqual(parseMapping(multi, 'b'), [{ slot: 's01', module: 'M2', status: 'mapped' }, { slot: 's02', module: null, status: 'new-module' }], 'a multi-page brief keeps the page\'s rows');
+  assert.throws(() => parseMapping(multi), (e) => e.code === 2 && /Page column: pass --page/.test(e.message));
   assert.throws(() => parseMapping('# brief\n\n**s01** → M1'), (e) => e.name === 'UsageError' && e.code === 2 && /reference\/mapping-brief\.md § Entry schema/.test(e.message));
 });
 

@@ -24,14 +24,24 @@
  *   { "chrome": { "model": "<dir holding a content-model.json>", "header": ["s01"], "footer": ["s03"], "footerTone": "dark|light|accent" },
  *     "pages": { "<slug>": { "template": "<archetype slug>",
  *       "slots": { "s01": { "module": "M2", "layout": "stack|grid-2|media-band|split|cards (space-separated)",
- *         "width": "narrow|wide", "tone": "dark|light|accent", "columns": 3 } } } } }
+ *         "width": "narrow|wide", "tone": "dark|light|accent", "columns": 3,
+ *         "heading": "display|h2|h3|h4", "inset": "80px", "split": "531px 1fr" } } } } }
  *   layout stack: the stream in order; grid-2: form fields two-up; media-band: the slot's first image as a
  *   cover backdrop behind a panel; split: the first image beside the text; cards: the stream's repeating
  *   run (findRepeat — same node-kind sequence back to back, e.g. image+h3+p per team member) as a grid of
  *   cards, `columns` wide (default 3 when the count divides by 3, else 2), intro above and tail below.
  *   tone paints the panel from palette.darkBandBg/Fg, lightBandBg or accent. Content-driven, never per
  *   site: 3+ consecutive images render as one logo row; h2–h4 take type.h2–h4 sizes when the donor has
- *   them; a slot's leading h2 sits on an accent label when the donor has radii.label.
+ *   them; a slot's leading heading in the h2 role (an h2 with no heading option, or heading: h2) sits on an
+ *   accent label when the donor has radii.label. heading picks the
+ *   type role of the slot's .heading (default display) when the frame sets the title smaller; inset
+ *   replaces the centred container with a full-width one and that side gutter (a frame padded from the
+ *   viewport edge, not centred); split sets the split layout's two column tracks (px | fr | %) where the
+ *   frame's text column is not half the row. Card titles take type.h3 whatever their level (the
+ *   source keeps its h2/h3; the donor's card title is one role). The style opens with the token-contract :root block (render/root-tokens,
+ *   M2b D10) that figma-gate's ramp asserts, then the flattened donor variables. --max-width is the
+ *   content width (the container pads outside it, as a Figma container does); grid-2, split and cards
+ *   share layout.columnGap (default 40px).
  *
  * Usage:
  *   node stream-render.mjs <slug> [--dir stardust] [--mapping <dir>/reskin/mapping.json]
@@ -46,6 +56,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname, join, posix, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { rootTokens } from './render/root-tokens.mjs';
 
 const HELP = `usage: node stream-render.mjs <slug> [--dir stardust] [--mapping <file>] [--out <file>] [--localize-images]
 
@@ -273,9 +284,17 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
     }
     const tone = ['dark', 'light', 'accent'].includes(m.tone) ? m.tone : null;
     if (m.tone && !tone) warnings.push(`${s.slot}: unknown tone "${m.tone}" (dark | light | accent) — ignored`);
-    const cls = ['band', ...layout.map((l) => `layout-${l}`), `width-${m.width || 'narrow'}`, ...(tone ? [`tone-${tone}`] : [])].join(' ');
+    const role = ['display', 'h2', 'h3', 'h4'].includes(m.heading) ? m.heading : null;
+    if (m.heading && !role) warnings.push(`${s.slot}: unknown heading "${m.heading}" (display | h2 | h3 | h4) — ignored`);
+    if (role && role !== 'display' && !has(`--type-${role}-font-size`)) warnings.push(`${s.slot}: heading "${role}" but the donor has no type.${role} — rendered as display`);
+    const inset = typeof m.inset === 'string' && /^\d+(\.\d+)?(px|rem|%)$/.test(m.inset) ? m.inset : null;
+    if (m.inset && !inset) warnings.push(`${s.slot}: inset "${m.inset}" is not a length (px | rem | %) — ignored`);
+    const split = typeof m.split === 'string' && /^(\d+(\.\d+)?(px|fr|%) ?){2}$/.test(m.split.trim()) ? m.split.trim() : null;
+    if (m.split && !split) warnings.push(`${s.slot}: split "${m.split}" is not two column tracks (px | fr | %) — ignored`);
+    const vars = [...(inset ? [`--band-inset: ${inset}`] : []), ...(split ? [`--split-columns: ${split}`] : [])];
+    const cls = ['band', ...layout.map((l) => `layout-${l}`), `width-${m.width || 'narrow'}`, ...(tone ? [`tone-${tone}`] : []), ...(role ? [`heading-${role}`] : []), ...(inset ? ['inset'] : [])].join(' ');
     const media = ctx.bandImage ? `<img class="${ctx.split ? 'split-img' : 'band-img'}" ${img(ctx.bandImage.currentSrc || ctx.bandImage.src)} alt="${esc(ctx.bandImage.alt)}">` : '';
-    return `<section class="${cls}" data-slot="${esc(s.slot || `s${String(i + 1).padStart(2, '0')}`)}"${m.module ? ` data-module="${esc(m.module)}"` : ''}>
+    return `<section class="${cls}"${vars.length ? ` style="${vars.join('; ')}"` : ''} data-slot="${esc(s.slot || `s${String(i + 1).padStart(2, '0')}`)}"${m.module ? ` data-module="${esc(m.module)}"` : ''}>
       ${ctx.split ? '' : media}
       <div class="container"><div class="panel"><div class="flow" data-slot-body>
           ${inner}
@@ -292,12 +311,13 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
     md.favicon ? `<link rel="icon" href="${esc(md.favicon)}">` : '',
   ].filter(Boolean).join('\n');
 
-  const css = `:root {
+  const css = `${rootTokens(tokens).css.trimEnd()}
+  :root {
   ${vars.map(([n, val]) => `  ${n}: ${val};`).join('\n')}
   }
   :where(.site-header, .site-main, .site-footer), :where(.site-header, .site-main, .site-footer) *, :where(.site-header, .site-main, .site-footer) *::before, :where(.site-header, .site-main, .site-footer) *::after { box-sizing: border-box; }
   body:has(> .site-header, > .site-main, > .site-footer) { margin: 0; background: ${v('--palette-page-bg', '#fff')}; color: ${v('--palette-body-fg', 'inherit')}; font-family: ${v('--type-family', 'sans-serif')}; font-size: ${v('--type-body-font-size', '16px')}; line-height: ${v('--type-body-line-height', '1.5')}; }
-  .container { max-width: ${v('--layout-container-max-width', '1200px')}; margin: 0 auto; padding: ${v('--layout-container-padding', '0 24px')}; }
+  .container { box-sizing: content-box; max-width: ${v('--layout-container-max-width', '1200px')}; margin: 0 auto; padding: ${v('--layout-container-padding', '0 24px')}; }
   :where(.site-header, .site-main, .site-footer) a { color: inherit; }
   .link { ${accentText ? `color: ${v('--palette-accent', 'inherit')}; text-decoration: underline;` : `color: inherit; text-decoration: underline; text-decoration-color: var(--palette-accent); text-decoration-thickness: 2px; text-underline-offset: 3px;`} }
   :where(.site-header, .site-main, .site-footer) img { max-width: 100%; height: auto; }
@@ -312,12 +332,16 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
   .site-main .panel { position: relative; }
   .site-main .layout-media-band .panel { background: ${v('--palette-page-bg', '#fff')}; border-radius: ${v('--radii-card', '0')}; padding: 40px; }
   .site-main .width-narrow .panel { max-width: 550px; }
-  .site-main .layout-grid-2 .flow { display: grid; grid-template-columns: 1fr 1fr; column-gap: 24px; }
+  .site-main .layout-grid-2 .flow { display: grid; grid-template-columns: 1fr 1fr; column-gap: ${v('--layout-column-gap', '40px')}; }
   .site-main .layout-grid-2 .flow > :not(.field) { grid-column: 1 / -1; }
   .site-main h1, .site-main h2, .site-main h3, .site-main h4 { font-family: ${v('--type-display-font-family', 'inherit')}; font-weight: ${v('--type-display-font-weight', '700')}; color: ${v('--palette-heading-fg', 'inherit')}; margin: 0 0 24px; }
   .site-main .heading { font-size: ${v('--type-display-font-size', '2em')}; line-height: ${v('--type-display-line-height', '1.2')}; text-align: ${v('--type-display-text-align', 'left')}; }
+  ${['h2', 'h3', 'h4'].filter((h) => has(`--type-${h}-font-size`)).map((h) => `.site-main .heading-${h} .heading { font-size: var(--type-${h}-font-size); line-height: ${v(`--type-${h}-line-height`, '1.2')}; }`).join('\n  ')}
+  .site-main .heading-display .heading { font-size: ${v('--type-display-font-size', '2em')}; line-height: ${v('--type-display-line-height', '1.2')}; }
+  .site-main .inset > .container { max-width: none; padding: 0 var(--band-inset); }
   ${['h2', 'h3', 'h4'].filter((h) => has(`--type-${h}-font-size`)).map((h) => `.site-main ${h}.heading { font-size: var(--type-${h}-font-size); line-height: ${v(`--type-${h}-line-height`, '1.2')}; font-weight: ${v(`--type-${h}-font-weight`, 'inherit')}; }`).join('\n  ')}
-  ${has('--radii-label') ? `.site-main .flow > h2.heading:first-child { display: inline-block; justify-self: start; background: ${v('--palette-accent', 'transparent')}; border-radius: var(--radii-label); padding: 0 7px; }` : ''}
+  ${has('--type-h3-font-size') ? `.site-main .card .heading { font-size: var(--type-h3-font-size); line-height: ${v('--type-h3-line-height', '1.2')}; font-weight: ${v('--type-h3-font-weight', 'inherit')}; }` : ''}
+  ${has('--radii-label') ? `.site-main .band:not([class*="heading-"]) .flow > h2.heading:first-child, .site-main .heading-h2 .flow > .heading:first-child { display: inline-block; justify-self: start; background: ${v('--palette-accent', 'transparent')}; border-radius: var(--radii-label); padding: 0 7px; }` : ''}
   .site-main p { margin: 0 0 16px; }
   .site-main .field { display: flex; flex-direction: column; gap: 8px; margin-bottom: 24px; }
   .site-main .field label { font-weight: ${v('--type-label-font-weight', '600')}; }
@@ -326,7 +350,7 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
   .site-main .check { display: flex; gap: 12px; align-items: center; margin-bottom: 12px; }
   .site-main .check input { flex: none; width: 20px; height: 20px; accent-color: ${v('--palette-accent', 'auto')}; }
   .site-main .actions { margin: 24px 0 0; }
-  .site-main .btn { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; background: ${v('--buttons-primary-background', 'currentColor')}; color: ${v('--buttons-primary-color', '#fff')}; border: ${v('--buttons-primary-border', '0')}; border-radius: ${v('--buttons-primary-border-radius', '4px')}; padding: ${v('--buttons-primary-padding', '8px 16px')}; font-family: inherit; font-size: ${v('--buttons-primary-font-size', 'inherit')}; font-weight: ${v('--buttons-primary-font-weight', '700')}; text-decoration: none; cursor: pointer; }
+  .site-main .btn { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; background: ${v('--buttons-primary-background', 'currentColor')}; color: ${v('--buttons-primary-color', '#fff')}; border: ${v('--buttons-primary-border', '0')}; border-radius: ${v('--buttons-primary-border-radius', '4px')}; padding: ${v('--buttons-primary-padding', '8px 16px')}; font-family: inherit; font-size: ${v('--buttons-primary-font-size', 'inherit')}; font-weight: ${v('--buttons-primary-font-weight', '700')}; line-height: ${v('--buttons-primary-line-height', v('--type-body-line-height', 'inherit'))}; text-decoration: none; cursor: pointer; }
   .site-main .btn-secondary { background: ${v('--buttons-secondary-background', 'transparent')}; color: ${v('--buttons-secondary-color', 'inherit')}; border: ${v('--buttons-secondary-border', '1px solid currentColor')}; }
   .site-main .width-narrow .btn { width: 100%; }
 
@@ -335,9 +359,9 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
   .site-main .icon { display: inline-block; height: 1.6em; width: auto; vertical-align: middle; margin-right: 0.5em; }
   .site-main .logos { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 24px 40px; margin: 0 0 16px; }
   .site-main .logos img { height: 48px; width: auto; }
-  .site-main .layout-split .panel { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: center; }
+  .site-main .layout-split .panel { display: grid; grid-template-columns: var(--split-columns, 1fr 1fr); gap: ${v('--layout-column-gap', '40px')}; align-items: center; }
   .site-main .split-img { max-width: 100%; max-height: 520px; justify-self: end; }
-  .site-main .cards { display: grid; grid-template-columns: repeat(var(--cards-columns, 3), minmax(0, 1fr)); gap: 40px; margin: 16px 0; }
+  .site-main .cards { display: grid; grid-template-columns: repeat(var(--cards-columns, 3), minmax(0, 1fr)); gap: ${v('--layout-column-gap', '40px')}; margin: 16px 0; }
   .site-main .card { background: ${v('--palette-light-band-bg', 'transparent')}; border-radius: ${v('--radii-card', '0')}; box-shadow: ${v('--shadows-card', 'none')}; padding: 40px; }
   .site-main .card > :last-child { margin-bottom: 0; }
   .site-main .tone-dark .panel, .site-main .tone-light .panel, .site-main .tone-accent .panel { border-radius: ${v('--radii-card', '0')}; padding: 50px 60px; }
@@ -365,6 +389,7 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
   @media (max-width: 640px) {
     .site-main section { padding-top: 24px; padding-bottom: 24px; }
     .site-main .layout-media-band .panel { padding: 24px; }
+    .site-main .inset > .container { padding: 0 20px; }
     .site-main .tone-dark .panel, .site-main .tone-light .panel, .site-main .tone-accent .panel { padding: 32px 20px; }
     .site-footer ul { columns: 1; }
   }`;

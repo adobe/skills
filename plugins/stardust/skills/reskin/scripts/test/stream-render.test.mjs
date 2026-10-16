@@ -90,6 +90,34 @@ check('unknown stream node kind throws; a page missing from mapping throws', () 
   assert.throws(() => render({ ...base, model: m2 }), /unhandled stream node kind "video"/);
   assert.throws(() => render({ ...base, slug: 'nope' }), /mapping\.json has no pages\.nope/);
 });
+check('the style opens with the token-contract :root block (M2b D10); heading and inset slot options', () => {
+  const r = render({ slug: 'login', model, tokens, mapping, now: 'T' });
+  const css = r.html.slice(r.html.indexOf('<style>') + 8);
+  assert.ok(css.startsWith(':root {\n'), 'root-tokens block first');
+  assert.ok(css.indexOf('/* absent in donor-tokens.json') < css.indexOf(':root {', 5), 'contract block before the flattened variables');
+  const t2 = { ...tokens, type: { ...tokens.type, h3: { fontSize: '36px', lineHeight: '40px' } } };
+  const m2 = { pages: { login: { template: 'login', slots: { s01: { module: 'M2', heading: 'h3', inset: '80px' } } } } };
+  const h = render({ slug: 'login', model, tokens: t2, mapping: m2, now: 'T' });
+  assert.match(h.html, /<section class="[^"]*heading-h3[^"]*\binset\b[^"]*" style="--band-inset: 80px"/);
+  assert.match(h.html, /\.site-main \.heading-h3 \.heading \{ font-size: var\(--type-h3-font-size\)/);
+  const bad = render({ slug: 'login', model, tokens, mapping: { pages: { login: { slots: { s01: { heading: 'h9', inset: '80;}' } } } } }, now: 'T' });
+  assert.doesNotMatch(bad.html.match(/<section[^>]*>/)[0], /--band-inset|heading-h9|\binset\b/);
+  assert.equal(bad.warnings.filter((w) => /unknown heading|not a length/.test(w)).length, 2);
+});
+check('split columns, content-box container, shared column gap, card titles and the label follow the h2 role', () => {
+  const t2 = structuredClone(tokens); t2.type.h3 = { fontSize: '30px' }; t2.radii = { label: '7px' };
+  const m2 = { pages: { login: { template: 'login', slots: { s01: { module: 'M1', layout: 'split', split: '531px 1fr', heading: 'display' } } } } };
+  const h = render({ slug: 'login', model, tokens: t2, mapping: m2, now: 'T' });
+  assert.match(h.html, /<section class="[^"]*heading-display[^"]*" style="--split-columns: 531px 1fr"/);
+  assert.match(h.html, /\.layout-split \.panel \{ display: grid; grid-template-columns: var\(--split-columns, 1fr 1fr\);/);
+  assert.match(h.html, /\.container \{ box-sizing: content-box;/);
+  assert.match(h.html, /\.layout-grid-2 \.flow \{[^}]*column-gap: 40px; \}/);
+  assert.match(h.html, /\.site-main \.card \.heading \{ font-size: var\(--type-h3-font-size\)/);
+  assert.match(h.html, /\.band:not\(\[class\*="heading-"\]\) \.flow > h2\.heading:first-child, \.site-main \.heading-h2 \.flow > \.heading:first-child \{/);
+  const bad = render({ slug: 'login', model, tokens, mapping: { pages: { login: { slots: { s01: { split: '1fr; color:red' } } } } }, now: 'T' });
+  assert.doesNotMatch(bad.html.match(/<section[^>]*>/)[0], /--split-columns/);
+  assert.equal(bad.warnings.filter((w) => /not two column tracks/.test(w)).length, 1);
+});
 check('findRepeat: intro, repeating items and tail; a shifted run loses the coverage tie; null when nothing repeats', () => {
   const h = (level, text = 'x') => ({ kind: 'heading', level, text });
   const p = { kind: 'paragraph', text: 'p' }; const im = { kind: 'image', src: 'i' }; const a = { kind: 'cta', text: 'c', href: '#' };

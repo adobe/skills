@@ -241,7 +241,7 @@ async function joinStep({ dir, opts, log, UsageError }) {
   if (!opts.url) throw new UsageError('join needs --url <url|file>: the page to join');
   const [{ readInputs, workDir }, { runJoin }, { localTarget }] = await Promise.all([helper('io'), helper('join'), helper('target')]);
   const inputs = readInputs(dir, opts.page, ['mapping', 'contentModel', 'rules']);
-  const result = await runJoin({ target: localTarget(opts.url), inputs, out: workDir(dir, opts.page) });
+  const result = await runJoin({ target: localTarget(opts.url), inputs, out: workDir(dir, opts.page), page: opts.page });
   logJoin(result, log);
   return result.pass ? 0 : 1;
 }
@@ -329,7 +329,7 @@ async function registerStep({ dir, opts, log, UsageError }) {
       geometry: read('geometry.json'),
       ramp: read('ramp.json'),
       pixel: read('pixel.json'),
-      mapping: (await helper('mapping')).parseMapping(mappingMd),
+      mapping: (await helper('mapping')).parseMapping(mappingMd, opts.page),
       boxes,
       flags: ledger?.pages?.[opts.page]?.flags || [],
       link,

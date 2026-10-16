@@ -9,6 +9,21 @@ git history only (plus the branch-scoped notes in
 Two full runs, a Figma donor reskinning each of two content sites (forms-only and multi-page marketing), surfaced the
 gaps below. Every fix is generic; per-site choices stay in config.
 
+- **Renders gated by figma-gate (0.34.0).** All three runs (two Figma donors, one URL donor) re-gated on M2b's checks:
+  join, geometry and ramp pass on every Figma-donor page, with one accepted `figma.ramp` residual (a hero intro style
+  the donor tokens have no role for). What it took, generic throughout:
+  - `stream-render` opens its style with the `render/root-tokens` contract `:root` block that the ramp asserts.
+    `.container` is content-box: `--max-width` is the content width and the padding sits outside it, as in a Figma
+    container. Grid-2, split and cards share `layout.columnGap` (default 40px). Card titles take the h3 role whatever
+    their tag. The accent label follows the h2 role, not the h2 tag.
+  - New `mapping.json` slot options: `heading` (display | h2 | h3 | h4), `inset` (a frame padded from the viewport
+    edge) and `split` (two column tracks). Invalid values warn and are ignored. See `reference/mapping-brief.md`
+    § Frame fit.
+  - `figma-gate` reads one page's rows from a multi-page `mapping.md` (a `Page` column with `--page <slug>`).
+    Composition variants (`M1b`) join through `curation-rules.json` `modules[]` with `variantOf` (§ Composition
+    variants); canon's mixed-composition finding points there.
+  - `donor-probe` spec entries take `exclude`: the container check skips `.inset` bands and SKIPs when every band is
+    inset, since figma-gate geometry measures them instead.
 - **Renderer layouts.** `stream-render` renders card grids, split media, tone bands, logo rows, label pills, a footer
   tone and true heading levels, and emits `img.icon` inside links. Ctas render as `.btn` when capture flags them
   `inButton` (text inside a `<button>`) or `buttonLike` (a link painted as a button with utility CSS: background or
