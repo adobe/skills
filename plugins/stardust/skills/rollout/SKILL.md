@@ -518,9 +518,9 @@ the change on `finding.autofix`, and stages the finding `in-progress`:
 - **manual** (prepares guidance/payload) — `eds-jsonld` (use `marketing:schema`),
   `eds-canonical`, `eds-landmark-main`.
 
-Use `--dry-run` first. An encoded page (`source.encodedHtml`) is never fixed in `content/` — the next stage refuses
-that as a hand edit: its fix goes into `stardust/patches/<slug>.json` or the map, then re-encode and re-stage. After
-applying, **re-deploy** the edited pages, then re-run
+Use `--dry-run` first. On an encoded page (`source.encodedHtml`) the fix goes into `stardust/patches/<slug>.json`
+or the map, re-encoded and re-staged — never into `content/` (the next stage refuses a hand edit). After applying,
+**re-deploy** the edited pages, then re-run
 **verify** + **optimize** — staged findings flip to `fixed`. `design-pass` findings
 are surfaced, not auto-fixed.
 

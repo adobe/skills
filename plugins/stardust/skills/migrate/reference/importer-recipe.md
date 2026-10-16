@@ -85,11 +85,10 @@ node skills/migrate/scripts/encode.mjs --lint|--sweep|--roundtrip --template <ar
 ```
 
 - **Opt-in per template, gated at plan time.** Siblings encode only once the archetype is gated (unit `C-archetype`
-  done, gate row passing) and the map round-trips: the encoder refuses every sibling (exit 2, nothing of theirs
-  written) unless the archetype encodes clean and equals its gated document at `text` — `--roundtrip` lists the
-  differences. `--lint` and `--sweep` are authoring checks: their findings are fixed or recorded before the siblings
-  encode. A template with no map, or one that does not round-trip, stays on the A′ clone path
-  (`skills/migrate/reference/template-and-module-rendering.md` § Path A′).
+  done, gate row passing) and round-trips: unless it encodes clean and equals its gated document at `text`
+  (`--roundtrip` lists the differences), the encoder refuses every sibling (exit 2, none written). `--lint`/`--sweep`
+  findings are fixed or recorded first. A template with no map, or one that does not round-trip, stays on the A′
+  clone path (`skills/migrate/reference/template-and-module-rendering.md` § Path A′).
 - **Inputs.** The map, the roster (`stardust/rollout/coverage/templates.json`), each page's committed capture + page
   JSON and patches, and the site inputs: `stardust/deploy/media-ledger.json`, `stardust/deploy/asset-ledger.json`,
   `stardust/rollout/chrome-map.json`, `stardust/redirects.tsv`. Never the row-2 clone, never a sibling's `content/`
