@@ -4,6 +4,31 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.34.4 — roster gates sized to their deadline; an older gate table never reverts a newer verdict
+
+A recorded 100-page hands-off run lost about 58 minutes to discarded roster gates (run-bg's 900 s default deadline
+killed a 99-page roster at 1440 that needed 2152 s) and reverted 8 passing pages by ingesting an older gate table.
+
+- **`update-coverage.mjs --gate`: the newest row per page and width wins.** `delivery.gate` records `at` as when
+  the row was measured (a whole-row reuse's `reused` time, else the table's `_provenance.writtenAt`), not the
+  ingest time; `width` is the table's breakpoint, `atByWidth` the newest applied row time per width. An older row
+  of either width is skipped and counted (`N older row(s) skipped`); a gate recorded before 0.34.4 never blocks a row.
+- **gate-all names the cause of an empty selection** instead of `no deployed pages selected`: the state file it
+  read, its page count, how many are `deployed` with a `liveUrl` (published) or have a `prototypePath` (prototype),
+  an `--only` that matched none, and the hint to pass `--state` from the project root or deploy first; exit 1 kept.
+- **A roster gate starts only when its deadline can hold it.** gate-all prints its estimate (25 s × pages × widths)
+  on each run's first status line (stdout, `_run.log`). run-bg exports the job's deadline as `RUN_BG_DEADLINE_SEC`;
+  below it gate-all refuses to start (exit 2, no verdict, nothing written), naming `--timeout <estimate>`.
+  `run-bg.mjs start` without `--timeout` gives a gate-all job max(900 s, the estimate summed over its gate-all
+  invocations), logged; an explicit `--timeout` and every other job are unchanged; both `--help` texts say so.
+- **The cluster verdict line records `first pass 360: x/y`**: x of the cluster's y siblings (archetype out) passed
+  on their first row at 360. `gate-triage.mjs --unit <cluster>` prints `first pass <w>: x/y` (stdout only); handoff
+  contract § 3 row C, the `progress.json` verdict and the replica skill's C-deliver sentence carry it.
+- **The scripts-index lint cap is 13 KiB** (was 12): the index is 12,600 bytes and keeps its rows at full text.
+
+Patch: no verdict, threshold, criterion, gate-row or capture change; the refusal fires only when a job's deadline
+could not hold the roster; `delivery.gate` only gains fields; the verdict gains one advisory count, no unit step.
+
 ## 0.34.3 — gate-triage: failing gate rows grouped by shared cause before the next pixel round
 
 A failing all-pages table usually holds a few causes repeated across many pages. One advisory script names them
