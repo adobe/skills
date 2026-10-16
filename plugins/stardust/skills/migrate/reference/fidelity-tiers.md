@@ -109,8 +109,9 @@ siblings instead of cloning them (`importer-recipe.md` § Encoder contract).
 - **Content count — the subject is the encoded document**, counted by the
   encoder offline against the capture's content root minus the map's
   chrome and declared drops: 0 MISSING in every role, never a ratio, else
-  the page stops `incomplete`; that count is the sibling's `content-count`
-  gate. A `drop:` marker, listed in the page's audit, stands where a
+  the page stops `incomplete` (when that count is the `content-count`
+  gate: `../../replica/reference/handoff-contract.md` § 1 row 4). A
+  `drop:` marker, listed in the page's audit, stands where a
   `contentDeviations[]` entry stands on a clone.
 - **Local launches — the skip rule.** An encoded sibling skips all three
   (`section-schema`, the whole-page `block-roundtrip --ew`, `qa-gate`) only
