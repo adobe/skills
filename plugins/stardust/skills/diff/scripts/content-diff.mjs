@@ -52,6 +52,18 @@
  *   - EXTRA ICON     a build icon with no source icon at that anchor and no
  *     unpaired source icon of the same identity (🟡)
  *
+ * Image PLACEHOLDERS are not icons. An icon-sized <img> that is not shown (no box,
+ * visibility:hidden, clipped away, opacity 0, aria-hidden), carries a placeholder
+ * signal (data: URI, intrinsic ≤ 64×64, aria-hidden, a loaded sibling image with
+ * the same alt or file stem) and whose full image is present (that sibling rendered
+ * > 64 px wide, or data-src / data-srcset / data-lazy* / data-original* / another
+ * srcset or <picture> candidate on the element) is listed as a placeholder with its
+ * reasons and never paired. A recorded hands-off run read 2 × MISSING ICON 🔴 on
+ * low-quality placeholders (~20×11, data-src → the full rendition) inside link cards
+ * of display:none tab panels — invisible on both sides; the build's hidden panels
+ * carried the full image. A hidden small image with no full image (an icon in a
+ * collapsed menu) stays an icon.
+ *
  * Severity, attribute + icon layer (🔴 fails a gate round like a missing CTA;
  * 🟡 is a confirm). "Interactive" = an input, a button, a link (a[href], summary,
  * role=button|link|tab|menuitem) or an element inside one.
@@ -137,12 +149,13 @@
  *
  * Output: `Content diff @ <w>px (profile "<p>", roots: main, header, footer)`, then per
  * root a `root "<name>"` line (absent / fell-back notes) with the side summaries, the
- * editable count and the attribute + icon counts; then `Findings: none — content +
+ * editable count and the attribute + icon counts (`; placeholder images: <source> n / <build> m`
+ * appended when either side has one); then `Findings: none — content +
  * roles match` | `Findings: N (S structural 🔴)` and one `  <sev> <KIND> [<root>]: <msg>`
  * line per finding (gate.sh and gate-evidence read the Findings line only); with
  * --json, `Inventories JSON:` followed by { primaryRoot, [source]: inv, [build]: inv
  * (the first root), roots: { <other root>: { [source]: inv, [build]: inv } },
- * findings: [{ sev, kind, root, msg }] }.
+ * findings: [{ sev, kind, root, msg }] } — each inv's attrs carries placeholders: [{ value, size, anchor, why }].
  *
  * attributeInventory (in-page) and diffAttributes, parseRoots, diffRoot, formatFinding, liveCacheKey
  * (pure) are exported; playwright is imported lazily in main, so the contract test runs
@@ -202,7 +215,8 @@ findings:   text/role layer — MISSING CTA|HEADING|EYEBROW|BODY, ROLE SWAP, EXT
 
 // ---- attribute + icon layer ----------------------------------------------------------------------
 // Runs IN the page (Playwright-serialized, ONE arg): page.evaluate(attributeInventory, [rootSel]).
-// Returns { attrs: [{ tag, attr, value, interactive }], icons: [{ kind, value, family?, size, interactive, anchor }] }.
+// Returns { attrs: [{ tag, attr, value, interactive }], icons: [{ kind, value, family?, size, interactive, anchor }],
+//           placeholders: [{ value, size, anchor, why }] }.
 //   attrs  every non-empty placeholder / aria-label / title under the root (whitespace-collapsed)
 //   icons  kind 'img'   an <img> rendered at most 64×64 (a hidden one by its natural / attribute size) — value = file name
 //          kind 'svg'   an inline <svg> — value = its <use> fragment, aria-label, <title>, else viewBox + shape count
@@ -215,6 +229,13 @@ findings:   text/role layer — MISSING CTA|HEADING|EYEBROW|BODY, ROLE SWAP, EXT
 //          element is, or sits inside, an input / button / link (a[href], summary, role=button|link|tab|menuitem).
 //   block  the nearest block-ish ancestor (section, article, nav, aside, form, header, footer, .block, .section,
 //          [data-block-name]) keyed by its first heading's text, '' when none — the scope the ICON MOVED pass pairs within first.
+//   placeholders  an icon-sized <img> that is NOT SHOWN (no box — display:none on it or an ancestor —, visibility:hidden,
+//          clipped away, opacity 0 or aria-hidden) AND has a placeholder signal (a data: URI, an intrinsic size ≤ 64×64,
+//          aria-hidden, or a loaded sibling image — same parent, picture, figure or link — with the same alt or file stem)
+//          AND whose full image is present (that sibling rendered with a natural width > 64, or a full source declared on
+//          the element: data-src, data-srcset, data-lazy*, data-original*, a srcset / <picture><source> candidate other
+//          than the current one). Reported (why = the signals), never diffed. A hidden small image with no full image (an
+//          icon in a collapsed menu) stays an icon.
 /* eslint-disable no-undef */
 export function attributeInventory(args) {
   const [rootSel] = args;
@@ -235,13 +256,15 @@ export function attributeInventory(args) {
     const h = b.querySelector('h1, h2, h3, h4, h5, h6');
     return h ? norm(h.textContent).slice(0, 60) : '';
   };
-  const anchorOf = (el) => {
+  // peek: name an unlabeled host without numbering it (a placeholder must not shift the icons' button#n ordinals)
+  const anchorOf = (el, peek = false) => {
     const host = el.matches(INTERACTIVE) ? el : el.closest(INTERACTIVE);
     if (host && root.contains(host)) {
       const label = norm(host.getAttribute('aria-label') || host.getAttribute('title') || host.textContent);
       if (label) return label.slice(0, 60);
       const href = host.getAttribute('href');
       if (href) { try { return new URL(href, location.href).pathname.toLowerCase() || '/'; } catch { return href.toLowerCase(); } }
+      if (peek && !hostIds.has(host)) return host.tagName.toLowerCase();
       if (!hostIds.has(host)) hostIds.set(host, hostIds.size + 1);
       return `${host.tagName.toLowerCase()}#${hostIds.get(host)}`;
     }
@@ -249,7 +272,62 @@ export function attributeInventory(args) {
     while (p && p !== root && !clean(p.textContent)) p = p.parentElement;
     return p ? norm(p.textContent).slice(0, 60) : '';
   };
-  const attrs = []; const icons = [];
+  // An icon-sized <img> is a PLACEHOLDER when it is not shown AND carries a placeholder signal AND its full image is
+  // present → the reasons (short), else ''. A low-quality placeholder in a hidden tab panel has no box, so it measures
+  // at its natural ~20×11 — read as an icon, the source alone held it: a MISSING ICON 🔴 nobody can see.
+  const abs = (u) => { try { return new URL(u, location.href).href; } catch { return u; } };
+  const stemOf = (src) => (/^data:/i.test(src || '') ? '' : fileOf(src).replace(/\.[a-z0-9]+$/i, '').toLowerCase());
+  const candidates = (v) => String(v || '').trim().split(/,\s+/).map((c) => c.trim().split(/\s+/)[0]).filter((c) => /^data:/i.test(c) || /[./]/.test(c));
+  const clippedAway = (el, r) => {
+    for (let a = el; a && a !== document.documentElement; a = a.parentElement) {
+      const s = getComputedStyle(a);
+      if (/^rect\(0px,? 0px,? 0px,? 0px\)$/.test(s.clip) || /^inset\((?:50|100)%\)$/.test(s.clipPath)) return true;
+      const cx = /hidden|clip/.test(s.overflowX); const cy = /hidden|clip/.test(s.overflowY);
+      if (a !== el && (cx || cy)) {
+        const c = a.getBoundingClientRect();
+        if ((cx && Math.min(r.right, c.right) - Math.max(r.left, c.left) <= 0) || (cy && Math.min(r.bottom, c.bottom) - Math.max(r.top, c.top) <= 0)) return true;
+      }
+    }
+    return false;
+  };
+  const placeholderWhy = (el, r) => {
+    const hidden = [];
+    const boxed = el.getClientRects().length > 0 && r.width > 0 && r.height > 0;
+    if (!boxed) hidden.push('no box');
+    if (/^(?:hidden|collapse)$/.test(getComputedStyle(el).visibility)) hidden.push('visibility:hidden');
+    for (let a = el; a && a.nodeType === 1; a = a.parentElement) if (parseFloat(getComputedStyle(a).opacity) === 0) { hidden.push('opacity 0'); break; }
+    if (boxed && clippedAway(el, r)) hidden.push('clipped');
+    if (el.getAttribute('aria-hidden') === 'true') hidden.push('aria-hidden');
+    if (!hidden.length) return '';
+    const src = el.currentSrc || el.src || el.getAttribute('src') || '';
+    const signals = [];
+    if (/^data:/i.test(el.getAttribute('src') || src)) signals.push('data: URI');
+    const nat = el.naturalWidth > 0 && el.naturalHeight > 0;
+    const iw = nat ? el.naturalWidth : Number(el.getAttribute('width')) || 0; const ih = nat ? el.naturalHeight : Number(el.getAttribute('height')) || 0;
+    if (iw > 0 && ih > 0 && iw <= 64 && ih <= 64) signals.push(`intrinsic ${iw}×${ih}`);
+    if (el.getAttribute('aria-hidden') === 'true') signals.push('aria-hidden');
+    // a loaded sibling image (same parent, or the same picture / figure / link) with the same alt or file stem
+    const alt = clean(el.getAttribute('alt')); const stem = stemOf(src);
+    const pool = new Set();
+    [el.parentElement, el.closest('picture, figure, a[href]')].forEach((c) => { if (c) c.querySelectorAll('img').forEach((im) => { if (im !== el) pool.add(im); }); });
+    const sibs = [...pool].filter((im) => im.complete && im.naturalWidth > 0).map((im) => ({ im, alt: Boolean(alt) && clean(im.getAttribute('alt')) === alt, file: Boolean(stem) && stemOf(im.currentSrc || im.src) === stem })).filter((m) => m.alt || m.file);
+    if (sibs.some((m) => m.alt)) signals.push('same alt');
+    if (sibs.some((m) => m.file)) signals.push('same file');
+    if (!signals.length) return '';
+    // the full image: that loaded sibling rendered at full size, or a full source declared on the element itself
+    const full = [];
+    const big = sibs.find((m) => m.im.getClientRects().length > 0 && m.im.getBoundingClientRect().width > 0 && m.im.naturalWidth > 64);
+    if (big) full.push(`loaded ${fileOf(big.im.currentSrc || big.im.src)}`);
+    const cur = abs(src);
+    const other = (v) => candidates(v).some((c) => abs(c) !== cur);
+    for (const a of el.attributes) if (/^data-(?:src|srcset|lazy[\w-]*|original[\w-]*)$/i.test(a.name) && other(a.value)) full.push(a.name);
+    if (other(el.getAttribute('srcset'))) full.push('srcset');
+    const pic = el.parentElement && el.parentElement.tagName === 'PICTURE' ? el.parentElement : null;
+    if (pic && [...pic.querySelectorAll('source')].some((s) => other(s.getAttribute('srcset')) || other(s.getAttribute('data-srcset')))) full.push('picture source');
+    if (!full.length) return '';
+    return `${[...new Set([...hidden, ...signals])].join(', ')}; full: ${full.join(', ')}`;
+  };
+  const attrs = []; const icons = []; const placeholders = [];
   root.querySelectorAll('*').forEach((el) => {
     const tag = el.tagName.toLowerCase();
     if (['script', 'style', 'template', 'noscript'].includes(tag) || el.closest('script, style, template, noscript')) return;
@@ -263,7 +341,11 @@ export function attributeInventory(args) {
       const r = el.getBoundingClientRect();
       const w = r.width || el.naturalWidth || Number(el.getAttribute('width')) || 0;
       const h = r.height || el.naturalHeight || Number(el.getAttribute('height')) || 0;
-      if (w > 0 && h > 0 && w <= 64 && h <= 64) icons.push({ kind: 'img', value: fileOf(el.currentSrc || el.src), size: `${Math.round(w)}×${Math.round(h)}`, interactive, anchor: anchorOf(el), block: blockOf(el) });
+      if (w > 0 && h > 0 && w <= 64 && h <= 64) {
+        const why = placeholderWhy(el, r);
+        if (why) placeholders.push({ value: fileOf(el.currentSrc || el.src), size: `${Math.round(w)}×${Math.round(h)}`, anchor: anchorOf(el, true), why });
+        else icons.push({ kind: 'img', value: fileOf(el.currentSrc || el.src), size: `${Math.round(w)}×${Math.round(h)}`, interactive, anchor: anchorOf(el), block: blockOf(el) });
+      }
       return;
     }
     if (tag === 'svg') {
@@ -292,7 +374,7 @@ export function attributeInventory(args) {
     if (mask || bg) { icons.push({ kind: 'css', value: mask ? `mask:${mask}` : `bg:${bg}`, size: size(el), interactive, anchor: anchorOf(el), block: blockOf(el) }); return; }
     icons.push({ kind: 'glyph', value: '', family: '', size: size(el), interactive, anchor: anchorOf(el), block: blockOf(el) }); // the empty icon box
   });
-  return { attrs, icons };
+  return { attrs, icons, placeholders };
 }
 /* eslint-enable no-undef */
 
@@ -420,7 +502,8 @@ export function diffRoot(root, srcInv, tgtInv, prof) {
   lines.push(`  editable texts (outermost h*/p/ul/ol): ${S} ${srcEd} / ${T} ${tgtEd}`);
   if (tgtEd < srcEd) flags.push({ sev: '🟡', kind: 'EDITABLE COUNT', msg: `${T} has ${tgtEd} outermost editable element(s) vs ${srcEd} in the ${S} — fewer outermost editable elements after decoration usually means authored elements were rebuilt/merged — see deploy SKILL.md § Experience Workspace editability contract (run ew-editability-probe.mjs on the build URL for the per-block verdict).` });
   const sA = s.attrs || { attrs: [], icons: [] }; const tA = t.attrs || { attrs: [], icons: [] };
-  lines.push(`  attributes (placeholder/aria-label/title): ${S} ${sA.attrs.length} / ${T} ${tA.attrs.length}; icons: ${S} ${sA.icons.length} / ${T} ${tA.icons.length}`);
+  const sP = (sA.placeholders || []).length; const tP = (tA.placeholders || []).length;
+  lines.push(`  attributes (placeholder/aria-label/title): ${S} ${sA.attrs.length} / ${T} ${tA.attrs.length}; icons: ${S} ${sA.icons.length} / ${T} ${tA.icons.length}${sP || tP ? `; placeholder images: ${S} ${sP} / ${T} ${tP}` : ''}`);
   flags.push(...diffAttributes(sA, tA, prof));
   return { flags: flags.map((f) => ({ ...f, root: root.name })), lines };
 }

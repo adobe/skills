@@ -8,7 +8,9 @@
 // placeholder, a flag image inside a locale link and an icon-font glyph inside a social link, against a build that
 // dropped the placeholder, swapped the flag and left the social box empty (the three defects a recorded hands-off
 // run shipped on every page while this probe read 0 🔴), and --live-cache (write, reuse with no source request,
-// same-run vs max-age freshness, key mismatch, a blank source never cached). The end-to-end part runs where playwright is importable
+// same-run vs max-age freshness, key mismatch, a blank source never cached); image placeholders (F7): a 20×11
+// placeholder in a hidden tab panel's link card with data-src, an opacity-0 data-URI one beside its loaded full image —
+// listed, never MISSING / EXTRA ICON — against a hidden 16×16 icon with no full image (still 🔴 MISSING ICON). The end-to-end part runs where playwright is importable
 // and prints a skip line otherwise. Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
@@ -17,6 +19,7 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { deflateSync } from 'node:zlib';
 import { ATTRIBUTE_HINTS, attributeInventory, diffAttributes, diffRoot, formatFinding, glyphLabel, liveCacheKey, parseRoots } from '../content-diff.mjs';
 import { resolveProfile } from '../diff-profiles.mjs';
 
@@ -197,6 +200,12 @@ await check('diffRoot: a root absent on both sides is one line and no findings; 
   assert.deepEqual(diffRoot(ftr, undefined, null, prof).flags, []);
   assert.equal(diffRoot(ftr, undefined, null, prof).lines.length, 1);
 });
+await check('diffRoot: image placeholders are counted on the attributes line (only when a side has one) and never diffed — no MISSING / EXTRA / ICON finding', () => {
+  const ph = { value: 'lqip-card-20x11.png', size: '20×11', anchor: 'card one', why: 'no box, intrinsic 20×11; full: data-src' };
+  const { flags, lines } = diffRoot(hdr, inv({ attrs: { attrs: [], icons: [], placeholders: [ph] } }), inv(), prof);
+  assert.deepEqual(flags, []);
+  assert.equal(lines[4], '  attributes (placeholder/aria-label/title): source 0 / build 0; icons: source 0 / build 0; placeholder images: source 1 / build 0');
+});
 
 // ---- pure: the live-side cache key ----------------------------------------------------------------
 await check('liveCacheKey: source URL, width, profile, roots, UA, locale, wait state, dismiss set and tier — a --main, width or dismiss change changes it', () => {
@@ -234,6 +243,23 @@ if (playwrightOk) {
     .fa-facebook::before{content:"\\f09a"} .icon{display:inline-block;width:16px;height:16px} img.flag{width:24px;height:16px}
     </style></head><body><main>${body}</main></body></html>`;
   const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="16"><rect width="24" height="16" fill="#888"/></svg>';
+  // a solid grey 8-bit RGB PNG of w×h, encoded here (no image library needed)
+  const crcTable = Array.from({ length: 256 }, (_, n) => { let c = n; for (let k = 0; k < 8; k += 1) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });
+  const crc32 = (buf) => { let c = 0xffffffff; for (const b of buf) c = crcTable[(c ^ b) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
+  const chunk = (type, data) => { const td = Buffer.concat([Buffer.from(type), data]); const len = Buffer.alloc(4); len.writeUInt32BE(data.length); const crc = Buffer.alloc(4); crc.writeUInt32BE(crc32(td)); return Buffer.concat([len, td, crc]); };
+  const png = (w, h) => {
+    const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4); ihdr[8] = 8; ihdr[9] = 2;
+    const raw = Buffer.alloc((w * 3 + 1) * h, 0x88); for (let y = 0; y < h; y += 1) raw[y * (w * 3 + 1)] = 0;
+    return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', ihdr), chunk('IDAT', deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]);
+  };
+  const lqipUri = `data:image/png;base64,${png(20, 11).toString('base64')}`;
+  // F7: a link card in a display:none tab panel keeps a 20×11 low-quality placeholder (data-src → the full file) on the
+  // source, the full image on the build; a hidden 16×16 icon in a collapsed menu with no full image (source only); an
+  // opacity-0 aria-hidden data-URI placeholder beside its loaded full image, same alt (build only).
+  const cards = (panelImg, menuIcon, figureExtra) => page('<h1>Cards</h1><p>Intro copy here.</p><h2>Tabs</h2>'
+    + `<div role="tabpanel" style="display:none"><a href="/cards/one" class="card">${panelImg}<span>Card one</span></a></div>`
+    + `<div class="menu" style="display:none"><button type="button">${menuIcon} Menu</button></div>`
+    + `<figure style="position:relative"><img src="/card-full.png" alt="Card two" width="120" height="80">${figureExtra}</figure>`);
   const pages = {
     // (a second section on both sides: a primary root with < 3 items is a blank render, which --live-cache never caches)
     '/source.html': page('<h1>Welcome</h1><form><input type="search" placeholder="Suche…" aria-label="Suche"></form><p>Body copy here.</p><h2>More</h2><p>A second paragraph.</p>'
@@ -244,13 +270,16 @@ if (playwrightOk) {
       + '<ul class="social"><li><a href="https://social.example/x" aria-label="Facebook"><span class="icon"></span></a></li></ul>'),
     '/flag-de.svg': svg, '/flag-en.svg': svg,
     '/blank.html': page('<p></p>'),
+    '/cards-source.html': cards('<img src="/lqip-card-20x11.png" data-src="/card-full.png" alt="Card one">', '<img src="/icon-16.png" alt="">', ''),
+    '/cards-build.html': cards('<img src="/card-full.png" alt="Card one">', '', `<img src="${lqipUri}" alt="Card two" aria-hidden="true" style="position:absolute;left:0;top:0;width:20px;height:11px;opacity:0">`),
+    '/lqip-card-20x11.png': png(20, 11), '/card-full.png': png(120, 80), '/icon-16.png': png(16, 16),
   };
   const hits = {};
   const server = createServer((req, res) => {
     const path = req.url.split('?')[0]; const body = pages[path];
     hits[path] = (hits[path] || 0) + 1;
     if (!body) { res.writeHead(404); res.end('nope'); return; }
-    res.writeHead(200, { 'content-type': path.endsWith('.svg') ? 'image/svg+xml' : 'text/html; charset=utf-8' }); res.end(body);
+    res.writeHead(200, { 'content-type': path.endsWith('.svg') ? 'image/svg+xml' : path.endsWith('.png') ? 'image/png' : 'text/html; charset=utf-8' }); res.end(body);
   });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   const base = `http://127.0.0.1:${server.address().port}`;
@@ -337,6 +366,33 @@ if (playwrightOk) {
     assert.equal(existsSync(blankCache), false);
     r = await run(args, maxAge);
     assert.equal(r.status, 0, r.stderr); assert.equal(hits['/blank.html'], src + 2);
+  });
+  // F7 — one run, three cases: (a) the hidden-panel placeholder, (b) the hidden icon control, (c) the loaded-sibling placeholder
+  let cardsRun = null;
+  const cardsOut = async () => { if (!cardsRun) cardsRun = await run([`${base}/cards-source.html`, `${base}/cards-build.html`, '--profile', 'generic', '--json']); return cardsRun; };
+  const textPart = (s) => s.slice(0, s.indexOf('Inventories JSON:'));
+  await check('e2e F7 (a): a 20×11 placeholder (data-src → the full file) in a link card of a display:none tab panel is a source placeholder, not a 🔴 MISSING ICON; the attributes line counts it', async () => {
+    const r = await cardsOut();
+    assert.equal(r.status, 0, r.stderr);
+    assert.doesNotMatch(textPart(r.stdout), /lqip-card-20x11/, r.stdout);
+    assert.match(r.stdout, /^  attributes \(placeholder\/aria-label\/title\): source 0 \/ build 0; icons: source 1 \/ build 0; placeholder images: source 1 \/ build 1$/m, r.stdout);
+    const j = jsonOf(r.stdout);
+    assert.deepEqual(j.source.attrs.placeholders, [{ value: 'lqip-card-20x11.png', size: '20×11', anchor: 'card one', why: 'no box, intrinsic 20×11; full: data-src' }]);
+    assert.ok(!j.source.attrs.icons.some((i) => i.value === 'lqip-card-20x11.png'), JSON.stringify(j.source.attrs.icons));
+  });
+  await check('e2e F7 (b): a hidden 16×16 icon inside a button with no full image (no lazy source, no sibling) stays an icon — 🔴 MISSING ICON when the build lacks it', async () => {
+    const r = await cardsOut();
+    assert.match(r.stdout, /^Findings: 1 \(1 structural 🔴\)$/m, r.stdout);
+    assert.match(r.stdout, /^  🔴 MISSING ICON \[main\]: source image icon-16\.png \(16×16\) at "menu" has no build icon there\. /m, r.stdout);
+    assert.deepEqual(jsonOf(r.stdout).source.attrs.icons.map((i) => `${i.kind} ${i.value} ${i.size} @${i.anchor} ${i.interactive}`), ['img icon-16.png 16×16 @menu true']);
+  });
+  await check('e2e F7 (c): an opacity-0 aria-hidden data-URI placeholder beside its loaded full image (same alt), build only, is a build placeholder — no EXTRA ICON', async () => {
+    const r = await cardsOut();
+    assert.doesNotMatch(textPart(r.stdout), /EXTRA ICON|data:image/, r.stdout);
+    const j = jsonOf(r.stdout);
+    assert.deepEqual(j.build.attrs.icons, []);
+    assert.deepEqual(j.build.attrs.placeholders.map((p) => `${p.value} ${p.size} | ${p.why}`), ['data:image/png… 20×11 | opacity 0, aria-hidden, data: URI, intrinsic 20×11, same alt; full: loaded card-full.png']);
+    assert.deepEqual(j.findings.map((f) => f.kind), ['MISSING ICON']);
   });
   rmSync(tmp, { recursive: true, force: true });
   server.close();
