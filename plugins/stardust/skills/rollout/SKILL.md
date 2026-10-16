@@ -234,6 +234,14 @@ icon while `/favicon.ico` answered 200. **Archetype first, per template (#126):*
 template's archetype is deployed and passes its full gate row on the preview URL
 (`gate-all.mjs --only`, cap 3 fix rounds) before any of its siblings is rendered
 or converted — the recorded unit `C-archetype` (handoff contract § 3, row C).
+**Cluster sub-units (#134):** in C-deliver a template cluster of more than 16
+siblings is delivered as recorded sub-units `cluster-<template>-1..n` — at most
+16 pages each, near-equal, cut in sibling order, run one after another — each
+with its own `stardust/rollout/progress.json` entry, checkpoint commit and
+boundary ask; fix rounds (cap 3) and the `gate-all.mjs --only` scope are per
+sub-unit. Target: no C-deliver unit runs longer than 90 minutes (handoff
+contract § 3, row C). A fan-out subagent honours the pause file
+`STARDUST_PAUSE_FILE` (handoff contract § Fan-out discipline).
 
 **Execution model: waves.** Deliver in waves of parallel **author-only** agents
 — each agent curls its source pages and writes files only, never deploys or
@@ -251,21 +259,17 @@ already-live pages, retry/backoff, append-only log, delivered-`.plain.html` chec
 The driver and every batch run in the background; its log and ledger are the
 progress file. Check them at most every 4 minutes and never with a fixed `sleep`
 of 5 minutes or more (the prompt-cache window) — the master skill's wait
-discipline; recorded batch waits of 9–10 minutes re-wrote a ~650k prefix each time.
-After a transient blip, re-run the same command — it re-drives only the FAILs.
-Then reconcile the ledger into coverage with `update-coverage.mjs`.
+discipline. After a transient blip, re-run the same command — it re-drives
+only the FAILs. Then reconcile the ledger into coverage with `update-coverage.mjs`.
 **Foundation first:** lint AND commit `styles.css`, header/footer CSS and the
 contract file BEFORE the first agent spawns; no token or custom-property rename
-after fan-out (a recorded rename under three running agents cost seven
-coordination messages). **Disjoint clusters spawn concurrently** — a wave waits
-only on a real dependency (a recorded second wave idled 14 min behind an
-unrelated first). **Every tool call stays under 4 minutes, the main agent's
-included** (the prompt cache holds 5; calls of 5.2 and 6.6 min re-wrote the whole
-context, and so did one 338 s foreground turn on the main agent that ran a pixel
-loop beside a deploy-batch start + wait): a long instrument (gate rounds, pixel
-loops, Playwright captures, deploy batches) goes through `run-bg.mjs start`, and
-`wait` is the NEXT tool call — it returns within its `--max` (100 s by default); never two long instruments
-as parallel tool calls in one turn, never two `wait`s in one command.
+after fan-out. **Disjoint clusters spawn concurrently** — a wave waits only on
+a real dependency. **Every tool call stays under 4 minutes, the main agent's
+included** (the master skill's wait discipline; handoff contract § Fan-out
+discipline): a long instrument (gate rounds, pixel loops, Playwright captures,
+deploy batches) goes through `run-bg.mjs start`, and `wait` is the NEXT tool
+call — it returns within its `--max` (100 s by default); never two long
+instruments as parallel tool calls in one turn, never two `wait`s in one command.
 
 ### Phase D — Site assembly (whole-site artifacts)
 
