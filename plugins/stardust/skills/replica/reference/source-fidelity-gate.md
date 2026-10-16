@@ -825,13 +825,14 @@ recorded beside the full one per page and in the totals: every run is calibratio
 on the verdict, never reported unmasked), `overrides.json` (shown BESIDE the measured number,
 never replacing it), `clip-allow.json`, `presence.json`, `units.json`. Origin fallback: live
 stitch → previous origin (`--recapture-origin`) → crawl fullPage screenshot (`crawl-fullpage`,
-asymmetric, flagged). **Reuse (`--skip-existing`) — proven, never silent.** Captures in the page
-dir are reused; probes are replayed (`<slug>/probes.json`) only while the capture pair they were
+asymmetric, flagged). **Reuse (`--skip-existing`) — proven, never silent.** Origin captures in the
+page dir are reused; probes are replayed (`<slug>/probes.json`) only while the capture pair they were
 taken against is on disk; a PASS row is reused whole only while its `gateKey` holds — a hash of
 what the verdict rests on, issued only while the gated host provably serves the hashed tree
 (pushed code; every document delivered to that org/repo with the same `contentSha`), else `null`
-with the reason in the run log. A changed key, or a frozen-file edit since the freeze, re-shoots
-the EDS side. Rows say `reused`; the script header lists the key's parts and proofs.
+with the reason in the run log. An EDS capture is reused only while `gate-key.json` proves it
+current — the same key, or, key unknown, the same hashed tree, reason and ledger rows; otherwise the
+EDS side is re-shot. Rows say `reused`; the script header lists the key's parts and proofs.
 **Browser tier: the best available, registered.** The probes elect real
 Chrome (`channel: 'chrome'`, window-free) and fall back to bundled Chromium when it is not
 installed; every probe writes the tier it actually ran (`chrome` | `chromium-fallback` |

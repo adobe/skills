@@ -472,8 +472,8 @@ had one section for the whole run).
   `update-coverage.mjs --gate`) pass `--skip-existing` with the clusters'
   `--eds-host`: a PASS row is reused only while its gate key (foundation,
   blocks, content, criteria) is proven served and unchanged, probes only
-  while the capture pair holds; a changed key or a frozen-file edit since
-  the freeze re-shoots the EDS side; rows say `reused` (handoff § 3, C).
+  while the capture pair holds; an EDS capture not proven current (changed
+  or unprovable key) is re-shot; rows say `reused` (handoff § 3, C).
 
 **State:** replica writes its own state under `stardust/replica/` — the
 inconsistency register, `progress.json` (one map: `types.<archetype>` —
