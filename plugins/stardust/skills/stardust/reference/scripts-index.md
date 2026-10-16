@@ -22,15 +22,15 @@ Run the project copies under `stardust/scripts/<skill>/`. Ask `--help` only for 
 - `deploy/style-fingerprint.mjs` — variation groups — `"file:///abs/<proto>.html"`
 - `diff/chrome-compare.mjs` — header parity vs the contract — `<contract> <build> [--profile replica|functional] [--json f]`; exit 2 = undecided error
 - `diff/chrome-explore.mjs` — the header used: open states, close paths, motion, scroll — `<url> <out.json> [--width 1440,390]`
-- `diff/clip-probe.mjs` — text/controls cut or hidden by an overflow ancestor — `<url> [--width 1440] [--json [f]]`; exit 2 = clipped > 0
-- `diff/content-diff.mjs` — structural + attribute/icon diff — `<protoURL> <edsURL> [--main <sel[,sel]>] [--no-chrome] [--profile generic] [--live-cache <json>]`
-- `diff/content-presence.mjs` — origin vs served visible content per band — `<originURL> <servedURL> [--variable <selO=selE,…>] [--origin-cache <json>]`; exit 2 = MISSING/HIDDEN
+- `diff/clip-probe.mjs` — text/controls cut or hidden by an overflow ancestor — `<url> [--width 1440] [--json [f]] [--advisory]`; exit 2 = clipped > 0
+- `diff/content-diff.mjs` — structural + attribute/icon diff, main + chrome roots — `<protoURL> <edsURL> [--main <sel[,sel]>] [--no-chrome] [--profile generic] [--json] [--live-cache <json>]`
+- `diff/content-presence.mjs` — origin vs served visible content per band + control state — `<originURL> <servedURL> [--variable <selO=selE,…>] [--json [f]] [--origin-cache <json>]`; exit 2 = MISSING/HIDDEN link or heading
 - `diff/content-inventory.mjs` — library (classifier copy), no CLI
 - `diff/diff-profiles.mjs` — library (profiles copy), no CLI
 - `diff/live-session.mjs` — library (hardened session; `--headed` = window-free real Chrome), no CLI
 - `diff/measure-live.mjs` — library (settle + rect/type measurement for gate probes), no CLI
-- `diff/unit-geometry.mjs` — repeated-unit geometry Δ — `<originURL> <servedURL> (--unit <selO>=<selE> | --families <f> --slug <s>) [--tol 4]`; exit 2 = required unit off
-- `diff/visual-diff.mjs` — screenshot diff + flags — `<protoURL> <edsURL> [--out <dir>] [--main <sel>]`
+- `diff/unit-geometry.mjs` — repeated-unit geometry Δ — `<originURL> <servedURL> (--unit <selO>=<selE> | --families <units.json> --slug <s>) [--n 1] [--tol 4]`; exit 2 = required unit off/hidden/missing
+- `diff/visual-diff.mjs` — screenshot diff + flags — `<protoURL> <edsURL> [--out <dir>] [--width <px>] [--main <sel>]`
 - `dynamics/dynamics-check.mjs` — replay parity checks (search-query count + top titles) — `--origin <h> [--parity <json>] [--out stardust/qa]`
 - `dynamics/dynamics-detect.mjs` — detect dynamic features — `--urls a,b [--from-state stardust/state.json] [--reuse-if-fresh]`
 - `dynamics/dynamics-plan.mjs` — triage draft — `[--in <json>] [--out <dir>] [--target-origin <h>] [--martech [dir]] [--knowledge]`
