@@ -6,7 +6,9 @@
 // block roll-up, whatever its status, and a blocks.mjs re-run keeps the mapping. And `--new`: a page
 // built outside the migrated tree (a D2 search page) enters coverage as a schema-shaped row with its
 // origin in source.migratedHtml, joins its template, is idempotent, refuses captured slugs and taken
-// paths, and lands under the lock beside concurrent page updates.
+// paths, and lands under the lock beside concurrent page updates. And `--gate`: the newest row per page
+// and width wins — an older row of either width is skipped and counted (delivery.gate.atByWidth); a width
+// with no recorded time, or a record without the map, is applied.
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, readFileSync, readdirSync, writeFileSync, existsSync, utimesSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -240,8 +242,88 @@ await check('--gate writes delivery.gate from a gate-all summary; a failing veri
   assert.equal(by['page-1'].status, 'deployed'); assert.equal(by['page-1'].gate.pass, true);
   assert.equal(by['page-2'].status, 'deployed', 'a gate failure that now passes goes back to deployed'); assert.equal(by['page-2'].error, null);
   assert.equal(by['page-3'].status, 'verified', 'a documented override keeps the page'); assert.equal(by['page-3'].gate.override, 'PASS (source capture)');
+  assert.equal(by['page-1'].gate.at, null, 'a table without _provenance has no row time'); assert.equal(by['page-1'].gate.width, null); assert.deepEqual(by['page-1'].gate.atByWidth, {});
   const bad = await run(['--gate', join(out, 'rollout.json')], proj);
   assert.equal(bad.code, 1, 'a file without rows[] is refused');
+});
+
+// --- --gate keeps the newest row per page and width: an older table never reverts a newer verdict ---
+const T0 = '2026-01-01T08:00:00.000Z'; const T1 = '2026-01-02T08:00:00.000Z'; const T2 = '2026-01-03T08:00:00.000Z'; const T3 = '2026-01-04T08:00:00.000Z';
+const gateTable = (proj, name, writtenAt, breakpoint, rows) => { const f = join(proj, name); writeFileSync(f, JSON.stringify({ _provenance: { writtenBy: 'gate-all.mjs', writtenAt, stage: 'published', breakpoint }, totals: {}, rows })); return f; };
+const passRow = (slug, extra = {}) => ({ slug, pct: 1.1, heightDelta: 0, clipped: 0, content: { missing: 0, hidden: 0 }, pass: true, reasons: [], ...extra });
+const failRow = (slug) => ({ slug, pct: 12, heightDelta: 0, clipped: 0, content: { missing: 0, hidden: 0 }, pass: false, reasons: ['pixel 12% > 10%'] });
+const pagesText = (out) => readFileSync(join(out, 'coverage', 'pages.json'), 'utf8');
+const gateOf = (out, slug) => readPages(out).find((p) => p.slug === slug).delivery;
+const stripGen = (s) => s.replace(/\n {2}"generatedAt": "[^"]*"/, '');
+
+await check('--gate skips a row older than the page\'s recorded gate at the same width — pages.json unchanged but generatedAt, no flip, counted', async () => {
+  const { proj, out } = fixture();
+  let r = await run(['page-0', '--status', 'deployed'], proj); assert.equal(r.code, 0, r.err);
+  r = await run(['--gate', gateTable(proj, 'newer.json', T2, 1440, [passRow('page-0')])], proj);
+  assert.equal(r.code, 0, r.err); assert.match(r.out, /1 of 1 rows matched, 0 status flip\(s\), 0 older row\(s\) skipped/);
+  assert.equal(gateOf(out, 'page-0').gate.at, T2); assert.equal(gateOf(out, 'page-0').gate.width, 1440); assert.deepEqual(gateOf(out, 'page-0').gate.atByWidth, { 1440: T2 });
+  const before = pagesText(out);
+  r = await run(['--gate', gateTable(proj, 'older.json', T1, 1440, [failRow('page-0'), failRow('not-in-coverage')])], proj);
+  assert.equal(r.code, 0, r.err); assert.match(r.out, /1 of 2 rows matched, 0 status flip\(s\), 1 older row\(s\) skipped/, r.out);
+  assert.equal(stripGen(pagesText(out)), stripGen(before), 'only the top-level generatedAt may change');
+  assert.equal(gateOf(out, 'page-0').status, 'deployed');
+  r = await run(['--gate', join(proj, 'newer.json')], proj);
+  assert.equal(r.code, 0, r.err); assert.match(r.out, /0 older row\(s\) skipped/, 'the same table again (equal time) is applied');
+});
+
+await check('--gate applies a row of a width with no recorded time, even one older than the other width\'s time', async () => {
+  const { proj, out } = fixture();
+  let r = await run(['page-0', '--status', 'deployed'], proj); assert.equal(r.code, 0, r.err);
+  r = await run(['--gate', gateTable(proj, 'desktop.json', T2, 1440, [passRow('page-0')])], proj); assert.equal(r.code, 0, r.err);
+  r = await run(['--gate', gateTable(proj, 'mobile.json', T1, 360, [failRow('page-0')])], proj); // the first verdict at 360
+  assert.equal(r.code, 0, r.err); assert.match(r.out, /1 of 1 rows matched, 1 status flip\(s\), 0 older row\(s\) skipped/, r.out);
+  const d = gateOf(out, 'page-0');
+  assert.equal(d.status, 'failed'); assert.equal(d.gate.pass, false); assert.equal(d.gate.width, 360); assert.equal(d.gate.at, T1);
+  assert.deepEqual(d.gate.atByWidth, { 1440: T2, 360: T1 });
+});
+
+for (const [a, b] of [[1440, 360], [360, 1440]]) {
+  await check(`--gate skips an older ${a} row after a newer ${b} ingest overwrote the ${a} record — pages.json unchanged but generatedAt, no flip`, async () => {
+    const { proj, out } = fixture();
+    let r = await run(['page-0', '--status', 'deployed'], proj); assert.equal(r.code, 0, r.err);
+    r = await run(['--gate', gateTable(proj, `first-${a}.json`, T2, a, [passRow('page-0')])], proj); assert.equal(r.code, 0, r.err);
+    r = await run(['--gate', gateTable(proj, `then-${b}.json`, T3, b, [passRow('page-0')])], proj); assert.equal(r.code, 0, r.err);
+    const before = pagesText(out);
+    r = await run(['--gate', gateTable(proj, `older-${a}.json`, T1, a, [failRow('page-0')])], proj);
+    assert.equal(r.code, 0, r.err); assert.match(r.out, /1 of 1 rows matched, 0 status flip\(s\), 1 older row\(s\) skipped/, r.out);
+    assert.equal(stripGen(pagesText(out)), stripGen(before), 'only the top-level generatedAt may change');
+    const d = gateOf(out, 'page-0');
+    assert.equal(d.status, 'deployed'); assert.equal(d.gate.width, b); assert.deepEqual(d.gate.atByWidth, { [a]: T2, [b]: T3 });
+  });
+}
+
+await check('--gate records a whole-row reuse at its measured time (row.reused.at), a probe reuse at the table\'s writtenAt, and the width', async () => {
+  const { proj, out } = fixture();
+  const r = await run(['--gate', gateTable(proj, 'runs-reuse.json', T2, 1440, [
+    passRow('page-0', { reused: { what: 'row', from: 'runs/older.json', at: T0, gateKey: 'k' } }),
+    passRow('page-1', { reused: { what: 'probes', at: T0 } }),
+  ])], proj);
+  assert.equal(r.code, 0, r.err);
+  assert.equal(gateOf(out, 'page-0').gate.at, T0); assert.equal(gateOf(out, 'page-0').gate.width, 1440); assert.deepEqual(gateOf(out, 'page-0').gate.atByWidth, { 1440: T0 });
+  assert.equal(gateOf(out, 'page-1').gate.at, T2); assert.equal(gateOf(out, 'page-1').gate.width, 1440);
+  assert.match(gateOf(out, 'page-0').gate.table, /runs-reuse\.json$/);
+});
+
+await check('--gate overwrites a recorded gate without atByWidth (recorded before 0.34.4) even from an older table', async () => {
+  const { proj, out } = fixture();
+  const doc = JSON.parse(pagesText(out));
+  doc.pages[0].delivery = { status: 'deployed', gate: { pass: true, pct: 1, heightDelta: 0, clipped: 0, content: null, reasons: [], override: null, table: 'summary.json', at: T2 } };
+  writeFileSync(join(out, 'coverage', 'pages.json'), JSON.stringify(doc, null, 2));
+  const r = await run(['--gate', gateTable(proj, 'older.json', T1, 1440, [failRow('page-0')])], proj);
+  assert.equal(r.code, 0, r.err); assert.match(r.out, /1 of 1 rows matched, 1 status flip\(s\), 0 older row\(s\) skipped/, r.out);
+  const d = gateOf(out, 'page-0');
+  assert.equal(d.status, 'failed'); assert.equal(d.gate.at, T1); assert.equal(d.gate.width, 1440); assert.deepEqual(d.gate.atByWidth, { 1440: T1 });
+});
+
+await check('--help says the newest row per page and width wins and names the runs/ table', async () => {
+  const proj = mkdtempSync(join(tmpdir(), 'update-coverage-help3-'));
+  const r = await run(['--help'], proj);
+  assert.equal(r.code, 0); assert.match(r.out, /newest row per page and width wins/); assert.match(r.out, /delivery\.gate\.atByWidth/); assert.match(r.out, /runs\/<ts>-<slug>\.json/);
 });
 
 console.log(failed ? `update-coverage: ${failed} check(s) failed` : 'update-coverage: all checks passed');

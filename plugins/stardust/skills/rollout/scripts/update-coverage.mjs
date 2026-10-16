@@ -8,12 +8,18 @@
  *
  * Page:   node update-coverage.mjs <slug>  --status <s> [--url <deployedUrl>] [--error <msg>]
  * Block:  node update-coverage.mjs --block <id> --status <s> [--eds-name <name>]
- * Gate:   node update-coverage.mjs --gate stardust/replica/gates/all-<w>/summary.json
+ * Gate:   node update-coverage.mjs --gate stardust/replica/gates/all-<w>/summary.json   (or a runs/<ts>-<slug>.json table)
  *   writes each row's verdict into the page's `delivery.gate` {pass, pct, heightDelta, clipped, content,
- *   reasons, table, at} and flips a failing page (no documented override) from deployed / verified to
- *   `failed` (error `gate: <reasons>`), a passing one out of that failure back to `deployed`; verify.mjs
- *   never marks a page `verified` while its `delivery.gate.pass` is false (#125 — completion derives
- *   from one place: a page the pixel table failed cannot read as verified).
+ *   reasons, override, table, at, width, atByWidth} and flips a failing page (no documented override) from
+ *   deployed / verified to `failed` (error `gate: <reasons>`), a passing one out of that failure back to
+ *   `deployed`; verify.mjs never marks a page `verified` while its `delivery.gate.pass` is false (#125 —
+ *   completion derives from one place: a page the pixel table failed cannot read as verified).
+ *   The newest row per page and width wins: `delivery.gate.atByWidth` ({"<width>": ISO}) keeps the newest applied
+ *   row time per width across ingests; a row older than its width's time is skipped (nothing of that page changes)
+ *   and counted, so an older table of either width never reverts a newer verdict. A width with no time yet, or a
+ *   gate recorded without `atByWidth` (before 0.34.4), is applied. Row time (`at`) = `reused.at` of a whole-row
+ *   reuse (when the row was measured), else the table's `_provenance.writtenAt`, else null (never skipped, no map
+ *   entry); `width` = the table's `_provenance.breakpoint`.
  * New:    node update-coverage.mjs --new <slug> --path </delivered/path> --template <id> --origin <origin> [--title <t>] [--status <s>]
  *   page  <status>: pending | converting | deployed | verified | stale | failed
  *   block <status>: pending | converted | deployed | verified | failed
@@ -192,21 +198,29 @@ if (gateFile) {
   if (!table || !Array.isArray(table.rows)) { console.error(`rollout: ${gateFile} is not a gate-all summary (no rows[])`); process.exit(1); }
   const doc = readJSON(pagesPath);
   if (!doc) { console.error(`rollout: ${pagesPath} not found — run inventory.mjs first.`); process.exit(1); }
-  let matched = 0; let flipped = 0;
+  const prov = table._provenance || {};
+  const width = prov.breakpoint ?? null;
+  let matched = 0; let flipped = 0; let skipped = 0;
   for (const r of table.rows) {
     const p = (doc.pages || []).find((x) => x.slug === r.slug || (r.path && x.path === r.path));
     if (!p) continue;
     matched += 1;
+    const at = (r.reused && r.reused.what === 'row' && r.reused.at) || prov.writtenAt || null;
+    const rec = p.delivery && p.delivery.gate;
+    const recAt = width != null && rec && rec.atByWidth ? rec.atByWidth[width] : null;
+    if (at && recAt && Date.parse(at) < Date.parse(recAt)) { skipped += 1; continue; }
+    const atByWidth = { ...((rec && rec.atByWidth) || {}) };
+    if (at && width != null) atByWidth[width] = at;
     p.delivery = p.delivery || {};
     const pass = !!(r.pass || r.override);
-    p.delivery.gate = { pass, pct: r.pct, heightDelta: r.heightDelta, clipped: r.clipped ?? null, content: r.content || null, reasons: r.reasons || [], override: r.override ? r.override.verdict : null, table: gateFile, at: now };
+    p.delivery.gate = { pass, pct: r.pct, heightDelta: r.heightDelta, clipped: r.clipped ?? null, content: r.content || null, reasons: r.reasons || [], override: r.override ? r.override.verdict : null, table: gateFile, at, width, atByWidth };
     if (!pass && ['deployed', 'verified'].includes(p.delivery.status)) { p.delivery.status = 'failed'; p.delivery.error = `gate: ${(r.reasons || []).join('; ') || 'FAIL'}`; flipped += 1; }
     else if (pass && p.delivery.status === 'failed' && /^gate: /.test(p.delivery.error || '')) { p.delivery.status = 'deployed'; p.delivery.error = null; flipped += 1; }
   }
   doc.generatedAt = now;
   writeJSON(pagesPath, doc);
   reRoll();
-  console.log(`gate ${gateFile} → ${matched} of ${table.rows.length} rows matched, ${flipped} status flip(s)`);
+  console.log(`gate ${gateFile} → ${matched} of ${table.rows.length} rows matched, ${flipped} status flip(s), ${skipped} older row(s) skipped`);
   process.exit(0);
 }
 
@@ -214,7 +228,7 @@ if (gateFile) {
 if (!slug || !status || !PAGE_STATUSES.includes(status)) {
   console.error(`usage: update-coverage.mjs <slug> --status <${PAGE_STATUSES.join('|')}> [--url <u>] [--error <m>]`);
   console.error('   or: update-coverage.mjs --block <id> --status <pending|converted|deployed|verified|failed> [--eds-name <n>]');
-  console.error('   or: update-coverage.mjs --gate stardust/replica/gates/all-<w>/summary.json');
+  console.error('   or: update-coverage.mjs --gate stardust/replica/gates/all-<w>/summary.json   (or runs/<ts>-<slug>.json)');
   console.error('   or: update-coverage.mjs --new <slug> --path </path> --template <id> --origin <origin> [--title <t>] [--status <s>]');
   process.exit(2);
 }
