@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // skills/diff/scripts/test/live-session.test.mjs — the pure part of the shared live-session library: the exported
-// surface every instrument imports, the consent-accept candidate list (the cmp-prefixed consent-manager buttons a
-// recorded hands-off run needed on the capture, no duplicates, the OneTrust id first), isLiveHttpUrl and
-// defaultWaitUntil. No browser: dismissOverlays itself runs inside stitch-shot / the diff probes against a page.
+// surface every instrument imports, the consent-accept candidate list (the cmp-prefixed candidates are present,
+// no duplicates, the OneTrust id first), isLiveHttpUrl and defaultWaitUntil. No browser: dismissOverlays itself
+// runs inside stitch-shot / the diff probes against a page.
 // Run: node plugins/stardust/skills/diff/scripts/test/live-session.test.mjs
 import assert from 'node:assert/strict';
 import * as session from '../live-session.mjs';

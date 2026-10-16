@@ -33,11 +33,8 @@
  *     page, and any :hover-styled element under it would be silently
  *     captured in hover state. --consent / --dismiss add a site's own
  *     selectors; --no-dismiss turns both classes off (gate.sh passes all
- *     three through to BOTH captures — a recorded hands-off run on a site
- *     with a consent manager captured the live side with the banner and
- *     its scrim up, and the first pixel rounds measured them as page
- *     difference, because the gate had no way to hand the capture a
- *     selector while its probes dismissed).
+ *     three through to BOTH captures, so the live side is dismissed exactly
+ *     like the build side).
  *   - --locale pins Accept-Language + context locale: geo-redirecting sites
  *     (recorded: a car brand → /ch-de/, a fashion brand → /ww/) otherwise capture
  *     a different locale per run — nondeterministic live side.
