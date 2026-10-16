@@ -10,7 +10,9 @@ The tension this resolves: craft-gating every page through `prototype` (critique
 pages, but generic per-page authoring bypasses **every** quality gate. A real
 migration hit exactly this — one page (home) got full craft, ~90 siblings got
 faithful generic authoring with no declared gate between them. Tiers name the
-trade so a reviewer can see, per page, what was and wasn't checked.
+trade so a reviewer can see, per page, what was and wasn't checked: declared per
+page, "every page is at least sibling-tier — built from a craft-gated archetype"
+is an auditable record a reviewer can challenge, not a hope.
 
 ## The three tiers
 
