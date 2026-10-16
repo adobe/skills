@@ -6,7 +6,7 @@
  * transcripts, windowed by `stardust/status.jsonl` (`start` → `end` per phase; a
  * rollout wave = the span between consecutive rollout `start` lines), so "what
  * did each phase cost" is a table, not a recollection. It is advisory: it never
- * blocks a run, always exits 0, and prints `usage: unknown (…)` when anything it
+ * blocks a run, exits 0 except usage errors (exit 2), and prints `usage: unknown (…)` when anything it
  * reads is missing — the transcript paths it consults are harness implementation
  * details, not a documented API. It only READS `status.jsonl` (append-only,
  * harness-agnostic: no field is added there) and the two unit ledgers below; the
@@ -15,7 +15,9 @@
  * Unit rows: every recorded unit with a `startedAt` in `stardust/rollout/progress.json` (C-deliver)
  * and `stardust/migrate/progress.json` (migrate) — `{ "units": { "<name>": { status, kind, pages,
  * startedAt, endedAt, … } } }` — gets a `↳ <rollout|migrate> <name>` row directly under the phase
- * window holding its start (no `endedAt` → it ends at the last request). Unit rows are a breakdown:
+ * window holding its start (no `endedAt` → it ends at the last request). Unit timestamps are read as
+ * instants (any ISO offset, shown in UTC); a unit whose `startedAt`/`endedAt` does not parse prints a
+ * `usage:` note and gets no row. Unit rows are a breakdown:
  * the phase windows stay exclusive and the total is theirs; concurrent units, marked `(overlaps n)`,
  * share the main transcript's clock, so a request inside two of them counts in both. A file without a
  * `units` map (one archetype's bare record) prints `usage: <file> has no units map — unit rows skipped`.
@@ -204,30 +206,43 @@ for (const p of M.prompts) addPrompt(place(p.ts), p);
 
 // --- recorded units (the C-deliver and migrate unit ledgers) --------------------
 const isMap = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
-/** The started units of one progress.json, or null when it has no `units` map (e.g. one archetype's bare record). */
+// Unit timestamps are hand-written (`date -Iseconds` gives `+02:00`), so they are read as instants and shown in UTC.
+const utc = (t) => { const n = typeof t === 'string' ? Date.parse(t) : NaN; return Number.isFinite(n) ? new Date(n).toISOString().replace(/\.000Z$/, 'Z') : null; };
+/** One progress.json → { units (started, timestamps in UTC), skipped (names with an unparsable startedAt/endedAt) },
+ *  or null when it has no `units` map (e.g. one archetype's bare record). */
 export function unitsFrom(ledger, doc) {
   if (!isMap(doc) || !isMap(doc.units)) return null;
-  return Object.entries(doc.units).filter(([, u]) => isMap(u) && typeof u.startedAt === 'string').map(([name, u]) => ({ ledger, name, u }));
+  const units = []; const skipped = [];
+  for (const [name, u] of Object.entries(doc.units)) {
+    if (!isMap(u) || u.startedAt == null) continue; // not started: no row
+    const from = utc(u.startedAt); const to = u.endedAt == null ? null : utc(u.endedAt);
+    if (!from || (u.endedAt != null && !to)) skipped.push(name); else units.push({ ledger, name, u, from, to });
+  }
+  return { units, skipped };
 }
 const unitFiles = []; const unitDefs = [];
 for (const ledger of ['rollout', 'migrate']) {
   const rel = `stardust/${ledger}/progress.json`;
   if (!existsSync(join(root, rel))) continue;
   unitFiles.push(rel);
-  const defs = unitsFrom(ledger, readJson(join(root, rel)));
-  if (defs) unitDefs.push(...defs); else note(`usage: ${rel} has no units map — unit rows skipped`);
+  const got = unitsFrom(ledger, readJson(join(root, rel)));
+  if (!got) { note(`usage: ${rel} has no units map — unit rows skipped`); continue; }
+  unitDefs.push(...got.units);
+  for (const name of got.skipped) note(`usage: ${rel} unit ${name} has a startedAt/endedAt that is not an ISO timestamp — its row is skipped`);
 }
-// Counted with inWin directly, never through place(): the phase windows stay exclusive and the total is theirs.
-const unitRows = unitDefs.map(({ ledger, name, u }) => {
-  const w = { label: `↳ ${ledger} ${name}`, ledger, name, kind: u.kind ?? null, status: u.status ?? null, from: u.startedAt, to: typeof u.endedAt === 'string' ? u.endedAt : allTs.at(-1) ?? u.startedAt, parent: null, overlaps: [], ...zero() };
-  const at = rows.findIndex((x) => inWin(w.from, x)); // the phase row it renders under; rows.length = unwindowed
+// Counted by instant, never through place(): the phase windows stay exclusive and the total is theirs.
+const msIn = (ts, a, b) => { const t = Date.parse(ts); return t >= a && t <= b; };
+const unitRows = unitDefs.map(({ ledger, name, u, from, to }) => {
+  const w = { label: `↳ ${ledger} ${name}`, ledger, name, kind: u.kind ?? null, status: u.status ?? null, from, to: to ?? utc(allTs.at(-1)) ?? from, parent: null, overlaps: [], ...zero() };
+  const a = Date.parse(w.from); const b = Date.parse(w.to);
+  const at = rows.findIndex((x) => Date.parse(x.from) <= a && a <= Date.parse(x.to)); // the phase row it renders under; rows.length = unwindowed
   if (at >= 0) w.parent = rows[at].label;
-  for (const r of M.requests) if (inWin(r.ts, w)) addMain(w, r);
-  for (const r of S.requests) if (inWin(r.ts, w)) addSub(w, r);
-  for (const p of M.prompts) if (inWin(p.ts, w)) addPrompt(w, p);
-  return { w, at: at >= 0 ? at : rows.length, pages: typeof u.pages === 'number' ? u.pages : null };
-}).sort((a, b) => (a.w.from < b.w.from ? -1 : a.w.from > b.w.from ? 1 : 0));
-for (const { w } of unitRows) w.overlaps = unitRows.filter(({ w: o }) => o !== w && w.from <= o.to && o.from <= w.to).map(({ w: o }) => (o.ledger === w.ledger ? o.name : `${o.ledger} ${o.name}`));
+  for (const r of M.requests) if (msIn(r.ts, a, b)) addMain(w, r);
+  for (const r of S.requests) if (msIn(r.ts, a, b)) addSub(w, r);
+  for (const p of M.prompts) if (msIn(p.ts, a, b)) addPrompt(w, p);
+  return { w, a, b, at: at >= 0 ? at : rows.length, pages: typeof u.pages === 'number' ? u.pages : null };
+}).sort((x, y) => x.a - y.a);
+for (const { w, a, b } of unitRows) w.overlaps = unitRows.filter((o) => o.w !== w && a <= o.b && o.a <= b).map(({ w: o }) => (o.ledger === w.ledger ? o.name : `${o.ledger} ${o.name}`));
 
 const cost = (w) => (prices ? ((w.fresh * prices[0] + w.cacheWrite * prices[1] + w.cacheRead * prices[2] + w.output * prices[3]) / 1e6) : null);
 const pagesIn = (detail) => { const m = detail?.match(/(\d+)\s*(?:\/\s*\d+\s*)?(pages|documents|urls)/i); return m ? Number(m[1]) : null; };

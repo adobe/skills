@@ -34,7 +34,9 @@
  *   (m) discovery through HOME/.<dot-dir>/projects/<mangled root>/ with a matching cwd (first in sorted order);
  *       a non-matching cwd → `usage: unknown`;
  *   (n) STARDUST_TRANSCRIPTS names the directory; --transcripts wins over it;
- *   (o) --help in an empty cwd: exit 0 within 15 s, nothing written.
+ *   (o) --help in an empty cwd: exit 0 within 15 s, nothing written;
+ *   (p) unit timestamps with a +02:00 offset → the same unit rows (counts, parents, overlaps) as the UTC form;
+ *       an unparsable startedAt → a `usage:` note, no row.
  */
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -148,7 +150,7 @@ try {
   assert.deepEqual([ca.turns, ca.subRequests, ca.prompts, ca.acks, ca.pages, ca.tokensPerPage], [2, 1, 1, 1, 2, (50200 + 60300) / 2], 'cluster-a: A1 + the shared request, the subagent request, the ack');
   assert.deepEqual([cb.turns, cb.subRequests, cb.pages, cb.tokensPerPage], [2, 1, 1, 60300 + 70200], 'cluster-b counts the shared request too');
   assert.deepEqual([fd.turns, fd.pages, fd.tokensPerPage], [1, null, null], 'no pages on the unit → no tokens/page');
-  assert.deepEqual([fin.status, fin.from, fin.to, fin.turns], ['running', '2026-09-11T10:50:10Z', '2026-09-11T10:55:00.000Z', 1], 'no endedAt → ends at the last request');
+  assert.deepEqual([fin.status, fin.from, fin.to, fin.turns], ['running', '2026-09-11T10:50:10Z', '2026-09-11T10:55:00Z', 1], 'no endedAt → ends at the last request (shown in UTC)');
   assert.deepEqual([U['↳ migrate plan'].tokensPerPage, U['↳ migrate page'].tokensPerPage], [11300 / 4, 20600 / 4]);
   const mdu = readFileSync(join(units, 'stardust', 'usage.md'), 'utf8');
   const order = mdu.split('\n').filter((l) => l.startsWith('| ') && !l.startsWith('| window |') && !l.startsWith('| **total**')).map((l) => l.split(' | ')[0].slice(2));
@@ -176,6 +178,24 @@ try {
   r = runIn(bare, {}, '--transcripts', join(FIX, 'transcripts-units'), '--json');
   assert.match(r.stderr, /has no units map/, 'the note goes to stderr under --json');
   assert.deepEqual(JSON.parse(r.stdout).units.length, 2, 'stdout stays the record');
+  // (p) unit timestamps written with an offset (`date -Iseconds` → +02:00) count what their UTC form counts;
+  //     an unparsable one is noted and gets no row
+  const off = join(tmp, 'offset');
+  cpSync(join(FIX, 'project-units'), off, { recursive: true });
+  const plus2 = (iso) => new Date(Date.parse(iso) + 7_200_000).toISOString().replace(/\.000Z$/, '+02:00');
+  for (const f of ['rollout', 'migrate']) {
+    const pj = join(off, 'stardust', f, 'progress.json'); const doc = JSON.parse(readFileSync(pj, 'utf8'));
+    for (const u of Object.values(doc.units)) for (const k of ['startedAt', 'endedAt']) if (u[k]) u[k] = plus2(u[k]);
+    if (f === 'rollout') doc.units.broken = { status: 'running', kind: 'cluster', startedAt: 'after lunch' };
+    writeFileSync(pj, JSON.stringify(doc));
+  }
+  assert.match(readFileSync(join(off, 'stardust', 'rollout', 'progress.json'), 'utf8'), /"startedAt":"2026-09-11T12:25:10\+02:00"/, 'the copy really carries +02:00');
+  r = runIn(off, {}, '--transcripts', join(FIX, 'transcripts-units'));
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /^usage: stardust\/rollout\/progress\.json unit broken has a startedAt\/endedAt that is not an ISO timestamp — its row is skipped$/m);
+  const jo = JSON.parse(readFileSync(join(off, 'stardust', 'usage.json'), 'utf8'));
+  assert.deepEqual(jo.units, ju.units, 'same rows, parents, overlaps and counts as the UTC form; timestamps shown in UTC');
+  assert.deepEqual(jo.windows, ju.windows, 'phase rows unchanged');
 
   // (m) discovery: HOME/.<dot-dir>/projects/<root, non-alphanumerics as '-'>/ whose transcript carries cwd = root
   const home2 = join(tmp, 'home2');
@@ -216,7 +236,7 @@ try {
   assert.match(r.stdout, /Exit codes: 0 always/); assert.match(r.stdout, /2 only for a\nvalue flag followed by another flag/);
   assert.match(r.stdout, /STARDUST_TRANSCRIPTS/); assert.match(r.stdout, /unit rows/i);
   assert.deepEqual(snapshot(FIX), before, 'fixture untouched');
-  console.log('token-ledger test: ok (unknown → exit 0 no write; 4 windows + unwindowed; requestId dedupe 4 main / 1 sub; prompts 2 acks 1; pages + tokens/page; cost-state; idempotent; dry-run; unit rows 7 with parents + overlaps; Σ windows = total; bare record noted; discovery; env; help)');
+  console.log('token-ledger test: ok (unknown → exit 0 no write; 4 windows + unwindowed; requestId dedupe 4 main / 1 sub; prompts 2 acks 1; pages + tokens/page; cost-state; idempotent; dry-run; unit rows 7 with parents + overlaps; Σ windows = total; bare record noted; offsets normalised; discovery; env; help)');
 } finally {
   rmSync(tmp, { recursive: true, force: true });
 }
