@@ -6,9 +6,10 @@ git history only (plus the branch-scoped notes in
 
 ## 0.34.6 — C-deliver clusters over 16 siblings run as sub-units; fan-out subagents pause on request (#134)
 
-A recorded 100-page hands-off run held a 64-sibling template as ONE unit for 6 h 38 min across two sessions and a
-wall-clock kill; six of its ten sessions overran a 90-minute limit, because while a subagent holds a unit the main
-agent reaches its boundary only between units; a ten-page run overran too (106 min, first boundary ask after 87 min).
+A recorded 100-page hands-off run held a 64-sibling template as ONE recorded unit for 6 h 38 min across two sessions
+and a wall-clock kill; six of its ten sessions overran a 90-minute session limit, because the main agent reaches its
+boundary only between recorded units while a background subagent holds the unit; a ten-page run overran the same way
+(106 min, first boundary ask after 87 min).
 
 - **A cluster of more than 16 siblings (archetype out) runs as sub-units `cluster-<template>-1` … `-n`:** n =
   ⌈siblings ÷ 16⌉, near-equal (17 → 9 + 8), at most 16 pages, cut in sibling (`plan.json`) order, one after another
@@ -23,8 +24,8 @@ agent reaches its boundary only between units; a ten-page run overran too (106 m
   finishes the iteration, reports and returns; the main agent records the unit `running` (verdict `paused: …`,
   resumed like any in-flight unit) and asks its boundary before anything new. Briefs: cluster (after each page,
   deploy batch, gate round), archetype (each gate iteration), roster-gate job (before each `run-bg.mjs wait`).
-- **No script change:** no script loops gate rounds (`gate.sh`, `gate-all.mjs`, `run-bg.mjs`, `deploy-batch.mjs` run
-  one each), so none reads the pause file; `done-check.mjs` and `gate-evidence.mjs` do not read the unit ledger;
+- **No script change:** no script loops gate rounds (`gate.sh`, `gate-all.mjs`, `run-bg.mjs`, `deploy-batch.mjs`: one
+  each), so none reads the pause file; `done-check.mjs`, `gate-evidence.mjs` do not read the C-deliver unit ledger;
   `gate-triage.mjs --unit` takes any `[\w.-]+` name (`units/<name>.paths`); `token-ledger.mjs` gives each unit a row.
 
 Contract change: handoff contract § 3 row C, the `progress.json` unit names, § Fan-out discipline, § 5's unit-end
