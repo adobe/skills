@@ -210,6 +210,10 @@ Walk `plan.json.steps` in order (representative pages first). For each page:
    node skills/rollout/scripts/update-coverage.mjs <slug> --status deployed --url <branch-preview-url>
    node skills/rollout/scripts/update-coverage.mjs <slug> --status content-pending   # no document push
    ```
+   **`deployed` is on disk and committed before any gate:** each page's
+   `--status deployed` line runs right after its `.plain.html` checks, then
+   `node skills/stardust/scripts/unit-commit.mjs <unit>` (the unit's files only);
+   the published-origin gate comes after (handoff contract § 3, row C).
    **Publish in the loop (`PUT → preview → live`), don't stop at preview** — any
    query-index (Phase D2) builds from the **live** tree, so a preview-only delivery
    leaves indexes empty. On failure: `--status failed --error "<reason>"` and
@@ -260,16 +264,14 @@ The driver and every batch run in the background; its log and ledger are the
 progress file. Check them at most every 4 minutes and never with a fixed `sleep`
 of 5 minutes or more (the prompt-cache window) — the master skill's wait
 discipline. After a transient blip, re-run the same command — it re-drives
-only the FAILs. Then reconcile the ledger into coverage with `update-coverage.mjs`.
-**Foundation first:** lint AND commit `styles.css`, header/footer CSS and the
-contract file BEFORE the first agent spawns; no token or custom-property rename
-after fan-out. **Disjoint clusters spawn concurrently** — a wave waits only on
-a real dependency. **Every tool call stays under 4 minutes, the main agent's
-included** (the master skill's wait discipline; handoff contract § Fan-out
-discipline): a long instrument (gate rounds, pixel loops, Playwright captures,
-deploy batches) goes through `run-bg.mjs start`, and `wait` is the NEXT tool
-call — it returns within its `--max` (100 s by default); never two long
-instruments as parallel tool calls in one turn, never two `wait`s in one command.
+only the FAILs. Then reconcile the ledger into coverage with `update-coverage.mjs`
+— each page `deployed` and committed (`unit-commit.mjs <unit>`) before its
+published-origin gate. **Foundation first** (lint AND commit `styles.css`,
+header/footer CSS and the contract file before the first agent spawns; no token
+or custom-property rename after fan-out), **disjoint clusters spawn
+concurrently**, and **every tool call stays under 4 minutes, the main agent's
+included** — long instruments through `run-bg.mjs start`, `wait` the NEXT call
+(the master skill's wait discipline; handoff contract § Fan-out discipline).
 
 ### Phase D — Site assembly (whole-site artifacts)
 
