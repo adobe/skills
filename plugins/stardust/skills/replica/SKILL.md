@@ -79,8 +79,9 @@ eyeballing.
    machine-wide browser budget per browser job (`browser-lock.mjs`, slot
    files in `~/.stardust/locks/browser/`): `STARDUST_BROWSER_SLOTS` (default
    3, `0` = off) is the machine budget, `RUN_BG_SLOTS` paces one project's
-   jobs inside it. No slot within `STARDUST_BROWSER_WAIT` (600 s) → exit
-   124: no verdict, re-run, never a FAIL. In one recorded parallel run,
+   jobs inside it. A job waits for its slot queued, without a limit unless
+   `STARDUST_BROWSER_WAIT` (seconds) is set; no slot within it → exit 124:
+   no verdict, re-run, never a FAIL. In one recorded parallel run,
    contention between jobs, not the origin, was the dominant delay.
 
 **Reading and inspection discipline — the context is the budget**

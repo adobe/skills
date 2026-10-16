@@ -466,9 +466,10 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
   ones. The caches hold inventories, never verdicts — the build side is
   measured every time — and a blank or failed source render is measured but
   never cached. No reuse is silent: the gate-all row carries `originReused
-  { from, at, policy }` (also in `origin.json`) and `presenceReused`, and
-  `_run.log` names each; every probe prints the cache it read and records it
-  (`liveCache` / `originCache`), and replayed rows and probes say `reused`.
+  { from, at, policy }` (also in `origin.json`), `presenceReused` and
+  `unitsReused`, and `_run.log` names each; every probe prints the cache it
+  read and records it (`liveCache` / `originCache`), and replayed rows and
+  probes say `reused`.
 - **Instrument deadlines are the gate's, not yours.** `gate.sh` runs each
   capture under `run-capped.mjs` (stitch 300 s, compare 120 s —
   `GATE_STITCH_TIMEOUT` / `GATE_COMPARE_TIMEOUT`) and reaps this user's

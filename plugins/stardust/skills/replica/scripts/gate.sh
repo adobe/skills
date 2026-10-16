@@ -74,7 +74,8 @@
 #            chrome-live.json: content-live.json, visual-live.json, presence-live.json — live
 #            side probed once per run, later rounds reuse it; older only under
 #            STARDUST_ORIGIN_MAX_AGE_H; delete to re-probe (retaking live.png drops
-#            them too). Needs the diff skill's
+#            them too, and live.json — every round's record of how live.png was
+#            taken, which gate-all reads before it reuses live.png). Needs the diff skill's
 #            scripts at stardust/scripts/diff/ (Setup step 4). The build URL may be
 #            a served prototype or the published/preview origin — the published-
 #            origin gate is the same command with the preview URL (pass --marker
