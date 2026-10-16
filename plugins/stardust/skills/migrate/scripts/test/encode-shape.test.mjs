@@ -9,8 +9,9 @@
 //   skip rule     inherited: only a passedOn under the current key that holds the archetype's pass and covers the
 //                 shape; a key change or a new shape re-arms; planHarness: needsHarness per page in delivery order
 //                 (representatives, key moved)
-//   harness key   the encoder, the map (compact JSON), every file of a block the map emits, the frozen foundation
-//                 (recomputed from disk): a block or foundation edit moves it, a re-freeze of the same files does not
+//   harness key   the encoder (every module encode.mjs loads: an edit moves it), the map (compact JSON: a whitespace edit
+//                 keeps it, an edit moves it), every file of a block the map emits, the frozen foundation (recomputed
+//                 from disk): a block or foundation edit moves it, a re-freeze of the same files does not
 //   passedOn      migrate.mjs harness: the archetype records first under every key (a sibling before it is refused), an
 //                 equal record never rewritten, the archetype's pass under a moved key replaces the record; refused for
 //                 a stopped page and for an archetype whose gated document differs from its encode at core, or in shape
@@ -20,7 +21,8 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { main } from '../encode.mjs';
 import { covers, harnessKey, inherited, passedOnWith, planHarness, shapeOf } from '../encode/shape.mjs';
 
@@ -151,6 +153,23 @@ try {
   write(VOCAB, JSON.stringify(JSON.parse(vocabRaw), null, 4));
   assert.equal(await key(), k0, 'a whitespace-only map edit keeps the key (compact JSON, as encode.map)');
   write(VOCAB, vocabRaw);
+  const edited = JSON.parse(vocabRaw); edited.markers.find((m) => m.sel === '.mod-tags').variants = [{ when: '.ui-tags', add: 'compact' }];
+  write(VOCAB, JSON.stringify(edited, null, 2));
+  assert.notEqual(await key(), k0, 'a map edit moves the key');
+  write(VOCAB, vocabRaw);
+  assert.equal(await key(), k0, '… and reverting it restores the key');
+  // the encoder: a copy of the plugin's scripts keys the same; an edit to a module encode.mjs imports moves the key
+  const copy = join(T, 'plugin-copy', 'skills');
+  for (const s of ['migrate', 'deploy', 'replica']) cpSync(join(HERE, '..', '..', '..', s, 'scripts'), join(copy, s, 'scripts'), { recursive: true, filter: (src) => basename(src) !== 'test' });
+  const keyOfCopy = () => {
+    const shape = pathToFileURL(join(copy, 'migrate', 'scripts', 'encode', 'shape.mjs')).href;
+    const c = spawnSync(process.execPath, ['--input-type=module', '-e', `const { harnessKey } = await import(${JSON.stringify(shape)}); console.log((await harnessKey(${JSON.stringify(T)}, ${JSON.stringify(A)})).key);`], { encoding: 'utf8' });
+    assert.equal(c.status, 0, c.stderr); return c.stdout.trim();
+  };
+  assert.equal(keyOfCopy(), k0, 'the same encoder files: the same key');
+  const engineCopy = join(copy, 'migrate', 'scripts', 'encode', 'engine.mjs');
+  writeFileSync(engineCopy, `${readFileSync(engineCopy, 'utf8')}// an edit\n`);
+  assert.notEqual(keyOfCopy(), k0, 'an encoder edit moves the key');
   write('blocks/hero/hero.css', '.hero { display: flex; }\n');
   const k1 = await key();
   assert.notEqual(k1, k0, 'a block CSS edit moves the key');
