@@ -383,7 +383,10 @@ fired (`autoplay`/`loop` video, auto-advancing slides — the observe JSON's
 `media` block): the capture freeze is logged as
 `captureState[].restoreAtDelivery` and delivered, never shipped as the spec
 ("poster + paused" is not a deliverable). Fan-out briefs carry the
-evidence rule + instrument invocation verbatim.
+evidence rule + instrument invocation verbatim, and the pause check: with
+`STARDUST_PAUSE_FILE` set, an archetype subagent checks that file after
+each gate iteration; present → it finishes the iteration, writes its report
+and returns (`reference/handoff-contract.md` § Fan-out discipline).
 
 When all breakpoints pass, present the archetype + its gate metrics for
 approval per the standard prototype approval flow (hands-off mode records
@@ -396,14 +399,11 @@ end --detail "<per-breakpoint numbers>"`. Resuming a run starts with
 `ledger.mjs tail` and `state.mjs summary --slugs`, not `cat`.
 Every phase of this skill — extract and preserve-direction included — opens
 with `node stardust/scripts/stardust/ledger.mjs replica <phase> start` as its
-FIRST command, before any script of the phase runs (a recorded hands-off run
-wrote a phase's `start` beside its `end` after 109 minutes of work and read
-as idle to its supervisor; `ledger.mjs` refuses an `end` without an open
-`start` under `--strict`), and closes with the `end` line plus a section in
-`stardust/journal.md` headed `## <Phase name> — <what happened> (<date>)` —
-the section is part of the phase `end`, and `ledger.mjs … end` warns when it
-is missing (a recorded run's journal began at its second session; another's
-had one section for the whole run).
+FIRST command, before any script of the phase runs (`ledger.mjs` refuses an
+`end` without an open `start` under `--strict`), and closes with the `end`
+line plus a section in `stardust/journal.md` headed
+`## <Phase name> — <what happened> (<date>)` — the section is part of the
+phase `end`, and `ledger.mjs … end` warns when it is missing.
 
 ### Phase 5 — HANDOFF (delegate — migrate → deploy → rollout, unchanged)
 
@@ -447,14 +447,20 @@ had one section for the whole run).
   gated archetype is deployed and passes its full gate row on the preview URL
   (cap 3 fix rounds, then the re-prototype decision) BEFORE its siblings
   render; C1…Cn — one subagent per template cluster runs the whole chain
-  with its own batch ledger (`deploy-batch.mjs --ledger …`, lock-safe) and
-  reports one verdict line, `first pass 360: x/y` from
-  `gate-triage.mjs --unit <cluster>` included; the main agent only coordinates
-  and records; C-final — `check`, the queued `foundation-requests.md` lines
-  applied once, `C-deliver end`. Each unit is recorded in
-  `stardust/rollout/progress.json` and committed — a safe resume point,
-  never by itself a reason to end the session; no frozen file is edited
-  mid-wave.
+  with its own batch ledger and reports one verdict line,
+  `first pass 360: x/y` from `gate-triage.mjs --unit <cluster>` included; a
+  cluster of more than 16 siblings runs as sub-units
+  `cluster-<template>-1..n` of at most 16 pages (target: no C-deliver unit
+  runs longer than 90 minutes), in sibling order and one after another,
+  each with its own fix rounds, `gate-all --only` scope and
+  `gate-triage.mjs --unit <sub-unit>`; the main agent only coordinates and
+  records; C-final — `check`, the queued `foundation-requests.md` lines
+  applied once, `C-deliver end`. Each unit and sub-unit is recorded in
+  `stardust/rollout/progress.json`, committed and closed by its boundary
+  ask — a safe resume point, never by itself a reason to end the session;
+  no frozen file is edited mid-wave, and fan-out subagents honour
+  `STARDUST_PAUSE_FILE` (`reference/handoff-contract.md` § Fan-out
+  discipline).
 - **The final gate runs against the PUBLISHED origin — not the harness**
   (`reference/source-fidelity-gate.md` § The published-origin gate): deploy
   first (`PUT → preview`); the archetype's published row of record is the
@@ -462,9 +468,9 @@ had one section for the whole run).
   host>` row — the evidence the roster later reuses. `gate.sh <slug> "$LIVE"
   "<preview-url>" <width> pub<N> --full --marker "<brand or domain string>"`
   through `run-bg.mjs` stays the fix-round instrument inside that unit, never
-  a second verdict, in the ordinary `gates/<slug>-<width>/` dir (a new dir
-  would force a fresh live capture). Nothing pixel-shaped runs on the local
-  harness — it feeds `qa-gate`/`block-roundtrip` only.
+  a second verdict, in the ordinary `gates/<slug>-<width>/` dir. Nothing
+  pixel-shaped runs on the local harness — it feeds
+  `qa-gate`/`block-roundtrip` only.
 - **The delivery gate is the ALL-PAGES run, four criteria — not the pixel
   number alone** (`reference/source-fidelity-gate.md` § The all-pages
   published-origin gate, #125): `node stardust/scripts/replica/gate-all.mjs
@@ -473,9 +479,8 @@ had one section for the whole run).
   when the source changed; reference § Iteration discipline, Evidence
   freshness); opt-in `--one-load` reads the probes off the stitched pages.
   DELIVERED = pixel % ≤ 10 AND |Δh| ≤ 5 % AND 0 clipped text / controls
-  (`clip-probe`) AND 0 MISSING / HIDDEN links / headings (`content-presence`);
-  a recorded page passed the pixel bar with all of its cards clipped. Evidence
-  and sidecars: `stardust/replica/gates/all-<width>/`; with the Phase 4
+  (`clip-probe`) AND 0 MISSING / HIDDEN links / headings (`content-presence`).
+  Evidence and sidecars: `stardust/replica/gates/all-<width>/`; with the Phase 4
   `prototypes-<width>/` table it is the pair `gate-evidence.mjs` reads (a page
   without a row is ungated). Each cluster subagent runs `--only` over its own
   pages inside the fan-out; cluster re-runs and C-final's roster run (unit
