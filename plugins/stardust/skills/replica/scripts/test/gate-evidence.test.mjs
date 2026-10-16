@@ -596,8 +596,9 @@ rmSync(root2, { recursive: true, force: true });
 // One encoded template (a map emitting block:cards, its block code, the archetype's passedOn under the current harness
 // key): a sibling the archetype's shape covers (no runs), one with a new shape (cards ×4, no runs), one with the same
 // new shape and its own runs, a covered one whose own qa-gate run failed, a stopped one, a hand-edited one, a clone
-// sibling. Pages built with migrate's provenance and shape readers; the audit carries the encoder's L5 counts where
-// given.
+// sibling, and three delivered content files (identical to the encode, never staged and differing, differing with a
+// passing content-diff run). Pages built with migrate's provenance and shape readers; the audit carries the encoder's
+// L5 counts where given.
 const root3 = realpathSync(mkdtempSync(join(tmpdir(), 'gate-evidence-c14-')));
 const M3 = join(root3, 'stardust/migrated'); const BG3 = join(root3, 'stardust/.work/replica/bg'); const A3 = 'trip-a';
 const html3 = (n) => `<body><header></header><main><div><h1>Trip</h1><div class="cards">${'<div><div><img src="/x.jpg" alt=""></div><div><p>Card</p></div></div>'.repeat(n)}</div></div></main><footer></footer></body>\n`;
@@ -613,6 +614,11 @@ const page3 = (slug, rows, archetype = false, audit = { incomplete: [], count: {
     encode: { encoder: keys3.encoder, map: keys3.map, inputs: {}, output: { path: doc, sha: sha(html3(rows)) }, encodedAt: '2026-10-01T00:00:00Z' }, audit: { encode: { status: 'clean', ...audit, shape: shapeOf(html3(rows)) } } }, null, 2)}\n`);
 };
 page3(A3, 2, true); page3('trip-b', 2); page3('trip-c', 4, false, { incomplete: [] }); page3('trip-d', 4); page3('trip-f', 2); page3('trip-g', 2, false, { status: 'incomplete', incomplete: [{ role: 'text', text: 'Lost' }] }); page3('trip-h', 2);
+// R41: delivered content files — one byte-identical to the encode (staged or adopted), one that lost a paragraph and
+// was never staged, one that differs but has a passing content-diff run
+for (const slug of ['trip-i', 'trip-j', 'trip-k']) page3(slug, 2);
+put(join(root3, 'content/trips/trip-i.html'), html3(2));
+for (const slug of ['trip-j', 'trip-k']) put(join(root3, `content/trips/${slug}.html`), html3(2).replace('<h1>Trip</h1>', '<h1>Trip</h1><p>Only on the delivered page</p>').replace('<p>Card</p>', ''));
 put(join(root3, 'stardust/encoded/trips/trip-h.html'), html3(2).replace('<p>Card</p>', '<p>Edited by hand</p>'));
 put(join(M3, 'trips/trip-e.html'), '<html><body><main><h1>Clone</h1></main></body></html>\n');
 put(join(M3, 'trips/trip-e._meta.json'), `${JSON.stringify({ slug: 'trip-e', renderBranch: "A'", fidelityTier: 'sibling', template: A3, archetypeSource: A3, variants: [], encode: null, audit: null }, null, 2)}\n`);
@@ -632,6 +638,7 @@ job3('d-qa', ['stardust/scripts/deploy/qa-gate.mjs', 'http://localhost:3000/star
 job3('f-qa', ['stardust/scripts/deploy/qa-gate.mjs', 'http://localhost:3000/stardust/.work/harness/page.html', '--schema', 'stardust/eds-schema/trip-f.json'], 5, 1);
 job3('d-cd', ['stardust/scripts/diff/content-diff.mjs', `${PUBLISHED}/trips/trip-d`], 6, 0, 'Findings: 2 (1 structural 🔴)');
 job3('f-cd', ['stardust/scripts/diff/content-diff.mjs', `${PUBLISHED}/trips/trip-f`], 7, 0, 'Findings: none — content + roles match');
+job3('k-cd', ['stardust/scripts/diff/content-diff.mjs', `${PUBLISHED}/trips/trip-k`], 8, 0, 'Findings: none — content + roles match');
 const run3 = (...args) => { const r = spawnSync(process.execPath, [SCRIPT, '--lint', join(root3, 'lint-stub.mjs'), ...args], { cwd: root3, encoding: 'utf8' }); return { code: r.status, out: r.stdout, err: r.stderr }; };
 const meta3 = (slug) => json(join(M3, `trips/${slug}._meta.json`));
 const HARNESS3 = ['section-schema', 'block-roundtrip', 'qa-gate'];
@@ -671,6 +678,14 @@ check('R35: an encoded sibling\'s current clean encode passes content-count on t
   assert.match(c14a.out, /^trip-g: missing [^\n]*content-count/m);
   assert.equal('content-count' in meta3('trip-h').gateEvidence, false, 'nor does a hand-edited document under a clean status (not the current encode)');
   for (const s of [A3, 'trip-e']) assert.equal('content-count' in meta3(s).gateEvidence, false, `${s}: as before`);
+});
+check('R41: the encoder\'s count stands for the delivered document only while it is absent or byte-identical to the encode; a differing one is OPEN, a content-diff pass still stands', () => {
+  assert.equal(meta3('trip-i').gateEvidence['content-count'], 'encoder L5: 0 MISSING (h 1/1 · links 0/0 · images 2/2 · text 3/3) — audit.encode (stardust/encoded/trips/trip-i.html)', 'identical: staged or adopted');
+  assert.equal(meta3('trip-j').gateEvidence['content-count'], 'OPEN: content/trips/trip-j.html is not the current encode (stardust/encoded/trips/trip-j.html) — re-stage it, or run content-diff on the delivered page');
+  assert.equal(meta3('trip-j').gatesPassed.includes('content-count'), false);
+  assert.match(c14a.out, /^trip-j: missing [^\n]*content-count/m);
+  assert.equal(meta3('trip-k').gateEvidence['content-count'], 'content-diff: none — content + roles match (k-cd.log)', 'the content-diff run on the delivered page decides, without the encoder\'s line');
+  assert.equal(meta3('trip-b').gateEvidence['content-count'].startsWith('encoder L5: 0 MISSING'), true, 'no content file yet: the encoder\'s count stands');
 });
 put(join(root3, 'blocks/cards/cards.css'), '.cards { display: grid; }\n');
 const k3b = (await harnessKey(root3, A3)).key;

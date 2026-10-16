@@ -47,7 +47,11 @@
  *                       count passes the gate — `encoder L5: 0 MISSING (h a/b · links a/b · images
  *                       a/b · text a/b) — audit.encode (<encoded document>)`, the counts from
  *                       audit.encode.count when recorded — with a content-diff line, when there is
- *                       one, after it; a FAIL/OPEN from that run wins.
+ *                       one, after it; a FAIL/OPEN from that run wins. The count stands for the
+ *                       delivered document only while it is absent (before delivery) or byte-identical
+ *                       to the encoded document (staged or adopted); a content file that differs reads
+ *                       `OPEN: <content file> is not the current encode … — re-stage it, or run
+ *                       content-diff on the delivered page` (a content-diff pass still stands alone).
  *   media-reconcile     latest media-reconcile.mjs job whose counts line has no `omit` and no
  *                       `unresolved` (the instrument's own exit-1 rule); either → OPEN: — but only once
  *                       the page's DELIVERED content file exists (`<--content>/<da-path>.html`, or
@@ -392,6 +396,14 @@ export function parseVariance(text, paths = []) {
 }
 
 // ---- derivation --------------------------------------------------------------------------------
+// An encoded page's delivered content file (absolute) when it exists: where stage-content writes it
+// (content/<encoded path>), else where the delivered signal finds it; null before delivery.
+function deliveredContent(page, ctx) {
+  if (page.encoded.content && existsSync(page.encoded.content)) return page.encoded.content;
+  const d = ctx.contentFile ? ctx.contentFile(page) : null;
+  return d && d.exists && d.file ? resolve(d.file) : null;
+}
+const sameBytes = (a, b) => { try { return readFileSync(a).equals(readFileSync(b)); } catch { return false; } };
 // The encoder's own content count (L5) of a clean encode, as an evidence line; null when the audit records a MISSING
 // item or no clean status. audit.encode.count.counts.<role> = { capture, missing, … } (deploy's diffOffline).
 export function encoderCount(meta, doc) {
@@ -487,9 +499,13 @@ export function derive(page, jobs, o, ctx) {
   }
 
   // An encoded sibling's current clean encode was counted by the encoder (L5); a content-diff FAIL/OPEN still wins.
+  // R41: that count stands for the delivered document only while it is absent or byte-identical to the encoded one.
   const l5 = c14Page(page) && page.encoded.state && page.encoded.state.ok ? encoderCount(page.meta, page.encoded.path) : null;
   if (l5 && !/^(FAIL|OPEN): /.test(evidence['content-count'] || '')) {
-    if (gates.includes('content-count')) evidence['content-count'] = `${l5}; ${evidence['content-count']}`;
+    const live = deliveredContent(page, ctx);
+    if (live && !sameBytes(live, page.encoded.file)) {
+      if (!gates.includes('content-count')) open('content-count', `${relative(process.cwd(), live).split(sep).join('/')} is not the current encode (${page.encoded.path}) — re-stage it, or run content-diff on the delivered page`);
+    } else if (gates.includes('content-count')) evidence['content-count'] = `${l5}; ${evidence['content-count']}`;
     else pass('content-count', l5);
   }
 
