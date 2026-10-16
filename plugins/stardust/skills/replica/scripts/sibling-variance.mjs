@@ -17,6 +17,21 @@
  * (a sibling's own photo is the source's choice — replicate it); only the
  * layer stack, geometry and computed styles are compared.
  *
+ * The verdict is RECORDED, not only printed: a recorded hands-off run's probe
+ * exited 2 on every template and the siblings were cloned anyway, because no
+ * file the cloning step reads held the verdict. Every run that probed every
+ * page (exit 0 or 2 — never 1 or 3) writes the variance sidecar
+ * <variance-dir>/<template>.json (atomic):
+ *   { template, archetype, at, siblings: [{ slug, url, verdict same|differs,
+ *     missing: [<probe>…], extra: [<probe>…], deltas: [{ kind, probe?, msg }] }] }
+ * siblings sorted by slug. MISSING findings name `missing`, EXTRA `extra`;
+ * every other finding (SECTIONS, SECTION HEIGHTS, COUNT, CLUSTERS, PROBE) is a
+ * delta. An existing file for the same archetype URL is merged by sibling slug
+ * (rows of other slugs kept, `at` = now); a different archetype URL replaces
+ * it. When more than half of the file's siblings differ, the run says so: the
+ * template is re-typed (sub-archetypes by locale family or composition, a
+ * recorded deviation) — never cloned mechanically.
+ *
  * Usage:
  *   node skills/replica/scripts/sibling-variance.mjs <archetypeURL> <siblingURL> [<siblingURL>…] [options]
  *     --probe <name>=<sel>   template-defining element to compare (repeatable). For
@@ -37,28 +52,46 @@
  *     --dismiss <sel,…>      extra overlay-dismiss selectors
  *     --headed               headed stealth real Chrome (bot-managed sites)
  *     --locale <tag>         pin Accept-Language + locale
- *     --json                 machine-readable output
+ *     --template <slug>      the archetype's slug — names the sidecar (default:
+ *                            the archetype URL's slug in --state, else the
+ *                            crawl slug rule on its path)
+ *     --state <file>         page roster for URL → slug (default
+ *                            stardust/state.json): origin + pathname without
+ *                            trailing slash + search, `www.` folded; a URL not
+ *                            in it → the crawl slug rule (path, runs of
+ *                            non-alphanumerics → `-`, lowercased, `index`)
+ *     --variance-dir <dir>   sidecar directory (default stardust/rollout/variance)
+ *     --json                 machine-readable output (the variance lines then
+ *                            go to stderr)
+ *   A value flag followed by nothing or by another --flag is a usage error.
  *
+ * Output: the report (or --json), then `variance → <file> (<s> same, <d> differ)`
+ * and, when more than half of the file's siblings differ, the re-type advice.
+ * Writes: <variance-dir>/<template>.json on exit 0 and 2 only.
  * Exit codes: 0 every sibling matches the archetype within tolerance, 2 variance
- * found (budget it), 1 error, 3 bot challenge (fail loud — never measured).
+ * found (budget it), 1 error or usage, 3 bot challenge (fail loud — never measured).
  * Every URL is one live navigation: probe a template's siblings in ONE run and
  * keep the JSON as the fan-out brief's evidence.
  */
 
 /* eslint-disable import/no-extraneous-dependencies, import/extensions, no-await-in-loop, no-restricted-syntax, brace-style, object-curly-newline, max-len, no-plusplus, no-continue */
-import { chromium } from 'playwright';
-import { existsSync } from 'fs';
-import { dirname, resolve as resolvePath } from 'path';
+import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from 'fs';
+import { dirname, join, resolve as resolvePath } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const LIVE_SESSION = ['../../diff/scripts/live-session.mjs', '../diff/live-session.mjs']
-  .map((p) => resolvePath(HERE, p)).find((p) => existsSync(p));
-if (!LIVE_SESSION) {
-  console.error('sibling-variance error: live-session.mjs not found (looked in ../../diff/scripts/ and ../diff/). Copy the diff skill\'s scripts dir alongside this one (replica SKILL.md § Setup).');
-  process.exit(1);
+const SELF = fileURLToPath(import.meta.url);
+const LIVE_SESSION_CANDIDATES = ['../../diff/scripts/live-session.mjs', '../diff/live-session.mjs'];
+export const DEFAULT_STATE = 'stardust/state.json';
+export const DEFAULT_VARIANCE_DIR = 'stardust/rollout/variance';
+
+export class UsageError extends Error {}
+
+async function loadLiveSession() {
+  const found = LIVE_SESSION_CANDIDATES.map((p) => resolvePath(HERE, p)).find((p) => existsSync(p));
+  if (!found) throw new Error('live-session.mjs not found (looked in ../../diff/scripts/ and ../diff/). Copy the diff skill\'s scripts dir alongside this one (replica SKILL.md § Setup).');
+  return import(pathToFileURL(found).href);
 }
-const { isLiveHttpUrl, launchStealthHeaded, newLiveContext, gotoLive, dismissOverlays, defaultWaitUntil } = await import(pathToFileURL(LIVE_SESSION).href);
 
 const HELP = `sibling-variance — diff template-defining computed values of live siblings against the archetype
 
@@ -71,36 +104,59 @@ Usage: node sibling-variance.mjs <archetypeURL> <siblingURL> [<siblingURL>…] [
   --dismiss <sel,…>     extra overlay-dismiss selectors
   --headed              headed stealth real Chrome
   --locale <tag>        pin Accept-Language + locale
-  --json                machine-readable output
+  --template <slug>     the archetype's slug, names the sidecar (default: the archetype URL's
+                        slug in --state, else the crawl slug rule on its path)
+  --state <file>        roster for URL → slug (default ${DEFAULT_STATE}; origin + pathname
+                        without trailing slash + search, www. folded; not in it → crawl slug rule)
+  --variance-dir <dir>  sidecar directory (default ${DEFAULT_VARIANCE_DIR})
+  --json                machine-readable output (the variance lines then go to stderr)
   --help                this text
+  A value flag followed by nothing or by another --flag is a usage error.
 
-Exit codes: 0 no variance, 2 variance found, 1 error, 3 bot challenge.`;
+Writes: <variance-dir>/<template>.json (atomic) once every page was probed (exit 0 or 2, never
+  1 or 3): { template, archetype, at, siblings: [{ slug, url, verdict same|differs, missing[],
+  extra[], deltas[{ kind, probe?, msg }] }] }, siblings sorted by slug. MISSING → missing, EXTRA →
+  extra, every other finding → deltas. Same archetype URL as the existing file → merged by sibling
+  slug (other slugs kept, at = now); a different archetype URL → replaced.
+Prints after the report: variance → <file> (<s> same, <d> differ) — and, when more than half of the
+  file's siblings differ, the advice to re-type the template (never a mechanical clone).
 
-function parseArgs(argv) {
-  const rest = argv.slice(2);
-  if (rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
+Exit codes: 0 no variance, 2 variance found, 1 error or usage, 3 bot challenge.`;
+
+export function parseArgs(rest) {
   const pos = [];
-  const opts = { probes: [], main: 'main', width: 1440, tolerance: 2, consent: null, dismiss: [], headed: false, locale: null, json: false };
+  const opts = { probes: [], main: 'main', width: 1440, tolerance: 2, consent: null, dismiss: [], headed: false, locale: null, json: false, template: null, state: DEFAULT_STATE, stateGiven: false, varianceDir: DEFAULT_VARIANCE_DIR };
+  const need = (i, flag) => { if (i + 1 >= rest.length || rest[i + 1].startsWith('--')) throw new UsageError(`${flag} needs a value`); return rest[i + 1]; };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--probe') {
-      const spec = rest[i += 1] || '';
+      const spec = need(i, a); i += 1;
       const m = spec.match(/^([\w-]+)=(.+)$/);
-      if (!m) { console.error(`bad --probe "${spec}" — expected name=<selector>\n\n${HELP}`); process.exit(1); }
+      if (!m) throw new UsageError(`bad --probe "${spec}" — expected name=<selector>`);
       opts.probes.push({ name: m[1], sel: m[2].trim() });
     }
-    else if (a === '--main') { opts.main = rest[i += 1]; }
-    else if (a === '--width') { opts.width = Number(rest[i += 1]); }
-    else if (a === '--tolerance') { opts.tolerance = Number(rest[i += 1]); }
-    else if (a === '--consent') { opts.consent = rest[i += 1]; }
-    else if (a === '--dismiss') { opts.dismiss = (rest[i += 1] || '').split(',').map((s) => s.trim()).filter(Boolean); }
+    else if (a === '--main') { opts.main = need(i, a); i += 1; }
+    else if (a === '--width') {
+      opts.width = Number(need(i, a)); i += 1;
+      if (!Number.isInteger(opts.width) || opts.width <= 0) throw new UsageError(`--width must be a positive integer, got ${rest[i]}`);
+    }
+    else if (a === '--tolerance') {
+      opts.tolerance = Number(need(i, a)); i += 1;
+      if (!Number.isFinite(opts.tolerance) || opts.tolerance < 0) throw new UsageError(`--tolerance must be a number ≥ 0, got ${rest[i]}`);
+    }
+    else if (a === '--consent') { opts.consent = need(i, a); i += 1; }
+    else if (a === '--dismiss') { opts.dismiss = need(i, a).split(',').map((s) => s.trim()).filter(Boolean); i += 1; }
     else if (a === '--headed') { opts.headed = true; }
-    else if (a === '--locale') { opts.locale = rest[i += 1]; }
+    else if (a === '--locale') { opts.locale = need(i, a); i += 1; }
+    else if (a === '--template') { opts.template = need(i, a); i += 1; }
+    else if (a === '--state') { opts.state = need(i, a); opts.stateGiven = true; i += 1; }
+    else if (a === '--variance-dir') { opts.varianceDir = need(i, a); i += 1; }
     else if (a === '--json') { opts.json = true; }
-    else if (a.startsWith('--')) { console.error(`unknown flag ${a}\n\n${HELP}`); process.exit(1); }
+    else if (a.startsWith('--')) { throw new UsageError(`unknown flag ${a}`); }
     else pos.push(a);
   }
-  if (pos.length < 2) { console.error(`need <archetypeURL> and at least one <siblingURL>\n\n${HELP}`); process.exit(1); }
+  if (pos.length < 2) throw new UsageError('need <archetypeURL> and at least one <siblingURL>');
+  if (opts.template !== null && !isFileSafeSlug(opts.template)) throw new UsageError(`--template "${opts.template}" is not a file-safe slug (letters, digits, . _ -; no leading dot)`);
   return { archetype: pos[0], siblings: pos.slice(1), opts };
 }
 
@@ -178,7 +234,7 @@ function probePage({ probes, main }) {
 
 const px = (v) => { const m = String(v).match(/^-?[\d.]+(?=px$)/); return m ? parseFloat(m[0]) : null; };
 
-function diffValue(k, a, b, tol) {
+export function diffValue(k, a, b, tol) {
   if (JSON.stringify(a) === JSON.stringify(b)) return null;
   if (a && b && typeof a === 'object' && !Array.isArray(a)) {
     const d = Object.keys({ ...a, ...b }).map((kk) => diffValue(kk, a[kk], b[kk], tol)).filter(Boolean);
@@ -197,7 +253,7 @@ function diffValue(k, a, b, tol) {
   return `${k} ${show(a)} → ${show(b)}`;
 }
 
-function compare(arch, sib, tol) {
+export function compare(arch, sib, tol) {
   const findings = [];
   const sa = arch.sections.map((s) => s.label).join(' > '); const sb = sib.sections.map((s) => s.label).join(' > ');
   if (arch.sections.length !== sib.sections.length) findings.push({ kind: 'SECTIONS', msg: `${arch.sections.length} vs ${sib.sections.length} top-level sections (archetype: ${sa || '-'}; sibling: ${sb || '-'}) — a different template family or an extra/missing section` });
@@ -217,9 +273,110 @@ function compare(arch, sib, tol) {
   return findings;
 }
 
+// ------------------------------------------------------------ variance sidecar
+
+export const nowIso = () => new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+
+// The sidecar is named by the template slug: no path separator, no leading dot.
+export function isFileSafeSlug(s) { return typeof s === 'string' && /^[A-Za-z0-9_-][A-Za-z0-9._-]*$/.test(s); }
+
+// The roster's URL key: origin (`www.` folded) + pathname without trailing slash + search.
+export function urlKey(u) {
+  let x;
+  try { x = new URL(u); } catch { return null; }
+  return `${x.protocol}//${x.host.replace(/^www\./, '')}${x.pathname.replace(/\/+$/, '')}${x.search}`;
+}
+
+// crawl.mjs's slug rule for a URL the roster does not hold.
+export function crawlSlug(u) {
+  let pathname;
+  try { ({ pathname } = new URL(u)); } catch { [pathname] = String(u).split(/[?#]/); }
+  const s = pathname.replace(/^\/|\/$/g, '').replace(/[^a-z0-9]+/gi, '-').toLowerCase();
+  return s || 'index';
+}
+
+export function rosterSlug(url, pages = []) {
+  const key = urlKey(url);
+  if (key === null || !Array.isArray(pages)) return null;
+  const hit = pages.find((p) => p && typeof p.slug === 'string' && p.slug && urlKey(p.url) === key);
+  return hit ? hit.slug : null;
+}
+
+export const slugFor = (url, pages = []) => rosterSlug(url, pages) ?? crawlSlug(url);
+
+export function readRoster(file, given = false) {
+  if (!existsSync(file)) {
+    if (given) throw new Error(`--state ${file} not found`);
+    return { pages: [], note: `${file} not found — slugs by the crawl slug rule` };
+  }
+  let state;
+  try { state = JSON.parse(readFileSync(file, 'utf8')); } catch (e) { throw new Error(`${file} is not valid JSON (${e.message})`); }
+  if (!state || !Array.isArray(state.pages)) throw new Error(`${file} has no pages[] array`);
+  return { pages: state.pages, note: null };
+}
+
+// MISSING → missing[], EXTRA → extra[] (probe names), every other finding → deltas[].
+export function verdictOf(findings = []) {
+  const names = (kind) => [...new Set(findings.filter((f) => f.kind === kind).map((f) => f.probe).filter(Boolean))].sort();
+  return {
+    verdict: findings.length ? 'differs' : 'same',
+    missing: names('MISSING'),
+    extra: names('EXTRA'),
+    deltas: findings.filter((f) => f.kind !== 'MISSING' && f.kind !== 'EXTRA')
+      .map((f) => (f.probe === undefined ? { kind: f.kind, msg: f.msg } : { kind: f.kind, probe: f.probe, msg: f.msg })),
+  };
+}
+
+const byCode = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+const sortRows = (rows) => rows.slice().sort((a, b) => byCode(String(a.slug), String(b.slug)) || byCode(String(a.url), String(b.url)));
+
+// rows: [{ slug, url, findings }] → the sidecar object, siblings sorted by slug.
+export function sidecarOf({ template, archetype, at, rows }) {
+  return { template, archetype, at, siblings: sortRows(rows.map(({ slug, url, findings }) => ({ slug, url, ...verdictOf(findings) }))) };
+}
+
+const sameUrl = (a, b) => { const ka = urlKey(a); return ka !== null ? ka === urlKey(b) : a === b; };
+
+// Same archetype URL → the previous rows of other slugs are kept; anything else → next replaces prev.
+export function mergeSidecar(prev, next) {
+  if (!prev || typeof prev !== 'object' || !Array.isArray(prev.siblings) || !sameUrl(prev.archetype, next.archetype)) return next;
+  const fresh = new Set(next.siblings.map((s) => s.slug));
+  return { ...next, siblings: sortRows([...prev.siblings.filter((s) => s && typeof s === 'object' && !fresh.has(s.slug)), ...next.siblings]) };
+}
+
+export function retypeAdvice(rows, template) {
+  const total = rows.length;
+  const differ = rows.filter((r) => r.verdict !== 'same').length;
+  return differ > total / 2
+    ? `more than half of ${template}'s siblings differ (${differ} of ${total}): re-type the template — sub-archetypes by locale family or composition, a recorded deviation; never a mechanical clone`
+    : null;
+}
+
+// Reads <dir>/<template>.json (if any), merges or replaces, writes it atomically.
+export function recordVariance({ dir, template, archetype, rows, at = nowIso() }) {
+  const file = join(dir, `${template}.json`);
+  const next = sidecarOf({ template, archetype, at, rows });
+  let sidecar = next; let note = null;
+  if (existsSync(file)) {
+    let prev = null;
+    try { prev = JSON.parse(readFileSync(file, 'utf8')); } catch { /* unreadable: replaced */ }
+    sidecar = mergeSidecar(prev, next);
+    if (sidecar === next) note = `${file} held ${prev && typeof prev.archetype === 'string' ? `archetype ${prev.archetype}` : 'no readable sidecar'} — replaced`;
+  }
+  mkdirSync(dir, { recursive: true });
+  const tmp = `${file}.${process.pid}.tmp`;
+  writeFileSync(tmp, `${JSON.stringify(sidecar, null, 2)}\n`);
+  renameSync(tmp, file);
+  const differ = sidecar.siblings.filter((s) => s.verdict !== 'same').length;
+  return { file, sidecar, same: sidecar.siblings.length - differ, differ, advice: retypeAdvice(sidecar.siblings, template), note };
+}
+
+export const varianceLines = (rec) => [`variance → ${rec.file} (${rec.same} same, ${rec.differ} differ)`, ...(rec.advice ? [rec.advice] : [])];
+
 // ---------------------------------------------------------------------- main
 
-async function probeUrl(browser, url, opts) {
+async function probeUrl(browser, url, opts, session) {
+  const { isLiveHttpUrl, newLiveContext, gotoLive, dismissOverlays, defaultWaitUntil } = session;
   const ctx = await newLiveContext(browser, { locale: opts.locale, viewport: { width: opts.width, height: 900 } });
   const page = await ctx.newPage();
   await gotoLive(page, url, { waitUntil: defaultWaitUntil(url), settleMs: isLiveHttpUrl(url) ? 2500 : 1200, solveWindow: opts.headed });
@@ -236,15 +393,28 @@ async function probeUrl(browser, url, opts) {
   return out;
 }
 
-async function main() {
-  const { archetype, siblings, opts } = parseArgs(process.argv);
-  const browser = opts.headed ? await launchStealthHeaded(chromium) : await chromium.launch();
+async function main(argv) {
+  const { archetype, siblings, opts } = parseArgs(argv);
+  // Slugs resolve before any navigation: a bad roster or template fails before the browser starts.
+  const roster = readRoster(opts.state, opts.stateGiven);
+  if (roster.note) console.error(`sibling-variance: ${roster.note}`);
+  const template = opts.template || slugFor(archetype, roster.pages);
+  if (!isFileSafeSlug(template)) throw new Error(`the archetype's slug "${template}" is not a file-safe slug — pass --template <slug>`);
+  const slugs = siblings.map((url) => slugFor(url, roster.pages));
+  if (roster.pages.length) {
+    const unlisted = [...(opts.template ? [] : [archetype]), ...siblings].filter((url) => rosterSlug(url, roster.pages) === null);
+    if (unlisted.length) console.error(`sibling-variance: not in ${opts.state} — crawl slug rule: ${unlisted.map((url) => `${url} → ${crawlSlug(url)}`).join(', ')}`);
+  }
+  let chromium;
+  try { ({ chromium } = await import('playwright')); } catch (e) { throw new Error(`playwright is not importable from ${HERE} (${e.code || e.message}) — replica SKILL.md § Setup: copy the scripts dir into the project and run the copy`); }
+  const session = await loadLiveSession();
+  const browser = opts.headed ? await session.launchStealthHeaded(chromium) : await chromium.launch();
   let varying = 0;
+  const results = [];
   try {
-    const A = await probeUrl(browser, archetype, opts);
-    const results = [];
+    const A = await probeUrl(browser, archetype, opts, session);
     for (const url of siblings) {
-      const S = await probeUrl(browser, url, opts);
+      const S = await probeUrl(browser, url, opts, session);
       const findings = compare(A, S, opts.tolerance);
       if (findings.length) varying += 1;
       results.push({ url, findings, raw: S });
@@ -263,7 +433,22 @@ async function main() {
   } finally {
     await browser.close();
   }
-  process.exit(varying ? 2 : 0);
+  // Only a run that probed every page records a verdict (an error or a bot challenge threw above).
+  const rec = recordVariance({ dir: opts.varianceDir, template, archetype, rows: results.map((r, i) => ({ slug: slugs[i], url: r.url, findings: r.findings })) });
+  if (rec.note) console.error(`sibling-variance: ${rec.note}`);
+  const say = opts.json ? console.error : console.log;
+  for (const line of varianceLines(rec)) say(line);
+  return varying ? 2 : 0;
 }
 
-main().catch((e) => { console.error(`sibling-variance error: ${e.message}`); process.exit(e.name === 'BotChallengeError' ? 3 : 1); });
+// Compare by real path: a symlinked checkout or temp dir must not turn the CLI into a silent no-op.
+function safeRealpath(p) { try { return realpathSync(p); } catch { return p; } }
+if (process.argv[1] && SELF === safeRealpath(process.argv[1])) {
+  const argv = process.argv.slice(2);
+  if (argv.includes('--help') || argv.includes('-h')) { console.log(HELP); process.exit(0); }
+  main(argv).then((code) => process.exit(code), (e) => {
+    if (e instanceof UsageError) { console.error(`sibling-variance: ${e.message}\n\n${HELP}`); process.exit(1); }
+    console.error(`sibling-variance error: ${e.message}`);
+    process.exit(e.name === 'BotChallengeError' ? 3 : 1);
+  });
+}
