@@ -28,15 +28,15 @@ The stardust `replica` skill is invoked. It:
    improvements.
 3. Creates the **inconsistency register** at
    `stardust/replica/inconsistency-register.md`. Without audit findings or
-   user-supplied items it holds no design delta (pure replica; a self-hosted
-   proprietary face adds its one `deferred` licensing entry); every entry
+   user-supplied items it holds no design delta (pure replica; self-hosted
+   proprietary faces add one `deferred` licensing entry); every entry
    carries captured evidence + the minimal change + status.
 4. **Recreates one archetype per page type** as clean re-authored HTML/CSS:
    semantic markup, tokenized CSS with values lifted from the source site's
    own stylesheets; content verbatim from `stardust/current/pages/*.json`;
    the source's own brand faces self-hosted from its files, brand family
-   first and a substitute only as the fallback entry; a proprietary face
-   carries the licensing alert (banner + register entry). No DOM copying (no
+   first and a substitute only as the fallback entry; proprietary faces
+   carry the licensing alert (banner + one register entry). No DOM copying (no
    source class-soup, no framework artifacts, no scraped inline styles).
 5. Runs the **source-fidelity gate** per breakpoint (1440 and 360): diff's
    `content-diff.mjs` + `visual-diff.mjs` with `--profile generic` (live URL
@@ -47,7 +47,8 @@ The stardust `replica` skill is invoked. It:
    deltas land in the residual log, not in silence. After the 1440 pass the
    **content-cap row** runs once per archetype: replica's `cap-probe.mjs`
    live `--against` the served prototype at the derived `probeWidth` that
-   extract wrote to DESIGN.json (never a pinned width), PASS required.
+   extract wrote to DESIGN.json (never a pinned width), PASS required
+   (INCONCLUSIVE — too few module pairs, the wrapper row passed — is no FAIL).
 6. Hands off through the standard pipeline: archetypes at
    `stardust/prototypes/<slug>-proposed.html` so the stardust `migrate` skill Path A /
    sibling tier consume them unchanged; core `state.json` lifecycle is used,
