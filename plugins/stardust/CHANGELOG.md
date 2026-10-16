@@ -4,6 +4,29 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.34.3 — gate-triage: failing gate rows grouped by shared cause before the next pixel round
+
+A failing all-pages table usually holds a few causes repeated across many pages. One advisory script names them
+before the next fix round, so each cause is fixed once and re-gated over the pages it touches.
+
+- **`gate-triage.mjs` groups failing gate rows by shared cause, diffs the failing region's properties and routes
+  foundation causes to `foundation-requests.md`; it never applies a fix.** It reads each gate table
+  (`summary.json` and `--only` runs, newest row per page, each row's source recorded) with the page's `pixel` /
+  `clip` / `content` / `units` evidence, the coverage share map and the unit families; files every failing row
+  under `block:<name>`, `encoder:<template>`, `layout:<template>` (re-prototype candidate) or, from the property
+  diff, `token:<property>`; runs `chrome-parity.mjs --no-defaults --region … --live-cache` once per group
+  representative (at most 4 per run across all gate dirs; `--no-parity` skips it); names each group's re-gate scope
+  (never smaller than its rows) with one `gate-all.mjs --only` command per eds host the pages were measured on;
+  writes `triage.{json,md}` into each gate table dir, byte-identical on a re-run. Frozen-foundation causes become
+  one `foundation-requests.md` line per width in the contract's format (a cause@width is queued once; non-frozen
+  shared blocks stay cluster fixes). On a recorded hands-off run's tables it filed 105 of 108 failing rows
+  (97.2 %) under 21 shared causes.
+- **replica Phase 5, handoff contract § 3 row C and the failing-row paragraph name it as advisory:** run it
+  between fix rounds; the rows stay the verdict, the 3-round cap and the foundation freeze stay.
+
+Patch: a new advisory script and three one-sentence doc additions; no verdict, threshold, criterion, row or
+capture change; the C-deliver wording is advisory, not a new required unit step.
+
 ## 0.34.2 — the source oracle holds still: fix rounds measure against this run's captured origin; browser budgets split
 
 A fix round compares the build against the source capture its run already took instead of loading the source
