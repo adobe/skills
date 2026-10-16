@@ -15,7 +15,7 @@
     {
       "name": "inconsistency_register",
       "max_score": 10,
-      "description": "stardust/replica/inconsistency-register.md exists; it is empty when no findings are supplied, and any entry carries captured evidence, the minimal change, and a status (applied/deferred). No design delta appears in the prototype without a register entry."
+      "description": "stardust/replica/inconsistency-register.md exists; it holds no design delta when no findings are supplied (a self-hosted proprietary brand face adds its one deferred licensing entry), and any entry carries captured evidence, the minimal change, and a status (applied/deferred). No design delta appears in the prototype without a register entry."
     },
     {
       "name": "clean_reauthoring",
@@ -45,7 +45,7 @@
     {
       "name": "font_policy",
       "max_score": 5,
-      "description": "Fonts are loaded from the same public source or substituted with a metric-matched free face; no commercial/licensed kit is rehosted; the brand family stays first in the font stack."
+      "description": "The source's own brand faces are self-hosted from the files the live site serves (same weights and styles); the brand family stays first in every stack and a metric-matched substitute appears only as the fallback entry after it, never as a calibrated stand-in; each proprietary face carries the licensing alert (the banner in the canon CSS plus one register entry)."
     },
     {
       "name": "standard_handoff",

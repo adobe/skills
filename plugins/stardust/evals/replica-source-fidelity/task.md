@@ -28,14 +28,16 @@ The stardust `replica` skill is invoked. It:
    improvements.
 3. Creates the **inconsistency register** at
    `stardust/replica/inconsistency-register.md`. Without audit findings or
-   user-supplied items it is present and empty (pure replica); every entry, if
-   any, carries captured evidence + the minimal change + status.
+   user-supplied items it holds no design delta (pure replica; a self-hosted
+   proprietary face adds its one `deferred` licensing entry); every entry
+   carries captured evidence + the minimal change + status.
 4. **Recreates one archetype per page type** as clean re-authored HTML/CSS:
    semantic markup, tokenized CSS with values lifted from the source site's
    own stylesheets; content verbatim from `stardust/current/pages/*.json`;
-   fonts same-source or metric-matched substitute (never a rehosted
-   commercial kit). No DOM copying (no source class-soup, no framework
-   artifacts, no scraped inline styles).
+   the source's own brand faces self-hosted from its files, brand family
+   first and a substitute only as the fallback entry; a proprietary face
+   carries the licensing alert (banner + register entry). No DOM copying (no
+   source class-soup, no framework artifacts, no scraped inline styles).
 5. Runs the **source-fidelity gate** per breakpoint (1440 and 360): diff's
    `content-diff.mjs` + `visual-diff.mjs` with `--profile generic` (live URL
    as source, served prototype as build) plus replica's
@@ -62,5 +64,6 @@ The stardust `replica` skill is invoked. It:
   (the pixel table is the source of record; a sidecar claim alone is not evidence).
 - Only gating desktop (mobile is not free — the 360 pass is required).
 - Skipping the content-cap row — a container cap wider than 1440 is invisible to both pixel gates.
-- Rehosting a licensed brand font.
+- Substituting a brand face instead of self-hosting it, or self-hosting a
+  proprietary face without the licensing alert.
 - Treating the header as a picture: no header contract, so its menus, drawer and search go unchecked.
