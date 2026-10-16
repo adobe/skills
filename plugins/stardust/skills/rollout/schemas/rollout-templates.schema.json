@@ -2,12 +2,13 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://stardust.dev/schemas/rollout-templates.schema.json",
   "title": "stardust rollout/coverage/templates.json",
-  "description": "Template grouping for delivery. A template is the structure shared by a set of migrated pages; rollout uses it to deliver a representative page first (establishing the EDS block library), to drive block reuse, and to roll up per-template delivery progress. Derived from the agnostic _meta.json / canon at inventory time. Owned by stardust:rollout.",
+  "description": "Template grouping for delivery. A template is the structure shared by a set of migrated pages; rollout uses it to deliver a representative page first (establishing the EDS block library), to drive block reuse, and to roll up per-template delivery progress. Derived from the agnostic _meta.json / canon at inventory time; carries the requested URLs of its pages and, once judged, a name and a description. Owned by stardust:rollout. Part of the coverage contract a client reads: strict here because it describes exactly what stardust writes.",
   "type": "object",
   "required": ["_provenance", "templates"],
   "additionalProperties": false,
   "properties": {
     "_provenance": { "$ref": "#/$defs/provenance" },
+    "formatVersion": { "$ref": "#/$defs/formatVersion" },
     "generatedAt": { "type": "string", "format": "date-time" },
     "templates": { "type": "array", "items": { "$ref": "#/$defs/template" } }
   },
@@ -22,6 +23,12 @@
         "stardustVersion": { "type": "string" }
       }
     },
+    "formatVersion": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "examples": ["0.1.0"],
+      "description": "Coverage format version (semver). Before 1.0.0 a release may still change the shape; from 1.0.0 (declared once a client has shipped against it) a minor release only adds fields, clients ignore fields they do not know, and removing or renaming a field is a major release. Writers since stardust 0.34.0 always emit it; files written earlier lack it."
+    },
     "template": {
       "type": "object",
       "required": ["id", "pages"],
@@ -29,13 +36,25 @@
       "properties": {
         "id": { "type": "string" },
         "label": { "type": "string" },
+        "name": {
+          "type": "string",
+          "description": "Judged kebab-case name (workspace/judgement.json); present only when judged."
+        },
+        "description": {
+          "type": "string",
+          "description": "Judged one-sentence description (workspace/judgement.json); present only when judged."
+        },
         "type": {
           "type": ["string", "null"],
-          "description": "The agnostic page type this grouping reflects, when available from _meta.json (landing/article/listing/etc.). Informational for rollout."
+          "description": "The agnostic page type of the representative page: its sidecar type, else its state.json type, else null. Informational for rollout."
         },
         "representativeSlug": {
           "type": ["string", "null"],
           "description": "The page rollout delivers first to establish this template's EDS block library; siblings then reuse those blocks."
+        },
+        "representativeUrl": {
+          "type": ["string", "null"],
+          "description": "The representative page's source.sourceUrl, or null."
         },
         "pages": {
           "type": "array",
@@ -43,6 +62,12 @@
           "items": { "type": "string" }
         },
         "pageCount": { "type": "integer", "minimum": 0 },
+        "urls": {
+          "type": "array",
+          "description": "Source URLs of the template's pages: the representative's first, the rest sorted; unique, unknown URLs skipped.",
+          "uniqueItems": true,
+          "items": { "type": "string" }
+        },
         "blocks": {
           "type": "array",
           "description": "Block ids this template composes (rollout/coverage/blocks.json[].id).",
@@ -55,6 +80,7 @@
           "properties": {
             "verified": { "type": "integer", "minimum": 0 },
             "deployed": { "type": "integer", "minimum": 0 },
+            "contentPending": { "type": "integer", "minimum": 0, "description": "Archetypes-only roster siblings that push no document of their own." },
             "pending": { "type": "integer", "minimum": 0 }
           }
         }

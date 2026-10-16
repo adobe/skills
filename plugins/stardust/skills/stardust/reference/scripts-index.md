@@ -76,12 +76,12 @@ Run the copies in `stardust/scripts/<skill>/`; ask `--help` only for a flag not 
 - `reskin/source-normalize.mjs` — default normalize ledger — no flags
 - `rollout/assemble.mjs` — sitemap, robots, manifest; served-sitemap check — `[--out stardust/rollout] [--canon <dir>] [--verify-origin <live-origin>]`
 - `rollout/autofix-aem.mjs` — fix findings in the EDS project — `--project <root> [--dry-run]`
-- `rollout/blocks.mjs` — block dedup ledger — `[--out <dir>]`
+- `rollout/blocks.mjs` — block dedup ledger — `[--out <dir>] [--blocks <dir>]`
 - `rollout/dashboard.mjs` — progress dashboard — `[--out <dir>]`
 - `rollout/delivery-lint.mjs` — pre-PUT static lint P0–P2 — `--file <html> [--path </da/path>] [--content <dir>] [--json]`
 - `rollout/done-check.mjs` — run complete? exit 0 = yes — `[--live-host <h>|--offline] [--json]`
 - `rollout/findings.mjs` — record/resolve findings — `record --source --layer --check --severity`; `resolve <id> --status`
-- `rollout/inventory.mjs` — coverage from migrated tree; keeps `--new` rows — `[--migrated <dir>] [--site-url <u>] [--state <f>] [--export <name>]`
+- `rollout/inventory.mjs` — coverage from migrated tree; keeps `--new` rows — `[--migrated <dir>] [--content <dir>] [--site-url <u>] [--state <f>] [--export <name>]`
 - `rollout/lib.mjs` — library, no CLI
 - `rollout/media-reconcile.mjs` — per-image decision — `--file <html> --deploy-host <h> [--media-ledger <file>] [--apply]`
 - `rollout/optimize.mjs` — quality findings + gate; source-parity tagged — `[--base <u>|--root <dir>] [--all] [--current <dir>]`

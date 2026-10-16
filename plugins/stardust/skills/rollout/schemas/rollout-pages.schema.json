@@ -2,12 +2,13 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://stardust.dev/schemas/rollout-pages.schema.json",
   "title": "stardust rollout/coverage/pages.json",
-  "description": "Delivery ledger: one row per migrated page rollout is responsible for delivering to AEM-EDS. Built by inventorying stardust/migrated/. Tracks the source hash (for stale detection) and per-page delivery status. Owned by stardust:rollout; the agnostic core is never modified.",
+  "description": "Delivery ledger: one row per migrated page rollout is responsible for delivering to AEM-EDS. Built by inventorying stardust/migrated/. Tracks the source hash (for stale detection), per-page delivery status and, once a page's content document exists, the delivered block structure (`delivered`). Owned by stardust:rollout; the agnostic core is never modified. Part of the coverage contract a client reads: strict here because it describes exactly what stardust writes.",
   "type": "object",
   "required": ["_provenance", "pages"],
   "additionalProperties": false,
   "properties": {
     "_provenance": { "$ref": "#/$defs/provenance" },
+    "formatVersion": { "$ref": "#/$defs/formatVersion" },
     "generatedAt": { "type": "string", "format": "date-time" },
     "pages": { "type": "array", "items": { "$ref": "#/$defs/page" } }
   },
@@ -22,6 +23,12 @@
         "stardustVersion": { "type": "string" }
       }
     },
+    "formatVersion": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "examples": ["0.1.0"],
+      "description": "Coverage format version (semver). Before 1.0.0 a release may still change the shape; from 1.0.0 (declared once a client has shipped against it) a minor release only adds fields, clients ignore fields they do not know, and removing or renaming a field is a major release. Writers since stardust 0.34.0 always emit it; files written earlier lack it."
+    },
     "page": {
       "type": "object",
       "required": ["slug", "source", "delivery"],
@@ -34,14 +41,25 @@
           "type": ["string", "null"],
           "description": "The template grouping this page belongs to (rollout/coverage/templates.json[].id). Drives delivery order and block reuse."
         },
+        "representative": {
+          "type": ["string", "null"],
+          "description": "Archetypes-only mode (--state): the slug of the archetype a content-pending roster sibling clones; null when none matched."
+        },
         "source": {
           "type": "object",
           "description": "The agnostic input rollout delivers (read-only).",
           "required": ["migratedHtml", "sourceHash"],
           "additionalProperties": false,
           "properties": {
-            "migratedHtml": { "type": "string", "description": "Path, e.g. stardust/migrated/blog/scaling-teams.html." },
+            "migratedHtml": {
+              "type": ["string", "null"],
+              "description": "Path, e.g. stardust/migrated/blog/scaling-teams.html; `<origin>:<slug>` for a row added outside the migrated tree (update-coverage.mjs --new); null for an archetypes-only roster sibling."
+            },
             "metaJson": { "type": ["string", "null"], "description": "Path to the page's _meta.json." },
+            "currentStatePath": {
+              "type": ["string", "null"],
+              "description": "Archetypes-only roster sibling: the state.json currentStatePath its source hash was taken from, when that file exists."
+            },
             "sourceUrl": { "type": ["string", "null"], "description": "The page's URL on the source site (sidecar, else state.json by slug): the join key with a spec's knowledge." },
             "sourceHash": { "type": "string", "description": "Content hash of the migrated HTML; changes mark the page stale for re-delivery." }
           }
@@ -51,6 +69,34 @@
           "description": "Block ids this page composes (rollout/coverage/blocks.json[].id).",
           "items": { "type": "string" }
         },
+        "delivered": {
+          "type": ["object", "null"],
+          "description": "The delivered page's block structure, parsed from its content document; null while the page has no content document.",
+          "required": ["blocks", "sections", "lang", "sourceSnapshot", "contentHash"],
+          "additionalProperties": false,
+          "properties": {
+            "blocks": {
+              "type": "array",
+              "description": "Records in document order: block instances and merged runs of default content.",
+              "items": { "$ref": "#/$defs/record" }
+            },
+            "sections": {
+              "type": "array",
+              "description": "Sections holding at least one record, in document order.",
+              "items": { "$ref": "#/$defs/section" }
+            },
+            "lang": { "type": ["string", "null"], "description": "The page's language from its sidecar metadata; null when unknown." },
+            "sourceSnapshot": {
+              "type": ["string", "null"],
+              "description": "Path of the committed source DOM snapshot (stardust/current/pages/<slug>.html) when it exists, else null."
+            },
+            "contentHash": {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "description": "Hash of the content document's bytes; a mismatch with the file on disk means the coverage is stale."
+            }
+          }
+        },
         "delivery": {
           "type": "object",
           "required": ["status"],
@@ -58,15 +104,83 @@
           "properties": {
             "status": {
               "type": "string",
-              "enum": ["pending", "converting", "deployed", "verified", "stale", "failed"],
-              "description": "stale = source hash changed after a prior delivery; needs re-delivery."
+              "enum": ["pending", "converting", "deployed", "verified", "content-pending", "stale", "failed"],
+              "description": "stale = source hash changed after a prior delivery; needs re-delivery. content-pending = an archetypes-only roster sibling that pushes no document of its own."
             },
             "deployedUrl": { "type": ["string", "null"], "format": "uri" },
             "deployedAt": { "type": ["string", "null"], "format": "date-time" },
             "verifiedAt": { "type": ["string", "null"], "format": "date-time" },
-            "error": { "type": ["string", "null"], "description": "Failure detail when status == failed." }
+            "error": { "type": ["string", "null"], "description": "Failure detail when status == failed." },
+            "gate": { "$ref": "#/$defs/gate" }
           }
         }
+      }
+    },
+    "record": {
+      "type": "object",
+      "description": "One record of the delivered page, the page-block shape the spec skill also uses. kind block: a block div (block = its first class, variant = its classes joined by a space or null, variantId, rows and cells set). kind default: consecutive default content in one section merged into one record (block default-content, variant = its parts in order of first appearance joined by +, classes [], variantId, rows and cells null).",
+      "required": ["pos", "block", "variant", "kind", "section", "sectionPos", "classes", "variantId", "rows", "cells"],
+      "additionalProperties": false,
+      "properties": {
+        "pos": { "type": "integer", "minimum": 0, "description": "0-based document order over the page's records of both kinds." },
+        "block": { "type": "string", "description": "Block name, or default-content.", "examples": ["hero", "cards", "default-content"] },
+        "variant": {
+          "type": ["string", "null"],
+          "description": "kind block: the classes joined by a space, or null. kind default: parts (heading, separator, image, video, button, link-list, text) joined by +.",
+          "examples": ["list secure", "heading+text+button"]
+        },
+        "kind": { "type": "string", "enum": ["block", "default"] },
+        "section": { "type": ["string", "null"], "description": "Style of the enclosing section, or null (the spec skill's meaning)." },
+        "sectionPos": { "type": "integer", "minimum": 0, "description": "pos of the enclosing section in delivered.sections." },
+        "classes": {
+          "type": "array",
+          "description": "Option classes (all classes but the first), unique and sorted; [] for default content.",
+          "uniqueItems": true,
+          "items": { "type": "string" }
+        },
+        "variantId": {
+          "type": ["string", "null"],
+          "pattern": "^v_[0-9a-f]{12}$",
+          "description": "kind block: v_ plus 12 hex of a sha256 over the block name and its classes, carried forward from the prior pages.json when it differs; null for default content."
+        },
+        "rows": { "type": ["integer", "null"], "minimum": 0, "description": "Element children of the block div; null for default content." },
+        "cells": {
+          "type": ["array", "null"],
+          "description": "Element-child count of each row; null for default content.",
+          "items": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "section": {
+      "type": "object",
+      "required": ["pos", "style", "blocks"],
+      "additionalProperties": false,
+      "properties": {
+        "pos": { "type": "integer", "minimum": 0, "description": "0-based among the kept sections." },
+        "style": { "type": ["string", "null"], "description": "The section-metadata style, trimmed; null when none." },
+        "blocks": {
+          "type": "array",
+          "description": "pos of the records in this section.",
+          "uniqueItems": true,
+          "items": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "gate": {
+      "type": "object",
+      "description": "The page's verdict from the published-origin pixel gate (update-coverage.mjs --gate); verify.mjs never marks a page verified while pass is false.",
+      "required": ["pass"],
+      "additionalProperties": false,
+      "properties": {
+        "pass": { "type": "boolean", "description": "Passed, or a documented override applies." },
+        "pct": { "type": ["number", "null"], "description": "Pixel difference in percent." },
+        "heightDelta": { "type": ["number", "null"], "description": "Height difference in px." },
+        "clipped": { "type": ["number", "null"] },
+        "content": { "type": ["object", "null"], "description": "Content-presence totals, when probed." },
+        "reasons": { "type": "array", "items": { "type": "string" } },
+        "override": { "type": ["string", "null"], "description": "The override's verdict, when one applies." },
+        "table": { "type": "string", "description": "Path of the gate summary the verdict came from." },
+        "at": { "type": "string", "format": "date-time" }
       }
     }
   }

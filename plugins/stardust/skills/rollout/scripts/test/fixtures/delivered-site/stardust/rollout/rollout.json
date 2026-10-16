@@ -1,0 +1,35 @@
+{
+  "_provenance": {
+    "writtenBy": "stardust:rollout/inventory",
+    "writtenAt": "2026-09-30T08:00:00.000Z",
+    "stardustVersion": "0.32.1"
+  },
+  "target": "aem-eds",
+  "site": {
+    "sourceUrl": "https://www.example.com",
+    "da": {
+      "org": "fixture-org",
+      "site": "fixture-site",
+      "ref": "main"
+    },
+    "liveHost": "main--fixture-site--fixture-org.aem.live",
+    "previewHost": "main--fixture-site--fixture-org.aem.page"
+  },
+  "lastRun": {
+    "at": "2026-09-30T10:00:00.000Z",
+    "pages": {
+      "total": 4,
+      "verified": 2,
+      "deployed": 1,
+      "pending": 0,
+      "stale": 0,
+      "failed": 0
+    },
+    "blocks": {
+      "total": 6,
+      "converted": 3,
+      "pending": 1
+    },
+    "verifyFailures": 0
+  }
+}

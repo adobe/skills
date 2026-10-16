@@ -1,0 +1,18 @@
+{
+  "slug": "about-us",
+  "type": "article",
+  "fidelityTier": "archetype",
+  "renderBranch": "A",
+  "template": null,
+  "source": {
+    "url": "https://www.example.com/About-Us.html"
+  },
+  "metadata": {
+    "title": "About us - Fixture-Site",
+    "lang": "en-US"
+  },
+  "modules": [
+    "link-list",
+    "three-up"
+  ]
+}
