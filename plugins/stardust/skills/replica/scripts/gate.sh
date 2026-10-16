@@ -6,9 +6,10 @@
 # horizontal-overflow assert from the build capture's own overflow line, runs
 # pixel-compare, and prints the verdict lines that drive the loop (size /
 # height delta / differing % / hot bands / overflow). The prototype/build side
-# is re-captured every round; the live side only when live.png is absent —
-# delete it explicitly to re-take (site changed, capture hardening changed, a
-# new --consent / --dismiss selector).
+# is re-captured every round; the live side only when live.png is absent or
+# was taken hiding a different list (--hide) — delete it explicitly to re-take
+# for anything else (site changed, capture hardening changed, a new --consent /
+# --dismiss selector).
 #
 # Usage:
 #   stardust/scripts/replica/gate.sh <slug> <live-url> <build-url> <width> [iter-label]
@@ -100,10 +101,12 @@
 #   --dismiss <sel,…>   extra overlay-dismiss selectors (marketing modals with non-standard closers), same reach
 #   --no-dismiss        do not dismiss consent/marketing overlays — on the captures or the probes (exit 125
 #                       together with --consent / --dismiss: they contradict)
-#   --hide <sel,…>      in-flow per-visitor regions (a location-suggestion strip above the header) that
-#                       chrome-parity removes on both sides before measuring — --full, chrome-parity only;
-#                       --dismiss is for overlays and cannot remove an in-flow bar. gate-all's presence.json
-#                       (gates/all-<w>/ or prototypes-<w>/, this regime's first) reaches chrome-parity too.
+#   --hide <sel,…>      in-flow per-visitor regions (a location-suggestion strip above the header; --dismiss is
+#                       for overlays and cannot remove one) hidden on both captures and every --full probe but
+#                       unit-geometry, the same list live and build. gate-all's presence.json (gates/all-<w>/ or
+#                       prototypes-<w>/, this regime's first; malformed = exit 1) adds its "*" then <slug> `hide`
+#                       after it; chrome-parity reads that file itself (--presence). live.json records the list;
+#                       a round with a different list retakes live.png and says so.
 #
 # Example (iteration 2 of the home archetype at 1440):
 #   stardust/scripts/replica/gate.sh home "https://<site>/" \
@@ -190,7 +193,9 @@ else
   STITCH_OPTS=(--no-dismiss)
 fi
 STITCH_OPTS+=(--locale en-US)
-# --hide (in-flow per-visitor regions) reaches chrome-parity only; it is independent of the overlay flags.
+# --hide is independent of the overlay flags. chrome-parity takes the flag list as given and reads presence.json's
+# `hide` itself (--presence, below) so its source attribution stays right; the captures and the other probes get the
+# effective list (below).
 [ -n "$HIDE" ] && CHROME_OPTS+=(--hide "$HIDE")
 
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -203,6 +208,37 @@ PROBE_TIMEOUT=${GATE_PROBE_TIMEOUT:-300}
 OVF_TOL=${GATE_OVERFLOW_TOLERANCE:-4}
 case "$OVF_TOL" in ''|*[!0-9]*) echo "gate.sh: GATE_OVERFLOW_TOLERANCE must be a whole number of px (got '$OVF_TOL')" >&2; exit 125 ;; esac
 REAP_MIN=${GATE_REAP_MIN:-15}
+
+# Regime (gate-evidence.mjs regimeOf semantics): localhost / 127.0.0.1 / file: build URL = prototype, else published.
+case "${GATE_REGIME:-auto}" in
+  prototype|published) REGIME=$GATE_REGIME ;;
+  *) case "$BUILD_URL" in http://localhost*|http://127.0.0.1*|file:*) REGIME=prototype ;; *) REGIME=published ;; esac ;;
+esac
+# gate-all's presence.json: this regime's sidecar first (published → gates/all-<w>/, prototype → gates/prototypes-<w>/),
+# then the other stage's at the same width. chrome-parity reads it itself (variable regions and `hide`).
+PRES=""
+if [ "$REGIME" = published ]; then STAGES="all prototypes"; else STAGES="prototypes all"; fi
+for st in $STAGES; do
+  [ -f "stardust/replica/gates/$st-$W/presence.json" ] && { PRES="stardust/replica/gates/$st-$W/presence.json"; break; }
+done
+[ -n "$PRES" ] && CHROME_OPTS+=(--presence "$PRES" --slug "$SLUG")
+# The effective hide list (header § --hide): the --hide list, then presence.json's "*".hide and <slug>.hide; comma lists
+# split, trimmed, empty dropped, de-duplicated in order, joined with ','. hideList restates live-session.mjs's
+# parseHideList / presenceHide on purpose — node -e here imports nothing (a pixel round needs no diff skill); keep the
+# two in step. A malformed presence.json is exit 1 before any capture. Captures and probes get one --hide "$EFF_HIDE".
+HIDE_JS='const hideList = (...v) => { const out = []; const add = (x) => { if (Array.isArray(x)) { x.forEach(add); return; }
+  if (typeof x !== "string") return; for (const p of x.split(",")) { const s = p.trim(); if (s && !out.includes(s)) out.push(s); } };
+  v.forEach(add); return out; };'
+EFF_HIDE=""
+if [ -n "$HIDE" ] || [ -n "$PRES" ]; then
+  EFF_HIDE=$(node -e "$HIDE_JS"'const fs = require("fs"); const [f, slug, flag] = process.argv.slice(1); let j = null;
+    if (f) { try { j = JSON.parse(fs.readFileSync(f, "utf8")); } catch (e) {
+      fs.writeSync(2, `gate.sh: presence.json ${f} unreadable (${String(e.message).replace(/\s+/g, " ")}) — fix or delete it; nothing captured\n`); process.exit(1); } }
+    const of = (k) => (j && typeof j === "object" && j[k] && typeof j[k] === "object" ? j[k].hide : null);
+    process.stdout.write(hideList(flag, of("*"), of(slug)).join(","));' -- "$PRES" "$SLUG" "$HIDE") || exit 1
+fi
+HIDE_OPTS=()
+[ -n "$EFF_HIDE" ] && { STITCH_OPTS+=(--hide "$EFF_HIDE"); HIDE_OPTS=(--hide "$EFF_HIDE"); }
 capped() { local t=$1 l=$2; shift 2; node "$HERE/run-capped.mjs" --timeout "$t" --label "$l" -- "$@"; }
 # One retry on exit 1 only (the capture/compare error class — Chromium under parallel load); 3, 4 and 124 are
 # final. $1 names the step for the log line; the rest is the command (a function or a program).
@@ -277,20 +313,32 @@ fi
 # (--settle: live JS-heavy pages need the lazyload pass; STITCH_OPTS: the
 # round's overlay dismissal, header § Overlay dismissal). Never swallow the
 # output — exit 3 here means "blocked, escalate --headed", not "skip".
-# live.json records how live.png was taken (url, width, locale, settle, dismissal, at) — gate-all reads it before
-# reusing live.png; it goes with live.png when the capture is retaken (live.png keeps its delete-to-retake rule), and
-# so do the --full probes' live caches (content-, visual-, presence-live.json; chrome-live.json keeps its own rule).
-if [ ! -f "$DIR/live.png" ]; then
+# live.json records how live.png was taken (url, width, locale, settle, dismissal, hide list, at) — gate-all reads it
+# before reusing live.png; it goes with live.png when the capture is retaken (live.png keeps its delete-to-retake rule),
+# and so do the --full probes' live caches (content-, visual-, presence-live.json; chrome-live.json keeps its own rule).
+# A live.png whose live.json records a different hide list (missing field or unreadable record = []; ordered lists after
+# the same dedupe) is retaken; no live.json → reused as before.
+RETAKE=0
+if [ -f "$DIR/live.png" ] && [ -f "$DIR/live.json" ]; then
+  OLD_HIDE=$(node -e "$HIDE_JS"'let h = [];
+    try { const j = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")); h = j && typeof j === "object" ? j.hide : []; } catch (e) { h = []; }
+    process.stdout.write(hideList(h).join(","));' -- "$DIR/live.json")
+  if [ "$OLD_HIDE" != "$EFF_HIDE" ]; then
+    echo "gate.sh: live.png was taken hiding [${OLD_HIDE//,/, }]; this round hides [${EFF_HIDE//,/, }] — retaking it" >&2
+    RETAKE=1
+  fi
+fi
+if [ "$RETAKE" = 1 ] || [ ! -f "$DIR/live.png" ]; then
   capture_live() { rm -f "$DIR/live.png" "$DIR/live.json" "$DIR/content-live.json" "$DIR/visual-live.json" "$DIR/presence-live.json"; LIVE_AT=$(node -e 'process.stdout.write(new Date().toISOString())'); capped "$STITCH_TIMEOUT" "stitch-shot live $SLUG@$W" node "$HERE/stitch-shot.mjs" "$LIVE_URL" "$DIR/live.png" --width "$W" --settle ${STITCH_OPTS[@]+"${STITCH_OPTS[@]}"}; }
   retry_once "live capture" capture_live
   rc=$?
   [ $rc -ne 0 ] && rm -f "$DIR/live.png" "$DIR/live.json"   # never leave a partial live capture to be reused
   [ $rc -ne 0 ] && { echo "gate.sh: live capture failed (exit $rc) — not comparing$([ $rc -eq 1 ] && printf ' (twice: no verdict — re-queue the round)')" >&2; exit $rc; }
   # argv-passed values, JSON.stringify — never shell-interpolated JSON; a failed write only costs gate-all's reuse
-  node -e 'const [f, url, w, dismiss, consent, extra, at] = process.argv.slice(1);
+  node -e 'const [f, url, w, dismiss, consent, extra, hide, at] = process.argv.slice(1);
     require("fs").writeFileSync(f, `${JSON.stringify({ writtenBy: "gate.sh", url, width: Number(w), locale: "en-US", settle: true,
-      dismiss: { off: dismiss === "0", consent: consent || null, extra: extra || null }, headed: false, at }, null, 2)}\n`);' \
-    -- "$DIR/live.json" "$LIVE_URL" "$W" "$DISMISS" "$CONSENT" "$DISMISS_EXTRA" "$LIVE_AT" \
+      dismiss: { off: dismiss === "0", consent: consent || null, extra: extra || null }, hide: hide ? hide.split(",") : [], headed: false, at }, null, 2)}\n`);' \
+    -- "$DIR/live.json" "$LIVE_URL" "$W" "$DISMISS" "$CONSENT" "$DISMISS_EXTRA" "$EFF_HIDE" "$LIVE_AT" \
     || echo "gate.sh: could not write $DIR/live.json — gate-all will not reuse this live.png" >&2
 fi
 
@@ -352,25 +400,15 @@ if [ ! -f "$DIFF/content-diff.mjs" ] || [ ! -f "$DIFF/visual-diff.mjs" ]; then
 fi
 CD="$DIR/content-diff-$LBL.txt"; VD="$DIR/visual-diff-$LBL.txt"; CP="$DIR/chrome-parity-$LBL.txt"
 CL="$DIR/clip-$LBL.txt"; PR="$DIR/content-presence-$LBL.txt"; UG="$DIR/units-$LBL.txt"
-# Regime (gate-evidence.mjs regimeOf semantics): localhost / 127.0.0.1 / file: build URL = prototype, else published.
-case "${GATE_REGIME:-auto}" in
-  prototype|published) REGIME=$GATE_REGIME ;;
-  *) case "$BUILD_URL" in http://localhost*|http://127.0.0.1*|file:*) REGIME=prototype ;; *) REGIME=published ;; esac ;;
-esac
 UNITS_FILE="stardust/replica/units.json"
-# gate-all's presence.json (per-slug variable regions) reaches chrome-parity: this regime's sidecar first
-# (published → gates/all-<w>/, prototype → gates/prototypes-<w>/), then the other stage's at the same width.
-if [ "$REGIME" = published ]; then STAGES="all prototypes"; else STAGES="prototypes all"; fi
-for st in $STAGES; do
-  PRES_FILE="stardust/replica/gates/$st-$W/presence.json"
-  [ -f "$PRES_FILE" ] && { CHROME_OPTS+=(--presence "$PRES_FILE" --slug "$SLUG"); break; }
-done
+# The effective hide list ($HIDE_OPTS) reaches every probe below but unit-geometry; chrome-parity has its own (above).
 capped "$PROBE_TIMEOUT" "content-diff $SLUG@$W" node "$DIFF/content-diff.mjs" "$LIVE_URL" "$BUILD_URL" \
-  --profile generic --width "$W" --live-cache "$DIR/content-live.json" --main "$MAIN" ${PROBE_OPTS[@]+"${PROBE_OPTS[@]}"} > "$CD" 2>&1 &
+  --profile generic --width "$W" --live-cache "$DIR/content-live.json" --main "$MAIN" ${PROBE_OPTS[@]+"${PROBE_OPTS[@]}"} \
+  ${HIDE_OPTS[@]+"${HIDE_OPTS[@]}"} > "$CD" 2>&1 &
 P_CD=$!
 capped "$PROBE_TIMEOUT" "visual-diff $SLUG@$W" node "$DIFF/visual-diff.mjs" "$LIVE_URL" "$BUILD_URL" \
   --profile generic --width "$W" --main "$MAIN" ${PROBE_OPTS[@]+"${PROBE_OPTS[@]}"} --out "$DIR/vdiff-$LBL" \
-  --live-cache "$DIR/visual-live.json" > "$VD" 2>&1 &
+  --live-cache "$DIR/visual-live.json" ${HIDE_OPTS[@]+"${HIDE_OPTS[@]}"} > "$VD" 2>&1 &
 P_VD=$!
 capped "$PROBE_TIMEOUT" "chrome-parity $SLUG@$W" node "$HERE/chrome-parity.mjs" "$LIVE_URL" "$BUILD_URL" \
   --width "$W" --live-cache "$DIR/chrome-live.json" ${CHROME_OPTS[@]+"${CHROME_OPTS[@]}"} > "$CP" 2>&1 &
@@ -378,12 +416,13 @@ P_CP=$!
 # clip-probe on the BUILD side (every regime, no live hit); content-presence live vs build in the published regime;
 # unit-geometry when the project declares repeated-unit families (a slug with none prints n/a, exit 0). The live side
 # of content-diff, visual-diff and content-presence comes from its cache file in $DIR while fresh (header § --full).
-capped "$PROBE_TIMEOUT" "clip-probe $SLUG@$W" node "$DIFF/clip-probe.mjs" "$BUILD_URL" --width "$W" --json "$DIR/clip-$LBL.json" > "$CL" 2>&1 &
+capped "$PROBE_TIMEOUT" "clip-probe $SLUG@$W" node "$DIFF/clip-probe.mjs" "$BUILD_URL" --width "$W" --json "$DIR/clip-$LBL.json" \
+  ${HIDE_OPTS[@]+"${HIDE_OPTS[@]}"} > "$CL" 2>&1 &
 P_CL=$!
 P_PR=""; P_UG=""
 if [ "$REGIME" = published ]; then
   capped "$PROBE_TIMEOUT" "content-presence $SLUG@$W" node "$DIFF/content-presence.mjs" "$LIVE_URL" "$BUILD_URL" --width "$W" --json "$DIR/content-presence-$LBL.json" \
-    --origin-cache "$DIR/presence-live.json" > "$PR" 2>&1 &
+    --origin-cache "$DIR/presence-live.json" ${HIDE_OPTS[@]+"${HIDE_OPTS[@]}"} > "$PR" 2>&1 &
   P_PR=$!
 fi
 if [ -f "$UNITS_FILE" ] && [ -f "$DIFF/unit-geometry.mjs" ]; then
