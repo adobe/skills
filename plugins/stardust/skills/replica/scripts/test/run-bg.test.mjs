@@ -66,13 +66,6 @@ await check('a value flag followed by nothing or by another flag is a usage erro
   }
   assert.equal(readdirSync(dir).some((f) => f.startsWith('x.')), false, 'no job was created by the rejected start');
 });
-await check('--timeout is a start flag: on wait or status it is a usage error naming --max (exit 125, no report) — never silently ignored', () => {
-  for (const args of [['wait', '--timeout', '30'], ['wait', 'a', '--timeout', '5'], ['status', '--timeout', '30'], ['wait', '--timeout']]) {
-    const r = bg(...args);
-    assert.equal(r.code, 125, `${args.join(' ')}: exit ${r.code}`); assert.equal(r.out, '', `${args.join(' ')}: no report`);
-    assert.equal(firstLine(r.err), 'run-bg: --timeout is a start flag — wait and status take --max <s> (default 100, at most 110)', args.join(' '));
-  }
-});
 await check('status reports every named job without waiting (slot queue visible while it lasts)', () => {
   const r = bg('status', 'a', 'b', 'c'); // on a slow (emulated) host a may already be done — the states vary, the shape does not
   assert.equal(r.code, 0); assert.match(r.out, /^a {2}(running \d+s|queued \d+s \(waiting for a slot\)|done exit=2)/m); assert.match(r.out, /^b {2}(running|queued|done exit=0)/m);
@@ -127,6 +120,13 @@ await check('log is bounded: --tail and --grep', () => {
 await check('wait names an unknown job instead of hanging on it', () => {
   const r = bg('wait', '--max', '1', 'ghost');
   assert.equal(r.code, 0); assert.match(r.out, /^ghost {2}no such job/m);
+});
+await check('--timeout is a start flag: on wait or status it is a usage error naming --max (exit 125, no report) — never silently ignored', () => {
+  for (const args of [['wait', '--timeout', '30'], ['wait', 'a', '--timeout', '5'], ['status', '--timeout', '30'], ['wait', '--timeout']]) {
+    const r = bg(...args);
+    assert.equal(r.code, 125, `${args.join(' ')}: exit ${r.code}`); assert.equal(r.out, '', `${args.join(' ')}: no report`);
+    assert.equal(firstLine(r.err), 'run-bg: --timeout is a start flag — wait and status take --max <s> (default 100, at most 110)', args.join(' '));
+  }
 });
 await check(`--max above ${MAX_CEILING_SEC} s is clamped and says why`, () => {
   assert.equal(MAX_CEILING_SEC, 110, 'the agent\'s shell tool\'s default timeout is about two minutes and applies only to a call that declares none; 110 s returns inside it even when none is declared');
@@ -450,8 +450,9 @@ await check('two owners in one dir: a bare wait/status covers the caller\'s own 
   const ended = (name, fields, ago) => { const t = new Date(Date.now() - ago).toISOString(); writeFileSync(join(d, `${name}.json`), JSON.stringify({ name, cmd: 'true', args: [], cwd: d, timeoutSec: 0, slots: 1, queuedAt: t, wrapperPid: null, launchedAt: t, endedAt: t, exit: 0, timedOut: false, ...fields })); writeFileSync(join(d, `${name}.log`), 'differing pixels: 0 / 1 = 0.00%  (threshold 10%) → PASS\n'); };
   ended('legacy', {}, 120000); // an older run's state: no ownerPid — nobody's
   ended('a0', { ownerPid: 'agent-a' }, 3 * 3600 * 1000); // agent-a's earlier session: outside its latest batch
-  for (const n of ['a1', 'a2']) assert.equal(bgIn(d, A, 'start', '--name', n, '--', process.execPath, '-e', 'setTimeout(()=>{},1500)').code, 0);
-  assert.equal(bgIn(d, B, 'start', '--name', 'b1', '--', process.execPath, '-e', 'setTimeout(()=>{},6000)').code, 0);
+  // agent-a's jobs outlast the starts and the wait's own startup on a loaded host; agent-b's outlasts agent-a's wait
+  for (const n of ['a1', 'a2']) assert.equal(bgIn(d, A, 'start', '--name', n, '--', process.execPath, '-e', 'setTimeout(()=>{},2500)').code, 0);
+  assert.equal(bgIn(d, B, 'start', '--name', 'b1', '--', process.execPath, '-e', 'setTimeout(()=>{},7000)').code, 0);
   const wa = bgIn(d, A, 'wait', '--max', '20'); const back = Date.now();
   assert.equal(wa.code, 0, wa.out);
   assert.equal(firstLine(wa.out), 'run-bg: wait — yours (owner agent-a), unfinished: 2 job(s); 1 other job(s) not shown — --all', wa.out);
