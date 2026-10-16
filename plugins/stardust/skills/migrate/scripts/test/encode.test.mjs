@@ -4,6 +4,8 @@
 // ledger with sources, asset ledger, redirects.tsv, chrome map, the map under stardust/import/trips-river-walk/).
 //
 //   round-trip    the archetype encodes to its gated delivered document at `strict` (and a changed alt fails strict only)
+//   plan gate     an edited or absent gated document, or an archetype that stops, refuses every sibling (exit 2,
+//                 nothing of theirs written, the refusal names --roundtrip); the archetype alone still encodes
 //   output form   body fragment; metadata block alone in the first section (Title/Description/nav/footer, no lang row);
 //                 section-metadata styles; blocks as rows × cells; media → contentUrl, unresolved media kept absolute and
 //                 recorded; documents → asset-ledger path; internal links localised (roster + redirects); nav/footer from
@@ -43,6 +45,7 @@ import { main, encodeTemplate, loadMap, loadEncoderDeps } from '../encode.mjs';
 import { encodePage, tidy, validateVocabulary, validateTransform, validatePatches, varianceDelta, prepareCapture, contentTops, markerMatches, moduleLevel, walkModules, GENERATED_TOKEN, LANDMARK_STOP, KEYS, COMMENT_KEY, LINT_KEYS, dropPredicate, rowGroups, rowNodes, PLAIN_CONTENT } from '../encode/engine.mjs';
 import { parseHTML, qs, qsa, textOf, kids } from '../encode/dom.mjs';
 import { loadSite } from '../encode/site.mjs';
+import { sidecarPathFor } from '../encode/provenance.mjs';
 import { encode as sanitise } from '../../../deploy/scripts/sanitise.js';
 
 const HERE = import.meta.dirname;
@@ -272,6 +275,37 @@ try {
   r = await run('--roundtrip', '--template', A); assert.equal(r.code, 0, '… but not text (the default level)');
   writeFileSync(P('content', 'trips', 'river-walk.html'), gated);
   assert.ok(!existsSync(P('stardust', 'encoded', 'trips', 'stop-noroot.html')), 'round-trip writes nothing');
+
+  // --- the plan gate: siblings encode only while the archetype encodes clean and equals its gated document at text ------
+  const archFiles = new Set([`stardust/encoded/trips/river-walk.html`, sidecarPathFor('https://www.example.com/trips/river-walk.html')]);
+  const notArch = () => Object.fromEntries(Object.entries(tree()).filter(([f]) => !archFiles.has(f)));
+  const refused = async (label, re) => {
+    for (const args of [['--slug', S1], []]) {
+      const before = notArch();
+      const res = await run('--template', A, ...args);
+      assert.equal(res.code, 2, `${label}: the siblings are refused, exit 2\n${res.out}\n${res.err}`);
+      assert.match(res.err, /encode\.mjs --roundtrip --template trips-river-walk/, `${label}: the refusal names the round-trip\n${res.err}`);
+      assert.match(res.err, re, label);
+      assert.deepEqual(notArch(), before, `${label}: no sibling document, sidecar or manifest entry written`);
+      if (args.length) assert.equal(res.last, 'encoded 0 · unchanged 0 · stopped 1', `${label}: a refused sibling counts as stopped`);
+    }
+    assert.doesNotMatch((await run('--template', A, '--slug', A, '--dry-run')).err, /roundtrip/, `${label}: the archetype alone is never refused`);
+  };
+  writeFileSync(P('content', 'trips', 'river-walk.html'), gated.replace('<h1>River Walk</h1>', '<h1>River Walk, revised</h1>'));
+  await refused('an edited gated document', /not equal at text \(\d+ differences?\)/);
+  writeFileSync(P('content', 'trips', 'river-walk.html'), gated);
+  rmSync(P('content', 'trips', 'river-walk.html'));
+  await refused('no gated document', /no gated document content\/trips\/river-walk\.html/);
+  writeFileSync(P('content', 'trips', 'river-walk.html'), gated);
+  const archCap = read('stardust', 'current', 'pages', `${A}.html`); const archNoH1 = archCap.replace(/<h1 [^>]*>\s*River Walk\s*<\/h1>/, '');
+  assert.notEqual(archNoH1, archCap);
+  writeFileSync(P('stardust', 'current', 'pages', `${A}.html`), archNoH1);
+  await refused('an archetype that stops', /the archetype stops \(error\)/);
+  writeFileSync(P('stardust', 'current', 'pages', `${A}.html`), archCap);
+  rmSync(P('stardust', 'encoded', 'trips', 'forest-loop.html'));
+  r = await run('--template', A, '--slug', S1);
+  assert.equal(r.code, 0, `the unchanged fixture passes the gate\n${r.out}\n${r.err}`); assert.equal(r.last, 'encoded 1 · unchanged 0 · stopped 0');
+  assert.equal(read('stardust', 'encoded', 'trips', 'forest-loop.html'), sib, '… and the sibling is written as before');
 
   // --- engine units: whitespace, NBSP, pre ----------------------------------------------------------------------------
   assert.equal(tidy('<p>  a <strong> b </strong>  c </p>\n\n<p>x <br>\n  y</p><pre>  keep   me\n</pre>'), '<p>a <strong>b </strong>c</p>\n<p>x<br>y</p>\n<pre>  keep   me\n</pre>');

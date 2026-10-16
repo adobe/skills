@@ -85,13 +85,16 @@ node skills/migrate/scripts/encode.mjs --lint|--sweep|--roundtrip --template <ar
 ```
 
 - **Opt-in per template, gated at plan time.** Siblings encode only once the archetype is gated (unit `C-archetype`
-  done, gate row passing), `--lint` exits 0 and `--roundtrip` exits 0. A template with no map, or one that does not
-  round-trip, stays on the A′ clone path (`skills/migrate/reference/template-and-module-rendering.md` § Path A′).
+  done, gate row passing) and the map round-trips: the encoder refuses every sibling (exit 2, nothing of theirs
+  written) unless the archetype encodes clean and equals its gated document at `text` — `--roundtrip` lists the
+  differences. `--lint` and `--sweep` are authoring checks: their findings are fixed or recorded before the siblings
+  encode. A template with no map, or one that does not round-trip, stays on the A′ clone path
+  (`skills/migrate/reference/template-and-module-rendering.md` § Path A′).
 - **Inputs.** The map, the roster (`stardust/rollout/coverage/templates.json`), each page's committed capture + page
   JSON and patches, and the site inputs: `stardust/deploy/media-ledger.json`, `stardust/deploy/asset-ledger.json`,
   `stardust/rollout/chrome-map.json`, `stardust/redirects.tsv`. Never the row-2 clone, never a sibling's `content/`
-  document (`--roundtrip` and `--lint` C5 read the archetype's). No browser, network, clock or locale: the same inputs
-  give the same bytes.
+  document (the plan gate, `--roundtrip` and `--lint` C5 read the archetype's). No browser, network, clock or locale:
+  the same inputs give the same bytes.
 - **Hidden-live** content is honoured when the capture marks it (`data-hidden-live-stamp` on `<html>`/`<body>`, or any
   `[data-hidden-live]` node): skipped and listed in `hidden[]`; an unmarked capture skips nothing and records
   `hiddenLive: "unstamped"`.
@@ -102,7 +105,7 @@ node skills/migrate/scripts/encode.mjs --lint|--sweep|--roundtrip --template <ar
   `stardust/import/<archetype-slug>/manifest.json`; `state.json` `migrate.generators[<archetype-slug>]`.
 - **Statuses and exits.** Per page `clean | unmapped | flattened | variance | incomplete | hand-edit | error`; a stopped
   page's document is not written. Exit 0 every page encoded or unchanged · 1 usage, invalid map, missing input · 2 a
-  page stopped; last line `encoded N · unchanged N · stopped N`. **Exit 0 means encoded, never done:** rows 4–7 of
+  page stopped or the siblings refused; last line `encoded N · unchanged N · stopped N`. **Exit 0 means encoded, never done:** rows 4–7 of
   `skills/replica/reference/handoff-contract.md` § 1 still decide.
 
 **Hard stops are the model's exceptions** — no numeric tolerance, no per-template code; only stopped pages reach the

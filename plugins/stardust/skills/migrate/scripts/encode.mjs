@@ -17,10 +17,10 @@
  *   node skills/migrate/scripts/encode.mjs --roundtrip --template <archetype-slug> [--level text|strict] [--root <dir>]
  *   node skills/migrate/scripts/encode.mjs --lint|--sweep --template <archetype-slug> [--root <dir>] [--json]
  *
- * Reads (never the row-2 clone, never content/ except --roundtrip): the map under stardust/import/<archetype>/, the
- * roster (stardust/rollout/coverage/templates.json), each page's capture + page JSON under stardust/current/pages/,
- * stardust/patches/<slug>.json (the page's patches), deploy/media-ledger.json (sources → contentUrl),
- * deploy/asset-ledger.json, rollout/chrome-map.json, redirects.tsv.
+ * Reads (never the row-2 clone; of content/ only the archetype's gated document): the map under
+ * stardust/import/<archetype>/, the roster (stardust/rollout/coverage/templates.json), each page's capture + page JSON
+ * under stardust/current/pages/, stardust/patches/<slug>.json (the page's patches), deploy/media-ledger.json (sources →
+ * contentUrl), deploy/asset-ledger.json, rollout/chrome-map.json, redirects.tsv.
  * Writes (encode/provenance.mjs has the shapes) — each file only when its bytes change, tmp + rename; nothing with
  * --dry-run, --roundtrip, --lint or --sweep; zero writes when nothing changed:
  *   stardust/encoded/<da-path>.html             the document (the root page: index.html)
@@ -41,7 +41,10 @@
  * hand-edit (the document on disk is not the encoder's last write: move the edit into stardust/patches/<slug>.json or
  * the map) · error. A stopped page's document is never written — an earlier one stays, its sidecar records the stop
  * and staging skips it; the model handles that page as an exception. Unchanged inputs, map, encoder and document
- * skip the page (`unchanged`, nothing parsed).
+ * skip the page (`unchanged`, nothing parsed). The plan gate, before any sibling: the archetype encodes clean and
+ * equals its gated content/<da-path>.html at text (the --roundtrip comparison), else every selected sibling is refused —
+ * nothing of theirs encoded or written, counted stopped, one stderr line naming --roundtrip; the archetype alone
+ * (--slug <archetype>) is never refused.
  *   --roundtrip  encode the archetype in memory and compare it with its gated content/<da-path>.html (encode/compare.mjs;
  *                level text by default) — exit 0 equal, 2 not.
  *   --lint/--sweep  the map's authoring checks (encode/lint.mjs).
@@ -53,8 +56,8 @@
  *
  * Output: one line per page (or finding), then the verdict line (stdout, last), and the exit code, per mode:
  *   encode       `encoded N · unchanged N · stopped N` — 0 every page encoded or unchanged · 1 usage, invalid
- *                map/transform, missing input · 2 any page stopped (2 wins over 1). Exit 0 means "encoded", never
- *                "done": the gates still decide.
+ *                map/transform, missing input · 2 any page stopped or the siblings refused (2 wins over 1). Exit 0
+ *                means "encoded", never "done": the gates still decide.
  *   --roundtrip  `roundtrip <archetype> at <level>: equal | not equal (N differences) — <content file>` — 0 equal ·
  *                2 not equal; `roundtrip <archetype>: no (the archetype stops: <status>)` — 2; no gated document —
  *                one stderr line, no verdict, 1 (as for usage)
@@ -84,6 +87,8 @@ Applies the template's map (stardust/import/<archetype>/vocabulary.json + transf
 capture and writes stardust/encoded/<da-path>.html in deploy's delivered form (sanitised; written only when the bytes
 change), with provenance in the page's migrate sidecar (encode, audit.encode) and stardust/import/<archetype>/
 manifest.json. A page that stops (unmapped · flattened · variance · incomplete · hand-edit · error) is not written.
+Plan gate: siblings are refused (exit 2, nothing of theirs written) unless the archetype encodes clean and equals its
+gated content/<da-path>.html at text — check it with --roundtrip.
   --force      re-encode pages whose inputs, map and document are unchanged (never overrides the hand-edit guard)
   --overwrite-hand-edit <slug>[,…]  replace these hand-edited documents (never in hands-off: move the edit into
                stardust/patches/<slug>.json or the map first)
@@ -92,7 +97,8 @@ manifest.json. A page that stops (unmapped · flattened · variance · incomplet
   --json       line 1 = the run summary as JSON; the verdict line stays last
 Verdict (last line) · exit, per mode:
   encode       encoded N · unchanged N · stopped N
-               0 encoded/unchanged · 1 usage, invalid map/transform, missing input · 2 a page stopped (2 wins over 1)
+               0 encoded/unchanged · 1 usage, invalid map/transform, missing input · 2 a page stopped or the siblings
+               refused (2 wins over 1)
   --roundtrip  roundtrip <archetype> at <level>: equal | not equal (N differences) — <content file>
                0 equal · 2 not equal
                roundtrip <archetype>: no (the archetype stops: <status>) — 2
@@ -147,7 +153,8 @@ export function loadMap(root, archetype) {
   return { vocab: v.value ?? null, tf: t.value ?? null, vocabFile, transformFile, errors };
 }
 
-/** deploy's finaliser, offline content count and file writer (chrome-map.mjs: writeIfChanged, stableJSON), in either layout. */
+/** deploy's finaliser, offline content count and file writer (chrome-map.mjs: writeIfChanged, stableJSON), in either
+ * layout, and the comparator the plan gate uses (encode/compare.mjs). */
 export async function loadEncoderDeps() {
   const sanitise = await loadDeploy('sanitise.js');
   const inventory = await loadDeploy('content-inventory.mjs');
@@ -156,7 +163,8 @@ export async function loadEncoderDeps() {
   if (typeof sanitise.encode !== 'function') throw new UsageError('deploy/sanitise.js exports no encode() — update the project copy of the deploy scripts');
   if (typeof inventory.offlineInventory !== 'function' || typeof inventory.diffOffline !== 'function') throw new UsageError('deploy/content-inventory.mjs has no offlineInventory/diffOffline — update the project copy of the deploy scripts');
   if (typeof files.writeIfChanged !== 'function' || typeof files.stableJSON !== 'function') throw new UsageError('deploy/chrome-map.mjs has no writeIfChanged/stableJSON — update the project copy of the deploy scripts');
-  return { finalise: (s) => sanitise.encode(s).output, inventory, pathKey: eds.pathKey, writeIfChanged: files.writeIfChanged, stableJSON: files.stableJSON };
+  const { compareDocs } = await import('./encode/compare.mjs');
+  return { finalise: (s) => sanitise.encode(s).output, inventory, pathKey: eds.pathKey, writeIfChanged: files.writeIfChanged, stableJSON: files.stableJSON, compareDocs };
 }
 
 // the content count's identities: media by the ledger's contentUrl, internal links by their localised path
@@ -213,10 +221,24 @@ export async function encodeTemplate({ root, site, template, map, deps, slugs = 
 const nowIso = () => new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
 
 /**
- * Encode and place the template's pages with provenance (encode/provenance.mjs): per page the skip predicate, else the
+ * The plan gate, checked before any sibling: the archetype encodes clean and equals its gated document at `text` (the
+ * comparison --roundtrip makes). → null, or why the template's siblings are refused.
+ */
+function gateRefusal({ root, site, archetype, rec, compareDocs }) {
+  if (rec.status !== 'clean') return `the archetype stops (${rec.status})`;
+  const rel = site.contentFileFor(archetype);
+  if (!rel) return `no gated document ${site.contentPathFor(archetype)} (the archetype's C-archetype unit is not done)`;
+  const cmp = compareDocs(readFileSync(join(root, rel), 'utf8'), rec.html, { level: 'text' });
+  return cmp.equal ? null : `${rel} and the encoded archetype are not equal at text (${cmp.diffs.length} differences)`;
+}
+
+/**
+ * Encode and place the template's pages with provenance (encode/provenance.mjs): first the plan gate (gateRefusal)
+ * when a sibling is selected — refused, no sibling is encoded or written; per page the skip predicate, else the
  * encode, then — clean — the hand-edit guard, the document, the sidecar's encode + audit.encode, or — stopped — the stop
  * in audit.encode; at the end the manifest and state.json.migrate.generators. Nothing is written with dryRun.
- * Returns the records (encodeOne's shape + write: 'encoded'|'unchanged', skipped, adopted, overwrote, handEdit, kept).
+ * Returns { records (encodeOne's shape + write: 'encoded'|'unchanged', skipped, adopted, overwrote, handEdit, kept),
+ * refused: { reason, siblings[] } | null }.
  */
 export function placeTemplate({ root, site, template, map, deps, slugs = null, force = false, overwrite = [], dryRun = false, now = nowIso }) {
   const { archetype } = template;
@@ -225,15 +247,17 @@ export function placeTemplate({ root, site, template, map, deps, slugs = null, f
   const types = prov.stateTypes(root);
   const order = [archetype, ...template.pages.filter((s) => s !== archetype)];
   const selected = slugs ? order.filter((s) => slugs.includes(s)) : order;
-  // the archetype is encoded only when a page needs it: as itself, or for a sibling's reference prints
+  // the archetype is encoded only when a page needs it: as itself, or for the plan gate and a sibling's reference prints
   let arch = null;
   const archetypeRecord = () => {
     if (!arch) arch = encodeOne({ root, site, map, deps, slug: archetype, archetype });
     if (arch.missingInput) throw new UsageError(`archetype ${archetype}: ${arch.report.errors[0]}`);
     return arch;
   };
+  const siblings = selected.filter((s) => s !== archetype);
+  const reason = siblings.length ? gateRefusal({ root, site, archetype, rec: archetypeRecord(), compareDocs: deps.compareDocs }) : null;
   const records = []; const updates = new Map();
-  for (const slug of selected) {
+  for (const slug of reason ? selected.filter((s) => s === archetype) : selected) {
     const role = slug === archetype ? 'archetype' : 'sibling';
     const info = site.page(slug);
     if (!info) { records.push(encodeOne({ root, site, map, deps, slug, archetype })); continue; }
@@ -270,7 +294,7 @@ export function placeTemplate({ root, site, template, map, deps, slugs = null, f
     prov.saveManifest(deps, root, archetype, updates);
     prov.saveGenerators(deps, root, archetype, { script: key.encoder.script, sha: key.encoder.sha, version: key.encoder.version, vocabularySha: key.map.vocabularySha, transformSha: key.map.transformSha });
   }
-  return records;
+  return { records, refused: reason ? { reason, siblings } : null };
 }
 
 function findings(r) {
@@ -291,10 +315,10 @@ const wroteNote = (r, a) => {
 };
 
 async function runEncode(a, { root, site, template, map, deps }, io) {
-  const records = placeTemplate({ root, site, template, map, deps, slugs: a.slugs, force: a.force, overwrite: a.overwriteHandEdit, dryRun: a.dryRun });
-  const counts = { encoded: 0, unchanged: 0, stopped: 0 };
+  const { records, refused } = placeTemplate({ root, site, template, map, deps, slugs: a.slugs, force: a.force, overwrite: a.overwriteHandEdit, dryRun: a.dryRun });
+  const counts = { encoded: 0, unchanged: 0, stopped: refused ? refused.siblings.length : 0 };
   for (const r of records) counts[r.status === 'clean' ? r.write : 'stopped'] += 1;
-  if (a.json) io.out(JSON.stringify({ template: template.archetype, templateId: template.id, dryRun: a.dryRun, counts, pages: records.map(summaryOf) }));
+  if (a.json) io.out(JSON.stringify({ template: template.archetype, templateId: template.id, dryRun: a.dryRun, counts, ...(refused ? { refused } : {}), pages: records.map(summaryOf) }));
   else {
     for (const r of records) {
       if (r.status === 'clean') io.out(`${r.write === 'encoded' ? '✓' : '·'} ${r.slug} clean → ${r.output} (${wroteNote(r, { template: template.archetype, dryRun: a.dryRun })})`);
@@ -302,8 +326,9 @@ async function runEncode(a, { root, site, template, map, deps }, io) {
     }
     if (a.dryRun) io.out('dry run: nothing written');
   }
+  if (refused) io.err(`encode: ${refused.siblings.length} sibling(s) of ${template.archetype} refused by the plan gate — ${refused.reason}; siblings encode once encode.mjs --roundtrip --template ${template.archetype} exits 0`);
   io.out(`encoded ${counts.encoded} · unchanged ${counts.unchanged} · stopped ${counts.stopped}`);
-  const stopped = records.some((r) => r.status !== 'clean' && !r.missingInput);
+  const stopped = Boolean(refused) || records.some((r) => r.status !== 'clean' && !r.missingInput);
   return stopped ? 2 : records.some((r) => r.missingInput) ? 1 : 0;
 }
 
@@ -313,8 +338,7 @@ async function runRoundtrip(a, { root, site, template, map, deps }, io) {
   if (!contentRel) { io.err(`encode: no gated document ${site.contentPathFor(template.archetype)} — the round-trip compares the archetype with its delivered document`); return 1; }
   const contentFile = join(root, contentRel);
   if (r.status !== 'clean') { io.out(`✗ ${r.slug} ${r.status}`); for (const f of findings(r)) io.out(`    ${f}`); io.out(`roundtrip ${template.archetype}: no (the archetype stops: ${r.status})`); return 2; }
-  const { compareDocs } = await import('./encode/compare.mjs');
-  const cmp = compareDocs(readFileSync(contentFile, 'utf8'), r.html, { level: a.level });
+  const cmp = deps.compareDocs(readFileSync(contentFile, 'utf8'), r.html, { level: a.level });
   if (a.json) io.out(JSON.stringify({ template: template.archetype, level: a.level, equal: cmp.equal, diffs: cmp.diffs }));
   else for (const d of cmp.diffs) io.out(`    ${d.kind} ${d.where}\n      expected: ${JSON.stringify(d.expected)}\n      got:      ${JSON.stringify(d.got)}`);
   io.out(`roundtrip ${template.archetype} at ${a.level}: ${cmp.equal ? 'equal' : `not equal (${cmp.diffs.length} differences)`} — ${contentRel}`);

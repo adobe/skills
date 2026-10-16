@@ -167,13 +167,17 @@ try {
   write(VOCAB, vocabRaw);
   r = await run('--template', A);
   assert.equal(r.last, 'encoded 1 · unchanged 1 · stopped 0'); assert.equal(read(DOC[S1]), docS);
-  // a block the map adds shows up in modules[]; the restored map takes it out again
+  // a block the map adds shows up in modules[] (the archetype re-delivered with it, so the map round-trips again); the
+  // restored map takes it out again
+  const GATED = 'content/trips/river-walk.html'; const gatedRaw = read(GATED);
   write(VOCAB, JSON.stringify({ ...vocab, markers: vocab.markers.map((m) => (m.sel === '.mod-image' ? { ...m, emitter: 'block:picture' } : m)) }, null, 2));
+  r = await run('--template', A, '--slug', A); assert.equal(r.code, 0, r.out);
+  write(GATED, read(DOC[A]));
   r = await run('--template', A);
-  assert.equal(r.code, 0, r.out); assert.equal(r.last, 'encoded 2 · unchanged 0 · stopped 0');
+  assert.equal(r.code, 0, r.out); assert.equal(r.last, 'encoded 1 · unchanged 1 · stopped 0');
   assert.ok(json(SIDE[S1]).modules.includes('picture'), 'a new block shows up in a sibling\'s modules[]');
   assert.deepEqual(json(SIDE[A]).modules, sa.modules, 'the archetype\'s non-empty list is never replaced (R40)');
-  write(VOCAB, vocabRaw);
+  write(VOCAB, vocabRaw); write(GATED, gatedRaw);
   r = await run('--template', A);
   assert.equal(r.last, 'encoded 2 · unchanged 0 · stopped 0'); assert.deepEqual(json(SIDE[S1]).modules, ss.modules); assert.equal(read(DOC[S1]), docS);
   // a site input is in the key (siteSha): a media ledger edit is never "unchanged input"; only the page whose bytes
