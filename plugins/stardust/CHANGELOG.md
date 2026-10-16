@@ -18,12 +18,14 @@ boundary only between recorded units while a background subagent holds the unit;
   first pass, checkpoint commit and boundary ask. Target: no C-deliver unit runs longer than 90 minutes.
 - **A boundary ask closes every unit end, C0 included** (§ 5: `progress.json` write → freeze check → commit → ask →
   next unit): the main agent lets its supervising process, if any, end or continue the session in whatever form the
-  harness provides; with none it continues. Only at a unit end does a supervised session end without losing work.
+  harness provides; with none it continues. Only at a unit end does a supervised session end without losing work;
+  an ask made while other units are still in flight names them.
 - **Pause on request: `STARDUST_PAUSE_FILE`** (JSON `{at, reason}`; the supervisor's file — the run never writes or
   deletes it). When set, every fan-out subagent checks the file at each batch or iteration boundary and, if present,
-  finishes the iteration, reports and returns; the main agent records the unit `running` (verdict `paused: …`,
-  resumed like any in-flight unit) and asks its boundary before anything new. Briefs: cluster (after each page,
-  deploy batch, gate round), archetype (each gate iteration), roster-gate job (before each `run-bg.mjs wait`).
+  finishes the iteration, reports and returns; the main agent records the unit `running` in § 5's order (verdict
+  `paused: …`, resumed like any in-flight unit) and asks its boundary before anything new — with several units in
+  flight, once the last has returned. Briefs: cluster (after each page, deploy batch, gate round), archetype (each
+  gate iteration), roster-gate job (before each `run-bg.mjs wait`).
 - **No script change:** no script loops gate rounds (`gate.sh`, `gate-all.mjs`, `run-bg.mjs`, `deploy-batch.mjs`: one
   each), so none reads the pause file; `done-check.mjs`, `gate-evidence.mjs` do not read the C-deliver unit ledger;
   `gate-triage.mjs --unit` takes any `[\w.-]+` name (`units/<name>.paths`); `token-ledger.mjs` gives each unit a row.
