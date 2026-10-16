@@ -58,13 +58,8 @@ all three apply the validation contracts; all three emit a
 `_meta.json` sidecar.
 
 **The encoded path** (`flow: replica`) replaces Path A′ for a
-template whose map passed the plan gate (`fidelity-tiers.md`
-§ Encoded siblings): nothing is rendered —
-`skills/migrate/scripts/encode.mjs` writes each sibling's delivered
-document to `stardust/encoded/<da-path>.html` from its capture
-(`importer-recipe.md` § Encoder contract), with no canon, `:root` or
-bundling, and `deploy` stages it. A page it stops on is fixed in the
-map or a patch, or rendered by Path A′.
+template whose map passed its plan gate — nothing is rendered
+(`../SKILL.md` § Phase 2 — Per-page render).
 
 ## Output path mapping
 

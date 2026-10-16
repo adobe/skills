@@ -102,12 +102,9 @@ and passes the EW gate (`block-roundtrip --ew`) before the page is done.
 
 ## Encoded siblings
 
-A template whose map round-trips encodes its siblings instead of cloning
-them (`importer-recipe.md` § Encoder contract). **Per-template plan gate,**
-before any sibling encodes: the archetype gated (unit `C-archetype`), then
-`encode.mjs --lint` and `--roundtrip` exit 0 on it. A template that fails
-it stays on Path A′ — the round-trip is the only guard against a map that
-silently omits a derived column (such a map encodes clean, and wrong).
+A template whose map passed its per-template plan gate
+(`../../replica/reference/handoff-contract.md` § 1 row 2) encodes its
+siblings instead of cloning them (`importer-recipe.md` § Encoder contract).
 
 - **Content count — the subject is the encoded document**, counted by the
   encoder offline against the capture's content root minus the map's
@@ -124,13 +121,16 @@ silently omits a derived column (such a map encodes clean, and wrong).
   count and cell shape on it (`audit.encode.shape`) was already exercised
   by the archetype or an earlier sibling; no block code was written for
   it. Each pass is recorded right after the launches with `migrate.mjs
-  harness <slug>` (the archetype's `passedOn`); rollout's `plan.mjs` marks
-  every page `needsHarness` from it, and gate-evidence enforces it: a
-  sibling's own runs count, else the three gates are inherited only while
-  `passedOn` under the current key covers its shape. Its gate-all row, the lints,
-  media-reconcile and `localize-links --check` still run on every sibling;
-  a change to a block, the map, the encoder or the foundation moves the key
-  and re-arms the launches.
+  harness <slug>` (the archetype's `passedOn`). Right after encoding, read
+  each sibling's decision with `gate-evidence.mjs --slug <s> --dry-run`:
+  covered, none of the three is `missing` (`--json`: `inherited from
+  <archetype> (C14)`); otherwise run its launches. gate-evidence enforces
+  the rule, and a sibling's own runs always count. `plan.json`'s
+  `needsHarness` is only the plan-time forecast, refreshed when the main
+  agent re-runs inventory and plan after the wave. Its gate-all row, the
+  lints, media-reconcile and `localize-links --check` still run on every
+  sibling; a change to a block, the map, the encoder or the foundation
+  moves the key and re-arms the launches.
 
 ## Declaration (per page)
 

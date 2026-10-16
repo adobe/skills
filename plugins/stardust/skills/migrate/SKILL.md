@@ -198,10 +198,10 @@ For 1-3 pages or `<slug>` invocation, skip the confirmation.
 
 In the replica flow a sibling encodes or renders only after its archetype is deployed and gated at
 the published origin (`../replica/reference/handoff-contract.md` § 3 row C, unit `C-archetype`;
-#126); its gate is the row after PUT. **Encoded sibling:** a template whose map passes the plan
-gate (`reference/fidelity-tiers.md` § Encoded siblings) is not rendered —
-`skills/migrate/scripts/encode.mjs --template <archetype>` writes each sibling's document
-(`reference/importer-recipe.md` § Encoder contract); only the pages it stops on reach the model.
+#126); its gate is the row after PUT. **Encoded sibling:** a template whose map passed its plan
+gate is not rendered — `skills/migrate/scripts/encode.mjs --template <archetype>` writes each
+sibling's document (`reference/importer-recipe.md` § Encoder contract); only the pages it stops on
+reach the model.
 Path A′ is the fallback for a template whose map does not round-trip and for an exception page.
 For each other page in scope, follow
 `reference/migration-procedure.md` and
@@ -457,7 +457,7 @@ Next:
 | _meta.json sidecar                                | Lives next to each migrated page. For `<dir>/index.html` the sidecar is `<dir>/_meta.json`; for `<dir>/<name>.html` the sidecar is `<dir>/<name>._meta.json` so multiple `.html` siblings don't collide. Per `reference/migration-procedure.md` § `_meta.json` sidecar. |
 | `stardust/migrated/index.html`                    | The home page (special case).                          |
 | `stardust/migrated/_meta.json`                    | Home sidecar.                                          |
-| `stardust/encoded/<da-path>.html`                 | An encoded sibling's delivered document (`encode.mjs`), with its provenance in the sidecar (`encode`, `audit.encode`), `stardust/import/<archetype>/manifest.json` and `state.json` `migrate.generators`. `deploy` stages it into `content/`. |
+| `stardust/encoded/<da-path>.html`                 | An encoded sibling's delivered document, staged by `deploy`; its provenance: `reference/importer-recipe.md` § Encoder contract. |
 | `stardust/migrated/assets/logo.<ext>`             | Brand logo (sitewide).                                 |
 | `stardust/migrated/assets/<subpath>`              | Every asset referenced by any migrated page, bundled. Source subdir structure preserved verbatim. |
 | `stardust/migrated/assets/favicon.<ext>` + variants| Favicon and apple-touch-icon, manifest icons.         |
