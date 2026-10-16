@@ -274,16 +274,16 @@ check('(m) a request whose property diff did not run says so; a later real diff 
     assert.deepEqual(queue(), before, 'idempotent: a real line for the cause@width exists');
   });
 });
-check('(n) with stardust/rollout/units/<unit>.paths, a group with no row on the unit\'s pages reads another unit\'s', () => withProject(merge(A, E), {}, (root) => {
+check('(n) with stardust/rollout/units/<unit>.paths, stdout names own vs another unit\'s groups; the shared triage files stay unit-free', () => withProject(merge(A, B), {}, (root) => {
   put(root, 'stardust/rollout/units/cluster-a.paths', '/p1\n/p2.html\n');
-  ok(run(root, ['--unit', 'cluster-a', '--no-parity', '--no-route']));
-  const t = readT(root);
-  assert.deepEqual(t.groups.map((g) => [g.cause, g.unitRows]), [['block:cards', 2], ['block:footer', 0]]);
-  assert.deepEqual(t._provenance.unit, { name: 'cluster-a', paths: 'stardust/rollout/units/cluster-a.paths', pages: 2 });
-  const md = readFileSync(join(root, GATE, 'triage.md'), 'utf8');
-  assert.match(md, /## G2 `block:footer` — .* — another unit's \(no row on cluster-a's pages\)\n/); assert.doesNotMatch(md, /## G1 [^\n]*another unit's/);
-  ok(run(root, ['--unit', 'cluster-z', '--no-parity', '--no-route']));
-  assert.equal(readT(root).groups[0].unitRows, undefined, 'no paths file → no marking');
+  const shared = () => ['triage.json', 'triage.md'].map((f) => readFileSync(join(root, GATE, f), 'utf8'));
+  const r = ok(run(root, ['--unit', 'cluster-a', '--no-parity']));
+  assert.match(r.stdout, /^triage → [^\n]+\nunit cluster-a @1440: own: G1 · another unit's: G2$/m);
+  const a = shared();
+  assert.doesNotMatch(a.join('\n'), /unitRows|another unit's|cluster-a|units\//);
+  const z = ok(run(root, ['--unit', 'cluster-z', '--no-parity']));
+  assert.deepEqual(shared(), a, 'byte-identical across --unit values');
+  assert.doesNotMatch(z.stdout, /^unit /m, 'no paths file → no unit view');
 }));
 check('(g) --help in an empty dir: exit 0, usage on stdout, nothing written', () => {
   const cwd = mkdtempSync(join(tmpdir(), 'gate-triage-help-'));
