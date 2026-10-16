@@ -162,6 +162,11 @@ check('sidecar: branches, template, tiers, archetype fields, key order and sha s
   assert.deepEqual(Object.keys(homeMeta.canonShas), ['header', 'footer', 'css']); assert.equal(homeMeta.driverVersion, '1');
   assert.equal(homeMeta.metadata.title, 'Home'); assert.equal(homeMeta.metadata.description, 'Home description from the capture.');
 });
+check('variance gate: an A′ page with no probe file is rendered, recorded as skipped and named in one summary line; A / B record null', () => {
+  assert.match(r1.out, /^variance: 1 A′ page\(s\) rendered without a variance probe row — recorded as skipped \(tours-north\)$/m);
+  assert.deepEqual(json(`${OUT}/tours/north/_meta.json`).variance, { status: 'skipped', reason: 'no variance probe file stardust/rollout/variance/tours.json' });
+  assert.equal(homeMeta.variance, null); assert.equal(Object.keys(homeMeta).at(-1), 'variance');
+});
 check('state.json.migrate: page map from all 7 pages, sorted bundledAssets; pages[].status and site untouched', () => {
   const s = json(STATE);
   assert.equal(s.migrate.pageMap.length, 7); assert.deepEqual(s.migrate.pageMap.map((e) => e.slug), state0.pages.map((p) => p.slug));
@@ -427,6 +432,7 @@ check('a directed sibling without its own file is forked from the archetype by d
   assert.match(f1.out, /^A' guide-alpha → guides\/alpha\/index\.html {2}\(guide; fork of guides; /m);
   assert.match(f1.out, /^A' guide-beta → guides\/beta\/index\.html {2}\(guide; fork of guides; /m);
   assert.ok(!/Archetype/.test(alphaMain), 'no archetype content left in <main>'); assert.ok(!/data-stardust-fork/.test(alpha), 'transient marker stripped');
+  assert.match(f1.out, /^variance: 2 A′ page\(s\) rendered without a variance probe row — recorded as skipped \(guide-alpha, guide-beta\)$/m);
 });
 check('fork text (escaped), { text }, { html } verbatim with nested slots gone, link on <a>, link on a container', () => {
   assert.match(alphaMain, /<h1 data-slot="headline">Alpha &amp; &lt;friends><\/h1>/);
@@ -509,6 +515,36 @@ check('fork refusals: archetype without data-slot, missing slot values (every na
 check('forkFromArchetype (pure): a value the slot element cannot take is a strict slots refusal', () => {
   assert.throws(() => forkFromArchetype('<html><head><title>t</title></head><body><main><img data-slot="pic" src="a.jpg"><div data-slot="box"><p>x</p></div></main></body></html>', { slots: { pic: 'words', box: { src: '/b.jpg' } } }, { slug: 's', archetype: 'a' }),
     /^Error: refused s: strict slots — slot value\(s\) the archetype a cannot take: pic \(text value on <img>\); box \(image value on <div> without an <img>\) — /);
+});
+
+// ---- variance gate: the sibling-variance record gates every A′ page ------------------------------------
+console.log('variance gate');
+const VAR = 'stardust/rollout/variance/guides.json';
+const sib = (slug, verdict, missing = [], extra = []) => ({ slug, url: `https://example.test/guides/${slug}/`, verdict, missing, extra, deltas: [...missing.map((p) => ({ kind: 'missing', probe: p, msg: `${p} absent` })), ...extra.map((p) => ({ kind: 'extra', probe: p, msg: `${p} extra` }))] });
+const varDoc = (siblings) => `${JSON.stringify({ template: 'guides', archetype: 'https://example.test/guides/', at: '2026-10-01T00:00:00Z', siblings }, null, 2)}\n`;
+write(VAR, varDoc([sib('guide-alpha', 'same'), sib('guide-beta', 'differs', ['hero'], ['card']), sib('guide-gamma', 'same')]));
+check('verdict same → recorded (the changed variance record re-renders the page); a page with no row → skipped with the reason', () => {
+  const r = run(['render', 'guide-alpha', 'howto-one']); assert.equal(r.status, 0, r.err);
+  assert.match(r.out, /^A' guide-alpha → /m); assert.match(r.out, /^variance: 1 A′ page\(s\) rendered without a variance probe row — recorded as skipped \(howto-one\)$/m);
+  assert.deepEqual(json(`${OUT}/guides/alpha/_meta.json`).variance, { verdict: 'same', file: VAR, at: '2026-10-01T00:00:00Z', missing: [], extra: [], deltas: 0, accepted: null });
+  assert.deepEqual(json(`${OUT}/howto/one/_meta.json`).variance, { status: 'skipped', reason: `${VAR} has no row for howto-one` });
+});
+check('verdict differs → strict variance refusal (nothing written) until --accept-variance "<reason>", then recorded as accepted', () => {
+  const before = read(`${OUT}/guides/beta/_meta.json`);
+  const r = run(['render', 'guide-beta']); assert.equal(r.status, 2);
+  assert.match(r.err, /^refused guide-beta: strict variance — the variance probe \(stardust\/rollout\/variance\/guides\.json\) found guide-beta differs from archetype guides: missing \[hero\], extra \[card\], 2 delta\(s\) — check the clone against the archetype and re-run with --accept-variance "<reason>", or re-type it: /m);
+  assert.equal(read(`${OUT}/guides/beta/_meta.json`), before);
+  const a = run(['render', 'guide-beta', '--accept-variance', 'the hero is a page-level promo']); assert.equal(a.status, 0, a.err); assert.match(a.out, /^A' guide-beta → /m);
+  assert.deepEqual(json(`${OUT}/guides/beta/_meta.json`).variance, { verdict: 'differs', file: VAR, at: '2026-10-01T00:00:00Z', missing: ['hero'], extra: ['card'], deltas: 2, accepted: 'the hero is a page-level promo' });
+  const again = run(['render', 'guide-beta']); assert.equal(again.status, 2); assert.match(again.err, /--accept-variance "<reason>" \(an earlier render accepted it: "the hero is a page-level promo"\)/);
+  const empty = run(['render', 'guide-beta', '--accept-variance', '']); assert.equal(empty.status, 1); assert.match(empty.err, /^usage error: --accept-variance needs a non-empty reason/);
+});
+check('more than half of the siblings differ → strict variance refusal even with --accept-variance (re-typing named); --variance-dir is honoured', () => {
+  write('stardust/alt-variance/guides.json', varDoc([sib('guide-alpha', 'same'), sib('guide-beta', 'differs', ['hero']), sib('guide-gamma', 'differs', [], ['map'])]));
+  const r = run(['render', 'guide-beta', '--accept-variance', 'looks fine', '--variance-dir', 'stardust/alt-variance']); assert.equal(r.status, 2);
+  assert.match(r.err, /^refused guide-beta: strict variance — 2 of 3 sibling\(s\) in stardust\/alt-variance\/guides\.json differ from archetype guides, so the template does not hold for this group — re-type the group: sub-archetypes by locale family or composition \(state\.mjs set <slug…> --representative <archetype-slug>\), or a recorded deviation; --accept-variance does not unlock a majority$/m);
+  assert.equal(json(`${OUT}/guides/beta/_meta.json`).variance.accepted, 'the hero is a page-level promo', 'nothing written');
+  const missingDir = run(['render', 'guide-beta', '--variance-dir', 'nope']); assert.equal(missingDir.status, 1); assert.match(missingDir.err, /^usage error: --variance-dir nope does not exist/);
 });
 
 // ---- --help ---------------------------------------------------------------------------------

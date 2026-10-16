@@ -19,7 +19,8 @@
  *        [--proto-dir stardust/prototypes] [--current stardust/current] [--out stardust/migrated]
  *        [--canon-css <file>] [--inline-canon] [--source <slug>=<file>]…
  *        [--archetype <slug>=<archetype-slug>]… [--branch-b <slug,…>] [--from-archetype]
- *        [--media-map <file>] [--media-ledger <file>] [--stardust-version <v>]
+ *        [--accept-variance "<reason>"] [--media-map <file>] [--media-ledger <file>]
+ *        [--variance-dir <dir>] [--stardust-version <v>]
  *   node migrate.mjs gate <slug> <gate-name> [--evidence "…"]          → gatesPassed[] / gateEvidence
  *   node migrate.mjs deviation <slug> --kind <k> [--source <s>] [--target <t>] --reason <r>
  *                                                                    → contentDeviations[]
@@ -54,8 +55,8 @@
  *   source refusal on A': `strict source — archetype <a> has no proposed HTML at <path>`.
  *   Canon CSS: --canon-css, else stardust/canon/canon.css, else the single *canon*.css under
  *   --proto-dir. Per page one line `A  <slug> → <path>  (<type>; n assets, n links, n broken,
- *   n sections)` (a fork adds `fork of <archetype>; `), `unchanged` when the recorded shas
- *   match (--force overrides), `passthrough` for a non-HTML leaf,
+ *   n sections)` (a fork adds `fork of <archetype>; `), `unchanged` when the recorded shas and
+ *   the variance record match (--force overrides), `passthrough` for a non-HTML leaf,
  *   `refused <slug>: strict <n> — <what> — <fix>` on stderr. Page status is NOT advanced
  *   here — that is `state.mjs advance <slug…> --to migrated`.
  *
@@ -87,9 +88,20 @@
  *   (values no element took), media-unmapped; the provenance comment adds a sourceForked row. A
  *   malformed media map or ledger refuses the page.
  *
+ * Variance gate (every A' page, own file or fork): <variance-dir>/<archetype-slug>.json, the
+ *   replica/sibling-variance.mjs record (--variance-dir, default <dirname(state)>/rollout/variance).
+ *   No file, or no row for the page → sidecar variance { status: skipped, reason } and one run
+ *   summary line `variance: <n> A′ page(s) rendered without a variance probe row — recorded as
+ *   skipped (…)`; verdict same → recorded; differs → refused (strict variance) unless
+ *   --accept-variance "<reason>" (every differing page of this run; recorded as accepted); more
+ *   than half of the file's siblings differ → refused even with --accept-variance (re-type the
+ *   group: sub-archetypes by locale family or composition, state.mjs set --representative, or a
+ *   recorded deviation). A malformed variance file refuses the page.
+ *
  * Writes:
  *   <out>/<output-path>              the migrated HTML (URL-literal rule; default stardust/migrated/)
  *   <out>/<dir>/_meta.json           sidecar next to index.html; <name>._meta.json next to <name>.html
+ *                                    (`variance`: null on A / B, the variance record on A')
  *   <out>/assets/**                  every bundled asset (copied only when missing or changed)
  *   state.json.migrate               MERGED, never replaced: this script owns at, outputDir,
  *                                    selfContained, pageMap[], totalAssetsBundled, bundledAssets[],
@@ -120,7 +132,7 @@ export const RENDERABLE = new Set(['approved', 'migrated', 'directed']);
 export const ASSET_PREFIXES = ['../current/assets/', '../../../assets/', '../../assets/', '../assets/', './assets/', '/assets/', 'assets/'];
 const SKIP_SCHEMES = /^(#|mailto:|tel:|javascript:|data:)/i;
 const SIDECAR_KEYS = ['slug', 'type', 'renderBranch', 'template', 'modules', 'slotsFilled', 'canonShas', 'deviations', 'migrationDecisions', 'metadata', 'jsonLd', 'migratedAt', 'designMdSha', 'designJsonSha', 'sourceCurrentSha', 'sourceProposedSha',
-  'fidelityTier', 'archetypeSource', 'archetypeSha', 'variants', 'gatesPassed', 'gateEvidence', 'contentDeviations', 'assetsBundled', 'missingAssets', 'brokenInternalLinks', 'outputPath', 'outputPathDefault', 'sidecar', 'driverVersion'];
+  'fidelityTier', 'archetypeSource', 'archetypeSha', 'variants', 'gatesPassed', 'gateEvidence', 'contentDeviations', 'assetsBundled', 'missingAssets', 'brokenInternalLinks', 'outputPath', 'outputPathDefault', 'sidecar', 'driverVersion', 'variance'];
 const CARRIED = ['gatesPassed', 'gateEvidence', 'variants', 'contentDeviations', 'deviations'];
 const SELF = fileURLToPath(import.meta.url);
 
@@ -663,15 +675,17 @@ export function renderPage(run, page, entry) {
   const outFile = join(run.outDir, outputPath); const sideRel = sidecarFor(outputPath); const sideFile = join(run.outDir, sideRel);
   const capturePath = join(run.currentDir, 'pages', `${slug}.json`); const capture = readJson(capturePath);
   const archetypeSource = archetype ? sourceFor(run, archetype) : null;
+  const old = readJson(sideFile);
+  if (old === null && isFile(sideFile)) throw new Refusal(slug, 'sidecar', `${toPosix(sideFile)} exists but is not valid JSON`, 'fix or delete the sidecar (its recorded judgments would be lost by overwriting), then re-run');
+  // variance gate — every A' page, before its HTML is built (a refused page is never reported unchanged)
+  const variance = branch === "A'" ? varianceGate(run, page, archetype, old) : null;
   let forked = null; let sourceHtml;
   if (fork) { forked = forkFromArchetype(readFileSync(archetypeSource, 'utf8'), capture, { slug, archetype: archetype.slug, capturePath: toPosix(capturePath), resolveMedia: mediaResolver(run, slug, capture) }); sourceHtml = forked.html; } else sourceHtml = readFileSync(source, 'utf8');
   const canonDir = join(dirname(run.stateFile), 'canon');
   const ownSlice = (tag) => { const m = sourceHtml.match(new RegExp(`<${tag}\\b[\\s\\S]*?<\\/${tag}>`, 'i')); return m ? sha(m[0]) : null; };
   const canonShas = { header: fsha(join(canonDir, 'header.html')) ?? ownSlice('header'), footer: fsha(join(canonDir, 'footer.html')) ?? ownSlice('footer'), css: run.canon.sha };
-  const keys = { designMdSha: run.designMdSha, designJsonSha: run.designJsonSha, sourceCurrentSha: fsha(capturePath), sourceProposedSha: sha(sourceHtml), canonShas, archetypeSha: archetype ? fsha(archetypeSource) : null, driverVersion: DRIVER_VERSION };
-  const old = readJson(sideFile);
-  if (old === null && isFile(sideFile)) throw new Refusal(slug, 'sidecar', `${toPosix(sideFile)} exists but is not valid JSON`, 'fix or delete the sidecar (its recorded judgments would be lost by overwriting), then re-run');
-  // idempotent skip (migration-procedure.md § Idempotent skip) — the recorded input shas equal the current set
+  const keys = { designMdSha: run.designMdSha, designJsonSha: run.designJsonSha, sourceCurrentSha: fsha(capturePath), sourceProposedSha: sha(sourceHtml), canonShas, archetypeSha: archetype ? fsha(archetypeSource) : null, driverVersion: DRIVER_VERSION, variance };
+  // idempotent skip (migration-procedure.md § Idempotent skip) — the recorded input shas (and variance record) equal the current set
   if (!run.force && old && isFile(outFile) && JSON.stringify(Object.fromEntries(Object.keys(keys).map((k) => [k, old[k] ?? null]))) === JSON.stringify(keys)) return { status: 'unchanged', outputPath };
   // placeholder gate — no bypass flag
   if (/(?<![\w-])data-placeholder(?![\w-])/.test(sourceHtml)) throw new Refusal(slug, 'placeholder-gate', '[data-placeholder] present in the source', 'fill the missing content in the source file, then re-run');
@@ -711,7 +725,7 @@ export function renderPage(run, page, entry) {
   validatePage(slug, html, sidecar, run.outDir, report.refs);
   mkdirSync(dirname(outFile), { recursive: true });
   writeFileSync(outFile, html); writeFileSync(sideFile, `${JSON.stringify(sidecar, null, 2)}\n`);
-  return { status: 'rendered', branch, fork: forked ? archetype.slug : null, outputPath, type: page.type, assets: report.refs.size, links: linked.links, broken: linked.broken.length, sections: tagged.sections, missing: report.missing, modulesEmpty: modulesOut.length === 0 };
+  return { status: 'rendered', branch, fork: forked ? archetype.slug : null, outputPath, type: page.type, assets: report.refs.size, links: linked.links, broken: linked.broken.length, sections: tagged.sections, missing: report.missing, modulesEmpty: modulesOut.length === 0, varianceSkipped: variance?.status === 'skipped' };
 }
 // The fork's media lookups: the media map and the ledger are read once per run, on the first slot value that names media.
 function mediaSource(run, which, slug) {
@@ -727,6 +741,31 @@ function mediaResolver(run, slug, capture) {
   const base = capture?.finalUrl || capture?.url || null;
   const bundles = (rel) => { const r = run.bundler.resolveRef(rel, run.bundler.protoDir, true); return !!(r && !r.traversal); };
   return (ref) => mediaRefFor(ref, { base, map: mediaSource(run, 'map', slug), ledger: mediaSource(run, 'ledger', slug), protoDir: run.protoDir, bundles });
+}
+// The variance gate (replica/sibling-variance.mjs record, <variance-dir>/<archetype-slug>.json) → the sidecar `variance` record:
+// { status: 'skipped', reason } | { verdict, file, at, missing, extra, deltas, accepted }. Throws Refusal (strict variance) on a
+// differing page without --accept-variance, on any page of a group whose siblings mostly differ, and on a malformed file.
+export function varianceGate(run, page, archetype, old = null) {
+  const file = join(run.varianceDir, `${archetype.slug}.json`); const rel = toPosix(file);
+  if (!run.varianceCache.has(file)) run.varianceCache.set(file, isFile(file) ? readJson(file) : undefined);
+  const doc = run.varianceCache.get(file);
+  if (doc === undefined) return { status: 'skipped', reason: `no variance probe file ${rel}` };
+  const rows = doc && typeof doc === 'object' && Array.isArray(doc.siblings) ? doc.siblings.filter((s) => s && typeof s === 'object') : null;
+  if (!rows) throw new Refusal(page.slug, 'variance', `${rel} is not a variance probe record (no siblings[])`, `re-run replica/sibling-variance.mjs for archetype ${archetype.slug}, then re-run`);
+  const row = rows.find((s) => s.slug === page.slug);
+  if (!row) return { status: 'skipped', reason: `${rel} has no row for ${page.slug}` };
+  const list = (v) => (Array.isArray(v) ? v : []);
+  const rec = { verdict: row.verdict, file: rel, at: doc.at ?? null, missing: list(row.missing), extra: list(row.extra), deltas: list(row.deltas).length, accepted: null };
+  if (row.verdict === 'same') return rec;
+  if (row.verdict !== 'differs') throw new Refusal(page.slug, 'variance', `${rel} gives ${page.slug} the verdict ${JSON.stringify(row.verdict ?? null)} (same or differs expected)`, `re-run replica/sibling-variance.mjs for archetype ${archetype.slug}, then re-run`);
+  const differ = rows.filter((s) => s.verdict === 'differs').length;
+  const retype = `sub-archetypes by locale family or composition (state.mjs set <slug…> --representative <archetype-slug>), or a recorded deviation`;
+  if (differ * 2 > rows.length) throw new Refusal(page.slug, 'variance', `${differ} of ${rows.length} sibling(s) in ${rel} differ from archetype ${archetype.slug}, so the template does not hold for this group`, `re-type the group: ${retype}; --accept-variance does not unlock a majority`);
+  if (!run.acceptVariance) {
+    const prior = old?.variance?.accepted ? ` (an earlier render accepted it: "${old.variance.accepted}")` : '';
+    throw new Refusal(page.slug, 'variance', `the variance probe (${rel}) found ${page.slug} differs from archetype ${archetype.slug}: missing [${rec.missing.join(', ')}], extra [${rec.extra.join(', ')}], ${rec.deltas} delta(s)`, `check the clone against the archetype and re-run with --accept-variance "<reason>"${prior}, or re-type it: ${retype}`);
+  }
+  return { ...rec, accepted: run.acceptVariance };
 }
 
 // ---- the run -----------------------------------------------------------------------------------
@@ -774,6 +813,8 @@ export function renderRun(o) {
   set = set.filter((s) => !counts.refused.includes(s));
   const canon = resolveCanon(o);
   for (const [flag, file] of [['media-map', o.mediaMap], ['media-ledger', o.mediaLedger]]) if (file && !isFile(file)) throw new UsageError(`--${flag} ${file} does not exist`);
+  if (o.varianceDir && !existsSync(o.varianceDir)) throw new UsageError(`--variance-dir ${o.varianceDir} does not exist`);
+  if (o.acceptVariance != null && !String(o.acceptVariance).trim()) throw new UsageError('--accept-variance needs a non-empty reason');
   const renderSet = new Set(set.filter((s) => !pageMap.bySlug.get(s).passthrough));
   let origin = 'https://origin.invalid'; const originHosts = new Set();
   if (originUrl) { try { const u = new URL(originUrl); origin = u.origin; originHosts.add(normHost(u.host)); } catch { /* keep the placeholder origin */ } }
@@ -783,8 +824,9 @@ export function renderRun(o) {
   const run = { stateFile: o.state, pages, bySlug, pageMap, bundler, canon, inlineCanon: o.inlineCanon, force: o.force, sources: new Map(Object.entries(o.sources || {})), archetypes: new Map(Object.entries(o.archetypes || {})), branchB: o.branchB instanceof Set ? o.branchB : new Set(o.branchB || []), protoDir: o.protoDir, currentDir: o.current, outDir: o.out, originUrl, origin, originHosts, deployHost,
     designMdSha: fsha('DESIGN.md'), designJsonSha: fsha('DESIGN.json'), direction: directionLine(o.state), stardustVersion: o.stardustVersion || process.env.STARDUST_VERSION || 'local',
     fromArchetype: !!o.fromArchetype, mediaMap: o.mediaMap || join(o.current, 'assets', 'media-map.json'), mediaLedger: o.mediaLedger || join(dirname(o.state), 'deploy', 'media-ledger.json'), mediaCache: {},
+    acceptVariance: o.acceptVariance ? String(o.acceptVariance).trim() : null, varianceDir: o.varianceDir || join(dirname(o.state), 'rollout', 'variance'), varianceCache: new Map(),
     available: (e) => isFile(join(o.out, e.outputPath)) || (renderSet.has(e.slug) && !e.passthrough) };
-  const missing = []; const modulesEmpty = []; const rendered = new Map();
+  const missing = []; const modulesEmpty = []; const rendered = new Map(); const varianceSkipped = [];
   for (const slug of set) {
     const page = bySlug.get(slug); const entry = pageMap.bySlug.get(slug);
     if (entry.passthrough) { console.log(`passthrough ${slug}: ${entry.outputPath} (non-HTML leaf; no render, no sidecar)`); counts.passthrough.push(slug); continue; }
@@ -794,6 +836,7 @@ export function renderRun(o) {
     counts.rendered.push(slug); rendered.set(slug, r);
     for (const m of r.missing) missing.push({ slug, ...m });
     if (r.modulesEmpty) modulesEmpty.push(slug);
+    if (r.varianceSkipped) varianceSkipped.push(slug);
     console.log(`${r.branch.padEnd(2)} ${slug} → ${r.outputPath}  (${r.type || 'untyped'}; ${r.fork ? `fork of ${r.fork}; ` : ''}${r.assets} assets, ${r.links} links, ${r.broken} broken, ${r.sections} sections)`);
   }
   const prev = state.migrate || {}; const at = nowIso(); const outRel = toPosix(o.out).replace(/\/+$/, '');
@@ -805,6 +848,7 @@ export function renderRun(o) {
     totalAssetsBundled: bundler.bundled.size, bundledAssets: [...bundler.bundled].sort(), pages: [...pageRecs.values()], missingAssets: [...missRec].filter(([, s]) => s.size).map(([subpath, s]) => ({ subpath, referencedBy: [...s].sort() })), cleanedAssets: prev.cleanedAssets || [], lastRun: { at, ...counts } });
   if (missing.length) console.log(`missing assets: ${missing.length} reference(s) left as is — ${[...new Set(missing.map((m) => m.subpath))].slice(0, 6).join(', ')}`);
   if (modulesEmpty.length) console.log(`modules[] empty on ${modulesEmpty.length} page(s) — migrate.mjs modules <slug> <id…> (${modulesEmpty.slice(0, 6).join(', ')})`);
+  if (varianceSkipped.length) console.log(`variance: ${varianceSkipped.length} A′ page(s) rendered without a variance probe row — recorded as skipped (${varianceSkipped.slice(0, 6).join(', ')}${varianceSkipped.length > 6 ? ', …' : ''})`);
   console.log(`rendered ${counts.rendered.length}, unchanged ${counts.unchanged.length}, refused ${counts.refused.length}, passthrough ${counts.passthrough.length} → ${outRel}/`);
   return counts.refused.length ? 2 : 0;
 }
@@ -882,7 +926,7 @@ export function pagemapCmd(o) {
 const BOOL = new Set(['all', 'force', 'inline-canon', 'json', 'clear', 'from-archetype']);
 const REPEAT = new Set(['source', 'archetype']); // slug=value pairs on render; --source is free text elsewhere
 export function parseArgs(argv) {
-  const o = { ...DEFAULTS, slugs: [], sources: {}, archetypes: {}, branchB: new Set(), all: false, force: false, inlineCanon: false, fromArchetype: false, json: false, clear: false, evidence: null, kind: null, source: null, target: null, reason: null, stardustVersion: null, mediaMap: null, mediaLedger: null };
+  const o = { ...DEFAULTS, slugs: [], sources: {}, archetypes: {}, branchB: new Set(), all: false, force: false, inlineCanon: false, fromArchetype: false, json: false, clear: false, evidence: null, kind: null, source: null, target: null, reason: null, stardustVersion: null, mediaMap: null, mediaLedger: null, acceptVariance: null, varianceDir: null };
   const positional = []; const raw = { source: [], archetype: [] };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -895,7 +939,7 @@ export function parseArgs(argv) {
     if (val === undefined) { val = argv[++i]; if (val === undefined) throw new UsageError(`--${name} needs a value`); if (val.startsWith('--')) throw new UsageError(`--${name} needs a value (got ${val}, which is a flag)`); }
     if (REPEAT.has(name)) { raw[name].push(val); continue; }
     if (name === 'branch-b') { for (const t of val.split(',')) if (t.trim()) o.branchB.add(t.trim()); continue; }
-    const key = { 'proto-dir': 'protoDir', 'canon-css': 'canonCss', 'stardust-version': 'stardustVersion', 'media-map': 'mediaMap', 'media-ledger': 'mediaLedger' }[name] || name;
+    const key = { 'proto-dir': 'protoDir', 'canon-css': 'canonCss', 'stardust-version': 'stardustVersion', 'media-map': 'mediaMap', 'media-ledger': 'mediaLedger', 'accept-variance': 'acceptVariance', 'variance-dir': 'varianceDir' }[name] || name;
     if (!(key in o)) throw new UsageError(`unknown flag --${name}`);
     o[key] = val;
   }
