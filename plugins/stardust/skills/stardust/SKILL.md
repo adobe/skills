@@ -308,11 +308,12 @@ otherwise):
   checks the file at each batch or iteration boundary and, if present,
   finishes the current iteration, writes its report and returns; the main
   agent then records the unit (sub-unit) and asks its boundary before
-  starting anything new. Unset variable = no check. The file belongs to
-  the supervising process — the run never writes or deletes it; asking
-  the boundary lets that process end or continue the session. Where
-  C-deliver applies it: `../replica/reference/handoff-contract.md`
-  § Fan-out discipline.
+  starting anything new. Unset variable = no check. With several
+  subagents in flight, the main agent asks once the last has returned.
+  The file belongs to the supervising process — the run never writes or
+  deletes it; asking the boundary lets that process end or continue the
+  session. Where C-deliver applies it:
+  `../replica/reference/handoff-contract.md` § Fan-out discipline.
 - **One shell, one working directory.** The harness's shell keeps its
   working directory from one tool call to the next: a `cd` inside a
   command moves every later command with it, and a path written from
