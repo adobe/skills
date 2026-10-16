@@ -2,28 +2,28 @@
 
 Run the project copies under `stardust/scripts/<skill>/`. Ask `--help` only for a flag not named here. Deploy/rollout/migrate invocations: `../../replica/reference/handoff-contract.md` § 4.
 
-- `deploy/ai-readability.mjs` — AI readability — `--origin <o> [--paths <f>]`
-- `deploy/block-roundtrip.mjs` — round-trip + EW — `<protoURL> <p>.html [--blocks a,b]`
+- `deploy/ai-readability.mjs` — readability — `--origin <o> [--paths <f>]`
+- `deploy/block-roundtrip.mjs` — round-trip + EW — `<protoURL> <p>.html [--blocks a,b] --ew`
 - `deploy/build-harness.mjs` — local harness — `<p>.html <out.html> [--root <dir>]`
-- `deploy/chrome-map.mjs` — page → nav/footer map — `[--dry-run]`
-- `deploy/content-count.mjs` — offline L5 count — `--capture <html> --doc <html> [--map <f>] [--project .]`
+- `deploy/chrome-map.mjs` — chrome map — `[--dry-run]`
+- `deploy/content-count.mjs` — L5 count — `--capture <f> --doc <f> [--map <f>] [--project .]`
 - `deploy/content-inventory.mjs` — library, no CLI
 - `deploy/da-media-upload.mjs` — images → DA — `--org --repo --scope <s> --dir|--manifest [--token-env|--token-file]`; exit 3 = token halt
 - `deploy/davids-model-lint.mjs` — model lint — `content/|<p>.html`
-- `deploy/deploy-batch.mjs` — PUT→preview→live — `--org --repo --branch [--no-publish] [--token-env|--token-file]`; exit 3 = token halt
+- `deploy/deploy-batch.mjs` — PUT→preview→live — `--org --repo --branch --content content [--no-publish] [--token-env|--token-file]`; exit 1 = failed pages, 3 = token halt
 - `deploy/diff-profiles.mjs` — library, no CLI
 - `deploy/file-lock.mjs` — library, no CLI
 - `deploy/eds-path.mjs` — library, no CLI
 - `deploy/ew-editability-probe.mjs` — EW gate — `--content <p>.html|<url…> [--simulate-editor]`
-- `deploy/localize-links.mjs` — hrefs → root-relative — `--source-host <h> [--check]`
+- `deploy/localize-links.mjs` — hrefs → root-relative — `--source-host <h> [--content content] [--check]`
 - `deploy/martech-scaffold.mjs` — martech code — `[--dry-run] [--force]`
 - `deploy/qa-gate.mjs` — decoration + cap — `<harnessURL> --schema <p>.json [--design DESIGN.json]`
-- `deploy/rehost-docs.mjs` — documents → `docs/` — `[--source-host <h,…>] [--dry-run]`
+- `deploy/rehost-docs.mjs` — re-host docs — `[--source-host <h>] [--dry-run]`
 - `deploy/render-harness.mjs` — harness shot — `<p>.html <out.png> [<block>…] [--ew]`
-- `deploy/sanitise.js` — non-ASCII → entities — `<p>.html` (one per call)
+- `deploy/sanitise.js` — non-ASCII → entities — `<p>.html` (1 per call)
 - `deploy/section-schema.mjs` — section roles — `<protoURL> [--out <f>]`
-- `deploy/stage-content.mjs` — encoded → `content/` — `--template <a>|--paths <f> [--record]`
-- `deploy/style-fingerprint.mjs` — variation groups — `"file:///abs/<proto>.html"`
+- `deploy/stage-content.mjs` — encoded → content/ — `--template <a>|--paths <f> [--record]`
+- `deploy/style-fingerprint.mjs` — variant groups — `"file:///abs/<proto>.html"`
 - `diff/chrome-compare.mjs` — header parity vs the contract — `<contract> <build> [--profile replica|functional] [--json f]`; exit 2 = undecided error
 - `diff/chrome-explore.mjs` — the header used: open states, close paths, motion, scroll — `<url> <out.json> [--width 1440,390]`
 - `diff/clip-probe.mjs` — text/controls cut or hidden by an overflow ancestor — `<url> [--width 1440] [--json [f]] [--advisory]`; exit 2 = clipped > 0
@@ -46,7 +46,7 @@ Run the project copies under `stardust/scripts/<skill>/`. Ask `--help` only for 
 - `extract/crawl.mjs` — crawler → pages, screenshots, `_crawl-log.json#captureGaps` — `--url <u> [--pages a,b] [--max 25] [--out stardust/current] [--dynamics]`
 - `extract/style-census.mjs` — computed-style census (one live pass) — `[--pages <dir>|--urls a,b] [--width <px>] [--headed]`
 - `extract/thumb.mjs` — thumbnails ≤ --max-bytes — `<png|dir…> [--width 480] [--max-height <px>] [--max-bytes 150000] [--min-share 60] [--offset <px>]`
-- `migrate/encode.mjs` — map → `stardust/encoded/` — `--template <a> [--slug a,b] [--roundtrip|--lint|--sweep]`
+- `migrate/encode.mjs` — sibling encoder — `--template <a> [--slug a,b] [--roundtrip|--lint|--sweep]`
 - `migrate/migrate.mjs` — render + sidecar — `render <slug…|--all>`; `gate|deviation|variant|modules|harness <slug>`
 - `qa/from-knowledge.mjs` — knowledge → template map + 404 allowlist — `[--dry-run]`
 - `qa/lib.mjs` — library, no CLI
