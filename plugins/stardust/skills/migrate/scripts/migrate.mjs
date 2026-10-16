@@ -3,7 +3,9 @@
  * migrate/migrate.mjs — the migrate driver: places a page whose HTML is ready.
  *
  * It never decides content. The agent supplies one rendered HTML file per page (the
- * prototype, or the sibling built from an archetype) and records its judgments; this
+ * prototype, or the sibling built from an archetype) — or, for a directed sibling without
+ * one, the driver forks the archetype's HTML with the page's captured typed slots — and
+ * records its judgments; this
  * script does every generic step of reference/migration-procedure.md after the render
  * decision: page map (built once from every state page), output path (URL-literal rule),
  * depth-aware internal links via the page map, asset bundling with rewritten references
@@ -16,7 +18,8 @@
  *   node migrate.mjs render <slug…|--all> [--force] [--state stardust/state.json]
  *        [--proto-dir stardust/prototypes] [--current stardust/current] [--out stardust/migrated]
  *        [--canon-css <file>] [--inline-canon] [--source <slug>=<file>]…
- *        [--archetype <slug>=<archetype-slug>]… [--branch-b <slug,…>] [--stardust-version <v>]
+ *        [--archetype <slug>=<archetype-slug>]… [--branch-b <slug,…>] [--from-archetype]
+ *        [--media-map <file>] [--media-ledger <file>] [--stardust-version <v>]
  *   node migrate.mjs gate <slug> <gate-name> [--evidence "…"]          → gatesPassed[] / gateEvidence
  *   node migrate.mjs deviation <slug> --kind <k> [--source <s>] [--target <t>] --reason <r>
  *                                                                    → contentDeviations[]
@@ -40,15 +43,49 @@
  *   delivery-lint's path-safety normalises), so `/About` and `/about/` collide before either is
  *   written. A sidecar that exists but is not valid JSON is refused (strict sidecar), never
  *   overwritten. Branch: approved/migrated with a source
- *   file → A (fidelityTier archetype); directed → A' (sibling) of the single approved/migrated
- *   page of the same type that has a source file — zero or several: the page is refused until
- *   --archetype <slug>=<archetype-slug> names one; a slug in --branch-b → B (thin). Source HTML:
- *   --source, else page.prototypePath, else <proto-dir>/<slug>-proposed.html. Canon CSS:
- *   --canon-css, else stardust/canon/canon.css, else the single *canon*.css under --proto-dir.
- *   Per page one line `A  <slug> → <path>  (<type>; n assets, n links, n broken, n sections)`,
- *   `unchanged` when the recorded shas match (--force overrides), `passthrough` for a non-HTML
- *   leaf, `refused <slug>: strict <n> — <what> — <fix>` on stderr. Page status is NOT advanced
+ *   file → A (fidelityTier archetype); a slug in --branch-b → B (thin); directed → A' (sibling)
+ *   of its archetype: --archetype <slug>=<archetype-slug>, else the page's state `representative`
+ *   (state.mjs set <slug…> --representative <archetype-slug>), else the single approved/migrated
+ *   page of the same type that has a source file — zero or several: refused (strict branch)
+ *   until one is named. Source HTML: --source, else page.prototypePath, else
+ *   <proto-dir>/<slug>-proposed.html; an A / B page without one is refused (strict source). A
+ *   directed page with its own source HTML renders A' from it; without one (or with
+ *   --from-archetype) it is an A' FORK of the archetype's source HTML (below). The one remaining
+ *   source refusal on A': `strict source — archetype <a> has no proposed HTML at <path>`.
+ *   Canon CSS: --canon-css, else stardust/canon/canon.css, else the single *canon*.css under
+ *   --proto-dir. Per page one line `A  <slug> → <path>  (<type>; n assets, n links, n broken,
+ *   n sections)` (a fork adds `fork of <archetype>; `), `unchanged` when the recorded shas
+ *   match (--force overrides), `passthrough` for a non-HTML leaf,
+ *   `refused <slug>: strict <n> — <what> — <fix>` on stderr. Page status is NOT advanced
  *   here — that is `state.mjs advance <slug…> --to migrated`.
+ *
+ * A' fork (template-and-module-rendering.md § Path A′; data-attributes.md § Slot identity): the
+ *   archetype's source HTML is copied in-process and every `data-slot` inside its <main> takes
+ *   this page's value from <current>/pages/<slug>.json#slots (prep-mode.md § 4) — an object
+ *   { name: value } or an array of { name, …value } / { name, value }. A value is a string (text,
+ *   escaped) | { text } | { html } (inner HTML verbatim) | { src, alt?, srcset? } (an image: on
+ *   <img> it sets src / alt / srcset, alt and srcset removed when the value has none; on a
+ *   container its first <img>, and the container's <source> elements are removed) | { href,
+ *   text? } (a link: on <a> href + text, the text kept when absent; on a container its first <a>)
+ *   | an array of those (a repeated slot: successive elements of that name; more values clone the
+ *   last element after it, fewer remove the rest; a single value is a list of one) | null (the
+ *   page has none: the element is removed, decision slot-empty). Outermost slots first: slots
+ *   nested in replaced content go with it; inside a kept container (an image / link value) they
+ *   are filled next. Refused (strict slots): no data-slot inside the archetype's <main> (the fork
+ *   would carry the archetype's own content — mark the typed slots, or pass --source); a slot
+ *   name with no key in slots (every missing name listed); a value its element cannot take.
+ *   Head: <title> ← the capture's title (emptied when absent → strict metadata), meta
+ *   description ← metaDescription || description (removed when neither), the archetype's
+ *   canonical, og:*, twitter:* and every application/ld+json script removed, <html lang> ←
+ *   language || lang. Media in slot values and inserted HTML (the archetype's own media stay)
+ *   resolve against the capture's finalUrl || url, then: a --media-map entry (default
+ *   <current>/assets/media-map.json) with status ok and an existing local file → that file
+ *   relative to --proto-dir (bundled to <out>/assets/ like any asset); else a --media-ledger
+ *   record (default <dirname(state)>/deploy/media-ledger.json; keyed by DA path, or { entries })
+ *   with status uploaded and that source → its contentUrl; else the source URL is kept and a
+ *   media-unmapped decision recorded. Driver decisions: archetype-fork, slot-empty, slot-unused
+ *   (values no element took), media-unmapped; the provenance comment adds a sourceForked row. A
+ *   malformed media map or ledger refuses the page.
  *
  * Writes:
  *   <out>/<output-path>              the migrated HTML (URL-literal rule; default stardust/migrated/)
@@ -313,6 +350,7 @@ export function provenanceComment(f) {
   const line = (k, v) => `  ${`${k}:`.padEnd(17)} ${v}`;
   const rows = [line('writtenBy', 'stardust:migrate'), line('writtenAt', f.at), line('page', f.title), line('slug', f.slug), line('pagePath', f.pagePath), line('renderBranch', f.branch)];
   if (f.branch === "A'") rows.push(line('template', f.template), line('archetypePath', f.archetypePath), line('archetypeSha', f.archetypeSha));
+  if (f.sourceForked) rows.push(line('sourceForked', f.sourceForked));
   if (f.branch === 'A') rows.push(line('sourceProposed', f.sourceProposed));
   rows.push(line('sourceCurrent', f.sourceCurrent), line('againstDirection', f.direction), line('designMd', `DESIGN.md (sha: ${f.designMdSha})`), line('designJson', `DESIGN.json (sha: ${f.designJsonSha})`),
     line('canonShas', `header:${f.canonShas.header} footer:${f.canonShas.footer} css:${f.canonShas.css}`), line('decisionTrace', f.decisionTrace), line('brokenInternalLinks', String(f.broken)), line('stardustVersion', f.stardustVersion));
@@ -365,6 +403,214 @@ export function validatePage(slug, html, sidecar, outDir, refs) {
   for (const s of refs) if (!isFile(join(outDir, 'assets', s))) throw new Refusal(slug, 'asset', `bundled reference assets/${s} is not on disk`, 'check the file under --proto-dir or --current');
 }
 
+// ---- A' fork: the archetype's HTML with this page's typed slots (template-and-module-rendering.md § Path A′) ----
+const TAG_RE = /<!--[\s\S]*?-->|<(\/?)([a-zA-Z][\w:-]*)((?:[^>"']|"[^"]*"|'[^']*')*?)(\/?)>/g;
+const FORK_MARK = 'data-stardust-fork'; // transient: kept | done on a processed slot, stripped before the fork returns
+// Elements of an HTML fragment in document order: { tag, attrs, start, openEnd, closeStart, end, parent }. Comments and
+// raw-text contents are skipped; a stray close tag is ignored; an element still open at its parent's close ends there.
+export function elementsOf(html) {
+  const re = new RegExp(TAG_RE.source, 'g'); const lower = html.toLowerCase(); const out = []; const stack = []; let m;
+  const shut = (e, closeStart, end) => { e.closeStart = closeStart; e.end = end; };
+  while ((m = re.exec(html))) {
+    if (m[0].startsWith('<!--')) continue;
+    const [full, close, tagRaw, attrs, self] = m; const tag = tagRaw.toLowerCase();
+    if (close) {
+      let i = stack.length - 1; while (i >= 0 && stack[i].tag !== tag) i -= 1;
+      if (i < 0) continue;
+      while (stack.length > i + 1) { const e = stack.pop(); shut(e, m.index, m.index); }
+      shut(stack.pop(), m.index, m.index + full.length); continue;
+    }
+    const e = { tag, attrs, start: m.index, openEnd: m.index + full.length, closeStart: null, end: null, parent: stack[stack.length - 1] || null };
+    out.push(e);
+    if (VOID.has(tag) || self) { shut(e, e.openEnd, e.openEnd); continue; }
+    if (RAW.has(tag)) {
+      const c = lower.indexOf(`</${tag}`, re.lastIndex); const ce = c < 0 ? -1 : lower.indexOf('>', c);
+      if (ce < 0) { shut(e, html.length, html.length); re.lastIndex = html.length; } else { shut(e, c, ce + 1); re.lastIndex = ce + 1; }
+      continue;
+    }
+    stack.push(e);
+  }
+  for (const e of stack) shut(e, html.length, html.length);
+  return out;
+}
+const attrValue = (attrs, name) => { const m = attrs.match(new RegExp(`(?<![\\w-])${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s"'=<>\`]+))`, 'i')); return m ? (m[1] ?? m[2] ?? m[3]).trim() : null; };
+export const slotNameOf = (attrs) => attrValue(attrs, 'data-slot') || null;
+// Attribute spans of an open tag, so one attribute is replaced or removed without reformatting the others.
+function attrSpans(open) {
+  const spans = []; const re = /(\s+)([^\s"'>/=]+)(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+))?/y;
+  let i = open.match(/^<[a-zA-Z][\w:-]*/)[0].length;
+  for (;;) { re.lastIndex = i; const x = re.exec(open); if (!x) break; spans.push({ name: x[2].toLowerCase(), start: i, end: re.lastIndex }); i = re.lastIndex; }
+  return spans;
+}
+// value null removes the attribute.
+export function setAttr(open, name, value) {
+  const spans = attrSpans(open); const hit = spans.find((s) => s.name === name); const next = value == null ? '' : ` ${name}="${esc(value)}"`;
+  if (hit) return open.slice(0, hit.start) + next + open.slice(hit.end);
+  if (value == null) return open;
+  const at = spans.length ? spans[spans.length - 1].end : open.match(/^<[a-zA-Z][\w:-]*/)[0].length;
+  return open.slice(0, at) + next + open.slice(at);
+}
+const splice = (s, edits) => [...edits].sort((a, b) => b[0] - a[0]).reduce((acc, [from, to, repl]) => acc.slice(0, from) + repl + acc.slice(to), s);
+// prep-mode.md § 4: { name: value } or [{ name, …value }] → Map name → list of values (a single value is a list of one, null none).
+export function slotValues(slots) {
+  const map = new Map(); const bad = [];
+  if (Array.isArray(slots)) {
+    slots.forEach((entry, i) => {
+      if (!entry || typeof entry !== 'object' || typeof entry.name !== 'string' || !entry.name.trim()) { bad.push(`slots[${i}] (an entry without a name)`); return; }
+      const { name, ...rest } = entry; const v = 'value' in rest ? rest.value : rest;
+      const list = map.get(name.trim()) || []; if (Array.isArray(v)) list.push(...v); else if (v !== null) list.push(v); map.set(name.trim(), list);
+    });
+  } else if (slots && typeof slots === 'object') {
+    for (const [name, v] of Object.entries(slots)) map.set(name, Array.isArray(v) ? v : v === null ? [] : [v]);
+  }
+  return { map, bad };
+}
+function slotKind(v) {
+  if (v === null) return 'none';
+  if (typeof v === 'string' || typeof v === 'number') return 'text';
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return 'bad';
+  if (typeof v.html === 'string') return 'html';
+  if (typeof v.src === 'string' && v.src.trim()) return 'image';
+  if (typeof v.href === 'string' && v.href.trim()) return 'link';
+  if (typeof v.text === 'string' || typeof v.text === 'number') return 'text';
+  return 'bad';
+}
+// One media reference of a slot value → { ref, unmapped }: the media map's local file (relative to --proto-dir, when the
+// Bundler can place it), else the ledger's contentUrl, else the absolute source URL kept (unmapped = that URL).
+export function mediaRefFor(ref, { base, map, ledger, protoDir, bundles }) {
+  const raw = String(ref).trim();
+  if (!raw || /^(data:|blob:|#)/i.test(raw)) return { ref: raw, unmapped: null };
+  let u; try { u = new URL(raw, base || undefined); } catch { return { ref: raw, unmapped: raw }; }
+  if (!/^https?:$/.test(u.protocol)) return { ref: raw, unmapped: null };
+  u.hash = ''; const key = u.href; const m = map?.[key];
+  if (m && m.status === 'ok' && typeof m.local === 'string' && isFile(m.local)) {
+    const rel = toPosix(relative(resolve(protoDir), resolve(m.local)));
+    if (!bundles || bundles(rel)) return { ref: rel, unmapped: null };
+  }
+  const c = ledger?.get(key);
+  return c ? { ref: c, unmapped: null } : { ref: key, unmapped: key };
+}
+// The media ledger (deploy/da-media-upload.mjs): an object keyed by DA path, or { entries } → Map source URL → contentUrl.
+export function ledgerIndex(raw) {
+  const table = raw && raw.entries && typeof raw.entries === 'object' ? raw.entries : raw; const out = new Map();
+  const recs = !table || typeof table !== 'object' ? [] : Array.isArray(table) ? table : Object.keys(table).sort().map((k) => table[k]);
+  for (const r of recs) {
+    if (!r || r.status !== 'uploaded' || typeof r.source !== 'string' || typeof r.contentUrl !== 'string') continue;
+    try { const u = new URL(r.source); u.hash = ''; if (!out.has(u.href)) out.set(u.href, r.contentUrl); } catch { /* not a URL — cannot match a source */ }
+  }
+  return out;
+}
+// The fork's <head>: title / description / lang from the capture; the archetype's canonical, og:*, twitter:* and JSON-LD go
+// (composeHead re-adds canonical / og:url / the default JSON-LD for this page).
+export function forkHead(html, capture) {
+  const c = capture || {}; const line = (t) => new RegExp(`[ \\t]*<${t}\\b(?:[^>"']|"[^"]*"|'[^']*')*>[ \\t]*\\r?\\n?`, 'gi');
+  html = html.replace(/[ \t]*<script\b(?:[^>"']|"[^"]*"|'[^']*')*>[\s\S]*?<\/script>[ \t]*\r?\n?/gi, (m) => (/^\s*<script\b[^>]*?type\s*=\s*["']?application\/ld\+json/i.test(m) ? '' : m));
+  const ho = html.match(/<head\b(?:[^>"']|"[^"]*"|'[^']*')*>/i); const hc = html.search(/<\/head>/i);
+  if (ho && hc > ho.index) {
+    let head = html.slice(ho.index + ho[0].length, hc);
+    head = head.replace(line('link'), (m) => (/^canonical$/i.test(attrValue(m, 'rel') || '') ? '' : m));
+    head = head.replace(line('meta'), (m) => (/^(og|twitter):/i.test(attrValue(m, 'property') || attrValue(m, 'name') || '') ? '' : m));
+    const title = c.title == null ? '' : String(c.title).trim();
+    head = head.replace(/<title\b[^>]*>[\s\S]*?<\/title>/i, `<title>${esc(title)}</title>`);
+    const desc = c.metaDescription || c.description || null; let placed = false;
+    head = head.replace(line('meta'), (m) => {
+      if ((attrValue(m, 'name') || '').toLowerCase() !== 'description') return m;
+      if (!desc || placed) return '';
+      placed = true; return m.replace(/<meta\b(?:[^>"']|"[^"]*"|'[^']*')*>/i, `<meta name="description" content="${esc(desc)}">`);
+    });
+    if (desc && !placed) head = `${head.replace(/\s*$/, '')}\n<meta name="description" content="${esc(desc)}">\n`;
+    html = html.slice(0, ho.index + ho[0].length) + head + html.slice(hc);
+  }
+  const lang = c.language || c.lang;
+  if (lang) html = html.replace(/<html\b(?:[^>"']|"[^"]*"|'[^']*')*>/i, (m) => setAttr(m, 'lang', String(lang)));
+  return html;
+}
+// The A' fork (exported, pure but for resolveMedia): every data-slot inside the archetype's <main> takes this page's value.
+// → { html, slots: [names placed], decisions: [_driver records] }; throws Refusal (strict slots) when it cannot.
+export function forkFromArchetype(archetypeHtml, capture, { slug = 'page', archetype = 'archetype', capturePath = 'the capture', resolveMedia = null } = {}) {
+  const base = capture?.finalUrl || capture?.url || null;
+  const resolveRef = resolveMedia || ((ref) => mediaRefFor(ref, { base, map: null, ledger: null }));
+  const headed = forkHead(archetypeHtml, capture); // the archetype's own JSON-LD goes before any slot HTML is inserted
+  const mi = headed.search(/<main\b/i); const mj = headed.toLowerCase().lastIndexOf('</main>');
+  const open = mi >= 0 && mj > mi ? headed.slice(mi).match(/^<main\b(?:[^>"']|"[^"]*"|'[^']*')*>/i) : null;
+  let work = open ? headed.slice(mi + open[0].length, mj) : '';
+  if (!elementsOf(work).some((e) => slotNameOf(e.attrs))) throw new Refusal(slug, 'slots', `archetype ${archetype} has no data-slot inside <main>, so a fork would carry the archetype's own content`, `mark its typed slots (stardust/reference/data-attributes.md § Slot identity), or pass --source ${slug}=<file>`);
+  const { map: values, bad: badEntries } = slotValues(capture?.slots);
+  const placed = new Set(); const missing = new Set(); const problems = [...badEntries]; const empty = new Set(); const unmapped = new Set();
+  const media = (ref) => { const r = resolveRef(ref); if (r.unmapped) unmapped.add(r.unmapped); return r.ref; };
+  const srcset = (s) => String(s).split(',').map((part) => { const [u, ...d] = part.trim().split(/\s+/); return u ? [media(u), ...d].join(' ') : ''; }).filter(Boolean).join(', ');
+  const mapHtml = (h) => h.replace(/<([a-zA-Z][\w-]*)(\s(?:[^>"']|"[^"]*"|'[^']*')*)?>/g, (m, tag, attrs) => (!attrs ? m : `<${tag}${attrs.replace(/(?<![\w-])(src|srcset|poster)\s*=\s*(["'])(.*?)\2/gis, (mm, n, q, val) => {
+    const raw = val.replace(/&amp;/g, '&'); const next = n.toLowerCase() === 'srcset' ? srcset(raw) : media(raw);
+    return next === raw ? mm : `${n}=${q}${esc(next)}${q}`;
+  })}>`));
+  const imgAttrs = (o, v) => {
+    o = setAttr(setAttr(o, 'src', media(v.src)), 'alt', v.alt == null ? null : String(v.alt));
+    return v.srcset ? setAttr(o, 'srcset', srcset(v.srcset)) : setAttr(setAttr(o, 'srcset', null), 'sizes', null);
+  };
+  // One slot element of `src` filled with one value → its new outer HTML ('' = removed); a slot that cannot take its value is
+  // recorded as a problem (the fork is refused) and marked done so the loop moves on.
+  const fill = (src, e, v, name) => {
+    const open0 = src.slice(e.start, e.openEnd); const inner = src.slice(e.openEnd, e.closeStart); const close = src.slice(e.closeStart, e.end);
+    const mark = (o, how) => setAttr(o, FORK_MARK, how);
+    const kind = slotKind(v); const label = `<${e.tag}>`;
+    const bad = (why) => { problems.push(`${name} (${why})`); return mark(open0, 'done') + inner + close; };
+    if (kind === 'none') { empty.add(name); return ''; }
+    if (kind === 'bad') return bad('unsupported value');
+    if (kind === 'text' || kind === 'html') {
+      if (VOID.has(e.tag) || !close) return bad(`${kind} value on ${label}${VOID.has(e.tag) ? '' : ' without a closing tag'}`);
+      return mark(open0, 'done') + (kind === 'text' ? esc(typeof v === 'object' ? v.text : v) : mapHtml(v.html)) + close;
+    }
+    const want = kind === 'image' ? 'img' : 'a';
+    if (e.tag === want) {
+      if (kind === 'image') return mark(imgAttrs(open0, v), 'done');
+      const o = setAttr(open0, 'href', v.href);
+      if (v.text == null) return mark(o, 'kept') + inner + close;
+      return close ? mark(o, 'done') + esc(v.text) + close : bad(`link text on ${label} without a closing tag`);
+    }
+    const kids = elementsOf(inner); const k = kids.find((x) => x.tag === want);
+    if (!k) return bad(`${kind} value on ${label} without an <${want}>`);
+    const kOpen = inner.slice(k.start, k.openEnd); const kClose = inner.slice(k.closeStart, k.end);
+    if (kind === 'link' && v.text != null && !kClose) return bad(`link text on the <a> in ${label} without a closing tag`);
+    const edits = kind === 'image'
+      ? [[k.start, k.openEnd, imgAttrs(kOpen, v)], ...kids.filter((x) => x.tag === 'source').map((x) => [x.start, x.end, ''])]
+      : [[k.start, k.end, setAttr(kOpen, 'href', v.href) + (v.text == null ? inner.slice(k.openEnd, k.closeStart) : esc(v.text)) + kClose]];
+    return mark(open0, 'kept') + splice(inner, edits) + close;
+  };
+  // Outermost first: each pass fills the slots whose slot ancestors are all kept containers (an image / link value);
+  // slots under replaced content (done) are inserted HTML or gone, never filled.
+  const markOf = (attrs) => attrValue(attrs, FORK_MARK);
+  const ready = (e) => { for (let p = e.parent; p; p = p.parent) if (slotNameOf(p.attrs) && markOf(p.attrs) !== 'kept') return false; return true; };
+  for (let pass = 0; pass < 64; pass += 1) {
+    const cands = elementsOf(work).filter((e) => slotNameOf(e.attrs) && !markOf(e.attrs) && ready(e));
+    if (!cands.length) break;
+    const groups = new Map(); for (const e of cands) { const n = slotNameOf(e.attrs); if (!groups.has(n)) groups.set(n, []); groups.get(n).push(e); }
+    const edits = [];
+    for (const [name, els] of groups) {
+      if (!values.has(name)) { missing.add(name); for (const e of els) edits.push([e.start, e.end, '']); continue; }
+      placed.add(name); const list = values.get(name);
+      if (!list.length) empty.add(name);
+      els.forEach((e, i) => {
+        let out = i < list.length ? fill(work, e, list[i], name) : '';
+        if (i === els.length - 1 && list.length > els.length) {
+          const proto = work.slice(e.start, e.end); const sep = (work.slice(0, e.start).match(/\s*$/) || [''])[0];
+          for (const v of list.slice(els.length)) out += sep + fill(proto, elementsOf(proto)[0], v, name);
+        }
+        edits.push([out ? e.start : e.start - ((work.slice(0, e.start).match(/\r?\n[ \t]*$/) || [''])[0].length), e.end, out]);
+      });
+    }
+    work = splice(work, edits);
+  }
+  if (missing.size) throw new Refusal(slug, 'slots', `${capturePath}#slots has no value for slot(s) ${[...missing].sort().join(', ')} of archetype ${archetype}`, `add each name to slots (null when the page has none; extract/reference/prep-mode.md § 4), or pass --source ${slug}=<file>`);
+  if (problems.length) throw new Refusal(slug, 'slots', `slot value(s) the archetype ${archetype} cannot take: ${problems.join('; ')}`, `fix the value in ${capturePath}#slots or the archetype's markup, or pass --source ${slug}=<file>`);
+  work = work.replace(new RegExp(` ${FORK_MARK}="(?:kept|done)"`, 'g'), '');
+  const html = headed.slice(0, mi) + open[0] + work + headed.slice(mj);
+  const slots = [...placed].sort(); const unused = [...values.keys()].filter((n) => !placed.has(n) && !missing.has(n)).sort();
+  const decisions = [{ kind: 'archetype-fork', archetype, slots, _driver: true }, ...[...empty].sort().map((slot) => ({ kind: 'slot-empty', slot, _driver: true }))];
+  if (unused.length) decisions.push({ kind: 'slot-unused', slots: unused, _driver: true });
+  for (const ref of [...unmapped].sort()) decisions.push({ kind: 'media-unmapped', ref, _driver: true });
+  return { html, slots, decisions };
+}
+
 // ---- render branch and canon ---------------------------------------------------------------------
 export function sourceFor(run, page) {
   const explicit = run.sources.get(page.slug);
@@ -372,20 +618,28 @@ export function sourceFor(run, page) {
   if (page.prototypePath && isFile(page.prototypePath)) return page.prototypePath;
   return join(run.protoDir, `${page.slug}-proposed.html`);
 }
-// approved/migrated → A; directed → A' of the single approved/migrated sibling of its type (or --archetype); --branch-b → B.
+// approved/migrated → A; --branch-b → B; directed → A' of its archetype (--archetype, else page.representative, else the single
+// approved/migrated page of its type with a source file): from its own source file, or forked from the archetype's.
 export function chooseBranch(run, page) {
-  const source = sourceFor(run, page);
-  if (!isFile(source)) throw new Refusal(page.slug, 'source', `no source HTML at ${source}`, 'pass --source <slug>=<file> or build the page first');
-  if (run.branchB.has(page.slug)) return { branch: 'B', tier: 'thin', archetype: null, source };
-  if (page.status !== 'directed') return { branch: 'A', tier: 'archetype', archetype: null, source };
-  const named = run.archetypes.get(page.slug);
+  const source = sourceFor(run, page); const own = isFile(source);
+  const noSource = () => new Refusal(page.slug, 'source', `no source HTML at ${source}`, 'pass --source <slug>=<file> or build the page first');
+  if (run.branchB.has(page.slug)) { if (!own) throw noSource(); return { branch: 'B', tier: 'thin', archetype: null, source, fork: false }; }
+  if (page.status !== 'directed') { if (!own) throw noSource(); return { branch: 'A', tier: 'archetype', archetype: null, source, fork: false }; }
+  const flagged = run.archetypes.get(page.slug); const rep = page.representative && page.representative !== page.slug ? page.representative : null;
+  const named = flagged || rep;
   let archetype = null;
-  if (named) { archetype = run.bySlug.get(named); if (!archetype || !isFile(sourceFor(run, archetype))) throw new Refusal(page.slug, 'branch', `--archetype names ${named}, which has no source HTML`, 'name an approved page of the same type that has a source file'); } else {
+  if (named) {
+    archetype = run.bySlug.get(named);
+    if (!archetype) throw new Refusal(page.slug, 'branch', `${flagged ? '--archetype' : 'the state representative'} names ${named}, which is not a page in ${toPosix(run.stateFile)}`, `name an approved page of type ${page.type} (--archetype ${page.slug}=<archetype-slug>, or state.mjs set ${page.slug} --representative <archetype-slug>)`);
+  } else {
     const c = run.pages.filter((p) => p.slug !== page.slug && p.type === page.type && ['approved', 'migrated'].includes(p.status) && isFile(sourceFor(run, p)));
     if (c.length !== 1) throw new Refusal(page.slug, 'branch', `${c.length} archetype candidate(s) of type ${page.type}${c.length ? ` (${c.map((p) => p.slug).join(', ')})` : ''}`, `--archetype ${page.slug}=<archetype-slug> (or --branch-b ${page.slug} for a one-off render)`);
     archetype = c[0];
   }
-  return { branch: "A'", tier: 'sibling', archetype, source };
+  const archetypeSource = sourceFor(run, archetype);
+  if (!isFile(archetypeSource)) throw new Refusal(page.slug, 'source', `archetype ${archetype.slug} has no proposed HTML at ${toPosix(archetypeSource)}`, `build the archetype's prototype first or pass --source ${archetype.slug}=<file> (or name another archetype with --archetype ${page.slug}=<archetype-slug>)`);
+  const fork = !own || !!run.fromArchetype;
+  return { branch: "A'", tier: 'sibling', archetype, source: fork ? archetypeSource : source, fork };
 }
 export function resolveCanon(o) {
   const dflt = join(dirname(o.state), 'canon', 'canon.css');
@@ -405,14 +659,15 @@ export function resolveCanon(o) {
 // ---- one page ----------------------------------------------------------------------------------
 export function renderPage(run, page, entry) {
   const { slug } = page; const { outputPath, outputPathDefault } = entry;
-  const { branch, tier, archetype, source } = chooseBranch(run, page);
+  const { branch, tier, archetype, source, fork } = chooseBranch(run, page);
   const outFile = join(run.outDir, outputPath); const sideRel = sidecarFor(outputPath); const sideFile = join(run.outDir, sideRel);
-  const sourceHtml = readFileSync(source, 'utf8');
   const capturePath = join(run.currentDir, 'pages', `${slug}.json`); const capture = readJson(capturePath);
+  const archetypeSource = archetype ? sourceFor(run, archetype) : null;
+  let forked = null; let sourceHtml;
+  if (fork) { forked = forkFromArchetype(readFileSync(archetypeSource, 'utf8'), capture, { slug, archetype: archetype.slug, capturePath: toPosix(capturePath), resolveMedia: mediaResolver(run, slug, capture) }); sourceHtml = forked.html; } else sourceHtml = readFileSync(source, 'utf8');
   const canonDir = join(dirname(run.stateFile), 'canon');
   const ownSlice = (tag) => { const m = sourceHtml.match(new RegExp(`<${tag}\\b[\\s\\S]*?<\\/${tag}>`, 'i')); return m ? sha(m[0]) : null; };
   const canonShas = { header: fsha(join(canonDir, 'header.html')) ?? ownSlice('header'), footer: fsha(join(canonDir, 'footer.html')) ?? ownSlice('footer'), css: run.canon.sha };
-  const archetypeSource = archetype ? sourceFor(run, archetype) : null;
   const keys = { designMdSha: run.designMdSha, designJsonSha: run.designJsonSha, sourceCurrentSha: fsha(capturePath), sourceProposedSha: sha(sourceHtml), canonShas, archetypeSha: archetype ? fsha(archetypeSource) : null, driverVersion: DRIVER_VERSION };
   const old = readJson(sideFile);
   if (old === null && isFile(sideFile)) throw new Refusal(slug, 'sidecar', `${toPosix(sideFile)} exists but is not valid JSON`, 'fix or delete the sidecar (its recorded judgments would be lost by overwriting), then re-run');
@@ -441,14 +696,14 @@ export function renderPage(run, page, entry) {
   if (!run.inlineCanon && !report.refs.has(run.canon.subpath)) { run.bundler.ensure(run.canon.subpath, [run.canon.file]); report.refs.add(run.canon.subpath); canonLink = `${prefix}assets/${run.canon.subpath}`; }
   // <head>
   const at = nowIso();
-  const prov = provenanceComment({ at, title: String(page.title || slug).replace(/\s+/g, ' ').replace(/--/g, '-'), slug, pagePath: posix.join(basename(run.outDir), outputPath), branch, template: archetype?.slug, archetypePath: archetypeSource && toPosix(archetypeSource), archetypeSha: keys.archetypeSha, sourceProposed: toPosix(source), sourceCurrent: toPosix(capturePath), direction: run.direction, designMdSha: run.designMdSha, designJsonSha: run.designJsonSha, canonShas, decisionTrace: posix.basename(sideRel), broken: linked.broken.length, stardustVersion: run.stardustVersion });
+  const prov = provenanceComment({ at, title: String(page.title || slug).replace(/\s+/g, ' ').replace(/--/g, '-'), slug, pagePath: posix.join(basename(run.outDir), outputPath), branch, template: archetype?.slug, archetypePath: archetypeSource && toPosix(archetypeSource), archetypeSha: keys.archetypeSha, sourceForked: forked ? `${toPosix(archetypeSource)} + ${toPosix(capturePath)}#slots` : null, sourceProposed: toPosix(source), sourceCurrent: toPosix(capturePath), direction: run.direction, designMdSha: run.designMdSha, designJsonSha: run.designJsonSha, canonShas, decisionTrace: posix.basename(sideRel), broken: linked.broken.length, stardustVersion: run.stardustVersion });
   const head = composeHead(html, { prov, rootBlock: run.canon.rootBlock, inlineCss: run.inlineCanon ? run.canon.css : null, canonLink, capture, deployHost: run.deployHost, outputPath, pageUrl, type: page.type });
   if (!head) throw new Refusal(slug, 3, 'no <head> element', 'add <head> to the source');
   html = head.html;
   // sidecar: spec keys first, then the tier/judgment fields; recorded judgments are carried over
   const carried = (old?.migrationDecisions || []).filter((d) => !(d && d._driver));
   const driverDecisions = [...report.missing.map((m) => ({ kind: 'asset-missing', ref: m.ref, subpath: m.subpath, _driver: true })), ...report.traversal.map((ref) => ({ kind: 'asset-path-traversal', ref, _driver: true }))];
-  const meta = { slug, type: page.type ?? null, renderBranch: branch, template: archetype ? archetype.slug : null, modules: modulesOut, slotsFilled: tagged.slots, canonShas, migrationDecisions: [...carried, ...driverDecisions], metadata: head.metadata, jsonLd: head.jsonLd, migratedAt: at, ...keys,
+  const meta = { slug, type: page.type ?? null, renderBranch: branch, template: archetype ? archetype.slug : null, modules: modulesOut, slotsFilled: tagged.slots, canonShas, migrationDecisions: [...carried, ...(forked ? forked.decisions : []), ...driverDecisions], metadata: head.metadata, jsonLd: head.jsonLd, migratedAt: at, ...keys,
     fidelityTier: tier, archetypeSource: archetype ? archetype.slug : null, assetsBundled: report.refs.size, missingAssets: report.missing, brokenInternalLinks: linked.broken, outputPath, outputPathDefault, sidecar: sideRel };
   const defaults = { gatesPassed: [], gateEvidence: {}, variants: [], contentDeviations: [], deviations: [] };
   for (const k of CARRIED) meta[k] = old?.[k] ?? defaults[k];
@@ -456,7 +711,22 @@ export function renderPage(run, page, entry) {
   validatePage(slug, html, sidecar, run.outDir, report.refs);
   mkdirSync(dirname(outFile), { recursive: true });
   writeFileSync(outFile, html); writeFileSync(sideFile, `${JSON.stringify(sidecar, null, 2)}\n`);
-  return { status: 'rendered', branch, outputPath, type: page.type, assets: report.refs.size, links: linked.links, broken: linked.broken.length, sections: tagged.sections, missing: report.missing, modulesEmpty: modulesOut.length === 0 };
+  return { status: 'rendered', branch, fork: forked ? archetype.slug : null, outputPath, type: page.type, assets: report.refs.size, links: linked.links, broken: linked.broken.length, sections: tagged.sections, missing: report.missing, modulesEmpty: modulesOut.length === 0 };
+}
+// The fork's media lookups: the media map and the ledger are read once per run, on the first slot value that names media.
+function mediaSource(run, which, slug) {
+  if (!(which in run.mediaCache)) {
+    const file = which === 'map' ? run.mediaMap : run.mediaLedger; const v = isFile(file) ? readJson(file) : undefined;
+    run.mediaCache[which] = v === undefined ? { value: null } : v && typeof v === 'object' && !Array.isArray(v) ? { value: which === 'map' ? v : ledgerIndex(v) } : { bad: toPosix(file) };
+  }
+  const c = run.mediaCache[which];
+  if (c.bad) throw new Refusal(slug, `media-${which}`, `${c.bad} is not a JSON object`, `fix or delete it (or pass --media-${which} <file>), then re-run`);
+  return c.value;
+}
+function mediaResolver(run, slug, capture) {
+  const base = capture?.finalUrl || capture?.url || null;
+  const bundles = (rel) => { const r = run.bundler.resolveRef(rel, run.bundler.protoDir, true); return !!(r && !r.traversal); };
+  return (ref) => mediaRefFor(ref, { base, map: mediaSource(run, 'map', slug), ledger: mediaSource(run, 'ledger', slug), protoDir: run.protoDir, bundles });
 }
 
 // ---- the run -----------------------------------------------------------------------------------
@@ -503,6 +773,7 @@ export function renderRun(o) {
   }
   set = set.filter((s) => !counts.refused.includes(s));
   const canon = resolveCanon(o);
+  for (const [flag, file] of [['media-map', o.mediaMap], ['media-ledger', o.mediaLedger]]) if (file && !isFile(file)) throw new UsageError(`--${flag} ${file} does not exist`);
   const renderSet = new Set(set.filter((s) => !pageMap.bySlug.get(s).passthrough));
   let origin = 'https://origin.invalid'; const originHosts = new Set();
   if (originUrl) { try { const u = new URL(originUrl); origin = u.origin; originHosts.add(normHost(u.host)); } catch { /* keep the placeholder origin */ } }
@@ -511,6 +782,7 @@ export function renderRun(o) {
   const bundler = new Bundler({ protoDir: o.protoDir, currentDir: o.current, outDir: o.out, seed: state.migrate?.bundledAssets || [] });
   const run = { stateFile: o.state, pages, bySlug, pageMap, bundler, canon, inlineCanon: o.inlineCanon, force: o.force, sources: new Map(Object.entries(o.sources || {})), archetypes: new Map(Object.entries(o.archetypes || {})), branchB: o.branchB instanceof Set ? o.branchB : new Set(o.branchB || []), protoDir: o.protoDir, currentDir: o.current, outDir: o.out, originUrl, origin, originHosts, deployHost,
     designMdSha: fsha('DESIGN.md'), designJsonSha: fsha('DESIGN.json'), direction: directionLine(o.state), stardustVersion: o.stardustVersion || process.env.STARDUST_VERSION || 'local',
+    fromArchetype: !!o.fromArchetype, mediaMap: o.mediaMap || join(o.current, 'assets', 'media-map.json'), mediaLedger: o.mediaLedger || join(dirname(o.state), 'deploy', 'media-ledger.json'), mediaCache: {},
     available: (e) => isFile(join(o.out, e.outputPath)) || (renderSet.has(e.slug) && !e.passthrough) };
   const missing = []; const modulesEmpty = []; const rendered = new Map();
   for (const slug of set) {
@@ -522,7 +794,7 @@ export function renderRun(o) {
     counts.rendered.push(slug); rendered.set(slug, r);
     for (const m of r.missing) missing.push({ slug, ...m });
     if (r.modulesEmpty) modulesEmpty.push(slug);
-    console.log(`${r.branch.padEnd(2)} ${slug} → ${r.outputPath}  (${r.type || 'untyped'}; ${r.assets} assets, ${r.links} links, ${r.broken} broken, ${r.sections} sections)`);
+    console.log(`${r.branch.padEnd(2)} ${slug} → ${r.outputPath}  (${r.type || 'untyped'}; ${r.fork ? `fork of ${r.fork}; ` : ''}${r.assets} assets, ${r.links} links, ${r.broken} broken, ${r.sections} sections)`);
   }
   const prev = state.migrate || {}; const at = nowIso(); const outRel = toPosix(o.out).replace(/\/+$/, '');
   const pageRecs = new Map((prev.pages || []).map((p) => [p.slug, p]));
@@ -607,10 +879,10 @@ export function pagemapCmd(o) {
 }
 
 // ---- argv and entry point ----------------------------------------------------------------------
-const BOOL = new Set(['all', 'force', 'inline-canon', 'json', 'clear']);
+const BOOL = new Set(['all', 'force', 'inline-canon', 'json', 'clear', 'from-archetype']);
 const REPEAT = new Set(['source', 'archetype']); // slug=value pairs on render; --source is free text elsewhere
 export function parseArgs(argv) {
-  const o = { ...DEFAULTS, slugs: [], sources: {}, archetypes: {}, branchB: new Set(), all: false, force: false, inlineCanon: false, json: false, clear: false, evidence: null, kind: null, source: null, target: null, reason: null, stardustVersion: null };
+  const o = { ...DEFAULTS, slugs: [], sources: {}, archetypes: {}, branchB: new Set(), all: false, force: false, inlineCanon: false, fromArchetype: false, json: false, clear: false, evidence: null, kind: null, source: null, target: null, reason: null, stardustVersion: null, mediaMap: null, mediaLedger: null };
   const positional = []; const raw = { source: [], archetype: [] };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -618,12 +890,12 @@ export function parseArgs(argv) {
     const eq = a.indexOf('='); const name = (eq > 0 ? a.slice(2, eq) : a.slice(2)); let val = eq > 0 ? a.slice(eq + 1) : undefined;
     // --json is a switch on summary and takes an object on decision
     if (name === 'json' && val === undefined && argv[i + 1]?.startsWith('{')) val = argv[++i];
-    if (BOOL.has(name) && val === undefined) { o[name === 'inline-canon' ? 'inlineCanon' : name] = true; continue; }
+    if (BOOL.has(name) && val === undefined) { o[{ 'inline-canon': 'inlineCanon', 'from-archetype': 'fromArchetype' }[name] || name] = true; continue; }
     // A value flag never swallows the next flag: `--evidence --force` is a forgotten value, not the text "--force".
     if (val === undefined) { val = argv[++i]; if (val === undefined) throw new UsageError(`--${name} needs a value`); if (val.startsWith('--')) throw new UsageError(`--${name} needs a value (got ${val}, which is a flag)`); }
     if (REPEAT.has(name)) { raw[name].push(val); continue; }
     if (name === 'branch-b') { for (const t of val.split(',')) if (t.trim()) o.branchB.add(t.trim()); continue; }
-    const key = { 'proto-dir': 'protoDir', 'canon-css': 'canonCss', 'stardust-version': 'stardustVersion' }[name] || name;
+    const key = { 'proto-dir': 'protoDir', 'canon-css': 'canonCss', 'stardust-version': 'stardustVersion', 'media-map': 'mediaMap', 'media-ledger': 'mediaLedger' }[name] || name;
     if (!(key in o)) throw new UsageError(`unknown flag --${name}`);
     o[key] = val;
   }
