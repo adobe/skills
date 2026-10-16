@@ -5,14 +5,17 @@
 // button served as a link is not missing), session-variable regions compared as counts (never MISSING) while
 // HIDDEN still counts, CONTROL STATE for a sort trigger, HEADING AS TEXT when the text survives as plain
 // text, scope = whole page when one side lacks <main>, chrome items excluded by default; formatReport lines;
-// --help in an empty cwd. Run: node <this file>.
+// --help in an empty cwd; --origin-cache: originCacheKey (field order, stability) and parseArgs, and where
+// playwright is importable an e2e write-then-read of the origin side (0 origin requests on a hit, a key mismatch
+// measures). Run: node <this file>.
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { spawn, spawnSync } from 'node:child_process';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { alignHeadings, diffPresence, formatReport } from '../content-presence.mjs';
+import { alignHeadings, diffPresence, formatReport, originCacheKey, parseArgs } from '../content-presence.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'content-presence.mjs');
@@ -93,5 +96,58 @@ check('--help exits 0 in an empty cwd and writes nothing', () => {
   assert.equal(r.status, 0); assert.match(r.stdout, /Usage: node content-presence\.mjs/); assert.deepEqual(readdirSync(cwd), []);
   rmSync(cwd, { recursive: true, force: true });
 });
+check('--origin-cache: parseArgs takes the file (default null); originCacheKey has a fixed field order and is stable', () => {
+  const argv = (...a) => ['node', 'x', 'https://o.example/p', 'https://e.example/p', ...a];
+  assert.equal(parseArgs(argv()).originCache, null);
+  const o = parseArgs(argv('--origin-cache', 'gates/home/presence-origin.json', '--main', 'main.c=main', '--variable', '.promo', '--warmup', 'https://o.example/'));
+  assert.equal(o.originCache, 'gates/home/presence-origin.json');
+  const k = originCacheKey(o);
+  assert.deepEqual(Object.keys(k), ['url', 'width', 'locale', 'rootSel', 'variableSels', 'countWords', 'moreWords', 'minCut', 'settlePasses', 'tier', 'warmup']);
+  assert.deepEqual(k, { url: 'https://o.example/p', width: 1440, locale: 'en-US', rootSel: 'main.c', variableSels: ['.promo'], countWords: null, moreWords: null, minCut: 2, settlePasses: 4, tier: 'stealth', warmup: 'https://o.example/' });
+  assert.equal(JSON.stringify(originCacheKey(parseArgs(argv('--main', 'main.c=main', '--variable', '.promo', '--warmup', 'https://o.example/', '--origin-cache', 'x')))), JSON.stringify(k), 'the cache file is not part of the key');
+  assert.equal(originCacheKey(parseArgs(argv('--plain'))).tier, 'plain');
+  assert.notDeepEqual(originCacheKey(parseArgs(argv('--width', '360'))), originCacheKey(parseArgs(argv())));
+});
+
+let playwright = true;
+try { await import('playwright'); } catch { playwright = false; }
+if (!playwright) console.log('skip  e2e --origin-cache (playwright not importable here)');
+else {
+  const acheck = async (name, fn) => { try { await fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${String(e.message).split('\n').join('\n  ')}`); } };
+  const PAGE = (extra) => `<!doctype html><html><body style="margin:0;font:16px Arial"><header><a href="/">Home</a></header><main><h1>Offers</h1><p>Weekly offers for every store.</p><a href="/a">All offers</a>${extra}</main><footer>f</footer></body></html>`;
+  const hits = {};
+  const server = createServer((req, res) => { const p = req.url.split('?')[0]; hits[p] = (hits[p] || 0) + 1; res.setHeader('content-type', 'text/html'); res.end(p === '/origin' ? PAGE('<a href="/b">Store finder</a>') : PAGE('')); });
+  await new Promise((r) => { server.listen(0, '127.0.0.1', r); });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const cwd = mkdtempSync(join(tmpdir(), 'content-presence-cache-'));
+  const cache = join(cwd, 'o.json');
+  const run = (args) => new Promise((done) => {
+    const ch = spawn(process.execPath, [SCRIPT, `${base}/origin`, `${base}/eds`, '--plain', '--width', '900', '--settle-passes', '1', '--origin-cache', cache, ...args], { cwd, env: { ...process.env, STARDUST_ORIGIN_MAX_AGE_H: '1' } });
+    let out = ''; let err = ''; ch.stdout.on('data', (d) => { out += d; }); ch.stderr.on('data', (d) => { err += d; }); ch.on('close', (code) => done({ code, out, err }));
+  });
+  let first = null;
+  await acheck('e2e: run 1 measures the origin once and writes the cache; run 2 reads it — 0 new origin requests, same totals, policy recorded', async () => {
+    const r1 = await run(['--json', join(cwd, 'c1.json')]);
+    assert.equal(r1.code, 2, r1.err); assert.equal(hits['/origin'], 1); assert.ok(existsSync(cache), r1.out);
+    assert.match(r1.out, /origin side measured \(cache: absent\)/);
+    first = JSON.parse(readFileSync(join(cwd, 'c1.json'), 'utf8'));
+    assert.equal(first._provenance.originCache, null);
+    const doc = JSON.parse(readFileSync(cache, 'utf8'));
+    assert.equal(doc.writtenBy, 'content-presence.mjs'); assert.equal(doc.at, first.origin.at, 'the cache carries the probe time');
+    const r2 = await run(['--json', join(cwd, 'c2.json')]);
+    assert.equal(r2.code, 2, r2.err); assert.equal(hits['/origin'], 1, 'no origin request on a cache hit'); assert.equal(hits['/eds'], 2, 'the served side is always measured');
+    assert.match(r2.out, /origin side from cache .*o\.json \(probed .*, max-age 1h\)/);
+    const second = JSON.parse(readFileSync(join(cwd, 'c2.json'), 'utf8'));
+    assert.deepEqual(second.totals, first.totals); assert.equal(second.totals.missingLinks, 1);
+    assert.deepEqual(second._provenance.originCache, { file: cache, at: first.origin.at, policy: 'max-age 1h' });
+  });
+  await acheck('e2e: run 3 with another --main is a key mismatch — the origin is measured again and the cache rewritten', async () => {
+    const r3 = await run(['--main', 'body', '--json', join(cwd, 'c3.json')]);
+    assert.ok(r3.code === 0 || r3.code === 2, r3.err); assert.equal(hits['/origin'], 2);
+    assert.match(r3.out, /origin side measured \(cache: key mismatch \(rootSel\)\)/);
+    assert.equal(JSON.parse(readFileSync(cache, 'utf8')).key.rootSel, 'body');
+  });
+  server.close(); rmSync(cwd, { recursive: true, force: true });
+}
 console.log(failed ? `\n${failed} failed` : '\nall passed');
 process.exit(failed ? 1 : 0);

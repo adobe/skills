@@ -22,17 +22,20 @@
  * above / below them are left to the chrome crop gate unless --chrome. `--variable <selO=selE,…>`
  * marks session-variable regions (counts only, HIDDEN still counts). The origin side fails loud on
  * HTTP ≥ 400 (exit 4) and on a bot challenge (exit 3). Trap: an infinite-scroll origin keeps loading
- * under the settle — mark that region --variable.
+ * under the settle — mark that region --variable. `--origin-cache <f>` reuses the origin side's inventory
+ * from <f> while it is fresh (live-session.mjs freshness(): this run's, or STARDUST_ORIGIN_MAX_AGE_H hours)
+ * and its key (originCacheKey) matches; the served side is always measured; a hit is in `_provenance.originCache`.
  *
  * Usage: node skills/diff/scripts/content-presence.mjs <originUrl> <edsUrl> [--width 1440]
  *        [--main <sel>[=<selEds>]] [--variable <sel,…>] [--chrome] [--json [<file>]] [--min-cut 2]
- *        [--settle-passes 4] [--max-findings 40] [--count-words <w,…>] [--plain] [--warmup <url>]
- * `presenceInventoryInPage`, `alignHeadings`, `diffPresence`, `formatReport`, `norm` are exported.
+ *        [--settle-passes 4] [--max-findings 40] [--count-words <w,…>] [--plain] [--warmup <url>] [--origin-cache <f>]
+ * `presenceInventoryInPage`, `alignHeadings`, `diffPresence`, `formatReport`, `norm`, `originCacheKey` are exported.
  */
 import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { clipInventoryInPage, inPage, morePrelude, summarize } from './clip-probe.mjs';
+import { readSideCache, writeSideCache } from './live-session.mjs';
 import { browserTier, openBrowser, openPage, visit } from './measure-live.mjs';
 
 const HELP = `content-presence — origin vs served page: visible headings / links / buttons / images / text per band + control state (#125 D2)
@@ -52,6 +55,8 @@ Usage: node content-presence.mjs <originUrl> <edsUrl> [options]
   --plain                  bundled Chromium instead of the window-free real-Chrome tier
   --warmup <url>           visit this URL first on the ORIGIN side (bot-managed sites)
   --locale <tag>           default en-US
+  --origin-cache <f>       reuse the origin side's inventory from <f> while fresh (this run; STARDUST_ORIGIN_MAX_AGE_H for
+                           older) and the key matches; measure and write it otherwise
   --help                   this text
 Exit: 0 clean, 2 any MISSING/HIDDEN link or heading, 1 error, 3 bot challenge, 4 origin HTTP >= 400.`;
 
@@ -303,7 +308,7 @@ export function formatReport(res, { maxPerKind = 40 } = {}) {
 export function parseArgs(argv) {
   const rest = argv.slice(2);
   if (rest.length < 2 || rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(rest.includes('--help') || rest.includes('-h') || !rest.length ? 0 : 1); }
-  const opts = { origin: null, eds: null, width: 1440, main: null, mainEds: null, variable: [], variableEds: [], json: false, jsonFile: null, minCut: 2, maxFindings: 40, plain: false, warmup: null, locale: 'en-US', chrome: false, settlePasses: 4, countWords: null, moreWords: null };
+  const opts = { origin: null, eds: null, width: 1440, main: null, mainEds: null, variable: [], variableEds: [], json: false, jsonFile: null, minCut: 2, maxFindings: 40, plain: false, warmup: null, locale: 'en-US', chrome: false, settlePasses: 4, countWords: null, moreWords: null, originCache: null };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--width') opts.width = Number(rest[++i]);
@@ -319,12 +324,16 @@ export function parseArgs(argv) {
     else if (a === '--plain') opts.plain = true;
     else if (a === '--warmup') opts.warmup = rest[++i];
     else if (a === '--locale') opts.locale = rest[++i];
+    else if (a === '--origin-cache') opts.originCache = rest[++i];
     else if (a.startsWith('--')) { console.error(`unknown flag ${a}\n\n${HELP}`); process.exit(1); }
     else if (!opts.origin) opts.origin = a; else if (!opts.eds) opts.eds = a;
   }
   if (!opts.origin || !opts.eds) { console.error(`need <originUrl> <edsUrl>\n\n${HELP}`); process.exit(1); }
   return opts;
 }
+
+/** The origin side's cache key: everything that shapes its inventory (fixed field order). */
+export const originCacheKey = (opts) => ({ url: opts.origin, width: opts.width, locale: opts.locale, rootSel: opts.main, variableSels: opts.variable, countWords: opts.countWords, moreWords: opts.moreWords, minCut: opts.minCut, settlePasses: opts.settlePasses, tier: opts.plain ? 'plain' : 'stealth', warmup: opts.warmup });
 
 /** Inventory one side: visit + settle, presence inventory, clip inventory. */
 export async function inventorySide(browser, url, { width, locale, warmup, rootSel, variableSels, minCut, settlePasses = 4, httpError = 'measure', countWords = null, moreWords = null }) {
@@ -339,6 +348,10 @@ export async function inventorySide(browser, url, { width, locale, warmup, rootS
 
 async function main() {
   const opts = parseArgs(process.argv);
+  const say = opts.json && !opts.jsonFile ? console.error : console.log; // --json to stdout stays pure JSON
+  const key = originCacheKey(opts);
+  const c = opts.originCache ? readSideCache(opts.originCache, key) : null;
+  if (c && c.hit) say(`origin side from cache ${c.file} (probed ${c.at}, ${c.policy})`);
   const { chromium } = await import('playwright');
   const browser = await openBrowser(chromium, { tier: opts.plain ? 'plain' : 'stealth' });
   let o; let e; let tier;
@@ -347,12 +360,20 @@ async function main() {
     // ORIGIN side fails loud on any HTTP ≥ 400 (a 403 page measured as the origin reads "100 EXTRA on the
     // build"); the SERVED side is measured with a warning (a 404 build before preview propagation is the
     // advisory contract).
-    o = await inventorySide(browser, opts.origin, { width: opts.width, locale: opts.locale, warmup: opts.warmup, rootSel: opts.main, variableSels: opts.variable, minCut: opts.minCut, settlePasses: opts.settlePasses, httpError: 'throw', countWords: opts.countWords, moreWords: opts.moreWords });
+    // A cache hit skips the origin's navigation and warm-up; an origin that fails (exit 3 / 4) writes no cache.
+    if (c && c.hit) o = c.data;
+    else {
+      o = await inventorySide(browser, opts.origin, { width: opts.width, locale: opts.locale, warmup: opts.warmup, rootSel: opts.main, variableSels: opts.variable, minCut: opts.minCut, settlePasses: opts.settlePasses, httpError: 'throw', countWords: opts.countWords, moreWords: opts.moreWords });
+      if (opts.originCache) {
+        try { writeSideCache(opts.originCache, key, o, { at: o.at, writtenBy: 'content-presence.mjs' }); say(`origin side measured (cache: ${c.reason}) → ${opts.originCache}`); }
+        catch (err) { console.error(`content-presence: --origin-cache ${opts.originCache} not written (${String(err.message).split('\n')[0]}) — the probe result stands`); }
+      }
+    }
     e = await inventorySide(browser, opts.eds, { width: opts.width, locale: opts.locale, warmup: null, rootSel: opts.mainEds, variableSels: opts.variableEds, minCut: opts.minCut, settlePasses: opts.settlePasses, countWords: opts.countWords, moreWords: opts.moreWords });
   } finally { await browser.close(); }
   const res = diffPresence(o, e, { chrome: opts.chrome });
   const strip = (side) => ({ url: side.url, at: side.at, status: side.status, settlePasses: side.settlePasses, docH: side.docH, root: side.root, items: side.items, clip: { counts: side.clip.counts, groups: side.clip.groups } });
-  const out = { _provenance: { writtenBy: 'content-presence.mjs', at: new Date().toISOString(), width: opts.width, variable: opts.variable, tier }, origin: strip(o), eds: { ...strip(e), clip: e.clip }, bands: res.bands, findings: res.findings, totals: res.totals, textBoxes: { origin: o.textBoxes, eds: e.textBoxes } };
+  const out = { _provenance: { writtenBy: 'content-presence.mjs', at: new Date().toISOString(), width: opts.width, variable: opts.variable, tier, originCache: c && c.hit ? { file: c.file, at: c.at, policy: c.policy } : null }, origin: strip(o), eds: { ...strip(e), clip: e.clip }, bands: res.bands, findings: res.findings, totals: res.totals, textBoxes: { origin: o.textBoxes, eds: e.textBoxes } };
   if (opts.json && !opts.jsonFile) console.log(JSON.stringify(out, null, 1));
   else {
     console.log(`content-presence @ ${opts.width}px (${tier}) — origin ${opts.origin} (docH ${o.docH}, ${o.items.length} items, HTTP ${o.status}) vs served ${opts.eds} (docH ${e.docH}, ${e.items.length} items, HTTP ${e.status})`);
