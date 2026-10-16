@@ -18,7 +18,8 @@
 //                 a document the manifest does not list is refused when it differs, adopted when byte-equal; a
 //                 patch file holding JSON null is malformed (error), never "no patches"
 //   modules       a clean encode keeps migrate's modules[] true: the sorted unique block names (created sidecars
-//                 included); the same blocks write nothing, a block the map adds shows up, a stop leaves the list
+//                 included); the same blocks write nothing, a block the map adds shows up, a stop leaves the list;
+//                 the archetype's non-empty list is the model's and stays (R40) — an empty one is filled
 //   encodedPageOf the shared R30 rule: a sibling with an encode is encoded (old clone or not), the archetype only
 //                 without a migrated HTML; a render's encode: null, a path outside stardust/encoded/ or with .. → null
 //   currentEncode the shared reader's verdicts: current (by URL, or from the sidecar alone), stopped with a stale
@@ -117,6 +118,11 @@ try {
   assert.deepEqual(more.modules, ['hero', 'links', 'quote', 'tabs', 'teaser'], 'a block the map adds shows up');
   assert.deepEqual(sidecarWith(more, { ...page, encode: undefined, audit: { status: 'variance' }, blocks: ['hero'] }).modules, more.modules, 'a stop leaves modules as they were');
   assert.deepEqual(sidecarWith(null, { ...page, encode: undefined, audit: { status: 'variance' }, blocks: ['hero'] }).modules, [], '… and records none on a sidecar it creates');
+  const arch = { ...page, slug: A, role: 'archetype' };
+  const archClean = (old) => sidecarWith(old, { ...arch, encode: sa.encode, audit: { status: 'clean' }, blocks: ['hero', 'quote'] });
+  assert.deepEqual(archClean({ ...sa, modules: ['river-hero', 'trail-facts'] }).modules, ['river-hero', 'trail-facts'], 'the archetype\'s recorded modules are the model\'s: kept (R40)');
+  assert.deepEqual(archClean({ ...sa, modules: [] }).modules, ['hero', 'quote'], '… an empty archetype list is filled');
+  assert.deepEqual(sidecarWith({ ...ss, renderBranch: 'A', modules: ['cards'] }, { ...page, encode: ss.encode, audit: { status: 'clean' }, blocks: ['hero'] }).modules, ['cards'], '… an archetype known by its sidecar (renderBranch A) too');
   let st = cli(STAGE, ['--template', A, '--root', T]);
   assert.equal(st.status, 0, `stage-content stages from these sidecars and this manifest\n${st.stderr}`); assert.equal(read('content/trips/forest-loop.html'), docS);
 
@@ -164,7 +170,8 @@ try {
   write(VOCAB, JSON.stringify({ ...vocab, markers: vocab.markers.map((m) => (m.sel === '.mod-image' ? { ...m, emitter: 'block:picture' } : m)) }, null, 2));
   r = await run('--template', A);
   assert.equal(r.code, 0, r.out); assert.equal(r.last, 'encoded 2 · unchanged 0 · stopped 0');
-  assert.deepEqual([json(SIDE[A]).modules, json(SIDE[S1]).modules].map((m) => m.includes('picture')), [true, true], 'a new block shows up in modules[]');
+  assert.ok(json(SIDE[S1]).modules.includes('picture'), 'a new block shows up in a sibling\'s modules[]');
+  assert.deepEqual(json(SIDE[A]).modules, sa.modules, 'the archetype\'s non-empty list is never replaced (R40)');
   write(VOCAB, vocabRaw);
   r = await run('--template', A);
   assert.equal(r.last, 'encoded 2 · unchanged 0 · stopped 0'); assert.deepEqual(json(SIDE[S1]).modules, ss.modules); assert.equal(read(DOC[S1]), docS);
@@ -177,6 +184,14 @@ try {
   r = await run('--template', A);
   assert.equal(r.code, 0, `the guard covers the document only: a sidecar rewritten by migrate.mjs is never a hand edit\n${r.out}`);
   assert.deepEqual(json(SIDE[S1]).gatesPassed, ['visual-parity']);
+  // R40: the archetype's modules[] (migrate.mjs modules records the model's ids) — an empty list is filled, a recorded
+  // one is never replaced
+  assert.equal(cli(MIGRATE, ['modules', A, '--clear']).status, 0);
+  r = await run('--template', A, '--force'); assert.equal(r.code, 0, r.out);
+  assert.deepEqual(json(SIDE[A]).modules, ['facts', 'hero', 'links', 'tabs', 'tags', 'teaser'], 'an empty archetype list is filled on a clean encode');
+  assert.equal(cli(MIGRATE, ['modules', A, '--clear']).status, 0); assert.equal(cli(MIGRATE, ['modules', A, 'river-hero', 'trail-facts']).status, 0);
+  r = await run('--template', A, '--force'); assert.equal(r.code, 0, r.out);
+  assert.deepEqual(json(SIDE[A]).modules, ['river-hero', 'trail-facts'], 'the model\'s archetype modules survive a clean encode');
 
   // --- stale output: a stop after a clean encode ---------------------------------------------------------------------
   const cap = read(CAPTURE(S1)); const encBefore = json(SIDE[S1]).encode; const manifestBefore = read(MANIFEST);

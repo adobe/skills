@@ -29,7 +29,8 @@
  *   modules       migrate's list of the page's block ids: on every clean encode, the sorted unique names of the blocks
  *                 the page emitted (modulesOf(blocks) — the engine's `blocks`, `block:<name>` emitters, variants
  *                 dropped), so rollout's dedup and reports read the encoded page as they read a rendered one; a stop
- *                 leaves it as it was.
+ *                 leaves it as it was, and so does the archetype's sidecar when its list is non-empty (the archetype
+ *                 is delivered through deploy's convert path: its ids are the model's) — an empty one is filled.
  * A page without a sidecar gets a migrate-shaped one (SIDECAR_KEYS order): renderBranch A', fidelityTier sibling,
  * template and archetypeSource = the archetype (the archetype itself: A, archetype, null, null). A stop is recorded
  * only for a page that has a sidecar or a document — a page never encoded clean gets no sidecar from a stop.
@@ -200,7 +201,8 @@ export const modulesOf = (blocks) => [...new Set((Array.isArray(blocks) ? blocks
 
 /**
  * The page's sidecar with this run's keys: `audit.encode` always; on a clean encode (`encode` given) `encode` and —
- * when the caller passes the engine's `blocks` — `modules`; a stop (`encode` undefined) keeps both as they were. An
+ * when the caller passes the engine's `blocks` — `modules` (never over an archetype's non-empty list: role archetype,
+ * or a sidecar of fidelityTier archetype / renderBranch A); a stop (`encode` undefined) keeps both as they were. An
  * existing sidecar keeps every other key and its key order; a missing one is created migrate-shaped.
  */
 export function sidecarWith(old, { slug, role, archetype, type = null, url, encode, audit, blocks = null }) {
@@ -208,7 +210,8 @@ export function sidecarWith(old, { slug, role, archetype, type = null, url, enco
   if (old) {
     const next = { ...old };
     if (encode !== undefined) next.encode = encode;
-    if (modules) next.modules = modules;
+    const archetypeList = (role === 'archetype' || old.fidelityTier === 'archetype' || old.renderBranch === 'A') && Array.isArray(old.modules) && old.modules.length > 0;
+    if (modules && !archetypeList) next.modules = modules;
     next.audit = { ...(isObj(old.audit) ? old.audit : {}), encode: audit };
     return next;
   }
