@@ -48,16 +48,16 @@ Run the project copies under `stardust/scripts/<skill>/`. Ask `--help` only for 
 - `qa/qa.mjs` — read-only live sweep → report.json — `--base <live-url>`
 - `qa/report-html.mjs` — report.json → report.html — `[--report stardust/qa/report.json]`
 - `replica/breakpoint-lint.mjs` — breakpoints on target steps or source switch points — `[--target 600,900,1200]` | `--inventory <file|dir…>`
-- `replica/cap-probe.mjs` — content caps: capture or live vs build — `<url…> [--write-design DESIGN.json]` | `<live> --against <build> [--slug <s>]`; exit 2 = FAIL
+- `replica/cap-probe.mjs` — content caps: capture or live vs build — `<url…> [--write-design DESIGN.json]` | `<live> --against <build> [--slug <s>]`; exit 2 = FAIL, 0 = PASS or INCONCLUSIVE (under half the modules pair; `○` unpaired)
 - `replica/anchor.mjs` — section anchors — `<url> [--width 1440] [--main <sel>] [--cache <json>]`
-- `replica/chrome-parity.mjs` — header/footer style parity — `<liveURL> <buildURL> [--width] [--live-cache <json>]`
+- `replica/chrome-parity.mjs` — header/footer style parity — `<liveURL> <buildURL> [--width] [--live-cache <json>] [--hide <sel,…>] [--presence <json> --slug <s>]`
 - `replica/crop-compare.mjs` — pixel diff of one band — `<a.png> <b.png> --height <px> [--y] [--y-b] [--threshold 2] [--strip <out.png>]`
 - `replica/css-rules.mjs` — rule blocks by selector regex — `<f.css> "<re>" [--media <re>|--no-media] [--decl <re>]`
 - `replica/foundation-freeze.mjs` — frozen delivery foundation, sha256 manifest — `freeze [--paths a,b]`; `check`
 - `replica/gate-all.mjs` — pixel tables, deployed or `--stage prototype`; reuses unchanged rows — `[--only <s,…>] [--skip-existing] [--recapture-eds] [--eds-host <h>] [--no-probes] [--origin-max-age <h>] [--one-load]`; exit 2 = FAIL or refused start
 - `replica/gate-evidence.mjs` — sidecar gates from pixel tables + run-bg jobs — `[--slug <s>]… [--content <dir>] [--tables <dir>] [--check] [--dry-run]`
 - `replica/gate-triage.mjs` — failing rows by shared cause + re-gate scope — `[--gate <dir>]… [--unit <u>] [--no-parity] [--dry-run]`
-- `replica/gate.sh` — one gate round + overflow assert + probes (`--full`: + diff probes) — `<slug> <live> <build> <width> [iter] [--full] [--main <sel>] [--consent <sel>] [--dismiss <sel,…>]`
+- `replica/gate.sh` — one gate round + overflow assert + probes (`--full`: + diff probes) — `<slug> <live> <build> <width> [iter] [--full] [--main <sel>] [--consent <sel>] [--dismiss <sel,…>] [--hide <sel,…>]`
 - `replica/html-slice.mjs` — one element of captured HTML — `<page.html> header|footer|main|.cls [--text] [--all]`
 - `replica/json-query.mjs` — bounded view of JSON — `<f.json> [--path <p>] [--keys] [--match k=re] [--fields a,b]`
 - `replica/measure.mjs` — rects, computed values, scrollWidth, renditions — `<url> --selectors "a,b" [--against <url>] [--width 1440,360]`

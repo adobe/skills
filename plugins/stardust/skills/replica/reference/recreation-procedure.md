@@ -317,17 +317,16 @@ Deploy § 4 principle 2 (#80) applies from the first archetype on (#133):
   `styles/fonts.css`, metric-matched `-fallback` faces in
   `styles/styles.css`, per deploy § 4).
 - **Brand family FIRST in every stack.** A metric-matched substitute is only
-  the fallback entry after it — never a calibrated stand-in for the brand
-  face: no derived font files, no hand-tuned digit widths or ascent/descent
-  overrides to imitate it.
-- **A proprietary face raises deploy's licensing alert:** the
-  `⚠️ FONT LICENSING REQUIRED BEFORE GOING LIVE` banner at the top of the
-  canon CSS (at delivery `styles/styles.css`) naming the type vendor per
-  family and "do not publish to the live origin before the license is
-  cleared"; `fonts/LICENSING.md` at delivery; the hand-off message; plus ONE
-  register entry (`preserve-direction.md` § 3). Remove path if the license
-  is not confirmed: delete the woff2 + its `@font-face`, and the stack falls
-  back to the metric-matched fallback.
+  the fallback entry after it — never a calibrated stand-in: no derived font
+  files or hand-tuned metrics standing in for the brand face.
+- **Proprietary faces raise deploy's licensing alert** (deploy § 4 principle
+  2): the banner at the top of the canon CSS (at delivery `styles/styles.css`
+  — deploy's `⚠️ FONT LICENSING REQUIRED BEFORE GOING LIVE` marker, the type
+  vendor per family, its do-not-publish line);
+  `fonts/LICENSING.md` at delivery; the hand-off message; plus ONE register
+  entry for all of them (`preserve-direction.md` § 3). Remove path if the
+  license is not confirmed: delete the woff2 + its `@font-face`, and the
+  stack falls back to the metric-matched fallback.
 
 ## Asset harvest and the capture-state policy
 

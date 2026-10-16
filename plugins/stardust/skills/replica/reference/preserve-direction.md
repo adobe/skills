@@ -113,7 +113,7 @@ Promoted: current/PRODUCT.md → PRODUCT.md · current/DESIGN.md → DESIGN.md �
 current/DESIGN.json → DESIGN.json (at <ISO-8601>).
 
 Permitted deltas: ONLY the entries of stardust/replica/inconsistency-register.md
-(<N> entries / empty — pure replica).
+(<N> entries / empty or only the font-licensing entry — pure replica).
 
 Fidelity: ia verbatim · design verbatim · content verbatim.
 ```
@@ -157,12 +157,12 @@ No entries — pure replica. Everything not listed here is frozen; any design
 delta found by the gate is a defect, not an improvement.
 ```
 
-**The one non-design entry (#133):** a self-hosted proprietary brand face
-(`recreation-procedure.md` § Fonts policy) seeds ONE `deferred` entry,
-`R-<nn> — proprietary brand face self-hosted; license to be confirmed by the
-owner before launch`, like § 4's breakpoint entry; it exempts no gate zone
-and the run stays a pure replica. Evidence = family → files → type vendor;
-Minimal change = the remove path if the license is not confirmed.
+**The one non-design entry (#133):** self-hosted proprietary brand faces
+(`recreation-procedure.md` § Fonts policy) seed ONE `deferred` entry for all
+of them, `R-<nn> — proprietary brand face self-hosted; license to be
+confirmed by the owner before launch`; it exempts no gate zone and the run
+stays a pure replica. Evidence = each family → files → type vendor; Minimal
+change = the remove path if the license is not confirmed.
 
 ### Entry schema
 

@@ -240,10 +240,10 @@ apply; the source-fidelity gate (Phase 4) replaces them entirely. A
 as-is — extract's `stardust/current/assets/fonts/`, same weights and styles,
 `@font-face` in the shared canon CSS. The brand family stays first in every
 stack; a metric-matched substitute is only the fallback entry after it, never
-a calibrated stand-in. A proprietary face gets deploy § 4's licensing alert
-plus one register entry. A substitute costs calibration work and still
-changes line counts; the owner's license question exists either way.
-Details: `reference/recreation-procedure.md` § Fonts policy.
+a calibrated stand-in. Proprietary faces get deploy § 4's licensing alert
+and ONE register entry for all of them. A substitute costs calibration work
+and still changes line counts; the owner's license question exists either
+way. Details: `reference/recreation-procedure.md` § Fonts policy.
 
 **CSS-portation is the per-section fallback only** — paint-level effects not
 recoverable from computed styles, JS-hydrated commerce widgets, video or
@@ -274,6 +274,7 @@ node stardust/scripts/replica/run-bg.mjs start --name <slug>-360-iter1 -- \
   stardust/scripts/replica/gate.sh <slug> "$LIVE" "$PROTO" 360 iter1 --full --main "<content-root>"
 # A consent manager the built-in candidates miss: add --consent "<accept selector>" to every gate.sh
 # round — it reaches both stitched captures and the probes alike (gate doc § Hardening rule 6).
+# In-flow per-visitor bar above the header (location suggestion): --hide "<sel>" on --full rounds → chrome-parity (presence.json variable regions too).
 node stardust/scripts/replica/run-bg.mjs wait      # verdict lines: pixel %, height delta, hot bands, structural 🔴, flags, chrome deltas
 
 # Iteration inner loop (gate doc § Band breakdown): anchor probe + pixel round
@@ -300,7 +301,7 @@ node stardust/scripts/replica/cap-probe.mjs "$LIVE" --against "$PROTO" --design 
 a verdict; 0 only when all four ran and passed).
 
 **Pass bar (all four per breakpoint, plus the content-cap row):**
-- content-diff: **0 structural 🔴** on the main root and the chrome roots — the default run covers both, each finding names its root (🟡/🟠 confirmed intended);
+- content-diff: **0 structural 🔴** on the main root and the chrome roots — the default run covers both, each finding names its root (🟡 confirmed intended; a 🟠 font fork is a defect to fix);
 - visual-diff: flags none or justified;
 - pixel diff: **≤ 10%** full-page, with no per-500px band left unexplained
   (the band breakdown is the navigation instrument — fix the first hot band,
@@ -308,7 +309,9 @@ a verdict; 0 only when all four ran and passed).
 - height delta **|Δ| ≤ 8px** (pixel-compare's own warning bar);
 - **content-cap row: `cap-probe.mjs … --against` prints `cap-probe: PASS`**
   (gate doc § Pass bar item 6 — every live cap held within ±20 px by kind,
-  nothing capped only on the prototype; a ✗ names the sizing rule, no pixel iteration);
+  nothing capped only on the prototype; a ✗ names the sizing rule, no pixel iteration;
+  `INCONCLUSIVE` is no FAIL — the wrapper row decided: record its note and re-run
+  once with matching `--main` / `--build-main` when the roots differ);
 - **clip-probe: `Clipped: 0`** on the build side (a `--full` round runs it; cut or hidden
   text / controls fail the round like an over-threshold pixel diff — #125); a
   declared repeated-unit family (`stardust/replica/units.json`, gate doc item 7)

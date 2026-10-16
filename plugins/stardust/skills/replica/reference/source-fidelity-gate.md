@@ -150,11 +150,18 @@ The prototype capture is re-taken every iteration.
    quiet (exit 0), THEN crop-compare — a pixel loop on chrome with parity
    deltas outstanding is wasted iterations. Each run is one live
    navigation (budget it like any live probe); `--json` records both
-   sides as the round's evidence.
+   sides as the round's evidence. An in-flow per-visitor region (a
+   location-suggestion bar above the header) shifts every chrome row and
+   `--dismiss` (overlays) cannot remove it: name it with `--hide <sel,…>`
+   (both sides, after the settle; the output records what was hidden) or
+   declare it `variable` in gate-all's `presence.json`, which
+   `--presence <f> --slug <s>` reads and `gate.sh --full` passes
+   automatically. A chrome offset from such a bar is fixed this way, never
+   logged as a residual.
 
    ```bash
    node stardust/scripts/replica/chrome-parity.mjs "$LIVE" "$PROTO" --width $W \
-     --region header=header --region footer=footer   # + --region strip=<sel>|<sel>
+     --region header=header --region footer=footer   # + --region strip=<sel>|<sel>, --hide <sel>
    ```
 
    **Glyph-dense chrome has a pixel noise floor — the ONE justified way past
@@ -222,7 +229,13 @@ bar item can be traded for a documented residual; this cannot
    EDS section wrappers are full width by design), nothing capped only on
    the prototype; a ✗ names the sizing rule (deploy Step 3 scaffold; re-lift
    per `recreation-procedure.md` § Lift the sizing MODEL), never a pixel
-   iteration. Evidence: `stardust/replica/gates/<slug>-<probeWidth>/cap-<label>.{json,txt}`.
+   iteration. A module pair whose widths differ by more than 40 % AND whose
+   cap elements differ (tag or role) is listed `○ unpaired`, not scored, and
+   the verdict names the scored count; fewer than half paired →
+   `INCONCLUSIVE` (exit 0; its note: check that `--main` / `--build-main`
+   name matching content roots), never a FAIL on module evidence — the
+   wrapper/content-cap row still decides.
+   Evidence: `stardust/replica/gates/<slug>-<probeWidth>/cap-<label>.{json,txt}`.
 
 **Calibration honesty — two fidelity regimes, one bar.** The validated
 numbers above (1.31%, Δ0) describe the **prototype regime**: a standalone
