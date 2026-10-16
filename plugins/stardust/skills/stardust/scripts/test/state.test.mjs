@@ -190,7 +190,7 @@ check('usage: missing --to, bad --to, no slug, unknown command, unknown option, 
   const g = run('advance', 'home', '--to', 'approved', '--gate', 'x.json'); assert.equal(g.code, 2); assert.match(g.err, /--gate is not accepted: a state.json history entry carries status, at and approvedBy only/);
   const n = run('advance', 'home', '--to', 'approved', '--note', 'why'); assert.equal(n.code, 2); assert.match(n.err, /journal\.md/);
   const none = spawnSync(process.execPath, [SCRIPT], { encoding: 'utf8' }); assert.equal(none.status, 2); assert.match(none.stderr, /Usage:/);
-  const missing = spawnSync(process.execPath, [SCRIPT, 'summary', '--dir', join(root, 'nowhere')], { encoding: 'utf8' }); assert.equal(missing.status, 2); assert.match(missing.stderr, /does not exist — extract creates it/);
+  const missing = spawnSync(process.execPath, [SCRIPT, 'summary', '--dir', join(root, 'nowhere')], { encoding: 'utf8' }); assert.equal(missing.status, 2); assert.match(missing.stderr, /does not exist — create it with `state\.mjs init --pages <urls>` after the crawl/);
   const h = run('--help'); assert.equal(h.code, 0); assert.match(h.out, /node state\.mjs advance <slug…> --to </); assert.match(h.out, /node state\.mjs summary \[--slugs\]/); assert.match(h.out, /--history-only/);
 });
 
