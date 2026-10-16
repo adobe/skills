@@ -267,10 +267,8 @@ otherwise):
   `gate.sh`, `pixel-compare --timeout`) — never under an agent-authored
   `sleep N; kill` loop — and long steps write a progress file the
   coordinator polls instead of blocking on the agent. (Field evidence,
-  2026-09: in one recorded run the two conversion agents the harness
-  watchdog killed carried the fattest briefs and whole-document reads,
-  and a lean re-dispatch finished the same pages; that conversion lost
-  89 minutes to a blind wait and 30 to fixed sleeps.)
+  2026-09: one recorded conversion lost 89 minutes to a blind wait and
+  30 to fixed sleeps.)
 - **Wait discipline: never park the conversation past the prompt-cache
   window.** Anything expected to run longer than about 2 minutes — a gate
   round over several pages, a crawl, a batch push, a capture set, a
@@ -304,6 +302,17 @@ otherwise):
   binds subagents: one long instrument in the foreground, or two long
   instruments as parallel tool calls in one turn, is the same blocked step
   (recorded: a 338 s main-agent turn cost one full cache re-write).
+- **Pause on request.** A supervising process may request a pause by
+  creating the file named by the environment variable `STARDUST_PAUSE_FILE`
+  (JSON `{at, reason}`); when the variable is set, every fan-out subagent
+  checks the file at each batch or iteration boundary and, if present,
+  finishes the current iteration, writes its report and returns; the main
+  agent then records the unit (sub-unit) and asks its boundary before
+  starting anything new. Unset variable = no check. The file belongs to
+  the supervising process — the run never writes or deletes it; asking
+  the boundary lets that process end or continue the session. Where
+  C-deliver applies it: `../replica/reference/handoff-contract.md`
+  § Fan-out discipline.
 - **One shell, one working directory.** The harness's shell keeps its
   working directory from one tool call to the next: a `cd` inside a
   command moves every later command with it, and a path written from
@@ -314,14 +323,11 @@ otherwise):
   reads and cost a re-run turn.)
 - **Author large files in parts.** Write the skeleton, then append in
   edits of roughly 150 lines or less, so no single turn generates for
-  longer than the prompt cache lives (about five minutes); a turn that
-  outruns it leaves the next request with a cold cache and re-writes
-  the whole context. (Field evidence, 2026-09: in one recorded run two
-  such turns — the brand documents written in one go at the end of
-  extract, and a first prototype's whole HTML and CSS in one write —
-  each cost a full re-write of a ~200k-token context; an earlier run
-  re-wrote 513k and 694k the same way. No compaction was involved; the
-  sessions simply outran the cache lifetime inside one generation.)
+  longer than the prompt cache lives (about five minutes). (Field
+  evidence, 2026-09: in one recorded run two such turns — the brand
+  documents written in one go at the end of extract, and a first
+  prototype's whole HTML and CSS in one write — each cost a full
+  re-write of a ~200k-token context.)
 - **Commit at the end of each phase** when the project is a git repo.
   Before the FIRST such commit, re-run Setup step 6 — the first commit
   lands at the end of the audit phase, long before deploy's SKILL.md is
@@ -337,8 +343,7 @@ around a hard blocker.
 
 **Quality gates NEVER weaken under hands-off.** Provenance
 validation, the validation loop, fidelity gates, delivery gates, and
-rollout's optimize gate all run unchanged. Hands-off changes *who
-answers*, not *what must pass*.
+rollout's optimize gate all run unchanged.
 
 ## The "open and reasoned" principle
 
