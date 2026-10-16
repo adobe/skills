@@ -83,7 +83,10 @@ The prototype capture is re-taken every iteration.
    text-less accordion button) confirmed intended. A 🟠 font fork is a
    defect to fix — the brand faces are self-hosted (#133), so it is usually
    a face that did not load (Hardening rule 14), never a justified
-   substitute.
+   substitute. A hidden lazy-image placeholder (≤ 64 px, not shown, with a
+   data: URI, small intrinsic size, aria-hidden or a loaded sibling of the
+   same alt or file, its full image loaded or declared) is counted under
+   `placeholder images`, never a `MISSING ICON`.
 2. **visual-diff: flags none or justified.** A live page's own quirks are
    justified when the prototype mirrors them (e.g. a 1×1 SEO h1 at x0, a
    carousel tile at a negative offset — both real UC1-E1 justifications).
@@ -150,15 +153,13 @@ The prototype capture is re-taken every iteration.
    quiet (exit 0), THEN crop-compare — a pixel loop on chrome with parity
    deltas outstanding is wasted iterations. Each run is one live
    navigation (budget it like any live probe); `--json` records both
-   sides as the round's evidence. An in-flow per-visitor region (a
-   location-suggestion bar above the header) shifts every chrome row and
-   `--dismiss` (overlays) cannot remove it: name it with `--hide <sel,…>`
-   (both sides, after the settle; the output records what was hidden) or
-   declare it `variable` in gate-all's `presence.json`, which
-   `--presence <f> --slug <s>` reads and `gate.sh --full` passes
-   automatically — a direct run passes the same flags, as the shared live
-   cache is keyed on them. A chrome offset from such a bar is fixed this
-   way, never logged as a residual.
+   sides as the round's evidence. An in-flow per-visitor bar (a location
+   suggestion above the header) shifts every chrome row and `--dismiss`
+   (overlays) cannot remove it: hide it (§ The all-pages published-origin
+   gate, *Hide or mask*) — chrome-parity takes `--hide <sel,…>` and
+   `--presence <f> --slug <s>`, which `gate.sh --full` passes; a direct run
+   passes the same, as the shared live cache is keyed on them. A chrome
+   offset from such a bar is fixed this way, never logged as a residual.
 
    ```bash
    node stardust/scripts/replica/chrome-parity.mjs "$LIVE" "$PROTO" --width $W \
@@ -840,7 +841,7 @@ clip.json [+ units.json]` and `summary.{json,md}`. **Verdict, per page — all f
 4. **content** — `content-presence` MISSING + HIDDEN links and h1–h3 headings = 0. Visible
    headings, links (by visible text), buttons, images, text blocks per band (h1–h3 sequence
    aligned by text) plus control STATE. Clipped past 50 % = HIDDEN, not present. Buttons,
-   control state and count deltas are reported, not blocking. Regions declared in
+   control state and count deltas are reported, not blocking. Regions declared `variable` in
    `presence.json` (rails, coupon walls, reviews) compare as counts — HIDDEN still counts.
    Origin not probeable (edge 403, bot challenge) → `content: n/a (<why>)`, never a fail,
    never a silent pass.
@@ -856,8 +857,18 @@ without any table the `gate.sh` logs stand in and `--check` names the missing ta
 eval requires both summaries with a row per page. The pixel-only verdict (1 + 2) is
 recorded beside the full one per page and in the totals: every run is calibration data. Sidecars in the gate dir, each entry documented: `masks.json` (printed
 on the verdict, never reported unmasked), `overrides.json` (shown BESIDE the measured number,
-never replacing it), `clip-allow.json`, `presence.json`, `units.json`. Origin: a fix round reuses
-this run's (row `originReused`, § Iteration discipline, Evidence freshness); fallback: live
+never replacing it), `clip-allow.json`, `presence.json`, `units.json`.
+
+**Hide or mask.** An in-flow per-visitor region (a location-suggestion bar above the header) is
+HIDDEN: removed before measuring, on both sides, by every instrument — both stitches, the diff
+probes (not unit-geometry), chrome-parity, gate-all and triage — via `--hide <sel,…>` or presence.json
+`hide`; declare a site-wide bar once as `"*": { "hide": ["<sel>"] }`. gate-all reads only presence.json;
+gate.sh merges its `--hide` with it; a capture or cache taken with another list is never reused. An
+authored-volatile band (a campaign hero) is MASKED: still measured, masked on the verdict
+(`masks.json`).
+
+Origin: a fix round reuses this run's (row `originReused`, § Iteration discipline, Evidence
+freshness); fallback: live
 stitch → previous origin (`--recapture-origin`) → crawl fullPage screenshot (`crawl-fullpage`,
 asymmetric, flagged). **Reuse (`--skip-existing`) — proven, never silent.** Origin captures in the
 page dir are reused (`stale` in the row when older than the run); probes are replayed (`<slug>/probes.json`) only while the capture pair they were

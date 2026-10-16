@@ -88,6 +88,7 @@ Akamai-class bot management):
 - `--dismiss [sel,...]` — dismiss overlays on both sides: cookie consent (clicked, not
   removed) AND timed marketing/newsletter modals, plus optional extra site-specific
   selectors; the mouse is parked afterwards.
+- `--hide <sel,…>` — hide in-flow per-visitor regions (not overlays) on both sides before measuring.
 - `--headed` — escalation for bot-managed sites: headed stealth real Chrome.
 - `--locale <tag>` — pin Accept-Language + context locale (geo-redirecting sites capture a
   different locale per run otherwise).

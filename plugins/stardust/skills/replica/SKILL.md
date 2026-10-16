@@ -274,8 +274,8 @@ node stardust/scripts/replica/run-bg.mjs start --name <slug>-360-iter1 -- \
   stardust/scripts/replica/gate.sh <slug> "$LIVE" "$PROTO" 360 iter1 --full --main "<content-root>"
 # A consent manager the built-in candidates miss: add --consent "<accept selector>" to every gate.sh
 # round — it reaches both stitched captures and the probes alike (gate doc § Hardening rule 6).
-# In-flow per-visitor bar above the header (location suggestion): --hide "<sel>" on --full
-# rounds → chrome-parity (presence.json variable regions too).
+# In-flow per-visitor bar above the header (location suggestion): declare it once as "*".hide in
+# gates/{prototypes,all}-<w>/presence.json (or --hide "<sel>") — both captures and the probes hide it.
 node stardust/scripts/replica/run-bg.mjs wait      # verdict lines: pixel %, height delta, hot bands, structural 🔴, flags, chrome deltas
 
 # Iteration inner loop (gate doc § Band breakdown): anchor probe + pixel round
