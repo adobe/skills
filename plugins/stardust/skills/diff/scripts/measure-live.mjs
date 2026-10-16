@@ -15,7 +15,7 @@
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { REAL_CHROME_UA, browserTier, defaultWaitUntil, dismissOverlays, gotoLive, lateWindowFor, launchStealthHeaded, newLiveContext } from './live-session.mjs';
+import { REAL_CHROME_UA, browserTier, defaultWaitUntil, dismissOverlays, gotoLive, lateWindowFor, launchStealthHeaded, newLiveContext, resolveNavTimeoutMs } from './live-session.mjs';
 
 export { browserTier };
 
@@ -67,8 +67,10 @@ export async function settle(page, { passes = 4, step = 400, dwell = 250, emptyS
 /**
  * Navigate (fail-loud live-session contract: a challenge throws BotChallengeError, a 404 build is measured
  * with a warning), dismiss overlays, settle. `warmup` visits another URL first in the same context.
+ * `timeoutMs` (each navigation) defaults to resolveNavTimeoutMs({ fallback: 90000 }) per call: env
+ * STARDUST_NAV_TIMEOUT_MS, then the crawl's p95 × 2, then this routine's own 90 s.
  */
-export async function visit(page, url, { warmup = null, settle: settleOpts = {}, dismiss = true, solveWindow = true, timeoutMs = 90000, httpError = 'measure' } = {}) {
+export async function visit(page, url, { warmup = null, settle: settleOpts = {}, dismiss = true, solveWindow = true, timeoutMs = resolveNavTimeoutMs({ fallback: 90000 }), httpError = 'measure' } = {}) {
   if (warmup) {
     await gotoLive(page, warmup, { waitUntil: 'domcontentloaded', timeoutMs, settleMs: 0, solveWindow, httpError: 'measure' });
     await page.waitForTimeout(2500);
