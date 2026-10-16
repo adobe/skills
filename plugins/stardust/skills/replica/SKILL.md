@@ -446,19 +446,19 @@ phase `end`, and `ledger.mjs … end` warns when it is missing.
   § The header contract), then `foundation-freeze.mjs freeze` + commit; C-archetype — per template, the
   gated archetype is deployed and passes its full gate row on the preview URL
   (cap 3 fix rounds, then the re-prototype decision) BEFORE its siblings
-  render; C1…Cn — one subagent per template cluster runs the whole chain
-  with its own batch ledger and reports one verdict line,
-  `first pass 360: x/y` from `gate-triage.mjs --unit <cluster>` included; a
-  cluster of more than 16 siblings runs as sub-units
-  `cluster-<template>-1..n` of at most 16 pages (target: no C-deliver unit
-  runs longer than 90 minutes), in sibling order and one after another,
-  each with its own fix rounds, `gate-all --only` scope and
-  `gate-triage.mjs --unit <sub-unit>`; the main agent only coordinates and
-  records; C-final — `check`, the queued `foundation-requests.md` lines
-  applied once, `C-deliver end`. Each unit and sub-unit is recorded in
-  `stardust/rollout/progress.json`, committed and closed by its boundary
-  ask — a safe resume point, never by itself a reason to end the session;
-  no frozen file is edited mid-wave, and fan-out subagents honour
+  render; C1…Cn — one subagent per cluster unit runs the whole chain with
+  its own batch ledger and reports one verdict line, `first pass 360: x/y`
+  from `gate-triage.mjs --unit <cluster>` included; a cluster of more than
+  16 siblings is split into sub-units `cluster-<template>-1..n` of at most
+  16 pages (target: no C-deliver unit runs longer than 90 minutes), in
+  sibling order, one after another, each a unit with its own fresh
+  subagent, `progress.json` entry (same shape, kind `cluster`), fix rounds,
+  `gate-all --only` scope and `gate-triage.mjs --unit <sub-unit>`; the main
+  agent only coordinates and records; C-final — `check`, the queued
+  `foundation-requests.md` lines applied once, `C-deliver end`. Each unit is
+  recorded in `stardust/rollout/progress.json`, committed and closed by its
+  boundary ask — a safe resume point, never by itself a reason to end the
+  session; no frozen file is edited mid-wave, and fan-out subagents honour
   `STARDUST_PAUSE_FILE` (`reference/handoff-contract.md` § Fan-out
   discipline).
 - **The final gate runs against the PUBLISHED origin — not the harness**
