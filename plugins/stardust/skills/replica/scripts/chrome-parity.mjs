@@ -34,15 +34,19 @@
  *                        bar in flow above the header, which shifts every live chrome
  *                        rect; --dismiss stays for overlays (it cannot remove an
  *                        in-flow bar). After the overlay dismissal and the settle,
- *                        every match gets display:none !important; per side and
- *                        selector its match count and summed height are recorded
- *                        (×0 = a stale selector, an invalid one is an error entry)
+ *                        every match gets display:none !important, and a
+ *                        <style data-stardust-hide> rule per selector hides a bar the
+ *                        page re-renders later too (live-session's hideRegions); per
+ *                        side and selector its match count and summed height are
+ *                        recorded (×0 = a stale selector, an invalid one is an error entry)
  *     --presence <file> --slug <slug>
- *                        the same for the slug's "variable" regions in gate-all's
- *                        presence.json (stardust/replica/gates/{all,prototypes}-<w>/):
- *                        { "<slug>": { "variable": ["<sel>[=<buildSel>]", …] } } — the
- *                        live side hides <sel>, the build side <buildSel> or <sel>;
- *                        "main" is ignored; a missing file or slug hides nothing
+ *                        the same from gate-all's presence.json
+ *                        (stardust/replica/gates/{all,prototypes}-<w>/):
+ *                        { "*": { "hide": [<sel>, …] }, "<slug>": { "variable":
+ *                        ["<sel>[=<buildSel>]", …], "hide": [<sel>, …] } } — "hide"
+ *                        ("*" for every slug, then the slug's own) on both sides; a
+ *                        "variable" entry hides <sel> live, <buildSel> or <sel> on the
+ *                        build; "main" is ignored; a missing file or slug hides nothing
  *     --headed           headed stealth real Chrome (bot-managed live sites)
  *     --locale <tag>     pin Accept-Language + locale (e.g. en-GB)
  *     --json             machine-readable output
@@ -60,9 +64,10 @@
  *
  * Output: after the live/build lines, `hidden live:` / `hidden build:` lines
  * (`<sel> ×<n> (<h>px) [--hide|presence.json]`) when a hide list is set, and
- * one `presence:` line with --presence; --json carries `hidden: { live, build }`
- * (entries { sel, source, n, h, error? }) and `presence: { file, slug, regions,
- * note } | null`. Per region: the region box delta, then one line per paired element
+ * one `presence:` line (variable and hide counts) with --presence; --json carries
+ * `hidden: { live, build }` (entries { sel, source, n, h, error? }) and `presence:
+ * { file, slug, regions, hide?, note } | null` (hide only when the file has entries for the slug). Per region: the
+ * region box delta, then one line per paired element
  * listing only the properties that differ, then MISSING (live-only) / EXTRA
  * (build-only) texts and the icon inventory. Exit 0 = parity within tolerance,
  * 2 = deltas printed (fix them, re-run), 1 = error, 3 = bot challenge on the
@@ -71,7 +76,8 @@
  * Requires: playwright, and the diff skill's scripts dir alongside
  * (live-session.mjs — the replica Setup copies both); both are imported
  * inside main(), so --help and the exported pure functions (parseArgs,
- * readPresence, hideLists, cacheKey, compareRegion) need neither. Each run is one live
+ * hideLists, cacheKey, compareRegion) need neither (the async readPresence
+ * loads live-session). Each run is one live
  * navigation — budget it like any live probe; --json records both sides as
  * the round's evidence.
  */
@@ -101,10 +107,12 @@ Usage: node chrome-parity.mjs <liveURL> <buildURL> [options]
   --consent <sel>    extra consent-accept selector (live side)
   --dismiss <sel,…>  extra overlay-dismiss selectors (live side) — overlays only
   --hide <sel,…>     hide in-flow per-visitor regions (a location-suggestion bar above the header) on
-                     BOTH sides after the settle, before measuring (repeatable; count + height printed)
+                     BOTH sides after the settle, before measuring (repeatable; count + height printed);
+                     a style rule hides a bar the page re-renders later too
   --presence <file> --slug <slug>
-                     hide the slug's "variable" regions from gate-all's presence.json the same way
-                     (stardust/replica/gates/{all,prototypes}-<w>/; "<sel>=<buildSel>" halves)
+                     hide the slug's "variable" regions ("<sel>=<buildSel>" halves) and its "hide" list
+                     ("*" applies to every slug) from gate-all's presence.json the same way
+                     (stardust/replica/gates/{all,prototypes}-<w>/)
   --headed           headed stealth real Chrome (bot-managed live sites)
   --locale <tag>     pin Accept-Language + locale
   --json             machine-readable output
@@ -158,32 +166,30 @@ export function parseArgs(rest) {
 // ------------------------------------------------- in-flow per-visitor regions
 
 /**
- * gate-all's presence.json — { "<slug>": { "main": …, "variable": ["<sel>[=<buildSel>]", …] } } — read as
- * gate-all's specFor reads it: the variable entries joined on ',' and split again, each half pair split on '=',
- * live = <sel>, build = <buildSel> || <sel>; "main" is ignored. A missing file or slug hides nothing (the note says so).
+ * gate-all's presence.json for one slug, read by live-session's readPresenceFile → { file, slug, regions, hide?, note }:
+ * `regions` = the "variable" { live, build } halves, `hide` = "*".hide then <slug>.hide (both sides; the key only when
+ * non-empty, so the JSON of a file without hide entries stays as it was). A missing file or slug hides nothing (the
+ * note says so); malformed JSON rejects with `presence.json <file> unreadable (…)`.
  */
-export function readPresence(file, slug) {
-  if (!existsSync(file)) return { file, slug, regions: [], note: `${file} not found — nothing hidden` };
-  let all;
-  try { all = JSON.parse(readFileSync(file, 'utf8')); } catch (e) { throw new Error(`--presence ${file} unreadable (${e.message})`); }
-  const variable = [].concat((all && all[slug] && all[slug].variable) || []);
-  const regions = splitList(variable.join(',')).map((s) => { const [o, e = ''] = s.split('='); return { live: o.trim(), build: e.trim() || o.trim() }; });
-  return { file, slug, regions, note: regions.length ? `${file} → ${slug}: ${regions.length} variable region(s)` : `${file} has no variable regions for ${slug} — nothing hidden` };
+export async function readPresence(file, slug) {
+  const { readPresenceFile } = await loadLiveSession();
+  const p = readPresenceFile(file, slug);
+  return { file: p.file, slug: p.slug, regions: p.variable, ...(p.hide.length ? { hide: p.hide } : {}), note: p.note };
 }
 
-/** Per-side hide lists: --hide on both sides, then the presence regions (live / build half); a repeated selector keeps its first source. */
+/** Per-side hide lists: --hide on both sides, then the presence "variable" regions (live / build half), then the
+ * presence "hide" list (both sides); a repeated selector keeps its first source. */
 export function hideLists(hide, presence) {
   const side = (k) => {
     const out = [];
     const add = (sel, source) => { if (sel && !out.some((x) => x.sel === sel)) out.push({ sel, source }); };
     hide.forEach((sel) => add(sel, '--hide'));
     ((presence && presence.regions) || []).forEach((r) => add(r[k], 'presence.json'));
+    ((presence && presence.hide) || []).forEach((sel) => add(sel, 'presence.json'));
     return out;
   };
   return { live: side('live'), build: side('build') };
 }
-
-const hiddenText = (rows) => rows.map((x) => `${x.sel} ${x.error ? `error: ${x.error}` : `×${x.n}${x.n ? ` (${x.h}px)` : ''}`} [${x.source}]`).join('; ');
 
 // ---------------------------------------------------------------- in-page probe
 
@@ -220,20 +226,6 @@ function probeRegion(sel) {
   }));
   const cs = getComputedStyle(root);
   return { found: true, sel, rect: rect(root), position: cs.position, backgroundColor: cs.backgroundColor, atoms, icons };
-}
-
-// Every selector's matches are measured before any is hidden (nested selectors read their rendered size), then
-// hidden inline; an invalid selector is an error entry. Two frames (or 250 ms when frames are throttled) let layout settle.
-async function hideInPage(list) {
-  const rows = list.map(({ sel, source }) => {
-    try {
-      const els = [...document.querySelectorAll(sel)];
-      return { row: { sel, source, n: els.length, h: Math.round(els.reduce((s, el) => s + el.getBoundingClientRect().height, 0)) }, els };
-    } catch (e) { return { row: { sel, source, n: 0, h: 0, error: String(e.message || e).split('\n')[0] }, els: [] }; }
-  });
-  for (const { els } of rows) for (const el of els) el.style.setProperty('display', 'none', 'important');
-  await new Promise((r) => { requestAnimationFrame(() => requestAnimationFrame(r)); setTimeout(r, 250); });
-  return rows.map((x) => x.row);
 }
 /* eslint-enable no-undef */
 
@@ -321,13 +313,13 @@ async function settleTop(page) {
 }
 
 async function probeSide(browser, session, url, opts, isLive, hides) {
-  const { isLiveHttpUrl, newLiveContext, gotoLive, dismissOverlays, defaultWaitUntil } = session;
+  const { isLiveHttpUrl, newLiveContext, gotoLive, dismissOverlays, defaultWaitUntil, hideRegions } = session;
   const ctx = await newLiveContext(browser, { locale: opts.locale, viewport: { width: opts.width, height: 900 } });
   const page = await ctx.newPage();
   await gotoLive(page, url, { waitUntil: defaultWaitUntil(url), settleMs: isLiveHttpUrl(url) ? 2500 : 1200, solveWindow: opts.headed && isLive });
   await dismissOverlays(page, { extra: isLive ? [...(opts.consent ? [opts.consent] : []), ...opts.dismiss] : [], lateWindowMs: isLiveHttpUrl(url) ? 6000 : 0 });
   await settleTop(page);
-  const hidden = hides.length ? await page.evaluate(hideInPage, hides) : [];
+  const hidden = await hideRegions(page, hides);
   const out = {};
   for (const reg of opts.regions) out[reg.name] = await page.evaluate(probeRegion, isLive ? reg.live : reg.build);
   await ctx.close();
@@ -355,7 +347,7 @@ function readLiveCache(file, live, opts, hideLive) {
 async function main(args) {
   if (args.includes('--help') || args.includes('-h')) { console.log(HELP); return 0; }
   const { live, build, opts } = parseArgs(args);
-  const presence = opts.presence ? readPresence(opts.presence, opts.slug) : null;
+  const presence = opts.presence ? await readPresence(opts.presence, opts.slug) : null;
   const hides = hideLists(opts.hide, presence);
   let chromium;
   try { ({ chromium } = await import('playwright')); } catch (e) { throw new Error(`playwright is not importable from ${HERE} (${e.code || e.message}) — replica SKILL.md § Setup: copy the scripts dir into the project and run the copy`); }
@@ -379,7 +371,7 @@ async function main(args) {
       console.log(JSON.stringify({ live, build, width: opts.width, tolerance: opts.tolerance, liveCache: cached ? { file: opts.liveCache, probedAt: cached.probedAt } : null, hidden, presence, regions, raw: { live: L, build: B } }, null, 2));
     } else {
       console.log(`chrome-parity @ ${opts.width}px, tolerance ${opts.tolerance}px\n  live:  ${live}${liveNote}\n  build: ${build}`);
-      if (hidden.live.length || hidden.build.length) console.log(`  hidden live:  ${hiddenText(hidden.live)}\n  hidden build: ${hiddenText(hidden.build)}`);
+      if (hidden.live.length || hidden.build.length) console.log(`  hidden live:  ${session.formatHidden(hidden.live)}\n  hidden build: ${session.formatHidden(hidden.build)}`);
       if (presence) console.log(`  presence: ${presence.note}`);
       for (const r of regions) {
         const inv = r.inventory ? ` — ${r.pairs} paired of ${r.inventory.live.atoms}/${r.inventory.build.atoms} texts, ${r.inventory.live.icons}/${r.inventory.build.icons} icons` : '';

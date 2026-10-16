@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 // skills/replica/scripts/test/chrome-parity.test.mjs — the chrome-parity.mjs contract. Part (a), no browser:
 // argument parsing (--hide comma lists, repeatable; --presence needs --slug), gate-all's presence.json read
-// (selO=selE halves, list entries joined, a missing slug / file hides nothing), the --live-cache key (unchanged
-// without hides), the region diff, and --help / usage errors from a copy with no playwright and no diff dir
-// beside it. Part (b): end-to-end against fixture pages served from this process — a live page with an in-flow
-// 88 px bar above <header>, a build page without it — runs only where playwright is importable, prints a skip
-// line otherwise. Run: node <this file>.
+// (selO=selE halves, list entries joined, a missing slug / file hides nothing; `hide` with "*" on both sides),
+// the --live-cache key (unchanged without hides), the region diff, and --help / usage errors from a copy with no
+// playwright and no diff dir beside it. Part (b): end-to-end against fixture pages served from this process — a
+// live page with an in-flow 88 px bar above <header>, one whose script re-renders a NEW bar two frames after the
+// hide pass, a build page without it — runs only where playwright is importable, prints a skip line otherwise.
+// Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -45,17 +46,37 @@ await check('parseArgs: --hide takes comma lists, repeats, trims and drops empty
   assert.throws(() => parseArgs(['https://live.example/', 'http://127.0.0.1:1/b.html', '--hide']), (e) => e instanceof UsageError && /--hide needs a selector list/.test(e.message));
 });
 
-await check('readPresence: gate-all semantics — variable entries joined and split, selO=selE halves (build falls back to selO), main ignored', () => {
+await check('readPresence: gate-all semantics — variable entries joined and split, selO=selE halves (build falls back to selO), main ignored', async () => {
   const f = join(root, 'presence.json');
   writeFileSync(f, JSON.stringify({ home: { main: 'main=main.eds', variable: ['.geo-bar=.location-bar', '.promo-a, .promo-b'] }, about: { main: 'main' } }));
-  const p = readPresence(f, 'home');
+  const p = await readPresence(f, 'home');
   assert.deepEqual(p.regions, [{ live: '.geo-bar', build: '.location-bar' }, { live: '.promo-a', build: '.promo-a' }, { live: '.promo-b', build: '.promo-b' }]);
   assert.equal(p.file, f); assert.equal(p.slug, 'home'); assert.match(p.note, /→ home: 3 variable region\(s\)$/);
-  const none = readPresence(f, 'about');
+  assert.deepEqual(Object.keys(p), ['file', 'slug', 'regions', 'note'], 'no hide entries → the record (JSON presence) keeps its old shape');
+  const none = await readPresence(f, 'about');
   assert.deepEqual(none.regions, []); assert.match(none.note, /has no variable regions for about — nothing hidden$/);
-  assert.deepEqual(readPresence(f, 'press').regions, []);
-  const missing = readPresence(join(root, 'nope.json'), 'home');
+  assert.deepEqual((await readPresence(f, 'press')).regions, []);
+  const missing = await readPresence(join(root, 'nope.json'), 'home');
   assert.deepEqual(missing.regions, []); assert.match(missing.note, /nope\.json not found — nothing hidden$/);
+  const bad = join(root, 'bad-presence.json'); writeFileSync(bad, '{ "home": ');
+  await assert.rejects(readPresence(bad, 'home'), (e) => e.message.startsWith(`presence.json ${bad} unreadable (`));
+});
+
+await check('readPresence + hideLists: presence `hide` ("*" then the slug) reaches BOTH sides as presence.json, deduped against --hide', async () => {
+  const f = join(root, 'presence-hide.json');
+  writeFileSync(f, JSON.stringify({ '*': { hide: ['.geo-bar', '.promo'], variable: ['.star-variable'] }, home: { variable: ['.geo-bar=.location-bar'], hide: ['.cookie-strip, .geo-bar'] } }));
+  const p = await readPresence(f, 'home');
+  assert.deepEqual(p.hide, ['.geo-bar', '.promo', '.cookie-strip']);
+  assert.match(p.note, /→ home: 1 variable region\(s\), 3 hide selector\(s\)$/);
+  const pr = (sel) => ({ sel, source: 'presence.json' });
+  assert.deepEqual(hideLists(['.promo'], p), {
+    live: [{ sel: '.promo', source: '--hide' }, pr('.geo-bar'), pr('.cookie-strip')],
+    build: [{ sel: '.promo', source: '--hide' }, pr('.location-bar'), pr('.geo-bar'), pr('.cookie-strip')],
+  });
+  const other = await readPresence(f, 'press');
+  assert.deepEqual(other.regions, [], '"*" lends only hide, never variable'); assert.deepEqual(other.hide, ['.geo-bar', '.promo']);
+  assert.match(other.note, /→ press: 0 variable region\(s\), 2 hide selector\(s\)$/);
+  assert.deepEqual(hideLists([], other), { live: [pr('.geo-bar'), pr('.promo')], build: [pr('.geo-bar'), pr('.promo')] });
 });
 
 await check('hideLists: --hide on both sides, presence regions per side, sources kept, duplicates dropped', () => {
@@ -98,8 +119,12 @@ if (pwProbe.status !== 0) {
   console.log('- e2e: playwright not importable from the scripts dir — skipped (run the copy inside a project with playwright installed)');
 } else {
   const chrome = '<header><nav><a href="#">Home</a> <a href="#">Products</a> <a href="#">Contact</a></nav></header><main><h1>Title</h1><p>Body copy.</p></main><footer><p>Footer text</p></footer>';
-  const page = (bar) => `<!doctype html><html><head><style>body{margin:0;font:16px/1.4 sans-serif}header,footer{padding:20px}.geo-bar{height:88px;box-sizing:border-box;padding:20px;background:#eee}</style></head><body>${bar}${chrome}</body></html>`;
-  const pages = { '/live': page('<div class="geo-bar">Visiting from another region? <a href="#">Switch</a></div>'), '/build': page('') };
+  const page = (bar, tail = '') => `<!doctype html><html><head><style>body{margin:0;font:16px/1.4 sans-serif}header,footer{padding:20px}.geo-bar{height:88px;box-sizing:border-box;padding:20px;background:#eee}</style></head><body>${bar}${chrome}${tail}</body></html>`;
+  const geoBar = '<div class="geo-bar">Visiting from another region? <a href="#">Switch</a></div>';
+  // A geo script re-rendering after the hide pass: the moment its bar is hidden (style attribute), a NEW bar replaces
+  // it two animation frames later (~30 ms) — the frame the hide's own two-frame settle ends in, before any measuring.
+  const rerender = '<script>(() => { const bar = document.querySelector(".geo-bar"); const mo = new MutationObserver(() => { if (bar.style.display !== "none") return; mo.disconnect(); requestAnimationFrame(() => requestAnimationFrame(() => { const fresh = bar.cloneNode(true); fresh.removeAttribute("style"); bar.replaceWith(fresh); })); }); mo.observe(bar, { attributes: true, attributeFilter: ["style"] }); })();</script>';
+  const pages = { '/live': page(geoBar), '/live-late': page(geoBar, rerender), '/build': page('') };
   const server = createServer((req, res) => { const body = pages[req.url.split('?')[0]]; if (!body) { res.writeHead(404); res.end(); return; } res.writeHead(200, { 'content-type': 'text/html' }); res.end(body); });
   await new Promise((r) => { server.listen(0, '127.0.0.1', r); });
   const base = `http://127.0.0.1:${server.address().port}`;
@@ -123,6 +148,22 @@ if (pwProbe.status !== 0) {
       assert.match(r.out, /^ {2}presence: \S+gates-presence\.json → home: 1 variable region\(s\)$/m);
       const none = await runAsync([`${base}/live`, `${base}/build`, '--presence', f, '--slug', 'about']);
       assert.equal(none.code, 2, none.out + none.err); assert.equal(none.out.match(/nothing hidden/g).length, 1); assert.doesNotMatch(none.out, /hidden live:/);
+    });
+    await check('e2e late bar: a NEW bar the page re-renders after the hide pass is hidden by the style rule (exit 0, no vertical offset)', async () => {
+      const r = await runAsync([`${base}/live-late`, `${base}/build`, '--hide', '.geo-bar']);
+      assert.equal(r.code, 0, r.out + r.err);
+      assert.doesNotMatch(r.out, /REGION BOX/);
+      assert.match(r.out, /^ {2}hidden live: {2}\.geo-bar ×1 \(88px\) \[--hide\]$/m);
+    });
+    await check('e2e presence.json "*": its hide list reaches both sides for any slug (exit 0), the source says presence.json', async () => {
+      const f = join(root, 'star-presence.json'); writeFileSync(f, JSON.stringify({ '*': { hide: ['.geo-bar'] } }));
+      const r = await runAsync([`${base}/live`, `${base}/build`, '--presence', f, '--slug', 'any-page']);
+      assert.equal(r.code, 0, r.out + r.err);
+      assert.match(r.out, /^ {2}hidden live: {2}\.geo-bar ×1 \(88px\) \[presence\.json\]\n {2}hidden build: \.geo-bar ×0 \[presence\.json\]$/m);
+      assert.match(r.out, /^ {2}presence: \S+star-presence\.json → any-page: 0 variable region\(s\), 1 hide selector\(s\)$/m);
+      const j = JSON.parse((await runAsync([`${base}/live`, `${base}/build`, '--presence', f, '--slug', 'any-page', '--json'])).out);
+      assert.deepEqual(j.hidden.live, [{ sel: '.geo-bar', source: 'presence.json', n: 1, h: 88 }]);
+      assert.deepEqual([j.presence.regions, j.presence.hide], [[], ['.geo-bar']]);
     });
     await check('e2e --json: hidden { live, build } and presence; an invalid selector is recorded, never a crash', async () => {
       const r = await runAsync([`${base}/live`, `${base}/build`, '--hide', '.geo-bar,[[', '--json']);
