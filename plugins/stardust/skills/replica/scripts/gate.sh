@@ -103,10 +103,10 @@
 #                       together with --consent / --dismiss: they contradict)
 #   --hide <sel,…>      in-flow per-visitor regions (a location-suggestion strip above the header; --dismiss is
 #                       for overlays and cannot remove one) hidden on both captures and every --full probe but
-#                       unit-geometry, the same list live and build. gate-all's presence.json (gates/all-<w>/ or
-#                       prototypes-<w>/, this regime's first; malformed = exit 1) adds its "*" then <slug> `hide`
-#                       after it; chrome-parity reads that file itself (--presence). live.json records the list;
-#                       a round with a different list retakes live.png and says so.
+#                       unit-geometry, the same list live and build; repeatable. gate-all's presence.json
+#                       (gates/all-<w>/ or prototypes-<w>/, this regime's first; malformed = exit 1) adds its "*"
+#                       then <slug> `hide` after it; chrome-parity reads that file itself (--presence). live.json
+#                       records the list; a round with a different list retakes live.png and says so.
 #
 # Example (iteration 2 of the home archetype at 1440):
 #   stardust/scripts/replica/gate.sh home "https://<site>/" \
@@ -119,7 +119,8 @@
 # aborts the round — a missing/blocked side must never be compared. Exit
 # codes: 0 gate PASS, 2 gate FAIL (over threshold, or horizontal overflow on
 # the build side), 3 bot challenge, 1 capture/compare error (after the one
-# retry — re-queue, not a verdict), 4 build-side identity assertion failed
+# retry — re-queue, not a verdict) or a malformed presence.json (fix the
+# file; re-queuing won't help), 4 build-side identity assertion failed
 # (the URL serves something that isn't this project's page — wrong/stale
 # server), 124 instrument deadline exceeded (not a measurement — see below),
 # 125 unknown argument (usage).
@@ -170,7 +171,7 @@ while [ $# -gt 0 ]; do
     --consent) CONSENT=${2:?--consent needs a selector}; shift 2 ;;
     --dismiss) DISMISS_EXTRA=${2:?--dismiss needs a selector list}; shift 2 ;;
     --no-dismiss) DISMISS=0; shift ;;
-    --hide) case "${2:-}" in ''|--*) echo "gate.sh: --hide needs a selector list (see --help)" >&2; exit 125 ;; esac; HIDE=$2; shift 2 ;;
+    --hide) case "${2:-}" in ''|--*) echo "gate.sh: --hide needs a selector list (see --help)" >&2; exit 125 ;; esac; HIDE="${HIDE:+$HIDE,}$2"; shift 2 ;;
     --help|-h) sed -n '2,/^set -u$/p' "$0" | grep -E '^#' | sed -E 's/^# ?//'; exit 0 ;;
     *) echo "gate.sh: unknown argument $1 (see --help)" >&2; exit 125 ;;
   esac

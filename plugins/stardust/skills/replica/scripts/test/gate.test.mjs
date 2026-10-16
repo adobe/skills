@@ -383,6 +383,18 @@ check('--no-dismiss and --hide reach both captures together', stitchArgv().lengt
 check('a changed list retakes live.png and says so in one line (lists comma-separated)', /^gate\.sh: live\.png was taken hiding \[\.geo-bar, \.location-bar\]; this round hides \[\.geo-bar\] — retaking it$/m.test(r.stderr), r.stderr);
 r = await gate(['hide1', 'https://live.example/hide1', buildUrl, '1440', 'h3', '--full', '--marker', 'home-proposed', '--dismiss', EXTRA, '--hide', '.geo-bar']);
 check('--hide joins the overlay flags on chrome-parity\'s argv', r.status === 0 && new RegExp(`--live-cache \\S+ --dismiss ${EXTRA} --hide \\.geo-bar$`, 'm').test(evidence('hide1', 'chrome-parity-h3.txt')), evidence('hide1', 'chrome-parity-h3.txt'));
+// --hide is repeatable: the values accumulate (chrome-parity gets them joined, as given); the effective list dedupes.
+resetArgv();
+r = await gate(['hidem', 'https://live.example/hidem', buildUrl, '1440', 'm1', '--full', '--marker', 'home-proposed', '--hide', '.geo-bar', '--hide', '.location-bar, .geo-bar'], { GATE_REGIME: 'published', STUB_STITCH_ARGV: argvFile });
+check('a repeated --hide: every value reaches both captures and the 4 probes (deduped), chrome-parity and live.json', r.status === 0
+  && stitchArgv().length === 2 && stitchArgv().every((a) => hideArg(a) === '.geo-bar,.location-bar')
+  && PROBE_FILES('m1').every((f) => hideArg(argvIn(evidence('hidem', f))) === '.geo-bar,.location-bar')
+  && hideArg(argvIn(evidence('hidem', 'chrome-parity-m1.txt'))) === '.geo-bar,.location-bar, .geo-bar'
+  && JSON.stringify(JSON.parse(liveJson('hidem') || '{}').hide) === '[".geo-bar",".location-bar"]', `status ${r.status} ${JSON.stringify(stitchArgv())} ${evidence('hidem', 'chrome-parity-m1.txt')}`);
+// The probes' quoting: a selector with a space arrives inside ONE argument at each probe.
+r = await gate(['hideq', 'https://live.example/hideq', buildUrl, '1440', 'q1', '--full', '--marker', 'home-proposed', '--hide', '#top .location-bar'], { GATE_REGIME: 'published' });
+check('a selector with a space reaches content-diff, visual-diff, content-presence and clip-probe as one argv value', r.status === 0
+  && PROBE_FILES('q1').every((f) => hideArg(argvIn(evidence('hideq', f))) === '#top .location-bar'), PROBE_FILES('q1').map((f) => evidence('hideq', f)).join(' | '));
 r = await gate(['hide1', 'https://live.example/hide1', buildUrl, '1440', 'h4', '--hide']);
 check('--hide without a selector list is a usage error (exit 125)', r.status === 125 && /--hide needs a selector list/.test(r.stderr), `status ${r.status} ${r.stderr}`);
 r = await gate(['hide1', 'https://live.example/hide1', buildUrl, '1440', 'h5', '--hide', '--full']);
