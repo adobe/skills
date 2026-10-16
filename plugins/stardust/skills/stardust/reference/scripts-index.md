@@ -2,23 +2,27 @@
 
 Run the project copies under `stardust/scripts/<skill>/`. Ask `--help` only for a flag not named here. Deploy/rollout/migrate invocations: `../../replica/reference/handoff-contract.md` § 4.
 
-- `deploy/ai-readability.mjs` — AI-readability gate — `--origin <o> [--paths <f>] [--min 98]`
-- `deploy/block-roundtrip.mjs` — round-trip + editability — `<protoURL> content/<p>.html [--blocks a,b] --ew`
-- `deploy/build-harness.mjs` — local structural harness — `content/<p>.html <out.html> [--root <dir>]`
-- `deploy/content-inventory.mjs` — library (role classifier), no CLI
-- `deploy/da-media-upload.mjs` — rehost images to DA — `--org --repo --scope <under media/> --dir|--manifest [--token-env|--token-file] [--dry-run]`; exit 3 = token halt
-- `deploy/davids-model-lint.mjs` — content-model lint — `content/ | <page>.html [--json]`
-- `deploy/deploy-batch.mjs` — resumable PUT→preview→live — `--org --repo --branch --content content [--no-publish] [--token-env|--token-file]`; exit 1 = failed pages, 3 = token halt
-- `deploy/diff-profiles.mjs` — library (eds|generic profiles), no CLI
-- `deploy/file-lock.mjs` — library (lock + atomic ledger merge), no CLI
-- `deploy/eds-path.mjs` — library (path contract), no CLI
-- `deploy/ew-editability-probe.mjs` — rendered editability gate — `--content <p>.html | <url…> [--simulate-editor]`
-- `deploy/localize-links.mjs` — source hrefs → root-relative — `--source-host <h> [--content content] [--check]`
-- `deploy/martech-scaffold.mjs` — contract → `scripts/martech.js` + hooks — `[--contract <json>] [--dry-run] [--force]`; exit 1 = invalid/conflict/no hook
-- `deploy/qa-gate.mjs` — decoration asserts + width cap — `<harnessURL> --schema stardust/eds-schema/<p>.json [--design DESIGN.json]`
-- `deploy/render-harness.mjs` — screenshot local decoration — `content/<p>.html <out.png> [<block>…] [--ew]`
-- `deploy/sanitise.js` — non-ASCII → entities, in place — `content/<p>.html` (one file per call)
-- `deploy/section-schema.mjs` — section role inventory — `<protoURL> [--out <f>] [--profile eds|generic]`
+- `deploy/ai-readability.mjs` — AI readability — `--origin <o> [--paths <f>]`
+- `deploy/block-roundtrip.mjs` — round-trip + EW — `<protoURL> <p>.html [--blocks a,b]`
+- `deploy/build-harness.mjs` — local harness — `<p>.html <out.html> [--root <dir>]`
+- `deploy/chrome-map.mjs` — page → nav/footer map — `[--dry-run]`
+- `deploy/content-count.mjs` — offline L5 count — `--capture <html> --doc <html> [--map <f>] [--project .]`
+- `deploy/content-inventory.mjs` — library, no CLI
+- `deploy/da-media-upload.mjs` — images → DA — `--org --repo --scope <s> --dir|--manifest [--token-env|--token-file]`; exit 3 = token halt
+- `deploy/davids-model-lint.mjs` — model lint — `content/|<p>.html`
+- `deploy/deploy-batch.mjs` — PUT→preview→live — `--org --repo --branch [--no-publish] [--token-env|--token-file]`; exit 3 = token halt
+- `deploy/diff-profiles.mjs` — library, no CLI
+- `deploy/file-lock.mjs` — library, no CLI
+- `deploy/eds-path.mjs` — library, no CLI
+- `deploy/ew-editability-probe.mjs` — EW gate — `--content <p>.html|<url…> [--simulate-editor]`
+- `deploy/localize-links.mjs` — hrefs → root-relative — `--source-host <h> [--check]`
+- `deploy/martech-scaffold.mjs` — martech code — `[--dry-run] [--force]`
+- `deploy/qa-gate.mjs` — decoration + cap — `<harnessURL> --schema <p>.json [--design DESIGN.json]`
+- `deploy/rehost-docs.mjs` — documents → `docs/` — `[--source-host <h,…>] [--dry-run]`
+- `deploy/render-harness.mjs` — harness shot — `<p>.html <out.png> [<block>…] [--ew]`
+- `deploy/sanitise.js` — non-ASCII → entities — `<p>.html` (one per call)
+- `deploy/section-schema.mjs` — section roles — `<protoURL> [--out <f>]`
+- `deploy/stage-content.mjs` — encoded → `content/` — `--template <a>|--paths <f> [--record]`
 - `deploy/style-fingerprint.mjs` — variation groups — `"file:///abs/<proto>.html"`
 - `diff/chrome-compare.mjs` — header parity vs the contract — `<contract> <build> [--profile replica|functional] [--json f]`; exit 2 = undecided error
 - `diff/chrome-explore.mjs` — the header used: open states, close paths, motion, scroll — `<url> <out.json> [--width 1440,390]`
@@ -42,7 +46,8 @@ Run the project copies under `stardust/scripts/<skill>/`. Ask `--help` only for 
 - `extract/crawl.mjs` — crawler → pages, screenshots, `_crawl-log.json#captureGaps` — `--url <u> [--pages a,b] [--max 25] [--out stardust/current] [--dynamics]`
 - `extract/style-census.mjs` — computed-style census (one live pass) — `[--pages <dir>|--urls a,b] [--width <px>] [--headed]`
 - `extract/thumb.mjs` — thumbnails ≤ --max-bytes — `<png|dir…> [--width 480] [--max-height <px>] [--max-bytes 150000] [--min-share 60] [--offset <px>]`
-- `migrate/migrate.mjs` — per-page render driver + sidecar — `render <slug…|--all>`; `gate|deviation|variant|modules <slug>`
+- `migrate/encode.mjs` — map → `stardust/encoded/` — `--template <a> [--slug a,b] [--roundtrip|--lint|--sweep]`
+- `migrate/migrate.mjs` — render + sidecar — `render <slug…|--all>`; `gate|deviation|variant|modules|harness <slug>`
 - `qa/from-knowledge.mjs` — knowledge → template map + 404 allowlist — `[--dry-run]`
 - `qa/lib.mjs` — library, no CLI
 - `qa/qa.mjs` — read-only live sweep → report.json — `--base <live-url>`
