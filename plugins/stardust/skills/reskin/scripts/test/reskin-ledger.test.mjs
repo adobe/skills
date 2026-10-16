@@ -9,7 +9,7 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { applyRecord, mobileStatic, overall, WAIVED } from '../reskin-ledger.mjs';
+import { applyRecord, fragmentVerdict, gateVerdicts, mobileStatic, overall, WAIVED } from '../reskin-ledger.mjs';
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', 'reskin-ledger.mjs');
 let failed = 0;
@@ -60,6 +60,18 @@ check('migrated stage records the sibling gate without touching the prototype re
   assert.equal(L.pages.reg.status, 'gated'); assert.equal(L.pages.reg.migratedStatus, 'failing'); assert.equal(L.handoff.form.siblings.reg.gate, 'failing');
 });
 
+check('M2 fragments: verdict strings, flattening, figmaRequired, kept fragment, handoff keys', () => {
+  assert.deepEqual(['PASS 3/3', 'ADVISORY x', 'n/a: y', 'FAIL 1/3', 'not run: skipped', 'CRASH: z', undefined, 'weird'].map(fragmentVerdict), ['PASS', 'PASS', 'PASS', 'FAIL', 'NOT-RUN', 'NOT-RUN', 'NOT-RUN', 'UNKNOWN']);
+  const fig = { regime: 'local', join: 'PASS', geometry: 'FAIL 2/9', ramp: 'PASS', pixel: 'ADVISORY 5%' };
+  assert.deepEqual(gateVerdicts({ figma: fig }).map((v) => `${v.gate}:${v.verdict}`), ['figma.join:PASS', 'figma.geometry:FAIL', 'figma.ramp:PASS']);
+  const base = { state, slug: 'login', reports: R('PASS'), mobile: mob(), prototypeSha: 'x', at: 't' };
+  assert.equal(applyRecord({}, { ...base, m2: { figma: fig } }).pages.login.status, 'failing');
+  assert.equal(applyRecord({}, { ...base, m2: { figmaRequired: true } }).pages.login.status, 'failing');
+  const ok = applyRecord({}, { ...base, m2: { figma: { ...fig, geometry: 'PASS 9/9' } } });
+  assert.equal(ok.pages.login.status, 'gated'); assert.ok(ok.handoff.form.gates.login['figma.geometry']);
+  assert.equal(applyRecord(ok, base).pages.login.gates.figma.geometry, 'PASS 9/9', 'a recorded fragment survives a re-record without fresh evidence');
+  assert.equal(applyRecord({}, base).pages.login.gates.figma, undefined, 'no M2 → no figma gate');
+});
 const run = (args, cwd) => spawnSync(process.execPath, [SCRIPT, ...args], { cwd, encoding: 'utf8' });
 check('--help exits 0; usage errors exit 2', () => {
   const r = run(['--help'], mkdtempSync(join(tmpdir(), 'rl-'))); assert.equal(r.status, 0); assert.match(r.stdout, /usage: node reskin-ledger\.mjs/);

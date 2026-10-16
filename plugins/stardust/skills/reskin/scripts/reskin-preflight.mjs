@@ -17,7 +17,7 @@
  *   FAIL  every module a typed page's mapping uses has a canon skeleton (DESIGN.json extensions.modules)
  *   FAIL  no agent approval outside hands-off (approvedBy hands-off/autopilot/agent needs state.handsOff and "hands-off")
  *   FAIL  the reskin predicate: each type's archetype is gated in reskin/ledger.json (reskin-ledger.mjs) —
- *         gates PASS or residual accepted, no open residual, eyeball pass, prototype unchanged, deployed PASS if run
+ *         gates PASS or residual accepted, no open residual, eyeball pass, prototype unchanged, M2 figma/deployed families PASS when recorded
  *   WARN  migrated pages whose migrate output has no passing sibling gate (reskin-ledger.mjs record --stage migrated)
  *   WARN  pages without a type (migrate renders them Path A, never from an archetype)
  *   WARN  stale pages (re-approve / re-migrate them, or migrate stale output knowingly)
@@ -30,6 +30,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { gateVerdicts, NEVER_ACCEPTED, residualCovers } from './reskin-ledger.mjs';
 
 const HELP = `usage: node reskin-preflight.mjs [--dir stardust] [--root .] [--json]
 
@@ -71,7 +72,8 @@ export function preflight(read, { dir = 'stardust' } = {}) {
 
   // The flow: reskin predicate (spec § 4.6): each type's archetype is gated in reskin/ledger.json —
   // every gate PASS or a residual accepted, no needs-owner/blocked residual, the eyeball recorded and
-  // passing, the recorded prototype still the file on disk, and gates.deployed PASS when M2 ran.
+  // passing, the recorded prototype still the file on disk, and M2's gates.figma / gates.deployed families PASS
+  // (or a residual accepted; never deployed.sanity) when recorded.
   const ledger = json(`${dir}/reskin/ledger.json`);
   if (types.size && !missing.length) {
     if (!ledger) fail('archetype-gates', `${dir}/reskin/ledger.json ${ledger === undefined ? 'is missing' : 'is not valid JSON'} — run reskin-ledger.mjs record <archetype> after the Phase 5 gates`);
@@ -81,8 +83,9 @@ export function preflight(read, { dir = 'stardust' } = {}) {
         const a = ledger.handoff?.[t]?.archetype || ps.find((p) => p.status === 'approved' || p.status === 'migrated').slug;
         const e = ledger.pages?.[a]; const page = state.pages.find((p) => p.slug === a);
         if (!e || !ledger.handoff?.[t]) { problems.push(`${t}/${a}: not recorded (reskin-ledger.mjs record ${a})`); continue; }
-        const accepted = (g) => (e.residuals || []).some((r) => r.gate === g && r.verdict === 'accepted');
-        const bad = Object.entries(e.gates || {}).filter(([g, v]) => v.verdict !== 'PASS' && !accepted(g)).map(([g, v]) => `${g} ${v.verdict}`);
+        const accepted = (g) => !NEVER_ACCEPTED.includes(g) && (e.residuals || []).some((r) => residualCovers(r, g) && r.verdict === 'accepted');
+        // reskin's gates plus M2's fragments (gates.figma B0/B1/B3, gates.deployed A1–A5 + its figma re-run)
+        const bad = gateVerdicts(e.gates).filter((v) => v.verdict !== 'PASS' && !accepted(v.gate)).map((v) => `${v.gate} ${v.verdict}`);
         if (e.status !== 'gated' || bad.length) problems.push(`${t}/${a}: ${bad.join(', ') || e.status}`);
         const open = (e.residuals || []).filter((r) => r.verdict !== 'accepted');
         if (open.length) problems.push(`${t}/${a}: residual(s) ${open.map((r) => `${r.gate} ${r.verdict}`).join(', ')}`);
@@ -90,7 +93,6 @@ export function preflight(read, { dir = 'stardust' } = {}) {
         else if (e.eyeball.verdict !== 'pass') problems.push(`${t}/${a}: eyeball ${e.eyeball.verdict}`);
         const proto = page?.prototypePath && read(page.prototypePath);
         if (proto != null && e.prototypeSha && sha(proto) !== e.prototypeSha) problems.push(`${t}/${a}: prototype changed since it was recorded — re-run the gates and reskin-ledger.mjs record ${a}`);
-        if (e.gates?.deployed && e.gates.deployed.verdict !== 'PASS') problems.push(`${t}/${a}: deployed gate ${e.gates.deployed.verdict}`);
         if (!problems.some((x) => x.startsWith(`${t}/`))) good.push(`${t}: ${a}`);
       }
       if (problems.length) fail('archetype-gates', problems.join('; '));

@@ -102,7 +102,18 @@ check('the reskin predicate: missing ledger, failing gate, open residual, no eye
   const proto = '<html>v1</html>';
   assert.equal(ag(L(gated({ prototypeSha: sha(proto) })), { 'stardust/state.json': st, 'stardust/prototypes/login-proposed.html': proto }).level, 'ok');
   assert.match(ag(L(gated({ prototypeSha: sha(proto) })), { 'stardust/state.json': st, 'stardust/prototypes/login-proposed.html': '<html>v2</html>' }).detail, /prototype changed/);
-  assert.match(ag(L(gated({ gates: { deployed: { verdict: 'FAIL' } } }))).detail, /deployed gate FAIL|deployed FAIL/);
+});
+check('the reskin predicate reads M2 fragments: figma B0/B1/B3, deployed A1–A5 + figma re-run, D7 sanity', () => {
+  const ag = (page) => preflight(project({ 'stardust/reskin/ledger.json': JSON.stringify({ pages: { login: page }, handoff: { form: { archetype: 'login', gates: {} } } }) })).find((x) => x.check === 'archetype-gates');
+  const fig = { regime: 'local', join: 'PASS', geometry: 'PASS 12/12', ramp: 'PASS', pixel: 'ADVISORY 4.1%', register: { a: 1 } };
+  const dep = { regime: 'preview', content: 'PASS', tokens: 'PASS', parity: 'ADVISORY 2%', sanity: 'PASS', inherited: 'n/a: no contract', figma: { ...fig, regime: 'preview' } };
+  assert.equal(ag(gated({ gates: { figma: fig, deployed: dep } })).level, 'ok');
+  assert.match(ag(gated({ gates: { figma: { ...fig, geometry: 'FAIL 3/12' } } })).detail, /figma\.geometry FAIL/);
+  assert.match(ag(gated({ gates: { figma: { missing: 'figma-gate all not run' } } })).detail, /figma\.join NOT-RUN/);
+  assert.equal(ag(gated({ gates: { figma: { ...fig, ramp: 'FAIL 1/4' } }, residuals: [{ gate: 'figma.ramp', verdict: 'accepted' }] })).level, 'ok');
+  assert.match(ag(gated({ gates: { deployed: { ...dep, figma: { ...fig, join: 'FAIL 1/5' } } } })).detail, /deployed\.figma\.join FAIL/);
+  assert.equal(ag(gated({ gates: { deployed: { ...dep, figma: { ...fig, join: 'FAIL 1/5' } } }, residuals: [{ gate: 'figma.join', verdict: 'accepted' }] })).level, 'ok');
+  assert.match(ag(gated({ gates: { deployed: { ...dep, sanity: 'FAIL 1/9' } }, residuals: [{ gate: 'deployed.sanity', verdict: 'accepted' }] })).detail, /deployed\.sanity FAIL/);
 });
 check('approval: an agent approval fails unless the run is hands-off and says so', () => {
   const st = (by, handsOff) => JSON.stringify({ flow: 'reskin', handsOff, pages: [{ slug: 'login', type: 'form', status: 'approved', history: [{ status: 'approved', approvedBy: by }] }] });

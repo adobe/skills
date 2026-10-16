@@ -15,6 +15,12 @@
  *       migrated page also lands in handoff.<type>.gates.<slug> (PASS gates only, migrate's input), and
  *       the type's first approved page becomes handoff.<type>.archetype with its tier record (D4: the
  *       gates it passed and the prototype gates reskin waives).
+ *       M2 evidence: <dir>/.work/reskin/gates/<slug>/figma/summary.json (M2b figma-gate all, local) and
+ *       …/deployed/summary.json (M2a deployed-gate all, preview) — their ledgerFragment becomes gates.figma /
+ *       gates.deployed; without fresh evidence a fragment already in the ledger is kept. A Figma donor
+ *       (reskin/curation-rules.json) with scripts/reskin/figma-gate.mjs installed and no figma fragment
+ *       records figma.* NOT-RUN. Blocking: figma join/geometry/ramp; deployed content/tokens/parity/
+ *       sanity/inherited and its figma re-run. A deployed.sanity residual is never accepted (M2a D7).
  *       migrated: reads <dir>/reskin/gates/<slug>/migrated/*.md — the sibling gate on migrate's output —
  *       into pages[slug].migratedGates and handoff.<type>.siblings.<slug>.
  *   eyeball <slug> --verdict pass|fail [--note "…"]     the side-by-side donor judgment (Phase 5)
@@ -51,6 +57,36 @@ export const GATE_FILES = {
 export const WAIVED = ['critique', 'audit', 'anti-template', 'content-sourcing', 'motion-validation'];
 const VERDICTS = ['accepted', 'needs-owner', 'blocked'];
 
+// M2 evidence. M2b (figma-gate all) and M2a (deployed-gate all) each write
+// <dir>/.work/reskin/gates/<slug>/{figma,deployed}/summary.json with a ledgerFragment that lands in
+// pages.<slug>.gates.figma / gates.deployed. Their values are 'PASS' | 'FAIL k/n' | 'ADVISORY …' |
+// 'n/a: …' | 'not run: …' | 'CRASH: …'. Blocking families: figma B0 join, B1 geometry, B3 ramp (B2 pixel
+// is advisory, B4 register informational); deployed A1 content … A5 inherited, plus its figma re-run.
+export const M2_FAMILIES = { figma: ['join', 'geometry', 'ramp'], deployed: ['content', 'tokens', 'parity', 'sanity', 'inherited'] };
+// A residual that may never be accepted (M2a D7: a deployed hard-sanity failure is fixed, not waived).
+export const NEVER_ACCEPTED = ['deployed.sanity'];
+export function fragmentVerdict(v) {
+  const s = typeof v === 'string' ? v : v?.verdict;
+  if (s == null) return 'NOT-RUN';
+  if (/^(PASS|ADVISORY|n\/a)/i.test(s)) return 'PASS';
+  if (/^FAIL/i.test(s)) return 'FAIL';
+  if (/^(not run|CRASH|ERROR)/i.test(s)) return 'NOT-RUN';
+  return 'UNKNOWN';
+}
+// Flat [{ gate, verdict, detail? }] over reskin's own gates and the M2 fragments.
+export function gateVerdicts(gates = {}) {
+  const out = [];
+  for (const [g, v] of Object.entries(gates || {})) {
+    if (M2_FAMILIES[g]) {
+      for (const f of M2_FAMILIES[g]) out.push({ gate: `${g}.${f}`, verdict: fragmentVerdict(v?.[f]), detail: v?.missing || (typeof v?.[f] === 'string' ? v[f] : undefined) });
+      if (g === 'deployed' && v?.figma) for (const f of M2_FAMILIES.figma) out.push({ gate: `deployed.figma.${f}`, verdict: fragmentVerdict(v.figma[f]), detail: typeof v.figma[f] === 'string' ? v.figma[f] : undefined });
+    } else out.push({ gate: g, verdict: v?.verdict ?? 'UNKNOWN', detail: v?.detail });
+  }
+  return out;
+}
+// A residual on a figma family covers the same family in the deployed re-run (M2a: classes figma.*).
+export const residualCovers = (r, gate) => r.gate === gate || (gate.startsWith('deployed.figma.') && r.gate === gate.slice('deployed.'.length));
+
 const sha = (s) => createHash('sha1').update(s).digest('hex').slice(0, 12);
 export const overall = (md) => { const m = String(md || '').match(/\*\*Overall:\s*(PASS|FAIL)/i); return m ? m[1].toUpperCase() : null; };
 
@@ -68,7 +104,7 @@ export function mobileStatic(html) {
 
 // Pure: the ledger after recording one stage for one page. reports: { gate: { verdict, report } };
 // mobile: { static: {pass, issues}, runtime: {pass, detail} | null }.
-export function applyRecord(ledger, { state, slug, stage = 'prototype', reports, mobile, prototypeSha, at }) {
+export function applyRecord(ledger, { state, slug, stage = 'prototype', reports, mobile, prototypeSha, at, m2 = {} }) {
   const L = structuredClone(ledger || {}); L.pages ||= {}; L.handoff ||= {};
   const page = state.pages.find((p) => p.slug === slug);
   const entry = { ...(L.pages[slug] || {}) }; entry.residuals ||= []; entry.flags ||= [];
@@ -77,8 +113,16 @@ export function applyRecord(ledger, { state, slug, stage = 'prototype', reports,
     gates['mobile-adapt-static'] = { verdict: mobile.static.pass ? 'PASS' : 'FAIL', detail: mobile.static.issues.join('; ') || undefined };
     gates['mobile-adapt-runtime'] = mobile.runtime ? { verdict: mobile.runtime.pass ? 'PASS' : 'FAIL', detail: mobile.runtime.detail || undefined } : { verdict: 'NOT-RUN', detail: 'mobile-nav-audit.mjs not found or Playwright missing' };
   }
-  const accepted = (g) => entry.residuals.some((r) => r.gate === g && r.verdict === 'accepted');
-  const ok = Object.entries(gates).every(([g, v]) => v.verdict === 'PASS' || accepted(g));
+  if (stage === 'prototype') {
+    // M2 fragments: fresh evidence wins, else what is already in the ledger (M2b's SKILL copies it by hand);
+    // m2.figmaRequired (a Figma donor with figma-gate installed) makes a missing fragment NOT-RUN.
+    const fig = m2.figma ?? entry.gates?.figma;
+    if (fig) gates.figma = fig; else if (m2.figmaRequired) gates.figma = { missing: 'figma-gate all not run (Phase 5 (d))' };
+    const dep = m2.deployed ?? entry.gates?.deployed;
+    if (dep) gates.deployed = dep;
+  }
+  const accepted = (g) => entry.residuals.some((r) => residualCovers(r, g) && r.verdict === 'accepted' && !NEVER_ACCEPTED.includes(g));
+  const ok = gateVerdicts(gates).every(({ gate, verdict }) => verdict === 'PASS' || accepted(gate));
   if (stage === 'migrated') { entry.migratedGates = gates; entry.migratedStatus = ok ? 'gated' : 'failing'; } else {
     entry.gates = gates; entry.status = ok ? 'gated' : 'failing'; entry.prototypeSha = prototypeSha; entry.prototypePath = page.prototypePath || null;
   }
@@ -86,7 +130,7 @@ export function applyRecord(ledger, { state, slug, stage = 'prototype', reports,
   if (page.type && ['approved', 'migrated'].includes(page.status)) {
     const h = { ...(L.handoff[page.type] || {}) }; h.gates ||= {}; h.siblings ||= {};
     if (stage === 'prototype') {
-      h.gates[slug] = Object.fromEntries(Object.entries(gates).filter(([, v]) => v.verdict === 'PASS').map(([g, v]) => [g, v.report ? `${v.verdict} — ${v.report}` : v.verdict]));
+      h.gates[slug] = Object.fromEntries(gateVerdicts(gates).filter((v) => v.verdict === 'PASS').map((v) => [v.gate, gates[v.gate]?.report ? `PASS — ${gates[v.gate].report}` : 'PASS']));
       if (!h.archetype || h.archetype === slug) {
         Object.assign(h, { archetype: slug, prototypePath: page.prototypePath || null, prototypeSha, registeredAt: at,
           tier: { claimed: 'reskin-archetype', passed: Object.keys(h.gates[slug]), waived: WAIVED } });
@@ -153,6 +197,7 @@ export function main(argv) {
   }
   if (cmd === 'residual') {
     if (!o.gate || !o.cause || !VERDICTS.includes(o.verdict)) { console.error(`reskin-ledger: residual needs --gate, --cause and --verdict ${VERDICTS.join('|')}`); return 2; }
+    if (o.verdict === 'accepted' && NEVER_ACCEPTED.includes(o.gate)) { console.error(`reskin-ledger: a ${o.gate} residual cannot be accepted (hard sanity): fix the page and re-run deployed-gate`); return 1; }
     const e = { ...(ledger.pages[slug] || {}) }; e.residuals = [...(e.residuals || []).filter((r) => r.gate !== o.gate), { gate: o.gate, cause: o.cause, verdict: o.verdict, note: o.note || null, at }];
     ledger.pages[slug] = e; save(ledgerFile, ledger); console.log(`residual ${slug}: ${o.gate} ${o.verdict}`); return 0;
   }
@@ -174,10 +219,18 @@ export function main(argv) {
     }
     mobile = { static: mobileStatic(html), runtime };
   }
-  const next = applyRecord(ledger, { state, slug, stage, reports, mobile, prototypeSha, at });
+  const m2 = {};
+  if (stage === 'prototype') {
+    const ev = (kind) => { const f = join(o.dir, '.work', 'reskin', 'gates', slug, kind, 'summary.json'); try { return existsSync(f) ? JSON.parse(readFileSync(f, 'utf8')).ledgerFragment || null : null; } catch { return null; } };
+    const fig = ev('figma'); const dep = ev('deployed');
+    if (fig && fig.regime !== 'preview') m2.figma = fig;
+    if (dep) m2.deployed = dep;
+    m2.figmaRequired = existsSync(join(o.dir, 'reskin', 'curation-rules.json')) && existsSync(join(o.dir, 'scripts', 'reskin', 'figma-gate.mjs'));
+  }
+  const next = applyRecord(ledger, { state, slug, stage, reports, mobile, prototypeSha, at, m2 });
   save(ledgerFile, next);
   const e = next.pages[slug]; const g = stage === 'migrated' ? e.migratedGates : e.gates;
-  for (const [k, v] of Object.entries(g)) console.log(`  ${v.verdict.padEnd(8)} ${k}${v.detail ? ` — ${v.detail}` : ''}`);
+  for (const v of gateVerdicts(g)) console.log(`  ${v.verdict.padEnd(8)} ${v.gate}${v.detail ? ` — ${v.detail}` : ''}`);
   console.log(`${slug} (${stage}): ${stage === 'migrated' ? e.migratedStatus : e.status}${page.type && next.handoff[page.type]?.archetype === slug ? ` — archetype of ${page.type}` : ''}`);
   return 0;
 }

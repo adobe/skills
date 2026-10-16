@@ -34,7 +34,20 @@ the archetype (`ledger.handoff.<type>.archetype`, else the type's first
 | no residual `needs-owner` or `blocked` | `pages[a].residuals[]` |
 | the side-by-side eyeball recorded and `pass` | `pages[a].eyeball` |
 | the prototype on disk is the one that was gated | `pages[a].prototypeSha` vs the file |
-| `deployed` PASS when a deploy gate was recorded (M2) | `pages[a].gates.deployed` |
+| Figma donors: `figma.join`, `figma.geometry`, `figma.ramp` PASS (M2b B0/B1/B3; B2 pixel is advisory, B4 register informational) | `pages[a].gates.figma` |
+| when a preview deploy was gated (M2a): `deployed.content`, `.tokens`, `.parity`, `.sanity`, `.inherited` PASS, and the Figma re-run `deployed.figma.*` | `pages[a].gates.deployed` |
+
+`reskin-ledger.mjs record <a>` reads the M2 evidence itself:
+`<dir>/.work/reskin/gates/<a>/figma/summary.json` (`figma-gate all`, regime
+`local`) and `…/deployed/summary.json` (`deployed-gate all`, regime `preview`).
+Their `ledgerFragment` lands in `gates.figma` / `gates.deployed`; a fragment
+already in the ledger is kept when no fresh evidence exists. Fragment values
+`PASS…`, `ADVISORY…` and `n/a:…` pass; `FAIL k/n` fails; `not run:…`/`CRASH:…`
+are NOT-RUN and block. A Figma donor (`reskin/curation-rules.json`) whose
+project has `scripts/reskin/figma-gate.mjs` but no figma fragment records
+`figma.*` NOT-RUN. A residual on `figma.<f>` also covers `deployed.figma.<f>`;
+a `deployed.sanity` residual can never be `accepted` (M2a D7) — `reskin-ledger
+residual` refuses it.
 
 Plus the project-level checks (flow, canon `:root`, donor `DESIGN.json`, canon
 record drift, active direction, dynamics dispositions, canon skeleton per

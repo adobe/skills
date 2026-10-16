@@ -37,6 +37,9 @@ gaps below. Every fix is generic; per-site choices stay in config.
   `reskin --switch-flow`; `state-machine.md` names the writers of `approved`/`designSource`, stales reskin-registered
   approvals on a switch and adds a reskin State-report branch; `migrate`/`rollout` require `reskin-preflight` exit 0.
   `ledger.mjs` knows the reskin phases. The eval `standard_handoff_no_core_changes` is rescoped.
+- **M2 gates in the predicate.** `reskin-ledger record` ingests M2b's `figma-gate all` and M2a's `deployed-gate all`
+  `summary.json` fragments into `gates.figma` / `gates.deployed`; `reskin-preflight` requires figma join/geometry/ramp
+  and the deployed families (plus its figma re-run) to pass; a `deployed.sanity` residual is never accepted.
 - **Contrast-aware accent.** `stream-render` keeps an accent that fails 4.5:1 on the page or light band as an underline
   colour only (links and required markers take body ink); compact tone-band padding and fixed-size checkboxes at 640px.
 - **Canon across archetypes.** `canon-from-reskin` takes another type's archetype from the ledger's handoff (else the
