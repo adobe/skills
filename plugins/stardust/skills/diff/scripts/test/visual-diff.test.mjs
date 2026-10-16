@@ -3,8 +3,10 @@
 // written), importing the module starts no probe, liveCacheKey (the --live-cache key); then end-to-end against two fixture
 // pages served from a temp dir: --live-cache writes the source side's metrics + screenshots once, a second run with another
 // --out makes no source request, copies the source screenshots and prints the same red flags; a missing cached screenshot
-// is named; a blank source render is never cached. The end-to-end part runs where playwright is importable and prints a
-// skip line otherwise. Run: node <this file>.
+// is named; a blank source render is never cached. --hide: parseArgs (repeatable comma lists; a missing value is a usage
+// error), liveCacheKey gains the list only when set; e2e: an 88 px in-flow .geo-bar on the source only — with --hide the
+// hidden lines are printed and the source screenshot is 88 px shorter, the cache keeps the records and is keyed on the
+// list. The end-to-end part runs where playwright is importable and prints a skip line otherwise. Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, unlinkSync } from 'node:fs';
@@ -12,7 +14,7 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { liveCacheKey } from '../visual-diff.mjs';
+import { liveCacheKey, parseArgs } from '../visual-diff.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'visual-diff.mjs');
@@ -44,6 +46,21 @@ await check('liveCacheKey: source URL, width, --main, --sections, profile, UA, l
   }
   assert.notDeepEqual(liveCacheKey('https://s.example/other', opts), k, 'url');
 });
+await check('--hide: repeatable comma lists, trimmed, de-duplicated (default none), named in --help; liveCacheKey gains `hide` only when set; a missing value is a usage error', () => {
+  const argv = (...a) => ['node', 'x', 'https://s.example/', 'https://b.example/', ...a];
+  assert.deepEqual(parseArgs(argv()).opts.hide, []);
+  const { opts } = parseArgs(argv('--hide', '.geo-bar, .location-bar', '--width', '360', '--hide', '.location-bar,,.promo-strip'));
+  assert.deepEqual(opts.hide, ['.geo-bar', '.location-bar', '.promo-strip']); assert.equal(opts.width, 360);
+  const base = { out: 'a', width: 1440, main: null, sections: [], profile: 'generic', ua: 'UA', locale: null, waitUntil: null, dismiss: [], headed: false };
+  const k = liveCacheKey('https://s.example/', base);
+  assert.deepEqual(liveCacheKey('https://s.example/', { ...base, hide: [] }), k, 'an empty list keys like none');
+  assert.deepEqual(liveCacheKey('https://s.example/', { ...base, hide: ['.geo-bar'] }), { ...k, hide: ['.geo-bar'] });
+  for (const tail of [['--hide'], ['--hide', '--headed']]) {
+    const r = spawnSync(process.execPath, [SCRIPT, 'https://s.example/', 'https://b.example/', ...tail], { encoding: 'utf8', timeout: 15000 });
+    assert.equal(r.status, 1, tail.join(' ')); assert.match(r.stderr, /^visual-diff: --hide needs a selector list\nusage:/);
+  }
+  assert.match(spawnSync(process.execPath, [SCRIPT, '--help'], { encoding: 'utf8' }).stdout, /^ {2}--hide <sel,…> /m);
+});
 
 // ---- end-to-end against two fixture pages (needs playwright) -------------------------------------------
 let playwrightOk = false;
@@ -51,7 +68,9 @@ try { await import('playwright'); playwrightOk = true; } catch { console.log('sk
 if (playwrightOk) {
   const page = (body) => `<!doctype html><html><head><meta charset="utf-8"><style>main{max-width:900px;margin:0 auto;padding:24px}</style></head><body><main>${body}</main></body></html>`;
   const h2s = (n) => Array.from({ length: n }, (_, i) => `<section class="band"><h2>Topic ${i + 1}</h2><p>Some body copy for topic ${i + 1}, long enough to read as text.</p></section>`).join('');
-  const pages = { '/source.html': page(`<h1>Welcome</h1>${h2s(6)}`), '/build.html': page(`<h1>Welcome</h1>${h2s(1)}`), '/blank.html': page('') };
+  // an 88 px in-flow per-visitor bar above the content on the source only
+  const geo = (bar) => `<!doctype html><html><head><meta charset="utf-8"><style>body{margin:0} main{max-width:900px;margin:0 auto;padding:24px;min-height:1500px}</style></head><body>${bar ? '<div class="geo-bar" style="height:88px;background:#eee">Your region: <a href="/r">switch</a></div>' : ''}<main><h1>Welcome</h1>${h2s(2)}</main></body></html>`;
+  const pages = { '/source.html': page(`<h1>Welcome</h1>${h2s(6)}`), '/build.html': page(`<h1>Welcome</h1>${h2s(1)}`), '/blank.html': page(''), '/geo-source.html': geo(true), '/geo-build.html': geo(false) };
   const hits = {};
   const server = createServer((req, res) => {
     const path = req.url.split('?')[0]; hits[path] = (hits[path] || 0) + 1;
@@ -108,6 +127,37 @@ if (playwrightOk) {
     assert.equal(existsSync(blankCache), false); assert.equal(metricsJson(r.stdout).source.blankRender, true);
     r = await run('b2', 'blank', blankCache);
     assert.equal(r.status, 0, r.stderr); assert.equal(hits['/blank.html'], 2);
+  });
+  const runGeo = (out, extra = []) => new Promise((resolve) => {
+    const child = spawn(process.execPath, [SCRIPT, `${base}/geo-source.html`, `${base}/geo-build.html`, '--profile', 'generic', '--out', join(tmp, out), ...extra], { cwd: tmp, env: { ...process.env, STARDUST_ORIGIN_MAX_AGE_H: '1' } });
+    let stdout = ''; let stderr = '';
+    child.stdout.on('data', (d) => { stdout += d; }); child.stderr.on('data', (d) => { stderr += d; });
+    child.on('close', (status) => resolve({ status, stdout, stderr }));
+  });
+  const pngH = (f) => readFileSync(f).readUInt32BE(20); // IHDR height
+  const HIDDEN = /^ {2}hidden live: {2}\.geo-bar ×1 \(88px\) \[--hide\]\n {2}hidden build: \.geo-bar ×0 \[--hide\]$/m;
+  const RECORDS = { live: [{ sel: '.geo-bar', source: '--hide', n: 1, h: 88 }], build: [{ sel: '.geo-bar', source: '--hide', n: 0, h: 0 }] };
+  const geoCache = join(tmp, 'geo.json');
+  await check('e2e --hide: the hidden lines follow the header, the JSON carries hidden { live, build }, and the source screenshot is 88 px shorter than without --hide (no lines, no key)', async () => {
+    const without = await runGeo('g0');
+    assert.equal(without.status, 0, without.stderr); assert.doesNotMatch(without.stdout, /hidden (live|build):/); assert.equal('hidden' in metricsJson(without.stdout), false);
+    const r = await runGeo('g1', ['--hide', '.geo-bar', '--live-cache', geoCache]);
+    assert.equal(r.status, 0, r.stderr); assert.match(r.stdout, HIDDEN, r.stdout);
+    assert.ok(r.stdout.indexOf('hidden live:') > r.stdout.indexOf('Visual diff @') && r.stdout.indexOf('hidden live:') < r.stdout.indexOf('red flags'), 'in the header block');
+    assert.deepEqual(metricsJson(r.stdout).hidden, RECORDS);
+    assert.equal(pngH(join(tmp, 'g0', 'proto-full.png')) - pngH(join(tmp, 'g1', 'proto-full.png')), 88, 'the bar is gone from the source capture');
+    assert.equal(pngH(join(tmp, 'g0', 'eds-full.png')), pngH(join(tmp, 'g1', 'eds-full.png')), 'the build has nothing to hide');
+    const c = JSON.parse(readFileSync(geoCache, 'utf8'));
+    assert.deepEqual(c.key.hide, ['.geo-bar'], 'the live cache is keyed on the list'); assert.deepEqual(c.data.hidden, RECORDS.live, 'and keeps the records');
+  });
+  await check('e2e --hide + --live-cache: the same list reuses the source (no request) and prints the cached records; no --hide is a key mismatch and probes again', async () => {
+    const n = hits['/geo-source.html'];
+    const r = await runGeo('g2', ['--hide', '.geo-bar', '--live-cache', geoCache]);
+    assert.equal(r.status, 0, r.stderr); assert.equal(hits['/geo-source.html'], n, 'no source navigation');
+    assert.match(r.stdout, /^source side from cache /m); assert.match(r.stdout, HIDDEN, r.stdout); assert.deepEqual(metricsJson(r.stdout).hidden, RECORDS);
+    const r2 = await runGeo('g3', ['--live-cache', geoCache]);
+    assert.equal(r2.status, 0, r2.stderr); assert.equal(hits['/geo-source.html'], n + 1);
+    assert.match(r2.stdout, /^source side probed \(cache: key mismatch \(hide\)\)/m, r2.stdout); assert.doesNotMatch(r2.stdout, /hidden live:/);
   });
   rmSync(tmp, { recursive: true, force: true });
   server.close();

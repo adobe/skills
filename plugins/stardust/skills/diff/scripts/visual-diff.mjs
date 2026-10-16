@@ -40,12 +40,17 @@
  *     --live-cache <f>      reuse the SOURCE side's metrics + screenshots from <f> while fresh
  *                           (this run; STARDUST_ORIGIN_MAX_AGE_H for older) and the key matches;
  *                           probe and write it otherwise (gate.sh --full: <gate dir>/visual-live.json)
+ *     --hide <sel,…>        hide in-flow per-visitor regions (a location-suggestion bar) on BOTH
+ *                           sides after dismissal + scroll, before the screenshots and metrics
+ *                           (live-session hideRegions); repeatable. Prints `  hidden live:  …` /
+ *                           `  hidden build: …` after the header; the JSON gains `hidden: { live, build }`
  *
  * Live-side cache (--live-cache). The file holds the source side's metrics and where its screenshots
  * were written ({ metrics, outDir, shots }), never a verdict: the build side is captured every run and
  * the red flags are recomputed from (cached source, fresh build). A hit copies the source screenshots
  * into --out (a missing one is named) so <out>/ stays complete. Key = source URL + width + --main +
- * --sections + profile + UA + locale + wait state + dismiss set + tier; fresh = captured at/after this
+ * --sections + profile + UA + locale + wait state + dismiss set + tier (+ the --hide list when set; the cache
+ * also keeps the source side's hide records); fresh = captured at/after this
  * run's opener line in ./stardust/status.jsonl (cwd = the project root, as under gate.sh), or within
  * STARDUST_ORIGIN_MAX_AGE_H hours (live-session.mjs freshness). A hit or a miss prints one line after
  * the header and lands in the metrics JSON as liveCache; a source side that answered an HTTP error or
@@ -68,7 +73,7 @@
  * Prereq: a RENDERABLE prototype. Static prototypes serve directly (python3 -m
  * http.server from the dir so relative ../assets resolve); JSX prototypes must be
  * pre-rendered first (skill #24/#27). Requires playwright (project devDependency),
- * imported lazily in main — `liveCacheKey` is exported and importing the module runs no probe.
+ * imported lazily in main — `liveCacheKey` and `parseArgs` are exported and importing the module runs no probe.
  *
  * Exit codes: 0 ran (report on stdout; red flags do NOT fail the run — they are
  * advisory for the agent, and an HTTP-error side is measured + flagged, not
@@ -82,7 +87,7 @@ import { copyFileSync, existsSync, mkdirSync, realpathSync } from 'fs';
 import { dirname, join, resolve } from 'path';
 import { fileURLToPath } from 'url';
 import { resolveProfile } from './diff-profiles.mjs';
-import { REAL_CHROME_UA, isLiveHttpUrl, defaultWaitUntil, launchStealthHeaded, newLiveContext, gotoLive, dismissOverlays, LEDGER, runStartAt, readSideCache, writeSideCache } from './live-session.mjs';
+import { REAL_CHROME_UA, isLiveHttpUrl, defaultWaitUntil, launchStealthHeaded, newLiveContext, gotoLive, dismissOverlays, LEDGER, runStartAt, readSideCache, writeSideCache, parseHideList, hideRegions, formatHidden } from './live-session.mjs';
 
 const USAGE = `usage: node skills/diff/scripts/visual-diff.mjs <sourceURL> <buildURL> [options]
   --profile eds|generic  stack profile (default eds)
@@ -103,6 +108,7 @@ const USAGE = `usage: node skills/diff/scripts/visual-diff.mjs <sourceURL> <buil
   --live-cache <f>       reuse the SOURCE side's metrics + screenshots from <f> while fresh (this
                          run; STARDUST_ORIGIN_MAX_AGE_H for older) and the key matches; probe and
                          write it otherwise (gate.sh --full: <gate dir>/visual-live.json)
+  --hide <sel,…>         hide in-flow regions (a per-visitor bar) on both sides before capturing; repeatable
 writes (under --out; created if absent): proto-full.png and eds-full.png (the two full-page
             captures, source side = proto, build side = eds) plus proto-<section>.png /
             eds-<section>.png per --sections entry. The report goes to stdout.
@@ -111,10 +117,10 @@ exit codes: 0 ran (flags advisory; an HTTP-error side, e.g. a 404 build pre-prop
             3 bot challenge (live side blocked — fail loud)
 `;
 
-function parseArgs(argv) {
+export function parseArgs(argv) {
   const [, , proto, eds, ...rest] = argv;
   if (rest.includes('--help') || proto === '--help' || proto === '-h') { process.stdout.write(USAGE); process.exit(0); }
-  const opts = { out: 'qa/vdiff', width: 1280, sections: [], profile: 'eds', main: null, ua: REAL_CHROME_UA, waitUntil: null, dismiss: null, headed: false, locale: null };
+  const opts = { out: 'qa/vdiff', width: 1280, sections: [], profile: 'eds', main: null, ua: REAL_CHROME_UA, waitUntil: null, dismiss: null, headed: false, locale: null, hide: [] };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--out') { opts.out = rest[i += 1]; }
@@ -132,14 +138,21 @@ function parseArgs(argv) {
     else if (a === '--headed') { opts.headed = true; }
     else if (a === '--locale') { opts.locale = rest[i += 1]; }
     else if (a === '--live-cache') { opts.liveCache = rest[i += 1]; }
+    else if (a === '--hide') {
+      const v = rest[i += 1];
+      if (v === undefined || v.startsWith('--')) { process.stderr.write(`visual-diff: --hide needs a selector list\n${USAGE}`); process.exit(1); }
+      opts.hide = parseHideList(opts.hide, v);
+    }
   }
   return { proto, eds, opts };
 }
 
 // The --live-cache key: everything that shapes the SOURCE side's capture (a change re-probes); --out is not in it.
+// The hide list only when set, so a cache written without hides stays valid for a run without them.
 export const liveCacheKey = (src, opts) => ({
   url: src, width: opts.width, main: opts.main, sections: opts.sections, profile: opts.profile,
   ua: opts.ua, locale: opts.locale, waitUntil: opts.waitUntil, dismiss: opts.dismiss, headed: opts.headed,
+  ...(opts.hide && opts.hide.length ? { hide: opts.hide } : {}),
 });
 const sectionShot = (tag, sel) => `${tag}-${sel.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '')}.png`;
 
@@ -258,7 +271,7 @@ function analyse(mainSel) {
 }
 /* eslint-enable no-undef */
 
-// `rec` (optional) receives the navigation's HTTP status and the screenshot files written.
+// `rec` (optional) receives the navigation's HTTP status, the screenshot files written and (with --hide) the hide records.
 async function capture(browser, url, tag, opts, rec = {}) {
   // UA + standard headers on EVERY context (live-session; F-R1 — UA alone
   // still 403s on Akamai), webdriver spoof included for the --headed tier.
@@ -288,6 +301,7 @@ async function capture(browser, url, tag, opts, rec = {}) {
     window.scrollTo(0, 0);
   });
   await page.waitForTimeout(800);
+  if (opts.hide.length) rec.hidden = await hideRegions(page, opts.hide); // eslint-disable-line no-param-reassign
   await page.screenshot({ path: `${opts.out}/${tag}-full.png`, fullPage: true });
   rec.shots = [`${tag}-full.png`]; // eslint-disable-line no-param-reassign
   for (const sel of opts.sections) {
@@ -398,11 +412,12 @@ async function main() {
   }
   mkdirSync(resolve(opts.out), { recursive: true });
   const browser = opts.headed ? await launchStealthHeaded(chromium) : await chromium.launch();
-  let report; let liveCache = null; const cacheLines = [];
+  let report; let liveCache = null; const cacheLines = []; let hidden = null;
   try {
-    let protoM;
+    let protoM; let protoHidden = [];
     if (cache && cache.hit) {
       protoM = cache.data.metrics;
+      protoHidden = cache.data.hidden || [];
       const gone = copyShots(cache.data, opts.out);
       liveCache = { file: opts.liveCache, hit: true, at: cache.at, policy: cache.policy };
       cacheLines.push(`source side from cache ${opts.liveCache} (probed ${cache.at}, ${cache.policy})`);
@@ -410,15 +425,18 @@ async function main() {
     } else {
       const at = new Date().toISOString(); const rec = {};
       protoM = await capture(browser, proto, 'proto', opts, rec);
+      protoHidden = rec.hidden || [];
       if (cache) {
         liveCache = { file: opts.liveCache, hit: false, at, policy: null, reason: cache.reason };
         // an error page or a blank render is measured (advisory contract) but never reused; a failed write never fails the probe
         let unsaved = rec.status >= 400 ? `HTTP ${rec.status}` : protoM.blankRender ? 'blank render' : null;
-        if (!unsaved) { try { writeSideCache(opts.liveCache, key, { metrics: protoM, outDir: resolve(opts.out), shots: rec.shots }, { at, writtenBy: 'visual-diff.mjs' }); } catch (e) { unsaved = `write failed: ${String(e.message).split('\n')[0]}`; } }
+        if (!unsaved) { try { writeSideCache(opts.liveCache, key, { metrics: protoM, outDir: resolve(opts.out), shots: rec.shots, ...(rec.hidden ? { hidden: rec.hidden } : {}) }, { at, writtenBy: 'visual-diff.mjs' }); } catch (e) { unsaved = `write failed: ${String(e.message).split('\n')[0]}`; } }
         cacheLines.push(`source side probed (cache: ${cache.reason}) ${unsaved ? `— not cached (${unsaved})` : `→ ${opts.liveCache}`}`);
       }
     }
-    const edsM = await capture(browser, eds, 'eds', opts);
+    const edsRec = {};
+    const edsM = await capture(browser, eds, 'eds', opts, edsRec);
+    if (opts.hide.length) hidden = { live: protoHidden, build: edsRec.hidden || [] };
     report = { viewport: opts.width, out: opts.out, proto: protoM, eds: edsM, redFlags: redFlags(edsM, protoM, prof) };
   } finally {
     await browser.close();
@@ -427,16 +445,17 @@ async function main() {
   const f = report.redFlags;
   process.stdout.write(`\nVisual diff @ ${opts.width}px (profile "${prof.name}") — screenshots in ${opts.out}/\n`);
   cacheLines.forEach((l) => process.stdout.write(`${l}\n`));
+  if (hidden) process.stdout.write(`  hidden live:  ${formatHidden(hidden.live)}\n  hidden build: ${formatHidden(hidden.build)}\n`);
   process.stdout.write(`\n${prof.target} red flags (advisory): ${f.length ? '' : 'none'}\n`);
   f.forEach((x) => process.stdout.write(`  • ${x}\n`));
   process.stdout.write(`\nFull metrics JSON (compare ${prof.source} vs ${prof.target}: heading colors, eyebrow colors, image dims, full-bleed):\n`);
-  process.stdout.write(`${JSON.stringify({ [prof.source]: report.proto, [prof.target]: report.eds, ...(liveCache ? { liveCache } : {}) }, null, 1)}\n`);
+  process.stdout.write(`${JSON.stringify({ [prof.source]: report.proto, [prof.target]: report.eds, ...(liveCache ? { liveCache } : {}), ...(hidden ? { hidden } : {}) }, null, 1)}\n`);
 }
 
 // exit 3 = bot challenge on a live side (distinct from generic errors, so a
 // gate runner can tell "blocked — escalate with --headed" from "probe broke").
 // Main-module guard by real path (a symlinked checkout or temp dir must not turn the CLI into a no-op), so the
-// contract test can import liveCacheKey without running a probe.
+// contract test can import liveCacheKey / parseArgs without running a probe.
 function safeRealpath(p) { try { return realpathSync(p); } catch { return p; } }
 if (process.argv[1] && fileURLToPath(import.meta.url) === safeRealpath(process.argv[1])) {
   main().catch((e) => { process.stderr.write(`visual-diff error: ${e.message}\n`); process.exit(e.name === 'BotChallengeError' ? 3 : 1); });
