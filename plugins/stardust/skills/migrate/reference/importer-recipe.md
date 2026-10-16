@@ -63,8 +63,9 @@ variant `when`). `stardust/replica/units.json` origin selectors anchor rows only
 Sibling captures only widen the map; a widened marker names them in `evidence[]` (C2). The eds-schema gives roles and
 cell order, aligned by block, never by section index (C6). The gated archetype document gives token and section-style
 names; their condition comes from the source DOM (C5). A variance JSON says which siblings need a token, never selector
-text. Never used (C1): generated ids or class tokens, position pseudo-classes, prototype classes (the eds-schema
-`unitSelector` included), chains through a layout container.
+text. Never used (C1): generated ids or class tokens, position pseudo-classes (except in `rows` and cell selectors:
+position among a module's own rows and items is its structure), prototype classes (the eds-schema `unitSelector`
+included), chains through a layout container.
 
 ## The map
 
