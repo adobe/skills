@@ -3,15 +3,16 @@
 // browser or network: locale-root detection by path shape, the first-level capture-gap listing per root
 // (same-origin links on the root page under its own path, minus what the crawl captured; query, hash and
 // trailing slash folded; assets, mailto:/tel: and other hosts dropped; www. folded), the ready ledger
-// detail string, both link-list shapes — and that importing the module or asking --help starts no crawl
-// and writes nothing. Run: node <this file>.
+// detail string, both link-list shapes, the entry-locale scope (the entry URL's leading two-letter locale
+// segments, and whether fewer than half of the captured pages lie under them) — and that importing the module or
+// asking --help starts no crawl and writes nothing. Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { captureGaps, localeRootPath, maxPages } from '../crawl.mjs';
+import { captureGaps, entryLocalePrefix, localeRootPath, maxPages } from '../crawl.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'crawl.mjs');
@@ -67,6 +68,66 @@ check('captureGaps: no locale root captured → no roots and a detail that says 
   assert.deepEqual(captureGaps([{ slug: 'index', url: 'https://example.com/', links: ['https://example.com/en/x'] }, { slug: 'about', url: 'https://example.com/about' }]), { roots: [], detail: 'uncaptured first-level targets: none (no locale root captured)' });
   assert.deepEqual(captureGaps([{ slug: 'en', url: 'https://example.com/en' }, { slug: 'junk', url: 'nope' }]).roots, [{ root: '/en', slug: 'en', linked: 0, uncaptured: [] }]);
   assert.deepEqual(captureGaps([]).roots, []);
+});
+
+const page = (p, extra = {}) => ({ slug: p.replace(/^\/|\/$/g, '').replace(/\//g, '-') || 'index', url: `https://example.test${p}`, finalUrl: `https://example.test${p}`, links: [], ...extra });
+// a recorded hands-off run: entered at /de/, its site plan captured nine English pages
+const DE_ENTRY_EN_PLAN = [page('/de/'), ...['/en/', '/en/about', '/en/products', '/en/products/a', '/en/products/b', '/en/news', '/en/contact', '/en/careers', '/en/legal'].map((p) => page(p))];
+
+check('entryLocalePrefix: the leading two-letter locale segments, at most two (case kept; trailing slash, query, hash ignored); three-letter, non-locale or no segments → null', () => {
+  for (const [u, want] of [
+    ['https://x.example/de/produkte', '/de'], ['https://x.example/ca/en/x', '/ca/en'], ['https://x.example/fr-ca/', '/fr-ca'], ['https://x.example/de', '/de'],
+    ['https://x.example/DE_de/x?q=1#y', '/DE_de'], ['https://x.example/zh-hant/a', '/zh-hant'], ['https://x.example/en/de/fr/x', '/en/de'], ['https://x.example/de/faq', '/de'],
+    ['https://x.example/faq/x', null], ['https://x.example/', null], ['https://x.example', null], ['https://x.example/eng/x', null], ['https://x.example/products/de', null],
+    ['https://x.example/en-us-west/x', null], ['not a url', null], [undefined, null],
+  ]) assert.equal(entryLocalePrefix(u), want, String(u));
+});
+check('captureGaps scope: a /de/ entry whose capture holds 9 of 10 pages under /en → scope { entryLocale, inside, outside } and the detail names it; roots unchanged', () => {
+  const plain = captureGaps(DE_ENTRY_EN_PLAN);
+  const scoped = captureGaps(DE_ENTRY_EN_PLAN, { entryUrl: 'https://www.example.test/de/' });
+  assert.deepEqual(scoped.scope, { entryLocale: '/de', inside: 1, outside: 9 });
+  assert.equal(scoped.detail, `${plain.detail}; entry locale /de but 9 of 10 captured pages outside it`);
+  assert.equal(scoped.detail, 'uncaptured first-level targets: de 0, en 0; entry locale /de but 9 of 10 captured pages outside it');
+  assert.deepEqual(scoped.roots, plain.roots);
+});
+check('captureGaps scope: half or more of the captured pages under the entry locale → no scope key, detail unchanged', () => {
+  const majority = [page('/de/'), page('/de/produkte'), page('/de/ueber-uns'), page('/de/kontakt/'), page('/en/'), page('/en/about')];
+  const half = [page('/de/'), page('/de/produkte'), page('/en/'), page('/en/about')];
+  for (const records of [majority, half]) {
+    const r = captureGaps(records, { entryUrl: 'https://example.test/de/' });
+    assert.equal('scope' in r, false); assert.deepEqual(r, captureGaps(records));
+  }
+});
+check('captureGaps scope: a / entry, a /faq/… entry (not a locale) and an unparsable entry → no scope, even when no page lies under it', () => {
+  for (const entryUrl of ['https://example.test/', 'https://example.test/faq/shipping', 'not a url', undefined]) {
+    const r = captureGaps(DE_ENTRY_EN_PLAN, { entryUrl });
+    assert.equal('scope' in r, false, String(entryUrl)); assert.deepEqual(r, captureGaps(DE_ENTRY_EN_PLAN), String(entryUrl));
+  }
+});
+check('captureGaps scope: a /ca/en entry counts only /ca/en and below on the entry host (www. and trailing slash folded; url, else finalUrl); other hosts and pages without a parseable URL are outside / not counted', () => {
+  const records = [
+    page('/ca/en/'), { slug: 'ca-en-about', url: 'https://www.example.test/ca/en/about/', links: [] }, { slug: 'ca-en-x', url: 'nope', finalUrl: 'https://example.test/ca/en/x' },
+    page('/ca/fr/'), page('/ca/fr/a-propos'), page('/us/en/'), page('/us/en/about'), page('/ca/'), page('/ca/enterprise'),
+    { slug: 'mirror', url: 'https://other.example.test/ca/en/about', links: [] }, { slug: 'junk', url: 'nope', links: [] },
+  ];
+  const r = captureGaps(records, { entryUrl: 'https://example.test/ca/en/' });
+  assert.deepEqual(r.scope, { entryLocale: '/ca/en', inside: 3, outside: 7 });
+  assert.match(r.detail, /; entry locale \/ca\/en but 7 of 10 captured pages outside it$/);
+});
+check('captureGaps scope: /de vs /de-ch is a segment boundary, not a string prefix — either way round', () => {
+  const chPlan = [page('/de/'), page('/de-ch/'), page('/de-ch/produkte'), page('/de-ch/kontakt')];
+  assert.deepEqual(captureGaps(chPlan, { entryUrl: 'https://example.test/de/' }).scope, { entryLocale: '/de', inside: 1, outside: 3 });
+  assert.equal('scope' in captureGaps(chPlan, { entryUrl: 'https://example.test/de-ch/' }), false);
+  const dePlan = [page('/de-ch/'), page('/de/'), page('/de/produkte'), page('/de/kontakt')];
+  assert.deepEqual(captureGaps(dePlan, { entryUrl: 'https://example.test/de-ch/produkte' }).scope, { entryLocale: '/de-ch', inside: 1, outside: 3 });
+});
+check('captureGaps: the one-argument call keeps its exact result — no scope key, no detail suffix — on the very capture that scopes with an entry URL', () => {
+  assert.deepEqual(captureGaps(DE_ENTRY_EN_PLAN), {
+    roots: [{ root: '/de', slug: 'de', linked: 0, uncaptured: [] }, { root: '/en', slug: 'en', linked: 0, uncaptured: [] }],
+    detail: 'uncaptured first-level targets: de 0, en 0',
+  });
+  assert.deepEqual(captureGaps(DE_ENTRY_EN_PLAN, {}), captureGaps(DE_ENTRY_EN_PLAN));
+  assert.equal(captureGaps([], { entryUrl: 'https://example.test/de/' }).scope, undefined);
 });
 check('--help prints the usage header (naming captureGaps) and exits 0 without playwright, writing nothing; importing this module started no crawl', () => {
   const cwd = mkdtempSync(join(tmpdir(), 'crawl-help-'));
