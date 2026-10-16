@@ -6,7 +6,9 @@
 // fitting page at --width 1440 (the overflow line beside a written PNG); verdict parity with measure.mjs's root line
 // (the overflow read gate.sh used before) on the wide and fitting pages, a right-sliding scroll reveal below the fold
 // (a pre-scroll read would count it: false overflow), an off-canvas fixed drawer and an absolute one (real overflow),
-// plus a keyframe reveal the freeze starts paused off to the side (delta 0 at rest); and the EDS single sweep — no timed poll
+// a header a scroll handler pins position:fixed below the top whose 400 px nav row overflows 360 (a read at the
+// bottom would miss it), plus a keyframe reveal the freeze starts paused off to the side (delta 0 at rest); and the
+// EDS single sweep — no timed poll
 // (lateWindowFor → 0) but one dismissOverlays pass after waitEdsDelayedPhase still clicks a consent banner that
 // appears 3 s after `load` (the EDS delayed phase), which an immediate sweep misses. Prints a skip line otherwise.
 // Run: node plugins/stardust/skills/replica/scripts/test/stitch-shot.test.mjs
@@ -66,7 +68,9 @@ if (chromium) {
     '/consent-late': page('<section></section><section></section>', lateConsent),
   };
   // Overflow parity fixtures: a full-width block below the fold that slides in from the right when it scrolls into
-  // view (transition / keyframe), and an off-canvas drawer (fixed: no root overflow; absolute: 400 px of it).
+  // view (transition / keyframe), an off-canvas drawer (fixed: no root overflow; absolute: 400 px of it), and a header
+  // whose scroll handler pins it position:fixed once scrolled — its 400 px nav row overflows a 360 viewport at the top
+  // only (fixed boxes add no root overflow), where measure.mjs reads.
   const S3 = '<section></section><section></section><section></section>';
   const reveal = (sel) => `<script>const io = new IntersectionObserver((es) => es.forEach((e) => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } }));
     document.querySelectorAll('${sel}').forEach((el) => io.observe(el));</script>`;
@@ -75,6 +79,8 @@ if (chromium) {
     '/reveal-anim': page(`${S3}<div class="ra">reveal</div>${reveal('.ra')}`, '<style>.ra{height:200px;background:#c63}.ra.in{animation:slide 1s both}@keyframes slide{from{transform:translateX(300px)}to{transform:none}}</style>'),
     '/drawer': page(`${S3}<div style="position:fixed;top:0;right:-400px;width:400px;height:100%;background:#333"></div>`),
     '/drawer-abs': page(`${S3}<div style="position:absolute;top:0;right:-400px;width:400px;height:300px;background:#333"></div>`),
+    '/fixed-header': page(`<header id="hd"><nav style="width:400px;height:60px;background:#c33">nav</nav></header>${S3}<script>addEventListener('scroll', () => document.getElementById('hd').classList.toggle('pin', window.scrollY > 80));</script>`,
+      '<style>#hd{height:60px;background:#222}#hd.pin{position:fixed;top:0;left:0;right:0}</style>'),
   });
   const server = createServer((req, res) => {
     const body = pages[req.url.split('?')[0]];
@@ -107,20 +113,20 @@ if (chromium) {
       assert.ok(existsSync(join(work, 'fit.png')));
     });
     // measure.mjs's root line is the overflow read gate.sh used before the build capture's own line: same verdict.
-    const measureRoot = (url) => new Promise((done) => {
-      const child = spawn(process.execPath, [join(HERE, '..', 'measure.mjs'), url, '--selectors', 'html', '--props', 'display', '--width', '1440', '--json'], { cwd: work });
+    const measureRoot = (url, width) => new Promise((done) => {
+      const child = spawn(process.execPath, [join(HERE, '..', 'measure.mjs'), url, '--selectors', 'html', '--props', 'display', '--width', String(width), '--json'], { cwd: work });
       let out = ''; child.stdout.on('data', (d) => { out += d; });
-      child.on('close', () => { try { done(JSON.parse(out).root[url][1440]); } catch { done(null); } });
+      child.on('close', () => { try { done(JSON.parse(out).root[url][width]); } catch { done(null); } });
     });
-    const stitchRoot = async (path) => {
-      const r = await run([`${base}${path}`, `${path.slice(1)}.png`, '--width', '1440'], work);
+    const stitchRoot = async (path, width = 1440) => {
+      const r = await run([`${base}${path}`, `${path.slice(1)}-${width}.png`, '--width', String(width)], work);
       const m = r.stdout.match(/^overflow: scrollWidth=(\d+) viewport=(\d+) delta=(\d+)$/m);
       return m ? { scrollWidth: Number(m[1]), viewport: Number(m[2]), delta: Number(m[3]) } : { error: r.stderr || r.stdout };
     };
-    const parity = { '/wide': 260, '/fit': 0, '/reveal': 0, '/drawer': 0, '/drawer-abs': 400 };
-    for (const [path, delta] of Object.entries(parity)) {
-      await check(`e2e: overflow parity with measure.mjs on ${path} — delta ${delta}`, async () => {
-        const [m, st] = await Promise.all([measureRoot(`${base}${path}`), stitchRoot(path)]);
+    const parity = [['/wide', 1440, 260], ['/fit', 1440, 0], ['/reveal', 1440, 0], ['/reveal', 360, 0], ['/drawer', 1440, 0], ['/drawer-abs', 1440, 400], ['/fixed-header', 360, 40]];
+    for (const [path, width, delta] of parity) {
+      await check(`e2e: overflow parity with measure.mjs on ${path} at ${width} — delta ${delta}`, async () => {
+        const [m, st] = await Promise.all([measureRoot(`${base}${path}`, width), stitchRoot(path, width)]);
         assert.ok(m, 'measure.mjs printed a root line');
         assert.deepEqual(st, { scrollWidth: m.scrollWidth, viewport: m.viewport, delta: m.overflowX }, `measure ${JSON.stringify(m)}`);
         assert.equal(st.delta, delta);

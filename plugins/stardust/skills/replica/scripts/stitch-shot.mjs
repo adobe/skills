@@ -62,11 +62,14 @@
  *     minus the root's clientWidth (never below 0; measure.mjs semantics),
  *     read ONCE after the chunk loop: every scroll-revealed box has been in
  *     view (a pre-scroll read counts a slide-in still off to the side — a
- *     false overflow), lazy content has loaded, and finite animations the
- *     freeze holds are finished first, so the read is the page at rest the
- *     way measure.mjs reads it after its scroll pass. Same page and width as
- *     the pixels: gate.sh's horizontal-overflow assert reads it from the
- *     build capture instead of loading the page a second time.
+ *     false overflow) and lazy content has loaded; then, the last chunk
+ *     taken, the page is scrolled back to the top for 700 ms and finite
+ *     animations the freeze holds are finished — the page at rest at the
+ *     top, where measure.mjs reads it after its scroll pass (a header a
+ *     scroll handler turns position:fixed further down counts its too-wide
+ *     row there). Same page and width as the pixels: gate.sh's
+ *     horizontal-overflow assert reads it from the build capture instead of
+ *     loading the page a second time.
  *   - no timed late-modal poll on EDS build/preview hosts (*.aem.page|live,
  *     *.hlx.page|live — live-session lateWindowFor): they serve no timed
  *     third-party interstitials. ONE sweep still runs, after the EDS delayed
@@ -139,8 +142,8 @@ Usage: node stitch-shot.mjs <url> <out.png> [options]
   --help            this text
 
 Prints \`overflow: scrollWidth=<n> viewport=<n> delta=<n>\` right before the \`stitched\` line: the document width
-vs the viewport at --width (delta = px over, 0 when it fits), read after the chunk loop with finite animations
-finished (the page at rest) — gate.sh's horizontal-overflow assert reads it from the build capture.
+vs the viewport at --width (delta = px over, 0 when it fits), read after the chunk loop, back at the top with
+finite animations finished (the page at rest) — gate.sh's horizontal-overflow assert reads it from the build capture.
 EDS build/preview hosts (*.aem.page|live, *.hlx.page|live) get no timed late-modal poll: one dismissal sweep,
 after the EDS delayed phase (live source sites keep the 6 s poll, local targets have none).
 Run the SAME command shape against the live page and the served prototype.
@@ -355,9 +358,14 @@ async function main() {
     }
     // Overflow root line (header): ONE read, after the chunk loop — every box below the fold has been scrolled into
     // view, so a scroll-reveal slide-in no longer sits off to the side (read earlier, it is a false overflow). The
-    // chunks are taken, so finite animations the freeze holds (a reveal keyframe started paused at its off-side
-    // frame) are finished first: the page at rest, as measure.mjs reads it after its scroll pass. The freeze moves no
-    // box (fixed stays fixed), so it neither adds nor hides overflow.
+    // chunks are taken, so nothing below touches build.png: back to the top for 700 ms first, as measure.mjs reads
+    // (scrollTo(0, 0), 400 + 300 ms after its scroll pass) — a header a scroll handler switches to position:fixed
+    // further down is static again there and counts its too-wide row; then finite animations the freeze holds (a
+    // reveal keyframe started paused at its off-side frame) are finished: the page at rest. The freeze moves no box
+    // and leaves scroll listeners, IntersectionObservers and rAF running (it cancels only timers pending when it
+    // ran), so the scroll back reaches the same handlers measure.mjs's does.
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.waitForTimeout(700);
     const root = await page.evaluate(() => {
       for (const a of document.getAnimations()) {
         try { if (a.effect && a.effect.getComputedTiming().endTime !== Infinity) a.finish(); } catch { /* not finishable — leave it */ }

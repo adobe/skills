@@ -19,13 +19,15 @@
 #   extra page load): the build capture prints one root line,
 #   `overflow: scrollWidth=<n> viewport=<n> delta=<n>` — document.documentElement's
 #   scrollWidth at <width>, read on the page the pixels came from, after its
-#   chunk loop with finite animations finished (the page at rest, as
-#   measure.mjs read it after a scroll pass — a slide-in reveal below the fold
-#   is not an overflow); its stdout is overflow-<label>.txt in the evidence
-#   dir and the last such line decides. A document wider than its viewport by
-#   more than GATE_OVERFLOW_TOLERANCE px (default 4 — scrollWidth and
-#   clientWidth are integers, so a correct page whose widest box is 360.4 px
-#   reads +1; the qa skill's rendered sweep fails above the same 4 px) prints
+#   chunk loop, back at the top with finite animations finished (the page at
+#   rest where measure.mjs read it after a scroll pass — a slide-in reveal
+#   below the fold is not an overflow, a too-wide header row that a scroll
+#   handler pins further down still is); its stdout is overflow-<label>.txt
+#   in the evidence dir and the last such line decides. A document wider than
+#   its viewport by more than GATE_OVERFLOW_TOLERANCE px (default 4 —
+#   scrollWidth and clientWidth are integers, so a correct page whose widest
+#   box is 360.4 px reads +1; the qa skill's rendered sweep fails above the
+#   same 4 px) prints
 #   `gate.sh: OVERFLOW at <w> — build scrollWidth <n> > viewport <n> (+<n>px) → FAIL`
 #   and the round exits 2 whatever the pixel number says; a clean root, or one
 #   inside the tolerance, prints `gate.sh: overflow assert at <w> — … → ok`
