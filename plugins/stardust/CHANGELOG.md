@@ -34,10 +34,13 @@ compared two different things.
   hidden; presence.json gains `hide` per slug and `"*": { "hide": [...] }` for a site-wide bar. gate.sh merges its
   `--hide` with presence.json `hide` for both captures and every probe but unit-geometry, records the list in
   `live.json` and retakes `live.png` when it changed; gate-all reads only presence.json `hide` (both stitches,
-  content-presence, clip-probe; rows record `hide`). A capture, probe or cache taken with another list is never
-  reused; keys gain the list only when it is non-empty. content-diff removes the matches from the DOM (its
-  inventories read `display:none` text). Recorded: the first delivered page passed only through a documented
-  override — 1440 7.82 % / Δh 88 px, 360 22.78 % / Δh 268 px, both the bar.
+  content-presence, clip-probe; rows record `hide`). chrome-explore hides the list after every load and records it
+  (`--hide`, `--presence --slug`); chrome-compare takes the expected list and raises one `hide-mismatch` error when
+  the records differ. A capture, probe or cache taken with another list is never reused; keys gain the list only
+  when it is non-empty. content-diff removes the matches from the DOM (its inventories read `display:none` text).
+  Recorded: the first delivered page passed only through a documented override — 1440 7.82 % / Δh 88 px, 360
+  22.78 % / Δh 268 px, both the bar — and the header contract could not be compared at 360 because the bar hid
+  the header from chrome-explore.
 - **gate-triage's parity runs hide the gate's regions:** the gate's presence.json (`--presence --slug`) and the
   row's `hide` reach chrome-parity; `triage.json` records `parity.hide` and `_provenance.presence`, the md line
   names what was hidden. Recorded: triage's parity groups reported the bar's offset as a property delta.

@@ -860,12 +860,14 @@ on the verdict, never reported unmasked), `overrides.json` (shown BESIDE the mea
 never replacing it), `clip-allow.json`, `presence.json`, `units.json`.
 
 **Hide or mask.** An in-flow per-visitor region (a location-suggestion bar above the header) is
-HIDDEN: removed before measuring, on both sides, by every instrument — both stitches, the diff
-probes (not unit-geometry), chrome-parity, gate-all and triage — via `--hide <sel,…>` or presence.json
-`hide`; declare a site-wide bar once as `"*": { "hide": ["<sel>"] }`. gate-all reads only presence.json;
-gate.sh merges its `--hide` with it; a capture or cache taken with another list is never reused. An
-authored-volatile band (a campaign hero) is MASKED: still measured, masked on the verdict
-(`masks.json`).
+HIDDEN: removed before measuring, on both sides, via `--hide <sel,…>` or presence.json `hide`;
+declare a site-wide bar once as `"*": { "hide": ["<sel>"] }`. gate.sh merges its `--hide` with
+presence.json and hides the list on both captures, content-diff, visual-diff, content-presence,
+clip-probe and chrome-parity (`--hide` + `--presence`); gate-all reads only presence.json and hides
+it on both stitches, content-presence and clip-probe; triage's parity runs and the header-contract
+tools (chrome-explore, chrome-compare) take the same list; unit-geometry takes none. A capture or
+cache taken with another list is never reused. An authored-volatile band (a campaign hero) is
+MASKED: still measured, masked on the verdict (`masks.json`).
 
 Origin: a fix round reuses this run's (row `originReused`, § Iteration discipline, Evidence
 freshness); fallback: live
