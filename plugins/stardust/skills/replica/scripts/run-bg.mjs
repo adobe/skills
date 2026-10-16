@@ -33,6 +33,15 @@
  *        (default --timeout 900 s — a background job without a deadline is the
  *        hang class run-capped exists for; 0 disables) in its own process
  *        group, stdout+stderr in <dir>/<job>.log, state in <dir>/<job>.json.
+ *        The deadline (from launch) is exported to the command as
+ *        RUN_BG_DEADLINE_SEC (seconds; with 0 an inherited value stays) — gate-all
+ *        refuses a roster it cannot finish in it. A gate-all.mjs job (an argv token,
+ *        or a word of a `sh -c` string) started without --timeout gets
+ *        max(900, 25 s × pages × widths): gate-all's roster estimate (rosterEstimate
+ *        of the sibling gate-all.mjs, imported only for such a job), summed over its
+ *        invocations, logged in one `run-bg:` line on start's stdout — a recorded
+ *        99-page roster at one width needed 2152 s and was killed at 900 s. An
+ *        explicit --timeout is never changed; every other job keeps 900 s.
  *        --slots (default 3; env RUN_BG_SLOTS, else STARDUST_BROWSER_SLOTS) is a
  *        soft concurrency cap: a job waits, first come first served, until fewer
  *        than that many jobs are running. Both sides of the number: each capture
@@ -116,7 +125,7 @@
  * challenge, 4 identity, 1 error); 124 = deadline, or no machine-wide browser
  * slot within a set STARDUST_BROWSER_WAIT — no verdict, re-run.
  *
- * Also importable: start(), wait(), status(), alive(), phase(), isBrowserJob(), lockWaitS(), BROWSER_SCRIPTS, report helpers — see the tests.
+ * Also importable: start(), wait(), status(), alive(), phase(), isBrowserJob(), lockWaitS(), gateAllInvocations(), gateAllTimeout(), BROWSER_SCRIPTS, report helpers — see the tests.
  */
 
 /* eslint-disable no-restricted-syntax, brace-style, object-curly-newline, max-len */
@@ -176,9 +185,42 @@ export const BROWSER_SCRIPTS = new Set([
   'capture-content.mjs', 'dom-equality.mjs', 'donor-probe.mjs', 'slot-coverage.mjs', // reskin
   'spec-capture.mjs', 'spec-fetch.mjs', 'spec-inventory.mjs', 'spec-sheet.mjs', // spec
 ]);
+// The words of an argv token: a `sh -c` string splits into its command words, a plain token is one word.
+const SHELL_SPLIT = /[\s;&|()<>'"`]+/;
 // Any argv token (or a word of a `sh -c` string) whose basename is a browser instrument.
 export function isBrowserJob(cmd, args = []) {
-  return [cmd, ...args].some((t) => String(t ?? '').split(/[\s;&|()<>'"`]+/).some((w) => BROWSER_SCRIPTS.has(basename(w))));
+  return [cmd, ...args].some((t) => String(t ?? '').split(SHELL_SPLIT).some((w) => BROWSER_SCRIPTS.has(basename(w))));
+}
+
+// ---- a gate-all job's deadline -----------------------------------------------------------------
+const GATE_ALL = 'gate-all.mjs';
+// Beside this file in both layouts (the plugin's skills/replica/scripts/, a project's stardust/scripts/replica/).
+const GATE_ALL_PATH = join(dirname(SELF), GATE_ALL);
+// Every gate-all.mjs invocation in a job's argv → its args: an argv token, or a word of a `sh -c` string, whose basename
+// is gate-all.mjs starts one; its args are the tokens / words after it up to the next one.
+export function gateAllInvocations(cmd, args = []) {
+  const words = [cmd, ...args].flatMap((t) => { const s = String(t ?? ''); if (basename(s) === GATE_ALL) return [s]; const w = s.split(SHELL_SPLIT).filter(Boolean); return w.some((x) => basename(x) === GATE_ALL) ? w : [s]; });
+  const runs = [];
+  for (const w of words) { if (basename(w) === GATE_ALL) runs.push([]); else if (runs.length) runs[runs.length - 1].push(w); }
+  return runs;
+}
+// A gate-all job started without --timeout: its deadline becomes max(DEFAULT_TIMEOUT_SEC, gate-all's roster estimate summed
+// over its invocations) — a recorded 99-page roster at one width needed 2152 s and was killed at the 900 s default.
+// → { timeoutSec, note } (note: the one stdout line, after `run-bg: <job> `), or null: not a gate-all job, or --timeout
+// given (never changed). The sibling gate-all.mjs is imported only here, only for a gate-all job.
+export async function gateAllTimeout(cmd, args = [], { cwd = process.cwd(), given = false } = {}) {
+  const runs = gateAllInvocations(cmd, args);
+  if (given || !runs.length) return null;
+  const kept = (why) => ({ timeoutSec: DEFAULT_TIMEOUT_SEC, note: `gate-all estimate unavailable (${why}) — ${DEFAULT_TIMEOUT_SEC} s default kept` });
+  if (!existsSync(GATE_ALL_PATH)) return kept(`${GATE_ALL_PATH} not found`);
+  let ga; let ests;
+  try { ga = await import(pathToFileURL(GATE_ALL_PATH).href); } catch (e) { return kept(`importing ${GATE_ALL_PATH} failed: ${e?.message ?? e}`); }
+  if (typeof ga.rosterEstimate !== 'function') return kept(`${GATE_ALL_PATH} exports no rosterEstimate`);
+  try { ests = runs.map((a) => ga.rosterEstimate(a, { cwd })); } catch (e) { return kept(e?.message ?? String(e)); }
+  const bad = ests.find((e) => e.error); if (bad) return kept(bad.error);
+  const sec = ests.reduce((n, e) => n + e.estimatedSeconds, 0);
+  const head = `gates ${ests.map((e) => `${e.pages} page(s) × ${e.widths} width${e.widths === 1 ? '' : 's'}`).join(' + ')} ≈ ${sec} s (gate-all estimate, ${ga.ESTIMATE_SEC_PER_PAGE} s per page per width)`;
+  return sec > DEFAULT_TIMEOUT_SEC ? { timeoutSec: sec, note: `${head} — no --timeout given: deadline ${sec} s instead of the ${DEFAULT_TIMEOUT_SEC} s default` } : { timeoutSec: DEFAULT_TIMEOUT_SEC, note: `${head} — within the ${DEFAULT_TIMEOUT_SEC} s default — kept` };
 }
 
 const HELP = `Usage:
@@ -188,6 +230,9 @@ const HELP = `Usage:
   node run-bg.mjs log    <job> [--tail <n>=40] [--grep <re>]
   node run-bg.mjs clean  [--all]
   (all: [--dir <d>], default ${DEFAULT_DIR})
+  Deadline: --timeout (0 = none) is exported to the job as RUN_BG_DEADLINE_SEC. A gate-all.mjs job started without
+  --timeout gets max(${DEFAULT_TIMEOUT_SEC}, 25 s × pages × widths) — gate-all's roster estimate, summed over its invocations,
+  logged on start's stdout; an explicit --timeout is never changed, every other job keeps ${DEFAULT_TIMEOUT_SEC} s.
   Two budgets: --slots paces this project's jobs (env RUN_BG_SLOTS, else STARDUST_BROWSER_SLOTS); a browser job (gate.sh,
   gate-all.mjs, stitch-shot.mjs, the diff probes …; --lock forces, --no-lock skips) first takes a machine-wide slot from
   browser-lock.mjs — STARDUST_BROWSER_SLOTS (default 3, 0 = off) across projects, slot files in ~/.stardust/locks/browser/
@@ -338,6 +383,9 @@ async function runWrapper(dir, name) {
   if (held.timedOut) { console.log(`run-bg: ${name} ended exit=${DEADLINE_EXIT} (no machine-wide browser slot)`); process.exitCode = DEADLINE_EXIT; return; }
   // The command spawns with this env: its children run inside the job's slot and never take a second one.
   if (held.slot) { process.env.STARDUST_BROWSER_SLOTS = '0'; process.env.STARDUST_BROWSER_SLOT = held.slot.file; }
+  // The deadline (it starts at launch) is the time the command has; gate-all refuses a roster it cannot finish in it.
+  // 0 = no deadline: an inherited value stays.
+  if (st.timeoutSec > 0) process.env.RUN_BG_DEADLINE_SEC = String(st.timeoutSec);
   const run = runCapped(st.cmd, st.args, { timeoutSec: st.timeoutSec, label: name }); // spawns synchronously
   const child = childOf(process.pid);
   st = writeState(dir, { ...st, launchedAt: new Date().toISOString(), childPid: child?.pid ?? null, childStart: child?.start ?? null });
@@ -467,7 +515,7 @@ export async function clean(dir, { all = false } = {}) {
 // ---- cli ---------------------------------------------------------------------------------------
 function parse(argv) {
   const [sub, ...rest] = argv;
-  const o = { dir: process.env.RUN_BG_DIR || DEFAULT_DIR, names: [], name: null, timeoutSec: DEFAULT_TIMEOUT_SEC, slots: Number(process.env.RUN_BG_SLOTS) || Number(process.env.STARDUST_BROWSER_SLOTS) || DEFAULT_SLOTS, lock: 'auto', maxSec: DEFAULT_MAX_SEC, tail: undefined, grep: null, all: false, cmd: [] };
+  const o = { dir: process.env.RUN_BG_DIR || DEFAULT_DIR, names: [], name: null, timeoutSec: DEFAULT_TIMEOUT_SEC, timeoutGiven: false, slots: Number(process.env.RUN_BG_SLOTS) || Number(process.env.STARDUST_BROWSER_SLOTS) || DEFAULT_SLOTS, lock: 'auto', maxSec: DEFAULT_MAX_SEC, tail: undefined, grep: null, all: false, cmd: [] };
   const num = (flag, v) => { const n = Number(v); if (!Number.isFinite(n)) throw new UsageError(`run-bg: ${flag} needs a number (got ${v})\n${HELP}`); return n; };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
@@ -476,7 +524,7 @@ function parse(argv) {
     if (a === '--') { o.cmd = rest.slice(i + 1); break; }
     if (a === '--dir') o.dir = value();
     else if (a === '--name') o.name = value();
-    else if (a === '--timeout') o.timeoutSec = num(a, value());
+    else if (a === '--timeout') { o.timeoutSec = num(a, value()); o.timeoutGiven = true; }
     else if (a === '--slots') o.slots = num(a, value());
     else if (a === '--max') o.maxSec = num(a, value());
     else if (a === '--tail') o.tail = num(a, value());
@@ -498,7 +546,9 @@ async function cli(argv) {
   switch (sub) {
     case 'start': {
       const [cmd, ...args] = o.cmd;
-      const r = start(o.dir, o.name, cmd, args, { timeoutSec: o.timeoutSec, slots: o.slots, lock: o.lock });
+      const sized = await gateAllTimeout(cmd, args, { cwd: process.cwd(), given: o.timeoutGiven });
+      const r = start(o.dir, o.name, cmd, args, { timeoutSec: sized ? sized.timeoutSec : o.timeoutSec, slots: o.slots, lock: o.lock });
+      if (sized) console.log(`run-bg: ${r.name} ${sized.note}`);
       console.log(`run-bg: queued ${r.name} → ${r.log}   (next step: node stardust/scripts/replica/run-bg.mjs wait)`);
       return 0;
     }
