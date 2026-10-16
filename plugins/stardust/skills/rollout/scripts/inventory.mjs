@@ -25,7 +25,8 @@
  * not current (stopped, a hand-edited or stale document, a document gone) keeps its last
  * clean encode's sha (`encode.output.sha`) — never re-flagged on that alone — and the
  * `Not current` line names it. A sibling whose clone is still on disk is listed once, as
- * encoded (deploy stages its encoded document); the template's archetype keeps its
+ * encoded (deploy stages its encoded document) while its encode is clean — stopped, it is
+ * the A′ exception and keeps its clone row; the template's archetype keeps its
  * migrated-HTML row (deploy converts it from that HTML and never stages it). Both rules
  * are migrate's (encode/provenance.mjs encodedPageOf, currentEncode), loaded only when a
  * sidecar records an encode; without that file beside this script such a run exits 1.

@@ -7,7 +7,8 @@
 // Encoded pages (migrate's encoder: a sidecar with `encode`, the document under stardust/encoded/):
 // listed once from the sidecar, sourceHash over the encoded document (a re-encode with new bytes
 // marks a delivered page stale; a stopped, hand-edited or missing one keeps its last clean hash),
-// publicUrl from the encoded path; the archetype and clone pages keep their migrated-HTML rows.
+// publicUrl from the encoded path; the archetype and clone pages keep their migrated-HTML rows — so does a stopped
+// sibling beside its clone HTML (the A′ exception).
 // --state: a roster row (no document) carries its status when its document appears — content-pending
 // advances to pending, a status update-coverage recorded stays; the coverage lock is taken.
 // Run: node plugins/stardust/skills/rollout/scripts/test/inventory.test.mjs
@@ -129,8 +130,8 @@ check('sourceUrl: the sidecar\'s source URL, else state.json\'s by slug, else nu
 // ---- encoded pages: a project (stardust/migrated beside stardust/encoded) ------------------------------
 // The archetype (its migrated HTML is what deploy converts; the encoder also placed it), siblings the
 // encoder placed with no clone (a leaf, a folder index), a sibling with a leftover clone, a clone sibling
-// (a migrate render leaves `encode: null`), a sidecar with neither HTML nor encode, a stopped page and an
-// encode record whose document is gone. The manifest records what the encoder wrote at each path.
+// (a migrate render leaves `encode: null`), a stopped sibling with its exception clone, a sidecar with neither
+// HTML nor encode, a stopped page and an encode record whose document is gone. The manifest records what the encoder wrote at each path.
 const proj = join(root, 'proj');
 const PM = join(proj, 'stardust', 'migrated');
 const POUT = join(proj, 'stardust', 'rollout');
@@ -145,7 +146,7 @@ const encoded = (sidecarRel, doc, meta, body, { onDisk = true, status = 'clean' 
   manifest[output.path] = output.sha;
   put(join(proj, 'stardust/import/tours/manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
 };
-const DOC = { arch: '<html><main>tours, rendered</main></html>', north: '<main>north v1</main>', south: '<main>south</main>', eastClone: '<html><main>east clone</main></html>', east: '<main>east</main>', west: '<html><main>west clone</main></html>' };
+const DOC = { arch: '<html><main>tours, rendered</main></html>', north: '<main>north v1</main>', south: '<main>south</main>', eastClone: '<html><main>east clone</main></html>', east: '<main>east</main>', west: '<html><main>west clone</main></html>', except: '<html><main>except clone</main></html>' };
 put(join(PM, 'tours/index.html'), DOC.arch);
 encoded('tours/_meta.json', 'tours/index.html', { slug: 'tours', type: 'tour', renderBranch: 'A', template: null, fidelityTier: 'archetype', modules: ['hero'] }, '<main>tours</main>');
 encoded('tours/north/_meta.json', 'tours/north.html', sib('tours-north'), DOC.north);
@@ -155,6 +156,8 @@ encoded('tours/east/_meta.json', 'tours/east.html', sib('tours-east'), DOC.east)
 put(join(PM, 'tours/west/index.html'), DOC.west);
 put(join(PM, 'tours/west/_meta.json'), JSON.stringify({ ...sib('tours-west'), encode: null, audit: null }));
 put(join(PM, 'about/_meta.json'), JSON.stringify({ slug: 'about', type: 'unique', modules: [] }));
+put(join(PM, 'tours/except/index.html'), DOC.except); // migrate's render carried encode/audit into the clone's sidecar
+encoded('tours/except/_meta.json', 'tours/except.html', sib('tours-except'), '<main>except, an earlier encode</main>', { status: 'variance' });
 encoded('tours/held/_meta.json', 'tours/held.html', sib('tours-held'), '<main>held</main>', { status: 'variance' });
 encoded('tours/gone/_meta.json', 'tours/gone.html', sib('tours-gone'), '<main>gone</main>', { onDisk: false });
 const runP = (...args) => spawnSync(process.execPath, [SCRIPT, '--migrated', PM, '--out', POUT, ...args], { encoding: 'utf8' });
@@ -165,18 +168,19 @@ const e1 = runP();
 check('an encoded page is listed once, from its sidecar: path and sourceHash from the encoded document, no clone', () => {
   assert.equal(e1.status, 0, e1.stderr);
   const pages = pjson('coverage/pages.json').pages;
-  assert.deepEqual(pages.map((p) => p.slug), ['tours', 'tours-east', 'tours-gone', 'tours-held', 'tours-north', 'tours-south', 'tours-west'], 'one row per page; a sidecar with neither HTML nor encode is not a page');
+  assert.deepEqual(pages.map((p) => p.slug), ['tours', 'tours-east', 'tours-except', 'tours-gone', 'tours-held', 'tours-north', 'tours-south', 'tours-west'], 'one row per page; a sidecar with neither HTML nor encode is not a page');
   const r = rowsOf(POUT);
   assert.deepEqual(r['tours-north'].source, { migratedHtml: null, encodedHtml: join(proj, 'stardust/encoded/tours/north.html'), metaJson: join(PM, 'tours/north/_meta.json'), sourceHash: hash(DOC.north), sourceUrl: null });
   assert.equal(r['tours-north'].path, '/tours/north'); assert.equal(r['tours-north'].templateId, 'tours'); assert.equal(r['tours-north'].delivery.status, 'pending');
   assert.equal(r['tours-south'].path, '/tours/south'); assert.equal(r['tours-south'].source.sourceHash, hash(DOC.south));
   const t = pjson('coverage/templates.json').templates.find((x) => x.id === 'tours');
-  assert.equal(t.pageCount, 7); assert.equal(t.representativeSlug, 'tours');
+  assert.equal(t.pageCount, 8); assert.equal(t.representativeSlug, 'tours');
 });
 check('the archetype and a clone sibling keep their migrated-HTML rows; a sibling the encoder placed over a leftover clone is listed once, as encoded', () => {
   const r = rowsOf(POUT);
   assert.deepEqual(r.tours.source, { migratedHtml: join(PM, 'tours/index.html'), metaJson: join(PM, 'tours/_meta.json'), sourceHash: hash(DOC.arch), sourceUrl: null }, 'deploy converts the archetype from its migrated HTML; it is never staged from the encoder');
   assert.deepEqual(r['tours-west'].source, { migratedHtml: join(PM, 'tours/west/index.html'), metaJson: join(PM, 'tours/west/_meta.json'), sourceHash: hash(DOC.west), sourceUrl: null });
+  assert.deepEqual(r['tours-except'].source, { migratedHtml: join(PM, 'tours/except/index.html'), metaJson: join(PM, 'tours/except/_meta.json'), sourceHash: hash(DOC.except), sourceUrl: null }, 'a stopped sibling beside its clone is a clone page: the exception is converted, never skipped as a stopped encode');
   assert.equal(r['tours-east'].source.migratedHtml, null); assert.equal(r['tours-east'].source.encodedHtml, join(proj, 'stardust/encoded/tours/east.html'));
   assert.equal(r['tours-east'].source.sourceHash, hash(DOC.east), 'the encoded document, not the clone'); assert.equal(r['tours-east'].path, '/tours/east');
 });

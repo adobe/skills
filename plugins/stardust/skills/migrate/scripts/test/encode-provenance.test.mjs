@@ -21,8 +21,9 @@
 //   modules       a clean encode keeps migrate's modules[] true: the sorted unique block names (created sidecars
 //                 included); the same blocks write nothing, a block the map adds shows up, a stop leaves the list;
 //                 the archetype's non-empty list is the model's and stays (R40) — an empty one is filled
-//   encodedPageOf the shared R30 rule: a sibling with an encode is encoded (old clone or not), the archetype only
-//                 without a migrated HTML; a render's encode: null, a path outside stardust/encoded/ or with .. → null
+//   encodedPageOf the shared rule: a sibling with an encode is encoded — beside a clone HTML only while its status is
+//                 clean (a stopped one is the A′ exception: a clone page); the archetype only without a migrated
+//                 HTML; a render's encode: null, a path outside stardust/encoded/ or with .. → null
 //   currentEncode the shared reader's verdicts: current (by URL, or from the sidecar alone), stopped with a stale
 //                 document, stale (a hand edit under a clean status), missing (no document; a render's encode: null)
 //
@@ -102,6 +103,9 @@ try {
   assert.deepEqual([currentEncode({ root: T, sidecarPath: 'stardust/migrated/elsewhere._meta.json' }).kind, currentEncode({ root: T, sidecarPath: 'stardust/migrated/elsewhere._meta.json' }).ok], ['missing', false], 'a rendered sidecar (encode: null) is no encoded page');
   assert.deepEqual(encodedPageOf(ss), { docPath: DOC[S1], rel: 'trips/forest-loop.html', archetype: A, isArchetype: false }, 'encodedPageOf: a sibling');
   assert.deepEqual(encodedPageOf(ss, { hasHtml: true }), encodedPageOf(ss), '… still encoded beside an old clone HTML');
+  const stoppedS = { ...ss, audit: { ...ss.audit, encode: { ...ss.audit.encode, status: 'variance' } } };
+  assert.deepEqual(encodedPageOf(stoppedS), encodedPageOf(ss), 'a stopped sibling without a clone stays encoded (staging skips it)');
+  for (const v of [stoppedS, { ...ss, audit: null }]) assert.equal(encodedPageOf(v, { hasHtml: true }), null, 'a sibling beside a clone HTML whose encode is not clean is a clone page — the A′ exception stays deliverable');
   assert.deepEqual(encodedPageOf(sa), { docPath: DOC[A], rel: 'trips/river-walk.html', archetype: A, isArchetype: true }, 'the archetype without a migrated HTML is encoded');
   assert.equal(encodedPageOf(sa, { hasHtml: true }), null, 'the archetype beside its migrated HTML stays a migrated page');
   const bySlug = { ...sa, fidelityTier: null, renderBranch: null };
