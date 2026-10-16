@@ -4,6 +4,37 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.34.5 — replica self-hosts the source's brand faces; chrome-parity hides in-flow bars; cap-probe lists unpaired modules
+
+A recorded ten-page hands-off run passed all four gated archetypes at both widths, but three of its six register
+entries and most residual pixels came from one cause — the substituted brand face — and two probes misbehaved:
+chrome-parity read a per-visitor bar as an offset on all chrome text, and cap-probe failed a module pair that
+compared two different things.
+
+- **replica follows deploy § 4 principle 2 from the archetype on (#133, extends #80).** The source's brand faces
+  are self-hosted as-is (the files the live site serves, same weights and styles); the brand family stays first in
+  every stack and a metric-matched substitute is only the fallback entry; proprietary faces raise deploy's
+  licensing alert (banner, `fonts/LICENSING.md` at delivery, the hand-off message) plus ONE deferred register entry
+  for all of them. The substitute had cost calibration iterations (derived font files with digit-width and
+  ascent/descent overrides) and still re-wrapped paragraphs (+56 px on one archetype, line-count changes on
+  others). The gate's pass bar treats a font fork as a defect (usually a face that did not load), never a justified
+  substitute; the eval's `font_policy` criterion follows.
+- **chrome-parity `--hide <sel,…>` and `--presence <file> --slug <slug>`** remove in-flow per-visitor regions (a
+  location-suggestion bar above the header) on both sides after the settle, before measuring, and record them
+  (`hidden live:` / `hidden build:`, JSON `hidden`); `--dismiss` clears overlays only. The bar had read as −88 px
+  at 1440 and −268 px at 360 on all chrome text, logged as a residual on every archetype. `gate.sh --hide` reaches
+  chrome-parity under `--full`, and gate.sh passes gate-all's `presence.json` (its own regime's table first).
+  chrome-parity imports playwright lazily (its `--help` and pure parts need no browser) and has a contract test.
+- **cap-probe lists an implausible module pair as `○ unpaired`** — widths more than 40 % apart AND different cap
+  elements (tag or role) — instead of failing it; the verdict line names
+  `modules scored <s> of <n>[, <u> unpaired]`; fewer than half paired → `INCONCLUSIVE` (exit 0, a note to check
+  `--main` / `--build-main`), while a failing wrapper/content-cap row still FAILs. Recorded: a FAIL the agent had
+  to label an artifact — module 4/4 paired a live pagination list (552 px) with a build media column (280 px).
+
+Minor in substance: the replica font rule changes behaviour (a substitute becomes a self-hosted brand face with a
+licensing alert). Numbered 0.34.5 provisionally — 0.35.0 is reserved; renumber at PR time if main moved. The probe
+changes add flags and output fields; no threshold, gate row or capture change.
+
 ## 0.34.4 — roster gates sized to their deadline; an older gate table never reverts a newer verdict
 
 A recorded 100-page hands-off run lost about 58 minutes to discarded roster gates (run-bg's 900 s default deadline
