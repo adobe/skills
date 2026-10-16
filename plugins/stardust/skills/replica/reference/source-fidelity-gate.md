@@ -229,12 +229,12 @@ bar item can be traded for a documented residual; this cannot
    EDS section wrappers are full width by design), nothing capped only on
    the prototype; a ✗ names the sizing rule (deploy Step 3 scaffold; re-lift
    per `recreation-procedure.md` § Lift the sizing MODEL), never a pixel
-   iteration. A module pair whose widths differ by more than 40 % AND whose
-   cap elements differ (tag or role) is listed `○ unpaired`, not scored, and
-   the verdict names the scored count; fewer than half paired →
-   `INCONCLUSIVE` (exit 0; its note: check that `--main` / `--build-main`
-   name matching content roots), never a FAIL on module evidence — the
-   wrapper/content-cap row still decides.
+   iteration. A module pair whose widths differ by more than 40 % of the
+   wider AND whose cap elements differ (tag or role) is listed `○ unpaired`,
+   not scored, and the verdict names the scored count; fewer than half
+   paired → `INCONCLUSIVE` (exit 0; its note: check that `--main` /
+   `--build-main` name matching content roots), never a FAIL on module
+   evidence — the wrapper/content-cap row still decides.
    Evidence: `stardust/replica/gates/<slug>-<probeWidth>/cap-<label>.{json,txt}`.
 
 **Calibration honesty — two fidelity regimes, one bar.** The validated

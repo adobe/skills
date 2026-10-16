@@ -274,7 +274,8 @@ node stardust/scripts/replica/run-bg.mjs start --name <slug>-360-iter1 -- \
   stardust/scripts/replica/gate.sh <slug> "$LIVE" "$PROTO" 360 iter1 --full --main "<content-root>"
 # A consent manager the built-in candidates miss: add --consent "<accept selector>" to every gate.sh
 # round — it reaches both stitched captures and the probes alike (gate doc § Hardening rule 6).
-# In-flow per-visitor bar above the header (location suggestion): --hide "<sel>" on --full rounds → chrome-parity (presence.json variable regions too).
+# In-flow per-visitor bar above the header (location suggestion): --hide "<sel>" on --full
+# rounds → chrome-parity (presence.json variable regions too).
 node stardust/scripts/replica/run-bg.mjs wait      # verdict lines: pixel %, height delta, hot bands, structural 🔴, flags, chrome deltas
 
 # Iteration inner loop (gate doc § Band breakdown): anchor probe + pixel round
@@ -310,8 +311,8 @@ a verdict; 0 only when all four ran and passed).
 - **content-cap row: `cap-probe.mjs … --against` prints `cap-probe: PASS`**
   (gate doc § Pass bar item 6 — every live cap held within ±20 px by kind,
   nothing capped only on the prototype; a ✗ names the sizing rule, no pixel iteration;
-  `INCONCLUSIVE` is no FAIL — the wrapper row decided: record its note and re-run
-  once with matching `--main` / `--build-main` when the roots differ);
+  `INCONCLUSIVE` is no FAIL — the wrapper/content-cap row decided: record its note
+  and re-run once with matching `--main` / `--build-main` when the roots differ);
 - **clip-probe: `Clipped: 0`** on the build side (a `--full` round runs it; cut or hidden
   text / controls fail the round like an over-threshold pixel diff — #125); a
   declared repeated-unit family (`stardust/replica/units.json`, gate doc item 7)
