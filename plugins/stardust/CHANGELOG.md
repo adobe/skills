@@ -25,15 +25,16 @@ compared two different things.
   at 1440 and −268 px at 360 on all chrome text, logged as a residual on every archetype. `gate.sh --hide` reaches
   chrome-parity under `--full`, and gate.sh passes gate-all's `presence.json` (its own regime's table first).
   chrome-parity imports playwright lazily (its `--help` and pure parts need no browser) and has a contract test.
-- **cap-probe lists an implausible module pair as `○ unpaired`** — widths more than 40 % apart AND different cap
-  elements (tag or role) — instead of failing it; the verdict line names
+- **cap-probe lists an implausible module pair as `○ unpaired`** — widths differing by more than 40 % of the wider
+  AND different cap elements (tag or role) — instead of failing it; the verdict line names
   `modules scored <s> of <n>[, <u> unpaired]`; fewer than half paired → `INCONCLUSIVE` (exit 0, a note to check
   `--main` / `--build-main`), while a failing wrapper/content-cap row still FAILs. Recorded: a FAIL the agent had
   to label an artifact — module 4/4 paired a live pagination list (552 px) with a build media column (280 px).
 
 Minor in substance: the replica font rule changes behaviour (a substitute becomes a self-hosted brand face with a
-licensing alert). Numbered 0.34.5 provisionally — 0.35.0 is reserved; renumber at PR time if main moved. The probe
-changes add flags and output fields; no threshold, gate row or capture change.
+licensing alert). Numbered 0.34.5 provisionally — 0.35.0 is reserved; renumber at PR time if main moved.
+chrome-parity and gate.sh add flags and output fields; cap-probe stops failing implausible pairs and gains
+INCONCLUSIVE; no threshold or capture change.
 
 ## 0.34.4 — roster gates sized to their deadline; an older gate table never reverts a newer verdict
 
