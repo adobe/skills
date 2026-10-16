@@ -50,25 +50,27 @@
  * live side (fail loud — never measured).
  *
  * Requires: playwright, and the diff skill's scripts dir alongside
- * (live-session.mjs — the replica Setup copies both). Each run is one live
+ * (live-session.mjs — the replica Setup copies both); both are imported
+ * inside main(), so --help and the exported pure functions (parseArgs,
+ * cacheKey, compareRegion) need neither. Each run is one live
  * navigation — budget it like any live probe; --json records both sides as
  * the round's evidence.
  */
 
 /* eslint-disable import/no-extraneous-dependencies, import/extensions, no-await-in-loop, no-restricted-syntax, brace-style, object-curly-newline, max-len, no-plusplus, no-continue */
-import { chromium } from 'playwright';
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
+import { existsSync, readFileSync, realpathSync, writeFileSync, mkdirSync } from 'fs';
 import { dirname, resolve as resolvePath } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const LIVE_SESSION = ['../../diff/scripts/live-session.mjs', '../diff/live-session.mjs']
-  .map((p) => resolvePath(HERE, p)).find((p) => existsSync(p));
-if (!LIVE_SESSION) {
-  console.error('chrome-parity error: live-session.mjs not found (looked in ../../diff/scripts/ and ../diff/). Copy the diff skill\'s scripts dir alongside this one (replica SKILL.md § Setup).');
-  process.exit(1);
+async function loadLiveSession() {
+  const found = ['../../diff/scripts/live-session.mjs', '../diff/live-session.mjs'].map((p) => resolvePath(HERE, p)).find((p) => existsSync(p));
+  if (!found) throw new Error('live-session.mjs not found (looked in ../../diff/scripts/ and ../diff/). Copy the diff skill\'s scripts dir alongside this one (replica SKILL.md § Setup).');
+  return import(pathToFileURL(found).href);
 }
-const { isLiveHttpUrl, launchStealthHeaded, newLiveContext, gotoLive, dismissOverlays, defaultWaitUntil } = await import(pathToFileURL(LIVE_SESSION).href);
+
+/** A usage error: the CLI prints the message and the usage text, exit 1. */
+export class UsageError extends Error { constructor(msg) { super(msg); this.code = 1; } }
 
 const HELP = `chrome-parity — computed-style + rect diff of matched chrome elements (live vs build)
 
@@ -87,9 +89,8 @@ Usage: node chrome-parity.mjs <liveURL> <buildURL> [options]
 
 Exit codes: 0 parity within tolerance, 2 deltas printed, 1 error, 3 bot challenge (live side).`;
 
-function parseArgs(argv) {
-  const rest = argv.slice(2);
-  if (rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
+/** argv after the script path → { live, build, opts }; throws UsageError. --help is answered by main() before this. */
+export function parseArgs(rest) {
   const pos = [];
   const opts = { regions: [], noDefaults: false, width: 1440, tolerance: 1, consent: null, dismiss: [], headed: false, locale: null, json: false, liveCache: null };
   for (let i = 0; i < rest.length; i += 1) {
@@ -97,7 +98,7 @@ function parseArgs(argv) {
     if (a === '--region') {
       const spec = rest[i += 1] || '';
       const m = spec.match(/^([\w-]+)=([^|]+)(?:\|(.+))?$/);
-      if (!m) { console.error(`bad --region "${spec}" — expected name=<liveSel>[|<buildSel>]\n\n${HELP}`); process.exit(1); }
+      if (!m) throw new UsageError(`bad --region "${spec}" — expected name=<liveSel>[|<buildSel>]`);
       opts.regions.push({ name: m[1], live: m[2].trim(), build: (m[3] || m[2]).trim() });
     }
     else if (a === '--no-defaults') { opts.noDefaults = true; }
@@ -109,7 +110,7 @@ function parseArgs(argv) {
     else if (a === '--locale') { opts.locale = rest[i += 1]; }
     else if (a === '--json') { opts.json = true; }
     else if (a === '--live-cache') { opts.liveCache = rest[i += 1]; }
-    else if (a.startsWith('--')) { console.error(`unknown flag ${a}\n\n${HELP}`); process.exit(1); }
+    else if (a.startsWith('--')) { throw new UsageError(`unknown flag ${a}`); }
     else pos.push(a);
   }
   if (!opts.noDefaults) {
@@ -117,9 +118,9 @@ function parseArgs(argv) {
     const defaults = [{ name: 'header', live: 'header', build: 'header' }, { name: 'footer', live: 'footer', build: 'footer' }].filter((d) => !have.has(d.name));
     opts.regions = [defaults[0], ...opts.regions, ...defaults.slice(1)].filter(Boolean);
   }
-  if (!opts.regions.length) { console.error(`--no-defaults needs at least one --region\n\n${HELP}`); process.exit(1); }
+  if (!opts.regions.length) throw new UsageError('--no-defaults needs at least one --region');
   const [live, build] = pos;
-  if (!live || !build) { console.error(`need <liveURL> and <buildURL>\n\n${HELP}`); process.exit(1); }
+  if (!live || !build) throw new UsageError('need <liveURL> and <buildURL>');
   return { live, build, opts };
 }
 
@@ -194,7 +195,7 @@ function pairAtoms(live, build) {
   return { pairs, missing, extra };
 }
 
-function compareRegion(name, L, B, tol) {
+export function compareRegion(name, L, B, tol) {
   const r = { name, findings: [], pairs: 0 };
   if (!L.found || !B.found) {
     r.findings.push({ kind: 'REGION', msg: `${!L.found ? `live: no element matches "${L.sel}"` : ''}${!L.found && !B.found ? '; ' : ''}${!B.found ? `build: no element matches "${B.sel}"` : ''} — pass --region ${name}=<liveSel>|<buildSel>` });
@@ -244,7 +245,8 @@ async function settleTop(page) {
   await page.waitForTimeout(500);
 }
 
-async function probeSide(browser, url, opts, isLive) {
+async function probeSide(browser, session, url, opts, isLive) {
+  const { isLiveHttpUrl, newLiveContext, gotoLive, dismissOverlays, defaultWaitUntil } = session;
   const ctx = await newLiveContext(browser, { locale: opts.locale, viewport: { width: opts.width, height: 900 } });
   const page = await ctx.newPage();
   await gotoLive(page, url, { waitUntil: defaultWaitUntil(url), settleMs: isLiveHttpUrl(url) ? 2500 : 1200, solveWindow: opts.headed && isLive });
@@ -259,7 +261,7 @@ async function probeSide(browser, url, opts, isLive) {
 // --live-cache: the live side's probe result keyed on URL + width + live
 // selectors. A key mismatch re-probes and overwrites (never measures a stale
 // site or the wrong breakpoint silently).
-function cacheKey(live, opts) { return { url: live, width: opts.width, regions: opts.regions.map((r) => `${r.name}=${r.live}`) }; }
+export function cacheKey(live, opts) { return { url: live, width: opts.width, regions: opts.regions.map((r) => `${r.name}=${r.live}`) }; }
 function readLiveCache(file, live, opts) {
   if (!file || !existsSync(file)) return null;
   try {
@@ -269,19 +271,23 @@ function readLiveCache(file, live, opts) {
   } catch (e) { console.error(`chrome-parity: --live-cache ${file} unreadable (${e.message}) — re-probing live`); return null; }
 }
 
-async function main() {
-  const { live, build, opts } = parseArgs(process.argv);
-  const browser = opts.headed ? await launchStealthHeaded(chromium) : await chromium.launch();
+async function main(args) {
+  if (args.includes('--help') || args.includes('-h')) { console.log(HELP); return 0; }
+  const { live, build, opts } = parseArgs(args);
+  let chromium;
+  try { ({ chromium } = await import('playwright')); } catch (e) { throw new Error(`playwright is not importable from ${HERE} (${e.code || e.message}) — replica SKILL.md § Setup: copy the scripts dir into the project and run the copy`); }
+  const session = await loadLiveSession();
+  const browser = opts.headed ? await session.launchStealthHeaded(chromium) : await chromium.launch();
   let total = 0;
   try {
     const cached = readLiveCache(opts.liveCache, live, opts);
-    const L = cached ? cached.data : await probeSide(browser, live, opts, true);
+    const L = cached ? cached.data : await probeSide(browser, session, live, opts, true);
     if (opts.liveCache && !cached) {
       mkdirSync(dirname(opts.liveCache), { recursive: true });
       writeFileSync(opts.liveCache, JSON.stringify({ key: cacheKey(live, opts), probedAt: new Date().toISOString(), data: L }, null, 2));
     }
     const liveNote = cached ? ` (live side from cache ${opts.liveCache}, probed ${cached.probedAt} — delete the file to re-probe)` : '';
-    const B = await probeSide(browser, build, opts, false);
+    const B = await probeSide(browser, session, build, opts, false);
     const regions = opts.regions.map((reg) => compareRegion(reg.name, L[reg.name], B[reg.name], opts.tolerance));
     total = regions.reduce((n, r) => n + r.findings.length, 0);
     if (opts.json) {
@@ -298,8 +304,15 @@ async function main() {
   } finally {
     await browser.close();
   }
-  process.exit(total ? 2 : 0);
+  return total ? 2 : 0;
 }
 
+// Compare by real path: a symlinked checkout or temp dir must not turn the CLI into a silent no-op.
+function safeRealpath(p) { try { return realpathSync(p); } catch { return p; } }
 // exit 3 = bot challenge on the live side (fail loud, never measured).
-main().catch((e) => { console.error(`chrome-parity error: ${e.message}`); process.exit(e.name === 'BotChallengeError' ? 3 : 1); });
+if (process.argv[1] && fileURLToPath(import.meta.url) === safeRealpath(process.argv[1])) {
+  main(process.argv.slice(2)).then((code) => process.exit(code), (e) => {
+    if (e instanceof UsageError) { console.error(`${e.message}\n\n${HELP}`); process.exit(e.code); }
+    console.error(`chrome-parity error: ${e.message}`); process.exit(e.name === 'BotChallengeError' ? 3 : 1);
+  });
+}
