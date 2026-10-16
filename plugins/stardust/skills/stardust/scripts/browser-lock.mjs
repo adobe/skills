@@ -5,7 +5,9 @@
  * Ported from the `stardust/next` branch (commits 2a8a596f, a970535a, 890e09d3); adapted: an unparseable slot file
  * younger than 5 s is a holder still being written — counted and kept, deleted only when older — and acquire keeps a
  * slot only while its file exists after the re-census (the file is written in place, so its mtime is when it appeared).
- * On this branch the holder is `replica/scripts/run-bg.mjs`'s job wrapper: one slot per browser job.
+ * On this branch the holder is `replica/scripts/run-bg.mjs`'s job wrapper: one slot per browser job. It waits without a
+ * limit unless STARDUST_BROWSER_WAIT is set (a holder is a whole job, up to its 900 s deadline, and slots are not FIFO);
+ * the 600 s default below is for CLI and other API holders.
  *
  * Parallel gate rounds across projects on one machine were killed by the OS for
  * memory (64 kills in 9 projects); a raw Chromium process count is not a usable
@@ -20,8 +22,8 @@
  * still being written (unparseable, younger than 5 s); otherwise it is
  * stale, deleted and re-used. Above budget `acquire` WAITS — one stderr line at
  * 0:00 and every 30 s, `waiting-slot` appended to $STARDUST_PROGRESS_LOG when set
- * (an append-only progress log) — and after STARDUST_BROWSER_WAIT (600 s) exits
- * 124: the no-verdict code, never a FAIL (gate.sh already treats 124 as
+ * (an append-only progress log) — and after STARDUST_BROWSER_WAIT (600 s; `--wait`, API `waitS`, Infinity = no limit)
+ * exits 124: the no-verdict code, never a FAIL (gate.sh already treats 124 as
  * abort-the-round). A launch gate, not a quality gate: it runs before the first
  * navigation and changes no threshold.
  *

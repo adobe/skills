@@ -4,7 +4,8 @@
 // deadline (124), verdict-line extraction, duplicate-name refusal, pid identity (a recycled pid is lost, holds no
 // slot, is never signalled), the value-flag swallow rule, log/clean (--all stops wrapper + instrument), and the
 // machine-wide browser slot a browser job takes through browser-lock.mjs (temp STARDUST_BROWSER_LOCK_DIR): peak
-// holders within STARDUST_BROWSER_SLOTS, no slot in time = exit 124, --lock/--no-lock, a dead holder reclaimed.
+// holders within STARDUST_BROWSER_SLOTS, a wait without a limit by default (lockWaitS), no slot within a set
+// STARDUST_BROWSER_WAIT = exit 124, --lock/--no-lock, a dead holder reclaimed.
 // Run: node plugins/stardust/skills/replica/scripts/test/run-bg.test.mjs   (about 25 s)
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
@@ -12,7 +13,7 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdir
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { BROWSER_SCRIPTS, DEFAULT_SLOTS, MAX_CEILING_SEC, STILL_RUNNING_EXIT, VERDICT_RE, isBrowserJob } from '../run-bg.mjs';
+import { BROWSER_SCRIPTS, DEFAULT_SLOTS, MAX_CEILING_SEC, STILL_RUNNING_EXIT, VERDICT_RE, isBrowserJob, lockWaitS } from '../run-bg.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'run-bg.mjs');
@@ -270,7 +271,26 @@ await check('a slot-holding job runs with STARDUST_BROWSER_SLOTS=0 (its children
     assert.ok(m, `b${i} printed its slot`); assert.equal(m[1], '0'); assert.equal(m[2], st.lockFile); assert.equal(dirname(m[2]), LOCKS, m[2]);
   }
 });
-await check('no machine-wide slot within STARDUST_BROWSER_WAIT: queued while it waits, then exit 124 (lockTimeout, no verdict) and the command never runs', async () => {
+await check('lockWaitS: a job waits for its machine-wide slot without a limit unless STARDUST_BROWSER_WAIT is set to seconds ≥ 0', () => {
+  for (const v of [undefined, '', ' ', 'x', '-1']) assert.equal(lockWaitS(v === undefined ? {} : { STARDUST_BROWSER_WAIT: v }), Infinity, JSON.stringify(v));
+  assert.equal(lockWaitS({ STARDUST_BROWSER_WAIT: '2' }), 2); assert.equal(lockWaitS({ STARDUST_BROWSER_WAIT: '0' }), 0);
+});
+await check('STARDUST_BROWSER_WAIT unset: a job stays queued behind a foreign holder past the moment a bounded wait would end, then runs once the slot is released (exit 0, never 124)', async () => {
+  const holder = spawn('sleep', ['60']);
+  try {
+    assert.equal(lockCli({ STARDUST_BROWSER_SLOTS: '1' }, 'acquire', '--pid', String(holder.pid), '--script', 'foreign').status, 0);
+    assert.equal(run({ STARDUST_BROWSER_SLOTS: '1' }, 'start', '--name', 'patient', '--lock', '--', process.execPath, '-e', SLOT_JOB(0)).code, 0);
+    for (let i = 0; i < 30 && !state('patient').lockWaitFrom; i += 1) await sleep(100); // eslint-disable-line no-await-in-loop
+    await sleep(2500); // longer than the 2 s bound the next check sets
+    assert.match(bg('status', 'patient').out, /^patient {2}queued \d+s \(waiting for a machine-wide browser slot — browser-lock\.mjs status\)$/m);
+    assert.equal(lockCli({}, 'release', '--pid', String(holder.pid)).status, 0);
+    const w = bg('wait', '--max', '20', 'patient'); assert.equal(w.code, 0, w.out);
+    const st = state('patient'); const log = readFileSync(join(dir, 'patient.log'), 'utf8');
+    assert.equal(st.exit, 0, log); assert.equal(st.lockTimeout ?? false, false); assert.ok(st.lockWaitSec >= 2, `lockWaitSec ${st.lockWaitSec}`);
+    assert.match(log, /^browser-lock: waiting for a slot \(1\/1 held by pid \d+ foreign/m); assert.doesNotMatch(log, /no slot within/);
+  } finally { holder.kill('SIGKILL'); lockCli({}, 'release', '--all'); }
+});
+await check('no machine-wide slot within a set STARDUST_BROWSER_WAIT: queued while it waits, then exit 124 (lockTimeout, no verdict) and the command never runs', async () => {
   const holder = spawn('sleep', ['60']);
   try {
     const a = lockCli({ STARDUST_BROWSER_SLOTS: '1' }, 'acquire', '--pid', String(holder.pid), '--script', 'foreign');

@@ -58,8 +58,12 @@
  *        ~/.stardust/locks/browser/ (env STARDUST_BROWSER_LOCK_DIR), at most
  *        STARDUST_BROWSER_SLOTS (default 3; 0 = off) at once, released when the
  *        job ends. While it waits the job stays queued (later jobs of its dir
- *        queue behind it); no slot within STARDUST_BROWSER_WAIT (600 s) ends it
- *        with exit 124 — no verdict, the command never ran. The command and its
+ *        queue behind it) — without a limit, like this dir's own queue: a
+ *        holder is a whole job (deadline --timeout, 900 s), longer than
+ *        browser-lock's 600 s per-process wait, and the job's own deadline only
+ *        starts at launch. STARDUST_BROWSER_WAIT (seconds), when set, bounds the
+ *        wait: no slot within it ends the job with exit 124 — no verdict, the
+ *        command never ran. The command and its
  *        children run inside the job's slot (env STARDUST_BROWSER_SLOTS=0,
  *        STARDUST_BROWSER_SLOT=<slot file>). Without browser-lock.mjs the job
  *        runs unlocked after one log line saying so.
@@ -110,9 +114,9 @@
  *
  * Per-job exit codes are the instrument's (gate.sh: 0 PASS, 2 FAIL, 3 bot
  * challenge, 4 identity, 1 error); 124 = deadline, or no machine-wide browser
- * slot in time — no verdict, re-run.
+ * slot within a set STARDUST_BROWSER_WAIT — no verdict, re-run.
  *
- * Also importable: start(), wait(), status(), alive(), phase(), isBrowserJob(), BROWSER_SCRIPTS, report helpers — see the tests.
+ * Also importable: start(), wait(), status(), alive(), phase(), isBrowserJob(), lockWaitS(), BROWSER_SCRIPTS, report helpers — see the tests.
  */
 
 /* eslint-disable no-restricted-syntax, brace-style, object-curly-newline, max-len */
@@ -187,8 +191,9 @@ const HELP = `Usage:
   Two budgets: --slots paces this project's jobs (env RUN_BG_SLOTS, else STARDUST_BROWSER_SLOTS); a browser job (gate.sh,
   gate-all.mjs, stitch-shot.mjs, the diff probes …; --lock forces, --no-lock skips) first takes a machine-wide slot from
   browser-lock.mjs — STARDUST_BROWSER_SLOTS (default 3, 0 = off) across projects, slot files in ~/.stardust/locks/browser/
-  (STARDUST_BROWSER_LOCK_DIR); no slot within STARDUST_BROWSER_WAIT (600 s) = exit 124, no verdict. On a large machine
-  raise STARDUST_BROWSER_SLOTS (the machine budget): RUN_BG_SLOTS above it adds no browser jobs.`;
+  (STARDUST_BROWSER_LOCK_DIR); the job waits for it queued, without a limit unless STARDUST_BROWSER_WAIT <s> is set (no
+  slot within it = exit 124, no verdict). On a large machine raise STARDUST_BROWSER_SLOTS (the machine budget):
+  RUN_BG_SLOTS above it adds no browser jobs.`;
 
 class UsageError extends Error { constructor(msg, code = 125) { super(msg); this.code = code; } }
 const sleep = (ms) => new Promise((r) => { setTimeout(r, ms); });
@@ -282,9 +287,19 @@ export function start(dir, name, cmd, args, { timeoutSec = DEFAULT_TIMEOUT_SEC, 
   return { name, log: logPath(dir, name), wrapperPid: child.pid };
 }
 
+// How long a job waits for its machine-wide slot: without a limit (Infinity) unless the owner sets STARDUST_BROWSER_WAIT.
+// The holder is a whole job (deadline DEFAULT_TIMEOUT_SEC) and slots are not FIFO, so browser-lock's 600 s default — meant
+// for a CLI holder — would end waiters with 124 while every holder is still inside its deadline; this dir's queue waits too.
+export function lockWaitS(env = process.env) {
+  const v = env.STARDUST_BROWSER_WAIT;
+  const s = v === undefined || String(v).trim() === '' ? NaN : Number(v);
+  return Number.isFinite(s) && s >= 0 ? s : Infinity;
+}
+
 // The machine-wide browser slot for a browser job (lock on, or auto and the argv names a browser instrument).
 // Resolves { st, slot } (slot null = unlocked: not a browser job, STARDUST_BROWSER_SLOTS=0, browser-lock.mjs absent or
-// failing) or { st, timedOut: true } when browser-lock gave up (exit 124). Records lockWaitFrom / lockFile / lockWaitSec.
+// failing) or { st, timedOut: true } when browser-lock gave up (exit 124 — only under a set STARDUST_BROWSER_WAIT).
+// Records lockWaitFrom / lockFile / lockWaitSec.
 async function machineSlot(dir, st) {
   const lock = st.lock ?? 'auto';
   if (lock === 'off' || (lock === 'auto' && !isBrowserJob(st.cmd, st.args))) return { st, slot: null };
@@ -294,7 +309,7 @@ async function machineSlot(dir, st) {
   let slot = null;
   try {
     const { acquire } = await import(pathToFileURL(mod).href);
-    slot = await acquire({ pid: process.pid, script: st.name, project: st.cwd }); // an API holder: keeps its file fresh itself
+    slot = await acquire({ pid: process.pid, script: st.name, project: st.cwd, waitS: lockWaitS() }); // an API holder: keeps its file fresh itself
   } catch (e) {
     if (e?.code !== DEADLINE_EXIT) { console.log(`run-bg: browser-lock.mjs failed (${e?.message ?? e}) — ${st.name} runs without a machine-wide browser slot`); return { st, slot: null }; }
     console.error(e.message);
