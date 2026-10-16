@@ -36,6 +36,10 @@
  * sitemap and verify this way). Such a row gives way only when the migrated tree now
  * holds a file for its slug, or a migrated page owns its path.
  *
+ * A sidecar's `variance` object (the sibling-variance verdict recorded on a cloned
+ * sibling, or why it was skipped) is copied verbatim to the row's `source.variance`;
+ * the key is absent when the sidecar carries no such object.
+ *
  * Usage:
  *   node skills/rollout/scripts/inventory.mjs [--migrated <dir>] [--out <rolloutDir>] [--site-url <url>] [--state <state.json>]
  *   defaults: --migrated stardust/migrated  --out stardust/rollout
@@ -179,6 +183,7 @@ for (const relHtml of htmlFiles) {
       metaJson: existsSync(join(MIGRATED, sidecarRel)) ? join(MIGRATED, sidecarRel) : null,
       sourceHash,
       sourceUrl: (meta.source && meta.source.url) || meta.sourceUrl || stateUrls.get(slug) || null,
+      ...(meta.variance && typeof meta.variance === 'object' && !Array.isArray(meta.variance) ? { variance: meta.variance } : {}),
     },
     blocks: Array.isArray(meta.modules) ? meta.modules : [],
     delivery,
