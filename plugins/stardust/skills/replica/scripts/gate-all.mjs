@@ -27,6 +27,9 @@
  * regions); repeated units come from stardust/replica/units.json (unit-geometry.mjs header; a legacy
  * <out>/units.json per page still reads). Origin fallback: live stitch → previous origin
  * (--recapture-origin) → <crawl-shots>/<slug>.png (`crawl-fullpage`, asymmetric, flagged).
+ * Origin reuse: fix rounds (--only, --recapture-eds) and the published stage (gates/<slug>-<w>/live.png + a matching
+ * live.json) reuse origin captures of THIS run — at or after the last rollout A-inventory / replica extract start in
+ * stardust/status.jsonl (--origin-max-age: older ones too); the row (`originReused`), origin.json and _run.log record it.
  *
  * REUSE (--skip-existing only; every reuse is printed in the row as `reused`, never silent). Origin captures in the
  * page dir are reused as before; an EDS capture only while its <slug>/gate-key.json proves it current (below).
@@ -50,7 +53,7 @@
  *
  * Usage: node skills/replica/scripts/gate-all.mjs [--stage published|prototype] [--proto-base <url>]
  *        [--state f] [--out dir] [--width 1440] [--only <slug,…>] [--skip-existing] [--recapture-eds] [--recapture-origin] [--eds-host <h>]
- *        [--blocked <re>] [--try-blocked] [--crawl-shots <dir>] [--origin-concurrency 2]
+ *        [--blocked <re>] [--try-blocked] [--crawl-shots <dir>] [--origin-max-age <h>] [--origin-concurrency 2]
  *        [--eds-concurrency 4] [--probe-concurrency 2] [--threshold 10] [--height-tol 0.05]
  *        [--clip-max 0] [--unit-tol 4] [--no-clip] [--no-content] [--no-probes] [--units <f>]
  *        [--compare-only] [--warmup <url>] [--vh <px>]
@@ -63,7 +66,7 @@
  */
 import { execFileSync, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { DEFAULT_OUT as FREEZE_MANIFEST, DEFAULT_PATHS as FOUNDATION_PATHS, snapshot } from './foundation-freeze.mjs';
@@ -83,8 +86,10 @@ Usage: node gate-all.mjs [options]   (from the project root)
                             only while <slug>/gate-key.json proves it current (same key, or unknown
                             key with the same tree, reason, upstream, ledger rows); no local
                             content/<page>.html → nothing to compare → re-shot every run (slower)
-  --recapture-eds           (with --skip-existing) re-shoot eds.png only
-  --recapture-origin        re-shoot origin.png (previous kept on failure)
+  --recapture-eds           re-shoot eds.png only; the origin is reused while fresh (always with --skip-existing)
+  --recapture-origin        re-shoot origin.png even when fresh (previous kept on failure)
+  --origin-max-age <h>      also reuse origin captures from earlier runs up to <h> hours old (env
+                            STARDUST_ORIGIN_MAX_AGE_H; default: this run's captures only)
   --eds-host <host>         gate a code branch host against the same content
   --blocked <regex>         origins the edge denies → crawl shot unless --try-blocked
   --try-blocked             attempt the live stitch on --blocked origins too
@@ -105,7 +110,7 @@ Exit: 0 all PASS (overrides count), 2 any FAIL, 1 error.`;
 export function parseArgs(argv) {
   const rest = argv.slice(2);
   if (rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
-  const o = { stage: 'published', protoBase: null, state: 'stardust/state.json', out: null, width: 1440, only: null, skip: false, recaptureEds: false, recaptureOrigin: false, edsHost: null, blocked: null, tryBlocked: false, crawlShots: 'stardust/current/assets/screenshots', oc: 2, ec: 4, pc: 2, threshold: 10, heightTol: 0.05, clipMax: 0, unitTol: 4, clip: true, content: true, units: null, compareOnly: false, warmup: null, vh: null };
+  const o = { stage: 'published', protoBase: null, state: 'stardust/state.json', out: null, width: 1440, only: null, skip: false, recaptureEds: false, recaptureOrigin: false, edsHost: null, blocked: null, tryBlocked: false, crawlShots: 'stardust/current/assets/screenshots', oc: 2, ec: 4, pc: 2, originMaxAge: null, threshold: 10, heightTol: 0.05, clipMax: 0, unitTol: 4, clip: true, content: true, units: null, compareOnly: false, warmup: null, vh: null };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i]; const v = () => rest[++i];
     if (a === '--stage') { o.stage = v(); if (!['published', 'prototype'].includes(o.stage)) { console.error(`--stage must be published or prototype\n\n${HELP}`); process.exit(1); } }
@@ -114,6 +119,7 @@ export function parseArgs(argv) {
     else if (a === '--only') o.only = v().split(',').map((s) => s.trim()).filter(Boolean);
     else if (a === '--skip-existing') o.skip = true; else if (a === '--recapture-eds') o.recaptureEds = true; else if (a === '--recapture-origin') o.recaptureOrigin = true;
     else if (a === '--eds-host') o.edsHost = v().replace(/\/$/, ''); else if (a === '--blocked') o.blocked = new RegExp(v()); else if (a === '--try-blocked') o.tryBlocked = true; else if (a === '--crawl-shots') o.crawlShots = v();
+    else if (a === '--origin-max-age') { o.originMaxAge = Number(v()); if (!(o.originMaxAge >= 0)) { console.error(`--origin-max-age must be a number of hours >= 0\n\n${HELP}`); process.exit(1); } }
     else if (a === '--origin-concurrency') o.oc = Number(v()); else if (a === '--eds-concurrency') o.ec = Number(v()); else if (a === '--probe-concurrency') o.pc = Number(v());
     else if (a === '--threshold') o.threshold = Number(v()); else if (a === '--height-tol') o.heightTol = Number(v()); else if (a === '--clip-max') o.clipMax = Number(v()); else if (a === '--unit-tol') o.unitTol = Number(v());
     else if (a === '--no-clip') o.clip = false; else if (a === '--no-content') o.content = false; else if (a === '--no-probes') { o.clip = false; o.content = false; }
@@ -459,6 +465,37 @@ const STITCH = join(HERE, 'stitch-shot.mjs');
 const PIXEL = join(HERE, 'pixel-compare.mjs');
 const DIFF_DIR = firstExisting(['../../diff/scripts', '../diff']);
 const { unitsFor } = DIFF_DIR ? await import(pathToFileURL(join(DIFF_DIR, 'unit-geometry.mjs')).href) : { unitsFor: () => [] };
+const FRESH = DIFF_DIR ? await import(pathToFileURL(join(DIFF_DIR, 'live-session.mjs')).href) : null;
+
+// ---- origin reuse (pure): `fresh` = live-session.mjs freshness() of the capture's `at` ---------------------------
+/** May a fix round keep <out>/<slug>/origin.png? → { reuse, why } (why = the policy when reused). */
+export function originReusePlan({ stage, only, recaptureEds, recaptureOrigin, url, width, vh }, prev, fresh) {
+  const no = (why) => ({ reuse: false, why });
+  if (stage !== 'published') return no(`${stage} stage`);
+  if (recaptureOrigin) return no('--recapture-origin');
+  if (!((only && only.length) || recaptureEds)) return no('full round');
+  if (!prev) return no('no previous origin capture');
+  if (prev.instrument !== 'stitch-live' || prev.error) return no(`previous origin is ${prev.instrument}${prev.error ? ` (${prev.error})` : ''}`);
+  if (prev.url !== url) return no(`url changed (${prev.url})`);
+  if ((prev.width ?? width) !== width) return no(`width ${prev.width}`);
+  if ((prev.locale ?? 'en-US') !== 'en-US') return no(`locale ${prev.locale}`);
+  if ((prev.vh ?? null) !== (vh ?? null)) return no(`vh ${prev.vh ?? 'default'}`);
+  if (!fresh || !fresh.fresh) return no((fresh && fresh.reason) || 'no freshness verdict');
+  return { reuse: true, why: fresh.policy };
+}
+/** May the published stage take the archetype round's gates/<slug>-<w>/live.png? `liveMeta` = its live.json (gate.sh). */
+export function liveReusePlan({ stage, recaptureOrigin, url, width }, liveMeta, fresh) {
+  const no = (why) => ({ reuse: false, why });
+  if (stage !== 'published') return no(`${stage} stage`);
+  if (recaptureOrigin) return no('--recapture-origin');
+  if (!liveMeta) return no('no live.json');
+  if (liveMeta.url !== url || liveMeta.width !== width) return no('live.json url / width differ');
+  if (liveMeta.locale !== 'en-US') return no(`live.json locale ${liveMeta.locale}`);
+  if (!liveMeta.dismiss || liveMeta.dismiss.off !== false) return no('live.json overlays not dismissed');
+  if (!fresh || !fresh.fresh) return no((fresh && fresh.reason) || 'no freshness verdict');
+  return { reuse: true, why: fresh.policy };
+}
+
 const readJson = (p, d = null) => (existsSync(p) ? JSON.parse(readFileSync(p, 'utf8')) : d);
 
 function run(cmd, args, { timeoutMs = 480000 } = {}) {
@@ -475,7 +512,7 @@ const lastLine = (s) => (s || '').trim().split('\n').filter(Boolean).pop() || ''
 
 async function main() {
   const opts = parseArgs(process.argv);
-  const runStart = new Date().toISOString();
+  const startedAt = new Date().toISOString(); // this process's start (gate-key.json); runStart below is the run anchor
   if (!existsSync(opts.state)) { console.error(`gate-all: ${opts.state} not found — run from the project root or pass --state`); process.exit(1); }
   if ((opts.clip || opts.content) && !DIFF_DIR) { console.error('gate-all: the diff skill\'s scripts dir was not found next to this one (../../diff/scripts or ../diff) — copy it (replica SKILL.md § Setup) or pass --no-probes'); process.exit(1); }
   const state = readJson(opts.state);
@@ -492,6 +529,15 @@ async function main() {
   const UNITS = readJson(opts.units || join(opts.out, 'units.json'), {});
   const unitsOf = (p) => (FAMILIES ? unitsFor(FAMILIES, p.slug, p.template) : ((UNITS[p.slug] || {}).units || []).map((x) => ({ origin: x.origin, eds: x.eds || x.origin, n: x.n || 1, required: x.required !== false })));
   const log = (s) => { const line = `${new Date().toISOString()} ${s}`; console.log(line); writeFileSync(join(opts.out, '_run.log'), `${line}\n`, { flag: 'a' }); };
+  // One run anchor per process (every row of the run judged against it); --origin-max-age reaches the probes via the env.
+  const ledger = join(dirname(opts.state), 'status.jsonl');
+  const runStart = FRESH ? FRESH.runStartAt({ ledger }) : null;
+  const maxAgeH = opts.originMaxAge ?? (FRESH ? FRESH.maxAgeHours() : null);
+  if (opts.originMaxAge != null) process.env.STARDUST_ORIGIN_MAX_AGE_H = String(opts.originMaxAge);
+  const fresh = (m) => (FRESH ? FRESH.freshness(m, { runStart, maxAgeH, ledger }) : { fresh: false, policy: null, reason: 'no freshness policy (diff scripts dir not found)' });
+  const reuseOf = (from, m, policy) => ({ ...(FRESH ? FRESH.reuseRecord(from, m, { policy }) : { reused: true, from, at: m.at, policy }), reusedAt: new Date().toISOString() });
+  const tryJson = (f) => { try { return readJson(f); } catch { return null; } };
+  log(`origin reuse: ${!FRESH ? 'off (live-session.mjs not found in the diff scripts dir)' : runStart ? `same run since ${runStart}` : `no run anchor in ${ledger} (reuse only with --origin-max-age)`}${FRESH && maxAgeH ? `; captures up to ${maxAgeH}h old` : ''}`);
   const dir = (p) => join(opts.out, p.slug);
   const edsUrl = (p) => (opts.edsHost ? p.liveUrl.replace(/^https?:\/\/[^/]+/, opts.edsHost) : p.liveUrl);
   const results = {};
@@ -501,23 +547,39 @@ async function main() {
   async function captureOrigin(p) {
     const d = dir(p); mkdirSync(d, { recursive: true });
     const out = join(d, 'origin.png'); const meta = join(d, 'origin.json');
-    if (skipCapture(p, 'origin', capCtx)) { rec(p, 'origin', readJson(meta)); return; }
+    const keep = (r, line) => { writeFileSync(meta, JSON.stringify(r, null, 2)); rec(p, 'origin', r); log(line); };
+    if (skipCapture(p, 'origin', capCtx)) {
+      // --skip-existing never recaptures; the reuse is recorded, with a WARN when the capture predates the run
+      const kept = readJson(meta); const f = fresh(kept);
+      keep({ ...kept, ...reuseOf(out, kept, 'skip-existing'), stale: f.fresh ? undefined : f.reason }, `origin ${p.slug} → reused (--skip-existing)${f.fresh ? ` (captured ${kept.at}; ${f.policy})` : ` WARN ${f.reason}`}`);
+      return;
+    }
+    // a fix round keeps this run's origin (originReusePlan); the capture time `at` is kept, the reuse added
+    const prev = existsSync(out) && existsSync(meta) ? tryJson(meta) : null;
+    const plan = originReusePlan({ stage: opts.stage, only: opts.only, recaptureEds: opts.recaptureEds, recaptureOrigin: opts.recaptureOrigin, url: p.url, width: opts.width, vh: opts.vh }, prev, prev && fresh(prev));
+    if (plan.reuse) { keep({ ...prev, stale: undefined, ...reuseOf(out, prev, plan.why) }, `origin ${p.slug} → reused ${out} (captured ${prev.at}; ${plan.why})`); return; }
+    if (prev && (opts.only || opts.recaptureEds) && opts.stage === 'published') log(`origin ${p.slug} → not reused (${plan.why})`);
     const crawlShot = join(opts.crawlShots, `${p.slug}.png`);
     const cachedLive = join('stardust/replica/gates', `${p.slug}-${opts.width}`, 'live.png');
+    const lm = existsSync(cachedLive) ? tryJson(cachedLive.replace(/\.png$/, '.json')) : null;
+    const lp = liveReusePlan({ stage: opts.stage, recaptureOrigin: opts.recaptureOrigin, url: p.url, width: opts.width }, lm, lm && fresh(lm));
     let r;
-    if (opts.stage === 'prototype' && existsSync(cachedLive)) { copyFileSync(cachedLive, out); r = { instrument: 'stitch-live', note: `reused ${cachedLive} (the archetype round's capture — hit minimisation)` }; }
+    if (opts.stage === 'prototype' && existsSync(cachedLive)) { copyFileSync(cachedLive, out); r = { instrument: 'stitch-live', note: `reused ${cachedLive} (the archetype round's capture — hit minimisation)`, ...reuseOf(cachedLive, { at: (lm && lm.at) || statSync(cachedLive).mtime.toISOString() }, 'prototype-stage') }; }
+    else if (lp.reuse) { copyFileSync(cachedLive, out); r = { instrument: 'stitch-live', url: p.url, width: opts.width, locale: 'en-US', headed: false, ...reuseOf(cachedLive, lm, lp.why), note: 'archetype round capture (gate.sh; bundled Chromium — the EDS side\'s tier in legacy mode)' }; }
     else if (opts.blocked && opts.blocked.test(p.url) && !opts.tryBlocked) {
       if (existsSync(crawlShot)) { copyFileSync(crawlShot, out); r = { instrument: 'crawl-fullpage', asymmetric: true, note: `origin matches --blocked ${opts.blocked}; crawl screenshot used (lazy rails may be placeholders)` }; }
       else r = { instrument: 'none', error: `origin blocked and no crawl shot at ${crawlShot}` };
     } else {
       const s = await run('node', [...stitchArgs(p.url, out), '--headed']);
-      if (s.code === 0) r = { instrument: 'stitch-live', url: p.url, log: s.out.trim().split('\n').slice(-2) };
+      if (s.code === 0) r = { instrument: 'stitch-live', url: p.url, width: opts.width, locale: 'en-US', vh: opts.vh || null, headed: true, log: s.out.trim().split('\n').slice(-2) };
       else if (existsSync(out) && existsSync(meta) && opts.recaptureOrigin) r = { ...readJson(meta), note: `re-shoot failed (exit ${s.code}: ${lastLine(s.err)}) — previous origin kept` };
       else if (existsSync(crawlShot)) { copyFileSync(crawlShot, out); r = { instrument: 'crawl-fullpage', asymmetric: true, note: `stitch exit ${s.code}: ${lastLine(s.err)} — crawl screenshot used` }; }
       else r = { instrument: 'none', error: `stitch exit ${s.code}: ${lastLine(s.err)}` };
     }
-    r.at = new Date().toISOString(); writeFileSync(meta, JSON.stringify(r, null, 2)); rec(p, 'origin', r);
-    log(`origin ${p.slug} → ${r.instrument}${r.error ? ` ERROR ${r.error}` : ''}`);
+    if (!r.at) r.at = new Date().toISOString(); // a reuse keeps its capture time: the evidence time
+    if (!r.reused) rmSync(join(d, 'presence-origin.json'), { force: true }); // a new origin capture → a new presence inventory
+    writeFileSync(meta, JSON.stringify(r, null, 2)); rec(p, 'origin', r);
+    log(`origin ${p.slug} → ${r.instrument}${r.reused ? ` reused ${r.from} (captured ${r.at}; ${r.policy})` : ''}${r.error ? ` ERROR ${r.error}` : ''}`);
   }
   async function captureEds(p) {
     const d = dir(p); mkdirSync(d, { recursive: true });
@@ -587,6 +649,7 @@ async function main() {
       if (pr.variable && pr.variable.length) args.push('--variable', pr.variable.join(','));
       if (pr.main) args.push('--main', pr.main);
       if (opts.warmup) args.push('--warmup', opts.warmup);
+      args.push('--origin-cache', join(d, 'presence-origin.json'));
       const s = await run('node', args);
       const content = readJson(join(d, 'content.json'));
       if (content && (s.code === 0 || s.code === 2)) recordContent(p, content, pr);
@@ -646,7 +709,7 @@ async function main() {
     // gate-key.json = the key of the EDS capture taken in this run (null while unknown or when the capture failed).
     for (const p of todo) {
       const k = KEYS[p.slug]; const m = readSafe(join(dir(p), 'eds.json'));
-      if (k && m && m.at >= runStart) writeFileSync(join(dir(p), 'gate-key.json'), JSON.stringify({ gateKey: m.error ? null : k.gateKey, why: m.error ? `EDS capture failed: ${m.error}` : k.why, parts: k.parts, upstream: k.upstream, deployed: k.deployed, at: m.at }, null, 1));
+      if (k && m && m.at >= startedAt) writeFileSync(join(dir(p), 'gate-key.json'), JSON.stringify({ gateKey: m.error ? null : k.gateKey, why: m.error ? `EDS capture failed: ${m.error}` : k.why, parts: k.parts, upstream: k.upstream, deployed: k.deployed, at: m.at }, null, 1));
     }
   } else for (const p of todo) for (const side of ['origin', 'eds']) { const m = readJson(join(dir(p), `${side}.json`)); if (m) rec(p, side, m); }
   if (opts.clip || opts.content || FAMILIES || Object.keys(UNITS).length) await pool(todo, opts.pc, probe);
@@ -657,6 +720,7 @@ async function main() {
     const r = results[p.slug] || {}; const px = r.pixel || {};
     const v = verdict({ pixel: px, clip: r.clip && r.clip.counts ? r.clip : null, content: r.content || null, units: r.units || null, override: OVERRIDES[p.slug] || null, allowance: (CLIP_ALLOW[p.slug] || {}).max || 0 }, { threshold: opts.threshold, heightTol: opts.heightTol, clipMax: opts.clipMax, clipOn: opts.clip, contentOn: opts.content });
     return { slug: p.slug, path: p.deployedPath || new URL(p.liveUrl).pathname, template: p.template, tier: p.fidelityTier, origin: r.origin && r.origin.instrument, originAsymmetric: !!(r.origin && r.origin.asymmetric), eds: r.eds && r.eds.instrument,
+      originReused: r.origin && r.origin.reused ? { from: r.origin.from, at: r.origin.at, policy: r.origin.policy, stale: r.origin.stale || null } : null,
       pct: px.pct ?? null, textPct: px.textPct ?? null, heightDelta: px.heightDelta ?? null, ...v,
       clipGroups: r.clip && r.clip.groups ? r.clip.groups.filter((g) => !g.advisory).slice(0, 6) : [], clipAllowReason: (CLIP_ALLOW[p.slug] || {}).reason || null,
       content: r.content && r.content.totals ? { missing: r.content.totals.missing, hidden: r.content.totals.hidden, controlState: r.content.totals.controlState, missingButtons: r.content.totals.missingButtons, hiddenButtons: r.content.totals.hiddenButtons, findings: r.content.totals.findings, scope: r.content.scope, variable: r.content.variable } : null,
@@ -671,6 +735,7 @@ async function main() {
     failPixel: n((r) => r.pct != null && !r.pixelPass), failHeight: n((r) => r.pct != null && !r.heightPass), failClip: n((r) => r.clipPass === false), failContent: n((r) => r.contentPass === false), failUnits: n((r) => r.unitPass === false), contentNA: n((r) => r.contentNA), asymmetricOrigins: n((r) => r.originAsymmetric), degradedTier: n((r) => r.browser && r.browser !== 'chrome'),
     reusedRows: n((r) => r.reused && r.reused.what === 'row'), reusedProbes: n((r) => r.reused && r.reused.what === 'probes') };
   totals.passWithOverrides = totals.pass + totals.overridePass;
+  totals.originReused = n((r) => r.originReused);
   const originHost = (() => { try { return new URL(pages[0].url).origin; } catch { return null; } })();
   const summary = { _provenance: { writtenBy: 'gate-all.mjs', writtenAt: new Date().toISOString(), stage: opts.stage, breakpoint: opts.width, threshold: opts.threshold, heightTolerance: opts.heightTol, clipMax: opts.clipMax, unitTol: opts.unitTol, criteria: { pixel: true, height: true, clip: opts.clip, content: opts.content }, verdict: `overlap pixel % ≤ ${opts.threshold} AND |Δh| ≤ ${Math.round(opts.heightTol * 100)}% of origin height${opts.clip ? ` AND clipped ≤ ${opts.clipMax} (+ documented allowance)` : ''}${opts.content ? ' AND content MISSING + HIDDEN links/headings = 0' : ''}`, origin: originHost, eds: opts.edsHost || (() => { try { return new URL(pages[0].liveUrl).origin; } catch { return null; } })(), edsHostOverride: opts.edsHost || null, only: opts.only, reuse: { rows: totals.reusedRows, probes: totals.reusedProbes } }, totals, rows };
   const md = formatSummary(summary);
