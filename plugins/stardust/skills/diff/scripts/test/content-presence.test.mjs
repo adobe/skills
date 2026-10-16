@@ -7,15 +7,17 @@
 // text, scope = whole page when one side lacks <main>, chrome items excluded by default; formatReport lines;
 // --help in an empty cwd; --origin-cache: originCacheKey (field order, stability) and parseArgs, and where
 // playwright is importable an e2e write-then-read of the origin side (0 origin requests on a hit, a key mismatch
-// measures). Run: node <this file>.
+// measures; a blank origin render is measured but never cached). One load (gate-all --one-load): presenceReport has
+// main's keys, blankRender, inventoryPage / inventoryToFile (the hook's scroll protocol, the file, failures never
+// throw) over a stand-in page. Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { alignHeadings, diffPresence, formatReport, originCacheKey, parseArgs } from '../content-presence.mjs';
+import { alignHeadings, blankRender, diffPresence, formatReport, inventoryPage, inventorySide, inventoryToFile, originCacheKey, parseArgs, presenceReport } from '../content-presence.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'content-presence.mjs');
@@ -109,6 +111,71 @@ check('--origin-cache: parseArgs takes the file (default null); originCacheKey h
   assert.notDeepEqual(originCacheKey(parseArgs(argv('--width', '360'))), originCacheKey(parseArgs(argv())));
 });
 
+// ---- one load (gate-all --one-load): the report and inventory exports ------------------------------------------
+const sideInv = (items, extra = {}) => ({ url: 'https://x.test/', at: '2026-01-01T00:00:00.000Z', status: 200, settlePasses: 2, ...inv(items), clip: { counts: { total: 0 }, groups: [], findings: [] }, textBoxes: [], ...extra });
+check('presenceReport: exactly the keys main writes (via content-presence by default, one-load when given); a stitch-taken side says settle', () => {
+  const o = sideInv([it('heading', 'H', 10, { level: 1 }), it('link', 'A', 20, { href: '/a' })]); const e = sideInv([it('heading', 'H', 10, { level: 1 })]);
+  const r = presenceReport(o, e, { width: 1440, variable: ['.rail'], tier: 'chrome' });
+  assert.deepEqual(Object.keys(r), ['_provenance', 'origin', 'eds', 'bands', 'findings', 'totals', 'textBoxes']);
+  assert.deepEqual(Object.keys(r._provenance), ['writtenBy', 'at', 'width', 'variable', 'tier', 'originCache', 'via']);
+  assert.deepEqual(Object.keys(r.origin), ['url', 'at', 'status', 'settlePasses', 'docH', 'root', 'items', 'clip']);
+  assert.equal(r._provenance.via, 'content-presence'); assert.equal(r._provenance.originCache, null); assert.equal(r.totals.missing, 1);
+  assert.deepEqual(r.totals, diffPresence(o, e).totals); assert.deepEqual(r.eds.clip, e.clip, 'the served side keeps its findings');
+  const s = presenceReport({ ...o, settle: 'stitch' }, { ...e, settle: 'stitch' }, { width: 1440, via: 'one-load' });
+  assert.equal(s._provenance.via, 'one-load'); assert.equal(s.origin.settle, 'stitch'); assert.equal(s.eds.settle, 'stitch');
+});
+check('blankRender: fewer than 3 visible in-scope items (root when there is one, chrome left out) is a blank render', () => {
+  const three = [it('heading', 'H', 10, { level: 1 }), it('text', 'Body text', 20), it('link', 'A', 30, { href: '/a' })];
+  assert.equal(blankRender(inv(three)), false);
+  assert.equal(blankRender(inv(three.slice(0, 2))), true);
+  assert.equal(blankRender(inv([...three.slice(0, 2), it('link', 'Nav', 5, { inChrome: true })])), true, 'chrome does not count');
+  assert.equal(blankRender(inv([...three.slice(0, 2), it('link', 'Hidden', 40, { state: 'hidden' })])), true, 'clipped items do not count');
+  assert.equal(blankRender(inv([...three.slice(0, 2), it('link', 'Outside', 40, { inRoot: false })])), true, 'outside the root does not count');
+  assert.equal(blankRender(inv([...three.slice(0, 2), it('link', 'Whole page', 40, { inRoot: null })], null)), false, 'no root: the whole page');
+});
+// A stand-in page: evaluate() answers by function name and records the hook's sequence.
+const fakePage = (seq, { y = 1234, fail = null } = {}) => ({
+  context: () => ({ browser: () => ({ stardustTier: 'chrome' }) }),
+  waitForTimeout: async (ms) => { seq.push(`wait ${ms}`); },
+  evaluate: async (f, a) => {
+    const src = String(f);
+    if (fail && src.includes(fail)) throw new Error(`${fail} exploded`);
+    if (src.includes('presenceInventoryInPage')) { seq.push('presence'); return { docH: 3000, pageW: 1440, root: 'main', items: [it('heading', 'H', 10, { level: 1 })] }; }
+    if (src.includes('clipInventoryInPage')) { seq.push('clip'); return { docH: 3000, pageW: 1440, counts: { total: 1 }, findings: [{ kind: 'TEXT CLIPPED', path: 'p', clipper: 'div', cut: 3 }], textBoxes: [{ x: 0, y: 0, w: 1, h: 1 }] }; }
+    if (src.includes('unitInventoryInPage')) { seq.push(`unit ${JSON.parse(src.slice(src.lastIndexOf('({"sel":') + 1, src.lastIndexOf('); })()'))).sel}`); return { sel: '.card', matches: 1, units: [] }; }
+    if (src.includes('scrollTo')) { seq.push(`scrollTo ${a ?? 0}`); return undefined; }
+    if (src.includes('scrollY')) { seq.push('scrollY'); return y; }
+    return undefined;
+  },
+});
+const hookDir = mkdtempSync(join(tmpdir(), 'content-presence-hook-'));
+const specOf = (o = {}) => { const f = join(hookDir, `spec-${Object.keys(o).join('-') || 'all'}.json`); writeFileSync(f, JSON.stringify({ out: join(hookDir, 'inv.json'), side: 'origin', presence: { rootSel: null, variableSels: [] }, clip: { minCut: 2, maxFindings: 400 }, units: { sels: ['.card'], n: 2 }, ...o })); return f; };
+await (async () => {
+  const seq0 = []; const r0 = await inventoryPage(fakePage(seq0), { clip: { minCut: 2, maxFindings: 400 } });
+  check('inventoryPage / inventoryToFile are exported; inventoryPage takes only the blocks given (no presence: docH from the clip pass)', () => {
+    assert.equal(typeof inventoryPage, 'function'); assert.equal(typeof inventoryToFile, 'function'); assert.equal(typeof inventorySide, 'function');
+    assert.deepEqual(seq0, ['clip']); assert.deepEqual(Object.keys(r0), ['docH', 'pageW', 'clip', 'textBoxes']); assert.equal(r0.clip.groups[0].kind, 'TEXT CLIPPED');
+  });
+  const seq = []; const d = await inventoryToFile(fakePage(seq), specOf(), { url: 'https://x.test/' });
+  check('inventoryToFile: top of the page, 600 ms, presence → clip → units, back to where the page was, 300 ms; the file is the inventory + its spec', () => {
+    assert.deepEqual(seq, ['scrollY', 'scrollTo 0', 'wait 600', 'presence', 'clip', 'unit .card', 'scrollTo 1234', 'wait 300']);
+    const f = JSON.parse(readFileSync(join(hookDir, 'inv.json'), 'utf8'));
+    assert.deepEqual(f, JSON.parse(JSON.stringify(d)));
+    assert.deepEqual(Object.keys(f), ['url', 'side', 'at', 'docH', 'tier', 'settle', 'status', 'settlePasses', 'pageW', 'root', 'items', 'clip', 'textBoxes', 'units', 'spec']);
+    assert.equal(f.tier, 'chrome'); assert.equal(f.settle, 'stitch'); assert.equal(f.status, null); assert.equal(f.side, 'origin'); assert.equal(f.docH, 3000);
+    assert.deepEqual(f.units, { n: 2, bySel: { '.card': { sel: '.card', matches: 1, units: [] } } }); assert.deepEqual(f.spec.units, { sels: ['.card'], n: 2 });
+  });
+  const seq2 = []; const e = await inventoryToFile(fakePage(seq2, { fail: 'clipInventoryInPage' }), specOf({ side: 'eds' }), { url: 'https://e.test/' });
+  check('inventoryToFile: an in-page failure writes { url, side, at, error }, still scrolls back, never throws', () => {
+    assert.deepEqual(Object.keys(e), ['url', 'side', 'at', 'error']); assert.match(e.error, /clipInventoryInPage exploded/); assert.equal(e.side, 'eds');
+    assert.deepEqual(seq2.slice(-2), ['scrollTo 1234', 'wait 300']);
+    assert.deepEqual(JSON.parse(readFileSync(join(hookDir, 'inv.json'), 'utf8')), JSON.parse(JSON.stringify(e)));
+  });
+  const u = await inventoryToFile(fakePage([]), join(hookDir, 'missing.json'), { url: 'https://x.test/' });
+  check('inventoryToFile: an unreadable spec returns { error } and writes nothing', () => { assert.ok(u.error); assert.deepEqual(readdirSync(hookDir).filter((f) => f.startsWith('missing')), []); });
+})();
+rmSync(hookDir, { recursive: true, force: true });
+
 let playwright = true;
 try { await import('playwright'); } catch { playwright = false; }
 if (!playwright) console.log('skip  e2e --origin-cache (playwright not importable here)');
@@ -116,13 +183,13 @@ else {
   const acheck = async (name, fn) => { try { await fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${String(e.message).split('\n').join('\n  ')}`); } };
   const PAGE = (extra) => `<!doctype html><html><body style="margin:0;font:16px Arial"><header><a href="/">Home</a></header><main><h1>Offers</h1><p>Weekly offers for every store.</p><a href="/a">All offers</a>${extra}</main><footer>f</footer></body></html>`;
   const hits = {};
-  const server = createServer((req, res) => { const p = req.url.split('?')[0]; hits[p] = (hits[p] || 0) + 1; res.setHeader('content-type', 'text/html'); res.end(p === '/origin' ? PAGE('<a href="/b">Store finder</a>') : PAGE('')); });
+  const server = createServer((req, res) => { const p = req.url.split('?')[0]; hits[p] = (hits[p] || 0) + 1; res.setHeader('content-type', 'text/html'); res.end(p === '/origin' ? PAGE('<a href="/b">Store finder</a>') : p === '/blank' ? '<!doctype html><html><body></body></html>' : PAGE('')); });
   await new Promise((r) => { server.listen(0, '127.0.0.1', r); });
   const base = `http://127.0.0.1:${server.address().port}`;
   const cwd = mkdtempSync(join(tmpdir(), 'content-presence-cache-'));
   const cache = join(cwd, 'o.json');
-  const run = (args) => new Promise((done) => {
-    const ch = spawn(process.execPath, [SCRIPT, `${base}/origin`, `${base}/eds`, '--plain', '--width', '900', '--settle-passes', '1', '--origin-cache', cache, ...args], { cwd, env: { ...process.env, STARDUST_ORIGIN_MAX_AGE_H: '1' } });
+  const run = (args, origin = 'origin') => new Promise((done) => {
+    const ch = spawn(process.execPath, [SCRIPT, `${base}/${origin}`, `${base}/eds`, '--plain', '--width', '900', '--settle-passes', '1', '--origin-cache', cache, ...args], { cwd, env: { ...process.env, STARDUST_ORIGIN_MAX_AGE_H: '1' } });
     let out = ''; let err = ''; ch.stdout.on('data', (d) => { out += d; }); ch.stderr.on('data', (d) => { err += d; }); ch.on('close', (code) => done({ code, out, err }));
   });
   let first = null;
@@ -147,7 +214,16 @@ else {
     assert.match(r3.out, /origin side measured \(cache: key mismatch \(rootSel\)\)/);
     assert.equal(JSON.parse(readFileSync(cache, 'utf8')).key.rootSel, 'body');
   });
+  await acheck('e2e: a blank origin render (200, nothing rendered) is measured but never cached — the next run measures it again', async () => {
+    const blankCache = join(cwd, 'blank.json');
+    const r4 = await run(['--origin-cache', blankCache], 'blank');
+    assert.equal(r4.code, 0, r4.err); assert.match(r4.out, /origin side measured \(cache: absent\) — not cached \(blank render\)/);
+    assert.equal(existsSync(blankCache), false);
+    const r5 = await run(['--origin-cache', blankCache], 'blank');
+    assert.match(r5.out, /origin side measured \(cache: absent\) — not cached/); assert.equal(hits['/blank'], 2);
+  });
   server.close(); rmSync(cwd, { recursive: true, force: true });
+
 }
 console.log(failed ? `\n${failed} failed` : '\nall passed');
 process.exit(failed ? 1 : 0);

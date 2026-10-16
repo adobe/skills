@@ -23,7 +23,7 @@
  *        [--json [<file>]] [--max-findings 400] [--advisory] [--more-words <regex>] [--plain]
  *        [--warmup <url>] [--locale en-US]
  * Exit: 0 nothing counted, 2 counted findings, 1 error, 3 bot challenge. Requires playwright.
- * `clipInventoryInPage`, `IN_PAGE_LIB`, `inPage`, `summarize`, `formatTable` are exported.
+ * `clipInventoryInPage`, `IN_PAGE_LIB`, `inPage`, `summarize`, `formatTable`, `clipReport` are exported.
  */
 import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
@@ -334,11 +334,17 @@ export function parseArgs(argv) {
   return opts;
 }
 
+/** The CLI's JSON object for one inventory ({ docH, pageW, counts, findings, textBoxes }); gate-all --one-load builds
+ * clip.json with it from a stitch's inventory. `tier` undefined keeps its slot for main to fill. */
+export function clipReport(inv, { url, width, status = null, settlePasses = null, tier, at = new Date().toISOString() } = {}) {
+  return { url, at, width, status, settlePasses, ...inv, groups: summarize(inv.findings), tier };
+}
+
 /** Load + settle a page and run the inventory (shared with gate-all's --no-content path). */
 export async function probe(page, url, opts) {
   const v = await visit(page, url, { warmup: opts.warmup });
   const inv = await page.evaluate(inPage(clipInventoryInPage, { minCut: opts.minCut, rootSel: opts.main, maxFindings: opts.maxFindings }, morePrelude(opts.moreWords)));
-  return { url, at: new Date().toISOString(), width: opts.width, status: v.status, settlePasses: v.passes, ...inv, groups: summarize(inv.findings) };
+  return clipReport(inv, { url, width: opts.width, status: v.status, settlePasses: v.passes });
 }
 
 async function main() {

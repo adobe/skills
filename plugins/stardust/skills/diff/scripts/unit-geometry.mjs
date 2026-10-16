@@ -28,7 +28,7 @@
  *        [--plain] [--warmup <url>] [--locale en-US]
  * Exit: 0 within tolerance (or nothing declared), 2 a required unit off / hidden / missing, 1 error,
  * 3 bot challenge. `unitInventoryInPage`, `alignUnit`, `keyed`, `compareUnits`, `formatUnits`,
- * `verdictOf`, `unitsFor`, `originCacheUsable` are exported.
+ * `verdictOf`, `unitsFor`, `originCacheUsable`, `unitsReport` are exported.
  */
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -267,6 +267,13 @@ function originCacheMiss(cached, opts, verdict) {
 }
 export const originCacheUsable = (cached, opts, verdict) => !originCacheMiss(cached, opts, verdict);
 
+/** main's JSON object for two inventories ({ url, at, docH, bySel } each) and the declared pairs; gate-all --one-load
+ * builds units.json with it from the stitches' inventories. */
+export function unitsReport(oInv, eInv, units, { tol, n, width, tier, originCache = null }) {
+  const results = units.map((pair) => compareUnits(oInv, eInv, pair, tol));
+  return { _provenance: { writtenBy: 'unit-geometry.mjs', at: new Date().toISOString(), tol, n, width, tier }, origin: { url: oInv.url, at: oInv.at, docH: oInv.docH }, originCache, eds: { url: eInv.url, at: eInv.at, docH: eInv.docH }, results, verdict: verdictOf(results) };
+}
+
 async function main() {
   const opts = parseArgs(process.argv);
   if (!opts.units.length) { console.log(`unit-geometry: none declared for ${opts.slug} in ${opts.families} → n/a`); return; }
@@ -296,9 +303,8 @@ async function main() {
     }
     eInv = await measureUnits(browser, opts.eds, opts.units.map((u) => u.eds), { width: opts.width, locale: opts.locale, warmup: null, n: opts.n });
   } finally { await browser.close(); }
-  const results = opts.units.map((pair) => compareUnits(oInv, eInv, pair, opts.tol));
-  const v = verdictOf(results);
-  const out = { _provenance: { writtenBy: 'unit-geometry.mjs', at: new Date().toISOString(), tol: opts.tol, n: opts.n, width: opts.width, tier }, origin: { url: opts.origin, at: oInv.at, docH: oInv.docH }, originCache, eds: { url: opts.eds, at: eInv.at, docH: eInv.docH }, results, verdict: v };
+  const out = unitsReport(oInv, eInv, opts.units, { tol: opts.tol, n: opts.n, width: opts.width, tier, originCache });
+  const { results, verdict: v } = out;
   if (opts.json && !opts.jsonFile) console.log(JSON.stringify(out, null, 1));
   else {
     console.log(`unit-geometry @ ${opts.width}px, tol ${opts.tol}px — ${opts.origin} vs ${opts.eds}`);

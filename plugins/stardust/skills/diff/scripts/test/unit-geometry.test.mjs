@@ -8,12 +8,12 @@
 // written per width and reused while fresh, an empty origin inventory is never cached. Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readdirSync, realpathSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { alignUnit, compareUnits, formatUnits, keyed, originCacheUsable, parseArgs, verdictOf } from '../unit-geometry.mjs';
+import { alignUnit, compareUnits, formatUnits, keyed, originCacheUsable, parseArgs, unitsReport, verdictOf } from '../unit-geometry.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'unit-geometry.mjs');
@@ -82,6 +82,16 @@ check('originCacheUsable: the origin cache is used only for the same URL, width 
   ];
   for (const [name, c, v, want] of table) assert.equal(originCacheUsable(c, opts, v), want, name);
 });
+// main's --json keys (gate-all --one-load writes units.json with unitsReport from the stitches' inventories).
+const MAIN_KEYS = ['_provenance', 'origin', 'originCache', 'eds', 'results', 'verdict'];
+check('unitsReport: main\'s JSON object for two inventories — same keys and order, results per pair, verdict, originCache as given', () => {
+  const side = (url) => ({ url, at: '2026-01-01T00:00:00.000Z', docH: 900, bySel: { '.c': { matches: 1, units: [{ index: 0, path: 'div', rect: { x: 0, y: 0, w: 10, h: 10 }, elements: [] }] } } });
+  const r = unitsReport(side('https://o/'), side('https://e/'), [{ origin: '.c', eds: '.c' }], { tol: 4, n: 1, width: 1440, tier: 'chrome' });
+  assert.deepEqual(Object.keys(r), MAIN_KEYS);
+  assert.deepEqual(Object.keys(r._provenance), ['writtenBy', 'at', 'tol', 'n', 'width', 'tier']);
+  assert.deepEqual(r.origin, { url: 'https://o/', at: '2026-01-01T00:00:00.000Z', docH: 900 }); assert.equal(r.eds.url, 'https://e/');
+  assert.equal(r.originCache, null); assert.equal(r.results.length, 1); assert.equal(r.verdict.units, 1);
+});
 check('--help exits 0 in an empty cwd and writes nothing', () => {
   const cwd = mkdtempSync(join(tmpdir(), 'unit-geometry-help-'));
   const r = spawnSync(process.execPath, [SCRIPT, '--help'], { cwd, encoding: 'utf8' });
@@ -100,8 +110,8 @@ if (playwrightOk) {
   await new Promise((r) => { server.listen(0, '127.0.0.1', r); });
   const base = `http://127.0.0.1:${server.address().port}`;
   const cwd = realpathSync(mkdtempSync(join(tmpdir(), 'unit-geometry-cache-')));
-  const run = (origin, width) => new Promise((resolve) => {
-    const child = spawn(process.execPath, [SCRIPT, `${base}/${origin}.html`, `${base}/cards.html`, '--unit', '.card', '--slug', 'home', '--width', String(width), '--plain'], { cwd, env: { ...process.env, STARDUST_ORIGIN_MAX_AGE_H: '1' } });
+  const run = (origin, width, extra = []) => new Promise((resolve) => {
+    const child = spawn(process.execPath, [SCRIPT, `${base}/${origin}.html`, `${base}/cards.html`, '--unit', '.card', '--slug', 'home', '--width', String(width), '--plain', ...extra], { cwd, env: { ...process.env, STARDUST_ORIGIN_MAX_AGE_H: '1' } });
     let out = ''; child.stdout.on('data', (d) => { out += d; }); child.stderr.on('data', (d) => { out += d; });
     child.on('close', (status) => resolve({ status, out }));
   });
@@ -118,6 +128,9 @@ if (playwrightOk) {
     r = await run('cards', 360);
     assert.match(r.out, /^origin: measured \(no cache\)$/m, r.out); assert.equal(existsSync(cacheFile(360)), true);
     console.log('✓ e2e: the origin cache is written per width, reused while fresh (served side only), never written for an empty inventory');
+    r = await run('cards', 360, ['--json', join(cwd, 'u.json')]);
+    assert.deepEqual(Object.keys(JSON.parse(readFileSync(join(cwd, 'u.json'), 'utf8'))), MAIN_KEYS, r.out);
+    console.log('✓ e2e: the CLI JSON is unitsReport\'s object');
   } catch (e) { failed += 1; console.log(`✗ e2e unit-geometry origin cache\n  ${String(e.message).split('\n').join('\n  ')}`); }
   rmSync(cwd, { recursive: true, force: true });
   server.close();

@@ -25,18 +25,24 @@
  * under the settle — mark that region --variable. `--origin-cache <f>` reuses the origin side's inventory
  * from <f> while it is fresh (live-session.mjs freshness(): this run's, or STARDUST_ORIGIN_MAX_AGE_H hours)
  * and its key (originCacheKey) matches; the served side is always measured; a hit is in `_provenance.originCache`.
+ * An origin that rendered almost nothing (blankRender: < 3 visible items in scope) is measured but never cached
+ * ("— not cached (blank render)"): replayed, an empty origin would mute every MISSING for the rest of the run.
+ * One load (gate-all --one-load): stitch-shot --inventory calls inventoryToFile on the page it stitches — after its
+ * settle and dismissal, at the top, before the freeze — and gate-all builds content.json with presenceReport.
  *
  * Usage: node skills/diff/scripts/content-presence.mjs <originUrl> <edsUrl> [--width 1440]
  *        [--main <sel>[=<selEds>]] [--variable <sel,…>] [--chrome] [--json [<file>]] [--min-cut 2]
  *        [--settle-passes 4] [--max-findings 40] [--count-words <w,…>] [--plain] [--warmup <url>] [--origin-cache <f>]
- * `presenceInventoryInPage`, `alignHeadings`, `diffPresence`, `formatReport`, `norm`, `originCacheKey` are exported.
+ * `presenceInventoryInPage`, `alignHeadings`, `diffPresence`, `formatReport`, `norm`, `originCacheKey`, `blankRender`,
+ * `inventorySide`, `inventoryPage`, `inventoryToFile`, `presenceReport` are exported.
  */
-import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { clipInventoryInPage, inPage, morePrelude, summarize } from './clip-probe.mjs';
 import { readSideCache, writeSideCache } from './live-session.mjs';
 import { browserTier, openBrowser, openPage, visit } from './measure-live.mjs';
+import { unitInventoryInPage } from './unit-geometry.mjs';
 
 const HELP = `content-presence — origin vs served page: visible headings / links / buttons / images / text per band + control state (#125 D2)
 
@@ -335,15 +341,82 @@ export function parseArgs(argv) {
 /** The origin side's cache key: everything that shapes its inventory (fixed field order). */
 export const originCacheKey = (opts) => ({ url: opts.origin, width: opts.width, locale: opts.locale, rootSel: opts.main, variableSels: opts.variable, countWords: opts.countWords, moreWords: opts.moreWords, minCut: opts.minCut, settlePasses: opts.settlePasses, tier: opts.plain ? 'plain' : 'stealth', warmup: opts.warmup });
 
-/** Inventory one side: visit + settle, presence inventory, clip inventory. */
-export async function inventorySide(browser, url, { width, locale, warmup, rootSel, variableSels, minCut, settlePasses = 4, httpError = 'measure', countWords = null, moreWords = null }) {
+/** An origin inventory that rendered almost nothing (an app that did not hydrate, a soft block the challenge detector
+ * misses): fewer than 3 visible items in scope (the root when there is one; header / footer left out). */
+export const blankRender = (inv) => (inv.items || []).filter((it) => it.state === 'visible' && !it.inChrome && (!inv.root || it.inRoot)).length < 3;
+
+/**
+ * The in-page inventories of a loaded, settled page — read only (no scroll, click or style write):
+ * presence { rootSel, variableSels, countWords, moreWords }, clip { minCut, maxFindings, moreWords }, units { sels, n };
+ * a block left out (null) is not taken. → { docH, pageW, root, items, clip: { counts, groups, findings }, textBoxes, units: { n, bySel } }
+ */
+export async function inventoryPage(page, { presence = null, clip = null, units = null } = {}) {
+  const out = {};
+  if (presence) {
+    const { rootSel = null, variableSels = [], countWords = null, moreWords = null } = presence;
+    Object.assign(out, await page.evaluate(inPage(presenceInventoryInPage, countWords ? { rootSel, variableSels, countWords } : { rootSel, variableSels }, morePrelude(moreWords))));
+  }
+  if (clip) {
+    const c = await page.evaluate(inPage(clipInventoryInPage, { minCut: clip.minCut ?? 2, rootSel: null, maxFindings: clip.maxFindings ?? 400 }, morePrelude(clip.moreWords)));
+    if (!presence) Object.assign(out, { docH: c.docH, pageW: c.pageW });
+    Object.assign(out, { clip: { counts: c.counts, groups: summarize(c.findings), findings: c.findings }, textBoxes: c.textBoxes });
+  }
+  if (units) {
+    const bySel = {};
+    for (const sel of units.sels || []) bySel[sel] = await page.evaluate(inPage(unitInventoryInPage, { sel, n: units.n || 1 }));
+    out.units = { n: units.n || 1, bySel };
+  }
+  return out;
+}
+
+/** Inventory one side: visit + settle, presence inventory, clip inventory (+ unit inventories when `units` is given). */
+export async function inventorySide(browser, url, { width, locale, warmup, rootSel, variableSels, minCut, settlePasses = 4, httpError = 'measure', countWords = null, moreWords = null, units = null }) {
   const { ctx, page } = await openPage(browser, { width, locale });
   try {
     const v = await visit(page, url, { warmup, settle: { passes: settlePasses }, httpError });
-    const inv = await page.evaluate(inPage(presenceInventoryInPage, countWords ? { rootSel, variableSels, countWords } : { rootSel, variableSels }, morePrelude(moreWords)));
-    const clip = await page.evaluate(inPage(clipInventoryInPage, { minCut, rootSel: null, maxFindings: 400 }, morePrelude(moreWords)));
-    return { url, at: new Date().toISOString(), status: v.status, settlePasses: v.passes, ...inv, clip: { counts: clip.counts, groups: summarize(clip.findings), findings: clip.findings }, textBoxes: clip.textBoxes };
+    const inv = await inventoryPage(page, { presence: { rootSel, variableSels, countWords, moreWords }, clip: { minCut, maxFindings: 400, moreWords }, units });
+    return { url, at: new Date().toISOString(), status: v.status, settlePasses: v.passes, ...inv };
   } finally { await ctx.close(); }
+}
+
+/**
+ * stitch-shot --inventory (gate-all --one-load): the inventories of the page the stitch loaded, settled and dismissed,
+ * before its freeze. spec = { out, side, presence, clip, units } (inventoryPage's blocks). measure-live parity: scroll
+ * to the top, 600 ms, inventory (a fixed header's chrome band is read at the top), then back to where the page was
+ * (300 ms) so the freeze runs where it would have. Writes { url, side, at, docH, tier, settle: 'stitch', status: null,
+ * settlePasses: null, …inventoryPage, spec } atomically to spec.out; any failure writes { url, side, at, error } and
+ * one warning — an inventory problem never fails the capture.
+ */
+export async function inventoryToFile(page, specFile, { url }) {
+  let spec = null; let data;
+  try {
+    spec = JSON.parse(readFileSync(specFile, 'utf8'));
+    const y = await page.evaluate(() => window.scrollY);
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.waitForTimeout(600);
+    let inv;
+    try { inv = await inventoryPage(page, spec); } finally { await page.evaluate((t) => window.scrollTo(0, t), y); await page.waitForTimeout(300); }
+    const docH = inv.docH ?? await page.evaluate(() => document.documentElement.scrollHeight);
+    data = { url, side: spec.side ?? null, at: new Date().toISOString(), docH, tier: browserTier(page.context().browser()), settle: 'stitch', status: null, settlePasses: null, ...inv, spec: { presence: spec.presence ?? null, clip: spec.clip ?? null, units: spec.units ?? null } };
+  } catch (err) {
+    data = { url, side: spec ? spec.side ?? null : null, at: new Date().toISOString(), error: String(err.message).split('\n')[0] };
+    console.error(`[inventory] WARNING: ${specFile}: ${data.error} — not taken; the capture continues (gate-all falls back to the probes)`);
+  }
+  if (spec && spec.out) {
+    try { mkdirSync(dirname(spec.out), { recursive: true }); const tmp = `${spec.out}.${process.pid}.tmp`; writeFileSync(tmp, JSON.stringify(data)); renameSync(tmp, spec.out); }
+    catch (err) { console.error(`[inventory] WARNING: ${spec.out} not written (${String(err.message).split('\n')[0]}) — the capture continues`); }
+  }
+  return data;
+}
+
+/**
+ * The content.json object main writes, for two side inventories: _provenance (via 'content-presence' from the CLI,
+ * 'one-load' from gate-all), both sides (a side taken in a stitch says settle: 'stitch'), bands, findings, totals,
+ * textBoxes. `res` = diffPresence(o, e, { chrome }) unless given.
+ */
+export function presenceReport(o, e, { width, variable = [], chrome = false, tier = null, via = 'content-presence', originCache = null, res = diffPresence(o, e, { chrome }) } = {}) {
+  const strip = (side) => ({ url: side.url, at: side.at, status: side.status, settlePasses: side.settlePasses, docH: side.docH, root: side.root, items: side.items, clip: { counts: side.clip.counts, groups: side.clip.groups }, ...(side.settle ? { settle: side.settle } : {}) });
+  return { _provenance: { writtenBy: 'content-presence.mjs', at: new Date().toISOString(), width, variable, tier, originCache, via }, origin: strip(o), eds: { ...strip(e), clip: e.clip }, bands: res.bands, findings: res.findings, totals: res.totals, textBoxes: { origin: o.textBoxes, eds: e.textBoxes } };
 }
 
 async function main() {
@@ -364,7 +437,9 @@ async function main() {
     if (c && c.hit) o = c.data;
     else {
       o = await inventorySide(browser, opts.origin, { width: opts.width, locale: opts.locale, warmup: opts.warmup, rootSel: opts.main, variableSels: opts.variable, minCut: opts.minCut, settlePasses: opts.settlePasses, httpError: 'throw', countWords: opts.countWords, moreWords: opts.moreWords });
-      if (opts.originCache) {
+      // a blank render is measured (it still diffs) but never cached: replayed, it would mute every MISSING for the run
+      if (opts.originCache && blankRender(o)) say(`origin side measured (cache: ${c.reason}) — not cached (blank render)`);
+      else if (opts.originCache) {
         try { writeSideCache(opts.originCache, key, o, { at: o.at, writtenBy: 'content-presence.mjs' }); say(`origin side measured (cache: ${c.reason}) → ${opts.originCache}`); }
         catch (err) { console.error(`content-presence: --origin-cache ${opts.originCache} not written (${String(err.message).split('\n')[0]}) — the probe result stands`); }
       }
@@ -372,8 +447,7 @@ async function main() {
     e = await inventorySide(browser, opts.eds, { width: opts.width, locale: opts.locale, warmup: null, rootSel: opts.mainEds, variableSels: opts.variableEds, minCut: opts.minCut, settlePasses: opts.settlePasses, countWords: opts.countWords, moreWords: opts.moreWords });
   } finally { await browser.close(); }
   const res = diffPresence(o, e, { chrome: opts.chrome });
-  const strip = (side) => ({ url: side.url, at: side.at, status: side.status, settlePasses: side.settlePasses, docH: side.docH, root: side.root, items: side.items, clip: { counts: side.clip.counts, groups: side.clip.groups } });
-  const out = { _provenance: { writtenBy: 'content-presence.mjs', at: new Date().toISOString(), width: opts.width, variable: opts.variable, tier, originCache: c && c.hit ? { file: c.file, at: c.at, policy: c.policy } : null }, origin: strip(o), eds: { ...strip(e), clip: e.clip }, bands: res.bands, findings: res.findings, totals: res.totals, textBoxes: { origin: o.textBoxes, eds: e.textBoxes } };
+  const out = presenceReport(o, e, { width: opts.width, variable: opts.variable, chrome: opts.chrome, tier, originCache: c && c.hit ? { file: c.file, at: c.at, policy: c.policy } : null, res });
   if (opts.json && !opts.jsonFile) console.log(JSON.stringify(out, null, 1));
   else {
     console.log(`content-presence @ ${opts.width}px (${tier}) — origin ${opts.origin} (docH ${o.docH}, ${o.items.length} items, HTTP ${o.status}) vs served ${opts.eds} (docH ${e.docH}, ${e.items.length} items, HTTP ${e.status})`);

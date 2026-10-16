@@ -14,7 +14,7 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { formatTable, parseArgs, summarize, verdictLine } from '../clip-probe.mjs';
+import { clipReport, formatTable, parseArgs, summarize, verdictLine } from '../clip-probe.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'clip-probe.mjs');
@@ -57,6 +57,15 @@ await check('--help exits 0 with the usage and writes nothing', () => {
   const r = spawnSync(process.execPath, [SCRIPT, '--help'], { cwd, encoding: 'utf8' });
   assert.equal(r.status, 0); assert.match(r.stdout, /Usage: node clip-probe\.mjs/); assert.deepEqual(readdirSync(cwd), []);
   rmSync(cwd, { recursive: true, force: true });
+});
+// The CLI's --json keys, in order (gate-all --one-load writes clip.json with clipReport from a stitch's inventory).
+const CLI_KEYS = ['url', 'at', 'width', 'status', 'settlePasses', 'docH', 'pageW', 'counts', 'findings', 'textBoxes', 'groups', 'tier'];
+await check('clipReport: the CLI JSON object for one inventory — same keys in the same order, groups summarised, time and tier as given', () => {
+  const inv = { docH: 900, pageW: 1440, counts: { total: 2 }, findings, textBoxes: [{ x: 0, y: 0, w: 10, h: 10 }] };
+  const r = clipReport(inv, { url: 'https://e.test/', width: 1440, status: null, settlePasses: null, tier: 'chrome', at: '2026-01-01T00:00:00.000Z' });
+  assert.deepEqual(Object.keys(r), CLI_KEYS);
+  assert.deepEqual(r.groups, summarize(findings)); assert.equal(r.at, '2026-01-01T00:00:00.000Z'); assert.equal(r.tier, 'chrome'); assert.equal(r.counts.total, 2);
+  assert.ok(Date.parse(clipReport(inv, { url: 'u', width: 1 }).at) > 0, 'at defaults to now');
 });
 
 let playwright = true;
@@ -101,6 +110,7 @@ else {
     assert.ok(!j.findings.some((f) => /collapsed menu|hidden menu/i.test(f.text)), 'collapsed menu must not be reported');
     assert.ok(!j.findings.some((f) => /screen reader/i.test(f.text)), 'sr-only must not be reported');
     assert.ok(j.textBoxes.length > 3, 'visible text line boxes are emitted for --text-boxes');
+    assert.deepEqual(Object.keys(j), CLI_KEYS, 'the CLI JSON is clipReport\'s object');
     assert.ok(!j.textBoxes.some((b) => b.h <= 1), 'no sr-only boxes among the text boxes');
   });
   await check('e2e: a clean page exits 0 with Clipped: 0', async () => {
