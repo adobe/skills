@@ -611,7 +611,8 @@ check('sandbox 6: the published stage reuses the archetype round\'s fresh live.p
 check('sandbox 7: --skip-existing keeps a stale origin (never a recapture) but records it: policy skip-existing + stale, a WARN line', () => {
   opener(new Date().toISOString());
   const r = gate(['--only', 'home', '--skip-existing']);
-  assert.equal(r.status, 0, r.stderr + r.stdout); assert.equal(r.origin, 0); assert.equal(r.eds, 0);
+  assert.equal(r.status, 0, r.stderr + r.stdout); assert.equal(r.origin, 0);
+  assert.equal(r.eds, 1, 'the sandbox has no content/index.html, so no gate-key.json proves the EDS capture: re-shot');
   const o = r.row('home').originReused; assert.equal(o.policy, 'skip-existing'); assert.match(o.stale, /captured before this run/);
   assert.match(runLog(), /origin home → reused \(--skip-existing\) WARN captured before this run/);
   assert.equal(read('stardust/replica/gates/all-1440/home/origin.json').policy, 'skip-existing');
@@ -782,7 +783,8 @@ check('--skip-existing with origin.png gone and a fresh live.png older than the 
   const unitsCache = join(root, 'stardust/current/measure/home-units-1440.json'); mkdirSync(dirname(unitsCache), { recursive: true }); writeFileSync(unitsCache, '{}');
   rmSync(join(OUT, 'home/origin.png'));
   const r = olGate(['--only', 'home', '--skip-existing']);
-  assert.equal(r.status, 0, r.stderr + r.stdout); assert.equal(r.origin, 0); assert.equal(r.eds, 0);
+  assert.equal(r.status, 0, r.stderr + r.stdout); assert.equal(r.origin, 0);
+  assert.equal(r.eds, 1, 'no gate-key.json proves the EDS capture (no content/index.html): re-shot');
   assert.equal(r.row('home').originReused.from, 'stardust/replica/gates/home-1440/live.png');
   assert.match(runLog(), /probes home → re-run \(origin is a reused capture the probes were not taken against\)/);
   assert.equal(r.cp.length, 1, 'content-presence re-ran'); assert.equal(r.cp[0].had, false, 'the old origin\'s presence inventory was dropped with it');
