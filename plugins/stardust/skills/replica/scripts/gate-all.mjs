@@ -64,6 +64,11 @@
  * fresh row keeps the key of its evidence only while that key is current (unknown now: same build part, probes
  * not re-run).
  *
+ * Empty selection: no page passes the stage filter (`deployed` with a liveUrl / a prototypePath, each with a source
+ * url) and --only → one stderr line naming the state file read (absolute), its page count, how many carry those spec
+ * words (and how many of them lack the source url), what --only matched, and the hint to pass --state from the project
+ * root or deploy first; exit 1, nothing written.
+ *
  * Usage: node skills/replica/scripts/gate-all.mjs [--stage published|prototype] [--proto-base <url>]
  *        [--state f] [--out dir] [--width 1440] [--only <slug,…>] [--skip-existing] [--recapture-eds] [--recapture-origin] [--eds-host <h>]
  *        [--blocked <re>] [--try-blocked] [--crawl-shots <dir>] [--origin-max-age <h>] [--origin-concurrency 2]
@@ -76,7 +81,7 @@
  * defaults hold with or without one; the flags raise them.
  * Requires playwright, pixelmatch, pngjs (project devDependencies); stitch-shot.mjs, pixel-compare.mjs
  * and foundation-freeze.mjs next to this file; the diff skill's scripts dir alongside. Exit: 0 all PASS
- * (overrides count), 2 any FAIL, 1 error. `verdict`, `formatSummary`, `parseArgs` and the reuse helpers
+ * (overrides count), 2 any FAIL, 1 error. `verdict`, `formatSummary`, `parseArgs`, `emptySelection` and the reuse helpers
  * (`probeInputs`, `probeReuse`, `canon`, `gateKeyParts`, `gateKeyOf`, `foundationPart`, `sharedBlocks`,
  * `blockRefs`, `chromeDocs`, `instrumentFiles`, `edsHostOf`, `codeDeployed`, `hostServes`,
  * `deployedDocs`, `contentDeployed`, `keyChanged`, `skipCapture`, `rowKey`, `latestRows`, `rowReuse`) are exported.
@@ -126,6 +131,8 @@ Usage: node gate-all.mjs [options]   (from the project root)
 Verdict = pixel % ≤ threshold AND |Δh| ≤ height-tol × origin height AND clipped ≤ clip-max(+allowance) AND content MISSING+HIDDEN = 0.
 Sidecars in <out>/: masks.json, overrides.json, clip-allow.json, presence.json, units.json (see the header).
 Reuse sidecars per page: probes.json, gate-key.json (see the header).
+Empty selection → one stderr line: the absolute state path, its page count, how many are deployed with a liveUrl /
+  have a prototypePath (and how many of those lack a source url), what --only matched, the hint; exit 1.
 Exit: 0 all PASS (overrides count), 2 any FAIL, 1 error.`;
 
 export function parseArgs(argv, env = process.env) {
@@ -152,6 +159,16 @@ export function parseArgs(argv, env = process.env) {
   if (o.stage === 'prototype' && o.content) o.content = false; // content-diff already reconciles the prototype's text
   if (!o.out) o.out = `stardust/replica/gates/${o.stage === 'prototype' ? 'prototypes' : 'all'}-${o.width}`;
   return o;
+}
+
+// ---- pure: the roster -------------------------------------------------------------------------------------------
+const pagesOf = (state) => (state && state.pages) || [];
+/** emptySelection(state, { stage, only, statePath }) → the one stderr line naming why no page was selected. */
+export function emptySelection(state, { stage = 'published', only = null, statePath }) {
+  const all = pagesOf(state); const proto = stage === 'prototype';
+  const counted = all.filter((p) => (proto ? p.prototypePath : p.status === 'deployed' && p.liveUrl)); const noUrl = counted.filter((p) => !p.url).length;
+  const staged = counted.length - noUrl;
+  return `gate-all: no pages selected — ${statePath} has ${all.length} page(s), ${counted.length} ${proto ? 'with a prototypePath' : 'deployed with a liveUrl'}${noUrl ? ` (${noUrl} without a source url)` : ''} (${stage} stage)${only && staged ? `; --only ${only.join(',')} matched none of the ${staged} page(s) the stage selects` : ''}; pass --state stardust/state.json (or the gate state file) from the project root, or deploy first`;
 }
 
 // ---- pure: the verdict --------------------------------------------------------------------------------
@@ -587,7 +604,7 @@ async function main() {
     : (state.pages || []).filter((p) => p.status === 'deployed' && p.liveUrl && p.url);
   if (opts.stage === 'prototype' && !opts.protoBase) console.error('gate-all: --stage prototype without --proto-base — assuming http://localhost:8791 (serve the prototypes dir there, replica SKILL.md § Phase 4)');
   if (opts.only) pages = pages.filter((p) => opts.only.includes(p.slug));
-  if (!pages.length) { console.error('gate-all: no deployed pages selected'); process.exit(1); }
+  if (!pages.length) { console.error(emptySelection(state, { stage: opts.stage, only: opts.only, statePath: resolve(opts.state) })); process.exit(1); }
   mkdirSync(opts.out, { recursive: true });
   const MASKS = readJson(join(opts.out, 'masks.json'), {}); const OVERRIDES = readJson(join(opts.out, 'overrides.json'), {});
   const CLIP_ALLOW = readJson(join(opts.out, 'clip-allow.json'), {}); const PRESENCE = readJson(join(opts.out, 'presence.json'), {});

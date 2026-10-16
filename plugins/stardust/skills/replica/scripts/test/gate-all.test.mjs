@@ -3,7 +3,8 @@
 // criteria (pixel, height, clip + allowance, content), n/a content never fails a page, required vs advisory
 // units, pixelOnlyPass vs pass (the calibration pair), reasons text, overrides shown beside the number;
 // formatSummary (header, calibration line, one row per page, asymmetric-origin flag, the reused cell); parseArgs
-// defaults and --out derived from --width; --help in an empty cwd; pixel-compare's textBoxPct over a synthetic diff.
+// defaults and --out derived from --width; --help in an empty cwd; pixel-compare's textBoxPct over a synthetic diff;
+// an empty selection names its cause (emptySelection table, the CLI exits 1 writing nothing).
 // Reuse under --skip-existing: probeReuse (the capture pair rule), the gate key (stable across key order, changed by
 // one block / content / frozen-file byte or a mask edit, null on a freeze mismatch), the deploy-state guard's
 // content half; then the CLI over stub instruments in a sandbox project with a git remote and a deploy ledger.
@@ -21,7 +22,7 @@ import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { codeDeployed, contentDeployed, deployedDocs, edsHostOf, foundationPart, formatSummary, gateKeyOf, gateKeyParts, hostServes, instrumentFiles, inventoryWhy, keyChanged, liveReusePlan, oneLoadKeep, originReusePlan, parseArgs, probeReuse, rowKey, sharedBlocks, skipCapture, verdict } from '../gate-all.mjs';
+import { codeDeployed, contentDeployed, deployedDocs, edsHostOf, emptySelection, foundationPart, formatSummary, gateKeyOf, gateKeyParts, hostServes, instrumentFiles, inventoryWhy, keyChanged, liveReusePlan, oneLoadKeep, originReusePlan, parseArgs, probeReuse, rowKey, sharedBlocks, skipCapture, verdict } from '../gate-all.mjs';
 
 // pixel-compare imports pngjs at module level (a project devDependency, absent in the plugin checkout):
 // import it lazily and skip its one check where it does not resolve, like the other browser/dep-bound tests.
@@ -276,6 +277,27 @@ check('--help exits 0 in an empty cwd and writes nothing', () => {
   const cwd = mkdtempSync(join(tmpdir(), 'gate-all-help-'));
   const r = spawnSync(process.execPath, [SCRIPT, '--help'], { cwd, encoding: 'utf8' });
   assert.equal(r.status, 0); assert.match(r.stdout, /Usage: node gate-all\.mjs/); assert.deepEqual(readdirSync(cwd), []);
+  rmSync(cwd, { recursive: true, force: true });
+});
+// ---- an empty selection names its cause: the state file read, its page count, the counted spec words, --only --------
+const HINT = 'pass --state stardust/state.json (or the gate state file) from the project root, or deploy first';
+check('emptySelection: the state path and page count, the spec words counted per stage, the source-url and --only exclusions, the hint last', () => {
+  const st = { pages: [{ slug: 'a', url: 'https://o.test/a', status: 'pending', prototypePath: 'p/a.html' }, { slug: 'b', url: 'https://o.test/b', status: 'deployed' },
+    { slug: 'c', status: 'deployed', liveUrl: 'https://e.test/c', prototypePath: 'p/c.html' }] };
+  const at = '/p/stardust/state.json';
+  assert.equal(emptySelection({ pages: st.pages.slice(0, 2) }, { stage: 'published', statePath: at }), `gate-all: no pages selected — ${at} has 2 page(s), 0 deployed with a liveUrl (published stage); ${HINT}`);
+  assert.equal(emptySelection(st, { stage: 'published', statePath: at }), `gate-all: no pages selected — ${at} has 3 page(s), 1 deployed with a liveUrl (1 without a source url) (published stage); ${HINT}`);
+  assert.equal(emptySelection(st, { stage: 'prototype', only: ['x', 'y'], statePath: at }), `gate-all: no pages selected — ${at} has 3 page(s), 2 with a prototypePath (1 without a source url) (prototype stage); --only x,y matched none of the 1 page(s) the stage selects; ${HINT}`);
+  assert.equal(emptySelection(st, { stage: 'published', only: ['c'], statePath: at }), `gate-all: no pages selected — ${at} has 3 page(s), 1 deployed with a liveUrl (1 without a source url) (published stage); ${HINT}`, '--only is named only when the stage selected pages');
+  assert.equal(emptySelection({}, { stage: 'published', statePath: at }), `gate-all: no pages selected — ${at} has 0 page(s), 0 deployed with a liveUrl (published stage); ${HINT}`);
+});
+check('CLI: a state with zero deployed pages → exit 1, one stderr line naming the absolute state path, its page count, 0 deployed with a liveUrl and the hint; nothing written', () => {
+  const cwd = realpathSync(mkdtempSync(join(tmpdir(), 'gate-all-empty-'))); mkdirSync(join(cwd, 'stardust'));
+  writeFileSync(join(cwd, 'stardust/state.json'), JSON.stringify({ pages: [{ slug: 'a', url: 'https://o.test/a', status: 'pending' }, { slug: 'b', url: 'https://o.test/b', status: 'deployed' }] }));
+  const r = spawnSync(process.execPath, [SCRIPT], { cwd, encoding: 'utf8' });
+  assert.equal(r.status, 1, r.stderr); assert.equal(r.stdout, ''); assert.equal(r.stderr.trim().split('\n').length, 1, r.stderr);
+  assert.equal(r.stderr.trim(), `gate-all: no pages selected — ${join(cwd, 'stardust/state.json')} has 2 page(s), 0 deployed with a liveUrl (published stage); ${HINT}`);
+  assert.deepEqual(readdirSync(cwd, { recursive: true }).sort(), ['stardust', join('stardust', 'state.json')]);
   rmSync(cwd, { recursive: true, force: true });
 });
 
