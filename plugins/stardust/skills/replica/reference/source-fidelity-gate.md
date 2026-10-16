@@ -38,7 +38,8 @@ curl -sI localhost:8791/ | head -1                       # 200/404 = something s
 curl -sI localhost:8791/<slug>-proposed.html | head -1   # 200 = it serves YOUR dir: reuse it
 # Answers but not your file → foreign server: never kill it, take a per-project port. gate.sh asserts
 # a page marker (exit 4); on shared machines pass --marker "<brand string>" (a shared slug false-passes).
-(cd stardust/prototypes && python3 -m http.server 8791 &)   # only when nothing answered
+(cd stardust/prototypes && python3 -m http.server 8791 --bind 127.0.0.1 &)   # only when nothing answered
+# loopback only: the default binds every interface, exposing the tree, and can crash on a long container host name
 PROTO="http://localhost:8791/<slug>-proposed.html"
 LIVE="https://<site>/<path>"
 W=1440   # then 360

@@ -192,8 +192,9 @@ A FOUC is possible (head paints as default content, then reabsorbs); the final l
 ```bash
 # 1. serve the prototype's OWN folder with a plain static server (NOT file:// —
 #    babel-standalone XHRs the .jsx and file:// CORS-blocks it; the aem dev
-#    server CSP-blocks the inline scripts too).
-( cd samples/<proto> && python3 -m http.server 8765 & )
+#    server CSP-blocks the inline scripts too). Loopback only: the default binds
+#    every interface, exposing the tree, and can crash on a long container host name.
+( cd samples/<proto> && python3 -m http.server 8765 --bind 127.0.0.1 & )
 # 2. load in Playwright (React/babel load from unpkg — needs internet), wait for
 #    mount, capture #root's innerHTML, save it for the block agents to read:
 #    page.goto('http://localhost:8765/<file>.html'); waitForTimeout(4000);
@@ -982,7 +983,7 @@ The retired `visual-diff` classes are covered elsewhere: stretched images by the
 curl -sI localhost:8791/ | head -1                   # 200/404 = something serves the port; no line = free
 curl -sI localhost:8791/<prototype>.html | head -1   # 200 = it serves YOUR dir: reuse it
 command -v lsof >/dev/null && lsof -nP -iTCP:8791 -sTCP:LISTEN   # optional: names the pid
-( cd <prototype-dir> && python3 -m http.server 8791 & )   # only when nothing answered
+( cd <prototype-dir> && python3 -m http.server 8791 --bind 127.0.0.1 & )   # only when nothing answered
 # Answers but not your file → a foreign server: never kill a listener you did not
 # start; prefer a per-project port — a stale server from another project makes the
 # diff below silently measure a foreign prototype. `lsof … || echo free` is not a

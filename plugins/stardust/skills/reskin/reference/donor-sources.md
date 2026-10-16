@@ -119,8 +119,10 @@ Figma-derived hand-coded pages) are a live site that isn't being
 served yet. Serve them and run the exact same path:
 
 ```bash
-# 1. Serve the directory (any static server; python3 ships everywhere)
-python3 -m http.server 8793 --directory <path> &
+# 1. Serve the directory (any static server; python3 ships everywhere), loopback
+#    only: the default binds every interface, exposing the tree, and can crash on
+#    a long container host name
+python3 -m http.server 8793 --bind 127.0.0.1 --directory <path> &
 
 # 2. Verify it renders (a browser-visible check, not just a 200)
 #    open http://localhost:8793/  — or curl -sI http://localhost:8793/

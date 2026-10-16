@@ -253,7 +253,8 @@ Full contract: `reference/source-fidelity-gate.md`. Run per archetype, per
 breakpoint (default 1440 AND 360), live URL as source vs served prototype:
 
 ```bash
-PROTO="http://localhost:8791/<slug>-proposed.html"   # python3 -m http.server from the prototypes dir
+PROTO="http://localhost:8791/<slug>-proposed.html"   # python3 -m http.server 8791 --bind 127.0.0.1 from the prototypes dir
+# (loopback only: the default binds every interface, exposing the tree, and can crash on a long container host name)
 # ONE server, ONE port — probe with curl first (gate doc § Per-breakpoint procedure): no answer →
 # start yours; answers but not your file → foreign server, never kill it, take a per-project port
 curl -sI localhost:8791/<slug>-proposed.html | head -1   # 200 = it serves YOUR dir: reuse it
