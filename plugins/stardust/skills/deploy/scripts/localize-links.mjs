@@ -18,7 +18,7 @@
  *   1. Builds the URL map from the content tree: every *.html under --content
  *      is a page served at its URL (eds-path.mjs: extensionless; a folder index
  *      `x/index.html` at `/x/`, a leaf at `/x/y`; root `/`), plus the entries of
- *      --redirects (source path → destination) when given.
+ *      --redirects (source path → destination) when given and present.
  *   2. Rewrites every <a href> whose host is a --source-host (with or without
  *      `www.`, http or https or protocol-relative) AND whose path resolves in
  *      the map to that root-relative URL (EDS 404s on `.html` and on a leaf's
@@ -38,18 +38,27 @@
  *   --content      root of the authored content tree (default: content)
  *   --redirects    TSV `source<TAB>destination` (rollout's stardust/redirects.tsv), JSON
  *                  ([{source,destination}], {source: destination}, the DA sheet {data:[…]}),
- *                  or JSON Lines ({src,target}: spec's knowledge/redirects.jsonl)
+ *                  or JSON Lines ({src,target}: spec's knowledge/redirects.jsonl).
+ *                  A path that does not exist is a note on stderr, not an error: no redirect
+ *                  pairs are read (seed-redirects.mjs writes the file only when the spec
+ *                  knowledge exists) and the run continues with the content tree only, exactly
+ *                  as without --redirects. A path that exists but cannot be read (a directory,
+ *                  no permission) is exit 1.
  *   --dry-run      report what would change, write nothing
  *   --check        gate mode: write nothing, exit 2 if ANY link would change
  *                  (run the plain pass first; --check is the pre-deploy assertion)
- *   --json         machine-readable summary
+ *   --json         machine-readable summary; `redirectsFound` is true when the
+ *                  --redirects file was read, false when it does not exist, null
+ *                  without --redirects
  *
  * Writes: the rewritten *.html files IN PLACE under --content (nothing with
- * --dry-run or --check; the summary is stdout).
+ * --dry-run or --check; the summary is stdout, notes are stderr).
  *
- * Exit codes: 0 clean (or rewritten), 2 --check found localizable links,
- * 1 usage/IO error. Dependency-free (regex over the authored HTML, the same
- * technique as davids-model-lint.mjs — content pages are machine-generated).
+ * Exit codes: 0 clean (or rewritten; also with a missing --redirects file),
+ * 2 --check found localizable links, 1 usage/IO error (including a --redirects
+ * path that exists but cannot be read). Dependency-free (regex over the
+ * authored HTML, the same technique as davids-model-lint.mjs — content pages
+ * are machine-generated).
  */
 import { readFileSync, writeFileSync, readdirSync, statSync, existsSync } from 'fs';
 import path from 'path';
@@ -121,6 +130,22 @@ export function redirectPairs(raw, file = '') {
   return pairs;
 }
 
+// The redirects file's text, or null when the path does not exist: seed-redirects.mjs writes it only when the spec
+// knowledge exists, so its absence is a note and the content tree alone still localizes. A path that exists but
+// cannot be read (a directory, no permission) stays an error.
+function readRedirects(file) {
+  try {
+    return readFileSync(file, 'utf8');
+  } catch (e) {
+    if (e.code === 'ENOENT' || e.code === 'ENOTDIR') {
+      console.error(`localize-links: note: --redirects ${file} not found — no redirect pairs read (seed-redirects.mjs writes it when the spec knowledge exists); continuing with the content tree only`);
+      return null;
+    }
+    console.error(`localize-links: --redirects ${file} cannot be read (${e.code || e.message})`);
+    process.exit(1);
+  }
+}
+
 function buildMap(files, root, redirectsFile) {
   const map = new Map(); // lookup key → the URL EDS serves (a folder index at /a/, a leaf at /a/b: eds-path.mjs)
   for (const f of files) {
@@ -128,8 +153,10 @@ function buildMap(files, root, redirectsFile) {
     map.set(canonicalPath(rel), deliveredUrl(rel));
   }
   let redirects = 0; let pending = 0;
-  if (redirectsFile) {
-    const pairs = redirectPairs(readFileSync(redirectsFile, 'utf8'), redirectsFile);
+  const raw = redirectsFile ? readRedirects(redirectsFile) : null;
+  const redirectsFound = redirectsFile ? raw !== null : null;
+  if (raw !== null) {
+    const pairs = redirectPairs(raw, redirectsFile);
     if (!pairs.length) console.error(`localize-links: no redirect pairs read from ${redirectsFile}`);
     // a redirect rewrites links only to a page of this content tree: one whose page ships in a later wave stays
     // absolute until then (a seeded spec covers every page of the site, a wave delivers a few)
@@ -140,7 +167,7 @@ function buildMap(files, root, redirectsFile) {
       if (!map.has(src)) { map.set(src, dst); redirects += 1; }
     }
   }
-  return { map, redirects, pending };
+  return { map, redirects, pending, redirectsFound };
 }
 
 // ------------------------------------------------------------------ rewrite
@@ -194,7 +221,7 @@ function main() {
   const opts = parseArgs(process.argv);
   const hosts = opts.hosts.map(bareHost);
   const files = collectHtml(opts.content);
-  const { map, redirects, pending } = buildMap(files, opts.content, opts.redirects);
+  const { map, redirects, pending, redirectsFound } = buildMap(files, opts.content, opts.redirects);
   const ctx = { map, hosts };
 
   const perFile = {};
@@ -210,7 +237,7 @@ function main() {
     if (!opts.dryRun) writeFileSync(f, r.out);
   }
   const keptSorted = [...keptAll.entries()].sort((a, b) => b[1] - a[1]);
-  const summary = { content: opts.content, hosts, pages: files.length, mapEntries: map.size, redirects, filesChanged, localized, normalized, keptAbsolute: keptSorted.length, mode: opts.check ? 'check' : opts.dryRun ? 'dry-run' : 'write' };
+  const summary = { content: opts.content, hosts, pages: files.length, mapEntries: map.size, redirects, redirectsFound, filesChanged, localized, normalized, keptAbsolute: keptSorted.length, mode: opts.check ? 'check' : opts.dryRun ? 'dry-run' : 'write' };
 
   if (opts.json) {
     console.log(JSON.stringify({ ...summary, perFile, kept: keptSorted.map(([p, n]) => ({ path: p, links: n })) }, null, 2));
