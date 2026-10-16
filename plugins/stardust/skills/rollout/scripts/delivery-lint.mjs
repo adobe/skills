@@ -12,10 +12,16 @@
  * Usage:
  *   node skills/rollout/scripts/delivery-lint.mjs --file <html> [--path </da/path>]
  *        [--type page|fragment|index] [--content content] [--json] [--optimizing-blocks a,b,c]
+ *        [--slug <s>] [--current stardust/current] [--coverage stardust/rollout/coverage/pages.json]
  * --content: the content tree (default ./content when present) — tells a folder index, served at /x/,
  * from a leaf served at /x, so a trailing slash is judged by its target.
- * Exit: 0 = clean (no P0/P1), 1 = P0/P1 findings, 2 = bad invocation.
- * Writes: nothing — findings (text or --json) go to stdout.
+ * --slug: the page's source capture <current>/pages/<slug>.json (extract's crawl); without it, the
+ * --coverage row whose path matches --path names the slug. A page with no <h1> whose capture records
+ * headings without an h1 gets a `note` (a recorded source trait), never a failure — content is never
+ * edited to satisfy a verifier. No capture consulted → the P0 stands.
+ * Exit: 0 = clean (no P0/P1; P2 and notes never block), 1 = P0/P1 findings, 2 = bad invocation.
+ * Writes: nothing — findings (text or --json) go to stdout; the text ends with `<n> P0 · <n> P1 · <n> P2`,
+ * then `· <n> note(s)` on its own line when there are notes.
  *
  * Blocks known to run createOptimizedPicture over their images (cross-origin
  * breakage risk) — extend per project via --optimizing-blocks a,b,c
@@ -44,6 +50,9 @@ const OPTIMIZING = (arg('optimizing-blocks', 'cards,columns,hero')).split(',').m
 if (!FILE) { console.error('delivery-lint: need --file <html>'); process.exit(2); }
 // the content tree tells a folder index (x/index.html, served at /x/) from a leaf (x.html, served at /x)
 const CONTENT = arg('content', existsSync('content') ? 'content' : null);
+const SLUG = arg('slug', null);
+const CURRENT = arg('current', 'stardust/current');
+const COVERAGE = arg('coverage', 'stardust/rollout/coverage/pages.json');
 const { pathKey } = await import(pathToFileURL([join(HERE, '..', '..', 'deploy', 'scripts', 'eds-path.mjs'), join(HERE, '..', 'deploy', 'eds-path.mjs')].find((x) => existsSync(x)) || join(HERE, '..', '..', 'deploy', 'scripts', 'eds-path.mjs')).href);
 const targetKind = (key) => {
   if (!CONTENT) return null;
@@ -74,9 +83,29 @@ if (type !== 'index') {
   if (!/<footer>\s*<\/footer>|<footer[\s>]/i.test(html)) add('P1', 'wrapper', 'missing <footer> tag (DA expects <footer></footer>)');
 }
 
-/* ---- h1 cardinality (typed) ---- */
+/* ---- h1 cardinality (typed). A page whose source has no h1 keeps that trait: a note, never a failure ---- */
+const readJSON = (f) => { try { return JSON.parse(readFileSync(f, 'utf8')); } catch { return null; } };
+// --slug, else the one coverage slug whose path matches --path (eds-path.mjs pathKey); ambiguous → none
+function pageSlug() {
+  if (SLUG) return SLUG;
+  const rows = DAPATH ? (readJSON(COVERAGE) || {}).pages : null;
+  if (!Array.isArray(rows)) return null;
+  const slugs = [...new Set(rows.filter((r) => r && r.slug && r.path && pathKey(r.path) === pathKey(DAPATH)).map((r) => r.slug))];
+  return slugs.length === 1 ? slugs[0] : null;
+}
+// 'none' when the capture parses with a headings array and no h1 in it; 'h1' when it has one; null = not consulted
+function sourceH1(slug) {
+  const cap = slug ? readJSON(join(CURRENT, 'pages', `${slug}.json`)) : null;
+  if (!cap || !Array.isArray(cap.headings)) return null;
+  return cap.headings.some((h) => h && String(h.tag).toLowerCase() === 'h1') ? 'h1' : 'none';
+}
 const h1Count = (html.match(/<h1[\s>]/gi) || []).length;
-if (type === 'page' && h1Count !== 1) add(h1Count === 0 ? 'P0' : 'P1', 'h1', `expected exactly one <h1>, found ${h1Count}`);
+if (type === 'page' && h1Count > 1) add('P1', 'h1', `expected exactly one <h1>, found ${h1Count}`);
+if (type === 'page' && h1Count === 0) {
+  const source = sourceH1(pageSlug());
+  if (source === 'none') add('note', 'h1', 'source has no h1 (recorded source trait) — content is never edited to satisfy a verifier');
+  else add('P0', 'h1', `expected exactly one <h1>, found 0${source ? '' : ' (no source capture consulted: pass --slug)'}`);
+}
 if (type === 'fragment' && h1Count > 0) add('P1', 'h1', `fragment should not contain an <h1> (found ${h1Count})`);
 
 /* ---- one CTA per <p> (decorateButtons only buttonizes a link that is the
@@ -150,6 +179,7 @@ if (type === 'page' && !/class="metadata"/i.test(html)) {
 
 const p0 = findings.filter((f) => f.sev === 'P0');
 const p1 = findings.filter((f) => f.sev === 'P1');
+const notes = findings.filter((f) => f.sev === 'note').length;
 if (JSON_OUT) {
   console.log(JSON.stringify({ file: FILE, type, findings, gate: p0.length || p1.length ? 'FAIL' : 'PASS' }, null, 2));
 } else {
@@ -157,6 +187,8 @@ if (JSON_OUT) {
   console.log('='.repeat(60));
   if (!findings.length) console.log('  clean — no contract violations');
   for (const f of findings) console.log(`  ${f.sev} ${f.rule.padEnd(22)} ${f.msg}`);
+  // the count line stays exactly `<n> P0 · <n> P1 · <n> P2` (gate evidence parses it); notes follow on their own line
   console.log(`\n${p0.length} P0 · ${p1.length} P1 · ${findings.filter((f) => f.sev === 'P2').length} P2`);
+  if (notes) console.log(`· ${notes} note(s)`);
 }
 process.exit(p0.length || p1.length ? 1 : 0);

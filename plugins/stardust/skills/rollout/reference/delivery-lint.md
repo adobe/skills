@@ -5,31 +5,29 @@ satisfy the EDS/DA contract — runs *before* PUT, offline, deterministically:
 `scripts/delivery-lint.mjs`. **Dynamic** — does the delivered page actually
 render — runs *after* preview/live: `scripts/verify.mjs` (§ Typed render-truth).
 
-This file documents the static half. It exists because the contract rules below
-are deterministic truths the pipeline otherwise re-learns by shipping a broken
-page and reading it back — the migration prompt is essentially a long list of
-them. Encoding them as a linter moves the knowledge from "the agent remembers"
-to "the tool enforces".
+This file documents the static half: rules the pipeline otherwise re-learns by
+shipping a broken page and reading it back, moved from "the agent remembers" to
+"the tool enforces".
 
 ## Run it
 
 ```bash
 node skills/rollout/scripts/delivery-lint.mjs --file <content.html> \
-  --path </da/target/path> [--type page|fragment|index] [--json]
+  --path </da/target/path> [--type page|fragment|index] [--slug <s>] [--json]
 ```
 
 `--type` is inferred from the path when omitted (`/nav`, `/footer`, `*/fragments/*`
 → fragment; `*/query-index`, `*.json` → index; else page). Exit `1` on any
-**P0 or P1** — wire it as a blocking gate in Phase C before the PUT. P2 is
-advisory (surfaced, never blocks).
+**P0 or P1** — wire it as a blocking gate in Phase C before the PUT. P2 and
+`note` are advisory (surfaced, never block).
 
 ## What it checks
 
 | Rule | Sev | Why it breaks delivery |
 |---|---|---|
 | `wrapper` | P0 | No `<body>…<main>…</main></body>` → DA silently discards the content. `<header>`/`<footer>` absent → P1. |
-| `h1` | P0/P1 | A page needs exactly one `<h1>` (SEO + decoration). 0 → P0; >1 → P1. A fragment must have none. |
-| `one-cta-per-p` | P1 | `decorateButtons` only buttonizes a link that is the **sole** content of its `<p>`. Two emphasized links in one paragraph ship as unstyled text — invisible on light grounds, glaring on a photo hero. Split each CTA into its own `<p>`. |
+| `h1` | P0/P1 | A page needs exactly one `<h1>` (SEO + decoration). 0 → P0; >1 → P1. A fragment must have none. 0 is a `note` when the source capture records no h1 either (`--slug`, else the coverage row matching `--path`; `--current` defaults to `stardust/current`) — content is never edited to satisfy a verifier; `verify.mjs` keeps the same exception. |
+| `one-cta-per-p` | P1 | `decorateButtons` only buttonizes a link that is the **sole** content of its `<p>`. Two emphasized links in one paragraph ship as unstyled text. Split each CTA into its own `<p>`. |
 | `about-error` | P0 | `about:error` in the source means a broken image rendition already shipped. |
 | `img-path` | P0 | A `/img/...` src 404s at delivery. |
 | `cross-origin-optimize` | P2 | An external `<img>` inside a block that runs `createOptimizedPicture` (cards/columns/hero; `--optimizing-blocks a,b,c` overrides) may be corrupted (dropped `?v=`, added `&format=webply`). Advisory — the authoritative resolve is `media-reconcile.mjs`. |
@@ -49,6 +47,3 @@ author content.html
   → verify.mjs (typed render-truth; D below)       ← reference/delivery-gates.md
   → flip to deployed/verified
 ```
-
-The static lint catches the cheap, deterministic failures before spending a
-network round-trip; the dynamic verify catches what only the renderer knows.
