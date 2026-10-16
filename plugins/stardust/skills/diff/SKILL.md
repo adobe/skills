@@ -142,9 +142,9 @@ node stardust/scripts/diff/chrome-compare.mjs stardust/chrome/header-contract.js
   --profile replica --json stardust/chrome/header-parity.json    # functional under redesign and reskin
 ```
 
-An in-flow per-visitor bar is hidden on all three runs with the same `--hide <sel,…>` /
-`--presence <f> --slug <s>`: the explorer records the list (`hide`), the comparer refuses records explored
-with different lists (`hide-mismatch`, exit 2).
+An in-flow per-visitor bar: pass the same `--hide <sel,…>` / `--presence <f> --slug <s>` to all three runs —
+the explorer hides it and records the list (`hide`), the comparer refuses records explored with different
+lists (`hide-mismatch`, exit 2).
 
 The explorer hovers (desktop), clicks and keys every header control and records each opened state (links,
 headings, crop, `aria-expanded`, focus, scroll lock, motion, close paths), nested levels within `--max-states 400

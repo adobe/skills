@@ -83,9 +83,9 @@ The prototype capture is re-taken every iteration.
    text-less accordion button) confirmed intended. A 🟠 font fork is a
    defect to fix — the brand faces are self-hosted (#133), so it is usually
    a face that did not load (Hardening rule 14), never a justified
-   substitute. A hidden lazy-image placeholder (≤ 64 px, not shown, with a
-   data: URI, small intrinsic size, aria-hidden or a loaded sibling of the
-   same alt or file, its full image loaded or declared) is counted under
+   substitute. A hidden lazy-image placeholder (≤ 64 px, with a data: URI,
+   small intrinsic size, aria-hidden or a loaded sibling of the same alt or
+   file, its full image loaded or declared) is counted under
    `placeholder images`, never a `MISSING ICON`.
 2. **visual-diff: flags none or justified.** A live page's own quirks are
    justified when the prototype mirrors them (e.g. a 1×1 SEO h1 at x0, a
@@ -860,14 +860,12 @@ on the verdict, never reported unmasked), `overrides.json` (shown BESIDE the mea
 never replacing it), `clip-allow.json`, `presence.json`, `units.json`.
 
 **Hide or mask.** An in-flow per-visitor region (a location-suggestion bar above the header) is
-HIDDEN: removed before measuring, on both sides, via `--hide <sel,…>` or presence.json `hide`;
-declare a site-wide bar once as `"*": { "hide": ["<sel>"] }`. gate.sh merges its `--hide` with
-presence.json and hides the list on both captures, content-diff, visual-diff, content-presence,
-clip-probe and chrome-parity (`--hide` + `--presence`); gate-all reads only presence.json and hides
-it on both stitches, content-presence and clip-probe; triage's parity runs and the header-contract
-tools (chrome-explore, chrome-compare) take the same list; unit-geometry takes none. A capture or
-cache taken with another list is never reused. An authored-volatile band (a campaign hero) is
-MASKED: still measured, masked on the verdict (`masks.json`).
+hidden: removed before measuring, on both sides, via `--hide <sel,…>` or presence.json `hide`;
+declare a site-wide bar once as `"*": { "hide": ["<sel>"] }`. gate-all reads only presence.json;
+gate.sh merges its `--hide` with it. Every capture and probe of either, triage's parity runs and the
+header-contract tools take the list; unit-geometry alone takes none. A capture or cache taken with
+another list is never reused. An authored-volatile band (a campaign hero) is masked: still
+measured, masked on the verdict (`masks.json`).
 
 Origin: a fix round reuses this run's (row `originReused`, § Iteration discipline, Evidence
 freshness); fallback: live
