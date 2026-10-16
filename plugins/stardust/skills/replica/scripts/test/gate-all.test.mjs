@@ -15,6 +15,10 @@
 // stitch stub that writes a canned inventory: one stitch per side per page, no probe spawns, fix rounds 0 origin / 1 EDS,
 // fallbacks (blocked origin, --warmup) logged, legacy unchanged, and content-presence / unit-geometry cache hits
 // recorded in the row (presenceReused, unitsReused — fresh and replayed).
+// presence.json `hide` (F6): the reuse deciders refuse another list (absent = []), probeInputs / gateKeyParts carry a
+// non-empty list only; a sandbox whose stub instruments log their argv: "*" then the slug's list reaches both stitches,
+// content-presence and clip-probe, records and rows carry it, fix rounds / live.png / --skip-existing reuse only the
+// same list, no hides → no --hide and no hide field, a live-session.mjs without presenceHide → one log line.
 // Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -23,7 +27,7 @@ import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { codeDeployed, contentDeployed, deployedDocs, edsHostOf, emptySelection, foundationPart, formatSummary, gateKeyOf, gateKeyParts, hostServes, instrumentFiles, inventoryWhy, keyChanged, liveReusePlan, oneLoadKeep, originReusePlan, parseArgs, probeReuse, rosterEstimate, rowKey, selectPages, sharedBlocks, skipCapture, verdict } from '../gate-all.mjs';
+import { codeDeployed, contentDeployed, deployedDocs, edsHostOf, emptySelection, foundationPart, formatSummary, gateKeyOf, gateKeyParts, hostServes, instrumentFiles, inventoryWhy, keyChanged, liveReusePlan, oneLoadKeep, originReusePlan, parseArgs, probeInputs, probeReuse, rosterEstimate, rowKey, selectPages, sharedBlocks, skipCapture, verdict } from '../gate-all.mjs';
 
 // pixel-compare imports pngjs at module level (a project devDependency, absent in the plugin checkout):
 // import it lazily and skip its one check where it does not resolve, like the other browser/dep-bound tests.
@@ -536,6 +540,46 @@ check('liveReusePlan: the archetype round\'s live.png is reused only when live.j
   assert.equal(liveReusePlan(la, { ...live, dismiss: { off: false, consent: null, extra: '.modal' } }, fr(live)).reuse, false);
   assert.equal(liveReusePlan(la, { ...live, ua: 'custom' }, fr(live)).reuse, false);
 });
+// ---- hide (F6): presence.json `hide` — the reuse deciders and the inputs / key a capture's list is part of -------------
+const HL = ['.geo-bar', '.promo-strip'];
+check('hide: originReusePlan / liveReusePlan refuse a capture taken hiding another list (absent = []), accept the same list', () => {
+  const hid = { ...prev, hide: HL };
+  assert.deepEqual(originReusePlan({ ...ask, hide: HL }, hid, fr(hid)), { reuse: true, why: 'same-run' });
+  assert.deepEqual(originReusePlan({ ...ask, hide: [] }, prev, fr(prev)), { reuse: true, why: 'same-run' }, 'no list either side');
+  assert.deepEqual(originReusePlan(ask, hid, fr(hid)), { reuse: false, why: 'hide list differs' }, 'taken hiding, this run hides nothing');
+  assert.deepEqual(originReusePlan({ ...ask, hide: HL }, prev, fr(prev)), { reuse: false, why: 'hide list differs' }, 'a record without hide hid nothing');
+  assert.equal(originReusePlan({ ...ask, hide: ['.geo-bar'] }, hid, fr(hid)).why, 'hide list differs', 'a shorter list');
+  assert.equal(originReusePlan({ ...ask, hide: [...HL].reverse() }, hid, fr(hid)).why, 'hide list differs', 'another order');
+  const live = { writtenBy: 'gate.sh', url: U, width: 1440, locale: 'en-US', settle: true, dismiss: { off: false, consent: null, extra: null }, headed: false, at: AT };
+  const la = { stage: 'published', recaptureOrigin: false, url: U, width: 1440 };
+  assert.deepEqual(liveReusePlan({ ...la, hide: HL }, { ...live, hide: HL }, fr(live)), { reuse: true, why: 'same-run' });
+  assert.deepEqual(liveReusePlan(la, { ...live, hide: [] }, fr(live)), { reuse: true, why: 'same-run' }, 'gate.sh records [] for none');
+  assert.deepEqual(liveReusePlan(la, { ...live, hide: ['.geo-bar'] }, fr(live)), { reuse: false, why: 'live.json hide list differs' });
+  assert.deepEqual(liveReusePlan({ ...la, hide: HL }, live, fr(live)), { reuse: false, why: 'live.json hide list differs' }, 'a live.json without hide hid nothing');
+  assert.equal(liveReusePlan({ ...la, hide: HL }, { ...live, hide: ['.geo-bar'] }, fr(live)).why, 'live.json hide list differs');
+});
+check('hide: probeInputs / gateKeyParts are unchanged without a list (old probes.json replays and keys hold) and carry a non-empty one — probes re-run, the key moves; skipCapture refuses a capture hideChanged names', () => {
+  const opts = parseArgs(['node', 'x']); const page = { slug: 'home', url: 'https://o.test/', liveUrl: 'https://main--s--o.aem.page/' };
+  const ctx = { opts, edsUrl: (x) => x.liveUrl, presence: { home: { variable: ['.rail'] } }, unitsOf: () => [] };
+  const legacy = probeInputs(page, ctx);
+  assert.deepEqual(Object.keys(legacy), ['origin', 'eds', 'width', 'warmup', 'stage', 'content', 'clip', 'presence', 'units', 'unitTol']);
+  assert.deepEqual(probeInputs(page, { ...ctx, hideOf: () => [] }), legacy, 'an empty list is no input');
+  const hidden = probeInputs(page, { ...ctx, hideOf: () => HL }); assert.deepEqual(hidden, { ...legacy, hide: HL });
+  const sidecar = (inputs) => ({ ...reuseArgs().sidecar, inputs });
+  assert.equal(probeReuse(reuseArgs({ sidecar: sidecar(legacy), inputs: probeInputs(page, { ...ctx, hideOf: () => [] }) })).reuse, true, 'a probes.json from before replays');
+  assert.match(probeReuse(reuseArgs({ sidecar: sidecar(legacy), inputs: hidden })).why, /probe inputs changed/);
+  assert.match(probeReuse(reuseArgs({ sidecar: sidecar(hidden), inputs: probeInputs(page, { ...ctx, hideOf: () => ['.geo-bar'] }) })).why, /probe inputs changed/);
+  const root = mkdtempSync(join(tmpdir(), 'gate-all-hide-key-'));
+  mkdirSync(join(root, 'content')); writeFileSync(join(root, 'content/index.html'), '<main></main>');
+  const parts = (c = {}) => gateKeyParts(page, { root, opts, instruments: 'i', ...c }).parts;
+  assert.equal(gateKeyOf(parts({ hideOf: () => [] })), gateKeyOf(parts())); assert.equal('hide' in parts().build.sidecars, false);
+  assert.deepEqual(parts({ hideOf: () => HL }).build.sidecars.hide, HL);
+  assert.notEqual(gateKeyOf(parts({ hideOf: () => HL })), gateKeyOf(parts())); assert.notEqual(gateKeyOf(parts({ hideOf: () => HL })), gateKeyOf(parts({ hideOf: () => ['.geo-bar'] })));
+  rmSync(root, { recursive: true, force: true });
+  const cc = { opts: { skip: true }, has: () => true, keyChanged: () => false };
+  assert.equal(skipCapture({}, 'origin', cc), true, 'no hideChanged: as before');
+  assert.equal(skipCapture({}, 'origin', { ...cc, hideChanged: () => true }), false); assert.equal(skipCapture({}, 'eds', { ...cc, hideChanged: () => true }), false);
+});
 check('parseArgs: --origin-max-age <h>; pools origin 2 / EDS 4 / probe 2 with or without a machine browser slot (STARDUST_BROWSER_SLOT — it bounds jobs, not browsers), explicit flags win', () => {
   assert.equal(parseArgs(['node', 'x'], {}).originMaxAge, null); assert.equal(parseArgs(['node', 'x', '--origin-max-age', '6'], {}).originMaxAge, 6);
   const plain = parseArgs(['node', 'x'], {}); assert.deepEqual([plain.oc, plain.ec, plain.pc], [2, 4, 2]);
@@ -887,5 +931,129 @@ check('one-load 7: --stage prototype --one-load — the archetype live.png is no
   assert.equal(row.oneLoad.via, 'one-load'); assert.equal(row.originReused, null); assert.equal(row.clipped, 0); assert.equal(row.units.units, 1);
 });
 rmSync(root, { recursive: true, force: true });
+
+// ---- hide (F6) sandbox: presence.json `hide` reaches both stitches, content-presence and clip-probe; records; reuse -----
+// Its own project: stub instruments log `<NAME> <argv>` (stitch-shot: ORIGIN = the www.example.com side, else EDS); the
+// real live-session.mjs (presenceHide, freshness) and foundation-freeze.mjs.
+const hroot = realpathSync(mkdtempSync(join(tmpdir(), 'gate-all-hide-')));
+const HRS = join(hroot, 'stardust/scripts/replica'); const HDS = join(hroot, 'stardust/scripts/diff'); const HLOG = join(hroot, 'argv.log');
+const HOUT = join(hroot, 'stardust/replica/gates/all-1440'); const HPROTO = join(hroot, 'stardust/replica/gates/prototypes-1440');
+mkdirSync(HRS, { recursive: true }); mkdirSync(HDS, { recursive: true });
+cpSync(SCRIPT, join(HRS, 'gate-all.mjs')); cpSync(join(HERE, '..', 'foundation-freeze.mjs'), join(HRS, 'foundation-freeze.mjs')); cpSync(join(DIFF, 'live-session.mjs'), join(HDS, 'live-session.mjs'));
+const argvLog = (name) => `appendFileSync(${JSON.stringify(HLOG)}, ${name} + ' ' + process.argv.slice(2).join(' ') + '\\n');`;
+stub(HRS, 'stitch-shot.mjs', `import { appendFileSync, writeFileSync } from 'node:fs';
+${argvLog("(/www\\.example\\.com/.test(process.argv[2]) ? 'ORIGIN' : 'EDS')")}
+writeFileSync(process.argv[3], 'png');`);
+stub(HRS, 'pixel-compare.mjs', 'console.log(JSON.stringify({ pct: 1.5, heightDelta: 0, compared: { width: 1440, height: 3000 }, pass: true }));');
+stub(HDS, 'content-presence.mjs', `import { appendFileSync, writeFileSync } from 'node:fs';
+${argvLog("'CONTENT'")}
+const a = process.argv; const clip = { counts: { total: 0, textClipped: 0, textHidden: 0, controlHidden: 0, controlClipped: 0 }, groups: [] };
+writeFileSync(a[a.indexOf('--json') + 1], JSON.stringify({ _provenance: { at: new Date().toISOString(), tier: 'chrome' }, scope: 'root', totals: { missing: 0, hidden: 0, controlState: 0 }, eds: { clip }, origin: { clip } }));`);
+stub(HDS, 'clip-probe.mjs', `import { appendFileSync, writeFileSync } from 'node:fs';
+${argvLog("'CLIP'")}
+const a = process.argv; writeFileSync(a[a.indexOf('--json') + 1], JSON.stringify({ at: new Date().toISOString(), counts: { total: 0 }, groups: [] }));`);
+stub(HDS, 'unit-geometry.mjs', 'export function unitsFor() { return []; }');
+writeFileSync(join(hroot, 'stardust/state.json'), JSON.stringify({ pages })); // home (with a prototypePath) and about
+appendFileSync(join(hroot, 'stardust/status.jsonl'), `${JSON.stringify({ ts: new Date(Date.now() - 60e3).toISOString(), skill: 'stardust:rollout', phase: 'A-inventory', event: 'start' })}\n`);
+const setPresence = (json, out = HOUT) => { mkdirSync(out, { recursive: true }); writeFileSync(join(out, 'presence.json'), JSON.stringify(json)); };
+const hgate = (args) => {
+  rmSync(HLOG, { force: true });
+  const e = { ...process.env }; for (const k of ['STARDUST_ORIGIN_MAX_AGE_H', 'STARDUST_BROWSER_SLOT', 'RUN_BG_DEADLINE_SEC']) delete e[k];
+  const r = spawnSync(process.execPath, [join(HRS, 'gate-all.mjs'), '--width', '1440', ...args], { cwd: hroot, env: e, encoding: 'utf8', timeout: 60e3 });
+  const all = lines(HLOG); const run = (r.stdout.match(/run → (.*)/) || [])[1]; const out = args.includes('prototype') ? HPROTO : HOUT;
+  return { ...r, all, by: (name, slug) => all.filter((l) => l.startsWith(`${name} `) && l.includes(`-1440/${slug}/`)), row: (slug) => JSON.parse(readFileSync(run ? join(hroot, run) : join(out, 'summary.json'), 'utf8')).rows.find((x) => x.slug === slug) };
+};
+const hideArg = (l) => { const a = l.split(' '); const i = a.indexOf('--hide'); return i < 0 ? null : a[i + 1]; };
+const hjson = (slug, f, out = HOUT) => JSON.parse(readFileSync(join(out, slug, f), 'utf8'));
+const hlog = (out = HOUT) => readFileSync(join(out, '_run.log'), 'utf8');
+const liveJson = (url, hide) => ({ writtenBy: 'gate.sh', url, width: 1440, locale: 'en-US', settle: true, dismiss: { off: false, consent: null, extra: null }, ...(hide ? { hide } : {}), headed: false, at: new Date().toISOString() });
+setPresence({ '*': { hide: ['.geo-bar'] }, home: { hide: ['.promo-strip'] } });
+check('hide 1: presence.json "*" + a slug\'s hide → both stitches and content-presence get --hide "*" then the slug\'s; a page without its own entry gets "*"\'s; origin.json / eds.json / probes.json inputs / the row record the list', () => {
+  const r = hgate([]);
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  for (const [slug, want] of [['home', '.geo-bar,.promo-strip'], ['about', '.geo-bar']]) {
+    for (const name of ['ORIGIN', 'EDS', 'CONTENT']) { const l = r.by(name, slug); assert.equal(l.length, 1, `${name} ${slug}`); assert.equal(hideArg(l[0]), want, `${name} ${slug}: ${l[0]}`); }
+    for (const f of ['origin.json', 'eds.json']) assert.deepEqual(hjson(slug, f).hide, want.split(','), `${slug} ${f}`);
+    assert.deepEqual(hjson(slug, 'probes.json').inputs.hide, want.split(',')); assert.deepEqual(r.row(slug).hide, want.split(','), `${slug} row`);
+  }
+  assert.match(r.by('ORIGIN', 'home')[0], / --locale en-US --hide \.geo-bar,\.promo-strip --headed$/);
+  assert.equal(r.by('CLIP', 'home').length, 0, 'content-presence carries the clip counts');
+});
+check('hide 2: a fix round (--only) with the list unchanged reuses the origin; the EDS stitch hides the same list', () => {
+  const r = hgate(['--only', 'home']);
+  assert.equal(r.status, 0, r.stderr + r.stdout); assert.equal(r.by('ORIGIN', 'home').length, 0); assert.equal(hideArg(r.by('EDS', 'home')[0]), '.geo-bar,.promo-strip');
+  assert.equal(r.row('home').originReused.policy, 'same-run'); assert.deepEqual(r.row('home').hide, HL); assert.deepEqual(hjson('home', 'origin.json').hide, HL);
+});
+check('hide 3: clip-probe (--no-content: no content-presence) gets the same --hide', () => {
+  const r = hgate(['--only', 'home', '--no-content']);
+  assert.equal(r.status, 0, r.stderr + r.stdout); assert.equal(r.by('CONTENT', 'home').length, 0);
+  const c = r.by('CLIP', 'home'); assert.equal(c.length, 1); assert.equal(hideArg(c[0]), '.geo-bar,.promo-strip');
+});
+check('hide 4: a fix round with a changed list re-stitches the origin (not reused: hide list differs) and records the new list; the next fix round reuses it', () => {
+  setPresence({ '*': { hide: ['.geo-bar'] }, home: { hide: ['.promo-strip', '.cookie-strip'] } });
+  const r = hgate(['--only', 'home']); const want = ['.geo-bar', '.promo-strip', '.cookie-strip'];
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  const o = r.by('ORIGIN', 'home'); assert.equal(o.length, 1); assert.equal(hideArg(o[0]), want.join(','));
+  assert.match(hlog(), /origin home → not reused \(hide list differs\)/);
+  assert.equal(r.row('home').originReused, null); assert.deepEqual(hjson('home', 'origin.json').hide, want); assert.deepEqual(r.row('home').hide, want);
+  assert.equal(hgate(['--only', 'home']).by('ORIGIN', 'home').length, 0);
+});
+check('hide 5: --skip-existing keeps an origin taken hiding the same list, re-shoots one taken hiding another (logged)', () => {
+  const same = hgate(['--only', 'about', '--skip-existing']);
+  assert.equal(same.status, 0, same.stderr + same.stdout); assert.equal(same.by('ORIGIN', 'about').length, 0); assert.match(hlog(), /origin about → reused \(--skip-existing\)/);
+  setPresence({ '*': { hide: ['.geo-bar', '.chat-tab'] }, home: { hide: ['.promo-strip', '.cookie-strip'] } });
+  const moved = hgate(['--only', 'about', '--skip-existing']);
+  assert.equal(moved.status, 0, moved.stderr + moved.stdout); assert.equal(moved.by('ORIGIN', 'about').length, 1); assert.equal(hideArg(moved.by('ORIGIN', 'about')[0]), '.geo-bar,.chat-tab');
+  assert.match(hlog(), /origin about → not reused \(--skip-existing: hide list differs\)/); assert.deepEqual(hjson('about', 'origin.json').hide, ['.geo-bar', '.chat-tab']);
+});
+check('hide 6: the published stage takes the archetype round\'s live.png only when live.json hid the same list', () => {
+  const g = join(hroot, 'stardust/replica/gates/about-1440'); mkdirSync(g, { recursive: true }); writeFileSync(join(g, 'live.png'), 'png');
+  writeFileSync(join(g, 'live.json'), JSON.stringify(liveJson('https://www.example.com/about', ['.geo-bar', '.chat-tab'])));
+  const r = hgate([]);
+  assert.equal(r.status, 0, r.stderr + r.stdout); assert.equal(r.by('ORIGIN', 'about').length, 0);
+  assert.equal(r.row('about').originReused.from, 'stardust/replica/gates/about-1440/live.png'); assert.deepEqual(hjson('about', 'origin.json').hide, ['.geo-bar', '.chat-tab']);
+  writeFileSync(join(g, 'live.json'), JSON.stringify(liveJson('https://www.example.com/about', ['.geo-bar'])));
+  const d = hgate([]);
+  assert.equal(d.by('ORIGIN', 'about').length, 1); assert.match(hlog(), /origin about → live\.png not reused \(live\.json hide list differs\)/);
+  rmSync(g, { recursive: true, force: true });
+});
+check('hide 7: --stage prototype — the archetype live.png only with the same list (both stitches hide it); --skip-existing keeps both sides with the same list, re-shoots both with another (logged)', () => {
+  const args = ['--stage', 'prototype', '--proto-base', 'http://localhost:9', '--no-probes'];
+  setPresence({ '*': { hide: ['.geo-bar'] } }, HPROTO);
+  const g = join(hroot, 'stardust/replica/gates/home-1440'); mkdirSync(g, { recursive: true }); writeFileSync(join(g, 'live.png'), 'png');
+  writeFileSync(join(g, 'live.json'), JSON.stringify(liveJson('https://www.example.com/', ['.geo-bar'])));
+  const a = hgate(args);
+  assert.equal(a.status, 0, a.stderr + a.stdout); assert.equal(a.by('ORIGIN', 'home').length, 0); assert.equal(a.row('home').originReused.policy, 'prototype-stage');
+  assert.deepEqual(hjson('home', 'origin.json', HPROTO).hide, ['.geo-bar']); assert.equal(hideArg(a.by('EDS', 'home')[0]), '.geo-bar', 'the served prototype hides the same list');
+  writeFileSync(join(g, 'live.json'), JSON.stringify(liveJson('https://www.example.com/', [])));
+  const b = hgate(args);
+  assert.equal(hideArg(b.by('ORIGIN', 'home')[0]), '.geo-bar'); assert.match(hlog(HPROTO), /origin home → live\.png not reused \(live\.json hide list differs\)/);
+  const c = hgate([...args, '--skip-existing']);
+  assert.equal(c.status, 0, c.stderr + c.stdout); assert.equal(c.by('ORIGIN', 'home').length + c.by('EDS', 'home').length, 0, 'the same list: both kept');
+  setPresence({ '*': { hide: ['.geo-bar', '.cookie-strip'] } }, HPROTO);
+  const d = hgate([...args, '--skip-existing']);
+  assert.equal(hideArg(d.by('ORIGIN', 'home')[0]), '.geo-bar,.cookie-strip'); assert.equal(hideArg(d.by('EDS', 'home')[0]), '.geo-bar,.cookie-strip');
+  assert.match(hlog(HPROTO), /origin home → not reused \(--skip-existing: hide list differs\)/); assert.match(hlog(HPROTO), /eds home → not reused \(--skip-existing: hide list differs\)/);
+  rmSync(g, { recursive: true, force: true });
+});
+check('hide 8: no hide entries → no --hide in any argv and no hide field in origin.json / eds.json / probes.json / the row; an origin taken hiding is not reused', () => {
+  setPresence({ home: { variable: ['.rail'] } });
+  const r = hgate(['--only', 'home']);
+  assert.equal(r.status, 0, r.stderr + r.stdout); assert.equal(r.all.length, 3, r.all.join('\n')); assert.ok(r.all.every((l) => !l.includes('--hide')), r.all.join('\n'));
+  assert.equal(r.by('ORIGIN', 'home').length, 1); assert.match(hlog(), /origin home → not reused \(hide list differs\)/);
+  for (const f of ['origin.json', 'eds.json']) assert.equal('hide' in hjson('home', f), false, f);
+  assert.equal('hide' in hjson('home', 'probes.json').inputs, false); assert.equal('hide' in r.row('home'), false);
+});
+check('hide 9: a diff scripts dir whose live-session.mjs lacks presenceHide → one log line, captures and probes run without hides', () => {
+  setPresence({ '*': { hide: ['.geo-bar'] } });
+  renameSync(join(HDS, 'live-session.mjs'), join(HDS, 'live-session-real.mjs'));
+  writeFileSync(join(HDS, 'live-session.mjs'), "export { freshness, maxAgeHours, reuseRecord, runStartAt } from './live-session-real.mjs';\n");
+  try {
+    const r = hgate([]);
+    assert.equal(r.status, 0, r.stderr + r.stdout); assert.equal((r.stdout.match(/presence hide: not honoured/g) || []).length, 1, r.stdout);
+    assert.ok(r.all.length && r.all.every((l) => !l.includes('--hide')), r.all.join('\n')); assert.equal('hide' in r.row('home'), false);
+  } finally { rmSync(join(HDS, 'live-session.mjs')); renameSync(join(HDS, 'live-session-real.mjs'), join(HDS, 'live-session.mjs')); }
+});
+rmSync(hroot, { recursive: true, force: true });
 console.log(failed ? `\n${failed} failed` : '\nall passed');
 process.exit(failed ? 1 : 0);
