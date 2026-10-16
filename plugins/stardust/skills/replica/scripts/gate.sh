@@ -69,7 +69,11 @@
 #            printed. Evidence per probe lands next to the pixel evidence:
 #            content-diff-<label>.txt, visual-diff-<label>.txt + vdiff-<label>/,
 #            chrome-parity-<label>.txt, clip-<label>.{txt,json},
-#            content-presence-<label>.{txt,json}, units-<label>.{txt,json}. Needs the diff skill's
+#            content-presence-<label>.{txt,json}, units-<label>.{txt,json}. The live side of
+#            content-diff, visual-diff and content-presence is cached like chrome-parity's
+#            chrome-live.json: content-live.json, visual-live.json, presence-live.json — live
+#            side probed once per run, later rounds reuse it; older only under
+#            STARDUST_ORIGIN_MAX_AGE_H; delete to re-probe. Needs the diff skill's
 #            scripts at stardust/scripts/diff/ (Setup step 4). The build URL may be
 #            a served prototype or the published/preview origin — the published-
 #            origin gate is the same command with the preview URL (pass --marker
@@ -84,7 +88,9 @@
 #            link or heading, or a required unit off; 1 when a probe errored (it gave
 #            no verdict), 0 only when every probe ran and passed.
 #            Concurrency: a --full round holds up to SIX Chromiums at its peak
-#            (the probes in parallel); RUN_BG_SLOTS lowers that on a small machine. Start the
+#            (the probes in parallel); RUN_BG_SLOTS lowers that on a small machine, and
+#            run-bg takes ONE machine-wide browser slot per round
+#            (stardust/scripts/stardust/browser-lock.mjs, STARDUST_BROWSER_SLOTS). Start the
 #            rounds all at once and let the slots pace them — no sleep staggering.
 #   --main <selector>   content root for the diff probes (default: main)
 #   --consent <sel>     site-specific consent-accept selector (clicked before the built-in candidates) —
@@ -164,8 +170,8 @@ if [ "$DISMISS" = 0 ] && { [ -n "$CONSENT" ] || [ -n "$DISMISS_EXTRA" ]; }; then
 fi
 # Overlay flags per step (header § Overlay dismissal). stitch-shot and chrome-parity take --consent <sel> and
 # --dismiss <sel,…>; the diff probes take one --dismiss [sel,…] (bare = the built-in candidates only), so the site's
-# selectors are joined for them. Arrays expand as ${a[@]+"${a[@]}"}: macOS /bin/bash is 3.2, where an empty array
-# under set -u is an unbound variable.
+# selectors are joined for them; both stitched captures also pin --locale en-US, the locale gate-all's stitches pin.
+# Arrays expand as ${a[@]+"${a[@]}"}: macOS /bin/bash is 3.2, where an empty array under set -u is an unbound variable.
 STITCH_OPTS=(); PROBE_OPTS=(); CHROME_OPTS=()
 if [ "$DISMISS" = 1 ]; then
   [ -n "$CONSENT" ] && { STITCH_OPTS+=(--consent "$CONSENT"); CHROME_OPTS+=(--consent "$CONSENT"); }
@@ -175,6 +181,7 @@ if [ "$DISMISS" = 1 ]; then
 else
   STITCH_OPTS=(--no-dismiss)
 fi
+STITCH_OPTS+=(--locale en-US)
 
 HERE=$(cd "$(dirname "$0")" && pwd)
 DIR="stardust/replica/gates/$SLUG-$W"
@@ -260,12 +267,20 @@ fi
 # (--settle: live JS-heavy pages need the lazyload pass; STITCH_OPTS: the
 # round's overlay dismissal, header § Overlay dismissal). Never swallow the
 # output — exit 3 here means "blocked, escalate --headed", not "skip".
+# live.json records how live.png was taken (url, width, locale, settle, dismissal, at) — gate-all reads it before
+# reusing live.png; it goes with live.png when the capture is retaken (live.png keeps its delete-to-retake rule).
 if [ ! -f "$DIR/live.png" ]; then
-  capture_live() { rm -f "$DIR/live.png"; capped "$STITCH_TIMEOUT" "stitch-shot live $SLUG@$W" node "$HERE/stitch-shot.mjs" "$LIVE_URL" "$DIR/live.png" --width "$W" --settle ${STITCH_OPTS[@]+"${STITCH_OPTS[@]}"}; }
+  capture_live() { rm -f "$DIR/live.png" "$DIR/live.json"; LIVE_AT=$(node -e 'process.stdout.write(new Date().toISOString())'); capped "$STITCH_TIMEOUT" "stitch-shot live $SLUG@$W" node "$HERE/stitch-shot.mjs" "$LIVE_URL" "$DIR/live.png" --width "$W" --settle ${STITCH_OPTS[@]+"${STITCH_OPTS[@]}"}; }
   retry_once "live capture" capture_live
   rc=$?
-  [ $rc -ne 0 ] && rm -f "$DIR/live.png"   # never leave a partial live capture to be reused
+  [ $rc -ne 0 ] && rm -f "$DIR/live.png" "$DIR/live.json"   # never leave a partial live capture to be reused
   [ $rc -ne 0 ] && { echo "gate.sh: live capture failed (exit $rc) — not comparing$([ $rc -eq 1 ] && printf ' (twice: no verdict — re-queue the round)')" >&2; exit $rc; }
+  # argv-passed values, JSON.stringify — never shell-interpolated JSON; a failed write only costs gate-all's reuse
+  node -e 'const [f, url, w, dismiss, consent, extra, at] = process.argv.slice(1);
+    require("fs").writeFileSync(f, `${JSON.stringify({ writtenBy: "gate.sh", url, width: Number(w), locale: "en-US", settle: true,
+      dismiss: { off: dismiss === "0", consent: consent || null, extra: extra || null }, headed: false, at }, null, 2)}\n`);' \
+    -- "$DIR/live.json" "$LIVE_URL" "$W" "$DISMISS" "$CONSENT" "$DISMISS_EXTRA" "$LIVE_AT" \
+    || echo "gate.sh: could not write $DIR/live.json — gate-all will not reuse this live.png" >&2
 fi
 
 # Build side: re-captured every iteration; exit 1 retried once (header § Capture retry); the same overlay flags as
@@ -333,21 +348,24 @@ case "${GATE_REGIME:-auto}" in
 esac
 UNITS_FILE="stardust/replica/units.json"
 capped "$PROBE_TIMEOUT" "content-diff $SLUG@$W" node "$DIFF/content-diff.mjs" "$LIVE_URL" "$BUILD_URL" \
-  --profile generic --width "$W" --main "$MAIN" ${PROBE_OPTS[@]+"${PROBE_OPTS[@]}"} > "$CD" 2>&1 &
+  --profile generic --width "$W" --live-cache "$DIR/content-live.json" --main "$MAIN" ${PROBE_OPTS[@]+"${PROBE_OPTS[@]}"} > "$CD" 2>&1 &
 P_CD=$!
 capped "$PROBE_TIMEOUT" "visual-diff $SLUG@$W" node "$DIFF/visual-diff.mjs" "$LIVE_URL" "$BUILD_URL" \
-  --profile generic --width "$W" --main "$MAIN" ${PROBE_OPTS[@]+"${PROBE_OPTS[@]}"} --out "$DIR/vdiff-$LBL" > "$VD" 2>&1 &
+  --profile generic --width "$W" --main "$MAIN" ${PROBE_OPTS[@]+"${PROBE_OPTS[@]}"} --out "$DIR/vdiff-$LBL" \
+  --live-cache "$DIR/visual-live.json" > "$VD" 2>&1 &
 P_VD=$!
 capped "$PROBE_TIMEOUT" "chrome-parity $SLUG@$W" node "$HERE/chrome-parity.mjs" "$LIVE_URL" "$BUILD_URL" \
   --width "$W" --live-cache "$DIR/chrome-live.json" ${CHROME_OPTS[@]+"${CHROME_OPTS[@]}"} > "$CP" 2>&1 &
 P_CP=$!
 # clip-probe on the BUILD side (every regime, no live hit); content-presence live vs build in the published regime;
-# unit-geometry when the project declares repeated-unit families (a slug with none prints n/a, exit 0).
+# unit-geometry when the project declares repeated-unit families (a slug with none prints n/a, exit 0). The live side
+# of content-diff, visual-diff and content-presence comes from its cache file in $DIR while fresh (header § --full).
 capped "$PROBE_TIMEOUT" "clip-probe $SLUG@$W" node "$DIFF/clip-probe.mjs" "$BUILD_URL" --width "$W" --json "$DIR/clip-$LBL.json" > "$CL" 2>&1 &
 P_CL=$!
 P_PR=""; P_UG=""
 if [ "$REGIME" = published ]; then
-  capped "$PROBE_TIMEOUT" "content-presence $SLUG@$W" node "$DIFF/content-presence.mjs" "$LIVE_URL" "$BUILD_URL" --width "$W" --json "$DIR/content-presence-$LBL.json" > "$PR" 2>&1 &
+  capped "$PROBE_TIMEOUT" "content-presence $SLUG@$W" node "$DIFF/content-presence.mjs" "$LIVE_URL" "$BUILD_URL" --width "$W" --json "$DIR/content-presence-$LBL.json" \
+    --origin-cache "$DIR/presence-live.json" > "$PR" 2>&1 &
   P_PR=$!
 fi
 if [ -f "$UNITS_FILE" ] && [ -f "$DIFF/unit-geometry.mjs" ]; then

@@ -256,8 +256,8 @@ const CONSENT = '#consent-yes, .consent-box-yes'; const EXTRA = '.promo-close,#n
 resetArgs();
 r = await gate(['consent1', 'https://live.example/consent1', buildUrl, '1440', 'c1', '--full', '--marker', 'home-proposed', '--consent', CONSENT, '--dismiss', EXTRA], { STUB_STITCH_ARGS: argsFile });
 check('--consent / --dismiss reach the live capture (after --settle) and the build capture alike, values intact', r.status === 0 && stitchArgs().length === 2
-  && stitchArgs()[0] === `LIVE https://live.example/consent1 stardust/replica/gates/consent1-1440/live.png --width 1440 --settle --consent ${CONSENT} --dismiss ${EXTRA}`
-  && stitchArgs()[1] === `BUILD ${buildUrl} stardust/replica/gates/consent1-1440/build.png --width 1440 --consent ${CONSENT} --dismiss ${EXTRA}`, `status ${r.status} | ${stitchArgs().join(' | ')} ${r.stderr.slice(0, 200)}`);
+  && stitchArgs()[0] === `LIVE https://live.example/consent1 stardust/replica/gates/consent1-1440/live.png --width 1440 --settle --consent ${CONSENT} --dismiss ${EXTRA} --locale en-US`
+  && stitchArgs()[1] === `BUILD ${buildUrl} stardust/replica/gates/consent1-1440/build.png --width 1440 --consent ${CONSENT} --dismiss ${EXTRA} --locale en-US`, `status ${r.status} | ${stitchArgs().join(' | ')} ${r.stderr.slice(0, 200)}`);
 check('the diff probes get the same selectors joined into one --dismiss list', new RegExp(`--main main --dismiss ${CONSENT},${EXTRA}$`, 'm').test(evidence('consent1', 'content-diff-c1.txt')) && new RegExp(`--main main --dismiss ${CONSENT},${EXTRA} --out `).test(evidence('consent1', 'visual-diff-c1.txt')), evidence('consent1', 'content-diff-c1.txt') + evidence('consent1', 'visual-diff-c1.txt'));
 check('chrome-parity gets --consent and --dismiss', new RegExp(`--live-cache \\S+ --consent ${CONSENT} --dismiss ${EXTRA}$`, 'm').test(evidence('consent1', 'chrome-parity-c1.txt')), evidence('consent1', 'chrome-parity-c1.txt'));
 resetArgs();
@@ -269,7 +269,7 @@ check('a default round dismisses with the built-in candidates: no overlay flag o
 resetArgs();
 r = await gate(['consent3', 'https://live.example/consent3', buildUrl, '1440', 'c3', '--full', '--marker', 'home-proposed', '--no-dismiss'], { STUB_STITCH_ARGS: argsFile });
 check('--no-dismiss reaches both captures as stitch-shot --no-dismiss and drops the probes\' flag', r.status === 0 && stitchArgs().length === 2
-  && stitchArgs().every((l) => / --no-dismiss$/.test(l) && !/--consent|--dismiss /.test(l))
+  && stitchArgs().every((l) => / --no-dismiss --locale en-US$/.test(l) && !/--consent|--dismiss /.test(l))
   && !/--dismiss/.test(evidence('consent3', 'content-diff-c3.txt')) && !/--dismiss/.test(evidence('consent3', 'visual-diff-c3.txt')) && !/--consent|--dismiss/.test(evidence('consent3', 'chrome-parity-c3.txt')), `status ${r.status} | ${stitchArgs().join(' | ')}`);
 resetArgs();
 r = await gate(['consent3', 'https://live.example/consent3', buildUrl, '1440', 'c4', '--no-dismiss', '--consent', '#consent-yes'], { STUB_STITCH_ARGS: argsFile });
@@ -292,6 +292,39 @@ check('with stardust/replica/units.json the round runs unit-geometry --families 
 r = await gate(['home', 'https://live.example/', buildUrl, '1440', 'u2', '--full'], { STUB_UNITS_RC: '2' });
 check('a required unit off (unit-geometry exit 2) fails the round', r.status === 2 && /^unit-geometry: Units: 1 compared/m.test(r.stdout), `status ${r.status} ${r.stdout}`);
 unlinkSync(join(root, 'stardust/replica/units.json'));
+
+// Live-side caches (C5) and live.json: --full hands each live-side probe its cache file in the gate dir; both stitched
+// captures pin --locale en-US; a live capture records its parameters in live.json (argv-passed, JSON.stringify), a
+// cached live.png round leaves it untouched, a failed (re)capture leaves neither live.png nor live.json.
+const gdir = (slug) => `stardust/replica/gates/${slug}-1440`;
+const liveJson = (slug) => { const p = join(root, gdir(slug), 'live.json'); return existsSync(p) ? readFileSync(p, 'utf8') : null; };
+resetArgs();
+r = await gate(['cache1', 'https://live.example/cache1', buildUrl, '1440', 'k1', '--full', '--marker', 'home-proposed'], { GATE_REGIME: 'published', STUB_STITCH_ARGS: argsFile });
+check('--full: content-diff gets --live-cache <gate dir>/content-live.json, visual-diff <gate dir>/visual-live.json, content-presence --origin-cache <gate dir>/presence-live.json', r.status === 0
+  && evidence('cache1', 'content-diff-k1.txt').includes(` --live-cache ${gdir('cache1')}/content-live.json `)
+  && evidence('cache1', 'visual-diff-k1.txt').includes(` --live-cache ${gdir('cache1')}/visual-live.json`)
+  && evidence('cache1', 'content-presence-k1.txt').includes(` --origin-cache ${gdir('cache1')}/presence-live.json`), `status ${r.status} ${r.stdout}`);
+check('both stitched captures pin --locale en-US', stitchArgs().length === 2 && stitchArgs().every((l) => / --locale en-US$/.test(l)), stitchArgs().join(' | '));
+const before = new Date().toISOString();
+r = await gate(['lj1', 'https://live.example/lj1', buildUrl, '1440', 'j1', '--marker', 'home-proposed']);
+let lj = liveJson('lj1') ? JSON.parse(liveJson('lj1')) : {};
+check('a live capture writes live.json: url, width, locale, settle, overlays dismissed, the capture time', r.status === 0 && lj.writtenBy === 'gate.sh' && lj.url === 'https://live.example/lj1'
+  && lj.width === 1440 && lj.locale === 'en-US' && lj.settle === true && lj.headed === false && lj.dismiss.off === false && lj.dismiss.consent === null && lj.dismiss.extra === null
+  && lj.at >= before && lj.at <= new Date().toISOString(), `status ${r.status} ${liveJson('lj1')}`);
+r = await gate(['lj2', 'https://live.example/lj2', buildUrl, '1440', 'j2', '--marker', 'home-proposed', '--no-dismiss']);
+check('--no-dismiss → live.json dismiss.off true', r.status === 0 && liveJson('lj2') && JSON.parse(liveJson('lj2')).dismiss.off === true, liveJson('lj2'));
+r = await gate(['lj3', 'https://live.example/lj3', buildUrl, '1440', 'j3', '--marker', 'home-proposed', '--consent', CONSENT, '--dismiss', EXTRA]);
+lj = liveJson('lj3') ? JSON.parse(liveJson('lj3')) : {};
+check('--consent / --dismiss values land in live.json intact', r.status === 0 && Boolean(lj.dismiss) && lj.dismiss.off === false && lj.dismiss.consent === CONSENT && lj.dismiss.extra === EXTRA, liveJson('lj3'));
+const kept = liveJson('lj1');
+resetCount();
+r = await gate(['lj1', 'https://live.example/lj1', buildUrl, '1440', 'j4', '--marker', 'home-proposed'], { STUB_STITCH_COUNT: countFile });
+check('a cached live.png round leaves live.json byte-identical (no live capture)', r.status === 0 && attempts().join(',') === 'BUILD' && kept !== null && liveJson('lj1') === kept, `${attempts().join(',')} ${liveJson('lj1')}`);
+unlinkSync(join(root, gdir('lj1'), 'live.png'));
+r = await gate(['lj1', 'https://live.example/lj1', buildUrl, '1440', 'j5', '--marker', 'home-proposed'], { STUB_STITCH_RC_LIVE: '1' });
+check('a failed live (re)capture leaves neither live.png nor live.json', r.status === 1 && !existsSync(join(root, gdir('lj1'), 'live.png')) && liveJson('lj1') === null, `status ${r.status} ${liveJson('lj1')}`);
+r = await gate(['lj4', 'https://live.example/lj4', buildUrl, '1440', 'j6', '--marker', 'home-proposed'], { STUB_STITCH_RC_LIVE: '3' });
+check('a blocked first live capture (exit 3) writes no live.json', r.status === 3 && !existsSync(join(root, gdir('lj4'), 'live.png')) && liveJson('lj4') === null, `status ${r.status}`);
 
 server.close();
 if (process.env.GATE_TEST_KEEP) console.log(`sandbox kept at ${root} (build url was ${buildUrl})`);
