@@ -12,15 +12,19 @@
 // (lateWindowFor → 0) but one dismissOverlays pass after waitEdsDelayedPhase still clicks a consent banner that
 // appears 3 s after `load` (the EDS delayed phase), which an immediate sweep misses. Prints a skip line otherwise.
 // --inventory (gate-all --one-load): named in --help; an unreadable spec still writes the PNG, exit 0, one warning.
+// --hide (in-flow per-visitor regions): parseArgs takes comma lists, repeatable, de-duplicated; named in --help; a
+// missing value is a usage error; e2e an 88 px in-flow .geo-bar above the content — hidden, the stitch is 88 px
+// shorter and stdout says `hidden: .geo-bar ×1 (88px) [--hide]` (also under --no-dismiss); a selector matching nothing
+// is ×0 and changes nothing; under --settle the --inventory already sees the hidden page.
 // Run: node plugins/stardust/skills/replica/scripts/test/stitch-shot.test.mjs
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readdirSync, rmSync, statSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { overflowLine } from '../stitch-shot.mjs';
+import { overflowLine, parseArgs } from '../stitch-shot.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'stitch-shot.mjs');
@@ -48,6 +52,28 @@ await check('--help in an empty cwd: exit 0, usage + the overflow line and the E
     assert.match(r.stdout, /Usage: node stitch-shot\.mjs <url> <out\.png>/);
     assert.match(r.stdout, /overflow: scrollWidth=<n> viewport=<n> delta=<n>/);
     assert.match(r.stdout, /EDS build\/preview hosts/);
+    assert.deepEqual(readdirSync(cwd), []);
+  } finally { rmSync(cwd, { recursive: true, force: true }); }
+});
+await check('parseArgs --hide: comma lists, repeatable, trimmed, empties dropped, de-duplicated in order; absent → []', () => {
+  const argv = (...a) => ['node', 'stitch-shot.mjs', 'http://127.0.0.1/', 'out.png', ...a];
+  assert.deepEqual(parseArgs(argv('--hide', ' .geo-bar , #promo,', '--hide', '#promo,.location-bar', '--hide', '')).opts.hide, ['.geo-bar', '#promo', '.location-bar']);
+  const plain = parseArgs(argv('--width', '360', '--dismiss', '.x'));
+  assert.deepEqual(plain.opts.hide, []);
+  assert.deepEqual([plain.url, plain.out, plain.opts.width, plain.opts.dismiss], ['http://127.0.0.1/', 'out.png', 360, ['.x']]);
+});
+await check('--hide: --help names it; a missing value (end of argv or a flag next) is a usage error, exit 1, nothing written', () => {
+  const cwd = mkdtempSync(join(tmpdir(), 'stitch-hide-'));
+  try {
+    const h = spawnSync(process.execPath, [SCRIPT, '--help'], { cwd, encoding: 'utf8', timeout: 15000 });
+    assert.equal(h.status, 0, h.stderr);
+    assert.match(h.stdout, /--hide <sel,…> +remove in-flow per-visitor regions/);
+    assert.match(h.stdout, /hidden: <sel> ×<n> \(<h>px\) \[--hide\]/);
+    for (const tail of [['--hide'], ['--hide', '--settle']]) {
+      const r = spawnSync(process.execPath, [SCRIPT, 'http://127.0.0.1:9/', 'x.png', ...tail], { cwd, encoding: 'utf8', timeout: 15000 });
+      assert.equal(r.status, 1, `${tail.join(' ')}: ${r.stderr}`);
+      assert.match(r.stderr, /^--hide needs a selector list/);
+    }
     assert.deepEqual(readdirSync(cwd), []);
   } finally { rmSync(cwd, { recursive: true, force: true }); }
 });
@@ -82,6 +108,8 @@ if (chromium) {
     '/drawer-abs': page(`${S3}<div style="position:absolute;top:0;right:-400px;width:400px;height:300px;background:#333"></div>`),
     '/fixed-header': page(`<header id="hd"><nav style="width:400px;height:60px;background:#c33">nav</nav></header>${S3}<script>addEventListener('scroll', () => document.getElementById('hd').classList.toggle('pin', window.scrollY > 80));</script>`,
       '<style>#hd{height:60px;background:#222}#hd.pin{position:fixed;top:0;left:0;right:0}</style>'),
+    // --hide: an 88 px per-visitor bar (a location suggestion) in flow above the header — not an overlay.
+    '/geo': page('<div class="geo-bar" style="height:88px;background:#f90"><a href="/loc">Switch location</a></div><header style="height:60px;background:#222"></header><main><h1 style="margin:0;height:60px">Heading</h1><section></section><section></section></main>'),
   });
   const server = createServer((req, res) => {
     const body = pages[req.url.split('?')[0]];
@@ -152,6 +180,44 @@ if (chromium) {
         assert.equal(d.consent, '#onetrust-accept-btn-handler');
         assert.equal(await p.locator('#banner').count(), 0, 'the banner is gone');
       } finally { await browser.close(); }
+    });
+    // --hide: the same command shape with and without the flag; the PNG's IHDR height is the stitched height.
+    const pngHeight = (f) => readFileSync(join(work, f)).readUInt32BE(20);
+    const lastTwo = (r) => r.stdout.trim().split('\n').slice(-2);
+    const spec = join(work, 'geo-inv.spec.json');
+    writeFileSync(spec, JSON.stringify({ out: join(work, 'geo-inv.json'), side: 'live', presence: { rootSel: null, variableSels: [] } }));
+    const settled = run([`${base}/geo`, 'geo-settle.png', '--settle', '--hide', '.geo-bar', '--inventory', spec], work);
+    await check('e2e --hide: an 88 px in-flow .geo-bar — the stitch is 88 px shorter with `hidden: .geo-bar ×1 (88px) [--hide]` (also under --no-dismiss); ×0 changes nothing; no flag → no line', async () => {
+      const [plain, hid, noDismiss, none] = await Promise.all([
+        run([`${base}/geo`, 'geo-plain.png'], work),
+        run([`${base}/geo`, 'geo-hide.png', '--hide', '.geo-bar'], work),
+        run([`${base}/geo`, 'geo-nodismiss.png', '--no-dismiss', '--hide', '.geo-bar'], work),
+        run([`${base}/geo`, 'geo-none.png', '--hide', '.no-such-bar'], work),
+      ]);
+      for (const r of [plain, hid, noDismiss, none]) assert.equal(r.status, 0, r.stderr);
+      assert.doesNotMatch(plain.stdout, /^hidden:/m, 'no --hide → no hidden line');
+      for (const r of [hid, noDismiss]) {
+        assert.equal(r.stdout.split('\n').filter((l) => l.startsWith('hidden:')).join('|'), 'hidden: .geo-bar ×1 (88px) [--hide]', r.stdout);
+        assert.match(lastTwo(r)[0], LINE_RE, 'the overflow line still sits right before the stitched line');
+      }
+      assert.match(noDismiss.stdout, /^overlays left as the page shows them \(--no-dismiss\)$/m);
+      assert.match(none.stdout, /^hidden: \.no-such-bar ×0 \[--hide\]$/m);
+      const h = { plain: pngHeight('geo-plain.png'), hid: pngHeight('geo-hide.png'), noDismiss: pngHeight('geo-nodismiss.png'), none: pngHeight('geo-none.png') };
+      assert.equal(h.hid, h.plain - 88, JSON.stringify(h));
+      assert.equal(h.noDismiss, h.hid, JSON.stringify(h));
+      assert.equal(h.none, h.plain, JSON.stringify(h));
+      assert.equal(lastTwo(hid)[1], `stitched geo-hide.png: 1440x${h.hid} from 2 chunks`);
+    });
+    await check('e2e --hide under --settle: applied after the settle sweep and before --inventory — the inventory sees the hidden page', async () => {
+      const r = await settled;
+      assert.equal(r.status, 0, r.stderr);
+      assert.match(r.stdout, /^hidden: \.geo-bar ×1 \(88px\) \[--hide\]$/m);
+      const inv = JSON.parse(readFileSync(join(work, 'geo-inv.json'), 'utf8'));
+      assert.equal(inv.error, undefined, inv.error);
+      assert.equal(inv.docH, pngHeight('geo-settle.png'), 'inventory and stitch measure the same page');
+      assert.equal(inv.docH, pngHeight('geo-hide.png'));
+      assert.equal(inv.items.find((x) => x.kind === 'heading').y, 60, 'the heading sits right below the 60 px header (148 with the bar)');
+      assert.ok(!inv.items.some((x) => x.href === '/loc'), 'the bar\'s link is not inventoried');
     });
   } finally {
     server.close();

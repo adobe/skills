@@ -77,6 +77,17 @@
  *     enables loads; waitEdsDelayedPhase), so such a banner is dismissed as
  *     on the live side. Live source sites keep the 6 s poll; local targets
  *     had none already. Both sides still stitch the same way.
+ *   - --hide <sel,…> removes in-flow per-visitor regions (recorded: a geo-IP
+ *     location-suggestion bar in flow above the header, pushing every box
+ *     below it down) — not overlays, so dismissal cannot remove them. The
+ *     shared live-session hideRegions measures each selector, hides every
+ *     match inline and adds a `<style data-stardust-hide>` rule (a bar
+ *     re-rendered later is hidden too) AFTER the last dismissal sweep (after
+ *     --settle's) and BEFORE --inventory, the freeze and the height read: the
+ *     inventories, the page height and every chunk see the same page. One
+ *     `hidden: <sel> ×<n> (<h>px) [--hide]; …` line (×0: nothing matched).
+ *     gate.sh / gate-all pass the SAME list to the live and build captures —
+ *     symmetric, like overlay dismissal: the build has nothing to hide.
  *
  * Usage:
  *   node skills/replica/scripts/stitch-shot.mjs <url> <out.png> [options]
@@ -89,6 +100,8 @@
  *     --dismiss <sel,...> extra overlay-dismiss selectors (marketing modals
  *                         with non-standard close controls)
  *     --no-dismiss        dismiss no overlay at all (gate.sh --no-dismiss)
+ *     --hide <sel,...>    in-flow per-visitor regions to remove before the
+ *                         capture (repeatable; see above)
  *     --headed            escalation: headed stealth real Chrome
  *     --locale <tag>      pin Accept-Language + locale (e.g. en-GB)
  *     --ua <string>       user agent                        (default real-Chrome)
@@ -125,7 +138,7 @@ if (!LIVE_SESSION) {
   console.error('stitch-shot error: live-session.mjs not found (looked in ../../diff/scripts/ and ../diff/). Copy the diff skill\'s scripts dir alongside this one (replica SKILL.md § Setup).');
   process.exit(1);
 }
-const { REAL_CHROME_UA, isEdsHost, lateWindowFor, waitEdsDelayedPhase, launchStealthHeaded, newLiveContext, gotoLive, dismissOverlays } = await import(pathToFileURL(LIVE_SESSION).href);
+const { REAL_CHROME_UA, isEdsHost, lateWindowFor, waitEdsDelayedPhase, launchStealthHeaded, newLiveContext, gotoLive, dismissOverlays, parseHideList, hideRegions, formatHidden } = await import(pathToFileURL(LIVE_SESSION).href);
 
 const HELP = `stitch-shot — scroll-and-stitch full-page screenshot (symmetric capture instrument)
 
@@ -136,6 +149,8 @@ Usage: node stitch-shot.mjs <url> <out.png> [options]
   --consent <sel>   extra consent-accept selector (clicked, not removed)
   --dismiss <sel,…> extra overlay-dismiss selectors (marketing modals etc.)
   --no-dismiss      dismiss no overlay at all (gate.sh --no-dismiss pass-through)
+  --hide <sel,…>    remove in-flow per-visitor regions (a location bar above the header — dismissal can't)
+                    after dismissal + settle, before --inventory and the capture (repeatable)
   --headed          headed stealth real Chrome (escalation for bot-managed sites)
   --locale <tag>    pin Accept-Language + locale (e.g. en-GB) for geo determinism
   --ua <string>     user agent (default: real-Chrome desktop UA + standard headers)
@@ -149,14 +164,16 @@ vs the viewport at --width (delta = px over, 0 when it fits), read after the chu
 finite animations finished (the page at rest) — gate.sh's horizontal-overflow assert reads it from the build capture.
 EDS build/preview hosts (*.aem.page|live, *.hlx.page|live) get no timed late-modal poll: one dismissal sweep,
 after the EDS delayed phase (live source sites keep the 6 s poll, local targets have none).
+With --hide: one \`hidden: <sel> ×<n> (<h>px) [--hide]; …\` line (×0 = nothing matched); gate.sh / gate-all
+pass the same list to both captures.
 Run the SAME command shape against the live page and the served prototype.
 Exit codes: 0 written, 1 error, 3 bot challenge (live side blocked — fail loud).`;
 
-function parseArgs(argv) {
+export function parseArgs(argv) {
   const rest = argv.slice(2);
   if (rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
   const pos = [];
-  const opts = { width: 1440, vh: 900, settle: false, consent: null, dismiss: [], noDismiss: false, headed: false, locale: null, ua: REAL_CHROME_UA, wait: null, timeout: 60000 };
+  const opts = { width: 1440, vh: 900, settle: false, consent: null, dismiss: [], noDismiss: false, hide: [], headed: false, locale: null, ua: REAL_CHROME_UA, wait: null, timeout: 60000 };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--width') { opts.width = Number(rest[i += 1]); }
@@ -165,6 +182,11 @@ function parseArgs(argv) {
     else if (a === '--consent') { opts.consent = rest[i += 1]; }
     else if (a === '--dismiss') { opts.dismiss = (rest[i += 1] || '').split(',').map((s) => s.trim()).filter(Boolean); }
     else if (a === '--no-dismiss') { opts.noDismiss = true; }
+    else if (a === '--hide') {
+      const v = rest[i += 1];
+      if (v === undefined || v.startsWith('--')) { console.error(`--hide needs a selector list\n\n${HELP}`); process.exit(1); }
+      opts.hide = parseHideList(opts.hide, v);
+    }
     else if (a === '--headed') { opts.headed = true; }
     else if (a === '--locale') { opts.locale = rest[i += 1]; }
     else if (a === '--ua') { opts.ua = rest[i += 1]; }
@@ -249,6 +271,10 @@ async function main() {
       // stitched capture (recorded: a fashion retailer's "Sign up, stay updated!").
       if (!opts.noDismiss) await dismissAndLog(page, url, opts);
     }
+
+    // --hide: after the last dismissal sweep, before --inventory, the freeze and the height read — the inventories,
+    // the page height and every chunk see the page without the in-flow regions (header, the --hide bullet).
+    if (opts.hide.length) console.log(`hidden: ${formatHidden(await hideRegions(page, opts.hide))}`);
 
     // --inventory: the probes read this settled page (read only, before the freeze; a failure never fails the capture).
     if (opts.inventory) await import(pathToFileURL(resolvePath(dirname(LIVE_SESSION), 'content-presence.mjs')).href).then((m) => m.inventoryToFile(page, opts.inventory, { url })).catch((e) => console.error(`stitch-shot WARNING: --inventory not taken (${e.message}) — the capture continues`));
