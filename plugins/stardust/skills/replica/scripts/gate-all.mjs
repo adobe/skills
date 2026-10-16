@@ -79,7 +79,8 @@ Usage: node gate-all.mjs [options]   (from the project root)
   --width <px>              1440
   --only <slug,…>           subset → runs/<ts>-<slug>.json (summary.* untouched)
   --skip-existing           reuse captures; probes while the capture pair is unchanged; PASS rows
-                            while the gate key is unchanged (rows say reused)
+                            while the gate key is unchanged (rows say reused); eds.png only while
+                            its key is proven (no local content/<page>.html: no key, re-shot — slower)
   --recapture-eds           (with --skip-existing) re-shoot eds.png only
   --recapture-origin        re-shoot origin.png (previous kept on failure)
   --eds-host <host>         gate a code branch host against the same content
