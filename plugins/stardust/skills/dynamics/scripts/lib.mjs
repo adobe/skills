@@ -138,7 +138,8 @@ export async function probe(url, { method = 'GET', headers = {}, timeoutMs = 150
 /**
  * May a previous `_dynamics.json` stand in for a live detect run (rollout B2, `--reuse-if-fresh`)?
  * Only when it was written after this run's `A-inventory` start (`runStart`, compared as time) with
- * the same URL set (order ignored), settle and width, the same rollout roster (`{ sha256, n }` of
+ * the same URL set (order ignored), every URL recorded as a loaded page (a page with `error` or a
+ * missing page is no evidence), settle and width, the same rollout roster (`{ sha256, n }` of
  * the roster's sorted unique source URLs; present on one side only ⇒ changed) and, when `--reach`
  * is asked, the same reach source. Returns `{ reuse, why }`; `why` names the first failed condition.
  */
@@ -151,6 +152,10 @@ export function detectReuse({
   if (!(Date.parse(p.writtenAt) > Date.parse(runStart))) return { reuse: false, why: `written ${p.writtenAt} — not after A-inventory start ${runStart}` };
   const was = new Set(p.urls || []); const now = new Set(urls);
   if (was.size !== now.size || [...now].some((u) => !was.has(u))) return { reuse: false, why: `URL set changed (${was.size} → ${now.size} URLs)` };
+  const pages = Object.values(prev.pages || {});
+  const failed = pages.filter((pg) => !pg || pg.error).length;
+  if (failed) return { reuse: false, why: `previous run failed on ${failed} page(s)` };
+  if (pages.length < now.size) return { reuse: false, why: `previous run recorded ${pages.length} of ${now.size} pages` };
   if (p.settleMs !== settleMs) return { reuse: false, why: `settle changed (${p.settleMs} → ${settleMs} ms)` };
   if (p.width !== width) return { reuse: false, why: `width changed (${p.width} → ${width})` };
   const r0 = p.roster || null; const r1 = roster || null;

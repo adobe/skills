@@ -30,7 +30,8 @@ const T0 = '2026-01-01T00:00:00Z';
 const U1 = 'http://127.0.0.1:1/'; const U2 = 'http://127.0.0.1:1/about';
 const ROSTER = rosterOf([U1, U2]);
 const prov = (over = {}) => ({ writtenBy: 'stardust:dynamics detect', writtenAt: '2026-01-01T01:00:00.000Z', settleMs: 500, width: 1440, urls: [U1, U2], roster: ROSTER, ...over });
-const ask = (over = {}, provOver = {}) => detectReuse({ prev: { _provenance: prov(provOver), pages: {}, findings: [] }, urls: [U1, U2], settleMs: 500, width: 1440, runStart: T0, roster: ROSTER, ...over });
+const PAGES = { '/': { url: U1, status: 200 }, '/about': { url: U2, status: 200 } };
+const ask = (over = {}, provOver = {}, pages = PAGES) => detectReuse({ prev: { _provenance: prov(provOver), pages, findings: [] }, urls: [U1, U2], settleMs: 500, width: 1440, runStart: T0, roster: ROSTER, ...over });
 
 await check('fresh + equal URL set, settle, width and roster ⇒ reuse', () => {
   assert.equal(ask().reuse, true);
@@ -53,6 +54,14 @@ await check('URL set differs ⇒ live', () => {
   assert.equal(ask({ urls: [U1, U2, `${U1}x`] }).reuse, false);
   assert.equal(ask({ urls: [U1, `${U1}x`] }).reuse, false);
 });
+await check('a previous run that failed on a page, or recorded fewer pages than URLs, is no evidence ⇒ live', () => {
+  const failed = { url: U2, error: 'page.goto: net::ERR_CONNECTION_REFUSED' };
+  assert.match(ask({}, {}, { '/': PAGES['/'], '/about': failed }).why, /previous run failed on 1 page/);
+  assert.match(ask({}, {}, { '/': { url: U1, error: 'Timeout 60000ms exceeded' }, '/about': failed }).why, /failed on 2 page/);
+  assert.match(ask({}, {}, { '/': PAGES['/'] }).why, /recorded 1 of 2 pages/);
+  assert.equal(ask({}, {}, {}).reuse, false);
+  assert.equal(ask({}, {}, undefined).reuse, true, 'the default helper pages are clean');
+});
 await check('settle or width differ ⇒ live', () => {
   assert.match(ask({ settleMs: 5000 }).why, /settle/);
   assert.match(ask({ width: 390 }).why, /width/);
@@ -70,7 +79,7 @@ await check('--reach asked but the previous run rolled up none (or another dir) 
 });
 
 // ---- CLI: the decision (no browser) -----------------------------------------------------------
-const PREV = { _provenance: prov(), pages: { '/': { url: U1, status: 200 }, '/about': { url: U2, status: 200 } }, findings: [{ id: 'm-dialog', class: 'M', feature: 'dialog', pages: ['/'] }] };
+const PREV = { _provenance: prov(), pages: PAGES, findings: [{ id: 'm-dialog', class: 'M', feature: 'dialog', pages: ['/'] }] };
 const ledger = (ts) => [
   { ts: '2025-12-01T00:00:00Z', skill: 'stardust:rollout', phase: 'A-inventory', event: 'start' },
   { ts: '2025-12-01T00:10:00Z', skill: 'stardust:rollout', phase: 'A-inventory', event: 'end' },
@@ -116,6 +125,7 @@ for (const [name, opts, args, why, urls] of [
   ['the file predates the run\'s A-inventory start', { start: '2026-01-01T02:00:00Z' }, [], /not after A-inventory start 2026-01-01T02:00:00Z/],
   ['the URL set changed', {}, [], /URL set changed/, U1],
   ['no previous file', { prev: null }, [], /no previous/],
+  ['the previous run failed on a page', { prev: { ...PREV, pages: { ...PAGES, '/about': { url: U2, error: 'page.goto: net::ERR_CONNECTION_REFUSED' } } } }, [], /previous run failed on 1 page/],
   ['--fresh wins', {}, ['--fresh'], /--fresh/],
 ]) {
   await check(`not reused when ${name}: one \`not reused\` line, no reuse recorded, no crash before the decision`, () => {

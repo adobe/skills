@@ -22,8 +22,9 @@
  * Freshness (--reuse-if-fresh): the previous <out>/_dynamics.json is reused — no page is loaded, no
  * browser starts — only when it was written after the last rollout `A-inventory` `start` line of
  * --status and its URL set, settle, width, roster (the sorted unique `source.sourceUrl` values of
- * --roster's rows, hashed) and --reach source equal this call's. A reuse appends `{ at, runStart, urls }`
- * to `_provenance.reuses` (`writtenAt` stays the live run's) and prints one `[dynamics] reused …` line;
+ * --roster's rows, hashed) and --reach source equal this call's and every URL loaded without error.
+ * A reuse appends `{ at, runStart, urls }` to `_provenance.reuses` (`writtenAt` stays the live run's)
+ * and prints one `[dynamics] reused …` line;
  * otherwise one `[dynamics] not reused: <why>` line and the live run. --fresh forces the live run.
  * Every live run records `_provenance.roster` (when --roster exists) for the next comparison.
  *
