@@ -771,7 +771,7 @@ check('one-load 6: a fix round keeps only a one-load origin — a legacy capture
   assert.match(runLog(), /origin home → not reused \(one-load: no inventory \(captured without one\)\)/);
   assert.equal(olGate(['--one-load', '--only', 'home']).origin, 0, 'the next fix round keeps it');
 });
-check('--skip-existing with origin.png gone and a fresh live.png older than the probes: the replay is refused and logged, the probes re-run against the new origin — not from the old origin\'s presence / units caches', () => {
+check('--skip-existing with origin.png gone and a fresh live.png older than the probes: the replay is refused and logged, the probes re-run against the new origin — not from the old origin\'s presence inventory (unit-geometry\'s origin cache keeps its own freshness rule)', () => {
   opener(new Date().toISOString());
   const g = join(root, 'stardust/replica/gates/home-1440'); mkdirSync(g, { recursive: true }); writeFileSync(join(g, 'live.png'), 'png');
   const liveAt = new Date().toISOString();
@@ -786,8 +786,31 @@ check('--skip-existing with origin.png gone and a fresh live.png older than the 
   assert.equal(r.row('home').originReused.from, 'stardust/replica/gates/home-1440/live.png');
   assert.match(runLog(), /probes home → re-run \(origin is a reused capture the probes were not taken against\)/);
   assert.equal(r.cp.length, 1, 'content-presence re-ran'); assert.equal(r.cp[0].had, false, 'the old origin\'s presence inventory was dropped with it');
-  assert.equal(r.ug, 1); assert.equal(existsSync(unitsCache), false, 'and the old origin\'s unit inventory');
+  assert.equal(r.ug, 1); assert.equal(existsSync(unitsCache), true, 'unit-geometry\'s origin cache is applied to no image — left to its freshness rule');
   assert.equal(r.row('home').reused, null, 'no probe replay in the row');
+});
+// clip-probe becomes an importable stub too (counts its spawns): the prototype stage's clip comes from the EDS inventory.
+const CLIP_LOG = join(root, 'clip.log');
+cpSync(join(DIFF, 'clip-probe.mjs'), join(DS, 'clip-probe-real.mjs'));
+stub(DS, 'clip-probe.mjs', `export * from './clip-probe-real.mjs';
+import { appendFileSync } from 'node:fs';
+if (process.argv[1] && process.argv[1].endsWith('clip-probe.mjs')) { appendFileSync(${JSON.stringify(CLIP_LOG)}, process.argv.slice(2).join(' ') + '\\n'); process.exit(1); }`);
+check('one-load 7: --stage prototype --one-load — the archetype live.png is not taken (logged), the origin is stitched with its inventory, clip.json is the clip-probe CLI object, 0 clip-probe spawns', () => {
+  opener(new Date().toISOString());
+  const g = join(root, 'stardust/replica/gates/home-1440'); mkdirSync(g, { recursive: true }); writeFileSync(join(g, 'live.png'), 'png');
+  writeFileSync(join(g, 'live.json'), JSON.stringify({ writtenBy: 'gate.sh', url: 'https://www.example.com/', width: 1440, locale: 'en-US', settle: true, dismiss: { off: false, consent: null, extra: null }, headed: false, at: new Date().toISOString() }));
+  rmSync(CLIP_LOG, { force: true });
+  const r = olGate(['--stage', 'prototype', '--proto-base', 'http://localhost:9', '--one-load']);
+  assert.equal(r.status, 0, r.stderr + r.stdout); assert.equal(lines(CLIP_LOG).length, 0, 'no clip-probe spawn'); assert.equal(r.cp.length, 0); assert.equal(r.ug, 0);
+  const proto = 'stardust/replica/gates/prototypes-1440';
+  assert.match(readFileSync(join(root, proto, '_run.log'), 'utf8'), /origin home → live\.png not reused \(one-load: not a headed real-Chrome capture\)/);
+  assert.equal(r.argv('ORIGIN').length, 1); assert.match(r.argv('ORIGIN')[0], / --inventory \S+origin-inventory\.spec\.json --headed$/);
+  assert.match(r.argv('EDS')[0], /^EDS http:\/\/localhost:9\/home\.html .* --inventory \S+eds-inventory\.spec\.json --headed$/);
+  const clipJson = read(`${proto}/home/clip.json`);
+  assert.deepEqual(Object.keys(clipJson), ['url', 'at', 'width', 'status', 'settlePasses', 'docH', 'pageW', 'counts', 'findings', 'textBoxes', 'groups', 'tier'], 'the clip-probe CLI keys');
+  assert.equal(clipJson.url, 'http://localhost:9/home.html'); assert.equal(clipJson.at, read(`${proto}/home/eds-inventory.json`).at);
+  const row = read(`${proto}/summary.json`).rows.find((x) => x.slug === 'home');
+  assert.equal(row.oneLoad.via, 'one-load'); assert.equal(row.originReused, null); assert.equal(row.clipped, 0); assert.equal(row.units.units, 1);
 });
 rmSync(root, { recursive: true, force: true });
 console.log(failed ? `\n${failed} failed` : '\nall passed');

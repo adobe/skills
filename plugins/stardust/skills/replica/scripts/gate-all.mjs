@@ -22,9 +22,9 @@
  * (blocked / failed origin, --warmup, a kept capture taken without one) runs the probes instead, logged `one-load <slug>
  * → fallback: <why>`; the row says which (`oneLoad`). A fix round keeps only a one-load origin; live.png is not taken
  * (`inventoryWhy`, `oneLoadKeep` are exported).
- * A content-presence origin-inventory cache hit is a recorded reuse too (`presenceReused`, _run.log); the origin-side
- * probe caches (<slug>/presence-origin.json, unit-geometry's <slug>-units-<w>.json) are dropped whenever the origin
- * capture changes (origin.json `at`: a new stitch, a crawl shot, a copied live.png), never reused across captures.
+ * A content-presence origin-inventory cache hit is a recorded reuse too (`presenceReused`, _run.log); that inventory
+ * (<slug>/presence-origin.json) belongs to one origin capture — its text boxes weight origin.png's compare — and is
+ * dropped whenever the capture changes (origin.json `at`: a new stitch, a crawl shot, a copied live.png).
  *
  * VERDICT (all four): pixel % ≤ --threshold AND |Δh| ≤ --height-tol × origin height (a union metric
  * was tried and rejected — white gaps score as matches) AND served clipped ≤ --clip-max +
@@ -683,9 +683,10 @@ async function main() {
       else r = { instrument: 'none', error: `stitch exit ${s.code}: ${lastLine(s.err)}` };
     }
     if (!r.at && !r.reused) r.at = new Date().toISOString(); // a reuse keeps its capture time: the evidence time
-    // another origin capture (its `at` changed — a new stitch, a crawl shot or a copied live.png) → the origin-side probe
-    // caches belong to the previous one: its presence inventory, and its unit inventory (unit-geometry --slug's cache)
-    if (r.at !== prevAt) for (const f of [join(d, 'presence-origin.json'), ...(unitsOf(p).length ? [join('stardust/current/measure', `${p.slug}-units-${opts.width}.json`)] : [])]) rmSync(f, { force: true });
+    // another origin capture (its `at` changed — a new stitch, a crawl shot or a copied live.png) → the presence inventory
+    // of the previous one goes (its text boxes are applied to origin.png); unit-geometry's origin cache is applied to no
+    // image — its own freshness rule governs it
+    if (r.at !== prevAt) rmSync(join(d, 'presence-origin.json'), { force: true });
     writeFileSync(meta, JSON.stringify(r, null, 2)); rec(p, 'origin', r);
     const warns = [warn, r.stale].filter(Boolean);
     log(`origin ${p.slug} → ${r.instrument}${r.reused ? ` reused ${r.from} (captured ${r.at}; ${r.policy})` : ''}${warns.length ? ` WARN ${warns.join('; ')}` : ''}${r.error ? ` ERROR ${r.error}` : ''}`);
