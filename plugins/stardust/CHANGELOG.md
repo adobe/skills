@@ -19,10 +19,11 @@ re-measuring evidence they already hold, and skip it only while it is provably u
 - **One published gate per unchanged build.** Rows carry a `gateKey` (frozen-foundation manifest, shared and page
   blocks with what they import, the page's document and every nav, footer and fragment document, the gate's
   criteria, sidecar entries and instruments with the modules they load), issued only while the gated host serves
-  that tree (the page's code paths pushed on the host's branch and repo; documents equal to their delivered
+  that tree (every hashed code path pushed on the host's branch and repo; documents equal to their delivered
   deploy-ledger `contentSha` for that org/repo). Under `--skip-existing` a PASS row with the same key is reused
   whole, and an EDS capture only while `<slug>/gate-key.json` proves it current (the same key, or — key unknown —
-  the same hashed tree, reason and ledger rows); any other EDS side is re-shot. The C-archetype unit's `gate-all --only` row is the archetype's published row of record;
+  the same hashed tree, reason and ledger rows); any other EDS side is re-shot. The C-archetype unit's
+  `gate-all --only` row is the archetype's published row of record;
   cluster and C-final runs pass `--skip-existing`, and C-final re-freezes the foundation after applying the queued
   requests, before the roster gate.
 - **The overflow assert reads the stitched build capture's own output.** `stitch-shot.mjs` prints an
