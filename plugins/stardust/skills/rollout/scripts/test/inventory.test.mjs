@@ -9,13 +9,15 @@
 // marks a delivered page stale; a stopped, hand-edited or missing one keeps its last clean hash),
 // publicUrl from the encoded path; the archetype and clone pages keep their migrated-HTML rows — so does a stopped
 // sibling beside its clone HTML (the A′ exception).
-// --state: a roster row (no document) carries its status when its document appears — content-pending
+// --state: a roster row (no document) carries its status when its encode appears — content-pending
 // advances to pending, a status update-coverage recorded stays; the coverage lock is taken.
 // Run: node plugins/stardust/skills/rollout/scripts/test/inventory.test.mjs
 import assert from 'node:assert/strict';
-import { spawn, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -230,21 +232,18 @@ check('--state (archetypes-only): an encoded sibling keeps its template and its 
   assert.equal(rows.tours.templateId, 'tours');
 });
 
-check('--state: a content-pending roster page advances to pending on the re-run after its document appears — encoded or a clone', () => {
+check('--state: a content-pending roster page advances to pending on the re-run after its encode appears, listed once', () => {
   const state = join(proj, 'stardust', 'state.json'); const out3 = join(proj, 'rollout-pending');
-  put(state, JSON.stringify({ pages: [{ slug: 'tours', url: 'https://example.com/tours/', type: 'tour' }, { slug: 'tours-new', url: 'https://example.com/tours/new', representative: 'tours' }, { slug: 'tours-old', url: 'https://example.com/tours/old/', representative: 'tours' }] }));
+  put(state, JSON.stringify({ pages: [{ slug: 'tours', url: 'https://example.com/tours/', type: 'tour' }, { slug: 'tours-new', url: 'https://example.com/tours/new', representative: 'tours' }] }));
   const inv = () => spawnSync(process.execPath, [SCRIPT, '--migrated', PM, '--out', out3, '--state', state], { encoding: 'utf8' });
   let r = inv(); assert.equal(r.status, 0, r.stderr);
-  for (const s of ['tours-new', 'tours-old']) assert.equal(rowsOf(out3)[s].delivery.status, 'content-pending', s);
+  assert.equal(rowsOf(out3)['tours-new'].delivery.status, 'content-pending');
   encoded('tours/new/_meta.json', 'tours/new.html', sib('tours-new'), '<main>new</main>');
-  put(join(PM, 'tours/old/index.html'), '<html><main>old clone</main></html>'); put(join(PM, 'tours/old/_meta.json'), JSON.stringify(sib('tours-old')));
   r = inv(); assert.equal(r.status, 0, r.stderr);
   const rows = rowsOf(out3);
   assert.equal(rows['tours-new'].delivery.status, 'pending'); assert.equal(rows['tours-new'].source.encodedHtml, join(proj, 'stardust/encoded/tours/new.html')); assert.equal(rows['tours-new'].templateId, 'tours');
-  assert.equal(rows['tours-old'].delivery.status, 'pending'); assert.equal(rows['tours-old'].source.migratedHtml, join(PM, 'tours/old/index.html'));
-  assert.deepEqual(pjson('coverage/pages.json', out3).pages.filter((p) => p.delivery.status === 'content-pending').map((p) => p.slug), [], 'a folder URL (/tours/old/, /tours/) is the page its migrated index.html lists — no second row');
+  assert.equal(pjson('coverage/pages.json', out3).pages.filter((p) => p.slug.startsWith('tours-new')).length, 1);
 });
-
 check('--state: a roster row a cluster marked deployed (no document yet) stays deployed when its encode appears; a later re-encode marks it stale', () => {
   const state = join(proj, 'stardust', 'state.json'); const out4 = join(proj, 'rollout-roster');
   put(state, JSON.stringify({ pages: [{ slug: 'tours', url: 'https://example.com/tours/', type: 'tour' }, { slug: 'tours-late', url: 'https://example.com/tours/late', representative: 'tours' }] }));

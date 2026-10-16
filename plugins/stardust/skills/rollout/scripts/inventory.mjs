@@ -10,26 +10,29 @@
  *
  * Idempotent + incremental: existing delivery status is preserved. When a page's
  * migrated HTML changed (sourceHash differs) after it was already deployed/verified,
- * it is re-flagged `stale` so the delivery loop re-delivers just that page. The whole
- * read-modify-write runs under update-coverage.mjs's lock (`<out>/.coverage.lock`, taken
- * before the prior coverage is read; each file tmp + rename), so a status a cluster
+ * it is re-flagged `stale` so the delivery loop re-delivers just that page.
+ * The read-modify-write runs under update-coverage.mjs's lock (`<out>/.coverage.lock`,
+ * taken before the prior coverage is read, released at exit), so a status a cluster
  * records meanwhile is never lost.
  *
  * Encoded pages: a sidecar whose `encode.output.path` names the encoder's document
  * (`stardust/encoded/<da-path>.html`, resolved from the project that holds
  * stardust/migrated, else the cwd) is a page even with no HTML beside it — row 2 drops
- * the clone for an encoded template. Its row is built from the sidecar: `path` and
- * `source.encodedHtml` from that document (`source.migratedHtml` null); `sourceHash` is
- * the current clean encode's sha (migrate's encode/provenance.mjs currentEncode decides),
- * so a re-encode with new bytes marks a delivered page `stale`. A page whose encode is
- * not current (stopped, a hand-edited or stale document, a document gone) keeps its last
- * clean encode's sha (`encode.output.sha`) — never re-flagged on that alone — and the
- * `Not current` line names it. A sibling whose clone is still on disk is listed once, as
- * encoded (deploy stages its encoded document) while its encode is clean — stopped, it is
- * the A′ exception and keeps its clone row; the template's archetype keeps its
- * migrated-HTML row (deploy converts it from that HTML and never stages it). Both rules
- * are migrate's (encode/provenance.mjs encodedPageOf, currentEncode), loaded only when a
- * sidecar records an encode; without that file beside this script such a run exits 1.
+ * the clone for an encoded template. Its row has the same shape, built from the sidecar:
+ * `path` and `source.encodedHtml` from that document (`source.migratedHtml` null);
+ * `sourceHash` is the current clean encode's sha (migrate's encode/provenance.mjs
+ * currentEncode decides), so a re-encode with new bytes marks a delivered page `stale`.
+ * A page whose encode is not current (stopped, a hand-edited or stale document, a
+ * document gone) keeps its last clean encode's sha (`encode.output.sha`) — never
+ * re-flagged on that alone — and the `Not current` line names it. A sibling whose clone
+ * is still on disk is listed once, as encoded (deploy stages its encoded document) while
+ * its encode is clean — stopped, it is the A′ exception and keeps its clone row; the
+ * template's archetype keeps its migrated-HTML row (deploy converts it from that HTML
+ * and never stages it). An encoded page's prior `content-pending` becomes `pending`; any
+ * other status a `--state` roster row carried (update-coverage.mjs recorded `deployed`)
+ * stays — the roster row's hash was never the document's. Both rules are migrate's
+ * (encode/provenance.mjs encodedPageOf, currentEncode), loaded only when a sidecar
+ * records an encode; without that file beside this script such a run exits 1.
  *
  * Phase 1 scope: pages + template grouping only. Block dedup (blocks.json) is a
  * first-class step deferred to Phase 2 — see notes/rollout/PLAN.md § 8.
@@ -45,10 +48,7 @@
  * Pages present only in state.json (not yet individually migrated) are merged in as
  * `content-pending` siblings — keyed to the archetype their `type` names, inheriting
  * that archetype's blocks, pushing no document. Block code ships from the archetypes;
- * sibling content is populated later by a separate content track. Once such a page has
- * its document (migrated HTML or an encode), a re-run lists it from that document: a
- * prior `content-pending` becomes `pending`, any other status (`deployed` recorded by
- * update-coverage.mjs) is kept — the roster row's hash was never the document's.
+ * sibling content is populated later by a separate content track.
  *
  * Rows added by `update-coverage.mjs --new` (a page built outside the migrated tree —
  * a search results page from the dynamics phase; `source.migratedHtml` carries the
@@ -62,11 +62,12 @@
  *   node skills/rollout/scripts/inventory.mjs [--migrated <dir>] [--out <rolloutDir>] [--site-url <url>] [--state <state.json>]
  *   defaults: --migrated stardust/migrated  --out stardust/rollout
  */
-import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
+import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync, statSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { join, dirname, relative, basename, normalize, sep } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
-import { acquireLock, writeJSON } from './lib.mjs';
+import { join, dirname, relative, basename } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { pathToFileURL } from 'node:url';
+import { acquireLock } from './lib.mjs';
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
@@ -96,18 +97,16 @@ const STARDUST_VERSION = (() => {
 
 function sha256(buf) { return `sha256:${createHash('sha256').update(buf).digest('hex')}`; }
 
-/** Recursively collect *.html and the _meta.json sidecars under dir, skipping the assets/ bundle. */
-function walkMigrated(dir, root = dir, acc = { html: [], sidecars: [] }) {
+/** Recursively collect *.html under dir, skipping the assets/ bundle. */
+function walkHtml(dir, root = dir, acc = []) {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     if (entry.name.startsWith('.')) continue;
     const full = join(dir, entry.name);
     if (entry.isDirectory()) {
       if (entry.name === 'assets') continue;
-      walkMigrated(full, root, acc);
+      walkHtml(full, root, acc);
     } else if (entry.name.endsWith('.html')) {
-      acc.html.push(relative(root, full));
-    } else if (htmlFor(entry.name)) {
-      acc.sidecars.push(relative(root, full));
+      acc.push(relative(root, full));
     }
   }
   return acc;
@@ -130,6 +129,16 @@ function htmlFor(relSidecar) {
   return dir === '.' ? name : join(dir, name);
 }
 
+/** Recursively collect the _meta.json sidecars under dir, skipping the assets/ bundle (as walkHtml does). */
+function walkSidecars(dir, root = dir, acc = []) {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (entry.name.startsWith('.')) continue;
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) { if (entry.name !== 'assets') walkSidecars(full, root, acc); } else if (htmlFor(entry.name)) acc.push(relative(root, full));
+  }
+  return acc;
+}
+
 /** Delivered (extensionless) path on the EDS site for a migrated HTML rel path. */
 function deliveredPath(relHtml) {
   const noExt = relHtml.replace(/\.html$/, '');
@@ -138,11 +147,11 @@ function deliveredPath(relHtml) {
   return `/${noExt}`;
 }
 
-/** Delivered (extensionless) path for an absolute page URL (archetypes-only roster); a folder URL `/a/` is `/a`, as its migrated `a/index.html` is. */
+/** Delivered (extensionless) path for an absolute page URL (archetypes-only roster). */
 function urlToDeliveredPath(url) {
   let p;
   try { p = new URL(url).pathname; } catch { p = String(url); }
-  p = p.replace(/\.html$/, '').replace(/(.)\/+$/, '$1');
+  p = p.replace(/\.html$/, '');
   if (p === '' || p === '/' || p === '/index') return '/';
   if (p.endsWith('/index')) return p.slice(0, -'/index'.length);
   return p;
@@ -178,40 +187,19 @@ try { acquireLock(join(OUT, '.coverage')); } catch (e) { console.error(`rollout 
 const priorPages = readJSON(pagesPath, { pages: [] });
 const priorBySlug = new Map((priorPages.pages || []).map((p) => [p.slug, p]));
 
-/**
- * Delivery state carried by slug for a row that has a document (migrated HTML or encoded): a delivered page whose
- * source bytes changed is re-flagged `stale`; a `content-pending` page (a --state roster page that had none) now has
- * its document and advances to `pending`; any other status a roster row carried (a cluster recorded `deployed` with
- * update-coverage before this re-run) stays — its hash was the roster's, never this document's.
- */
-function deliveryFor(slug, sourceHash) {
-  const prior = priorBySlug.get(slug);
-  if (!prior || !prior.delivery) return { status: 'pending', deployedUrl: null, deployedAt: null, verifiedAt: null, error: null };
-  if (prior.delivery.status === 'content-pending') return { ...prior.delivery, status: 'pending' };
-  if (!prior.source || (!prior.source.migratedHtml && !prior.source.encodedHtml)) return prior.delivery;
-  // no hash to compare (an encode record without a sha): the status stays, the report names the page
-  const changed = sourceHash !== null && prior.source && prior.source.sourceHash !== sourceHash;
-  return changed && ['deployed', 'verified'].includes(prior.delivery.status) ? { ...prior.delivery, status: 'stale' } : prior.delivery;
-}
-
 // --- Inventory the migrated tree -----------------------------------------------
-const tree = walkMigrated(MIGRATED);
-const htmlFiles = tree.html.sort();
-// encode.output.path is project-relative: the project is the directory holding stardust/migrated, else the cwd
-const PROJECT = (() => { const m = normalize(MIGRATED).replace(/[/\\]+$/, ''); return basename(m) === 'migrated' && basename(dirname(m)) === 'stardust' ? dirname(dirname(m)) : '.'; })();
+const htmlFiles = walkHtml(MIGRATED).sort();
 // the source URL of each page (the join key with a spec's knowledge): the sidecar's, else state.json's by slug
 const stateFile = STATE || (existsSync('stardust/state.json') ? 'stardust/state.json' : null);
 const stateUrls = new Map((stateFile ? readJSON(stateFile, { pages: [] }).pages || [] : []).filter((p) => p && p.slug && p.url).map((p) => [p.slug, p.url]));
 const pages = [];
-const encodedPages = []; // { sidecarRel, meta, enc } — listed after the migrated-HTML rows, never twice
-const notCurrent = [];
-const metaCache = new Map();
-const metaAt = (rel) => { if (!metaCache.has(rel)) metaCache.set(rel, readJSON(join(MIGRATED, rel), {})); return metaCache.get(rel); };
 
 // "Is this sidecar an encoded page?" and "is it the current clean encode?" are migrate's (encode/provenance.mjs
 // encodedPageOf, currentEncode), in either layout — loaded only when a sidecar records an encode output.
+// encode.output.path is project-relative: the project is the directory holding stardust/migrated, else the cwd.
+const sidecarFiles = walkSidecars(MIGRATED).sort();
 const encoder = await (async () => {
-  if (!tree.sidecars.some((rel) => typeof metaAt(rel)?.encode?.output?.path === 'string')) return null;
+  if (!sidecarFiles.some((rel) => typeof readJSON(join(MIGRATED, rel), {})?.encode?.output?.path === 'string')) return null;
   const here = dirname(fileURLToPath(import.meta.url));
   const f = [join(here, '..', '..', 'migrate', 'scripts', 'encode', 'provenance.mjs'), join(here, '..', 'migrate', 'encode', 'provenance.mjs')].find((x) => existsSync(x));
   if (!f) {
@@ -220,16 +208,29 @@ const encoder = await (async () => {
   }
   return import(pathToFileURL(f).href);
 })();
+const PROJECT = (() => { const m = MIGRATED.replace(/[/\\]+$/, ''); return basename(m) === 'migrated' && basename(dirname(m)) === 'stardust' ? dirname(dirname(m)) : '.'; })();
 
 for (const relHtml of htmlFiles) {
-  const sidecarRel = sidecarFor(relHtml);
-  const meta = metaAt(sidecarRel);
-  const enc = encoder && encoder.encodedPageOf(meta, { hasHtml: true });
-  if (enc) { encodedPages.push({ sidecarRel, meta, enc }); continue; }
   const absHtml = join(MIGRATED, relHtml);
   const sourceHash = sha256(readFileSync(absHtml));
+  const sidecarRel = sidecarFor(relHtml);
+  const meta = readJSON(join(MIGRATED, sidecarRel), {});
+  if (encoder && encoder.encodedPageOf(meta, { hasHtml: true })) continue; // an encoded sibling: listed below, from its sidecar
   const path = deliveredPath(relHtml);
   const slug = meta.slug || (path === '/' ? 'home' : path.replace(/^\//, ''));
+
+  const prior = priorBySlug.get(slug);
+  let delivery;
+  if (prior && prior.delivery) {
+    const changed = prior.source && prior.source.sourceHash !== sourceHash;
+    if (changed && ['deployed', 'verified'].includes(prior.delivery.status)) {
+      delivery = { ...prior.delivery, status: 'stale' };
+    } else {
+      delivery = prior.delivery;
+    }
+  } else {
+    delivery = { status: 'pending', deployedUrl: null, deployedAt: null, verifiedAt: null, error: null };
+  }
 
   pages.push({
     slug,
@@ -243,44 +244,58 @@ for (const relHtml of htmlFiles) {
       sourceUrl: (meta.source && meta.source.url) || meta.sourceUrl || stateUrls.get(slug) || null,
     },
     blocks: Array.isArray(meta.modules) ? meta.modules : [],
-    delivery: deliveryFor(slug, sourceHash),
+    delivery,
   });
 }
 
-// --- Encoded pages: the sidecar names the document (row 2 drops the clone) --------
-const htmlSet = new Set(htmlFiles);
-for (const sidecarRel of tree.sidecars.sort()) {
-  if (htmlSet.has(htmlFor(sidecarRel))) continue; // its HTML row was decided above
-  const meta = metaAt(sidecarRel);
-  const enc = encoder && encoder.encodedPageOf(meta);
-  if (enc) encodedPages.push({ sidecarRel, meta, enc });
-}
-const manifests = new Map();
-const listed = new Set(pages.flatMap((p) => [`slug:${p.slug}`, `path:${p.path}`]));
-for (const { sidecarRel, meta, enc } of encodedPages) {
-  const path = deliveredPath(enc.rel);
-  const slug = meta.slug || (path === '/' ? 'home' : path.replace(/^\//, ''));
-  if (listed.has(`slug:${slug}`) || listed.has(`path:${path}`)) continue;
-  listed.add(`slug:${slug}`).add(`path:${path}`);
-  const st = encoder.currentEncode({ root: PROJECT, sidecarPath: relative(PROJECT, join(MIGRATED, sidecarRel)).split(sep).join('/'), manifests });
-  const lastClean = typeof meta.encode.output.sha === 'string' && /^sha256:[0-9a-f]{64}$/.test(meta.encode.output.sha) ? meta.encode.output.sha : null;
-  const sourceHash = st.ok ? st.sha : lastClean;
-  if (!st.ok) notCurrent.push(`${slug} (${st.kind})`);
-  pages.push({
-    slug,
-    path,
-    title: (meta.metadata && meta.metadata.title) || meta.slug || slug,
-    templateId: meta.template || (isArchetype(meta) ? slug : null) || meta.type || null,
-    source: {
-      migratedHtml: null,
-      encodedHtml: join(PROJECT, enc.docPath),
-      metaJson: join(MIGRATED, sidecarRel),
-      sourceHash,
-      sourceUrl: (meta.source && meta.source.url) || meta.sourceUrl || stateUrls.get(slug) || null,
-    },
-    blocks: Array.isArray(meta.modules) ? meta.modules : [],
-    delivery: deliveryFor(slug, sourceHash),
-  });
+// --- Encoded pages: the same row shape, from the sidecar and the encoded document (row 2 drops the clone) --------
+const notCurrent = [];
+const encodedTemplates = new Map(); // slug → the template its sidecar names (kept in --state mode)
+if (encoder) {
+  const htmlSet = new Set(htmlFiles);
+  const listed = new Set(pages.flatMap((p) => [`slug:${p.slug}`, `path:${p.path}`]));
+  const manifests = new Map();
+  for (const sidecarRel of sidecarFiles) {
+    const meta = readJSON(join(MIGRATED, sidecarRel), {});
+    const enc = encoder.encodedPageOf(meta, { hasHtml: htmlSet.has(htmlFor(sidecarRel)) });
+    if (!enc) continue;
+    const path = deliveredPath(enc.rel);
+    const slug = meta.slug || (path === '/' ? 'home' : path.replace(/^\//, ''));
+    if (listed.has(`slug:${slug}`) || listed.has(`path:${path}`)) continue;
+    listed.add(`slug:${slug}`).add(`path:${path}`);
+    const st = encoder.currentEncode({ root: PROJECT, sidecarPath: relative(PROJECT, join(MIGRATED, sidecarRel)).split(/[\\/]/).join('/'), manifests });
+    const lastClean = typeof meta.encode.output.sha === 'string' && /^sha256:[0-9a-f]{64}$/.test(meta.encode.output.sha) ? meta.encode.output.sha : null;
+    const sourceHash = st.ok ? st.sha : lastClean;
+    if (!st.ok) notCurrent.push(`${slug} (${st.kind})`);
+    // delivery carried by slug: content-pending → pending (the document exists now); a roster row's status stays (its
+    // hash was the roster's, never the document's); a delivered page whose document's bytes changed → stale
+    const prior = priorBySlug.get(slug);
+    let delivery = { status: 'pending', deployedUrl: null, deployedAt: null, verifiedAt: null, error: null };
+    if (prior && prior.delivery) {
+      const rosterRow = !prior.source || (!prior.source.migratedHtml && !prior.source.encodedHtml);
+      const changed = !rosterRow && sourceHash !== null && prior.source.sourceHash !== sourceHash;
+      if (prior.delivery.status === 'content-pending') delivery = { ...prior.delivery, status: 'pending' };
+      else if (changed && ['deployed', 'verified'].includes(prior.delivery.status)) delivery = { ...prior.delivery, status: 'stale' };
+      else delivery = prior.delivery;
+    }
+    const templateId = meta.template || (isArchetype(meta) ? slug : null) || meta.type || null;
+    encodedTemplates.set(slug, templateId);
+    pages.push({
+      slug,
+      path,
+      title: (meta.metadata && meta.metadata.title) || meta.slug || slug,
+      templateId,
+      source: {
+        migratedHtml: null,
+        encodedHtml: join(PROJECT, enc.docPath),
+        metaJson: join(MIGRATED, sidecarRel),
+        sourceHash,
+        sourceUrl: (meta.source && meta.source.url) || meta.sourceUrl || stateUrls.get(slug) || null,
+      },
+      blocks: Array.isArray(meta.modules) ? meta.modules : [],
+      delivery,
+    });
+  }
 }
 
 // --- Archetypes-only mode: merge content-pending siblings from state.json -------
@@ -288,11 +303,13 @@ for (const { sidecarRel, meta, enc } of encodedPages) {
 // archetypes are genuinely distinct templates that share only chrome). A roster
 // page's `type` names the archetype slug it clones; it joins that archetype's
 // template group as a `content-pending` sibling, inheriting the archetype's blocks
-// and pushing no document of its own. An encoded sibling keeps the template its
-// sidecar names (the archetype's slug) and its roster entry is not listed again.
+// and pushing no document of its own.
+// An encoded sibling keeps the template its sidecar names (the archetype's slug)
+// and its roster entry is not listed again.
 if (STATE) {
-  for (const p of pages) if (!p.source.encodedHtml) p.templateId = p.slug;
-  const encodedSlugs = new Set(pages.filter((p) => p.source.encodedHtml).map((p) => p.slug));
+  for (const p of pages) p.templateId = p.slug;
+  for (const p of pages) if (encodedTemplates.has(p.slug)) p.templateId = encodedTemplates.get(p.slug);
+  const encodedSlugs = new Set(encodedTemplates.keys());
   const archetypeBySlug = new Map(pages.map((p) => [p.slug, p]));
   const coveredPaths = new Set(pages.map((p) => p.path));
   const usedSlugs = new Set(pages.map((p) => p.slug));
@@ -301,7 +318,7 @@ if (STATE) {
     if (!sp || !sp.url) continue;
     const path = urlToDeliveredPath(sp.url);
     if (coveredPaths.has(path)) continue; // the archetype itself — already inventoried
-    if (encodedSlugs.has(sp.slug)) continue; // listed from its sidecar, at its delivered (sanitised) path
+    if (encodedSlugs.has(sp.slug)) continue; // an encoded page, listed from its sidecar at its delivered (sanitised) path
     // A roster sibling names the archetype it clones via `representative` (preferred)
     // or its `type`; that archetype supplies the template grouping + block set.
     const rep = archetypeBySlug.get(sp.representative) || archetypeBySlug.get(sp.type) || null;
@@ -391,14 +408,14 @@ const counts = {
 
 // --- Write ---------------------------------------------------------------------
 const now = new Date().toISOString();
+mkdirSync(coverageDir, { recursive: true });
 
-const encodedRead = pages.some((p) => p.source && p.source.encodedHtml) ? [join(PROJECT, 'stardust', 'encoded')] : [];
 const prov = (writtenBy) => ({
-  writtenBy, writtenAt: now, readArtifacts: [MIGRATED, ...encodedRead, ...(STATE ? [STATE] : [])], stardustVersion: STARDUST_VERSION,
+  writtenBy, writtenAt: now, readArtifacts: STATE ? [MIGRATED, STATE] : [MIGRATED], stardustVersion: STARDUST_VERSION,
 });
 
-writeJSON(pagesPath, { _provenance: prov('stardust:rollout/inventory'), generatedAt: now, pages });
-writeJSON(templatesPath, { _provenance: prov('stardust:rollout/inventory'), generatedAt: now, templates });
+writeFileSync(pagesPath, `${JSON.stringify({ _provenance: prov('stardust:rollout/inventory'), generatedAt: now, pages }, null, 2)}\n`);
+writeFileSync(templatesPath, `${JSON.stringify({ _provenance: prov('stardust:rollout/inventory'), generatedAt: now, templates }, null, 2)}\n`);
 
 const priorConfig = readJSON(configPath, null);
 const config = {
@@ -411,7 +428,7 @@ const config = {
   },
   lastRun: { at: now, pages: counts, blocks: { total: 0, converted: 0, pending: 0 }, verifyFailures: 0 },
 };
-writeJSON(configPath, config);
+writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
 
 // --- Report --------------------------------------------------------------------
 console.log(`rollout inventory → ${OUT}`);
