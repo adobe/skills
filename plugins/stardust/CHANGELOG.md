@@ -4,7 +4,7 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
-## 0.34.5 — replica self-hosts the source's brand faces; chrome-parity hides in-flow bars; cap-probe lists unpaired modules
+## 0.34.5 — replica self-hosts the source's brand faces; one hide list for in-flow bars reaches every instrument; cap-probe lists unpaired modules
 
 A recorded ten-page hands-off run passed all four gated archetypes at both widths, but three of its six register
 entries and most residual pixels came from one cause — the substituted brand face — and two probes misbehaved:
@@ -25,16 +25,42 @@ compared two different things.
   at 1440 and −268 px at 360 on all chrome text, logged as a residual on every archetype. `gate.sh --hide` reaches
   chrome-parity under `--full`, and gate.sh passes gate-all's `presence.json` (its own regime's table first).
   chrome-parity imports playwright lazily (its `--help` and pure parts need no browser) and has a contract test.
+- **The hide is a style rule too.** live-session's shared `hideRegions` hides every match inline AND injects one
+  `<style data-stardust-hide>` rule per selector (one adopted stylesheet when a CSP blocks inline styles), so a bar
+  the page re-renders after the hide pass stays hidden; chrome-parity uses it. Recorded: a re-rendered bar escaped
+  the inline removal.
+- **One hide list reaches every instrument.** stitch-shot, content-diff, visual-diff, content-presence and
+  clip-probe take `--hide <sel,…>` (two-sided probes apply the same list to both sides) and print/record what was
+  hidden; presence.json gains `hide` per slug and `"*": { "hide": [...] }` for a site-wide bar. gate.sh merges its
+  `--hide` with presence.json `hide` for both captures and every probe but unit-geometry, records the list in
+  `live.json` and retakes `live.png` when it changed; gate-all reads only presence.json `hide` (both stitches,
+  content-presence, clip-probe; rows record `hide`). A capture, probe or cache taken with another list is never
+  reused; keys gain the list only when it is non-empty. content-diff removes the matches from the DOM (its
+  inventories read `display:none` text). Recorded: the first delivered page passed only through a documented
+  override — 1440 7.82 % / Δh 88 px, 360 22.78 % / Δh 268 px, both the bar.
+- **gate-triage's parity runs hide the gate's regions:** the gate's presence.json (`--presence --slug`) and the
+  row's `hide` reach chrome-parity; `triage.json` records `parity.hide` and `_provenance.presence`, the md line
+  names what was hidden. Recorded: triage's parity groups reported the bar's offset as a property delta.
+- A malformed presence.json reads `presence.json <file> unreadable (…)` (chrome-parity said
+  `--presence <file> unreadable`), exit 1; gate.sh now stops any round on it before capturing.
 - **cap-probe lists an implausible module pair as `○ unpaired`** — widths differing by more than 40 % of the wider
   AND different cap elements (tag or role) — instead of failing it; the verdict line names
   `modules scored <s> of <n>[, <u> unpaired]`; fewer than half paired → `INCONCLUSIVE` (exit 0, a note to check
   `--main` / `--build-main`), while a failing wrapper/content-cap row still FAILs. Recorded: a FAIL the agent had
   to label an artifact — module 4/4 paired a live pagination list (552 px) with a build media column (280 px).
+- **content-diff reads a hidden image placeholder as a placeholder, never a missing icon.** A ≤ 64 px image that is
+  not shown, has a placeholder signal (data: URI, small intrinsic size, aria-hidden, a loaded sibling with the same
+  alt or file) and its full image loaded or declared is listed under `placeholder images` (attributes line, JSON
+  `attrs.placeholders`); an image with no current source stays an icon. The emitter was content-diff — clip-probe,
+  content-presence and visual-diff raise no 🔴 on a hidden image. Its `--live-cache` key gains an inventory
+  version, so an older cache re-probes once. Recorded: a hub archetype ended with two structural 🔴 —
+  `MISSING ICON` on ~20×11 px lazy placeholders inside hidden tab panels, inside links, invisible on both sides.
 
 Minor in substance: the replica font rule changes behaviour (a substitute becomes a self-hosted brand face with a
 licensing alert). Numbered 0.34.5 provisionally — 0.35.0 is reserved; renumber at PR time if main moved.
-chrome-parity adds flags and output fields, gate.sh adds `--hide`; cap-probe stops failing implausible pairs and
-gains INCONCLUSIVE; no threshold or capture change.
+The instruments add flags and output fields; without a hide list their argv, output, captures and cache keys stay
+as before, except content-diff's cache key (inventory version) and its placeholder line; cap-probe stops failing
+implausible pairs and gains INCONCLUSIVE; no threshold change.
 
 ## 0.34.4 — roster gates sized to their deadline; an older gate table never reverts a newer verdict
 
