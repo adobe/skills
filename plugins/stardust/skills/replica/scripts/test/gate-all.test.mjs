@@ -7,9 +7,9 @@
 // Reuse under --skip-existing: probeReuse (the capture pair rule), the gate key (stable across key order, changed by
 // one block / content / frozen-file byte or a mask edit, null on a freeze mismatch), the deploy-state guard's
 // content half; then the CLI over stub instruments in a sandbox project with a git remote and a deploy ledger.
-// Origin reuse (originReusePlan / liveReusePlan tables, --origin-max-age) and a sandbox runner with stub
-// instruments (no browser): fix rounds reuse this run's origin, a new run recaptures, every reuse is in the row,
-// origin.json and _run.log.
+// Origin reuse (originReusePlan / liveReusePlan tables, --origin-max-age, the split pool budgets) and a sandbox
+// runner with stub instruments (no browser): fix rounds reuse this run's origin, a new run recaptures, every reuse
+// is in the row, origin.json and _run.log.
 // Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -469,8 +469,11 @@ check('liveReusePlan: the archetype round\'s live.png is reused only with a matc
   assert.match(liveReusePlan(la, old, fr(old)).why, /captured before this run/);
   assert.equal(liveReusePlan({ ...la, recaptureOrigin: true }, live, fr(live)).reuse, false); assert.equal(liveReusePlan({ ...la, stage: 'prototype' }, live, fr(live)).reuse, false);
 });
-check('parseArgs: --origin-max-age <h> (hours >= 0, else exit 1)', () => {
+check('parseArgs: --origin-max-age <h>; pools 4 / 2 without a machine browser slot, 6 / 4 with STARDUST_BROWSER_SLOT, origin stays 2, explicit flags win', () => {
   assert.equal(parseArgs(['node', 'x'], {}).originMaxAge, null); assert.equal(parseArgs(['node', 'x', '--origin-max-age', '6'], {}).originMaxAge, 6);
+  const plain = parseArgs(['node', 'x'], {}); assert.deepEqual([plain.oc, plain.ec, plain.pc], [2, 4, 2]);
+  const held = parseArgs(['node', 'x'], { STARDUST_BROWSER_SLOT: '/locks/slot-1' }); assert.deepEqual([held.oc, held.ec, held.pc], [2, 6, 4]);
+  const own = parseArgs(['node', 'x', '--eds-concurrency', '3', '--probe-concurrency', '1', '--origin-concurrency', '1'], { STARDUST_BROWSER_SLOT: '/locks/slot-1' }); assert.deepEqual([own.oc, own.ec, own.pc], [1, 3, 1]);
   for (const bad of ['x', '-1']) {
     const cwd = mkdtempSync(join(tmpdir(), 'gate-all-maxage-'));
     const r = spawnSync(process.execPath, [SCRIPT, '--origin-max-age', bad], { cwd, encoding: 'utf8' });
@@ -527,7 +530,7 @@ check('sandbox 1: a full round captures both sides of every page; origin.json re
   assert.equal(m.width, 1440); assert.equal(m.locale, 'en-US'); assert.equal(m.vh, null); assert.equal(m.headed, true); assert.ok(m.at); assert.equal(m.reused, undefined);
   homeAt = m.at;
   assert.equal(r.row('home').originReused, null); assert.equal(read('stardust/replica/gates/all-1440/summary.json').totals.originReused, 0);
-  assert.match(runLog(), /origin reuse: same run since /);
+  assert.match(runLog(), /origin reuse: same run since .*; pools origin 2 \/ eds 4 \/ probe 2/);
   assert.ok(r.cp.every((c) => !c.had), 'a fresh origin capture is paired with a fresh presence inventory');
 });
 check('sandbox 2: --only home is a fix round — 0 origin navigations, the row / origin.json / _run.log record the reuse, presence cache passed', () => {
