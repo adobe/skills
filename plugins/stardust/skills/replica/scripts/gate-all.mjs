@@ -6,8 +6,9 @@
  * THE RULE (#125): every crafted prototype and every deployed page is a row in a pixel table —
  * `<out>/summary.{json,md}` at `stardust/replica/gates/prototypes-<w>/` (--stage prototype: pages with
  * a prototypePath, build = the served prototype, origin = the archetype round's cached live.png when
- * present) and `stardust/replica/gates/all-<w>/` (--stage published, default: `deployed` pages, build =
- * liveUrl). gate-evidence.mjs reads these tables as the source of record; a page without a row is ungated.
+ * present) and `stardust/replica/gates/all-<w>/` (--stage published, default: the deployed pages of the roster
+ * source below, build = their deployed URL). gate-evidence.mjs reads these tables as the source of record; a page
+ * without a row is ungated.
  *
  * Per page: stitched captures of both sides (stitch-shot, --settle), pixel-compare, then the DOM probes
  * — clip-probe on the served side (D1, both stages), content-presence (D2, published stage; the
@@ -70,21 +71,33 @@
  * fresh row keeps the key of its evidence only while that key is current (unknown now: same build part, probes
  * not re-run).
  *
- * Empty selection: no page passes the stage filter (`deployed` with a liveUrl / a prototypePath, each with a source
- * url) and --only → one stderr line naming the state file read (absolute), its page count, how many carry those spec
- * words (and how many of them lack the source url), what --only matched, and the hint to pass --state from the project
- * root or deploy first; exit 1, nothing written.
+ * Roster source (published stage): --coverage <file> (default stardust/rollout/coverage/pages.json when it exists),
+ * else --state (stardust/state.json: `deployed` pages with a liveUrl and a url) — --state keeps the prototype stage
+ * (pages with a prototypePath and a url; --coverage ignored) and legacy projects. A coverage row qualifies when its
+ * delivery.status is deployed / verified, or failed with a `gate:` error (a fix round re-gates it), with a
+ * delivery.deployedUrl (the build; --eds-host rewrites its host) and a source.sourceUrl; template / fidelityTier (units,
+ * gate key) and deployedPath come from the state page of the same slug when state.json has one, else templateId / null /
+ * the row's path. Beside a coverage, state.json is optional; one that does not parse is one stderr note, not an error.
+ * Not found: an explicit --coverage, or neither file (published), or --state (prototype); a coverage that does not
+ * parse → exit 1, nothing written.
+ *
+ * Empty selection: no page passes the stage filter and --only → one stderr line; published: both sources (absolute)
+ * with their counts — coverage rows / deployed, verified or gate-failed with a deployedUrl, state pages / deployed with
+ * a liveUrl, each with how many lack the source url, or `not found` — and which one the roster came from; prototype: the
+ * state file, its page count and pages with a prototypePath (and how many lack the source url); then what --only matched
+ * and the hint to pass --coverage / --state from the project root or deploy first; exit 1, nothing written.
  *
  * Roster estimate: each run's first status line (stdout and _run.log) is `roster: <n> page(s) × 1 width @<w> (<stage>) —
  * estimated <s> s (25 s per page per width)` (`ESTIMATE_SEC_PER_PAGE` × pages × widths; one width per process) plus
- * `; run-bg deadline <d> s` when one is known — a recorded 99-page roster at one width needed 2152 s and was killed by
- * run-bg's 900 s default deadline. Deadline guard: RUN_BG_DEADLINE_SEC (env, seconds — the job's --timeout, exported by
- * run-bg; absent or ≤ 0 = none) below the estimate → gate-all refuses to start, before the out dir and any capture,
- * probe, gate key or table write: one stderr line (`no verdict`, the roster, the estimate, the deadline and the remedy
- * `--timeout <estimate>`), exit 2.
+ * `; run-bg deadline <d> s` when one is known, then `; source: coverage <path> (<q> of <N> row(s) qualified)` or
+ * `; source: state <path> (<q> of <M> page(s) qualified)` (<q> before --only) — a recorded 99-page roster at one width
+ * needed 2152 s and was killed by run-bg's 900 s default deadline. Deadline guard: RUN_BG_DEADLINE_SEC (env, seconds —
+ * the job's --timeout, exported by run-bg; absent or ≤ 0 = none) below the estimate → gate-all refuses to start, before
+ * the out dir and any capture, probe, gate key or table write: one stderr line (`no verdict`, the roster, the estimate,
+ * the deadline and the remedy `--timeout <estimate>`), exit 2.
  *
  * Usage: node skills/replica/scripts/gate-all.mjs [--stage published|prototype] [--proto-base <url>]
- *        [--state f] [--out dir] [--width 1440] [--only <slug,…>] [--skip-existing] [--recapture-eds] [--recapture-origin] [--eds-host <h>]
+ *        [--coverage f] [--state f] [--out dir] [--width 1440] [--only <slug,…>] [--skip-existing] [--recapture-eds] [--recapture-origin] [--eds-host <h>]
  *        [--blocked <re>] [--try-blocked] [--crawl-shots <dir>] [--origin-max-age <h>] [--origin-concurrency 2]
  *        [--eds-concurrency 4] [--probe-concurrency 2] [--threshold 10] [--height-tol 0.05]
  *        [--clip-max 0] [--unit-tol 4] [--no-clip] [--no-content] [--no-probes] [--units <f>]
@@ -96,8 +109,8 @@
  * Requires playwright, pixelmatch, pngjs (project devDependencies); stitch-shot.mjs, pixel-compare.mjs
  * and foundation-freeze.mjs next to this file; the diff skill's scripts dir alongside. Exit: 0 all PASS
  * (overrides count), 2 any FAIL or a refused start (no verdict), 1 error or an empty selection. `verdict`,
- * `formatSummary`, `parseArgs`, `emptySelection`, the roster helpers for run-bg (`ESTIMATE_SEC_PER_PAGE`, `selectPages`,
- * `rosterEstimate`) and the reuse helpers
+ * `formatSummary`, `parseArgs`, `emptySelection`, the roster helpers for run-bg (`ESTIMATE_SEC_PER_PAGE`, `DEFAULT_COVERAGE`,
+ * `coveragePages`, `selectPages`, `rosterEstimate`) and the reuse helpers
  * (`probeInputs`, `probeReuse`, `canon`, `gateKeyParts`, `gateKeyOf`, `foundationPart`, `sharedBlocks`,
  * `blockRefs`, `chromeDocs`, `instrumentFiles`, `edsHostOf`, `codeDeployed`, `hostServes`,
  * `deployedDocs`, `contentDeployed`, `keyChanged`, `skipCapture`, `rowKey`, `latestRows`, `rowReuse`) are exported.
@@ -112,10 +125,12 @@ import { DEFAULT_OUT as FREEZE_MANIFEST, DEFAULT_PATHS as FOUNDATION_PATHS, snap
 const HELP = `gate-all — published-origin gate over every deployed page: pixel + height + clip + content (#125)
 
 Usage: node gate-all.mjs [options]   (from the project root)
-  --stage published|prototype  published (default): deployed pages vs liveUrl → gates/all-<w>/;
+  --stage published|prototype  published (default): deployed pages vs their deployed URL → gates/all-<w>/;
                             prototype: pages with a prototypePath vs the served prototype → gates/prototypes-<w>/
   --proto-base <url>        where the prototypes dir is served (prototype stage), e.g. http://localhost:8791
-  --state <file>            stardust/state.json
+  --coverage <file>         published roster: stardust/rollout/coverage/pages.json if it exists, else --state; rows
+                            deployed / verified / failed "gate: …" with a deployedUrl and a source url
+  --state <file>            stardust/state.json — the prototype stage, legacy projects; template / tier of coverage rows
   --out <dir>               stardust/replica/gates/all-<width>
   --width <px>              1440
   --only <slug,…>           subset → runs/<ts>-<slug>.json (summary.* untouched)
@@ -148,10 +163,12 @@ Verdict = pixel % ≤ threshold AND |Δh| ≤ height-tol × origin height AND cl
 Sidecars in <out>/: masks.json, overrides.json, clip-allow.json, presence.json, units.json (see the header);
   presence.json "hide" (per slug or "*"): in-flow regions removed on both sides before measuring.
 Reuse sidecars per page: probes.json, gate-key.json (see the header).
-Empty selection → one stderr line: the absolute state path, its page count, how many are deployed with a liveUrl /
-  have a prototypePath (and how many of those lack a source url), what --only matched, the hint; exit 1.
+Empty selection → one stderr line: published — the coverage and state paths (absolute) with their counts (rows
+  deployed / verified / gate-failed with a deployedUrl; pages deployed with a liveUrl; how many lack a source url) and
+  the roster's source; prototype — the state path, its pages with a prototypePath; what --only matched, the hint; exit 1.
 First status line (stdout, _run.log): roster: <n> page(s) × 1 width @<w> (<stage>) — estimated <25·n> s (25 s per
-  page per width)[; run-bg deadline <d> s]. RUN_BG_DEADLINE_SEC (env, seconds: the job's --timeout, exported by
+  page per width)[; run-bg deadline <d> s]; source: coverage|state <path> (<q> of <N> row(s) / page(s) qualified,
+  before --only). RUN_BG_DEADLINE_SEC (env, seconds: the job's --timeout, exported by
   run-bg; absent or ≤ 0 = none) below the estimate → refused before the out dir or any capture: one stderr line
   "no verdict" naming --timeout <estimate>; exit 2.
 Exit: 0 all PASS (overrides count), 2 any FAIL or a refused start (no verdict), 1 error or an empty selection.`;
@@ -159,12 +176,12 @@ Exit: 0 all PASS (overrides count), 2 any FAIL or a refused start (no verdict), 
 export function parseArgs(argv, env = process.env) {
   const rest = argv.slice(2);
   if (rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
-  const o = { stage: 'published', protoBase: null, state: 'stardust/state.json', out: null, width: 1440, only: null, skip: false, recaptureEds: false, recaptureOrigin: false, edsHost: null, blocked: null, tryBlocked: false, crawlShots: 'stardust/current/assets/screenshots', oc: 2, ec: 4, pc: 2, originMaxAge: null, threshold: 10, heightTol: 0.05, clipMax: 0, unitTol: 4, clip: true, content: true, units: null, compareOnly: false, warmup: null, vh: null };
+  const o = { stage: 'published', protoBase: null, coverage: null, state: 'stardust/state.json', out: null, width: 1440, only: null, skip: false, recaptureEds: false, recaptureOrigin: false, edsHost: null, blocked: null, tryBlocked: false, crawlShots: 'stardust/current/assets/screenshots', oc: 2, ec: 4, pc: 2, originMaxAge: null, threshold: 10, heightTol: 0.05, clipMax: 0, unitTol: 4, clip: true, content: true, units: null, compareOnly: false, warmup: null, vh: null };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i]; const v = () => rest[++i];
     if (a === '--stage') { o.stage = v(); if (!['published', 'prototype'].includes(o.stage)) { console.error(`--stage must be published or prototype\n\n${HELP}`); process.exit(1); } }
     else if (a === '--proto-base') o.protoBase = v().replace(/\/$/, '');
-    else if (a === '--state') o.state = v(); else if (a === '--out') o.out = v(); else if (a === '--width') o.width = Number(v());
+    else if (a === '--coverage') o.coverage = v(); else if (a === '--state') o.state = v(); else if (a === '--out') o.out = v(); else if (a === '--width') o.width = Number(v());
     else if (a === '--only') o.only = v().split(',').map((s) => s.trim()).filter(Boolean);
     else if (a === '--skip-existing') o.skip = true; else if (a === '--recapture-eds') o.recaptureEds = true; else if (a === '--recapture-origin') o.recaptureOrigin = true;
     else if (a === '--eds-host') o.edsHost = v().replace(/\/$/, ''); else if (a === '--blocked') o.blocked = new RegExp(v()); else if (a === '--try-blocked') o.tryBlocked = true; else if (a === '--crawl-shots') o.crawlShots = v();
@@ -183,41 +200,75 @@ export function parseArgs(argv, env = process.env) {
   return o;
 }
 
-// ---- the roster: selection + estimate (pure; rosterEstimate also reads the state file) ------------------------------
+// ---- the roster: selection + estimate (pure; rosterEstimate also reads the coverage / state files) -------------------
 export const ESTIMATE_SEC_PER_PAGE = 25;
+export const DEFAULT_COVERAGE = 'stardust/rollout/coverage/pages.json';
 const pagesOf = (state) => (state && state.pages) || [];
-/** selectPages(state, { stage, protoBase, only }) → the pages this run gates (main() selects with it; run-bg counts with it). */
-export function selectPages(state, { stage = 'published', protoBase = null, only = null } = {}) {
+// A coverage row with a gateable delivery: deployed / verified, or failed by the gate (a fix round re-gates it), with a deployedUrl.
+const delivered = (r) => { const d = (r && r.delivery) || {}; return (d.status === 'deployed' || d.status === 'verified' || (d.status === 'failed' && /^gate:/.test(d.error || ''))) && !!d.deployedUrl; };
+/**
+ * coveragePages(doc, { state }) → the published pages of a rollout coverage doc (pages.json `pages`), in file order: each
+ * delivered row with a source.sourceUrl → { slug, url: sourceUrl, liveUrl: deployedUrl, template, fidelityTier,
+ * deliveryStatus[, deployedPath] }. template / fidelityTier are the state page's own (same slug) when state has one — its
+ * units and gate key stay those of the state-selected page — else templateId / null; deployedPath: the state page's, else the row's path.
+ */
+export function coveragePages(doc, { state = null } = {}) {
+  return pagesOf(doc).filter((r) => delivered(r) && r.source && r.source.sourceUrl).map((r) => {
+    const s = pagesOf(state).find((p) => p && p.slug === r.slug); const deployedPath = (s && s.deployedPath) || r.path;
+    return { slug: r.slug, url: r.source.sourceUrl, liveUrl: r.delivery.deployedUrl, template: s ? s.template : (r.templateId ?? null), fidelityTier: s ? s.fidelityTier : null, deliveryStatus: r.delivery.status, ...(deployedPath ? { deployedPath } : {}) };
+  });
+}
+/** selectPages(state, { stage, protoBase, only, coverage }) → the pages this run gates (main() selects with it; run-bg counts with it); published + a coverage doc → coveragePages. */
+export function selectPages(state, { stage = 'published', protoBase = null, only = null, coverage = null } = {}) {
   const pages = stage === 'prototype'
     ? pagesOf(state).filter((p) => p.prototypePath && p.url).map((p) => ({ ...p, liveUrl: `${protoBase || 'http://localhost:8791'}/${basename(p.prototypePath)}` }))
-    : pagesOf(state).filter((p) => p.status === 'deployed' && p.liveUrl && p.url);
+    : coverage ? coveragePages(coverage, { state }) : pagesOf(state).filter((p) => p.status === 'deployed' && p.liveUrl && p.url);
   return only ? pages.filter((p) => only.includes(p.slug)) : pages;
+}
+/**
+ * The roster's files, resolved against cwd: { cov, st }, each { path, abs } + doc | missing | error (its message); cov null =
+ * not the source. Published: an explicit --coverage, else DEFAULT_COVERAGE when it exists, else --state; prototype: --state.
+ */
+function rosterSource({ stage = 'published', coverage = null, state = 'stardust/state.json' }, cwd = '.') {
+  const load = (path) => { const abs = resolve(cwd, path); try { return { path, abs, doc: JSON.parse(readFileSync(abs, 'utf8')) || {} }; } catch (e) { return e.code === 'ENOENT' ? { path, abs, missing: true } : { path, abs, error: e.message }; } };
+  const cov = stage === 'published' && (coverage || existsSync(resolve(cwd, DEFAULT_COVERAGE))) ? load(coverage || DEFAULT_COVERAGE) : null;
+  return { cov, st: load(state) };
 }
 // One width per process: widths stays 1 here, explicit so run-bg can sum invocations (pages × widths).
 const roster = (pages, { width, stage }) => { const widths = 1; return { pages, widths, width, stage, estimatedSeconds: ESTIMATE_SEC_PER_PAGE * pages * widths }; };
 const rosterText = (r) => `${r.pages} page(s) × ${r.widths} width${r.widths === 1 ? '' : 's'} @${r.width} (${r.stage})`;
 /**
- * rosterEstimate(argv, { cwd }) → { pages, widths: 1, width, stage, state, estimatedSeconds } | { error } for gate-all's own
- * argv (no node / script path): reads only --state, --stage, --proto-base, --only, --width (other flags and --help are
- * skipped, never an exit or a print) and the state file resolved against cwd — no other I/O.
+ * rosterEstimate(argv, { cwd }) → { pages, widths: 1, width, stage, source: 'coverage', coverage, estimatedSeconds } |
+ * { …, source: 'state', state, … } | { error } for gate-all's own argv (no node / script path): reads only --coverage,
+ * --state, --stage, --proto-base, --only, --width (other flags and --help are skipped, never an exit or a print) and the
+ * roster's files resolved against cwd as main() does (a state.json that does not parse beside a coverage: ignored) — no other I/O.
  */
 export function rosterEstimate(argv, { cwd = process.cwd() } = {}) {
-  const o = { state: 'stardust/state.json', stage: 'published', protoBase: null, only: null, width: 1440 };
-  const KEY = { '--state': 'state', '--stage': 'stage', '--proto-base': 'protoBase', '--only': 'only', '--width': 'width' };
+  const o = { coverage: null, state: 'stardust/state.json', stage: 'published', protoBase: null, only: null, width: 1440 };
+  const KEY = { '--coverage': 'coverage', '--state': 'state', '--stage': 'stage', '--proto-base': 'protoBase', '--only': 'only', '--width': 'width' };
   const a = argv || [];
   for (let i = 0; i < a.length; i += 1) if (KEY[a[i]] && a[i + 1] != null) { o[KEY[a[i]]] = String(a[i + 1]); i += 1; }
   if (!['published', 'prototype'].includes(o.stage)) return { error: `--stage must be published or prototype (got ${o.stage})` };
   const only = o.only == null ? null : o.only.split(',').map((s) => s.trim()).filter(Boolean); const width = Number(o.width);
-  const state = resolve(cwd, o.state); let json;
-  try { json = JSON.parse(readFileSync(state, 'utf8')); } catch (e) { return { error: e.code === 'ENOENT' ? `${state} not found` : `${state} unreadable: ${e.message}` }; }
-  return { ...roster(selectPages(json, { stage: o.stage, protoBase: o.protoBase && o.protoBase.replace(/\/$/, ''), only }).length, { width, stage: o.stage }), state };
+  const { cov, st } = rosterSource(o, cwd); const bad = (f) => (f.missing ? `${f.abs} not found` : `${f.abs} unreadable: ${f.error}`);
+  const est = (coverage) => roster(selectPages(st.doc || null, { stage: o.stage, protoBase: o.protoBase && o.protoBase.replace(/\/$/, ''), only, coverage }).length, { width, stage: o.stage });
+  if (cov) return cov.doc ? { ...est(cov.doc), source: 'coverage', coverage: cov.abs } : { error: bad(cov) };
+  return st.doc ? { ...est(null), source: 'state', state: st.abs } : { error: bad(st) };
 }
-/** emptySelection(state, { stage, only, statePath }) → the one stderr line naming why no page was selected. */
-export function emptySelection(state, { stage = 'published', only = null, statePath }) {
+/**
+ * emptySelection(state, { stage, only, statePath, coverage, coveragePath, source, stateError }) → the one stderr line naming
+ * why no page was selected. Published: both sources (state / coverage null = not found; stateError: it did not parse) with
+ * their counts and the roster's source; prototype: the state file.
+ */
+export function emptySelection(state, { stage = 'published', only = null, statePath, coverage = null, coveragePath = DEFAULT_COVERAGE, source = coverage ? 'coverage' : 'state', stateError = null }) {
   const all = pagesOf(state); const proto = stage === 'prototype';
   const counted = all.filter((p) => (proto ? p.prototypePath : p.status === 'deployed' && p.liveUrl)); const noUrl = counted.filter((p) => !p.url).length;
-  const staged = counted.length - noUrl;
-  return `gate-all: no pages selected — ${statePath} has ${all.length} page(s), ${counted.length} ${proto ? 'with a prototypePath' : 'deployed with a liveUrl'}${noUrl ? ` (${noUrl} without a source url)` : ''} (${stage} stage)${only && staged ? `; --only ${only.join(',')} matched none of the ${staged} page(s) the stage selects` : ''}; pass --state stardust/state.json (or the gate state file) from the project root, or deploy first`;
+  const onlyPart = (staged) => (only && staged ? `; --only ${only.join(',')} matched none of the ${staged} page(s) the stage selects` : '');
+  if (proto) return `gate-all: no pages selected — ${statePath} has ${all.length} page(s), ${counted.length} with a prototypePath${noUrl ? ` (${noUrl} without a source url)` : ''} (${stage} stage)${onlyPart(counted.length - noUrl)}; pass --state stardust/state.json (or the gate state file) from the project root, or deploy first`;
+  const rows = pagesOf(coverage).filter(delivered); const noSrc = rows.filter((r) => !(r.source && r.source.sourceUrl)).length;
+  const covPart = coverage ? `coverage ${coveragePath} has ${pagesOf(coverage).length} row(s), ${rows.length} deployed / verified / gate-failed with a deployedUrl${noSrc ? ` (${noSrc} without a source url)` : ''}` : `coverage ${coveragePath} not found`;
+  const statePart = state ? `state ${statePath} has ${all.length} page(s), ${counted.length} deployed with a liveUrl${noUrl ? ` (${noUrl} without a source url)` : ''}` : `state ${statePath} ${stateError ? 'unreadable' : 'not found'}`;
+  return `gate-all: no pages selected — ${covPart}; ${statePart} (published stage, roster from ${source})${onlyPart(source === 'coverage' ? rows.length - noSrc : counted.length - noUrl)}; pass --coverage ${DEFAULT_COVERAGE} or --state stardust/state.json from the project root, or deploy first`;
 }
 
 // ---- pure: the verdict --------------------------------------------------------------------------------
@@ -676,12 +727,18 @@ const lastLine = (s) => (s || '').trim().split('\n').filter(Boolean).pop() || ''
 async function main() {
   const opts = parseArgs(process.argv);
   const startedAt = new Date().toISOString(); // this process's start (gate-key.json); runStart below is the run anchor
-  if (!existsSync(opts.state)) { console.error(`gate-all: ${opts.state} not found — run from the project root or pass --state`); process.exit(1); }
+  const { cov, st } = rosterSource(opts);
+  if (cov && !cov.doc) { console.error(cov.missing ? `gate-all: ${cov.path} not found — run from the project root or pass --coverage` : `gate-all: ${cov.path} unreadable: ${cov.error}`); process.exit(1); }
+  if (!cov && st.missing) { console.error(opts.stage === 'prototype' ? `gate-all: ${opts.state} not found — run from the project root or pass --state` : `gate-all: neither ${DEFAULT_COVERAGE} nor ${opts.state} found — run from the project root or pass --coverage / --state`); process.exit(1); }
+  if (!cov && st.error) throw new Error(st.error);
+  if (cov && st.error) console.error(`gate-all: ${opts.state} unreadable (${st.error}) — roster from coverage without state enrichment`);
   if ((opts.clip || opts.content) && !DIFF_DIR) { console.error('gate-all: the diff skill\'s scripts dir was not found next to this one (../../diff/scripts or ../diff) — copy it (replica SKILL.md § Setup) or pass --no-probes'); process.exit(1); }
-  const state = readJson(opts.state);
-  const pages = selectPages(state, opts);
+  const state = st.doc || null; const covDoc = cov ? cov.doc : null;
+  const pages = selectPages(state, { ...opts, coverage: covDoc });
   if (opts.stage === 'prototype' && !opts.protoBase) console.error('gate-all: --stage prototype without --proto-base — assuming http://localhost:8791 (serve the prototypes dir there, replica SKILL.md § Phase 4)');
-  if (!pages.length) { console.error(emptySelection(state, { stage: opts.stage, only: opts.only, statePath: resolve(opts.state) })); process.exit(1); }
+  if (!pages.length) { console.error(emptySelection(state, { stage: opts.stage, only: opts.only, statePath: st.abs, coverage: covDoc, coveragePath: cov ? cov.abs : resolve(DEFAULT_COVERAGE), source: cov ? 'coverage' : 'state', stateError: st.error })); process.exit(1); }
+  const qualified = selectPages(state, { ...opts, coverage: covDoc, only: null }).length;
+  const sourceText = cov ? `coverage ${cov.path} (${qualified} of ${pagesOf(covDoc).length} row(s) qualified)` : `state ${opts.state} (${qualified} of ${pagesOf(state).length} page(s) qualified)`;
   // Deadline guard: a run-bg deadline below the estimate would kill the job mid-roster — refuse before any write.
   const R = roster(pages.length, opts);
   if (opts.deadlineSec && opts.deadlineSec < R.estimatedSeconds) { console.error(`gate-all: refused to start, no verdict — ${rosterText(R)} need an estimated ${R.estimatedSeconds} s (${ESTIMATE_SEC_PER_PAGE} s per page per width), above this job's run-bg deadline of ${opts.deadlineSec} s (RUN_BG_DEADLINE_SEC); re-start the job with run-bg.mjs start --timeout ${R.estimatedSeconds} …, or omit --timeout: run-bg sizes a gate-all job's deadline to this estimate`); process.exit(2); }
@@ -692,7 +749,7 @@ async function main() {
   const UNITS = readJson(opts.units || join(opts.out, 'units.json'), {});
   const unitsOf = (p) => (FAMILIES ? unitsFor(FAMILIES, p.slug, p.template) : ((UNITS[p.slug] || {}).units || []).map((x) => ({ origin: x.origin, eds: x.eds || x.origin, n: x.n || 1, required: x.required !== false })));
   const log = (s) => { const line = `${new Date().toISOString()} ${s}`; console.log(line); writeFileSync(join(opts.out, '_run.log'), `${line}\n`, { flag: 'a' }); };
-  log(`roster: ${rosterText(R)} — estimated ${R.estimatedSeconds} s (${ESTIMATE_SEC_PER_PAGE} s per page per width)${opts.deadlineSec ? `; run-bg deadline ${opts.deadlineSec} s` : ''}`);
+  log(`roster: ${rosterText(R)} — estimated ${R.estimatedSeconds} s (${ESTIMATE_SEC_PER_PAGE} s per page per width)${opts.deadlineSec ? `; run-bg deadline ${opts.deadlineSec} s` : ''}; source: ${sourceText}`);
   // One run anchor per process (every row of the run judged against it); --origin-max-age reaches the probes via the env.
   const ledger = join(dirname(opts.state), 'status.jsonl');
   const runStart = FRESH ? FRESH.runStartAt({ ledger }) : null;
@@ -827,7 +884,7 @@ async function main() {
     try { foundation = foundationPart('.'); } catch (e) { foundation = { paths: FOUNDATION_PATHS }; broken = `foundation: ${e.message}`; }
     const codePaths = [...foundation.paths, ...RUNTIME_PATHS, 'blocks/'];
     const code = codeDeployed(codePaths); const docs = deployedDocs('.');
-    const coverage = Object.fromEntries(((readSafe('stardust/rollout/coverage/pages.json') || {}).pages || []).filter((x) => x && x.slug && Array.isArray(x.blocks)).map((x) => [x.slug, x.blocks]));
+    const coverage = Object.fromEntries(((covDoc || readSafe(DEFAULT_COVERAGE) || {}).pages || []).filter((x) => x && x.slug && Array.isArray(x.blocks)).map((x) => [x.slug, x.blocks]));
     try { shared = sharedBlocks('.', coverage); chrome = chromeDocs('.'); } catch (e) { broken = broken || `blocks / chrome documents: ${e.message}`; }
     for (const p of pages) {
       let k = { parts: null, why: broken };

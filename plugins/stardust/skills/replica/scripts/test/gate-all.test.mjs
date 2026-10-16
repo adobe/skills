@@ -5,7 +5,8 @@
 // formatSummary (header, calibration line, one row per page, asymmetric-origin flag, the reused cell); parseArgs
 // defaults and --out derived from --width; --help in an empty cwd; pixel-compare's textBoxPct over a synthetic diff;
 // an empty selection names its cause (emptySelection table, the CLI exits 1 writing nothing); the roster (selectPages /
-// rosterEstimate table, the RUN_BG_DEADLINE_SEC deadline).
+// rosterEstimate table, the RUN_BG_DEADLINE_SEC deadline) and its source — the rollout coverage (coveragePages, beside a
+// state, --coverage, a coverage-only project's CLI run, missing / malformed files), else the state.
 // Reuse under --skip-existing: probeReuse (the capture pair rule), the gate key (stable across key order, changed by
 // one block / content / frozen-file byte or a mask edit, null on a freeze mismatch), the deploy-state guard's
 // content half; then the CLI over stub instruments in a sandbox project with a git remote and a deploy ledger.
@@ -27,7 +28,7 @@ import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { codeDeployed, contentDeployed, deployedDocs, edsHostOf, emptySelection, foundationPart, formatSummary, gateKeyOf, gateKeyParts, hostServes, instrumentFiles, inventoryWhy, keyChanged, liveReusePlan, oneLoadKeep, originReusePlan, parseArgs, probeInputs, probeReuse, rosterEstimate, rowKey, selectPages, sharedBlocks, skipCapture, verdict } from '../gate-all.mjs';
+import { codeDeployed, contentDeployed, coveragePages, deployedDocs, edsHostOf, emptySelection, foundationPart, formatSummary, gateKeyOf, gateKeyParts, hostServes, instrumentFiles, inventoryWhy, keyChanged, liveReusePlan, oneLoadKeep, originReusePlan, parseArgs, probeInputs, probeReuse, rosterEstimate, rowKey, selectPages, sharedBlocks, skipCapture, verdict } from '../gate-all.mjs';
 
 // pixel-compare imports pngjs at module level (a project devDependency, absent in the plugin checkout):
 // import it lazily and skip its one check where it does not resolve, like the other browser/dep-bound tests.
@@ -284,25 +285,52 @@ check('--help exits 0 in an empty cwd and writes nothing', () => {
   assert.equal(r.status, 0); assert.match(r.stdout, /Usage: node gate-all\.mjs/); assert.deepEqual(readdirSync(cwd), []);
   rmSync(cwd, { recursive: true, force: true });
 });
-// ---- an empty selection names its cause: the state file read, its page count, the counted spec words, --only --------
-const HINT = 'pass --state stardust/state.json (or the gate state file) from the project root, or deploy first';
-check('emptySelection: the state path and page count, the spec words counted per stage, the source-url and --only exclusions, the hint last', () => {
+// ---- an empty selection names its cause: both roster files read (published), their counts, the source, --only --------
+// A rollout coverage (pages.json): deployed / verified / gate-failed rows qualify (a, b, c); pending, a non-gate failure
+// and a row without a deployedUrl do not (d, e, f).
+const crow = (slug, status, { url = `https://main--site--org.aem.page/${slug}`, error = null, source = `https://www.example.com/${slug}`, ...rest } = {}) => ({ slug, path: `/${slug}`, title: slug, templateId: 'page', source: source ? { sourceUrl: source } : {}, blocks: [], delivery: { status, deployedUrl: url, deployedAt: null, verifiedAt: null, error }, ...rest });
+const COV = { pages: [crow('a', 'deployed'), crow('b', 'verified'), crow('c', 'failed', { error: 'gate: pixel 12%' }), crow('d', 'pending', { url: null }), crow('e', 'failed', { error: 'deploy: 502' }), crow('f', 'deployed', { url: null })] };
+const COV_PATH = 'stardust/rollout/coverage/pages.json';
+const HINT = `pass --coverage ${COV_PATH} or --state stardust/state.json from the project root, or deploy first`;
+const PROTO_HINT = 'pass --state stardust/state.json (or the gate state file) from the project root, or deploy first';
+check('emptySelection: published — both sources (absolute) with their counts, a missing one not found, the roster\'s source; prototype — the state file; the source-url and --only exclusions, the hint last', () => {
   const st = { pages: [{ slug: 'a', url: 'https://o.test/a', status: 'pending', prototypePath: 'p/a.html' }, { slug: 'b', url: 'https://o.test/b', status: 'deployed' },
     { slug: 'c', status: 'deployed', liveUrl: 'https://e.test/c', prototypePath: 'p/c.html' }] };
-  const at = '/p/stardust/state.json';
-  assert.equal(emptySelection({ pages: st.pages.slice(0, 2) }, { stage: 'published', statePath: at }), `gate-all: no pages selected — ${at} has 2 page(s), 0 deployed with a liveUrl (published stage); ${HINT}`);
-  assert.equal(emptySelection(st, { stage: 'published', statePath: at }), `gate-all: no pages selected — ${at} has 3 page(s), 1 deployed with a liveUrl (1 without a source url) (published stage); ${HINT}`);
-  assert.equal(emptySelection(st, { stage: 'prototype', only: ['x', 'y'], statePath: at }), `gate-all: no pages selected — ${at} has 3 page(s), 2 with a prototypePath (1 without a source url) (prototype stage); --only x,y matched none of the 1 page(s) the stage selects; ${HINT}`);
-  assert.equal(emptySelection(st, { stage: 'published', only: ['c'], statePath: at }), `gate-all: no pages selected — ${at} has 3 page(s), 1 deployed with a liveUrl (1 without a source url) (published stage); ${HINT}`, '--only is named only when the stage selected pages');
-  assert.equal(emptySelection({}, { stage: 'published', statePath: at }), `gate-all: no pages selected — ${at} has 0 page(s), 0 deployed with a liveUrl (published stage); ${HINT}`);
+  const at = '/p/stardust/state.json'; const cp = `/p/${COV_PATH}`; const pub = { stage: 'published', statePath: at, coveragePath: cp }; const noCov = `coverage ${cp} not found`;
+  assert.equal(emptySelection({ pages: st.pages.slice(0, 2) }, pub), `gate-all: no pages selected — ${noCov}; state ${at} has 2 page(s), 0 deployed with a liveUrl (published stage, roster from state); ${HINT}`);
+  assert.equal(emptySelection(st, pub), `gate-all: no pages selected — ${noCov}; state ${at} has 3 page(s), 1 deployed with a liveUrl (1 without a source url) (published stage, roster from state); ${HINT}`);
+  assert.equal(emptySelection(st, { stage: 'prototype', only: ['x', 'y'], statePath: at, coverage: COV, coveragePath: cp }), `gate-all: no pages selected — ${at} has 3 page(s), 2 with a prototypePath (1 without a source url) (prototype stage); --only x,y matched none of the 1 page(s) the stage selects; ${PROTO_HINT}`);
+  assert.equal(emptySelection(st, { ...pub, only: ['c'] }), `gate-all: no pages selected — ${noCov}; state ${at} has 3 page(s), 1 deployed with a liveUrl (1 without a source url) (published stage, roster from state); ${HINT}`, '--only is named only when the stage selected pages');
+  assert.equal(emptySelection({}, pub), `gate-all: no pages selected — ${noCov}; state ${at} has 0 page(s), 0 deployed with a liveUrl (published stage, roster from state); ${HINT}`);
+  const pending = { pages: [crow('a', 'pending', { url: null }), crow('b', 'failed', { error: 'deploy: 502' })] };
+  assert.equal(emptySelection(st, { ...pub, coverage: pending }), `gate-all: no pages selected — coverage ${cp} has 2 row(s), 0 deployed / verified / gate-failed with a deployedUrl; state ${at} has 3 page(s), 1 deployed with a liveUrl (1 without a source url) (published stage, roster from coverage); ${HINT}`);
+  const noSrc = { pages: [...COV.pages, crow('g', 'deployed', { source: null })] };
+  assert.equal(emptySelection(null, { ...pub, coverage: noSrc, only: ['z'] }), `gate-all: no pages selected — coverage ${cp} has 7 row(s), 4 deployed / verified / gate-failed with a deployedUrl (1 without a source url); state ${at} not found (published stage, roster from coverage); --only z matched none of the 3 page(s) the stage selects; ${HINT}`);
+  assert.equal(emptySelection(null, { ...pub, coverage: pending, stateError: 'Unexpected end of JSON input' }), `gate-all: no pages selected — coverage ${cp} has 2 row(s), 0 deployed / verified / gate-failed with a deployedUrl; state ${at} unreadable (published stage, roster from coverage); ${HINT}`);
 });
-check('CLI: a state with zero deployed pages → exit 1, one stderr line naming the absolute state path, its page count, 0 deployed with a liveUrl and the hint; nothing written', () => {
-  const cwd = realpathSync(mkdtempSync(join(tmpdir(), 'gate-all-empty-'))); mkdirSync(join(cwd, 'stardust'));
+check('CLI: coverage rows all pending and a state without a liveUrl → exit 1, one stderr line naming both files (absolute), their counts, the source and the hint; nothing written', () => {
+  const cwd = realpathSync(mkdtempSync(join(tmpdir(), 'gate-all-empty-'))); mkdirSync(join(cwd, 'stardust/rollout/coverage'), { recursive: true });
   writeFileSync(join(cwd, 'stardust/state.json'), JSON.stringify({ pages: [{ slug: 'a', url: 'https://o.test/a', status: 'pending' }, { slug: 'b', url: 'https://o.test/b', status: 'deployed' }] }));
+  writeFileSync(join(cwd, COV_PATH), JSON.stringify({ pages: [crow('a', 'pending', { url: null }), crow('b', 'pending', { url: null })] }));
+  const before = readdirSync(cwd, { recursive: true }).sort();
   const r = spawnSync(process.execPath, [SCRIPT], { cwd, encoding: 'utf8' });
   assert.equal(r.status, 1, r.stderr); assert.equal(r.stdout, ''); assert.equal(r.stderr.trim().split('\n').length, 1, r.stderr);
-  assert.equal(r.stderr.trim(), `gate-all: no pages selected — ${join(cwd, 'stardust/state.json')} has 2 page(s), 0 deployed with a liveUrl (published stage); ${HINT}`);
-  assert.deepEqual(readdirSync(cwd, { recursive: true }).sort(), ['stardust', join('stardust', 'state.json')]);
+  assert.equal(r.stderr.trim(), `gate-all: no pages selected — coverage ${join(cwd, COV_PATH)} has 2 row(s), 0 deployed / verified / gate-failed with a deployedUrl; state ${join(cwd, 'stardust/state.json')} has 2 page(s), 0 deployed with a liveUrl (published stage, roster from coverage); ${HINT}`);
+  assert.deepEqual(readdirSync(cwd, { recursive: true }).sort(), before);
+  rmSync(cwd, { recursive: true, force: true });
+});
+check('CLI: neither roster file → one stderr line naming both; an explicit --coverage that is missing, or a coverage that does not parse → one line; --stage prototype ignores --coverage (the state message); exit 1, nothing written', () => {
+  const cwd = realpathSync(mkdtempSync(join(tmpdir(), 'gate-all-nofile-')));
+  const cli = (args) => { const r = spawnSync(process.execPath, [SCRIPT, ...args], { cwd, encoding: 'utf8' }); assert.equal(r.status, 1, r.stderr); assert.equal(r.stdout, ''); assert.equal(r.stderr.trim().split('\n').length, 1, r.stderr); return r.stderr.trim(); };
+  assert.equal(cli([]), `gate-all: neither ${COV_PATH} nor stardust/state.json found — run from the project root or pass --coverage / --state`);
+  assert.deepEqual(readdirSync(cwd), []);
+  mkdirSync(join(cwd, 'stardust')); writeFileSync(join(cwd, 'stardust/state.json'), JSON.stringify({ pages: [] })); writeFileSync(join(cwd, 'bad.json'), '{');
+  const before = readdirSync(cwd, { recursive: true }).sort();
+  assert.equal(cli(['--coverage', 'missing.json']), 'gate-all: missing.json not found — run from the project root or pass --coverage');
+  assert.match(cli(['--coverage', 'bad.json']), /^gate-all: bad\.json unreadable: \S/);
+  rmSync(join(cwd, 'stardust/state.json'));
+  for (const c of ['missing.json', 'bad.json']) assert.equal(cli(['--stage', 'prototype', '--coverage', c]), 'gate-all: stardust/state.json not found — run from the project root or pass --state');
+  assert.deepEqual(readdirSync(cwd, { recursive: true }).sort(), before.filter((f) => f !== join('stardust', 'state.json')));
   rmSync(cwd, { recursive: true, force: true });
 });
 // ---- the roster: selectPages / rosterEstimate (run-bg sizes a gate-all job's deadline with them), the deadline env ---
@@ -317,12 +345,43 @@ check('selectPages / rosterEstimate: published vs prototype, --only, the state r
   assert.deepEqual(selectPages(st, { stage: 'prototype', protoBase: 'http://localhost:9' }).map((p) => [p.slug, p.liveUrl]), [['a', 'http://localhost:9/a.html'], ['c', 'http://localhost:9/c.html']]);
   assert.equal(selectPages(st, { stage: 'prototype' })[0].liveUrl, 'http://localhost:8791/a.html'); assert.deepEqual(selectPages({}, { stage: 'published' }), []);
   const state = join(cwd, 'stardust/state.json');
-  assert.deepEqual(rosterEstimate([], { cwd }), { pages: 2, widths: 1, width: 1440, stage: 'published', state, estimatedSeconds: 50 });
-  assert.deepEqual(rosterEstimate(['--stage', 'prototype', '--width', '360', '--proto-base', 'http://localhost:9/', '--only', 'c,z'], { cwd }), { pages: 1, widths: 1, width: 360, stage: 'prototype', state, estimatedSeconds: 25 });
-  assert.deepEqual(rosterEstimate(['--skip-existing', '--out', 'x', '--bogus', 'y', '--help', '--state', 'gate.json', '--threshold', '5'], { cwd }), { pages: 1, widths: 1, width: 1440, stage: 'published', state: join(cwd, 'gate.json'), estimatedSeconds: 25 });
+  assert.deepEqual(rosterEstimate([], { cwd }), { pages: 2, widths: 1, width: 1440, stage: 'published', source: 'state', state, estimatedSeconds: 50 });
+  assert.deepEqual(rosterEstimate(['--stage', 'prototype', '--width', '360', '--proto-base', 'http://localhost:9/', '--only', 'c,z'], { cwd }), { pages: 1, widths: 1, width: 360, stage: 'prototype', source: 'state', state, estimatedSeconds: 25 });
+  assert.deepEqual(rosterEstimate(['--skip-existing', '--out', 'x', '--bogus', 'y', '--help', '--state', 'gate.json', '--threshold', '5'], { cwd }), { pages: 1, widths: 1, width: 1440, stage: 'published', source: 'state', state: join(cwd, 'gate.json'), estimatedSeconds: 25 });
   assert.match(rosterEstimate(['--state', 'nope.json'], { cwd }).error, /nope\.json not found/); assert.match(rosterEstimate(['--state', 'bad.json'], { cwd }).error, /bad\.json unreadable/);
   assert.match(rosterEstimate(['--stage', 'draft'], { cwd }).error, /--stage must be published or prototype/);
   assert.deepEqual(['900', '0', '-5', 'x', undefined].map((v) => parseArgs(['node', 'x'], v === undefined ? {} : { RUN_BG_DEADLINE_SEC: v }).deadlineSec), [900, null, null, null, null]);
+  rmSync(cwd, { recursive: true, force: true });
+});
+check('coverage roster: deployed / verified / gate-failed rows with a deployedUrl and a source url, in file order, --only after; a state page of the same slug lends template / fidelityTier / deployedPath, else templateId / null / the row path', () => {
+  const slugs = (pages) => pages.map((p) => p.slug);
+  assert.deepEqual(slugs(coveragePages(COV)), ['a', 'b', 'c']); assert.deepEqual(slugs(selectPages(null, { coverage: COV })), ['a', 'b', 'c']);
+  assert.deepEqual(slugs(selectPages(null, { coverage: COV, only: ['c', 'd', 'z'] })), ['c']);
+  assert.deepEqual(coveragePages(COV)[2], { slug: 'c', url: 'https://www.example.com/c', liveUrl: 'https://main--site--org.aem.page/c', template: 'page', fidelityTier: null, deliveryStatus: 'failed', deployedPath: '/c' });
+  const st = { pages: [{ slug: 'a', url: 'https://o.test/a', status: 'deployed', liveUrl: 'https://e.test/a', template: 'home', fidelityTier: 'A', deployedPath: '/en/', prototypePath: 'p/a.html' },
+    { slug: 'b', url: 'https://o.test/b', status: 'pending', template: null, fidelityTier: 'B' }, { slug: 'x', url: 'https://o.test/x', status: 'deployed', liveUrl: 'https://e.test/x' }] };
+  assert.deepEqual(coveragePages(COV, { state: st }).map((p) => [p.slug, p.url, p.liveUrl, p.template, p.fidelityTier, p.deployedPath]), [
+    ['a', 'https://www.example.com/a', 'https://main--site--org.aem.page/a', 'home', 'A', '/en/'], ['b', 'https://www.example.com/b', 'https://main--site--org.aem.page/b', null, 'B', '/b'],
+    ['c', 'https://www.example.com/c', 'https://main--site--org.aem.page/c', 'page', null, '/c']]);
+  assert.deepEqual(slugs(selectPages(st, { coverage: COV })), ['a', 'b', 'c'], 'both sources: the coverage is the published roster');
+  assert.deepEqual(slugs(selectPages(st, { stage: 'prototype', coverage: COV })), ['a'], 'the prototype stage reads the state');
+  const moved = coveragePages({ pages: [crow('p', 'deployed', { url: 'https://main--site--org.aem.page/en/products/p', path: '/products/p' }), { ...crow('q', 'verified'), path: undefined, templateId: undefined }] });
+  assert.equal(moved[0].deployedPath, '/products/p', 'the row path, not the deployedUrl pathname'); assert.equal('deployedPath' in moved[1], false); assert.equal(moved[1].template, null);
+});
+check('rosterEstimate over the coverage: the default file beside a state wins (source coverage), --coverage names another; --stage prototype reads the state (a missing / malformed --coverage ignored); a missing or malformed --coverage → error; a malformed state beside a coverage is ignored', () => {
+  const cwd = realpathSync(mkdtempSync(join(tmpdir(), 'gate-all-covroster-'))); mkdirSync(join(cwd, 'stardust/rollout/coverage'), { recursive: true });
+  const st = { pages: [{ slug: 'a', url: 'https://o.test/a', status: 'deployed', liveUrl: 'https://e.test/a', prototypePath: 'p/a.html' }, { slug: 'x', url: 'https://o.test/x', status: 'deployed', liveUrl: 'https://e.test/x', prototypePath: 'p/x.html' }] };
+  writeFileSync(join(cwd, 'stardust/state.json'), JSON.stringify(st)); writeFileSync(join(cwd, COV_PATH), JSON.stringify(COV));
+  writeFileSync(join(cwd, 'other.json'), JSON.stringify({ pages: COV.pages.slice(1) })); writeFileSync(join(cwd, 'bad.json'), '{');
+  const coverage = join(cwd, COV_PATH); const state = join(cwd, 'stardust/state.json'); const est = (pages) => ({ pages, widths: 1, width: 1440, estimatedSeconds: 25 * pages });
+  assert.deepEqual(rosterEstimate([], { cwd }), { ...est(3), stage: 'published', source: 'coverage', coverage });
+  assert.deepEqual(rosterEstimate(['--only', 'a,z'], { cwd }), { ...est(1), stage: 'published', source: 'coverage', coverage });
+  assert.deepEqual(rosterEstimate(['--coverage', 'other.json'], { cwd }), { ...est(2), stage: 'published', source: 'coverage', coverage: join(cwd, 'other.json') });
+  assert.deepEqual(rosterEstimate(['--coverage', 'missing.json'], { cwd }), { error: `${join(cwd, 'missing.json')} not found` });
+  const bad = rosterEstimate(['--coverage', 'bad.json'], { cwd }).error; assert.ok(bad.startsWith(`${join(cwd, 'bad.json')} unreadable: `), bad);
+  for (const c of [[], ['--coverage', 'missing.json'], ['--coverage', 'bad.json']]) assert.deepEqual(rosterEstimate(['--stage', 'prototype', ...c], { cwd }), { ...est(2), stage: 'prototype', source: 'state', state });
+  writeFileSync(join(cwd, 'stardust/state.json'), '{');
+  assert.deepEqual(rosterEstimate([], { cwd }), { ...est(3), stage: 'published', source: 'coverage', coverage });
   rmSync(cwd, { recursive: true, force: true });
 });
 
@@ -655,10 +714,31 @@ check('sandbox 1: a full round captures both sides of every page; origin.json re
   assert.match(runLog(), /origin reuse: same run since .*; pools origin 2 \/ eds 4 \/ probe 2/);
   assert.ok(r.cp.every((c) => !c.had), 'a fresh origin capture is paired with a fresh presence inventory');
 });
-check('roster estimate: the run\'s first status line — stdout and _run.log — is the roster with its estimate (2 pages → 50 s) and the run-bg deadline; a deadline equal to the estimate starts', () => {
-  const want = /^\S+ roster: 2 page\(s\) × 1 width @1440 \(published\) — estimated 50 s \(25 s per page per width\); run-bg deadline 50 s$/;
+check('roster estimate: the run\'s first status line — stdout and _run.log — is the roster with its estimate (2 pages → 50 s), the run-bg deadline and its source (a state-only project: the state, 2 of 2 pages qualified); a deadline equal to the estimate starts', () => {
+  const want = /^\S+ roster: 2 page\(s\) × 1 width @1440 \(published\) — estimated 50 s \(25 s per page per width\); run-bg deadline 50 s; source: state stardust\/state\.json \(2 of 2 page\(s\) qualified\)$/;
   assert.equal(first.status, 0); assert.match(first.stdout.split('\n')[0], want); assert.match(runLog().split('\n')[0], want);
   assert.match(runLog().split('\n')[1], / origin reuse: /);
+});
+check('coverage-only project (no state.json): the rollout coverage is the roster — the first status line names it and its qualified rows (before --only), a gate-failed row is re-gated against its deployedUrl, the row path / template from the coverage; a state.json that does not parse beside it → one stderr note, the run goes on', () => {
+  const croot = realpathSync(mkdtempSync(join(tmpdir(), 'gate-all-cov-'))); mkdirSync(join(croot, 'stardust/rollout/coverage'), { recursive: true });
+  writeFileSync(join(croot, COV_PATH), JSON.stringify(COV));
+  const cgate = () => {
+    rmSync(STITCH_LOG, { force: true }); const e = { ...process.env }; for (const k of ['STARDUST_ORIGIN_MAX_AGE_H', 'STARDUST_BROWSER_SLOT', 'RUN_BG_DEADLINE_SEC']) delete e[k];
+    const r = spawnSync(process.execPath, [join(RS, 'gate-all.mjs'), '--width', '1440', '--only', 'c'], { cwd: croot, env: e, encoding: 'utf8', timeout: 60e3 });
+    return { ...r, run: JSON.parse(readFileSync(join(croot, r.stdout.match(/run → (.*)/)[1]), 'utf8')), log: readFileSync(join(croot, 'stardust/replica/gates/all-1440/_run.log'), 'utf8').trim().split('\n') };
+  };
+  const want = /^\S+ roster: 1 page\(s\) × 1 width @1440 \(published\) — estimated 25 s \(25 s per page per width\); source: coverage stardust\/rollout\/coverage\/pages\.json \(3 of 6 row\(s\) qualified\)$/;
+  const r = cgate();
+  assert.equal(r.status, 0, r.stderr + r.stdout); assert.match(r.stdout.split('\n')[0], want); assert.match(r.log[0], want);
+  assert.deepEqual(lines(STITCH_LOG).map((l) => l.split(' ').slice(0, 2).join(' ')).sort(), ['EDS https://main--site--org.aem.page/c', 'ORIGIN https://www.example.com/c']);
+  const row = r.run.rows.find((x) => x.slug === 'c'); assert.deepEqual([r.run.rows.length, row.path, row.template, row.pass], [1, '/c', 'page', true]);
+  assert.equal(existsSync(join(croot, 'stardust/state.json')), false);
+  writeFileSync(join(croot, 'stardust/state.json'), '{');
+  const m = cgate();
+  assert.equal(m.status, 0, m.stderr + m.stdout); assert.match(m.stdout.split('\n')[0], want);
+  assert.equal(m.stderr.split('\n').filter((l) => l.startsWith('gate-all: ')).length, 1, m.stderr);
+  assert.match(m.stderr, /^gate-all: stardust\/state\.json unreadable \(.+\) — roster from coverage without state enrichment$/m);
+  rmSync(croot, { recursive: true, force: true });
 });
 check('sandbox 2: --only home is a fix round — 0 origin navigations, the row / origin.json / _run.log record the reuse, presence cache passed; a held browser slot leaves the pools at 2 / 4 / 2', () => {
   const r = gate(['--only', 'home'], { STARDUST_BROWSER_SLOT: join(root, 'slot-1.json') });
