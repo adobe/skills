@@ -4,7 +4,7 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
-## 0.34.6 — C-deliver clusters over 16 siblings run as sub-units; fan-out subagents pause on request (#134)
+## 0.35.0 — C-deliver clusters over 16 siblings run as sub-units; fan-out subagents pause on request (#134)
 
 A recorded 100-page hands-off run held a 64-sibling template as ONE recorded unit for 6 h 38 min across two sessions
 and a wall-clock kill; six of its ten sessions overran a 90-minute session limit, because the main agent reaches its
@@ -32,6 +32,7 @@ boundary only between recorded units while a background subagent holds the unit;
 
 Contract change: handoff contract § 3 row C, the `progress.json` unit names, § Fan-out discipline, § 5's unit-end
 order and the 90-minute unit target; touches #125, #126; no script, verdict, threshold, criterion or gate-row change.
+Minor: a changed contract is a minor release (plugin `AGENTS.md`), hence 0.35.0 rather than a 0.34.x patch.
 
 ## 0.34.4 — roster gates sized to their deadline; an older gate table never reverts a newer verdict
 
