@@ -582,6 +582,10 @@ rather than erroring.
    could null out. These fire on a timer, so the dismissal polls for late
    arrivals on live source sites (an EDS host gets one sweep after its
    delayed phase) and stitch-shot sweeps again after the settle pass.
+   Known limit: on an EDS host without `--settle` (the plain `gate.sh` build
+   capture) that one sweep runs after the delayed phase (load + ~3 s), so a
+   consent manager that renders later is not dismissed there — under
+   `--settle` it is, and `--consent` / `--dismiss` reach that sweep.
 7. **Granularity parity for JOIN/SPLIT false-reds (#87)** — mirror live
    node granularity or confirm-justify per
    `recreation-procedure.md` § Granularity parity.
