@@ -207,9 +207,7 @@ within 4 px of the viewport width (`GATE_OVERFLOW_TOLERANCE`, integer
 rounding) at every gate breakpoint on the build side, evaluated on the
 published origin for a delivered page. It is not a bar item because a
 bar item can be traded for a documented residual; this cannot
-(§ Iteration discipline, the HARD assert). `gate.sh` runs it every round
-and prints the verdict line; `measure.mjs` prints the number on its root
-line for any ad-hoc read.
+(§ Iteration discipline, the HARD assert); `gate.sh` checks it every round.
 
 6. **Content-cap row — once per archetype after the 1440 pass, at the
    DERIVED wide width (#116 → #124).** Both gate widths are narrower than
@@ -399,9 +397,9 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
   and 400 px wide at a 360 viewport — accordion headers and a blockquote
   overflowing, text clipped — and the gate logged `|Δ| 19–26 px at 360 …
   logged, not iterated further (3-iteration cap reached)` and passed them.
-  Horizontal overflow is not a residual class. `gate.sh` runs `measure.mjs`
-  on the BUILD side every round (no live hit) and reads its root line —
-  `root  scrollWidth <n>  viewport <n>  scrollHeight <n>  ◄◄ OVERFLOW +<n>px`
+  Horizontal overflow is not a residual class. `gate.sh` reads the overflow
+  numbers from the BUILD capture's own output every round (no live hit, no
+  second page load) — `overflow: scrollWidth=<n> viewport=<n> delta=<n>`
   — so a build wider than its viewport prints `gate.sh: OVERFLOW at <w> —
   build scrollWidth <n> > viewport <n> (+<n>px) → FAIL` and the round exits 2
   whatever the pixel number says; `gate-evidence.mjs` records `FAIL:
@@ -424,7 +422,7 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
   load (three rounds in flight, nine Chromiums with `--full`) a recorded
   hands-off run saw about 8 of 62 sibling gate rounds end in `build capture
   failed (exit 1)` and read them as verdicts. `gate.sh` retries a capture
-  that exits 1 — live, build or the overflow probe — ONCE before declaring
+  that exits 1 — live or build — ONCE before declaring
   anything (`gate.sh: <step> exited 1 — retrying once`); when both attempts
   exit 1 the round exits 1 with `(twice: no verdict — re-queue the round)`.
   Treat it exactly like exit 124: start the same round again through
@@ -582,7 +580,8 @@ rather than erroring.
    modal fired ~5–9s after load and baked a pixel-diff contributor into the
    LIVE capture, repeated at every chunk seam, that no prototype fidelity
    could null out. These fire on a timer, so the dismissal polls for late
-   arrivals and stitch-shot sweeps again after the settle pass.
+   arrivals on live source sites (an EDS host gets one sweep after its
+   delayed phase) and stitch-shot sweeps again after the settle pass.
 7. **Granularity parity for JOIN/SPLIT false-reds (#87)** — mirror live
    node granularity or confirm-justify per
    `recreation-procedure.md` § Granularity parity.
@@ -702,7 +701,11 @@ probes, deadlines and verdict lines apply; no hand-written wrapper. The
 the marker, and the slug sits in the prototype's file name, not in the
 preview page. Keep the ordinary `stardust/replica/gates/<slug>-<width>/`
 evidence dir — the `pub<N>` label keeps the round apart, and a new dir would
-force a fresh live capture against the hit-minimisation rule.
+force a fresh live capture against the hit-minimisation rule. In C-deliver
+this round is the fix-round instrument inside the C-archetype unit, never a
+second verdict: the archetype's published row of record is that unit's
+`gate-all.mjs --only <archetype>` row (§ The all-pages published-origin
+gate), reused only with an identical gate key and an unchanged capture pair.
 
 The prototype gate above proves the RECREATION; it does not prove the
 DELIVERED page. Local render harnesses systematically understate deltas
@@ -822,7 +825,14 @@ recorded beside the full one per page and in the totals: every run is calibratio
 on the verdict, never reported unmasked), `overrides.json` (shown BESIDE the measured number,
 never replacing it), `clip-allow.json`, `presence.json`, `units.json`. Origin fallback: live
 stitch → previous origin (`--recapture-origin`) → crawl fullPage screenshot (`crawl-fullpage`,
-asymmetric, flagged). **Browser tier: the best available, registered.** The probes elect real
+asymmetric, flagged). **Reuse (`--skip-existing`) — proven, never silent.** Captures in the page
+dir are reused; probes are replayed (`<slug>/probes.json`) only while the capture pair they were
+taken against is on disk; a PASS row is reused whole only while its `gateKey` holds — a hash of
+what the verdict rests on, issued only while the gated host provably serves the hashed tree
+(pushed code; every document delivered to that org/repo with the same `contentSha`), else `null`
+with the reason in the run log. A changed key, or a frozen-file edit since the freeze, re-shoots
+the EDS side. Rows say `reused`; the script header lists the key's parts and proofs.
+**Browser tier: the best available, registered.** The probes elect real
 Chrome (`channel: 'chrome'`, window-free) and fall back to bundled Chromium when it is not
 installed; every probe writes the tier it actually ran (`chrome` | `chromium-fallback` |
 `chromium`) into its JSON, `summary.md` carries a `browser` column and the calibration line
