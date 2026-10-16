@@ -15,12 +15,13 @@ machine-wide budget so parallel projects stop starving each other.
   when they were captured in this run — at or after the last rollout `A-inventory` or replica `extract` start in
   `stardust/status.jsonl`; older captures are retaken once. Cross-run reuse is opt-in (`--origin-max-age <h>` /
   `STARDUST_ORIGIN_MAX_AGE_H`); `--recapture-origin` forces. Every reuse is recorded: the row's `originReused
-  { from, at, policy }` and `presenceReused`, `origin.json`, `_run.log`. The published stage also takes the
+  { from, at, policy }` and `presenceReused`, `origin.json`, `_run.log`. The published stage can also take the
   archetype round's `live.png` when its `live.json` matches gate-all's own stitch (URL, width, viewport height,
-  locale, settle, built-in dismissal only). `--skip-existing` and a failed re-shoot keep the previous origin as a
-  recorded reuse (`stale` plus a warning when it predates the run); a new origin capture drops the old presence
-  inventory, and probes replay against a reused origin only when `probes.json` recorded it (`pair`). One policy
-  for all of it in `diff/scripts/live-session.mjs`.
+  locale, settle, built-in dismissal only) — in the documented order that capture (Phase 4) predates rollout's
+  `A-inventory` start, so only under `--origin-max-age`. `--skip-existing` and a failed re-shoot keep the
+  previous origin as a recorded reuse (`stale` plus a warning when it predates the run); a new origin capture
+  drops the old presence inventory, and probes replay against a reused origin only when `probes.json` recorded
+  it (`pair`). One policy for all of it in `diff/scripts/live-session.mjs`.
 - **content-diff and visual-diff cache the live side like chrome-parity** (`--live-cache <json>`): the source
   side's inventories, or metrics and screenshots, under the same freshness rule and an exact key; the build side
   is always measured. `gate.sh --full` passes `content-live.json`, `visual-live.json` and `presence-live.json`, so
@@ -36,12 +37,15 @@ machine-wide budget so parallel projects stop starving each other.
   `stardust/scripts/browser-lock.mjs` (ported from the `stardust/next` branch, attribution in its header;
   adapted: atomic slot handling — a slot file still being written counts as held, so two jobs racing for the
   last slot no longer both keep it) keeps one slot file per browser job under `~/.stardust/locks/browser/`
-  (`STARDUST_BROWSER_SLOTS`, default 3, `0` = off; `STARDUST_BROWSER_WAIT` 600 s, then exit 124 — no verdict).
-  `run-bg.mjs` takes one slot per browser job and releases it when the job ends (`--lock` / `--no-lock`
-  override); the job's children run inside it. gate-all's origin pool stays 2 (the source's bot budget) while
-  its EDS and probe pools widen to 6 / 4 inside a slot. The master skill's write boundary names the lock dir.
+  (`STARDUST_BROWSER_SLOTS`, default 3, `0` = off). `run-bg.mjs` takes one slot per browser job and releases it
+  when the job ends (`--lock` / `--no-lock` override); the job's children run inside it. A job waits for its slot
+  queued, without a limit unless `STARDUST_BROWSER_WAIT` (seconds) is set — then exit 124, no verdict; a CLI
+  holder keeps the 600 s default. gate-all's pools stay origin 2 (the source's bot budget) / EDS 4 / probe 2
+  inside a slot: a slot bounds jobs, not browsers, and raising the EDS / probe pools (no bot risk) raises the
+  job's Chromium peak. The master skill's write boundary names the lock dir.
 - **unit-geometry's origin cache is per width** (`stardust/current/measure/<slug>-units-<w>.json`, URL in the
-  key, same freshness rule): a 360 round no longer reads the 1440 origin inventory.
+  key, same freshness rule): a 360 round no longer reads the 1440 origin inventory. A hit reaches the gate-all row
+  (`unitsReused`) and `_run.log`.
 - **gate.sh pins the capture locale and records `live.json`.** Both stitched captures run `--locale en-US`, as
   gate-all's do; a live capture writes `live.json` (URL, width, locale, settle, dismissal, capture time).
 
@@ -49,9 +53,9 @@ Patch: defaults unchanged except recorded same-run reuse of source captures on f
 later `gate.sh --full` rounds) — the archetype gate's rule (one live capture per run, reused across iterations)
 extended to the probes and to gate-all, bounded by the run's start line and recorded per row. Nothing else moves a
 measurement: no threshold, criterion or pairing rule changes; the locale pin applies to both sides; the lock
-queues jobs and only widens gate-all's EDS and probe pools inside a slot; `--one-load` and cross-run reuse are
-opt-in; the new row and JSON fields are additive (`originReused`, `presenceReused`, `oneLoad`, `liveCache`,
-`originCache`, `pair`, `live.json`).
+only queues jobs (gate-all's pools unchanged); `--one-load` and cross-run reuse are opt-in; the new row and JSON
+fields are additive (`originReused`, `presenceReused`, `unitsReused`, `oneLoad`, `liveCache`, `originCache`,
+`pair`, `live.json`).
 
 ## 0.34.1 — replica speed instruments: measure the run, stop paying for the same evidence twice
 
