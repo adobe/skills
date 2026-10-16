@@ -25,9 +25,10 @@
  * --dry-run, --roundtrip, --lint or --sweep; zero writes when nothing changed:
  *   stardust/encoded/<da-path>.html             the document (the root page: index.html)
  *   stardust/migrated/…/<name>._meta.json       migrate's sidecar for the page: `encode` (the provenance of the document
- *                                               on disk) and `audit.encode` (this run's status and report; a clean
- *                                               page's `shape` — encode/shape.mjs, C14) — no other key; created
- *                                               migrate-shaped when the page has none
+ *                                               on disk), `audit.encode` (this run's status and report; a clean
+ *                                               page's `shape` — encode/shape.mjs, C14) and `modules[]` (a clean
+ *                                               page's block names; the archetype's non-empty list is kept) — no
+ *                                               other key; created migrate-shaped when the page has none
  *   stardust/import/<archetype>/manifest.json   each document path → the sha256 the encoder wrote there
  *   stardust/state.json                         migrate.generators[<archetype>] only (never created)
  *
@@ -85,7 +86,7 @@ const USAGE = `Usage:
 
 Applies the template's map (stardust/import/<archetype>/vocabulary.json + transform.json) to each page's committed
 capture and writes stardust/encoded/<da-path>.html in deploy's delivered form (sanitised; written only when the bytes
-change), with provenance in the page's migrate sidecar (encode, audit.encode) and stardust/import/<archetype>/
+change), with provenance in the page's migrate sidecar (encode, audit.encode, modules) and stardust/import/<archetype>/
 manifest.json. A page that stops (unmapped · flattened · variance · incomplete · hand-edit · error) is not written.
 Plan gate: siblings are refused (exit 2, nothing of theirs written) unless the archetype encodes clean and equals its
 gated content/<da-path>.html at text — check it with --roundtrip.

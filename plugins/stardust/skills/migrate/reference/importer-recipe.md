@@ -101,12 +101,13 @@ node skills/migrate/scripts/encode.mjs --lint|--sweep|--roundtrip --template <ar
 - **Outputs**, each written only when its bytes change: `stardust/encoded/<da-path>.html` in deploy's delivered form
   (the metadata block alone in the first section — `Title`, `Description`, `nav`, `footer`, no `lang` row —, media from
   the ledger, links localised, sanitise's `encode()` last, so deploy's finalisers leave it unchanged); in migrate's
-  sidecar only `encode` (the document's provenance) and `audit.encode` (this run's status and report);
-  `stardust/import/<archetype-slug>/manifest.json`; `state.json` `migrate.generators[<archetype-slug>]`.
+  sidecar only `encode` (the document's provenance), `audit.encode` (this run's status and report) and `modules[]`
+  (the emitted block names; the archetype's non-empty list is kept); `stardust/import/<archetype-slug>/manifest.json`;
+  `state.json` `migrate.generators[<archetype-slug>]`.
 - **Statuses and exits.** Per page `clean | unmapped | flattened | variance | incomplete | hand-edit | error`; a stopped
   page's document is not written. Exit 0 every page encoded or unchanged · 1 usage, invalid map, missing input · 2 a
-  page stopped or the siblings refused; last line `encoded N · unchanged N · stopped N`. **Exit 0 means encoded, never done:** rows 4–7 of
-  `skills/replica/reference/handoff-contract.md` § 1 still decide.
+  page stopped or the siblings refused; last line `encoded N · unchanged N · stopped N`. **Exit 0 means encoded, never
+  done:** rows 4–7 of `skills/replica/reference/handoff-contract.md` § 1 still decide.
 
 **Hard stops are the model's exceptions** — no numeric tolerance, no per-template code; only stopped pages reach the
 model, and each remedy is on record (`dropped[]`, an accept's `reason`, `patchesApplied[]`):
