@@ -60,10 +60,13 @@
  *     delta=<n>` line right before the `stitched` line — the document's
  *     scrollWidth, the viewport (window.innerWidth) and delta = scrollWidth
  *     minus the root's clientWidth (never below 0; measure.mjs semantics),
- *     read after the settle/dismissal block and again after the chunk loop,
- *     the larger kept (late lazy content). Same page, width and settle as the
- *     pixels: gate.sh's horizontal-overflow assert reads it from the build
- *     capture instead of loading the page a second time.
+ *     read ONCE after the chunk loop: every scroll-revealed box has been in
+ *     view (a pre-scroll read counts a slide-in still off to the side — a
+ *     false overflow), lazy content has loaded, and finite animations the
+ *     freeze holds are finished first, so the read is the page at rest the
+ *     way measure.mjs reads it after its scroll pass. Same page and width as
+ *     the pixels: gate.sh's horizontal-overflow assert reads it from the
+ *     build capture instead of loading the page a second time.
  *   - no timed late-modal poll on EDS build/preview hosts (*.aem.page|live,
  *     *.hlx.page|live — live-session lateWindowFor): they serve no timed
  *     third-party interstitials. ONE sweep still runs, after the EDS delayed
@@ -136,8 +139,8 @@ Usage: node stitch-shot.mjs <url> <out.png> [options]
   --help            this text
 
 Prints \`overflow: scrollWidth=<n> viewport=<n> delta=<n>\` right before the \`stitched\` line: the document width
-vs the viewport at --width (delta = px over, 0 when it fits), the larger of the reads after the settle and after
-the chunk loop — gate.sh's horizontal-overflow assert reads it from the build capture.
+vs the viewport at --width (delta = px over, 0 when it fits), read after the chunk loop with finite animations
+finished (the page at rest) — gate.sh's horizontal-overflow assert reads it from the build capture.
 EDS build/preview hosts (*.aem.page|live, *.hlx.page|live) get no timed late-modal poll: one dismissal sweep,
 after the EDS delayed phase (live source sites keep the 6 s poll, local targets have none).
 Run the SAME command shape against the live page and the served prototype.
@@ -239,10 +242,6 @@ async function main() {
       // stitched capture (recorded: a fashion retailer's "Sign up, stay updated!").
       if (!opts.noDismiss) await dismissAndLog(page, url, opts);
     }
-
-    // Overflow root line (header): read here — same settle as the pixels — and again after the chunk loop.
-    const readRoot = () => page.evaluate(() => ({ scrollWidth: document.documentElement.scrollWidth, clientWidth: document.documentElement.clientWidth, innerWidth: window.innerWidth }));
-    const rootSettled = await readRoot();
 
     // Freeze animations/transitions/carets for stable chunks — AFTER settle.
     await page.addStyleTag({ content: '*,*::before,*::after{animation-play-state:paused!important;transition:none!important;caret-color:transparent!important;scroll-behavior:auto!important;}html{scroll-behavior:auto!important}' });
@@ -354,8 +353,18 @@ async function main() {
       chunks.push({ y: actualY, buf });
       y += opts.vh;
     }
-    const rootAfter = await readRoot();
-    const root = rootAfter.scrollWidth > rootSettled.scrollWidth ? rootAfter : rootSettled;
+    // Overflow root line (header): ONE read, after the chunk loop — every box below the fold has been scrolled into
+    // view, so a scroll-reveal slide-in no longer sits off to the side (read earlier, it is a false overflow). The
+    // chunks are taken, so finite animations the freeze holds (a reveal keyframe started paused at its off-side
+    // frame) are finished first: the page at rest, as measure.mjs reads it after its scroll pass. The freeze moves no
+    // box (fixed stays fixed), so it neither adds nor hides overflow.
+    const root = await page.evaluate(() => {
+      for (const a of document.getAnimations()) {
+        try { if (a.effect && a.effect.getComputedTiming().endTime !== Infinity) a.finish(); } catch { /* not finishable — leave it */ }
+      }
+      const de = document.documentElement;
+      return { scrollWidth: de.scrollWidth, clientWidth: de.clientWidth, innerWidth: window.innerWidth };
+    });
 
     const outPng = new PNG({ width: opts.width, height: totalH });
     for (const { y: cy, buf } of chunks) {

@@ -12,7 +12,8 @@
  * overflow is a number on the table, never a residual (a recorded hands-off
  * run delivered two pages 373 and 400 px wide at a 360 viewport and passed
  * them; this root line is for ad-hoc reads — gate.sh's hard assert reads
- * stitch-shot's `overflow:` line, same numbers). An `<img>` (or `<picture>`)
+ * stitch-shot's `overflow:` line: the same three quantities, read on the
+ * stitched page at rest after its chunk loop). An `<img>` (or `<picture>`)
  * match additionally reports the rendition the browser selected —
  * naturalWidth × naturalHeight and the current source file — so a
  * per-breakpoint rendition mismatch (live 400 px at 360, build 1600) is named
@@ -413,8 +414,8 @@ function matchLine(tag, m) {
 }
 
 // The root line: `scrollWidth <n>  viewport <n>  scrollHeight <n>`, then `◄◄ OVERFLOW +<n>px` when the document is wider
-// than its viewport — for ad-hoc reads; gate.sh's horizontal-overflow assert reads stitch-shot's `overflow:` line, same
-// numbers (source-fidelity-gate.md § Iteration discipline).
+// than its viewport — for ad-hoc reads; gate.sh's horizontal-overflow assert reads stitch-shot's `overflow:` line (the
+// same quantities, read on the stitched page at rest after its chunk loop; source-fidelity-gate.md § Iteration discipline).
 export function formatRoot(root) {
   const vp = root.clientWidth === root.viewport ? String(root.viewport) : `${root.viewport} (client ${root.clientWidth})`;
   return `scrollWidth ${pad(root.scrollWidth, 5)}  viewport ${vp}  scrollHeight ${pad(root.scrollHeight, 6)}${root.overflowX > 0 ? `  ◄◄ OVERFLOW +${root.overflowX}px` : ''}`;
