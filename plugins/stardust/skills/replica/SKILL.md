@@ -489,8 +489,9 @@ had one section for the whole run).
   rows say `reused` (handoff § 3, C). Between fix rounds,
   `node stardust/scripts/replica/gate-triage.mjs [--unit <name>]`
   (advisory) groups the failing rows by shared cause in
-  `gates/all-<width>/triage.md` — fix each cause once and re-gate the scope it
-  names; the rows stay the verdict and the 3-round cap stays.
+  `gates/all-<width>/triage.md` — act on causes with rows on your own pages:
+  fix each cause once and re-gate the scope it names; the rows stay the
+  verdict and the 3-round cap stays.
 
 **State:** replica writes its own state under `stardust/replica/` — the
 inconsistency register, `progress.json` (one map: `types.<archetype>` —

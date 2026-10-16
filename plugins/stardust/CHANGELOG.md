@@ -18,11 +18,14 @@ before the next fix round, so each cause is fixed once and re-gated over the pag
   representative (at most 4 per run across all gate dirs; `--no-parity` skips it); names each group's re-gate scope
   (never smaller than its rows) with one `gate-all.mjs --only` command per eds host the pages were measured on;
   writes `triage.{json,md}` into each gate table dir, byte-identical on a re-run. Frozen-foundation causes become
-  one `foundation-requests.md` line per width in the contract's format (a cause@width is queued once; non-frozen
-  shared blocks stay cluster fixes). On a recorded hands-off run's tables it filed 105 of 108 failing rows
-  (97.2 %) under 21 shared causes.
+  one `foundation-requests.md` line per width in the contract's format (a cause@width is queued once; a line whose
+  property diff did not run says so, and a later real diff is queued once beside it; non-frozen shared blocks stay
+  cluster fixes). Foundation causes are re-gated at C-final, after the queue is applied; with
+  `stardust/rollout/units/<unit>.paths`, a cause with no row on the unit's pages reads "another unit's". On a
+  recorded hands-off run's tables it filed 105 of 108 failing rows (97.2 %) under 21 shared causes.
 - **replica Phase 5, handoff contract § 3 row C and the failing-row paragraph name it as advisory:** run it
-  between fix rounds; the rows stay the verdict, the 3-round cap and the foundation freeze stay.
+  between fix rounds and act on causes with rows on your own pages; the rows stay the verdict, the 3-round cap
+  and the foundation freeze stay.
 
 Patch: a new advisory script and three one-sentence doc additions; no verdict, threshold, criterion, row or
 capture change; the C-deliver wording is advisory, not a new required unit step.
