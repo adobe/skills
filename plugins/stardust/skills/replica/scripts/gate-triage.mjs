@@ -19,9 +19,10 @@
  * foundation-freeze manifest (frozen paths; DEFAULT_PATHS when absent). Causes: block:<name>,
  * selector:<sel>, encoder:<template>, layout:<template> (re-prototype candidate), capture:<slug>,
  * page:<slug>@<w>, and token:<prop>:<from>→<to> from the property diff. Same inputs ⇒ byte-identical
- * outputs and no new request line; run-dependent status goes to stdout only.
+ * outputs and no new request line; run-dependent status goes to stdout only, as does the unit view (--unit with
+ * units/<unit>.paths: own vs another unit's groups, and `first pass <w>: x/y` for the cluster's verdict line).
  *
- * Exports: parseArgs, blockOf, parsePairMsg, classifyRow, buildTriage, requestLine, formatTriage.
+ * Exports: parseArgs, blockOf, parsePairMsg, classifyRow, firstPass, buildTriage, requestLine, formatTriage.
  */
 import { spawnSync } from 'node:child_process';
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs';
@@ -46,7 +47,9 @@ Usage: node stardust/scripts/replica/gate-triage.mjs [options]   (from the proje
   --requests <f>            stardust/rollout/foundation-requests.md
   --unit <name>             unit named in routed request lines (default gate-triage); with
                             stardust/rollout/units/<name>.paths, stdout names the groups with rows there
-                            (own) and the rest (another unit's); the shared triage files stay unit-free
+                            (own) and the rest (another unit's), then \`first pass <w>: x/y\` — x of the
+                            unit's y siblings (archetype out) whose oldest row at <w> passed; the shared
+                            triage files stay unit-free
   --hot <pct>               a pixel band is hot above this (default 15)
   --no-parity               offline grouping only (no chrome-parity spawn, stored results ignored)
   --parity-max <n>          representative pages probed per run, all gate dirs (default 4; live navigations)
@@ -264,6 +267,31 @@ function mergeRows(sources) {
     }
   }
   return map;
+}
+
+/** The unit view's page match: a row's path (any table) or its coverage page's path is, as pathKey, in unitKeys. */
+const unitMember = (sources, covPages, unitKeys) => {
+  const paths = new Map(); for (const s of sources) for (const r of s.rows || []) if (r && r.slug && r.path) paths.set(r.slug, r.path);
+  return (slug) => [paths.get(slug), ((covPages || []).find((x) => x.slug === slug) || {}).path].some((x) => x && unitKeys.has(pathKey(x)));
+};
+
+/**
+ * firstPass(sources, { unitKeys, covPages }) → { x, y, pages: [{ slug, at, pass }] } — the unit's first pass in one gate
+ * dir: y = its pages with a row there, the archetype out (first row's tier; none = sibling); x = those whose FIRST row
+ * passed (pass === true; an override is no pass). First row = the oldest: its table's writtenAt, a whole-row reuse's
+ * reused.at; a tie keeps read order.
+ */
+export function firstPass(sources, { unitKeys = new Set(), covPages = [] } = {}) {
+  const mine = unitMember(sources, covPages, unitKeys); const first = new Map();
+  for (const s of sources) {
+    for (const r of s.rows || []) {
+      if (!r || !r.slug || !mine(r.slug)) continue;
+      const at = String((r.reused && r.reused.what === 'row' && r.reused.at) || s.writtenAt || '');
+      if (!first.has(r.slug) || cmp(at, first.get(r.slug).at) < 0) first.set(r.slug, { at, row: r });
+    }
+  }
+  const pages = [...first.entries()].filter(([, f]) => f.row.tier !== 'archetype').sort((a, b) => cmp(a[0], b[0])).map(([slug, f]) => ({ slug, at: f.at || null, pass: f.row.pass === true }));
+  return { x: pages.filter((p) => p.pass).length, y: pages.length, pages };
 }
 
 const KIND_RANK = { token: 0, block: 1, selector: 2, encoder: 3, layout: 4 };
@@ -615,13 +643,14 @@ function main(argv) {
     const gateLog = [];
     const t = buildTriage({ gate: rel(g), sources, ev, capture, blocks: (blocksDoc && blocksDoc.blocks) || [], covPages: (pagesDoc && pagesDoc.pages) || [], statePages: (stateDoc && stateDoc.pages) || [], families, frozen, hot: opts.hot, regions: opts.regions, parity: !opts.noParity, unit: opts.unit, coverageFiles: { blocks: blocksDoc ? rel(P.blocks) : null, pages: pagesDoc ? rel(P.pages) : null } },
       parityRunner({ rootAbs, gateAbs: g, rel, opts, say: (s) => gateLog.push(s), budget }));
-    // the unit view (stdout only — concurrent clusters share triage.{json,md}): groups with a row on the unit's pages
+    // the unit view (stdout only — concurrent clusters share triage.{json,md}): groups with a row on the unit's pages,
+    // then the unit's first pass at this width (the cluster verdict's `first pass 360: x/y`)
     if (unitPaths) {
-      const paths = new Map(); for (const s of sources) for (const r of s.rows || []) if (r && r.slug && r.path) paths.set(r.slug, r.path);
-      const covPath = (slug) => (((pagesDoc && pagesDoc.pages) || []).find((x) => x.slug === slug) || {}).path;
-      const own = (grp) => grp.rows.some((r) => [paths.get(r.slug), covPath(r.slug)].some((x) => x && unitPaths.keys.has(pathKey(x))));
+      const covPages = (pagesDoc && pagesDoc.pages) || []; const mine = unitMember(sources, covPages, unitPaths.keys);
+      const own = (grp) => grp.rows.some((r) => mine(r.slug));
       const list = (xs) => xs.map((x) => x.id).join(', ') || 'none';
-      gateLog.unshift(`unit ${opts.unit} @${t._provenance.width}: own: ${list(t.groups.filter(own))} · another unit's: ${list(t.groups.filter((x) => !own(x)))}`);
+      const w = t._provenance.width; const fp = firstPass(sources, { unitKeys: unitPaths.keys, covPages });
+      gateLog.unshift(`unit ${opts.unit} @${w}: own: ${list(t.groups.filter(own))} · another unit's: ${list(t.groups.filter((x) => !own(x)))} · first pass ${w}: ${fp.x}/${fp.y}`);
     }
     triages.push({ g, t, md: formatTriage(t), gateLog });
   }

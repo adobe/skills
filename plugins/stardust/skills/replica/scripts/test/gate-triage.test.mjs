@@ -3,7 +3,7 @@
 // block share + scope, encoder vs capture, layout (asymmetric origins excluded), group ordering + share,
 // the routed request lines byte-for-byte under a real foundation freeze + idempotent re-runs, --dry-run
 // writes nothing, --help in an empty dir, P3/P4 row fields tolerated, runs/ merge (newest row per page),
-// parsePairMsg on chrome-parity's message shapes. Fixtures are built in a temp project per check.
+// parsePairMsg on chrome-parity's message shapes, the unit view's first pass (firstPass). Fixtures are built in a temp project per check.
 // Run: node <this file>   (TMPDIR may point at a scratch dir)
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -12,7 +12,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { blockOf, classifyRow, parsePairMsg, requestLine } from '../gate-triage.mjs';
+import { blockOf, classifyRow, firstPass, parsePairMsg, requestLine } from '../gate-triage.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'gate-triage.mjs');
@@ -278,13 +278,38 @@ check('(n) with stardust/rollout/units/<unit>.paths, stdout names own vs another
   put(root, 'stardust/rollout/units/cluster-a.paths', '/p1\n/p2.html\n');
   const shared = () => ['triage.json', 'triage.md'].map((f) => readFileSync(join(root, GATE, f), 'utf8'));
   const r = ok(run(root, ['--unit', 'cluster-a', '--no-parity']));
-  assert.match(r.stdout, /^triage → [^\n]+\nunit cluster-a @1440: own: G1 · another unit's: G2$/m);
+  assert.match(r.stdout, /^triage → [^\n]+\nunit cluster-a @1440: own: G1 · another unit's: G2 · first pass 1440: 0\/2$/m);
   const a = shared();
   assert.doesNotMatch(a.join('\n'), /unitRows|another unit's|cluster-a|units\//);
   const z = ok(run(root, ['--unit', 'cluster-z', '--no-parity']));
   assert.deepEqual(shared(), a, 'byte-identical across --unit values');
   assert.doesNotMatch(z.stdout, /^unit /m, 'no paths file → no unit view');
 }));
+check('(o) --unit: the unit line ends with its first pass per width (oldest row per sibling, archetype out); triage.{json,md} unchanged', () => {
+  const sib = (s, o = {}) => row(s, { tier: 'sibling', ...o });
+  withProject({ rows: [sib('a'), sib('b'), row('arch', { tier: 'archetype' })], files: {}, pages: [] }, {}, (root) => {
+    writeGate(root, GATE360, 360, { rows: [sib('a', { pct: 14, pixelPass: false, pixelOnlyPass: false, pass: false }), sib('b'), row('arch', { tier: 'archetype' }), sib('c')], files: {} }, { runs: [{ name: '2026-10-02T00-00-00-000Z-a.json', writtenAt: '2026-10-02T00:00:00.000Z', rows: [sib('a')] }] });
+    put(root, 'stardust/rollout/units/cluster-a.paths', '/a\n/b\n/arch\n');
+    const shared = () => [GATE, GATE360].flatMap((g) => ['triage.json', 'triage.md'].map((f) => readFileSync(join(root, g, f), 'utf8')));
+    const r = ok(run(root, ['--unit', 'cluster-a', '--no-parity']));
+    assert.match(r.stdout, /^unit cluster-a @360: own: none · another unit's: none · first pass 360: 1\/2$/m, 'a failed first, passed later; c is another unit\'s');
+    assert.match(r.stdout, /^unit cluster-a @1440: own: none · another unit's: none · first pass 1440: 2\/2$/m);
+    const a = shared();
+    assert.doesNotMatch(a.join('\n'), /first pass/);
+    ok(run(root, ['--unit', 'cluster-z', '--no-parity']));
+    assert.deepEqual(shared(), a, 'byte-identical with and without the unit view');
+  });
+});
+check('(p) firstPass: the oldest row decides (a whole-row reuse dates from reused.at, a probes reuse does not); archetype out, no tier = sibling, an override is no pass', () => {
+  const T0 = '2026-09-28T00:00:00.000Z'; const T2 = '2026-10-02T00:00:00.000Z'; const T3 = '2026-10-03T00:00:00.000Z';
+  const sources = [
+    { file: `${GATE360}/summary.json`, writtenAt: T3, prov: {}, rows: [row('a', { reused: { what: 'row', at: T0 } }), row('b', { reused: { what: 'probes', at: T0 } }), row('arch', { tier: 'archetype', pass: false }), row('c', { tier: undefined }), row('x')] },
+    { file: `${GATE360}/runs/2026-10-02T00-00-00-000Z.json`, writtenAt: T2, prov: {}, rows: [row('a', { pass: false }), row('b', { pass: false }), row('arch', { tier: 'archetype' }), row('d', { pass: false, override: { reason: 'documented' }, passWithOverride: true }), row('e', { path: '/old/e' })] },
+  ];
+  const fp = firstPass(sources, { unitKeys: new Set(['/a', '/b', '/arch', '/c', '/d', '/e']), covPages: [{ slug: 'e', path: '/E/index.html' }] });
+  assert.deepEqual(fp, { x: 3, y: 5, pages: [{ slug: 'a', at: T0, pass: true }, { slug: 'b', at: T2, pass: false }, { slug: 'c', at: T3, pass: true }, { slug: 'd', at: T2, pass: false }, { slug: 'e', at: T2, pass: true }] });
+  assert.deepEqual(firstPass(sources, { unitKeys: new Set(['/nope']) }), { x: 0, y: 0, pages: [] });
+});
 check('(g) --help in an empty dir: exit 0, usage on stdout, nothing written', () => {
   const cwd = mkdtempSync(join(tmpdir(), 'gate-triage-help-'));
   try {
