@@ -5,7 +5,9 @@
 // and its exit-code rules, the overlay flags (--consent / --dismiss / --no-dismiss reaching both
 // captures, the diff probes and chrome-parity), --hide and gate-all's presence.json `hide` ("*" then <slug>) reaching
 // both captures and every probe as one effective list (chrome-parity: the flag list + --presence), live.json's `hide`
-// record and the live retake on a changed list, with stub instruments (no browser, no network).
+// record and the live retake on a changed list, the overlay-left rule (a capture that leaves an overlay gives no verdict:
+// exit 1, a live one drops live.png / live.json / the live caches), both captures' --json record, live.json's overlayLeft
+// / fontsFailed and the retake of a live.png that predates the overlay check, with stub instruments (no browser, no network).
 // Run: node skills/replica/scripts/test/gate.test.mjs
 import { spawn } from 'node:child_process';
 import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
@@ -42,7 +44,9 @@ cpSync(join(scripts, 'run-capped.mjs'), join(replica, 'run-capped.mjs'));
 // `argv <argv joined>` and `argv-json <JSON argv>` into their evidence files.
 // The BUILD side prints the root line gate.sh reads, `overflow: scrollWidth=<w+o> viewport=<w> delta=<o>` (o =
 // STUB_OVERFLOW px over the --width viewport; STUB_NO_OVERFLOW_LINE drops it; a fail-once attempt prints o =
-// STUB_OVERFLOW_FIRST when set, before its exit 1). measure: a call counter only (STUB_MEASURE_COUNT) — a round
+// STUB_OVERFLOW_FIRST when set, before its exit 1). A successful capture prints `overlay-left: <STUB_OVERLAY_<side>>`
+// first when set (exit 0, as stitch-shot does) and writes its --json record (overlayLeft, fontsFailed = the comma list
+// STUB_FONTS_<side>; STUB_NO_JSON_<side> writes none). measure: a call counter only (STUB_MEASURE_COUNT) — a round
 // launches none.
 const stub = (dir, name, body) => writeFileSync(join(dir, name), `#!/usr/bin/env node\n${body}\n`);
 const ARGV_LOG = "console.log('argv ' + process.argv.slice(2).join(' ')); console.log('argv-json ' + JSON.stringify(process.argv.slice(2)));";
@@ -59,7 +63,16 @@ stub(replica, 'stitch-shot.mjs', `
   if (once && !existsSync(once)) { writeFileSync(once, '1'); if (process.env.STUB_OVERFLOW_FIRST) ovf(Number(process.env.STUB_OVERFLOW_FIRST)); console.error('stitch-shot error: Target page, context or browser has been closed'); process.exit(1); }
   const rc = Number(process.env['STUB_STITCH_RC_' + side] || 0);
   if (rc) { console.error('stitch-shot error: stub exit ' + rc); process.exit(rc); }
-  writeFileSync(out, 'png'); ovf(Number(process.env.STUB_OVERFLOW || 0)); console.log('stitched ' + out);`);
+  const overlayLeft = process.env['STUB_OVERLAY_' + side] || null;
+  if (overlayLeft) console.log('overlay-left: ' + overlayLeft);
+  const o = Number(process.env.STUB_OVERFLOW || 0);
+  writeFileSync(out, 'png'); ovf(o);
+  const json = process.argv.includes('--json') ? process.argv[process.argv.indexOf('--json') + 1] : null;
+  if (json && !process.env['STUB_NO_JSON_' + side]) writeFileSync(json, JSON.stringify({ url, out, width: w, vh: null, settle: process.argv.includes('--settle'),
+    dismissed: process.argv.includes('--no-dismiss') ? null : { consent: null, extra: [], marketing: [] }, overlayLeft,
+    fontsFailed: (process.env['STUB_FONTS_' + side] || '').split(',').filter(Boolean), hidden: [], height: 2000,
+    overflow: { scrollWidth: w + o, viewport: w, delta: o } }, null, 2) + '\\n');
+  console.log('stitched ' + out);`);
 stub(replica, 'measure.mjs', `
   import { appendFileSync } from 'node:fs';
   if (process.env.STUB_MEASURE_COUNT) appendFileSync(process.env.STUB_MEASURE_COUNT, 'M\\n');
@@ -123,6 +136,7 @@ check('--help prints the usage block', /Usage:/.test(r.stdout) && /--full/.test(
 check('--help names the overflow assert and the capture retry', /Horizontal-overflow assert/.test(r.stdout) && /Capture retry/.test(r.stdout) && /overflow-<label>\.txt/.test(r.stdout));
 check('--help documents the overlay flags', /Overlay dismissal/.test(r.stdout) && /--consent <sel>/.test(r.stdout) && /--dismiss <sel,…>/.test(r.stdout) && /--no-dismiss/.test(r.stdout), r.stdout.slice(0, 400));
 check('--help documents --hide and presence.json reaching chrome-parity', /\[--hide <sel,…>\]/.test(r.stdout) && /^ {2}--hide <sel,…> /m.test(r.stdout) && /presence\.json/.test(r.stdout));
+check('--help documents the overlay-left rule: no verdict, exit 1', /overlay-left: <descriptor>/.test(r.stdout) && /overlay left on the <live\|build> capture/.test(r.stdout) && /an overlay left on either capture/.test(r.stdout), r.stdout.slice(0, 400));
 
 // Plain pixel round (no --full): verdict lines, evidence, exit = pixel rc.
 r = await gate(['home', 'https://live.example/', buildUrl, '1440', 'iter1']);
@@ -276,8 +290,8 @@ const hideArg = (argv) => {
 resetArgs();
 r = await gate(['consent1', 'https://live.example/consent1', buildUrl, '1440', 'c1', '--full', '--marker', 'home-proposed', '--consent', CONSENT, '--dismiss', EXTRA], { STUB_STITCH_ARGS: argsFile });
 check('--consent / --dismiss reach the live capture (after --settle) and the build capture alike, values intact', r.status === 0 && stitchArgs().length === 2
-  && stitchArgs()[0] === `LIVE https://live.example/consent1 stardust/replica/gates/consent1-1440/live.png --width 1440 --settle --consent ${CONSENT} --dismiss ${EXTRA} --locale en-US`
-  && stitchArgs()[1] === `BUILD ${buildUrl} stardust/replica/gates/consent1-1440/build.png --width 1440 --consent ${CONSENT} --dismiss ${EXTRA} --locale en-US`, `status ${r.status} | ${stitchArgs().join(' | ')} ${r.stderr.slice(0, 200)}`);
+  && stitchArgs()[0] === `LIVE https://live.example/consent1 stardust/replica/gates/consent1-1440/live.png --width 1440 --settle --json stardust/replica/gates/consent1-1440/live-shot.json --consent ${CONSENT} --dismiss ${EXTRA} --locale en-US`
+  && stitchArgs()[1] === `BUILD ${buildUrl} stardust/replica/gates/consent1-1440/build.png --width 1440 --json stardust/replica/gates/consent1-1440/build-shot.json --consent ${CONSENT} --dismiss ${EXTRA} --locale en-US`, `status ${r.status} | ${stitchArgs().join(' | ')} ${r.stderr.slice(0, 200)}`);
 check('the diff probes get the same selectors joined into one --dismiss list', new RegExp(`--main main --dismiss ${CONSENT},${EXTRA}$`, 'm').test(evidence('consent1', 'content-diff-c1.txt')) && new RegExp(`--main main --dismiss ${CONSENT},${EXTRA} --out `).test(evidence('consent1', 'visual-diff-c1.txt')), evidence('consent1', 'content-diff-c1.txt') + evidence('consent1', 'visual-diff-c1.txt'));
 check('chrome-parity gets --consent and --dismiss', new RegExp(`--live-cache \\S+ --consent ${CONSENT} --dismiss ${EXTRA}$`, 'm').test(evidence('consent1', 'chrome-parity-c1.txt')), evidence('consent1', 'chrome-parity-c1.txt'));
 resetArgs(); resetArgv();
@@ -360,6 +374,44 @@ unlinkSync(join(root, gdir('lj5'), 'live.png'));
 r = await gate(['lj5', 'https://live.example/lj5', buildUrl, '1440', 'j9', '--marker', 'home-proposed']);
 check('retaking live.png drops content-, visual- and presence-live.json; chrome-live.json is left alone', r.status === 0 && present('lj5').join(',') === 'chrome-live.json', present('lj5').join(','));
 
+// overlay-left (header § Overlay dismissal): a capture whose final overlay check printed `overlay-left: <descriptor>`
+// gives no verdict — exit 1 with one stderr line naming the side, never retried. A live one drops live.png, live.json
+// and the probes' live caches before any build capture; a build one stops before pixel-compare and the overflow line.
+// Both captures write their record (--json <gate dir>/<live|build>-shot.json); live.json records overlayLeft: null and
+// the record's fontsFailed (no readable record → [] and one stderr note).
+const OVL = 'div#promo-modal (fixed, 92 % of the viewport)';
+const ovlLine = (side) => `gate.sh: overlay left on the ${side} capture — ${OVL} — no verdict: fix the capture (--consent / --dismiss / --hide), not the page`;
+const flagValue = (argv, f) => (argv && argv.indexOf(f) > 0 ? argv[argv.indexOf(f) + 1] : undefined);
+resetCount(); resetArgv();
+r = await gate(['ovl1', 'https://live.example/ovl1', buildUrl, '1440', 'o1', '--marker', 'home-proposed'], { STUB_FONTS_LIVE: 'Brand Sans,Brand Serif', STUB_STITCH_ARGV: argvFile });
+lj = liveJson('ovl1') ? JSON.parse(liveJson('ovl1')) : {};
+check('a clean live capture records the overlay check in live.json: overlayLeft null, fontsFailed from its record', r.status === 0 && Object.hasOwn(lj, 'overlayLeft') && lj.overlayLeft === null
+  && JSON.stringify(lj.fontsFailed) === '["Brand Sans","Brand Serif"]' && !/live-shot\.json/.test(r.stderr), `status ${r.status} ${liveJson('ovl1')} ${r.stderr}`);
+check('both captures write their record: --json <gate dir>/live-shot.json and <gate dir>/build-shot.json, one argv value each', stitchArgv().map((a) => a[0]).join(',') === 'LIVE,BUILD'
+  && flagValue(stitchArgv()[0], '--json') === `${gdir('ovl1')}/live-shot.json` && flagValue(stitchArgv()[1], '--json') === `${gdir('ovl1')}/build-shot.json`
+  && existsSync(join(root, gdir('ovl1'), 'build-shot.json')), JSON.stringify(stitchArgv()));
+check('the live capture\'s stdout is kept as live-capture.txt and still printed', evidence('ovl1', 'live-capture.txt') === `stitched ${gdir('ovl1')}/live.png\n`
+  && r.stdout.includes(`stitched ${gdir('ovl1')}/live.png\n`), evidence('ovl1', 'live-capture.txt'));
+r = await gate(['ovl2', 'https://live.example/ovl2', buildUrl, '1440', 'o2', '--marker', 'home-proposed'], { STUB_NO_JSON_LIVE: '1' });
+lj = liveJson('ovl2') ? JSON.parse(liveJson('ovl2')) : {};
+check('a live capture with no readable record: live.json fontsFailed [] and one stderr note naming the record', r.status === 0 && lj.overlayLeft === null
+  && Array.isArray(lj.fontsFailed) && lj.fontsFailed.length === 0 && (r.stderr.match(/^gate\.sh: .*live-shot\.json.*$/gm) || []).length === 1, `status ${r.status} ${liveJson('ovl2')} ${r.stderr}`);
+mkdirSync(join(root, gdir('ovl3')), { recursive: true });
+probeCaches.forEach((f) => writeFileSync(join(root, gdir('ovl3'), f), '{}'));
+resetCount();
+r = await gate(['ovl3', 'https://live.example/ovl3', buildUrl, '1440', 'o3', '--full', '--marker', 'home-proposed'], { STUB_OVERLAY_LIVE: OVL, STUB_STITCH_COUNT: countFile });
+check('an overlay left on the live capture: exit 1, one stderr line naming the live capture, the descriptor and "no verdict"', r.status === 1 && r.stderr.includes(`${ovlLine('live')}\n`)
+  && (r.stderr.match(/no verdict/g) || []).length === 1, `status ${r.status} ${r.stderr}`);
+check('… live.png, live.json and the probes\' live caches are removed (the next round retakes it)', ['live.png', 'live.json', ...probeCaches].every((f) => !existsSync(join(root, gdir('ovl3'), f))), present('ovl3').join(','));
+check('… never retried, no build capture, no pixel-compare, no overflow line, no probe', attempts().join(',') === 'LIVE' && !/retrying/.test(r.stderr)
+  && !/differing|overflow assert|OVERFLOW/.test(r.stdout) && !existsSync(join(root, gdir('ovl3'), 'content-diff-o3.txt')), `${attempts().join(',')} ${r.stdout}`);
+resetCount();
+r = await gate(['ovl1', 'https://live.example/ovl1', buildUrl, '1440', 'o4', '--full', '--marker', 'home-proposed'], { STUB_OVERLAY_BUILD: OVL, STUB_STITCH_COUNT: countFile });
+check('an overlay left on the build capture: exit 1, one stderr line naming the build capture', r.status === 1 && r.stderr.includes(`${ovlLine('build')}\n`)
+  && (r.stderr.match(/no verdict/g) || []).length === 1 && /^overlay-left: /m.test(evidence('ovl1', 'overflow-o4.txt')), `status ${r.status} ${r.stderr}`);
+check('… never retried, no pixel verdict, no overflow verdict line, no probe; the cached live.png stays', attempts().join(',') === 'BUILD' && !/retrying/.test(r.stderr)
+  && !/differing|overflow assert|OVERFLOW/.test(r.stdout) && !existsSync(join(root, gdir('ovl1'), 'content-diff-o4.txt')) && existsSync(join(root, gdir('ovl1'), 'live.png')), `${attempts().join(',')} ${r.stdout}`);
+
 // --hide (in-flow per-visitor regions): ONE effective list — the --hide list, then presence.json's "*" and <slug> `hide`
 // — reaches both stitched captures and every --full probe as one --hide value (split, trimmed, de-duplicated, joined
 // with ','); chrome-parity keeps the flag value as given plus --presence <file> --slug <slug> (it reads the file's `hide`
@@ -401,7 +453,8 @@ r = await gate(['hide1', 'https://live.example/hide1', buildUrl, '1440', 'h5', '
 check('--hide followed by a flag is a usage error too (the flag is not taken as a selector)', r.status === 125 && /--hide needs a selector list/.test(r.stderr), `status ${r.status} ${r.stderr}`);
 // live.json's `hide` and the retake: a live.png taken hiding a different list (ordered, after the same dedupe; a missing
 // field = []) is retaken with one line and the probes' live caches go with it; the same list reuses it; no live.json →
-// reused as before when the round hides nothing, retaken when it hides something.
+// retaken (with hides: the hide-list line; without: it predates the overlay-left check). A live.json without overlayLeft
+// is retaken once too (one line: the hide-list one when the list differs as well); a recorded overlay is never reused.
 const rtLine = (o, n) => `gate.sh: live.png was taken hiding [${o}]; this round hides [${n}] — retaking it`;
 const rtHide = () => JSON.stringify((JSON.parse(liveJson('rt1') || '{}')).hide);
 const rt = (lbl, extra = []) => gate(['rt1', 'https://live.example/rt1', buildUrl, '1440', lbl, '--marker', 'home-proposed', ...extra], { STUB_STITCH_COUNT: countFile, STUB_STITCH_ARGV: argvFile });
@@ -431,12 +484,35 @@ check('… and a round with hides retakes it', r.status === 0 && r.stderr.includ
 unlinkSync(join(root, gdir('rt1'), 'live.json'));
 resetCount();
 r = await rt('r7');
-check('no live.json and no hides: live.png is reused as before (no line, build only)', r.status === 0 && !/retaking/.test(r.stderr) && attempts().join(',') === 'BUILD' && liveJson('rt1') === null, `${attempts().join(',')} ${r.stderr}`);
+const predates = 'gate.sh: live.png predates the overlay-left check — retaking it';
+check('no live.json and no hides: live.png predates the overlay-left check — retaken with one line, the record written', r.status === 0 && r.stderr.includes(predates)
+  && (r.stderr.match(/retaking/g) || []).length === 1 && attempts().join(',') === 'LIVE,BUILD' && JSON.parse(liveJson('rt1') || '{}').overlayLeft === null, `${attempts().join(',')} ${r.stderr} ${liveJson('rt1')}`);
+rmSync(join(root, gdir('rt1'), 'live.json'), { force: true });
 resetCount(); resetArgv();
 r = await rt('r8', ['--hide', '.location-bar']);
 check('no live.json and a hide list: live.png is retaken with one line, the list recorded', r.status === 0
   && r.stderr.includes('gate.sh: live.png has no live.json record; this round hides [.location-bar] — retaking it') && (r.stderr.match(/retaking/g) || []).length === 1
   && attempts().join(',') === 'LIVE,BUILD' && stitchArgv().every((a) => hideArg(a) === '.location-bar') && rtHide() === '[".location-bar"]', `${attempts().join(',')} ${r.stderr} ${liveJson('rt1')}`);
+const rewriteLive = (edit) => { const j = JSON.parse(liveJson('rt1') || '{}'); edit(j); writeFileSync(join(root, gdir('rt1'), 'live.json'), JSON.stringify(j)); };
+rewriteLive((j) => delete j.overlayLeft);
+resetCount();
+r = await rt('r9', ['--hide', '.location-bar']);
+check('a live.json without overlayLeft (same hide list): retaken with one line — it predates the overlay-left check', r.status === 0 && r.stderr.includes(predates)
+  && (r.stderr.match(/retaking/g) || []).length === 1 && attempts().join(',') === 'LIVE,BUILD' && Object.hasOwn(JSON.parse(liveJson('rt1') || '{}'), 'overlayLeft'), `${attempts().join(',')} ${r.stderr}`);
+rewriteLive((j) => delete j.overlayLeft);
+resetCount();
+r = await rt('r10');
+check('… and with a different hide list as well: the hide-list line only, one retake', r.status === 0 && r.stderr.includes(rtLine('.location-bar', ''))
+  && (r.stderr.match(/retaking/g) || []).length === 1 && attempts().join(',') === 'LIVE,BUILD', `${attempts().join(',')} ${r.stderr}`);
+rewriteLive((j) => { j.overlayLeft = '#cmp-root (consent root visible)'; });
+resetCount();
+r = await rt('r11');
+check('a live.json that records an overlay left is never reused: retaken with one line naming it', r.status === 0
+  && r.stderr.includes('gate.sh: live.png\'s live.json records an overlay left (#cmp-root (consent root visible)) — retaking it')
+  && (r.stderr.match(/retaking/g) || []).length === 1 && attempts().join(',') === 'LIVE,BUILD' && JSON.parse(liveJson('rt1') || '{}').overlayLeft === null, `${attempts().join(',')} ${r.stderr}`);
+resetCount();
+r = await rt('r12');
+check('a live.json recording overlayLeft null and the same list is reused (no line, build only)', r.status === 0 && !/retaking/.test(r.stderr) && attempts().join(',') === 'BUILD', `${attempts().join(',')} ${r.stderr}`);
 const presenceFile = (stage) => `stardust/replica/gates/${stage}-1440/presence.json`;
 const writePresence = (stage) => { mkdirSync(join(root, dirname(presenceFile(stage))), { recursive: true }); writeFileSync(join(root, presenceFile(stage)), JSON.stringify({ pres1: { variable: ['.geo-bar'] } })); };
 writePresence('prototypes'); writePresence('all');

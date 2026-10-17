@@ -6,10 +6,10 @@
 # horizontal-overflow assert from the build capture's own overflow line, runs
 # pixel-compare, and prints the verdict lines that drive the loop (size /
 # height delta / differing % / hot bands / overflow). The prototype/build side
-# is re-captured every round; the live side only when live.png is absent or
-# was taken hiding a different list (--hide) — delete it explicitly to re-take
-# for anything else (site changed, capture hardening changed, a new --consent /
-# --dismiss selector).
+# is re-captured every round; the live side only when live.png is absent, was
+# taken hiding a different list (--hide) or has no live.json recording the
+# overlay-left check — delete it explicitly to re-take for anything else (site
+# changed, capture hardening changed, a new --consent / --dismiss selector).
 #
 # Usage:
 #   stardust/scripts/replica/gate.sh <slug> <live-url> <build-url> <width> [iter-label]
@@ -56,6 +56,13 @@
 #   --dismiss <sel,…> hand a site's own selectors to every step; --no-dismiss turns dismissal off
 #   everywhere in the round. Symmetric by construction — the build side has nothing to dismiss, so
 #   the same flags on both sides cannot bias the diff.
+#   An overlay left on either capture is no verdict: stitch-shot's final check (after dismissal and --hide) prints
+#   `overlay-left: <descriptor>` when a consent root is still visible, a fixed / sticky layer covers most of the
+#   viewport or the root is scroll-locked; the round then prints `gate.sh: overlay left on the <live|build> capture —
+#   <descriptor> — no verdict: fix the capture (--consent / --dismiss / --hide), not the page` and exits 1 before
+#   anything is compared — never retried (the same flags leave the same overlay). A live one also drops live.png,
+#   live.json and the probes' live caches; a build one stops before pixel-compare and the overflow line. Both captures
+#   write their record (--json live-shot.json / build-shot.json in the evidence dir).
 #
 #   --full   the whole probe set in one round: after the pixel verdict the other
 #            probes run IN PARALLEL, each under its own deadline — content-diff
@@ -76,7 +83,8 @@
 #            side probed once per run, later rounds reuse it; older only under
 #            STARDUST_ORIGIN_MAX_AGE_H; delete to re-probe (retaking live.png drops
 #            them too, and live.json — every round's record of how live.png was
-#            taken, which gate-all reads before it reuses live.png). Needs the diff skill's
+#            taken, its overlay check included (overlayLeft, fontsFailed), which
+#            gate-all reads before it reuses live.png). Needs the diff skill's
 #            scripts at stardust/scripts/diff/ (Setup step 4). The build URL may be
 #            a served prototype or the published/preview origin — the published-
 #            origin gate is the same command with the preview URL (pass --marker
@@ -107,21 +115,25 @@
 #                       (gates/all-<w>/ or prototypes-<w>/, this regime's first; malformed = exit 1) adds its "*"
 #                       then <slug> `hide` after it; chrome-parity reads that file itself (--presence). live.json
 #                       records the list; a round with a different list (or with hides and no live.json) retakes
-#                       live.png and says so.
+#                       live.png and says so — as it does a live.png with no live.json, or one whose live.json
+#                       predates the overlay-left check (no overlayLeft) or records an overlay left: one line, once.
 #
 # Example (iteration 2 of the home archetype at 1440):
 #   stardust/scripts/replica/gate.sh home "https://<site>/" \
 #     "http://localhost:8791/home-proposed.html" 1440 iter2
 #
 # Evidence lands in stardust/replica/gates/<slug>-<width>/
-# (live.png, build.png, diff-<label>.png, overflow-<label>.txt = the build capture's stdout).
+# (live.png + live.json, live-capture.txt = the live capture's stdout, build.png, diff-<label>.png,
+# overflow-<label>.txt = the build capture's stdout, live-shot.json / build-shot.json = the captures' records).
 #
 # Fail-loud contract: a stitch-shot bot challenge (exit 3) or capture error
 # aborts the round — a missing/blocked side must never be compared. Exit
 # codes: 0 gate PASS, 2 gate FAIL (over threshold, or horizontal overflow on
 # the build side), 3 bot challenge, 1 capture/compare error (after the one
-# retry — re-queue, not a verdict) or a malformed presence.json (fix the
-# file; re-queuing won't help), 4 build-side identity assertion failed
+# retry — re-queue, not a verdict), a malformed presence.json (fix the
+# file; re-queuing won't help) or an overlay left on either capture (no
+# verdict: fix the capture — --consent / --dismiss / --hide — not the page),
+# 4 build-side identity assertion failed
 # (the URL serves something that isn't this project's page — wrong/stale
 # server), 124 instrument deadline exceeded (not a measurement — see below),
 # 125 unknown argument (usage).
@@ -315,45 +327,87 @@ fi
 # (--settle: live JS-heavy pages need the lazyload pass; STITCH_OPTS: the
 # round's overlay dismissal, header § Overlay dismissal). Never swallow the
 # output — exit 3 here means "blocked, escalate --headed", not "skip".
-# live.json records how live.png was taken (url, width, locale, settle, dismissal, hide list, at) — gate-all reads it
-# before reusing live.png; it goes with live.png when the capture is retaken (live.png keeps its delete-to-retake rule),
-# and so do the --full probes' live caches (content-, visual-, presence-live.json; chrome-live.json keeps its own rule).
-# A live.png whose live.json records a different hide list (missing field or unreadable record = []; ordered lists after
-# the same dedupe) is retaken. No live.json: reused as before when this round hides nothing, retaken when it hides
-# something (nothing says the bar was hidden on that capture).
+# live.json records how live.png was taken (url, width, locale, settle, dismissal, hide list, overlayLeft, fontsFailed,
+# at) — gate-all reads it before reusing live.png; it goes with live.png when the capture is retaken (live.png keeps its
+# delete-to-retake rule), and so do the --full probes' live caches (content-, visual-, presence-live.json; chrome-live.json
+# keeps its own rule). live.png is reused only when live.json records the same hide list (missing field or unreadable
+# record = []; ordered lists after the same dedupe) AND the overlay check (overlayLeft present, null); anything else is
+# retaken with one line — the hide-list line when the list is what differs (no live.json + hides: nothing says the bar
+# was hidden on that capture), else the overlay one (no live.json or no overlayLeft: it predates the check).
+# One node call reads both: the hide list, a newline, then checked | unchecked | left <descriptor>.
 RETAKE=0
-if [ -f "$DIR/live.png" ] && [ ! -f "$DIR/live.json" ] && [ -n "$EFF_HIDE" ]; then
-  echo "gate.sh: live.png has no live.json record; this round hides [${EFF_HIDE//,/, }] — retaking it" >&2
-  RETAKE=1
-elif [ -f "$DIR/live.png" ] && [ -f "$DIR/live.json" ]; then
-  OLD_HIDE=$(node -e "$HIDE_JS"'let h = [];
-    try { const j = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")); h = j && typeof j === "object" ? j.hide : []; } catch (e) { h = []; }
-    process.stdout.write(hideList(h).join(","));' -- "$DIR/live.json")
-  if [ "$OLD_HIDE" != "$EFF_HIDE" ]; then
+if [ -f "$DIR/live.png" ]; then
+  OLD_HIDE=""; OLD_OVL=unchecked
+  if [ -f "$DIR/live.json" ]; then
+    OLD=$(node -e "$HIDE_JS"'let j = null;
+      try { j = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")); } catch (e) { j = null; }
+      const o = j && typeof j === "object" && !Array.isArray(j) ? j : {};
+      const ovl = !("overlayLeft" in o) ? "unchecked" : o.overlayLeft === null ? "checked" : `left ${String(o.overlayLeft).replace(/\s+/g, " ")}`;
+      process.stdout.write(`${hideList(o.hide).join(",")}\n${ovl}`);' -- "$DIR/live.json")
+    OLD_HIDE=${OLD%$'\n'*}; OLD_OVL=${OLD##*$'\n'}; OLD_OVL=${OLD_OVL:-unchecked}
+  fi
+  if [ ! -f "$DIR/live.json" ] && [ -n "$EFF_HIDE" ]; then
+    echo "gate.sh: live.png has no live.json record; this round hides [${EFF_HIDE//,/, }] — retaking it" >&2
+    RETAKE=1
+  elif [ -f "$DIR/live.json" ] && [ "$OLD_HIDE" != "$EFF_HIDE" ]; then
     echo "gate.sh: live.png was taken hiding [${OLD_HIDE//,/, }]; this round hides [${EFF_HIDE//,/, }] — retaking it" >&2
+    RETAKE=1
+  elif [ "$OLD_OVL" = unchecked ]; then
+    echo "gate.sh: live.png predates the overlay-left check — retaking it" >&2
+    RETAKE=1
+  elif [ "$OLD_OVL" != checked ]; then
+    echo "gate.sh: live.png's live.json records an overlay left (${OLD_OVL#left }) — retaking it" >&2
     RETAKE=1
   fi
 fi
+# A capture that printed `overlay-left: <descriptor>` (header § Overlay dismissal) gives no verdict: one stderr line,
+# return 0 — the caller exits 1. Not a capture error, so never retried. $1 live|build, $2 the capture's stdout file.
+overlay_left() {
+  grep -qE '^overlay-left: ' "$2" || return 1
+  echo "gate.sh: overlay left on the $1 capture — $(grep -E '^overlay-left: ' "$2" | tail -1 | sed -E 's/^overlay-left: //') — no verdict: fix the capture (--consent / --dismiss / --hide), not the page" >&2
+}
 if [ "$RETAKE" = 1 ] || [ ! -f "$DIR/live.png" ]; then
-  capture_live() { rm -f "$DIR/live.png" "$DIR/live.json" "$DIR/content-live.json" "$DIR/visual-live.json" "$DIR/presence-live.json"; LIVE_AT=$(node -e 'process.stdout.write(new Date().toISOString())'); capped "$STITCH_TIMEOUT" "stitch-shot live $SLUG@$W" node "$HERE/stitch-shot.mjs" "$LIVE_URL" "$DIR/live.png" --width "$W" --settle ${STITCH_OPTS[@]+"${STITCH_OPTS[@]}"}; }
+  # Its stdout goes to live-capture.txt, then to ours (each attempt rewrites it — the last one decides); its record to
+  # live-shot.json (deleted first, so a stale one is never read).
+  LIVE_OUT="$DIR/live-capture.txt"
+  capture_live() {
+    rm -f "$DIR/live.png" "$DIR/live.json" "$DIR/live-shot.json" "$DIR/content-live.json" "$DIR/visual-live.json" "$DIR/presence-live.json"
+    LIVE_AT=$(node -e 'process.stdout.write(new Date().toISOString())')
+    capped "$STITCH_TIMEOUT" "stitch-shot live $SLUG@$W" node "$HERE/stitch-shot.mjs" "$LIVE_URL" "$DIR/live.png" --width "$W" --settle --json "$DIR/live-shot.json" ${STITCH_OPTS[@]+"${STITCH_OPTS[@]}"} > "$LIVE_OUT"
+    local rc=$?
+    cat "$LIVE_OUT"
+    return $rc
+  }
   retry_once "live capture" capture_live
   rc=$?
   [ $rc -ne 0 ] && rm -f "$DIR/live.png" "$DIR/live.json"   # never leave a partial live capture to be reused
   [ $rc -ne 0 ] && { echo "gate.sh: live capture failed (exit $rc) — not comparing$([ $rc -eq 1 ] && printf ' (twice: no verdict — re-queue the round)')" >&2; exit $rc; }
-  # argv-passed values, JSON.stringify — never shell-interpolated JSON; a failed write only costs gate-all's reuse
-  node -e 'const [f, url, w, dismiss, consent, extra, hide, at] = process.argv.slice(1);
-    require("fs").writeFileSync(f, `${JSON.stringify({ writtenBy: "gate.sh", url, width: Number(w), locale: "en-US", settle: true,
-      dismiss: { off: dismiss === "0", consent: consent || null, extra: extra || null }, hide: hide ? hide.split(",") : [], headed: false, at }, null, 2)}\n`);' \
-    -- "$DIR/live.json" "$LIVE_URL" "$W" "$DISMISS" "$CONSENT" "$DISMISS_EXTRA" "$EFF_HIDE" "$LIVE_AT" \
+  if overlay_left live "$LIVE_OUT"; then
+    rm -f "$DIR/live.png" "$DIR/live.json" "$DIR/content-live.json" "$DIR/visual-live.json" "$DIR/presence-live.json"
+    exit 1
+  fi
+  # argv-passed values, JSON.stringify — never shell-interpolated JSON; a failed write only costs gate-all's reuse.
+  # overlayLeft: null — the capture printed no overlay-left line (above); fontsFailed from its record (none readable → []).
+  node -e 'const fs = require("fs"); const [f, rec, url, w, dismiss, consent, extra, hide, at] = process.argv.slice(1);
+    let fontsFailed = null;
+    try { const j = JSON.parse(fs.readFileSync(rec, "utf8")); if (Array.isArray(j.fontsFailed)) fontsFailed = j.fontsFailed.filter((s) => typeof s === "string"); } catch (e) { fontsFailed = null; }
+    if (!fontsFailed) { fontsFailed = []; fs.writeSync(2, `gate.sh: the live capture left no readable record (${rec}) — live.json records fontsFailed: [] (the failed fonts are unknown)\n`); }
+    fs.writeFileSync(f, `${JSON.stringify({ writtenBy: "gate.sh", url, width: Number(w), locale: "en-US", settle: true,
+      dismiss: { off: dismiss === "0", consent: consent || null, extra: extra || null }, hide: hide ? hide.split(",") : [],
+      overlayLeft: null, fontsFailed, headed: false, at }, null, 2)}\n`);' \
+    -- "$DIR/live.json" "$DIR/live-shot.json" "$LIVE_URL" "$W" "$DISMISS" "$CONSENT" "$DISMISS_EXTRA" "$EFF_HIDE" "$LIVE_AT" \
     || echo "gate.sh: could not write $DIR/live.json — gate-all will not reuse this live.png" >&2
 fi
 
 # Build side: re-captured every iteration; exit 1 retried once (header § Capture retry); the same overlay flags as
 # the live side — a symmetric instrument (the build has nothing to dismiss, so the flags are no-ops there). Its stdout
-# is the overflow evidence (header § Horizontal-overflow assert): each attempt rewrites $OVF, so the last one decides.
+# is the overflow evidence (header § Horizontal-overflow assert): each attempt rewrites $OVF, so the last one decides;
+# its record goes to build-shot.json (deleted first). An overlay-left line there is no verdict (exit 1) — before
+# pixel-compare and the overflow verdict line.
 OVF="$DIR/overflow-$LBL.txt"
 capture_build() {
-  capped "$STITCH_TIMEOUT" "stitch-shot build $SLUG@$W" node "$HERE/stitch-shot.mjs" "$BUILD_URL" "$DIR/build.png" --width "$W" ${STITCH_OPTS[@]+"${STITCH_OPTS[@]}"} > "$OVF"
+  rm -f "$DIR/build-shot.json"
+  capped "$STITCH_TIMEOUT" "stitch-shot build $SLUG@$W" node "$HERE/stitch-shot.mjs" "$BUILD_URL" "$DIR/build.png" --width "$W" --json "$DIR/build-shot.json" ${STITCH_OPTS[@]+"${STITCH_OPTS[@]}"} > "$OVF"
   local rc=$?
   cat "$OVF"
   return $rc
@@ -361,6 +415,7 @@ capture_build() {
 retry_once "build capture" capture_build
 rc=$?
 [ $rc -ne 0 ] && { echo "gate.sh: build capture failed (exit $rc) — not comparing$([ $rc -eq 1 ] && printf ' (twice: no verdict — re-queue the round)')" >&2; exit $rc; }
+overlay_left build "$OVF" && exit 1
 
 # Horizontal-overflow assert (header § Horizontal-overflow assert): the build capture's own root line — BUILD side
 # only, no live hit, no second page load. The verdict line is printed after pixel-compare's so the loop reads
