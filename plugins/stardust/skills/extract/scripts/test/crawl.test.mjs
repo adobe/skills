@@ -12,7 +12,7 @@ import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { captureGaps, entryLocalePrefix, localeRootPath, maxPages } from '../crawl.mjs';
+import { capDiscovered, captureGaps, discoveryLog, entryLocalePrefix, localeRootPath, maxPages } from '../crawl.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'crawl.mjs');
@@ -140,6 +140,32 @@ check('--help prints the usage header (naming captureGaps) and exits 0 without p
 
 check('maxPages: 0 is no cap (--all / --prep); missing or bad values fall back to 25; others are floored and at least 1', () => {
   assert.equal(maxPages('0'), Infinity); assert.equal(maxPages(undefined), 25); assert.equal(maxPages('abc'), 25); assert.equal(maxPages('40'), 40); assert.equal(maxPages('2.7'), 2);
+});
+
+// 30 discovered pages, one of them the entry again (trailing slash) and one a hash variant: 29 distinct with the entry
+const FOUND = [...Array.from({ length: 28 }, (_, i) => `https://example.test/p${i}`), 'https://example.test', 'https://example.test/p3/#team'];
+check('capDiscovered: the entry first, slash- and hash-insensitive dedupe, then the --max cap; total is the count BEFORE the cap — the cap bites: count 25 of total 29; no cap or a cap that does not bite: total === count', () => {
+  const capped = capDiscovered('https://example.test/', FOUND, 25);
+  assert.equal(capped.urls.length, 25); assert.equal(capped.total, 29);
+  assert.equal(capped.urls[0], 'https://example.test/'); assert.equal(capped.urls[24], 'https://example.test/p23');
+  for (const max of [Infinity, 29, 40]) { const r = capDiscovered('https://example.test/', FOUND, max); assert.equal(r.urls.length, 29, String(max)); assert.equal(r.total, r.urls.length, String(max)); }
+  assert.deepEqual(capDiscovered('https://example.test/', [], 25), { urls: ['https://example.test/'], total: 1 });
+});
+check('discoveryLog: _crawl-log.json#discovery carries count (after the --max cap) and total (before it) side by side; botBlock and originRedirect only when set', () => {
+  const { urls, total } = capDiscovered('https://example.test/', FOUND, 25);
+  assert.deepEqual(discoveryLog({ technique: 'headless', count: urls.length, total, concurrency: 4 }), { fetchTechnique: 'headless', count: 25, total: 29, concurrency: 4 });
+  const redirect = { from: 'https://example.test', to: 'https://www.example.test' };
+  const r = discoveryLog({ technique: 'headed-chrome-stealth', count: 3, total: 3, concurrency: 2, botBlock: 'challenge', originRedirect: redirect });
+  assert.deepEqual(Object.keys(r), ['fetchTechnique', 'count', 'total', 'concurrency', 'botBlock', 'originRedirect']);
+  assert.equal(r.total, r.count); assert.deepEqual(r.originRedirect, redirect);
+});
+check('captureGaps scope: carries totalDiscovered (= discovery.total) when the crawl passes it; no scope → no totalDiscovered anywhere; not passed → no key', () => {
+  const r = captureGaps(DE_ENTRY_EN_PLAN, { entryUrl: 'https://example.test/de/', totalDiscovered: 31 });
+  assert.deepEqual(r.scope, { entryLocale: '/de', inside: 1, outside: 9, totalDiscovered: 31 });
+  assert.equal(r.detail, 'uncaptured first-level targets: de 0, en 0; entry locale /de but 9 of 10 captured pages outside it');
+  const none = captureGaps(DE_ENTRY_EN_PLAN, { entryUrl: 'https://example.test/', totalDiscovered: 31 });
+  assert.deepEqual(none, captureGaps(DE_ENTRY_EN_PLAN));
+  assert.equal('totalDiscovered' in captureGaps(DE_ENTRY_EN_PLAN, { entryUrl: 'https://example.test/de/' }).scope, false);
 });
 
 console.log(failed ? `\n${failed} failing` : '\ncrawl: all checks passed');

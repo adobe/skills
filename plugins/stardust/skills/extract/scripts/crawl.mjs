@@ -58,10 +58,11 @@
  *     ENTRY-LOCALE SCOPE: when the --url path starts with locale codes (at most two
  *     two-letter segments, such as /de, /fr-ca, /ca/en) and fewer than half of the
  *     captured pages lie under that prefix on the entry's host, captureGaps gains
- *     `scope: { entryLocale, inside, outside }`, `detail` gains "; entry locale /de
- *     but 9 of 10 captured pages outside it", and one stderr line names it an owner
- *     decision before Phase 2. A recorded hands-off run entered at a /de/ URL while
- *     its site plan captured nine English pages, and nothing flagged the mismatch.
+ *     `scope: { entryLocale, inside, outside, totalDiscovered }`, `detail` gains
+ *     "; entry locale /de but 9 of 10 captured pages outside it", and one stderr
+ *     line names it an owner decision before Phase 2. A recorded hands-off run
+ *     entered at a /de/ URL while its site plan captured nine English pages, and
+ *     nothing flagged the mismatch.
  *
  * Usage:
  *   node crawl.mjs --url https://example.com [--pages a,b,c] [--max 25] \
@@ -91,7 +92,8 @@
  *                                  `_signals.screenshotMode` says which)
  *   assets/favicon.<ext>           the site icon from <link rel~=icon> or /favicon.ico, <ext> from
  *                                  its content-type — the ONLY media file this crawler downloads
- *   _crawl-log.json                discovery technique + page count, consent mode, favicon result,
+ *   _crawl-log.json                discovery technique + page count (`discovery.count` after the
+ *                                  --max cap, `discovery.total` before it), consent mode, favicon result,
  *                                  per-URL failures, slash retries, `captureGaps` (locale roots,
  *                                  entry-locale `scope`, above) (+ `dynamicSurface` with
  *                                  --dynamics); merged into an existing log, never replaced
@@ -335,7 +337,7 @@ function localeScope(records, entryUrl) {
   const m = inside + outside;
   return m > 0 && inside * 2 < m ? { entryLocale, inside, outside } : null;
 }
-export function captureGaps(records, { entryUrl } = {}) {
+export function captureGaps(records, { entryUrl, totalDiscovered } = {}) {
   const captured = new Set();
   for (const r of records) {
     for (const h of [r.url, r.finalUrl]) { try { const u = new URL(h); captured.add(`${hostKey(u)}${pathKey(u)}`); } catch { /* absent or not a URL */ } }
@@ -363,10 +365,27 @@ export function captureGaps(records, { entryUrl } = {}) {
     : 'uncaptured first-level targets: none (no locale root captured)';
   const scope = localeScope(records, entryUrl);
   if (!scope) return { roots, detail };
+  if (Number.isInteger(totalDiscovered)) scope.totalDiscovered = totalDiscovered;
   return { roots, detail: `${detail}; entry locale ${scope.entryLocale} but ${scope.outside} of ${scope.inside + scope.outside} captured pages outside it`, scope };
 }
 
 // ---- discovery: explicit pages > sitemap (validated) > BFS from nav ----
+// Discovered URLs with the entry first, deduped by dedupeKey, then cut at the --max cap. `total` is the
+// count BEFORE the cap (_crawl-log.json#discovery.total), so a capped crawl still says how much it found. Pure.
+export function capDiscovered(entry, found, max) {
+  const seen = new Set(); const all = [];
+  for (const u of [entry, ...found]) {
+    const k = dedupeKey(u);
+    if (!seen.has(k)) { seen.add(k); all.push(u); }
+  }
+  return { urls: all.slice(0, max), total: all.length };
+}
+// _crawl-log.json#discovery: `count` = pages queued (after the cap), `total` = pages discovered (before it;
+// listed --pages are never capped, so there total === count). Pure.
+export function discoveryLog({ technique, count, total, concurrency, botBlock = null, originRedirect = null }) {
+  return { fetchTechnique: technique, count, total, concurrency, ...(botBlock ? { botBlock } : {}), ...(originRedirect ? { originRedirect } : {}) };
+}
+// discover() resolves to { urls, total }.
 async function discover(args, page) {
   const entry = normalizeUrl(args.url);
   // explicit --pages: NEVER drop a listed page. The entry URL is ADDED on top
@@ -381,17 +400,10 @@ async function discover(args, page) {
     if (urls.length > args.max) {
       console.error(`[crawl] WARN --pages lists ${listed.length} page(s); with the entry URL the total is ${urls.length}, exceeding --max ${args.max} — crawling all of them (explicitly listed pages are never dropped)`);
     }
-    return urls;
+    return { urls, total: urls.length };
   }
   // discovered lists (sitemap/BFS): entry always included, normalized dedupe, capped at --max.
-  const withEntry = (list) => {
-    const seen = new Set(); const out = [];
-    for (const u of [entry, ...list.map((x) => normalizeUrl(x, args.origin))]) {
-      const k = dedupeKey(u);
-      if (!seen.has(k)) { seen.add(k); out.push(u); }
-    }
-    return out.slice(0, args.max);
-  };
+  const withEntry = (list) => capDiscovered(entry, list.map((x) => normalizeUrl(x, args.origin)), args.max);
   // sitemap.xml — but only trust it if it has >=1 <loc> (a 200-but-empty Drupal
   // sitemap must fall through to BFS — finding from a media-site run).
   for (const sm of ['/sitemap.xml', '/sitemap_index.xml']) {
@@ -1051,16 +1063,16 @@ async function main() {
     }
   } catch { /* keep declared origin */ }
 
-  const urls = await discover(args, probe);
+  const { urls, total } = await discover(args, probe);
   // favicon rides the probe page (already on the entry URL) — runs in every
   // mode, so bounded extracts can't silently drop it (CEN-4).
   const favicon = await captureFavicon(probe, args);
   if (favicon) console.error(`[crawl] favicon captured: ${favicon.file} (${favicon.url})`);
   else console.error('[crawl] WARN no favicon captured — no link[rel~=icon] and /favicon.ico unreachable; deploy will ship the default icon unless one is provided');
   await probe.close();
-  console.error(`[crawl] technique=${technique} pages=${urls.length}`);
+  console.error(`[crawl] technique=${technique} pages=${urls.length}${total > urls.length ? ` (of ${total} discovered; --max ${args.max})` : ''}`);
 
-  const log = { discovery: { fetchTechnique: technique, count: urls.length, concurrency: args.concurrency, ...(botBlock ? { botBlock } : {}), ...(originRedirect ? { originRedirect } : {}) }, consent: { method: args.consent ? 'auto' : 'skipped' }, favicon: favicon || null, crawl: { failures: [] } };
+  const log = { discovery: discoveryLog({ technique, count: urls.length, total, concurrency: args.concurrency, botBlock, originRedirect }), consent: { method: args.consent ? 'auto' : 'skipped' }, favicon: favicon || null, crawl: { failures: [] } };
   let ok = 0;
   await context.close();
 
@@ -1136,7 +1148,7 @@ async function main() {
   // locale-root capture gaps: the subtree a captured locale root links to but discovery never listed —
   // surfaced here, and as a ready --detail string for the extract `end` ledger line, not six hours later
   // in the rollout link audit.
-  log.captureGaps = captureGaps(results.filter(Boolean), { entryUrl: args.url });
+  log.captureGaps = captureGaps(results.filter(Boolean), { entryUrl: args.url, totalDiscovered: total });
   if (log.captureGaps.roots.length) {
     console.error(`[crawl] capture gaps: ${log.captureGaps.roots.map((r) => `${r.root} ${r.uncaptured.length} of ${r.linked} first-level target(s) uncaptured`).join('; ')} — list in _crawl-log.json#captureGaps; ledger --detail "${log.captureGaps.detail}"`);
   }
