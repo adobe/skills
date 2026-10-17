@@ -16,8 +16,10 @@
  * Inputs per gate dir: summary.json + runs/*.json (newest row per page, each row's source recorded),
  * per-page pixel / clip / content / units / origin / eds JSON; optional coverage blocks.json +
  * pages.json (share map, templates), state.json, replica units.json (families), capture pages, the
- * foundation-freeze manifest (frozen paths; DEFAULT_PATHS when absent), the gate's presence.json (passed to
- * chrome-parity as --presence --slug <rep>, with the rep row's `hide` list as --hide), each failing page's
+ * foundation-freeze manifest (frozen paths; DEFAULT_PATHS when absent), the gate's presence.json, else the site-wide
+ * stardust/replica/presence.json when the gate dir has none (passed to chrome-parity as --presence --slug <rep>, with
+ * the rep row's `hide` list as --hide; a stored parity result is reused only while the merged entries — "*" and <rep>,
+ * the site file's under the gate's — are unchanged; a malformed one is that run's parity error), each failing page's
  * fix-round count (gate-all's roundsOf: <gate>/<slug>/rounds.json, else seeded from runs/*.json verdict rows;
  * group rows carry rounds / maxRounds / roundsFrom beside gateRuns, and a layout group with a row at its cap is the
  * re-prototype decision now). Causes: block:<name>,
@@ -64,10 +66,14 @@ Usage: node stardust/scripts/replica/gate-triage.mjs [options]   (from the proje
   --parity-max <n>          representative pages probed per run, all gate dirs (default 4; live navigations)
   --parity-script <f>       chrome-parity.mjs next to this file
   --parity-timeout <s>      300
-  --refresh-parity          re-run parity although a stored result matches
+  --refresh-parity          re-run parity although a stored result matches (key: the argv, the row's table
+                            time and the merged presence entries — "*" and the page's, the site file's under
+                            the gate's; a changed site or gate list re-runs)
   --region <cause>=<liveSel>[|<buildSel>]   explicit parity region for one cause (repeatable)
   --locale <tag> (en-US) --headed --consent <sel> --dismiss <sel,…>   passed to chrome-parity
-                            + the gate's presence.json (--presence --slug) and the row's hide list (--hide)
+                            + the gate's presence.json, else stardust/replica/presence.json (site-wide) when the
+                            gate dir has none (--presence --slug), and the row's hide list (--hide); a malformed
+                            presence file is that run's parity error, naming it (nothing spawned)
   --no-route                compute request lines, append nothing
   --dry-run                 print triage.md + the lines it would append; write and spawn nothing
   --json                    print {totals, triages[]} (each = triage.json) instead of the md head
@@ -95,6 +101,8 @@ const pathKey = (p) => { let x = String(p || '').split(/[?#]/)[0].replace(/\/{2,
 
 const VALUE_FLAGS = { '--root': 'root', '--blocks': 'blocks', '--pages': 'pages', '--state': 'state', '--units': 'units', '--captures': 'captures', '--manifest': 'manifest', '--requests': 'requests', '--unit': 'unit', '--hot': 'hot', '--parity-max': 'parityMax', '--parity-script': 'parityScript', '--parity-timeout': 'parityTimeout', '--locale': 'locale', '--consent': 'consent', '--dismiss': 'dismiss' };
 const BOOL_FLAGS = { '--no-runs': 'noRuns', '--no-parity': 'noParity', '--refresh-parity': 'refreshParity', '--headed': 'headed', '--no-route': 'noRoute', '--dry-run': 'dryRun', '--json': 'json' };
+// the site-wide hide list (project-root relative): a parity run reads it when the gate dir has no presence.json
+const SITE_PRESENCE = 'stardust/replica/presence.json';
 
 /** parseArgs(args) — args WITHOUT node + script; throws UsageError. Path flags stay raw (null = default). */
 export function parseArgs(args) {
@@ -436,7 +444,8 @@ function regateCommands(pages, rows, { width, hostOf, hasRow }) {
  * sources [{ file, writtenAt, prov, rows }] in read order, ev(slug, kind) → parsed JSON | null (kind: pixel,
  * clip, content, units, origin, eds), capture(slug) → normalized text | null, blocks, covPages, statePages,
  * families, frozen, hot, regions {cause: spec}, parity (bool), unit, coverageFiles, presence (root-relative
- * <gate>/presence.json | null), rounds(slug) → gate-all's roundsOf(<gate dir>, slug) ({ rounds, max, from }) | null }.
+ * <gate>/presence.json, else stardust/replica/presence.json when only the site file exists, else null; triage.md calls the
+ * site file "site presence.json"), rounds(slug) → gate-all's roundsOf(<gate dir>, slug) ({ rounds, max, from }) | null }.
  * A failing row carries rounds, maxRounds (max ?? MAX_ROUNDS) and roundsFrom ('rounds.json' | 'runs'; no accessor or
  * null → rounds null, roundsFrom null) beside gateRuns (the merged tables' rows for the page).
  * runParity({ slug, width, live, build, regions, rowAt, hide, presence }) → { file, exit, result } | { error } | { skipped }
@@ -561,7 +570,7 @@ const cell = (s) => String(s ?? '-').replace(/\|/g, '\\|').replace(/[\r\n]+/g, '
 const fmtDelta = (d) => (d.from == null ? `${d.prop} ${d.to} ×${d.n}` : `${d.prop} ${d.from} → ${d.to} ×${d.n}`);
 const fmtCrit = (c) => CRITERIA.filter((k) => c[k]).map((k) => `${k} ${c[k]}`).join(', ') || '-';
 const listSome = (xs, n = 6) => (xs.length > n ? `${xs.slice(0, n).join(', ')} +${xs.length - n}` : xs.join(', '));
-const hideText = (h) => `hiding ${[h.list.join(', '), h.presence ? 'presence.json regions' : ''].filter(Boolean).join(' + ')}`;
+const hideText = (h) => `hiding ${[h.list.join(', '), h.presence ? `${h.presence === SITE_PRESENCE ? 'site ' : ''}presence.json regions` : ''].filter(Boolean).join(' + ')}`;
 function parityText(p) {
   if (!p) return null;
   if (p.skipped) return `skipped (${p.skipped})`;
@@ -614,6 +623,21 @@ function readJson(p) {
   if (!existsSync(p) || !statSync(p).isFile()) return null;
   try { return JSON.parse(readFileSync(p, 'utf8')); } catch (e) { return fail(`malformed JSON in ${p}: ${e.message}`); }
 }
+const isFile = (p) => existsSync(p) && statSync(p).isFile();
+/** The presence entries one chrome-parity run reads — "*" and <slug> — merged as live-session's mergePresence (per
+ * field, the gate dir's value over the site file's), without `reasons` (readers ignore it), fields sorted: the part of
+ * a stored parity result's key that a changed site or gate list changes. A non-object document or entry counts as none. */
+function presenceKey(site, gate, slug) {
+  const entry = (doc, k) => { const e = doc && typeof doc === 'object' && Object.hasOwn(doc, k) ? doc[k] : null; return e && typeof e === 'object' && !Array.isArray(e) ? e : null; };
+  const out = {};
+  for (const k of uniqSorted(['*', String(slug)])) {
+    const s = entry(site, k); const g = entry(gate, k);
+    if (!s && !g) continue;
+    const m = { ...s, ...g }; delete m.reasons;
+    out[k] = Object.fromEntries(Object.keys(m).sort(cmp).map((f) => [f, m[f]]));
+  }
+  return out;
+}
 const frozenHit = (rootAbs, abs, frozen) => {
   const r = posix(relative(rootAbs, abs));
   if (!r || r === '..' || r.startsWith('../')) return null;
@@ -632,7 +656,7 @@ function projectOf(opts) {
   if (!existsSync(rootAbs) || !statSync(rootAbs).isDirectory()) fail(`--root is not a directory: ${opts.root}`);
   const rel = (p) => posix(relative(rootAbs, p)) || '.';
   const at = (flag, def) => (flag ? resolve(flag) : join(rootAbs, def));
-  const P = { blocks: at(opts.blocks, 'stardust/rollout/coverage/blocks.json'), pages: at(opts.pages, 'stardust/rollout/coverage/pages.json'), state: at(opts.state, 'stardust/state.json'), units: at(opts.units, 'stardust/replica/units.json'), captures: at(opts.captures, 'stardust/current/pages'), manifest: at(opts.manifest, 'stardust/rollout/foundation-freeze.json'), requests: at(opts.requests, 'stardust/rollout/foundation-requests.md') };
+  const P = { blocks: at(opts.blocks, 'stardust/rollout/coverage/blocks.json'), pages: at(opts.pages, 'stardust/rollout/coverage/pages.json'), state: at(opts.state, 'stardust/state.json'), units: at(opts.units, 'stardust/replica/units.json'), captures: at(opts.captures, 'stardust/current/pages'), manifest: at(opts.manifest, 'stardust/rollout/foundation-freeze.json'), requests: at(opts.requests, 'stardust/rollout/foundation-requests.md'), site: join(rootAbs, SITE_PRESENCE) };
   const manifest = readJson(P.manifest);
   const frozen = manifest && Array.isArray(manifest.paths) ? manifest.paths.map(String) : [...DEFAULT_PATHS];
   return { rootAbs, rel, P, frozen };
@@ -642,14 +666,15 @@ const assertNotFrozen = ({ rootAbs, rel, frozen }, p) => { const z = frozenHit(r
 /** The project documents every gate dir of a run reads (coverage blocks / pages, state, unit families). */
 const docsOf = ({ P }) => ({ blocksDoc: readJson(P.blocks), pagesDoc: readJson(P.pages), stateDoc: readJson(P.state), families: readJson(P.units) });
 
-/** One gate dir's buildTriage input (fs reads only): its tables, per-page evidence, captures, presence.json, fix rounds. */
+/** One gate dir's buildTriage input (fs reads only): its tables, per-page evidence, captures, the presence file a parity
+ * run gets (the gate's presence.json, else the site-wide one — its path only), fix rounds. */
 function gateInput({ rel, P, frozen }, { blocksDoc, pagesDoc, stateDoc, families }, g, opts) {
   const files = [...(existsSync(join(g, 'summary.json')) ? [join(g, 'summary.json')] : []), ...(!opts.noRuns && existsSync(join(g, 'runs')) ? readdirSync(join(g, 'runs')).filter((f) => f.endsWith('.json')).sort(cmp).map((f) => join(g, 'runs', f)) : [])];
   const sources = files.map((f) => { const d = readJson(f); if (!d || !Array.isArray(d.rows)) fail(`${f} is not a gate table (needs rows[])`); const prov = d._provenance || {}; return { file: rel(f), writtenAt: prov.writtenAt || null, prov, rows: d.rows }; });
   const cache = new Map();
   const ev = (slug, kind) => { const k = `${slug}\u0000${kind}`; if (!cache.has(k)) cache.set(k, readJson(join(g, String(slug), `${kind}.json`))); return cache.get(k); };
   const capture = (slug) => { const f = join(P.captures, `${slug}.html`); return existsSync(f) && statSync(f).isFile() ? captureText(readFileSync(f, 'utf8')) : null; };
-  const presAbs = join(g, 'presence.json'); const presence = existsSync(presAbs) && statSync(presAbs).isFile() ? rel(presAbs) : null;
+  const presAbs = join(g, 'presence.json'); const presence = isFile(presAbs) ? rel(presAbs) : isFile(P.site) ? rel(P.site) : null;
   // fix rounds as gate-all counts them (one rule): rounds.json, else the runs/ seed — whatever --no-runs says
   let tables = null; const rounds = (slug) => roundsOf(g, String(slug), tables || (tables = runTables(g)));
   return { gate: rel(g), sources, ev, capture, blocks: (blocksDoc && blocksDoc.blocks) || [], covPages: (pagesDoc && pagesDoc.pages) || [], statePages: (stateDoc && stateDoc.pages) || [], families, frozen, hot: opts.hot, regions: opts.regions, parity: !opts.noParity, unit: opts.unit, coverageFiles: { blocks: blocksDoc ? rel(P.blocks) : null, pages: pagesDoc ? rel(P.pages) : null }, presence, rounds };
@@ -657,16 +682,29 @@ function gateInput({ rel, P, frozen }, { blocksDoc, pagesDoc, stateDoc, families
 const writeTriage = (g, t, md) => { writeAtomic(join(g, 'triage.json'), `${JSON.stringify(t, null, 2)}\n`); writeAtomic(join(g, 'triage.md'), md); };
 
 /** The chrome-parity spawn behind buildTriage: one --parity-max budget per run, stored result reused on an equal key,
- * own live cache (never the gate's); the gate's presence.json and the rep row's hide list ride in the argv (= the key). */
-function parityRunner({ rootAbs, gateAbs, rel, opts, say, budget }) {
+ * own live cache (never the gate's); the presence file (the gate's, else the site's) and the rep row's hide list ride in
+ * the argv, and the key adds presenceKey over both files (read once per gate dir) — a changed site list re-runs although
+ * the argv names the gate's file. A malformed presence file is that run's error, naming the file (nothing spawned). */
+function parityRunner({ rootAbs, gateAbs, rel, opts, say, budget, site }) {
   const script = opts.parityScript ? resolve(opts.parityScript) : join(HERE, 'chrome-parity.mjs');
+  let docs = null;
+  const readDocs = () => {
+    const out = {};
+    for (const [k, f] of [['gate', join(gateAbs, 'presence.json')], ['site', site]]) {
+      if (!isFile(f)) { out[k] = {}; continue; }
+      try { out[k] = JSON.parse(readFileSync(f, 'utf8')); } catch (e) { return { error: `presence.json ${rel(f)} unreadable (${e.message})` }; }
+    }
+    return out;
+  };
   return ({ slug, width, live, build, regions, rowAt, hide = [], presence = null }) => {
     if (budget.left <= 0) { say(`parity ${slug}@${width}: skipped (over --parity-max ${opts.parityMax})`); return { skipped: `over --parity-max ${opts.parityMax}` }; }
+    if (presence && !docs) docs = readDocs();
+    if (presence && docs.error) { say(`parity ${slug}@${width}: error ${docs.error}`); return { error: docs.error }; }
     budget.left -= 1;
     const dir = join(gateAbs, 'triage-parity'); const base = `${String(slug).replace(/[^\w.-]+/g, '-')}-${width}`;
     const stored = join(dir, `${base}.json`); const file = rel(stored);
     const args = [live, build, '--no-defaults', ...regions.flatMap((r) => ['--region', `${r.name}=${r.spec}`]), '--width', String(width), '--json', '--live-cache', rel(join(dir, `${base}.live.json`)), '--locale', opts.locale, ...(opts.headed ? ['--headed'] : []), ...(opts.consent ? ['--consent', opts.consent] : []), ...(opts.dismiss ? ['--dismiss', opts.dismiss] : []), ...(hide.length ? ['--hide', hide.join(',')] : []), ...(presence ? ['--presence', presence, '--slug', String(slug)] : [])];
-    const key = { argv: ['chrome-parity.mjs', ...args], rowAt };
+    const key = { argv: ['chrome-parity.mjs', ...args], rowAt, ...(presence ? { presence: presenceKey(docs.site, docs.gate, slug) } : {}) };
     if (!opts.refreshParity || opts.dryRun) {
       let s = null; try { s = existsSync(stored) ? JSON.parse(readFileSync(stored, 'utf8')) : null; } catch { s = null; }
       if (s && s.result && JSON.stringify(s.key) === JSON.stringify(key)) { say(`parity ${slug}@${width}: reused ${file}`); return { file, exit: s.exit, result: s.result }; }
@@ -725,7 +763,7 @@ function main(argv) {
   for (const g of gates) {
     const input = gateInput(proj, docs, g, opts); const { sources } = input;
     const gateLog = [];
-    const t = buildTriage(input, parityRunner({ rootAbs, gateAbs: g, rel, opts, say: (s) => gateLog.push(s), budget }));
+    const t = buildTriage(input, parityRunner({ rootAbs, gateAbs: g, rel, opts, say: (s) => gateLog.push(s), budget, site: P.site }));
     // the unit view (stdout only — concurrent clusters share triage.{json,md}): groups with a row on the unit's pages,
     // then the unit's first pass at this width (the cluster verdict's `first pass 360: x/y`)
     if (unitPaths) {

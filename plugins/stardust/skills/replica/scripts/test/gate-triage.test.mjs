@@ -8,7 +8,8 @@
 // INCONCLUSIVE rows listed as capture fixes (never failing, never errors), a row without a pixel measurement a no-verdict
 // row whatever its override says, and only a validated override skipping a row; the fix-round count per group row
 // (gate-all's roundsOf: rounds.json over the table count, else the runs/ seed) and the layout cap read from it;
-// triageGate, the in-process `--gate <dir> --no-parity --no-route` (only its pair written, nothing spawned, same bytes).
+// triageGate, the in-process `--gate <dir> --no-parity --no-route` (only its pair written, nothing spawned, same bytes);
+// the site-wide stardust/replica/presence.json when the gate dir has none (argv, merged reuse key, malformed = parity error).
 // Fixtures are built in a temp project per check.
 // Run: node <this file>   (TMPDIR may point at a scratch dir)
 import assert from 'node:assert/strict';
@@ -534,5 +535,44 @@ check('(v) triageGate: one gate dir in-process — only its triage pair written,
   const empty = join(root, 'stardust/replica/gates/all-768'); mkdirSync(empty, { recursive: true });
   assert.throws(() => triageGate(empty, { root }), /gate-triage: no gate table in /); assert.deepEqual(readdirSync(empty), []);
 }));
+check('(w) no gate presence.json: the site-wide one reaches chrome-parity; the reuse key holds the merged entries — a site list change re-runs, a reasons-only edit or one the gate overrides does not; triage records only its path; a malformed one is a parity error naming it', () => {
+  const SITE = 'stardust/replica/presence.json'; const PRES = `${GATE}/presence.json`;
+  const base = (s, region) => [live(s), build(s), '--no-defaults', '--region', region, '--width', '1440', '--json', '--live-cache', `${GATE}/triage-parity/${s}-1440.live.json`, '--locale', 'en-US'];
+  const parityOf = (t, cause) => t.groups.find((g) => g.cause === cause).parity;
+  const pair = (root) => ['triage.json', 'triage.md'].map((f) => readFileSync(join(root, GATE, f), 'utf8'));
+  const ranSince = (root, n) => calls(root).slice(n).map((a) => a[a.indexOf('--slug') + 1]);
+  withProject(merge(A, E), { parityOut: PARITY_E }, (root) => {
+    put(root, SITE, { '*': { hide: ['.cookie-bar'] } });
+    ok(run(root, ['--no-route']));
+    assert.deepEqual(calls(root), [[...base('p1', 'main=main|main'), '--presence', SITE, '--slug', 'p1'], [...base('p10', 'footer=footer'), '--presence', SITE, '--slug', 'p10']]);
+    const t = readT(root);
+    assert.deepEqual(parityOf(t, 'block:cards').hide, { list: [], presence: SITE }); assert.equal(t._provenance.presence, SITE);
+    const first = pair(root);
+    assert.match(first[1], /- property diff: chrome-parity on p1@1440 \(regions main; exit 2; [^)]*; hiding site presence\.json regions\): /);
+    assert.doesNotMatch(first.join('\n'), /cookie-bar/, 'the site list itself stays out of the triage files');
+    put(root, SITE, { '*': { hide: ['.cookie-bar'], reasons: { '.cookie-bar': 'R-01' } } });
+    const r2 = ok(run(root, ['--no-route']));
+    assert.equal(calls(root).length, 2, 'a reasons-only edit reuses'); assert.match(r2.stdout, /parity p1@1440: reused/); assert.match(r2.stdout, /parity p10@1440: reused/);
+    assert.deepEqual(pair(root), first, 'byte-identical');
+    put(root, SITE, { '*': { hide: ['.cookie-bar'] }, p10: { hide: ['.promo'] } });
+    ok(run(root, ['--no-route'])); assert.deepEqual(ranSince(root, 2), ['p10'], 'only the page whose merged list changed');
+    assert.deepEqual(pair(root), first, 'same findings: the triage files stay byte-identical');
+    // a gate presence.json takes the argv; the site file still keys, under it
+    put(root, PRES, { p1: { hide: ['.geo-bar'] } });
+    ok(run(root, ['--no-route']));
+    assert.deepEqual(calls(root).slice(3), [[...base('p1', 'main=main|main'), '--presence', PRES, '--slug', 'p1'], [...base('p10', 'footer=footer'), '--presence', PRES, '--slug', 'p10']]);
+    assert.equal(readT(root)._provenance.presence, PRES); assert.match(pair(root)[1], /; hiding presence\.json regions\): /);
+    put(root, SITE, { '*': { hide: ['.cookie-bar', '.chat'] }, p10: { hide: ['.promo'] } });
+    ok(run(root, ['--no-route'])); assert.deepEqual(ranSince(root, 5), ['p1', 'p10'], 'a changed site "*" list re-runs under a gate file');
+    put(root, SITE, { '*': { hide: ['.cookie-bar', '.chat'] }, p1: { hide: ['.site-only'] }, p10: { hide: ['.promo'] } });
+    ok(run(root, ['--no-route'])); assert.deepEqual(ranSince(root, 7), [], 'the gate dir\'s p1 hide wins over the site file\'s');
+    rmSync(join(root, PRES)); put(root, SITE, '{ not json');
+    const r3 = ok(run(root, ['--no-route']));
+    assert.equal(calls(root).length, 7, 'a malformed site file: nothing spawned');
+    assert.match(r3.stdout, /parity p1@1440: error presence\.json stardust\/replica\/presence\.json unreadable \(/);
+    assert.match(parityOf(readT(root), 'block:cards').error, /^presence\.json stardust\/replica\/presence\.json unreadable \(/);
+    ok(run(root, ['--no-route', '--no-parity'])); assert.equal(readT(root)._provenance.presence, null, 'parity off: the site file is not read');
+  });
+});
 console.log(failed ? `\n${failed} failed` : '\nall passed');
 process.exit(failed ? 1 : 0);
