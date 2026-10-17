@@ -7,7 +7,8 @@
 // per-width deadline helpers (withDeadline, isContextDestroyed), and the 2xx denial page (the vendor signatures in
 // order, normalizeDenialText, denialMarker per signature / the 2 KB rule / the one-error-heading rule, and gotoLive on
 // stub pages: a denial throws BotChallengeError "origin blocked", a >= 400 is never probed, a failing probe is one
-// "skipped" stderr line, the solve window clears on a clean reload, the header-marker message unchanged), and the
+// "skipped" stderr line, a probe read a wedged page never answers races its deadline, the solve window clears on a
+// clean reload, the header-marker message unchanged), and the
 // dialog-pass constants (NATIVE_DIALOG, MODAL_DIALOGS, DIALOG_CLOSE_CANDIDATES — pinned, frozen), and the client hints
 // (V4: uaMetadata per host, standardHeaders' sec-ch-ua as its brand list; hintScope — the default, the env, the option
 // over the env, an invalid option / env; browserBuild, hintRecord; applyUaMetadata on stub contexts — every page once,
@@ -397,6 +398,14 @@ await checkAsync('gotoLive: a probe that fails twice returns the response with O
   let first = true;
   flaky.evaluate = async (fn) => { if (first) { first = false; throw new Error('Execution context was destroyed'); } return evaluate(fn); };
   assert.deepEqual(await session.pageDenial(flaky), { marker: 'denial page — "System Down"', skipped: null }, 'the retry reads the page');
+});
+await checkAsync('pageDenial: a read a wedged renderer never answers races probeMs — two deadlines (one retry) → skipped "denial-page probe: deadline 50 ms exceeded", never a hang', async () => {
+  const page = stubPage();
+  page.evaluate = (fn) => { assert.equal(fn, session.denialProbeInPage); page.calls.evaluate += 1; return new Promise(() => {}); };
+  const d = await session.withDeadline(session.pageDenial(page, { probeMs: 50 }), 2000, 'pageDenial on a wedged page');
+  assert.deepEqual(d, { marker: null, skipped: 'denial-page probe: deadline 50 ms exceeded' });
+  assert.equal(page.calls.evaluate, 2, 'one retry');
+  assert.deepEqual(page.calls.waits, [500]);
 });
 await checkAsync('gotoLive solveWindow: a denial page clean after the first (settled) reload returns the reloaded response; still denied after 3 reloads, reloads answered by an edge challenge, or reloads the probe cannot read, it throws', async () => {
   const cleared = stubPage({ probes: [SIGNATURE_PAGES['just-a-moment'], CLEAN_PROBE] });

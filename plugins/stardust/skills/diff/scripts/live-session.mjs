@@ -432,6 +432,9 @@ export function isChallengeResponse(response) {
 // DENIAL_TEXT_MAX_BYTES of text: a full page that merely mentions "press & hold the button" is no denial
 // page, while a pair ("Access Denied" + "Reference #") is specific enough anywhere.
 export const DENIAL_TEXT_MAX_BYTES = 2048;
+// One probe read's deadline (pageDenial): page.evaluate has no timeout of its own, and a renderer stuck in a busy
+// loop never answers it — unbounded, the read inside gotoLive would undo the bounded navigation the callers rely on.
+export const DENIAL_PROBE_MS = 10000;
 
 const denialSignature = (id, label, all) => Object.freeze({ id, label, all: Object.freeze(all.map((p) => (Array.isArray(p) ? Object.freeze([...p]) : p))) });
 /**
@@ -512,16 +515,18 @@ export function denialMarker(probe) {
 }
 
 /**
- * The page's denial marker → { marker, skipped }. An evaluate error (a navigation under the probe) is retried
- * once after 500 ms; failing twice → { marker: null, skipped: '<first line of the error>' } — the caller says the
- * check was skipped, it never silently passes.
+ * The page's denial marker → { marker, skipped }. Each read races `probeMs` (withDeadline, label 'denial-page
+ * probe'): a wedged renderer never answers page.evaluate, so a read past the deadline is a failed read, like an
+ * evaluate error (a navigation under the probe). A failed read is retried once after 500 ms; failing twice →
+ * { marker: null, skipped: '<first line of the error>' } — the caller says the check was skipped, it never
+ * silently passes.
  */
-export async function pageDenial(page) {
+export async function pageDenial(page, { probeMs = DENIAL_PROBE_MS } = {}) {
   let last = null;
   for (let attempt = 0; attempt < 2; attempt += 1) {
     if (attempt) await page.waitForTimeout(500).catch(() => {});
     try {
-      return { marker: denialMarker(await page.evaluate(denialProbeInPage)), skipped: null };
+      return { marker: denialMarker(await withDeadline(page.evaluate(denialProbeInPage), probeMs, 'denial-page probe')), skipped: null };
     } catch (e) { last = e; }
   }
   return { marker: null, skipped: String(last && last.message ? last.message : last).split('\n')[0] };
@@ -678,8 +683,10 @@ export function isContextDestroyed(err) {
  *     (each reload settled like the entry; a reload answered by an edge
  *     challenge or a >= 400, or one the probe cannot read, does not clear it),
  *     then THROWS BotChallengeError, marker `HTTP <status> denial page — …`,
- *     message "origin blocked" + the --headed escalation. A probe that fails
- *     twice is one stderr line ("denial-page check skipped"), never a pass.
+ *     message "origin blocked" + the --headed escalation. Each probe read
+ *     races DENIAL_PROBE_MS (a wedged renderer never answers it), so the
+ *     navigation stays bounded; a probe that fails twice (an error or the
+ *     deadline) is one stderr line ("denial-page check skipped"), never a pass.
  * `timeoutMs` (goto and each reload) defaults to resolveNavTimeoutMs() per call —
  * env, then the crawl's p95 × 2, then 60000.
  * Returns the response.
