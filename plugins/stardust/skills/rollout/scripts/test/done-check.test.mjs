@@ -5,16 +5,22 @@
 // line is not an `end`); a clean run is complete; the live probe keeps input order and treats non-200 and
 // network errors as not live; a migration project's header must be proven (header_parity: contract, comparison,
 // profile by flow, widths, live host, undecided errors); the CLI exits 0 / 1 / 2 and --offline says the probe was skipped. Offline: the
-// probe runs against a stub fetch. --help writes nothing.
+// probe runs against a stub fetch. --help writes nothing. Delivery is proven: override rows are capped at 10 % and
+// each cites a `## R-<nn>` register entry (either override shape, the recorded gate table for a bare verdict);
+// every done unit's pages pass the gate at both widths; every delivered row has its schema, both gate widths and,
+// when its path changed, a redirects line; every ledger `end` is paired or re-recorded; the checks that did not
+// run are listed as skipped; ledger.mjs resolves in the project-copy layout too, and its absence is a gap.
 // Run: node plugins/stardust/skills/rollout/scripts/test/done-check.test.mjs
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { doneGaps, deliveredPaths, headerGap, openP1, probeLive, rolloutEnded } from '../done-check.mjs';
+import { doneGaps, deliveredPaths, headerGap, ledgerGap, OFFLINE_SKIP, openP1, overrideGap, overrideRef, probeLive, registerEntries, rolloutEnded, sidecarGap, unitGaps } from '../done-check.mjs';
 import { SOURCE_PARITY_PREFIX, publicUrl } from '../lib.mjs';
+import { pathKey } from '../../../deploy/scripts/eds-path.mjs';
+import { unpairedEnds } from '../../../stardust/scripts/ledger.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'done-check.mjs');
@@ -24,7 +30,10 @@ const check = (name, fn) => tests.push([name, fn]);
 
 // --- fixtures -------------------------------------------------------------------------------------
 const row = (slug, path, status, gate) => ({ slug, path, delivery: { status, ...(gate === undefined ? {} : { gate: { pass: gate } }) } });
-const CLEAN_PAGES = [row('home', '/', 'verified', true), row('about', '/about', 'verified', true)];
+const AT = { 1440: '2026-10-09T10:00:00Z', 360: '2026-10-09T10:05:00Z' };
+// a delivered row with everything delivery needs: a passing gate at both widths, its source URL on the same path
+const proven = (r, gate = {}) => ({ ...r, source: { sourceUrl: `https://example.com${r.path}` }, delivery: { ...r.delivery, gate: { pass: true, reasons: [], atByWidth: { ...AT }, ...gate } } });
+const CLEAN_PAGES = [proven(row('home', '/', 'verified', true)), proven(row('about', '/about', 'verified', true))];
 const ENDED = [
   { skill: 'stardust:rollout', phase: 'I-dashboard', event: 'start' },
   { skill: 'stardust:rollout', phase: 'I-dashboard', event: 'end' },
@@ -46,7 +55,7 @@ check('deliveredPaths probes a folder index at /a/, which a 200-only HEAD accept
 });
 check('a clean run is complete, with the live probe recorded as run', () => {
   const v = doneGaps({ pages: CLEAN_PAGES, findings: [], ledgerLines: ENDED, notLive: [] });
-  assert.deepEqual(v, { complete: true, gaps: [], liveChecked: true });
+  assert.deepEqual(v, { complete: true, gaps: [], liveChecked: true, skipped: [] });
 });
 
 check('unfinished counts every not-yet-verified status, and only those', () => {
@@ -95,6 +104,143 @@ check('only deployed and verified rows are probed', () => {
   assert.deepEqual(deliveredPaths([row('a', '/a', 'deployed'), row('b', '/b', 'verified'), row('c', '/c', 'pending'), row('d', '/d', 'failed')]), ['/a', '/b']);
 });
 
+// --- delivery proof: overrides, units, sidecars, ledger -------------------------------------------
+const REGISTER = '# Inconsistency register\n\n## R-07 — the hero shifts a tier on a site with a consent manager\n\nwhy, scope, owner\n';
+const TABLE = 'stardust/replica/gates/all-1440/summary.json';
+const plain = (n, prefix = 'p') => Array.from({ length: n }, (_, i) => proven(row(`${prefix}${i}`, `/${prefix}${i}`, 'verified')));
+// an override row whose own measurements failed (reasons non-empty) unless `reasons` says otherwise
+const overridden = (slug, override, gate = {}) => proven(row(slug, `/${slug}`, 'verified'), { reasons: ['pixel 14.2 > 10'], override, ...gate });
+const CITED = { verdict: 'tier-shift', reason: 'tier shift above the fold (R-07)' };
+
+check('pages_overridden: rows passing by override above 10 % of delivered rows are a gap; exactly 10 % is not', () => {
+  const at10 = [...plain(18), overridden('o1', CITED), overridden('o2', CITED), { ...overridden('n1', CITED), delivery: { status: 'pending', gate: { pass: true, override: CITED } } }];
+  assert.equal(overrideGap({ pages: at10, register: REGISTER }), null);
+  const above = [...plain(17), overridden('o1', CITED), overridden('o2', CITED), overridden('o3', CITED)];
+  assert.equal(overrideGap({ pages: above, register: REGISTER }), 'pages_overridden:3: 3/20 delivered pages pass by override (cap 10 %)');
+});
+
+check('pages_overridden: an override under the cap needs a `## R-<nn>` heading in the register', () => {
+  const pages = [...plain(19), overridden('o1', CITED)];
+  assert.equal(overrideGap({ pages, register: '' }), 'pages_overridden:1: no register entry for /o1');
+  assert.equal(overrideGap({ pages, register: '## R-08 — another trait\n\nsee R-07\n### R-07 — not an entry heading\n' }), 'pages_overridden:1: no register entry for /o1');
+  assert.equal(overrideGap({ pages, register: REGISTER }), null);
+  assert.equal(overrideGap({ pages: [...plain(19), overridden('o1', { verdict: 'tier-shift', reason: 'banner' })], register: REGISTER }), 'pages_overridden:1: no register entry for /o1');
+  assert.deepEqual([...registerEntries(`${REGISTER}## R-12 — second\n## R-3x — malformed\n`)], ['R-07', 'R-12']);
+});
+
+check('pages_overridden: an object override marked valid: false is a gap even with its register entry', () => {
+  const pages = [...plain(19), overridden('o1', { ...CITED, valid: false })];
+  assert.equal(overrideGap({ pages, register: REGISTER }), 'pages_overridden:1: no register entry for /o1');
+  assert.equal(overrideGap({ pages: [...plain(19), overridden('o1', { ...CITED, valid: true })], register: REGISTER }), null);
+  assert.deepEqual(overrideRef(overridden('o1', { verdict: 'tier-shift', note: 'R-07' })), { ref: 'R-07', invalid: false });
+});
+
+check('pages_overridden: a bare verdict string cites the recorded gate table row\'s override.reason (by slug, then path)', () => {
+  const tableRow = (slug, path, override) => ({ slug, path, pass: false, override, reasons: ['pixel 14.2 > 10'] });
+  const tables = { [TABLE]: { rows: [tableRow('other', '/x', null), tableRow('o1', '/o1', CITED), tableRow('renamed', '/o2', CITED), tableRow('o3', '/o3', { ...CITED, valid: false })] } };
+  const readTable = (f) => tables[f] || null;
+  const pages = (slug) => [...plain(19), overridden(slug, 'tier-shift', { table: TABLE })];
+  assert.equal(overrideGap({ pages: pages('o1'), register: REGISTER, readTable }), null);
+  assert.equal(overrideGap({ pages: pages('o2'), register: REGISTER, readTable }), null);
+  assert.equal(overrideGap({ pages: pages('o3'), register: REGISTER, readTable }), 'pages_overridden:1: no register entry for /o3');
+  assert.equal(overrideGap({ pages: pages('o1'), register: REGISTER, readTable: () => null }), 'pages_overridden:1: no register entry for /o1');
+  assert.equal(overrideGap({ pages: [...plain(19), overridden('o9', 'tier-shift per R-07')], register: REGISTER }), null);
+});
+
+check('pages_overridden: a row that passed on its own measurements (reasons: []) is not counted against the cap, yet needs its entry', () => {
+  const own = (slug, override = CITED) => overridden(slug, override, { reasons: [] });
+  const pages = [...plain(15), own('a'), own('b'), own('c'), overridden('o1', CITED), overridden('o2', CITED)];
+  assert.equal(overrideGap({ pages, register: REGISTER }), null);
+  const absent = { ...overridden('o3', CITED) }; delete absent.delivery.gate.reasons;
+  assert.equal(overrideGap({ pages: [...plain(14), own('a'), own('b'), own('c'), overridden('o1', CITED), overridden('o2', CITED), absent], register: REGISTER }), 'pages_overridden:6: 3/20 delivered pages pass by override (cap 10 %)');
+  assert.equal(overrideGap({ pages: [...plain(19), own('a', 'tier-shift')], register: REGISTER }), 'pages_overridden:1: no register entry for /a');
+  const both = [...plain(17), overridden('o1', CITED), overridden('o2', 'tier-shift'), overridden('o3', CITED)];
+  assert.equal(overrideGap({ pages: both, register: REGISTER }), 'pages_overridden:3: 3/20 delivered pages pass by override (cap 10 %); no register entry for /o2');
+});
+
+const PROGRESS = { units: {
+  'cluster-news': { status: 'done', kind: 'cluster', templates: ['article'], pages: 2 },
+  'archetype-article': { status: 'done', kind: 'archetype', templates: ['article'], pages: 1 },
+  foundation: { status: 'done', kind: 'foundation', templates: [], pages: 0 },
+  final: { status: 'done', kind: 'final', templates: [], pages: 0 },
+  'cluster-shop': { status: 'running', kind: 'cluster', templates: ['product'], pages: 4 },
+} };
+const UNIT_PAGES = [proven(row('news-a', '/news/a', 'verified')), proven(row('news-b', '/news/b', 'verified')), proven(row('story', '/story', 'verified'))];
+const UNIT_PATHS = { 'cluster-news': '# the news cluster\n/news/a.html\n\n/news/b/\n', 'archetype-article': '/story\n' };
+const units = (over = {}) => unitGaps({ progress: PROGRESS, unitPaths: UNIT_PATHS, pages: UNIT_PAGES, widths: ['1440', '360'], pathKey, ...over });
+
+check('unit_unproven: a done unit whose pages all pass at 1440 and 360 is proven; running, foundation and final units are not judged', () => {
+  assert.deepEqual(units(), { gaps: [], skipped: [] });
+});
+
+check('unit_unproven: one page short of the 360 gate, failing, or without a coverage row → one gap for its unit', () => {
+  const short = UNIT_PAGES.map((p) => (p.slug === 'news-b' ? { ...p, delivery: { ...p.delivery, gate: { ...p.delivery.gate, atByWidth: { 1440: AT[1440] } } } } : p));
+  assert.deepEqual(units({ pages: short }).gaps, ['unit_unproven:cluster-news: 1/2 pages without a passing gate at 1440 and 360: /news/b/']);
+  const failing = UNIT_PAGES.map((p) => (p.slug === 'story' ? { ...p, delivery: { ...p.delivery, gate: { ...p.delivery.gate, pass: false } } } : p));
+  assert.deepEqual(units({ pages: failing }).gaps, ['unit_unproven:archetype-article: 1/1 pages without a passing gate at 1440 and 360: /story']);
+  assert.deepEqual(units({ pages: UNIT_PAGES.slice(1) }).gaps, ['unit_unproven:cluster-news: 1/2 pages without a passing gate at 1440 and 360: /news/a.html']);
+  assert.deepEqual(units({ pages: short, widths: ['1440'] }).gaps, []);
+});
+
+check('unit_unproven: a done unit without its .paths (or with no page in it) is a gap; gaps come by unit name', () => {
+  assert.deepEqual(units({ unitPaths: {} }).gaps, ['unit_unproven:archetype-article: no stardust/rollout/units/archetype-article.paths', 'unit_unproven:cluster-news: no stardust/rollout/units/cluster-news.paths']);
+  assert.deepEqual(units({ unitPaths: { ...UNIT_PATHS, 'archetype-article': '# nothing yet\n\n' } }).gaps, ['unit_unproven:archetype-article: no pages in stardust/rollout/units/archetype-article.paths']);
+});
+
+check('unit_unproven: without progress.json no unit is judged and the check is listed as skipped', () => {
+  assert.deepEqual(units({ progress: null, out: 'x/rollout' }), { gaps: [], skipped: ['unit_unproven: no x/rollout/progress.json'] });
+});
+
+const SIDE_PAGES = [proven(row('home', '/', 'verified')), proven(row('about', '/about', 'verified')), { ...proven(row('news', '/news', 'deployed')), source: { sourceUrl: 'https://example.com/news/', migratedHtml: 'stardust/migrated/news/index.html' } }, row('draft', '/draft', 'pending')];
+const withSource = (r, sourceUrl) => ({ ...r, source: { ...r.source, sourceUrl } });
+const sidecars = (pages, over = {}) => sidecarGap({ pages, widths: ['1440', '360'], schemaExists: () => true, redirects: '', ...over });
+
+check('sidecars_missing: every delivered row has its schema, both gate widths and an unchanged path — no gap', () => {
+  assert.deepEqual(sidecars(SIDE_PAGES), { gap: null, skipped: [] });
+});
+
+check('sidecars_missing: a missing schema and a missing gate width are counted per kind', () => {
+  assert.deepEqual(sidecars(SIDE_PAGES, { schemaExists: (s) => s !== 'about' }), { gap: 'sidecars_missing:1: schema 1, gate widths 0, redirects 0: /about', skipped: [] });
+  const short = SIDE_PAGES.map((p) => (p.slug === 'home' ? { ...p, delivery: { ...p.delivery, gate: { ...p.delivery.gate, atByWidth: { 1440: AT[1440] } } } } : p));
+  assert.equal(sidecars(short).gap, 'sidecars_missing:1: schema 0, gate widths 1, redirects 0: /');
+  assert.equal(sidecars(short, { schemaExists: (s) => s !== 'home' }).gap, 'sidecars_missing:1: schema 1, gate widths 1, redirects 0: /');
+});
+
+check('sidecars_missing: a changed path needs a redirects line for its source path (tab or 2+ spaces, decodeURI forms)', () => {
+  const moved = [...SIDE_PAGES, withSource(proven(row('about-us', '/about-us', 'verified')), 'https://example.com/About_Us.html?ref=nav')];
+  assert.equal(sidecars(moved).gap, 'sidecars_missing:1: schema 0, gate widths 0, redirects 1: /about-us');
+  assert.equal(sidecars(moved, { redirects: '/About_Us\t/about-us\n' }).gap, 'sidecars_missing:1: schema 0, gate widths 0, redirects 1: /about-us');
+  assert.equal(sidecars(moved, { redirects: '# source\tdestination\n/About_Us.html\t/about-us\n' }).gap, null);
+  assert.equal(sidecars(moved, { redirects: '/About_Us.html   /about-us\n' }).gap, null);
+  const accented = [withSource(proven(row('cafe', '/cafe', 'verified')), 'https://example.com/caf%C3%A9')];
+  assert.equal(sidecars(accented, { redirects: '/café\t/cafe\n' }).gap, null);
+  assert.equal(sidecars(accented).gap, 'sidecars_missing:1: schema 0, gate widths 0, redirects 1: /cafe');
+});
+
+check('sidecars_missing: delivered rows without source.sourceUrl are not judged for redirects — counted as skipped', () => {
+  const bare = [...SIDE_PAGES, { ...row('x', '/x', 'verified'), delivery: SIDE_PAGES[0].delivery }, { ...row('y', '/y', 'pending') }];
+  assert.deepEqual(sidecars(bare), { gap: null, skipped: ['sidecars_missing redirects: 1 delivered rows without source.sourceUrl'] });
+});
+
+const LEDGER_END = { ts: '2026-10-09T11:00:00Z', skill: 'stardust:replica', phase: 'recreate', event: 'end' };
+check('ledger_unpaired: an end without an open start is a gap until a later start and end re-record the phase', () => {
+  const lines = [...ENDED, LEDGER_END];
+  assert.equal(ledgerGap(unpairedEnds(lines)), 'ledger_unpaired:1: stardust:replica recreate 2026-10-09T11:00:00Z');
+  const reRecorded = [...lines, { ...LEDGER_END, ts: '2026-10-09T12:00:00Z', event: 'start' }, { ...LEDGER_END, ts: '2026-10-09T12:30:00Z' }];
+  assert.equal(ledgerGap(unpairedEnds(reRecorded)), null);
+  assert.equal(ledgerGap(unpairedEnds(ENDED)), null);
+  assert.equal(ledgerGap(null), 'ledger_unpaired:unchecked (ledger.mjs not found beside the rollout scripts)');
+});
+
+check('the new gaps take their places in the fixed order', () => {
+  const v = doneGaps({ pages: [row('u', '/u', 'pending'), row('f', '/f', 'failed')], findings: [finding('P1', 'open')], ledgerLines: [], notLive: ['/x'],
+    header: 'header_parity:no contract', overridden: 'pages_overridden:1: x', sidecars: 'sidecars_missing:1: x', units: ['unit_unproven:a: x', 'unit_unproven:b: x'], ledger: 'ledger_unpaired:1: x', skipped: ['s1'] });
+  assert.deepEqual(v.gaps.map((g) => g.split(':').slice(0, g.startsWith('unit_') ? 2 : 1).join(':')),
+    ['pages_unfinished', 'pages_failed', 'pages_overridden', 'pages_not_live', 'sidecars_missing', 'unit_unproven:a', 'unit_unproven:b', 'open_p1', 'header_parity', 'ledger_unpaired', 'rollout_incomplete']);
+  assert.deepEqual(v.skipped, ['s1']);
+  assert.deepEqual(doneGaps({ pages: CLEAN_PAGES, ledgerLines: ENDED, notLive: null, skipped: ['s1'] }).skipped, [OFFLINE_SKIP, 's1']);
+});
+
 // --- live probe (stub fetch) ----------------------------------------------------------------------
 check('the probe HEADs each path on the host, keeps input order, and counts non-200 and errors as missing', async () => {
   const seen = [];
@@ -111,13 +257,17 @@ check('the probe HEADs each path on the host, keeps input order, and counts non-
 });
 
 // --- CLI ------------------------------------------------------------------------------------------
-function project({ pages = CLEAN_PAGES, ledger = ENDED, liveHost } = {}) {
+// every page gets its stardust/eds-schema/<slug>.json unless named in `noSchema`; `files` = { <relative path>: text or JSON }
+function project({ pages = CLEAN_PAGES, ledger = ENDED, liveHost, noSchema = [], files = {} } = {}) {
   const proj = mkdtempSync(join(tmpdir(), 'done-check-'));
+  const put = (f, body) => { mkdirSync(dirname(join(proj, f)), { recursive: true }); writeFileSync(join(proj, f), typeof body === 'string' ? body : JSON.stringify(body)); };
   const out = join(proj, 'stardust', 'rollout');
   mkdirSync(join(out, 'coverage'), { recursive: true });
   if (pages) writeFileSync(join(out, 'coverage', 'pages.json'), JSON.stringify({ pages }));
   writeFileSync(join(out, 'rollout.json'), JSON.stringify(liveHost ? { site: { liveHost } } : {}));
   writeFileSync(join(proj, 'stardust', 'status.jsonl'), ledger.map((l) => JSON.stringify(l)).join('\n'));
+  for (const pg of pages || []) if (pg.slug && !noSchema.includes(pg.slug)) put(`stardust/eds-schema/${pg.slug}.json`, { slug: pg.slug, sections: [] });
+  for (const [f, body] of Object.entries(files)) put(f, body);
   return proj;
 }
 const run = (proj, args) => spawnSync(process.execPath, [SCRIPT, ...args], { cwd: proj, encoding: 'utf8' });
@@ -136,7 +286,7 @@ check('CLI: a clean offline run exits 0 and the JSON says the probe was skipped'
   const proj = project();
   const r = run(proj, ['--offline', '--json']);
   assert.equal(r.status, 0, r.stderr);
-  assert.deepEqual(JSON.parse(r.stdout), { complete: true, gaps: [], liveChecked: false });
+  assert.deepEqual(JSON.parse(r.stdout), { complete: true, gaps: [], liveChecked: false, skipped: [OFFLINE_SKIP, 'unit_unproven: no stardust/rollout/progress.json'] });
   rmSync(proj, { recursive: true, force: true });
 });
 
@@ -144,7 +294,7 @@ check('CLI: gaps exit 1, one line each, then the summary line', () => {
   const proj = project({ pages: [row('a', '/a', 'pending')], ledger: [] });
   const r = run(proj, ['--offline']);
   assert.equal(r.status, 1);
-  assert.deepEqual(r.stdout.trim().split('\n'), ['pages_unfinished:1', 'rollout_incomplete', '✗ 2 gap(s) (live probe skipped: --offline)']);
+  assert.deepEqual(r.stdout.trim().split('\n'), ['pages_unfinished:1', 'rollout_incomplete', `skipped: ${OFFLINE_SKIP}`, 'skipped: unit_unproven: no stardust/rollout/progress.json', '✗ 2 gap(s) (live probe skipped: --offline)']);
   rmSync(proj, { recursive: true, force: true });
 });
 
@@ -180,6 +330,78 @@ check('CLI: usage errors exit 2 — no pages.json; no live host without --offlin
   assert.equal(r.status, 2);
   assert.match(r.stderr, /--live-host/);
   [noPages, noHost].forEach((p) => rmSync(p, { recursive: true, force: true }));
+});
+
+// a project where each new gap fires once: a bare-verdict override whose recorded table reason cites no entry,
+// a page without its schema, a page gated at 1440 only, a moved page without a redirects line, a row without its
+// source URL, a done unit with a short page, a done unit without .paths, a running unit, an unpaired end
+const short360 = (r) => ({ ...r, delivery: { ...r.delivery, gate: { ...r.delivery.gate, atByWidth: { 1440: AT[1440] } } } });
+const PROOF_PAGES = [...CLEAN_PAGES, overridden('o1', 'tier-shift', { table: TABLE }), proven(row('news-a', '/news/a', 'verified')), short360(proven(row('news-b', '/news/b', 'verified'))),
+  withSource(proven(row('about-us', '/about-us', 'verified')), 'https://example.com/About_Us.html'), { ...proven(row('bare', '/bare', 'verified')), source: {} }];
+const PROOF_FILES = {
+  'stardust/replica/inconsistency-register.md': REGISTER,
+  [TABLE]: { rows: [{ slug: 'o1', path: '/o1', pass: false, override: { verdict: 'tier-shift', reason: 'banner offsets the hero' }, reasons: ['pixel 14.2 > 10'] }] },
+  'stardust/rollout/progress.json': { units: { 'cluster-news': { status: 'done', kind: 'cluster' }, 'archetype-x': { status: 'done', kind: 'archetype' }, 'cluster-y': { status: 'running', kind: 'cluster' }, foundation: { status: 'done', kind: 'foundation' } } },
+  'stardust/rollout/units/cluster-news.paths': '/news/a\n/news/b\n',
+};
+const PROOF_GAPS = [
+  'pages_overridden:1: 1/7 delivered pages pass by override (cap 10 %); no register entry for /o1',
+  'sidecars_missing:3: schema 1, gate widths 1, redirects 1: /news/a, /news/b, /about-us',
+  'unit_unproven:archetype-x: no stardust/rollout/units/archetype-x.paths',
+  'unit_unproven:cluster-news: 1/2 pages without a passing gate at 1440 and 360: /news/b',
+  'ledger_unpaired:1: stardust:replica recreate 2026-10-09T11:00:00Z',
+];
+const proofProject = () => project({ pages: PROOF_PAGES, ledger: [...ENDED, LEDGER_END], noSchema: ['news-a'], files: PROOF_FILES });
+
+check('CLI: --json lists every new gap in order and every check that did not run as skipped', () => {
+  const proj = proofProject();
+  const r = run(proj, ['--offline', '--json']);
+  assert.equal(r.status, 1, r.stderr);
+  assert.deepEqual(JSON.parse(r.stdout), { complete: false, gaps: PROOF_GAPS, liveChecked: false, skipped: [OFFLINE_SKIP, 'sidecars_missing redirects: 1 delivered rows without source.sourceUrl'] });
+  const text = run(proj, ['--offline']).stdout.trim().split('\n');
+  assert.deepEqual(text.slice(-3), [`skipped: ${OFFLINE_SKIP}`, 'skipped: sidecars_missing redirects: 1 delivered rows without source.sourceUrl', '✗ 5 gap(s) (live probe skipped: --offline)']);
+  rmSync(proj, { recursive: true, force: true });
+});
+
+check('CLI: --widths, --register, --schemas and --redirects point the checks elsewhere; a bad --widths is a usage error', () => {
+  const proj = proofProject();
+  const gaps = (...args) => JSON.parse(run(proj, ['--offline', '--json', ...args]).stdout).gaps;
+  assert.deepEqual(gaps('--widths', '1440').filter((g) => /^(sidecars|unit)_/.test(g)), ['sidecars_missing:2: schema 1, gate widths 0, redirects 1: /news/a, /about-us', 'unit_unproven:archetype-x: no stardust/rollout/units/archetype-x.paths']);
+  const put = (f, body) => { mkdirSync(dirname(join(proj, f)), { recursive: true }); writeFileSync(join(proj, f), typeof body === 'string' ? body : JSON.stringify(body)); };
+  put(TABLE, { rows: [{ ...PROOF_FILES[TABLE].rows[0], override: { verdict: 'tier-shift', reason: 'R-01 banner offsets the hero' } }] });
+  put('elsewhere/register.md', '## R-01 — the banner offsets the hero\n');
+  put('elsewhere/schemas/news-a.json', '{}');
+  put('elsewhere/redirects.tsv', '/About_Us.html\t/about-us\n');
+  assert.equal(gaps()[0], 'pages_overridden:1: 1/7 delivered pages pass by override (cap 10 %); no register entry for /o1');
+  assert.deepEqual(gaps('--register', 'elsewhere/register.md', '--schemas', 'elsewhere/schemas', '--redirects', 'elsewhere/redirects.tsv').slice(0, 2),
+    ['pages_overridden:1: 1/7 delivered pages pass by override (cap 10 %)', 'sidecars_missing:6: schema 6, gate widths 1, redirects 0: /, /about, /o1, /news/b, /about-us, /bare']);
+  const bad = run(proj, ['--offline', '--widths', '1440,wide']);
+  assert.equal(bad.status, 2); assert.match(bad.stderr, /--widths/);
+  rmSync(proj, { recursive: true, force: true });
+});
+
+check('CLI: an unreadable progress.json is named as skipped; a done unit whose name is not a unit name has no .paths to read', () => {
+  const broken = project({ files: { 'stardust/rollout/progress.json': '{"units": ' } });
+  assert.deepEqual(JSON.parse(run(broken, ['--offline', '--json']).stdout).skipped, [OFFLINE_SKIP, 'unit_unproven: stardust/rollout/progress.json is not JSON']);
+  const odd = project({ files: { 'stardust/rollout/progress.json': { units: { '../x': { status: 'done', kind: 'cluster' } } }, 'stardust/rollout/x.paths': '/\n' } });
+  assert.deepEqual(JSON.parse(run(odd, ['--offline', '--json']).stdout).gaps, ['unit_unproven:../x: no stardust/rollout/units/../x.paths']);
+  [broken, odd].forEach((p) => rmSync(p, { recursive: true, force: true }));
+});
+
+check('CLI: ledger.mjs resolves in the project copy (stardust/scripts/stardust/); without it the ledger is an unchecked gap', () => {
+  const proj = project();
+  const copy = (from, to) => { mkdirSync(dirname(join(proj, to)), { recursive: true }); copyFileSync(from, join(proj, to)); };
+  copy(SCRIPT, 'stardust/scripts/rollout/done-check.mjs');
+  copy(join(HERE, '..', 'lib.mjs'), 'stardust/scripts/rollout/lib.mjs');
+  copy(join(HERE, '..', '..', '..', 'deploy', 'scripts', 'eds-path.mjs'), 'stardust/scripts/deploy/eds-path.mjs');
+  const runCopy = () => spawnSync(process.execPath, [join(proj, 'stardust', 'scripts', 'rollout', 'done-check.mjs'), '--offline', '--json'], { cwd: proj, encoding: 'utf8' });
+  const without = runCopy();
+  assert.equal(without.status, 1, without.stderr);
+  assert.deepEqual(JSON.parse(without.stdout).gaps, ['ledger_unpaired:unchecked (ledger.mjs not found beside the rollout scripts)']);
+  copy(join(HERE, '..', '..', '..', 'stardust', 'scripts', 'ledger.mjs'), 'stardust/scripts/stardust/ledger.mjs');
+  const withLedger = runCopy();
+  assert.equal(withLedger.status, 0, withLedger.stdout + withLedger.stderr);
+  rmSync(proj, { recursive: true, force: true });
 });
 
 for (const [name, fn] of tests) {
