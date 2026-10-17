@@ -7,6 +7,7 @@
 // The browser part needs playwright and prints a skip line when it does not resolve. Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import { createServer } from 'node:http';
 import { copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -118,7 +119,6 @@ const stubTools = (name, cfg = {}, at = join(scratch, name)) => {
   return { tools, calls: () => (existsSync(calls) ? readFileSync(calls, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)) : []) };
 };
 
-const flagOf = (argv, f) => argv[argv.indexOf(f) + 1];
 const brief = (rows) => rows.map(({ check: c, value, bar, status }) => ({ check: c, value, bar, status }));
 const pick = (rows, c) => rows.find((r) => r.check === c);
 const BY_DEPLOY = ['localize-links --check', 'davids-model-lint', 'block-roundtrip --ew'];
@@ -139,6 +139,21 @@ const scenario = async (name, { cfg = {}, record = {}, schema = true, design = t
 };
 
 // ---- no browser ------------------------------------------------------------------------------------------------
+
+// A server that answers every request with `status` and records them: { origin, requests, close }.
+const statusServer = (status) => new Promise((resolve) => {
+  const requests = [];
+  const server = createServer((req, res) => {
+    requests.push({ path: req.url, headers: req.headers });
+    res.writeHead(status, { 'content-type': 'text/plain' });
+    res.end('x');
+  });
+  server.listen(0, '127.0.0.1', () => resolve({
+    origin: `http://127.0.0.1:${server.address().port}`,
+    requests,
+    close: () => new Promise((done) => { server.close(done); server.closeAllConnections(); }),
+  }));
+});
 
 await check('plainAsserts: the fixture passes; two <h1>, none, about:error, an /img/ src and no top-level <div> are each a problem naming it', () => {
   assert.deepEqual(plainAsserts(PLAIN), []);
@@ -163,6 +178,34 @@ await check('plainAsserts: the fixture passes; two <h1>, none, about:error, an /
   assert.deepEqual(plainAsserts('<div><h1>t</h1></div><div><p>b</p></div>'), [], 'a bare run of sections, as EDS serves them, is fine');
   assert.deepEqual(plainAsserts('<div><h1>t</h1><br><img src="./media_a.png"><img src="https://cdn.test/img/a.png"><p>see /img/ and a data-src="/img/x.png"</p></div>'), [], 'only a src that starts with /img/ counts');
   assert.deepEqual(plainAsserts('<!-- <h1>x</h1> src="/img/a.png" --><script>var h = "<h1>"; var s = \'src="/img/b.png"\';</script><style>h1 { }</style><div><h1>t</h1></div>'), [], 'comments, scripts and styles are not read');
+});
+
+await check('plainAsserts reads real tags only: <h1> and /img/ in attribute text, plain text or a script do not count; <H1> does; srcset candidates, poster and a src with leading spaces do', () => {
+  const page = (body) => `<div>${body}</div>`;
+  assert.deepEqual(plainAsserts(page('<h1>t</h1><img alt="use <h1> here" src="./a.png">')), [], '<h1> in a double-quoted attribute');
+  assert.deepEqual(plainAsserts(page("<h1>t</h1><a title='<h1>'>x</a>")), [], '<h1> in a single-quoted attribute');
+  assert.deepEqual(plainAsserts(page('<h1 title="a>b">t</h1>')), [], 'a > inside a quoted attribute does not end the tag');
+  assert.deepEqual(plainAsserts(page('<a title="<h1>">x</a><a title=\'<h1>\'>y</a>')), ['0 <h1>'], 'attribute text is the only <h1>: none');
+  assert.deepEqual(plainAsserts(page('<H1>t</H1>')), [], '<H1> is an <h1>');
+  assert.deepEqual(plainAsserts(page('<H1>a</H1><h1 class="b">b</h1>')), ['2 <h1>']);
+  assert.deepEqual(plainAsserts(page('<h1>t</h1><h10>x</h10><h1-x>y</h1-x>')), [], 'h10 and h1-x are not <h1>');
+  assert.deepEqual(plainAsserts('<script>var a="<!--";</script><div><h1>t</h1></div><!-- c -->'), [], 'a "<!--" in a script does not open a comment that eats the page');
+  assert.deepEqual(plainAsserts('<!-- <script> --><div><h1>t</h1></div><script>var s = 1;</script>'), [], 'a "<script>" in a comment does not open a script');
+  assert.deepEqual(plainAsserts('<style>a::after { content: "<!--"; }</style><div><h1>t</h1></div><!-- c -->'), []);
+  assert.deepEqual(plainAsserts(page('<h1>t</h1><p>src="/img/a.png" and srcset="/img/b.png 2x" and poster="/img/c.png"</p>')), [], '/img/ in text is not a source');
+  assert.deepEqual(plainAsserts(page('<h1>t</h1><textarea>&lt;img src="/img/a.png"&gt;</textarea><code>&lt;img src="/img/a.png"&gt;</code>')), []);
+
+  const imgs = (body) => plainAsserts(page(`<h1>t</h1>${body}`));
+  assert.deepEqual(imgs('<img src="./a.png" srcset="/img/a.png 1x, /img/b.png 2x">'), ['2 /img/ srcs: /img/a.png, /img/b.png'], 'every srcset candidate');
+  assert.deepEqual(imgs('<picture><source srcset="./a.webp 1x,/img/b.webp 2x" type="image/webp"><img src="./a.png"></picture>'), ['1 /img/ src: /img/b.webp'], 'a candidate with no space after the comma');
+  assert.deepEqual(imgs('<img srcset="  /img/a.png  100w ,\n /img/b.png 200w">'), ['2 /img/ srcs: /img/a.png, /img/b.png'], 'spaces and a newline around candidates');
+  assert.deepEqual(imgs('<img srcset="./a.png?x=1,2 1x, ./b.png 2x">'), [], 'a comma inside a URL is not a candidate');
+  assert.deepEqual(imgs('<video poster="/img/p.png" src="./v.mp4"></video>'), ['1 /img/ src: /img/p.png'], 'poster');
+  assert.deepEqual(imgs('<img src=" /img/x.png">'), ['1 /img/ src: /img/x.png'], 'a value with leading spaces');
+  assert.deepEqual(imgs('<img src="\n\t/img/x.png ">'), ['1 /img/ src: /img/x.png'], 'a value with a newline and a tab');
+  assert.deepEqual(imgs("<IMG SRC = '/img/y.png' POSTER=/img/z.png>"), ['2 /img/ srcs: /img/y.png, /img/z.png'], 'upper-case names, spaces around =, unquoted');
+  assert.deepEqual(imgs('<img data-src="/img/a.png" data-srcset="/img/b.png 1x" src="./c.png">'), [], 'data-* attributes are not sources');
+  assert.deepEqual(imgs('<img src="/img/a.png"><img alt="/img/b.png" src="./c.png" title=\'src="/img/d.png"\'>'), ['1 /img/ src: /img/a.png'], 'attribute text that looks like a source is not one');
 });
 
 await check('deployTools finds ai-readability and qa-gate in the plugin tree and in the project copy, and names what is missing', () => {
@@ -191,7 +234,8 @@ await check('--help documents inherited; its usage errors exit 2 and write nothi
   const r = await run(['--help'], { cwd: dir, script: join(dir, 'deployed-gate.mjs') });
   assert.equal(r.status, 0, r.all);
   assert.match(r.stdout, /deployed-gate\.mjs inherited --page <slug> \[--auth-header <value> \| --token-env <NAME>\] \[--dir stardust\]/);
-  for (const re of [/\.plain\.html/, /about:error/, /\/img\//, /ai-readability/, /98/, /qa-gate/, /eds-schema/, /Step 2b/, /design\.json/, /protected preview/, /by deploy/, /localize-links --check/, /davids-model-lint/, /block-roundtrip --ew/, /inherited\.json/, /not run: skipped/]) assert.match(r.stdout, re);
+  for (const re of [/\.plain\.html/, /about:error/, /\/img\//, /ai-readability/, /98/, /qa-gate/, /eds-schema/, /Step 2b/, /design\.json/, /protected preview/, /by deploy/, /localize-links --check/, /davids-model-lint/, /block-roundtrip --ew/, /inherited\.json/, /not run: skipped/, /ai-readability sends its header to every origin/]) assert.match(r.stdout, re);
+  assert.match(r.stdout, /--auth-header[^]*?preview origin only[^]*?inherited sends it with the \.plain\.html request only/, 'the --auth-header paragraph says what inherited does with the header');
   assert.deepEqual(readdirSync(dir), ['deployed-gate.mjs'], 'wrote nothing');
 
   const root = project('inherited-usage', { preview: false });
@@ -394,6 +438,70 @@ await check('.plain.html: a second <h1>, about:error and an /img/ src are a FAIL
   assert.ok(!existsSync(join(outOf(guarded.root), 'inherited.json')), 'no record');
 });
 
+await check('.plain.html answering 5xx or 429 is no verdict: ERROR (exit 124), re-run once, the other gates still run; 404 and a redirect stay a FAIL', async () => {
+  for (const status of [500, 502, 503, 504, 429]) {
+    const server = await statusServer(status);
+    try {
+      const root = project(`plain-${status}`, { origin: server.origin });
+      writeSchema(root);
+      writeDesign(root);
+      const stub = stubTools(`plain-${status}`);
+      const result = await runInherited({ dir: join(root, 'stardust'), slug: 'home', preview: previewOf(root), tools: stub.tools });
+      const row = pick(result.rows, '.plain.html');
+      assert.deepEqual([row.status, row.value, row.detail], ['ERROR', 'ERROR (exit 124)', `HTTP ${status}`], String(status));
+      assert.deepEqual([result.verdict, result.exit], ['ERROR', 124], String(status));
+      assert.deepEqual(inheritedLines(result).slice(0, 3), ['ERROR (exit 124) inherited: 1 check gave no verdict', '  .plain.html: ERROR (exit 124)', `    HTTP ${status}`]);
+      assert.deepEqual(stub.calls().map((c) => c.tool), ['readability', 'qa'], 'the other gates ran');
+      assert.equal(readJson(join(outOf(root), 'inherited.json')).verdict, 'ERROR');
+    } finally { await server.close(); }
+  }
+  for (const status of [404, 410, 301]) {
+    const server = await statusServer(status);
+    try {
+      const root = project(`plain-${status}`, { origin: server.origin });
+      const result = await runInherited({ dir: join(root, 'stardust'), slug: 'home', preview: previewOf(root), tools: stubTools(`plain-${status}`).tools });
+      const row = pick(result.rows, '.plain.html');
+      assert.deepEqual([row.status, row.value], ['FAIL', `HTTP ${status}`], String(status));
+      assert.deepEqual([result.verdict, result.exit], ['FAIL', 1], String(status));
+    } finally { await server.close(); }
+  }
+});
+
+await check('the site token goes only to the preview origin: a preview.json whose plain URL is on another origin is exit 2 before any request, for a protected or a public preview', async () => {
+  const elsewhere = await startPreviewServer();
+  const home = await startPreviewServer({ token: SECRET });
+  try {
+    for (const [name, record, auth] of [
+      ['plain-off-origin-protected', { auth: true, plain: `${elsewhere.origin}/ns/home.plain.html` }, `token ${SECRET}`],
+      ['plain-off-origin-public', { plain: `${elsewhere.origin}/ns/home.plain.html` }, null],
+      ['plain-other-port', { auth: true, plain: `http://127.0.0.1:${Number(new URL(home.origin).port) + 1}/ns/home.plain.html` }, `token ${SECRET}`],
+      ['plain-other-scheme', { auth: true, plain: `${home.origin.replace('http:', 'https:')}/ns/home.plain.html` }, `token ${SECRET}`],
+      ['plain-not-a-url', { auth: true, plain: '/ns/home.plain.html' }, `token ${SECRET}`],
+    ]) {
+      const root = project(name, { origin: home.origin, record });
+      const stub = stubTools(name);
+      const got = await attempt(() => runInherited({ dir: join(root, 'stardust'), slug: 'home', preview: previewOf(root), auth, tools: stub.tools }));
+      assert.ok(got.error instanceof UsageError && got.error.code === 2, `${name}: ${got.error}`);
+      assert.match(got.error.message, /preview\.json plain URL is not on the preview origin/, name);
+      assert.ok(!got.error.message.includes(SECRET), `${name}: the token is not echoed`);
+      assert.deepEqual(stub.calls(), [], `${name}: no instrument ran`);
+      assert.ok(!existsSync(join(outOf(root), 'inherited.json')), `${name}: no record`);
+    }
+    assert.deepEqual(elsewhere.requests, [], 'the other origin was never asked');
+    assert.deepEqual(home.requests, [], 'nor was the preview');
+  } finally { await elsewhere.close(); await home.close(); }
+
+  const server = await startPreviewServer({ token: SECRET });
+  try {
+    const root = project('plain-off-origin-cli', { origin: server.origin, record: { auth: true, plain: 'http://127.0.0.1:9/ns/home.plain.html' } });
+    const cli = await inherited(root, ['--token-env', 'MY_SITE_TOKEN'], { env: { MY_SITE_TOKEN: SECRET } });
+    assert.equal(cli.status, 2, cli.all);
+    assert.match(cli.stderr, /preview\.json plain URL is not on the preview origin/);
+    assert.ok(!cli.all.includes(SECRET));
+    assert.deepEqual(server.requests, []);
+  } finally { await server.close(); }
+});
+
 await check('a stale record and artifacts of an earlier run are removed before anything is checked', async () => {
   const root = project('stale');
   const out = outOf(root);
@@ -414,26 +522,27 @@ await check('a stale record and artifacts of an earlier run are removed before a
 
 // ---- a protected preview ---------------------------------------------------------------------------------------
 
-await check('a protected preview: .plain.html gets the header on the preview origin, ai-readability the bare token by environment (never argv), qa-gate is "n/a: protected preview"; the secret appears in no row, record or line', async () => {
-  const { result, stub, requests, root, origin, error } = await scenario('protected', { token: SECRET, record: { auth: true }, auth: `token ${SECRET}` });
+const AI_PROTECTED = 'n/a: protected preview (ai-readability sends its header to every origin)';
+
+await check('a protected preview: .plain.html gets the header on the preview origin; ai-readability (its header reaches every origin the page loads) and qa-gate (no site auth) are "n/a" and never run; the secret appears in no row, record or line', async () => {
+  const { result, stub, requests, root, error } = await scenario('protected', { token: SECRET, record: { auth: true }, auth: `token ${SECRET}` });
   assert.ifError(error);
   assert.equal(result.verdict, 'PASS');
-  assert.deepEqual(brief(result.rows).slice(0, 3).map((r) => `${r.check}: ${r.value} (${r.status})`), ['.plain.html: 200, 1 <h1> (PASS)', 'ai-readability: 99 (PASS)', 'qa-gate: n/a: protected preview (n/a)']);
+  assert.deepEqual(brief(result.rows).slice(0, 3).map((r) => `${r.check}: ${r.value} (${r.status})`), ['.plain.html: 200, 1 <h1> (PASS)', `ai-readability: ${AI_PROTECTED} (n/a)`, 'qa-gate: n/a: protected preview (n/a)']);
   assert.deepEqual(requests.map((q) => q.headers.authorization), [`token ${SECRET}`]);
-  const calls = stub.calls();
-  assert.deepEqual(calls.map((c) => c.tool), ['readability'], 'qa-gate carries no site auth: it did not run');
-  assert.equal(calls[0].token, SECRET, 'the bare token, as ai-readability puts "token " in front itself');
-  assert.deepEqual(calls[0].argv.slice(0, 3), ['--origin', origin, '/ns/home']);
-  assert.equal(flagOf(calls[0].argv, '--token-env'), 'DEPLOYED_GATE_SITE_TOKEN');
-  assert.ok(!JSON.stringify(calls[0].argv).includes(SECRET), 'the token is not in argv');
+  assert.deepEqual(stub.calls(), [], 'neither instrument ran: no token and no --token-env reached either');
   const text = [readFileSync(join(outOf(root), 'inherited.json'), 'utf8'), ...inheritedLines(result)].join('\n');
   assert.ok(!text.includes(SECRET), 'the secret is not recorded or printed');
-  assert.ok(inheritedLines(result).includes('n/a: protected preview (qa-gate)'));
+  assert.deepEqual(inheritedLines(result), [
+    'PASS inherited',
+    `${AI_PROTECTED} (ai-readability)`,
+    'n/a: protected preview (qa-gate)',
+    'by deploy (localize-links --check, davids-model-lint, block-roundtrip --ew)',
+  ]);
 
-  const leaky = await scenario('protected-leak', { token: SECRET, record: { auth: true }, auth: `token ${SECRET}`, cfg: { readability: { exit: 2, stderr: `served fetch failed: authorization: token ${SECRET}\n`, json: undefined } } });
-  assert.ifError(leaky.error);
-  assert.equal(pick(leaky.result.rows, 'ai-readability').detail, 'served fetch failed: authorization: [redacted]');
-  assert.ok(!JSON.stringify(leaky.result).includes(SECRET));
+  const failing = await scenario('protected-fail', { token: SECRET, record: { auth: true }, auth: `token ${SECRET}`, cfg: { readability: readability(50) } });
+  assert.equal(failing.result.verdict, 'PASS', 'ai-readability is not read on a protected preview: a score of 50 is never seen');
+  assert.deepEqual(failing.stub.calls(), []);
 
   const missing = await scenario('protected-no-token', { token: SECRET, record: { auth: true } });
   assert.ok(missing.error instanceof UsageError && missing.error.code === 2, String(missing.error));
@@ -446,20 +555,25 @@ await check('a protected preview: .plain.html gets the header on the preview ori
   assert.ok(!wrong.error.message.includes('not-the-one'), 'the offered token is not echoed');
 });
 
-await check('a token the preview does not need is not sent; a non-"token" scheme cannot reach ai-readability and is "n/a" there', async () => {
-  const unneeded = await scenario('public-with-token', { auth: `token ${SECRET}` });
+await check('a token the preview does not need is not sent, to the request or to either instrument, even when the environment holds one; a non-"token" scheme is sent as given to .plain.html', async () => {
+  const ambient = { ...process.env, DEPLOYED_GATE_SITE_TOKEN: 'ambient-secret' };
+  const unneeded = await scenario('public-with-token', { auth: `token ${SECRET}`, env: ambient });
   assert.ifError(unneeded.error);
   assert.equal(unneeded.result.verdict, 'PASS');
   assert.equal(unneeded.requests[0].headers.authorization, undefined);
-  assert.deepEqual(unneeded.stub.calls().map((c) => [c.tool, c.token]), [['readability', null], ['qa', null]], 'neither instrument was handed it, and qa-gate ran: the preview is public');
+  assert.deepEqual(unneeded.stub.calls().map((c) => [c.tool, c.token]), [['readability', null], ['qa', null]], 'neither instrument was handed one, and both ran: the preview is public');
+  for (const c of unneeded.stub.calls()) assert.ok(!c.argv.includes('--token-env'), `${c.tool}: no --token-env`);
 
-  const bearer = await scenario('bearer', { record: { auth: true }, auth: `bearer ${SECRET}` });
-  assert.ifError(bearer.error);
-  assert.equal(bearer.result.verdict, 'PASS');
-  assert.equal(bearer.requests[0].headers.authorization, `bearer ${SECRET}`, '.plain.html is fetched with the header as given');
-  assert.equal(pick(bearer.result.rows, 'ai-readability').status, 'n/a');
-  assert.equal(pick(bearer.result.rows, 'ai-readability').value, 'n/a: the site token is not a "token" scheme, the only one ai-readability sends');
-  assert.deepEqual(bearer.stub.calls(), [], 'neither instrument ran');
+  const open = await startPreviewServer();
+  try {
+    const root = project('bearer-open', { origin: open.origin, record: { auth: true } });
+    const stub = stubTools('bearer-open');
+    const got = await runInherited({ dir: join(root, 'stardust'), slug: 'home', preview: previewOf(root), auth: `bearer ${SECRET}`, tools: stub.tools });
+    assert.equal(got.verdict, 'PASS');
+    assert.equal(open.requests[0].headers.authorization, `bearer ${SECRET}`, '.plain.html is fetched with the header as given');
+    assert.equal(pick(got.rows, 'ai-readability').value, AI_PROTECTED);
+    assert.deepEqual(stub.calls(), [], 'neither instrument ran');
+  } finally { await open.close(); }
 });
 
 // ---- the CLI in the project-copy layout ------------------------------------------------------------------------
@@ -512,20 +626,17 @@ await check('the project-copy layout: the CLI finds the instruments beside the r
     const bare = await gate2([]);
     assert.equal(bare.status, 2, bare.all);
     assert.match(bare.stderr, /pass --auth-header or --token-env/);
+    const callsFile = join(copy, 'deploy', 'calls.jsonl');
+    const ran = () => readFileSync(callsFile, 'utf8').trim().split('\n').length;
+    const before = ran();
     const ok = await gate2(['--token-env', 'MY_SITE_TOKEN'], { MY_SITE_TOKEN: SECRET });
     assert.equal(ok.status, 0, ok.all);
     assert.equal(ok.stdout.split('\n')[0], 'PASS inherited');
     assert.ok(ok.stdout.includes('n/a: protected preview (qa-gate)'), ok.stdout);
+    assert.ok(ok.stdout.includes(`${AI_PROTECTED} (ai-readability)`), ok.stdout);
     assert.ok(!ok.all.includes(SECRET) && !readFileSync(join(outOf(root), 'inherited.json'), 'utf8').includes(SECRET));
     assert.deepEqual(guarded.requests.map((q) => q.headers.authorization), [`token ${SECRET}`], 'the one request carried the header');
-    const calls = JSON.parse(readFileSync(join(copy, 'deploy', 'calls.jsonl'), 'utf8').trim().split('\n').pop());
-    assert.deepEqual([calls.token, flagOf(calls.argv, '--token-env')], [SECRET, 'DEPLOYED_GATE_SITE_TOKEN']);
-    assert.ok(!JSON.stringify(calls.argv).includes(SECRET));
-    stubTools('copy-protected-leak', { readability: { exit: 2, stderr: `refused: token ${SECRET}\n`, json: undefined } }, join(copy, 'deploy'));
-    const leaked = await gate2(['--token-env', 'MY_SITE_TOKEN'], { MY_SITE_TOKEN: SECRET });
-    assert.equal(leaked.status, 124, leaked.all);
-    assert.ok(!leaked.all.includes(SECRET), leaked.all);
-    assert.match(leaked.stdout, /refused: \[redacted\]/);
+    assert.equal(ran(), before, 'neither instrument ran: no token reached either');
   } finally { await guarded.close(); }
 });
 

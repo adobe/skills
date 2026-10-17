@@ -12,7 +12,8 @@
 //   sanity   A4: the hard asserts on the preview at 1440 and 360 (overflow, decoration, broken images, page errors,
 //            clip-probe, content-presence). Blocking and never waivable; n/a on a protected preview.
 //   inherited  A5: deploy's delivered-page gates on the preview: the .plain.html asserts, ai-readability, qa-gate; the
-//            pre-delivery gates are recorded as run by deploy. Blocking.
+//            pre-delivery gates are recorded as run by deploy. Blocking; ai-readability and qa-gate are n/a on a
+//            protected preview.
 // Writes go only under <dir>/.work/reskin/gates/<slug>/deployed/.
 // --help answers before any helper import, so it works even from a partial copy of the scripts.
 // Exit codes: 0 pass, advisory or skipped · 1 a blocking check failed · 2 usage or setup · 3 bot challenge or token
@@ -130,11 +131,16 @@ inherited  A5. Deploy's own delivered-page gates, run on the preview. Reads prev
          problems, is exit 2; a skipped leg prints "not run: skipped", exit 0) and needs the deploy skill's scripts
          beside the reskin ones (ai-readability, qa-gate). Rows, in order:
            .plain.html     the authored form (the record's plain URL) fetched directly: 200, exactly one <h1>, no
-                           about:error, no src starting with /img/ (a repo-relative image the ingester could not
-                           take) and a top-level <div> (the sections EDS delivers); each problem is named
+                           about:error, no src, srcset candidate or poster starting with /img/ (a repo-relative image
+                           the ingester could not take) and a top-level <div> (the sections EDS delivers); each
+                           problem is named. Tags and attribute values are read, never text that looks like them. A
+                           5xx or 429 answer is no verdict (re-run once), a 404 or another answer a FAIL
            ai-readability  ai-readability.mjs on the preview's origin and path, --min 98: the page's code score
                            (its --json report); under 98 is "ai-readability <score> < 98", the blocks the served
-                           HTML lacks most below it
+                           HTML lacks most below it. On a protected preview the row is
+                           "n/a: protected preview (ai-readability sends its header to every origin)" and it is
+                           not run: it sets the site token on its whole browser context, so the token would reach
+                           every origin the page loads
            qa-gate         qa-gate.mjs on the delivered page with --schema <dir>/eds-schema/<slug>.json (deploy
                            Step 2b) and --design <deployed>/design.json (parity's cap-probe capture): its exit is
                            the verdict, its ✗ lines the findings. "n/a: run deploy Step 2b" without the schema,
@@ -144,24 +150,25 @@ inherited  A5. Deploy's own delivered-page gates, run on the preview. Reads prev
                            loop before the push and are not re-run: recorded as "by deploy", never PASS or FAIL,
                            and no part of the verdict
          A protected preview (preview.json says auth: true) needs --auth-header or --token-env (exit 2 without): the
-         .plain.html request carries the header to the preview origin only, ai-readability gets the bare token as
-         DEPLOYED_GATE_SITE_TOKEN (--token-env; it sends "token <t>", so a "bearer" or other scheme is "n/a" there).
-         A preview that needs no token is sent none. HTTP 401 or 403 on the .plain.html is exit 2. Prints "PASS
-         inherited", or "FAIL inherited" and one indented line per failing row (".plain.html: 2 <h1>",
+         .plain.html request carries the header to the preview origin only, and nothing else gets it. A record whose
+         plain URL is not on the preview origin is exit 2 ("preview.json plain URL is not on the preview origin")
+         before any request. A preview that needs no token is sent none. HTTP 401 or 403 on the .plain.html is exit 2.
+         Prints "PASS inherited", or "FAIL inherited" and one indented line per failing row (".plain.html: 2 <h1>",
          "ai-readability 97 < 98", the findings below it), one "n/a: <reason> (<rows>)" line per reason and "by
          deploy (<rows>)"; "ERROR (exit 124) inherited: <n> checks gave no verdict" and a line per row in error when
-         a check gave no verdict (no answer from the preview, an instrument exiting other than 0 or 1, no score in
-         ai-readability's report, no QA GATE line from qa-gate: re-run once). Writes inherited.json ({ verdict,
-         rows: [{ check, value, bar, status, detail? }] }) and inherited/ (ai-readability.json, qa-gate.txt) beside
-         preview.json. Exit 1 on a FAIL row, 3 on a bot challenge, 124 on a row in error (the rows measured stay in
-         inherited.json).
+         a check gave no verdict (no answer or a 5xx or 429 from the preview, an instrument exiting other than 0 or
+         1, no score in ai-readability's report, no QA GATE line from qa-gate: re-run once). Writes inherited.json
+         ({ verdict, rows: [{ check, value, bar, status, detail? }] }) and inherited/ (ai-readability.json,
+         qa-gate.txt) beside preview.json. Exit 1 on a FAIL row, 3 on a bot challenge, 124 on a row in error (the
+         rows measured stay in inherited.json).
 --path         the page's delivered path, without .html (/ns/home)
 --auth-header  Authorization header value for a protected preview, or --token-env <NAME>, the environment
                variable (or .env entry) that holds the token; neither may be empty. Sent to the preview origin
-               only, never printed or recorded (preview.json says only auth: true). tokens hands it to
-               donor-probe, content to dom-equality and slot-coverage, as the variable DEPLOYED_GATE_SITE_TOKEN,
+               only (ai-readability, which would send it to every origin the page loads, is not run on a
+               protected preview), never printed or recorded (preview.json says only auth: true). tokens hands it
+               to donor-probe, content to dom-equality and slot-coverage, as the variable DEPLOYED_GATE_SITE_TOKEN,
                which puts "token " in front of a value that starts with neither "token " nor "bearer ".
-               inherited sends it with the .plain.html request and hands ai-readability its bare token.
+               inherited sends it with the .plain.html request only.
 --reskin <f>   the local reskin page parity holds the preview to and sanity's content-presence compares it with
                (default <dir>/reskin/pages/<slug>.html).
 --dir <d>      the stardust directory (default stardust).
