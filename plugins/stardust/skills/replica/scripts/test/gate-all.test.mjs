@@ -27,8 +27,11 @@
 // presence.json `hide` (F6): the reuse deciders refuse another list (absent = []), probeInputs / gateKeyParts carry a
 // non-empty list only; a sandbox whose stub instruments log their argv: "*" then the slug's list reaches both stitches,
 // content-presence and clip-probe, records and rows carry it, fix rounds / live.png / --skip-existing reuse only the
-// same list, no hides → no --hide and no hide field, a live-session.mjs without presenceHide → one log line.
-// --dismiss (like gate.sh / anchor.mjs): parseArgs (one comma list, the last wins, no value → exit 1), the reuse deciders,
+// same list, no hides → no --hide and no hide field, a live-session.mjs without presenceHide → one log line. The site-wide
+// stardust/replica/presence.json (E9): merged under the gate dir's (mergePresence) — a site "*".hide reaches both stitches and
+// the probes with no gate dir file, the gate dir wins per field, a malformed site file is an error naming it, a
+// live-session.mjs without mergePresence → one "not honoured" line.
+// --dismiss (like gate.sh / anchor.mjs): parseArgs (one comma list, the last wins, an empty list → exit 1, no value → exit 2), the reuse deciders,
 // probeInputs / gateKeyParts / skipCapture; the hide sandbox: both stitch argv carry it before --hide, the probes do not
 // (content-presence / clip-probe take no --dismiss), records / probes.json inputs / _provenance carry it, and a capture
 // taken with another list is never reused (fix rounds, live.png on both stages, --skip-existing on both sides).
@@ -1736,6 +1739,56 @@ check('dismiss 4: --stage prototype — the archetype live.png only with the sam
   assert.equal(d.status, 0, d.stderr + d.stdout); assert.equal(argOf(d.by('ORIGIN', 'home')[0], '--dismiss'), '.nl-close'); assert.equal(argOf(d.by('EDS', 'home')[0], '--dismiss'), '.nl-close');
   assert.match(hlog(HPROTO), /origin home → not reused \(--skip-existing: dismiss list differs\)/); assert.match(hlog(HPROTO), /eds home → not reused \(--skip-existing: dismiss list differs\)/);
   rmSync(g, { recursive: true, force: true });
+});
+// ---- the site-wide presence.json (stardust/replica/presence.json), merged UNDER the gate dir's (live-session mergePresence)
+const SITE = join(hroot, 'stardust/replica/presence.json');
+const setSite = (json) => { mkdirSync(dirname(SITE), { recursive: true }); writeFileSync(SITE, typeof json === 'string' ? json : JSON.stringify(json)); };
+check('site 1: no gate dir presence.json — the site file\'s "*".hide reaches both stitches, content-presence and clip-probe of every page; origin.json / eds.json / probes.json inputs / the row record it; _run.log names the merge', () => {
+  rmSync(join(HOUT, 'presence.json'), { force: true }); setSite({ '*': { hide: ['.site-bar'] } });
+  const r = hgate([]);
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  for (const slug of ['home', 'about']) {
+    for (const name of ['ORIGIN', 'EDS', 'CONTENT']) { const l = r.by(name, slug); assert.equal(l.length, 1, `${name} ${slug}`); assert.equal(hideArg(l[0]), '.site-bar', `${name} ${slug}: ${l[0]}`); }
+    for (const f of ['origin.json', 'eds.json']) assert.deepEqual(hjson(slug, f).hide, ['.site-bar'], `${slug} ${f}`);
+    assert.deepEqual(hjson(slug, 'probes.json').inputs.hide, ['.site-bar']); assert.deepEqual(r.row(slug).hide, ['.site-bar'], `${slug} row`);
+  }
+  assert.match(hlog(), / presence: stardust\/replica\/presence\.json \(stardust\/replica\/gates\/all-1440\/presence\.json not found\) — the gate dir's field wins$/m);
+  const c = hgate(['--only', 'about', '--no-content']);
+  assert.equal(c.status, 0, c.stderr + c.stdout); assert.equal(hideArg(c.by('CLIP', 'about')[0]), '.site-bar'); assert.equal(c.by('ORIGIN', 'about').length, 0, 'the same merged list: the origin is kept');
+});
+check('site 2: the gate dir wins per field — its "*".hide over the site\'s; a slug\'s fields only the site has (hide, main) are kept beside the gate\'s variable; the merged entry is the probe input without reasons', () => {
+  setSite({ '*': { hide: ['.site-bar'] }, home: { hide: ['.promo-strip'], main: 'main.site', reasons: { '.promo-strip': 'R-01' } } });
+  setPresence({ '*': { hide: ['.geo-bar'] }, home: { variable: ['.rail'] } });
+  const r = hgate([]);
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  for (const [slug, want] of [['home', '.geo-bar,.promo-strip'], ['about', '.geo-bar']]) for (const name of ['ORIGIN', 'EDS', 'CONTENT']) assert.equal(hideArg(r.by(name, slug)[0]), want, `${name} ${slug}`);
+  const c = r.by('CONTENT', 'home')[0]; assert.deepEqual([argOf(c, '--main'), argOf(c, '--variable')], ['main.site', '.rail'], c);
+  assert.deepEqual(hjson('home', 'probes.json').inputs.presence, { hide: ['.promo-strip'], main: 'main.site', variable: ['.rail'] });
+  assert.deepEqual(r.row('home').hide, ['.geo-bar', '.promo-strip']);
+  assert.match(hlog(), / presence: stardust\/replica\/gates\/all-1440\/presence\.json over stardust\/replica\/presence\.json — the gate dir's field wins$/m);
+});
+check('site 3: a malformed site file is an error naming it — exit 1, no capture, no probe', () => {
+  setSite('{"*": ');
+  const r = hgate([]);
+  assert.equal(r.status, 1, r.stderr + r.stdout); assert.equal(r.all.length, 0, r.all.join('\n'));
+  assert.match(r.stderr, /^gate-all error: presence\.json stardust\/replica\/presence\.json unreadable \(/m);
+});
+check('site 4: a live-session.mjs without mergePresence leaves the site file out — one "presence hide: not honoured for <site file> (site-wide)" line, the gate dir\'s list only; one without presenceHide and a site-only hide → the one "not honoured" line, no hides', () => {
+  setSite({ '*': { hide: ['.site-bar'] } }); setPresence({ '*': { hide: ['.geo-bar'] } });
+  renameSync(join(HDS, 'live-session.mjs'), join(HDS, 'live-session-real.mjs'));
+  try {
+    writeFileSync(join(HDS, 'live-session.mjs'), "export { freshness, maxAgeHours, presenceHide, reuseRecord, runStartAt } from './live-session-real.mjs';\n");
+    const a = hgate([]);
+    assert.equal(a.status, 0, a.stderr + a.stdout); assert.equal((a.stdout.match(/presence hide: not honoured/g) || []).length, 1, a.stdout);
+    assert.match(a.stdout, / presence hide: not honoured for stardust\/replica\/presence\.json \(site-wide\) — the diff scripts dir has no live-session\.mjs with mergePresence; captures and probes run with stardust\/replica\/gates\/all-1440\/presence\.json only$/m);
+    assert.equal(hideArg(a.by('ORIGIN', 'home')[0]), '.geo-bar');
+    rmSync(join(HOUT, 'presence.json'));
+    writeFileSync(join(HDS, 'live-session.mjs'), "export { freshness, maxAgeHours, reuseRecord, runStartAt } from './live-session-real.mjs';\n");
+    const b = hgate([]);
+    assert.equal(b.status, 0, b.stderr + b.stdout); assert.equal((b.stdout.match(/presence hide: not honoured/g) || []).length, 1, b.stdout);
+    assert.match(b.stdout, / presence hide: not honoured — the diff scripts dir has no live-session\.mjs with presenceHide/);
+    assert.ok(b.all.length && b.all.every((l) => !l.includes('--hide')), b.all.join('\n'));
+  } finally { rmSync(join(HDS, 'live-session.mjs')); renameSync(join(HDS, 'live-session-real.mjs'), join(HDS, 'live-session.mjs')); rmSync(SITE, { force: true }); setPresence({}); }
 });
 rmSync(hroot, { recursive: true, force: true });
 

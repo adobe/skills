@@ -74,6 +74,14 @@
  * `hidden` (text), and a selector that matched nothing (×0) or is invalid is one _run.log line per side. Origin
  * fallback: live stitch → previous origin (--recapture-origin) → <crawl-shots>/<slug>.png (`crawl-fullpage`,
  * asymmetric, flagged — an INCONCLUSIVE row).
+ * SITE-WIDE PRESENCE: stardust/replica/presence.json (cwd-relative, the same shape: `"*"` and `<slug>` → { hide, main,
+ * variable, reasons }) is merged UNDER <out>/presence.json by live-session's mergePresence — per top-level key and field
+ * the gate dir's value wins, keys and fields only one file has are kept, a missing file is {} — and the merged object is
+ * the presence everywhere above (hide lists of both stitches and the probes, main / variable, probes.json inputs, the
+ * gate key); `reasons` (presence.mjs's notes) is read by no one here. A malformed file of either is an error naming it
+ * (`presence.json <file> unreadable (…)`, exit 1, before any write). _run.log names the merge (`presence: <gate file>
+ * over <site file>`, or `<site file> (<gate file> not found)`); a diff scripts dir whose live-session.mjs cannot merge
+ * (no mergePresence) leaves the site file out — one `presence hide: not honoured for <site file> (site-wide) …` line.
  * DISMISS: --dismiss <sel,…> (like gate.sh / anchor.mjs: one comma list, the last flag wins) hands a site's own
  * overlay-dismiss selectors (a marketing modal with a non-standard closer) to BOTH stitches — `--dismiss <list>`, before
  * `--hide` in the argv; stitch-shot dismisses before it hides, on both sides alike. The diff probes gate-all runs
@@ -300,6 +308,9 @@ Sidecars in <out>/: masks.json, overrides.json, clip-allow.json, presence.json, 
   exceeds magnitude: use --hide / presence.json" (no prefix), totals.overrideMagnitude, and summary.md's line "Override
   exceeds magnitude (fix the capture / hide list, not a deviation): <path>, …".
   presence.json "hide" (per slug or "*"): in-flow regions removed on both sides before measuring.
+  stardust/replica/presence.json (site-wide, the same shape) is merged under <out>/presence.json — per key and field
+  the gate dir's value wins — for every use above (hide lists, main / variable, probe inputs, the gate key); a malformed
+  one is an error naming it (exit 1); _run.log names the files merged.
 Reuse sidecars per page: probes.json, gate-key.json (see the header).
 Fix rounds per page: <out>/<slug>/rounds.json { rounds, max, at[], [resets], [seeded, seededFrom] } — without it the
   count is seeded from runs/*.json rows with a verdict; every row carries round (+ roundReset on a reset row). An --only
@@ -1168,6 +1179,31 @@ async function oneLoadLib() {
 
 const readJson = (p, d = null) => (existsSync(p) ? JSON.parse(readFileSync(p, 'utf8')) : d);
 
+// ---- presence: the site-wide stardust/replica/presence.json merged UNDER <out>/presence.json --------------------------
+const SITE_PRESENCE_FILE = 'stardust/replica/presence.json'; // live-session's SITE_PRESENCE when it exports one
+const hasHide = (doc) => Object.values(doc && typeof doc === 'object' ? doc : {}).some((e) => e && typeof e === 'object' && e.hide != null);
+/**
+ * presenceOf(out) → { presence, note, notHonoured }: the run's one presence object — live-session's mergePresence(site,
+ * gate) of the site-wide file (cwd-relative) and <out>/presence.json (per top-level key and field the gate dir's value
+ * wins; keys / fields only one file has are kept; a missing file = {}), each entry without `reasons` (presence.mjs's notes,
+ * read by no one here). A malformed file of either throws `presence.json <file> unreadable (…)`. `note` names the sources
+ * when a site file is merged; `notHonoured` is the one log line when the diff scripts dir cannot honour them — no
+ * presenceHide: no hides at all; no mergePresence: the site file is left out of the run.
+ */
+function presenceOf(out) {
+  const read = (f) => { if (!existsSync(f)) return null; try { return JSON.parse(readFileSync(f, 'utf8')); } catch (e) { throw new Error(`presence.json ${f} unreadable (${e.message})`); } };
+  const gateFile = join(out, 'presence.json'); const siteFile = (FRESH && typeof FRESH.SITE_PRESENCE === 'string' && FRESH.SITE_PRESENCE) || SITE_PRESENCE_FILE;
+  const gate = read(gateFile); const site = read(siteFile);
+  const hideOk = !!FRESH && typeof FRESH.presenceHide === 'function'; const mergeOk = !!FRESH && typeof FRESH.mergePresence === 'function';
+  const merged = site && mergeOk ? FRESH.mergePresence(site, gate) : gate && typeof gate === 'object' ? gate : {};
+  const presence = Object.fromEntries(Object.entries(merged).map(([k, e]) => [k, e && typeof e === 'object' && !Array.isArray(e) ? Object.fromEntries(Object.entries(e).filter(([f]) => f !== 'reasons')) : e]));
+  const note = site && mergeOk ? `presence: ${gate ? `${gateFile} over ${siteFile}` : `${siteFile} (${gateFile} not found)`} — the gate dir's field wins` : null;
+  let notHonoured = null;
+  if (!hideOk && (hasHide(gate) || hasHide(site))) notHonoured = 'presence hide: not honoured — the diff scripts dir has no live-session.mjs with presenceHide; captures and probes run without hides';
+  else if (site && typeof site === 'object' && Object.keys(site).length && !mergeOk) notHonoured = `presence hide: not honoured for ${siteFile} (site-wide) — the diff scripts dir has no live-session.mjs with mergePresence; captures and probes run with ${gate ? gateFile : 'no presence.json'} only`;
+  return { presence, note, notHonoured };
+}
+
 function run(cmd, args, { timeoutMs = 480000 } = {}) {
   return new Promise((res) => {
     const ch = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'] });
@@ -1264,6 +1300,8 @@ async function main() {
   if (opts.deadlineSec && opts.deadlineSec < R.estimatedSeconds) { console.error(`gate-all: refused to start, no verdict — ${rosterText(R)} need an estimated ${R.estimatedSeconds} s (${estimateText(R)}), above this job's run-bg deadline of ${opts.deadlineSec} s (RUN_BG_DEADLINE_SEC); re-start the job with run-bg.mjs start --timeout ${R.estimatedSeconds} …, or omit --timeout: run-bg sizes a gate-all job's deadline to this estimate`); process.exit(2); }
   // Fix rounds (--only): reserve every selected page's round, then the cap — refused before the out dir and any write.
   const slugs = [...new Set(pages.map((p) => p.slug))].sort();
+  // presence: the site-wide file merged UNDER <out>/presence.json (read before any write: a malformed one names its file)
+  const PRES = presenceOf(opts.out);
   const lockNotes = opts.only ? reserveRounds(opts.out, slugs) : [];
   const TABLES = runTables(opts.out);
   const ROUNDS = Object.fromEntries(slugs.map((slug) => [slug, roundsOf(opts.out, slug, TABLES)]));
@@ -1273,7 +1311,7 @@ async function main() {
   const MASKS = readJson(join(opts.out, 'masks.json'), {}); const OVERRIDES = readJson(join(opts.out, 'overrides.json'), {});
   // the inconsistency register an override must name an entry of (read once; cwd-relative like units.json)
   const REGISTER = (() => { try { return { file: REGISTER_FILE, found: true, ids: registerIds(readFileSync(REGISTER_FILE, 'utf8')) }; } catch { return { file: REGISTER_FILE, found: false, ids: [] }; } })();
-  const CLIP_ALLOW = readJson(join(opts.out, 'clip-allow.json'), {}); const PRESENCE = readJson(join(opts.out, 'presence.json'), {});
+  const CLIP_ALLOW = readJson(join(opts.out, 'clip-allow.json'), {}); const PRESENCE = PRES.presence;
   const FAMILIES = readJson('stardust/replica/units.json', null);
   const UNITS = readJson(opts.units || join(opts.out, 'units.json'), {});
   const unitsOf = (p) => (FAMILIES ? unitsFor(FAMILIES, p.slug, p.template) : ((UNITS[p.slug] || {}).units || []).map((x) => ({ origin: x.origin, eds: x.eds || x.origin, n: x.n || 1, required: x.required !== false })));
@@ -1303,7 +1341,8 @@ async function main() {
     const miss = hiddenMisses(h); if (miss) log(`${side} ${p.slug} → ${miss}`);
     return { hidden: h };
   };
-  if (!HIDE_OK && Object.values(PRESENCE || {}).some((e) => e && typeof e === 'object' && e.hide != null)) log('presence hide: not honoured — the diff scripts dir has no live-session.mjs with presenceHide; captures and probes run without hides');
+  if (PRES.note) log(PRES.note);
+  if (PRES.notHonoured) log(PRES.notHonoured);
   const dir = (p) => join(opts.out, p.slug);
   const edsUrl = (p) => (opts.edsHost ? p.liveUrl.replace(/^https?:\/\/[^/]+/, opts.edsHost) : p.liveUrl);
   const hostOf = (p) => { try { return new URL(edsUrl(p)).origin; } catch { return null; } }; // this run's build origin
