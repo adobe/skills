@@ -24,13 +24,13 @@ version; numbers marked "local" are integration-only and renumbered by the maint
 - `stardust/rollout-block-origin` — 0.34.1 (#136 local).
 - `stardust/rollout-run-followups` — 0.35.7 (#143 local); it tracks the gate's JSON sidecars under
   `replica/gates/`, which replaced the local stand-in.
+- `stardust/handover-followups` — 0.35.9 (#144 local).
 - Local-only commits: the scripts-index lint cap at 16 KiB, then 20 KiB; an encoded page's sidecar feeds
   its delivered `lang` in the rollout inventory; the master card's Versioning line names the tracked gate
   sidecars; the renumbering above.
-- Not in this image: `stardust/handover-followups` (0.35.9, awaiting its nav fix) and
-  `stardust/capture-dialogs-and-denials` (0.35.8, still in progress).
+- Not in this image: `stardust/capture-dialogs-and-denials` (0.35.8, still in progress).
 
-## 0.35.9 — handover follow-ups: the encoder attempted before A′, fork slots from the block mapping (#NNN provisional)
+## 0.35.9 — handover follow-ups: the encoder attempted before A′, fork slots from the block mapping (#144)
 
 A recorded hands-off run never invoked the encoder: it hand-built every A′ sibling, wrote each sibling's slot data by
 hand, and its plan ledger could not say how many templates were encoded. Review of the 0.35.4 handover tools left open
