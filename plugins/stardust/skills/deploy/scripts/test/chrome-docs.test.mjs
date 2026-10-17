@@ -4,7 +4,8 @@
 // search link, a search button) and a footer (link columns with headings, a legal line with links, social icon links,
 // a newsletter form); entities (a prototype-key name stays literal); the empty-list nav; column-only nav items, with and
 // without their own label; a Back or Close control at the top of a panel stays a skipped control, while a dropdown
-// wrapper holding its own trigger keeps that label; the CLI (written, unchanged, --check, --prefix, a missing source).
+// wrapper holding its own trigger keeps that label; a label heads every column after the list it heads; the CLI
+// (written, unchanged, --check, --prefix, a missing source).
 // Run: node plugins/stardust/skills/deploy/scripts/test/chrome-docs.test.mjs
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -384,6 +385,28 @@ check('nav: a dropdown wrapper holding its own trigger and list keeps the label 
   r = navFor(`<li><div class="dropdown"><button>Products</button>${P12}</div><div class="dropdown"><button>Services</button>${s1}</div></li>`);
   assert.equal(sectionsOf(r.doc)[1], two);
   assert.deepEqual(r.counts, { brand: 1, links: 3, tools: 0, skipped: 0 });
+});
+check('nav: a label heads every column after the list it heads — a dropdown wrapper\'s own link, button or text over two columns keeps both under it', () => {
+  const under = (head) => `      <ul>
+        <li>${head}
+          <ul>
+    ${W_G.replace(/\n/g, '\n    ')}
+          </ul>
+        </li>
+      </ul>`;
+  const r = navFor(`<li><div class="dropdown"><a href="/products">Products</a>${COL_W}${COL_G}</div></li>`);
+  assert.equal(sectionsOf(r.doc)[1], under('<a href="/products">Products</a>'));
+  assert.deepEqual(r.counts, { brand: 1, links: 3, tools: 0, skipped: 0 });
+  assert.equal(navOf(`<li><div class="dropdown"><button>Products</button>${COL_W}${COL_G}</div></li>`), under('Products'));
+  assert.equal(navOf(`<li><div class="dropdown"><span class="label">Products</span>${COL_W}${COL_G}</div></li>`), under('Products'));
+  assert.equal(navOf(`<li><div class="dropdown"><a href="/products">Products</a><div class="col"><ul><li><a href="/w1">W1</a></li></ul></div><div class="col"><ul><li><a href="/g1">G1</a></li></ul></div></div></li>`), `      <ul>
+        <li><a href="/products">Products</a>
+          <ul>
+            <li><a href="/w1">W1</a></li>
+            <li><a href="/g1">G1</a></li>
+          </ul>
+        </li>
+      </ul>`);
 });
 check('entities: a name that is an Object.prototype key stays literal text; a tag of that name parses', () => {
   assert.equal(decode('&constructor; &toString; &valueOf; &hasOwnProperty; &amp;'), '&constructor; &toString; &valueOf; &hasOwnProperty; &');

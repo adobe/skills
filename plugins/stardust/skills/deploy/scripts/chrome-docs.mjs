@@ -28,9 +28,10 @@
  *                (none: an empty section, `brand 0`)
  *                section 2 links: the top-level <ul>/<ol> with the most links, lists inside <nav> first, as a clean
  *                <ul>; nesting only where the source has a list (a link, a heading or column text right before a
- *                list heads it; a badge or description after a link stays inline), other text stays inline in its
- *                item; a trigger without href keeps its label text as the first part of an item, or of a column with
- *                no label before it (a dropdown wrapper holding its toggle and list); in a column after a label, a
+ *                list heads it, and every column right after that list; a badge or description after a link stays
+ *                inline), other text stays inline in its item; a trigger without href keeps its label text as the
+ *                first part of an item, or of a column with no label before it (a dropdown wrapper holding its
+ *                toggle and list); in a column after a label, a
  *                button or a link without href (a Back or Close at the top of a panel) is a control; a column
  *                (a div, section, … holding a list) is read on its own — every heading or link in it heads the list
  *                right after it, a run after its first list stands as an entry — so a column heading never labels
@@ -331,7 +332,8 @@ const navLi = (head, items) => (items.length ? block(`<li>${head}`, [block('<ul>
  * into a dropdown trigger. A column is read on its own, so none of its text is ever the item's label: in it even the
  * first link or text heads the list right after it, its label is only what comes before its first list, and a run
  * after that heads the next list or stands as an entry of its own. A labelled column is one entry; one without a
- * label stands in for a list (a link or block text right before it heads its entries).
+ * label stands in for a list (a link or block text right before it heads its entries). A label that heads a list
+ * also heads every column right after it (a dropdown's link, toggle or text over its columns side by side).
  */
 function navGroup(el, ctx, column = false, triggers = true) {
   let columns = false;
@@ -340,7 +342,7 @@ function navGroup(el, ctx, column = false, triggers = true) {
     if (p.kind !== 'column') return p;
     columns = true;
     const c = navGroup(p.el, ctx, true, p.triggers);
-    return c.head ? { kind: 'column', items: [navLi(c.head, c.items)] } : { kind: 'list', items: c.items };
+    return c.head ? { kind: 'column', items: [navLi(c.head, c.items)], fromColumn: true } : { kind: 'list', items: c.items, fromColumn: true };
   });
   const inline = [];
   const items = [];
@@ -351,7 +353,9 @@ function navGroup(el, ctx, column = false, triggers = true) {
     if (p.items && run && p.kind === 'list') { items.push(navLi(run.join(' '), p.items)); run = null; seen = true; }
     else if (p.items) { flush(); items.push(...p.items); seen = true; }
     else if ((column || i > 0) && (p.kind === 'link' || p.block) && next?.kind === 'list') {
-      flush(); items.push(navLi(p.html, next.items)); i += 1; seen = true;
+      const sub = [...next.items]; i += 1;
+      while (parts[i + 1]?.fromColumn) { i += 1; sub.push(...parts[i].items); }
+      flush(); items.push(navLi(p.html, sub)); seen = true;
     } else if (column && seen) { if (p.block || !run) { flush(); run = []; } run.push(p.html); }
     else inline.push(p.html);
   }
