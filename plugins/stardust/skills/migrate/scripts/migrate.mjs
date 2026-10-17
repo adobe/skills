@@ -51,8 +51,10 @@
  *   until one is named. Source HTML: --source, else page.prototypePath, else
  *   <proto-dir>/<slug>-proposed.html; an A / B page without one is refused (strict source). A
  *   directed page with its own source HTML renders A' from it; without one (or with
- *   --from-archetype) it is an A' FORK of the archetype's source HTML (below). The one remaining
- *   source refusal on A': `strict source — archetype <a> has no proposed HTML at <path>`.
+ *   --from-archetype) it is an A' FORK of the archetype's source HTML (below). The source
+ *   refusals on A': an explicit --source <slug>=<file> that does not exist (`strict source — no
+ *   source HTML at <path>`; never forked instead), and `strict source — archetype <a> has no
+ *   proposed HTML at <path>`.
  *   Canon CSS: --canon-css, else stardust/canon/canon.css, else the single *canon*.css under
  *   --proto-dir. Per page one line `A  <slug> → <path>  (<type>; n assets, n links, n broken,
  *   n sections)` (a fork adds `fork of <archetype>; `), `unchanged` when the recorded shas and
@@ -660,6 +662,7 @@ export function chooseBranch(run, page) {
   const noSource = () => new Refusal(page.slug, 'source', `no source HTML at ${source}`, 'pass --source <slug>=<file> or build the page first');
   if (run.branchB.has(page.slug)) { if (!own) throw noSource(); return { branch: 'B', tier: 'thin', archetype: null, source, fork: false }; }
   if (page.status !== 'directed') { if (!own) throw noSource(); return { branch: 'A', tier: 'archetype', archetype: null, source, fork: false }; }
+  if (run.sources.has(page.slug) && !own) throw noSource(); // a named --source that is missing is a mistake, never a fork
   const flagged = run.archetypes.get(page.slug); const named = namedArchetype(run, page);
   let archetype = null;
   if (named) {

@@ -515,6 +515,13 @@ check('fork refusals: archetype without data-slot, missing slot values (every na
   assert.match(r.out, /^rendered 0, unchanged 0, refused 3, passthrough 0 /m);
   for (const p of ['notes/one', 'guides/short', 'guides/orphan']) assert.ok(!has(`${OUT}/${p}/index.html`) && !has(`${OUT}/${p}/_meta.json`), p);
 });
+check('an explicit --source <slug>=<file> that does not exist is a strict source refusal, never a fork; nothing written', () => {
+  const before = [read(`${OUT}/guides/alpha/index.html`), read(`${OUT}/guides/alpha/_meta.json`)];
+  const r = run(['render', 'guide-alpha', '--source', 'guide-alpha=stardust/prototypes/nope.html', '--force']); assert.equal(r.status, 2);
+  assert.match(r.err, /^refused guide-alpha: strict source — no source HTML at stardust\/prototypes\/nope\.html — pass --source <slug>=<file> or build the page first$/m);
+  assert.doesNotMatch(r.out, /fork of/);
+  assert.deepEqual([read(`${OUT}/guides/alpha/index.html`), read(`${OUT}/guides/alpha/_meta.json`)], before);
+});
 check("forkHead (pure): capture text with $ sequences lands verbatim (escaped); the archetype's hreflang alternates go", () => {
   const arch = '<html lang="en"><head><title>Arch</title>\n<meta name="description" content="Arch desc.">\n<link rel="alternate" hreflang="de" href="https://example.test/de/guides/">\n<link rel="alternate" hreflang="x-default" href="https://example.test/guides/">\n<link rel="alternate" type="application/rss+xml" href="/feed.xml">\n<link rel="stylesheet" href="site.css">\n</head><body><main></main></body></html>';
   const h = forkHead(arch, { title: 'Save $$ and $& more', metaDescription: "From $' on" });
