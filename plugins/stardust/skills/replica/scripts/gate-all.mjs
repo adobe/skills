@@ -231,7 +231,8 @@ const delivered = (r) => { const d = (r && r.delivery) || {}; return (d.status =
  * coveragePages(doc, { state }) → the published pages of a rollout coverage doc (pages.json `pages`), in file order: each
  * delivered row with a source.sourceUrl → { slug, url: sourceUrl, liveUrl: deployedUrl, template, fidelityTier,
  * deliveryStatus[, deployedPath] }. template / fidelityTier are the state page's own (same slug) when state has one — its
- * units and gate key stay those of the state-selected page — else templateId / null; deployedPath: the state page's, else the row's path.
+ * units stay those of the state-selected page, its gate key too while deployedUrl / sourceUrl equal the state's liveUrl / url —
+ * else templateId / null; deployedPath: the state page's, else the row's path.
  */
 export function coveragePages(doc, { state = null } = {}) {
   return pagesOf(doc).filter((r) => delivered(r) && r.source && r.source.sourceUrl).map((r) => {

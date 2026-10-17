@@ -15,7 +15,8 @@ lost a 43-minute roster run to "no pages selected"; the agent also found that `-
   when it exists, else `--state`): rows `deployed` / `verified`, and `failed` with a `gate:` error so a fix round
   re-gates them, each with `delivery.deployedUrl` (the gated URL, its host rewritten by `--eds-host`) and
   `source.sourceUrl` (the origin). A `state.json` beside it is optional and lends `template` / `fidelityTier` /
-  `deployedPath` by slug, so a page that was already selectable keeps its verdict, units and gate key. The coverage
+  `deployedPath` by slug, so a page that was already selectable keeps its template, tier and units — and its gate
+  key while its coverage `deployedUrl` / `source.sourceUrl` equal the state's `liveUrl` / `url`. The coverage
   wins over `--state` for the published stage; `--state` keeps the prototype stage and legacy projects (no coverage
   file). run-bg's roster estimate resolves the source the same way; an explicit `--coverage` also feeds the gate
   key's block list (the default path did already).
@@ -39,8 +40,8 @@ lost a 43-minute roster run to "no pages selected"; the agent also found that `-
   hand-built roster. The stardust skill names an agent-written roster builder for gate-all as a deviation to record.
 
 Patch: an input source added, no verdict change. Numbered 0.35.1 provisionally — the stack is renumbered at merge.
-No threshold, criterion, capture or reuse change; a page that was already selectable keeps its verdict, units and
-gate key.
+No threshold, criterion, capture or reuse change; a page that was already selectable keeps its template, tier and
+units, and its gate key while its coverage `deployedUrl` / `source.sourceUrl` equal the state's `liveUrl` / `url`.
 
 ## 0.34.5 — replica self-hosts the source's brand faces; one hide list for in-flow bars across captures, probes and the header contract; cap-probe lists unpaired modules
 
