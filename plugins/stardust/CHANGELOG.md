@@ -4,6 +4,136 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.35.7 — bookkeeping follow-ups from a recorded local run: scripts record the units, gap closure is bounded, the foundation is three units (#NNN provisional)
+
+A recorded ten-page local hands-off run recorded its units by 16 hand-written `node -e` edits of the progress ledgers,
+missed headings it passed to `section.mjs` verbatim, read 65 full-page PNGs (about 17 MB) into context and held the
+foundation in one subagent for 78 minutes while that context grew to about 481k tokens (48 % of the session's cost).
+Its verifier read 7 of 10 pages as 404s — a slash appended for an `index.html` source — and trailing-slash redirect
+rows papered over it; one unit's `localize-links` pass rewrote documents another unit owned; `dynamics-check.mjs`
+exited 0 with a FAIL row; the gate's JSON was gitignored, so a lost container takes the row of record with it; four
+delivered blocks had no ledger row and a deliberately undelivered one no status; the usage ledger never ran, and
+header parity ended with four undecided errors. On a site with a consent manager in a shadow root the main agent
+patched the crawler's own selector list in place, though the gate instruments' table already held the button. A
+recorded 99-page hands-off run spent about half its cost in an unbounded gap-closure loop after the procedure ended:
+no ledger line, coverage never updated, done-check stuck at `pages_failed:89`. Follow-up items K1–K8, K10, K11 and K15
+ship here.
+
+- **The gate's JSON is tracked; its images stay ignored (K1).** `stardust/reference/stardust.gitignore` replaces the
+  bare `replica/gates/` line with `replica/gates/**`, `!replica/gates/**/`, `!replica/gates/**/*.json` (git cannot
+  re-include a file below an excluded directory), so the checkpoint commit carries summary, overrides, presence,
+  rounds, triage and probes, and a lost container keeps the row of record. The artifact map and the handoff contract's
+  checkpoint sentence say so; a project set up earlier swaps its bare line for the template's three.
+- **done-check names what blocks completion; gap closure is one bounded ledger phase (K2).** `done-check.mjs` adds
+  `gates_inconclusive:N` (a gate with no verdict leaves `pages_failed` unless the row failed for another reason),
+  lists an object override without `valid: true` as not validated by gate-all (it no longer counts as earned or toward
+  the 10 % cap; the string form keeps its register logic) and adds `header_parity_errors:N` for
+  `chrome/header-parity.json` in any project. `ledger.mjs` knows the rollout `gap-closure` phase, the one unlettered
+  phase. The handoff contract (row C) enters it only when done-check lists `pages_failed` after C-final: at most one
+  pass per template, each within the three-round fix cap, `update-coverage.mjs --gate` after every pass, an `end` line
+  with the residuals; the remaining phases run and replica's `handoff end` records the residuals — never withheld,
+  never a second loop. Its remedies name the new gaps.
+- **Verifier truth (K3).** `rollout/scripts/lib.mjs` `publicUrl()` reads `delivery.deployedUrl` by the delivered-path
+  contract (`.html` stripped, `/index` → `/`, a recorded trailing slash kept), else the row's path — no slash appended
+  from the migrated file name; done-check's redirect check asks for a line when a slash-ended source URL is served
+  without the slash. `verify.mjs` reads media and text-track links (`.vtt`, `.srt`, audio, video, stream manifests) as
+  assets. `inventory.mjs --state` needs `pages[]` of objects with a `url` and an archetypes-only tree, else exit 2
+  with one line and nothing written. Identical bytes never mark a row stale; a roster row's hash (its capture or URL)
+  is another basis than a migrated file's, so once the page is migrated it keeps its status, takes the file's hash and
+  is named on one `Kept … not compared` line.
+- **Blocks the export can see (K4).** `rollout/scripts/blocks.mjs` registers every `blocks/<name>/` holding
+  `<name>.js` or `<name>.css` that no planned row covers (by id, EDS name or `edsBlockName`; header and nav are one
+  chrome) as a `source: blocks-dir` row (`--blocks <dir>`; a missing dir is a note; a re-run writes the same bytes).
+  `update-coverage.mjs --block <name> --status not-delivered --reason "<text>"` records a block deliberately left
+  undelivered (reason required, exit 2 otherwise; found by id, then `edsBlockName`). `blockCounts` returns `{total,
+  converted, notDelivered, pending}`, inventory seeds `lastRun.blocks` in that shape, the rollout schemas declare the
+  status, its reason, the row source and the count, and the report's Blocks line reads `<B> total · <c> converted ·
+  <n> not delivered · <p> pending`; the coverage model documents both.
+- **Unit records and section reads go through scripts (K5).** New `stardust/scripts/progress.mjs unit
+  start|done|failed <name>` (`--ledger rollout|migrate|replica`, `--kind`, `--pages`, `--blocks`, `--templates`,
+  `--verdict`, `--set key=value`, `--again`; `show`) edits one entry of `stardust/rollout/progress.json`,
+  `stardust/migrate/progress.json` or `stardust/replica/progress.json` (`types.<archetype>`) under deploy's
+  `file-lock.mjs`, re-read inside the lock and written atomically; it refuses a malformed shape with nothing written,
+  keeps the replica ledger's other top-level keys and prints the row. The handoff contract and the skill docs name it
+  instead of `node -e` edits; replica Setup copies `progress.mjs` and, early, the deploy file it needs,
+  `file-lock.mjs`. `replica/scripts/section.mjs` retries a pattern that does not compile or hits no heading by its
+  words (case, accents and punctuation ignored, in order, a word may start a longer one; one stderr line says so); a
+  total miss prints the outline on stdout, exit 2 (a bad regex was exit 125).
+- **A unit's localize-links pass stays in its unit; dynamics-check fails loudly (K6).**
+  `deploy/scripts/localize-links.mjs --unit <name>` (`--units-dir`, default `stardust/rollout/units`) rewrites, counts
+  and checks only the documents of `units/<name>.paths` while the URL map still spans the whole content tree, so the
+  unit's links to other units' pages still localize; a missing `.paths` or a unit with no document is exit 1, a path
+  without a document a note; without `--unit` nothing changes. The per-page chain, row C and the deploy skill pass
+  `--unit` inside a unit; the whole-tree pass runs where no unit runs (C-final). `dynamics/scripts/dynamics-check.mjs`
+  sets its exit code before the backstop timer — 0 every check passed, 2 any FAIL, 1 usage (was 2) — and rollout D2
+  says a parity fix changes block code, never the delivered content's meaning.
+- **The usage ledger always writes its table (K7).** `stardust/scripts/token-ledger.mjs` with unreachable transcripts
+  still writes `stardust/usage.md` and `usage.json` from the phase windows (`status.jsonl`) and the unit rows (the two
+  unit ledgers): from / to, wall minutes and pages kept, every token and request cell `unknown` (JSON `null`,
+  top-level `"usage": "unknown"` and `unknownReason`); with nothing to window, one `usage: unknown (<why>)` row; exit
+  stays 0. It is a step at rollout `H-report` and before replica `handoff end`, and both files are committed (master
+  step 5, the artifact map, the contract's row H).
+- **The foundation runs as three recorded sub-units; the freeze runs once after them (K8).** Row C of the handoff
+  contract and rollout Phase C split C0 into `foundation-chrome` (header and footer blocks, the chrome documents,
+  per-locale nav and footer), `foundation-styles` (styles, fonts, favicon, scripts, `stardust/runtime-contract.json`),
+  then `archetype-<template>` of the shell template, run one after another — each its own `progress.json` entry (kind
+  `foundation`, `foundation`, `archetype`), a subagent that returns one verdict line, a checkpoint commit and a
+  boundary ask. The two foundation sub-units commit with C0's `git add -A` checkpoint (no fan-out yet;
+  `unit-commit.mjs` refuses the frozen header and footer blocks), the archetype through `unit-commit.mjs <unit> --code
+  blocks/<name>`. The foundation-first gate's chrome checks close `foundation-chrome`, its pixel row the archetype;
+  `foundation-freeze.mjs freeze` runs once, after the three, and the freeze check runs from that freeze on. The
+  single-subagent C0 text is folded.
+- **Images meant to be looked at are small (K10).** New `replica/scripts/inspect-image.mjs <in.png> [--out <file.jpg>]
+  [--max 1400x1000] [--quality 80]` writes a capped JPEG copy (default `<in>.inspect.jpg`; at most 1400 × 1000 px,
+  quality 80) with a dependency-free area-average downscale and baseline JPEG encoder (4:4:4, alpha on white,
+  deterministic); `pngjs` loads only after `--help`. `crop-compare.mjs` writes its diff and strip as capped JPEGs at
+  the `.jpg` sibling of `--out` / `--strip`; `--full-res` also writes the full-resolution PNG at the given path (the
+  old output); verdict, numbers and exit codes are unchanged. Its `--json` replaces the `strip` key with `stripImage`
+  and adds `diffImage` and `fullRes` (the PNG paths written). The gate's own PNGs stay full-resolution measurement
+  inputs: the gate doc and the reading discipline say agents look only at capped images, and the breakpoint strip for
+  approval keeps `--full-res`. page-probe's `--shot` / `--sbs` part lands on the stacked 0.35.9 branch with page-probe
+  itself.
+- **One consent table (K11).** `extract/scripts/crawl.mjs` dismisses consent from live-session's `CONSENT_CANDIDATES`
+  (`consentTable()`, resolved lazily in the plugin tree and both project-copy layouts; a drift test asserts the very
+  same array) instead of its own list; its shadow-root pass, text-match fallback and prune pass stay. Without
+  `live-session.mjs` beside the crawler a consent-dismissing crawl stops with exit 2 naming the looked-in paths
+  (`--no-consent-dismiss` never loads it); extract Setup copies it.
+- **`unit-commit.mjs --push` returns under 240 s (K15a).** Its network deadline is 170 s after the script started (the
+  lock wait included), and every network step and backoff gets min(its own limit, the time left); with none left it is
+  not started (exit 2, `push deadline reached`, the local commit kept and named). The last network step ends by 175 s
+  (5 s kill grace), leaving 65 s for the local steps; `--help` states the bound. This supersedes 0.35.3's "no network
+  step starts later than 180 s" (about 245 s in the worst case).
+- **The one-h1 checklist line names the source trait (K15b).** The deploy skill's "Exactly one `<h1>` per page" line
+  says what delivery-lint, verify and qa-gate already apply: a page whose source capture has no h1 keeps none — a
+  recorded source trait, never a content edit.
+- **The gate verdict per width (K15c).** `update-coverage.mjs --gate` records `delivery.gate.passByWidth["<width>"]`
+  beside `pass` (keys as `atByWidth`; other widths kept; a skipped older row touches none); `pass` keeps its meaning.
+  done-check's `unit_unproven` proves a page only when `passByWidth[w] === true` and a gate time is recorded at every
+  `--widths` width; a legacy row without `passByWidth` falls back to `pass` + `atByWidth` and is counted in a
+  `skipped:` line (`unit_unproven: <n> row(s) without per-width verdicts — proven on the last width's pass`).
+- **The scripts-index lint cap is 14208 bytes** (was 13312): raised for the new rows, none trimmed — a maintainer
+  question.
+
+K9, K12, K13 and K14 (and K10's page-probe part) live on the stacked branch and ship in its 0.35.9 entry.
+
+Rulings: `header_parity_errors` counts the undecided error findings of `findings[]`, and `counts.error −
+counts.decided` only when the file has none — chrome-compare's `counts.error` already leaves decided findings out, so
+the literal difference would under-count. Stale (K3): a changed hash re-flags stale whenever the prior hash is of a
+compared basis (a migrated file, or an `update-coverage --new` origin digest), the cautious side; only a roster row is
+kept uncompared, and named. Consent (K11): this base's shared table is smaller than the crawler's old list — one
+vendor's button class and three broad accept-attribute selectors are not in it (the prune pass still removes that
+banner's container) — until the branch that extends the table lands first in the merge order. `update-coverage --gate`
+refusing a per-page `--only` summary and the provenance `state.mjs advance` stamps (run item R14-8) are left to their
+own session.
+
+Patch/contract: no verdict, pixel threshold, capture, criterion or freeze-set change. The new refusals (inventory
+`--state`, a crawl without live-session, progress.mjs shapes, `--push` with no time left), `gates_inconclusive`,
+unvalidated overrides, `header_parity_errors` and the per-width proof only add caution; every skipped check is a named
+line. Output changes: crop-compare writes JPEGs unless `--full-res`, and its JSON `strip` key is now `stripImage`;
+dynamics-check usage errors exit 1 (was 2). Touches #125, #126, #134, #135. Provisional version, renumbered at merge:
+handoff contract row C (C0's sub-units, the gap-closure phase) and § 5 change, and by plugin `AGENTS.md` a changed
+contract is a minor release.
+
 ## 0.35.3 — delivery bookkeeping ships with the pages; the done-check proves it (#135)
 
 A recorded 99-page hands-off run lost its container mid-gate with no checkpoint inside the unit: 20 published pages'
