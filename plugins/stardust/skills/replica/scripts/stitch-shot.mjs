@@ -20,18 +20,18 @@
  *     sites, and UA alone still 403s on Akamai (F-R1) — the standard headers
  *     (Accept / Accept-Language; sec-ch-ua* through the UA metadata below) are
  *     the other half of the fix.
- *   - CLIENT HINTS that match the UA (--hints, default ua-metadata): a vendor
- *     wall answered a headless capture 200 "System Down" when the UA claimed
- *     Chrome but the requests' sec-ch-ua* did not back it. live-session sets
- *     the browser's UA metadata from the UA string, so every request's
- *     sec-ch-ua* matches the UA — documents and subresources, same- and
- *     cross-origin. `--hints native` (or env STARDUST_LIVE_HINTS=native, which
- *     also reaches the instruments a gate round spawns) is the escape hatch:
- *     the browser's own hints. The BROWSER BUILD: the full Chromium build when
- *     installed (the headless shell's own hints name a HeadlessChrome brand),
- *     otherwise the headless shell (one stderr line); --headed runs real
- *     Chrome. stdout names both (`browser: <build>, client hints: <hints>`)
- *     and capture.json records them (browserBuild, hints).
+ *   - CLIENT HINTS from the UA (--hints, default ua-metadata): a vendor wall
+ *     answered a headless capture 200 "System Down" when the UA claimed Chrome
+ *     but the requests' sec-ch-ua* did not back it. live-session sets the
+ *     browser's UA metadata from the UA string, so a page's requests carry
+ *     sec-ch-ua* with the UA's brands and version, the host's platform —
+ *     documents and subresources, cross-origin too; out-of-process iframes and
+ *     service workers keep the browser's own. Escape hatch: `--hints native` or
+ *     env STARDUST_LIVE_HINTS=native (gate rounds included). The BROWSER BUILD:
+ *     the full Chromium build when installed (the headless shell's own hints
+ *     name a HeadlessChrome brand), otherwise the headless shell (one stderr
+ *     line); --headed runs real Chrome. stdout (`browser: <build>, client
+ *     hints: <hints>`) and capture.json (browserBuild, hints) record both.
  *   - a bot-management challenge/blocked interstitial FAILS LOUD (exit 3),
  *     never captured as if it were the source (the Access-Denied trap). So
  *     does a 2xx DENIAL PAGE — a vendor signature ("can't process your
@@ -127,9 +127,9 @@
  *                         with non-standard close controls)
  *     --no-dismiss        dismiss no overlay at all (gate.sh --no-dismiss)
  *     --headed            escalation: headed stealth real Chrome
- *     --hints <v>         client hints: ua-metadata (sec-ch-ua* from the UA)
- *                         | native (the browser's own); no flag → env
- *                         STARDUST_LIVE_HINTS, else ua-metadata
+ *     --hints <v>         client hints: ua-metadata (sec-ch-ua* brands and
+ *                         version from the UA) | native (the browser's own);
+ *                         no flag → env STARDUST_LIVE_HINTS, else ua-metadata
  *     --locale <tag>      pin Accept-Language + locale (e.g. en-GB)
  *     --ua <string>       user agent                        (default real-Chrome)
  *     --wait <ms>         initial post-load wait            (default 1200; 3000 with --settle)
@@ -197,9 +197,9 @@ Usage: node stitch-shot.mjs <url> <out.png> [options]
   --dismiss <sel,…> extra overlay-dismiss selectors (marketing modals etc.)
   --no-dismiss      dismiss no overlay at all (gate.sh --no-dismiss pass-through)
   --headed          headed stealth real Chrome (escalation for bot-managed sites)
-  --hints <v>       client hints: ua-metadata (every request's sec-ch-ua* matches the UA, through the browser's UA
-                    metadata) | native (escape hatch: the browser's own); no flag → env STARDUST_LIVE_HINTS, else
-                    ua-metadata
+  --hints <v>       client hints: ua-metadata (sec-ch-ua* with the UA's brands and version, the host's platform;
+                    out-of-process iframes and service workers keep the browser's own) | native (escape hatch: the
+                    browser's own); no flag → env STARDUST_LIVE_HINTS, else ua-metadata
   --locale <tag>    pin Accept-Language + locale (e.g. en-GB) for geo determinism
   --ua <string>     user agent (default: real-Chrome desktop UA + standard headers)
   --wait <ms>       initial post-load wait (default 1200; 3000 with --settle)
