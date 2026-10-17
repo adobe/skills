@@ -71,7 +71,9 @@
  *     --locale <tag>      pin Accept-Language + locale (e.g. en-GB)
  *     --ua <string>       user agent                        (default real-Chrome)
  *     --wait <ms>         initial post-load wait            (default 2500)
- *     --timeout <ms>      goto timeout                      (default 60000)
+ *     --timeout <ms>      goto timeout (default: max(env STARDUST_NAV_TIMEOUT_MS,
+ *                         2 × crawl.navMs.p95 from stardust/current/_crawl-log.json)
+ *                         clamped to 20000–180000, else 60000; the flag always wins)
  *
  * Output JSON: { url, width, headerTimeline, widgetSamples, hoverSamples,
  * media: { videos[], idleClassMutations[], idleClassMutationCount },
@@ -98,7 +100,8 @@ if (!LIVE_SESSION) {
   console.error('motion-observe error: live-session.mjs not found (looked in ../../diff/scripts/ and ../diff/). Copy the diff skill\'s scripts dir alongside this one (replica SKILL.md § Setup).');
   process.exit(1);
 }
-const { REAL_CHROME_UA, isLiveHttpUrl, launchStealthHeaded, newLiveContext, gotoLive, dismissOverlays } = await import(pathToFileURL(LIVE_SESSION).href);
+const liveSession = await import(pathToFileURL(LIVE_SESSION).href);
+const { REAL_CHROME_UA, isLiveHttpUrl, launchStealthHeaded, newLiveContext, gotoLive, dismissOverlays } = liveSession;
 
 const HELP = `motion-observe — runtime motion observation (implement only what fired)
 
@@ -112,7 +115,8 @@ Usage: node motion-observe.mjs <url> <out.json> [options]
   --locale <tag>    pin Accept-Language + locale (e.g. en-GB)
   --ua <string>     user agent (default: real-Chrome desktop UA + standard headers)
   --wait <ms>       initial post-load wait (default 2500)
-  --timeout <ms>    goto timeout (default 60000)
+  --timeout <ms>    goto timeout (default: max(env STARDUST_NAV_TIMEOUT_MS, 2 × crawl.navMs.p95 from
+                    stardust/current/_crawl-log.json) clamped to 20000–180000, else 60000; the flag always wins)
   --help            this text
 
 One observation run per live page — reuse the JSON. Exit codes: 0 written,
@@ -122,7 +126,7 @@ function parseArgs(argv) {
   const rest = argv.slice(2);
   if (rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
   const pos = [];
-  const opts = { width: 1440, clicks: [], hovers: [], consent: null, dismiss: [], headed: false, locale: null, ua: REAL_CHROME_UA, wait: 2500, timeout: 60000 };
+  const opts = { width: 1440, clicks: [], hovers: [], consent: null, dismiss: [], headed: false, locale: null, ua: REAL_CHROME_UA, wait: 2500, timeout: null };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--width') { opts.width = Number(rest[i += 1]); }
@@ -140,6 +144,15 @@ function parseArgs(argv) {
   }
   const [url, out] = pos;
   if (!url || !out) { console.error(`need <url> and <out.json>\n\n${HELP}`); process.exit(1); }
+  // Without --timeout: the navigation timeout every live instrument shares. A live-session.mjs copy older than
+  // resolveNavTimeoutMs keeps the old 60000 and says so — never a TypeError.
+  if (opts.timeout == null) {
+    if (typeof liveSession.resolveNavTimeoutMs === 'function') opts.timeout = liveSession.resolveNavTimeoutMs({ fallback: 60000 });
+    else {
+      opts.timeout = 60000;
+      console.error('motion-observe: live-session.mjs predates navTimeout — goto timeout 60000 ms; STARDUST_NAV_TIMEOUT_MS and the crawl figure are not read (copy the diff skill\'s live-session.mjs alongside to use them)');
+    }
+  }
   return { url, out, opts };
 }
 
