@@ -6,7 +6,7 @@
 // network. Also judgeVideoPlayback, the pure verdict of `video-plays`: presence is never a pass — a
 // native <video> must be PLAYING (currentTime advancing), a vendor iframe must request playback.
 // Also martechChecks (martech contract → checks) and judgeMartechRequests (gate/accept verdicts).
-// Also: --help prints the header and writes nothing.
+// Also: --help prints the header and writes nothing; exitCodeFor (any FAIL → 2) and the usage exit 1.
 // Run: node plugins/stardust/skills/dynamics/scripts/test/dynamics-check.test.mjs
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -14,7 +14,7 @@ import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { compareSearchResults, judgeVideoPlayback, martechChecks, judgeMartechRequests } from '../dynamics-check.mjs';
+import { compareSearchResults, judgeVideoPlayback, martechChecks, judgeMartechRequests, exitCodeFor } from '../dynamics-check.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'dynamics-check.mjs');
@@ -171,6 +171,23 @@ check('--help prints the header (naming expectCount) and writes nothing', () => 
   const cwd = mkdtempSync(join(tmpdir(), 'dynamics-check-help-'));
   const r = spawnSync(process.execPath, [SCRIPT, '--help'], { encoding: 'utf8', cwd });
   assert.equal(r.status, 0, r.stderr); assert.match(r.stdout, /search-query/); assert.match(r.stdout, /expectCount/);
+  assert.match(r.stdout, /Exit 0 when every check passed, 2 when any check FAILed, 1 on usage\./);
+  assert.deepEqual(readdirSync(cwd), []);
+  rmSync(cwd, { recursive: true, force: true });
+});
+
+// ---- exit code ------------------------------------------------------------------------------------
+// The recorded defect: a run with a FAIL row exited 0 — the exit was left to an unref'd timer, and node ended first.
+check('exitCodeFor: every check passed → 0, any FAIL → 2, no checks → 0', () => {
+  assert.equal(exitCodeFor([{ pass: true }, { pass: true }]), 0);
+  assert.equal(exitCodeFor([{ pass: true }, { pass: false }, { pass: true }]), 2);
+  assert.equal(exitCodeFor([]), 0);
+});
+
+check('without --origin: exit 1 (usage), no browser, nothing written', () => {
+  const cwd = mkdtempSync(join(tmpdir(), 'dynamics-check-usage-'));
+  const r = spawnSync(process.execPath, [SCRIPT], { encoding: 'utf8', cwd });
+  assert.equal(r.status, 1, r.stderr); assert.match(r.stderr, /usage: dynamics-check\.mjs --origin/);
   assert.deepEqual(readdirSync(cwd), []);
   rmSync(cwd, { recursive: true, force: true });
 });
