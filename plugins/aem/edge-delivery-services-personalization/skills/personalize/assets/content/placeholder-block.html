@@ -1,0 +1,24 @@
+<!--
+  Personalization block as it appears inside a section of content/<page>.html
+  (one per placeholder).
+  Replace the region being personalized with this block; move the region's current
+  content into the default fragment (or keep it inline in the default row).
+  Rows: id (required), source (optional: api), condition rows (first match wins), default (required).
+-->
+<div class="personalization">
+  <div>
+    <div>id</div>
+    <div>{{ID}}</div>
+  </div>
+  <!-- {{SOURCE_ROW}} -->
+  <!-- {{RULE_ROWS}}: one per variant, e.g.
+  <div>
+    <div>geo: IN</div>
+    <div><a href="/fragments/personalization/{{ID}}/india">/fragments/personalization/{{ID}}/india</a></div>
+  </div>
+  -->
+  <div>
+    <div>default</div>
+    <div><a href="/fragments/personalization/{{ID}}/default">/fragments/personalization/{{ID}}/default</a></div>
+  </div>
+</div>

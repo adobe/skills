@@ -1,0 +1,21 @@
+<!--
+  Variant fragment scaffold: content/fragments/personalization/{{ID}}/{{VARIANT}}.html
+  Same body-fragment document as any DA content page under content/;
+  aem up serves it at /fragments/personalization/{{ID}}/{{VARIANT}}.plain.html.
+  Sections are top-level <div>s in <main>, blocks are <div class="name">.
+  Do not add a metadata block; keep fragments out of search with the bulk
+  metadata sheet (URL /fragments/** -> robots: noindex), see reference/da-content.md.
+  Copy marked TODO must come from the user, never invented.
+  Only for a `default | none` placeholder: otherwise copy the default fragment
+  (same blocks, images, CTAs) and swap its copy for TODO, so layout and LCP hold.
+-->
+<body>
+  <header></header>
+  <main>
+    <div>
+      <h2>TODO: {{VARIANT}} headline for {{ID}}</h2>
+      <p>TODO: copy for visitors matching "{{CONDITION}}".</p>
+    </div>
+  </main>
+  <footer></footer>
+</body>

@@ -1,0 +1,9 @@
+{
+  "name": "adobe/aem-eds-personalization",
+  "version": "0.1.0",
+  "description": "Placeholder-based personalization for AEM Edge Delivery Services (DA) pages: rules or a decision API pick the EDS fragment to render, with an authored default as fallback; client runtime plus an optional Cloudflare edge worker.",
+  "private": false,
+  "skills": [
+    "skills/personalize"
+  ]
+}

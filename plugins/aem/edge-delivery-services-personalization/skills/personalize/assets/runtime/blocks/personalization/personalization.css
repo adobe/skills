@@ -1,0 +1,9 @@
+/*
+ * The block is only a marker holding the rules; the chosen variant renders
+ * right after it. Keeping it hidden also means the raw rule rows never show,
+ * even if the block script fails.
+ */
+.personalization-wrapper,
+.personalization {
+  display: none;
+}
