@@ -4,6 +4,57 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.35.5 — a gate names what it could not measure; an override must earn its row
+
+Recorded hands-off runs measured fix rounds against origin captures a consent wall or a geo modal had polluted, and
+still got numeric PASS / FAIL verdicts with the normal exit code; one 99-page run then delivered 94 pages through
+`overrides.json` rows that nothing validated or counted. The overlay sweep on the gate path knew English labels and
+one consent manager by id; a stronger multilingual sweep existed twice, unused by the gates.
+
+- **One consent table, one sweep (live-session).** `CONSENT_CANDIDATES` gains Cookiebot, Usercentrics (its accept
+  button inside the shadow root), TrustArc, Didomi and "Allow all"; when no candidate matches, the last pass is
+  `CONSENT_LABEL_SWEEP` — the multilingual accept labels (accept-like first, `decline` last) clicked only inside a
+  dialog, a consent container or a fixed / sticky / high-z layer, open shadow roots included. style-census's own
+  pass is now that sweep (a style-census next to an older live-session.mjs exits 2: re-copy it). Consent is still
+  clicked, never removed.
+- **dismissOverlays says what it left behind:** `overlayLeft` names a banner-sized part of a known consent root still
+  visible, a fixed or sticky layer painting over ≥ 80 % of the viewport (content of the page beneath it — a sticky
+  hero at the top is not one), `html` / `body` `overflow:hidden`, or a sweep click that navigated away. The label
+  sweep never submits a form or follows a link out of a merely sticky header. stitch-shot runs the check
+  once after its last sweep and `--hide`, prints `overlay-left: <sel>`, and `--json <file>` writes a capture record
+  (`overlayLeft`, `fontsFailed`, dismissals, hides, height, overflow) — exit codes unchanged.
+- **gate-all: INCONCLUSIVE rows.** A row whose origin fell back to the crawl screenshot, or whose either capture left
+  an overlay (or wrote no capture record), has no pixel or height verdict: `inconclusive: true`, reasons
+  `origin capture polluted: <why>` / `build capture polluted: <why>`, INCONCLUSIVE in `summary.md`,
+  `totals.inconclusive`; the run exits 2. No such row is reused; fix rounds and live.png reuse refuse a capture whose
+  record predates the check or names an overlay, and an older origin kept after a failed `--recapture-origin` reads
+  unchecked. gate-evidence reads the row OPEN (never FAIL); `update-coverage
+  --gate` keeps the page's status and records `delivery.gate.inconclusive` (`pass: false` — no verdict is no pass);
+  gate-triage lists it as "fix the capture — `--hide` / presence.json — not the page".
+- **Overrides are validated mechanically.** An `overrides.json` row counts only when its `verdict` is `tier-shift`,
+  `instrument-artifact` or `source-volatile`, its `reason` names an `R-<nn>` present in
+  `stardust/replica/inconsistency-register.md`, and the row's clip and content checks PASS (n/a is no pass; the
+  prototype stage has no content criterion); otherwise the row stays FAIL with `override rejected: <rule>`. The
+  summary prints counted / rejected overrides and their share of the roster; update-coverage records
+  `delivery.gate.override = {verdict, reason, valid}` (an override from an older table, without `valid`, does not
+  count); gate-triage triages rejected overrides as failing rows.
+- **Fonts must load.** A declared face whose `document.fonts` status is `error` on either side (stitch-shot's existing
+  check, now in its `--json` record) is the row reason `font-not-loaded:<family>`; the row cannot PASS. A check that
+  could not run is recorded as not checked (`fontsFailed: null`, carried into gate.sh's `live.json`) and reads
+  `font-check-skipped:<side>` — no PASS either.
+- **gate.sh gives no verdict on an overlay left and settles both sides.** A live or build capture that prints
+  `overlay-left:` ends the round with exit 1 ("no verdict: fix the capture"); a polluted live.png is removed, and a
+  live.png whose `live.json` does not record the overlay check is retaken once. The build capture now runs with
+  `--settle` like the live one, so a consent manager an EDS build loads late is dismissed there too; the gate
+  reference drops its known-limit note.
+
+Numbered 0.35.5 provisionally — the stack is renumbered at merge (the contract now says overrides are validated, which
+may make the merged release a minor). No threshold or criterion moves: rows measured on clean captures keep their
+verdicts; what changes is that a polluted capture, a face that did not load and an unvalidated override no longer
+read as a pass. Costs: one extra origin capture per page whose record
+predates the check, a slower settled build capture in gate.sh. crawl.mjs keeps its own label list until its owner
+imports the shared table (a live-session test fails if the two drift).
+
 ## 0.35.1 — gate-all reads its published roster from the rollout coverage; `--eds-host` takes a bare host
 
 Two recorded hands-off runs, a 100-page and a 10-page one, each hand-wrote a script that built a gate state file
