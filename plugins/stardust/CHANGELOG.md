@@ -4,15 +4,18 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
-## 0.35.6 — the instrument counts fix rounds; one height bar per regime; one browser budget across jobs
+## 0.35.6 — the instrument counts fix rounds; one height bar per regime; one browser budget across jobs; the hide list is derived, not remembered
 
 Retrospectives of recorded hands-off runs found the gate's economics kept in prose: the 3-round fix cap was a
 sentence a new brief could reset, while gate-triage counted the tables on disk; the same page could PASS at
 gate-all's 5 % height bar and FAIL at gate-evidence's 8 px; a browser slot bounded jobs, not browsers, so one
 gate-all job opened up to six Chromiums inside it; and after an `--only` run, which never writes the roster
 `summary.json`, an agent pointed `update-coverage --gate` at that file and was told
-`not a gate-all summary (no rows[])` — a missing file reported as an empty one. Numbered 0.35.6 provisionally,
-stacked on 0.35.5.
+`not a gate-all summary (no rows[])` — a missing file reported as an empty one. Another recorded run knew its in-flow
+location bar's selector from the preserve-direction step on and never wrote a hide list, because nothing linked the
+register to the file; probed later, the recorded selector matched nothing on either side (the bar was the first
+in-flow block above the header), and chrome-parity had printed `hidden live: … ×0` and carried on. Numbered 0.35.6
+provisionally, stacked on 0.35.5.
 
 - **Fix rounds are counted by the instrument (#134, extends #126).** Every `gate-all --only` run that yields a
   verdict counts one round per page in `<out>/<slug>/rounds.json` (an INCONCLUSIVE row does not count, a reused row
@@ -46,6 +49,61 @@ stacked on 0.35.5.
   The refusals are distinct (exit 1, nothing written): `<path> not found`, `<path> cannot be read (<code>)`,
   `<path> does not parse as JSON (<error>)`, `<path> is not a gate-all summary (no rows[])` — now only a parsed
   file without rows — and `<dir> holds no gate-all table (no summary.json, no runs/*.json)`.
+- **An override must be a deviation's size.** gate-all lets an `overrides.json` entry lift a row only within 2 × the
+  bars on the row's own measured numbers — pixel % ≤ 2 × `--threshold` and |Δh| ≤ 2 × `--height-tol` × origin
+  height, inclusive; a reused row is re-checked. Beyond that the row stays FAIL with
+  `override exceeds magnitude: use --hide / presence.json` — a capture or hide-list problem, not a deviation —
+  counted in `totals.overrideMagnitude` and named on one summary.md line,
+  `Override exceeds magnitude (fix the capture / hide list, not a deviation): <path>, …`.
+- **The host measured is named.** The published gate still measures the preview host by default (coverage
+  `deployedUrl`); the C-final roster gate and the gate before done-check run with
+  `--eds-host <rollout.json site.liveHost>`. gate-all's first status line ends `; build host <origin> (<from>)`
+  (`--eds-host`, `coverage deployedUrl`, `state liveUrl` or `--proto-base`); every row records `host`, the origin of
+  its EDS capture, so `--compare-only` names the host the pixels came from; `update-coverage --gate` records it as
+  `delivery.gate.host` (the row's `host`, else the table's `_provenance.eds`, else null).
+- **A fix round triages itself.** A published `--only` run of a page that already had a row in the out dir runs
+  gate-triage's triage on that dir in-process (offline: no parity, nothing routed) — `<out>/triage.{json,md}`, its
+  head printed under the table as the next round's input. A triage failure is one `triage: skipped — <why>` line and
+  never changes the verdict or the exit code; a page's first gating, full runs and the prototype stage do not triage.
+- **gate-all takes `--dismiss <sel,…>`** like gate.sh and anchor.mjs: both stitches dismiss the site's own overlays
+  before the hide list; its probes keep their built-in dismissal. The list is recorded in origin.json / eds.json,
+  probes.json inputs and the gate key; a capture taken with another list is not reused (`dismiss list differs`), and
+  a kept origin taken with another dismiss / hide list makes the row INCONCLUSIVE —
+  `origin capture polluted: kept origin taken with another dismiss/hide list`.
+- **One hide list per site (#135, extends #125).** `stardust/replica/presence.json` — a gate dir's presence.json
+  shape, `"*"` and per slug — lists the in-flow per-visitor regions once; live-session's `mergePresence` puts it under
+  a gate dir's file (the gate dir's value wins per key and field). gate-all, gate.sh, chrome-parity, chrome-explore
+  and chrome-compare read it with no flag (`--slug` no longer needs `--presence`); gate-triage passes it to
+  chrome-parity when the gate dir has none, and an edited site list re-runs stored parity; the diff probes get the
+  merged list as `--hide`. Its selectors print as `site presence.json`; a malformed one is an error naming it
+  (gate.sh: exit 1 before any capture). After a change to the site `"*".hide`, re-explore both sides — chrome-compare
+  reports `hide-mismatch` for records explored without it.
+- **Writing the list is a step.** New `presence.mjs`: `seed` writes the runner's overlay selectors
+  (`stardust/.labs/run.json` `siteOverlays`, env `STARDUST_SITE_OVERLAYS`) at Setup;
+  `add --hide <sel,…> [--slug <s>] [--reason <R-nn>]` records the region the preserve-direction step identified (its
+  register entry, `kind: per-visitor-region`, carries the `selector`) — idempotent, atomic, a malformed file refused
+  with nothing written. `suggest <url>` lists the candidates read off the live page; `add --verify <url>` refuses
+  (exit 2, nothing written) a selector that still matches nothing after a poll window and names the candidates
+  instead; without `--verify`, add warns
+  `presence: not verified against a live page — add --verify <url> (presence.mjs suggest <url> lists candidates)`.
+- **A hide that matched nothing is never silent.** live-session derives the candidates from the DOM —
+  `inFlowRegionsAboveHeader`, the in-flow blocks above the header (0-px wrappers kept), each with a selector verified
+  unique — and `recountHides` counts each hide selector again right before the capture; one that matched nothing at
+  both counts gives one line,
+  `hide matched nothing on live — candidates: <selector> (<tag>, <h>px); … (<sel>, …)`.
+  stitch-shot's `--json` record carries each hide's `nAtCapture` and `hideMiss { sels, candidates }`; gate-all
+  (`WARNING <slug>: …`, the row's `hideMiss`, `totals.hideMiss`, one summary.md line), gate.sh
+  (`gate.sh: WARNING …`, a reused live.png's record included) and chrome-parity (`WARNING …`, `hideMiss` in `--json`)
+  print it — a warning, never a verdict. chrome-parity also prints
+  `hint: an in-flow region above the header — presence.mjs add --hide <candidate selector>` when the header and its
+  texts are offset by the same Δy on one side.
+- **gate-evidence survives an error row.** A pixel-table row without a pixel measurement (a stitch error, a missing
+  capture) no longer throws: the gate reads `OPEN: no pixel measurement — <the row's error> — —, height delta —, …`,
+  never FAIL and never a pass, and the printed row shows `1440=—/Δ—`.
+- **gate-all refuses a value flag without its value.** A missing value, or one that starts with `-` (another flag, a
+  negative number), is one stderr line and the usage, exit 2, before any I/O:
+  `gate-all --eds-host --only home` → `gate-all: --eds-host needs a value, got "--only"` (`got nothing` at the end of
+  the arguments).
 
 ## 0.35.5 — a gate names what it could not measure; an override must earn its row
 
