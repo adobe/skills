@@ -20,10 +20,14 @@
  * after the source's entities are decoded. Each document ends with a metadata section `Robots | noindex` (the
  * platform sitemap leaves chrome out). Hrefs and labels are verbatim: no URL rewriting (run localize-links.mjs
  * after). A link's label is its text, whitespace collapsed; an icon-only link: its <img>, else aria-label, else title.
- *   nav.html     section 1 brand: the first <a> holding an <img>/<picture>/<svg>, else one whose class, id or
- *                aria-label matches logo|brand, else one with href "/" (none: an empty section, `brand 0`)
+ *   nav.html     section 1 brand, first match wins: an <a> holding an <img>/<picture>/<svg> with a logo|brand signal
+ *                (its class, id or aria-label, or its image's class or alt) or with href "/"; else an <a> whose class,
+ *                id or aria-label matches logo|brand; else one with href "/"; else the first <a> holding an image
+ *                (none: an empty section, `brand 0`)
  *                section 2 links: the top-level <ul>/<ol> with the most links, lists inside <nav> first, as a clean
- *                <ul> with nesting kept; a trigger without href keeps its label text (no list: an empty section)
+ *                <ul>; nesting only where the source has a list (a heading or column text right before a list heads
+ *                it), other text stays inline in its item; a trigger without href keeps its label text (no list: an
+ *                empty section)
  *                section 3 tools: every other link as <p><a>, every other list as <ul>, in document order
  *   footer.html  one section per footer band — the element children of <footer>, through single-child wrappers
  *                (a run of inline children is one band): headings, lists, paragraphs (inline <a>, <strong>, <em>,
@@ -261,14 +265,18 @@ const section = (kids) => block('<div>', kids.filter(Boolean), '</div>');
 /* ---------------------------------------------------------------------------- nav --- */
 const BUTTONLIKE = new Set(['button', 'summary']);
 
-/** A nav list item's parts in document order: text runs, links, nested lists. */
+/**
+ * A nav list item's parts in document order: text runs, links, nested lists. `block` marks a part that starts a
+ * block (a heading or a panel column), as opposed to a badge or description inline after a link.
+ */
 function navParts(li, ctx) {
-  const parts = []; let joinable = false;
+  const parts = []; let joinable = false; let fresh = true;
+  const push = (p) => { parts.push({ ...p, block: fresh }); fresh = false; };
   const visit = (node) => {
     for (const ch of node.children) {
       if (!ch.tag) {
         if (hasContent(ch.text)) {
-          if (joinable && parts.at(-1)?.kind === 'text') parts.at(-1).raw += ch.text; else parts.push({ kind: 'text', raw: ch.text });
+          if (joinable && parts.at(-1)?.kind === 'text') parts.at(-1).raw += ch.text; else push({ kind: 'text', raw: ch.text });
           joinable = true;
         } else if (joinable && parts.at(-1)?.kind === 'text') parts.at(-1).raw += ch.text;
         continue;
@@ -279,37 +287,39 @@ function navParts(li, ctx) {
       if (t !== 'a' && INLINE.has(t)) { visit(ch); continue; } // a <span> continues the text run around it
       joinable = false;
       if (t === 'a') {
-        if (realHref(ch)) parts.push({ kind: 'link', html: linkHtml(ch, ctx) });
-        else if (!parts.length && plainLabel(ch)) parts.push({ kind: 'trigger', html: plainLabel(ch) });
+        if (realHref(ch)) push({ kind: 'link', html: linkHtml(ch, ctx) });
+        else if (!parts.length && plainLabel(ch)) push({ kind: 'trigger', html: plainLabel(ch) });
         else ctx.skipped += 1;
-      } else if (BUTTONLIKE.has(t) && !parts.length && plainLabel(ch)) parts.push({ kind: 'trigger', html: plainLabel(ch) });
+      } else if (BUTTONLIKE.has(t) && !parts.length && plainLabel(ch)) push({ kind: 'trigger', html: plainLabel(ch) });
       else if (BUTTONLIKE.has(t) || CONTROLS.has(t)) ctx.skipped += 1;
-      else if (t === 'ul' || t === 'ol') parts.push({ kind: 'list', el: ch });
-      else { visit(ch); joinable = false; }
+      else if (t === 'ul' || t === 'ol') { push({ kind: 'list', el: ch }); fresh = true; }
+      else { fresh = true; visit(ch); joinable = false; fresh = true; }
     }
   };
   visit(li);
-  return parts.map((p) => (p.kind === 'text' ? { kind: 'text', html: escapeHtml(collapse(p.raw)) } : p)).filter((p) => p.kind === 'list' || p.html);
+  return parts.map((p) => (p.kind === 'text' ? { ...p, html: escapeHtml(collapse(p.raw)) } : p)).filter((p) => p.kind === 'list' || p.html);
 }
 
 /**
- * `<li>head<ul>…</ul></li>`: the head is the first link or text (a trigger without href: its label); what follows
- * becomes the sub-list — a nested list's items, a text or link directly followed by a list as `<li>label<ul>…`
- * (a mega-menu column heading), any other link or text as its own item.
+ * `<li>inline<ul>…</ul></li>`. The inline part is the first link or text (a trigger without href: its label) and
+ * every other text or link that does not head a list, in document order. Nesting comes only from the source's
+ * lists: a nested list's items, and a text or link directly followed by a list as `<li>label<ul>…` (a mega-menu
+ * column heading). A description or badge after a link never turns the link into a dropdown trigger.
  */
 function navItem(li, ctx) {
   const parts = navParts(li, ctx);
   if (!parts.length) return null;
-  const head = parts[0].kind === 'list' ? '' : parts.shift().html;
+  const inline = [];
   const items = [];
   for (let i = 0; i < parts.length; i += 1) {
     const p = parts[i]; const next = parts[i + 1];
     if (p.kind === 'list') items.push(...navItems(p.el, ctx));
-    else if (next?.kind === 'list') {
+    else if (i > 0 && p.block && next?.kind === 'list') {
       const sub = navItems(next.el, ctx); i += 1;
       items.push(sub.length ? block(`<li>${p.html}`, [block('<ul>', sub, '</ul>')], '</li>') : `<li>${p.html}</li>`);
-    } else items.push(`<li>${p.html}</li>`);
+    } else inline.push(p.html);
   }
+  const head = inline.join(' ');
   if (!items.length) return head ? `<li>${head}</li>` : null;
   return block(`<li>${head}`, [block('<ul>', items, '</ul>')], '</li>');
 }
@@ -330,9 +340,13 @@ export function buildNav(html) {
   const root = parseHTML(String(html));
   const box = first(root, 'header') || first(root, 'body') || root;
   const anchors = [...walk(box)].filter((n) => n.tag === 'a' && realHref(n));
-  const brand = anchors.find((a) => [...walk(a)].some((n) => n.tag === 'img' || n.tag === 'picture' || n.tag === 'svg'))
-    || anchors.find((a) => [a.attrs.class, a.attrs.id, a.attrs['aria-label']].some((v) => /logo|brand/i.test(v || '')))
-    || anchors.find((a) => realHref(a) === '/') || null;
+  // A store-finder or locale icon link can precede the logo: an image link wins only with a logo signal or href "/".
+  const images = (a) => [...walk(a)].filter((n) => n.tag === 'img' || n.tag === 'picture' || n.tag === 'svg');
+  const named = (a) => [a.attrs.class, a.attrs.id, a.attrs['aria-label']].some((v) => /logo|brand/i.test(v || ''));
+  const home = (a) => realHref(a) === '/';
+  const brand = anchors.find((a) => images(a).length
+      && (named(a) || home(a) || images(a).some((m) => /logo|brand/i.test(`${m.attrs.class || ''} ${m.attrs.alt || ''}`))))
+    || anchors.find(named) || anchors.find(home) || anchors.find((a) => images(a).length) || null;
   const ctx = { links: 0, skipped: 0, notes: [], isBrand: (n) => Boolean(brand) && (n === brand || isInside(n, brand)) };
 
   const lists = [...walk(box)].filter((n) => (n.tag === 'ul' || n.tag === 'ol') && !hasAncestor(n, ['ul', 'ol']) && !ctx.isBrand(n));
