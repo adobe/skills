@@ -20,8 +20,8 @@ Run the project copies under `stardust/scripts/<skill>/`. Ask `--help` only for 
 - `deploy/sanitise.js` — non-ASCII → entities, in place — `content/<p>.html` (one file per call)
 - `deploy/section-schema.mjs` — section role inventory — `<protoURL> [--out <f>] [--profile eds|generic]`
 - `deploy/style-fingerprint.mjs` — variation groups — `"file:///abs/<proto>.html"`
-- `diff/chrome-compare.mjs` — header parity vs the contract — `<contract> <build> [--profile replica|functional] [--json f] [--hide <sel,…>] [--presence <json> --slug <s>]`; exit 2 = undecided error
-- `diff/chrome-explore.mjs` — the header used: open states, close paths, motion, scroll — `<url> <out.json> [--width 1440,390] [--hide <sel,…>] [--presence <json> --slug <s>]`
+- `diff/chrome-compare.mjs` — header parity vs the contract — `<contract> <build> [--profile replica|functional] [--json f] [--hide <sel,…>] [--slug <s>] [--presence <json>]` (+ site presence.json); exit 2 = undecided error
+- `diff/chrome-explore.mjs` — the header used: open states, close paths, motion, scroll — `<url> <out.json> [--width 1440,390] [--hide <sel,…>] [--slug <s>] [--presence <json>]` (+ site presence.json)
 - `diff/clip-probe.mjs` — text/controls cut or hidden by an overflow ancestor — `<url> [--width 1440] [--json [f]] [--advisory] [--hide <sel,…>]`; exit 2 = clipped > 0
 - `diff/content-diff.mjs` — structural + attribute/icon diff, main + chrome roots — `<protoURL> <edsURL> [--main <sel[,sel]>] [--no-chrome] [--profile generic] [--json] [--live-cache <json>] [--hide <sel,…>]`
 - `diff/content-presence.mjs` — origin vs served visible content per band + control state — `<originURL> <servedURL> [--variable <selO=selE,…>] [--json [f]] [--origin-cache <json>] [--hide <sel,…>]`; exit 2 = MISSING/HIDDEN link or heading
@@ -50,27 +50,27 @@ Run the project copies under `stardust/scripts/<skill>/`. Ask `--help` only for 
 - `replica/breakpoint-lint.mjs` — breakpoints on target steps or source switch points — `[--target 600,900,1200]` | `--inventory <file|dir…>`
 - `replica/cap-probe.mjs` — content caps: capture or live vs build — `<url…> [--write-design DESIGN.json]` | `<live> --against <build> [--slug <s>]`; exit 2 = FAIL, 0 = PASS or INCONCLUSIVE (under half the modules pair; `○` unpaired)
 - `replica/anchor.mjs` — section anchors — `<url> [--width 1440] [--main <sel>] [--cache <json>]`
-- `replica/chrome-parity.mjs` — header/footer style parity — `<liveURL> <buildURL> [--width] [--live-cache <json>] [--hide <sel,…>] [--presence <json> --slug <s>]`
+- `replica/chrome-parity.mjs` — header/footer style parity; warns on a live hide ×0, hints a bar — `<liveURL> <buildURL> [--width] [--live-cache <json>] [--hide <sel,…>] [--slug <s>] [--presence <json>]` (+ site presence.json)
 - `replica/crop-compare.mjs` — pixel diff of one band — `<a.png> <b.png> --height <px> [--y] [--y-b] [--threshold 2] [--strip <out.png>]`
 - `replica/css-rules.mjs` — rule blocks by selector regex — `<f.css> "<re>" [--media <re>|--no-media] [--decl <re>]`
 - `replica/foundation-freeze.mjs` — frozen delivery foundation, sha256 manifest — `freeze [--paths a,b]`; `check`
-- `replica/gate-all.mjs` — pixel tables, deployed (roster: rollout coverage, else state.json) or `--stage prototype`; reuses unchanged rows — `[--coverage <f>] [--only <s,…>] [--max-rounds 3] [--round-reset "<reason>"] [--skip-existing] [--recapture-eds] [--eds-host <h>] [--no-probes] [--origin-max-age <h>] [--one-load]`; exit 2 = FAIL, INCONCLUSIVE or refused start
+- `replica/gate-all.mjs` — pixel tables, deployed (roster: rollout coverage, else state.json) or `--stage prototype`; reuses unchanged rows; names build host; fix rounds self-triage — `[--coverage <f>] [--only <s,…>] [--max-rounds 3] [--round-reset "<reason>"] [--skip-existing] [--recapture-eds] [--eds-host <h>] [--dismiss <sel,…>] [--no-probes] [--origin-max-age <h>] [--one-load]`; exit 2 = FAIL, INCONCLUSIVE, refused start or a valueless flag
 - `replica/gate-evidence.mjs` — sidecar gates from pixel tables + run-bg jobs — `[--slug <s>]… [--content <dir>] [--tables <dir>] [--height-tolerance <frac|px>] [--check] [--dry-run]`
 - `replica/gate-triage.mjs` — failing rows by shared cause + re-gate scope, rounds n/max — `[--gate <dir>]… [--unit <u>] [--no-parity] [--dry-run]`
-- `replica/gate.sh` — one gate round (both sides settled) + overflow assert + probes (`--full`: + diff probes, bounded under run-bg); overlay left = exit 1 — `<slug> <live> <build> <width> [iter] [--full] [--main <sel>] [--consent <sel>] [--dismiss <sel,…>] [--hide <sel,…>]`
+- `replica/gate.sh` — one gate round (both sides settled) + overflow assert + probes (`--full`: + diff probes, bounded under run-bg); overlay left = exit 1; warns on a live hide ×0 — `<slug> <live> <build> <width> [iter] [--full] [--main <sel>] [--consent <sel>] [--dismiss <sel,…>] [--hide <sel,…>]` (+ site presence.json)
 - `replica/html-slice.mjs` — one element of captured HTML — `<page.html> header|footer|main|.cls [--text] [--all]`
 - `replica/json-query.mjs` — bounded view of JSON — `<f.json> [--path <p>] [--keys] [--match k=re] [--fields a,b]`
 - `replica/measure.mjs` — rects, computed values, scrollWidth, renditions — `<url> --selectors "a,b" [--against <url>] [--width 1440,360]`
 - `replica/motion-compare.mjs` — live vs build motion, advisory (exit 0) — `<live.json> <build.json> [--tolerance-ms]`
 - `replica/motion-observe.mjs` — observe motion — `<url> <out.json> [--click <sel>]… [--hover <sel>]…`
 - `replica/pixel-compare.mjs` — full-page pixel diff, bands — `<a.png> <b.png> [--out diff.png] [--threshold 10] [--mask yA:h] [--text-boxes <json>]`
-- `replica/presence.mjs` — site-wide hide list `stardust/replica/presence.json` — `add --hide <sel,…> [--slug <s>] [--reason <R-nn>]`; `seed [--run <run.json>]` (+ env STARDUST_SITE_OVERLAYS)
+- `replica/presence.mjs` — site-wide hide list `stardust/replica/presence.json` — `add --hide <sel,…> [--slug <s>] [--reason <R-nn>] [--verify <url>]`; `seed [--run <run.json>]` (+ env STARDUST_SITE_OVERLAYS); `suggest <url>` (candidates)
 - `replica/row-profile.mjs` — row luminance profile — `<a.png> [<b.png>] [--color #rrggbb]`
 - `replica/run-bg.mjs` — background jobs, bounded wait; exports STARDUST_BROWSERS_PER_SLOT — `start --name <j> [--slots 3] -- <cmd>`; `wait [--max ≤110]`; `log <j>`
 - `replica/run-capped.mjs` — deadline wrapper, exit 124 — `--timeout <s> -- <cmd>`
 - `replica/section.mjs` — one Markdown section / outline — `<doc.md> --list | "<heading re>" [--all] [--max-lines]`
 - `replica/sibling-variance.mjs` — template deltas across siblings — `<archetypeURL> <siblingURL>… --probe name=<sel>`
-- `replica/stitch-shot.mjs` — stitched full-page capture; prints `overlay-left:` — `<url> <out.png> [--width] [--vh 900] [--settle] [--consent <sel>] [--dismiss <sel,…>] [--hide <sel,…>] [--json <f>]`
+- `replica/stitch-shot.mjs` — stitched full-page capture; prints `overlay-left:`; --json: `hideMiss` — `<url> <out.png> [--width] [--vh 900] [--settle] [--consent <sel>] [--dismiss <sel,…>] [--hide <sel,…>] [--json <f>]`
 - `reskin/capture-content.mjs` — capture source content model — `--url <u> --out <dir> [--scope 'a,b']`
 - `reskin/dom-equality.mjs` — content gate, source vs rendered — `--source <u|f> --rendered <u|f> --report <p>`
 - `reskin/donor-probe.mjs` — design-adoption gate — `--tokens <donor.json> --rendered <u|f> [--spec <json>]`
@@ -90,7 +90,7 @@ Run the project copies under `stardust/scripts/<skill>/`. Ask `--help` only for 
 - `rollout/plan.mjs` — conversion plan — `[--out <dir>] [--pending-only]`
 - `rollout/section-fidelity.mjs` — authored vs source outline — `--file <html> --source <u>|--source-file <p>`
 - `rollout/seed-redirects.mjs` — knowledge → redirects.tsv — `[--dry-run]`
-- `rollout/update-coverage.mjs` — status writer — `<slug> --status <s> [--url]`; `--block <id> --status <s>`; `--new <slug> --path <p> --template <id> --origin <o>`; `--gate <table | dir>`
+- `rollout/update-coverage.mjs` — status writer — `<slug> --status <s> [--url]`; `--block <id> --status <s>`; `--new <slug> --path <p> --template <id> --origin <o>`; `--gate <table | dir>` (records `host`)
 - `rollout/verify.mjs` — full-site verify — `[--base <u>|--root <dir>] [--all]`
 - `spec/lib.mjs` — library, no CLI
 - `spec/rules.mjs` — library (rules), no CLI
