@@ -16,7 +16,8 @@
  *   ingests those tables and says so on stdout:
  *     summary.json absent — an --only run writes runs/<ts>-<slug>.json; ingested <n> table(s) from <dir>/runs/
  *   Refused (exit 1, nothing written; every table is read before any write): `<path> not found` (no file,
- *   and no runs/ table beside a summary.json); `<path> does not parse as JSON (<error>)`; a parsed file
+ *   and no runs/ table beside a summary.json); `<path> cannot be read (<code>)` (the read fails — e.g. EISDIR,
+ *   a directory named *.json in runs/); `<path> does not parse as JSON (<error>)`; a parsed file
  *   without a rows array, `<path> is not a gate-all summary (no rows[])`; a dir holding no table,
  *   `<dir> holds no gate-all table (no summary.json, no runs/*.json)`. One bad table in a dir refuses the ingest.
  *   Writes each row's verdict into the page's `delivery.gate` {pass, pct, heightDelta, clipped, content,
@@ -72,7 +73,8 @@
  * Writes (under --out, default stardust/rollout): coverage/pages.json (page + new forms) or
  * coverage/blocks.json (block form), then coverage/templates.json and rollout.json when
  * they exist. One result line on stdout (a --gate ingest of an absent summary.json: the note line first).
- * Exit 0 ok, 2 usage, 1 missing ledger / refused row / refused --gate input (not found, unparsable, no rows[]).
+ * Exit 0 ok, 2 usage, 1 missing ledger / refused row / refused --gate input (not found, cannot be read, unparsable,
+ * no rows[], a dir that holds no gate-all table).
  */
 import { join, dirname, basename } from 'node:path';
 import { createHash } from 'node:crypto';
@@ -216,7 +218,7 @@ if (blockId) {
 }
 
 // --gate <path> → { label, tables: [{ file, table }] in ingest order, note } — every table parsed before anything is
-// written; a refusal (exit 1) names its case: not found, does not parse, no rows[].
+// written; a refusal (exit 1) names its case: not found, cannot be read, does not parse, no rows[], a dir with no table.
 function gateTables(path) {
   const refuse = (msg) => { console.error(`rollout: ${msg}`); process.exit(1); };
   const isDir = (p) => { try { return statSync(p).isDirectory(); } catch { return false; } };

@@ -13,7 +13,8 @@
 // fix-round count (`round`) merges into delivery.gate.rounds per width, a row without one keeps the map; an --only run's
 // runs/<ts>-<slug>.json table ingests like the roster summary; a gate dir ingests summary.json then runs/*.json in name
 // order (newest row wins); an absent summary.json beside runs/ tables ingests those with one stdout note; not found,
-// unparsable and no-rows files are refused apart (exit 1, nothing written); delivery.gate.host records the EDS origin a
+// unparsable and no-rows files are refused apart (exit 1, nothing written), and so is a table that cannot be read (a
+// directory named *.json in runs/); delivery.gate.host records the EDS origin a
 // verdict was measured against — the row's `host`, else its own table's `_provenance.eds`, else null.
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, readFileSync, readdirSync, writeFileSync, existsSync, utimesSync } from 'node:fs';
@@ -498,11 +499,28 @@ await check('--gate names an unparsable file by its own error, and "not a gate-a
   assert.equal(pagesText(out), before, 'pages.json untouched');
 });
 
-await check('--help names the gate dir form, the absent summary.json note and the three refusals', async () => {
+await check('--gate refuses a table it cannot read (exit 1, `<path> cannot be read (<code>)`) — a directory named x.json in runs/ refuses the whole ingest; nothing written', async () => {
+  const { proj, out } = fixture();
+  const before = pagesText(out);
+  const unreadable = join(GATE_DIR, 'runs', 'x.json'); mkdirSync(join(proj, unreadable), { recursive: true });
+  const expectRefused = async (path) => {
+    const r = await run(['--gate', path], proj);
+    assert.equal(r.code, 1, `${path}: ${r.out}`); assert.equal(r.err, `rollout: ${unreadable} cannot be read (EISDIR)\n`); assert.equal(r.out, '');
+    assert.equal(pagesText(out), before, 'pages.json untouched');
+  };
+  await expectRefused(join(GATE_DIR, 'summary.json')); // absent: falls back to runs/
+  await expectRefused(GATE_DIR);
+  gateTable(proj, join(GATE_DIR, 'summary.json'), T2, 1440, [failRow('page-0')]);
+  await expectRefused(GATE_DIR);
+});
+
+await check('--help names the gate dir form, the absent summary.json note and every refusal, each also on the exit-code line', async () => {
   const proj = mkdtempSync(join(tmpdir(), 'update-coverage-help4-'));
   const r = await run(['--help'], proj);
   assert.equal(r.code, 0);
-  for (const s of ['--gate <table | dir>', 'runs/*.json in name order', 'summary.json absent — an --only run writes runs/<ts>-<slug>.json', '<path> not found', 'does not parse as JSON', 'not a gate-all summary (no rows[])']) assert.ok(r.out.includes(s), s);
+  for (const s of ['--gate <table | dir>', 'runs/*.json in name order', 'summary.json absent — an --only run writes runs/<ts>-<slug>.json', '<path> not found', '<path> cannot be read (<code>)', 'does not parse as JSON', 'not a gate-all summary (no rows[])', '<dir> holds no gate-all table']) assert.ok(r.out.includes(s), s);
+  const exit = r.out.slice(r.out.indexOf('Exit 0 ok'));
+  for (const s of ['not found', 'cannot be read', 'unparsable', 'no rows[]', 'holds no gate-all table']) assert.ok(exit.includes(s), `exit-code line: ${s}`);
 });
 
 // --- --gate records which EDS host each verdict was measured against: the preview host by default, the live one under --eds-host ---
