@@ -58,6 +58,9 @@ export async function runContent({ dir, slug, preview, auth = null, env = proces
   for (const f of Object.values(files)) rmSync(f, { force: true });
 
   if (typeof preview?.url !== 'string' || !preview.url) throw new UsageError(`${join(out, 'preview.json')} has no url: run deployed-gate preview --page ${slug} again`);
+  // Before the live source is crawled: a protected preview cannot be read without the token, and a gate that finds out
+  // only after the capture has spent its hits on the source.
+  if (preview.auth && !auth) throw new UsageError(`content needs the site token to read a protected preview${authHint(preview, auth)}`);
   const modelPath = join(dir, 'reskin', 'content-model', slug, 'content-model.json');
   const provenance = readInput(modelPath, 'the content model the reskin captures from the live source')?._provenance;
   if (typeof provenance?.url !== 'string' || !provenance.url.trim()) throw new UsageError(`${modelPath} has no _provenance.url: the live source this page is compared with`);
@@ -85,7 +88,7 @@ export async function runContent({ dir, slug, preview, auth = null, env = proces
   for (const { name, report, args } of gates) {
     let r;
     try { r = await run(process.execPath, [...args, ...tokenFlags(auth)], { env: childEnv(env, auth), encoding: 'utf8' }); } catch (e) { throw coded(124, redact(`${name} did not start: ${e.message}`, auth)); }
-    const stop = setupError(r, { name, auth, hint: authHint(preview, auth) });
+    const stop = setupError(r, { name, auth });
     if (stop) throw stop;
     if ((r.status !== 0 && r.status !== 1) || !existsSync(report)) throw coded(124, `${name} did not give a verdict (exit ${r.status ?? r.signal}): ${outputOf(r, auth)}`);
     const stdout = redact(r.stdout ?? '', auth);

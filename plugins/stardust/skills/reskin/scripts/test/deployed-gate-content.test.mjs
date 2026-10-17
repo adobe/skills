@@ -193,8 +193,16 @@ await check('runContent exit mapping: a gate exit 2 is a UsageError and stops th
   noToken(setup.error.message);
   assert.equal(setup.calls.length, 1, 'slot-coverage did not run after a setup error');
   staleGone();
-  const hint = await attempt(() => go(root, { run: stubRun({ exits: [2, 0], stderr: ['[dom-equality] HTTP 401\n', ''] }).run, preview: { ...previewOf(root), auth: true } }));
-  assert.match(hint.error?.message ?? '', /HTTP 401\npreview\.json says .*pass --auth-header or --token-env/);
+  const protectedRecord = { ...previewOf(root), auth: true };
+  const never = stubRun({ exits: [2, 0], stderr: ['[dom-equality] HTTP 401\n', ''] });
+  const hint = await attempt(() => go(root, { run: never.run, preview: protectedRecord }));
+  assert.ok(hint.error instanceof UsageError && hint.error.code === 2, String(hint.error));
+  assert.match(hint.error.message, /^content needs the site token to read a protected preview\npreview\.json says .*pass --auth-header or --token-env/);
+  assert.equal(never.calls.length, 0, 'a protected preview with no token is refused before the live source is crawled');
+  const withToken = stubRun({ exits: [2, 0], stderr: ['[dom-equality] HTTP 401\n', ''], report: false });
+  const refused = await attempt(() => go(root, { auth: HEADER, run: withToken.run, preview: protectedRecord }));
+  assert.match(refused.error?.message ?? '', /^\[dom-equality\] HTTP 401$/, 'with a token the gates run and a refusal is theirs to report');
+  assert.equal(withToken.calls.length, 1);
 
   const second = await call({ exits: [0, 2], stderr: ['', `[slot-coverage] ${TOKEN} refused\n`] });
   assert.ok(second.error instanceof UsageError, String(second.error));
@@ -242,6 +250,19 @@ await check('runContent setup errors, each before any gate starts: no content mo
 });
 
 // ---- the CLI --------------------------------------------------------------------------------------------------
+
+await check('content on a protected preview with no token is exit 2 before the live source is asked for anything, and writes no record', async () => {
+  const source = await startSourceServer();
+  try {
+    const root = project('cli-protected-no-token', { sourceOrigin: source.origin, previewUrl: 'http://127.0.0.1:9/ns/home', record: { auth: true } });
+    const r = await content(root);
+    assert.equal(r.status, 2, r.all);
+    assert.match(r.stderr, /content needs the site token to read a protected preview/);
+    assert.match(r.stderr, /pass --auth-header or --token-env/);
+    assert.equal(source.requests.length, 0, 'the live source was not crawled');
+    assert.ok(!existsSync(join(outOf(root), 'content.json')));
+  } finally { await source.close(); }
+});
 
 await check('--help documents content beside preview and tokens; the usage errors of content exit 2 and write nothing', async () => {
   const dir = mkdtempSync(join(scratch, 'help-'));

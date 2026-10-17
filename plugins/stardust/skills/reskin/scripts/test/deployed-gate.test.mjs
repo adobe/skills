@@ -874,13 +874,21 @@ await check('all: a step whose gate stalls on the decoration (exit 2 "stalled de
   const lone = await runAll(allRoot('all-stalled-lone'), { over: { content: stall('slot-coverage') } });
   assert.equal(lone.error, null, String(lone.error));
   assert.equal(lone.code, 1, 'one stalled step is exit 1, not 2');
+});
 
-  const protectedRoot = allRoot('all-stalled-auth', { record: { auth: true } });
-  const hint = new UsageError('[donor-probe] stalled decoration: body.appear\npreview.json says the preview was reached with a site token: pass --auth-header or --token-env');
-  const missing = await runAll(protectedRoot, { over: { tokens: () => { throw hint; } } });
-  assert.ok(missing.error instanceof UsageError && /pass --auth-header or --token-env/.test(missing.error.message), 'a stall on a protected preview with no token is the missing token: a setup error');
-  assert.deepEqual(missing.called, ['content', 'tokens']);
+await check('all: a protected preview with no token is exit 2 before anything starts: no step, no figma-gate, no summary.json', async () => {
+  const protectedRoot = allRoot('all-protected-no-token', { record: { auth: true }, checks: true });
+  const figma = stubFigma();
+  writeFileSync(join(deployedDir(dirOf(protectedRoot), 'home'), 'summary.json'), '{"stale":true}\n');
+  const missing = await runAll(protectedRoot, { figmaGate: figma.file });
+  assert.ok(missing.error instanceof UsageError && missing.error.code === 2, String(missing.error));
+  assert.match(missing.error.message, /^all needs the site token to read a protected preview\npreview\.json says .*pass --auth-header or --token-env/);
+  assert.deepEqual(missing.called, [], 'no step ran');
+  assert.deepEqual(figma.calls(), [], 'no figma-gate child started');
   assert.ok(!existsSync(join(deployedDir(dirOf(protectedRoot), 'home'), 'summary.json')));
+  const served = await runAll(protectedRoot, { figmaGate: figma.file, extra: ['--auth-header', `token ${ALL_TOKEN}`] });
+  assert.equal(served.error, null, String(served.error));
+  assert.deepEqual(served.called, ['content', 'tokens', 'parity', 'sanity', 'inherited'], 'with a token the run starts');
 });
 
 await check('all: a step that passed with n/a rows is "PASS (n/a: <checks>)" in the fragment, one without is "PASS"; the verdict line and the step record stay PASS and the reasons stay in the detail', async () => {

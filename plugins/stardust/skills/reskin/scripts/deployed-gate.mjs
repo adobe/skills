@@ -71,7 +71,8 @@ content  A1. Checks the preview's content against the live source, through two g
          source page, <_provenance.url> and <_provenance.scope> of the content model, normalized by
          <dir>/reskin/normalize/<slug>.mjs when that file exists) and slot-coverage (the content model slot by slot,
          with the metadata). Reads preview.json (no record, or one with problems, is exit 2; a skipped leg prints
-         "not run: skipped", exit 0), <dir>/reskin/content-model/<slug>/content-model.json (missing is exit 2) and,
+         "not run: skipped", exit 0; a protected preview given no token is exit 2, before the live source is
+         captured), <dir>/reskin/content-model/<slug>/content-model.json (missing is exit 2) and,
          when it exists, the page's declared differences <dir>/reskin/deltas/<slug>.json, handed to both gates as
          --deltas. Without that file nothing is allowed for and a failed check blocks; with it, "blocking": false
          makes a failed check advisory and the key left out means true. Prints "PASS content", "ADVISORY content:
@@ -181,14 +182,14 @@ inherited  A5. Deploy's own delivered-page gates, run on the preview. Reads prev
 all      The whole leg: content, tokens, parity, sanity and inherited in turn, each as above and in this process,
          then figma-gate.mjs all --target preview as a child process (the one beside this script) when
          <dir>/reskin/figma-checks/<slug>.json exists, else "ADVISORY figma not run: no figma checks". Reads
-         preview.json once: no record, or one with problems, is exit 2; a skipped leg is one "ADVISORY <step> not
+         preview.json once: no record, or one with problems, is exit 2, and so is a protected preview (auth: true)
+         given no token, before any step starts; a skipped leg is one "ADVISORY <step> not
          run: skipped" line per step (figma included) and exit 0. First it deletes the previous content.json,
          tokens.json, parity.json, sanity.json, inherited.json and summary.json, so a stale file never feeds the
          ledger fragment. A setup error in a step (its own exit 2) stops the run with exit 2 and no summary.json,
          except a stalled decoration, "stalled decoration: <what>": the gate measured nothing because blocks of the
          preview never decorated, and that is the step's FAIL, "FAIL <step>: stalled decoration: <what>", with the
-         run going on (sanity then records its own hard decoration FAIL). A stall on a protected preview given no
-         token is the missing token, a setup error.
+         run going on (sanity then records its own hard decoration FAIL).
          A step that throws anything else is "ERROR (exit 124) <step>: <message>" and the run goes on; a bot
          challenge (exit 3) in any step stops the rest: "ERROR (exit 3) <step> not run: bot challenge".
          The figma-gate child gets --url (the preview URL), --target preview, --reskin and --dir, and the site
@@ -605,13 +606,15 @@ const invocationOf = (argv) => ['deployed-gate.mjs', ...argv.map((a, i) => (SECR
 async function allStep(ctx) {
   const { dir, opts, env, log, UsageError, argv, runners = {}, figmaGate = FIGMA_GATE } = ctx;
   const slug = pageSlug('all', opts, UsageError);
-  const [{ deployedDir }, { provenance, writeJson }] = await Promise.all([helper('io'), helper('io', 'figma')]);
+  const [{ deployedDir }, { authHint }, { provenance, writeJson }] = await Promise.all([helper('io'), helper('child'), helper('io', 'figma')]);
   const deployed = deployedDir(dir, slug);
   for (const f of STALE_RECORDS) rmSync(join(deployed, f), { force: true });
 
   const preview = await readRecord('all', ctx);
   if (!preview.skipped && (typeof preview.url !== 'string' || !preview.url)) throw new UsageError(`${join(deployed, 'preview.json')} has no url: run deployed-gate preview --page ${slug} again`);
   const { auth, redact, say, scrub } = await siteToken(opts, log, UsageError);
+  // As runInherited does, and before any step crawls the live source: a protected preview cannot be read without the token.
+  if (!preview.skipped && preview.auth && !auth) throw new UsageError(`all needs the site token to read a protected preview${authHint(preview, auth)}`);
   const reskin = opts.reskin ?? join(dir, 'reskin', 'pages', `${slug}.html`);
 
   let run = {};
