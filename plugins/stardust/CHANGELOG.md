@@ -4,6 +4,62 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.35.3 — delivery bookkeeping ships with the pages; the done-check proves it (#135)
+
+A recorded 99-page hands-off run lost its container mid-gate with no checkpoint inside the unit: 20 published pages'
+coverage rows and gate captures went with it. Its parallel subagents collided in one worktree (`git add content`,
+`pull --rebase` refusals, push races); propagation polls were gzip-blind in seven agents of a ten-page run; a recorded
+run delivered 94 of 95 rows by override with nothing counting them. Agents edited content to satisfy an h1 check on
+pages whose source has no h1; whitespace-only spacer paragraphs were dropped by the pipeline (#112); subagents read
+whole SKILL.md files (about 200 KB and 65 KB) and full-page PNGs into context; a coordinator spawned new units after a
+boundary ask and blocked on one subagent for hours.
+
+- **`deploy/fresh-check.mjs` — a propagation wait compares the decoded body:** `<url> (--expect-file <f> |
+  --expect-sha <hex> | --grep <marker>) [--max-s 180] [--every-s 5] [--json]`; Node's fetch decodes gzip / br /
+  deflate, so the check reads what a browser reads. One bounded poll, `fresh|stale <url> after <n>s`, exit 0 fresh,
+  3 stale after the deadline, 2 usage. The handoff contract, the deploy card, the DA protocol, the gate doc and the
+  replica card point every propagation wait at it; the raw fallback is `curl -s --compressed`, never `curl -sf | grep`.
+- **`stardust/unit-commit.mjs` — a unit's pages and bookkeeping commit under one lock, by explicit path:**
+  `units/<unit>.paths` → `content/**`, their eds-schema files and gate sidecars, the shared coverage, progress and
+  media ledgers, and per `--code blocks/<name>` the unit's block directory (header and footer, the frozen foundation,
+  refused). Lock `stardust/.work/git.lock` (`--wait-s 120`, dead or untouched holders reaped); `--push` rebases only
+  when the upstream moved and retries; every git step is time-bounded; exit 2 leaves nothing half-done (a commit that
+  could not be pushed is kept and named). Fan-out subagents commit only through it — never `git add content`, never
+  `git add -A`; the Code stage push is `unit-commit.mjs <unit> --code blocks/<name> --push`. Replica copies it.
+- **Bookkeeping before the gate:** row C's per-page chain records `update-coverage.mjs <slug> --status deployed` and
+  runs `unit-commit.mjs <unit>` right after the `.plain.html` checks, before the published-origin gate, so a lost
+  container costs gate time, not delivered pages; every unit with pages writes `units/<unit>.paths` before its first
+  page; rollout's Phase C mirrors the order.
+- **§ 5 order for returning subagents:** each cluster or archetype subagent's unit is recorded and committed as it
+  returns (`progress.json`, freeze check, `unit-commit.mjs <unit> --push`); no unit is spawned in the turn of a
+  boundary ask; while subagents run the main agent waits in bounded checks (≤ 4 min each), never one blocking call.
+  The `git add -A` checkpoint stays where no fan-out subagent runs (phase ends, migrate units, C0's end, C-final).
+- **done-check proves delivery; `ledger.mjs check` pairs the phases.** New gaps: `pages_overridden:N` (rows passing
+  only by override above 10 % of delivered rows, an override citing no `## R-<nn>` register heading, or one marked
+  `valid: false`; the verdict-string and object shapes are both read), `unit_unproven:<unit>` (a done unit without
+  `.paths`, or with a page lacking a passing gate at every `--widths` width), `sidecars_missing:N` (eds-schema, a
+  gate width, the redirects line of a moved path), `ledger_unpaired:N`. New flags `--widths`, `--register`,
+  `--schemas`, `--redirects`; a check that did not run is a `skipped:` line (`--json` `skipped[]`). `ledger.mjs check
+  [--json]` lists every `end` without an open start, exit 1; an end later re-recorded by a full start → end pair no
+  longer counts (`unpairedEnds(lines)` export). The handoff contract gives each new gap its remedy.
+- **delivery-lint `spacer-whitespace` (P2) and the source-h1 trait:** a `<p>` / `<h1>`–`<h6>` of only whitespace,
+  `&nbsp;` or `<br>` (or a `<div>` of only `<br>`) is flagged — the pipeline drops it; model the spacer as spacing
+  CSS (#112). A page without `<h1>` whose source capture (`stardust/current/pages/<slug>.json`: `--slug`, else the
+  coverage row of `--path`; `--current`) records headings and no h1 gets a `note`, not a P0; `verify.mjs --current`
+  verifies it with the same note. A missing capture, or one with an h1, keeps the P0 and the failure — content is
+  never edited to satisfy a verifier.
+- **Chain hygiene:** `localize-links.mjs --redirects <f>` naming a file that does not exist is a note on stderr and
+  the run continues on the content tree (`redirectsFound: false`); an existing unreadable path stays exit 1. Every
+  `python3 -m http.server` example binds `127.0.0.1`: loopback only, and its host-name lookup can crash on a long
+  container host name. A cluster or archetype brief names its read-set — four sections fetched with `section.mjs`,
+  never a whole SKILL.md, never a full-page PNG in context (`crop-compare.mjs` bands instead).
+
+Patch/contract: no verdict, threshold, criterion, capture or freeze change; the new done-check gaps and `ledger.mjs
+check` only add caution, and every skipped check is named; the h1 note holds only where the captured source itself
+has no h1. Touches #112, #125, #134. The number is provisional
+(renumbered at merge): handoff contract § 2, § 3 row C, § Fan-out discipline and § 5 change, and by plugin
+`AGENTS.md` a changed contract is a minor release.
+
 ## 0.35.0 — C-deliver clusters over 16 siblings run as sub-units; fan-out subagents pause on request (#134)
 
 A recorded 100-page hands-off run held a 64-sibling template as ONE recorded unit for 6 h 38 min across two sessions
