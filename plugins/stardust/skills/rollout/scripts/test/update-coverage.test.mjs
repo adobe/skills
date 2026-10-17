@@ -8,7 +8,9 @@
 // origin in source.migratedHtml, joins its template, is idempotent, refuses captured slugs and taken
 // paths, and lands under the lock beside concurrent page updates. And `--gate`: the newest row per page
 // and width wins — an older row of either width is skipped and counted (delivery.gate.atByWidth); a width
-// with no recorded time, or a record without the map, is applied.
+// with no recorded time, or a record without the map, is applied. And `--block <name> --status
+// not-delivered --reason <text>`: the reason is required (exit 2), recorded as delivery.reason, cleared by
+// any other status, the block found by id then by edsBlockName, and counted in lastRun.blocks.notDelivered.
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, readFileSync, readdirSync, writeFileSync, existsSync, utimesSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -89,10 +91,10 @@ const readBlocks = (out) => JSON.parse(readFileSync(join(out, BLOCKS_FILE), 'utf
 const blockRollup = (out) => JSON.parse(readFileSync(join(out, 'rollout.json'), 'utf8')).lastRun.blocks;
 
 await check('blockCounts: a default-content mapping is converted whatever its status; other rows follow the status rule', () => {
-  assert.deepEqual(blockCounts([]), { total: 0, converted: 0, pending: 0 });
-  assert.deepEqual(blockCounts([row('title', 'pending', 'default-content'), row('text', 'failed', 'default-content')]), { total: 2, converted: 2, pending: 0 });
-  assert.deepEqual(blockCounts([row('hero', 'pending'), row('cards', 'failed'), row('faq', 'converted'), row('stats', 'verified')]), { total: 4, converted: 2, pending: 2 });
-  assert.deepEqual(blockCounts([{ id: 'bare' }]), { total: 1, converted: 0, pending: 1 });
+  assert.deepEqual(blockCounts([]), { total: 0, converted: 0, notDelivered: 0, pending: 0 });
+  assert.deepEqual(blockCounts([row('title', 'pending', 'default-content'), row('text', 'failed', 'default-content')]), { total: 2, converted: 2, notDelivered: 0, pending: 0 });
+  assert.deepEqual(blockCounts([row('hero', 'pending'), row('cards', 'failed'), row('faq', 'converted'), row('stats', 'verified')]), { total: 4, converted: 2, notDelivered: 0, pending: 2 });
+  assert.deepEqual(blockCounts([{ id: 'bare' }]), { total: 1, converted: 0, notDelivered: 0, pending: 1 });
 });
 
 await check('(a) a default-content row recorded pending → lastRun.blocks.pending is 0 and converted counts it', async () => {
@@ -100,7 +102,7 @@ await check('(a) a default-content row recorded pending → lastRun.blocks.pendi
   writeBlocks(out, [row('title', 'pending', 'default-content'), row('text', 'pending', 'default-content')]);
   const r = await run(['page-0', '--status', 'deployed'], proj); // any write re-rolls rollout.json
   assert.equal(r.code, 0, r.err);
-  assert.deepEqual(blockRollup(out), { total: 2, converted: 2, pending: 0 });
+  assert.deepEqual(blockRollup(out), { total: 2, converted: 2, notDelivered: 0, pending: 0 });
   assert.deepEqual(readBlocks(out).map((b) => b.delivery.status), ['pending', 'pending'], 'a roll-up rule, not a status rewrite');
 });
 
@@ -114,7 +116,7 @@ await check('(b) --block <id> --status converted --eds-name default-content sets
   assert.equal(b.delivery.edsBlockName, 'default-content');
   assert.equal(b.delivery.blockPath, null);
   assert.match(b.delivery.convertedAt, /^\d{4}-\d{2}-\d{2}T/);
-  assert.deepEqual(blockRollup(out), { total: 1, converted: 1, pending: 0 });
+  assert.deepEqual(blockRollup(out), { total: 1, converted: 1, notDelivered: 0, pending: 0 });
 });
 
 await check('(c) a real pending block still counts as pending beside a default-content mapping recorded pending', async () => {
@@ -122,10 +124,10 @@ await check('(c) a real pending block still counts as pending beside a default-c
   writeBlocks(out, [row('hero', 'pending'), row('title', 'pending')]);
   let r = await run(['--block', 'title', '--status', 'pending', '--eds-name', 'default-content'], proj); // what the recorded run did
   assert.equal(r.code, 0, r.err);
-  assert.deepEqual(blockRollup(out), { total: 2, converted: 1, pending: 1 });
+  assert.deepEqual(blockRollup(out), { total: 2, converted: 1, notDelivered: 0, pending: 1 });
   r = await run(['--block', 'hero', '--status', 'converted', '--eds-name', 'hero'], proj);
   assert.equal(r.code, 0, r.err);
-  assert.deepEqual(blockRollup(out), { total: 2, converted: 2, pending: 0 });
+  assert.deepEqual(blockRollup(out), { total: 2, converted: 2, notDelivered: 0, pending: 0 });
 });
 
 await check('a blocks.mjs re-run keeps a default-content mapping recorded pending and rolls it up as converted', async () => {
@@ -137,7 +139,63 @@ await check('a blocks.mjs re-run keeps a default-content mapping recorded pendin
   const byId = Object.fromEntries(readBlocks(out).map((b) => [b.id, b.delivery]));
   assert.equal(byId.title.edsBlockName, 'default-content');
   assert.equal(byId.hero.edsBlockName, 'hero');
-  assert.deepEqual(blockRollup(out), { total: 2, converted: 1, pending: 1 });
+  assert.deepEqual(blockRollup(out), { total: 2, converted: 1, notDelivered: 0, pending: 1 });
+});
+
+// --- not-delivered: a block left undelivered on purpose, with its reason ------------------------
+await check('blockCounts: not-delivered is its own count — never pending, never converted; a default-content mapping stays converted', () => {
+  assert.deepEqual(blockCounts([row('promo', 'not-delivered'), row('hero', 'pending'), row('faq', 'converted')]), { total: 3, converted: 1, notDelivered: 1, pending: 1 });
+  assert.deepEqual(blockCounts([row('title', 'not-delivered', 'default-content')]), { total: 1, converted: 1, notDelivered: 0, pending: 0 });
+});
+
+await check('--block <id> --status not-delivered without --reason is a usage error (exit 2), the ledger untouched', async () => {
+  const { proj, out } = fixture();
+  writeBlocks(out, [row('promo', 'converted')]);
+  const before = readFileSync(join(out, BLOCKS_FILE), 'utf8');
+  let r = await run(['--block', 'promo', '--status', 'not-delivered'], proj);
+  assert.equal(r.code, 2); assert.match(r.err, /--reason/);
+  r = await run(['--block', 'promo', '--status', 'not-delivered', '--reason', '  '], proj);
+  assert.equal(r.code, 2, 'a blank reason is no reason');
+  assert.equal(readFileSync(join(out, BLOCKS_FILE), 'utf8'), before);
+});
+
+await check('--block <id> --status not-delivered --reason records delivery.reason and lastRun.blocks.notDelivered; another status clears the reason', async () => {
+  const { proj, out } = fixture();
+  writeBlocks(out, [row('promo', 'converted'), row('hero', 'pending')]);
+  let r = await run(['--block', 'promo', '--status', 'not-delivered', '--reason', 'seasonal teaser, no page uses it'], proj);
+  assert.equal(r.code, 0, r.err);
+  assert.match(r.out, /^block promo → not-delivered/m, r.out);
+  const promo = readBlocks(out).find((b) => b.id === 'promo');
+  assert.equal(promo.delivery.status, 'not-delivered'); assert.equal(promo.delivery.reason, 'seasonal teaser, no page uses it');
+  assert.deepEqual(blockRollup(out), { total: 2, converted: 0, notDelivered: 1, pending: 1 });
+  r = await run(['--block', 'promo', '--status', 'converted'], proj);
+  assert.equal(r.code, 0, r.err);
+  assert.ok(!('reason' in readBlocks(out).find((b) => b.id === 'promo').delivery), 'any other status deletes delivery.reason');
+  assert.deepEqual(blockRollup(out), { total: 2, converted: 1, notDelivered: 0, pending: 1 });
+});
+
+await check('--block finds the row by id first, then by delivery.edsBlockName; several rows sharing that name are refused (exit 1)', async () => {
+  const { proj, out } = fixture();
+  writeBlocks(out, [row('Hero Banner', 'pending', 'hero-banner'), row('cards', 'pending', 'teaser'), row('teaser', 'pending'), row('news', 'pending', 'tiles'), row('products', 'pending', 'tiles')]);
+  let r = await run(['--block', 'hero-banner', '--status', 'not-delivered', '--reason', 'replaced by the default hero'], proj);
+  assert.equal(r.code, 0, r.err);
+  const by = () => Object.fromEntries(readBlocks(out).map((b) => [b.id, b.delivery]));
+  assert.equal(by()['Hero Banner'].status, 'not-delivered'); assert.equal(by()['Hero Banner'].reason, 'replaced by the default hero');
+  r = await run(['--block', 'teaser', '--status', 'converted'], proj);
+  assert.equal(r.code, 0, r.err);
+  assert.equal(by().teaser.status, 'converted', 'the id match wins'); assert.equal(by().cards.status, 'pending');
+  r = await run(['--block', 'nothing-here', '--status', 'converted'], proj);
+  assert.equal(r.code, 1); assert.match(r.err, /no block "nothing-here"/);
+  const before = readFileSync(join(out, BLOCKS_FILE), 'utf8');
+  r = await run(['--block', 'tiles', '--status', 'not-delivered', '--reason', 'x'], proj);
+  assert.equal(r.code, 1); assert.match(r.err, /news, products/);
+  assert.equal(readFileSync(join(out, BLOCKS_FILE), 'utf8'), before, 'an ambiguous name changes nothing');
+});
+
+await check('--help names not-delivered and --reason', async () => {
+  const proj = mkdtempSync(join(tmpdir(), 'update-coverage-help4-'));
+  const r = await run(['--help'], proj);
+  assert.equal(r.code, 0); assert.match(r.out, /not-delivered/); assert.match(r.out, /--reason "<text>"/); assert.deepEqual(readdirSync(proj), []);
 });
 
 // --- --new: a page built outside the migrated tree enters coverage --------------------------------

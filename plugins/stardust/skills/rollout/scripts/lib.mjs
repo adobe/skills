@@ -83,11 +83,16 @@ export function pageCounts(pages) {
 export const DEFAULT_CONTENT = 'default-content';
 export const isDefaultContent = (b) => !!(b && b.delivery && b.delivery.edsBlockName === DEFAULT_CONTENT);
 
-/** Block conversion counts from coverage/blocks.json rows; a default-content mapping counts as converted. */
+/**
+ * Block conversion counts from coverage/blocks.json rows; a default-content mapping counts as converted.
+ * A block recorded `not-delivered` (left undelivered on purpose, with its reason) is its own count —
+ * neither converted nor pending: pending = total − converted − notDelivered.
+ */
 export function blockCounts(blocks) {
-  const converted = blocks.filter((b) => isDefaultContent(b) || ['converted', 'deployed', 'verified']
-    .includes(b.delivery && b.delivery.status)).length;
-  return { total: blocks.length, converted, pending: blocks.length - converted };
+  const status = (b) => b.delivery && b.delivery.status;
+  const converted = blocks.filter((b) => isDefaultContent(b) || ['converted', 'deployed', 'verified'].includes(status(b))).length;
+  const notDelivered = blocks.filter((b) => !isDefaultContent(b) && status(b) === 'not-delivered').length;
+  return { total: blocks.length, converted, notDelivered, pending: blocks.length - converted - notDelivered };
 }
 
 /** Recompute each template's delivery roll-up in place from the page rows. */

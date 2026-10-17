@@ -7,7 +7,9 @@
  * each page's deploy step, and after each block converts.
  *
  * Page:   node update-coverage.mjs <slug>  --status <s> [--url <deployedUrl>] [--error <msg>]
- * Block:  node update-coverage.mjs --block <id> --status <s> [--eds-name <name>]
+ * Block:  node update-coverage.mjs --block <id|edsName> --status <s> [--eds-name <name>] [--reason "<text>"]
+ *   the row is found by `id`, then by `delivery.edsBlockName` (several rows sharing that name: refused,
+ *   name the id instead).
  * Gate:   node update-coverage.mjs --gate stardust/replica/gates/all-<w>/summary.json   (or a runs/<ts>-<slug>.json table)
  *   writes each row's verdict into the page's `delivery.gate` {pass, pct, heightDelta, clipped, content,
  *   reasons, override, table, at, width, atByWidth} and flips a failing page (no documented override) from
@@ -22,9 +24,13 @@
  *   entry); `width` = the table's `_provenance.breakpoint`.
  * New:    node update-coverage.mjs --new <slug> --path </delivered/path> --template <id> --origin <origin> [--title <t>] [--status <s>]
  *   page  <status>: pending | converting | deployed | verified | stale | failed
- *   block <status>: pending | converted | deployed | verified | failed
+ *   block <status>: pending | converted | deployed | verified | failed | not-delivered
  *   A module mapped to EDS default content (no block needed) is recorded
  *   `--block <id> --status converted --eds-name default-content`; it is never counted pending.
+ *   A block deliberately left undelivered (one under blocks/ no page uses, a module the site drops) is
+ *   recorded `--block <name> --status not-delivered --reason "<text>"` — --reason is required for it
+ *   (exit 2 otherwise) and kept as `delivery.reason`; any other status deletes `delivery.reason`.
+ *   rollout.json lastRun.blocks counts it apart: {total, converted, notDelivered, pending}.
  *
  *   --new adds a page that was built OUTSIDE the migrated tree — a search results page from the
  *   dynamics phase (D2), a landing page for a redirect — so it enters coverage, `verify.mjs --all`,
@@ -173,21 +179,34 @@ if (newSlug) {
 }
 
 if (blockId) {
-  const STATUSES = ['pending', 'converted', 'deployed', 'verified', 'failed'];
+  const STATUSES = ['pending', 'converted', 'deployed', 'verified', 'failed', 'not-delivered'];
   if (!status || !STATUSES.includes(status)) { console.error(`block status must be one of ${STATUSES.join('|')}`); process.exit(2); }
+  const reason = (arg('reason', '') || '').trim();
+  if (status === 'not-delivered' && !reason) {
+    console.error('usage: update-coverage.mjs --block <id> --status not-delivered --reason "<text>"   (--reason is required: why the block is not delivered)');
+    process.exit(2);
+  }
   const doc = readJSON(blocksPath);
   if (!doc) { console.error(`rollout: ${blocksPath} not found — run blocks.mjs first.`); process.exit(1); }
-  const b = (doc.blocks || []).find((x) => x.id === blockId);
+  const rows = doc.blocks || [];
+  let b = rows.find((x) => x.id === blockId);
+  if (!b) {
+    const byEds = rows.filter((x) => x.delivery && x.delivery.edsBlockName === blockId);
+    if (byEds.length > 1) { console.error(`rollout: "${blockId}" is the EDS block of ${byEds.length} rows (${byEds.map((x) => x.id).join(', ')}) — name one by its id.`); process.exit(1); }
+    [b] = byEds;
+  }
   if (!b) { console.error(`rollout: no block "${blockId}".`); process.exit(1); }
   b.delivery = b.delivery || {};
   b.delivery.status = status;
   const edsNameArg = arg('eds-name', null);
   if (edsNameArg) b.delivery.edsBlockName = edsNameArg;
   if (status === 'converted') b.delivery.convertedAt = now;
+  if (status === 'not-delivered') b.delivery.reason = reason;
+  else delete b.delivery.reason;
   doc.generatedAt = now;
   writeJSON(blocksPath, doc);
   reRoll();
-  console.log(`block ${blockId} → ${status}`);
+  console.log(`block ${b.id === blockId ? blockId : `${b.id} (${blockId})`} → ${status}${status === 'not-delivered' ? `   reason: ${reason}` : ''}`);
   process.exit(0);
 }
 
@@ -227,7 +246,7 @@ if (gateFile) {
 // Page update
 if (!slug || !status || !PAGE_STATUSES.includes(status)) {
   console.error(`usage: update-coverage.mjs <slug> --status <${PAGE_STATUSES.join('|')}> [--url <u>] [--error <m>]`);
-  console.error('   or: update-coverage.mjs --block <id> --status <pending|converted|deployed|verified|failed> [--eds-name <n>]');
+  console.error('   or: update-coverage.mjs --block <id|edsName> --status <pending|converted|deployed|verified|failed|not-delivered> [--eds-name <n>] [--reason "<text>"]   (--reason required with not-delivered)');
   console.error('   or: update-coverage.mjs --gate stardust/replica/gates/all-<w>/summary.json   (or runs/<ts>-<slug>.json)');
   console.error('   or: update-coverage.mjs --new <slug> --path </path> --template <id> --origin <origin> [--title <t>] [--status <s>]');
   process.exit(2);
