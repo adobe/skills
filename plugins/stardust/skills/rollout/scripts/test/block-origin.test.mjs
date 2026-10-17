@@ -9,8 +9,8 @@
 // --help writes nothing, unit-geometry resolves in both layouts and its absence fails only on use.
 // The mapping run (CLI): instance selectors and confidences by text alignment, sections (anchor,
 // confidence, default-content roles), the position fallback, sections aligned across a template's pages
-// and their generalised selector, skipped pages and records, exit codes, determinism, the schema and
-// the project-copy layout.
+// and their generalised selector, an encoder map's precedence, --verify (and its fresh re-read), skipped
+// pages and records, exit codes, determinism, the schema and the project-copy layout.
 // Scratch copies live next to this file (removed at exit). All HTML is synthetic and inline.
 // Run: node plugins/stardust/skills/rollout/scripts/test/block-origin.test.mjs
 import assert from 'node:assert/strict';
@@ -643,6 +643,59 @@ check('mapping: --encode <dir>; an unreadable encoder map is ignored with one li
 });
 
 // Pages that cannot be mapped, and a coverage block the delivered document no longer has.
+const STORY_MAP = { root: 'main', markers: [{ sel: '.pull-quote', kind: 'quote', emitter: 'block:quote' }] };
+
+check('mapping: --verify — one hit true, else false (a marker without its match on one page); without it null and skipped', () => {
+  const dir = project('map-verify', STORY_PAGES, { encode: { story: STORY_MAP } });
+  let r = runMap(dir);
+  ok(r);
+  assert.equal(lines(r)[0], 'templates 1 · blocks 2 · instances 5 · verified skipped');
+  assert.ok(readMapping(dir).templates[0].blocks.every((b) => b.instances.every((i) => i.verified === null)), 'verified null without --verify');
+  r = runMap(dir, ['--verify']);
+  ok(r);
+  assert.equal(lines(r)[0], 'templates 1 · blocks 2 · instances 5 · verified 80.0 %');
+  assert.equal(lines(r).at(-1), `→ ${MAPPING} (written)`);
+  const t = readMapping(dir).templates[0];
+  assert.deepEqual(t.blocks.map((b) => [b.block, b.instances.map((i) => [i.slug, i.selector, i.source, i.verified])]), [
+    ['quote', [['story-three', 'main .pull-quote', 'encoder-map', false], ['story-two', 'blockquote.pull-quote', 'encoder-map', true]]],
+    ['story-body', [
+      ['story-one', 'body > main > section.band:nth-of-type(2)', 'text-alignment', true],
+      ['story-three', 'body > main > section.band:nth-of-type(3)', 'text-alignment', true],
+      ['story-two', 'body > main > section.band:nth-of-type(3)', 'text-alignment', true],
+    ]],
+  ]);
+  assert.deepEqual(t.sections.map((s) => [s.id, s.selector, s.pages]), [
+    ['s1', 'body > main > section:nth-of-type(1) > h1', ['story-one', 'story-three', 'story-two']],
+    ['s3', 'blockquote.pull-quote', ['story-two']],
+    ['s2', 'body > main > section.band', ['story-one', 'story-three', 'story-two']],
+  ]);
+  r = runMap(dir, ['--verify', '--json']);
+  ok(r);
+  const o = JSON.parse(r.stdout);
+  assert.deepEqual([o.status, o.counts.verified, o.counts.verifiedPct, o.counts.sources], ['unchanged', 4, 80, { 'encoder-map': 2, 'text-alignment': 3, position: 0 }]);
+  const none = project('map-verify-none', [{ slug: 'plain', path: '/plain', templateId: 'plain', content: '<main><div><h1>Only a heading</h1></div></main>', capture: '<main><h1>Only a heading</h1></main>' }]);
+  r = runMap(none, ['--verify']);
+  ok(r);
+  assert.equal(lines(r)[0], 'templates 1 · blocks 0 · instances 0 · verified n/a');
+});
+
+check('verifyMapping: re-reads and re-indexes the captures — a selector gone since mapping is false, section pages recomputed', () => {
+  const dir = project('map-verify-fresh', STORY_PAGES);
+  const coverage = JSON.parse(readFileSync(join(dir, 'stardust', 'rollout', 'coverage', 'pages.json'), 'utf8'));
+  const captures = join(dir, 'stardust', 'current', 'pages');
+  const { mapping, have } = bo.buildMapping(coverage, { content: join(dir, 'content'), captures });
+  put(join(captures, 'story-two.html'), storyCapture('two', 'classed').replace('<section class="band">', '<section class="band"><h1>Moved</h1></section><section class="band">'));
+  bo.verifyMapping(mapping, have, captures);
+  const t = mapping.templates[0];
+  const body = t.blocks.find((b) => b.block === 'story-body').instances;
+  assert.deepEqual(body.map((i) => [i.slug, i.verified]), [['story-one', true], ['story-three', true], ['story-two', true]], 'story-two: :nth-of-type(3) is still one element');
+  assert.deepEqual(t.sections.find((s) => s.id === 's2').pages, ['story-one', 'story-three'], 'two section.band in main on story-two now');
+  assert.deepEqual(t.sections.find((s) => s.id === 's3').pages, ['story-three', 'story-two']);
+  rmSync(join(captures, 'story-three.html'));
+  bo.verifyMapping(mapping, have, captures);
+  assert.deepEqual(t.blocks.flatMap((b) => b.instances.filter((i) => i.slug === 'story-three').map((i) => i.verified)), [false, false], 'a capture gone: false');
+  assert.deepEqual(t.sections.find((s) => s.id === 's3').pages, ['story-two']);
+});
 const DRIFT_COVERED = '<main><div><div class="hero"><div><div><p>Drift hero text.</p></div></div></div><div class="cards"><div><div><p>Drift card text.</p></div></div></div></div></main>';
 const DRIFT_DOCUMENT = '<main><div><div class="hero"><div><div><p>Drift hero text.</p></div></div></div></div></main>';
 const SIMPLE = (t) => `<main><div><div class="hero"><div><div><p>${t}</p></div></div></div></div></main>`;

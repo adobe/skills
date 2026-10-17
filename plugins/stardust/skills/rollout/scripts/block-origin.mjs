@@ -15,8 +15,8 @@
  * their selectors generalised (buildMapping).
  *
  * Exports (pure): normText, squash, indexSource, fragmentsOf, alignBlock, lca, coveredShare, stableSelector,
- * parseSelector, querySelectorAll, countMatches, requireKeyed, buildMapping, serialize, countsOf; main (the
- * CLI). unit-geometry.mjs is found in the plugin tree (../../diff/scripts/) or a project copy
+ * parseSelector, querySelectorAll, countMatches, requireKeyed, buildMapping, verifyMapping, serialize,
+ * countsOf; main (the CLI). unit-geometry.mjs is found in the plugin tree (../../diff/scripts/) or a project copy
  * (stardust/scripts/<skill>/: ../diff/); without either the import still succeeds, requireKeyed (so
  * fragmentsOf) throws an Error naming both places and the CLI exits 1.
  * Usage, inputs, outputs and exit codes: --help.
@@ -32,7 +32,7 @@ const HELP = `block-origin — the source side of every delivered block: the CSS
 page's captured source DOM, written to stardust/rollout/workspace/mapping.json (formatVersion 0.1.0).
 
 Usage: node skills/rollout/scripts/block-origin.mjs [--coverage <pages.json>] [--content <dir>] [--captures <dir>]
-         [--eds-schema <dir>] [--encode <dir>] [--out <file>] [--json]
+         [--eds-schema <dir>] [--encode <dir>] [--out <file>] [--verify] [--json]
   (paths are relative to the cwd, the project root)
   --coverage <file>   rollout coverage pages, formatVersion 0.1.0 (default stardust/rollout/coverage/pages.json)
   --content <dir>     the delivered documents, one content file per page path (default content)
@@ -43,6 +43,8 @@ Usage: node skills/rollout/scripts/block-origin.mjs [--coverage <pages.json>] [-
                       block:<name>), taken before the text (default stardust/migrate/encode; optional; the
                       shipped encoder keeps its maps under stardust/import: pass --encode stardust/import)
   --out <file>        default stardust/rollout/workspace/mapping.json
+  --verify            re-read and re-index every capture and count each selector's hits: an instance is
+                      verified true (exactly one element) or false; a section's pages are re-resolved
   --json              one JSON object on stdout instead of the status lines: { status, out, counts: { templates,
                       blocks, instances, verified, verifiedPct, sources, confidence: { high, medium, low, none },
                       positionBlocks }, skipped }; notes go to stderr
@@ -57,9 +59,10 @@ text it holds, the lowest over the pages). A template's sections are aligned acr
 block names; a section's selector is the generalisation that resolves to exactly one element on the most
 of its pages (its pages lists them). Text is compared normalised (NFKC, lower case, typographic quotes and
 dashes folded) with whitespace removed; selectors follow lib.mjs parseHtml's tree (no inserted tbody, no
-auto-closed p). Every instance records verified null (not verified).
+auto-closed p). Without --verify every instance records verified null (skipped).
 
-Stdout: templates N · blocks N · instances N · verified skipped; sources encoder-map N · text-alignment N ·
+Stdout: templates N · blocks N · instances N · verified P % (the share verified true; verified skipped
+without --verify, verified n/a without instances); sources encoder-map N · text-alignment N ·
 position N; confidence ≥0.9 N · 0.5–<0.9 N · >0–<0.5 N · 0 N; position fallback: <block> ×N, … and
 skipped: N (<reason> ×N, …) when any; one line per unreadable encoder map (ignored); last, → <out>
 (written|unchanged).
@@ -68,10 +71,10 @@ Outputs: <out>, keys sorted, generatedAt copied from the coverage (no clock); re
 differ. Under skipped: pages without a delivered structure, a content file or a capture, or whose capture
 cannot be indexed, and coverage blocks the delivered document no longer has.
 
-Exit: 0 written or unchanged; 1 a missing input, nothing written (coverage missing, unreadable, without
-formatVersion or pages[], or of another formatVersion; --content or --captures missing; unit-geometry.mjs
-in neither skills/diff/scripts/ nor stardust/scripts/diff/); 2 usage (unknown flag, missing value),
-nothing read or written.
+Exit: 0 written or unchanged, whatever verification found; 1 a missing input, nothing written (coverage
+missing, unreadable, without formatVersion or pages[], or of another formatVersion; --content or
+--captures missing; unit-geometry.mjs in neither skills/diff/scripts/ nor stardust/scripts/diff/);
+2 usage (unknown flag, missing value), nothing read or written.
 `;
 
 const safeRealpath = (p) => { try { return realpathSync(p); } catch { return p; } };
@@ -876,6 +879,32 @@ export function buildMapping(coverage, dirs, notes = []) {
   return { mapping: { formatVersion: MAPPING_FORMAT_VERSION, generatedAt, skipped, templates }, have };
 }
 
+/**
+ * --verify: re-reads and re-indexes every mapped page's capture (<captures>/<slug>.html) and counts each
+ * selector's hits. An instance is verified true when its selector resolves to exactly one element, else
+ * false (a null selector, syntax outside the grammar, a capture gone or not indexable); a section's pages
+ * become those of `have` (the pages that have it) where its selector resolves to exactly one element.
+ * Mutates and returns `mapping`.
+ */
+export function verifyMapping(mapping, have, captures) {
+  for (const t of mapping.templates) {
+    const indices = new Map();
+    const indexOf = (slug) => {
+      if (!indices.has(slug)) {
+        let index = null;
+        try { index = pathSafe(slug) ? indexSource(readFileSync(join(captures, `${slug}.html`), 'utf8')) : null; } catch { index = null; }
+        indices.set(slug, index);
+      }
+      return indices.get(slug);
+    };
+    const once = (slug, sel) => { const index = sel ? indexOf(slug) : null; return !!index && hitsOf(index, sel) === 1; };
+    for (const b of t.blocks) for (const i of b.instances) i.verified = once(i.slug, i.selector);
+    const on = (have && have.get(t.templateId)) || new Map();
+    for (const s of t.sections) s.pages = (on.get(s.id) || []).filter((slug) => once(slug, s.selector)).sort(byStr);
+  }
+  return mapping;
+}
+
 const sortKeys = (v) => (Array.isArray(v) ? v.map(sortKeys) : v && typeof v === 'object'
   ? Object.fromEntries(Object.keys(v).sort(byStr).map((k) => [k, sortKeys(v[k])])) : v);
 /** The mapping's bytes: object keys sorted at every level, 2-space indent, trailing newline. */
@@ -924,8 +953,8 @@ const DEFAULTS = {
   coverage: 'stardust/rollout/coverage/pages.json', content: 'content', captures: 'stardust/current/pages',
   'eds-schema': 'stardust/eds-schema', encode: 'stardust/migrate/encode', out: 'stardust/rollout/workspace/mapping.json',
 };
-const BOOL_FLAGS = ['json'];
-const USAGE = 'usage: block-origin.mjs [--coverage <pages.json>] [--content <dir>] [--captures <dir>] [--eds-schema <dir>] [--encode <dir>] [--out <file>] [--json] (--help for details)';
+const BOOL_FLAGS = ['verify', 'json'];
+const USAGE = 'usage: block-origin.mjs [--coverage <pages.json>] [--content <dir>] [--captures <dir>] [--eds-schema <dir>] [--encode <dir>] [--out <file>] [--verify] [--json] (--help for details)';
 const fail = (code, msg) => { process.stderr.write(`block-origin: ${msg}\n`); return code; };
 
 function parseArgs(argv) {
@@ -968,9 +997,12 @@ export function main(argv) {
     if (!isDir(resolve(opts[flag]))) return fail(1, `--${flag} ${opts[flag]} is not a directory — nothing written`);
   }
   const notes = [];
-  const { mapping } = buildMapping(coverage, {
-    content: resolve(opts.content), captures: resolve(opts.captures), eds: resolve(opts['eds-schema']), encode: resolve(opts.encode), encodeShown: opts.encode,
+  const captures = resolve(opts.captures);
+  const { mapping, have } = buildMapping(coverage, {
+    content: resolve(opts.content), captures, eds: resolve(opts['eds-schema']), encode: resolve(opts.encode), encodeShown: opts.encode,
   }, notes);
+  const verify = !!opts.verify;
+  if (verify) verifyMapping(mapping, have, captures);
   const text = serialize(mapping);
   const file = resolve(opts.out);
   let status = 'unchanged';
@@ -978,11 +1010,11 @@ export function main(argv) {
     try { writeAtomic(file, text); } catch (e) { return fail(1, `write failed: ${e.message}`); }
     status = 'written';
   }
-  const counts = countsOf(mapping, false);
+  const counts = countsOf(mapping, verify);
   if (opts.json) {
     notes.forEach((n) => process.stderr.write(`block-origin: ${n}\n`));
     process.stdout.write(`${JSON.stringify({ status, out: opts.out, counts, skipped: mapping.skipped })}\n`);
-  } else process.stdout.write(`${[...statusLines(counts, mapping.skipped, false), ...notes, `→ ${opts.out} (${status})`].join('\n')}\n`);
+  } else process.stdout.write(`${[...statusLines(counts, mapping.skipped, verify), ...notes, `→ ${opts.out} (${status})`].join('\n')}\n`);
   return 0;
 }
 
