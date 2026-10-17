@@ -10,9 +10,11 @@
  * with all whitespace removed (squash), so inline-element splits do not matter. querySelectorAll/countMatches
  * are a minimal selector engine over lib.mjs parseHtml (the plugin tree ships no dependency); syntax outside
  * its grammar throws UnsupportedSelector, and countMatches counts it as 0 hits. An encoder map's marker
- * comes before the text; a block without either takes its position among its anchored neighbours; a section
- * takes the lowest common ancestor of its records; a template's sections are aligned across its pages and
- * their selectors generalised (buildMapping).
+ * comes before the text (its k-th match, confidence 1; without one, confidence 0 and its raw selector only
+ * when that matches nothing, so an instance never points at another block's element); a block without
+ * either takes its position among its anchored neighbours; a section takes the lowest common ancestor of
+ * its records; a template's sections are aligned across its pages and their selectors generalised
+ * (buildMapping).
  *
  * Exports (pure): normText, squash, indexSource, fragmentsOf, alignBlock, lca, coveredShare, stableSelector,
  * parseSelector, querySelectorAll, countMatches, requireKeyed, buildMapping, verifyMapping, serialize,
@@ -51,15 +53,17 @@ Usage: node skills/rollout/scripts/block-origin.mjs [--coverage <pages.json>] [-
 
 Per page (coverage pages in slug order with a delivered structure, a content file and a capture), each
 delivered block is located in its capture by its template's encoder map (the first marker emitting
-block:<name>: the k-th block of that name takes the marker's k-th match under the map's root, else the raw
-root + sel without an element; confidence 1), else by its text (the element covering most of it, the
-deepest on ties; confidence = the share covered), else by its position among its anchored neighbours
-(confidence 0). A section takes the lowest common ancestor of its records (confidence = the share of their
-text it holds, the lowest over the pages). A template's sections are aligned across its pages by style and
-block names; a section's selector is the generalisation that resolves to exactly one element on the most
-of its pages (its pages lists them). Text is compared normalised (NFKC, lower case, typographic quotes and
-dashes folded) with whitespace removed; selectors follow lib.mjs parseHtml's tree (no inserted tbody, no
-auto-closed p). Without --verify every instance records verified null (skipped).
+block:<name>: the k-th block of that name takes the marker's k-th match under the map's root, confidence
+1; without one, confidence 0 and the raw selector — the root before each of the marker's alternatives —
+only when it matches nothing on the page, else no selector: never another block's element), else by its
+text (the element covering most of it, the deepest on ties; confidence = the share covered), else by its
+position among its anchored neighbours (confidence 0). A section takes the lowest common ancestor of its
+records (confidence = the share of their text it holds, the lowest over the pages). A template's sections
+are aligned across its pages by style and block names; a section's selector is the generalisation that
+resolves to exactly one element on the most of its pages (its pages lists them). Text is compared
+normalised (NFKC, lower case, typographic quotes and dashes folded) with whitespace removed; selectors
+follow lib.mjs parseHtml's tree (no inserted tbody, no auto-closed p). Without --verify every instance
+records verified null (skipped).
 
 Stdout: templates N · blocks N · instances N · verified P % (the share verified true; verified skipped
 without --verify, verified n/a without instances); sources encoder-map N · text-alignment N ·
@@ -536,6 +540,25 @@ const elementSibling = (index, el, step) => {
   return m && m.parent ? elements(m.parent)[m.index - 1 + step] || null : null;
 };
 
+/** The top-level alternatives of a selector list: a comma inside a string, [] or () does not split. */
+function alternatives(sel) {
+  const parts = [];
+  let [depth, quote, start] = [0, null, 0];
+  for (let i = 0; i < sel.length; i += 1) {
+    const c = sel[i];
+    if (c === '\\') i += 1;
+    else if (quote) { if (c === quote) quote = null; } else if (c === '"' || c === "'") quote = c;
+    else if (c === '[' || c === '(') depth += 1;
+    else if ((c === ']' || c === ')') && depth > 0) depth -= 1;
+    else if (c === ',' && !depth) { parts.push(sel.slice(start, i).trim()); start = i + 1; }
+  }
+  parts.push(sel.slice(start).trim());
+  const out = parts.filter(Boolean);
+  return out.length ? out : [sel];
+}
+/** An encoder map marker's raw selector: each root alternative before each of the marker's (`root a, root b`), or `sel` alone without a root. */
+const rawSelector = (root, sel) => (root ? alternatives(root).flatMap((r) => alternatives(sel).map((s) => `${r} ${s}`)).join(', ') : sel);
+
 /** eds-schema items `{ role, s }` of a page (`sections[].items[]` or `items[]`, role + text), or null without a readable file. */
 function edsItems(dir, slug) {
   if (!dir || !pathSafe(slug)) return null;
@@ -638,7 +661,14 @@ function mapPage(row, contentHtml, index, { map = null, eds = null } = {}) {
     const marker = map && r.cov.kind === 'block' ? map.markers.find((m) => m.emitter === `block:${r.cov.block}`) : null;
     if (marker) {
       const el = matches(marker)[occurrence.get(r.doc)];
-      Object.assign(r, { anchor: el || null, selector: el ? stableSelector(index, el) : map.root ? `${map.root} ${marker.sel}` : marker.sel, confidence: 1, source: 'encoder-map' });
+      if (el) Object.assign(r, { anchor: el, selector: stableSelector(index, el), confidence: 1, source: 'encoder-map' });
+      else {
+        // No k-th match: the raw selector only when it hits nothing here (never another block's element).
+        const raw = rawSelector(map.root, marker.sel);
+        let hits;
+        try { hits = countMatches(index, raw); } catch (e) { if (!(e instanceof RangeError)) throw e; hits = -1; }
+        Object.assign(r, { anchor: null, selector: hits === 0 ? raw : null, confidence: 0, source: 'encoder-map' });
+      }
       continue;
     }
     const a = alignBlock(index, r.frags);

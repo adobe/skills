@@ -603,11 +603,11 @@ const HUB_MAP = {
     { sel: '.intro', kind: 'teaser', emitter: 'block:teaser-grid' },
     { sel: '.teaser-list', kind: 'teaser', emitter: 'block:teaser-grid' },
     { sel: '.card, .caption', kind: 'cards', emitter: 'block:cards' },
-    { sel: 'video', kind: 'media', emitter: 'block:media' },
+    { sel: 'video, audio', kind: 'media', emitter: 'block:media' },
   ],
 };
 
-check('mapping: an encoder map marker wins over text alignment (confidence 1): its k-th match under the root, else its raw selector', () => {
+check('mapping: an encoder map marker wins over text alignment (confidence 1): its k-th match under the root, else its raw selector (confidence 0)', () => {
   const dir = hubProject('map-encode', { encode: { hub: HUB_MAP } });
   const r = runMap(dir);
   ok(r);
@@ -615,12 +615,28 @@ check('mapping: an encoder map marker wins over text alignment (confidence 1): i
   assert.deepEqual(t.blocks.map((b) => [b.section, b.block, b.instances.map((i) => [i.selector, i.confidence, i.source])]), [
     ['s1', 'teaser-grid', [['section.intro', 1, 'encoder-map']]],
     ['s2', 'cards', [['div.card', 1, 'encoder-map']]],
-    ['s3', 'media', [['main#main video', 1, 'encoder-map']]],
+    // no match: the raw selector (the root before each alternative) matches nothing on the page, so it is kept
+    ['s3', 'media', [['main#main video, main#main audio', 0, 'encoder-map']]],
     ['s3', 'cards', [['div.caption', 1, 'encoder-map']]],
     ['s4', 'hero', [['section.banner', 0, 'position']]],
   ]);
   assert.deepEqual(t.sections.map((s) => [s.id, s.selector, s.confidence]), [['s1', 'section.intro', 1], ['s2', 'div.card', 0.593], ['s3', 'section.gallery', 1], ['s4', null, 0]]);
   assert.equal(lines(r)[1], 'sources encoder-map 4 · text-alignment 0 · position 1');
+  assert.equal(lines(r)[2], 'confidence ≥0.9 3 · 0.5–<0.9 0 · >0–<0.5 0 · 0 2');
+});
+
+check('mapping: an encoder-map instance without its k-th match never points at another block\'s element (selector null, confidence 0)', () => {
+  // two cards blocks, one `.card` under the roots: the second block's raw selector would hit the first's element
+  const map = { root: '#main, footer', markers: [{ sel: '.card', emitter: 'block:cards' }, { sel: 'video, audio', emitter: 'block:media' }] };
+  const dir = hubProject('map-encode-kth', { encode: { hub: map } });
+  const r = runMap(dir, ['--verify']);
+  ok(r);
+  const t = readMapping(dir).templates[0];
+  assert.deepEqual(t.blocks.filter((b) => b.block === 'cards' || b.block === 'media').map((b) => [b.section, b.block, b.instances.map((i) => [i.selector, i.confidence, i.source, i.verified])]), [
+    ['s2', 'cards', [['div.card', 1, 'encoder-map', true]]],
+    ['s3', 'media', [['#main video, #main audio, footer video, footer audio', 0, 'encoder-map', false]]],
+    ['s3', 'cards', [[null, 0, 'encoder-map', false]]],
+  ]);
 });
 
 check('mapping: --encode <dir>; an unreadable encoder map is ignored with one line (stderr under --json)', () => {
@@ -671,12 +687,12 @@ check('mapping: --verify — one hit true, else false (a marker without its matc
   assert.equal(lines(r)[0], 'templates 1 · blocks 2 · instances 5 · verified 80.0 %');
   assert.equal(lines(r).at(-1), `→ ${MAPPING} (written)`);
   const t = readMapping(dir).templates[0];
-  assert.deepEqual(t.blocks.map((b) => [b.block, b.instances.map((i) => [i.slug, i.selector, i.source, i.verified])]), [
-    ['quote', [['story-three', 'main .pull-quote', 'encoder-map', false], ['story-two', 'blockquote.pull-quote', 'encoder-map', true]]],
+  assert.deepEqual(t.blocks.map((b) => [b.block, b.instances.map((i) => [i.slug, i.selector, i.source, i.verified, i.confidence])]), [
+    ['quote', [['story-three', 'main .pull-quote', 'encoder-map', false, 0], ['story-two', 'blockquote.pull-quote', 'encoder-map', true, 1]]],
     ['story-body', [
-      ['story-one', 'body > main > section.band:nth-of-type(2)', 'text-alignment', true],
-      ['story-three', 'body > main > section.band:nth-of-type(3)', 'text-alignment', true],
-      ['story-two', 'body > main > section.band:nth-of-type(3)', 'text-alignment', true],
+      ['story-one', 'body > main > section.band:nth-of-type(2)', 'text-alignment', true, 1],
+      ['story-three', 'body > main > section.band:nth-of-type(3)', 'text-alignment', true, 1],
+      ['story-two', 'body > main > section.band:nth-of-type(3)', 'text-alignment', true, 1],
     ]],
   ]);
   assert.deepEqual(t.sections.map((s) => [s.id, s.selector, s.pages]), [
