@@ -3,6 +3,11 @@
 // given --wait 3000 for the EDS decoration). Per width (1440 and 360):
 //   pixel          stitch-shot of both sides, then pixel-compare: differing pixels ≤ 10%
 //   height         |Δh| ≤ 5% of the reskin page's height (the pixel number only covers the overlap)
+//                  for a header or footer the reskin page does not render at that width and the preview does, the
+//                  preview's capture is taken with stitch-shot --hide on it (removed from layout: no band at the
+//                  top, no fixed bar repeated in each viewport slice, no footer at the bottom), so both rows compare
+//                  `main` to `main`; their detail says "preview header/footer excluded: reskin page renders none".
+//                  A part the reskin page does render stays in both captures
 //   header crop    crop-compare of the header band ≤ 2%, from the top of both captures
 //   footer crop    crop-compare of the footer band ≤ 2%, from the bottom of both captures
 //                  the band is the reskin page's measured header / footer height, measured in a browser at that
@@ -22,6 +27,8 @@
 //        the verdict ERROR and the exit 124; a bot challenge (exit 3) throws an error with code 3. `tools` maps
 //        stitch, pixel, crop, chrome and cap to script paths (default: replicaTools()), for tests.
 //   replicaTools(from)  the five instruments in either layout of the scripts, or a UsageError naming what is missing
+//   previewExclusion(chrome)  which parts of the preview the pixel and height rows leave out, for one width's measured
+//        chrome: { parts, hide, detail } (hide = the --hide selector list for stitch-shot, null for none)
 //   parityLines(result) the lines the CLI prints
 // Evidence: <deployed>/parity/ (the two captures and the diffs per width, chrome-parity-1440.json,
 // cap-probe-1440.json), <deployed>/design.json and <deployed>/parity.json.
@@ -59,6 +66,8 @@ const NAV_TIMEOUT_MS = 30000;
 const EDS_TIMEOUT_MS = 20000;
 const MAX_ADVISORIES = 10;
 const NO_CHROME = 'reskin page renders no chrome';
+// What --hide gets per part: the page's own header or footer, not one inside a block of main.
+const HIDE_SELECTOR = { header: 'header:not(main header)', footer: 'footer:not(main footer)' };
 
 function missingTools(names) {
   return new UsageError(`${names.join(', ')} not found (looked in ../../../replica/scripts/ and ../../replica/): copy the replica skill's scripts beside the reskin scripts (stardust/scripts/replica/)`);
@@ -127,12 +136,21 @@ const naRow = (check, width, reason) => row(check, width, 'n/a', `n/a: ${reason}
 
 const errorRow = (check, width, name, r) => row(check, width, 'ERROR', `ERROR (exit ${exitOf(r)})`, { detail: firstLine(outputOf(r, null)) || `${name} exited ${exitOf(r)} without a message` });
 
+// The parts of the preview that pixel and height leave out at one width: those the reskin page does not render and the
+// preview does, so the rows compare `main` to `main` instead of a page shifted by a header the reskin page lacks.
+export function previewExclusion(chrome) {
+  const parts = ['header', 'footer'].filter((part) => !chrome.reskin[part] && chrome.preview[part]);
+  if (!parts.length) return { parts, hide: null, detail: null };
+  return { parts, hide: parts.map((part) => HIDE_SELECTOR[part]).join(','), detail: `preview ${parts.join('/')} excluded: reskin page renders none` };
+}
+
 // The rows of one width that come from the two stitched captures: pixel, height, header crop, footer crop.
 async function captureRows({ width, urls, out, chrome, tools, env }) {
   const png = { reskin: join(out, `reskin-${width}.png`), preview: join(out, `preview-${width}.png`) };
+  const excluded = previewExclusion(chrome);
   let broken = null;
   for (const side of ['reskin', 'preview']) {
-    const extra = side === 'preview' ? ['--wait', String(PREVIEW_WAIT_MS)] : [];
+    const extra = side === 'preview' ? ['--wait', String(PREVIEW_WAIT_MS), ...(excluded.hide ? ['--hide', excluded.hide] : [])] : [];
     const r = await call('stitch-shot', tools.stitch, [urls[side], png[side], '--width', String(width), '--settle', ...extra], env);
     if (r.status !== 0) { broken = r; break; }
   }
@@ -150,11 +168,11 @@ async function captureRows({ width, urls, out, chrome, tools, env }) {
     rows.push(errorRow('pixel', width, 'pixel-compare', pixelError), errorRow('height', width, 'pixel-compare', pixelError));
   } else {
     const { r, j } = measured;
-    rows.push(row('pixel', width, r.status === 0 ? 'PASS' : 'FAIL', `${j.pct.toFixed(2)}%`, { artifact: diff }));
+    rows.push(row('pixel', width, r.status === 0 ? 'PASS' : 'FAIL', `${j.pct.toFixed(2)}%`, { artifact: diff, detail: excluded.detail }));
     const reskinH = pngSize(png.reskin).height;
     const delta = -j.heightDelta;
     const over = Math.abs(delta) * 100 > BARS.height * reskinH;
-    rows.push(row('height', width, over ? 'FAIL' : 'PASS', `Δh ${delta > 0 ? '+' : ''}${delta}px (${((Math.abs(delta) / reskinH) * 100).toFixed(1)}% of ${reskinH}px)`));
+    rows.push(row('height', width, over ? 'FAIL' : 'PASS', `Δh ${delta > 0 ? '+' : ''}${delta}px (${((Math.abs(delta) / reskinH) * 100).toFixed(1)}% of ${reskinH}px)`, { detail: excluded.detail }));
   }
 
   for (const part of ['header', 'footer']) {

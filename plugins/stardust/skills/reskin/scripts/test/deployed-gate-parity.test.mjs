@@ -16,7 +16,7 @@ import { UsageError } from '../figma/errors.mjs';
 import { readJson } from '../figma/io.mjs';
 import { main } from '../deployed-gate.mjs';
 import { deployedDir } from '../deployed/io.mjs';
-import { parityLines, replicaTools, runParity } from '../deployed/parity.mjs';
+import { parityLines, previewExclusion, replicaTools, runParity } from '../deployed/parity.mjs';
 import { startPreviewServer } from './fixtures/deployed/servers.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -152,13 +152,26 @@ await check('replicaTools finds the five instruments in the plugin tree and in t
     && /pixel-compare\.mjs, crop-compare\.mjs, chrome-parity\.mjs, cap-probe\.mjs/.test(e.message) && !/stitch-shot/.test(e.message) && /stardust\/scripts\/replica/.test(e.message), 'the missing files are named');
 });
 
+await check('previewExclusion: the parts of the preview left out of pixel and height are those the reskin page does not render and the preview does, with the --hide selectors and the row detail', () => {
+  const sides = (reskin, preview) => ({ reskin: { header: reskin[0], footer: reskin[1] }, preview: { header: preview[0], footer: preview[1] } });
+  assert.deepEqual(previewExclusion(sides([0, 0], [64, 40])), {
+    parts: ['header', 'footer'], hide: 'header:not(main header),footer:not(main footer)', detail: 'preview header/footer excluded: reskin page renders none',
+  });
+  assert.deepEqual(previewExclusion(sides([0, 40], [64, 40])), { parts: ['header'], hide: 'header:not(main header)', detail: 'preview header excluded: reskin page renders none' });
+  assert.deepEqual(previewExclusion(sides([64, 0], [64, 40])), { parts: ['footer'], hide: 'footer:not(main footer)', detail: 'preview footer excluded: reskin page renders none' });
+  const nothing = { parts: [], hide: null, detail: null };
+  assert.deepEqual(previewExclusion(sides([64, 40], [80, 48])), nothing, 'a part the reskin page renders stays in both captures');
+  assert.deepEqual(previewExclusion(sides([0, 0], [0, 0])), nothing, 'nothing to leave out where the preview has none either');
+  assert.deepEqual(previewExclusion(sides([0, 40], [64, 0])), { parts: ['header'], hide: 'header:not(main header)', detail: 'preview header excluded: reskin page renders none' });
+});
+
 await check('--help documents parity; its usage errors exit 2 and write nothing; the record is needed (absent, problems), a skipped leg is "not run: skipped", the reskin page must exist', async () => {
   const dir = mkdtempSync(join(scratch, 'help-'));
   copyFileSync(GATE, join(dir, 'deployed-gate.mjs'));
   const r = await run(['--help'], { cwd: dir, script: join(dir, 'deployed-gate.mjs') });
   assert.equal(r.status, 0, r.all);
   assert.match(r.stdout, /deployed-gate\.mjs parity --page <slug> \[--reskin <file>\] \[--dir stardust\]/);
-  for (const re of [/stitch-shot/, /pixel-compare/, /crop-compare/, /chrome-parity/, /cap-probe/, /10%/, /5%/, /2%/, /±20px/, /protected preview/, /not run: skipped/]) assert.match(r.stdout, re);
+  for (const re of [/stitch-shot/, /pixel-compare/, /crop-compare/, /chrome-parity/, /cap-probe/, /10%/, /5%/, /2%/, /±20px/, /protected preview/, /not run: skipped/, /stitch-shot --hide\)/]) assert.match(r.stdout, re);
   const help = r.stdout.replace(/\s+/g, ' ');
   assert.ok(help.includes('prints only the one line "n/a: protected preview (<rows>)" (verdict "n/a", exit 0, no PASS or FAIL)'), 'the help says what a protected preview prints');
   assert.ok(help.includes('inside all the row reads "ADVISORY parity n/a: protected preview"'), 'and what all prints');
@@ -400,6 +413,44 @@ if (playwrightOk) {
     assert.deepEqual(chromeCall.argv.slice(2), ['--width', '1440', '--no-defaults', '--region', 'footer=footer', '--json'], 'only the regions the reskin page has');
   });
 
+  await check('pixel and height compare main to main: for each part the reskin page does not render at that width the preview side is captured with --hide on it, and both rows say what was excluded; a part it renders stays in both captures', async () => {
+    const HIDE = { header: 'header:not(main header)', footer: 'footer:not(main footer)' };
+    const stitchOf = (s, side, width) => s.stub.calls().find((c) => c.tool === 'stitch' && c.key === side && flagOf(c.argv, '--width') === String(width)).argv;
+    const rowsOf = (s, width) => ['pixel', 'height'].map((c) => pick(s.result.rows, c, width));
+
+    const none = await scenario('hide-none', {}, { reskin: smallPage({ header: false, footer: false }), previewPage: smallPage(), widths: [1440, 360] });
+    assert.ifError(none.error);
+    for (const width of [1440, 360]) {
+      assert.deepEqual(stitchOf(none, 'preview', width).slice(2), ['--width', String(width), '--settle', '--wait', '3000', '--hide', `${HIDE.header},${HIDE.footer}`], `@${width}`);
+      assert.ok(!stitchOf(none, 'reskin', width).includes('--hide'), 'the reskin page is captured as it is');
+      assert.equal(stitchOf(none, 'preview', width)[0], none.previewUrl);
+      for (const r of rowsOf(none, width)) assert.equal(r.detail, 'preview header/footer excluded: reskin page renders none', `${r.check} @${width}`);
+      for (const check of ['header crop', 'footer crop']) assert.equal(pick(none.result.rows, check, width).detail, null, 'the crop rows keep their semantics');
+    }
+    assert.deepEqual(readJson(join(outOf(none.root), 'parity.json')).rows.filter((r) => r.detail).map((r) => `${r.check}@${r.width}`), ['pixel@1440', 'height@1440', 'pixel@360', 'height@360']);
+
+    const footerOnly = await scenario('hide-footer-only', {}, { reskin: smallPage({ header: false }), previewPage: smallPage() });
+    assert.deepEqual(stitchOf(footerOnly, 'preview', 1440).slice(7), ['--hide', HIDE.header]);
+    assert.ok(!stitchOf(footerOnly, 'reskin', 1440).includes('--hide'));
+    for (const r of rowsOf(footerOnly, 1440)) assert.equal(r.detail, 'preview header excluded: reskin page renders none');
+    assert.equal(pick(footerOnly.result.rows, 'footer crop', 1440).status, 'PASS', 'its footer is still held to the preview\'s');
+
+    const headerOnly = await scenario('hide-header-only', {}, { reskin: smallPage({ footer: false }), previewPage: smallPage() });
+    assert.deepEqual(stitchOf(headerOnly, 'preview', 1440).slice(7), ['--hide', HIDE.footer]);
+    for (const r of rowsOf(headerOnly, 1440)) assert.equal(r.detail, 'preview footer excluded: reskin page renders none');
+
+    const both = await scenario('hide-both-rendered', {}, { reskin: smallPage(), previewPage: smallPage() });
+    assert.deepEqual(stitchOf(both, 'preview', 1440).slice(2), ['--width', '1440', '--settle', '--wait', '3000'], 'chrome on both sides: captured as before');
+    for (const r of rowsOf(both, 1440)) assert.equal(r.detail, null);
+
+    const bare = await scenario('hide-neither', {}, { reskin: smallPage({ header: false, footer: false }), previewPage: smallPage({ header: false, footer: false }) });
+    assert.ok(!stitchOf(bare, 'preview', 1440).includes('--hide'), 'nothing to exclude where the preview renders none either');
+    for (const r of rowsOf(bare, 1440)) assert.equal(r.detail, null);
+
+    const failing = await scenario('hide-fail', { pixel: { stdout: { pct: 11, heightDelta: 0, compared: { width: 1440, height: 1000 } }, exit: 2 } }, { reskin: smallPage({ header: false, footer: false }), previewPage: smallPage() });
+    assert.deepEqual(parityLines(failing.result).slice(0, 3), ['FAIL parity', '  pixel @1440: 11.00% (bar ≤ 10%)', '    preview header/footer excluded: reskin page renders none']);
+  });
+
   await check('chrome: a preview that renders no <header> or <footer> where the reskin page does is a FAIL row naming it, and its crop is not run', async () => {
     const bare = await scenario('preview-bare', {}, { reskin: smallPage(), previewPage: smallPage({ header: false, footer: false }) });
     assert.equal(bare.result.verdict, 'FAIL');
@@ -553,6 +604,35 @@ if (playwrightOk) {
       assert.ok(existsSync(join(outOf(root), 'design.json')), 'cap-probe\'s design file');
       assert.equal(readJson(join(outOf(root), 'design.json')).extensions.breakpoints.probeWidth >= 2560, true);
       assert.ok(server.requests.some((q) => q.path === '/ns/home'), 'the preview was asked for');
+    } finally { await server.close(); }
+  });
+
+  await check('a reskin page without chrome against a preview that wraps the same main in a fixed header and a footer: pixel is about 0% and Δh 0 at 1440 and 360, the rows say what was excluded, and the same pair captured without the exclusion is far over the bar', async () => {
+    const stripes = Array.from({ length: 8 }, (_, i) => `<section style="height:420px;background:hsl(${i * 40} 60% 70%)"><h2>Section ${i}</h2></section>`).join('');
+    const doc = (css, inner) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>pair</title><style>body{margin:0;font:16px/24px sans-serif}${css}</style></head><body>${inner}</body></html>\n`;
+    const reskin = join(scratch, 'pair-reskin.html');
+    writeFileSync(reskin, doc('', `<main>${stripes}</main>`));
+    const wrapped = join(scratch, 'pair-preview.html');
+    writeFileSync(wrapped, doc('header{height:64px}header nav{position:fixed;top:0;left:0;width:100%;height:64px;background:#123;color:#fff;z-index:2}footer{height:120px;background:#345;color:#fff}', `<header><nav>Head</nav></header><main>${stripes}</main><footer>Foot</footer>`));
+    const server = await startPreviewServer({ pages: { '/ns/home': wrapped } });
+    try {
+      const root = project('real-pair', { origin: server.origin });
+      const result = await runParity({ dir: join(root, 'stardust'), slug: 'home', preview: previewOf(root), reskinPage: reskin });
+      for (const width of [1440, 360]) {
+        const pixel = pick(result.rows, 'pixel', width);
+        assert.equal(pixel.status, 'PASS', `pixel @${width}: ${pixel.value}`);
+        assert.ok(Number.parseFloat(pixel.value) < 0.5, `pixel @${width} is main against main: ${pixel.value}`);
+        assert.match(pick(result.rows, 'height', width).value, /^Δh 0px /, `height @${width}`);
+        for (const check of ['pixel', 'height']) assert.equal(pick(result.rows, check, width).detail, 'preview header/footer excluded: reskin page renders none');
+        for (const check of ['header crop', 'footer crop']) assert.equal(pick(result.rows, check, width).value, 'n/a: reskin page renders no chrome');
+      }
+      const out = join(outOf(root), 'parity');
+      const tools = replicaTools();
+      const unhidden = join(out, 'unhidden-360.png');
+      const shot = await run([`${server.origin}/ns/home`, unhidden, '--width', '360', '--settle', '--wait', '3000'], { script: tools.stitch });
+      assert.equal(shot.status, 0, shot.all);
+      const compared = await run([join(out, 'reskin-360.png'), unhidden, '--json', '--out', join(out, 'unhidden-diff.png')], { script: tools.pixel });
+      assert.ok(JSON.parse(compared.stdout).pct > 10, `without the exclusion: ${compared.stdout}`);
     } finally { await server.close(); }
   });
 

@@ -114,7 +114,9 @@ parity   A3. Holds the preview to the local reskin page with replica's instrumen
            header crop    crop-compare of the header band, at most 2%: the reskin page's measured header height
            footer crop    the same for the footer, counted from the bottom of each capture
          a crop is "n/a: reskin page renders no chrome" where the reskin page has no such element, and a FAIL,
-         "preview renders no <header>", where only the preview has none. At 1440 also:
+         "preview renders no <header>", where only the preview has none. A header or footer the reskin page does
+         not render at that width is left out of the preview's capture (stitch-shot --hide), so pixel and height
+         compare main to main and their detail says what was excluded. At 1440 also:
            chrome-parity  computed-style parity of the regions the reskin page has: ADVISORY, never a FAIL
            cap-probe      the reskin page's content caps, captured to design.json, against the preview's: a
                           cap outside ±20px, or missing, is a FAIL
