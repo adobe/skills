@@ -57,10 +57,10 @@
  *     null out) AND open dialogs (closeDialogs: a native <dialog> close()d, else
  *     its close control, else Escape; a non-native modal its close control, else
  *     Escape). The html/body scroll lock a closed dialog leaves is released for
- *     the capture (overflow-y only) — only when the dialog pass closed one and
- *     none survived; dialogsLeft names a survivor. The mouse is parked afterwards
- *     (bottom-left) so no :hover-styled element under the resting cursor
- *     captures in hover state.
+ *     the capture (overflow-y visible; a hidden overflow-x becomes clip) — only
+ *     when the dialog pass closed one and none survived; dialogsLeft names a
+ *     survivor. The mouse is parked afterwards (bottom-left) so no
+ *     :hover-styled element under the resting cursor captures in hover state.
  *   - `--locale` determinism: geo-redirecting sites (a car brand → /ch-de/,
  *     a fashion brand → /ww/) capture a different locale per run unless
  *     Accept-Language + context locale are pinned.
@@ -868,7 +868,7 @@ const MODAL_CLOSE_CANDIDATES = [
 // cannot close — a native <dialog>, a close button labelled in another language, a panel only Escape dismisses —
 // captures as part of the page, and the scroll lock it set on html/body outlives it. closeDialogs closes them
 // generically; dismissOverlays then releases the lock a CLOSED dialog leaves (dialogPass below says when, and why
-// overflow-y only).
+// overflow-y visible; a hidden overflow-x becomes clip).
 export const NATIVE_DIALOG = 'dialog[open]';
 // Non-native modals. `[class*="modal"][class*="open"]` also matches a `body.modal-open` scroll-lock class and an
 // in-content `.modal-opener` button — neither is a modal: closeDialogs acts only on an overlayLikeInPage match.
@@ -910,16 +910,26 @@ export function scrollLockInPage() {
   return { html, body, locked: [html, body].some((v) => v === 'hidden' || v === 'clip') };
 }
 /**
- * Release the scroll lock: overflow-y only (R2 — a site's normal `overflow-x: hidden` must not turn into exposed
- * horizontal overflow), inline + !important (it outranks the page's stylesheet), on each of html and body whose
- * computed overflow-y is hidden or clip. Returns the names released (`['html', 'body']` subset, in that order).
+ * Release the scroll lock: overflow-y visible; a hidden overflow-x becomes clip — inline + !important (it outranks
+ * the page's stylesheet), on each of html and body whose computed overflow-y is hidden or clip. Why clip: under the
+ * recorded `overflow: hidden` shorthand a kept `overflow-x: hidden` makes the visible overflow-y COMPUTE to auto, so
+ * body turns into a 100%-height inner scroller and the window still never scrolls; clip still hides horizontal
+ * overflow (R2: a site's `overflow-x: hidden` never turns into exposed overflow) but makes no scroll container. An
+ * overflow-x of auto / scroll is left alone (such a lock still stalls loudly). Returns the names released
+ * (`['html', 'body']` subset, in that order).
  */
 export function releaseScrollLockInPage() {
   const released = [];
   for (const [name, el] of [['html', document.documentElement], ['body', document.body]]) {
     if (!el) continue;
-    const v = getComputedStyle(el).overflowY;
-    if (v === 'hidden' || v === 'clip') { el.style.setProperty('overflow-y', 'visible', 'important'); released.push(name); }
+    const cs = getComputedStyle(el);
+    const v = cs.overflowY;
+    if (v === 'hidden' || v === 'clip') {
+      const clipX = cs.overflowX === 'hidden';
+      el.style.setProperty('overflow-y', 'visible', 'important');
+      if (clipX) el.style.setProperty('overflow-x', 'clip', 'important');
+      released.push(name);
+    }
   }
   return released;
 }
@@ -1002,7 +1012,8 @@ export async function closeDialogs(page) {
 // THIS pass closed at least one dialog AND none of its candidates survived: a lock with no closed dialog is the
 // page's own layout (an inner scroller / scroll-jacking — stitch-shot's scroll-stall guard stays loud), and a lock
 // with a surviving dialog stays too (nothing else names the survivor: a released lock would turn a loud stall into a
-// silently polluted capture; dialogsLeft names it). R2 — overflow-y only (releaseScrollLockInPage).
+// silently polluted capture; dialogsLeft names it). R2 — overflow-y visible; a hidden overflow-x becomes clip
+// (releaseScrollLockInPage).
 async function dialogPass(page) {
   const { closed: dialogs, left: dialogsLeft } = await closeDialogs(page);
   let scrollLockReleased = false;
@@ -1026,9 +1037,9 @@ async function dialogPass(page) {
  *       sweep (stitch-shot runs it after waitEdsDelayedPhase, so a consent manager the build enables is up).
  *   (c) dialogs, after (b) (closeDialogs) — every open native `dialog[open]` gets close(), then its close control,
  *       then Escape; a visible overlay-like non-native modal (MODAL_DIALOGS) its close control, then Escape. The
- *       html/body scroll lock left afterwards is released for the capture (overflow-y only, R2) ONLY when this pass
- *       closed a dialog and none survived (R1): a lock without a closed dialog is the page's own layout, and a lock
- *       over a survivor stays loud (dialogsLeft names the survivor).
+ *       html/body scroll lock left afterwards is released for the capture (overflow-y visible; a hidden overflow-x
+ *       becomes clip — R2) ONLY when this pass closed a dialog and none survived (R1): a lock without a closed dialog
+ *       is the page's own layout, and a lock over a survivor stays loud (dialogsLeft names the survivor).
  * `extra` selectors are site-specific dismissers, clicked first (each once).
  * Parks the mouse afterwards (bottom-left — dead space on virtually every
  * layout) so no :hover-styled element under the cursor captures hovered.

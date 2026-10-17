@@ -53,11 +53,13 @@
  *     dialog pass: a native <dialog> gets close(), then its close control,
  *     then Escape; an aria-modal / .modal.show panel its close control, then
  *     Escape. The html/body SCROLL LOCK a closed dialog leaves is released for
- *     the capture (overflow-y reset) only when the pass closed one and none
- *     survives: a lock with no closed dialog is the page's own layout, and a
- *     lock over a survivor stays — the scroll stall below fails loud on
- *     either. Each sweep logs `dialog closed: …`, `dialog still open: …` and
- *     `scroll lock released …`; capture.json's `dismissed` merges the sweeps.
+ *     the capture (overflow-y visible, a hidden overflow-x clipped — clip, not
+ *     hidden, so body never becomes an inner scroller) only when the pass
+ *     closed one and none survives: a lock with no closed dialog is the page's
+ *     own layout, and a lock over a survivor stays — the scroll stall below
+ *     fails loud on either. Each sweep logs `dialog closed: …`, `dialog still
+ *     open: …` and `scroll lock released …`; capture.json's `dismissed` merges
+ *     the sweeps.
  *     The mouse is PARKED afterwards (bottom-left): a dismissal click leaves
  *     the cursor over the page, and any :hover-styled element under it would
  *     be silently captured in hover state. --consent / --dismiss add a site's
@@ -217,8 +219,9 @@ failed one leaves none): { writtenBy, url, width, vh, height, chunks, headerMorp
 delta }, browserBuild, hints, dismissed, at } — dismissed = { extra, consent, marketing, dialogs, dialogsLeft,
 scrollLockReleased } over every sweep (dialogsLeft from the last), null under --no-dismiss.
 Overlays: consent, timed marketing modals, then open dialogs (close(), a close control, Escape — logged as
-\`dialog closed: …\` / \`dialog still open: …\`). The html/body scroll lock is released (overflow-y reset) only when the
-pass closed a dialog and none is still open; any other lock stays, and a scroll it stalls fails loud.
+\`dialog closed: …\` / \`dialog still open: …\`). The html/body scroll lock is released
+(overflow-y visible, a hidden overflow-x clipped) only when the pass closed a dialog and none is still open; any other
+lock stays, and a scroll it stalls fails loud.
 A scroll that does not move (window.scrollY stays put) short of its chunk target, the height unchanged,
 is a scroll stall (an inner scroller / scroll-jacked page): exit 1. A shortfall the document's own shrink explains (a
 header that shrinks on scroll) is a morph, not a stall: the stitch continues at the shrunk height, headerMorph records
@@ -295,7 +298,7 @@ async function dismissAndLog(page, url, opts) {
   // the dialog pass (a live-session copy older than it returns none of these fields)
   for (const entry of d.dialogs || []) console.log(`dialog closed: ${entry}`);
   for (const name of d.dialogsLeft || []) console.log(`dialog still open: ${name}`);
-  if (d.scrollLockReleased) console.log('scroll lock released for the capture (overflow-y reset)');
+  if (d.scrollLockReleased) console.log('scroll lock released for the capture (overflow-y visible, a hidden overflow-x clipped)');
   return d;
 }
 

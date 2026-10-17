@@ -167,7 +167,7 @@ await check('--help names --hints and STARDUST_LIVE_HINTS, the dialog pass and i
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, /--hints <v> +client hints: ua-metadata [^]*?\| native/);
   assert.match(r.stdout, /STARDUST_LIVE_HINTS/);
-  assert.match(r.stdout, /dialog closed: …/); assert.match(r.stdout, /scroll lock is released \(overflow-y reset\) only when/);
+  assert.match(r.stdout, /dialog closed: …/); assert.match(r.stdout, /scroll lock is released\s\(overflow-y visible, a hidden overflow-x clipped\) only when/);
   assert.match(r.stdout, /3 bot challenge[^]*2xx denial[^]*page[^]*Escalate with --headed/);
   assert.match(r.stdout, /full Chromium build when installed, else the\nheadless shell/);
   assert.match(r.stdout, /browserBuild, hints, dismissed, at/);
@@ -234,10 +234,10 @@ if (chromium) {
   });
   // S22 dialog fixtures: 3914 px of page under html/body height:100%. A lock on BOTH html and body then makes the
   // window scroll a no-op (the recorded "window.scrollY stuck at 0" stall); a plain body{overflow:hidden} alone does
-  // not — Chromium still scrolls the window under it. The opener locks overflow-y: the release resets overflow-y only
-  // (R2), and under an `overflow: hidden` shorthand the overflow-x it keeps turns body into an inner scroller (its
-  // overflow-y computes to auto), which no release of overflow-y alone can undo.
-  const LOCK = "for (const el of [document.documentElement, document.body]) el.style.overflowY = 'hidden';";
+  // not — Chromium still scrolls the window under it. The opener locks with the recorded `overflow: hidden` shorthand
+  // (both axes): the release sets overflow-y visible and clips the hidden overflow-x — a kept overflow-x: hidden would
+  // make the visible overflow-y compute to auto and turn body into an inner scroller (the stall again).
+  const LOCK = "for (const el of [document.documentElement, document.body]) el.style.overflow = 'hidden';";
   const tall = (body, head = '') => page(`<main style="height:3914px;background:linear-gradient(#ddd,#36c)"></main>${body}`, `<style>html,body{height:100%}</style>${head}`);
   Object.assign(pages, {
     // (a) the recorded shape: a native modal dialog whose opener locked scrolling
@@ -407,7 +407,7 @@ if (chromium) {
       assert.match(r.cap.dismissed.dialogs[0], /^dialog.* \(close\(\)\)$/);
       assert.deepEqual([r.cap.dismissed.dialogsLeft, r.cap.dismissed.scrollLockReleased], [[], true]);
       assert.match(r.stdout, /^dialog closed: dialog\.x-modal\.js-modal \(close\(\)\)$/m);
-      assert.match(r.stdout, /^scroll lock released for the capture \(overflow-y reset\)$/m);
+      assert.match(r.stdout, /^scroll lock released for the capture \(overflow-y visible, a hidden overflow-x clipped\)$/m);
     });
     await check('e2e (b): a non-native .modal.show[role=dialog][aria-modal=true] its close control hides, html.is-locked left behind — exit 0, full height, the close-control entry, the lock released', async () => {
       const r = await stitch('/modal-lock', 'modal');

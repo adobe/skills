@@ -16,8 +16,9 @@
 // is importable (a skip line otherwise), a browser section against an in-process node:http origin: dismissOverlays'
 // dialog pass on fixture pages — a native <dialog> close()d and the body lock released, a dialog CSS keeps displayed
 // closed by its "Schließen" control, a non-native modal by its close control and an Escape-only panel (the html lock
-// released), a surviving modal that keeps the lock (R1), a lock class with no modal that stays, and the consent click
-// unchanged (stitch-shot.test.mjs runs the EDS single sweep against a late consent banner); and the client hints on a
+// released), a surviving modal that keeps the lock (R1), a lock class with no modal that stays, the consent click
+// unchanged, and the recorded `overflow: hidden` shorthand lock on html and body at height:100% released (the window
+// scrolls; overflow-x clip) (stitch-shot.test.mjs runs the EDS single sweep against a late consent banner); and the client hints on a
 // logging origin — the document, a same-origin script, a cross-origin (localhost) script and a CORS fetch all carry the
 // UA's sec-ch-ua with no preflight; hints native keeps the browser's own and the same Accept-Language; launchChromium
 // runs the full build with the UA metadata.
@@ -869,6 +870,11 @@ const DIALOG_PAGES = {
   // (f) no dialog; a consent banner
   '/consent': fixturePage(`<div id="onetrust-banner-sdk" style="position:fixed;left:0;right:0;bottom:0;height:120px;background:#123">
     <button type="button" id="onetrust-accept-btn-handler" onclick="document.getElementById('onetrust-banner-sdk').remove()">Accept</button></div>`),
+  // (g) the recorded lock: html/body height:100% and the opener's `overflow: hidden` shorthand on both — releasing
+  // overflow-y alone leaves overflow-x hidden, so the visible overflow-y computes to auto and body scrolls inside itself
+  '/dialog-shorthand-lock': fixturePage(`<dialog id="region"><p>Choose your delivery region.</p></dialog>
+    <script>document.getElementById('region').showModal(); for (const el of [document.documentElement, document.body]) el.style.overflow = 'hidden';</script>`,
+  { head: '<style>html,body{height:100%}</style>' }),
 };
 if (chromium) {
   const origin = await serveRoutes(DIALOG_PAGES);
@@ -892,24 +898,24 @@ if (chromium) {
     });
     const pass = (d) => [d.dialogs, d.dialogsLeft, d.scrollLockReleased];
 
-    await checkAsync('dismissOverlays (a): an open native <dialog> is close()d and the body lock it set released — overflow-y only; the window scrolls', async () => {
+    await checkAsync('dismissOverlays (a): an open native <dialog> is close()d and the body lock it set released — overflow-y visible, overflow-x clip; the window scrolls', async () => {
       const { d, lock, x, y } = await sweep('/dialog-modal', readLock);
       assert.deepEqual(Object.keys(d), ['extra', 'consent', 'marketing', 'dialogs', 'dialogsLeft', 'scrollLockReleased'], 'the return shape');
       assert.deepEqual(pass(d), [['dialog#promo (close())'], [], true]);
       assert.equal(lock.locked, false, JSON.stringify(lock));
-      assert.equal(x[1], 'hidden', 'the body keeps its overflow-x (R2)');
+      assert.equal(x[1], 'clip', 'the body\'s hidden overflow-x becomes clip — still hidden, no scroll container (R2-amend)');
       assert.ok(y >= 900, `window.scrollY ${y} after scrollTo(0, 1000)`);
     });
     await checkAsync('dismissOverlays (b): a dialog page CSS keeps displayed after close() is closed by its "Schließen" control', async () => {
       const { d } = await sweep('/dialog-styled');
       assert.deepEqual(pass(d), [['dialog#notice (close control [aria-label*="schließen" i])'], [], false], 'no lock to release');
     });
-    await checkAsync('dismissOverlays (c): a non-native modal closed by its close control, a panel by Escape — the html lock released (overflow-y only)', async () => {
+    await checkAsync('dismissOverlays (c): a non-native modal closed by its close control, a panel by Escape — the html lock released (overflow-y visible, overflow-x clip)', async () => {
       const { d, lock, x } = await sweep('/modals', readLock);
       assert.deepEqual(pass(d), [['div.modal.show (close control .modal__close)', 'div.promo-modal.is-open (Escape)'], [], true], JSON.stringify(d));
       assert.deepEqual(d.marketing, [], 'the marketing pass left both to the dialog pass');
       assert.equal(lock.locked, false, JSON.stringify(lock));
-      assert.equal(x[0], 'hidden', 'html keeps its overflow-x (R2)');
+      assert.equal(x[0], 'clip', 'html\'s hidden overflow-x becomes clip — still hidden, no scroll container (R2-amend)');
     });
     await checkAsync('dismissOverlays (d): a modal that survives keeps the lock (R1) — dialogsLeft names it, though another dialog closed', async () => {
       const { d, lock } = await sweep('/modal-stuck', readLock);
@@ -926,6 +932,13 @@ if (chromium) {
       assert.equal(d.consent, '#onetrust-accept-btn-handler');
       assert.deepEqual(pass(d), [[], [], false]);
       assert.equal(banner, 0, 'the banner is gone');
+    });
+    await checkAsync('dismissOverlays (g): the recorded `overflow: hidden` shorthand lock on html and body at height:100% is released — the window scrolls, overflow-x clip on both', async () => {
+      const { d, lock, x, y } = await sweep('/dialog-shorthand-lock', readLock);
+      assert.deepEqual(pass(d), [['dialog#region (close())'], [], true]);
+      assert.equal(lock.locked, false, JSON.stringify(lock));
+      assert.deepEqual(x, ['clip', 'clip'], 'a hidden overflow-x becomes clip on html and body');
+      assert.ok(y > 0, `window.scrollY ${y} after scrollTo(0, 1000) — not an inner scroller`);
     });
   } finally {
     if (browser) await browser.close();

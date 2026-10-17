@@ -604,10 +604,10 @@ rather than erroring.
    and the stitch died on the lock. `dialog[open]`: `close()`, then a close
    control, then Escape; a non-native modal (`[role=dialog][aria-modal=true]`,
    `.modal.show`, `[class*=modal][class*=open]`): the close control, then
-   Escape. Only when the pass closed one and left none open is the
-   html/body scroll lock released for the capture (`overflow-y` only);
-   `<stem>.capture.json` `dismissed` records `dialogs`, `dialogsLeft` (the
-   lock stays: rule 13) and `scrollLockReleased`.
+   Escape. Only when the pass closed one and left none open is the html/body
+   scroll lock released for the capture (overflow-y visible; a hidden overflow-x
+   becomes clip, so the page never widens); `<stem>.capture.json` `dismissed`
+   records `dialogs`, `dialogsLeft` (the lock stays: rule 13), `scrollLockReleased`.
 7. **Granularity parity for JOIN/SPLIT false-reds (#87)** — mirror live
    node granularity or confirm-justify per
    `recreation-procedure.md` § Granularity parity.
