@@ -24,7 +24,7 @@
     },
     "outputs": {
       "type": "object",
-      "description": "The coverage files a client reads, keyed by project-relative path (<out>/coverage/{pages,templates,blocks}.json).",
+      "description": "The coverage files a client reads, keyed by project-relative path (<out>/coverage/{pages,templates,blocks}.json), and <out>/workspace/mapping.json when present.",
       "additionalProperties": { "$ref": "#/$defs/sha256" }
     },
     "placeholders": {

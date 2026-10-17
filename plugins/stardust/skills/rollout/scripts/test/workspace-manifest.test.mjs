@@ -2,9 +2,10 @@
 // skills/rollout/scripts/test/workspace-manifest.test.mjs — the workspace-manifest.mjs contract
 // (reference/coverage-contract.md): on the delivered-site fixture, coverage is built the way a run
 // builds it (inventory.mjs → blocks.mjs → conversions recorded with update-coverage.mjs → blocks.mjs),
-// then the manifest: it validates against its schema; outputs hash the three coverage files and
-// inputs the content, the block code and the judgement; byte-identical re-runs and a --dry-run that
-// writes nothing; a temp-file write that leaves nothing behind on failure; exit 1 without coverage,
+// then the manifest: it validates against its schema; outputs hash the three coverage files (and
+// workspace/mapping.json when present) and inputs the content, the block code and the judgement;
+// byte-identical re-runs and a --dry-run that writes nothing; a temp-file write that leaves nothing
+// behind on failure; exit 1 without coverage,
 // without formatVersion or on stale coverage; handover (marker, untracked content, --force +
 // degraded, a second forced run keeping the first handover); the judgement draft; placeholders;
 // exit 2 on usage errors; --help writes nothing; no identity in the manifest or the draft; a project
@@ -146,6 +147,36 @@ check('hashes: outputs are the three coverage files, inputs the content summary,
   const j = doc(dir, 'manifest.json');
   assert.equal(j.inputs['stardust/rollout/workspace/judgement.json'], sha(text(dir, 'judgement.json')), 'the judgement is an input');
   assert.ok(j._provenance.readArtifacts.includes('stardust/rollout/workspace/judgement.json'));
+});
+
+check('mapping: a workspace/mapping.json file is hashed under outputs (and so in readArtifacts), nothing else changes; without it (or as a directory) outputs hold only the coverage; new bytes rewrite the manifest; it validates', () => {
+  const MAP = 'stardust/rollout/workspace/mapping.json';
+  const mapping = (generatedAt) => `${JSON.stringify({ formatVersion: '0.1.0', generatedAt, templates: [] }, null, 2)}\n`;
+  const dir = copy('mapping');
+  ok(run(dir));
+  const without = doc(dir, 'manifest.json');
+  assert.deepEqual(Object.keys(without.outputs), COV, 'without mapping.json: only the three coverage files');
+  mkdirSync(join(dir, MAP));
+  assert.equal(jsonOut(run(dir, '--json')).status, 'unchanged', 'a directory named mapping.json is not listed');
+  rmSync(join(dir, MAP), { recursive: true });
+  writeFileSync(join(dir, MAP), mapping('2026-01-01T00:00:00.000Z'));
+  const r = run(dir, '--json');
+  ok(r);
+  assert.equal(jsonOut(r).status, 'written');
+  const mf = doc(dir, 'manifest.json');
+  assert.deepEqual(Object.keys(mf.outputs), [...COV, MAP], 'outputs keys sorted, mapping.json after the coverage');
+  assert.equal(mf.outputs[MAP], sha(readFileSync(join(dir, MAP))));
+  const expected = JSON.parse(JSON.stringify(without));
+  expected.outputs[MAP] = mf.outputs[MAP];
+  expected._provenance.readArtifacts = [...without._provenance.readArtifacts, MAP].sort(byStr);
+  assert.deepEqual(mf, expected, 'the only change is the outputs entry and its readArtifacts line');
+  assert.deepEqual(validate(loadSchema('rollout-workspace-manifest.schema.json'), mf), []);
+  assert.equal(jsonOut(run(dir, '--json')).status, 'unchanged');
+  writeFileSync(join(dir, MAP), mapping('2026-01-02T00:00:00.000Z'));
+  const again = run(dir, '--json');
+  ok(again);
+  assert.equal(jsonOut(again).status, 'written', 'changed mapping.json bytes change the manifest');
+  assert.equal(doc(dir, 'manifest.json').outputs[MAP], sha(readFileSync(join(dir, MAP))));
 });
 
 check('idempotent: a second run is "unchanged" and rewrites nothing, also after inventory and blocks re-run and from another cwd; deleting and re-running gives the same bytes; --dry-run writes nothing', () => {
