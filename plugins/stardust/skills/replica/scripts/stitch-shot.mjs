@@ -85,9 +85,24 @@
  *     re-rendered later is hidden too) AFTER the last dismissal sweep (after
  *     --settle's) and BEFORE --inventory, the freeze and the height read: the
  *     inventories, the page height and every chunk see the same page. One
- *     `hidden: <sel> ×<n> (<h>px) [--hide]; …` line (×0: nothing matched).
- *     gate.sh / gate-all pass the SAME list to the live and build captures —
- *     symmetric, like overlay dismissal: the build has nothing to hide.
+ *     `hidden: <sel> ×<n> (<h>px) [--hide]; …` line (×0: nothing matched at
+ *     the hide pass). gate.sh / gate-all pass the SAME list to the live and
+ *     build captures — symmetric, like overlay dismissal: the build has
+ *     nothing to hide.
+ *   - HIDE MISSES: right before the capture (after the freeze and the font
+ *     check, before the height read) live-session recountHides counts every
+ *     --hide selector again — nAtCapture on its record (a block injected
+ *     after the hide pass is hidden by the persistent rule and counted
+ *     here). A selector that matched nothing at both counts (hideMisses) hid
+ *     nothing (recorded: a bar selector that matched ×0 on both sides of a
+ *     hands-off run while the gate carried on as if hidden): the --json
+ *     record's hideMiss { sels, candidates } names it with the in-flow
+ *     blocks above the header read off that page (inFlowRegionsAboveHeader)
+ *     — null when none; a derivation that could not run records candidates
+ *     null + candidatesCheck "failed: <msg>" (not derived, never []) beside
+ *     one stderr WARNING. stitch-shot prints no warning for the miss itself
+ *     (it does not know the side): gate.sh / gate-all warn from the live
+ *     capture's record.
  *   - the OVERLAY-LEFT check (live-session detectOverlayLeft) runs ONCE,
  *     after the last dismissal sweep and the --hide pass (a layer hidden on
  *     both sides is not reported), before --inventory and the freeze — under
@@ -99,8 +114,8 @@
  *     --json <file> writes the capture record once the PNG is written: the
  *     sweeps' dismissals, overlayLeft, fontsFailed (the font-load
  *     assertion's families — an array when it ran, null when it could not,
- *     with fontCheck "failed: <msg>"), the hide records, height and the
- *     overflow line.
+ *     with fontCheck "failed: <msg>"), the hide records (each with
+ *     nAtCapture), hideMiss, height and the overflow line.
  *
  * Usage:
  *   node skills/replica/scripts/stitch-shot.mjs <url> <out.png> [options]
@@ -123,7 +138,7 @@
  *     --inventory <spec>  also write the presence / clip / unit inventories of
  *                         the settled page, before the freeze (gate-all --one-load)
  *     --json <file>       after the PNG, write the capture record (gate.sh /
- *                         gate-all read overlayLeft and fontsFailed)
+ *                         gate-all read overlayLeft, fontsFailed and hideMiss)
  *
  * Example:
  *   node skills/replica/scripts/stitch-shot.mjs https://www.example.com \
@@ -153,7 +168,7 @@ if (!LIVE_SESSION) {
   console.error('stitch-shot error: live-session.mjs not found (looked in ../../diff/scripts/ and ../diff/). Copy the diff skill\'s scripts dir alongside this one (replica SKILL.md § Setup).');
   process.exit(1);
 }
-const { REAL_CHROME_UA, isEdsHost, lateWindowFor, waitEdsDelayedPhase, launchStealthHeaded, newLiveContext, gotoLive, dismissOverlays, detectOverlayLeft, parseHideList, hideRegions, formatHidden } = await import(pathToFileURL(LIVE_SESSION).href);
+const { REAL_CHROME_UA, isEdsHost, lateWindowFor, waitEdsDelayedPhase, launchStealthHeaded, newLiveContext, gotoLive, dismissOverlays, detectOverlayLeft, parseHideList, hideRegions, formatHidden, recountHides, hideMisses, inFlowRegionsAboveHeader } = await import(pathToFileURL(LIVE_SESSION).href);
 
 const HELP = `stitch-shot — scroll-and-stitch full-page screenshot (symmetric capture instrument)
 
@@ -175,7 +190,10 @@ Usage: node stitch-shot.mjs <url> <out.png> [options]
   --json <file>     after the PNG, write the capture record (JSON, 2-space): url, out, width, vh, settle, dismissed
                     ({ consent, extra, marketing } over the sweeps; null under --no-dismiss), overlayLeft (null when
                     clean), fontsFailed ([] or the families whose face failed; null = the check could not run, then
-                    fontCheck "failed: <msg>" follows), hidden, height, overflow
+                    fontCheck "failed: <msg>" follows), hidden (the --hide records: sel, source, n, h at the hide pass,
+                    nAtCapture = the match count right before the capture), hideMiss ({ sels, candidates } when a
+                    selector matched nothing at both counts — candidates = the in-flow blocks above the header,
+                    { tag, id, classes, top, height, selector }; null when none), height, overflow
   --help            this text
 
 Prints \`overlay-left: <sel> (<why>)\` once — after the last dismissal sweep and --hide, before the capture, also under
@@ -189,8 +207,12 @@ vs the viewport at --width (delta = px over, 0 when it fits), read after the chu
 finite animations finished (the page at rest) — gate.sh's horizontal-overflow assert reads it from the build capture.
 EDS build/preview hosts (*.aem.page|live, *.hlx.page|live) get no timed late-modal poll: one dismissal sweep,
 after the EDS delayed phase (live source sites keep the 6 s poll, local targets have none).
-With --hide: one \`hidden: <sel> ×<n> (<h>px) [--hide]; …\` line (×0 = nothing matched); gate.sh / gate-all
-pass the same list to both captures.
+With --hide: one \`hidden: <sel> ×<n> (<h>px) [--hide]; …\` line (×0 = nothing matched at the hide pass); gate.sh /
+gate-all pass the same list to both captures. Right before the capture every selector is counted again (nAtCapture —
+a block injected after the hide pass is hidden too and counted then); one that matched nothing at both counts is the
+record's hideMiss, with the in-flow blocks above the header as candidates (could not be derived: candidates null +
+candidatesCheck "failed: <msg>" and a WARNING). stitch-shot prints no line for a miss — it does not know the side:
+gate.sh / gate-all warn from the live capture's record.
 Run the SAME command shape against the live page and the served prototype.
 Exit codes: 0 written (an overlay left included), 1 error (also --hide / --json without a value), 3 bot challenge
 (live side blocked — fail loud).`;
@@ -270,6 +292,18 @@ export function fontCheckOutcome(result, error) {
   if (error == null && Array.isArray(result)) return { fontsFailed: fontFamilies(result) };
   const why = error != null ? String((error && error.message) || error).split('\n')[0] : 'no family list returned';
   return { fontsFailed: null, fontCheck: `failed: ${why}` };
+}
+
+/** The --json record's hideMiss: the selectors that matched nothing (live-session hideMisses over the recounted records)
+ * and the in-flow blocks above the header read off the page (inFlowRegionsAboveHeader) → null when no selector missed,
+ * else { sels, candidates }; a derivation that threw, or returned no list → { sels, candidates: null, candidatesCheck:
+ * 'failed: <first line>' } — candidates that could not be derived are recorded as not derived, never as []. */
+export function hideMissOutcome(sels, candidates, error) {
+  const missed = (sels || []).filter((s) => typeof s === 'string' && s);
+  if (!missed.length) return null;
+  if (error == null && Array.isArray(candidates)) return { sels: missed, candidates };
+  const why = error != null ? String((error && error.message) || error).split('\n')[0] : 'no candidate list returned';
+  return { sels: missed, candidates: null, candidatesCheck: `failed: ${why}` };
 }
 
 async function main() {
@@ -417,6 +451,17 @@ async function main() {
       console.error(`stitch-shot WARNING: FONT LOAD FAILED for declared face(s) ${failedFonts.join(', ')} — this capture renders fallback type (silent false measurement, F-B2 class). Verify the face loads in a real browser: instrument-induced → fix the capture before gating; genuinely broken on the live site → log as capture-state.`);
     }
 
+    // Hide misses (header): right before the capture, every --hide selector counted again (nAtCapture; a block injected
+    // after the hide pass is hidden by the persistent rule and counted here). A selector that matched nothing at both
+    // counts hid nothing: the record's hideMiss names it with the in-flow blocks above the header on this page. No line
+    // for the miss itself — the caller knows the side (gate.sh / gate-all warn from the live capture's record).
+    const hides = await recountHides(page, hidden);
+    const missed = hideMisses(hides);
+    let regionsError = null;
+    const regions = missed.length ? await inFlowRegionsAboveHeader(page).catch((e) => { regionsError = e; return null; }) : null;
+    const hideMiss = hideMissOutcome(missed, regions, regionsError);
+    if (hideMiss && hideMiss.candidatesCheck) console.error(`stitch-shot WARNING: hide candidates not derived (${hideMiss.candidatesCheck.slice('failed: '.length)}) — the record says hideMiss.candidates: null (not derived)`);
+
     // Height is measured AFTER the settle pass, never before: entrance-
     // animated sites inflate scrollHeight until elements go inview (their
     // translate3d entrance transforms extend the document; recorded: 3183px
@@ -494,7 +539,7 @@ async function main() {
     // --json: the capture record, only once the PNG is written (a failed capture leaves none).
     if (opts.json) {
       mkdirSync(dirname(opts.json), { recursive: true });
-      writeFileSync(opts.json, `${JSON.stringify({ url, out, width: opts.width, vh: opts.vh, settle: opts.settle, dismissed, overlayLeft, ...fonts, hidden, height: totalH, overflow: overflowOf(root) }, null, 2)}\n`);
+      writeFileSync(opts.json, `${JSON.stringify({ url, out, width: opts.width, vh: opts.vh, settle: opts.settle, dismissed, overlayLeft, ...fonts, hidden: hides, hideMiss, height: totalH, overflow: overflowOf(root) }, null, 2)}\n`);
     }
     console.log(overflowLine(root));
     console.log(`stitched ${out}: ${opts.width}x${totalH} from ${chunks.length} chunks`);

@@ -25,6 +25,11 @@
 // fontCheck "failed: <msg>" and its own WARNING — skipped, never []; dismissed across the --settle sweeps (consent =
 // last non-null, marketing = union); a consent-sweep click that leaves the page → overlayLeft `(consent sweep
 // navigated to <url>)`; a failed capture (HTTP 404) writes no record.
+// hide misses (the record's nAtCapture + hideMiss; stitch-shot prints no line for a miss — the caller knows the side):
+// hideMissOutcome's shape (null / { sels, candidates } / candidates null + candidatesCheck); --help names the fields.
+// e2e the delayed bar — an empty section.bar__wrapper above the header, filled 300 ms later: the right selector hides
+// it in the PNG, nAtCapture 1, hideMiss null; a wrong one → ×0 at both counts, hideMiss with the wrapper as the
+// candidate; a block injected after the hide pass (×0 at the pass) is counted at the capture — no hideMiss.
 // Run: node plugins/stardust/skills/replica/scripts/test/stitch-shot.test.mjs
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
@@ -33,7 +38,7 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { fontCheckOutcome, fontFamilies, overflowLine, parseArgs } from '../stitch-shot.mjs';
+import { fontCheckOutcome, fontFamilies, hideMissOutcome, overflowLine, parseArgs } from '../stitch-shot.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'stitch-shot.mjs');
@@ -102,7 +107,17 @@ await check('fontCheckOutcome: a family list → { fontsFailed } (checked); an e
   assert.deepEqual(fontCheckOutcome(undefined, 'timeout'), { fontsFailed: null, fontCheck: 'failed: timeout' });
   assert.deepEqual(fontCheckOutcome({ not: 'a list' }, null), { fontsFailed: null, fontCheck: 'failed: no family list returned' });
 });
-await check('--json: --help names it and the overlay-left line; a missing value (end of argv or a flag next) is a usage error, exit 1, nothing written', () => {
+await check('hideMissOutcome: no missed selector → null; a miss + the candidate list → { sels, candidates }; a derivation that threw or returned no list → candidates null + candidatesCheck — never []', () => {
+  const wrapper = { tag: 'section', id: null, classes: ['bar__wrapper'], top: 0, height: 72, selector: 'section.bar__wrapper' };
+  assert.equal(hideMissOutcome([], [wrapper], null), null);
+  assert.equal(hideMissOutcome(undefined, null, new Error('x')), null, 'no miss → null, whatever the derivation did');
+  assert.deepEqual(hideMissOutcome(['.location-bar'], [wrapper], null), { sels: ['.location-bar'], candidates: [wrapper] });
+  assert.deepEqual(hideMissOutcome(['.a', '.b'], [], null), { sels: ['.a', '.b'], candidates: [] }, 'none found is a list, not a failure');
+  const bad = hideMissOutcome(['.location-bar'], null, new Error('page.evaluate: Execution context was destroyed\n    at main'));
+  assert.deepEqual(bad, { sels: ['.location-bar'], candidates: null, candidatesCheck: 'failed: page.evaluate: Execution context was destroyed' });
+  assert.deepEqual(hideMissOutcome(['.x'], { not: 'a list' }, null), { sels: ['.x'], candidates: null, candidatesCheck: 'failed: no candidate list returned' });
+});
+await check('--json: --help names it, the overlay-left line, nAtCapture and hideMiss; a missing value (end of argv or a flag next) is a usage error, exit 1, nothing written', () => {
   const cwd = mkdtempSync(join(tmpdir(), 'stitch-json-'));
   try {
     const h = spawnSync(process.execPath, [SCRIPT, '--help'], { cwd, encoding: 'utf8', timeout: 15000 });
@@ -110,6 +125,10 @@ await check('--json: --help names it and the overlay-left line; a missing value 
     assert.match(h.stdout, /--json <file> +after the PNG, write the capture record/);
     assert.match(h.stdout, /overlay-left: <sel>/);
     assert.match(h.stdout, /fontsFailed \(\[\] or the families .*; null = the check could not run/);
+    assert.match(h.stdout, /nAtCapture = the match count right before the capture/);
+    assert.match(h.stdout, /hideMiss \(\{ sels, candidates \}[^)]*\n[^)]*null when none\)/);
+    assert.match(h.stdout, /×0 = nothing matched at the hide pass/);
+    assert.match(h.stdout, /stitch-shot prints no line for a miss/);
     for (const tail of [['--json'], ['--json', '--settle']]) {
       const r = spawnSync(process.execPath, [SCRIPT, 'http://127.0.0.1:9/', 'x.png', ...tail], { cwd, encoding: 'utf8', timeout: 15000 });
       assert.equal(r.status, 1, `${tail.join(' ')}: ${r.stderr}`);
@@ -121,7 +140,8 @@ await check('--json: --help names it and the overlay-left line; a missing value 
 
 // ---- end-to-end (needs playwright + pngjs importable from the script's location) ---------------------------
 let chromium = null;
-try { ({ chromium } = await import('playwright')); await import('pngjs'); } catch { chromium = null; console.log('skip  end-to-end stitch-shot (playwright / pngjs not importable here; run this test in an environment that has them)'); }
+let PNG = null;
+try { ({ chromium } = await import('playwright')); ({ PNG } = await import('pngjs')); } catch { chromium = null; console.log('skip  end-to-end stitch-shot (playwright / pngjs not importable here; run this test in an environment that has them)'); }
 if (chromium) {
   const page = (body, extraHead = '') => `<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0}section{height:700px;background:#ddd}</style>${extraHead}</head><body>${body}</body></html>`;
   // A consent banner injected 3 s after `load` — the timing of a consent manager loaded from the EDS delayed phase.
@@ -151,6 +171,15 @@ if (chromium) {
       '<style>#hd{height:60px;background:#222}#hd.pin{position:fixed;top:0;left:0;right:0}</style>'),
     // --hide: an 88 px per-visitor bar (a location suggestion) in flow above the header — not an overlay.
     '/geo': page('<div class="geo-bar" style="height:88px;background:#f90"><a href="/loc">Switch location</a></div><header style="height:60px;background:#222"></header><main><h1 style="margin:0;height:60px">Heading</h1><section></section><section></section></main>'),
+  });
+  // hide misses — the delayed bar: an empty section.bar__wrapper in flow above the header, filled 300 ms later with a
+  // 72 px #f90 bar (a geo lookup's location suggestion; the hide pass runs ≥ 1.2 s in). /bar-late fills it only once the
+  // hide rule lands — a block injected after the hide pass (hidden by the persistent rule, counted at the capture).
+  const BAR = '<div class="bar__content" style="height:72px;background:#f90">Visiting from elsewhere? Switch location</div>';
+  const barPage = (fill) => page(`<section class="bar__wrapper"></section><header style="height:60px;background:#222"></header><main><section></section><section></section></main><script>${fill}</script>`, '<style>section.bar__wrapper{height:auto;background:none}</style>');
+  Object.assign(pages, {
+    '/bar': barPage(`setTimeout(() => { document.querySelector('.bar__wrapper').innerHTML = '${BAR}'; }, 300);`),
+    '/bar-late': barPage(`new MutationObserver((ms, mo) => { if (document.querySelector('style[data-stardust-hide]')) { mo.disconnect(); document.querySelector('.bar__wrapper').innerHTML = '${BAR}'; } }).observe(document.head, { childList: true });`),
   });
   // overlay-left + --json: a fixed full-viewport backdrop with no close control (no sweep removes it) over page content
   // (a line of text at the viewport centre); a declared face whose file 404s; a consent banner shown at load beside a
@@ -292,6 +321,10 @@ if (chromium) {
       sweeps: run([`${base}/consent-popup`, 'sweeps.png', '--settle', '--json', 'sweeps.json'], work),
       navigated: run([`${base}/consent-link`, 'nav.png', '--json', 'nav.json'], work),
       failed: run([`${base}/no-such-page`, 'failed.png', '--json', 'failed.json'], work),
+      // hide misses: the right selector is the candidate the wrong run names
+      barRight: run([`${base}/bar`, 'bar-right.png', '--hide', 'section.bar__wrapper', '--json', 'bar-right.json'], work),
+      barWrong: run([`${base}/bar`, 'bar-wrong.png', '--hide', '.location-bar', '--json', 'bar-wrong.json'], work),
+      barLate: run([`${base}/bar-late`, 'bar-late.png', '--hide', '.bar__content', '--json', 'bar-late.json'], work),
     };
     await check('e2e overlay-left: a fixed full-viewport backdrop no sweep removes → one `overlay-left:` line before the overflow line, exit 0; --json records it', async () => {
       const r = await shots.backdrop;
@@ -320,7 +353,8 @@ if (chromium) {
       assert.match(r.stdout, /^hidden: \.backdrop ×1 \(900px\) \[--hide\]$/m);
       const j = record('backdrop-hide.json');
       assert.equal(j.overlayLeft, null);
-      assert.deepEqual(j.hidden, [{ sel: '.backdrop', source: '--hide', n: 1, h: 900 }]);
+      assert.deepEqual(j.hidden, [{ sel: '.backdrop', source: '--hide', n: 1, h: 900, nAtCapture: 1 }]);
+      assert.equal(j.hideMiss, null);
     });
     await check('e2e --json on a clean page: the record exactly — key order, 2-space JSON + newline, height = the PNG\'s, overflow = the line\'s numbers', async () => {
       const r = await shots.fit;
@@ -328,7 +362,7 @@ if (chromium) {
       assert.deepEqual(ovlLines(r), [], r.stdout);
       assert.equal(lastTwo(r)[0], 'overflow: scrollWidth=1440 viewport=1440 delta=0');
       const want = { url: `${base}/fit`, out: 'fit-rec.png', width: 1440, vh: 900, settle: false, dismissed: { consent: null, extra: [], marketing: [] },
-        overlayLeft: null, fontsFailed: [], hidden: [], height: pngHeight('fit-rec.png'), overflow: { scrollWidth: 1440, viewport: 1440, delta: 0 } };
+        overlayLeft: null, fontsFailed: [], hidden: [], hideMiss: null, height: pngHeight('fit-rec.png'), overflow: { scrollWidth: 1440, viewport: 1440, delta: 0 } };
       assert.equal(readFileSync(join(work, 'fit-rec.json'), 'utf8'), `${JSON.stringify(want, null, 2)}\n`);
     });
     await check('e2e --json fontsFailed: a declared face whose file 404s → [\'Brand Sans\'], beside the one FONT LOAD FAILED warning', async () => {
@@ -377,6 +411,49 @@ if (chromium) {
       assert.equal(r.status, 1, r.stderr);
       assert.ok(!existsSync(join(work, 'failed.json')), 'no record');
       assert.ok(!existsSync(join(work, 'failed.png')), 'no PNG');
+    });
+    // the bar's #f90 pixels in a stitched PNG; no line about a miss on either stream — the side is the caller's to name
+    const barPixels = (f) => {
+      const { data } = PNG.sync.read(readFileSync(join(work, f)));
+      let n = 0;
+      for (let i = 0; i < data.length; i += 4) if (Math.abs(data[i] - 255) <= 2 && Math.abs(data[i + 1] - 153) <= 2 && data[i + 2] <= 2) n += 1;
+      return n;
+    };
+    const noMissLine = (r) => assert.doesNotMatch(`${r.stdout}\n${r.stderr}`, /hide matched nothing|WARNING/, `${r.stdout}\n${r.stderr}`);
+    await check('e2e hide miss — the delayed bar, right selector: hidden in the PNG (no bar pixel, 72 px shorter), nAtCapture 1, hideMiss null', async () => {
+      const [r, wrong] = [await shots.barRight, await shots.barWrong];
+      assert.equal(r.status, 0, r.stderr);
+      assert.match(r.stdout, /^hidden: section\.bar__wrapper ×1 \(72px\) \[--hide\]$/m);
+      noMissLine(r);
+      const j = record('bar-right.json');
+      assert.deepEqual(j.hidden, [{ sel: 'section.bar__wrapper', source: '--hide', n: 1, h: 72, nAtCapture: 1 }]);
+      assert.equal(j.hideMiss, null);
+      assert.equal(barPixels('bar-right.png'), 0, 'no bar pixel in the capture');
+      assert.equal(wrong.status, 0, wrong.stderr);
+      assert.equal(pngHeight('bar-right.png'), pngHeight('bar-wrong.png') - 72);
+      assert.equal(j.height, pngHeight('bar-right.png'));
+    });
+    await check('e2e hide miss — a wrong selector: ×0 at the hide pass and at the capture → hideMiss names it with the wrapper as the candidate; the bar stays in the PNG; no line printed', async () => {
+      const r = await shots.barWrong;
+      assert.equal(r.status, 0, r.stderr);
+      assert.match(r.stdout, /^hidden: \.location-bar ×0 \[--hide\]$/m);
+      noMissLine(r);
+      const j = record('bar-wrong.json');
+      assert.deepEqual(j.hidden, [{ sel: '.location-bar', source: '--hide', n: 0, h: 0, nAtCapture: 0 }]);
+      assert.deepEqual(j.hideMiss, { sels: ['.location-bar'], candidates: [{ tag: 'section', id: null, classes: ['bar__wrapper'], top: 0, height: 72, selector: 'section.bar__wrapper' }] });
+      assert.deepEqual(Object.keys(j).slice(-4), ['hidden', 'hideMiss', 'height', 'overflow']);
+      assert.ok(barPixels('bar-wrong.png') > 50000, 'the bar is in the capture');
+    });
+    await check('e2e hide miss — a block injected after the hide pass: ×0 at the pass, nAtCapture 1 — hidden by the persistent rule, no hideMiss', async () => {
+      const r = await shots.barLate;
+      assert.equal(r.status, 0, r.stderr);
+      assert.match(r.stdout, /^hidden: \.bar__content ×0 \[--hide\]$/m, 'the hidden line reports the hide pass');
+      noMissLine(r);
+      const j = record('bar-late.json');
+      assert.deepEqual(j.hidden, [{ sel: '.bar__content', source: '--hide', n: 0, h: 0, nAtCapture: 1 }]);
+      assert.equal(j.hideMiss, null);
+      assert.equal(barPixels('bar-late.png'), 0);
+      assert.equal(pngHeight('bar-late.png'), pngHeight('bar-right.png'));
     });
   } finally {
     server.close();
