@@ -2,10 +2,12 @@
 // canon; every subcommand is driven through the CLI (execFileSync/spawnSync); foldPath is imported for
 // the pure check. Also: importing the module is silent, the flow guard, the merged state.json.migrate
 // block, AEM-folded output-path collisions, a malformed sidecar refused, the value-flag swallow rule, the A′ fork
-// from the archetype's typed slots (media map, media ledger, refusals) and the sibling-variance gate.
+// from the archetype's typed slots (media map, media ledger, refusals), the sibling-variance gate and the fork's
+// slots from the rollout block mapping (--slots mapping|page-json; fixtures in test/fixtures/slot-map/).
 // Run: node skills/migrate/scripts/test/migrate.test.mjs
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -166,7 +168,7 @@ check('sidecar: branches, template, tiers, archetype fields, key order and sha s
 check('variance gate: an A′ page with no probe file is rendered, recorded as skipped and named in one summary line; A / B record null', () => {
   assert.match(r1.out, /^variance: 1 A′ page\(s\) rendered without a variance probe row — recorded as skipped \(tours-north\)$/m);
   assert.deepEqual(json(`${OUT}/tours/north/_meta.json`).variance, { status: 'skipped', reason: 'no variance probe file stardust/rollout/variance/tours.json' });
-  assert.equal(homeMeta.variance, null); assert.equal(Object.keys(homeMeta).at(-1), 'variance');
+  assert.equal(homeMeta.variance, null); assert.deepEqual(Object.keys(homeMeta).slice(-3), ['variance', 'slotSource', 'slotMap']);
 });
 check('state.json.migrate: page map from all 7 pages, sorted bundledAssets; pages[].status and site untouched', () => {
   const s = json(STATE);
@@ -597,6 +599,116 @@ check('--archetype <slug>=<a> makes a row a current clone again (5 of 8 → refu
   const r = run(['render', 'de-1', '--accept-variance', 'x', '--archetype', 'fr-1=city', '--archetype', 'fr-2=city', '--archetype', 'fr-3=city']); assert.equal(r.status, 2);
   assert.match(r.err, /^refused de-1: strict variance — 5 of 8 current clone\(s\) of archetype city differ in /m);
 });
+
+// ---- A′ fork, slots from the rollout block mapping (--slots mapping|page-json) ----------------------------
+console.log("A' fork, slots from the block mapping");
+const FIX = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'slot-map');
+const fixture = (name) => readFileSync(join(FIX, name), 'utf8');
+const s5 = json(STATE);
+s5.pages.push(page('trips', '/trips/', 'approved', 'trip'), page('trip-one', '/trips/one/', 'directed', 'trip'), page('trip-two', '/trips/two/', 'directed', 'trip'), page('trip-twice', '/trips/twice/', 'directed', 'trip'));
+write(STATE, `${JSON.stringify(s5, null, 2)}\n`);
+write(`${P}/trips-proposed.html`, fixture('trips-proposed.html'));
+for (const s of ['trips', 'trip-one', 'trip-two', 'trip-twice']) write(`stardust/current/pages/${s}.html`, fixture(`${s}.html`));
+const tripCap = (slug, title, extra = {}) => write(`stardust/current/pages/${slug}.json`, JSON.stringify({ url: `https://example.test/trips/${slug.replace(/^trip-/, '')}/`, title, metaDescription: `${title}.`, _provenance: { unsourcedContent: [] }, ...extra }));
+tripCap('trips', 'Trips'); tripCap('trip-one', 'Northern lights'); tripCap('trip-two', 'Coastal walks'); tripCap('trip-twice', 'Lake district');
+const RW = 'stardust/rollout/workspace'; const MAPPING = `${RW}/mapping.json`; const MAPPED = fixture('rollout/workspace/mapping.json');
+// The mapping as the rollout publishes it: workspace-manifest.mjs lists its sha256 under outputs; block-origin.mjs copies pages.json's generatedAt.
+const publish = (text = MAPPED, pagesAt = '2026-10-01T08:00:00.000Z') => {
+  write(MAPPING, text);
+  write(`${RW}/manifest.json`, `${JSON.stringify({ formatVersion: '0.1.0', outputs: { [MAPPING]: `sha256:${createHash('sha256').update(text).digest('hex')}` } }, null, 2)}\n`);
+  write('stardust/rollout/coverage/pages.json', `${JSON.stringify({ formatVersion: '0.1.0', generatedAt: pagesAt, pages: [] }, null, 2)}\n`);
+};
+check('without a mapping a fork reads the page JSON slots (slotSource page-json); --slots mapping is then refused; a bad --slots value is a usage error', () => {
+  assert.equal(json(`${OUT}/guides/alpha/_meta.json`).slotSource, 'page-json'); assert.equal(json(`${OUT}/guides/alpha/_meta.json`).slotMap, null);
+  assert.equal(json(`${OUT}/_meta.json`).slotSource, null, 'an A page records no slot source');
+  const r = run(['render', 'trip-one', '--slots', 'mapping']); assert.equal(r.status, 2);
+  assert.match(r.err, /^refused trip-one: strict slots — the block mapping is unusable: stardust\/rollout\/workspace\/mapping\.json is absent — re-run the rollout skill's block-origin\.mjs --verify, then workspace-manifest\.mjs, or pass --slots page-json$/m);
+  assert.ok(!has(`${OUT}/trips/one/index.html`) && !has(`${OUT}/trips/one/_meta.json`));
+  const bad = run(['render', 'trip-one', '--slots', 'pagejson']); assert.equal(bad.status, 1); assert.match(bad.err, /^usage error: --slots takes mapping or page-json \(got pagejson\)/);
+});
+publish();
+const pageJsonBefore = ['trip-one', 'trip-two'].map((s) => read(`stardust/current/pages/${s}.json`));
+const k1 = run(['render', 'trip-one', 'trip-two']);
+const tripOne = has(`${OUT}/trips/one/index.html`) ? read(`${OUT}/trips/one/index.html`) : ''; const tripTwo = has(`${OUT}/trips/two/index.html`) ? read(`${OUT}/trips/two/index.html`) : '';
+check('a hash-listed, fresh mapping is the default: each sibling takes its own text, image, link and HTML from its capture; no page JSON slots written', () => {
+  assert.equal(k1.status, 0, k1.err);
+  assert.match(k1.out, /^A' trip-one → trips\/one\/index\.html {2}\(trip; fork of trips via the block mapping; /m);
+  assert.match(k1.out, /^A' trip-two → trips\/two\/index\.html {2}\(trip; fork of trips via the block mapping; /m);
+  const one = mainOf(tripOne); const two = mainOf(tripTwo);
+  assert.match(one, /<h1 data-slot="headline">Northern lights<\/h1>/);
+  assert.match(one, /<img data-slot="hero" src="https:\/\/example\.test\/content\/media\/north\.jpg" alt="Aurora over the fjord" srcset="https:\/\/example\.test\/content\/media\/north\.jpg 1x, https:\/\/example\.test\/content\/media\/north-2x\.jpg 2x">/);
+  assert.match(one, /<a data-slot="cta" class="button" href="https:\/\/booking\.example\.org\/north">Book the north<\/a>/);
+  assert.match(one, /<div data-slot="body" class="prose"><p>North body one\.<\/p>\n {6}<p>North body <b>two<\/b>\.<\/p><\/div>/);
+  assert.match(two, /<h1 data-slot="headline">Coastal walks &amp; cliffs<\/h1>/);
+  assert.match(two, /<img data-slot="hero" src="https:\/\/example\.test\/content\/media\/coast\.jpg" alt="Cliffs &amp; sea">/);
+  assert.match(two, /<a data-slot="cta" class="button" href="https:\/\/booking\.example\.org\/coast\?from=trips&amp;lang=en">Book the coast<\/a>/);
+  assert.match(two, /<div data-slot="body" class="prose"><p>Coast body\.<\/p><\/div>/);
+  assert.ok(!/Archetype/.test(one) && !/Archetype/.test(two), 'no archetype content left in <main>');
+  assert.deepEqual(['trip-one', 'trip-two'].map((s) => read(`stardust/current/pages/${s}.json`)), pageJsonBefore, 'the page JSON is never written');
+});
+check('mapped fork sidecar: slotSource mapping, slotMap { mapping, generatedAt, anchors, slots: {name: anchor} }; provenance names the mapping; a re-run is unchanged', () => {
+  const m = json(`${OUT}/trips/one/_meta.json`);
+  assert.equal(m.slotSource, 'mapping');
+  assert.deepEqual(m.slotMap, { mapping: MAPPING, generatedAt: '2026-10-01T08:00:00.000Z', anchors: 2, slots: { body: 'div.article', cta: 'div.hero-banner', headline: 'div.hero-banner', hero: 'div.hero-banner' } });
+  assert.deepEqual(m.migrationDecisions.find((d) => d.kind === 'archetype-fork'), { kind: 'archetype-fork', archetype: 'trips', slots: ['body', 'cta', 'headline', 'hero'], _driver: true });
+  assert.match(tripOne, /^ {2}sourceForked: {5}stardust\/prototypes\/trips-proposed\.html \+ stardust\/rollout\/workspace\/mapping\.json on stardust\/current\/pages\/trip-one\.html$/m);
+  const again = run(['render', 'trip-one']); assert.equal(again.status, 0, again.err); assert.match(again.out, /^unchanged trip-one → /m);
+});
+check('a sibling whose anchor matches twice is refused (strict slots) naming every slot under it; nothing written', () => {
+  const r = run(['render', 'trip-twice']); assert.equal(r.status, 2);
+  assert.match(r.err, /^refused trip-twice: strict slots — the block mapping gives no value for slot\(s\) cta \(anchor "div\.hero-banner" matches 2 elements\); headline \(anchor "div\.hero-banner" matches 2 elements\); hero \(anchor "div\.hero-banner" matches 2 elements\) of archetype trips — add each name to stardust\/current\/pages\/trip-twice\.json#slots \(a page value wins over the mapped one\), or pass --slots page-json$/m);
+  assert.ok(!has(`${OUT}/trips/twice/index.html`) && !has(`${OUT}/trips/twice/_meta.json`));
+});
+check('a page JSON value wins over the mapped one for its name, and fills a slot the mapping cannot resolve', () => {
+  tripCap('trip-one', 'Northern lights', { slots: { headline: 'Explicit headline' } });
+  tripCap('trip-twice', 'Lake district', { slots: { headline: 'Lake district', hero: { src: '/content/media/lake.jpg', alt: 'Lake' }, cta: { href: 'https://booking.example.org/lake', text: 'Book the lake' } } });
+  const r = run(['render', 'trip-one', 'trip-twice']); assert.equal(r.status, 0, r.err);
+  const one = read(`${OUT}/trips/one/index.html`);
+  assert.match(mainOf(one), /<h1 data-slot="headline">Explicit headline<\/h1>/); assert.match(mainOf(one), /<a data-slot="cta" class="button" href="https:\/\/booking\.example\.org\/north">Book the north<\/a>/);
+  assert.deepEqual(json(`${OUT}/trips/one/_meta.json`).slotMap.slots, { body: 'div.article', cta: 'div.hero-banner', hero: 'div.hero-banner' });
+  assert.match(one, /^ {2}sourceForked: {5}stardust\/prototypes\/trips-proposed\.html \+ stardust\/rollout\/workspace\/mapping\.json on stardust\/current\/pages\/trip-one\.html \+ stardust\/current\/pages\/trip-one\.json#slots$/m);
+  const tw = mainOf(read(`${OUT}/trips/twice/index.html`));
+  assert.match(tw, /<h1 data-slot="headline">Lake district<\/h1>/); assert.match(tw, /<div data-slot="body" class="prose"><p>Lake body\.<\/p><\/div>/);
+  assert.deepEqual(json(`${OUT}/trips/twice/_meta.json`).slotMap.slots, { body: 'div.article' });
+});
+check('--slots page-json keeps the page JSON path with a mapping present (today\'s refusal for a missing value; slotSource page-json, slotMap null)', () => {
+  const r = run(['render', 'trip-twice', '--slots', 'page-json']); assert.equal(r.status, 2);
+  assert.match(r.err, /^refused trip-twice: strict slots — stardust\/current\/pages\/trip-twice\.json#slots has no value for slot\(s\) body of archetype trips — /m);
+  tripCap('trip-two', 'Coastal walks', { slots: { headline: 'Paged headline', hero: { src: '/content/media/coast.jpg' }, cta: { href: 'https://booking.example.org/coast' }, body: { html: '<p>Paged body.</p>' } } });
+  const ok = run(['render', 'trip-two', '--slots', 'page-json']); assert.equal(ok.status, 0, ok.err);
+  assert.match(ok.out, /^A' trip-two → trips\/two\/index\.html {2}\(trip; fork of trips; /m);
+  assert.match(mainOf(read(`${OUT}/trips/two/index.html`)), /<h1 data-slot="headline">Paged headline<\/h1>/);
+  const m = json(`${OUT}/trips/two/_meta.json`); assert.equal(m.slotSource, 'page-json'); assert.equal(m.slotMap, null);
+  tripCap('trip-two', 'Coastal walks');
+});
+check('an unusable mapping (changed after the manifest, stale against pages.json) refuses the mapped fork, naming --slots page-json and the block-origin re-run; nothing written', () => {
+  const before = read(`${OUT}/trips/one/_meta.json`);
+  write(MAPPING, `${MAPPED}\n`);
+  const changed = run(['render', 'trip-one', '--force']); assert.equal(changed.status, 2);
+  assert.match(changed.err, /^refused trip-one: strict slots — the block mapping is unusable: stardust\/rollout\/workspace\/mapping\.json changed after stardust\/rollout\/workspace\/manifest\.json was written \(its sha256 is not the one listed under outputs\) — re-run the rollout skill's block-origin\.mjs --verify, then workspace-manifest\.mjs, or pass --slots page-json$/m);
+  publish(MAPPED, '2026-10-05T00:00:00.000Z');
+  const stale = run(['render', 'trip-one', '--force']); assert.equal(stale.status, 2);
+  assert.match(stale.err, /^refused trip-one: strict slots — the block mapping is unusable: stardust\/rollout\/workspace\/mapping\.json is stale: generatedAt 2026-10-01T08:00:00\.000Z, stardust\/rollout\/coverage\/pages\.json generatedAt 2026-10-05T00:00:00\.000Z — /m);
+  assert.equal(read(`${OUT}/trips/one/_meta.json`), before);
+  publish();
+});
+check('no verified selector for the archetype, a slot without a recipe, a missing sibling capture: strict slots refusals', () => {
+  const noSections = JSON.parse(MAPPED); noSections.templates[0].sections = [];
+  publish(`${JSON.stringify(noSections, null, 2)}\n`);
+  const norecipe = run(['render', 'trip-two', '--force']); assert.equal(norecipe.status, 2);
+  assert.match(norecipe.err, /^refused trip-two: strict slots — the block mapping gives no value for slot\(s\) body \(no recipe: its text is inside no mapped element of the archetype capture\) of archetype trips — /m);
+  const unverified = structuredClone(noSections); unverified.templates[0].blocks[0].instances[0].verified = false;
+  publish(`${JSON.stringify(unverified, null, 2)}\n`);
+  const none = run(['render', 'trip-two', '--force']); assert.equal(none.status, 2);
+  assert.match(none.err, /^refused trip-two: strict slots — stardust\/rollout\/workspace\/mapping\.json has no verified selector for archetype trips — map the archetype with the rollout skill's block-origin\.mjs --verify \(its capture: stardust\/current\/pages\/trips\.html\), or pass --slots page-json$/m);
+  publish();
+  rmSync(join(tmp, 'stardust/current/pages/trip-two.html'));
+  const nocap = run(['render', 'trip-two', '--force']); assert.equal(nocap.status, 2);
+  assert.match(nocap.err, /^refused trip-two: strict slots — no capture HTML at stardust\/current\/pages\/trip-two\.html to read the mapped slots from — re-capture the page \(extract\), or pass --slots page-json$/m);
+  write('stardust/current/pages/trip-two.html', fixture('trip-two.html'));
+});
+// Later sections keep the page-JSON default: no mapping in the project.
+rmSync(join(tmp, RW), { recursive: true, force: true }); rmSync(join(tmp, 'stardust/rollout/coverage'), { recursive: true, force: true });
 
 // ---- --help ---------------------------------------------------------------------------------
 console.log('--help');

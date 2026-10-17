@@ -18,7 +18,7 @@
  *   node migrate.mjs render <slug…|--all> [--force] [--state stardust/state.json]
  *        [--proto-dir stardust/prototypes] [--current stardust/current] [--out stardust/migrated]
  *        [--canon-css <file>] [--inline-canon] [--source <slug>=<file>]…
- *        [--archetype <slug>=<archetype-slug>]… [--branch-b <slug,…>] [--from-archetype]
+ *        [--archetype <slug>=<archetype-slug>]… [--branch-b <slug,…>] [--from-archetype] [--slots mapping|page-json]
  *        [--accept-variance "<reason>"] [--media-map <file>] [--media-ledger <file>]
  *        [--variance-dir <dir>] [--stardust-version <v>]
  *   node migrate.mjs gate <slug> <gate-name> [--evidence "…"]          → gatesPassed[] / gateEvidence
@@ -57,8 +57,9 @@
  *   proposed HTML at <path>`.
  *   Canon CSS: --canon-css, else stardust/canon/canon.css, else the single *canon*.css under
  *   --proto-dir. Per page one line `A  <slug> → <path>  (<type>; n assets, n links, n broken,
- *   n sections)` (a fork adds `fork of <archetype>; `), `unchanged` when the recorded shas and
- *   the variance record match (--force overrides), `passthrough` for a non-HTML leaf,
+ *   n sections)` (a fork adds `fork of <archetype>; `, with --slots mapping `fork of <archetype> via the
+ *   block mapping; `), `unchanged` when the recorded shas, the variance record and the slot source match
+ *   (--force overrides), `passthrough` for a non-HTML leaf,
  *   `refused <slug>: strict <n> — <what> — <fix>` on stderr. Page status is NOT advanced
  *   here — that is `state.mjs advance <slug…> --to migrated`.
  *
@@ -93,6 +94,19 @@
  *   (values no element took), media-unmapped; the provenance comment adds a sourceForked row. A
  *   malformed media map or ledger refuses the page.
  *
+ * Fork slot source (--slots mapping|page-json; default mapping when <dirname(state)>/rollout/workspace/mapping.json exists,
+ *   else page-json). page-json: the page JSON slots above. mapping (slot-map.mjs): the rollout block mapping (the rollout
+ *   skill's coverage-contract.md § mapping), read only when rollout/workspace/manifest.json lists its sha256 under outputs
+ *   and its generatedAt equals rollout/coverage/pages.json's. Each data-slot of the archetype's <main> is found in the
+ *   archetype's capture (<current>/pages/<archetype>.html) inside an anchor of the archetype — a block instance verified
+ *   true, or a section that resolved on it — by its text (an image by its file name, a link by its text); the same anchor
+ *   and child path on this page's capture (<current>/pages/<slug>.html) give its value (<img> image, <a> link, block
+ *   children html, else text). A name in the page JSON slots keeps that value (explicit beats derived); the page JSON is
+ *   never written. Refused (strict slots, nothing written): the mapping unusable (the reason; re-run block-origin.mjs
+ *   --verify, or --slots page-json); no verified selector for the archetype; a missing capture; a slot without a mapped
+ *   source, or whose anchor does not match exactly one element of this page's capture or whose path leads nowhere, and
+ *   no page JSON value for it. sourceForked names the mapping and the capture.
+ *
  * Variance gate (every A' page, own file or fork): <variance-dir>/<archetype-slug>.json, the
  *   replica/sibling-variance.mjs record (--variance-dir, default <dirname(state)>/rollout/variance).
  *   No file, or no row for the page → sidecar variance { status: skipped, reason } and one run
@@ -112,7 +126,9 @@
  * Writes:
  *   <out>/<output-path>              the migrated HTML (URL-literal rule; default stardust/migrated/)
  *   <out>/<dir>/_meta.json           sidecar next to index.html; <name>._meta.json next to <name>.html
- *                                    (`variance`: null on A / B, the variance record on A')
+ *                                    (`variance`: null on A / B, the variance record on A'; `slotSource`: mapping |
+ *                                    page-json on a fork, else null; `slotMap`: { mapping, generatedAt, anchors,
+ *                                    slots: { name: anchor selector } } of the mapped values, else null)
  *   <out>/assets/**                  every bundled asset (copied only when missing or changed)
  *   state.json.migrate               MERGED, never replaced: this script owns at, outputDir,
  *                                    selfContained, pageMap[], totalAssetsBundled, bundledAssets[],
@@ -127,6 +143,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, realpat
 import { createHash } from 'node:crypto';
 import { basename, dirname, isAbsolute, join, posix, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { anchorsFor, readMapping, slotRecipes, slotValues as mappedSlotValues } from './slot-map.mjs';
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
 // Only the main-module check below calls it: importing this module never prints or exits.
@@ -143,7 +160,7 @@ export const RENDERABLE = new Set(['approved', 'migrated', 'directed']);
 export const ASSET_PREFIXES = ['../current/assets/', '../../../assets/', '../../assets/', '../assets/', './assets/', '/assets/', 'assets/'];
 const SKIP_SCHEMES = /^(#|mailto:|tel:|javascript:|data:)/i;
 const SIDECAR_KEYS = ['slug', 'type', 'renderBranch', 'template', 'modules', 'slotsFilled', 'canonShas', 'deviations', 'migrationDecisions', 'metadata', 'jsonLd', 'migratedAt', 'designMdSha', 'designJsonSha', 'sourceCurrentSha', 'sourceProposedSha',
-  'fidelityTier', 'archetypeSource', 'archetypeSha', 'variants', 'gatesPassed', 'gateEvidence', 'contentDeviations', 'assetsBundled', 'missingAssets', 'brokenInternalLinks', 'outputPath', 'outputPathDefault', 'sidecar', 'driverVersion', 'variance'];
+  'fidelityTier', 'archetypeSource', 'archetypeSha', 'variants', 'gatesPassed', 'gateEvidence', 'contentDeviations', 'assetsBundled', 'missingAssets', 'brokenInternalLinks', 'outputPath', 'outputPathDefault', 'sidecar', 'driverVersion', 'variance', 'slotSource', 'slotMap'];
 const CARRIED = ['gatesPassed', 'gateEvidence', 'variants', 'contentDeviations', 'deviations'];
 const SELF = fileURLToPath(import.meta.url);
 
@@ -704,13 +721,19 @@ export function renderPage(run, page, entry) {
   if (old === null && isFile(sideFile)) throw new Refusal(slug, 'sidecar', `${toPosix(sideFile)} exists but is not valid JSON`, 'fix or delete the sidecar (its recorded judgments would be lost by overwriting), then re-run');
   // variance gate — every A' page, before its HTML is built (a refused page is never reported unchanged)
   const variance = branch === "A'" ? varianceGate(run, page, archetype, old) : null;
-  let forked = null; let sourceHtml;
-  if (fork) { forked = forkFromArchetype(readFileSync(archetypeSource, 'utf8'), capture, { slug, archetype: archetype.slug, capturePath: toPosix(capturePath), resolveMedia: mediaResolver(run, slug, capture) }); sourceHtml = forked.html; } else sourceHtml = readFileSync(source, 'utf8');
+  let forked = null; let sourceHtml; let mapped = null;
+  if (fork) {
+    const archetypeHtml = readFileSync(archetypeSource, 'utf8');
+    if (run.slotMode === 'mapping') mapped = mappedSlots(run, page, archetype, archetypeHtml, capture, toPosix(capturePath));
+    forked = forkFromArchetype(archetypeHtml, mapped ? { ...capture, slots: mapped.slots } : capture, { slug, archetype: archetype.slug, capturePath: toPosix(capturePath), resolveMedia: mediaResolver(run, slug, capture) });
+    sourceHtml = forked.html;
+  } else sourceHtml = readFileSync(source, 'utf8');
   const canonDir = join(dirname(run.stateFile), 'canon');
   const ownSlice = (tag) => { const m = sourceHtml.match(new RegExp(`<${tag}\\b[\\s\\S]*?<\\/${tag}>`, 'i')); return m ? sha(m[0]) : null; };
   const canonShas = { header: fsha(join(canonDir, 'header.html')) ?? ownSlice('header'), footer: fsha(join(canonDir, 'footer.html')) ?? ownSlice('footer'), css: run.canon.sha };
-  const keys = { designMdSha: run.designMdSha, designJsonSha: run.designJsonSha, sourceCurrentSha: fsha(capturePath), sourceProposedSha: sha(sourceHtml), canonShas, archetypeSha: archetype ? fsha(archetypeSource) : null, driverVersion: DRIVER_VERSION, variance };
-  // idempotent skip (migration-procedure.md § Idempotent skip) — the recorded input shas (and variance record) equal the current set
+  const keys = { designMdSha: run.designMdSha, designJsonSha: run.designJsonSha, sourceCurrentSha: fsha(capturePath), sourceProposedSha: sha(sourceHtml), canonShas, archetypeSha: archetype ? fsha(archetypeSource) : null, driverVersion: DRIVER_VERSION, variance,
+    slotSource: fork ? run.slotMode : null, slotMap: mapped ? mapped.record : null };
+  // idempotent skip (migration-procedure.md § Idempotent skip) — the recorded input shas (and variance record, slot source) equal the current set
   if (!run.force && old && isFile(outFile) && JSON.stringify(Object.fromEntries(Object.keys(keys).map((k) => [k, old[k] ?? null]))) === JSON.stringify(keys)) return { status: 'unchanged', outputPath };
   // placeholder gate — no bypass flag
   if (/(?<![\w-])data-placeholder(?![\w-])/.test(sourceHtml)) throw new Refusal(slug, 'placeholder-gate', '[data-placeholder] present in the source', 'fill the missing content in the source file, then re-run');
@@ -735,7 +758,7 @@ export function renderPage(run, page, entry) {
   if (!run.inlineCanon && !report.refs.has(run.canon.subpath)) { run.bundler.ensure(run.canon.subpath, [run.canon.file]); report.refs.add(run.canon.subpath); canonLink = `${prefix}assets/${run.canon.subpath}`; }
   // <head>
   const at = nowIso();
-  const prov = provenanceComment({ at, title: String(page.title || slug).replace(/\s+/g, ' ').replace(/--/g, '-'), slug, pagePath: posix.join(basename(run.outDir), outputPath), branch, template: archetype?.slug, archetypePath: archetypeSource && toPosix(archetypeSource), archetypeSha: keys.archetypeSha, sourceForked: forked ? `${toPosix(archetypeSource)} + ${toPosix(capturePath)}#slots` : null, sourceProposed: toPosix(source), sourceCurrent: toPosix(capturePath), direction: run.direction, designMdSha: run.designMdSha, designJsonSha: run.designJsonSha, canonShas, decisionTrace: posix.basename(sideRel), broken: linked.broken.length, stardustVersion: run.stardustVersion });
+  const prov = provenanceComment({ at, title: String(page.title || slug).replace(/\s+/g, ' ').replace(/--/g, '-'), slug, pagePath: posix.join(basename(run.outDir), outputPath), branch, template: archetype?.slug, archetypePath: archetypeSource && toPosix(archetypeSource), archetypeSha: keys.archetypeSha, sourceForked: forked ? (mapped ? `${toPosix(archetypeSource)} + ${mapped.record.mapping} on ${mapped.capture}${mapped.pageJson ? ` + ${toPosix(capturePath)}#slots` : ''}` : `${toPosix(archetypeSource)} + ${toPosix(capturePath)}#slots`) : null, sourceProposed: toPosix(source), sourceCurrent: toPosix(capturePath), direction: run.direction, designMdSha: run.designMdSha, designJsonSha: run.designJsonSha, canonShas, decisionTrace: posix.basename(sideRel), broken: linked.broken.length, stardustVersion: run.stardustVersion });
   const head = composeHead(html, { prov, rootBlock: run.canon.rootBlock, inlineCss: run.inlineCanon ? run.canon.css : null, canonLink, capture, deployHost: run.deployHost, outputPath, pageUrl, type: page.type });
   if (!head) throw new Refusal(slug, 3, 'no <head> element', 'add <head> to the source');
   html = head.html;
@@ -750,7 +773,33 @@ export function renderPage(run, page, entry) {
   validatePage(slug, html, sidecar, run.outDir, report.refs);
   mkdirSync(dirname(outFile), { recursive: true });
   writeFileSync(outFile, html); writeFileSync(sideFile, `${JSON.stringify(sidecar, null, 2)}\n`);
-  return { status: 'rendered', branch, fork: forked ? archetype.slug : null, outputPath, type: page.type, assets: report.refs.size, links: linked.links, broken: linked.broken.length, sections: tagged.sections, missing: report.missing, modulesEmpty: modulesOut.length === 0, varianceSkipped: variance?.status === 'skipped' };
+  return { status: 'rendered', branch, fork: forked ? archetype.slug : null, mapped: !!mapped, outputPath, type: page.type, assets: report.refs.size, links: linked.links, broken: linked.broken.length, sections: tagged.sections, missing: report.missing, modulesEmpty: modulesOut.length === 0, varianceSkipped: variance?.status === 'skipped' };
+}
+// --slots mapping (slot-map.mjs): this page's slot values read from its capture through the archetype's anchors in the rollout
+// block mapping; a name in the page JSON slots keeps that value. → { slots (array form: the page JSON entries, then the mapped
+// names), record (the sidecar slotMap), capture, pageJson (the page JSON has slots) }; throws Refusal (strict slots) when the
+// mapping cannot be used or a slot gets no value. Recipes are built once per archetype source per run.
+function mappedSlots(run, page, archetype, archetypeHtml, capture, capturePath) {
+  const { slug } = page; const m = run.mapping || (run.mapping = readMapping(run.rolloutDir));
+  if (!m.mapping) throw new Refusal(slug, 'slots', `the block mapping is unusable: ${m.reason}`, "re-run the rollout skill's block-origin.mjs --verify, then workspace-manifest.mjs, or pass --slots page-json");
+  const archCapture = toPosix(join(run.currentDir, 'pages', `${archetype.slug}.html`)); const ownCapture = toPosix(join(run.currentDir, 'pages', `${slug}.html`));
+  const anchors = anchorsFor(m.mapping, null, archetype.slug);
+  if (!anchors.length) throw new Refusal(slug, 'slots', `${m.file} has no verified selector for archetype ${archetype.slug}`, `map the archetype with the rollout skill's block-origin.mjs --verify (its capture: ${archCapture}), or pass --slots page-json`);
+  if (!isFile(archCapture)) throw new Refusal(slug, 'slots', `no capture HTML of archetype ${archetype.slug} at ${archCapture} to find its slots in`, 're-capture the archetype (extract), or pass --slots page-json');
+  if (!isFile(ownCapture)) throw new Refusal(slug, 'slots', `no capture HTML at ${ownCapture} to read the mapped slots from`, 're-capture the page (extract), or pass --slots page-json');
+  const key = `${archetype.slug}\n${sha(archetypeHtml)}`;
+  if (!run.recipeCache.has(key)) run.recipeCache.set(key, slotRecipes(archetypeHtml, readFileSync(archCapture, 'utf8'), anchors));
+  const recipes = run.recipeCache.get(key);
+  const { slots: derived, unresolved } = mappedSlotValues(recipes, readFileSync(ownCapture, 'utf8'));
+  const own = capture?.slots; const explicit = slotValues(own).map; const problems = [];
+  for (const [name, r] of Object.entries(recipes)) { const none = (Array.isArray(r) ? r : [r]).find((x) => !x.anchor); if (none && !explicit.has(name)) problems.push(`${name} (no recipe: ${none.reason})`); }
+  for (const u of unresolved) if (!explicit.has(u.slot)) problems.push(`${u.slot} (${u.reason})`);
+  if (problems.length) throw new Refusal(slug, 'slots', `the block mapping gives no value for slot(s) ${problems.sort().join('; ')} of archetype ${archetype.slug}`, `add each name to ${capturePath}#slots (a page value wins over the mapped one), or pass --slots page-json`);
+  const names = Object.keys(derived).filter((n) => !explicit.has(n)).sort();
+  const entries = Array.isArray(own) ? [...own] : own && typeof own === 'object' ? Object.entries(own).map(([name, value]) => ({ name, value })) : [];
+  for (const name of names) entries.push({ name, value: derived[name] });
+  const anchorOf = (r) => { const sels = [...new Set((Array.isArray(r) ? r : [r]).map((x) => x.anchor))]; return sels.length === 1 ? sels[0] : sels; };
+  return { slots: entries, capture: ownCapture, pageJson: explicit.size > 0, record: { mapping: m.file, generatedAt: m.generatedAt, anchors: anchors.length, slots: Object.fromEntries(names.map((n) => [n, anchorOf(recipes[n])])) } };
 }
 // The fork's media lookups: the media map and the ledger are read once per run, on the first slot value that names media.
 function mediaSource(run, which, slug) {
@@ -847,6 +896,8 @@ export function renderRun(o) {
   for (const [flag, file] of [['media-map', o.mediaMap], ['media-ledger', o.mediaLedger]]) if (file && !isFile(file)) throw new UsageError(`--${flag} ${file} does not exist`);
   if (o.varianceDir && !existsSync(o.varianceDir)) throw new UsageError(`--variance-dir ${o.varianceDir} does not exist`);
   if (o.acceptVariance != null && !String(o.acceptVariance).trim()) throw new UsageError('--accept-variance needs a non-empty reason');
+  if (o.slotSource != null && !['mapping', 'page-json'].includes(o.slotSource)) throw new UsageError(`--slots takes mapping or page-json (got ${o.slotSource})`);
+  const rolloutDir = join(dirname(o.state), 'rollout');
   const renderSet = new Set(set.filter((s) => !pageMap.bySlug.get(s).passthrough));
   let origin = 'https://origin.invalid'; const originHosts = new Set();
   if (originUrl) { try { const u = new URL(originUrl); origin = u.origin; originHosts.add(normHost(u.host)); } catch { /* keep the placeholder origin */ } }
@@ -857,6 +908,7 @@ export function renderRun(o) {
     designMdSha: fsha('DESIGN.md'), designJsonSha: fsha('DESIGN.json'), direction: directionLine(o.state), stardustVersion: o.stardustVersion || process.env.STARDUST_VERSION || 'local',
     fromArchetype: !!o.fromArchetype, mediaMap: o.mediaMap || join(o.current, 'assets', 'media-map.json'), mediaLedger: o.mediaLedger || join(dirname(o.state), 'deploy', 'media-ledger.json'), mediaCache: {},
     acceptVariance: o.acceptVariance ? String(o.acceptVariance).trim() : null, varianceDir: o.varianceDir || join(dirname(o.state), 'rollout', 'variance'), varianceCache: new Map(),
+    slotMode: o.slotSource || (isFile(join(rolloutDir, 'workspace', 'mapping.json')) ? 'mapping' : 'page-json'), rolloutDir, mapping: null, recipeCache: new Map(),
     available: (e) => isFile(join(o.out, e.outputPath)) || (renderSet.has(e.slug) && !e.passthrough) };
   const missing = []; const modulesEmpty = []; const rendered = new Map(); const varianceSkipped = [];
   for (const slug of set) {
@@ -869,7 +921,7 @@ export function renderRun(o) {
     for (const m of r.missing) missing.push({ slug, ...m });
     if (r.modulesEmpty) modulesEmpty.push(slug);
     if (r.varianceSkipped) varianceSkipped.push(slug);
-    console.log(`${r.branch.padEnd(2)} ${slug} → ${r.outputPath}  (${r.type || 'untyped'}; ${r.fork ? `fork of ${r.fork}; ` : ''}${r.assets} assets, ${r.links} links, ${r.broken} broken, ${r.sections} sections)`);
+    console.log(`${r.branch.padEnd(2)} ${slug} → ${r.outputPath}  (${r.type || 'untyped'}; ${r.fork ? `fork of ${r.fork}${r.mapped ? ' via the block mapping' : ''}; ` : ''}${r.assets} assets, ${r.links} links, ${r.broken} broken, ${r.sections} sections)`);
   }
   const prev = state.migrate || {}; const at = nowIso(); const outRel = toPosix(o.out).replace(/\/+$/, '');
   const pageRecs = new Map((prev.pages || []).map((p) => [p.slug, p]));
@@ -958,7 +1010,7 @@ export function pagemapCmd(o) {
 const BOOL = new Set(['all', 'force', 'inline-canon', 'json', 'clear', 'from-archetype']);
 const REPEAT = new Set(['source', 'archetype']); // slug=value pairs on render; --source is free text elsewhere
 export function parseArgs(argv) {
-  const o = { ...DEFAULTS, slugs: [], sources: {}, archetypes: {}, branchB: new Set(), all: false, force: false, inlineCanon: false, fromArchetype: false, json: false, clear: false, evidence: null, kind: null, source: null, target: null, reason: null, stardustVersion: null, mediaMap: null, mediaLedger: null, acceptVariance: null, varianceDir: null };
+  const o = { ...DEFAULTS, slugs: [], sources: {}, archetypes: {}, branchB: new Set(), all: false, force: false, inlineCanon: false, fromArchetype: false, json: false, clear: false, evidence: null, kind: null, source: null, target: null, reason: null, stardustVersion: null, mediaMap: null, mediaLedger: null, acceptVariance: null, varianceDir: null, slotSource: null };
   const positional = []; const raw = { source: [], archetype: [] };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -971,7 +1023,7 @@ export function parseArgs(argv) {
     if (val === undefined) { val = argv[++i]; if (val === undefined) throw new UsageError(`--${name} needs a value`); if (val.startsWith('--')) throw new UsageError(`--${name} needs a value (got ${val}, which is a flag)`); }
     if (REPEAT.has(name)) { raw[name].push(val); continue; }
     if (name === 'branch-b') { for (const t of val.split(',')) if (t.trim()) o.branchB.add(t.trim()); continue; }
-    const key = { 'proto-dir': 'protoDir', 'canon-css': 'canonCss', 'stardust-version': 'stardustVersion', 'media-map': 'mediaMap', 'media-ledger': 'mediaLedger', 'accept-variance': 'acceptVariance', 'variance-dir': 'varianceDir' }[name] || name;
+    const key = { 'proto-dir': 'protoDir', 'canon-css': 'canonCss', 'stardust-version': 'stardustVersion', 'media-map': 'mediaMap', 'media-ledger': 'mediaLedger', 'accept-variance': 'acceptVariance', 'variance-dir': 'varianceDir', slots: 'slotSource' }[name] || name;
     if (!(key in o)) throw new UsageError(`unknown flag --${name}`);
     o[key] = val;
   }
