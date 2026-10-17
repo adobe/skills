@@ -421,12 +421,13 @@ node stardust/scripts/reskin/deployed-gate.mjs content --page <slug>   # no delt
 node stardust/scripts/replica/run-bg.mjs start --name deployed-<slug> \
   --dir stardust/.work/reskin/bg -- \
   node stardust/scripts/reskin/deployed-gate.mjs all --page <slug>
-node stardust/scripts/replica/run-bg.mjs wait deployed-<slug> --dir stardust/.work/reskin/bg
+node stardust/scripts/replica/run-bg.mjs wait deployed-<slug> --dir stardust/.work/reskin/bg   # repeat while it exits 75
 ```
 
 `all` prints one verdict line per step and writes `summary.json`; copy its
 `ledgerFragment` into `ledger.json` `pages.<slug>.gates.deployed`. Exit
-124 is no verdict (re-run once), exit 3 a bot challenge or token halt.
+124 (no verdict), exit 3 (bot challenge, token halt) and the fix budget:
+`reference/deployed-leg.md` § The fix budget.
 
 **One fix iteration per gate family** — content; design-adoption/sanity;
 and, for a Figma donor, Figma fidelity. On a failure in a family, fix

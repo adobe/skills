@@ -31,10 +31,11 @@ segment.
 2. **Push the branch, force Code Sync** and poll until an edited block file is served
    (`../../deploy/da-deploy-protocol.md` § Deploy, step 0).
 3. **Write the documents to DA and preview them, never publish:**
-   `DA_TOKEN=… node skills/deploy/scripts/deploy-batch.mjs --org <o> --repo <r> --branch <b> --content content --paths <list> --no-publish --force --ledger stardust/.work/reskin/deploy-ledger.json`.
-   `<list>` names the page and, in a shared repo, both chrome documents; `--force` because a page already live is
-   skipped; the dedicated ledger keeps the run apart from `content/.deploy-ledger.json`. Exit 3 is a token halt:
-   refresh the token, re-run the same command; never a FAIL.
+   `DA_TOKEN=… node skills/deploy/scripts/deploy-batch.mjs --org <o> --repo <r> --branch <b> --content content --paths <paths.txt> --no-publish --force --ledger stardust/.work/reskin/deploy-ledger.json`.
+   `<paths.txt>` is a file, one web path per line (the page and both namespaced chrome documents; in a sandbox the
+   page), each without extension, like `/<ns>/<slug>`; `--force` because a page already live is skipped; the
+   dedicated ledger keeps the run apart from `content/.deploy-ledger.json`. Exit 3 is a token halt: refresh the
+   token, re-run the same command; never a FAIL.
 4. **`deployed-gate preview`** polls until the preview answers (`ERROR (exit 124)` after `--max-wait`: re-run once),
    checks isolation and writes `preview.json`.
 5. **The delta file.** Run `deployed-gate content` with none, then write `reskin/deltas/<slug>.json` from what fails,
@@ -63,6 +64,7 @@ preview is public by default.
 }
 ```
 
+- `version`: required, `1`; any other value, or none, is an invalid file.
 - `blocking`: `false` makes a failed check advisory (exit 0, `ADVISORY`); left out it is `true`, as with no file.
 - `text.allow`: `id` (unique), `from` and `why` required, `to` defaults to `""`. Each entry replaces its literal
   `from` on the source side, in file order, every occurrence.
@@ -108,6 +110,14 @@ only what it can move; what still fails afterwards is logged as a residual.
 | CSS or block | push, Code Sync, then `parity`, `tokens`, `sanity`, `figma` |
 | content page | `deploy-batch`, then `content`, `inherited`, `figma` |
 
+Each step is `deployed-gate <step> --page <slug>` (`content`, `tokens` and `inherited` take the token flag on a
+protected preview); `figma` is `node stardust/scripts/reskin/figma-gate.mjs all --page <slug> --url <preview url>
+--target preview --reskin stardust/reskin/pages/<slug>.html [--auth-header "<value>" | --token-env <NAME>]`, where
+`<preview url>` is `preview.json`'s `url` (it needs `figma-checks/<slug>.json`; `deployed-gate all` runs it too).
+
+The matrix is for iterating. Only `all` writes `summary.json`, and it clears every step's previous record and re-runs
+every step, so close each round with one `deployed-gate all` and copy its `ledgerFragment` into
+`pages.<slug>.gates.deployed`: a single step's verdict is never what the ledger records.
 A fix counts only once served: `curl --compressed <css url> | grep <marker>` finds it on the preview. A run with no
 verdict (exit 124, or an instrument that did not run) does not count: re-run once; the same 124 twice is a
 `needs-owner` residual. Exit 3 (bot challenge, token halt) is neither a FAIL nor an iteration.

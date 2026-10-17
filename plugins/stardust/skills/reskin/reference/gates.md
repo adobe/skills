@@ -273,10 +273,13 @@ the section's margins there; check widths, gaps and paddings instead.
 page and the donor, on `https://<branch>--<repo>--<org>.aem.page`.
 Recipe, delta file, ledger, fix budget: `deployed-leg.md`; command
 lines: SKILL.md Phase 5 (e); flags, evidence, exit codes:
-`deployed-gate.mjs --help`. Each step first settles the EDS decoration
-(`--wait-eds`: `networkidle`, `body.appear`, every `[data-section-status]`
-and `[data-block-status]` `loaded`, bounded by `--eds-timeout`, 20000 ms)
-and names a stall, never waits silently.
+`deployed-gate.mjs --help`. `content`, `tokens`, `sanity` and `figma` first
+settle the EDS decoration (`networkidle`, `body.appear`, every
+`[data-section-status]` and `[data-block-status]` `loaded`, within 20 s) and
+name a stall, never waiting silently; in `all` a stall is that step's FAIL
+and the run goes on. `parity`'s captures wait a fixed 3 s instead (only its
+header and footer band measure settles), and `inherited` fetches
+`.plain.html` without a browser.
 
 | Step | Class | Asserts | Bar |
 |---|---|---|---|
