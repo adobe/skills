@@ -88,6 +88,8 @@ function parseArgs(argv) {
   // Enumerated value-taking flags — an unknown --flag (e.g. a typo like
   // --tokns) must be rejected, not silently stored and defaulted.
   const VALUE_FLAGS = new Set(['tokens', 'rendered', 'spec', 'report', 'shot', 'widths', 'ua', 'wait-until', 'locale', 'viewport', 'json', 'eds-timeout', 'auth-header', 'token-env']);
+  // A blank value here would fall back to $SITE_TOKEN / .env and send a token nobody asked for.
+  const AUTH_FLAGS = new Set(['auth-header', 'token-env']);
   for (let i = 2; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === '--help' || a === '-h') opts.help = true;
@@ -96,10 +98,16 @@ function parseArgs(argv) {
     else if (a === '--wait-eds') opts.waitEds = true;
     else if (a.startsWith('--') && VALUE_FLAGS.has(a.slice(2))) {
       const v = argv[i + 1];
-      if (v === undefined || v.startsWith('--')) { console.error(`[donor-probe] ${a} needs a value`); process.exit(2); }
+      if (v === undefined || v.startsWith('--') || (AUTH_FLAGS.has(a.slice(2)) && !v.trim())) { console.error(`[donor-probe] ${a} needs a value`); process.exit(2); }
       opts[a.slice(2)] = v; i += 1;
     }
-    else { console.error(`[donor-probe] unknown arg: ${a}`); process.exit(2); }
+    else {
+      // Never echo the whole element: `--auth-header=<token>`, or the stray half of an unquoted value, is a secret.
+      const name = a.startsWith('--') ? a.split('=')[0] : null;
+      const hint = name && name !== a && VALUE_FLAGS.has(name.slice(2)) ? ` (write "${name} <value>")` : '';
+      console.error(`[donor-probe] ${name ? `unknown arg: ${name}${hint}` : 'unknown arg (not a --flag, not echoed): a value flag takes its value as the next argument'}`);
+      process.exit(2);
+    }
   }
   return opts;
 }
@@ -161,7 +169,8 @@ const wantsAuth = /^https?:/.test(renderedUrl) && (args['auth-header'] !== undef
 const auth = wantsAuth ? siteAuth({ authHeader: args['auth-header'], tokenEnv: args['token-env'] }) : null;
 // Anything printed passes through here, so the token cannot reach stderr by way of an error text.
 const die = (m, c = 2) => { console.error(`[donor-probe] ${redact(m, auth)}`); process.exit(c); };
-if (wantsAuth && !auth) die(`no site token: ${args['token-env'] ? `--token-env ${args['token-env']} is not set in the environment or .env` : '--auth-header is empty'}`);
+// Only --token-env can come up empty: a non-blank --auth-header is the header, and a blank one never gets here.
+if (wantsAuth && !auth) die(`no site token: --token-env ${args['token-env']} is not set in the environment or .env`);
 const waitEds = !!args.waitEds || isEdsHost(renderedUrl);
 const edsTimeoutMs = args['eds-timeout'] ? Number(args['eds-timeout']) : 20000;
 const tokens = JSON.parse(readFileSync(resolve(args.tokens), 'utf8'));
@@ -306,7 +315,7 @@ if (args.json) {
   mkdirSync(dirname(resolve(args.json)), { recursive: true });
   writeFileSync(args.json, redact(`${JSON.stringify({ pass, results: results.map(({ check, label, status, detail }) => ({ check, label, status, detail })) }, null, 2)}\n`, auth));
 }
-console.log(`[donor-probe] ${pass ? 'PASS' : 'FAIL'} — ${results.length - fails.length - skips.length}/${results.length - skips.length} assertions${skips.length ? `, ${skips.length} skipped` : ''}${args.report ? ` — report: ${args.report}` : ''}`);
-for (const f of fails.slice(0, 15)) console.log(`  FAIL ${f.check} — ${f.detail}`);
-for (const s of skips) console.log(`  SKIP ${s.check} — ${s.detail}`);
+console.log(redact(`[donor-probe] ${pass ? 'PASS' : 'FAIL'} — ${results.length - fails.length - skips.length}/${results.length - skips.length} assertions${skips.length ? `, ${skips.length} skipped` : ''}${args.report ? ` — report: ${args.report}` : ''}`, auth));
+for (const f of fails.slice(0, 15)) console.log(redact(`  FAIL ${f.check} — ${f.detail}`, auth));
+for (const s of skips) console.log(redact(`  SKIP ${s.check} — ${s.detail}`, auth));
 process.exit(pass ? 0 : 1);

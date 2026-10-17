@@ -69,6 +69,8 @@ function parseArgs(argv) {
   // Enumerated value-taking flags — an unknown --flag (e.g. a typo like
   // --source-scpoe) must be rejected, not silently stored and defaulted.
   const VALUE_FLAGS = new Set(['source', 'rendered', 'report', 'source-scope', 'rendered-scope', 'normalize', 'ua', 'wait-until', 'locale', 'eds-timeout', 'auth-header', 'token-env']);
+  // A blank value here would fall back to $SITE_TOKEN / .env and send a token nobody asked for.
+  const AUTH_FLAGS = new Set(['auth-header', 'token-env']);
   for (let i = 2; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === '--help' || a === '-h') opts.help = true;
@@ -76,10 +78,16 @@ function parseArgs(argv) {
     else if (a === '--wait-eds') opts.waitEds = true;
     else if (a.startsWith('--') && VALUE_FLAGS.has(a.slice(2))) {
       const v = argv[i + 1];
-      if (v === undefined || v.startsWith('--')) { console.error(`[dom-equality] ${a} needs a value`); process.exit(2); }
+      if (v === undefined || v.startsWith('--') || (AUTH_FLAGS.has(a.slice(2)) && !v.trim())) { console.error(`[dom-equality] ${a} needs a value`); process.exit(2); }
       opts[a.slice(2)] = v; i += 1;
     }
-    else { console.error(`[dom-equality] unknown arg: ${a}`); process.exit(2); }
+    else {
+      // Never echo the whole element: `--auth-header=<token>`, or the stray half of an unquoted value, is a secret.
+      const name = a.startsWith('--') ? a.split('=')[0] : null;
+      const hint = name && name !== a && VALUE_FLAGS.has(name.slice(2)) ? ` (write "${name} <value>")` : '';
+      console.error(`[dom-equality] ${name ? `unknown arg: ${name}${hint}` : 'unknown arg (not a --flag, not echoed): a value flag takes its value as the next argument'}`);
+      process.exit(2);
+    }
   }
   return opts;
 }
@@ -139,7 +147,8 @@ const wantsAuth = /^https?:/.test(renderedUrl) && (args['auth-header'] !== undef
 const auth = wantsAuth ? siteAuth({ authHeader: args['auth-header'], tokenEnv: args['token-env'] }) : null;
 // Anything printed passes through here, so the token cannot reach stderr by way of an error text.
 const die = (m, c = 2) => { console.error(`[dom-equality] ${redact(m, auth)}`); process.exit(c); };
-if (wantsAuth && !auth) die(`no site token: ${args['token-env'] ? `--token-env ${args['token-env']} is not set in the environment or .env` : '--auth-header is empty'}`);
+// Only --token-env can come up empty: a non-blank --auth-header is the header, and a blank one never gets here.
+if (wantsAuth && !auth) die(`no site token: --token-env ${args['token-env']} is not set in the environment or .env`);
 const waitEds = !!args.waitEds || isEdsHost(renderedUrl);
 const edsTimeoutMs = args['eds-timeout'] ? Number(args['eds-timeout']) : 20000;
 const { script: NORMALIZE, source: normalizeSource } = await loadNormalize(args.normalize);
@@ -274,6 +283,6 @@ md += `- Tag+class sequence: ${firstTagDivergence === -1 && src.tagSequence.leng
 
 mkdirSync(dirname(resolve(args.report)), { recursive: true });
 writeFileSync(args.report, redact(md, auth));
-console.error(`[dom-equality] ${pass ? 'PASS' : 'FAIL'} — report: ${args.report}`);
-if (textDiff) console.error(`  text diverges @${textDiff.firstDivergence}: src="…${textDiff.sourceSnippet.slice(30, 90)}…" rnd="…${textDiff.renderedSnippet.slice(30, 90)}…"`);
+console.error(redact(`[dom-equality] ${pass ? 'PASS' : 'FAIL'} — report: ${args.report}`, auth));
+if (textDiff) console.error(redact(`  text diverges @${textDiff.firstDivergence}: src="…${textDiff.sourceSnippet.slice(30, 90)}…" rnd="…${textDiff.renderedSnippet.slice(30, 90)}…"`, auth));
 process.exit(pass ? 0 : 1);

@@ -76,6 +76,8 @@ function parseArgs(argv) {
   // Enumerated value-taking flags — an unknown --flag (e.g. a typo like
   // --rendered-scpoe) must be rejected, not silently stored and defaulted.
   const VALUE_FLAGS = new Set(['model', 'rendered', 'rendered-scope', 'report', 'paint', 'ua', 'wait-until', 'locale', 'eds-timeout', 'auth-header', 'token-env']);
+  // A blank value here would fall back to $SITE_TOKEN / .env and send a token nobody asked for.
+  const AUTH_FLAGS = new Set(['auth-header', 'token-env']);
   for (let i = 2; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === '--help' || a === '-h') opts.help = true;
@@ -83,10 +85,16 @@ function parseArgs(argv) {
     else if (a === '--wait-eds') opts.waitEds = true;
     else if (a.startsWith('--') && VALUE_FLAGS.has(a.slice(2))) {
       const v = argv[i + 1];
-      if (v === undefined || v.startsWith('--')) { console.error(`[slot-coverage] ${a} needs a value`); process.exit(2); }
+      if (v === undefined || v.startsWith('--') || (AUTH_FLAGS.has(a.slice(2)) && !v.trim())) { console.error(`[slot-coverage] ${a} needs a value`); process.exit(2); }
       opts[a.slice(2)] = v; i += 1;
     }
-    else { console.error(`[slot-coverage] unknown arg: ${a}`); process.exit(2); }
+    else {
+      // Never echo the whole element: `--auth-header=<token>`, or the stray half of an unquoted value, is a secret.
+      const name = a.startsWith('--') ? a.split('=')[0] : null;
+      const hint = name && name !== a && VALUE_FLAGS.has(name.slice(2)) ? ` (write "${name} <value>")` : '';
+      console.error(`[slot-coverage] ${name ? `unknown arg: ${name}${hint}` : 'unknown arg (not a --flag, not echoed): a value flag takes its value as the next argument'}`);
+      process.exit(2);
+    }
   }
   if (!['fail', 'warn'].includes(opts.paint)) { console.error(`[slot-coverage] --paint must be fail|warn, got: ${opts.paint}`); process.exit(2); }
   return opts;
@@ -146,7 +154,8 @@ const wantsAuth = /^https?:/.test(renderedUrl) && (args['auth-header'] !== undef
 const auth = wantsAuth ? siteAuth({ authHeader: args['auth-header'], tokenEnv: args['token-env'] }) : null;
 // Anything printed passes through here, so the token cannot reach stderr by way of an error text.
 const die = (m, c = 2) => { console.error(`[slot-coverage] ${redact(m, auth)}`); process.exit(c); };
-if (wantsAuth && !auth) die(`no site token: ${args['token-env'] ? `--token-env ${args['token-env']} is not set in the environment or .env` : '--auth-header is empty'}`);
+// Only --token-env can come up empty: a non-blank --auth-header is the header, and a blank one never gets here.
+if (wantsAuth && !auth) die(`no site token: --token-env ${args['token-env']} is not set in the environment or .env`);
 const waitEds = !!args.waitEds || isEdsHost(renderedUrl);
 const edsTimeoutMs = args['eds-timeout'] ? Number(args['eds-timeout']) : 20000;
 const model = JSON.parse(readFileSync(resolve(args.model), 'utf8'));
@@ -240,7 +249,7 @@ for (const s of model.sections) {
       const painted = matches.some((r2) => r2.painted);
       const hint = painted ? '' : 'naturalWidth=0 — never painted; origin-locked source CDN? localize assets (Phase 6, gates.md § Image paint)';
       if (!painted && args.paint === 'warn') {
-        console.log(`  WARN paint: ${s.slot} image …${normPath(im.currentSrc).slice(-50)} — ${hint}`);
+        console.log(redact(`  WARN paint: ${s.slot} image …${normPath(im.currentSrc).slice(-50)} — ${hint}`, auth));
         R('paint', `${s.slot} image …${normPath(im.currentSrc).slice(-50)} painted (WARN-downgraded)`, true, hint);
       } else {
         R('paint', `${s.slot} image …${normPath(im.currentSrc).slice(-50)} painted`, painted, hint);
@@ -293,6 +302,6 @@ if (args.report) {
   writeFileSync(args.report, redact(md, auth));
 }
 const failLines = results.filter((r) => !r.pass);
-console.log(`[slot-coverage] ${allPass ? 'PASS' : 'FAIL'} — ${results.length - failLines.length}/${results.length} checks${args.report ? ` — report: ${args.report}` : ''}`);
-for (const f of failLines.slice(0, 15)) console.log(`  FAIL ${f.gate}: ${f.check}${f.detail ? ` — ${f.detail}` : ''}`);
+console.log(redact(`[slot-coverage] ${allPass ? 'PASS' : 'FAIL'} — ${results.length - failLines.length}/${results.length} checks${args.report ? ` — report: ${args.report}` : ''}`, auth));
+for (const f of failLines.slice(0, 15)) console.log(redact(`  FAIL ${f.gate}: ${f.check}${f.detail ? ` — ${f.detail}` : ''}`, auth));
 process.exit(allPass ? 0 : 1);
