@@ -30,7 +30,10 @@
 // same list, no hides → no --hide and no hide field, a live-session.mjs without presenceHide → one log line. The site-wide
 // stardust/replica/presence.json (E9): merged under the gate dir's (mergePresence) — a site "*".hide reaches both stitches and
 // the probes with no gate dir file, the gate dir wins per field, a malformed site file is an error naming it, a
-// live-session.mjs without mergePresence → one "not honoured" line.
+// live-session.mjs without mergePresence → one "not honoured" line. A hide that matched nothing on the live side (E14):
+// hideMissOf / hideMissText; the hide sandbox's stitch stub writes the record's hideMiss (STUB_HIDE_MISS) — the WARNING line,
+// origin.json / the row / totals.hideMiss / the summary.md line, a reused origin and --compare-only, live-session's
+// hideMissLine or the same text built here, a copied live.png's live-shot.json; the verdict unchanged.
 // --dismiss (like gate.sh / anchor.mjs): parseArgs (one comma list, the last wins, an empty list → exit 1, no value → exit 2), the reuse deciders,
 // probeInputs / gateKeyParts / skipCapture; the hide sandbox: both stitch argv carry it before --hide, the probes do not
 // (content-presence / clip-probe take no --dismiss), records / probes.json inputs / _provenance carry it, and a capture
@@ -65,7 +68,7 @@ import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { MAX_ROUNDS, OVERRIDE_VERDICTS, REGISTER_FILE, browserPools, buildHost, capRefusal, capturePollution, checkOverride, codeDeployed, contentDeployed, countsAsRound, coveragePages, deployedDocs, edsHostOf, edsOrigin, emptySelection, estimateFactor, fontChecksSkipped, fontsNotLoaded, foundationPart, formatSummary, gateKeyOf, gateKeyParts, hostServes, instrumentFiles, inventoryWhy, keyChanged, liveReusePlan, nextRounds, oneLoadKeep, originReusePlan, parseArgs, probeInputs, probeReuse, registerIds, rosterEstimate, roundsOf, rowKey, rowReuse, runTables, selectPages, sharedBlocks, skipCapture, verdict } from '../gate-all.mjs';
+import { MAX_ROUNDS, OVERRIDE_VERDICTS, REGISTER_FILE, browserPools, buildHost, capRefusal, capturePollution, checkOverride, codeDeployed, contentDeployed, countsAsRound, coveragePages, deployedDocs, edsHostOf, edsOrigin, emptySelection, estimateFactor, fontChecksSkipped, fontsNotLoaded, foundationPart, formatSummary, gateKeyOf, gateKeyParts, hideMissOf, hideMissText, hostServes, instrumentFiles, inventoryWhy, keyChanged, liveReusePlan, nextRounds, oneLoadKeep, originReusePlan, parseArgs, probeInputs, probeReuse, registerIds, rosterEstimate, roundsOf, rowKey, rowReuse, runTables, selectPages, sharedBlocks, skipCapture, verdict } from '../gate-all.mjs';
 
 // pixel-compare imports pngjs at module level (a project devDependency, absent in the plugin checkout):
 // import it lazily and skip its one check where it does not resolve, like the other browser/dep-bound tests.
@@ -1560,14 +1563,21 @@ const HOUT = join(hroot, 'stardust/replica/gates/all-1440'); const HPROTO = join
 mkdirSync(HRS, { recursive: true }); mkdirSync(HDS, { recursive: true });
 cpSync(SCRIPT, join(HRS, 'gate-all.mjs')); cpSync(join(HERE, '..', 'foundation-freeze.mjs'), join(HRS, 'foundation-freeze.mjs')); cpSync(join(DIFF, 'live-session.mjs'), join(HDS, 'live-session.mjs'));
 const argvLog = (name) => `appendFileSync(${JSON.stringify(HLOG)}, ${name} + ' ' + process.argv.slice(2).join(' ') + '\\n');`;
-stub(HRS, 'stitch-shot.mjs', `import { appendFileSync, writeFileSync } from 'node:fs';
+stub(HRS, 'stitch-shot.mjs', `import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
 ${argvLog("(/www\\.example\\.com/.test(process.argv[2]) ? 'ORIGIN' : 'EDS')")}
 // with --hide, stitch-shot's hidden: line — the origin: .promo-strip ×0, .cookie-strip invalid, the rest ×1; the build: all ×0
 const a = process.argv.slice(2); const origin = /www\\.example\\.com/.test(a[0]);
 const entry = (s) => (!origin || s === '.promo-strip' ? s + ' ×0 [--hide]' : s === '.cookie-strip' ? s + " error: '" + s + "' is not a valid style rule selector [--hide]" : s + ' ×1 (88px) [--hide]');
 if (a.includes('--hide')) console.log('hidden: ' + a[a.indexOf('--hide') + 1].split(',').map(entry).join('; '));
 writeFileSync(process.argv[3], 'png');
-${SHOT_RECORD("(origin ? 'ORIGIN' : 'EDS')")}`);
+${SHOT_RECORD("(origin ? 'ORIGIN' : 'EDS')")}
+// STUB_HIDE_MISS (a hideMiss record as JSON): the sels this capture's --hide list holds → the --json record's hideMiss, on
+// both sides alike (stitch-shot does not know the side; gate-all warns about the origin's only)
+if (process.env.STUB_HIDE_MISS && a.includes('--json') && a.includes('--hide')) {
+  const f = a[a.indexOf('--json') + 1]; const m = JSON.parse(process.env.STUB_HIDE_MISS); const list = a[a.indexOf('--hide') + 1].split(',');
+  const sels = m.sels.filter((x) => list.includes(x));
+  if (sels.length) writeFileSync(f, JSON.stringify({ ...JSON.parse(readFileSync(f, 'utf8')), hideMiss: { ...m, sels } }));
+}`);
 stub(HRS, 'pixel-compare.mjs', 'console.log(JSON.stringify({ pct: 1.5, heightDelta: 0, compared: { width: 1440, height: 3000 }, pass: true }));');
 stub(HDS, 'content-presence.mjs', `import { appendFileSync, writeFileSync } from 'node:fs';
 ${argvLog("'CONTENT'")}
@@ -1580,9 +1590,9 @@ stub(HDS, 'unit-geometry.mjs', 'export function unitsFor() { return []; }');
 writeFileSync(join(hroot, 'stardust/state.json'), JSON.stringify({ pages })); // home (with a prototypePath) and about
 appendFileSync(join(hroot, 'stardust/status.jsonl'), `${JSON.stringify({ ts: new Date(Date.now() - 60e3).toISOString(), skill: 'stardust:rollout', phase: 'A-inventory', event: 'start' })}\n`);
 const setPresence = (json, out = HOUT) => { mkdirSync(out, { recursive: true }); writeFileSync(join(out, 'presence.json'), JSON.stringify(json)); };
-const hgate = (args) => {
+const hgate = (args, env = {}) => {
   rmSync(HLOG, { force: true }); clearRounds(HOUT, HPROTO);
-  const e = { ...process.env }; for (const k of ['STARDUST_ORIGIN_MAX_AGE_H', 'STARDUST_BROWSER_SLOT', 'STARDUST_BROWSERS_PER_SLOT', 'RUN_BG_DEADLINE_SEC']) delete e[k];
+  const e = { ...process.env, ...env }; for (const k of ['STARDUST_ORIGIN_MAX_AGE_H', 'STARDUST_BROWSER_SLOT', 'STARDUST_BROWSERS_PER_SLOT', 'RUN_BG_DEADLINE_SEC', 'STUB_HIDE_MISS']) if (!(k in env)) delete e[k];
   const r = spawnSync(process.execPath, [join(HRS, 'gate-all.mjs'), '--width', '1440', ...args], { cwd: hroot, env: e, encoding: 'utf8', timeout: 60e3 });
   const all = lines(HLOG); const run = (r.stdout.match(/run → (.*)/) || [])[1]; const out = args.includes('prototype') ? HPROTO : HOUT;
   const doc = (() => { try { return JSON.parse(readFileSync(run ? join(hroot, run) : join(out, 'summary.json'), 'utf8')); } catch { return null; } })(); // read now: the next run clears runs/
@@ -1789,6 +1799,71 @@ check('site 4: a live-session.mjs without mergePresence leaves the site file out
     assert.match(b.stdout, / presence hide: not honoured — the diff scripts dir has no live-session\.mjs with presenceHide/);
     assert.ok(b.all.length && b.all.every((l) => !l.includes('--hide')), b.all.join('\n'));
   } finally { rmSync(join(HDS, 'live-session.mjs')); renameSync(join(HDS, 'live-session-real.mjs'), join(HDS, 'live-session.mjs')); rmSync(SITE, { force: true }); setPresence({}); }
+});
+// ---- a hide selector that matched nothing on the live (origin) capture: the record's hideMiss → a WARNING, never a verdict
+const MISS = { sels: ['.promo-strip'], candidates: [{ tag: 'section', id: '', classes: ['bar__wrapper'], top: 0, height: 0, selector: 'section.bar__wrapper' }, { tag: 'div', id: 'geo', classes: [], top: 0, height: 88, selector: '#geo' }] };
+const ZERO = '0px now — a block that grows later is still hidden by the persistent display:none !important rule';
+const MISS_LINE = `hide matched nothing on live — candidates: section.bar__wrapper (section, ${ZERO}); #geo (div, 88px) (.promo-strip)`;
+const reEsc = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const warned = (slug, text = MISS_LINE) => new RegExp(`^\\S+ WARNING ${slug}: ${reEsc(text)}$`, 'm');
+const MISS_MD = /^Hide matched nothing on live \(a warning, not a verdict — fix the hide list; candidates in the row's hideMiss and _run\.log\): (.*)$/m;
+check('hideMissOf / hideMissText: a record\'s hideMiss as kept (missed selectors, candidates with a selector), null when nothing missed; the one-line text — <selector> (<tag>, <h>px) joined "; ", a 0-px block "0px now — …", none "none found above the header", then the missed selectors; live-session\'s hideMissLine when given', () => {
+  assert.deepEqual(hideMissOf(MISS), MISS);
+  for (const none of [null, undefined, {}, { sels: [] }, { sels: [''] }, 'x']) assert.equal(hideMissOf(none), null, JSON.stringify(none));
+  assert.deepEqual(hideMissOf({ sels: ['.a', 3, ''], candidates: [{ tag: 'div' }, { tag: 'p', height: 12, selector: 'p.x' }, null] }), { sels: ['.a'], candidates: [{ tag: 'p', height: 12, selector: 'p.x' }] });
+  assert.deepEqual(hideMissOf({ sels: ['.a'] }), { sels: ['.a'], candidates: [] });
+  assert.equal(hideMissText(MISS), MISS_LINE);
+  assert.equal(hideMissText({ sels: ['.a', '.b'], candidates: [] }), 'hide matched nothing on live — candidates: none found above the header (.a, .b)');
+  assert.equal(hideMissText({ sels: ['.a'], candidates: [{ tag: 'div', height: 87.6, selector: 'div.bar' }] }), 'hide matched nothing on live — candidates: div.bar (div, 88px) (.a)');
+  assert.equal(hideMissText(MISS, (sels, list) => `helper ${sels.join('|')} ${list.length}\nsecond`), 'helper .promo-strip 2 second', 'the helper\'s text, one line');
+});
+check('hide miss 1: the origin capture record\'s hideMiss → one "WARNING <slug>: hide matched nothing on live — candidates: …" line (stdout and _run.log), origin.json and the row keep it, totals.hideMiss 1, one summary.md line naming the row; the build side\'s miss is not warned about; the verdict and the exit code unchanged', () => {
+  setPresence({ home: { hide: ['.promo-strip'] } });
+  const r = hgate([], { STUB_HIDE_MISS: JSON.stringify(MISS) });
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.match(r.stdout, warned('home')); assert.match(hlog(), warned('home')); assert.equal((r.stdout.match(/ WARNING /g) || []).length, 1, r.stdout);
+  assert.deepEqual(hjson('home', 'origin.json').hideMiss, MISS); assert.equal('hideMiss' in hjson('home', 'eds.json'), false, 'eds-shot.json carried one too: not recorded');
+  const s = JSON.parse(readFileSync(join(HOUT, 'summary.json'), 'utf8'));
+  assert.deepEqual(s.rows.find((x) => x.slug === 'home').hideMiss, MISS); assert.equal('hideMiss' in s.rows.find((x) => x.slug === 'about'), false);
+  assert.deepEqual([s.totals.hideMiss, s.totals.pass, s.totals.pages], [1, 2, 2]); assert.deepEqual([r.row('home').pass, r.row('home').reasons], [true, []]);
+  assert.equal(readFileSync(join(HOUT, 'summary.md'), 'utf8').match(MISS_MD)[1], '/');
+});
+check('hide miss 2: a reused origin capture whose record has one warns too — a fix round keeps the origin (0 origin stitches) and --compare-only reads origin.json: the WARNING, the row\'s hideMiss and the summary line (--only prints the table)', () => {
+  const r = hgate(['--only', 'home']);
+  assert.equal(r.status, 0, r.stderr + r.stdout); assert.equal(r.by('ORIGIN', 'home').length, 0); assert.equal(r.row('home').originReused.policy, 'same-run');
+  assert.match(r.stdout, warned('home')); assert.deepEqual(r.row('home').hideMiss, MISS); assert.equal(r.stdout.match(MISS_MD)[1], '/');
+  const c = hgate(['--compare-only']);
+  assert.equal(c.status, 0, c.stderr + c.stdout); assert.equal(c.by('ORIGIN', 'home').length + c.by('EDS', 'home').length, 0, 'no capture'); assert.match(c.stdout, warned('home')); assert.deepEqual(c.row('home').hideMiss, MISS);
+});
+check('hide miss 3: live-session\'s hideMissLine is the text when the diff dir has one (one text for every tool); without it the same text is built here — and no candidate reads "none found above the header"', () => {
+  setPresence({ home: { hide: ['.promo-strip', '.gone'] } });
+  const none = hgate(['--only', 'home'], { STUB_HIDE_MISS: JSON.stringify({ sels: ['.promo-strip', '.gone'], candidates: [] }) });
+  assert.equal(none.status, 0, none.stderr + none.stdout); assert.equal(none.by('ORIGIN', 'home').length, 1, 'another list: re-stitched');
+  const text = 'hide matched nothing on live — candidates: none found above the header (.promo-strip, .gone)';
+  assert.match(none.stdout, warned('home', text));
+  renameSync(join(HDS, 'live-session.mjs'), join(HDS, 'live-session-real.mjs'));
+  try {
+    writeFileSync(join(HDS, 'live-session.mjs'), "export * from './live-session-real.mjs';\nexport function hideMissLine(sels, list) { return `helper: ${sels.join(' + ')} / ${list.length} candidate(s)`; }\n");
+    assert.match(hgate(['--only', 'home']).stdout, warned('home', 'helper: .promo-strip + .gone / 0 candidate(s)'));
+    writeFileSync(join(HDS, 'live-session.mjs'), "export { freshness, maxAgeHours, mergePresence, presenceHide, reuseRecord, runStartAt, SITE_PRESENCE } from './live-session-real.mjs';\n");
+    assert.match(hgate(['--only', 'home']).stdout, warned('home', text), 'no hideMissLine: the same text');
+  } finally { rmSync(join(HDS, 'live-session.mjs')); renameSync(join(HDS, 'live-session-real.mjs'), join(HDS, 'live-session.mjs')); }
+});
+check('hide miss 4: a copied live.png carries its capture record\'s hideMiss (gate.sh\'s live-shot.json beside it) — the WARNING and the row\'s hideMiss; no miss anywhere → no WARNING, totals.hideMiss 0, no summary line', () => {
+  setPresence({ about: { hide: ['.promo-strip'] } });
+  const g = join(hroot, 'stardust/replica/gates/about-1440'); mkdirSync(g, { recursive: true }); writeFileSync(join(g, 'live.png'), 'png');
+  writeFileSync(join(g, 'live.json'), JSON.stringify(liveJson('https://www.example.com/about', ['.promo-strip'])));
+  writeFileSync(join(g, 'live-shot.json'), JSON.stringify({ overlayLeft: null, fontsFailed: [], hideMiss: MISS }));
+  try {
+    const r = hgate([]);
+    assert.equal(r.status, 0, r.stderr + r.stdout); assert.equal(r.by('ORIGIN', 'about').length, 0); assert.equal(r.row('about').originReused.from, 'stardust/replica/gates/about-1440/live.png');
+    assert.match(r.stdout, warned('about')); assert.deepEqual(r.row('about').hideMiss, MISS); assert.deepEqual(hjson('about', 'origin.json').hideMiss, MISS);
+  } finally { rmSync(g, { recursive: true, force: true }); }
+  setPresence({});
+  const clean = hgate([]);
+  assert.equal(clean.status, 0, clean.stderr + clean.stdout); assert.doesNotMatch(clean.stdout, / WARNING /);
+  const s = JSON.parse(readFileSync(join(HOUT, 'summary.json'), 'utf8'));
+  assert.equal(s.totals.hideMiss, 0); assert.ok(s.rows.every((x) => !('hideMiss' in x))); assert.doesNotMatch(readFileSync(join(HOUT, 'summary.md'), 'utf8'), MISS_MD);
 });
 rmSync(hroot, { recursive: true, force: true });
 

@@ -82,6 +82,16 @@
  * (`presence.json <file> unreadable (…)`, exit 1, before any write). _run.log names the merge (`presence: <gate file>
  * over <site file>`, or `<site file> (<gate file> not found)`); a diff scripts dir whose live-session.mjs cannot merge
  * (no mergePresence) leaves the site file out — one `presence hide: not honoured for <site file> (site-wide) …` line.
+ * HIDE MISS (the live side; a warning, never a verdict): the origin stitch's --json record names a hide selector that
+ * matched nothing at capture time — `hideMiss` { sels, candidates } (candidates: the in-flow blocks above the header on
+ * that page, live-session's inFlowRegionsAboveHeader). origin.json keeps it, so every reuse of that capture carries it (a
+ * fix round, --skip-existing, a failed --recapture-origin, --compare-only; a copied live.png: gate.sh's live-shot.json
+ * beside it), as does a reused row: one log line per row `WARNING <slug>: hide matched nothing on live — candidates:
+ * <selector> (<tag>, <h>px); … (<missed sel>, …)` (live-session's hideMissLine, else the same text built here —
+ * `hideMissText`; a 0-px block reads `(<tag>, 0px now — a block that grows later is still hidden by the persistent
+ * display:none !important rule)`, none `none found above the header`), the row's `hideMiss`, totals.hideMiss and one
+ * summary.md line `Hide matched nothing on live (…): <path>, …`. The verdict and the exit code are unchanged; the build
+ * side's misses are not warned about (it has no per-visitor region to hide).
  * DISMISS: --dismiss <sel,…> (like gate.sh / anchor.mjs: one comma list, the last flag wins) hands a site's own
  * overlay-dismiss selectors (a marketing modal with a non-standard closer) to BOTH stitches — `--dismiss <list>`, before
  * `--hide` in the argv; stitch-shot dismisses before it hides, on both sides alike. The diff probes gate-all runs
@@ -216,7 +226,7 @@
  * at the round cap, a round of the page in progress) or --eds-host or a value flag without its value, 1 error, a usage
  * error (an unknown flag or a bad value: --stage, --origin-max-age, the pool flags, --max-rounds, --round-reset,
  * --dismiss) or an empty selection.
- * `verdict`, `capturePollution`, `fontsNotLoaded`, `fontChecksSkipped`, `checkOverride`, `registerIds`, `OVERRIDE_VERDICTS`, `REGISTER_FILE`, `formatSummary`, `parseArgs`, `edsOrigin`, `emptySelection`, the roster helpers for run-bg (`ESTIMATE_SEC_PER_PAGE`, `DEFAULT_COVERAGE`,
+ * `verdict`, `capturePollution`, `fontsNotLoaded`, `fontChecksSkipped`, `hideMissOf`, `hideMissText`, `checkOverride`, `registerIds`, `OVERRIDE_VERDICTS`, `REGISTER_FILE`, `formatSummary`, `parseArgs`, `edsOrigin`, `emptySelection`, the roster helpers for run-bg (`ESTIMATE_SEC_PER_PAGE`, `DEFAULT_COVERAGE`,
  * `coveragePages`, `selectPages`, `rosterEstimate`) and the reuse helpers
  * (`probeInputs`, `probeReuse`, `canon`, `gateKeyParts`, `gateKeyOf`, `foundationPart`, `sharedBlocks`,
  * `blockRefs`, `chromeDocs`, `instrumentFiles`, `edsHostOf`, `codeDeployed`, `hostServes`,
@@ -311,6 +321,9 @@ Sidecars in <out>/: masks.json, overrides.json, clip-allow.json, presence.json, 
   stardust/replica/presence.json (site-wide, the same shape) is merged under <out>/presence.json — per key and field
   the gate dir's value wins — for every use above (hide lists, main / variable, probe inputs, the gate key); a malformed
   one is an error naming it (exit 1); _run.log names the files merged.
+  A hide selector that matched nothing on the origin (live) capture — its stitch record's hideMiss, kept with the
+  capture — is a warning, never a verdict: "WARNING <slug>: hide matched nothing on live — candidates: <selector> (<tag>,
+  <h>px); … (<sel>, …)", the row's hideMiss, totals.hideMiss and one summary.md line naming the rows.
 Reuse sidecars per page: probes.json, gate-key.json (see the header).
 Fix rounds per page: <out>/<slug>/rounds.json { rounds, max, at[], [resets], [seeded, seededFrom] } — without it the
   count is seeded from runs/*.json rows with a verdict; every row carries round (+ roundReset on a reset row). An --only
@@ -670,6 +683,31 @@ export function verdict({ pixel = {}, clip = null, content = null, units = null,
   return { originH, edsH, pixelPass: inconclusive ? null : !!pixelPass, heightPass: inconclusive ? null : !!heightPass, clipped, clipPass, clipAllowance: allowance, contentPass, contentNA: contentOn && !cTot ? (content && content.error) || 'not probed' : null, unitPass, pixelOnlyPass, pass, passWithOverride: pass || !!(ov && ov.valid), inconclusive, fontsNotLoaded: fonts, fontChecksSkipped: skipped, reasons: inconclusive ? [...polluted, ...fontReasons] : reasons, override: ov };
 }
 
+// ---- hide misses on the live (origin) capture: a WARNING with DOM-derived candidates, never a verdict ------------------
+/**
+ * hideMissOf(m) → a capture record's `hideMiss` ({ sels, candidates } — stitch-shot's --json record) as recorded here:
+ * sels = the selectors that matched nothing (non-empty strings), candidates = the in-flow blocks above the header it found
+ * ([{ tag, id, classes, top, height, selector }], entries without a selector dropped); null when there is no miss.
+ */
+export function hideMissOf(m) {
+  const sels = m && typeof m === 'object' && Array.isArray(m.sels) ? m.sels.filter((s) => typeof s === 'string' && s) : [];
+  if (!sels.length) return null;
+  return { sels, candidates: Array.isArray(m.candidates) ? m.candidates.filter((c) => c && typeof c === 'object' && typeof c.selector === 'string') : [] };
+}
+// live-session's hideMissLine / formatCandidates text, restated for a diff scripts dir without them — keep them in step
+const ZERO_PX = '0px now — a block that grows later is still hidden by the persistent display:none !important rule';
+const candidatesText = (list) => (list.length ? list.map((c) => { const h = Math.round(Number(c.height) || 0); return `${c.selector} (${c.tag}, ${h ? `${h}px` : ZERO_PX})`; }).join('; ') : 'none found above the header');
+/**
+ * hideMissText(miss, helper) → the one-line warning text for a hideMissOf() record: `helper(sels, candidates)` when given
+ * (live-session's hideMissLine — one text for every tool), else the same text built here: `hide matched nothing on live —
+ * candidates: <selector> (<tag>, <h>px); … (<sel>, …)` (a 0-px block: `(<tag>, 0px now — a block that grows later is still
+ * hidden by the persistent display:none !important rule)`; no candidate: `none found above the header`). Newlines → ' '.
+ */
+export function hideMissText(miss, helper = null) {
+  const text = typeof helper === 'function' ? helper(miss.sels, miss.candidates) : `hide matched nothing on live — candidates: ${candidatesText(miss.candidates)} (${miss.sels.join(', ')})`;
+  return String(text).replace(/[\r\n]+/g, ' ');
+}
+
 const cell = (v, suffix = '') => (v == null ? 'n/a' : `${v}${suffix}`);
 export function formatSummary(summary) {
   const t = summary.totals; const p = summary._provenance;
@@ -680,7 +718,9 @@ export function formatSummary(summary) {
   const fonts = [...new Set(summary.rows.flatMap((r) => r.fontsNotLoaded || []))].sort();
   // the failing rows whose override is too large for a deviation (pixel % > 2 × threshold or |Δh| > 2 × the height bar), named once
   const oversized = summary.rows.filter((r) => !r.pass && exceedsMagnitude(r.override)).map((r) => r.path);
-  const head = [`# ${p.stage === 'prototype' ? 'Prototype gate — every crafted prototype' : 'Published-origin gate — all deployed pages'}, ${p.breakpoint}px`, '', `${p.writtenAt} · **${t.pass} PASS / ${t.fail} FAIL / ${t.error} error${t.inconclusive ? ` / ${t.inconclusive} INCONCLUSIVE` : ''} of ${t.pages}**${ovClause}${t.reusedRows || t.reusedProbes ? ` · reused: ${t.reusedRows || 0} rows, ${t.reusedProbes || 0} probe sets` : ''}`, '', `Verdict: ${p.verdict}`, '', `Calibration — pixel-only verdict (criteria 1+2): **${t.pixelOnlyPass} PASS**; full verdict (1–4): **${t.pass} PASS**. Failing by criterion: pixel ${t.failPixel}, height ${t.failHeight}, clip ${t.failClip}, content ${t.failContent}${t.failUnits ? `, units ${t.failUnits}` : ''}${t.fontsNotLoaded ? `, fonts not loaded ${t.fontsNotLoaded}${fonts.length ? ` (${fonts.join(', ')})` : ''}` : ''}${t.fontChecksSkipped ? `, font check skipped ${t.fontChecksSkipped}` : ''}; content n/a (origin not probed) ${t.contentNA}${t.degradedTier ? `; **${t.degradedTier} page(s) probed on a degraded browser tier** (Chrome elected, Chromium used — install Chrome for bot-managed origins)` : ''}${t.asymmetricOrigins ? `; ${t.asymmetricOrigins} asymmetric origin(s)` : ''}.`, '', ...(oversized.length ? [`Override exceeds magnitude (fix the capture / hide list, not a deviation): ${oversized.join(', ')}`, ''] : [])];
+  // the rows whose origin capture had a hide selector that matched nothing (a warning: their verdicts stand as measured)
+  const missed = summary.rows.filter((r) => hideMissOf(r.hideMiss)).map((r) => r.path);
+  const head = [`# ${p.stage === 'prototype' ? 'Prototype gate — every crafted prototype' : 'Published-origin gate — all deployed pages'}, ${p.breakpoint}px`, '', `${p.writtenAt} · **${t.pass} PASS / ${t.fail} FAIL / ${t.error} error${t.inconclusive ? ` / ${t.inconclusive} INCONCLUSIVE` : ''} of ${t.pages}**${ovClause}${t.reusedRows || t.reusedProbes ? ` · reused: ${t.reusedRows || 0} rows, ${t.reusedProbes || 0} probe sets` : ''}`, '', `Verdict: ${p.verdict}`, '', `Calibration — pixel-only verdict (criteria 1+2): **${t.pixelOnlyPass} PASS**; full verdict (1–4): **${t.pass} PASS**. Failing by criterion: pixel ${t.failPixel}, height ${t.failHeight}, clip ${t.failClip}, content ${t.failContent}${t.failUnits ? `, units ${t.failUnits}` : ''}${t.fontsNotLoaded ? `, fonts not loaded ${t.fontsNotLoaded}${fonts.length ? ` (${fonts.join(', ')})` : ''}` : ''}${t.fontChecksSkipped ? `, font check skipped ${t.fontChecksSkipped}` : ''}; content n/a (origin not probed) ${t.contentNA}${t.degradedTier ? `; **${t.degradedTier} page(s) probed on a degraded browser tier** (Chrome elected, Chromium used — install Chrome for bot-managed origins)` : ''}${t.asymmetricOrigins ? `; ${t.asymmetricOrigins} asymmetric origin(s)` : ''}.`, '', ...(oversized.length ? [`Override exceeds magnitude (fix the capture / hide list, not a deviation): ${oversized.join(', ')}`, ''] : []), ...(missed.length ? [`Hide matched nothing on live (a warning, not a verdict — fix the hide list; candidates in the row's hideMiss and _run.log): ${missed.join(', ')}`, ''] : [])];
   const rows = ['| page | template | tier | origin | browser | pixel % (text %) | Δh px | clipped | content | units | verdict | reasons | reused |', '|---|---|---|---|---|---|---|---|---|---|---|---|---|'];
   for (const r of [...summary.rows].sort((a, b) => Number(b.pass) - Number(a.pass) || (a.pct ?? 999) - (b.pct ?? 999))) {
     const content = r.contentNA ? `n/a (${r.contentNA})` : r.content ? `MISSING ${r.content.missing} / HIDDEN ${r.content.hidden}${r.content.controlState ? ` / state ${r.content.controlState}` : ''}` : 'n/a';
@@ -1353,17 +1393,21 @@ async function main() {
   const stitchArgs = (url, out, { inventory, hide = [], json } = {}) => [STITCH, url, out, '--width', String(opts.width), '--settle', '--json', json, '--locale', 'en-US', ...(opts.vh ? ['--vh', String(opts.vh)] : []), ...(opts.dismiss.length ? ['--dismiss', opts.dismiss.join(',')] : []), ...(hide.length ? ['--hide', hide.join(',')] : []), ...(inventory ? ['--inventory', inventory] : [])];
   // stitch-shot's --json capture record (<slug>/<side>-shot.json, deleted before each stitch) → the meta's overlayLeft /
   // fontsFailed (+ fontCheck when it says why); no readable record (an older stitch-shot) is unchecked — never a clean
-  // capture — and a fontsFailed that is not an array (null: the font check could not run) is null, never "all loaded"
+  // capture — and a fontsFailed that is not an array (null: the font check could not run) is null, never "all loaded";
+  // the origin's (the live side's) hideMiss — a hide selector that matched nothing — is kept in origin.json, so every reuse
+  // of that capture carries it (the build side's misses are expected: it has no per-visitor region to hide)
   const shotFile = (p, side) => join(dir(p), `${side}-shot.json`);
+  const missField = (m) => { const miss = hideMissOf(m); return miss ? { hideMiss: miss } : {}; };
   const shotRecord = (p, side) => {
     const j = tryJson(shotFile(p, side));
     if (!j || typeof j !== 'object' || !('overlayLeft' in j)) return { overlayLeft: 'unchecked (stitch-shot wrote no --json record — re-copy stitch-shot.mjs)', fontsFailed: null };
-    return { overlayLeft: j.overlayLeft || null, fontsFailed: Array.isArray(j.fontsFailed) ? j.fontsFailed : null, ...(typeof j.fontCheck === 'string' ? { fontCheck: j.fontCheck } : {}) };
+    return { overlayLeft: j.overlayLeft || null, fontsFailed: Array.isArray(j.fontsFailed) ? j.fontsFailed : null, ...(typeof j.fontCheck === 'string' ? { fontCheck: j.fontCheck } : {}), ...(side === 'origin' ? missField(j.hideMiss) : {}) };
   };
   const stitch = (p, side, url, out, extra = {}, tail = []) => { rmSync(shotFile(p, side), { force: true }); return run('node', [...stitchArgs(url, out, { ...extra, json: shotFile(p, side) }), ...tail]); };
   // a copied live.png carries live.json's record of the same check (the reuse deciders admit only overlayLeft: null);
-  // fontsFailed null (the check could not run) stays null, an absent key stays absent
-  const liveRecord = (lm) => ({ overlayLeft: lm.overlayLeft || null, ...('fontsFailed' in lm ? { fontsFailed: Array.isArray(lm.fontsFailed) ? lm.fontsFailed : null } : {}) });
+  // fontsFailed null (the check could not run) stays null, an absent key stays absent; the hideMiss of its capture record
+  // (gate.sh's live-shot.json beside it)
+  const liveRecord = (lm, png) => ({ overlayLeft: lm.overlayLeft || null, ...('fontsFailed' in lm ? { fontsFailed: Array.isArray(lm.fontsFailed) ? lm.fontsFailed : null } : {}), ...missField((tryJson(join(dirname(png), 'live-shot.json')) || {}).hideMiss) });
   // --one-load: every stitch (both sides headed real Chrome) also takes the probes' inventories of the page it loaded;
   // --warmup needs a navigation of its own, so it turns the captures back to the probes' path.
   const OL = !!opts.oneLoad && !opts.warmup && !!DIFF_DIR;
@@ -1428,9 +1472,9 @@ async function main() {
     if (protoLive && !protoWhy) {
       copyFileSync(cachedLive, out);
       const lat = { at: lm.at || statSync(cachedLive).mtime.toISOString() }; const f = fresh(lat);
-      r = { instrument: 'stitch-live', note: `reused ${cachedLive} (the archetype round's capture — hit minimisation)`, ...reuseOf(cachedLive, lat, 'prototype-stage'), stale: f.fresh ? undefined : f.reason, ...liveRecord(lm), ...hideField(hide), ...dismissField(opts.dismiss) };
+      r = { instrument: 'stitch-live', note: `reused ${cachedLive} (the archetype round's capture — hit minimisation)`, ...reuseOf(cachedLive, lat, 'prototype-stage'), stale: f.fresh ? undefined : f.reason, ...liveRecord(lm, cachedLive), ...hideField(hide), ...dismissField(opts.dismiss) };
     }
-    else if (lp.reuse) { copyFileSync(cachedLive, out); r = { instrument: 'stitch-live', url: p.url, width: opts.width, locale: 'en-US', headed: false, ...reuseOf(cachedLive, lm, lp.why), note: 'archetype round capture (gate.sh; bundled Chromium — the EDS side\'s tier in legacy mode)', ...liveRecord(lm), ...hideField(hide), ...dismissField(opts.dismiss) }; }
+    else if (lp.reuse) { copyFileSync(cachedLive, out); r = { instrument: 'stitch-live', url: p.url, width: opts.width, locale: 'en-US', headed: false, ...reuseOf(cachedLive, lm, lp.why), note: 'archetype round capture (gate.sh; bundled Chromium — the EDS side\'s tier in legacy mode)', ...liveRecord(lm, cachedLive), ...hideField(hide), ...dismissField(opts.dismiss) }; }
     else if (opts.blocked && opts.blocked.test(p.url) && !opts.tryBlocked) {
       if (existsSync(crawlShot)) { copyFileSync(crawlShot, out); r = { instrument: 'crawl-fullpage', asymmetric: true, note: `origin matches --blocked ${opts.blocked}; crawl screenshot used (lazy rails may be placeholders)` }; }
       else r = { instrument: 'none', error: `origin blocked and no crawl shot at ${crawlShot}` };
@@ -1663,7 +1707,7 @@ async function main() {
     const v = verdict({ pixel: px, clip: r.clip && r.clip.counts ? r.clip : null, content: r.content || null, units: r.units || null, override: OVERRIDES[p.slug] || null, allowance: (CLIP_ALLOW[p.slug] || {}).max || 0, capture: { polluted: capturePollution(r.origin, r.eds, { hide: hideOf(p), dismiss: opts.dismiss }), fonts: fontsNotLoaded(r.origin, r.eds), fontsSkipped: fontChecksSkipped(r.origin, r.eds) }, register: REGISTER }, { threshold: opts.threshold, heightTol: opts.heightTol, clipMax: opts.clipMax, clipOn: opts.clip, contentOn: opts.content, stage: opts.stage });
     return { slug: p.slug, path: p.deployedPath || new URL(p.liveUrl).pathname, template: p.template, tier: p.fidelityTier, origin: r.origin && r.origin.instrument, originAsymmetric: !!(r.origin && r.origin.asymmetric), eds: r.eds && r.eds.instrument, host: rowHost(p, r.eds),
       originReused: r.origin && r.origin.reused ? { from: r.origin.from, at: r.origin.at, policy: r.origin.policy, stale: r.origin.stale || null } : null,
-      presenceReused: r.presenceReused || null, unitsReused: r.unitsReused || null, ...(opts.oneLoad ? { oneLoad: r.oneLoad || null } : {}), ...hideField(hideOf(p)),
+      presenceReused: r.presenceReused || null, unitsReused: r.unitsReused || null, ...(opts.oneLoad ? { oneLoad: r.oneLoad || null } : {}), ...hideField(hideOf(p)), ...missField(r.origin && r.origin.hideMiss),
       pct: px.pct ?? null, textPct: px.textPct ?? null, heightDelta: px.heightDelta ?? null, ...v,
       clipGroups: r.clip && r.clip.groups ? r.clip.groups.filter((g) => !g.advisory).slice(0, 6) : [], clipAllowReason: (CLIP_ALLOW[p.slug] || {}).reason || null,
       content: r.content && r.content.totals ? { missing: r.content.totals.missing, hidden: r.content.totals.hidden, controlState: r.content.totals.controlState, missingButtons: r.content.totals.missingButtons, hiddenButtons: r.content.totals.hiddenButtons, findings: r.content.totals.findings, scope: r.content.scope, variable: r.content.variable } : null,
@@ -1673,6 +1717,8 @@ async function main() {
       hotBands: (px.bands || []).filter((b) => b.pct > 15).map((b) => `${b.y0}-${b.y1}:${b.pct}%`), error: px.error || (r.origin && r.origin.error) || (r.eds && r.eds.error) || null,
       gateKey: opts.stage === 'published' ? rowKey(storedKey(p), KEYS[p.slug], !!r.probedAt) : null, reused: r.probesReused ? { what: 'probes', at: r.probesReused } : null };
   });
+  // a hide selector that matched nothing on the origin (live) capture — fresh, kept or a reused row's: never silent, never a verdict
+  for (const row of rows) { const miss = hideMissOf(row.hideMiss); if (miss) log(`WARNING ${row.slug}: ${hideMissText(miss, FRESH && FRESH.hideMissLine)}`); }
   // Fix rounds: an --only run counts each row with a verdict (countsAsRound) — rounds.json written before the run table, so
   // a crash over-counts, never under-counts; --round-reset first starts a new count for the selected pages at the cap.
   // Every row carries `round` (a full run: the current count, never counted); a reset row `roundReset`.
@@ -1696,6 +1742,7 @@ async function main() {
   totals.passWithOverrides = totals.pass + totals.overridePass;
   totals.overrideShare = totals.pages ? Number((totals.overridePass / totals.pages).toFixed(3)) : 0;
   totals.originReused = n((r) => r.originReused);
+  totals.hideMiss = n((r) => hideMissOf(r.hideMiss));
   const originHost = (() => { try { return new URL(pages[0].url).origin; } catch { return null; } })();
   const summary = { _provenance: { writtenBy: 'gate-all.mjs', writtenAt, stage: opts.stage, breakpoint: opts.width, threshold: opts.threshold, heightTolerance: opts.heightTol, clipMax: opts.clipMax, unitTol: opts.unitTol, criteria: { pixel: true, height: true, clip: opts.clip, content: opts.content }, verdict: `overlap pixel % ≤ ${opts.threshold} AND |Δh| ≤ ${Math.round(opts.heightTol * 100)}% of origin height${opts.clip ? ` AND clipped ≤ ${opts.clipMax} (+ documented allowance)` : ''}${opts.content ? ' AND content MISSING + HIDDEN links/headings = 0' : ''}`, origin: originHost, eds: opts.edsHost || (() => { try { return new URL(pages[0].liveUrl).origin; } catch { return null; } })(), edsHostOverride: opts.edsHost || null, ...dismissField(opts.dismiss), only: opts.only, maxRounds: opts.maxRounds, reuse: { rows: totals.reusedRows, probes: totals.reusedProbes } }, totals, rows };
   const md = formatSummary(summary);
