@@ -14,7 +14,8 @@
  *
  * What it does (idempotent — run it after EVERY generator and before EVERY
  * deploy, over the WHOLE tree, because earlier waves' pages gain newly valid
- * internal targets as later waves ship them):
+ * internal targets as later waves ship them; inside a unit, with --unit, over
+ * that unit's documents only — see --unit):
  *   1. Builds the URL map from the content tree: every *.html under --content
  *      is a page served at its URL (eds-path.mjs: extensionless; a folder index
  *      `x/index.html` at `/x/`, a leaf at `/x/y`; root `/`), plus the entries of
@@ -32,7 +33,7 @@
  * Usage:
  *   node skills/deploy/scripts/localize-links.mjs --source-host <host[,host]> \
  *        [--content content] [--redirects stardust/redirects.tsv|.json|.jsonl] \
- *        [--dry-run] [--check] [--json]
+ *        [--unit <name> [--units-dir stardust/rollout/units]] [--dry-run] [--check] [--json]
  *
  *   --source-host  the live site's host(s); `www.` is matched either way
  *   --content      root of the authored content tree (default: content)
@@ -44,19 +45,37 @@
  *                  knowledge exists) and the run continues with the content tree only, exactly
  *                  as without --redirects. A path that exists but cannot be read (a directory,
  *                  no permission) is exit 1.
+ *   --unit         rewrite, count and check ONLY the documents of this unit (<name> matches
+ *                  /^[\w.-]+$/): the paths of <units-dir>/<name>.paths, one web/DA path per
+ *                  line, blank and # lines skipped (the list unit-commit.mjs commits). A
+ *                  document belongs to the unit when the eds-path key of its served URL (or of
+ *                  its own path) is a key of one of those lines. The URL map still spans the
+ *                  WHOLE --content tree (+ --redirects), so the unit's links to pages of other
+ *                  units still localize. Why: units run concurrently and each commits only its
+ *                  own documents — a unit that rewrote another unit's documents would race that
+ *                  unit's writes and leave changes no unit commits. The whole-tree pass belongs
+ *                  to a step where no unit runs. A missing .paths file is exit 1; a path with no
+ *                  document under --content is a note on stderr; no document at all is exit 1.
+ *   --units-dir    the directory of the .paths files (default stardust/rollout/units); only
+ *                  with --unit
  *   --dry-run      report what would change, write nothing
  *   --check        gate mode: write nothing, exit 2 if ANY link would change
  *                  (run the plain pass first; --check is the pre-deploy assertion)
  *   --json         machine-readable summary; `redirectsFound` is true when the
  *                  --redirects file was read, false when it does not exist, null
- *                  without --redirects
+ *                  without --redirects; with --unit also `unit`, `unitPaths` (distinct
+ *                  path keys), `unitDocuments` (documents in scope) and `unitMissing[]`
+ *                  (path keys without a document)
  *
- * Writes: the rewritten *.html files IN PLACE under --content (nothing with
- * --dry-run or --check; the summary is stdout, notes are stderr).
+ * Writes: the rewritten *.html files IN PLACE under --content (with --unit only
+ * the unit's; nothing with --dry-run or --check; the summary is stdout — with
+ * --unit a line `unit <name>: <k>/<n> documents` — notes are stderr).
  *
  * Exit codes: 0 clean (or rewritten; also with a missing --redirects file),
- * 2 --check found localizable links, 1 usage/IO error (including a --redirects
- * path that exists but cannot be read). Dependency-free (regex over the
+ * 2 --check found localizable links (with --unit: in the unit's documents),
+ * 1 usage/IO error (including a --redirects path that exists but cannot be
+ * read, a missing --unit .paths file, and a unit none of whose paths has a
+ * document under --content). Dependency-free (regex over the
  * authored HTML, the same technique as davids-model-lint.mjs — content pages
  * are machine-generated).
  */
@@ -64,14 +83,24 @@ import { readFileSync, writeFileSync, readdirSync, statSync, existsSync } from '
 import path from 'path';
 import { deliveredUrl, pathKey as canonicalPath } from './eds-path.mjs';
 
+// The unit-name rule and the .paths parsing of stardust/scripts/unit-commit.mjs, restated here: importing that module
+// would load its git and lock code into a link rewriter.
+export const UNIT_RE = /^[\w.-]+$/;
+export const parsePaths = (text) => String(text).split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
+
 function parseArgs(argv) {
   const rest = argv.slice(2);
-  const opts = { content: 'content', hosts: [], redirects: null, dryRun: false, check: false, json: false };
+  const opts = { content: 'content', hosts: [], redirects: null, unit: null, unitsDir: null, dryRun: false, check: false, json: false };
+  const bad = (msg) => { console.error(msg); usage(); process.exit(1); };
+  // a value flag never swallows the next flag: `--unit --check` is a forgotten value
+  const value = (flag, i) => { const v = rest[i]; if (v === undefined || v.startsWith('-')) bad(`${flag} needs a value`); return v; };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--content') opts.content = rest[i += 1];
     else if (a === '--source-host') opts.hosts.push(...(rest[i += 1] || '').split(',').map((s) => s.trim()).filter(Boolean));
     else if (a === '--redirects') opts.redirects = rest[i += 1];
+    else if (a === '--unit') opts.unit = value(a, i += 1);
+    else if (a === '--units-dir') opts.unitsDir = value(a, i += 1);
     else if (a === '--dry-run') opts.dryRun = true;
     else if (a === '--check') { opts.check = true; opts.dryRun = true; }
     else if (a === '--json') opts.json = true;
@@ -79,12 +108,14 @@ function parseArgs(argv) {
     else { console.error(`unknown argument ${a}`); usage(); process.exit(1); }
   }
   if (!opts.hosts.length) { console.error('--source-host is required'); usage(); process.exit(1); }
+  if (opts.unit !== null && !UNIT_RE.test(opts.unit)) bad(`--unit ${opts.unit} must match ${UNIT_RE}`);
+  if (opts.unitsDir !== null && opts.unit === null) bad('--units-dir needs --unit (without it the whole tree is rewritten)');
   if (!existsSync(opts.content) || !statSync(opts.content).isDirectory()) { console.error(`--content ${opts.content} is not a directory`); process.exit(1); }
   return opts;
 }
 
 function usage() {
-  console.error('usage: localize-links.mjs --source-host <host[,host]> [--content content] [--redirects file] [--dry-run] [--check] [--json]');
+  console.error('usage: localize-links.mjs --source-host <host[,host]> [--content content] [--redirects file] [--unit <name> [--units-dir stardust/rollout/units]] [--dry-run] [--check] [--json]');
 }
 
 // ----------------------------------------------------------------- URL map
@@ -102,6 +133,39 @@ function collectHtml(dir, out = []) {
     else if (/\.html$/i.test(entry)) out.push(p);
   }
   return out;
+}
+
+/**
+ * The documents of a unit. Pure. files = every *.html under root; lines = parsePaths(<unit>.paths). A document
+ * belongs to the unit when the key of its served URL (or of its own path — the document unit-commit.mjs commits for
+ * that line) is the key of one of the lines. Returns { keys, docs, missing }: the distinct line keys in line order,
+ * the unit's documents in files order, and the keys no document matched.
+ */
+export function unitScope(files, root, lines) {
+  const keys = [...new Set(lines.map((l) => canonicalPath(l)))];
+  const want = new Set(keys);
+  const hit = new Set();
+  const docs = [];
+  for (const f of files) {
+    const rel = `/${path.relative(root, f).split(path.sep).join('/')}`;
+    const own = [canonicalPath(deliveredUrl(rel)), canonicalPath(rel)].filter((k) => want.has(k));
+    if (!own.length) continue;
+    docs.push(f);
+    own.forEach((k) => hit.add(k));
+  }
+  return { keys, docs, missing: keys.filter((k) => !hit.has(k)) };
+}
+
+function readUnitPaths(unit, dir) {
+  const file = path.join(dir, `${unit}.paths`);
+  try {
+    return parsePaths(readFileSync(file, 'utf8'));
+  } catch (e) {
+    console.error(e.code === 'ENOENT' || e.code === 'ENOTDIR'
+      ? `localize-links: unit ${unit}: no ${file} — write the unit's page list first`
+      : `localize-links: unit ${unit}: ${file} cannot be read (${e.code || e.message})`);
+    process.exit(1);
+  }
 }
 
 /**
@@ -219,15 +283,24 @@ function main() {
     process.exit(0);
   }
   const opts = parseArgs(process.argv);
+  const unitLines = opts.unit === null ? null : readUnitPaths(opts.unit, opts.unitsDir ?? 'stardust/rollout/units');
   const hosts = opts.hosts.map(bareHost);
   const files = collectHtml(opts.content);
+  // with --unit only the unit's documents are rewritten, counted and checked; the map below still spans every file
+  let scope = files; let unit = null;
+  if (unitLines) {
+    unit = unitScope(files, opts.content, unitLines);
+    if (!unit.docs.length) { console.error(`localize-links: unit ${opts.unit}: none of its ${unit.keys.length} path(s) has a document under ${opts.content}`); process.exit(1); }
+    unit.missing.forEach((k) => console.error(`localize-links: note: unit ${opts.unit}: ${k} has no document under ${opts.content}`));
+    scope = unit.docs;
+  }
   const { map, redirects, pending, redirectsFound } = buildMap(files, opts.content, opts.redirects);
   const ctx = { map, hosts };
 
   const perFile = {};
   const keptAll = new Map();
   let localized = 0; let normalized = 0; let filesChanged = 0;
-  for (const f of files.sort()) {
+  for (const f of scope.sort()) {
     const r = processFile(f, ctx);
     r.kept.forEach((k) => keptAll.set(k, (keptAll.get(k) || 0) + 1));
     if (!r.changed) continue;
@@ -237,13 +310,15 @@ function main() {
     if (!opts.dryRun) writeFileSync(f, r.out);
   }
   const keptSorted = [...keptAll.entries()].sort((a, b) => b[1] - a[1]);
-  const summary = { content: opts.content, hosts, pages: files.length, mapEntries: map.size, redirects, redirectsFound, filesChanged, localized, normalized, keptAbsolute: keptSorted.length, mode: opts.check ? 'check' : opts.dryRun ? 'dry-run' : 'write' };
+  const summary = { content: opts.content, hosts, pages: files.length, mapEntries: map.size, redirects, redirectsFound, filesChanged, localized, normalized, keptAbsolute: keptSorted.length, mode: opts.check ? 'check' : opts.dryRun ? 'dry-run' : 'write',
+    ...(unit && { unit: opts.unit, unitPaths: unit.keys.length, unitDocuments: unit.docs.length, unitMissing: unit.missing }) };
 
   if (opts.json) {
     console.log(JSON.stringify({ ...summary, perFile, kept: keptSorted.map(([p, n]) => ({ path: p, links: n })) }, null, 2));
   } else {
     const verb = opts.dryRun ? 'would localize' : 'localized';
     console.log(`localize-links: ${files.length} pages, ${map.size} map entries (${redirects} from redirects${pending ? `; ${pending} redirect(s) to pages not in this tree kept for a later wave` : ""}), hosts ${hosts.join(', ')}`);
+    if (unit) console.log(`unit ${opts.unit}: ${unit.docs.length}/${unit.keys.length} documents`);
     console.log(`${verb} ${localized} source-host link(s) + normalized ${normalized} internal href(s) across ${filesChanged} file(s)${opts.dryRun ? ' [no writes]' : ''}`);
     for (const [p, c] of Object.entries(perFile)) console.log(`  ${p}: ${c.localized} localized, ${c.normalized} normalized`);
     if (keptSorted.length) {
