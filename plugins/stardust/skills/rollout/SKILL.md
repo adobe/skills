@@ -211,8 +211,9 @@ Walk `plan.json.steps` in order (representative pages first). For each page:
    ```
    **`deployed` is on disk and committed before any gate:** each page's
    `--status deployed` line runs right after its `.plain.html` checks, then
-   `node skills/stardust/scripts/unit-commit.mjs <unit>` (the unit's files only);
-   the published-origin gate comes after (handoff contract § 3, row C).
+   `node skills/stardust/scripts/unit-commit.mjs <unit>` (`<unit>`: the recorded
+   unit holding the page, `stardust/rollout/units/<unit>.paths`); the
+   published-origin gate comes after (handoff contract § 3, row C).
    **Publish in the loop (`PUT → preview → live`), don't stop at preview** — any
    query-index (Phase D2) builds from the **live** tree, so a preview-only delivery
    leaves indexes empty. On failure: `--status failed --error "<reason>"` and
@@ -264,8 +265,7 @@ progress file. Check them at most every 4 minutes and never with a fixed `sleep`
 of 5 minutes or more (the prompt-cache window) — the master skill's wait
 discipline. After a transient blip, re-run the same command — it re-drives
 only the FAILs. Then reconcile the ledger into coverage with `update-coverage.mjs`
-— each page `deployed` and committed (`unit-commit.mjs <unit>`) before its
-published-origin gate. **Foundation first** (lint AND commit `styles.css`,
+(step 4's order). **Foundation first** (lint AND commit `styles.css`,
 header/footer CSS and the contract file before the first agent spawns; no token
 or custom-property rename after fan-out), **disjoint clusters spawn
 concurrently**, and **every tool call stays under 4 minutes, the main agent's

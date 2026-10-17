@@ -18,8 +18,8 @@ print the part that matters, capped, and say what they left out:
   a recorded call for five sections returned 82 KB that stayed in context
   for 160 turns (`--all` over several sections is capped at 20 KB now).
 - **Phase 5 briefs**: a cluster or archetype brief names its read-set
-  (`reference/handoff-contract.md` § Fan-out discipline, Brief read-set) —
-  sections only, never a whole SKILL.md or a full-page PNG.
+  (`reference/handoff-contract.md` § 3. Rollout; its Brief read-set bullet)
+  — sections only, never a whole SKILL.md or a full-page PNG.
 - **Captured CSS**: `css-rules.mjs <sheet> '<selector regex>' [--media <re>]
   [--decl <re>]` — the rule blocks, each with its media condition, instead
   of line ranges of the sheet.
