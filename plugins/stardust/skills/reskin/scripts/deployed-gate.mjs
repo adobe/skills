@@ -131,7 +131,8 @@ sanity   A4. The hard asserts on the preview, at 1440 and 360. Never waivable: n
          failing row ("overflow 240px > 4px @360", the instrument's findings below it), one "n/a: <reason>
          (<rows>)" line per reason; "ERROR (exit 124) sanity: <n> checks gave no verdict" and a line per row in
          error when a check gave no verdict (an instrument exiting 124, 1 or another, a page the browser could
-         not load: re-run once). Writes sanity.json ({ verdict, hard: true, rows: [{ check, width, value, bar,
+         not load, or one that answered HTTP 400 or more, "HTTP <n> at <url>": an error page measures nothing
+         about the page; re-run once). Writes sanity.json ({ verdict, hard: true, rows: [{ check, width, value, bar,
          status, artifact, detail }] }) and sanity/ (clip-probe-1440.json, content-presence-1440.json) beside
          preview.json. Exit 1 on a FAIL row, 3 on a bot challenge, 124 on a row in error (the rows measured stay
          in sanity.json).

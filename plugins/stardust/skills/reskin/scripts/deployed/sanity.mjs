@@ -16,7 +16,7 @@
 //        ({ verdict, hard: true, rows }) and returns { verdict: 'PASS' | 'FAIL' | 'ERROR' | 'n/a', exit, hard, rows }.
 //        A row is { check, width, value, bar, status: 'PASS' | 'FAIL' | 'ERROR' | 'n/a', artifact, detail }. A check
 //        that gave no verdict (an instrument exiting 124, 1, 4 or any other unexpected exit or no number in its JSON,
-//        a page the browser could not load) makes its row "ERROR (exit N)", the verdict ERROR and the exit 124; a bot
+//        a page the browser could not load or that answered HTTP 400 or more) makes its row "ERROR (exit N)", the verdict ERROR and the exit 124; a bot
 //        challenge throws an error with code 3. `tools` maps clip and presence to script paths (default: diffTools()),
 //        for tests; edsTimeoutMs bounds the settle (default 20000).
 //   diffTools(from)    the two instruments in either layout of the scripts, or a UsageError naming what is missing
@@ -120,14 +120,15 @@ const toolError = (check, width, name, r) => errorRow(check, width, exitOf(r), f
 
 const stallOnly = (e) => { if (e?.name !== 'TimeoutError') throw e; };
 
-// The four rows of one width. A challenge is thrown (code 3); any other failure to load or read the page makes the
-// four rows "ERROR (exit 124)" with its first line.
+// The four rows of one width. A challenge is thrown (code 3); an HTTP status of 400 or more (an error page measures
+// nothing about the page) and any other failure to load or read the page make the four rows "ERROR (exit 124)" with
+// "HTTP <n> at <url>" or the first line of the failure.
 async function measureWidth({ browser, openPage, gotoLive, width, url, edsTimeoutMs }) {
   const { ctx, page } = await openPage(browser, { width, height: VIEWPORT_HEIGHT });
   try {
     const errors = [];
     page.on('pageerror', (e) => errors.push(firstLine(String(e?.message ?? e)) || 'uncaught error'));
-    await gotoLive(page, url, { waitUntil: 'domcontentloaded', timeoutMs: NAV_TIMEOUT_MS, settleMs: 0, httpError: 'measure' });
+    await gotoLive(page, url, { waitUntil: 'domcontentloaded', timeoutMs: NAV_TIMEOUT_MS, settleMs: 0 });
     const eds = await edsSettle(page, { timeoutMs: edsTimeoutMs });
     const pageErrors = [...errors];
     const overflow = await page.evaluate(overflowIn);
@@ -142,7 +143,8 @@ async function measureWidth({ browser, openPage, gotoLive, width, url, edsTimeou
     ];
   } catch (e) {
     if (e?.name === 'BotChallengeError') throw coded(3, e.message);
-    return BROWSER_CHECKS.map((check) => errorRow(check, width, EXIT.ERROR, firstLine(String(e?.message ?? e)) || 'the page could not be read'));
+    const why = e?.name === 'LiveHTTPError' ? `HTTP ${e.status} at ${url}` : firstLine(String(e?.message ?? e)) || 'the page could not be read';
+    return BROWSER_CHECKS.map((check) => errorRow(check, width, EXIT.ERROR, why));
   } finally { await ctx.close(); }
 }
 

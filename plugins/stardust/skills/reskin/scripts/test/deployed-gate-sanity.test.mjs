@@ -468,6 +468,28 @@ if (playwrightOk) {
     } finally { await new Promise((done) => { challenged.close(done); challenged.closeAllConnections(); }); }
   });
 
+  await check('a preview that answers HTTP 404 or 500 gives no verdict: the four rows of each width are "ERROR (exit 124)" with "HTTP <n> at <url>", never a pass', async () => {
+    for (const status of [404, 500]) {
+      const failing = createServer((req, res) => { res.writeHead(status, { 'content-type': 'text/html' }); res.end('<!doctype html><html><body class="appear"><main><h1>Oops</h1></main></body></html>'); });
+      await new Promise((done) => { failing.listen(0, '127.0.0.1', done); });
+      try {
+        const origin = `http://127.0.0.1:${failing.address().port}`;
+        const root = project(`http-${status}`, { origin });
+        const result = await runSanity({ dir: join(root, 'stardust'), slug: 'home', preview: previewOf(root), reskinPage: smallPage(), widths: [1440, 360], tools: stubTools(`http-${status}-stubs`).tools, edsTimeoutMs: 1500 });
+        assert.equal(result.verdict, 'ERROR', `${status}: ${JSON.stringify(brief(result.rows))}`);
+        assert.equal(result.exit, 124);
+        for (const width of [1440, 360]) {
+          for (const c of BROWSER_CHECKS) {
+            const r = pick(result.rows, c, width);
+            assert.deepEqual([r.status, r.value, r.detail], ['ERROR', 'ERROR (exit 124)', `HTTP ${status} at ${origin}/ns/home`], `${status} ${c} @${width}`);
+          }
+        }
+        assert.deepEqual(sanityLines(result).slice(0, 2), ['ERROR (exit 124) sanity: 8 checks gave no verdict', `  overflow @1440: ERROR (exit 124)`]);
+        assert.equal(readJson(join(outOf(root), 'sanity.json')).verdict, 'ERROR', 'the record says no verdict');
+      } finally { await new Promise((done) => { failing.close(done); failing.closeAllConnections(); }); }
+    }
+  });
+
   await check('runSanity clears the evidence of the last run first, and a missing tool, a record without a url or a missing page is a setup error before anything is measured', async () => {
     const root = project('stale', { origin: 'http://127.0.0.1:9' });
     const out = outOf(root);
