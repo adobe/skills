@@ -572,5 +572,6 @@ if (playwrightOk) {
   });
 }
 
+rmSync(scratch, { recursive: true, force: true });
 console.log(failed ? `${failed} check(s) failed` : 'all checks passed');
 process.exitCode = failed ? 1 : 0;
