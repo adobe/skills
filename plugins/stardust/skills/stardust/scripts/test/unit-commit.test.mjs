@@ -2,7 +2,8 @@
 // skills/stardust/scripts/test/unit-commit.test.mjs — the unit-commit.mjs contract, with real git in
 // temp dirs (a bare remote + clones; children get HOME=<tmp>, GIT_CONFIG_NOSYSTEM=1 and a ceiling so
 // no user or system config leaks in): the pure helpers (paths parsing, sidecar naming, the candidate
-// set, lock judgement); --help writes nothing; usage errors; a missing .paths stages nothing; a unit
+// set, lock judgement, the 180 s network deadline); --help writes nothing, and answers in a copy without
+// deploy's eds-path.mjs beside it (a run there exits 2); usage errors; a missing .paths stages nothing; a unit
 // commits exactly its set while an unrelated pre-staged file stays staged and out of the commit;
 // --code blocks/<name> adds exactly that block directory's non-ignored files (header, footer and
 // anything outside blocks/<kebab-name> refused, a missing directory refused); nothing to commit; nothing new but ahead → push only; a live lock times out naming its owner; a
@@ -16,11 +17,12 @@
 // kept; no upstream → committed, not pushed. Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { hostname, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { codeDir, judgeLock, parseOwner, parsePaths, safeRel, sidecarFor, stageCandidates, STALE_MS } from '../unit-commit.mjs';
+import { codeDir, judgeLock, NET_DEADLINE_MS, parseOwner, parsePaths, pastNetDeadline, safeRel, sidecarFor, stageCandidates, STALE_MS } from '../unit-commit.mjs';
+import { pathKey } from '../../../deploy/scripts/eds-path.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'unit-commit.mjs');
@@ -100,7 +102,7 @@ check('stageCandidates: content docs per pathKey, the matching row\'s schema + s
     { slug: 'n', path: '/n', source: { migratedHtml: 'search:n', metaJson: null } },
     { slug: 'x', path: '/x', source: { migratedHtml: 'stardust/migrated/x.html' } },
   ];
-  const { files, notes } = stageCandidates({ unit: 'u1', lines: ['/', '/A.html', '/b/index', '/n', '/../etc'], rows, coverageFiles: ['stardust/rollout/coverage/pages.json'] });
+  const { files, notes } = stageCandidates({ unit: 'u1', lines: ['/', '/A.html', '/b/index', '/n', '/../etc'], rows, coverageFiles: ['stardust/rollout/coverage/pages.json'], pathKey });
   assert.deepEqual(files, [
     'content/index.html', 'stardust/eds-schema/home.json', 'stardust/migrated/_meta.json',
     'content/a.html', 'content/a/index.html', 'stardust/eds-schema/a.json', 'stardust/migrated/a._meta.json',
@@ -109,6 +111,15 @@ check('stageCandidates: content docs per pathKey, the matching row\'s schema + s
     'stardust/rollout/coverage/pages.json', 'stardust/rollout/progress.json', 'stardust/deploy/media-ledger.json', 'stardust/rollout/units/u1.paths',
   ]);
   assert.equal(notes.length, 1); assert.match(notes[0], /\.\. segment/);
+});
+check('pastNetDeadline: a network step may start until 180 s after the script started, not at or after it', () => {
+  assert.equal(NET_DEADLINE_MS, 180_000);
+  const t0 = 1_000_000;
+  assert.equal(pastNetDeadline(t0, t0), false);
+  assert.equal(pastNetDeadline(t0, t0 + 179_999), false);
+  assert.equal(pastNetDeadline(t0, t0 + 180_000), true);
+  assert.equal(pastNetDeadline(t0, t0 + 120_000 + 4 * 60_000), true, 'a 120 s lock wait plus rounds never starts a step past the deadline');
+  assert.equal(pastNetDeadline(t0, t0 + 5_000, 5_000), true);
 });
 check('safeRel: clean relative paths inside the tree; escapes and blanks → null', () => {
   assert.equal(safeRel('stardust/./migrated/a._meta.json', root), 'stardust/migrated/a._meta.json');
@@ -177,6 +188,16 @@ try {
     assert.match(r.out, /Usage:/); assert.match(r.out, /stardust\/\.work\/git\.lock/); assert.match(r.out, /Writes:/); assert.match(r.out, /Exit codes:/);
     assert.deepEqual(readdirSync(empty), []);
     assert.equal(run(empty, 'c1', '-h').code, 0);
+    assert.deepEqual(readdirSync(empty), []);
+  });
+  check('a copy without deploy\'s eds-path.mjs beside it (a project copy before the deploy scripts): --help exit 0; a run → exit 2, one line', () => {
+    const lone = join(root, 'lone', 'stardust', 'scripts', 'stardust'); mkdirSync(lone, { recursive: true });
+    copyFileSync(SCRIPT, join(lone, 'unit-commit.mjs'));
+    const runLone = (...args) => { const r = spawnSync(process.execPath, [join(lone, 'unit-commit.mjs'), ...args], { cwd: empty, env, encoding: 'utf8' }); return { code: r.status, out: r.stdout, err: r.stderr }; };
+    const h = runLone('--help');
+    assert.equal(h.code, 0, h.err); assert.match(h.out, /Usage:/);
+    const r = runLone('c1');
+    assert.equal(r.code, 2, r.err); oneLine(r); assert.match(r.out, /eds-path\.mjs not found beside this script .*nothing staged/);
     assert.deepEqual(readdirSync(empty), []);
   });
   check('usage: no unit, a bad unit name, unknown flag, bad number, a value flag without value, outside a work tree → exit 2, one line', () => {

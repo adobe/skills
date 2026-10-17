@@ -43,7 +43,9 @@
 // was pushed (a rebase rewrites it). A merge or rebase in progress, or unmerged index entries, refuse
 // the run before anything is staged — staging a file with conflict markers would commit them.
 // Every git step is bounded (fetch, pull, push 60 s; local steps 300 s) and runs in its own process
-// group: a timed-out step's group is ended and the step failed (a timed-out rebase is aborted).
+// group: a timed-out step's group is ended and the step failed (a timed-out rebase is aborted). No
+// network step (fetch, pull, push, a retry's) starts later than 180 s after the script started (the
+// lock wait included): past that the run stops, the local commit kept and named, not pushed.
 // SIGINT / SIGTERM / SIGHUP are handled after the current git step (a terminal's Ctrl-C reaches this
 // script, not the step): the run stops at the next check with its exit-2 line and releases the lock;
 // a second signal ends the running git step. Exactly one status line on stdout in every outcome;
@@ -52,7 +54,7 @@
 // usage (a frozen or malformed --code included), not a git work tree, missing .paths or --code
 // directory, unreadable coverage, lock timeout, nothing to commit, a merge/rebase in progress or
 // unmerged files, commit failure, no upstream, rebase conflict, an autostash that did not re-apply,
-// push failure, a timed-out step, a signal.
+// push failure, the push deadline, a timed-out step, a signal, deploy's eds-path.mjs not found.
 import { spawn } from 'node:child_process';
 import { closeSync, existsSync, linkSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, utimesSync, writeSync } from 'node:fs';
 import { hostname } from 'node:os';
@@ -60,9 +62,15 @@ import { dirname, isAbsolute, join, posix, relative, resolve, sep } from 'node:p
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
+const STARTED = Date.now();
 // deploy's path contract, in both layouts: plugin tree (skills/stardust/scripts → ../../deploy/scripts)
-// and project copy (stardust/scripts/stardust → ../deploy)
-const { pathKey } = await import(pathToFileURL([join(HERE, '..', '..', 'deploy', 'scripts', 'eds-path.mjs'), join(HERE, '..', 'deploy', 'eds-path.mjs')].find((x) => existsSync(x)) || join(HERE, '..', '..', 'deploy', 'scripts', 'eds-path.mjs')).href);
+// and project copy (stardust/scripts/stardust → ../deploy). Loaded by main, after --help: a project copy
+// made before the deploy scripts are copied still answers --help.
+const EDS_PATH = [join(HERE, '..', '..', 'deploy', 'scripts', 'eds-path.mjs'), join(HERE, '..', 'deploy', 'eds-path.mjs')];
+async function loadPathKey() {
+  const found = EDS_PATH.find((x) => existsSync(x));
+  return found ? (await import(pathToFileURL(found).href)).pathKey : null;
+}
 
 export const UNIT_RE = /^[\w.-]+$/;
 export const LOCK_REL = 'stardust/.work/git.lock';
@@ -72,6 +80,7 @@ export const DEFAULT_WAIT_S = 120;
 export const PUSH_RETRIES = 3;
 export const NET_TIMEOUT_MS = 60_000; // fetch, pull, push
 export const LOCAL_TIMEOUT_MS = 300_000; // add, commit (hooks), reset, …
+export const NET_DEADLINE_MS = 180_000; // no network step starts later than this after the script started
 const HEARTBEAT_MS = 30_000;
 const BACKOFF_MS = 750;
 const GIT_LOCK_RETRIES = 20; // × 500 ms: another git command in the same work tree holding index.lock / a ref lock
@@ -125,6 +134,10 @@ Steps: git add -- <set>; nothing in the set differs from HEAD → exit 2 "nothin
   Refused before staging: a merge or rebase in progress, unmerged files in the index.
 Time limits: fetch, pull and push ${NET_TIMEOUT_MS / 1000} s each, local git steps ${LOCAL_TIMEOUT_MS / 1000} s; a step over its limit
   failed — its process group (git, hooks, transport) is ended; a timed-out rebase is aborted.
+  Deadline: no network step (fetch, pull, push, a retry's) starts later than ${NET_DEADLINE_MS / 1000} s after the
+  script started, the lock wait included → exit 2 "push deadline reached; local commit <sha7> kept,
+  not pushed" (lock released). Worst case with --push: one network step started just before
+  ${NET_DEADLINE_MS / 1000} s runs its ${NET_TIMEOUT_MS / 1000} s, +5 s to end its process group — about ${(NET_DEADLINE_MS + NET_TIMEOUT_MS) / 1000 + 5} s, local steps aside.
 Signals: SIGINT / SIGTERM / SIGHUP are handled after the current git step (each step runs in its
   own process group, so a terminal's Ctrl-C does not cut it short) — the run stops at the next
   check with its exit-2 line (the set unstaged, or the local commit kept and named) and releases
@@ -136,8 +149,9 @@ Writes: a git commit (and a push with --push); the lock file under stardust/.wor
 Exit codes: 0 committed (and pushed with --push), or nothing new but pushed · 2 usage, not a git
   work tree, missing units/<unit>.paths or --code directory, unreadable coverage, lock timeout,
   nothing to commit, a merge or rebase in progress or unmerged files, commit failure, no
-  upstream, rebase conflict, an autostash that did not re-apply, push failure, a timed-out step,
-  a signal — nothing half-done (a commit that could not be pushed is kept locally and named).`;
+  upstream, rebase conflict, an autostash that did not re-apply, push failure, the push deadline,
+  a timed-out step, a signal, deploy's eds-path.mjs not found beside this script — nothing
+  half-done (a commit that could not be pushed is kept locally and named).`;
 
 export class UsageError extends Error {}
 
@@ -179,15 +193,19 @@ export function filesUnder(dir) {
   return out;
 }
 
+/** May a network step start now? Not once `limitMs` have passed since the script started. Pure. */
+export const pastNetDeadline = (startedMs, nowMs, limitMs = NET_DEADLINE_MS) => nowMs - startedMs >= limitMs;
+
 /** The content documents a path key may live in. */
 export const contentDocs = (key) => (key === '/' ? ['content/index.html'] : [`content${key}.html`, `content${key}/index.html`]);
 
 /**
  * Every candidate file of a unit's stage set, before the exists / ignored filter. Pure.
- * rows = coverage pages rows; coverageFiles = the stardust/rollout/coverage/*.json files present.
+ * rows = coverage pages rows; coverageFiles = the stardust/rollout/coverage/*.json files present;
+ * pathKey = deploy's eds-path key.
  * Returns { files, notes } — notes name path lines skipped as unusable keys.
  */
-export function stageCandidates({ unit, lines, rows = [], coverageFiles = [] }) {
+export function stageCandidates({ unit, lines, rows = [], coverageFiles = [], pathKey }) {
   const files = []; const notes = [];
   for (const key of [...new Set(lines.map((l) => pathKey(l)))]) {
     if (key.split('/').some((s) => s === '..' || s === '.')) { notes.push(`path ${key} has a . or .. segment — skipped`); continue; }
@@ -381,10 +399,12 @@ const upstreamOf = async () => { const r = await git(['rev-parse', '--abbrev-ref
 // retries. Returns { ok, sha } (sha = the commit as pushed) or { fail, err, why }.
 async function pullAndPush(stop) {
   let err = '';
+  const late = () => pastNetDeadline(STARTED, Date.now());
   for (let attempt = 0; attempt <= PUSH_RETRIES; attempt += 1) {
     if (attempt) await sleep(BACKOFF_MS * attempt + Math.floor(Math.random() * 250));
     let why = stop();
     if (why) return { fail: 'stopped', why };
+    if (late()) return { fail: 'deadline', err };
     const fetch = await git(['fetch', '-q'], { timeoutMs: NET_TIMEOUT_MS });
     if (fetch.code !== 0) { err = fetch.err; continue; }
     const behind = await git(['rev-list', '--count', 'HEAD..@{u}']);
@@ -392,6 +412,7 @@ async function pullAndPush(stop) {
     if (Number(behind.out.trim()) > 0) {
       why = stop();
       if (why) return { fail: 'stopped', why };
+      if (late()) return { fail: 'deadline', err };
       const pull = await git(['pull', '--rebase', '--autostash', '-q'], { timeoutMs: NET_TIMEOUT_MS });
       if (await rebasing()) {
         const abort = await git(['rebase', '--abort']);
@@ -404,6 +425,7 @@ async function pullAndPush(stop) {
     }
     why = stop();
     if (why) return { fail: 'stopped', why };
+    if (late()) return { fail: 'deadline', err };
     const sha = await sha7(); // the commit as it is pushed — after a rebase it is not the one committed
     const push = await git(['push', '-q'], { timeoutMs: NET_TIMEOUT_MS });
     if (push.code === 0) return { ok: true, sha };
@@ -420,6 +442,7 @@ async function pushOutcome(res, okLine) {
   if (res.fail === 'abort-failed') return [2, `rebase conflict: git rebase --abort failed — a rebase is still in progress; resolve it by hand; local commit ${sha} kept, not pushed`];
   if (res.fail === 'autostash') return [2, `rebased, but the autostash did not re-apply cleanly (kept in git stash list); local commit ${sha} kept, not pushed`];
   if (res.fail === 'stopped') return [2, `${res.why}; local commit ${sha} kept, not pushed`];
+  if (res.fail === 'deadline') return [2, `push deadline reached; local commit ${sha} kept, not pushed`];
   return [2, `push failed after ${PUSH_RETRIES} retries; local commit ${sha} kept`];
 }
 
@@ -451,7 +474,7 @@ export function parseArgs(argv) {
 }
 
 // ---- the run (returns [exitCode, status]) ------------------------------------------------------
-async function underLock(opts, lines, stop) {
+async function underLock(opts, lines, stop, pathKey) {
   const { unit } = opts;
   const cwd = process.cwd();
   const busy = await inProgress();
@@ -470,7 +493,7 @@ async function underLock(opts, lines, stop) {
   }
   const coverageFiles = existsSync(COVERAGE_DIR) && statSync(COVERAGE_DIR).isDirectory()
     ? readdirSync(COVERAGE_DIR).filter((f) => f.endsWith('.json')).sort(byCodePoint).map((f) => `${COVERAGE_DIR}/${f}`) : [];
-  const { files, notes } = stageCandidates({ unit, lines, rows, coverageFiles });
+  const { files, notes } = stageCandidates({ unit, lines, rows, coverageFiles, pathKey });
   for (const d of opts.code) files.push(...filesUnder(d));
   for (const n of notes) console.error(`unit-commit ${unit}: note: ${n}`);
   const present = [...new Set(files.map((f) => safeRel(f, cwd)).filter(Boolean))]
@@ -542,6 +565,9 @@ export async function main(argv) {
     return 2;
   }
   const { unit } = opts;
+  let pathKey;
+  try { pathKey = await loadPathKey(); } catch (e) { pathKey = null; console.error(`unit-commit: ${redact(e.message).split('\n')[0]}`); }
+  if (typeof pathKey !== 'function') { emit(unit, `deploy's eds-path.mjs not found beside this script (${EDS_PATH.map((x) => relative(process.cwd(), x) || '.').join(' or ')}) — copy the deploy scripts first; nothing staged`); return 2; }
   // a signal is handled after the current git step (every step is bounded); a second one ends that step
   const onSignal = (sig) => {
     if (!RUN.signal) { RUN.signal = sig; console.error(`unit-commit ${unit}: ${sig} received — stopping after the current git step`); } else if (RUN.child) RUN.child.stop('signal');
@@ -587,7 +613,7 @@ export async function main(argv) {
       touch();
       return null;
     };
-    const [code, line] = await underLock(opts, lines, stop);
+    const [code, line] = await underLock(opts, lines, stop, pathKey);
     emit(unit, RUN.signal && !line.includes('interrupted') ? `${line} (${RUN.signal} received during the last git step)` : line);
     return code;
   } catch (e) {
