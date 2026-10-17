@@ -4,6 +4,44 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.35.1 — gate-all reads its published roster from the rollout coverage; `--eds-host` takes a bare host
+
+Two recorded hands-off runs, a 100-page and a 10-page one, each hand-wrote a script that built a gate state file
+from the rollout coverage: gate-all selected only `state.json` pages `deployed` with a `liveUrl` — which nothing in
+the delivery flow writes — while the handoff contract told the agent to run gate-all with no state file. One run
+lost a 43-minute roster run to "no pages selected"; the agent also found that `--eds-host` needed the scheme.
+
+- **`gate-all.mjs --coverage <file>` is the published stage's roster** (default `stardust/rollout/coverage/pages.json`
+  when it exists, else `--state`): rows `deployed` / `verified`, and `failed` with a `gate:` error so a fix round
+  re-gates them, each with `delivery.deployedUrl` (the gated URL, its host rewritten by `--eds-host`) and
+  `source.sourceUrl` (the origin). A `state.json` beside it is optional and lends `template` / `fidelityTier` /
+  `deployedPath` by slug, so a page that was already selectable keeps its verdict, units and gate key. The coverage
+  wins over `--state` for the published stage; `--state` keeps the prototype stage and legacy projects (no coverage
+  file). run-bg's roster estimate resolves the source the same way; an explicit `--coverage` also feeds the gate
+  key's block list (the default path did already).
+- **The first status line names the roster's source:** `roster: …` ends
+  `; source: coverage|state <path> (<q> of <N> row(s) / page(s) qualified)`, counted before `--only`.
+- **An empty selection names both files** (absolute paths) with their counts — coverage rows deployed / verified /
+  gate-failed with a `deployedUrl` (and how many lack a source url), state pages deployed with a `liveUrl` — and the
+  roster's source; exit 1 kept. From a coverage roster the hint says the coverage wins and points at
+  `update-coverage.mjs <slug> --status deployed --url <deployedUrl>` (or `--coverage <file>`); a state roster keeps
+  the `--coverage` / `--state` / deploy-first hint.
+- **`--eds-host` takes a bare host or `https://<host>`.** gate-all adds `https://` when there is no scheme and
+  normalises to `<protocol>//<host>` (lower-case host, a non-default port kept); a path, query, hash or credentials
+  are refused before any I/O — one stderr line and the usage line, exit 2. A bare host had produced `host/path`
+  capture URLs and `new URL` failures. The summary's `edsHostOverride` records the normalised origin. gate-triage
+  normalises each page's recorded host the same way, so its re-gate commands carry `https://<host>` and a bare host
+  and its URL form share one command (a value gate-all refuses is kept raw). gate.sh is unchanged — it takes full
+  URLs, never a host.
+- **The contract and docs name the roster source:** the handoff contract (§ 1 row 5, § 3 row C), the replica and
+  rollout skills, the gate reference and the scripts index — coverage rows `deployed` / `verified`, and `failed` by
+  the gate; the coverage row is recorded `deployed` with its URL before gate-all reads it; no state file, no
+  hand-built roster. The stardust skill names an agent-written roster builder for gate-all as a deviation to record.
+
+Patch: an input source added, no verdict change. Numbered 0.35.1 provisionally — the stack is renumbered at merge.
+No threshold, criterion, capture or reuse change; a page that was already selectable keeps its verdict, units and
+gate key.
+
 ## 0.34.5 — replica self-hosts the source's brand faces; one hide list for in-flow bars across captures, probes and the header contract; cap-probe lists unpaired modules
 
 A recorded ten-page hands-off run passed all four gated archetypes at both widths, but three of its six register
