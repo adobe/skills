@@ -43,15 +43,16 @@ Usage: node skills/rollout/scripts/block-origin.mjs [--coverage <pages.json>] [-
   --encode <dir>      encoder maps <dir>/<templateId>/vocabulary.json (root, markers[] with sel and emitter
                       block:<name>), taken before the text; markers apply under the root (page-wide without
                       one; not at all on a page where the root matches nothing or does not parse) (default
-                      stardust/migrate/encode; optional; the shipped encoder keeps its maps under
-                      stardust/import: pass --encode stardust/import)
+                      stardust/import when it is a directory — where the encoder writes its maps — else
+                      stardust/migrate/encode; an explicit --encode wins; optional)
   --out <file>        default stardust/rollout/workspace/mapping.json
   --verify            re-read and re-index every capture and count each selector's hits: an instance is
                       verified true (exactly one element) or false; a section's pages are re-checked (a
                       page may drop, none is added)
-  --json              one JSON object on stdout instead of the status lines: { status, out, counts: { templates,
-                      blocks, instances, verified, verifiedPct, sources, confidence: { high, medium, low, none },
-                      positionBlocks }, skipped }; notes go to stderr
+  --json              one JSON object on stdout instead of the status lines: { status, out, encode, counts: {
+                      templates, blocks, instances, verified, verifiedPct, sources, confidence: { high, medium,
+                      low, none }, positionBlocks }, skipped } (encode: the encoder-map directory read, null for
+                      none); notes go to stderr
 
 Per page (coverage pages in slug order with a delivered structure, a content file and a capture), each
 delivered block is located in its capture by its template's encoder map when the map selects its element
@@ -70,9 +71,10 @@ null (skipped).
 
 Stdout: templates N · blocks N · instances N · verified P % (the share verified true; verified skipped
 without --verify, verified n/a without instances); sources encoder-map N · text-alignment N ·
-position N; confidence ≥0.9 N · 0.5–<0.9 N · >0–<0.5 N · 0 N; position fallback: <block> ×N, … and
-skipped: N (<reason> ×N, …) when any; one line per unreadable encoder map (ignored); last, → <out>
-(written|unchanged).
+position N; confidence ≥0.9 N · 0.5–<0.9 N · >0–<0.5 N · 0 N; encode <dir> (the encoder-map directory
+read, as given or defaulted) or encode none (it is not a directory: no map is read); position fallback:
+<block> ×N, … and skipped: N (<reason> ×N, …) when any; one line per unreadable encoder map (ignored);
+last, → <out> (written|unchanged).
 
 Outputs: <out>, keys sorted, generatedAt copied from the coverage (no clock); rewritten only when the bytes
 differ. Under skipped: pages without a delivered structure, a content file or a capture, or whose capture
@@ -965,12 +967,13 @@ export function countsOf(mapping, verify) {
 
 const tally = (xs) => [...xs.reduce((m, x) => m.set(x, (m.get(x) || 0) + 1), new Map())].sort(([a, x], [b, y]) => y - x || byStr(a, b));
 
-function statusLines(c, skipped, verify) {
+function statusLines(c, skipped, verify, encode) {
   const v = !verify ? 'verified skipped' : !c.instances ? 'verified n/a' : `verified ${c.verifiedPct.toFixed(1)} %`;
   const out = [
     `templates ${c.templates} · blocks ${c.blocks} · instances ${c.instances} · ${v}`,
     `sources encoder-map ${c.sources['encoder-map']} · text-alignment ${c.sources['text-alignment']} · position ${c.sources.position}`,
     `confidence ≥0.9 ${c.confidence.high} · 0.5–<0.9 ${c.confidence.medium} · >0–<0.5 ${c.confidence.low} · 0 ${c.confidence.none}`,
+    `encode ${encode ?? 'none'}`,
   ];
   const pos = Object.entries(c.positionBlocks);
   if (pos.length) out.push(`position fallback: ${pos.map(([b, n]) => `${b} ×${n}`).join(', ')}`);
@@ -980,8 +983,15 @@ function statusLines(c, skipped, verify) {
 
 const DEFAULTS = {
   coverage: 'stardust/rollout/coverage/pages.json', content: 'content', captures: 'stardust/current/pages',
-  'eds-schema': 'stardust/eds-schema', encode: 'stardust/migrate/encode', out: 'stardust/rollout/workspace/mapping.json',
+  'eds-schema': 'stardust/eds-schema', encode: null, out: 'stardust/rollout/workspace/mapping.json',
 };
+// --encode's default: the first that is a directory (the encoder writes its maps under stardust/import), else the last.
+const ENCODE_DEFAULTS = ['stardust/import', 'stardust/migrate/encode'];
+/** The encoder-map directory read: --encode as given, else its default; null when it is not a directory. */
+function encodeDirOf(given) {
+  const dir = given ?? ENCODE_DEFAULTS.find((d) => isDir(resolve(d))) ?? ENCODE_DEFAULTS.at(-1);
+  return isDir(resolve(dir)) ? dir : null;
+}
 const BOOL_FLAGS = ['verify', 'json'];
 const USAGE = 'usage: block-origin.mjs [--coverage <pages.json>] [--content <dir>] [--captures <dir>] [--eds-schema <dir>] [--encode <dir>] [--out <file>] [--verify] [--json] (--help for details)';
 const fail = (code, msg) => { process.stderr.write(`block-origin: ${msg}\n`); return code; };
@@ -1027,8 +1037,10 @@ export function main(argv) {
   }
   const notes = [];
   const captures = resolve(opts.captures);
+  const encode = encodeDirOf(opts.encode);
   const { mapping } = buildMapping(coverage, {
-    content: resolve(opts.content), captures, eds: resolve(opts['eds-schema']), encode: resolve(opts.encode), encodeShown: opts.encode,
+    content: resolve(opts.content), captures, eds: resolve(opts['eds-schema']),
+    ...(encode === null ? {} : { encode: resolve(encode), encodeShown: encode }),
   }, notes);
   const verify = !!opts.verify;
   if (verify) verifyMapping(mapping, captures);
@@ -1042,8 +1054,8 @@ export function main(argv) {
   const counts = countsOf(mapping, verify);
   if (opts.json) {
     notes.forEach((n) => process.stderr.write(`block-origin: ${n}\n`));
-    process.stdout.write(`${JSON.stringify({ status, out: opts.out, counts, skipped: mapping.skipped })}\n`);
-  } else process.stdout.write(`${[...statusLines(counts, mapping.skipped, verify), ...notes, `→ ${opts.out} (${status})`].join('\n')}\n`);
+    process.stdout.write(`${JSON.stringify({ status, out: opts.out, encode, counts, skipped: mapping.skipped })}\n`);
+  } else process.stdout.write(`${[...statusLines(counts, mapping.skipped, verify, encode), ...notes, `→ ${opts.out} (${status})`].join('\n')}\n`);
   return 0;
 }
 

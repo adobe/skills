@@ -9,7 +9,8 @@
 // --help writes nothing, unit-geometry resolves in both layouts and its absence fails only on use.
 // The mapping run (CLI): instance selectors and confidences by text alignment, sections (anchor,
 // confidence, default-content roles), the position fallback, sections aligned across a template's pages
-// and their generalised selector, an encoder map's precedence, --verify (and its fresh re-read), skipped
+// and their generalised selector, an encoder map's precedence and --encode's default (stardust/import when it
+// is a directory, else stardust/migrate/encode; encode none), --verify (and its fresh re-read), skipped
 // pages and records, exit codes, determinism, the schema and the project-copy layout.
 // Scratch copies live next to this file (removed at exit). All HTML is synthetic and inline.
 // Run: node plugins/stardust/skills/rollout/scripts/test/block-origin.test.mjs
@@ -554,6 +555,7 @@ check('mapping: status lines — counts, verified skipped, sources, confidence b
     'templates 1 · blocks 5 · instances 5 · verified skipped',
     'sources encoder-map 0 · text-alignment 3 · position 2',
     'confidence ≥0.9 2 · 0.5–<0.9 1 · >0–<0.5 0 · 0 2',
+    'encode none',
     'position fallback: hero ×1, media ×1',
     `→ ${MAPPING} (written)`,
   ]);
@@ -574,7 +576,7 @@ check('mapping: determinism — a second run is unchanged, bytes identical; keys
   assert.ok(!readdirSync(join(hubDir, 'stardust', 'rollout', 'workspace')).some((f) => f.endsWith('.tmp')), 'no temp file left');
 });
 
-check('mapping: --json — one object { status, out, counts, skipped }, verified null without --verify', () => {
+check('mapping: --json — one object { status, out, encode, counts, skipped }, verified null without --verify', () => {
   const dir = hubProject('map-json');
   const r = runMap(dir, ['--json']);
   ok(r);
@@ -582,6 +584,7 @@ check('mapping: --json — one object { status, out, counts, skipped }, verified
   assert.deepEqual(o, {
     status: 'written',
     out: MAPPING,
+    encode: null,
     counts: {
       templates: 1, blocks: 5, instances: 5, verified: null, verifiedPct: null,
       sources: { 'encoder-map': 0, 'text-alignment': 3, position: 2 },
@@ -698,6 +701,59 @@ check('mapping: --encode <dir>; an unreadable encoder map is ignored with one li
   ok(r);
   assert.equal(JSON.parse(r.stdout).status, 'unchanged');
   assert.equal(r.stderr.trim(), `block-origin: ${note}`);
+});
+
+check('mapping: --encode defaults to stardust/import when it is a directory, else stardust/migrate/encode; an explicit --encode wins', () => {
+  // the import map takes the teaser grid at section.intro, the migrate map at div.teaser-list (both confidence 1)
+  const importMap = { root: 'main#main', markers: [{ sel: '.intro', emitter: 'block:teaser-grid' }] };
+  const migrateMap = { root: 'main#main', markers: [{ sel: '.teaser-list', emitter: 'block:teaser-grid' }] };
+  const dir = hubProject('map-encode-default');
+  put(join(dir, 'stardust', 'import', 'hub', 'vocabulary.json'), JSON.stringify(importMap));
+  const teaser = () => readMapping(dir).templates[0].blocks.find((b) => b.block === 'teaser-grid').instances;
+  let r = runMap(dir);
+  ok(r);
+  assert.deepEqual(teaser(), [instance('hub', 1, 'section.intro', 1, 'encoder-map')]);
+  assert.equal(lines(r)[1], 'sources encoder-map 1 · text-alignment 2 · position 2');
+  assert.equal(lines(r)[3], 'encode stardust/import', r.stdout);
+  put(join(dir, 'stardust', 'migrate', 'encode', 'hub', 'vocabulary.json'), JSON.stringify(migrateMap));
+  r = runMap(dir);
+  ok(r);
+  assert.equal(lines(r)[3], 'encode stardust/import', 'the default still reads stardust/import');
+  assert.equal(lines(r).at(-1), `→ ${MAPPING} (unchanged)`);
+  assert.deepEqual(teaser(), [instance('hub', 1, 'section.intro', 1, 'encoder-map')]);
+  r = runMap(dir, ['--encode', 'stardust/migrate/encode']);
+  ok(r);
+  assert.deepEqual(teaser(), [instance('hub', 1, 'div.teaser-list', 1, 'encoder-map')]);
+  assert.equal(lines(r)[3], 'encode stardust/migrate/encode', r.stdout);
+  r = runMap(dir, ['--json']);
+  ok(r);
+  const o = JSON.parse(r.stdout);
+  assert.deepEqual([o.status, o.encode, o.counts.sources['encoder-map']], ['written', 'stardust/import', 1]);
+  assert.deepEqual(teaser(), [instance('hub', 1, 'section.intro', 1, 'encoder-map')]);
+});
+
+check('mapping: encode none — no map directory, or an explicit --encode that is not one: no map read, not an error, the same bytes', () => {
+  const dir = hubProject('map-encode-missing');
+  let r = runMap(dir);
+  ok(r);
+  assert.equal(lines(r)[1], 'sources encoder-map 0 · text-alignment 3 · position 2');
+  assert.equal(lines(r)[3], 'encode none', r.stdout);
+  const bytes = readFileSync(join(dir, MAPPING), 'utf8');
+  r = runMap(dir, ['--json']);
+  ok(r);
+  assert.deepEqual([JSON.parse(r.stdout).encode, JSON.parse(r.stdout).status], [null, 'unchanged']);
+  r = runMap(dir, ['--encode', 'nowhere/maps']);
+  ok(r);
+  assert.equal(r.stderr, '');
+  assert.equal(lines(r)[3], 'encode none', r.stdout);
+  assert.equal(lines(r).at(-1), `→ ${MAPPING} (unchanged)`);
+  assert.equal(readFileSync(join(dir, MAPPING), 'utf8'), bytes);
+  // the explicit directory wins over a default that has a map: still none
+  put(join(dir, 'stardust', 'import', 'hub', 'vocabulary.json'), JSON.stringify({ markers: [{ sel: '.intro', emitter: 'block:teaser-grid' }] }));
+  r = runMap(dir, ['--encode', 'nowhere/maps', '--json']);
+  ok(r);
+  assert.deepEqual([JSON.parse(r.stdout).encode, JSON.parse(r.stdout).status], [null, 'unchanged']);
+  assert.equal(readFileSync(join(dir, MAPPING), 'utf8'), bytes);
 });
 
 check('mapping: an image-only first block — the next anchor\'s previous element sibling, walking up the ancestors', () => {
