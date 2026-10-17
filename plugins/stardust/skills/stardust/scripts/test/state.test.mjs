@@ -252,9 +252,10 @@ check('init from a line list: index lookup (www, trailing slash, collision suffi
   assert.equal(r.code, 0, r.err);
   assert.equal(r.out, `state: init 4 page(s) from ${list} · 0 typed · written by stardust:extract\n`);
   const s = readIn(p.d);
-  assert.deepEqual(Object.keys(s), ['_provenance', 'site', 'pages']);
+  assert.deepEqual(Object.keys(s), ['_provenance', 'site', 'direction', 'pages']); assert.equal(s.direction, null, 'direction present, unresolved');
   assert.equal(s._provenance.writtenBy, 'stardust:extract'); assert.match(s._provenance.writtenAt, ISO_UTC);
-  assert.deepEqual(s.site, { originUrl: 'https://www.example.com', deployUrl: null, extractedAt: s._provenance.writtenAt, crawled: 4 });
+  assert.deepEqual(Object.keys(s.site), ['originUrl', 'deployUrl', 'extractedAt', 'pageCap', 'totalDiscovered', 'crawled']);
+  assert.deepEqual(s.site, { originUrl: 'https://www.example.com', deployUrl: null, extractedAt: s._provenance.writtenAt, pageCap: null, totalDiscovered: 4, crawled: 4 }, 'no --page-cap, no crawl log: pageCap null, totalDiscovered = input count');
   assert.deepEqual(s.pages.map((x) => x.slug), ['index', 'about-us-1a2b', 'old', 'blog'], 'input order; collision suffix and finalUrl found through the index');
   assert.deepEqual(s.pages[0], { slug: 'index', url: 'https://www.example.com/', title: 'Home', type: null, status: 'extracted', history: [{ status: 'extracted', at: s._provenance.writtenAt }], stale: false, staleReason: null, currentStatePath: `${p.d}/current/pages/index.json`, prototypePath: null, migratedPath: null });
   assert.equal(s.pages[2].url, 'https://www.example.com/old', 'url is the record url'); assert.equal(s.pages[3].title, 'blog', 'an empty title falls back to the slug');
@@ -331,7 +332,7 @@ check('init --force re-inits while every page is extracted, keeping handsOff / f
   assert.deepEqual(Object.keys(s), ['_provenance', 'site', 'direction', 'handsOff', 'flow', 'reskin', 'pages', 'trailer']);
   assert.equal(s.handsOff, true); assert.equal(s.flow, 'replica'); assert.deepEqual(s.reskin, { a: 1 }); assert.equal(s.trailer, 1);
   assert.deepEqual(Object.keys(s._provenance), ['writtenBy', 'writtenAt', 'stardustVersion'], 'a fresh provenance block');
-  assert.equal(s.site.originUrl, 'https://www.example.com'); assert.ok(!('pageCap' in s.site)); assert.deepEqual(s.pages.map((x) => x.slug), ['blog']);
+  assert.equal(s.site.originUrl, 'https://www.example.com'); assert.equal(s.site.pageCap, null, 'site is rebuilt: the old pageCap is not carried'); assert.deepEqual(s.pages.map((x) => x.slug), ['blog']);
   assert.equal(runIn(p.d, ['advance', 'blog', '--to', 'directed']).code, 0);
   const before = readFileSync(p.stateFile, 'utf8');
   const no = runIn(p.d, ['init', '--pages', list, '--force']); assert.equal(no.code, 2); assert.match(no.err, /--force re-inits only while every page is extracted; 1 of 1 page\(s\) moved on: blog \(directed\)/);
@@ -344,7 +345,7 @@ check('init fills a state.json that holds no pages (flow keys stamped before ext
   const r = runIn(p.d, ['init', '--pages', list]);
   assert.equal(r.code, 0, r.err); assert.equal(r.out, `state: init 2 page(s) from ${list} · 0 typed · kept flow, flowChosenAt, flowSource · written by stardust:extract\n`);
   const s = readIn(p.d);
-  assert.deepEqual(Object.keys(s), ['_provenance', 'site', 'flow', 'flowChosenAt', 'flowSource', 'pages']);
+  assert.deepEqual(Object.keys(s), ['_provenance', 'site', 'direction', 'flow', 'flowChosenAt', 'flowSource', 'pages']); assert.equal(s.direction, null);
   assert.equal(s.flow, 'replica'); assert.equal(s.flowChosenAt, '2026-01-01T00:00:00Z'); assert.equal(s.flowSource, 'user-phrase');
   assert.equal(s._provenance.writtenBy, 'stardust:extract'); assert.deepEqual(s.pages.map((x) => [x.slug, x.status]), [['blog', 'extracted'], ['about-us', 'extracted']]);
   const q = project();
@@ -352,7 +353,7 @@ check('init fills a state.json that holds no pages (flow keys stamped before ext
   const e = runIn(q.d, ['init', '--pages', list]);
   assert.equal(e.code, 0, e.err); assert.match(e.out, / · 0 typed · kept handsOff, flow, reskin · written by stardust:extract$/m);
   const t = readIn(q.d);
-  assert.deepEqual(Object.keys(t), ['_provenance', 'site', 'handsOff', 'flow', 'reskin', 'pages'], 'reskin stays after flow, before pages'); assert.equal(t.pages.length, 2);
+  assert.deepEqual(Object.keys(t), ['_provenance', 'site', 'direction', 'handsOff', 'flow', 'reskin', 'pages'], 'reskin stays after flow, before pages'); assert.equal(t.pages.length, 2);
   const again = runIn(q.d, ['init', '--pages', list]); assert.equal(again.code, 2, 'now it holds pages: refused without --force'); assert.match(again.err, /already exists — init never overwrites it/);
 });
 check('init refuses an existing state.json that does not parse or whose pages is not an array, with or without --force — byte-identical', () => {
@@ -363,6 +364,32 @@ check('init refuses an existing state.json that does not parse or whose pages is
       const r = runIn(p.d, ['init', '--pages', list, ...extra]); assert.equal(r.code, 2, `${text} ${extra}`); assert.equal(r.out, ''); assert.match(r.err, re); assert.equal(readFileSync(p.stateFile, 'utf8'), text);
     }
   }
+});
+check('init: a pages-less file with a direction keeps it as is (named in · kept)', () => {
+  const p = project(); const direction = { resolvedAt: null, phrase: 'calmer, more editorial', directionFile: null, iaFidelity: 'preserved' };
+  writeFileSync(p.stateFile, JSON.stringify({ flow: 'redesign', direction }, null, 2));
+  const r = runIn(p.d, ['init', '--pages', p.list('pages.txt', 'https://www.example.com/blog\n')]);
+  assert.equal(r.code, 0, r.err); assert.match(r.out, / · kept flow, direction · written by stardust:extract$/m);
+  const s = readIn(p.d);
+  assert.deepEqual(Object.keys(s), ['_provenance', 'site', 'direction', 'flow', 'pages']); assert.deepEqual(s.direction, direction);
+});
+check('init --page-cap sets site.pageCap (0 = no cap); _crawl-log.json#discovery.count sets totalDiscovered; site key order with captureGaps', () => {
+  const p = project();
+  writeFileSync(join(p.d, 'current', '_crawl-log.json'), JSON.stringify({ discovery: { fetchTechnique: 'sitemap', count: 38 }, captureGaps: { roots: [{ root: '/de', slug: 'de', linked: 1, uncaptured: ['/de/a'] }], detail: '' } }));
+  const r = runIn(p.d, ['init', '--pages', p.list('pages.txt', 'https://www.example.com/blog\nhttps://www.example.com/about-us\n'), '--page-cap', '25']);
+  assert.equal(r.code, 0, r.err); const site = readIn(p.d).site;
+  assert.deepEqual(Object.keys(site), ['originUrl', 'deployUrl', 'extractedAt', 'pageCap', 'totalDiscovered', 'crawled', 'captureGaps']);
+  assert.equal(site.pageCap, 25); assert.equal(site.totalDiscovered, 38); assert.equal(site.crawled, 2);
+  const q = project(); writeFileSync(join(q.d, 'current', '_crawl-log.json'), JSON.stringify({ discovery: { count: '38' } }));
+  assert.equal(runIn(q.d, ['init', '--pages', q.list('pages.txt', 'https://www.example.com/blog\n'), '--page-cap', '0']).code, 0);
+  assert.equal(readIn(q.d).site.pageCap, 0, '0 = no cap, as crawl --max 0'); assert.equal(readIn(q.d).site.totalDiscovered, 1, 'a non-integer count falls back to the input count');
+});
+check('init --page-cap that is not an integer >= 0 is a usage error, nothing written; advance refuses --page-cap', () => {
+  const p = project(); const list = p.list('pages.txt', 'https://www.example.com/blog\n');
+  for (const v of ['x', '-1', '2.5', '']) { const r = runIn(p.d, ['init', '--pages', list, '--page-cap', v]); assert.equal(r.code, 2, v); assert.match(r.err, /--page-cap ".*" is not an integer >= 0 \(0 = no cap, as crawl --max 0\)/, v); }
+  const none = runIn(p.d, ['init', '--pages', list, '--page-cap']); assert.equal(none.code, 2); assert.match(none.err, /--page-cap needs a value/);
+  assert.ok(!existsSync(p.stateFile));
+  const adv = run('advance', 'home', '--to', 'directed', '--page-cap', '5'); assert.equal(adv.code, 2); assert.match(adv.err, /^state: unknown option --page-cap$/m);
 });
 check('init copies _crawl-log.json#captureGaps.roots (only the roots) into site.captureGaps', () => {
   const p = project(); const roots = [{ root: '/de', slug: 'de', linked: 3, uncaptured: ['/de/a', '/de/b'] }];

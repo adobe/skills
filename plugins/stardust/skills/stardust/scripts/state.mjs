@@ -7,8 +7,8 @@
 // where the contract says so) and one that sets a page's type / representative — each re-stamps
 // `_provenance`.
 //
-//   node state.mjs init --pages <file|-> [--types <slug=type,…>] [--site-url <url>] [--force]
-//                  [--dir <stardust dir>] [--current <dir>]
+//   node state.mjs init --pages <file|-> [--types <slug=type,…>] [--site-url <url>] [--page-cap <n>]
+//                  [--force] [--dir <stardust dir>] [--current <dir>]
 //   node state.mjs advance <slug…> --to <status> [--by <who>] [--prototype <path>] [--migrated <path>]
 //                  [--skill <name>] [--force | --history-only] [--dir <stardust dir>]
 //   node state.mjs set <slug…> (--representative <archetype-slug> | --type <type>) [--skill <name>]
@@ -25,6 +25,9 @@
 // filled without --force, its other top-level keys kept in place. One with pages is refused;
 // --force re-inits only while every page in it is still `extracted` and keeps its top-level keys
 // other than _provenance, site and pages in place. Invalid JSON or a non-array `pages` is refused.
+// The written shape follows state-machine.md § File: `direction: null` unless the file has one;
+// site { originUrl, deployUrl, extractedAt, pageCap (--page-cap or null), totalDiscovered
+// (_crawl-log.json#discovery.count, else the input count), crawled, captureGaps? }.
 // set: page.type / page.representative (the archetype slug a sibling clones), all-or-nothing.
 //
 // Lifecycle (state-machine.md § Page lifecycle states): extracted → directed → prototyped →
@@ -69,9 +72,9 @@ export const WAIT_MODE_RE = /^(fast|medium|slow|spec|networkidle|domcontentloade
 // fetchedAt may lead the reader's clock by at most this much (clock skew between machines).
 export const FUTURE_SKEW_MS = 5 * 60 * 1000;
 // Flags only init / set read; advance and summary keep refusing them as unknown options.
-const NEW_FLAGS = ['--pages', '--types', '--site-url', '--current', '--representative', '--type'];
+const NEW_FLAGS = ['--pages', '--types', '--site-url', '--page-cap', '--current', '--representative', '--type'];
 const FLAGS_FOR = {
-  init: ['--pages', '--types', '--site-url', '--current', '--force', '--dir'],
+  init: ['--pages', '--types', '--site-url', '--page-cap', '--current', '--force', '--dir'],
   set: ['--representative', '--type', '--skill', '--dir'],
 };
 
@@ -79,8 +82,8 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const SELF = fileURLToPath(import.meta.url);
 const PLUGIN_MANIFEST = join(HERE, '..', '..', '..', '.claude-plugin', 'plugin.json');
 const HELP = `Usage:
-  node state.mjs init --pages <file|-> [--types <slug=type,…>] [--site-url <url>] [--force]
-                 [--dir <d>] [--current <dir>]
+  node state.mjs init --pages <file|-> [--types <slug=type,…>] [--site-url <url>] [--page-cap <n>]
+                 [--force] [--dir <d>] [--current <dir>]
   node state.mjs advance <slug…> --to <${ORDER.join('|')}> [--by <who>] [--prototype <path>]
                  [--migrated <path>] [--skill <name>] [--force | --history-only] [--dir <d>]
   node state.mjs set <slug…> (--representative <archetype-slug> | --type <type>) [--skill <name>] [--dir <d>]
@@ -102,10 +105,14 @@ init     creates <dir>/${FILE_NAME} after the crawl, one page per URL in --pages
          condition and the file. --types home=landing,about=article sets page.type (type
          ${TYPE_RE.source}; a slug not in the input is a usage error); other pages get type null.
          Writes _provenance (writtenBy stardust:extract), site { originUrl (origin of --site-url,
-         else of the first URL), deployUrl null, extractedAt, crawled, captureGaps (the roots of
-         <current>/_crawl-log.json#captureGaps, when it lists any) } and pages[] (status extracted,
-         one history entry, currentStatePath <current>/pages/<slug>.json). Duplicate slugs in the
-         input are a usage error. An existing ${FILE_NAME} with no pages (no pages key or an empty
+         else of the first URL), deployUrl null, extractedAt, pageCap (--page-cap, an integer >= 0,
+         0 = no cap as crawl --max 0; else null), totalDiscovered (<current>/_crawl-log.json
+         #discovery.count when it has one, else the number of input URLs), crawled (the number of
+         input URLs), captureGaps (the roots of <current>/_crawl-log.json#captureGaps, when it lists
+         any) }, direction null (unless the file already has a direction, which is kept) and
+         pages[] (status extracted, one history entry, currentStatePath
+         <current>/pages/<slug>.json). Duplicate slugs in the input are a usage error.
+         An existing ${FILE_NAME} with no pages (no pages key or an empty
          pages[], e.g. flow / handsOff stamped before extract) is filled without --force: its other
          top-level keys stay in place and stdout adds "· kept <keys>". One with pages exits 2;
          --force re-inits it only while every page in it is still extracted, keeping its top-level
@@ -454,9 +461,25 @@ export function readCaptureGapRoots(current) {
   return Array.isArray(roots) && roots.length ? structuredClone(roots) : null;
 }
 
+// <current>/_crawl-log.json#discovery.count (the URLs the crawl discovered), when it is an
+// integer >= 0; else null.
+export function readDiscoveryCount(current) {
+  const r = readJson(join(current, '_crawl-log.json'));
+  const n = r.value && r.value.discovery && r.value.discovery.count;
+  return Number.isInteger(n) && n >= 0 ? n : null;
+}
+
+// --page-cap: an integer >= 0 (0 = no cap, as crawl --max 0); absent → null.
+export function parsePageCap(raw) {
+  if (raw === null || raw === undefined) return null;
+  if (!/^\d+$/.test(String(raw).trim())) throw new UsageError(`--page-cap "${raw}" is not an integer >= 0 (0 = no cap, as crawl --max 0)`);
+  return Number(String(raw).trim());
+}
+
 // Builds the state object init writes. `prev` (an existing file without pages, or the --force
-// case) keeps its top-level keys other than _provenance, site and pages in place.
-export function buildInitState({ pages, types = new Map(), siteUrl = null, captureGaps = null, current, prev = null, at = nowIso() }) {
+// case) keeps its top-level keys other than _provenance, site and pages in place, `direction`
+// included; without one, direction is null (unresolved until direct runs).
+export function buildInitState({ pages, types = new Map(), siteUrl = null, pageCap = null, totalDiscovered = null, captureGaps = null, current, prev = null, at = nowIso() }) {
   const rows = pages.map(({ slug, input, record = {} }) => ({
     slug,
     url: record.url || input,
@@ -470,15 +493,16 @@ export function buildInitState({ pages, types = new Map(), siteUrl = null, captu
     prototypePath: null,
     migratedPath: null,
   }));
-  const site = { originUrl: new URL(siteUrl || rows[0].url).origin, deployUrl: null, extractedAt: at, crawled: rows.length };
+  const site = { originUrl: new URL(siteUrl || rows[0].url).origin, deployUrl: null, extractedAt: at, pageCap, totalDiscovered: totalDiscovered ?? rows.length, crawled: rows.length };
   if (captureGaps) site.captureGaps = captureGaps;
   const base = prev && typeof prev === 'object' ? { ...prev } : {};
-  return { ...base, _provenance: stampProvenance(null, 'stardust:extract', at), site, pages: rows };
+  // A new key lands last; writeState's orderTopLevel moves direction to its TOP_ORDER place.
+  return { ...base, _provenance: stampProvenance(null, 'stardust:extract', at), site, ...('direction' in base ? {} : { direction: null }), pages: rows };
 }
 
 // ---- argv --------------------------------------------------------------------------------------
 function parseArgs(argv) {
-  const opts = { dir: DEFAULT_DIR, force: false, historyOnly: false, slugs: false, to: null, by: null, prototype: null, migrated: null, skill: null, pages: null, types: null, siteUrl: null, current: null, representative: null, type: null, seen: [] };
+  const opts = { dir: DEFAULT_DIR, force: false, historyOnly: false, slugs: false, to: null, by: null, prototype: null, migrated: null, skill: null, pages: null, types: null, siteUrl: null, pageCap: null, current: null, representative: null, type: null, seen: [] };
   const pos = [];
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
@@ -503,6 +527,7 @@ function parseArgs(argv) {
     else if (a === '--types') opts.types = need();
     else if (a === '--site-url') opts.siteUrl = need();
     else if (a === '--current') opts.current = need();
+    else if (a === '--page-cap') opts.pageCap = need();
     else if (a === '--representative') opts.representative = need();
     else if (a === '--type') opts.type = need();
     else if (a === '--gate' || a === '--note') throw new UsageError(`${a} is not accepted: a state.json history entry carries status, at and approvedBy only (state-machine.md § File). Gate evidence belongs in the producing skill's own ledger; free-text notes belong in stardust/journal.md.`);
@@ -542,6 +567,7 @@ function runInit(opts, rest) {
   if (rest.length) throw new UsageError(`init takes no <slug> (got ${rest.join(' ')}); list the pages' URLs in --pages <file|->`);
   if (!opts.pages) throw new UsageError('init needs --pages <file|-> (one URL per line or a JSON array of URLs; - reads stdin)');
   const siteUrl = opts.siteUrl ? parseSiteUrl(opts.siteUrl).href : null;
+  const pageCap = parsePageCap(opts.pageCap);
   const inputs = parsePageList(readPagesInput(opts.pages), { siteUrl });
   const current = opts.current || posix.join(opts.dir, 'current');
   const file = statePath(opts.dir);
@@ -559,7 +585,7 @@ function runInit(opts, rest) {
   const { pages, failures } = resolvePages(inputs, current);
   const types = parseTypes(opts.types, pages.map((p) => p.slug));
   if (failures.length) throw new UsageError([`init refused — ${failures.length} of ${pages.length} page(s) have no valid crawl record under ${posix.join(current, 'pages')}; nothing written`, ...failures].join('\n'));
-  const state = buildInitState({ pages, types, siteUrl, captureGaps: readCaptureGapRoots(current), current, prev, at });
+  const state = buildInitState({ pages, types, siteUrl, pageCap, totalDiscovered: readDiscoveryCount(current), captureGaps: readCaptureGapRoots(current), current, prev, at });
   mkdirSync(opts.dir, { recursive: true });
   writeState(file, state);
   console.log(`state: init ${pages.length} page(s) from ${opts.pages === '-' ? 'stdin' : opts.pages} · ${types.size} typed${kept && kept.length ? ` · kept ${kept.join(', ')}` : ''} · written by ${state._provenance.writtenBy}`);
