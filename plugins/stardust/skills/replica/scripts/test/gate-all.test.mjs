@@ -33,6 +33,8 @@
 // font-not-loaded:<family> reasons failing the row, the calibration line; the trust sandbox with STUB_FONTS_*. A font check
 // that could not run (fontsFailed: null): fontChecksSkipped, font-check-skipped:<side> failing the row, null carried from
 // the record, a live.json and a kept origin; the trust sandbox with STUB_FONTS_NULL_*.
+// Fix rounds: countsAsRound (a verdict; a reused row's too), roundsOf (rounds.json, else the legacy runs/*.json seed),
+// capRefusal (the cap line), nextRounds (count, reset, seed record).
 // Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -41,7 +43,7 @@ import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { OVERRIDE_VERDICTS, REGISTER_FILE, browserPools, capturePollution, checkOverride, codeDeployed, contentDeployed, coveragePages, deployedDocs, edsHostOf, edsOrigin, emptySelection, fontChecksSkipped, fontsNotLoaded, foundationPart, formatSummary, gateKeyOf, gateKeyParts, hostServes, instrumentFiles, inventoryWhy, keyChanged, liveReusePlan, oneLoadKeep, originReusePlan, parseArgs, probeInputs, probeReuse, registerIds, rosterEstimate, rowKey, rowReuse, selectPages, sharedBlocks, skipCapture, verdict } from '../gate-all.mjs';
+import { MAX_ROUNDS, OVERRIDE_VERDICTS, REGISTER_FILE, browserPools, capRefusal, capturePollution, checkOverride, codeDeployed, contentDeployed, countsAsRound, coveragePages, deployedDocs, edsHostOf, edsOrigin, emptySelection, fontChecksSkipped, fontsNotLoaded, foundationPart, formatSummary, gateKeyOf, gateKeyParts, hostServes, instrumentFiles, inventoryWhy, keyChanged, liveReusePlan, nextRounds, oneLoadKeep, originReusePlan, parseArgs, probeInputs, probeReuse, registerIds, rosterEstimate, roundsOf, rowKey, rowReuse, runTables, selectPages, sharedBlocks, skipCapture, verdict } from '../gate-all.mjs';
 
 // pixel-compare imports pngjs at module level (a project devDependency, absent in the plugin checkout):
 // import it lazily and skip its one check where it does not resolve, like the other browser/dep-bound tests.
@@ -582,6 +584,52 @@ check('rosterEstimate over the coverage: the default file beside a state wins (s
   writeFileSync(join(cwd, 'stardust/state.json'), '{');
   assert.deepEqual(rosterEstimate([], { cwd }), { ...est(3), stage: 'published', source: 'coverage', coverage });
   rmSync(cwd, { recursive: true, force: true });
+});
+
+// ---- fix rounds: the count (roundsOf — rounds.json, else the legacy runs/*.json seed), the cap line, the next count ------
+const RT = (m) => `2026-02-01T00:${String(m).padStart(2, '0')}:00.000Z`;
+check('countsAsRound: a row with a verdict counts (a reused row too); an INCONCLUSIVE row, a row without a pixel measurement or no row does not', () => {
+  assert.equal(countsAsRound({ slug: 'a', pct: 2, inconclusive: false }), true); assert.equal(countsAsRound({ slug: 'a', pct: 30, pass: false }), true, 'a FAIL is a verdict');
+  assert.equal(countsAsRound({ slug: 'a', pct: 2, reused: { what: 'row', at: RT(1) } }), true, 'a reused verdict is a verdict');
+  assert.equal(countsAsRound({ slug: 'a', pct: 1.5, inconclusive: true }), false); assert.equal(countsAsRound({ slug: 'a', pct: null, error: 'missing capture' }), false); assert.equal(countsAsRound(null), false);
+});
+check('roundsOf: no rounds.json → the legacy seed from runs/*.json (tables with a verdict row for the slug: INCONCLUSIVE / error rows and unreadable tables are none, a reused row is one), from "runs"; rounds.json present → it (from "rounds.json"); one that does not parse → the seed', () => {
+  const out = mkdtempSync(join(tmpdir(), 'gate-all-rounds-'));
+  assert.deepEqual(roundsOf(out, 'a'), { rounds: 0, max: MAX_ROUNDS, at: [], resets: [], from: 'runs' }); assert.equal(MAX_ROUNDS, 3);
+  mkdirSync(join(out, 'runs'));
+  const table = (m, rows) => writeFileSync(join(out, 'runs', `${RT(m).replace(/[:.]/g, '-')}-x.json`), JSON.stringify({ _provenance: { writtenAt: RT(m) }, rows }));
+  table(4, [{ slug: 'a', pct: 2, reused: { what: 'row', at: RT(1) } }]); table(1, [{ slug: 'a', pct: 2 }, { slug: 'b', pct: 2 }]); table(2, [{ slug: 'a', pct: 1.5, inconclusive: true }]);
+  table(3, [{ slug: 'a', pct: null, error: 'missing capture' }]); table(5, [{ slug: 'b', pct: 30 }]); writeFileSync(join(out, 'runs', 'broken.json'), '{');
+  assert.deepEqual(roundsOf(out, 'a'), { rounds: 2, max: 3, at: [RT(1), RT(4)], resets: [], from: 'runs' });
+  assert.deepEqual(roundsOf(out, 'b'), { rounds: 2, max: 3, at: [RT(1), RT(5)], resets: [], from: 'runs' });
+  assert.deepEqual(roundsOf(out, 'a', runTables(out)), roundsOf(out, 'a'), 'the tables read once give the same count');
+  mkdirSync(join(out, 'a'));
+  const doc = { rounds: 1, max: 2, at: [RT(9)], resets: [{ at: RT(8), reason: 'r', from: 3, history: [RT(1), RT(4), RT(7)] }], seeded: 'runs', seededFrom: 2 };
+  writeFileSync(join(out, 'a', 'rounds.json'), JSON.stringify(doc));
+  assert.deepEqual(roundsOf(out, 'a'), { ...doc, from: 'rounds.json' }, 'rounds.json wins over the tables');
+  writeFileSync(join(out, 'a', 'rounds.json'), '{"rounds":');
+  assert.equal(roundsOf(out, 'a').from, 'runs'); assert.equal(roundsOf(out, 'a').rounds, 2);
+  rmSync(out, { recursive: true, force: true });
+});
+check('capRefusal: no page at the cap → null; any page at rounds >= max → one line (no verdict, cap reached — re-prototype decision, each capped <slug> <n>/<max> @<w>, the remedy); --round-reset → null', () => {
+  assert.equal(capRefusal([{ slug: 'a', rounds: 2 }, { slug: 'b', rounds: 0 }], { max: 3, width: 1440 }), null);
+  const line = capRefusal([{ slug: 'a', rounds: 3 }, { slug: 'b', rounds: 1 }, { slug: 'c', rounds: 4 }], { max: 3, width: 1440 });
+  assert.equal(line, 'gate-all: refused to start, no verdict — cap reached — re-prototype decision: a 3/3 @1440, c 4/3 @1440 (the fix-round cap, --max-rounds 3); drop a, c from --only, or record the re-prototype decision with --round-reset "<reason>" (a new count for the page(s) at the cap)');
+  assert.match(capRefusal([{ slug: 'a', rounds: 2 }], { max: 2, width: 360 }), /cap reached — re-prototype decision: a 2\/2 @360 /, 'a lowered cap');
+  assert.equal(capRefusal([{ slug: 'a', rounds: 3 }], { max: 3, width: 1440, reset: 're-prototyped' }), null);
+});
+check('nextRounds: a counted round adds `at`; a reset (the re-prototype decision) appends { at, reason, from, history } and starts a new count; nothing counted → nothing to write; a count seeded from runs/ records seeded / seededFrom once and keeps it', () => {
+  const fresh = { rounds: 0, max: 3, at: [], resets: [], from: 'runs' };
+  assert.deepEqual(nextRounds(fresh, { at: RT(1), max: 3, counted: true }), { doc: { rounds: 1, max: 3, at: [RT(1)] }, round: 1, roundReset: null, changed: true });
+  assert.deepEqual(nextRounds(fresh, { at: RT(1), max: 3, counted: false }), { doc: { rounds: 0, max: 3, at: [] }, round: 0, roundReset: null, changed: false });
+  const seeded = nextRounds({ rounds: 2, max: 3, at: [RT(1), RT(2)], resets: [], from: 'runs' }, { at: RT(3), max: 3, counted: true });
+  assert.deepEqual(seeded.doc, { rounds: 3, max: 3, at: [RT(1), RT(2), RT(3)], seeded: 'runs', seededFrom: 2 });
+  const capped = { ...seeded.doc, from: 'rounds.json' };
+  const reset = nextRounds(capped, { at: RT(4), max: 3, counted: true, reset: 're-prototyped the hero' });
+  assert.deepEqual(reset, { doc: { rounds: 1, max: 3, at: [RT(4)], resets: [{ at: RT(4), reason: 're-prototyped the hero', from: 3, history: [RT(1), RT(2), RT(3)] }], seeded: 'runs', seededFrom: 2 }, round: 1, roundReset: { reason: 're-prototyped the hero', at: RT(4) }, changed: true });
+  const noVerdict = nextRounds(capped, { at: RT(4), max: 3, counted: false, reset: 'r' });
+  assert.deepEqual([noVerdict.doc.rounds, noVerdict.doc.at, noVerdict.doc.resets.length, noVerdict.round, noVerdict.changed], [0, [], 1, 0, true], 'a reset is recorded even when the round yields no verdict');
+  assert.deepEqual(nextRounds({ ...reset.doc, from: 'rounds.json' }, { at: RT(5), max: 2, counted: true }).doc, { ...reset.doc, rounds: 2, max: 2, at: [RT(4), RT(5)] }, 'resets kept, max = this run\'s cap');
 });
 
 // ---- CLI over stub instruments (no browser, no network): the gate.test.mjs sandbox pattern — a realpath'd project

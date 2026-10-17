@@ -151,7 +151,8 @@
  * `coveragePages`, `selectPages`, `rosterEstimate`) and the reuse helpers
  * (`probeInputs`, `probeReuse`, `canon`, `gateKeyParts`, `gateKeyOf`, `foundationPart`, `sharedBlocks`,
  * `blockRefs`, `chromeDocs`, `instrumentFiles`, `edsHostOf`, `codeDeployed`, `hostServes`,
- * `deployedDocs`, `contentDeployed`, `keyChanged`, `skipCapture`, `rowKey`, `latestRows`, `rowReuse`) and `browserPools` are exported.
+ * `deployedDocs`, `contentDeployed`, `keyChanged`, `skipCapture`, `rowKey`, `latestRows`, `rowReuse`), `browserPools` and the fix-round helpers (`MAX_ROUNDS`, `countsAsRound`,
+ * `runTables`, `roundsOf` — gate-triage reads the count with it —, `capRefusal`, `nextRounds`) are exported.
  */
 import { execFileSync, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -812,6 +813,61 @@ export function rowReuse({ prior, gateKey, edsPng, override = null, register = n
   const at = row.reused && row.reused.what === 'row' ? row.reused.at : prior.at;
   const ov = checkOverride(override, { inconclusive: false, compared: row.pct != null, clipPass: row.clipPass, contentPass: row.contentPass, stage: opts.stage, register });
   return { ...row, override: ov, passWithOverride: row.pass || !!(ov && ov.valid), reused: { what: 'row', from: prior.from, at, gateKey } };
+}
+
+// ---- fix rounds: <out>/<slug>/rounds.json counts the --only runs that yielded a verdict — the cap is mechanical ----------
+export const MAX_ROUNDS = 3;
+/** A row a fix round counts: a verdict — a pixel measurement, not INCONCLUSIVE (a reused row's verdict is one too). */
+export const countsAsRound = (row) => !!row && row.pct != null && row.inconclusive !== true;
+/** <out>/runs/*.json in name order → [{ file, at, rows }] (unreadable tables skipped; at = _provenance.writtenAt, else the file's mtime). */
+export function runTables(outDir) {
+  const dir = join(outDir, 'runs'); if (!existsSync(dir)) return [];
+  const out = [];
+  for (const f of readdirSync(dir).filter((x) => x.endsWith('.json')).sort()) {
+    let s; try { s = JSON.parse(readFileSync(join(dir, f), 'utf8')); } catch { continue; }
+    if (!s || !Array.isArray(s.rows)) continue;
+    const at = (s._provenance && typeof s._provenance.writtenAt === 'string' && s._provenance.writtenAt) || statSync(join(dir, f)).mtime.toISOString();
+    out.push({ file: `runs/${f}`, at, rows: s.rows });
+  }
+  return out;
+}
+/**
+ * roundsOf(outDir, slug[, tables]) → { rounds, max, at, resets, from: 'rounds.json' | 'runs'[, seeded, seededFrom] } —
+ * fs reads only; gate-all's cap and gate-triage read the count with it. <outDir>/<slug>/rounds.json when present (one
+ * that does not parse, or has no integer `rounds`, reads as absent); else the legacy seed: the number of
+ * <outDir>/runs/*.json tables holding a row for the slug that countsAsRound (`at` their writtenAt, sorted; max MAX_ROUNDS).
+ * `tables` = runTables(outDir), read once for many slugs.
+ */
+export function roundsOf(outDir, slug, tables = null) {
+  let doc = null; try { doc = JSON.parse(readFileSync(join(outDir, slug, 'rounds.json'), 'utf8')); } catch { doc = null; }
+  if (doc && typeof doc === 'object' && Number.isInteger(doc.rounds) && doc.rounds >= 0) {
+    return { rounds: doc.rounds, max: Number.isInteger(doc.max) && doc.max >= 1 ? doc.max : MAX_ROUNDS, at: Array.isArray(doc.at) ? doc.at : [], resets: Array.isArray(doc.resets) ? doc.resets : [], from: 'rounds.json', ...(doc.seeded ? { seeded: doc.seeded, seededFrom: doc.seededFrom } : {}) };
+  }
+  const at = (tables || runTables(outDir)).filter((t) => t.rows.some((r) => r && r.slug === slug && countsAsRound(r))).map((t) => t.at).sort();
+  return { rounds: at.length, max: MAX_ROUNDS, at, resets: [], from: 'runs' };
+}
+/**
+ * capRefusal(states, { max, width, reset }) → the one stderr line refusing an --only run, or null. `states` = the selected
+ * pages' [{ slug, rounds }]; any at rounds ≥ max refuses — unless `reset` (--round-reset: the re-prototype decision).
+ */
+export function capRefusal(states, { max = MAX_ROUNDS, width, reset = null } = {}) {
+  const capped = states.filter((s) => s.rounds >= max);
+  if (!capped.length || reset) return null;
+  const names = capped.map((s) => s.slug).join(', ');
+  return `gate-all: refused to start, no verdict — cap reached — re-prototype decision: ${capped.map((s) => `${s.slug} ${s.rounds}/${max} @${width}`).join(', ')} (the fix-round cap, --max-rounds ${max}); drop ${names} from --only, or record the re-prototype decision with --round-reset "<reason>" (a new count for the page(s) at the cap)`;
+}
+/**
+ * nextRounds(prev, { at, max, counted, reset }) → { doc, round, roundReset, changed }: the page's rounds.json after this run.
+ * `prev` = roundsOf(…); `reset` (a reason) first appends { at, reason, from, history } to resets and zeroes the count;
+ * `counted` (countsAsRound) then adds `at`. doc = { rounds, max, at, [resets], [seeded: 'runs', seededFrom] } — the seed
+ * recorded when the count came from runs/*.json rows (and kept once recorded); `changed` = something to write. Pure.
+ */
+export function nextRounds(prev, { at, max = MAX_ROUNDS, counted = false, reset = null }) {
+  let rounds = prev.rounds; let ats = [...(prev.at || [])]; const resets = [...(prev.resets || [])]; let roundReset = null;
+  if (reset) { resets.push({ at, reason: reset, from: rounds, history: ats }); rounds = 0; ats = []; roundReset = { reason: reset, at }; }
+  if (counted) { rounds += 1; ats.push(at); }
+  const seed = prev.seeded ? { seeded: prev.seeded, seededFrom: prev.seededFrom } : prev.from === 'runs' && prev.rounds > 0 ? { seeded: 'runs', seededFrom: prev.rounds } : {};
+  return { doc: { rounds, max, at: ats, ...(resets.length ? { resets } : {}), ...seed }, round: rounds, roundReset, changed: !!(counted || reset) };
 }
 
 // ---- runner ---------------------------------------------------------------------------------------------
