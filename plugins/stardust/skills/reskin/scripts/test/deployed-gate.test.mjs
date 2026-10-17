@@ -847,11 +847,16 @@ await check('all: the exit is the first present of 2, 3, 124, 1, 0; a setup erro
   assert.ok(!existsSync(join(deployedDir(dirOf(stopped), 'home'), 'summary.json')), 'no summary of a run that did not complete, and the old one is gone');
 });
 
-await check('all: a step whose gate stalls on the decoration (exit 2 "stalled decoration: …") is that step\'s FAIL, not a setup error: the run goes on, summary.json is written, the exit is 1', async () => {
+await check('all: a step whose gate stalls on the decoration is that step\'s FAIL, not a setup error: the run goes on, summary.json is written, the exit is 1; figma-gate says it as exit 124 on its ERROR line', async () => {
   const stall = (gate) => () => { throw new UsageError(`[${gate}] stalled decoration: block cards`); };
   const hardRows = [rowOf('overflow', 1440, 'PASS'), rowOf('decoration', 1440, 'FAIL', 'block cards', 'all loaded')];
   const root = allRoot('all-stalled', { checks: true });
-  const figma = stubFigma({ exit: 2, summary: null, stderr: 'figma-gate: [donor-probe] stalled decoration: block cards, block hero\n' });
+  // What the real figma-gate prints and exits with when the preview never decorates (figma-gate/target.mjs throws code 124).
+  const figma = stubFigma({
+    exit: 124,
+    summary: null,
+    stdout: 'ERROR (exit 124) join CRASH: stalled decoration: block cards, block hero\nERROR (exit 124) geometry not run: join crashed\nERROR (exit 124) ramp not run: join crashed\n',
+  });
   const r = await runAll(root, { figmaGate: figma.file, over: { content: stall('dom-equality'), tokens: stall('donor-probe'), sanity: () => ({ verdict: 'FAIL', exit: 1, hard: true, rows: hardRows }) } });
   assert.equal(r.error, null, String(r.error));
   assert.equal(r.code, 1, r.lines.join('\n'));
@@ -874,6 +879,19 @@ await check('all: a step whose gate stalls on the decoration (exit 2 "stalled de
   const lone = await runAll(allRoot('all-stalled-lone'), { over: { content: stall('slot-coverage') } });
   assert.equal(lone.error, null, String(lone.error));
   assert.equal(lone.code, 1, 'one stalled step is exit 1, not 2');
+
+  // A stall is the leading words of the message after the gate's own prefix, never text that happens to hold them.
+  const quoted = allRoot('all-stalled-quoted', { checks: true });
+  const crash = stubFigma({ exit: 124, summary: null, stdout: 'ERROR (exit 124) join CRASH: the page said stalled decoration: not really\n' });
+  const echoed = await runAll(quoted, { figmaGate: crash.file, over: { content: () => { throw new UsageError('[dom-equality] text near "stalled decoration: x" differs'); } } });
+  assert.ok(echoed.error instanceof UsageError && /text near "stalled decoration: x" differs/.test(echoed.error.message), 'a setup error that merely quotes the words stays a setup error');
+  const quotedFigma = await runAll(allRoot('all-stalled-quoted-figma', { checks: true }), { figmaGate: crash.file });
+  assert.equal(quotedFigma.code, 124, quotedFigma.lines.join('\n'));
+  assert.equal(verdictLines(quotedFigma.lines).at(-1), 'ERROR (exit 124) figma: join CRASH: the page said stalled decoration: not really');
+  const ramp = stubFigma({ exit: 124, summary: null, stdout: 'ERROR (exit 124) ramp CRASH: donor-probe at 1440px: [donor-probe] stalled decoration: block cards\n' });
+  const rampStall = await runAll(allRoot('all-stalled-ramp', { checks: true }), { figmaGate: ramp.file });
+  assert.equal(rampStall.code, 1, rampStall.lines.join('\n'));
+  assert.equal(verdictLines(rampStall.lines).at(-1), 'FAIL figma: stalled decoration: block cards');
 });
 
 await check('all: a protected preview with no token is exit 2 before anything starts: no step, no figma-gate, no summary.json', async () => {

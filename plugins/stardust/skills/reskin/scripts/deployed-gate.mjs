@@ -194,9 +194,10 @@ all      The whole leg: content, tokens, parity, sanity and inherited in turn, e
          challenge (exit 3) in any step stops the rest: "ERROR (exit 3) <step> not run: bot challenge".
          The figma-gate child gets --url (the preview URL), --target preview, --reskin and --dir, and the site
          token as the variable DEPLOYED_GATE_SITE_TOKEN named by --token-env, never in argv. Its exit maps the
-         same way: 2 a setup error (exit 2, no summary.json; a stalled decoration is FAIL figma), 3 and 124 an
-         ERROR line, 1 FAIL, 0 PASS; an exit 0 or 1 that left no summary.json of the preview regime, or any other
-         exit, is ERROR (exit 124).
+         same way: 2 a setup error (exit 2, no summary.json), 3 an ERROR line, 124 an ERROR line unless the
+         line is a stalled decoration ("<step> CRASH: stalled decoration: <what>", how figma-gate says a preview
+         never decorated), which is FAIL figma as it is for the other steps, 1 FAIL, 0 PASS; an exit 0 or 1 that
+         left no summary.json of the preview regime, or any other exit, is ERROR (exit 124).
          Prints one verdict line per step, in the order content, tokens, parity, sanity, inherited, figma, each
          matching run-bg's default verdict filter, with the step's findings indented below it:
            PASS <step>            FAIL <step> <k/n, or the failing gates or steps>      ERROR (exit N) <step>: <why>
@@ -515,13 +516,15 @@ function thrown(step, code, message) {
   return outcome('ERROR', exit, `ERROR (exit ${exit}) ${step}: ${why}`, `ERROR (exit ${exit}): ${why}`, lines.slice(1, MAX_WHY_LINES).map((l) => `  ${l}`));
 }
 
-const STALLED = /stalled decoration: ([^\n]*)/;
+// A stall is the leading words of a line, after the prefixes a gate puts on it ("[dom-equality] ", figma-gate's "join CRASH: ",
+// "donor-probe at 1440px: "), never text that merely holds them.
+const STALLED = /^(?:figma-gate: )?(?:\w+ CRASH: )?(?:donor-probe at \d+px: )?(?:\[[\w-]+\] )?stalled decoration: ([^\n]*)/m;
 
-// A gate that exits 2 "stalled decoration: <what>" measured nothing because blocks of the preview never decorated: that is the
-// step's FAIL (what the deployed page did), not a setup error. Null for any other message. On a protected preview reached
-// with no token the stall is the missing token, a setup error.
-function stalled(step, message, missingToken) {
-  const what = missingToken ? undefined : STALLED.exec(message)?.[1].trim().slice(0, MAX_WHY);
+// A gate that exits 2 "stalled decoration: <what>", or figma-gate's exit 124 on that same line, measured nothing because blocks
+// of the preview never decorated: that is the step's FAIL (what the deployed page did), not a setup error or no verdict. Null
+// for any other message.
+function stalled(step, message) {
+  const what = STALLED.exec(message)?.[1].trim().slice(0, MAX_WHY);
   return what ? outcome('FAIL', 1, `FAIL ${step}: stalled decoration: ${what}`, `FAIL stalled decoration: ${what}`) : null;
 }
 
@@ -586,7 +589,12 @@ async function figmaOutcome({ dir, slug, preview, reskin, auth, env, figmaGate, 
   const because = (out.split('\n').find((l) => ERROR_LINE.test(l))?.replace(ERROR_LINE, '') || firstLine(err) || firstLine(out)).trim();
   if (exit === 2) throw new UsageError(err.trim() || out.trim() || 'figma-gate exited 2');
   if (exit === 3) throw coded(3, because || 'figma-gate exited 3: bot challenge');
-  if (exit === 124) throw coded(124, because || 'figma-gate exited 124: no verdict');
+  if (exit === 124) {
+    // figma-gate throws code 124 when the preview never decorates; it is the step's FAIL here, as it is for the other gates.
+    const stall = stalled('figma', because);
+    if (stall) return stall;
+    throw coded(124, because || 'figma-gate exited 124: no verdict');
+  }
   if (exit !== 0 && exit !== 1) throw coded(124, `figma-gate exited ${exit}${because ? `: ${because}` : ''}`);
   let summary = null;
   try { summary = readJsonIf(summaryPath); } catch { /* unreadable: no verdict, below */ }
@@ -647,7 +655,7 @@ async function allStep(ctx) {
     else {
       try { result = await run[step](); } catch (e) {
         if (e instanceof UsageError || e?.code === 2) {
-          result = stalled(step, redact(String(e.message ?? '')), preview.auth && !auth);
+          result = stalled(step, redact(String(e.message ?? '')));
           if (!result) throw scrub(e);
         } else {
           result = thrown(step, e?.code, redact(String(e?.message ?? e)));
