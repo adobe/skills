@@ -10,7 +10,8 @@
 // a `types` map is never second-guessed), the overflow assert line outranking a PASS pixel
 // line (FAIL: horizontal overflow, `/ovf+<px>` on the row, `overflowX` in the ledger), media-reconcile `n/a:` and
 // dropped from the acceptance set until the page's delivered content file exists (`--content`), an INCONCLUSIVE
-// pixel-table row read as OPEN (never FAIL, never a pass, a null pct tolerated), one height bar per regime in the log
+// pixel-table row read as OPEN (never FAIL, never a pass, a null pct tolerated), a table row without a pixel measurement
+// (a stitch error) read as OPEN with its error text and `—` for the null pct / Δh, one height bar per regime in the log
 // rule (prototype 8px, published 5 % of the origin height, --height-tolerance ≤ 1 a fraction / > 1 pixels, no origin
 // height under a fraction bar → OPEN).
 // Run: node plugins/stardust/skills/replica/scripts/test/gate-evidence.test.mjs   (about 2 s)
@@ -481,6 +482,29 @@ check('an INCONCLUSIVE table row (a polluted capture) is OPEN — never FAIL, ne
     const t = run('--dry-run', '--check'); assert.equal(t.code, 2, t.err);
     assert.match(t.out, /^tours-north {2}sibling {2}1440=INCONCLUSIVE {2}360=\d/m);
     assert.match(t.out, /^tours-north: stale pixel-gate-1440\b/m);
+  } finally { rmSync(join(root, 'stardust/replica/gates'), { recursive: true, force: true }); }
+});
+check('a table row without a pixel measurement (pct null: a stitch error, a missing capture) is OPEN with its error text, `—` for the null pct and Δh — never FAIL, never a pass, no throw', () => {
+  const dir = join(root, 'stardust/replica/gates/all-1440'); mkdirSync(dir, { recursive: true });
+  const error = 'stitch exit 1: page.goto: net::ERR_CONNECTION_RESET';
+  writeFileSync(join(dir, 'summary.json'), JSON.stringify({ rows: [
+    { slug: 'tours-north', inconclusive: false, pass: false, passWithOverride: false, pixelPass: false, heightPass: false, pct: null, textPct: null, heightDelta: null, clipped: null, content: null, contentNA: 'not probed', reasons: [`pixel error: ${error}`], error },
+    { slug: 'about-history', inconclusive: false, pass: false, passWithOverride: false, pct: null, heightDelta: null, clipped: 0, content: { missing: 0, hidden: 0 }, contentNA: null, reasons: ['missing capture'], error: null },
+    { slug: 'home', inconclusive: false, pass: true, pct: null, heightDelta: null, clipped: null, content: null, reasons: [], error: null },
+  ] }));
+  const md = '(stardust/replica/gates/all-1440/summary.md) [published regime]';
+  try {
+    const r = run('--dry-run', '--json'); assert.equal(r.code, 0, r.err);
+    const by = Object.fromEntries(JSON.parse(r.out).map((x) => [x.slug, x]));
+    assert.equal(by['tours-north'].gateEvidence['pixel-gate-1440'], `OPEN: no pixel measurement — ${error} — —, height delta —, clipped n/a, content n/a ${md}`, 'row.error first');
+    assert.equal(by['about-history'].gateEvidence['pixel-gate-1440'], `OPEN: no pixel measurement — missing capture — —, height delta —, clipped 0, content MISSING 0 / HIDDEN 0 ${md}`, 'no error: its reasons');
+    assert.equal(by.home.gateEvidence['pixel-gate-1440'], `OPEN: no pixel measurement — —, height delta —, clipped n/a, content n/a ${md}`, 'neither: no pixel measurement — and a pass flag without a pct is no pass');
+    assert.deepEqual(by['tours-north'].pixel['1440'], { pct: null, px: null, heightDelta: null, overflowX: null, clipped: null, content: null, verdict: 'OPEN', label: 'table', regime: 'published' });
+    for (const s of ['tours-north', 'home']) assert.ok(by[s].stale.includes('pixel-gate-1440'), `${s}: a declared pass is kept but reported stale`);
+    assert.ok(by['about-history'].missing.includes('pixel-gate-1440'), 'never earns the gate');
+    const t = run('--dry-run', '--check'); assert.equal(t.code, 2, t.err); assert.doesNotMatch(t.err, /TypeError|\n\s+at /);
+    assert.match(t.out, /^tours-north {2}sibling {2}1440=—\/Δ— {2}360=\d/m);
+    assert.match(t.out, /^home {2}archetype {2}1440=—\/Δ— {2}360=—/m);
   } finally { rmSync(join(root, 'stardust/replica/gates'), { recursive: true, force: true }); }
 });
 check('without any table the log rule stands and --check notes the missing table', () => {

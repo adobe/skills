@@ -49,6 +49,9 @@
  *                       and a page WITHOUT a row is OPEN: no table row — whatever a gate.sh log
  *                       says. A row gate-all marked `inconclusive` (a polluted capture) is `OPEN: INCONCLUSIVE —
  *                       <reasons> — fix the capture (--hide / presence.json), not the page (…)` — never FAIL, never a pass.
+ *                       A row without a pixel measurement (`pct` null: a missing capture, a stitch or pixel error) is
+ *                       `OPEN: no pixel measurement — <the row's error, else its reasons> — —, height delta —, … (…)` —
+ *                       never FAIL, never a pass, whatever its pass flag says.
  *                       Without any table the log rule above stands and one note names the
  *                       missing table.
  *   content-count       latest content-diff.mjs job for the page (`Findings: none …` or
@@ -118,7 +121,7 @@
  *
  * Prints one row per page — `<slug>  <tier>  1440=<pct>%/Δ<px>[/ovf+<px>]  360=…  cd=<…>  lint=<…>
  * media=<…>  gates=<n>` (`/ovf+<px>` only when the round's overflow assert fired; `1440=INCONCLUSIVE` for an
- * inconclusive table row) — then
+ * inconclusive table row, `1440=—/Δ—` for a table row without a pixel measurement) — then
  * `gate-evidence: <n> pages, <n> sidecars updated`.
  * Exit 0; 1 usage error (a malformed sidecar or progress.json included, and a progress.json whose
  * top level is one archetype's record naming no archetype — below); 2 --check found a sibling short
@@ -366,7 +369,7 @@ export function parseVariance(text, paths = []) {
 
 // ---- derivation --------------------------------------------------------------------------------
 const latest = (items, at = (x) => jobAt(x.j)) => items.reduce((best, x) => (!best || at(x) > at(best) ? x : best), null);
-const fmtPct = (n) => `${n.toFixed(2)}%`;
+const fmtPct = (n) => (Number.isFinite(n) ? `${n.toFixed(2)}%` : '—');
 // The `--path` delivery-lint expects: the output path without `.html` and without a trailing `/index`; the root page is `/`.
 export function daPath(outputPath) { return `/${outputPath}`.replace(/\.html$/, '').replace(/\/index$/, '') || '/'; }
 // The page's DELIVERED content file (the deploy driver's tree: a file's path minus `.html` is its DA path): `<content>/<da-path>.html`,
@@ -423,9 +426,13 @@ export function derive(page, jobs, o, ctx) {
         open(`pixel-gate-${w}`, `INCONCLUSIVE — ${(row.reasons || []).join('; ') || 'no verdict'} — fix the capture (--hide / presence.json), not the page (${md}) [${regime} regime]`);
         continue;
       }
-      facts.pixel[w] = { pct: row.pct, px: null, heightDelta: row.heightDelta, overflowX: null, clipped: row.clipped ?? null, content: row.content || null, verdict: row.pass ? 'PASS' : 'FAIL', label: 'table', regime };
-      const line = `${fmtPct(row.pct)}, height delta ${row.heightDelta ?? '?'}px, clipped ${row.clipped ?? 'n/a'}, content ${row.contentNA ? 'n/a' : row.content ? `MISSING ${row.content.missing} / HIDDEN ${row.content.hidden}` : 'n/a'} (${md}) [${regime} regime]`;
-      if (row.pass) pass(`pixel-gate-${w}`, line); else open(`pixel-gate-${w}`, `${(row.reasons || []).join('; ') || 'FAIL'} — ${line}`, 'FAIL');
+      // no pixel measurement (a missing capture, a stitch or pixel error): no verdict either way, whatever its pass flag says
+      const measured = Number.isFinite(row.pct);
+      facts.pixel[w] = { pct: row.pct ?? null, px: null, heightDelta: row.heightDelta ?? null, overflowX: null, clipped: row.clipped ?? null, content: row.content || null, verdict: !measured ? 'OPEN' : row.pass ? 'PASS' : 'FAIL', label: 'table', regime };
+      const line = `${fmtPct(row.pct)}, height delta ${Number.isFinite(row.heightDelta) ? `${row.heightDelta}px` : '—'}, clipped ${row.clipped ?? 'n/a'}, content ${row.contentNA ? 'n/a' : row.content ? `MISSING ${row.content.missing} / HIDDEN ${row.content.hidden}` : 'n/a'} (${md}) [${regime} regime]`;
+      const why = row.error || (row.reasons || []).join('; ');
+      if (!measured) open(`pixel-gate-${w}`, `no pixel measurement${why ? ` — ${why}` : ''} — ${line}`);
+      else if (row.pass) pass(`pixel-gate-${w}`, line); else open(`pixel-gate-${w}`, `${(row.reasons || []).join('; ') || 'FAIL'} — ${line}`, 'FAIL');
       continue;
     }
     const best = pick(ofKind('pixel').filter((j) => Number(j.instArgs[3]) === w), parseVerdict, `pixel-gate-${w}`, [0, 2]);
@@ -538,7 +545,7 @@ export function buildProgress(existing, rows, { partial = false } = {}) {
 // ---- rows --------------------------------------------------------------------------------------
 const compact = (s) => (s === null || s === undefined ? '—' : String(s).replace(/ /g, ''));
 export function formatRow(r, widths) {
-  const px = widths.map((w) => `${w}=${!r.pixel[w] ? '—' : r.pixel[w].verdict === 'INCONCLUSIVE' ? 'INCONCLUSIVE' : `${fmtPct(r.pixel[w].pct)}/Δ${r.pixel[w].heightDelta}${r.pixel[w].overflowX > 0 ? `/ovf+${r.pixel[w].overflowX}` : ''}`}`).join('  ');
+  const px = widths.map((w) => `${w}=${!r.pixel[w] ? '—' : r.pixel[w].verdict === 'INCONCLUSIVE' ? 'INCONCLUSIVE' : `${fmtPct(r.pixel[w].pct)}/Δ${r.pixel[w].heightDelta ?? '—'}${r.pixel[w].overflowX > 0 ? `/ovf+${r.pixel[w].overflowX}` : ''}`}`).join('  ');
   const cd = r.contentDiff === null ? '—' : (/^none/.test(r.contentDiff) ? 'none' : compact(r.contentDiff.replace(/ structural 🔴\)/, '🔴)')));
   return `${r.slug}  ${r.tier || '—'}  ${px}  cd=${cd}  lint=${compact(r.deliveryLint)}  media=${compact(r.media)}  gates=${r.gatesPassed.length}`;
 }
