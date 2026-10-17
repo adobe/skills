@@ -1809,14 +1809,19 @@ const MISS_LINE = `hide matched nothing on live — candidates: section.bar__wra
 const reEsc = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const warned = (slug, text = MISS_LINE) => new RegExp(`^\\S+ WARNING ${slug}: ${reEsc(text)}$`, 'm');
 const MISS_MD = /^Hide matched nothing on live \(a warning, not a verdict — fix the hide list; candidates in the row's hideMiss and _run\.log\): (.*)$/m;
-check('hideMissOf / hideMissText: a record\'s hideMiss as kept (missed selectors, candidates with a selector), null when nothing missed; the one-line text — <selector> (<tag>, <h>px) joined "; ", a 0-px block "0px now — …", none "none found above the header", then the missed selectors; live-session\'s hideMissLine when given', () => {
+const LIVE_SESSION = await import(pathToFileURL(join(DIFF, 'live-session.mjs')).href);
+check('hideMissOf / hideMissText: a record\'s hideMiss as kept (missed selectors, candidates with a selector), null when nothing missed; the one-line text — <selector> (<tag>, <h>px) joined "; ", a 0-px block "0px now — …", none "none found above the header", then the missed selectors — byte-identical to live-session\'s hideMissLine, which it uses when given', () => {
   assert.deepEqual(hideMissOf(MISS), MISS);
   for (const none of [null, undefined, {}, { sels: [] }, { sels: [''] }, 'x']) assert.equal(hideMissOf(none), null, JSON.stringify(none));
   assert.deepEqual(hideMissOf({ sels: ['.a', 3, ''], candidates: [{ tag: 'div' }, { tag: 'p', height: 12, selector: 'p.x' }, null] }), { sels: ['.a'], candidates: [{ tag: 'p', height: 12, selector: 'p.x' }] });
   assert.deepEqual(hideMissOf({ sels: ['.a'] }), { sels: ['.a'], candidates: [] });
   assert.equal(hideMissText(MISS), MISS_LINE);
   assert.equal(hideMissText({ sels: ['.a', '.b'], candidates: [] }), 'hide matched nothing on live — candidates: none found above the header (.a, .b)');
-  assert.equal(hideMissText({ sels: ['.a'], candidates: [{ tag: 'div', height: 87.6, selector: 'div.bar' }] }), 'hide matched nothing on live — candidates: div.bar (div, 88px) (.a)');
+  assert.equal(hideMissText({ sels: ['.a'], candidates: [{ tag: 'div', height: 88, selector: 'div.bar' }, { tag: 'p', height: 0, selector: 'p.x' }] }), `hide matched nothing on live — candidates: div.bar (div, 88px); p.x (p, ${ZERO}) (.a)`);
+  if (typeof LIVE_SESSION.hideMissLine === 'function') {
+    const records = [MISS, { sels: ['.a', '.b'], candidates: [] }, { sels: ['.a'], candidates: [{ tag: 'div', height: 87.6, selector: 'div.bar' }, { tag: 'p', height: 0, selector: 'p.x' }, { tag: 'i', selector: 'i.y' }] }];
+    for (const m of records) assert.equal(hideMissText(m), LIVE_SESSION.hideMissLine(m.sels, m.candidates), 'the fallback is live-session\'s text');
+  }
   assert.equal(hideMissText(MISS, (sels, list) => `helper ${sels.join('|')} ${list.length}\nsecond`), 'helper .promo-strip 2 second', 'the helper\'s text, one line');
 });
 check('hide miss 1: the origin capture record\'s hideMiss → one "WARNING <slug>: hide matched nothing on live — candidates: …" line (stdout and _run.log), origin.json and the row keep it, totals.hideMiss 1, one summary.md line naming the row; the build side\'s miss is not warned about; the verdict and the exit code unchanged', () => {

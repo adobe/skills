@@ -707,8 +707,9 @@ export function hideMissOf(m) {
   return { sels, candidates: Array.isArray(m.candidates) ? m.candidates.filter((c) => c && typeof c === 'object' && typeof c.selector === 'string') : [] };
 }
 // live-session's hideMissLine / formatCandidates text, restated for a diff scripts dir without them — keep them in step
+// (the candidates' px are rounded where they are measured, so a height prints as recorded; 0 / none → the 0-px text)
 const ZERO_PX = '0px now — a block that grows later is still hidden by the persistent display:none !important rule';
-const candidatesText = (list) => (list.length ? list.map((c) => { const h = Math.round(Number(c.height) || 0); return `${c.selector} (${c.tag}, ${h ? `${h}px` : ZERO_PX})`; }).join('; ') : 'none found above the header');
+const candidatesText = (list) => (list.length ? list.map((c) => `${c.selector} (${c.tag}, ${c.height ? `${c.height}px` : ZERO_PX})`).join('; ') : 'none found above the header');
 /**
  * hideMissText(miss, helper) → the one-line warning text for a hideMissOf() record: `helper(sels, candidates)` when given
  * (live-session's hideMissLine — one text for every tool), else the same text built here: `hide matched nothing on live —
