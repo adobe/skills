@@ -13,10 +13,11 @@
 // in a fixed banner, and the controls left alone — an in-content "Accept" link, a sticky header's search submit "OK";
 // a sweep click that navigates away is named in overlayLeft;
 // then detectOverlayLeft (also a stub page: an evaluate error is a failed check, never clean) on what a capture would
-// still carry — a banner-sized consent root (or its shadow content) shown, a painting full-viewport backdrop or blur,
-// an html / body scroll lock — and on the look-alikes that are none: a consent manager's persistent 48 px privacy
-// trigger after an accept, a transparent wrapper with a toast, a layer below the page
-// (z-index -1), a 120 px bar, roots hidden by display or an opacity-0 ancestor; dismissOverlays returns it.
+// still carry — a banner-sized consent root (or its shadow content) shown, a full-viewport backdrop, blur or
+// pointer-events:none tint painting over the page's content, an html / body scroll lock — and on the look-alikes that
+// are none: a consent manager's persistent 48 px privacy trigger after an accept, a transparent wrapper with a toast,
+// a layer below the page (z-index -1), a fixed background under positioned content, a sticky full-viewport hero at the
+// top, a 120 px bar, roots hidden by display or an opacity-0 ancestor; dismissOverlays returns it.
 // Run: node plugins/stardust/skills/diff/scripts/test/live-session.test.mjs
 import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -324,7 +325,8 @@ else {
   // the accept label, a label two shadow roots deep under a fixed host, and an in-content "Accept" link (no overlay)
   const doc = (body) => `<!doctype html><html><head><style>body{margin:0;font:16px/20px sans-serif}</style></head><body><header>Header</header>${body}</body></html>`;
   const BANNER = 'position:fixed;left:0;right:0;bottom:0;padding:16px;background:#fff;z-index:1000';
-  const MAIN = '<main><p>Content</p></main>';
+  // page content under the viewport centre, as on a real page (an overlay paints over it)
+  const MAIN = '<main style="min-height:1800px"><p>Content</p></main>';
   // the privacy trigger a consent manager keeps in its shadow root after consent: 48×48, fixed, not a banner
   const UC_TRIGGER = '<button data-testid="uc-privacy-button" style="position:fixed;left:16px;top:120px;width:48px;height:48px;z-index:1001">⚙</button>';
   Object.assign(PAGES, {
@@ -364,6 +366,11 @@ else {
     '/overlay/toast': doc(`${MAIN}<div style="position:fixed;inset:0;pointer-events:none;z-index:900"><div style="position:absolute;right:16px;bottom:16px;width:240px;padding:12px;background:#333;color:#fff">Saved</div></div>`),
     '/overlay/below': doc(`${MAIN}<div class="page-bg" style="position:fixed;inset:0;z-index:-1;background:#def"></div>`),
     '/overlay/bar': doc(`${MAIN}<div class="promo-bar" style="position:fixed;left:0;right:0;bottom:0;height:120px;background:#222;color:#fff">Free shipping</div>`),
+    // fixed / sticky full-viewport layers that paint over no content of the page: a sticky hero at the top (the next
+    // sections start below it) and a fixed background under positioned content — and a pointer-events:none tint that does
+    '/overlay/sticky-hero': doc('<section class="hero" style="position:sticky;top:0;height:100vh;background:#345;color:#fff"><h1>Hero</h1></section><section style="position:relative;height:900px;background:#fff">Next</section><section style="height:900px">More</section>'),
+    '/overlay/fixed-bg': doc('<div class="bg" style="position:fixed;inset:0;background:#def;z-index:0"></div><main style="position:relative;z-index:1;min-height:1800px"><p>Content</p></main>'),
+    '/overlay/tint': doc(`${MAIN}<div class="tint" style="position:fixed;inset:0;background:rgba(255,0,0,.2);pointer-events:none;z-index:50"></div>`),
     '/overlay/hidden-roots': doc(`${MAIN}<div id="onetrust-banner-sdk" style="${BANNER};display:none"><p>We use cookies.</p></div>
       <div style="opacity:0"><div id="didomi-popup" style="position:fixed;inset:0;background:rgba(0,0,0,.5)"><p>Consent</p></div></div>`),
   });
@@ -482,6 +489,9 @@ else {
       ['/overlay/below', null],
       ['/overlay/bar', null],
       ['/overlay/hidden-roots', null],
+      ['/overlay/sticky-hero', null],
+      ['/overlay/fixed-bg', null],
+      ['/overlay/tint', 'div.tint (fixed, 100 % of the viewport)'],
     ];
     for (const [path, want] of OVERLAY) {
       await checkAsync(`e2e overlay-left: ${path} → ${want}`, async () => {

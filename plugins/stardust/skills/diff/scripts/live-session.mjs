@@ -46,8 +46,9 @@
  *     contributor into the live capture that no prototype fidelity could
  *     null out). The mouse is parked afterwards (bottom-left) so no
  *     :hover-styled element under the resting cursor captures in hover state.
- *     What no sweep removed (a consent banner still shown, a full-viewport
- *     backdrop, a scroll lock) is reported as `overlayLeft`, never captured silently —
+ *     What no sweep removed (a consent banner still shown, a fixed/sticky layer
+ *     that paints over the page across most of the viewport, a scroll lock) is
+ *     reported as `overlayLeft`, never captured silently —
  *     so is a label-sweep click that navigated away from the page.
  *   - `--locale` determinism: geo-redirecting sites (a car brand → /ch-de/,
  *     a fashion brand → /ww/) capture a different locale per run unless
@@ -510,7 +511,8 @@ export function consentLabelSweepInPage(table) {
  *      `<root> (consent root visible)`;
  *   2. the first shown fixed/sticky element (document order, open shadow roots included) with a non-negative z-index
  *      that paints (background colour alpha > 0, a background image or a backdrop filter) over ≥ `coverage` of the
- *      viewport → `<tag>[#id | .first.two classes] (<position>, <pct> % of the viewport)`;
+ *      viewport AND over the page — at the viewport centre an element that is not its own (outside its subtree, not
+ *      its ancestor) lies beneath it → `<tag>[#id | .first.two classes] (<position>, <pct> % of the viewport)`;
  *   3. a scroll lock: `html (overflow:hidden)` when html's overflow-y is hidden/clip, else `body (overflow:hidden)`
  *      when body's is while html's is visible (it then locks the viewport).
  * → that descriptor, or null.
@@ -553,6 +555,18 @@ export function detectOverlayLeftInPage({ roots, coverage }) {
     return a.endsWith('%') ? parseFloat(a) / 100 : parseFloat(a);
   };
   let share = 0;
+  // "covering" = painting over the page's own content: at the viewport centre an element outside the layer's subtree
+  // and not its ancestor lies BENEATH it (after it in elementsFromPoint — of the layer's own tree scope, so a layer in
+  // a shadow root is not retargeted away); a layer the hit test skips (pointer-events: none) counts when such an
+  // element is there at all. A sticky hero over nothing yet, a fixed background under positioned content: no overlay.
+  const up = (n) => n.parentElement || (n.getRootNode() instanceof ShadowRoot ? n.getRootNode().host : null);
+  const ancestorOf = (a, d) => { for (let n = up(d); n; n = up(n)) if (n === a) return true; return false; };
+  const overPage = (el) => {
+    const scope = el.getRootNode();
+    const stack = (typeof scope.elementsFromPoint === 'function' ? scope : document).elementsFromPoint(vw / 2, vh / 2);
+    const i = stack.indexOf(el);
+    return (i < 0 ? stack : stack.slice(i + 1)).some((x) => x !== el && !el.contains(x) && !ancestorOf(x, el));
+  };
   const layer = find(document, (el) => {
     const cs = getComputedStyle(el);
     if (cs.position !== 'fixed' && cs.position !== 'sticky') return false;
@@ -563,7 +577,7 @@ export function detectOverlayLeftInPage({ roots, coverage }) {
     const ix = Math.max(0, Math.min(r.right, vw) - Math.max(r.left, 0));
     const iy = Math.max(0, Math.min(r.bottom, vh) - Math.max(r.top, 0));
     share = (ix * iy) / (vw * vh);
-    return share >= coverage;
+    return share >= coverage && overPage(el);
   });
   if (layer) {
     const classes = [...layer.classList].slice(0, 2);
@@ -589,7 +603,8 @@ export const CONSENT_ROOTS = [
   '#cmpbox',
   '#qc-cmp2-container',
 ];
-// A fixed/sticky painting layer over at least this share of the viewport is an overlay left behind.
+// A fixed/sticky layer painting over the page's own content across at least this share of the viewport is an
+// overlay left behind.
 export const OVERLAY_COVERAGE = 0.8;
 
 /**
