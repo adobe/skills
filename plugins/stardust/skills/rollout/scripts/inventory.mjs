@@ -305,6 +305,7 @@ if (encoder) {
     const slug = meta.slug || (path === '/' ? 'home' : path.replace(/^\//, ''));
     if (listed.has(`slug:${slug}`) || listed.has(`path:${path}`)) continue;
     listed.add(`slug:${slug}`).add(`path:${path}`);
+    sidecars.set(slug, meta);
     const st = encoder.currentEncode({ root: PROJECT, sidecarPath: relative(PROJECT, join(MIGRATED, sidecarRel)).split(/[\\/]/).join('/'), manifests });
     const lastClean = typeof meta.encode.output.sha === 'string' && /^sha256:[0-9a-f]{64}$/.test(meta.encode.output.sha) ? meta.encode.output.sha : null;
     const sourceHash = st.ok ? st.sha : lastClean;

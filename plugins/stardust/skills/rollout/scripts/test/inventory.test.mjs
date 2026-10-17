@@ -488,6 +488,17 @@ check('run from the project root with the defaults: encodedHtml is project-relat
   const rows = rowsOf(POUT);
   assert.equal(rows['tours-north'].source.encodedHtml, 'stardust/encoded/tours/north.html'); assert.equal(rows.tours.source.migratedHtml, 'stardust/migrated/tours/index.html');
 });
+check('an encoded page gets delivered from its content file like any row, lang from its sidecar', () => {
+  encoded('tours/lang/_meta.json', 'tours/lang.html', { ...sib('tours-lang'), metadata: { lang: ' de ' } }, '<main>lang</main>');
+  const body = '<main><div><p>Hallo.</p></div></main>\n';
+  put(join(proj, 'content/tours/lang.html'), body);
+  const r = spawnSync(process.execPath, [SCRIPT], { encoding: 'utf8', cwd: proj });
+  assert.equal(r.status, 0, r.stderr);
+  const row = rowsOf(POUT)['tours-lang'];
+  assert.equal(row.source.encodedHtml, 'stardust/encoded/tours/lang.html');
+  assert.equal(row.delivered.lang, 'de'); assert.equal(row.delivered.contentHash, hash(body));
+  assert.deepEqual(row.delivered.blocks.map((b) => [b.kind, b.variant]), [['default', 'text']]);
+});
 check('--state (archetypes-only): an encoded sibling keeps its template and its roster entry is not listed again; other roster pages join as content-pending', () => {
   const state = join(proj, 'stardust', 'state.json'); const out2 = join(proj, 'rollout-state');
   put(state, JSON.stringify({ pages: [{ slug: 'tours', url: 'https://example.com/tours/', type: 'tour' }, { slug: 'tours-north', url: 'https://example.com/Tours/North', type: 'tours' }, { slug: 'tours-extra', url: 'https://example.com/tours/extra', representative: 'tours' }] }));
