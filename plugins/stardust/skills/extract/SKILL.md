@@ -305,13 +305,9 @@ the contract enforced by `reference/current-state-schema.md`
 § Live-render evidence and read back by every downstream phase
 via `validateProvenance()` per
 `skills/stardust/reference/state-machine.md` § Provenance
-validation. Synthesizing a page record from
-`_brand-extraction.json` plus URL patterns plus captured photos
-— the 2026-04-30 e-commerce shortcut — is the failure mode this
-guard exists to prevent. When the agent (or a delegated sub-
-agent) cannot satisfy the contract for a page, treat the page
-as a Phase 2 failure: record under `_crawl-log.json#crawl.failures[]`
-with `errorClass: "ProvenanceMissing"` and continue.
+validation. A page that cannot satisfy it is a Phase 2 failure
+(`errorClass: "ProvenanceMissing"` in `_crawl-log.json#crawl.failures[]`),
+never a synthesized record (§ Failure modes → Synthesis attempt).
 
 Mark the page `extracted` in `state.json` immediately after each
 successful page write. If a page fails, record the error in
@@ -388,7 +384,11 @@ captured page at 1440 and writes
 `stardust/current/_computed-styles.json`; add `--width 360` when the
 breakpoints include it. One more live pass over every page — run it
 ONCE, after the crawl, in the background; it opens the live side
-through `live-session.mjs` like every other live instrument. Read the
+through `live-session.mjs` like every other live instrument. The crawl
+records each page's goto time (`navMs`) and `crawl.navMs` {n, p50, p95,
+max} in `_crawl-log.json`; every instrument's navigation timeout then
+defaults to `STARDUST_NAV_TIMEOUT_MS`, else that p95 × 2 clamped to
+20–180 s, else its own default (a flag wins). Read the
 palette, type, motif and hover values from the file's `aggregate` and
 cite each from its `sources[]` (`url`, `selector`, `prop`); the
 per-page detail sits under `pages[url][width]`.

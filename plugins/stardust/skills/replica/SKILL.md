@@ -69,11 +69,10 @@ eyeballing.
    (ledger.mjs, state.mjs, browser-lock.mjs) to `stardust/scripts/stardust/`, the migrate
    skill's `../migrate/scripts/` (migrate.mjs) to `stardust/scripts/migrate/`,
    AND the whole
-   `../diff/scripts/` dir to `stardust/scripts/diff/` (the diff scripts
-   import diff-profiles.mjs, and ALL live-target hardening — including
-   stitch-shot's — lives in its live-session.mjs; stitch-shot resolves it
-   from `stardust/scripts/diff/` next to `stardust/scripts/replica/`, so
-   keep the two dirs siblings). Never copy into the project-root
+   `../diff/scripts/` dir to `stardust/scripts/diff/` (ALL live-target
+   hardening lives in its live-session.mjs, which the replica instruments
+   resolve from `stardust/scripts/diff/` next to `stardust/scripts/replica/`
+   — keep the two dirs siblings). Never copy into the project-root
    `scripts/` — that is the EDS boilerplate's directory (master skill
    § Artifacts, the write boundary). `run-bg.mjs` takes one slot of a
    machine-wide browser budget per browser job (`browser-lock.mjs`, slot
@@ -86,8 +85,7 @@ eyeballing.
 
 **Reading and inspection discipline — the context is the budget**
 (`reference/reading-discipline.md`, read it once at Setup). Every byte a
-step prints is re-read on every later model call (recorded: 750k characters
-of tool output in one 77-minute session). The rules in one line each:
+step prints is re-read on every later model call. The rules in one line each:
 reference docs by section (`section.mjs <doc> --list`, then one heading, one
 section per call); captured CSS through `css-rules.mjs`, capture JSON through
 `json-query.mjs` (values that feed a command from `--tsv`/`--path`, never the
@@ -339,8 +337,7 @@ blocked step (reference doc § Iteration discipline).
 
 **Hardening (each is a recorded false-measurement trap — see the reference
 doc for the full list):** real-Chrome UA **plus the standard request
-headers** on every capture (built into the shared
-`diff/scripts/live-session.mjs`); a challenge/blocked
+headers** on every capture; a challenge/blocked
 interstitial **fails loud (exit 3)**, never measured — escalate with
 `--headed`, and a site that still blocks needs crawl.mjs-class capture;
 `domcontentloaded` on live targets, never `networkidle`;
@@ -360,7 +357,13 @@ The live-target hardening ships as flags on the diff scripts (`--ua`,
 `--wait-until`, `--dismiss`, `--headed`, `--locale`, visual-diff `--main`)
 backed by `live-session.mjs` — copy the scripts and pass flags; a project
 copy carrying hand-edits is a defect
-(`reference/source-fidelity-gate.md` § Script adaptations).
+(`reference/source-fidelity-gate.md` § Script adaptations). Every
+instrument navigates under one timeout — `STARDUST_NAV_TIMEOUT_MS`, else
+2 × the crawl's `crawl.navMs.p95` (20–180 s), else its own default; a flag
+wins. `measure.mjs` and `cap-probe.mjs` race each width read against it,
+re-read once on a fresh page when the page navigated under a read, and exit
+124 (no verdict) only when every read failed (a cap-probe compare: any),
+else 0 with `_provenance.partial` and a `PARTIAL` first line.
 
 **After the static gate passes, interaction parity is a REQUIRED gate
 output per archetype — not a post-pass**
