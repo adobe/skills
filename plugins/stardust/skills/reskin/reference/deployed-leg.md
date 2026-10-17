@@ -88,7 +88,10 @@ Applied entries are reported (a "Declared deltas" section, a `deltas applied:` l
   "invocation": "deployed-gate.mjs all --page <slug> …" }
 ```
 
-A value is `PASS`, `FAIL k/n`, `ADVISORY <gates> (deltas.blocking false)`, `n/a: <why>`, `not run: <why>` or
+A value is `PASS`, `PASS (n/a: <checks>)` (passed, those checks not measured; the reasons are in `summary.json`'s
+`steps.<step>.detail`), `FAIL k/n`, `FAIL stalled decoration: <what>` (a gate stalled on the preview's decoration and
+measured nothing: the step fails and the run goes on, `sanity` records its own hard decoration FAIL),
+`ADVISORY <gates> (deltas.blocking false)`, `n/a: <why>`, `not run: <why>` or
 `ERROR (exit N): <why>`; `figma` is figma-gate's own fragment, or one of those (`not run: no figma checks`).
 `invocation` is the exact argument list, a token flag's value `[redacted]`. A residual's `class` is
 `deployed.content`, `.tokens`, `.parity`, `.sanity` or `.inherited` (M2b's are `figma.*`); a `deployed.sanity`

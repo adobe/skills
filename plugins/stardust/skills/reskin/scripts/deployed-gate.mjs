@@ -175,16 +175,22 @@ all      The whole leg: content, tokens, parity, sanity and inherited in turn, e
          preview.json once: no record, or one with problems, is exit 2; a skipped leg is one "ADVISORY <step> not
          run: skipped" line per step (figma included) and exit 0. First it deletes the previous content.json,
          tokens.json, parity.json, sanity.json, inherited.json and summary.json, so a stale file never feeds the
-         ledger fragment. A setup error in a step (its own exit 2) stops the run with exit 2 and no summary.json.
+         ledger fragment. A setup error in a step (its own exit 2) stops the run with exit 2 and no summary.json,
+         except a stalled decoration, "stalled decoration: <what>": the gate measured nothing because blocks of the
+         preview never decorated, and that is the step's FAIL, "FAIL <step>: stalled decoration: <what>", with the
+         run going on (sanity then records its own hard decoration FAIL). A stall on a protected preview given no
+         token is the missing token, a setup error.
          A step that throws anything else is "ERROR (exit 124) <step>: <message>" and the run goes on; a bot
          challenge (exit 3) in any step stops the rest: "ERROR (exit 3) <step> not run: bot challenge".
          The figma-gate child gets --url (the preview URL), --target preview, --reskin and --dir, and the site
          token as the variable DEPLOYED_GATE_SITE_TOKEN named by --token-env, never in argv. Its exit maps the
-         same way: 2 a setup error (exit 2, no summary.json), 3 and 124 an ERROR line, 1 FAIL, 0 PASS; an exit
-         0 or 1 that left no summary.json of the preview regime, or any other exit, is ERROR (exit 124).
+         same way: 2 a setup error (exit 2, no summary.json; a stalled decoration is FAIL figma), 3 and 124 an
+         ERROR line, 1 FAIL, 0 PASS; an exit 0 or 1 that left no summary.json of the preview regime, or any other
+         exit, is ERROR (exit 124).
          Prints one verdict line per step, in the order content, tokens, parity, sanity, inherited, figma, each
          matching run-bg's default verdict filter, with the step's findings indented below it:
            PASS <step>            FAIL <step> <k/n, or the failing gates or steps>      ERROR (exit N) <step>: <why>
+           FAIL <step>: stalled decoration: <what>      a gate that stalled on the preview's decoration
            ADVISORY <step> …      an advisory content gate; n/a: protected preview; not run: skipped, no figma checks
          then "summary written: <path>". Exit: the first present of 2, 3, 124, 1, 0.
          Writes <deployed>/summary.json:
@@ -193,9 +199,10 @@ all      The whole leg: content, tokens, parity, sanity and inherited in turn, e
          ledgerFragment is what the agent copies to ledger.json pages.<slug>.gates.deployed:
            { regime: "preview", url, content, tokens, parity, sanity: { verdict, hard: true }, inherited, figma,
              invocation }
-         Each of content, tokens, parity, inherited and sanity's verdict is "PASS", "FAIL k/n" (k of the n measured
-         failing: gates for content, assertions for tokens, rows for the rest), "ADVISORY <gates> (deltas.blocking
-         false)", "n/a: <why>", "not run: <why>" or "ERROR (exit N): <why>"; figma is figma-gate's own
+         Each of content, tokens, parity, inherited and sanity's verdict is "PASS", "PASS (n/a: <checks>)" (it passed, but
+         those checks were n/a: their reasons are in steps.<step>.detail), "FAIL k/n" (k of the n measured failing: gates
+         for content, assertions for tokens, rows for the rest), "FAIL stalled decoration: <what>", "ADVISORY <gates>
+         (deltas.blocking false)", "n/a: <why>", "not run: <why>" or "ERROR (exit N): <why>"; figma is figma-gate's own
          ledgerFragment (its regime is "preview"), or one of those strings. sanity is never waivable: no delta file
          and no residual accepts its failure. invocation is the exact argument list, the value of a site token flag
          replaced by [redacted]. No step record, line or summary holds the site token.
@@ -213,6 +220,8 @@ all      The whole leg: content, tokens, parity, sanity and inherited in turn, e
                inherited sends it with the .plain.html request only. all hands it to those three and to the
                figma-gate child (by that variable and --token-env). Write a flag and its value as two arguments,
                the value quoted when it has a space: an unknown --flag=value or a stray argument is never echoed.
+               The --token-env NAME must be a variable name (letters, digits, underscores) and is never printed,
+               set or not, so a token typed in its place is refused without being shown.
 --reskin <f>   the local reskin page parity holds the preview to, sanity's content-presence compares it with and
                all's figma-gate child measures against (default <dir>/reskin/pages/<slug>.html).
 --dir <d>      the stardust directory (default stardust).
@@ -311,15 +320,18 @@ async function helper(name, sub = 'deployed') {
 }
 
 const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 // The site token the gate was given (--auth-header or --token-env), or null. `say` prints through redact, `redact` takes
 // the token out of a text and `scrub` out of an error's message, so no line the gate prints or records can carry it.
 async function siteToken(opts, log, UsageError) {
   if (opts['auth-header'] === undefined && opts['token-env'] === undefined) return { auth: null, redact: (m) => m, say: log, scrub: (e) => e };
+  // The variable's name is never printed: a token typed in its place would be echoed.
+  if (opts['token-env'] !== undefined && !ENV_NAME.test(opts['token-env'])) throw new UsageError('--token-env takes the name of an environment variable (letters, digits and underscores), not the token');
   const eds = await helper('eds');
   await eds.loadLiveSession();
   const auth = eds.siteAuth({ authHeader: opts['auth-header'], tokenEnv: opts['token-env'] });
-  if (!auth?.trim()) throw new UsageError(`no site token: --token-env ${opts['token-env']} is not set in the environment or .env`);
+  if (!auth?.trim()) throw new UsageError('no site token: the variable --token-env names is not set in the environment or .env');
   return {
     auth,
     redact: (m) => eds.redact(m, auth),
@@ -487,6 +499,16 @@ function thrown(step, code, message) {
   return outcome('ERROR', exit, `ERROR (exit ${exit}) ${step}: ${why}`, `ERROR (exit ${exit}): ${why}`, lines.slice(1, MAX_WHY_LINES).map((l) => `  ${l}`));
 }
 
+const STALLED = /stalled decoration: ([^\n]*)/;
+
+// A gate that exits 2 "stalled decoration: <what>" measured nothing because blocks of the preview never decorated: that is the
+// step's FAIL (what the deployed page did), not a setup error. Null for any other message. On a protected preview reached
+// with no token the stall is the missing token, a setup error.
+function stalled(step, message, missingToken) {
+  const what = missingToken ? undefined : STALLED.exec(message)?.[1].trim().slice(0, MAX_WHY);
+  return what ? outcome('FAIL', 1, `FAIL ${step}: stalled decoration: ${what}`, `FAIL stalled decoration: ${what}`) : null;
+}
+
 function contentOutcome(result) {
   const names = (gates) => gates.map((g) => g.name).join(', ');
   const failed = result.gates.filter((g) => g.exit === 1);
@@ -523,7 +545,13 @@ function rowsOutcome(step, result, lines, heading = step) {
     const why = [...new Set(result.rows.map((r) => r.value))].join('; ');
     return outcome('n/a', 0, advisoryLine(`${step} ${why}`), why, detail);
   }
-  return outcome('PASS', 0, `PASS ${step}`, 'PASS', detail);
+  return outcome('PASS', 0, `PASS ${step}`, passLedger(result.rows), detail);
+}
+
+// A step that passed with n/a rows says which checks were not measured; the reasons are in its detail.
+function passLedger(rows) {
+  const unmeasured = [...new Set(rows.filter((r) => r.status === 'n/a').map((r) => r.check))];
+  return unmeasured.length ? `PASS (n/a: ${unmeasured.join(', ')})` : 'PASS';
 }
 
 // figma-gate all --target preview as a child process, its exit mapped as the other steps' are. Its ledgerFragment (the
@@ -600,9 +628,13 @@ async function allStep(ctx) {
     else if (step === 'figma' && !existsSync(join(dir, 'reskin', 'figma-checks', `${slug}.json`))) result = notRun(step, 'no figma checks');
     else {
       try { result = await run[step](); } catch (e) {
-        if (e instanceof UsageError || e?.code === 2) throw scrub(e);
-        result = thrown(step, e?.code, redact(String(e?.message ?? e)));
-        challenged = result.exit === 3;
+        if (e instanceof UsageError || e?.code === 2) {
+          result = stalled(step, redact(String(e.message ?? '')), preview.auth && !auth);
+          if (!result) throw scrub(e);
+        } else {
+          result = thrown(step, e?.code, redact(String(e?.message ?? e)));
+          challenged = result.exit === 3;
+        }
       }
     }
     const detail = result.detail.map(redact);

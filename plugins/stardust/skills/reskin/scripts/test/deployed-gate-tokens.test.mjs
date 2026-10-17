@@ -460,7 +460,8 @@ if (playwrightOk) {
       assert.match(anon.stderr, /pass --auth-header or --token-env/, 'the record says a token was used: the error says so');
       const unset = await tokens(root, ['--token-env', 'STARDUST_T6_NO_SUCH_TOKEN']);
       assert.equal(unset.status, 2, unset.all);
-      assert.match(unset.stderr, /STARDUST_T6_NO_SUCH_TOKEN/);
+      assert.match(unset.stderr, /no site token: the variable --token-env names is not set/);
+      assert.equal(unset.all.includes('STARDUST_T6_NO_SUCH_TOKEN'), false, 'the name is never printed');
       noToken(viaHeader.all, viaEnv.all, anon.all, unset.all);
       for (const f of readdirSync(outOf(root))) noToken(readFileSync(join(outOf(root), f), 'utf8'));
     } finally { await server.close(); }

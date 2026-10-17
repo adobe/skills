@@ -17,8 +17,12 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { UsageError } from '../figma/errors.mjs';
 import { main } from '../deployed-gate.mjs';
+import { runChild } from '../deployed/child.mjs';
+import { runContent } from '../deployed/content.mjs';
+import { runTokens } from '../deployed/eds-spec.mjs';
 import { deployedDir, readPreview } from '../deployed/io.mjs';
 import { eligibility, headMetadata, isolation, previewOrigin } from '../deployed/preview.mjs';
+import { runSanity } from '../deployed/sanity.mjs';
 import { VERDICT_RE } from '../../../replica/scripts/run-bg.mjs';
 import { fixturePath, loadSourceModel, solidPng, startPreviewServer, startSourceServer } from './fixtures/deployed/servers.mjs';
 import { makeProject } from './fixtures/figma-gate/setup.mjs';
@@ -455,7 +459,8 @@ await check('--token-env reads the token from the environment; without a token a
     assert.ok(!existsSync(recordPath(root)), 'no preview.json without a verdict');
     const unset = await preview(root, server.origin, ['--namespace', 'ns', '--token-env', 'STARDUST_T4_NO_SUCH_TOKEN']);
     assert.equal(unset.status, 2, unset.all);
-    assert.match(unset.stderr, /STARDUST_T4_NO_SUCH_TOKEN/);
+    assert.match(unset.stderr, /no site token: the variable --token-env names is not set in the environment or \.env/);
+    assert.equal(unset.all.includes('STARDUST_T4_NO_SUCH_TOKEN'), false, 'the name is never printed: a token typed in its place would be echoed');
   } finally { await server.close(); }
 });
 
@@ -767,6 +772,62 @@ await check('all: the exit is the first present of 2, 3, 124, 1, 0; a setup erro
   assert.ok(!existsSync(join(deployedDir(dirOf(stopped), 'home'), 'summary.json')), 'no summary of a run that did not complete, and the old one is gone');
 });
 
+await check('all: a step whose gate stalls on the decoration (exit 2 "stalled decoration: …") is that step\'s FAIL, not a setup error: the run goes on, summary.json is written, the exit is 1', async () => {
+  const stall = (gate) => () => { throw new UsageError(`[${gate}] stalled decoration: block cards`); };
+  const hardRows = [rowOf('overflow', 1440, 'PASS'), rowOf('decoration', 1440, 'FAIL', 'block cards', 'all loaded')];
+  const root = allRoot('all-stalled', { checks: true });
+  const figma = stubFigma({ exit: 2, summary: null, stderr: 'figma-gate: [donor-probe] stalled decoration: block cards, block hero\n' });
+  const r = await runAll(root, { figmaGate: figma.file, over: { content: stall('dom-equality'), tokens: stall('donor-probe'), sanity: () => ({ verdict: 'FAIL', exit: 1, hard: true, rows: hardRows }) } });
+  assert.equal(r.error, null, String(r.error));
+  assert.equal(r.code, 1, r.lines.join('\n'));
+  assert.deepEqual(r.called, ['content', 'tokens', 'parity', 'sanity', 'inherited'], 'the run went on after the stall');
+  const verdicts = verdictLines(r.lines);
+  assert.deepEqual(verdicts.map(stepOf), STEPS, r.lines.join('\n'));
+  for (const l of verdicts) assert.match(l, VERDICT_RE, l);
+  assert.deepEqual(verdicts, [
+    'FAIL content: stalled decoration: block cards', 'FAIL tokens: stalled decoration: block cards', 'PASS parity', 'FAIL sanity (hard) 1/2', 'PASS inherited',
+    'FAIL figma: stalled decoration: block cards, block hero',
+  ]);
+  assert.ok(r.lines.includes('  decoration: block cards @1440'), 'sanity records its hard decoration FAIL');
+  const s = summaryAt(root);
+  assert.deepEqual(Object.values(s.steps).map((x) => [x.verdict, x.exit]), [['FAIL', 1], ['FAIL', 1], ['PASS', 0], ['FAIL', 1], ['PASS', 0], ['FAIL', 1]]);
+  assert.deepEqual(s.ledgerFragment, {
+    regime: 'preview', url: ALL_URL, content: 'FAIL stalled decoration: block cards', tokens: 'FAIL stalled decoration: block cards', parity: 'PASS', sanity: { verdict: 'FAIL 1/2', hard: true },
+    inherited: 'PASS', figma: 'FAIL stalled decoration: block cards, block hero', invocation: s.invocation,
+  });
+
+  const lone = await runAll(allRoot('all-stalled-lone'), { over: { content: stall('slot-coverage') } });
+  assert.equal(lone.error, null, String(lone.error));
+  assert.equal(lone.code, 1, 'one stalled step is exit 1, not 2');
+
+  const protectedRoot = allRoot('all-stalled-auth', { record: { auth: true } });
+  const hint = new UsageError('[donor-probe] stalled decoration: body.appear\npreview.json says the preview was reached with a site token: pass --auth-header or --token-env');
+  const missing = await runAll(protectedRoot, { over: { tokens: () => { throw hint; } } });
+  assert.ok(missing.error instanceof UsageError && /pass --auth-header or --token-env/.test(missing.error.message), 'a stall on a protected preview with no token is the missing token: a setup error');
+  assert.deepEqual(missing.called, ['content', 'tokens']);
+  assert.ok(!existsSync(join(deployedDir(dirOf(protectedRoot), 'home'), 'summary.json')));
+});
+
+await check('all: a step that passed with n/a rows is "PASS (n/a: <checks>)" in the fragment, one without is "PASS"; the verdict line and the step record stay PASS and the reasons stay in the detail', async () => {
+  const root = allRoot('all-na');
+  const na = (check, width, reason) => rowOf(check, width, 'n/a', reason);
+  const crop = 'n/a: reskin page renders no chrome';
+  const r = await runAll(root, {
+    over: {
+      parity: () => ({ verdict: 'PASS', exit: 0, rows: [rowOf('pixel', 1440, 'PASS'), na('header crop', 1440, crop), na('header crop', 360, crop), na('footer crop', 1440, crop)] }),
+      inherited: () => ({ verdict: 'PASS', exit: 0, rows: [rowOf('.plain.html', null, 'PASS'), na('ai-readability', null, 'n/a: protected preview'), na('qa-gate', null, 'n/a: run deploy Step 2b')] }),
+    },
+  });
+  assert.equal(r.code, 0, r.lines.join('\n'));
+  assert.deepEqual(verdictLines(r.lines).slice(0, 5), ['PASS content', 'PASS tokens 12/12', 'PASS parity', 'PASS sanity', 'PASS inherited']);
+  const s = summaryAt(root);
+  const f = s.ledgerFragment;
+  assert.deepEqual([f.content, f.tokens, f.parity, f.sanity, f.inherited], ['PASS', 'PASS', 'PASS (n/a: header crop, footer crop)', { verdict: 'PASS', hard: true }, 'PASS (n/a: ai-readability, qa-gate)']);
+  assert.deepEqual([s.steps.parity.verdict, s.steps.inherited.verdict], ['PASS', 'PASS']);
+  assert.ok(s.steps.parity.detail.some((l) => l.includes(crop)), s.steps.parity.detail.join('\n'));
+  assert.ok(s.steps.inherited.detail.some((l) => l.includes('n/a: run deploy Step 2b')), s.steps.inherited.detail.join('\n'));
+});
+
 await check('all: a skipped preview is every step "not run: skipped", figma included, exit 0, and nothing is started', async () => {
   const root = allRoot('all-skipped', { checks: true, record: { skipped: true, reason: 'not an aem-boilerplate project (no head.html at the project root)', url: null, origin: null, plain: null } });
   const figma = stubFigma();
@@ -885,6 +946,26 @@ await check('a site token never echoes in a usage error: not as --flag=value, no
   }
 });
 
+await check('a token typed as the --token-env name is never echoed: not a name is exit 2 without the value, an unset name is reported without it, for every step that takes the flag', async () => {
+  const root = allRoot('all-token-name');
+  const notAName = 'hlxtok-canary-7f3a91';
+  const nameShaped = 'hlxtokcanary7f3a91';
+  const steps = [['preview', ...PAGE, '--namespace', 'ns'], ['content', '--page', 'home'], ['tokens', '--page', 'home'], ['inherited', '--page', 'home'], ['all', '--page', 'home']];
+  const cases = [
+    [notAName, /--token-env takes the name of an environment variable \(letters, digits and underscores\), not the token/],
+    ['9starts-with-a-digit', /--token-env takes the name of an environment variable/],
+    [nameShaped, /no site token: the variable --token-env names is not set in the environment or \.env/],
+  ];
+  for (const step of steps) {
+    for (const [value, pattern] of cases) {
+      const r = await run([...step, '--token-env', value], { cwd: root, env: { DEPLOY_VERIFY_ORIGIN: 'http://127.0.0.1:9' } });
+      assert.equal(r.status, 2, `${step[0]} ${value}: ${r.all}`);
+      assert.match(r.stderr, pattern, `${step[0]} ${value}`);
+      assert.equal(r.all.includes(value) || r.all.includes(value.slice(4, -2)), false, `${step[0]}: the value of --token-env was echoed:\n${r.all}`);
+    }
+  }
+});
+
 // ---- all, for real: the fake servers, real browsers, the real instruments and the real figma-gate ---------------------------
 
 let playwrightOk = false;
@@ -945,7 +1026,7 @@ if (playwrightOk) {
   };
   const allIn = (root, origin, extra = [], env = {}) => run(['all', '--page', 'home', ...extra], { cwd: root, env: { DEPLOY_VERIFY_ORIGIN: origin, ...env } });
 
-  await check('real run on a clean public preview: preview then all exits 0, six verdict lines match VERDICT_RE, every step measured and recorded, the fragment is PASS throughout', async () => {
+  await check('real run on a clean public preview: preview then all exits 0, six verdict lines match VERDICT_RE, every step measured and recorded, the fragment is PASS throughout (a step with n/a rows lists them)', async () => {
     const source = await startSourceServer();
     const server = await startPreviewServer({ pages: { '/ns/home': HOME } });
     try {
@@ -962,11 +1043,17 @@ if (playwrightOk) {
       assert.match(verdicts[1], /^PASS tokens (\d+)\/\1$/);
       assert.equal(verdicts[5].startsWith('ADVISORY figma not run: no figma checks'), true, verdicts[5]);
       const s = summaryAt(root);
+      const out = deployedDir(dirOf(root), 'home');
+      // A step that passed with n/a rows lists their checks (the clean public preview has no eds-schema, so qa-gate is one).
+      const passWith = (file) => {
+        const checks = [...new Set(read(out, file).rows.filter((x) => x.status === 'n/a').map((x) => x.check))];
+        return checks.length ? `PASS (n/a: ${checks.join(', ')})` : 'PASS';
+      };
+      assert.equal(passWith('inherited.json'), 'PASS (n/a: qa-gate)', 'qa-gate has no schema to read here');
       assert.deepEqual(s.ledgerFragment, {
-        regime: 'preview', url: `${server.origin}/ns/home`, content: 'PASS', tokens: 'PASS', parity: 'PASS', sanity: { verdict: 'PASS', hard: true }, inherited: 'PASS', figma: 'not run: no figma checks', invocation: s.invocation,
+        regime: 'preview', url: `${server.origin}/ns/home`, content: 'PASS', tokens: 'PASS', parity: passWith('parity.json'), sanity: { verdict: passWith('sanity.json'), hard: true }, inherited: passWith('inherited.json'), figma: 'not run: no figma checks', invocation: s.invocation,
       });
       assert.equal(s.invocation, `deployed-gate.mjs all --page home --reskin ${reskin}`);
-      const out = deployedDir(dirOf(root), 'home');
       for (const f of ['content.json', 'tokens.json', 'parity.json', 'sanity.json', 'inherited.json', 'summary.json']) assert.ok(existsSync(join(out, f)), f);
       assert.equal(read(out, 'sanity.json').hard, true);
       assert.deepEqual(s._provenance.readArtifacts, ['preview.json', 'content.json', 'tokens.json', 'parity.json', 'sanity.json', 'inherited.json']);
@@ -996,6 +1083,44 @@ if (playwrightOk) {
     } finally { await server.close(); await source.close(); }
   });
 
+  await check('real run on a preview whose cards block never decorates (parity and inherited stand in as passed, the gates\' settle shortened): content and tokens are "FAIL <step>: stalled decoration", sanity\'s hard decoration row fails, exit 1, summary.json is written', async () => {
+    const source = await startSourceServer();
+    const server = await startPreviewServer({ pages: { '/ns/home': 'home.html' }, stallBlock: 'cards' });
+    try {
+      const root = realProject('real-stalled', source);
+      assert.equal((await preview(root, server.origin)).status, 0);
+      const fastProbe = join(scratch, 'donor-probe-fast.mjs');
+      writeFileSync(fastProbe, [
+        "import { spawn } from 'node:child_process';",
+        `const child = spawn(process.execPath, [${JSON.stringify(join(SCRIPTS, 'donor-probe.mjs'))}, ...process.argv.slice(2), '--eds-timeout', '1500'], { stdio: 'inherit' });`,
+        "child.on('close', (code) => process.exit(code ?? 1));",
+        '',
+      ].join('\n'));
+      const passed = (...checks) => async () => ({ verdict: 'PASS', exit: 0, rows: passing(...checks) });
+      const runners = {
+        content: (a) => runContent({ ...a, run: (cmd, args, o) => runChild(cmd, [...args, '--eds-timeout', '1500'], o) }),
+        tokens: (a) => runTokens({ ...a, donorProbe: fastProbe }),
+        parity: passed('pixel'),
+        sanity: (a) => runSanity({ ...a, edsTimeoutMs: 1500 }),
+        inherited: passed('.plain.html'),
+      };
+      const lines = [];
+      const code = await main(['all', '--page', 'home', '--dir', dirOf(root), '--reskin', reskinPage()], { env: { DEPLOY_VERIFY_ORIGIN: server.origin }, log: (m) => lines.push(m), runners });
+      assert.equal(code, 1, lines.join('\n'));
+      const verdicts = verdictLines(lines);
+      for (const l of verdicts) assert.match(l, VERDICT_RE, l);
+      assert.equal(verdicts[0], 'FAIL content: stalled decoration: block cards', lines.join('\n'));
+      assert.equal(verdicts[1], 'FAIL tokens: stalled decoration: block cards', lines.join('\n'));
+      assert.match(verdicts[3], /^FAIL sanity \(hard\) \d+\/\d+$/);
+      assert.ok(lines.some((l) => /^ {2}decoration: block cards @1440$/.test(l)), lines.join('\n'));
+      const s = summaryAt(root);
+      assert.deepEqual([s.ledgerFragment.content, s.ledgerFragment.tokens], Array(2).fill('FAIL stalled decoration: block cards'));
+      assert.match(s.ledgerFragment.sanity.verdict, /^FAIL \d+\/\d+$/);
+      assert.equal(s.ledgerFragment.sanity.hard, true);
+      assert.deepEqual([s.steps.content.exit, s.steps.tokens.exit, s.steps.sanity.exit], [1, 1, 1]);
+    } finally { await server.close(); await source.close(); }
+  });
+
   await check('real run on a protected preview with the real figma-gate: --auth-header and --token-env both pass, the figma fragment is the ledger\'s, and no file, line or stream holds the token', async () => {
     const source = await startSourceServer();
     const server = await startPreviewServer({ token: CANARY, pages: { '/ns/home': HOME } });
@@ -1005,7 +1130,11 @@ if (playwrightOk) {
       const header = `token ${CANARY}`;
       const p = await preview(root, server.origin, ['--namespace', 'ns', '--auth-header', header]);
       assert.equal(p.status, 0, p.all.replaceAll(CANARY, '[token]'));
-      const scanned = [];
+      const scanFiles = () => {
+        const files = walk(join(dirOf(root), '.work'));
+        assert.ok(files.some((f) => f.endsWith(join('deployed', 'summary.json'))) && files.some((f) => f.endsWith(join('figma', 'summary.json'))), 'the scan covers deployed/ and figma/');
+        return files.filter((f) => readFileSync(f).includes(CANARY)).map((f) => f.slice(root.length));
+      };
       for (const [label, extra, env] of [['--auth-header', ['--auth-header', header], {}], ['--token-env', ['--token-env', 'STARDUST_T12_PREVIEW_TOKEN'], { STARDUST_T12_PREVIEW_TOKEN: CANARY }]]) {
         const r = await allIn(root, server.origin, ['--reskin', page, ...extra], env);
         assert.equal(r.status, 0, `${label}: ${r.all.replaceAll(CANARY, '[token]')}`);
@@ -1021,14 +1150,12 @@ if (playwrightOk) {
         assert.equal(s.ledgerFragment.figma.join, 'PASS');
         assert.equal(s.invocation.includes(CANARY), false);
         assert.match(s.invocation, /--(auth-header|token-env) \[redacted\]/);
-        scanned.push(r.stdout, r.stderr);
+        // Scanned after each run: the next one rewrites the files, so a leak of the first would be gone by then.
+        assert.deepEqual(scanFiles(), [], `${label}: a file holds the token`);
+        assert.deepEqual([r.stdout, r.stderr].filter((text) => text.includes(CANARY)), [], `${label}: stdout or stderr holds the token`);
       }
       assert.ok(server.requests.some((q) => q.headers.authorization === header), 'the token went to the preview');
       assert.ok(server.requests.every((q) => q.headers.authorization === header), 'every request to the preview carried it');
-      const files = walk(join(dirOf(root), '.work'));
-      assert.ok(files.some((f) => f.endsWith(join('deployed', 'summary.json'))) && files.some((f) => f.endsWith(join('figma', 'summary.json'))), 'the scan covers deployed/ and figma/');
-      assert.deepEqual(files.filter((f) => readFileSync(f).includes(CANARY)).map((f) => f.slice(root.length)), [], 'a file holds the token');
-      assert.deepEqual(scanned.filter((text) => text.includes(CANARY)), [], 'stdout or stderr holds the token');
     } finally { await server.close(); await source.close(); }
   });
 }
