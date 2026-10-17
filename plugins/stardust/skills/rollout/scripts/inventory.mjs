@@ -44,9 +44,9 @@
  * Usage:
  *   node skills/rollout/scripts/inventory.mjs [--migrated <dir>] [--out <rolloutDir>] [--site-url <url>] [--state <state.json>] [--content <dir>] [--export <name>]
  *   defaults: --migrated stardust/migrated  --out stardust/rollout  --content content
- *   --export migration-workspace opts this project into rollout's migration workspace (Phase I: manifest and
- *   judgement draft under stardust/rollout/workspace/); the name is added once to rollout.json `exports`, which
- *   survives every re-run. Another name exits 2 before any write.
+ *   --export migration-workspace opts this project into rollout's migration workspace (Phase I: manifest,
+ *   judgement draft and block-origin.mjs's mapping.json under stardust/rollout/workspace/); the name is added once
+ *   to rollout.json `exports`, which survives every re-run. Another name exits 2 before any write.
  */
 import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync, statSync } from 'node:fs';
 import { join, dirname, relative, basename } from 'node:path';

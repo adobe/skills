@@ -15,11 +15,12 @@ the element), so nothing in the export said which element a block was built from
   resolves on, and for every delivered block instance its coverage `pos` (the key a client matches it to the page's
   blocks by; each template block lists its `positions`), the CSS selector of its origin element in the page's
   captured source DOM, a confidence (the share of the block's text the element holds; image alt text never counts)
-  and its source: the template's encoder map first, else text alignment, else the block's place next to its aligned
-  neighbours (image-only blocks, confidence 0). An encoder-map selector that would point at another block is never
-  emitted. Selectors are derived from and checked against the capture as stardust's own parser reads it, with no
-  browser. Pages and blocks it could not map are listed under `skipped`; keys are sorted and `generatedAt` is copied
-  from the coverage, so unchanged inputs give the same bytes.
+  and its source: the template's encoder map first, else text alignment, else, for a block whose text is not found
+  (an image-only one, say), its position (confidence 0): a child of its section's element, else next to the nearest
+  anchored neighbour, never another record's element, or no selector. An encoder-map selector that would point at
+  another block is never emitted. Selectors are derived from and checked against the capture as stardust's own parser
+  reads it, with no browser. Pages and blocks it could not map are listed under `skipped`; keys are sorted and
+  `generatedAt` is copied from the coverage, so unchanged inputs give the same bytes.
 - **`--verify`** re-reads every capture and records per instance whether its selector resolves to exactly one element
   (`verified` true or false; without the flag null, recorded as skipped). It checks uniqueness, not that the element
   is the right one.

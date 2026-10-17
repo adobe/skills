@@ -394,7 +394,7 @@ excluded folders tracked deletes that line or adds a negation below it.
 | `spec/**` (`spec.config.json`, `judgement/`, `knowledge/`) | yes | spec | judgement and computed knowledge; raw material stays in `.work/spec/` |
 | `eds-schema/**` | yes | deploy | small JSON |
 | `rollout/` except `qa/` | yes | rollout | `rollout.json`, `coverage/`, `optimize/`, `plan.json`, `site/`, `dashboard/` |
-| `rollout/workspace/**` | yes | rollout | opt-in migration manifest + judgement; client-readable, see `skills/rollout/reference/coverage-contract.md` |
+| `rollout/workspace/**` | yes | rollout | opt-in migration manifest + judgement + `mapping.json` (`block-origin.mjs`); client-readable, see `skills/rollout/reference/coverage-contract.md` |
 | `rollout/qa/**` | **no** | rollout | screenshots of the delivered site |
 | `qa/allowlist.json`, `qa/report.*`, `qa/inventory.json`, `qa/dynamics-report.*`, `qa/ai-readability.json` | yes | qa | judgement and last report |
 | `qa/shots/**`, `qa/baselines/**` | **no** | qa | screenshots; baselines are per machine, a clone re-creates them |
