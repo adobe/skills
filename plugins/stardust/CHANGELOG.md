@@ -23,13 +23,16 @@ boundary ask and blocked on one subagent for hours.
   `units/<unit>.paths` → `content/**`, their eds-schema files and gate sidecars, the shared coverage, progress and
   media ledgers, and per `--code blocks/<name>` the unit's block directory (header and footer, the frozen foundation,
   refused). Lock `stardust/.work/git.lock` (`--wait-s 120`, dead or untouched holders reaped); `--push` rebases only
-  when the upstream moved and retries; every git step is time-bounded; exit 2 leaves nothing half-done (a commit that
-  could not be pushed is kept and named). Fan-out subagents commit only through it — never `git add content`, never
-  `git add -A`; the Code stage push is `unit-commit.mjs <unit> --code blocks/<name> --push`. Replica copies it.
+  when the upstream moved and retries; every git step is time-bounded and no network step starts later than 180 s
+  after the script started (`push deadline reached`, the local commit kept); exit 2 leaves nothing half-done (a
+  commit that could not be pushed is kept and named). Fan-out subagents commit only through it — never
+  `git add content`, never `git add -A`; the Code stage push is `unit-commit.mjs <unit> --code blocks/<name> --push`.
+  Replica copies it.
 - **Bookkeeping before the gate:** row C's per-page chain records `update-coverage.mjs <slug> --status deployed` and
-  runs `unit-commit.mjs <unit>` right after the `.plain.html` checks, before the published-origin gate, so a lost
-  container costs gate time, not delivered pages; every unit with pages writes `units/<unit>.paths` before its first
-  page; rollout's Phase C mirrors the order.
+  runs `unit-commit.mjs <unit>` right after the `.plain.html` checks, before the published-origin gate, so a
+  delivered page's record is committed before its gate runs; those commits stay local until the unit's `--push`, so
+  a container lost mid-unit can still take that unit's unpushed record with it. Every unit with pages writes
+  `units/<unit>.paths` before its first page; rollout's Phase C mirrors the order.
 - **§ 5 order for returning subagents:** each cluster or archetype subagent's unit is recorded and committed as it
   returns (`progress.json`, freeze check, `unit-commit.mjs <unit> --push`); no unit is spawned in the turn of a
   boundary ask; while subagents run the main agent waits in bounded checks (≤ 4 min each), never one blocking call.
@@ -37,8 +40,10 @@ boundary ask and blocked on one subagent for hours.
 - **done-check proves delivery; `ledger.mjs check` pairs the phases.** New gaps: `pages_overridden:N` (rows passing
   only by override above 10 % of delivered rows, an override citing no `## R-<nn>` register heading, or one marked
   `valid: false`; the verdict-string and object shapes are both read), `unit_unproven:<unit>` (a done unit without
-  `.paths`, or with a page lacking a passing gate at every `--widths` width), `sidecars_missing:N` (eds-schema, a
-  gate width, the redirects line of a moved path), `ledger_unpaired:N`. New flags `--widths`, `--register`,
+  `.paths`, or with a page not proven — `delivery.gate.pass === true` as last recorded and a recorded gate time at
+  every `--widths` width), `sidecars_missing:N` (eds-schema; a gate width, judged only in the replica flow or when a
+  coverage row carries a gate, else a `skipped:` line; the redirects line of a moved path, in the sheet or the
+  `redirects-cdn.tsv` beside it), `ledger_unpaired:N`. New flags `--widths`, `--register`,
   `--schemas`, `--redirects`; a check that did not run is a `skipped:` line (`--json` `skipped[]`). `ledger.mjs check
   [--json]` lists every `end` without an open start, exit 1; an end later re-recorded by a full start → end pair no
   longer counts (`unpairedEnds(lines)` export). The handoff contract gives each new gap its remedy.
@@ -46,8 +51,10 @@ boundary ask and blocked on one subagent for hours.
   `&nbsp;` or `<br>` (or a `<div>` of only `<br>`) is flagged — the pipeline drops it; model the spacer as spacing
   CSS (#112). A page without `<h1>` whose source capture (`stardust/current/pages/<slug>.json`: `--slug`, else the
   coverage row of `--path`; `--current`) records headings and no h1 gets a `note`, not a P0; `verify.mjs --current`
-  verifies it with the same note. A missing capture, or one with an h1, keeps the P0 and the failure — content is
-  never edited to satisfy a verifier.
+  verifies it with the same note, `optimize.mjs` tags its `single-h1` finding as source parity (out of the score,
+  the open P1 count, the gate and autofix), and `qa-gate.mjs --source-capture <json>` prints a WARN instead of the
+  FAIL. A missing capture, or one with an h1, keeps the P0 and the failure — content is never edited to satisfy a
+  verifier.
 - **Chain hygiene:** `localize-links.mjs --redirects <f>` naming a file that does not exist is a note on stderr and
   the run continues on the content tree (`redirectsFound: false`); an existing unreadable path stays exit 1. Every
   `python3 -m http.server` example binds `127.0.0.1`: loopback only, and its host-name lookup can crash on a long
@@ -55,9 +62,10 @@ boundary ask and blocked on one subagent for hours.
   never a whole SKILL.md, never a full-page PNG in context (`crop-compare.mjs` bands instead).
 
 Patch/contract: no gate verdict, pixel threshold, capture or freeze change. One criterion narrows: a page without an
-h1 whose captured source has none is a note, not a P0 or a verify failure; a missing capture, or one with an h1, keeps
-both. done-check adds a 10 % override cap and new gaps, and `ledger.mjs check` a pairing check — these only add
-caution, and every skipped check is named. Touches #112, #125, #134. The number is provisional (renumbered at merge):
+h1 whose captured source has none is a note (delivery-lint, verify), source parity (optimize) or a WARN (qa-gate with
+`--source-capture`), not a P0, a failure or an open P1; a missing capture, or one with an h1, keeps all of them.
+done-check adds a 10 % override cap and new gaps, and `ledger.mjs check` a pairing check — these only add caution,
+and every skipped check is named. Touches #112, #125, #134. The number is provisional (renumbered at merge):
 handoff contract § 2, § 3 row C, § Fan-out discipline and § 5 change, and by plugin `AGENTS.md` a changed contract is
 a minor release.
 
