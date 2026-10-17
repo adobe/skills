@@ -46,9 +46,9 @@
  *     contributor into the live capture that no prototype fidelity could
  *     null out). The mouse is parked afterwards (bottom-left) so no
  *     :hover-styled element under the resting cursor captures in hover state.
- *     What no sweep removed (a consent banner still shown, a fixed/sticky layer
- *     that paints over the page across most of the viewport, a scroll lock) is
- *     reported as `overlayLeft`, never captured silently —
+ *     What no sweep removed (a consent banner still shown, an open modal dialog, a
+ *     fixed/sticky layer that paints over the page across most of the viewport,
+ *     a scroll lock) is reported as `overlayLeft`, never captured silently —
  *     so is a label-sweep click that navigated away from the page.
  *   - `--locale` determinism: geo-redirecting sites (a car brand → /ch-de/,
  *     a fashion brand → /ww/) capture a different locale per run unless
@@ -506,14 +506,17 @@ export function consentLabelSweepInPage(table) {
  * What a capture would still show after the sweeps, run in the page: `page.evaluate(detectOverlayLeftInPage,
  * { roots, coverage })` (self-contained). "Shown" = displayed, not visibility-hidden, opacity > 0 (ancestors too, via
  * checkVisibility where the browser has it) and a 2×2 box. In order:
- *   1. a consent root (`roots`) still shown and banner-sized — the element or anything in its open shadow root whose
+ *   1. a modal dialog left open — the first shown element matching `:modal` (document order, open shadow roots
+ *      included): its ::backdrop is a pseudo-element, the page beneath is inert to the hit test and the scroll is not
+ *      locked, so no step below would name it → `<tag>[#id | .first.two classes] (modal open)`;
+ *   2. a consent root (`roots`) still shown and banner-sized — the element or anything in its open shadow root whose
  *      box covers ≥ 5 % of the viewport area or ≥ 50 % of its width (a persistent privacy trigger does not) →
  *      `<root> (consent root visible)`;
- *   2. the first shown fixed/sticky element (document order, open shadow roots included) with a non-negative z-index
+ *   3. the first shown fixed/sticky element (document order, open shadow roots included) with a non-negative z-index
  *      that paints (background colour alpha > 0, a background image or a backdrop filter) over ≥ `coverage` of the
  *      viewport AND over the page — at the viewport centre an element that is not its own (outside its subtree, not
  *      its ancestor) lies beneath it → `<tag>[#id | .first.two classes] (<position>, <pct> % of the viewport)`;
- *   3. a scroll lock: `html (overflow:hidden)` when html's overflow-y is hidden/clip, else `body (overflow:hidden)`
+ *   4. a scroll lock: `html (overflow:hidden)` when html's overflow-y is hidden/clip, else `body (overflow:hidden)`
  *      when body's is while html's is visible (it then locks the viewport).
  * → that descriptor, or null.
  */
@@ -535,6 +538,15 @@ export function detectOverlayLeftInPage({ roots, coverage }) {
     }
     return null;
   };
+  // a descriptor's name for an element: its tag, then #id or its first two classes
+  const nameOf = (el) => {
+    const classes = [...el.classList].slice(0, 2);
+    return `${el.tagName.toLowerCase()}${el.id ? `#${CSS.escape(el.id)}` : classes.map((c) => `.${CSS.escape(c)}`).join('')}`;
+  };
+  // a modal dialog left open: the page beneath is inert and its ::backdrop a pseudo-element — no later step sees it
+  let modal = null;
+  try { modal = find(document, (el) => el.matches(':modal') && shown(el)); } catch { /* no :modal in this browser */ }
+  if (modal) return `${nameOf(modal)} (modal open)`;
   // banner-sized: the box covers ≥ 5 % of the viewport area or ≥ half its width — a consent manager's persistent
   // privacy trigger (a small fixed button left after consent) is not the banner
   const banner = (el) => {
@@ -579,11 +591,7 @@ export function detectOverlayLeftInPage({ roots, coverage }) {
     share = (ix * iy) / (vw * vh);
     return share >= coverage && overPage(el);
   });
-  if (layer) {
-    const classes = [...layer.classList].slice(0, 2);
-    const name = layer.id ? `#${CSS.escape(layer.id)}` : classes.map((c) => `.${CSS.escape(c)}`).join('');
-    return `${layer.tagName.toLowerCase()}${name} (${getComputedStyle(layer).position}, ${Math.round(share * 100)} % of the viewport)`;
-  }
+  if (layer) return `${nameOf(layer)} (${getComputedStyle(layer).position}, ${Math.round(share * 100)} % of the viewport)`;
   const locked = (el) => ['hidden', 'clip'].includes(getComputedStyle(el).overflowY);
   if (locked(document.documentElement)) return 'html (overflow:hidden)';
   if (document.body && locked(document.body) && getComputedStyle(document.documentElement).overflowY === 'visible') return 'body (overflow:hidden)';
@@ -626,8 +634,9 @@ export async function detectOverlayLeft(page) {
 // no role, no modal class, and the wrapper itself measures 0x0 while its
 // visible panel is a fixed child. Hence the popup/newsletter id+class
 // markers, and hence the close-control-visibility test below (the ROOT may
-// be 0x0 even while the interstitial is showing).
-const MODAL_ROOTS = '[role="dialog"], [aria-modal="true"], .modal, [id*="popup" i], [class*="popup" i], [id*="newsletter" i], [class*="newsletter" i]';
+// be 0x0 even while the interstitial is showing). A native <dialog> opened
+// with showModal() carries no role attribute: dialog[open].
+const MODAL_ROOTS = 'dialog[open], [role="dialog"], [aria-modal="true"], .modal, [id*="popup" i], [class*="popup" i], [id*="newsletter" i], [class*="newsletter" i]';
 const MODAL_CLOSE_CANDIDATES = [
   '[aria-label*="close" i]',
   'button[class*="close" i]',

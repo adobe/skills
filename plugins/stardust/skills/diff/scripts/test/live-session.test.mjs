@@ -17,7 +17,9 @@
 // pointer-events:none tint painting over the page's content, an html / body scroll lock — and on the look-alikes that
 // are none: a consent manager's persistent 48 px privacy trigger after an accept, a transparent wrapper with a toast,
 // a layer below the page (z-index -1), a fixed background under positioned content, a sticky full-viewport hero at the
-// top, a 120 px bar, roots hidden by display or an opacity-0 ancestor; dismissOverlays returns it.
+// top, a 120 px bar, roots hidden by display or an opacity-0 ancestor; dismissOverlays returns it. A showModal() <dialog>
+// left open (document, open shadow root) is named "(modal open)", one with a "Close" button is closed by the marketing
+// pass, a non-modal <dialog open> in the content is none.
 // Run: node plugins/stardust/skills/diff/scripts/test/live-session.test.mjs
 import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -373,6 +375,16 @@ else {
     '/overlay/tint': doc(`${MAIN}<div class="tint" style="position:fixed;inset:0;background:rgba(255,0,0,.2);pointer-events:none;z-index:50"></div>`),
     '/overlay/hidden-roots': doc(`${MAIN}<div id="onetrust-banner-sdk" style="${BANNER};display:none"><p>We use cookies.</p></div>
       <div style="opacity:0"><div id="didomi-popup" style="position:fixed;inset:0;background:rgba(0,0,0,.5)"><p>Consent</p></div></div>`),
+    // native <dialog>s: a showModal() country picker left open (its dark ::backdrop is a pseudo-element, the page beneath
+    // inert, no scroll lock) — in the document and in an open shadow root; one with a "Close" button the marketing pass
+    // closes; a small non-modal <dialog open> in the content
+    '/overlay/modal-picker': doc(`<style>dialog::backdrop{background:rgba(0,0,0,.6)}</style>${MAIN}<dialog id="country-picker"><p>Choose your country</p><ul><li>Deutschland</li><li>France</li></ul></dialog>
+      <script>document.getElementById('country-picker').showModal();</script>`),
+    '/overlay/modal-shadow': doc(`${MAIN}<picker-host></picker-host>
+      <script>const r = document.querySelector('picker-host').attachShadow({ mode: 'open' }); r.innerHTML = '<style>dialog::backdrop{background:rgba(0,0,0,.6)}</style><dialog class="region-picker sheet wide"><p>Choose your region</p></dialog>'; r.querySelector('dialog').showModal();</script>`),
+    '/overlay/modal-close': doc(`${MAIN}<dialog class="signup"><p>Sign up, stay updated!</p><button id="close">Close</button></dialog>
+      <script>const d = document.querySelector('dialog.signup'); d.showModal(); document.getElementById('close').onclick = () => d.close();</script>`),
+    '/overlay/inline-dialog': doc(`<main style="min-height:1800px"><p>Content</p><dialog open class="note" style="position:static;margin:8px;width:240px">A note in the content</dialog></main>`),
   });
   const server = createServer((req, res) => {
     res.setHeader('content-type', 'text/html');
@@ -492,6 +504,9 @@ else {
       ['/overlay/sticky-hero', null],
       ['/overlay/fixed-bg', null],
       ['/overlay/tint', 'div.tint (fixed, 100 % of the viewport)'],
+      ['/overlay/modal-picker', 'dialog#country-picker (modal open)'],
+      ['/overlay/modal-shadow', 'dialog.region-picker.sheet (modal open)'],
+      ['/overlay/inline-dialog', null],
     ];
     for (const [path, want] of OVERLAY) {
       await checkAsync(`e2e overlay-left: ${path} → ${want}`, async () => {
@@ -505,6 +520,16 @@ else {
       assert.deepEqual(await session.dismissOverlays(page, { lateWindowMs: 0 }), { extra: [], consent: null, marketing: [], overlayLeft: 'div.backdrop (fixed, 100 % of the viewport)' });
       await page.close();
       assert.match(await session.detectOverlayLeft(page), /^\(overlay check failed: /);
+    });
+    await checkAsync('e2e overlay-left: a showModal() dialog — with a visible "Close" the marketing pass closes it (overlayLeft null); without one dismissOverlays names it (modal open)', async () => {
+      const closed = await open('/overlay/modal-close');
+      const d = await session.dismissOverlays(closed, { lateWindowMs: 0 });
+      assert.deepEqual([d.consent, d.marketing, d.overlayLeft], [null, ['button:has-text("Close")'], null]);
+      assert.equal(await closed.evaluate(() => document.querySelector('dialog.signup').open), false, 'the dialog is closed');
+      await closed.close();
+      const left = await open('/overlay/modal-picker');
+      assert.deepEqual(await session.dismissOverlays(left, { lateWindowMs: 0 }), { extra: [], consent: null, marketing: [], overlayLeft: 'dialog#country-picker (modal open)' });
+      await left.close();
     });
   } finally { await browser.close(); server.close(); }
 }
