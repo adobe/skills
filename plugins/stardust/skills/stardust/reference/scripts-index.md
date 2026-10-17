@@ -2,26 +2,30 @@
 
 Run the project copies under `stardust/scripts/<skill>/`. Ask `--help` only for a flag not named here. Deploy/rollout/migrate invocations: `../../replica/reference/handoff-contract.md` § 4. Without a flag, measure, cap-probe, stitch-shot, style-census, crawl's page goto and the probes on live-session's `gotoLive`/`visit()` defaults navigate under `STARDUST_NAV_TIMEOUT_MS`, else 2 × `crawl.navMs.p95` of `stardust/current/_crawl-log.json` (20–180 s), else their default.
 
-- `deploy/ai-readability.mjs` — AI-readability gate — `--origin <o> [--paths <f>] [--min 98]`
-- `deploy/block-roundtrip.mjs` — round-trip + editability — `<protoURL> content/<p>.html [--blocks a,b] --ew`
-- `deploy/build-harness.mjs` — local structural harness — `content/<p>.html <out.html> [--root <dir>]`
+- `deploy/ai-readability.mjs` — readability — `--origin <o> [--paths <f>]`
+- `deploy/block-roundtrip.mjs` — round-trip + EW — `<protoURL> <p>.html [--blocks a,b] --ew`
+- `deploy/build-harness.mjs` — local harness — `<p>.html <out.html> [--root <dir>]`
 - `deploy/chrome-docs.mjs` — canon chrome → `content/nav.html` + `footer.html` — `[--canon <dir>] [--prefix <locale>] [--check]`; exit 2 = differs
-- `deploy/content-inventory.mjs` — library (role classifier), no CLI
-- `deploy/da-media-upload.mjs` — rehost images to DA — `--org --repo --scope <under media/> --dir|--manifest [--token-env|--token-file] [--dry-run]`; exit 3 = token halt
-- `deploy/davids-model-lint.mjs` — content-model lint — `content/ | <page>.html [--json]`
-- `deploy/deploy-batch.mjs` — resumable PUT→preview→live — `--org --repo --branch --content content [--no-publish] [--token-env|--token-file]`; exit 1 = failed pages, 3 = token halt
-- `deploy/diff-profiles.mjs` — library (eds|generic profiles), no CLI
-- `deploy/file-lock.mjs` — library (lock + atomic ledger merge), no CLI
-- `deploy/eds-path.mjs` — library (path contract), no CLI
-- `deploy/ew-editability-probe.mjs` — rendered editability gate — `--content <p>.html | <url…> [--simulate-editor]`
+- `deploy/chrome-map.mjs` — chrome map — `[--dry-run]`
+- `deploy/content-count.mjs` — L5 count — `--capture <f> --doc <f> [--map <f>] [--project .]`
+- `deploy/content-inventory.mjs` — library, no CLI
+- `deploy/da-media-upload.mjs` — images → DA — `--org --repo --scope <s> --dir|--manifest [--token-env|--token-file]`; exit 3 = token halt
+- `deploy/davids-model-lint.mjs` — model lint — `content/|<p>.html`
+- `deploy/deploy-batch.mjs` — PUT→preview→live — `--org --repo --branch --content content [--no-publish] [--token-env|--token-file]`; exit 1 = failed pages, 3 = token halt
+- `deploy/diff-profiles.mjs` — library, no CLI
+- `deploy/file-lock.mjs` — library, no CLI
+- `deploy/eds-path.mjs` — library, no CLI
+- `deploy/ew-editability-probe.mjs` — EW gate — `--content <p>.html|<url…> [--simulate-editor]`
 - `deploy/fresh-check.mjs` — propagation wait on the decoded body — `<url> (--expect-file <f>|--expect-sha <hex>|--grep <marker>) [--max-s 180] [--json]`; exit 3 = stale
-- `deploy/localize-links.mjs` — source hrefs → root-relative — `--source-host <h> [--content content] [--redirects <f>] [--check]`; a missing `--redirects` file = note
-- `deploy/martech-scaffold.mjs` — contract → `scripts/martech.js` + hooks — `[--contract <json>] [--dry-run] [--force]`; exit 1 = invalid/conflict/no hook
-- `deploy/qa-gate.mjs` — decoration asserts + width cap — `<harnessURL> --schema stardust/eds-schema/<p>.json [--design DESIGN.json] [--source-capture <json>]`
-- `deploy/render-harness.mjs` — screenshot local decoration — `content/<p>.html <out.png> [<block>…] [--ew]`
-- `deploy/sanitise.js` — non-ASCII → entities, in place — `content/<p>.html` (one file per call)
-- `deploy/section-schema.mjs` — section role inventory — `<protoURL> [--out <f>] [--profile eds|generic]`
-- `deploy/style-fingerprint.mjs` — variation groups — `"file:///abs/<proto>.html"`
+- `deploy/localize-links.mjs` — hrefs → root-relative — `--source-host <h> [--content content] [--redirects <f>] [--check]`; a missing `--redirects` file = note
+- `deploy/martech-scaffold.mjs` — martech code — `[--dry-run] [--force]`
+- `deploy/qa-gate.mjs` — decoration + cap — `<harnessURL> --schema <p>.json [--design DESIGN.json] [--source-capture <json>]`
+- `deploy/rehost-docs.mjs` — re-host docs — `[--source-host <h>] [--dry-run]`
+- `deploy/render-harness.mjs` — harness shot — `<p>.html <out.png> [<block>…] [--ew]`
+- `deploy/sanitise.js` — non-ASCII → entities — `<p>.html` (1 per call)
+- `deploy/section-schema.mjs` — section roles — `<protoURL> [--out <f>]`
+- `deploy/stage-content.mjs` — encoded → content/ — `--template <a>|--paths <f> [--record]`
+- `deploy/style-fingerprint.mjs` — variant groups — `"file:///abs/<proto>.html"`
 - `diff/chrome-compare.mjs` — header parity vs the contract — `<contract> <build> [--profile replica|functional] [--json f] [--hide <sel,…>] [--slug <s> [--presence <json>]]` (+ site presence.json); exit 2 = undecided error
 - `diff/chrome-explore.mjs` — the header used: open states, close paths, motion, scroll — `<url> <out.json> [--width 1440,390] [--hide <sel,…>] [--slug <s> [--presence <json>]]` (+ site presence.json)
 - `diff/clip-probe.mjs` — text/controls cut or hidden by an overflow ancestor — `<url> [--width 1440] [--json [f]] [--advisory] [--hide <sel,…>]`; exit 2 = clipped > 0
@@ -46,7 +50,8 @@ Run the project copies under `stardust/scripts/<skill>/`. Ask `--help` only for 
 - `extract/media-harvest.mjs` — page media → `assets/media/` + `media-map.json`, offline — `[--max-bytes <n>]`
 - `extract/style-census.mjs` — computed-style census (one live pass) — `[--pages <dir>|--urls a,b] [--width <px>] [--headed]`
 - `extract/thumb.mjs` — thumbnails ≤ --max-bytes — `<png|dir…> [--width 480] [--max-height <px>] [--max-bytes 150000] [--min-share 60] [--offset <px>]`
-- `migrate/migrate.mjs` — per-page render driver + sidecar; forks A′ from the archetype — `render <slug…|--all> [--accept-variance "<r>"]`; `gate|deviation|variant|modules <slug>`
+- `migrate/encode.mjs` — sibling encoder — `--template <a> [--slug a,b] [--roundtrip|--lint|--sweep]`
+- `migrate/migrate.mjs` — render + sidecar; forks A′ from the archetype — `render <slug…|--all> [--accept-variance "<r>"]`; `gate|deviation|variant|modules|harness <slug>`
 - `qa/from-knowledge.mjs` — knowledge → template map + 404 allowlist — `[--dry-run]`
 - `qa/lib.mjs` — library, no CLI
 - `qa/qa.mjs` — read-only live sweep → report.json — `--base <live-url>`

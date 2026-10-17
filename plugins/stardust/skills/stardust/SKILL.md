@@ -236,6 +236,7 @@ auto-resolves:
 | prototype approval | granted by the agent's own judgment **only after all quality gates pass** (craft bar, validation loop, motion gates); recorded as `approvedBy: "hands-off"` on the page's `approved` history entry in `state.json` |
 | `prepare-migration` phase gates | behave as `--skip-confirm` |
 | `rollout` | runs full-auto end-to-end |
+| encoder `hand-edit` stop (`encode.mjs`, `stage-content.mjs`) | never `--overwrite-hand-edit`: move the edit into `stardust/patches/<slug>.json` (one page) or the template's map, re-encode, re-stage |
 | `dynamics` owner decisions (backend, tags on the new host, datasource ownership, locale scope) | ship the interim tier, record each decision by name in `dynamic-features.md` and the parity report, continue; regulated-pii forms stay blocked; a named assumption never sets `decided-out` |
 
 Defaults under hands-off (override only when the invocation says
@@ -387,7 +388,9 @@ script copies, drafts — go under `stardust/.work/<skill>/`; the root
 `browser-lock.mjs`'s slot files in `~/.stardust/locks/browser/`
 (`STARDUST_BROWSER_LOCK_DIR` moves them) — browser contention is
 cross-project; each holds a pid, the project path and a script name, and
-goes when its job ends. Anything written elsewhere is a bug in that skill.
+goes when its job ends. Anything written elsewhere is a bug in that skill. `migrate` never writes the EDS project: its encoder
+writes `stardust/encoded/<path>.html`, and `deploy` stages that file into
+`content/`.
 
 **Versioning.** Everything under `stardust/` is committed except what
 `reference/stardust.gitignore` lists: screenshots, four heavy folders

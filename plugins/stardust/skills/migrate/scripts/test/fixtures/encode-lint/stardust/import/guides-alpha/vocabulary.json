@@ -1,0 +1,38 @@
+{
+  "archetype": "guides-alpha",
+  "inputs": {
+    "capture": { "path": "stardust/current/pages/guides-alpha.html", "sha": "sha256:271f0d1d00a675733e51253a52662b6b9454fef460e0dc69b0787205d519e187" },
+    "edsSchema": { "path": "stardust/eds-schema/guides-alpha.json", "sha": "sha256:870489fe88e167dfad0b8270a799fdec6a57c912996022acc6175125a36f4f13" },
+    "units": { "path": "stardust/replica/units.json", "sha": "sha256:8ecda5dec9841bfe1988774d9f859f912cceb8333eb3629093c62b68c835b4ff" },
+    "variance": null
+  },
+  "root": "main.page-main",
+  "chrome": ["header.site-header", "footer.site-footer"],
+  "wrappers": [".x-grid"],
+  "ignoreModifiers": ["^x-grid__col$"],
+  "variance": {
+    "accept": [{ "print": ".x-notice | div.x-notice | x-grid", "on": "extra", "reason": "a seasonal notice on one sibling, rendered as default content" }]
+  },
+  "markers": [
+    { "sel": ".x-band.x-band--muted", "kind": "band", "emitter": "section-style:muted" },
+    { "sel": ".x-title:has(h1)", "kind": "page-title", "emitter": "default-content", "unique": true },
+    { "sel": ".x-title:not(:has(h1))", "kind": "title", "emitter": "default-content" },
+    { "sel": ".x-text", "kind": "text", "emitter": "default-content" },
+    {
+      "sel": ".x-cards", "kind": "cards", "emitter": "block:cards",
+      "variants": [{ "when": ".x-cards--compact", "add": "compact" }],
+      "rows": ".x-cards__item",
+      "cells": [
+        { "sel": ".x-cards__title", "as": "rich" },
+        { "sel": ".x-cards__body", "as": "rich" },
+        { "sel": "a.x-cards__link", "as": "link" }
+      ]
+    },
+    {
+      "sel": ".x-faq", "kind": "faq", "emitter": "block:faq",
+      "rows": ".x-faq__entry",
+      "cells": [{ "sel": ".x-faq__q", "as": "rich" }, { "sel": ".x-faq__a", "as": "rich" }]
+    },
+    { "sel": ".x-notice", "kind": "notice", "emitter": "default-content", "evidence": ["guides-gamma"] }
+  ]
+}

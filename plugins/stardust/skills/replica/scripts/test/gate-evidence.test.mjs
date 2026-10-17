@@ -9,19 +9,28 @@
 // record at its top level wrapped under types.<archetype> and refused only when it names no archetype (a ledger with
 // a `types` map is never second-guessed), the overflow assert line outranking a PASS pixel
 // line (FAIL: horizontal overflow, `/ovf+<px>` on the row, `overflowX` in the ledger), media-reconcile `n/a:` and
-// dropped from the acceptance set until the page's delivered content file exists (`--content`), an INCONCLUSIVE
+// dropped from the acceptance set until the page's delivered content file exists (`--content`; an encoded page's at its
+// eds-path, a non-canonical source URL included), an INCONCLUSIVE
 // pixel-table row read as OPEN (never FAIL, never a pass, a null pct tolerated), a table row without a pixel measurement
 // (a stitch error) read as OPEN with its error text and `—` for the null pct / Δh, one height bar per regime in the log
 // rule (prototype 8px, published 5 % of the origin height, --height-tolerance ≤ 1 a fraction / > 1 pixels, no origin
-// height under a fraction bar → OPEN).
+// height under a fraction bar → OPEN); an encoded page (its
+// sidecar's encode.output.path, no clone needed) linted on its delivered content file, else on its current encoded
+// document — never on a migrated HTML — and its jobs attributed by those files; an encoded sibling's local harness gates
+// (C14: section-schema, block-roundtrip --ew, qa-gate) from its own runs, else inherited only while its archetype's
+// passedOn under the current harness key covers its shape — a key change or a new shape re-arms them; its content-count
+// from the encoder's own L5 count while its encode is current and clean (a content-diff FAIL/OPEN wins).
 // Run: node plugins/stardust/skills/replica/scripts/test/gate-evidence.test.mjs   (about 2 s)
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ACCEPTANCE, acceptanceFor, attribute, contentFileFor, daPath, deadline, detectIndent, heightBar, loadTables, nameOwner, pagePaths, parseCounts, parseElements, parseFindings, parseLint, parseOverflow, parseVariance, parseVerdict, regimeOf } from '../gate-evidence.mjs';
+import { encoderKey, mapKey } from '../../../migrate/scripts/encode/provenance.mjs';
+import { harnessKey, shapeOf } from '../../../migrate/scripts/encode/shape.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'gate-evidence.mjs');
@@ -564,6 +573,232 @@ check('a progress.json that is one archetype\'s residual record (the old documen
   assert.deepEqual(Object.keys(after), ['_provenance', 'types', 'breakpoints', 'siblings'], 'the map keys stay first; this script appends its own');
   writeFileSync(PROGRESS, good);
 });
+
+// ---- encoded pages (B6): the encoder's sidecar names stardust/encoded/<da-path>.html ----------------------------
+// A project of one template: the archetype (its migrated HTML is the A render; the encoder placed it too), siblings the
+// encoder placed with no clone (delivered, not yet delivered), one over a leftover clone, a clone page whose sidecar a
+// migrate render left with `encode: null`, a stopped page, a hand-edited document (delivered) and a document gone.
+const root2 = realpathSync(mkdtempSync(join(tmpdir(), 'gate-evidence-encoded-')));
+const M2 = join(root2, 'stardust/migrated'); const BG2 = join(root2, 'stardust/.work/replica/bg'); const LINT2 = join(root2, 'lint-stub.mjs');
+const put = (file, text) => { mkdirSync(dirname(file), { recursive: true }); writeFileSync(file, text); };
+const sha = (text) => `sha256:${createHash('sha256').update(text).digest('hex')}`;
+const sib = (slug) => ({ slug, type: 'tour', renderBranch: "A'", template: 'tours', fidelityTier: 'sibling', archetypeSource: 'tours', variants: [] });
+const manifest = {}; // stardust/import/tours/manifest.json: what the encoder last wrote at each path
+const enc = (sidecarRel, meta, doc, { body = '<main><h1>x</h1></main>', onDisk = body, status = 'clean' } = {}) => {
+  const output = { path: `stardust/encoded/${doc}`, sha: sha(body) };
+  manifest[output.path] = output.sha;
+  put(join(M2, sidecarRel), `${JSON.stringify({ ...meta, encode: { map: { template: 'tours' }, output }, audit: { encode: { status } } }, null, 2)}\n`);
+  if (onDisk !== null) put(join(root2, output.path), onDisk);
+};
+put(join(M2, 'tours/index.html'), '<html><body><main><p>A render</p></main></body></html>\n');
+enc('tours/_meta.json', { slug: 'tours', type: 'tour', renderBranch: 'A', template: null, fidelityTier: 'archetype' }, 'tours/index.html');
+put(join(root2, 'content/tours/index.html'), '<main><h1>Tours</h1></main>\n');
+enc('tours/north/_meta.json', sib('tours-north'), 'tours/north.html');
+put(join(root2, 'content/tours/north.html'), '<main><h1>North</h1></main>\n');
+enc('tours/south/_meta.json', sib('tours-south'), 'tours/south/index.html');
+put(join(M2, 'tours/east/index.html'), '<html><body><main><p>clone</p></main></body></html>\n');
+enc('tours/east/_meta.json', sib('tours-east'), 'tours/east.html');
+put(join(root2, 'content/tours/east.html'), '<main><h1>East</h1></main>\n');
+put(join(M2, 'tours/west/index.html'), '<html><body><main><p>clone</p></main></body></html>\n');
+put(join(M2, 'tours/west/_meta.json'), `${JSON.stringify({ ...sib('tours-west'), encode: null, audit: null }, null, 2)}\n`);
+enc('tours/held/_meta.json', sib('tours-held'), 'tours/held.html', { status: 'variance' });
+enc('tours/edited/_meta.json', sib('tours-edited'), 'tours/edited.html', { onDisk: '<main><h1>edited by hand</h1></main>' });
+put(join(root2, 'content/tours/edited.html'), '<main><h1>Edited</h1></main>\n');
+enc('tours/gone/_meta.json', sib('tours-gone'), 'tours/gone.html', { onDisk: null });
+// a source URL with unsanitised segments: migrate keeps About_Us/_meta.json, the encoder and stage-content use the eds-path form
+enc('About_Us/_meta.json', sib('about-us'), 'about-us.html', { status: 'variance' });
+put(join(root2, 'content/about-us.html'), '<main><h1>About</h1></main>\n');
+put(join(root2, 'stardust/import/tours/manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
+// The lint stub: a P0 for a file under stardust/migrated/ (a clone has no <h1>), clean for anything else.
+put(LINT2, `const a = process.argv; const file = a[a.indexOf('--file') + 1];
+console.log(\`delivery-lint \${file}\`);
+if (file.includes('stardust/migrated/')) { console.log('  P0 h1  expected exactly one <h1>, found 0'); console.log('\\n1 P0 · 0 P1 · 1 P2'); process.exit(1); }
+console.log('\\n0 P0 · 0 P1 · 0 P2');\n`);
+mkdirSync(BG2, { recursive: true });
+const job2 = (name, args, log, min) => {
+  writeFileSync(join(BG2, `${name}.json`), JSON.stringify({ name, cmd: 'node', args, cwd: root2, timeoutSec: 900, slots: 3, queuedAt: iso(min), wrapperPid: 4242, launchedAt: iso(min + 0.1), endedAt: iso(min + 1), exit: 0, timedOut: false }, null, 1));
+  writeFileSync(join(BG2, `${name}.log`), `${log}\n`);
+};
+job2('media-7', ['stardust/scripts/rollout/media-reconcile.mjs', '--file', 'content/tours/north.html'], 'media-reconcile content/tours/north.html\n\n3 keep', 1);
+job2('media-8', ['stardust/scripts/rollout/media-reconcile.mjs', '--file', 'stardust/encoded/tours/south/index.html'], 'media-reconcile\n\n2 keep · 1 omit', 2);
+const run2 = (...args) => { const r = spawnSync(process.execPath, [SCRIPT, '--lint', LINT2, ...args], { cwd: root2, encoding: 'utf8' }); return { code: r.status, out: r.stdout, err: r.stderr }; };
+const meta2 = (rel) => json(join(M2, rel));
+const enc1 = run2();
+check('an encoded page is linted on its delivered content file, else on its encoded document — never on a clone (a sibling over a leftover clone included); the evidence names the file', () => {
+  assert.equal(enc1.code, 0, enc1.err);
+  const north = meta2('tours/north/_meta.json'); const south = meta2('tours/south/_meta.json'); const east = meta2('tours/east/_meta.json');
+  assert.equal(north.gateEvidence['delivery-lint'], '0 P0 · 0 P1 · 0 P2 (delivery-lint --file content/tours/north.html --path /tours/north)');
+  assert.equal(south.gateEvidence['delivery-lint'], '0 P0 · 0 P1 · 0 P2 (delivery-lint --file stardust/encoded/tours/south/index.html --path /tours/south)');
+  assert.equal(east.gateEvidence['delivery-lint'], '0 P0 · 0 P1 · 0 P2 (delivery-lint --file content/tours/east.html --path /tours/east)', 'the clone beside it would fail P0');
+  for (const m of [north, south, east]) assert.ok(m.gatesPassed.includes('delivery-lint'), m.slug);
+  assert.equal(meta2('tours/edited/_meta.json').gateEvidence['delivery-lint'], '0 P0 · 0 P1 · 0 P2 (delivery-lint --file content/tours/edited.html --path /tours/edited)', 'the delivered file decides, whatever the encode');
+  const about = meta2('About_Us/_meta.json');
+  assert.equal(about.gateEvidence['delivery-lint'], '0 P0 · 0 P1 · 0 P2 (delivery-lint --file content/about-us.html --path /about-us)', 'the staged file (content/<encoded path>), though the page stopped');
+  assert.equal('media-reconcile' in about.gateEvidence, false, 'delivered as content/about-us.html (never content/About_Us.html): media-reconcile is no n/a');
+});
+check('the archetype and a clone page (sidecar encode: null) keep today\'s subject, the migrated HTML', () => {
+  assert.equal(meta2('tours/_meta.json').gateEvidence['delivery-lint'], 'FAIL: 1 P0 · 0 P1 · 1 P2 (delivery-lint --path /tours)', 'deploy converts the archetype from its migrated HTML; it is never staged');
+  assert.equal(meta2('tours/west/_meta.json').gateEvidence['delivery-lint'], 'FAIL: 1 P0 · 0 P1 · 1 P2 (delivery-lint --path /tours/west)');
+});
+check('an encoded page with no delivered file and no current encoded document is not linted: a stopped page, a document gone — one note each', () => {
+  for (const s of ['held', 'gone']) assert.equal('delivery-lint' in meta2(`tours/${s}/_meta.json`).gateEvidence, false, s);
+  assert.match(enc1.err, /^gate-evidence: tours-held: delivery-lint skipped — no delivered content file \(content\/tours\/held\.html\) and stardust\/encoded\/tours\/held\.html is not a current encode \(stopped: .+\)$/m, enc1.err);
+  assert.match(enc1.err, /^gate-evidence: tours-gone: delivery-lint skipped — no delivered content file \(content\/tours\/gone\.html\) and stardust\/encoded\/tours\/gone\.html is not a current encode \(missing: .+\)$/m, enc1.err);
+  assert.equal(enc1.err.split('\n').filter(Boolean).length, 2, enc1.err);
+});
+check('the delivered signal is unchanged (media-reconcile n/a until the content file exists); a job on the content file or the encoded document is the encoded page\'s', () => {
+  assert.equal(meta2('tours/north/_meta.json').gateEvidence['media-reconcile'], '3 keep (media-7.log)');
+  assert.equal(meta2('tours/south/_meta.json').gateEvidence['media-reconcile'], 'n/a: no delivered content file yet (content/tours/south.html) — media-reconcile runs in the delivery chain (row C) — latest run 2 keep · 1 omit (media-8.log) is advisory until then');
+  const rows = Object.fromEntries(JSON.parse(run2('--dry-run', '--json').out).map((r) => [r.slug, r]));
+  assert.equal(rows['tours-south'].delivered, false); assert.equal(rows['tours-south'].missing.includes('media-reconcile'), false);
+  assert.equal(rows['tours-north'].delivered, true); assert.equal(rows['tours-north'].missing.includes('media-reconcile'), false, 'passed');
+  assert.equal(rows['tours-west'].missing.includes('media-reconcile'), false, 'not delivered either');
+  assert.equal(rows['about-us'].delivered, true, 'an encoded page is delivered at its eds-path content file (stage-content\'s), not at the source URL\'s literal path');
+  assert.ok(rows['about-us'].missing.includes('media-reconcile'), 'so --check requires media-reconcile on it');
+  const north = { slug: 'tours-north', outputPath: 'tours/north/index.html', encoded: { files: [join(root2, 'stardust/encoded/tours/north.html'), join(root2, 'content/tours/north.html')] } };
+  const west = { slug: 'tours-west', outputPath: 'tours/west/index.html' };
+  const lj = (file) => ({ kind: 'delivery-lint', name: 'lint-1', instArgs: ['--file', file], cwd: root2 });
+  assert.equal(attribute(lj('content/tours/north.html'), north, { migrated: M2 }), true);
+  assert.equal(attribute(lj('stardust/encoded/tours/north.html'), north, { migrated: M2 }), true);
+  assert.equal(attribute(lj('stardust/migrated/tours/west/index.html'), west, { migrated: M2 }), true, 'a clone page by its migrated file, as before');
+  assert.equal(attribute(lj('stardust/migrated/tours/north/index.html'), north, { migrated: M2 }), false, 'an encoded page has no clone for a job to name');
+  assert.equal(attribute(lj('content/tours/north.html'), west, { migrated: M2, pages: [north, west] }), false);
+});
+check('progress.json: an encoded sibling records its encoded document (migrated null); a clone sibling as before', () => {
+  const s = json(join(root2, 'stardust/replica/progress.json')).siblings;
+  assert.equal(s['tours-north'].migrated, null); assert.equal(s['tours-north'].encoded, 'stardust/encoded/tours/north.html');
+  assert.equal(s['tours-west'].migrated, 'stardust/migrated/tours/west/index.html'); assert.equal('encoded' in s['tours-west'], false);
+  assert.equal(json(join(root2, 'stardust/replica/progress.json')).migrate.pages, 9);
+});
+check('without a resolvable --lint an encoded page takes delivery-lint jobs on its own files only — a job on its would-be clone path is no one\'s', () => {
+  const missing = ['--lint', join(root2, 'missing-lint.mjs'), '--slug', 'tours-north', '--dry-run', '--json'];
+  job2('lint-c', ['stardust/scripts/rollout/delivery-lint.mjs', '--file', 'stardust/migrated/tours/north/index.html'], 'delivery-lint stardust/migrated/tours/north/index.html\n\n1 P0 · 0 P1 · 0 P2', 10);
+  let row = JSON.parse(run2(...missing).out)[0];
+  assert.equal(row.deliveryLint, null);
+  job2('lint-d', ['stardust/scripts/rollout/delivery-lint.mjs', '--file', 'content/tours/north.html'], 'delivery-lint content/tours/north.html\n\n0 P0 · 0 P1 · 1 P2', 11);
+  row = JSON.parse(run2(...missing).out)[0];
+  assert.equal(row.deliveryLint, '0 P0 · 0 P1 · 1 P2'); assert.equal(row.gateEvidence['delivery-lint'], '0 P0 · 0 P1 · 1 P2 (lint-d.log)');
+  // named after the page, but run on its would-be clone: the name fallback must not hand it over
+  job2('tours-north-lint', ['stardust/scripts/rollout/delivery-lint.mjs', '--file', 'stardust/migrated/tours/north/index.html'], 'delivery-lint stardust/migrated/tours/north/index.html\n\n1 P0 · 0 P1 · 0 P2', 12);
+  row = JSON.parse(run2(...missing).out)[0];
+  assert.equal(row.gateEvidence['delivery-lint'], '0 P0 · 0 P1 · 1 P2 (lint-d.log)', 'the newer clone-path job is no one\'s');
+  const north = { slug: 'tours-north', outputPath: 'tours/north/index.html', encoded: { files: [join(root2, 'stardust/encoded/tours/north.html'), join(root2, 'content/tours/north.html')] } };
+  const ctx = { migrated: M2, pages: [north], slugs: ['tours-north'] };
+  const named = (file) => ({ kind: 'delivery-lint', name: 'tours-north-lint', instArgs: ['--file', file], cwd: root2 });
+  assert.equal(attribute(named('stardust/migrated/tours/north/index.html'), north, ctx), false);
+  assert.equal(attribute(named('elsewhere.html'), north, ctx), true, 'the name fallback still serves an encoded page when no argument names a page file');
+});
+rmSync(root2, { recursive: true, force: true });
+
+// ---- C14 (B12): an encoded sibling's local harness launches ------------------------------------------------------
+// One encoded template (a map emitting block:cards, its block code, the archetype's passedOn under the current harness
+// key): a sibling the archetype's shape covers (no runs), one with a new shape (cards ×4, no runs), one with the same
+// new shape and its own runs, a covered one whose own qa-gate run failed, a stopped one, a hand-edited one, a clone
+// sibling, and three delivered content files (identical to the encode, never staged and differing, differing with a
+// passing content-diff run). Pages built with migrate's provenance and shape readers; the audit carries the encoder's
+// L5 counts where given.
+const root3 = realpathSync(mkdtempSync(join(tmpdir(), 'gate-evidence-c14-')));
+const M3 = join(root3, 'stardust/migrated'); const BG3 = join(root3, 'stardust/.work/replica/bg'); const A3 = 'trip-a';
+const html3 = (n) => `<body><header></header><main><div><h1>Trip</h1><div class="cards">${'<div><div><img src="/x.jpg" alt=""></div><div><p>Card</p></div></div>'.repeat(n)}</div></div></main><footer></footer></body>\n`;
+put(join(root3, `stardust/import/${A3}/vocabulary.json`), JSON.stringify({ root: 'main', markers: [{ sel: '.mod-cards', kind: 'cards', emitter: 'block:cards' }] }));
+put(join(root3, 'blocks/cards/cards.js'), 'export default function decorate() {}\n');
+put(join(root3, 'lint-stub.mjs'), "console.log('\\n0 P0 · 0 P1 · 0 P2');\n");
+const keys3 = { encoder: encoderKey(), map: mapKey(root3, A3) }; const manifest3 = {};
+const counts3 = { heading: { capture: 1, missing: 0 }, link: { capture: 0, missing: 0 }, image: { capture: 2, missing: 0 }, text: { capture: 3, missing: 0 } };
+const page3 = (slug, rows, archetype = false, audit = { incomplete: [], count: { counts: counts3, extra: 0, tolerated: 0 } }) => {
+  const doc = `stardust/encoded/trips/${slug}.html`; manifest3[doc] = sha(html3(rows)); put(join(root3, doc), html3(rows));
+  if (archetype) put(join(M3, `trips/${slug}.html`), '<html><body><main><h1>Trip</h1></main></body></html>\n');
+  put(join(M3, `trips/${slug}._meta.json`), `${JSON.stringify({ slug, renderBranch: archetype ? 'A' : "A'", fidelityTier: archetype ? 'archetype' : 'sibling', template: archetype ? null : A3, archetypeSource: archetype ? null : A3, variants: [],
+    encode: { encoder: keys3.encoder, map: keys3.map, inputs: {}, output: { path: doc, sha: sha(html3(rows)) }, encodedAt: '2026-10-01T00:00:00Z' }, audit: { encode: { status: 'clean', ...audit, shape: shapeOf(html3(rows)) } } }, null, 2)}\n`);
+};
+page3(A3, 2, true); page3('trip-b', 2); page3('trip-c', 4, false, { incomplete: [] }); page3('trip-d', 4); page3('trip-f', 2); page3('trip-g', 2, false, { status: 'incomplete', incomplete: [{ role: 'text', text: 'Lost' }] }); page3('trip-h', 2);
+// delivered content files — one byte-identical to the encode (staged or adopted), one that lost a paragraph and
+// was never staged, one that differs but has a passing content-diff run
+for (const slug of ['trip-i', 'trip-j', 'trip-k']) page3(slug, 2);
+put(join(root3, 'content/trips/trip-i.html'), html3(2));
+for (const slug of ['trip-j', 'trip-k']) put(join(root3, `content/trips/${slug}.html`), html3(2).replace('<h1>Trip</h1>', '<h1>Trip</h1><p>Only on the delivered page</p>').replace('<p>Card</p>', ''));
+put(join(root3, 'stardust/encoded/trips/trip-h.html'), html3(2).replace('<p>Card</p>', '<p>Edited by hand</p>'));
+put(join(M3, 'trips/trip-e.html'), '<html><body><main><h1>Clone</h1></main></body></html>\n');
+put(join(M3, 'trips/trip-e._meta.json'), `${JSON.stringify({ slug: 'trip-e', renderBranch: "A'", fidelityTier: 'sibling', template: A3, archetypeSource: A3, variants: [], encode: null, audit: null }, null, 2)}\n`);
+put(join(root3, `stardust/import/${A3}/manifest.json`), `${JSON.stringify(manifest3, null, 2)}\n`);
+const archSide = join(M3, `trips/${A3}._meta.json`);
+const passOn = (key) => put(archSide, `${JSON.stringify({ ...json(archSide), passedOn: { key, shapes: [{ slug: A3, shape: shapeOf(html3(2)) }] } }, null, 2)}\n`);
+const k3 = (await harnessKey(root3, A3)).key; passOn(k3);
+mkdirSync(BG3, { recursive: true });
+const job3 = (name, args, min, exit = 0, log = `exit ${exit}`) => {
+  writeFileSync(join(BG3, `${name}.json`), JSON.stringify({ name, cmd: 'node', args, cwd: root3, timeoutSec: 900, slots: 3, queuedAt: iso(min), wrapperPid: 4242, launchedAt: iso(min + 0.1), endedAt: iso(min + 1), exit, timedOut: false }, null, 1));
+  writeFileSync(join(BG3, `${name}.log`), `${log}\n`);
+};
+job3('d-schema', ['stardust/scripts/deploy/section-schema.mjs', `${PUBLISHED}/trips/trip-d`, '--out', 'stardust/eds-schema/trip-d.json'], 1);
+job3('d-rt', ['stardust/scripts/deploy/block-roundtrip.mjs', `${PUBLISHED}/trips/trip-d`, 'content/trips/trip-d.html', '--ew'], 2);
+job3('d-rt-cards', ['stardust/scripts/deploy/block-roundtrip.mjs', `${PUBLISHED}/trips/trip-d`, 'content/trips/trip-d.html', '--blocks', 'cards'], 3, 2);
+job3('d-qa', ['stardust/scripts/deploy/qa-gate.mjs', 'http://localhost:3000/stardust/.work/harness/page.html', '--schema', 'stardust/eds-schema/trip-d.json'], 4, 1);
+job3('f-qa', ['stardust/scripts/deploy/qa-gate.mjs', 'http://localhost:3000/stardust/.work/harness/page.html', '--schema', 'stardust/eds-schema/trip-f.json'], 5, 1);
+job3('d-cd', ['stardust/scripts/diff/content-diff.mjs', `${PUBLISHED}/trips/trip-d`], 6, 0, 'Findings: 2 (1 structural 🔴)');
+job3('f-cd', ['stardust/scripts/diff/content-diff.mjs', `${PUBLISHED}/trips/trip-f`], 7, 0, 'Findings: none — content + roles match');
+job3('k-cd', ['stardust/scripts/diff/content-diff.mjs', `${PUBLISHED}/trips/trip-k`], 8, 0, 'Findings: none — content + roles match');
+const run3 = (...args) => { const r = spawnSync(process.execPath, [SCRIPT, '--lint', join(root3, 'lint-stub.mjs'), ...args], { cwd: root3, encoding: 'utf8' }); return { code: r.status, out: r.stdout, err: r.stderr }; };
+const meta3 = (slug) => json(join(M3, `trips/${slug}._meta.json`));
+const HARNESS3 = ['section-schema', 'block-roundtrip', 'qa-gate'];
+const ev3 = (slug) => HARNESS3.map((g) => meta3(slug).gateEvidence[g]);
+const c14a = run3('--check');
+check('C14 skip rule: a sibling with no local runs inherits the launches when passedOn under the current key covers its shape', () => {
+  assert.equal(c14a.code, 2, c14a.err);
+  const line = `inherited from ${A3} (C14): covered by passedOn under ${k3.slice(0, 19)}… (${A3})`;
+  assert.deepEqual(ev3('trip-b'), [line, line, line]);
+  assert.ok(HARNESS3.every((g) => meta3('trip-b').gatesPassed.includes(g)));
+  assert.doesNotMatch(c14a.out, /^trip-b: missing [^\n]*(section-schema|block-roundtrip|qa-gate)/m, 'required, and not missing');
+});
+check('C14: a new shape with no local runs stays OPEN, required, naming the shape gap; the page\'s own runs decide where they exist (a failing one is never covered)', () => {
+  const gap = 'no local section-schema run, and C14 does not cover it — shape not covered: "cards" has 4 rows (exercised 2)';
+  assert.equal(meta3('trip-c').gateEvidence['section-schema'], `OPEN: ${gap}`);
+  assert.equal(meta3('trip-c').gateEvidence['block-roundtrip'], `OPEN: ${gap.replace('section-schema', 'block-roundtrip --ew')}`);
+  assert.match(c14a.out, /^trip-c: missing (.*, )?section-schema, block-roundtrip, qa-gate$/m);
+  assert.deepEqual(ev3('trip-d'), ['ran: section-schema exit 0 (d-schema.log)', 'ran: block-roundtrip --ew exit 0 (d-rt.log)', 'FAIL: qa-gate exit 1 (d-qa.log)'], 'the per-block round-trip (--blocks) is no whole-page evidence');
+  assert.match(c14a.out, /^trip-d: missing (.*, )?qa-gate$/m);
+  assert.deepEqual(ev3('trip-f').map((e) => e.split(':')[0]), ['inherited from trip-a (C14)', 'inherited from trip-a (C14)', 'FAIL'], 'a covered page whose own qa-gate failed keeps the FAIL');
+});
+check('C14: the archetype and a clone sibling behave as before — no harness gate derived or required', () => {
+  for (const s of [A3, 'trip-e']) assert.deepEqual(HARNESS3.filter((g) => g in meta3(s).gateEvidence), [], s);
+  const rows = Object.fromEntries(JSON.parse(run3('--dry-run', '--json').out).map((r) => [r.slug, r]));
+  assert.deepEqual(rows['trip-e'].missing.filter((g) => HARNESS3.includes(g)), []);
+  assert.deepEqual(rows[A3].missing, []);
+});
+check('an encoded sibling\'s current clean encode passes content-count on the encoder\'s L5 count; a content-diff run shows beside it and its OPEN wins; a stopped encode and a clone as before', () => {
+  const doc = (slug) => `audit.encode (stardust/encoded/trips/${slug}.html)`;
+  assert.equal(meta3('trip-b').gateEvidence['content-count'], `encoder L5: 0 MISSING (h 1/1 · links 0/0 · images 2/2 · text 3/3) — ${doc('trip-b')}`);
+  assert.ok(meta3('trip-b').gatesPassed.includes('content-count'));
+  assert.equal(meta3('trip-c').gateEvidence['content-count'], `encoder L5: 0 MISSING — ${doc('trip-c')}`, 'no counts recorded: the shorter line');
+  assert.equal(meta3('trip-f').gateEvidence['content-count'], `encoder L5: 0 MISSING (h 1/1 · links 0/0 · images 2/2 · text 3/3) — ${doc('trip-f')}; content-diff: none — content + roles match (f-cd.log)`);
+  assert.equal(meta3('trip-d').gateEvidence['content-count'], 'OPEN: content-diff: 2 (1 structural 🔴) (d-cd.log)', 'the content-diff OPEN wins');
+  assert.match(c14a.out, /^trip-d: missing [^\n]*content-count/m);
+  assert.equal('content-count' in meta3('trip-g').gateEvidence, false, 'a stopped encode earns nothing from the encoder');
+  assert.match(c14a.out, /^trip-g: missing [^\n]*content-count/m);
+  assert.equal('content-count' in meta3('trip-h').gateEvidence, false, 'nor does a hand-edited document under a clean status (not the current encode)');
+  for (const s of [A3, 'trip-e']) assert.equal('content-count' in meta3(s).gateEvidence, false, `${s}: as before`);
+});
+check('the encoder\'s count stands for the delivered document only while it is absent or byte-identical to the encode; a differing one is OPEN, a content-diff pass still stands', () => {
+  assert.equal(meta3('trip-i').gateEvidence['content-count'], 'encoder L5: 0 MISSING (h 1/1 · links 0/0 · images 2/2 · text 3/3) — audit.encode (stardust/encoded/trips/trip-i.html)', 'identical: staged or adopted');
+  assert.equal(meta3('trip-j').gateEvidence['content-count'], 'OPEN: content/trips/trip-j.html is not the current encode (stardust/encoded/trips/trip-j.html) — re-stage it, or run content-diff on the delivered page');
+  assert.equal(meta3('trip-j').gatesPassed.includes('content-count'), false);
+  assert.match(c14a.out, /^trip-j: missing [^\n]*content-count/m);
+  assert.equal(meta3('trip-k').gateEvidence['content-count'], 'content-diff: none — content + roles match (k-cd.log)', 'the content-diff run on the delivered page decides, without the encoder\'s line');
+  assert.equal(meta3('trip-b').gateEvidence['content-count'].startsWith('encoder L5: 0 MISSING'), true, 'no content file yet: the encoder\'s count stands');
+});
+put(join(root3, 'blocks/cards/cards.css'), '.cards { display: grid; }\n');
+const k3b = (await harnessKey(root3, A3)).key;
+check('C14: a block edit moves the harness key — the inherited gates turn OPEN naming the keys, read stale, and come back only under a pass recorded with the new key', () => {
+  assert.notEqual(k3b, k3);
+  const r = run3('--check');
+  assert.equal(r.code, 2);
+  assert.equal(meta3('trip-b').gateEvidence['qa-gate'], `OPEN: no local qa-gate run, and C14 does not cover it — the harness key moved since the recorded pass (${k3.slice(0, 19)}… → ${k3b.slice(0, 19)}…)`);
+  assert.match(r.out, /^trip-b: stale section-schema, block-roundtrip, qa-gate — /m);
+  passOn(k3b);
+  const again = run3('--check');
+  assert.equal(meta3('trip-b').gateEvidence['qa-gate'], `inherited from ${A3} (C14): covered by passedOn under ${k3b.slice(0, 19)}… (${A3})`);
+  assert.doesNotMatch(again.out, /^trip-b: stale/m); assert.doesNotMatch(again.out, /^trip-b: missing [^\n]*(section-schema|block-roundtrip|qa-gate)/m);
+});
+rmSync(root3, { recursive: true, force: true });
 
 rmSync(root, { recursive: true, force: true });
 

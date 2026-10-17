@@ -1,0 +1,5 @@
+{
+  "templates": [
+    { "id": "trip", "representativeSlug": "trips-river-walk", "pages": ["trips-forest-loop", "trips-river-walk"], "pageCount": 2, "blocks": ["facts", "hero", "links", "tabs", "tags", "teaser"] }
+  ]
+}

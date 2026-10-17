@@ -1,0 +1,5 @@
+{
+  "guide-cards": { "origin": ".x-cards__item", "build": ".cards > div", "n": 2, "required": true, "pages": [], "templates": ["guide"] },
+  "guide-faq": { "origin": ".x-faq__entry", "build": ".faq > div", "n": 1, "required": false, "pages": ["guides-alpha"], "templates": [] },
+  "home-rail": { "origin": ".x-rail__item", "build": ".rail > div", "n": 3, "required": true, "pages": ["home"], "templates": ["home"] }
+}

@@ -11,6 +11,28 @@
  * Idempotent + incremental: existing delivery status is preserved. When a page's
  * migrated HTML changed (sourceHash differs) after it was already deployed/verified,
  * it is re-flagged `stale` so the delivery loop re-delivers just that page.
+ * The read-modify-write runs under update-coverage.mjs's lock (`<out>/.coverage.lock`,
+ * taken before the prior coverage is read, released at exit), so a status a cluster
+ * records meanwhile is never lost.
+ *
+ * Encoded pages: a sidecar whose `encode.output.path` names the encoder's document
+ * (`stardust/encoded/<da-path>.html`, resolved from the project that holds
+ * stardust/migrated, else the cwd) is a page even with no HTML beside it — row 2 drops
+ * the clone for an encoded template. Its row has the same shape, built from the sidecar:
+ * `path` and `source.encodedHtml` from that document (`source.migratedHtml` null);
+ * `sourceHash` is the current clean encode's sha (migrate's encode/provenance.mjs
+ * currentEncode decides), so a re-encode with new bytes marks a delivered page `stale`.
+ * A page whose encode is not current (stopped, a hand-edited or stale document, a
+ * document gone) keeps its last clean encode's sha (`encode.output.sha`) — never
+ * re-flagged on that alone — and the `Not current` line names it. A sibling whose clone
+ * is still on disk is listed once, as encoded (deploy stages its encoded document) while
+ * its encode is clean — stopped, it is the A′ exception and keeps its clone row; the
+ * template's archetype keeps its migrated-HTML row (deploy converts it from that HTML
+ * and never stages it). An encoded page's prior `content-pending` becomes `pending`; any
+ * other status a `--state` roster row carried (update-coverage.mjs recorded `deployed`)
+ * stays — the roster row's hash was never the document's. Both rules are migrate's
+ * (encode/provenance.mjs encodedPageOf, currentEncode), loaded only when a sidecar
+ * records an encode; without that file beside this script such a run exits 1.
  *
  * Phase 1 scope: pages + template grouping only. Block dedup (blocks.json) is a
  * first-class step deferred to Phase 2 — see notes/rollout/PLAN.md § 8.
@@ -51,6 +73,8 @@ import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync, statSy
 import { createHash } from 'node:crypto';
 import { join, dirname, relative, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { pathToFileURL } from 'node:url';
+import { acquireLock } from './lib.mjs';
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
@@ -103,6 +127,25 @@ function sidecarFor(relHtml) {
   return dir === '.' ? name : join(dir, name);
 }
 
+/** The HTML a sidecar sits beside (_meta.json -> index.html; x._meta.json -> x.html), or null for another file. */
+function htmlFor(relSidecar) {
+  const leaf = basename(relSidecar);
+  const name = leaf === '_meta.json' ? 'index.html' : leaf.endsWith('._meta.json') ? `${leaf.slice(0, -'._meta.json'.length)}.html` : null;
+  if (!name) return null;
+  const dir = dirname(relSidecar);
+  return dir === '.' ? name : join(dir, name);
+}
+
+/** Recursively collect the _meta.json sidecars under dir, skipping the assets/ bundle (as walkHtml does). */
+function walkSidecars(dir, root = dir, acc = []) {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (entry.name.startsWith('.')) continue;
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) { if (entry.name !== 'assets') walkSidecars(full, root, acc); } else if (htmlFor(entry.name)) acc.push(relative(root, full));
+  }
+  return acc;
+}
+
 /** Delivered (extensionless) path on the EDS site for a migrated HTML rel path. */
 function deliveredPath(relHtml) {
   const noExt = relHtml.replace(/\.html$/, '');
@@ -145,6 +188,9 @@ const pagesPath = join(coverageDir, 'pages.json');
 const templatesPath = join(coverageDir, 'templates.json');
 const configPath = join(OUT, 'rollout.json');
 
+// update-coverage.mjs's lock for the same files (cluster writers record rows under it): taken before the first read,
+// released at exit, so a status recorded meanwhile is never lost.
+try { acquireLock(join(OUT, '.coverage')); } catch (e) { console.error(`rollout inventory: ${e.message}`); process.exit(1); }
 const priorPages = readJSON(pagesPath, { pages: [] });
 const priorBySlug = new Map((priorPages.pages || []).map((p) => [p.slug, p]));
 
@@ -155,11 +201,28 @@ const stateFile = STATE || (existsSync('stardust/state.json') ? 'stardust/state.
 const stateUrls = new Map((stateFile ? readJSON(stateFile, { pages: [] }).pages || [] : []).filter((p) => p && p.slug && p.url).map((p) => [p.slug, p.url]));
 const pages = [];
 
+// "Is this sidecar an encoded page?" and "is it the current clean encode?" are migrate's (encode/provenance.mjs
+// encodedPageOf, currentEncode), in either layout — loaded only when a sidecar records an encode output.
+// encode.output.path is project-relative: the project is the directory holding stardust/migrated, else the cwd.
+const sidecarFiles = walkSidecars(MIGRATED).sort();
+const encoder = await (async () => {
+  if (!sidecarFiles.some((rel) => typeof readJSON(join(MIGRATED, rel), {})?.encode?.output?.path === 'string')) return null;
+  const here = dirname(fileURLToPath(import.meta.url));
+  const f = [join(here, '..', '..', 'migrate', 'scripts', 'encode', 'provenance.mjs'), join(here, '..', 'migrate', 'encode', 'provenance.mjs')].find((x) => existsSync(x));
+  if (!f) {
+    console.error(`rollout inventory: sidecars under "${MIGRATED}" record an encode, but migrate's encode/provenance.mjs is not beside this script — copy the migrate scripts (stardust/scripts/migrate/) too.`);
+    process.exit(1);
+  }
+  return import(pathToFileURL(f).href);
+})();
+const PROJECT = (() => { const m = MIGRATED.replace(/[/\\]+$/, ''); return basename(m) === 'migrated' && basename(dirname(m)) === 'stardust' ? dirname(dirname(m)) : '.'; })();
+
 for (const relHtml of htmlFiles) {
   const absHtml = join(MIGRATED, relHtml);
   const sourceHash = sha256(readFileSync(absHtml));
   const sidecarRel = sidecarFor(relHtml);
   const meta = readJSON(join(MIGRATED, sidecarRel), {});
+  if (encoder && encoder.encodedPageOf(meta, { hasHtml: true })) continue; // an encoded sibling: listed below, from its sidecar
   const path = deliveredPath(relHtml);
   const slug = meta.slug || (path === '/' ? 'home' : path.replace(/^\//, ''));
 
@@ -193,14 +256,68 @@ for (const relHtml of htmlFiles) {
   });
 }
 
+// --- Encoded pages: the same row shape, from the sidecar and the encoded document (row 2 drops the clone) --------
+const notCurrent = [];
+const encodedTemplates = new Map(); // slug → the template its sidecar names (kept in --state mode)
+if (encoder) {
+  const htmlSet = new Set(htmlFiles);
+  const listed = new Set(pages.flatMap((p) => [`slug:${p.slug}`, `path:${p.path}`]));
+  const manifests = new Map();
+  for (const sidecarRel of sidecarFiles) {
+    const meta = readJSON(join(MIGRATED, sidecarRel), {});
+    const enc = encoder.encodedPageOf(meta, { hasHtml: htmlSet.has(htmlFor(sidecarRel)) });
+    if (!enc) continue;
+    const path = deliveredPath(enc.rel);
+    const slug = meta.slug || (path === '/' ? 'home' : path.replace(/^\//, ''));
+    if (listed.has(`slug:${slug}`) || listed.has(`path:${path}`)) continue;
+    listed.add(`slug:${slug}`).add(`path:${path}`);
+    const st = encoder.currentEncode({ root: PROJECT, sidecarPath: relative(PROJECT, join(MIGRATED, sidecarRel)).split(/[\\/]/).join('/'), manifests });
+    const lastClean = typeof meta.encode.output.sha === 'string' && /^sha256:[0-9a-f]{64}$/.test(meta.encode.output.sha) ? meta.encode.output.sha : null;
+    const sourceHash = st.ok ? st.sha : lastClean;
+    if (!st.ok) notCurrent.push(`${slug} (${st.kind})`);
+    // delivery carried by slug: content-pending → pending (the document exists now); a roster row's status stays (its
+    // hash was the roster's, never the document's); a delivered page whose document's bytes changed → stale
+    const prior = priorBySlug.get(slug);
+    let delivery = { status: 'pending', deployedUrl: null, deployedAt: null, verifiedAt: null, error: null };
+    if (prior && prior.delivery) {
+      const rosterRow = !prior.source || (!prior.source.migratedHtml && !prior.source.encodedHtml);
+      const changed = !rosterRow && sourceHash !== null && prior.source.sourceHash !== sourceHash;
+      if (prior.delivery.status === 'content-pending') delivery = { ...prior.delivery, status: 'pending' };
+      else if (changed && ['deployed', 'verified'].includes(prior.delivery.status)) delivery = { ...prior.delivery, status: 'stale' };
+      else delivery = prior.delivery;
+    }
+    const templateId = meta.template || (isArchetype(meta) ? slug : null) || meta.type || null;
+    encodedTemplates.set(slug, templateId);
+    pages.push({
+      slug,
+      path,
+      title: (meta.metadata && meta.metadata.title) || meta.slug || slug,
+      templateId,
+      source: {
+        migratedHtml: null,
+        encodedHtml: join(PROJECT, enc.docPath),
+        metaJson: join(MIGRATED, sidecarRel),
+        sourceHash,
+        sourceUrl: (meta.source && meta.source.url) || meta.sourceUrl || stateUrls.get(slug) || null,
+      },
+      blocks: Array.isArray(meta.modules) ? meta.modules : [],
+      delivery,
+    });
+  }
+}
+
 // --- Archetypes-only mode: merge content-pending siblings from state.json -------
 // In --state mode each migrated archetype is keyed by its own fine slug (the
 // archetypes are genuinely distinct templates that share only chrome). A roster
 // page's `type` names the archetype slug it clones; it joins that archetype's
 // template group as a `content-pending` sibling, inheriting the archetype's blocks
 // and pushing no document of its own.
+// An encoded sibling keeps the template its sidecar names (the archetype's slug)
+// and its roster entry is not listed again.
 if (STATE) {
   for (const p of pages) p.templateId = p.slug;
+  for (const p of pages) if (encodedTemplates.has(p.slug)) p.templateId = encodedTemplates.get(p.slug);
+  const encodedSlugs = new Set(encodedTemplates.keys());
   const archetypeBySlug = new Map(pages.map((p) => [p.slug, p]));
   const coveredPaths = new Set(pages.map((p) => p.path));
   const usedSlugs = new Set(pages.map((p) => p.slug));
@@ -209,6 +326,7 @@ if (STATE) {
     if (!sp || !sp.url) continue;
     const path = urlToDeliveredPath(sp.url);
     if (coveredPaths.has(path)) continue; // the archetype itself — already inventoried
+    if (encodedSlugs.has(sp.slug)) continue; // an encoded page, listed from its sidecar at its delivered (sanitised) path
     // A roster sibling names the archetype it clones via `representative` (preferred)
     // or its `type`; that archetype supplies the template grouping + block set.
     const rep = archetypeBySlug.get(sp.representative) || archetypeBySlug.get(sp.type) || null;
@@ -326,6 +444,7 @@ console.log('='.repeat(60));
 console.log(`Pages       ${counts.total} total · ${counts.verified} verified · ${counts.deployed} deployed · ${counts.pending} pending · ${counts.contentPending} content-pending · ${counts.stale} stale`);
 console.log(`Templates   ${templates.length} (${templates.map((t) => `${t.id}:${t.pageCount}`).join(', ')})`);
 if (kept.length) console.log(`Kept        ${kept.length} row(s) built outside the migrated tree (update-coverage.mjs --new), status untouched: ${kept.join(', ')}`);
+if (notCurrent.length) console.log(`Not current ${notCurrent.length} encoded page(s) — deploy stages none of them until each encodes clean; the row keeps the last clean encode's hash: ${notCurrent.join(', ')}`);
 const blockless = pages.filter((p) => p.source.metaJson && !p.blocks.length).length;
 if (blockless) console.log(`Blocks      modules[] empty on ${blockless}/${pages.length} sidecars — Phase B (blocks.mjs) dedups from them: fill each page's block ids (composite sections; title, text, image, button, separator are default content) and re-run the inventory`);
 const todo = pages.filter((p) => ['pending', 'stale', 'failed'].includes(p.delivery.status));

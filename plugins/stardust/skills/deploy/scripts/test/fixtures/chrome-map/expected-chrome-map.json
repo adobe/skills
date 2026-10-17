@@ -1,0 +1,56 @@
+{
+  "_provenance": {
+    "readArtifacts": [
+      "content/",
+      "stardust/current/pages/"
+    ],
+    "writtenBy": "stardust:deploy chrome-map.mjs"
+  },
+  "groups": {
+    "/": {
+      "footer": "/footer",
+      "footerFile": "content/footer.html",
+      "lang": "aa-XX",
+      "nav": "/nav",
+      "navFile": "content/nav.html",
+      "pages": [
+        "/",
+        "/xx/aa",
+        "/xx/aa/team"
+      ]
+    },
+    "/fr": {
+      "footer": "/fr/footer",
+      "footerFile": "content/fr/footer.html",
+      "lang": "fr-FR",
+      "nav": "/fr/nav",
+      "navFile": "content/fr/nav.html",
+      "pages": [
+        "/fr/",
+        "/fr/contact"
+      ]
+    },
+    "/ww/dd": {
+      "footer": "/footer-ww-dd",
+      "footerFile": "content/footer-ww-dd.html",
+      "lang": "dd-WW",
+      "nav": "/nav",
+      "navFile": "content/nav.html",
+      "pages": [
+        "/ww/dd/start"
+      ]
+    },
+    "/yy/bb": {
+      "footer": "/footer-yy-bb",
+      "footerFile": "content/footer-yy-bb.html",
+      "lang": "bb-YY",
+      "nav": "/nav-yy-bb",
+      "navFile": "content/nav-yy-bb.html",
+      "pages": [
+        "/yy/bb",
+        "/yy/bb/help",
+        "/yy/bb/team"
+      ]
+    }
+  }
+}

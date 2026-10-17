@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://stardust.dev/schemas/deploy-asset-ledger.schema.json",
+  "title": "stardust deploy/asset-ledger.json",
+  "description": "Documents (pdf, office files, …) the source site links, re-hosted into the code repository's docs/ by deploy/scripts/rehost-docs.mjs. Keyed by the absolute source URL (WHATWG form, no fragment), keys sorted; written under a lock, only when its bytes change. The sibling encoder rewrites a link whose absolute URL is a key to its path; a document link with no entry stays absolute and is reported in linksUnresolved. A failed fetch is never recorded.",
+  "type": "object",
+  "propertyNames": { "pattern": "^https?://[^#]+$" },
+  "additionalProperties": { "$ref": "#/$defs/entry" },
+  "$defs": {
+    "entry": {
+      "type": "object",
+      "required": ["path", "sha256", "bytes"],
+      "additionalProperties": false,
+      "properties": {
+        "path": { "type": "string", "pattern": "^/docs/[a-z0-9][a-z0-9-]*\\.[a-z0-9]+$", "description": "root-relative URL of the re-hosted copy, served from the code repository (docs/<file>)" },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "bytes": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

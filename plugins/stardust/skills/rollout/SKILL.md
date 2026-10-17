@@ -168,6 +168,10 @@ Walk `plan.json.steps` in order (representative pages first). For each page:
    as "awaiting content track." Their block code is already deployed via the
    archetype.
 
+   **Encoded pages** (`source.encodedHtml`, migrate's `stardust/encoded/`): no
+   convert — deploy's `stage-content.mjs` copies the document into `content/`
+   (deploy SKILL.md § Deploy, the Stage row), then steps 2–4 as for any page.
+
 2. **Static contract lint (pre-PUT, deterministic).** Before the push, run the
    delivery-contract linter — it catches the cheap, deterministic failures
    (wrapper, one-CTA-per-`<p>`, trailing-slash, path-safety, `/img/` src,
@@ -240,6 +244,10 @@ icon while `/favicon.ico` answered 200. **Archetype first, per template (#126):*
 template's archetype is deployed and passes its full gate row on the preview URL
 (`gate-all.mjs --only`, cap 3 fix rounds) before any of its siblings is rendered
 or converted — the recorded unit `C-archetype` (handoff contract § 3, row C).
+An encoded template's C-archetype also drafts and round-trips its map; its cluster
+unit is then the map plus the exceptions, and the main agent alone re-runs
+`inventory.mjs` and `plan.mjs` once the wave's clusters have encoded and staged (handoff contract § 3, row C;
+`skills/migrate/reference/importer-recipe.md` § Encoder contract).
 **Cluster sub-units (#134):** in C-deliver a template cluster of more than 16
 siblings is delivered as recorded sub-units `cluster-<template>-1..n` — at most
 16 pages each, near-equal, cut in sibling order, run one after another — each
@@ -248,7 +256,6 @@ commit and boundary ask; fix rounds (cap 3) and the `gate-all.mjs --only` scope
 are per sub-unit. Target: no C-deliver unit runs longer than 90 minutes
 (handoff contract § 3, row C). A fan-out subagent honours the pause file
 `STARDUST_PAUSE_FILE` (handoff contract § Fan-out discipline).
-
 **Execution model: waves.** Deliver in waves of parallel **author-only** agents
 — each agent curls its source pages and writes files only, never deploys or
 edits blocks — template clusters concurrently (non-overlapping pages),
@@ -529,7 +536,9 @@ the change on `finding.autofix`, and stages the finding `in-progress`:
 - **manual** (prepares guidance/payload) — `eds-jsonld` (use `marketing:schema`),
   `eds-canonical`, `eds-landmark-main`.
 
-Use `--dry-run` first. After applying, **re-deploy** the edited pages, then re-run
+Use `--dry-run` first. On an encoded page (`source.encodedHtml`) the fix goes into `stardust/patches/<slug>.json`
+or the map, re-encoded and re-staged — never into `content/` (the next stage refuses a hand edit). After applying,
+**re-deploy** the edited pages, then re-run
 **verify** + **optimize** — staged findings flip to `fixed`. `design-pass` findings
 are surfaced, not auto-fixed.
 
@@ -599,6 +608,7 @@ exits 0; otherwise it prints one gap per line.
 | Input | Source | Used for |
 |---|---|---|
 | `stardust/migrated/*.html` | `migrate` | the pages to deliver (read-only) |
+| `stardust/encoded/**/*.html` | `migrate` (`encode.mjs`) | an encoded sibling's delivered document — staged by deploy, never edited (read-only) |
 | `stardust/migrated/**/_meta.json` | `migrate` | `templateId` (`template`; an archetype with `template: null` groups under its own slug; else `type`), `blocks` (`modules` — the inventory report counts sidecars with an empty list: fill them before Phase B), `title` |
 | `stardust/state.json` | stardust core | *(archetypes-only mode)* full page roster + `type` for pages not yet migrated |
 | `stardust/rollout/rollout.json` | rollout / user | DA target coordinates |
@@ -621,7 +631,7 @@ exits 0; otherwise it prints one gap per line.
 
 `rollout` writes under `stardust/rollout/` and — only via `autofix-aem` — to the
 **EDS project** it delivers to. It never modifies the agnostic core, `state.json`,
-or `migrated/` — those are read-only inputs.
+`migrated/` or `encoded/` — those are read-only inputs.
 
 ## Dependencies (audit sources — referenced, not vendored)
 

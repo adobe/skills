@@ -1,0 +1,3 @@
+{
+  "https://example.com/files/guide.pdf": { "path": "/docs/guide.pdf", "sha256": "5d41402abc4b2a76b9719d911017c592ae0b5b9d0b8f1c6c2e9f2e8d4c3b2a10", "bytes": 1234 }
+}

@@ -1,0 +1,26 @@
+{
+  "media/guides/coast-9f8e7d6c.jpg": {
+    "contentUrl": "https://content.da.live/example-org/example-site/media/guides/coast-9f8e7d6c.jpg",
+    "file": "stardust/current/assets/coast-9f8e7d6c.jpg",
+    "size": 48211,
+    "source": null,
+    "sources": ["https://www.example.com/assets/slide-coast.jpg"],
+    "status": "uploaded"
+  },
+  "media/guides/forest-loop-0a1b2c3d.jpg": {
+    "contentUrl": "https://content.da.live/example-org/example-site/media/guides/forest-loop-0a1b2c3d.jpg",
+    "file": "stardust/current/assets/forest-loop-0a1b2c3d.jpg",
+    "size": 51876,
+    "source": null,
+    "sources": ["https://www.example.com/assets/IMG_2041.jpg"],
+    "status": "uploaded"
+  },
+  "media/guides/hero-trail-1a2b3c4d.jpg": {
+    "contentUrl": "https://content.da.live/example-org/example-site/media/guides/hero-trail-1a2b3c4d.jpg",
+    "file": "stardust/current/assets/hero-trail-1a2b3c4d.jpg",
+    "size": 90412,
+    "source": "https://www.example.com/assets/hero-trail.jpg",
+    "sources": ["https://www.example.com/assets/hero-trail.jpg", "https://www.example.com/assets/hero-trail.webp"],
+    "status": "uploaded"
+  }
+}

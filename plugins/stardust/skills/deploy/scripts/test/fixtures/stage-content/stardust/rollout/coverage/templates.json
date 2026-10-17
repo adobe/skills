@@ -1,0 +1,18 @@
+{
+  "templates": [
+    {
+      "id": "guide",
+      "representativeSlug": "guide-a",
+      "pages": [
+        "guide-a",
+        "guide-b",
+        "guide-c",
+        "guide-d",
+        "guide-e",
+        "guide-f",
+        "guide-g",
+        "guide-h"
+      ]
+    }
+  ]
+}

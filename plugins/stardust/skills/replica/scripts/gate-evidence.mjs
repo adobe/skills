@@ -57,10 +57,21 @@
  *   content-count       latest content-diff.mjs job for the page (`Findings: none …` or
  *                       `Findings: N (0 structural 🔴)`); when no such job exists, the newest
  *                       gate.sh --full round's `content-diff:` line; structural 🔴 > 0 → OPEN:
+ *                       An encoded sibling whose encoded document is the current clean encode was
+ *                       counted by the encoder (L5: a MISSING item stops it `incomplete`): that
+ *                       count passes the gate — `encoder L5: 0 MISSING (h a/b · links a/b · images
+ *                       a/b · text a/b) — audit.encode (<encoded document>)`, the counts from
+ *                       audit.encode.count when recorded — with a content-diff line, when there is
+ *                       one, after it; a FAIL/OPEN from that run wins. The count stands for the
+ *                       delivered document only while it is absent (before delivery) or byte-identical
+ *                       to the encoded document (staged or adopted); a content file that differs reads
+ *                       `OPEN: <content file> is not the current encode … — re-stage it, or run
+ *                       content-diff on the delivered page` (a content-diff pass still stands alone).
  *   media-reconcile     latest media-reconcile.mjs job whose counts line has no `omit` and no
  *                       `unresolved` (the instrument's own exit-1 rule); either → OPEN: — but only once
  *                       the page's DELIVERED content file exists (`<--content>/<da-path>.html`, or
- *                       `<da-path>/index.html`; the root page is `index.html`). Before that the gate is
+ *                       `<da-path>/index.html`; the root page is `index.html`; an encoded page's da-path
+ *                       is its encoded path, the eds-path stage-content writes). Before that the gate is
  *                       not required: the evidence reads `n/a: no delivered content file yet (<file>) —
  *                       media-reconcile runs in the delivery chain (row C)`, the sibling acceptance set
  *                       skips it, and a passing job still passes. A recorded run demanded it on
@@ -69,6 +80,17 @@
  *   delivery-lint       --lint run per page (`--file <html> --path </da/path>`), pass on
  *                       `0 P0 · 0 P1`; when --lint does not resolve, the latest delivery-lint.mjs
  *                       job for the page; P0/P1 → FAIL:
+ *                       An encoded page — its sidecar's `encode.output.path` names
+ *                       `stardust/encoded/<da-path>.html` (resolved from the project holding
+ *                       --migrated), on a sibling or on any page with no migrated HTML; the
+ *                       archetype is converted from its migrated HTML and stays as above — is
+ *                       linted on what is delivered: its content file once it exists (where
+ *                       stage-content writes it, `<--content>/<encoded path>`, else the one
+ *                       media-reconcile reads), else that encoded document while it is the current
+ *                       clean encode (migrate's encode/provenance.mjs decides), never on a migrated
+ *                       HTML (a clone failed P0 where the delivered document was clean). The line
+ *                       names the file: `(delivery-lint --file <f> --path </da/path>)`, the path
+ *                       from the encoded document; neither → a note, no evidence.
  *   variance-probe      siblings only: latest sibling-variance.mjs job that named this page's URL
  *                       or its archetype's. ONLY the page's own `■ <url>` line is evidence: 0 deltas
  *                       pass, deltas pass only with a declared `variants[]`, deltas with an empty
@@ -77,6 +99,19 @@
  *                       summary says.
  *   content-fidelity    NEVER added here — it is the agent's declaration
  *                       (`migrate.mjs gate <slug> content-fidelity --evidence …`)
+ *   section-schema, block-roundtrip, qa-gate
+ *                       an ENCODED sibling only (C14; clone pages and archetypes get none): its own
+ *                       local harness launches — the latest section-schema.mjs, whole-page
+ *                       block-roundtrip.mjs with the EW gate (no --blocks, no --no-ew) and qa-gate.mjs
+ *                       job: exit 0 → `ran: …`, another exit → FAIL:, a deadline → OPEN:. With no
+ *                       such job the gate is inherited only when its archetype's `passedOn` (migrate.mjs
+ *                       harness) under the CURRENT harness key holds the archetype's own pass and covers
+ *                       the page's current clean encode's
+ *                       shape (audit.encode.shape; migrate's encode/shape.mjs decides: the key, the
+ *                       coverage) — `inherited from <archetype> (C14): covered by passedOn under
+ *                       sha256:… (<pages>)` — else OPEN: naming why (the key moved, the shape not
+ *                       covered and how, no pass recorded, the encode not current). A key change
+ *                       re-arms: an inherited gate turns OPEN and reads stale under --check.
  *
  * The NEWEST ended job per page × instrument (× width) decides, and only a verdict can pass:
  *   • run-bg state `timedOut: true` or `exit 124` (the instrument's deadline) →
@@ -86,7 +121,8 @@
  *   • a sibling-variance probe with an exit other than 0 or 2 → the same `OPEN: no verdict`.
  *
  * Attribution: gate.sh by its slug argument; other instruments by an argument that names the page
- * (URL path, `<slug>-proposed.html`, a file resolved from the job's cwd). The job-name fallback
+ * (URL path, `<slug>-proposed.html`, its section schema `…/eds-schema/<slug>.json`, a file resolved from the job's
+ * cwd — for an encoded page its encoded document or its content file, never a migrated path). The job-name fallback
  * (`<slug>-…`) applies only when NO argument names ANY known page — a job whose arguments name
  * another page is that page's, whatever it was called.
  *
@@ -109,7 +145,8 @@
  *   --check      exit 2 when a sibling lacks a gate of the acceptance set: variance-probe,
  *                pixel-gate-<w> for EVERY --widths entry, delivery-lint, media-reconcile (only once
  *                the page's delivered content file exists — above), content-fidelity,
- *                content-count. The pixel gates belong to the set: a recorded
+ *                content-count; an encoded sibling also section-schema, block-roundtrip and
+ *                qa-gate (ran, or inherited under C14 — above). The pixel gates belong to the set: a recorded
  *                run published eleven siblings that had never been compared at 360, and they
  *                read 17–27 % against the ≤ 10 % bar on the published origin. Archetypes and
  *                thin pages are not held to this set here (their `missing` is always empty).
@@ -123,9 +160,10 @@
  * media=<…>  gates=<n>` (`/ovf+<px>` only when the round's overflow assert fired; `1440=INCONCLUSIVE` for an
  * inconclusive table row, `1440=—/Δ—` for a table row without a pixel measurement) — then
  * `gate-evidence: <n> pages, <n> sidecars updated`.
- * Exit 0; 1 usage error (a malformed sidecar or progress.json included, and a progress.json whose
- * top level is one archetype's record naming no archetype — below); 2 --check found a sibling short
- * of the acceptance set or a stale gate.
+ * Exit 0; 1 usage error (a malformed sidecar or progress.json included, a progress.json whose
+ * top level is one archetype's record naming no archetype — below — and sidecars that record an
+ * encode with no migrate encode/provenance.mjs beside this script; without encode/shape.mjs the C14
+ * gates stay OPEN); 2 --check found a sibling short of the acceptance set or a stale gate.
  *
  * Writes: each page's sidecar (`_meta.json` / `<name>._meta.json`): `gatesPassed[]` =
  * existing ∪ derived (existing first) and `gateEvidence{}` merged (derived lines overwrite
@@ -134,7 +172,7 @@
  * missing{<slug>: [<gates>]}} and `siblings{<slug>: {archetype, variants, pixel{<width>:
  * {pct, px, heightDelta, overflowX, verdict, label, regime}}, contentDiff, deliveryLint, media,
  * gatesPassed, migrated}}` (`overflowX`: px over the viewport, 0 when the assert ran clean,
- * null when the round predates it), other keys
+ * null when the round predates it; an encoded page: `migrated` null and `encoded` = its document), other keys
  * preserved. progress.json is read and parsed BEFORE the first sidecar is touched (a malformed
  * ledger aborts the run with nothing written). A ledger with no `types` map whose top level is one
  * archetype's record (`breakpoints`, or `pageType` + `archetype` — the old documented example) is
@@ -147,7 +185,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { listJobs, logPath } from './run-bg.mjs';
 
 export const DEFAULTS = { tables: 'stardust/replica/gates', migrated: 'stardust/migrated', bg: 'stardust/.work/replica/bg', progress: 'stardust/replica/progress.json', lint: 'stardust/scripts/rollout/delivery-lint.mjs', content: 'content', widths: [1440, 360], heightTolerance: null, heightBars: { prototype: 8, published: 0.05 } };
@@ -158,7 +196,13 @@ export const acceptanceFor = (widths) => ['variance-probe', ...widths.map((w) =>
 export const ACCEPTANCE = acceptanceFor(DEFAULTS.widths);
 // Instrument script → job kind. The instrument is the first cmd/arg token with one of these basenames
 // (a wrapper such as bash or run-capped may precede it); its own arguments follow.
-export const INSTRUMENTS = { 'gate.sh': 'pixel', 'content-diff.mjs': 'content-diff', 'media-reconcile.mjs': 'media-reconcile', 'delivery-lint.mjs': 'delivery-lint', 'sibling-variance.mjs': 'variance' };
+export const INSTRUMENTS = { 'gate.sh': 'pixel', 'content-diff.mjs': 'content-diff', 'media-reconcile.mjs': 'media-reconcile', 'delivery-lint.mjs': 'delivery-lint', 'sibling-variance.mjs': 'variance', 'section-schema.mjs': 'section-schema', 'block-roundtrip.mjs': 'block-roundtrip', 'qa-gate.mjs': 'qa-gate' };
+// The local harness launches (C14): an encoded sibling earns each from its own run, or inherits it from its archetype's
+// passedOn under the current harness key. block-roundtrip counts only as the whole-page run with the EW gate.
+export const HARNESS = ['section-schema', 'block-roundtrip', 'qa-gate'];
+const HARNESS_RUN = { 'section-schema': () => true, 'block-roundtrip': (j) => !j.instArgs.includes('--blocks') && !j.instArgs.includes('--no-ew'), 'qa-gate': () => true };
+// held to C14's gates: an encoded page that is not its template's archetype, a sibling by its tier
+export const c14Page = (page) => Boolean(page.encoded && !page.encoded.isArchetype && page.meta && page.meta.fidelityTier === 'sibling');
 const SELF = fileURLToPath(import.meta.url);
 const HERE = dirname(SELF);
 
@@ -210,8 +254,17 @@ const serialize = (data, indent, eol) => JSON.stringify(data, null, indent) + (e
 // Temp file + rename: a crash mid-write never leaves a half-written sidecar or ledger behind.
 function writeAtomic(file, text) { const tmp = `${file}.${process.pid}.tmp`; writeFileSync(tmp, text); renameSync(tmp, file); }
 
-export function findSidecars(migrated) {
+// The project an encoded path is relative to: the directory holding stardust/migrated, else the cwd.
+const projectOf = (migrated) => (basename(migrated) === 'migrated' && basename(dirname(migrated)) === 'stardust' ? dirname(dirname(migrated)) : process.cwd());
+// A sidecar that records an encode output (a migrate render leaves `encode: null`): only then is migrate's code loaded.
+export const recordsEncode = (meta) => typeof meta?.encode?.output?.path === 'string';
+
+// `encodedPageOf` (migrate's encode/provenance.mjs — the one "is this an encoded page?" rule) marks each encoded page:
+// `encoded` = { path (encode.output.path), file (absolute), rel (under stardust/encoded/) }; without it none is encoded.
+export function findSidecars(migrated, { encodedPageOf = null } = {}) {
   const out = [];
+  const project = projectOf(migrated);
+  const encodedOf = (meta, hasHtml) => { const e = encodedPageOf && encodedPageOf(meta, { hasHtml }); return e ? { path: e.docPath, file: join(project, e.docPath), rel: e.rel, archetype: e.archetype, isArchetype: e.isArchetype } : null; };
   const walk = (dir) => {
     for (const f of readdirSync(dir).sort()) {
       const p = join(dir, f);
@@ -219,7 +272,8 @@ export function findSidecars(migrated) {
       const html = sidecarHtml(p);
       if (!html) continue;
       const j = readJson(p);
-      out.push({ file: p, meta: j.data, text: j.text, indent: j.indent, eol: j.eol, slug: j.data.slug, htmlFile: join(dir, html), outputPath: relative(migrated, join(dir, html)).split(sep).join('/') });
+      const htmlFile = join(dir, html);
+      out.push({ file: p, meta: j.data, text: j.text, indent: j.indent, eol: j.eol, slug: j.data.slug, htmlFile, outputPath: relative(migrated, htmlFile).split(sep).join('/'), encoded: encodedOf(j.data, existsSync(htmlFile)) });
     }
   };
   if (existsSync(migrated)) walk(migrated);
@@ -265,24 +319,31 @@ const isUrl = (s) => /^https?:\/\//i.test(s);
 const urlPath = (s) => { try { return decodeURIComponent(new URL(s).pathname) || '/'; } catch { return null; } };
 
 // Does one argument name the page? A URL by its path, the prototype file `<slug>-proposed.html` (slug at a word
-// boundary, so `north` does not claim `tours-north-proposed.html`), or a file by where it resolves from the job's cwd.
+// boundary, so `north` does not claim `tours-north-proposed.html`), its section schema `…/eds-schema/<slug>.json`, or a
+// file by where it resolves from the job's cwd.
 export function argNamesPage(arg, page, job, migrated) {
   if (typeof arg !== 'string') return false;
   if (isUrl(arg)) { const p = urlPath(arg); return p !== null && pagePaths(page.outputPath).includes(p); }
   if (new RegExp(`(^|[^A-Za-z0-9_-])${escapeRe(page.slug)}-proposed\\.html`).test(arg)) return true;
+  if (new RegExp(`(^|[\\\\/])eds-schema[\\\\/]${escapeRe(page.slug)}\\.json$`).test(arg)) return true; // section-schema --out, qa-gate --schema
+  const at = resolve(job.cwd || process.cwd(), arg);
+  // an encoded page has no clone for a job to name: its encoded document and its content file are its files
+  if (page.encoded) return (page.encoded.files || [page.encoded.file]).includes(at);
   if (!migrated) return false;
-  return resolve(job.cwd || process.cwd(), arg) === resolve(migrated, page.outputPath);
+  return at === resolve(migrated, page.outputPath);
 }
 // The slug a job name `<slug>-…` belongs to: the LONGEST known slug that prefixes it (`tours-north-1440` is tours-north's, not tours').
 export function nameOwner(name, slugs) { return slugs.filter((s) => name.startsWith(`${s}-`)).sort((a, b) => b.length - a.length)[0] || null; }
 
 // gate.sh: its first argument IS the slug. Other instruments: an argument names the page. The job-name fallback is
 // the last resort and only when no argument names ANY known page (ctx.pages) — a job called `tours-north-lint` whose
-// --file is about/history.html is about-history's, not tours-north's.
+// --file is about/history.html is about-history's, not tours-north's; nor is one whose --file is the migrated path an
+// encoded tours-north has no clone at (that job checked a file that is not delivered).
 export function attribute(job, page, ctx = {}) {
   if (job.kind === 'pixel') return job.instArgs[0] === page.slug;
   if (job.instArgs.some((a) => argNamesPage(a, page, job, ctx.migrated))) return true;
   if ((ctx.pages || []).some((p) => p !== page && job.instArgs.some((a) => argNamesPage(a, p, job, ctx.migrated)))) return false;
+  if (page.encoded && ctx.migrated && job.instArgs.some((a) => typeof a === 'string' && !isUrl(a) && resolve(job.cwd || process.cwd(), a) === resolve(ctx.migrated, page.outputPath))) return false;
   return ctx.slugs ? nameOwner(job.name, ctx.slugs) === page.slug : job.name.startsWith(`${page.slug}-`);
 }
 // The regime a gate.sh round ran in, from its build URL argument (gate.sh <slug> <live> <build> <width>): a served
@@ -368,6 +429,24 @@ export function parseVariance(text, paths = []) {
 }
 
 // ---- derivation --------------------------------------------------------------------------------
+// An encoded page's delivered content file (absolute) when it exists: where stage-content writes it
+// (content/<encoded path>), else where the delivered signal finds it; null before delivery.
+function deliveredContent(page, ctx) {
+  if (page.encoded.content && existsSync(page.encoded.content)) return page.encoded.content;
+  const d = ctx.contentFile ? ctx.contentFile(page) : null;
+  return d && d.exists && d.file ? resolve(d.file) : null;
+}
+const sameBytes = (a, b) => { try { return readFileSync(a).equals(readFileSync(b)); } catch { return false; } };
+// The encoder's own content count (L5) of a clean encode, as an evidence line; null when the audit records a MISSING
+// item or no clean status. audit.encode.count.counts.<role> = { capture, missing, … } (deploy's diffOffline).
+export function encoderCount(meta, doc) {
+  const a = meta && meta.audit && meta.audit.encode;
+  if (!a || a.status !== 'clean' || (Array.isArray(a.incomplete) && a.incomplete.length)) return null;
+  const c = a.count && a.count.counts;
+  const part = ([role, label]) => (c && c[role] && Number.isInteger(c[role].capture) && Number.isInteger(c[role].missing) ? `${label} ${c[role].capture - c[role].missing}/${c[role].capture}` : null);
+  const parts = [['heading', 'h'], ['link', 'links'], ['image', 'images'], ['text', 'text']].map(part).filter(Boolean);
+  return `encoder L5: 0 MISSING${parts.length ? ` (${parts.join(' · ')})` : ''} — audit.encode (${doc})`;
+}
 const latest = (items, at = (x) => jobAt(x.j)) => items.reduce((best, x) => (!best || at(x) > at(best) ? x : best), null);
 const fmtPct = (n) => (Number.isFinite(n) ? `${n.toFixed(2)}%` : '—');
 // The `--path` delivery-lint expects: the output path without `.html` and without a trailing `/index`; the root page is `/`.
@@ -382,8 +461,8 @@ export function contentFileFor(contentDir, outputPath) {
   return { file: join(contentDir, hit || rel[0]), exists: Boolean(hit) };
 }
 
-export function runLint(lint, page) {
-  const args = [lint, '--file', page.htmlFile, '--path', daPath(page.outputPath)];
+export function runLint(lint, page, subject = { file: page.htmlFile, path: daPath(page.outputPath) }) {
+  const args = [lint, '--file', subject.file, '--path', subject.path];
   let out = ''; let code = 0;
   try { out = execFileSync(process.execPath, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 60000 }); }
   catch (e) { out = String(e.stdout || ''); code = typeof e.status === 'number' ? e.status : 1; if (!out.trim()) return { ok: false, line: `delivery-lint gave no output (exit ${code}): ${String(e.stderr || e.message).trim().split('\n')[0].slice(0, 160)}` }; }
@@ -467,6 +546,17 @@ export function derive(page, jobs, o, ctx) {
     if (cd.v.structural === 0) pass('content-count', line); else open('content-count', line);
   }
 
+  // An encoded sibling's current clean encode was counted by the encoder (L5); a content-diff FAIL/OPEN still wins.
+  // that count stands for the delivered document only while it is absent or byte-identical to the encoded one.
+  const l5 = c14Page(page) && page.encoded.state && page.encoded.state.ok ? encoderCount(page.meta, page.encoded.path) : null;
+  if (l5 && !/^(FAIL|OPEN): /.test(evidence['content-count'] || '')) {
+    const live = deliveredContent(page, ctx);
+    if (live && !sameBytes(live, page.encoded.file)) {
+      if (!gates.includes('content-count')) open('content-count', `${relative(process.cwd(), live).split(sep).join('/')} is not the current encode (${page.encoded.path}) — re-stage it, or run content-diff on the delivered page`);
+    } else if (gates.includes('content-count')) evidence['content-count'] = `${l5}; ${evidence['content-count']}`;
+    else pass('content-count', l5);
+  }
+
   const md = pick(ofKind('media-reconcile'), parseCounts, 'media-reconcile');
   if (md) {
     facts.media = md.v.line;
@@ -483,7 +573,21 @@ export function derive(page, jobs, o, ctx) {
     evidence['media-reconcile'] = `n/a: no delivered content file yet (${delivered.file}) — media-reconcile runs in the delivery chain (row C)${latest_}`;
   }
 
-  if (ctx.lint) {
+  if (ctx.lint && page.encoded) {
+    // what is delivered: the content file once it exists — where stage-content writes it (content/<encoded path>), else
+    // where the delivered signal found it — else the encoded document while it is the current clean encode
+    const st = page.encoded.state;
+    const cwdRel = (f) => relative(process.cwd(), f).split(sep).join('/');
+    const staged = page.encoded.content ? cwdRel(page.encoded.content) : delivered.file;
+    const file = (page.encoded.content && existsSync(page.encoded.content) ? staged : null) || (delivered.exists && delivered.file ? delivered.file : null) || (st && st.ok ? cwdRel(page.encoded.file) : null);
+    const path = daPath(page.encoded.rel);
+    if (!file) notes.push(`${page.slug}: delivery-lint skipped — no delivered content file (${staged}) and ${page.encoded.path} is not a current encode (${st.kind}: ${st.why})`);
+    else {
+      const r = runLint(ctx.lint, page, { file, path }); facts.deliveryLint = r.line;
+      const line = `${r.line} (delivery-lint --file ${file} --path ${path})`;
+      if (r.ok) pass('delivery-lint', line); else open('delivery-lint', line, 'FAIL');
+    }
+  } else if (ctx.lint) {
     if (!existsSync(page.htmlFile)) notes.push(`${page.slug}: ${page.htmlFile} missing — delivery-lint skipped`);
     else {
       const r = runLint(ctx.lint, page); facts.deliveryLint = r.line;
@@ -511,6 +615,24 @@ export function derive(page, jobs, o, ctx) {
       else pass('variance-probe', line);
     }
   }
+
+  if (c14Page(page)) {
+    // C14: the page's own launch decides when there is one (a failing run is never covered); else the archetype's
+    // passedOn under the current harness key, when it covers the page's shape
+    // an own run from before a key change still counts — a job log carries no harness key
+    const c14 = ctx.c14 ? ctx.c14(page) : { ok: false, why: 'migrate\'s encode/shape.mjs is not loaded' };
+    for (const g of HARNESS) {
+      const newest = latest(ofKind(g).filter(HARNESS_RUN[g]).map((j) => ({ j })));
+      const name = g === 'block-roundtrip' ? 'block-roundtrip --ew' : g;
+      if (newest) {
+        const { j } = newest;
+        if (deadline(j)) open(g, `deadline ${cite(j)} — re-run`);
+        else if (j.exit === 0) pass(g, `ran: ${name} exit 0 ${cite(j)}`);
+        else open(g, `${name} exit ${j.exit} ${cite(j)}`, 'FAIL');
+      } else if (c14.ok) pass(g, c14.why);
+      else open(g, `no local ${name} run, and C14 does not cover it — ${c14.why}`);
+    }
+  }
   return { gates, evidence, facts, notes };
 }
 
@@ -533,7 +655,7 @@ export function buildProgress(existing, rows, { partial = false } = {}) {
   const out = { ...existing };
   const sib = rows.filter((r) => r.tier === 'sibling');
   out.siblings = { ...(existing.siblings || {}) };
-  for (const r of sib) out.siblings[r.slug] = { archetype: r.archetype, variants: r.variants, pixel: r.pixel, contentDiff: r.contentDiff, deliveryLint: r.deliveryLint, media: r.media, gatesPassed: r.gatesPassed, migrated: r.migrated };
+  for (const r of sib) out.siblings[r.slug] = { archetype: r.archetype, variants: r.variants, pixel: r.pixel, contentDiff: r.contentDiff, deliveryLint: r.deliveryLint, media: r.media, gatesPassed: r.gatesPassed, migrated: r.migrated, ...(r.encoded ? { encoded: r.encoded } : {}) };
   if (partial) return out;
   const gates = {}; for (const r of rows) for (const g of r.gatesPassed) gates[g] = (gates[g] || 0) + 1;
   const missing = {}; for (const r of sib) if (r.missing.length) missing[r.slug] = r.missing;
@@ -557,10 +679,34 @@ function resolveLint(o) {
   return candidates.find((p) => existsSync(p) && statSync(p).isFile()) || null;
 }
 
-export function collect(o) {
+// migrate's shared readers (encode/provenance.mjs: encodedPageOf, currentEncode; encode/shape.mjs beside it: harnessKey,
+// encodedShape, inherited — C14), in either layout; null when provenance.mjs is absent, no C14 reader without shape.mjs.
+export async function loadEncoderReaders() {
+  const f = [resolve(HERE, '../../migrate/scripts/encode/provenance.mjs'), resolve(HERE, '../migrate/encode/provenance.mjs')].find((x) => existsSync(x));
+  if (!f) return null;
+  const { encodedPageOf, currentEncode } = await import(pathToFileURL(f).href);
+  const shapeFile = join(dirname(f), 'shape.mjs');
+  const shape = existsSync(shapeFile) ? await import(pathToFileURL(shapeFile).href) : null;
+  return { encodedPageOf, currentEncode, ...(shape ? { harnessKey: shape.harnessKey, encodedShape: shape.encodedShape, inherited: shape.inherited } : {}) };
+}
+
+// The current harness key of every template an encoded sibling names (C14): Map archetype → { key } | { error }.
+export async function harnessKeys(encoder, migrated) {
+  const keys = new Map();
+  if (!encoder || !encoder.harnessKey) return keys;
+  const project = projectOf(migrated);
+  for (const p of findSidecars(migrated, { encodedPageOf: encoder.encodedPageOf })) {
+    const a = c14Page(p) ? p.encoded.archetype : null;
+    if (!a || keys.has(a)) continue;
+    try { keys.set(a, { key: (await encoder.harnessKey(project, a)).key }); } catch (e) { keys.set(a, { error: e.message }); }
+  }
+  return keys;
+}
+
+export function collect(o, { encoder = null } = {}) {
   const migrated = resolve(o.migrated);
   const notes = [];
-  const pages = findSidecars(migrated).filter((s) => { if (s.slug) return true; notes.push(`${relative(process.cwd(), s.file)}: no slug — skipped`); return false; });
+  const pages = findSidecars(migrated, { encodedPageOf: encoder && encoder.encodedPageOf }).filter((s) => { if (s.slug) return true; notes.push(`${relative(process.cwd(), s.file)}: no slug — skipped`); return false; });
   const unknown = o.slugs.filter((s) => !pages.some((p) => p.slug === s));
   if (unknown.length) throw new UsageError(`gate-evidence: no sidecar with slug ${unknown.join(', ')} under ${o.migrated}`);
   const selected = o.slugs.length ? pages.filter((p) => o.slugs.includes(p.slug)) : pages;
@@ -570,7 +716,29 @@ export function collect(o) {
   const contentDir = resolve(o.content);
   const tables = loadTables(o.tables, o.widths);
   if (o.check) for (const w of o.widths) if (!tables[w].any) notes.push(`no pixel table for ${w} under ${o.tables}/ (prototypes-${w} or all-${w}/summary.json) — the #125 rule wants every prototype and deployed page as a row: run gate-all.mjs [--stage prototype]; the gate.sh logs stand in until then`);
-  const ctx = { tables, migrated, pages, slugs: pages.map((p) => p.slug), lint, contentFile: (page) => { const c = contentFileFor(contentDir, page.outputPath); return { ...c, file: relative(process.cwd(), c.file).split(sep).join('/') }; } };
+  // an encoded page is delivered where stage-content writes it, at its eds-path (encode.output.path under stardust/encoded/)
+  const ctx = { tables, migrated, pages, slugs: pages.map((p) => p.slug), lint, contentFile: (page) => { const c = contentFileFor(contentDir, page.encoded ? page.encoded.rel : page.outputPath); return { ...c, file: relative(process.cwd(), c.file).split(sep).join('/') }; } };
+  // an encoded page's own files (its jobs name them) and whether its encoded document is the current clean encode
+  const project = projectOf(migrated); const manifests = new Map();
+  for (const p of pages) {
+    if (!p.encoded) continue;
+    p.encoded.content = join(contentDir, p.encoded.rel);
+    p.encoded.files = [...new Set([p.encoded.file, p.encoded.content, contentFileFor(contentDir, p.outputPath).file])];
+    p.encoded.state = encoder.currentEncode({ root: project, sidecarPath: relative(project, p.file).split(sep).join('/'), manifests });
+  }
+  // C14: may this encoded sibling inherit its archetype's launches? (the key per template comes from harnessKeys())
+  ctx.c14 = (page) => {
+    const a = page.encoded.archetype;
+    if (!encoder || !encoder.encodedShape || !encoder.inherited) return { ok: false, why: 'migrate\'s encode/shape.mjs is not beside this script — copy the migrate scripts (stardust/scripts/migrate/) too' };
+    if (!a) return { ok: false, why: `${relative(project, page.file).split(sep).join('/')} names no template (encode.map.template)` };
+    const k = encoder.keys && encoder.keys.get(a);
+    if (!k || k.error) return { ok: false, why: `no harness key for ${a} (${k ? k.error : 'not computed'})` };
+    const es = encoder.encodedShape({ root: project, sidecarPath: relative(project, page.file).split(sep).join('/'), archetype: a, manifests });
+    if (!es.ok) return { ok: false, why: es.why };
+    const arch = pages.find((p) => p.slug === a);
+    const v = encoder.inherited({ key: k.key, passedOn: arch ? arch.meta.passedOn : null, shape: es.shape, archetype: a });
+    return v.ok ? { ok: true, why: `inherited from ${a} (C14): ${v.why}` } : { ok: false, why: `${v.why}${arch ? '' : ` (no sidecar for ${a})`}` };
+  };
   const acceptance = acceptanceFor(o.widths);
   // The ledger is parsed before any sidecar is touched: a malformed progress.json aborts with nothing written.
   const prior = existsSync(o.progress) ? readJson(o.progress) : { data: {}, indent: 2, eol: true };
@@ -598,8 +766,8 @@ export function collect(o) {
     if (text !== page.text) { updated += 1; if (!o.dryRun) writeAtomic(page.file, text); }
     const tier = meta.fidelityTier || null;
     // A sibling is not held to media-reconcile before its delivered content file exists (derive() recorded `n/a:` for it).
-    const required = acceptance.filter((g) => g !== 'media-reconcile' || d.facts.delivered !== false);
-    rows.push({ slug: page.slug, tier, archetype: meta.archetypeSource || meta.template || null, variants: Array.isArray(meta.variants) ? meta.variants : [], outputPath: page.outputPath, migrated: join(o.migrated, page.outputPath), ...d.facts, gatesPassed: meta.gatesPassed, gateEvidence: meta.gateEvidence, missing: tier === 'sibling' ? required.filter((g) => !meta.gatesPassed.includes(g)) : [], stale });
+    const required = [...acceptance, ...(c14Page(page) ? HARNESS : [])].filter((g) => g !== 'media-reconcile' || d.facts.delivered !== false);
+    rows.push({ slug: page.slug, tier, archetype: meta.archetypeSource || meta.template || null, variants: Array.isArray(meta.variants) ? meta.variants : [], outputPath: page.outputPath, migrated: page.encoded ? null : join(o.migrated, page.outputPath), ...(page.encoded ? { encoded: page.encoded.path } : {}), ...d.facts, gatesPassed: meta.gatesPassed, gateEvidence: meta.gateEvidence, missing: tier === 'sibling' ? required.filter((g) => !meta.gatesPassed.includes(g)) : [], stale });
   }
   if (rows.length && !o.dryRun) {
     mkdirSync(dirname(resolve(o.progress)), { recursive: true });
@@ -609,10 +777,17 @@ export function collect(o) {
 }
 
 // ---- cli ---------------------------------------------------------------------------------------
-function cli(argv) {
+async function cli(argv) {
   if (argv.includes('--help') || argv.includes('-h')) { console.log(help()); return 0; }
   const o = parseArgs(argv);
-  const r = collect(o);
+  // migrate's code is loaded only when a sidecar records an encode
+  let encoder = null;
+  if (findSidecars(resolve(o.migrated)).some((p) => recordsEncode(p.meta))) {
+    encoder = await loadEncoderReaders();
+    if (!encoder) throw new UsageError(`gate-evidence: sidecars under ${o.migrated} record an encode, but migrate's encode/provenance.mjs is not beside this script — copy the migrate scripts (stardust/scripts/migrate/) too`);
+    encoder.keys = await harnessKeys(encoder, resolve(o.migrated));
+  }
+  const r = collect(o, { encoder });
   for (const n of r.notes) console.error(`gate-evidence: ${n}`);
   if (!r.rows.length) { console.log(`gate-evidence: no _meta.json sidecars${o.slugs.length ? ` for --slug ${o.slugs.join(', ')}` : ''} under ${o.migrated} — nothing to collect`); return 0; }
   const short = r.rows.filter((row) => row.missing.length);
@@ -631,6 +806,5 @@ function cli(argv) {
 // Compare by real path: a symlinked checkout or temp dir must not turn the CLI into a silent no-op.
 function safeRealpath(p) { try { return realpathSync(p); } catch { return p; } }
 if (process.argv[1] && SELF === safeRealpath(process.argv[1])) {
-  try { process.exitCode = cli(process.argv.slice(2)); }
-  catch (e) { console.error(e instanceof UsageError ? e.message : `gate-evidence: ${e.stack || e.message}`); process.exitCode = 1; }
+  cli(process.argv.slice(2)).then((code) => { process.exitCode = code; }, (e) => { console.error(e instanceof UsageError ? e.message : `gate-evidence: ${e.stack || e.message}`); process.exitCode = 1; });
 }

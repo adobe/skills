@@ -300,7 +300,8 @@ crawl (offline over `pages/*.html`; `--max-bytes <n>` caps video) — every
 `stardust/current/assets/media/<base>-<hash8>.<ext>`, plus
 `assets/media-map.json` (source URL → local file + status), the map
 later phases rewrite references with. Re-runs reuse it; never a
-hand-written harvester.
+hand-written harvester. Each saved file is recorded as the media entry's `localPath` (deploy maps
+each upload back to its source URLs through it).
 
 **Live-render evidence (synthesis is forbidden).** Refuse to mark
 a page `extracted` in `state.json` unless its `_provenance`

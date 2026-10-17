@@ -66,7 +66,8 @@ none" (198/198 nodes).
    plugin: this skill's whole `scripts/` dir to
    `stardust/scripts/replica/`, the master skill's `../stardust/scripts/`
    (ledger.mjs, state.mjs, browser-lock.mjs, unit-commit.mjs) to `stardust/scripts/stardust/`, the migrate
-   skill's `../migrate/scripts/` (migrate.mjs) to `stardust/scripts/migrate/`,
+   skill's whole `../migrate/scripts/` (migrate.mjs, encode.mjs and its
+   `encode/` modules) to `stardust/scripts/migrate/`,
    AND the whole
    `../diff/scripts/` dir to `stardust/scripts/diff/` (the diff scripts
    import diff-profiles.mjs, and ALL live-target hardening lives in its
@@ -456,11 +457,13 @@ phase `end`, and `ledger.mjs … end` warns when it is missing.
 - **Pages beyond the archetypes** go through the stardust `migrate` skill at
   **sibling tier** (`../migrate/reference/fidelity-tiers.md`) — and only
   AFTER their archetype is live and gated at the published origin (contract
-  § 3 row C, unit `C-archetype`; #126): structural clone as the encoder's
-  input + content-fidelity + delivery-lint + media-reconcile; the sibling's
+  § 3 row C, unit `C-archetype`; #126). A template whose map passes the
+  plan gate is ENCODED — the model handles only the pages `encode.mjs`
+  stops on — any other is cloned (contract § 1 row 2). Either
+  way content-fidelity + delivery-lint + media-reconcile; the sibling's
   only counting number is its gate row after PUT + preview (no local pixel
-  bar). Siblings inherit the archetype's proven encoder — never re-author one. **Template constancy is measured, not
-  assumed**: before cloning, run `stardust/scripts/replica/sibling-variance.mjs
+  bar). Siblings inherit the archetype's proven map or encoder — never re-author one. **Template constancy is measured, not
+  assumed**: before encoding or cloning, run `stardust/scripts/replica/sibling-variance.mjs
   <archetype> <siblings…> --probe <block>=<sel> …` once per template and
   budget every delta as a block VARIANT class on the sibling's content (same
   file, § Sibling variance probe — its record,
@@ -486,7 +489,9 @@ phase `end`, and `ledger.mjs … end` warns when it is missing.
   § The header contract), then `foundation-freeze.mjs freeze` + commit; C-archetype — per template, the
   gated archetype is deployed and passes its full gate row on the preview URL
   (cap 3 fix rounds, then the re-prototype decision) BEFORE its siblings
-  render; C1…Cn — one subagent per cluster unit runs the whole chain with
+  render or encode — an encoded template's map is drafted and round-tripped
+  there; C1…Cn — one subagent per cluster unit runs the whole chain (an encoded cluster: the map plus its
+  exceptions) with
   its own batch ledger and reports one verdict line, `first pass 360: x/y`
   from `gate-triage.mjs --unit <cluster>` included; a cluster of more than
   16 siblings is split into sub-units `cluster-<template>-1..n` of at most
@@ -592,6 +597,7 @@ stardust/
 │   ├── motion/<slug>.json              ← motion-observe evidence
 │   └── gates/<slug>-<width>/           ← live.png, proto.png, diff.png, probe outputs per iteration
 ├── migrated/                           ← from migrate (Phase 5)
+├── import/<archetype>/, encoded/       ← migrate's encoder (Phase 5): a template's map; its siblings' delivered documents
 └── rollout/                            ← from rollout (Phase 5); coverage/, plan.json … per its SKILL.md
     ├── progress.json                   ← C-deliver unit ledger: status, gates, verdict per unit
     ├── foundation-freeze.json          ← sha256 manifest of the frozen foundation (C0 → C-final)

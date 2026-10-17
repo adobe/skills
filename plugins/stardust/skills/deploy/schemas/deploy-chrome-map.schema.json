@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://stardust.dev/schemas/deploy-chrome-map.schema.json",
+  "title": "stardust rollout/chrome-map.json",
+  "description": "Which nav and footer documents each delivered page uses. Written by deploy/scripts/chrome-map.mjs (deploy Step 6, right after the nav/footer documents) from the documents under content/ and each captured page's locale prefix and <html lang>; read by the sibling encoder. Deterministic: sorted keys, no timestamps, rewritten only when its bytes change. A page in no group uses /nav, /footer and no lang.",
+  "type": "object",
+  "required": ["groups"],
+  "properties": {
+    "_provenance": {
+      "type": "object",
+      "properties": {
+        "writtenBy": { "type": "string", "examples": ["stardust:deploy chrome-map.mjs"] },
+        "readArtifacts": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "groups": {
+      "type": "object",
+      "description": "Keyed by group id: the delivered-path prefix the group's documents were matched on ('/' for the site-wide pair, '/yy/bb' for a locale). Readers treat the id as opaque.",
+      "additionalProperties": { "$ref": "#/$defs/group" }
+    }
+  },
+  "$defs": {
+    "group": {
+      "type": "object",
+      "required": ["nav", "footer", "lang", "pages"],
+      "properties": {
+        "nav": { "type": "string", "pattern": "^/", "description": "DA path of the nav document, e.g. /nav, /nav-yy-bb, /fr/nav (the value of the page's nav metadata row)" },
+        "footer": { "type": "string", "pattern": "^/", "description": "DA path of the footer document" },
+        "lang": { "type": ["string", "null"], "description": "the most common captured <html lang> of the group's pages; null when none was captured" },
+        "pages": { "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^/" }, "description": "delivered URL paths (eds-path deliveredUrl), sorted; readers match them with pathKey" },
+        "navFile": { "type": "string", "description": "the nav document's file in the code repository (absent when no document exists)" },
+        "footerFile": { "type": "string", "description": "the footer document's file in the code repository (absent when no document exists)" }
+      }
+    }
+  }
+}

@@ -28,15 +28,8 @@
  * Exit codes: 0 success, 1 error.
  */
 
-import { readFileSync, writeFileSync } from 'fs';
-
-// --help prints this file's usage header, so an agent never reads the source to learn the flags.
-if (process.argv.includes('--help') || process.argv.includes('-h')) {
-  const src = readFileSync(new URL(import.meta.url), 'utf8');
-  const header = src.match(/\/\*\*[\s\S]*?\*\//);
-  console.log(header ? header[0].replace(/^\/\*\*\s*|\s*\*\/$/g, '').replace(/^\s*\* ?/gm, '').trim() : 'no usage header');
-  process.exit(0);
-}
+import { readFileSync, realpathSync, writeFileSync } from 'fs';
+import { pathToFileURL } from 'url';
 
 // Named HTML entities for common non-ASCII characters.
 // Anything not listed here falls back to a decimal numeric reference (&#NNN;).
@@ -71,10 +64,11 @@ const NAMED = new Map([
 /**
  * Encode all non-ASCII code points in a string to HTML entities.
  * Handles surrogate pairs (emoji, supplementary CJK) correctly via codePointAt.
+ * Exported for the migrate encoder, which applies it last; importing this file runs no CLI.
  * @param {string} input
  * @returns {{ output: string, count: number }}
  */
-function encode(input) {
+export function encode(input) {
   const parts = [];
   let count = 0;
   for (let i = 0; i < input.length; i += 1) {
@@ -92,48 +86,62 @@ function encode(input) {
   return { output: parts.join(''), count };
 }
 
-const args = process.argv.slice(2);
-const fromStdin = args.length === 0 || args[0] === '-';
+function main() {
+  // --help prints this file's usage header, so an agent never reads the source to learn the flags.
+  if (process.argv.includes('--help') || process.argv.includes('-h')) {
+    const src = readFileSync(new URL(import.meta.url), 'utf8');
+    const header = src.match(/\/\*\*[\s\S]*?\*\//);
+    console.log(header ? header[0].replace(/^\/\*\*\s*|\s*\*\/$/g, '').replace(/^\s*\* ?/gm, '').trim() : 'no usage header');
+    process.exit(0);
+  }
 
-// Batch foot-gun guard: with >2 paths the two-arg <input> <output> convention
-// would silently overwrite the second file with the first's content and drop
-// the rest (recorded). Refuse loudly instead.
-if (args.length > 2) {
-  process.stderr.write(
-    'da-sanitise: too many arguments — usage is <input> (in-place) or <input> <output>.\n'
-    + 'A batch call would overwrite the second file with the first\'s content; run once per file:\n'
-    + '  for f in content/*.html; do node skills/deploy/scripts/sanitise.js "$f"; done\n',
-  );
-  process.exit(1);
-}
+  const args = process.argv.slice(2);
+  const fromStdin = args.length === 0 || args[0] === '-';
 
-let input;
-if (fromStdin) {
-  input = readFileSync(process.stdin.fd, 'utf8');
-} else {
-  const inputPath = args[0];
-  try {
-    input = readFileSync(inputPath, 'utf8');
-  } catch (err) {
-    process.stderr.write(`da-sanitise: cannot read '${inputPath}': ${err.message}\n`);
+  // Batch foot-gun guard: with >2 paths the two-arg <input> <output> convention
+  // would silently overwrite the second file with the first's content and drop
+  // the rest (recorded). Refuse loudly instead.
+  if (args.length > 2) {
+    process.stderr.write(
+      'da-sanitise: too many arguments — usage is <input> (in-place) or <input> <output>.\n'
+      + 'A batch call would overwrite the second file with the first\'s content; run once per file:\n'
+      + '  for f in content/*.html; do node skills/deploy/scripts/sanitise.js "$f"; done\n',
+    );
     process.exit(1);
+  }
+
+  let input;
+  if (fromStdin) {
+    input = readFileSync(process.stdin.fd, 'utf8');
+  } else {
+    const inputPath = args[0];
+    try {
+      input = readFileSync(inputPath, 'utf8');
+    } catch (err) {
+      process.stderr.write(`da-sanitise: cannot read '${inputPath}': ${err.message}\n`);
+      process.exit(1);
+    }
+  }
+
+  const { output, count } = encode(input);
+
+  if (fromStdin) {
+    process.stdout.write(output);
+  } else {
+    const outputPath = args[1] || args[0]; // explicit output or in-place
+    try {
+      writeFileSync(outputPath, output, 'utf8');
+    } catch (err) {
+      process.stderr.write(`da-sanitise: cannot write '${outputPath}': ${err.message}\n`);
+      process.exit(1);
+    }
+    const msg = count
+      ? `da-sanitise: encoded ${count} non-ASCII character(s) -> ${outputPath}\n`
+      : `da-sanitise: no non-ASCII characters found -- ${outputPath} unchanged\n`;
+    process.stderr.write(msg);
   }
 }
 
-const { output, count } = encode(input);
-
-if (fromStdin) {
-  process.stdout.write(output);
-} else {
-  const outputPath = args[1] || args[0]; // explicit output or in-place
-  try {
-    writeFileSync(outputPath, output, 'utf8');
-  } catch (err) {
-    process.stderr.write(`da-sanitise: cannot write '${outputPath}': ${err.message}\n`);
-    process.exit(1);
-  }
-  const msg = count
-    ? `da-sanitise: encoded ${count} non-ASCII character(s) -> ${outputPath}\n`
-    : `da-sanitise: no non-ASCII characters found -- ${outputPath} unchanged\n`;
-  process.stderr.write(msg);
-}
+// the CLI runs only when this file is executed (a symlinked path included), never on import
+const isMain = (() => { try { return Boolean(process.argv[1]) && pathToFileURL(realpathSync(process.argv[1])).href === import.meta.url; } catch { return false; } })();
+if (isMain) main();

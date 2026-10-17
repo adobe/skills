@@ -1,0 +1,44 @@
+{
+  "archetypeSource": "guide-a",
+  "audit": {
+    "encode": {
+      "dropped": [],
+      "flattened": [],
+      "hidden": [],
+      "incomplete": [],
+      "linksUnresolved": [],
+      "literals": 0,
+      "mediaUnresolved": [],
+      "status": "clean",
+      "unmapped": [],
+      "variance": []
+    }
+  },
+  "encode": {
+    "encodedAt": "2026-01-01T00:00:00Z",
+    "encoder": {
+      "script": "stardust/scripts/migrate/encode.mjs",
+      "sha": "sha256:9ff94c3eb0c1d350b76101c553e6e70c1178b96fc7fd738182e39e2a3f1b9ebe",
+      "version": "1"
+    },
+    "inputs": {
+      "captureSha": "sha256:00c54a2346d2d99b59b356008dc51a07350db27a36891a76be96c8180b80c4f8",
+      "pageJsonSha": "sha256:ed1ba11f60649bfc7d824d09b27800307cc0197820c51b780fcdd4a9130a1de3",
+      "patchesSha": null,
+      "siteSha": "sha256:fbae041b02c41ed0fd8a4efb039bc780dd6af4a1f0c420f42561ae705dda43fe"
+    },
+    "map": {
+      "template": "guide-a",
+      "transformSha": null,
+      "vocabularySha": "sha256:0c7e0de28a70f3c4f8d98ff2d64cbfbbe4c49c80a79096f5edc783417d8edc27"
+    },
+    "output": {
+      "path": "stardust/encoded/guides/d.html",
+      "sha": "sha256:a77854f431e3efcaccb24d38a66aed534fe54fd98ad02b4e58d4945ae49a7df6"
+    }
+  },
+  "fidelityTier": "sibling",
+  "renderBranch": "A'",
+  "slug": "guide-d",
+  "template": "guide"
+}

@@ -1,0 +1,16 @@
+{
+  "root": "main",
+  "chrome": [".carousel-indicators"],
+  "wrappers": [".page", ".tabs", ".tab-panel"],
+  "markers": [
+    { "sel": "div.hero", "kind": "hero", "emitter": "block:hero" },
+    { "sel": "div.text", "kind": "text", "emitter": "default-content" },
+    { "sel": "div.carousel", "kind": "carousel", "emitter": "block:carousel" },
+    { "sel": "a.card", "kind": "card", "emitter": "block:cards" },
+    { "sel": "div.faq", "kind": "faq", "emitter": "block:accordion" },
+    { "sel": "div.download", "kind": "download", "emitter": "default-content", "drop": [".download-updated"] },
+    { "sel": "div.share", "kind": "share", "emitter": "drop:share widget, mounted by the site's own script" },
+    { "sel": "div.weather", "kind": "conditions", "emitter": "dynamics:live trail conditions" },
+    { "sel": "div.contact", "kind": "contact", "emitter": "default-content" }
+  ]
+}

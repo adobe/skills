@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://stardust.dev/schemas/deploy-media-ledger.schema.json",
+  "title": "stardust deploy/media-ledger.json",
+  "description": "The media upload ledger written by deploy/scripts/da-media-upload.mjs under a cross-process lock (re-read, merge, tmp + rename): one entry per DA media path. The sibling encoder resolves an image's absolute source URL to the entry's contentUrl: every URL in `sources`, and a non-null `source`, maps to it. A ledger written before `sources` existed stays valid; a re-run adds them without uploading.",
+  "type": "object",
+  "propertyNames": { "pattern": "^media/" },
+  "additionalProperties": { "$ref": "#/$defs/entry" },
+  "$defs": {
+    "entry": {
+      "type": "object",
+      "required": ["status", "file", "contentUrl"],
+      "properties": {
+        "status": { "enum": ["uploaded", "failed"] },
+        "file": { "type": "string", "description": "the local file uploaded (as given on the command line or in the manifest)" },
+        "size": { "type": "integer", "minimum": 0 },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "contentType": { "type": "string" },
+        "source": { "type": ["string", "null"], "description": "the manifest's source URL (fetched when the local file was absent); null for --dir uploads" },
+        "sources": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^https?://[^#]*$" },
+          "description": "every absolute source URL known for the file, sorted, WHATWG-normalised, fragment dropped: the manifest's source/currentSrc and the captured URLs whose localPath in stardust/current/pages/*.json names the file"
+        },
+        "contentUrl": { "type": "string", "description": "https://content.da.live/<org>/<repo>/media/<scope>/<file> — what to author" },
+        "httpStatus": { "type": "integer" },
+        "attempts": { "type": "integer", "minimum": 1 },
+        "error": { "type": "string" },
+        "ts": { "type": "string", "format": "date-time" }
+      }
+    }
+  }
+}

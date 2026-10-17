@@ -57,6 +57,10 @@ All three branches apply canon chrome (header, footer) verbatim;
 all three apply the validation contracts; all three emit a
 `_meta.json` sidecar.
 
+**The encoded path** (`flow: replica`) replaces Path A′ for a
+template whose map passed its plan gate — nothing is rendered
+(`../SKILL.md` § Phase 2 — Per-page render).
+
 ## Output path mapping
 
 The migrated tree's output path is determined by the **source
@@ -378,8 +382,9 @@ branch.
 - **Touch the live site.** Stardust never deploys, never pushes,
   never modifies origin.
 - **Generate AEM EDS markup, framework components, or CMS
-  payloads.** Static HTML only. Downstream conversion is a
-  separate plugin's concern; the `data-*` vocabulary plus the
-  `_meta.json` sidecar are the contract.
+  payloads.** Static HTML only — except the encoded path (§ Three
+  render branches), whose documents `deploy` stages. Downstream
+  conversion is a separate plugin's concern; the `data-*`
+  vocabulary plus the `_meta.json` sidecar are the contract.
 - **Move past `migrated` state.** No further state. A separate
   skill takes the migrated output as input.

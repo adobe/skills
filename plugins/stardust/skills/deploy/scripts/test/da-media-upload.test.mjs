@@ -10,17 +10,20 @@
 // source (--token-env <NAME>, --token-file <path>: the expiry, halt and re-run lines name the variable or
 // file, never the value; never both flags; a missing or empty file is a usage error; a dry run reads no
 // file), usage errors (a value flag swallowing nothing or another --flag) — and that the token value
-// never reaches stdout, stderr or the ledger.
+// never reaches stdout, stderr or the ledger. sources[]: the manifest's source/currentSrc and the captured
+// URLs whose localPath (fixtures/da-media-upload/ page records) names the file — exact or a unique tail under
+// --dir, an ambiguous tail recorded as none with a NOTE; a ledger without sources[] gains them on a re-run
+// without a request.
 // Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { classify, jwtExpiry, readManifest } from '../da-media-upload.mjs';
+import { captureSources, classify, jwtExpiry, pageBase, readManifest } from '../da-media-upload.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'da-media-upload.mjs');
@@ -130,14 +133,22 @@ await check('jwtExpiry: reads exp from a JWT payload; null for a non-JWT, a JWT 
   assert.equal(jwtExpiry(TOKEN), null); assert.equal(jwtExpiry('a.b.c'), null); assert.equal(jwtExpiry('a.b'), null); assert.equal(jwtExpiry(undefined), null);
   assert.equal(jwtExpiry(`x.${Buffer.from('not json').toString('base64url')}.y`), null);
 });
-await check('readManifest: array, map and extract § Media shapes all reduce to {file, source, name}', () => {
+await check('captureSources: a relative src resolves against the record\'s finalUrl || url (where the browser ended up)', () => {
+  const pages = join(proj, 'base-pages'); mkdirSync(pages);
+  writeFileSync(join(pages, 'a.json'), JSON.stringify({ url: 'https://example.com/old/a.html', finalUrl: 'https://www.example.com/new/a/', media: { images: [{ src: 'img/x.png', localPath: 'm/x.png' }] } }));
+  writeFileSync(join(pages, 'b.json'), JSON.stringify({ url: 'https://example.com/b/', finalUrl: 'not a url', media: { imgs: [{ src: 'y.png', localPath: 'm/y.png' }] } }));
+  assert.deepEqual(Object.fromEntries(captureSources(pages)), { 'm/x.png': ['https://www.example.com/new/a/img/x.png'], 'm/y.png': ['https://example.com/b/y.png'] });
+  assert.equal(pageBase({ url: 'https://example.com/b/' }), 'https://example.com/b/'); assert.equal(pageBase({ url: 'mailto:x@example.com' }), null);
+  rmSync(pages, { recursive: true });
+});
+await check('readManifest: array, map and extract § Media shapes all reduce to {file, source, name, sources}', () => {
   const p = join(proj, 'm.json');
   writeFileSync(p, JSON.stringify([{ file: 'assets/a.png', source: 'https://origin.example/a.png' }, { file: 'assets/b.jpg', name: 'hero.jpg' }]));
-  assert.deepEqual(readManifest(p), [{ file: 'assets/a.png', source: 'https://origin.example/a.png', name: 'a.png' }, { file: 'assets/b.jpg', source: null, name: 'hero.jpg' }]);
+  assert.deepEqual(readManifest(p), [{ file: 'assets/a.png', source: 'https://origin.example/a.png', name: 'a.png', sources: ['https://origin.example/a.png'] }, { file: 'assets/b.jpg', source: null, name: 'hero.jpg', sources: [] }]);
   writeFileSync(p, JSON.stringify({ 'assets/a.png': 'https://origin.example/a.png', 'assets/b.jpg': { name: 'hero.jpg' } }));
   assert.deepEqual(readManifest(p).map((e) => [e.file, e.source, e.name]), [['assets/a.png', 'https://origin.example/a.png', 'a.png'], ['assets/b.jpg', null, 'hero.jpg']]);
-  writeFileSync(p, JSON.stringify({ images: [{ src: 'https://origin.example/x.png?v=1', localPath: 'assets/x-1a2b.png', alt: 'x' }, { src: 'https://origin.example/y.png', localPath: null }] }));
-  assert.deepEqual(readManifest(p), [{ file: 'assets/x-1a2b.png', source: 'https://origin.example/x.png?v=1', name: 'x-1a2b.png' }]);
+  writeFileSync(p, JSON.stringify({ images: [{ src: 'https://origin.example/x.png?v=1', currentSrc: 'https://origin.example/x.png?v=2#f', localPath: 'assets/x-1a2b.png', alt: 'x' }, { src: 'https://origin.example/y.png', localPath: null }] }));
+  assert.deepEqual(readManifest(p), [{ file: 'assets/x-1a2b.png', source: 'https://origin.example/x.png?v=1', name: 'x-1a2b.png', sources: ['https://origin.example/x.png?v=1', 'https://origin.example/x.png?v=2'] }]);
 });
 
 // ---- --dir upload: PUT contract, retry, skip non-images ---------------------------------------------
@@ -241,6 +252,7 @@ await check('manifest: source 2xx is downloaded and uploaded; 403 = bot wall (no
   assert.match(r.out, /8 file\(s\) — 2 uploaded, 0 skipped \(0 not an image\), 6 failed/);
   assert.ok(!requests.some((q) => q.method === 'PUT' && /bad\.svg|missing\.png|walled\.png|html\.png|nolocal/.test(q.url)), 'nothing unsafe or unavailable was PUT');
   const l = ledger();
+  assert.equal(l['media/brand/ok.png'].source, `${BASE}/src/ok.png`); assert.deepEqual(l['media/brand/ok.png'].sources, [`${BASE}/src/ok.png`], 'the manifest source is recorded in sources');
   assert.equal(l['media/brand/walled.png'].status, 'failed'); assert.match(l['media/brand/walled.png'].error, /^source 403/);
   assert.equal(l['media/brand/notfound.png'].httpStatus, 404);
 });
@@ -440,6 +452,46 @@ await check('usage errors exit 2: missing --org/--repo/--scope, both or neither 
   await bad(['--scope', 's', '--dir', 'assets', '--concurrency', '--retries', '2'], /--concurrency needs a value \(got --retries\)/);
   const help = await run(['--help']); assert.equal(help.code, 0); assert.match(help.out, /Usage: DA_TOKEN=… node da-media-upload\.mjs/);
 });
+// ---- sources: every captured URL of a file maps to its upload (the encoder resolves source → contentUrl) -------
+const FIXTURE_PAGES = join(HERE, 'fixtures', 'da-media-upload', 'stardust', 'current', 'pages');
+const SRC_FILES = ['hero-1a2b3c4d.jpg', 'team-5e6f7a8b.png', 'band-9c0d1e2f.webp', 'a/logo.png', 'logo.png', 'other.png'];
+await check('--dir records sources[] from the captured pages\' localPath (a unique path suffix; an ambiguous one records none and says so); source stays null', async () => {
+  cpSync(FIXTURE_PAGES, join(proj, 'stardust', 'current', 'pages'), { recursive: true });
+  for (const f of SRC_FILES) { mkdirSync(dirname(join(proj, 'srcmedia', f)), { recursive: true }); writeFileSync(join(proj, 'srcmedia', f), randomBytes(64)); }
+  const r = await run(['--scope', 'src', '--dir', 'srcmedia']);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.match(r.out, /^NOTE srcmedia\/logo\.png: ambiguous capture match \(stardust\/current\/assets\/media\/a\/logo\.png, stardust\/current\/assets\/media\/b\/logo\.png\) — no source URL recorded$/m);
+  const l = ledger();
+  assert.deepEqual(l['media/src/hero-1a2b3c4d.jpg'].sources, ['https://example.com/img/hero.jpg?w=1200', 'https://example.com/img/hero.jpg?w=2400', 'https://www.example.com/img/hero.jpg'], 'src + currentSrc across pages, fragment dropped, sorted, unique');
+  assert.deepEqual(l['media/src/team-5e6f7a8b.png'].sources, ['https://example.com/img/team.png'], 'a relative src resolves against the page url');
+  assert.deepEqual(l['media/src/band-9c0d1e2f.webp'].sources, ['https://example.com/img/band.webp'], 'css backgrounds count');
+  assert.deepEqual(l['media/src/a/logo.png'].sources, ['https://example.com/img/logo-a.png'], 'the nested name is a unique suffix');
+  assert.deepEqual(l['media/src/logo.png'].sources, []); assert.deepEqual(l['media/src/other.png'].sources, []);
+  for (const f of SRC_FILES) assert.equal(l[`media/src/${f}`].source, null, 'a --dir upload has no manifest source');
+  const entry = JSON.parse(readFileSync(join(HERE, '..', '..', 'schemas', 'deploy-media-ledger.schema.json'), 'utf8')).$defs.entry;
+  for (const f of SRC_FILES) {
+    const v = l[`media/src/${f}`];
+    assert.deepEqual(Object.keys(v).filter((k) => !(k in entry.properties)), [], 'schema-shaped entry'); for (const k of entry.required) assert.ok(k in v, `required ${k}`);
+    assert.ok(v.sources.every((u) => new RegExp(entry.properties.sources.items.pattern).test(u)));
+  }
+});
+await check('a ledger written before sources[] keeps working: a re-run adds them to its uploaded entries without a request, then is a no-op', async () => {
+  const old = ledger();
+  for (const k of Object.keys(old)) if (k.startsWith('media/src/')) delete old[k].sources;
+  writeFileSync(LEDGER, `${JSON.stringify(old, null, 2)}\n`);
+  const before = requests.length;
+  const r = await run(['--scope', 'src', '--dir', 'srcmedia']);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.equal(requests.length, before, 'nothing re-uploaded');
+  assert.match(r.out, /^SKIP srcmedia\/hero-1a2b3c4d\.jpg already uploaded \(ledger\) -> \S+\/media\/src\/hero-1a2b3c4d\.jpg$/m);
+  assert.match(r.out, /6 file\(s\) — 0 uploaded, 6 skipped \(0 not an image\), 0 failed, sources added to 4 ledger entries · ledger/);
+  assert.deepEqual(ledger()['media/src/hero-1a2b3c4d.jpg'].sources, ['https://example.com/img/hero.jpg?w=1200', 'https://example.com/img/hero.jpg?w=2400', 'https://www.example.com/img/hero.jpg']);
+  assert.equal(ledger()['media/src/logo.png'].sources, undefined, 'nothing to add, nothing written');
+  const again = await run(['--scope', 'src', '--dir', 'srcmedia']);
+  assert.equal(again.code, 0, again.out + again.err); assert.doesNotMatch(again.out, /sources added/);
+  rmSync(join(proj, 'stardust', 'current'), { recursive: true });
+});
+
 await check('the token value never appears in any stdout or stderr', () => {
   assert.ok(allOutput.length > 10);
   for (const s of allOutput) for (const secret of SECRETS) assert.ok(!s.includes(secret), `token leaked: ${s.slice(0, 200)}`);

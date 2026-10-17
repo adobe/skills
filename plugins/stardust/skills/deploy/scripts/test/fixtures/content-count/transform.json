@@ -1,0 +1,4 @@
+{
+  "drop": [".visually-hidden"],
+  "links": { "stripExt": ".html" }
+}

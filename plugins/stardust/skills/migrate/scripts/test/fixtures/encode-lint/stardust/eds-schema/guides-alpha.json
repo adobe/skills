@@ -1,0 +1,57 @@
+{
+ "source": "http://localhost:3000/prototypes/guides-alpha.html",
+ "width": 1280,
+ "profile": "eds",
+ "sections": [
+  {
+   "section": "intro",
+   "items": [
+    { "role": "heading", "order": 0, "text": "Alpha route" },
+    { "role": "body", "order": 1, "text": "Everything you need before you set out on the alpha route." }
+   ],
+   "imgCount": 0,
+   "editableTexts": 2,
+   "repeats": []
+  },
+  {
+   "section": "tips",
+   "items": [
+    { "role": "heading", "order": 0, "text": "Pack light" },
+    { "role": "body", "order": 1, "text": "Two litres of water and a rain jacket." },
+    { "role": "cta", "order": 2, "text": "Packing list", "href": "/guides/beta" },
+    { "role": "heading", "order": 3, "text": "Start early" },
+    { "role": "body", "order": 4, "text": "The first bus leaves at seven." },
+    { "role": "cta", "order": 5, "text": "Timetable", "href": "/guides/gamma" }
+   ],
+   "imgCount": 0,
+   "editableTexts": 4,
+   "repeats": [
+    { "unitSelector": "DIV.guide-card", "count": 2, "unit": { "headings": 1, "ctas": 1, "imgs": 0, "textRuns": 3 }, "uniform": true }
+   ]
+  },
+  {
+   "section": "questions",
+   "items": [
+    { "role": "heading", "order": 0, "text": "Questions" },
+    { "role": "heading", "order": 1, "text": "Is it steep?" },
+    { "role": "body", "order": 2, "text": "Only the last kilometre." },
+    { "role": "heading", "order": 3, "text": "Can I bring a dog?" },
+    { "role": "body", "order": 4, "text": "Yes, on a lead." }
+   ],
+   "imgCount": 0,
+   "editableTexts": 5,
+   "repeats": [
+    { "unitSelector": "DIV.faq-row", "count": 2, "unit": { "headings": 1, "ctas": 0, "imgs": 0, "textRuns": 2 }, "uniform": true }
+   ]
+  },
+  {
+   "section": "footnote",
+   "items": [
+    { "role": "body", "order": 0, "text": "Last checked in spring." }
+   ],
+   "imgCount": 0,
+   "editableTexts": 1,
+   "repeats": []
+  }
+ ]
+}

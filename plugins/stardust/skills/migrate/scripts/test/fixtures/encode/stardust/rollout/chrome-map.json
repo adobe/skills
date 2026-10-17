@@ -1,0 +1,5 @@
+{
+  "groups": {
+    "trips": { "nav": "/trips/nav", "footer": "/trips/footer", "lang": "en", "pages": ["/trips/forest-loop", "/trips/river-walk"] }
+  }
+}

@@ -94,6 +94,8 @@ stardust/
 │   ├── <slug>-cinematic.html         # cinematic variant — written only when `prototype --cinematic` ran (alongside proposed)
 │   ├── lenis.min.js                  # smooth-scroll runtime (copied from skills/prototype/assets/motion/; cinematic only)
 │   └── lenis.min.css                 # smooth-scroll styles (cinematic only)
+├── import/<archetype>/               # a template's encoder map (authored at C-archetype) + manifest.json (encode.mjs)
+├── encoded/<da-path>.html            # encoded siblings' delivered documents (encode.mjs); deploy stages them
 └── migrated/                         # deployable static HTML site
     ├── index.html                    # the home page (slug "home" -> root)
     ├── _meta.json                    # sidecar JSON (full reasoning trace) — one per migrated page
@@ -305,15 +307,26 @@ provenance block as the first child of `<head>`, the `:root` block
 exposing the current DESIGN.md tokens, structural data attributes on
 every section, and asset references rewritten to root-relative
 paths of the form `/assets/<subpath>` (per
-`skills/migrate/reference/asset-bundling.md`). The full bundle —
-HTML + every referenced asset — is self-contained: `cd
-stardust/migrated && zip -r out.zip .` produces a deploy-ready
-archive.
+`skills/migrate/reference/asset-bundling.md`), so the tree zips and
+deploys as is.
 
 The migrated tree is **incremental and idempotent**. Re-running
 migrate writes only pages whose source has changed (sha-compared in
 provenance). Migration is per-page — the user can migrate part of
 the site today and the rest later.
+
+### `stardust/encoded/` and `stardust/import/<archetype>/`
+Owner: `$stardust migrate` (`skills/migrate/scripts/encode.mjs`). An
+encoded sibling's delivered document is `encoded/<da-path>.html` —
+the path its copy has under `content/` (the root page `index.html`),
+never under `migrated/`; `deploy`'s `stage-content.mjs` copies it
+there behind the hand-edit guard of `deploy/stage-ledger.json`. The
+map (`import/<archetype>/vocabulary.json` + `transform.json`) is
+authored at C-archetype; `import/<archetype>/manifest.json` (document
+path → sha256) and the sidecar's `encode` / `audit.encode` keys are
+the encoder's provenance; a one-page edit goes in
+`patches/<slug>.json`. Contract:
+`skills/migrate/reference/importer-recipe.md` § Encoder contract.
 
 ### `stardust/canon/`
 Owner: `$stardust prototype --prep`. Written on first prototype
@@ -390,10 +403,15 @@ excluded folders tracked deletes that line or adds a negation below it.
 | `reskin/**` except `content-model/**/*.png`, `reports/*.png` | yes | reskin | tokens, model, renderers, pages, ledger |
 | `migrated/**/*.html`, `_meta.json`, `robots.txt`, `sitemap.xml` | yes | migrate | the deliverable and its reasoning |
 | `migrated/assets/**` | **no** | migrate | byte copy of `current/assets/media` + favicon variants |
+| `import/**`, `encoded/**`, `patches/**` | yes | deploy (map) / migrate | a template's map + manifest, the encoded documents, per-page patches |
 | `audit/**` | yes | audit | score of the original site; irreplaceable after launch |
 | `spec/**` (`spec.config.json`, `judgement/`, `knowledge/`) | yes | spec | judgement and computed knowledge; raw material stays in `.work/spec/` |
 | `eds-schema/**` | yes | deploy | small JSON |
 | `rollout/` except `qa/` | yes | rollout | `rollout.json`, `coverage/`, `optimize/`, `plan.json`, `site/`, `dashboard/` |
+| `rollout/chrome-map.json` | yes | deploy | nav/footer pair + lang per page prefix (`chrome-map.mjs`, Step 6); an encoder input |
+| `deploy/media-ledger.json` | yes | deploy | DA media path → `contentUrl` + `sources[]` (`da-media-upload.mjs`); an encoder input |
+| `deploy/asset-ledger.json` | yes | deploy | source document URL → `/docs/<file>` (`rehost-docs.mjs`); an encoder input. Schemas of all three: `skills/deploy/schemas/` |
+| `deploy/stage-ledger.json` | yes | deploy | each staged page's `content/` sha (`stage-content.mjs`) — the hand-edit guard |
 | `rollout/qa/**` | **no** | rollout | screenshots of the delivered site |
 | `qa/allowlist.json`, `qa/report.*`, `qa/inventory.json`, `qa/dynamics-report.*`, `qa/ai-readability.json` | yes | qa | judgement and last report |
 | `qa/shots/**`, `qa/baselines/**` | **no** | qa | screenshots; baselines are per machine, a clone re-creates them |
@@ -432,7 +450,8 @@ direct, prototype, uplift, audit, master; `PRODUCT.md` / `DESIGN*.*` —
 replica, prototype, direct, uplift, master; `assets/media`, favicon, logo
 — migrate, deploy, prepare-migration, direct; `assets/screenshots` —
 prototype, replica, audit, reskin; `brand-review.html` — direct, uplift,
-audit, rollout, master; `pages/*.html` (DOM sidecars) — no skill. Only
+audit, rollout, master; `pages/*.html` (DOM sidecars) — migrate's
+encoder, deploy. Only
 `qa` and `diff` never read `current/`.
 
 ## Provenance shapes

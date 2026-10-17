@@ -1,0 +1,5 @@
+{
+  "media/site/logo.png": { "status": "uploaded", "file": "stardust/current/assets/media/logo.png", "size": 10, "source": "https://example.com/img/logo.png", "contentUrl": "https://content.da.live/org/repo/media/site/logo.png", "ts": "2026-01-01T00:00:00.000Z" },
+  "media/site/hero-1a2b3c4d.jpg": { "status": "uploaded", "file": "stardust/current/assets/media/hero-1a2b3c4d.jpg", "size": 20, "source": null, "sources": ["https://example.com/img/hero.jpg", "https://www.example.com/img/hero.jpg?w=800"], "contentUrl": "https://content.da.live/org/repo/media/site/hero-1a2b3c4d.jpg", "ts": "2026-01-01T00:00:00.000Z" },
+  "media/site/broken.jpg": { "status": "failed", "file": "stardust/current/assets/media/broken.jpg", "source": null, "sources": ["https://example.com/img/broken.jpg"], "contentUrl": "https://content.da.live/org/repo/media/site/broken.jpg", "error": "source 404", "ts": "2026-01-01T00:00:00.000Z" }
+}

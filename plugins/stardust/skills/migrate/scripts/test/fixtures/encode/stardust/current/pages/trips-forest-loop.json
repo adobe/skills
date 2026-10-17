@@ -1,0 +1,8 @@
+{
+  "slug": "trips-forest-loop",
+  "url": "https://www.example.com/trips/forest-loop.html",
+  "title": "Forest Loop",
+  "description": "A shaded loop through the pines, with a lookout over the valley.",
+  "og": { "title": "Forest Loop | Example Trails", "description": null, "image": null, "type": "website" },
+  "renderedHtml": "pages/trips-forest-loop.html"
+}
