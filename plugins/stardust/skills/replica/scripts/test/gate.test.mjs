@@ -734,6 +734,23 @@ check('a malformed site file (beside a valid gate-dir file): exit 1 with one std
   && /^gate\.sh: presence\.json stardust\/replica\/presence\.json unreadable \(.+\) — fix or delete it; nothing captured$/.test(r.stderr.trim())
   && attempts().length === 0 && !/differing/.test(r.stdout), `status ${r.status} ${r.stderr} ${attempts().join(',')}`);
 unlinkSync(join(root, SITE)); unlinkSync(join(root, presenceFile('prototypes')));
+// The site file alone (no --hide, no gate-dir presence.json in either stage): its list still reaches both captures, the
+// probes and live.json; chrome-parity gets --presence <site file> and no --hide. Malformed in that setup: refused alike.
+writeFileSync(join(root, SITE), JSON.stringify({ '*': { hide: ['.geo-bar'] }, siteonly: { hide: ['.promo-strip'] } }));
+resetArgv();
+r = await gate(['siteonly', 'https://live.example/siteonly', buildUrl, '1440', 'so1', '--full', '--marker', 'home-proposed'], { GATE_REGIME: 'published', STUB_STITCH_ARGV: argvFile });
+check('site file only, no --hide and no gate-dir file: both captures and live.json get its "*" then <slug> hide', r.status === 0
+  && !existsSync(join(root, presenceFile('prototypes'))) && !existsSync(join(root, presenceFile('all'))) && stitchArgv().length === 2
+  && stitchArgv().every((a) => hideArg(a) === '.geo-bar,.promo-strip') && JSON.stringify(JSON.parse(liveJson('siteonly') || '{}').hide) === '[".geo-bar",".promo-strip"]', `status ${r.status} ${JSON.stringify(stitchArgv())} ${r.stderr}`);
+check('… content-diff, visual-diff, clip-probe and content-presence get the same list', PROBE_FILES('so1').every((f) => hideArg(argvIn(evidence('siteonly', f))) === '.geo-bar,.promo-strip'), PROBE_FILES('so1').map((f) => evidence('siteonly', f)).join(' | '));
+check('… chrome-parity gets no --hide, then --presence stardust/replica/presence.json --slug siteonly', (() => { const a = argvIn(evidence('siteonly', 'chrome-parity-so1.txt')); return Boolean(a) && hideArg(a) === undefined && a.join(' ').endsWith(`--presence ${SITE} --slug siteonly`); })(), evidence('siteonly', 'chrome-parity-so1.txt'));
+writeFileSync(join(root, SITE), '{ "siteonly": { "hide": [".promo-strip"');
+resetCount();
+r = await gate(['siteonly', 'https://live.example/siteonly', buildUrl, '1440', 'so2', '--full', '--marker', 'home-proposed'], { STUB_STITCH_COUNT: countFile });
+check('a malformed site file with no --hide and no gate-dir file: exit 1, one stderr line naming it, before any capture', r.status === 1 && r.stderr.trim().split('\n').length === 1
+  && /^gate\.sh: presence\.json stardust\/replica\/presence\.json unreadable \(.+\) — fix or delete it; nothing captured$/.test(r.stderr.trim())
+  && attempts().length === 0 && !/differing/.test(r.stdout), `status ${r.status} ${r.stderr} ${attempts().join(',')}`);
+unlinkSync(join(root, SITE));
 
 // A stale project copy of stitch-shot (from before the capture record: it rejects the flag, exit 1 — twice, read as
 // "re-queue the round"): no verdict before any capture, one stderr line naming the file and the fix.
