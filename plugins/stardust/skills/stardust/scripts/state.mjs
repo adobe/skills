@@ -20,9 +20,11 @@
 // finalUrl; origin + path without trailing slash + query, `www.` folded) — so the crawl's collision
 // suffixes (-<hash4>) are honoured; a URL with no record falls back to the crawl's slug rule, which
 // names the missing file in the refusal. Every page record must pass validateProvenance (live-render
-// evidence, state-machine.md § validateProvenance(page)) or nothing is written. An existing
-// state.json is refused; --force re-inits only while every page in it is still `extracted` and keeps
-// its top-level keys other than _provenance, site and pages in place.
+// evidence, state-machine.md § validateProvenance(page)) or nothing is written. A state.json with
+// no pages (no `pages` key or an empty pages[] — flow / handsOff stamped before extract ran) is
+// filled without --force, its other top-level keys kept in place. One with pages is refused;
+// --force re-inits only while every page in it is still `extracted` and keeps its top-level keys
+// other than _provenance, site and pages in place. Invalid JSON or a non-array `pages` is refused.
 // set: page.type / page.representative (the archetype slug a sibling clones), all-or-nothing.
 //
 // Lifecycle (state-machine.md § Page lifecycle states): extracted → directed → prototyped →
@@ -103,9 +105,12 @@ init     creates <dir>/${FILE_NAME} after the crawl, one page per URL in --pages
          else of the first URL), deployUrl null, extractedAt, crawled, captureGaps (the roots of
          <current>/_crawl-log.json#captureGaps, when it lists any) } and pages[] (status extracted,
          one history entry, currentStatePath <current>/pages/<slug>.json). Duplicate slugs in the
-         input are a usage error. An existing ${FILE_NAME} exits 2; --force re-inits it only while
-         every page in it is still extracted, keeping its top-level keys other than _provenance,
-         site and pages in place.
+         input are a usage error. An existing ${FILE_NAME} with no pages (no pages key or an empty
+         pages[], e.g. flow / handsOff stamped before extract) is filled without --force: its other
+         top-level keys stay in place and stdout adds "· kept <keys>". One with pages exits 2;
+         --force re-inits it only while every page in it is still extracted, keeping its top-level
+         keys other than _provenance, site and pages in place. Invalid JSON or a non-array pages
+         exits 2.
 advance  moves every named page to <status>: appends { status, at[, approvedBy] } to its history,
          sets prototypePath / migratedPath when given, clears stale on prototyped|approved|migrated,
          re-stamps _provenance (writtenBy stardust:<skill>, writtenAt, stardustVersion).
@@ -125,8 +130,9 @@ A value flag followed by nothing or by another --flag is a usage error; so is a 
 does not read.
 Writes: init writes <dir>/${FILE_NAME}; advance and set rewrite it in place (atomic temp file +
 rename); summary writes nothing.
-Exit codes: 0 ok, 2 usage / illegal transition / refusal (init: ${FILE_NAME} exists, a page record
-is missing or lacks live-render evidence; set: unknown slug or representative) — nothing written.`;
+Exit codes: 0 ok, 2 usage / illegal transition / refusal (init: ${FILE_NAME} holds pages or does not
+parse, a page record is missing or lacks live-render evidence; set: unknown slug or
+representative) — nothing written.`;
 
 export class UsageError extends Error { constructor(msg, code = 2) { super(msg); this.code = code; } }
 
@@ -448,8 +454,8 @@ export function readCaptureGapRoots(current) {
   return Array.isArray(roots) && roots.length ? structuredClone(roots) : null;
 }
 
-// Builds the state object init writes. `prev` (the --force case) keeps its top-level keys other
-// than _provenance, site and pages in place.
+// Builds the state object init writes. `prev` (an existing file without pages, or the --force
+// case) keeps its top-level keys other than _provenance, site and pages in place.
 export function buildInitState({ pages, types = new Map(), siteUrl = null, captureGaps = null, current, prev = null, at = nowIso() }) {
   const rows = pages.map(({ slug, input, record = {} }) => ({
     slug,
@@ -516,6 +522,22 @@ function readPagesInput(src) {
 
 const listSome = (xs, n = 5) => `${xs.slice(0, n).join(', ')}${xs.length > n ? `, … +${xs.length - n} more` : ''}`;
 
+// The top-level keys init writes; every other key of an existing file is kept in place.
+const INIT_OWNS = ['_provenance', 'site', 'pages'];
+// A file with no `pages` key or an empty pages[] holds no page state (the master routing or replica
+// Setup stamps flow / handsOff before extract runs): init fills it without --force.
+export const holdsPages = (state) => Array.isArray(state.pages) && state.pages.length > 0;
+
+// An existing state.json as init sees it; unreadable, not an object, or a non-array `pages` is a
+// refusal (init never guesses over it).
+function readPrevForInit(file) {
+  let state;
+  try { state = JSON.parse(readFileSync(file, 'utf8')); } catch (e) { throw new UsageError(`${file} is not valid JSON (${e.message}) — init leaves it as it is`); }
+  if (!state || typeof state !== 'object' || Array.isArray(state)) throw new UsageError(`${file} is not a JSON object — init leaves it as it is`);
+  if ('pages' in state && !Array.isArray(state.pages)) throw new UsageError(`${file} has a pages key that is not an array — init leaves it as it is`);
+  return state;
+}
+
 function runInit(opts, rest) {
   if (rest.length) throw new UsageError(`init takes no <slug> (got ${rest.join(' ')}); list the pages' URLs in --pages <file|->`);
   if (!opts.pages) throw new UsageError('init needs --pages <file|-> (one URL per line or a JSON array of URLs; - reads stdin)');
@@ -524,11 +546,14 @@ function runInit(opts, rest) {
   const current = opts.current || posix.join(opts.dir, 'current');
   const file = statePath(opts.dir);
   let prev = null;
+  let kept = null;
   if (existsSync(file)) {
-    if (!opts.force) throw new UsageError(`${file} already exists — init never overwrites it; pass --force to re-init while every page in it is still extracted, or change pages with advance / set`);
-    ({ state: prev } = readState(opts.dir));
-    const advanced = prev.pages.filter((p) => p.status !== 'extracted');
-    if (advanced.length) throw new UsageError(`--force re-inits only while every page is extracted; ${advanced.length} of ${prev.pages.length} page(s) moved on: ${listSome(advanced.map((p) => `${p.slug} (${p.status})`))} — ${file} left as it is`);
+    prev = readPrevForInit(file);
+    if (holdsPages(prev)) {
+      if (!opts.force) throw new UsageError(`${file} already exists — init never overwrites it; pass --force to re-init while every page in it is still extracted, or change pages with advance / set`);
+      const advanced = prev.pages.filter((p) => p.status !== 'extracted');
+      if (advanced.length) throw new UsageError(`--force re-inits only while every page is extracted; ${advanced.length} of ${prev.pages.length} page(s) moved on: ${listSome(advanced.map((p) => `${p.slug} (${p.status})`))} — ${file} left as it is`);
+    } else kept = Object.keys(prev).filter((k) => !INIT_OWNS.includes(k));
   }
   const at = nowIso();
   const { pages, failures } = resolvePages(inputs, current);
@@ -537,7 +562,7 @@ function runInit(opts, rest) {
   const state = buildInitState({ pages, types, siteUrl, captureGaps: readCaptureGapRoots(current), current, prev, at });
   mkdirSync(opts.dir, { recursive: true });
   writeState(file, state);
-  console.log(`state: init ${pages.length} page(s) from ${opts.pages === '-' ? 'stdin' : opts.pages} · ${types.size} typed · written by ${state._provenance.writtenBy}`);
+  console.log(`state: init ${pages.length} page(s) from ${opts.pages === '-' ? 'stdin' : opts.pages} · ${types.size} typed${kept && kept.length ? ` · kept ${kept.join(', ')}` : ''} · written by ${state._provenance.writtenBy}`);
   return 0;
 }
 

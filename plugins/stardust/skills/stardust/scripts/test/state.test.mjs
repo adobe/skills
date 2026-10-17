@@ -327,7 +327,7 @@ check('init --force re-inits while every page is extracted, keeping handsOff / f
   const p = project(); const list = p.list('pages.txt', 'https://www.example.com/blog\n');
   writeFileSync(p.stateFile, JSON.stringify({ _provenance: { writtenBy: 'stardust:extract', writtenAt: 'old', readArtifacts: ['x'] }, site: { originUrl: 'https://old.example.com', pageCap: 25 }, direction: null, handsOff: true, flow: 'replica', reskin: { a: 1 }, pages: [mkPage('home', 'extracted')], trailer: 1 }, null, 2));
   const r = runIn(p.d, ['init', '--pages', list, '--force']);
-  assert.equal(r.code, 0, r.err); const s = readIn(p.d);
+  assert.equal(r.code, 0, r.err); assert.doesNotMatch(r.out, / · kept /, 'a file with pages: the stdout line is unchanged'); const s = readIn(p.d);
   assert.deepEqual(Object.keys(s), ['_provenance', 'site', 'direction', 'handsOff', 'flow', 'reskin', 'pages', 'trailer']);
   assert.equal(s.handsOff, true); assert.equal(s.flow, 'replica'); assert.deepEqual(s.reskin, { a: 1 }); assert.equal(s.trailer, 1);
   assert.deepEqual(Object.keys(s._provenance), ['writtenBy', 'writtenAt', 'stardustVersion'], 'a fresh provenance block');
@@ -336,6 +336,33 @@ check('init --force re-inits while every page is extracted, keeping handsOff / f
   const before = readFileSync(p.stateFile, 'utf8');
   const no = runIn(p.d, ['init', '--pages', list, '--force']); assert.equal(no.code, 2); assert.match(no.err, /--force re-inits only while every page is extracted; 1 of 1 page\(s\) moved on: blog \(directed\)/);
   assert.equal(readFileSync(p.stateFile, 'utf8'), before);
+});
+check('init fills a state.json that holds no pages (flow keys stamped before extract; pages: []) without --force, keeping its keys in place', () => {
+  const p = project(); const list = p.list('pages.txt', 'https://www.example.com/blog\nhttps://www.example.com/about-us\n');
+  const flow = { _provenance: { writtenBy: 'stardust:replica', writtenAt: '2026-01-01T00:00:00Z' }, flow: 'replica', flowChosenAt: '2026-01-01T00:00:00Z', flowSource: 'user-phrase' };
+  writeFileSync(p.stateFile, JSON.stringify(flow, null, 2));
+  const r = runIn(p.d, ['init', '--pages', list]);
+  assert.equal(r.code, 0, r.err); assert.equal(r.out, `state: init 2 page(s) from ${list} · 0 typed · kept flow, flowChosenAt, flowSource · written by stardust:extract\n`);
+  const s = readIn(p.d);
+  assert.deepEqual(Object.keys(s), ['_provenance', 'site', 'flow', 'flowChosenAt', 'flowSource', 'pages']);
+  assert.equal(s.flow, 'replica'); assert.equal(s.flowChosenAt, '2026-01-01T00:00:00Z'); assert.equal(s.flowSource, 'user-phrase');
+  assert.equal(s._provenance.writtenBy, 'stardust:extract'); assert.deepEqual(s.pages.map((x) => [x.slug, x.status]), [['blog', 'extracted'], ['about-us', 'extracted']]);
+  const q = project();
+  writeFileSync(q.stateFile, JSON.stringify({ _provenance: {}, handsOff: true, flow: 'redesign', reskin: { a: 1 }, pages: [] }, null, 2));
+  const e = runIn(q.d, ['init', '--pages', list]);
+  assert.equal(e.code, 0, e.err); assert.match(e.out, / · 0 typed · kept handsOff, flow, reskin · written by stardust:extract$/m);
+  const t = readIn(q.d);
+  assert.deepEqual(Object.keys(t), ['_provenance', 'site', 'handsOff', 'flow', 'reskin', 'pages'], 'reskin stays after flow, before pages'); assert.equal(t.pages.length, 2);
+  const again = runIn(q.d, ['init', '--pages', list]); assert.equal(again.code, 2, 'now it holds pages: refused without --force'); assert.match(again.err, /already exists — init never overwrites it/);
+});
+check('init refuses an existing state.json that does not parse or whose pages is not an array, with or without --force — byte-identical', () => {
+  const p = project(); const list = p.list('pages.txt', 'https://www.example.com/blog\n');
+  for (const [text, re] of [['{ "flow": ', /is not valid JSON/], ['{ "flow": "replica", "pages": {} }', /has a pages key that is not an array/], ['[]', /is not a JSON object/]]) {
+    writeFileSync(p.stateFile, text);
+    for (const extra of [[], ['--force']]) {
+      const r = runIn(p.d, ['init', '--pages', list, ...extra]); assert.equal(r.code, 2, `${text} ${extra}`); assert.equal(r.out, ''); assert.match(r.err, re); assert.equal(readFileSync(p.stateFile, 'utf8'), text);
+    }
+  }
 });
 check('init copies _crawl-log.json#captureGaps.roots (only the roots) into site.captureGaps', () => {
   const p = project(); const roots = [{ root: '/de', slug: 'de', linked: 3, uncaptured: ['/de/a', '/de/b'] }];
