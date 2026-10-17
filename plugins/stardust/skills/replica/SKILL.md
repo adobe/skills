@@ -216,13 +216,15 @@ as **clean semantic HTML/CSS** from three sources, in this order:
     converts 3–4 guess-and-screenshot loops into one. Box-by-box comparison of
     the live page against the served prototype goes through the shipped
     `measure.mjs` (`node stardust/scripts/replica/measure.mjs <live-url>
-    --against <prototype-url> --selectors "<css>,…"` — rect + computed values
-    per selector per width, one delta line each); any other look at a
+    --against <prototype-url> --selectors "<css>,…"`); any other look at a
     page — a screenshot, a JS value, a click state, two shots side by side
     — through `node stardust/scripts/diff/page-probe.mjs <url> [--shot
     <png>] [--eval <expr>] [--click <sel>] [--sbs <a> <b> <out>]` (the
-    gate's navigation and consent handling; for looking, never gate
-    evidence). Never an authored browser script.
+    gate's navigation and consent handling; each image written as a
+    capped `<name>.jpg`, 1400 × 1000 q80 — `--full-res` keeps the PNG; an
+    `--sbs` `<out>` that is the `--shot` file goes beside it as
+    `<name>-sbs.png`; for looking, never gate evidence). Never an authored
+    browser script.
 (c) **The captured screenshot as ground truth** for everything CSS doesn't
     name (composition, image crops, paint effects).
 
