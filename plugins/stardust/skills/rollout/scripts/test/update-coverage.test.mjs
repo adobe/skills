@@ -10,7 +10,8 @@
 // and width wins — an older row of either width is skipped and counted (delivery.gate.atByWidth); a width
 // with no recorded time, or a record without the map, is applied; an INCONCLUSIVE row is recorded pass false with its
 // reasons and never flips the status; only gate-all's validated override (`valid: true`) passes a failing row; a row's
-// fix-round count (`round`) merges into delivery.gate.rounds per width, a row without one keeps the map.
+// fix-round count (`round`) merges into delivery.gate.rounds per width, a row without one keeps the map; an --only run's
+// runs/<ts>-<slug>.json table ingests like the roster summary.
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, readFileSync, readdirSync, writeFileSync, existsSync, utimesSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -399,6 +400,28 @@ await check('--help says the newest row per page and width wins and names the ru
   const proj = mkdtempSync(join(tmpdir(), 'update-coverage-help3-'));
   const r = await run(['--help'], proj);
   assert.equal(r.code, 0); assert.match(r.out, /newest row per page and width wins/); assert.match(r.out, /delivery\.gate\.atByWidth/); assert.match(r.out, /runs\/<ts>-<slug>\.json/);
+});
+
+// --- --gate takes every table gate-all writes: the roster summary.json, an --only run's runs/<ts>-<slug>.json, the gate dir ---
+const GATE_DIR = join('stardust', 'replica', 'gates', 'all-1440');
+const runFile = (at, slug) => join(GATE_DIR, 'runs', `${at.replace(/[:.]/g, '-')}-${slug}.json`);
+// the shape gate-all writes for `--only <slug>`: the roster's row shape, the selected page's row only
+const onlyRun = (proj, at, slug, rows) => {
+  const rel = runFile(at, slug); mkdirSync(join(proj, GATE_DIR, 'runs'), { recursive: true });
+  writeFileSync(join(proj, rel), JSON.stringify({ _provenance: { writtenBy: 'gate-all.mjs', writtenAt: at, stage: 'published', breakpoint: 1440, only: [slug], maxRounds: 3 }, totals: { pages: rows.length }, rows }, null, 2));
+  return rel;
+};
+
+await check('--gate ingests an --only run table runs/<ts>-<slug>.json (same row shape, fewer rows) like a roster summary', async () => {
+  const { proj, out } = fixture();
+  let r = await run(['page-0', '--status', 'verified'], proj); assert.equal(r.code, 0, r.err);
+  const rel = onlyRun(proj, T2, 'page-0', [{ ...failRow('page-0'), round: 1 }]);
+  r = await run(['--gate', rel], proj);
+  assert.equal(r.code, 0, r.err);
+  assert.equal(r.out, `gate ${rel} → 1 of 1 rows matched, 1 status flip(s), 0 older row(s) skipped\n`);
+  const d = gateOf(out, 'page-0');
+  assert.equal(d.status, 'failed'); assert.equal(d.error, 'gate: pixel 12% > 10%'); assert.equal(d.gate.table, rel);
+  assert.equal(d.gate.at, T2); assert.equal(d.gate.width, 1440); assert.deepEqual(d.gate.rounds, { 1440: 1 });
 });
 
 console.log(failed ? `update-coverage: ${failed} check(s) failed` : 'update-coverage: all checks passed');
