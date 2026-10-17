@@ -98,7 +98,8 @@
  *     --region header=header --region strip=".quick-links|.quicklinks" --region footer=footer
  *
  * Output: after the live/build lines, `hidden live:` / `hidden build:` lines
- * (`<sel> ×<n> (<h>px) [--hide|presence.json|site presence.json]`) when a hide list is set,
+ * (`<sel> ×<n> (<h>px) [--hide|presence.json|site presence.json]`; a live ×0 the measurement
+ * recount found reads `×0 (×<n> at capture)` — hidden by the rule, no miss) when a hide list is set,
  * one `presence:` line (variable and hide counts, the file(s) read) with --presence or a
  * site file, and the `WARNING hide matched nothing on live — …` line on a live miss; the
  * `hint: …` line just before the closing ✗/✓ line. --json carries
@@ -169,10 +170,11 @@ presence.json (either file) is an error naming it, before any navigation.
 On the live page the hide matches are recounted right before measuring; a selector that matched nothing
 (×0 at the hide pass and at the measurement) prints one line naming the in-flow blocks above the header:
   WARNING hide matched nothing on live — candidates: <selector> (<tag>, <h>px); … (<sel>, …)
-a warning, never a verdict. When the header region is offset as a whole on one side (its box's |Δy| >
-tolerance, every header text within tolerance of it, ≥ 2 header texts; footer and --region pairs are not
-read — they carry body-height differences), one line names the block to hide — the in-flow block above the
-header on the lower side whose height is closest to |Δy|:
+a warning, never a verdict. One the recount found (injected after the hide pass, hidden by the rule) reads
+×0 (×<n> at capture) on the hidden live: line. When the header region is offset as a whole on one side (its
+box's |Δy| > tolerance, every header text within tolerance of it, ≥ 2 header texts; footer and --region pairs
+are not read — they carry body-height differences), one line names the block to hide — the in-flow block above
+the header on the lower side whose height is closest to |Δy|:
   hint: an in-flow region above the header — presence.mjs add --hide <candidate selector>
 
 Exit codes: 0 parity within tolerance, 2 deltas printed, 1 error (also a malformed presence.json),
@@ -428,6 +430,16 @@ export function liveHideMiss(records, candidates, { hideMisses, hideMissLine }) 
   return { hideMiss: { sels, candidates: list }, warning: `WARNING ${hideMissLine(sels, list)}` };
 }
 
+/** The `hidden live:` / `hidden build:` text: live-session's formatHidden per record, a ×0 record that the recount right
+ * before measuring found (nAtCapture > 0 — injected after the hide pass, hidden by the rule) as `×0 (×<n> at capture)`. */
+export function hiddenLine(records, formatHidden) {
+  return (records || []).map((r) => {
+    const text = formatHidden([r]); const tail = ` [${r && r.source}]`;
+    if (!r || r.error || r.n !== 0 || !(r.nAtCapture > 0) || !text.endsWith(tail)) return text;
+    return `${text.slice(0, -tail.length)} (×${r.nAtCapture} at capture)${tail}`;
+  }).join('; ');
+}
+
 // ---------------------------------------------------------------------- main
 
 async function settleTop(page) {
@@ -508,7 +520,7 @@ async function main(args) {
       console.log(JSON.stringify({ live, build, width: opts.width, tolerance: opts.tolerance, liveCache: cached ? { file: opts.liveCache, probedAt: cached.probedAt } : null, hidden, presence, hideMiss, hint, regions, raw: { live: L, build: B } }, null, 2));
     } else {
       console.log(`chrome-parity @ ${opts.width}px, tolerance ${opts.tolerance}px\n  live:  ${live}${liveNote}\n  build: ${build}`);
-      if (hidden.live.length || hidden.build.length) console.log(`  hidden live:  ${session.formatHidden(hidden.live)}\n  hidden build: ${session.formatHidden(hidden.build)}`);
+      if (hidden.live.length || hidden.build.length) console.log(`  hidden live:  ${hiddenLine(hidden.live, session.formatHidden)}\n  hidden build: ${hiddenLine(hidden.build, session.formatHidden)}`);
       if (presence) console.log(`  presence: ${presence.note}`);
       if (warning) console.log(warning);
       for (const r of regions) {

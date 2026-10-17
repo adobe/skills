@@ -5,7 +5,8 @@
 // both sides), the site-wide stardust/replica/presence.json read by default and merged under --presence's file (its
 // selectors attributed `site presence.json`; a malformed one exits 1 naming it), the --live-cache key (unchanged
 // without hides), the region diff, the offset hint (headerOffsets / uniformOffset / offsetHint / chromeHint), the live
-// hide-miss warning (liveHideMiss over live-session's hideMisses / hideMissLine), and --help / usage errors from a copy
+// hide-miss warning (liveHideMiss over live-session's hideMisses / hideMissLine), the hidden line (hiddenLine: a ×0 the
+// recount found reads ×0 (×<n> at capture)), and --help / usage errors from a copy
 // with no playwright and no diff dir beside it. Part (b): end-to-end against fixture pages served from this process —
 // a live page with an in-flow 88 px bar above <header>, one whose script re-renders a NEW bar two frames after the
 // hide pass, one whose empty wrapper above the header a delayed lookup fills with an 88 px bar, one that injects a bar
@@ -19,13 +20,13 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { parseArgs, cacheKey, compareRegion, readPresence, hideLists, headerOffsets, uniformOffset, offsetHint, chromeHint, liveHideMiss, UsageError } from '../chrome-parity.mjs';
+import { parseArgs, cacheKey, compareRegion, readPresence, hideLists, headerOffsets, uniformOffset, offsetHint, chromeHint, liveHideMiss, hiddenLine, UsageError } from '../chrome-parity.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'chrome-parity.mjs');
 // live-session beside the scripts dir (this checkout's layout, or a project copy's) — the hide-miss line is its text
 const LIB = ['../../diff/scripts/live-session.mjs', '../diff/live-session.mjs'].map((p) => resolve(HERE, '..', p)).find((p) => existsSync(p));
-const { hideMisses, hideMissLine } = await import(pathToFileURL(LIB).href);
+const { hideMisses, hideMissLine, formatHidden } = await import(pathToFileURL(LIB).href);
 const root = mkdtempSync(join(tmpdir(), 'chrome-parity-test-'));
 let failed = 0;
 const check = async (name, fn) => { try { await fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${String(e.message).split('\n').join('\n  ')}`); } };
@@ -197,6 +198,12 @@ await check('liveHideMiss: ×0 at the hide pass AND at the measurement is a miss
   assert.deepEqual(liveHideMiss([{ sel: '.geo-bar', source: '--hide', n: 0, h: 0 }], cands, lib), { hideMiss: null, warning: null }, 'a record not recounted is not judged');
   assert.deepEqual(liveHideMiss([], undefined, lib), { hideMiss: null, warning: null });
 });
+await check('hiddenLine: live-session\'s formatHidden per record; a ×0 the recount found right before measuring (nAtCapture > 0) reads ×0 (×<n> at capture) — a miss, an invalid selector, a hit and a record not recounted read as formatHidden', () => {
+  const recs = [{ sel: '.late', source: '--hide', n: 0, h: 0, nAtCapture: 2 }, { sel: '.geo-bar', source: 'site presence.json', n: 0, h: 0, nAtCapture: 0 }, { sel: '[[', source: '--hide', n: 0, h: 0, error: 'not a valid selector', nAtCapture: 1 }, { sel: '.hit', source: 'presence.json', n: 1, h: 88, nAtCapture: 1 }, { sel: '.build', source: '--hide', n: 0, h: 0 }];
+  assert.equal(hiddenLine(recs, formatHidden), '.late ×0 (×2 at capture) [--hide]; .geo-bar ×0 [site presence.json]; [[ error: not a valid selector [--hide]; .hit ×1 (88px) [presence.json]; .build ×0 [--hide]');
+  assert.equal(hiddenLine(recs.slice(1), formatHidden), formatHidden(recs.slice(1)), 'nothing found at capture: formatHidden\'s own text');
+  assert.equal(hiddenLine([], formatHidden), ''); assert.equal(hiddenLine(undefined, formatHidden), '');
+});
 
 await check('CLI: --help answers and a usage error exits 1, from a copy with no playwright and no diff dir', () => {
   const solo = join(root, 'solo'); mkdirSync(solo); cpSync(SCRIPT, join(solo, 'chrome-parity.mjs'));
@@ -353,6 +360,9 @@ if (pwProbe.status !== 0) {
       const j = JSON.parse(r.out);
       assert.deepEqual(j.hidden.live, [{ sel: '.geo-bar', source: '--hide', n: 0, h: 0, nAtCapture: 1 }]);
       assert.deepEqual([j.hideMiss, j.hint], [null, null]); assert.doesNotMatch(r.err, /WARNING/);
+      const text = await runAsync([`${base}/live-inject`, `${base}/build`, '--hide', '.geo-bar']);
+      assert.equal(text.code, 0, text.out + text.err);
+      assert.match(text.out, /^ {2}hidden live: {2}\.geo-bar ×0 \(×1 at capture\) \[--hide\]\n {2}hidden build: \.geo-bar ×0 \[--hide\]$/m, 'the hidden live line says the recount found it'); assert.doesNotMatch(text.out, /WARNING/);
     });
     await check('e2e site presence.json: read from the cwd with no flag ("*" only), its selector says site presence.json (exit 0, no hint)', async () => {
       const dir = project('site-project', { '*': { hide: ['section.bar__wrapper'] }, home: { hide: ['.geo-bar'] } });

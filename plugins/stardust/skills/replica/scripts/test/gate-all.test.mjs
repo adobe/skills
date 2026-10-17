@@ -1606,6 +1606,12 @@ if (process.env.STUB_HIDE_MISS && a.includes('--json') && a.includes('--hide')) 
   const f = a[a.indexOf('--json') + 1]; const m = JSON.parse(process.env.STUB_HIDE_MISS); const list = a[a.indexOf('--hide') + 1].split(',');
   const sels = m.sels.filter((x) => list.includes(x));
   if (sels.length) writeFileSync(f, JSON.stringify({ ...JSON.parse(readFileSync(f, 'utf8')), hideMiss: { ...m, sels } }));
+}
+// STUB_LATE_HIDE (a selector list): the --json record's hide entries, those recounted at capture (nAtCapture 1 — a block
+// injected after the hide pass, hidden by the rule) while the hidden: line still printed them ×0
+if (process.env.STUB_LATE_HIDE && a.includes('--json') && a.includes('--hide')) {
+  const f = a[a.indexOf('--json') + 1]; const late = process.env.STUB_LATE_HIDE.split(',');
+  writeFileSync(f, JSON.stringify({ ...JSON.parse(readFileSync(f, 'utf8')), hidden: a[a.indexOf('--hide') + 1].split(',').map((sel) => ({ sel, source: '--hide', n: 0, h: 0, nAtCapture: late.includes(sel) ? 1 : 0 })) }));
 }`);
 stub(HRS, 'pixel-compare.mjs', 'console.log(JSON.stringify({ pct: 1.5, heightDelta: 0, compared: { width: 1440, height: 3000 }, pass: true }));');
 stub(HDS, 'content-presence.mjs', `import { appendFileSync, writeFileSync } from 'node:fs';
@@ -1621,7 +1627,7 @@ appendFileSync(join(hroot, 'stardust/status.jsonl'), `${JSON.stringify({ ts: new
 const setPresence = (json, out = HOUT) => { mkdirSync(out, { recursive: true }); writeFileSync(join(out, 'presence.json'), JSON.stringify(json)); };
 const hgate = (args, env = {}) => {
   rmSync(HLOG, { force: true }); clearRounds(HOUT, HPROTO);
-  const e = { ...process.env, ...env }; for (const k of ['STARDUST_ORIGIN_MAX_AGE_H', 'STARDUST_BROWSER_SLOT', 'STARDUST_BROWSERS_PER_SLOT', 'RUN_BG_DEADLINE_SEC', 'STUB_HIDE_MISS']) if (!(k in env)) delete e[k];
+  const e = { ...process.env, ...env }; for (const k of ['STARDUST_ORIGIN_MAX_AGE_H', 'STARDUST_BROWSER_SLOT', 'STARDUST_BROWSERS_PER_SLOT', 'RUN_BG_DEADLINE_SEC', 'STUB_HIDE_MISS', 'STUB_LATE_HIDE']) if (!(k in env)) delete e[k];
   const r = spawnSync(process.execPath, [join(HRS, 'gate-all.mjs'), '--width', '1440', ...args], { cwd: hroot, env: e, encoding: 'utf8', timeout: 60e3 });
   const all = lines(HLOG); const run = (r.stdout.match(/run → (.*)/) || [])[1]; const out = args.includes('prototype') ? HPROTO : HOUT;
   const doc = (() => { try { return JSON.parse(readFileSync(run ? join(hroot, run) : join(out, 'summary.json'), 'utf8')); } catch { return null; } })(); // read now: the next run clears runs/
@@ -1725,6 +1731,14 @@ check('hide 9: a diff scripts dir whose live-session.mjs lacks presenceHide → 
     assert.equal(r.status, 0, r.stderr + r.stdout); assert.equal((r.stdout.match(/presence hide: not honoured/g) || []).length, 1, r.stdout);
     assert.ok(r.all.length && r.all.every((l) => !l.includes('--hide')), r.all.join('\n')); assert.equal('hide' in r.row('home'), false);
   } finally { rmSync(join(HDS, 'live-session.mjs')); renameSync(join(HDS, 'live-session-real.mjs'), join(HDS, 'live-session.mjs')); }
+});
+check('hide 10: a ×0 selector the capture record\'s recount found (nAtCapture > 0: injected after the hide pass, hidden by the rule) is no "hide matched nothing" log line; the other ×0 still is; origin.json keeps the stitch\'s hidden text', () => {
+  setPresence({ '*': { hide: ['.geo-bar'] }, home: { hide: ['.promo-strip'] } });
+  const r = hgate([], { STUB_LATE_HIDE: '.promo-strip' });
+  assert.equal(r.status, 0, r.stderr + r.stdout); assert.equal(r.by('ORIGIN', 'home').length, 1);
+  assert.doesNotMatch(r.stdout, / origin home → hide /, 'the origin\'s only ×0 was found at capture');
+  assert.match(r.stdout, / eds home → hide matched nothing: \.geo-bar$/m, 'the build\'s ×0 not found at capture is still named');
+  assert.equal(hjson('home', 'origin.json').hidden, '.geo-bar ×1 (88px) [--hide]; .promo-strip ×0 [--hide]');
 });
 const argOf = (l, flag) => { const a = l.split(' '); const i = a.indexOf(flag); return i < 0 ? null : a[i + 1]; };
 const withDismiss = (url, extra, hide = []) => ({ ...liveJson(url, hide), dismiss: { off: false, consent: null, extra } });

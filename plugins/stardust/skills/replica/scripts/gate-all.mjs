@@ -71,7 +71,8 @@
  * content-presence and clip-probe get `--hide <list>` (unit-geometry does not) — and only a non-empty list is recorded
  * (origin.json / eds.json / the row `hide`, probes.json inputs, the gate key), so no capture taken with another list is
  * reused as if equal (fix rounds, live.png, --skip-existing); each stitch's `hidden:` line is origin.json / eds.json
- * `hidden` (text), and a selector that matched nothing (×0) or is invalid is one _run.log line per side. Origin
+ * `hidden` (text), and a selector that matched nothing (×0 — unless the capture record's recount found it, nAtCapture
+ * > 0: injected after the hide pass, hidden by the rule) or is invalid is one _run.log line per side. Origin
  * fallback: live stitch → previous origin (--recapture-origin) → <crawl-shots>/<slug>.png (`crawl-fullpage`,
  * asymmetric, flagged — an INCONCLUSIVE row).
  * SITE-WIDE PRESENCE: stardust/replica/presence.json (cwd-relative, the same shape: `"*"` and `<slug>` → { hide, main,
@@ -774,10 +775,11 @@ const dismissField = (list) => (list && list.length ? { dismiss: list } : {});
 const sameDismiss = (recorded, list) => sameHide(recorded, list);
 /** stitch-shot's `hidden: <sel> ×<n> (<h>px) [<source>]; …` stdout line (printed only with --hide) → that text, else null. */
 const hiddenText = (out) => { const l = String(out || '').split('\n').map((x) => x.trim()).filter((x) => x.startsWith('hidden: ')).pop(); return l ? l.slice('hidden: '.length) : null; };
-/** A hidden text's selectors that matched nothing (×0) or were invalid (error) → one short log clause, else null. */
-function hiddenMisses(text) {
+/** A hidden text's selectors that matched nothing (×0, not in `late` — the ones the capture record's recount found) or
+ * were invalid (error) → one short log clause, else null. */
+function hiddenMisses(text, late = new Set()) {
   const entries = String(text || '').split('; ');
-  const zero = entries.map((e) => /^(.+) ×0 \[[^\]]*\]$/.exec(e)).filter(Boolean).map((m) => m[1]);
+  const zero = entries.map((e) => /^(.+) ×0 \[[^\]]*\]$/.exec(e)).filter(Boolean).map((m) => m[1]).filter((sel) => !late.has(sel));
   const bad = entries.map((e) => /^(.+?) error: .*\[[^\]]*\]$/.exec(e)).filter(Boolean).map((m) => m[1]);
   const parts = [zero.length ? `matched nothing: ${zero.join(', ')}` : '', bad.length ? `invalid: ${bad.join(', ')}` : ''].filter(Boolean);
   return parts.length ? `hide ${parts.join('; ')}` : null;
@@ -1434,10 +1436,13 @@ async function main() {
   const HIDE_OK = !!FRESH && typeof FRESH.presenceHide === 'function';
   const hideOf = (p) => (HIDE_OK ? FRESH.presenceHide(PRESENCE, p.slug) : []);
   const hideArgs = (p) => { const h = hideOf(p); return h.length ? ['--hide', h.join(',')] : []; };
-  // a stitch run with a list: its `hidden:` line → origin.json / eds.json `hidden`; ×0 / invalid selectors → one log line per side
+  // a stitch run with a list: its `hidden:` line → origin.json / eds.json `hidden`; ×0 / invalid selectors → one log line per
+  // side, without a ×0 its capture record's recount found (nAtCapture > 0: a block injected after the hide pass, hidden)
   const stitchHidden = (p, side, s, hide) => {
     const h = hide.length ? hiddenText(s.out) : null; if (!h) return {};
-    const miss = hiddenMisses(h); if (miss) log(`${side} ${p.slug} → ${miss}`);
+    const rec = tryJson(shotFile(p, side)); const recs = rec && Array.isArray(rec.hidden) ? rec.hidden : [];
+    const late = new Set(recs.filter((x) => x && x.nAtCapture > 0).map((x) => x.sel));
+    const miss = hiddenMisses(h, late); if (miss) log(`${side} ${p.slug} → ${miss}`);
     return { hidden: h };
   };
   if (PRES.note) log(PRES.note);
