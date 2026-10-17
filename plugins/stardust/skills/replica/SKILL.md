@@ -445,10 +445,15 @@ phase `end`, and `ledger.mjs … end` warns when it is missing.
   (`reference/handoff-contract.md`), so every deploy and rollout lint pass
   enforces it.
 - **C-deliver runs in units** (`reference/handoff-contract.md` § 3, row C +
-  Fan-out discipline): C0 — ONE foundation subagent authors AND deploys the
-  foundation; the main agent gates the shell on the published origin, the
-  header contract included (`chrome-compare` exit 0, `../diff/SKILL.md`
-  § The header contract), then `foundation-freeze.mjs freeze` + commit; C-archetype — per template, the
+  Fan-out discipline): C0 — three recorded sub-units, one after another:
+  `foundation-chrome`, `foundation-styles`, then `archetype-<template>` of
+  the shell template, each with its own `progress.json` entry, its own
+  subagent that authors AND deploys its part and returns, its own checkpoint
+  and boundary ask; when that archetype page flips to `deployed`, the main
+  agent runs the foundation-first gate ONCE on it against the published
+  origin, the header contract included (`chrome-compare` exit 0,
+  `../diff/SKILL.md` § The header contract), and the gate closes the
+  archetype; after the three, `foundation-freeze.mjs freeze` ONCE + commit; C-archetype — per template, the
   gated archetype is deployed and passes its full gate row on the preview URL
   (cap 3 fix rounds, then the re-prototype decision) BEFORE its siblings
   render; C1…Cn — one subagent per cluster unit runs the whole chain with
