@@ -1,0 +1,10 @@
+{
+  "url": "https://www.example.com/",
+  "finalUrl": "https://www.example.com/",
+  "title": "Home",
+  "_provenance": {
+    "fetchedAt": "2026-09-20T12:00:00.000Z",
+    "waitMode": "medium",
+    "httpStatus": 200
+  }
+}

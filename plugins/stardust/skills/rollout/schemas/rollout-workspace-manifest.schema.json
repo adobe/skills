@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://stardust.dev/schemas/rollout-workspace-manifest.schema.json",
+  "title": "stardust rollout/workspace/manifest.json",
+  "description": "Hashes and handover state for the coverage a client reads. outputs hashes the three coverage files (what a client reads); inputs hashes what they were built from (the content documents as one summary, the block code read, the judgement). placeholders lists what is still a default. Once a client has taken the project over, the writer refuses to run unless forced; a forced run records handover and, when inputs changed, degraded. Deterministic: unchanged inputs give byte-identical output. Owned by stardust:rollout; strict here because it describes exactly what stardust writes.",
+  "type": "object",
+  "required": ["_provenance", "formatVersion", "inputs", "outputs", "placeholders", "handover"],
+  "additionalProperties": false,
+  "properties": {
+    "_provenance": { "$ref": "#/$defs/provenance" },
+    "formatVersion": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "examples": ["0.1.0"],
+      "description": "Manifest format version (semver). Before 1.0.0 a release may still change the shape; from 1.0.0 a minor release only adds fields, clients ignore fields they do not know, and removing or renaming a field is a major release."
+    },
+    "inputs": {
+      "type": "object",
+      "description": "What the coverage was built from, keys sorted: content (the content documents, summarised), each block code file read and the judgement, keyed by project-relative path.",
+      "properties": {
+        "content": { "$ref": "#/$defs/contentInput" }
+      },
+      "additionalProperties": { "$ref": "#/$defs/sha256" }
+    },
+    "outputs": {
+      "type": "object",
+      "description": "The coverage files a client reads, keyed by project-relative path (<out>/coverage/{pages,templates,blocks}.json).",
+      "additionalProperties": { "$ref": "#/$defs/sha256" }
+    },
+    "placeholders": {
+      "type": "array",
+      "description": "One line per value that is still a default: template names and descriptions, blocks with base type unknown or without purpose, reuse guidance or colour scheme (not judged), pages without a delivered structure.",
+      "items": { "type": "string" }
+    },
+    "handover": {
+      "type": ["object", "null"],
+      "description": "null before handover; set only by a forced run after a client took the project over.",
+      "required": ["at", "detectedFrom"],
+      "additionalProperties": false,
+      "properties": {
+        "at": { "type": "string", "format": "date-time" },
+        "detectedFrom": {
+          "type": "string",
+          "enum": ["marker", "untracked-content", "manifest"],
+          "description": "marker = workspace/handover.json exists; untracked-content = content was tracked and no longer is; manifest = the previous manifest already recorded a handover."
+        }
+      }
+    },
+    "degraded": {
+      "type": "object",
+      "description": "Present only when a forced run read inputs that differ from the previous manifest.",
+      "required": ["reason", "inputs"],
+      "additionalProperties": false,
+      "properties": {
+        "reason": { "type": "string" },
+        "inputs": { "type": "array", "description": "Keys of the changed inputs.", "items": { "type": "string" } }
+      }
+    }
+  },
+  "$defs": {
+    "provenance": {
+      "type": "object",
+      "required": ["writtenBy", "writtenAt", "stardustVersion"],
+      "properties": {
+        "writtenBy": { "type": "string", "examples": ["stardust:rollout/workspace-manifest"] },
+        "writtenAt": { "type": "string", "format": "date-time", "description": "The pages.json generatedAt (never the wall clock)." },
+        "readArtifacts": { "type": "array", "items": { "type": "string" } },
+        "stardustVersion": {
+          "type": ["string", "null"],
+          "description": "Version of the installed plugin; null when run from a project copy without a plugin manifest."
+        }
+      }
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "description": "sha256: followed by 64 lowercase hex digits."
+    },
+    "contentInput": {
+      "type": "object",
+      "required": ["files", "sha256", "tracked"],
+      "additionalProperties": false,
+      "properties": {
+        "files": { "type": "integer", "minimum": 0, "description": "Number of content documents." },
+        "sha256": { "$ref": "#/$defs/sha256", "description": "One hash over the content documents' paths and hashes." },
+        "tracked": {
+          "type": ["boolean", "null"],
+          "description": "Whether the content documents are tracked by the project repository; null when the project is not its own repository root."
+        }
+      }
+    }
+  }
+}

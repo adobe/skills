@@ -5,13 +5,18 @@
  * Rendered in the stardust DESIGN IDENTITY (brand tokens read from the :root block
  * of a migrated page — the canonical token interface, token-contract.md). The
  * centerpiece is a PAGE TREE of every identified page, each node colour-coded by
- * its lifecycle stage:
+ * the most advanced lifecycle stage it reached:
  *
- *   identified → prototyped → migrated → deployed → optimised
+ *   identified → prototyped → deployed → optimised
  *
- * spanning stardust/state.json (agnostic stages) + rollout coverage (deployed) +
- * optimize (optimised = verified & no open findings). Template archetypes (the
- * pages that define a template for their siblings) are marked distinctly.
+ * spanning stardust/state.json (rostered/extracted/directed → identified,
+ * prototyped/approved/migrated → prototyped) + rollout coverage (deployed/verified →
+ * deployed) + optimize (optimised = verified & no open findings). A content-pending
+ * sibling stays at identified: it is in the ledger so delivery can be tracked, but has
+ * no designed document yet. Legend counts are cumulative (a page counts toward every
+ * stage it reached). Template archetypes (the pages that define a template for their
+ * siblings) are badged T; a page with open findings shows a red count. Also a
+ * templates table + the quality scorecard.
  *
  * Usage: node skills/rollout/scripts/dashboard.mjs [--out <rolloutDir>]   (default stardust/rollout)
  *

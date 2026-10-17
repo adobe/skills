@@ -1,0 +1,10 @@
+{
+  "url": "https://www.example.com/About-Us.html",
+  "finalUrl": "https://www.example.com/about-us/",
+  "title": "About us",
+  "_provenance": {
+    "fetchedAt": "2026-09-20T12:01:00.000Z",
+    "waitMode": "medium",
+    "httpStatus": 200
+  }
+}

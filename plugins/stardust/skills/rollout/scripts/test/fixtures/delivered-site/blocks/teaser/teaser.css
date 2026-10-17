@@ -1,0 +1,20 @@
+.teaser > div {
+  display: grid;
+  gap: 1rem;
+}
+
+.teaser.list > div {
+  grid-template-columns: 1fr;
+}
+
+.teaser.list.secure .teaser-item::before {
+  content: '';
+}
+
+.teaser.compact:hover {
+  opacity: 0.9;
+}
+
+.teaser-item {
+  padding: 0.5rem;
+}

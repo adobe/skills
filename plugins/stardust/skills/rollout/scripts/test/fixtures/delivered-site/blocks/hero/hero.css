@@ -1,0 +1,11 @@
+.hero {
+  position: relative;
+}
+
+.hero.dark h1 {
+  color: #fff;
+}
+
+.hero.centered > div {
+  text-align: center;
+}

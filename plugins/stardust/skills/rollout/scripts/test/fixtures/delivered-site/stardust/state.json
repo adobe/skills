@@ -1,0 +1,38 @@
+{
+  "_provenance": {
+    "writtenBy": "stardust:extract",
+    "writtenAt": "2026-09-20T12:00:00.000Z",
+    "stardustVersion": "0.25.0"
+  },
+  "site": {
+    "originUrl": "https://www.example.com",
+    "deployUrl": "https://main--fixture-site--fixture-org.aem.page",
+    "extractedAt": "2026-09-20T12:00:00.000Z",
+    "pageCap": 50,
+    "totalDiscovered": 12,
+    "crawled": 3
+  },
+  "pages": [
+    {
+      "slug": "contact",
+      "url": "https://www.example.com/contact.html",
+      "title": "Contact",
+      "type": "article",
+      "currentStatePath": null
+    },
+    {
+      "slug": "de-ueber-uns",
+      "url": "https://www.example.com/de/ueber-uns.html",
+      "title": "Über uns",
+      "type": "article",
+      "currentStatePath": "stardust/current/pages/de-ueber-uns.json"
+    },
+    {
+      "slug": "home",
+      "url": "https://www.example.com/",
+      "title": "Home",
+      "type": "home",
+      "currentStatePath": "stardust/current/pages/home.json"
+    }
+  ]
+}
