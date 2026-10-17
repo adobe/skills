@@ -35,7 +35,8 @@
 // Gate trust: capturePollution, an INCONCLUSIVE verdict / summary cell / head, rowReuse and the reuse deciders refusing a
 // capture without the overlay-left check or with an overlay left; every stitch stub writes the --json capture record
 // (SHOT_RECORD); a trust sandbox: an overlay left on either side, a crawl-fullpage fallback, no record, a failed
-// --recapture-origin keeping an origin from before the check → INCONCLUSIVE, exit 2; a record from before the check
+// --recapture-origin keeping an origin from before the check, or one taken with another dismiss/hide list (capturePollution
+// with this run's lists) → INCONCLUSIVE, exit 2; a record from before the check
 // (no overlayLeft key): skipCapture's `unchecked`, --skip-existing re-stitches it (logged), --compare-only → INCONCLUSIVE.
 // Validated overrides: registerIds, checkOverride (kind, register entry, clip + content PASS — clip only on the prototype
 // stage — a pixel measurement, not INCONCLUSIVE), the verdict / summary / rowReuse with a valid and an invalid override; the trust sandbox with
@@ -282,6 +283,18 @@ check('capturePollution: a crawl-fullpage origin, an overlay left on either side
   assert.deepEqual(capturePollution({ instrument: 'stitch-live', url: 'https://o.test/' }, { instrument: 'stitch-live' }), [], 'legacy metas: the reuse deciders refuse them, they are not judged here');
   assert.deepEqual(capturePollution({ instrument: 'none', error: 'stitch exit 1' }, { instrument: 'stitch-live', error: 'x', overlayLeft: 'X' }), [], 'a failed capture is an error row');
   assert.deepEqual(capturePollution(null, undefined), []);
+});
+check('capturePollution with this run\'s lists: a stitched capture taken with another hide or --dismiss list (absent = none) → "kept <side> taken with another dismiss/hide list"; the same lists, a crawl shot or a failed capture → none; without lists → not judged', () => {
+  const KEPT = 'origin capture polluted: kept origin taken with another dismiss/hide list';
+  const at = (hide, dismiss) => ({ instrument: 'stitch-live', overlayLeft: null, ...(hide ? { hide } : {}), ...(dismiss ? { dismiss } : {}) });
+  const run = (hide = [], dismiss = []) => ({ hide, dismiss });
+  assert.deepEqual(capturePollution(at(), at(null, ['.x']), run([], ['.x'])), [KEPT], 'the origin kept without the --dismiss list');
+  assert.deepEqual(capturePollution(at(['.bar']), at(), run()), [KEPT], 'the origin kept with a hide list this run has not');
+  assert.deepEqual(capturePollution(at(['.bar', '.x']), at(['.x', '.bar']), run(['.x', '.bar'])), [KEPT], 'another order is another list');
+  assert.deepEqual(capturePollution(at(['.bar'], ['.x']), at(['.bar'], ['.x']), run(['.bar'], ['.x'])), [], 'the same lists');
+  assert.deepEqual(capturePollution(at(), at(['.bar']), run()), ['build capture polluted: kept build taken with another dismiss/hide list'], '--compare-only: a build record taken with another list');
+  assert.deepEqual(capturePollution({ instrument: 'crawl-fullpage', asymmetric: true }, { instrument: 'none', error: 'x', hide: ['.bar'] }, run(['.y'])), ['origin capture polluted: crawl-fullpage fallback'], 'a crawl shot hides nothing; a failed capture is an error row');
+  assert.deepEqual(capturePollution(at(['.bar']), at(), null), [], 'no lists given: not judged (the pure two-argument form)');
 });
 check('verdict: a polluted capture → INCONCLUSIVE — pixel / height null, never PASS, no override lifts it, its reasons are the pollution', () => {
   const polluted = ['origin capture polluted: overlay left — #onetrust-banner-sdk (consent root visible)'];
@@ -1912,6 +1925,23 @@ check('trust 12: --compare-only (no captures) reads a stitched record without an
   const unchecked = 'unchecked (capture predates the overlay-left check)';
   assert.deepEqual([r.row('a').inconclusive, r.row('a').reasons], [true, [`origin capture polluted: overlay left — ${unchecked}`, `build capture polluted: overlay left — ${unchecked}`]]);
   assert.deepEqual(['overlayLeft' in tjson('a', 'origin.json'), 'fontsFailed' in tjson('a', 'eds.json')], [false, false]);
+});
+check('trust 13: a failed --recapture-origin that keeps a previous origin taken with another --dismiss or hide list → INCONCLUSIVE ("origin capture polluted: kept origin taken with another dismiss/hide list"), exit 2, logged — not a verdict; the next round re-stitches it', () => {
+  const KEPT = 'origin capture polluted: kept origin taken with another dismiss/hide list';
+  assert.equal(tgate([]).status, 0, 'a clean origin, taken without a --dismiss or hide list');
+  const d = tgate(['--only', 'a', '--recapture-origin', '--dismiss', '.nl-close'], { STUB_ORIGIN_RC: '1' });
+  assert.equal(d.status, 2, d.stderr + d.stdout); assert.equal(d.stitches('ORIGIN').length, 1);
+  assert.deepEqual([d.row('a').inconclusive, d.row('a').pass, d.row('a').pixelPass, d.row('a').reasons], [true, false, null, [KEPT]]);
+  assert.equal(d.s.totals.inconclusive, 1); assert.equal('dismiss' in tjson('a', 'origin.json'), false, 'the kept record names the list it was taken with (none)');
+  assert.match(tlog(), /origin a → stitch-live reused .*WARN re-shoot failed \(exit 1: .*\) — previous origin kept \(taken with another dismiss\/hide list: no verdict\)/);
+  writeFileSync(join(TOUT, 'presence.json'), JSON.stringify({ '*': { hide: ['.geo-bar'] } }));
+  try {
+    const h = tgate(['--only', 'a', '--recapture-origin'], { STUB_ORIGIN_RC: '1' });
+    assert.equal(h.status, 2, h.stderr + h.stdout); assert.deepEqual([h.row('a').inconclusive, h.row('a').reasons, h.row('a').hide], [true, [KEPT], ['.geo-bar']]);
+    const next = tgate(['--only', 'a']);
+    assert.equal(next.status, 0, next.stderr + next.stdout); assert.equal(next.stitches('ORIGIN').length, 1); assert.match(tlog(), /origin a → not reused \(hide list differs\)/);
+    assert.deepEqual([next.row('a').inconclusive, next.row('a').pass], [false, true]);
+  } finally { rmSync(join(TOUT, 'presence.json'), { force: true }); }
 });
 // ---- fix rounds (the cap is mechanical): the trust sandbox with its own --out per scenario family, never cleared --------
 tpages(['a', 'b']);

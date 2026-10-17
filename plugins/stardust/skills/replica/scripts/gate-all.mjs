@@ -39,7 +39,9 @@
  * heightPass null) — never PASS, never FAIL, never lifted by an override; it exits 2 like a FAIL. Polluted: a
  * crawl-fullpage origin fallback (asymmetric), or a stitch whose capture record names an overlay left on the page
  * after dismissal — each stitch gets `--json <slug>/<side>-shot.json` (deleted before the spawn; origin.json / eds.json
- * record its `overlayLeft` and `fontsFailed`), and no readable record is `unchecked`, never clean. Its reasons are
+ * record its `overlayLeft` and `fontsFailed`), and no readable record is `unchecked`, never clean; or a stitched capture
+ * taken with another hide or --dismiss list than this run's — a previous origin kept after a failed --recapture-origin, a
+ * record --compare-only reads (`<side> capture polluted: kept <side> taken with another dismiss/hide list`). Its reasons are
  * `<origin|build> capture polluted: …` — fix the capture (--hide / presence.json, the consent dismissal), not the page.
  * FONTS: a face the page declares that did not load on either side (the capture records' `fontsFailed`) fails the row —
  * one `font-not-loaded:<family>` reason each (`fontsNotLoaded`, sorted; totals.fontsNotLoaded counts the rows, the
@@ -284,7 +286,9 @@ Usage: node gate-all.mjs [options]   (from the project root)
   stderr line — gate-all: <flag> needs a value, got "<value>" (or: got nothing) — and the usage line, exit 2, before any I/O.
 Verdict = pixel % ≤ threshold AND |Δh| ≤ height-tol × origin height AND clipped ≤ clip-max(+allowance) AND content MISSING+HIDDEN = 0.
   INCONCLUSIVE row (no pixel / height verdict, never PASS): a polluted capture — a crawl-fullpage origin fallback, or
-  an overlay left after dismissal (or no record of the check) in the stitch's --json record <slug>/<side>-shot.json.
+  an overlay left after dismissal (or no record of the check) in the stitch's --json record <slug>/<side>-shot.json, or
+  a kept capture taken with another hide / --dismiss list than this run's (a previous origin kept after a failed
+  --recapture-origin; --compare-only): "origin capture polluted: kept origin taken with another dismiss/hide list".
   A declared face that did not load on either side (the record's fontsFailed) fails the row: font-not-loaded:<family>;
   so does a font check that could not run (fontsFailed null, or no record): font-check-skipped:<origin|build>.
 Sidecars in <out>/: masks.json, overrides.json, clip-allow.json, presence.json, units.json (see the header);
@@ -582,18 +586,22 @@ export function checkOverride(raw, { inconclusive = false, compared = false, cli
 
 // ---- pure: the verdict --------------------------------------------------------------------------------
 /**
- * capturePollution(originMeta, edsMeta) → why the capture pair cannot carry a pixel verdict (origin.json, eds.json; the EDS
+ * capturePollution(originMeta, edsMeta[, lists]) → why the capture pair cannot carry a pixel verdict (origin.json, eds.json; the EDS
  * side is `build`): a crawl-fullpage / asymmetric origin fallback, or a stitch whose record names an overlay left after
  * dismissal (`unchecked …` when stitch-shot wrote no record). A missing, failed or `none` capture adds nothing — that row
  * is an error. A legacy meta without `overlayLeft` adds nothing either; the reuse deciders refuse it instead (and
- * --compare-only, which takes no capture, hands it in as `unchecked`).
+ * --compare-only, which takes no capture, hands it in as `unchecked`). `lists` = this run's { hide, dismiss } (given by
+ * main()): a stitched capture taken with another hide or --dismiss list (absent = none) — a previous origin kept after a
+ * failed --recapture-origin, or a record --compare-only reads — is `<side> capture polluted: kept <side> taken with another
+ * dismiss/hide list` (the two sides were not taken alike).
  */
-export function capturePollution(originMeta, edsMeta) {
+export function capturePollution(originMeta, edsMeta, lists = null) {
   const out = [];
   for (const [side, m] of [['origin', originMeta], ['build', edsMeta]]) {
     if (!m || m.error || !m.instrument || m.instrument === 'none') continue;
     if (m.instrument === 'crawl-fullpage' || m.asymmetric) out.push(`${side} capture polluted: crawl-fullpage fallback${m.note ? ` — ${m.note}` : ''}`);
     if (m.instrument === 'stitch-live' && m.overlayLeft) out.push(`${side} capture polluted: overlay left — ${m.overlayLeft}`);
+    if (lists && m.instrument === 'stitch-live' && (!sameHide(m.hide, lists.hide) || !sameDismiss(m.dismiss, lists.dismiss))) out.push(`${side} capture polluted: kept ${side} taken with another dismiss/hide list`);
   }
   return out;
 }
@@ -1394,7 +1402,7 @@ async function main() {
       else if (existsSync(out) && existsSync(meta) && opts.recaptureOrigin) {
         // the previous origin stays in use: a recorded reuse (stale when it predates the run), never a silent one
         const kept = readJson(meta); const f = fresh(kept);
-        warn = `re-shoot failed (exit ${s.code}: ${lastLine(s.err)}) — previous origin kept`;
+        warn = `re-shoot failed (exit ${s.code}: ${lastLine(s.err)}) — previous origin kept${sameHide(kept.hide, hide) && sameDismiss(kept.dismiss, opts.dismiss) ? '' : ' (taken with another dismiss/hide list: no verdict)'}`;
         // a kept origin from before the overlay-left check is unchecked, never clean (the row is INCONCLUSIVE); its font
         // record: an absent key reads [] (legacy), a null (or other non-array) stays null — never "all loaded"
         const checked = 'overlayLeft' in kept ? {} : { overlayLeft: 'unchecked (previous origin predates the overlay-left check)' };
@@ -1613,7 +1621,7 @@ async function main() {
   const rows = pages.map((p) => {
     if (REUSED[p.slug]) return REUSED[p.slug];
     const r = results[p.slug] || {}; const px = r.pixel || {};
-    const v = verdict({ pixel: px, clip: r.clip && r.clip.counts ? r.clip : null, content: r.content || null, units: r.units || null, override: OVERRIDES[p.slug] || null, allowance: (CLIP_ALLOW[p.slug] || {}).max || 0, capture: { polluted: capturePollution(r.origin, r.eds), fonts: fontsNotLoaded(r.origin, r.eds), fontsSkipped: fontChecksSkipped(r.origin, r.eds) }, register: REGISTER }, { threshold: opts.threshold, heightTol: opts.heightTol, clipMax: opts.clipMax, clipOn: opts.clip, contentOn: opts.content, stage: opts.stage });
+    const v = verdict({ pixel: px, clip: r.clip && r.clip.counts ? r.clip : null, content: r.content || null, units: r.units || null, override: OVERRIDES[p.slug] || null, allowance: (CLIP_ALLOW[p.slug] || {}).max || 0, capture: { polluted: capturePollution(r.origin, r.eds, { hide: hideOf(p), dismiss: opts.dismiss }), fonts: fontsNotLoaded(r.origin, r.eds), fontsSkipped: fontChecksSkipped(r.origin, r.eds) }, register: REGISTER }, { threshold: opts.threshold, heightTol: opts.heightTol, clipMax: opts.clipMax, clipOn: opts.clip, contentOn: opts.content, stage: opts.stage });
     return { slug: p.slug, path: p.deployedPath || new URL(p.liveUrl).pathname, template: p.template, tier: p.fidelityTier, origin: r.origin && r.origin.instrument, originAsymmetric: !!(r.origin && r.origin.asymmetric), eds: r.eds && r.eds.instrument, host: rowHost(p, r.eds),
       originReused: r.origin && r.origin.reused ? { from: r.origin.from, at: r.origin.at, policy: r.origin.policy, stale: r.origin.stale || null } : null,
       presenceReused: r.presenceReused || null, unitsReused: r.unitsReused || null, ...(opts.oneLoad ? { oneLoad: r.oneLoad || null } : {}), ...hideField(hideOf(p)),
