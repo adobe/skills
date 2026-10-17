@@ -85,24 +85,30 @@ ship here.
   `localize-links.mjs` pass (no fan-out yet, no `.paths` file). The foundation-first gate — chrome checks and the pixel
   row at both widths — runs once, when the shell template's archetype page flips to `deployed` (the first page with
   header, footer, styles and fonts), and closes `archetype-<template>`; a failing check goes back to a subagent for the
-  sub-unit whose files it points at, re-recorded with `progress.mjs unit start <sub-unit> --again`. Once it passes,
-  `foundation-freeze.mjs freeze` runs once, after the three, and the freeze check runs from that freeze on. The
-  single-subagent C0 text is folded.
-- **Images meant to be looked at are small (K10).** New `replica/scripts/inspect-image.mjs <in.png> [--out <file.jpg>]
-  [--max 1400x1000] [--quality 80]` writes a capped JPEG copy (default `<in>.inspect.jpg`; at most 1400 × 1000 px,
-  quality 80) with a dependency-free area-average downscale and baseline JPEG encoder (4:4:4, alpha on white,
-  deterministic); `pngjs` loads only after `--help`. `crop-compare.mjs` writes its diff and strip as capped JPEGs at
-  the `.jpg` sibling of `--out` / `--strip`; `--full-res` also writes the full-resolution PNG at the given path (the
-  old output); verdict, numbers and exit codes are unchanged. In its `--json`, `diffImage` now names the capped JPEG
-  (was the `--out` PNG), `strip` → `stripImage` (the strip's JPEG, null without `--strip`), and new `fullRes` lists
-  the PNGs written. The gate's own PNGs stay full-resolution measurement inputs: the gate doc and the reading
-  discipline say agents look only at capped images, and the breakpoint strip for approval keeps `--full-res`.
-  page-probe's `--shot` / `--sbs` part lands on the stacked 0.35.9 branch with page-probe itself.
+  sub-unit whose files it points at, re-recorded with `progress.mjs unit start <sub-unit> --again`; a reopened
+  sub-unit (its fix, `git add -A` checkpoint and whole-tree `localize-links.mjs`) runs only after the archetype
+  subagent has returned, never beside it. Once it passes, `foundation-freeze.mjs freeze` runs once, after the three,
+  and the freeze check runs from that freeze on. The single-subagent C0 text is folded, in replica's SKILL.md too.
+- **Images meant to be looked at are small (K10).** New `replica/scripts/inspect-image.mjs <in.png> [--y <px> --height
+  <px>] [--out <file.jpg>] [--max 1400x1000] [--quality 80]` writes a capped JPEG copy (default `<in>.inspect.jpg`; at
+  most 1400 × 1000 px, quality 80) with a dependency-free area-average downscale and baseline JPEG encoder (4:4:4, alpha
+  on white, deterministic); `pngjs` loads only after `--help`. A whole page fitted into the box is a sliver (1440 × 6000
+  → 240 × 1000), so `--y` / `--height` crop the gate's failing band at full resolution before the cap (default
+  `<in>.y<y>-h<h>.inspect.jpg`; a band not wholly inside the image exits 2 with one line, checked on the PNG header
+  before `pngjs` loads), and the gate doc, the reading discipline and the contract's brief read-set send that band (the
+  first hot band; gate-all's `hotBands`), never a whole page. `crop-compare.mjs` writes its diff and strip as capped
+  JPEGs at the `.jpg` sibling of `--out` / `--strip`; `--full-res` also writes the full-resolution PNG at the given path
+  (the old output); verdict, numbers and exit codes are unchanged. In its `--json`, `diffImage` now names the capped
+  JPEG (was the `--out` PNG), `strip` → `stripImage` (the strip's JPEG, null without `--strip`), and new `fullRes` lists
+  the PNGs written. The gate's own PNGs stay full-resolution measurement inputs: the gate doc and the reading discipline
+  say agents look only at capped images, and the breakpoint strip for approval keeps `--full-res`. page-probe's `--shot`
+  / `--sbs` part lands on the stacked 0.35.9 branch with page-probe itself.
 - **One consent table (K11).** `extract/scripts/crawl.mjs` dismisses consent from live-session's `CONSENT_CANDIDATES`
-  (`consentTable()`, resolved lazily in the plugin tree and both project-copy layouts; a drift test asserts the very
-  same array) instead of its own list; its shadow-root pass, text-match fallback and prune pass stay. Without
-  `live-session.mjs` beside the crawler a consent-dismissing crawl stops with exit 2 naming the looked-in paths
-  (`--no-consent-dismiss` never loads it); extract Setup copies it.
+  (`consentTable()`, resolved lazily in the plugin tree and the project-copy layouts — `scripts/extract/` ↔
+  `scripts/diff/`, flat, and a `crawl.mjs` in `stardust/scripts/` beside replica's `stardust/scripts/diff/`; a drift
+  test asserts the very same array) instead of its own list; its shadow-root pass, text-match fallback and prune pass
+  stay. Without `live-session.mjs` beside the crawler a consent-dismissing crawl stops with exit 2 naming the looked-in
+  paths (`--no-consent-dismiss` never loads it); extract Setup copies it.
 - **`unit-commit.mjs --push` returns under 240 s (K15a).** Its network deadline is 170 s after the script started (the
   lock wait included), and every network step and backoff gets min(its own limit, the time left); with none left it is
   not started (exit 2, `push deadline reached`, the local commit kept and named). The last network step ends by 175 s
@@ -115,7 +121,12 @@ ship here.
   beside `pass` (keys as `atByWidth`; other widths kept; a skipped older row touches none); `pass` keeps its meaning.
   done-check's `unit_unproven` proves a page only when `passByWidth[w] === true` and a gate time is recorded at every
   `--widths` width; a legacy row without `passByWidth` falls back to `pass` + `atByWidth` and is counted in a
-  `skipped:` line (`unit_unproven: <n> row(s) without per-width verdicts — proven on the last width's pass`).
+  `skipped:` line (`unit_unproven: <n> row(s) without per-width verdicts — proven on the last width's pass`). A page
+  failing at 1440 no longer reads deployed because 360 was ingested last: any recorded width's `false` counts the row
+  in done-check's `pages_failed`, `update-coverage` flips a gate-failed row back to `deployed` only when no recorded
+  width is `false`, and `verify.mjs` never marks a row `verified` while one is (`gate: FAIL at <width>`). A width
+  without a verdict is `null`, never `false`, so an inconclusive gate stays `gates_inconclusive`; gate-all rows on
+  this base carry no inconclusive flag, so nothing writes `null` yet (a merge note for the base that adds one).
 - **The scripts-index lint cap is 14208 bytes** (was 13312): raised for the new rows, none trimmed — a maintainer
   question.
 
@@ -132,13 +143,13 @@ refusing a per-page `--only` summary and the provenance `state.mjs advance` stam
 own session.
 
 Patch/contract: no verdict, pixel threshold, capture, criterion or freeze-set change. The new refusals (inventory
-`--state`, a crawl without live-session, progress.mjs shapes, `--push` with no time left), `gates_inconclusive`,
-unvalidated overrides, `header_parity_errors` and the per-width proof only add caution; every skipped check is a named
-line. Output changes: crop-compare writes JPEGs unless `--full-res`; in its JSON `diffImage` now names the capped JPEG
-(was the `--out` PNG), `strip` is now `stripImage` and `fullRes` is new. dynamics-check: any FAIL exits 2 (was 1, or 0
-when the event loop drained first), usage errors exit 1 (was 2). Touches #125, #126, #134, #135. Provisional version,
-renumbered at merge: handoff contract row C (C0's sub-units, the gap-closure phase) and § 5 change, and by plugin
-`AGENTS.md` a changed contract is a minor release.
+`--state`, a crawl without live-session, progress.mjs shapes, `--push` with no time left, an inspect-image band outside
+the image), `gates_inconclusive`, unvalidated overrides, `header_parity_errors` and the per-width proof and failure only
+add caution; every skipped check is a named line. Output changes: crop-compare writes JPEGs unless `--full-res`; in its
+JSON `diffImage` now names the capped JPEG (was the `--out` PNG), `strip` is now `stripImage` and `fullRes` is new.
+dynamics-check: any FAIL exits 2 (was 1, or 0 when the event loop drained first), usage errors exit 1 (was 2). Touches
+#125, #126, #134, #135. Provisional version, renumbered at merge: handoff contract row C (C0's sub-units, the
+gap-closure phase) and § 5 change, and by plugin `AGENTS.md` a changed contract is a minor release.
 
 ## 0.35.3 — delivery bookkeeping ships with the pages; the done-check proves it (#135)
 
