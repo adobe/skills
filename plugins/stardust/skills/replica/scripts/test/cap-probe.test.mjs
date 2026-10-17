@@ -3,7 +3,8 @@
 // classification (capped vs fluid, cap origins, kinds, the content cap, the derived probe width, the
 // cross-archetype aggregate and register items, the live-vs-build rows), argument parsing, the
 // DESIGN.json merge, the one re-probe and its bounded fresh page (fakes), the guarded navigation timeout (a
-// live-session.mjs older than navTimeout keeps 30000), the exit code and the status line — no browser. Part
+// live-session.mjs older than navTimeout keeps 30000), the refusal of a copy older than withDeadline (exit 125), the
+// exit code and the status line — no browser. Part
 // (b): end-to-end against fixture pages served from this process (a live-like page with a 1920 shell
 // + 1600 article + 1180 module, a fluid build, a fixed build, a page that navigates on its first
 // resize, a page that wedges on the resize to the probe width) — runs only where playwright is
@@ -17,7 +18,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   isCapped, capVia, classifyCaps, deriveProbeWidth, groupPx, aggregateCaps, compareCaps, formatCompare, formatCapture,
-  parseArgs, UsageError, mergeDesign, readDesignSizing, MIN_PROBE_WIDTH, DEFAULT_TIMEOUT_MS, exitCodeFor, statusLine, probeWithRetry, sessionNavTimeout,
+  parseArgs, UsageError, mergeDesign, readDesignSizing, MIN_PROBE_WIDTH, DEFAULT_TIMEOUT_MS, exitCodeFor, statusLine, probeWithRetry, requireDeadlines, sessionNavTimeout,
 } from '../cap-probe.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -211,6 +212,13 @@ await check('sessionNavTimeout: a current live-session answers through its navTi
   assert.deepEqual(stale, [{ ms: 30000, source: 'default', detail }, { ms: 30000, source: 'default', detail }]);
   assert.equal(lines.length, 1, lines.join('\n'));
   assert.match(lines[0], /^cap-probe: live-session\.mjs predates navTimeout — navigation timeout 30000 ms; STARDUST_NAV_TIMEOUT_MS and the crawl figure are not read/);
+});
+await check('requireDeadlines: a live-session copy without withDeadline or isContextDestroyed is refused — a UsageError (exit 125, as for a missing copy) with the one-line reason; a current one passes through', () => {
+  const current = { withDeadline() {}, isContextDestroyed() {} };
+  assert.equal(requireDeadlines(current), current);
+  for (const stale of [{}, { withDeadline() {} }, { isContextDestroyed() {} }, { navTimeout() {}, gotoLive() {} }, null]) {
+    assert.throws(() => requireDeadlines(stale), (e) => e instanceof UsageError && e.code === 125 && e.message === 'live-session.mjs predates withDeadline — copy the diff skill\'s live-session.mjs alongside', JSON.stringify(stale && Object.keys(stale)));
+  }
 });
 
 // ---- the re-probe (fakes: pages are numbers, a probe throws what the script says) ------------------------

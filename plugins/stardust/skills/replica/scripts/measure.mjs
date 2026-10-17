@@ -119,8 +119,9 @@
  *
  * Exit codes: 0 measured — possibly partial (`_provenance.partial`, the status
  * line), 1 a page failed to load (named on stderr; what was measured is still
- * printed), 2 usage error, playwright not importable or live-session.mjs not
- * found, 3 bot challenge — the live side served an edge interstitial (fail
+ * printed), 2 usage error, playwright not importable, live-session.mjs not
+ * found or a copy that predates withDeadline (refused before any browser
+ * launch), 3 bot challenge — the live side served an edge interstitial (fail
  * loud; nothing is printed as measured; escalate --headed), 124 every width
  * read failed — no verdict (the run-capped "deadline, no verdict" convention).
  * Precedence 3 > 1 > 124 > 0.
@@ -177,8 +178,18 @@ async function loadLiveSession() {
   return import(pathToFileURL(found).href);
 }
 
-// live-session's navTimeout, guarded as crawl.mjs guards it: a project copy of live-session.mjs older than navTimeout
-// keeps this tool's old default and says so once on stderr — never a TypeError. An explicit --timeout-ms never asks.
+// A project copy of live-session.mjs older than withDeadline / isContextDestroyed is refused before any browser
+// launch (exit 2, as for a missing copy): running without the per-width deadlines would re-open the 900 s hang.
+export function requireDeadlines(session) {
+  if (!(session && typeof session.withDeadline === 'function' && typeof session.isContextDestroyed === 'function')) {
+    throw new UsageError('live-session.mjs predates withDeadline — copy the diff skill\'s live-session.mjs alongside');
+  }
+  return session;
+}
+
+// live-session's navTimeout, guarded as crawl.mjs guards it: a copy older than navTimeout answers this tool's old
+// default with one stderr line — never a TypeError. main() never gets here with one: such a copy predates withDeadline
+// too and requireDeadlines refused it first. An explicit --timeout-ms never asks.
 let staleNavWarned = false;
 export function sessionNavTimeout(session, { fallback = DEFAULT_TIMEOUT_MS, ...nav } = {}) {
   if (session && typeof session.navTimeout === 'function') return session.navTimeout({ ...nav, fallback });
@@ -406,7 +417,7 @@ async function main(argv) {
     throw new UsageError(`playwright is not importable from ${dirname(fileURLToPath(import.meta.url))} (${e.code || e.message}) — replica SKILL.md § Setup: copy the scripts dir into the project and run the copy`);
   }
   const urls = o.against ? [o.url, o.against] : [o.url];
-  const session = await loadLiveSession();
+  const session = requireDeadlines(await loadLiveSession());
   // One navigation timeout across the instruments: the flag, else max(env, the crawl's p95 × 2) clamped to
   // 20000–180000, else 20000.
   const nav = o.timeoutMs === null ? sessionNavTimeout(session) : { ms: o.timeoutMs, source: 'flag' };

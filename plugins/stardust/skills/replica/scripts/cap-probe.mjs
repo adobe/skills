@@ -85,7 +85,8 @@
  * Exit codes: 0 pass / measured (a capture may be partial — _provenance.partial), 2 compare FAIL,
  * 1 a page failed to load or playwright missing, 3 bot challenge on the live side (escalate
  * --headed), 124 no verdict — every page's probe failed a read (capture) or a side's did (compare),
- * the run-capped "deadline, no verdict" convention —, 125 usage. probePage, probeWithRetry (the
+ * the run-capped "deadline, no verdict" convention —, 125 usage, live-session.mjs not found or a copy
+ * that predates withDeadline (refused before any browser launch). probePage, probeWithRetry (the
  * re-probe, browser-free) and the pure functions (classifyCaps, deriveProbeWidth, aggregateCaps,
  * compareCaps, formatCapture, formatCompare, statusLine, exitCodeFor, parseArgs) are exported —
  * the contract test runs them without a browser.
@@ -130,8 +131,18 @@ async function loadLiveSession() {
   return import(pathToFileURL(found).href);
 }
 
-// live-session's navTimeout, guarded as crawl.mjs guards it: a project copy of live-session.mjs older than navTimeout
-// keeps this tool's old default and says so once on stderr — never a TypeError. An explicit --timeout-ms never asks.
+// A project copy of live-session.mjs older than withDeadline / isContextDestroyed is refused before any browser
+// launch (exit 125, as for a missing copy): probing without the per-read deadlines would re-open the 900 s hang.
+export function requireDeadlines(session) {
+  if (!(session && typeof session.withDeadline === 'function' && typeof session.isContextDestroyed === 'function')) {
+    throw new UsageError('live-session.mjs predates withDeadline — copy the diff skill\'s live-session.mjs alongside');
+  }
+  return session;
+}
+
+// live-session's navTimeout, guarded as crawl.mjs guards it: a copy older than navTimeout answers this tool's old
+// default with one stderr line — never a TypeError. main() never gets here with one: such a copy predates withDeadline
+// too and requireDeadlines refused it first. An explicit --timeout-ms never asks.
 let staleNavWarned = false;
 export function sessionNavTimeout(session, { fallback = DEFAULT_TIMEOUT_MS, ...nav } = {}) {
   if (session && typeof session.navTimeout === 'function') return session.navTimeout({ ...nav, fallback });
@@ -645,7 +656,7 @@ async function main(argv) {
   const o = parseArgs(argv);
   let chromium;
   try { ({ chromium } = await import('playwright')); } catch (e) { throw Object.assign(new Error(`playwright is not importable from ${HERE} (${e.code || e.message}) — replica SKILL.md § Setup: copy the scripts dir into the project and run the copy`), { code: 1 }); }
-  const session = await loadLiveSession();
+  const session = requireDeadlines(await loadLiveSession());
   // An explicit --timeout-ms wins; else live-session's navTimeout (max(env, crawl p95 × 2) clamped to
   // 20000–180000, else 30000), with its source.
   const nav = o.timeoutMs ? { ms: o.timeoutMs, source: 'flag' } : sessionNavTimeout(session);

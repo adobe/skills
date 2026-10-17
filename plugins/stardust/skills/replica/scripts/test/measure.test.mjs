@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // skills/replica/scripts/test/measure.test.mjs — the measure.mjs contract: argument parsing and
-// its usage errors, the guarded navigation timeout (a live-session.mjs older than navTimeout keeps 20000),
+// its usage errors, the guarded navigation timeout (a live-session.mjs older than navTimeout keeps 20000), the refusal
+// of a copy older than withDeadline (exit 2), the timeout's precedence end to end (both orders of env vs crawl figure),
 // delta computation (exact px, prop diffs, a side with no match, an image pair's
 // rendition), the root line (scrollWidth beside scrollHeight and the viewport, ◄◄ OVERFLOW when the
 // document is wider) and its deltas, table and delta formatting (a backgroundImage url() shortened
@@ -21,7 +22,7 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { DEFAULT_PROPS, DEFAULT_TIMEOUT_MS, MATCH_CAP, UsageError, buildDeltas, buildRootDeltas, computeDeltas, exitCodeFor, fileOf, formatDelta, formatRoot, formatTable, isLiveHttpUrl, parseArgs, readWidths, sessionNavTimeout, shortValue, statusLine } from '../measure.mjs';
+import { DEFAULT_PROPS, DEFAULT_TIMEOUT_MS, MATCH_CAP, UsageError, buildDeltas, buildRootDeltas, computeDeltas, exitCodeFor, fileOf, formatDelta, formatRoot, formatTable, isLiveHttpUrl, parseArgs, readWidths, requireDeadlines, sessionNavTimeout, shortValue, statusLine } from '../measure.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'measure.mjs');
@@ -90,6 +91,13 @@ await check('sessionNavTimeout: a current live-session answers through its navTi
   assert.deepEqual(stale, [{ ms: 20000, source: 'default', detail }, { ms: 20000, source: 'default', detail }]);
   assert.equal(lines.length, 1, lines.join('\n'));
   assert.match(lines[0], /^measure: live-session\.mjs predates navTimeout — navigation timeout 20000 ms; STARDUST_NAV_TIMEOUT_MS and the crawl figure are not read/);
+});
+await check('requireDeadlines: a live-session copy without withDeadline or isContextDestroyed is refused — a UsageError (exit 2, as for a missing copy) with the one-line reason; a current one passes through', () => {
+  const current = { withDeadline() {}, isContextDestroyed() {} };
+  assert.equal(requireDeadlines(current), current);
+  for (const stale of [{}, { withDeadline() {} }, { isContextDestroyed() {} }, { navTimeout() {}, gotoLive() {} }, null]) {
+    assert.throws(() => requireDeadlines(stale), (e) => e instanceof UsageError && e.code === 2 && e.message === 'live-session.mjs predates withDeadline — copy the diff skill\'s live-session.mjs alongside', JSON.stringify(stale && Object.keys(stale)));
+  }
 });
 await check('isLiveHttpUrl: live origins yes; localhost, loopback and file no', () => {
   assert.equal(isLiveHttpUrl('https://www.example.org/x'), true);
