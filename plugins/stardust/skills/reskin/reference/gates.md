@@ -316,13 +316,10 @@ that family and log. On the preview each round costs a push and a Code
 Sync, so (e) re-runs a matrix instead (`deployed-leg.md`).
 
 Why per family, not per page: the families fail for unrelated
-reasons — content failures are renderer emission bugs, sanity
-failures are almost always responsive chrome, Figma failures are
-section drift or measure mismatches — and the field runs bear this
-out (the validation experiment needed one sanity iteration, the smoke
-run one of each). A single per-page budget would force independent,
-one-edit fixes to be logged as residuals; per-family keeps the loop
-just as bounded without absorbing real, cheap fixes.
+reasons (emission bugs, responsive chrome, section drift or measure
+mismatches), so a per-page budget would force independent one-edit
+fixes to be logged as residuals; per-family keeps the loop as bounded
+without absorbing real, cheap fixes.
 
 ### Residual logging
 

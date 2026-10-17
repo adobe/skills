@@ -423,8 +423,8 @@ node stardust/scripts/replica/run-bg.mjs wait deployed-<slug> --dir stardust/.wo
 ```
 
 On a protected preview add `--token-env <NAME>` to the `all` command, never
-`--auth-header`: `run-bg` saves the command it runs, argument values included,
-in its state file and prints it, so a header value would be written to disk.
+`--auth-header`: `run-bg` saves and prints the command it runs, so a header
+value would be written to disk.
 
 `all` prints one verdict line per step and writes `summary.json`; copy its
 `ledgerFragment` into `ledger.json` `pages.<slug>.gates.deployed`. Exit
