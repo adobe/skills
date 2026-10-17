@@ -427,7 +427,8 @@ phase `end`, and `ledger.mjs … end` warns when it is missing.
   assumed**: before cloning, run `stardust/scripts/replica/sibling-variance.mjs
   <archetype> <siblings…> --probe <block>=<sel> …` once per template and
   budget every delta as a block VARIANT class on the sibling's content (same
-  file, § Sibling variance probe). Content-fidelity is
+  file, § Sibling variance probe — its record,
+  `stardust/rollout/variance/<template>.json`, gates migrate's clone). Content-fidelity is
   **measured per page at import time** (same file, § Content-count
   acceptance) so importer bugs surface while cheap to fix.
 - **Delivery** via the stardust `deploy` skill per page. Bias the decode tier toward

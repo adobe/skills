@@ -62,11 +62,22 @@ not an edge case.** A hero height/scrim delta → a hero VARIANT class
 variant; a different terms shape → the terms block handles both shapes.
 Emit the variant on the sibling's generated content — the block stays
 generic (deploy SKILL.md § The one rule → same-pattern sections collapse into
-one block + variant classes); never fork a block per page. Record the probe's
-JSON next to the fan-out brief and list the variants in each sibling's
-`_meta.json` `variants[]`. The probe is read-only evidence — it never edits
-the clone — and it costs one live navigation per sibling, so run a
-template's siblings in one pass and reuse the JSON.
+one block + variant classes); never fork a block per page. List the
+variants in each sibling's `_meta.json` `variants[]`.
+
+**The verdict gates the clone.** The probe writes
+`stardust/rollout/variance/<template>.json` (`<template>` = the
+archetype's slug; one row per sibling — `same` / `differs`, missing and
+extra probes, deltas — merged across runs against the same archetype).
+`migrate.mjs render` reads it for every A′ page: no row → recorded as
+`skipped`; `differs` → refused unless `--accept-variance "<reason>"`
+(the reason reaches the coverage row's `source.variance`); more than half
+of the template's siblings differing → refused even then: re-type the
+template (sub-archetypes by locale family or composition, `state.mjs
+set --representative`) or record the deviation — never a mechanical
+clone. The probe is read-only evidence — it never edits the clone — and
+it costs one live navigation per sibling, so run a template's siblings
+in one pass.
 
 ## Content-count acceptance (content-fidelity is measured, not asserted)
 
