@@ -20,7 +20,7 @@
  *   without a rows array, `<path> is not a gate-all summary (no rows[])`; a dir holding no table,
  *   `<dir> holds no gate-all table (no summary.json, no runs/*.json)`. One bad table in a dir refuses the ingest.
  *   Writes each row's verdict into the page's `delivery.gate` {pass, pct, heightDelta, clipped, content,
- *   reasons, inconclusive, override, table, at, width, atByWidth, rounds} (`table` = the file the row came
+ *   reasons, inconclusive, override, table, at, width, atByWidth, rounds, host} (`table` = the file the row came
  *   from) and flips a failing page (no valid override) from deployed / verified to `failed` (error
  *   `gate: <reasons>`), a passing one out of that failure back to `deployed`; verify.mjs never marks a page
  *   `verified` while its `delivery.gate.pass` is false (#125 —
@@ -38,6 +38,11 @@
  *   width, merged across ingests like `atByWidth` (the newest applied row of a width sets it, also a lower count
  *   after a round reset); a row without a valid `round` (a table written before gate-all counted rounds), a
  *   table without a width, or a skipped older row leaves the map unchanged.
+ *   `delivery.gate.host` = the EDS origin (scheme + host) the row was measured against — a published gate measures
+ *   the preview host (coverage `deployedUrl`) by default, a gate run with `--eds-host` the host it names (the final
+ *   roster gate: the live host): the row's `host`, else its own table's `_provenance.eds`, else null (a trailing
+ *   slash trimmed, nothing else normalised). Part of the record: the newest applied row sets it, a skipped older
+ *   row leaves it.
  * New:    node update-coverage.mjs --new <slug> --path </delivered/path> --template <id> --origin <origin> [--title <t>] [--status <s>]
  *   page  <status>: pending | converting | deployed | verified | stale | failed
  *   block <status>: pending | converted | deployed | verified | failed
@@ -243,6 +248,8 @@ function gateTables(path) {
 
 // Gate ingest (#125): the pixel table's rows into delivery.gate
 const gateArg = arg('gate', null);
+// the EDS origin a verdict was measured against, as recorded — only a trailing slash trimmed; absent / empty → null
+const originOf = (v) => (typeof v === 'string' && v.replace(/\/+$/, '')) || null;
 if (gateArg) {
   const { label, tables, note } = gateTables(gateArg);
   const doc = readJSON(pagesPath);
@@ -252,6 +259,7 @@ if (gateArg) {
   for (const { file: gateFile, table } of tables) {
     const prov = table._provenance || {};
     const width = prov.breakpoint ?? null;
+    const tableHost = originOf(prov.eds);
     rowCount += table.rows.length;
     for (const r of table.rows) {
       const p = (doc.pages || []).find((x) => x.slug === r.slug || (r.path && x.path === r.path));
@@ -269,7 +277,7 @@ if (gateArg) {
       // gate-all's validated override; a table written before the check carries none with `valid` — not earned
       const ov = r.override ? { verdict: r.override.verdict ?? null, reason: r.override.reason ?? null, valid: r.override.valid === true } : null;
       const pass = !r.inconclusive && !!(r.pass || (ov && ov.valid));
-      p.delivery.gate = { pass, pct: r.pct, heightDelta: r.heightDelta, clipped: r.clipped ?? null, content: r.content || null, reasons: r.reasons || [], inconclusive: r.inconclusive ? (r.reasons || []).join('; ') || 'no verdict' : null, override: ov, table: gateFile, at, width, atByWidth, rounds };
+      p.delivery.gate = { pass, pct: r.pct, heightDelta: r.heightDelta, clipped: r.clipped ?? null, content: r.content || null, reasons: r.reasons || [], inconclusive: r.inconclusive ? (r.reasons || []).join('; ') || 'no verdict' : null, override: ov, table: gateFile, at, width, atByWidth, rounds, host: originOf(r.host) ?? tableHost };
       if (r.inconclusive) inconclusive += 1;
       else if (!pass && ['deployed', 'verified'].includes(p.delivery.status)) { p.delivery.status = 'failed'; p.delivery.error = `gate: ${(r.reasons || []).join('; ') || 'FAIL'}`; flipped += 1; }
       else if (pass && p.delivery.status === 'failed' && /^gate: /.test(p.delivery.error || '')) { p.delivery.status = 'deployed'; p.delivery.error = null; flipped += 1; }

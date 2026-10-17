@@ -13,7 +13,8 @@
 // fix-round count (`round`) merges into delivery.gate.rounds per width, a row without one keeps the map; an --only run's
 // runs/<ts>-<slug>.json table ingests like the roster summary; a gate dir ingests summary.json then runs/*.json in name
 // order (newest row wins); an absent summary.json beside runs/ tables ingests those with one stdout note; not found,
-// unparsable and no-rows files are refused apart (exit 1, nothing written).
+// unparsable and no-rows files are refused apart (exit 1, nothing written); delivery.gate.host records the EDS origin a
+// verdict was measured against — the row's `host`, else its own table's `_provenance.eds`, else null.
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, readFileSync, readdirSync, writeFileSync, existsSync, utimesSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -255,7 +256,7 @@ await check('--gate writes delivery.gate from a gate-all summary; a failing veri
 
 // --- --gate keeps the newest row per page and width: an older table never reverts a newer verdict ---
 const T0 = '2026-01-01T08:00:00.000Z'; const T1 = '2026-01-02T08:00:00.000Z'; const T2 = '2026-01-03T08:00:00.000Z'; const T3 = '2026-01-04T08:00:00.000Z';
-const gateTable = (proj, name, writtenAt, breakpoint, rows) => { const f = join(proj, name); writeFileSync(f, JSON.stringify({ _provenance: { writtenBy: 'gate-all.mjs', writtenAt, stage: 'published', breakpoint }, totals: {}, rows })); return f; };
+const gateTable = (proj, name, writtenAt, breakpoint, rows, prov = {}) => { const f = join(proj, name); writeFileSync(f, JSON.stringify({ _provenance: { writtenBy: 'gate-all.mjs', writtenAt, stage: 'published', breakpoint, ...prov }, totals: {}, rows })); return f; };
 const passRow = (slug, extra = {}) => ({ slug, pct: 1.1, heightDelta: 0, clipped: 0, content: { missing: 0, hidden: 0 }, pass: true, reasons: [], ...extra });
 const failRow = (slug) => ({ slug, pct: 12, heightDelta: 0, clipped: 0, content: { missing: 0, hidden: 0 }, pass: false, reasons: ['pixel 12% > 10%'] });
 const pagesText = (out) => readFileSync(join(out, 'coverage', 'pages.json'), 'utf8');
@@ -338,7 +339,7 @@ await check('--gate records an INCONCLUSIVE row as pass false with its reasons a
   const d = gateOf(out, 'page-0');
   assert.equal(d.status, 'verified', 'no verdict: the status stays'); assert.equal(d.error, null);
   assert.equal(d.gate.pass, false); assert.equal(d.gate.inconclusive, reasons.join('; ')); assert.equal(d.gate.pct, null); assert.deepEqual(d.gate.atByWidth, { 1440: T2 });
-  assert.deepEqual(Object.keys(d.gate), ['pass', 'pct', 'heightDelta', 'clipped', 'content', 'reasons', 'inconclusive', 'override', 'table', 'at', 'width', 'atByWidth', 'rounds']);
+  assert.deepEqual(Object.keys(d.gate), ['pass', 'pct', 'heightDelta', 'clipped', 'content', 'reasons', 'inconclusive', 'override', 'table', 'at', 'width', 'atByWidth', 'rounds', 'host']);
   assert.equal(gateOf(out, 'page-2').gate.inconclusive, null, 'a measured row records inconclusive null');
   const clean = await run(['--gate', gateTable(proj, 'clean.json', T3, 1440, [passRow('page-2')])], proj);
   assert.equal(clean.code, 0, clean.err); assert.match(clean.out, /0 older row\(s\) skipped$/m, 'no inconclusive row, no suffix');
@@ -502,6 +503,53 @@ await check('--help names the gate dir form, the absent summary.json note and th
   const r = await run(['--help'], proj);
   assert.equal(r.code, 0);
   for (const s of ['--gate <table | dir>', 'runs/*.json in name order', 'summary.json absent — an --only run writes runs/<ts>-<slug>.json', '<path> not found', 'does not parse as JSON', 'not a gate-all summary (no rows[])']) assert.ok(r.out.includes(s), s);
+});
+
+// --- --gate records which EDS host each verdict was measured against: the preview host by default, the live one under --eds-host ---
+const PREVIEW = 'https://main--site--org.aem.page'; const LIVE = 'https://main--site--org.aem.live';
+
+await check('--gate records delivery.gate.host — the row\'s host (a trailing slash trimmed), else the table\'s _provenance.eds, else null', async () => {
+  const { proj, out } = fixture();
+  let r = await run(['--gate', gateTable(proj, 'hosts.json', T1, 1440, [passRow('page-0', { host: `${LIVE}/` }), passRow('page-1'), passRow('page-2', { host: null })], { eds: PREVIEW })], proj);
+  assert.equal(r.code, 0, r.err);
+  assert.equal(r.out, `gate ${join(proj, 'hosts.json')} → 3 of 3 rows matched, 0 status flip(s), 0 older row(s) skipped\n`, 'the result line is unchanged');
+  assert.equal(gateOf(out, 'page-0').gate.host, LIVE, 'the row\'s own host wins over the table\'s');
+  assert.equal(gateOf(out, 'page-1').gate.host, PREVIEW, 'no row host: the table\'s _provenance.eds');
+  assert.equal(gateOf(out, 'page-2').gate.host, PREVIEW, 'a null row host: the table\'s _provenance.eds');
+  r = await run(['--gate', gateTable(proj, 'bare.json', T2, 1440, [passRow('page-0'), passRow('page-1', { host: '' })])], proj);
+  assert.equal(r.code, 0, r.err);
+  assert.equal(gateOf(out, 'page-0').gate.host, null, 'neither: null — a newer row never inherits the older record\'s host');
+  assert.equal(gateOf(out, 'page-1').gate.host, null);
+  r = await run(['--gate', gateTable(proj, 'slash.json', T3, 1440, [passRow('page-0')], { eds: `${LIVE}/` })], proj);
+  assert.equal(r.code, 0, r.err); assert.equal(gateOf(out, 'page-0').gate.host, LIVE, 'the provenance fallback is trimmed alike');
+  assert.match((await run(['--help'], proj)).out, /delivery\.gate\.host/);
+});
+
+await check('--gate leaves the recorded host when it skips an older row — pages.json unchanged but generatedAt', async () => {
+  const { proj, out } = fixture();
+  let r = await run(['page-0', '--status', 'deployed'], proj); assert.equal(r.code, 0, r.err);
+  r = await run(['--gate', gateTable(proj, 'roster-live.json', T2, 1440, [passRow('page-0', { host: LIVE })], { eds: LIVE })], proj); assert.equal(r.code, 0, r.err);
+  assert.equal(gateOf(out, 'page-0').gate.host, LIVE);
+  const before = pagesText(out);
+  r = await run(['--gate', gateTable(proj, 'preview-older.json', T1, 1440, [failRow('page-0')], { eds: PREVIEW })], proj);
+  assert.equal(r.code, 0, r.err); assert.match(r.out, /1 older row\(s\) skipped/, r.out);
+  assert.equal(stripGen(pagesText(out)), stripGen(before), 'only the top-level generatedAt may change');
+  assert.equal(gateOf(out, 'page-0').gate.host, LIVE);
+});
+
+await check('--gate <dir> takes each row\'s host from its own table — the row\'s host, else that table\'s _provenance.eds, else null', async () => {
+  const { proj, out } = fixture();
+  mkdirSync(join(proj, GATE_DIR, 'runs'), { recursive: true });
+  gateTable(proj, join(GATE_DIR, 'summary.json'), T1, 1440, [passRow('page-0'), passRow('page-1'), passRow('page-2'), passRow('page-3')], { eds: PREVIEW });
+  gateTable(proj, runFile(T2, 'page-0'), T2, 1440, [passRow('page-0')], { eds: LIVE });
+  gateTable(proj, runFile(T2, 'page-1'), T2, 1440, [passRow('page-1', { host: LIVE })], { eds: PREVIEW });
+  gateTable(proj, runFile(T2, 'page-2'), T2, 1440, [passRow('page-2')]);
+  const r = await run(['--gate', GATE_DIR], proj);
+  assert.equal(r.code, 0, r.err); assert.match(r.out, /\(4 tables\) → 7 of 7 rows matched/, r.out);
+  assert.equal(gateOf(out, 'page-0').gate.host, LIVE, 'its runs/ table\'s _provenance.eds, not the summary\'s');
+  assert.equal(gateOf(out, 'page-1').gate.host, LIVE, 'its row host');
+  assert.equal(gateOf(out, 'page-2').gate.host, null, 'its runs/ table names no host: null, not the summary\'s');
+  assert.equal(gateOf(out, 'page-3').gate.host, PREVIEW, 'only the summary holds it');
 });
 
 console.log(failed ? `update-coverage: ${failed} check(s) failed` : 'update-coverage: all checks passed');
