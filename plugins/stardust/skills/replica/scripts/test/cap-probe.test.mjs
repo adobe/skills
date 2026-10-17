@@ -10,7 +10,7 @@
 // importable, prints a skip line otherwise. Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -345,6 +345,15 @@ if (pwProbe.status !== 0) {
       const r = await runAsync([`${base}/percent`]);
       assert.equal(r.code, 0, r.err);
       assert.match(r.out, /modules {2}3 sections: none capped · full-bleed ×3/); assert.match(r.out, /contentMaxWidth fluid · shellMaxWidth fluid/);
+    });
+    await check('e2e capture: one navigation timeout — no flag: max(env, the crawl log\'s p95 × 2) clamped, both orders; _provenance.navTimeout names the source', async () => {
+      const proj = mkdtempSync(join(tmpdir(), 'cap-probe-nav-'));
+      mkdirSync(join(proj, 'stardust', 'current'), { recursive: true });
+      writeFileSync(join(proj, 'stardust', 'current', '_crawl-log.json'), JSON.stringify({ crawl: { navMs: { p95: 15000 } } }));
+      try {
+        const nav = async (envMs) => { const r = await runAsync([`${base}/percent`, '--json'], { cwd: proj, env: { STARDUST_NAV_TIMEOUT_MS: envMs } }); assert.equal(r.code, 0, r.err); return JSON.parse(r.out)._provenance.navTimeout; };
+        assert.deepEqual(await Promise.all([nav('45000'), nav('25000')]), [{ ms: 45000, source: 'env' }, { ms: 30000, source: 'crawl' }], 'env over 30000, then 30000 over env');
+      } finally { rmSync(proj, { recursive: true, force: true }); }
     });
     await check('e2e capture pinned at 1920: the 1920 shell is invisible (a probe at the cap width cannot see the cap)', async () => {
       const r = await runAsync([`${base}/live`, '--probe-width', '1920']);

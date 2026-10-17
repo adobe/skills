@@ -468,7 +468,7 @@ if (playwrightOk) {
     assert.match(r.stderr, /measure: [^\n]*selector "!bad"/);
     assert.deepEqual(j.pages[urlA][1440]['!bad'], []); assert.equal(j.pages[urlA][1440]['.hero'].length, 1);
   });
-  await check('e2e: one navigation timeout — no flag: the crawl log\'s p95 × 2 (clamped), else the env; --timeout-ms wins over both; _provenance.navTimeout names the source', async () => {
+  await check('e2e: one navigation timeout — no flag: max(env, the crawl log\'s p95 × 2) clamped, both orders; --timeout-ms wins over both; _provenance.navTimeout names the source', async () => {
     const proj = mkdtempSync(join(tmpdir(), 'measure-nav-'));
     mkdirSync(join(proj, 'stardust', 'current'), { recursive: true });
     writeFileSync(join(proj, 'stardust', 'current', '_crawl-log.json'), JSON.stringify({ crawl: { navMs: { p95: 15000 } } }));
@@ -476,7 +476,8 @@ if (playwrightOk) {
     try {
       const nav = async (args, env) => { const r = await run([urlA, '--selectors', '.hero', '--props', 'display', '--json', ...args], proj, env); assert.equal(r.status, 0, r.stderr); return JSON.parse(r.stdout)._provenance.navTimeout; };
       assert.deepEqual(await nav([], noEnv), { ms: 30000, source: 'crawl' });
-      assert.deepEqual(await nav([], { ...noEnv, STARDUST_NAV_TIMEOUT_MS: '45000' }), { ms: 45000, source: 'env' });
+      assert.deepEqual(await nav([], { ...noEnv, STARDUST_NAV_TIMEOUT_MS: '45000' }), { ms: 45000, source: 'env' }, 'env over the crawl figure');
+      assert.deepEqual(await nav([], { ...noEnv, STARDUST_NAV_TIMEOUT_MS: '25000' }), { ms: 30000, source: 'crawl' }, 'the crawl figure over the env');
       assert.deepEqual(await nav(['--timeout-ms', '7000'], { ...noEnv, STARDUST_NAV_TIMEOUT_MS: '45000' }), { ms: 7000, source: 'flag' });
     } finally { rmSync(proj, { recursive: true, force: true }); }
   });
