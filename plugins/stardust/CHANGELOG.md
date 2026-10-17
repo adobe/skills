@@ -21,8 +21,9 @@ the element), so nothing in the export said which element a block was built from
   falls through), else text alignment, else, for a block whose text is not found (an image-only one, say), its
   position (confidence 0): a child of its section's element, else next to the nearest anchored neighbour, never
   another record's element, or no selector. Selectors are derived from and checked against the capture as stardust's
-  own parser reads it, with no browser. Pages and blocks it could not map are listed under `skipped`; keys are sorted
-  and `generatedAt` is copied from the coverage, so unchanged inputs give the same bytes.
+  own parser reads it, with no browser. Pages and blocks it could not map are listed under `skipped`; a section with
+  no encoder-map or text-alignment anchor on any page (placement by position does not anchor) gets a null selector and
+  no pages; keys are sorted and `generatedAt` is copied from the coverage, so unchanged inputs give the same bytes.
 - **`--verify`** re-reads every capture and records per instance whether its selector resolves to exactly one element
   (`verified` true or false; without the flag null, recorded as skipped). It checks uniqueness, not that the element
   is the right one.
