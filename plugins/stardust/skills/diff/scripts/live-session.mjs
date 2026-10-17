@@ -518,7 +518,8 @@ export function isContextDestroyed(err) {
  *   - entry status < 400 (any host), after the settle: a DENIAL page
  *     (pageDenial / denialMarker — a vendor signature, or a page under 2 KB
  *     of text under one error heading) gets the same `solveWindow` treatment
- *     (a reload answered by an edge challenge or a >= 400 does not clear it),
+ *     (each reload settled like the entry; a reload answered by an edge
+ *     challenge or a >= 400, or one the probe cannot read, does not clear it),
  *     then THROWS BotChallengeError, marker `HTTP <status> denial page — …`,
  *     message "origin blocked" + the --headed escalation. A probe that fails
  *     twice is one stderr line ("denial-page check skipped"), never a pass.
@@ -565,8 +566,14 @@ export async function gotoLive(page, url, { waitUntil = 'domcontentloaded', time
       await page.waitForTimeout(4000);
       const reloaded = await page.reload({ waitUntil, timeout: timeoutMs }).catch(() => null);
       if (reloaded) resp = reloaded;
+      if (settleMs > 0) await page.waitForTimeout(settleMs); // the reloaded page is read (and returned) settled, like the entry
       // a reload answered by an edge challenge or an error status has not cleared the denial page
-      if (!challengeMarker(resp) && resp.status() < 400) d = await pageDenial(page);
+      if (!challengeMarker(resp) && resp.status() < 400) {
+        const next = await pageDenial(page);
+        // nor has one the probe cannot read: only a verdict replaces the confirmed denial (fail closed)
+        if (next.skipped) console.error(`[live-session] denial-page check skipped at ${url}: ${next.skipped}`);
+        else d = next;
+      }
     }
     if (d.skipped) console.error(`[live-session] denial-page check skipped at ${url}: ${d.skipped}`);
     if (d.marker) throw botChallengeError(url, `HTTP ${status} ${d.marker}`, { denial: true });

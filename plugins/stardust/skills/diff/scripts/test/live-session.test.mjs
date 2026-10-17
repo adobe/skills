@@ -275,10 +275,10 @@ check('normalizeDenialText: lower-case, curly apostrophes → \', … → ..., e
   for (const [v, want] of [[null, ''], [undefined, ''], [42, '42']]) assert.equal(session.normalizeDenialText(v), want, String(v));
 });
 
-// gotoLive on stub pages: `probes` = what successive evaluate calls return (the last repeats); `reload` = the
-// status/headers a reload answers with.
+// gotoLive on stub pages: `probes` = what successive evaluate calls return (the last repeats); `evaluateError` is
+// thrown from evaluate call `evaluateErrorFrom` on (1 = always); `reload` = the status/headers a reload answers with.
 const LIVE_URL = 'https://www.example.com/';
-const stubPage = ({ status = 200, headers = {}, probes = [CLEAN_PROBE], evaluateError = null, reload = { status: 200, headers: {} } } = {}) => {
+const stubPage = ({ status = 200, headers = {}, probes = [CLEAN_PROBE], evaluateError = null, evaluateErrorFrom = 1, reload = { status: 200, headers: {} } } = {}) => {
   const calls = { goto: 0, reload: 0, evaluate: 0, waits: [] };
   const response = (s, h) => ({ status: () => s, headers: () => h, url: () => LIVE_URL });
   const page = {
@@ -290,7 +290,7 @@ const stubPage = ({ status = 200, headers = {}, probes = [CLEAN_PROBE], evaluate
     evaluate: async (fn) => {
       assert.equal(fn, session.denialProbeInPage, 'gotoLive only evaluates the denial probe');
       calls.evaluate += 1;
-      if (evaluateError) throw evaluateError;
+      if (evaluateError && calls.evaluate >= evaluateErrorFrom) throw evaluateError;
       return probes[Math.min(calls.evaluate, probes.length) - 1];
     },
   };
@@ -348,18 +348,22 @@ await checkAsync('gotoLive: a probe that fails twice returns the response with O
   flaky.evaluate = async (fn) => { if (first) { first = false; throw new Error('Execution context was destroyed'); } return evaluate(fn); };
   assert.deepEqual(await session.pageDenial(flaky), { marker: 'denial page — "System Down"', skipped: null }, 'the retry reads the page');
 });
-await checkAsync('gotoLive solveWindow: a denial page clean after the first reload returns the reloaded response; still denied after 3 reloads, or reloads answered by an edge challenge, it throws', async () => {
+await checkAsync('gotoLive solveWindow: a denial page clean after the first (settled) reload returns the reloaded response; still denied after 3 reloads, reloads answered by an edge challenge, or reloads the probe cannot read, it throws', async () => {
   const cleared = stubPage({ probes: [SIGNATURE_PAGES['just-a-moment'], CLEAN_PROBE] });
-  const resp = await session.gotoLive(cleared, LIVE_URL, { settleMs: 0, solveWindow: true });
+  const resp = await session.gotoLive(cleared, LIVE_URL, { settleMs: 700, solveWindow: true });
   assert.equal(resp, cleared.last, 'the reloaded response');
   assert.deepEqual([cleared.calls.reload, cleared.calls.evaluate], [1, 2], 'one reload, then clean');
-  assert.deepEqual(cleared.calls.waits, [4000]);
+  assert.deepEqual(cleared.calls.waits, [700, 4000, 700], 'the entry settle, the solve wait, the reload settled before the re-probe');
   const stuck = stubPage({ probes: [SIGNATURE_PAGES['just-a-moment']] });
   await assert.rejects(session.gotoLive(stuck, LIVE_URL, { settleMs: 0, solveWindow: true }), { name: 'BotChallengeError', marker: 'HTTP 200 denial page — "Just a moment…"' });
   assert.deepEqual([stuck.calls.reload, stuck.calls.evaluate], [3, 4], 'the 3-attempt window');
   const edge = stubPage({ probes: [SIGNATURE_PAGES['just-a-moment'], CLEAN_PROBE], reload: { status: 403, headers: { server: 'AkamaiGHost' } } });
   await assert.rejects(session.gotoLive(edge, LIVE_URL, { settleMs: 0, solveWindow: true }), { name: 'BotChallengeError', marker: 'HTTP 200 denial page — "Just a moment…"' });
   assert.deepEqual([edge.calls.reload, edge.calls.evaluate], [3, 1], 'an edge-challenged reload never re-reads the page as cleared');
+  const unreadable = stubPage({ probes: [SIGNATURE_PAGES['just-a-moment']], evaluateError: new Error('page.evaluate: Execution context was destroyed\n    at denialProbeInPage'), evaluateErrorFrom: 2 });
+  const lines = await stderrOf(() => assert.rejects(session.gotoLive(unreadable, LIVE_URL, { settleMs: 0, solveWindow: true }), { name: 'BotChallengeError', marker: 'HTTP 200 denial page — "Just a moment…"' }));
+  assert.deepEqual([unreadable.calls.reload, unreadable.calls.evaluate], [3, 7], 'every reload re-probed (and retried once), none replaces the confirmed denial');
+  assert.deepEqual(lines, Array(3).fill(`[live-session] denial-page check skipped at ${LIVE_URL}: page.evaluate: Execution context was destroyed`), 'one skipped line per unreadable re-probe');
 });
 await checkAsync('gotoLive: the header-marker message is unchanged (botChallengeError builds it) and a header challenge is never probed', async () => {
   const page = stubPage({ status: 403, headers: { server: 'AkamaiGHost' } });
