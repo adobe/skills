@@ -80,10 +80,13 @@ Writes `coverage/pages.json` (one row per page: slug, delivered `path`,
 **Archetypes-only mode** (`--state`): pages with a `_meta.json` are seeded as in
 full mode; pages present only in `state.json` are seeded with `templateId` from
 `type`, `blocks` from the archetype sidecar, and `delivery.status:
-content-pending`.
+content-pending`. `--state` needs a state file (`pages[]` of `{slug, url, type}`)
+and an archetypes-only tree: a sibling in the tree or a malformed file exits 2 with
+nothing written — re-run without `--state`.
 
-Inventory is **idempotent and incremental**: delivery status is preserved; a page
-whose migrated HTML changed after delivery is re-flagged `stale`. Fill in the DA
+Inventory is **idempotent and incremental**: delivery status is preserved; a
+delivered page is re-flagged `stale` only when the same document's bytes change — a
+roster row later migrated keeps its status. Fill in the DA
 coordinates in `rollout.json` (`site.da.org`, `site.site`, `site.da.ref`,
 `site.liveHost`) if not inferred.
 
@@ -103,7 +106,11 @@ node skills/rollout/scripts/plan.mjs     # → plan.json + a readable conversion
   block set; `content-pending` pages add none. A module that maps to EDS **default
   content** (title, text, image, button, separator — deploy's D1) needs no block: record
   it `update-coverage.mjs --block <id> --status converted --eds-name default-content`;
-  such a row is never counted pending, whatever its status.
+  such a row is never counted pending, whatever its status. Every directory under
+  `blocks/` is registered — one no page lists gets a row `source: blocks-dir` (header
+  and nav count as one chrome); a block deliberately left undelivered is recorded
+  `update-coverage.mjs --block <name> --status not-delivered --reason "<text>"`.
+  `rollout.json` `lastRun.blocks` counts `{total, converted, notDelivered, pending}`.
 - `plan.mjs` orders pages **representative-first per template** and gives each
   distinct block a **single conversion point**: the first page that uses it
   CONVERTS it, every later page REUSES it by name. The per-page `convert`/`reuse`
@@ -243,7 +250,8 @@ or converted — the recorded unit `C-archetype` (handoff contract § 3, row C).
 **Cluster sub-units (#134):** in C-deliver a template cluster of more than 16
 siblings is delivered as recorded sub-units `cluster-<template>-1..n` — at most
 16 pages each, near-equal, cut in sibling order, run one after another — each
-with its own `stardust/rollout/progress.json` entry (same shape), checkpoint
+with its own `stardust/rollout/progress.json` entry
+(`node skills/stardust/scripts/progress.mjs unit start|done|failed <unit>`), checkpoint
 commit and boundary ask; fix rounds (cap 3) and the `gate-all.mjs --only` scope
 are per sub-unit. Target: no C-deliver unit runs longer than 90 minutes
 (handoff contract § 3, row C). A fan-out subagent honours the pause file
@@ -263,9 +271,7 @@ should run the bundled, resumable driver rather than a serial loop:
 --branch <branch> --content <dir>` (concurrency pool, persistent ledger that skips
 already-live pages, retry/backoff, append-only log, delivered-`.plain.html` check).
 The driver and every batch run in the background; its log and ledger are the
-progress file. Check them at most every 4 minutes and never with a fixed `sleep`
-of 5 minutes or more (the prompt-cache window) — the master skill's wait
-discipline. After a transient blip, re-run the same command — it re-drives
+progress file. After a transient blip, re-run the same command — it re-drives
 only the FAILs. Then reconcile the ledger into coverage with `update-coverage.mjs`
 (step 4's order). **Foundation first** (lint AND commit `styles.css`,
 header/footer CSS and the contract file before the first agent spawns; no token
@@ -343,8 +349,10 @@ media as URL, client-compute blocks, owner-facing tag config disabled, off-origi
 sheet sync); emit every other row as **one owner decision batch** and ship its interim tier.
 Query indexes build from the **published** tree — publish per page in Phase C, then poll `total`.
 Each feature ends with a parity row in `stardust/dynamics/parity.json` carrying a replayable check;
-`dynamics-check.mjs --origin <live host>` runs before Phase H and the report carries its table.
-Failed replays are `dynamic-gap` / `api-dependency` learnings, never silent passes.
+`dynamics-check.mjs --origin <live host>` runs before Phase H (exit 2 on any FAIL) and the report
+carries its table. Failed replays are `dynamic-gap` / `api-dependency` learnings, never silent passes;
+a parity fix changes block code, never the delivered content's meaning (a recorded run turned a
+video button into a source link so its own replay passed).
 Index-backed listings ship **document-first** (authored rows, index for non-text and top-up —
 `dynamics/reference/listings.md`); the deploy AI-readability gate runs on every listing page.
 
@@ -387,9 +395,12 @@ node skills/rollout/scripts/verify.mjs            # uses rollout.json site.liveH
 # or: --base <url>   (explicit host)   |   --root <dir>   (offline, against a local export)
 ```
 
-For every delivered page, `verify` confirms HTTP 200, no `about:error` (deploy
-#75), and that every internal `href="/…"` resolves to a known delivered path — then
-flips each page to `verified` or `failed`. Exits non-zero if any page failed.
+For every delivered page — fetched where it was deployed (`delivery.deployedUrl`,
+else its path: the delivered-path contract) — `verify` confirms HTTP 200, no
+`about:error` (deploy #75), and that every internal `href="/…"` resolves to a known
+delivered path (media and text-track links — `.vtt`, `.mp3`, … — are assets, not
+broken links) — then flips each page to `verified` or `failed`. Exits non-zero if
+any page failed.
 
 **Headless render check (per template).** A 200 `.plain.html` can still render
 blank — decoration failures (missing script, wrong block wrapper class, 404
@@ -427,10 +438,12 @@ link **targets** a roster-driven batch misses
   --content content --redirects stardust/redirects.tsv` rewrites every
   source-host href whose path exists in the content tree (header/footer/home
   included) to the canonical root-relative form and lists the ones it kept
-  absolute (no local page — a bounce beats a 404). **Re-run over the WHOLE
-  tree after every wave**: earlier waves' pages gain newly valid targets only
-  when a later wave ships them. `--check` is the gate (exit 2 = localizable
-  links remain).
+  absolute (no local page — a bounce beats a 404). Inside a C-deliver unit
+  pass `--unit <unit>` to the plain pass and to `--check` (only the unit's
+  documents are written; the map still spans the whole tree). **The whole-tree
+  pass runs where no unit runs** (C-final and this phase): earlier units' pages gain
+  newly valid targets only when a later unit ships them. `--check` is the
+  gate (exit 2 = localizable links remain).
 - **Link every internal page at its served URL** (`deploy/scripts/eds-path.mjs`):
   no `.html`, a slash only on a folder index (`/x/`). `.html` and a leaf's
   slash 404 while `.plain.html` passes. Repoint `.html` links with no local
@@ -537,7 +550,7 @@ rollout — <site> → aem-eds
 ==================================================
 Pages       <N> total · <v> verified · <d> deployed · <p> pending · <cp> content-pending · <s> stale
 Templates   <T> (per-template delivered/total)
-Blocks      <B> total · <c> converted · <p> pending
+Blocks      <B> total · <c> converted · <n> not delivered · <p> pending
 Quality     health <H>/100 · open P1 <n> / P2 <n> / P3 <n>
 Pixel table prototypes <p>/<P> PASS · deployed <d>/<D> PASS (pixel-only <x>/<D>) — gates/{prototypes,all}-1440/summary.md
 To deliver  <list of remaining slugs>
@@ -551,11 +564,13 @@ page missing from `all-1440/summary.json` is ungated and belongs in that list (#
 live and they advance to `pending` automatically when `migrate` emits their HTML
 and `inventory` is re-run.
 
+**Usage:** `node skills/stardust/scripts/token-ledger.mjs` writes `stardust/usage.md` +
+`usage.json` — commit them; with the session transcripts unreachable it still writes the
+table, its token cells `unknown`.
+
 **Also write/refresh `stardust/learnings.md`** per
 `skills/stardust/reference/learnings.md`: one entry per failure class this run
 surfaced (evidence, proposed skill + section to change, `status: pending`).
-plugin maintainers harvest pending entries into skill
-diffs — this is how a run's hard-won fixes stop being re-learned.
 
 ### Phase I — Dashboard
 
