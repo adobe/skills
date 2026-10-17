@@ -70,13 +70,19 @@
  *     --concurrency <n>       parallel browser contexts (default 4)
  *     --dynamics              also record each page's dynamic surface (network endpoints, forms,
  *                             hydration hints) — set by the calling skill, off by default
+ *   Each page's goto timeout: env STARDUST_NAV_TIMEOUT_MS (ms, as given), else the crawl figure —
+ *   2 × crawl.navMs.p95 from the previous <out>/_crawl-log.json, clamped to 20000–180000 — else 45000;
+ *   resolved once through the diff skill's live-session.mjs (../../diff/scripts/, ../diff/ or ./ — when
+ *   none is there the crawl keeps 45000 and says so once on stderr). The entry probe, the challenge
+ *   reload and the slash retry keep their own timeouts.
  *
  * Writes (everything under --out; nothing outside it):
  *   pages/<slug>.json              one record per captured page — slug, url, finalUrl, title,
  *                                  description, og, headings, body, codeBlocks, ctas, links,
  *                                  media {imgs, allImgCount, cssBackgrounds, modals, videos,
  *                                  iframes}, customProps (CSS custom properties resolved on
- *                                  :root), _signals, _provenance, renderedHtml, screenshot
+ *                                  :root), _signals, _provenance, renderedHtml, screenshot,
+ *                                  navMs (ms the page's own goto took to domcontentloaded)
  *                                  (+ `dynamic` with --dynamics; `_signals.duplicateOf` marks a
  *                                  page whose main content hashes equal to an earlier page's)
  *   pages/<slug>.html              the settled rendered DOM, verbatim (parse offline — never re-scrape)
@@ -88,6 +94,11 @@
  *                                  per-URL failures, slash retries, `captureGaps` (locale roots,
  *                                  above) (+ `dynamicSurface` with --dynamics); merged into an
  *                                  existing log, never replaced
+ *                                  `crawl.navMs` { n, p50, p95, max }: the captured pages' navMs
+ *                                  (nearest-rank, integer ms; nulls when n is 0) — the crawl figure:
+ *                                  2 × p95, clamped, is the navigation timeout live-session gives the
+ *                                  live instruments (from stardust/current/) and the next crawl into
+ *                                  this --out
  * Not captured here: page images and videos (recorded as URLs under `media`, never downloaded),
  * stylesheets, font files, the logo and the rest of the brand surface — those belong to the
  * extract skill's Phase 3 (brand-surface extraction), not to the crawl; do not look for them
@@ -102,7 +113,7 @@ import { mkdir, writeFile, readFile } from 'node:fs/promises';
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 // Compare by real path: a symlinked checkout or temp dir must not turn the CLI into a silent no-op — and
 // a test that imports the pure helpers below (captureGaps, localeRootPath) must not start a crawl.
@@ -122,6 +133,16 @@ if (IS_MAIN && (process.argv.includes('--help') || process.argv.includes('-h')))
 // a checkout without it and the pure helpers are testable without a browser.
 let chromium;
 
+// live-session.mjs (the diff skill) resolves the one navigation timeout every live instrument shares. Optional
+// here: extract may be copied alone, and the crawl must still run — main() keeps NAV_TIMEOUT_FALLBACK_MS then.
+// Layouts: the plugin tree, the project copy (scripts/extract ↔ scripts/diff) and a flat sibling copy.
+const NAV_TIMEOUT_FALLBACK_MS = 45000;
+const LIVE_SESSION_CANDIDATES = ['../../diff/scripts/live-session.mjs', '../diff/live-session.mjs', './live-session.mjs'];
+async function loadLiveSession() {
+  const found = LIVE_SESSION_CANDIDATES.map((p) => path.resolve(path.dirname(SELF), p)).find((p) => existsSync(p));
+  return found ? import(pathToFileURL(found).href).catch(() => null) : null;
+}
+
 const WAIT_MS = { fast: 1200, medium: 2500, slow: 5000 };
 
 // One context config for probe, headed fallback, and workers — a tweak (locale,
@@ -131,6 +152,18 @@ const CRAWL_CONTEXT = { reducedMotion: 'reduce', viewport: { width: 1440, height
 
 /** The discovery cap from --max: 0 means no cap (--all, --prep), a missing or bad value the default 25. Pure. */
 export const maxPages = (v) => (String(v).trim() === '0' ? Infinity : Math.max(1, Math.floor(+v) || 25));
+
+/**
+ * The crawl figure: { n, p50, p95, max } of the captured pages' goto times (ms) — nearest-rank percentiles
+ * (the value at rank ⌈p/100 × n⌉ of the sorted list), integers; n 0 → nulls. Non-numbers and negatives are
+ * not samples. Pure. live-session's navTimeout reads crawl.navMs.p95 from _crawl-log.json.
+ */
+export function navMsSummary(list) {
+  const v = (Array.isArray(list) ? list : []).filter((x) => Number.isFinite(x) && x >= 0).map((x) => Math.round(x)).sort((a, b) => a - b);
+  if (!v.length) return { n: 0, p50: null, p95: null, max: null };
+  const rank = (p) => v[Math.max(1, Math.ceil((p / 100) * v.length)) - 1];
+  return { n: v.length, p50: rank(50), p95: rank(95), max: v[v.length - 1] };
+}
 
 function parseArgs(argv) {
   const a = { out: 'stardust/current', max: 25, wait: 'medium', consent: true, concurrency: 4, dynamics: false };
@@ -838,7 +871,11 @@ async function capturePage(context, url, slug, args) {
   const page = await context.newPage();
   const recorder = args.dynamics ? attachDynamicRecorder(page) : null; // opt-in; must precede goto — load-time fetches are the evidence
   try {
-  let resp = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
+  // navMs: this page's own goto, to domcontentloaded — the crawl figure's sample (crawl.navMs in the log).
+  // The timeout is the shared one main() resolved (env → the previous crawl's figure → 45 s).
+  const navStart = Date.now();
+  let resp = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: args.navTimeoutMs || NAV_TIMEOUT_FALLBACK_MS });
+  let navMs = Date.now() - navStart;
   // response validation
   if (!resp) throw Object.assign(new Error('no response'), { errorClass: 'TimeoutError' });
   // bot-management challenge (Cloudflare cf-mitigated: challenge, etc.): the
@@ -856,11 +893,14 @@ async function capturePage(context, url, slug, args) {
       u.pathname = u.pathname.endsWith('/') ? u.pathname.replace(/\/+$/, '') : `${u.pathname}/`;
       // guarded + short timeout: a hanging flipped-variant probe must not
       // replace the crisp HTTPError 404 with a raw TimeoutError.
+      const retryStart = Date.now();
       const retry = await page.goto(u.href, { waitUntil: 'domcontentloaded', timeout: 15000 })
         .catch(() => null);
+      const retryMs = Date.now() - retryStart;
       if (retry && retry.status() < 400) {
         console.error(`[crawl] slash-retry OK ${url} -> ${u.href}`);
         resp = retry; status = retry.status(); resolvedUrl = u.href;
+        navMs = retryMs; // the goto that serves the record
       }
     }
   }
@@ -935,6 +975,7 @@ async function capturePage(context, url, slug, args) {
   // live-render evidence per SKILL.md § Phase 2 / current-state-schema.md —
   // validateProvenance() downstream refuses pages without these five fields.
   if (resolvedUrl !== url) rec._resolvedUrl = resolvedUrl;
+  rec.navMs = navMs;
   rec._provenance = {
     renderedBy: 'playwright',
     fetchedAt: new Date().toISOString(),
@@ -954,6 +995,15 @@ async function capturePage(context, url, slug, args) {
 async function main() {
   const args = parseArgs(process.argv);
   ({ chromium } = await import('playwright'));
+  // One goto timeout for every page, resolved once — env, else the previous crawl's figure in this --out (its
+  // _crawl-log.json, read before this crawl rewrites it), else 45 s.
+  const session = await loadLiveSession();
+  if (session && typeof session.resolveNavTimeoutMs === 'function') {
+    args.navTimeoutMs = session.resolveNavTimeoutMs({ crawlLog: path.join(args.out, '_crawl-log.json'), fallback: NAV_TIMEOUT_FALLBACK_MS });
+  } else {
+    args.navTimeoutMs = NAV_TIMEOUT_FALLBACK_MS;
+    console.error(`[crawl] no usable live-session.mjs (looked in ../../diff/scripts/, ../diff/ and ./) — page goto timeout ${NAV_TIMEOUT_FALLBACK_MS} ms; STARDUST_NAV_TIMEOUT_MS and the crawl figure are not read (copy the diff skill's live-session.mjs alongside to use them)`);
+  }
   const outPages = path.join(args.out, 'pages');
   await mkdir(outPages, { recursive: true });
 
@@ -1033,6 +1083,7 @@ async function main() {
   const results = new Array(urls.length).fill(null); // { slug, file, hash } per queue index
   const dynamicRollup = newDynamicRollup();
   const slugs = assignSlugs(urls);
+  const navTimes = []; // navMs of every captured page → crawl.navMs
   let nextIdx = 0;
   async function worker() {
     const ctx = await newContext(browser, stealth);
@@ -1066,6 +1117,7 @@ async function main() {
         await writeFile(file, JSON.stringify({ _provenance, slug, url: recordUrl, renderedBy: _provenance.renderedBy, fetchedAt: _provenance.fetchedAt, ...rest }, null, 2));
         results[idx] = { slug, file, hash, url: recordUrl, finalUrl: rec.finalUrl, links: rec.links }; // url/finalUrl/links feed the capture-gap post-pass
         ok += 1;
+        navTimes.push(rec.navMs);
         const s = rec._signals;
         const dy = rec.dynamic?.summary || {};
         const warn = [s.spaShellSuspect && 'SPA-SHELL?', s.trackingOnlyMedia && 'TRACKING-PIXEL-ONLY', s.filteredInterstitials && `filtered:${s.filteredInterstitials}`, dy.sameSiteEndpoints && `data-endpoints:${dy.sameSiteEndpoints}`, dy.searchForms && 'SEARCH-FORM', dy.hydrated && 'HYDRATED'].filter(Boolean).join(' ');
@@ -1079,6 +1131,9 @@ async function main() {
   }
   await Promise.all(Array.from({ length: Math.min(args.concurrency, urls.length) }, worker));
   await browser.close();
+  // the crawl figure: live-session derives the navigation timeout of the live instruments (and of the next crawl
+  // into this --out) from its p95, so a slow origin is measured once instead of guessed per instrument.
+  log.crawl.navMs = navMsSummary(navTimes);
 
   // cross-page duplicate (detail == listing) detection — deterministic post-pass
   // in original queue order: canonical = earliest-QUEUED page per content hash
