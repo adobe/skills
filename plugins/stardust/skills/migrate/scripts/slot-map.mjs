@@ -410,6 +410,30 @@ function valueOf(idx, el, kind, where) {
   return { value: collapse(textOf(idx, el)) || null };
 }
 const pathText = (path) => path.map((s) => `${s.tag}[${s.n}]`).join('/');
+const placeOf = (anchor, path) => (path.length ? `${pathText(path)} under ${JSON.stringify(anchor)}` : JSON.stringify(anchor));
+// The level at which a repeated name's items can be counted: { d, tag, k } — all items under one anchor, their paths
+// equal up to step d where they part (one item: its last step), that step of one tag and numbered 1..k, one item each.
+// Then the items are every <tag> element there up to k, and a sibling with no more <tag> elements there has no more items.
+// { why } when that cannot be shown; null for a single item that is its anchor itself.
+function itemLevel(list) {
+  const cannot = (what) => ({ why: `${what}, so the sibling's item count cannot be checked` });
+  const anchors = [...new Set(list.map((r) => r.anchor))];
+  if (anchors.length > 1) return cannot(`its items sit under different anchors (${anchors.map((a) => JSON.stringify(a)).join(', ')})`);
+  const [anchor] = anchors; const paths = list.map((r) => r.path);
+  let d = paths[0].length - 1;
+  if (paths.length > 1) {
+    d = 0;
+    while (paths.every((p) => d < p.length && p[d].tag === paths[0][d].tag && p[d].n === paths[0][d].n)) d += 1;
+    if (paths.some((p) => p.length <= d)) return cannot(`its items are not side by side (one is or holds another at ${placeOf(anchor, paths[0].slice(0, d))})`);
+  }
+  if (d < 0) return null;
+  const where = placeOf(anchor, paths[0].slice(0, d)); const steps = paths.map((p) => p[d]);
+  const tags = [...new Set(steps.map((s) => s.tag))];
+  if (tags.length > 1) return cannot(`its items part at different tags (${tags.join(', ')}) under ${where}`);
+  const ns = steps.map((s) => s.n).sort((x, y) => x - y);
+  if (ns.some((n, i) => n !== i + 1)) return cannot(`its items are not the first ${ns.length} <${tags[0]}> elements under ${where} (the archetype's are ${steps.map((s) => `${s.tag}[${s.n}]`).join(', ')})`);
+  return { d, tag: tags[0], k: ns.length };
+}
 /**
  * slotValues(recipes, siblingCaptureHtml) → { slots, unresolved }: slots = { name: value | [value…] | null } in the shapes
  * migrate.mjs forkFromArchetype takes — text: a string (whitespace collapsed; null when empty); html: { html } (the inner
@@ -417,8 +441,9 @@ const pathText = (path) => path.map((s) => `${s.tag}[${s.n}]`).join('/');
  * data: placeholders never); link: { href, text }. A name whose recipe (any of a repeated name's) has no anchor is left
  * out — the caller decides. unresolved = [{ slot, reason }]: an anchor that does not match exactly one element of the
  * sibling's capture, a path that leads nowhere, an element that cannot give the value (a link without text included), or
- * a repeated name whose sibling has more items than the archetype (a same-tag element after the last recipe's element
- * under its parent: the list is never truncated); such a slot's value is null.
+ * a repeated name that cannot be shown complete — its items not all under one anchor, side by side and the first same-tag
+ * elements where their paths part (a card grid parts at the cards, a list at its items), or the sibling holding more
+ * same-tag elements there than the archetype has items: the list is never truncated; such a slot's value is null.
  */
 export function slotValues(recipes, siblingCaptureHtml) {
   const idx = indexHtml(siblingCaptureHtml); const slots = {}; const unresolved = []; const hits = new Map();
@@ -430,7 +455,7 @@ export function slotValues(recipes, siblingCaptureHtml) {
     const h = hits.get(r.anchor);
     if (!h) return { why: `anchor ${JSON.stringify(r.anchor)} is outside the selector grammar` };
     if (h.length !== 1) return { why: `anchor ${JSON.stringify(r.anchor)} matches ${h.length} elements` };
-    const where = r.path.length ? `${pathText(r.path)} under ${JSON.stringify(r.anchor)}` : JSON.stringify(r.anchor);
+    const where = placeOf(r.anchor, r.path);
     let el = h[0];
     for (const step of r.path) {
       el = (idx.kids.get(el) || []).filter((k) => k.tag === step.tag)[step.n - 1];
@@ -442,11 +467,13 @@ export function slotValues(recipes, siblingCaptureHtml) {
   for (const [name, rec] of Object.entries(recipes || {})) {
     const list = Array.isArray(rec) ? rec : [rec];
     if (!list.length || list.some((r) => !r || !r.anchor)) continue;
-    const got = list.map(read); let bad = got.find((g) => g.why);
-    const step = Array.isArray(rec) && !bad ? list.at(-1).path.at(-1) : null;
-    if (step) {
-      const items = (idx.kids.get(got.at(-1).el.parent) || []).filter((k) => k.tag === step.tag).length;
-      if (items > step.n) bad = { why: `the sibling has more items than the archetype (${items} > ${step.n})` };
+    const level = Array.isArray(rec) ? itemLevel(list) : null;
+    let bad = level?.why ? level : null; const got = bad ? [] : list.map(read);
+    bad ||= got.find((g) => g.why);
+    if (!bad && level) {
+      let el = got[0].el; for (let s = list[0].path.length - 1; s > level.d; s -= 1) el = el.parent;
+      const items = (idx.kids.get(el.parent) || []).filter((k) => k.tag === level.tag).length;
+      if (items > level.k) bad = { why: `the sibling has more items than the archetype (${items} > ${level.k})` };
     }
     if (bad) { slots[name] = null; unresolved.push({ slot: name, reason: bad.why }); continue; }
     slots[name] = Array.isArray(rec) ? got.map((g) => g.value) : got[0].value;

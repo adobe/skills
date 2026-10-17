@@ -209,6 +209,30 @@ check('a repeated slot whose sibling has more items than the archetype is unreso
   assert.deepEqual(more, { slots: { tip: null }, unresolved: [{ slot: 'tip', reason: 'the sibling has more items than the archetype (4 > 2)' }] });
   assert.deepEqual(slotValues({ tip: kinds.tip }, CAPTURE.replace('<li>Tip one</li><li>Tip two</li>', '<li>S1</li><li>S2</li>')).slots, { tip: ['S1', 'S2'] });
 });
+// A card grid: each repeated item sits in its own container, so the paths part above the slot element.
+const GRID_PROTO = '<html><body><main><section><div><h3 data-slot="t">One</h3><p>a</p></div><div><h3 data-slot="t">Two</h3><p>b</p></div></section></main></body></html>';
+const grid = (...titles) => `<html><body><main><section class="s">${titles.map((t) => `<div class="card"><h3>${t}</h3><p>x</p></div>`).join('')}</section></main></body></html>`;
+check('a card grid whose sibling has more cards than the archetype is unresolved (counted where the paths part); as many cards is fine', () => {
+  const r = slotRecipes(GRID_PROTO, grid('One', 'Two'), ['section.s']);
+  assert.deepEqual(r.t, [1, 2].map((n) => ({ anchor: 'section.s', path: [{ tag: 'div', n }, { tag: 'h3', n: 1 }], kind: 'text' })));
+  assert.deepEqual(slotValues(r, grid('A', 'B', 'C')), { slots: { t: null }, unresolved: [{ slot: 't', reason: 'the sibling has more items than the archetype (3 > 2)' }] });
+  assert.deepEqual(slotValues(r, grid('A', 'B')), { slots: { t: ['A', 'B'] }, unresolved: [] });
+});
+check('a repeated slot whose items sit under different anchors is unresolved, even on a sibling with as many items', () => {
+  const cap = '<html><body><main><section class="s"><div class="c1"><h3>One</h3></div><div class="c2"><h3>Two</h3></div></section></main></body></html>';
+  const r = slotRecipes(GRID_PROTO, cap, ['div.c1', 'div.c2', 'section.s']);
+  assert.deepEqual(r.t.map((x) => x.anchor), ['div.c1', 'div.c2']);
+  assert.deepEqual(slotValues(r, cap), { slots: { t: null }, unresolved: [{ slot: 't', reason: 'its items sit under different anchors ("div.c1", "div.c2"), so the sibling\'s item count cannot be checked' }] });
+});
+check('a repeated slot whose items are not the first same-tag elements where they part, part at different tags or nest is unresolved', () => {
+  const cap = '<html><body><main><section class="s"><div class="intro"><h3>Intro</h3></div><div><h3>One</h3><p>a</p></div><div><h3>Two</h3><p>b</p></div></section></main></body></html>';
+  const r = slotRecipes(GRID_PROTO, cap, ['section.s']);
+  assert.deepEqual(r.t.map((x) => x.path[0]), [{ tag: 'div', n: 2 }, { tag: 'div', n: 3 }]);
+  assert.deepEqual(slotValues(r, grid('A', 'B', 'C')).unresolved, [{ slot: 't', reason: 'its items are not the first 2 <div> elements under "section.s" (the archetype\'s are div[2], div[3]), so the sibling\'s item count cannot be checked' }], 'a sibling without the intro: card A would be dropped');
+  const at = (...steps) => ({ anchor: 'section.s', path: steps.map(([tag, n]) => ({ tag, n })), kind: 'text' });
+  assert.deepEqual(slotValues({ t: [at(['div', 1], ['h3', 1]), at(['p', 1])] }, grid('A', 'B')).unresolved, [{ slot: 't', reason: 'its items part at different tags (div, p) under "section.s", so the sibling\'s item count cannot be checked' }]);
+  assert.deepEqual(slotValues({ t: [at(['div', 1]), at(['div', 1], ['h3', 1])] }, grid('A', 'B')).unresolved, [{ slot: 't', reason: 'its items are not side by side (one is or holds another at div[1] under "section.s"), so the sibling\'s item count cannot be checked' }]);
+});
 check('a data: placeholder is never the image source or srcset (a data: URL with its comma is one srcset candidate)', () => {
   const lazy = '<img src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" srcset="data:image/gif;base64,R0lGODlhAQABAAAAACw= 1w" data-srcset="https://cdn.example.test/m/sib.png?w=800 800w, https://cdn.example.test/m/sib.png?w=1600 1600w" alt="Lazy">';
   const r = slotValues({ pic: kinds.pic }, SIBLING.replace('<img data-src="https://cdn.example.test/m/sib.png?w=800" alt="Sibling picture">', lazy));
