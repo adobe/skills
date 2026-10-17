@@ -454,17 +454,63 @@ await check('a server that never answers cannot overrun --max-wait: each request
   } finally { hung.closeAllConnections(); await new Promise((resolve) => hung.close(resolve)); }
 });
 
-await check('--auth-header: the header goes to the preview, preview.json holds auth: true, and the token is in no output or file', async () => {
+await check('--auth-header: the preview refuses the first, anonymous request and the header goes with the rest; preview.json holds auth: true, and the token is in no output or file', async () => {
   const server = await startPreviewServer({ token: TOKEN });
   try {
     const root = project('auth-header');
     const r = await preview(root, server.origin, ['--namespace', 'ns', '--auth-header', HEADER]);
     assert.equal(r.status, 0, r.all);
     assert.equal(recordOf(root).auth, true);
+    assert.equal('tokenUnused' in recordOf(root), false);
     noToken(r.stdout, r.stderr, readFileSync(recordPath(root), 'utf8'));
-    assert.ok(server.requests.length > 0 && server.requests.every((q) => q.headers.authorization === HEADER), 'every request carried the header');
+    const [first, ...rest] = server.requests;
+    assert.equal(first.headers.authorization, undefined, 'the first request is the anonymous one that finds the preview protected');
+    assert.ok(rest.length > 0 && rest.every((q) => q.headers.authorization === HEADER), 'every request after it carried the header');
     for (const f of readdirSync(deployedDir(join(root, 'stardust'), 'home'))) noToken(readFileSync(join(deployedDir(join(root, 'stardust'), 'home'), f), 'utf8'));
   } finally { await server.close(); }
+});
+
+await check('a token given for a public preview is recorded as unused: auth: false, tokenUnused: true, and it is never sent', async () => {
+  const server = await startPreviewServer();
+  try {
+    for (const [name, extra, env] of [['unused-header', ['--auth-header', HEADER], {}], ['unused-env', ['--token-env', 'STARDUST_T4_TOKEN'], { STARDUST_T4_TOKEN: TOKEN }]]) {
+      const root = project(name);
+      const r = await preview(root, server.origin, ['--namespace', 'ns', ...extra], { env });
+      assert.equal(r.status, 0, `${name}: ${r.all}`);
+      assert.equal(r.stdout.trim(), `PASS preview ${server.origin}/ns/home`);
+      const rec = recordOf(root);
+      assert.equal(rec.auth, false, `${name}: auth means the preview refused an anonymous request`);
+      assert.equal(rec.tokenUnused, true, name);
+      noToken(r.all, readFileSync(recordPath(root), 'utf8'));
+    }
+    assert.ok(server.requests.length > 0 && server.requests.every((q) => q.headers.authorization === undefined), 'no request carried the token');
+    const none = project('unused-none');
+    await preview(none, server.origin);
+    assert.equal('tokenUnused' in recordOf(none), false, 'no token given, nothing to call unused');
+  } finally { await server.close(); }
+});
+
+await check('a token still reaches a preview that refuses an anonymous request later than the first: a 503 first, then 401 without it, 200 with it: auth: true', async () => {
+  const plain = readFileSync(fixturePath('home.plain.html'), 'utf8');
+  const page = readFileSync(fixturePath('home.html'), 'utf8');
+  let seen = 0;
+  const server = createServer((req, res) => {
+    seen += 1;
+    if (seen === 1) { res.writeHead(503); return res.end('warming up'); }
+    if (req.headers.authorization !== HEADER) { res.writeHead(401); return res.end('unauthorized'); }
+    res.writeHead(200, { 'content-type': 'text/html' });
+    return res.end(req.url.endsWith('.plain.html') ? plain : page);
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  try {
+    const root = project('late-refusal');
+    const r = await preview(root, `http://127.0.0.1:${server.address().port}`, ['--namespace', 'ns', '--auth-header', HEADER, '--max-wait', '10']);
+    assert.equal(r.status, 0, r.all);
+    const rec = recordOf(root);
+    assert.equal(rec.auth, true);
+    assert.equal('tokenUnused' in rec, false);
+    noToken(r.all, readFileSync(recordPath(root), 'utf8'));
+  } finally { server.closeAllConnections(); await new Promise((resolve) => server.close(resolve)); }
 });
 
 await check('--token-env reads the token from the environment; without a token a protected preview is never a pass; an unset variable is a setup error', async () => {
@@ -475,9 +521,11 @@ await check('--token-env reads the token from the environment; without a token a
     assert.equal(viaEnv.status, 0, viaEnv.all);
     assert.equal(recordOf(root).auth, true);
     noToken(viaEnv.stdout, viaEnv.stderr, readFileSync(recordPath(root), 'utf8'));
-    const anon = await preview(root, server.origin, ['--namespace', 'ns', '--max-wait', '1']);
-    assert.equal(anon.status, 124, anon.all);
-    assert.match(anon.stdout, /last response: HTTP 401/);
+    const started = Date.now();
+    const anon = await preview(root, server.origin, ['--namespace', 'ns', '--max-wait', '30']);
+    assert.equal(anon.status, 2, anon.all);
+    assert.match(anon.stderr, /the preview needs a site token: pass --token-env <NAME>/);
+    assert.ok(Date.now() - started < 10000, 'a refusal is no poll: it is not waited out until 124');
     assert.ok(!existsSync(recordPath(root)), 'no preview.json without a verdict');
     const unset = await preview(root, server.origin, ['--namespace', 'ns', '--token-env', 'STARDUST_T4_NO_SUCH_TOKEN']);
     assert.equal(unset.status, 2, unset.all);
@@ -506,8 +554,13 @@ await check('an empty or blank --auth-header / --token-env is exit 2 "needs a va
 
 await check('the header never leaves the preview origin: a redirect elsewhere is not followed, for the authored form or the page, and is no verdict', async () => {
   const elsewhere = await startPreviewServer();
-  const redirecting = createServer((req, res) => { res.writeHead(302, { location: `${elsewhere.origin}/ns/home.plain.html` }); res.end(); });
+  const redirecting = createServer((req, res) => {
+    if (!req.headers.authorization) { res.writeHead(401); return res.end(); }
+    res.writeHead(302, { location: `${elsewhere.origin}/ns/home.plain.html` });
+    return res.end();
+  });
   const pageRedirecting = createServer((req, res) => {
+    if (!req.headers.authorization) { res.writeHead(401); return res.end(); }
     if (req.url.endsWith('.plain.html')) { res.writeHead(200, { 'content-type': 'text/html' }); return res.end('<body><main><div></div></main></body>'); }
     res.writeHead(302, { location: `${elsewhere.origin}/ns/home` });
     return res.end();
@@ -1187,7 +1240,7 @@ if (playwrightOk) {
         assert.deepEqual([r.stdout, r.stderr].filter((text) => text.includes(CANARY)), [], `${label}: stdout or stderr holds the token`);
       }
       assert.ok(server.requests.some((q) => q.headers.authorization === header), 'the token went to the preview');
-      assert.ok(server.requests.every((q) => q.headers.authorization === header), 'every request to the preview carried it');
+      assert.deepEqual(server.requests.filter((q) => q.headers.authorization !== header).map((q) => q.path), ['/ns/home.plain.html'], 'only the preview step\'s anonymous first request lacked the token');
     } finally { await server.close(); await source.close(); }
   });
 }

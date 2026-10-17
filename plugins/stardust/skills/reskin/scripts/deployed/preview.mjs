@@ -7,7 +7,8 @@
 //   isolation({ path, meta, origin, namespace, sandbox })  the ways the page touches shared documents
 //   runPreview({ dir, slug, org, repo, branch, path, namespace, sandbox, auth, maxWaitSec })  the PreviewRecord
 // DEPLOY_VERIFY_ORIGIN (env) replaces the origin: the hook the fake-preview tests use. The Authorization header is
-// sent to the preview origin only (a redirect is never followed) and is never part of the record.
+// sent to the preview origin only (a redirect is never followed), only once the preview has refused a request without
+// it, and is never part of the record.
 import { existsSync, rmSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { UsageError } from '../figma/errors.mjs';
@@ -107,8 +108,12 @@ const attemptOnce = (url, auth, budgetMs) => fetchOnce(url, auth, Math.max(1, Ma
 
 const sleep = (ms) => new Promise((done) => { setTimeout(done, ms); });
 
-// preview.json: { skipped?, reason?, url, origin, path, plain, namespace, sandbox, auth, checkedAt, problems? }.
-// `plain` is the authored form's URL, `auth` only whether a header was used, `problems` the isolation findings.
+// preview.json: { skipped?, reason?, url, origin, path, plain, namespace, sandbox, auth, tokenUnused?, checkedAt, problems? }.
+// `plain` is the authored form's URL, `problems` the isolation findings. `auth` is whether the preview refused a request
+// without the site token (401 or 403): the page is protected and the later steps treat it so. The token goes out only
+// after such a refusal, so the first request of the poll, the authored form's, is the anonymous one; a token the preview
+// never asked for is not sent and the record says `tokenUnused: true`. With no token, a refusal is a setup error (the
+// token is missing), not something to poll until 124.
 // Skipped (not an aem-boilerplate project) is recorded; a poll that never sees 200 for the authored form and then
 // for the delivered page (whose head says which nav and footer it loads) within maxWaitSec throws an error with
 // code 124 (and .last, the last response) and leaves no record, so no step reads a stale one.
@@ -117,10 +122,10 @@ const sleep = (ms) => new Promise((done) => { setTimeout(done, ms); });
 export async function runPreview({ dir, slug, org, repo, branch, path, namespace = null, sandbox = false, auth = null, maxWaitSec = 120, env = process.env }) {
   const file = join(deployedDir(dir, slug), 'preview.json');
   rmSync(file, { force: true });
-  const base = { path, namespace, sandbox: !!sandbox, auth: !!auth };
+  const base = { path, namespace, sandbox: !!sandbox };
   const eligible = eligibility(dirname(resolve(dir)));
   if (!eligible.ok) {
-    const record = { skipped: true, reason: eligible.reason, url: null, origin: null, plain: null, ...base, checkedAt: new Date().toISOString() };
+    const record = { skipped: true, reason: eligible.reason, url: null, origin: null, plain: null, ...base, auth: false, checkedAt: new Date().toISOString() };
     writeJson(file, record);
     return record;
   }
@@ -130,8 +135,9 @@ export async function runPreview({ dir, slug, org, repo, branch, path, namespace
   } else origin = previewOrigin({ org, repo, branch });
   const url = `${origin}${path}`;
   const plain = plainUrl(url);
+  let using = null;
   const recorded = (problems) => {
-    const record = { url, origin, ...base, plain, checkedAt: new Date().toISOString(), ...(problems.length ? { problems } : {}) };
+    const record = { url, origin, ...base, auth: !!using, ...(auth && !using ? { tokenUnused: true } : {}), plain, checkedAt: new Date().toISOString(), ...(problems.length ? { problems } : {}) };
     writeJson(file, record);
     return record;
   };
@@ -147,8 +153,13 @@ export async function runPreview({ dir, slug, org, repo, branch, path, namespace
         err.last = last;
         throw err;
       }
-      const got = await attemptOnce(target, auth, deadline - Date.now());
+      const got = await attemptOnce(target, using, deadline - Date.now());
       if (got.status === 200) return got.body;
+      if (!using && (got.status === 401 || got.status === 403)) {
+        if (!auth) throw new UsageError('the preview needs a site token: pass --token-env <NAME>');
+        using = auth;
+        continue;
+      }
       last = got.last;
       await sleep(Math.min(POLL_MS, Math.max(0, deadline - Date.now())));
     }

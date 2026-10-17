@@ -48,17 +48,24 @@ preview  A0. Finds the preview and refuses a page that touches shared documents.
          head.html and scripts/aem.js at the project root, the parent of --dir. Otherwise it prints
          "SKIPPED deployed leg: <reason>", records that and exits 0.
          Polls https://<branch>--<repo>--<org>.aem.page<path>.plain.html (<path>index.plain.html for a folder path,
-         one that ends in /; a host label over 63 characters is a setup error: shorten the branch) every second until it
-         answers 200, then the delivered page
-         <path> the same way, at most --max-wait seconds in all (default 120; each request is cut off at the
-         time left): no 200 is "ERROR (exit 124) preview: <path>[.plain.html] not 200 after <n> s".
+         one that ends in /; a host label over 63 characters is a setup error: shorten the branch) every second until
+         it answers 200, then the delivered page <path> the same way, at most --max-wait seconds in all (default 120;
+         each request is cut off at the time left): no 200 is "ERROR (exit 124) preview: <path>[.plain.html] not 200
+         after <n> s".
+         The first request, the authored form's, goes without the site token. A 401 or 403 to it says the preview is
+         protected: with a token (--auth-header or --token-env) the poll goes on with it and preview.json says
+         auth: true; without one it is exit 2 "the preview needs a site token: pass --token-env <NAME>", never polled
+         until 124. A token the preview never asked for is not sent: preview.json says auth: false, tokenUnused: true.
          Then, in a shared repo, the path must be a plain path (no %, \\, ., .. or empty segment) starting
          with /<ns>/, and the head of the delivered page must carry <meta name="nav"> and <meta name="footer">
          naming /<ns>/nav and /<ns>/footer (a full URL on the preview origin is the same path; EDS strips the
          metadata block from the authored form and emits head metas): "FAIL preview: <problem>" per finding, exit 1.
          --sandbox (a repo of one's own) waives both and is recorded; give --namespace or --sandbox, not both.
          Prints "PASS preview <url>". Writes <dir>/.work/reskin/gates/<slug>/deployed/preview.json:
-           { skipped?, reason?, url, origin, path, plain, namespace, sandbox, auth, checkedAt, problems? }
+           { skipped?, reason?, url, origin, path, plain, namespace, sandbox, auth, tokenUnused?, checkedAt, problems? }
+         auth is whether the preview refused an anonymous request, the one fact the later steps read a protected
+         preview from (parity, sanity, qa-gate and ai-readability are n/a on it; content, tokens, inherited and all
+         need the token).
 content  A1. Checks the preview's content against the live source, through two gates run one after the other, each with the
          decoration settled first (--wait-eds): dom-equality (the text and images of the preview's main against the
          source page, <_provenance.url> and <_provenance.scope> of the content model, normalized by
