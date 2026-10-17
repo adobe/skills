@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://stardust.dev/schemas/rollout-workspace-manifest.schema.json",
   "title": "stardust rollout/workspace/manifest.json",
-  "description": "Hashes and handover state for the coverage a client reads. outputs hashes the three coverage files (what a client reads); inputs hashes what they were built from (the content documents as one summary, the block code read, the judgement). placeholders lists what is still a default. Once a client has taken the project over, the writer refuses to run unless forced; a forced run records handover and, when inputs changed, degraded. Deterministic: unchanged inputs give byte-identical output. Owned by stardust:rollout; strict here because it describes exactly what stardust writes.",
+  "description": "Hashes and handover state for the coverage a client reads. outputs hashes the three coverage files and workspace/mapping.json when present (what a client reads); inputs hashes what the coverage was built from (the content documents as one summary, the block code read, the judgement). placeholders lists what is still a default. Once a client has taken the project over, the writer refuses to run unless forced; a forced run records handover and, when inputs changed, degraded. Deterministic: unchanged inputs give byte-identical output. Owned by stardust:rollout; strict here because it describes exactly what stardust writes.",
   "type": "object",
   "required": ["_provenance", "formatVersion", "inputs", "outputs", "placeholders", "handover"],
   "additionalProperties": false,
@@ -24,7 +24,7 @@
     },
     "outputs": {
       "type": "object",
-      "description": "The coverage files a client reads, keyed by project-relative path (<out>/coverage/{pages,templates,blocks}.json).",
+      "description": "The coverage files a client reads, keyed by project-relative path (<out>/coverage/{pages,templates,blocks}.json), and <out>/workspace/mapping.json when present.",
       "additionalProperties": { "$ref": "#/$defs/sha256" }
     },
     "placeholders": {

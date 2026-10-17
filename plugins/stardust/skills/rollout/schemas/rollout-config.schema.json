@@ -37,7 +37,7 @@
       "items": { "type": "string", "enum": ["migration-workspace", "migration-workspace-files"] },
       "uniqueItems": true,
       "default": [],
-      "description": "Opt-in outputs rollout writes for a client: `migration-workspace` is the manifest and judgement draft under stardust/rollout/workspace/ (reference/coverage-contract.md); `migration-workspace-files` is reserved."
+      "description": "Opt-in outputs rollout writes for a client: `migration-workspace` is the manifest, the judgement draft and the mapping (mapping.json, written by block-origin.mjs) under stardust/rollout/workspace/ (reference/coverage-contract.md); `migration-workspace-files` is reserved."
     },
     "lastRun": {
       "type": ["object", "null"],

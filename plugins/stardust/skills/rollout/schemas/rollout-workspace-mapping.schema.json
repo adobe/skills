@@ -1,0 +1,139 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://stardust.dev/schemas/rollout-workspace-mapping.schema.json",
+  "title": "stardust rollout/workspace/mapping.json",
+  "description": "The source side of every delivered block: per template, its sections and block instances, each with the CSS selector of its origin element in the page's captured source DOM (stardust/current/pages/<slug>.html, read as rollout lib.mjs parseHtml reads it). Written by skills/rollout/scripts/block-origin.mjs from the coverage pages.json, the content documents and the captures. Keys sorted, generatedAt copied from pages.json: unchanged inputs give byte-identical output. Owned by stardust:rollout; strict here because it describes exactly what stardust writes; clients ignore fields they do not know.",
+  "type": "object",
+  "required": ["formatVersion", "generatedAt", "skipped", "templates"],
+  "additionalProperties": false,
+  "properties": {
+    "formatVersion": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "examples": ["0.1.0"],
+      "description": "Mapping format version (semver), versioned like the coverage files: before 1.0.0 a release may still change the shape; from 1.0.0 a minor release only adds fields."
+    },
+    "generatedAt": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "The pages.json generatedAt (never the wall clock); null when the coverage has none."
+    },
+    "skipped": {
+      "type": "array",
+      "description": "What was not mapped, by slug then record pos: a page (no delivered structure, no content file, no capture, a capture that could not be indexed, a page that could not be mapped) or a coverage block record the delivered document no longer has.",
+      "items": { "$ref": "#/$defs/skipped" }
+    },
+    "templates": {
+      "type": "array",
+      "description": "One entry per coverage template (templateId, untyped for none) with at least one mapped page, by templateId.",
+      "items": { "$ref": "#/$defs/template" }
+    }
+  },
+  "$defs": {
+    "selector": {
+      "type": ["string", "null"],
+      "description": "A CSS selector over the captured source DOM (tag, *, #id, .class, attribute tests, descendant and > combinators, :nth-of-type, :nth-child, :first/last-child, :first/last-of-type); null when there is no element."
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "description": "0 to 1, 3 decimals: the share of the delivered text the element holds; 1 for an encoder map's element, 0 for a position."
+    },
+    "skipped": {
+      "type": "object",
+      "required": ["slug", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "slug": { "type": "string" },
+        "block": { "type": "string", "description": "A skipped block record only: its block name." },
+        "pos": { "type": "integer", "minimum": 0, "description": "A skipped block record only: its pos in the page's delivered.blocks." },
+        "reason": {
+          "type": "string",
+          "examples": ["no delivered structure", "no content file", "no capture", "capture could not be indexed", "not in the delivered document"]
+        }
+      }
+    },
+    "template": {
+      "type": "object",
+      "required": ["templateId", "pages", "sections", "blocks"],
+      "additionalProperties": false,
+      "properties": {
+        "templateId": { "type": "string", "description": "The coverage templateId; untyped for pages without one." },
+        "pages": { "type": "array", "description": "Slugs of the mapped pages, sorted.", "items": { "type": "string" } },
+        "sections": {
+          "type": "array",
+          "description": "The template's sections aligned across its pages (by style and block names), in order.",
+          "items": { "$ref": "#/$defs/section" }
+        },
+        "blocks": {
+          "type": "array",
+          "description": "One entry per block, variantId and section, by section order then first appearance (representative first).",
+          "items": { "$ref": "#/$defs/block" }
+        }
+      }
+    },
+    "section": {
+      "type": "object",
+      "required": ["id", "selector", "pages", "style", "blocks", "defaultContent", "confidence"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "pattern": "^s[1-9][0-9]*$", "description": "s1…sN: the representative's sections in order, then sections other pages add." },
+        "selector": {
+          "$ref": "#/$defs/selector",
+          "description": "The generalisation of the section's per-page selector (the lowest common ancestor of its records) that resolved to that page's own section element on the most of its pages; null when no page had an anchor."
+        },
+        "pages": { "type": "array", "description": "Sorted slugs where selector's one hit is that page's own section element; --verify may drop a page, never adds one.", "items": { "type": "string" } },
+        "style": { "type": ["string", "null"], "description": "The delivered section style (section-metadata), or null." },
+        "blocks": { "type": "array", "description": "The section's block names, unique, in order.", "items": { "type": "string" } },
+        "defaultContent": {
+          "type": "array",
+          "description": "Roles of the section's default content: the eds-schema roles of its text, else its delivered default parts (heading, text, image, button, link-list, ...).",
+          "items": { "type": "string" }
+        },
+        "confidence": { "$ref": "#/$defs/confidence", "description": "The lowest, over its pages, share of the section's text its element holds (0 without one)." }
+      }
+    },
+    "block": {
+      "type": "object",
+      "required": ["block", "variant", "variantId", "section", "positions", "instances"],
+      "additionalProperties": false,
+      "properties": {
+        "block": { "type": "string" },
+        "variant": { "type": ["string", "null"], "description": "The coverage record's variant (its classes), or null." },
+        "variantId": { "type": ["string", "null"], "description": "The coverage record's variantId." },
+        "section": { "type": ["string", "null"], "description": "The id of the section holding it; null only for a record outside every coverage section." },
+        "positions": {
+          "type": "array",
+          "description": "The pos values of its instances across its pages (the record's place in each page's delivered.blocks), unique, ascending.",
+          "uniqueItems": true,
+          "items": { "type": "integer", "minimum": 0 }
+        },
+        "instances": { "type": "array", "description": "One per delivered occurrence, by slug then record pos.", "items": { "$ref": "#/$defs/instance" } }
+      }
+    },
+    "instance": {
+      "type": "object",
+      "required": ["slug", "pos", "selector", "confidence", "source", "verified"],
+      "additionalProperties": false,
+      "properties": {
+        "slug": { "type": "string" },
+        "pos": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "The block record's pos in the page's coverage row (delivered.blocks[].pos): with slug, a stable key to the delivered block."
+        },
+        "selector": { "$ref": "#/$defs/selector" },
+        "confidence": { "$ref": "#/$defs/confidence" },
+        "source": {
+          "type": "string",
+          "enum": ["encoder-map", "text-alignment", "position"],
+          "description": "encoder-map: the template's encoder map selects the element (a marker's k-th match for the k-th block of its name; confidence 1); text-alignment: the element covering most of the block's text; position: placed among its anchored neighbours (confidence 0). A block the map has no element for falls through to text-alignment, then position."
+        },
+        "verified": {
+          "type": ["boolean", "null"],
+          "description": "With --verify: true when the selector resolves to exactly one element of the capture, else false; null when not verified."
+        }
+      }
+    }
+  }
+}

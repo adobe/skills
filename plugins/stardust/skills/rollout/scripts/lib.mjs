@@ -260,7 +260,7 @@ export function computeScorecard(findings, runId, now) {
 }
 
 // --- coverage 0.1.0: delivered structure, block code, identity, judgement, writes ----------------
-// Pure helpers for inventory.mjs, blocks.mjs and workspace-manifest.mjs (writeCoverage is the only I/O).
+// Pure helpers for inventory.mjs, blocks.mjs, workspace-manifest.mjs and block-origin.mjs (writeCoverage is the only I/O).
 // Deterministic: no clock, code-unit sorting, records in document order.
 export const COVERAGE_FORMAT_VERSION = '0.1.0';
 export const byStr = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
@@ -367,14 +367,15 @@ export function parseHtml(html) {
   return root;
 }
 
-const elements = (n) => (n.children || []).filter((c) => c.tag !== '#text');
-const classList = (n) => String((n.attrs && n.attrs.class) || '').split(/\s+/).filter(Boolean);
-const textOf = (n) => (n.tag === '#text' ? n.text : (n.children || []).map(textOf).join(''));
+// Tree helpers over parseHtml nodes (also used by block-origin.mjs).
+export const elements = (n) => (n.children || []).filter((c) => c.tag !== '#text');
+export const classList = (n) => String((n.attrs && n.attrs.class) || '').split(/\s+/).filter(Boolean);
+export const textOf = (n) => (n.tag === '#text' ? n.text : (n.children || []).map(textOf).join(''));
 const cellText = (n) => (n ? textOf(n).replace(/\s+/g, ' ').trim() : '');
 const hasText = (n) => (n.children || []).some((c) => c.tag === '#text' && c.text.trim());
 // the single element child of `n` when `n` holds nothing else (whitespace aside), else null
-const onlyChild = (n) => { const els = elements(n); return els.length === 1 && !hasText(n) ? els[0] : null; };
-const isLink = (n) => !!n && (n.tag === 'a' || ((n.tag === 'strong' || n.tag === 'em') && !!onlyChild(n) && onlyChild(n).tag === 'a'));
+export const onlyChild = (n) => { const els = elements(n); return els.length === 1 && !hasText(n) ? els[0] : null; };
+export const isLink = (n) => !!n && (n.tag === 'a' || ((n.tag === 'strong' || n.tag === 'em') && !!onlyChild(n) && onlyChild(n).tag === 'a'));
 
 function findTag(n, tag) {
   for (const c of n.children || []) { const hit = c.tag === tag ? c : findTag(c, tag); if (hit) return hit; }
@@ -412,11 +413,13 @@ function partOf(n) {
  * elements merged into one `default-content` record (`kind 'default'`, variant = parts joined by `+`). Sections
  * without a record are dropped; metadata/section-metadata and chrome (header/footer/nav) divs are not records.
  * `variantId` is null here: the caller assigns it (carry-forward needs the prior pages.json).
+ * `nodes[pos]` is record `pos`'s source in the parseHtml tree: a block record's block div, a default record's
+ * array of its elements in document order (block-origin.mjs reads the text from them).
  */
-export function parseDelivered(html) {
+export function walkDelivered(html) {
   const root = parseHtml(html);
   const main = findTag(root, 'main') || findTag(root, 'body') || root;
-  const [records, sections, metadata] = [[], [], {}];
+  const [records, sections, metadata, nodes] = [[], [], {}, []];
   for (const sec of elements(main).filter((n) => n.tag === 'div')) {
     const own = [];
     let [style, run] = [null, null];
@@ -424,8 +427,9 @@ export function parseDelivered(html) {
       const [name, ...rest] = el.tag === 'div' ? classList(el) : [];
       if (!name) {
         const part = partOf(el);
-        if (!run) own.push(run = { parts: [] });
+        if (!run) own.push(run = { parts: [], els: [] });
         if (!run.parts.includes(part)) run.parts.push(part);
+        run.els.push(el);
         continue;
       }
       run = null;
@@ -433,7 +437,7 @@ export function parseDelivered(html) {
       else if (name === 'section-metadata') style = style || nonEmpty(readRows(el).style);
       else if (!CHROME_IDS.has(name.toLowerCase())) {
         const rows = elements(el);
-        own.push({ block: name, classes: uniqSorted(rest), rows: rows.length, cells: rows.map((r) => elements(r).length) });
+        own.push({ block: name, classes: uniqSorted(rest), rows: rows.length, cells: rows.map((r) => elements(r).length), node: el });
       }
     }
     if (!own.length) continue;
@@ -444,9 +448,16 @@ export function parseDelivered(html) {
       records.push(r.parts
         ? { pos, block: DEFAULT_CONTENT, variant: r.parts.join('+'), kind: 'default', section: style, sectionPos: s.pos, classes: [], variantId: null, rows: null, cells: null }
         : { pos, block: r.block, variant: r.classes.join(' ') || null, kind: 'block', section: style, sectionPos: s.pos, classes: r.classes, variantId: null, rows: r.rows, cells: r.cells });
+      nodes.push(r.parts ? r.els : r.node);
     }
     sections.push(s);
   }
+  return { records, sections, metadata, nodes };
+}
+
+/** walkDelivered without the nodes: the records, sections and metadata coverage stores. */
+export function parseDelivered(html) {
+  const { records, sections, metadata } = walkDelivered(html);
   return { records, sections, metadata };
 }
 

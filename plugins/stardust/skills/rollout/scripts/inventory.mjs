@@ -70,9 +70,9 @@
  * Usage:
  *   node skills/rollout/scripts/inventory.mjs [--migrated <dir>] [--out <rolloutDir>] [--site-url <url>] [--state <state.json>] [--content <dir>] [--export <name>]
  *   defaults: --migrated stardust/migrated  --out stardust/rollout  --content content
- *   --export migration-workspace opts this project into rollout's migration workspace (Phase I: manifest and
- *   judgement draft under stardust/rollout/workspace/); the name is added once to rollout.json `exports`, which
- *   survives every re-run. Another name exits 2 before any write.
+ *   --export migration-workspace opts this project into rollout's migration workspace (Phase I: manifest,
+ *   judgement draft and block-origin.mjs's mapping.json under stardust/rollout/workspace/); the name is added once
+ *   to rollout.json `exports`, which survives every re-run. Another name exits 2 before any write.
  *
  * Exit: 0 coverage written · 1 the migrated tree is not found (message on stderr, nothing written), or an
  *   unexpected read/write failure · 2 an unknown --export name (message on stderr, nothing written).

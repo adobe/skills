@@ -640,6 +640,43 @@ the C-final roster gate. No threshold, criterion or pairing rule changes; the ne
 fields stay additive (`gateKey`, `reused`, `probes.json`, `gate-key.json`, `contentSha`, `verifiedAt`, `verifiedOn`);
 every skip is recorded where it happened.
 
+## 0.34.1 — block provenance: the export carries the source selector of every delivered block (#NNN)
+
+Field learning: a client adopting a recorded hands-off run's export had to re-derive where every delivered block came
+from in the source page. The contract had declared source selectors absent (the source snapshot named the page, not
+the element), so nothing in the export said which element a block was built from.
+
+- **`rollout/block-origin.mjs`** writes `stardust/rollout/workspace/mapping.json` (`formatVersion` 0.1.0): per
+  template its sections, aligned across its pages with one selector that generalises over them and the pages where it
+  hits that page's own section, and for every delivered block instance its coverage `pos` (the key a client matches it
+  to the page's blocks by; each template block lists its `positions`), the CSS selector of its origin element in the
+  page's captured source DOM, a confidence (the share of the block's text the element holds; image alt text never
+  counts) and its source: the template's encoder map first (by default `stardust/import/<templateId>/vocabulary.json`,
+  where the encoder writes it, when `stardust/import` exists, else under `stardust/migrate/encode`; `--encode`
+  overrides, and a status line names the directory used) where it selects the block's element (a block it does not
+  falls through), else text alignment, else, for a block whose text is not found (an image-only one, say), its
+  position (confidence 0): a child of its section's element, else next to the nearest anchored neighbour, never
+  another record's element, or no selector. Selectors are derived from and checked against the capture as stardust's
+  own parser reads it, with no browser. Pages and blocks it could not map are listed under `skipped`; a section with
+  no encoder-map or text-alignment anchor on any page (placement by position does not anchor) gets a null selector and
+  no pages; keys are sorted and `generatedAt` is copied from the coverage, so unchanged inputs give the same bytes.
+- **`--verify`** re-reads every capture and records per instance whether its selector resolves to exactly one element
+  (`verified` true or false; without the flag null, recorded as skipped). It checks uniqueness, not that the element
+  is the right one.
+- **The rule:** clients read selectors only from mapping.json and only when its sha256 is listed in manifest.json
+  outputs; a mapping whose `generatedAt` differs from pages.json's is stale. `workspace-manifest.mjs` hash-lists
+  `workspace/mapping.json` under `outputs` when present (and so in `_provenance.readArtifacts`); nothing else in the
+  manifest changes.
+- **The export step** (Phase I, opt-in, non-gating) runs `block-origin.mjs --verify` before the final
+  `workspace-manifest.mjs`. `reference/coverage-contract.md` gains "mapping — the source side" and no longer
+  declares source selectors absent; schema `schemas/rollout-workspace-mapping.schema.json`. rollout `lib.mjs` gains
+  `walkDelivered` (the delivered records with their nodes); `parseDelivered` returns what it did.
+- No gate changed: verdict criteria, the capture discipline, the foundation freeze and `done-check` are as they were.
+- Folded: the contract's exit-code list and judgement-draft details point to the scripts' `--help`.
+- Tests (synthetic fixtures) cover text alignment, the position fallback, encoder maps, `--verify`, skipped pages and
+  records, byte-identical re-runs, the schema and the project-copy layout; the manifest test covers the new `outputs`
+  entry and that nothing else changes.
+
 ## 0.34.0 — coverage is the contract: the delivered block structure, versioned coverage files and one shared page-block shape (#133)
 
 Field learning: a hands-off replica of a travel-brand site (64 pages in 11 locales, 8 templates, 12 blocks) ended

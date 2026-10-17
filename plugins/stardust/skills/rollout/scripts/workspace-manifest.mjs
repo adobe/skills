@@ -8,8 +8,9 @@
  * The coverage (<out>/coverage/{pages,templates,blocks}.json with formatVersion, written by
  * inventory.mjs and blocks.mjs) is what a client reads; reference/coverage-contract.md documents
  * it. This script writes <out>/workspace/manifest.json beside it: the hashes of the coverage files
- * (outputs) and of what they were built from (inputs: every <content>/**.html as one entry, each
- * <blocks>/<name>/<name>.{js,css}, <out>/workspace/judgement.json when present), placeholders
+ * and of <out>/workspace/mapping.json when present (outputs) and of what the coverage was built
+ * from (inputs: every <content>/**.html as one entry, each <blocks>/<name>/<name>.{js,css},
+ * <out>/workspace/judgement.json when present), placeholders
  * (fields not judged, pages without a content file) and the handover state. It refuses (exit 1,
  * nothing written, --force included) coverage without formatVersion and stale coverage: a content
  * file whose hash is not its page's delivered.contentHash (re-run inventory.mjs and blocks.mjs), or
@@ -56,7 +57,7 @@ if (process.argv.slice(2).includes('--help') || process.argv.slice(2).includes('
 export const FORMAT_VERSION = '0.1.0';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WRITTEN_BY = 'stardust:rollout/workspace-manifest';
-const FILES = { manifest: 'manifest.json', judgement: 'judgement.json', handover: 'handover.json' };
+const FILES = { manifest: 'manifest.json', judgement: 'judgement.json', handover: 'handover.json', mapping: 'mapping.json' };
 const COVERAGE = ['pages', 'templates', 'blocks'];
 const VALUE_FLAGS = ['out', 'project', 'content', 'blocks'];
 const BOOL_FLAGS = ['draft-judgement', 'force', 'dry-run', 'json'];
@@ -254,6 +255,8 @@ function main(argv) {
     coverage[name] = doc;
     outputs[relP(file)] = sha256(buf);
   }
+  const mappingFile = join(W, FILES.mapping);
+  if (isFile(mappingFile)) outputs[relP(mappingFile)] = sha256(readFileSync(mappingFile));
 
   const contentHashes = new Map(walkHtml(contentDir).map((abs) => [relative(contentDir, abs).split(sep).join('/'), sha256(readFileSync(abs))]));
 
