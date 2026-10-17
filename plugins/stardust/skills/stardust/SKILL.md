@@ -394,7 +394,7 @@ writes `stardust/encoded/<path>.html`, and `deploy` stages that file into
 
 **Versioning.** Everything under `stardust/` is committed except what
 `reference/stardust.gitignore` lists: screenshots, four heavy folders
-(`current/assets/`, `replica/gates/`, `migrated/assets/`, `rollout/qa/`),
+(`current/assets/`, `replica/gates/` but its JSON sidecars, `migrated/assets/`, `rollout/qa/`),
 `.work/`, run residue, session state. Per-directory table and what a clone
 without `current/assets/` can and cannot do: `reference/artifact-map.md`
 § Versioning.

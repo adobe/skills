@@ -381,7 +381,8 @@ thumb is cost to reproduce, not regenerability: an LLM-written artifact
 comes back different on a re-run, and a capture of the source site cannot
 come back at all once the site is replaced. Size alone never drops a
 file; screenshots and four rewritten-on-every-run folders are the
-exceptions. The master skill installs the ignore file as
+exceptions (of `replica/gates/` only the renders and diffs: its JSON
+sidecars are tracked). The master skill installs the ignore file as
 `stardust/.gitignore` (Setup step 6); a project that wants one of the
 excluded folders tracked deletes that line or adds a negation below it.
 
@@ -399,7 +400,8 @@ excluded folders tracked deletes that line or adds a negation below it.
 | `prototypes/**` incl. `assets/` | yes | prototype / replica | approved design; `assets/` is source media, not screenshots |
 | `validation/**` | **no** | master / prototype | clean-pass screenshots |
 | `replica/inconsistency-register.md`, `progress.json`, `motion/`, `capture/` | yes | replica | register, ledger, runtime CSS/DOM captures (2 MB) |
-| `replica/gates/**` | **no** | replica | per-iteration renders and diffs; verdicts live in `progress.json`; `live.png` re-taken on first run |
+| `replica/gates/**/*.json` | yes | replica | the gate's sidecars — `summary.json`, `runs/`, `rounds.json`, `triage.json`, gate keys: the evidence a verdict was read from |
+| `replica/gates/**` other files | **no** | replica | per-iteration renders and diffs; verdicts live in `progress.json`; `live.png` re-taken on first run |
 | `reskin/**` except `content-model/**/*.png`, `reports/*.png` | yes | reskin | tokens, model, renderers, pages, ledger |
 | `migrated/**/*.html`, `_meta.json`, `robots.txt`, `sitemap.xml` | yes | migrate | the deliverable and its reasoning |
 | `migrated/assets/**` | **no** | migrate | byte copy of `current/assets/media` + favicon variants |
