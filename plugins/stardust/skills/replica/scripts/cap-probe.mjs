@@ -41,7 +41,8 @@
  *     --design <file>        compare: read extensions.breakpoints.probeWidth (and containerMaxWidth)
  *                            so every skill probes at the width extract derived
  *     --write-design <file>  capture: merge the model into <file> extensions.breakpoints —
- *                            containerMaxWidth ("1600px" | null), probeWidth, caps[], modules[]
+ *                            containerMaxWidth ("1600px" | null), probeWidth, caps[], modules[];
+ *                            a partial capture leaves <file> as it is (_provenance.designWrite)
  *     --slug <s>             compare: evidence to stardust/replica/gates/<slug>-<probeWidth>/
  *                            cap-<label>.json (+ .txt), like the pixel rounds (--label default iter)
  *     --json / --out <file>  the JSON on stdout / written to <file>
@@ -62,7 +63,8 @@
  * `cap-probe: PASS|FAIL at <probeWidth> — <n> of <m> rows…`. A ✗ names the sizing rule to fix
  * (deploy Step 3 scaffold); never iterate pixels on it. The JSON's `_provenance` records
  * `navTimeout: { ms, source }`, `failed` (`{ url, error }` a page failed to load, `{ url, width,
- * error }` a read failed), `partial` and `warnings` (a re-probe).
+ * error }` a read failed), `partial`, `warnings` (a re-probe) and `designWrite` (a skipped
+ * --write-design).
  *
  * Deadlines (why: a recorded hands-off run hung 8× at 900 s in the reads after the goto, on a site
  * that navigates after a resize or a consent click): every read — resize + settle + evaluate at the
@@ -71,7 +73,9 @@
  * navigated under a read (execution context destroyed) is re-probed once, whole, on a fresh page in
  * the same browser context (cookies and consent kept); a deadline is not retried (a second would
  * double the wait). A failed read ends that page's probe: `{ url, width, error }`, `partial: true`.
- * Capture goes on with the next URL and aggregates the pages it probed; compare gives NO VERDICT
+ * Capture goes on with the next URL and aggregates the pages it probed, but never merges a partial
+ * model into --write-design (the unprobed page could carry a differing cap or a wider probe width
+ * — qa-gate and compare --design read DESIGN.json as complete); compare gives NO VERDICT
  * (no `compare` key; --slug still records the attempt) — half a measurement is never a PASS or a
  * FAIL. Then the first stdout line (stderr with --json) is `cap-probe: PARTIAL — <k> of <n> page
  * probe(s) failed: <url> @<w> (<error>); …` or `cap-probe: NO VERDICT — … (exit 124): …`.
@@ -660,11 +664,17 @@ async function main(argv) {
       const partial = failed.some((f) => Number.isFinite(f.width));
       const aggregate = Object.keys(pages).length ? aggregateCaps(pages, o.tolerance) : null;
       result = { _provenance: { ...provenance, urls: o.urls, failed, partial, pinned: o.probeWidth, ...(warnings.length ? { warnings } : {}) }, pages, aggregate };
-      if (o.writeDesign && aggregate) {
+      if (o.writeDesign && partial) {
+        // A partial model never reaches DESIGN.json: qa-gate and compare --design read it as complete, and the unprobed
+        // page is the one that could have shown a differing cap (a register item) or needed a wider probe width.
+        const skipped = `partial capture — ${Object.keys(pages).length} of ${o.urls.length} pages probed; re-run the failed URL(s)`;
+        result._provenance.designWrite = { file: o.writeDesign, skipped };
+        console.error(`cap-probe: ${o.writeDesign} NOT written — ${skipped}`);
+      } else if (o.writeDesign && aggregate) {
         const text = existsSync(o.writeDesign) ? readFileSync(o.writeDesign, 'utf8') : '{}\n';
         mkdirSync(dirname(resolvePath(o.writeDesign)), { recursive: true });
-        writeFileSync(o.writeDesign, mergeDesign(text, aggregate, { ...provenance, urls: Object.keys(pages), ...(partial ? { partial, failed } : {}) }));
-        console.error(`cap-probe: ${o.writeDesign} extensions.breakpoints ← containerMaxWidth ${aggregate.containerMaxWidth}, probeWidth ${aggregate.probeWidth}, ${aggregate.caps.length} caps, ${aggregate.modules.length} modules${partial ? ` — PARTIAL: from ${Object.keys(pages).length} of ${o.urls.length} pages` : ''}`);
+        writeFileSync(o.writeDesign, mergeDesign(text, aggregate, { ...provenance, urls: Object.keys(pages) }));
+        console.error(`cap-probe: ${o.writeDesign} extensions.breakpoints ← containerMaxWidth ${aggregate.containerMaxWidth}, probeWidth ${aggregate.probeWidth}, ${aggregate.caps.length} caps, ${aggregate.modules.length} modules`);
       }
     }
     code = exitCodeFor(result);

@@ -344,14 +344,19 @@ if (pwProbe.status !== 0) {
       assert.deepEqual([f.url, f.width], [`${base}/hang`, 2560]); assert.match(f.error, /deadline/);
       assert.ok(r.ms < 60000, `took ${r.ms} ms — a hung read must cost the deadline, not the run`);
     });
-    await check('e2e capture: a hanging page beside a good one — the next URL goes on, exit 0, partial, the aggregate from the good one', async () => {
-      const r = await runAsync([`${base}/hang`, `${base}/live`, '--json'], { env: { STARDUST_NAV_TIMEOUT_MS: '5000' } });
+    await check('e2e capture: a hanging page beside a good one — the next URL goes on, exit 0, partial, the aggregate from the good one, DESIGN.json left as it was', async () => {
+      const design = join(root, 'DESIGN-partial.json'); const before = '{\n  "extensions": { "breakpoints": { "containerMaxWidth": "1280px", "probeWidth": 2560 } }\n}\n';
+      writeFileSync(design, before);
+      const r = await runAsync([`${base}/hang`, `${base}/live`, '--json', '--write-design', design], { env: { STARDUST_NAV_TIMEOUT_MS: '5000' } });
       assert.equal(r.code, 0, r.out + r.err);
       const j = JSON.parse(r.out);
       assert.match(r.err, new RegExp(`cap-probe: PARTIAL — 1 of 2 page probe\\(s\\) failed: ${base}/hang @2560 \\(probe read: deadline 5000 ms`), 'with --json the status line goes to stderr');
       assert.deepEqual(j._provenance.navTimeout, { ms: 5000, source: 'env' }, 'no flag: the env figure is the navigation timeout and the deadline');
       assert.equal(j._provenance.partial, true); assert.deepEqual(Object.keys(j.pages), [`${base}/live`]);
       assert.deepEqual([j.aggregate.containerMaxWidth, j.aggregate.shellMaxWidth], ['1600px', 1920]);
+      assert.equal(readFileSync(design, 'utf8'), before, 'a partial model never reaches DESIGN.json — qa-gate and compare --design read it as complete');
+      assert.deepEqual(j._provenance.designWrite, { file: design, skipped: 'partial capture — 1 of 2 pages probed; re-run the failed URL(s)' });
+      assert.match(r.err, /DESIGN-partial\.json NOT written — partial capture — 1 of 2 pages probed/);
     });
     await check('e2e compare against a build that hangs: NO VERDICT, exit 124 (never 0 or 2), the attempt recorded under --slug without a verdict', async () => {
       const r = await runAsync([`${base}/live`, '--against', `${base}/hang`, '--timeout-ms', '5000', '--slug', 'hang', '--label', 'iter1']);
