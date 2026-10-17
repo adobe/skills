@@ -55,6 +55,13 @@
  *     before Phase 2. Two recorded hands-off runs captured a locale root whose
  *     15-page subtree discovery never listed, and learned it six hours later from
  *     the rollout link audit (15 × 404, then repointed to the source).
+ *     ENTRY-LOCALE SCOPE: when the --url path starts with locale codes (at most two
+ *     two-letter segments, such as /de, /fr-ca, /ca/en) and fewer than half of the
+ *     captured pages lie under that prefix on the entry's host, captureGaps gains
+ *     `scope: { entryLocale, inside, outside }`, `detail` gains "; entry locale /de
+ *     but 9 of 10 captured pages outside it", and one stderr line names it an owner
+ *     decision before Phase 2. A recorded hands-off run entered at a /de/ URL while
+ *     its site plan captured nine English pages, and nothing flagged the mismatch.
  *
  * Usage:
  *   node crawl.mjs --url https://example.com [--pages a,b,c] [--max 25] \
@@ -94,8 +101,8 @@
  *                                  its content-type — the ONLY media file this crawler downloads
  *   _crawl-log.json                discovery technique + page count, consent mode, favicon result,
  *                                  per-URL failures, slash retries, `captureGaps` (locale roots,
- *                                  above) (+ `dynamicSurface` with --dynamics); merged into an
- *                                  existing log, never replaced
+ *                                  entry-locale `scope`, above) (+ `dynamicSurface` with
+ *                                  --dynamics); merged into an existing log, never replaced
  *                                  `crawl.navMs` { n, p50, p95, max }: the captured pages' navMs
  *                                  (nearest-rank, integer ms; nulls when n is 0) — the crawl figure:
  *                                  2 × p95, clamped, is the navigation timeout live-session gives the
@@ -334,7 +341,37 @@ const hostKey = (u) => u.host.toLowerCase().replace(/^www\./, '');
 const pathKey = (u) => u.pathname.replace(/\/+$/, '') || '/';
 // a record's `links` is the flat href list capture() writes; the schema's { internal, external } shape is read too
 const linkList = (links) => (Array.isArray(links) ? links : links && typeof links === 'object' ? [...(links.internal || []), ...(links.external || [])] : []);
-export function captureGaps(records) {
+// The entry locale: the entry URL's leading path segments that are two-letter locale codes, at most two —
+// `/de/produkte` → `/de`, `/ca/en/x` → `/ca/en`, `/fr-ca/` → `/fr-ca`; `/faq/x` and `/` → null. A recorded
+// hands-off run entered at a /de/ URL while its site plan captured nine English pages, and nothing flagged it.
+const ENTRY_LOCALE_SEG = /^[a-z]{2}(?:[-_][a-z]{2,4})?$/i;
+export function entryLocalePrefix(href) {
+  let u;
+  try { u = new URL(href); } catch { return null; }
+  const lead = [];
+  for (const s of u.pathname.split('/').filter(Boolean).slice(0, 2)) { if (!ENTRY_LOCALE_SEG.test(s)) break; lead.push(s); }
+  return lead.length ? `/${lead.join('/')}` : null;
+}
+// Inside = records (url, else finalUrl) on the entry's host whose path is the prefix or lies under it (case kept,
+// trailing slash folded, www. folded); M = records with a parseable URL. Only a minority inside (< half) is a scope.
+function localeScope(records, entryUrl) {
+  const entryLocale = entryLocalePrefix(entryUrl);
+  if (!entryLocale) return null;
+  const host = hostKey(new URL(entryUrl));
+  let inside = 0;
+  let outside = 0;
+  for (const r of records) {
+    let u = null;
+    for (const h of [r.url, r.finalUrl]) { try { u = new URL(h); break; } catch { /* absent or not a URL */ } }
+    if (!u) continue;
+    const p = pathKey(u);
+    if (hostKey(u) === host && (p === entryLocale || p.startsWith(`${entryLocale}/`))) inside += 1;
+    else outside += 1;
+  }
+  const m = inside + outside;
+  return m > 0 && inside * 2 < m ? { entryLocale, inside, outside } : null;
+}
+export function captureGaps(records, { entryUrl } = {}) {
   const captured = new Set();
   for (const r of records) {
     for (const h of [r.url, r.finalUrl]) { try { const u = new URL(h); captured.add(`${hostKey(u)}${pathKey(u)}`); } catch { /* absent or not a URL */ } }
@@ -360,7 +397,9 @@ export function captureGaps(records) {
   const detail = roots.length
     ? `uncaptured first-level targets: ${roots.map((r) => `${r.root.slice(1)} ${r.uncaptured.length}`).join(', ')}`
     : 'uncaptured first-level targets: none (no locale root captured)';
-  return { roots, detail };
+  const scope = localeScope(records, entryUrl);
+  if (!scope) return { roots, detail };
+  return { roots, detail: `${detail}; entry locale ${scope.entryLocale} but ${scope.outside} of ${scope.inside + scope.outside} captured pages outside it`, scope };
 }
 
 // ---- discovery: explicit pages > sitemap (validated) > BFS from nav ----
@@ -1159,9 +1198,13 @@ async function main() {
   // locale-root capture gaps: the subtree a captured locale root links to but discovery never listed —
   // surfaced here, and as a ready --detail string for the extract `end` ledger line, not six hours later
   // in the rollout link audit.
-  log.captureGaps = captureGaps(results.filter(Boolean));
+  log.captureGaps = captureGaps(results.filter(Boolean), { entryUrl: args.url });
   if (log.captureGaps.roots.length) {
     console.error(`[crawl] capture gaps: ${log.captureGaps.roots.map((r) => `${r.root} ${r.uncaptured.length} of ${r.linked} first-level target(s) uncaptured`).join('; ')} — list in _crawl-log.json#captureGaps; ledger --detail "${log.captureGaps.detail}"`);
+  }
+  if (log.captureGaps.scope) {
+    const { entryLocale, inside, outside } = log.captureGaps.scope;
+    console.error(`[crawl] locale scope: entry locale ${entryLocale} but ${outside} of ${inside + outside} captured pages outside it — an owner decision before Phase 2 (_crawl-log.json#captureGaps.scope)`);
   }
   if (args.dynamics) {
     log.dynamicSurface = finalizeDynamic(dynamicRollup);

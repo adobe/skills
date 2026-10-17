@@ -293,6 +293,17 @@ it cannot make are recorded on the sidecar with `gate`, `deviation`,
 `decision`, `variant` and `modules` on the same script; it never
 advances `pages[].status`.
 
+**A′ needs no hand-written sibling file.** A directed page without its
+own source HTML (or with `--from-archetype`) is forked in-process from
+the archetype's proposed HTML (`--archetype`, else the page's
+`representative`, else the single approved page of its type): every
+`data-slot` in its `<main>` takes the value from
+`stardust/current/pages/<slug>.json#slots`, slot media through
+`stardust/current/assets/media-map.json`, then the deploy media
+ledger. The one source refusal is an archetype with no proposed HTML;
+an archetype without `data-slot` marks, or a slot with no value, is
+`strict slots`.
+
 **Recorded units.** A whole-site render is bookkept as units in
 `stardust/migrate/progress.json`, the shape of rollout's C-deliver unit
 ledger (`../replica/reference/handoff-contract.md` § 3 row C):

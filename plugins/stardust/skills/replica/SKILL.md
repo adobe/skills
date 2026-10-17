@@ -101,7 +101,8 @@ section per call); captured CSS through `css-rules.mjs`, capture JSON through
 `json-query.mjs` (values that feed a command from `--tsv`/`--path`, never the
 table), captured HTML through `html-slice.mjs`; instrument output through
 `run-bg.mjs wait` and `log --grep`, never `cat`; live-vs-prototype boxes
-through `measure.mjs`, never an authored probe; images one crop per fact,
+through `measure.mjs`, any other look at a page through `page-probe.mjs`,
+never an authored probe; images one crop per fact,
 never a stitched page or the live/build/diff triplet (the extract thumbnail,
 `thumb.mjs`, is the one exception); script flags from
 `../stardust/reference/scripts-index.md` first, then `--help`, never the
@@ -125,7 +126,10 @@ replica consumes the full migration inventory, not the discovery cap:
 - `stardust/current/assets/` — fonts (network-intercepted woff2), logo, media.
 - `stardust/current/PRODUCT.md`, `DESIGN.md`, `DESIGN.json` — the descriptive
   current state (Phase 2 promotes these verbatim).
-- `state.json.pages[].type` — page types (each becomes one archetype).
+- `state.json` — written after the crawl by `node stardust/scripts/stardust/state.mjs
+  init --pages <url-file|-> [--types <slug=type,…>] [--site-url <u>] [--page-cap <n>]`;
+  page types (each becomes one archetype) and `representative` (the archetype a
+  sibling clones) change via `state.mjs set`, never `node -e`.
 - `DESIGN.json.extensions.modules[]` — module candidates (become blocks).
 
 When extract's summary comes back, surface it with the flow line first —
@@ -225,8 +229,12 @@ as **clean semantic HTML/CSS** from three sources, in this order:
     the live page against the served prototype goes through the shipped
     `measure.mjs` (`node stardust/scripts/replica/measure.mjs <live-url>
     --against <prototype-url> --selectors "<css>,…"` — rect + computed values
-    per selector per width, one delta line each), never through an authored
-    probe.
+    per selector per width, one delta line each); any other look at a
+    page — a screenshot, a JS value, a click state, two shots side by side
+    — through `node stardust/scripts/diff/page-probe.mjs <url> [--shot
+    <png>] [--eval <expr>] [--click <sel>] [--sbs <a> <b> <out>]` (the
+    gate's navigation and consent handling; for looking, never gate
+    evidence). Never an authored browser script.
 (c) **The captured screenshot as ground truth** for everything CSS doesn't
     name (composition, image crops, paint effects).
 
@@ -455,7 +463,8 @@ phase `end`, and `ledger.mjs … end` warns when it is missing.
   assumed**: before cloning, run `stardust/scripts/replica/sibling-variance.mjs
   <archetype> <siblings…> --probe <block>=<sel> …` once per template and
   budget every delta as a block VARIANT class on the sibling's content (same
-  file, § Sibling variance probe). Content-fidelity is
+  file, § Sibling variance probe — its record,
+  `stardust/rollout/variance/<template>.json`, gates migrate's clone). Content-fidelity is
   **measured per page at import time** (same file, § Content-count
   acceptance) so importer bugs surface while cheap to fix.
 - **Delivery** via the stardust `deploy` skill per page. Bias the decode tier toward

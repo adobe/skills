@@ -284,8 +284,10 @@ node skills/rollout/scripts/assemble.mjs --verify-origin https://<branch>--<repo
 Generates site-wide artifacts: `sitemap.xml` + `robots.txt` from delivered paths,
 and a fragments manifest mapping chrome blocks to the authored chrome documents
 (`content/nav.html`, `content/footer.html`) with their `canon/*.html` source
-(`deploy` authors + deploys the documents through the normal content chain —
-they MUST be published or the chrome 404s sitewide).
+(`deploy` Step 6 builds them with `node skills/deploy/scripts/chrome-docs.mjs`,
+then localizes their hrefs and re-hosts the logo — a re-build repeats both — and
+deploys them through the normal content chain; they MUST be published or the
+chrome 404s sitewide).
 
 **The assembled sitemap is never the served one.** `stardust/rollout/` is in
 `.hlxignore`, so `site/sitemap.xml` is a local artifact — the EXPECTED url set.
@@ -296,8 +298,9 @@ noindex` (Phase C). A recorded hands-off run read the local file, reported
 `footer` documents). Two remedies, the first required:
 - **Authoring:** every chrome/fragment document — `/nav`, `/footer`, per-locale
   `nav-*` / `footer-*`, locale shells that are not pages — carries the metadata
-  row `Robots | noindex`; a document already published without it is re-authored
-  and re-published (preview → live) before the check below.
+  row `Robots | noindex` (`chrome-docs.mjs` writes it); a document already
+  published without it is re-authored and re-published (preview → live) before
+  the check below.
 - **Configuration (alternative, additive):** when the code branch is writable, a
   `helix-sitemap.yaml` at the project root (`sitemaps.default.include: ['/**']`,
   `exclude: ['/nav', '/footer', '/**/nav*', '/**/footer*', '/fragments/**']`,

@@ -3,7 +3,8 @@
 // from the sidecars (an archetype with `template: null` groups under its own slug, with the
 // siblings that name it; `type` last), the archetype as representative, the empty-modules
 // report, delivery state preserved across re-runs, and a row added by `update-coverage.mjs --new`
-// (origin marker in source.migratedHtml) kept across a re-run until the migrated tree holds it.
+// (origin marker in source.migratedHtml) kept across a re-run until the migrated tree holds it, and a
+// sidecar's `variance` object copied verbatim to the row's source.variance (absent otherwise).
 // Run: node plugins/stardust/skills/rollout/scripts/test/inventory.test.mjs
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -116,6 +117,20 @@ check('sourceUrl: the sidecar\'s source URL, else state.json\'s by slug, else nu
   assert.equal(r.status, 0, r.stderr);
   const bySlug = Object.fromEntries(json('coverage/pages.json').pages.map((p) => [p.slug, p.source.sourceUrl]));
   assert.equal(bySlug.about, 'https://example.com/about-us'); assert.equal(bySlug['tours-bali'], 'https://example.com/tours/bali.html'); assert.equal(bySlug.faq, null);
+});
+
+check('a sidecar\'s variance object lands verbatim in the row\'s source.variance; variance null or absent → no key', () => {
+  const vRoot = join(root, 'variance'); const vMigrated = join(vRoot, 'migrated'); const vOut = join(vRoot, 'rollout');
+  const differs = { verdict: 'differs', file: 'stardust/rollout/variance/tours-bali.json', at: '2026-01-02T03:04:05Z', missing: ['card'], extra: [], deltas: 2, accepted: null };
+  const skipped = { status: 'skipped', reason: 'no live archetype URL' };
+  const sidecars = { 'utah.html': { slug: 'tours-utah', template: 'tours-bali', variance: differs }, 'alps.html': { slug: 'tours-alps', template: 'tours-bali', variance: skipped }, 'bali.html': { slug: 'tours-bali', renderBranch: 'A', template: null, variance: null }, 'faq.html': { slug: 'faq', renderBranch: 'B' } };
+  mkdirSync(vMigrated, { recursive: true });
+  for (const [leaf, meta] of Object.entries(sidecars)) { writeFileSync(join(vMigrated, leaf), `<html><body><main>${leaf}</main></body></html>`); writeFileSync(join(vMigrated, sidecarName(leaf)), JSON.stringify({ ...meta, modules: [] })); }
+  const r = spawnSync(process.execPath, [SCRIPT, '--migrated', vMigrated, '--out', vOut], { encoding: 'utf8', cwd: vRoot });
+  assert.equal(r.status, 0, r.stderr);
+  const rows = Object.fromEntries(JSON.parse(readFileSync(join(vOut, 'coverage', 'pages.json'), 'utf8')).pages.map((p) => [p.slug, p.source]));
+  assert.deepEqual(rows['tours-utah'].variance, differs); assert.deepEqual(rows['tours-alps'].variance, skipped);
+  assert.equal('variance' in rows['tours-bali'], false, 'variance null → no key'); assert.equal('variance' in rows.faq, false, 'no variance → no key');
 });
 
 rmSync(root, { recursive: true, force: true });

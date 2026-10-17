@@ -1,13 +1,34 @@
 #!/usr/bin/env node
-// skills/stardust/scripts/state.mjs — deterministic page-status writer for `stardust/state.json`
+// skills/stardust/scripts/state.mjs — deterministic writer for `stardust/state.json`
 // (contract: skills/stardust/reference/state-machine.md; file layout and provenance shape:
-// skills/stardust/reference/artifact-map.md). Replaces the node -e one-shots agents used to
-// hand-edit page entries with: one command that enforces the lifecycle, appends the history
-// entry, clears `stale` where the contract says so and re-stamps `_provenance`.
+// skills/stardust/reference/artifact-map.md). Replaces the hand-built state.json and the node -e
+// one-shots agents used to hand-edit page entries with: one command that creates the file from the
+// crawl's page records, one that enforces the lifecycle (appends the history entry, clears `stale`
+// where the contract says so) and one that sets a page's type / representative — each re-stamps
+// `_provenance`.
 //
+//   node state.mjs init --pages <file|-> [--types <slug=type,…>] [--site-url <url>] [--page-cap <n>]
+//                  [--force] [--dir <stardust dir>] [--current <dir>]
 //   node state.mjs advance <slug…> --to <status> [--by <who>] [--prototype <path>] [--migrated <path>]
 //                  [--skill <name>] [--force | --history-only] [--dir <stardust dir>]
+//   node state.mjs set <slug…> (--representative <archetype-slug> | --type <type>) [--skill <name>]
+//                  [--dir <stardust dir>]
 //   node state.mjs summary [--slugs] [--dir <stardust dir>]
+//
+// init (after the crawl): one page per listed URL, in input order, every one `extracted`. A URL is
+// matched to its crawl record through an index of every <current>/pages/*.json record (url, then
+// finalUrl; origin + path without trailing slash + query, `www.` folded) — so the crawl's collision
+// suffixes (-<hash4>) are honoured; a URL with no record falls back to the crawl's slug rule, which
+// names the missing file in the refusal. Every page record must pass validateProvenance (live-render
+// evidence, state-machine.md § validateProvenance(page)) or nothing is written. A state.json with
+// no pages (no `pages` key or an empty pages[] — flow / handsOff stamped before extract ran) is
+// filled without --force, its other top-level keys kept in place. One with pages is refused;
+// --force re-inits only while every page in it is still `extracted` and keeps its top-level keys
+// other than _provenance, site and pages in place. Invalid JSON or a non-array `pages` is refused.
+// The written shape follows state-machine.md § File: `direction: null` unless the file has one;
+// site { originUrl, deployUrl, extractedAt, pageCap (--page-cap or null), totalDiscovered (see
+// siteTotalDiscovered: the crawl log's count only where the cap did not cut it), crawled, captureGaps? }.
+// set: page.type / page.representative (the archetype slug a sibling clones), all-or-nothing.
 //
 // Lifecycle (state-machine.md § Page lifecycle states): extracted → directed → prototyped →
 // approved → migrated. Forward moves are legal, including jumps (a `directed` page can be migrated
@@ -23,9 +44,11 @@
 // Top-level key order on write (state-machine.md § File): _provenance, site, direction, handsOff,
 // flow, flowChosenAt, flowSource, pages; a key this script does not know keeps its place relative
 // to the known keys around it (never pushed behind pages).
-// Exit codes: 0 ok · 2 usage, unknown slug, or illegal transition (nothing written in every 2 case).
-import { existsSync, readFileSync, renameSync, writeFileSync, realpathSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+// summary prints, when any page has a representative, one line per archetype (sorted by slug).
+// Exit codes: 0 ok · 2 usage, unknown slug, illegal transition, or an init / set refusal (nothing
+// written in every 2 case).
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync, realpathSync } from 'node:fs';
+import { dirname, join, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const DEFAULT_DIR = 'stardust';
@@ -41,16 +64,64 @@ export const CLEARS_STALE = new Set(['prototyped', 'approved', 'migrated']);
 // state-machine.md § File: top-level keys "always in that order"; handsOff sits after direction, the
 // 0.23.0 flow keys (§ Flow keys) between it and pages.
 export const TOP_ORDER = ['_provenance', 'site', 'direction', 'handsOff', 'flow', 'flowChosenAt', 'flowSource', 'pages'];
+// A page type (init --types, set --type).
+export const TYPE_RE = /^[a-z][a-z0-9-]*$/;
+// state-machine.md § validateProvenance(page) — contract; `slow` is listed because
+// `crawl.mjs --wait slow` writes it.
+export const WAIT_MODE_RE = /^(fast|medium|slow|spec|networkidle|domcontentloaded)(\(fallback\))?$/;
+// fetchedAt may lead the reader's clock by at most this much (clock skew between machines).
+export const FUTURE_SKEW_MS = 5 * 60 * 1000;
+// Flags only init / set read; advance and summary keep refusing them as unknown options.
+const NEW_FLAGS = ['--pages', '--types', '--site-url', '--page-cap', '--current', '--representative', '--type'];
+const FLAGS_FOR = {
+  init: ['--pages', '--types', '--site-url', '--page-cap', '--current', '--force', '--dir'],
+  set: ['--representative', '--type', '--skill', '--dir'],
+};
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SELF = fileURLToPath(import.meta.url);
 const PLUGIN_MANIFEST = join(HERE, '..', '..', '..', '.claude-plugin', 'plugin.json');
 const HELP = `Usage:
+  node state.mjs init --pages <file|-> [--types <slug=type,…>] [--site-url <url>] [--page-cap <n>]
+                 [--force] [--dir <d>] [--current <dir>]
   node state.mjs advance <slug…> --to <${ORDER.join('|')}> [--by <who>] [--prototype <path>]
                  [--migrated <path>] [--skill <name>] [--force | --history-only] [--dir <d>]
+  node state.mjs set <slug…> (--representative <archetype-slug> | --type <type>) [--skill <name>] [--dir <d>]
   node state.mjs summary [--slugs] [--dir <d>]
-  (--dir defaults to ${DEFAULT_DIR}; the file is <dir>/${FILE_NAME} and must already exist)
+  (--dir defaults to ${DEFAULT_DIR}; the file is <dir>/${FILE_NAME}. init creates it; advance, set and
+  summary need it to exist. --current defaults to <dir>/current, the crawl's --out.)
 
+init     creates <dir>/${FILE_NAME} after the crawl, one page per URL in --pages, in input order.
+         --pages: a file (or - for stdin) with one URL per line (blank lines and # lines ignored)
+         or a JSON array of URL strings. A path-only line (/de/x) resolves against --site-url;
+         without --site-url it is a usage error naming the line.
+         Each URL is looked up in an index of every <current>/pages/*.json record (url, then
+         finalUrl; origin + path without trailing slash + query, www. folded), so the crawl's
+         collision suffixes are kept; a URL with no record gets the crawl's slug rule.
+         Every page record must exist and pass validateProvenance — renderedBy "playwright",
+         fetchedAt ISO 8601 and at most 5 min in the future, waitMs an integer > 0, waitMode
+         fast|medium|slow|spec|networkidle|domcontentloaded[(fallback)], httpStatus an integer in
+         [200, 399] — else exit 2, nothing written, one line per failing page naming the slug, the
+         condition and the file. --types home=landing,about=article sets page.type (type
+         ${TYPE_RE.source}; a slug not in the input is a usage error); other pages get type null.
+         Writes _provenance (writtenBy stardust:extract), site { originUrl (origin of --site-url,
+         else of the first URL), deployUrl null, extractedAt, pageCap (--page-cap, an integer >= 0,
+         0 = no cap as crawl --max 0; else null), totalDiscovered, crawled (the number of input
+         URLs), captureGaps (the roots of <current>/_crawl-log.json#captureGaps, when it lists
+         any) }, direction null (unless the file already has a direction, which is kept) and
+         pages[] (status extracted, one history entry, currentStatePath
+         <current>/pages/<slug>.json). Duplicate slugs in the input are a usage error.
+         totalDiscovered: the crawl log's #discovery.count is the count AFTER the crawl's --max
+         cap, so pass that --max as --page-cap. With --page-cap 0, or a count below the cap (the
+         cap did not bite), it is the count; with a count >= the cap, null (the cap bit and the
+         crawl logs no pre-cap total); without --page-cap, the count as logged; without a logged
+         count, the number of input URLs.
+         An existing ${FILE_NAME} with no pages (no pages key or an empty
+         pages[], e.g. flow / handsOff stamped before extract) is filled without --force: its other
+         top-level keys stay in place and stdout adds "· kept <keys>". One with pages exits 2;
+         --force re-inits it only while every page in it is still extracted, keeping its top-level
+         keys other than _provenance, site and pages in place. Invalid JSON or a non-array pages
+         exits 2.
 advance  moves every named page to <status>: appends { status, at[, approvedBy] } to its history,
          sets prototypePath / migratedPath when given, clears stale on prototyped|approved|migrated,
          re-stamps _provenance (writtenBy stardust:<skill>, writtenAt, stardustVersion).
@@ -59,10 +130,20 @@ advance  moves every named page to <status>: appends { status, at[, approvedBy] 
          --history-only appends the history entry and leaves status untouched (re-running prototype
          after approved does not demote — state-machine.md § Linearity rule); no direction check,
          stale untouched, paths still set. Not combinable with --force.
-         A value flag followed by nothing or by another --flag is a usage error.
-summary  prints page counts by status (and the slugs per status with --slugs).
-Writes: advance rewrites <dir>/${FILE_NAME} in place (atomic temp file + rename); summary writes nothing.
-Exit codes: 0 ok, 2 usage / illegal transition.`;
+set      sets page.representative (the archetype slug the named pages clone) and/or page.type on
+         every named page; at least one of the two. Re-stamps _provenance (writtenBy
+         stardust:direct unless --skill). All-or-nothing: an unknown slug, an unknown
+         representative or a page named as its own representative exits 2, nothing written.
+summary  prints page counts by status, then one line per archetype when any page has a
+         representative ("  representative <archetype> <n>  <slug, …>", sorted by archetype),
+         then the slugs per status with --slugs.
+A value flag followed by nothing or by another --flag is a usage error; so is a flag init or set
+does not read.
+Writes: init writes <dir>/${FILE_NAME}; advance and set rewrite it in place (atomic temp file +
+rename); summary writes nothing.
+Exit codes: 0 ok, 2 usage / illegal transition / refusal (init: ${FILE_NAME} holds pages or does not
+parse, a page record is missing or lacks live-render evidence; set: unknown slug or
+representative) — nothing written.`;
 
 export class UsageError extends Error { constructor(msg, code = 2) { super(msg); this.code = code; } }
 
@@ -82,7 +163,7 @@ export function pluginVersion() {
 
 export function readState(dir) {
   const file = statePath(dir);
-  if (!existsSync(file)) throw new UsageError(`${file} does not exist — extract creates it; advance only moves pages that are already in it`);
+  if (!existsSync(file)) throw new UsageError(`${file} does not exist — create it with \`state.mjs init --pages <url-file|->\` after the crawl; advance and set only change pages that are already in it`);
   let state;
   try { state = JSON.parse(readFileSync(file, 'utf8')); } catch (e) { throw new UsageError(`${file} is not valid JSON (${e.message})`); }
   if (!state || typeof state !== 'object' || !Array.isArray(state.pages)) throw new UsageError(`${file} has no pages[] array`);
@@ -180,16 +261,265 @@ export function summarise(state) {
   const counts = Object.fromEntries(ORDER.map((s) => [s, []]));
   const other = {};
   const stale = [];
+  const representatives = {};
   for (const p of state.pages) {
     (counts[p.status] || (other[p.status] = other[p.status] || [])).push(p.slug);
     if (p.stale) stale.push(p.slug);
+    if (p.representative) (representatives[p.representative] ||= []).push(p.slug);
   }
-  return { total: state.pages.length, counts, other, stale };
+  return { total: state.pages.length, counts, other, stale, representatives };
+}
+
+// ---- set ---------------------------------------------------------------------------------------
+// Sets `key` on `obj`: in place when present (or when `after` is absent, appended); otherwise
+// returns a copy with `key` right after `after`.
+function withKey(obj, key, value, after) {
+  if (key in obj || !(after in obj)) { obj[key] = value; return obj; }
+  const out = {};
+  for (const [k, v] of Object.entries(obj)) { out[k] = v; if (k === after) out[key] = value; }
+  return out;
+}
+
+// Sets page.type and/or page.representative on every slug in memory; throws before touching
+// anything when a slug or the representative is unknown, or a page would represent itself.
+// Returns the (de-duplicated) slugs set.
+export function setPages(state, slugs, { representative = null, type = null } = {}) {
+  if (!slugs.length) throw new UsageError('set needs at least one <slug>');
+  if (representative === null && type === null) throw new UsageError('set needs --representative <archetype-slug> and/or --type <type>');
+  if (type !== null && !TYPE_RE.test(type)) throw new UsageError(`--type "${type}" is not a page type (${TYPE_RE.source})`);
+  const unique = [...new Set(slugs)];
+  const bySlug = new Map(state.pages.map((p) => [p.slug, p]));
+  const missing = unique.filter((s) => !bySlug.has(s));
+  if (missing.length) throw new UsageError(`unknown slug(s): ${missing.join(', ')} — ${state.pages.length} page(s) in state.json; set changes existing entries only`);
+  if (representative !== null) {
+    if (!bySlug.has(representative)) throw new UsageError(`unknown representative "${representative}" — it must be a page in state.json (the archetype the named pages clone)`);
+    if (unique.includes(representative)) throw new UsageError(`${representative} cannot be its own representative — name the archetype's siblings, not the archetype`);
+  }
+  state.pages = state.pages.map((p) => {
+    if (!unique.includes(p.slug)) return p;
+    let next = p;
+    if (type !== null) next = withKey(next, 'type', type, 'title');
+    if (representative !== null) next = withKey(next, 'representative', representative, 'type');
+    return next;
+  });
+  return unique;
+}
+
+// ---- init --------------------------------------------------------------------------------------
+// The crawl's slug rule (extract/scripts/crawl.mjs `slugify`): pathname, one leading and one
+// trailing `/` stripped, runs of non-alphanumerics → `-`, lowercased, empty → `index`.
+export function crawlSlug(href) {
+  const { pathname } = new URL(href);
+  return pathname.replace(/^\/|\/$/g, '').replace(/[^a-z0-9]+/gi, '-').toLowerCase() || 'index';
+}
+
+// URL identity for the record index: origin (host `www.` folded) + path without trailing slash +
+// query; the fragment is dropped.
+export function urlKey(href) {
+  const u = new URL(href);
+  return `${u.protocol}//${u.host.toLowerCase().replace(/^www\./, '')}${u.pathname.replace(/\/+$/, '')}${u.search}`;
+}
+
+const isHttp = (u) => u.protocol === 'http:' || u.protocol === 'https:';
+
+export function parseSiteUrl(raw) {
+  let u;
+  try { u = new URL(raw); } catch { throw new UsageError(`--site-url "${raw}" is not an absolute URL`); }
+  if (!isHttp(u)) throw new UsageError(`--site-url "${raw}" is not an http(s) URL`);
+  return u;
+}
+
+// Parses the --pages input: a JSON array of URL strings, or one URL per line (blank lines and
+// `#` lines ignored). A path-only entry resolves against `siteUrl`. Returns [{ url, where }].
+export function parsePageList(text, { siteUrl = null } = {}) {
+  const src = String(text);
+  let items;
+  if (src.trim().startsWith('[')) {
+    let arr;
+    try { arr = JSON.parse(src); } catch (e) { throw new UsageError(`--pages input looks like a JSON array but does not parse (${e.message})`); }
+    if (!Array.isArray(arr)) throw new UsageError('--pages JSON input must be an array of URL strings');
+    items = arr.map((v, i) => {
+      if (typeof v !== 'string') throw new UsageError(`--pages entry ${i + 1} is not a string (${JSON.stringify(v)})`);
+      return { raw: v.trim(), where: `entry ${i + 1}` };
+    });
+  } else {
+    items = src.split(/\r?\n/).map((l, i) => ({ raw: l.trim(), where: `line ${i + 1}` })).filter((x) => x.raw && !x.raw.startsWith('#'));
+  }
+  const out = items.map(({ raw, where }) => {
+    if (!raw) throw new UsageError(`--pages ${where} is empty`);
+    if (raw.startsWith('/') && !raw.startsWith('//')) {
+      if (!siteUrl) throw new UsageError(`--pages ${where} "${raw}" is a path; pass --site-url <url> to resolve it`);
+      return { url: new URL(raw, siteUrl).href, where };
+    }
+    let u;
+    try { u = new URL(raw); } catch { throw new UsageError(`--pages ${where} "${raw}" is not an absolute URL or a /path`); }
+    if (!isHttp(u)) throw new UsageError(`--pages ${where} "${raw}" is not an http(s) URL`);
+    return { url: u.href, where };
+  });
+  if (!out.length) throw new UsageError('--pages lists no URL');
+  return out;
+}
+
+// Parses --types "slug=type,slug=type" into a Map; every slug must be one of `slugs`.
+export function parseTypes(raw, slugs) {
+  const types = new Map();
+  if (raw === null || raw === undefined) return types;
+  for (const pair of String(raw).split(',').map((s) => s.trim()).filter(Boolean)) {
+    const eq = pair.indexOf('=');
+    if (eq <= 0) throw new UsageError(`--types "${pair}" is not slug=type`);
+    const slug = pair.slice(0, eq).trim(); const type = pair.slice(eq + 1).trim();
+    if (!TYPE_RE.test(type)) throw new UsageError(`--types ${slug}: "${type}" is not a page type (${TYPE_RE.source})`);
+    if (types.has(slug) && types.get(slug) !== type) throw new UsageError(`--types names ${slug} twice (${types.get(slug)}, ${type})`);
+    if (!slugs.includes(slug)) throw new UsageError(`--types names "${slug}", which is not among the input pages (${slugs.join(', ')})`);
+    types.set(slug, type);
+  }
+  return types;
+}
+
+function readJson(file) {
+  try { return { value: JSON.parse(readFileSync(file, 'utf8')) }; } catch (e) { return { error: e.message }; }
+}
+
+// Index of every <pagesDir>/*.json record: Map(urlKey → slug), url keys first, then finalUrl keys
+// that no url claimed; files in name order, the first claimant keeps a key. `records` caches the
+// parsed files by slug (the file name).
+export function indexPageRecords(pagesDir) {
+  const byKey = new Map();
+  const records = new Map();
+  let names = [];
+  try { names = readdirSync(pagesDir).filter((n) => n.endsWith('.json')).sort(); } catch { /* no pages dir: empty index */ }
+  for (const n of names) {
+    const r = readJson(join(pagesDir, n));
+    if (r.value && typeof r.value === 'object' && !Array.isArray(r.value)) records.set(n.slice(0, -'.json'.length), r.value);
+  }
+  for (const field of ['url', 'finalUrl']) {
+    for (const [slug, rec] of records) {
+      let key;
+      try { key = urlKey(rec[field]); } catch { continue; }
+      if (!byKey.has(key)) byKey.set(key, slug);
+    }
+  }
+  return { byKey, records };
+}
+
+const shown = (v) => (v === undefined ? 'missing' : JSON.stringify(v));
+const ISO_8601 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})$/;
+
+// state-machine.md § validateProvenance(page) — contract, for one parsed page record. Returns the
+// failed conditions (empty when the record carries live-render evidence).
+export function validateProvenance(record, { now = Date.now() } = {}) {
+  const p = record && typeof record === 'object' ? record._provenance : undefined;
+  if (!p || typeof p !== 'object' || Array.isArray(p)) return [`_provenance: ${shown(p)}, not an object`];
+  const fails = [];
+  if (p.renderedBy !== 'playwright') fails.push(`renderedBy: ${shown(p.renderedBy)} is not "playwright"`);
+  const t = typeof p.fetchedAt === 'string' && ISO_8601.test(p.fetchedAt) ? Date.parse(p.fetchedAt) : NaN;
+  if (!Number.isFinite(t)) fails.push(`fetchedAt: ${shown(p.fetchedAt)} does not parse as ISO 8601`);
+  else if (t - now > FUTURE_SKEW_MS) fails.push(`fetchedAt: ${p.fetchedAt} is more than 5 min in the future`);
+  if (!Number.isInteger(p.waitMs) || p.waitMs <= 0) fails.push(`waitMs: ${shown(p.waitMs)} is not an integer > 0`);
+  if (typeof p.waitMode !== 'string' || !WAIT_MODE_RE.test(p.waitMode)) fails.push(`waitMode: ${shown(p.waitMode)} does not match ${WAIT_MODE_RE.source}`);
+  if (!Number.isInteger(p.httpStatus) || p.httpStatus < 200 || p.httpStatus > 399) fails.push(`httpStatus: ${shown(p.httpStatus)} is not an integer in [200, 399]`);
+  return fails;
+}
+
+// Resolves every input URL to its page record and checks it; pure apart from reading the records.
+// Returns { pages: [{ slug, input, record, file }], failures: [line…] } — a failure line per slug.
+export function resolvePages(inputs, current, { now = Date.now() } = {}) {
+  const pagesDir = join(current, 'pages');
+  const { byKey, records } = indexPageRecords(pagesDir);
+  const pages = inputs.map(({ url, where }) => {
+    const hit = byKey.get(urlKey(url));
+    return { slug: hit || crawlSlug(url), input: url, where, indexed: Boolean(hit) };
+  });
+  const seen = new Map();
+  for (const p of pages) {
+    if (seen.has(p.slug)) { const q = seen.get(p.slug); throw new UsageError(`duplicate slug "${p.slug}": --pages ${q.where} (${q.input}) and ${p.where} (${p.input}) name the same page`); }
+    seen.set(p.slug, p);
+  }
+  const failures = [];
+  for (const p of pages) {
+    p.file = posix.join(current, 'pages', `${p.slug}.json`);
+    const fsFile = join(pagesDir, `${p.slug}.json`);
+    let conds;
+    if (!existsSync(fsFile) || !statSync(fsFile).isFile()) conds = [`file exists: no page record for ${p.input}`];
+    else {
+      const r = records.has(p.slug) ? { value: records.get(p.slug) } : readJson(fsFile);
+      if (r.error) conds = [`file parses: ${r.error}`];
+      else if (!r.value || typeof r.value !== 'object' || Array.isArray(r.value)) conds = ['file parses: not a JSON object'];
+      else {
+        p.record = r.value;
+        conds = validateProvenance(p.record, { now });
+        // Not in the index although the file exists: the record at this slug is another URL's.
+        const own = [p.record.url, p.record.finalUrl].filter((h) => typeof h === 'string');
+        if (!p.indexed && own.length) conds.unshift(`url: the record is ${own[0]}, not ${p.input}`);
+      }
+    }
+    if (conds.length) failures.push(`page ${p.slug} lacks live-render evidence (${conds.join('; ')}) — ${p.file}; re-crawl it`);
+  }
+  return { pages, failures };
+}
+
+// <current>/_crawl-log.json#captureGaps.roots, when it lists any; else null.
+export function readCaptureGapRoots(current) {
+  const r = readJson(join(current, '_crawl-log.json'));
+  const roots = r.value && r.value.captureGaps && r.value.captureGaps.roots;
+  return Array.isArray(roots) && roots.length ? structuredClone(roots) : null;
+}
+
+// <current>/_crawl-log.json#discovery.count, when it is an integer >= 0; else null. crawl.mjs logs
+// it AFTER slicing the discovered URLs to --max, so it is a total only where the cap did not bite
+// (see siteTotalDiscovered).
+export function readDiscoveryCount(current) {
+  const r = readJson(join(current, '_crawl-log.json'));
+  const n = r.value && r.value.discovery && r.value.discovery.count;
+  return Number.isInteger(n) && n >= 0 ? n : null;
+}
+
+// site.totalDiscovered from the crawl log's post-cap count:
+// - no logged count → the number of input URLs;
+// - no --page-cap → the count as logged (HELP asks for the crawl's --max as --page-cap so a capped
+//   count is not mistaken for the total);
+// - --page-cap 0 (no cap) or a count below the cap (the cap did not bite) → the count;
+// - a count >= the cap → null: the cap bit and the crawl logs no pre-cap total.
+export function siteTotalDiscovered({ count = null, pageCap = null, inputCount }) {
+  if (count === null) return inputCount;
+  if (pageCap === null || pageCap === 0 || count < pageCap) return count;
+  return null;
+}
+
+// --page-cap: an integer >= 0 (0 = no cap, as crawl --max 0); absent → null.
+export function parsePageCap(raw) {
+  if (raw === null || raw === undefined) return null;
+  if (!/^\d+$/.test(String(raw).trim())) throw new UsageError(`--page-cap "${raw}" is not an integer >= 0 (0 = no cap, as crawl --max 0)`);
+  return Number(String(raw).trim());
+}
+
+// Builds the state object init writes. `prev` (an existing file without pages, or the --force
+// case) keeps its top-level keys other than _provenance, site and pages in place, `direction`
+// included; without one, direction is null (unresolved until direct runs).
+export function buildInitState({ pages, types = new Map(), siteUrl = null, pageCap = null, discoveryCount = null, captureGaps = null, current, prev = null, at = nowIso() }) {
+  const rows = pages.map(({ slug, input, record = {} }) => ({
+    slug,
+    url: record.url || input,
+    title: record.title || slug,
+    type: types.get(slug) || null,
+    status: 'extracted',
+    history: [{ status: 'extracted', at }],
+    stale: false,
+    staleReason: null,
+    currentStatePath: posix.join(current, 'pages', `${slug}.json`),
+    prototypePath: null,
+    migratedPath: null,
+  }));
+  const site = { originUrl: new URL(siteUrl || rows[0].url).origin, deployUrl: null, extractedAt: at, pageCap, totalDiscovered: siteTotalDiscovered({ count: discoveryCount, pageCap, inputCount: rows.length }), crawled: rows.length };
+  if (captureGaps) site.captureGaps = captureGaps;
+  const base = prev && typeof prev === 'object' ? { ...prev } : {};
+  // A new key lands last; writeState's orderTopLevel moves direction to its TOP_ORDER place.
+  return { ...base, _provenance: stampProvenance(null, 'stardust:extract', at), site, ...('direction' in base ? {} : { direction: null }), pages: rows };
 }
 
 // ---- argv --------------------------------------------------------------------------------------
 function parseArgs(argv) {
-  const opts = { dir: DEFAULT_DIR, force: false, historyOnly: false, slugs: false, to: null, by: null, prototype: null, migrated: null, skill: null };
+  const opts = { dir: DEFAULT_DIR, force: false, historyOnly: false, slugs: false, to: null, by: null, prototype: null, migrated: null, skill: null, pages: null, types: null, siteUrl: null, pageCap: null, current: null, representative: null, type: null, seen: [] };
   const pos = [];
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
@@ -199,6 +529,7 @@ function parseArgs(argv) {
       if (argv[i + 1].startsWith('--')) throw new UsageError(`${a} needs a value (got ${argv[i + 1]}, which is a flag)`);
       i += 1; return argv[i];
     };
+    if (a.startsWith('--') && a !== '--help') opts.seen.push(a);
     if (a === '--help' || a === '-h') opts.help = true;
     else if (a === '--force') opts.force = true;
     else if (a === '--history-only') opts.historyOnly = true;
@@ -209,11 +540,84 @@ function parseArgs(argv) {
     else if (a === '--prototype') opts.prototype = need();
     else if (a === '--migrated') opts.migrated = need();
     else if (a === '--skill') opts.skill = need();
+    else if (a === '--pages') opts.pages = need();
+    else if (a === '--types') opts.types = need();
+    else if (a === '--site-url') opts.siteUrl = need();
+    else if (a === '--current') opts.current = need();
+    else if (a === '--page-cap') opts.pageCap = need();
+    else if (a === '--representative') opts.representative = need();
+    else if (a === '--type') opts.type = need();
     else if (a === '--gate' || a === '--note') throw new UsageError(`${a} is not accepted: a state.json history entry carries status, at and approvedBy only (state-machine.md § File). Gate evidence belongs in the producing skill's own ledger; free-text notes belong in stardust/journal.md.`);
     else if (a.startsWith('-')) throw new UsageError(`unknown option ${a}`);
     else pos.push(a);
   }
   return { opts, pos };
+}
+
+function readPagesInput(src) {
+  if (src === '-') {
+    try { return readFileSync(0, 'utf8'); } catch (e) { throw new UsageError(`--pages -: cannot read stdin (${e.message})`); }
+  }
+  if (!existsSync(src) || !statSync(src).isFile()) throw new UsageError(`--pages ${src} is not a file (one URL per line or a JSON array; - reads stdin)`);
+  return readFileSync(src, 'utf8');
+}
+
+const listSome = (xs, n = 5) => `${xs.slice(0, n).join(', ')}${xs.length > n ? `, … +${xs.length - n} more` : ''}`;
+
+// The top-level keys init writes; every other key of an existing file is kept in place.
+const INIT_OWNS = ['_provenance', 'site', 'pages'];
+// A file with no `pages` key or an empty pages[] holds no page state (the master routing or replica
+// Setup stamps flow / handsOff before extract runs): init fills it without --force.
+export const holdsPages = (state) => Array.isArray(state.pages) && state.pages.length > 0;
+
+// An existing state.json as init sees it; unreadable, not an object, or a non-array `pages` is a
+// refusal (init never guesses over it).
+function readPrevForInit(file) {
+  let state;
+  try { state = JSON.parse(readFileSync(file, 'utf8')); } catch (e) { throw new UsageError(`${file} is not valid JSON (${e.message}) — init leaves it as it is`); }
+  if (!state || typeof state !== 'object' || Array.isArray(state)) throw new UsageError(`${file} is not a JSON object — init leaves it as it is`);
+  if ('pages' in state && !Array.isArray(state.pages)) throw new UsageError(`${file} has a pages key that is not an array — init leaves it as it is`);
+  return state;
+}
+
+function runInit(opts, rest) {
+  if (rest.length) throw new UsageError(`init takes no <slug> (got ${rest.join(' ')}); list the pages' URLs in --pages <file|->`);
+  if (!opts.pages) throw new UsageError('init needs --pages <file|-> (one URL per line or a JSON array of URLs; - reads stdin)');
+  const siteUrl = opts.siteUrl ? parseSiteUrl(opts.siteUrl).href : null;
+  const pageCap = parsePageCap(opts.pageCap);
+  const inputs = parsePageList(readPagesInput(opts.pages), { siteUrl });
+  const current = opts.current || posix.join(opts.dir, 'current');
+  const file = statePath(opts.dir);
+  let prev = null;
+  let kept = null;
+  if (existsSync(file)) {
+    prev = readPrevForInit(file);
+    if (holdsPages(prev)) {
+      if (!opts.force) throw new UsageError(`${file} already exists — init never overwrites it; pass --force to re-init while every page in it is still extracted, or change pages with advance / set`);
+      const advanced = prev.pages.filter((p) => p.status !== 'extracted');
+      if (advanced.length) throw new UsageError(`--force re-inits only while every page is extracted; ${advanced.length} of ${prev.pages.length} page(s) moved on: ${listSome(advanced.map((p) => `${p.slug} (${p.status})`))} — ${file} left as it is`);
+    } else kept = Object.keys(prev).filter((k) => !INIT_OWNS.includes(k));
+  }
+  const at = nowIso();
+  const { pages, failures } = resolvePages(inputs, current);
+  const types = parseTypes(opts.types, pages.map((p) => p.slug));
+  if (failures.length) throw new UsageError([`init refused — ${failures.length} of ${pages.length} page(s) have no valid crawl record under ${posix.join(current, 'pages')}; nothing written`, ...failures].join('\n'));
+  const state = buildInitState({ pages, types, siteUrl, pageCap, discoveryCount: readDiscoveryCount(current), captureGaps: readCaptureGapRoots(current), current, prev, at });
+  mkdirSync(opts.dir, { recursive: true });
+  writeState(file, state);
+  console.log(`state: init ${pages.length} page(s) from ${opts.pages === '-' ? 'stdin' : opts.pages} · ${types.size} typed${kept && kept.length ? ` · kept ${kept.join(', ')}` : ''} · written by ${state._provenance.writtenBy}`);
+  return 0;
+}
+
+function runSet(opts, rest) {
+  const { state, file } = readState(opts.dir);
+  const done = setPages(state, rest, { representative: opts.representative, type: opts.type });
+  const writtenBy = normaliseSkill(opts.skill || 'direct');
+  state._provenance = stampProvenance(state._provenance, writtenBy, nowIso());
+  writeState(file, state);
+  const what = [opts.representative !== null ? `representative=${opts.representative}` : null, opts.type !== null ? `type=${opts.type}` : null].filter(Boolean).join(', ');
+  console.log(`state: ${done.length} page(s) set ${what}: ${done.join(', ')} · written by ${writtenBy}`);
+  return 0;
 }
 
 // ---- main --------------------------------------------------------------------------------------
@@ -223,6 +627,14 @@ export function main(argv) {
   const [cmd, ...rest] = pos;
   if (!cmd) throw new UsageError(HELP);
 
+  if (Object.hasOwn(FLAGS_FOR, cmd)) {
+    const stray = opts.seen.find((f) => !FLAGS_FOR[cmd].includes(f));
+    if (stray) throw new UsageError(`${stray} does not apply to ${cmd} (it reads ${FLAGS_FOR[cmd].join(', ')})`);
+    return cmd === 'init' ? runInit(opts, rest) : runSet(opts, rest);
+  }
+  const stray = opts.seen.find((f) => NEW_FLAGS.includes(f));
+  if (stray) throw new UsageError(`unknown option ${stray}`);
+
   if (cmd === 'summary') {
     const { state } = readState(opts.dir);
     const s = summarise(state);
@@ -230,6 +642,7 @@ export function main(argv) {
     for (const [k, v] of Object.entries(s.other)) parts.push(`other(${k}) ${v.length}`);
     parts.push(`stale ${s.stale.length}`);
     console.log(`${s.total} page(s) · ${parts.join(' · ')}`);
+    for (const a of Object.keys(s.representatives).sort()) console.log(`  representative ${a} ${s.representatives[a].length}  ${s.representatives[a].join(', ')}`);
     if (opts.slugs) {
       const rows = [...ORDER.map((k) => [k, s.counts[k]]), ...Object.entries(s.other).map(([k, v]) => [`other(${k})`, v])].filter(([, v]) => v.length);
       for (const [k, v] of rows) console.log(`  ${k.padEnd(11)} ${String(v.length).padStart(3)}  ${v.join(', ')}`);

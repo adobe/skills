@@ -293,8 +293,14 @@ sibling generator iterates its extraction against this artifact —
 free, reproducible, and provenance — instead of re-running live
 probes per selector guess (recorded: 4+ live round-trips per page
 family before the switch). Live probes stay for what the static DOM
-cannot answer: geometry and computed styles. Save referenced media to `stardust/current/assets/media/`
-preserving basename plus a short content hash.
+cannot answer: geometry and computed styles. Referenced media: run
+`node <plugin>/skills/extract/scripts/media-harvest.mjs` after the
+crawl (offline over `pages/*.html`; `--max-bytes <n>` caps video) — every
+`src`/`srcset`/`data-src*`/poster/CSS `url()` once into
+`stardust/current/assets/media/<base>-<hash8>.<ext>`, plus
+`assets/media-map.json` (source URL → local file + status), the map
+later phases rewrite references with. Re-runs reuse it; never a
+hand-written harvester.
 
 **Live-render evidence (synthesis is forbidden).** Refuse to mark
 a page `extracted` in `state.json` unless its `_provenance`
@@ -309,9 +315,15 @@ validation. A page that cannot satisfy it is a Phase 2 failure
 (`errorClass: "ProvenanceMissing"` in `_crawl-log.json#crawl.failures[]`),
 never a synthesized record (§ Failure modes → Synthesis attempt).
 
-Mark the page `extracted` in `state.json` immediately after each
-successful page write. If a page fails, record the error in
-`_crawl-log.json` and continue — extraction is best-effort per page.
+After the crawl one command writes `state.json`, never a hand-built
+file or `node -e`: `node stardust/scripts/stardust/state.mjs init
+--pages <url-file|-> [--types <slug=type,…>] [--site-url <u>]
+[--page-cap <n>]` (`skills/stardust/scripts/state.mjs`; one captured
+URL per line) — one `extracted` page per URL, the check above applied
+at write time (a failing page: exit 2, nothing written — drop it from
+the list). Types and representatives change later via `state.mjs set`.
+If a page fails, record the error in `_crawl-log.json` and continue —
+extraction is best-effort per page.
 
 ### Phase 2.5 — Vision verification
 
@@ -544,14 +556,13 @@ is missing.
 
 After all Phase 2-5 writes succeed:
 
-1. Update `stardust/state.json` (schema in
-   `skills/stardust/reference/state-machine.md`):
-   - `site.originUrl`, `site.extractedAt`, `site.pageCap`,
-     `site.totalDiscovered`, `site.crawled`
-   - `pages[]` — one entry per crawled page with `status: "extracted"`,
-     filled `currentStatePath`, empty `prototypePath` and `migratedPath`
-   - `designSource` — only when `--design-source` was used:
-     `{ url, capturedAt, path }` per § Cross-site brand sources
+1. `stardust/state.json` is written by `state.mjs init` (Phase 2;
+   schema in `skills/stardust/reference/state-machine.md`):
+   `site.originUrl`, `extractedAt`, `pageCap`, `totalDiscovered`,
+   `crawled` (+ `captureGaps`), `direction: null` (unresolved until
+   `direct`) and one `extracted` page per crawled URL. `designSource` —
+   only when `--design-source` was used: `{ url, capturedAt, path }`
+   per § Cross-site brand sources.
 2. Print a one-screen summary:
    ```
    Extracted https://example.com (5/38 pages, sitemap.xml)
@@ -677,7 +688,7 @@ capture (≤ 3 pages). It must never balloon the crawl.
 | `stardust/current/pages/<slug>.html`        | Settled rendered DOM (crawler sidecar; parse offline, never re-scrape) |
 | `stardust/current/assets/logo.<ext>`        | Extracted logo                                      |
 | `stardust/current/assets/favicon.<ext>`     | Site favicon (first-class asset; prototype head + deploy consume it) |
-| `stardust/current/assets/media/`            | Extracted media referenced by pages                 |
+| `stardust/current/assets/media/`            | Media referenced by pages (`media-harvest.mjs`; map in `assets/media-map.json`) |
 | `stardust/current/assets/screenshots/`      | Per-page full-page screenshots, script-captured by `crawl.mjs` (Phase 2.5 vision gate + brand-review) |
 | `stardust/current/_brand-extraction.json`   | Consolidated brand surface (palette, type, motifs, voice, system components) |
 | `stardust/current/_crawl-log.json`          | Discovery + crawl audit trail (incl. `visionCheck[]`, `siblingCandidates[]`; `dynamicSurface` reach roll-up only with `--dynamics`) |
@@ -732,11 +743,10 @@ this in the user report; do not engineer around it.
   which is acceptable for interactive runs and unacceptable for
   unattended pipelines — surface this to the user when first
   triggered. Note for asset harvest: a page-level bot wall usually
-  does NOT gate assets — media/CSS/font URLs commonly return 200 to
-  a plain browser-UA curl even while every page navigation is
-  challenged (Cloudflare challenge, field-confirmed). Probe one
-  asset with curl BEFORE reaching for in-page-fetch machinery; the
-  in-page harvest is the fallback, not the default.
+  does NOT gate assets — media, CSS and font URLs commonly answer
+  200 to a plain browser-UA fetch (what `media-harvest.mjs` sends)
+  while every page navigation is challenged; in-page fetch is the
+  fallback for what that fails, not the default.
 - **JavaScript-only content.** Playwright already handles this. If
   the configured wait condition never fires within the mode's hard
   cap (`reference/playwright-recipe.md` § Wait modes), fall back to
@@ -774,8 +784,8 @@ reference):
   junk-filtered inventory, not the discovery cap.
 - Page types (`landing | article | listing | program | form |
   static | unique`) are LLM-inferred into `state.json.pages[].type`
-  (discovery-mode runs leave `type` null); the user confirms in
-  `direct --prep`.
+  (`state.mjs init --types` / `set --type`; discovery-mode runs leave
+  `type` null); the user confirms in `direct --prep`.
 - Module candidates (cross-page structural repeats, detected by the
   signal-source priority in the reference) are drafted under
   `DESIGN.json.extensions.modules[]` with `status: "candidate"`;
@@ -787,17 +797,22 @@ reference):
   path, and marks the ones missing from the capture:
   `_crawl-log.json#captureGaps` (`roots[]` with `root`, `slug`,
   `linked`, `uncaptured[]`, plus `detail`, a ready ledger string) and
-  one `[crawl] capture gaps:` stderr line. Copy `roots[]` to
-  `state.json.site.captureGaps` (the `site` block is extract's; an
-  uncaptured target never becomes a `pages[]` row) and carry `detail`
-  verbatim in the ledger `end` line that closes the extraction —
-  `ledger.mjs extract prep end --detail "… uncaptured first-level
-  targets: ca/en 15, fr/fr 0"` (replica's `extract end` repeats it) — so
-  the owner decides on the gap now (widen with `--pages`, or record it
-  as scope debt), not in the rollout link audit: two recorded hands-off
-  runs captured `/ca/en` as a locale root while 15 `/ca/en/*` pages
-  existed on the source, and found out six hours later, when 15 links
-  answered 404 and the gap exceeded the 12-page deliver threshold.
+  one `[crawl] capture gaps:` stderr line. `state.mjs init` copies
+  `roots[]` to `state.json.site.captureGaps` (an uncaptured target
+  never becomes a `pages[]` row); carry `detail` verbatim in the
+  ledger `end` line that closes the extraction — `ledger.mjs extract
+  prep end --detail "… uncaptured first-level targets: ca/en 15,
+  fr/fr 0"` (replica's `extract end` repeats it) — so the owner
+  decides on the gap now (widen with `--pages`, or record it as scope
+  debt), not in the rollout link audit (recorded: 15 uncaptured
+  `/ca/en/*` pages surfaced six hours later as 15 × 404). **An entry
+  locale most captured pages lie outside is the same owner
+  decision:** when the `--url` path starts with a locale (`/de`) and
+  fewer than half of the captured pages lie under it,
+  `captureGaps.scope` (`entryLocale`, `inside`, `outside`) and the
+  `detail` suffix ("entry locale /de but 9 of 10 captured pages
+  outside it") name it — re-crawl from the locale the site plan
+  delivers, or record the choice, before Phase 2.
 - **The header contract is recorded here** (`../diff/SKILL.md` § The header
   contract); its summary line in the prep summary sizes the header.
 - The prep summary replaces the Phase 6 report; its
