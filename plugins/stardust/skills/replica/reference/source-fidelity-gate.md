@@ -162,9 +162,12 @@ The prototype capture is re-taken every iteration.
    suggestion above the header) shifts every chrome row and `--dismiss`
    (overlays) cannot remove it: hide it (§ The all-pages published-origin
    gate, *Hide or mask*) — chrome-parity takes `--hide <sel,…>` and
-   `--presence <f> --slug <s>`, which `gate.sh --full` passes; a direct run
-   passes the same, as the shared live cache is keyed on them. A chrome
-   offset from such a bar is fixed this way, never logged as a residual.
+   `--presence <f> --slug <s>` beside the site-wide list, which `gate.sh --full`
+   passes; a direct run passes the same, as the shared live
+   cache is keyed on them. When the header and its texts are offset by the
+   same Δy on one side, it prints
+   `hint: an in-flow region above the header — presence.mjs add --hide <candidate selector>`.
+   A chrome offset from such a bar is fixed this way, never logged as a residual.
 
    ```bash
    node stardust/scripts/replica/chrome-parity.mjs "$LIVE" "$PROTO" --width $W \
@@ -499,31 +502,21 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
   `GATE_STITCH_TIMEOUT` / `GATE_COMPARE_TIMEOUT`) and reaps this user's
   replica instruments older than 15 minutes before a round (`GATE_REAP_MIN`,
   0 disables); `pixel-compare.mjs` supervises its own `--timeout` (120 s)
-  when run alone. Exit 124 is "no verdict — re-run", never a FAIL. Do not
-  wrap the instruments in your own `sleep N; kill` guard: three field
-  migrations did, after `pixel-compare` sat at 0 % CPU for 10+ minutes
-  (a Node exit-path hang, fixed in the script and now reproduced in a
-  test), and a page's four rounds then spent a fixed 30 minutes sleeping.
+  when run alone. Exit 124 is "no verdict — re-run", never a FAIL. Never
+  wrap the instruments in your own `sleep N; kill` guard (the master
+  skill's rule; the hang that prompted the recorded ones is fixed and tested).
   When a capture legitimately needs longer (a 10k-px page under `--settle`),
   raise the variable for that page and say so in the ledger.
 - **A step never outlives the context cache — long instruments run in the
-  background, and the step that waits for them returns in bounded slices.**
-  The agent's prompt cache lives about five minutes past its last model
-  call; a step that blocks longer evicts it, and the next call re-writes the
-  whole context at the cache-write price. Recorded 2026-09-18 (hands-off
-  run, 26 pages, 1440+360): one gate batch — three parallel steps, each
-  `sleep 5|10|15;` then two rounds and a content-diff — blocked for 15
-  minutes; the next call wrote 513k tokens of cache, **$6.30 for one silent
-  gap, more than the rounds it waited for**, while every other gap in that
-  session stayed under 184 s at a 96 % cache-hit ratio. So: `run-bg.mjs
-  start --name <slug>-<w>-<iter> -- gate.sh …` for every round at once (the
-  slots pace them, replica SKILL.md § Setup — and replace the `sleep N;`
-  staggering), then `run-bg.mjs wait` (within 100 s by default, the master
-  skill's wait discipline) prints one line per job plus its verdict lines;
-  exit 75 means "still going — `wait` again as your NEXT step". Never wrap
-  `wait` in a shell loop: that recreates the blocked step; between waits do
-  independent work, and read a round's ledger at most every 4 minutes. The
-  full instrument output stays in `stardust/.work/replica/bg/<job>.log` —
+  background, and the step that waits for them returns in bounded slices**
+  (the master skill's wait discipline says why). Recorded: one gate batch of
+  `sleep 5|10|15;`-staggered rounds blocked for 15 minutes; the next call
+  wrote 513k tokens of cache, **$6.30 for one silent gap, more than the
+  rounds it waited for**. So: `run-bg.mjs start --name <slug>-<w>-<iter> -- gate.sh …`
+  for every round at once (the slots pace them, replica SKILL.md § Setup),
+  then `run-bg.mjs wait` prints one line per job plus its verdict lines;
+  exit 75 means "still going — `wait` again as your NEXT step", never in a
+  shell loop. The full instrument output stays in `stardust/.work/replica/bg/<job>.log` —
   read it with `run-bg.mjs log <job> --grep <re>`, not with `cat`: a verdict
   is four lines of it.
 - **Media-density budget.** The ≤3-iteration convergence was validated on a
@@ -873,7 +866,8 @@ first line names the source. **Verdict, per page — all four:**
 prototype dir, origin = the archetype round's cached `live.png` when present) writes
 `gates/prototypes-<w>/summary.{json,md}`; the default published stage writes
 `gates/all-<w>/`. Both are read by `gate-evidence.mjs`: with a table for the width, a
-page's row decides `pixel-gate-<w>` and a page without a row is `OPEN: no table row`;
+page's row decides `pixel-gate-<w>`, a page without a row is `OPEN: no table row` and a row without a
+pixel measurement (a stitch error) `OPEN: no pixel measurement — <error>`;
 without any table the `gate.sh` logs stand in and `--check` names the missing table. The
 eval requires both summaries with a row per page. The pixel-only verdict (1 + 2) is
 recorded beside the full one per page and in the totals: every run is calibration data. Sidecars in the gate dir, each entry documented: `masks.json` (printed
@@ -882,7 +876,7 @@ never replacing it; counted only when valid, below), `clip-allow.json`, `presenc
 
 **INCONCLUSIVE — the gate names what it could not measure.** A row whose origin is the
 `crawl-fullpage` fallback, or whose either capture left an overlay (§ Hardening rules, rule 6) or
-wrote no capture record, has no
+wrote no capture record, or whose kept origin was taken with another dismiss / hide list, has no
 pixel or height verdict: `inconclusive: true`, reasons `origin capture polluted: <why>` (`build
 capture polluted: …` for the served side), INCONCLUSIVE in `summary.md` and `totals.inconclusive`;
 the run exits 2. gate-evidence reads it OPEN, update-coverage keeps the page's status and records
@@ -895,16 +889,33 @@ when its `verdict` is `tier-shift`, `instrument-artifact` or `source-volatile`, 
 `R-<nn>` that exists in `stardust/replica/inconsistency-register.md`, and the row's own clip and
 content checks PASS (n/a is no pass; the prototype stage has no content criterion) — on a row that was
 measured: an override never stands in for a missing pixel comparison. Otherwise the
-row stays FAIL with `override rejected: <rule>`. The summary prints counted / rejected overrides and
+row stays FAIL with `override rejected: <rule>`. An override lifts a row only within 2 × the pixel bar
+and 2 × the height bar on the measured row; beyond that the row stays FAIL with
+`override exceeds magnitude: use --hide / presence.json` — a capture or hide-list problem, not a
+deviation. The summary prints counted / rejected overrides and
 their share of the roster; update-coverage copies `delivery.gate.override = {verdict, reason, valid}`.
 
-**Hide or mask.** An in-flow per-visitor region (a location-suggestion bar above the header) is
-hidden: removed before measuring, on both sides, via `--hide <sel,…>` or presence.json `hide`;
-declare a site-wide bar once as `"*": { "hide": ["<sel>"] }`. gate-all reads only presence.json;
-gate.sh merges its `--hide` with it. Every capture and probe of either but unit-geometry (under
-`--one-load` it reads the hidden capture), triage's parity runs and the header-contract tools take the
-list. A capture or cache taken with another list is not reused automatically. An authored-volatile
-band (a campaign hero) is masked: still measured, masked on the verdict (`masks.json`).
+**Hide or mask (#135).** An in-flow per-visitor region (a location-suggestion bar above the header)
+is hidden: removed before measuring, on both sides. Its list is the site-wide
+`stardust/replica/presence.json` (`"*"` and per-slug `hide`, written by `presence.mjs`), merged UNDER
+a gate dir's presence.json — the gate dir wins per key and field; gate.sh adds its `--hide`. gate-all,
+gate.sh, chrome-parity, chrome-explore / chrome-compare and gate-triage read it; the diff probes get the
+merged list as `--hide` — every capture and probe but unit-geometry (under `--one-load` it reads the
+hidden capture). A capture or cache taken with another list is not reused automatically; after a change
+to the site `"*".hide`, re-explore both sides (chrome-compare and qa's chrome check report
+`hide-mismatch` for records explored without it). A selector that matched nothing on the live page (×0
+at the hide pass and right before the capture) is a WARNING in gate-all, gate.sh and chrome-parity,
+never silent and never a verdict:
+`hide matched nothing on live — candidates: <selector> (<tag>, <h>px); … (<sel>, …)`. The candidates
+come from the DOM — the in-flow blocks above the header rendered when the capture was taken: a
+`display:none` or not-yet-inserted block is not listed, so `none found above the header` means none
+rendered then, and a 0-px candidate can still be the bar: a block that grows later stays hidden by
+the persistent `display:none !important` rule. `presence.mjs suggest <url>` lists them;
+`presence.mjs add --hide <sel> --verify <url>` refuses a selector that still matches nothing. Overlays
+are dismissed, not hidden: gate-all takes `--dismiss <sel,…>` like gate.sh / anchor.mjs (both stitches,
+before the hide list; its probes content-presence / clip-probe / unit-geometry keep their built-in
+dismissal). An authored-volatile band (a campaign hero) is masked: still measured, masked on the verdict
+(`masks.json`).
 
 Origin: a fix round reuses this run's (row `originReused`, § Iteration discipline, Evidence
 freshness); fallback: live
@@ -923,9 +934,12 @@ installed; every probe writes the tier it actually ran (`chrome` | `chromium-fal
 `chromium`) into its JSON, `summary.md` carries a `browser` column and the calibration line
 counts degraded pages — a run that quietly lost its origin measurements on a bot-managed site is
 visible in the artifact. Sites without bot management measure identically on both tiers.
-`--eds-host` gates a code branch against the same content (a bare host or `https://<host>`; a path
+`--eds-host` gates another host against the same content (a bare host or `https://<host>`; a path
 is refused, exit 2; branch hosts
-serve the LITERAL branch name — `fix/x` → push a mirror `fix-x`). Read a finding as one crop of
+serve the LITERAL branch name — `fix/x` → push a mirror `fix-x`). Without it the build is the
+coverage `deployedUrl` (the preview host); the C-final roster gate measures the live host
+(`--eds-host <rollout.json site.liveHost>`). The first status line names the host measured,
+`build host <origin> (<from>)`, and every row records `host`. Read a finding as one crop of
 the two captures at the row's band, never the whole pages.
 
 **What a failing row means (#126).** The row's evidence decides the fix, mechanically: clip groups,
@@ -941,7 +955,9 @@ and refuses a fourth (exit 2, `cap reached — re-prototype decision`) until
 `--round-reset "<reason>"` records the decision — a brief cannot reset it. `gate-triage.mjs` applies
 this paragraph across the rows: `triage.md` lists the groups (each row's `rounds n/max`) and the
 re-gate scope (never smaller than the rows), and frozen-foundation causes become
-`foundation-requests.md` lines — it fixes nothing.
+`foundation-requests.md` lines — it fixes nothing. After a fix round gate-all runs the same triage on its
+own out dir (offline: no parity, nothing routed) — `<out>/triage.{json,md}`, its head under the table, the
+next round's input; a failure is one `triage: skipped — <why>` line, never a verdict change.
 Calibration on the recorded roster (96 pages): pixel-only 66 PASS → full 28 PASS; failing by
 criterion pixel 30, height 6, clip 23, content 31; content n/a on 37 (edge-blocked origins).
 
