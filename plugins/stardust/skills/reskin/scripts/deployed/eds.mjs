@@ -81,8 +81,11 @@ export async function edsSettle(page, { timeoutMs = 20000 } = {}) {
   const deadline = Date.now() + timeoutMs;
   const remaining = () => Math.max(deadline - Date.now(), 0);
   const stallOnly = (e) => { if (e?.name !== 'TimeoutError') throw e; };
-  if (remaining() > 0) await page.waitForLoadState('networkidle', { timeout: remaining() }).catch(stallOnly);
-  if (remaining() > 0) await page.waitForFunction(settled, null, { timeout: remaining(), polling: POLL_MS }).catch(stallOnly);
+  // The time left is read once per wait: Playwright takes a timeout of 0 as no timeout at all.
+  const idleMs = remaining();
+  if (idleMs > 0) await page.waitForLoadState('networkidle', { timeout: idleMs }).catch(stallOnly);
+  const settleMs = remaining();
+  if (settleMs > 0) await page.waitForFunction(settled, null, { timeout: settleMs, polling: POLL_MS }).catch(stallOnly);
   const d = await page.evaluate(decoration);
   const loaded = (s) => s === 'loaded';
   return {

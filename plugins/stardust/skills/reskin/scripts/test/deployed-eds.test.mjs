@@ -115,6 +115,24 @@ await check('fixtures: home.plain.html is the authored form as EDS delivers it: 
   assert.ok(head.includes('<meta name="footer" content="/ns/footer">'), 'the page head carries the footer meta');
 });
 
+await check('edsSettle never hands playwright a timeout of 0 (no timeout): each wait gets the time left, read once, and is skipped when none is left', async () => {
+  const realNow = Date.now;
+  let now = 0;
+  Date.now = () => { const t = now; now += 50; return t; };
+  const timeouts = [];
+  const page = {
+    waitForLoadState: async (_state, { timeout }) => { timeouts.push(['networkidle', timeout]); },
+    waitForFunction: async (_fn, _arg, { timeout }) => { timeouts.push(['settled', timeout]); },
+    evaluate: async () => ({ appear: true, sections: [], blocks: [] }),
+  };
+  try {
+    const result = await edsSettle(page, { timeoutMs: 100 });
+    assert.deepEqual(result.stalled, []);
+  } finally { Date.now = realNow; }
+  assert.ok(timeouts.length > 0, 'it waited at all');
+  for (const [wait, timeout] of timeouts) assert.ok(timeout > 0, `${wait} was given timeout ${timeout}: playwright reads 0 as no timeout at all`);
+});
+
 let playwrightOk = false;
 try { await import('playwright'); playwrightOk = true; } catch { console.log('skip  browser parts (playwright not importable here; run this test in an environment that has it)'); }
 
