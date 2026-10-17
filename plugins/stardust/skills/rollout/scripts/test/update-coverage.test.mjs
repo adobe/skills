@@ -8,7 +8,8 @@
 // origin in source.migratedHtml, joins its template, is idempotent, refuses captured slugs and taken
 // paths, and lands under the lock beside concurrent page updates. And `--gate`: the newest row per page
 // and width wins — an older row of either width is skipped and counted (delivery.gate.atByWidth); a width
-// with no recorded time, or a record without the map, is applied.
+// with no recorded time, or a record without the map, is applied; an INCONCLUSIVE row is recorded pass false with its
+// reasons and never flips the status; only gate-all's validated override (`valid: true`) passes a failing row.
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, readFileSync, readdirSync, writeFileSync, existsSync, utimesSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -232,7 +233,7 @@ await check('--gate writes delivery.gate from a gate-all summary; a failing veri
     { slug: 'page-0', pct: 6.7, heightDelta: 69, clipped: 379, content: { missing: 0, hidden: 284 }, pass: false, reasons: ['clipped 379', 'content MISSING 0 / HIDDEN 284'] },
     { slug: 'page-1', pct: 1.2, heightDelta: 0, clipped: 0, content: { missing: 0, hidden: 0 }, pass: true, reasons: [] },
     { slug: 'page-2', pct: 2.0, heightDelta: 1, clipped: 0, content: null, pass: true, reasons: [] },
-    { slug: 'page-3', pct: 37, heightDelta: 3, clipped: 0, pass: false, reasons: ['pixel 37% > 10%'], override: { verdict: 'PASS (source capture)', reason: 'live drifted' } },
+    { slug: 'page-3', pct: 37, heightDelta: 3, clipped: 0, pass: false, reasons: ['pixel 37% > 10%'], override: { verdict: 'source-volatile', reason: 'R-1 live drifted', valid: true } },
     { slug: 'not-in-coverage', pct: 1, pass: true, reasons: [] },
   ] }));
   const r = await run(['--gate', table], proj);
@@ -241,7 +242,7 @@ await check('--gate writes delivery.gate from a gate-all summary; a failing veri
   assert.equal(by['page-0'].status, 'failed'); assert.equal(by['page-0'].error, 'gate: clipped 379; content MISSING 0 / HIDDEN 284'); assert.equal(by['page-0'].gate.pass, false); assert.equal(by['page-0'].gate.clipped, 379);
   assert.equal(by['page-1'].status, 'deployed'); assert.equal(by['page-1'].gate.pass, true);
   assert.equal(by['page-2'].status, 'deployed', 'a gate failure that now passes goes back to deployed'); assert.equal(by['page-2'].error, null);
-  assert.equal(by['page-3'].status, 'verified', 'a documented override keeps the page'); assert.equal(by['page-3'].gate.override, 'PASS (source capture)');
+  assert.equal(by['page-3'].status, 'verified', 'a valid documented override keeps the page'); assert.deepEqual(by['page-3'].gate.override, { verdict: 'source-volatile', reason: 'R-1 live drifted', valid: true });
   assert.equal(by['page-1'].gate.at, null, 'a table without _provenance has no row time'); assert.equal(by['page-1'].gate.width, null); assert.deepEqual(by['page-1'].gate.atByWidth, {});
   const bad = await run(['--gate', join(out, 'rollout.json')], proj);
   assert.equal(bad.code, 1, 'a file without rows[] is refused');
@@ -318,6 +319,51 @@ await check('--gate overwrites a recorded gate without atByWidth (recorded befor
   assert.equal(r.code, 0, r.err); assert.match(r.out, /1 of 1 rows matched, 1 status flip\(s\), 0 older row\(s\) skipped/, r.out);
   const d = gateOf(out, 'page-0');
   assert.equal(d.status, 'failed'); assert.equal(d.gate.at, T1); assert.equal(d.gate.width, 1440); assert.deepEqual(d.gate.atByWidth, { 1440: T1 });
+});
+
+await check('--gate records an INCONCLUSIVE row as pass false with its reasons and never flips the status either way', async () => {
+  const { proj, out } = fixture();
+  for (const r of await Promise.all([run(['page-0', '--status', 'verified'], proj), run(['page-1', '--status', 'failed', '--error', 'gate: pixel 12% > 10%'], proj), run(['page-2', '--status', 'deployed'], proj)])) assert.equal(r.code, 0, r.err);
+  const reasons = ['origin capture polluted: overlay left — div#consent (fixed, 92 % of the viewport)', 'font-not-loaded:Brand Sans'];
+  let r = await run(['--gate', gateTable(proj, 'polluted.json', T2, 1440, [
+    { slug: 'page-0', inconclusive: true, pct: null, heightDelta: null, clipped: null, content: null, pass: false, passWithOverride: false, reasons, override: null, fontsNotLoaded: ['Brand Sans'] },
+    passRow('page-2'),
+  ])], proj);
+  assert.equal(r.code, 0, r.err); assert.match(r.out, /2 of 2 rows matched, 0 status flip\(s\), 0 older row\(s\) skipped, 1 inconclusive \(status unchanged\)$/m, r.out);
+  const d = gateOf(out, 'page-0');
+  assert.equal(d.status, 'verified', 'no verdict: the status stays'); assert.equal(d.error, null);
+  assert.equal(d.gate.pass, false); assert.equal(d.gate.inconclusive, reasons.join('; ')); assert.equal(d.gate.pct, null); assert.deepEqual(d.gate.atByWidth, { 1440: T2 });
+  assert.deepEqual(Object.keys(d.gate), ['pass', 'pct', 'heightDelta', 'clipped', 'content', 'reasons', 'inconclusive', 'override', 'table', 'at', 'width', 'atByWidth']);
+  assert.equal(gateOf(out, 'page-2').gate.inconclusive, null, 'a measured row records inconclusive null');
+  const clean = await run(['--gate', gateTable(proj, 'clean.json', T3, 1440, [passRow('page-2')])], proj);
+  assert.equal(clean.code, 0, clean.err); assert.match(clean.out, /0 older row\(s\) skipped$/m, 'no inconclusive row, no suffix');
+  // a page the gate failed stays failed; an inconclusive row with a valid override still never passes
+  r = await run(['--gate', gateTable(proj, 'polluted-2.json', T2, 1440, [{ slug: 'page-1', inconclusive: true, pct: 4, pass: false, reasons: [], override: { verdict: 'tier-shift', reason: 'R-1', valid: true } }])], proj);
+  assert.equal(r.code, 0, r.err); assert.match(r.out, /0 status flip\(s\), 0 older row\(s\) skipped, 1 inconclusive \(status unchanged\)$/m, r.out);
+  const f = gateOf(out, 'page-1');
+  assert.equal(f.status, 'failed'); assert.equal(f.error, 'gate: pixel 12% > 10%'); assert.equal(f.gate.pass, false); assert.equal(f.gate.inconclusive, 'no verdict');
+  assert.match((await run(['--help'], proj)).out, /inconclusive/);
+});
+
+await check('--gate copies the validated override {verdict, reason, valid}; only valid: true passes a failing row — a raw override without valid is not valid', async () => {
+  const { proj, out } = fixture();
+  for (const r of await Promise.all([run(['page-0', '--status', 'failed', '--error', 'gate: pixel 37% > 10%'], proj), run(['page-1', '--status', 'verified'], proj), run(['page-2', '--status', 'verified'], proj)])) assert.equal(r.code, 0, r.err);
+  const fail37 = { pct: 37, heightDelta: 3, clipped: 0, content: { missing: 0, hidden: 0 }, pass: false };
+  const r = await run(['--gate', gateTable(proj, 'overrides.json', T2, 1440, [
+    { slug: 'page-0', ...fail37, passWithOverride: true, reasons: ['pixel 37% > 10%'], override: { verdict: 'source-volatile', reason: 'R-2 rotating hero', valid: true } },
+    { slug: 'page-1', ...fail37, passWithOverride: false, reasons: ['pixel 37% > 10%', 'override rejected: reason names no R-<nn> of stardust/replica/inconsistency-register.md'], override: { verdict: 'source-volatile', reason: 'rotating hero', valid: false, rejected: ['reason names no R-<nn> of stardust/replica/inconsistency-register.md'] } },
+    { slug: 'page-2', ...fail37, reasons: ['pixel 37% > 10%'], override: { verdict: 'PASS (source capture)', reason: 'live drifted' } },
+  ])], proj);
+  assert.equal(r.code, 0, r.err); assert.match(r.out, /3 of 3 rows matched, 3 status flip\(s\), 0 older row\(s\) skipped$/m, r.out);
+  const v = gateOf(out, 'page-0');
+  assert.equal(v.status, 'deployed', 'a valid override lifts a gate failure'); assert.equal(v.error, null); assert.equal(v.gate.pass, true);
+  assert.deepEqual(v.gate.override, { verdict: 'source-volatile', reason: 'R-2 rotating hero', valid: true });
+  const bad = gateOf(out, 'page-1');
+  assert.equal(bad.status, 'failed', 'a rejected override is no pass'); assert.equal(bad.gate.pass, false); assert.match(bad.error, /^gate: pixel 37% > 10%; override rejected: /);
+  assert.deepEqual(bad.gate.override, { verdict: 'source-volatile', reason: 'rotating hero', valid: false });
+  const legacy = gateOf(out, 'page-2');
+  assert.equal(legacy.status, 'failed', 'an override from a table without the check has not earned the row'); assert.equal(legacy.gate.pass, false);
+  assert.deepEqual(legacy.gate.override, { verdict: 'PASS (source capture)', reason: 'live drifted', valid: false });
 });
 
 await check('--help says the newest row per page and width wins and names the runs/ table', async () => {

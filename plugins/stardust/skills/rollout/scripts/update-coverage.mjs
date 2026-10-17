@@ -10,10 +10,13 @@
  * Block:  node update-coverage.mjs --block <id> --status <s> [--eds-name <name>]
  * Gate:   node update-coverage.mjs --gate stardust/replica/gates/all-<w>/summary.json   (or a runs/<ts>-<slug>.json table)
  *   writes each row's verdict into the page's `delivery.gate` {pass, pct, heightDelta, clipped, content,
- *   reasons, override, table, at, width, atByWidth} and flips a failing page (no documented override) from
+ *   reasons, inconclusive, override, table, at, width, atByWidth} and flips a failing page (no valid override) from
  *   deployed / verified to `failed` (error `gate: <reasons>`), a passing one out of that failure back to
  *   `deployed`; verify.mjs never marks a page `verified` while its `delivery.gate.pass` is false (#125 —
  *   completion derives from one place: a page the pixel table failed cannot read as verified).
+ *   `override` = gate-all's validated {verdict, reason, valid}; only `valid: true` passes a failing row (a table
+ *   whose override has no `valid` predates the check: not valid). An INCONCLUSIVE row (a polluted capture — no
+ *   verdict) is recorded `pass: false` with `inconclusive: <reasons>` and never flips the status either way.
  *   The newest row per page and width wins: `delivery.gate.atByWidth` ({"<width>": ISO}) keeps the newest applied
  *   row time per width across ingests; a row older than its width's time is skipped (nothing of that page changes)
  *   and counted, so an older table of either width never reverts a newer verdict. A width with no time yet, or a
@@ -200,7 +203,7 @@ if (gateFile) {
   if (!doc) { console.error(`rollout: ${pagesPath} not found — run inventory.mjs first.`); process.exit(1); }
   const prov = table._provenance || {};
   const width = prov.breakpoint ?? null;
-  let matched = 0; let flipped = 0; let skipped = 0;
+  let matched = 0; let flipped = 0; let skipped = 0; let inconclusive = 0;
   for (const r of table.rows) {
     const p = (doc.pages || []).find((x) => x.slug === r.slug || (r.path && x.path === r.path));
     if (!p) continue;
@@ -212,15 +215,18 @@ if (gateFile) {
     const atByWidth = { ...((rec && rec.atByWidth) || {}) };
     if (at && width != null) atByWidth[width] = at;
     p.delivery = p.delivery || {};
-    const pass = !!(r.pass || r.override);
-    p.delivery.gate = { pass, pct: r.pct, heightDelta: r.heightDelta, clipped: r.clipped ?? null, content: r.content || null, reasons: r.reasons || [], override: r.override ? r.override.verdict : null, table: gateFile, at, width, atByWidth };
-    if (!pass && ['deployed', 'verified'].includes(p.delivery.status)) { p.delivery.status = 'failed'; p.delivery.error = `gate: ${(r.reasons || []).join('; ') || 'FAIL'}`; flipped += 1; }
+    // gate-all's validated override; a table written before the check carries none with `valid` — not earned
+    const ov = r.override ? { verdict: r.override.verdict ?? null, reason: r.override.reason ?? null, valid: r.override.valid === true } : null;
+    const pass = !r.inconclusive && !!(r.pass || (ov && ov.valid));
+    p.delivery.gate = { pass, pct: r.pct, heightDelta: r.heightDelta, clipped: r.clipped ?? null, content: r.content || null, reasons: r.reasons || [], inconclusive: r.inconclusive ? (r.reasons || []).join('; ') || 'no verdict' : null, override: ov, table: gateFile, at, width, atByWidth };
+    if (r.inconclusive) inconclusive += 1;
+    else if (!pass && ['deployed', 'verified'].includes(p.delivery.status)) { p.delivery.status = 'failed'; p.delivery.error = `gate: ${(r.reasons || []).join('; ') || 'FAIL'}`; flipped += 1; }
     else if (pass && p.delivery.status === 'failed' && /^gate: /.test(p.delivery.error || '')) { p.delivery.status = 'deployed'; p.delivery.error = null; flipped += 1; }
   }
   doc.generatedAt = now;
   writeJSON(pagesPath, doc);
   reRoll();
-  console.log(`gate ${gateFile} → ${matched} of ${table.rows.length} rows matched, ${flipped} status flip(s), ${skipped} older row(s) skipped`);
+  console.log(`gate ${gateFile} → ${matched} of ${table.rows.length} rows matched, ${flipped} status flip(s), ${skipped} older row(s) skipped${inconclusive ? `, ${inconclusive} inconclusive (status unchanged)` : ''}`);
   process.exit(0);
 }
 
