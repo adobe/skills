@@ -39,13 +39,14 @@
 // capRefusal (the cap line), nextRounds (count, reset, seed record); the trust sandbox with its own --out (rounds 1-7):
 // three counted rounds, a 4th refused before any write (--max-rounds lowers the cap, a full run neither counts nor refuses),
 // --max-rounds / --round-reset usage, a reset recorded (rounds.json + row), an INCONCLUSIVE crawl-fullpage row not counted,
-// a live process's rounds.lock refused and a dead one's reaped, the legacy seed. The other sandboxes clear the round
+// a live process's rounds.lock refused (age, recovery) and a dead one's reaped, a partial / young empty lock held, an old
+// unreadable one reaped, the legacy seed. The other sandboxes clear the round
 // state before each run (clearRounds) — their repeated --only runs are independent scenarios.
 // Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
+import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -1762,13 +1763,13 @@ check('rounds 5: an INCONCLUSIVE row (a crawl-fullpage origin fallback) is no ro
   assert.equal(r.status, 2, r.stderr + r.stdout); assert.deepEqual([r.row('a').inconclusive, r.row('a').origin, r.row('a').round], [true, 'crawl-fullpage', 2]);
   assert.equal(readFileSync(roundsFile('a'), 'utf8'), before); assert.match(r.log(), /rounds @1440: a 2\/3 \(no verdict — not counted\)$/m);
 });
-check('rounds 6: the reservation — a rounds.lock of a running process refuses the run (no verdict — a round of <slug> is in progress (pid n)), its lock kept, the other selected page\'s lock released; a dead process\'s lock is reaped (logged) and the round counts; no lock left behind', () => {
+check('rounds 6: the reservation — a rounds.lock of a running process refuses the run (no verdict — a round of <slug> is in progress (pid n), the lock\'s age and the recovery), its lock kept, the other selected page\'s lock released; a dead process\'s lock is reaped (logged) and the round counts; a partial or empty lock is held while it may be being written (a live pid in it, or younger than 30 s), an old unreadable one reaped; no lock, temp or reap file left behind', () => {
   const lock = (slug) => join(ROUT, slug, 'rounds.lock'); const live = `${JSON.stringify({ pid: process.pid, at: RT(1) })}\n`;
   writeFileSync(lock('b'), live);
   const before = readFileSync(roundsFile('a'), 'utf8');
   const r = rgate(['--only', 'a,b']);
   assert.equal(r.status, 2, r.stderr + r.stdout); assert.equal(r.stdout, ''); assert.equal(r.stderr.trim().split('\n').length, 1, r.stderr);
-  assert.match(r.stderr, new RegExp(`no verdict — a round of b is in progress \\(pid ${process.pid}\\)`)); assert.equal(r.stitches, 0);
+  assert.match(r.stderr, new RegExp(`no verdict — a round of b is in progress \\(pid ${process.pid}\\) — lock taken ${RT(1).replace(/\./g, '\\.')} \\(\\d+ d ago\\): ${ROUT_REL}/b/rounds\\.lock; wait for that run to end, or remove ${ROUT_REL}/b/rounds\\.lock if no gate-all run is active$`, 'm')); assert.equal(r.stitches, 0);
   assert.equal(readFileSync(lock('b'), 'utf8'), live, 'another run\'s lock is never removed'); assert.equal(existsSync(lock('a')), false, 'a\'s reservation released');
   assert.equal(readFileSync(roundsFile('a'), 'utf8'), before);
   const dead = spawnSync(process.execPath, ['-e', '']).pid; // exited: its pid is no running process
@@ -1776,6 +1777,19 @@ check('rounds 6: the reservation — a rounds.lock of a running process refuses 
   const g = rgate(['--only', 'b']);
   assert.equal(g.status, 0, g.stderr + g.stdout); assert.match(g.log(), new RegExp(`rounds lock b → reaped pid ${dead} \\(not running; taken ${RT(2).replace(/\./g, '\\.')}\\)$`, 'm'));
   assert.deepEqual([g.row('b').round, roundsJson('b').rounds], [2, 2]); assert.equal(existsSync(lock('b')), false);
+  // a lock caught mid-write (partial JSON naming a running pid) or empty and young is never reaped as garbage
+  const refused = (content, re) => {
+    writeFileSync(lock('b'), content); const before2 = readFileSync(roundsFile('b'), 'utf8');
+    const x = rgate(['--only', 'b']);
+    assert.equal(x.status, 2, x.stderr + x.stdout); assert.match(x.stderr, re); assert.equal(x.stitches, 0);
+    assert.equal(readFileSync(lock('b'), 'utf8'), content, 'the lock left as it was'); assert.equal(readFileSync(roundsFile('b'), 'utf8'), before2);
+  };
+  refused(`{"pid":${process.pid},"at":"20`, new RegExp(`a round of b is in progress \\(pid ${process.pid}\\) — lock taken `));
+  refused('', /a round of b is in progress \(pid unknown\) — lock taken \S+ \(\d+ s ago\): .*remove \S+rounds\.lock if no gate-all run is active$/m);
+  const old = new Date(Date.now() - 3600e3); utimesSync(lock('b'), old, old); // the same empty lock, an hour old: no writer is still at it
+  const o = rgate(['--only', 'b']);
+  assert.equal(o.status, 0, o.stderr + o.stdout); assert.match(o.log(), /rounds lock b → reaped an unreadable lock \(60 min old\)$/m); assert.equal(o.row('b').round, 3);
+  assert.deepEqual(readdirSync(join(ROUT, 'b')).filter((f) => f.startsWith('rounds.lock')), [], 'no lock, temp or reap file left');
 });
 check('rounds 7: legacy seed — no rounds.json: the run tables with a verdict row for the page seed the count (an INCONCLUSIVE or error row is none, a reused row is one); the first write records seeded: "runs", seededFrom; the next --only is refused at the cap', () => {
   const LREL = 'stardust/replica/gates/legacy-1440'; const LOUT = join(troot, LREL); mkdirSync(join(LOUT, 'runs'), { recursive: true });

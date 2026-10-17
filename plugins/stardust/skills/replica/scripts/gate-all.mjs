@@ -136,9 +136,12 @@
  * atomic; `at` = the counted rounds since the last reset); full runs never count and are never refused. Every row carries
  * `round` (the count after this run), the table `_provenance.maxRounds`. Without rounds.json the count is seeded from the
  * legacy runs/*.json tables holding a verdict row for the page (`roundsOf`, which gate-triage reads too) and the first
- * write records `seeded`. Each --only run first reserves its pages — <slug>/rounds.lock { pid, at }, sorted, created
- * exclusively: a lock of a running process refuses the run (one stderr line `no verdict — a round of <slug> is in progress
- * (pid <n>)`, exit 2), a dead process's lock is reaped (logged `rounds lock <slug> → reaped …`); released on exit. Then the
+ * write records `seeded`. Each --only run first reserves its pages — <slug>/rounds.lock { pid, at }, sorted, complete
+ * when it appears (a unique temp file hard-linked into place): a lock of a running process — or one without a readable pid
+ * younger than 30 s — refuses the run (one stderr line `no verdict — a round of <slug> is in progress (pid <n>) — lock
+ * taken <at> (<age> ago): <lock>; wait for that run to end, or remove <lock> if no gate-all run is active`, exit 2); a
+ * dead process's (or an older unreadable) lock is reaped — renamed aside, re-read, deleted only while still dead (logged
+ * `rounds lock <slug> → reaped …`); released on exit. Then the
  * cap, beside the deadline guard (before the out dir and any capture): a selected page at --max-rounds (default 3; 1..3 —
  * it may only lower the cap, anything else is a usage error) refuses the run — one stderr line `no verdict — cap reached —
  * re-prototype decision: <slug> <n>/<max> @<w>` naming the remedy (drop the page from --only, or record the re-prototype
@@ -182,7 +185,7 @@
  */
 import { execFileSync, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, linkSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { DEFAULT_OUT as FREEZE_MANIFEST, DEFAULT_PATHS as FOUNDATION_PATHS, snapshot } from './foundation-freeze.mjs';
@@ -251,8 +254,10 @@ Sidecars in <out>/: masks.json, overrides.json, clip-allow.json, presence.json, 
 Reuse sidecars per page: probes.json, gate-key.json (see the header).
 Fix rounds per page: <out>/<slug>/rounds.json { rounds, max, at[], [resets], [seeded, seededFrom] } — without it the
   count is seeded from runs/*.json rows with a verdict; every row carries round (+ roundReset on a reset row). An --only
-  run first takes <slug>/rounds.lock { pid, at }: one held by a running process → "no verdict — a round of <slug> is in
-  progress (pid <n>)", exit 2; a dead process's lock is reaped (logged). A page at the cap → "no verdict — cap reached —
+  run first takes <slug>/rounds.lock { pid, at } (complete when it appears): one held by a running process, or one
+  without a readable pid younger than 30 s → "no verdict — a round of <slug> is in progress (pid <n>) — lock taken <at>
+  (<age> ago): <lock>; wait for that run to end, or remove <lock> if no gate-all run is active", exit 2; a dead
+  process's lock (or an older unreadable one) is reaped (logged). A page at the cap → "no verdict — cap reached —
   re-prototype decision: <slug> <n>/<max> @<w>" (drop it from --only, or --round-reset "<reason>"), exit 2, before the
   out dir; --round-reset with no selected page at the cap logs "round-reset: no --only slug at the cap — nothing reset".
 Empty selection → one stderr line: published — the coverage and state paths (absolute) with their counts (rows
@@ -1074,26 +1079,54 @@ function releaseRounds() {
     for (const d of made) { try { rmdirSync(d); } catch { /* not empty: the run wrote there */ } }
   }
 }
+// A lock with no readable pid this young may be one being written by hand or by an older copy — held, never reaped.
+const LOCK_GRACE_MS = 30e3;
+const uniq = () => `${process.pid}.${Date.now().toString(36)}.${Math.random().toString(36).slice(2, 10)}`;
+const ago = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); return s < 120 ? `${s} s` : s < 7200 ? `${Math.round(s / 60)} min` : s < 172800 ? `${Math.round(s / 3600)} h` : `${Math.round(s / 86400)} d`; };
 /**
- * Takes every selected page's rounds.lock (sorted, the `wx` flag) before the cap check → the log notes (a dead process's
- * lock reaped). A lock of a running process refuses the run: one stderr line, exit 2 (the locks taken so far and the dirs
- * the reservation created are released by the exit handler — nothing written).
+ * A rounds.lock's holder → { pid, at, ageMs } (pid from the JSON, else from a partial `"pid": <n>`, else null; at = its
+ * `at`, else the file's mtime; ageMs = the file's age), or null when the file is gone.
+ */
+function lockHolder(file) {
+  let text; let st; try { text = readFileSync(file, 'utf8'); st = statSync(file); } catch { return null; }
+  let j = null; try { j = JSON.parse(text); } catch { j = null; }
+  const m = /"pid"\s*:\s*(\d+)/.exec(text);
+  const pid = j && Number.isInteger(j.pid) && j.pid > 0 ? j.pid : m && Number(m[1]) > 0 ? Number(m[1]) : null;
+  return { pid, at: (j && typeof j.at === 'string' && j.at) || st.mtime.toISOString(), ageMs: Date.now() - st.mtimeMs };
+}
+// Held: a running process's lock (not this process's pid — that one predates it), or a young lock without a readable pid.
+const lockLive = (h) => (h.pid ? h.pid !== process.pid && pidAlive(h.pid) : h.ageMs < LOCK_GRACE_MS);
+/**
+ * Takes every selected page's rounds.lock (sorted) before the cap check → the log notes. A lock appears complete: its
+ * { pid, at } is written to a unique temp file that is hard-linked into place (EEXIST = held). A held lock (lockLive)
+ * refuses the run — one stderr line naming the pid, the lock's age and the recovery, exit 2 (the locks taken so far and the
+ * dirs the reservation created are released by the exit handler — nothing written). A dead one is reaped: renamed to a
+ * unique name, re-read there and deleted only if still dead (a live one is linked back and refuses).
  */
 function reserveRounds(out, slugs) {
   process.on('exit', releaseRounds);
   const notes = [];
   for (const slug of slugs) {
-    const d = resolve(out, slug); const file = join(d, 'rounds.lock');
+    const d = resolve(out, slug); const file = join(d, 'rounds.lock'); const shown = join(out, slug, 'rounds.lock');
     const made = []; for (let x = d; !existsSync(x) && dirname(x) !== x; x = dirname(x)) made.push(x);
     const entry = { file: null, made }; HELD.push(entry);
     mkdirSync(d, { recursive: true });
-    for (let reaped = false; ;) {
-      try { writeFileSync(file, `${JSON.stringify({ pid: process.pid, at: new Date().toISOString() })}\n`, { flag: 'wx' }); entry.file = file; break; } catch (e) { if (e.code !== 'EEXIST') throw e; }
-      let held = null; try { held = JSON.parse(readFileSync(file, 'utf8')); } catch { held = null; }
-      const pid = held && Number.isInteger(held.pid) && held.pid > 0 ? held.pid : null;
-      if (reaped || (pid && pid !== process.pid && pidAlive(pid))) { console.error(`gate-all: refused to start, no verdict — a round of ${slug} is in progress (pid ${pid ?? 'unknown'}): ${join(out, slug, 'rounds.lock')}; wait for that run to end`); process.exit(2); }
-      rmSync(file, { force: true }); reaped = true;
-      notes.push(`rounds lock ${slug} → reaped ${pid ? `pid ${pid} (not running${held.at ? `; taken ${held.at}` : ''})` : 'an unreadable lock'}`);
+    const refuse = (h) => { console.error(`gate-all: refused to start, no verdict — a round of ${slug} is in progress (pid ${h && h.pid ? h.pid : 'unknown'}) — lock taken ${h ? `${h.at} (${ago(Date.now() - (Date.parse(h.at) || Date.now() - h.ageMs))} ago)` : 'just now'}: ${shown}; wait for that run to end, or remove ${shown} if no gate-all run is active`); process.exit(2); };
+    for (let attempt = 0; !entry.file; attempt += 1) {
+      const tmp = `${file}.${uniq()}.tmp`;
+      writeFileSync(tmp, `${JSON.stringify({ pid: process.pid, at: new Date().toISOString() })}\n`);
+      try { linkSync(tmp, file); entry.file = file; } catch (e) { if (e.code !== 'EEXIST') throw e; } finally { rmSync(tmp, { force: true }); }
+      if (entry.file) break;
+      const h = lockHolder(file);
+      if (attempt >= 3) refuse(h);
+      if (!h) continue; // released meanwhile — take it
+      if (lockLive(h)) refuse(h);
+      const aside = `${file}.reap.${uniq()}`;
+      try { renameSync(file, aside); } catch (e) { if (e.code === 'ENOENT') continue; throw e; }
+      const moved = lockHolder(aside);
+      if (moved && lockLive(moved)) { try { linkSync(aside, file); rmSync(aside, { force: true }); } catch { /* another lock took its place: this one stays beside it */ } refuse(moved); }
+      rmSync(aside, { force: true });
+      notes.push(`rounds lock ${slug} → reaped ${moved && moved.pid ? `pid ${moved.pid} (not running; taken ${moved.at})` : `an unreadable lock (${ago(moved ? moved.ageMs : 0)} old)`}`);
     }
   }
   return notes;
