@@ -290,6 +290,17 @@ check('alignBlock: a delivered-only text lowers confidence to its share; the dee
   assert.equal(bo.stableSelector(idx, a.anchor), 'body > main > section.grid:nth-of-type(2) > article.card:nth-of-type(1)');
 });
 
+check('alignBlock: a fragment aligns on an element holding exactly its text, not on a deeper one that merely contains it', () => {
+  // "Story two" is the h1, and also part of a deeper quote paragraph
+  const idx = bo.indexSource('<html><body><main><section><h1>Story two</h1></section><section><blockquote><p>A quote for story two.</p></blockquote></section></main></body></html>');
+  const a = bo.alignBlock(idx, bo.fragmentsOf(lib.walkDelivered('<main><div><h1>Story two</h1></div></main>').nodes[0]));
+  assert.equal(a.anchor, el(idx, 'h1', 'Story two'));
+  assert.deepEqual({ ...a, anchor: undefined }, { anchor: undefined, confidence: 1, covered: 8, total: 8, unmatched: [] });
+  // without an exact holder, the deepest containing element still counts
+  const loose = bo.indexSource('<html><body><main><blockquote><p>A quote for story two.</p></blockquote></main></body></html>');
+  assert.equal(bo.alignBlock(loose, bo.fragmentsOf(lib.walkDelivered('<main><div><h1>Story two</h1></div></main>').nodes[0])).anchor.tag, 'p');
+});
+
 check('alignBlock: a block without text has no anchor', () => {
   const idx = bo.indexSource(ALIGN_SRC);
   assert.deepEqual(bo.alignBlock(idx, bo.fragmentsOf(IMAGE_ONLY)), { anchor: null, confidence: 0, covered: 0, total: 0, unmatched: [] });

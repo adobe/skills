@@ -244,8 +244,9 @@ function deepest(index, start, s) {
 /**
  * alignBlock(index, fragments) → { anchor, confidence, covered, total, unmatched }. Text fragments are the
  * non-image fragments with a non-empty squashed text (an image's alt never counts); total = the sum of their
- * lengths. Each one covers (once) the deepest elements under body containing it and all their ancestors up to
- * body; the anchor is the element covering the most, then the deepest, then the first in document order;
+ * lengths. Each one covers (once) the deepest elements under body containing it — only those whose text is
+ * exactly it, when there are any (a short text inside a longer one elsewhere does not pull the anchor) — and
+ * all their ancestors up to body; the anchor is the element covering the most, then the deepest, then the first in document order;
  * confidence = covered / total (3 decimals); unmatched = the keys of text fragments found nowhere. No text
  * fragment (an image-only block included) → anchor null and zeros.
  */
@@ -257,7 +258,9 @@ export function alignBlock(index, fragments) {
   for (const f of frags) {
     if (!index.meta.get(index.body).text.includes(f.s)) { unmatched.push(f.key); continue; }
     const hit = new Set();
-    for (const d of deepest(index, index.body, f.s)) {
+    const found = deepest(index, index.body, f.s);
+    const exact = found.filter((d) => index.meta.get(d).text === f.s);
+    for (const d of exact.length ? exact : found) {
       for (let n = d; n && n !== index.root; n = n === index.body ? null : index.meta.get(n).parent) hit.add(n);
     }
     for (const n of hit) covered.set(n, (covered.get(n) || 0) + f.s.length);
