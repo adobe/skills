@@ -5,7 +5,8 @@
 // slot, is never signalled), the value-flag swallow rule, log/clean (--all stops wrapper + instrument), and the
 // machine-wide browser slot a browser job takes through browser-lock.mjs (temp STARDUST_BROWSER_LOCK_DIR): peak
 // holders within STARDUST_BROWSER_SLOTS, a wait without a limit by default (lockWaitS), no slot within a set
-// STARDUST_BROWSER_WAIT = exit 124, --lock/--no-lock, a dead holder reclaimed; the job's deadline exported as
+// STARDUST_BROWSER_WAIT = exit 124, --lock/--no-lock, a dead holder reclaimed, the browsers per slot it exports
+// (browsersPerSlot, STARDUST_BROWSERS_PER_SLOT); the job's deadline exported as
 // RUN_BG_DEADLINE_SEC, and a gate-all job without --timeout sized from gate-all's roster estimate (gateAllTimeout).
 // Run: node plugins/stardust/skills/replica/scripts/test/run-bg.test.mjs   (about 25 s)
 import assert from 'node:assert/strict';
@@ -14,7 +15,7 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdir
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { BROWSER_SCRIPTS, DEFAULT_SLOTS, MAX_CEILING_SEC, STILL_RUNNING_EXIT, VERDICT_RE, gateAllTimeout, isBrowserJob, lockWaitS } from '../run-bg.mjs';
+import { BROWSER_SCRIPTS, DEFAULT_SLOTS, MAX_CEILING_SEC, STILL_RUNNING_EXIT, VERDICT_RE, browsersPerSlot, gateAllTimeout, isBrowserJob, lockWaitS } from '../run-bg.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'run-bg.mjs');
@@ -23,7 +24,7 @@ const dir = mkdtempSync(join(tmpdir(), 'run-bg-test-'));
 const lockRoot = mkdtempSync(join(tmpdir(), 'run-bg-lock-test-'));
 const LOCKS = join(lockRoot, 'locks');
 const env = { ...process.env, RUN_BG_POLL_MS: '100', STARDUST_BROWSER_LOCK_DIR: LOCKS, STARDUST_BROWSER_POLL_MS: '100' };
-delete env.RUN_BG_SLOTS; delete env.STARDUST_BROWSER_SLOTS; delete env.STARDUST_BROWSER_SLOT; delete env.STARDUST_BROWSER_WAIT; delete env.STARDUST_BROWSER_TTL_MIN; delete env.RUN_BG_DEADLINE_SEC;
+delete env.RUN_BG_SLOTS; delete env.STARDUST_BROWSER_SLOTS; delete env.STARDUST_BROWSER_SLOT; delete env.STARDUST_BROWSER_WAIT; delete env.STARDUST_BROWSER_TTL_MIN; delete env.RUN_BG_DEADLINE_SEC; delete env.STARDUST_BROWSER_BUDGET; delete env.STARDUST_BROWSERS_PER_SLOT;
 const run = (extra, sub, ...args) => { const r = spawnSync(process.execPath, [SCRIPT, sub, '--dir', dir, ...args], { encoding: 'utf8', env: { ...env, ...extra } }); return { code: r.status, out: r.stdout, err: r.stderr }; };
 const bg = (sub, ...args) => run({}, sub, ...args);
 const pidAlive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
@@ -222,7 +223,7 @@ const stateIn = (d, name) => JSON.parse(readFileSync(join(d, `${name}.json`), 'u
 const logIn = (d, name) => readFileSync(join(d, `${name}.log`), 'utf8');
 const locks = () => (existsSync(LOCKS) ? readdirSync(LOCKS) : []);
 // A job that prints the slot it runs in (holder files in the lock dir, the env its children see), then holds it.
-const SLOT_JOB = (ms) => `const fs=require('fs'),d=process.env.STARDUST_BROWSER_LOCK_DIR;console.log('holders '+(fs.existsSync(d)?fs.readdirSync(d).length:0)+' slots='+process.env.STARDUST_BROWSER_SLOTS+' slot='+(process.env.STARDUST_BROWSER_SLOT||''));setTimeout(()=>{},${ms})`;
+const SLOT_JOB = (ms) => `const fs=require('fs'),d=process.env.STARDUST_BROWSER_LOCK_DIR;console.log('holders '+(fs.existsSync(d)?fs.readdirSync(d).length:0)+' perSlot='+(process.env.STARDUST_BROWSERS_PER_SLOT||'')+' slots='+process.env.STARDUST_BROWSER_SLOTS+' slot='+(process.env.STARDUST_BROWSER_SLOT||''));setTimeout(()=>{},${ms})`;
 // The most [launchedAt, endedAt] intervals open at one instant (an end before a start at the same ms).
 const peak = (sts) => { let n = 0; let m = 0; for (const [, d] of sts.flatMap((s) => [[Date.parse(s.launchedAt), 1], [Date.parse(s.endedAt), -1]]).sort((a, b) => a[0] - b[0] || a[1] - b[1])) { n += d; m = Math.max(m, n); } return m; };
 
@@ -271,6 +272,29 @@ await check('a slot-holding job runs with STARDUST_BROWSER_SLOTS=0 (its children
     const st = stateIn(d, `b${i}`); const m = logIn(d, `b${i}`).match(/ slots=(\S*) slot=(\S*)$/m);
     assert.ok(m, `b${i} printed its slot`); assert.equal(m[1], '0'); assert.equal(m[2], st.lockFile); assert.equal(dirname(m[2]), LOCKS, m[2]);
   }
+});
+await check('browsersPerSlot: max(1, floor(STARDUST_BROWSER_BUDGET / STARDUST_BROWSER_SLOTS)); a budget that is not a positive number and a slot count that is not a positive integer (0 = lock off, junk) count as the default 3', () => {
+  assert.equal(browsersPerSlot({}), 1, 'defaults: 3 / 3');
+  assert.equal(browsersPerSlot({ STARDUST_BROWSER_BUDGET: '6', STARDUST_BROWSER_SLOTS: '2' }), 3);
+  assert.equal(browsersPerSlot({ STARDUST_BROWSER_BUDGET: '2', STARDUST_BROWSER_SLOTS: '3' }), 1, 'a budget below the slots: the floor of one');
+  assert.equal(browsersPerSlot({ STARDUST_BROWSER_BUDGET: '7', STARDUST_BROWSER_SLOTS: '2' }), 3, 'floored');
+  assert.equal(browsersPerSlot({ STARDUST_BROWSER_BUDGET: '4.5', STARDUST_BROWSER_SLOTS: '2' }), 2);
+  for (const s of [undefined, '0', '', ' ', 'x', '-2', '1.5']) assert.equal(browsersPerSlot({ STARDUST_BROWSER_BUDGET: '9', STARDUST_BROWSER_SLOTS: s }), 3, `slots ${JSON.stringify(s)}: 9 / 3`);
+  for (const b of [undefined, '0', '', 'x', '-6']) assert.equal(browsersPerSlot({ STARDUST_BROWSER_BUDGET: b, STARDUST_BROWSER_SLOTS: '1' }), 3, `budget ${JSON.stringify(b)}: 3 / 1`);
+});
+await check('a slot-holding job gets STARDUST_BROWSERS_PER_SLOT from the slot count before it is zeroed; a budget below the slots says so in one run-bg: line', () => {
+  const d = join(lockRoot, 'per-slot', 'bg');
+  const jobs = [['ps62', { STARDUST_BROWSER_BUDGET: '6', STARDUST_BROWSER_SLOTS: '2' }, '3'], ['ps23', { STARDUST_BROWSER_BUDGET: '2', STARDUST_BROWSER_SLOTS: '3' }, '1'], ['psdef', {}, '1']];
+  for (const [name, x] of jobs) assert.equal(bgIn(d, x, 'start', '--name', name, '--lock', '--', process.execPath, '-e', SLOT_JOB(0)).code, 0);
+  const w = bgIn(d, {}, 'wait', '--max', '30', ...jobs.map(([n]) => n)); assert.equal(w.code, 0, w.out);
+  for (const [name, , per] of jobs) {
+    const st = stateIn(d, name); const log = logIn(d, name);
+    assert.equal(st.exit, 0, `${name}: ${log}`); assert.ok(st.lockFile, `${name} took a slot`);
+    assert.match(log, new RegExp(`^holders \\d+ perSlot=${per} slots=0 slot=\\S+$`, 'm'), `${name}: ${log}`);
+  }
+  assert.deepEqual(logIn(d, 'ps23').match(/^run-bg: STARDUST_BROWSER_BUDGET.*$/gm), ['run-bg: STARDUST_BROWSER_BUDGET 2 is below STARDUST_BROWSER_SLOTS 3 — one browser per slot, 3 at most; set STARDUST_BROWSER_SLOTS=2 to hold the budget']);
+  for (const name of ['ps62', 'psdef']) assert.doesNotMatch(logIn(d, name), /STARDUST_BROWSER_BUDGET/, name);
+  assert.deepEqual(locks(), []);
 });
 await check('lockWaitS: a job waits for its machine-wide slot without a limit unless STARDUST_BROWSER_WAIT is set to seconds ≥ 0', () => {
   for (const v of [undefined, '', ' ', 'x', '-1']) assert.equal(lockWaitS(v === undefined ? {} : { STARDUST_BROWSER_WAIT: v }), Infinity, JSON.stringify(v));
@@ -322,7 +346,7 @@ await check('--no-lock, an unclassified command and STARDUST_BROWSER_SLOTS=0 tak
     assert.equal(bg('wait', '--max', '20', 'nl', 'plain', 'auto', 'off').code, 0);
     for (const n of ['nl', 'plain', 'off']) {
       const st = state(n); const log = readFileSync(join(dir, `${n}.log`), 'utf8');
-      assert.equal(st.exit, 0, `${n}: ${log}`); assert.equal(st.lockFile ?? null, null, n); assert.match(log, / slot=$/m, n);
+      assert.equal(st.exit, 0, `${n}: ${log}`); assert.equal(st.lockFile ?? null, null, n); assert.match(log, / perSlot= slots=\S* slot=$/m, n);
     }
     assert.equal(state('auto').exit, 124, 'stitch-shot.mjs in the argv asks for a slot by default');
     assert.equal(state('auto').lockTimeout, true);
