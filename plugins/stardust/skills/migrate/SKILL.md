@@ -33,22 +33,14 @@ sidecars.
   `reference/template-and-module-rendering.md`); this flag flips
   approval-gating on.
 - `--strict-canon` — refuse approvals that conflict with canon.
-  Default logs the deviation and continues. Useful for projects
-  where canon discipline matters more than per-template
-  flexibility.
+  Default logs the deviation and continues.
 - `--clean` — delete assets previously bundled but no longer
   referenced from `stardust/migrated/assets/`. Off by default
-  (migrate is additive). **Implies `--force`**: every page is
-  re-rendered so the run's `bundledAssets` Set is the complete
-  union of currently-referenced assets — otherwise `--clean`
-  would risk deleting assets still referenced by
-  idempotent-skipped pages. See
-  `reference/asset-bundling.md` § Stale asset cleanup.
+  (migrate is additive). **Implies `--force`** (why:
+  `reference/asset-bundling.md` § Stale asset cleanup).
 - `--pin-timestamp <ISO8601>` — pin the migrate-provenance
   timestamp so re-runs without source changes produce byte-
-  identical HTML. Default re-uses the current wall clock, which
-  is fine for normal use; CI deployment fingerprinting may want
-  the pin.
+  identical HTML (CI fingerprinting). Default: the wall clock.
 
 The mobile-adapt audit, content-sourcing scan, and placeholder
 refusal are all mandatory gates — there is no `--skip-*` or
@@ -114,10 +106,9 @@ inline, or run an impeccable command) and re-invoke migrate.
    `validateProvenance(page)` per
    `skills/stardust/reference/state-machine.md` § Provenance
    validation for every page in `inScope`. Abort with the
-   helper's error when any page lacks live-render evidence —
-   migrating a synthesized page record produces deployable HTML
-   that misrepresents the source site, the exact failure mode
-   that motivated the validator. Surface `Provenance OK on N
+   helper's error when any page lacks live-render evidence — a
+   synthesized page record migrates into HTML that misrepresents
+   the source site. Surface `Provenance OK on N
    pages` in the migrate-plan output before Phase 1.
 8. **Mobile-adapt audit on every Path A / Path A′ source.** For
    every page whose render branch consumes a proposed or
@@ -167,6 +158,18 @@ its page type: report the archetype slug and `$stardust replica
 <archetype>`, and render nothing for that type. The same rule guards
 `rollout` Setup; the published-origin re-gate is unchanged. Thresholds
 are the gate's.
+
+**Encode attempt per template (the `plan` unit).** `node
+stardust/scripts/migrate/migrate.mjs plan <slug…|--all>` (render's page set
+and branch flags) lists the branch partition and records, for every
+template with A′ siblings in the set, the encode attempt in
+`stardust/migrate/encode/<template>.json` (`{verdict:
+encoded|no-roundtrip|not-attempted, lint, at}`; an existing record is
+kept, `--force` re-records). Its last line, `encode: <e> encoded · <a> A′
+(<n> no-roundtrip, <m> not-attempted)`, is the `plan` unit's ledger
+detail (`verdict`). It is not the full plan below; render still runs every
+strict check (a recorded hands-off run never invoked the encoder and
+hand-built every sibling).
 
 Print the plan and wait for confirmation when the scope is large:
 
@@ -305,24 +308,27 @@ line and the refusals: `reference/template-and-module-rendering.md`
 `stardust/current/assets/media-map.json`, then the deploy media
 ledger. The one source refusal is an archetype with no proposed HTML;
 an archetype without `data-slot` marks, or a slot with no value, is
-`strict slots`.
+`strict slots`. Every A′ page (own file or fork) also needs its
+template's encode-attempt record (Phase 1): without one, render refuses
+it (exit 2) naming `node stardust/scripts/migrate/encode-attempt.mjs
+record --template <t>`; any verdict passes — the gate is that the
+attempt was made.
 
 **Recorded units.** A whole-site render is bookkept as units in
 `stardust/migrate/progress.json`, the shape of rollout's C-deliver unit
 ledger (`../replica/reference/handoff-contract.md` § 3 row C):
 `units.<name>: {status: pending|running|done|failed, kind:
 plan|render|assets|report, templates[], pages: n, startedAt, endedAt,
-verdict}`. One `plan` unit (Phase 1), one `render` unit per template
-cluster of at most ~8 siblings (`migrate.mjs render <slug…>` takes the
-cluster's slug list), one `assets` unit when Phase 3 rehosts media, one
-`report` unit (Phase 4). Per unit, in this order: the `progress.json`
-write → the checkpoint commit → the next unit; a unit end is a safe
-resume point, not a stop. A session resumed inside migrate reads the file
-and runs only the units not `done`; a unit left `running` re-renders its
-slugs — the driver is idempotent, unchanged pages are skipped. A recorded
-run rendered 31 siblings through five parallel builders as one unit in
-one session — its most expensive — with no resume point between the plan
-and the final report.
+verdict}`. One `plan` unit (Phase 1, `migrate.mjs plan`), one `render`
+unit per template cluster of at most ~8 siblings (`migrate.mjs render
+<slug…>` takes the cluster's slug list), one `assets` unit when Phase 3
+rehosts media, one `report` unit (Phase 4). Per unit, in this order: the
+`progress.json` write → the checkpoint commit → the next unit; a unit end
+is a safe resume point, not a stop. A session resumed inside migrate reads
+the file and runs only the units not `done`; a unit left `running`
+re-renders its slugs — the driver is idempotent, unchanged pages are
+skipped (a recorded run rendered 31 siblings as one unit, its most
+expensive session, with no resume point).
 
 ### Phase 3 — Sitewide assets and bundle finalisation
 

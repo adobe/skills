@@ -24,7 +24,12 @@ shape doesn't fit any approved archetype.
 
 ## Path A′ — template-applied rendering
 
-For a `directed` page whose `type` has an approved archetype:
+Path A′ renders a `directed` page whose `type` has an approved
+archetype, once its template has an encode-attempt record
+(`stardust/migrate/encode/<template>.json`, any verdict; `migrate.mjs
+plan` writes it) — without one `migrate.mjs render` refuses the page
+(exit 2), naming `node stardust/scripts/migrate/encode-attempt.mjs
+record --template <t>`.
 
 ### Step 1 — load the archetype
 
@@ -98,9 +103,8 @@ target page's module-instance values from
 values just like templates).
 
 If the target page has a module instance the archetype doesn't
-position (e.g., target has a `donate-band` after the body that
-the archetype's article template doesn't include), insert the
-module at a sensible position; log as `template-adapted`.
+position, insert the module at a sensible position; log as
+`template-adapted`.
 
 ### Step 5 — canon application
 
