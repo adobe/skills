@@ -35,7 +35,7 @@
  *     live capture silently renders FALLBACK type — wrong wraps, wrong
  *     heights, wrong doc height, no error anywhere. Of the document route's
  *     set only Accept / Accept-Language / Upgrade-Insecure-Requests apply:
- *     Playwright drops its sec-* values as forbidden headers. Every request's
+ *     Playwright drops its sec-* values as forbidden headers. A page's
  *     sec-ch-ua* comes from the browser, through the UA metadata
  *     applyUaMetadata sets from the UA string (a site behind a vendor wall
  *     served a 200 "System Down" page when the UA claimed Chrome and the
@@ -87,10 +87,10 @@ import { dirname } from 'node:path';
 
 // Current stable Chrome on macOS. Chrome's UA reduction freezes the platform
 // token at 10_15_7 and the minor version at .0.0.0 — only the major matters.
-// The sec-ch-ua* a request carries come from the browser's UA metadata, which
-// applyUaMetadata sets from this string (uaMetadata), so the two never
-// disagree; standardHeaders()' sec-ch-ua is the same brand list, but a route's
-// sec-* values never arrive (Playwright drops them as forbidden headers).
+// A page's sec-ch-ua* come from the browser's UA metadata, set from this string
+// by applyUaMetadata (uaMetadata): brands and version match it, the platform is
+// the host's (limits: § client hints). standardHeaders()' sec-ch-ua is the same
+// brand list, but a route's sec-* never arrive (Playwright: forbidden headers).
 export const REAL_CHROME_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36';
 
 const CHROME_MAJOR = (REAL_CHROME_UA.match(/Chrome\/(\d+)/) || [])[1] || '143';
@@ -191,14 +191,14 @@ export function standardHeaders(locale = 'en') {
   };
 }
 
-// ---- client hints: consistent with the UA on every request (V4) ----------------------------------------------------
+// ---- client hints: the UA's brands and version on a page's requests (V4) --------------------------------------------
 // A site behind a vendor wall answered a recorded run with a 200 "System Down" page when the UA claimed Chrome and the
 // requests' client hints did not back it. A route cannot fix that: Playwright drops every sec-* header override as a
-// forbidden header. So the browser's own UA metadata is set from the UA string (applyUaMetadata) and the browser sends
-// matching sec-ch-ua* on every request — documents and subresources, same- and cross-origin — with no CORS preflight
-// (browser-set low-entropy hints are not author headers; F-B2 stays clear). The value, in order: the caller's `hints`
-// option, else env STARDUST_LIVE_HINTS (the escape hatch reaches the instruments gate rounds spawn), else
-// 'ua-metadata'; 'native' leaves the browser's own hints.
+// forbidden header. So each page's UA metadata is set from the UA string (applyUaMetadata): its requests — documents and
+// subresources, same- and cross-origin — carry sec-ch-ua* with the UA's brands and version and the HOST's platform, no
+// CORS preflight (browser-set hints are not author headers; F-B2 stays clear). Out-of-process iframes and service
+// workers keep the browser's own; a popup's first requests are best effort. The value: the caller's `hints` option,
+// else env STARDUST_LIVE_HINTS (reaches the instruments gate rounds spawn), else 'ua-metadata'; 'native' sets none.
 export const HINTS_ENV = 'STARDUST_LIVE_HINTS';
 export const HINT_SCOPES = Object.freeze(['ua-metadata', 'native']);
 let hintsEnvWarned = false; // one warning per process, not one per context
@@ -268,7 +268,7 @@ export async function applyUaMetadata(ctx, { ua = REAL_CHROME_UA, locale, hints 
   const userAgentMetadata = scope === 'ua-metadata' ? uaMetadata(ua) : null;
   if (!userAgentMetadata) { ctx.stardustHints = 'native'; return; }
   ctx.stardustHints = 'ua-metadata';
-  // Out-of-process iframes keep Playwright's own metadata (a known limit): the override is per page target.
+  // Out-of-process iframes and service workers keep Playwright's own metadata: the override is per page target.
   // page → the promise of its CDP session, kept referenced while the page lives: a detached session clears the override.
   const applied = new WeakMap();
   const apply = (page) => {
@@ -333,7 +333,7 @@ export async function newLiveContext(browser, { ua, locale, viewport, authOrigin
   // renders FALLBACK type — an asymmetric false measurement (the prototype
   // side loads the same kit fine). Of the set below only Accept,
   // Accept-Language and Upgrade-Insecure-Requests apply: Playwright drops its
-  // sec-* values as forbidden headers. Every request's sec-ch-ua* comes from
+  // sec-* values as forbidden headers. A page's sec-ch-ua* comes from
   // the browser, through the UA metadata applyUaMetadata sets from the UA
   // string; browser-set low-entropy hints trigger no CORS preflight, unlike
   // the author headers above. Escape hatch: STARDUST_LIVE_HINTS=native.

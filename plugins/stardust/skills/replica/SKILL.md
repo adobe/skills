@@ -338,18 +338,18 @@ blocked step (reference doc § Iteration discipline).
 
 **Hardening (each a recorded false-measurement trap — gate doc § Hardening
 rules):** real-Chrome UA **plus the standard request headers** on every
-capture, and on every request `sec-ch-ua*` matching the UA (the browser's UA
-metadata is set from the UA string: documents and subresources, same- and
-cross-origin, no preflight; stitch-shot prefers the full Chromium build; opt
-out with `--hints native` there, `STARDUST_LIVE_HINTS=native` in every
-instrument and gate round; capture.json records `browserBuild`, `hints`); a
-challenge, blocked interstitial or 2xx denial page (a vendor signature, a
-tiny page under one error heading) **fails loud (exit 3)**, never measured
-— escalate with `--headed`, and a site that still blocks needs
-crawl.mjs-class capture; `domcontentloaded` on live targets, never
-`networkidle`; symmetric `--main` scoping on both sides (`--main body` is
-never valid); consent banners, timed marketing modals and open dialogs
-dismissed (a closed dialog's scroll lock released for the capture, a
+capture, and `sec-ch-ua*` with the UA's brands and version, the host's platform
+(UA metadata set from the UA string: documents and subresources, same- and
+cross-origin, no preflight; out-of-process iframes and service workers keep the
+browser's own; stitch-shot prefers the full Chromium build; opt out with
+`--hints native` there, `STARDUST_LIVE_HINTS=native` in every instrument and
+gate round; capture.json records `browserBuild`, `hints`); a challenge, blocked
+interstitial or 2xx denial page (a vendor signature, a tiny page under one error
+heading) **fails loud (exit 3)**, never measured — escalate with `--headed`, and
+a site that still blocks needs crawl.mjs-class capture; `domcontentloaded` on
+live targets, never `networkidle`; symmetric `--main` scoping on both sides
+(`--main body` is never valid); consent banners, timed marketing modals and open
+dialogs dismissed (a closed dialog's scroll lock released for the capture, a
 survivor's kept); animations frozen; the pointer parked after any
 dismissal click; fixed/sticky chrome replicated with its scroll-state morph
 (`reference/recreation-procedure.md` § Fixed and sticky chrome);
