@@ -1,14 +1,15 @@
 #!/usr/bin/env node
 // skills/diff/scripts/test/live-session.test.mjs — the pure part of the shared live-session library: the exported
-// surface every instrument imports, the consent-accept candidate list (the cmp-prefixed candidates are present,
-// no duplicates, the OneTrust id first), isLiveHttpUrl, defaultWaitUntil, isEdsHost and lateWindowFor (no timed
-// late-modal poll on EDS build/preview hosts), and waitEdsDelayedPhase never throwing (stub page). No browser:
-// dismissOverlays itself runs inside stitch-shot / the diff probes against a page (stitch-shot.test.mjs runs the
-// EDS single sweep against a late consent banner). The hide helpers: parseHideList, presenceHide, readPresenceFile,
-// hideEntries, formatHidden and hideRegions' empty / argument contract (stub page); where playwright is importable
-// (a project copy), hideRegions end-to-end on fixture pages served from this process — an 88 px in-flow bar above
-// the header, a bar inserted 400 ms after load (hidden by the style rule), an invalid selector, a second call, and a
-// late bar under a CSP that blocks inline <style> (hidden by the adopted sheet).
+// surface every instrument imports, the consent table (the vendor accept buttons in table order, no duplicates, the
+// OneTrust id first; the frozen label sweep, accept-like labels first, "decline" last, covering crawl.mjs's
+// text-match labels), isLiveHttpUrl, defaultWaitUntil, isEdsHost and lateWindowFor (no timed
+// late-modal poll on EDS build/preview hosts), and waitEdsDelayedPhase never throwing (stub page). The hide helpers:
+// parseHideList, presenceHide, readPresenceFile, hideEntries, formatHidden and hideRegions' empty / argument contract
+// (stub page); where playwright is importable (a project copy), hideRegions end-to-end on fixture pages served from
+// this process — an 88 px in-flow bar above the header, a bar inserted 400 ms after load (hidden by the style rule),
+// an invalid selector, a second call, and a late bar under a CSP that blocks inline <style> (hidden by the adopted
+// sheet) — and dismissOverlays' consent pass on fixture banners: each consent manager's own accept button, a plain
+// label (by priority, never "Decline" first), a label two shadow roots deep, and an in-content "Accept" link left alone.
 // Run: node plugins/stardust/skills/diff/scripts/test/live-session.test.mjs
 import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -33,6 +34,34 @@ check('consent candidates: OneTrust first, the cmp-prefixed consent-manager butt
   assert.ok(c.indexOf('#cmpwelcomebtnyes') < c.indexOf('button:has-text("Accept all")'), 'id selectors before the text fallbacks');
   assert.equal(new Set(c).size, c.length, 'no duplicate candidate');
   assert.ok(c.every((sel) => typeof sel === 'string' && sel.trim() === sel && sel.length), 'every candidate is a trimmed selector string');
+});
+check('consent candidates: the consent managers\' accept buttons in table order, every vendor id before the first text fallback', () => {
+  const c = session.CONSENT_CANDIDATES;
+  const vendors = ['#onetrust-accept-btn-handler', '#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll', '#CybotCookiebotDialogBodyButtonAccept',
+    '#usercentrics-root [data-testid="uc-accept-all-button"]', '.truste-button2', '#didomi-notice-agree-button', '#cmpwelcomebtnyes', '.cmpboxbtnyes', '#cmpbntyestxt'];
+  assert.deepEqual(c.filter((sel) => vendors.includes(sel)), vendors, 'every vendor candidate, in order');
+  const firstText = c.findIndex((sel) => sel.startsWith('button:has-text('));
+  assert.ok(firstText > 0 && vendors.every((sel) => c.indexOf(sel) < firstText), 'vendor ids before the text fallbacks');
+  assert.ok(c.includes('button:has-text("Allow all")'), 'the allow-all text fallback');
+});
+check('consent label sweep: one frozen table — unique trimmed lower-case labels, accept-like first, "decline" last', () => {
+  const t = session.CONSENT_LABEL_SWEEP;
+  assert.ok(Object.isFrozen(t) && Object.isFrozen(t.labels), 'the table and its labels are frozen');
+  assert.equal(typeof session.consentLabelSweepInPage, 'function');
+  const { labels } = t;
+  assert.equal(new Set(labels).size, labels.length, 'no duplicate label');
+  for (const l of labels) assert.ok(l && l === l.trim().toLowerCase() && !/\s{2}/.test(l) && l.length <= t.maxLength, `"${l}" is a trimmed lower-case label within maxLength`);
+  assert.equal(labels.at(-1), 'decline', 'decline is the last resort');
+  assert.ok(labels.indexOf('accept all') < labels.indexOf('accept') && labels.indexOf('allow all') < labels.indexOf('allow'), 'the accept-all labels win over their shorter forms');
+});
+check('consent label sweep covers every label of crawl.mjs\'s text-match fallback (drift guard until crawl imports the table)', () => {
+  const crawl = new URL('../../../extract/scripts/crawl.mjs', import.meta.url);
+  const m = /const LABELS = new Set\(\[([\s\S]*?)\]\)/.exec(readFileSync(crawl, 'utf8'));
+  assert.ok(m, 'crawl.mjs no longer declares its own `const LABELS = new Set([...])` — if it imports CONSENT_LABEL_SWEEP now, drop this guard');
+  const crawlLabels = [...m[1].matchAll(/'([^']*)'|"([^"]*)"/g)].map((x) => x[1] ?? x[2]);
+  assert.ok(crawlLabels.length >= 5, `parsed ${crawlLabels.length} labels from crawl.mjs`);
+  const missing = crawlLabels.filter((l) => !session.CONSENT_LABEL_SWEEP.labels.includes(l.toLowerCase()));
+  assert.deepEqual(missing, [], 'crawl.mjs labels missing from CONSENT_LABEL_SWEEP.labels');
 });
 check('isLiveHttpUrl: live http(s) only — never localhost, loopback, file: or garbage', () => {
   assert.equal(session.isLiveHttpUrl('https://www.example.com/page'), true);
@@ -272,6 +301,27 @@ else {
     // served with a CSP that blocks inline <style> without the nonce — the page's own styles carry it, the injected tag cannot
     '/csp': `<!doctype html><html><head><style nonce="${NONCE}">${css}</style>${lateBar}</head><body><header>Header</header><main><p>Content</p></main></body></html>`,
   };
+  // consent fixtures: each vendor's banner with its own accept button, a plain-labelled banner with "Decline" before
+  // the accept label, a label two shadow roots deep under a fixed host, and an in-content "Accept" link (no overlay)
+  const doc = (body) => `<!doctype html><html><head><style>body{margin:0;font:16px/20px sans-serif}</style></head><body><header>Header</header>${body}</body></html>`;
+  const BANNER = 'position:fixed;left:0;right:0;bottom:0;padding:16px;background:#fff;z-index:1000';
+  const MAIN = '<main><p>Content</p></main>';
+  Object.assign(PAGES, {
+    '/consent/cookiebot': doc(`${MAIN}<div id="CybotCookiebotDialog" style="${BANNER}"><p>This site uses cookies.</p><button id="CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll">Allow all</button></div>
+      <script>document.getElementById('CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll').onclick = () => { document.getElementById('CybotCookiebotDialog').style.display = 'none'; };</script>`),
+    '/consent/usercentrics': doc(`${MAIN}<div id="usercentrics-root"></div>
+      <script>const r = document.getElementById('usercentrics-root').attachShadow({ mode: 'open' }); r.innerHTML = '<div id="uc-banner" style="${BANNER}"><p>We use cookies.</p><button data-testid="uc-accept-all-button">Accept All</button></div>'; r.querySelector('button').onclick = () => r.getElementById('uc-banner').remove();</script>`),
+    '/consent/trustarc': doc(`${MAIN}<div id="truste-consent-track" style="${BANNER}"><button class="truste-button2">Agree and proceed</button></div>
+      <script>document.querySelector('.truste-button2').onclick = () => document.getElementById('truste-consent-track').remove();</script>`),
+    '/consent/didomi': doc(`${MAIN}<div id="didomi-notice" style="${BANNER}"><button id="didomi-notice-agree-button">Agree and close</button></div>
+      <script>document.getElementById('didomi-notice-agree-button').onclick = () => document.getElementById('didomi-notice').remove();</script>`),
+    '/consent/label': doc(`${MAIN}<div class="hinweis" style="${BANNER}"><p>Wir verwenden Cookies.</p><button id="no">Decline</button> <button id="yes">Alle akzeptieren</button></div>
+      <script>document.getElementById('no').onclick = () => { window.declined = true; }; document.getElementById('yes').onclick = () => { document.querySelector('.hinweis').style.display = 'none'; };</script>`),
+    '/consent/shadow-label': doc(`${MAIN}<consent-shell style="${BANNER};display:block"></consent-shell>
+      <script>const outer = document.querySelector('consent-shell').attachShadow({ mode: 'open' }); outer.innerHTML = '<consent-panel></consent-panel>'; const inner = outer.querySelector('consent-panel').attachShadow({ mode: 'open' }); inner.innerHTML = '<span role="button" tabindex="0">Zustimmen</span>'; inner.querySelector('span').onclick = () => { document.querySelector('consent-shell').style.display = 'none'; };</script>`),
+    '/consent/in-content': doc(`<main><p>Read the terms, then <a href="#" id="terms">Accept</a> them.</p></main>
+      <script>document.getElementById('terms').onclick = (e) => { e.preventDefault(); window.termsClicked = true; };</script>`),
+  });
   const server = createServer((req, res) => {
     res.setHeader('content-type', 'text/html');
     if (req.url === '/csp') res.setHeader('content-security-policy', `style-src 'self' 'nonce-${NONCE}'`);
@@ -344,6 +394,26 @@ else {
       assert.deepEqual(s.adopted, [['.geo-bar { display: none !important; }', 'main p { display: none !important; }']], 'one adopted sheet, its rules the union');
       await page.close();
     });
+    // consent: dismissOverlays → the vendor's own accept button, else the label sweep (by label priority, guarded to
+    // overlay containers, open shadow roots included); `gone` runs in the page after the sweep
+    const CONSENT = [
+      ['/consent/cookiebot', '#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll', () => getComputedStyle(document.getElementById('CybotCookiebotDialog')).display === 'none'],
+      ['/consent/usercentrics', '#usercentrics-root [data-testid="uc-accept-all-button"]', () => !document.getElementById('usercentrics-root').shadowRoot.getElementById('uc-banner')],
+      ['/consent/trustarc', '.truste-button2', () => !document.getElementById('truste-consent-track')],
+      ['/consent/didomi', '#didomi-notice-agree-button', () => !document.getElementById('didomi-notice')],
+      ['/consent/label', 'label "Alle akzeptieren"', () => getComputedStyle(document.querySelector('.hinweis')).display === 'none' && !window.declined],
+      ['/consent/shadow-label', 'label "Zustimmen"', () => getComputedStyle(document.querySelector('consent-shell')).display === 'none'],
+      ['/consent/in-content', null, () => !window.termsClicked],
+    ];
+    for (const [path, want, gone] of CONSENT) {
+      await checkAsync(`e2e consent: ${path} → ${want === null ? 'nothing clicked (an in-content "Accept" link is no consent control)' : want}`, async () => {
+        const page = await open(path);
+        const d = await session.dismissOverlays(page, { lateWindowMs: 0 });
+        assert.equal(d.consent, want);
+        assert.equal(await page.evaluate(gone), true, want === null ? 'the in-content link was clicked' : 'the banner is still up (or the decline control was clicked)');
+        await page.close();
+      });
+    }
   } finally { await browser.close(); server.close(); }
 }
 

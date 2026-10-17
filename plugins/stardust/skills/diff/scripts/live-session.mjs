@@ -39,7 +39,9 @@
  *     silently measured as the source (the Access-Denied trap: an "Access Denied"
  *     page diffs cleanly — wrongly).
  *   - Two overlay classes dismissed, not one: cookie consent (clicked, never
- *     DOM-removed) AND timed marketing/newsletter interstitials (CH-1:
+ *     DOM-removed — one consent table: each consent manager's own accept
+ *     button, then a multilingual label sweep guarded to overlay containers)
+ *     AND timed marketing/newsletter interstitials (CH-1:
  *     a fashion retailer's "Sign up, stay updated!" modal baked a large pixel-diff
  *     contributor into the live capture that no prototype fidelity could
  *     null out). The mouse is parked afterwards (bottom-left) so no
@@ -390,11 +392,18 @@ export async function launchStealthHeaded(chromium) {
 export const browserTier = (b) => b.stardustTier || 'chromium';
 
 // Consent-accept candidates (clicked, never DOM-removed, so consent-gated
-// layout settles the way a real visit does) — stitch-shot's proven list.
-// Exported for the test that pins the list; every instrument goes through
-// dismissOverlays below.
+// layout settles the way a real visit does): each consent manager's own
+// accept-all button first (OneTrust, Cookiebot, Usercentrics — Playwright's
+// CSS pierces its open shadow root —, TrustArc, Didomi, the cmp-prefixed
+// managers), then the text fallbacks. One table with CONSENT_LABEL_SWEEP below;
+// every instrument goes through dismissOverlays.
 export const CONSENT_CANDIDATES = [
   '#onetrust-accept-btn-handler',
+  '#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll',
+  '#CybotCookiebotDialogBodyButtonAccept',
+  '#usercentrics-root [data-testid="uc-accept-all-button"]',
+  '.truste-button2',
+  '#didomi-notice-agree-button',
   // cmp-prefixed consent managers: the welcome box's "yes" button, its box
   // variant and the button's text span
   '#cmpwelcomebtnyes',
@@ -402,10 +411,76 @@ export const CONSENT_CANDIDATES = [
   '#cmpbntyestxt',
   'button:has-text("Accept all")',
   'button:has-text("Accept All")',
+  'button:has-text("Allow all")',
   'button:has-text("Accept")',
   'button:has-text("I agree")',
   '[data-testid*="accept"]',
 ];
+
+// The label sweep when no candidate matched (a custom banner, a consent manager the list lacks): exact short labels,
+// in PRIORITY order — accept-like first, 'decline' the last resort (a banner without an accept control still goes).
+// A control counts only inside an overlay container (`containerPattern` id/class, a dialog, fixed/sticky, or
+// positioned with z-index ≥ `zIndex`), so an in-content "Accept" link is never clicked.
+export const CONSENT_LABEL_SWEEP = Object.freeze({
+  labels: Object.freeze([
+    'accept all cookies', 'accept all', 'accept cookies', 'accept and close', 'i accept', 'accept',
+    'allow all cookies', 'allow all', 'allow cookies', 'allow', 'i agree', 'agree',
+    'alle akzeptieren', 'akzeptieren', 'zustimmen', 'tout accepter', 'accepter', 'aceptar todo', 'aceptar',
+    'accetta tutto', 'accetta', 'got it', 'understood', 'okay', 'ok', 'decline',
+  ]),
+  maxLength: 32,
+  containerPattern: 'cookie|consent|gdpr|privacy|banner',
+  zIndex: 100,
+  controls: 'button, [role="button"], a, input[type="button"], input[type="submit"]',
+});
+
+/* eslint-disable no-undef */
+/**
+ * The label sweep, run in the page: `page.evaluate(consentLabelSweepInPage, CONSENT_LABEL_SWEEP)` (self-contained —
+ * Playwright serialises it). Controls are read from the document and every open shadow root, recursively; a control's
+ * text is its whitespace-collapsed `value` (inputs), else textContent, else aria-label. For each label in order, the
+ * first control whose lower-cased text IS that label (≤ maxLength), that is displayed (display, visibility, a 2×2
+ * box) and that sits in an overlay container (itself or an ancestor below <body>, crossing shadow hosts) is clicked —
+ * never removed. → its text in the page's own case, or null.
+ */
+export function consentLabelSweepInPage(table) {
+  const norm = (s) => (s || '').replace(/\s+/g, ' ').trim();
+  const container = new RegExp(table.containerPattern, 'i');
+  const wanted = new Set(table.labels);
+  const roots = [];
+  const addRoot = (root) => { roots.push(root); for (const el of root.querySelectorAll('*')) if (el.shadowRoot) addRoot(el.shadowRoot); };
+  addRoot(document);
+  const found = [];
+  for (const root of roots) {
+    for (const el of root.querySelectorAll(table.controls)) {
+      const text = el.tagName === 'INPUT' ? norm(el.value) : norm(el.textContent) || norm(el.getAttribute('aria-label'));
+      if (text && text.length <= table.maxLength && wanted.has(text.toLowerCase())) found.push({ el, text, label: text.toLowerCase() });
+    }
+  }
+  const displayed = (el) => {
+    const cs = getComputedStyle(el);
+    const r = el.getBoundingClientRect();
+    return cs.display !== 'none' && cs.visibility !== 'hidden' && r.width >= 2 && r.height >= 2;
+  };
+  const up = (n) => n.parentElement || (n.getRootNode() instanceof ShadowRoot ? n.getRootNode().host : null);
+  // <body> and <html> contain every control — a scroll-lock class or position on them guards nothing
+  const inOverlay = (el) => {
+    for (let n = el; n && n !== document.body && n !== document.documentElement; n = up(n)) {
+      if (n.getAttribute('role') === 'dialog' || n.getAttribute('aria-modal') === 'true') return true;
+      if (container.test(`${n.id} ${typeof n.className === 'string' ? n.className : n.getAttribute('class') || ''}`)) return true;
+      const cs = getComputedStyle(n);
+      if (cs.position === 'fixed' || cs.position === 'sticky') return true;
+      if (cs.position !== 'static' && Number(cs.zIndex) >= table.zIndex) return true;
+    }
+    return false;
+  };
+  for (const label of table.labels) {
+    const hit = found.find((c) => c.label === label && displayed(c.el) && inOverlay(c.el));
+    if (hit) { hit.el.click(); return hit.text; }
+  }
+  return null;
+}
+/* eslint-enable no-undef */
 
 // Container candidates for timed marketing/newsletter interstitials (CH-1).
 // [role=dialog]/[aria-modal]/.modal alone is NOT enough: the recorded
@@ -430,7 +505,9 @@ const MODAL_CLOSE_CANDIDATES = [
 
 /**
  * Dismiss the two overlay classes that corrupt live measurement:
- *   (a) cookie consent — clicked (never removed), first candidate wins;
+ *   (a) cookie consent — clicked (never removed): the first CONSENT_CANDIDATES
+ *       match wins; when none matched, the label sweep (consentLabelSweepInPage
+ *       with CONSENT_LABEL_SWEEP) — `consent` is then `label "<text>"`;
  *   (b) timed marketing/newsletter interstitials (CH-1) — every modal-like
  *       container with a VISIBLE close control gets it clicked, verified
  *       gone. Because these fire on a TIMER (recorded: a fashion retailer's panel
@@ -467,6 +544,13 @@ export async function dismissOverlays(page, { extra = [], lateWindowMs = 6000 } 
         break;
       }
     } catch { /* candidate absent — try next */ }
+  }
+  if (!dismissed.consent) {
+    const hit = await page.evaluate(consentLabelSweepInPage, CONSENT_LABEL_SWEEP).catch(() => null);
+    if (hit) {
+      dismissed.consent = `label "${hit}"`;
+      await page.waitForTimeout(1500);
+    }
   }
 
   // marketing/newsletter interstitials — close every modal container that
