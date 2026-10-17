@@ -93,7 +93,10 @@
  *     --locale <tag>      pin Accept-Language + locale (e.g. en-GB)
  *     --ua <string>       user agent                        (default real-Chrome)
  *     --wait <ms>         initial post-load wait            (default 1200; 3000 with --settle)
- *     --timeout <ms>      goto timeout                      (default 60000)
+ *     --timeout <ms>      goto timeout (default: env STARDUST_NAV_TIMEOUT_MS
+ *                         as given, else the crawl figure — 2 × crawl.navMs.p95
+ *                         from stardust/current/_crawl-log.json, clamped to
+ *                         20000–180000 — else 60000; the flag always wins)
  *     --inventory <spec>  also write the presence / clip / unit inventories of
  *                         the settled page, before the freeze (gate-all --one-load)
  *
@@ -125,7 +128,7 @@ if (!LIVE_SESSION) {
   console.error('stitch-shot error: live-session.mjs not found (looked in ../../diff/scripts/ and ../diff/). Copy the diff skill\'s scripts dir alongside this one (replica SKILL.md § Setup).');
   process.exit(1);
 }
-const { REAL_CHROME_UA, isEdsHost, lateWindowFor, waitEdsDelayedPhase, launchStealthHeaded, newLiveContext, gotoLive, dismissOverlays } = await import(pathToFileURL(LIVE_SESSION).href);
+const { REAL_CHROME_UA, isEdsHost, lateWindowFor, waitEdsDelayedPhase, launchStealthHeaded, newLiveContext, gotoLive, dismissOverlays, resolveNavTimeoutMs } = await import(pathToFileURL(LIVE_SESSION).href);
 
 const HELP = `stitch-shot — scroll-and-stitch full-page screenshot (symmetric capture instrument)
 
@@ -140,7 +143,9 @@ Usage: node stitch-shot.mjs <url> <out.png> [options]
   --locale <tag>    pin Accept-Language + locale (e.g. en-GB) for geo determinism
   --ua <string>     user agent (default: real-Chrome desktop UA + standard headers)
   --wait <ms>       initial post-load wait (default 1200; 3000 with --settle)
-  --timeout <ms>    goto timeout (default 60000)
+  --timeout <ms>    goto timeout (default: env STARDUST_NAV_TIMEOUT_MS as given, else the crawl figure —
+                    2 × crawl.navMs.p95 from stardust/current/_crawl-log.json, clamped to 20000–180000 —
+                    else 60000; the flag always wins)
   --inventory <f>   also write the probes' inventories of the settled page, before the freeze (gate-all --one-load)
   --help            this text
 
@@ -152,11 +157,12 @@ after the EDS delayed phase (live source sites keep the 6 s poll, local targets 
 Run the SAME command shape against the live page and the served prototype.
 Exit codes: 0 written, 1 error, 3 bot challenge (live side blocked — fail loud).`;
 
-function parseArgs(argv) {
+// `nav` reaches live-session's navTimeout ({ env, crawlLog }) — the test seam; the CLI passes none.
+export function parseArgs(argv, nav = {}) {
   const rest = argv.slice(2);
   if (rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
   const pos = [];
-  const opts = { width: 1440, vh: 900, settle: false, consent: null, dismiss: [], noDismiss: false, headed: false, locale: null, ua: REAL_CHROME_UA, wait: null, timeout: 60000 };
+  const opts = { width: 1440, vh: 900, settle: false, consent: null, dismiss: [], noDismiss: false, headed: false, locale: null, ua: REAL_CHROME_UA, wait: null, timeout: null };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--width') { opts.width = Number(rest[i += 1]); }
@@ -177,6 +183,9 @@ function parseArgs(argv) {
   const [url, out] = pos;
   if (!url || !out) { console.error(`need <url> and <out.png>\n\n${HELP}`); process.exit(1); }
   if (opts.wait == null) opts.wait = opts.settle ? 3000 : 1200;
+  // Resolved only without --timeout: one navigation timeout shared by every live instrument (a slow origin's
+  // measured p95 sets it once, for all of them); an explicit flag is never second-guessed.
+  if (opts.timeout == null) opts.timeout = resolveNavTimeoutMs({ fallback: 60000, ...nav });
   return { url, out, opts };
 }
 

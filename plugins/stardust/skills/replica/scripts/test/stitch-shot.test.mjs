@@ -12,15 +12,16 @@
 // (lateWindowFor → 0) but one dismissOverlays pass after waitEdsDelayedPhase still clicks a consent banner that
 // appears 3 s after `load` (the EDS delayed phase), which an immediate sweep misses. Prints a skip line otherwise.
 // --inventory (gate-all --one-load): named in --help; an unreadable spec still writes the PNG, exit 0, one warning.
+// The --timeout default: an explicit flag wins, else env STARDUST_NAV_TIMEOUT_MS, else the crawl figure, else 60000.
 // Run: node plugins/stardust/skills/replica/scripts/test/stitch-shot.test.mjs
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readdirSync, rmSync, statSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { overflowLine } from '../stitch-shot.mjs';
+import { overflowLine, parseArgs } from '../stitch-shot.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'stitch-shot.mjs');
@@ -38,6 +39,19 @@ await check('overflowLine: delta clamps at 0; a scrollbar gutter (clientWidth < 
   assert.equal(overflowLine({ scrollWidth: 1400, innerWidth: 1440, clientWidth: 1440 }), 'overflow: scrollWidth=1400 viewport=1440 delta=0');
   assert.equal(overflowLine({ scrollWidth: 1440, innerWidth: 1440, clientWidth: 1425 }), 'overflow: scrollWidth=1440 viewport=1440 delta=15');
 });
+await check('--timeout default: env STARDUST_NAV_TIMEOUT_MS, else 2 × the crawl\'s navMs p95 (clamped), else 60000 — an explicit --timeout always wins', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'stitch-nav-'));
+  try {
+    const crawlLog = join(dir, '_crawl-log.json');
+    writeFileSync(crawlLog, JSON.stringify({ crawl: { failures: [], navMs: { n: 12, p50: 9000, p95: 42000, max: 47000 } } }));
+    const timeout = (extra, nav) => parseArgs(['node', 'stitch-shot.mjs', 'https://x.test/', 'o.png', ...extra], nav).opts.timeout;
+    assert.equal(timeout([], { env: {}, crawlLog: null }), 60000, 'neither env nor crawl figure: the current default');
+    assert.equal(timeout([], { env: {}, crawlLog: join(dir, 'missing.json') }), 60000, 'a missing crawl log is skipped');
+    assert.equal(timeout([], { env: {}, crawlLog }), 84000, 'the crawl figure: p95 42000 × 2');
+    assert.equal(timeout([], { env: { STARDUST_NAV_TIMEOUT_MS: '90000' }, crawlLog }), 90000, 'env beats the crawl figure');
+    assert.equal(timeout(['--timeout', '5000'], { env: { STARDUST_NAV_TIMEOUT_MS: '90000' }, crawlLog }), 5000, 'the flag beats both');
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
 await check('--help in an empty cwd: exit 0, usage + the overflow line and the EDS rule named, nothing written — no playwright needed', () => {
   const cwd = mkdtempSync(join(tmpdir(), 'stitch-help-'));
   try {
@@ -48,6 +62,8 @@ await check('--help in an empty cwd: exit 0, usage + the overflow line and the E
     assert.match(r.stdout, /Usage: node stitch-shot\.mjs <url> <out\.png>/);
     assert.match(r.stdout, /overflow: scrollWidth=<n> viewport=<n> delta=<n>/);
     assert.match(r.stdout, /EDS build\/preview hosts/);
+    assert.match(r.stdout, /--timeout <ms> .*STARDUST_NAV_TIMEOUT_MS/, 'the env is named on the --timeout line');
+    assert.match(r.stdout, /crawl\.navMs\.p95 from stardust\/current\/_crawl-log\.json/, 'the crawl figure is named');
     assert.deepEqual(readdirSync(cwd), []);
   } finally { rmSync(cwd, { recursive: true, force: true }); }
 });
