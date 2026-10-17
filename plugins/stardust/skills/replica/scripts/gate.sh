@@ -66,7 +66,8 @@
 #   write their record (--json live-shot.json / build-shot.json in the evidence dir).
 #
 #   --full   the whole probe set in one round: after the pixel verdict the other
-#            probes run IN PARALLEL, each under its own deadline — content-diff
+#            probes run IN PARALLEL (bounded under run-bg — Concurrency, below), each
+#            under its own deadline — content-diff
 #            (structural 🔴 count), visual-diff (advisory flags), chrome-parity
 #            (header/footer deltas, live side cached), clip-probe on the BUILD side
 #            (text / controls cut or hidden by an overflow ancestor — no live hit;
@@ -100,11 +101,19 @@
 #            a chrome delta, a clipped count > 0, a content-presence MISSING / HIDDEN
 #            link or heading, or a required unit off; 1 when a probe errored (it gave
 #            no verdict), 0 only when every probe ran and passed.
-#            Concurrency: a --full round holds up to SIX Chromiums at its peak
-#            (the probes in parallel); RUN_BG_SLOTS lowers that on a small machine, and
-#            run-bg takes ONE machine-wide browser slot per round
-#            (stardust/scripts/stardust/browser-lock.mjs, STARDUST_BROWSER_SLOTS). Start the
-#            rounds all at once and let the slots pace them — no sleep staggering.
+#            Concurrency: run directly, a --full round starts every probe at once — up
+#            to SIX Chromiums at its peak. Under run-bg the round holds ONE machine-wide
+#            browser slot (stardust/scripts/stardust/browser-lock.mjs, STARDUST_BROWSER_SLOTS;
+#            the job's env carries STARDUST_BROWSER_SLOT=<slot file>) and its probes run
+#            at most STARDUST_BROWSERS_PER_SLOT at a time, in the order above: run-bg sets
+#            it to max(1, floor(STARDUST_BROWSER_BUDGET / STARDUST_BROWSER_SLOTS)) (budget
+#            3, slots 3 by default → 1), so S slots × that many probes stay within the
+#            budget B whenever B ≥ S (one probe per slot is the floor); unset or not a
+#            positive integer (an older run-bg) → 1. One stderr line names the bound. Each
+#            probe keeps its own deadline, exit code and verdict line, and the round's exit
+#            rule is unchanged; a bounded round costs the sum of its probes, not the slowest.
+#            RUN_BG_SLOTS lowers the job count on a small machine. Start the rounds all at
+#            once and let the slots pace them — no sleep staggering.
 #   --main <selector>   content root for the diff probes (default: main)
 #   --consent <sel>     site-specific consent-accept selector (clicked before the built-in candidates) —
 #                       reaches both captures, the diff probes and chrome-parity
@@ -466,10 +475,10 @@ case "$PIXEL_RC" in
   *) echo "gate.sh: probes skipped — the pixel round gave no verdict (exit $PIXEL_RC); re-run the round" >&2; exit $PIXEL_RC ;;
 esac
 
-# --full: the other three Phase 4 probes, in parallel, each under a deadline. One
-# recorded round that ran them one after another took 15 minutes; in parallel the
-# round costs the slowest probe. Their full reports go to evidence files; stdout
-# carries one verdict line each so the loop reads verdicts, not reports.
+# --full: the other Phase 4 probes, each under a deadline — all at once, or at most STARDUST_BROWSERS_PER_SLOT at a
+# time while run-bg holds a machine browser slot for this round (header § --full, Concurrency). One recorded round that
+# ran them one after another took 15 minutes; in parallel the round costs the slowest probe. Their full reports go to
+# evidence files; stdout carries one verdict line each so the loop reads verdicts, not reports.
 DIFF="$HERE/../diff"
 if [ ! -f "$DIFF/content-diff.mjs" ] || [ ! -f "$DIFF/visual-diff.mjs" ]; then
   echo "gate.sh: --full needs the diff skill's scripts at $DIFF (Setup step 4) — pixel verdict above stands" >&2
@@ -478,40 +487,63 @@ fi
 CD="$DIR/content-diff-$LBL.txt"; VD="$DIR/visual-diff-$LBL.txt"; CP="$DIR/chrome-parity-$LBL.txt"
 CL="$DIR/clip-$LBL.txt"; PR="$DIR/content-presence-$LBL.txt"; UG="$DIR/units-$LBL.txt"
 UNITS_FILE="stardust/replica/units.json"
+# The probe bound: PROBE_MAX 0 = every probe at once (no slot held — the fan-out as it always was); with a slot, the
+# per-slot value, or 1 when it is unset or not a positive integer (an older run-bg). bash 3.2 has no `wait -n`: the
+# launched pids queue in launch order (Q_PID, with the name of each probe's RC_* variable in Q_RC); before a launch,
+# while PROBE_MAX or more are unwaited, the OLDEST is waited and its exit code stored in its RC_* (printf -v); after the
+# last launch the rest are waited in the same order. Every pid is waited exactly once; a probe never launched keeps 0.
+PROBE_MAX=0
+if [ -n "${STARDUST_BROWSER_SLOT:-}" ]; then
+  PER=${STARDUST_BROWSERS_PER_SLOT:-}
+  case "$PER" in ''|*[!0-9]*) PROBE_MAX=0 ;; *) PROBE_MAX=$((10#$PER)) ;; esac
+  if [ "$PROBE_MAX" -ge 1 ]; then
+    echo "gate.sh: browser slot held — the --full probes run at most $PROBE_MAX at a time (STARDUST_BROWSERS_PER_SLOT=$PER)" >&2
+  else
+    PROBE_MAX=1
+    if [ -z "$PER" ]; then WHY="STARDUST_BROWSERS_PER_SLOT unset — an older run-bg"; else WHY="STARDUST_BROWSERS_PER_SLOT='$PER' is not a positive integer"; fi
+    echo "gate.sh: browser slot held — the --full probes run at most 1 at a time ($WHY; 1 is the conservative bound)" >&2
+  fi
+fi
+RC_CD=0; RC_VD=0; RC_CP=0; RC_CL=0; RC_PR=0; RC_UG=0
+Q_PID=(); Q_RC=(); Q_HEAD=0
+probe_reap() { wait "${Q_PID[$Q_HEAD]}"; printf -v "${Q_RC[$Q_HEAD]}" '%s' "$?"; Q_HEAD=$((Q_HEAD + 1)); }
+probe_slot() { [ "$PROBE_MAX" -gt 0 ] || return 0; while [ $(( ${#Q_PID[@]} - Q_HEAD )) -ge "$PROBE_MAX" ]; do probe_reap; done; }
+probe_started() { Q_PID+=("$1"); Q_RC+=("$2"); } # $1 the probe's pid ($! right after its launch), $2 its RC_* name
 # The effective hide list ($HIDE_OPTS) reaches every probe below but unit-geometry; chrome-parity has its own (above).
+probe_slot
 capped "$PROBE_TIMEOUT" "content-diff $SLUG@$W" node "$DIFF/content-diff.mjs" "$LIVE_URL" "$BUILD_URL" \
   --profile generic --width "$W" --live-cache "$DIR/content-live.json" --main "$MAIN" ${PROBE_OPTS[@]+"${PROBE_OPTS[@]}"} \
   ${HIDE_OPTS[@]+"${HIDE_OPTS[@]}"} > "$CD" 2>&1 &
-P_CD=$!
+probe_started $! RC_CD
+probe_slot
 capped "$PROBE_TIMEOUT" "visual-diff $SLUG@$W" node "$DIFF/visual-diff.mjs" "$LIVE_URL" "$BUILD_URL" \
   --profile generic --width "$W" --main "$MAIN" ${PROBE_OPTS[@]+"${PROBE_OPTS[@]}"} --out "$DIR/vdiff-$LBL" \
   --live-cache "$DIR/visual-live.json" ${HIDE_OPTS[@]+"${HIDE_OPTS[@]}"} > "$VD" 2>&1 &
-P_VD=$!
+probe_started $! RC_VD
+probe_slot
 capped "$PROBE_TIMEOUT" "chrome-parity $SLUG@$W" node "$HERE/chrome-parity.mjs" "$LIVE_URL" "$BUILD_URL" \
   --width "$W" --live-cache "$DIR/chrome-live.json" ${CHROME_OPTS[@]+"${CHROME_OPTS[@]}"} > "$CP" 2>&1 &
-P_CP=$!
+probe_started $! RC_CP
 # clip-probe on the BUILD side (every regime, no live hit); content-presence live vs build in the published regime;
 # unit-geometry when the project declares repeated-unit families (a slug with none prints n/a, exit 0). The live side
 # of content-diff, visual-diff and content-presence comes from its cache file in $DIR while fresh (header § --full).
+probe_slot
 capped "$PROBE_TIMEOUT" "clip-probe $SLUG@$W" node "$DIFF/clip-probe.mjs" "$BUILD_URL" --width "$W" --json "$DIR/clip-$LBL.json" \
   ${HIDE_OPTS[@]+"${HIDE_OPTS[@]}"} > "$CL" 2>&1 &
-P_CL=$!
+probe_started $! RC_CL
 P_PR=""; P_UG=""
 if [ "$REGIME" = published ]; then
+  probe_slot
   capped "$PROBE_TIMEOUT" "content-presence $SLUG@$W" node "$DIFF/content-presence.mjs" "$LIVE_URL" "$BUILD_URL" --width "$W" --json "$DIR/content-presence-$LBL.json" \
     --origin-cache "$DIR/presence-live.json" ${HIDE_OPTS[@]+"${HIDE_OPTS[@]}"} > "$PR" 2>&1 &
-  P_PR=$!
+  P_PR=$!; probe_started "$P_PR" RC_PR
 fi
 if [ -f "$UNITS_FILE" ] && [ -f "$DIFF/unit-geometry.mjs" ]; then
+  probe_slot
   capped "$PROBE_TIMEOUT" "unit-geometry $SLUG@$W" node "$DIFF/unit-geometry.mjs" "$LIVE_URL" "$BUILD_URL" --families "$UNITS_FILE" --slug "$SLUG" --width "$W" --json "$DIR/units-$LBL.json" > "$UG" 2>&1 &
-  P_UG=$!
+  P_UG=$!; probe_started "$P_UG" RC_UG
 fi
-wait $P_CD; RC_CD=$?
-wait $P_VD; RC_VD=$?
-wait $P_CP; RC_CP=$?
-wait $P_CL; RC_CL=$?
-RC_PR=0; [ -n "$P_PR" ] && { wait $P_PR; RC_PR=$?; }
-RC_UG=0; [ -n "$P_UG" ] && { wait $P_UG; RC_UG=$?; }
+while [ "$Q_HEAD" -lt "${#Q_PID[@]}" ]; do probe_reap; done
 
 verdict() { # $1 rc, $2 label, $3 line
   case "$1" in
