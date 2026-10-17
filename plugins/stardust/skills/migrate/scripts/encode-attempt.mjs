@@ -23,7 +23,9 @@
  *     roundtrip exit 0                    → encoded
  *     roundtrip exit 2                    → no-roundtrip, reason = its line
  *     exit 1 / other / timeout / spawn error → no-roundtrip, the reason names it (exit 1 adds the last stderr line)
- *     encoder absent                      → not-attempted, `encode.mjs not found beside this script` (nothing run)
+ *     encoder absent                      → not-attempted, `encode.mjs not found beside this script` (nothing run;
+ *                                           the default lookup only — a --encoder <file> that does not exist is a
+ *                                           usage error, exit 2, nothing run or written, never not-attempted)
  *     no stardust/import/<t>/vocabulary.json → not-attempted, `no map at … — the encoder needs the template's map`
  *                                           (nothing run)
  *     --not-attempted "<reason>"          → not-attempted with that reason — an owner decision, nothing run; the
@@ -47,8 +49,10 @@
  *         check and summary write nothing.
  * Library (imported by migrate.mjs): readAttempt(root, t) → the record or null · requireEncodeAttempt(root, t) →
  *   null or the check refusal line · recordAttempt(root, t, { encoder, notAttempted, timeoutMs }) → the record it
- *   wrote · summaryLine(records) → the summary line (a null entry is counted as ` · <k> without a record`).
- * Exit: 0 ok · 1 I/O (a record could not be written) · 2 usage error or a check refusal (message on stderr).
+ *   wrote (throws UsageError, writing nothing, when a named encoder does not exist) · summaryLine(records) → the
+ *   summary line (a null entry is counted as ` · <k> without a record`).
+ * Exit: 0 ok · 1 I/O (a record could not be written) · 2 usage error (an --encoder that does not exist included) or
+ *   a check refusal (message on stderr).
  */
 import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
@@ -132,8 +136,10 @@ export function recordAttempt(root, template, opts = {}) {
   const at = new Date().toISOString();
   let verdict; let roundtrip = null; let lint = null; let reason = null;
   const encoderFile = encoder ? resolve(encoder) : join(HERE, 'encode.mjs');
+  // A named encoder that is not there is a typo, never "not attempted": that record would open render's A′ path.
+  if (encoder && !isFile(encoderFile)) throw new UsageError(`--encoder ${encoder} does not exist`);
   if (typeof notAttempted === 'string') { verdict = 'not-attempted'; reason = notAttempted.trim(); }
-  else if (!isFile(encoderFile)) { verdict = 'not-attempted'; reason = encoder ? `encoder ${encoder} not found` : 'encode.mjs not found beside this script'; }
+  else if (!isFile(encoderFile)) { verdict = 'not-attempted'; reason = 'encode.mjs not found beside this script'; }
   else if (!isFile(join(rootAbs, mapRel(template)))) { verdict = 'not-attempted'; reason = `no map at ${mapRel(template)} — the encoder needs the template's map`; }
   else {
     const rt = runEncoder(encoderFile, '--roundtrip', template, rootAbs, timeoutMs);
@@ -203,6 +209,7 @@ function parseArgs(argv) {
   if (o.notAttempted !== null && !o.notAttempted.trim()) throw new UsageError('--not-attempted needs a non-empty reason');
   if (o.notAttempted !== null && o.encoder) throw new UsageError('--not-attempted runs nothing — drop --encoder');
   if (!isDir(o.root)) throw new UsageError(`--root ${o.root} is not a directory`);
+  if (o.encoder && !isFile(o.encoder)) throw new UsageError(`--encoder ${o.encoder} does not exist`);
   return o;
 }
 

@@ -1,7 +1,8 @@
 // Contract test for encode-attempt.mjs — a mkdtemp project and a FAKE encoder script (exit 0 / 2 / 1 by
 // template, a slow template for the timeout, a marker line appended per run). Covers: record → encoded /
-// no-roundtrip / exit 1 / timeout; encoder absent (explicit --encoder and the default lookup in the
-// project-copy layout) → not-attempted; no map → not-attempted with the encoder never run; --not-attempted
+// no-roundtrip / exit 1 / timeout; an explicit --encoder that does not exist → usage error, nothing written; the
+// default lookup with no encoder (the project-copy layout) → not-attempted; no map → not-attempted with the encoder
+// never run; --not-attempted
 // (reason required); template names that could leave the record directory; check (missing / malformed →
 // exit 2 naming the command, present → 0); summary counts (text and --json); deterministic bytes and key
 // order; the exported library; importing is silent.
@@ -87,13 +88,16 @@ check('several templates in one call (comma list) → one line each, in the give
   const r = rec('diff,good'); assert.equal(r.status, 0, r.err);
   assert.deepEqual(r.out.trim().split('\n').map((l) => l.split(':')[0]), ['encode-attempt diff', 'encode-attempt good']);
 });
-check('encoder absent (an explicit --encoder that does not exist) → not-attempted, nothing run', () => {
-  const before = runs().length;
-  const r = run(['record', '--template', 'good', '--root', ROOT, '--encoder', join(tmp, 'no-such-encode.mjs')]); assert.equal(r.status, 0, r.err);
-  const j = json(P(REC('good')));
-  assert.equal(j.verdict, 'not-attempted'); assert.equal(j.roundtrip, null); assert.equal(j.lint, null); assert.match(j.reason, /not found/);
+check('an explicit --encoder that does not exist (a typo) → usage error, exit 2, nothing run and nothing written (the library throws)', () => {
+  const before = runs().length; const kept = read(P(REC('good'))); map('typo');
+  const missing = join(tmp, 'no-such-encode.mjs');
+  const r = run(['record', '--template', 'good,typo', '--root', ROOT, '--encoder', missing]); assert.equal(r.status, 2);
+  assert.equal(r.out, ''); assert.equal(r.err, `usage error: --encoder ${missing} does not exist\n`);
+  assert.equal(read(P(REC('good'))), kept, 'an earlier record stays as it was'); assert.ok(!has(P(REC('typo'))), 'no record written');
+  assert.throws(() => recordAttempt(ROOT, 'typo', { encoder: missing }), (e) => e instanceof UsageError && e.message === `--encoder ${missing} does not exist`);
+  assert.ok(!has(P(REC('typo'))), 'no record written by the library either');
   assert.equal(runs().length, before);
-  rec('good');
+  rmSync(join(ROOT, 'stardust', 'import', 'typo'), { recursive: true });
 });
 check('the default encoder lookup (project-copy layout, no encode.mjs beside the script) → not-attempted, the brief\'s reason', () => {
   const copy = join(tmp, 'copy', 'stardust', 'scripts', 'migrate'); mkdirSync(copy, { recursive: true });
