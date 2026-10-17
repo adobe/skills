@@ -29,9 +29,10 @@
  *                section 2 links: the top-level <ul>/<ol> with the most links, lists inside <nav> first, as a clean
  *                <ul>; nesting only where the source has a list (a link, a heading or column text right before a
  *                list heads it; a badge or description after a link stays inline), other text stays inline in its
- *                item; a trigger without href keeps its label text; an item made only of columns (div, section, …
- *                wrappers, each holding a list) has no label of its own: each column reads as an item at its level,
- *                a column without a label as its items (no list: an empty section)
+ *                item; a trigger without href keeps its label text; a column (a div, section, … holding a list) is
+ *                read on its own — every heading or link in it heads the list right after it, a run after its first
+ *                list stands as an entry — so a column heading never labels the item: an item with no label of its
+ *                own outside its columns gives its place to their entries (no list: an empty section)
  *                section 3 tools: every other link as <p><a>, every other list as <ul>, in document order
  *   footer.html  one section per footer band — the element children of <footer>, through single-child wrappers
  *                (a run of inline children is one band): headings, lists, paragraphs (inline <a>, <strong>, <em>,
@@ -270,32 +271,12 @@ const section = (kids) => block('<div>', kids.filter(Boolean), '</div>');
 /* ---------------------------------------------------------------------------- nav --- */
 const BUTTONLIKE = new Set(['button', 'summary']);
 
-/** A mega-menu column: a wrapper (div, section, …) with a list inside. */
+/** A mega-menu column: a wrapper (div, section, …) with a list inside. navParts keeps it whole; navGroup reads it. */
 const isColumn = (n) => WRAPPERS.has(n.tag) && [...walk(n)].some((d) => d.tag === 'ul' || d.tag === 'ol');
 
 /**
- * The columns an element is made of: its children when each one is a column, bar what navParts ignores and controls
- * (counted as skipped; a trigger before the columns is a label of its own); else null.
- */
-function columnsOf(el, ctx) {
-  const cols = []; let skipped = 0;
-  for (const ch of el.children) {
-    if (!ch.tag) { if (hasContent(ch.text)) return null; continue; }
-    const t = ch.tag;
-    if (ctx.isBrand(ch) || DROP.has(t) || t === 'br' || t === 'img' || t === 'picture') continue;
-    if (isColumn(ch)) cols.push(ch);
-    else if ((BUTTONLIKE.has(t) || (t === 'a' && !realHref(ch))) && !cols.length && plainLabel(ch)) return null;
-    else if (CONTROLS.has(t) || BUTTONLIKE.has(t) || (t === 'a' && !realHref(ch))) skipped += 1;
-    else return null;
-  }
-  if (!cols.length) return null;
-  ctx.skipped += skipped;
-  return cols;
-}
-
-/**
- * A nav list item's parts in document order: text runs, links, nested lists. `block` marks a part that starts a
- * block (a heading or a panel column), as opposed to a badge or description inline after a link.
+ * A nav list item's parts in document order: text runs, links, nested lists, columns. `block` marks a part that
+ * starts a block (a heading or a panel), as opposed to a badge or description inline after a link.
  */
 function navParts(li, ctx) {
   const parts = []; let joinable = false; let fresh = true;
@@ -321,39 +302,61 @@ function navParts(li, ctx) {
       } else if (BUTTONLIKE.has(t) && !parts.length && plainLabel(ch)) push({ kind: 'trigger', html: plainLabel(ch) });
       else if (BUTTONLIKE.has(t) || CONTROLS.has(t)) ctx.skipped += 1;
       else if (t === 'ul' || t === 'ol') { push({ kind: 'list', el: ch }); fresh = true; }
+      else if (isColumn(ch)) { push({ kind: 'column', el: ch }); fresh = true; }
       else { fresh = true; visit(ch); joinable = false; fresh = true; }
     }
   };
   visit(li);
-  return parts.map((p) => (p.kind === 'text' ? { ...p, html: escapeHtml(collapse(p.raw)) } : p)).filter((p) => p.kind === 'list' || p.html);
+  return parts.map((p) => (p.kind === 'text' ? { ...p, html: escapeHtml(collapse(p.raw)) } : p))
+    .filter((p) => p.kind === 'list' || p.kind === 'column' || p.html);
 }
 
 const navLi = (head, items) => (items.length ? block(`<li>${head}`, [block('<ul>', items, '</ul>')], '</li>') : `<li>${head}</li>`);
 
 /**
- * A list item's entries, `[<li>inline<ul>…</ul></li>]`. The inline part is the first link or text (a trigger without
- * href: its label) and every other text or link that does not head a list, in document order. Nesting comes only
- * from the source's lists: a nested list's items, and a link, or a text that starts a block (a heading or a panel
- * column), directly followed by a list as `<li>label<ul>…` (a mega-menu column heading). Inline text after a link (a
- * description or a badge) stays inline even before a list, so it never turns the link into a dropdown trigger.
- * An item made only of columns has no label of its own — the first column's heading is never promoted to it: each
- * column reads as an item at its level (a column made only of columns splits in turn; a column without a label of
- * its own gives its items).
+ * An item's (or a column's) label and the entries below it: { head, items, columns }. The label is the first link
+ * or text (a trigger without href: its label) and every other text or link that does not head a list, in document
+ * order. Nesting comes only from the source's lists: a nested list's items, and a link, or a text that starts a
+ * block (a heading or a panel), directly followed by a list as `<li>label<ul>…` (a mega-menu column heading).
+ * Inline text after a link (a description or a badge) stays inline even before a list, so it never turns the link
+ * into a dropdown trigger. A column is read on its own, so none of its text is ever the item's label: in it even the
+ * first link or text heads the list right after it, its label is only what comes before its first list, and a run
+ * after that heads the next list or stands as an entry of its own. A labelled column is one entry; one without a
+ * label stands in for a list (a link or block text right before it heads its entries).
  */
-function navItem(li, ctx, column = false) {
-  const cols = columnsOf(li, ctx);
-  if (cols) return cols.flatMap((c) => navItem(c, ctx, true));
-  const parts = navParts(li, ctx);
+function navGroup(el, ctx, column = false) {
+  let columns = false;
+  const parts = navParts(el, ctx).map((p) => {
+    if (p.kind === 'list') return { ...p, items: navItems(p.el, ctx) };
+    if (p.kind !== 'column') return p;
+    columns = true;
+    const c = navGroup(p.el, ctx, true);
+    return c.head ? { kind: 'column', items: [navLi(c.head, c.items)] } : { kind: 'list', items: c.items };
+  });
   const inline = [];
   const items = [];
+  let seen = false; let run = null;
+  const flush = () => { if (run) items.push(`<li>${run.join(' ')}</li>`); run = null; };
   for (let i = 0; i < parts.length; i += 1) {
     const p = parts[i]; const next = parts[i + 1];
-    if (p.kind === 'list') items.push(...navItems(p.el, ctx));
-    else if (i > 0 && (p.kind === 'link' || p.block) && next?.kind === 'list') { items.push(navLi(p.html, navItems(next.el, ctx))); i += 1; }
+    if (p.items && run && p.kind === 'list') { items.push(navLi(run.join(' '), p.items)); run = null; seen = true; }
+    else if (p.items) { flush(); items.push(...p.items); seen = true; }
+    else if ((column || i > 0) && (p.kind === 'link' || p.block) && next?.kind === 'list') {
+      flush(); items.push(navLi(p.html, next.items)); i += 1; seen = true;
+    } else if (column && seen) { if (p.block || !run) { flush(); run = []; } run.push(p.html); }
     else inline.push(p.html);
   }
-  const head = inline.join(' ');
-  if (!head && (column || !items.length)) return items;
+  flush();
+  return { head: inline.join(' '), items, columns };
+}
+
+/**
+ * A list item's entries, `[<li>label<ul>…</ul></li>]` (see navGroup). An item without a label of its own that holds
+ * columns gives its place to their entries: the first column's heading is never promoted to its label.
+ */
+function navItem(li, ctx) {
+  const { head, items, columns } = navGroup(li, ctx);
+  if (!head && (columns || !items.length)) return items;
   return [navLi(head, items)];
 }
 

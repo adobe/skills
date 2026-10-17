@@ -289,6 +289,50 @@ check('nav: column wrappers beside the item\'s own link nest under it, each head
       </ul>`);
   assert.deepEqual(r.counts, { brand: 1, links: 5, tools: 0, skipped: 1 });
 });
+const navOf = (li) => sectionsOf(buildNav(`<header><a class="logo" href="/"><img src="/media/logo.svg" alt="Example"></a><nav><ul>${li}</ul></nav></header>`).doc)[1];
+const COL_W = '<div class="col"><h3>Widgets</h3><ul><li><a href="/w1">W1</a></li></ul></div>';
+const COL_G = '<div class="col"><h3>Gadgets</h3><ul><li><a href="/g1">G1</a></li></ul></div>';
+const W_G = `        <li>Widgets
+          <ul>
+            <li><a href="/w1">W1</a></li>
+          </ul>
+        </li>
+        <li>Gadgets
+          <ul>
+            <li><a href="/g1">G1</a></li>
+          </ul>
+        </li>`;
+check('nav: inside a column every heading heads its own list — one wrapper of two groups, a two-group column, a link after a column\'s list', () => {
+  const groups = '<h3>Widgets</h3><ul><li><a href="/w1">W1</a></li></ul><h3>Gadgets</h3><ul><li><a href="/g1">G1</a></li></ul>';
+  assert.equal(navOf(`<li><div class="mega">${groups}</div></li>`), `      <ul>\n${W_G}\n      </ul>`);
+  assert.equal(navOf(`<li><div class="col">${groups}</div><div class="col"><h3>Tools</h3><ul><li><a href="/t1">T1</a></li></ul><a href="/tools">All tools</a></div></li>`), `      <ul>
+${W_G}
+        <li>Tools
+          <ul>
+            <li><a href="/t1">T1</a></li>
+          </ul>
+        </li>
+        <li><a href="/tools">All tools</a></li>
+      </ul>`);
+  assert.equal(navOf(`<li><div class="col">${groups}<a href="/sale">Sale</a> <span>New</span><ul><li><a href="/s1">S1</a></li></ul></div></li>`), `      <ul>
+${W_G}
+        <li><a href="/sale">Sale</a> New
+          <ul>
+            <li><a href="/s1">S1</a></li>
+          </ul>
+        </li>
+      </ul>`);
+});
+check('nav: a link after the columns is the item\'s own label, never a column heading; an empty icon beside the columns changes nothing', () => {
+  assert.equal(navOf(`<li>${COL_W}${COL_G}<a href="/all">See all</a></li>`), `      <ul>
+        <li><a href="/all">See all</a>
+          <ul>
+    ${W_G.replace(/\n/g, '\n    ')}
+          </ul>
+        </li>
+      </ul>`);
+  assert.equal(navOf(`<li><span class="chev"></span>${COL_W}<i class="icon"></i>${COL_G}</li>`), `      <ul>\n${W_G}\n      </ul>`);
+});
 check('entities: a name that is an Object.prototype key stays literal text; a tag of that name parses', () => {
   assert.equal(decode('&constructor; &toString; &valueOf; &hasOwnProperty; &amp;'), '&constructor; &toString; &valueOf; &hasOwnProperty; &');
   assert.equal(sectionsOf(buildFooter('<footer><p>R&constructor;D &toString;</p></footer>').doc)[0], '      <p>R&constructor;D &toString;</p>');
