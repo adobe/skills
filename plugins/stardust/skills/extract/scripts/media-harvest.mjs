@@ -39,8 +39,12 @@
  * Download: each URL once, in a pool of --concurrency, through fetch (redirects followed; a
  * desktop-browser User-Agent, an any-type Accept header so a CDN serves the original format
  * rather than a negotiated one, Referer = the media URL's origin). A non-2xx answer is
- * `http-<code>`; a network failure, a timeout or an empty body is `error` with an `error`
- * message; --max-bytes overruns are `too-large`. Failures are recorded in the map and never fatal.
+ * `http-<code>`; a 2xx answer whose content-type is present and is not image/*, video/*,
+ * audio/*, application/octet-stream or binary/octet-stream (the type before `;`, any case — an
+ * HTML page behind an <iframe data-src>, say) is `not-media`: its contentType recorded, no
+ * file written (a missing content-type downloads as any media); a network failure, a timeout
+ * or an empty body is `error` with an `error` message; --max-bytes overruns are `too-large`.
+ * Failures are recorded in the map and never fatal.
  *
  * File name: <base>-<hash8>.<ext>
  *   base   the URL path's basename, percent-decoded, extension removed, lowercased, runs of
@@ -56,16 +60,17 @@
  *   <out>/<base>-<hash8>.<ext>   one file per distinct name
  *   <map>   { "<sourceUrl>": { "local": "<out>/<file>" | null, "bytes": <n> | null,
  *                              "contentType": "<type>" | null,
- *                              "status": "ok" | "http-<code>" | "too-large" | "error",
+ *                              "status": "ok" | "http-<code>" | "not-media" | "too-large" | "error",
  *                              "error"?: "<message>" } }
  *           keyed by absolute source URL, keys sorted, 2-space JSON + newline; `local` is <out>
- *           joined with the file name, posix separators, as given (project-relative by default).
+ *           joined with the file name, posix separators, as given (project-relative by default);
+ *           `contentType` is set on ok and not-media entries, null on the other failures.
  *           Entries for URLs this run did not see are kept. Written atomically, and only when its
  *           content changes — a run that changes nothing leaves it byte-identical. An existing
  *           map that is not a JSON object is refused (exit 2), never overwritten.
  *
  * Re-runs: a URL whose map entry is `ok` and whose `local` file exists at the recorded `bytes`
- * is reused with no request; every failed entry is retried.
+ * is reused with no request; every failed entry (not-media included) is retried.
  *
  * Output (stdout):
  *   media-harvest: <u> url(s) from <p> page(s) · downloaded <d> · reused <r> · failed <f> (<status> ×<n>, …) → <map>
@@ -268,6 +273,8 @@ export function pageMedia(html, pageUrl = null) {
 // ---- naming (pure) -----------------------------------------------------------------------------
 
 export function mediaType(header) { const t = String(header ?? '').split(';')[0].trim().toLowerCase(); return t || null; }
+// A declared content-type that names media (or opaque bytes); null (none declared) is not judged here.
+export function isMediaType(type) { return /^(image|video|audio)\//.test(type) || type === 'application/octet-stream' || type === 'binary/octet-stream'; }
 function pathBasename(url) {
   let seg = '';
   try { seg = posix.basename(new URL(url).pathname); } catch { /* not a URL */ }
@@ -320,7 +327,7 @@ function errMessage(e, timeout) {
   return String(e?.message || e);
 }
 
-// One GET: { status: 'ok', bytes, contentType } | { status: 'http-<code>' | 'too-large' | 'error', error? }.
+// One GET: { status: 'ok', bytes, contentType } | { status: 'not-media', contentType } | { status: 'http-<code>' | 'too-large' | 'error', error? }.
 export async function download(url, { timeout = DEFAULTS.timeout, maxBytes = null, ua = DEFAULT_UA } = {}) {
   let res;
   let referer = '';
@@ -330,6 +337,8 @@ export async function download(url, { timeout = DEFAULTS.timeout, maxBytes = nul
   } catch (e) { return { status: 'error', error: errMessage(e, timeout) }; }
   const drop = async () => { try { await res.body?.cancel(); } catch { /* already closed */ } };
   if (!res.ok) { await drop(); return { status: `http-${res.status}` }; }
+  const type = mediaType(res.headers.get('content-type'));
+  if (type !== null && !isMediaType(type)) { await drop(); return { status: 'not-media', contentType: type }; }
   const declared = res.headers.get('content-length');
   if (maxBytes && declared !== null && Number(declared) > maxBytes) {
     await drop();
@@ -373,7 +382,7 @@ function writeMedia(file, bytes) {
 
 async function harvestOne(url, o) {
   const r = await download(url, o);
-  if (r.status !== 'ok') return { local: null, bytes: null, contentType: null, status: r.status, ...(r.error ? { error: r.error } : {}) };
+  if (r.status !== 'ok') return { local: null, bytes: null, contentType: r.contentType ?? null, status: r.status, ...(r.error ? { error: r.error } : {}) };
   const local = localPath(o.out, mediaFileName(url, r.bytes, r.contentType));
   try { writeMedia(local, r.bytes); } catch (e) {
     return { local: null, bytes: null, contentType: null, status: 'error', error: `write failed: ${e.code || e.message}` };

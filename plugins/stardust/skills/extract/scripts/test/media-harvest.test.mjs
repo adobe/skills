@@ -7,9 +7,11 @@
 // references without a base counted, not guessed), the naming and extension rules, the map merge,
 // the summary lines and argument parsing. Part (b), end-to-end against a node:http server on
 // 127.0.0.1 (no internet): images, a redirect, a 404, an oversize file by content-length and one by
-// streaming under --max-bytes, a hang under --timeout — exit 0, map entries and files; the second run
-// requests only the failed URLs and leaves the map byte-identical (an unrelated entry survives); on a
-// clean site the second run makes zero requests; a missing local file is fetched again; a map that
+// streaming under --max-bytes, a hang under --timeout — exit 0, map entries and files; a 2xx answer
+// whose content-type is not media is not-media (no file), octet-stream and no content-type download;
+// the second run requests only the failed URLs and leaves the map byte-identical (an unrelated entry
+// survives); on a clean site the second run makes zero requests; a missing local file is fetched
+// again; a map that
 // is not a JSON object is refused; usage errors; --help in an empty cwd writes nothing; the real-path
 // main-module guard. Run: node <this file>.
 import assert from 'node:assert/strict';
@@ -178,10 +180,12 @@ await check('parseArgs: defaults; every flag; a value flag followed by nothing o
 const fill = (seed, n) => Buffer.from(Array.from({ length: n }, (_, i) => (i * 31 + seed) % 256));
 const HERO = fill(1, 300); const HERO2X = fill(2, 400); const CARD = fill(3, 500); const NOEXT = fill(4, 200);
 const NESTED = fill(5, 120); const LOGO = fill(6, 140); const SVG = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>'); const BIG = fill(7, 5000);
+const BLOB = fill(8, 90); const UNTYPED = fill(9, 80);
 const ROUTES = {
   '/img/hero.jpg': ['image/jpeg', HERO], '/cdn/hero.jpg': ['image/jpeg', HERO], '/img/hero-2x.jpg': ['image/jpeg', HERO2X],
   '/img/card.webp?v=2': ['image/webp; charset=binary', CARD], '/img/noext': ['image/png', NOEXT], '/bg/Pattern%20Dark.svg': ['image/svg+xml', SVG],
   '/sub/nested.gif': ['image/gif', NESTED], '/img/logo.gif': ['image/gif', LOGO], '/big.mp4': ['video/mp4', BIG],
+  '/embed/player': ['Text/HTML; charset=utf-8', Buffer.from('<!doctype html><title>player</title>')], '/raw/blob': ['application/octet-stream', BLOB], '/raw/untyped': [null, UNTYPED],
 };
 const hits = new Map();
 const hanging = [];
@@ -197,7 +201,7 @@ const server = createServer((req, res) => {
   }
   const r = ROUTES[req.url];
   if (!r) { res.writeHead(404, { 'content-type': 'text/html' }); res.end('<h1>not found</h1>'); return; }
-  res.writeHead(200, { 'content-type': r[0], 'content-length': r[1].length }); res.end(r[1]);
+  res.writeHead(200, { ...(r[0] ? { 'content-type': r[0] } : {}), 'content-length': r[1].length }); res.end(r[1]);
 });
 await new Promise((resolve) => { server.listen(0, '127.0.0.1', resolve); });
 const ORIGIN = `http://127.0.0.1:${server.address().port}`;
@@ -299,6 +303,25 @@ await check('e2e clean site: run 2 makes ZERO requests, map byte-identical; a de
   assert.equal(third.out, 'media-harvest: 3 url(s) from 1 page(s) · downloaded 1 · reused 2 · failed 0 → media-map.json\n');
   assert.equal(totalHits(), n + 1, 'only the missing file is fetched');
   assert.ok(readFileSync(join(clean, 'media-map.json')).equals(map1)); assert.ok(readFileSync(join(clean, `media/card-${sha8(CARD)}.webp`)).equals(CARD));
+});
+
+await check('a 2xx answer whose content-type is not media (an <iframe data-src> HTML endpoint) → not-media: contentType recorded, no file, retried; octet-stream and no content-type still download', async () => {
+  const dir = join(root, 'not-media'); mkdirSync(join(dir, 'pages'), { recursive: true });
+  writeFileSync(join(dir, 'pages/index.json'), `${JSON.stringify({ slug: 'index', url: `${ORIGIN}/` })}\n`);
+  writeFileSync(join(dir, 'pages/index.html'), '<iframe data-src="/embed/player"></iframe><img data-src="/raw/blob"><img src="/raw/untyped">');
+  const args = ['--pages', 'pages', '--out', 'media', '--map', 'm.json'];
+  const r = await run(args, dir);
+  assert.equal(r.code, 0, r.err);
+  assert.equal(r.out, `media-harvest: 3 url(s) from 1 page(s) · downloaded 2 · reused 0 · failed 1 (not-media ×1) → m.json\nfail not-media ${ORIGIN}/embed/player\n`);
+  assert.deepEqual(JSON.parse(readFileSync(join(dir, 'm.json'), 'utf8')), {
+    [`${ORIGIN}/embed/player`]: { local: null, bytes: null, contentType: 'text/html', status: 'not-media' },
+    [`${ORIGIN}/raw/blob`]: { local: `media/blob-${sha8(BLOB)}.bin`, bytes: BLOB.length, contentType: 'application/octet-stream', status: 'ok' },
+    [`${ORIGIN}/raw/untyped`]: { local: `media/untyped-${sha8(UNTYPED)}.bin`, bytes: UNTYPED.length, contentType: null, status: 'ok' },
+  });
+  assert.deepEqual(readdirSync(join(dir, 'media')).sort(), [`blob-${sha8(BLOB)}.bin`, `untyped-${sha8(UNTYPED)}.bin`]);
+  const n = hits.get('/embed/player');
+  const again = await run(args, dir);
+  assert.equal(again.code, 0, again.err); assert.equal(hits.get('/embed/player'), n + 1, 'a not-media entry is retried');
 });
 
 await check('an existing --map that is not a JSON object is refused (exit 2) before any request and left untouched', async () => {
