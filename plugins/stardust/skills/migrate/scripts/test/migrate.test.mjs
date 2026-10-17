@@ -519,6 +519,13 @@ check('forkFromArchetype (pure): a value the slot element cannot take is a stric
   assert.throws(() => forkFromArchetype('<html><head><title>t</title></head><body><main><img data-slot="pic" src="a.jpg"><div data-slot="box"><p>x</p></div></main></body></html>', { slots: { pic: 'words', box: { src: '/b.jpg' } } }, { slug: 's', archetype: 'a' }),
     /^Error: refused s: strict slots — slot value\(s\) the archetype a cannot take: pic \(text value on <img>\); box \(image value on <div> without an <img>\) — /);
 });
+check('forkFromArchetype (pure): inserted HTML maps src / srcset on img, source, video, audio and poster on video only; an <iframe src> keeps its URL', () => {
+  const seen = []; const resolveMedia = (ref) => { seen.push(ref); return { ref: `mapped/${ref.split('/').pop()}`, unmapped: null }; };
+  const html = '<iframe src="https://video.example.test/embed/1"></iframe><img src="/a.jpg"><video src="/v.mp4" poster="/p.jpg"><source src="/s.webm"></video><audio src="/au.mp3"></audio><div poster="/x.jpg"><embed src="/e.swf"></div>';
+  const r = forkFromArchetype('<html><head><title>t</title></head><body><main><div data-slot="body"></div></main></body></html>', { slots: { body: { html } } }, { slug: 's', archetype: 'a', resolveMedia });
+  assert.match(r.html, /<div data-slot="body"><iframe src="https:\/\/video\.example\.test\/embed\/1"><\/iframe><img src="mapped\/a\.jpg"><video src="mapped\/v\.mp4" poster="mapped\/p\.jpg"><source src="mapped\/s\.webm"><\/video><audio src="mapped\/au\.mp3"><\/audio><div poster="\/x\.jpg"><embed src="\/e\.swf"><\/div><\/div>/);
+  assert.deepEqual(seen.sort(), ['/a.jpg', '/au.mp3', '/p.jpg', '/s.webm', '/v.mp4']);
+});
 
 // ---- variance gate: the sibling-variance record gates every A′ page ------------------------------------
 console.log('variance gate');

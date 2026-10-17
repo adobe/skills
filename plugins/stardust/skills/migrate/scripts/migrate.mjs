@@ -78,8 +78,10 @@
  *   Head: <title> ← the capture's title (emptied when absent → strict metadata), meta
  *   description ← metaDescription || description (removed when neither), the archetype's
  *   canonical, og:*, twitter:* and every application/ld+json script removed, <html lang> ←
- *   language || lang. Media in slot values and inserted HTML (the archetype's own media stay)
- *   resolve against the capture's finalUrl || url, then: a --media-map entry (default
+ *   language || lang. Media in slot values and inserted HTML (the archetype's own media stay; in
+ *   inserted HTML only src / srcset on <img> <source> <video> <audio> and poster on <video> —
+ *   any other element's URLs are left as is) resolve against the capture's finalUrl || url,
+ *   then: a --media-map entry (default
  *   <current>/assets/media-map.json) with status ok and an existing local file → that file
  *   relative to --proto-dir (bundled to <out>/assets/ like any asset); else a --media-ledger
  *   record (default <dirname(state)>/deploy/media-ledger.json; keyed by DA path, or { entries })
@@ -557,10 +559,16 @@ export function forkFromArchetype(archetypeHtml, capture, { slug = 'page', arche
   const placed = new Set(); const missing = new Set(); const problems = [...badEntries]; const empty = new Set(); const unmapped = new Set();
   const media = (ref) => { const r = resolveRef(ref); if (r.unmapped) unmapped.add(r.unmapped); return r.ref; };
   const srcset = (s) => String(s).split(',').map((part) => { const [u, ...d] = part.trim().split(/\s+/); return u ? [media(u), ...d].join(' ') : ''; }).filter(Boolean).join(', ');
-  const mapHtml = (h) => h.replace(/<([a-zA-Z][\w-]*)(\s(?:[^>"']|"[^"]*"|'[^']*')*)?>/g, (m, tag, attrs) => (!attrs ? m : `<${tag}${attrs.replace(/(?<![\w-])(src|srcset|poster)\s*=\s*(["'])(.*?)\2/gis, (mm, n, q, val) => {
-    const raw = val.replace(/&amp;/g, '&'); const next = n.toLowerCase() === 'srcset' ? srcset(raw) : media(raw);
-    return next === raw ? mm : `${n}=${q}${esc(next)}${q}`;
-  })}>`));
+  const MEDIA_TAGS = new Set(['img', 'source', 'video', 'audio']); // other elements' URLs (an <iframe src>, say) are not media
+  const mapHtml = (h) => h.replace(/<([a-zA-Z][\w-]*)(\s(?:[^>"']|"[^"]*"|'[^']*')*)?>/g, (m, tag, attrs) => {
+    const t = tag.toLowerCase();
+    if (!attrs || !MEDIA_TAGS.has(t)) return m;
+    return `<${tag}${attrs.replace(/(?<![\w-])(src|srcset|poster)\s*=\s*(["'])(.*?)\2/gis, (mm, n, q, val) => {
+      const name = n.toLowerCase(); if (name === 'poster' && t !== 'video') return mm;
+      const raw = val.replace(/&amp;/g, '&'); const next = name === 'srcset' ? srcset(raw) : media(raw);
+      return next === raw ? mm : `${n}=${q}${esc(next)}${q}`;
+    })}>`;
+  });
   const imgAttrs = (o, v) => {
     o = setAttr(setAttr(o, 'src', media(v.src)), 'alt', v.alt == null ? null : String(v.alt));
     return v.srcset ? setAttr(o, 'srcset', srcset(v.srcset)) : setAttr(setAttr(o, 'srcset', null), 'sizes', null);
