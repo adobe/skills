@@ -168,7 +168,7 @@ check('sidecar: branches, template, tiers, archetype fields, key order and sha s
 check('variance gate: an A′ page with no probe file is rendered, recorded as skipped and named in one summary line; A / B record null', () => {
   assert.match(r1.out, /^variance: 1 A′ page\(s\) rendered without a variance probe row — recorded as skipped \(tours-north\)$/m);
   assert.deepEqual(json(`${OUT}/tours/north/_meta.json`).variance, { status: 'skipped', reason: 'no variance probe file stardust/rollout/variance/tours.json' });
-  assert.equal(homeMeta.variance, null); assert.deepEqual(Object.keys(homeMeta).slice(-3), ['variance', 'slotSource', 'slotMap']);
+  assert.equal(homeMeta.variance, null); assert.deepEqual(Object.keys(homeMeta).slice(-4), ['variance', 'slotSource', 'slotMap', 'slotMapSkipped']);
 });
 check('state.json.migrate: page map from all 7 pages, sorted bundledAssets; pages[].status and site untouched', () => {
   const s = json(STATE);
@@ -625,6 +625,8 @@ check('without a mapping a fork reads the page JSON slots (slotSource page-json)
   assert.match(r.err, /^refused trip-one: strict slots — the block mapping is unusable: stardust\/rollout\/workspace\/mapping\.json is absent — re-run the rollout skill's block-origin\.mjs --verify, then workspace-manifest\.mjs, or pass --slots page-json$/m);
   assert.ok(!has(`${OUT}/trips/one/index.html`) && !has(`${OUT}/trips/one/_meta.json`));
   const bad = run(['render', 'trip-one', '--slots', 'pagejson']); assert.equal(bad.status, 1); assert.match(bad.err, /^usage error: --slots takes mapping or page-json \(got pagejson\)/);
+  const plain = run(['render', 'guide-alpha', '--force']); assert.equal(plain.status, 0, plain.err);
+  assert.doesNotMatch(plain.out, /^slots:/m, 'no mapping in the project: the page JSON path, silently'); assert.equal(json(`${OUT}/guides/alpha/_meta.json`).slotMapSkipped, null);
 });
 publish();
 const pageJsonBefore = ['trip-one', 'trip-two'].map((s) => read(`stardust/current/pages/${s}.json`));
@@ -648,7 +650,7 @@ check('a hash-listed, fresh mapping is the default: each sibling takes its own t
 });
 check('mapped fork sidecar: slotSource mapping, slotMap { mapping, generatedAt, anchors, slots: {name: anchor} }; provenance names the mapping; a re-run is unchanged', () => {
   const m = json(`${OUT}/trips/one/_meta.json`);
-  assert.equal(m.slotSource, 'mapping');
+  assert.equal(m.slotSource, 'mapping'); assert.equal(m.slotMapSkipped, null);
   assert.deepEqual(m.slotMap, { mapping: MAPPING, generatedAt: '2026-10-01T08:00:00.000Z', anchors: 2, slots: { body: 'div.article', cta: 'div.hero-banner', headline: 'div.hero-banner', hero: 'div.hero-banner' } });
   assert.deepEqual(m.migrationDecisions.find((d) => d.kind === 'archetype-fork'), { kind: 'archetype-fork', archetype: 'trips', slots: ['body', 'cta', 'headline', 'hero'], _driver: true });
   assert.match(tripOne, /^ {2}sourceForked: {5}stardust\/prototypes\/trips-proposed\.html \+ stardust\/rollout\/workspace\/mapping\.json on stardust\/current\/pages\/trip-one\.html$/m);
@@ -681,25 +683,43 @@ check('--slots page-json keeps the page JSON path with a mapping present (today\
   const m = json(`${OUT}/trips/two/_meta.json`); assert.equal(m.slotSource, 'page-json'); assert.equal(m.slotMap, null);
   tripCap('trip-two', 'Coastal walks');
 });
-check('an unusable mapping (changed after the manifest, stale against pages.json) refuses the mapped fork, naming --slots page-json and the block-origin re-run; nothing written', () => {
+check('default (no --slots): a stale mapping, or one without a verified selector for the archetype, is not used — the page JSON slots, one run line per archetype, the reason in the sidecar', () => {
+  tripCap('trip-two', 'Coastal walks', { slots: { headline: 'Fallback headline', hero: { src: '/content/media/coast.jpg' }, cta: { href: 'https://booking.example.org/coast' }, body: { html: '<p>Fallback body.</p>' } } });
+  publish(MAPPED, '2026-10-05T00:00:00.000Z');
+  const stale = run(['render', 'trip-two']); assert.equal(stale.status, 0, stale.err);
+  const staleWhy = 'stardust/rollout/workspace/mapping.json is stale: generatedAt 2026-10-01T08:00:00.000Z, stardust/rollout/coverage/pages.json generatedAt 2026-10-05T00:00:00.000Z';
+  assert.match(stale.out, /^A' trip-two → trips\/two\/index\.html {2}\(trip; fork of trips; /m);
+  assert.deepEqual(stale.out.split('\n').filter((l) => l.startsWith('slots:')), [`slots: archetype trips — mapping not used (${staleWhy}); page JSON slots`]);
+  assert.match(mainOf(read(`${OUT}/trips/two/index.html`)), /<h1 data-slot="headline">Fallback headline<\/h1>/);
+  let m = json(`${OUT}/trips/two/_meta.json`); assert.equal(m.slotSource, 'page-json'); assert.equal(m.slotMap, null); assert.equal(m.slotMapSkipped, staleWhy);
+  const other = JSON.parse(MAPPED); other.templates = other.templates.filter((t) => t.templateId !== 'trip');
+  publish(`${JSON.stringify(other, null, 2)}\n`);
+  const without = run(['render', 'trip-two']); assert.equal(without.status, 0, without.err);
+  const noneWhy = 'stardust/rollout/workspace/mapping.json has no verified selector for archetype trips';
+  assert.match(without.out, /^A' trip-two → trips\/two\/index\.html {2}\(trip; fork of trips; /m, 'the changed reason re-renders the page');
+  assert.deepEqual(without.out.split('\n').filter((l) => l.startsWith('slots:')), [`slots: archetype trips — mapping not used (${noneWhy}); page JSON slots`]);
+  m = json(`${OUT}/trips/two/_meta.json`); assert.equal(m.slotSource, 'page-json'); assert.equal(m.slotMapSkipped, noneWhy);
+  tripCap('trip-two', 'Coastal walks'); publish();
+});
+check('an explicit --slots mapping refuses an unusable mapping (changed after the manifest, stale against pages.json), naming --slots page-json and the block-origin re-run; nothing written', () => {
   const before = read(`${OUT}/trips/one/_meta.json`);
   write(MAPPING, `${MAPPED}\n`);
-  const changed = run(['render', 'trip-one', '--force']); assert.equal(changed.status, 2);
+  const changed = run(['render', 'trip-one', '--force', '--slots', 'mapping']); assert.equal(changed.status, 2);
   assert.match(changed.err, /^refused trip-one: strict slots — the block mapping is unusable: stardust\/rollout\/workspace\/mapping\.json changed after stardust\/rollout\/workspace\/manifest\.json was written \(its sha256 is not the one listed under outputs\) — re-run the rollout skill's block-origin\.mjs --verify, then workspace-manifest\.mjs, or pass --slots page-json$/m);
   publish(MAPPED, '2026-10-05T00:00:00.000Z');
-  const stale = run(['render', 'trip-one', '--force']); assert.equal(stale.status, 2);
+  const stale = run(['render', 'trip-one', '--force', '--slots', 'mapping']); assert.equal(stale.status, 2);
   assert.match(stale.err, /^refused trip-one: strict slots — the block mapping is unusable: stardust\/rollout\/workspace\/mapping\.json is stale: generatedAt 2026-10-01T08:00:00\.000Z, stardust\/rollout\/coverage\/pages\.json generatedAt 2026-10-05T00:00:00\.000Z — /m);
   assert.equal(read(`${OUT}/trips/one/_meta.json`), before);
   publish();
 });
-check('no verified selector for the archetype, a slot without a recipe, a missing sibling capture: strict slots refusals', () => {
+check('no verified selector for the archetype (explicit --slots mapping), a slot without a recipe, a missing sibling capture: strict slots refusals', () => {
   const noSections = JSON.parse(MAPPED); noSections.templates[0].sections = [];
   publish(`${JSON.stringify(noSections, null, 2)}\n`);
   const norecipe = run(['render', 'trip-two', '--force']); assert.equal(norecipe.status, 2);
   assert.match(norecipe.err, /^refused trip-two: strict slots — the block mapping gives no value for slot\(s\) body \(no recipe: its text is inside no mapped element of the archetype capture\) of archetype trips — /m);
   const unverified = structuredClone(noSections); unverified.templates[0].blocks[0].instances[0].verified = false;
   publish(`${JSON.stringify(unverified, null, 2)}\n`);
-  const none = run(['render', 'trip-two', '--force']); assert.equal(none.status, 2);
+  const none = run(['render', 'trip-two', '--force', '--slots', 'mapping']); assert.equal(none.status, 2);
   assert.match(none.err, /^refused trip-two: strict slots — stardust\/rollout\/workspace\/mapping\.json has no verified selector for archetype trips — map the archetype with the rollout skill's block-origin\.mjs --verify \(its capture: stardust\/current\/pages\/trips\.html\), or pass --slots page-json$/m);
   publish();
   rmSync(join(tmp, 'stardust/current/pages/trip-two.html'));

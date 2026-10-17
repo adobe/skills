@@ -94,18 +94,21 @@
  *   (values no element took), media-unmapped; the provenance comment adds a sourceForked row. A
  *   malformed media map or ledger refuses the page.
  *
- * Fork slot source (--slots mapping|page-json; default mapping when <dirname(state)>/rollout/workspace/mapping.json exists,
- *   else page-json). page-json: the page JSON slots above. mapping (slot-map.mjs): the rollout block mapping (the rollout
- *   skill's coverage-contract.md § mapping), read only when rollout/workspace/manifest.json lists its sha256 under outputs
+ * Fork slot source (--slots mapping|page-json). Default: page-json when <dirname(state)>/rollout/workspace/mapping.json is
+ *   absent; mapping when it is usable (below) and has a verified selector for the archetype; else page-json, never
+ *   silently — one run line per archetype `slots: archetype <a> — mapping not used (<reason>); page JSON slots` and the
+ *   sidecar slotMapSkipped <reason>. An explicit --slots mapping refuses instead. page-json: the page JSON slots above.
+ *   mapping (slot-map.mjs): the rollout block mapping (the rollout skill's coverage-contract.md § mapping), read only
+ *   when rollout/workspace/manifest.json lists its sha256 under outputs
  *   and its generatedAt equals rollout/coverage/pages.json's. Each data-slot of the archetype's <main> is found in the
  *   archetype's capture (<current>/pages/<archetype>.html) inside an anchor of the archetype — a block instance verified
  *   true, or a section that resolved on it — by its text (an image by its file name, a link by its text); the same anchor
  *   and child path on this page's capture (<current>/pages/<slug>.html) give its value (<img> image, <a> link, block
  *   children html, else text). A name in the page JSON slots keeps that value (explicit beats derived); the page JSON is
- *   never written. Refused (strict slots, nothing written): the mapping unusable (the reason; re-run block-origin.mjs
- *   --verify, or --slots page-json); no verified selector for the archetype; a missing capture; a slot without a mapped
- *   source, or whose anchor does not match exactly one element of this page's capture or whose path leads nowhere, and
- *   no page JSON value for it. sourceForked names the mapping and the capture.
+ *   never written. Refused (strict slots, nothing written): with an explicit --slots mapping, the mapping unusable (the
+ *   reason; re-run block-origin.mjs --verify, or --slots page-json) or no verified selector for the archetype; in mapping
+ *   mode, a missing capture; a slot without a mapped source, or whose anchor does not match exactly one element of this
+ *   page's capture or whose path leads nowhere, and no page JSON value for it. sourceForked names the mapping and the capture.
  *
  * Variance gate (every A' page, own file or fork): <variance-dir>/<archetype-slug>.json, the
  *   replica/sibling-variance.mjs record (--variance-dir, default <dirname(state)>/rollout/variance).
@@ -128,7 +131,8 @@
  *   <out>/<dir>/_meta.json           sidecar next to index.html; <name>._meta.json next to <name>.html
  *                                    (`variance`: null on A / B, the variance record on A'; `slotSource`: mapping |
  *                                    page-json on a fork, else null; `slotMap`: { mapping, generatedAt, anchors,
- *                                    slots: { name: anchor selector } } of the mapped values, else null)
+ *                                    slots: { name: anchor selector } } of the mapped values, else null;
+ *                                    `slotMapSkipped`: why a default fork did not use the mapping, else null)
  *   <out>/assets/**                  every bundled asset (copied only when missing or changed)
  *   state.json.migrate               MERGED, never replaced: this script owns at, outputDir,
  *                                    selfContained, pageMap[], totalAssetsBundled, bundledAssets[],
@@ -160,7 +164,7 @@ export const RENDERABLE = new Set(['approved', 'migrated', 'directed']);
 export const ASSET_PREFIXES = ['../current/assets/', '../../../assets/', '../../assets/', '../assets/', './assets/', '/assets/', 'assets/'];
 const SKIP_SCHEMES = /^(#|mailto:|tel:|javascript:|data:)/i;
 const SIDECAR_KEYS = ['slug', 'type', 'renderBranch', 'template', 'modules', 'slotsFilled', 'canonShas', 'deviations', 'migrationDecisions', 'metadata', 'jsonLd', 'migratedAt', 'designMdSha', 'designJsonSha', 'sourceCurrentSha', 'sourceProposedSha',
-  'fidelityTier', 'archetypeSource', 'archetypeSha', 'variants', 'gatesPassed', 'gateEvidence', 'contentDeviations', 'assetsBundled', 'missingAssets', 'brokenInternalLinks', 'outputPath', 'outputPathDefault', 'sidecar', 'driverVersion', 'variance', 'slotSource', 'slotMap'];
+  'fidelityTier', 'archetypeSource', 'archetypeSha', 'variants', 'gatesPassed', 'gateEvidence', 'contentDeviations', 'assetsBundled', 'missingAssets', 'brokenInternalLinks', 'outputPath', 'outputPathDefault', 'sidecar', 'driverVersion', 'variance', 'slotSource', 'slotMap', 'slotMapSkipped'];
 const CARRIED = ['gatesPassed', 'gateEvidence', 'variants', 'contentDeviations', 'deviations'];
 const SELF = fileURLToPath(import.meta.url);
 
@@ -721,10 +725,11 @@ export function renderPage(run, page, entry) {
   if (old === null && isFile(sideFile)) throw new Refusal(slug, 'sidecar', `${toPosix(sideFile)} exists but is not valid JSON`, 'fix or delete the sidecar (its recorded judgments would be lost by overwriting), then re-run');
   // variance gate — every A' page, before its HTML is built (a refused page is never reported unchanged)
   const variance = branch === "A'" ? varianceGate(run, page, archetype, old) : null;
-  let forked = null; let sourceHtml; let mapped = null;
+  let forked = null; let sourceHtml; let mapped = null; let slotPlan = null;
   if (fork) {
     const archetypeHtml = readFileSync(archetypeSource, 'utf8');
-    if (run.slotMode === 'mapping') mapped = mappedSlots(run, page, archetype, archetypeHtml, capture, toPosix(capturePath));
+    slotPlan = slotSourceFor(run, archetype);
+    if (slotPlan.mode === 'mapping') mapped = mappedSlots(run, page, archetype, archetypeHtml, capture, toPosix(capturePath));
     forked = forkFromArchetype(archetypeHtml, mapped ? { ...capture, slots: mapped.slots } : capture, { slug, archetype: archetype.slug, capturePath: toPosix(capturePath), resolveMedia: mediaResolver(run, slug, capture) });
     sourceHtml = forked.html;
   } else sourceHtml = readFileSync(source, 'utf8');
@@ -732,7 +737,7 @@ export function renderPage(run, page, entry) {
   const ownSlice = (tag) => { const m = sourceHtml.match(new RegExp(`<${tag}\\b[\\s\\S]*?<\\/${tag}>`, 'i')); return m ? sha(m[0]) : null; };
   const canonShas = { header: fsha(join(canonDir, 'header.html')) ?? ownSlice('header'), footer: fsha(join(canonDir, 'footer.html')) ?? ownSlice('footer'), css: run.canon.sha };
   const keys = { designMdSha: run.designMdSha, designJsonSha: run.designJsonSha, sourceCurrentSha: fsha(capturePath), sourceProposedSha: sha(sourceHtml), canonShas, archetypeSha: archetype ? fsha(archetypeSource) : null, driverVersion: DRIVER_VERSION, variance,
-    slotSource: fork ? run.slotMode : null, slotMap: mapped ? mapped.record : null };
+    slotSource: slotPlan ? slotPlan.mode : null, slotMap: mapped ? mapped.record : null, slotMapSkipped: slotPlan ? slotPlan.skipped : null };
   // idempotent skip (migration-procedure.md § Idempotent skip) — the recorded input shas (and variance record, slot source) equal the current set
   if (!run.force && old && isFile(outFile) && JSON.stringify(Object.fromEntries(Object.keys(keys).map((k) => [k, old[k] ?? null]))) === JSON.stringify(keys)) return { status: 'unchanged', outputPath };
   // placeholder gate — no bypass flag
@@ -774,6 +779,18 @@ export function renderPage(run, page, entry) {
   mkdirSync(dirname(outFile), { recursive: true });
   writeFileSync(outFile, html); writeFileSync(sideFile, `${JSON.stringify(sidecar, null, 2)}\n`);
   return { status: 'rendered', branch, fork: forked ? archetype.slug : null, mapped: !!mapped, outputPath, type: page.type, assets: report.refs.size, links: linked.links, broken: linked.broken.length, sections: tagged.sections, missing: report.missing, modulesEmpty: modulesOut.length === 0, varianceSkipped: variance?.status === 'skipped' };
+}
+// The fork's slot source for an archetype → { mode: 'mapping' | 'page-json', skipped: reason | null }. --slots as given (an
+// explicit mapping refuses in mappedSlots when unusable); by default the page JSON when there is no mapping file, the mapping
+// when readMapping finds it usable and it has a verified selector for the archetype, else the page JSON with the reason
+// (sidecar slotMapSkipped, one run summary line per archetype — never a silent fallback).
+function slotSourceFor(run, archetype) {
+  if (run.slotFlag) return { mode: run.slotFlag, skipped: null };
+  if (!run.mappingPresent) return { mode: 'page-json', skipped: null };
+  const m = run.mapping || (run.mapping = readMapping(run.rolloutDir));
+  const skipped = !m.mapping ? m.reason : anchorsFor(m.mapping, null, archetype.slug).length ? null : `${m.file} has no verified selector for archetype ${archetype.slug}`;
+  if (skipped) run.slotFallbacks.set(archetype.slug, skipped);
+  return { mode: skipped ? 'page-json' : 'mapping', skipped };
 }
 // --slots mapping (slot-map.mjs): this page's slot values read from its capture through the archetype's anchors in the rollout
 // block mapping; a name in the page JSON slots keeps that value. → { slots (array form: the page JSON entries, then the mapped
@@ -908,7 +925,7 @@ export function renderRun(o) {
     designMdSha: fsha('DESIGN.md'), designJsonSha: fsha('DESIGN.json'), direction: directionLine(o.state), stardustVersion: o.stardustVersion || process.env.STARDUST_VERSION || 'local',
     fromArchetype: !!o.fromArchetype, mediaMap: o.mediaMap || join(o.current, 'assets', 'media-map.json'), mediaLedger: o.mediaLedger || join(dirname(o.state), 'deploy', 'media-ledger.json'), mediaCache: {},
     acceptVariance: o.acceptVariance ? String(o.acceptVariance).trim() : null, varianceDir: o.varianceDir || join(dirname(o.state), 'rollout', 'variance'), varianceCache: new Map(),
-    slotMode: o.slotSource || (isFile(join(rolloutDir, 'workspace', 'mapping.json')) ? 'mapping' : 'page-json'), rolloutDir, mapping: null, recipeCache: new Map(),
+    slotFlag: o.slotSource || null, mappingPresent: isFile(join(rolloutDir, 'workspace', 'mapping.json')), rolloutDir, mapping: null, recipeCache: new Map(), slotFallbacks: new Map(),
     available: (e) => isFile(join(o.out, e.outputPath)) || (renderSet.has(e.slug) && !e.passthrough) };
   const missing = []; const modulesEmpty = []; const rendered = new Map(); const varianceSkipped = [];
   for (const slug of set) {
@@ -933,6 +950,7 @@ export function renderRun(o) {
   if (missing.length) console.log(`missing assets: ${missing.length} reference(s) left as is — ${[...new Set(missing.map((m) => m.subpath))].slice(0, 6).join(', ')}`);
   if (modulesEmpty.length) console.log(`modules[] empty on ${modulesEmpty.length} page(s) — migrate.mjs modules <slug> <id…> (${modulesEmpty.slice(0, 6).join(', ')})`);
   if (varianceSkipped.length) console.log(`variance: ${varianceSkipped.length} A′ page(s) rendered without a variance probe row — recorded as skipped (${varianceSkipped.slice(0, 6).join(', ')}${varianceSkipped.length > 6 ? ', …' : ''})`);
+  for (const [a, reason] of [...run.slotFallbacks].sort(([x], [y]) => (x < y ? -1 : x > y ? 1 : 0))) console.log(`slots: archetype ${a} — mapping not used (${reason}); page JSON slots`);
   console.log(`rendered ${counts.rendered.length}, unchanged ${counts.unchanged.length}, refused ${counts.refused.length}, passthrough ${counts.passthrough.length} → ${outRel}/`);
   return counts.refused.length ? 2 : 0;
 }
