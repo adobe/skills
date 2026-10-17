@@ -552,11 +552,11 @@ rather than erroring.
    `networkidle`, they decorate async) and keep `networkidle` for local
    prototypes; `--wait-until` overrides. stitch-shot is always
    `domcontentloaded`. stitch-shot, measure, cap-probe, style-census, the
-   crawl's page gotos and the probes on `gotoLive` / `visit()` defaults
-   navigate under max(`STARDUST_NAV_TIMEOUT_MS`, 2 × `crawl.navMs.p95`)
-   clamped to 20–180 s (the env is only a floor: the crawl measured the
-   real pages), else their own default; a flag wins. content-diff and
-   visual-diff keep a fixed 60 s.
+   crawl's page gotos, content-diff, visual-diff and the probes on
+   `gotoLive` / `visit()` defaults navigate under
+   max(`STARDUST_NAV_TIMEOUT_MS`, 2 × `crawl.navMs.p95`) clamped to 20–180 s
+   (the env is only a floor: the crawl measured the real pages), else their
+   own default; a flag wins.
 3. **Symmetric `--main` scoping — and never `body`.** Live `<main>` often
    contains header nav + hidden mega-menu; unscoped, those diff as ~dozens
    of missing CTAs (UC1-E1 iteration 1: 41 of 50 reds were scoping
