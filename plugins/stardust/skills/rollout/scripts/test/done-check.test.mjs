@@ -7,7 +7,8 @@
 // profile by flow, widths, live host, undecided errors); the CLI exits 0 / 1 / 2 and --offline says the probe was skipped. Offline: the
 // probe runs against a stub fetch. --help writes nothing. Delivery is proven: override rows are capped at 10 % and
 // each cites a `## R-<nn>` register entry (either override shape, the recorded gate table for a bare verdict);
-// every done unit's pages pass the gate at both widths; every delivered row has its schema, both gate widths (in a
+// every done unit's pages passed the gate at each width (delivery.gate.passByWidth; a row gated before it is proven
+// on its last width's pass, counted as skipped); every delivered row has its schema, both gate widths (in a
 // flow with a gate table — replica, or any gated row; else skipped) and, when its path changed, a redirects line (in
 // the sheet or the redirects-cdn.tsv beside it); every ledger `end` is paired or re-recorded; the checks that did not
 // run are listed as skipped; ledger.mjs resolves in the project-copy layout too, and its absence is a gap. A gate
@@ -36,7 +37,7 @@ const check = (name, fn) => tests.push([name, fn]);
 const row = (slug, path, status, gate) => ({ slug, path, delivery: { status, ...(gate === undefined ? {} : { gate: { pass: gate } }) } });
 const AT = { 1440: '2026-10-09T10:00:00Z', 360: '2026-10-09T10:05:00Z' };
 // a delivered row with everything delivery needs: a passing gate at both widths, its source URL on the same path
-const proven = (r, gate = {}) => ({ ...r, source: { sourceUrl: `https://example.com${r.path}` }, delivery: { ...r.delivery, gate: { pass: true, reasons: [], atByWidth: { ...AT }, ...gate } } });
+const proven = (r, gate = {}) => ({ ...r, source: { sourceUrl: `https://example.com${r.path}` }, delivery: { ...r.delivery, gate: { pass: true, reasons: [], atByWidth: { ...AT }, passByWidth: { 1440: true, 360: true }, ...gate } } });
 const CLEAN_PAGES = [proven(row('home', '/', 'verified', true)), proven(row('about', '/about', 'verified', true))];
 const ENDED = [
   { skill: 'stardust:rollout', phase: 'I-dashboard', event: 'start' },
@@ -231,6 +232,38 @@ check('unit_unproven: one page short of the 360 gate, failing, or without a cove
   assert.deepEqual(units({ pages: failing }).gaps, ['unit_unproven:archetype-article: 1/1 pages without a passing gate at 1440 and 360: /story']);
   assert.deepEqual(units({ pages: UNIT_PAGES.slice(1) }).gaps, ['unit_unproven:cluster-news: 1/2 pages without a passing gate at 1440 and 360: /news/a.html']);
   assert.deepEqual(units({ pages: short, widths: ['1440'] }).gaps, []);
+});
+
+const LEGACY_SKIP = (n) => `unit_unproven: ${n} row(s) without per-width verdicts — proven on the last width's pass`;
+const withGate = (slug, gate) => (p) => (p.slug === slug ? { ...p, delivery: { ...p.delivery, gate: { ...p.delivery.gate, ...gate } } } : p);
+const legacy = (p) => { const gate = { ...p.delivery.gate }; delete gate.passByWidth; return { ...p, delivery: { ...p.delivery, gate } }; };
+
+check('unit_unproven: a page passing at 1440 (the width gated last) but failing at 360 is not proven — every width must have passed', () => {
+  const mobileFails = UNIT_PAGES.map(withGate('story', { pass: true, passByWidth: { 1440: true, 360: false } }));
+  assert.deepEqual(units({ pages: mobileFails }), { gaps: ['unit_unproven:archetype-article: 1/1 pages without a passing gate at 1440 and 360: /story'], skipped: [] });
+  const noMobileVerdict = UNIT_PAGES.map(withGate('story', { passByWidth: { 1440: true } }));
+  assert.deepEqual(units({ pages: noMobileVerdict }).gaps, ['unit_unproven:archetype-article: 1/1 pages without a passing gate at 1440 and 360: /story']);
+  assert.deepEqual(units({ pages: mobileFails, widths: ['1440'] }), { gaps: [], skipped: [] }, 'only the --widths widths are judged');
+  // the last width's verdict still counts: a later failure at a width outside --widths (or without one) is no proof
+  assert.deepEqual(units({ pages: UNIT_PAGES.map(withGate('story', { pass: false })) }).gaps, ['unit_unproven:archetype-article: 1/1 pages without a passing gate at 1440 and 360: /story']);
+  for (const passByWidth of [[true, true], 'yes', true]) {
+    assert.deepEqual(units({ pages: UNIT_PAGES.map(withGate('story', { passByWidth })) }).gaps, ['unit_unproven:archetype-article: 1/1 pages without a passing gate at 1440 and 360: /story'], JSON.stringify(passByWidth));
+  }
+});
+
+check('unit_unproven: a row gated before per-width verdicts is proven on its last width\'s pass, counted in a skipped line — never silent', () => {
+  const old = UNIT_PAGES.map((p) => (p.slug === 'story' ? legacy(p) : p));
+  assert.deepEqual(units({ pages: old }), { gaps: [], skipped: [LEGACY_SKIP(1)] });
+  assert.deepEqual(units({ pages: UNIT_PAGES.map(legacy) }), { gaps: [], skipped: [LEGACY_SKIP(3)] });
+  // one row behind the paths of two done units counts once
+  const twice = { ...UNIT_PATHS, 'archetype-article': '/story\n/news/a\n' };
+  assert.deepEqual(units({ pages: UNIT_PAGES.map(legacy), unitPaths: twice }).skipped, [LEGACY_SKIP(3)]);
+  // the fallback proves nothing more than before: a failing or short legacy row is a gap, not a skipped proof
+  const oldFailing = old.map(withGate('story', { pass: false }));
+  assert.deepEqual(units({ pages: oldFailing }), { gaps: ['unit_unproven:archetype-article: 1/1 pages without a passing gate at 1440 and 360: /story'], skipped: [] });
+  const oldShort = old.map(withGate('story', { atByWidth: { 1440: AT[1440] } }));
+  assert.deepEqual(units({ pages: oldShort }).gaps, ['unit_unproven:archetype-article: 1/1 pages without a passing gate at 1440 and 360: /story']);
+  assert.deepEqual(units({ pages: old.map(withGate('story', { passByWidth: null })) }), { gaps: [], skipped: [LEGACY_SKIP(1)] }, 'a null map is no map');
 });
 
 check('unit_unproven: a done unit without its .paths (or with no page in it) is a gap; gaps come by unit name', () => {
@@ -461,6 +494,20 @@ check('CLI: --json lists every new gap in order and every check that did not run
   const text = run(proj, ['--offline']).stdout.trim().split('\n');
   assert.deepEqual(text.slice(-3), [`skipped: ${OFFLINE_SKIP}`, 'skipped: sidecars_missing redirects: 1 delivered rows without source.sourceUrl', '✗ 5 gap(s) (live probe skipped: --offline)']);
   rmSync(proj, { recursive: true, force: true });
+});
+
+check('CLI: a done unit\'s page gated before per-width verdicts prints its skipped line; one failing at 360 after passing at 1440 is unit_unproven', () => {
+  const unitGap = (v) => v.gaps.filter((g) => g.startsWith('unit_unproven:cluster-news'));
+  const withNewsA = (f) => project({ pages: PROOF_PAGES.map((p) => (p.slug === 'news-a' ? f(p) : p)), ledger: [...ENDED, LEDGER_END], noSchema: ['news-a'], files: PROOF_FILES });
+  const old = withNewsA(legacy);
+  const r = run(old, ['--offline']);
+  assert.ok(r.stdout.split('\n').includes(`skipped: ${LEGACY_SKIP(1)}`), r.stdout);
+  assert.deepEqual(unitGap(JSON.parse(run(old, ['--offline', '--json']).stdout)), ['unit_unproven:cluster-news: 1/2 pages without a passing gate at 1440 and 360: /news/b']);
+  const mobile = withNewsA(withGate('news-a', { pass: true, passByWidth: { 1440: true, 360: false } }));
+  const v = JSON.parse(run(mobile, ['--offline', '--json']).stdout);
+  assert.deepEqual(unitGap(v), ['unit_unproven:cluster-news: 2/2 pages without a passing gate at 1440 and 360: /news/a, /news/b']);
+  assert.ok(!v.skipped.some((s) => s.includes('per-width')), JSON.stringify(v.skipped));
+  [old, mobile].forEach((p) => rmSync(p, { recursive: true, force: true }));
 });
 
 check('CLI: --widths, --register, --schemas and --redirects point the checks elsewhere; a bad --widths is a usage error', () => {

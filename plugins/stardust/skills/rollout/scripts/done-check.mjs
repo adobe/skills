@@ -43,9 +43,11 @@
  *                                  redirects-cdn.tsv beside it
  *   unit_unproven:<unit>: <why>    one per done unit of progress.json (kind not foundation or final, by name)
  *                                  whose units/<unit>.paths is missing, or lists a page not proven: proven =
- *                                  `delivery.gate.pass === true` as last recorded (update-coverage.mjs keeps the
- *                                  verdict of the last width ingested) and a recorded gate time at every --widths
- *                                  width (pages matched by deploy's eds-path pathKey)
+ *                                  `delivery.gate.passByWidth[w] === true` (update-coverage.mjs keeps each
+ *                                  width's own verdict) and a recorded gate time at every --widths width, with
+ *                                  `delivery.gate.pass === true` (the last width ingested); a row gated before
+ *                                  passByWidth is proven on that pass alone and counted as skipped (pages
+ *                                  matched by deploy's eds-path pathKey)
  *   open_p1:N                      open or in-progress P1 findings in optimize/findings.json, source parity
  *                                  excluded — the optimize gate's own count
  *   header_parity:<why>            migration projects (state.json `flow`) only: the header contract
@@ -61,7 +63,8 @@
  *   rollout_incomplete             the last stardust:rollout I-dashboard ledger line is not an `end`
  * A check that did not run is named after the gaps, one `skipped: <what>` line each (JSON: skipped[]): the live
  * probe under --offline; the units, when progress.json is missing, is not JSON or has no units map; the redirects
- * of delivered rows without source.sourceUrl; the sidecar gate widths in a flow without a gate table.
+ * of delivered rows without source.sourceUrl; the sidecar gate widths in a flow without a gate table; the per-width
+ * verdicts of done units' rows gated before passByWidth (proven on the last width's pass).
  *
  * Exit: 0 complete · 1 gaps · 2 usage (no coverage/pages.json; no live host and no --offline; bad --widths).
  */
@@ -196,8 +199,10 @@ export function overrideGap({ pages = [], register = '', readTable = () => null 
  * unit_unproven gaps, one per done unit (kind not foundation / final), units by name: `{ gaps[], skipped[] }`.
  * `progress` = progress.json (null when absent; skipped, as is a record without a `units` map), `unitPaths` =
  * { <unit>: .paths text, or null when the file is absent }, `pathKey` = deploy's eds-path key. A page is proven
- * when its coverage row's `delivery.gate.pass === true` as last recorded and it carries a recorded gate time at
- * every width. Pure.
+ * when its coverage row's `delivery.gate.passByWidth[w] === true` and a recorded gate time (atByWidth) at every
+ * width, and `delivery.gate.pass === true` (the verdict of the width ingested last). A row gated before
+ * passByWidth was recorded (none on the gate) is proven on `pass` and its gate times alone; each such row
+ * proven is counted in one skipped line, so the weaker proof is never silent. Pure.
  */
 export function unitGaps({ progress = null, unitPaths = {}, pages = [], widths = DEFAULT_WIDTHS, pathKey, out = 'stardust/rollout' } = {}) {
   if (progress == null) return { gaps: [], skipped: [`unit_unproven: no ${join(out, 'progress.json')}`] };
@@ -205,8 +210,15 @@ export function unitGaps({ progress = null, unitPaths = {}, pages = [], widths =
   const { units } = progress;
   const rowsByKey = new Map();
   for (const p of pages) { const k = pathKey(pathOf(p)); rowsByKey.set(k, [...(rowsByKey.get(k) || []), p]); }
+  const legacy = new Set();
+  const rowProven = (p) => {
+    const g = gateOf(p);
+    if (!g || g.pass !== true || !gatedAt(g, widths)) return false;
+    if (g.passByWidth == null) { legacy.add(p); return true; }
+    return isMap(g.passByWidth) && widths.every((w) => g.passByWidth[String(w)] === true);
+  };
   // every coverage row behind the key must be proven: two rows on one key never let the passing one vouch for the other
-  const proven = (key) => { const rows = rowsByKey.get(key) || []; return rows.length > 0 && rows.every((p) => { const g = gateOf(p); return !!g && g.pass === true && gatedAt(g, widths); }); };
+  const proven = (key) => { const rows = rowsByKey.get(key) || []; const each = rows.map(rowProven); return rows.length > 0 && each.every(Boolean); };
   const gaps = [];
   for (const name of Object.keys(units).sort()) {
     const u = units[name] || {};
@@ -221,7 +233,7 @@ export function unitGaps({ progress = null, unitPaths = {}, pages = [], widths =
     const unproven = [...byKey].filter(([k]) => !proven(k)).map(([, l]) => l);
     if (unproven.length) gaps.push(`unit_unproven:${name}: ${unproven.length}/${byKey.size} pages without a passing gate at ${widths.join(' and ')}: ${listed(unproven)}`);
   }
-  return { gaps, skipped: [] };
+  return { gaps, skipped: legacy.size ? [`unit_unproven: ${legacy.size} row(s) without per-width verdicts — proven on the last width's pass`] : [] };
 }
 
 /** The source paths of a redirects sheet (TSV `source<TAB>destination`, `#` comments, 2+ spaces tolerated). Pure. */
