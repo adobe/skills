@@ -127,7 +127,7 @@
         "source": {
           "type": "string",
           "enum": ["encoder-map", "text-alignment", "position"],
-          "description": "encoder-map: an encoder map marker's k-th match for the k-th block of its name (confidence 1); without that match, confidence 0 and the marker's raw selector only when it matches nothing on the page, else null (never another block's element); text-alignment: the element covering most of the block's text; position: placed among its anchored neighbours (confidence 0)."
+          "description": "encoder-map: an encoder map marker's k-th match for the k-th block of its name (confidence 1); without that match, confidence 0 and the marker's raw selector only when it matches nothing on the page, else null (never another block's element; null too when its syntax is outside the selector grammar, so its reach is unknown); text-alignment: the element covering most of the block's text; position: placed among its anchored neighbours (confidence 0)."
         },
         "verified": {
           "type": ["boolean", "null"],

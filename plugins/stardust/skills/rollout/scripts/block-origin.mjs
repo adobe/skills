@@ -11,10 +11,10 @@
  * are a minimal selector engine over lib.mjs parseHtml (the plugin tree ships no dependency); syntax outside
  * its grammar throws UnsupportedSelector, and countMatches counts it as 0 hits. An encoder map's marker
  * comes before the text (its k-th match, confidence 1; without one, confidence 0 and its raw selector only
- * when that matches nothing, so an instance never points at another block's element); a block without
- * either takes its position among its anchored neighbours; a section takes the lowest common ancestor of
- * its records; a template's sections are aligned across its pages and their selectors generalised
- * (buildMapping).
+ * when that provably matches nothing — syntax outside the grammar is of unknown reach, so null — so an
+ * instance never points at another block's element); a block without either takes its position among its
+ * anchored neighbours; a section takes the lowest common ancestor of its records; a template's sections are
+ * aligned across its pages and their selectors generalised (buildMapping).
  *
  * Exports (pure): normText, squash, indexSource, fragmentsOf, alignBlock, lca, coveredShare, stableSelector,
  * parseSelector, querySelectorAll, countMatches, requireKeyed, buildMapping, verifyMapping, serialize,
@@ -55,9 +55,10 @@ Per page (coverage pages in slug order with a delivered structure, a content fil
 delivered block is located in its capture by its template's encoder map (the first marker emitting
 block:<name>: the k-th block of that name takes the marker's k-th match under the map's root, confidence
 1; without one, confidence 0 and the raw selector — the root before each of the marker's alternatives —
-only when it matches nothing on the page, else no selector: never another block's element), else by its
-text (the element covering most of it, the deepest on ties; confidence = the share covered), else by its
-position among its anchored neighbours (confidence 0; never an element another record already has). A
+only when it matches nothing on the page, else no selector, also for syntax outside the engine's grammar:
+never another block's element), else by its text (the element covering most of it, the deepest on ties;
+confidence = the share covered), else by its position among its anchored neighbours (confidence 0; never
+an element another record already has). A
 section takes the lowest common ancestor of its records (confidence = the share of their text it holds,
 the lowest over the pages); its default-content roles are the page's eds-schema roles of its text (an
 equal text, else the shorter of the two, 8+ characters, inside the other), else its delivered default
@@ -672,10 +673,11 @@ function mapPage(row, contentHtml, index, { map = null, eds = null } = {}) {
       const el = matches(marker)[occurrence.get(r.doc)];
       if (el) Object.assign(r, { anchor: el, selector: stableSelector(index, el), confidence: 1, source: 'encoder-map' });
       else {
-        // No k-th match: the raw selector only when it hits nothing here (never another block's element).
+        // No k-th match: the raw selector only when it hits nothing here (never another block's element);
+        // syntax outside the engine's grammar, or a page too deep to match, has an unknown reach: null.
         const raw = rawSelector(map.root, marker.sel);
         let hits;
-        try { hits = countMatches(index, raw); } catch (e) { if (!(e instanceof RangeError)) throw e; hits = -1; }
+        try { hits = querySelectorAll(index, raw).length; } catch (e) { if (!(e instanceof RangeError || (e && e.name === 'UnsupportedSelector'))) throw e; hits = -1; }
         Object.assign(r, { anchor: null, selector: hits === 0 ? raw : null, confidence: 0, source: 'encoder-map' });
       }
       continue;

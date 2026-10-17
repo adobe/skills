@@ -706,6 +706,18 @@ check('mapping: default-content roles — an equal text wins; containment needs 
   assert.deepEqual(readMapping(dir).templates[0].sections.map((s) => [s.id, s.defaultContent]), [['s1', ['heading', 'body']], ['s2', []], ['s3', ['heading']], ['s4', []]]);
 });
 
+check('mapping: an encoder-map raw selector outside the engine\'s grammar is dropped (unknown reach: selector null, confidence 0)', () => {
+  // a browser would resolve `figure + div` to the gallery cards' element; the engine cannot count it
+  const map = { root: 'main#main', markers: [{ sel: 'figure + div', emitter: 'block:media' }, { sel: 'section:has(img)', emitter: 'block:hero' }] };
+  const dir = hubProject('map-encode-unknown', { encode: { hub: map } });
+  ok(runMap(dir, ['--verify']));
+  const t = readMapping(dir).templates[0];
+  assert.deepEqual(t.blocks.filter((b) => b.block === 'media' || b.block === 'hero').map((b) => [b.block, b.instances.map((i) => [i.selector, i.confidence, i.source, i.verified])]), [
+    ['media', [[null, 0, 'encoder-map', false]]],
+    ['hero', [[null, 0, 'encoder-map', false]]],
+  ]);
+});
+
 // Pages that cannot be mapped, and a coverage block the delivered document no longer has.
 const STORY_MAP = { root: 'main', markers: [{ sel: '.pull-quote', kind: 'quote', emitter: 'block:quote' }] };
 
