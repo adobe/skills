@@ -124,7 +124,8 @@ for (const m of html.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)) {
    non-breaking spaces and <br>, and a <div> holding only <br> — the source's spacer height must be
    modelled as spacing CSS (deploy SKILL.md § The ENCODE contract). Advisory. ---- */
 if (type !== 'index') {
-  const SPACER = '(?:\\s|&nbsp;|&#160;|&#xa0;|\\u00a0|<br\\b[^>]*>)*'; // \s already covers U+00A0; listed for the reader
+  // \s covers a raw U+00A0; no two alternatives may match the same text, or a failed match backtracks exponentially
+  const SPACER = '(?:\\s|&nbsp;|&#160;|&#xa0;|<br\\b[^>]*>)*';
   const spacers = new Map(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'div'].map((t) => [t, 0]));
   for (const m of html.matchAll(new RegExp(`<(p|h[1-6])\\b[^>]*>${SPACER}</\\1\\s*>`, 'gi'))) spacers.set(m[1].toLowerCase(), spacers.get(m[1].toLowerCase()) + 1);
   for (const m of html.matchAll(new RegExp(`<div\\b[^>]*>(${SPACER})</div\\s*>`, 'gi'))) if (/<br\b/i.test(m[1])) spacers.set('div', spacers.get('div') + 1);

@@ -49,6 +49,17 @@ check('spacer-whitespace: one P2 per tag kind with its count; text with a traili
   assert.match(spacers[0].msg, /dropped by the content pipeline: model the height as spacing CSS \(deploy SKILL\.md § The ENCODE contract, #112\)$/);
   assert.equal(r.status, 0); assert.equal(r.gate, 'PASS');
 });
+check('spacer-whitespace: a long raw-NBSP run is linear — no backtracking blow-up — and keeps the same findings', () => {
+  const run = '\u00a0'.repeat(5000);
+  const page = join(root, 'nbsp-run.html');
+  writeFileSync(page, doc([`<h1>T</h1><p>${run}x</p>`, `<div>${run}<p>x</p></div>`, `<p>${run}</p>`, `<div>${run}<br></div>`].join('')));
+  const t0 = Date.now();
+  const r = spawnSync(process.execPath, [join(HERE, '..', 'delivery-lint.mjs'), '--file', page, '--json'], { cwd: root, encoding: 'utf8', timeout: 10000 });
+  const ms = Date.now() - t0;
+  assert.ok(ms < 1000, `took ${ms} ms`);
+  const spacers = JSON.parse(r.stdout).findings.filter((f) => f.rule === 'spacer-whitespace');
+  assert.deepEqual(spacers.map((f) => f.msg.split(' — ')[0]), ['1 whitespace-only <p>', '1 whitespace-only <div>']);
+});
 
 // --- h1 against the source capture: a source without an h1 makes 0 a note; never a failure, never a pass for >1 ---
 mkdirSync(join(root, 'stardust', 'current', 'pages'), { recursive: true }); mkdirSync(join(root, 'stardust', 'rollout', 'coverage'), { recursive: true });

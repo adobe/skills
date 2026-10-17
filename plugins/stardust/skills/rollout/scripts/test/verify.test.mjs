@@ -2,7 +2,7 @@
 // skills/rollout/scripts/test/verify.test.mjs — verify.mjs's <h1> rule against the source capture, offline (--root) in a
 // temp project: one <h1> verifies; none verifies only when <current>/pages/<slug>.json records headings without an h1
 // (a `note:` line and `· <n> note(s)` in the summary, never a failure); a capture with an h1, no capture, or more than
-// one <h1> fails as before; --current is honoured. --help writes nothing.
+// one <h1> fails as before; a failed delivery.gate is never rescued by the note; --current is honoured. --help writes nothing.
 // Run: node plugins/stardust/skills/rollout/scripts/test/verify.test.mjs
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -69,6 +69,19 @@ check('no <h1> and a capture with one, or no capture → failed as before', () =
     assert.match(r.stdout, new RegExp(`✗ ${slug} \\(page\\): page should render exactly one <h1>, found 0`));
     assert.doesNotMatch(r.stdout, /note/);
   }
+  rmSync(proj, { recursive: true, force: true });
+});
+
+check('the note never rescues a failed gate: no <h1>, a capture without one, delivery.gate.pass false → failed', () => {
+  const proj = project();
+  const file = join(proj, 'stardust', 'rollout', 'coverage', 'pages.json');
+  const doc = JSON.parse(readFileSync(file, 'utf8'));
+  doc.pages.find((p) => p.slug === 'plain').delivery.gate = { pass: false, reasons: ['pct 4.20 > 2'] };
+  writeFileSync(file, JSON.stringify(doc));
+  const r = run(proj, ['--slug', 'plain']);
+  assert.equal(r.status, 1, r.stdout);
+  assert.equal(statusOf(proj).plain, 'failed');
+  assert.match(r.stdout, /✗ plain \(page\): gate: pct 4\.20 > 2/);
   rmSync(proj, { recursive: true, force: true });
 });
 
