@@ -6,7 +6,8 @@
 // (origin marker in source.migratedHtml) kept across a re-run until the migrated tree holds it.
 // --state takes a state file's real shape (pages[] of objects with a url; folder URLs with their slash) or
 // refuses in one line, writing nothing; it refuses a tree that holds siblings. Stale only when the same
-// document's bytes change: identical bytes never, a roster row's hash (another basis) never.
+// document's bytes change: identical bytes never; a roster row's hash (another basis) is never compared —
+// the row keeps its status and the report names it as not compared.
 // Run: node plugins/stardust/skills/rollout/scripts/test/inventory.test.mjs
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -188,9 +189,10 @@ check('a delivered page re-inventoried with identical bytes is not stale', () =>
   const rows = boxRows();
   assert.equal(rows.home.delivery.status, 'deployed'); assert.equal(rows['tours-utah'].delivery.status, 'deployed');
   assert.match(r.stdout, /0 stale$/m, r.stdout);
+  assert.doesNotMatch(r.stdout, /hash basis changed/, 'nothing skipped, nothing reported');
 });
 
-check('a delivered roster row, then migrated (its hash now of the migrated file — another basis), keeps its status and takes the new hash', () => {
+check('a delivered roster row, then migrated (its hash now of the migrated file — another basis), keeps its status, takes the new hash and is reported as not compared', () => {
   const rosterHash = boxRows()['tours-utah'].source.sourceHash;
   boxPage('tours/utah/index.html', { slug: 'tours-utah', type: 'program', fidelityTier: 'sibling', template: 'tours-bali', modules: ['gallery'] });
   const before = readFileSync(join(boxOut, 'coverage', 'pages.json'), 'utf8');
@@ -205,12 +207,14 @@ check('a delivered roster row, then migrated (its hash now of the migrated file 
   assert.equal(utah.source.migratedHtml, join(boxMigrated, 'tours/utah/index.html'));
   assert.notEqual(utah.source.sourceHash, rosterHash);
   assert.equal(utah.templateId, 'tours-bali');
+  assert.match(r.stdout, /^Kept {8}1 delivered row\(s\) whose hash basis changed \(roster → document\), not compared: tours-utah$/m, r.stdout);
 });
 
 check('changed bytes of the same delivered document → stale; the unchanged one stays delivered', () => {
   const again = runBox();
   assert.equal(again.status, 0, again.stderr);
   assert.equal(boxRows()['tours-utah'].delivery.status, 'deployed', 'the migrated row re-read with identical bytes');
+  assert.doesNotMatch(again.stdout, /^Kept /m, 'the migrated row is compared now — nothing reported');
   boxPage('index.html', { slug: 'home', type: 'home', fidelityTier: 'archetype', renderBranch: 'A', template: null, modules: ['hero'] }, 'home, edited');
   const r = runBox();
   assert.equal(r.status, 0, r.stderr);

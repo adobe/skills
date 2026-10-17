@@ -10,11 +10,13 @@
  *
  * Idempotent + incremental: existing delivery status is preserved. When a page's
  * migrated HTML changed (sourceHash differs) after it was already deployed/verified,
- * it is re-flagged `stale` so the delivery loop re-delivers just that page — only
- * when both hashes are of a document (a migrated file, or the origin marker of a page
- * built outside the tree); a re-read of identical bytes never is. A roster row's hash
- * (archetypes-only mode: its current-state capture or its URL — no document) is another
- * basis: once the page is migrated, the row keeps its status and takes the file's hash.
+ * it is re-flagged `stale` so the delivery loop re-delivers just that page; a re-read
+ * of identical bytes never is. A roster row's hash (archetypes-only mode: its
+ * current-state capture or its URL) is never compared — its basis changes when the
+ * document appears; the row keeps its status, takes the file's hash and is reported
+ * as kept (`Kept … not compared: <slugs>`). Any other prior hash is compared (a
+ * migrated file's bytes; an `update-coverage.mjs --new` row's `origin:slug:path`
+ * digest) — a basis change re-flags stale, the cautious side.
  *
  * Phase 1 scope: pages + template grouping only. Block dedup (blocks.json) is a
  * first-class step deferred to Phase 2 — see notes/rollout/PLAN.md § 8.
@@ -168,6 +170,7 @@ const stateRows = STATE ? stateDoc.pages : (defaultState && Array.isArray(defaul
 const stateUrls = new Map(stateRows.filter((p) => p && p.slug && p.url).map((p) => [p.slug, p.url]));
 const pages = [];
 const siblings = [];
+const notCompared = [];
 
 for (const relHtml of htmlFiles) {
   const absHtml = join(MIGRATED, relHtml);
@@ -181,14 +184,17 @@ for (const relHtml of htmlFiles) {
   const prior = priorBySlug.get(slug);
   let delivery;
   if (prior && prior.delivery) {
-    // Both hashes must be of a document: a migrated file, or the origin marker of a page built outside the tree.
-    // A roster row (migratedHtml null) hashed its current-state capture or its URL — another basis, never stale.
+    // A roster row's hash (migratedHtml null: its current-state capture or its URL) is never compared — its basis
+    // changes when the document appears; reported as kept. Any other prior hash is compared (a migrated file's bytes,
+    // or the `origin:slug:path` digest of an update-coverage --new row) — a basis change re-flags stale, the cautious side.
     const was = prior.source || {};
-    const changed = typeof was.migratedHtml === 'string' && was.migratedHtml !== '' && was.sourceHash !== sourceHash;
-    if (changed && ['deployed', 'verified'].includes(prior.delivery.status)) {
+    const compared = typeof was.migratedHtml === 'string' && was.migratedHtml !== '';
+    const delivered = ['deployed', 'verified'].includes(prior.delivery.status);
+    if (compared && delivered && was.sourceHash !== sourceHash) {
       delivery = { ...prior.delivery, status: 'stale' };
     } else {
       delivery = prior.delivery;
+      if (!compared && delivered) notCompared.push(slug);
     }
   } else {
     delivery = { status: 'pending', deployedUrl: null, deployedAt: null, verifiedAt: null, error: null };
@@ -348,6 +354,10 @@ console.log('='.repeat(60));
 console.log(`Pages       ${counts.total} total · ${counts.verified} verified · ${counts.deployed} deployed · ${counts.pending} pending · ${counts.contentPending} content-pending · ${counts.stale} stale`);
 console.log(`Templates   ${templates.length} (${templates.map((t) => `${t.id}:${t.pageCount}`).join(', ')})`);
 if (kept.length) console.log(`Kept        ${kept.length} row(s) built outside the migrated tree (update-coverage.mjs --new), status untouched: ${kept.join(', ')}`);
+if (notCompared.length) {
+  const names = notCompared.sort();
+  console.log(`Kept        ${names.length} delivered row(s) whose hash basis changed (roster → document), not compared: ${names.slice(0, 8).join(', ')}${names.length > 8 ? ' …' : ''}`);
+}
 const blockless = pages.filter((p) => p.source.metaJson && !p.blocks.length).length;
 if (blockless) console.log(`Blocks      modules[] empty on ${blockless}/${pages.length} sidecars — Phase B (blocks.mjs) dedups from them: fill each page's block ids (composite sections; title, text, image, button, separator are default content) and re-run the inventory`);
 const todo = pages.filter((p) => ['pending', 'stale', 'failed'].includes(p.delivery.status));
