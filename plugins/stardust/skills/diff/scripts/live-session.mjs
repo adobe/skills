@@ -395,10 +395,10 @@ export const browserTier = (b) => b.stardustTier || 'chromium';
 
 // Consent-accept candidates (clicked, never DOM-removed, so consent-gated
 // layout settles the way a real visit does): each consent manager's own
-// accept-all button first (OneTrust, Cookiebot, Usercentrics — Playwright's
-// CSS pierces its open shadow root —, TrustArc, Didomi, the cmp-prefixed
-// managers), then the text fallbacks. One table with CONSENT_LABEL_SWEEP below;
-// every instrument goes through dismissOverlays.
+// accept-all button first (OneTrust, Cookiebot, Usercentrics, TrustArc, Didomi,
+// the cmp-prefixed managers; Playwright's CSS pierces the open shadow root
+// Usercentrics renders in), then the text fallbacks. One table with
+// CONSENT_LABEL_SWEEP below; every instrument goes through dismissOverlays.
 export const CONSENT_CANDIDATES = [
   '#onetrust-accept-btn-handler',
   '#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll',

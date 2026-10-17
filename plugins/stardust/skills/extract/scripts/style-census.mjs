@@ -46,7 +46,7 @@
  * the site), then both overlay classes dismissed (cookie consent clicked, timed marketing
  * modals closed). A localhost URL is a plain page from the same browser. Then a bounded settle
  * (≤ 2.5 s, shorter once fonts are ready and the network is quiet), live-session's shared consent
- * label sweep as a second pass (the multilingual accept labels of its one consent table, clicked
+ * label sweep as a second pass (the multilingual consent labels of its one consent table, clicked
  * only inside a dialog / cookie / consent / fixed or high-z container, open shadow roots included —
  * on a localhost page the only consent pass), then the census. Any fixed/sticky element still
  * covering > 40 % of the viewport is excluded with its descendants, so an undismissed overlay
