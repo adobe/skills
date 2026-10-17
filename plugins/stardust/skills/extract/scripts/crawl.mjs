@@ -21,9 +21,10 @@
  * vendor signature or a tiny page under one error heading (live-session.mjs's
  * pageDenial table; without it the check is off and stderr says so): at the
  * entry it escalates to headed real Chrome + stealth (_crawl-log.json
- * discovery.botBlock 'denial'; still denied → fatal, exit 2), and any other
- * denied page is listed in crawl.failures (errorClass BotChallengeError) and
- * never captured — no page record, no screenshot.
+ * discovery.botBlock 'denial'; still denied → fatal, exit 2), and every other
+ * page is read at domcontentloaded and again before the record — a denied one
+ * is listed in crawl.failures (errorClass BotChallengeError) and never
+ * captured — no page record, no screenshot.
  *
  * Hardening (#7), all applied inside the page context:
  *   - VISIBILITY FILTER: headings/body/CTAs skip nodes that are display:none,
@@ -949,6 +950,11 @@ async function capturePage(context, url, slug, args) {
   // JS-delayed reveal has no running animation at check time, so the gate
   // resolves before the reveal even starts. The 800ms floor is load-bearing.
   await page.waitForTimeout(800);
+
+  // a denial page a script rendered after domcontentloaded: read again before the record, so it too is a failure
+  // with no page record and no screenshot
+  const late = await denialAt(args, page, resp, resolvedUrl);
+  if (late) throw Object.assign(new Error(`bot challenge: HTTP ${status} ${late} — a denial page, not the page; not captured (escalate: the crawl's headed fallback / --headed)`), { errorClass: 'BotChallengeError' });
 
   const rec = await page.evaluate(capture);
   // dynamic surface (opt-in): network recorder + DOM-side evidence → one `dynamic` section

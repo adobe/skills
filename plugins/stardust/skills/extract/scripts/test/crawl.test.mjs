@@ -11,8 +11,9 @@
 // same --out, and both orders of env vs that figure); env STARDUST_NAV_TIMEOUT_MS is a floor (1500 → 20000: a 4 s page
 // is captured); a copy without
 // live-session.mjs keeps 45 s and says so once on stderr (the 2xx denial-page check off, on the same line); a 200
-// denial page ("Access Denied" + "Reference #") linked from the entry is a BotChallengeError in crawl.failures with no
-// page record and no screenshot, its sibling captured; an older live-session copy without pageDenial says the check is
+// denial page ("Access Denied" + "Reference #") linked from the entry — and the same page a script renders 200 ms after
+// DOMContentLoaded — is a BotChallengeError in crawl.failures with no page record and no screenshot, its sibling
+// captured; an older live-session copy without pageDenial says the check is
 // off. Prints a skip line otherwise. Not exercised: the entry probe's denial path (it launches headed real Chrome).
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
@@ -124,10 +125,15 @@ try { await import('playwright'); playwrightOk = true; } catch { console.log('sk
 if (playwrightOk) {
   const html = (title) => `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title></head><body><main><h1>${title}</h1><h2>Section of ${title}</h2><p>${`Body copy of ${title}, long enough to count as page content. `.repeat(4)}</p></main></body></html>`;
   const pages = { '/': html('Home'), '/a': html('Page A'), '/b': html('Page B'), '/slow': html('Slow page') };
-  // a vendor wall's 200 denial page (the "Access Denied" + "Reference #" pair), linked from /hub beside a real page
-  pages['/hub'] = html('Hub').replace('</main>', '<nav><a href="/denied">Denied</a> <a href="/ok">OK</a></nav></main>');
+  // a vendor wall's 200 denial page (the "Access Denied" + "Reference #" pair), linked from /hub beside a real page and
+  // a page that renders the same denial late
+  pages['/hub'] = html('Hub').replace('</main>', '<nav><a href="/denied">Denied</a> <a href="/ok">OK</a> <a href="/late">Late</a></nav></main>');
   pages['/ok'] = html('OK page');
   pages['/denied'] = '<!doctype html><html><head><title>Access Denied</title></head><body><h1>Access Denied</h1>You don\'t have permission to access "/denied" on this server.<p>Reference #18.4f2a</p></body></html>';
+  // the same denial page rendered by a script 200 ms after DOMContentLoaded: an ordinary page at domcontentloaded
+  pages['/late'] = html('Late').replace('</body>', `<script>document.addEventListener('DOMContentLoaded', () => setTimeout(() => {
+    document.body.innerHTML = '<h1>Access Denied</h1>You do not have permission to access "/late" on this server.<p>Reference #18.9c3e</p>';
+  }, 200));</script></body>`);
   const server = createServer((req, res) => {
     const p = req.url.split('?')[0];
     const send = () => { if (res.destroyed) return; const body = pages[p]; res.writeHead(body ? 200 : 404, { 'content-type': 'text/html; charset=utf-8' }); res.end(body || 'nope'); };
@@ -230,15 +236,15 @@ if (playwrightOk) {
         assert.deepEqual(log.crawl.failures, []); assert.deepEqual(records.map((r) => r.slug), ['denied', 'index']);
       });
     }
-    await checkAsync('e2e: a 200 denial page ("Access Denied" + "Reference #") linked from the entry is a BotChallengeError in crawl.failures — no page record, no rendered DOM, no screenshot; its sibling is captured', () => {
+    await checkAsync('e2e: a 200 denial page ("Access Denied" + "Reference #") linked from the entry — at domcontentloaded, or rendered by a script after it — is a BotChallengeError in crawl.failures: no page record, no rendered DOM, no screenshot; its sibling is captured', () => {
       assert.equal(denied.status, 0, denied.stderr);
       const out = join(work, 'denied');
       const { log, records } = readOut(out);
       assert.deepEqual(records.map((r) => r.slug), ['hub', 'ok']);
-      assert.equal(log.crawl.failures.length, 1, JSON.stringify(log.crawl.failures));
-      const [f] = log.crawl.failures;
-      assert.equal(f.slug, 'denied'); assert.equal(f.errorClass, 'BotChallengeError');
-      assert.equal(f.message, 'bot challenge: HTTP 200 denial page — "Access Denied" + "Reference #" — a denial page, not the page; not captured (escalate: the crawl\'s headed fallback / --headed)');
+      const failures = [...log.crawl.failures].sort((a, b) => a.slug.localeCompare(b.slug));
+      assert.deepEqual(failures.map((f) => [f.slug, f.errorClass]), [['denied', 'BotChallengeError'], ['late', 'BotChallengeError']], JSON.stringify(log.crawl.failures));
+      assert.equal(failures[0].message, 'bot challenge: HTTP 200 denial page — "Access Denied" + "Reference #" — a denial page, not the page; not captured (escalate: the crawl\'s headed fallback / --headed)');
+      assert.equal(failures[1].message, failures[0].message, 'the late one: the same marker and message');
       assert.deepEqual(readdirSync(join(out, 'pages')).sort(), ['hub.html', 'hub.json', 'ok.html', 'ok.json']);
       assert.deepEqual(readdirSync(join(out, 'assets', 'screenshots')).sort(), ['hub.png', 'ok.png']);
       assert.equal(log.discovery.botBlock, undefined, 'the entry is no denial page: no escalation');
