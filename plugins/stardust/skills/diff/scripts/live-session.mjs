@@ -67,7 +67,7 @@
 /* eslint-disable import/no-extraneous-dependencies, import/extensions, no-await-in-loop, no-restricted-syntax, brace-style, object-curly-newline, max-len */
 /* standalone dev-tool library: sequential page ops use awaited loops by design */
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { dirname, resolve } from 'node:path';
 
 // Current stable Chrome on macOS. Chrome's UA reduction freezes the platform
 // token at 10_15_7 and the minor version at .0.0.0 — only the major matters,
@@ -762,7 +762,8 @@ export async function dismissOverlays(page, { extra = [], lateWindowMs = 6000 } 
 
 // ---- in-flow per-visitor regions: one hide vocabulary for every live instrument ----------------
 // `--hide <sel,…>` and presence.json `hide` (`"*"` for every slug, then the slug's own) name the regions; two-sided
-// instruments apply the SAME list to both sides (the build has nothing to hide, like overlay dismissal).
+// instruments apply the SAME list to both sides (the build has nothing to hide, like overlay dismissal). The site-wide
+// stardust/replica/presence.json (SITE_PRESENCE) is merged under a gate dir's presence.json (mergePresence).
 
 /** `--hide` values → selectors: each value a comma list string or an array of them; trimmed, empty dropped,
  * de-duplicated in order. Anything that is not a string or an array is ignored. */
@@ -785,16 +786,43 @@ export function presenceHide(json, slug) {
   return parseHideList(hideOf('*'), hideOf(slug));
 }
 
+/** The project's site-wide presence.json, cwd-relative like every `stardust/…` default: the same shape as a gate dir's
+ * (`"*"` and `<slug>` → { hide?, main?, variable?, reasons? }), where a region on every page (a location bar) is listed
+ * once. readPresenceFile merges it UNDER a gate dir's presence.json. */
+export const SITE_PRESENCE = 'stardust/replica/presence.json';
+
+/** Two parsed presence.json objects → one: per top-level key `{ ...site[k], ...gate[k] }` — the gate dir's field wins
+ * (a whole field: its `hide` replaces the site's for that key), keys and fields only one file has are kept; a missing
+ * or non-object file = {}. Pure: a new object, the inputs untouched. */
+export function mergePresence(site, gate) {
+  const obj = (x) => (x && typeof x === 'object' ? x : {});
+  const s = obj(site); const g = obj(gate);
+  return Object.fromEntries([...new Set([...Object.keys(s), ...Object.keys(g)])].map((k) => [k, { ...s[k], ...g[k] }]));
+}
+
+const readPresenceJson = (file) => {
+  try { return JSON.parse(readFileSync(file, 'utf8')); } catch (e) { throw new Error(`presence.json ${file} unreadable (${e.message})`); }
+};
+
 /**
  * gate-all's presence.json for one slug → { file, slug, found, variable: [{ live, build }], hide, note }.
  * `variable` as gate-all's specFor reads it: the entries joined on ',' and split again, trimmed, each split on the
  * first '=' → live = left, build = right || left. `hide` = presenceHide. A missing file → found: false, empty
  * lists and a note; malformed JSON throws `presence.json <file> unreadable (<msg>)`.
+ * The site-wide file (`site`, default SITE_PRESENCE; null = no merge, for callers that merged already) is merged UNDER
+ * `file` by mergePresence when it exists — `file` may then be missing, null or the site file itself; `found` when
+ * either exists. A merge adds `site` (its path), `hideSources` ([{ sel, source }] in `hide` order: `presence.json` or
+ * `site presence.json` — the file whose `hide` field the merge kept) and `variableSource` (the same for `variable`,
+ * null when empty); its note names both sources (`<file> over <site>`, `<site> (<file> not found)` or `<site>`; a null
+ * slug reads `"*"` only and is shown as `"*"`). A malformed site file throws the same error naming it. Without a site
+ * file the result is exactly the gate file's, as before.
  */
-export function readPresenceFile(file, slug) {
-  if (!file || !existsSync(file)) return { file, slug, found: false, variable: [], hide: [], note: `${file} not found — nothing hidden` };
-  let all;
-  try { all = JSON.parse(readFileSync(file, 'utf8')); } catch (e) { throw new Error(`presence.json ${file} unreadable (${e.message})`); }
+export function readPresenceFile(file, slug, { site = SITE_PRESENCE } = {}) {
+  const siteFile = site && existsSync(site) ? site : null;
+  const gateFile = file && existsSync(file) && !(siteFile && resolve(file) === resolve(siteFile)) ? file : null;
+  if (!gateFile && !siteFile) return { file, slug, found: false, variable: [], hide: [], note: `${file} not found — nothing hidden` };
+  const gate = gateFile ? readPresenceJson(gateFile) : null;
+  const all = siteFile ? mergePresence(readPresenceJson(siteFile), gate) : gate;
   const entry = (all && typeof all === 'object' && all[slug]) || {};
   const variable = [].concat(entry.variable || []).join(',').split(',').map((s) => s.trim()).filter(Boolean).map((s) => {
     const i = s.indexOf('=');
@@ -802,9 +830,29 @@ export function readPresenceFile(file, slug) {
     return { live, build: (i < 0 ? '' : s.slice(i + 1)).trim() || live };
   });
   const hide = presenceHide(all, slug);
-  const note = !variable.length && !hide.length ? `${file} has no variable regions for ${slug} — nothing hidden`
-    : `${file} → ${slug}: ${variable.length} variable region(s)${hide.length ? `, ${hide.length} hide selector(s)` : ''}`;
-  return { file, slug, found: true, variable, hide, note };
+  if (!siteFile) {
+    const note = !variable.length && !hide.length ? `${file} has no variable regions for ${slug} — nothing hidden`
+      : `${file} → ${slug}: ${variable.length} variable region(s)${hide.length ? `, ${hide.length} hide selector(s)` : ''}`;
+    return { file, slug, found: true, variable, hide, note };
+  }
+  // which file a merged field came from: the gate file's when its entry has the field itself ({ ...site[k], ...gate[k] })
+  const sourceOf = (k, field) => {
+    const e = gate && typeof gate === 'object' ? gate[k] : null;
+    return e && typeof e === 'object' && Object.hasOwn(e, field) ? 'presence.json' : 'site presence.json';
+  };
+  const hideSources = [];
+  for (const k of ['*', slug]) {
+    for (const sel of parseHideList(all[k] && typeof all[k] === 'object' ? all[k].hide : null)) {
+      if (!hideSources.some((x) => x.sel === sel)) hideSources.push({ sel, source: sourceOf(k, 'hide') });
+    }
+  }
+  let label = siteFile;
+  if (gateFile) label = `${gateFile} over ${siteFile}`;
+  else if (file && resolve(file) !== resolve(siteFile)) label = `${siteFile} (${file} not found)`;
+  const key = slug == null ? '"*"' : slug;
+  const note = !variable.length && !hide.length ? `${label} has no variable regions for ${key} — nothing hidden`
+    : `${label} → ${key}: ${variable.length} variable region(s)${hide.length ? `, ${hide.length} hide selector(s)` : ''}`;
+  return { file, slug, found: true, variable, hide, note, site: siteFile, hideSources, variableSource: variable.length ? sourceOf(slug, 'variable') : null };
 }
 
 /** A hide list → [{ sel, source }]: strings are comma lists (parseHideList) tagged `source`; { sel, source }

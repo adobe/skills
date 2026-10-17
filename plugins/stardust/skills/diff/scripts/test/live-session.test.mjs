@@ -4,7 +4,8 @@
 // OneTrust id first; the frozen label sweep, accept-like labels first, "decline" last, covering crawl.mjs's
 // text-match labels), isLiveHttpUrl, defaultWaitUntil, isEdsHost and lateWindowFor (no timed
 // late-modal poll on EDS build/preview hosts), and waitEdsDelayedPhase never throwing (stub page). The hide helpers:
-// parseHideList, presenceHide, readPresenceFile, hideEntries, formatHidden and hideRegions' empty / argument contract
+// parseHideList, presenceHide, mergePresence, readPresenceFile (with and without the site-wide presence.json merged
+// under the gate file), hideEntries, formatHidden and hideRegions' empty / argument contract
 // (stub page); where playwright is importable (a project copy), hideRegions end-to-end on fixture pages served from
 // this process — an 88 px in-flow bar above the header, a bar inserted 400 ms after load (hidden by the style rule),
 // an invalid selector, a second call, and a late bar under a CSP that blocks inline <style> (hidden by the adopted
@@ -22,7 +23,7 @@
 // pass, a non-modal <dialog open> in the content is none.
 // Run: node plugins/stardust/skills/diff/scripts/test/live-session.test.mjs
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -227,7 +228,7 @@ check('side cache: write → hit; one key field changed → miss naming it; key 
 
 // ---- the hide vocabulary: --hide lists, presence.json `hide` ("*" then the slug), records and their text ----------
 check('hide: the exported surface', () => {
-  for (const name of ['parseHideList', 'presenceHide', 'readPresenceFile', 'hideEntries', 'hideRegions', 'formatHidden']) assert.equal(typeof session[name], 'function', `${name} exported`);
+  for (const name of ['parseHideList', 'presenceHide', 'mergePresence', 'readPresenceFile', 'hideEntries', 'hideRegions', 'formatHidden']) assert.equal(typeof session[name], 'function', `${name} exported`);
 });
 check('parseHideList: comma lists and arrays, repeatable, trimmed, empties dropped, de-duplicated in order', () => {
   assert.deepEqual(session.parseHideList('.geo-bar, .location-bar', ' .promo ,, ', ['.news', '.geo-bar, .x'], '.location-bar'), ['.geo-bar', '.location-bar', '.promo', '.news', '.x']);
@@ -274,6 +275,61 @@ check('readPresenceFile: variable halves (joined entries, first "="), hide with 
     writeFileSync(bad, '{"home": {');
     assert.throws(() => session.readPresenceFile(bad, 'home'), (e) => e.message.startsWith(`presence.json ${bad} unreadable (`) && e.message.endsWith(')'));
   } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+check('mergePresence: per key and field the gate dir wins; keys and fields only one file has are kept; missing = {}', () => {
+  assert.equal(session.SITE_PRESENCE, 'stardust/replica/presence.json');
+  const site = { '*': { hide: ['.geo-bar'], reasons: { '.geo-bar': 'R-01' } }, home: { main: 'main', variable: ['.site-var'] }, about: { hide: ['.about-bar'] } };
+  const gate = { '*': { hide: ['.promo'] }, home: { hide: ['.cookie'], main: '#main' }, contact: { main: '#c' } };
+  const before = JSON.stringify([site, gate]);
+  const merged = session.mergePresence(site, gate);
+  assert.deepEqual(merged, {
+    '*': { hide: ['.promo'], reasons: { '.geo-bar': 'R-01' } },
+    home: { main: '#main', variable: ['.site-var'], hide: ['.cookie'] },
+    about: { hide: ['.about-bar'] },
+    contact: { main: '#c' },
+  });
+  assert.deepEqual(Object.keys(merged), ['*', 'home', 'about', 'contact'], 'site keys first, then the gate-only ones');
+  assert.equal(JSON.stringify([site, gate]), before, 'the inputs are untouched');
+  assert.deepEqual(session.mergePresence(site, null), site); assert.deepEqual(session.mergePresence(undefined, gate), gate);
+  for (const [s, g] of [[null, undefined], [{}, {}], ['x', 5]]) assert.deepEqual(session.mergePresence(s, g), {});
+  assert.deepEqual(session.presenceHide(merged, 'home'), ['.promo', '.cookie'], 'presenceHide reads the merged object');
+});
+check('readPresenceFile + the site file: merged under the gate file, found when either exists, sources named; none → as before', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'live-session-site-'));
+  const cwd = process.cwd();
+  try {
+    const site = join(dir, 'site.json'); const file = join(dir, 'presence.json'); const gone = join(dir, 'absent.json');
+    writeFileSync(site, JSON.stringify({ '*': { hide: ['.geo-bar'] }, home: { variable: ['.site-promo'], hide: ['.site-strip'] } }));
+    writeFileSync(file, JSON.stringify({ home: { main: 'main', hide: ['.cookie-strip', '.geo-bar'] } }));
+    const r = session.readPresenceFile(file, 'home', { site });
+    assert.deepEqual([r.file, r.slug, r.found, r.site, r.hide], [file, 'home', true, site, ['.geo-bar', '.cookie-strip']]);
+    assert.deepEqual(r.hideSources, [{ sel: '.geo-bar', source: 'site presence.json' }, { sel: '.cookie-strip', source: 'presence.json' }], 'the gate\'s home.hide replaced the site\'s; "*" came from the site');
+    assert.deepEqual([r.variable, r.variableSource], [[{ live: '.site-promo', build: '.site-promo' }], 'site presence.json'], 'a site-only field is kept');
+    assert.equal(r.note, `${file} over ${site} → home: 1 variable region(s), 2 hide selector(s)`);
+    const alone = session.readPresenceFile(gone, 'about', { site });
+    assert.deepEqual([alone.file, alone.found, alone.hide, alone.hideSources, alone.variableSource], [gone, true, ['.geo-bar'], [{ sel: '.geo-bar', source: 'site presence.json' }], null]);
+    assert.equal(alone.note, `${site} (${gone} not found) → about: 0 variable region(s), 1 hide selector(s)`);
+    const star = session.readPresenceFile(null, null, { site });
+    assert.deepEqual([star.found, star.hide, star.variable], [true, ['.geo-bar'], []], 'no slug: "*" only');
+    assert.equal(star.note, `${site} → "*": 0 variable region(s), 1 hide selector(s)`);
+    const same = session.readPresenceFile(site, 'home', { site });
+    assert.deepEqual(same.hideSources, [{ sel: '.geo-bar', source: 'site presence.json' }, { sel: '.site-strip', source: 'site presence.json' }], 'the site file passed as the gate file is read once, as the site file');
+    assert.equal(same.note, `${site} → home: 1 variable region(s), 2 hide selector(s)`);
+    const plain = { file, slug: 'home', found: true, variable: [], hide: ['.cookie-strip', '.geo-bar'], note: `${file} → home: 0 variable region(s), 2 hide selector(s)` };
+    assert.deepEqual(session.readPresenceFile(file, 'home', { site: null }), plain, 'site: null — no merge');
+    assert.deepEqual(session.readPresenceFile(file, 'home', { site: join(dir, 'no-site.json') }), plain, 'no site file — the gate file alone');
+    assert.deepEqual(session.readPresenceFile(gone, 'home', { site: join(dir, 'no-site.json') }), { file: gone, slug: 'home', found: false, variable: [], hide: [], note: `${gone} not found — nothing hidden` });
+    const bad = join(dir, 'bad-site.json');
+    writeFileSync(bad, '{"*": {');
+    for (const f of [file, null]) assert.throws(() => session.readPresenceFile(f, 'home', { site: bad }), (e) => e.message.startsWith(`presence.json ${bad} unreadable (`) && e.message.endsWith(')'));
+    // the default site path is cwd-relative: picked up when the project has one, the old result when it has none
+    process.chdir(dir);
+    assert.deepEqual(session.readPresenceFile(file, 'home'), plain, 'no stardust/replica/presence.json in the project');
+    mkdirSync(join(dir, 'stardust', 'replica'), { recursive: true });
+    writeFileSync(join(dir, session.SITE_PRESENCE), JSON.stringify({ '*': { hide: ['.location-bar'] } }));
+    const d = session.readPresenceFile(file, 'home');
+    assert.deepEqual([d.site, d.hide, d.hideSources[0]], [session.SITE_PRESENCE, ['.location-bar', '.cookie-strip', '.geo-bar'], { sel: '.location-bar', source: 'site presence.json' }]);
+  } finally { process.chdir(cwd); rmSync(dir, { recursive: true, force: true }); }
 });
 check('hideEntries: strings are comma lists tagged with the source, objects keep theirs, the first entry of a selector wins', () => {
   assert.deepEqual(session.hideEntries(['.a, .b', '.a'], 'presence.json'), [{ sel: '.a', source: 'presence.json' }, { sel: '.b', source: 'presence.json' }]);
