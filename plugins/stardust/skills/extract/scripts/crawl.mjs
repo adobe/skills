@@ -56,8 +56,12 @@
  *     15-page subtree discovery never listed, and learned it six hours later from
  *     the rollout link audit (15 × 404, then repointed to the source).
  *     ENTRY-LOCALE SCOPE: when the --url path starts with locale codes (at most two
- *     two-letter segments, such as /de, /fr-ca, /ca/en) and fewer than half of the
- *     captured pages lie under that prefix on the entry's host, captureGaps gains
+ *     two-letter segments, such as /de, /fr-ca, /ca/en; a second segment counts only
+ *     when its two-letter head is a known language or region code, read from
+ *     locale-codes.json beside this script — /de/ai narrows, /de/zz stays /de;
+ *     without that file only the first segment counts, with one stderr note) and
+ *     fewer than half of the captured pages lie under that prefix on the entry's
+ *     host, captureGaps gains
  *     `scope: { entryLocale, inside, outside, totalDiscovered }`, `detail` gains
  *     "; entry locale /de but 9 of 10 captured pages outside it", and one stderr
  *     line names it an owner decision before Phase 2. A recorded hands-off run
@@ -311,15 +315,38 @@ const pathKey = (u) => u.pathname.replace(/\/+$/, '') || '/';
 // a record's `links` is the flat href list capture() writes; the schema's { internal, external } shape is read too
 const linkList = (links) => (Array.isArray(links) ? links : links && typeof links === 'object' ? [...(links.internal || []), ...(links.external || [])] : []);
 // The entry locale: the entry URL's leading path segments that are two-letter locale codes, at most two —
-// `/de/produkte` → `/de`, `/ca/en/x` → `/ca/en`, `/fr-ca/` → `/fr-ca`; `/faq/x` and `/` → null. A recorded
+// `/de/produkte` → `/de`, `/ca/en/x` → `/ca/en`, `/fr-ca/` → `/fr-ca`; `/faq/x` and `/` → null. A second segment
+// counts only when its two-letter head is a known language or region code (`/de/ai/…` → `/de/ai`, Anguilla;
+// `/de/zz/…` → `/de`), so a short non-locale section does not narrow the scope into a false warning. A recorded
 // hands-off run entered at a /de/ URL while its site plan captured nine English pages, and nothing flagged it.
 const ENTRY_LOCALE_SEG = /^[a-z]{2}(?:[-_][a-z]{2,4})?$/i;
-export function entryLocalePrefix(href) {
+// The known two-letter heads a SECOND segment needs: ISO 639-1 languages and ISO 3166-1 alpha-2 regions, from
+// locale-codes.json beside this file (a project copy carries it along). Read on first use — never on import or
+// --help — once per table; a missing or unreadable table → null (no second segment is a locale) and one stderr note.
+const LOCALE_CODES = new URL('./locale-codes.json', import.meta.url);
+const localeTables = new Map();
+export function localeCodes(url = LOCALE_CODES) {
+  if (!localeTables.has(url.href)) {
+    let codes = null;
+    try {
+      const { languages, regions } = JSON.parse(readFileSync(url, 'utf8'));
+      codes = new Set([...languages, ...regions]);
+    } catch (e) {
+      console.error(`[crawl] note: no usable locale table at ${url.protocol === 'file:' ? fileURLToPath(url) : url.href} (${e.code || e.message}) — a second path segment is not read as a locale, so the entry-locale scope stops at the first segment`);
+    }
+    localeTables.set(url.href, codes);
+  }
+  return localeTables.get(url.href);
+}
+// `codes` = the known codes (default: localeCodes(), read only when a second segment is a candidate); null = no table.
+export function entryLocalePrefix(href, codes) {
   let u;
   try { u = new URL(href); } catch { return null; }
-  const lead = [];
-  for (const s of u.pathname.split('/').filter(Boolean).slice(0, 2)) { if (!ENTRY_LOCALE_SEG.test(s)) break; lead.push(s); }
-  return lead.length ? `/${lead.join('/')}` : null;
+  const [first, second] = u.pathname.split('/').filter(Boolean);
+  if (!first || !ENTRY_LOCALE_SEG.test(first)) return null;
+  if (!second || !ENTRY_LOCALE_SEG.test(second)) return `/${first}`;
+  const known = codes === undefined ? localeCodes() : codes;
+  return known && known.has(second.slice(0, 2).toLowerCase()) ? `/${first}/${second}` : `/${first}`;
 }
 // Inside = records (url, else finalUrl) on the entry's host whose path is the prefix or lies under it (case kept,
 // trailing slash folded, www. folded); M = records with a parseable URL. Only a minority inside (< half) is a scope.

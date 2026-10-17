@@ -4,15 +4,16 @@
 // (same-origin links on the root page under its own path, minus what the crawl captured; query, hash and
 // trailing slash folded; assets, mailto:/tel: and other hosts dropped; www. folded), the ready ledger
 // detail string, both link-list shapes, the entry-locale scope (the entry URL's leading two-letter locale
-// segments, and whether fewer than half of the captured pages lie under them) — and that importing the module or
-// asking --help starts no crawl and writes nothing. Run: node <this file>.
+// segments — a second one only when locale-codes.json knows its head — and whether fewer than half of the
+// captured pages lie under them), the locale table itself — and that importing the module or asking --help
+// starts no crawl and writes nothing. Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { capDiscovered, captureGaps, discoveryLog, entryLocalePrefix, localeRootPath, maxPages } from '../crawl.mjs';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { capDiscovered, captureGaps, discoveryLog, entryLocalePrefix, localeCodes, localeRootPath, maxPages } from '../crawl.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'crawl.mjs');
@@ -178,6 +179,49 @@ check('captureGaps scope: an entry that redirected to another origin is scoped a
   }
   // the landed URL has no locale: no scope, whatever the requested URL said
   assert.equal('scope' in captureGaps(DE_ENTRY_EN_PLAN, { entryUrl: 'https://example.test/', landedFrom: 'https://example.org/de/' }), false);
+});
+
+// Counts checked against the ISO 639-2 registration authority's code list (its alpha-2 column) and the IANA
+// language subtag registry for languages, and three ISO 3166-1 alpha-2 country lists plus the IANA registry for
+// regions. The 184 languages keep `bh`, which IANA deprecated in 2026; `BH` is also a region (Bahrain), so a
+// second segment reads the same either way.
+const TABLE_FILE = join(HERE, '..', 'locale-codes.json');
+check('locale-codes.json: 184 ISO 639-1 languages and 249 ISO 3166-1 alpha-2 regions — sorted, unique, lower-case two-letter; de, en, fr, ch, us, gb in; the deprecated iw/in/ji/jw/mo/sh and reserved region codes out', () => {
+  const table = JSON.parse(readFileSync(TABLE_FILE, 'utf8'));
+  assert.deepEqual(Object.keys(table), ['_source', 'languages', 'regions']);
+  assert.equal(table._source, 'ISO 639-1 language codes and ISO 3166-1 alpha-2 region codes, lower case');
+  for (const [key, n] of [['languages', 184], ['regions', 249]]) {
+    const list = table[key];
+    assert.equal(list.length, n, key); assert.equal(new Set(list).size, n, key);
+    assert.ok(list.every((c) => /^[a-z]{2}$/.test(c)), key); assert.deepEqual(list, [...list].sort(), key);
+  }
+  for (const c of ['de', 'en', 'fr', 'ch', 'uk', 'eu', 'zh']) assert.ok(table.languages.includes(c), `language ${c}`);
+  for (const c of ['de', 'fr', 'ch', 'us', 'gb', 'ai', 'in']) assert.ok(table.regions.includes(c), `region ${c}`);
+  for (const c of ['iw', 'in', 'ji', 'jw', 'mo', 'sh']) assert.equal(table.languages.includes(c), false, `deprecated language ${c}`);
+  // UK, EU, CQ: exceptionally reserved, not assigned; XK, ZZ: user-assigned; AN, YU: withdrawn
+  for (const c of ['uk', 'eu', 'cq', 'xk', 'zz', 'an', 'yu']) assert.equal(table.regions.includes(c), false, `region ${c}`);
+  for (const c of ['zz', 'xk', 'qq']) assert.equal(table.languages.includes(c), false, `language ${c}`);
+});
+check('entryLocalePrefix: a second segment joins the locale only when its two-letter head is a known language or region code — /de/ai (Anguilla) narrows, /de/zz stops at /de; the first segment keeps its rule (case kept)', () => {
+  for (const [u, want] of [
+    ['https://x.example/de/ai/produkte', '/de/ai'], ['https://x.example/de/zz/produkte', '/de'], ['https://x.example/en-us/x', '/en-us'], ['https://x.example/en-us/zz/x', '/en-us'],
+    ['https://x.example/de/ch/x', '/de/ch'], ['https://x.example/de/CH/', '/de/CH'], ['https://x.example/ca/en-gb/x', '/ca/en-gb'], ['https://x.example/ca/zh_hant/x', '/ca/zh_hant'],
+    ['https://x.example/de/zz-yy/x', '/de'], ['https://x.example/de/QQ_hant', '/de'], ['https://x.example/zz/ai/x', '/zz/ai'], ['https://x.example/zz/qq/x', '/zz'],
+  ]) assert.equal(entryLocalePrefix(u), want, u);
+});
+check('captureGaps scope: a /de/zz/… entry scopes at /de, so a /de capture raises no warning; a /de/ai/… entry still narrows to /de/ai', () => {
+  const dePlan = [page('/de/'), page('/de/produkte'), page('/de/zz/x'), page('/de/ai/x')];
+  assert.equal('scope' in captureGaps(dePlan, { entryUrl: 'https://example.test/de/zz/x' }), false);
+  assert.deepEqual(captureGaps(dePlan, { entryUrl: 'https://example.test/de/ai/x' }).scope, { entryLocale: '/de/ai', inside: 1, outside: 3 });
+});
+check('localeCodes: the shipped table loads from beside crawl.mjs; a missing table → null and ONE stderr note however often asked, and entryLocalePrefix without a table (null) never narrows past the first segment', () => {
+  const table = JSON.parse(readFileSync(TABLE_FILE, 'utf8'));
+  assert.deepEqual([...localeCodes()].sort(), [...new Set([...table.languages, ...table.regions])].sort());
+  const missing = new URL('./no-such-locale-codes.json', pathToFileURL(SCRIPT));
+  const notes = []; const stderr = console.error; console.error = (...a) => notes.push(a.join(' '));
+  try { for (let i = 0; i < 3; i += 1) assert.equal(localeCodes(missing), null); } finally { console.error = stderr; }
+  assert.equal(notes.length, 1, notes.join('\n')); assert.match(notes[0], /^\[crawl\] note: .*no-such-locale-codes\.json.* second path segment/);
+  for (const [u, want] of [['https://x.example/de/ai/x', '/de'], ['https://x.example/ca/en/x', '/ca'], ['https://x.example/en-us/x', '/en-us'], ['https://x.example/faq', null]]) assert.equal(entryLocalePrefix(u, null), want, u);
 });
 
 console.log(failed ? `\n${failed} failing` : '\ncrawl: all checks passed');
