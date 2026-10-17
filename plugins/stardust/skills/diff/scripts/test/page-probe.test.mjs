@@ -17,7 +17,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   HELP, UsageError, consoleLine, countHidden, distinctMatchesInPage, evalText, exitCodeFor, formatReport, hideCss, hideRegionsFallback,
-  parseArgs, pickHide, pngSize, sbsHtml, sbsWidth, splitSelectors, summaryLine,
+  parseArgs, pickHide, pngSize, sbsHtml, sbsOutPath, sbsWidth, splitSelectors, summaryLine,
 } from '../page-probe.mjs';
 import * as liveSession from '../live-session.mjs';
 
@@ -73,6 +73,20 @@ await check('parseArgs usage errors: --sbs short of three values, page flags wit
   usage(['https://www.example.com/', '--max-chars', '0'], /--max-chars must be a whole number/);
   usage(['https://www.example.com/', '--hide', ' , '], /--hide needs at least one selector/);
   usage(['https://www.example.com/', '--wait'], /unknown option --wait/);
+});
+await check('sbsOutPath / parseArgs: an --sbs <out> that is --shot\'s file goes beside it as <name>-sbs.png; any other path is kept', () => {
+  assert.equal(sbsOutPath('out/x.png', 'out/x.png'), 'out/x-sbs.png');
+  assert.equal(sbsOutPath('out/x.png', './out/../out/x.png'), './out/../out/x-sbs.png', 'same file by resolved path');
+  assert.equal(sbsOutPath('out/X.PNG', 'out/X.PNG'), 'out/X-sbs.PNG', 'the extension kept as given');
+  assert.equal(sbsOutPath('out/x.png', 'out/y.png'), 'out/y.png');
+  assert.equal(sbsOutPath(null, 'out/x.png'), 'out/x.png', 'no --shot');
+  const o = parseArgs(['https://www.example.com/', '--shot', 'out/x.png', '--sbs', 'a.png', 'b.png', 'out/x.png']);
+  assert.deepEqual(o.sbs, { a: 'a.png', b: 'b.png', out: 'out/x-sbs.png', askedOut: 'out/x.png' });
+  assert.equal(o.shot, 'out/x.png');
+  assert.deepEqual(parseArgs(['https://www.example.com/', '--shot', 'out/x.png', '--sbs', 'out/x.png', 'ref.png', 'out/x.png']).sbs,
+    { a: 'out/x.png', b: 'ref.png', out: 'out/x-sbs.png', askedOut: 'out/x.png' }, 'this run\'s shot beside a reference, composed next to the shot');
+  assert.deepEqual(parseArgs(['https://www.example.com/', '--shot', 'out/x.png', '--sbs', 'a.png', 'b.png', 'out/y.png']).sbs, { a: 'a.png', b: 'b.png', out: 'out/y.png' });
+  usage(['https://www.example.com/', '--shot', 'x.png', '--sbs', 'x-sbs.png', 'b.png', 'x.png'], /must differ from its inputs \(got x-sbs\.png, moved beside --shot x\.png\)/);
 });
 await check('splitSelectors: top-level commas only — (), [] and quoted commas stay in their selector', () => {
   assert.deepEqual(splitSelectors('.a, .b ,,#c'), ['.a', '.b', '#c']);
@@ -192,7 +206,7 @@ await check('pngSize reads the IHDR; anything else is null. sbsWidth and the com
 });
 await check('HELP: usage, every flag, the output lines, exit codes, and that gate numbers come from the gate instruments', () => {
   for (const f of ['--width', '--shot', '--full', '--eval', '--click', '--hide', '--sbs', '--dismiss', '--headed', '--locale', '--nav-timeout', '--max-chars', '--help']) assert.ok(HELP.includes(f), f);
-  for (const s of ['Usage: node page-probe.mjs', 'console errors <n>', 'Exit codes', '3 bot challenge', 'gate instruments']) assert.ok(HELP.includes(s), s);
+  for (const s of ['Usage: node page-probe.mjs', 'console errors <n>', 'Exit codes', '3 bot challenge', 'gate instruments', '<name>-sbs.png']) assert.ok(HELP.includes(s), s);
 });
 await check('--help exits 0 with the usage from an empty cwd and writes nothing; a usage error exits 2 naming the flag, writing nothing', () => {
   const cwd = mkdtempSync(join(tmpdir(), 'page-probe-help-'));
@@ -274,6 +288,14 @@ else {
       const r = await runAsync([`${base}/blocked`, '--shot', 'out/blocked.png'], cwd);
       assert.equal(r.code, 3, r.err); assert.match(r.err, /bot challenge/); assert.equal(r.out, '');
       assert.equal(existsSync(join(cwd, 'out', 'blocked.png')), false);
+    });
+    await check('e2e: --shot and --sbs naming one file — the shot stays, the side by side goes beside it and its line names it', async () => {
+      const r = await runAsync([`${base}/plain`, '--shot', 'out/same.png', '--sbs', 'out/shot.png', 'out/same.png', 'out/same.png'], cwd);
+      assert.equal(r.code, 0, r.err);
+      assert.deepEqual(r.out.trim().split('\n').slice(1), ['shot: out/same.png', 'sbs: out/same-sbs.png']);
+      assert.match(r.err, /page-probe: --sbs out\/same\.png is --shot's file — the side by side goes beside it: out\/same-sbs\.png/);
+      assert.deepEqual(pngSize(readFileSync(join(cwd, 'out', 'same.png'))), { w: 1440, h: 900 }, 'the shot, not the composition');
+      assert.equal(pngSize(readFileSync(join(cwd, 'out', 'same-sbs.png'))).w, sbsWidth({ w: 1440 }, { w: 1440 }));
     });
     await check('e2e: --sbs with no <url> composes the two PNGs side by side and prints only the sbs line', async () => {
       const r = await runAsync(['--sbs', 'out/shot.png', 'out/full.png', 'out/sbs.png'], cwd);

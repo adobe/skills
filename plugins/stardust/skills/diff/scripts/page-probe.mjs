@@ -17,7 +17,7 @@
  *        [--click <sel>] [--hide <sel,…>] [--sbs <a.png> <b.png> <out.png>] [--dismiss <sel,…>] [--headed]
  *        [--locale <tag>] [--nav-timeout <ms>] [--max-chars <n>]
  * Exit: 0 ok, 1 error, 2 usage, 3 bot challenge. Requires playwright (imported lazily: --help answers without it).
- * Pure parts exported: parseArgs, splitSelectors, summaryLine, consoleLine, evalText, formatReport, hideCss,
+ * Pure parts exported: parseArgs, sbsOutPath, splitSelectors, summaryLine, consoleLine, evalText, formatReport, hideCss,
  * hideRegionsFallback, pickHide, countHidden, distinctMatchesInPage, pngSize, sbsWidth, sbsHtml, exitCodeFor.
  */
 import { mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from 'node:fs';
@@ -41,7 +41,8 @@ Usage: node page-probe.mjs <url> [options]
   --shot <out.png>      screenshot of the viewport after the steps above
   --full                full-page screenshot (needs --shot)
   --sbs <a> <b> <out>   compose two existing PNGs side by side, captioned with their paths, into <out>;
-                        with --sbs the <url> is optional (compose only)
+                        with --sbs the <url> is optional (compose only). An <out> that is --shot's file never
+                        overwrites the shot: the side by side goes beside it as <name>-sbs.png (stderr says so)
   --dismiss <sel,…>     extra overlay-dismiss selectors, clicked before the consent candidates; repeatable
   --headed              stealth real-Chrome tier (bot-managed sites); runs the challenge-solve window
   --locale <tag>        pin Accept-Language + locale
@@ -103,6 +104,13 @@ export function splitSelectors(s) {
 function positiveInt(flag, v, max, unit = '') {
   if (!/^\d+$/.test(v) || Number(v) < 1 || Number(v) > max) throw new UsageError(`${flag} must be a whole number${unit} from 1 to ${max}, got "${v}"`);
   return Number(v);
+}
+
+/** --sbs <out> when it is --shot's file (by resolved path): beside it as `<name>-sbs.<ext>`, so the composition never
+ * overwrites the shot; any other path (or no --shot) is kept as given. */
+export function sbsOutPath(shot, out) {
+  if (!shot || resolve(shot) !== resolve(out)) return out;
+  return out.replace(/(\.[^./\\]*)?$/, (ext) => `-sbs${ext}`);
 }
 
 function pngPath(flag, v) {
@@ -170,8 +178,10 @@ export function parseArgs(args) {
     if (!u || !['http:', 'https:', 'file:'].includes(u.protocol)) throw new UsageError(`<url> must be an absolute http(s) or file: URL, got "${opts.url}"`);
   }
   if (opts.sbs) {
+    const moved = sbsOutPath(opts.shot, opts.sbs.out);
+    if (moved !== opts.sbs.out) opts.sbs = { ...opts.sbs, out: moved, askedOut: opts.sbs.out };
     const out = resolve(opts.sbs.out);
-    if (out === resolve(opts.sbs.a) || out === resolve(opts.sbs.b)) throw new UsageError(`--sbs <out.png> must differ from its inputs (got ${opts.sbs.out})`);
+    if (out === resolve(opts.sbs.a) || out === resolve(opts.sbs.b)) throw new UsageError(`--sbs <out.png> must differ from its inputs (got ${opts.sbs.out}${opts.sbs.askedOut ? `, moved beside --shot ${opts.shot}` : ''})`);
   }
   return opts;
 }
@@ -406,6 +416,7 @@ export async function main(args) {
   // Fail before any navigation (each live hit spends block budget) when an --sbs input is already unusable; an
   // input that IS this run's --shot is written first, so it is read at compose time.
   if (opts.sbs) for (const f of [opts.sbs.a, opts.sbs.b]) if (!opts.shot || resolve(f) !== resolve(opts.shot)) readPng(f, UsageError);
+  if (opts.sbs && opts.sbs.askedOut) console.error(`page-probe: --sbs ${opts.sbs.askedOut} is --shot's file — the side by side goes beside it: ${opts.sbs.out}`);
   const { chromium } = await import('playwright');
   const browser = opts.headed ? await session.launchStealthHeaded(chromium) : await chromium.launch();
   const r = { url: opts.url, width: opts.width, status: null, consent: null, hidden: 0, hiddenText: null, consoleErrors: [], click: null, evalJson: null, shot: null, sbs: null };
