@@ -43,12 +43,17 @@
  *     single phrase in the title, or in the text / an iframe src only on a page
  *     under 2 KB of text) or a page under 2 KB of text under ONE error heading.
  *     The message says "origin blocked" and names the --headed escalation.
- *   - Two overlay classes dismissed, not one: cookie consent (clicked, never
- *     DOM-removed) AND timed marketing/newsletter interstitials (CH-1:
+ *   - Three overlay classes dismissed, not one: cookie consent (clicked, never
+ *     DOM-removed), timed marketing/newsletter interstitials (CH-1:
  *     a fashion retailer's "Sign up, stay updated!" modal baked a large pixel-diff
  *     contributor into the live capture that no prototype fidelity could
- *     null out). The mouse is parked afterwards (bottom-left) so no
- *     :hover-styled element under the resting cursor captures in hover state.
+ *     null out) AND open dialogs (closeDialogs: a native <dialog> close()d, else
+ *     its close control, else Escape; a non-native modal its close control, else
+ *     Escape). The html/body scroll lock a closed dialog leaves is released for
+ *     the capture (overflow-y only) — only when the dialog pass closed one and
+ *     none survived; dialogsLeft names a survivor. The mouse is parked afterwards
+ *     (bottom-left) so no :hover-styled element under the resting cursor
+ *     captures in hover state.
  *   - `--locale` determinism: geo-redirecting sites (a car brand → /ch-de/,
  *     a fashion brand → /ww/) capture a different locale per run unless
  *     Accept-Language + context locale are pinned.
@@ -662,8 +667,159 @@ const MODAL_CLOSE_CANDIDATES = [
   'button:has-text("No, thanks")',
 ];
 
+// ---- dialogs: the third overlay class (V1) ------------------------------------------------------------
+// The marketing pass above clicks only a close control it recognises inside a modal-like root. An open dialog it
+// cannot close — a native <dialog>, a close button labelled in another language, a panel only Escape dismisses —
+// captures as part of the page, and the scroll lock it set on html/body outlives it. closeDialogs closes them
+// generically; dismissOverlays then releases the lock a CLOSED dialog leaves (dialogPass below says when, and why
+// overflow-y only).
+export const NATIVE_DIALOG = 'dialog[open]';
+// Non-native modals. `[class*="modal"][class*="open"]` also matches a `body.modal-open` scroll-lock class and an
+// in-content `.modal-opener` button — neither is a modal: closeDialogs acts only on an overlayLikeInPage match.
+export const MODAL_DIALOGS = Object.freeze(['[role="dialog"][aria-modal="true"]', '.modal.show', '[class*="modal"][class*="open"]']);
+// A dialog's close control, in order — the first selector with a VISIBLE match inside the dialog is clicked.
+export const DIALOG_CLOSE_CANDIDATES = Object.freeze(['[aria-label*="close" i]', '[aria-label*="schließen" i]', '[data-dismiss]', 'button.close', '.modal__close', '[class*="close"]']);
+
+// In-page helpers (self-contained: playwright serialises them into the page).
+/* eslint-disable no-undef */
+/** The element's record name: `<tag>` + `#id` (CSS.escape), else + its first two classes (`.a.b`), else the tag. */
+export function describeElementInPage(el) {
+  const tag = el.tagName.toLowerCase();
+  if (el.id) return `${tag}#${CSS.escape(el.id)}`;
+  return tag + [...el.classList].slice(0, 2).map((c) => `.${CSS.escape(c)}`).join('');
+}
 /**
- * Dismiss the two overlay classes that corrupt live measurement:
+ * Is `el` an overlay? Not html/body; displayed (display, visibility, a ≥ 2×2 box); in a positioned layer (itself or
+ * an ancestor below body — across open shadow roots — is position fixed / absolute / sticky, or role=dialog /
+ * aria-modal=true); and its box measures ≥ 5 % of the viewport's area or ≥ 50 % of its width.
+ */
+export function overlayLikeInPage(el) {
+  if (!el || el === document.documentElement || el === document.body) return false;
+  const cs = getComputedStyle(el);
+  const r = el.getBoundingClientRect();
+  if (cs.display === 'none' || cs.visibility === 'hidden' || r.width < 2 || r.height < 2) return false;
+  let layered = false;
+  for (let n = el; n && n !== document.body && n !== document.documentElement;
+    n = n.parentElement || (n.getRootNode() instanceof ShadowRoot ? n.getRootNode().host : null)) {
+    const pos = getComputedStyle(n).position;
+    if (pos === 'fixed' || pos === 'absolute' || pos === 'sticky' || n.getAttribute('role') === 'dialog' || n.getAttribute('aria-modal') === 'true') { layered = true; break; }
+  }
+  const vw = window.innerWidth; const vh = window.innerHeight;
+  return layered && (r.width * r.height >= 0.05 * vw * vh || r.width >= 0.5 * vw);
+}
+/** The scroll lock: { html, body, locked } — the computed overflow-y of each (body null when absent); locked = either is hidden or clip. */
+export function scrollLockInPage() {
+  const oy = (el) => (el ? getComputedStyle(el).overflowY : null);
+  const html = oy(document.documentElement); const body = oy(document.body);
+  return { html, body, locked: [html, body].some((v) => v === 'hidden' || v === 'clip') };
+}
+/**
+ * Release the scroll lock: overflow-y only (R2 — a site's normal `overflow-x: hidden` must not turn into exposed
+ * horizontal overflow), inline + !important (it outranks the page's stylesheet), on each of html and body whose
+ * computed overflow-y is hidden or clip. Returns the names released (`['html', 'body']` subset, in that order).
+ */
+export function releaseScrollLockInPage() {
+  const released = [];
+  for (const [name, el] of [['html', document.documentElement], ['body', document.body]]) {
+    if (!el) continue;
+    const v = getComputedStyle(el).overflowY;
+    if (v === 'hidden' || v === 'clip') { el.style.setProperty('overflow-y', 'visible', 'important'); released.push(name); }
+  }
+  return released;
+}
+/* eslint-enable no-undef */
+
+/**
+ * Close the open dialogs → { closed: [...], left: [...] }: `<name> (close())`, `<name> (close control <selector>)`
+ * or `<name> (Escape)` per dialog closed; the names of those still visible, de-duplicated (name =
+ * describeElementInPage).
+ *   - native: every visible `dialog[open]`: el.close(), 300 ms; still visible (page CSS keeps a closed dialog
+ *     displayed) → the first DIALOG_CLOSE_CANDIDATES selector with a visible match inside it is clicked, 500 ms;
+ *     still visible → Escape, 500 ms.
+ *   - non-native: per MODAL_DIALOGS selector, every match that is visible AND overlayLikeInPage: the same close
+ *     control → Escape sequence (a div has no close()).
+ * Each selector's matches are a SNAPSHOT — element handles from the locator, which pierce open shadow roots as the
+ * locator does: closing a dialog drops it from `dialog[open]` / its `show` / `open` class, so a lazy nth(i) would
+ * skip the next match and lose the dialog close() left visible. ≤ 25 per selector; an element handled once is not
+ * retried by a later selector; a match no longer visible is skipped; every step is per-element try/catch (a
+ * detached element is skipped, never a throw out of the pass). A dialog the click / Escape detached counts closed.
+ */
+export async function closeDialogs(page) {
+  const closed = []; const left = []; const handled = []; const held = [];
+  const visible = (h) => h.isVisible().catch(() => false);
+  const settle = (ms) => page.waitForTimeout(ms).catch(() => {});
+  const snapshot = async (sel) => {
+    const all = await page.locator(sel).elementHandles().catch(() => []);
+    held.push(...all);
+    return all.slice(0, 25);
+  };
+  // the close control → Escape tail both kinds share
+  const closeOrEscape = async (h, name) => {
+    for (const sel of DIALOG_CLOSE_CANDIDATES) {
+      const ctl = await h.$(`${sel} >> visible=true`).catch(() => null);
+      if (!ctl) continue;
+      held.push(ctl);
+      await ctl.click({ timeout: 3000 }).catch(() => {}); // not clickable → Escape below
+      await settle(500);
+      if (!(await visible(h))) { closed.push(`${name} (close control ${sel})`); return; }
+      break;
+    }
+    await page.keyboard.press('Escape').catch(() => {});
+    await settle(500);
+    if (!(await visible(h))) closed.push(`${name} (Escape)`);
+    else if (!left.includes(name)) left.push(name);
+  };
+  try {
+    for (const h of await snapshot(NATIVE_DIALOG)) {
+      try {
+        if (!(await visible(h))) continue;
+        const name = await h.evaluate(describeElementInPage);
+        handled.push(h);
+        await h.evaluate((el) => el.close());
+        await settle(300);
+        if (!(await visible(h))) closed.push(`${name} (close())`);
+        else await closeOrEscape(h, name);
+      } catch { /* detached mid-pass — skipped */ }
+    }
+    for (const sel of MODAL_DIALOGS) {
+      const hs = await snapshot(sel);
+      const done = hs.length && handled.length
+        ? await page.evaluate(([cands, seen]) => cands.map((c) => seen.includes(c)), [hs, handled]).catch(() => [])
+        : [];
+      for (let i = 0; i < hs.length; i += 1) {
+        if (done[i]) continue;
+        try {
+          if (!(await visible(hs[i])) || !(await hs[i].evaluate(overlayLikeInPage))) continue;
+          const name = await hs[i].evaluate(describeElementInPage);
+          handled.push(hs[i]);
+          await closeOrEscape(hs[i], name);
+        } catch { /* detached mid-pass — skipped */ }
+      }
+    }
+  } finally {
+    await Promise.all(held.map((h) => h.dispose().catch(() => {})));
+  }
+  return { closed, left };
+}
+
+// dismissOverlays' dialog pass: closeDialogs, then the scroll lock the closed dialogs leave. R1 — released only when
+// THIS pass closed at least one dialog AND none of its candidates survived: a lock with no closed dialog is the
+// page's own layout (an inner scroller / scroll-jacking — stitch-shot's scroll-stall guard stays loud), and a lock
+// with a surviving dialog stays too (nothing else names the survivor: a released lock would turn a loud stall into a
+// silently polluted capture; dialogsLeft names it). R2 — overflow-y only (releaseScrollLockInPage).
+async function dialogPass(page) {
+  const { closed: dialogs, left: dialogsLeft } = await closeDialogs(page);
+  let scrollLockReleased = false;
+  if (dialogs.length > 0 && dialogsLeft.length === 0) {
+    await page.waitForTimeout(300).catch(() => {}); // a close handler that unlocks on a transition end gets its turn
+    const lock = await page.evaluate(scrollLockInPage).catch(() => null);
+    if (lock && lock.locked) scrollLockReleased = (await page.evaluate(releaseScrollLockInPage).catch(() => [])).length > 0;
+  }
+  return { dialogs, dialogsLeft, scrollLockReleased };
+}
+
+/**
+ * Dismiss the three overlay classes that corrupt live measurement:
  *   (a) cookie consent — clicked (never removed), first candidate wins;
  *   (b) timed marketing/newsletter interstitials (CH-1) — every modal-like
  *       container with a VISIBLE close control gets it clicked, verified
@@ -672,10 +828,16 @@ const MODAL_CLOSE_CANDIDATES = [
  *       to `lateWindowMs` (default 6000) when nothing was dismissed yet.
  *       Callers pass `lateWindowFor(url, …)`: 0 on local targets and on EDS build/preview hosts, which get one
  *       sweep (stitch-shot runs it after waitEdsDelayedPhase, so a consent manager the build enables is up).
+ *   (c) dialogs, after (b) (closeDialogs) — every open native `dialog[open]` gets close(), then its close control,
+ *       then Escape; a visible overlay-like non-native modal (MODAL_DIALOGS) its close control, then Escape. The
+ *       html/body scroll lock left afterwards is released for the capture (overflow-y only, R2) ONLY when this pass
+ *       closed a dialog and none survived (R1): a lock without a closed dialog is the page's own layout, and a lock
+ *       over a survivor stays loud (dialogsLeft names the survivor).
  * `extra` selectors are site-specific dismissers, clicked first (each once).
  * Parks the mouse afterwards (bottom-left — dead space on virtually every
  * layout) so no :hover-styled element under the cursor captures hovered.
- * Returns { extra: [...], consent: <sel|null>, marketing: [...] }.
+ * Returns { extra: [...], consent: <sel|null>, marketing: [...], dialogs: [...], dialogsLeft: [...],
+ * scrollLockReleased: <bool> } — dialogs / dialogsLeft as closeDialogs' closed / left strings.
  */
 export async function dismissOverlays(page, { extra = [], lateWindowMs = 6000 } = {}) {
   const dismissed = { extra: [], consent: null, marketing: [] };
@@ -738,6 +900,9 @@ export async function dismissOverlays(page, { extra = [], lateWindowMs = 6000 } 
     await page.waitForTimeout(1500);
     acted = await closeVisibleDialogs();
   }
+
+  // (c) dialogs, and the scroll lock a closed dialog leaves
+  Object.assign(dismissed, await dialogPass(page));
 
   // park the mouse (rule 10): a dismissal click leaves the virtual cursor at
   // the button's coordinates; anything :hover-styled under it captures hovered.
