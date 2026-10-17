@@ -310,7 +310,7 @@ check('a value flag followed by another flag (or nothing) is a usage error namin
 check('unknown slug and no command are usage errors (exit 1)', () => {
   assert.equal(run(['render', 'ghost']).status, 1); assert.equal(run(['frobnicate']).status, 1);
   const noState = run(['render', '--all', '--state', 'nope.json']); assert.equal(noState.status, 1);
-  assert.match(noState.err, /^usage error: nope\.json does not exist — create it with state\.mjs init --pages <urls> after the crawl/);
+  assert.match(noState.err, /^usage error: nope\.json does not exist — create it with state\.mjs init --pages <url-file\|-> after the crawl/);
 });
 s1.pages = s1.pages.filter((p) => !['draft', 'untitled', 'dup-a', 'dup-b'].includes(p.slug));
 
