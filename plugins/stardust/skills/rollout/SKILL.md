@@ -220,7 +220,7 @@ Walk `plan.json.steps` in order (representative pages first). For each page:
    `--status deployed` line runs right after its `.plain.html` checks, then,
    inside a C-deliver unit, `node skills/stardust/scripts/unit-commit.mjs <unit>`
    (`<unit>`: the recorded unit holding the page, `stardust/rollout/units/<unit>.paths`);
-   pages outside any unit (D2-built pages, C0 chrome documents) are recorded and
+   D2-built pages and `foundation-chrome`'s chrome documents are recorded and
    committed at the checkpoint commit. The published-origin gate comes after
    (handoff contract § 3, row C).
    **Publish in the loop (`PUT → preview → live`), don't stop at preview** — any
@@ -235,15 +235,22 @@ prototype, **plus computed-style invariants in a headless render** — grid
 containers compute `display: grid` (not stacked single-column), sections are
 full-bleed where the design says so, and the CTA/button classes are actually
 styled (per `stardust/runtime-contract.json`, `skills/deploy/SKILL.md`
-§ Runtime-detection probe). `deployed` means after PUT + preview: the gate's
-probes run against the page's preview URL, never a local harness — a
-pre-deploy harness pixel diff is NOT this gate. A wrong runtime assumption (block wrapper class,
+§ Runtime-detection probe). Its probes run against the preview URL, never a
+harness (step 1). A wrong runtime assumption (block wrapper class,
 button classes) is silent and sitewide — typography still looks fine while
 every grid stacks. This one gate is the difference between fixing one page
 and rebuilding every template. The same gate runs `qa.mjs --checks metadata`
 against the origin: `favicon-default` means the site's icon never shipped
 (deploy Step 3 § Favicon) — recorded first passes served the boilerplate
-icon while `/favicon.ico` answered 200. **Archetype first, per template (#126):** the
+icon while `/favicon.ico` answered 200. **Foundation sub-units (C0):** in C-deliver
+the foundation is three recorded units run one after another — `foundation-chrome`
+(header + footer blocks, the chrome documents, per-locale nav/footer),
+`foundation-styles` (styles, fonts, favicon, scripts, `stardust/runtime-contract.json`),
+then `archetype-<template>` of the shell template — each its own `progress.json`
+entry, a subagent that returns one verdict line, a checkpoint commit and a boundary
+ask; this gate's chrome checks close `foundation-chrome`, its pixel row the
+archetype, and `foundation-freeze.mjs freeze` runs once, after the three (handoff
+contract § 3, row C). **Archetype first, per template (#126):** the
 template's archetype is deployed and passes its full gate row on the preview URL
 (`gate-all.mjs --only`, cap 3 fix rounds) before any of its siblings is rendered
 or converted — the recorded unit `C-archetype` (handoff contract § 3, row C).
@@ -268,14 +275,11 @@ variant where cluster agents deploy themselves — replica's Phase 5 fan-out,
 per-cluster deploy ledgers, lock-safe shared ledgers). The central deploy step
 should run the bundled, resumable driver rather than a serial loop:
 `node skills/deploy/scripts/deploy-batch.mjs --org <org> --repo <repo>
---branch <branch> --content <dir>` (concurrency pool, persistent ledger that skips
-already-live pages, retry/backoff, append-only log, delivered-`.plain.html` check).
-The driver and every batch run in the background; its log and ledger are the
+--branch <branch> --content <dir>`. The driver and every batch run in the background; its log and ledger are the
 progress file. After a transient blip, re-run the same command — it re-drives
 only the FAILs. Then reconcile the ledger into coverage with `update-coverage.mjs`
-(step 4's order). **Foundation first** (lint AND commit `styles.css`,
-header/footer CSS and the contract file before the first agent spawns; no token
-or custom-property rename after fan-out), **disjoint clusters spawn
+(step 4's order). **Foundation first** (C0's sub-units, committed and
+frozen before the first cluster spawns), **disjoint clusters spawn
 concurrently**, and **every tool call stays under 4 minutes, the main agent's
 included** — long instruments through `run-bg.mjs start`, `wait` the NEXT call
 (the master skill's wait discipline; handoff contract § Fan-out discipline).
