@@ -418,7 +418,8 @@ overlay_left() {
 }
 # A hide selector that matched nothing on live (header § --hide): the live capture's record carries
 # hideMiss { sels, candidates } (null when none) → one stderr WARNING line, never a verdict. The text restates
-# live-session.mjs's hideMissLine / formatCandidates on purpose (import-free, like HIDE_JS) — keep them in step. An
+# live-session.mjs's hideMissLine / formatCandidates on purpose (import-free, like HIDE_JS) — keep them in step (a
+# candidate's height prints as recorded — the page function rounds it where it measures; 0 / none → the 0-px text). An
 # absent or unreadable record says nothing (the fontsFailed note covers a fresh capture's).
 hide_miss_warn() {
   [ -f "$DIR/live-shot.json" ] || return 0
@@ -428,8 +429,7 @@ hide_miss_warn() {
     const sels = m && Array.isArray(m.sels) ? m.sels.filter((s) => typeof s === "string" && s) : [];
     if (!sels.length) process.exit(0);
     const list = Array.isArray(m.candidates) ? m.candidates.filter((c) => c && typeof c === "object" && typeof c.selector === "string") : [];
-    const one = (c) => { const h = Math.round(Number(c.height) || 0);
-      return `${c.selector} (${c.tag}, ${h ? `${h}px` : "0px now — a block that grows later is still hidden by the persistent display:none !important rule"})`; };
+    const one = (c) => `${c.selector} (${c.tag}, ${c.height ? `${c.height}px` : "0px now — a block that grows later is still hidden by the persistent display:none !important rule"})`;
     const cands = list.length ? list.map(one).join("; ") : "none found above the header";
     const line = `hide matched nothing on live — candidates: ${cands} (${sels.join(", ")})`;
     fs.writeSync(2, `gate.sh: WARNING ${line.replace(/[\r\n]+/g, " ")}\n`);' -- "$DIR/live-shot.json"

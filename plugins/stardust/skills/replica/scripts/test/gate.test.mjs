@@ -20,6 +20,7 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { hideMissLine } from '../../../diff/scripts/live-session.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const scripts = join(here, '..');
@@ -543,7 +544,7 @@ const MISS = { sels: ['.geo-bar', '#top .location-bar'], candidates: [
   { tag: 'div', id: 'geo-suggest', classes: [], top: 0, height: 48, selector: '#geo-suggest' },
   { tag: 'aside', id: '', classes: ['region-wrap', 'js-geo'], top: 48, height: 0, selector: 'aside.region-wrap' },
   { tag: 'div', id: '', classes: ['strip'], top: 48, height: 31.6, selector: 'body > div:nth-of-type(2)' }] };
-const MISS_LINE = 'gate.sh: WARNING hide matched nothing on live — candidates: #geo-suggest (div, 48px); aside.region-wrap (aside, 0px now — a block that grows later is still hidden by the persistent display:none !important rule); body > div:nth-of-type(2) (div, 32px) (.geo-bar, #top .location-bar)';
+const MISS_LINE = 'gate.sh: WARNING hide matched nothing on live — candidates: #geo-suggest (div, 48px); aside.region-wrap (aside, 0px now — a block that grows later is still hidden by the persistent display:none !important rule); body > div:nth-of-type(2) (div, 31.6px) (.geo-bar, #top .location-bar)';
 const warnings = (stderr) => stderr.split('\n').filter((l) => /WARNING/.test(l));
 const missRound = (slug, lbl, env = {}) => gate([slug, `https://live.example/${slug}`, buildUrl, '1440', lbl, '--marker', 'home-proposed', '--hide', '.geo-bar, #top .location-bar'], { STUB_STITCH_COUNT: countFile, ...env });
 const r0 = await missRound('miss0', 'x1');
@@ -560,6 +561,15 @@ check('a reused live.png whose live-shot.json carries hideMiss warns again (no l
 r = await missRound('miss2', 'x1', { STUB_HIDEMISS_LIVE: JSON.stringify({ sels: ['.geo-bar'], candidates: [] }) });
 check('no candidates: `none found above the header`', r.status === 0 && JSON.stringify(warnings(r.stderr))
   === JSON.stringify(['gate.sh: WARNING hide matched nothing on live — candidates: none found above the header (.geo-bar)']), `status ${r.status} ${r.stderr}`);
+// The text is live-session's hideMissLine byte for byte (a height as recorded; 0 / none → the 0-px text; no candidate).
+const missRecords = [MISS, { sels: ['.geo-bar'], candidates: [{ tag: 'div', height: 0, selector: 'div.a' }, { tag: 'div', height: 48, selector: '#b' },
+  { tag: 'p', height: 12.25, selector: 'p.c' }, { tag: 'aside', selector: 'aside.d' }] }, { sels: ['.geo-bar', '.promo-strip'], candidates: [] }];
+const same = [];
+for (const [i, m] of missRecords.entries()) {
+  const x = await missRound(`missx${i}`, 'x1', { STUB_HIDEMISS_LIVE: JSON.stringify(m) });
+  same.push(x.status === 0 && JSON.stringify(warnings(x.stderr)) === JSON.stringify([`gate.sh: WARNING ${hideMissLine(m.sels, m.candidates)}`]) ? 'ok' : `${x.status} ${x.stderr}`);
+}
+check('gate.sh\'s line is `gate.sh: WARNING ${hideMissLine(sels, candidates)}` over 0, integer, fractional and missing heights and no candidate', same.every((v) => v === 'ok'), same.join(' | '));
 r = await missRound('miss3', 'x1', { STUB_HIDEMISS_BUILD: JSON.stringify(MISS) });
 check('a hideMiss in the build record only: no live warning', r.status === 0 && warnings(r.stderr).length === 0, `status ${r.status} ${r.stderr}`);
 r = await missRound('miss4', 'x1', { STUB_HIDEMISS_LIVE: JSON.stringify(MISS), STUB_OVERLAY_LIVE: OVL });
