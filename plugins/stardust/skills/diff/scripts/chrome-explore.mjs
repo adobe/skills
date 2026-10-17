@@ -26,8 +26,11 @@
  *   --plain              bundled Chromium instead of the window-free real-Chrome tier
  *   --warmup <url>       visit first (bot-managed sites)   --locale <tag>  default en-US
  *   --hide <sel,…>       hide in-flow regions (a location bar above the header) after every load; repeatable
- *   --presence <file> --slug <slug>   also hide the gate's presence.json `hide` ("*", then the slug)
- * A hide list is recorded as `hide: { list, presence, perWidth }` with one `<w>: hidden …` line per width.
+ *   --slug <slug>        the page's key in presence.json: its `hide` too, after "*"'s (optional)
+ *   --presence <file>    also hide a gate dir's presence.json `hide` ("*", then the slug; needs --slug)
+ * The site-wide stardust/replica/presence.json is read by default (its "*" `hide`, plus the --slug entry's), merged
+ * under --presence's file (that file's field wins per key); its selectors are tagged `site presence.json`.
+ * A hide list is recorded as `hide: { list, presence, site?, perWidth }` with one `<w>: hidden …` line per width.
  * Exit: 0 written · 1 error · 3 bot challenge. `summarize`, `controlKind`, `normName`, `hideArgs`,
  * `effectiveHide` are exported.
  */
@@ -35,7 +38,7 @@ import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from
 import { createRequire } from 'node:module';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { formatHidden, hideEntries, hideRegions, parseHideList, readPresenceFile } from './live-session.mjs';
+import { formatHidden, hideEntries, hideRegions, parseHideList, readPresenceFile, SITE_PRESENCE } from './live-session.mjs';
 
 const TOUCH_BELOW = 768;
 
@@ -92,11 +95,16 @@ export function hideArgs(argv) {
 
 /** hideArgs → the effective list: --hide entries, then presence.json's `hide` ("*", then the slug; only `hide` — a
  * `variable` region inside the header can be a control the contract records), de-duplicated →
- * { entries: [{ sel, source }], presence: <file> | null, found, note }. Malformed presence.json throws. */
-export function effectiveHide({ hide = [], presence = null, slug = null } = {}) {
-  const p = presence ? readPresenceFile(presence, slug) : null;
-  const entries = hideEntries([...hideEntries(hide, '--hide'), ...hideEntries(p ? p.hide : [], 'presence.json')]);
-  return { entries, presence: presence || null, found: p ? p.found : null, note: p ? p.note : null };
+ * { entries: [{ sel, source }], presence: <file> | null, found, note }. The site-wide presence file (`site`, default
+ * live-session's SITE_PRESENCE) is read by default — merged under `presence` when both exist, alone (its "*", plus the
+ * slug's entry when a slug is given) otherwise; its selectors are tagged `site presence.json` and the result gains
+ * `site: <file>`. Without a site file the result is as before. Malformed presence.json (either file) throws. */
+export function effectiveHide({ hide = [], presence = null, slug = null, site = SITE_PRESENCE } = {}) {
+  const siteFile = site && existsSync(site) ? site : null;
+  const p = presence || siteFile ? readPresenceFile(presence, slug, { site: siteFile }) : null;
+  const fromFile = p ? (p.hideSources || hideEntries(p.hide, 'presence.json')) : [];
+  const entries = hideEntries([...hideEntries(hide, '--hide'), ...fromFile]);
+  return { entries, presence: presence || null, found: p ? p.found : null, note: p ? p.note : null, ...(p && p.site ? { site: p.site } : {}) };
 }
 
 // ---- in-page library (installed once per document; ONE argument object per call) ------------------
@@ -425,7 +433,7 @@ async function main() {
   if (!url || !out) { console.error('usage: chrome-explore.mjs <url> <out.json> [--width 1440,390] [--root <sel>] [--max-states 400] [--max-depth 4] [--probe <term>] [--shots <dir>] [--plain]'); process.exit(1); }
   let hide;
   try { hide = effectiveHide(hideArgs(argv)); } catch (e) { console.error(`chrome-explore: ${e.message}`); process.exit(1); }
-  if (hide.found === false) console.error(`chrome-explore: ${hide.note}`);
+  if (hide.found === false || (hide.presence && !existsSync(hide.presence))) console.error(`chrome-explore: ${hide.note}`);
   const widths = arg('width', '1440,390').split(',').map(Number).filter(Boolean);
   const shotsDir = arg('shots', join('stardust', '.work', 'chrome', basename(out, '.json')));
   mkdirSync(shotsDir, { recursive: true }); mkdirSync(dirname(out), { recursive: true });
@@ -436,7 +444,7 @@ async function main() {
   const { openBrowser, openPage, visit } = await import(pathToFileURL(join(here, 'measure-live.mjs')).href);
   const { chromium } = await loadPlaywright();
   const browser = await openBrowser(chromium, { tier: argv.includes('--plain') ? 'plain' : 'stealth' });
-  const doc = { tool: 'chrome-explore', url, at: new Date().toISOString(), shots: shotsDir, ...(hide.entries.length ? { hide: { list: hide.entries.map((x) => x.sel), presence: hide.presence, perWidth: {} } } : {}), widths: {} };
+  const doc = { tool: 'chrome-explore', url, at: new Date().toISOString(), shots: shotsDir, ...(hide.entries.length ? { hide: { list: hide.entries.map((x) => x.sel), presence: hide.presence, ...(hide.site ? { site: hide.site } : {}), perWidth: {} } } : {}), widths: {} };
   try {
     for (const width of widths) {
       const { ctx, page } = await openPage(browser, { width, height: width < TOUCH_BELOW ? 844 : 900, locale: arg('locale', 'en-US') });

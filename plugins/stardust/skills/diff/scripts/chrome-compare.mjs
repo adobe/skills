@@ -21,9 +21,13 @@
  *   --json <file>                  write the verdict (stardust/chrome/header-parity.json is what done-check reads)
  *   --src-shots <dir> / --build-shots <dir>   crop folders when not where the records say
  *   --hide <sel,…>                 the hide list both records must carry (chrome-explore --hide); repeatable
- *   --presence <file> --slug <slug>   the same from the gate's presence.json `hide` ("*", then the slug)
+ *   --slug <slug>                  the page's key in presence.json: its `hide` too, after "*"'s (optional)
+ *   --presence <file>              the same from a gate dir's presence.json `hide` ("*", then the slug; needs --slug)
+ * The site-wide stardust/replica/presence.json is read by default as chrome-explore reads it (its "*" `hide`, plus the
+ * --slug entry's; under --presence's file): when it names a selector, the expected list includes it even with no flag,
+ * and the verdict's `hide.site` names it.
  * Records explored with different hide lists (or not the expected one) are not the same page: one error
- * `hide-mismatch`; `hide: { source, build, expected, consistent }` is printed and in the verdict when any is set.
+ * `hide-mismatch`; `hide: { source, build, expected, consistent, site? }` is printed and in the verdict when any is set.
  * Exit: 0 no undecided error · 2 errors · 1 usage. `compareDocs`, `compareHide`, `applyDecisions`, `findingKey` are exported.
  */
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
@@ -232,18 +236,21 @@ async function main() {
   const arg = (k, d) => { const i = argv.indexOf(`--${k}`); return i >= 0 && argv[i + 1] && !argv[i + 1].startsWith('--') ? argv[i + 1] : d; };
   const [sf, bf] = argv.filter((a, i) => !a.startsWith('--') && !(i > 0 && argv[i - 1].startsWith('--')));
   if (!sf || !bf || !existsSync(sf) || !existsSync(bf)) { console.error('usage: chrome-compare.mjs <source.json> <build.json> [--profile replica|functional] [--bar 0.02] [--decisions f] [--json f]'); process.exit(1); }
-  let expected = null;
+  let expected = null; let expectedSite = null;
   try {
     const h = hideArgs(argv);
-    if (h.hide.length || h.presence) {
-      const e = effectiveHide(h);
-      if (e.found === false) console.error(`chrome-compare: ${e.note}`);
+    const e = effectiveHide(h);
+    // the site-wide presence.json alone sets the expected list only when it names a selector
+    if (h.hide.length || h.presence || e.entries.length) {
+      if (e.found === false || (h.presence && !existsSync(h.presence))) console.error(`chrome-compare: ${e.note}`);
       expected = e.entries.map((x) => x.sel);
+      expectedSite = e.site || null;
     }
   } catch (e) { console.error(`chrome-compare: ${e.message}`); process.exit(1); }
   const src = JSON.parse(readFileSync(sf, 'utf8')); const bld = JSON.parse(readFileSync(bf, 'utf8'));
   const profile = arg('profile', 'replica'); const bar = Number(arg('bar', 0.02));
-  const { findings, visual, hide } = compareDocs(src, bld, { profile, expectedHide: expected });
+  const { findings, visual, hide: compared } = compareDocs(src, bld, { profile, expectedHide: expected });
+  const hide = compared && expectedSite ? { ...compared, site: expectedSite } : compared;
   findings.push(...await visualFindings(visual, { srcDir: arg('src-shots', src.shots || '.'), buildDir: arg('build-shots', bld.shots || '.'), bar }));
   const df = arg('decisions', join('stardust', 'chrome', 'header-decisions.json'));
   const all = applyDecisions(findings, existsSync(df) ? (JSON.parse(readFileSync(df, 'utf8')).decisions || []) : []);
@@ -253,7 +260,7 @@ async function main() {
   const verdict = { tool: 'chrome-compare', at: new Date().toISOString(), source: src.url, build: bld.url, profile, bar, widths, ...(hide ? { hide } : {}), counts: { error: errors.length, warn: warns.length, decided: decided.length }, findings: all.map((f) => ({ key: findingKey(f), ...f })) };
   const out = arg('json', null);
   if (out) { mkdirSync(dirname(out), { recursive: true }); writeFileSync(out, `${JSON.stringify(verdict, null, 1)}\n`); }
-  if (hide) { const show = (l) => `[${l.join(', ')}]`; console.log(`chrome-compare hide: source ${show(hide.source)} · build ${show(hide.build)} · expected ${hide.expected ? show(hide.expected) : 'not given'} → ${hide.consistent ? 'consistent' : 'INCONSISTENT'}`); }
+  if (hide) { const show = (l) => `[${l.join(', ')}]`; console.log(`chrome-compare hide: source ${show(hide.source)} · build ${show(hide.build)} · expected ${hide.expected ? show(hide.expected) : 'not given'}${hide.site ? ` (with site ${hide.site})` : ''} → ${hide.consistent ? 'consistent' : 'INCONSISTENT'}`); }
   console.log(`chrome-compare: ${errors.length} error(s), ${warns.length} warning(s), ${decided.length} decided (profile ${profile}, widths ${widths.join(',')})${out ? ` → ${out}` : ''}`);
   process.exit(errors.length ? 2 : 0);
 }

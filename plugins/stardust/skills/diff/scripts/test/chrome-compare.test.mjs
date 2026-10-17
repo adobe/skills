@@ -2,11 +2,12 @@
 // skills/diff/scripts/test/chrome-compare.test.mjs — the header-parity verdict from two chrome-explore records (no browser):
 // pairing by name then family, a hover menu rebuilt as click-only, missing panel links, keyboard and close paths,
 // motion and scroll states under `replica` only, search typeahead, and site-owner decisions (agents cannot sign);
-// hide lists: records explored with different ones (or not the expected --hide / presence.json one) are one error.
+// hide lists: records explored with different ones (or not the expected --hide / presence.json one) are one error; the
+// site-wide stardust/replica/presence.json sets the expected list with no flag (and names itself in the verdict).
 // Run: node plugins/stardust/skills/diff/scripts/test/chrome-compare.test.mjs
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -133,6 +134,33 @@ check('CLI: no hide anywhere → the output and the verdict\'s fields as before'
   assert.equal(r.status, 0, r.stderr);
   assert.equal(r.stdout, `chrome-compare: 0 error(s), 0 warning(s), 0 decided (profile replica, widths 1440) → ${v}\n`);
   assert.deepEqual(Object.keys(JSON.parse(readFileSync(v, 'utf8'))), ['tool', 'at', 'source', 'build', 'profile', 'bar', 'widths', 'counts', 'findings']);
+});
+// a project with the site-wide stardust/replica/presence.json: read by default, no flag needed
+const project = join(dir, 'project');
+mkdirSync(join(project, 'stardust', 'replica'), { recursive: true });
+const siteFile = join(project, 'stardust', 'replica', 'presence.json');
+const cliIn = (cwd, ...args) => spawnSync(process.execPath, [COMPARE, ...args], { cwd, encoding: 'utf8' });
+check('CLI, no hide flag: the site file\'s "*".hide is the expected list — records without it fail, records with it pass; the verdict names the site file', () => {
+  writeFileSync(siteFile, JSON.stringify({ '*': { hide: ['.geo-bar'] }, home: { hide: ['.site-strip'] } }));
+  const v = join(dir, 'v4.json');
+  const bad = cliIn(project, plain, put('plain-build2.json', source), '--json', v);
+  assert.equal(bad.status, 2, bad.stdout + bad.stderr);
+  assert.match(bad.stdout, /^🔴 hide-mismatch@0 \(hide\) — .*re-explore both sides with chrome-explore --hide \.geo-bar$/m);
+  assert.match(bad.stdout, /^chrome-compare hide: source \[\] · build \[\] · expected \[\.geo-bar\] \(with site stardust\/replica\/presence\.json\) → INCONSISTENT$/m);
+  assert.deepEqual(JSON.parse(readFileSync(v, 'utf8')).hide, { source: [], build: [], expected: ['.geo-bar'], consistent: false, site: 'stardust/replica/presence.json' });
+  const good = cliIn(project, geo, put('geo-build2.json', hid(source, ['.geo-bar'])));
+  assert.equal(good.status, 0, good.stdout + good.stderr);
+  assert.match(good.stdout, /^chrome-compare hide: source \[\.geo-bar\] · build \[\.geo-bar\] · expected \[\.geo-bar\] \(with site stardust\/replica\/presence\.json\) → consistent$/m);
+  assert.equal(cliIn(project, geo, geo, '--slug', 'home').status, 2, '--slug alone adds the site file\'s home entry to the expected list');
+});
+check('CLI: a site file naming no selector for the page leaves the output as before; a malformed one exits 1 naming it', () => {
+  writeFileSync(siteFile, JSON.stringify({ about: { hide: ['.about-strip'] } }));
+  const r = cliIn(project, plain, put('plain-build3.json', source));
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stdout, 'chrome-compare: 0 error(s), 0 warning(s), 0 decided (profile replica, widths 1440)\n');
+  writeFileSync(siteFile, '{"*": {');
+  const u = cliIn(project, plain, plain);
+  assert.equal(u.status, 1); assert.match(u.stderr, /^chrome-compare: presence\.json stardust\/replica\/presence\.json unreadable \(/m);
 });
 rmSync(dir, { recursive: true });
 process.exit(failed ? 1 : 0);

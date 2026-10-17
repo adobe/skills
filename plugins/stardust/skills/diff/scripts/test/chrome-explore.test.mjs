@@ -4,8 +4,10 @@
 // headers of chrome-fixtures.mjs explored at 1440 and 390 — the rich one records the hover mega menu and its tabs,
 // the click dropdown's close paths, the search typeahead and submit, the cart drawer, the mobile drawer's scroll lock,
 // motion and drill-down; an identical copy compares clean, the stock header fails. Hide: --hide / --presence --slug
-// parsing and the effective list (pure); the CLI on a header with an in-flow location bar (its own button inside the
-// header root) records `hide`, prints the hidden line and never records the bar's button (browser).
+// parsing and the effective list, with the site-wide stardust/replica/presence.json read by default and merged under
+// --presence (pure; a malformed one exits 1 before any browser); the CLI on a header with an in-flow location bar (its
+// own button inside the header root) records `hide`, prints the hidden line and never records the bar's button — by
+// --hide, by --presence and by the site file alone (browser).
 // Run: node plugins/stardust/skills/diff/scripts/test/chrome-explore.test.mjs
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
@@ -60,6 +62,41 @@ await check('CLI: --presence without --slug exits 1 before any browser or file',
   const r = spawnSync(process.execPath, [EXPLORE, 'http://127.0.0.1:9/', join(pure, 'x.json'), '--presence', join(pure, 'presence.json')], { cwd: pure, encoding: 'utf8' });
   assert.equal(r.status, 1); assert.match(r.stderr, /--presence needs --slug/);
   assert.ok(!existsSync(join(pure, 'x.json')) && !existsSync(join(pure, 'stardust')), 'nothing written');
+});
+// a project with the site-wide stardust/replica/presence.json (its own dir: the checks above need a project without one)
+const project = join(pure, 'project');
+mkdirSync(join(project, 'stardust', 'replica'), { recursive: true });
+const siteFile = join(project, 'stardust', 'replica', 'presence.json');
+writeFileSync(siteFile, JSON.stringify({ '*': { hide: ['.geo-bar'], reasons: { '.geo-bar': 'location bar' } }, home: { hide: ['.site-strip'], variable: ['.greeting'] } }));
+await check('effectiveHide: the site-wide presence.json with no flag ("*"), with --slug (its entry too), under --presence (the gate field wins)', () => {
+  assert.deepEqual(hideArgs(['u', 'o', '--slug', 'home']), { hide: [], presence: null, slug: 'home' }, '--slug without --presence');
+  const bare = effectiveHide({ site: siteFile });
+  assert.deepEqual(bare.entries, [{ sel: '.geo-bar', source: 'site presence.json' }]);
+  assert.deepEqual([bare.presence, bare.found, bare.site], [null, true, siteFile]);
+  assert.deepEqual(effectiveHide({ slug: 'home', site: siteFile }).entries, [{ sel: '.geo-bar', source: 'site presence.json' }, { sel: '.site-strip', source: 'site presence.json' }]);
+  const gate = join(pure, 'gate-presence.json');
+  writeFileSync(gate, JSON.stringify({ home: { hide: ['.promo-strip'] } }));
+  const merged = effectiveHide({ hide: ['.cookie-strip'], presence: gate, slug: 'home', site: siteFile });
+  assert.deepEqual(merged.entries, [{ sel: '.cookie-strip', source: '--hide' }, { sel: '.geo-bar', source: 'site presence.json' }, { sel: '.promo-strip', source: 'presence.json' }]);
+  assert.deepEqual([merged.presence, merged.found, merged.site], [gate, true, siteFile]);
+  assert.match(merged.note, / over .*→ home: /);
+  assert.deepEqual(effectiveHide({ hide: ['.a'], site: join(pure, 'no-site.json') }), { entries: [{ sel: '.a', source: '--hide' }], presence: null, found: null, note: null }, 'no site file: as before');
+});
+await check('effectiveHide reads stardust/replica/presence.json from the project (cwd) by default', () => {
+  const cwd = process.cwd();
+  try {
+    process.chdir(project);
+    const e = effectiveHide(hideArgs(['u', 'o']));
+    assert.deepEqual([e.entries, e.site], [[{ sel: '.geo-bar', source: 'site presence.json' }], 'stardust/replica/presence.json']);
+  } finally { process.chdir(cwd); }
+});
+await check('CLI: a malformed site-wide presence.json exits 1 naming it, before any browser or file', () => {
+  const broken = join(pure, 'broken');
+  mkdirSync(join(broken, 'stardust', 'replica'), { recursive: true });
+  writeFileSync(join(broken, 'stardust', 'replica', 'presence.json'), '{"*": {');
+  const r = spawnSync(process.execPath, [EXPLORE, 'http://127.0.0.1:9/', join(broken, 'x.json')], { cwd: broken, encoding: 'utf8' });
+  assert.equal(r.status, 1); assert.match(r.stderr, /^chrome-explore: presence\.json stardust\/replica\/presence\.json unreadable \(/m);
+  assert.ok(!existsSync(join(broken, 'x.json')) && !existsSync(join(broken, 'stardust', '.work')), 'nothing written');
 });
 rmSync(pure, { recursive: true });
 
@@ -162,6 +199,18 @@ else {
     assert.ok(!names(d, 360).includes('Change location') && names(d, 360).includes('About'), names(d, 360).join(', '));
     assert.match(byPresence.out, /^chrome-explore 360: hidden \.geo-bar ×1 \(268px\) \[presence\.json\]$/m);
     assert.deepEqual(d.hide.list, JSON.parse(readFileSync(viaFlag, 'utf8')).hide.list);
+  });
+  // the same project gains the site-wide presence file: no flag needed any more
+  mkdirSync(join(dir, 'stardust', 'replica'), { recursive: true });
+  writeFileSync(join(dir, 'stardust', 'replica', 'presence.json'), JSON.stringify({ '*': { hide: ['.geo-bar'] } }));
+  const viaSite = join(dir, 'geo-site.json');
+  const bySite = await cli([geoUrl, viaSite, '--width', '360', '--probe', 'shoes', '--plain', '--shots', join(dir, 'geo-site')]);
+  await check('CLI, no hide flag, stardust/replica/presence.json {"*": {"hide": [".geo-bar"]}}: hidden at 360, source site presence.json, the site file recorded', () => {
+    assert.equal(bySite.code, 0, bySite.err);
+    const d = JSON.parse(readFileSync(viaSite, 'utf8'));
+    assert.deepEqual(d.hide, { list: ['.geo-bar'], presence: null, site: 'stardust/replica/presence.json', perWidth: { 360: [{ sel: '.geo-bar', source: 'site presence.json', n: 1, h: 268 }] } });
+    assert.ok(!names(d, 360).includes('Change location') && names(d, 360).includes('About'), names(d, 360).join(', '));
+    assert.match(bySite.out, /^chrome-explore 360: hidden \.geo-bar ×1 \(268px\) \[site presence\.json\]$/m);
   });
   await browser.close(); srv.close(); rmSync(dir, { recursive: true });
 }
