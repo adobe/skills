@@ -533,17 +533,16 @@ rather than erroring.
    (`Accept`, `Accept-Language`, `Upgrade-Insecure-Requests`, `sec-ch-ua*`)
    HTTP 200 — bot managers fingerprint the *absence* of those headers.
    Every instrument sends both via the shared `diff/scripts/live-session.mjs`
-   (`--ua` overrides the UA string only): the full set on **document
-   requests only**, cross-origin subresources never (F-B2: forced there,
-   CORS-mode webfont fetches die — rule 14), and **the client hints on
-   same-origin subresources too** — recorded (a site behind a vendor wall,
-   a controlled test): a 200 "System Down" page whenever the UA claimed
-   Chrome and the scripts carried no `sec-ch-ua`, which the headless shell
-   omits. stitch-shot prefers the full Chromium build (`launchChromium`),
-   which sends them natively; otherwise `newLiveContext` adds them. Escape
-   hatch: `--hints document-only` (stitch-shot) or
-   `STARDUST_LIVE_HINTS=document-only` (every instrument, gate rounds
-   included); `<stem>.capture.json` records `browserBuild` and `hints`.
+   (`--ua` overrides the UA string only): `Accept`, `Accept-Language` and
+   `Upgrade-Insecure-Requests` on **document requests only** (F-B2: forced on
+   subresources, CORS-mode webfont fetches die — rule 14); **every request
+   carries `sec-ch-ua*` that matches the UA** — documents and subresources,
+   same- and cross-origin, no preflight — as the browser's UA metadata is set
+   from the UA string (recorded, a site behind a vendor wall: a 200 "System
+   Down" page when the hints did not back the UA). stitch-shot prefers the
+   full Chromium build. Escape hatch: `--hints native` (stitch-shot) or
+   `STARDUST_LIVE_HINTS=native` (every instrument, gate rounds included);
+   `<stem>.capture.json` records `browserBuild` and `hints`.
 2. **`domcontentloaded`, never `networkidle`, on live targets.** Live sites
    with analytics beacons never reach networkidle — hard timeout. Built in:
    the diff scripts default `domcontentloaded` for non-localhost http(s)

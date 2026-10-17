@@ -338,10 +338,11 @@ blocked step (reference doc § Iteration discipline).
 
 **Hardening (each a recorded false-measurement trap — gate doc § Hardening
 rules):** real-Chrome UA **plus the standard request headers** on every
-capture, the client hints on same-origin subresources too (native in the
-full Chromium build stitch-shot prefers, else added; opt out with
-stitch-shot's `--hints document-only`, in gate rounds — gate.sh / gate-all
-spawn the captures — with `STARDUST_LIVE_HINTS=document-only`); a
+capture, and on every request `sec-ch-ua*` matching the UA (the browser's UA
+metadata is set from the UA string: documents and subresources, same- and
+cross-origin, no preflight; stitch-shot prefers the full Chromium build; opt
+out with `--hints native` there, `STARDUST_LIVE_HINTS=native` in every
+instrument and gate round; capture.json records `browserBuild`, `hints`); a
 challenge, blocked interstitial or 2xx denial page (a vendor signature, a
 tiny page under one error heading) **fails loud (exit 3)**, never measured
 — escalate with `--headed`, and a site that still blocks needs
