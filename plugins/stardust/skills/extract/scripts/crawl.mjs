@@ -391,9 +391,10 @@ async function discover(args, page) {
 
 // One consent table for every instrument: the diff skill's live-session.mjs exports CONSENT_CANDIDATES.
 // Layouts: the plugin tree (skills/extract/scripts ↔ skills/diff/scripts), the project copy
-// (scripts/extract ↔ scripts/diff) and a flat copy (a sibling). Resolved lazily — never on import, on
-// --help or with --no-consent-dismiss — so the pure helpers stay importable without it.
-const LIVE_SESSION_CANDIDATES = ['../../diff/scripts/live-session.mjs', '../diff/live-session.mjs', './live-session.mjs'];
+// (scripts/extract ↔ scripts/diff), a crawl.mjs in scripts/ beside replica's scripts/diff copy, and a flat
+// copy (a sibling). Resolved lazily — never on import, on --help or with --no-consent-dismiss — so the pure
+// helpers stay importable without it.
+const LIVE_SESSION_CANDIDATES = ['../../diff/scripts/live-session.mjs', '../diff/live-session.mjs', './diff/live-session.mjs', './live-session.mjs'];
 let liveSession; // the module promise, once found
 /** live-session's CONSENT_CANDIDATES (the same array object); rejects in one line naming the looked-in paths. */
 export async function consentTable() {

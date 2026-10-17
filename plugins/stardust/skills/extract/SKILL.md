@@ -109,7 +109,8 @@ Additional checks for this sub-command:
    (`stardust/scripts/…`) and run the copy. `crawl.mjs` dismisses
    consent from the diff skill's `live-session.mjs` table: copy that
    file into the same directory as the `crawl.mjs` copy, or keep the
-   `stardust/scripts/extract/` ↔ `stardust/scripts/diff/` layout.
+   `stardust/scripts/extract/` (or `stardust/scripts/`) ↔
+   `stardust/scripts/diff/` layout.
    Without it a consent-dismissing crawl stops with exit 2;
    `--no-consent-dismiss` runs without it.
 

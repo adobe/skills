@@ -5,9 +5,10 @@
 // trailing slash folded; assets, mailto:/tel: and other hosts dropped; www. folded), the ready ledger
 // detail string, both link-list shapes — and that importing the module or asking --help starts no crawl
 // and writes nothing. One consent table: consentTable() hands back live-session's CONSENT_CANDIDATES (the
-// same array object, resolved in the plugin tree and in both project-copy layouts), crawl.mjs keeps no
+// same array object, resolved in the plugin tree and in the project-copy layouts — scripts/extract ↔ scripts/diff,
+// flat, and a crawl.mjs in stardust/scripts/ beside replica's stardust/scripts/diff/), crawl.mjs keeps no
 // selector list of its own, and a copy without live-session beside it still imports and answers --help while
-// consentTable() rejects naming the three looked-in paths and the copy step; a stale live-session copy without
+// consentTable() rejects naming the four looked-in paths and the copy step; a stale live-session copy without
 // the export is refused the same way. Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -96,11 +97,12 @@ check('crawl.mjs keeps no consent selector list of its own', () => {
   const src = readFileSync(SCRIPT, 'utf8');
   for (const lit of [`'#onetrust-accept-btn-handler'`, `'.truste-button2'`, `'button[id*="accept" i]'`]) assert.ok(!src.includes(lit), `crawl.mjs still carries ${lit}`);
 });
-await checkAsync('project copies: consentTable() resolves live-session beside the extract scripts (scripts/extract ↔ scripts/diff, flat); without it the copy still imports and answers --help, and consentTable() rejects naming the three looked-in paths and the copy step; a stale copy without the export is refused', async () => {
+await checkAsync('project copies: consentTable() resolves live-session beside the extract scripts (scripts/extract ↔ scripts/diff, flat, scripts/ ↔ scripts/diff); without it the copy still imports and answers --help, and consentTable() rejects naming the four looked-in paths and the copy step; a stale copy without the export is refused', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'crawl-consent-'))); // the module URL is the real path
   try {
     const want = (await import(pathToFileURL(LIVE_SESSION).href)).CONSENT_CANDIDATES;
-    for (const [crawlRel, liveRel] of [['scripts/extract/crawl.mjs', 'scripts/diff/live-session.mjs'], ['flat/crawl.mjs', 'flat/live-session.mjs']]) {
+    for (const [crawlRel, liveRel] of [['scripts/extract/crawl.mjs', 'scripts/diff/live-session.mjs'], ['flat/crawl.mjs', 'flat/live-session.mjs'],
+      ['stardust/scripts/crawl.mjs', 'stardust/scripts/diff/live-session.mjs']]) { // the last: replica's copy of the diff scripts
       for (const [from, rel] of [[SCRIPT, crawlRel], [LIVE_SESSION, liveRel]]) { mkdirSync(dirname(join(root, rel)), { recursive: true }); copyFileSync(from, join(root, rel)); }
       const copy = await import(pathToFileURL(join(root, crawlRel)).href);
       assert.deepEqual(await copy.consentTable(), want, `${crawlRel} reads ${liveRel}`);
@@ -111,7 +113,7 @@ await checkAsync('project copies: consentTable() resolves live-session beside th
     assert.equal(help.status, 0, help.stderr); assert.match(help.stdout, /Usage:/);
     const copy = await import(pathToFileURL(alone).href);
     await assert.rejects(copy.consentTable(), (e) => {
-      for (const p of [join(root, 'a', 'diff', 'scripts', 'live-session.mjs'), join(root, 'a', 'b', 'diff', 'live-session.mjs'), join(root, 'a', 'b', 'extract', 'live-session.mjs')]) assert.ok(e.message.includes(p), `names ${p}: ${e.message}`);
+      for (const p of [join(root, 'a', 'diff', 'scripts', 'live-session.mjs'), join(root, 'a', 'b', 'diff', 'live-session.mjs'), join(root, 'a', 'b', 'extract', 'diff', 'live-session.mjs'), join(root, 'a', 'b', 'extract', 'live-session.mjs')]) assert.ok(e.message.includes(p), `names ${p}: ${e.message}`);
       assert.match(e.message, /copy live-session\.mjs beside the extract scripts \(extract\/SKILL\.md § Setup\)/);
       assert.equal(e.message.split('\n').length, 1, 'one line');
       return true;
