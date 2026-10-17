@@ -794,15 +794,20 @@ reference):
   `linked`, `uncaptured[]`, plus `detail`, a ready ledger string) and
   one `[crawl] capture gaps:` stderr line. `state.mjs init` copies
   `roots[]` to `state.json.site.captureGaps` (an uncaptured target
-  never becomes a `pages[]` row); carry `detail`
-  verbatim in the ledger `end` line that closes the extraction —
-  `ledger.mjs extract prep end --detail "… uncaptured first-level
-  targets: ca/en 15, fr/fr 0"` (replica's `extract end` repeats it) — so
-  the owner decides on the gap now (widen with `--pages`, or record it
-  as scope debt), not in the rollout link audit: two recorded hands-off
-  runs captured `/ca/en` as a locale root while 15 `/ca/en/*` pages
-  existed on the source, and found out six hours later, when 15 links
-  answered 404 and the gap exceeded the 12-page deliver threshold.
+  never becomes a `pages[]` row); carry `detail` verbatim in the
+  ledger `end` line that closes the extraction — `ledger.mjs extract
+  prep end --detail "… uncaptured first-level targets: ca/en 15,
+  fr/fr 0"` (replica's `extract end` repeats it) — so the owner
+  decides on the gap now (widen with `--pages`, or record it as scope
+  debt), not in the rollout link audit (recorded: 15 uncaptured
+  `/ca/en/*` pages surfaced six hours later as 15 × 404). **An entry
+  locale most captured pages lie outside is the same owner
+  decision:** when the `--url` path starts with a locale (`/de`) and
+  fewer than half of the captured pages lie under it,
+  `captureGaps.scope` (`entryLocale`, `inside`, `outside`) and the
+  `detail` suffix ("entry locale /de but 9 of 10 captured pages
+  outside it") name it — re-crawl from the locale the site plan
+  delivers, or record the choice, before Phase 2.
 - **The header contract is recorded here** (`../diff/SKILL.md` § The header
   contract); its summary line in the prep summary sizes the header.
 - The prep summary replaces the Phase 6 report; its
