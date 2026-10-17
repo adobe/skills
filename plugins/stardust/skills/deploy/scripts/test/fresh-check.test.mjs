@@ -13,7 +13,8 @@ import { createServer } from 'node:http';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
-import { isFresh, lastCheckLine, normalise, parseArgs, sha256 } from '../fresh-check.mjs';
+import { tmpdir } from 'node:os';
+import { isFresh, lastCheckLine, normalise, parseArgs, poll, sha256 } from '../fresh-check.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'fresh-check.mjs');
@@ -58,6 +59,14 @@ await check('the stale line names the last observation', () => {
   assert.equal(lastCheckLine('sha', 'abcdef0123456789', { status: 200, sha: NEW_SHA, error: null }), `last check: sha256 ${NEW_SHA.slice(0, 12)}… ≠ expected abcdef012345…`);
 });
 
+await check('a decimal --max-s whose milliseconds are fractional still gets a valid per-check timeout', async () => {
+  const fetchImpl = async (url, init) => { assert.ok(init.signal instanceof AbortSignal); return new Response(NEW); };
+  for (const maxS of [16.1, 2.0005]) {
+    const r = await poll({ url: 'https://example.com/a.css', mode: 'grep', expected: 'new-2', maxS, everyS: 60 }, { fetchImpl, now: () => 0 });
+    assert.equal(r.last.error, null, `--max-s ${maxS}`); assert.equal(r.fresh, true, `--max-s ${maxS}`);
+  }
+});
+
 // ---- CLI against a local gzip server ---------------------------------------------------------------------
 const hits = new Map();
 const server = createServer((req, res) => {
@@ -76,8 +85,7 @@ await new Promise((r) => closed.listen(0, '127.0.0.1', r));
 const REFUSED = `http://127.0.0.1:${closed.address().port}/x.css`;
 await new Promise((r) => closed.close(r));
 
-// scratch lives beside this test (not in a system temp dir) and is removed at the end
-scratch = mkdtempSync(join(HERE, '.fresh-check-test-'));
+scratch = mkdtempSync(join(tmpdir(), 'fresh-check-'));
 const run = (args, cwd = scratch) => new Promise((done) => {
   const ch = spawn(process.execPath, [SCRIPT, ...args], { cwd });
   let out = ''; let err = '';

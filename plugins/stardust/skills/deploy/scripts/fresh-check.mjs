@@ -146,7 +146,8 @@ export async function poll({ url, mode, expected, maxS, everyS }, { fetchImpl = 
   let last;
   for (;;) {
     const left = deadline - (now() - start);
-    last = await checkOnce(url, mode, expected, Math.max(MIN_TIMEOUT_MS, Math.min(MAX_TIMEOUT_MS, left)), fetchImpl);
+    // AbortSignal.timeout takes integer ms only; a decimal --max-s can leave a fractional remainder
+    last = await checkOnce(url, mode, expected, Math.ceil(Math.max(MIN_TIMEOUT_MS, Math.min(MAX_TIMEOUT_MS, left))), fetchImpl);
     checks += 1;
     if (last.fresh || now() - start + everyS * 1000 > deadline) break;
     await new Promise((r) => setTimeout(r, everyS * 1000));
