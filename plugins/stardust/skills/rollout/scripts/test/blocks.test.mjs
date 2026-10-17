@@ -2,8 +2,8 @@
 // skills/rollout/scripts/test/blocks.test.mjs — the blocks.mjs contract for blocks the export can see:
 // every subdirectory of the project's blocks/ that holds <name>.js or <name>.css is a delivered block
 // and gets a ledger row even when no page lists it (source `blocks-dir`, status converted; a chrome name
-// delivers as a fragment); a directory equal to a planned block's id or edsBlockName is not
-// duplicated; a prior delivery (a block recorded not-delivered with
+// delivers as a fragment); a directory equal to a planned block's id, EDS name or edsBlockName is not
+// duplicated, and header and nav are one chrome; a prior delivery (a block recorded not-delivered with
 // its reason) survives a re-run; a re-run writes the same bytes but timestamps; a missing blocks dir is a
 // note, never an error; every key written is declared in the (closed) rollout schemas.
 // Run: node plugins/stardust/skills/rollout/scripts/test/blocks.test.mjs
@@ -119,6 +119,21 @@ check('a missing blocks dir is a note, not an error; --blocks <dir> reads anothe
   assert.equal(r.status, 0, r.stderr);
   assert.deepEqual(ledger(out).map((b) => b.id), ['hero', 'promo']);
   assert.match(r.stdout, /^Registered {2}1 block\(s\) from eds\/blocks\/ that no page lists: promo$/m, r.stdout);
+});
+
+check('a planned chrome row covers its directory by id, edsName(id) or edsBlockName; header and nav are one chrome', () => {
+  let { proj, out } = project({ pages: [page('home', ['Header', 'hero'])], dirBlocks: { header: ['header.js'], hero: ['hero.js'] } });
+  let r = run(proj);
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(ledger(out).map((b) => b.id), ['Header', 'hero'], 'Header covers blocks/header/ by its EDS name');
+  ({ proj, out } = project({ pages: [page('home', ['nav', 'hero'])], dirBlocks: { header: ['header.js'], footer: ['footer.css'] } }));
+  r = run(proj);
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(ledger(out).map((b) => b.id), ['footer', 'hero', 'nav'], 'a planned nav covers blocks/header/ — no second chrome row');
+  ({ proj, out } = project({ pages: [page('home', ['hero'])], dirBlocks: { header: ['header.js'], nav: ['nav.js'] } }));
+  r = run(proj);
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(ledger(out).map((b) => b.id), ['header', 'hero'], 'blocks/header/ and blocks/nav/ register one chrome row');
 });
 
 // The schemas are closed (additionalProperties: false): every key written must be declared there.

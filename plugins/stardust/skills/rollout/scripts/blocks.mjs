@@ -15,8 +15,9 @@
  * Delivered blocks no page lists: every subdirectory <name> of the project's blocks dir holding
  * <name>.js or <name>.css is a delivered block, and the export sees every one of them — so each
  * gets a ledger row even when no page's modules[] names it (otherwise the workspace manifest
- * carries "no block" unmatched variants). A row already planned (its id or delivery.edsBlockName
- * equals <name>) is left alone; any other is registered with `source: blocks-dir`, no pages, 0
+ * carries "no block" unmatched variants). A row already planned (its id, edsName(id) or
+ * delivery.edsBlockName equals <name>; header and nav are one chrome, the canon header, so either
+ * covers the other) is left alone; any other is registered with `source: blocks-dir`, no pages, 0
  * instances and its prior delivery (by id) — else `converted` (a chrome name: a fragment,
  * fragments/<name>.html). A block deliberately left undelivered is recorded with
  * `update-coverage.mjs --block <name> --status not-delivered --reason "<text>"`; a re-run keeps it.
@@ -106,7 +107,7 @@ const planned = [...agg.entries()].map(([id, a]) => {
   };
 });
 
-// Delivered blocks under the blocks dir that no planned row covers (by id or edsBlockName).
+// Delivered blocks under the blocks dir that no planned row covers (by id, EDS name or edsBlockName).
 const blocksDirExists = existsSync(BLOCKS_DIR) && statSync(BLOCKS_DIR).isDirectory();
 const dirNames = blocksDirExists
   ? readdirSync(BLOCKS_DIR, { withFileTypes: true })
@@ -114,8 +115,15 @@ const dirNames = blocksDirExists
     .map((d) => d.name)
     .sort((x, y) => x.localeCompare(y))
   : [];
-const covered = new Set(planned.flatMap((b) => [b.id, b.delivery && b.delivery.edsBlockName].filter(Boolean)));
-const registered = dirNames.filter((name) => !covered.has(name)).map((name) => {
+// header and nav are one chrome (both deliver the canon header): either name covers the other.
+const SAME_CHROME = ['header', 'nav'];
+const withChromeAlias = (names) => names.flatMap((n) => (SAME_CHROME.includes(n) ? SAME_CHROME : [n]));
+const covered = new Set(withChromeAlias(planned.flatMap((b) => [b.id, edsName(b.id), b.delivery && b.delivery.edsBlockName].filter(Boolean))));
+const registered = dirNames.filter((name) => {
+  if (covered.has(name)) return false;
+  withChromeAlias([name]).forEach((n) => covered.add(n));
+  return true;
+}).map((name) => {
   const kind = kindOf(name);
   const p = prior.get(name);
   return {
