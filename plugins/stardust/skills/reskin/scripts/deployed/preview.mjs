@@ -5,7 +5,8 @@
 //   eligibility(root)                        { ok: true } | { ok: false, reason }: an aem-boilerplate project
 //   headMetadata(html)                       the delivered page's head metas nav and footer, { nav?, footer? }
 //   isolation({ path, meta, origin, namespace, sandbox })  the ways the page touches shared documents
-//   runPreview({ dir, slug, org, repo, branch, path, namespace, sandbox, auth, maxWaitSec })  the PreviewRecord
+//   runPreview({ dir, slug, org, repo, branch, path, namespace, sandbox, auth, tokenFlag, maxWaitSec })  the PreviewRecord
+//        (tokenFlag names the flag that gave the token, for the error when the preview refuses it)
 // DEPLOY_VERIFY_ORIGIN (env) replaces the origin: the hook the fake-preview tests use. The record says so
 // (`originOverride`), since a page measured there was not measured on its branch preview. The Authorization header is
 // sent to the preview origin only (a redirect is never followed), only once the preview has refused a request without
@@ -115,13 +116,14 @@ const sleep = (ms) => new Promise((done) => { setTimeout(done, ms); });
 // `auth` is whether the preview refused a request without the site token (401 or 403): the page is protected and the
 // later steps treat it so. The token goes out only after such a refusal, so the first request of the poll, the
 // authored form's, is the anonymous one; a token the preview never asked for is not sent and the record says
-// `tokenUnused: true`. With no token, a refusal is a setup error (the token is missing), not something to poll until 124.
+// `tokenUnused: true`. With no token, a refusal is a setup error (the token is missing), and so is the refusal of a token
+// that was sent (it is wrong or expired); neither is something to poll until 124.
 // Skipped (not an aem-boilerplate project) is recorded; a poll that never sees 200 for the authored form and then
 // for the delivered page (whose head says which nav and footer it loads) within maxWaitSec throws an error with
 // code 124 (and .last, the last response) and leaves no record, so no step reads a stale one.
 // A path that is not a plain path in a shared repo is refused before any request. Resolves the project root as
 // the parent of `dir`.
-export async function runPreview({ dir, slug, org, repo, branch, path, namespace = null, sandbox = false, auth = null, maxWaitSec = 120, env = process.env }) {
+export async function runPreview({ dir, slug, org, repo, branch, path, namespace = null, sandbox = false, auth = null, tokenFlag = '--auth-header or --token-env', maxWaitSec = 120, env = process.env }) {
   const file = join(deployedDir(dir, slug), 'preview.json');
   rmSync(file, { force: true });
   const base = { path, namespace, sandbox: !!sandbox };
@@ -159,7 +161,9 @@ export async function runPreview({ dir, slug, org, repo, branch, path, namespace
       }
       const got = await attemptOnce(target, using, deadline - Date.now());
       if (got.status === 200) return got.body;
-      if (!using && (got.status === 401 || got.status === 403)) {
+      if (got.status === 401 || got.status === 403) {
+        // The token was sent and refused: wrong or expired, a setup error, not a page that is not served yet.
+        if (using) throw new UsageError(`the preview refused the site token (HTTP ${got.status}) given by ${tokenFlag}: it is wrong or expired`);
         if (!auth) throw new UsageError('the preview needs a site token: pass --token-env <NAME>');
         using = auth;
         continue;

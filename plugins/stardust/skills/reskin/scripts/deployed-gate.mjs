@@ -55,7 +55,10 @@ preview  A0. Finds the preview and refuses a page that touches shared documents.
          The first request, the authored form's, goes without the site token. A 401 or 403 to it says the preview is
          protected: with a token (--auth-header or --token-env) the poll goes on with it and preview.json says
          auth: true; without one it is exit 2 "the preview needs a site token: pass --token-env <NAME>", never polled
-         until 124. A token the preview never asked for is not sent: preview.json says auth: false, tokenUnused: true.
+         until 124. A 401 or 403 to a request that carried the token is exit 2 at once too ("the preview refused the
+         site token (HTTP 401) given by --token-env: it is wrong or expired", the flag named, never its value); a 404 or
+         a page not authored yet still polls. A token the preview never asked for is not sent: preview.json says
+         auth: false, tokenUnused: true.
          Then, in a shared repo, the path must be a plain path (no %, \\, ., .. or empty segment) starting
          with /<ns>/, and the head of the delivered page must carry <meta name="nav"> and <meta name="footer">
          naming /<ns>/nav and /<ns>/footer (a full URL on the preview origin is the same path; EDS strips the
@@ -386,7 +389,7 @@ async function previewStep({ dir, opts, env, log, UsageError }) {
   const { runPreview } = await helper('preview');
   const { auth, say, scrub } = await siteToken(opts, log, UsageError);
   try {
-    const record = await runPreview({ dir, slug: opts.page, org: opts.org, repo: opts.repo, branch: opts.branch, path: opts.path, namespace: opts.namespace, sandbox: !!opts.sandbox, auth, maxWaitSec, env });
+    const record = await runPreview({ dir, slug: opts.page, org: opts.org, repo: opts.repo, branch: opts.branch, path: opts.path, namespace: opts.namespace, sandbox: !!opts.sandbox, auth, tokenFlag: opts['auth-header'] !== undefined ? '--auth-header' : '--token-env', maxWaitSec, env });
     if (record.skipped) { say(`SKIPPED deployed leg: ${record.reason}`); return 0; }
     if (record.problems) { for (const p of record.problems) say(`FAIL preview: ${p}`); return 1; }
     say(`PASS preview ${record.url}${record.originOverride ? ` (origin override: ${record.originOverride.env}, not the branch preview)` : ''}`);

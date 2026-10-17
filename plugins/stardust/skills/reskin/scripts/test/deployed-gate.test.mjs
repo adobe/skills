@@ -544,6 +544,45 @@ await check('a token still reaches a preview that refuses an anonymous request l
   } finally { server.closeAllConnections(); await new Promise((resolve) => server.close(resolve)); }
 });
 
+await check('a token the preview refuses is exit 2 at once, naming the flag and never the value or the variable; no token on a protected preview, and a 404 with the right token, are as before', async () => {
+  const server = await startPreviewServer({ token: TOKEN });
+  try {
+    for (const [name, extra, env, flag] of [
+      ['wrong-header', ['--auth-header', 'token wrong-value-1'], {}, '--auth-header'],
+      ['wrong-env', ['--token-env', 'STARDUST_T14_WRONG'], { STARDUST_T14_WRONG: 'wrong-value-2' }, '--token-env'],
+    ]) {
+      const root = project(name);
+      const before = server.requests.length;
+      const started = Date.now();
+      const r = await preview(root, server.origin, ['--namespace', 'ns', ...extra, '--max-wait', '60'], { env });
+      assert.equal(r.status, 2, `${name}: ${r.all}`);
+      assert.match(r.stderr, new RegExp(`the preview refused the site token \\(HTTP 401\\) given by ${flag}: it is wrong or expired`), name);
+      assert.ok(Date.now() - started < 10000, `${name}: a refused token is no poll: it is not waited out until 124`);
+      assert.deepEqual(server.requests.slice(before).map((q) => q.headers.authorization), [undefined, extra[0] === '--auth-header' ? 'token wrong-value-1' : 'token wrong-value-2'], `${name}: the anonymous request, then the one with the token, and no more`);
+      for (const text of ['wrong-value-1', 'wrong-value-2', 'STARDUST_T14_WRONG']) assert.equal(r.all.includes(text), false, `${name}: ${text} was printed`);
+      assert.ok(!existsSync(recordPath(root)), `${name}: no verdict, no preview.json`);
+    }
+  } finally { await server.close(); }
+  // A page that is not there yet still polls with the right token: 404 twice, then 200.
+  const plain = readFileSync(fixturePath('home.plain.html'), 'utf8');
+  const page = readFileSync(fixturePath('home.html'), 'utf8');
+  let notYet = 2;
+  const late = createServer((req, res) => {
+    if (req.headers.authorization !== HEADER) { res.writeHead(401); return res.end('unauthorized'); }
+    if (notYet > 0) { notYet -= 1; res.writeHead(404); return res.end('not found'); }
+    res.writeHead(200, { 'content-type': 'text/html' });
+    return res.end(req.url.endsWith('.plain.html') ? plain : page);
+  });
+  await new Promise((resolve) => late.listen(0, '127.0.0.1', resolve));
+  try {
+    const root = project('protected-404');
+    const r = await preview(root, `http://127.0.0.1:${late.address().port}`, ['--namespace', 'ns', '--auth-header', HEADER, '--max-wait', '20']);
+    assert.equal(r.status, 0, r.all);
+    assert.equal(recordOf(root).auth, true);
+    assert.equal(notYet, 0, 'it polled past the 404s');
+  } finally { late.closeAllConnections(); await new Promise((resolve) => late.close(resolve)); }
+});
+
 await check('--token-env reads the token from the environment; without a token a protected preview is never a pass; an unset variable is a setup error', async () => {
   const server = await startPreviewServer({ token: TOKEN });
   try {
