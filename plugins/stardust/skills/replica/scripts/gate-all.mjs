@@ -194,6 +194,14 @@
  * a new count for the selected pages at the cap — resets[] { at, reason, from, history }, the row's `roundReset` { reason,
  * at } — or logs `round-reset: no --only slug at the cap — nothing reset`. rounds.json is written before the run table (a
  * crash over-counts, never under-counts); _run.log names each page's count (`rounds @<w>: <slug> <n>/<max>`).
+ * SELF-TRIAGE (after a fix round): a published-stage --only run in which any selected page already had a row in this out
+ * dir (latestRows, read before the run) then runs gate-triage's triageGate on <out> in-process — gate-triage.mjs beside
+ * this file, loaded by a dynamic import only (it imports this module: no static cycle; advisory, so not one of the gate
+ * key's instruments) — prints its triage.md head under the table, before the totals line, logs `triage → <out>/triage.md`
+ * and leaves <out>/triage.{json,md} beside summary.json (offline: no chrome-parity, nothing appended to
+ * foundation-requests.md). A page's first gating, a full run and the prototype stage do not triage. Any failure
+ * (gate-triage.mjs absent or without triageGate, a table it cannot read, a frozen out dir) is one log line `triage:
+ * skipped — <why>`: the verdict and the exit code never change.
  *
  * Usage: node skills/replica/scripts/gate-all.mjs [--stage published|prototype] [--proto-base <url>]
  *        [--coverage f] [--state f] [--out dir] [--width 1440] [--only <slug,…>] [--skip-existing] [--recapture-eds] [--recapture-origin] [--eds-host <h>]
@@ -333,6 +341,10 @@ Fix rounds per page: <out>/<slug>/rounds.json { rounds, max, at[], [resets], [se
   process's lock (or an older unreadable one) is reaped (logged). A page at the cap → "no verdict — cap reached —
   re-prototype decision: <slug> <n>/<max> @<w>" (drop it from --only, or --round-reset "<reason>"), exit 2, before the
   out dir; --round-reset with no selected page at the cap logs "round-reset: no --only slug at the cap — nothing reset".
+Self-triage: a published --only run where a selected page already had a row in <out> (a fix round) then runs
+  gate-triage's triageGate on <out> in-process (offline: no parity, nothing routed) — its triage.md head under the table,
+  <out>/triage.{json,md}; a failure is one log line "triage: skipped — <why>", never a verdict or exit-code change. A
+  page's first gating, full runs and the prototype stage do not triage.
 Empty selection → one stderr line: published — the coverage and state paths (absolute) with their counts (rows
   deployed / verified / gate-failed with a deployedUrl; pages deployed with a liveUrl; how many lack a source url) and
   the roster's source; prototype — the state path, its pages with a prototypePath; what --only matched, the hint
@@ -1319,6 +1331,25 @@ function reserveRounds(out, slugs) {
   return notes;
 }
 const writeJsonAtomic = (f, doc) => { mkdirSync(dirname(f), { recursive: true }); const tmp = `${f}.${process.pid}.tmp`; writeFileSync(tmp, `${JSON.stringify(doc, null, 1)}\n`); renameSync(tmp, f); };
+/**
+ * After a fix round: gate-triage's triageGate on <out>, in-process (gate-triage.mjs beside this file — it imports this
+ * module, so it is reached only by this dynamic import; a joined path, not a relative literal, keeps the advisory triage
+ * out of the gate key's instruments) → its triage.md head (the CLI's 12 lines) on stdout and `triage → <out>/triage.md`.
+ * Any failure is one log line `triage: skipped — <why>`; it never throws, so the verdict and the exit code stand.
+ */
+async function selfTriage(out, log) {
+  const file = join(HERE, 'gate-triage.mjs');
+  let why = null;
+  try {
+    if (!existsSync(file)) why = 'gate-triage.mjs not found beside gate-all.mjs';
+    else {
+      const mod = await import(pathToFileURL(file).href);
+      if (typeof mod.triageGate !== 'function') why = 'gate-triage.mjs has no triageGate (an older copy)';
+      else { const { md } = mod.triageGate(out); console.log(String(md).split('\n').slice(0, 12).join('\n')); log(`triage → ${join(out, 'triage.md')}`); }
+    }
+  } catch (e) { why = String((e && e.message) || e).split('\n')[0] || 'triage failed'; }
+  if (why) log(`triage: skipped — ${why}`);
+}
 
 async function main() {
   const opts = parseArgs(process.argv);
@@ -1347,6 +1378,9 @@ async function main() {
   const ROUNDS = Object.fromEntries(slugs.map((slug) => [slug, roundsOf(opts.out, slug, TABLES)]));
   const refusal = opts.only ? capRefusal(slugs.map((slug) => ({ slug, rounds: ROUNDS[slug].rounds })), { max: opts.maxRounds, width: opts.width, reset: opts.roundReset }) : null;
   if (refusal) { console.error(refusal); process.exit(2); }
+  // a fix round triages after the table: a published --only run where a selected page already has a row in this out dir
+  const PRIOR_ROWS = opts.only && opts.stage === 'published' ? latestRows(opts.out, opts.width) : {};
+  const TRIAGE = slugs.some((slug) => PRIOR_ROWS[slug]);
   mkdirSync(opts.out, { recursive: true });
   const MASKS = readJson(join(opts.out, 'masks.json'), {}); const OVERRIDES = readJson(join(opts.out, 'overrides.json'), {});
   // the inconsistency register an override must name an entry of (read once; cwd-relative like units.json)
@@ -1748,6 +1782,7 @@ async function main() {
   const md = formatSummary(summary);
   if (opts.only) { mkdirSync(join(opts.out, 'runs'), { recursive: true }); const f = join(opts.out, 'runs', `${writtenAt.replace(/[:.]/g, '-')}-${opts.only[0]}.json`); writeFileSync(f, JSON.stringify(summary, null, 2)); console.log(md); console.log(`run → ${f}`); }
   else { writeFileSync(join(opts.out, 'summary.json'), JSON.stringify(summary, null, 2)); writeFileSync(join(opts.out, 'summary.md'), md); console.log(md.split('\n').slice(0, 7).join('\n')); console.log(`summary → ${join(opts.out, 'summary.md')}`); }
+  if (TRIAGE) await selfTriage(opts.out, log); // the triage md head under the table, before the totals line
   console.log(JSON.stringify(totals));
   process.exitCode = totals.pass + totals.overridePass === totals.pages ? 0 : 2;
 }

@@ -58,7 +58,9 @@
 // three counted rounds, a 4th refused before any write (--max-rounds lowers the cap, a full run neither counts nor refuses),
 // --max-rounds / --round-reset usage, a reset recorded (rounds.json + row), an INCONCLUSIVE crawl-fullpage row not counted,
 // a live process's rounds.lock refused (age, recovery) and a dead one's reaped, a partial / young empty lock held, an old
-// unreadable one reaped, the legacy seed. The other sandboxes clear the round
+// unreadable one reaped, the legacy seed. Self-triage after a fix round (its own --out): a first --only gating and a full run
+// do not triage, a fix round writes triage.{json,md} and prints the md head before the totals line, a throwing or absent
+// gate-triage is one "triage: skipped" line — the exit code as measured. The other sandboxes clear the round
 // state before each run (clearRounds) — their repeated --only runs are independent scenarios.
 // Run: node <this file>.
 import assert from 'node:assert/strict';
@@ -2180,6 +2182,38 @@ check('rounds 7: legacy seed — no rounds.json: the run tables with a verdict r
   assert.deepEqual(roundsJson('a', LOUT), { rounds: 3, max: 3, at: [RT(1), RT(4), t], seeded: 'runs', seededFrom: 2 }); assert.equal(r.row('a').round, 3);
   const capped = rgate(['--only', 'a'], {}, LREL);
   assert.equal(capped.status, 2, capped.stderr + capped.stdout); assert.match(capped.stderr, /cap reached — re-prototype decision: a 3\/3 @1440 /);
+});
+// ---- self-triage after a fix round: gate-triage's triageGate on <out>, in-process — its own --out, gate-triage.mjs copied in
+const TRI_REL = 'stardust/replica/gates/triage-1440'; const TRI = join(troot, TRI_REL);
+const TRIAGE_HEAD = /^# Gate triage — \d+ failing rows, /m;
+const TRIAGED = /triage →|triage: skipped|# Gate triage/; // (the out dir's own name holds "triage")
+check('triage 1: a page\'s first --only gating does not triage; a fix round (the page already has a row in this out dir) runs triageGate — <out>/triage.{json,md} written, its md head printed under the table, before the totals line, and logged; the verdict and the exit code as measured; a full run does not triage', () => {
+  tpages(['a', 'b']); cpSync(join(HERE, '..', 'gate-triage.mjs'), join(TRS, 'gate-triage.mjs'));
+  const first = rgate(['--only', 'a'], {}, TRI_REL);
+  assert.equal(first.status, 0, first.stderr + first.stdout); assert.doesNotMatch(first.stdout, TRIAGED); assert.equal(existsSync(join(TRI, 'triage.json')), false);
+  const fix = rgate(['--only', 'a'], { STUB_FAIL: 'a' }, TRI_REL);
+  assert.equal(fix.status, 2, fix.stderr + fix.stdout); assert.equal(fix.row('a').pass, false, 'the row as measured: pixel 30 %');
+  const t = JSON.parse(readFileSync(join(TRI, 'triage.json'), 'utf8')); assert.equal(t.totals.failing, 1); assert.equal(t._provenance.parity, 'off');
+  assert.ok(existsSync(join(TRI, 'triage.md')));
+  const out = fix.stdout.trim().split('\n'); const head = out.findIndex((l) => TRIAGE_HEAD.test(l)); const tableAt = out.findIndex((l) => /^run → /.test(l));
+  assert.ok(head > tableAt && tableAt >= 0, fix.stdout); assert.equal(out[head], readFileSync(join(TRI, 'triage.md'), 'utf8').split('\n')[0]);
+  assert.match(out.at(-2), / triage → stardust\/replica\/gates\/triage-1440\/triage\.md$/); assert.deepEqual(JSON.parse(out.at(-1)), fix.doc.totals, 'the totals line stays last');
+  assert.match(fix.log(), / triage → stardust\/replica\/gates\/triage-1440\/triage\.md$/m);
+  assert.equal(existsSync(join(troot, 'stardust/rollout/foundation-requests.md')), false, 'nothing routed');
+  rmSync(join(TRI, 'triage.json')); rmSync(join(TRI, 'triage.md'));
+  const full = rgate([], {}, TRI_REL);
+  assert.equal(full.status, 0, full.stderr + full.stdout); assert.doesNotMatch(full.stdout, TRIAGED); assert.equal(existsSync(join(TRI, 'triage.json')), false);
+});
+check('triage 2: a triage that throws, or no gate-triage.mjs beside gate-all, is one log line "triage: skipped — <why>" — the verdict and the exit code unchanged (FAIL → 2, PASS → 0)', () => {
+  writeFileSync(join(TRS, 'gate-triage.mjs'), "export function triageGate() { throw new Error('gate-triage: stub failure\\nsecond line'); }\n");
+  const thrown = rgate(['--only', 'b'], { STUB_FAIL: 'b' }, TRI_REL);
+  assert.equal(thrown.status, 2, thrown.stderr + thrown.stdout); assert.equal(thrown.row('b').pass, false); assert.doesNotMatch(thrown.stdout, TRIAGE_HEAD);
+  assert.equal((thrown.stdout.match(/triage: skipped/g) || []).length, 1, thrown.stdout); assert.match(thrown.log(), / triage: skipped — gate-triage: stub failure$/m);
+  assert.deepEqual(JSON.parse(thrown.stdout.trim().split('\n').at(-1)), thrown.doc.totals);
+  rmSync(join(TRS, 'gate-triage.mjs'));
+  const absent = rgate(['--only', 'b'], {}, TRI_REL);
+  assert.equal(absent.status, 0, absent.stderr + absent.stdout); assert.equal(absent.row('b').pass, true);
+  assert.match(absent.log(), / triage: skipped — gate-triage\.mjs not found beside gate-all\.mjs$/m); assert.equal(existsSync(join(TRI, 'triage.json')), false);
 });
 rmSync(troot, { recursive: true, force: true });
 console.log(failed ? `\n${failed} failed` : '\nall passed');
