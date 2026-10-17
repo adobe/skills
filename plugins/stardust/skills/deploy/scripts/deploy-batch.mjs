@@ -48,12 +48,6 @@
  * re-run command, never written to the ledger or the log; the expiry and HALT
  * lines name the variable or the file, never the value.
  *
- * Token: from the environment variable named by --token-env (default DA_TOKEN),
- * or from --token-file <path> (read once at start, trimmed; never both flags — the
- * same two sources as da-media-upload.mjs). Never printed, never part of the
- * re-run command, never written to the ledger or the log; the expiry and HALT
- * lines name the variable or the file, never the value.
- *
  * Site token (a protected preview): the delivered .plain.html check answers 401 without it. --site-token-env
  * <NAME> reads it from the environment variable NAME, else from a NAME= line of ./.env (bare or quoted); a value
  * starting with neither `token ` nor `bearer ` (any case) gets `token ` in front. It is sent as Authorization on

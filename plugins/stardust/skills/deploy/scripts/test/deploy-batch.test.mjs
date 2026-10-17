@@ -523,6 +523,7 @@ await check('--help documents --site-token-env: the variable, the .env fallback,
   assert.match(help.out, /\[--site-token-env <NAME>\]/);
   assert.match(help.out, /--site-token-env\s+<NAME>\s+reads\s+it\s+from\s+the\s+environment\s+variable\s+NAME,\s+else\s+from\s+a\s+NAME=\s+line\s+of\s+\.\/\.env/);
   assert.match(help.out, /`token `\s+in\s+front/); assert.match(help.out, /never\s+to\s+DA\s+or\s+the\s+admin\s+API/);
+  assert.equal((help.out.match(/^Token: /gm) || []).length, 1, 'the Token: paragraph is printed once');
 });
 elsewhere.close(); protectedOrigin.close();
 
