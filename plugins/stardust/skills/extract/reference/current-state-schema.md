@@ -21,7 +21,7 @@ The file is JSON because every consumer is non-human. It carries a
     "stardustVersion": "0.10.0",
     "renderedBy": "playwright",      // REQUIRED. "playwright" only — synthesis is forbidden (see § Live-render evidence)
     "fetchedAt": "2026-04-25T13:41:58Z",  // ISO 8601 timestamp of the live fetch (distinct from writtenAt)
-    "waitMode": "networkidle",       // configured mode: fast | medium | spec | networkidle | domcontentloaded(fallback)
+    "waitMode": "networkidle",       // configured mode: fast | medium | slow | spec | networkidle | domcontentloaded(fallback)
     "waitMs": 3820,                  // actual wait time, including grace and scroll pass — must be > 0
     "httpStatus": 200,               // final response status after redirects
     "contentType": "text/html",      // final response content-type (without charset)
@@ -545,7 +545,7 @@ The forbidden shortcut is signed for in `_provenance`:
 | `waitMs` | integer `> 0` | same |
 | `fetchedAt` | ISO 8601 timestamp string | same |
 | `httpStatus` | integer (the *final* response status after redirects) | same |
-| `waitMode` | one of `fast` / `medium` / `spec` / `networkidle` / `domcontentloaded` / a `<mode>(fallback)` form | same |
+| `waitMode` | one of `fast` / `medium` / `slow` / `spec` / `networkidle` / `domcontentloaded` / a `<mode>(fallback)` form | same |
 
 `extract` (and `extract --prep`) **must refuse to mark a page
 `extracted` in `state.json`** without these five fields populated
