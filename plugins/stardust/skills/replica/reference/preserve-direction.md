@@ -166,7 +166,7 @@ change = the remove path if the license is not confirmed.
 
 ### Entry schema
 
-One entry per inconsistency. Every field is mandatory:
+One entry per inconsistency. **Kind / Selector** is optional; every other field is mandatory:
 
 ```markdown
 ## R-<nn> — <one-line title>
@@ -180,6 +180,8 @@ One entry per inconsistency. Every field is mandatory:
   "lift footer link color to #9e9e9e (4.5:1); no other footer change">
 - **Status:** applied | deferred
 - **Where:** <page types / sections affected>
+- **Kind / Selector:** <only for a per-visitor in-flow region: `per-visitor-region` /
+  `body > section.<bar-wrapper>` — the selector `presence.mjs add` writes to the site-wide hide list>
 ```
 
 Rules:
