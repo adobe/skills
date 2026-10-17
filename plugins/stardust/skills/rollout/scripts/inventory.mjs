@@ -10,7 +10,11 @@
  *
  * Idempotent + incremental: existing delivery status is preserved. When a page's
  * migrated HTML changed (sourceHash differs) after it was already deployed/verified,
- * it is re-flagged `stale` so the delivery loop re-delivers just that page.
+ * it is re-flagged `stale` so the delivery loop re-delivers just that page — only
+ * when both hashes are of a document (a migrated file, or the origin marker of a page
+ * built outside the tree); a re-read of identical bytes never is. A roster row's hash
+ * (archetypes-only mode: its current-state capture or its URL — no document) is another
+ * basis: once the page is migrated, the row keeps its status and takes the file's hash.
  *
  * Phase 1 scope: pages + template grouping only. Block dedup (blocks.json) is a
  * first-class step deferred to Phase 2 — see notes/rollout/PLAN.md § 8.
@@ -26,7 +30,11 @@
  * Pages present only in state.json (not yet individually migrated) are merged in as
  * `content-pending` siblings — keyed to the archetype their `type` names, inheriting
  * that archetype's blocks, pushing no document. Block code ships from the archetypes;
- * sibling content is populated later by a separate content track.
+ * sibling content is populated later by a separate content track. A roster URL is read
+ * as delivered (`/a/`, `/a/index`, `/a.html` → `/a`), so an archetype is never seeded twice.
+ * The state file must be a state file — `pages[]` of objects with a `url` — and the tree
+ * must hold no sibling (a sidecar `template` naming another slug, or fidelityTier
+ * `sibling`): else exit 2 with one line, nothing written; re-run without --state.
  *
  * Rows added by `update-coverage.mjs --new` (a page built outside the migrated tree —
  * a search results page from the dynamics phase; `source.migratedHtml` carries the
@@ -39,6 +47,7 @@
  * Usage:
  *   node skills/rollout/scripts/inventory.mjs [--migrated <dir>] [--out <rolloutDir>] [--site-url <url>] [--state <state.json>]
  *   defaults: --migrated stardust/migrated  --out stardust/rollout
+ * Exit: 0 written · 1 no migrated tree · 2 --state refused (not a state file, or siblings) — nothing written.
  */
 import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync, statSync } from 'node:fs';
 import { createHash } from 'node:crypto';
@@ -104,11 +113,12 @@ function deliveredPath(relHtml) {
   return `/${noExt}`;
 }
 
-/** Delivered (extensionless) path for an absolute page URL (archetypes-only roster). */
+/** Delivered (extensionless) path for an absolute page URL (archetypes-only roster): `/a/`, `/a/index`, `/a.html` → `/a`. */
 function urlToDeliveredPath(url) {
   let p;
   try { p = new URL(url).pathname; } catch { p = String(url); }
   p = p.replace(/\.html$/, '');
+  if (p.length > 1) p = p.replace(/\/+$/, '');
   if (p === '' || p === '/' || p === '/index') return '/';
   if (p.endsWith('/index')) return p.slice(0, -'/index'.length);
   return p;
@@ -132,6 +142,15 @@ if (!existsSync(MIGRATED)) {
   process.exit(1);
 }
 
+// --state takes a state file's real shape — pages[] of objects with a url — or refuses: no rows read from a wrong shape.
+const isStateDoc = (doc) => !!doc && typeof doc === 'object' && Array.isArray(doc.pages)
+  && doc.pages.every((p) => !!p && typeof p === 'object' && !Array.isArray(p) && typeof p.url === 'string' && p.url.trim() !== '');
+const stateDoc = STATE ? readJSON(STATE, null) : null;
+if (STATE && !isStateDoc(stateDoc)) {
+  console.error(`rollout inventory: ${STATE} is not a state file (pages[] of {slug, url, type}) — nothing written`);
+  process.exit(2);
+}
+
 // --- Load prior coverage to preserve delivery state ----------------------------
 const coverageDir = join(OUT, 'coverage');
 const pagesPath = join(coverageDir, 'pages.json');
@@ -144,9 +163,11 @@ const priorBySlug = new Map((priorPages.pages || []).map((p) => [p.slug, p]));
 // --- Inventory the migrated tree -----------------------------------------------
 const htmlFiles = walkHtml(MIGRATED).sort();
 // the source URL of each page (the join key with a spec's knowledge): the sidecar's, else state.json's by slug
-const stateFile = STATE || (existsSync('stardust/state.json') ? 'stardust/state.json' : null);
-const stateUrls = new Map((stateFile ? readJSON(stateFile, { pages: [] }).pages || [] : []).filter((p) => p && p.slug && p.url).map((p) => [p.slug, p.url]));
+const defaultState = !STATE && existsSync('stardust/state.json') ? readJSON('stardust/state.json', null) : null;
+const stateRows = STATE ? stateDoc.pages : (defaultState && Array.isArray(defaultState.pages) ? defaultState.pages : []);
+const stateUrls = new Map(stateRows.filter((p) => p && p.slug && p.url).map((p) => [p.slug, p.url]));
 const pages = [];
+const siblings = [];
 
 for (const relHtml of htmlFiles) {
   const absHtml = join(MIGRATED, relHtml);
@@ -155,11 +176,15 @@ for (const relHtml of htmlFiles) {
   const meta = readJSON(join(MIGRATED, sidecarRel), {});
   const path = deliveredPath(relHtml);
   const slug = meta.slug || (path === '/' ? 'home' : path.replace(/^\//, ''));
+  if ((meta.template && meta.template !== slug) || meta.fidelityTier === 'sibling') siblings.push(slug);
 
   const prior = priorBySlug.get(slug);
   let delivery;
   if (prior && prior.delivery) {
-    const changed = prior.source && prior.source.sourceHash !== sourceHash;
+    // Both hashes must be of a document: a migrated file, or the origin marker of a page built outside the tree.
+    // A roster row (migratedHtml null) hashed its current-state capture or its URL — another basis, never stale.
+    const was = prior.source || {};
+    const changed = typeof was.migratedHtml === 'string' && was.migratedHtml !== '' && was.sourceHash !== sourceHash;
     if (changed && ['deployed', 'verified'].includes(prior.delivery.status)) {
       delivery = { ...prior.delivery, status: 'stale' };
     } else {
@@ -186,19 +211,24 @@ for (const relHtml of htmlFiles) {
 }
 
 // --- Archetypes-only mode: merge content-pending siblings from state.json -------
-// In --state mode each migrated archetype is keyed by its own fine slug (the
-// archetypes are genuinely distinct templates that share only chrome). A roster
+// The tree must hold archetypes only: a sibling in it would be regrouped as its own
+// template, so --state refuses it (nothing written yet) and points at a full run.
+// Each migrated page is then keyed by its own fine slug (the archetypes are genuinely
+// distinct templates that share only chrome). A roster
 // page's `type` names the archetype slug it clones; it joins that archetype's
 // template group as a `content-pending` sibling, inheriting the archetype's blocks
 // and pushing no document of its own.
+if (STATE && siblings.length) {
+  const names = siblings.sort();
+  console.error(`rollout inventory: --state is the archetypes-only mode, but ${MIGRATED} holds ${names.length} sibling page(s) (${names.slice(0, 3).join(', ')}${names.length > 3 ? '…' : ''}) — re-run without --state`);
+  process.exit(2);
+}
 if (STATE) {
   for (const p of pages) p.templateId = p.slug;
   const archetypeBySlug = new Map(pages.map((p) => [p.slug, p]));
   const coveredPaths = new Set(pages.map((p) => p.path));
   const usedSlugs = new Set(pages.map((p) => p.slug));
-  const state = readJSON(STATE, { pages: [] });
-  for (const sp of (state.pages || [])) {
-    if (!sp || !sp.url) continue;
+  for (const sp of stateDoc.pages) {
     const path = urlToDeliveredPath(sp.url);
     if (coveredPaths.has(path)) continue; // the archetype itself — already inventoried
     // A roster sibling names the archetype it clones via `representative` (preferred)
