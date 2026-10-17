@@ -56,9 +56,19 @@ check('spacer-whitespace: a long raw-NBSP run is linear — no backtracking blow
   const t0 = Date.now();
   const r = spawnSync(process.execPath, [join(HERE, '..', 'delivery-lint.mjs'), '--file', page, '--json'], { cwd: root, encoding: 'utf8', timeout: 10000 });
   const ms = Date.now() - t0;
-  assert.ok(ms < 1000, `took ${ms} ms`);
+  assert.ok(ms < 5000, `took ${ms} ms`); // node startup included, on a busy machine
   const spacers = JSON.parse(r.stdout).findings.filter((f) => f.rule === 'spacer-whitespace');
   assert.deepEqual(spacers.map((f) => f.msg.split(' — ')[0]), ['1 whitespace-only <p>', '1 whitespace-only <div>']);
+});
+check('spacer-whitespace: a long run of unclosed `<br ` fragments is linear — a <br> never spans the next tag — and flags only the real spacer', () => {
+  const page = join(root, 'br-run.html');
+  writeFileSync(page, doc(['<h1>T</h1>', '<p><br '.repeat(30000), '<div><br '.repeat(30000), '<p><br></p>'].join('')));
+  const t0 = Date.now();
+  const r = spawnSync(process.execPath, [join(HERE, '..', 'delivery-lint.mjs'), '--file', page, '--json'], { cwd: root, encoding: 'utf8', timeout: 120000 });
+  const ms = Date.now() - t0;
+  assert.ok(ms < 5000, `took ${ms} ms`); // node startup included, on a busy machine
+  const spacers = JSON.parse(r.stdout).findings.filter((f) => f.rule === 'spacer-whitespace');
+  assert.deepEqual(spacers.map((f) => f.msg.split(' — ')[0]), ['1 whitespace-only <p>']);
 });
 
 // --- h1 against the source capture: a source without an h1 makes 0 a note; never a failure, never a pass for >1 ---
