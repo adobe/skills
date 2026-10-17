@@ -74,6 +74,20 @@ await check('observed: null with a reason for a missing selector, a lone gap mat
   assert.match(observed([{ id: 'x', selector: '.card', measure: 'width' }], [{ sel: S, missing: true }], S)[0].why, /matched nothing/);
 });
 
+await check('observed: observed items are looked up by the scoped selector: :scope > …, a comma list scoped branch by branch, a plain descendant as before', () => {
+  const rows = [
+    { sel: S, x: 0, y: 640, w: 1440, h: 800, pad: '80 120 80 120' },
+    { sel: `${S} > .card`, x: 120, y: 900, w: 560, h: 240, pad: '24 24 24 24' },
+    { sel: `${S} .nope, ${S} .card`, x: 120, y: 900, w: 560, h: 240, pad: '24 24 24 24' },
+    { sel: `${S} .nope`, missing: true },
+    { sel: `${S} :is(.card, .feature)`, x: 120, y: 800, w: 560, h: 56 },
+  ];
+  assert.deepEqual(observed([{ id: 'a', selector: ':scope > .card', measure: 'width' }], rows, S), [{ id: 'a', value: 560 }]);
+  assert.deepEqual(observed([{ id: 'b', selector: '.nope, .card', measure: 'left' }], rows, S), [{ id: 'b', value: 120 }]);
+  assert.deepEqual(observed([{ id: 'c', selector: ':is(.card, .feature)', measure: 'height' }], rows, S), [{ id: 'c', value: 56 }], 'a comma inside :is() is not a branch');
+  assert.match(observed([{ id: 'd', selector: ':scope > .gone', measure: 'width' }], rows, S)[0].why, /^:scope > \.gone matched nothing in the section/);
+});
+
 let playwrightOk = false;
 try { await import('playwright'); playwrightOk = true; } catch { console.log('skip  runGeometry and the geometry CLI against page.html (playwright not importable here; run this test in an environment that has it)'); }
 
@@ -108,6 +122,33 @@ if (playwrightOk) {
     const r = await gate(p);
     assert.equal(r.results.find((x) => x.slot === 's02' && x.id === 'g1').status, 'PASS');
     assert.deepEqual(r.results.filter((x) => x.status !== 'PASS'), []);
+  });
+
+  await check(':scope > …, a comma list and a descendant selector all resolve inside the section on a real page', async () => {
+    const p = project('scoped');
+    const file = join(p.dir, 'reskin', 'figma-checks', 'home.json');
+    const checks = JSON.parse(readFileSync(file, 'utf8'));
+    const [g1, g2, g3] = checks.sections.s02.geometry;
+    g1.selector = ':scope > .card';
+    g2.selector = '.nope, :scope > .card';
+    g3.selector = ':scope > .columns .feature';
+    writeFileSync(file, JSON.stringify(checks));
+    const r = await gate(p);
+    assert.deepEqual(r.results.filter((x) => x.status !== 'PASS'), []);
+    assert.deepEqual(r.results.filter((x) => x.slot === 's02').map((x) => [x.id, x.got]), [['g1', 560], ['g2', 24], ['g3', 80], ['g4', 80]]);
+  });
+
+  await check('a branch of a comma list cannot reach outside its section: .card is in s02, so s01 has no match', async () => {
+    const p = project('escape');
+    const file = join(p.dir, 'reskin', 'figma-checks', 'home.json');
+    const checks = JSON.parse(readFileSync(file, 'utf8'));
+    checks.sections.s01.geometry[0].selector = '.nope, .card';
+    writeFileSync(file, JSON.stringify(checks));
+    const r = await gate(p);
+    const g1 = r.results.find((x) => x.slot === 's01' && x.id === 'g1');
+    assert.equal(g1.status, 'FAIL');
+    assert.equal(g1.detail, 'unmeasurable: .nope, .card matched nothing in the section');
+    assert.deepEqual(r.results.filter((x) => x.status !== 'PASS').map((x) => `${x.slot} ${x.id}`), ['s01 g1']);
   });
 
   await check('a token entry measured at another width opens the page at that width', async () => {
@@ -181,7 +222,7 @@ if (playwrightOk) {
 await check('--help lists geometry and its flags', () => {
   const r = spawnSync(process.execPath, [SCRIPT, '--help'], { encoding: 'utf8', cwd: scratch });
   assert.equal(r.status, 0, r.stderr);
-  for (const s of ['geometry', 'tolerancePx', 'unmeasurable', 'geometry.json']) assert.ok(r.stdout.includes(s), `help lacks ${s}`);
+  for (const s of ['geometry', 'tolerancePx', 'unmeasurable', 'geometry.json', '":scope > .a .b"', 'branch by branch', 'sibling combinator']) assert.ok(r.stdout.includes(s), `help lacks ${s}`);
 });
 
 rmSync(scratch, { recursive: true, force: true });

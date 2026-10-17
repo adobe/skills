@@ -21,6 +21,61 @@ const rootOf = (section, joined) => (text(section?.node) ? section.node : joined
 // reskin page was written with), its selector otherwise. Either one is scoped to the section the join found.
 export const selectorFor = (entry, regime) => (regime === 'preview' ? entry.previewSelector ?? entry.selector : entry.selector);
 
+// The branches of a selector list: it splits at the commas that stand at the top level, none inside (…) or […] or a
+// quoted string, none escaped. The pieces are not trimmed.
+export function selectorBranches(selector) {
+  const branches = [];
+  let depth = 0; let quote = null; let from = 0;
+  for (let i = 0; i < selector.length; i += 1) {
+    const c = selector[i];
+    if (c === '\\') i += 1;
+    else if (quote) { if (c === quote) quote = null; }
+    else if (c === '"' || c === "'") quote = c;
+    else if (c === '(' || c === '[') depth += 1;
+    else if (c === ')' || c === ']') depth = Math.max(0, depth - 1);
+    else if (c === ',' && depth === 0) { branches.push(selector.slice(from, i)); from = i + 1; }
+  }
+  branches.push(selector.slice(from));
+  return branches;
+}
+
+const SCOPE = /^:scope(?![\w-])/i;
+
+// An entry's selector, written relative to its section, as a document-wide selector that matches only inside the
+// section (sectionSel is the join's selector for it, free of top-level commas). Each top-level branch is scoped on
+// its own: a branch that starts with :scope has the section stand for it (`:scope > .a .b`), any other is a descendant
+// of the section. A comma inside :is(), :where(), :not() or an attribute value is not a branch. A blank branch stays
+// blank, so a stray comma still makes an invalid selector.
+export function scopeSelector(sectionSel, selector) {
+  return selectorBranches(selector).map((branch) => {
+    const b = branch.trim();
+    if (!b) return '';
+    const scope = SCOPE.exec(b);
+    return scope ? `${sectionSel}${b.slice(scope[0].length)}` : `${sectionSel} ${b}`;
+  }).join(', ');
+}
+
+// Why a selector cannot stay inside its section, or null: a branch that, once its :scope (if any) and the compound
+// on it are set aside, begins with a sibling combinator (`:scope + p`, `:scope.x ~ p`, `+ p`) reaches the section's
+// siblings.
+export function leavesSection(selector) {
+  const reaches = (b) => {
+    let i = 0;
+    if (SCOPE.test(b)) {
+      for (let depth = 0, at = ':scope'.length; at <= b.length; at += 1) {
+        i = at;
+        const c = b[at];
+        if (c === '(' || c === '[') depth += 1;
+        else if (c === ')' || c === ']') depth -= 1;
+        else if (depth === 0 && (c === undefined || /[\s>+~]/.test(c))) break;
+      }
+    }
+    return /^\s*[+~]/.test(b.slice(i));
+  };
+  const branch = selectorBranches(selector).map((b) => b.trim()).find(reaches);
+  return branch ? `selector "${branch}" reaches the section's siblings with a sibling combinator: scope it with a descendant, ":scope > …"` : null;
+}
+
 // The roots a checks file needs in loadBoxes: each joined module's frame (or the section's own node)
 // and every per-width root, in first-seen order.
 export function rootsNamed(checks, join) {
@@ -96,9 +151,11 @@ export function validateChecks(checks, { join, boxes, tokens }) {
       if (seen.has(e.id)) problems.push(`${slot}: duplicate id ${e.id}`);
       seen.add(e.id);
       if (!text(e.selector)) problems.push(`${e.id}: selector must be a CSS selector scoped to the section`);
+      else if (leavesSection(e.selector)) problems.push(`${e.id}: ${leavesSection(e.selector)}`);
       if (e.previewSelector !== undefined) {
         if (typeof e.previewSelector !== 'string') problems.push(`${e.id}: previewSelector must be a string (a CSS selector scoped to the section)`);
         else if (!e.previewSelector.trim()) problems.push(`${e.id}: previewSelector must not be blank`);
+        else if (leavesSection(e.previewSelector)) problems.push(`${e.id}: previewSelector: ${leavesSection(e.previewSelector)}`);
       }
       return e.id;
     };

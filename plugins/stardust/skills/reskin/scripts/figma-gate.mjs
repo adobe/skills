@@ -182,7 +182,10 @@ Checks file <dir>/reskin/figma-checks/<slug>.json (written by the agent from the
       "geometry": [ { id, selector, previewSelector?, measure, node | nodes: [a, b] | token, index?: 0, width?, tolerancePx?: 1, why? } ],
       "type": [ { id, selector, previewSelector?, node, width? } ],
       "pixel"?: { "mode": "auto" | "fixture" | "off", "fixtureUrl"?, "why"? } } } }
-  selector is scoped to the section, ":scope" is the section itself; ids are g1.. and t1.. per section.
+  selector resolves inside the section: a plain selector as a descendant of it, ":scope" as the section itself (":scope",
+  ":scope > .a .b"); a comma list is scoped branch by branch, a comma inside :is(), :where(), :not() or an attribute value
+  is not a branch. A branch that begins with a sibling combinator (":scope + p") would leave the section: exit 2.
+  ids are g1.. and t1.. per section.
   previewSelector (a string, scoped the same way) is the selector on a deployed preview (--target preview), whose blocks
   rebuild the markup the reskin page was written with; without it the preview uses selector. --target local never reads it.
   measure: width left right top height gapX gapY paddingTop paddingRight paddingBottom paddingLeft.

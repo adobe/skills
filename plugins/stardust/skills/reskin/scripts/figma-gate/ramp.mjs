@@ -14,7 +14,7 @@ import { letterSpacingCss, lineHeightCss, px, weightCss } from '../figma/normali
 import { parseNormalizations } from '../figma/rules.mjs';
 import { rootTokens } from '../render/root-tokens.mjs';
 import { findBox } from './boxes.mjs';
-import { selectorFor } from './checks.mjs';
+import { scopeSelector, selectorFor } from './checks.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 // donor-probe.mjs sits beside figma-gate.mjs in both layouts (plugin tree and project copy).
@@ -67,8 +67,7 @@ export function rampSpecs({ join, checks, boxes, rootEntries, norm, unasserted =
       const box = rootBox && findBox(rootBox, entry.node);
       if (!box?.text) throw new Error(`${s.slot} ${entry.id}: ${entry.node} is not a TEXT node inside the root for width ${entry.width}`);
       const want = textExpect(box.text, norm);
-      const own = selectorFor(entry, regime);
-      const selector = own === ':scope' ? s.selector : `${s.selector} ${own}`;
+      const selector = scopeSelector(s.selector, selectorFor(entry, regime));
       for (const property of PROPERTIES) {
         if (want[property] === null) {
           unasserted.push({ slot: s.slot, id: entry.id, node: entry.node, root: section.roots[entry.width], property, status: 'UNASSERTED', detail: MISSING[property] });

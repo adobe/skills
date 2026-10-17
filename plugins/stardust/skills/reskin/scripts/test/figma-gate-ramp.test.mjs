@@ -109,6 +109,21 @@ await check('tokenLiterals: rgb(), rgba() with alpha 1 and 3-digit hex normalize
   ]);
 });
 
+await check('rampSpecs: an entry\'s selector is scoped inside its section: :scope, :scope > …, a comma list branch by branch, a plain descendant, previewSelector on a preview', () => {
+  const S02 = 'main section[data-slot="s02"]';
+  const selectorsOf = (selector, extra = {}, regime = 'local') => {
+    const one = { ...checks, s02: section('1:7', [{ id: 't1', selector, node: 'I1:7;5:2', ...extra }]) };
+    return [...new Set(rampSpecs({ join: join_, checks: one, boxes, rootEntries, norm, regime }).get(1440).filter((e) => e.label.startsWith('s02 ')).map((e) => e.selector))];
+  };
+  assert.deepEqual(selectorsOf('h2'), [`${S02} h2`]);
+  assert.deepEqual(selectorsOf(':scope'), [S02]);
+  assert.deepEqual(selectorsOf(':scope > h2'), [`${S02} > h2`]);
+  assert.deepEqual(selectorsOf(':scope > .a .b'), [`${S02} > .a .b`]);
+  assert.deepEqual(selectorsOf('h2, .lead'), [`${S02} h2, ${S02} .lead`]);
+  assert.deepEqual(selectorsOf(':is(h2, h3) > b, :scope'), [`${S02} :is(h2, h3) > b, ${S02}`]);
+  assert.deepEqual(selectorsOf('h2', { previewSelector: ':scope > div > h2, .x' }, 'preview'), [`${S02} > div > h2, ${S02} .x`]);
+});
+
 let playwrightOk = false;
 try { await import('playwright'); playwrightOk = true; } catch { console.log('skip  runRamp and the ramp CLI against page.html (playwright not importable here; run this test in an environment that has it)'); }
 
@@ -151,6 +166,22 @@ if (playwrightOk) {
     const j = rampOf(p);
     assert.equal(j.pass, false);
     assert.deepEqual(j.results.filter((x) => x.status === 'FAIL').map((x) => `${x.slot} ${x.id} ${x.property} (${x.node})`), ['s02 t2 fontSize (I1:7;5:8)']);
+  });
+
+  await check(':scope > …, a comma list and a descendant selector resolve inside the section on a real page; a branch cannot reach another section', async () => {
+    const p = project('scoped');
+    const file = join(p.dir, 'reskin', 'figma-checks', 'home.json');
+    const checks = JSON.parse(readFileSync(file, 'utf8'));
+    checks.sections.s02.type[0].selector = ':scope > h2';
+    checks.sections.s02.type[1].selector = '.nope, :scope > .card .card-label';
+    writeFileSync(file, JSON.stringify(checks));
+    const ok = await gate(p);
+    assert.deepEqual(ok.results.filter((x) => x.status !== 'PASS'), []);
+    checks.sections.s01.type[0].selector = '.nope, h2';
+    writeFileSync(file, JSON.stringify(checks));
+    const escaped = await gate(p);
+    assert.deepEqual(escaped.results.filter((x) => x.status === 'FAIL').map((x) => [x.slot, x.id]), Array(6).fill(['s01', 't1']), 'h2 is in s02, not s01: no property is measured');
+    assert.match(escaped.results.find((x) => x.slot === 's01' && x.id === 't1').detail, /^selector ".*" matched nothing$/);
   });
 
   await check('a :root value that drifted fails as ":root --max-width"', async () => {

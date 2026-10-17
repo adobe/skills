@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildBoxes } from '../figma-gate/boxes.mjs';
-import { MEASURES, rootsNamed, validateChecks } from '../figma-gate/checks.mjs';
+import { MEASURES, leavesSection, rootsNamed, scopeSelector, selectorBranches, validateChecks } from '../figma-gate/checks.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const nodes = JSON.parse(readFileSync(join(HERE, 'fixtures', 'figma-kit', 'nodes.json'), 'utf8'));
@@ -125,6 +125,54 @@ check('rootsNamed: the roots a checks file needs loaded', () => {
   const named = { version: 1, page: 'home', sections: { s02: { node: '1:9', roots: { 360: '1:8' }, geometry: [], type: [] } } };
   assert.deepEqual(rootsNamed(named, join2), ['1:3', '1:9', '1:8']);
   assert.deepEqual(rootsNamed({}, { sections: [] }), []);
+});
+
+const S = 'main section[data-slot="s02"]';
+const P = 'main > div:nth-child(3)';
+
+check('scopeSelector: a plain selector is a descendant of the section, :scope is the section, and a :scope branch keeps its combinator', () => {
+  assert.equal(scopeSelector(S, '.card'), `${S} .card`);
+  assert.equal(scopeSelector(S, 'h2 + p'), `${S} h2 + p`);
+  assert.equal(scopeSelector(S, ':scope'), S);
+  assert.equal(scopeSelector(S, ':scope > div'), `${S} > div`);
+  assert.equal(scopeSelector(S, ':scope > .x .y'), `${S} > .x .y`);
+  assert.equal(scopeSelector(S, ':scope  .y'), `${S}  .y`);
+  assert.equal(scopeSelector(S, ':scope.open'), `${S}.open`);
+  assert.equal(scopeSelector(S, ':SCOPE > p'), `${S} > p`);
+  assert.equal(scopeSelector(P, ':scope > div'), `${P} > div`);
+  assert.equal(scopeSelector(S, '> p'), `${S} > p`);
+  assert.equal(scopeSelector(S, ':scoped-thing'), `${S} :scoped-thing`, ':scope is a whole pseudo-class name');
+});
+
+check('scopeSelector: every top-level branch of a comma list is scoped; a comma inside :is(), :where(), :not(), an attribute value or a string stays', () => {
+  assert.equal(scopeSelector(S, '.a, .b'), `${S} .a, ${S} .b`);
+  assert.equal(scopeSelector(S, ':scope > .a,\n .b .c , :scope'), `${S} > .a, ${S} .b .c, ${S}`);
+  assert.equal(scopeSelector(S, ':is(.a, .b) > p'), `${S} :is(.a, .b) > p`);
+  assert.equal(scopeSelector(S, '.x:where(.a, .b), .y:not(.c, .d)'), `${S} .x:where(.a, .b), ${S} .y:not(.c, .d)`);
+  assert.equal(scopeSelector(S, 'a[title="x, y"], a[title=\'p,q\']'), `${S} a[title="x, y"], ${S} a[title='p,q']`);
+  assert.equal(scopeSelector(S, 'a[title="a\\"b, c"], i'), `${S} a[title="a\\"b, c"], ${S} i`);
+  assert.equal(scopeSelector(S, '.a\\,b, .c'), `${S} .a\\,b, ${S} .c`);
+  assert.equal(scopeSelector(S, ':is(.a, :is(.b, .c)), .d'), `${S} :is(.a, :is(.b, .c)), ${S} .d`);
+});
+
+check('scopeSelector: a stray comma stays an invalid selector instead of becoming the section', () => {
+  assert.equal(scopeSelector(S, '.a,'), `${S} .a, `);
+  assert.equal(scopeSelector(S, ', .a'), `, ${S} .a`);
+  assert.deepEqual(selectorBranches('a, b'), ['a', ' b']);
+  assert.deepEqual(selectorBranches(':is(a, b'), [':is(a, b'], 'an unbalanced (…) is one branch, and the browser rejects it');
+});
+
+check('leavesSection: a branch whose first combinator, after any :scope and its compound, is a sibling one reaches outside the section', () => {
+  for (const ok of ['.a, :scope', ':scope', ':scope > .a', ':scope .a ~ .b', '> p', '.a + .b', ':is(.a, .b) ~ p', ':scope > .a, .b ~ .c', ':scoped + p', ':scope[title="a +b"] > p']) assert.equal(leavesSection(ok), null, ok);
+  for (const bad of [':scope + p', ':scope~p', ':scope.x ~ p', ':scope:not(.x, .y) + p', '+ p', '.a, ~ p', ':scope > .a, :scope + p']) assert.match(leavesSection(bad), /reaches the section's siblings/, bad);
+  assert.match(leavesSection('.a, ~ p'), /^selector "~ p" reaches/);
+});
+
+check('a selector or previewSelector that reaches the section\'s siblings is a problem, naming the entry', () => {
+  assert.equal(problemsOf(geo({ selector: ':scope > .card', node: 'I1:7;5:7', measure: 'width' })), '');
+  assert.equal(problemsOf(geo({ selector: '.card, :scope', node: 'I1:7;5:7', measure: 'width' })), '');
+  assert.match(problemsOf(geo({ selector: ':scope + .card', node: 'I1:7;5:7', measure: 'width' })), /^x: selector ":scope \+ \.card" reaches the section's siblings/);
+  assert.match(problemsOf(geo({ selector: '.card', previewSelector: '.a, ~ .b', node: 'I1:7;5:7', measure: 'width' })), /^x: previewSelector: selector "~ \.b" reaches the section's siblings/);
 });
 
 console.log(failed ? `\n${failed} check(s) failed` : '\nall checks passed');

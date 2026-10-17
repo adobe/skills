@@ -6,7 +6,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { findBox } from './boxes.mjs';
-import { selectorFor } from './checks.mjs';
+import { scopeSelector, selectorFor } from './checks.mjs';
 import { loadChromium, loadMeasureLive } from './target.mjs';
 
 const PADDING = { paddingTop: 0, paddingRight: 1, paddingBottom: 2, paddingLeft: 3 };
@@ -40,11 +40,11 @@ export function expected(entry, root, tokens) {
 const padOf = (it, i) => Number(String(it.pad ?? '').split(' ')[i]);
 
 // The page side: one { id, value, why? } per entry, from measureInPage items (the section's own, then the
-// entries' `${sectionSel} ${selector}`), relative to the section's rect.
+// entries' scopeSelector), relative to the section's rect.
 export function observed(entries, items, sectionSel) {
   const section = items.find((it) => it.sel === sectionSel && !it.missing && !it.error);
   return entries.map((e) => {
-    const sel = e.selector === ':scope' ? sectionSel : `${sectionSel} ${e.selector}`;
+    const sel = scopeSelector(sectionSel, e.selector);
     if (!section) return { id: e.id, value: null, why: `section ${sectionSel} matched nothing` };
     const hits = items.filter((it) => it.sel === sel);
     if (hits.some((it) => it.error)) return { id: e.id, value: null, why: `${e.selector} is not a valid selector` };
@@ -109,7 +109,7 @@ export async function runGeometry({ target, join: joined, checks, boxes, tokens,
     try {
       for (const width of widths) {
         const at = planned.filter((p) => !p.error && p.entry.width === width);
-        const sels = [...new Set(at.flatMap((p) => [p.sectionSel, p.selector === ':scope' ? p.sectionSel : `${p.sectionSel} ${p.selector}`]))];
+        const sels = [...new Set(at.flatMap((p) => [p.sectionSel, scopeSelector(p.sectionSel, p.selector)]))];
         const page = await target.open(browser, width);
         try {
           const { items } = await page.evaluate(measureInPage, { sels, all: true });
