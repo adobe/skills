@@ -114,9 +114,8 @@ Inject canon chrome into the page's structural skeleton:
   block alongside the `:root` token contract block.
 
 Canon is applied verbatim — no rewriting, no template-specific
-adjustments. Deviations from canon (e.g., article template wants
-a sticky reading-progress bar in addition to the canon header)
-are applied **on top of** canon, not as replacements; the
+adjustments. Deviations from canon (§ Canon deviation) are applied
+**on top of** canon, not as replacements; the
 deviation is marked with `data-deviation="<reason>"` and logged.
 
 ## Path B — unique rendering
