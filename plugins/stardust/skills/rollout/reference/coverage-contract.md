@@ -75,16 +75,15 @@ values only from coverage.
 
 Every delivered block instance → the CSS selector of its origin element in the page's captured source DOM
 (`sourceSnapshot`), derived from and verified against the capture as stardust's own HTML parser reads it (no browser:
-no inserted `tbody`). A selector resolves to exactly one element there, or is null, except an encoder-map raw selector
-(below), which matches nothing; `confidence` (0–1) is the share of the block's text the element holds (image `alt` is
-never block text). Shape:
+no inserted `tbody`). A selector resolves to exactly one element there, or is null; `confidence` (0–1) is the share of
+the block's text the element holds (image `alt` is never block text). Shape:
 `{formatVersion, generatedAt, skipped[], templates[{templateId, pages[], sections[], blocks[]}]}`.
 
 | Field | Meaning |
 |---|---|
-| `sections[]` | `{id, selector, pages[], style, blocks[], defaultContent[], confidence}`, aligned across the template's pages by style and block names; `selector` generalises the per-page ones (the lowest common ancestor of the section's records), `pages[]` = the slugs where it resolves; `defaultContent[]` = eds-schema roles, else delivered parts; `confidence` = the lowest over its pages |
+| `sections[]` | `{id, selector, pages[], style, blocks[], defaultContent[], confidence}`, aligned across the template's pages by style and block names; `selector` generalises the per-page ones (the lowest common ancestor of the section's records), `pages[]` = the slugs where its one hit is that page's own section element (`--verify` may drop one, never adds one); `defaultContent[]` = eds-schema roles, else delivered parts; `confidence` = the lowest over its pages |
 | `blocks[]` | `{block, variant, variantId, section, positions[], instances[]}` per block, `variantId` and section; an instance is `{slug, pos, selector, confidence, source, verified}`, `pos` = its record's `pos` in that page's `delivered.blocks[]` (clients match instances to page blocks by it); `positions[]` = its instances' `pos`, unique, ascending |
-| `source` | precedence `encoder-map` > `text-alignment` > `position`: the template's encoder map (`--encode`) selecting the instance's element, confidence 1 (with no element for it: confidence 0, its raw selector only when stardust's engine parses it and it matches nothing on the page, else null — never another block's element); else the element covering most of the text; else, when its text is not found (e.g. image-only), its position, confidence 0: a child of the section's element when the section has one, else next to the nearest anchored neighbour, never another record's element, null when none is free |
+| `source` | precedence `encoder-map` > `text-alignment` > `position`: the template's encoder map (`--encode`; under its `root`, page-wide without one) selecting the instance's element, confidence 1 — a block it selects no element for falls through; else the element covering most of the text; else, when its text is not found (e.g. image-only), its position, confidence 0: a child of the section's element when the section has one, else next to the nearest anchored neighbour, never another record's element, null when none is free |
 | `verified` | `--verify`: `true` = exactly one element of the capture matches (not proof it is the right one), else `false`; `null` = not verified (skipped) |
 | `skipped[]` | `{slug, reason}`: a page without a delivered structure, a content file or an indexable capture, or one that failed (`page could not be mapped (<error>)`); `{slug, block, pos, reason}`: a coverage block the delivered document no longer has |
 
