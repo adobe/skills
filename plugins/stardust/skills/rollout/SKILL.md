@@ -238,8 +238,7 @@ styled (per `stardust/runtime-contract.json`, `skills/deploy/SKILL.md`
 § Runtime-detection probe). Its probes run against the preview URL, never a
 harness (step 1). A wrong runtime assumption (block wrapper class,
 button classes) is silent and sitewide — typography still looks fine while
-every grid stacks. This one gate is the difference between fixing one page
-and rebuilding every template. The same gate runs `qa.mjs --checks metadata`
+every grid stacks. The same gate runs `qa.mjs --checks metadata`
 against the origin: `favicon-default` means the site's icon never shipped
 (deploy Step 3 § Favicon) — recorded first passes served the boilerplate
 icon while `/favicon.ico` answered 200. **Foundation sub-units (C0):** in C-deliver
@@ -248,9 +247,10 @@ the foundation is three recorded units run one after another — `foundation-chr
 `foundation-styles` (styles, fonts, favicon, scripts, `stardust/runtime-contract.json`),
 then `archetype-<template>` of the shell template — each its own `progress.json`
 entry, a subagent that returns one verdict line, a checkpoint commit and a boundary
-ask; this gate's chrome checks close `foundation-chrome`, its pixel row the
-archetype, and `foundation-freeze.mjs freeze` runs once, after the three (handoff
-contract § 3, row C). **Archetype first, per template (#126):** the
+ask; this gate's chrome checks close `foundation-styles`, where the chrome first renders with
+the site's styles and fonts (`foundation-chrome` closes on its lint and `.plain.html` checks),
+its pixel row the archetype, and `foundation-freeze.mjs freeze` runs once, after the three
+(handoff contract § 3, row C). **Archetype first, per template (#126):** the
 template's archetype is deployed and passes its full gate row on the preview URL
 (`gate-all.mjs --only`, cap 3 fix rounds) before any of its siblings is rendered
 or converted — the recorded unit `C-archetype` (handoff contract § 3, row C).

@@ -80,9 +80,11 @@ ship here.
   `foundation`, `foundation`, `archetype`), a subagent that returns one verdict line, a checkpoint commit and a
   boundary ask. The two foundation sub-units commit with C0's `git add -A` checkpoint (no fan-out yet;
   `unit-commit.mjs` refuses the frozen header and footer blocks), the archetype through `unit-commit.mjs <unit> --code
-  blocks/<name>`. The foundation-first gate's chrome checks close `foundation-chrome`, its pixel row the archetype;
-  `foundation-freeze.mjs freeze` runs once, after the three, and the freeze check runs from that freeze on. The
-  single-subagent C0 text is folded.
+  blocks/<name>`. `foundation-chrome` closes on its lint and `.plain.html` checks; the foundation-first gate's chrome
+  checks run at the end of `foundation-styles`, the first point the header and footer render with the site's styles
+  and fonts, and close it (a failing one goes back to a subagent for the sub-unit whose files it points at); its pixel
+  row closes the archetype; `foundation-freeze.mjs freeze` runs once, after the three, and the freeze check runs from
+  that freeze on. The single-subagent C0 text is folded.
 - **Images meant to be looked at are small (K10).** New `replica/scripts/inspect-image.mjs <in.png> [--out <file.jpg>]
   [--max 1400x1000] [--quality 80]` writes a capped JPEG copy (default `<in>.inspect.jpg`; at most 1400 × 1000 px,
   quality 80) with a dependency-free area-average downscale and baseline JPEG encoder (4:4:4, alpha on white,
