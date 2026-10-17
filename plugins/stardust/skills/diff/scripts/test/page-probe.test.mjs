@@ -16,9 +16,10 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  HELP, UsageError, consoleLine, evalText, exitCodeFor, formatReport, hideCss, hideRegionsFallback, parseArgs, pickHide,
-  pngSize, sbsHtml, sbsWidth, splitSelectors, summaryLine,
+  HELP, UsageError, consoleLine, countHidden, distinctMatchesInPage, evalText, exitCodeFor, formatReport, hideCss, hideRegionsFallback,
+  parseArgs, pickHide, pngSize, sbsHtml, sbsWidth, splitSelectors, summaryLine,
 } from '../page-probe.mjs';
+import * as liveSession from '../live-session.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'page-probe.mjs');
@@ -106,6 +107,8 @@ await check('formatReport: summary, click, eval, shot, sbs, then the first 20 co
   assert.deepEqual(formatReport({ url: 'http://127.0.0.1:1/', width: 1440, status: null, consoleErrors: ['x'], hidden: 0 }), [], 'navigation failed: no summary, no console lines');
   assert.deepEqual(formatReport({ url: null, consoleErrors: [], sbs: 'o.png' }), ['sbs: o.png'], 'compose only');
   assert.deepEqual(formatReport({ url: 'u', width: 1, status: 200, consent: null, hidden: 0, consoleErrors: [], evalJson: 'undefined' }).slice(1), ['eval: undefined']);
+  assert.deepEqual(formatReport({ url: 'u', width: 1, status: 200, consent: null, hidden: 2, hiddenText: '.bar ×1 (120px) [--hide]; .promo ×1 (40px) [--hide]', consoleErrors: [], click: '#t' }).slice(1),
+    ['hidden: .bar ×1 (120px) [--hide]; .promo ×1 (40px) [--hide]', 'click: #t'], 'live-session\'s formatHidden text right under the summary');
 });
 await check('exitCodeFor: usage 2, bot challenge 3, anything else 1', () => {
   assert.equal(exitCodeFor(new UsageError('x')), 2);
@@ -122,8 +125,60 @@ await check('fallback hide: one display:none !important rule per selector, passe
   const res = await hideRegionsFallback(page, [{ sel: '.bar', source: '--hide' }, { sel: '#promo', source: '--hide' }]);
   assert.deepEqual(calls[0].arg, [{ sel: '.bar', source: '--hide', css: '.bar { display: none !important; }' }, { sel: '#promo', source: '--hide', css: '#promo { display: none !important; }' }]);
   assert.equal(typeof calls[0].fn, 'function'); assert.deepEqual(res.map((x) => x.sel), ['.bar', '#promo']);
-  const own = async () => [];
-  assert.equal(pickHide({ hideRegions: own }), own); assert.equal(pickHide({}), hideRegionsFallback);
+});
+// A stub shaped like the live-session that carries the helper: hideEntries reads a plain string as a comma list split at
+// EVERY comma (its parseHideList) and keeps a { sel, source } object whole; hideRegions measures and hides; formatHidden.
+const helperModule = (calls) => ({
+  hideEntries: (...args) => {
+    calls.push(['hideEntries', ...args]);
+    const [list, source = '--hide'] = args; const out = [];
+    for (const x of [].concat(list)) {
+      if (x && typeof x === 'object') out.push({ sel: x.sel.trim(), source: x.source || source });
+      else String(x).split(',').map((v) => v.trim()).filter(Boolean).forEach((sel) => out.push({ sel, source }));
+    }
+    return out;
+  },
+  hideRegions: async (...args) => { calls.push(['hideRegions', ...args]); return args[1].map(({ sel, source }) => ({ sel, source, n: 1, h: 10 })); },
+  formatHidden: (records) => records.map((x) => `${x.sel} ×${x.n} [${x.source}]`).join('; '),
+});
+await check('pickHide: live-session\'s hideEntries + hideRegions when both are exported — the gate tools\' two-argument call, selectors kept whole, its formatHidden', async () => {
+  const calls = []; const mod = helperModule(calls); const page = { id: 'page' };
+  const h = pickHide(mod);
+  assert.equal(h.via, 'live-session'); assert.equal(h.note, 'page-probe: hide via live-session'); assert.equal(h.format, mod.formatHidden);
+  const recs = await h.run(page, [':is(.a, .b) > p', '.bar']);
+  const entries = [{ sel: ':is(.a, .b) > p', source: '--hide' }, { sel: '.bar', source: '--hide' }];
+  assert.deepEqual(calls[0], ['hideEntries', entries, '--hide'], 'entries built with hideEntries(…, \'--hide\')');
+  assert.deepEqual(calls[1], ['hideRegions', page, entries], 'hideRegions(page, entries) — no options, as the gate tools call it');
+  assert.deepEqual(recs.map((x) => x.sel), [':is(.a, .b) > p', '.bar'], 'a comma inside :is() is not split');
+  assert.equal(h.format(recs), ':is(.a, .b) > p ×1 [--hide]; .bar ×1 [--hide]');
+  assert.equal(pickHide({ ...mod, formatHidden: undefined }).format, null, 'no formatHidden export: no per-selector line');
+});
+await check('pickHide: the local fallback when live-session lacks hideRegions or hideEntries (this base), the note names the missing export', async () => {
+  for (const [mod, missing] of [[{}, 'hideRegions'], [{ hideEntries: () => [] }, 'hideRegions'], [{ hideRegions: async () => [] }, 'hideEntries']]) {
+    const h = pickHide(mod);
+    assert.equal(h.via, 'fallback'); assert.equal(h.format, null);
+    assert.equal(h.note, `page-probe: hide via the local fallback (live-session has no ${missing})`);
+  }
+  const calls = []; const page = { evaluate: async (fn, arg) => { calls.push(arg); return arg.map(({ sel, source }) => ({ sel, source, n: 1, h: 1 })); } };
+  await pickHide({}).run(page, [':is(.a, .b)']);
+  assert.deepEqual(calls[0], [{ sel: ':is(.a, .b)', source: '--hide', css: ':is(.a, .b) { display: none !important; }' }]);
+  const both = typeof liveSession.hideEntries === 'function' && typeof liveSession.hideRegions === 'function';
+  assert.equal(pickHide(liveSession).via, both ? 'live-session' : 'fallback', 'the real live-session module: its exports decide');
+});
+await check('countHidden: distinct elements — an element two overlapping selectors match counts once; error and zero-match records add nothing', async () => {
+  const [bar, promo, para] = [{ id: 'bar' }, { id: 'promo' }, { id: 'para' }];
+  const dom = { '.bar': [bar], 'div.bar': [bar], '.promo': [promo, para], 'main p': [para], '.gone': [] };
+  globalThis.document = { querySelectorAll: (sel) => { if (!(sel in dom)) throw new SyntaxError(`'${sel}' is not a valid selector`); return dom[sel]; } };
+  try {
+    const evals = []; const page = { evaluate: async (fn, arg) => { evals.push(arg); return fn(arg); } };
+    const recs = [{ sel: '.bar', n: 1 }, { sel: 'div.bar', n: 1 }, { sel: '.promo', n: 2 }, { sel: 'main p', n: 1 }, { sel: '.gone', n: 0 }, { sel: 'a[', n: 0, error: 'not a valid selector' }];
+    assert.equal(recs.reduce((s, x) => s + x.n, 0), 5, 'the per-selector sum counts bar and para twice');
+    assert.equal(await countHidden(page, recs), 3);
+    assert.deepEqual(evals, [['.bar', 'div.bar', '.promo', 'main p']], 'one page call over the selectors that matched');
+    assert.equal(await countHidden(page, [{ sel: '.gone', n: 0 }, { sel: 'a[', n: 0, error: 'x' }]), 0);
+    assert.equal(evals.length, 1, 'nothing matched: no page call');
+    assert.equal(distinctMatchesInPage(['.bar', 'nope[', 'div.bar']), 1, 'a selector the query refuses adds nothing');
+  } finally { delete globalThis.document; }
 });
 await check('pngSize reads the IHDR; anything else is null. sbsWidth and the compose page (captions escaped, natural sizes)', () => {
   const ihdr = Buffer.alloc(33); Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(ihdr); ihdr.write('IHDR', 12, 'latin1'); ihdr.writeUInt32BE(1440, 16); ihdr.writeUInt32BE(900, 20);
@@ -172,6 +227,9 @@ else {
   await new Promise((r) => { server.listen(0, '127.0.0.1', r); });
   const base = `http://127.0.0.1:${server.address().port}`;
   const cwd = mkdtempSync(join(tmpdir(), 'page-probe-e2e-'));
+  const hidePath = pickHide(liveSession);
+  // live-session's formatHidden line under the summary (helper path only); the fallback prints none.
+  const hiddenLines = (text) => (hidePath.format ? [`hidden: ${text}`] : []);
   try {
     await check('e2e: consent named, .bar hidden, eval after the dismissal, PNG written, console error listed', async () => {
       const r = await runAsync([`${base}/`, '--hide', '.bar', '--eval', 'document.title', '--shot', 'out/shot.png'], cwd);
@@ -179,12 +237,19 @@ else {
       const lines = r.out.trim().split('\n');
       assert.deepEqual(lines, [
         `page-probe ${base}/ @1440px: HTTP 200 · consent #onetrust-accept-btn-handler · hidden 1 · console errors 1`,
+        ...hiddenLines('.bar ×1 (120px) [--hide]'),
         'eval: "fixture accepted"',
         'shot: out/shot.png',
         'console error: fixture console error',
       ]);
       assert.deepEqual(pngSize(readFileSync(join(cwd, 'out', 'shot.png'))), { w: 1440, h: 900 });
       assert.deepEqual(readdirSync(join(cwd, 'out')), ['shot.png'], 'no tmp file left behind');
+      assert.equal(r.err.split('\n').filter((l) => l.startsWith('page-probe: hide via')).join('\n'), hidePath.note, 'one line names the hide path');
+    });
+    await check('e2e: overlapping --hide selectors count the element once', async () => {
+      const r = await runAsync([`${base}/`, '--hide', '.bar, div.bar, body > .bar'], cwd);
+      assert.equal(r.code, 0, r.err);
+      assert.match(r.out.split('\n')[0], / · hidden 1 · console errors 1$/);
     });
     await check('e2e: --click runs before --eval; the hide is inline + one data-stardust-hide rule; --full shoots the page', async () => {
       const ev = "[document.querySelector('.menu').hidden, getComputedStyle(document.querySelector('.bar')).display, document.querySelector('.bar').style.getPropertyPriority('display'), document.querySelectorAll('style[data-stardust-hide]').length]";
@@ -192,7 +257,7 @@ else {
       assert.equal(r.code, 0, r.err);
       const lines = r.out.trim().split('\n');
       assert.match(lines[0], / @800px: HTTP 200 · consent #onetrust-accept-btn-handler · hidden 1 · console errors 1$/);
-      assert.deepEqual(lines.slice(1, 4), ['click: #toggle', 'eval: [false,"none","important",1]', 'shot: out/full.png']);
+      assert.deepEqual(lines.slice(1), [...hiddenLines('.bar ×1 (120px) [--hide]'), 'click: #toggle', 'eval: [false,"none","important",1]', 'shot: out/full.png', 'console error: fixture console error']);
       assert.equal(pngSize(readFileSync(join(cwd, 'out', 'full.png'))).w, 800);
     });
     await check('e2e: a --click selector matching nothing exits 1 naming it; the summary still prints', async () => {

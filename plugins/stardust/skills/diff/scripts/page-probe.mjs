@@ -18,7 +18,7 @@
  *        [--locale <tag>] [--nav-timeout <ms>] [--max-chars <n>]
  * Exit: 0 ok, 1 error, 2 usage, 3 bot challenge. Requires playwright (imported lazily: --help answers without it).
  * Pure parts exported: parseArgs, splitSelectors, summaryLine, consoleLine, evalText, formatReport, hideCss,
- * hideRegionsFallback, pickHide, pngSize, sbsWidth, sbsHtml, exitCodeFor.
+ * hideRegionsFallback, pickHide, countHidden, distinctMatchesInPage, pngSize, sbsWidth, sbsHtml, exitCodeFor.
  */
 import { mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -30,8 +30,11 @@ export const HELP = `page-probe — the one ad-hoc browser probe: a page as the 
 Usage: node page-probe.mjs <url> [options]
        node page-probe.mjs [<url> [options]] --sbs <a.png> <b.png> <out.png>
   --width <px>          viewport width (default 1440; height 900)
-  --hide <sel,…>        hide every match (inline display: none !important + one <style data-stardust-hide> rule
-                        per selector) before click / eval / shot; repeatable
+  --hide <sel,…>        hide every match (inline display: none !important + a <style data-stardust-hide> rule
+                        per selector) before click / eval / shot; repeatable. Through live-session's hideEntries +
+                        hideRegions when it exports them, else a local fallback with the same semantics — one
+                        stderr line names the path. hidden <n> counts distinct elements: one two selectors
+                        match counts once
   --click <sel>         click the first match (5 s timeout, 500 ms settle); a selector matching nothing = exit 1
   --eval <expr>         evaluate a JS expression in the page (after --click); prints its JSON
   --max-chars <n>       cut the eval JSON at n characters (default 4000)
@@ -52,6 +55,7 @@ Steps, in order: navigate (live-session gotoLive: the per-host wait rule, settle
 
 Output (stdout, in this order; each step line only when asked):
   page-probe <url> @<w>px: HTTP <status> · consent <sel|none> · hidden <n> · console errors <n>
+  hidden: <sel> ×<n> (<h>px) [--hide]; …   per selector (live-session's formatHidden; the fallback prints none)
   click: <sel>
   eval: <json>
   shot: <path>
@@ -199,6 +203,7 @@ export function formatReport(r) {
   const opened = Boolean(r.url) && r.status != null;
   const lines = [];
   if (opened) lines.push(summaryLine({ ...r, consoleErrors: r.consoleErrors.length }));
+  if (opened && r.hiddenText) lines.push(`hidden: ${r.hiddenText}`);
   if (r.click) lines.push(`click: ${r.click}`);
   if (r.evalJson != null) lines.push(`eval: ${r.evalJson}`);
   if (r.shot) lines.push(`shot: ${r.shot}`);
@@ -240,8 +245,55 @@ export async function hideRegionsFallback(page, entries) {
   return page.evaluate(hideInPage, entries.map(({ sel, source }) => ({ sel, source, css: hideCss(sel) })));
 }
 
-/** live-session's hideRegions when the export exists, else the local fallback (feature detection, no version pin). */
-export const pickHide = (mod) => (typeof mod.hideRegions === 'function' ? mod.hideRegions : hideRegionsFallback);
+/**
+ * The hide path, by feature detection (no version pin): live-session's `hideEntries` + `hideRegions` when it exports
+ * both — the gate tools' helper, called as they call it — else the local fallback. → { via, note (the one stderr line
+ * naming the path), run(page, sels) → records [{ sel, source, n, h, error? }], format (formatHidden or null) }.
+ */
+export function pickHide(mod) {
+  const has = (k) => Boolean(mod) && typeof mod[k] === 'function';
+  if (has('hideEntries') && has('hideRegions')) {
+    return {
+      via: 'live-session',
+      note: 'page-probe: hide via live-session',
+      // { sel, source } objects, not strings: hideEntries reads a string as a comma list split at every comma, which
+      // would cut a selector splitSelectors kept whole (`:is(.a, .b)`); an object keeps its sel.
+      run: (page, sels) => mod.hideRegions(page, mod.hideEntries(sels.map((sel) => ({ sel, source: '--hide' })), '--hide')),
+      format: has('formatHidden') ? mod.formatHidden : null,
+    };
+  }
+  return {
+    via: 'fallback',
+    note: `page-probe: hide via the local fallback (live-session has no ${has('hideRegions') ? 'hideEntries' : 'hideRegions'})`,
+    run: (page, sels) => hideRegionsFallback(page, sels.map((sel) => ({ sel, source: '--hide' }))),
+    format: null,
+  };
+}
+
+/* eslint-disable no-undef */
+/** Runs in the page: how many distinct elements the selectors match — a Set, so an element two overlapping selectors
+ * match counts once; a selector the query refuses adds nothing. */
+export function distinctMatchesInPage(sels) {
+  const seen = new Set();
+  for (const sel of sels) {
+    let els = [];
+    try { els = document.querySelectorAll(sel); } catch { /* its record carries the error */ }
+    for (const el of els) seen.add(el);
+  }
+  return seen.size;
+}
+/* eslint-enable no-undef */
+
+/**
+ * `hidden <n>`: distinct elements. Both paths' records count per selector (n), so their sum counts an element two
+ * overlapping selectors match twice — and live-session's records carry counts, not elements, so they cannot
+ * de-duplicate. For both paths the count is therefore one page call right after the hide: a Set over the matches of
+ * every record that matched without an error. Nothing matched → 0 without touching the page.
+ */
+export async function countHidden(page, records) {
+  const sels = records.filter((x) => !x.error && x.n > 0).map((x) => x.sel);
+  return sels.length ? page.evaluate(distinctMatchesInPage, sels) : 0;
+}
 
 // ---- side by side -------------------------------------------------------------------------------------
 
@@ -315,8 +367,11 @@ async function probe(browser, opts, r) {
     r.consent = d.consent;
 
     if (opts.hide.length) {
-      const res = await pickHide(session)(page, opts.hide.map((sel) => ({ sel, source: '--hide' })));
-      r.hidden = res.filter((x) => !x.error).reduce((sum, x) => sum + (x.n || 0), 0);
+      const hide = pickHide(session);
+      console.error(hide.note);
+      const res = await hide.run(page, opts.hide);
+      r.hidden = await countHidden(page, res);
+      if (hide.format) r.hiddenText = hide.format(res);
       for (const x of res) if (!x.error && !x.n) console.error(`page-probe: --hide ${x.sel} matched nothing (its rule stays for late matches)`);
       const bad = res.find((x) => x.error);
       if (bad) throw new Error(`hide: ${bad.sel} ${bad.error}`);
@@ -353,7 +408,7 @@ export async function main(args) {
   if (opts.sbs) for (const f of [opts.sbs.a, opts.sbs.b]) if (!opts.shot || resolve(f) !== resolve(opts.shot)) readPng(f, UsageError);
   const { chromium } = await import('playwright');
   const browser = opts.headed ? await session.launchStealthHeaded(chromium) : await chromium.launch();
-  const r = { url: opts.url, width: opts.width, status: null, consent: null, hidden: 0, consoleErrors: [], click: null, evalJson: null, shot: null, sbs: null };
+  const r = { url: opts.url, width: opts.width, status: null, consent: null, hidden: 0, hiddenText: null, consoleErrors: [], click: null, evalJson: null, shot: null, sbs: null };
   let err = null;
   try {
     if (opts.url) await probe(browser, opts, r);
