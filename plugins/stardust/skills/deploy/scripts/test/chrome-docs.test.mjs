@@ -2,7 +2,8 @@
 // skills/deploy/scripts/test/chrome-docs.test.mjs — canon chrome → the /nav and /footer documents: exact documents for a
 // header (brand image link, a nav with a dropdown sub-list and a button trigger, a utility list, a CTA, an icon-only
 // search link, a search button) and a footer (link columns with headings, a legal line with links, social icon links,
-// a newsletter form); entities; the empty-list nav; the CLI (written, unchanged, --check, --prefix, a missing source).
+// a newsletter form); entities (a prototype-key name stays literal); the empty-list nav; column-only nav items, with and
+// without their own label; the CLI (written, unchanged, --check, --prefix, a missing source).
 // Run: node plugins/stardust/skills/deploy/scripts/test/chrome-docs.test.mjs
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -10,7 +11,7 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSyn
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildFooter, buildNav, decode, escapeHtml, firstDifferenceLine, normalizePrefix, parseArgs } from '../chrome-docs.mjs';
+import { buildFooter, buildNav, decode, escapeHtml, firstDifferenceLine, normalizePrefix, parseArgs, parseHTML } from '../chrome-docs.mjs';
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', 'chrome-docs.mjs');
 let failed = 0;
@@ -215,11 +216,13 @@ check('nav nesting comes only from source lists: a description and a badge stay 
         </li>
       </ul>`);
 });
-check('nav: a link directly followed by a list heads it — a button trigger over two link-headed columns, each with its own list', () => {
-  const r = buildNav(`<header><a class="logo" href="/"><img src="/media/logo.svg" alt="Example"></a><nav><ul>
-    <li><button>Products</button><a href="/a">Column A</a><ul><li><a href="/a1">A1</a></li></ul><a href="/b">Column B</a><ul><li><a href="/b1">B1</a></li></ul></li>
-  </ul></nav></header>`);
-  assert.equal(sectionsOf(r.doc)[1], `      <ul>
+check('nav: a link directly followed by a list heads it — a button trigger over two link-headed columns, each with its own list, bare or in one panel', () => {
+  const nav = (inner) => sectionsOf(buildNav(`<header><a class="logo" href="/"><img src="/media/logo.svg" alt="Example"></a><nav><ul>
+    <li><button>Products</button>${inner}</li>
+  </ul></nav></header>`).doc)[1];
+  const groups = '<a href="/a">Column A</a><ul><li><a href="/a1">A1</a></li></ul><a href="/b">Column B</a><ul><li><a href="/b1">B1</a></li></ul>';
+  assert.equal(nav(`<div class="panel">${groups}</div>`), nav(groups));
+  assert.equal(nav(groups), `      <ul>
         <li>Products
           <ul>
             <li><a href="/a">Column A</a>
@@ -235,6 +238,61 @@ check('nav: a link directly followed by a list heads it — a button trigger ove
           </ul>
         </li>
       </ul>`);
+});
+// A mega panel: two headed columns, a heading-less column, a close button (a control: skipped, never authored).
+const COLUMNS = `<div class="mega"><div class="col"><h3>Widgets</h3><ul><li><a href="/w1">W1</a></li><li><a href="/w2">W2</a></li></ul></div>
+      <section class="col"><h3>Gadgets</h3><ul><li><a href="/g1">G1</a></li></ul></section>
+      <div class="col"><ul><li><a href="/all">All products</a></li></ul></div><button class="close" aria-label="Close"></button></div>`;
+check('nav: an item made only of column wrappers has no label of its own — its columns stand at that level, no heading promoted', () => {
+  const r = buildNav(`<header><a class="logo" href="/"><img src="/media/logo.svg" alt="Example"></a><nav><ul>
+    <li>${COLUMNS}</li>
+    <li><a href="/x">X</a></li>
+  </ul></nav></header>`);
+  assert.equal(sectionsOf(r.doc)[1], `      <ul>
+        <li>Widgets
+          <ul>
+            <li><a href="/w1">W1</a></li>
+            <li><a href="/w2">W2</a></li>
+          </ul>
+        </li>
+        <li>Gadgets
+          <ul>
+            <li><a href="/g1">G1</a></li>
+          </ul>
+        </li>
+        <li><a href="/all">All products</a></li>
+        <li><a href="/x">X</a></li>
+      </ul>`);
+  assert.deepEqual(r.counts, { brand: 1, links: 5, tools: 0, skipped: 1 });
+});
+check('nav: column wrappers beside the item\'s own link nest under it, each heading a sub-item over its links', () => {
+  const r = buildNav(`<header><a class="logo" href="/"><img src="/media/logo.svg" alt="Example"></a><nav><ul>
+    <li><a href="/products">Products</a>${COLUMNS}</li>
+  </ul></nav></header>`);
+  assert.equal(sectionsOf(r.doc)[1], `      <ul>
+        <li><a href="/products">Products</a>
+          <ul>
+            <li>Widgets
+              <ul>
+                <li><a href="/w1">W1</a></li>
+                <li><a href="/w2">W2</a></li>
+              </ul>
+            </li>
+            <li>Gadgets
+              <ul>
+                <li><a href="/g1">G1</a></li>
+              </ul>
+            </li>
+            <li><a href="/all">All products</a></li>
+          </ul>
+        </li>
+      </ul>`);
+  assert.deepEqual(r.counts, { brand: 1, links: 5, tools: 0, skipped: 1 });
+});
+check('entities: a name that is an Object.prototype key stays literal text; a tag of that name parses', () => {
+  assert.equal(decode('&constructor; &toString; &valueOf; &hasOwnProperty; &amp;'), '&constructor; &toString; &valueOf; &hasOwnProperty; &');
+  assert.equal(sectionsOf(buildFooter('<footer><p>R&constructor;D &toString;</p></footer>').doc)[0], '      <p>R&constructor;D &toString;</p>');
+  assert.equal(parseHTML('<constructor><p>x</p></constructor>').children[0].children[0].tag, 'p');
 });
 check('brand: an icon link before the logo stays a tool; a logo signal, then a named link, then "/", then any image link', () => {
   const r = buildNav('<header><a href="/stores"><svg><path d="M0 0"/></svg>Find a store</a><a class="logo" href="/"><img src="/media/logo.svg" alt="Example"></a><nav><ul><li><a href="/a">A</a></li></ul></nav></header>');
