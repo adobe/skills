@@ -95,11 +95,14 @@ The prototype capture is re-taken every iteration.
 3. **pixel diff ≤ 10% full-page** — AND no band left unexplained (§ Band
    breakdown). 10% is the ship bar, not the target; the validated run
    landed at 1.31%.
-4. **height delta: |Δ| ≤ 8px** — pixel-compare's own warning threshold is
-   the bar (it prints ⚠ above 8px), so a −9px result is unambiguously a
-   residual, not a pass. A large delta invalidates the % — the overlap crop
-   silently discards the tail, so a short prototype can score deceptively
-   well. Fix heights before trusting anything else.
+4. **height delta: |Δh| ≤ 8 px in the prototype regime, 5 % of origin
+   height in the published regime** — a pixel-table row (gate-all, either
+   stage) is judged at 5 % and decides when it exists. A large delta
+   invalidates the % — the overlap crop silently discards the tail, so a
+   short prototype can score deceptively well. Fix heights before trusting
+   anything else. gate-triage's re-prototype trigger (§ What a failing row
+   means): |Δh| > 2 × the published bar (10 % of origin height), hot bands
+   on at least half the page, or ≥ 2 missing headings.
 5. **Chrome crop gate: header band AND footer band each ≤ 2% diff (≥98%
    match, #115).** The full-page bar dilutes the chrome — header/footer are
    a small share of page pixels but carry disproportionate visual weight
@@ -514,21 +517,15 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
   gap, more than the rounds it waited for**, while every other gap in that
   session stayed under 184 s at a 96 % cache-hit ratio. So: `run-bg.mjs
   start --name <slug>-<w>-<iter> -- gate.sh …` for every round at once (the
-  slots launch them first come first served — 3 per project, `RUN_BG_SLOTS`,
-  inside one machine-wide browser budget, replica SKILL.md § Setup — and
-  replace the `sleep N;` staggering), then `run-bg.mjs
-  wait` (returns within `--max`, default 100 s, ceiling 110 s — inside the
-  shell tool's ~2-minute default timeout, which applies only to a call that
-  declares none) prints one
-  line per job plus its verdict lines; exit 75 means "still going — `wait`
-  again as your NEXT step". Never wrap `wait` in a shell loop: that
-  recreates the blocked step; between waits do independent work, and read
-  a round's ledger at most every 4 minutes (the master skill's wait
-  discipline — recorded: 5–10-minute foreground sweeps, 58 % of which
-  re-wrote the whole prompt prefix). The full instrument output stays in
-  `stardust/.work/replica/bg/<job>.log` — read it with `run-bg.mjs log <job>
-  --grep <re>`, not with `cat`; the same session carried 700k characters of
-  tool output in 77 minutes, and a verdict is four lines of it.
+  slots pace them, replica SKILL.md § Setup — and replace the `sleep N;`
+  staggering), then `run-bg.mjs wait` (within 100 s by default, the master
+  skill's wait discipline) prints one line per job plus its verdict lines;
+  exit 75 means "still going — `wait` again as your NEXT step". Never wrap
+  `wait` in a shell loop: that recreates the blocked step; between waits do
+  independent work, and read a round's ledger at most every 4 minutes. The
+  full instrument output stays in `stardust/.work/replica/bg/<job>.log` —
+  read it with `run-bg.mjs log <job> --grep <re>`, not with `cat`: a verdict
+  is four lines of it.
 - **Media-density budget.** The ≤3-iteration convergence was validated on a
   typographic, low-image page (the retail home). Image-dense commerce homes
   (recorded: a fashion retailer, ~130 imgs) spend iterations on media parity —
@@ -856,9 +853,8 @@ without a coverage file, the `deployed` pages with a `liveUrl` in `stardust/stat
 first line names the source. **Verdict, per page — all four:**
 
 1. **pixel** — overlap % ≤ `--threshold` (default 10).
-2. **height** — |Δh| ≤ `--height-tol` × origin height (default 5 %). The overlap crop cannot see
-   a render thousands of px too tall; a union (white-padded) metric was tried and rejected
-   (white gaps score as matches), so the guard is explicit.
+2. **height** — |Δh| ≤ `--height-tol` × origin height (default 5 %; § Pass bar item 4); a union
+   (white-padded) metric was tried and rejected (white gaps score as matches).
 3. **clip** — served-side `clip-probe` count ≤ `--clip-max` (default 0) + the page's allowance
    in `clip-allow.json`. Counted: a text line cut across, whole lines behind an overflow-hidden
    ancestor without a line-clamp, a link or button outside or cut by its clipping ancestor.
@@ -932,16 +928,18 @@ is refused, exit 2; branch hosts
 serve the LITERAL branch name — `fix/x` → push a mirror `fix-x`). Read a finding as one crop of
 the two captures at the row's band, never the whole pages.
 
-**What a failing row means (#126).** The row's evidence decides the fix, mechanically: clip
-groups, HIDDEN links or unit deltas confined to one block → fix the BLOCK (CSS or encoder) and
-re-gate every page sharing it; MISSING links or images whose content is in the capture → fix the
-ENCODER and re-render the affected siblings; MISSING h1–h3 bands, hot bands over most of the
-page or |Δh| far beyond 5 % (a banded layout flattened) → RE-PROTOTYPE: the page leaves the
-template — the variance probe across the template's other pages decides a new archetype (two or
-more share the composition: craft, gate, deploy, migrate its siblings) or a standalone prototype
-(an archetype of one); tier and template change in `state.json`, the redirect row stays. Cap: 3
-fix rounds per page at the published origin, then this decision — never a fourth round.
-`gate-triage.mjs` applies this paragraph across the rows: `triage.md` lists the groups and the
+**What a failing row means (#126).** The row's evidence decides the fix, mechanically: clip groups,
+HIDDEN links or unit deltas confined to one block → fix the BLOCK (CSS or encoder) and re-gate every
+page sharing it; MISSING links or images whose content is in the capture → fix the ENCODER and
+re-render the affected siblings; § Pass bar item 4's re-prototype trigger (a banded layout
+flattened) → RE-PROTOTYPE: the page leaves the template — the variance probe across the template's
+other pages decides a new archetype (two or more share the composition: craft, gate, deploy, migrate
+its siblings) or a standalone prototype (an archetype of one); tier and template change in
+`state.json`, the redirect row stays. Cap: 3 fix rounds per page at the published origin, then this
+decision — mechanical (#134): gate-all counts each `--only` verdict in `<out>/<slug>/rounds.json`
+and refuses a fourth (exit 2, `cap reached — re-prototype decision`) until
+`--round-reset "<reason>"` records the decision — a brief cannot reset it. `gate-triage.mjs` applies
+this paragraph across the rows: `triage.md` lists the groups (each row's `rounds n/max`) and the
 re-gate scope (never smaller than the rows), and frozen-foundation causes become
 `foundation-requests.md` lines — it fixes nothing.
 Calibration on the recorded roster (96 pages): pixel-only 66 PASS → full 28 PASS; failing by
