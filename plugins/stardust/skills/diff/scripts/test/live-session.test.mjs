@@ -19,7 +19,8 @@
 // closed by its "Schließen" control, a non-native modal by its close control and an Escape-only panel (the html lock
 // released), a surviving modal that keeps the lock (R1), a lock class with no modal that stays, the consent click
 // unchanged, and the recorded `overflow: hidden` shorthand lock on html and body at height:100% released (the window
-// scrolls; overflow-x clip) (stitch-shot.test.mjs runs the EDS single sweep against a late consent banner); and the client hints on a
+// scrolls; overflow-x clip), and a close that opens a next-step modal no snapshot held keeps the lock (the re-read
+// names it) (stitch-shot.test.mjs runs the EDS single sweep against a late consent banner); and the client hints on a
 // logging origin — the document, a same-origin script, a cross-origin (localhost) script and a CORS fetch all carry the
 // UA's sec-ch-ua with no preflight; hints native keeps the browser's own and the same Accept-Language; launchChromium
 // runs the full build with the UA metadata.
@@ -884,6 +885,14 @@ const DIALOG_PAGES = {
   '/dialog-shorthand-lock': fixturePage(`<dialog id="region"><p>Choose your delivery region.</p></dialog>
     <script>document.getElementById('region').showModal(); for (const el of [document.documentElement, document.body]) el.style.overflow = 'hidden';</script>`,
   { head: '<style>html,body{height:100%}</style>' }),
+  // (h) a two-step modal: its close control removes it and opens the next step — after the pass's only snapshot of
+  // the selector both match — and the next step has no control, over a body lock
+  '/dialog-next-step': fixturePage(`<div id="first" role="dialog" aria-modal="true" style="position:fixed;inset:0;background:rgba(0,0,0,.5)">
+    <p>Step one of two.</p><span class="modal__close" role="button" tabindex="0" onclick="nextStep()">×</span></div>
+    <script>function nextStep() { document.getElementById('first').remove(); const d = document.createElement('div');
+      d.id = 'second'; d.setAttribute('role', 'dialog'); d.setAttribute('aria-modal', 'true');
+      d.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6)'; d.textContent = 'Step two of two.'; document.body.append(d); }</script>`,
+  { head: '<style>body{overflow:hidden}</style>' }),
 };
 if (chromium) {
   const origin = await serveRoutes(DIALOG_PAGES);
@@ -948,6 +957,11 @@ if (chromium) {
       assert.equal(lock.locked, false, JSON.stringify(lock));
       assert.deepEqual(x, ['clip', 'clip'], 'a hidden overflow-x becomes clip on html and body');
       assert.ok(y > 0, `window.scrollY ${y} after scrollTo(0, 1000) — not an inner scroller`);
+    });
+    await checkAsync('dismissOverlays (h): a close that opens the next step — a dialog no snapshot held — keeps the lock (R1): dialogsLeft names it from the re-read', async () => {
+      const { d, lock } = await sweep('/dialog-next-step', readLock);
+      assert.deepEqual(pass(d), [['div#first (close control .modal__close)'], ['div#second'], false], JSON.stringify(d));
+      assert.equal(lock.locked, true, JSON.stringify(lock));
     });
   } finally {
     if (browser) await browser.close();

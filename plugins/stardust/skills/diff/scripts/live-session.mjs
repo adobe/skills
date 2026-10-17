@@ -1015,19 +1015,47 @@ export async function closeDialogs(page) {
   return { closed, left };
 }
 
+// The visible dialogs open NOW → their names (describeElementInPage), de-duplicated in selector order: per
+// NATIVE_DIALOG and MODAL_DIALOGS selector, the first 25 matches that are visible — and, for a non-native one,
+// overlayLikeInPage (closeDialogs' own test). A fresh read, not closeDialogs' snapshots: a dialog a close opened (a
+// second step) or remounted (a re-render) after its selector's snapshot, or a native dialog opened during the modal
+// pass, is in none of them. Never throws; every handle is disposed.
+async function openDialogNames(page) {
+  const names = [];
+  for (const sel of [NATIVE_DIALOG, ...MODAL_DIALOGS]) {
+    const hs = await page.locator(sel).elementHandles().catch(() => []);
+    try {
+      for (const h of hs.slice(0, 25)) {
+        try {
+          if (!(await h.isVisible())) continue;
+          if (sel !== NATIVE_DIALOG && !(await h.evaluate(overlayLikeInPage))) continue;
+          const name = await h.evaluate(describeElementInPage);
+          if (!names.includes(name)) names.push(name);
+        } catch { /* detached under the read — not open */ }
+      }
+    } finally {
+      await Promise.all(hs.map((h) => h.dispose().catch(() => {})));
+    }
+  }
+  return names;
+}
+
 // dismissOverlays' dialog pass: closeDialogs, then the scroll lock the closed dialogs leave. R1 — released only when
-// THIS pass closed at least one dialog AND none of its candidates survived: a lock with no closed dialog is the
-// page's own layout (an inner scroller / scroll-jacking — stitch-shot's scroll-stall guard stays loud), and a lock
-// with a surviving dialog stays too (nothing else names the survivor: a released lock would turn a loud stall into a
-// silently polluted capture; dialogsLeft names it). R2 — overflow-y visible; a hidden overflow-x becomes clip
-// (releaseScrollLockInPage).
+// THIS pass closed at least one dialog AND none survives — re-read after the pass (openDialogNames), so a dialog a
+// close opened or remounted counts: a lock with no closed dialog is the page's own layout (an inner scroller /
+// scroll-jacking — stitch-shot's scroll-stall guard stays loud), and a lock with a surviving dialog stays too (nothing
+// else names the survivor: a released lock would turn a loud stall into a silently polluted capture; dialogsLeft names
+// it). R2 — overflow-y visible; a hidden overflow-x becomes clip (releaseScrollLockInPage).
 async function dialogPass(page) {
   const { closed: dialogs, left: dialogsLeft } = await closeDialogs(page);
   let scrollLockReleased = false;
   if (dialogs.length > 0 && dialogsLeft.length === 0) {
     await page.waitForTimeout(300).catch(() => {}); // a close handler that unlocks on a transition end gets its turn
-    const lock = await page.evaluate(scrollLockInPage).catch(() => null);
-    if (lock && lock.locked) scrollLockReleased = (await page.evaluate(releaseScrollLockInPage).catch(() => [])).length > 0;
+    for (const name of await openDialogNames(page)) if (!dialogsLeft.includes(name)) dialogsLeft.push(name);
+    if (dialogsLeft.length === 0) {
+      const lock = await page.evaluate(scrollLockInPage).catch(() => null);
+      if (lock && lock.locked) scrollLockReleased = (await page.evaluate(releaseScrollLockInPage).catch(() => [])).length > 0;
+    }
   }
   return { dialogs, dialogsLeft, scrollLockReleased };
 }
@@ -1045,13 +1073,15 @@ async function dialogPass(page) {
  *   (c) dialogs, after (b) (closeDialogs) — every open native `dialog[open]` gets close(), then its close control,
  *       then Escape; a visible overlay-like non-native modal (MODAL_DIALOGS) its close control, then Escape. The
  *       html/body scroll lock left afterwards is released for the capture (overflow-y visible; a hidden overflow-x
- *       becomes clip — R2) ONLY when this pass closed a dialog and none survived (R1): a lock without a closed dialog
- *       is the page's own layout, and a lock over a survivor stays loud (dialogsLeft names the survivor).
+ *       becomes clip — R2) ONLY when this pass closed a dialog and none survives — re-read after the pass, so a dialog
+ *       a close opened or remounted counts (R1): a lock without a closed dialog is the page's own layout, and a lock
+ *       over a survivor stays loud (dialogsLeft names the survivor).
  * `extra` selectors are site-specific dismissers, clicked first (each once).
  * Parks the mouse afterwards (bottom-left — dead space on virtually every
  * layout) so no :hover-styled element under the cursor captures hovered.
  * Returns { extra: [...], consent: <sel|null>, marketing: [...], dialogs: [...], dialogsLeft: [...],
- * scrollLockReleased: <bool> } — dialogs / dialogsLeft as closeDialogs' closed / left strings.
+ * scrollLockReleased: <bool> } — dialogs / dialogsLeft as closeDialogs' closed / left strings (dialogsLeft plus the
+ * re-read's survivors, dialogPass).
  */
 export async function dismissOverlays(page, { extra = [], lateWindowMs = 6000 } = {}) {
   const dismissed = { extra: [], consent: null, marketing: [] };
