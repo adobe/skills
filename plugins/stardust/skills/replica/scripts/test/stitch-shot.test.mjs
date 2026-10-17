@@ -20,6 +20,18 @@
 // guard let it through with 20 unwritten rows at the bottom): exit 0, the shrunk PNG height, headerMorph 20 in
 // <stem>.capture.json, the morph named on the stitched line. An inner scroller still exits 1 with the scroll stall
 // signature and leaves no sidecar; a normal page records headerMorph 0 and its stdout is unchanged.
+// Dialogs, denial pages, the browser (S22): --hints takes ua-metadata | native (anything else: the exit-1 usage error,
+// before any I/O); mergeDismissed (pure) folds the sweeps into capture.json's `dismissed`; stale live-session copies
+// (stub modules) — no launchChromium → chromium.launch(), no hintRecord → 'unknown', no pageDenial → the re-check is
+// one "skipped" line; recheckDenial on stub pages through the real pageDenial / botChallengeError. End to end: the
+// recorded dialog stall re-checked on a fixture — a 3914 px page whose script showModal()s a dialog and locks html and
+// body at height:100% (--no-dismiss: the scroll stall; default: exit 0, full height, the dialog closed and the lock
+// released), a non-native modal closed by its control (lock released), an unclosable aria-modal over the lock (still
+// the stall, no sidecar — R1); every vendor denial signature, the one-error-heading page, the recorded "can't process"
+// page and the same page rendered 800 ms after load (the post-sweep re-check) → exit 3, "origin blocked", --headed, no
+// PNG and no sidecar; a 3000 px article that mentions "press & hold the button" → exit 0 (R3); capture.json's
+// browserBuild ('chromium' here) and hints ('ua-metadata'; 'native' under --hints native), dismissed null under
+// --no-dismiss.
 // Run: node plugins/stardust/skills/replica/scripts/test/stitch-shot.test.mjs
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
@@ -28,10 +40,13 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { isHeaderMorph, overflowLine, parseArgs, sessionNavTimeout } from '../stitch-shot.mjs';
+import { captureHintRecord, isHeaderMorph, launchCaptureBrowser, mergeDismissed, overflowLine, parseArgs, recheckDenial, sessionNavTimeout } from '../stitch-shot.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'stitch-shot.mjs');
+// live-session.mjs in either layout (plugin tree / project copy) — imports nothing, so the pure part can use it
+const LIB = ['../../diff/scripts/live-session.mjs', '../diff/live-session.mjs'].map((p) => resolve(HERE, '..', p)).find((p) => existsSync(p));
+const session = await import(pathToFileURL(LIB).href);
 let failed = 0;
 const check = async (name, fn) => { try { await fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${String(e.message).split('\n').join('\n  ')}`); } };
 const LINE_RE = /^overflow: scrollWidth=[0-9]+ viewport=[0-9]+ delta=[0-9]+$/;
@@ -80,6 +95,77 @@ await check('isHeaderMorph: a shortfall the document\'s shrink explains — equa
   assert.equal(isHeaderMorph({ y: 900, target: 900, actualY: 0, totalH: 3000, h2: 2980, vh }), false, 'a 20 px shrink does not explain a 900 px shortfall');
   assert.equal(isHeaderMorph({ y: 900, target: 900, actualY: 880, totalH: 2710, h2: 2730, vh }), false, 'a grown document');
   assert.equal(isHeaderMorph({ y: 900, target: 900, actualY: 897, totalH: 1810, h2: 1807, vh }), false, 'within the 4 px slack: scroll rounding');
+});
+await check('--hints: ua-metadata and native are taken, no flag passes null through (live-session then reads env STARDUST_LIVE_HINTS)', () => {
+  const hints = (extra) => parseArgs(['node', 'stitch-shot.mjs', 'https://x.test/', 'o.png', ...extra], { env: {}, crawlLog: null }).opts.hints;
+  assert.deepEqual([hints([]), hints(['--hints', 'ua-metadata']), hints(['--hints', 'native'])], [null, 'ua-metadata', 'native']);
+});
+await check('--hints bogus: exit 1 with the usage error before any I/O — nothing written, no browser', () => {
+  const cwd = mkdtempSync(join(tmpdir(), 'stitch-hints-'));
+  try {
+    const r = spawnSync(process.execPath, [SCRIPT, 'https://x.test/', 'o.png', '--hints', 'bogus'], { cwd, encoding: 'utf8', timeout: 15000 });
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stderr, /^hints must be one of ua-metadata, native — got bogus$/m);
+    assert.match(r.stderr, /Usage: node stitch-shot\.mjs <url> <out\.png>/);
+    assert.deepEqual(readdirSync(cwd), []);
+  } finally { rmSync(cwd, { recursive: true, force: true }); }
+});
+await check('mergeDismissed: arrays concatenated and de-duplicated in order, the first consent, released when any sweep released, dialogsLeft from the LAST sweep; a sweep from an older live-session (no dialog fields) adds nothing', () => {
+  const first = { extra: ['#promo-x'], consent: null, marketing: ['[data-dismiss]'], dialogs: ['dialog#a (close())'], dialogsLeft: ['div#b'], scrollLockReleased: true };
+  const second = { extra: ['#promo-x'], consent: '#onetrust-accept-btn-handler', marketing: [], dialogs: ['dialog#a (close())', 'div#b (Escape)'], dialogsLeft: [], scrollLockReleased: false };
+  assert.deepEqual(mergeDismissed([first, second]), { extra: ['#promo-x'], consent: '#onetrust-accept-btn-handler', marketing: ['[data-dismiss]'], dialogs: ['dialog#a (close())', 'div#b (Escape)'], dialogsLeft: [], scrollLockReleased: true });
+  assert.deepEqual(mergeDismissed([second, first]).dialogsLeft, ['div#b'], 'the last sweep\'s survivors');
+  assert.deepEqual(mergeDismissed([{ extra: [], consent: null, marketing: [] }]), { extra: [], consent: null, marketing: [], dialogs: [], dialogsLeft: [], scrollLockReleased: false });
+});
+// stderr lines console.error printed while fn ran
+const stderrOf = async (fn) => {
+  const lines = []; const { error } = console;
+  console.error = (...a) => { lines.push(a.join(' ')); };
+  try { await fn(); } finally { console.error = error; }
+  return lines;
+};
+await check('a stale live-session copy never throws: no launchChromium → chromium.launch() (untagged: build unknown), no hintRecord → both unknown, no pageDenial / botChallengeError → the re-check skipped with ONE stderr line naming the stale copy', async () => {
+  const launched = [];
+  const chromium = { launch: async (...a) => { launched.push(a); return {}; } };
+  const old = { launchStealthHeaded: async () => ({ headed: true }) };
+  assert.deepEqual(await launchCaptureBrowser(old, chromium, { headed: false }), {});
+  assert.deepEqual(launched, [[]], 'chromium.launch() with no options');
+  assert.deepEqual(await launchCaptureBrowser(old, chromium, { headed: true }), { headed: true }, '--headed keeps launchStealthHeaded');
+  assert.deepEqual(captureHintRecord({}, { stardustBuild: 'chromium' }), { browserBuild: 'unknown', hints: 'unknown' });
+  for (const stale of [{}, { pageDenial: session.pageDenial }, { botChallengeError: session.botChallengeError }]) {
+    const lines = await stderrOf(() => recheckDenial(stale, { evaluate: async () => { throw new Error('never read'); } }, 'https://x.test/', 200));
+    assert.deepEqual(lines, ['stitch-shot: denial-page check skipped (live-session.mjs predates pageDenial — copy the diff skill\'s live-session.mjs alongside)'], Object.keys(stale).join() || 'neither');
+  }
+});
+await check('a current live-session: launchChromium (not chromium.launch), hintRecord read from the context', async () => {
+  const calls = [];
+  const current = { launchChromium: async (c) => { calls.push(c); return { stardustBuild: 'chromium' }; }, launchStealthHeaded: async () => null, hintRecord: session.hintRecord };
+  const chromium = { launch: async () => { throw new Error('chromium.launch must not run'); } };
+  assert.deepEqual(await launchCaptureBrowser(current, chromium, {}), { stardustBuild: 'chromium' });
+  assert.deepEqual(calls, [chromium]);
+  assert.deepEqual(captureHintRecord(current, { stardustBuild: 'chromium', stardustHints: 'ua-metadata' }), { browserBuild: 'chromium', hints: 'ua-metadata' });
+});
+await check('recheckDenial (stub pages, the real pageDenial): a denial page → BotChallengeError naming HTTP <status>, the signature, "origin blocked", --headed; a page the probe cannot read → ONE "skipped" line, no throw; an ordinary page → nothing', async () => {
+  const pageOf = (probe) => ({ evaluate: async () => probe, waitForTimeout: async () => {} });
+  const denied = { title: 'Notice', text: 'System Down Please try again later.', bytes: 35, headings: [], frames: [] };
+  const err = await recheckDenial(session, pageOf(denied), 'https://x.test/', 200).then(() => null, (e) => e);
+  assert.equal(err?.name, 'BotChallengeError');
+  assert.equal(err.marker, 'HTTP 200 denial page — "System Down"');
+  assert.match(err.message, /origin blocked/); assert.match(err.message, /--headed/);
+  const unreadable = { evaluate: async () => { throw new Error('Execution context was destroyed, most likely because of a navigation\n  at …'); }, waitForTimeout: async () => {} };
+  assert.deepEqual(await stderrOf(() => recheckDenial(session, unreadable, 'https://x.test/', 200)), ['stitch-shot: denial-page check skipped (Execution context was destroyed, most likely because of a navigation)']);
+  const ordinary = { title: 'Spring range', text: 'Ordinary page copy. '.repeat(200), bytes: 4000, headings: ['Spring range'], frames: [] };
+  assert.deepEqual(await stderrOf(() => recheckDenial(session, pageOf(ordinary), 'https://x.test/', 200)), []);
+});
+await check('--help names --hints and STARDUST_LIVE_HINTS, the dialog pass and its scroll-lock release, the 2xx denial page (exit 3, --headed), the browser build and the new capture.json keys', () => {
+  const r = spawnSync(process.execPath, [SCRIPT, '--help'], { encoding: 'utf8', timeout: 15000 });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /--hints <v> +client hints: ua-metadata [^]*?\| native/);
+  assert.match(r.stdout, /STARDUST_LIVE_HINTS/);
+  assert.match(r.stdout, /dialog closed: …/); assert.match(r.stdout, /scroll lock is released \(overflow-y reset\) only when/);
+  assert.match(r.stdout, /3 bot challenge[^]*2xx denial[^]*page[^]*Escalate with --headed/);
+  assert.match(r.stdout, /full Chromium build when installed, else the\nheadless shell/);
+  assert.match(r.stdout, /browserBuild, hints, dismissed, at/);
 });
 await check('--help in an empty cwd: exit 0, usage + the overflow line and the EDS rule named, nothing written — no playwright needed', () => {
   const cwd = mkdtempSync(join(tmpdir(), 'stitch-help-'));
@@ -141,15 +227,59 @@ if (chromium) {
     // Inner scroller: html/body overflow:hidden at 100% height — the body reports 3000 px, window.scrollTo moves nothing.
     '/jacked': page('<section style="height:3000px;background:linear-gradient(#ddd,#36c)"></section>', '<style>html,body{height:100%;overflow:hidden}</style>'),
   });
+  // S22 dialog fixtures: 3914 px of page under html/body height:100%. A lock on BOTH html and body then makes the
+  // window scroll a no-op (the recorded "window.scrollY stuck at 0" stall); a plain body{overflow:hidden} alone does
+  // not — Chromium still scrolls the window under it. The opener locks overflow-y: the release resets overflow-y only
+  // (R2), and under an `overflow: hidden` shorthand the overflow-x it keeps turns body into an inner scroller (its
+  // overflow-y computes to auto), which no release of overflow-y alone can undo.
+  const LOCK = "for (const el of [document.documentElement, document.body]) el.style.overflowY = 'hidden';";
+  const tall = (body, head = '') => page(`<main style="height:3914px;background:linear-gradient(#ddd,#36c)"></main>${body}`, `<style>html,body{height:100%}</style>${head}`);
+  Object.assign(pages, {
+    // (a) the recorded shape: a native modal dialog whose opener locked scrolling
+    '/dialog-lock': tall(`<dialog class="x-modal js-modal"><p>Choose your delivery region.</p></dialog>
+      <script>document.querySelector('.js-modal').showModal(); ${LOCK}</script>`),
+    // (b) a non-native modal its close control hides; the html lock class stays. The control is a `.modal__close`
+    // span: a `[data-dismiss]` or `button.close` inside a `.modal` is the marketing pass's (MODAL_CLOSE_CANDIDATES),
+    // which runs first — that modal would land in `marketing`, and R1 releases only after the dialog pass's own close.
+    '/modal-lock': tall(`<div class="modal show" role="dialog" aria-modal="true" style="position:fixed;inset:0;background:rgba(0,0,0,.5)">
+      <p>Choose your region.</p><span class="modal__close" role="button" tabindex="0" onclick="this.closest('.modal').style.display = 'none'">×</span></div>
+      <script>document.documentElement.classList.add('is-locked');</script>`, '<style>html.is-locked{overflow:hidden}</style>'),
+    // (c) a fixed aria-modal no control and no Escape closes, over the lock
+    '/modal-stuck-lock': tall(`<div id="blocker" role="dialog" aria-modal="true" style="position:fixed;inset:0;background:rgba(0,0,0,.6)"><p>Please wait.</p></div>
+      <script>${LOCK}</script>`),
+    // R3: a long article that only mentions the phrase is no denial page
+    '/article-press-hold': page(`<article style="min-height:3000px"><h1>Pairing the remote</h1><p>To pair it, press &amp; hold the button for three seconds.</p>${'<p>Ordinary article copy: the remote pairs once, keeps its pairing through battery changes and works across the room.</p>'.repeat(30)}</article>`),
+  });
+  // Denial pages (each answers 200): the recorded shape — ~900 px of "can't process your request" + "Incident Number" —
+  // static (gotoLive's entry read) and rendered by a script 800 ms after DOMContentLoaded (after the entry read, before
+  // the post-sweep re-check); each vendor signature on a small page; a small page under one error heading.
+  const denial = (title, body) => `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title></head><body style="margin:0">${body}</body></html>`;
+  const RECORDED = '<div style="min-height:900px;padding:40px"><p>We\'re sorry, we can\'t process your request right now. Please try again later.</p><p>Incident Number: 18.4f2a7c31.1760000000.1b2c3d4</p></div>';
+  const DENIALS = {
+    'recorded': ['cant-process', denial('Notice', RECORDED)],
+    'recorded-late': ['cant-process', denial('Notice', `<p>Loading the page.</p><script>document.addEventListener('DOMContentLoaded', () => setTimeout(() => { document.body.innerHTML = ${JSON.stringify(RECORDED)}; }, 800));</script>`)],
+    'cant-process': ['cant-process', denial('Notice', '<p>We can\'t process your request.</p><p>Incident Number: 18.4f2a</p>')],
+    'access-denied': ['access-denied', denial('Access Denied', '<h1>Access Denied</h1><p>You don\'t have permission to access this server.</p><p>Reference #18.4f2a7c31</p>')],
+    'just-a-moment': ['just-a-moment', denial('Just a moment…', '<p>Checking your browser before accessing the site.</p>')],
+    'press-and-hold': ['press-and-hold', denial('Verification', '<p>Press &amp; Hold to confirm you are a human (and not a bot).</p>')],
+    'incapsula': ['incapsula', denial('Notice', '<p>Incapsula incident ID: 0-1234567</p>')],
+    'datadome': ['datadome', denial('Notice', '<p>Protected by DataDome</p>')],
+    'request-unsuccessful': ['request-unsuccessful', denial('Notice', '<p>Request unsuccessful.</p>')],
+    'system-down': ['system-down', denial('Notice', '<p>System Down</p><p>Please try again later.</p>')],
+    'error-heading': [null, denial('Error', '<h1>Something went wrong</h1><p>Please try again in a few minutes.</p>')],
+  };
+  for (const [name, [, html]] of Object.entries(DENIALS)) pages[`/denied-${name}`] = html;
   const server = createServer((req, res) => {
     const body = pages[req.url.split('?')[0]];
     res.writeHead(body ? 200 : 404, { 'content-type': 'text/html; charset=utf-8' }); res.end(body || 'nope');
   });
   await new Promise((r) => { server.listen(0, '127.0.0.1', r); });
   const base = `http://127.0.0.1:${server.address().port}`;
-  // Asynchronous spawn: the origin lives in this process, so the event loop must keep running.
+  // Asynchronous spawn: the origin lives in this process, so the event loop must keep running. The client-hint env is
+  // left out, so the default (ua-metadata) is what a run without --hints records.
   const run = (args, cwd) => new Promise((done) => {
-    const child = spawn(process.execPath, [SCRIPT, ...args], { cwd });
+    const env = { ...process.env }; delete env.STARDUST_LIVE_HINTS;
+    const child = spawn(process.execPath, [SCRIPT, ...args], { cwd, env });
     let stdout = ''; let stderr = '';
     child.stdout.on('data', (d) => { stdout += d; }); child.stderr.on('data', (d) => { stderr += d; });
     child.on('close', (status) => done({ status, stdout, stderr }));
@@ -171,7 +301,11 @@ if (chromium) {
       assert.equal(pngOf('wide').height, Number(h));
       const cap = capture('wide');
       assert.ok(cap && !Number.isNaN(Date.parse(cap.at)), `wide.capture.json: ${JSON.stringify(cap)}`);
-      assert.deepEqual({ ...cap, at: 'iso' }, { writtenBy: 'skills/replica/scripts/stitch-shot.mjs', url: `${base}/wide`, width: 1440, vh: 900, height: Number(h), chunks: Number(n), headerMorph: 0, overflow: { scrollWidth: 1700, viewport: 1440, delta: 260 }, at: 'iso' });
+      // the full Chromium build is installed here; elsewhere launchChromium says so on stderr and the shell runs
+      const build = /full Chromium build is not installed/.test(r.stderr) ? 'chromium-headless-shell' : 'chromium';
+      assert.ok(lines.includes(`browser: ${build}, client hints: ua-metadata`), r.stdout);
+      const dismissed = { extra: [], consent: null, marketing: [], dialogs: [], dialogsLeft: [], scrollLockReleased: false };
+      assert.deepEqual({ ...cap, at: 'iso' }, { writtenBy: 'skills/replica/scripts/stitch-shot.mjs', url: `${base}/wide`, width: 1440, vh: 900, height: Number(h), chunks: Number(n), headerMorph: 0, overflow: { scrollWidth: 1700, viewport: 1440, delta: 260 }, browserBuild: build, hints: 'ua-metadata', dismissed, at: 'iso' });
       assert.equal(existsSync(join(work, 'wide.json')), false);
     });
     await check('e2e: a fitting page prints delta=0', async () => {
@@ -249,6 +383,67 @@ if (chromium) {
       assert.equal(existsSync(join(work, 'jacked.capture.json')), false, 'a stale sidecar goes when the capture starts');
       assert.equal(existsSync(join(work, 'jacked.png')), false);
       assert.doesNotMatch(r.stdout + r.stderr, /header morph/);
+    });
+    // ---- S22: dialogs and their scroll lock, denial pages, the browser record ----
+    const noOutput = (name) => [existsSync(join(work, `${name}.png`)), existsSync(join(work, `${name}.capture.json`))];
+    const STALL_3914 = /^stitch-shot error: scroll stall at chunk target 900px: window scroll is a no-op \(window\.scrollY stuck at 0px\) while the document reports 3914px/m;
+    await check('e2e (a): the recorded dialog stall reproduces — the dialog left open (--no-dismiss), html/body locked at height:100%: exit 1, the scroll stall signature, no sidecar', async () => {
+      const r = await stitch('/dialog-lock', 'dialog-nodismiss', ['--no-dismiss']);
+      assert.equal(r.status, 1, r.stdout + r.stderr);
+      assert.match(r.stderr, STALL_3914);
+      assert.deepEqual(noOutput('dialog-nodismiss'), [false, false]);
+    });
+    await check('e2e (a): default flags close the dialog (close()) and release the lock it left — exit 0, 3914 px, dismissed records the dialog, no survivor, the release', async () => {
+      const r = await stitch('/dialog-lock', 'dialog');
+      assert.equal(r.status, 0, r.stdout + r.stderr);
+      assert.ok(pngOf('dialog').height >= 3900, `PNG height ${pngOf('dialog').height}`);
+      assert.match(r.lines.at(-1), /^stitched dialog\.png: 1440x3914 from \d+ chunks$/, r.stdout);
+      assert.equal(r.cap?.dismissed?.dialogs?.length, 1, JSON.stringify(r.cap));
+      assert.match(r.cap.dismissed.dialogs[0], /^dialog.* \(close\(\)\)$/);
+      assert.deepEqual([r.cap.dismissed.dialogsLeft, r.cap.dismissed.scrollLockReleased], [[], true]);
+      assert.match(r.stdout, /^dialog closed: dialog\.x-modal\.js-modal \(close\(\)\)$/m);
+      assert.match(r.stdout, /^scroll lock released for the capture \(overflow-y reset\)$/m);
+    });
+    await check('e2e (b): a non-native .modal.show[role=dialog][aria-modal=true] its close control hides, html.is-locked left behind — exit 0, full height, the close-control entry, the lock released', async () => {
+      const r = await stitch('/modal-lock', 'modal');
+      assert.equal(r.status, 0, r.stdout + r.stderr);
+      assert.equal(pngOf('modal').height, 3914);
+      assert.deepEqual([r.cap?.dismissed?.dialogs, r.cap?.dismissed?.dialogsLeft, r.cap?.dismissed?.scrollLockReleased], [['div.modal.show (close control .modal__close)'], [], true], JSON.stringify(r.cap));
+      assert.match(r.stdout, /^dialog closed: div\.modal\.show \(close control \.modal__close\)$/m);
+    });
+    await check('e2e (c): an unclosable aria-modal over the lock keeps the lock (R1) — exit 1, the scroll stall signature, the survivor named, no sidecar', async () => {
+      const r = await stitch('/modal-stuck-lock', 'stuck');
+      assert.equal(r.status, 1, r.stdout + r.stderr);
+      assert.match(r.stderr, STALL_3914);
+      assert.match(r.stdout, /^dialog still open: div#blocker$/m);
+      assert.doesNotMatch(r.stdout, /scroll lock released/);
+      assert.deepEqual(noOutput('stuck'), [false, false]);
+    });
+    // (d) every denial route at once — each run exits at the entry or right after the sweep
+    const denied = await Promise.all(Object.keys(DENIALS).map((name) => stitch(`/denied-${name}`, `denied-${name}`)));
+    for (const [i, [name, [id]]] of Object.entries(DENIALS).entries()) {
+      const label = id ? session.DENIAL_SIGNATURES.find((s) => s.id === id).label : 'under one error heading';
+      await check(`e2e (d): denial page /denied-${name} → exit 3, stderr names ${label}, "origin blocked" and --headed; no PNG, no capture.json`, () => {
+        const r = denied[i];
+        assert.equal(r.status, 3, r.stdout + r.stderr);
+        assert.ok(r.stderr.includes(`HTTP 200 denial page — ${id ? label : ''}`), r.stderr);
+        assert.ok(r.stderr.includes(label), r.stderr);
+        assert.match(r.stderr, /origin blocked/); assert.match(r.stderr, /--headed/);
+        assert.deepEqual(noOutput(`denied-${name}`), [false, false]);
+      });
+    }
+    await check('e2e (d, R3): a 3000 px article whose text says "press & hold the button" is no denial page — exit 0', async () => {
+      const r = await stitch('/article-press-hold', 'article');
+      assert.equal(r.status, 0, r.stdout + r.stderr);
+      assert.ok(pngOf('article').height >= 3000);
+      assert.doesNotMatch(r.stderr, /denial/);
+    });
+    await check('e2e (e): --hints native is recorded (stdout and capture.json hints \'native\'); dismissed is null under --no-dismiss', async () => {
+      const r = await stitch('/fit', 'fit-native', ['--hints', 'native', '--no-dismiss']);
+      assert.equal(r.status, 0, r.stdout + r.stderr);
+      assert.match(r.stdout, /^browser: chromium(-headless-shell)?, client hints: native$/m);
+      assert.deepEqual([r.cap?.hints, r.cap?.dismissed], ['native', null], JSON.stringify(r.cap));
+      assert.equal(r.cap.browserBuild, /full Chromium build is not installed/.test(r.stderr) ? 'chromium-headless-shell' : 'chromium');
     });
     await check('e2e: EDS single sweep — no timed poll, one sweep after waitEdsDelayedPhase dismisses a consent banner shown 3 s after load', async () => {
       const lib = ['../../diff/scripts/live-session.mjs', '../diff/live-session.mjs'].map((p) => resolve(HERE, '..', p)).find((p) => existsSync(p));
