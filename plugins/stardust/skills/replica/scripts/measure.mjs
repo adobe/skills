@@ -121,9 +121,10 @@
  * line), 1 a page failed to load (named on stderr; what was measured is still
  * printed), 2 usage error, playwright not importable, live-session.mjs not
  * found or a copy that predates withDeadline (refused before any browser
- * launch), 3 bot challenge — the live side served an edge interstitial (fail
- * loud; nothing is printed as measured; escalate --headed), 124 every width
- * read failed — no verdict (the run-capped "deadline, no verdict" convention).
+ * launch), 3 bot challenge — the live side served an edge interstitial or a
+ * 2xx denial page (fail loud; nothing is printed as measured; escalate
+ * --headed), 124 every width read failed — no verdict (the run-capped
+ * "deadline, no verdict" convention).
  * Precedence 3 > 1 > 124 > 0.
  * A delta or an overflow never changes the exit code — this is a measurement,
  * not a gate; gate.sh's overflow verdict comes from stitch-shot's `overflow:` line.

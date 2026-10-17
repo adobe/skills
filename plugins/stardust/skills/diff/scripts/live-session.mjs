@@ -198,7 +198,8 @@ export function standardHeaders(locale = 'en') {
 // subresources, same- and cross-origin — carry sec-ch-ua* with the UA's brands and version and the HOST's platform, no
 // CORS preflight (browser-set hints are not author headers; F-B2 stays clear). Out-of-process iframes and service
 // workers keep the browser's own; a popup's first requests are best effort. The value: the caller's `hints` option,
-// else env STARDUST_LIVE_HINTS (reaches the instruments gate rounds spawn), else 'ua-metadata'; 'native' sets none.
+// else env STARDUST_LIVE_HINTS (reaches the instruments gate rounds spawn), else 'ua-metadata'; 'native' sets no
+// metadata (the browser's own hints).
 export const HINTS_ENV = 'STARDUST_LIVE_HINTS';
 export const HINT_SCOPES = Object.freeze(['ua-metadata', 'native']);
 let hintsEnvWarned = false; // one warning per process, not one per context
@@ -688,7 +689,7 @@ export function isContextDestroyed(err) {
  *     navigation stays bounded; a probe that fails twice (an error or the
  *     deadline) is one stderr line ("denial-page check skipped"), never a pass.
  * `timeoutMs` (goto and each reload) defaults to resolveNavTimeoutMs() per call —
- * env, then the crawl's p95 × 2, then 60000.
+ * max(env, the crawl's p95 × 2) clamped to 20000–180000, else 60000.
  * Returns the response.
  */
 export async function gotoLive(page, url, { waitUntil = 'domcontentloaded', timeoutMs = resolveNavTimeoutMs(), settleMs = 1200, httpError = 'throw', solveWindow = false } = {}) {
@@ -1070,7 +1071,7 @@ async function dialogPass(page) {
  *       to `lateWindowMs` (default 6000) when nothing was dismissed yet.
  *       Callers pass `lateWindowFor(url, …)`: 0 on local targets and on EDS build/preview hosts, which get one
  *       sweep (stitch-shot runs it after waitEdsDelayedPhase, so a consent manager the build enables is up).
- *   (c) dialogs, after (b) (closeDialogs) — every open native `dialog[open]` gets close(), then its close control,
+ *   (c) dialogs, after (b) (closeDialogs) — every visible native `dialog[open]` gets close(), then its close control,
  *       then Escape; a visible overlay-like non-native modal (MODAL_DIALOGS) its close control, then Escape. The
  *       html/body scroll lock left afterwards is released for the capture (overflow-y visible; a hidden overflow-x
  *       becomes clip — R2) ONLY when this pass closed a dialog and none survives — re-read after the pass, so a dialog

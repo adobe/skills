@@ -68,9 +68,10 @@
  * (`style-census: N pages × W widths → <out>`, plus the failure count when any).
  * Exit codes: 0 done (partial evidence is evidence — failures are listed under
  * _provenance.failed[]), 1 every page failed, 2 usage error, playwright not importable or
- * live-session.mjs not found, 3 bot challenge — the live origin served an edge interstitial:
- * the pass stops scheduling pages, what was measured is still written, and the run fails loud
- * (escalate with --headed; if still blocked the site needs crawl.mjs-class capture).
+ * live-session.mjs not found, 3 bot challenge — the live origin served an edge interstitial or
+ * a 2xx denial page: the pass stops scheduling pages, what was measured is still written, and
+ * the run fails loud (escalate with --headed; if still blocked the site needs crawl.mjs-class
+ * capture).
  *
  * Needs playwright importable from the script's location and the diff skill's
  * live-session.mjs in one of the known layouts — the plugin tree (../../diff/scripts/
